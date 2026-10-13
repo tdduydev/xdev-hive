@@ -169,10 +169,14 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
     description: "Ghi một quyết định, quy ước, cái bẫy hoặc ghi chú cho dự án.",
     input: z.object({
       project: PROJECT,
-      kind: memoryKind.describe("decision | convention | gotcha | note"),
-      content: memoryContent.describe("Nội dung memory, tối đa 2000 ký tự."),
-      files: memoryFiles.optional().describe("Đường dẫn file liên quan trong repo (tối đa 50)."),
+      // Không mô tả kind, content: enum và maxLength trong schema đã nói đủ, mà tools/list đi vào mọi run code.
+      kind: memoryKind,
+      content: memoryContent,
+      files: memoryFiles.optional().describe("File liên quan trong repo."),
     }),
+    // Run code và review ghi điều học được theo chính sách memory của tổ chức (ADR 0022); writeMemory kiểm chế độ và
+    // giới hạn mỗi run.
+    runKinds: ["code", "review"],
     handler: async ({ project, kind, content, files }, { tx, principal }) => {
       const who = await knowledgePrincipal(tx, principal);
       let scope: { level: "project"; projectId: string } | undefined;
@@ -185,7 +189,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
         throw new BadRequestError("PROJECT_REQUIRED", "Cần truyền project (project key) khi gọi ngoài run.");
       }
       const m = await writeMemory(tx, who, { scope, kind, content, files: files ?? [] }, deps);
-      return { id: m.id, kind: m.kind, scope: m.scope, createdAt: m.createdAt, author: m.author };
+      return { id: m.id, kind: m.kind, status: m.status, scope: m.scope, createdAt: m.createdAt, author: m.author };
     },
   });
 

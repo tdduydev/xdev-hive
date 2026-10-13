@@ -92,6 +92,7 @@ const text: Dict<{
       doccheck: "Kiểm tài liệu",
       docassist: "Trợ lý tài liệu",
       sdlc: "AI SDLC",
+      brief: "Brief dự án",
     },
     states: RUN_STATE_LABEL,
     groups: Object.fromEntries(RUN_FILTERS.map((filter) => [filter.key, filter.label])),
@@ -136,6 +137,7 @@ const text: Dict<{
       doccheck: "Doc check",
       docassist: "Doc assistant",
       sdlc: "AI SDLC",
+      brief: "Project brief",
     },
     states: {
       queued: "Queued",

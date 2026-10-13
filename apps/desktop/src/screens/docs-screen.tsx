@@ -9,21 +9,44 @@ import {
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Textarea } from "@xdev-hive/ui/textarea";
-import { ArrowUpDownIcon, FolderOpenIcon, LoaderCircleIcon, PlusIcon, UserRoundIcon } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowUpDownIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FolderOpenIcon,
+  LoaderCircleIcon,
+  PlusIcon,
+  UserRoundIcon,
+} from "lucide-react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AiAccountsDialog } from "@/components/ai-accounts-dialog.tsx";
 import { Markdown, SuggestionView } from "@/components/doc-view.tsx";
 import { FolderForm } from "@/components/folder-form.tsx";
+import { LocalFileView } from "@/components/local-file.tsx";
 import { Wordmark } from "@/components/logo.tsx";
+import { TerminalPane } from "@/components/terminal-pane.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import {
+  type Access,
   buildPrompt,
   type ChatItem,
   type CliAccount,
   cancelRun,
   cliAccounts,
+  EDIT_TOOLS,
   type Engine,
   findProposal,
+  folderDocs,
+  folderList,
   folderTree,
   isRead,
   proposeDoc,
@@ -33,6 +56,7 @@ import {
   type ToolDone,
   type TreeEntry,
   useChat,
+  validModel,
 } from "@/lib/agent.ts";
 import { diffHunks, diffStats, lineDiff } from "@/lib/diff.ts";
 import { folderName, pickFolder, shortPath, useFolder } from "@/lib/folder.ts";
@@ -100,7 +124,6 @@ const text: Dict<{
   sessionAt: (title: string, at: string) => string;
   modeLabel: string;
   readOnly: string;
-  locked: string;
   resumed: string;
   emptyChat: string;
   placeholder: Record<Engine, string>;
@@ -137,6 +160,21 @@ const text: Dict<{
   sendProposal: string;
   sent: (id: string) => string;
   needAccount: string;
+  pickFile: string;
+  pickFileNoAccount: string;
+  pickNothing: string;
+  model: string;
+  modelDefault: string;
+  codexModel: string;
+  modelInvalid: string;
+  accessHint: Record<Engine, [string, string, string]>;
+  bypassTitle: string;
+  bypassLead: string;
+  bypassFlag: Record<Engine, string>;
+  bypassOk: string;
+  panel: string;
+  tabChat: string;
+  tabTerminal: string;
 }> = {
   vi: {
     pickTitle: "Chọn thư mục để viết tài liệu",
@@ -195,7 +233,6 @@ const text: Dict<{
     sessionAt: (title, at) => `Phiên: ${title} · ${at}`,
     modeLabel: "Chế độ",
     readOnly: "Chỉ đọc",
-    locked: "Khoá: app chỉ cho agent đọc code khi viết tài liệu",
     resumed: "Hỏi tiếp phiên đã có; app không hiện lại các lượt cũ.",
     emptyChat:
       "Hỏi về code trong thư mục, hoặc bấm / để chọn mẫu yêu cầu. Agent chỉ đọc code; bản đề xuất hiện trong trình soạn để bạn nhận hay bỏ.",
@@ -259,6 +296,38 @@ const text: Dict<{
     sendProposal: "Gửi đề xuất",
     sent: (id) => `Đã gửi đề xuất ${id.slice(0, 8)}; tài liệu đổi khi được duyệt.`,
     needAccount: "Liên kết tài khoản để gửi đề xuất.",
+    pickFile: "Chọn file ở cột trái để xem code hay sửa tài liệu trong thư mục, hoặc chọn tài liệu trên hub.",
+    pickFileNoAccount:
+      "Chọn file ở cột trái để xem code hay sửa tài liệu trong thư mục. Muốn mở tài liệu của dự án trên hub thì liên kết tài khoản.",
+    pickNothing:
+      "Chọn thư mục dự án để xem code và sửa tài liệu trên máy, hoặc liên kết tài khoản để mở tài liệu trên hub.",
+    model: "Model",
+    modelDefault: "Mặc định",
+    codexModel: "Model mặc định",
+    modelInvalid: "Tên model chỉ gồm chữ, số và . _ : - (tối đa 64 ký tự).",
+    accessHint: {
+      claude: [
+        "Chỉ đọc code: --restricted · Read, Glob, Grep",
+        "Sửa và tạo file trong thư mục, không chạy lệnh: --permission-mode acceptEdits · Edit, Write",
+        "Bỏ hỏi quyền: agent tự chạy lệnh và sửa file (--permission-mode bypassPermissions)",
+      ],
+      codex: [
+        "Chỉ đọc: --sandbox read-only",
+        "Sửa file trong thư mục: --sandbox workspace-write",
+        "Không sandbox, không hỏi: --dangerously-bypass-approvals-and-sandbox",
+      ],
+    },
+    bypassTitle: "Cho agent chạy không hỏi quyền?",
+    bypassLead:
+      "Ở chế độ này agent tự chạy lệnh, sửa và xoá file trong thư mục mà không hỏi lại. Lệnh sai hay lời nhắc độc giấu trong code có thể làm mất dữ liệu hoặc lộ bí mật trên máy. Chỉ bật khi thư mục đã commit hoặc có bản sao. App hỏi lại mỗi phiên.",
+    bypassFlag: {
+      claude: "Claude Code chạy với --permission-mode bypassPermissions, không còn --restricted.",
+      codex: "Codex chạy với --dangerously-bypass-approvals-and-sandbox: không hỏi và không có sandbox.",
+    },
+    bypassOk: "Bật Bypass",
+    panel: "Khung bên phải",
+    tabChat: "Chat",
+    tabTerminal: "Terminal",
   },
   en: {
     pickTitle: "Pick a folder to write docs in",
@@ -317,7 +386,6 @@ const text: Dict<{
     sessionAt: (title, at) => `Session: ${title} · ${at}`,
     modeLabel: "Mode",
     readOnly: "Read-only",
-    locked: "Locked: the app only lets the agent read code when writing docs",
     resumed: "Continuing an earlier session; the app does not show its old turns.",
     emptyChat:
       "Ask about the code in this folder, or press / for a request template. The agent only reads code; its proposal shows up in the editor for you to accept or reject.",
@@ -383,6 +451,38 @@ const text: Dict<{
     sendProposal: "Send proposal",
     sent: (id) => `Proposal ${id.slice(0, 8)} sent; the doc changes once it is approved.`,
     needAccount: "Link your account to send proposals.",
+    pickFile: "Pick a file on the left to view code or edit a doc in the folder, or pick a doc on the hub.",
+    pickFileNoAccount:
+      "Pick a file on the left to view code or edit a doc in the folder. Link your account to open the project's docs on the hub.",
+    pickNothing:
+      "Choose a project folder to view code and edit docs on this machine, or link your account to open docs on the hub.",
+    model: "Model",
+    modelDefault: "Default",
+    codexModel: "Default model",
+    modelInvalid: "Model names only use letters, digits and . _ : - (up to 64 characters).",
+    accessHint: {
+      claude: [
+        "Read code only: --restricted · Read, Glob, Grep",
+        "Edit and create files in the folder, no commands: --permission-mode acceptEdits · Edit, Write",
+        "No permission prompts: the agent runs commands and edits files on its own (--permission-mode bypassPermissions)",
+      ],
+      codex: [
+        "Read only: --sandbox read-only",
+        "Edit files in the folder: --sandbox workspace-write",
+        "No sandbox, no prompts: --dangerously-bypass-approvals-and-sandbox",
+      ],
+    },
+    bypassTitle: "Let the agent run without permission prompts?",
+    bypassLead:
+      "In this mode the agent runs commands, edits and deletes files in the folder without asking. A wrong command or a prompt injection hidden in the code can lose data or leak secrets on this machine. Only do this when the folder is committed or backed up. The app asks again for every session.",
+    bypassFlag: {
+      claude: "Claude Code runs with --permission-mode bypassPermissions, without --restricted.",
+      codex: "Codex runs with --dangerously-bypass-approvals-and-sandbox: no prompts and no sandbox.",
+    },
+    bypassOk: "Turn on Bypass",
+    panel: "Right panel",
+    tabChat: "Chat",
+    tabTerminal: "Terminal",
   },
 };
 
@@ -415,6 +515,13 @@ const DRAFTS = "hive.docs.drafts";
 const SESSIONS = "hive.docs.sessions";
 const RECENT = "hive.docs.recent";
 const ENGINE = "hive.docs.engine";
+const MODELS = "hive.docs.models";
+/** Alias model của Claude Code (`claude --model`); rỗng là model mặc định của gói. */
+const CLAUDE_MODELS = ["opus", "sonnet", "haiku"];
+/** Cây của folder_tree tối đa 400 mục (cli.rs TREE_MAX): chạm giới hạn thì thư mục cấp 1 có thể thiếu con. */
+const TREE_MAX = 400;
+const ACCESS: Access[] = ["read", "edit", "bypass"];
+const CODEX_ACCESS = ["Read Only", "Workspace", "Full Access"];
 
 interface StoredSession {
   id: string;
@@ -651,9 +758,10 @@ interface HubDocFull {
 
 /**
  * Màn Tài liệu (AppDocs.dc.html, specs/008-desktop-v2 T011): chọn thư mục dự án; cột trái là tài liệu của dự án trên
- * hub và cây code (chấm xanh: file agent đã đọc); giữa là bản nháp tài liệu với đề xuất của agent tô xanh; phải là
- * khung chat chạy Claude Code hoặc Codex chỉ đọc trên máy. Bản nháp lên hub bằng đề xuất (`propose_doc`), người duyệt
- * quyết.
+ * hub và cây code (chấm xanh: file agent đã đọc; bấm file để mở ở giữa); giữa là bản nháp tài liệu với đề xuất của
+ * agent tô xanh, hoặc file trong thư mục (components/local-file.tsx); phải là tab Chat chạy Claude Code hoặc Codex trên
+ * máy (mặc định chỉ đọc, người dùng bật chế độ ghi) và tab Terminal (components/terminal-pane.tsx). Bản nháp lên hub
+ * bằng đề xuất (`propose_doc`), người duyệt quyết.
  */
 export function DocsScreen() {
   const t = useT(text);
@@ -675,6 +783,7 @@ export function DocsScreen() {
   // undefined: đang đọc; null: chưa chọn thư mục hoặc không đọc được.
   const [meta, setMeta] = useState<WorkspaceMeta | null | undefined>(undefined);
   const [tree, setTree] = useState<TreeEntry[] | null>(null);
+  const [folderDocs_, setFolderDocs] = useState<string[] | null>(null);
   const [project, setProject] = useState<HubProject | null | undefined>(undefined);
   const [docs, setDocs] = useState<HubDoc[] | null>(null);
   const [hubError, setHubError] = useState<string | null>(null);
@@ -690,6 +799,24 @@ export function DocsScreen() {
   const [naming, setNaming] = useState<string | null>(null);
   const [proposing, setProposing] = useState(false);
   const transcript = useRef<HTMLDivElement>(null);
+  // File trong thư mục mở ở khung giữa (thay cho tài liệu hub); cây mở thư mục con theo yêu cầu.
+  const [openFile, setOpenFile] = useState<string | null>(null);
+  const [kids, setKids] = useState<Record<string, TreeEntry[]>>({});
+  const [expanded, setExpanded] = useState<string[]>([]);
+  // Tăng khi agent sửa file: cây và file đang mở đọc lại.
+  const [reload, setReload] = useState(0);
+  const [models, setModels] = useState<Record<Engine, string>>(() => ({
+    claude: "",
+    codex: "",
+    ...readJson<Partial<Record<Engine, string>>>(MODELS, {}),
+  }));
+  const [access, setAccess] = useState<Access>("read");
+  const [askBypass, setAskBypass] = useState(false);
+  const [panel, setPanel] = useState<"chat" | "terminal">("chat");
+  const runAccess = useRef<Access>("read");
+  const wasRunning = useRef(false);
+  const folderRef = useRef(folder);
+  folderRef.current = folder;
 
   const engine = chat.engine;
   const running = busy || chat.runId !== null;
@@ -704,10 +831,14 @@ export function DocsScreen() {
     let alive = true;
     setMeta(undefined);
     setTree(null);
+    setFolderDocs(null);
     setProject(undefined);
     setDocs(null);
     setHubError(null);
     setSelected(null);
+    setOpenFile(null);
+    setKids({});
+    setExpanded([]);
     if (picking) return;
     if (!folder) {
       setMeta(null);
@@ -721,6 +852,11 @@ export function DocsScreen() {
       (tr) => alive && setTree(tr),
       () => alive && setTree([]),
     );
+    // Bản app cũ chưa có lệnh này thì để trống: prompt vẫn có cây thư mục.
+    folderDocs(folder).then(
+      (d) => alive && setFolderDocs(d),
+      () => alive && setFolderDocs([]),
+    );
     return () => {
       alive = false;
     };
@@ -729,6 +865,48 @@ export function DocsScreen() {
   useEffect(() => {
     cliAccounts().then(setAccounts, () => {});
   }, []);
+
+  // Bypass chỉ có hiệu lực trong phiên đã xác nhận: đổi thư mục hay agent là phiên mới, hỏi lại.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chạy khi phiên đổi
+  useEffect(() => {
+    setAccess((a) => (a === "bypass" ? "read" : a));
+  }, [chat.folder, chat.engine]);
+
+  // Con của thư mục cấp 0 có sẵn trong cây hai tầng; thư mục sâu hơn đọc khi bấm mở.
+  useEffect(() => {
+    if (!tree) return;
+    const next: Record<string, TreeEntry[]> = { "": tree.filter((e) => e.depth === 0) };
+    if (tree.length < TREE_MAX) {
+      for (const e of tree) if (e.depth === 0 && e.dir) next[e.path] = [];
+      for (const e of tree) if (e.depth === 1) next[e.path.slice(0, e.path.lastIndexOf("/"))]?.push(e);
+    }
+    setKids((prev) => ({ ...prev, ...next }));
+  }, [tree]);
+
+  const edits = chat.items.filter((it) => it.kind === "tool" && it.done?.ok && EDIT_TOOLS.has(it.name)).length;
+  useEffect(() => {
+    if (edits > 0) setReload((n) => n + 1);
+  }, [edits]);
+  // Codex sửa file bằng lệnh shell ở chế độ ghi: không có sự kiện riêng, đọc lại khi lượt chạy xong.
+  useEffect(() => {
+    if (chat.runId) {
+      wasRunning.current = true;
+      return;
+    }
+    if (wasRunning.current && runAccess.current !== "read") setReload((n) => n + 1);
+    wasRunning.current = false;
+  }, [chat.runId]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chỉ đọc lại khi reload tăng
+  useEffect(() => {
+    if (!reload || !folder) return;
+    folderTree(folder).then(setTree, () => {});
+    for (const dir of expanded)
+      folderList(folder, dir).then(
+        (list) => setKids((k) => ({ ...k, [dir]: list })),
+        () => {},
+      );
+  }, [reload]);
 
   useEffect(() => {
     if (meta === undefined || !account) return;
@@ -866,18 +1044,59 @@ export function DocsScreen() {
 
   function pickSession(value: string) {
     if (running) return;
+    setAccess((a) => (a === "bypass" ? "read" : a));
     resetChat(folder, engine, value === "new" ? null : value);
+  }
+
+  function pickAccess(next: Access) {
+    if (running) return;
+    if (next === "bypass" && access !== "bypass") setAskBypass(true);
+    else setAccess(next);
+  }
+
+  function setModel(value: string) {
+    const next = { ...models, [engine]: value };
+    setModels(next);
+    writeJson(MODELS, next);
+  }
+
+  function toggleDir(path: string) {
+    if (expanded.includes(path)) {
+      setExpanded(expanded.filter((p) => p !== path));
+      return;
+    }
+    setExpanded([...expanded, path]);
+    if (path in kids) return;
+    const at = folder;
+    folderList(folder, path).then(
+      (list) => folderRef.current === at && setKids((k) => ({ ...k, [path]: list })),
+      () => folderRef.current === at && setKids((k) => ({ ...k, [path]: [] })),
+    );
+  }
+
+  function openDoc(key: string) {
+    setOpenFile(null);
+    setSelected(key);
   }
 
   async function send(request: string) {
     const req = request.trim();
-    if (!req || running || !folder) return;
+    if (!req || running || !folder || !modelOk) return;
     setInput("");
     setSlash(false);
     setBusy(true);
     try {
-      const doc = hubDoc ? { key: hubDoc.key, title: hubDoc.title, draft: draftText } : null;
-      await startRun({ request: req, prompt: buildPrompt(req, doc, lang), docKey: doc?.key ?? null });
+      // File trên máy đang mở thì agent làm với file đó, không đề xuất cho tài liệu hub.
+      const doc = hubDoc && !openFile ? { key: hubDoc.key, title: hubDoc.title, draft: draftText } : null;
+      const map = { tree: tree ?? [], docs: folderDocs_ ?? [] };
+      runAccess.current = access;
+      await startRun({
+        request: req,
+        prompt: buildPrompt(req, doc, lang, map, { access, openFile }),
+        docKey: doc?.key ?? null,
+        model: model || null,
+        access,
+      });
     } finally {
       setBusy(false);
     }
@@ -906,6 +1125,11 @@ export function DocsScreen() {
     setSelected(key);
   }
 
+  // Claude chỉ nhận alias trong danh sách; giá trị cũ lạ trong localStorage thì về mặc định.
+  const model = (
+    engine === "claude" ? (CLAUDE_MODELS.includes(models.claude) ? models.claude : "") : models.codex
+  ).trim();
+  const modelOk = !model || validModel(model);
   const engineInfo = accounts?.find((a) => a.engine === engine);
   const lastResult = [...chat.items].reverse().find((it) => it.kind === "result");
   const quicks = hubDoc ? [t.updateQuick, ...t.quicks] : t.quicks;
@@ -913,11 +1137,16 @@ export function DocsScreen() {
   const statusLeft =
     engine === "claude"
       ? [
-          chat.model ?? "Claude Code",
+          chat.model ?? (model || "Claude Code"),
           engineInfo?.plan ? `Claude ${engineInfo.plan}` : engineInfo?.method,
           engineInfo?.version,
         ]
-      : [`codex-cli ${engineInfo?.version ?? ""}`.trim(), engineInfo?.method, "Read only"];
+      : [
+          `codex-cli ${engineInfo?.version ?? ""}`.trim(),
+          engineInfo?.method,
+          model || null,
+          CODEX_ACCESS[ACCESS.indexOf(access)],
+        ];
 
   if (picking) {
     return (
@@ -987,6 +1216,62 @@ export function DocsScreen() {
 
   const docName = (key: string) => (prefix && key.startsWith(prefix) ? key.slice(prefix.length) : key);
   const docItems = account ? allDocs : [];
+
+  /** Cây code: thư mục bấm để mở/thu, file bấm để mở ở khung giữa. Chấm xanh: file agent đã đọc. */
+  function renderDir(dir: string): ReactNode[] {
+    const out: ReactNode[] = [];
+    for (const e of kids[dir] ?? []) {
+      const name = e.path.split("/").at(-1) ?? e.path;
+      const read = isRead(e.path, chat.read);
+      const open = e.dir && expanded.includes(e.path);
+      out.push(
+        <li key={e.path}>
+          <button
+            type="button"
+            title={e.path}
+            aria-expanded={e.dir ? open : undefined}
+            aria-current={!e.dir && openFile === e.path ? "true" : undefined}
+            onClick={() => (e.dir ? toggleDir(e.path) : setOpenFile(e.path))}
+            className={cn(
+              "flex h-6 w-full cursor-pointer items-center gap-1 rounded-[5px] pr-1.5 text-left font-mono text-xs whitespace-nowrap hover:bg-muted",
+              !e.dir && openFile === e.path && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
+            )}
+            style={{ paddingLeft: `${4 + e.depth * 14}px` }}
+          >
+            {e.dir ? (
+              open ? (
+                <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRightIcon aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
+              )
+            ) : (
+              <span aria-hidden="true" className="w-3 shrink-0" />
+            )}
+            <span className="min-w-0 truncate">{e.dir ? `${name}/` : name}</span>
+            {read && (
+              <span title={t.readByAi} className="ml-auto size-1.5 shrink-0 rounded-full bg-primary">
+                <span className="sr-only">{t.readByAi}</span>
+              </span>
+            )}
+          </button>
+        </li>,
+      );
+      if (open) {
+        if (kids[e.path]) out.push(...renderDir(e.path));
+        else
+          out.push(
+            <li
+              key={`${e.path}/…`}
+              className="h-6 font-mono text-xs leading-6 text-muted-foreground"
+              style={{ paddingLeft: `${18 + (e.depth + 1) * 14}px` }}
+            >
+              {t.loading}
+            </li>,
+          );
+      }
+    }
+    return out;
+  }
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
@@ -1076,11 +1361,13 @@ export function DocsScreen() {
                     <button
                       type="button"
                       title={d.key}
-                      aria-current={selected === d.key ? "true" : undefined}
-                      onClick={() => setSelected(d.key)}
+                      aria-current={selected === d.key && !openFile ? "true" : undefined}
+                      onClick={() => openDoc(d.key)}
                       className={cn(
                         "flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-[5px] px-1.5 text-left font-mono text-xs whitespace-nowrap hover:bg-muted",
-                        selected === d.key && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
+                        selected === d.key &&
+                          !openFile &&
+                          "bg-accent font-semibold text-accent-foreground hover:bg-accent",
                       )}
                     >
                       <span aria-hidden="true" className="w-3" />▤
@@ -1109,27 +1396,7 @@ export function DocsScreen() {
           ) : tree === null ? (
             <p className="px-1.5 py-1 text-xs text-muted-foreground">{t.loading}</p>
           ) : (
-            <ul>
-              {tree.map((e) => {
-                const name = e.path.split("/").at(-1) ?? e.path;
-                const read = isRead(e.path, chat.read);
-                return (
-                  <li
-                    key={e.path}
-                    title={e.path}
-                    className="flex h-6 items-center gap-1.5 rounded-[5px] pr-1.5 font-mono text-xs whitespace-nowrap hover:bg-muted"
-                    style={{ paddingLeft: `${6 + e.depth * 14}px` }}
-                  >
-                    <span className="min-w-0 truncate">{e.dir ? `${e.depth === 0 ? "▾" : "▸"} ${name}/` : name}</span>
-                    {read && (
-                      <span title={t.readByAi} className="ml-auto size-1.5 shrink-0 rounded-full bg-primary">
-                        <span className="sr-only">{t.readByAi}</span>
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <ul>{renderDir("")}</ul>
           )}
         </div>
         <div className="flex items-center gap-1.5 border-t px-3 py-2 text-xs text-muted-foreground">
@@ -1138,369 +1405,445 @@ export function DocsScreen() {
         </div>
       </aside>
 
-      <section aria-label={t.editorLabel} className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center gap-2 border-b px-3.5 py-2">
-          {allDocs.length > 0 && (
-            <select
-              aria-label={t.docs}
-              className="hidden h-7 max-w-48 rounded-md border bg-background font-mono text-xs max-[900px]:block"
-              value={selected ?? ""}
-              onChange={(e) => setSelected(e.target.value)}
-            >
-              {allDocs.map((d) => (
-                <option key={d.key} value={d.key}>
-                  {docName(d.key)}
-                </option>
-              ))}
-            </select>
-          )}
-          {hubDoc && (
-            <>
-              <span title={hubDoc.key} className="truncate font-mono text-sm font-medium max-[900px]:hidden">
-                {docName(hubDoc.key)}
-              </span>
-              {suggestion ? (
-                <StatePill tone="warn">{t.pending}</StatePill>
-              ) : changed ? (
-                <StatePill tone="warn">{t.unsent}</StatePill>
-              ) : hubDoc.version ? (
-                <StatePill tone="ok">{t.synced(hubDoc.version)}</StatePill>
-              ) : (
-                <StatePill tone="warn">{t.newOnHub}</StatePill>
-              )}
-              <div role="tablist" aria-label={t.editorLabel} className="inline-flex rounded-lg bg-muted p-0.5">
-                {(
-                  [
-                    ["view", t.view],
-                    ["edit", t.edit],
-                    ["diff", t.changes],
-                  ] as const
-                ).map(([m, label]) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={mode === m}
-                    onClick={() => setMode(m)}
-                    className={cn(
-                      "h-6 cursor-pointer rounded-md px-2 text-xs",
-                      mode === m
-                        ? "bg-card font-semibold text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <span className="flex-1" />
-              {changed && <span className="text-xs text-muted-foreground max-[1180px]:hidden">{t.savedIn}</span>}
-              <Button
-                size="sm"
-                disabled={!changed || !canPropose || !draftText.trim()}
-                title={canPropose ? undefined : t.pushNeedsRole}
-                onClick={() => setProposing(true)}
+      {openFile && folder ? (
+        <LocalFileView folder={folder} path={openFile} reload={reload} onClose={() => setOpenFile(null)} />
+      ) : (
+        <section aria-label={t.editorLabel} className="flex min-w-0 flex-1 flex-col">
+          <div className="flex flex-wrap items-center gap-2 border-b px-3.5 py-2">
+            {allDocs.length > 0 && (
+              <select
+                aria-label={t.docs}
+                className="hidden h-7 max-w-48 rounded-md border bg-background font-mono text-xs max-[900px]:block"
+                value={selected ?? ""}
+                onChange={(e) => openDoc(e.target.value)}
               >
-                {t.push}
-              </Button>
-            </>
-          )}
-        </div>
-        {stale && hubDoc && (
-          <div className="flex flex-wrap items-center gap-2 border-b bg-warning-soft px-3.5 py-1.5 text-sm text-warning">
-            <span className="flex-1">{t.stale(draft?.base ?? 0, hubDoc.version)}</span>
-            <Button size="xs" variant="outline" onClick={() => saveDraft(hubDoc.key, null)}>
-              {t.dropDraft}
-            </Button>
-          </div>
-        )}
-        {!hubDoc ? (
-          <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
-            {docError ? (
-              <span className="text-destructive">{docError}</span>
-            ) : selected ? (
-              t.loading
-            ) : account ? (
-              t.pickDoc
-            ) : (
-              t.noAccountDocs
+                {allDocs.map((d) => (
+                  <option key={d.key} value={d.key}>
+                    {docName(d.key)}
+                  </option>
+                ))}
+              </select>
             )}
-          </div>
-        ) : mode === "edit" ? (
-          <Textarea
-            aria-label={t.editorLabel}
-            value={draftText}
-            onChange={(e) => saveDraft(hubDoc.key, { base, text: e.target.value, title: hubDoc.title })}
-            className="min-h-0 flex-1 resize-none rounded-none border-0 px-9 py-6 font-mono text-sm [field-sizing:fixed] focus-visible:ring-0 md:text-sm"
-          />
-        ) : mode === "diff" ? (
-          <div className="flex-1 overflow-y-auto px-9 py-6 font-mono text-sm leading-relaxed">
-            {changed ? (
-              diffHunks(lineDiff(hubDoc.content, draftText), 2).map((line, i) =>
-                line === null ? (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: dòng diff dựng lại mỗi lần vẽ
-                  <div key={i} className="py-1 text-muted-foreground">
-                    ⋯
-                  </div>
-                ) : (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: dòng diff dựng lại mỗi lần vẽ
-                    key={i}
-                    className={cn(
-                      "px-2 whitespace-pre-wrap",
-                      line.kind === "add" && "bg-success-soft text-success",
-                      line.kind === "del" && "bg-destructive-soft text-destructive",
-                    )}
-                  >
-                    {line.kind === "add" ? "+ " : line.kind === "del" ? "- " : "  "}
-                    {line.text}
-                  </div>
-                ),
-              )
-            ) : (
-              <p className="font-sans text-sm text-muted-foreground">{t.noChanges}</p>
-            )}
-          </div>
-        ) : (
-          <article className="flex-1 overflow-y-auto px-9 py-6 text-[15px] leading-[1.75]">
-            {suggestion ? (
+            {hubDoc && (
               <>
-                <SuggestionView
-                  base={draftText}
-                  proposal={suggestion}
-                  labels={{ added: t.aiAdded, removed: t.aiRemoved }}
-                />
-                <div className="flex justify-end gap-1.5">
-                  <Button variant="outline" size="sm" onClick={() => setSuggestion(null)}>
-                    {t.rejectAll}
-                  </Button>
-                  <Button size="sm" onClick={accept}>
-                    {t.acceptAll}
-                  </Button>
+                <span title={hubDoc.key} className="truncate font-mono text-sm font-medium max-[900px]:hidden">
+                  {docName(hubDoc.key)}
+                </span>
+                {suggestion ? (
+                  <StatePill tone="warn">{t.pending}</StatePill>
+                ) : changed ? (
+                  <StatePill tone="warn">{t.unsent}</StatePill>
+                ) : hubDoc.version ? (
+                  <StatePill tone="ok">{t.synced(hubDoc.version)}</StatePill>
+                ) : (
+                  <StatePill tone="warn">{t.newOnHub}</StatePill>
+                )}
+                <div role="tablist" aria-label={t.editorLabel} className="inline-flex rounded-lg bg-muted p-0.5">
+                  {(
+                    [
+                      ["view", t.view],
+                      ["edit", t.edit],
+                      ["diff", t.changes],
+                    ] as const
+                  ).map(([m, label]) => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === m}
+                      onClick={() => setMode(m)}
+                      className={cn(
+                        "h-6 cursor-pointer rounded-md px-2 text-xs",
+                        mode === m
+                          ? "bg-card font-semibold text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
+                <span className="flex-1" />
+                {changed && <span className="text-xs text-muted-foreground max-[1180px]:hidden">{t.savedIn}</span>}
+                <Button
+                  size="sm"
+                  disabled={!changed || !canPropose || !draftText.trim()}
+                  title={canPropose ? undefined : t.pushNeedsRole}
+                  onClick={() => setProposing(true)}
+                >
+                  {t.push}
+                </Button>
               </>
-            ) : draftText.trim() ? (
-              <Markdown text={draftText} />
-            ) : (
-              <p className="text-sm text-muted-foreground">{t.emptyChat}</p>
             )}
-          </article>
-        )}
-      </section>
+          </div>
+          {stale && hubDoc && (
+            <div className="flex flex-wrap items-center gap-2 border-b bg-warning-soft px-3.5 py-1.5 text-sm text-warning">
+              <span className="flex-1">{t.stale(draft?.base ?? 0, hubDoc.version)}</span>
+              <Button size="xs" variant="outline" onClick={() => saveDraft(hubDoc.key, null)}>
+                {t.dropDraft}
+              </Button>
+            </div>
+          )}
+          {!hubDoc ? (
+            <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
+              {docError ? (
+                <span className="text-destructive">{docError}</span>
+              ) : selected ? (
+                t.loading
+              ) : account ? (
+                folder ? (
+                  t.pickFile
+                ) : (
+                  t.pickDoc
+                )
+              ) : folder ? (
+                t.pickFileNoAccount
+              ) : (
+                t.pickNothing
+              )}
+            </div>
+          ) : mode === "edit" ? (
+            <Textarea
+              aria-label={t.editorLabel}
+              value={draftText}
+              onChange={(e) => saveDraft(hubDoc.key, { base, text: e.target.value, title: hubDoc.title })}
+              className="min-h-0 flex-1 resize-none rounded-none border-0 px-9 py-6 font-mono text-sm [field-sizing:fixed] focus-visible:ring-0 md:text-sm"
+            />
+          ) : mode === "diff" ? (
+            <div className="flex-1 overflow-y-auto px-9 py-6 font-mono text-sm leading-relaxed">
+              {changed ? (
+                diffHunks(lineDiff(hubDoc.content, draftText), 2).map((line, i) =>
+                  line === null ? (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: dòng diff dựng lại mỗi lần vẽ
+                    <div key={i} className="py-1 text-muted-foreground">
+                      ⋯
+                    </div>
+                  ) : (
+                    <div
+                      // biome-ignore lint/suspicious/noArrayIndexKey: dòng diff dựng lại mỗi lần vẽ
+                      key={i}
+                      className={cn(
+                        "px-2 whitespace-pre-wrap",
+                        line.kind === "add" && "bg-success-soft text-success",
+                        line.kind === "del" && "bg-destructive-soft text-destructive",
+                      )}
+                    >
+                      {line.kind === "add" ? "+ " : line.kind === "del" ? "- " : "  "}
+                      {line.text}
+                    </div>
+                  ),
+                )
+              ) : (
+                <p className="font-sans text-sm text-muted-foreground">{t.noChanges}</p>
+              )}
+            </div>
+          ) : (
+            <article className="flex-1 overflow-y-auto px-9 py-6 text-[15px] leading-[1.75]">
+              {suggestion ? (
+                <>
+                  <SuggestionView
+                    base={draftText}
+                    proposal={suggestion}
+                    labels={{ added: t.aiAdded, removed: t.aiRemoved }}
+                  />
+                  <div className="flex justify-end gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => setSuggestion(null)}>
+                      {t.rejectAll}
+                    </Button>
+                    <Button size="sm" onClick={accept}>
+                      {t.acceptAll}
+                    </Button>
+                  </div>
+                </>
+              ) : draftText.trim() ? (
+                <Markdown text={draftText} />
+              ) : (
+                <p className="text-sm text-muted-foreground">{t.emptyChat}</p>
+              )}
+            </article>
+          )}
+        </section>
+      )}
 
       <aside
         aria-label={t.chat}
-        className="flex w-[420px] shrink-0 flex-col border-l bg-background max-[1240px]:w-[360px] max-[900px]:w-[300px]"
+        className={cn(
+          "flex shrink-0 flex-col border-l bg-background",
+          panel === "terminal"
+            ? "w-[560px] max-[1240px]:w-[440px] max-[900px]:w-[320px]"
+            : "w-[420px] max-[1240px]:w-[360px] max-[900px]:w-[300px]",
+        )}
       >
-        <div className="flex flex-col gap-2 border-b px-3 py-2">
-          <div className="flex items-center gap-2">
-            <div role="tablist" aria-label={t.engine} className="inline-flex rounded-lg bg-muted p-0.5">
-              {(
-                [
-                  ["claude", "Claude Code", "bg-[#D97757]"],
-                  ["codex", "Codex", "bg-foreground"],
-                ] as const
-              ).map(([id, label, dot]) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={engine === id}
-                  disabled={running && engine !== id}
-                  onClick={() => pickEngine(id)}
-                  className={cn(
-                    "inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm disabled:cursor-not-allowed",
-                    engine === id ? "bg-card font-semibold text-foreground shadow-sm" : "text-muted-foreground",
-                  )}
-                >
-                  <span aria-hidden="true" className={cn("size-1.75 rounded-full", dot)} />
-                  {label}
-                </button>
-              ))}
-            </div>
-            <span className="flex-1" />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t.manageAcc}
-              title={t.manageAcc}
-              onClick={() => setAccOpen(true)}
-            >
-              <UserRoundIcon aria-hidden="true" className="size-3.75" />
-            </Button>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <select
-              aria-label={t.session}
-              disabled={running}
-              value={chat.session ?? "new"}
-              onChange={(e) => pickSession(e.target.value)}
-              className="h-6.5 max-w-52.5 rounded-md border bg-background text-xs"
-            >
-              {chat.session && !engineSessions.some((s) => s.id === chat.session) && (
-                <option value={chat.session}>{t.sessionAt(chat.session.slice(0, 8), "")}</option>
+        <div role="tablist" aria-label={t.panel} className="flex gap-3.5 border-b px-3.5">
+          {(
+            [
+              ["chat", t.tabChat],
+              ["terminal", t.tabTerminal],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={panel === id}
+              onClick={() => setPanel(id)}
+              className={cn(
+                "-mb-px h-8.5 cursor-pointer border-b-2 text-sm",
+                panel === id
+                  ? "border-primary font-semibold text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
-              {engineSessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {t.sessionAt(s.title, timeOf(s.at, lang))}
-                </option>
-              ))}
-              <option value="new">{t.newSession}</option>
-            </select>
-            <span className="text-muted-foreground">{t.modeLabel}</span>
-            <fieldset className="inline-flex gap-0.5 rounded-[7px] bg-muted p-0.5">
-              <legend className="sr-only">{t.modeLabel}</legend>
-              {(engine === "claude"
-                ? [t.readOnly, "Accept edits", "Bypass"]
-                : ["Read Only", "Workspace", "Full Access"]
-              ).map((label, i) => (
-                <button
-                  key={label}
-                  type="button"
-                  aria-pressed={i === 0}
-                  disabled={i > 0}
-                  title={
-                    i > 0 ? t.locked : engine === "claude" ? "--restricted · Read, Glob, Grep" : "--sandbox read-only"
-                  }
-                  className={cn(
-                    "h-5.5 rounded-[5px] px-2 text-xs",
-                    i === 0
-                      ? "bg-card font-semibold text-foreground"
-                      : "cursor-not-allowed text-muted-foreground opacity-45",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </fieldset>
-          </div>
-        </div>
-
-        <div
-          ref={transcript}
-          aria-live="polite"
-          className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-3.5 py-3 font-mono text-sm leading-[1.55]"
-        >
-          {!folder ? (
-            <div className="flex flex-col items-start gap-2.5 font-sans">
-              <p className="text-sm text-muted-foreground">{t.chatNeedsFolder}</p>
-              <Button size="sm" onClick={() => void chooseFolder()}>
-                <FolderOpenIcon aria-hidden="true" />
-                {t.openFolder}
-              </Button>
-            </div>
-          ) : (
-            chat.items.length === 0 && (
-              <p className="font-sans text-sm text-muted-foreground">{chat.session ? t.resumed : t.emptyChat}</p>
-            )
-          )}
-          {chat.items.map((item, i) => (
-            <ChatLine
-              // biome-ignore lint/suspicious/noArrayIndexKey: dòng chat chỉ thêm vào cuối
-              key={i}
-              item={item}
-              engine={engine}
-              stripProposal={!!chat.docKey}
-              docSuggestion={chat.suggestion?.text ?? null}
-              baseText={baseText}
-              onReopen={(key, proposal) => {
-                setSelected(key);
-                setMode("view");
-                setSuggestion({ key, text: proposal });
-              }}
-            />
+            >
+              {label}
+            </button>
           ))}
-          {running && (
-            <span className="flex items-center gap-1.5 font-sans text-sm text-muted-foreground">
-              <LoaderCircleIcon aria-hidden="true" className="size-3.5 animate-spin" />
-              {t.running}
-            </span>
-          )}
-          {chat.error && <p className="font-sans text-sm text-destructive">{chat.error}</p>}
         </div>
-
-        <div className="flex flex-col gap-1.5 border-t px-3 py-2.5">
-          {slash && (
-            <div role="menu" aria-label={t.quick} className="rounded-xl border bg-card p-1 shadow-lg">
-              {quicks.map((q) => (
-                <button
-                  key={q.cmd}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setInput(q.prompt);
-                    setSlash(false);
-                  }}
-                  className="flex w-full cursor-pointer gap-2.5 rounded-md px-2 py-1.25 text-left text-sm hover:bg-muted"
-                >
-                  <span className="w-23 shrink-0 font-mono text-primary">{q.cmd}</span>
-                  <span className="text-muted-foreground">{q.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5 rounded-[10px] border border-input p-2">
-            <div className="flex flex-wrap gap-1">
-              {folder && (
-                <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
-                  @{folderName(folder)}/
-                </span>
-              )}
-              {hubDoc && (
-                <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
-                  @{docName(hubDoc.key)}
-                </span>
-              )}
-            </div>
-            <textarea
-              aria-label={t.ask}
-              placeholder={t.placeholder[engine]}
-              disabled={!folder}
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                setSlash(e.target.value === "/");
-              }}
-              onKeyDown={onKey}
-              className="h-11 resize-none border-0 bg-transparent font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground"
-            />
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="ghost"
-                size="xs"
-                aria-label={t.quick}
-                aria-expanded={slash}
-                onClick={() => setSlash((s) => !s)}
-                className="font-mono"
-              >
-                /
-              </Button>
-              <span className="flex-1 truncate text-xs text-muted-foreground">{t.hint}</span>
-              {running ? (
-                <Button size="sm" variant="outline" className="h-6.5" onClick={() => void cancelRun()}>
-                  {t.stop}
-                </Button>
-              ) : (
+        {panel === "terminal" ? (
+          <TerminalPane folder={folder} onPickFolder={() => void chooseFolder()} />
+        ) : (
+          <>
+            <div className="flex flex-col gap-2 border-b px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div role="tablist" aria-label={t.engine} className="inline-flex rounded-lg bg-muted p-0.5">
+                  {(
+                    [
+                      ["claude", "Claude Code", "bg-[#D97757]"],
+                      ["codex", "Codex", "bg-foreground"],
+                    ] as const
+                  ).map(([id, label, dot]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={engine === id}
+                      disabled={running && engine !== id}
+                      onClick={() => pickEngine(id)}
+                      className={cn(
+                        "inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm disabled:cursor-not-allowed",
+                        engine === id ? "bg-card font-semibold text-foreground shadow-sm" : "text-muted-foreground",
+                      )}
+                    >
+                      <span aria-hidden="true" className={cn("size-1.75 rounded-full", dot)} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {engine === "claude" ? (
+                  <select
+                    aria-label={t.model}
+                    title={t.model}
+                    disabled={running}
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="h-6.5 min-w-0 rounded-md border bg-background font-mono text-xs disabled:opacity-50"
+                  >
+                    <option value="">{t.modelDefault}</option>
+                    {CLAUDE_MODELS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    aria-label={t.model}
+                    title={modelOk ? t.model : t.modelInvalid}
+                    placeholder={t.codexModel}
+                    disabled={running}
+                    aria-invalid={!modelOk}
+                    value={models.codex}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="h-6.5 w-32 min-w-0 px-2 font-mono text-xs md:text-xs"
+                  />
+                )}
+                <span className="flex-1" />
                 <Button
-                  size="sm"
-                  className="h-6.5"
-                  disabled={!input.trim() || !folder}
-                  onClick={() => void send(input)}
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t.manageAcc}
+                  title={t.manageAcc}
+                  onClick={() => setAccOpen(true)}
                 >
-                  {t.send}
+                  <UserRoundIcon aria-hidden="true" className="size-3.75" />
                 </Button>
-              )}
+              </div>
+              {!modelOk && <p className="text-xs text-destructive">{t.modelInvalid}</p>}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <select
+                  aria-label={t.session}
+                  disabled={running}
+                  value={chat.session ?? "new"}
+                  onChange={(e) => pickSession(e.target.value)}
+                  className="h-6.5 max-w-52.5 rounded-md border bg-background text-xs"
+                >
+                  {chat.session && !engineSessions.some((s) => s.id === chat.session) && (
+                    <option value={chat.session}>{t.sessionAt(chat.session.slice(0, 8), "")}</option>
+                  )}
+                  {engineSessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {t.sessionAt(s.title, timeOf(s.at, lang))}
+                    </option>
+                  ))}
+                  <option value="new">{t.newSession}</option>
+                </select>
+                <span className="text-muted-foreground">{t.modeLabel}</span>
+                <fieldset className="inline-flex gap-0.5 rounded-[7px] bg-muted p-0.5">
+                  <legend className="sr-only">{t.modeLabel}</legend>
+                  {(engine === "claude" ? [t.readOnly, "Accept edits", "Bypass"] : CODEX_ACCESS).map((label, i) => {
+                    const a = ACCESS[i] as Access;
+                    const on = access === a;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={running && !on}
+                        title={t.accessHint[engine][i]}
+                        onClick={() => pickAccess(a)}
+                        className={cn(
+                          "h-5.5 cursor-pointer rounded-[5px] px-2 text-xs disabled:cursor-not-allowed disabled:opacity-45",
+                          on
+                            ? a === "bypass"
+                              ? "bg-destructive-soft font-semibold text-destructive"
+                              : "bg-card font-semibold text-foreground"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </fieldset>
+              </div>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2.5 font-mono text-xs text-muted-foreground">
-            <span>{statusLeft.filter(Boolean).join(" · ")}</span>
-            {lastResult?.kind === "result" && lastResult.ok && (
-              <span className="ml-auto">
-                {t.lastRun(formatTokens(lastResult.inputTokens, lang), formatTokens(lastResult.outputTokens, lang))}
-              </span>
-            )}
-          </div>
-        </div>
+
+            <div
+              ref={transcript}
+              aria-live="polite"
+              className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-3.5 py-3 font-mono text-sm leading-[1.55]"
+            >
+              {!folder ? (
+                <div className="flex flex-col items-start gap-2.5 font-sans">
+                  <p className="text-sm text-muted-foreground">{t.chatNeedsFolder}</p>
+                  <Button size="sm" onClick={() => void chooseFolder()}>
+                    <FolderOpenIcon aria-hidden="true" />
+                    {t.openFolder}
+                  </Button>
+                </div>
+              ) : (
+                chat.items.length === 0 && (
+                  <p className="font-sans text-sm text-muted-foreground">{chat.session ? t.resumed : t.emptyChat}</p>
+                )
+              )}
+              {chat.items.map((item, i) => (
+                <ChatLine
+                  // biome-ignore lint/suspicious/noArrayIndexKey: dòng chat chỉ thêm vào cuối
+                  key={i}
+                  item={item}
+                  engine={engine}
+                  stripProposal={!!chat.docKey}
+                  docSuggestion={chat.suggestion?.text ?? null}
+                  baseText={baseText}
+                  onReopen={(key, proposal) => {
+                    setSelected(key);
+                    setMode("view");
+                    setSuggestion({ key, text: proposal });
+                  }}
+                />
+              ))}
+              {running && (
+                <span className="flex items-center gap-1.5 font-sans text-sm text-muted-foreground">
+                  <LoaderCircleIcon aria-hidden="true" className="size-3.5 animate-spin" />
+                  {t.running}
+                </span>
+              )}
+              {chat.error && <p className="font-sans text-sm text-destructive">{chat.error}</p>}
+            </div>
+
+            <div className="flex flex-col gap-1.5 border-t px-3 py-2.5">
+              {slash && (
+                <div role="menu" aria-label={t.quick} className="rounded-xl border bg-card p-1 shadow-lg">
+                  {quicks.map((q) => (
+                    <button
+                      key={q.cmd}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setInput(q.prompt);
+                        setSlash(false);
+                      }}
+                      className="flex w-full cursor-pointer gap-2.5 rounded-md px-2 py-1.25 text-left text-sm hover:bg-muted"
+                    >
+                      <span className="w-23 shrink-0 font-mono text-primary">{q.cmd}</span>
+                      <span className="text-muted-foreground">{q.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5 rounded-[10px] border border-input p-2">
+                <div className="flex flex-wrap gap-1">
+                  {folder && (
+                    <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
+                      @{folderName(folder)}/
+                    </span>
+                  )}
+                  {hubDoc && (
+                    <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
+                      @{docName(hubDoc.key)}
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  aria-label={t.ask}
+                  placeholder={t.placeholder[engine]}
+                  disabled={!folder}
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    setSlash(e.target.value === "/");
+                  }}
+                  onKeyDown={onKey}
+                  className="h-11 resize-none border-0 bg-transparent font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                />
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    aria-label={t.quick}
+                    aria-expanded={slash}
+                    onClick={() => setSlash((s) => !s)}
+                    className="font-mono"
+                  >
+                    /
+                  </Button>
+                  <span className="flex-1 truncate text-xs text-muted-foreground">{t.hint}</span>
+                  {running ? (
+                    <Button size="sm" variant="outline" className="h-6.5" onClick={() => void cancelRun()}>
+                      {t.stop}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="h-6.5"
+                      disabled={!input.trim() || !folder || !modelOk}
+                      onClick={() => void send(input)}
+                    >
+                      {t.send}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2.5 font-mono text-xs text-muted-foreground">
+                <span>{statusLeft.filter(Boolean).join(" · ")}</span>
+                {lastResult?.kind === "result" && lastResult.ok && (
+                  <span className="ml-auto">
+                    {t.lastRun(formatTokens(lastResult.inputTokens, lang), formatTokens(lastResult.outputTokens, lang))}
+                  </span>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </aside>
 
       <AiAccountsDialog
@@ -1513,6 +1856,30 @@ export function DocsScreen() {
           pickEngine(e);
         }}
       />
+      <Dialog open={askBypass} onOpenChange={setAskBypass}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.bypassTitle}</DialogTitle>
+            <DialogDescription>{t.bypassLead}</DialogDescription>
+          </DialogHeader>
+          <p className="font-mono text-xs text-destructive">{t.bypassFlag[engine]}</p>
+          <DialogActions>
+            <Button type="button" variant="outline" onClick={() => setAskBypass(false)}>
+              {t.cancel}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive-solid"
+              onClick={() => {
+                setAccess("bypass");
+                setAskBypass(false);
+              }}
+            >
+              {t.bypassOk}
+            </Button>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
       {hubDoc && (
         <ProposeDialog
           open={proposing}

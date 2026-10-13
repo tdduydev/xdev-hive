@@ -90,6 +90,12 @@ test("quản trị sửa model, hook, mẫu file, giới hạn rồi lưu đúng
   await page.getByRole("spinbutton", { name: "Trần mỗi ngày của tổ chức" }).fill("80");
   await page.getByRole("combobox", { name: "Giữ log run" }).selectOption("90");
 
+  // Memory agent ghi: mặc định đề xuất chờ duyệt, đổi sang ghi thẳng và nâng trần mỗi run.
+  const memoryMode = page.getByRole("combobox", { name: "Chế độ ghi" });
+  await expect(memoryMode).toHaveValue("propose");
+  await memoryMode.selectOption("direct");
+  await page.getByRole("spinbutton", { name: "Số memory tối đa mỗi run" }).fill("8");
+
   await expect(page.getByText("Có thay đổi chưa lưu.")).toBeVisible();
   await page.getByRole("button", { name: "Lưu chính sách" }).click();
   await expect(page.getByText("Đã lưu chính sách.")).toBeVisible();
@@ -103,6 +109,7 @@ test("quản trị sửa model, hook, mẫu file, giới hạn rồi lưu đúng
   expect(saved.templates).toEqual({ agents: "# {{project.key}}\n\nĐọc tài liệu qua MCP.\n", claude: null, mcp: null });
   expect(saved.autoSyncTemplates).toBe(true);
   expect(saved.limits).toEqual({ perRunUsd: 5, dailyUsd: 80, maxParallelPerMachine: null, runLogRetentionDays: 90 });
+  expect(saved.agentMemory).toEqual({ mode: "direct", maxPerRun: 8 });
 });
 
 test("xem file sinh ra theo dự án và mở PR ngay", async ({ page }) => {

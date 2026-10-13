@@ -1,5 +1,5 @@
-import type { CostSummary, CostSummaryInput, CostTotals } from "@xdev-hive/contracts";
-import { and, eq, gte, lt, type SQL, sql } from "drizzle-orm";
+import type { CostExplore, CostSummary, CostSummaryInput, CostTotals, RunExplore } from "@xdev-hive/contracts";
+import { and, eq, gte, isNotNull, lt, type SQL, sql } from "drizzle-orm";
 import { loadProject } from "../catalog/index.ts";
 import { NotFoundError, type Tx } from "../platform/index.ts";
 import { runEvents, runs } from "../runs/index.ts";
@@ -14,11 +14,12 @@ const GROUP_KEY: Record<CostSummaryInput["groupBy"], SQL<string | null>> = {
   // drizzle bỏ tên bảng của cột trong truy vấn con, khiến "id" bị hiểu là cột của run_events.
   cli: sql`coalesce(${runs}.cli, (select e.data->>'cli' from ${runEvents} e where e.run_id = ${runs}.id and e.type = 'offer' order by e.id desc limit 1))`,
   machine: sql`${runs.machineId}::text`,
+  account: sql`${runs.accountId}`,
 };
 
 /**
- * Token, USD và số run của một dự án trong khoảng ngày [from, to] (UTC, theo ngày tạo run), nhóm theo ngày, task, CLI
- * hoặc máy. Chi phí là thông tin quản trị nên chỉ quản trị đội sở hữu dự án (hoặc quản trị tổ chức) xem được.
+ * Token, USD và số run của một dự án trong khoảng ngày [from, to] (UTC, theo ngày tạo run), nhóm theo ngày, task, CLI,
+ * máy hoặc gói. Chi phí là thông tin quản trị nên chỉ quản trị đội sở hữu dự án (hoặc quản trị tổ chức) xem được.
  */
 export async function costSummary(tx: Tx, userId: string, input: CostSummaryInput): Promise<CostSummary> {
   const project = await loadProject(tx, input.projectId);
@@ -27,6 +28,11 @@ export async function costSummary(tx: Tx, userId: string, input: CostSummaryInpu
     throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án.");
   }
   await allowWith(tx, userId, "costs.read", () => requireTeamRole(tx, userId, project.teamId, "admin"), project.teamId);
+  const inRange = and(
+    eq(runs.projectId, project.id),
+    gte(runs.createdAt, sql`(${input.from}::date)::timestamp at time zone 'UTC'`),
+    lt(runs.createdAt, sql`(${input.to}::date + 1)::timestamp at time zone 'UTC'`),
+  );
   // Khoá nhóm tính trong truy vấn con: khoá CLI là truy vấn con theo từng run, không GROUP BY trực tiếp được.
   const scoped = tx
     .select({
@@ -38,13 +44,7 @@ export async function costSummary(tx: Tx, userId: string, input: CostSummaryInpu
       costUsd: runs.costUsd,
     })
     .from(runs)
-    .where(
-      and(
-        eq(runs.projectId, project.id),
-        gte(runs.createdAt, sql`(${input.from}::date)::timestamp at time zone 'UTC'`),
-        lt(runs.createdAt, sql`(${input.to}::date + 1)::timestamp at time zone 'UTC'`),
-      ),
-    )
+    .where(inRange)
     .as("r");
   const rows = await tx
     .select({
@@ -80,7 +80,72 @@ export async function costSummary(tx: Tx, userId: string, input: CostSummaryInpu
   }
   // Cộng số thực của các nhóm có thể lệch ở chữ số thứ 15; numeric(14, 6) chỉ có 6 chữ số thập phân.
   total.costUsd = Math.round(total.costUsd * 1e6) / 1e6;
-  return { groupBy: input.groupBy, groups, total };
+  const measured = await tx
+    .select({
+      explore: runs.explore,
+      turns: runs.turns,
+      tokensIn: runs.tokensIn,
+      tokensOut: runs.tokensOut,
+      cacheRead: runs.cacheRead,
+      cacheWrite: runs.cacheWrite,
+      costUsd: runs.costUsd,
+    })
+    .from(runs)
+    .where(and(inRange, eq(runs.kind, "code"), isNotNull(runs.explore)));
+  return { groupBy: input.groupBy, groups, total, explore: exploreSummary(measured) };
+}
+
+/**
+ * Trọng số giá theo token đầu vào của Claude: đọc cache 0,1, ghi cache 1,25, output 5 lần. Đủ để chia chi phí của
+ * một run thành phần khảo sát và phần còn lại; không dùng để tính tiền.
+ */
+const weight = (t: { input: number; output: number; cacheRead: number; cacheWrite: number }) =>
+  t.input + t.output * 5 + t.cacheRead * 0.1 + t.cacheWrite * 1.25;
+
+interface MeasuredRun {
+  explore: RunExplore | null;
+  turns: number | null;
+  tokensIn: number;
+  tokensOut: number;
+  cacheRead: number;
+  cacheWrite: number;
+  costUsd: number | null;
+}
+
+/** "Khảo sát trước khi sửa" của các run code có số đo (ADR 0022); null khi không có run nào. */
+export function exploreSummary(rows: readonly MeasuredRun[]): CostExplore | null {
+  const out = { runs: 0, edited: 0, turns: 0, totalTurns: 0, tokens: 0, totalTokens: 0, costUsd: 0 };
+  let exploreWeight = 0;
+  let totalWeight = 0;
+  for (const r of rows) {
+    const e = r.explore;
+    if (!e) continue;
+    const ex = {
+      input: e.inputTokens,
+      output: e.outputTokens,
+      cacheRead: e.cacheReadTokens,
+      cacheWrite: e.cacheWriteTokens,
+    };
+    const all = { input: r.tokensIn, output: r.tokensOut, cacheRead: r.cacheRead, cacheWrite: r.cacheWrite };
+    // Số của run gộp mọi lần thử, số khảo sát chỉ của lần thử cuối: lấy lớn hơn để phần khảo sát không vượt 100%.
+    const w = Math.max(weight(all), weight(ex));
+    out.runs += 1;
+    if (e.edited) out.edited += 1;
+    out.turns += e.turns;
+    out.totalTurns += Math.max(r.turns ?? 0, e.turns);
+    const exTokens = ex.input + ex.output + ex.cacheRead + ex.cacheWrite;
+    out.tokens += exTokens;
+    out.totalTokens += Math.max(all.input + all.output + all.cacheRead + all.cacheWrite, exTokens);
+    exploreWeight += weight(ex);
+    totalWeight += w;
+    if (w > 0 && r.costUsd !== null) out.costUsd += (r.costUsd * weight(ex)) / w;
+  }
+  if (out.runs === 0) return null;
+  return {
+    ...out,
+    costShare: totalWeight > 0 ? Math.min(1, exploreWeight / totalWeight) : 0,
+    costUsd: Math.round(out.costUsd * 1e6) / 1e6,
+  };
 }
 
 /** Danh sách run worker kết thúc do bộ đo vượt một trần ngân sách của dự án. */

@@ -149,6 +149,7 @@ const PROJECT = {
     outcome: { default: [{ check: "changes", required: true }], byType: {} },
     features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
     issueIntake: { enabled: false, label: "hive", mention: "hive" },
+    brief: { auto: true, refreshCommits: 50, refreshDays: 7 },
   },
   createdBy: USER.id,
   createdAt: at,
@@ -325,12 +326,22 @@ test("màn Chi phí: chọn khoảng ngày, nhóm dữ liệu và cập nhật n
               runs: 2,
               tokensIn: 900,
               tokensOut: 400,
-              cacheRead: 10,
-              cacheWrite: 0,
+              cacheRead: 9000,
+              cacheWrite: 100,
               costUsd: 1.25,
             },
           ],
-          total: { runs: 2, tokensIn: 900, tokensOut: 400, cacheRead: 10, cacheWrite: 0, costUsd: 1.25 },
+          total: { runs: 2, tokensIn: 900, tokensOut: 400, cacheRead: 9000, cacheWrite: 100, costUsd: 1.25 },
+          explore: {
+            runs: 2,
+            edited: 1,
+            turns: 9,
+            totalTurns: 30,
+            tokens: 500,
+            totalTokens: 1310,
+            costShare: 0.39,
+            costUsd: 0.49,
+          },
         });
       },
       "costs/budgetStopped": () =>
@@ -360,10 +371,24 @@ test("màn Chi phí: chọn khoảng ngày, nhóm dữ liệu và cập nhật n
   await expect(page.getByRole("heading", { name: "Chi phí và token", exact: true })).toBeVisible();
   await expect(page.getByText("1,25 US$", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Vượt trần USD/run")).toBeVisible();
+  const explore = page.getByRole("group", { name: "Khảo sát trước khi sửa" });
+  await expect(explore).toContainText("39%");
+  await expect(explore).toContainText("0,49 US$");
   await page.screenshot({ path: "e2e/screenshots/costs.png", fullPage: true });
+  // Cache trúng = 9.000 / (9.000 + 100 + 900): ở ô tổng và ở bảng chi tiết.
+  await expect(page.getByText("90,0%", { exact: true })).toHaveCount(2);
   await page.getByLabel("Khoảng thời gian").selectOption("7");
   await page.getByLabel("Nhóm theo").selectOption("machine");
   await expect(page.getByRole("columnheader", { name: "Mã máy" })).toBeVisible();
+  await page.getByLabel("Nhóm theo").selectOption("account");
+  await expect(page.getByRole("columnheader", { name: "Gói" })).toBeVisible();
+  await expect
+    .poll(() =>
+      hub.rpcCalls.some(
+        (call) => call.path === "costs/summary" && (call.input as { groupBy: string }).groupBy === "account",
+      ),
+    )
+    .toBe(true);
 
   await page.getByLabel("USD mỗi run").fill("5");
   await page.getByLabel("USD mỗi việc").fill("20");

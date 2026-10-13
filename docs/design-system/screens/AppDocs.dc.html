@@ -24,6 +24,8 @@ button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px sol
 .muted{color:var(--muted-foreground)}
 .tree{display:flex;align-items:center;gap:6px;height:24px;padding:0 6px;border-radius:5px;font-family:var(--font-mono);font-size:12px;color:var(--foreground);white-space:nowrap}
 .tree:hover{background:var(--muted)}
+button.tree{width:100%;border:0;background:transparent;font-family:var(--font-mono);text-align:left;cursor:pointer}
+.term{background:var(--card);color:var(--foreground);font-family:var(--font-mono);font-size:12.5px;line-height:1.5;white-space:pre}
 .cite{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:var(--secondary);color:var(--secondary-foreground);font-family:var(--font-mono);font-size:11.5px}
 .doc{font-size:14.5px;line-height:1.75}
 .doc h1{margin:0 0 8px;font-family:var(--font-heading);font-size:24px;letter-spacing:-.03em}
@@ -77,11 +79,39 @@ button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px sol
             <div class="mono muted" style="padding: 4px 6px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;">docs</div>
             <sc-for list="{{docFiles}}" as="f" hint-placeholder-count="4"><a href="#" class="tree" style="{{f.style}}"><span style="width: 12px;"></span>{{f.icon}} {{f.name}}<sc-if value="{{f.badge}}" hint-placeholder-val="{{false}}"><span class="badge" style="{{f.badgeStyle}}; margin-left: auto; height: 16px; font-size: 10.5px;">{{f.badge}}</span></sc-if></a></sc-for>
             <div class="mono muted" style="padding: 10px 6px 4px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;">{{t.code}}</div>
-            <sc-for list="{{codeFiles}}" as="f" hint-placeholder-count="10"><a href="#" class="tree" style="{{f.style}}">{{f.icon}} {{f.name}}<sc-if value="{{f.read}}" hint-placeholder-val="{{false}}"><span title="{{t.readByAi}}" style="margin-left: auto; width: 6px; height: 6px; border-radius: 9999px; background: var(--primary);"></span></sc-if></a></sc-for>
+            <sc-for list="{{codeFiles}}" as="f" hint-placeholder-count="10"><button type="button" class="tree" title="{{f.path}}" aria-expanded="{{f.expanded}}" aria-current="{{f.current}}" onClick="{{f.pick}}" style="{{f.style}}"><span aria-hidden="true" class="muted" style="width: 12px; flex: none; font-size: 10px;">{{f.chev}}</span>{{f.name}}<sc-if value="{{f.read}}" hint-placeholder-val="{{false}}"><span title="{{t.readByAi}}" style="margin-left: auto; width: 6px; height: 6px; border-radius: 9999px; background: var(--primary);"></span></sc-if></button></sc-for>
           </div>
           <div class="muted" style="padding: 8px 12px; border-top: 1px solid var(--border); font-size: 11.5px; display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: var(--primary);"></span>{{t.readLegend}}</div>
         </aside>
 
+        <sc-if value="{{showFile}}" hint-placeholder-val="{{false}}">
+        <section aria-label="{{t.fileLabel}}" style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+          <div style="padding: 8px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);">
+            <span class="mono" style="font-size: 13px; font-weight: 500;">{{file.path}}</span>
+            <span class="badge" style="{{file.chip}}"><sc-if value="{{file.isDoc}}" hint-placeholder-val="{{false}}"><span class="dot"></span></sc-if>{{file.state}}</span>
+            <sc-if value="{{file.isDoc}}" hint-placeholder-val="{{false}}">
+              <div role="tablist" aria-label="{{t.fileLabel}}" style="display: inline-flex; padding: 2px; background: var(--muted); border-radius: 8px;"><sc-for list="{{fileTabs}}" as="ft" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{ft.sel}}" onClick="{{ft.pick}}" style="{{ft.style}}">{{ft.label}}</button></sc-for></div>
+            </sc-if>
+            <span style="flex: 1;"></span>
+            <sc-if value="{{file.isDoc}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-default" onClick="{{saveFile}}" disabled="{{file.clean}}" style="{{file.saveStyle}}">{{t.saveFile}}</button></sc-if>
+            <button type="button" class="btn btn-ghost" onClick="{{closeFile}}" aria-label="{{t.closeFile}}" style="width: 28px; padding: 0; font-size: 16px;">×</button>
+          </div>
+          <sc-if value="{{file.isCode}}" hint-placeholder-val="{{true}}">
+            <div style="flex: 1; min-height: 0; overflow: auto; display: flex; background: var(--card); font-family: var(--font-mono); font-size: 13px; line-height: 1.6;">
+              <pre aria-hidden="true" class="muted" style="margin: 0; padding: 12px 10px; text-align: right; border-right: 1px solid var(--border); background: var(--muted); user-select: none;">{{file.numbers}}</pre>
+              <pre style="margin: 0; padding: 12px 14px; flex: 1;">{{file.code}}</pre>
+            </div>
+          </sc-if>
+          <sc-if value="{{file.isDocView}}" hint-placeholder-val="{{false}}">
+            <article class="doc" style="flex: 1; overflow-y: auto; padding: 24px 36px;"><h1>{{t.readmeTitle}}</h1><p>{{t.readmeBody}}</p></article>
+          </sc-if>
+          <sc-if value="{{file.isDocEdit}}" hint-placeholder-val="{{false}}">
+            <textarea aria-label="{{file.path}}" onInput="{{editFile}}" style="flex: 1; border: 0; outline: none; resize: none; padding: 24px 36px; background: var(--background); color: var(--foreground); font-family: var(--font-mono); font-size: 13px;">{{file.text}}</textarea>
+          </sc-if>
+        </section>
+        </sc-if>
+
+        <sc-if value="{{showDoc}}" hint-placeholder-val="{{true}}">
         <section style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
           <div style="padding: 8px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);">
             <span class="mono" style="font-size: 13px; font-weight: 500;">docs/architecture.md</span>
@@ -109,13 +139,39 @@ button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px sol
             <div style="display: flex; justify-content: flex-end; gap: 6px;"><button type="button" class="btn btn-outline">{{t.rejectAll}}</button><button type="button" class="btn btn-default">{{t.acceptAll}}</button></div>
           </article>
         </section>
+        </sc-if>
 
-        <aside aria-label="{{t.chat}}" style="width: 420px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--background);">
+        <aside aria-label="{{t.chat}}" style="{{asideStyle}}">
+          <div role="tablist" aria-label="{{t.panel}}" style="display: flex; gap: 14px; padding: 0 14px; border-bottom: 1px solid var(--border);">
+            <sc-for list="{{panels}}" as="pn" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{pn.sel}}" onClick="{{pn.pick}}" style="{{pn.style}}">{{pn.label}}</button></sc-for>
+          </div>
+
+          <sc-if value="{{termOn}}" hint-placeholder-val="{{false}}">
+            <div style="padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); font-size: 12px;">
+              <select aria-label="{{t.run}}" style="height: 26px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font: inherit; font-size: 12px;"><option>Claude Code</option><option>Codex</option><option>Antigravity (agy)</option><option>Shell</option></select>
+              <select aria-label="{{t.plan}}" style="height: 26px; max-width: 190px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font: inherit; font-size: 12px;"><option>claude-2 · lan@acme.vn</option><option>{{t.planDefault}}</option></select>
+              <label title="{{t.bypassHint}}" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;"><input type="checkbox" onChange="{{askTermBypass}}" style="accent-color: var(--destructive);">{{t.bypassTerm}}</label>
+              <span style="flex: 1;"></span>
+              <button type="button" class="btn btn-default" style="height: 26px;">+ {{t.newTerm}}</button>
+            </div>
+            <div role="tablist" aria-label="{{t.terms}}" style="display: flex; gap: 2px; padding: 4px 6px 0; border-bottom: 1px solid var(--border); background: var(--muted);">
+              <sc-for list="{{termTabs}}" as="tt" hint-placeholder-count="2"><span style="{{tt.style}}"><span style="{{tt.dot}}"></span><span role="tab" aria-selected="{{tt.sel}}">{{tt.label}}</span><span class="muted" style="font-weight: 400;">{{tt.note}}</span><button type="button" aria-label="{{t.closeTerm}}" class="btn btn-ghost" style="width: 18px; height: 18px; padding: 0; font-size: 13px;">×</button></span></sc-for>
+            </div>
+            <div class="term" style="flex: 1; min-height: 0; overflow: hidden; padding: 8px 10px;">{{termText}}</div>
+          </sc-if>
+
+          <sc-if value="{{chatOn}}" hint-placeholder-val="{{true}}">
           <div style="padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border);">
             <div style="display: flex; align-items: center; gap: 8px;">
               <div role="tablist" aria-label="{{t.engine}}" style="display: inline-flex; padding: 2px; background: var(--muted); border-radius: 8px;">
                 <sc-for list="{{engines}}" as="e" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{e.sel}}" onClick="{{e.pick}}" style="{{e.style}}"><span style="{{e.dot}}"></span>{{e.label}}</button></sc-for>
               </div>
+              <sc-if value="{{isClaude}}" hint-placeholder-val="{{true}}">
+                <select aria-label="{{t.model}}" title="{{t.model}}" style="height: 26px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font-family: var(--font-mono); font-size: 12px;"><option>{{t.modelDefault}}</option><option>opus</option><option>sonnet</option><option>haiku</option></select>
+              </sc-if>
+              <sc-if value="{{isCodex}}" hint-placeholder-val="{{false}}">
+                <input aria-label="{{t.model}}" placeholder="{{t.codexModel}}" style="height: 26px; width: 128px; box-sizing: border-box; padding: 0 8px; border: 1px solid var(--input); border-radius: 6px; background: var(--background); color: var(--foreground); font-family: var(--font-mono); font-size: 12px;">
+              </sc-if>
               <span style="flex: 1;"></span>
               <button type="button" class="btn btn-ghost" onClick="{{openAcc}}" aria-label="{{t.manageAcc}}" style="width: 28px; height: 28px; padding: 0;"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg></button>
             </div>
@@ -196,10 +252,22 @@ button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px sol
             </div>
             <div class="mono muted" style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;"><span>{{eng.status}}</span><span style="margin-left: auto;">{{eng.ctx}}</span></div>
           </div>
+          </sc-if>
         </aside>
       </div>
     </sc-if>
   </div>
+
+  <sc-if value="{{bypassOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: absolute; inset: 0; background: rgb(15 23 42 / .45); display: flex; align-items: center; justify-content: center; z-index: 20;">
+      <div role="alertdialog" aria-modal="true" aria-labelledby="bp-t" data-theme="{{theme}}" class="card" style="width: 460px; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 24px 48px -12px rgb(0 0 0 / .45); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+        <h2 id="bp-t" style="margin: 0; font-size: 17px; font-weight: 600;">{{bypass.title}}</h2>
+        <p class="muted" style="margin: 0; font-size: 13px;">{{bypass.lead}}</p>
+        <p class="mono" style="margin: 0; font-size: 12px; color: var(--destructive);">{{bypass.flag}}</p>
+        <div style="display: flex; gap: 6px; justify-content: flex-end;"><button type="button" class="btn btn-outline" onClick="{{cancelBypass}}">{{t.cancel}}</button><button type="button" class="btn" onClick="{{confirmBypass}}" style="background: var(--destructive); color: #fff;">{{bypass.ok}}</button></div>
+      </div>
+    </div>
+  </sc-if>
 
   <sc-if value="{{accOpen}}" hint-placeholder-val="{{false}}">
     <div style="position: absolute; inset: 0; background: rgb(15 23 42 / .45); display: flex; align-items: center; justify-content: center; z-index: 20;">
@@ -244,9 +312,9 @@ button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px sol
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"stage":{"editor":"enum","options":["work","pick"],"default":"work"},"role":{"editor":"enum","options":["writer","dev","lead"],"default":"writer"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"stage":{"editor":"enum","options":["work","pick"],"default":"work"},"panel":{"editor":"enum","options":["chat","terminal"],"default":"chat"},"middle":{"editor":"enum","options":["hubDoc","codeFile","localDoc"],"default":"hubDoc"},"role":{"editor":"enum","options":["writer","dev","lead"],"default":"writer"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { stage: null, tools: true, lang: null, accOpen: false, acc: null, def: null, engine: null, mode: null, choice: null, slash: true }; }
+  constructor(props) { super(props); this.state = { stage: null, tools: true, lang: null, accOpen: false, acc: null, def: null, engine: null, mode: null, choice: null, slash: true, panel: null, open: null, expanded: null, fileMode: 'view', edited: false, saved: false, askBypass: null }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const en = lang === 'en';
@@ -285,6 +353,17 @@ class Component extends DCLogic {
       useDefault: ['Đặt mặc định', 'Make default'], logout: ['Đăng xuất', 'Sign out'], login: ['Đăng nhập', 'Sign in'], cancel: ['Huỷ', 'Cancel'], done: ['Tôi đã đăng nhập', 'I have signed in'],
       waiting: ['Đang chờ bạn đăng nhập trong trình duyệt…', 'Waiting for you to sign in in the browser…'],
       whenOut: ['Khi gói mặc định hết hạn mức', 'When the default plan runs out'], fb1: ['Chuyển sang gói kế tiếp đã kết nối', 'Switch to the next connected plan'], fb2: ['Dừng và báo tôi', 'Stop and tell me'],
+      panel: ['Khung bên phải', 'Right panel'], tabChat: ['Chat', 'Chat'], tabTerminal: ['Terminal', 'Terminal'],
+      modelDefault: ['Mặc định', 'Default'], codexModel: ['Model mặc định', 'Default model'],
+      run: ['Chạy', 'Run'], plan: ['Gói agent', 'Agent plan'], planDefault: ['Đăng nhập mặc định của CLI', "CLI's default sign-in"], bypassTerm: ['Bỏ hỏi quyền', 'Skip permission prompts'],
+      bypassHint: ['CLI tự chạy lệnh và sửa file không hỏi lại. App hỏi xác nhận mỗi lần mở.', 'The CLI runs commands and edits files without asking. The app asks you to confirm each time.'],
+      newTerm: ['Terminal mới', 'New terminal'], terms: ['Terminal đang mở', 'Open terminals'], closeTerm: ['Đóng terminal', 'Close terminal'], exited: ['đã thoát', 'exited'],
+      bypassTitle: ['Cho agent chạy không hỏi quyền?', 'Let the agent run without permission prompts?'],
+      bypassLead: ['Agent tự chạy lệnh, sửa và xoá file trong thư mục mà không hỏi lại. Lệnh sai hay lời nhắc độc giấu trong code có thể làm mất dữ liệu hoặc lộ bí mật trên máy. Chỉ bật khi thư mục đã commit hoặc có bản sao. App hỏi lại mỗi phiên.', 'The agent runs commands, edits and deletes files in the folder without asking. A wrong command or a prompt injection hidden in the code can lose data or leak secrets on this machine. Only do this when the folder is committed or backed up. The app asks again for every session.'],
+      bypassOk: ['Bật Bypass', 'Turn on Bypass'], termBypassTitle: ['Mở CLI không hỏi quyền?', 'Open the CLI without permission prompts?'], termBypassOk: ['Mở không hỏi quyền', 'Open without prompts'],
+      fileLabel: ['File trong thư mục', 'File in the folder'], saveFile: ['Lưu vào file', 'Save to file'], closeFile: ['Đóng file', 'Close file'], viewOnly: ['Chỉ xem', 'View only'],
+      localDoc: ['Tài liệu trên máy', 'Local doc'], unsavedFile: ['Chưa lưu', 'Unsaved'], savedFile: ['Đã lưu vào file', 'Saved to file'], view: ['Xem', 'View'], edit: ['Sửa', 'Edit'],
+      readmeTitle: ['hive-worker', 'hive-worker'], readmeBody: ['Worker chạy trên máy dev, nhận việc từ hub. Cài bằng make install, chạy bằng hive-worker run.', 'The worker runs on dev machines and takes tasks from the hub. Install with make install, run with hive-worker run.'],
       accNote: ['Đăng nhập theo luồng của từng CLI trên máy này. App không đọc hay lưu mật khẩu, token của gói; tài liệu và code không rời máy trừ khi bạn đẩy lên hub.', 'Sign-in uses each CLI’s own flow on this machine. The app never reads or stores plan passwords or tokens; docs and code stay on this machine until you push to the hub.'],
     };
     const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
@@ -313,21 +392,22 @@ class Component extends DCLogic {
     });
     const eng0 = S.engine || 'claude';
     const segE = (on) => 'height: 26px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
-    const engines = [['claude', 'Claude Code', '#D97757'], ['codex', 'Codex', 'var(--foreground)']].map(([k, l, c]) => ({ label: l, sel: eng0 === k ? 'true' : 'false', style: segE(eng0 === k), dot: 'width: 7px; height: 7px; border-radius: 9999px; background: ' + c + ';', pick: () => this.setState({ engine: k, choice: null, mode: null }) }));
+    const engines = [['claude', 'Claude Code', '#D97757'], ['codex', 'Codex', 'var(--foreground)']].map(([k, l, c]) => ({ label: l, sel: eng0 === k ? 'true' : 'false', style: segE(eng0 === k), dot: 'width: 7px; height: 7px; border-radius: 9999px; background: ' + c + ';', pick: () => this.setState({ engine: k, choice: null, mode: S.mode === 'bypass' ? 'read' : S.mode }) }));
+    // Ba chế độ như app (cli.rs Mode): chỉ đọc mặc định; Bypass phải qua hộp xác nhận, hỏi lại mỗi phiên.
     const modeDefs = eng0 === 'claude'
-      ? [['manual', ['Hỏi trước', 'Manual'], 'manual'], ['acceptEdits', 'Accept edits', 'acceptEdits'], ['plan', 'Plan', 'plan'], ['auto', 'Auto', 'auto'], ['bypass', 'Bypass', 'bypassPermissions', true]]
-      : [['ro', 'Read Only', 'read-only'], ['ws', 'Workspace', 'workspace-write'], ['full', 'Full Access', 'danger-full-access', true]];
-    const mode = S.mode || (eng0 === 'claude' ? 'acceptEdits' : 'ws');
-    const modes = modeDefs.map(([k, l, title, locked]) => ({
-      label: typeof l === 'string' ? l : x(l), on: mode === k ? 'true' : 'false', locked: !!locked, title: locked ? x(['Bị chính sách tổ chức khoá', 'Locked by organization policy']) + ' · ' + title : title,
-      style: 'height: 22px; padding: 0 8px; border: 0; border-radius: 5px; font: inherit; font-size: 11.5px; cursor: ' + (locked ? 'not-allowed; opacity: .45;' : 'pointer;') + ' ' + (mode === k ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);'),
-      pick: () => { if (!locked) this.setState({ mode: k }); },
+      ? [['read', ['Chỉ đọc', 'Read-only'], '--restricted · Read, Glob, Grep'], ['edit', 'Accept edits', '--permission-mode acceptEdits · Edit, Write'], ['bypass', 'Bypass', '--permission-mode bypassPermissions']]
+      : [['read', 'Read Only', '--sandbox read-only'], ['edit', 'Workspace', '--sandbox workspace-write'], ['bypass', 'Full Access', '--dangerously-bypass-approvals-and-sandbox']];
+    const mode = S.mode || 'read';
+    const modes = modeDefs.map(([k, l, title]) => ({
+      label: typeof l === 'string' ? l : x(l), on: mode === k ? 'true' : 'false', locked: false, title,
+      style: 'height: 22px; padding: 0 8px; border: 0; border-radius: 5px; font: inherit; font-size: 11.5px; cursor: pointer; ' + (mode === k ? (k === 'bypass' ? 'background: var(--destructive-soft); color: var(--destructive); font-weight: 600;' : 'background: var(--card); color: var(--foreground); font-weight: 600;') : 'background: transparent; color: var(--muted-foreground);'),
+      pick: () => { if (k === 'bypass' && mode !== 'bypass') this.setState({ askBypass: 'chat' }); else this.setState({ mode: k }); },
     }));
     const slashC = [['/init', ['Tạo CLAUDE.md cho thư mục', 'Create CLAUDE.md for the folder']], ['/context', ['Ngữ cảnh đang dùng, theo nhóm', 'Context usage by category']], ['/usage', ['Hạn mức gói và thứ đang tiêu nhiều', 'Plan usage and what drives it']], ['/compact', ['Tóm tắt hội thoại để giải phóng ngữ cảnh', 'Summarize to free up context']], ['/resume', ['Mở lại phiên cũ', 'Resume a conversation']], ['/model', ['Đổi model', 'Set the model']], ['/permissions', ['Luật cho phép, chặn tool', 'Allow and deny tool rules']], ['/skills', ['Liệt kê skill', 'List skills']]];
     const slashX = [['/init', ['Tạo AGENTS.md cho Codex', 'Create AGENTS.md for Codex']], ['/permissions', ['Chọn Codex được làm gì', 'Choose what Codex may do']], ['/model', ['Model và mức suy nghĩ', 'Model and reasoning effort']], ['/status', ['Cấu hình phiên, hạn mức', 'Session config and limits']], ['/diff', ['git diff, kể cả file mới', 'git diff incl. untracked']], ['/review', ['Review thay đổi, tìm lỗi', 'Review changes, find issues']], ['/compact', ['Tóm tắt hội thoại', 'Summarize the conversation']], ['/mention', ['Nhắc tới một file', 'Mention a file']]];
     const eng = eng0 === 'claude'
       ? { session: x(['Phiên: Kiến trúc · 14:02', 'Session: Architecture · 14:02']), modes, slash: slashC.map(([c, d]) => ({ cmd: c, desc: x(d) })), placeholder: x(['Hỏi Claude về thư mục này…', 'Ask Claude about this folder…']), hint: x(['/ lệnh · @ file · # ghi vào CLAUDE.md', '/ commands · @ files · # save to CLAUDE.md']), status: 'claude-opus-5-5 · Claude Max · 2.1.296', ctx: x(['ngữ cảnh 23,4k / 1M (2%)', 'context 23.4k / 1M (2%)']) }
-      : { session: x(['Phiên: Kiến trúc · 14:02', 'Session: Architecture · 14:02']), modes, slash: slashX.map(([c, d]) => ({ cmd: c, desc: x(d) })), placeholder: x(['Hỏi Codex về thư mục này…', 'Ask Codex about this folder…']), hint: x(['/ lệnh · @ file', '/ commands · @ files']), status: 'codex-cli 0.162.1 · ChatGPT · Workspace', ctx: x(['còn 77% ngữ cảnh', '77% context left']) };
+      : { session: x(['Phiên: Kiến trúc · 14:02', 'Session: Architecture · 14:02']), modes, slash: slashX.map(([c, d]) => ({ cmd: c, desc: x(d) })), placeholder: x(['Hỏi Codex về thư mục này…', 'Ask Codex about this folder…']), hint: x(['/ lệnh · @ file', '/ commands · @ files']), status: 'codex-cli 0.162.1 · ChatGPT · ' + modeDefs.find(([k]) => k === mode)[1], ctx: x(['còn 77% ngữ cảnh', '77% context left']) };
     const todoDefs = [[['Đọc cấu trúc thư mục và go.mod', 'Read the layout and go.mod'], 'done'], [['Tìm các thành phần chính trong internal/', 'Find main components in internal/'], 'done'], [['Viết mục Kênh tới hub, Tải CLI', 'Write Hub channel and CLI downloads'], 'doing'], [['Đánh dấu phần chưa có code', 'Mark what has no code yet'], 'todo']];
     const todos = todoDefs.map(([tx, st]) => ({ text: x(tx), box: eng0 === 'claude' ? (st === 'done' ? '☒' : '☐') : (st === 'done' ? '✔' : st === 'doing' ? '□' : '□'), style: st === 'done' ? 'color: var(--muted-foreground); text-decoration: line-through;' : st === 'doing' ? 'font-weight: 600;' : '' }));
     const claudeTools = [['Read', 'go.mod', x(['Đọc 24 dòng', 'Read 24 lines'])], ['Glob', '**/*.go', x(['Thấy 214 file', 'Found 214 files'])], ['Grep', '"websocket"', x(['6 kết quả trong 3 file', '6 matches in 3 files'])], ['Read', 'internal/channel/ws.go', x(['Đọc 188 dòng', 'Read 188 lines'])]].map(([tool, arg, out]) => ({ tool, arg, out }));
@@ -344,7 +424,40 @@ class Component extends DCLogic {
     ];
     const sel = 'background: var(--accent); color: var(--accent-foreground); font-weight: 600;';
     const docFiles = [['README.md', null], ['architecture.md', ['AI', 'AI'], true], ['adr/012-skills-git.md', null], ['runbook.md', ['lệch code', 'stale']]].map(([n, b, on]) => ({ name: n, icon: '▤', badge: b ? x(b) : '', badgeStyle: b && b[0] === 'AI' ? 'background: var(--success-soft); color: var(--success)' : 'background: var(--warning-soft); color: var(--warning)', style: on ? sel : '' }));
-    const codeFiles = [['▾ cmd/', false, 0], ['hive-worker/main.go', true, 1], ['▾ internal/', false, 0], ['▸ channel/', true, 1], ['▸ runner/', true, 1], ['▸ cli/', true, 1], ['▸ netx/', false, 1], ['go.mod', true, 0], ['Makefile', false, 0], ['.hive/setup.sh', false, 0]].map(([n, r, d]) => ({ name: n, icon: '', read: r, style: 'padding-left: ' + (6 + d * 14) + 'px;' }));
+    // Cây bấm được: thư mục mở/thu (cấp sâu đọc khi mở), file mở ở khung giữa.
+    const expanded = S.expanded || ['internal', 'internal/channel'];
+    const middle = S.open ? (S.open.endsWith('.md') ? 'localDoc' : 'codeFile') : (this.props.middle ?? 'hubDoc');
+    const openPath = S.open || (middle === 'codeFile' ? 'internal/channel/ws.go' : middle === 'localDoc' ? 'README.md' : null);
+    const treeDefs = [['cmd', true, 0, false], ['cmd/hive-worker', true, 1, true], ['internal', true, 0, false], ['internal/channel', true, 1, true], ['internal/channel/ws.go', false, 2, true], ['internal/channel/backoff.go', false, 2, false], ['internal/runner', true, 1, true], ['internal/cli', true, 1, true], ['go.mod', false, 0, true], ['Makefile', false, 0, false], ['README.md', false, 0, false]];
+    const visible = (p) => { const parts = p.split('/'); for (let i = 1; i < parts.length; i++) if (!expanded.includes(parts.slice(0, i).join('/'))) return false; return true; };
+    const codeFiles = treeDefs.filter(([p]) => visible(p)).map(([p, dir, d, r]) => {
+      const open = dir && expanded.includes(p);
+      return {
+        path: p, name: p.split('/').pop() + (dir ? '/' : ''), chev: dir ? (open ? '▾' : '▸') : '', read: r, expanded: dir ? (open ? 'true' : 'false') : null, current: !dir && openPath === p ? 'true' : null,
+        style: 'padding-left: ' + (4 + d * 14) + 'px;' + (!dir && openPath === p ? ' ' + sel : ''),
+        pick: () => dir ? this.setState({ expanded: open ? expanded.filter((e) => e !== p) : [...expanded, p] }) : this.setState({ open: p, fileMode: 'view', edited: false, saved: false }),
+      };
+    });
+    const codeSample = ['package channel', '', 'import (', '\t"context"', '\t"time"', ')', '', '// Dial giữ WebSocket tới hub, thử lại với thời gian chờ tăng dần.', 'func Dial(ctx context.Context, url string) (*Conn, error) {', '\tdelay := time.Second', '\tfor {', '\t\tc, err := dial(ctx, url)', '\t\tif err == nil {', '\t\t\treturn c, nil', '\t\t}', '\t\ttime.Sleep(delay)', '\t\tdelay = min(delay*2, time.Minute)', '\t}', '}'];
+    const isDoc = middle === 'localDoc';
+    const fileMode = S.fileMode || 'view';
+    const file = {
+      path: openPath || '', isDoc, isCode: middle === 'codeFile', isDocView: isDoc && fileMode === 'view', isDocEdit: isDoc && fileMode === 'edit', clean: !S.edited,
+      state: isDoc ? (S.edited ? x(T.unsavedFile) : S.saved ? x(T.savedFile) : x(T.localDoc)) : x(T.viewOnly),
+      chip: isDoc ? (S.edited ? 'background: var(--warning-soft); color: var(--warning);' : 'background: var(--success-soft); color: var(--success);') : 'background: var(--muted); color: var(--muted-foreground);',
+      saveStyle: S.edited ? '' : 'opacity: .5; cursor: not-allowed;',
+      numbers: codeSample.map((_, i) => i + 1).join('\n'), code: codeSample.join('\n'), text: '# hive-worker\n\n' + x(T.readmeBody),
+    };
+    const fileTabs = [['view', T.view], ['edit', T.edit]].map(([k, l]) => ({ label: x(l), sel: fileMode === k ? 'true' : 'false', pick: () => this.setState({ fileMode: k }), style: 'height: 24px; padding: 0 8px; border: 0; border-radius: 6px; font: inherit; font-size: 12px; cursor: pointer; ' + (fileMode === k ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);') }));
+    const panel = S.panel || this.props.panel || 'chat';
+    const panels = [['chat', T.tabChat], ['terminal', T.tabTerminal]].map(([k, l]) => ({ label: x(l), sel: panel === k ? 'true' : 'false', pick: () => this.setState({ panel: k }), style: 'height: 34px; margin-bottom: -1px; padding: 0; border: 0; border-bottom: 2px solid ' + (panel === k ? 'var(--primary)' : 'transparent') + '; background: transparent; font: inherit; font-size: 13px; cursor: pointer; ' + (panel === k ? 'color: var(--foreground); font-weight: 600;' : 'color: var(--muted-foreground);') }));
+    const termTab = (on) => 'display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 8px; border-radius: 6px 6px 0 0; font-size: 12px; ' + (on ? 'background: var(--card); border: 1px solid var(--border); border-bottom: 0; font-weight: 600;' : 'color: var(--muted-foreground);');
+    const termTabs = [['Claude Code · claude-2', true, 'var(--success)', ''], ['Shell', false, 'var(--muted-foreground)', '· ' + x(T.exited)]].map(([l, on, c, note]) => ({ label: l, sel: on ? 'true' : 'false', style: termTab(on), dot: 'width: 6px; height: 6px; border-radius: 9999px; background: ' + c + ';', note }));
+    const termText = ['╭───────────────────────────────────────────╮', '│ ✻ Welcome to Claude Code!                 │', '│   cwd: ~/Work/acme/hive-worker            │', '╰───────────────────────────────────────────╯', '', '> ' + x(['đọc internal/channel và giải thích cơ chế thử lại', 'read internal/channel and explain the retry logic']), '', '● Read(internal/channel/ws.go)', '  ⎿  Read 188 lines', '', '● ' + x(['Dial thử lại với thời gian chờ nhân đôi, tối đa 1 phút (ws.go:42).', 'Dial retries with a doubling delay, capped at 1 minute (ws.go:42).']), '', '> █'].join('\n');
+    const askB = S.askBypass;
+    const bypass = askB === 'chat'
+      ? { title: x(T.bypassTitle), lead: x(T.bypassLead), flag: eng0 === 'claude' ? 'claude --permission-mode bypassPermissions' : 'codex exec --dangerously-bypass-approvals-and-sandbox', ok: x(T.bypassOk) }
+      : { title: x(T.termBypassTitle), lead: x(T.bypassLead), flag: 'claude --dangerously-skip-permissions', ok: x(T.termBypassOk) };
     const tools = [['Read', 'go.mod'], ['Glob', '**/*.go (214)'], ['Read', 'cmd/hive-worker/main.go'], ['Grep', '"websocket" → 6'], ['Read', 'internal/channel/ws.go'], ['Read', 'internal/runner/pool.go'], ['Grep', '"proxy" → 0'], ['Read', 'docs/architecture.md']].map(([op, arg]) => ({ op, arg }));
     const quick = [['README từ code', 'README from code'], ['Tài liệu kiến trúc', 'Architecture doc'], ['Tài liệu API', 'API reference'], ['ADR từ lịch sử git', 'ADR from git history'], ['Tìm chỗ tài liệu lệch code', 'Find stale docs']].map(x);
     const seg = (on) => 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
@@ -358,6 +471,11 @@ class Component extends DCLogic {
       accounts, accOpen: !!S.accOpen, openAcc: () => this.setState({ accOpen: true }), closeAcc: () => this.setState({ accOpen: false }),
       onModel: (e) => { if (e.target.selectedIndex === e.target.options.length - 1) this.setState({ accOpen: true }); },
       theme: this.props.dark ? 'dark' : 'light', t, recent, docFiles, codeFiles, tools, quick,
+      file, fileTabs, showFile: middle !== 'hubDoc', showDoc: middle === 'hubDoc', closeFile: () => this.setState({ open: null }), editFile: () => this.setState({ edited: true, saved: false }), saveFile: () => this.setState({ edited: false, saved: true }),
+      panels, chatOn: panel === 'chat', termOn: panel === 'terminal', termTabs, termText,
+      asideStyle: 'width: ' + (panel === 'terminal' ? 560 : 420) + 'px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--background);',
+      bypass, bypassOpen: !!askB, askTermBypass: (e) => { if (e.target.checked) this.setState({ askBypass: 'term' }); },
+      cancelBypass: () => this.setState({ askBypass: null }), confirmBypass: () => this.setState(askB === 'chat' ? { askBypass: null, mode: 'bypass' } : { askBypass: null }),
       winTitle: stage === 'pick' ? 'xDev Hive' : 'xDev Hive · hive-worker · ~/Work/acme/hive-worker',
       picking: stage === 'pick', working: stage === 'work', openFolder: () => this.setState({ stage: 'work' }), backToPick: () => this.setState({ stage: 'pick' }),
       toolsOpen: this.state.tools, flipTools: () => this.setState({ tools: !this.state.tools }), chev: 'display: inline-block; transition: transform .15s; ' + (this.state.tools ? 'transform: rotate(90deg);' : ''),

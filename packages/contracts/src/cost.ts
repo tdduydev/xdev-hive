@@ -3,7 +3,7 @@ import { id, orgRoute } from "./common.ts";
 
 const day = z.iso.date("Ngày phải có dạng YYYY-MM-DD.");
 
-export const costGroupBy = z.enum(["day", "task", "cli", "machine"]);
+export const costGroupBy = z.enum(["day", "task", "cli", "machine", "account"]);
 export type CostGroupBy = z.output<typeof costGroupBy>;
 
 export const costSummaryInput = z
@@ -29,15 +29,35 @@ export const costTotals = z.object({
 export type CostTotals = z.output<typeof costTotals>;
 
 export const costGroup = costTotals.extend({
-  /** Ngày (YYYY-MM-DD), id task, tên CLI hoặc id máy; null khi run chưa có CLI hay máy. */
+  /** Ngày (YYYY-MM-DD), id task, tên CLI, id máy hoặc id gói; null khi run chưa có CLI, máy hay gói (đăng nhập mặc định). */
   key: z.string().nullable(),
 });
 export type CostGroup = z.output<typeof costGroup>;
+
+/**
+ * "Khảo sát trước khi sửa" của run code trong khoảng ngày (ADR 0022): phần agent đọc repo trước lần sửa file đầu tiên.
+ * Chỉ tính run có số đo (Claude, worker mới); run chưa sửa gì tính cả lần chạy. `costShare` và `costUsd` là ước tính:
+ * token khảo sát nhân hệ số giá của Claude (đọc cache 0,1, ghi cache 1,25, output 5 lần input) chia cho cả run.
+ */
+export const costExplore = z.object({
+  runs: z.number().int(),
+  /** Số run đã sửa file; còn lại là run chưa sửa gì. */
+  edited: z.number().int(),
+  turns: z.number().int(),
+  totalTurns: z.number().int(),
+  tokens: z.number().int(),
+  totalTokens: z.number().int(),
+  costShare: z.number().min(0).max(1),
+  costUsd: z.number(),
+});
+export type CostExplore = z.output<typeof costExplore>;
 
 export const costSummary = z.object({
   groupBy: costGroupBy,
   groups: z.array(costGroup),
   total: costTotals,
+  /** null khi trong khoảng ngày không có run code nào có số đo. */
+  explore: costExplore.nullable(),
 });
 export type CostSummary = z.output<typeof costSummary>;
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  costEventData,
   hubToWorker,
   PROTOCOL_VERSION,
   SDLC_ARTIFACT_LIMITS,
@@ -218,5 +219,27 @@ describe("AI SDLC (specs/011)", () => {
     expect(sdlcReportArtifacts.safeParse(Array(SDLC_ARTIFACT_LIMITS.files + 1).fill(file)).success).toBe(false);
     const big = { ...file, content: "x".repeat(SDLC_ARTIFACT_LIMITS.fileChars + 1) };
     expect(sdlcReportArtifacts.safeParse([big]).success).toBe(false);
+  });
+});
+
+describe("sự kiện cost", () => {
+  const base = {
+    inputTokens: 1,
+    outputTokens: 2,
+    cacheReadTokens: 3,
+    cacheWriteTokens: 4,
+    costUsd: null,
+    turns: null,
+    model: null,
+  };
+
+  it("accountId là tuỳ chọn: worker cũ và đăng nhập mặc định không báo", () => {
+    expect(costEventData.parse(base).accountId).toBeUndefined();
+    expect(costEventData.parse({ ...base, accountId: null }).accountId).toBeNull();
+    expect(costEventData.parse({ ...base, accountId: "claude-2" }).accountId).toBe("claude-2");
+  });
+
+  it("từ chối accountId rỗng", () => {
+    expect(costEventData.safeParse({ ...base, accountId: "" }).success).toBe(false);
   });
 });
