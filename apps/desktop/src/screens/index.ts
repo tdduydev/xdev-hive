@@ -3,6 +3,7 @@ import type { ScreenId } from "@/lib/nav.ts";
 import { DocsScreen } from "@/screens/docs-screen.tsx";
 import { HomeScreen } from "@/screens/home-screen.tsx";
 import { KnowledgeScreen } from "@/screens/knowledge-screen.tsx";
+import { PlansScreen } from "@/screens/plans-screen.tsx";
 import { ReviewsScreen } from "@/screens/reviews-screen.tsx";
 import { RunsScreen } from "@/screens/runs-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
@@ -16,6 +17,7 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   docs: DocsScreen,
   home: HomeScreen,
   knowledge: KnowledgeScreen,
+  plans: PlansScreen,
   reviews: ReviewsScreen,
   runs: RunsScreen,
   setup: SetupScreen,

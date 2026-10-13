@@ -10,12 +10,16 @@ import { KanbanSquareIcon, SearchIcon } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { CreateTaskButton } from "@/components/create-task-dialog.tsx";
 import { Icon } from "@/components/icons.tsx";
+import { ProvisionSteps } from "@/components/provision-steps.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { FilterChips } from "@/components/ui/filter-chips.tsx";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group.tsx";
 import { StatTile } from "@/components/ui/stat-tile.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatUsd } from "@/lib/format.ts";
+import { useLang } from "@/lib/i18n.ts";
+import { teamRoleLookup } from "@/lib/projects.ts";
+import { createTaskBlockedReason, showsProvision } from "@/lib/provision.ts";
 import { cliLabel, prLabel } from "@/lib/run-view.ts";
 import {
   BOARD_FILTERS,
@@ -29,6 +33,7 @@ import {
   runActivity,
 } from "@/lib/task-board.ts";
 import { useNow } from "@/lib/use-now.ts";
+import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -63,11 +68,14 @@ export function TasksPage() {
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
   const search = useSearch({ from: "/session/app/in-org/tasks" });
   const navigate = useNavigate({ from: "/tasks" });
+  const lang = useLang();
+  const creatable = (projects.data ?? []).filter((p) => p.state === "active");
   return (
     <Board
       crumb={org.name}
       projectId={undefined}
-      creatable={(projects.data ?? []).filter((p) => p.state === "active")}
+      creatable={creatable}
+      blockedReason={projects.isSuccess ? createTaskBlockedReason(undefined, creatable.length, lang) : null}
       search={search}
       onSearch={(next) => navigate({ search: (prev) => validateTasksSearch({ ...prev, ...next }), replace: true })}
     />
@@ -81,6 +89,9 @@ export function ProjectTasksPage() {
   const search = useSearch({ from: "/session/app/in-org/projects/$key" });
   const navigate = useNavigate({ from: "/projects/$key" });
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
+  const members = useQuery(api.orgMembers.list.queryOptions({ input: {} }));
+  const me = useMe();
+  const lang = useLang();
   const project = projects.data?.find((p) => p.key === projectKey);
   if (projects.isPending) {
     return (
@@ -124,6 +135,15 @@ export function ProjectTasksPage() {
         </Link>
       }
       creatable={project.state === "active" ? [project] : []}
+      blockedReason={createTaskBlockedReason(project.state, project.state === "active" ? 1 : 0, lang)}
+      notice={
+        showsProvision(project.state) && (
+          <ProvisionSteps
+            project={project}
+            canRetry={teamRoleLookup(org.role, members.data, me.id)(project.teamId) === "admin"}
+          />
+        )
+      }
       search={search}
       onSearch={(next) => navigate({ search: (prev) => validateTasksSearch({ ...prev, ...next }), replace: true })}
     />
@@ -148,6 +168,8 @@ function Board({
   search,
   onSearch: setSearch,
   actions,
+  blockedReason,
+  notice,
 }: {
   crumb: ReactNode;
   /** Nút thêm ở đầu trang, trước "Tạo việc". */
@@ -156,6 +178,10 @@ function Board({
   projectId: string | undefined;
   /** Dự án tạo việc được (đang hoạt động). */
   creatable: Project[];
+  /** Vì sao chưa tạo được việc, hiện cạnh nút "Tạo việc" khi nút bị khoá. */
+  blockedReason?: string | null;
+  /** Thẻ đầu trang, trước số liệu (vd. các bước khởi tạo của dự án chưa hoạt động). */
+  notice?: ReactNode;
   search: TasksSearch;
   onSearch: (next: TasksSearch) => void;
 }) {
@@ -190,7 +216,7 @@ function Board({
           onChange={(status) => setSearch({ status })}
         />
         {rows.length === 0 ? (
-          <EmptyBoard canCreate={creatable.length > 0} />
+          <EmptyBoard canCreate={creatable.length > 0} blockedReason={projectId ? blockedReason : null} />
         ) : shown.length === 0 ? (
           <Card className="px-6 py-8 text-center text-muted-foreground">Không có việc nào khớp bộ lọc.</Card>
         ) : (
@@ -219,14 +245,17 @@ function Board({
           />
         </InputGroup>
         {actions}
-        <CreateTaskButton projects={creatable} />
+        <CreateTaskButton projects={creatable} disabledReason={blockedReason} />
       </PageHeader>
-      <PageBody>{body}</PageBody>
+      <PageBody>
+        {notice}
+        {body}
+      </PageBody>
     </>
   );
 }
 
-function EmptyBoard({ canCreate }: { canCreate: boolean }) {
+function EmptyBoard({ canCreate, blockedReason }: { canCreate: boolean; blockedReason?: string | null | undefined }) {
   return (
     <Empty className="border border-dashed border-border">
       <EmptyHeader>
@@ -239,7 +268,8 @@ function EmptyBoard({ canCreate }: { canCreate: boolean }) {
         <EmptyDescription>
           {canCreate
             ? "Bấm “Tạo việc” để giao việc đầu tiên cho agent, hoặc gắn nhãn cho issue trên GitHub/GitLab nếu dự án bật nhận việc từ issue."
-            : "Chưa có dự án nào đang hoạt động mà bạn thấy được. Nhờ quản trị đội tạo dự án hoặc thêm bạn vào đội."}
+            : (blockedReason ??
+              "Chưa có dự án nào đang hoạt động mà bạn thấy được. Nhờ quản trị đội tạo dự án hoặc thêm bạn vào đội.")}
         </EmptyDescription>
       </EmptyHeader>
     </Empty>

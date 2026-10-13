@@ -28,7 +28,13 @@ const modelName = z
 const modelList = z.array(modelName).max(20);
 
 /** Model được dùng theo CLI. Danh sách rỗng là không giới hạn; có danh sách thì model ngoài danh sách về model đầu. */
-export const allowedModels = z.object({ claude: modelList, codex: modelList, gemini: modelList });
+export const allowedModels = z.object({
+  claude: modelList,
+  codex: modelList,
+  gemini: modelList,
+  // Chính sách lưu trước khi có Antigravity và client cũ không gửi khoá này.
+  antigravity: modelList.default([]),
+});
 export type AllowedModels = z.output<typeof allowedModels>;
 
 const templateText = z.string().max(50_000).nullable();
@@ -89,7 +95,7 @@ export const agentPolicy = agentPolicyInput.extend({
 export type AgentPolicy = z.output<typeof agentPolicy>;
 
 export const DEFAULT_AGENT_POLICY: z.output<typeof agentPolicyInput> = {
-  allowedModels: { claude: [], codex: [], gemini: [] },
+  allowedModels: { claude: [], codex: [], gemini: [], antigravity: [] },
   neverAutoUpgrade: false,
   defaultPermissionMode: "workspace",
   allowFullPermission: true,

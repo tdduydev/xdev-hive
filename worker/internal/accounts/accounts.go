@@ -1,11 +1,13 @@
-// Package accounts chọn tài khoản CLI cho từng run khi máy có nhiều đăng nhập của cùng một CLI (spec 008 US13).
+// Package accounts chọn tài khoản CLI cho từng run khi máy có nhiều đăng nhập của cùng một CLI (spec 008 US13, US14).
 //
-// Danh sách nằm ở accounts.json cạnh worker.json, do app desktop ghi (nhập từ app v1 hoặc người dùng bật tắt). File
+// Danh sách nằm ở accounts.json cạnh worker.json, do app desktop ghi (nhập từ app v1, thêm, sửa, xoá, bật tắt). File
 // không chứa bí mật: mỗi tài khoản trỏ tới thư mục cấu hình của CLI (CLAUDE_CONFIG_DIR, CODEX_HOME), nơi CLI tự giữ
 // đăng nhập. Không có file, hoặc không có tài khoản nào của CLI cần chạy, thì CLI dùng đăng nhập mặc định như trước.
+// Giờ nghỉ, "Dùng tiếp" và quota đọc được nằm ở accounts-state.json (xem State).
 package accounts
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,24 @@ import (
 	"strings"
 	"sync"
 	"time"
+)
+
+// Vai trò của run mà một tài khoản nhận, như app v1.
+const (
+	RolePlan      = "plan"
+	RoleImplement = "implement"
+	RoleReview    = "review"
+)
+
+// Roles là mọi vai trò, cũng là mặc định của tài khoản.
+var Roles = []string{RolePlan, RoleImplement, RoleReview}
+
+// Mặc định của app v1 cho trường tài khoản không ghi.
+const (
+	DefaultStopAtSession   = 95
+	DefaultStopAtWeek      = 90
+	DefaultTimeoutMinutes  = 60
+	DefaultCooldownMinutes = 60
 )
 
 // Account là một đăng nhập của một CLI trên máy.
@@ -30,6 +50,83 @@ type Account struct {
 	Priority        int    `json:"priority"`
 	MaxConcurrent   int    `json:"maxConcurrent"`
 	CooldownMinutes int    `json:"cooldownMinutes"`
+	// StopAtSession, StopAtWeek: phần trăm quota phiên 5 giờ và tuần mà tới đó worker thôi giao run mới cho tài khoản,
+	// để phần còn lại cho người làm tay.
+	StopAtSession int `json:"stopAtSession"`
+	StopAtWeek    int `json:"stopAtWeek"`
+	// Roles là vai trò run tài khoản nhận (plan, implement, review).
+	Roles []string `json:"roles"`
+	// TimeoutMinutes chặn thời gian một run trên tài khoản; run vẫn dừng sớm hơn nếu hub đặt thời hạn ngắn hơn.
+	TimeoutMinutes int `json:"timeoutMinutes"`
+}
+
+// withDefaults điền trường file cũ (US13) hay app v1 không ghi, để worker và app thấy cùng một giá trị.
+func (a Account) withDefaults() Account {
+	if a.MaxConcurrent <= 0 {
+		a.MaxConcurrent = 1
+	}
+	if a.CooldownMinutes <= 0 {
+		a.CooldownMinutes = DefaultCooldownMinutes
+	}
+	if a.StopAtSession <= 0 {
+		a.StopAtSession = DefaultStopAtSession
+	}
+	if a.StopAtWeek <= 0 {
+		a.StopAtWeek = DefaultStopAtWeek
+	}
+	if len(a.Roles) == 0 {
+		a.Roles = append([]string(nil), Roles...)
+	}
+	if a.TimeoutMinutes <= 0 {
+		a.TimeoutMinutes = DefaultTimeoutMinutes
+	}
+	return a
+}
+
+// RoleOf là vai trò tài khoản cần nhận cho run loại kind: run plan là "plan", review là "review", còn lại "implement".
+func RoleOf(kind string) string {
+	switch kind {
+	case RolePlan, RoleReview:
+		return kind
+	}
+	return RoleImplement
+}
+
+func (a Account) takes(role string) bool {
+	for _, r := range a.Roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+// overLimit là thanh quota đã chạm ngưỡng dừng ("session", "week"), rỗng khi chưa; "Dùng tiếp" còn hạn thì bỏ qua.
+func (a Account) overLimit(u Usage, resumeUntil, now time.Time) string {
+	if resumeUntil.After(now) {
+		return ""
+	}
+	u = u.at(now)
+	if u.Session != nil && u.Session.Percent >= float64(a.StopAtSession) {
+		return "session"
+	}
+	if u.Week != nil && u.Week.Percent >= float64(a.StopAtWeek) {
+		return "week"
+	}
+	return ""
+}
+
+// headroom là số điểm phần trăm còn lại trước ngưỡng dừng gần nhất; ok false khi chưa biết quota.
+func (a Account) headroom(u Usage, now time.Time) (left float64, ok bool) {
+	u = u.at(now)
+	left = 101
+	if u.Session != nil {
+		left, ok = min(left, float64(a.StopAtSession)-u.Session.Percent), true
+	}
+	if u.Week != nil {
+		left, ok = min(left, float64(a.StopAtWeek)-u.Week.Percent), true
+	}
+	return left, ok
 }
 
 type file struct {
@@ -67,6 +164,9 @@ func read(path string) (file, error) {
 	if err := json.Unmarshal(b, &f); err != nil {
 		return f, fmt.Errorf("đọc %s: %w", path, err)
 	}
+	for i := range f.Accounts {
+		f.Accounts[i] = f.Accounts[i].withDefaults()
+	}
 	return f, nil
 }
 
@@ -84,24 +184,27 @@ func Capacity(path string, limit int) (int, error) {
 	return max(1, min(n, limit)), nil
 }
 
-// ErrBusy: CLI có tài khoản nhưng tài khoản nào cũng đang tắt, đang chạy đủ số run hoặc đang nghỉ.
+// ErrBusy: CLI có tài khoản nhưng không tài khoản nào nhận được run lúc này (tắt, chưa đăng nhập, sai vai trò, chạm
+// ngưỡng quota, đang nghỉ hoặc đang chạy đủ số run). Lỗi trả về bọc ErrBusy kèm lý do cho log.
 var ErrBusy = errors.New("mọi tài khoản của CLI đang bận hoặc đang nghỉ")
 
-// Pool giữ số run đang chạy và giờ hết nghỉ của từng tài khoản. Đọc lại file mỗi lần chọn để bật tắt trong app có
-// hiệu lực ngay, không cần khởi động lại worker.
+// Pool giữ số run đang chạy của từng tài khoản. Đọc lại accounts.json và accounts-state.json mỗi lần chọn để thay đổi
+// trong app (bật tắt, ngưỡng, Dùng tiếp) có hiệu lực ngay, không cần khởi động lại worker.
 type Pool struct {
-	path string
-	home string
-	now  func() time.Time
+	path  string
+	state string
+	home  string
+	now   func() time.Time
 
-	mu        sync.Mutex
-	active    map[string]int
-	coolUntil map[string]time.Time
+	mu     sync.Mutex
+	active map[string]int
+	// reread nhận id tài khoản vừa xong run để Watch đọc lại quota của nó.
+	reread chan string
 }
 
 func NewPool(path string) *Pool {
 	home, _ := os.UserHomeDir()
-	return &Pool{path: path, home: home, now: time.Now, active: map[string]int{}, coolUntil: map[string]time.Time{}}
+	return &Pool{path: path, state: StatePath(path), home: home, now: time.Now, active: map[string]int{}, reread: make(chan string, 16)}
 }
 
 // Lease là tài khoản đã giữ cho một run; nil là chạy bằng đăng nhập mặc định.
@@ -130,46 +233,103 @@ func (l *Lease) Env() map[string]string {
 	return map[string]string{envVar[l.account.CLI]: l.dir}
 }
 
-// Release trả chỗ của run; gọi nhiều lần cũng chỉ trả một lần.
+// Timeout là thời gian tối đa của một run trên tài khoản; 0 khi không có tài khoản.
+func (l *Lease) Timeout() time.Duration {
+	if l == nil {
+		return 0
+	}
+	return time.Duration(l.account.TimeoutMinutes) * time.Minute
+}
+
+// Release trả chỗ của run; gọi nhiều lần cũng chỉ trả một lần. Run vừa xong đã dùng quota nên đọc lại quota của tài
+// khoản, để lần chọn sau và ngưỡng dừng thấy phần run đó vừa dùng.
 func (l *Lease) Release() {
 	if l == nil {
 		return
 	}
 	l.once.Do(func() {
-		l.pool.mu.Lock()
-		defer l.pool.mu.Unlock()
-		if l.pool.active[l.account.ID] > 0 {
-			l.pool.active[l.account.ID]--
+		p := l.pool
+		p.mu.Lock()
+		if p.active[l.account.ID] > 0 {
+			p.active[l.account.ID]--
+		}
+		p.syncActive()
+		p.mu.Unlock()
+		select {
+		case p.reread <- l.account.ID:
+		default:
 		}
 	})
 }
 
-// Cooldown cho tài khoản nghỉ sau khi CLI báo hết lượt dùng; run sau chọn tài khoản khác.
+// Cooldown cho tài khoản nghỉ sau khi CLI báo hết lượt dùng; run sau chọn tài khoản khác. Biết giờ reset của thanh
+// quota đang chặn thì nghỉ tới đó, không thì cooldownMinutes. Giờ nghỉ ghi vào file trạng thái nên còn sau khi worker
+// khởi động lại.
 func (l *Lease) Cooldown() {
 	if l == nil {
 		return
 	}
-	minutes := l.account.CooldownMinutes
-	if minutes <= 0 {
-		minutes = 60
-	}
-	l.pool.mu.Lock()
-	defer l.pool.mu.Unlock()
-	l.pool.coolUntil[l.account.ID] = l.pool.now().Add(time.Duration(minutes) * time.Minute)
+	p := l.pool
+	now := p.now()
+	_ = UpdateState(p.state, now, func(s *State) {
+		s.CoolUntil[l.account.ID] = coolUntil(l.account, s.Usage[l.account.ID], now)
+	})
 }
 
-func (p *Pool) expand(dir string) string {
+// coolUntil: giờ reset của thanh còn ít chỗ nhất trước ngưỡng (thanh vừa vượt), nếu biết và còn ở tương lai.
+func coolUntil(a Account, u Usage, now time.Time) time.Time {
+	fallback := now.Add(time.Duration(a.CooldownMinutes) * time.Minute)
+	type bar struct {
+		left float64
+		at   *time.Time
+	}
+	var bars []bar
+	if u.Session != nil {
+		bars = append(bars, bar{float64(a.StopAtSession) - u.Session.Percent, u.Session.ResetsAt})
+	}
+	if u.Week != nil {
+		bars = append(bars, bar{float64(a.StopAtWeek) - u.Week.Percent, u.Week.ResetsAt})
+	}
+	if len(bars) == 0 {
+		return fallback
+	}
+	binding := bars[0]
+	for _, b := range bars[1:] {
+		if b.left < binding.left {
+			binding = b
+		}
+	}
+	if binding.at == nil || !binding.at.After(now) {
+		return fallback
+	}
+	return *binding.at
+}
+
+func expandHome(home, dir string) string {
 	if dir == "~" {
-		return p.home
+		return home
 	}
 	if strings.HasPrefix(dir, "~/") {
-		return filepath.Join(p.home, dir[2:])
+		return filepath.Join(home, dir[2:])
 	}
 	return dir
 }
 
-// candidates là tài khoản bật của CLI, ưu tiên cao trước; cùng ưu tiên thì tài khoản đang ít run hơn trước.
-func (p *Pool) candidates(list []Account, cli string) []Account {
+func (p *Pool) expand(dir string) string { return expandHome(p.home, dir) }
+
+// syncActive ghi số run đang chạy vào file trạng thái cho app hiện; gọi khi giữ p.mu. Lỗi ghi chỉ làm app hiện số
+// cũ, không ảnh hưởng việc chọn tài khoản (worker đếm bằng bộ nhớ).
+func (p *Pool) syncActive() {
+	active := make(map[string]int, len(p.active))
+	for id, n := range p.active {
+		active[id] = n
+	}
+	_ = UpdateState(p.state, p.now(), func(s *State) { s.Active = active })
+}
+
+// candidates là tài khoản bật của CLI, ưu tiên cao trước; cùng ưu tiên thì tài khoản đang ít run hơn trước, rồi tài
+// khoản còn nhiều quota hơn trước ngưỡng (đã biết quota trước chưa biết).
+func (p *Pool) candidates(list []Account, cli string, st State, now time.Time) []Account {
 	var out []Account
 	for _, a := range list {
 		if a.CLI == cli && a.Enabled {
@@ -177,25 +337,49 @@ func (p *Pool) candidates(list []Account, cli string) []Account {
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Priority != out[j].Priority {
-			return out[i].Priority > out[j].Priority
+		a, b := out[i], out[j]
+		if a.Priority != b.Priority {
+			return a.Priority > b.Priority
 		}
-		return p.active[out[i].ID] < p.active[out[j].ID]
+		if p.active[a.ID] != p.active[b.ID] {
+			return p.active[a.ID] < p.active[b.ID]
+		}
+		la, oka := a.headroom(st.Usage[a.ID], now)
+		lb, okb := b.headroom(st.Usage[b.ID], now)
+		if oka != okb {
+			return oka
+		}
+		return la > lb
 	})
 	return out
 }
 
-func (p *Pool) free(a Account) bool {
-	limit := a.MaxConcurrent
-	if limit <= 0 {
-		limit = 1
+// skip là lý do tài khoản không nhận run lúc này, rỗng khi nhận được.
+func (p *Pool) skip(a Account, role string, st State, now time.Time) string {
+	loggedIn, _ := loginOf(a, p.home)
+	switch {
+	case !a.takes(role):
+		return "không nhận vai trò " + role
+	case loggedIn != nil && !*loggedIn:
+		return "chưa đăng nhập"
+	case st.CoolUntil[a.ID].After(now):
+		return "đang nghỉ tới " + st.CoolUntil[a.ID].Local().Format("15:04 02/01")
 	}
-	return p.active[a.ID] < limit && !p.now().Before(p.coolUntil[a.ID])
+	switch a.overLimit(st.Usage[a.ID], st.ResumeUntil[a.ID], now) {
+	case "session":
+		return fmt.Sprintf("chạm ngưỡng phiên %d%%", a.StopAtSession)
+	case "week":
+		return fmt.Sprintf("chạm ngưỡng tuần %d%%", a.StopAtWeek)
+	}
+	if p.active[a.ID] >= a.MaxConcurrent {
+		return "đang chạy đủ run"
+	}
+	return ""
 }
 
-// Acquire giữ một tài khoản cho run của CLI. Trả (nil, nil) khi CLI không có tài khoản nào trong danh sách (dùng
-// đăng nhập mặc định), ErrBusy khi có mà không tài khoản nào rảnh.
-func (p *Pool) Acquire(cli string) (*Lease, error) {
+// Acquire giữ một tài khoản cho run của CLI ở vai trò role (xem RoleOf). Trả (nil, nil) khi CLI không có tài khoản
+// nào trong danh sách (dùng đăng nhập mặc định), lỗi bọc ErrBusy khi có mà không tài khoản nào nhận được.
+func (p *Pool) Acquire(cli, role string) (*Lease, error) {
 	if p == nil || !Supported(cli) {
 		return nil, nil
 	}
@@ -213,15 +397,86 @@ func (p *Pool) Acquire(cli string) (*Lease, error) {
 	if !hasAny {
 		return nil, nil
 	}
+	st, err := LoadState(p.state)
+	if err != nil {
+		return nil, err
+	}
+	if role == "" {
+		role = RoleImplement
+	}
+	now := p.now()
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for _, a := range p.candidates(list, cli) {
-		if p.free(a) {
-			p.active[a.ID]++
-			return &Lease{pool: p, account: a, dir: p.expand(a.ConfigDir)}, nil
+	var why []string
+	for _, a := range p.candidates(list, cli, st, now) {
+		if reason := p.skip(a, role, st, now); reason != "" {
+			why = append(why, a.ID+" "+reason)
+			continue
+		}
+		p.active[a.ID]++
+		p.syncActive()
+		return &Lease{pool: p, account: a, dir: p.expand(a.ConfigDir)}, nil
+	}
+	if len(why) == 0 {
+		return nil, fmt.Errorf("%w: không tài khoản %s nào đang bật", ErrBusy, cli)
+	}
+	return nil, fmt.Errorf("%w: %s", ErrBusy, strings.Join(why, "; "))
+}
+
+// usageEvery là chu kỳ worker đọc lại quota của các tài khoản bật, như app v1.
+var usageEvery = 10 * time.Minute
+
+// Watch chạy cùng worker tới khi ctx xong: ghi lại số run đang chạy (số trong file có thể còn của lần worker trước chết
+// giữa chừng), đọc quota của mọi tài khoản bật ngay, rồi 10 phút một lần và sau mỗi run của một tài khoản.
+func (p *Pool) Watch(ctx context.Context) {
+	if p == nil {
+		return
+	}
+	if _, err := os.Stat(p.state); err == nil {
+		p.mu.Lock()
+		p.syncActive()
+		p.mu.Unlock()
+	}
+	enabled := func(a Account) bool { return a.Enabled }
+	_ = RefreshUsage(ctx, p.path, p.home, p.now, enabled)
+	tick := time.NewTicker(usageEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			_ = RefreshUsage(ctx, p.path, p.home, p.now, enabled)
+		case id := <-p.reread:
+			_ = RefreshUsage(ctx, p.path, p.home, p.now, func(a Account) bool { return a.ID == id })
 		}
 	}
-	return nil, ErrBusy
+}
+
+// RefreshUsage đọc lại quota của các tài khoản pick chọn rồi ghi vào file trạng thái. CLI chạy ngoài khoá file, từng
+// tài khoản một, để lệnh khác không phải chờ CLI.
+func RefreshUsage(ctx context.Context, path, home string, now func() time.Time, pick func(Account) bool) error {
+	list, err := Load(path)
+	if err != nil {
+		return err
+	}
+	read := map[string]Usage{}
+	for _, a := range list {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if pick(a) {
+			read[a.ID] = ReadUsage(ctx, a, home, now())
+		}
+	}
+	if len(read) == 0 {
+		return nil
+	}
+	return UpdateState(StatePath(path), now(), func(s *State) {
+		for id, u := range read {
+			s.Usage[id] = u
+		}
+	})
 }
 
 // Slots là tổng số run chạy cùng lúc của mọi tài khoản bật mà worker chọn được; 0 khi không có tài khoản nào.

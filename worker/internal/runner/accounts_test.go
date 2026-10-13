@@ -22,6 +22,16 @@ func writeAccounts(t *testing.T, body string) string {
 	return path
 }
 
+// codexLogin là thư mục cấu hình Codex đã đăng nhập: worker không giao run cho tài khoản chưa đăng nhập.
+func codexLogin(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "auth.json"), []byte(`{"tokens":{"id_token":"h.e30.s"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func logText(events []Event) string {
 	var b strings.Builder
 	for _, e := range events {
@@ -35,10 +45,10 @@ func logText(events []Event) string {
 // CLI chạy bằng thư mục đăng nhập của tài khoản đã giữ, và log ghi tên tài khoản cho người xem run.
 func TestRunnerUsesAccountConfigDir(t *testing.T) {
 	remote, base := makeRemote(t)
-	dir := t.TempDir()
+	dir := codexLogin(t)
 	quoted, _ := json.Marshal(dir) // đường dẫn Windows có dấu \ phải được escape trong JSON
 	pool := accounts.NewPool(writeAccounts(t, `{"accounts":[{"id":"codex-3","label":"duy@xdev.asia","cli":"codex","configDir":`+string(quoted)+`,"enabled":true,"maxConcurrent":1}]}`))
-	lease, err := pool.Acquire("codex")
+	lease, err := pool.Acquire("codex", accounts.RoleImplement)
 	if err != nil || lease == nil {
 		t.Fatalf("acquire = %v, %v", lease, err)
 	}
@@ -61,15 +71,16 @@ func TestRunnerUsesAccountConfigDir(t *testing.T) {
 // CLI báo hết lượt dùng và run hỏng: tài khoản nghỉ, lần chọn sau không còn tài khoản rảnh.
 func TestRunnerCoolsDownAccountOnUsageLimit(t *testing.T) {
 	remote, base := makeRemote(t)
-	pool := accounts.NewPool(writeAccounts(t, `{"accounts":[{"id":"codex-3","cli":"codex","enabled":true,"maxConcurrent":1,"cooldownMinutes":30}]}`))
-	lease, err := pool.Acquire("codex")
+	quoted, _ := json.Marshal(codexLogin(t))
+	pool := accounts.NewPool(writeAccounts(t, `{"accounts":[{"id":"codex-3","cli":"codex","configDir":`+string(quoted)+`,"enabled":true,"maxConcurrent":1,"cooldownMinutes":30}]}`))
+	lease, err := pool.Acquire("codex", accounts.RoleImplement)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := Runner{DataDir: t.TempDir(), CLICommands: fakeCommands("limit"), Account: lease}
 	_ = r.Run(context.Background(), Job{RunID: "lim", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/lim", CLI: "codex", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "limit"}}, SinkFunc(func(Event) error { return nil }))
 	lease.Release()
-	if _, err := pool.Acquire("codex"); !errors.Is(err, accounts.ErrBusy) {
+	if _, err := pool.Acquire("codex", accounts.RoleImplement); !errors.Is(err, accounts.ErrBusy) {
 		t.Fatalf("tài khoản hết lượt vẫn được chọn: %v", err)
 	}
 }

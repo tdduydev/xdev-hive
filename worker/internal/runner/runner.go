@@ -45,6 +45,14 @@ func readOnlyKind(kind string) bool {
 	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist
 }
 
+// Binary là lệnh của CLI trên máy: Antigravity cài lệnh `agy`, các CLI khác trùng tên.
+func Binary(cli string) string {
+	if cli == "antigravity" {
+		return "agy"
+	}
+	return cli
+}
+
 type Job struct {
 	Execution                                       string
 	SandboxPolicy                                   *SandboxJobConfig
@@ -144,6 +152,20 @@ type Runner struct {
 	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
 	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
 	Grace func() time.Duration
+	// RemoveDir, nếu có, nhận thư mục worktree cũ để xoá sau khi Run trả về (worker xoá nền để máy rảnh nhận run
+	// mới ngay). Không có thì Run xoá trước khi trả về.
+	RemoveDir func(dir string)
+}
+
+// trashPrefix là tên thư mục worktree đã gỡ còn chờ xoá trong runs/; ReapOrphans dọn chúng nếu worker chết giữa chừng.
+const trashPrefix = ".trash-"
+
+func (r Runner) removeDir(dir string) {
+	if r.RemoveDir != nil {
+		r.RemoveDir(dir)
+		return
+	}
+	_ = os.RemoveAll(dir)
 }
 
 func (r Runner) grace() time.Duration {
@@ -196,10 +218,19 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	// Kết quả gửi sau khi dọn worktree: hub coi run_result là hết việc của máy và bỏ mọi sự kiện đến sau nó.
 	var result *Result
 	defer func() {
-		// Git may refuse to remove a locked worktree; force is needed during cancellation too.
-		_ = gitWrite(context.Background(), cache, cache, "worktree", "remove", "--force", work)
-		_ = os.RemoveAll(work)
+		// Xoá file của worktree lớn mất cả giây: dời thư mục sang chỗ bỏ (tức thì) rồi chỉ prune trong khoá, xoá file
+		// sau khi gửi kết quả. Không dời được (Windows còn process giữ file) thì gỡ như cũ.
+		trash := filepath.Join(root, fmt.Sprintf("%s%s-%d", trashPrefix, filepath.Base(work), time.Now().UnixNano()))
+		if os.Rename(work, trash) != nil {
+			trash = ""
+			// Git may refuse to remove a locked worktree; force is needed during cancellation too.
+			_ = gitWrite(context.Background(), cache, cache, "worktree", "remove", "--force", work)
+			_ = os.RemoveAll(work)
+		}
 		_ = gitWrite(context.Background(), cache, cache, "worktree", "prune")
+		if trash != "" {
+			defer r.removeDir(trash)
+		}
 		_ = emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "cleanup"})
 		if result == nil && retErr != nil {
 			status := "failed"
@@ -222,16 +253,18 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := cloneOnce(ctx, r.DataDir, job.RepoURL, cache); err != nil {
 		return err
 	}
-	if err := gitWrite(ctx, cache, cache, "fetch", "origin", job.BaseBranch+":refs/remotes/origin/"+job.BaseBranch); err != nil {
+	fetch := []string{"fetch", "origin", job.BaseBranch + ":refs/remotes/origin/" + job.BaseBranch}
+	if job.Kind == KindReview {
+		// Run review cần cả nhánh run cha; một lệnh fetch cho hai nhánh đỡ một lần nối và thương lượng với remote.
+		fetch = append(fetch, job.Branch+":refs/remotes/origin/"+job.Branch)
+	}
+	if err := gitWrite(ctx, cache, cache, fetch...); err != nil {
 		return err
 	}
 	if job.Kind == KindReview {
 		// Run review đọc đúng nhánh run cha đã push. Tách HEAD thay vì tạo nhánh local để lỡ agent commit cũng không
 		// có gì trỏ tới nhánh của cha.
-		if err := gitWrite(ctx, cache, cache, "fetch", "origin", job.Branch+":refs/remotes/origin/"+job.Branch); err != nil {
-			return err
-		}
-		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
+		if err := addWorktree(ctx, cache, work, "--detach", work, "origin/"+job.Branch); err != nil {
 			return err
 		}
 		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
@@ -240,10 +273,10 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist {
 		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
 		// của run code.
-		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.BaseBranch); err != nil {
+		if err := addWorktree(ctx, cache, work, "--detach", work, "origin/"+job.BaseBranch); err != nil {
 			return err
 		}
-	} else if err := gitWrite(ctx, cache, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
+	} else if err := addWorktree(ctx, cache, work, "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
 		return err
 	}
 	job.workspace = work
@@ -278,8 +311,13 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	runCtx := ctx
 	var cancel context.CancelFunc
-	if job.Timeout > 0 {
-		runCtx, cancel = context.WithTimeout(ctx, job.Timeout)
+	timeout := job.Timeout
+	// Thời hạn run của tài khoản (như app v1) chỉ rút ngắn thời hạn hub đặt, không kéo dài.
+	if t := r.Account.Timeout(); r.Sandbox == nil && t > 0 && (timeout <= 0 || t < timeout) {
+		timeout = t
+	}
+	if timeout > 0 {
+		runCtx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 	// Git ghi index trong gitdir riêng và objects/refs trong bare cache ngoài worktree.
@@ -346,6 +384,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 				_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Tài khoản %s hết lượt dùng, nghỉ trước khi nhận run mới.\n", r.Account.Label())
 			}
 		}()
+	}
+	if cmd.notice != "" {
+		_, _ = fmt.Fprintln(stderrLog, cmd.notice)
 	}
 	if tool := hooksOf(job.Policy.Hooks, "PreToolUse", "PostToolUse"); len(tool) > 0 && (job.CLI != "claude" || cmd.input != InputStreamJSON) {
 		// Chỉ Claude Code nhận hook theo tool qua --settings; báo vào log để người xem run biết hook nào không chạy.
@@ -449,8 +490,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
-		// push -u ghi upstream vào config chung của repo cache nên cũng phải giữ khoá.
-		if err := gitWrite(ctx, cache, work, "push", "-u", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
+		// Không -u: upstream không ai đọc, mà ghi nó vào config chung thì push (chờ mạng) phải giữ khoá repo cache và
+		// config phình thêm một mục mỗi run. Push không ghi gì vào cache nên chạy ngoài khoá.
+		if err := gitRetryLocked(ctx, work, "push", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
@@ -531,11 +573,23 @@ func cloneOnce(ctx context.Context, dataDir, repoURL, cache string) error {
 	return gitRetryLocked(ctx, dataDir, "clone", "--bare", repoURL, cache)
 }
 
+// addWorktree chỉ giữ khoá repo cache lúc git đăng ký worktree (sửa config, ref chung). Checkout ghi index riêng của
+// worktree và file trong thư mục run, nên làm ngoài khoá: repo lớn checkout mất vài giây, giữ khoá thì các run song
+// song của cùng repo phải xếp hàng chờ nhau.
+func addWorktree(ctx context.Context, cache, work string, args ...string) error {
+	if err := gitWrite(ctx, cache, cache, append([]string{"worktree", "add", "--no-checkout"}, args...)...); err != nil {
+		return err
+	}
+	return git(ctx, work, "reset", "--hard", "--quiet")
+}
+
 type cliExecCmd struct {
 	*exec.Cmd
 	cleanup func()
 	// input là Command.Input: InputStreamJSON thì runner gửi prompt và chỉ dẫn qua stdin.
 	input string
+	// notice là dòng runner ghi vào stderr của run trước khi chạy CLI, để người xem run biết CLI bị giới hạn gì.
+	notice string
 }
 
 func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
@@ -669,6 +723,41 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				args[len(args)-1] = "/workspace/" + filepath.Base(policy.Name())
 			}
 			return &cliExecCmd{Cmd: exec.Command("gemini", args...), cleanup: func() { _ = os.Remove(policy.Name()) }}, nil
+		case "antigravity":
+			config, err := writeAntigravityMCPConfig(j)
+			if err != nil {
+				return nil, fmt.Errorf("ghi cấu hình MCP cho Antigravity: %w", err)
+			}
+			args := []string{"-p", j.Prompt, "--output-format", "stream-json"}
+			if j.Timeout > 0 {
+				// Để agy tự dừng lượt trước khi runner phải ngắt nó; context của runner vẫn là chốt chặn sau cùng.
+				args = append(args, "--print-timeout", fmt.Sprintf("%dm", int((j.Timeout+time.Minute-1)/time.Minute)))
+			}
+			if j.Model != "" {
+				args = append(args, "--model", j.Model)
+			}
+			// agy 1.3.3 không có cờ nạp MCP: nó đọc cấu hình worker ghi trong .agents/ của worktree, cộng cả
+			// ~/.gemini/config/mcp_config.json của máy mà worker không chặn được.
+			notice := "[xdev-hive] antigravity nạp MCP của hub từ " + filepath.ToSlash(config) + " trong worktree; agy không có cờ nạp MCP nên cũng nạp server khai trong ~/.gemini/config/mcp_config.json của máy."
+			if config == "" && j.workspace != "" {
+				notice = "[xdev-hive] antigravity chạy không có MCP của hub: repo đã có .agents/mcp_config.json và .agents/plugins/" + antigravityPlugin + "."
+			}
+			if readOnlyKind(j.Kind) {
+				// Chế độ plan và sandbox của agy chặn ghi file và lệnh ghi, nhưng chỉ khi không có
+				// --dangerously-skip-permissions: cờ đó duyệt cả việc ghi, bỏ qua chế độ plan lẫn sandbox (đã thử trên agy
+				// 1.3.3). Thiếu cờ đó agy -p tự từ chối mọi quyền nó không hỏi được, gồm lệnh shell và tool MCP.
+				args = append(args, "--mode", "plan", "--sandbox")
+				notice += fmt.Sprintf("\n[xdev-hive] antigravity chạy run %s ở chế độ plan và sandbox chỉ đọc; agy -p từ chối gọi tool MCP khi không có --dangerously-skip-permissions, nên run không nộp được kết quả qua MCP của hub.", j.Kind)
+			} else {
+				// agy -p không hỏi được quyền nên chỉ chạy không tương tác với --dangerously-skip-permissions, và sandbox của
+				// agy 1.3.3 là sandbox chỉ đọc (chặn cả ghi file trong worktree lẫn git commit, đã thử trên macOS). Không có
+				// cách giới hạn agy trong worktree, nên chỉ chạy khi dự án cho toàn quyền; hub cũng không giao trường hợp khác.
+				if j.RunPermissions != "full" {
+					return nil, fmt.Errorf("Antigravity chỉ chạy run code khi dự án cho toàn quyền (full): agy không giới hạn được trong thư mục làm việc")
+				}
+				args = append(args, "--dangerously-skip-permissions")
+			}
+			return &cliExecCmd{Cmd: exec.Command(Binary(j.CLI), args...), notice: notice}, nil
 		default:
 			return nil, fmt.Errorf("runner: CLI không hợp lệ: %s", j.CLI)
 		}
