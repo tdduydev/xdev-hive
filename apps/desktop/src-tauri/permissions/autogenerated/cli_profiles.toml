@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cli-profiles"
+description = "Enables the cli_profiles command without any pre-configured scope."
+commands.allow = ["cli_profiles"]
+
+[[permission]]
+identifier = "deny-cli-profiles"
+description = "Denies the cli_profiles command without any pre-configured scope."
+commands.deny = ["cli_profiles"]
