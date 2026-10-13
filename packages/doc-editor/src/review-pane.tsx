@@ -424,7 +424,7 @@ function Card({
   return (
     <section aria-label={label ?? title} className="overflow-hidden rounded-xl border bg-card text-card-foreground">
       <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-        <h2 className="m-0 text-[14.5px] font-semibold">{title}</h2>
+        <h2 className="m-0 text-[15px] font-semibold">{title}</h2>
         {meta}
       </div>
       {children}
@@ -447,7 +447,7 @@ function ReviewHeader({ d, now }: { d: ReviewDetail; now: number }) {
           {d.docType}
         </span>
         <h2 className="m-0 text-base font-semibold">{d.docTitle}</h2>
-        <span className="font-mono text-[12.5px] text-muted-foreground">
+        <span className="font-mono text-sm text-muted-foreground">
           {d.baseVersion ? `v${d.baseVersion}` : t.newDoc} → v{d.baseVersion + 1}
         </span>
         <span className="flex-1" />
@@ -456,7 +456,7 @@ function ReviewHeader({ d, now }: { d: ReviewDetail; now: number }) {
       <p className="m-0 text-xs text-muted-foreground">
         <span className="font-mono">{d.docKey}</span> · {d.workflowName} · {t.author}: {d.author.name}
       </p>
-      <ol aria-label={t.steps} className="m-0 flex list-none flex-wrap items-center gap-1.5 p-0 text-[12.5px]">
+      <ol aria-label={t.steps} className="m-0 flex list-none flex-wrap items-center gap-1.5 p-0 text-sm">
         {steps.map((s, i) => {
           const newPhase = s.phase && s.phase !== steps[i - 1]?.phase;
           return (
@@ -470,7 +470,7 @@ function ReviewHeader({ d, now }: { d: ReviewDetail; now: number }) {
                   →
                 </span>
               )}
-              {newPhase && <span className="font-mono text-[11px] text-muted-foreground">{s.phase}</span>}
+              {newPhase && <span className="font-mono text-xs text-muted-foreground">{s.phase}</span>}
               <span className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2.5", STEP_STYLE[s.state])}>
                 <span aria-hidden="true">{STEP_MARK[s.state]}</span>
                 {s.label}
@@ -481,12 +481,12 @@ function ReviewHeader({ d, now }: { d: ReviewDetail; now: number }) {
         })}
       </ol>
       {d.reason && (
-        <p className="m-0 text-[13px]">
+        <p className="m-0 text-sm">
           <span className="text-muted-foreground">{t.reason}:</span> {d.reason}
         </p>
       )}
       {notes.length > 0 && (
-        <div className="flex flex-col gap-1 border-t border-dashed border-input pt-2 text-[13px]">
+        <div className="flex flex-col gap-1 border-t border-dashed border-input pt-2 text-sm">
           <span className="text-xs text-muted-foreground">{t.notes}</span>
           {notes.map((g) => (
             <p key={g.gateId} className="m-0">
@@ -507,9 +507,9 @@ function DiffCard({ d }: { d: ReviewDetail }) {
   return (
     <Card
       title={t.changes}
-      meta={<span className="text-[12.5px] text-muted-foreground">{t.changesMeta(d.addedLines, d.deletedLines)}</span>}
+      meta={<span className="text-sm text-muted-foreground">{t.changesMeta(d.addedLines, d.deletedLines)}</span>}
     >
-      <div className="py-2 text-[13.5px] leading-[1.7]">
+      <div className="py-2 text-sm leading-[1.7]">
         {!changed && <p className="m-0 px-4.5 py-2 text-muted-foreground">{t.noChanges}</p>}
         {changed &&
           blocks.map((b, bi) =>
@@ -517,7 +517,7 @@ function DiffCard({ d }: { d: ReviewDetail }) {
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: khối diff không có mã; vị trí là định danh.
                 key={bi}
-                className="my-1 bg-muted/60 px-4.5 py-0.5 font-mono text-[11.5px] text-muted-foreground"
+                className="my-1 bg-muted/60 px-4.5 py-0.5 font-mono text-xs text-muted-foreground"
               >
                 ⋯ {t.unchanged(b.count)}
               </div>
@@ -570,13 +570,13 @@ function ChecklistCard({ gate }: { gate: GateRun }) {
         )
       }
     >
-      <ul className="m-0 flex list-none flex-col gap-2 px-4 py-2.5 text-[13.5px]">
+      <ul className="m-0 flex list-none flex-col gap-2 px-4 py-2.5 text-sm">
         {gate.checklist.map((c: ChecklistItem) => (
           <li key={c.label} className="flex items-start gap-2">
             <span
               aria-hidden="true"
               className={cn(
-                "inline-flex size-4.5 flex-none items-center justify-center rounded-full text-[11px]",
+                "inline-flex size-4.5 flex-none items-center justify-center rounded-full text-xs",
                 c.passed ? "bg-success-soft text-success" : "bg-warning-soft text-warning",
               )}
             >
@@ -602,17 +602,17 @@ function TraceCard({ d }: { d: ReviewDetail }) {
       title={t.trace}
       meta={
         d.trace.length > 0 && (
-          <span className="font-mono text-[12.5px] text-muted-foreground">
+          <span className="font-mono text-sm text-muted-foreground">
             {covered} / {d.trace.length}
           </span>
         )
       }
     >
       {d.trace.length === 0 ? (
-        <p className="m-0 px-4 py-2.5 text-[13px] text-muted-foreground">{t.noTrace}</p>
+        <p className="m-0 px-4 py-2.5 text-sm text-muted-foreground">{t.noTrace}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="text-left text-xs text-muted-foreground">
                 <th className="px-4 py-2 font-medium">{t.traceReq}</th>
@@ -719,7 +719,7 @@ function DecisionCard({ d, onDecided }: { d: ReviewDetail; onDecided: () => void
       aria-label={t.decision}
       className="flex flex-col gap-2.5 rounded-xl border bg-card px-4 py-3.5 text-card-foreground"
     >
-      <h2 className="m-0 text-[14.5px] font-semibold">{t.decision}</h2>
+      <h2 className="m-0 text-[15px] font-semibold">{t.decision}</h2>
       {done && (
         <p role="status" className="m-0 text-sm text-success">
           {done}
@@ -757,7 +757,7 @@ function DecisionCard({ d, onDecided }: { d: ReviewDetail; onDecided: () => void
               {t.noteRequired}
             </p>
           )}
-          <div className="flex flex-col gap-1.5 text-[13px] font-medium">
+          <div className="flex flex-col gap-1.5 text-sm font-medium">
             <label htmlFor={`${ids}-route`}>{t.ifReturn}</label>
             <NativeSelect
               id={`${ids}-route`}
@@ -782,7 +782,7 @@ function DecisionCard({ d, onDecided }: { d: ReviewDetail; onDecided: () => void
         </>
       ) : (
         !done && (
-          <p className="m-0 text-[13px] text-muted-foreground">
+          <p className="m-0 text-sm text-muted-foreground">
             {d.status === "in_review" ? t.notYours(d.gate?.name ?? "") : t.finalText[d.status]}
           </p>
         )
@@ -813,7 +813,7 @@ function Assigned({
   const n = approvals.length;
   const progress = reviewers.quorum === 0 ? t.progressAll(n) : t.progress(n, reviewers.quorum);
   return (
-    <div className="flex flex-col gap-0.5 text-[13px]">
+    <div className="flex flex-col gap-0.5 text-sm">
       <p className="m-0">
         <span className="text-muted-foreground">{t.assigned}: </span>
         {who.join(", ")}

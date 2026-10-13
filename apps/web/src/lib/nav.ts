@@ -9,6 +9,7 @@ import {
   ClipboardCheckIcon,
   FileTextIcon,
   FolderIcon,
+  GitBranchIcon,
   GitPullRequestArrowIcon,
   HouseIcon,
   KanbanSquareIcon,
@@ -141,6 +142,14 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: MonitorIcon,
         to: route("/machines"),
         match: "/machines",
+      },
+      {
+        id: "git",
+        label: { vi: "Kết nối Git", en: "Git connections" },
+        icon: GitBranchIcon,
+        to: "/admin/git",
+        match: "/admin/git",
+        adminOnly: true,
       },
       {
         id: "sandbox",

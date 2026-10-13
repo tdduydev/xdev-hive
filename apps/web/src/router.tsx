@@ -5,6 +5,7 @@ import { orgsMineQuery } from "@/lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "@/lib/redirect.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
 import { AuditPage } from "@/pages/admin/audit-page.tsx";
+import { GitConnectionsPage } from "@/pages/admin/git-page.tsx";
 import { McpPage } from "@/pages/admin/mcp-page.tsx";
 import { PoliciesPage } from "@/pages/admin/policies-page.tsx";
 import { RolesPage } from "@/pages/admin/roles-page.tsx";
@@ -22,7 +23,7 @@ import { WorkflowsPage } from "@/pages/knowledge/workflows-page.tsx";
 import { LeaderPage, validateLeaderSearch } from "@/pages/leader-page.tsx";
 import { LoginPage, validateLoginSearch } from "@/pages/login-page.tsx";
 import { LoginSettingsPage } from "@/pages/login-settings-page.tsx";
-import { MachinesPage } from "@/pages/machines-page.tsx";
+import { MachinesPage, validateMachinesSearch } from "@/pages/machines-page.tsx";
 import { McpConsentPage } from "@/pages/mcp-consent-page.tsx";
 import { MembersPage, validateMembersSearch } from "@/pages/members-page.tsx";
 import { MergeQueuePage } from "@/pages/merge-queue-page.tsx";
@@ -241,7 +242,13 @@ const notificationsRoute = createRoute({
   path: "/notifications",
   component: NotificationsPage,
 });
-const machinesRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/machines", component: MachinesPage });
+const machinesRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/machines",
+  validateSearch: validateMachinesSearch,
+  component: MachinesPage,
+});
+const gitRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/git", component: GitConnectionsPage });
 const costsRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/costs", component: CostsPage });
 
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
@@ -290,6 +297,7 @@ const routeTree = rootRoute.addChildren([
         mergeQueueRoute,
         notificationsRoute,
         machinesRoute,
+        gitRoute,
         costsRoute,
         ...v2Routes,
       ]),

@@ -23,9 +23,11 @@ const isCli = (v: string): v is Cli => (CLIS as string[]).includes(v);
  */
 export function CreateTaskButton({
   projects,
+  label,
   disabledReason,
 }: {
   projects: Project[];
+  label?: string;
   disabledReason?: string | null | undefined;
 }) {
   const [open, setOpen] = useState(false);
@@ -45,7 +47,7 @@ export function CreateTaskButton({
         aria-describedby={disabled && disabledReason ? reasonId : undefined}
       >
         <Icon name="plus" />
-        Tạo việc
+        {label ?? "Tạo việc"}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

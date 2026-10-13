@@ -19,8 +19,8 @@ import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatUsd } from "@/lib/format.ts";
 import { useLang } from "@/lib/i18n.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
+import { createTaskBlockedReason, showsProvision } from "@/lib/provision.ts";
 import { cliLabel, prLabel } from "@/lib/run-view.ts";
-import { createTaskBlockedReason, showsProvision } from "@/lib/scm-connections.ts";
 import {
   BOARD_FILTERS,
   type BoardFilter,
