@@ -1,6 +1,6 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
 import { NAV_GROUPS, navGroups, navItems, screenFromHash, screenParam } from "@/lib/nav.ts";
 import { windowKind } from "@/lib/tauri.ts";
@@ -220,6 +220,57 @@ describe("đóng mở menu và chọn ngôn ngữ", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
     expect(screen.getByLabelText("Language")).toBeTruthy();
     expect(document.documentElement.lang).toBe("en");
+  });
+});
+
+describe("cửa sổ thấp", () => {
+  beforeEach(() => setLang("vi"));
+
+  function fakeHeight(matches: boolean) {
+    window.matchMedia = ((query: string) => ({
+      matches,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  afterEach(() => {
+    // @ts-expect-error jsdom không có matchMedia; trả về trạng thái gốc cho các ca khác.
+    delete window.matchMedia;
+  });
+
+  it("gộp worker và phiên bản sau một dòng, bấm mở chi tiết", async () => {
+    fakeHeight(true);
+    render(<AppShell />);
+    const user = userEvent.setup();
+    expect(screen.queryByText(/^bản dựng tại máy · /)).toBeNull();
+    const toggle = screen.getByRole("button", { name: "Worker và phiên bản" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(await screen.findByText(/^bản dựng tại máy · abc1234 · /)).toBeTruthy();
+    await user.click(toggle);
+    expect(screen.queryByText(/^bản dựng tại máy · /)).toBeNull();
+  });
+
+  it("cửa sổ đủ cao giữ khối chân đầy đủ, không có dòng gộp", async () => {
+    fakeHeight(false);
+    render(<AppShell />);
+    expect(screen.queryByRole("button", { name: "Worker và phiên bản" })).toBeNull();
+    expect(await screen.findByText(/^bản dựng tại máy · abc1234 · /)).toBeTruthy();
+  });
+
+  it("cuộn mục đang chọn vào tầm nhìn", () => {
+    const calls: unknown[] = [];
+    Element.prototype.scrollIntoView = (arg?: unknown) => {
+      calls.push(arg);
+    };
+    location.hash = "#/tokens";
+    render(<AppShell />);
+    // @ts-expect-error gỡ hàm giả để không lọt sang ca khác
+    delete Element.prototype.scrollIntoView;
+    expect(calls).toContainEqual({ block: "nearest" });
   });
 });
 
