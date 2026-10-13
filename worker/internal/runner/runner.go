@@ -449,8 +449,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
-		// push -u ghi upstream vào config chung của repo cache nên cũng phải giữ khoá.
-		if err := gitWrite(ctx, cache, work, "push", "-u", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
+		// Không -u: upstream không ai đọc, mà ghi nó vào config chung thì push (chờ mạng) phải giữ khoá repo cache và
+		// config phình thêm một mục mỗi run. Push không ghi gì vào cache nên chạy ngoài khoá.
+		if err := gitRetryLocked(ctx, work, "push", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
