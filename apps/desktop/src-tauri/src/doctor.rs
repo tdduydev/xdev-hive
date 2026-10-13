@@ -931,6 +931,18 @@ mod tests {
     }
 
     #[test]
+    fn scans_machine_tools_without_folder() {
+        // Màn Tổng quan và Môi trường quét khi người dùng chưa chọn thư mục: chỉ còn công cụ chung của máy.
+        let dir = project_dir(Some("")).unwrap();
+        let entries = scan(dir.as_deref(), &HubFacts::default());
+        let ids: Vec<&str> = entries.iter().map(|e| e.item.id.as_str()).collect();
+        assert_eq!(ids, TOOLS.iter().map(|t| t.id).collect::<Vec<_>>());
+        assert!(entries.iter().all(|e| e.item.source.is_empty()));
+        let git = entries.iter().find(|e| e.item.id == "git").unwrap();
+        assert!(git.item.required);
+    }
+
+    #[test]
     fn kills_commands_past_the_deadline() {
         #[cfg(unix)]
         {
