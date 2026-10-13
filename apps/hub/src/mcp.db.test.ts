@@ -294,6 +294,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "brief_submit",
       "doc_assist_submit",
       "doc_check_submit",
       "doc_comment",
