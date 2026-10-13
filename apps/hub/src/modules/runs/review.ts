@@ -16,6 +16,18 @@ export const reviewReportInput = z.object({
     .max(200)
     .default([])
     .describe("Các phát hiện cụ thể theo file."),
+  // Tuỳ chọn để agent và review chéo cũ (không có rubric) vẫn nộp hợp lệ.
+  checklist: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1).max(300).describe("Mục kiểm, đúng chữ trong danh sách được giao."),
+        passed: z.boolean(),
+        note: z.string().trim().max(2000).nullable().optional().describe("Lý do khi không đạt; trích dòng nếu có."),
+      }),
+    )
+    .max(30)
+    .optional()
+    .describe("Kết quả từng mục kiểm khi lời nhắc có danh sách mục kiểm (quy trình review code)."),
 });
 export type ReviewReport = z.output<typeof reviewReportInput>;
 
@@ -35,7 +47,13 @@ export function reviewPrompt(opts: {
   branch: string;
   baseBranch: string;
   prUrl: string | null;
+  /** Mục kiểm của checkpoint AI trong quy trình review code; rỗng là review chéo cũ. */
+  rubric?: string[] | undefined;
+  /** Đường dẫn trọng tâm của checkpoint; rỗng là cả diff. */
+  focusPaths?: string[] | undefined;
 }): string {
+  const rubric = opts.rubric ?? [];
+  const focus = opts.focusPaths ?? [];
   return [
     `Bạn là reviewer cho task ${opts.taskKey}: ${opts.title}.`,
     ...(opts.body ? ["", "Mô tả task:", opts.body, ""] : []),
@@ -43,12 +61,21 @@ export function reviewPrompt(opts: {
     // Run review chạy chỉ đọc (Claude ở chế độ plan không chạy được lệnh): worker ghi sẵn diff vào file này.
     `Đọc diff so với nhánh chính trong file \`.hive-review.diff\` ở gốc worktree (worker đã tạo sẵn). Không có file đó thì dùng \`git diff origin/${opts.baseBranch}...HEAD\`.`,
     "Chỉ mở thêm file khác khi cần hiểu diff; không đọc toàn bộ repo.",
+    ...(focus.length
+      ? ["", "Tập trung vào các thay đổi khớp những đường dẫn sau; phần còn lại của diff chỉ đọc để hiểu ngữ cảnh:"]
+      : []),
+    ...focus.map((p) => `- ${p}`),
+    ...(rubric.length ? ["", "Danh sách mục kiểm (đánh giá từng mục, đạt hay không, ghi chú khi không đạt):"] : []),
+    ...rubric.map((c) => `- ${c}`),
     "",
     "Quy tắc:",
     "- Không sửa code, không commit, không push. Việc của bạn chỉ là đánh giá.",
     "- Chấm điểm 0–10: đúng yêu cầu của task, đúng logic, có test, an toàn, dễ đọc. 7 trở lên là đủ để merge.",
     "- Trước khi kết thúc, gọi tool MCP `review_submit` của xdev-hive đúng một lần với score, summary và findings",
     "  (mỗi phát hiện có file, line nếu có, severity là critical, major, minor hoặc info, và message).",
+    ...(rubric.length
+      ? ["- Gửi kèm checklist: mỗi mục kiểm ở trên một phần tử, label đúng chữ của mục, passed và note nếu không đạt."]
+      : []),
     "- Không gọi review_submit thì review bị coi là không có kết quả.",
   ].join("\n");
 }
