@@ -31,6 +31,8 @@ export function describeAction(
         return `Cancel run ${action.runId.slice(0, 8)}`;
       case "project.settings":
         return `Change project ${action.projectKey} settings: ${Object.keys(action.patch).join(", ") || "none"}`;
+      case "sdlc.item.create":
+        return `Create AI SDLC item "${action.item.title}" in project ${projects?.find((project) => project.id === action.item.projectId)?.key ?? "unknown"}`;
     }
   }
   switch (action.type) {
@@ -45,6 +47,10 @@ export function describeAction(
     case "project.settings": {
       const keys = Object.keys(action.patch).map((k) => SETTING_LABEL[k] ?? k);
       return `Đổi cấu hình dự án ${action.projectKey}: ${keys.join(", ") || "không có mục nào"}`;
+    }
+    case "sdlc.item.create": {
+      const project = projects?.find((p) => p.id === action.item.projectId);
+      return `Tạo hạng mục AI SDLC "${action.item.title}" trong dự án ${project?.key ?? "không rõ"}`;
     }
   }
 }

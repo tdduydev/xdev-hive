@@ -22,6 +22,8 @@ export const PERMISSION_TREE: readonly PermissionNode[] = [
     branch("leader", [leaf("leader.chat"), leaf("leader.approve")]),
     // Quyết thay checkpoint tự động của phiên review code (cho đạt dù máy chưa kiểm xong hoặc không đạt).
     branch("reviews", [leaf("reviews.override", true)]),
+    // AI SDLC (specs/011): `sdlc.override` cho run code chạy dù tài liệu bắt buộc chưa duyệt, nên là quyền nguy hiểm.
+    branch("sdlc", [leaf("sdlc.read"), leaf("sdlc.write"), leaf("sdlc.override", true), leaf("sdlc.modes.write")]),
   ]),
   branch("knowledge", [
     branch("docs", [leaf("docs.read"), leaf("docs.write"), leaf("docs.delete")]),
@@ -82,6 +84,7 @@ const MEMBER_EXTRA = new Set([
   "merge.enqueue",
   "mcp.tokens",
   "machines.read",
+  "sdlc.write",
 ]);
 const member = (k: string) => viewer(k) || MEMBER_EXTRA.has(k);
 const TEAM_ADMIN_EXTRA = new Set([
@@ -100,9 +103,16 @@ const TEAM_ADMIN_EXTRA = new Set([
   "machines.register",
   "members.invite",
   "reviews.override",
+  "sdlc.override",
+  "sdlc.modes.write",
 ]);
+/**
+ * BA/PO (specs/011 FR-061): soạn, đề xuất và duyệt tài liệu AI SDLC; không tạo task, không chạy run, không quản trị máy.
+ * Liệt kê đủ thay vì lọc theo `.read` để quyền đọc mới thêm sau không tự rơi vào vai trò này.
+ */
+const TEAM_BA = new Set(["sdlc.read", "sdlc.write", "docs.read", "proposals.create", "tasks.read", "runs.read"]);
 
-export const systemRoleId = z.enum(["owner", "admin", "member", "team-admin", "team-member", "team-viewer"]);
+export const systemRoleId = z.enum(["owner", "admin", "member", "team-admin", "team-member", "team-viewer", "team-ba"]);
 export type SystemRoleId = z.infer<typeof systemRoleId>;
 
 /** Quyền của vai trò hệ thống. Vai trò hệ thống không sửa được; quản trị nhân bản thành vai trò tự tạo nếu cần. */
@@ -113,6 +123,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleId, readonly string[]> = 
   "team-admin": PERMISSIONS.filter((k) => member(k) || TEAM_ADMIN_EXTRA.has(k)),
   "team-member": PERMISSIONS.filter(member),
   "team-viewer": PERMISSIONS.filter(viewer),
+  "team-ba": PERMISSIONS.filter((k) => TEAM_BA.has(k)),
 };
 
 const id = z.uuid();

@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { ForbiddenError, type Tx } from "../platform/index.ts";
+import { BadRequestError, ForbiddenError, type Tx } from "../platform/index.ts";
 import { orgMembers, type orgRole, teamMembers, type teamRole, teams } from "./schema.ts";
 
 export type OrgRole = (typeof orgRole.enumValues)[number];
@@ -10,6 +10,15 @@ const TEAM_RANK: Record<TeamRole, number> = { viewer: 1, member: 2, admin: 3 };
 
 const ORG_LABEL: Record<OrgRole, string> = { owner: "chủ sở hữu", admin: "quản trị", member: "thành viên" };
 const TEAM_LABEL: Record<TeamRole, string> = { admin: "quản trị", member: "thành viên", viewer: "người xem" };
+
+/**
+ * Vai trò đội lưu được. Hợp đồng đã có BA/PO (`ba`, specs/011) nhưng enum `team_role` của database và thứ hạng vai trò
+ * chưa có (T004, T018); tới lúc đó từ chối rõ ràng thay vì để database báo lỗi.
+ */
+export function storableTeamRole(role: TeamRole | "ba"): TeamRole {
+  if (role === "ba") throw new BadRequestError("TEAM_ROLE_UNSUPPORTED", "Vai trò BA/PO chưa dùng được trên hub này.");
+  return role;
+}
 
 /** Lọc người nhận thật trong tổ chức: created_by của webhook có thể là danh tính Git, không phải tài khoản hub. */
 export async function notificationRecipients(tx: Tx, userIds?: string[]): Promise<string[]> {
