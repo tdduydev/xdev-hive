@@ -144,6 +144,20 @@ type Runner struct {
 	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
 	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
 	Grace func() time.Duration
+	// RemoveDir, nếu có, nhận thư mục worktree cũ để xoá sau khi Run trả về (worker xoá nền để máy rảnh nhận run
+	// mới ngay). Không có thì Run xoá trước khi trả về.
+	RemoveDir func(dir string)
+}
+
+// trashPrefix là tên thư mục worktree đã gỡ còn chờ xoá trong runs/; ReapOrphans dọn chúng nếu worker chết giữa chừng.
+const trashPrefix = ".trash-"
+
+func (r Runner) removeDir(dir string) {
+	if r.RemoveDir != nil {
+		r.RemoveDir(dir)
+		return
+	}
+	_ = os.RemoveAll(dir)
 }
 
 func (r Runner) grace() time.Duration {
@@ -196,10 +210,19 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	// Kết quả gửi sau khi dọn worktree: hub coi run_result là hết việc của máy và bỏ mọi sự kiện đến sau nó.
 	var result *Result
 	defer func() {
-		// Git may refuse to remove a locked worktree; force is needed during cancellation too.
-		_ = gitWrite(context.Background(), cache, cache, "worktree", "remove", "--force", work)
-		_ = os.RemoveAll(work)
+		// Xoá file của worktree lớn mất cả giây: dời thư mục sang chỗ bỏ (tức thì) rồi chỉ prune trong khoá, xoá file
+		// sau khi gửi kết quả. Không dời được (Windows còn process giữ file) thì gỡ như cũ.
+		trash := filepath.Join(root, fmt.Sprintf("%s%s-%d", trashPrefix, filepath.Base(work), time.Now().UnixNano()))
+		if os.Rename(work, trash) != nil {
+			trash = ""
+			// Git may refuse to remove a locked worktree; force is needed during cancellation too.
+			_ = gitWrite(context.Background(), cache, cache, "worktree", "remove", "--force", work)
+			_ = os.RemoveAll(work)
+		}
 		_ = gitWrite(context.Background(), cache, cache, "worktree", "prune")
+		if trash != "" {
+			defer r.removeDir(trash)
+		}
 		_ = emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "cleanup"})
 		if result == nil && retErr != nil {
 			status := "failed"

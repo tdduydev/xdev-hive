@@ -285,7 +285,7 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	if err == nil {
 		job.Steers = run.steers
-		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
+		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }, RemoveDir: j.removeDir}
 		err = r.Run(ctx, job, sink)
 	}
 	if err != nil {
@@ -299,6 +299,15 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 		}
 		_ = sink.Emit(runner.Event{Type: "result", RunID: run.runID, Attempt: run.attempt, Result: &runner.Result{Status: "failed", Error: msg}})
 	}
+}
+
+// removeDir xoá worktree cũ ngoài slot của run: máy nhận run mới ngay khi gửi kết quả. wait chờ cả việc này khi tắt.
+func (j *jobs) removeDir(dir string) {
+	j.wg.Add(1)
+	go func() {
+		defer j.wg.Done()
+		_ = os.RemoveAll(dir)
+	}()
 }
 
 // accountPoll là chu kỳ thử lại khi chờ tài khoản CLI rảnh (hết run khác, hết nghỉ).
