@@ -26,4 +26,4 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0018](0018-code-review-workflows.md) | Review agent pull requests with code review workflows | Proposed |
 | [0019](0019-hive-cli-and-remote-sessions.md) | Host interactive agent sessions in the worker and control them from a paired phone | Accepted |
 | [0020](0020-local-project-folders-and-machine-full-permission.md) | Bind hub projects to local repositories, and grant full permission per project on the machine | Accepted |
-| [0021](0021-ai-sdlc-mode.md) | Run an AI SDLC mode as data-defined presets over existing review, task and run machinery | Proposed |
+| [0021](0021-ai-sdlc-mode.md) | Run an AI SDLC mode as data-defined presets over existing review, task and run machinery | Accepted |
