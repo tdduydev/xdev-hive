@@ -23,15 +23,6 @@ import { useNow } from "@/lib/use-now.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
-export interface ReviewsSearch {
-  id?: string;
-}
-
-/** `?id=<phiên duyệt>` để thông báo và đề xuất dẫn thẳng tới một tài liệu trong hàng chờ. */
-export function validateReviewsSearch(search: Record<string, unknown>): ReviewsSearch {
-  return typeof search.id === "string" && /^[0-9a-f-]{36}$/i.test(search.id) ? { id: search.id } : {};
-}
-
 type Scope = "mine" | "all";
 const STATUSES: ReviewStatus[] = ["in_review", "changes_requested", "approved", "cancelled"];
 const SLA_STATES: SlaState[] = ["overdue", "due-soon", "on-time", "none"];

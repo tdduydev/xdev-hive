@@ -76,7 +76,7 @@ export const runs = hive
       maxAttempts: integer("max_attempts").notNull().default(3),
       machineId: uuid("machine_id"),
       pinnedMachineId: uuid("pinned_machine_id"),
-      cli: text("cli").$type<"claude" | "codex" | "gemini">(),
+      cli: text("cli").$type<"claude" | "codex" | "gemini" | "antigravity">(),
       model: text("model"),
       branch: text("branch").notNull(),
       /** Chính sách kết quả chốt lúc giao, để cấu hình dự án đổi sau không đổi kết quả của run. */
@@ -142,6 +142,8 @@ export const runs = hive
       index("runs_project_created").on(t.projectId, t.createdAt),
       // runs.search: mới nhất trước (quét ngược index), phân trang theo (created_at, id).
       index("runs_org_created").on(t.orgId, t.createdAt, t.id),
+      // Ô lọc theo máy của runs.search hỏi từng máy có run của đội nào; team_id trong index để khỏi đọc bảng.
+      index("runs_machine").on(t.machineId, t.teamId),
       orgScoped("runs"),
     ],
   )

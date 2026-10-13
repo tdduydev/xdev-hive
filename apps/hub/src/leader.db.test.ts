@@ -602,6 +602,20 @@ describe("Leader chat e2e", () => {
     ).toBe(true);
   });
 
+  it("chọn Antigravity cho leader bị từ chối và không lưu tin: agy không gọi được leader_reply khi chạy chỉ đọc", async () => {
+    const thread = (
+      await api<ChatThread>("POST", "/v1/leader/threads", { projectId: projectIdA, title: "Antigravity" })
+    ).data;
+    const res = await api<{ data?: { code: string } }>("POST", `/v1/leader/threads/${thread.id}/messages`, {
+      content: "Chào",
+      cli: "antigravity",
+    });
+    expect(res.status).toBe(400);
+    expect(res.data.data?.code).toBe("CLI_CANNOT_SUBMIT");
+    const hist = await api<{ messages: ChatMessage[] }>("GET", `/v1/leader/threads/${thread.id}`);
+    expect(hist.data.messages).toHaveLength(0);
+  });
+
   it("phân quyền và RLS: người dùng orgB không xem hay gửi tin vào thread của orgA", async () => {
     const threadRes = await api<ChatThread>("POST", "/v1/leader/threads", {
       projectId: projectIdA,

@@ -10,7 +10,7 @@ import {
   requireOrgRole,
   requireTeamRole,
   type TeamRole,
-  teamRoleOf,
+  teamRolesOf,
   teams,
 } from "../tenancy/index.ts";
 
@@ -46,13 +46,7 @@ export async function readerFor(tx: Tx, principal: Principal): Promise<Reader> {
   }
   const orgRole = await orgRoleOf(tx, principal.userId);
   if (!orgRole) throw new ForbiddenError("NOT_ORG_MEMBER", "Bạn không phải thành viên của tổ chức này.");
-  // Số đội trong một tổ chức nhỏ, hỏi vai trò từng đội một lần là đủ (cùng cách listProjects của catalog).
-  const roles = new Map<string, TeamRole>();
-  for (const { id } of await tx.select({ id: teams.id }).from(teams)) {
-    const role = await teamRoleOf(tx, principal.userId, id);
-    if (role) roles.set(id, role);
-  }
-  return { kind: "user", principal, orgRole, teams: roles };
+  return { kind: "user", principal, orgRole, teams: await teamRolesOf(tx, principal.userId) };
 }
 
 export function canRead(reader: Reader, scope: Scope): boolean {

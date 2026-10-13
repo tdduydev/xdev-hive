@@ -140,7 +140,7 @@ func sandboxCLIEnv(job Job) map[string]string {
 	}
 	// Host credentials are read only from explicit runner-host variables; personal CLI config is never mounted.
 	credentials := map[string]string{
-		"claude": "ANTHROPIC_API_KEY", "codex": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY",
+		"claude": "ANTHROPIC_API_KEY", "codex": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY", "antigravity": "GEMINI_API_KEY",
 	}
 	if key := credentials[job.CLI]; key != "" {
 		if value := os.Getenv("HIVE_HOST_" + strings.ToUpper(job.CLI) + "_API_KEY"); value != "" {

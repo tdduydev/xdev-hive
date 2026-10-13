@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { type Project, RUN_STATUS_GROUPS, type RunListItem, type RunState } from "@xdev-hive/contracts";
+import type { Project, RunListItem } from "@xdev-hive/contracts";
+import { RUN_STATUS_GROUPS, type RunState } from "@xdev-hive/contracts/run-states";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";

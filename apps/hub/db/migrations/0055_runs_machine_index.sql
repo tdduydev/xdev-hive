@@ -1,0 +1,1 @@
+CREATE INDEX "runs_machine" ON "hive"."runs" USING btree ("machine_id","team_id");
