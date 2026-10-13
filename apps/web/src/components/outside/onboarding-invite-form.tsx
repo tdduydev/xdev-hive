@@ -25,7 +25,7 @@ const linkText: Dict<{
 }> = {
   vi: {
     orgRoles: { admin: "Quản trị", member: "Thành viên" },
-    teamRoles: { admin: "Quản trị", member: "Thành viên", viewer: "Chỉ xem" },
+    teamRoles: { admin: "Quản trị", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
     links: "Link chỉ hiện một lần. Chép và gửi cho từng người ngay bây giờ. Mỗi link dùng được một lần",
     expires: (date) => `, hết hạn ngày ${date}`,
     linkFor: (email) => `Link mời cho ${email}`,
@@ -33,7 +33,7 @@ const linkText: Dict<{
   },
   en: {
     orgRoles: { admin: "Admin", member: "Member" },
-    teamRoles: { admin: "Admin", member: "Member", viewer: "Viewer" },
+    teamRoles: { admin: "Admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
     links: "Links are shown only once. Copy and send each person their link now. Each link can be used once",
     expires: (date) => `, expires on ${date}`,
     linkFor: (email) => `Invitation link for ${email}`,

@@ -91,6 +91,7 @@ const text: Dict<{
       leader: "Leader",
       doccheck: "Kiểm tài liệu",
       docassist: "Trợ lý tài liệu",
+      sdlc: "AI SDLC",
     },
     states: RUN_STATE_LABEL,
     groups: Object.fromEntries(RUN_FILTERS.map((filter) => [filter.key, filter.label])),
@@ -134,6 +135,7 @@ const text: Dict<{
       leader: "Leader",
       doccheck: "Doc check",
       docassist: "Doc assistant",
+      sdlc: "AI SDLC",
     },
     states: {
       queued: "Queued",

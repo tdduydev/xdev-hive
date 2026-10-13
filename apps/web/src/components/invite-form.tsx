@@ -28,7 +28,7 @@ const text: Dict<{
   linksWarning: (expiry: string | undefined) => string;
   inviteLink: (email: string) => string;
   orgRoles: Record<"owner" | "admin" | "member", string>;
-  teamRoles: Record<"admin" | "member" | "viewer", string>;
+  teamRoles: Record<TeamRole, string>;
 }> = {
   vi: {
     emailsHint: "Nhiều email cách nhau bằng dấu phẩy hoặc xuống dòng.",
@@ -44,7 +44,7 @@ const text: Dict<{
       `Link chỉ hiện một lần. Chép và gửi cho từng người ngay bây giờ. Mỗi link dùng được một lần${expiry ? `, hết hạn ngày ${expiry}` : ""}.`,
     inviteLink: (email) => `Link mời cho ${email}`,
     orgRoles: { owner: "Chủ sở hữu", admin: "Quản trị", member: "Thành viên" },
-    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem" },
+    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
   },
   en: {
     emailsHint: "Separate emails with commas or new lines.",
@@ -60,7 +60,7 @@ const text: Dict<{
       `Links are shown only once. Copy and send them to each person now. Each link can be used once${expiry ? `, expires on ${expiry}` : ""}.`,
     inviteLink: (email) => `Invite link for ${email}`,
     orgRoles: { owner: "Owner", admin: "Admin", member: "Member" },
-    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer" },
+    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
   },
 };
 
