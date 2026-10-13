@@ -66,3 +66,12 @@ Mac Intel chưa có bản dựng.
 - Windows hiện cảnh báo SmartScreen ("More info" → "Run anyway") cho tới khi có chứng chỉ ký mã.
 
 Cập nhật tự động của app (Tauri updater) chưa bật: xem mục "Cập nhật tự động" trong `apps/desktop/README.md`.
+
+## Ký app macOS
+
+App macOS được ký bằng chứng chỉ tự ký "xDev Hive Code Signing" (secret `APPLE_CERTIFICATE`,
+`APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`). Chưa có `APPLE_ID`, nên bản build không được notarize: lần cài đầu
+tiên macOS vẫn cảnh báo app không rõ nhà phát triển. Ký bằng một chứng chỉ cố định làm yêu cầu nhận diện của app ổn định
+qua các bản, nên keychain chỉ hỏi mật khẩu một lần chứ không hỏi lại sau mỗi lần cập nhật. Workflow `desktop.yml` tin
+chứng chỉ này trên runner rồi kiểm app ra không còn ký ad-hoc. Đổi chứng chỉ (hết hạn sau 10 năm, hoặc chuyển sang chứng
+chỉ Apple Developer) thì người dùng phải cho phép keychain thêm một lần.
