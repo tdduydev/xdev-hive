@@ -4,6 +4,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { PickFolderButton } from "@/components/pick-folder-button.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import { useFolder } from "@/lib/folder.ts";
 import { type HubProject, hubTool, matchProject } from "@/lib/hub.ts";
@@ -409,7 +410,12 @@ export function SkillsScreen() {
     }
     installedSkills(target, folder).then(
       (l) => alive && setLocal(l),
-      (e) => alive && setLocalError(errorText(e)),
+      (e) => {
+        if (!alive) return;
+        // Không giữ danh sách của nơi cài trước: trạng thái "Đã cài" sẽ sai.
+        setLocal(null);
+        setLocalError(errorText(e));
+      },
     );
     return () => {
       alive = false;
@@ -506,6 +512,8 @@ export function SkillsScreen() {
   const shown = filtered.slice(pageNo * PAGE, pageNo * PAGE + PAGE);
   const cur = rows.find((r) => r.id === curId) ?? shown[0] ?? null;
   const pending = rows.filter((r) => PENDING.includes(r.state));
+  // Còn chờ hub hay danh sách trên máy; một phần lỗi thì phần đó coi như xong để bảng không kẹt "Đang đọc…".
+  const loading = (!!account && !hub && !hubError) || (!local && !localError);
   const selectable = (r: Row) => r.state !== "shadowed" && r.state !== "own";
   const project_ = project?.key ?? null;
 
@@ -647,6 +655,7 @@ export function SkillsScreen() {
         <div className="flex min-w-72 flex-1 flex-col gap-1">
           <p className="text-[13px] text-muted-foreground">{t.lead}</p>
           {sub && <p className={cn("text-[13px]", hubError ? "text-destructive" : "text-muted-foreground")}>{sub}</p>}
+          {account && !hubError && target === "project" && !folder && <PickFolderButton />}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
@@ -796,7 +805,7 @@ export function SkillsScreen() {
               {shown.length === 0 ? (
                 <TableRow>
                   <Td colSpan={canSync ? 7 : 6} className="text-[13px] text-muted-foreground">
-                    {hub || local ? t.empty : t.loading}
+                    {loading ? t.loading : t.empty}
                   </Td>
                 </TableRow>
               ) : (

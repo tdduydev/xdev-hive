@@ -166,7 +166,8 @@ describe("thẻ worker", () => {
     };
     render(<AppShell />);
     expect(await screen.findByText("Worker đang kết nối")).toBeTruthy();
-    expect(screen.getByText("hive.acme.vn")).toBeTruthy();
+    // Màn Tổng quan cũng có ô worker; ở đây chỉ kiểm thẻ trong AppNav.
+    expect(within(screen.getByRole("navigation")).getByText("hive.acme.vn")).toBeTruthy();
     await act(async () =>
       push({
         kind: "online",

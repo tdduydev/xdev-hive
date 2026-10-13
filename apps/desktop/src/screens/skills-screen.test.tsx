@@ -294,6 +294,42 @@ describe("SkillsScreen", () => {
     expect(screen.queryByRole("button", { name: "Cập nhật lên v5" })).toBeNull();
   });
 
+  it("chưa chọn thư mục: vẫn hiện skill của tổ chức, mời chọn thư mục, không đọc thư mục", async () => {
+    saveFolder("");
+    const calls = fakeTauri();
+    renderSkills();
+    await screen.findByRole("button", { name: "Đồng bộ 1 bản mới" }, SLOW);
+    const review = await rowOf("code-review");
+    expect(within(review).getByText("Tổ chức")).toBeTruthy();
+    expect(within(review).getByText("Chưa cài")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^db-migration/ })).toBeNull();
+    expect(screen.getByText(/Chọn thư mục làm việc ở góc trên bên trái, hoặc cài vào tài khoản/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Chọn thư mục" })).toBeTruthy();
+    expect(screen.queryByText("Đang đọc…")).toBeNull();
+    expect(calls.some((c) => c.command === "workspace_meta" || c.command === "installed_skills")).toBe(false);
+    expect(calls.find((c) => c.args?.name === "skill_list")?.args).toEqual({
+      name: "skill_list",
+      args: { limit: 50, offset: 0 },
+    });
+  });
+
+  it("chưa liên kết và không đọc được skill trên máy: báo lỗi, bảng không kẹt Đang đọc", async () => {
+    fakeTauri();
+    const invoke = window.__TAURI__?.core.invoke;
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T,>(command: string, args?: Record<string, unknown>) =>
+          command === "installed_skills"
+            ? Promise.reject("Không đọc được .claude/skills.")
+            : (invoke as NonNullable<typeof invoke>)<T>(command, args),
+      },
+    };
+    renderSkills(null);
+    expect(await screen.findByText("Không đọc được .claude/skills.")).toBeTruthy();
+    expect(await screen.findByText("Không có skill nào khớp.")).toBeTruthy();
+    expect(screen.queryByText("Đang đọc…")).toBeNull();
+  });
+
   it("chưa liên kết: chỉ hiện skill trên máy, nhắc liên kết, chữ tiếng Anh", async () => {
     setLang("en");
     const calls = fakeTauri();

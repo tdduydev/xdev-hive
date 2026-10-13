@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils.ts";
 const text: Dict<{
   lead: string;
   folderHint: string;
+  machineOnly: string;
   check: string;
   recheck: string;
   scanning: string;
@@ -71,6 +72,7 @@ const text: Dict<{
   vi: {
     lead: "Những gì máy này cần để làm việc: công cụ chung của worker, yêu cầu của thư mục dự án (go.mod, package.json, .nvmrc, .hive/setup.sh) và MCP server tổ chức cho phép.",
     folderHint: "Để trống thì chỉ kiểm công cụ trên máy.",
+    machineOnly: "Dưới đây là công cụ chung của máy; sửa thư mục để kiểm thêm yêu cầu của dự án.",
     check: "Kiểm tra",
     recheck: "Kiểm tra lại",
     scanning: "Đang kiểm tra máy…",
@@ -110,6 +112,7 @@ const text: Dict<{
   en: {
     lead: "What this machine needs: the worker's common tools, the project folder's requirements (go.mod, package.json, .nvmrc, .hive/setup.sh) and the MCP servers the organization allows.",
     folderHint: "Leave empty to check only the tools on this machine.",
+    machineOnly: "Below are the machine's common tools; fix the folder to check the project's needs too.",
     check: "Check",
     recheck: "Re-check",
     scanning: "Checking this machine…",
@@ -193,6 +196,7 @@ export function SetupScreen() {
   const [draft, setDraft] = useState(folder);
   const [items, setItems] = useState<CheckItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [machineOnly, setMachineOnly] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [onlyTodo, setOnlyTodo] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -203,15 +207,28 @@ export function SetupScreen() {
     async (dir: string) => {
       setScanning(true);
       setError(null);
+      setMachineOnly(false);
+      const show = (found: CheckItem[]) => {
+        setItems(found);
+        setSelectedId((id) => (id && found.some((i) => i.id === id) ? id : (found[0]?.id ?? null)));
+      };
       try {
         // Thư mục khớp dự án nào trên hub thì Rust hỏi hub MCP server được phép của dự án đó.
         const key = account ? await projectKeyOf(dir) : null;
         setProject(key);
-        const found = sortChecks(await scanEnvironment(dir, key));
-        setItems(found);
-        setSelectedId((id) => (id && found.some((i) => i.id === id) ? id : (found[0]?.id ?? null)));
+        show(sortChecks(await scanEnvironment(dir, key)));
       } catch (e) {
         setError(errorText(e));
+        // Thư mục hỏng (đã xoá, gõ sai) chỉ làm mất phần theo dự án: công cụ chung của máy vẫn kiểm được.
+        if (dir.trim()) {
+          try {
+            show(sortChecks(await scanEnvironment("")));
+            setProject(null);
+            setMachineOnly(true);
+          } catch {
+            /* Lỗi đầu đã báo. */
+          }
+        }
       } finally {
         setScanning(false);
       }
@@ -253,6 +270,7 @@ export function SetupScreen() {
       {error && (
         <p role="alert" className="rounded-lg bg-destructive-soft px-3 py-2 text-[13px] text-destructive">
           {error}
+          {machineOnly && <span className="block text-muted-foreground">{t.machineOnly}</span>}
         </p>
       )}
       {!items && scanning && (
@@ -324,7 +342,14 @@ export function SetupScreen() {
           </section>
           <aside className="w-full min-w-0 rounded-xl border bg-card text-card-foreground min-[1000px]:flex-[2]">
             {selected ? (
-              <Detail key={selected.id} item={selected} folder={folder} project={project} onDone={() => scan(folder)} />
+              <Detail
+                key={selected.id}
+                item={selected}
+                // Đang hiện phần toàn máy vì thư mục hỏng: chạy lệnh cài cũng không gửi thư mục đó.
+                folder={machineOnly ? "" : folder}
+                project={project}
+                onDone={() => scan(folder)}
+              />
             ) : (
               <p className="p-4 text-muted-foreground">{t.pick}</p>
             )}
