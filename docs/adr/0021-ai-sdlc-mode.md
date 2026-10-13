@@ -1,7 +1,7 @@
 # 0021. Run an AI SDLC mode as data-defined presets over existing review, task and run machinery
 
-- Status: Proposed
-- Date: 2026-10-13
+- Status: Accepted
+- Date: 2026-10-13 (accepted 2026-10-13 after the product owner answered the open questions)
 - Deciders: product owner (tdduydev), maintainers
 
 ## Context
@@ -20,6 +20,20 @@ The product owner asked for an "AI SDLC" mode and decided on 2026-10-13:
 - The desktop app is where users do the whole flow (review and documents only, no agent execution); the web does the
   whole flow with the same shared screens plus configuration; agent work runs on dedicated "AI SDLC worker" machines
   that need only `hive-worker`, with machine labels to keep other runs off them.
+
+The product owner then answered the open questions of the first draft (spec 011 "Clarifications"):
+
+- Approved documents reach the repository by a pull request per repository on branch `hive/sdlc/<NNN>-<slug>`, with
+  commit status `xdev-hive/sdlc` and the merge queue, without a second code review; a project may choose direct
+  commits.
+- BA/PO users get a team system role with SDLC read and write, document proposals and review eligibility, and no run
+  or machine permissions; the desktop app maps it to the `writer` profile.
+- One work item may span several projects and repositories in this release (for example backend, frontend and mobile),
+  owned by different teams.
+- Agent work runs on the team's shared AI SDLC workers by default, optionally on the requester's machine.
+- Human gates of low-risk phases may be auto-approved when the AI review reaches a threshold ("Continue
+  automatically" of AI-DLC), never for requirements of heavy modes or sensitive changes, with an audit record and a
+  revocation window; organizations can turn it off.
 
 What exists: document review workflows with gates and baselines (spec 004, `knowledge/reviews.ts`), the block editor
 (spec 005, `packages/doc-editor`), commits to Git through `GitProvider` (spec 006 skill sync), tasks without
@@ -50,10 +64,13 @@ must not import each other in a cycle; one PostgreSQL, no new service.
    by the step in `run_result.report.artifacts`. Questions and structured results go through MCP tools `sdlc_ask`,
    `sdlc_report` and `sdlc_context`. Only workers announcing the `sdlc` capability receive these runs. Prompts are built
    on the hub per preset step, and call a method skill when the repository has it.
-5. **Repository sync.** After a baseline, a job writes the item's changed documents in one commit with a
-   `Hive-Sdlc-Item` trailer, by pull request (proposed default) or direct commit per project. Pushes to the default
-   branch (webhook, plus a periodic scan) are compared by content hash; a difference not made by the hub becomes a
-   document proposal that goes through the phase gate. Repository edits never become a baseline on their own.
+5. **Repository sync.** After a baseline, a job per (item, repository) writes the changed documents of that
+   repository in one commit with a `Hive-Sdlc-Item` trailer. By default it opens or updates one pull request per
+   repository on `hive/sdlc/<NNN>-<slug>`, sets commit status `xdev-hive/sdlc` to success and adds the pull request to
+   the merge queue without a code review session, since the content passed the gate on the hub; a project may choose
+   direct commits or no sync. Pushes to the default branch (webhook, plus a periodic scan) are compared by content
+   hash; a difference not made by the hub becomes a document proposal that goes through the phase gate. Repository
+   edits never become a baseline on their own.
 6. **Tasks get dependencies and checklists.** The `tasks` module gains `task_dependencies` and `tasks.checklist`. The
    hub parses the approved task document into a breakdown (one hub task per run and pull request, steps as checklist
    items, dependency graph, waves); the breakdown review screen edits the structure and writes the Markdown back, so
@@ -72,6 +89,32 @@ must not import each other in a cycle; one PostgreSQL, no new service.
 10. **Shared screens.** A package `@xdev-hive/sdlc-ui` holds the item board, item detail, questions, breakdown review,
     trace matrix, metrics, mode editor and fleet table; the web and the desktop app provide routes, menus and an
     environment object, like `@xdev-hive/doc-editor`.
+11. **Items spanning several projects.** An item has a home project (holding its number, shared documents and the
+    owning team) and up to seven participant projects of the same organization, possibly owned by other teams.
+    Requirements, design and the task breakdown are shared documents in the home project; each hub task belongs to
+    exactly one project and opens its pull request there; task dependencies may cross projects. A cross-repository
+    contract (API, events, schema) is a separate document with one provider and one or more consumers, written to the
+    provider repository and copied read-only into consumer repositories, gated by a checkpoint per involved team and
+    required before implementation of every party. Gates marked per project expand into one checkpoint per
+    participating team. The code run gate, overrides, waves, machine labels and sync settings apply per project of the
+    task; trace coverage is reported per project and in total.
+12. **Tenancy of multi-project items.** Items belong to the organization (row-level security on `org_id`, like every
+    table) and to the home project's team. Members of any participating team can read the item; every write checks the
+    caller's permission on each project it touches; run, log and pull request details keep their per-project access.
+    Team-level visibility is enforced by one access filter in the `sdlc` module, and the knowledge module grants read
+    and propose access on an item's documents through an injected hook.
+13. **AI auto-approval.** The review state machine of `knowledge` calls an injected `autoDecide` when a session reaches
+    a human checkpoint. `sdlc` approves on the reviewer's behalf only if the mode allows it for that phase and
+    checkpoint, the project enabled it, the organization policy allows it, the AI checkpoint of the session scored at
+    least the effective threshold with no major finding, the AI reviewer differs from the draft's author, the document
+    is not a contract, is not the requirements of a heavy mode or item (size L or XL), and touches no sensitive keyword
+    or path of the organization or project. The decision is recorded as "auto-approved by AI" with score, threshold and
+    reasons, audited and notified. Within a revocation window (24 hours by default) eligible reviewers, the item owner
+    or holders of `sdlc.override` can revoke it: a new review on the same baseline reopens the human checkpoints and the
+    code run gate treats the document as not approved until then. Configuration has three layers (mode, project,
+    organization), and the later layers can only make it stricter.
+14. **BA/PO role.** A new team member role `ba` and system role `team-ba` grant SDLC read and write, document proposals
+    and review eligibility, without task creation, runs or machines; it ranks between viewer and member.
 
 ## Consequences
 
@@ -85,7 +128,17 @@ must not import each other in a cycle; one PostgreSQL, no new service.
 - Bad: parsers for each task-document format must track upstream format changes.
 - Bad: `sdlc` runs may write files on the worker, unlike other non-code runs; they are confined to a temporary
   worktree and never pushed.
-- Open: sync method (spec 011 Q1), the app profile for BA/PO (Q2), items spanning several repositories (Q3).
+- Good: a feature that touches backend, frontend and mobile is one item with one set of documents, one dependency
+  graph and one trace matrix, while each team keeps control of its repository through per-team checkpoints and
+  per-project permissions.
+- Bad: row-level security separates organizations only; visibility between teams inside an organization depends on
+  the `sdlc` access filter, so a missed filter would expose an item to other teams of the same organization. Tests call
+  every route and MCP tool as an outsider; team-level row security is left to a separate decision.
+- Bad: shared documents live only in the home repository; agents in other repositories read them through seed files
+  and an index file until multi-repository checkout exists.
+- Good: low-risk phases no longer wait for people when the AI review is confident, matching AI-DLC.
+- Bad: an auto-approval can let a weak document become a baseline; the exclusions, the different-reviewer rule, the
+  revocation window and the revocation rate metric limit, but do not remove, that risk.
 
 ## Alternatives considered
 
@@ -101,10 +154,21 @@ must not import each other in a cycle; one PostgreSQL, no new service.
 - Push every small Spec Kit task to the board: rejected by the v1 lessons (58 small tasks turned the board into
   noise).
 - Let workers declare their labels: a machine could claim a label to receive sensitive runs.
+- One project per item, with an "initiative" grouping items later (first draft): rejected by the product owner; it
+  would split the dependency graph and trace across items.
+- Copy shared documents into every participating repository: N copies to keep in sync and N places for drift; agents
+  get them through seed files instead.
+- Put multi-project items under an organization-level document scope: every team of the organization could read them,
+  and saving would need organization administrators.
+- Team-level row-level security for SDLC tables only: needs the user and team context in `withTenant`, a change for the
+  whole hub; kept for a separate decision.
+- Auto-approval as a single flag on the mode: organizations could not turn it off globally, and projects could not make
+  it stricter.
+- Let the drafting agent's own score decide: the agent would grade its own work; the reviewer must differ.
 
 ## Links
 
-- [specs/011-ai-sdlc-mode](../../specs/011-ai-sdlc-mode/spec.md), SRS SDLC-01 … SDLC-17
+- [specs/011-ai-sdlc-mode](../../specs/011-ai-sdlc-mode/spec.md), SRS SDLC-01 … SDLC-20
 - [0005](0005-contract-first-api.md), [0006](0006-outbound-worker-protocol.md),
   [0012](0012-spec-driven-development.md), [0015](0015-doc-editor-collaborative-engine.md),
   [0017](0017-admin-web-client-app-and-machine-ownership.md), [0018](0018-code-review-workflows.md),
