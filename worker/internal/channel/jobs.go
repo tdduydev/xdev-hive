@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -226,7 +227,7 @@ func (j *jobs) onOffer(m *JobOffer) {
 		// Giữ tài khoản ngay khi nhận để hai đề nghị cùng lúc không chọn trùng một tài khoản đã đủ run. Không tài khoản
 		// nào rảnh thì vẫn nhận và chờ lúc chạy (execute): từ chối thì hub bỏ máy này cho lần thử, mà run của chủ máy cá
 		// nhân không có máy nào khác nhận.
-		account, err := j.cfg.Accounts.Acquire(cli)
+		account, err := j.cfg.Accounts.Acquire(cli, accounts.RoleOf(spec.Kind))
 		if err != nil && !errors.Is(err, accounts.ErrBusy) {
 			reason = fmt.Sprintf("CLI %s: %v", cli, err)
 			break
@@ -277,7 +278,7 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	job, err := decodeJob(offer, lease, j.cfg.HubURL, j.cfg.Project)
 	if err == nil && run.waitAccount {
-		run.account, err = j.waitAccount(ctx, job.CLI, run.runID)
+		run.account, err = j.waitAccount(ctx, job.CLI, accounts.RoleOf(job.Kind), run.runID)
 		if err != nil && ctx.Err() != nil {
 			_ = sink.Emit(runner.Event{Type: "result", RunID: run.runID, Attempt: run.attempt, Result: &runner.Result{Status: "cancelled", Error: err.Error()}})
 			return
@@ -285,7 +286,7 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	if err == nil {
 		job.Steers = run.steers
-		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
+		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }, RemoveDir: j.removeDir}
 		err = r.Run(ctx, job, sink)
 	}
 	if err != nil {
@@ -301,20 +302,31 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 }
 
+// removeDir xoá worktree cũ ngoài slot của run: máy nhận run mới ngay khi gửi kết quả. wait chờ cả việc này khi tắt.
+func (j *jobs) removeDir(dir string) {
+	j.wg.Add(1)
+	go func() {
+		defer j.wg.Done()
+		_ = os.RemoveAll(dir)
+	}()
+}
+
 // accountPoll là chu kỳ thử lại khi chờ tài khoản CLI rảnh (hết run khác, hết nghỉ).
 var accountPoll = 15 * time.Second
 
-// waitAccount chờ một tài khoản của CLI rảnh cho run đã nhận lease. Lease của hub vẫn được gia hạn qua heartbeat.
-func (j *jobs) waitAccount(ctx context.Context, cli, runID string) (*accounts.Lease, error) {
-	logged := false
+// waitAccount chờ một tài khoản của CLI nhận được run (rảnh, hết nghỉ, dưới ngưỡng quota) cho run đã nhận lease. Lease
+// của hub vẫn được gia hạn qua heartbeat.
+func (j *jobs) waitAccount(ctx context.Context, cli, role, runID string) (*accounts.Lease, error) {
+	last := ""
 	for {
-		account, err := j.cfg.Accounts.Acquire(cli)
+		account, err := j.cfg.Accounts.Acquire(cli, role)
 		if !errors.Is(err, accounts.ErrBusy) {
 			return account, err
 		}
-		if !logged {
-			j.log.Info("Chờ tài khoản CLI rảnh", "run", runID, "cli", cli)
-			logged = true
+		// Ghi lại khi lý do đổi (hết nghỉ nhưng chạm ngưỡng, …), không ghi mỗi lần thử.
+		if err.Error() != last {
+			j.log.Info("Chờ tài khoản CLI nhận run", "run", runID, "cli", cli, "reason", err.Error())
+			last = err.Error()
 		}
 		select {
 		case <-ctx.Done():
@@ -616,13 +628,37 @@ func queuedRunIDs(dir string) []string {
 }
 
 // ackPending xoá gói của run có seq tới uptoSeq. Ack không mang attempt: gói của attempt cũ hub đã bỏ (fencing) nên
-// xoá cùng không sao.
+// xoá cùng không sao. Chỉ đọc tên file: ack chạy trên vòng đọc kết nối, đọc và giải mã mọi gói chờ (mỗi gói log tới
+// 16 KiB) cho mỗi ack làm gói sau của hub chờ theo số gói còn trên đĩa.
 func ackPending(dir, runID string, upto int64) {
-	for _, it := range readPending(dir) {
-		if it.head.RunID == runID && it.head.Seq <= upto {
-			_ = os.Remove(it.path)
+	entries, _ := os.ReadDir(dir)
+	id := safeID(runID)
+	for _, e := range entries {
+		if name, seq, ok := parsePendingName(e.Name()); ok && name == id && seq <= upto {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
+}
+
+// parsePendingName tách tên do pendingName đặt thành safeID của run và seq.
+func parsePendingName(file string) (string, int64, bool) {
+	rest, ok := strings.CutSuffix(file, ".json")
+	if !ok || len(rest) < 22 || rest[len(rest)-21] != '-' {
+		return "", 0, false
+	}
+	seq, err := strconv.ParseInt(rest[len(rest)-20:], 10, 64)
+	if err != nil {
+		return "", 0, false
+	}
+	rest = rest[:len(rest)-21]
+	i := strings.LastIndexByte(rest, '-')
+	if i < 0 {
+		return "", 0, false
+	}
+	if _, err := strconv.Atoi(rest[i+1:]); err != nil {
+		return "", 0, false
+	}
+	return rest[:i], seq, true
 }
 
 // recoverInterrupted chạy lúc worker khởi động: run còn marker là run đang chạy khi worker chết. Tiến trình CLI đã

@@ -598,6 +598,29 @@ describe("từ chối, huỷ, không có máy", () => {
     await Promise.all([b.close(), c.close()]);
   });
 
+  it("máy đang được giao run khác (tranh khoá máy) thì giao lại ngay khi khoá nhả, không chờ heartbeat", async () => {
+    const m = await seedMachine(`lk-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect(m);
+    // Giao dịch khác đang giữ khoá giao việc của máy, như khi hai run cùng được giao một lúc (e2e 10a).
+    const holder = await admin.connect();
+    await holder.query("begin");
+    await holder.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`runs:machine:${m.id}`]);
+    const task = await newTask("Giao lúc máy đang bị khoá");
+    const run = await startRun(task.id);
+    await new Promise((r) => setTimeout(r, 300));
+    await holder.query("commit");
+    holder.release();
+    const offer = await w.next("job_offer", (o) => o.runId === run.id, 2000);
+    expect(offer.attempt).toBe(1);
+    const waiting = await admin.query("select 1 from hive.run_events where run_id = $1 and type = 'waiting_machine'", [
+      run.id,
+    ]);
+    expect(waiting.rowCount).toBe(0);
+    w.send({ type: "job_reject", runId: run.id, attempt: 1, reason: "test xong" });
+    await api<Run>("POST", `/v1/runs/${run.id}/cancel`);
+    await w.close();
+  });
+
   it("không máy nào có CLI phù hợp thì giữ queued; huỷ run đang chờ thì cancelled ngay", async () => {
     const task = await newTask("Cần Gemini");
     const run = await startRun(task.id, { cli: "gemini" });
@@ -1196,6 +1219,51 @@ describe("chính sách agent của tổ chức", () => {
       expect((await w.next("job_offer", (o) => o.runId === pinned.id)).spec).toMatchObject({ model: "gpt-5-codex" });
     } finally {
       await w.close();
+    }
+  });
+
+  it("dự án không cho toàn quyền: giao run code Antigravity bị từ chối, máy chỉ có agy không nhận run tự chọn CLI", async () => {
+    const { status, data } = await api<{ code: string; message: string }>("POST", "/v1/runs", {
+      taskId: (await newTask("Antigravity khi chỉ có quyền workspace")).id,
+      cli: "antigravity",
+    });
+    expect(status).toBe(409);
+    expect(JSON.stringify(data)).toContain("CLI_NEEDS_FULL_PERMISSIONS");
+    expect(JSON.stringify(data)).toContain("toàn quyền");
+    const agy = await FakeWorker.connect(await seedMachine(`agy-ws-${tag}`, ["antigravity", "claude"]));
+    try {
+      const run = await startRun((await newTask("Tự chọn CLI khi chỉ có quyền workspace")).id);
+      const offer = await agy.next("job_offer", (o) => o.runId === run.id);
+      expect(offer.spec).toMatchObject({ cli: "claude" });
+      agy.send({ type: "job_reject", runId: run.id, attempt: 1, reason: "test" });
+    } finally {
+      await agy.close();
+    }
+  });
+
+  it("run Antigravity chỉ giao cho máy có agy và theo model chính sách cho Antigravity", async () => {
+    // agy không giới hạn được trong worktree nên chỉ chạy run code khi dự án cho toàn quyền.
+    await admin.query(
+      `update hive.projects set settings = settings || '{"runPermissions":{"mode":"full"}}'::jsonb where id = $1`,
+      [projectId],
+    );
+    const claude = await FakeWorker.connect(await seedMachine(`agy-cl-${tag}`, ["claude"]));
+    const agy = await FakeWorker.connect(await seedMachine(`agy-${tag}`, ["antigravity"]));
+    try {
+      await setPolicy({
+        allowedModels: { claude: [], codex: [], gemini: [], antigravity: ["gemini-3.8-flash-high"] },
+        neverAutoUpgrade: true,
+      });
+      const run = await startRun((await newTask("Việc cho Antigravity")).id, { cli: "antigravity" });
+      expect(run.cli).toBe("antigravity");
+      const offer = await agy.next("job_offer", (o) => o.runId === run.id);
+      expect(offer.spec).toMatchObject({ kind: "code", cli: "antigravity", model: "gemini-3.8-flash-high" });
+      await expect(claude.next("job_offer", (o) => o.runId === run.id, 300)).rejects.toThrow();
+      agy.send({ type: "job_reject", runId: run.id, attempt: 1, reason: "test" });
+    } finally {
+      await setPolicy({});
+      await Promise.all([claude.close(), agy.close()]);
+      await admin.query("update hive.projects set settings = settings - 'runPermissions' where id = $1", [projectId]);
     }
   });
 

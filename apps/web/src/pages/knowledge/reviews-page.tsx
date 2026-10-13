@@ -101,11 +101,11 @@ function ReviewsScreen() {
           <span className="flex flex-col items-start gap-0.5">
             <span className="flex items-center gap-1.5">
               <GateKindBadge kind={row.gate.kind} />
-              <span className="font-mono text-[11px] text-muted-foreground">
+              <span className="font-mono text-xs text-muted-foreground">
                 {row.gate.index + 1}/{row.gate.total}
               </span>
             </span>
-            <span className="text-[13px]">{row.gate.name}</span>
+            <span className="text-sm">{row.gate.name}</span>
           </span>
         ) : (
           <ReviewStatusPill status={row.status} />
@@ -174,7 +174,7 @@ function ReviewsScreen() {
             value={scope}
             onChange={setScope}
           />
-          <label htmlFor={`${ids}-status`} className="flex items-center gap-2 text-[13px] font-medium">
+          <label htmlFor={`${ids}-status`} className="flex items-center gap-2 text-sm font-medium">
             {t.status}
             <NativeSelect
               id={`${ids}-status`}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -48,6 +47,13 @@ func TestRunnerPublishesAndNoChanges(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Join(data, "runs", tc.name+"-1")); !os.IsNotExist(err) {
 				t.Fatalf("worktree remains: %v", err)
+			}
+			// Push không ghi upstream vào config chung của repo cache (config phình theo số run, push phải giữ khoá).
+			caches, _ := filepath.Glob(filepath.Join(data, "repos", "*.git"))
+			for _, c := range caches {
+				if cfg, _ := os.ReadFile(filepath.Join(c, "config")); strings.Contains(string(cfg), "[branch ") {
+					t.Fatalf("config của repo cache có mục branch:\n%s", cfg)
+				}
 			}
 		})
 	}
@@ -247,6 +253,9 @@ func TestReapOrphans(t *testing.T) {
 
 // TestMain cho phép chính binary test đóng vai CLI claude giả (copy thành claude/claude.exe vào PATH): Windows không chạy được shell script.
 func TestMain(m *testing.M) {
+	if capture := os.Getenv("HIVE_FAKE_AGY"); capture != "" {
+		fakeAgy(capture)
+	}
 	if mode := os.Getenv("HIVE_FAKE_MCP_MODE"); mode != "" {
 		for i, a := range os.Args {
 			if a == "--mcp-config" && i+1 < len(os.Args) {
@@ -266,28 +275,7 @@ func TestMain(m *testing.M) {
 
 func installFakeClaude(t *testing.T) string {
 	t.Helper()
-	name := "claude"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	bin := t.TempDir()
-	src, err := os.Open(os.Args[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer src.Close()
-	dst, err := os.OpenFile(filepath.Join(bin, name), os.O_CREATE|os.O_WRONLY, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(dst, src); err != nil {
-		_ = dst.Close()
-		t.Fatal(err)
-	}
-	if err := dst.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return bin
+	return installFakeCLI(t, "claude")
 }
 
 func TestFakeCLIHelper(t *testing.T) {
@@ -565,15 +553,22 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 func TestReadOnlyKindsNeverGetWriteFlags(t *testing.T) {
 	env := map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "run-secret"}
 	readOnlyFlags := map[string][]string{
-		"claude": {"--permission-mode", "plan"},
-		"codex":  {"--sandbox", "read-only"},
-		"gemini": {"--approval-mode", "plan"},
+		"claude":      {"--permission-mode", "plan"},
+		"codex":       {"--sandbox", "read-only"},
+		"gemini":      {"--approval-mode", "plan"},
+		"antigravity": {"--mode", "plan", "--sandbox"},
 	}
-	writeFlags := []string{"bypassPermissions", "acceptEdits", "--dangerously-bypass-approvals-and-sandbox", "workspace-write", "yolo", "--allowedTools"}
+	writeFlags := []string{"bypassPermissions", "acceptEdits", "--dangerously-bypass-approvals-and-sandbox", "workspace-write", "yolo", "--allowedTools", "--dangerously-skip-permissions"}
 	for cli, want := range readOnlyFlags {
 		for _, kind := range []string{"", "code", KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist} {
 			for _, mode := range []string{"", "workspace", "full"} {
 				cmd, err := (Runner{}).cliCommand(Job{CLI: cli, Kind: kind, RunPermissions: mode, Prompt: "prompt", Env: env})
+				if cli == "antigravity" && !readOnlyKind(kind) && mode != "full" {
+					if err == nil {
+						t.Fatalf("antigravity run code mode=%q phải bị từ chối", mode)
+					}
+					continue
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -777,5 +772,46 @@ func TestWriteReviewDiffForReadOnlyReviewer(t *testing.T) {
 	// File diff không được làm worktree review thành "có thay đổi".
 	if status := strings.TrimSpace(mustOut(t, "git", "-C", work, "status", "--porcelain")); status != "" {
 		t.Fatalf("git status = %q", status)
+	}
+}
+
+// Worktree đã gỡ khỏi git trước khi gửi kết quả; file của nó được xoá sau qua RemoveDir, và ReapOrphans dọn thư mục
+// bỏ dở nếu worker chết trước khi xoá xong.
+func TestRunnerRemovesWorktreeAfterResult(t *testing.T) {
+	remote, base := makeRemote(t)
+	data := t.TempDir()
+	var removed []string
+	var resultSeen bool
+	r := Runner{DataDir: data, CLICommands: fakeCommands("commit"), RemoveDir: func(dir string) {
+		if !resultSeen {
+			t.Error("RemoveDir gọi trước khi gửi kết quả")
+		}
+		removed = append(removed, dir)
+	}}
+	job := Job{RunID: "trash", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/trash", CLI: "codex", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "commit"}}
+	err := r.Run(context.Background(), job, SinkFunc(func(e Event) error {
+		if e.Type == "result" {
+			resultSeen = true
+			caches, _ := filepath.Glob(filepath.Join(data, "repos", "*.git"))
+			if n := strings.Count(mustOut(t, "git", "--git-dir", caches[0], "worktree", "list", "--porcelain"), "worktree "); n != 1 {
+				t.Errorf("còn %d worktree đăng ký khi gửi kết quả", n)
+			}
+		}
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 1 || !strings.HasPrefix(filepath.Base(removed[0]), trashPrefix) {
+		t.Fatalf("removed = %v", removed)
+	}
+	if _, err := os.Stat(filepath.Join(data, "runs", "trash-1")); !os.IsNotExist(err) {
+		t.Fatalf("worktree remains: %v", err)
+	}
+	if err := ReapOrphans(data, []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(removed[0]); !os.IsNotExist(err) {
+		t.Fatalf("ReapOrphans không dọn thư mục bỏ: %v", err)
 	}
 }

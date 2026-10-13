@@ -70,7 +70,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set --id ID --enabled BOOL] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -170,8 +170,9 @@ func serviceCommand(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// knownCLIs là các agent CLI hub biết giao việc (khớp enum cli trong packages/contracts).
-var knownCLIs = []string{"claude", "codex", "gemini"}
+// knownCLIs là các agent CLI hub biết giao việc (khớp enum cli trong packages/contracts). Hub cũ chỉ biết một phần;
+// worker lọc theo hub trước khi khai (hubclient.SupportedCLIs).
+var knownCLIs = []string{"claude", "codex", "gemini", "antigravity"}
 
 func detectCLIs() []string {
 	// CLI ghi đè qua HIVE_WORKER_CLI_OVERRIDES (CLI giả của scripts/e2e-smoke.ts) tính là có khi lệnh của nó chạy được,
@@ -182,7 +183,7 @@ func detectCLIs() []string {
 	}
 	found := []string{}
 	for _, name := range knownCLIs {
-		path := name
+		path := runner.Binary(name)
 		if c, ok := overrides[name]; ok {
 			path = c.Path
 		}
@@ -233,12 +234,17 @@ func register(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	reg, err := hubclient.New(*hub).Register(ctx, hubclient.RegisterRequest{
+	client := hubclient.New(*hub)
+	clis, dropped := client.SupportedCLIs(ctx, detectCLIs())
+	if len(dropped) > 0 {
+		fmt.Fprintf(stderr, "Hub chưa nhận CLI %s; cập nhật hub để giao run cho chúng.\n", strings.Join(dropped, ", "))
+	}
+	reg, err := client.Register(ctx, hubclient.RegisterRequest{
 		RegistrationToken: *token,
 		MachineID:         *machine,
 		OS:                runtime.GOOS,
 		Version:           version.Version,
-		CLIs:              detectCLIs(),
+		CLIs:              clis,
 		Capacity:          *capacity,
 	})
 	if err != nil {
@@ -355,6 +361,7 @@ func run(args []string) int {
 	// Nhiều tài khoản CLI trên máy (accounts.json cạnh file cấu hình): không đặt --capacity thì nhận cùng lúc theo
 	// maxParallel của file, hoặc tổng số run các tài khoản bật cho phép; tối đa maxAutoCapacity.
 	pool := accounts.NewPool(accounts.DefaultPath(path))
+	go pool.Watch(ctx)
 	slots := *capacity
 	if !flagSet(fs, "capacity") {
 		if slots, err = accounts.Capacity(accounts.DefaultPath(path), maxAutoCapacity); err != nil {

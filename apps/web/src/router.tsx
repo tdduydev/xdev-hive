@@ -13,6 +13,7 @@ import { authRedirect, legacyRedirect } from "@/lib/redirect.ts";
 import {
   validateLeaderSearch,
   validateLoginSearch,
+  validateMachinesSearch,
   validateMembersSearch,
   validateOnboardingSearch,
   validateReviewsSearch,
@@ -20,6 +21,7 @@ import {
   validateTeamsSearch,
 } from "@/lib/route-search.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
+
 import { LoadErrorPage, NotFoundPage, PendingPage } from "@/pages/status-pages.tsx";
 import { AppShell } from "@/shell/app-shell.tsx";
 import { OrgGate } from "@/shell/org-gate.tsx";
@@ -30,6 +32,7 @@ import { SessionLayout } from "@/shell/session-layout.tsx";
  * router, khung app và thư viện dùng chung, nên trang đầu tiên hiện nhanh hơn.
  */
 const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"), "AuditPage");
+const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
 const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
@@ -272,7 +275,13 @@ const notificationsRoute = createRoute({
   path: "/notifications",
   component: NotificationsPage,
 });
-const machinesRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/machines", component: MachinesPage });
+const machinesRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/machines",
+  validateSearch: validateMachinesSearch,
+  component: MachinesPage,
+});
+const gitRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/git", component: GitConnectionsPage });
 const costsRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/costs", component: CostsPage });
 
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
@@ -321,6 +330,7 @@ const routeTree = rootRoute.addChildren([
         mergeQueueRoute,
         notificationsRoute,
         machinesRoute,
+        gitRoute,
         costsRoute,
         ...v2Routes,
       ]),

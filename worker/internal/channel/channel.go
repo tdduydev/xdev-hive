@@ -20,6 +20,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
+	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
@@ -284,6 +285,13 @@ func (c Config) Run(ctx context.Context) error {
 	}
 }
 
+func (c Config) healthHTTP() *http.Client {
+	if c.HTTP != nil {
+		return c.HTTP
+	}
+	return &http.Client{Timeout: 10 * time.Second}
+}
+
 func (c Config) connect(ctx context.Context, jobs *jobs) error {
 	url, err := websocketURL(c.HubURL)
 	if err != nil {
@@ -305,8 +313,13 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 	if err != nil {
 		return err
 	}
+	// Hub cũ từ chối cả hello khi có CLI nó chưa biết; hỏi lại mỗi lần nối vì hub có thể vừa được cập nhật.
+	clis, dropped := hubclient.NewWithHTTP(c.HubURL, c.healthHTTP()).SupportedCLIs(ctx, c.CLIs)
+	if len(dropped) > 0 {
+		c.Logger.Warn("Hub chưa nhận các CLI này; cập nhật hub để giao run cho chúng", "clis", dropped)
+	}
 	// Hub đòi mảng, không nhận null; slice nil của Go mã hoá thành null.
-	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: nonNil(c.CLIs), Capacity: c.Capacity, Capabilities: runner.Capabilities, ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
+	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: clis, Capacity: c.Capacity, Capabilities: runner.Capabilities, ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
 	if memory := hostMemoryMB(); memory > 0 {
 		hello.MemoryMB = memory
 	}
@@ -430,13 +443,6 @@ func closeError(what string, err error) error {
 		return &RejectedError{Code: int(ce.Code), Reason: ce.Reason}
 	}
 	return fmt.Errorf("%s: %w", what, err)
-}
-
-func nonNil(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }
 
 func websocketURL(base string) (string, error) {

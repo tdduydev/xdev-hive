@@ -289,10 +289,7 @@ function WorkflowsScreen() {
           <>
             <section className="flex flex-col gap-3 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
               <div className="flex flex-wrap items-center gap-3">
-                <label
-                  htmlFor={`${ids}-wf`}
-                  className="flex w-full items-center gap-2 text-[13px] font-medium sm:w-auto"
-                >
+                <label htmlFor={`${ids}-wf`} className="flex w-full items-center gap-2 text-sm font-medium sm:w-auto">
                   {t.workflow}
                   <NativeSelect
                     id={`${ids}-wf`}
@@ -323,7 +320,7 @@ function WorkflowsScreen() {
                   </Button>
                 )}
                 <fieldset className="m-0 flex flex-wrap items-center gap-3 border-0 p-0">
-                  <legend className="float-left text-[13px] text-muted-foreground">{t.preset}</legend>
+                  <legend className="float-left text-sm text-muted-foreground">{t.preset}</legend>
                   <span className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.75">
                     {PRESETS.map((p) => (
                       <button
@@ -344,7 +341,7 @@ function WorkflowsScreen() {
                   </span>
                 </fieldset>
                 <span className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="text-[12.5px] text-muted-foreground">{t.appliesTo}</span>
+                  <span className="text-sm text-muted-foreground">{t.appliesTo}</span>
                   <ChipList
                     values={draft.docPrefixes}
                     onChange={(docPrefixes) => update({ docPrefixes })}
@@ -387,7 +384,7 @@ function WorkflowsScreen() {
                       ) : (
                         <strong className="font-heading text-sm tracking-[-0.02em]">{p.name}</strong>
                       )}
-                      <span className="font-mono text-[11px] text-muted-foreground">
+                      <span className="font-mono text-xs text-muted-foreground">
                         {presetShort} {pi + 1}
                       </span>
                       {canWrite && draft.phases.length > 1 && (
@@ -441,15 +438,15 @@ function WorkflowsScreen() {
                           >
                             <span className="flex items-center gap-1.5">
                               <GateKindBadge kind={g.kind} />
-                              <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+                              <span className="ml-auto font-mono text-xs text-muted-foreground">
                                 {g.slaHours ? `${g.slaHours}h` : "—"}
                               </span>
                             </span>
-                            <span className="text-[13.5px] font-semibold">{g.name}</span>
+                            <span className="text-sm font-semibold">{g.name}</span>
                             <span className="text-xs text-muted-foreground">
                               {gateWho(g, names, teamNames, lang, t)}
                             </span>
-                            {cond && <span className="text-[11.5px] text-warning">⤷ {cond}</span>}
+                            {cond && <span className="text-xs text-warning">⤷ {cond}</span>}
                           </button>
                           {gi < p.gates.length - 1 && (
                             <span aria-hidden="true" className="text-center text-xs leading-none text-muted-foreground">
@@ -462,7 +459,7 @@ function WorkflowsScreen() {
                     {canWrite && (
                       <button
                         type="button"
-                        className="h-8.5 cursor-pointer rounded-lg border border-dashed border-input bg-transparent text-[13px] text-muted-foreground hover:text-foreground"
+                        className="h-8.5 cursor-pointer rounded-lg border border-dashed border-input bg-transparent text-sm text-muted-foreground hover:text-foreground"
                         onClick={() => {
                           const g = newGate(t.newGateName, allGateIds(draft.phases), lang);
                           update({
@@ -660,7 +657,7 @@ function WorkflowMeta({
           </NativeSelect>
         </Field>
       </div>
-      <label htmlFor={`${ids}-on`} className="flex h-8 cursor-pointer items-center gap-2 text-[13px] font-medium">
+      <label htmlFor={`${ids}-on`} className="flex h-8 cursor-pointer items-center gap-2 text-sm font-medium">
         <Switch
           id={`${ids}-on`}
           aria-label={t.enabled}
@@ -746,22 +743,20 @@ function DryRunDialog({ draft, onClose }: { draft: WorkflowDraft; onClose: () =>
                 >
                   <span className="flex flex-wrap items-center gap-2">
                     <GateKindBadge kind={g.kind} />
-                    <span className={cn("text-[13.5px] font-semibold", !g.runs && "text-muted-foreground")}>
-                      {g.name}
-                    </span>
+                    <span className={cn("text-sm font-semibold", !g.runs && "text-muted-foreground")}>{g.name}</span>
                     <Pill tone={g.runs ? "ok" : "neutral"} className="ml-auto">
                       {g.runs ? t.runs : t.skips}
                     </Pill>
                   </span>
                   <span className="text-xs text-muted-foreground">{g.reason}</span>
                   {g.checklist.length > 0 && (
-                    <ul className="flex flex-col gap-1 text-[13px]">
+                    <ul className="flex flex-col gap-1 text-sm">
                       {g.checklist.map((c) => (
                         <li key={c.label} className="flex items-start gap-2">
                           <span
                             aria-hidden="true"
                             className={cn(
-                              "inline-flex size-4.5 flex-none items-center justify-center rounded-full text-[11px]",
+                              "inline-flex size-4.5 flex-none items-center justify-center rounded-full text-xs",
                               c.passed ? "bg-success-soft text-success" : "bg-destructive-soft text-destructive",
                             )}
                           >

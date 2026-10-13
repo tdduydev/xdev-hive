@@ -2,38 +2,68 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
-import { navItems, screenFromHash, screenParam } from "@/lib/nav.ts";
+import { NAV_GROUPS, navGroups, navItems, screenFromHash, screenParam } from "@/lib/nav.ts";
 import { windowKind } from "@/lib/tauri.ts";
 import { AppShell } from "@/shell/app-shell.tsx";
 
 describe("menu theo hồ sơ", () => {
-  it("dev: không có quyền viết tài liệu nên Tài liệu chỉ đọc", () => {
+  it("dev: không có quyền viết tài liệu nên Tài liệu từ code chỉ đọc", () => {
     const items = navItems("dev");
     expect(items.map((i) => i.id)).toEqual([
       "home",
       "work",
       "reviews",
       "knowledge",
-      "docs",
       "write",
+      "docs",
+      "plans",
+      "runs",
+      "setup",
       "skills",
       "tokens",
-      "setup",
-      "runs",
     ]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
   });
 
   it("writer: không thấy Việc của tôi, Môi trường và Lượt chạy; người xem đội chỉ đọc tài liệu", () => {
     const items = navItems("writer");
-    expect(items.map((i) => i.id)).toEqual(["home", "reviews", "knowledge", "docs", "write", "skills", "tokens"]);
+    expect(items.map((i) => i.id)).toEqual(["home", "reviews", "knowledge", "write", "docs", "skills", "tokens"]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
   });
 
-  it("lead: thấy hết, Tài liệu sửa được", () => {
+  it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(10);
+    expect(items).toHaveLength(11);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
+  });
+
+  it("chia ba nhóm Công việc, Tài liệu, Máy này; mục docs mang nhãn Tài liệu từ code", () => {
+    const groups = navGroups("lead");
+    expect(groups.map((g) => [g.label.vi, g.items.map((i) => i.label.vi)])).toEqual([
+      ["Công việc", ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"]],
+      ["Tài liệu", ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"]],
+      ["Máy này", ["Gói agent", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh"]],
+    ]);
+    expect(groups.map((g) => g.label.en)).toEqual(["Work", "Docs", "This machine"]);
+    expect(groups[1]?.items.find((i) => i.id === "docs")?.label.en).toBe("Docs from code");
+  });
+
+  it("writer vẫn thấy cả ba nhóm, chỉ bớt mục trong nhóm", () => {
+    const groups = navGroups("writer");
+    expect(groups.map((g) => [g.id, g.items.map((i) => i.id)])).toEqual([
+      ["work", ["home", "reviews"]],
+      ["docs", ["knowledge", "write", "docs"]],
+      ["machine", ["skills", "tokens"]],
+    ]);
+  });
+
+  it("nhóm không còn mục nào theo hồ sơ thì bỏ cả nhóm", () => {
+    // Nhóm Máy này chỉ còn Lượt chạy và Môi trường: writer không có quyền nào trong đó.
+    const groups = NAV_GROUPS.map((g) =>
+      g.id === "machine" ? { ...g, items: g.items.filter((i) => i.id === "runs" || i.id === "setup") } : g,
+    );
+    expect(navGroups("writer", groups).map((g) => g.id)).toEqual(["work", "docs"]);
+    expect(navGroups("dev", groups).map((g) => g.id)).toEqual(["work", "docs", "machine"]);
   });
 
   it("đường dẫn lạ về Tổng quan", () => {
@@ -87,21 +117,47 @@ describe("AppShell", () => {
     expect(screen.queryByText("Sắp có")).toBeNull();
   });
 
+  it("menu chia nhóm có tiêu đề, mục theo thứ tự trong nhóm", () => {
+    render(<AppShell profile="lead" />);
+    const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
+    const groups = within(nav).getAllByRole("group");
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["Công việc", "Tài liệu", "Máy này"]);
+    expect(
+      groups.map((g) =>
+        within(g)
+          .getAllByRole("link")
+          .map((a) => a.textContent),
+      ),
+    ).toEqual([
+      ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"],
+      ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"],
+      ["Gói agent", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh"],
+    ]);
+    for (const title of ["Công việc", "Tài liệu", "Máy này"]) expect(within(nav).getByText(title)).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Tài liệu từ code" }).getAttribute("href")).toBe("#/docs");
+  });
+
   it("không hiện người dùng hay thư mục mẫu khi chưa có dữ liệu", () => {
     render(<AppShell profile="writer" />);
     expect(screen.getByText("Chưa liên kết tài khoản")).toBeTruthy();
     expect(screen.getByText("Chưa chọn thư mục")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Môi trường" })).toBeNull();
-    // Người xem đội: Tài liệu và Skills đều chỉ đọc (không cài skill lên máy).
+    // Người xem đội: Tài liệu từ code và Skills đều chỉ đọc (không cài skill lên máy).
     expect(screen.getAllByText("chỉ đọc")).toHaveLength(2);
+    // Nhóm Máy này vẫn còn Skills và Token nên giữ tiêu đề.
+    expect(screen.getByText("Máy này")).toBeTruthy();
   });
 
   it("tiếng Anh", () => {
     setLang("en");
     location.hash = "#/runs";
     render(<AppShell />);
-    expect(screen.getByRole("navigation", { name: "App navigation" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Tokens & context" })).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "App navigation" });
+    expect(within(nav).getByRole("link", { name: "Tokens & context" })).toBeTruthy();
+    // Hồ sơ dev đọc được tài liệu từ code nhưng không sửa, nên tên mục kèm nhãn read-only.
+    expect(within(nav).getByRole("link", { name: /^Docs from code/ })).toBeTruthy();
+    expect(within(nav).getByRole("group", { name: "This machine" })).toBeTruthy();
+    expect(within(nav).getByText("Work")).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: "Runs on this machine" })).toBeTruthy();
   });
 });
@@ -114,8 +170,13 @@ describe("đóng mở menu và chọn ngôn ngữ", () => {
     const user = userEvent.setup();
     const nav = () => screen.getByRole("navigation", { name: "Điều hướng app" });
     expect(nav().hasAttribute("data-compact")).toBe(false);
+    expect(within(nav()).getByText("Công việc")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Thu gọn menu" }));
     expect(nav().hasAttribute("data-compact")).toBe(true);
+    // Chỉ còn icon thì bỏ tiêu đề nhóm, nhưng nhóm vẫn giữ tên cho trình đọc màn hình.
+    expect(within(nav()).queryByText("Công việc")).toBeNull();
+    expect(within(nav()).queryByText("Máy này")).toBeNull();
+    expect(within(nav()).getByRole("group", { name: "Công việc" })).toBeTruthy();
     unmount();
     render(<AppShell />);
     expect(nav().hasAttribute("data-compact")).toBe(true);
@@ -166,7 +227,8 @@ describe("thẻ worker", () => {
     };
     render(<AppShell />);
     expect(await screen.findByText("Worker đang kết nối")).toBeTruthy();
-    expect(screen.getByText("hive.acme.vn")).toBeTruthy();
+    // Màn Tổng quan cũng có ô worker; ở đây chỉ kiểm thẻ trong AppNav.
+    expect(within(screen.getByRole("navigation")).getByText("hive.acme.vn")).toBeTruthy();
     await act(async () =>
       push({
         kind: "online",

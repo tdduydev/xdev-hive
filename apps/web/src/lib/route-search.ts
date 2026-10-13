@@ -84,3 +84,8 @@ export interface MembersSearch {
 export function validateMembersSearch(search: Record<string, unknown>): MembersSearch {
   return search.xem === "loi-moi" || search.xem === "cho-duyet" ? { xem: search.xem } : {};
 }
+
+/** `?them=1` mở sẵn hộp thoại thêm máy, cho nút "Đăng ký một máy" ở thẻ Bắt đầu của trang chủ. */
+export function validateMachinesSearch(search: Record<string, unknown>): { them?: true } {
+  return search.them === true || search.them === 1 || search.them === "1" ? { them: true } : {};
+}

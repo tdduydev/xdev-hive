@@ -51,11 +51,16 @@ const text: Dict<{
   openFolder: string;
   pickFailed: string;
   open: string;
+  back: string;
   recent: string;
   linkedTo: (p: string) => string;
   notLinked: string;
   explorer: string;
   changeFolder: string;
+  noFolder: string;
+  noFolderSub: string;
+  noFolderCode: string;
+  chatNeedsFolder: string;
   docs: string;
   code: string;
   readByAi: string;
@@ -140,11 +145,17 @@ const text: Dict<{
     openFolder: "Mở thư mục…",
     pickFailed: "Không mở được bộ chọn thư mục. Nhập đường dẫn thư mục dự án:",
     open: "Mở",
+    back: "Quay lại",
     recent: "Gần đây",
     linkedTo: (p) => `↔ ${p}`,
     notLinked: "Chưa nối dự án",
     explorer: "Thư mục",
     changeFolder: "Đổi thư mục",
+    noFolder: "Chưa chọn thư mục",
+    noFolderSub: "chọn để AI đọc code",
+    noFolderCode: "Chọn thư mục để xem code.",
+    chatNeedsFolder:
+      "Chọn thư mục dự án để hỏi AI về code và nhờ viết tài liệu. Tài liệu trên hub vẫn xem và sửa được ở giữa.",
     docs: "Tài liệu",
     code: "Code",
     readByAi: "AI đã đọc",
@@ -256,11 +267,17 @@ const text: Dict<{
     openFolder: "Open folder…",
     pickFailed: "Could not open the folder picker. Enter the project folder path:",
     open: "Open",
+    back: "Back",
     recent: "Recent",
     linkedTo: (p) => `↔ ${p}`,
     notLinked: "Not linked",
     explorer: "Explorer",
     changeFolder: "Change folder",
+    noFolder: "No folder chosen",
+    noFolderSub: "pick one so the AI can read code",
+    noFolderCode: "Choose a folder to see its code.",
+    chatNeedsFolder:
+      "Choose a project folder to ask the AI about the code and have it write docs. Docs on the hub can still be read and edited in the middle.",
     docs: "Docs",
     code: "Code",
     readByAi: "Read by AI",
@@ -482,7 +499,7 @@ function ChatLine({
   switch (item.kind) {
     case "user":
       return (
-        <div className="max-w-[85%] self-end rounded-[12px_12px_4px_12px] bg-primary px-3 py-2 font-sans text-[13.5px] whitespace-pre-wrap text-primary-foreground">
+        <div className="max-w-[85%] self-end rounded-[12px_12px_4px_12px] bg-primary px-3 py-2 font-sans text-sm whitespace-pre-wrap text-primary-foreground">
           {item.text}
         </div>
       );
@@ -490,7 +507,7 @@ function ChatLine({
       const found = stripProposal ? findProposal(item.text) : null;
       const parts = found ? [found.before, found.after].filter(Boolean) : [item.text];
       return (
-        <div className="flex flex-col gap-1 font-sans text-[13px] whitespace-pre-wrap">
+        <div className="flex flex-col gap-1 font-sans text-sm whitespace-pre-wrap">
           {parts.map((p) => (
             <span key={p}>{p}</span>
           ))}
@@ -561,7 +578,7 @@ function ChatLine({
     case "notice":
       return <span className="text-muted-foreground">! {item.text}</span>;
     case "result": {
-      if (!item.ok) return <span className="font-sans text-[13px] text-destructive">✗ {item.error}</span>;
+      if (!item.ok) return <span className="font-sans text-sm text-destructive">✗ {item.error}</span>;
       const fmt = (n: number) => formatTokens(n, lang);
       const parts = [t.tokensIn(fmt(item.inputTokens)), t.tokensOut(fmt(item.outputTokens))];
       if (item.costUsd !== null) parts.push(`$${item.costUsd.toFixed(4)}`);
@@ -569,7 +586,7 @@ function ChatLine({
         parts.push(t.seconds((item.durationMs / 1000).toLocaleString(lang, { maximumFractionDigits: 1 })));
       return (
         <div className="flex flex-col gap-1.5">
-          <span className="font-sans text-[13px] text-success">✓ {t.done(parts.join(" · "))}</span>
+          <span className="font-sans text-sm text-success">✓ {t.done(parts.join(" · "))}</span>
           {item.proposal && item.docKey && (
             <ProposalCard
               docKey={item.docKey}
@@ -586,7 +603,7 @@ function ChatLine({
       return item.cancelled ? (
         <span className="text-muted-foreground">■ {t.stopped}</span>
       ) : (
-        <span className="font-sans text-[13px] text-destructive">
+        <span className="font-sans text-sm text-destructive">
           ✗ {t.exited(String(item.code ?? "?"), item.stderr.split("\n").at(-1) ?? "")}
         </span>
       );
@@ -610,7 +627,7 @@ function ProposalCard({
   const { added, removed } = diffStats(lineDiff(base, proposal));
   return (
     <div className="flex flex-col gap-1 rounded-r-md border-l-2 border-success bg-success-soft px-2.5 py-2">
-      <span className="font-sans text-[12.5px]">{t.proposalFor(docKey, added, removed)}</span>
+      <span className="font-sans text-sm">{t.proposalFor(docKey, added, removed)}</span>
       {!open && (
         <Button size="xs" variant="outline" className="self-start" onClick={onReopen}>
           {t.reopen}
@@ -645,7 +662,8 @@ export function DocsScreen() {
   const profile = profileOf(account ?? null);
   const canPropose = can(profile, "docs.propose");
   const [folder, setFolder] = useFolder();
-  const [picking, setPicking] = useState(!folder);
+  // Chưa chọn thư mục vẫn mở màn chính: tài liệu trên hub không cần thư mục, chỉ khung chat và cây code cần.
+  const [picking, setPicking] = useState(false);
   const [pickFailed, setPickFailed] = useState(false);
   const [typed, setTyped] = useState(folder);
   const chat = useChat();
@@ -654,7 +672,8 @@ export function DocsScreen() {
   const [sessions, setSessions] = useState<StoredSession[]>(() => readJson<StoredSession[]>(SESSIONS, []));
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() => readJson(DRAFTS, {}));
 
-  const [meta, setMeta] = useState<WorkspaceMeta | null>(null);
+  // undefined: đang đọc; null: chưa chọn thư mục hoặc không đọc được.
+  const [meta, setMeta] = useState<WorkspaceMeta | null | undefined>(undefined);
   const [tree, setTree] = useState<TreeEntry[] | null>(null);
   const [project, setProject] = useState<HubProject | null | undefined>(undefined);
   const [docs, setDocs] = useState<HubDoc[] | null>(null);
@@ -683,16 +702,20 @@ export function DocsScreen() {
 
   useEffect(() => {
     let alive = true;
-    setMeta(null);
+    setMeta(undefined);
     setTree(null);
     setProject(undefined);
     setDocs(null);
     setHubError(null);
     setSelected(null);
-    if (!folder || picking) return;
+    if (picking) return;
+    if (!folder) {
+      setMeta(null);
+      return;
+    }
     workspaceMeta(folder).then(
       (m) => alive && setMeta(m),
-      () => {},
+      () => alive && setMeta(null),
     );
     folderTree(folder).then(
       (tr) => alive && setTree(tr),
@@ -708,15 +731,18 @@ export function DocsScreen() {
   }, []);
 
   useEffect(() => {
-    if (!meta || !account) return;
+    if (meta === undefined || !account) return;
     let alive = true;
     (async () => {
       try {
-        const { projects } = await hubTool<{ projects: HubProject[] }>("project_list");
-        const found = matchProject(meta.remote, projects);
+        let found: HubProject | null = null;
+        if (meta?.remote) {
+          const { projects } = await hubTool<{ projects: HubProject[] }>("project_list");
+          found = matchProject(meta.remote, projects);
+        }
         if (!alive) return;
         setProject(found);
-        // Thư mục chưa nối dự án: vẫn cho xem và viết tài liệu người dùng đọc được (tổ chức, đội).
+        // Chưa chọn thư mục hay thư mục chưa nối dự án: vẫn cho xem và viết tài liệu người dùng đọc được (tổ chức, đội).
         const list = await hubTool<{ docs: HubDoc[] }>("doc_list", {
           ...(found ? { prefix: `project/${found.key}/` } : {}),
           limit: 50,
@@ -827,7 +853,9 @@ export function DocsScreen() {
         setPicking(false);
       }
     } catch {
+      // Màn chọn thư mục có ô nhập tay khi không mở được bộ chọn của hệ điều hành.
       setPickFailed(true);
+      setPicking(true);
     }
   }
 
@@ -843,7 +871,7 @@ export function DocsScreen() {
 
   async function send(request: string) {
     const req = request.trim();
-    if (!req || running) return;
+    if (!req || running || !folder) return;
     setInput("");
     setSlash(false);
     setBusy(true);
@@ -891,7 +919,7 @@ export function DocsScreen() {
         ]
       : [`codex-cli ${engineInfo?.version ?? ""}`.trim(), engineInfo?.method, "Read only"];
 
-  if (!folder || picking) {
+  if (picking) {
     return (
       <div className="flex flex-1 items-center justify-center overflow-auto p-6">
         <div className="flex w-[560px] max-w-full flex-col gap-4.5">
@@ -900,10 +928,15 @@ export function DocsScreen() {
             <h2 className="font-heading text-2xl font-semibold tracking-[-0.03em]">{t.pickTitle}</h2>
             <p className="text-muted-foreground">{t.pickLead}</p>
           </div>
-          <Button size="lg" className="h-10 self-start px-3 text-sm" onClick={() => void chooseFolder()}>
-            <FolderOpenIcon aria-hidden="true" />
-            {t.openFolder}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="lg" className="h-10 px-3 text-sm" onClick={() => void chooseFolder()}>
+              <FolderOpenIcon aria-hidden="true" />
+              {t.openFolder}
+            </Button>
+            <Button variant="outline" size="lg" className="h-10 px-3 text-sm" onClick={() => setPicking(false)}>
+              {t.back}
+            </Button>
+          </div>
           {pickFailed && (
             <FolderForm
               value={typed}
@@ -932,12 +965,12 @@ export function DocsScreen() {
                   className="flex w-full cursor-pointer items-center gap-2.5 border-b px-3 py-2.5 text-left last:border-b-0 hover:bg-muted/50"
                 >
                   <span className="flex min-w-0 flex-1 flex-col leading-snug">
-                    <span className="truncate font-mono text-[13px] font-medium">{shortPath(r.path)}</span>
+                    <span className="truncate font-mono text-sm font-medium">{shortPath(r.path)}</span>
                     {r.branch && <span className="text-xs text-muted-foreground">⎇ {r.branch}</span>}
                   </span>
                   <span
                     className={cn(
-                      "inline-flex h-5 items-center rounded-full px-1.75 text-[11.5px] font-medium whitespace-nowrap",
+                      "inline-flex h-5 items-center rounded-full px-1.75 text-xs font-medium whitespace-nowrap",
                       r.project ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground",
                     )}
                   >
@@ -970,21 +1003,25 @@ export function DocsScreen() {
           >
             <FolderOpenIcon aria-hidden="true" className="size-3.75 shrink-0" />
             <span className="flex min-w-0 flex-1 flex-col leading-tight">
-              <span className="truncate font-mono text-[12.5px] font-semibold">{folderName(folder)}</span>
-              <span className="truncate font-mono text-[11px] text-muted-foreground">{shortPath(folder)}</span>
+              <span className="truncate font-mono text-sm font-semibold">
+                {folder ? folderName(folder) : t.noFolder}
+              </span>
+              <span className="truncate font-mono text-xs text-muted-foreground">
+                {folder ? shortPath(folder) : t.noFolderSub}
+              </span>
             </span>
             <ArrowUpDownIcon aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
           </button>
           <div className="flex flex-wrap gap-1">
             {meta?.branch && (
-              <span className="inline-flex h-5 items-center rounded-full bg-secondary px-1.75 font-mono text-[11.5px] text-secondary-foreground">
+              <span className="inline-flex h-5 items-center rounded-full bg-secondary px-1.75 font-mono text-xs text-secondary-foreground">
                 ⎇ {meta.branch}
               </span>
             )}
             {project !== undefined && (
               <span
                 className={cn(
-                  "inline-flex h-5 items-center rounded-full px-1.75 text-[11.5px] font-medium",
+                  "inline-flex h-5 items-center rounded-full px-1.75 text-xs font-medium",
                   project ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground",
                 )}
               >
@@ -995,7 +1032,7 @@ export function DocsScreen() {
         </div>
         <div className="flex-1 overflow-y-auto px-1.5 py-2">
           <div className="flex items-center justify-between px-1.5 py-1">
-            <span className="font-mono text-[10.5px] tracking-[.06em] text-muted-foreground uppercase">{t.docs}</span>
+            <span className="text-xs font-medium text-muted-foreground">{t.docs}</span>
             {account && (
               <button
                 type="button"
@@ -1051,7 +1088,7 @@ export function DocsScreen() {
                       {(hasSuggestion || isDraft || d.version === 0) && (
                         <span
                           className={cn(
-                            "inline-flex h-4 items-center rounded-full px-1.5 font-sans text-[10.5px] font-medium",
+                            "inline-flex h-4 items-center rounded-full px-1.5 font-sans text-xs font-medium",
                             hasSuggestion ? "bg-success-soft text-success" : "bg-warning-soft text-warning",
                           )}
                         >
@@ -1064,10 +1101,12 @@ export function DocsScreen() {
               })}
             </ul>
           )}
-          <div className="px-1.5 pt-2.5 pb-1 font-mono text-[10.5px] tracking-[.06em] text-muted-foreground uppercase">
+          <div className="px-1.5 pt-2.5 pb-1 font-mono text-xs tracking-[.06em] text-muted-foreground uppercase">
             {t.code}
           </div>
-          {tree === null ? (
+          {!folder ? (
+            <p className="px-1.5 py-1 text-xs text-muted-foreground">{t.noFolderCode}</p>
+          ) : tree === null ? (
             <p className="px-1.5 py-1 text-xs text-muted-foreground">{t.loading}</p>
           ) : (
             <ul>
@@ -1093,7 +1132,7 @@ export function DocsScreen() {
             </ul>
           )}
         </div>
-        <div className="flex items-center gap-1.5 border-t px-3 py-2 text-[11.5px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 border-t px-3 py-2 text-xs text-muted-foreground">
           <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
           {t.readLegend}
         </div>
@@ -1117,7 +1156,7 @@ export function DocsScreen() {
           )}
           {hubDoc && (
             <>
-              <span title={hubDoc.key} className="truncate font-mono text-[13px] font-medium max-[900px]:hidden">
+              <span title={hubDoc.key} className="truncate font-mono text-sm font-medium max-[900px]:hidden">
                 {docName(hubDoc.key)}
               </span>
               {suggestion ? (
@@ -1168,7 +1207,7 @@ export function DocsScreen() {
           )}
         </div>
         {stale && hubDoc && (
-          <div className="flex flex-wrap items-center gap-2 border-b bg-warning-soft px-3.5 py-1.5 text-[12.5px] text-warning">
+          <div className="flex flex-wrap items-center gap-2 border-b bg-warning-soft px-3.5 py-1.5 text-sm text-warning">
             <span className="flex-1">{t.stale(draft?.base ?? 0, hubDoc.version)}</span>
             <Button size="xs" variant="outline" onClick={() => saveDraft(hubDoc.key, null)}>
               {t.dropDraft}
@@ -1176,7 +1215,7 @@ export function DocsScreen() {
           </div>
         )}
         {!hubDoc ? (
-          <div className="flex flex-1 items-center justify-center p-6 text-center text-[13px] text-muted-foreground">
+          <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
             {docError ? (
               <span className="text-destructive">{docError}</span>
             ) : selected ? (
@@ -1192,10 +1231,10 @@ export function DocsScreen() {
             aria-label={t.editorLabel}
             value={draftText}
             onChange={(e) => saveDraft(hubDoc.key, { base, text: e.target.value, title: hubDoc.title })}
-            className="min-h-0 flex-1 resize-none rounded-none border-0 px-9 py-6 font-mono text-[13px] [field-sizing:fixed] focus-visible:ring-0 md:text-[13px]"
+            className="min-h-0 flex-1 resize-none rounded-none border-0 px-9 py-6 font-mono text-sm [field-sizing:fixed] focus-visible:ring-0 md:text-sm"
           />
         ) : mode === "diff" ? (
-          <div className="flex-1 overflow-y-auto px-9 py-6 font-mono text-[12.5px] leading-relaxed">
+          <div className="flex-1 overflow-y-auto px-9 py-6 font-mono text-sm leading-relaxed">
             {changed ? (
               diffHunks(lineDiff(hubDoc.content, draftText), 2).map((line, i) =>
                 line === null ? (
@@ -1219,11 +1258,11 @@ export function DocsScreen() {
                 ),
               )
             ) : (
-              <p className="font-sans text-[13px] text-muted-foreground">{t.noChanges}</p>
+              <p className="font-sans text-sm text-muted-foreground">{t.noChanges}</p>
             )}
           </div>
         ) : (
-          <article className="flex-1 overflow-y-auto px-9 py-6 text-[14.5px] leading-[1.75]">
+          <article className="flex-1 overflow-y-auto px-9 py-6 text-[15px] leading-[1.75]">
             {suggestion ? (
               <>
                 <SuggestionView
@@ -1243,7 +1282,7 @@ export function DocsScreen() {
             ) : draftText.trim() ? (
               <Markdown text={draftText} />
             ) : (
-              <p className="text-[13px] text-muted-foreground">{t.emptyChat}</p>
+              <p className="text-sm text-muted-foreground">{t.emptyChat}</p>
             )}
           </article>
         )}
@@ -1270,7 +1309,7 @@ export function DocsScreen() {
                   disabled={running && engine !== id}
                   onClick={() => pickEngine(id)}
                   className={cn(
-                    "inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-[12.5px] disabled:cursor-not-allowed",
+                    "inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm disabled:cursor-not-allowed",
                     engine === id ? "bg-card font-semibold text-foreground shadow-sm" : "text-muted-foreground",
                   )}
                 >
@@ -1324,7 +1363,7 @@ export function DocsScreen() {
                     i > 0 ? t.locked : engine === "claude" ? "--restricted · Read, Glob, Grep" : "--sandbox read-only"
                   }
                   className={cn(
-                    "h-5.5 rounded-[5px] px-2 text-[11.5px]",
+                    "h-5.5 rounded-[5px] px-2 text-xs",
                     i === 0
                       ? "bg-card font-semibold text-foreground"
                       : "cursor-not-allowed text-muted-foreground opacity-45",
@@ -1340,10 +1379,20 @@ export function DocsScreen() {
         <div
           ref={transcript}
           aria-live="polite"
-          className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-3.5 py-3 font-mono text-[12.5px] leading-[1.55]"
+          className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-3.5 py-3 font-mono text-sm leading-[1.55]"
         >
-          {chat.items.length === 0 && (
-            <p className="font-sans text-[13px] text-muted-foreground">{chat.session ? t.resumed : t.emptyChat}</p>
+          {!folder ? (
+            <div className="flex flex-col items-start gap-2.5 font-sans">
+              <p className="text-sm text-muted-foreground">{t.chatNeedsFolder}</p>
+              <Button size="sm" onClick={() => void chooseFolder()}>
+                <FolderOpenIcon aria-hidden="true" />
+                {t.openFolder}
+              </Button>
+            </div>
+          ) : (
+            chat.items.length === 0 && (
+              <p className="font-sans text-sm text-muted-foreground">{chat.session ? t.resumed : t.emptyChat}</p>
+            )
           )}
           {chat.items.map((item, i) => (
             <ChatLine
@@ -1362,12 +1411,12 @@ export function DocsScreen() {
             />
           ))}
           {running && (
-            <span className="flex items-center gap-1.5 font-sans text-[13px] text-muted-foreground">
+            <span className="flex items-center gap-1.5 font-sans text-sm text-muted-foreground">
               <LoaderCircleIcon aria-hidden="true" className="size-3.5 animate-spin" />
               {t.running}
             </span>
           )}
-          {chat.error && <p className="font-sans text-[13px] text-destructive">{chat.error}</p>}
+          {chat.error && <p className="font-sans text-sm text-destructive">{chat.error}</p>}
         </div>
 
         <div className="flex flex-col gap-1.5 border-t px-3 py-2.5">
@@ -1382,7 +1431,7 @@ export function DocsScreen() {
                     setInput(q.prompt);
                     setSlash(false);
                   }}
-                  className="flex w-full cursor-pointer gap-2.5 rounded-md px-2 py-1.25 text-left text-[12.5px] hover:bg-muted"
+                  className="flex w-full cursor-pointer gap-2.5 rounded-md px-2 py-1.25 text-left text-sm hover:bg-muted"
                 >
                   <span className="w-23 shrink-0 font-mono text-primary">{q.cmd}</span>
                   <span className="text-muted-foreground">{q.label}</span>
@@ -1392,11 +1441,13 @@ export function DocsScreen() {
           )}
           <div className="flex flex-col gap-1.5 rounded-[10px] border border-input p-2">
             <div className="flex flex-wrap gap-1">
-              <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-[11.5px] text-secondary-foreground">
-                @{folderName(folder)}/
-              </span>
+              {folder && (
+                <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
+                  @{folderName(folder)}/
+                </span>
+              )}
               {hubDoc && (
-                <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-[11.5px] text-secondary-foreground">
+                <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
                   @{docName(hubDoc.key)}
                 </span>
               )}
@@ -1404,13 +1455,14 @@ export function DocsScreen() {
             <textarea
               aria-label={t.ask}
               placeholder={t.placeholder[engine]}
+              disabled={!folder}
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
                 setSlash(e.target.value === "/");
               }}
               onKeyDown={onKey}
-              className="h-11 resize-none border-0 bg-transparent font-mono text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
+              className="h-11 resize-none border-0 bg-transparent font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground"
             />
             <div className="flex items-center gap-1.5">
               <Button
@@ -1423,19 +1475,24 @@ export function DocsScreen() {
               >
                 /
               </Button>
-              <span className="flex-1 truncate font-mono text-[11px] text-muted-foreground">{t.hint}</span>
+              <span className="flex-1 truncate text-xs text-muted-foreground">{t.hint}</span>
               {running ? (
                 <Button size="sm" variant="outline" className="h-6.5" onClick={() => void cancelRun()}>
                   {t.stop}
                 </Button>
               ) : (
-                <Button size="sm" className="h-6.5" disabled={!input.trim()} onClick={() => void send(input)}>
+                <Button
+                  size="sm"
+                  className="h-6.5"
+                  disabled={!input.trim() || !folder}
+                  onClick={() => void send(input)}
+                >
                   {t.send}
                 </Button>
               )}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2.5 font-mono text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap gap-2.5 font-mono text-xs text-muted-foreground">
             <span>{statusLeft.filter(Boolean).join(" · ")}</span>
             {lastResult?.kind === "result" && lastResult.ok && (
               <span className="ml-auto">
@@ -1475,7 +1532,7 @@ function StatePill({ tone, children }: { tone: "ok" | "warn"; children: string }
   return (
     <span
       className={cn(
-        "inline-flex h-5 items-center gap-1.5 rounded-full px-1.75 text-[11.5px] font-medium whitespace-nowrap",
+        "inline-flex h-5 items-center gap-1.5 rounded-full px-1.75 text-xs font-medium whitespace-nowrap",
         tone === "ok" ? "bg-success-soft text-success" : "bg-warning-soft text-warning",
       )}
     >
@@ -1548,7 +1605,7 @@ function ProposeDialog({
           </DialogDescription>
         </DialogHeader>
         {sent ? (
-          <p className="text-[13px] text-success">{t.sent(sent)}</p>
+          <p className="text-sm text-success">{t.sent(sent)}</p>
         ) : (
           <form onSubmit={submit} className="flex flex-col gap-3">
             <Textarea
@@ -1556,10 +1613,10 @@ function ProposeDialog({
               placeholder={t.notePlaceholder}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className="min-h-20 text-[13px]"
+              className="min-h-20 text-sm"
             />
-            {!linked && <p className="text-[13px] text-destructive">{t.needAccount}</p>}
-            {error && <p className="text-[13px] text-destructive">{error}</p>}
+            {!linked && <p className="text-sm text-destructive">{t.needAccount}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <DialogActions>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 {t.cancel}
