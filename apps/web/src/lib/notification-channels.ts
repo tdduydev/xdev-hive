@@ -15,6 +15,15 @@ export const NOTIFICATION_EVENT_LABEL: Record<NotificationEvent, string> = {
   "code_review.overdue": "Duyệt PR quá hạn",
   "code_review.returned": "PR bị trả lại",
   "code_review.approved": "PR đã duyệt, chờ merge",
+  "sdlc.question": "Agent hỏi lại (AI SDLC)",
+  "sdlc.blocked": "Run code bị chặn (AI SDLC)",
+  "sdlc.override": "Ngoại lệ chặn (AI SDLC)",
+  "sdlc.sync_failed": "Đồng bộ tài liệu lên repo lỗi",
+  "sdlc.converged": "Hạng mục đã hội tụ",
+  "sdlc.waiting_machine": "Chờ máy AI SDLC",
+  "sdlc.project_added": "Dự án được thêm vào hạng mục",
+  "sdlc.auto_approved": "Tự duyệt bởi AI",
+  "sdlc.auto_revoked": "Thu hồi tự duyệt",
 };
 
 export const NOTIFICATION_EVENTS = Object.keys(NOTIFICATION_EVENT_LABEL) as NotificationEvent[];
