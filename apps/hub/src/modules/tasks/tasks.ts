@@ -1,9 +1,10 @@
-import type { Task, TaskCreateInput, TaskStatus, TaskUpdateInput } from "@xdev-hive/contracts";
+import type { Task, TaskChecklistItem, TaskCreateInput, TaskStatus, TaskUpdateInput } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject, type ProjectRow } from "../catalog/index.ts";
-import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
+import { BadRequestError, ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
 import { allowWith, checkTeamRole, type TeamRole, teamRoleOf, teamRolesOf } from "../tenancy/index.ts";
+import { dependenciesOf, withDependencies } from "./dependencies.ts";
 import { tasks } from "./schema.ts";
 
 export type TaskRow = typeof tasks.$inferSelect;
@@ -27,7 +28,16 @@ export function toTask(t: TaskRow): Task {
     createdBy: t.createdBy,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
+    checklist: t.checklist,
   };
+}
+
+/** Agent đánh dấu mục theo id, nên hai mục trùng id thì không biết đánh vào mục nào. */
+function checkChecklist(items: TaskChecklistItem[]): TaskChecklistItem[] {
+  const ids = items.map((c) => c.id);
+  const dup = ids.find((id, i) => ids.indexOf(id) !== i);
+  if (dup) throw new BadRequestError("TASK_CHECKLIST_DUPLICATE", `Checklist có hai mục cùng id "${dup}".`);
+  return items;
 }
 
 /** Task trong tổ chức của context, không kiểm quyền: dành cho job và module runs (đã kiểm quyền ở chỗ khác). */
@@ -103,7 +113,7 @@ export async function createTask(
 export async function createSystemTask(
   tx: Tx,
   createdBy: string,
-  input: TaskCreateInput,
+  input: TaskCreateInput & { checklist?: TaskChecklistItem[] },
   source: Record<string, unknown>,
 ): Promise<TaskRow> {
   const project = await loadProject(tx, input.projectId);
@@ -114,7 +124,7 @@ export async function createSystemTask(
 async function insertTask(
   tx: Tx,
   project: ProjectRow,
-  input: TaskCreateInput,
+  input: TaskCreateInput & { checklist?: TaskChecklistItem[] },
   createdBy: string,
   source: Record<string, unknown>,
 ): Promise<TaskRow> {
@@ -140,6 +150,7 @@ async function insertTask(
       preferredCli: input.preferredCli ?? null,
       createdBy,
       source,
+      checklist: checkChecklist(input.checklist ?? []),
     })
     .returning();
   if (!row) throw new Error("Không ghi được task.");
@@ -204,7 +215,7 @@ export async function listTasks(
       .from(tasks)
       .where(and(eq(tasks.projectId, projectId), byStatus))
       .orderBy(asc(tasks.number));
-    return rows.map(toTask);
+    return withDependenciesAll(tx, rows);
   }
   const rows = await tx.select().from(tasks).where(byStatus).orderBy(desc(tasks.createdAt));
   const roles = await teamRolesOf(
@@ -212,11 +223,22 @@ export async function listTasks(
     userId,
     rows.map((r) => r.teamId),
   );
-  return rows.filter((r) => roles.has(r.teamId)).map(toTask);
+  return withDependenciesAll(
+    tx,
+    rows.filter((r) => roles.has(r.teamId)),
+  );
+}
+
+async function withDependenciesAll(tx: Tx, rows: TaskRow[]): Promise<Task[]> {
+  const deps = await dependenciesOf(
+    tx,
+    rows.map((r) => r.id),
+  );
+  return rows.map((r) => ({ ...toTask(r), ...deps.get(r.id) }));
 }
 
 export async function getTask(tx: Tx, userId: string, id: string): Promise<Task> {
-  return toTask(await taskForUser(tx, userId, id, "viewer"));
+  return withDependencies(tx, toTask(await taskForUser(tx, userId, id, "viewer")));
 }
 
 export async function updateTask(tx: Tx, userId: string, input: TaskUpdateInput): Promise<Task> {
@@ -233,6 +255,7 @@ export async function updateTask(tx: Tx, userId: string, input: TaskUpdateInput)
   if (input.type !== undefined) patch.type = input.type;
   if (input.preferredCli !== undefined) patch.preferredCli = input.preferredCli;
   if (input.status !== undefined) patch.status = input.status;
+  if (input.checklist !== undefined) patch.checklist = checkChecklist(input.checklist);
   const [row] = await tx
     .update(tasks)
     .set({ ...patch, updatedAt: sql`now()` })
@@ -245,7 +268,29 @@ export async function updateTask(tx: Tx, userId: string, input: TaskUpdateInput)
     targetId: row.id,
     data: { fields: Object.keys(patch) },
   });
-  return toTask(row);
+  return withDependencies(tx, toTask(row));
+}
+
+/**
+ * Đánh dấu xong/chưa xong từng mục checklist theo id, cho agent qua `task_update` và cho job; không kiểm quyền người
+ * (người gọi đã kiểm run thuộc task). Không thay chữ của mục: chữ do người hay bản tách đặt. Id lạ thì từ chối cả lần
+ * để agent biết mình đánh nhầm thay vì tưởng đã xong.
+ */
+export async function updateChecklist(tx: Tx, id: string, marks: { id: string; done: boolean }[]): Promise<TaskRow> {
+  const [current] = await tx.select().from(tasks).where(eq(tasks.id, id)).for("update");
+  if (!current) throw notFound();
+  const done = new Map(marks.map((m) => [m.id, m.done]));
+  const unknown = [...done.keys()].filter((k) => !current.checklist.some((c) => c.id === k));
+  if (unknown.length > 0) {
+    throw new BadRequestError(
+      "TASK_CHECKLIST_ITEM_NOT_FOUND",
+      `Checklist của task không có mục: ${unknown.join(", ")}.`,
+    );
+  }
+  const checklist = current.checklist.map((c) => (done.has(c.id) ? { ...c, done: done.get(c.id) ?? c.done } : c));
+  const [row] = await tx.update(tasks).set({ checklist, updatedAt: sql`now()` }).where(eq(tasks.id, id)).returning();
+  if (!row) throw notFound();
+  return row;
 }
 
 /**

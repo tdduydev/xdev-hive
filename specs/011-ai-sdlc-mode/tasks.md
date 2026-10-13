@@ -107,7 +107,7 @@
 
 ## Phase 2: Lõi hub — chế độ, hạng mục, giai đoạn, cổng (US8, US1, US3, US6) 🎯
 
-- [ ] T010 🎯 [P] Task có checklist và phụ thuộc
+- [x] T010 🎯 [P] Task có checklist và phụ thuộc
   - `tasks.ts`: ghi/đọc `checklist`; `setDependencies` (hai đầu cùng tổ chức, được khác dự án — D24; người gọi phải có
     quyền sửa task ở cả hai dự án; tác nhân hệ thống của `sdlc` bỏ qua kiểm quyền người; kiểm chu trình bằng DFS trong
     transaction, khoá advisory theo tổ chức), `blockedBy` trong get/list (kèm key dự án khi khác dự án); audit
