@@ -1,6 +1,15 @@
 import type { RunEventView, RunState } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { budgetPercent, canCancel, canSteer, checkRows, describeEvent, prLabel, runPhases } from "@/lib/run-view.ts";
+import {
+  budgetPercent,
+  canCancel,
+  canSteer,
+  checkRows,
+  describeEvent,
+  prLabel,
+  runAccess,
+  runPhases,
+} from "@/lib/run-view.ts";
 import { makeRun } from "@/lib/test-fixtures.ts";
 
 const now = Date.parse("2026-10-11T11:10:00.000Z");
@@ -145,4 +154,21 @@ describe("prLabel", () => {
     ["https://gitlab.com/acme/api/-/merge_requests/12/", "#12"],
     ["https://example.com/pr", "PR"],
   ])("%s → %s", (url, label) => expect(prLabel(url)).toBe(label));
+});
+
+describe("runAccess", () => {
+  it("run của mình: gửi chỉ dẫn và huỷ được dù không phải quản trị", () => {
+    expect(runAccess({ ownerUserId: "u1" }, "u1", false)).toEqual({ steer: true, cancel: true, reason: null });
+  });
+
+  it("run của người khác: quản trị đội chỉ huỷ được, không gửi chỉ dẫn vào máy cá nhân của chủ", () => {
+    expect(runAccess({ ownerUserId: "u2" }, "u1", true)).toMatchObject({ steer: false, cancel: true });
+    expect(runAccess({ ownerUserId: "u2" }, "u1", false)).toMatchObject({ steer: false, cancel: false });
+    expect(runAccess({ ownerUserId: "u2" }, "u1", false).reason).toContain("máy cá nhân");
+  });
+
+  it("run của đội (không chủ): quản trị đội gửi chỉ dẫn được, thành viên chỉ huỷ được", () => {
+    expect(runAccess({ ownerUserId: null }, "u1", true)).toEqual({ steer: true, cancel: true, reason: null });
+    expect(runAccess({ ownerUserId: null }, "u1", false)).toMatchObject({ steer: false, cancel: true });
+  });
 });
