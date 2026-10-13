@@ -9,7 +9,7 @@ import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { PROJECT_STATE } from "@/lib/projects.ts";
-import { PROVISION_STEP_STATE, provisionInFlight } from "@/lib/scm-connections.ts";
+import { PROVISION_STEP_STATE, provisionInFlight } from "@/lib/provision.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
 /** Khởi tạo chạy trên hàng đợi của hub, thường xong trong vài giây; hỏi lại đủ nhanh để thấy từng bước qua. */
