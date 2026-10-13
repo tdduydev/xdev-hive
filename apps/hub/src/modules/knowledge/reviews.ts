@@ -9,6 +9,7 @@ import {
   type ReviewDecideInput,
   type ReviewDetail,
   type ReviewGate,
+  type ReviewPhase,
   type ReviewSummary,
   type ReviewWorkflow,
   reviewDecideInput,
@@ -32,10 +33,21 @@ import {
 } from "../platform/index.ts";
 import { createSystemTask, listTasks } from "../tasks/index.ts";
 import { allowWith, notificationRecipients, requireOrgRole, requireTeamRole, teamMemberIds } from "../tenancy/index.ts";
-import { audit, canRead, type Principal, type Reader, readerFor, type Scope, visibleWhere } from "./access.ts";
+import {
+  audit,
+  canRead,
+  docGrant,
+  type Principal,
+  type Reader,
+  readerFor,
+  type Scope,
+  versionConflict,
+  visibleWhere,
+} from "./access.ts";
 import { applyDocSave } from "./docs.ts";
 import { createProposal } from "./proposals.ts";
 import {
+  type BreakdownRuleInput,
   diffCounts,
   docTypeOf,
   type FlatGate,
@@ -73,11 +85,124 @@ export type ReviewJob =
     }
   | { kind: "sla" };
 
-export interface ReviewDeps {
+/** Quy trình dựng ngoài bảng `review_workflows`, vd. AI SDLC dựng từ cổng của giai đoạn (specs/011 D3). */
+export interface DerivedWorkflow {
+  name: string;
+  phases: ReviewPhase[];
+}
+
+export interface BaselineEvent {
+  docKey: string;
+  version: number;
+  proposalId: string;
+  reviewId: string;
+  /** Duyệt lại bản baseline hiện tại sau khi thu hồi tự duyệt: không có phiên bản mới, `version` là bản đang hiệu lực. */
+  reaffirm: boolean;
+  /** Mọi checkpoint người của phiên đều do hub tự duyệt, không có người nào duyệt. */
+  autoApproved: boolean;
+}
+
+export interface AuthorFixRequest {
+  reviewId: string;
+  docKey: string;
+  docTitle: string;
+  projectId: string | null;
+  /** Góp ý của người duyệt. */
+  note: string;
+  decider: string | null;
+}
+
+export interface TraceRequest {
+  userId: string;
+  docKey: string;
+  content: string;
+  projectId: string | null;
+}
+
+/** Kết quả các checkpoint đã qua của phiên, để luật tự duyệt đọc điểm review AI. */
+export interface AutoCheckpoint {
+  gateId: string;
+  kind: ReviewGate["kind"];
+  status: GateRunRow["status"];
+  score: number | null;
+  checklist: ChecklistItem[];
+  decidedBy: string | null;
+}
+
+export interface AutoDecideRequest {
+  review: {
+    id: string;
+    proposalId: string;
+    docKey: string;
+    docTitle: string;
+    teamId: string | null;
+    projectId: string | null;
+    workflowName: string;
+    authorUserId: string | null;
+    authorRunId: string | null;
+  };
+  gate: ReviewGate;
+  checkpoints: AutoCheckpoint[];
+}
+
+/** `null`: tài liệu không thuộc phạm vi tự duyệt, chạy như cũ. `approve: false` không kèm lý do là im lặng. */
+export type AutoDecision =
+  | { approve: true; score: number; threshold: number; approvalId: string; reasons?: string[] | undefined }
+  | { approve: false; reason?: string | undefined };
+
+/** Dữ liệu cho luật `no-open-questions`, `breakdown`, `coverage`; chỉ `sdlc` có. */
+export interface RuleContextExtras {
+  openQuestions?: number | undefined;
+  breakdown?: BreakdownRuleInput | undefined;
+}
+
+/** Điểm nối của module khác vào máy trạng thái duyệt; không đặt thì hành vi y như trước. */
+export interface ReviewHooks {
+  /** Hỏi trước `matchWorkflow`: tài liệu của hạng mục có quy trình dựng riêng. */
+  workflowFor?: ((tx: Tx, docKey: string) => Promise<DerivedWorkflow | null>) | undefined;
+  /** Gọi trong transaction của baseline: giai đoạn không "đạt" khi baseline bị rollback. */
+  onBaseline?: ((tx: Tx, event: BaselineEvent) => Promise<void>) | undefined;
+  /** `true`: đã nhận việc sửa theo góp ý (thay task chung của `knowledge`). */
+  queueAuthorFix?: ((tx: Tx, request: AuthorFixRequest) => Promise<boolean>) | undefined;
+  /** `null`: dùng cách truy vết theo mã R-n và tiêu đề task. */
+  traceFor?: ((tx: Tx, request: TraceRequest) => Promise<RequirementTrace[] | null>) | undefined;
+  autoDecide?: ((tx: Tx, request: AutoDecideRequest) => Promise<AutoDecision | null>) | undefined;
+  ruleContext?: ((tx: Tx, docKey: string, content: string) => Promise<RuleContextExtras | null>) | undefined;
+}
+
+export interface ReviewDeps extends ReviewHooks {
   jobs?: Jobs | undefined;
   /** Địa chỉ web để link trong thông báo. */
   publicUrl?: string | undefined;
 }
+
+// Router, MCP và worker mỗi nơi dựng deps riêng; hook tiêm một lần lúc khởi động hub (như `provide*` của
+// mcp/registry.ts) để không đường nào bỏ sót. Deps truyền vào thắng, để test đổi hành vi từng ca.
+let installed: ReviewHooks = {};
+export function provideReviewHooks(hooks: ReviewHooks): void {
+  installed = hooks;
+}
+
+export function hooksOf(deps: ReviewDeps = {}): ReviewDeps {
+  return {
+    ...deps,
+    workflowFor: deps.workflowFor ?? installed.workflowFor,
+    onBaseline: deps.onBaseline ?? installed.onBaseline,
+    queueAuthorFix: deps.queueAuthorFix ?? installed.queueAuthorFix,
+    traceFor: deps.traceFor ?? installed.traceFor,
+    autoDecide: deps.autoDecide ?? installed.autoDecide,
+    ruleContext: deps.ruleContext ?? installed.ruleContext,
+  };
+}
+
+/** Tác nhân ghi ở `decidedBy` và lượt duyệt của checkpoint do hub tự duyệt. */
+export const AI_AUTO_ACTOR = "system:ai-auto";
+/** Phiên duyệt lại baseline: dùng cột `route` (chưa có hướng trả lại nào) vì không có cột riêng; trả lại thì bị ghi đè. */
+const REAFFIRM_ROUTE = "reaffirm";
+/** Id giả cho quy trình dựng sẵn khi hợp đồng đòi uuid (bản xem trước); phiên thật lưu `workflow_id = null`. */
+export const DERIVED_WORKFLOW_ID = "00000000-0000-0000-0000-000000000000";
+
+type StoredApproval = { userId: string; at: string; auto?: { score: number; threshold: number; approvalId: string } };
 
 type InstanceRow = typeof reviewInstances.$inferSelect;
 type GateRunRow = typeof reviewGateRuns.$inferSelect;
@@ -279,6 +404,36 @@ export async function matchWorkflow(tx: Tx, key: string, scope: Scope) {
   return best?.row ?? null;
 }
 
+/**
+ * Quy trình áp cho tài liệu: của hook `workflowFor` (hạng mục AI SDLC) trước, rồi tới quy trình khớp tiền tố. `id` null
+ * là quy trình dựng sẵn, không có dòng trong `review_workflows`.
+ */
+export async function resolveWorkflow(
+  tx: Tx,
+  key: string,
+  scope: Scope,
+  deps?: ReviewDeps,
+): Promise<{ id: string | null; name: string; phases: ReviewPhase[] } | null> {
+  const derived = await hooksOf(deps).workflowFor?.(tx, key);
+  if (derived) return { id: null, name: derived.name, phases: derived.phases };
+  const row = await matchWorkflow(tx, key, scope);
+  return row ? { id: row.id, name: row.name, phases: row.phases } : null;
+}
+
+const NEEDS_EXTRAS = new Set(["no-open-questions", "breakdown", "coverage"]);
+
+/** Dữ liệu của hạng mục cho các luật cần nó; chỉ hỏi hook khi quy trình thật sự có luật đó. */
+async function ruleExtras(
+  tx: Tx,
+  deps: ReviewDeps,
+  flat: FlatGate[],
+  docKey: string,
+  content: string,
+): Promise<RuleContextExtras> {
+  if (!deps.ruleContext || !flat.some((f) => f.gate.rules?.some((r) => NEEDS_EXTRAS.has(r)))) return {};
+  return (await deps.ruleContext(tx, docKey, content)) ?? {};
+}
+
 async function docContentAt(tx: Tx, key: string, version: number): Promise<string> {
   if (version <= 0) return "";
   const [row] = await tx
@@ -304,12 +459,14 @@ export async function dryRunWorkflow(
   const content = await docContentAt(tx, docKey, doc.currentVersion);
   const base = await docContentAt(tx, docKey, doc.currentVersion - 1);
   const docType = docTypeOf(docKey);
-  const ctx = { docType, content, base };
+  const hooks = hooksOf();
+  const flat = flatGates(workflow.phases);
+  const ctx = { docType, content, base, ...(await ruleExtras(tx, hooks, flat, docKey, content)) };
   return {
     docKey,
     docType,
     matched: workflow.docPrefixes.some((p) => docKey.startsWith(p)),
-    gates: flatGates(workflow.phases).map(({ gate }) => {
+    gates: flat.map(({ gate }) => {
       const applies = gateApplies(gate, ctx);
       return {
         gateId: gate.id,
@@ -336,14 +493,32 @@ export async function proposeWithReview(
   deps: ReviewDeps,
 ): Promise<Proposal> {
   const proposal = await createProposal(tx, principal, input);
-  if (proposal.kind === "doc") await startReview(tx, proposal.id, deps);
+  if (proposal.kind === "doc") await startReview(tx, proposal.id, hooksOf(deps));
   return proposal;
 }
 
-export async function startReview(tx: Tx, proposalId: string, deps: ReviewDeps): Promise<InstanceRow | null> {
+export interface StartReviewOptions {
+  /** Quy trình do người gọi dựng, bỏ qua `workflowFor` và quy trình khớp tiền tố (duyệt lại sau khi thu hồi tự duyệt). */
+  workflow?: DerivedWorkflow | undefined;
+  /**
+   * Đề xuất là chính baseline hiện tại, chỉ để người duyệt lại: đạt thì gọi `onBaseline` với `reaffirm`, không tạo
+   * phiên bản mới.
+   */
+  reaffirm?: boolean | undefined;
+}
+
+export async function startReview(
+  tx: Tx,
+  proposalId: string,
+  rawDeps: ReviewDeps,
+  options: StartReviewOptions = {},
+): Promise<InstanceRow | null> {
+  const deps = hooksOf(rawDeps);
   const [p] = await tx.select().from(proposals).where(eq(proposals.id, proposalId));
   if (p?.kind !== "doc" || p.status !== "pending") return null;
-  const wf = await matchWorkflow(tx, p.target, p);
+  const wf = options.workflow
+    ? { id: null, name: options.workflow.name, phases: options.workflow.phases }
+    : await resolveWorkflow(tx, p.target, p, deps);
   if (!wf) return null;
   const base = await docContentAt(tx, p.target, p.baseVersion);
   const { added, deleted } = diffCounts(base, p.content);
@@ -355,7 +530,8 @@ export async function startReview(tx: Tx, proposalId: string, deps: ReviewDeps):
     .where(and(eq(reviewInstances.docKey, p.target), eq(reviewInstances.status, "changes_requested")))
     .orderBy(desc(reviewInstances.updatedAt))
     .limit(1);
-  const resume = prev && prev.route === "agent" && prev.workflowId === wf.id ? prev.gateIndex : 0;
+  const sameWorkflow = prev && (wf.id ? prev.workflowId === wf.id : prev.workflowName === wf.name);
+  const resume = prev && prev.route === "agent" && sameWorkflow ? prev.gateIndex : 0;
   const [inst] = await tx
     .insert(reviewInstances)
     .values({
@@ -366,6 +542,7 @@ export async function startReview(tx: Tx, proposalId: string, deps: ReviewDeps):
       workflowId: wf.id,
       workflowName: wf.name,
       phases: wf.phases,
+      route: options.reaffirm ? REAFFIRM_ROUTE : null,
       docKey: p.target,
       docTitle: p.title ?? doc?.title ?? docTypeOf(p.target),
       gateIndex: resume,
@@ -386,6 +563,7 @@ export async function startReview(tx: Tx, proposalId: string, deps: ReviewDeps):
       workflow: wf.name,
       docKey: p.target,
       resumeAt: resume,
+      ...(options.reaffirm ? { reaffirm: true } : {}),
     },
   );
   await advance(tx, inst, deps, null);
@@ -415,7 +593,12 @@ async function advance(tx: Tx, inst: InstanceRow, deps: ReviewDeps, decider: str
   const flat = flatGates(inst.phases);
   const p = await loadProposal(tx, inst.proposalId);
   const base = await docContentAt(tx, inst.docKey, p.baseVersion);
-  const ctx = { docType: docTypeOf(inst.docKey), content: p.content, base };
+  const ctx = {
+    docType: docTypeOf(inst.docKey),
+    content: p.content,
+    base,
+    ...(await ruleExtras(tx, deps, flat, inst.docKey, p.content)),
+  };
   let i = inst.gateIndex;
   while (i < flat.length) {
     const { gate } = flat[i] as FlatGate;
@@ -443,19 +626,27 @@ async function advance(tx: Tx, inst: InstanceRow, deps: ReviewDeps, decider: str
         );
       }
       const next = await afterPass(tx, { ...inst, gateIndex: i }, gate, p, deps, decider);
-      if (next === "done") return finish(tx, inst, p, decider);
+      if (next === "done") return finish(tx, inst, p, decider, deps);
       i++;
       continue;
     }
     // Gate chờ: người duyệt, AI, CI.
     const due = gate.kind === "human" && gate.slaHours ? new Date(Date.now() + gate.slaHours * 3_600_000) : null;
-    await recordRun(tx, inst, i, gate, { status: "waiting", dueAt: due });
+    const waitingRunId = await recordRun(tx, inst, i, gate, { status: "waiting", dueAt: due });
     const [row] = await tx
       .update(reviewInstances)
       .set({ gateIndex: i, status: "in_review", updatedAt: sql`now()` })
       .where(eq(reviewInstances.id, inst.id))
       .returning();
-    if (gate.kind === "human") await notifyReviewers(tx, row ?? inst, gate, deps);
+    if (gate.kind === "human") {
+      if (await tryAutoDecide(tx, row ?? inst, i, gate, waitingRunId, p, deps)) {
+        const next = await afterPass(tx, { ...inst, gateIndex: i }, gate, p, deps, null);
+        if (next === "done") return finish(tx, inst, p, null, deps);
+        i++;
+        continue;
+      }
+      await notifyReviewers(tx, row ?? inst, gate, deps);
+    }
     if (gate.kind === "ext" && deps.jobs)
       await deps.jobs.enqueue(
         REVIEW_QUEUE,
@@ -470,7 +661,105 @@ async function advance(tx: Tx, inst: InstanceRow, deps: ReviewDeps, decider: str
       );
     return row ?? inst;
   }
-  return finish(tx, inst, p, decider);
+  return finish(tx, inst, p, decider, deps);
+}
+
+/**
+ * Checkpoint người mà hook `autoDecide` đồng ý: ghi như một lượt duyệt của `system:ai-auto` rồi đi tiếp y như người
+ * duyệt. Không đồng ý thì checkpoint vẫn chờ người; lý do ghi vào `note` và audit để người duyệt biết vì sao.
+ */
+async function tryAutoDecide(
+  tx: Tx,
+  inst: InstanceRow,
+  index: number,
+  gate: ReviewGate,
+  runId: string,
+  p: ProposalRow,
+  deps: ReviewDeps,
+): Promise<boolean> {
+  if (!deps.autoDecide) return false;
+  const flat = flatGates(inst.phases);
+  const runs = await tx
+    .select()
+    .from(reviewGateRuns)
+    .where(eq(reviewGateRuns.instanceId, inst.id))
+    .orderBy(asc(reviewGateRuns.startedAt));
+  const latest = new Map<number, GateRunRow>();
+  for (const r of runs) if (r.gateIndex < index) latest.set(r.gateIndex, r);
+  const checkpoints: AutoCheckpoint[] = flat.slice(0, index).flatMap((f) => {
+    const r = latest.get(f.index);
+    return r
+      ? [
+          {
+            gateId: f.gate.id,
+            kind: f.gate.kind,
+            status: r.status,
+            score: r.score,
+            checklist: r.checklist,
+            decidedBy: r.decidedBy,
+          },
+        ]
+      : [];
+  });
+  if (checkpoints.length !== index || checkpoints.some((c) => c.status !== "passed" && c.status !== "skipped"))
+    return false;
+  const decision = await deps.autoDecide(tx, {
+    review: {
+      id: inst.id,
+      proposalId: inst.proposalId,
+      docKey: inst.docKey,
+      docTitle: inst.docTitle,
+      teamId: inst.teamId,
+      projectId: inst.projectId,
+      workflowName: inst.workflowName,
+      authorUserId: inst.authorUserId,
+      authorRunId: inst.authorRunId,
+    },
+    gate,
+    checkpoints,
+  });
+  if (!decision) return false;
+  if (!decision.approve) {
+    if (decision.reason) {
+      await tx
+        .update(reviewGateRuns)
+        .set({ note: `Không tự duyệt: ${decision.reason}` })
+        .where(eq(reviewGateRuns.id, runId));
+      await audit(
+        tx,
+        authorPrincipal(p),
+        "review.auto_declined",
+        { type: "review", id: inst.id },
+        { gate: gate.id, reason: decision.reason },
+      );
+    }
+    return false;
+  }
+  const approval: StoredApproval = {
+    userId: AI_AUTO_ACTOR,
+    at: new Date().toISOString(),
+    auto: { score: decision.score, threshold: decision.threshold, approvalId: decision.approvalId },
+  };
+  await tx
+    .update(reviewGateRuns)
+    .set({
+      approvals: [approval],
+      status: "passed",
+      decidedBy: AI_AUTO_ACTOR,
+      note: [`Tự duyệt AI: điểm ${decision.score} đạt ngưỡng ${decision.threshold}.`, ...(decision.reasons ?? [])].join(
+        " ",
+      ),
+      finishedAt: sql`now()`,
+    })
+    .where(eq(reviewGateRuns.id, runId));
+  await audit(
+    tx,
+    authorPrincipal(p),
+    "review.auto_approve",
+    { type: "review", id: inst.id },
+    { gate: gate.id, score: decision.score, threshold: decision.threshold, approvalId: decision.approvalId },
+  );
+  return true;
 }
 
 async function recordRun(
@@ -485,18 +774,23 @@ async function recordRun(
     dueAt?: Date | null;
     finished?: boolean;
   },
-) {
-  await tx.insert(reviewGateRuns).values({
-    orgId: inst.orgId,
-    instanceId: inst.id,
-    gateIndex: index,
-    gateId: gate.id,
-    status: run.status,
-    note: run.note ?? null,
-    checklist: run.checklist ?? [],
-    dueAt: run.dueAt ?? null,
-    finishedAt: run.finished ? sql`now()` : null,
-  });
+): Promise<string> {
+  const [row] = await tx
+    .insert(reviewGateRuns)
+    .values({
+      orgId: inst.orgId,
+      instanceId: inst.id,
+      gateIndex: index,
+      gateId: gate.id,
+      status: run.status,
+      note: run.note ?? null,
+      checklist: run.checklist ?? [],
+      dueAt: run.dueAt ?? null,
+      finishedAt: run.finished ? sql`now()` : null,
+    })
+    .returning({ id: reviewGateRuns.id });
+  if (!row) throw new Error("Không ghi được lượt chạy checkpoint.");
+  return row.id;
 }
 
 /** Việc sau khi gate đạt: tạo việc cho agent của bước sau, hoặc chốt luôn. */
@@ -526,21 +820,37 @@ async function afterPass(
 }
 
 /** Qua hết gate: lưu nội dung đề xuất thành phiên bản mới (baseline) và đánh dấu đề xuất đã duyệt. */
-async function finish(tx: Tx, inst: InstanceRow, p: ProposalRow, decider: string | null): Promise<InstanceRow> {
+async function finish(
+  tx: Tx,
+  inst: InstanceRow,
+  p: ProposalRow,
+  decider: string | null,
+  deps: ReviewDeps,
+): Promise<InstanceRow> {
   const principal: Principal = decider ? { kind: "user", userId: decider } : authorPrincipal(p);
-  const doc = await applyDocSave(
-    tx,
-    principal,
-    p,
-    {
-      key: p.target,
-      title: p.title ?? undefined,
-      content: p.content,
-      baseVersion: p.baseVersion,
-      message: p.reason ?? undefined,
-    },
-    p.id,
-  );
+  const reaffirm = inst.route === REAFFIRM_ROUTE;
+  let version: number;
+  if (reaffirm) {
+    // Đề xuất là bản đang hiệu lực: không lưu gì, chỉ xác nhận lại. Tài liệu đã sang bản khác thì xác nhận này cũ rồi.
+    const [current] = await tx.select({ version: docs.currentVersion }).from(docs).where(eq(docs.key, p.target));
+    if (current?.version !== p.baseVersion) throw versionConflict("Tài liệu", current?.version ?? 0, p.baseVersion);
+    version = current.version;
+  } else {
+    const doc = await applyDocSave(
+      tx,
+      principal,
+      p,
+      {
+        key: p.target,
+        title: p.title ?? undefined,
+        content: p.content,
+        baseVersion: p.baseVersion,
+        message: p.reason ?? undefined,
+      },
+      p.id,
+    );
+    version = doc.version;
+  }
   await tx
     .update(proposals)
     .set({
@@ -548,7 +858,7 @@ async function finish(tx: Tx, inst: InstanceRow, p: ProposalRow, decider: string
       decidedBy: decider,
       decidedAt: new Date(),
       decisionNote: `Qua quy trình ${inst.workflowName}.`,
-      resultVersion: doc.version,
+      resultVersion: version,
     })
     .where(eq(proposals.id, p.id));
   const [row] = await tx
@@ -559,11 +869,36 @@ async function finish(tx: Tx, inst: InstanceRow, p: ProposalRow, decider: string
   await audit(
     tx,
     principal,
-    "review.baseline",
+    reaffirm ? "review.reaffirm" : "review.baseline",
     { type: "review", id: inst.id },
-    { docKey: p.target, version: doc.version },
+    { docKey: p.target, version },
   );
+  if (deps.onBaseline)
+    await deps.onBaseline(tx, {
+      docKey: p.target,
+      version,
+      proposalId: p.id,
+      reviewId: inst.id,
+      reaffirm,
+      autoApproved: await onlyAutoApproved(tx, inst),
+    });
   return row ?? inst;
+}
+
+/** Có checkpoint người đã đạt và tất cả đều do hub tự duyệt (lượt chạy cuối của mỗi checkpoint). */
+async function onlyAutoApproved(tx: Tx, inst: InstanceRow): Promise<boolean> {
+  const flat = flatGates(inst.phases);
+  const runs = await tx
+    .select()
+    .from(reviewGateRuns)
+    .where(eq(reviewGateRuns.instanceId, inst.id))
+    .orderBy(asc(reviewGateRuns.startedAt));
+  const latest = new Map<number, GateRunRow>();
+  for (const r of runs) latest.set(r.gateIndex, r);
+  const humans = [...latest.entries()].filter(
+    ([index, r]) => flat[index]?.gate.kind === "human" && r.status === "passed",
+  );
+  return humans.length > 0 && humans.every(([, r]) => r.decidedBy === AI_AUTO_ACTOR);
 }
 
 /** Trả lại: về người viết (đề xuất bị từ chối), agent sửa theo góp ý, hoặc về gate người duyệt trước đó. */
@@ -587,21 +922,32 @@ async function requestChanges(
     return advance(tx, back, deps, decider);
   }
   if (route === "agent") {
-    if (!inst.projectId)
-      throw new BadRequestError(
-        "REVIEW_AGENT_NEEDS_PROJECT",
-        "Tài liệu không thuộc dự án nào nên không giao agent sửa được; hãy trả về người viết.",
+    // Hạng mục AI SDLC tự giao run soạn lại với góp ý; tài liệu khác thì dùng task chung.
+    const queued = await deps.queueAuthorFix?.(tx, {
+      reviewId: inst.id,
+      docKey: inst.docKey,
+      docTitle: inst.docTitle,
+      projectId: inst.projectId,
+      note,
+      decider,
+    });
+    if (!queued) {
+      if (!inst.projectId)
+        throw new BadRequestError(
+          "REVIEW_AGENT_NEEDS_PROJECT",
+          "Tài liệu không thuộc dự án nào nên không giao agent sửa được; hãy trả về người viết.",
+        );
+      await createSystemTask(
+        tx,
+        decider ?? "system",
+        {
+          projectId: inst.projectId,
+          title: `Sửa tài liệu “${inst.docTitle}” theo góp ý`.slice(0, 200),
+          body: `Người duyệt trả lại đề xuất sửa \`${inst.docKey}\` ở quy trình ${inst.workflowName}.\n\nGóp ý:\n${note}\n\nĐọc bản hiện tại bằng \`doc_get\`, sửa theo góp ý rồi gọi \`doc_propose\`. Phiên duyệt sẽ tiếp tục ở checkpoint đã trả lại.`,
+        },
+        { kind: "review", reviewId: inst.id, route: "agent" },
       );
-    await createSystemTask(
-      tx,
-      decider ?? "system",
-      {
-        projectId: inst.projectId,
-        title: `Sửa tài liệu “${inst.docTitle}” theo góp ý`.slice(0, 200),
-        body: `Người duyệt trả lại đề xuất sửa \`${inst.docKey}\` ở quy trình ${inst.workflowName}.\n\nGóp ý:\n${note}\n\nĐọc bản hiện tại bằng \`doc_get\`, sửa theo góp ý rồi gọi \`doc_propose\`. Phiên duyệt sẽ tiếp tục ở checkpoint đã trả lại.`,
-      },
-      { kind: "review", reviewId: inst.id, route: "agent" },
-    );
+    }
   }
   await tx
     .update(proposals)
@@ -641,12 +987,25 @@ export function eligible(reader: Reader, gate: ReviewGate, scope: Scope): boolea
     })
   )
     return true;
-  const teamRole = scope.teamId ? reader.teams.get(scope.teamId) : undefined;
+  // Checkpoint theo đội của hạng mục (specs/011 D21) tính vai trò trong đội đó, không phải đội sở hữu tài liệu.
+  const teamId = r.teamScope ?? scope.teamId;
+  // Hợp đồng đã có vai trò `ba` nhưng enum đội của hub chưa có (T018), nên đọc như chuỗi.
+  const teamRole: string | undefined = teamId ? reader.teams.get(teamId) : undefined;
   return r.roles.some((role) => {
     if (role === "org-admin") return isOrgAdmin(reader);
-    if (role === "team-admin") return scope.teamId ? teamRole === "admin" : isOrgAdmin(reader);
-    return scope.teamId ? teamRole === "admin" || teamRole === "member" : true;
+    if (role === "team-admin") return teamId ? teamRole === "admin" : isOrgAdmin(reader);
+    if (role === "team-ba") return teamId ? teamRole === "admin" || teamRole === "member" || teamRole === "ba" : true;
+    return teamId ? teamRole === "admin" || teamRole === "member" : true;
   });
+}
+
+/** Đọc được phiên duyệt: thấy qua phạm vi, qua quyền riêng của tài liệu, hoặc là người duyệt checkpoint theo đội. */
+async function canSeeReview(tx: Tx, reader: Reader, inst: InstanceRow): Promise<boolean> {
+  if (canRead(reader, inst)) return true;
+  if (reader.kind !== "user") return false;
+  if (flatGates(inst.phases).some((f) => f.gate.reviewers?.teamScope && reader.teams.has(f.gate.reviewers.teamScope)))
+    return true;
+  return !!(await docGrant(tx, reader, inst.docKey));
 }
 
 /** Được quyết ở gate hiện tại: người được chỉ định (không phải người viết), hoặc owner/admin tổ chức. */
@@ -663,9 +1022,11 @@ async function notifyReviewers(tx: Tx, inst: InstanceRow, gate: ReviewGate, deps
   const r = gate.reviewers;
   if (!r) return;
   const ids = new Set(await notificationRecipients(tx, r.users));
+  const teamId = r.teamScope ?? inst.teamId;
   for (const role of r.roles) {
-    if (role === "org-admin" || !inst.teamId) for (const id of await notificationRecipients(tx)) ids.add(id);
-    else for (const id of await teamMemberIds(tx, inst.teamId, role === "team-admin" ? "admin" : "member")) ids.add(id);
+    if (role === "org-admin" || !teamId) for (const id of await notificationRecipients(tx)) ids.add(id);
+    // Người có vai trò `ba` thấp hơn `member` nên chưa nhận được tới khi tenancy thêm thứ hạng đó (T018).
+    else for (const id of await teamMemberIds(tx, teamId, role === "team-admin" ? "admin" : "member")) ids.add(id);
   }
   for (const t of r.teams) for (const id of await teamMemberIds(tx, t, "member")) ids.add(id);
   if (inst.authorUserId) ids.delete(inst.authorUserId);
@@ -689,13 +1050,14 @@ export async function decideReview(
   tx: Tx,
   userId: string,
   raw: ReviewDecideInput,
-  deps: ReviewDeps,
+  rawDeps: ReviewDeps,
 ): Promise<ReviewDetail> {
+  const deps = hooksOf(rawDeps);
   const input = reviewDecideInput.parse(raw);
   const principal: Principal = { kind: "user", userId };
   const reader = await readerFor(tx, principal);
   const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, input.id)).for("update");
-  if (!inst || !canRead(reader, inst)) throw notFound();
+  if (!inst || !(await canSeeReview(tx, reader, inst))) throw notFound();
   const flat = flatGates(inst.phases);
   const cur = flat[inst.gateIndex];
   const run = await currentRun(tx, inst);
@@ -719,7 +1081,7 @@ export async function decideReview(
     if (done) {
       const p = await loadProposal(tx, inst.proposalId);
       const next = await afterPass(tx, inst, gate, p, deps, userId);
-      if (next === "done") await finish(tx, inst, p, userId);
+      if (next === "done") await finish(tx, inst, p, userId, deps);
       else await advance(tx, { ...inst, gateIndex: inst.gateIndex + 1 }, deps, userId);
     }
   } else {
@@ -731,7 +1093,7 @@ export async function decideReview(
     await audit(tx, principal, "review.request_changes", { type: "review", id: inst.id }, { gate: gate.id, route });
     await requestChanges(tx, inst, route, input.note ?? "", userId, deps);
   }
-  return getReview(tx, userId, inst.id);
+  return getReview(tx, userId, inst.id, deps);
 }
 
 // ---- Gate AI và CI (job) ---------------------------------------------------------------------------------------
@@ -748,8 +1110,9 @@ export async function completeWaitingGate(
     note?: string | null;
     runId?: string | null;
   },
-  deps: ReviewDeps,
+  rawDeps: ReviewDeps,
 ): Promise<void> {
+  const deps = hooksOf(rawDeps);
   const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, instanceId)).for("update");
   if (inst?.status !== "in_review") return;
   const cur = flatGates(inst.phases)[inst.gateIndex];
@@ -772,7 +1135,7 @@ export async function completeWaitingGate(
     return;
   }
   const next = await afterPass(tx, inst, cur.gate, p, deps, null);
-  if (next === "done") await finish(tx, inst, p, null);
+  if (next === "done") await finish(tx, inst, p, null, deps);
   else await advance(tx, { ...inst, gateIndex: inst.gateIndex + 1 }, deps, null);
 }
 
@@ -834,6 +1197,12 @@ async function names(tx: Tx, ids: string[]): Promise<Map<string, string>> {
     .from(authUser)
     .where(inArray(authUser.id, unique));
   return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+/** Dấu tự duyệt của checkpoint (lưu cùng lượt duyệt của `system:ai-auto`), để màn duyệt hiện và cho phép thu hồi. */
+function autoOf(run: GateRunRow | undefined): { auto: NonNullable<StoredApproval["auto"]> } | Record<string, never> {
+  const auto = (run?.approvals as StoredApproval[] | undefined)?.find((a) => a.userId === AI_AUTO_ACTOR)?.auto;
+  return auto ? { auto } : {};
 }
 
 /** Lượt chạy bắt đầu sau cùng, như `order by started_at desc limit 1` của currentRun. */
@@ -952,7 +1321,15 @@ export async function listReviews(
   return { items, nextCursor: items.length >= input.limit ? cursor : null };
 }
 
-async function traceOf(tx: Tx, userId: string, inst: InstanceRow, content: string): Promise<RequirementTrace[]> {
+async function traceOf(
+  tx: Tx,
+  userId: string,
+  inst: InstanceRow,
+  content: string,
+  deps: ReviewDeps,
+): Promise<RequirementTrace[]> {
+  const custom = await deps.traceFor?.(tx, { userId, docKey: inst.docKey, content, projectId: inst.projectId });
+  if (custom) return custom;
   const reqs = requirementsOf(content);
   if (!reqs.length) return [];
   const tasks = inst.projectId ? await listTasks(tx, userId, inst.projectId).catch(() => []) : [];
@@ -966,10 +1343,11 @@ async function traceOf(tx: Tx, userId: string, inst: InstanceRow, content: strin
   }));
 }
 
-export async function getReview(tx: Tx, userId: string, id: string): Promise<ReviewDetail> {
+export async function getReview(tx: Tx, userId: string, id: string, rawDeps?: ReviewDeps): Promise<ReviewDetail> {
+  const deps = hooksOf(rawDeps);
   const reader = await readerFor(tx, { kind: "user", userId });
   const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, id));
-  if (!inst || !canRead(reader, inst)) throw notFound();
+  if (!inst || !(await canSeeReview(tx, reader, inst))) throw notFound();
   const p = await loadProposal(tx, inst.proposalId);
   const runs = await tx
     .select()
@@ -980,6 +1358,7 @@ export async function getReview(tx: Tx, userId: string, id: string): Promise<Rev
     inst.authorUserId ?? "",
     ...runs.flatMap((r) => [r.decidedBy ?? "", ...r.approvals.map((a) => a.userId)]),
   ]);
+  nameOf.set(AI_AUTO_ACTOR, "Tự duyệt AI");
   const flat = flatGates(inst.phases);
   const latest = new Map<number, GateRunRow>();
   for (const r of runs) latest.set(r.gateIndex, r);
@@ -1003,6 +1382,7 @@ export async function getReview(tx: Tx, userId: string, id: string): Promise<Rev
       startedAt: iso(r?.startedAt ?? null),
       finishedAt: iso(r?.finishedAt ?? null),
       runId: r?.runId ?? null,
+      ...autoOf(r),
     };
   });
   // Gate chưa tới (sau gate hiện tại) chưa có lượt chạy: hiện là chờ nhưng không có thời điểm bắt đầu.
@@ -1019,7 +1399,7 @@ export async function getReview(tx: Tx, userId: string, id: string): Promise<Rev
     content: p.content,
     reason: p.reason,
     gates,
-    trace: await traceOf(tx, userId, inst, p.content),
+    trace: await traceOf(tx, userId, inst, p.content, deps),
     canDecide:
       !!cur && canDecideAt(reader, cur.gate, inst, latestRun(runs.filter((r) => r.gateIndex === inst.gateIndex))),
     previousGate: previous?.gate.id ?? null,
