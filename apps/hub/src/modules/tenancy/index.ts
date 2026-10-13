@@ -11,6 +11,7 @@ export {
   type TeamRole,
   teamMemberIds,
   teamRoleOf,
+  teamRolesOf,
   visibleTeamIds,
 } from "./permissions.ts";
 export { ORG_HEADER, type OrgDeps, orgMiddlewares, type SessionUser, type TenancyDeps } from "./procedures.ts";

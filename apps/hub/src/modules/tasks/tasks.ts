@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject, type ProjectRow } from "../catalog/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
-import { allowWith, requireTeamRole, type TeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, requireTeamRole, type TeamRole, teamRoleOf, teamRolesOf } from "../tenancy/index.ts";
 import { tasks } from "./schema.ts";
 
 export type TaskRow = typeof tasks.$inferSelect;
@@ -205,10 +205,12 @@ export async function listTasks(
     return rows.map(toTask);
   }
   const rows = await tx.select().from(tasks).where(byStatus).orderBy(desc(tasks.createdAt));
-  // Số đội trong một tổ chức nhỏ, hỏi vai trò từng đội một lần là đủ (như projects.list).
-  const roles = new Map<string, TeamRole | null>();
-  for (const teamId of new Set(rows.map((r) => r.teamId))) roles.set(teamId, await teamRoleOf(tx, userId, teamId));
-  return rows.filter((r) => roles.get(r.teamId)).map(toTask);
+  const roles = await teamRolesOf(
+    tx,
+    userId,
+    rows.map((r) => r.teamId),
+  );
+  return rows.filter((r) => roles.has(r.teamId)).map(toTask);
 }
 
 export async function getTask(tx: Tx, userId: string, id: string): Promise<Task> {

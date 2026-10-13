@@ -57,18 +57,34 @@ export async function requireOrgRole(tx: Tx, userId: string, min: OrgRole): Prom
  * dòng team_members vẫn còn, vì khoá tài khoản chỉ đổi status ở org_members.
  */
 export async function teamRoleOf(tx: Tx, userId: string, teamId: string): Promise<TeamRole | null> {
-  const org = await orgRoleOf(tx, userId);
-  if (!org) return null;
+  return (await teamRolesOf(tx, userId, [teamId])).get(teamId) ?? null;
+}
+
+/**
+ * Vai trò của người dùng ở nhiều đội (bỏ trống `teamIds` là mọi đội của tổ chức) theo đúng luật của teamRoleOf, trong
+ * một truy vấn: danh sách gom từ nhiều đội không phải hỏi database cho từng đội. Đội không có vai trò thì không có
+ * trong Map.
+ */
+export async function teamRolesOf(tx: Tx, userId: string, teamIds?: string[]): Promise<Map<string, TeamRole>> {
+  if (teamIds?.length === 0) return new Map();
   // Đi từ teams để biết đội có tồn tại trong tổ chức của context (RLS lọc đội của tổ chức khác), nhờ vậy
-  // owner/admin tổ chức không thành "admin" của một id đội bất kỳ.
-  const [row] = await tx
-    .select({ role: teamMembers.role })
+  // owner/admin tổ chức không thành "admin" của một id đội bất kỳ. Join org_members với hive.ctx_org() như orgRoleOf:
+  // không còn là thành viên đang hoạt động thì không ra dòng nào.
+  const rows = await tx
+    .select({ teamId: teams.id, role: teamMembers.role, orgRole: orgMembers.role })
     .from(teams)
+    .innerJoin(
+      orgMembers,
+      and(eq(orgMembers.orgId, sql`hive.ctx_org()`), eq(orgMembers.userId, userId), eq(orgMembers.status, "active")),
+    )
     .leftJoin(teamMembers, and(eq(teamMembers.teamId, teams.id), eq(teamMembers.userId, userId)))
-    .where(eq(teams.id, teamId));
-  if (!row) return null;
-  if (org === "owner" || org === "admin") return "admin";
-  return row.role;
+    .where(teamIds ? inArray(teams.id, [...new Set(teamIds)]) : undefined);
+  const roles = new Map<string, TeamRole>();
+  for (const r of rows) {
+    const role = r.orgRole === "owner" || r.orgRole === "admin" ? "admin" : r.role;
+    if (role) roles.set(r.teamId, role);
+  }
+  return roles;
 }
 
 /**
@@ -76,16 +92,7 @@ export async function teamRoleOf(tx: Tx, userId: string, teamId: string): Promis
  * thành viên. Danh sách có phân trang cần lọc trong SQL; hỏi teamRoleOf cho từng dòng sau khi lấy sẽ làm trang hụt.
  */
 export async function visibleTeamIds(tx: Tx, userId: string): Promise<string[]> {
-  const org = await orgRoleOf(tx, userId);
-  if (!org) return [];
-  if (org === "owner" || org === "admin") {
-    return (await tx.select({ id: teams.id }).from(teams)).map((r) => r.id);
-  }
-  const rows = await tx
-    .select({ id: teams.id })
-    .from(teams)
-    .innerJoin(teamMembers, and(eq(teamMembers.teamId, teams.id), eq(teamMembers.userId, userId)));
-  return rows.map((r) => r.id);
+  return [...(await teamRolesOf(tx, userId)).keys()];
 }
 
 /** Đòi vai trò đội ít nhất là `min`; trả về vai trò thực. */

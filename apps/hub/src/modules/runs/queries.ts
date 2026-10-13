@@ -11,7 +11,7 @@ import { loadProject } from "../catalog/index.ts";
 import { machineNames } from "../fleet/index.ts";
 import { NotFoundError, type Tx } from "../platform/index.ts";
 import { taskForUser, taskSummaries } from "../tasks/index.ts";
-import { type TeamRole, teamRoleOf, visibleTeamIds } from "../tenancy/index.ts";
+import { teamRoleOf, teamRolesOf, visibleTeamIds } from "../tenancy/index.ts";
 import { runForUser } from "./engine.ts";
 import { runEvents, runLogs, runs } from "./schema.ts";
 import { toRun } from "./state.ts";
@@ -52,9 +52,12 @@ export async function latestRuns(tx: Tx, userId: string, projectId?: string): Pr
     .from(runs)
     .where(and(eq(runs.kind, "code"), projectId ? eq(runs.projectId, projectId) : undefined))
     .orderBy(runs.taskId, desc(runs.createdAt));
-  const roles = new Map<string, TeamRole | null>();
-  for (const teamId of new Set(rows.map((r) => r.teamId))) roles.set(teamId, await teamRoleOf(tx, userId, teamId));
-  return withMachineNames(tx, rows.filter((r) => roles.get(r.teamId)).map(toRun));
+  const roles = await teamRolesOf(
+    tx,
+    userId,
+    rows.map((r) => r.teamId),
+  );
+  return withMachineNames(tx, rows.filter((r) => roles.has(r.teamId)).map(toRun));
 }
 
 /** Số máy tối đa trong ô lọc theo máy. */

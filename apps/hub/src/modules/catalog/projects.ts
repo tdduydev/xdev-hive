@@ -28,7 +28,7 @@ import {
   type ProviderFactory,
   type ResolvedConnection,
 } from "../scm/index.ts";
-import { allowWith, findSystem, requireTeamRole, type TeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, findSystem, requireTeamRole, type TeamRole, teamRoleOf, teamRolesOf } from "../tenancy/index.ts";
 import { projectProvisionSteps, projects } from "./schema.ts";
 import { type PlannedStep, planSteps } from "./steps.ts";
 import { renderTemplate } from "./template.ts";
@@ -500,10 +500,13 @@ export async function listProjects(tx: Tx, userId: string, systemId?: string): P
     .from(projects)
     .where(systemId ? eq(projects.systemId, systemId) : undefined)
     .orderBy(asc(projects.name));
-  // Lọc theo đội mình có vai trò. Số đội trong một tổ chức nhỏ, hỏi từng đội một lần là đủ.
-  const roles = new Map<string, TeamRole | null>();
-  for (const teamId of new Set(rows.map((r) => r.teamId))) roles.set(teamId, await teamRoleOf(tx, userId, teamId));
-  return rows.filter((r) => roles.get(r.teamId)).map(projectView);
+  // Lọc theo đội mình có vai trò.
+  const roles = await teamRolesOf(
+    tx,
+    userId,
+    rows.map((r) => r.teamId),
+  );
+  return rows.filter((r) => roles.has(r.teamId)).map(projectView);
 }
 
 export async function getProject(tx: Tx, userId: string, id: string): Promise<Project> {
