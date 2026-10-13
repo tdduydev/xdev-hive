@@ -486,3 +486,43 @@ func TestLogChunksShareOneOffsetAcrossStreams(t *testing.T) {
 		t.Fatalf("offset = %v", offsets)
 	}
 }
+
+func TestDecodeJobReadsCheckCommands(t *testing.T) {
+	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repo":"org/repo","cli":"claude","checks":{"commands":[{"run":"pnpm test","timeoutSec":300},{"run":"go vet ./...","timeoutSec":60}]}}`)}
+	job, err := decodeJob(offer, Lease{}, "https://hub.example", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(job.Checks) != 2 || job.Checks[0].Run != "pnpm test" || job.Checks[0].TimeoutSec != 300 || job.Checks[1].TimeoutSec != 60 {
+		t.Fatalf("checks = %+v", job.Checks)
+	}
+	// Hub không gửi checks (quy trình không có quy tắc command) thì không có lệnh nào.
+	old := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repo":"org/repo","cli":"claude"}`)}
+	if job, err = decodeJob(old, Lease{}, "https://hub.example", ""); err != nil || job.Checks != nil {
+		t.Fatalf("job.Checks = %+v, err = %v", job.Checks, err)
+	}
+}
+
+// report là JSON của runner.Result: commands nằm trong report để hub đọc, và vắng hẳn khi spec không có lệnh kiểm.
+func TestResultMessageCarriesCommandReport(t *testing.T) {
+	r := &runner.Result{Status: "succeeded", HeadSHA: "abc", CommitCount: 1, ChangedFiles: []string{"a.go"}, Commands: []runner.CommandResult{
+		{Run: "pnpm test", Exit: 1, DurationMs: 1200, Tail: "FAIL"},
+		{Run: "sleep 99", Exit: -1, DurationMs: 1000, Tail: "quá", TimedOut: true},
+	}}
+	var got struct {
+		Commands []map[string]any `json:"commands"`
+	}
+	if err := json.Unmarshal(resultMessage("r", 1, 9, r).Report, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Commands) != 2 || got.Commands[0]["run"] != "pnpm test" || got.Commands[0]["exit"] != float64(1) || got.Commands[0]["durationMs"] != float64(1200) || got.Commands[0]["tail"] != "FAIL" || got.Commands[1]["timedOut"] != true {
+		t.Fatalf("report.commands = %+v", got.Commands)
+	}
+	if _, has := got.Commands[0]["timedOut"]; has {
+		t.Fatal("timedOut phải vắng khi không hết giờ")
+	}
+	plain := resultMessage("r", 1, 9, &runner.Result{Status: "succeeded"})
+	if strings.Contains(string(plain.Report), "commands") {
+		t.Fatalf("report có commands dù không chạy lệnh: %s", plain.Report)
+	}
+}
