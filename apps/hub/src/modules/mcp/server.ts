@@ -46,7 +46,7 @@ async function runTool(
   const { org, ...args } = raw as { org?: string } & Record<string, unknown>;
   const { pool, registry } = deps;
   let orgId: string;
-  if (principal.kind === "run" || principal.personalTokenId) {
+  if (principal.kind === "run" || principal.personalTokenId || principal.terminal) {
     if (!principal.orgId) throw new McpToolError("Token thiếu tổ chức.");
     if (org && org !== principal.orgId) throw new McpToolError("Token chỉ được làm việc trong tổ chức của nó.");
     orgId = principal.orgId;
@@ -62,12 +62,17 @@ async function runTool(
     clientId: principal.clientId ?? null,
     ...(principal.runId ? { runId: principal.runId } : {}),
     ...(principal.personalTokenId ? { tokenId: principal.personalTokenId } : {}),
+    // Mỗi lần Leader trong terminal gọi tool đều có dòng audit gắn phiên và chế độ (Bypass không qua duyệt).
+    ...(principal.terminal
+      ? { terminalSessionId: principal.terminal.sessionId, terminalMode: principal.terminal.mode }
+      : {}),
   };
   try {
     // Kiểm trước prepare để tool bị tắt không gọi dịch vụ ngoài; kiểm lại lúc thực thi để không dùng trạng thái cũ.
     await withTenant(pool, { userId: principal.userId, orgId }, (tx) => requireEnabledTool(tx, tool.name));
     const prepared = tool.prepare ? await tool.prepare(args) : undefined;
-    return await withTenant(pool, { userId: principal.userId, orgId }, async (tx) => {
+    const after: Array<() => void> = [];
+    const output = await withTenant(pool, { userId: principal.userId, orgId }, async (tx) => {
       // Xét lại trong transaction sẽ chạy tool: RLS chỉ lọc theo tổ chức trong context, không theo tư cách thành viên,
       // và người dùng có thể vừa bị khoá giữa hai transaction.
       if (
@@ -78,7 +83,11 @@ async function runTool(
       }
       await requireActivePersonalToken(tx, principal);
       await requireEnabledTool(tx, tool.name);
-      const result = await tool.handler(args, { tx, orgId, principal }, prepared);
+      const result = await tool.handler(
+        args,
+        { tx, orgId, principal, afterCommit: (fn: () => void) => after.push(fn) },
+        prepared,
+      );
       await recordAudit(tx, {
         action: `mcp.${tool.name}`,
         targetType: "mcp_tool",
@@ -91,6 +100,8 @@ async function runTool(
       });
       return result;
     });
+    for (const fn of after) fn();
+    return output;
   } catch (error) {
     // Transaction lỗi đã rollback; ghi số lỗi riêng, không lưu thông báo nội bộ hay tham số có thể chứa secret.
     await withTenant(pool, { userId: principal.userId, orgId }, (tx) =>
@@ -138,7 +149,7 @@ export async function buildMcpServer(deps: McpServerDeps, principal: McpPrincipa
   }
   const tools = deps.registry.list(principal);
   const inputFor = (tool: McpTool<z.ZodObject, unknown>) =>
-    principal.kind === "run" ? tool.input : tool.input.extend({ org: ORG_PARAM });
+    principal.kind === "run" || principal.terminal ? tool.input : tool.input.extend({ org: ORG_PARAM });
   for (const tool of tools) {
     server.registerTool(
       tool.name,

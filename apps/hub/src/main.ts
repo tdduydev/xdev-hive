@@ -15,6 +15,7 @@ import {
   fleetOfflineQueue,
   registerFleetOfflineWorker,
   registerRunHandlers,
+  registerTerminalHandlers,
 } from "./modules/fleet/index.ts";
 import { createAuth, mcpMode } from "./modules/identity/index.ts";
 import {
@@ -49,6 +50,7 @@ import {
   scmEventQueue,
 } from "./modules/scm/index.ts";
 import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./modules/tenancy/index.ts";
+import { attachTerminalGateway, createTerminalHandlers } from "./modules/terminal/index.ts";
 
 const config = loadConfig();
 const roles = config.roles ?? ["api", "jobs"];
@@ -199,13 +201,17 @@ if (roles.includes("api")) {
     },
   );
   // serve() tạo server HTTP/1.1 khi không cấu hình http2; WebSocket chỉ nâng cấp được trên HTTP/1.1.
-  if (pool)
+  if (pool) {
     attachWorkerGateway(server as Server, {
       pool,
       jobs,
       publicUrl: config.publicUrl,
       offlineNotifySec: config.machineOfflineNotifySec,
     });
+    // Terminal Leader chạy cùng tiến trình với cổng worker: gói term_* chỉ đi được qua kết nối WSS tiến trình này giữ.
+    registerTerminalHandlers(createTerminalHandlers(pool));
+    attachTerminalGateway(server as Server, { pool, publicUrl: config.publicUrl });
+  }
 }
 
 // pg-boss nhả job đang giữ khi dừng êm, để tiến trình khác nhận lại ngay thay vì chờ hết hạn.

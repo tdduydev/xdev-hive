@@ -62,6 +62,12 @@ import {
   registerMcpTools as tenancyMcpTools,
   tenancyRouter,
 } from "./modules/tenancy/index.ts";
+import {
+  chainVerifiers,
+  createTerminalTokenVerifier,
+  terminalRouter,
+  terminalTokenKey,
+} from "./modules/terminal/index.ts";
 import { withPersonalTokens } from "./personal-token-auth.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
 
@@ -116,7 +122,12 @@ export function createApp({
   runsMcpTools(registry);
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
-  leaderMcpTools(registry);
+  leaderMcpTools(registry, { runs });
+  const terminal = {
+    enabled: config.remoteTerminal ?? false,
+    publicUrl,
+    tokenKey: config.authSecret ? terminalTokenKey(config.authSecret) : undefined,
+  };
   // REST API của người dùng nhận cả token cá nhân (app desktop, spec 008 FR-026). Better Auth, cổng MCP và quản trị
   // token MCP giữ baseAuth: token cá nhân không được tự tạo, gia hạn hay thu hồi token.
   const auth = baseAuth && pool ? withPersonalTokens(baseAuth, pool, registry) : baseAuth;
@@ -203,6 +214,7 @@ export function createApp({
     mcpAdmin: mcpAdminRouter({ auth: baseAuth, pool, registry }),
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
+    terminal: terminalRouter({ auth, pool, terminal }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
@@ -261,7 +273,11 @@ export function createApp({
       pool,
       registry,
       version: config.version,
-      runTokens: runTokens ?? runs?.mcpRunTokens,
+      // Token của phiên terminal Leader đi cùng đường run token (kể cả chế độ chỉ-run-token khi hub chạy http).
+      runTokens: chainVerifiers(
+        runTokens ?? runs?.mcpRunTokens,
+        terminal.tokenKey ? createTerminalTokenVerifier({ pool, key: terminal.tokenKey, publicUrl }) : undefined,
+      ),
       runTokensOnly: mode === "run",
     });
     // Đăng ký trước handler /api và SPA để /mcp không rơi vào index.html.
