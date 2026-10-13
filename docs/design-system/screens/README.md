@@ -10,7 +10,7 @@ nằm trong [`v1/`](v1/README.md).
 
 | Đường dẫn | Là gì |
 |---|---|
-| `*.dc.html` | 40 artboard, mỗi file một màn hoặc một thành phần dùng chung. Tên file là tên artboard trên canvas |
+| `*.dc.html` | 41 artboard, mỗi file một màn hoặc một thành phần dùng chung. Tên file là tên artboard trên canvas |
 | `canvas.json` | Bố cục canvas: vị trí, kích thước, tiêu đề từng artboard, các hàng và ghi chú |
 | `ds/xdev-hive/` | Token v2 mà artboard nạp (`tokens.css` sinh từ `tokens.json`, cùng giá trị với `../tokens.json`) |
 | `v1/` | Thiết kế cũ theo design system v1 (navy, `canvas`/`surface`) |
@@ -90,6 +90,7 @@ Một app cho mọi người, menu hiện theo quyền. Không tách app dev và
 | `AppSkills.dc.html` | Skill áp cho thư mục, cài vào `.claude/skills/` và `.agents/skills/` |
 | `AppTokens.dc.html` | Ngữ cảnh theo nhóm của `/context`, thứ tiêu hạn mức theo `/usage`, gợi ý tối ưu |
 | `AppSetup.dc.html` | Môi trường: CLI, runtime, công cụ, MCP, thư viện dự án, kèm lệnh cài |
+| `AppPlans.dc.html` | Gói agent nhóm theo CLI: ô "Cả máy", khối Claude Code / Codex / Antigravity với lưới thẻ gói, băng tìm đăng nhập chưa thêm, hộp thêm gói theo bước. Tweak `view` mở hộp thêm hoặc hộp tìm thấy |
 
 Chế độ quyền, lệnh `/`, cách đăng nhập và đường dẫn skill trong `AppDocs` và `AppSkills` lấy từ Claude Code 2.1.296
 và codex-cli 0.162.1 cài trên máy dev ngày 2026-10-12. Định dạng từng dòng thao tác trong khung chat và chữ của Approve
