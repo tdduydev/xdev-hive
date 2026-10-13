@@ -18,13 +18,18 @@ export function cleanPastedHtml(html: string): string {
   for (const el of Array.from(doc.querySelectorAll("style, meta, link, title"))) el.remove();
   for (const el of Array.from(doc.getElementsByTagName("o:p"))) el.remove();
   let stack: HTMLElement[] = [];
+  let listId = "";
   for (const p of Array.from(doc.body.querySelectorAll("p"))) {
     const style = p.getAttribute("style") ?? "";
-    const level = Number(/mso-list:\s*l\d+\s+level(\d+)/i.exec(style)?.[1] ?? 0);
+    const list = /mso-list:\s*(l\d+)\s+level(\d+)/i.exec(style);
+    const level = Number(list?.[2] ?? 0);
     if (!level && !/MsoListParagraph/i.test(p.className)) {
       stack = [];
       continue;
     }
+    // Word đánh mã riêng (l0, l1…) cho từng danh sách: hai danh sách liền nhau vẫn tách ra.
+    if (list && list[1] !== listId) stack = [];
+    listId = list?.[1] ?? listId;
     const marker = Array.from(p.querySelectorAll("span")).find((s) =>
       /mso-list:\s*ignore/i.test(s.getAttribute("style") ?? ""),
     );

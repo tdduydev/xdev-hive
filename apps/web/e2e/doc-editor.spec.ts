@@ -254,19 +254,24 @@ test("doc editor: open from Docs, see workflow, edit a block directly and insert
   await expect(page.getByRole("list", { name: "Đang mở tài liệu" })).toContainText("Phạm Hà");
 
   await page.getByRole("button", { name: "+ Thêm khối mới" }).click();
-  await page.getByRole("textbox", { name: "Sửa khối" }).fill("/");
+  await page.keyboard.type("/");
   const menu = page.getByRole("listbox", { name: "Chèn khối" });
   await expect(menu).toBeVisible();
   await menu.getByRole("option", { name: /Yêu cầu có mã/ }).click();
-  await expect(page.getByRole("textbox", { name: "Sửa khối" })).toHaveValue("- R-2: ");
-  await page.getByRole("textbox", { name: "Sửa khối" }).fill("- R-2: Chặn tổng hoàn vượt số tiền gốc.");
-  await page.getByRole("button", { name: "Xong" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Đã lưu" })).toBeVisible({ timeout: 5000 });
+  const doc = page.getByRole("textbox", { name: "Nội dung tài liệu" });
+  // Mã kế tiếp sau R-1 có sẵn; mã là một khối nguyên, gõ chữ phía sau không đổi mã.
+  await expect(doc.locator("[data-requirement]")).toHaveText(["R-1", "R-2"]);
+  await page.keyboard.type("Chặn tổng hoàn vượt số tiền gốc.");
+  await expect
+    .poll(() => (hub.rpcCalls.findLast((c) => c.path === "docEditor/save")?.input as { content?: string })?.content, {
+      timeout: 5000,
+    })
+    .toContain("- R-2: Chặn tổng hoàn vượt số tiền gốc.");
   const save = hub.rpcCalls.find((c) => c.path === "docEditor/save");
   expect(save?.input).toMatchObject({ key, revision: 3 });
-  expect((save?.input as { content: string } | undefined)?.content).toContain(
-    "- R-2: Chặn tổng hoàn vượt số tiền gốc.",
-  );
+  // Khối không ai sửa giữ nguyên chữ gốc.
+  expect((save?.input as { content?: string } | undefined)?.content?.startsWith(CONTENT)).toBe(true);
+  await expect(page.getByRole("status").filter({ hasText: "Đã lưu" })).toBeVisible({ timeout: 5000 });
 });
 
 test("doc editor: AI suggestion shows inline diff and accepting it updates the draft", async ({ page }) => {
@@ -289,9 +294,12 @@ test("doc editor: suggesting mode turns an edit into a suggestion instead of sav
   await page.goto(editorUrl);
   await page.getByRole("button", { name: "Chế độ: Sửa thẳng" }).click();
   await expect(page.getByRole("button", { name: "Chế độ: Đề xuất" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Sửa khối" }).nth(2).click();
-  await page.getByRole("textbox", { name: "Sửa khối" }).fill("Tổng hoàn không vượt số tiền gốc.");
-  await page.getByRole("button", { name: "Xong" }).click();
+  const doc = page.getByRole("textbox", { name: "Nội dung tài liệu" });
+  await doc.getByText("Tổng hoàn phải nhỏ hơn số tiền gốc.").click({ clickCount: 3 });
+  await page.keyboard.type("Tổng hoàn không vượt số tiền gốc.");
+  await expect(page.getByText("1 chỗ sửa chưa gửi")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Chế độ: Đề xuất" })).toBeDisabled();
+  await page.getByRole("button", { name: "Gửi đề xuất" }).click();
   await expect.poll(() => hub.rpcCalls.filter((c) => c.path === "docEditor/suggestions/create").length).toBe(1);
   expect(hub.rpcCalls.find((c) => c.path === "docEditor/suggestions/create")?.input).toMatchObject({
     key,
