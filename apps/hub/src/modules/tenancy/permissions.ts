@@ -97,7 +97,11 @@ export async function visibleTeamIds(tx: Tx, userId: string): Promise<string[]> 
 
 /** Đòi vai trò đội ít nhất là `min`; trả về vai trò thực. */
 export async function requireTeamRole(tx: Tx, userId: string, teamId: string, min: TeamRole): Promise<TeamRole> {
-  const role = await teamRoleOf(tx, userId, teamId);
+  return checkTeamRole(await teamRoleOf(tx, userId, teamId), min);
+}
+
+/** Như requireTeamRole với vai trò đã hỏi bằng teamRoleOf, để người gọi vừa hỏi xong không phải hỏi lại database. */
+export function checkTeamRole(role: TeamRole | null, min: TeamRole): TeamRole {
   if (!role) throw new ForbiddenError("NOT_TEAM_MEMBER", "Bạn không có quyền truy cập đội này.");
   if (TEAM_RANK[role] < TEAM_RANK[min])
     throw new ForbiddenError("TEAM_ROLE_REQUIRED", `Cần vai trò ${TEAM_LABEL[min]} của đội trở lên.`);
