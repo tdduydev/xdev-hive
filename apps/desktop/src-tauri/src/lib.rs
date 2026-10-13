@@ -378,11 +378,11 @@ struct WorkerConfig {
     machine_id: Option<String>,
 }
 
-async fn sidecar_json(
+async fn sidecar_json<T: serde::de::DeserializeOwned>(
     app: &AppHandle,
     args: Vec<String>,
     env: Vec<(&str, String)>,
-) -> Result<WorkerConfig, String> {
+) -> Result<T, String> {
     let mut cmd = app
         .shell()
         .sidecar(SIDECAR)
@@ -405,6 +405,35 @@ async fn sidecar_json(
     }
     serde_json::from_slice(&out.stdout)
         .map_err(|e| format!("Không đọc được kết quả của worker: {e}"))
+}
+
+/// Tài khoản CLI của máy (accounts.json của worker, spec 008 US13), kèm trạng thái đăng nhập. Không chứa token.
+#[tauri::command]
+async fn cli_profiles(app: AppHandle) -> Result<serde_json::Value, String> {
+    sidecar_json(&app, vec!["accounts".into(), "--json".into()], vec![]).await
+}
+
+/// Bật hoặc tắt một tài khoản CLI; worker đọc lại file ở run sau, không cần khởi động lại.
+#[tauri::command]
+async fn cli_profile_set(
+    app: AppHandle,
+    id: String,
+    enabled: bool,
+) -> Result<serde_json::Value, String> {
+    sidecar_json(
+        &app,
+        vec![
+            "accounts".into(),
+            "set".into(),
+            "--id".into(),
+            id,
+            "--enabled".into(),
+            enabled.to_string(),
+            "--json".into(),
+        ],
+        vec![],
+    )
+    .await
 }
 
 /// Trạng thái worker hiện tại; sau đó cửa sổ app nghe sự kiện "worker-state".
@@ -454,7 +483,8 @@ async fn register_and_start(app: &AppHandle, args: RegisterArgs) -> Result<Strin
     if let Some(m) = &args.machine {
         cli.extend(["--machine".into(), m.clone()]);
     }
-    let reg = sidecar_json(app, cli, vec![("HIVE_REGISTRATION_TOKEN", args.token)]).await?;
+    let reg: WorkerConfig =
+        sidecar_json(app, cli, vec![("HIVE_REGISTRATION_TOKEN", args.token)]).await?;
     let hub = reg
         .hub_url
         .filter(|_| reg.registered)
@@ -694,6 +724,8 @@ pub fn run() {
             cli::run_cli_stream,
             cli::cancel_cli_stream,
             cli::cli_accounts,
+            cli_profiles,
+            cli_profile_set,
             cli::folder_tree,
             cli::propose_doc
         ])
@@ -709,7 +741,13 @@ pub fn run() {
             app.manage(tray);
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                match sidecar_json(&handle, vec!["config".into(), "--json".into()], vec![]).await {
+                match sidecar_json::<WorkerConfig>(
+                    &handle,
+                    vec!["config".into(), "--json".into()],
+                    vec![],
+                )
+                .await
+                {
                     Ok(WorkerConfig {
                         registered: true,
                         hub_url: Some(hub),
@@ -720,6 +758,17 @@ pub fn run() {
                         }
                         if let Ok(mut slot) = handle.state::<State>().machine.lock() {
                             *slot = machine_id;
+                        }
+                        // Lần đầu chạy app mới trên máy đã dùng app v1: mang tài khoản CLI sang trước khi worker
+                        // khởi động, để worker nhận đủ số run cùng lúc ngay. Lỗi thì vẫn chạy bằng đăng nhập mặc định.
+                        if let Err(e) = sidecar_json::<serde_json::Value>(
+                            &handle,
+                            vec!["accounts".into(), "import-legacy".into(), "--json".into()],
+                            vec![],
+                        )
+                        .await
+                        {
+                            eprintln!("Không nhập được tài khoản CLI của app v1: {e}");
                         }
                         dispatch(&handle, Event::Start);
                         show_app(&handle);
