@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -27,7 +28,8 @@ func TestImportLegacyOnceWithoutSecrets(t *testing.T) {
 	if strings.Contains(string(b), "sk-ant") || strings.Contains(string(b), "API_KEY") {
 		t.Fatalf("biến môi trường khác của app v1 bị chép: %s", b)
 	}
-	if st, _ := os.Stat(dst); st.Mode().Perm() != 0o600 {
+	// Windows không có quyền kiểu Unix: chỉ kiểm trên hệ điều hành có.
+	if st, _ := os.Stat(dst); runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
 		t.Fatalf("quyền file = %v", st.Mode().Perm())
 	}
 	list, _ := Load(dst)

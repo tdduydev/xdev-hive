@@ -34,7 +34,7 @@ func TestAcquirePriorityConcurrencyAndDisabled(t *testing.T) {
 	if err != nil || first.Label() != "claude-3" {
 		t.Fatalf("ưu tiên cao nhất phải là claude-3: %v %v", first.Label(), err)
 	}
-	if got := first.Env()["CLAUDE_CONFIG_DIR"]; got != "/home/duy/.xdev-hive/accounts/claude-3" {
+	if got := first.Env()["CLAUDE_CONFIG_DIR"]; got != filepath.Join("/home/duy", ".xdev-hive", "accounts", "claude-3") {
 		t.Fatalf("CLAUDE_CONFIG_DIR = %q", got)
 	}
 	// claude-3 đủ một run; claude-5 tắt dù ưu tiên cao: hai run sau vào claude-4 (cho phép 2).
