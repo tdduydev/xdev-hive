@@ -198,7 +198,9 @@ export function knowledgeRouter(
       }),
     },
     reviewWorkflows: {
-      list: workflows.list.handler(({ context: { tx, user } }) => listWorkflows(tx, asUser(user))),
+      list: workflows.list.handler(({ context: { tx, user }, input }) =>
+        listWorkflows(tx, asUser(user), input?.subject),
+      ),
       save: workflows.save.handler(({ context: { tx, user }, input }) => saveWorkflow(tx, user.id, input)),
       remove: workflows.remove.handler(async ({ context: { tx, user }, input }) => {
         await removeWorkflow(tx, user.id, input.id);

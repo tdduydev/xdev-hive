@@ -28,10 +28,13 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--ring);outline-offse
   <sc-if value="{{compact}}" hint-placeholder-val="{{false}}">
     <img src="/_blob/00df5cc6b2c7e45808bff2ed403600d4" alt="xDev Hive" style="width: 32px; height: 32px; margin: 0 auto 10px;">
   </sc-if>
+  <!-- Vùng menu chiếm hết chỗ còn lại và cuộn; còn mục bị cắt thì mép dưới có bóng mờ. Cửa sổ thấp hơn 760px: khối chân gộp thành một dòng "Worker và phiên bản", bấm mở chi tiết. -->
+  <div style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);">
   <sc-for list="{{items}}" as="it" hint-placeholder-count="6">
     <a href="{{it.href}}" class="nv" style="{{it.style}}" aria-current="{{it.cur}}" title="{{it.label}}" aria-label="{{it.label}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="{{it.icon}}"></path></svg><sc-if value="{{full}}" hint-placeholder-val="{{true}}"><span style="flex: 1;">{{it.label}}</span><sc-if value="{{it.ro}}" hint-placeholder-val="{{false}}"><span style="font-size: 10.5px; color: var(--muted-foreground);">{{t.ro}}</span></sc-if><sc-if value="{{it.badge}}" hint-placeholder-val="{{false}}"><span style="{{it.badgeStyle}}">{{it.badge}}</span></sc-if></sc-if></a>
   </sc-for>
-  <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
+  </div>
+  <div style="display: flex; display: flex; flex-direction: column; gap: 8px;">
     <sc-if value="{{full}}" hint-placeholder-val="{{true}}">
       <div style="padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12px; color: var(--muted-foreground);"><div style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: var(--success);"></span>{{t.worker}}</div><div style="font-family: var(--font-mono);">mac-mini-lan · hive.acme.vn</div></div>
       <div style="display: flex; align-items: center; gap: 8px; padding: 8px 4px 0; border-top: 1px solid var(--border);">
@@ -78,7 +81,7 @@ class Component extends DCLogic {
     const who = { dev: { name: 'Phạm Hà', ini: 'PH', role: x(['Dev · Thanh toán', 'Dev · Payments']) }, writer: { name: 'Trần Lan', ini: 'TL', role: x(['BA / PM · Thanh toán', 'BA / PM · Payments']) }, lead: { name: 'Nguyễn Minh', ini: 'NM', role: x(['Tech lead · Nền tảng', 'Tech lead · Platform']) } }[role];
     return {
       items, who, compact, full: !compact, folder: 'payment-api', folderPath: '~/Work/acme/payment-api',
-      navStyle: 'width: ' + (compact ? '60px' : '220px') + '; height: 100%; min-height: 760px; box-sizing: border-box; padding: 12px ' + (compact ? '8px' : '10px') + '; display: flex; flex-direction: column; gap: 4px; background: var(--sidebar); color: var(--sidebar-foreground); border-right: 1px solid var(--border); font-family: var(--font-sans);',
+      navStyle: 'width: ' + (compact ? '60px' : '220px') + '; height: 100%; box-sizing: border-box; padding: 12px ' + (compact ? '8px' : '10px') + '; display: flex; flex-direction: column; gap: 4px; background: var(--sidebar); color: var(--sidebar-foreground); border-right: 1px solid var(--border); font-family: var(--font-sans);',
       t: { aria: x(['Điều hướng app', 'App navigation']), worker: x(['Worker đang nhận việc', 'Worker taking tasks']), ro: x(['chỉ đọc', 'read-only']), perms: x(['Xem quyền của tôi', 'View my permissions']), permsShort: x(['Quyền', 'Access']) },
     };
   }

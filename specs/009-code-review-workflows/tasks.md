@@ -70,7 +70,7 @@
 
 ## Phase 2: User Story 1 — Cấu hình quy trình Code (P1) 🎯 MVP
 
-- [ ] T010 [US1] `knowledge` nhận quy trình Code
+- [x] T010 [US1] `knowledge` nhận quy trình Code
   - `saveWorkflow`, `listWorkflows` theo `subject`; `matchWorkflow` và `dryRunWorkflow` chỉ xét `subject = 'doc'`;
     từ chối CLI/model bị chính sách agent cấm (FR-011, đọc qua `governance/index.ts`).
   - Export qua `index.ts`: `listCodeWorkflows(tx, scope)`, `flatGates`, `slaOf`, `requiredApprovals`, `eligible`.
@@ -78,7 +78,7 @@
   - **Scope**: `apps/hub/src/modules/knowledge/{reviews.ts,review-rules.ts,router.ts,index.ts,reviews.db.test.ts}`
   - **Phụ thuộc**: T001, T002 · **Mức**: vừa
 
-- [ ] T011 [P] [US1] Luật thuần của `codereview`
+- [x] T011 [P] [US1] Luật thuần của `codereview`
   - `match.ts`: chọn quy trình theo phạm vi và độ cụ thể (dự án > đội > tổ chức, rồi `updated_at`), trả cả quy trình
     bị lấn.
   - `gates.ts`: điều kiện checkpoint (đường dẫn, loại task, số dòng), quy tắc `max-files`, `deny-paths`, `max-diff`,
@@ -248,7 +248,7 @@
 
 ## Phase 10: Quy tắc `command` trên worker
 
-- [ ] T090 [P] Worker chạy lệnh kiểm
+- [x] T090 [P] Worker chạy lệnh kiểm
   - Đọc `spec.checks.commands`; chạy sau khi agent thoát 0, trước khi đẩy, trong worktree hoặc container; env theo
     allowlist; timeout từng lệnh; 200 dòng cuối, che bí mật; `report.commands`. Shell theo OS.
   - `gofmt -l .`, `go vet ./...`, `go test ./...`.
