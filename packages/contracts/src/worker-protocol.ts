@@ -50,11 +50,41 @@ export const hello = z.object({
   memoryMB: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
   clis: z.array(cli).max(10),
   capacity: z.number().int().min(0).max(64),
-  /** Việc worker làm được ngoài run code (vd. `doccheck`: run chỉ đọc kiểm tài liệu). Worker cũ không gửi. */
+  /**
+   * Việc worker làm được ngoài run code (vd. `doccheck`: run chỉ đọc kiểm tài liệu; `sdlc`: run soạn tài liệu AI SDLC;
+   * `accounts-remote`: nhận `account_set`). Worker cũ không gửi.
+   */
   capabilities: z.array(z.string().max(40)).max(20).default([]),
   resumeRuns: z.array(z.string().max(64)).max(64).default([]),
   localProjects: localProjects.optional(),
 });
+
+const percent = z.number().min(0).max(100);
+
+/**
+ * Tóm tắt một tài khoản CLI trên máy (specs/011 FR-043) để quản trị đội thấy gói và quota trên web. Không bao giờ có
+ * token hay email đầy đủ: `label` là nhãn người vận hành đặt cho tài khoản.
+ */
+export const workerAccountSummary = z.object({
+  id: z.string().min(1).max(64),
+  /** Chuỗi chứ không phải enum `cli`, để worker mới báo được CLI mà hub cũ chưa biết. */
+  cli: z.string().min(1).max(40),
+  label: z.string().max(80),
+  roles: z.array(z.string().max(40)).max(10),
+  enabled: z.boolean(),
+  /** null khi worker không kiểm được trạng thái đăng nhập của CLI này. */
+  loggedIn: z.boolean().nullable(),
+  sessionPct: percent.nullable(),
+  weekPct: percent.nullable(),
+  /** Lúc quota phiên 5 giờ đặt lại. */
+  resetsAt: z.iso.datetime().nullable(),
+  /** Ngưỡng % worker ngừng giao run cho tài khoản; 0 là không đặt. */
+  stopAtSession: percent,
+  stopAtWeek: percent,
+  /** Số run đang dùng tài khoản. */
+  inUse: z.number().int().min(0).max(64),
+});
+export type WorkerAccountSummary = z.output<typeof workerAccountSummary>;
 
 export const heartbeat = z.object({
   ...envelope("heartbeat"),
@@ -63,6 +93,8 @@ export const heartbeat = z.object({
   runs: z.array(z.object({ runId, attempt, leaseId })).max(64).default([]),
   /** Gửi lại mỗi heartbeat để công tắc vừa đổi trong app tới hub; thiếu thì hub giữ giá trị đã biết. */
   localProjects: localProjects.optional(),
+  /** Tóm tắt tài khoản CLI; worker cũ không gửi, và thiếu thì hub giữ tóm tắt đã biết. */
+  accounts: z.array(workerAccountSummary).max(32).optional(),
 });
 
 // job_accept/job_reject cần runId và attempt để hub biết đang trả lời đề nghị nào; bảng ở mục 5 không ghi rõ.
@@ -172,7 +204,7 @@ export const runResult = z.object({
   /**
    * Báo cáo tự do của worker. Khi job có `spec.checks.commands`, worker mới thêm `commands: CheckCommandResult[]` theo
    * đúng thứ tự lệnh. Giữ dạng record để worker cũ vẫn hợp lệ: thiếu `commands` nghĩa là máy chưa chạy lệnh kiểm, hub
-   * để checkpoint chờ người xem thay vì coi là lỗi.
+   * để checkpoint chờ người xem thay vì coi là lỗi. Run `sdlc` thêm `artifacts` (`sdlcReportArtifacts`).
    */
   report: z.record(z.string(), z.unknown()).nullable(),
   /** Worker cũ không gửi: hub vẫn yêu cầu review để tránh bỏ sót thay đổi. */
@@ -187,6 +219,11 @@ export const welcome = z.object({
   heartbeatSec: z.number().int().min(5).max(300),
   // Chưa có access token ngắn hạn (mục 6): máy đang xác thực bằng machine token tới khi bị thu hồi.
   accessTokenExp: z.iso.datetime().optional(),
+  /**
+   * Điều hub cho máy này (vd. `shared`: máy dùng chung, nên được nhận `account_set`). Worker không tự khai cờ này vì
+   * máy cá nhân không được để quản trị đội đổi tài khoản của chủ máy (ADR 0017). Hub cũ không gửi.
+   */
+  features: z.array(z.string().max(40)).max(20).optional(),
 });
 
 export const upgradeRequired = z.object({
@@ -209,8 +246,9 @@ export const jobOffer = z.object({
   runId,
   attempt,
   /**
-   * Nội dung job do module runs định nghĩa. Run code có thể có `checks: { commands: CheckCommand[] }`; trường này đi
-   * qua `catchall` chứ không khai ở đây, vì worker cũ phải bỏ qua được nó và hub không được từ chối job thiếu nó.
+   * Nội dung job do module runs định nghĩa. Run code có thể có `checks: { commands: CheckCommand[] }`; run `sdlc` có
+   * `sdlc: SdlcJobSpec`. Các trường này đi qua `catchall` chứ không khai ở đây, vì worker cũ phải bỏ qua được chúng và
+   * hub không được từ chối job thiếu chúng.
    */
   spec: z
     .object({
@@ -275,6 +313,58 @@ export const update = z.object({
     .optional(),
 });
 
+/**
+ * Quản trị đội bật/tắt một tài khoản CLI trên máy dùng chung (specs/011 FR-044). Hub chỉ gửi khi hello có capability
+ * `accounts-remote` và máy `shared`; worker trả `ack` rồi heartbeat kế phản ánh. Thêm tài khoản vẫn làm tại máy vì
+ * đăng nhập CLI cần trình duyệt trên máy đó.
+ */
+export const accountSet = z.object({
+  ...envelope("account_set"),
+  accountId: z.string().min(1).max(64),
+  enabled: z.boolean(),
+});
+
+// ---- Run `sdlc` (specs/011, ADR 0021) ----
+
+/** Giới hạn file worker trả về sau run `sdlc`; vượt thì worker báo lỗi rõ thay vì cắt. */
+export const SDLC_ARTIFACT_LIMITS = { files: 20, fileChars: 200_000, totalBytes: 2_000_000 } as const;
+
+/** Đường dẫn tương đối trong worktree; worker vẫn kiểm lại sau khi giải symlink. */
+const worktreePath = z
+  .string()
+  .min(1)
+  .max(300)
+  .refine(
+    (p) => !p.startsWith("/") && !p.includes("\\") && !p.split("/").includes(".."),
+    "Đường dẫn phải nằm trong repo.",
+  );
+
+/**
+ * `jobOffer.spec.sdlc` của run `sdlc`: worker ghi `seed` (baseline và bản nháp của hub chưa có trong repo) vào worktree
+ * tạm trước khi chạy CLI, rồi đọc các file `collect` sau khi CLI thoát. Không commit, không đẩy.
+ */
+export const sdlcJobSpec = z.object({
+  step: z.string().min(1).max(40),
+  seed: z.array(z.object({ path: worktreePath, content: z.string().max(SDLC_ARTIFACT_LIMITS.fileChars) })).max(100),
+  collect: z
+    .array(z.object({ artifactId: z.string().min(1).max(120), path: worktreePath }))
+    .max(SDLC_ARTIFACT_LIMITS.files),
+});
+export type SdlcJobSpec = z.output<typeof sdlcJobSpec>;
+
+/** `run_result.report.artifacts` của run `sdlc`: file nào trong `collect` không có thì không trả. */
+export const sdlcReportArtifacts = z
+  .array(
+    z.object({
+      artifactId: z.string().min(1).max(120),
+      path: worktreePath,
+      content: z.string().max(SDLC_ARTIFACT_LIMITS.fileChars),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    }),
+  )
+  .max(SDLC_ARTIFACT_LIMITS.files);
+export type SdlcReportArtifacts = z.output<typeof sdlcReportArtifacts>;
+
 export const workerToHub = z.discriminatedUnion("type", [
   hello,
   heartbeat,
@@ -296,6 +386,7 @@ export const hubToWorker = z.discriminatedUnion("type", [
   cancel,
   drain,
   update,
+  accountSet,
 ]);
 export type WorkerToHub = z.output<typeof workerToHub>;
 export type HubToWorker = z.output<typeof hubToWorker>;
