@@ -329,6 +329,27 @@ Spec [011](../specs/011-ai-sdlc-mode/spec.md), [ADR 0021](adr/0021-ai-sdlc-mode.
 | SDLC-19 | Items spanning projects shall have cross-repository contracts as separate documents with one provider and one or more consumer projects, reviewed by a checkpoint per involved team, required before implementation of every party, written to the provider repository and copied read-only into consumer repositories; edits of a copy shall become proposals for the contract. | Planned | — |
 | SDLC-20 | The hub shall approve a human checkpoint of an item's document on the reviewer's behalf only when the mode allows it for that phase, the project enabled it, the organization policy allows it, the AI checkpoint of the same review scored at least the effective threshold with no major finding and a reviewer other than the draft's author, and the document is not a contract, not the requirements of a heavy mode or item, and touches no sensitive keyword or path. Auto-approvals shall be recorded with score, threshold and reasons, audited and notified, and eligible reviewers shall be able to revoke them within a window (24 hours by default), which reopens the human checkpoints on the same baseline and blocks new code runs depending on the document until approved. | Planned | — |
 
+### 3.21 Artifacts (ART)
+
+Spec [012](../specs/012-artifacts/spec.md), [ADR 0023](adr/0023-artifacts.md).
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| ART-01 | The hub shall store artifacts as objects of their own (title, type `markdown`, `code`, `html`, `react`, `svg`, `mermaid`, `csv`, `json`, `image` or `pdf`, owner, scope, origin), with text content in PostgreSQL and binary content behind a replaceable blob store, within limits on version size, binary size, versions per artifact, artifacts and versions per run, and storage per organization. | Planned | — |
+| ART-02 | Every content change shall create an immutable, numbered version recording its author (a user or a run), origin and message; updates shall use optimistic locking; users shall list, name, compare and restore versions, restoring by creating a new version. | Planned | — |
+| ART-03 | Artifacts shall have one scope — private, project, team or organization — that decides who reads them, and shall never be visible outside the organization; members of the scope with the member role or higher shall add versions, and only the owner or an administrator of the scope shall change the scope, transfer ownership or delete. Organization administrators shall not read other members' private artifacts. | Planned | — |
+| ART-04 | The hub shall expose MCP tools `artifact_create`, `artifact_update`, `artifact_get` and `artifact_list` to leader runs, task runs (except `doccheck`, `docassist` and `brief`) and user clients; runs shall create artifacts in their project or for the person who started them and shall read and change only artifacts of their project, task or conversation. Writing an artifact writes hub data, not the repository. | Planned | — |
+| ART-05 | Creating or updating an artifact in a Leader conversation shall add a reference card to the conversation; the Leader screen on the web and in the desktop app shall show the card instead of the content and open the artifact in a side panel next to the conversation, with the conversation's artifacts as tabs and a full-screen view. | Planned | — |
+| ART-06 | The Terminal Leader screen shall show artifacts created by its session in the same side panel. | Planned | — |
+| ART-07 | Each artifact type shall have a viewer: Markdown without raw HTML and without loading remote images until asked, highlighted code, JSON tree, CSV table and chart, and HTML, React, SVG, Mermaid and PDF in the sandboxed frame; React artifacts shall be compiled on save with imports limited to the bundled libraries. | Planned | — |
+| ART-08 | Executable artifact content shall run only in an `iframe` sandboxed with `allow-scripts` alone, loaded from a frame route by a short-lived signed ticket for one version, under a CSP that forbids network connections, forms, nested frames and scripts other than inline ones, the bundled libraries and organization-approved CDN origins; the parent shall accept only size, ready and error messages from that frame. | Planned | — |
+| ART-09 | Members shall browse, filter, search, open, rename, share, duplicate and delete artifacts in a library on the web and in the desktop app; deleted artifacts shall stay in a trash for 30 days before a job removes them. | Planned | — |
+| ART-10 | The desktop app shall use the shared artifact components, cache opened versions per profile and organization (bounded, cleared on sign-out) and open cached versions, including interactive ones, without a hub connection. | Planned | — |
+| ART-11 | Artifacts shall be linked to conversations, terminal sessions, runs, tasks, AI SDLC items and documents; linking shall require reading the artifact and changing the target, and the target's pages and run prompts shall list linked artifacts the viewer can read. | Planned | — |
+| ART-12 | Members shall turn a Markdown artifact into a document proposal that goes through review, and save an artifact version to a project repository through a pull request. | Planned | — |
+| ART-13 | Every save shall pass a secret scanner that blocks (or, by organization policy, redacts) secret-like strings; artifact operations shall be audited without their content; organization administrators shall set enabled types and scopes, limits under operator ceilings, approved CDN origins and the scanner mode, and be warned at 80% of the storage quota. | Planned | — |
+| ART-14 | Members shall create and edit artifacts by hand on the web and in the desktop app, with the document editor for Markdown and a code editor with a sandboxed preview for other text types. | Planned | — |
+
 ## 4. External interface requirements
 
 | ID | Requirement | Status |
@@ -340,6 +361,7 @@ Spec [011](../specs/011-ai-sdlc-mode/spec.md), [ADR 0021](adr/0021-ai-sdlc-mode.
 | IF-05 | The desktop app shall query `/api/v1/desktop/updates/{os}/{arch}/{version}` in the Tauri updater format. | Partial: the app has no update endpoint or key configured |
 | IF-06 | Git hosts shall deliver skill repository webhooks to `/hooks/skills/{repoId}`. | Implemented |
 | IF-07 | Browsers shall reach terminal sessions through the WebSocket `/ws/terminal`, authenticated with a single-use ticket from `terminal.ticket` and an allowed `Origin`. Workers shall exchange `term_*` packets only after both sides have announced the `terminal` capability (`hello.capabilities`, `welcome.features`). | Planned |
+| IF-08 | Browsers and the desktop app shall load interactive artifacts from `/_artifact/frame/{ticket}` and bundled libraries from `/_artifact/lib/` on the hub, or on `HIVE_ARTIFACT_ORIGIN` when the operator sets it (the hub then refuses frames on its own host); the desktop app shall serve cached frames from the `hive-artifact://` protocol. | Planned |
 ## 5. Non-functional requirements
 
 | ID | Category | Requirement | Status | Verification |
@@ -361,3 +383,4 @@ Spec [011](../specs/011-ai-sdlc-mode/spec.md), [ADR 0021](adr/0021-ai-sdlc-mode.
 | NFR-15 | Scalability | Several hub `api` processes shall share the worker connections. | Planned | — |
 | NFR-16 | Observability | The hub and worker shall export metrics and traces. | Planned | — |
 | NFR-17 | Security | Neither hub credentials, nor hub administration, nor database access shall be enough to start a terminal session on a developer machine or to type into one; the worker shall verify every such request against devices paired on the machine. | Planned | — |
+| NFR-18 | Security | Artifact content shall never execute in the origin of the hub or of the desktop app, shall not read hub cookies or storage, and shall not reach the network except to load bundled libraries and organization-approved CDN scripts and styles. | Planned | — |
