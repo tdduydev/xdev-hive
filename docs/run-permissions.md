@@ -4,6 +4,10 @@ Dự án có thể đặt `settings.runPermissions = { mode: "workspace" | "full
 Bỏ trường này thì hub gửi `runPermissions: "workspace"` trong spec; worker cũng hiểu spec cũ thiếu trường là workspace.
 `full` chỉ nên dùng khi run nằm trong container của M6.
 
+Máy đã gắn dự án với repo trên máy (`projects.json`, [ADR 0020](adr/0020-local-project-folders-and-machine-full-permission.md))
+thì không theo `runPermissions` của hub: run code có `full` khi và chỉ khi máy bật "Cho toàn quyền trên máy này" cho dự án
+và tổ chức cho phép (`fullAllowed` trong spec). Máy chưa gắn dự án giữ cách cũ.
+
 | CLI | workspace | full |
 | --- | --- | --- |
 | Claude | `--permission-mode acceptEdits --allowedTools Bash` | `--permission-mode bypassPermissions` |

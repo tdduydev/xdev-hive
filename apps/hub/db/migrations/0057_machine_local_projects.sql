@@ -1,0 +1,2 @@
+ALTER TABLE "hive"."machines" ADD COLUMN "bound_projects" text[] DEFAULT '{}'::text[] NOT NULL;--> statement-breakpoint
+ALTER TABLE "hive"."machines" ADD COLUMN "full_projects" text[] DEFAULT '{}'::text[] NOT NULL;
