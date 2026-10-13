@@ -363,7 +363,7 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 		c.Logger.Warn("Hub chưa nhận các CLI này; cập nhật hub để giao run cho chúng", "clis", dropped)
 	}
 	// Hub đòi mảng, không nhận null; slice nil của Go mã hoá thành null.
-	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: clis, Capacity: c.Capacity, Capabilities: runner.Capabilities, ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
+	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: clis, Capacity: c.Capacity, Capabilities: runner.MachineCapabilities(c.Sandbox != nil), ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
 	if memory := hostMemoryMB(); memory > 0 {
 		hello.MemoryMB = memory
 	}
