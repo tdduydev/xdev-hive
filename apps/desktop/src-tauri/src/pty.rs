@@ -175,6 +175,13 @@ impl Session {
         drop(self.writer);
         drop(self.master);
     }
+
+    /// CLI đã thoát và đã được reap: không gửi tín hiệu theo pid nữa (pid có thể đã thuộc tiến trình khác), chỉ đóng
+    /// PTY; tiến trình cháu còn giữ terminal nhận SIGHUP khi master đóng.
+    fn close(self) {
+        drop(self.writer);
+        drop(self.master);
+    }
 }
 
 type Spawned = (
@@ -337,7 +344,7 @@ pub async fn pty_open(
             .ok()
             .and_then(|mut m| m.remove(&exit_id))
         {
-            s.kill();
+            s.close();
         }
         let _ = app.emit_to(crate::APP, EXIT, Exit { id: exit_id, code });
     });
