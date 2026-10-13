@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/channel"
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
@@ -56,6 +57,8 @@ func main() {
 		os.Exit(sandboxInit(os.Args[2:]))
 	case "config":
 		os.Exit(showConfig(os.Args[2:], os.Stdout, os.Stderr))
+	case "accounts":
+		os.Exit(accountsCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "service":
 		os.Exit(serviceCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "update":
@@ -67,7 +70,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set --id ID --enabled BOOL] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -349,8 +352,18 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	// Nhiều tài khoản CLI trên máy (accounts.json cạnh file cấu hình): không đặt --capacity thì nhận cùng lúc theo
+	// maxParallel của file, hoặc tổng số run các tài khoản bật cho phép; tối đa maxAutoCapacity.
+	pool := accounts.NewPool(accounts.DefaultPath(path))
+	slots := *capacity
+	if !flagSet(fs, "capacity") {
+		if slots, err = accounts.Capacity(accounts.DefaultPath(path), maxAutoCapacity); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+	}
 	// --stdin-control là app desktop chạy worker làm sidecar: app tự cập nhật cả gói, worker không tự thay mình.
-	return startWorker(ctx, cfg, *capacity, dataDir, "", nil, *statusJSON, !*stdinControl, cfg.HubURL)
+	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, *statusJSON, !*stdinControl, cfg.HubURL)
 }
 
 func host(args []string) int {
@@ -413,7 +426,7 @@ func host(args []string) int {
 		}
 	}
 	sandbox := &runner.SandboxConfig{Image: *image, HostID: cfg.MachineID, AllowRunc: *allowRunc, CPUs: *cpus, Memory: *memory, PIDs: *pids, EgressSocket: *egressSocket, WorkerBinary: executable}
-	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, false, true, cfg.HubURL)
+	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, false, true, cfg.HubURL)
 }
 
 func sandboxInit(args []string) int {
@@ -522,12 +535,22 @@ func runscAllowsHostUDS(raw json.RawMessage) bool {
 	return false
 }
 
-func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, statusJSON, selfUpdate bool, hubURL string) int {
+// maxAutoCapacity chặn số run cùng lúc tính từ accounts.json, để danh sách dài không làm máy quá tải.
+const maxAutoCapacity = 8
+
+// flagSet cho biết người gọi có đặt cờ này không (khác giá trị mặc định).
+func flagSet(fs *flag.FlagSet, name string) bool {
+	set := false
+	fs.Visit(func(f *flag.Flag) { set = set || f.Name == name })
+	return set
+}
+
+func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, statusJSON, selfUpdate bool, hubURL string) int {
 	clis := detectCLIs()
 	if mode == "host" {
 		clis = knownCLIs
 	}
-	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate}
+	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool}
 	if statusJSON {
 		cc.OnStatus = statusPrinter(os.Stdout)
 	}
