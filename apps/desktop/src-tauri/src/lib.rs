@@ -7,6 +7,7 @@ mod capabilities_audit;
 mod cli;
 mod doctor;
 mod hub;
+mod local_projects;
 mod profiles;
 mod register;
 mod setup_extra;
@@ -711,6 +712,11 @@ pub fn run() {
             profiles::cli_profile_resume,
             profiles::open_login_terminal,
             profiles::open_cli_terminal,
+            local_projects::local_projects,
+            local_projects::local_projects_import,
+            local_projects::local_project_bind,
+            local_projects::local_project_unbind,
+            local_projects::local_project_set_full,
             cli::folder_tree,
             cli::propose_doc,
             updates::update_status,
