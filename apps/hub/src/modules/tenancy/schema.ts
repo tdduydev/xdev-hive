@@ -9,7 +9,8 @@ const hiveOwner = pgRole("hive_owner").existing();
 
 export const orgRole = hive.enum("org_role", ["owner", "admin", "member"]);
 export const memberStatus = hive.enum("member_status", ["active", "pending", "blocked"]);
-export const teamRole = hive.enum("team_role", ["admin", "member", "viewer"]);
+/** Thứ hạng viewer < ba < member < admin nằm trong code, không theo thứ tự của enum (specs/011 D27). */
+export const teamRole = hive.enum("team_role", ["admin", "member", "viewer", "ba"]);
 /** Người đăng nhập SSO lần đầu: vào hàng chờ duyệt (pending) hay thành thành viên ngay (member). */
 export const ssoJoin = hive.enum("sso_join", ["pending", "member"]);
 
