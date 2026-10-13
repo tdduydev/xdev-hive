@@ -1,6 +1,7 @@
 package accounts
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -140,4 +141,24 @@ func TestAddFoundAddsWithoutLogin(t *testing.T) {
 	if len(found) != 1 || found[0].SuggestedID != "codex-2" {
 		t.Fatalf("còn lại = %+v", found)
 	}
+}
+
+// Gói Codex cùng email với gói Claude đã có là hai gói thật (một người có cả hai), không ghi "Trùng email".
+func TestDiscoverDuplicateEmailOnlyWithinCLI(t *testing.T) {
+	home, path := discoverHome(t)
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"duy@example.com"}`))
+	writeFile(t, filepath.Join(AccountsDir(home), "codex-5", "auth.json"), `{"tokens":{"id_token":"h.`+payload+`.s"}}`)
+	found, err := Discover(path, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range found {
+		if f.SuggestedID == "codex-5" {
+			if str(f.Email) != "duy@example.com" || f.Note != nil {
+				t.Fatalf("codex-5 = email %s note %s", str(f.Email), str(f.Note))
+			}
+			return
+		}
+	}
+	t.Fatalf("không thấy codex-5: %+v", found)
 }
