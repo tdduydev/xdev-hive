@@ -7,6 +7,8 @@
     "node": ">=24.21"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
+    "prepush": "node scripts/pre-push.ts",
     "dev": "node scripts/dev.ts",
     "dev:all": "node scripts/dev.ts",
     "build": "turbo run build",
