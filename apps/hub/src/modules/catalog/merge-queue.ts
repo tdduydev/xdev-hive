@@ -48,6 +48,8 @@ export const MERGE_MAX_WAIT_MS = 24 * 60 * 60 * 1000;
 /** Số lần nhà cung cấp từ chối merge (PR vừa đổi) trước khi bỏ cuộc. */
 export const MERGE_ATTEMPTS = 5;
 
+export const REVIEW_PENDING_NOTE = "Chờ quy trình duyệt code";
+
 export type MergeEntryRow = typeof mergeQueueEntries.$inferSelect;
 type Active = (typeof ACTIVE_MERGE_STATES)[number];
 
@@ -263,6 +265,11 @@ export interface MergeDeps {
   jobs?: Jobs | undefined;
   /** Đồng hồ cho test hạn chờ 24 giờ. */
   now?: (() => Date) | undefined;
+  /**
+   * PR có phiên review code chưa duyệt xong thì trả true: mục ở `waiting`. Tiêm từ main.ts vì `codereview` gọi
+   * `enqueueMerge` của module này, import ngược sẽ tạo vòng. Không có thì hàng chạy như trước.
+   */
+  reviewGate?: ((tx: Tx, projectId: string, prNumber: number, headSha: string) => Promise<boolean>) | undefined;
 }
 
 /** `next`: mục đầu đã xong, xử lý mục kế ngay. `wait`: mục đầu đang chờ, hỏi lại sau. `idle`: hàng trống. */
@@ -312,7 +319,12 @@ export async function processMergeQueue(deps: MergeDeps, job: MergeJob): Promise
   let decision: Decision;
   try {
     pr = await provider.getPR(ref, entry.prNumber);
-    decision = await decide(provider, project, entry, pr);
+    // Hỏi phiên review sau khi có head hiện tại của PR: phiên đã duyệt cho commit cũ không tính.
+    const gate = deps.reviewGate;
+    const current = pr;
+    const reviewPending =
+      gate && current ? await tenant((tx) => gate(tx, project.id, current.number, current.headSha)) : false;
+    decision = await decide(provider, project, entry, pr, reviewPending);
   } catch (e) {
     if (!isGitProviderError(e)) throw e;
     // Hết hạn mức hay nhà cung cấp chập chờn: giữ nguyên mục, hỏi lại sau.
@@ -363,6 +375,7 @@ async function decide(
   project: ProjectRow,
   entry: MergeEntryRow,
   pr: PullRequestState | null,
+  reviewPending: boolean,
 ): Promise<Decision> {
   const ref = { owner: project.repoOwner, name: project.repoName };
   if (!pr) return { state: "failed", note: `Không tìm thấy PR #${entry.prNumber}.` };
@@ -374,6 +387,8 @@ async function decide(
   const base = project.defaultBranch ?? "main";
   if (pr.base !== base)
     return { state: "failed", note: `PR nhắm vào nhánh ${pr.base}, không phải nhánh chính ${base}.` };
+  // Trước các bước đụng tới nhánh PR: cập nhật nhánh khi phiên chưa duyệt xong sẽ đổi head và buộc duyệt lại.
+  if (reviewPending) return { state: "waiting", note: REVIEW_PENDING_NOTE };
   if (pr.draft) return { state: "waiting", note: "PR đang là bản nháp." };
   if (pr.mergeable === "unknown") return { state: "waiting", note: "Chờ nhà cung cấp Git tính trạng thái merge." };
   if (pr.mergeable === "conflict") return { state: "failed", note: "PR xung đột với nhánh chính." };
