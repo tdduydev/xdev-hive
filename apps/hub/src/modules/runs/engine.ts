@@ -77,6 +77,7 @@ import {
   taskForUser,
   toPlan,
 } from "../tasks/index.ts";
+import { teamRoleOf } from "../tenancy/index.ts";
 import {
   applyCost,
   assertTaskBudget,
@@ -2101,6 +2102,9 @@ export function createRunsEngine(deps: RunsDeps) {
     const edited =
       input.content && JSON.stringify(input.content) !== JSON.stringify(plan.content) ? input.content : null;
     const note = input.note || null;
+    // Bản sửa và ghi chú đi thẳng vào prompt của agent như một chỉ dẫn, nên chịu cùng luật với steer. Duyệt nguyên bản
+    // kế hoạch agent nộp thì không đưa chữ mới vào run của người khác.
+    if (run.ownerUserId && (edited || note)) await assertRunActor(tx, run, userId, "admin-or-owner");
     const decided = await decidePlan(tx, plan.id, { status: "approved", by: userId, note, editedContent: edited });
     const queued = await transition(tx, run, "queued", {}, { by: userId, planId: plan.id });
     await setTaskStatus(tx, task.id, "queued");
@@ -2204,6 +2208,9 @@ export function createRunsEngine(deps: RunsDeps) {
     const found = await runForUser(tx, userId, id, "member");
     const run = await lockRun(tx, found.id);
     if (!run) throw runNotFound();
+    // Run của đội (không chủ) chạy trên máy dùng chung nên thành viên huỷ được; run của người khác trên máy cá nhân của
+    // họ thì chỉ chủ hoặc quản trị đội huỷ.
+    if (run.ownerUserId) await assertRunActor(tx, run, userId, "admin-or-owner");
     const { row, after } = await cancelLocked(tx, run, userId);
     await recordAudit(tx, { action: "run.cancel", targetType: "run", targetId: run.id, data: { from: run.state } });
     return { run: toRun(row), afterCommit: after };
@@ -2314,4 +2321,29 @@ export async function runForUser(
     });
   } else throw runNotFound();
   return row;
+}
+
+/**
+ * Ai được tác động vào run đã có chủ (ADR 0017: máy cá nhân chỉ chạy việc của chủ, nên chỉ dẫn gửi vào run đó là chạy
+ * lệnh trên máy và tài khoản CLI của chủ).
+ * - `owner`: chỉ chủ run; run của đội (không chủ) thì quản trị đội sở hữu hoặc quản trị tổ chức.
+ * - `admin-or-owner`: chủ run hoặc quản trị đội; dùng cho thao tác không đưa chữ vào agent (huỷ).
+ * Run tạo trước ADR 0017 cũng không có chủ nên xử lý như run của đội.
+ */
+export async function assertRunActor(
+  tx: Tx,
+  run: Pick<RunRow, "ownerUserId" | "teamId">,
+  userId: string,
+  rule: "owner" | "admin-or-owner",
+): Promise<void> {
+  if (run.ownerUserId === userId) return;
+  if (run.ownerUserId === null || rule === "admin-or-owner") {
+    if ((await teamRoleOf(tx, userId, run.teamId)) === "admin") return;
+  }
+  throw new ForbiddenError(
+    "RUN_NOT_YOURS",
+    run.ownerUserId === null
+      ? "Run của đội: chỉ quản trị đội hoặc quản trị tổ chức mới thao tác được."
+      : "Run này chạy trên máy cá nhân của người khác; chỉ người giao run mới thao tác được.",
+  );
 }

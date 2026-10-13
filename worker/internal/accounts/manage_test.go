@@ -107,7 +107,8 @@ func TestViewsReadLoginWithoutTokens(t *testing.T) {
 	if *views[2].LoggedIn || views[2].State != StateSignedOut || *views[2].Usage.Reason != "Chưa đăng nhập" {
 		t.Fatalf("thư mục chưa đăng nhập: %+v", views[2])
 	}
-	if views[3].LoggedIn != nil || views[3].Supported || *views[3].Usage.Reason != reasonUnsupported {
+	// Antigravity: đọc được quota nhưng không kiểm được đăng nhập từ file.
+	if views[3].LoggedIn != nil || !views[3].Supported || *views[3].Usage.Reason != reasonNotRead {
 		t.Fatalf("antigravity = %+v", views[3])
 	}
 	if *views[0].Usage.Reason != reasonNotRead {

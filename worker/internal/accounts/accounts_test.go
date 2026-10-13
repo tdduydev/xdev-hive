@@ -238,9 +238,13 @@ func TestNoAccountsMeansDefaultLogin(t *testing.T) {
 	if l, err := pool(t, three).Acquire("codex", RoleImplement); l != nil || err != nil {
 		t.Fatalf("CLI không có tài khoản: %v %v", l, err)
 	}
-	// CLI worker không điều khiển (Antigravity) không bao giờ được chọn.
-	if l, err := pool(t, three).Acquire("antigravity", RoleImplement); l != nil || err != nil {
+	// Antigravity được chọn theo ngưỡng quota nhưng luôn chạy bằng đăng nhập mặc định: agy không có biến chọn thư mục.
+	if l, err := pool(t, three).Acquire("antigravity", RoleImplement); l == nil || err != nil || l.Env() != nil {
 		t.Fatalf("antigravity: %v %v", l, err)
+	}
+	// CLI worker không đọc được quota không bao giờ được chọn.
+	if l, err := pool(t, `{"accounts":[{"id":"gemini-1","cli":"gemini","enabled":true}]}`).Acquire("gemini", RoleImplement); l != nil || err != nil {
+		t.Fatalf("gemini: %v %v", l, err)
 	}
 	var none *Pool
 	if l, err := none.Acquire("claude", RoleImplement); l != nil || err != nil {
@@ -271,8 +275,8 @@ func TestCapacity(t *testing.T) {
 		t.Fatalf("không có file: %d", n)
 	}
 	_ = os.WriteFile(path, []byte(three), 0o600)
-	// claude-3 (1) + claude-4 (2); claude-5 tắt, antigravity worker không chạy.
-	if n, _ := Capacity(path, 8); n != 3 {
+	// claude-3 (1) + claude-4 (2) + antigravity-1 (1); claude-5 tắt.
+	if n, _ := Capacity(path, 8); n != 4 {
 		t.Fatalf("tổng chỗ: %d", n)
 	}
 	_ = os.WriteFile(path, []byte(`{"maxParallel":4,"accounts":[]}`), 0o600)
@@ -285,13 +289,17 @@ func TestCapacity(t *testing.T) {
 	}
 }
 
-// fakeClaude thay CLI thật: ghi lại thư mục cấu hình của mỗi lần đọc /usage và trả kết quả mẫu.
+// fakeClaude thay CLI thật: ghi lại thư mục cấu hình của mỗi lần đọc /usage (agy ghi "agy") và trả kết quả mẫu.
 func fakeClaude(t *testing.T, output string) chan string {
 	t.Helper()
 	calls := make(chan string, 16)
 	savedLook, savedRun := lookPath, runCLI
 	lookPath = func(name string) (string, error) { return "/usr/local/bin/" + name, nil }
-	runCLI = func(_ context.Context, _ string, _ []string, env map[string]string) ([]byte, error) {
+	runCLI = func(_ context.Context, name string, _ []string, env map[string]string) ([]byte, error) {
+		if filepath.Base(name) == "agy" {
+			calls <- "agy"
+			return nil, nil
+		}
 		calls <- env["CLAUDE_CONFIG_DIR"]
 		return []byte(output), nil
 	}
@@ -319,8 +327,8 @@ func TestWatchReadsUsageAtStartAndAfterRun(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() { p.Watch(ctx); close(done) }()
-	got := map[string]bool{waitCall(t, calls): true, waitCall(t, calls): true}
-	if !got[filepath.Join(p.home, ".xdev-hive", "accounts", "claude-3")] || !got[filepath.Join(p.home, ".xdev-hive", "accounts", "claude-4")] {
+	got := map[string]bool{waitCall(t, calls): true, waitCall(t, calls): true, waitCall(t, calls): true}
+	if !got[filepath.Join(p.home, ".xdev-hive", "accounts", "claude-3")] || !got[filepath.Join(p.home, ".xdev-hive", "accounts", "claude-4")] || !got["agy"] {
 		t.Fatalf("đọc lúc chạy = %v (claude-5 tắt không đọc)", got)
 	}
 	l, _ := p.Acquire("claude", RoleImplement)

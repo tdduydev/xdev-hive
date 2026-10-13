@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,27 @@ type Usage struct {
 	Week      *Limit     `json:"week"`
 	CheckedAt *time.Time `json:"checkedAt"`
 	Reason    *string    `json:"reason"`
+	// Models là tuần riêng của từng model (Claude: "Current week (Sonnet only)", …); ngưỡng dừng chỉ xét Week.
+	Models []ModelLimit `json:"models,omitempty"`
+	// Groups là hạn mức của từng nhóm model (Antigravity); Session, Week là của nhóm worker dùng cho run code.
+	Groups []Group `json:"groups,omitempty"`
+}
+
+// ModelLimit là thanh tuần riêng của một model.
+type ModelLimit struct {
+	Name     string     `json:"name"`
+	Percent  float64    `json:"percent"`
+	ResetsAt *time.Time `json:"resetsAt"`
+}
+
+// Group là một nhóm model của Antigravity: các model trong nhóm dùng chung hạn mức 5 giờ và tuần.
+type Group struct {
+	Name    string `json:"name"`
+	Models  string `json:"models"`
+	Session *Limit `json:"session"`
+	Week    *Limit `json:"week"`
+	// SessionDisabled: agy tạm bỏ hạn mức 5 giờ (thường vì đã hết tuần); Session khi đó là nil.
+	SessionDisabled bool `json:"sessionDisabled"`
 }
 
 // Lý do không có số quota, hiện thẳng trên app.
@@ -39,6 +61,7 @@ const (
 	reasonNoSession   = "Codex chưa có phiên nào trên máy"
 	reasonUnsupported = "Worker chưa đọc quota của CLI này"
 	reasonNotRead     = "Chưa đọc quota"
+	reasonAgyDir      = "Antigravity chỉ đọc được đăng nhập mặc định của máy"
 )
 
 func reason(s string) *string { return &s }
@@ -55,6 +78,25 @@ func (u Usage) at(now time.Time) Usage {
 		return &Limit{}
 	}
 	u.Session, u.Week = fresh(u.Session), fresh(u.Week)
+	// Chép mảng: Usage trong State dùng chung mảng với bản gốc, sửa tại chỗ sẽ đổi cả trạng thái đã đọc.
+	if u.Models != nil {
+		models := make([]ModelLimit, len(u.Models))
+		for i, m := range u.Models {
+			if m.ResetsAt != nil && !m.ResetsAt.After(now) {
+				m = ModelLimit{Name: m.Name}
+			}
+			models[i] = m
+		}
+		u.Models = models
+	}
+	if u.Groups != nil {
+		groups := make([]Group, len(u.Groups))
+		for i, g := range u.Groups {
+			g.Session, g.Week = fresh(g.Session), fresh(g.Week)
+			groups[i] = g
+		}
+		u.Groups = groups
+	}
 	return u
 }
 
@@ -80,7 +122,11 @@ var claudeUsageArgs = []string{"-p", "/usage", "--output-format", "json", "--set
 // usageTimeout chặn một lần đọc /usage: CLI treo (mạng, cập nhật) không được giữ vòng đọc của worker.
 const usageTimeout = time.Minute
 
-// ReadUsage đọc quota của một tài khoản: Claude qua /usage, Codex qua file phiên. Chỉ đọc khi đã đăng nhập.
+// agyUsageArgs: /usage của agy là lệnh tại máy (num_turns 0), không tốn lượt của gói.
+var agyUsageArgs = []string{"-p", "/usage", "--output-format", "json"}
+
+// ReadUsage đọc quota của một tài khoản: Claude và Antigravity qua /usage, Codex qua file phiên. Chỉ đọc khi đã đăng
+// nhập (Antigravity không kiểm được đăng nhập từ file, xem loginOf).
 func ReadUsage(ctx context.Context, a Account, home string, now time.Time) Usage {
 	if !Supported(a.CLI) {
 		return noUsage(reasonUnsupported)
@@ -90,6 +136,24 @@ func ReadUsage(ctx context.Context, a Account, home string, now time.Time) Usage
 	}
 	dir := expandHome(home, a.ConfigDir)
 	switch a.CLI {
+	case "antigravity":
+		// agy giữ đăng nhập trong keyring của hệ điều hành và không có biến chọn thư mục cấu hình: thư mục riêng không
+		// tách được tài khoản, đọc ra sẽ là số của đăng nhập mặc định.
+		if dir != "" {
+			return noUsage(reasonAgyDir)
+		}
+		bin, err := lookPath(binary(a.CLI))
+		if err != nil {
+			return noUsage(reasonNoCLI)
+		}
+		ctx, cancel := context.WithTimeout(ctx, usageTimeout)
+		defer cancel()
+		out, _ := runCLI(ctx, bin, agyUsageArgs, nil)
+		u := parseAgyUsage(out, now)
+		if u == nil {
+			return noUsage(reasonSilent)
+		}
+		return *u
 	case "claude":
 		bin, err := lookPath("claude")
 		if err != nil {
@@ -144,10 +208,12 @@ func claudeText(out []byte) string {
 }
 
 // limitLine: "Current session: 40% used · resets Oct 13 at 1:39pm (Asia/Saigon)", "Current week (all models): 47% used
-// · resets …". Dòng phiên có thể không có "· resets"; tuần theo từng model (Sonnet only, …) không phải thanh tuần.
+// · resets …". Dòng phiên có thể không có "· resets"; tuần theo từng model (Opus, Sonnet only, …) không phải thanh tuần
+// mà là Models.
 var limitLine = regexp.MustCompile(`^Current (session|week(?: \(([^)]+)\))?):\s*(\d+(?:\.\d+)?)% used(?:\s*·\s*resets\s+(.+))?$`)
 
-// parseClaudeUsage đọc thanh phiên và tuần trong câu trả lời của /usage; nil khi không có thanh nào (khoá API, CLI cũ).
+// parseClaudeUsage đọc thanh phiên, tuần và tuần theo model trong câu trả lời của /usage; nil khi không có thanh phiên
+// hay tuần nào (khoá API, CLI cũ).
 func parseClaudeUsage(text string, now time.Time) *Usage {
 	var u Usage
 	for _, line := range strings.Split(text, "\n") {
@@ -165,6 +231,13 @@ func parseClaudeUsage(text string, now time.Time) *Usage {
 			u.Session = l
 		case m[2] == "" || strings.EqualFold(m[2], "all models"):
 			u.Week = l
+		default:
+			// "Sonnet only" là tuần của riêng Sonnet: app hiện "Sonnet".
+			name := strings.TrimSpace(m[2])
+			if len(name) > len(" only") && strings.EqualFold(name[len(name)-len(" only"):], " only") {
+				name = strings.TrimSpace(name[:len(name)-len(" only")])
+			}
+			u.Models = append(u.Models, ModelLimit{Name: name, Percent: l.Percent, ResetsAt: l.ResetsAt})
 		}
 	}
 	if u.Session == nil && u.Week == nil {
@@ -173,6 +246,107 @@ func parseClaudeUsage(text string, now time.Time) *Usage {
 	checked := now.UTC()
 	u.CheckedAt = &checked
 	return &u
+}
+
+// agyCodeGroup là nhóm model của agy mà run code của worker dùng (Claude, GPT); hạn mức của nhóm là Session, Week.
+const agyCodeGroup = "Claude and GPT models"
+
+type agyBucket struct {
+	Window            string   `json:"window"`
+	RemainingFraction *float64 `json:"remaining_fraction"`
+	ResetTime         string   `json:"reset_time"`
+	Disabled          bool     `json:"disabled"`
+}
+
+type agyUsage struct {
+	Status  string `json:"status"`
+	Command *struct {
+		Name string `json:"name"`
+		Data struct {
+			Groups []struct {
+				Name        string      `json:"name"`
+				Description string      `json:"description"`
+				Buckets     []agyBucket `json:"buckets"`
+			} `json:"groups"`
+		} `json:"data"`
+	} `json:"command"`
+}
+
+// parseAgyUsage đọc kết quả `agy -p /usage --output-format json`: mỗi nhóm model có bucket "5h" và "weekly" ghi phần
+// CÒN LẠI (remaining_fraction), đổi thành phần đã dùng như Claude, Codex. Nil khi không có nhóm nào đọc được.
+func parseAgyUsage(out []byte, now time.Time) *Usage {
+	var r agyUsage
+	if json.Unmarshal(bytes.TrimSpace(out), &r) != nil || r.Command == nil || (r.Status != "" && r.Status != "SUCCESS") {
+		return nil
+	}
+	var u Usage
+	for _, g := range r.Command.Data.Groups {
+		group := Group{Name: g.Name, Models: strings.TrimSpace(strings.TrimPrefix(g.Description, "Models within this group:"))}
+		for _, b := range g.Buckets {
+			switch b.Window {
+			case "5h":
+				// Bucket tắt vẫn ghi remaining_fraction cũ, không còn ý nghĩa.
+				if b.Disabled {
+					group.SessionDisabled = true
+					continue
+				}
+				group.Session = agyLimit(b, now)
+			case "weekly":
+				if !b.Disabled {
+					group.Week = agyLimit(b, now)
+				}
+			}
+		}
+		if group.Session == nil && group.Week == nil && !group.SessionDisabled {
+			continue
+		}
+		u.Groups = append(u.Groups, group)
+	}
+	if len(u.Groups) == 0 {
+		return nil
+	}
+	// Không có nhóm của run code (agy đổi tên nhóm) thì lấy nhóm dùng nhiều nhất để ngưỡng dừng không bỏ sót.
+	top := -1
+	for i, g := range u.Groups {
+		if g.Name == agyCodeGroup {
+			top = i
+			break
+		}
+		if top < 0 || groupPercent(g) > groupPercent(u.Groups[top]) {
+			top = i
+		}
+	}
+	u.Session, u.Week = u.Groups[top].Session, u.Groups[top].Week
+	checked := now.UTC()
+	u.CheckedAt = &checked
+	return &u
+}
+
+func agyLimit(b agyBucket, now time.Time) *Limit {
+	if b.RemainingFraction == nil {
+		return nil
+	}
+	// Làm tròn như số nguyên Claude in: 0.9754 còn lại là 2% đã dùng.
+	used := math.Round(100 - *b.RemainingFraction*100)
+	l := &Limit{Percent: max(0, min(100, used))}
+	if at, err := time.Parse(time.RFC3339, b.ResetTime); err == nil {
+		at = at.UTC()
+		if !at.After(now) {
+			return &Limit{}
+		}
+		l.ResetsAt = &at
+	}
+	return l
+}
+
+func groupPercent(g Group) float64 {
+	p := -1.0
+	for _, l := range []*Limit{g.Session, g.Week} {
+		if l != nil && l.Percent > p {
+			p = l.Percent
+		}
+	}
+	return p
 }
 
 // resetText: "Oct 13 at 1:39pm (Asia/Saigon)", "1:39pm (Asia/Saigon)", "Oct 8, 6pm (Asia/Ho_Chi_Minh)".

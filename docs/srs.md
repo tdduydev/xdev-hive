@@ -148,7 +148,8 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | FLEET-07 | The worker shall delete every worktree it creates and remove orphans at start. | Implemented | `worker:internal/runner/runner_test.go` |
 | FLEET-08 | Review, plan and leader runs shall run the CLI in its read-only mode and never push. | Implemented | `worker:internal/runner/runner_test.go` |
 | FLEET-09 | A machine shall be personal by default and run only runs owned by the user who registered it; team administrators shall mark machines as shared, and team runs without an owner (Leader, review gate, webhooks) shall run only on shared machines or runner hosts, recording why they wait when none is available (ADR 0017). | Implemented | `hub:runs.db.test.ts` (máy cá nhân và máy dùng chung) |
-| FLEET-10 | When a run's project is bound to a local repository in the machine's `projects.json`, the worker shall create the run's worktree from that repository (fetching `origin`, branch visible locally, never in the developer's working tree), fail with a clear message when the folder is missing, its `origin` does not match the project repository or the run would overwrite local work, and run with full permission only when the machine enabled it for that project and the organization policy allows it (ADR 0020). | Implemented | `worker:internal/runner/local_test.go`, `worker:internal/projects/projects_test.go`, `worker:internal/channel/projects_test.go`, `hub:runs.db.test.ts` (toàn quyền bật tại máy) |
+| FLEET-10 | A user shall be able to send instructions to a run only if they own it, or, for a team run without an owner, if they are a team or organization administrator; cancelling a run owned by someone else shall be limited to its owner and team administrators, and approving a plan with an edit or note on such a run to the same people. Others receive `RUN_NOT_YOURS` (ADR 0017). | Implemented | `hub:runs.db.test.ts` (ai được tác động vào run đã có chủ), `hub:plan.db.test.ts`, `web:tasks-runs.spec.ts` |
+| FLEET-11 | When a run's project is bound to a local repository in the machine's `projects.json`, the worker shall create the run's worktree from that repository (fetching `origin`, branch visible locally, never in the developer's working tree), fail with a clear message when the folder is missing, its `origin` does not match the project repository or the run would overwrite local work, and run with full permission only when the machine enabled it for that project and the organization policy allows it (ADR 0020). | Implemented | `worker:internal/runner/local_test.go`, `worker:internal/projects/projects_test.go`, `worker:internal/channel/projects_test.go`, `hub:runs.db.test.ts` (toàn quyền bật tại máy) |
 
 ### 3.7 Sandbox (SBX)
 
@@ -280,6 +281,26 @@ Spec [009](../specs/009-code-review-workflows/spec.md), [ADR 0018](adr/0018-code
 | CR-08 | AI review runs of a code workflow shall be team runs that run only on shared machines or runner hosts, unless the gate is set to run on the requester's machine. | Planned | — |
 | CR-09 | Gate results, decisions, overrides of automated gates (with a mandatory reason) and routing shall be audited and notified, and overdue human gates shall be reminded once per wait. | Planned | — |
 
+### 3.19 Hive CLI and remote sessions (RMT)
+
+Spec [010](../specs/010-hive-cli-remote/spec.md), [ADR 0019](adr/0019-hive-cli-and-remote-sessions.md).
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| RMT-01 | Releases shall include a `hive` command line tool built from the worker module, shipped in the same signed archive as `hive-worker`, updated together with it and bundled with the desktop app. `hive login` shall obtain a personal token through the browser loopback flow, or read one from standard input, and store it in the OS keychain. | Planned | — |
+| RMT-02 | `hive chat` and `hive run` shall ask the local worker, over a per-user local socket, to start an agent CLI interactively in a PTY in the current directory. The worker shall pick the account from `accounts.json` without applying stop limits. Sessions shall survive the terminal closing, and `hive ls`, `hive attach` and `hive kill` shall manage them. | Planned | — |
+| RMT-03 | The worker shall record the output of sessions on personal machines to the hub, at least once, deduplicated by offset, with known secrets masked. The hub shall keep sessions, output and events per organization under row-level security, link them to a task when given, and purge output by the agent policy retention. | Planned | — |
+| RMT-04 | Remote control shall be off by default and shall be enabled, given allowed folders and paired with devices only on the machine itself. The hub shall be able to disable remote control, revoke devices and end sessions, never to enable remote control or add devices. Shared machines and runner hosts shall refuse remote control. | Planned | — |
+| RMT-05 | Pairing a phone shall use a one-time secret shown as a QR code on the machine and never sent to the hub, a WebAuthn passkey with user verification on the phone, and an explicit approval on the machine. | Planned | — |
+| RMT-06 | Starting a session remotely and taking control shall require a fresh WebAuthn assertion from a paired device, verified by the worker against origin, relying party, user verification, time window and replay. Remote input shall carry a per-grant HMAC and sequence number. Remote sessions shall start only listed agent CLIs inside allowed folders, under the organization agent policy, without skipping permission prompts unless the owner allows it on the machine. | Planned | — |
+| RMT-07 | The owner shall be able to switch remote control off at once from the desktop app, its tray, the CLI or the web. Control shall lapse after inactivity, and sessions shall end after configurable idle and maximum durations. Every remote control action shall be audited on the hub and in a log on the machine, without keystroke content. | Planned | — |
+| RMT-08 | `hive attach` shall show live logs of an agent run and send each typed line as a steer instruction, attach to a session on the same machine, and view a session on another machine read-only. | Planned | — |
+| RMT-09 | The web app shall provide, usable at 360 px wide: a list of the user's machines and sessions, a terminal screen with an extra key bar and a line composer for IME input, starting a session, pairing and device management. | Planned | — |
+| RMT-10 | The web app shall be installable as a PWA and shall send Web Push notifications when an agent waits for the user, a session ends or a remote session opens, without terminal content in the notification. | Planned | — |
+| RMT-11 | Sessions shall be private to their owner by default. The owner may let team members view a session live and replay it. Only the machine owner shall ever control a session, one controller at a time. | Planned | — |
+| RMT-12 | The desktop app shall provide a remote control screen with the switch, allowed folders, paired devices with QR pairing, confirmation prompts, the session list with disconnect actions, and tray and OS notifications for remote activity. | Planned | — |
+| RMT-13 | When the hub runs over plain HTTP, remote control shall be possible only through a TOTP fallback whose key the worker creates, stores and checks on the machine, never the hub. Each remote session start and control request shall need a fresh code; reuse of a code shall be refused and repeated wrong codes shall lock the machine for a growing delay. The desktop app and web shall warn that session content and keystrokes cross the network unencrypted, and an organization policy shall be able to disable the fallback. Passkeys remain the primary method whenever HTTPS is available. | Planned | — |
+
 ## 4. External interface requirements
 
 | ID | Requirement | Status |
@@ -290,6 +311,7 @@ Spec [009](../specs/009-code-review-workflows/spec.md), [ADR 0018](adr/0018-code
 | IF-04 | Git hosts shall deliver webhooks to `/hooks/git/{projectId}`. | Implemented |
 | IF-05 | The desktop app shall query `/api/v1/desktop/updates/{os}/{arch}/{version}` in the Tauri updater format. | Partial: the app has no update endpoint or key configured |
 | IF-06 | Git hosts shall deliver skill repository webhooks to `/hooks/skills/{repoId}`. | Implemented |
+| IF-07 | Browsers shall reach terminal sessions through the WebSocket `/ws/terminal`, authenticated with a single-use ticket from `terminal.ticket` and an allowed `Origin`. Workers shall exchange `term_*` packets only after both sides have announced the `terminal` capability (`hello.capabilities`, `welcome.features`). | Planned |
 ## 5. Non-functional requirements
 
 | ID | Category | Requirement | Status | Verification |
@@ -310,3 +332,4 @@ Spec [009](../specs/009-code-review-workflows/spec.md), [ADR 0018](adr/0018-code
 | NFR-14 | Operability | The hub shall run as one container plus PostgreSQL and report its deployed commit at `/api/v1/health`. | Implemented | `deploy/compose.yaml`, `hub:app.test.ts` |
 | NFR-15 | Scalability | Several hub `api` processes shall share the worker connections. | Planned | — |
 | NFR-16 | Observability | The hub and worker shall export metrics and traces. | Planned | — |
+| NFR-17 | Security | Neither hub credentials, nor hub administration, nor database access shall be enough to start a terminal session on a developer machine or to type into one; the worker shall verify every such request against devices paired on the machine. | Planned | — |

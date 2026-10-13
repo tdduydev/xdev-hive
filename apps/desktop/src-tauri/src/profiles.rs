@@ -163,6 +163,37 @@ fn usage_args(id: Option<&str>) -> Result<Vec<String>, String> {
     Ok(args)
 }
 
+/// CLI mà `accounts discover` tìm được; Antigravity chỉ vào danh sách bằng đường này vì không có luồng đăng nhập trong app.
+const DISCOVER_CLIS: [&str; 3] = ["claude", "codex", "antigravity"];
+
+fn discover_args() -> Vec<String> {
+    vec!["accounts".into(), "discover".into(), "--json".into()]
+}
+
+/// Thêm một đăng nhập từ kết quả tìm: `--add=<thư mục>` hoặc `--add=default:<cli>` khi CLI dùng thư mục mặc định.
+fn discover_add_args(
+    cli: &str,
+    config_dir: Option<&str>,
+    label: Option<&str>,
+) -> Result<Vec<String>, String> {
+    if !DISCOVER_CLIS.contains(&cli) {
+        return Err(format!("CLI {cli} không có trong danh sách tìm gói."));
+    }
+    let target = match config_dir.map(str::trim).filter(|d| !d.is_empty()) {
+        Some(dir) if dir.len() > 1024 || dir.chars().any(char::is_control) => {
+            return Err("Đường dẫn thư mục đăng nhập không hợp lệ.".into());
+        }
+        Some(dir) => dir.to_string(),
+        None => format!("default:{cli}"),
+    };
+    let mut args = vec!["accounts".into(), "discover".into(), arg("add", target)];
+    if let Some(label) = label.map(str::trim).filter(|l| !l.is_empty()) {
+        args.push(arg("label", label));
+    }
+    args.push("--json".into());
+    Ok(args)
+}
+
 /// Tài khoản CLI của máy (accounts.json của worker, spec 008 US13), kèm trạng thái đăng nhập và quota. Không chứa token.
 #[tauri::command]
 pub async fn cli_profiles(app: AppHandle) -> Result<serde_json::Value, String> {
@@ -233,6 +264,24 @@ pub async fn cli_profile_usage(
 #[tauri::command]
 pub async fn cli_profile_resume(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
     sidecar_json(&app, id_command("resume", &id)?, vec![]).await
+}
+
+/// Đăng nhập CLI có trên máy mà danh sách gói chưa có. Worker cũ chưa có lệnh này thì trả lỗi; màn bỏ qua im lặng.
+#[tauri::command]
+pub async fn cli_profile_discover(app: AppHandle) -> Result<serde_json::Value, String> {
+    sidecar_json(&app, discover_args(), vec![]).await
+}
+
+/// Thêm một đăng nhập tìm được vào danh sách gói; trả danh sách như `cli_profiles`.
+#[tauri::command]
+pub async fn cli_profile_discover_add(
+    app: AppHandle,
+    cli: String,
+    config_dir: Option<String>,
+    label: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let args = discover_add_args(&cli, config_dir.as_deref(), label.as_deref())?;
+    sidecar_json(&app, args, vec![]).await
 }
 
 /// Lệnh đã kiểm để mở trong Terminal (đăng nhập hay mở CLI): CLI, tham số, biến thư mục đăng nhập và thư mục làm việc
@@ -694,6 +743,42 @@ mod tests {
         };
         assert!(update_args("c", &bad_role).is_err());
         assert!(update_args(" ", &PlanPatch::default()).is_err());
+    }
+
+    #[test]
+    fn discover_builds_worker_flags() {
+        assert_eq!(discover_args(), ["accounts", "discover", "--json"]);
+        assert_eq!(
+            discover_add_args("claude", Some(" ~/.xdev-hive/accounts/claude-8 "), None).unwrap(),
+            [
+                "accounts",
+                "discover",
+                "--add=~/.xdev-hive/accounts/claude-8",
+                "--json"
+            ]
+        );
+        // Không có thư mục: đăng nhập mặc định của CLI.
+        assert_eq!(
+            discover_add_args("codex", None, Some(" Codex chính ")).unwrap(),
+            [
+                "accounts",
+                "discover",
+                "--add=default:codex",
+                "--label=Codex chính",
+                "--json"
+            ]
+        );
+        assert_eq!(
+            discover_add_args("antigravity", Some(""), None).unwrap()[2],
+            "--add=default:antigravity"
+        );
+    }
+
+    #[test]
+    fn discover_add_refuses_unknown_input() {
+        assert!(discover_add_args("gemini", None, None).is_err());
+        assert!(discover_add_args("claude", Some("~/a\nb"), None).is_err());
+        assert!(discover_add_args("claude", Some(&"x".repeat(1025)), None).is_err());
     }
 
     #[test]
