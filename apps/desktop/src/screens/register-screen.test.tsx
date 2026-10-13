@@ -138,7 +138,7 @@ describe("RegisterScreen", () => {
   it("tiếng Anh", async () => {
     fakeTauri(notification);
     render(<RegisterScreen />);
-    await userEvent.setup().click(screen.getByRole("button", { name: "EN" }));
+    await userEvent.setup().selectOptions(screen.getByLabelText("Ngôn ngữ"), "en");
     expect(screen.getByRole("heading", { name: "Connect your machine" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Register and start worker" })).toBeTruthy();
     expect(document.documentElement.lang).toBe("en");

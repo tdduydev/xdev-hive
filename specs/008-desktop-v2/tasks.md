@@ -308,6 +308,11 @@ description: "Task list for Desktop Application v2 implementation"
   review reuse `DocEditor.dc.html` and `DocReview.dc.html` through `packages/doc-editor`. **Dependencies**: T028–T031.
 - [ ] **T033 Designs for My work and Knowledge**: `AppWork.dc.html` and `AppKnowledge.dc.html` in the design system;
   the screens follow the existing app tables and cards until then. **Dependencies**: T029, T031.
+- [x] **T034 Collapsible AppNav, language drop-down (FR-030)**: button in the window header; choice in localStorage.
+- [ ] **T035 Worker: several CLI accounts (US13, FR-028)**: `accounts.json`, pick by priority, concurrency and
+  cooldown, set the config directory variable, cool down on usage-limit messages, account label in run events.
+- [ ] **T036 App: import v1 accounts, AI accounts list (US13, FR-029)**: one-time import from
+  `~/.xdev-hive/config.json`, enable or disable per account. **Dependencies**: T035.
 
 ---
 

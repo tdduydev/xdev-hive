@@ -1,4 +1,5 @@
 import { act, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
 import { navItems, screenFromHash, screenParam } from "@/lib/nav.ts";
@@ -102,6 +103,41 @@ describe("AppShell", () => {
     expect(screen.getByRole("navigation", { name: "App navigation" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Tokens & context" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: "Runs on this machine" })).toBeTruthy();
+  });
+});
+
+describe("đóng mở menu và chọn ngôn ngữ", () => {
+  beforeEach(() => setLang("vi"));
+
+  it("nút ở đầu trang thu gọn menu còn icon, bấm lại mở rộng; lựa chọn giữ qua lần mở sau", async () => {
+    const { unmount } = render(<AppShell />);
+    const user = userEvent.setup();
+    const nav = () => screen.getByRole("navigation", { name: "Điều hướng app" });
+    expect(nav().hasAttribute("data-compact")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Thu gọn menu" }));
+    expect(nav().hasAttribute("data-compact")).toBe(true);
+    unmount();
+    render(<AppShell />);
+    expect(nav().hasAttribute("data-compact")).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Mở rộng menu" }));
+    expect(nav().hasAttribute("data-compact")).toBe(false);
+  });
+
+  it("màn cần chỗ tự thu gọn khi chưa chọn, vẫn mở rộng được", async () => {
+    location.hash = "#/write";
+    render(<AppShell />);
+    const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
+    expect(nav.hasAttribute("data-compact")).toBe(true);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Mở rộng menu" }));
+    expect(nav.hasAttribute("data-compact")).toBe(false);
+  });
+
+  it("chọn English ở danh sách ngôn ngữ thì cả app đổi sang tiếng Anh", async () => {
+    render(<AppShell />);
+    await userEvent.setup().selectOptions(screen.getByLabelText("Ngôn ngữ"), "en");
+    expect(screen.getByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
+    expect(screen.getByLabelText("Language")).toBeTruthy();
+    expect(document.documentElement.lang).toBe("en");
   });
 });
 
