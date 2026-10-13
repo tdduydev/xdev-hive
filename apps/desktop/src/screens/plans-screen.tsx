@@ -720,7 +720,7 @@ export function PlansScreen() {
       <section
         aria-label={t.machine}
         style={{ "--cols": perCli.length + 1 } as CSSProperties}
-        className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border bg-border min-[760px]:grid-cols-2 min-[1200px]:grid-cols-(--cols)"
+        className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border bg-border min-[760px]:grid-cols-2 min-[1200px]:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
       >
         <div className="flex flex-col gap-1.5 bg-card px-4 py-3 text-card-foreground">
           <span className="text-sm font-medium text-muted-foreground">{t.machine}</span>
@@ -1053,7 +1053,10 @@ function PlanCard({
           lang={lang}
           now={now}
         />
-        {(!session || !week) && <span className="col-span-2 text-xs text-muted-foreground">{why}</span>}
+        {/* Gói chưa đăng nhập hay thiếu CLI đã có dòng giải thích riêng bên dưới. */}
+        {(!session || !week) && p.supported && state !== "signedOut" && state !== "noCli" && (
+          <span className="col-span-2 text-xs text-muted-foreground">{why}</span>
+        )}
       </div>
 
       {models.length > 0 && <ModelWeeks models={models} plan={name(p)} t={t} />}
