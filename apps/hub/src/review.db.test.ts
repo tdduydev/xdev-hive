@@ -6,7 +6,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { defaultProjectSettings, type ProjectSettings } from "@xdev-hive/contracts";
+import { defaultProjectSettings, type ProjectSettings, workflowInput } from "@xdev-hive/contracts";
 import { type DiffStats, type HubToWorker, hubToWorker, PROTOCOL_VERSION } from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
@@ -630,5 +630,187 @@ describe("review chéo", () => {
     await w.finish(runId, 0, { commitCount: 0, changedFiles: [] }, null);
     await until(async () => (await runRow(runId)).state === "no_changes");
     expect(await reviewRunsOf(runId)).toHaveLength(0);
+  });
+});
+
+describe("quy trình review code thay review chéo (specs/009, D3)", () => {
+  let workflowId = "";
+  const workflowName = `Code ${tag}`;
+
+  /** Quy trình code của dự án: một checkpoint AI hai reviewer, rubric và đường dẫn trọng tâm. */
+  async function saveWorkflow(projects: string[]) {
+    const phases = [
+      {
+        name: "AI",
+        gates: [
+          {
+            id: "ai",
+            name: "Review AI",
+            kind: "ai",
+            ai: {
+              checks: ["Đúng yêu cầu", "Có test"],
+              passScore: 7,
+              reviewers: [{ cli: "claude" }, { cli: "codex", model: "gpt-5" }],
+            },
+            conditions: { paths: ["src/**"] },
+            slaHours: null,
+          },
+        ],
+      },
+    ];
+    // Lưu đúng dạng saveWorkflow ghi: đã qua zod (giá trị mặc định đầy đủ).
+    const w = workflowInput.parse({
+      name: workflowName,
+      preset: "custom",
+      subject: "code",
+      teamId: org.teamId,
+      docPrefixes: [],
+      code: { projects },
+      phases,
+      enabled: true,
+    });
+    const { rows } = await admin.query(
+      `insert into hive.review_workflows (org_id, team_id, name, preset, subject, doc_prefixes, code, phases, enabled)
+       values ($1, $2, $3, 'custom', 'code', '{}', $4, $5, true) returning id`,
+      [org.orgId, org.teamId, workflowName, JSON.stringify(w.code), JSON.stringify(w.phases)],
+    );
+    workflowId = rows[0].id;
+  }
+
+  afterEach(async () => {
+    if (workflowId) await admin.query("delete from hive.review_workflows where id = $1", [workflowId]);
+    workflowId = "";
+  });
+
+  const codeReviewOf = async (runId: string) =>
+    (await admin.query("select * from hive.code_reviews where run_id = $1", [runId])).rows[0];
+
+  it("khớp quy trình: bỏ kiểm tra review, không tạo run review chéo, không vào hàng merge, mở phiên và run review mỗi reviewer", async () => {
+    await setSettings((s) => {
+      s.features.crossReview = true;
+      s.features.mergeQueue = true;
+      s.merge.mode = "auto";
+      s.outcome.default = [
+        { check: "changes", required: true },
+        { check: "review", required: true, by: "codex", minScore: 7 },
+      ];
+    });
+    // Phạm vi cả đội (không liệt kê dự án): key của dự án thử viết hoa, không qua được kiểm tra key của quy trình.
+    await saveWorkflow([]);
+    const w = await FakeWorker.connect(await seedMachine(`wf-${tag}`));
+    const { taskId, runId } = await queueRun();
+    await w.take(runId);
+    await w.finish(runId, 0, { commitCount: 1, changedFiles: ["src/a.ts"] }, sha, {
+      addedLines: 10,
+      deletedLines: 2,
+      changedFiles: ["src/a.ts"],
+    });
+    await until(async () => (await runRow(runId)).state === "succeeded");
+    const done = await runRow(runId);
+    expect(done.result.checks[1]).toMatchObject({
+      check: "review",
+      passed: null,
+      skipped: true,
+      message: `Quy trình ${workflowName} đảm nhận review.`,
+    });
+    expect(done.result.reasons).toEqual([]);
+    expect(await reviewRunsOf(runId)).toHaveLength(0);
+    expect(await taskStatus(taskId)).toBe("review");
+    const queued = await admin.query("select 1 from hive.merge_queue_entries where run_id = $1", [runId]);
+    expect(queued.rowCount).toBe(0);
+
+    const review = await codeReviewOf(runId);
+    expect(review).toMatchObject({ workflow_id: workflowId, status: "in_review", head_sha: sha, gate_index: 0 });
+    const { rows: gates } = await admin.query(
+      "select status, run_ids from hive.code_review_gate_runs where review_id = $1",
+      [review.id],
+    );
+    expect(gates).toHaveLength(1);
+    expect(gates[0].status).toBe("waiting");
+    const reviewRuns = (
+      await admin.query("select * from hive.runs where id = any($1::uuid[]) order by cli", [gates[0].run_ids])
+    ).rows;
+    expect(reviewRuns).toHaveLength(2);
+    for (const r of reviewRuns) {
+      expect(r).toMatchObject({
+        kind: "review",
+        task_id: taskId,
+        branch: done.branch,
+        created_by: `workflow:${workflowId}`,
+        owner_user_id: null,
+        parent_run_id: null,
+        policy_snapshot: [],
+      });
+    }
+    expect(reviewRuns.map((r) => [r.cli, r.model])).toEqual([
+      ["claude", null],
+      ["codex", "gpt-5"],
+    ]);
+
+    // Máy chỉ nhận một run một lúc; hai run review giao theo thứ tự bất kỳ.
+    const ids = reviewRuns.map((r) => r.id as string);
+    const takeReview = async () => {
+      const offer = await w.next("job_offer", (o) => ids.includes(o.runId));
+      w.send({ type: "job_accept", runId: offer.runId, attempt: offer.attempt });
+      const lease = await w.next("lease", (l) => l.runId === offer.runId);
+      return { runId: offer.runId, spec: offer.spec, runToken: lease.runToken };
+    };
+    const models: Record<string, string | null> = { claude: null, codex: "gpt-5" };
+
+    // Run review của checkpoint: lời nhắc có rubric, đường dẫn trọng tâm, PR; review_submit nhận checklist.
+    const first = await takeReview();
+    expect(first.spec).toMatchObject({ kind: "review", branch: done.branch });
+    expect(first.spec.model ?? null).toBe(models[String(first.spec.cli)]);
+    const prompt = String(first.spec.prompt);
+    expect(prompt).toContain("- Đúng yêu cầu");
+    expect(prompt).toContain("- src/**");
+    expect(prompt).toContain(done.pr_url);
+    expect(prompt).toContain("checklist");
+    const commentsBefore = [...provider.repos.values()][0]?.comments.length ?? 0;
+    const res = await submit(await mcp(first.runToken), {
+      score: 8,
+      summary: "Ổn.",
+      checklist: [
+        { label: "Đúng yêu cầu", passed: true },
+        { label: "Có test", passed: false, note: "Thiếu test biên." },
+      ],
+    });
+    expect(res.isError).toBe(false);
+    const { rows: events } = await admin.query(
+      "select data from hive.run_events where run_id = $1 and type = 'review_report'",
+      [first.runId],
+    );
+    expect(events[0]?.data.checklist).toEqual([
+      { label: "Đúng yêu cầu", passed: true },
+      { label: "Có test", passed: false, note: "Thiếu test biên." },
+    ]);
+    await w.finish(first.runId, 0, {});
+    await until(async () => (await runRow(first.runId)).state === "succeeded");
+
+    // Reviewer thứ hai không nộp: run review thất bại, phiên vẫn nhận kết quả; run code không bị kết luận lại.
+    const second = await takeReview();
+    expect(second.spec.cli).not.toBe(first.spec.cli);
+    expect(second.spec.model ?? null).toBe(models[String(second.spec.cli)]);
+    await w.finish(second.runId, 0, {});
+    await until(async () => (await runRow(second.runId)).state === "failed");
+    await new Promise((r) => setTimeout(r, 200));
+    expect((await runRow(runId)).state).toBe("succeeded");
+    expect((await runRow(runId)).result).toEqual(done.result);
+    // Phiên đăng bình luận tổng hợp (T022); run review của quy trình không tự đăng từng bình luận.
+    expect([...provider.repos.values()][0]?.comments.length ?? 0).toBe(commentsBefore);
+    expect((await codeReviewOf(runId)).status).toBe("in_review");
+  });
+
+  it("quy trình của dự án khác: review chéo như cũ", async () => {
+    await crossReview();
+    await saveWorkflow(["khac"]);
+    const w = await FakeWorker.connect(await seedMachine(`wfo-${tag}`));
+    const { runId, childId, runToken } = await codeThenReview(w);
+    expect((await runRow(childId)).parent_run_id).toBe(runId);
+    await submit(await mcp(runToken), { score: 9, summary: "Tốt." });
+    await w.finish(childId, 0, {});
+    await until(async () => (await runRow(runId)).state === "succeeded");
+    expect((await runRow(runId)).result.checks[1]).toMatchObject({ check: "review", passed: true });
+    expect(await codeReviewOf(runId)).toBeUndefined();
   });
 });
