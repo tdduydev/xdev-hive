@@ -44,6 +44,13 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .mcard{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
 .bar{height:4px;border-radius:9999px;background:var(--muted);overflow:hidden}
 .sw-lbl{display:flex;align-items:center;gap:8px;font-size:13px}
+.overlay{position:fixed;inset:0;background:rgb(0 0 0 / .45);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto;z-index:20}
+.dlg{width:100%;max-width:576px;box-sizing:border-box;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow-lg)}
+.acc{border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.step{display:flex;align-items:center;gap:6px;font-size:12px}
+.step i{font-style:normal;width:20px;height:20px;border-radius:9999px;display:grid;place-items:center;font-size:11px;border:1px solid var(--border)}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;cursor:pointer}
+.devcode{flex:1;min-width:0;padding:8px 12px;border-radius:8px;background:var(--muted);text-align:center;font-family:var(--font-mono);font-size:24px;font-weight:600;letter-spacing:.12em;word-break:break-all}
 </style>
 </helmet>
 <div data-theme="{{theme}}" style="min-height: 1700px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
@@ -127,6 +134,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
             <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
               <div style="display: flex; flex-direction: column; gap: 4px; min-width: 130px;"><span style="font-variant-numeric: tabular-nums;">{{m.slots}}</span><div class="bar" aria-hidden="true"><div style="{{m.bar}}"></div></div></div>
               <button type="button" class="btn btn-outline btn-sm" onClick="{{m.toggleEdit}}" aria-expanded="{{m.editAria}}">{{t.editLabels}}</button>
+              <sc-if value="{{m.canAccounts}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline btn-sm" onClick="{{m.openAccounts}}" aria-label="{{m.accountsLabel}}">{{t.accounts}}</button></sc-if>
               <button type="button" class="btn btn-outline btn-sm">{{m.action}}</button>
             </div>
           </div>
@@ -160,15 +168,105 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
           </sc-if>
         </article>
       </sc-for>
+
+      <sc-if value="{{acc.open}}" hint-placeholder-val="{{false}}">
+        <div class="overlay">
+          <section class="card dlg" role="dialog" aria-modal="true" aria-labelledby="acc-title">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <h2 id="acc-title" style="margin: 0; font-size: 17px; font-weight: 600;">{{t.accounts}} · <span class="mono">{{acc.machine}}</span></h2>
+              <span class="hint">{{t.accLead}}</span>
+            </div>
+            <section aria-label="{{t.accList}}" style="display: flex; flex-direction: column; gap: 8px;">
+              <sc-for list="{{acc.list}}" as="a" hint-placeholder-count="2">
+                <div class="acc">
+                  <div class="row" style="gap: 12px;">
+                    <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+                      <strong style="font-weight: 500; overflow-wrap: anywhere;">{{a.label}}</strong>
+                      <div style="display: flex; flex-wrap: wrap; gap: 6px;"><span class="badge" style="background: var(--secondary); color: var(--secondary-foreground);">{{a.cli}}</span><span class="badge" style="{{a.loginStyle}}">{{a.login}}</span><sc-if value="{{a.busy}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--accent); color: var(--accent-foreground);">{{a.inUse}}</span></sc-if></div>
+                    </div>
+                    <button type="button" class="sw" role="switch" onClick="{{a.flip}}" aria-checked="{{a.onAria}}" aria-label="{{a.useLabel}}" style="{{a.track}}"><span style="{{a.knob}}"></span></button>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; font-size: 12px;">
+                    <sc-for list="{{a.quota}}" as="q" hint-placeholder-count="2">
+                      <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <span class="muted" style="display: flex; justify-content: space-between;"><span>{{q.label}}</span><span class="mono">{{q.left}}</span></span>
+                        <div class="bar" aria-hidden="true"><div style="{{q.bar}}"></div></div>
+                        <span class="muted">{{q.reset}}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+              <span class="hint">{{t.accReported}}</span>
+            </section>
+            <section class="acc" aria-labelledby="acc-add" style="gap: 12px;">
+              <h3 id="acc-add" style="margin: 0; font-size: 14px; font-weight: 500;">{{t.accAdd}}</h3>
+              <ol aria-label="{{t.accSteps}}" style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px;">
+                <sc-for list="{{acc.steps}}" as="st" hint-placeholder-count="4"><li class="step" aria-current="{{st.current}}" style="{{st.text}}"><i style="{{st.dot}}">{{st.n}}</i>{{st.name}}</li></sc-for>
+              </ol>
+              <sc-if value="{{acc.choose}}" hint-placeholder-val="{{false}}">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <sc-for list="{{acc.clis}}" as="c" hint-placeholder-count="2"><label class="opt" style="{{c.style}}"><input type="radio" name="acc-cli" checked="{{c.on}}" onChange="{{c.pick}}"><span style="font-weight: 500;">{{c.name}}</span></label></sc-for>
+                  <label class="field"><span>{{t.accName}}</span><input class="input" value="Claude Max team" placeholder="{{t.accNamePh}}"></label>
+                  <div style="display: flex; justify-content: flex-end;"><button type="button" class="btn btn-default" onClick="{{acc.toHow}}">{{t.accNext}}</button></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{acc.how}}" hint-placeholder-val="{{false}}">
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <span style="font-size: 12px; font-weight: 500;">{{t.accHowClaude}}</span>
+                  <sc-for list="{{acc.hows}}" as="h" hint-placeholder-count="4"><label class="opt" style="{{h.style}}"><input type="radio" name="acc-how" checked="{{h.on}}" onChange="{{h.pick}}"><span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 500;">{{h.label}}</span><span class="hint">{{h.hint}}</span></span></label></sc-for>
+                  <sc-if value="{{acc.tokenWarn}}" hint-placeholder-val="{{false}}"><p role="note" class="alert" style="margin: 0; background: var(--warning-soft); color: var(--foreground); font-size: 12px;">{{t.accTokenWarn}}</p></sc-if>
+                  <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{acc.toChoose}}">{{t.accBack}}</button><button type="button" class="btn btn-default" onClick="{{acc.toLogin}}">{{t.accStart}}</button></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{acc.login}}" hint-placeholder-val="{{false}}">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <span class="hint">{{acc.who}}</span>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <span style="font-size: 12px; font-weight: 500;">{{acc.openTitle}}</span>
+                    <a class="btn btn-default" style="align-self: flex-start; text-decoration: none;" href="#" target="_blank" rel="noopener noreferrer">{{t.accOpen}}</a>
+                    <div style="display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--muted);">
+                      <code class="mono" style="flex: 1; min-width: 0; padding: 6px 10px; font-size: 12px; word-break: break-all;">{{acc.url}}</code>
+                      <button type="button" class="btn btn-ghost" style="border-radius: 0; border-left: 1px solid var(--border); height: auto;" aria-label="{{t.accCopyUrl}}">{{t.copy}}</button>
+                    </div>
+                  </div>
+                  <sc-if value="{{acc.codex}}" hint-placeholder-val="{{false}}">
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <span style="font-size: 12px; font-weight: 500;">{{t.accCode}}</span>
+                      <div style="display: flex; gap: 8px; align-items: center;"><output class="devcode" aria-label="{{t.accCode}}">WXYZ-12345</output><button type="button" class="btn btn-outline" aria-label="{{t.accCopyCode}}">{{t.copy}}</button></div>
+                      <span role="status" aria-busy="true" class="muted">{{t.accWaitDevice}}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{acc.claude}}" hint-placeholder-val="{{false}}">
+                    <div class="field">
+                      <label for="acc-paste">{{t.accPaste}}</label>
+                      <div style="display: flex; gap: 8px; min-width: 0;"><input id="acc-paste" class="input mono" autocomplete="off" spellcheck="false" style="flex: 1; min-width: 0; font-size: 12px;"><button type="button" class="btn btn-default" onClick="{{acc.toDone}}">{{t.accSend}}</button></div>
+                    </div>
+                  </sc-if>
+                  <span class="hint">{{t.accExpires}}</span>
+                  <div style="display: flex; justify-content: flex-end;"><button type="button" class="btn btn-outline" onClick="{{acc.toChoose}}">{{t.cancel}}</button></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{acc.done}}" hint-placeholder-val="{{false}}">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <p role="status" class="alert" style="margin: 0; background: var(--success-soft); color: var(--success);"><strong style="font-weight: 500;">{{t.accDone}}</strong> · <span class="mono">claude-3</span></p>
+                  <div style="display: flex; justify-content: flex-end;"><button type="button" class="btn btn-outline" onClick="{{acc.toChoose}}">{{t.accAnother}}</button></div>
+                </div>
+              </sc-if>
+            </section>
+            <div style="display: flex; justify-content: flex-end;"><button type="button" class="btn btn-outline" onClick="{{acc.close}}">{{t.close}}</button></div>
+          </section>
+        </div>
+      </sc-if>
     </main>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["list","edit","invalid","add","empty","loading","error"],"default":"list"},"$preview":{"width":1440,"height":1700}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["list","edit","invalid","add","empty","loading","error","accounts","accounts-how","accounts-claude","accounts-codex","accounts-done"],"default":"list"},"$preview":{"width":1440,"height":1700}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { lang: null, dark: null, add: null, os: 'linux', edit: null, only: {} };
+    this.state = { lang: null, dark: null, add: null, os: 'linux', edit: null, only: {}, acc: null, accStep: null, accCli: null, accHow: 'plan', accOff: {} };
   }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
@@ -192,7 +290,16 @@ class Component extends DCLogic {
       labelsOnlyBadge: ['Chỉ run có nhãn', 'Labelled runs only'], newLabel: ['Nhãn mới', 'New label'], addLabel: ['Thêm nhãn', 'Add label'],
       hintOk: ['Ví dụ: sdlc, gpu, windows.', 'Examples: sdlc, gpu, windows.'], hintBad: ['Nhãn gồm chữ thường không dấu, số, "-", tối đa 32 ký tự.', 'A label is lowercase ASCII letters, digits and "-", up to 32 characters.'],
       applyNote: ['Áp cho lần giao run kế tiếp, không cần khởi động lại worker. Thay đổi được ghi vào nhật ký kiểm toán.', 'Applies to the next dispatch, no worker restart needed. The change is recorded in the audit log.'],
-      save: ['Lưu', 'Save'], cancel: ['Huỷ', 'Cancel'],
+      save: ['Lưu', 'Save'], cancel: ['Huỷ', 'Cancel'], close: ['Đóng', 'Close'],
+      accounts: ['Gói agent', 'Agent accounts'], accLead: ['Đăng nhập gói chạy ngay trên máy: hub chỉ chuyển đường dẫn đăng nhập và mã bạn dán, không lưu token.', 'Sign-in runs on the machine itself: the hub only relays the sign-in link and the code you paste, and never stores tokens.'],
+      accList: ['Danh sách gói', 'Accounts'], accReported: ['Máy báo lúc 14:32:05.', 'Reported at 14:32:05.'], accAdd: ['Thêm gói', 'Add account'], accSteps: ['Các bước thêm gói', 'Steps to add an account'],
+      accName: ['Tên gói', 'Account name'], accNamePh: ['vd. claude-max-team', 'e.g. claude-max-team'], accNext: ['Tiếp tục', 'Continue'],
+      accHowClaude: ['Cách đăng nhập Claude Code', 'How to sign in to Claude Code'], accBack: ['Quay lại', 'Back'], accStart: ['Bắt đầu đăng nhập', 'Start sign-in'],
+      accTokenWarn: ['Token từ claude setup-token có hiệu lực 1 năm và không thu hồi được từ máy. Ai có token đều dùng được gói của bạn, nên chỉ dán vào ô đăng nhập ở bước sau, không gửi qua chat hay email.', 'A claude setup-token token lasts one year and cannot be revoked from the machine. Anyone holding it can use your plan, so paste it only into the sign-in field in the next step, never in chat or email.'],
+      accOpen: ['Mở trang đăng nhập', 'Open sign-in page'], accCopyUrl: ['Chép đường dẫn đăng nhập', 'Copy sign-in link'], accCode: ['Mã thiết bị', 'Device code'], accCopyCode: ['Chép mã thiết bị', 'Copy device code'],
+      accWaitDevice: ['Nhập mã ở trang đăng nhập; máy tự nhận khi bạn xác nhận xong…', 'Enter the code on the sign-in page; the machine picks it up once you confirm…'],
+      accPaste: ['Dán mã xác nhận', 'Paste the confirmation code'], accSend: ['Gửi', 'Send'], accExpires: ['Hết hạn lúc 14:42.', 'Expires at 14:42.'],
+      accDone: ['Đã đăng nhập', 'Signed in'], accAnother: ['Thêm gói khác', 'Add another account'],
     };
     const t = Object.fromEntries(Object.entries(T).map(([k, v]) => [k, x(v)]));
     const tone = { busy: 'background: var(--accent); color: var(--accent-foreground);', ready: 'background: var(--success-soft); color: var(--success);', paused: 'background: var(--warning-soft); color: var(--warning);', offline: 'background: var(--secondary); color: var(--muted-foreground);' };
@@ -226,6 +333,7 @@ class Component extends DCLogic {
         meta: m.os + ' · worker ' + m.version + ' · ' + m.seen,
         slots: m.used + ' / ' + m.cap + ' ' + x(['slot', 'slots']), bar: 'height: 100%; width: ' + Math.round((m.used / m.cap) * 100) + '%; background: ' + (m.used >= m.cap ? 'var(--warning)' : 'var(--primary)') + ';',
         action: m.action, accountsSummary: m.accounts,
+        canAccounts: m.shared, accountsLabel: x(['Gói agent của ', 'Agent accounts of ']) + m.id, openAccounts: () => this.setState({ acc: m.id, accStep: 'choose' }),
         labels: m.labels.map((name) => ({ name })), noLabels: m.labels.length === 0, labelsOnly: m.labelsOnly,
         clis: m.clis.map((name) => ({ name, style: '' })),
         editing: open, editAria: open ? 'true' : 'false', toggleEdit: () => this.setState({ edit: open ? '' : m.id }),
@@ -238,6 +346,55 @@ class Component extends DCLogic {
         },
       };
     });
+    const accView = view.startsWith('accounts');
+    const accMachine = this.state.acc ?? (accView ? 'sdlc-01' : null);
+    const step = this.state.accStep ?? ({ accounts: 'choose', 'accounts-how': 'how', 'accounts-claude': 'login', 'accounts-codex': 'login', 'accounts-done': 'done' }[view] ?? 'choose');
+    const accCli = this.state.accCli ?? (view === 'accounts-codex' ? 'codex' : 'claude');
+    const stepIndex = { choose: 0, how: 1, login: 2, done: 3 }[step];
+    const quota = (label, used, reset) => ({
+      label, left: used === null ? '—' : x(['còn ', '']) + (100 - used) + '%' + x(['', ' left']),
+      bar: 'height: 100%; width: ' + (used === null ? 0 : 100 - used) + '%; background: ' + (used !== null && 100 - used < 30 ? 'var(--warning)' : 'var(--primary)') + ';',
+      reset: used === null ? x(['Chưa có số liệu', 'No data yet']) : reset,
+    });
+    const accSample = [
+      { id: 'claude-1', label: 'Claude Max team', cli: 'Claude Code', login: true, on: true, inUse: 1, session: 32, week: 41, reset: x(['Làm mới 13/10, 17:00', 'Resets 13/10, 17:00']) },
+      { id: 'codex-1', label: 'Codex Pro', cli: 'Codex', login: false, on: false, inUse: 0, session: null, week: null, reset: '' },
+    ];
+    const acc = {
+      open: accMachine !== null, machine: accMachine,
+      list: accSample.map((a) => {
+        const on = this.state.accOff[a.id] === undefined ? a.on : !this.state.accOff[a.id];
+        return {
+          label: a.label, cli: a.cli, login: a.login ? x(['Đã đăng nhập', 'Signed in']) : x(['Chưa đăng nhập', 'Signed out']),
+          loginStyle: a.login ? 'background: var(--success-soft); color: var(--success);' : 'background: var(--warning-soft); color: var(--warning);',
+          busy: a.inUse > 0, inUse: a.inUse + x([' run đang dùng', ' run using it']), useLabel: x(['Dùng gói ', 'Use account ']) + a.label,
+          onAria: on ? 'true' : 'false', track: 'background: ' + (on ? 'var(--primary)' : 'var(--input)') + ';', knob: on ? 'transform: translateX(16px);' : '',
+          flip: () => this.setState({ accOff: { ...this.state.accOff, [a.id]: on } }),
+          quota: [quota(x(['Phiên 5 giờ', '5-hour session']), a.session, a.reset), quota(x(['Tuần', 'Week']), a.week, ' ')],
+        };
+      }),
+      steps: [x(['Chọn gói', 'Account']), x(['Cách đăng nhập', 'Sign-in method']), x(['Đăng nhập', 'Sign in']), x(['Xong', 'Done'])].map((name, i) => ({
+        name, n: String(i + 1), current: i === stepIndex ? 'step' : 'false',
+        text: i === stepIndex ? 'font-weight: 500; color: var(--foreground);' : 'color: var(--muted-foreground);',
+        dot: i === stepIndex ? 'background: var(--primary); color: var(--primary-foreground); border-color: transparent;' : i < stepIndex ? 'background: var(--success-soft); color: var(--success); border-color: transparent;' : '',
+      })),
+      choose: step === 'choose', how: step === 'how', login: step === 'login', done: step === 'done',
+      claude: step === 'login' && accCli === 'claude', codex: step === 'login' && accCli === 'codex',
+      clis: [['claude', 'Claude Code'], ['codex', 'Codex']].map(([k, name]) => ({ name, on: accCli === k, style: accCli === k ? 'border-color: var(--primary);' : '', pick: () => this.setState({ accCli: k }) })),
+      hows: [
+        ['plan', x(['Theo gói Pro/Max', 'Pro/Max plan']), x(['Đăng nhập bằng tài khoản Claude có gói Pro hoặc Max (mặc định).', 'Sign in with a Claude account on a Pro or Max plan (default).'])],
+        ['sso', 'SSO', x(['Đăng nhập bằng SSO của công ty.', 'Sign in with your company SSO.'])],
+        ['console', 'Console API', x(['Tính tiền theo API của Anthropic Console, không dùng gói Pro/Max.', 'Billed through the Anthropic Console API, not a Pro/Max plan.'])],
+        ['token', x(['Dán token từ claude setup-token', 'Paste a claude setup-token token']), x(['Chạy claude setup-token trên máy bạn, rồi dán token vào đây.', 'Run claude setup-token on your computer, then paste the token here.'])],
+      ].map(([k, label, hint]) => ({ label, hint, on: this.state.accHow === k, style: this.state.accHow === k ? 'border-color: var(--primary);' : '', pick: () => this.setState({ accHow: k }) })),
+      tokenWarn: this.state.accHow === 'token',
+      who: (accCli === 'codex' ? 'Codex · Codex Pro' : 'Claude Code · Claude Max team'),
+      openTitle: accCli === 'codex' ? x(['Mở trang đăng nhập và nhập mã bên dưới', 'Open the sign-in page and enter the code below']) : x(['Mở trang đăng nhập', 'Open the sign-in page']),
+      url: accCli === 'codex' ? 'https://auth.openai.com/codex/device' : 'https://claude.ai/oauth/authorize?code=true&client_id=9d1c…&state=Qm3x…',
+      toHow: () => this.setState({ accStep: accCli === 'codex' ? 'login' : 'how' }), toChoose: () => this.setState({ accStep: 'choose' }),
+      toLogin: () => this.setState({ accStep: 'login' }), toDone: () => this.setState({ accStep: 'done' }),
+      close: () => this.setState({ acc: null, accStep: null }),
+    };
     const stats = list.length ? [
       { label: x(['Máy trực tuyến', 'Machines online']), value: '3 / 4', hint: x(['an-macbook mất kết nối', 'an-macbook is offline']) },
       { label: x(['Slot còn trống', 'Free slots']), value: '3', hint: x(['trên tổng 8 slot', 'out of 8 slots']) },
@@ -245,7 +402,7 @@ class Component extends DCLogic {
       { label: x(['Máy có nhãn', 'Labelled machines']), value: '3', hint: x(['1 máy chỉ nhận run có nhãn', '1 only accepts labelled runs']) },
     ] : [];
     return {
-      theme: dark ? 'dark' : 'light', lang, dark, t, stats, machines,
+      theme: dark ? 'dark' : 'light', lang, dark, t, stats, machines, acc,
       ui: { error: view === 'error', loading: view === 'loading', empty: view === 'empty', ready: !['loading', 'error', 'empty'].includes(view) },
       add: { open: addOpen, aria: addOpen ? 'true' : 'false', os, cmd: cmds[this.state.os], labelText: 'sdlc' },
       toggleAdd: () => this.setState({ add: !addOpen }),

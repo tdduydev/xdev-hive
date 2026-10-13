@@ -58,6 +58,9 @@ type Account struct {
 	Roles []string `json:"roles"`
 	// TimeoutMinutes chặn thời gian một run trên tài khoản; run vẫn dừng sớm hơn nếu hub đặt thời hạn ngắn hơn.
 	TimeoutMinutes int `json:"timeoutMinutes"`
+	// Pending: đang đăng nhập từ web (login.go) nên chưa là tài khoản dùng được. Pool không tính nó, và worker khởi động
+	// lại thì xoá (CleanupPending), để phiên đăng nhập dở không để lại tài khoản chưa đăng nhập.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // withDefaults điền trường file cũ (US13) hay app v1 không ghi, để worker và app thấy cùng một giá trị.
@@ -212,11 +215,25 @@ type Pool struct {
 	active map[string]int
 	// reread nhận id tài khoản vừa xong run để Watch đọc lại quota của nó.
 	reread chan string
+
+	loginOnce sync.Once
+	login     *Login
 }
 
 func NewPool(path string) *Pool {
 	home, _ := os.UserHomeDir()
 	return &Pool{path: path, state: StatePath(path), home: home, now: time.Now, active: map[string]int{}, reread: make(chan string, 16)}
+}
+
+// Path là accounts.json; Home là thư mục nhà dùng để mở rộng "~/" trong ConfigDir. Kênh worker cần cả hai để báo tóm
+// tắt tài khoản và đăng nhập từ web mà không giữ bản sao cấu hình.
+func (p *Pool) Path() string { return p.path }
+func (p *Pool) Home() string { return p.home }
+
+// Login là phiên đăng nhập gói từ web của máy này; mỗi máy chỉ một phiên nên chỉ có một Login cho mỗi Pool.
+func (p *Pool) Login() *Login {
+	p.loginOnce.Do(func() { p.login = NewLogin(p.path, p.home) })
+	return p.login
 }
 
 // Lease là tài khoản đã giữ cho một run; nil là chạy bằng đăng nhập mặc định.
@@ -254,7 +271,15 @@ func (l *Lease) Env() map[string]string {
 	if !ok || l.dir == "" {
 		return nil
 	}
-	return map[string]string{v: l.dir}
+	env := map[string]string{v: l.dir}
+	// Gói đăng nhập bằng token `claude setup-token` không có oauthAccount trong thư mục cấu hình; CLI chỉ biết token qua
+	// biến này.
+	if l.account.CLI == "claude" {
+		if token := oauthToken(l.dir); token != "" {
+			env[tokenEnv] = token
+		}
+	}
+	return env
 }
 
 // Timeout là thời gian tối đa của một run trên tài khoản; 0 khi không có tài khoản.
@@ -356,7 +381,7 @@ func (p *Pool) syncActive() {
 func (p *Pool) candidates(list []Account, cli string, st State, now time.Time) []Account {
 	var out []Account
 	for _, a := range list {
-		if a.CLI == cli && a.Enabled {
+		if a.CLI == cli && a.Enabled && !a.Pending {
 			out = append(out, a)
 		}
 	}
@@ -413,7 +438,8 @@ func (p *Pool) Acquire(cli, role string) (*Lease, error) {
 	}
 	hasAny := false
 	for _, a := range list {
-		if a.CLI == cli {
+		// Tài khoản đang đăng nhập dở không tính: CLI chưa có tài khoản nào dùng được thì chạy bằng đăng nhập mặc định.
+		if a.CLI == cli && !a.Pending {
 			hasAny = true
 			break
 		}
