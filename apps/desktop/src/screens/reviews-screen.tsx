@@ -90,13 +90,13 @@ function ReviewQueue({ now }: { now: number }) {
   });
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
-      <p className="text-[13px] text-muted-foreground">{t.lead}</p>
+      <p className="text-sm text-muted-foreground">{t.lead}</p>
       {list.error && <Alert variant="destructive">{errorText(list.error)}</Alert>}
       <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
         {!list.data ? (
-          <p className="px-4 py-3 text-[13px] text-muted-foreground">{list.error ? "—" : t.loading}</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground">{list.error ? "—" : t.loading}</p>
         ) : list.data.items.length === 0 ? (
-          <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.empty}</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t.empty}</p>
         ) : (
           <Table>
             <TableHeader>
@@ -117,15 +117,15 @@ function ReviewQueue({ now }: { now: number }) {
                       className="flex w-full min-w-0 cursor-pointer flex-col text-left"
                       onClick={() => go(row.id)}
                     >
-                      <span className="truncate text-[13px] font-medium">{row.docTitle}</span>
+                      <span className="truncate text-sm font-medium">{row.docTitle}</span>
                       <span className="truncate font-mono text-xs text-muted-foreground">{row.docKey}</span>
                     </button>
                   </Td>
-                  <Td className="text-[13px]">
+                  <Td className="text-sm">
                     {row.gate ? (
                       <span className="flex flex-col">
                         <span>{row.gate.name}</span>
-                        <span className="font-mono text-[11px] text-muted-foreground">
+                        <span className="font-mono text-xs text-muted-foreground">
                           {row.gate.index + 1}/{row.gate.total} · {row.workflowName}
                         </span>
                       </span>
