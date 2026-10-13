@@ -134,6 +134,10 @@ const text: Dict<{
   relogin: string;
   openCli: string;
   openCliIn: (folder: string) => string;
+  openCliBypass: string;
+  bypassTitle: string;
+  bypassBody: (plan: string, flag: string) => string;
+  bypassOpen: string;
   cliOpened: (id: string) => string;
   login: string;
   installCli: string;
@@ -254,6 +258,11 @@ const text: Dict<{
     relogin: "Đăng nhập lại",
     openCli: "Mở CLI",
     openCliIn: (folder) => `Mở trong ${folder}`,
+    openCliBypass: "Mở CLI (bỏ hỏi quyền)",
+    bypassTitle: "Mở CLI không hỏi quyền?",
+    bypassBody: (plan, flag) =>
+      `CLI của gói ${plan} sẽ chạy với ${flag}: tự chạy lệnh, sửa và xoá file trong thư mục mà không hỏi lại. Chỉ dùng trong repo bạn tin, có commit sẵn để quay lại được.`,
+    bypassOpen: "Mở, bỏ hỏi quyền",
     cliOpened: (id) => `Đã mở Terminal chạy CLI của ${id}.`,
     login: "Đăng nhập",
     installCli: "Cài CLI",
@@ -405,6 +414,11 @@ const text: Dict<{
     relogin: "Sign in again",
     openCli: "Open CLI",
     openCliIn: (folder) => `Opens in ${folder}`,
+    openCliBypass: "Open CLI (skip permission prompts)",
+    bypassTitle: "Open the CLI without permission prompts?",
+    bypassBody: (plan, flag) =>
+      `The CLI of ${plan} runs with ${flag}: it runs commands and edits or deletes files in the folder without asking. Use it only in a repository you trust, with work committed so you can go back.`,
+    bypassOpen: "Open without prompts",
     cliOpened: (id) => `Opened a terminal running ${id}'s CLI.`,
     login: "Sign in",
     installCli: "Install CLI",
@@ -532,6 +546,13 @@ const STATE_ICON: Record<PlanState, LucideIcon> = {
 
 const BAR_TONE = { ok: "bg-primary", near: "bg-warning", over: "bg-destructive" } as const;
 
+/** Cờ bỏ hỏi quyền Rust thêm khi mở CLI (profiles.rs bypass_flag); chỉ để hiện trong hộp xác nhận. */
+const BYPASS_FLAG: Record<string, string> = {
+  claude: "--dangerously-skip-permissions",
+  codex: "--dangerously-bypass-approvals-and-sandbox",
+  antigravity: "--dangerously-skip-permissions",
+};
+
 /** Chữ cái làm logo của CLI: app không có logo thương hiệu của các CLI. */
 const CLI_MARK: Record<string, string> = { claude: "C", codex: "O", antigravity: "A" };
 
@@ -573,6 +594,7 @@ export function PlansScreen() {
   const [adding, setAdding] = useState<{ cli: AddableCli | null } | null>(null);
   const [editing, setEditing] = useState<Plan | null>(null);
   const [removing, setRemoving] = useState<Plan | null>(null);
+  const [bypassing, setBypassing] = useState<Plan | null>(null);
   const [found, setFound] = useState<FoundLogin[]>([]);
   const [foundOpen, setFoundOpen] = useState(false);
   const [foundHidden, setFoundHidden] = useState(false);
@@ -663,10 +685,10 @@ export function PlansScreen() {
     }
   }
 
-  async function openCli(p: Plan) {
+  async function openCli(p: Plan, bypass = false) {
     setBusy(p.id);
     try {
-      await openCliTerminal(p.id, folder);
+      await openCliTerminal(p.id, folder, bypass);
       setError(null);
       setNotice({ tone: "info", text: t.cliOpened(p.id) });
     } catch (e) {
@@ -708,6 +730,7 @@ export function PlansScreen() {
       onEdit={() => setEditing(p)}
       onRelogin={() => void relogin(p)}
       onOpenCli={() => void openCli(p)}
+      onOpenCliBypass={() => setBypassing(p)}
       onRemove={() => setRemoving(p)}
       onResume={() => void act(p.id, () => resumePlan(p.id), t.resumed(p.id))}
     />
@@ -912,6 +935,15 @@ export function PlansScreen() {
           }}
         />
       )}
+      <BypassDialog
+        plan={bypassing}
+        t={t}
+        onClose={() => setBypassing(null)}
+        onOpen={(p) => {
+          setBypassing(null);
+          void openCli(p, true);
+        }}
+      />
       <RemovePlanDialog
         plan={removing}
         t={t}
@@ -972,6 +1004,7 @@ function PlanCard({
   onEdit,
   onRelogin,
   onOpenCli,
+  onOpenCliBypass,
   onRemove,
   onResume,
 }: {
@@ -986,6 +1019,7 @@ function PlanCard({
   onEdit: () => void;
   onRelogin: () => void;
   onOpenCli: () => void;
+  onOpenCliBypass: () => void;
   onRemove: () => void;
   onResume: () => void;
 }) {
@@ -1044,6 +1078,8 @@ function PlanCard({
           onEdit={onEdit}
           onRelogin={onRelogin}
           onOpenCli={onOpenCli}
+          onOpenCliBypass={onOpenCliBypass}
+          canBypass={BYPASS_FLAG[p.cli] !== undefined}
           onRemove={onRemove}
           onResume={onResume}
         />
@@ -1317,6 +1353,8 @@ function RowMenu({
   onEdit,
   onRelogin,
   onOpenCli,
+  onOpenCliBypass,
+  canBypass,
   onRemove,
   onResume,
 }: {
@@ -1332,6 +1370,8 @@ function RowMenu({
   onEdit: () => void;
   onRelogin: () => void;
   onOpenCli: () => void;
+  onOpenCliBypass: () => void;
+  canBypass: boolean;
   onRemove: () => void;
   onResume: () => void;
 }) {
@@ -1368,6 +1408,14 @@ function RowMenu({
                 </span>
               )}
             </Menu.Item>
+            {canBypass && (
+              <Menu.Item
+                className={cn(MENU_ITEM, "text-warning data-highlighted:text-warning")}
+                onClick={onOpenCliBypass}
+              >
+                {t.openCliBypass}
+              </Menu.Item>
+            )}
             <Menu.Item
               className={cn(MENU_ITEM, "mt-1 text-destructive data-highlighted:text-destructive")}
               onClick={onRemove}
@@ -1825,6 +1873,36 @@ function RemovePlanDialog({
           </Button>
           <Button variant="destructive-solid" disabled={busy} onClick={() => void confirm()}>
             {busy ? t.removing : t.remove}
+          </Button>
+        </DialogActions>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Xác nhận trước khi mở CLI bỏ hỏi quyền: người dùng tự gõ lệnh trong Terminal, nhưng CLI sẽ không hỏi trước khi sửa file. */
+function BypassDialog({
+  plan,
+  t,
+  onClose,
+  onOpen,
+}: {
+  plan: Plan | null;
+  t: T;
+  onClose: () => void;
+  onOpen: (plan: Plan) => void;
+}) {
+  return (
+    <Dialog open={plan !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent showCloseButton={false}>
+        <DialogTitle>{t.bypassTitle}</DialogTitle>
+        <DialogDescription>{plan ? t.bypassBody(name(plan), BYPASS_FLAG[plan.cli] ?? "") : ""}</DialogDescription>
+        <DialogActions>
+          <Button variant="outline" onClick={onClose}>
+            {t.cancel}
+          </Button>
+          <Button variant="destructive-solid" onClick={() => plan && onOpen(plan)}>
+            {t.bypassOpen}
           </Button>
         </DialogActions>
       </DialogContent>
