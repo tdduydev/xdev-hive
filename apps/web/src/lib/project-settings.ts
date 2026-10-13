@@ -77,6 +77,8 @@ export interface SettingsForm {
   /** Định tuyến model/effort/số lượt theo cấp độ task cho run code. */
   routing: boolean;
   tiers: Record<TaskTier, TierForm>;
+  rtk: boolean;
+  codegraph: boolean;
 }
 
 const text = (n: number | undefined): string => (n === undefined ? "" : String(n));
@@ -133,6 +135,9 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     allowWeb: saving.allowWeb ?? defaultTokenSaving.allowWeb,
     routing: routing.enabled,
     tiers: { light: tier("light"), medium: tier("medium"), heavy: tier("heavy") },
+    // Hub cũ chưa có hai mục này: hub mới đọc thiếu là bật.
+    rtk: saving.rtk ?? defaultTokenSaving.rtk,
+    codegraph: saving.codegraph ?? defaultTokenSaving.codegraph,
   };
 }
 
@@ -232,6 +237,8 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       cacheTtl: form.cacheTtl,
       autocompactWindow: requiredNum(form.autocompactWindow, "autocompactWindow", errors),
       allowWeb: form.allowWeb,
+      rtk: form.rtk,
+      codegraph: form.codegraph,
     },
     routing: {
       enabled: form.routing,

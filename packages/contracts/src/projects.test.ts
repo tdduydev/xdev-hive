@@ -29,8 +29,29 @@ describe("tiết kiệm token trong dự án", () => {
       cacheTtl: "5m",
       autocompactWindow: 200_000,
       allowWeb: false,
+      rtk: true,
+      codegraph: true,
     });
     expect(defaultTokenSaving.enabled).toBe(true);
+  });
+
+  it("tokenSaving đã lưu thiếu rtk và codegraph vẫn hợp lệ và bật", () => {
+    const { rtk: _r, codegraph: _c, ...old } = defaultTokenSaving;
+    const parsed = projectSettings.parse({ ...defaultProjectSettings(), tokenSaving: old }).tokenSaving;
+    expect(parsed.rtk).toBe(true);
+    expect(parsed.codegraph).toBe(true);
+    const off = projectSettings.parse({
+      ...defaultProjectSettings(),
+      tokenSaving: { ...old, rtk: false, codegraph: false },
+    }).tokenSaving;
+    expect(off).toMatchObject({ rtk: false, codegraph: false });
+  });
+
+  it("bản vá không tự điền mặc định cho trường vắng", () => {
+    const parsed = projectSettingsPatch.parse({ tokenSaving: { bashMaxChars: 2000 } });
+    expect(parsed.tokenSaving).toEqual({ bashMaxChars: 2000 });
+    expect(projectSettingsPatch.parse({ tokenSaving: { rtk: false } }).tokenSaving).toEqual({ rtk: false });
+    expect(projectSettingsPatch.safeParse({ tokenSaving: { codegraph: "yes" } }).success).toBe(false);
   });
 
   it("mục tokenSaving lưu trước khi có autocompactWindow/allowWeb vẫn đọc được", () => {

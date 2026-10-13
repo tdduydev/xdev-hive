@@ -26437,6 +26437,14 @@
                               "allowWeb": {
                                 "type": "boolean",
                                 "default": false
+                              },
+                              "rtk": {
+                                "type": "boolean",
+                                "default": true
+                              },
+                              "codegraph": {
+                                "type": "boolean",
+                                "default": true
                               }
                             },
                             "required": [
@@ -26453,7 +26461,9 @@
                               "subagentModel": "sonnet",
                               "cacheTtl": "5m",
                               "autocompactWindow": 200000,
-                              "allowWeb": false
+                              "allowWeb": false,
+                              "rtk": true,
+                              "codegraph": true
                             }
                           },
                           "routing": {
@@ -27899,6 +27909,14 @@
                             "allowWeb": {
                               "type": "boolean",
                               "default": false
+                            },
+                            "rtk": {
+                              "type": "boolean",
+                              "default": true
+                            },
+                            "codegraph": {
+                              "type": "boolean",
+                              "default": true
                             }
                           },
                           "required": [
@@ -27915,7 +27933,9 @@
                             "subagentModel": "sonnet",
                             "cacheTtl": "5m",
                             "autocompactWindow": 200000,
-                            "allowWeb": false
+                            "allowWeb": false,
+                            "rtk": true,
+                            "codegraph": true
                           }
                         },
                         "routing": {
@@ -29363,6 +29383,14 @@
                                 "allowWeb": {
                                   "type": "boolean",
                                   "default": false
+                                },
+                                "rtk": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "codegraph": {
+                                  "type": "boolean",
+                                  "default": true
                                 }
                               },
                               "required": [
@@ -29379,7 +29407,9 @@
                                 "subagentModel": "sonnet",
                                 "cacheTtl": "5m",
                                 "autocompactWindow": 200000,
-                                "allowWeb": false
+                                "allowWeb": false,
+                                "rtk": true,
+                                "codegraph": true
                               }
                             },
                             "routing": {
@@ -30980,6 +31010,14 @@
                                 "allowWeb": {
                                   "type": "boolean",
                                   "default": false
+                                },
+                                "rtk": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "codegraph": {
+                                  "type": "boolean",
+                                  "default": true
                                 }
                               },
                               "required": [
@@ -30996,7 +31034,9 @@
                                 "subagentModel": "sonnet",
                                 "cacheTtl": "5m",
                                 "autocompactWindow": 200000,
-                                "allowWeb": false
+                                "allowWeb": false,
+                                "rtk": true,
+                                "codegraph": true
                               }
                             },
                             "routing": {
@@ -34130,6 +34170,12 @@
                           },
                           "allowWeb": {
                             "type": "boolean"
+                          },
+                          "rtk": {
+                            "type": "boolean"
+                          },
+                          "codegraph": {
+                            "type": "boolean"
                           }
                         },
                         "additionalProperties": false
@@ -35056,6 +35102,14 @@
                         "allowWeb": {
                           "type": "boolean",
                           "default": false
+                        },
+                        "rtk": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "codegraph": {
+                          "type": "boolean",
+                          "default": true
                         }
                       },
                       "required": [
@@ -35072,7 +35126,9 @@
                         "subagentModel": "sonnet",
                         "cacheTtl": "5m",
                         "autocompactWindow": 200000,
-                        "allowWeb": false
+                        "allowWeb": false,
+                        "rtk": true,
+                        "codegraph": true
                       }
                     },
                     "routing": {
@@ -51927,6 +51983,32 @@
                             }
                           ]
                         },
+                        "rtk": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "commands": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "savedTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "commands",
+                                "savedTokens"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "createdBy": {
                           "type": "string"
                         },
@@ -52000,6 +52082,7 @@
                         "timeoutSec",
                         "cost",
                         "explore",
+                        "rtk",
                         "createdBy",
                         "ownerUserId",
                         "createdAt",
@@ -53314,6 +53397,32 @@
                             }
                           ]
                         },
+                        "rtk": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "commands": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "savedTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "commands",
+                                "savedTokens"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "createdBy": {
                           "type": "string"
                         },
@@ -53387,6 +53496,7 @@
                         "timeoutSec",
                         "cost",
                         "explore",
+                        "rtk",
                         "createdBy",
                         "ownerUserId",
                         "createdAt",
@@ -54432,6 +54542,32 @@
                         }
                       ]
                     },
+                    "rtk": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "commands": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "savedTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "commands",
+                            "savedTokens"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdBy": {
                       "type": "string"
                     },
@@ -54505,6 +54641,7 @@
                     "timeoutSec",
                     "cost",
                     "explore",
+                    "rtk",
                     "createdBy",
                     "ownerUserId",
                     "createdAt",
@@ -55590,6 +55727,32 @@
                           }
                         ]
                       },
+                      "rtk": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "commands": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "savedTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "commands",
+                              "savedTokens"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "createdBy": {
                         "type": "string"
                       },
@@ -55663,6 +55826,7 @@
                       "timeoutSec",
                       "cost",
                       "explore",
+                      "rtk",
                       "createdBy",
                       "ownerUserId",
                       "createdAt",
@@ -56664,6 +56828,32 @@
                           }
                         ]
                       },
+                      "rtk": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "commands": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "savedTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "commands",
+                              "savedTokens"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "createdBy": {
                         "type": "string"
                       },
@@ -56737,6 +56927,7 @@
                       "timeoutSec",
                       "cost",
                       "explore",
+                      "rtk",
                       "createdBy",
                       "ownerUserId",
                       "createdAt",
@@ -57825,6 +58016,32 @@
                               }
                             ]
                           },
+                          "rtk": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "commands": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "savedTokens": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "commands",
+                                  "savedTokens"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdBy": {
                             "type": "string"
                           },
@@ -57904,6 +58121,7 @@
                           "timeoutSec",
                           "cost",
                           "explore",
+                          "rtk",
                           "createdBy",
                           "ownerUserId",
                           "createdAt",
@@ -58942,6 +59160,32 @@
                         }
                       ]
                     },
+                    "rtk": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "commands": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "savedTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "commands",
+                            "savedTokens"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdBy": {
                       "type": "string"
                     },
@@ -59015,6 +59259,7 @@
                     "timeoutSec",
                     "cost",
                     "explore",
+                    "rtk",
                     "createdBy",
                     "ownerUserId",
                     "createdAt",
@@ -60013,6 +60258,32 @@
                         }
                       ]
                     },
+                    "rtk": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "commands": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "savedTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "commands",
+                            "savedTokens"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdBy": {
                       "type": "string"
                     },
@@ -60086,6 +60357,7 @@
                     "timeoutSec",
                     "cost",
                     "explore",
+                    "rtk",
                     "createdBy",
                     "ownerUserId",
                     "createdAt",
@@ -70156,6 +70428,12 @@
                                       },
                                       "allowWeb": {
                                         "type": "boolean"
+                                      },
+                                      "rtk": {
+                                        "type": "boolean"
+                                      },
+                                      "codegraph": {
+                                        "type": "boolean"
                                       }
                                     },
                                     "additionalProperties": false
@@ -71728,6 +72006,12 @@
                                           "maximum": 1000000
                                         },
                                         "allowWeb": {
+                                          "type": "boolean"
+                                        },
+                                        "rtk": {
+                                          "type": "boolean"
+                                        },
+                                        "codegraph": {
                                           "type": "boolean"
                                         }
                                       },
@@ -73346,6 +73630,12 @@
                                       "maximum": 1000000
                                     },
                                     "allowWeb": {
+                                      "type": "boolean"
+                                    },
+                                    "rtk": {
+                                      "type": "boolean"
+                                    },
+                                    "codegraph": {
                                       "type": "boolean"
                                     }
                                   },

@@ -11,6 +11,7 @@ import {
   type PlanDecision,
   type PlanRejectInput,
   type RunExplore,
+  type RunRtk,
   type RunStartInput,
   type SandboxJobConfig,
   type TaskStatus,
@@ -360,6 +361,26 @@ interface SpecContext {
   brief: BriefForPrompt | null;
   /** Chính sách memory của agent; null khi run này không được ghi memory. */
   memoryWrite: AgentMemoryPolicy | null;
+  /** Máy chạy run có CodeGraph và dự án để mục này bật: prompt nhắc agent dùng `codegraph_explore`. */
+  codegraph: boolean;
+}
+
+const CODEGRAPH_HINT =
+  "Máy chạy run có CodeGraph: dùng tool MCP `codegraph_explore` để tìm symbol, caller và phạm vi ảnh hưởng trước khi grep hay đọc file.";
+
+/**
+ * Worker chỉ gắn CodeGraph khi máy khai capability, công tắc tổng và mục codegraph của dự án đều bật; prompt nhắc dùng
+ * tool thì phải khớp đúng điều kiện đó, nếu không agent được bảo gọi một tool không có. Run trong sandbox chạy trên
+ * runner host không có chỉ mục của repo trên máy dev nên không nhắc.
+ */
+export function codegraphAvailable(
+  machine: { capabilities: readonly string[] },
+  project: Pick<ProjectRow, "settings">,
+  sandboxed: boolean,
+): boolean {
+  if (sandboxed || !machine.capabilities.includes("codegraph")) return false;
+  const saving = project.settings.tokenSaving ?? defaultTokenSaving;
+  return saving.enabled && saving.codegraph !== false;
 }
 
 function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecContext): string {
@@ -445,10 +466,11 @@ function buildSpec(
   const taskPrompt = task ?? ({ id: "", key: "leader", title: "Trao đổi với leader", body: "" } as TaskRow);
   const own = promptOf(run, taskPrompt, project, ctx);
   // Leader chỉ có leader_reply, leader_propose nên không nhắc memory_search; run brief tự đọc repo để viết brief.
+  const hint = ctx.codegraph ? `${CODEGRAPH_HINT}\n\n` : "";
   const prompt =
     run.kind === "brief"
-      ? own
-      : `${briefBlock(ctx.brief, { memorySearch: run.kind !== "leader", memoryWrite: ctx.memoryWrite })}\n\n---\n\n${own}`;
+      ? `${hint}${own}`
+      : `${briefBlock(ctx.brief, { memorySearch: run.kind !== "leader", memoryWrite: ctx.memoryWrite })}\n\n${hint}---\n\n${own}`;
   const { instructions, budget, sandbox, mcpServers } = ctx;
   return {
     kind: run.kind,
@@ -812,6 +834,7 @@ export function createRunsEngine(deps: RunsDeps) {
             brief,
             memoryWrite:
               MEMORY_WRITE_KINDS.includes(run.kind) && policy.agentMemory.mode !== "off" ? policy.agentMemory : null,
+            codegraph: codegraphAvailable(machine, project, sandboxed),
           }),
         } satisfies OutgoingMessage,
       };
@@ -963,6 +986,7 @@ export function createRunsEngine(deps: RunsDeps) {
         if (cost) await applyCost(tx, run, event.id, cost);
         else log.warn(`Bỏ sự kiện cost sai dạng: run ${run.id}, seq ${msg.seq}`);
         if (cost?.explore) await applyExplore(tx, run, cost.explore);
+        if (cost?.rtk) await applyRtk(tx, run, cost.rtk);
       }
       if (msg.event === "steer_result") await onSteerResult(tx, run, msg.data);
       const to = msg.event === "phase" ? PHASE_STATE[String(msg.data.phase)] : undefined;
@@ -1085,6 +1109,16 @@ export function createRunsEngine(deps: RunsDeps) {
     await tx
       .update(runs)
       .set({ explore: { ...explore, attempt: run.attempt } })
+      .where(eq(runs.id, run.id));
+  }
+
+  /** Số RTK luỹ kế của lần thử: gói cost tới lệch thứ tự thì không để số nhỏ hơn ghi đè số đã lưu của cùng lần thử. */
+  async function applyRtk(tx: Tx, run: RunRow, rtk: RunRtk): Promise<void> {
+    const prev = run.rtk;
+    if (prev?.attempt === run.attempt && (prev.commands > rtk.commands || prev.savedTokens > rtk.savedTokens)) return;
+    await tx
+      .update(runs)
+      .set({ rtk: { ...rtk, attempt: run.attempt } })
       .where(eq(runs.id, run.id));
   }
 

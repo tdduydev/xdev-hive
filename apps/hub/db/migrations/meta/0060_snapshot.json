@@ -1,5 +1,5 @@
 {
-  "id": "5ecd95e7-58c0-45b5-885d-e313b82fec40",
+  "id": "2794aa1a-95fa-46ce-bb3f-d8cb423886dd",
   "prevId": "64a6819e-467c-4fb3-8dad-99a53282b410",
   "version": "7",
   "dialect": "postgresql",
@@ -7839,12 +7839,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "tier": {
-          "name": "tier",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "branch": {
           "name": "branch",
           "type": "text",
@@ -7936,6 +7930,12 @@
         },
         "explore": {
           "name": "explore",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rtk": {
+          "name": "rtk",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
