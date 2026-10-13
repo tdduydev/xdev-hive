@@ -56,6 +56,17 @@ export const policyLimits = z.object({
 });
 export type PolicyLimits = z.output<typeof policyLimits>;
 
+/**
+ * Memory agent ghi trong run code và review (ADR 0022): `off` không cho ghi, `propose` vào hàng chờ duyệt của trang
+ * Memory, `direct` ghi thẳng. `maxPerRun` chặn agent ghi tràn lan.
+ */
+export const agentMemoryPolicy = z.object({
+  mode: z.enum(["off", "propose", "direct"]),
+  maxPerRun: z.number().int().min(1).max(50),
+});
+export type AgentMemoryPolicy = z.output<typeof agentMemoryPolicy>;
+export const DEFAULT_AGENT_MEMORY_POLICY: AgentMemoryPolicy = { mode: "propose", maxPerRun: 5 };
+
 export const agentPolicyInput = z.object({
   allowedModels,
   /** Hub không để CLI tự chọn model: run không chỉ định model thì dùng model đầu trong danh sách của CLI đó. */
@@ -73,6 +84,8 @@ export const agentPolicyInput = z.object({
   /** Mẫu đổi thì hub mở PR cập nhật file hướng dẫn ở mọi dự án đang hoạt động. */
   autoSyncTemplates: z.boolean(),
   limits: policyLimits,
+  /** Có mặc định vì chính sách đã lưu trước ADR 0022 không có mục này. */
+  agentMemory: agentMemoryPolicy.default(() => ({ ...DEFAULT_AGENT_MEMORY_POLICY })),
 });
 export type AgentPolicyInput = z.input<typeof agentPolicyInput>;
 
@@ -105,6 +118,7 @@ export const DEFAULT_AGENT_POLICY: z.output<typeof agentPolicyInput> = {
   templates: { agents: null, claude: null, mcp: null },
   autoSyncTemplates: false,
   limits: { perRunUsd: null, dailyUsd: null, maxParallelPerMachine: null, runLogRetentionDays: 365 },
+  agentMemory: { ...DEFAULT_AGENT_MEMORY_POLICY },
 };
 
 /** Phần chính sách worker cần để chạy run: hook và việc bỏ cấu hình của repo. Ghi trong spec của job_offer. */

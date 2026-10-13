@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · AI SDLC · Tiến độ và chỉ số</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,select:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:var(--bh,30px);padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}
+.card-t{margin:0;font-size:14.5px;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
+.sel{height:var(--bh,30px);padding:0 8px;border:1px solid var(--input);border-radius:8px;background:var(--background);color:var(--foreground);font:inherit;font-size:13px}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;font-weight:600;color:var(--muted-foreground);padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td.n,.tbl th.n{text-align:right}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
+</style>
+</helmet>
+<!-- Artboard app 1440x900 (cửa sổ giả + AppNav). Đặt prop narrow = true để xem 360 px: không AppNav, thanh đầu có nút Menu, một cột, danh sách thẻ. Prop tab chọn tab mở sẵn. -->
+<div data-theme="{{theme}}" style="{{outerStyle}}">
+  <div style="{{winStyle}}">
+    <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+      <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+        <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+        <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px;">{{t.winTitle}}</span>
+        <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+      </div>
+    </sc-if>
+    <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+      <header style="height: 52px; flex: none; box-sizing: border-box; padding: 0 12px 0 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: var(--background);">
+        <strong style="flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{t.title}}</strong>
+        <button type="button" class="btn btn-outline" aria-haspopup="menu" aria-label="{{t.menu}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>{{t.menu}}</button>
+      </header>
+    </sc-if>
+    <div style="flex: 1; min-height: 0; display: flex;">
+      <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="AppNav" active="sdlc-metrics" role="{{role}}" lang="{{lang}}" hint-size="220px,800px"></dc-import></sc-if>
+      <main style="{{mainStyle}}">
+        <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 12px;">
+          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+            <span class="muted" style="font-size: 12.5px;">AI SDLC</span>
+            <h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; line-height: 1.2; letter-spacing: -0.03em;">{{t.title}}</h1>
+            <p class="muted" style="margin: 0; font-size: 13px; max-width: 680px;">{{t.lead}}</p>
+          </div>
+          <sc-if value="{{canCreate}}" hint-placeholder-val="{{true}}"><a href="AppSdlcNewItem.dc.html" class="btn btn-default">{{t.create}}</a></sc-if>
+        </header>
+
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+          <div class="seg" role="tablist" aria-label="{{t.title}}">
+            <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{tb.on}}" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}</button></sc-for>
+          </div>
+          <sc-if value="{{ro}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">○</span>{{t.roBadge}}</span></sc-if>
+        </div>
+
+        <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+        <section aria-label="{{t.states}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+          <span class="muted" style="font-size: 12.5px;">{{t.states}}</span>
+          <div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="5"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+        </section>
+
+        <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}">
+          <section aria-busy="true" aria-label="{{t.loading}}" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="card pulse" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;"><div style="height: 16px; width: 35%; border-radius: 6px; background: var(--muted);"></div><div style="height: 12px; width: 90%; border-radius: 9999px; background: var(--muted);"></div><div style="height: 12px; width: 70%; border-radius: 9999px; background: var(--muted);"></div><div style="height: 12px; width: 55%; border-radius: 9999px; background: var(--muted);"></div></div>
+            <div style="display: flex; flex-wrap: wrap; gap: 12px;"><div class="card pulse" style="flex: 1 1 180px; height: 96px;"></div><div class="card pulse" style="flex: 1 1 180px; height: 96px;"></div><div class="card pulse" style="flex: 1 1 180px; height: 96px;"></div></div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isError}}" hint-placeholder-val="{{false}}">
+          <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive);">
+            <span aria-hidden="true">!</span>
+            <span style="flex: 1; min-width: 0;"><strong>{{t.errTitle}}</strong><br>{{t.errText}} <span class="mono" style="font-size: 12px;">METRICS_UNAVAILABLE · 500</span></span>
+            <button type="button" class="btn btn-outline" onClick="{{retry}}">{{t.retry}}</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}">
+          <section class="card" style="padding: 32px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+            <strong>{{empty.title}}</strong>
+            <span class="muted" style="max-width: 480px;">{{empty.text}}</span>
+            <sc-if value="{{empty.canAct}}" hint-placeholder-val="{{true}}"><a href="{{empty.href}}" class="btn btn-outline">{{empty.action}}</a></sc-if>
+          </section>
+        </sc-if>
+
+        <!-- ===== Tab Tiến độ ===== -->
+        <sc-if value="{{showProgress}}" hint-placeholder-val="{{true}}">
+          <section aria-label="{{t.tabProgress}}" style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;">
+              <label class="muted" style="display: flex; align-items: center; gap: 6px; font-size: 12.5px;">{{t.fProject}}<select class="sel" aria-label="{{t.fProject}}" onChange="{{onProject}}"><sc-for list="{{projectOpts}}" as="o" hint-placeholder-count="4"><option value="{{o.v}}" selected="{{o.on}}">{{o.label}}</option></sc-for></select></label>
+              <label class="muted" style="display: flex; align-items: center; gap: 6px; font-size: 12.5px;">{{t.fMode}}<select class="sel" aria-label="{{t.fMode}}" onChange="{{onMode}}"><sc-for list="{{modeOpts}}" as="o" hint-placeholder-count="5"><option value="{{o.v}}" selected="{{o.on}}">{{o.label}}</option></sc-for></select></label>
+              <span class="muted num" style="font-size: 12.5px;" role="status">{{summary}}</span>
+            </div>
+
+            <ol aria-label="{{t.stagesAria}}" style="{{stripStyle}}">
+              <sc-for list="{{stages}}" as="s" hint-placeholder-count="7">
+                <li class="card" style="{{s.style}}">
+                  <span style="{{s.headStyle}}"><span class="mono muted num" style="font-size: 11.5px;">{{s.no}}</span><strong style="font-size: 13px;">{{s.name}}</strong></span>
+                  <span style="{{s.numStyle}}"><span class="num" style="font-size: 24px; font-weight: 600; line-height: 1; font-family: var(--font-heading);">{{s.count}}</span><span class="muted" style="font-size: 12px;">{{t.cards}}</span></span>
+                  <span aria-hidden="true" style="display: block; height: 6px; border-radius: 9999px; background: var(--muted); overflow: hidden;"><span style="{{s.barStyle}}"></span></span>
+                  <span class="muted num" style="font-size: 12px;">{{s.waitText}}</span>
+                </li>
+              </sc-for>
+            </ol>
+
+            <div class="card" style="overflow: hidden;">
+              <div class="card-h"><h2 class="card-t">{{t.recent}}</h2><span class="muted" style="font-size: 12.5px;">{{t.recentMeta}}</span></div>
+              <sc-if value="{{noMatch}}" hint-placeholder-val="{{false}}"><div class="muted" style="padding: 16px;">{{t.noMatch}}</div></sc-if>
+              <ul style="margin: 0; padding: 0 16px; list-style: none; display: flex; flex-direction: column;">
+                <sc-for list="{{pcards}}" as="c" hint-placeholder-count="4">
+                  <li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;">
+                    <span style="flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
+                      <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;"><a href="AppSdlcItem.dc.html" class="mono" style="font-size: 13px; font-weight: 600; color: var(--primary);">{{c.id}}</a><span style="overflow-wrap: anywhere;">{{c.title}}</span></span>
+                      <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><sc-for list="{{c.projects}}" as="p" hint-placeholder-count="2"><span class="badge mono" style="{{p.style}}">{{p.name}}</span></sc-for><span class="badge" style="background: var(--accent); color: var(--accent-foreground); height: 20px; font-size: 11.5px;">{{c.mode}}</span><span class="badge mono" style="background: var(--muted); color: var(--muted-foreground); height: 20px; font-size: 11.5px;">{{c.size}}</span></span>
+                    </span>
+                    <span class="badge" style="background: var(--secondary); color: var(--secondary-foreground);">{{c.stage}}</span>
+                    <span class="badge" style="{{c.waitStyle}}"><span aria-hidden="true">{{c.waitMark}}</span>{{c.wait}}</span>
+                    <span class="mono num muted" style="font-size: 12px;">{{c.meta}}</span>
+                  </li>
+                </sc-for>
+              </ul>
+            </div>
+          </section>
+        </sc-if>
+
+        <!-- ===== Tab Chỉ số ===== -->
+        <sc-if value="{{showMetrics}}" hint-placeholder-val="{{false}}">
+          <section aria-label="{{t.tabMetrics}}" style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;">
+              <span class="muted" style="font-size: 12.5px;">{{t.range}}</span>
+              <div class="seg" role="group" aria-label="{{t.range}}"><sc-for list="{{ranges}}" as="r" hint-placeholder-count="3"><button type="button" aria-pressed="{{r.on}}" onClick="{{r.pick}}" style="{{r.style}}">{{r.label}}</button></sc-for></div>
+              <span class="muted" style="font-size: 12.5px;">{{t.rangeNote}}</span>
+            </div>
+
+            <div style="{{gridStyle}}">
+              <!-- Lead time theo giai đoạn: thanh ngang, p50 là phần tô, p90 là vạch -->
+              <section class="card" aria-label="{{t.leadTitle}}" style="{{leadStyle}}">
+                <div class="card-h"><h2 class="card-t">{{t.leadTitle}}</h2><span class="muted num" style="font-size: 12.5px;">{{lead.total}}</span></div>
+                <p class="sr">{{lead.summary}}</p>
+                <div aria-hidden="true" style="padding: 12px 16px 4px; display: flex; flex-direction: column; gap: 10px;">
+                  <sc-for list="{{lead.rows}}" as="r" hint-placeholder-count="7">
+                    <div style="{{lead.rowStyle}}">
+                      <span style="{{lead.nameStyle}}">{{r.name}}<sc-if value="{{r.hot}}" hint-placeholder-val="{{false}}"> <span class="badge" style="background: var(--warning-soft); color: var(--warning); height: 18px; font-size: 11px; padding: 0 6px;"><span>◆</span>{{t.bottleneck}}</span></sc-if></span>
+                      <span style="flex: 1 1 140px; min-width: 120px; position: relative; height: 14px; display: block;"><span style="position: absolute; left: 0; right: 0; top: 3px; height: 8px; border-radius: 9999px; background: var(--muted);"></span><span style="{{r.fill}}"></span><span style="{{r.tick}}"></span></span>
+                      <span class="num mono" style="flex: 0 0 auto; font-size: 12px; min-width: 150px;">{{r.text}}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div class="muted" style="padding: 4px 16px 8px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 14px;"><span><span aria-hidden="true" style="display: inline-block; width: 18px; height: 8px; border-radius: 9999px; background: var(--primary); vertical-align: middle;"></span> {{t.legendP50}}</span><span><span aria-hidden="true" style="display: inline-block; width: 2px; height: 12px; background: var(--foreground); vertical-align: middle;"></span> {{t.legendP90}}</span></div>
+                <details style="border-top: 1px solid var(--border);">
+                  <summary style="padding: 10px 16px; cursor: pointer; font-size: 13px; font-weight: 500; min-height: 20px;">{{t.tableAlt}}</summary>
+                  <div role="region" tabindex="0" aria-label="{{t.leadTitle}}" style="overflow-x: auto; padding: 0 16px 12px;">
+                    <table class="tbl"><caption class="sr">{{t.leadTitle}}</caption><thead><tr><th scope="col">{{t.colStage}}</th><th scope="col" class="n">p50</th><th scope="col" class="n">p90</th><th scope="col" class="n">{{t.colItems}}</th></tr></thead><tbody>
+                      <sc-for list="{{lead.table}}" as="r" hint-placeholder-count="7"><tr><th scope="row" style="font-weight: 500; color: var(--foreground);">{{r.name}}</th><td class="n num mono">{{r.p50}}</td><td class="n num mono">{{r.p90}}</td><td class="n num mono">{{r.n}}</td></tr></sc-for>
+                    </tbody></table>
+                  </div>
+                </details>
+                <div style="padding: 10px 16px; border-top: 1px solid var(--border);"><a href="AppSdlcBoard.dc.html" style="font-size: 13px; color: var(--primary);">{{t.seeItems}} ({{lead.count}})</a></div>
+              </section>
+
+              <sc-for list="{{mcards}}" as="c" hint-placeholder-count="7">
+                <section class="card" aria-label="{{c.title}}" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;">
+                  <h2 style="margin: 0; font-size: 13px; font-weight: 500;" class="muted">{{c.title}}</h2>
+                  <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px;"><span class="num" style="font-family: var(--font-heading); font-size: 28px; font-weight: 600; line-height: 1.1; letter-spacing: -0.02em;">{{c.value}}</span><span class="muted" style="font-size: 13px;">{{c.unit}}</span></div>
+                  <span class="num mono" style="font-size: 12px;">{{c.sub}}</span>
+                  <span class="muted" style="font-size: 12.5px;">{{c.help}}</span>
+                  <a href="AppSdlcBoard.dc.html" style="font-size: 13px; color: var(--primary); margin-top: auto; padding-top: 4px; min-height: 20px;">{{t.seeItems}} ({{c.count}})</a>
+                </section>
+              </sc-for>
+            </div>
+
+            <!-- Tự duyệt: tỉ lệ cổng được tự duyệt và tỉ lệ bị thu hồi, theo chế độ và theo dự án -->
+            <section class="card" aria-label="{{t.autoTitle}}" style="overflow: hidden;">
+              <div class="card-h"><h2 class="card-t">{{t.autoTitle}}</h2><span class="muted" style="font-size: 12.5px;">{{t.autoMeta}}</span></div>
+              <div style="padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline;">
+                <span style="display: flex; flex-direction: column; gap: 2px;"><span class="muted" style="font-size: 12.5px;">{{t.autoRate}}</span><span><strong class="num" style="font-family: var(--font-heading); font-size: 26px;">{{auto.rate}}</strong> <span class="num mono muted" style="font-size: 12px;">{{auto.rateOf}}</span></span></span>
+                <span style="display: flex; flex-direction: column; gap: 2px;"><span class="muted" style="font-size: 12.5px;">{{t.revokeRate}}</span><span><strong class="num" style="font-family: var(--font-heading); font-size: 26px;">{{auto.revoke}}</strong> <span class="num mono muted" style="font-size: 12px;">{{auto.revokeOf}}</span></span></span>
+              </div>
+              <p class="sr">{{auto.summary}}</p>
+              <sc-for list="{{auto.groups}}" as="gr" hint-placeholder-count="2">
+                <div style="padding: 4px 16px 10px; border-top: 1px solid var(--border);">
+                  <h3 style="margin: 10px 0 6px; font-size: 13px; font-weight: 600;">{{gr.title}}</h3>
+                  <div aria-hidden="true" class="muted" style="{{auto.legendStyle}}"><span><span style="display: inline-block; width: 18px; height: 8px; border-radius: 9999px; background: var(--primary); vertical-align: middle;"></span> {{t.legendAuto}}</span><span><span style="display: inline-block; width: 18px; height: 8px; border-radius: 9999px; background: repeating-linear-gradient(45deg, var(--warning) 0 3px, var(--warning-soft) 3px 6px); vertical-align: middle;"></span> {{t.legendRevoke}}</span></div>
+                  <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px;">
+                    <sc-for list="{{gr.rows}}" as="r" hint-placeholder-count="4">
+                      <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;">
+                        <span style="flex: 0 0 140px; min-width: 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere;" class="{{r.nameClass}}">{{r.name}}</span>
+                        <span style="flex: 1 1 200px; min-width: 0; display: flex; align-items: center; gap: 8px;"><span aria-hidden="true" style="flex: 1; height: 10px; border-radius: 9999px; background: var(--muted); overflow: hidden; display: block;"><span style="{{r.autoBar}}"></span></span><span class="num mono" style="font-size: 12px; min-width: 104px;">{{r.autoText}}</span></span>
+                        <span style="flex: 1 1 200px; min-width: 0; display: flex; align-items: center; gap: 8px;"><span aria-hidden="true" style="flex: 1; height: 10px; border-radius: 9999px; background: var(--muted); overflow: hidden; display: block;"><span style="{{r.revokeBar}}"></span></span><span class="num mono" style="font-size: 12px; min-width: 104px;">{{r.revokeText}}</span></span>
+                      </li>
+                    </sc-for>
+                  </ul>
+                </div>
+              </sc-for>
+              <details style="border-top: 1px solid var(--border);">
+                <summary style="padding: 10px 16px; cursor: pointer; font-size: 13px; font-weight: 500; min-height: 20px;">{{t.tableAlt}}</summary>
+                <div role="region" tabindex="0" aria-label="{{t.autoTitle}}" style="overflow-x: auto; padding: 0 16px 12px;">
+                  <table class="tbl"><caption class="sr">{{t.autoTitle}}</caption><thead><tr><th scope="col">{{t.colGroup}}</th><th scope="col" class="n">{{t.colGates}}</th><th scope="col" class="n">{{t.colAuto}}</th><th scope="col" class="n">{{t.colRevoked}}</th></tr></thead><tbody>
+                    <sc-for list="{{auto.table}}" as="r" hint-placeholder-count="7"><tr><th scope="row" style="font-weight: 500; color: var(--foreground);">{{r.name}}</th><td class="n num mono">{{r.n}}</td><td class="n num mono">{{r.auto}}</td><td class="n num mono">{{r.revoked}}</td></tr></sc-for>
+                  </tbody></table>
+                </div>
+              </details>
+              <div style="padding: 10px 16px; border-top: 1px solid var(--border);"><a href="AppSdlcBoard.dc.html" style="font-size: 13px; color: var(--primary);">{{t.seeItems}} ({{auto.count}})</a></div>
+            </section>
+          </section>
+        </sc-if>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"role":{"editor":"enum","options":["dev","writer","lead"],"default":"lead"},"tab":{"editor":"enum","options":["progress","metrics"],"default":"progress"},"$preview":{"width":1440,"height":900}}'>
+// modes: normal,loading,empty,error,readonly
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'normal', tab: null, range: 30, project: 'all', pmode: 'all', lang: null };
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const narrow = !!this.props.narrow;
+    const role = this.props.role ?? 'lead';
+    const dark = !!this.props.dark;
+    const S = this.state;
+    const mode = S.mode;
+    const tab = S.tab ?? this.props.tab ?? 'progress';
+    const range = [7, 30, 90].includes(Number(S.range)) ? Number(S.range) : 30;
+    const ro = mode === 'readonly';
+    const fmt = (n, d = 1) => n.toFixed(d).replace('.', en ? '.' : ',');
+    const pct = (a, n) => (n ? Math.round((a * 100) / n) : 0);
+    const day = x(['ngày', 'd']); const hr = x(['giờ', 'h']);
+
+    const T = {
+      winTitle: ['xDev Hive · AI SDLC · Tiến độ và chỉ số', 'xDev Hive · AI SDLC · Progress and metrics'],
+      title: ['Tiến độ và chỉ số', 'Progress and metrics'],
+      lead: ['Xem hạng mục đang ở giai đoạn nào, chờ ai, và nút thắt nằm ở đâu.', 'See which stage each item is in, who it waits for, and where the bottleneck is.'],
+      menu: ['Menu', 'Menu'], create: ['Tạo hạng mục', 'New item'], states: ['Trạng thái xem', 'View state'], loading: ['Đang tải', 'Loading'],
+      tabProgress: ['Tiến độ', 'Progress'], tabMetrics: ['Chỉ số', 'Metrics'], roBadge: ['chỉ đọc', 'read-only'],
+      errTitle: ['Không tải được dữ liệu.', 'Could not load the data.'], errText: ['Hub trả lỗi khi tính chỉ số. Thử lại sau vài giây.', 'The hub returned an error while computing the metrics. Try again in a few seconds.'], retry: ['Thử lại', 'Retry'],
+      fProject: ['Dự án', 'Project'], fMode: ['Chế độ', 'Mode'], stagesAria: ['Số hạng mục theo 7 giai đoạn', 'Items per stage, 7 stages'], cards: ['thẻ', 'cards'],
+      recent: ['Hạng mục tiêu biểu', 'Featured items'], recentMeta: ['dự án chính đứng đầu, kèm dự án tham gia', 'primary project first, then participating projects'], noMatch: ['Không có hạng mục khớp bộ lọc.', 'No item matches the filters.'],
+      range: ['Khoảng thời gian', 'Time range'], rangeNote: ['Tính trên hạng mục có giai đoạn hoàn tất trong khoảng.', 'Based on items that finished a stage in the range.'],
+      leadTitle: ['Lead time theo giai đoạn', 'Lead time by stage'], legendP50: ['p50 (nửa số hạng mục xong trong mức này)', 'p50 (half of the items finish within this)'], legendP90: ['p90 (chín phần mười)', 'p90 (nine in ten)'],
+      bottleneck: ['Nút thắt', 'Bottleneck'], tableAlt: ['Xem bảng số liệu', 'View data table'], colStage: ['Giai đoạn', 'Stage'], colItems: ['Hạng mục', 'Items'],
+      seeItems: ['Xem hạng mục góp vào', 'See contributing items'],
+      autoTitle: ['Tự duyệt', 'Auto-approval'], autoMeta: ['Cổng người đủ điều kiện tự duyệt, theo chế độ và theo dự án', 'Eligible human gates, by mode and by project'],
+      autoRate: ['Tỉ lệ cổng được tự duyệt', 'Share of gates auto-approved'], revokeRate: ['Tỉ lệ tự duyệt bị thu hồi', 'Share of auto-approvals revoked'],
+      legendAuto: ['Tự duyệt', 'Auto-approved'], legendRevoke: ['Bị thu hồi', 'Revoked'], byMode: ['Theo chế độ', 'By mode'], byProject: ['Theo dự án', 'By project'],
+      colGroup: ['Nhóm', 'Group'], colGates: ['Cổng đủ điều kiện', 'Eligible gates'], colAuto: ['Tự duyệt', 'Auto-approved'], colRevoked: ['Thu hồi', 'Revoked'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+
+    // ===== Dữ liệu mẫu 40 hạng mục =====
+    const STAGES = [['Tiếp nhận', 'Intake'], ['Yêu cầu', 'Requirements'], ['Thiết kế', 'Design'], ['Tách task', 'Decomposition'], ['Triển khai', 'Implementation'], ['Kiểm', 'Verification'], ['Phát hành', 'Release']];
+    const MODES = { speckit: ['Spec Kit', 'Spec Kit'], express: ['AI-DLC Express', 'AI-DLC Express'], small: ['Small', 'Small'], bugfix: ['Bugfix', 'Bugfix'] };
+    const PROJECTS = ['payment-api', 'web-shop', 'mobile-app'];
+    const WAIT = { human: ['!', ['Chờ người duyệt', 'Waiting for a reviewer'], 'warn'], machine: ['○', ['Chờ máy AI SDLC', 'Waiting for an AI SDLC machine'], 'off'], agent: ['●', ['Agent đang chạy', 'Agent running'], 'accent'], question: ['●', ['Chờ trả lời câu hỏi', 'Waiting for answers'], 'warn'] };
+    const NAMED = [
+      { id: '012', title: ['Hoàn tiền một phần', 'Partial refunds'], mode: 'speckit', size: 'L', stage: 1, projects: ['payment-api', 'web-shop', 'mobile-app'], wait: 'human', waitText: ['Chờ An (PO) · quá hạn 3 giờ', 'Waiting for An (PO) · 3 h overdue'], bad: true, cover: 67, cost: 9.8 },
+      { id: '009', title: ['Sửa lỗi làm tròn', 'Rounding fix'], mode: 'bugfix', size: 'S', stage: 4, projects: ['payment-api'], wait: 'agent', waitText: ['Agent đang chạy', 'Agent running'], cover: 100, cost: 2.1 },
+      { id: '013', title: ['Xuất báo cáo tháng', 'Monthly report export'], mode: 'express', size: 'M', stage: 1, projects: ['web-shop'], wait: 'question', waitText: ['Chờ trả lời câu hỏi (1)', 'Waiting for answers (1)'], cover: null, cost: 5.6 },
+      { id: '014', title: ['Đồng bộ kho', 'Stock sync'], mode: 'small', size: 'S', stage: 0, projects: ['mobile-app'], wait: 'machine', waitText: ['Chờ máy AI SDLC', 'Waiting for an AI SDLC machine'], cover: null, cost: 0.7 },
+      { id: '010', title: ['Ví điện tử nạp tiền', 'E-wallet top-up'], mode: 'speckit', size: 'XL', stage: 2, projects: ['payment-api', 'web-shop'], wait: 'human', waitText: ['Chờ Nguyễn Minh (Tech lead)', 'Waiting for Nguyễn Minh (Tech lead)'], cover: 40, cost: 31.4 },
+    ];
+    let seed = 11; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const weights = [4, 6, 5, 4, 8, 4, 4]; const mk = Object.keys(MODES); const wk = ['human', 'agent', 'agent', 'question', 'machine', 'human'];
+    const generic = [];
+    weights.forEach((w, si) => { for (let i = 0; i < w; i++) { const p = PROJECTS[Math.floor(rnd() * 3)]; const extra = rnd() < 0.25 ? [PROJECTS[Math.floor(rnd() * 3)]] : []; generic.push({ id: null, stage: si, mode: mk[Math.floor(rnd() * 4)], projects: [...new Set([p, ...extra])], wait: wk[Math.floor(rnd() * wk.length)] }); } });
+    const all = [...NAMED, ...generic];
+    const fits = (it) => (S.project === 'all' || it.projects.includes(S.project)) && (S.pmode === 'all' || it.mode === S.pmode);
+    const shown = all.filter(fits);
+    const maxCount = Math.max(1, ...STAGES.map((_, si) => shown.filter((it) => it.stage === si).length));
+    const stripStyle = 'margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; grid-template-columns: ' + (narrow ? '1fr' : 'repeat(7, minmax(0, 1fr))') + ';';
+    const stages = STAGES.map((s, si) => {
+      const list = shown.filter((it) => it.stage === si);
+      const humans = list.filter((it) => it.wait === 'human').length; const machines = list.filter((it) => it.wait === 'machine').length;
+      return {
+        no: String(si + 1), name: x(s), count: list.length,
+        waitText: x([humans + ' chờ người · ' + machines + ' chờ máy', humans + ' waiting on people · ' + machines + ' on machines']),
+        style: narrow ? 'padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;' : 'padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;',
+        headStyle: 'display: flex; align-items: baseline; gap: 6px;',
+        numStyle: 'display: flex; align-items: baseline; gap: 6px;',
+        barStyle: 'display: block; height: 100%; background: var(--primary); width: ' + Math.round((list.length / maxCount) * 100) + '%;',
+      };
+    });
+    const tone = { warn: 'background: var(--warning-soft); color: var(--warning);', off: 'background: var(--muted); color: var(--muted-foreground);', accent: 'background: var(--accent); color: var(--accent-foreground);', bad: 'background: var(--destructive-soft); color: var(--destructive);' };
+    const named = shown.filter((it) => it.id);
+    const cards = named.map((it) => ({
+      id: it.id, title: x(it.title), mode: x(MODES[it.mode]), size: it.size, stage: x(STAGES[it.stage]),
+      projects: it.projects.map((p, i) => ({ name: p, style: 'height: 20px; font-size: 11.5px; ' + (i === 0 ? 'background: var(--secondary); color: var(--secondary-foreground); font-weight: 600;' : 'background: var(--muted); color: var(--muted-foreground);') })),
+      waitMark: it.bad ? '!' : WAIT[it.wait][0], wait: x(it.waitText), waitStyle: it.bad ? tone.bad : tone[WAIT[it.wait][2]],
+      meta: x([it.cover == null ? 'Độ phủ —' : 'Độ phủ ' + it.cover + '%', it.cover == null ? 'Coverage —' : 'Coverage ' + it.cover + '%']) + ' · ' + fmt(it.cost) + ' USD',
+    }));
+    const fProject = S.project === 'all' ? '' : x([' · dự án ', ' · project ']) + S.project;
+    const summary = x([shown.length + '/' + all.length + ' hạng mục' + fProject + ' · ' + shown.filter((it) => it.wait === 'human').length + ' chờ người · ' + shown.filter((it) => it.wait === 'machine').length + ' chờ máy', shown.length + '/' + all.length + ' items' + fProject + ' · ' + shown.filter((it) => it.wait === 'human').length + ' waiting on people · ' + shown.filter((it) => it.wait === 'machine').length + ' waiting on machines']);
+    const projectOpts = [['all', x(['Tất cả dự án', 'All projects'])], ...PROJECTS.map((p) => [p, p])].map(([v, label]) => ({ v, label, on: S.project === v }));
+    const modeOpts = [['all', x(['Tất cả chế độ', 'All modes'])], ...mk.map((m) => [m, x(MODES[m])])].map(([v, label]) => ({ v, label, on: S.pmode === v }));
+
+    // ===== Chỉ số =====
+    const k = { 7: 0.25, 30: 1, 90: 2.6 }[range]; const tf = { 7: 0.9, 30: 1, 90: 1.1 }[range];
+    const cnt = (n) => Math.max(1, Math.round(n * k));
+    const LT = [[0.2, 0.6, 31], [1.4, 3.2, 29], [1.8, 4.1, 26], [0.9, 2.2, 22], [3.6, 8.5, 20], [1.1, 2.6, 18], [0.5, 1.4, 12]];
+    const maxP90 = Math.max(...LT.map((r) => r[1] * tf));
+    const hotIdx = LT.reduce((b, r, i) => (r[0] > LT[b][0] ? i : b), 0);
+    const leadRows = LT.map((r, i) => ({
+      name: x(STAGES[i]), hot: i === hotIdx,
+      text: 'p50 ' + fmt(r[0] * tf) + ' ' + day + ' · p90 ' + fmt(r[1] * tf),
+      fill: 'position: absolute; left: 0; top: 3px; height: 8px; border-radius: 9999px; background: var(--primary); width: ' + ((r[0] * tf) / maxP90 * 100).toFixed(1) + '%;',
+      tick: 'position: absolute; top: 0; width: 2px; height: 14px; background: var(--foreground); left: calc(' + ((r[1] * tf) / maxP90 * 100).toFixed(1) + '% - 2px);',
+    }));
+    const lead = {
+      total: x(['Từ tiếp nhận tới phát hành: p50 ' + fmt(10.1 * tf) + ' ' + day + ' · p90 ' + fmt(24 * tf) + ' ' + day, 'Intake to release: p50 ' + fmt(10.1 * tf) + ' ' + day + ' · p90 ' + fmt(24 * tf) + ' ' + day]),
+      rows: leadRows,
+      rowStyle: 'display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;',
+      nameStyle: 'flex: 0 0 150px; min-width: 0; font-size: 13px; font-weight: 500;',
+      table: LT.map((r, i) => ({ name: x(STAGES[i]), p50: fmt(r[0] * tf) + ' ' + day, p90: fmt(r[1] * tf) + ' ' + day, n: cnt(r[2]) })),
+      summary: x(['Biểu đồ lead time theo giai đoạn, ' + range + ' ngày gần nhất. Giai đoạn dài nhất là ' + STAGES[hotIdx][0] + ': p50 ' + fmt(LT[hotIdx][0] * tf) + ' ngày, p90 ' + fmt(LT[hotIdx][1] * tf) + ' ngày. ', 'Lead time by stage chart, last ' + range + ' days. The longest stage is ' + STAGES[hotIdx][1] + ': p50 ' + fmt(LT[hotIdx][0] * tf) + ' days, p90 ' + fmt(LT[hotIdx][1] * tf) + ' days. ']) + LT.map((r, i) => x(STAGES[i]) + ' p50 ' + fmt(r[0] * tf) + ' p90 ' + fmt(r[1] * tf)).join('; ') + '.',
+      count: cnt(31),
+    };
+    const ret = cnt(7); const retOf = cnt(39);
+    const mcards = [
+      { title: x(['Thời gian chờ cổng người', 'Wait at human gates']), value: fmt(6.2 * tf), unit: hr, sub: 'p50 ' + fmt(3.5 * tf) + ' ' + hr + ' · p90 ' + fmt(19 * tf) + ' ' + hr, help: x(['Từ lúc tới cổng tới lúc người quyết, theo SLA spec 004.', 'From reaching the gate until a person decides, per the spec 004 SLA.']), count: cnt(24) },
+      { title: x(['Tỉ lệ trả lại', 'Return rate']), value: pct(ret, retOf) + '%', unit: x([ret + '/' + retOf + ' cổng', ret + '/' + retOf + ' gates']), sub: x(['Trả lại / tổng cổng người', 'Returned / all human gates']), help: x(['Cổng người trả lại để agent hoặc tác giả sửa.', 'Human gates sent back for the agent or author to fix.']), count: cnt(24) },
+      { title: x(['Số câu hỏi mỗi hạng mục', 'Questions per item']), value: fmt(4.2), unit: x(['câu', 'questions']), sub: x(['p50 4 · tối đa 5 mỗi vòng', 'p50 4 · max 5 per round']), help: x(['Câu hỏi agent gửi lại người trong giai đoạn soạn.', 'Questions the agent sent back to people while drafting.']), count: cnt(34) },
+      { title: x(['Độ phủ', 'Coverage']), value: '86%', unit: x(['mức thấp nhất', 'lowest level']), sub: x(['FR → task → test', 'FR → task → test']), help: x(['Trung bình ba mức độ phủ của hạng mục có truy vết.', 'Average of the three coverage levels for traced items.']), count: cnt(18) },
+      { title: x(['Số vòng converge', 'Converge rounds']), value: fmt(1.6), unit: x(['vòng', 'rounds']), sub: x(['p50 1 · p90 3', 'p50 1 · p90 3']), help: x(['Số vòng soát và bổ sung task cho tới khi khớp spec.', 'Review-and-add-task rounds until the work matches the spec.']), count: cnt(15) },
+      { title: x(['Số vòng review code mỗi PR', 'Code review rounds per PR']), value: fmt(1.8), unit: x(['vòng', 'rounds']), sub: x(['p50 2 · p90 3', 'p50 2 · p90 3']), help: x(['Mỗi commit mới sau khi bị trả lại là một vòng.', 'Each new commit after a return counts as a round.']), count: cnt(19) },
+      { title: x(['Chi phí agent mỗi hạng mục', 'Agent cost per item']), value: fmt(14.2), unit: 'USD', sub: 'p50 ' + fmt(9.8) + ' · p90 ' + fmt(31.4) + ' USD', help: x(['Gồm run soạn, review AI và run code của mọi dự án.', 'Includes draft runs, AI reviews and code runs across all projects.']), count: cnt(27) },
+    ];
+    const AUTO_MODE = [['speckit', 16, 3, 1], ['express', 12, 6, 0], ['small', 6, 2, 0], ['bugfix', 5, 1, 0]];
+    const AUTO_PROJ = [['payment-api', 17, 3, 1], ['web-shop', 14, 6, 0], ['mobile-app', 8, 3, 0]];
+    const scaled = (r) => { const n = cnt(r[1]); const a = Math.min(n, Math.round(r[2] * k)); const v = Math.min(a, Math.round(r[3] * k)); return { n, a, v }; };
+    const arow = (name, r, mono) => { const s = scaled(r); const ap = pct(s.a, s.n); const rp = pct(s.v, s.a); return {
+      name, nameClass: mono ? 'mono' : '', n: s.n, a: s.a, v: s.v,
+      autoBar: 'display: block; height: 100%; background: var(--primary); width: ' + ap + '%;',
+      revokeBar: 'display: block; height: 100%; background: repeating-linear-gradient(45deg, var(--warning) 0 3px, var(--warning-soft) 3px 6px); width: ' + rp + '%;',
+      autoText: ap + '% · ' + s.a + '/' + s.n, revokeText: rp + '% · ' + s.v + '/' + s.a,
+    }; };
+    const modeRows = AUTO_MODE.map((r) => arow(x(MODES[r[0]]), r, false)); const projRows = AUTO_PROJ.map((r) => arow(r[0], r, true));
+    const tot = modeRows.reduce((o, r) => ({ n: o.n + r.n, a: o.a + r.a, v: o.v + r.v }), { n: 0, a: 0, v: 0 });
+    const auto = {
+      rate: pct(tot.a, tot.n) + '%', rateOf: tot.a + '/' + tot.n, revoke: pct(tot.v, tot.a) + '%', revokeOf: tot.v + '/' + tot.a,
+      groups: [{ title: t.byMode, rows: modeRows }, { title: t.byProject, rows: projRows }],
+      legendStyle: 'display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; margin-bottom: 8px;',
+      table: [...modeRows, ...projRows].map((r) => ({ name: r.name, n: r.n, auto: r.autoText, revoked: r.revokeText })),
+      summary: x(['Tự duyệt ' + range + ' ngày gần nhất: ' + pct(tot.a, tot.n) + '% cổng được tự duyệt, ' + pct(tot.v, tot.a) + '% bị thu hồi. ', 'Auto-approval, last ' + range + ' days: ' + pct(tot.a, tot.n) + '% of gates auto-approved, ' + pct(tot.v, tot.a) + '% revoked. ']) + [...modeRows, ...projRows].map((r) => r.name + ' ' + r.autoText + ' / ' + r.revokeText).join('; ') + '.',
+      count: tot.a,
+    };
+
+    // ===== Trạng thái chung =====
+    const emptyDef = tab === 'metrics'
+      ? { title: x(['Chưa đủ dữ liệu để tính chỉ số.', 'Not enough data to compute metrics.']), text: x(['Cần ít nhất 5 hạng mục hoàn tất một giai đoạn trong khoảng đã chọn. Thử khoảng 90 ngày.', 'At least 5 items must finish a stage in the selected range. Try 90 days.']), action: x(['Chọn 90 ngày', 'Pick 90 days']), href: '#', canAct: true }
+      : { title: x(['Chưa có hạng mục nào.', 'No items yet.']), text: x(['Tạo hạng mục từ một ý tưởng hoặc issue; bảng tiến độ sẽ hiện ở đây.', 'Create an item from an idea or an issue; the progress board will appear here.']), action: x(['Tạo hạng mục', 'New item']), href: 'AppSdlcNewItem.dc.html', canAct: !ro };
+    const seg = (on) => 'min-height: ' + (narrow ? '36px' : '28px') + '; padding: 0 12px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const segTool = (on) => 'height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const tabs = [['progress', t.tabProgress], ['metrics', t.tabMetrics]].map(([kk, l]) => ({ label: l, on: tab === kk ? 'true' : 'false', style: seg(tab === kk), pick: () => this.setState({ tab: kk }) }));
+    const ranges = [7, 30, 90].map((r) => ({ label: x([r + ' ngày', r + ' days']), on: range === r ? 'true' : 'false', style: seg(range === r), pick: () => this.setState({ range: r }) }));
+    const M = [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Chưa đủ dữ liệu', 'No data']], ['error', ['Lỗi', 'Error']], ['readonly', ['Chỉ đọc', 'Read-only']]];
+    const modes = M.map(([kk, l]) => ({ label: x(l), on: mode === kk ? 'true' : 'false', style: segTool(mode === kk), pick: () => this.setState({ mode: kk }) }));
+    const body = mode === 'normal' || mode === 'readonly';
+    return {
+      theme: dark ? 'dark' : 'light', lang, role, narrow, wide: !narrow, ro, canCreate: !ro, t, tabs, modes, ranges, empty: emptyDef,
+      outerStyle: narrow ? 'width: 360px; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; --bh: 36px;' : 'width: 1440px; height: 900px; box-sizing: border-box; padding: 30px; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      winStyle: narrow ? 'display: flex; flex-direction: column; background: var(--background); color: var(--foreground);' : 'width: 1380px; height: 840px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--background); color: var(--foreground); border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5);',
+      mainStyle: narrow ? 'box-sizing: border-box; width: 100%; min-width: 0; padding: 16px 16px 32px; display: flex; flex-direction: column; gap: 14px;' : 'flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;',
+      isLoading: mode === 'loading', isError: mode === 'error', isEmpty: mode === 'empty',
+      showProgress: body && tab === 'progress', showMetrics: body && tab === 'metrics',
+      retry: () => this.setState({ mode: 'normal' }),
+      // Tab Tiến độ
+      stripStyle, stages, pcards: cards, summary, noMatch: cards.length === 0, projectOpts, modeOpts,
+      onProject: (e) => this.setState({ project: e?.target?.value ?? 'all' }), onMode: (e) => this.setState({ pmode: e?.target?.value ?? 'all' }),
+      // Tab Chỉ số
+      gridStyle: 'display: grid; gap: 12px; grid-template-columns: ' + (narrow ? '1fr' : 'repeat(3, minmax(0, 1fr))') + ';',
+      leadStyle: 'margin: 0; overflow: hidden; display: flex; flex-direction: column; ' + (narrow ? '' : 'grid-column: span 2;'),
+      lead, auto, mcards,
+      viS: 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (!en ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);'),
+      enS: 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (en ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);'),
+      toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -111,7 +111,7 @@ func TestRunnerReadOnlyRunsDoNotPush(t *testing.T) {
 	oldSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2"))
 	baseSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base))
 
-	for _, kind := range []string{KindPlan, KindLeader, KindDocCheck, KindDocAssist} {
+	for _, kind := range []string{KindPlan, KindLeader, KindDocCheck, KindDocAssist, KindBrief} {
 		for _, mode := range []string{"empty", "commit"} {
 			t.Run(kind+"/"+mode, func(t *testing.T) {
 				var events []Event
@@ -570,7 +570,7 @@ func TestReadOnlyKindsNeverGetWriteFlags(t *testing.T) {
 	}
 	writeFlags := []string{"bypassPermissions", "acceptEdits", "--dangerously-bypass-approvals-and-sandbox", "workspace-write", "yolo", "--allowedTools", "--dangerously-skip-permissions"}
 	for cli, want := range readOnlyFlags {
-		for _, kind := range []string{"", "code", KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist} {
+		for _, kind := range []string{"", "code", KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist, KindBrief} {
 			for _, mode := range []string{"", "workspace", "full"} {
 				cmd, err := (Runner{}).cliCommand(Job{CLI: cli, Kind: kind, RunPermissions: mode, Prompt: "prompt", Env: env})
 				if cli == "antigravity" && !readOnlyKind(kind) && mode != "full" {
@@ -607,7 +607,7 @@ func TestReadOnlyKindsNeverGetWriteFlags(t *testing.T) {
 func TestReadOnlyKindsRejectUndeclaredOverrides(t *testing.T) {
 	plain := map[string]Command{"claude": {Path: "/bin/true"}}
 	declared := map[string]Command{"claude": {Path: "/bin/true", ReadOnly: true}}
-	for _, kind := range []string{KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist} {
+	for _, kind := range []string{KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist, KindBrief} {
 		if _, err := (Runner{CLICommands: plain}).cliCommand(Job{CLI: "claude", Kind: kind, Prompt: "p"}); err == nil {
 			t.Fatalf("kind %s chạy được override chưa khai readOnly", kind)
 		}

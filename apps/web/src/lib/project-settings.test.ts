@@ -164,6 +164,34 @@ describe("buildPatch", () => {
   });
 });
 
+describe("brief", () => {
+  it("form lấy mặc định khi hub cũ chưa có mục brief", () => {
+    const { brief: _, ...old } = base();
+    expect(formFromSettings(old as ProjectSettings)).toMatchObject({
+      briefAuto: true,
+      briefRefreshCommits: "50",
+      briefRefreshDays: "7",
+    });
+  });
+
+  it("đổi ngưỡng thì chỉ gửi mục brief", () => {
+    const s = base();
+    const form = { ...formFromSettings(s), briefAuto: false, briefRefreshCommits: "20" };
+    expect(buildPatch(form, s)).toEqual({
+      ok: true,
+      patch: { brief: { auto: false, refreshCommits: 20, refreshDays: 7 } },
+    });
+  });
+
+  it("ô trống về mặc định, số ngoài khoảng gắn lỗi vào ô", () => {
+    const s = base();
+    expect(buildPatch({ ...formFromSettings(s), briefRefreshDays: "" }, s)).toEqual({ ok: true, patch: null });
+    const bad = buildPatch({ ...formFromSettings(s), briefRefreshDays: "400" }, s);
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.errors).toHaveProperty("briefRefreshDays");
+  });
+});
+
 describe("fieldOfPath", () => {
   it.each([
     [["merge", "requiredApprovals"], "requiredApprovals"],
@@ -171,6 +199,9 @@ describe("fieldOfPath", () => {
     [["models", "codex", "review"], "models.codex.review"],
     [["outcome", "default", 1, "when", "paths", 0], "reviewPaths"],
     [["outcome", "default", 1, "when"], "reviewMinLines"],
+    [["brief", "auto"], "briefAuto"],
+    [["brief", "refreshCommits"], "briefRefreshCommits"],
+    [["brief", "refreshDays"], "briefRefreshDays"],
     [["features", "planMode"], undefined],
   ] as const)("%j → %s", (path, field) => expect(fieldOfPath(path)).toBe(field));
 });

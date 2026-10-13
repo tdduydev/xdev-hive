@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bufio"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,5 +162,67 @@ func TestMeterStopsOnceWhenOverBudget(t *testing.T) {
 	// Lần vượt trần được gửi ngay dù chưa qua 5 giây.
 	if len(sent) != 2 || sent[1].InputTokens != 20 {
 		t.Fatalf("đã gửi = %+v", sent)
+	}
+}
+
+// Chụp trước lượt sửa file đầu tiên: msg_3 gồm khối text rồi khối Edit cùng id, cả hai bị loại khỏi khảo sát.
+func TestClaudeExploreFreezesBeforeFirstEdit(t *testing.T) {
+	p := NewUsageParser("claude")
+	changes := feed(t, p, "claude-explore.jsonl")
+	// Sau hai lượt đọc, chưa sửa: explore là toàn bộ usage tới đó.
+	before := changes[2]
+	want := ExploreUsage{Turns: 2, InputTokens: 5, OutputTokens: 30, CacheReadTokens: 1000, CacheWriteTokens: 1200}
+	if before.Explore == nil || *before.Explore != want {
+		t.Fatalf("trước khi sửa = %+v, muốn %+v", before.Explore, want)
+	}
+	// Khối text của msg_3 chưa phải tool sửa file nên chưa đóng băng, và usage của nó đã được cộng vào tổng.
+	if e := changes[3].Explore; e == nil || e.Edited || e.Turns != 3 {
+		t.Fatalf("sau khối text = %+v", e)
+	}
+	u := p.Usage()
+	frozen := ExploreUsage{Edited: true, Turns: 2, InputTokens: 5, OutputTokens: 30, CacheReadTokens: 1000, CacheWriteTokens: 1200}
+	if u.Explore == nil || *u.Explore != frozen {
+		t.Fatalf("explore cuối = %+v, muốn %+v", u.Explore, frozen)
+	}
+	if u.Turns == nil || *u.Turns != 4 || u.OutputTokens != 105 {
+		t.Fatalf("usage tổng không bị ảnh hưởng: %+v", u)
+	}
+}
+
+func TestClaudeExploreCoversWholeRunWithoutEdit(t *testing.T) {
+	p := NewUsageParser("claude")
+	feed(t, p, "claude-stream.jsonl")
+	u := p.Usage()
+	if u.Explore == nil || u.Explore.Edited || u.Explore.Turns != 2 || u.Explore.InputTokens != u.InputTokens || u.Explore.CacheReadTokens != u.CacheReadTokens {
+		t.Fatalf("explore = %+v, usage = %+v", u.Explore, u)
+	}
+}
+
+func TestClaudeExploreIgnoresReadOnlyTools(t *testing.T) {
+	p := NewUsageParser("claude")
+	p.Line([]byte(`{"type":"assistant","message":{"id":"m","content":[{"type":"tool_use","name":"Bash"},{"type":"tool_use","name":"Grep"},{"type":"text","name":"Edit"}],"usage":{"input_tokens":1,"output_tokens":1}}}`))
+	if e := p.Usage().Explore; e == nil || e.Edited {
+		t.Fatalf("explore = %+v", e)
+	}
+	p.Line([]byte(`{"type":"assistant","message":{"id":"n","content":[{"type":"tool_use","name":"NotebookEdit"}],"usage":{"input_tokens":1,"output_tokens":1}}}`))
+	if e := p.Usage().Explore; e == nil || !e.Edited || e.Turns != 1 {
+		t.Fatalf("explore = %+v", e)
+	}
+}
+
+// Chỉ Claude báo explore; cost event của CLI khác không có khoá này.
+func TestExploreOnlyForClaude(t *testing.T) {
+	for _, cli := range []string{"codex", "antigravity"} {
+		p := NewUsageParser(cli)
+		feed(t, p, map[string]string{"codex": "codex-exec.jsonl", "antigravity": "antigravity-stream.jsonl"}[cli])
+		if p.Usage().Explore != nil {
+			t.Fatalf("%s báo explore", cli)
+		}
+	}
+	p := NewUsageParser("claude")
+	feed(t, p, "claude-explore.jsonl")
+	b, err := json.Marshal(p.Usage())
+	if err != nil || !strings.Contains(string(b), `"explore":{"edited":true,"turns":2,"inputTokens":5,"outputTokens":30,"cacheReadTokens":1000,"cacheWriteTokens":1200}`) {
+		t.Fatalf("json = %s, %v", b, err)
 	}
 }

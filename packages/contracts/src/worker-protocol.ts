@@ -86,6 +86,20 @@ export const runEventKind = z.enum([
   "steer_result",
 ]);
 /**
+ * Usage agent dùng để khảo sát repo trước lần sửa file đầu tiên (Edit, Write, MultiEdit, NotebookEdit), ADR 0022.
+ * `edited` false là agent chưa sửa gì: số bằng toàn bộ usage tới lúc đó.
+ */
+export const exploreUsage = z.object({
+  edited: z.boolean(),
+  turns: z.number().int().min(0),
+  inputTokens: z.number().int().min(0),
+  outputTokens: z.number().int().min(0),
+  cacheReadTokens: z.number().int().min(0),
+  cacheWriteTokens: z.number().int().min(0),
+});
+export type ExploreUsage = z.output<typeof exploreUsage>;
+
+/**
  * `data` của sự kiện `cost`: usage luỹ kế của lần thử (không phải phần tăng thêm), gửi khi đổi, tối đa 5 giây một lần
  * và một lần cuối trước run_result. Trường CLI không báo là null.
  */
@@ -99,8 +113,26 @@ export const costEventData = z.object({
   model: z.string().max(200).nullable(),
   /** Id gói (tài khoản CLI trong accounts.json của máy) đã chạy run; thiếu khi worker cũ hoặc dùng đăng nhập mặc định. */
   accountId: z.string().min(1).max(100).nullish(),
+  /**
+   * Usage trước lần sửa file đầu tiên. Đi trong sự kiện cost thay vì loại sự kiện mới vì hub cũ bỏ khoá lạ của data
+   * nhưng đóng kết nối khi gặp loại sự kiện lạ. Worker cũ và CLI chưa đọc được (Codex, Gemini, Antigravity) không gửi.
+   */
+  explore: exploreUsage.optional(),
 });
 export type CostEventData = z.output<typeof costEventData>;
+
+/**
+ * `run_result.report.repo` (ADR 0022): commit của nhánh chính lúc worker tạo worktree, và số commit nhánh chính đi
+ * trước commit của brief (`spec.brief.sha`). `briefBehind` null khi job không có brief hoặc repo không có commit đó.
+ */
+export const reportRepo = z.object({
+  baseSha: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/)
+    .nullable(),
+  briefBehind: z.number().int().min(0).nullable(),
+});
+export type ReportRepo = z.output<typeof reportRepo>;
 
 /**
  * `data` của sự kiện `steer_result`. `applied` chỉ true khi CLI đã nhận chỉ dẫn vào phiên đang chạy; false khi CLI

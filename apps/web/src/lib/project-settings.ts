@@ -1,5 +1,6 @@
 import { ORPCError } from "@orpc/client";
 import {
+  DEFAULT_BRIEF_SETTINGS,
   defaultTokenSaving,
   type OutcomeCheck,
   type ProjectSettings,
@@ -43,6 +44,10 @@ export interface SettingsForm {
   perRunUsd: string;
   perTaskUsd: string;
   maxTurns: string;
+  /** Brief dự án (ADR 0022): hub tự giao run viết brief. */
+  briefAuto: boolean;
+  briefRefreshCommits: string;
+  briefRefreshDays: string;
   models: Record<SettingsCli, { code: string; review: string }>;
   runPermissions: PermissionMode;
   /** Tiết kiệm token cho run Claude Code; ô số giữ dạng chuỗi như các ô khác. */
@@ -80,6 +85,10 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     perRunUsd: text(s.budget?.perRunUsd),
     perTaskUsd: text(s.budget?.perTaskUsd),
     maxTurns: text(s.budget?.maxTurns),
+    // Hub cũ chưa có mục brief thì dùng mặc định, như hub mới tạo dự án.
+    briefAuto: s.brief?.auto ?? DEFAULT_BRIEF_SETTINGS.auto,
+    briefRefreshCommits: text(s.brief?.refreshCommits ?? DEFAULT_BRIEF_SETTINGS.refreshCommits),
+    briefRefreshDays: text(s.brief?.refreshDays ?? DEFAULT_BRIEF_SETTINGS.refreshDays),
     models: {
       claude: model("claude"),
       codex: model("codex"),
@@ -172,6 +181,13 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       perTaskUsd: num(form.perTaskUsd, "perTaskUsd", errors),
       maxTurns: num(form.maxTurns, "maxTurns", errors),
     },
+    // Ô trống thì về mặc định: hub không có "không giới hạn" cho hai ngưỡng này.
+    brief: {
+      auto: form.briefAuto,
+      refreshCommits:
+        num(form.briefRefreshCommits, "briefRefreshCommits", errors) ?? DEFAULT_BRIEF_SETTINGS.refreshCommits,
+      refreshDays: num(form.briefRefreshDays, "briefRefreshDays", errors) ?? DEFAULT_BRIEF_SETTINGS.refreshDays,
+    },
     models: Object.fromEntries(
       SETTINGS_CLIS.map((cli) => [cli, { code: model(form.models[cli].code), review: model(form.models[cli].review) }]),
     ),
@@ -194,6 +210,14 @@ export function fieldOfPath(path: readonly PropertyKey[]): string | undefined {
       return key === "requiredApprovals" ? "requiredApprovals" : key === "method" ? "mergeMethod" : undefined;
     case "budget":
       return key === "perRunUsd" || key === "perTaskUsd" || key === "maxTurns" ? key : undefined;
+    case "brief":
+      return key === "auto"
+        ? "briefAuto"
+        : key === "refreshCommits"
+          ? "briefRefreshCommits"
+          : key === "refreshDays"
+            ? "briefRefreshDays"
+            : undefined;
     case "models":
       return key && sub ? `models.${key}.${sub}` : undefined;
     case "runPermissions":

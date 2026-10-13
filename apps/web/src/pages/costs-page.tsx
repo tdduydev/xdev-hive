@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@xdev-hive/contracts";
+import type { CostExplore, Project } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
@@ -8,7 +8,7 @@ import { Table, Td, Th } from "@xdev-hive/ui/table";
 import { type FormEvent, useRef, useState } from "react";
 import { Card } from "@/components/ui/card.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
-import { formatCacheHit } from "@/lib/format.ts";
+import { formatCacheHit, formatPercent } from "@/lib/format.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -137,6 +137,7 @@ export function CostsPage() {
                     )}
                   />
                 </div>
+                {daily.data.explore && <ExploreBlock explore={daily.data.explore} />}
                 <Card className="grid gap-3 p-4">
                   <div>
                     <h2 className="text-base font-semibold text-foreground">Chi phí theo ngày (USD)</h2>
@@ -369,6 +370,29 @@ function Metric({ label, value }: { label: string; value: string | number }) {
     <Card className="grid min-w-0 content-start gap-1 p-3">
       <span className="text-xs text-muted-foreground">{label}</span>
       <b className="break-words text-base text-foreground">{value}</b>
+    </Card>
+  );
+}
+
+/** Phần chi phí run code dành cho đọc repo trước lần sửa đầu tiên; số chia là tỉ lệ trên tổng của các run có số đo. */
+function ExploreBlock({ explore }: { explore: CostExplore }) {
+  const share = (part: number, total: number) => formatPercent(total > 0 ? part / total : 0);
+  return (
+    <Card className="grid gap-3 p-4" role="group" aria-label="Khảo sát trước khi sửa">
+      <div>
+        <h2 className="text-base font-semibold text-foreground">Khảo sát trước khi sửa</h2>
+        <p className="text-xs text-muted-foreground">
+          Phần agent đọc repo trước lần sửa file đầu tiên, tính trên run code có số đo (Claude). Tỉ lệ chi phí và USD là
+          ước tính.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Metric label="Run có số đo" value={`${number(explore.runs)} (${number(explore.edited)} đã sửa file)`} />
+        <Metric label="Lượt" value={`${number(explore.turns)} · ${share(explore.turns, explore.totalTurns)}`} />
+        <Metric label="Token" value={`${number(explore.tokens)} · ${share(explore.tokens, explore.totalTokens)}`} />
+        <Metric label="Tỉ lệ chi phí" value={formatPercent(explore.costShare)} />
+        <Metric label="Chi phí khảo sát" value={usd(explore.costUsd)} />
+      </div>
     </Card>
   );
 }

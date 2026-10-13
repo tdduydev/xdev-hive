@@ -6,7 +6,7 @@ import { costsContract } from "./cost.ts";
 import { desktopConnectContract } from "./desktop-connect.ts";
 import { docEditorContract } from "./doc-editor.ts";
 import { fleetContract } from "./fleet.ts";
-import { docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
+import { briefContract, docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
 import { leaderContract } from "./leader.ts";
 import { mcpAdminContract } from "./mcp-admin.ts";
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
@@ -115,6 +115,7 @@ export const contract = {
   projects: projectsContract,
   memory: memoryContract,
   docs: docsContract,
+  briefs: briefContract,
   skills: skillsContract,
   proposals: proposalsContract,
   tasks: tasksContract,

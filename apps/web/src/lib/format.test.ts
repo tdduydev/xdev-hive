@@ -6,6 +6,7 @@ import {
   formatDayTime,
   formatDuration,
   formatInt,
+  formatPercent,
   formatUsd,
 } from "@/lib/format.ts";
 
@@ -19,6 +20,10 @@ describe("formatDay", () => {
 
 describe("số và tiền", () => {
   it("USD hai chữ số thập phân, dấu phẩy", () => expect(formatUsd(0.4234)).toBe("0,42 USD"));
+  it("tỉ lệ làm tròn thành phần trăm nguyên", () => {
+    expect(formatPercent(0.394)).toBe("39%");
+    expect(formatPercent(1)).toBe("100%");
+  });
   it("không báo USD thì gạch ngang", () => expect(formatUsd(null)).toBe("—"));
   it("số nguyên ngăn nghìn bằng dấu chấm", () => expect(formatInt(182400)).toBe("182.400"));
 });

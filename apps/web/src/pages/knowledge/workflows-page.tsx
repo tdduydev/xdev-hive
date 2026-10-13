@@ -1,6 +1,5 @@
-import { ORPCError } from "@orpc/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { DryRunResult, ReviewGate, ReviewWorkflow, WorkflowPreset } from "@xdev-hive/contracts";
+import type { DryRunResult, ReviewGate, ReviewWorkflow, WorkflowPreset, WorkflowSubject } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import {
@@ -24,23 +23,38 @@ import { type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import {
   allGateIds,
+  defaultPreset,
+  draftFromInput,
   draftOf,
   moveGate,
   newDraft,
   newGate,
   PHASE_DESC,
   PRESET_LABEL,
-  PRESETS,
   presetPhases,
+  presetsOf,
   ROLE_LABEL,
+  SUBJECT_LABEL,
+  SUBJECTS,
   toInput,
   type WorkflowDraft,
   type WorkflowIssue,
+  withSubject,
   workflowIssues,
 } from "@/lib/review-workflows.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { cn } from "@/lib/utils.ts";
-import { Field, GateConfig, segButton } from "@/pages/knowledge/workflow-gate-config.tsx";
+import {
+  CodeDryRunDialog,
+  CodeGateConfig,
+  CodeReplacesNote,
+  CodeScope,
+  codeGateCond,
+  codeGateWho,
+  codeText,
+  FromProjectDialog,
+} from "@/pages/knowledge/workflow-code-config.tsx";
+import { Field, GateConfig, hubIssuesOf, IssueAlert, segButton } from "@/pages/knowledge/workflow-gate-config.tsx";
 import { type WorkflowsText, workflowsText } from "@/pages/knowledge/workflows-text.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -49,7 +63,18 @@ const NEW = "new";
 const text = workflowsText;
 type T = WorkflowsText;
 
-function gateWho(g: ReviewGate, names: Map<string, string>, teamNames: Map<string, string>, lang: Lang, t: T): string {
+function gateWho(
+  g: ReviewGate,
+  subject: WorkflowSubject,
+  names: Map<string, string>,
+  teamNames: Map<string, string>,
+  lang: Lang,
+  t: T,
+): string {
+  if (subject === "code") {
+    const who = codeGateWho(g, codeText[lang]);
+    if (who) return who;
+  }
   if (g.kind === "ai")
     return g.ai ? [g.ai.model, t.aiWho(g.ai.checks.length, g.ai.passScore)].filter(Boolean).join(" · ") : t.ruleWho;
   if (g.kind === "rule") return t.ruleWho;
@@ -65,7 +90,8 @@ function gateWho(g: ReviewGate, names: Map<string, string>, teamNames: Map<strin
   return `${who.join(", ")} · ${q === 0 ? t.whoAll : q === 1 ? t.whoAny : t.whoN(q)}`;
 }
 
-function gateCond(g: ReviewGate, t: T): string {
+function gateCond(g: ReviewGate, subject: WorkflowSubject, lang: Lang, t: T): string {
+  if (subject === "code") return codeGateCond(g, codeText[lang], t.condSize);
   const c = g.conditions;
   const parts = [
     ...(c.docTypes.length ? [t.condTypeShort(c.docTypes.join(", "))] : []),
@@ -150,6 +176,7 @@ export function WorkflowsPage() {
 function WorkflowsScreen() {
   const { org, api } = useOrg();
   const t = useT(text);
+  const tc = useT(codeText);
   const lang = useLang();
   const can = usePermissions();
   const canWrite = isOrgAdmin(org.role) || can("workflows.write");
@@ -157,6 +184,9 @@ function WorkflowsScreen() {
   const list = useQuery(api.reviewWorkflows.list.queryOptions());
   const teams = useQuery(api.teams.list.queryOptions());
   const members = useQuery(api.orgMembers.list.queryOptions());
+  const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
+  const [filter, setFilter] = useState<WorkflowSubject | "all">("all");
+  const [fromOpen, setFromOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, WorkflowDraft>>({});
   const [gateSel, setGateSel] = useState<string | null>(null);
@@ -166,12 +196,16 @@ function WorkflowsScreen() {
   const [removing, setRemoving] = useState(false);
   const [dryOpen, setDryOpen] = useState(false);
   const ids = useId();
-  const fresh = useMemo(() => newDraft("aidlc", text[lang].newName, lang), [lang]);
+  // Bộ lọc "Code" thì quy trình mới cũng là quy trình code, để không phải đổi loại ngay sau khi bấm.
+  const freshSubject = filter === "code" ? "code" : "doc";
+  const fresh = useMemo(() => newDraft(defaultPreset(freshSubject), text[lang].newName, lang), [lang, freshSubject]);
   const names = useMemo(() => new Map((members.data ?? []).map((m) => [m.userId, m.name])), [members.data]);
   const teamNames = useMemo(() => new Map((teams.data ?? []).map((team) => [team.id, team.name])), [teams.data]);
 
   const workflows = list.data ?? [];
-  const key = selected ?? workflows[0]?.id ?? (canWrite ? NEW : null);
+  const visible = workflows.filter((w) => filter === "all" || w.subject === filter);
+  const stays = selected === NEW || visible.some((w) => w.id === selected);
+  const key = (stays ? selected : null) ?? visible[0]?.id ?? (canWrite ? NEW : null);
   const base = workflows.find((w) => w.id === key) ?? null;
   const draft: WorkflowDraft | null = key ? (drafts[key] ?? (base ? draftOf(base) : key === NEW ? fresh : null)) : null;
 
@@ -206,8 +240,13 @@ function WorkflowsScreen() {
 
   const header = (
     <PageHeader crumb={t.knowledge} title={t.title}>
+      {canWrite && draft?.subject === "code" && (
+        <Button variant="outline" onClick={() => setFromOpen(true)}>
+          {tc.fromProject}
+        </Button>
+      )}
       <Button variant="outline" disabled={!draft} onClick={() => setDryOpen(true)}>
-        {t.test}
+        {draft?.subject === "code" ? tc.test : t.test}
       </Button>
       {canWrite && (
         <Button disabled={!draft || !dirty || save.isPending} onClick={() => draft && apply(draft)}>
@@ -263,16 +302,34 @@ function WorkflowsScreen() {
     setGateSel(null);
     setPresetAsk(null);
   }
+  // Loại chỉ đổi được khi bản nháp chưa lưu; sau khi lưu hub không cho đổi.
+  function changeSubject(subject: WorkflowSubject) {
+    if (!draft || !key || draft.id || draft.subject === subject) return;
+    setSaved(false);
+    save.reset();
+    setDrafts((all) => ({ ...all, [key]: withSubject(draft, subject, lang) }));
+    setGateSel(null);
+  }
+  function openDraft(input: Parameters<typeof draftFromInput>[0], teamId: string | null) {
+    setDrafts((all) => ({ ...all, [NEW]: draftFromInput(input, teamId) }));
+    setFromOpen(false);
+    pick(NEW);
+  }
 
   const gates = draft?.phases.flatMap((p) => p.gates) ?? [];
   const cur = gates.find((g) => g.id === gateSel) ?? gates[0] ?? null;
-  const presetShort = draft && draft.preset !== "custom" ? PRESET_LABEL.en[draft.preset].replace(" (AWS)", "") : "#";
+  const isCode = draft?.subject === "code";
+  const presetShort = isCode
+    ? "Code"
+    : draft && draft.preset !== "custom"
+      ? PRESET_LABEL.en[draft.preset].replace(" (AWS)", "")
+      : "#";
 
   return (
     <>
       {header}
       <PageBody>
-        <p className="-mt-2 max-w-3xl text-muted-foreground">{t.lead}</p>
+        <p className="-mt-2 max-w-3xl text-muted-foreground">{isCode ? tc.lead : t.lead}</p>
         {!canWrite && <Alert>{t.readOnly}</Alert>}
         {issues.length > 0 && <IssueAlert title={t.invalid} issues={issues} />}
         {hubIssues && <IssueAlert title={t.invalid} issues={hubIssues} />}
@@ -289,6 +346,59 @@ function WorkflowsScreen() {
           <>
             <section className="flex flex-col gap-3 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
               <div className="flex flex-wrap items-center gap-3">
+                <fieldset className="m-0 flex flex-wrap items-center gap-2 border-0 p-0">
+                  <legend className="float-left text-sm font-medium">{tc.subject}</legend>
+                  <span className="inline-flex gap-0.5 rounded-lg bg-muted p-0.75">
+                    {SUBJECTS.map((sj) => (
+                      <label
+                        key={sj}
+                        className={cn(
+                          segButton(draft.subject === sj),
+                          "relative inline-flex items-center has-focus-visible:ring-2 has-focus-visible:ring-ring/50",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name={`${ids}-subject`}
+                          value={sj}
+                          // Ô radio trong suốt phủ cả nhãn, như bộ chọn loại checkpoint. Loại cố định sau khi lưu:
+                          // hub từ chối đổi, nên chỉ bản nháp mới chọn được.
+                          className="absolute inset-0 m-0 cursor-pointer appearance-none rounded-md opacity-0 disabled:cursor-not-allowed"
+                          checked={draft.subject === sj}
+                          disabled={!canWrite || draft.id !== null}
+                          onChange={() => changeSubject(sj)}
+                        />
+                        {SUBJECT_LABEL[lang][sj]}
+                      </label>
+                    ))}
+                  </span>
+                  {draft.id !== null && (
+                    <span className="text-xs text-muted-foreground" title={tc.lockedHint}>
+                      🔒 {tc.locked}
+                    </span>
+                  )}
+                </fieldset>
+                <fieldset className="m-0 flex flex-wrap items-center gap-2 border-0 p-0">
+                  <legend className="float-left text-sm text-muted-foreground">{tc.filter}</legend>
+                  <span className="inline-flex gap-0.5 rounded-lg bg-muted p-0.75">
+                    {(["all", ...SUBJECTS] as const).map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        aria-pressed={filter === f}
+                        className={segButton(filter === f)}
+                        onClick={() => {
+                          setFilter(f);
+                          setGateSel(null);
+                        }}
+                      >
+                        {f === "all" ? tc.filterAll : SUBJECT_LABEL[lang][f]}
+                      </button>
+                    ))}
+                  </span>
+                </fieldset>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 border-t border-dashed border-input pt-3">
                 <label htmlFor={`${ids}-wf`} className="flex w-full items-center gap-2 text-sm font-medium sm:w-auto">
                   {t.workflow}
                   <NativeSelect
@@ -297,14 +407,16 @@ function WorkflowsScreen() {
                     value={key ?? ""}
                     onChange={(e) => pick(e.target.value)}
                   >
-                    {workflows.map((w) => (
+                    {visible.map((w) => (
                       <option key={w.id} value={w.id}>
                         {(drafts[w.id]?.name ?? w.name) || w.name}
+                        {w.subject === "code" ? ` · ${SUBJECT_LABEL[lang].code}` : ""}
                         {w.enabled ? "" : ` (${t.off})`}
                       </option>
                     ))}
                     {(key === NEW || drafts[NEW]) && <option value={NEW}>{drafts[NEW]?.name || t.newName}</option>}
                   </NativeSelect>
+                  {isCode && <Pill tone="neutral">{SUBJECT_LABEL[lang].code}</Pill>}
                 </label>
                 {canWrite && key !== NEW && (
                   <Button
@@ -322,7 +434,7 @@ function WorkflowsScreen() {
                 <fieldset className="m-0 flex flex-wrap items-center gap-3 border-0 p-0">
                   <legend className="float-left text-sm text-muted-foreground">{t.preset}</legend>
                   <span className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.75">
-                    {PRESETS.map((p) => (
+                    {presetsOf(draft.subject).map((p) => (
                       <button
                         key={p}
                         type="button"
@@ -340,16 +452,18 @@ function WorkflowsScreen() {
                     ))}
                   </span>
                 </fieldset>
-                <span className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{t.appliesTo}</span>
-                  <ChipList
-                    values={draft.docPrefixes}
-                    onChange={(docPrefixes) => update({ docPrefixes })}
-                    canWrite={canWrite}
-                    addLabel={t.addPrefix}
-                    placeholder={t.prefixPh}
-                  />
-                </span>
+                {!isCode && (
+                  <span className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">{t.appliesTo}</span>
+                    <ChipList
+                      values={draft.docPrefixes}
+                      onChange={(docPrefixes) => update({ docPrefixes })}
+                      canWrite={canWrite}
+                      addLabel={t.addPrefix}
+                      placeholder={t.prefixPh}
+                    />
+                  </span>
+                )}
               </div>
               <WorkflowMeta
                 draft={draft}
@@ -360,6 +474,18 @@ function WorkflowsScreen() {
                 onRemove={() => setRemoving(true)}
               />
             </section>
+
+            {isCode && (
+              <>
+                <CodeScope
+                  draft={draft}
+                  canWrite={canWrite}
+                  projects={projects.data ?? []}
+                  onChange={(patch) => update({ code: draft.code && { ...draft.code, ...patch } })}
+                />
+                <CodeReplacesNote />
+              </>
+            )}
 
             <div className="flex flex-wrap items-start gap-4">
               <section aria-label={t.pipeline} className="flex min-w-0 flex-[999_1_640px] gap-3 overflow-x-auto pb-1.5">
@@ -423,7 +549,7 @@ function WorkflowsScreen() {
                     {p.gates.length === 0 && <span className="text-xs text-muted-foreground">{t.noGates}</span>}
                     {p.gates.map((g, gi) => {
                       const on = g.id === cur?.id;
-                      const cond = gateCond(g, t);
+                      const cond = gateCond(g, draft.subject, lang, t);
                       return (
                         <div key={g.id} className="flex flex-col items-stretch gap-1.5">
                           <button
@@ -444,7 +570,7 @@ function WorkflowsScreen() {
                             </span>
                             <span className="text-sm font-semibold">{g.name}</span>
                             <span className="text-xs text-muted-foreground">
-                              {gateWho(g, names, teamNames, lang, t)}
+                              {gateWho(g, draft.subject, names, teamNames, lang, t)}
                             </span>
                             {cond && <span className="text-xs text-warning">⤷ {cond}</span>}
                           </button>
@@ -461,7 +587,7 @@ function WorkflowsScreen() {
                         type="button"
                         className="h-8.5 cursor-pointer rounded-lg border border-dashed border-input bg-transparent text-sm text-muted-foreground hover:text-foreground"
                         onClick={() => {
-                          const g = newGate(t.newGateName, allGateIds(draft.phases), lang);
+                          const g = newGate(t.newGateName, allGateIds(draft.phases), lang, draft.subject);
                           update({
                             phases: draft.phases.map((x, i) => (i === pi ? { ...x, gates: [...x.gates, g] } : x)),
                           });
@@ -471,19 +597,22 @@ function WorkflowsScreen() {
                         + {t.addGate}
                       </button>
                     )}
-                    <div className="mt-0.5 flex flex-col gap-1 border-t border-dashed border-input pt-2 text-xs">
-                      <span className="text-muted-foreground">{t.outputs}</span>
-                      <ChipList
-                        values={p.outputs}
-                        onChange={(outputs) =>
-                          update({ phases: draft.phases.map((x, i) => (i === pi ? { ...x, outputs } : x)) })
-                        }
-                        canWrite={canWrite}
-                        addLabel={t.addOutput(p.name)}
-                        placeholder={t.outputPh}
-                        chipClass="bg-card"
-                      />
-                    </div>
+                    {/* Quy trình Code duyệt PR, không có tài liệu đầu ra theo giai đoạn. */}
+                    {draft.subject !== "code" && (
+                      <div className="mt-0.5 flex flex-col gap-1 border-t border-dashed border-input pt-2 text-xs">
+                        <span className="text-muted-foreground">{t.outputs}</span>
+                        <ChipList
+                          values={p.outputs}
+                          onChange={(outputs) =>
+                            update({ phases: draft.phases.map((x, i) => (i === pi ? { ...x, outputs } : x)) })
+                          }
+                          canWrite={canWrite}
+                          addLabel={t.addOutput(p.name)}
+                          placeholder={t.outputPh}
+                          chipClass="bg-card"
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
                 {canWrite && draft.phases.length < 10 && (
@@ -511,9 +640,10 @@ function WorkflowsScreen() {
                 className="flex w-full min-w-75 flex-[1_1_340px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground md:max-w-100"
               >
                 {cur ? (
-                  <GateConfig
+                  <GateConfigFor
                     // Ô nhiều dòng giữ chữ đang gõ; đổi quy trình, khung mẫu hay gate thì dựng lại từ dữ liệu mới.
                     key={`${key}:${draft.preset}:${cur.id}`}
+                    subject={draft.subject}
                     gate={cur}
                     canWrite={canWrite}
                     members={members.data ?? []}
@@ -538,7 +668,13 @@ function WorkflowsScreen() {
         )}
       </PageBody>
 
-      {dryOpen && draft && <DryRunDialog draft={draft} onClose={() => setDryOpen(false)} />}
+      {dryOpen && draft && isCode && (
+        <CodeDryRunDialog draft={draft} projects={projects.data ?? []} onClose={() => setDryOpen(false)} />
+      )}
+      {dryOpen && draft && !isCode && <DryRunDialog draft={draft} onClose={() => setDryOpen(false)} />}
+      {fromOpen && (
+        <FromProjectDialog projects={projects.data ?? []} onClose={() => setFromOpen(false)} onDraft={openDraft} />
+      )}
       {presetAsk && (
         <Dialog open onOpenChange={(open) => !open && setPresetAsk(null)}>
           <DialogContent>
@@ -578,36 +714,11 @@ function WorkflowsScreen() {
   );
 }
 
-/** Lỗi kiểm dữ liệu của hub (BAD_REQUEST kèm issues) đọc theo chỗ sai; lỗi khác để apiErrorMessage nói. */
-function hubIssuesOf(error: unknown, draft: WorkflowDraft | null, lang: Lang): WorkflowIssue[] | null {
-  if (!draft || !(error instanceof ORPCError) || error.code !== "BAD_REQUEST") return null;
-  const data: unknown = error.data;
-  const raw = typeof data === "object" && data !== null && "issues" in data ? data.issues : null;
-  if (!Array.isArray(raw) || raw.length === 0) return null;
-  const issues = raw.filter(
-    (i): i is { path?: unknown[]; message: string; code?: string } =>
-      typeof i === "object" && i !== null && typeof (i as { message?: unknown }).message === "string",
-  );
-  // Lỗi của dryRun bọc quy trình trong `workflow`; bỏ tầng đó để chỉ chỗ như lỗi của save.
-  return workflowIssues(
-    draft,
-    lang,
-    issues.map((i) => ({ ...i, path: i.path?.[0] === "workflow" ? i.path.slice(1) : (i.path ?? []) })),
-  );
-}
+type GateConfigProps = React.ComponentProps<typeof GateConfig>;
 
-function IssueAlert({ title, issues }: { title: string; issues: WorkflowIssue[] }) {
-  return (
-    <Alert variant="destructive">
-      <span className="font-medium">{title}</span>
-      <ul className="list-disc pl-5">
-        {issues.map((i, n) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: hai lỗi có thể trùng chữ; thứ tự là thứ tự hợp đồng báo.
-          <li key={n}>{i.where ? `${i.where}: ${i.message}` : i.message}</li>
-        ))}
-      </ul>
-    </Alert>
-  );
+/** Khung cấu hình checkpoint theo loại quy trình: tài liệu và code dùng chung đầu khung, khác phần thân. */
+function GateConfigFor({ subject, ...props }: GateConfigProps & { subject: WorkflowSubject }) {
+  return subject === "code" ? <CodeGateConfig {...props} /> : <GateConfig {...props} />;
 }
 
 function WorkflowMeta({
