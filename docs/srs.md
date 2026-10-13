@@ -148,6 +148,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | FLEET-07 | The worker shall delete every worktree it creates and remove orphans at start. | Implemented | `worker:internal/runner/runner_test.go` |
 | FLEET-08 | Review, plan and leader runs shall run the CLI in its read-only mode and never push. | Implemented | `worker:internal/runner/runner_test.go` |
 | FLEET-09 | A machine shall be personal by default and run only runs owned by the user who registered it; team administrators shall mark machines as shared, and team runs without an owner (Leader, review gate, webhooks) shall run only on shared machines or runner hosts, recording why they wait when none is available (ADR 0017). | Implemented | `hub:runs.db.test.ts` (máy cá nhân và máy dùng chung) |
+| FLEET-10 | A user shall be able to send instructions to a run only if they own it, or, for a team run without an owner, if they are a team or organization administrator; cancelling a run owned by someone else shall be limited to its owner and team administrators, and approving a plan with an edit or note on such a run to the same people. Others receive `RUN_NOT_YOURS` (ADR 0017). | Implemented | `hub:runs.db.test.ts` (ai được tác động vào run đã có chủ), `hub:plan.db.test.ts`, `web:tasks-runs.spec.ts` |
 
 ### 3.7 Sandbox (SBX)
 

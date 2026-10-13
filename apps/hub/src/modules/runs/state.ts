@@ -54,6 +54,7 @@ export function toRun(r: RunRow): Run {
       turns: r.turns,
     },
     createdBy: r.createdBy,
+    ownerUserId: r.ownerUserId,
     createdAt: r.createdAt.toISOString(),
     startedAt: iso(r.startedAt),
     finishedAt: iso(r.finishedAt),

@@ -43392,6 +43392,16 @@
                         "createdBy": {
                           "type": "string"
                         },
+                        "ownerUserId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
@@ -43446,6 +43456,7 @@
                         "timeoutSec",
                         "cost",
                         "createdBy",
+                        "ownerUserId",
                         "createdAt",
                         "startedAt",
                         "finishedAt",
@@ -44583,6 +44594,16 @@
                         "createdBy": {
                           "type": "string"
                         },
+                        "ownerUserId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
@@ -44637,6 +44658,7 @@
                         "timeoutSec",
                         "cost",
                         "createdBy",
+                        "ownerUserId",
                         "createdAt",
                         "startedAt",
                         "finishedAt",
@@ -45497,6 +45519,16 @@
                     "createdBy": {
                       "type": "string"
                     },
+                    "ownerUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -45551,6 +45583,7 @@
                     "timeoutSec",
                     "cost",
                     "createdBy",
+                    "ownerUserId",
                     "createdAt",
                     "startedAt",
                     "finishedAt",
@@ -46373,6 +46406,16 @@
                       "createdBy": {
                         "type": "string"
                       },
+                      "ownerUserId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "createdAt": {
                         "type": "string",
                         "format": "date-time"
@@ -46427,6 +46470,7 @@
                       "timeoutSec",
                       "cost",
                       "createdBy",
+                      "ownerUserId",
                       "createdAt",
                       "startedAt",
                       "finishedAt",
@@ -47251,6 +47295,16 @@
                       "createdBy": {
                         "type": "string"
                       },
+                      "ownerUserId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "createdAt": {
                         "type": "string",
                         "format": "date-time"
@@ -47305,6 +47359,7 @@
                       "timeoutSec",
                       "cost",
                       "createdBy",
+                      "ownerUserId",
                       "createdAt",
                       "startedAt",
                       "finishedAt",
@@ -48216,6 +48271,16 @@
                           "createdBy": {
                             "type": "string"
                           },
+                          "ownerUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -48276,6 +48341,7 @@
                           "timeoutSec",
                           "cost",
                           "createdBy",
+                          "ownerUserId",
                           "createdAt",
                           "startedAt",
                           "finishedAt",
@@ -49137,6 +49203,16 @@
                     "createdBy": {
                       "type": "string"
                     },
+                    "ownerUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -49191,6 +49267,7 @@
                     "timeoutSec",
                     "cost",
                     "createdBy",
+                    "ownerUserId",
                     "createdAt",
                     "startedAt",
                     "finishedAt",
@@ -49536,7 +49613,7 @@
     "/v1/runs/{id}/cancel": {
       "post": {
         "operationId": "runs.cancel",
-        "summary": "Huỷ run (thành viên đội)",
+        "summary": "Huỷ run (chủ run, quản trị đội; run của đội thì thành viên đội)",
         "description": "Tổ chức lấy từ header `x-hive-org`.",
         "tags": [
           "runs"
@@ -50012,6 +50089,16 @@
                     "createdBy": {
                       "type": "string"
                     },
+                    "ownerUserId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -50066,6 +50153,7 @@
                     "timeoutSec",
                     "cost",
                     "createdBy",
+                    "ownerUserId",
                     "createdAt",
                     "startedAt",
                     "finishedAt",
@@ -50411,7 +50499,7 @@
     "/v1/runs/{id}/steer": {
       "post": {
         "operationId": "runs.steer",
-        "summary": "Gửi chỉ dẫn cho agent của run (thành viên đội)",
+        "summary": "Gửi chỉ dẫn cho agent của run (chủ run; run của đội thì quản trị đội)",
         "description": "Tổ chức lấy từ header `x-hive-org`.",
         "tags": [
           "runs"
