@@ -120,7 +120,7 @@ apps/hub/src/modules/
 ├── scm/{types,github,gitlab,memory,local}.ts  # prFiles, setCommitStatus
 └── notify/                         # không đổi schema
 apps/hub/src/main.ts, app.ts        # nối deps và router
-apps/hub/db/migrations/0055_code_review_workflows.sql
+apps/hub/db/migrations/0056_code_review_workflows.sql
 
 packages/code-review/               # MỚI: UI dùng chung web + desktop (ADR 0017)
 └── src/{index.ts, code-review-pane.tsx, file-diff.tsx, ai-results.tsx, gate-stepper.tsx, decision-form.tsx}
@@ -142,7 +142,7 @@ worker/internal/runner/                         # chạy checks.commands sau age
 ## Data Model
 
 ```sql
--- apps/hub/db/migrations/0055_code_review_workflows.sql (sinh bằng db:generate, thêm tay phần FORCE và hàm)
+-- apps/hub/db/migrations/0056_code_review_workflows.sql (sinh bằng db:generate, thêm tay phần FORCE và hàm)
 
 ALTER TABLE hive.review_workflows
   ADD COLUMN subject text NOT NULL DEFAULT 'doc',
