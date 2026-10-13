@@ -25,6 +25,9 @@ import {
   SETTINGS_CLIS,
   type SettingsForm,
   saveErrors,
+  TASK_TIERS,
+  type TaskTier,
+  type TierForm,
 } from "@/lib/project-settings.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
@@ -105,6 +108,23 @@ const text: Dict<{
   cacheTtlHint: string;
   cacheTtl5: string;
   cacheTtl1h: string;
+  compactWindow: string;
+  compactWindowHint: string;
+  allowWeb: string;
+  allowWebHint: string;
+  routingTitle: string;
+  routingHint: string;
+  routingOn: string;
+  routingOnHint: string;
+  tierLight: string;
+  tierMedium: string;
+  tierHeavy: string;
+  tierModel: string;
+  tierEffort: string;
+  tierMaxTurns: string;
+  tierAdvisor: string;
+  tierAdvisorHint: string;
+  tierTurnsSuffix: string;
   permTitle: string;
   pWt: string;
   pWtHint: string;
@@ -211,6 +231,26 @@ const text: Dict<{
     cacheTtlHint: "5 phút đủ khi các lượt cách nhau ngắn. Chọn 1 giờ nếu run hay chờ build, test dài hơn 5 phút.",
     cacheTtl5: "5 phút",
     cacheTtl1h: "1 giờ",
+    compactWindow: "Cửa sổ ngữ cảnh tối đa",
+    compactWindowHint:
+      "Số token ngữ cảnh trước khi Claude Code nén. Phiên gần 1 triệu token bị đọc lại cả ngữ cảnh ở mỗi lượt nên rất tốn.",
+    allowWeb: "Cho agent dùng web",
+    allowWebHint: "Tắt thì run code không gọi được WebFetch, WebSearch (Claude Code) và web_search (Codex).",
+    routingTitle: "Định tuyến model theo độ khó",
+    routingHint:
+      "Hub suy cấp độ của task (nhẹ, vừa, nặng) từ nhãn, loại task, cỡ kế hoạch và mô tả, rồi chọn model, effort và số lượt tối đa cho run code. Run thử lại sau lỗi lên một cấp. Run review, plan, brief giữ model theo loại run ở mục trên. Codex chỉ nhận effort; Gemini và Antigravity không bị ảnh hưởng.",
+    routingOn: "Bật định tuyến",
+    routingOnHint:
+      "Tắt thì run code dùng model đã cấu hình (hoặc mặc định của CLI) như trước. Model cấu hình ở mục trên luôn thắng.",
+    tierLight: "Task nhẹ",
+    tierMedium: "Task vừa",
+    tierHeavy: "Task nặng",
+    tierModel: "Model Claude",
+    tierEffort: "Effort",
+    tierMaxTurns: "Số lượt tối đa",
+    tierAdvisor: "Model cố vấn",
+    tierAdvisorHint: "Để trống là tắt. Model chính chỉ hỏi cố vấn ở điểm quyết định; tắt khi máy đã tắt telemetry.",
+    tierTurnsSuffix: "lượt",
     permTitle: "Quyền CLI của run",
     pWt: "Trong worktree (khuyên dùng)",
     pWtHint:
@@ -324,6 +364,27 @@ const text: Dict<{
       "5 minutes is enough when turns are close together. Pick 1 hour if runs often wait on builds or tests longer than 5 minutes.",
     cacheTtl5: "5 minutes",
     cacheTtl1h: "1 hour",
+    compactWindow: "Max context window",
+    compactWindowHint:
+      "Context tokens before Claude Code compacts. A session near 1 million tokens re-reads all of it every turn, so it is costly.",
+    allowWeb: "Let the agent use the web",
+    allowWebHint: "When off, code runs cannot call WebFetch, WebSearch (Claude Code) or web_search (Codex).",
+    routingTitle: "Route models by difficulty",
+    routingHint:
+      "The hub infers the task tier (light, medium, heavy) from labels, task type, plan size and description, then picks model, effort and max turns for code runs. A retry after a failure goes up one tier. Review, plan and brief runs keep the per-kind model above. Codex only gets effort; Gemini and Antigravity are unaffected.",
+    routingOn: "Turn on routing",
+    routingOnHint:
+      "When off, code runs use the configured model (or the CLI default) as before. A model set in the section above always wins.",
+    tierLight: "Light tasks",
+    tierMedium: "Medium tasks",
+    tierHeavy: "Heavy tasks",
+    tierModel: "Claude model",
+    tierEffort: "Effort",
+    tierMaxTurns: "Max turns",
+    tierAdvisor: "Advisor model",
+    tierAdvisorHint:
+      "Leave empty to turn off. The main model only asks the advisor at decision points; off when the machine disables telemetry.",
+    tierTurnsSuffix: "turns",
     permTitle: "CLI permissions for runs",
     pWt: "Inside the worktree (recommended)",
     pWtHint:
@@ -516,6 +577,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   const [failure, setFailure] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [confirmFull, setConfirmFull] = useState(false);
+  const effortId = useId();
   const ids = {
     cacheTtl: useId(),
     method: useId(),
@@ -549,6 +611,10 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   const setModel = (cli: (typeof SETTINGS_CLIS)[number], kind: "code" | "review", v: string) => {
     setDone(false);
     setForm((f) => ({ ...f, models: { ...f.models, [cli]: { ...f.models[cli], [kind]: v } } }));
+  };
+  const setTier = <K extends keyof TierForm>(tier: TaskTier, k: K, v: TierForm[K]) => {
+    setDone(false);
+    setForm((f) => ({ ...f, tiers: { ...f.tiers, [tier]: { ...f.tiers[tier], [k]: v } } }));
   };
   const built = buildPatch(form, saved);
   const dirty = !built.ok || built.patch !== null;
@@ -956,7 +1022,79 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                 </NativeSelect>
                 {errors.cacheTtl ? <FieldError>{errors.cacheTtl}</FieldError> : <FieldHint>{t.cacheTtlHint}</FieldHint>}
               </Field>
+              <TextField
+                label={t.compactWindow}
+                hint={t.compactWindowHint}
+                error={errors.autocompactWindow}
+                value={form.autocompactWindow}
+                onChange={(v) => set("autocompactWindow", v)}
+                disabled={disabled || !form.tokenSaving}
+                inputMode="numeric"
+                suffix="token"
+              />
             </div>
+            <SwitchRow
+              label={t.allowWeb}
+              hint={t.allowWebHint}
+              checked={form.allowWeb}
+              onChange={(v) => set("allowWeb", v)}
+              disabled={disabled || !form.tokenSaving}
+            />
+          </Section>
+
+          <Section id="routing" title={t.routingTitle} hint={t.routingHint}>
+            <SwitchRow
+              label={t.routingOn}
+              hint={t.routingOnHint}
+              checked={form.routing}
+              onChange={(v) => set("routing", v)}
+              disabled={disabled}
+            />
+            {TASK_TIERS.map((tier) => (
+              <div key={tier} className="grid gap-3 sm:grid-cols-4">
+                <strong className="text-sm font-semibold text-foreground sm:col-span-4">
+                  {{ light: t.tierLight, medium: t.tierMedium, heavy: t.tierHeavy }[tier]}
+                </strong>
+                <TextField
+                  label={t.tierModel}
+                  error={errors[`tiers.${tier}.model`]}
+                  value={form.tiers[tier].model}
+                  onChange={(v) => setTier(tier, "model", v)}
+                  disabled={disabled || !form.routing}
+                />
+                <Field invalid={errors[`tiers.${tier}.effort`] !== undefined}>
+                  <FieldLabel htmlFor={`${effortId}-${tier}`}>{t.tierEffort}</FieldLabel>
+                  <NativeSelect
+                    id={`${effortId}-${tier}`}
+                    value={form.tiers[tier].effort}
+                    onChange={(e) => setTier(tier, "effort", e.currentTarget.value as TierForm["effort"])}
+                    disabled={disabled || !form.routing}
+                  >
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                  </NativeSelect>
+                  {errors[`tiers.${tier}.effort`] && <FieldError>{errors[`tiers.${tier}.effort`]}</FieldError>}
+                </Field>
+                <TextField
+                  label={t.tierMaxTurns}
+                  error={errors[`tiers.${tier}.maxTurns`]}
+                  value={form.tiers[tier].maxTurns}
+                  onChange={(v) => setTier(tier, "maxTurns", v)}
+                  disabled={disabled || !form.routing}
+                  inputMode="numeric"
+                  suffix={t.tierTurnsSuffix}
+                />
+                <TextField
+                  label={t.tierAdvisor}
+                  {...(tier === "medium" ? { hint: t.tierAdvisorHint } : {})}
+                  error={errors[`tiers.${tier}.advisor`]}
+                  value={form.tiers[tier].advisor}
+                  onChange={(v) => setTier(tier, "advisor", v)}
+                  disabled={disabled || !form.routing}
+                />
+              </div>
+            ))}
           </Section>
 
           <Section id="perm" title={t.permTitle}>
