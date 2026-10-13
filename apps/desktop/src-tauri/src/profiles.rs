@@ -607,11 +607,21 @@ fn work_dir(folder: &str, home: Option<&Path>) -> Result<String, String> {
     Ok(dir)
 }
 
+/// Cờ bỏ hỏi quyền của từng CLI khi người dùng chọn "Mở CLI (bỏ hỏi quyền)". Cố định ở đây, không nhận từ giao diện.
+fn bypass_flag(cli: &str) -> Option<&'static str> {
+    match cli {
+        "claude" | "antigravity" => Some("--dangerously-skip-permissions"),
+        "codex" => Some("--dangerously-bypass-approvals-and-sandbox"),
+        _ => None,
+    }
+}
+
 fn cli_launch(
     list: &[Account],
     id: &str,
     folder: Option<&str>,
     home: Option<&Path>,
+    bypass: bool,
 ) -> Result<Launch, String> {
     let id = id.trim();
     let plan = list
@@ -628,12 +638,24 @@ fn cli_launch(
         .filter(|f| !f.trim().is_empty())
         .map(|f| work_dir(f, home))
         .transpose()?;
+    let mut argv = vec![binary.to_string()];
+    if bypass {
+        argv.push(
+            bypass_flag(&plan.cli)
+                .ok_or_else(|| format!("CLI {} không có chế độ bỏ hỏi quyền.", plan.cli))?
+                .into(),
+        );
+    }
     Ok(Launch {
-        argv: vec![binary.into()],
+        argv,
         env,
         path: None,
         cwd,
-        note: "xDev Hive: mở CLI bằng đăng nhập của gói agent.",
+        note: if bypass {
+            "xDev Hive: mở CLI bằng đăng nhập của gói agent, BỎ HỎI QUYỀN: CLI tự chạy lệnh và sửa file không hỏi lại."
+        } else {
+            "xDev Hive: mở CLI bằng đăng nhập của gói agent."
+        },
     })
 }
 
@@ -645,10 +667,17 @@ pub async fn open_cli_terminal(
     app: AppHandle,
     id: String,
     folder: Option<String>,
+    bypass: Option<bool>,
 ) -> Result<(), String> {
     let Accounts { accounts } =
         sidecar_json(&app, vec!["accounts".into(), "--json".into()], vec![]).await?;
-    let job = cli_launch(&accounts, &id, folder.as_deref(), home_dir().as_deref())?;
+    let job = cli_launch(
+        &accounts,
+        &id,
+        folder.as_deref(),
+        home_dir().as_deref(),
+        bypass.unwrap_or(false),
+    )?;
     tauri::async_runtime::spawn_blocking(move || open_terminal(&job))
         .await
         .map_err(|e| e.to_string())?
@@ -944,11 +973,11 @@ mod tests {
         let home = Path::new("/Users/duy");
         let folder = env!("CARGO_MANIFEST_DIR");
 
-        let default = cli_launch(&plans(), "claude-1", None, Some(home)).unwrap();
+        let default = cli_launch(&plans(), "claude-1", None, Some(home), false).unwrap();
         assert_eq!(default.argv, ["claude"]);
         assert_eq!((default.env, default.cwd), (None, None));
 
-        let job = cli_launch(&plans(), " claude-2 ", Some(folder), Some(home)).unwrap();
+        let job = cli_launch(&plans(), " claude-2 ", Some(folder), Some(home), false).unwrap();
         assert_eq!(job.argv, ["claude"]);
         assert_eq!(
             job.env,
@@ -970,28 +999,40 @@ mod tests {
         assert!(cmd.contains(&format!("cd /d \"{folder}\" || exit /b 1\r\n")));
         assert!(cmd.ends_with("pause\r\n(goto) 2>nul & del \"%~f0\"\r\n"));
 
-        let codex = cli_launch(&plans(), "codex-2", Some("  "), None).unwrap();
+        let codex = cli_launch(&plans(), "codex-2", Some("  "), None, false).unwrap();
         assert_eq!(codex.argv, ["codex"]);
         assert_eq!(codex.env, Some(("CODEX_HOME", "/opt/codex 2".into())));
         assert_eq!(codex.cwd, None, "thư mục trống là không đặt");
 
         // Antigravity chạy bằng `agy` và không có biến thư mục đăng nhập.
-        let agy = cli_launch(&plans(), "antigravity-1", None, None).unwrap();
+        let agy = cli_launch(&plans(), "antigravity-1", None, None, false).unwrap();
         assert_eq!((agy.argv, agy.env), (vec!["agy".to_string()], None));
 
+        // Bỏ hỏi quyền: cờ cố định theo CLI, đặt ngay sau binary.
+        let claude = cli_launch(&plans(), "claude-1", None, None, true).unwrap();
+        assert_eq!(claude.argv, ["claude", "--dangerously-skip-permissions"]);
+        let codex = cli_launch(&plans(), "codex-2", None, None, true).unwrap();
+        assert_eq!(
+            codex.argv,
+            ["codex", "--dangerously-bypass-approvals-and-sandbox"]
+        );
+        let agy = cli_launch(&plans(), "antigravity-1", None, None, true).unwrap();
+        assert_eq!(agy.argv, ["agy", "--dangerously-skip-permissions"]);
+
         // `~` cần biết thư mục nhà; thư mục nhà thật thì có và là thư mục.
-        assert!(cli_launch(&plans(), "claude-1", Some("~"), None).is_err());
+        assert!(cli_launch(&plans(), "claude-1", Some("~"), None, false).is_err());
         let real = std::env::temp_dir();
         let home = real.parent().unwrap_or(&real);
-        let job = cli_launch(&plans(), "claude-1", Some("~"), Some(home)).unwrap();
+        let job = cli_launch(&plans(), "claude-1", Some("~"), Some(home), false).unwrap();
         assert_eq!(job.cwd.as_deref(), Some(home.to_string_lossy().as_ref()));
     }
 
     #[test]
     fn open_cli_refuses_unknown_input() {
         let folder = env!("CARGO_MANIFEST_DIR");
-        let refuse =
-            |id: &str, folder: Option<&str>| cli_launch(&plans(), id, folder, None).expect_err(id);
+        let refuse = |id: &str, folder: Option<&str>| {
+            cli_launch(&plans(), id, folder, None, false).expect_err(id)
+        };
         assert!(refuse("nope-1", None).contains("Không có gói"));
         assert!(refuse("", None).contains("Không có gói"));
         assert!(refuse("gemini-1", None).contains("Chưa mở được CLI gemini"));

@@ -1,4 +1,5 @@
-import { ChevronsUpDownIcon, UserRoundIcon } from "lucide-react";
+import { ChevronsUpDownIcon, ChevronUpIcon, UserRoundIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LogoIcon, Wordmark } from "@/components/logo.tsx";
 import { type Account, initials } from "@/lib/account.ts";
 import { formatBuiltAt, useBuildInfo } from "@/lib/build-info.ts";
@@ -19,6 +20,7 @@ const text: Dict<{
   profiles: Record<Profile, string>;
   build: string;
   devBuild: string;
+  details: string;
 }> = {
   vi: {
     aria: "Điều hướng app",
@@ -30,6 +32,7 @@ const text: Dict<{
     profiles: { dev: "Dev", writer: "Viết tài liệu", lead: "Trưởng nhóm" },
     build: "Bản đang chạy",
     devBuild: "bản dựng tại máy",
+    details: "Worker và phiên bản",
   },
   en: {
     aria: "App navigation",
@@ -41,8 +44,48 @@ const text: Dict<{
     profiles: { dev: "Dev", writer: "Writer", lead: "Lead" },
     build: "Running build",
     devBuild: "local build",
+    details: "Worker and version",
   },
 };
+
+/** Dưới ngưỡng này menu không đủ chỗ cho khối chân đầy đủ; cùng ngưỡng 760px với biến `compact` của chiều rộng. */
+const SHORT_QUERY = "(max-height: 760px)";
+
+function useShortWindow() {
+  const [short, setShort] = useState(() => window.matchMedia?.(SHORT_QUERY).matches ?? false);
+  useEffect(() => {
+    const query = window.matchMedia?.(SHORT_QUERY);
+    if (!query) return;
+    const sync = () => setShort(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return short;
+}
+
+/** Biết danh sách còn mục bị cắt ở đầu hoặc cuối để vẽ bóng mờ, vì thanh cuộn của hệ điều hành thường ẩn. */
+function useScrollEdges(ref: React.RefObject<HTMLElement | null>) {
+  const [edges, setEdges] = useState({ top: false, bottom: false });
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const top = el.scrollTop > 1;
+    const bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+    setEdges((prev) => (prev.top === top && prev.bottom === bottom ? prev : { top, bottom }));
+  }, [ref]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, [ref, measure]);
+  return { ...edges, measure };
+}
 
 /** Phiên bản, mã commit và ngày build ở đáy menu; thu gọn thì chỉ còn trong tooltip của dòng. */
 function BuildLine() {
@@ -83,6 +126,17 @@ export function AppNav({
   const t = useT(text);
   const lang = useLang();
   const [folder, setFolder] = useFolder();
+  const short = useShortWindow();
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const edges = useScrollEdges(listRef);
+  // Cửa sổ thấp mới gộp khối chân; thu gọn icon thì khối chân vốn chỉ còn một chấm và một avatar.
+  const foldFooter = short && !compact;
+  // Mục đang chọn có thể nằm dưới nếp cuộn (mở app ở màn cuối nhóm "Máy này"): cuộn vào tầm nhìn.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chạy lại khi đổi màn hoặc đổi chiều cao còn lại của menu
+  useEffect(() => {
+    listRef.current?.querySelector("[aria-current=page]")?.scrollIntoView?.({ block: "nearest" });
+  }, [active, foldFooter]);
   const roleLine = account ? `${t.profiles[profile]} · ${account.teams[0]?.name ?? account.orgName}` : "";
   return (
     <nav
@@ -116,73 +170,117 @@ export function AppNav({
         </span>
         <ChevronsUpDownIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
       </button>
-      {/* Tiêu đề nhóm làm menu cao hơn; cửa sổ thấp thì cuộn danh sách thay vì đẩy nút tài khoản ra khỏi cửa sổ. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-        {navGroups(profile).map((group, index) => (
-          // Tên nhóm nằm ở aria-label để trình đọc màn hình vẫn nghe được khi menu thu gọn mất tiêu đề.
-          // biome-ignore lint/a11y/useSemanticElements: nhóm liên kết điều hướng, không phải ô nhập của form như fieldset
-          <div
-            key={group.id}
-            role="group"
-            aria-label={group.label[lang]}
-            className={cn("flex flex-col gap-1", index > 0 && "compact:mt-1 compact:border-t compact:pt-2")}
-          >
-            {!compact && (
-              <div
-                aria-hidden="true"
-                className={cn(
-                  "px-2.5 pb-0.5 text-xs font-medium text-muted-foreground compact:hidden",
-                  index > 0 && "pt-2.5",
-                )}
-              >
-                {group.label[lang]}
-              </div>
-            )}
-            {group.items.map((item) => {
-              const current = item.id === active;
-              return (
-                <a
-                  key={item.id}
-                  href={`#/${item.id}`}
-                  aria-current={current ? "page" : undefined}
-                  title={item.label[lang]}
+      {/* Tiêu đề nhóm làm menu cao hơn; cửa sổ thấp thì cuộn danh sách thay vì đẩy nút tài khoản ra khỏi cửa sổ.
+          Bóng mờ ở mép báo còn mục bị cắt, nếu không người dùng không biết bên dưới còn gì. */}
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={listRef}
+          onScroll={edges.measure}
+          className="flex h-full flex-col gap-1 overflow-y-auto overscroll-contain"
+        >
+          {navGroups(profile).map((group, index) => (
+            // Tên nhóm nằm ở aria-label để trình đọc màn hình vẫn nghe được khi menu thu gọn mất tiêu đề.
+            // biome-ignore lint/a11y/useSemanticElements: nhóm liên kết điều hướng, không phải ô nhập của form như fieldset
+            <div
+              key={group.id}
+              role="group"
+              aria-label={group.label[lang]}
+              className={cn("flex flex-col gap-1", index > 0 && "compact:mt-1 compact:border-t compact:pt-2")}
+            >
+              {!compact && (
+                <div
+                  aria-hidden="true"
                   className={cn(
-                    "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-foreground no-underline hover:bg-muted",
-                    "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
-                    current && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
+                    "px-2.5 pb-0.5 text-xs font-medium text-muted-foreground compact:hidden",
+                    index > 0 && "pt-2.5",
                   )}
                 >
-                  <item.icon aria-hidden="true" className="size-4 shrink-0" />
-                  <span className="flex-1 compact:sr-only">{item.label[lang]}</span>
-                  {item.readOnly && <span className="text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>}
-                </a>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-      {worker && (
-        <div
-          role="status"
-          title={worker.detail ?? undefined}
-          className="mt-auto flex flex-col gap-0.5 rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted-foreground compact:mx-auto compact:border-0 compact:p-0"
-        >
-          <span className="flex items-center gap-1.5">
-            <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", WORKER_DOT[worker.kind])} />
-            <span className="compact:sr-only">{workerSentence(worker.label)}</span>
-          </span>
-          {worker.hub && <span className="truncate font-mono compact:hidden">{new URL(worker.hub).host}</span>}
+                  {group.label[lang]}
+                </div>
+              )}
+              {group.items.map((item) => {
+                const current = item.id === active;
+                return (
+                  <a
+                    key={item.id}
+                    href={`#/${item.id}`}
+                    aria-current={current ? "page" : undefined}
+                    title={item.label[lang]}
+                    className={cn(
+                      "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-foreground no-underline hover:bg-muted",
+                      "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
+                      current && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
+                    )}
+                  >
+                    <item.icon aria-hidden="true" className="size-4 shrink-0" />
+                    <span className="flex-1 compact:sr-only">{item.label[lang]}</span>
+                    {item.readOnly && (
+                      <span className="text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>
+                    )}
+                  </a>
+                );
+              })}
+            </div>
+          ))}
         </div>
+        <div
+          aria-hidden="true"
+          data-edge="top"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 h-5 border-t bg-gradient-to-b from-sidebar to-transparent transition-opacity",
+            edges.top ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <div
+          aria-hidden="true"
+          data-edge="bottom"
+          className={cn(
+            "pointer-events-none absolute inset-x-0 bottom-0 h-6 border-b bg-gradient-to-t from-sidebar to-transparent transition-opacity",
+            edges.bottom ? "opacity-100" : "opacity-0",
+          )}
+        />
+      </div>
+      {foldFooter && (
+        <button
+          type="button"
+          aria-expanded={detailsOpen}
+          onClick={() => setDetailsOpen((v) => !v)}
+          className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1 text-left text-xs text-muted-foreground hover:bg-muted"
+        >
+          {worker && (
+            <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", WORKER_DOT[worker.kind])} />
+          )}
+          <span className="flex-1">{t.details}</span>
+          <ChevronUpIcon
+            aria-hidden="true"
+            className={cn("size-3.5 transition-transform", !detailsOpen && "rotate-180")}
+          />
+        </button>
+      )}
+      {(!foldFooter || detailsOpen) && (
+        <>
+          {worker && (
+            <div
+              role="status"
+              title={worker.detail ?? undefined}
+              className="flex flex-col gap-0.5 rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted-foreground compact:mx-auto compact:border-0 compact:p-0"
+            >
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", WORKER_DOT[worker.kind])} />
+                <span className="compact:sr-only">{workerSentence(worker.label)}</span>
+              </span>
+              {worker.hub && <span className="truncate font-mono compact:hidden">{new URL(worker.hub).host}</span>}
+            </div>
+          )}
+          <BuildLine />
+        </>
       )}
       <button
         type="button"
         onClick={onAccount}
         title={account ? `${account.name} · ${roleLine}` : t.notLinked}
-        className={cn(
-          "flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left compact:justify-center compact:px-0",
-          // Thẻ worker đã đẩy khối cuối xuống đáy; hai mt-auto sẽ chia đôi khoảng trống.
-          worker ? "mt-2" : "mt-auto",
-        )}
+        // Vùng menu đã chiếm hết chỗ còn lại nên khối chân tự nằm ở đáy.
+        className="mt-1 flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left compact:justify-center compact:px-0"
       >
         {account ? (
           <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
@@ -200,7 +298,6 @@ export function AppNav({
           {account && <span className="truncate text-xs text-muted-foreground">{roleLine}</span>}
         </span>
       </button>
-      <BuildLine />
     </nav>
   );
 }
