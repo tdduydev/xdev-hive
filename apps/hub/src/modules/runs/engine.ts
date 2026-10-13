@@ -823,6 +823,7 @@ export function createRunsEngine(deps: RunsDeps) {
   }
 
   async function onRunResult(machine: AuthedMachine, msg: Extract<RunMessage, { type: "run_result" }>) {
+    let cancelledRun: RunRow | null = null;
     const next = await tenant(machine.orgId, async (tx) => {
       const run = await lockRun(tx, msg.runId);
       if (!run || run.attempt !== msg.attempt || run.machineId !== machine.id) return null;
@@ -843,7 +844,7 @@ export function createRunsEngine(deps: RunsDeps) {
       // Agent đã xong: máy không cần giữ lease nữa, slot trống cho run khác.
       await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
       if (run.state === "cancelling") {
-        await finishCancelled(tx, run, {});
+        cancelledRun = await finishCancelled(tx, run, {});
         return "cancelled" as const;
       }
       await transition(tx, run, "verifying", { headSha: msg.headSha }, { exit: msg.exit });
@@ -857,6 +858,7 @@ export function createRunsEngine(deps: RunsDeps) {
     });
     send(machine.id, { type: "ack", runId: msg.runId, uptoSeq: msg.seq });
     if (next === "verify") background(verify(machine.orgId, msg.runId), `verifying run ${msg.runId} lỗi`);
+    if (next === "cancelled" && cancelledRun) verifyParent(cancelledRun);
     if (next) background(dispatchTeam(machine.orgId, machine.teamId), "Không giao được run đang chờ");
   }
 
@@ -1330,6 +1332,15 @@ export function createRunsEngine(deps: RunsDeps) {
     await schedule({ kind: "verify", orgId: run.orgId, runId: run.parentRunId }, new Date(Date.now() + 1000), tx);
   }
 
+  /**
+   * Kết luận run cha ngay sau commit khi run con kết thúc theo đường huỷ hay mất máy; hẹn giờ của childFinished chỉ là
+   * đường dự phòng khi hub chết, chờ nó thì run cha treo thêm 1 giây (cộng chu kỳ quét của pg-boss).
+   */
+  function verifyParent(run: RunRow) {
+    if (run.kind === "code" || !run.parentRunId) return;
+    background(verify(run.orgId, run.parentRunId), `verifying run ${run.parentRunId} lỗi`);
+  }
+
   /** Run plan: succeeded khi agent đã gọi plan_submit. Xong thì kết luận run code cha (chờ duyệt hay thất bại). */
   async function verifyPlan(orgId: string, runId: string): Promise<void> {
     const ctx = await tenant(orgId, async (tx) => {
@@ -1601,10 +1612,12 @@ export function createRunsEngine(deps: RunsDeps) {
         }
         if (run.kind === "doccheck") await docCheckDone(tx, run, null, "Máy chạy run kiểm tài liệu mất kết nối.");
         await childFinished(tx, run);
+        return { failed: run };
       }
       return null;
     });
     if (out && "recheckAt" in out) await schedule(t, out.recheckAt);
+    else if (out && "failed" in out) verifyParent(out.failed);
     else if (out?.requeued) await dispatch(t.orgId, t.runId);
   }
 
@@ -1670,6 +1683,7 @@ export function createRunsEngine(deps: RunsDeps) {
       after: () => {
         child();
         if (offered) send(offered, { type: "cancel", runId: run.id, graceSec: 0 });
+        verifyParent(run);
       },
     };
   }
