@@ -230,9 +230,9 @@ func TestCliStopReason(t *testing.T) {
 		budget  Budget
 		want    string
 	}{
-		{"error_max_turns", Budget{MaxTurns: &turns}, "Dừng vì chạm giới hạn 60 lượt của run"},
-		{"error_max_turns", Budget{}, "Dừng vì chạm giới hạn số lượt của run."},
-		{"error_max_budget_usd", Budget{MaxCostUSD: &usd}, "Dừng vì chạm trần chi phí $1.5000 của run."},
+		{"error_max_turns", Budget{MaxTurns: &turns}, "Vượt ngân sách: chạm giới hạn 60 lượt của run"},
+		{"error_max_turns", Budget{}, "Vượt ngân sách: chạm giới hạn số lượt của run."},
+		{"error_max_budget_usd", Budget{MaxCostUSD: &usd}, "Vượt ngân sách: chạm trần chi phí $1.5000 của run."},
 		{"", Budget{}, ""},
 		{"success", Budget{}, ""},
 	}
@@ -270,8 +270,8 @@ func TestRunReportsClaudeLimitStop(t *testing.T) {
 		budget Budget
 		want   string
 	}{
-		{"max-turns", Budget{MaxTurns: &turns}, "Dừng vì chạm giới hạn 30 lượt của run"},
-		{"max-budget", Budget{MaxCostUSD: &usd}, "Dừng vì chạm trần chi phí $0.5000 của run."},
+		{"max-turns", Budget{MaxTurns: &turns}, "Vượt ngân sách: chạm giới hạn 30 lượt của run"},
+		{"max-budget", Budget{MaxCostUSD: &usd}, "Vượt ngân sách: chạm trần chi phí $0.5000 của run."},
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			var events []Event

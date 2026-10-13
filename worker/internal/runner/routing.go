@@ -66,19 +66,20 @@ func codexRoutingArgs(j Job) []string {
 	return []string{"-c", fmt.Sprintf("model_reasoning_effort=%q", j.Effort)}
 }
 
-// cliStopReason là lý do tiếng Việt khi CLI tự dừng vì giới hạn của run; rỗng khi không phải.
+// cliStopReason là lý do tiếng Việt khi CLI tự dừng vì giới hạn của run; rỗng khi không phải. Giữ tiền tố "Vượt ngân
+// sách: " vì hub tìm run dừng vì ngân sách (cost.budgetStoppedRuns) theo tiền tố đó.
 func cliStopReason(subtype string, b Budget) string {
 	switch subtype {
 	case "error_max_turns":
 		if b.MaxTurns != nil {
-			return fmt.Sprintf("Dừng vì chạm giới hạn %d lượt của run (cấp độ task hoặc cài đặt dự án). Chia nhỏ task hoặc nâng số lượt tối đa rồi chạy lại.", *b.MaxTurns)
+			return fmt.Sprintf("Vượt ngân sách: chạm giới hạn %d lượt của run (theo cấp độ task hoặc cài đặt dự án). Chia nhỏ task hoặc nâng số lượt tối đa rồi chạy lại.", *b.MaxTurns)
 		}
-		return "Dừng vì chạm giới hạn số lượt của run."
+		return "Vượt ngân sách: chạm giới hạn số lượt của run."
 	case "error_max_budget_usd":
 		if b.MaxCostUSD != nil {
-			return fmt.Sprintf("Dừng vì chạm trần chi phí $%.4f của run.", *b.MaxCostUSD)
+			return fmt.Sprintf("Vượt ngân sách: chạm trần chi phí $%.4f của run.", *b.MaxCostUSD)
 		}
-		return "Dừng vì chạm trần chi phí của run."
+		return "Vượt ngân sách: chạm trần chi phí của run."
 	}
 	return ""
 }
