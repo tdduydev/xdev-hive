@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
@@ -207,6 +208,59 @@ func TestOfferExpiresAndCancelFreesSlot(t *testing.T) {
 	j.onLease(&Lease{RunID: "c", Attempt: 1, LeaseID: "l"})
 	if len(j.active) != 0 {
 		t.Fatal("chạy run của đề nghị đã bị huỷ")
+	}
+}
+
+// Máy có hai chỗ nhưng chỉ một tài khoản Codex cho một run: đề nghị thứ hai vẫn được nhận (hub không bỏ máy) nhưng
+// chờ tài khoản; bỏ đề nghị (huỷ, hết hạn) thì trả tài khoản.
+func TestOfferHoldsAccountAndReleasesIt(t *testing.T) {
+	j := testJobs(t, 2)
+	path := filepath.Join(t.TempDir(), "accounts.json")
+	if err := os.WriteFile(path, []byte(`{"accounts":[{"id":"codex-3","cli":"codex","enabled":true,"maxConcurrent":1}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j.cfg.Accounts = accounts.NewPool(path)
+	offer := func(id string) *JobOffer {
+		return &JobOffer{RunID: id, Attempt: 1, TTL: 30, Spec: json.RawMessage(`{"cli":"codex"}`)}
+	}
+	j.onOffer(offer("a"))
+	if j.offers["a"].account.Label() != "codex-3" || j.offers["a"].waitAccount {
+		t.Fatal("đề nghị a phải giữ tài khoản codex-3")
+	}
+	j.onOffer(offer("b"))
+	if b, ok := j.offers["b"]; !ok || b.account != nil || !b.waitAccount {
+		t.Fatalf("b phải được nhận và chờ tài khoản: %+v", b)
+	}
+	j.cancel("a", 0)
+	j.onOffer(offer("c"))
+	if j.offers["c"].account.Label() != "codex-3" {
+		t.Fatal("huỷ a phải trả tài khoản cho đề nghị sau")
+	}
+}
+
+func TestWaitAccountUntilFreeOrCancelled(t *testing.T) {
+	j := testJobs(t, 2)
+	path := filepath.Join(t.TempDir(), "accounts.json")
+	if err := os.WriteFile(path, []byte(`{"accounts":[{"id":"codex-3","cli":"codex","enabled":true,"maxConcurrent":1}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j.cfg.Accounts = accounts.NewPool(path)
+	saved := accountPoll
+	accountPoll = 10 * time.Millisecond
+	defer func() { accountPoll = saved }()
+	held, _ := j.cfg.Accounts.Acquire("codex")
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		held.Release()
+	}()
+	got, err := j.waitAccount(context.Background(), "codex", "r")
+	if err != nil || got.Label() != "codex-3" {
+		t.Fatalf("chờ xong phải nhận codex-3: %v %v", got, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := j.waitAccount(ctx, "codex", "r"); err == nil {
+		t.Fatal("huỷ khi đang chờ phải trả lỗi")
 	}
 }
 

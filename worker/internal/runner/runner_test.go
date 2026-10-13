@@ -304,6 +304,13 @@ func TestFakeCLIHelper(t *testing.T) {
 	case "wait":
 		time.Sleep(300 * time.Millisecond)
 		os.Exit(0)
+	case "account":
+		// In thư mục đăng nhập CLI nhận được, để test kiểm worker đặt đúng biến của tài khoản.
+		fmt.Println("CODEX_HOME=" + os.Getenv("CODEX_HOME"))
+		os.Exit(0)
+	case "limit":
+		fmt.Fprintln(os.Stderr, "ERROR: You've hit your usage limit. Try again later.")
+		os.Exit(1)
 	case "usage-ok":
 		fmt.Println(`{"type":"assistant","message":{"id":"m1","model":"claude-test","usage":{"input_tokens":3,"output_tokens":7}}}`)
 		fmt.Println(`{"type":"result","usage":{"input_tokens":3,"output_tokens":9},"total_cost_usd":0.5,"num_turns":1}`)

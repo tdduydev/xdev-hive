@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 )
 
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
@@ -136,7 +138,9 @@ type Runner struct {
 	DataDir     string
 	CLICommands map[string]Command
 	Sandbox     *SandboxConfig
-	KillGrace   time.Duration
+	// Account là tài khoản CLI đã giữ cho run (spec 008 US13); nil là đăng nhập mặc định. Runner host (sandbox) bỏ qua.
+	Account   *accounts.Lease
+	KillGrace time.Duration
 	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
 	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
 	Grace func() time.Duration
@@ -304,6 +308,10 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	process := cmd.Cmd
 	process.Dir = work
 	process.Env = mergeEnv(os.Environ(), job.Env)
+	if r.Sandbox == nil {
+		// Đặt sau job.Env để spec của hub không đổi được thư mục đăng nhập của máy.
+		process.Env = mergeEnv(process.Env, r.Account.Env())
+	}
 	if r.Sandbox != nil {
 		process, err = r.sandboxCommand(job, work, cmd.Cmd.Args)
 		if err != nil {
@@ -325,6 +333,20 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	stderrLog := &logWriter{sink: sink, job: job, name: "stderr"}
 	process.Stdout = io.MultiWriter(stdoutLog, usage)
 	process.Stderr = stderrLog
+	if r.Account != nil && r.Sandbox == nil {
+		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] %s chạy bằng tài khoản %s.\n", job.CLI, r.Account.Label())
+		// Run không thành công vì tài khoản hết lượt dùng: cho tài khoản nghỉ để run sau sang tài khoản khác. Chỉ xét khi
+		// run hỏng, vì agent đọc hay in đúng câu đó (vd. sửa chính file này) không có nghĩa là hết lượt.
+		limit := &accounts.LimitWatcher{}
+		process.Stdout = io.MultiWriter(process.Stdout, limit)
+		process.Stderr = io.MultiWriter(stderrLog, limit)
+		defer func() {
+			if limit.Hit() && (result == nil || (result.Status != "succeeded" && result.Status != "no_changes")) {
+				r.Account.Cooldown()
+				_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Tài khoản %s hết lượt dùng, nghỉ trước khi nhận run mới.\n", r.Account.Label())
+			}
+		}()
+	}
 	if tool := hooksOf(job.Policy.Hooks, "PreToolUse", "PostToolUse"); len(tool) > 0 && (job.CLI != "claude" || cmd.input != InputStreamJSON) {
 		// Chỉ Claude Code nhận hook theo tool qua --settings; báo vào log để người xem run biết hook nào không chạy.
 		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] %s không chạy được %d hook PreToolUse/PostToolUse của tổ chức; hook Stop vẫn chạy.\n", job.CLI, len(tool))
