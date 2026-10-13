@@ -162,4 +162,15 @@ describe("sự kiện cost", () => {
   it("từ chối accountId rỗng", () => {
     expect(costEventData.safeParse({ ...base, accountId: "" }).success).toBe(false);
   });
+
+  it("rtk là tuỳ chọn và chỉ nhận số nguyên không âm", () => {
+    expect(costEventData.parse(base).rtk).toBeUndefined();
+    expect(costEventData.parse({ ...base, rtk: { commands: 12, savedTokens: 3400 } }).rtk).toEqual({
+      commands: 12,
+      savedTokens: 3400,
+    });
+    for (const bad of [{ commands: -1, savedTokens: 0 }, { commands: 1, savedTokens: 1.5 }, { commands: 1 }]) {
+      expect(costEventData.safeParse({ ...base, rtk: bad }).success).toBe(false);
+    }
+  });
 });

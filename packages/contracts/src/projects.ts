@@ -118,9 +118,10 @@ export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", 
 /**
  * Cài đặt "Tiết kiệm token" cho run Claude Code (worker đặt thành biến môi trường của CLI). Bật mặc định vì số đo
  * trên máy dev cho thấy output Bash, subagent chạy model nặng và ghi cache 1 giờ là các khoản tốn nhất; dự án nào
- * cần ngữ cảnh đầy đủ thì tắt hoặc chỉnh từng mục. CLI khác Claude Code không bị ảnh hưởng.
+ * cần ngữ cảnh đầy đủ thì tắt hoặc chỉnh từng mục. Các biến môi trường và RTK chỉ áp cho Claude Code; CodeGraph áp cho
+ * cả Codex, Gemini và Antigravity. `enabled` là công tắc tổng: tắt thì worker không áp mục nào, kể cả rtk và codegraph.
  */
-export const tokenSavingSettings = z.object({
+const tokenSavingShape = {
   enabled: z.boolean(),
   /** Số ký tự tối đa của output một lệnh Bash đưa vào ngữ cảnh (BASH_MAX_OUTPUT_LENGTH). */
   bashMaxChars: z
@@ -134,7 +135,21 @@ export const tokenSavingSettings = z.object({
   subagentModel: z.string().trim().min(1, "Nhập tên model.").max(100, "Tối đa 100 ký tự."),
   /** Thời gian giữ cache prompt: `5m` rẻ hơn khi các lượt cách nhau ngắn, `1h` cho run có lượt chờ dài. */
   cacheTtl: z.enum(["5m", "1h"]),
+  /** Nén output lệnh Bash qua RTK khi máy chạy run có rtk; chỉ Claude Code. */
+  rtk: z.boolean(),
+  /** Gắn MCP CodeGraph (`codegraph_explore`) và giữ chỉ mục code khi máy chạy run có codegraph. */
+  codegraph: z.boolean(),
+};
+
+// rtk và codegraph có mặc định vì settings đã lưu trước khi có hai mục này không chứa chúng. Mặc định chỉ đặt ở bản
+// đầy đủ: nếu đặt trong shape chung thì `.partial()` của bản vá vẫn điền true khi trường vắng, và một bản vá chỉ đổi
+// bashMaxChars sẽ lặng lẽ bật lại mục người dùng đã tắt.
+export const tokenSavingSettings = z.object({
+  ...tokenSavingShape,
+  rtk: tokenSavingShape.rtk.default(true),
+  codegraph: tokenSavingShape.codegraph.default(true),
 });
+export const tokenSavingPatch = z.object(tokenSavingShape).partial().strict();
 export type TokenSaving = z.output<typeof tokenSavingSettings>;
 
 export const defaultTokenSaving: TokenSaving = {
@@ -143,6 +158,8 @@ export const defaultTokenSaving: TokenSaving = {
   autocompactPct: 70,
   subagentModel: "sonnet",
   cacheTtl: "5m",
+  rtk: true,
+  codegraph: true,
 };
 
 export const runPermissionMode = z.enum(["workspace", "full"]);
@@ -309,7 +326,7 @@ export const projectSettingsPatch = z
       })
       .optional(),
     issueIntake: issueIntakeSettings.partial().strict().optional(),
-    tokenSaving: tokenSavingSettings.partial().strict().optional(),
+    tokenSaving: tokenSavingPatch.optional(),
     defaultCli: cli.nullable().optional(),
     budget: z
       .strictObject({

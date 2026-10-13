@@ -68,6 +68,7 @@ const run = (n: number, over: Record<string, unknown>) => ({
   timeoutSec: 3600,
   cost: cost(null),
   explore: null,
+  rtk: null,
   createdBy: "u1",
   ownerUserId: "u1",
   createdAt: "2026-10-11T06:00:00.000Z",
@@ -185,9 +186,21 @@ test("cấu hình dự án: Tiết kiệm token hiện mặc định, sửa và 
       settings: { tokenSaving: { enabled: true, bashMaxChars: 8000, subagentModel: "haiku", cacheTtl: "1h" } },
     });
 
+  // RTK và CodeGraph mặc định bật; tắt từng mục thì bản vá mang đúng giá trị.
+  await expect(page.getByRole("switch", { name: "Nén output lệnh bằng RTK" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Gắn CodeGraph cho agent" })).toBeChecked();
+  await page.getByRole("switch", { name: "Nén output lệnh bằng RTK" }).click();
+  await page.getByRole("switch", { name: "Gắn CodeGraph cho agent" }).click();
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await expect
+    .poll(() => h.rpcCalls.filter((c) => c.path === "projects/updateSettings").at(-1)?.input)
+    .toMatchObject({ key: "PAY", settings: { tokenSaving: { rtk: false, codegraph: false } } });
+
   // Tắt cả nhóm thì các ô khoá lại.
   await page.getByRole("switch", { name: "Bật tiết kiệm token" }).click();
   await expect(page.getByRole("textbox", { name: "Output lệnh tối đa" })).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Nén output lệnh bằng RTK" })).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Gắn CodeGraph cho agent" })).toBeDisabled();
 });
 
 test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async ({ page }) => {
