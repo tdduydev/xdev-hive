@@ -573,3 +573,152 @@ export function codeWorkflowsFixture(state: { workflows: ReviewWorkflow[] }) {
   };
   return { calls, rpc };
 }
+
+export const ACCOUNTS_ORG = {
+  id: "0a0a0a0a-0000-4000-8000-00000000000a",
+  slug: "acme-dev",
+  name: "Acme Software xDev",
+  role: "owner",
+  emailDomain: null,
+  createdAt: "2026-10-01T03:00:00.000Z",
+};
+export const SHARED_MACHINE_ID = "8e8e8e8e-0000-4000-8000-000000000001";
+export const PERSONAL_MACHINE_ID = "8e8e8e8e-0000-4000-8000-000000000002";
+
+/**
+ * Gói agent trên trang Máy (T063): hai máy (một dùng chung có `accounts-remote`, một cá nhân) và các route
+ * `machines/accounts/*` cùng `machines/setAccount`. Đăng nhập giả lập đúng hợp đồng:
+ * - Claude: `waiting` kèm URL và `needsInput`; gửi mã (`loginInput`) thì `done` với `accountId` "claude-2".
+ * - Codex: `starting` rồi URL + mã thiết bị; sau `codexPolls` lần hỏi thì `done` với "codex-2".
+ * Chữ người dùng dán chỉ được ghi ở `state.pasted` để test kiểm hub nhận đúng, không bao giờ nằm trong phiên trả về.
+ */
+export function machineAccountsFixture(opts: { codexPolls?: number } = {}) {
+  const at = "2026-10-13T08:00:00.000Z";
+  const teamId = "7e7e7e7e-0000-4000-8000-000000000001";
+  const machine = (id: string, name: string, shared: boolean) => ({
+    id,
+    teamId,
+    kind: "worker",
+    name,
+    os: "linux",
+    version: "1.3.0",
+    clis: ["claude", "codex"],
+    capacity: 2,
+    status: "online",
+    lastSeenAt: at,
+    createdAt: at,
+    shared,
+    registeredBy: "u2",
+  });
+  const account = (id: string, cli: string, label: string, over: Record<string, unknown> = {}) => ({
+    id,
+    cli,
+    label,
+    roles: [],
+    enabled: true,
+    loggedIn: true,
+    sessionPct: 32,
+    weekPct: 85,
+    resetsAt: "2026-10-13T11:00:00.000Z",
+    stopAtSession: 0,
+    stopAtWeek: 0,
+    inUse: 0,
+    ...over,
+  });
+  type Login = Record<string, unknown> & { requestId: string; cli: string; status: string };
+  const state = {
+    accounts: [
+      account("claude-1", "claude", "Claude Max team"),
+      account("codex-1", "codex", "Codex Plus", { loggedIn: false, sessionPct: null, weekPct: null, resetsAt: null }),
+    ],
+    login: null as Login | null,
+    polls: 0,
+    pasted: [] as string[],
+  };
+  const codexPolls = opts.codexPolls ?? 2;
+  const session = (over: Record<string, unknown>): Login => ({ ...state.login, ...over }) as Login;
+  const rpc: Record<string, RpcHandler> = {
+    "orgs/mine": () => ok({ orgs: [ACCOUNTS_ORG], canCreateOrg: false }),
+    "teams/list": () =>
+      ok([
+        { id: teamId, slug: "sdlc", name: "AI SDLC", color: "#004CFF", createdAt: at, systemCount: 0, memberCount: 1 },
+      ]),
+    "projects/list": () => ok([]),
+    "orgMembers/list": () => ok([]),
+    "machines/workerRelease": () => ok(null),
+    "machines/list": () =>
+      ok([
+        {
+          ...machine(SHARED_MACHINE_ID, "sdlc-box-01", true),
+          capabilities: ["sdlc", "accounts-remote"],
+          accounts: state.accounts,
+        },
+        { ...machine(PERSONAL_MACHINE_ID, "dev-ha", false), accounts: null },
+      ]),
+    "machines/accounts/list": (input) => {
+      const { machineId } = input as { machineId: string };
+      if (machineId === PERSONAL_MACHINE_ID) {
+        return ok({ machineId, accounts: null, accountsAt: null, remote: false, reason: "personal", login: null });
+      }
+      const active = state.login && ["starting", "waiting"].includes(state.login.status) ? state.login : null;
+      return ok({ machineId, accounts: state.accounts, accountsAt: at, remote: true, reason: null, login: active });
+    },
+    "machines/setAccount": (input) => {
+      const { machineId, accountId, enabled } = input as { machineId: string; accountId: string; enabled: boolean };
+      state.accounts = state.accounts.map((a) => (a.id === accountId ? { ...a, enabled } : a));
+      return ok({ ...machine(machineId, "sdlc-box-01", true), accounts: state.accounts });
+    },
+    "machines/accounts/loginStart": (input) => {
+      const { machineId, cli, label, how } = input as {
+        machineId: string;
+        cli: "claude" | "codex";
+        label: string;
+        how: string;
+      };
+      state.polls = 0;
+      state.login = {
+        requestId: `login-${cli}`,
+        machineId,
+        cli,
+        label,
+        how,
+        status: cli === "claude" ? "waiting" : "starting",
+        url: cli === "claude" ? "https://claude.ai/oauth/authorize?code=true&state=abc" : null,
+        code: null,
+        needsInput: cli === "claude",
+        accountId: null,
+        error: null,
+        startedBy: "u1",
+        startedAt: at,
+        expiresAt: "2026-10-13T08:10:00.000Z",
+      };
+      return ok(state.login);
+    },
+    "machines/accounts/loginGet": () => {
+      if (!state.login) return fail("NOT_FOUND", 404, "Không có phiên đăng nhập.");
+      if (state.login.cli === "codex" && state.login.status !== "done") {
+        state.polls += 1;
+        state.login =
+          state.polls > codexPolls
+            ? session({ status: "done", url: null, code: null, accountId: "codex-2" })
+            : session({ status: "waiting", url: "https://auth.openai.com/codex/device", code: "ABCD-1234" });
+        if (state.login.status === "done") {
+          state.accounts = [...state.accounts, account("codex-2", "codex", String(state.login.label))];
+        }
+      }
+      return ok(state.login);
+    },
+    "machines/accounts/loginInput": (input) => {
+      const { text } = input as { text: string };
+      state.pasted.push(text);
+      state.login = session({ status: "done", needsInput: false, accountId: "claude-2" });
+      state.accounts = [...state.accounts, account("claude-2", "claude", String(state.login.label))];
+      return ok(state.login);
+    },
+    "machines/accounts/loginCancel": () => {
+      state.login = session({ status: "cancelled", needsInput: false });
+      return ok(state.login);
+    },
+  };
+  return { state, rpc };
+}
