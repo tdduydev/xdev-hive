@@ -154,6 +154,23 @@ describe("projects.updateSettings: Tiết kiệm token", () => {
     const off = await update("tadmin", p.key, { tokenSaving: { enabled: false } });
     expect(off.tokenSaving).toEqual({ ...defaultTokenSaving, cacheTtl: "1h", bashMaxChars: 30_000, enabled: false });
   });
+
+  it("tokenSaving đã lưu thiếu rtk và codegraph được đọc là bật", async () => {
+    const p = await newProject();
+    await admin.query(
+      "update hive.projects set settings = settings #- '{tokenSaving,rtk}' #- '{tokenSaving,codegraph}' where id = $1",
+      [p.id],
+    );
+    const after = await update("tadmin", p.key, { tokenSaving: { cacheTtl: "1h" } });
+    expect(after.tokenSaving).toMatchObject({ rtk: true, codegraph: true, cacheTtl: "1h" });
+  });
+
+  it("bản vá không liên quan không bật lại rtk và codegraph đã tắt", async () => {
+    const p = await newProject();
+    await update("tadmin", p.key, { tokenSaving: { rtk: false, codegraph: false } });
+    const after = await update("tadmin", p.key, { tokenSaving: { bashMaxChars: 2000 } });
+    expect(after.tokenSaving).toMatchObject({ rtk: false, codegraph: false, bashMaxChars: 2000 });
+  });
 });
 
 describe("projects.updateSettings: quyền", () => {

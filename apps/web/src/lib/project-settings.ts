@@ -56,6 +56,8 @@ export interface SettingsForm {
   autocompactPct: string;
   subagentModel: string;
   cacheTtl: TokenSaving["cacheTtl"];
+  rtk: boolean;
+  codegraph: boolean;
 }
 
 const text = (n: number | undefined): string => (n === undefined ? "" : String(n));
@@ -101,6 +103,9 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     autocompactPct: String(saving.autocompactPct),
     subagentModel: saving.subagentModel,
     cacheTtl: saving.cacheTtl,
+    // Hub cũ chưa có hai mục này: hub mới đọc thiếu là bật.
+    rtk: saving.rtk ?? defaultTokenSaving.rtk,
+    codegraph: saving.codegraph ?? defaultTokenSaving.codegraph,
   };
 }
 
@@ -198,6 +203,8 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       autocompactPct: requiredNum(form.autocompactPct, "autocompactPct", errors),
       subagentModel: form.subagentModel.trim(),
       cacheTtl: form.cacheTtl,
+      rtk: form.rtk,
+      codegraph: form.codegraph,
     },
   };
 }
