@@ -79,31 +79,21 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
     const ticket = consumeTicket(url.searchParams.get("ticket") ?? "");
     if (!originAllowed(req.headers.origin, req.headers.host, opts.publicUrl)) return reject(socket, 403);
     if (!ticket) return reject(socket, 401);
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      onConnection(ws, ticket).catch((error: unknown) => {
-        log.error("Lỗi mở kết nối terminal", error);
-        ws.close(1011, "Hub lỗi khi mở phiên");
-      });
-    });
+    wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, ticket));
   };
 
-  const onConnection = async (ws: WebSocket, ticket: NonNullable<ReturnType<typeof consumeTicket>>) => {
+  const onConnection = (ws: WebSocket, ticket: NonNullable<ReturnType<typeof consumeTicket>>) => {
     const send = (frame: TerminalServerFrame) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame));
     };
-    const row = await withTenant(opts.pool, { orgId: ticket.orgId, userId: ticket.userId }, (tx) =>
-      loadSession(tx, ticket.sessionId),
-    );
-    if (!row) return ws.close(TERMINAL_WS_CLOSE.notFound, "Không tìm thấy phiên");
-    send({ t: "hello", session: sessionView(row, ticket.userId), canInput: ticket.canInput });
-    const live = liveSession(row.id);
     const viewer: Viewer = {
       userId: ticket.userId,
       canInput: ticket.canInput,
       send,
       close: (code, reason) => ws.close(code, reason),
     };
-    live?.viewers.add(viewer);
+    let live: LiveSession | undefined;
+    let closed = false;
     const bytes = new Bucket(INPUT_RATE_BYTES, INPUT_BURST_BYTES);
     const frames = new Bucket(FRAME_RATE, FRAME_RATE);
     let drops = 0;
@@ -144,7 +134,20 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
       }
     };
 
-    let queue = Promise.resolve();
+    // Khung đầu tiên (resume, phím) có thể tới ngay khi mở, trước lúc hub đọc xong phiên: gắn handler ngay và xếp mọi
+    // khung sau bước dựng, nếu không ws bỏ mất các khung tới khi chưa có listener.
+    let queue: Promise<unknown> = (async () => {
+      const row = await withTenant(opts.pool, { orgId: ticket.orgId, userId: ticket.userId }, (tx) =>
+        loadSession(tx, ticket.sessionId),
+      );
+      if (!row) return ws.close(TERMINAL_WS_CLOSE.notFound, "Không tìm thấy phiên");
+      send({ t: "hello", session: sessionView(row, ticket.userId), canInput: ticket.canInput });
+      live = liveSession(row.id);
+      if (!closed) live?.viewers.add(viewer);
+    })().catch((error: unknown) => {
+      log.error("Lỗi mở kết nối terminal", error);
+      ws.close(1011, "Hub lỗi khi mở phiên");
+    });
     ws.on("message", (data, isBinary) => {
       if (isBinary) return ws.close(1003, "Chỉ nhận khung JSON");
       let frame: TerminalClientFrame;
@@ -155,7 +158,10 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
       }
       queue = queue.then(() => onFrame(frame)).catch((error: unknown) => log.error("Lỗi xử lý khung terminal", error));
     });
-    ws.on("close", () => live?.viewers.delete(viewer));
+    ws.on("close", () => {
+      closed = true;
+      live?.viewers.delete(viewer);
+    });
     ws.on("error", (error) => log.warn("Kết nối terminal của trình duyệt lỗi", error));
   };
 
