@@ -128,20 +128,6 @@ const text: Dict<
   },
 };
 
-export interface OnboardingSearch {
-  /** Bước 2 (tạo đội) và 3 (mời người); không có là bước 1 (tạo tổ chức). */
-  buoc?: "doi" | "moi";
-  /** Đội vừa tạo ở bước 2, để bước 3 mở thẳng đội đó. */
-  doi?: string;
-}
-
-export function validateOnboardingSearch(search: Record<string, unknown>): OnboardingSearch {
-  return {
-    ...(search.buoc === "doi" || search.buoc === "moi" ? { buoc: search.buoc } : {}),
-    ...(typeof search.doi === "string" ? { doi: search.doi } : {}),
-  };
-}
-
 function Steps({ current }: { current: number }) {
   const t = { ...useT(text), ...useT(stepText) };
   return (

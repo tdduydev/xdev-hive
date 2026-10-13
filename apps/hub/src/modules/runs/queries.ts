@@ -6,12 +6,12 @@ import {
   type RunSearchInput,
   type RunSearchResult,
 } from "@xdev-hive/contracts";
-import { and, asc, desc, eq, gt, inArray, isNotNull, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, type SQL, sql } from "drizzle-orm";
 import { loadProject } from "../catalog/index.ts";
 import { machineNames } from "../fleet/index.ts";
 import { NotFoundError, type Tx } from "../platform/index.ts";
 import { taskForUser, taskSummaries } from "../tasks/index.ts";
-import { type TeamRole, teamRoleOf, visibleTeamIds } from "../tenancy/index.ts";
+import { teamRoleOf, teamRolesOf, visibleTeamIds } from "../tenancy/index.ts";
 import { runForUser } from "./engine.ts";
 import { runEvents, runLogs, runs } from "./schema.ts";
 import { toRun } from "./state.ts";
@@ -52,9 +52,12 @@ export async function latestRuns(tx: Tx, userId: string, projectId?: string): Pr
     .from(runs)
     .where(and(eq(runs.kind, "code"), projectId ? eq(runs.projectId, projectId) : undefined))
     .orderBy(runs.taskId, desc(runs.createdAt));
-  const roles = new Map<string, TeamRole | null>();
-  for (const teamId of new Set(rows.map((r) => r.teamId))) roles.set(teamId, await teamRoleOf(tx, userId, teamId));
-  return withMachineNames(tx, rows.filter((r) => roles.get(r.teamId)).map(toRun));
+  const roles = await teamRolesOf(
+    tx,
+    userId,
+    rows.map((r) => r.teamId),
+  );
+  return withMachineNames(tx, rows.filter((r) => roles.has(r.teamId)).map(toRun));
 }
 
 /** Số máy tối đa trong ô lọc theo máy. */
@@ -104,14 +107,15 @@ export async function searchRuns(tx: Tx, userId: string, input: RunSearchInput):
   }));
   let machines: RunSearchResult["machines"] = [];
   if (!input.cursor) {
-    const ids = await tx
-      .selectDistinct({ id: runs.machineId })
-      .from(runs)
-      .where(and(visible, isNotNull(runs.machineId)))
-      .limit(MACHINE_FACET_LIMIT);
+    // Đi từ máy của tổ chức, mỗi máy hỏi index runs_machine xem có run của đội mình thấy không: số máy ít và không tăng
+    // theo số run, còn distinct machine_id trên runs phải đọc mọi run của các đội. Máy đã xoá không có tên nên vốn không
+    // hiện trong ô lọc. Hỏi bảng machines bằng SQL vì runs chỉ import fleet qua index.ts, như tasks hỏi bảng runs.
+    const ids = await tx.execute<{ id: string }>(
+      sql`select m.id from hive.machines m where exists (select 1 from ${runs} where ${runs.machineId} = m.id and ${visible}) limit ${MACHINE_FACET_LIMIT}`,
+    );
     const names = await machineNames(
       tx,
-      ids.flatMap((r) => (r.id ? [r.id] : [])),
+      ids.rows.map((r) => r.id),
     );
     machines = [...names].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "vi"));
   }

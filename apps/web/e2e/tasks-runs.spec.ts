@@ -495,3 +495,70 @@ test("trang chủ: không báo số 0 khi tra máy lỗi", async ({ page }) => {
   await expect(page.getByRole("region", { name: "Số liệu" })).toContainText("—máy trực tuyến");
   await expect(page.getByText("Không tải được số máy trực tuyến.")).toBeVisible();
 });
+
+test("chuyển giữa trang chủ và bảng việc không tải lại danh sách vừa tải", async ({ page }) => {
+  const hub = await open(page, {
+    "teams/list": () => ok([{ id: TEAM_ID, name: "Thanh toán" }]),
+    "machines/list": () => ok([{ id: MACHINE, status: "online" }]),
+  });
+  const calls = (path: string) => hub.rpcCalls.filter((c) => c.path === path).length;
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Số liệu" })).toContainText("1run đang chạy");
+  await page
+    .getByRole("navigation", { name: "Trang chủ", exact: true })
+    .getByRole("link", { name: "Bảng việc" })
+    .click();
+  await expect(page.getByRole("heading", { name: "Bảng việc" })).toBeVisible();
+  await expect(page.getByText("Hướng dẫn cài worker trên Windows")).toBeVisible();
+  await page.locator('a[href="/"]:visible').first().click();
+  await expect(page.getByRole("region", { name: "Số liệu" })).toContainText("1run đang chạy");
+  expect({ tasks: calls("tasks/list"), runs: calls("runs/latest") }).toEqual({ tasks: 1, runs: 1 });
+});
+
+test("chunk của trang tải cùng lúc với me.get, không chờ me.get và orgs.mine xong", async ({ page }) => {
+  await open(page);
+  const order: string[] = [];
+  let chunkRequested = () => {};
+  const chunk = new Promise<void>((resolve) => {
+    chunkRequested = resolve;
+  });
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/src/pages/tasks-page.tsx")) {
+      order.push("chunk");
+      chunkRequested();
+    }
+  });
+  // Giữ me.get tới khi trang xin chunk (tối đa 3 giây): trước đây chunk chỉ tải sau khi me.get và orgs.mine trả về.
+  await page.route(
+    (url) => url.pathname === "/rpc/me/get",
+    async (route) => {
+      await Promise.race([chunk, new Promise((resolve) => setTimeout(resolve, 3000))]);
+      order.push("me");
+      await route.fallback();
+    },
+  );
+  await page.goto("/tasks");
+  await expect(page.getByRole("heading", { name: "Bảng việc" })).toBeVisible();
+  expect(order.slice(0, 2)).toEqual(["chunk", "me"]);
+});
+
+test("orgs.mine hỏi cùng lúc với me.get, không chờ me.get trả về", async ({ page }) => {
+  const hub = await open(page);
+  const order: string[] = [];
+  // Giữ me.get tới khi web hỏi orgs.mine (tối đa 3 giây): trước đây orgs.mine chỉ đi sau khi me.get trả về.
+  await page.route(
+    (url) => url.pathname === "/rpc/me/get",
+    async (route) => {
+      for (let waited = 0; waited < 3000 && !hub.rpcCalls.some((c) => c.path === "orgs/mine"); waited += 20) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      order.push(hub.rpcCalls.some((c) => c.path === "orgs/mine") ? "orgs" : "none");
+      order.push("me");
+      await route.fallback();
+    },
+  );
+  await page.goto("/tasks");
+  await expect(page.getByRole("heading", { name: "Bảng việc" })).toBeVisible();
+  expect(order.slice(0, 2)).toEqual(["orgs", "me"]);
+  expect(hub.rpcCalls.filter((c) => c.path === "orgs/mine")).toHaveLength(1);
+});
