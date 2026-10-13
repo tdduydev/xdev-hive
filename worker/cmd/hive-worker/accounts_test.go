@@ -149,3 +149,58 @@ func TestAccountsCommandRejectsBadInput(t *testing.T) {
 		}
 	}
 }
+
+// discover in đăng nhập trên máy chưa có trong danh sách; --add thêm như add nhưng không trả lệnh đăng nhập.
+func TestAccountsCommandDiscover(t *testing.T) {
+	home, config := fakeAccountsHome(t)
+	dir := filepath.Join(home, ".xdev-hive", "accounts", "claude-8")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".claude.json"), []byte(`{"oauthAccount":{"emailAddress":"duy@example.com"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, errOut := runAccounts(t, config, "discover", "--json")
+	if code != 0 {
+		t.Fatalf("discover mã %d: %s", code, errOut)
+	}
+	var found struct {
+		Found []struct {
+			CLI         string  `json:"cli"`
+			ConfigDir   *string `json:"configDir"`
+			LoggedIn    *bool   `json:"loggedIn"`
+			Email       *string `json:"email"`
+			SuggestedID string  `json:"suggestedId"`
+		} `json:"found"`
+	}
+	if err := json.Unmarshal([]byte(out), &found); err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Found) != 1 || found.Found[0].SuggestedID != "claude-8" || *found.Found[0].ConfigDir != "~/.xdev-hive/accounts/claude-8" || !*found.Found[0].LoggedIn || *found.Found[0].Email != "duy@example.com" {
+		t.Fatalf("found = %s", out)
+	}
+	if code, out, _ = runAccounts(t, config, "discover"); code != 0 || !strings.Contains(out, "claude-8") || !strings.Contains(out, "đã đăng nhập duy@example.com") {
+		t.Fatalf("discover chữ: %d %q", code, out)
+	}
+
+	code, out, errOut = runAccounts(t, config, "discover", "--add", "~/.xdev-hive/accounts/claude-8", "--label", "Duy 8", "--json")
+	if code != 0 {
+		t.Fatalf("discover --add mã %d: %s", code, errOut)
+	}
+	var list listed
+	if err := json.Unmarshal([]byte(out), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Accounts) != 1 || list.Accounts[0].ID != "claude-8" || list.Accounts[0].Label != "Duy 8" {
+		t.Fatalf("sau --add = %s", out)
+	}
+
+	// Đã thêm thì không còn gì để tìm; JSON vẫn là mảng rỗng, không phải null.
+	if code, out, _ = runAccounts(t, config, "discover", "--json"); code != 0 || strings.TrimSpace(out) != `{"found":[]}` {
+		t.Fatalf("hết: %d %q", code, out)
+	}
+	if code, _, errOut = runAccounts(t, config, "discover", "--add", "default:codex"); code != 1 || !strings.Contains(errOut, "không tìm thấy") {
+		t.Fatalf("không có đăng nhập: %d %q", code, errOut)
+	}
+}
