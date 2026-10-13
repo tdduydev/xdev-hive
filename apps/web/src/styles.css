@@ -206,3 +206,8 @@
     }
   }
 }
+
+/* xterm vẽ từng ô cố định: ligature (=>, !=) gộp hai ô thành một glyph và làm lệch con trỏ khi gõ. */
+.xterm {
+  font-variant-ligatures: none;
+}

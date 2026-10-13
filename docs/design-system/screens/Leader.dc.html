@@ -26,12 +26,39 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .mono{font-family:var(--font-mono)}
 .input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
 .field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.seg{display:inline-flex;gap:2px;padding:3px;border-radius:10px;background:var(--muted);flex-wrap:wrap}
+.seg button{height:28px;padding:0 10px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--muted-foreground);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.choice{display:flex;align-items:flex-start;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px}
+.choice[data-on="true"]{border-color:var(--primary);background:var(--accent)}
+.choice[data-off="true"]{opacity:.6}
+.radio{flex:none;width:16px;height:16px;margin-top:2px;box-sizing:border-box;border:1px solid var(--input);border-radius:9999px;display:inline-flex;align-items:center;justify-content:center}
+.radio[data-on="true"]{border-color:var(--primary)}
+.radio[data-on="true"]::after{content:"";width:8px;height:8px;border-radius:9999px;background:var(--primary)}
+.check{flex:none;width:16px;height:16px;margin-top:1px;box-sizing:border-box;border:1px solid var(--input);border-radius:4px}
+.sw{width:32px;height:18px;border-radius:9999px;background:var(--input);position:relative;display:inline-block}
+.sw::after{content:"";position:absolute;top:1px;left:1px;width:16px;height:16px;border-radius:9999px;background:var(--background)}
+.term{box-sizing:border-box;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:var(--font-mono);font-size:13px;line-height:1.5;overflow:hidden;font-variant-ligatures:none;white-space:pre-wrap}
+.term .dim{color:var(--muted-foreground)}.term .ok{color:var(--success)}.term .warn{color:var(--warning)}.term .pri{color:var(--primary)}
+.cursor{display:inline-block;width:2px;height:15px;vertical-align:text-bottom;background:var(--primary)}
+.sel{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
 </style>
 </helmet>
-<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
-  <dc-import name="Sidebar" active="leader" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
-  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+<div data-theme="{{theme}}" style="{{rootStyle}}">
+  <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+    <dc-import name="Sidebar" active="leader" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  </sc-if>
+  <div style="{{innerStyle}}">
     <dc-import name="Topbar" crumb="Leader" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <nav aria-label="{{t.variants}}" style="padding: 10px 24px 0;">
+      <span class="seg">
+        <sc-for list="{{variants}}" as="v" hint-placeholder-count="4">
+          <button type="button" aria-pressed="{{v.on}}" onClick="{{v.pick}}">{{v.label}}</button>
+        </sc-for>
+      </span>
+    </nav>
+    <sc-if value="{{isChat}}" hint-placeholder-val="{{true}}">
     <main style="flex: 1; box-sizing: border-box; width: 100%; padding: 20px 24px; display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch;">
 
       <aside style="flex: 1 1 280px; max-width: 300px; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
@@ -39,6 +66,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
           <h1 style="margin: 0; font-family: var(--font-heading); font-size: 20px; font-weight: 600; letter-spacing: -0.03em;">Leader</h1>
           <button type="button" class="btn btn-outline btn-icon" aria-label="{{t.newThread}}" onClick="{{toggleNew}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.4 3.6a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"></path></svg></button>
         </div>
+        <button type="button" class="btn btn-default" onClick="{{openDialog}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="m8 10 3 2-3 2M13 15h3"></path></svg>{{t.openTerminal}}</button>
         <sc-if value="{{showNew}}" hint-placeholder-val="{{true}}">
           <form class="card" style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
             <label class="field">{{t.newThread}}<input class="input" placeholder="{{t.newPh}}"></label>
@@ -58,6 +86,16 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
             </button>
           </sc-for>
         </nav>
+        <section aria-labelledby="sessions-title" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+          <h2 id="sessions-title" style="margin: 0; font-family: var(--font-heading); font-size: 17px; font-weight: 600;">{{t.sessions}}</h2>
+          <sc-for list="{{sessions}}" as="se" hint-placeholder-count="2">
+            <a href="#" onClick="{{se.pick}}" style="display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; text-decoration: none; color: var(--foreground); font-size: 12px;">
+              <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span class="badge" style="{{se.stateStyle}}"><span class="dot"></span>{{se.state}}</span><span class="badge" style="{{se.modeStyle}}">{{se.mode}}</span><sc-if value="{{se.viewOnly}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--muted); color: var(--muted-foreground);">{{t.viewOnly}}</span></sc-if></span>
+              <span style="font-weight: 500; font-size: 14px;">{{se.title}}</span>
+              <span style="color: var(--muted-foreground);">{{se.meta}}</span>
+            </a>
+          </sc-for>
+        </section>
       </aside>
 
       <section class="card" aria-label="{{t.chat}}" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; min-height: 900px; overflow: hidden;">
@@ -137,15 +175,128 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
         </form>
       </section>
     </main>
+    </sc-if>
+
+    <sc-if value="{{isOpen}}" hint-placeholder-val="{{false}}">
+    <main style="flex: 1; box-sizing: border-box; width: 100%; padding: 20px 16px; display: flex; justify-content: center; align-items: flex-start; background: var(--muted);">
+      <div role="dialog" aria-label="{{t.dlgTitle}}" class="card" style="{{dialogStyle}}">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <h2 style="margin: 0; font-family: var(--font-heading); font-size: 16px; font-weight: 500;">{{t.dlgTitle}}</h2>
+          <p style="margin: 0; color: var(--muted-foreground);">{{t.dlgDesc}}</p>
+        </div>
+        <label class="field">{{t.project}}<select class="sel"><option>PAY · payment-api</option></select></label>
+        <div role="radiogroup" aria-label="{{t.machine}}" style="display: flex; flex-direction: column; gap: 6px;">
+          <span class="field" style="font-size: 14px;">{{t.machine}}</span>
+          <div class="choice" data-on="true"><span class="radio" data-on="true"></span><span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 500;">sdlc-box-01 <span style="font-size: 12px; font-weight: 400; color: var(--success);">{{t.online}}</span></span></span></div>
+          <div class="choice" data-off="true"><span class="radio"></span><span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 500;">sdlc-box-02 <span style="font-size: 12px; font-weight: 400; color: var(--success);">{{t.online}}</span></span><span class="hint">{{t.busy}}</span></span></div>
+        </div>
+        <label class="field">{{t.account}}<select class="sel"><option>{{t.accountAuto}}</option><option>Claude Max team ({{t.sessionWord}} 32%)</option><option disabled>Claude Pro Ha ({{t.loggedOut}})</option></select></label>
+        <div role="radiogroup" aria-label="{{t.modeLabel}}" style="display: flex; flex-direction: column; gap: 6px;">
+          <span class="field" style="font-size: 14px;">{{t.modeLabel}}</span>
+          <div class="choice" data-on="{{dlg.proposeOn}}"><span class="radio" data-on="{{dlg.proposeOn}}"></span><span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 500;">{{t.propose}}</span><span class="hint">{{t.proposeHint}}</span></span></div>
+          <div class="choice" data-on="{{dlg.bypassOn}}"><span class="radio" data-on="{{dlg.bypassOn}}"></span><span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 500;">Bypass</span><span class="hint">{{t.bypassHint}}</span></span></div>
+        </div>
+        <sc-if value="{{dlg.bypassOn}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div role="alert" style="display: flex; gap: 8px; padding: 8px 10px; border: 1px solid var(--destructive); border-radius: 8px; background: var(--destructive-soft); color: var(--destructive);"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"></path><path d="M12 9v4M12 17h.01"></path></svg><span style="display: flex; flex-direction: column;"><strong style="font-weight: 500;">{{t.bypassWarnTitle}}</strong><span>{{t.bypassWarn}}</span></span></div>
+            <label style="display: flex; align-items: flex-start; gap: 8px;"><span class="check"></span>{{t.bypassConfirm}}</label>
+          </div>
+        </sc-if>
+        <div role="radiogroup" aria-label="{{t.modelLabel}}" style="display: flex; flex-direction: column; gap: 6px;">
+          <span class="field" style="font-size: 14px;">{{t.modelLabel}}</span>
+          <div class="choice" data-on="true"><span class="radio" data-on="true"></span><span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 500;">Sonnet</span><span class="hint">{{t.sonnetHint}} {{t.cost}}: 0,42 USD ({{t.costRuns}})</span></span></div>
+          <div class="choice"><span class="radio"></span><span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 500;">Opus</span><span class="hint">{{t.opusHint}} {{t.cost}}: {{t.noCost}}</span></span></div>
+        </div>
+        <p style="margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); font-size: 12px; color: var(--muted-foreground);"><strong style="font-weight: 500; color: var(--foreground);">{{t.perms}}: </strong>{{t.permWorkspace}}</p>
+        <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;">
+          <button type="button" class="btn btn-outline" onClick="{{backChat}}">{{t.cancel}}</button>
+          <button type="button" class="btn btn-default" style="{{dlg.submitStyle}}" disabled="{{dlg.submitOff}}" onClick="{{goTerminal}}">{{t.openBtn}}</button>
+        </div>
+      </div>
+    </main>
+    </sc-if>
+
+    <sc-if value="{{isTerm}}" hint-placeholder-val="{{false}}">
+    <main style="{{termMainStyle}}">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px;">
+        <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+          <a href="#" onClick="{{backChat}}" style="font-size: 12px; text-decoration: none;">‹ Leader</a>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 20px; font-weight: 600; letter-spacing: -0.03em;">PAY · payment-api</h1>
+        </div>
+        <div style="margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+          <span class="badge" role="status" style="background: var(--success-soft); color: var(--success);"><span class="dot"></span>{{t.connected}}</span>
+          <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500;"><span class="sw" style="background: var(--primary);"></span>{{t.share}}</span>
+          <button type="button" class="btn btn-destructive">{{t.closeSession}}</button>
+        </div>
+      </header>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12px; color: var(--muted-foreground);">
+        <span class="badge" style="{{modeBadge}}">{{modeText}}</span>
+        <span class="badge" style="background: var(--muted); color: var(--muted-foreground); border: 1px solid var(--input);">Sonnet</span>
+        <span class="badge" style="background: var(--success-soft); color: var(--success);">{{t.running}}</span>
+        <span>{{t.machine}}: <strong style="font-weight: 500; color: var(--foreground);">sdlc-box-01</strong></span>
+        <span>{{t.account}}: <strong style="font-weight: 500; color: var(--foreground);">Claude Max team</strong></span>
+        <span>{{t.perms}}: <strong style="font-weight: 500; color: var(--foreground);">{{t.permFull}}</strong></span>
+      </div>
+      <div style="{{gridStyle}}">
+        <section class="term" aria-label="{{t.termLabel}}" style="{{termStyle}}"><span class="dim">Claude Code v2.1 · sonnet · payment-api ({{t.worktree}})</span>
+<span class="warn">&gt;</span> {{t.q1}}
+<span class="dim">●</span> {{t.l1}}
+<sc-if value="{{isPropose}}" hint-placeholder-val="{{true}}"><span class="ok">✓</span> leader_propose: {{t.l2}} <span class="dim">({{t.tierMedium}})</span>
+<span class="ok">✓</span> leader_propose: {{t.l3}} <span class="dim">({{t.tierLight}})</span>
+</sc-if><sc-if value="{{isBypass}}" hint-placeholder-val="{{false}}"><span class="ok">✓</span> leader_action: {{t.l2}} <span class="dim">({{t.tierMedium}})</span>
+<span class="ok">✓</span> leader_action: {{t.l3}} <span class="dim">({{t.tierLight}})</span>
+</sc-if><span class="warn">&gt;</span> <span class="cursor"></span></section>
+        <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+          <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+            <button type="button" class="btn btn-outline" aria-expanded="{{drawer}}" onClick="{{toggleDrawer}}">{{panelButton}}</button>
+          </sc-if>
+          <sc-if value="{{panelShow}}" hint-placeholder-val="{{true}}">
+            <section class="card" aria-label="{{panelTitle}}" style="padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <header style="display: flex; flex-direction: column; gap: 2px;">
+                <h2 style="margin: 0; font-family: var(--font-heading); font-size: 16px; font-weight: 600;">{{panelTitle}}</h2>
+                <span style="font-size: 12px; color: var(--muted-foreground);">{{panelHint}}</span>
+              </header>
+              <sc-if value="{{isPropose}}" hint-placeholder-val="{{true}}">
+                <sc-for list="{{cards}}" as="c" hint-placeholder-count="2">
+                  <div class="card" aria-label="{{t.proposalAria}}" style="padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 0 0 1px var(--warning);">
+                    <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground);"><span class="badge" style="background: var(--warning-soft); color: var(--warning);">{{t.pending}}</span>{{t.expires}}</span>
+                    <p style="margin: 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-weight: 500;">{{c.title}}</p>
+                    <span style="font-size: 12px; color: var(--muted-foreground);">{{c.tierLine}}</span>
+                    <label class="field" style="font-size: 12px;">{{t.tierField}}<select class="sel"><sc-for list="{{c.options}}" as="o" hint-placeholder-count="3"><option selected="{{o.sel}}">{{o.label}}</option></sc-for></select><span class="hint">{{c.hint}}</span></label>
+                    <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline">{{t.rejectDots}}</button><button type="button" class="btn btn-default">{{t.approve}}</button></div>
+                  </div>
+                </sc-for>
+              </sc-if>
+              <sc-if value="{{isBypass}}" hint-placeholder-val="{{false}}">
+                <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px;">
+                  <sc-for list="{{log}}" as="e" hint-placeholder-count="3">
+                    <li style="display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px;">
+                      <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span style="color: var(--muted-foreground);">{{e.time}}</span><span class="mono" style="font-weight: 500;">{{e.tool}}</span><span class="badge" style="{{e.style}}">{{e.outcome}}</span></span>
+                      <sc-if value="{{e.action}}" hint-placeholder-val="{{true}}"><span>{{e.action}}</span></sc-if>
+                      <span style="color: var(--muted-foreground);">{{e.meta}}</span>
+                    </li>
+                  </sc-for>
+                </ol>
+              </sc-if>
+            </section>
+          </sc-if>
+        </div>
+      </div>
+    </main>
+    </sc-if>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["chat","open","terminal","bypass"],"default":"chat"},"$preview":{"width":1440,"height":1000}}'>
+// modes: chat,open,terminal,bypass
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { thread: 0, rejecting: false, showNew: false, lang: null, dark: null }; }
+  constructor(props) { super(props); this.state = { thread: 0, rejecting: false, showNew: false, lang: null, dark: null, mode: null, drawer: false }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const dark = this.state.dark ?? !!this.props.dark;
+    // Biến thể terminal (LEADTERM): chat | open (hộp thoại mở phiên) | terminal (Đề xuất) | bypass (nhật ký). `narrow` là khung 360 px.
+    const mode = this.state.mode ?? this.props.view ?? 'chat';
+    const narrow = !!this.props.narrow;
     const en = lang === 'en';
     const x = (p) => (en ? p[1] : p[0]);
     const T = {
@@ -164,6 +315,32 @@ class Component extends DCLogic {
       typing: ['Leader đang trả lời…', 'Leader is replying…'], composerLabel: ['Nhắn cho leader', 'Message the leader'],
       composerPh: ['Hỏi về dự án, nhờ chia việc, hoặc nhờ giao việc cho agent', 'Ask about a project, split work, or have the leader assign tasks to agents'],
       enterHint: ['Enter để gửi · Shift+Enter xuống dòng', 'Enter to send · Shift+Enter for a new line'], send: ['Gửi', 'Send'],
+      variants: ['Biến thể', 'Variants'], openTerminal: ['Mở terminal Leader', 'Open Leader terminal'], sessions: ['Phiên terminal', 'Terminal sessions'],
+      viewOnly: ['Chỉ xem', 'View only'],
+      dlgTitle: ['Mở terminal Leader', 'Open Leader terminal'],
+      dlgDesc: ['Claude CLI tương tác chạy trên máy dùng chung, trong worktree tạm của dự án. Phiên là riêng tư; bạn bật “Cho đội xem” sau.', 'An interactive Claude CLI running on a shared machine, in a temporary worktree of the project. The session is private; turn on “Share with team” later.'],
+      machine: ['Máy', 'Machine'], online: ['Online', 'Online'], busy: ['Đã đủ số phiên terminal. Chọn máy khác hoặc đóng phiên cũ.', 'Terminal session limit reached. Pick another machine or close an old session.'],
+      account: ['Gói', 'Account'], accountAuto: ['Tự chọn gói còn nhiều hạn mức', 'Pick the account with the most quota left'], sessionWord: ['phiên', 'session'], loggedOut: ['chưa đăng nhập', 'signed out'],
+      modeLabel: ['Chế độ', 'Mode'], propose: ['Đề xuất', 'Propose'], proposeHint: ['Hành động của Leader thành đề xuất chờ duyệt. Bạn duyệt ngay ở khung bên phải.', 'Leader actions become proposals awaiting approval. You approve them in the right panel.'],
+      bypassHint: ['Leader gọi tool hub thẳng, không qua duyệt.', 'The leader calls hub tools directly, with no approval.'],
+      bypassWarnTitle: ['Bypass không qua duyệt', 'Bypass skips approval'],
+      bypassWarn: ['Leader gọi tool hub bằng quyền của bạn, không qua duyệt. Mọi lần gọi được ghi nhật ký và hiện ở khung bên phải.', 'The leader calls hub tools with your permissions and no approval. Every call is logged and shown in the right panel.'],
+      bypassConfirm: ['Tôi hiểu và muốn mở ở chế độ Bypass', 'I understand and want to open in Bypass mode'],
+      modelLabel: ['Model của Leader', 'Leader model'], sonnetHint: ['Mặc định, đủ cho phần lớn việc.', 'Default, enough for most work.'], opusHint: ['Mạnh hơn, đắt hơn.', 'Stronger, costs more.'],
+      cost: ['Chi phí ước tính', 'Estimated cost'], costRuns: ['TB 30 ngày, 31 run', '30-day avg, 31 runs'], noCost: ['chưa đủ dữ liệu', 'not enough data yet'],
+      perms: ['Quyền trên máy', 'Permissions on the machine'], permFull: ['Toàn quyền', 'Full access'],
+      permWorkspace: ['Máy chưa cho toàn quyền: Claude chỉ tự sửa file (Accept edits) trong worktree tạm, không push.', 'The machine does not grant full access: Claude only edits files itself (Accept edits) in a temporary worktree and never pushes.'],
+      openBtn: ['Mở terminal', 'Open terminal'],
+      connected: ['Đã kết nối', 'Connected'], share: ['Cho đội xem', 'Share with team'], closeSession: ['Đóng phiên', 'Close session'], running: ['Đang chạy', 'Running'],
+      termLabel: ['Terminal Leader', 'Leader terminal'], worktree: ['worktree tạm', 'temporary worktree'],
+      q1: ['Chia việc cho tính năng hoàn tiền một phần', 'Split the partial refunds feature into tasks'],
+      l1: ['Đọc mã hoàn tiền và bảng refunds…', 'Reading the refund code and the refunds table…'],
+      l2: ['tạo việc "API hoàn tiền một phần"', 'create task "Partial refund API"'], l3: ['tạo việc "Đổi chữ nút Hoàn tiền"', 'create task "Reword the Refund button"'],
+      tierLight: ['cấp Nhẹ', 'tier Light'], tierMedium: ['cấp Vừa', 'tier Medium'],
+      tierField: ['Cấp độ khi duyệt', 'Tier when approving'],
+      proposalsTitle: ['Đề xuất của phiên', 'Session proposals'], proposalsHint: ['Sửa cấp độ rồi duyệt; hub chọn model theo cấp đã duyệt.', 'Adjust the tier, then approve; the hub picks the model from the approved tier.'],
+      logTitle: ['Nhật ký hành động', 'Action log'], logHint: ['Bypass: Leader gọi tool hub thẳng bằng quyền của người mở, không qua duyệt.', 'Bypass: the leader calls hub tools directly with the opener’s permissions, no approval.'],
+      ok: ['Thành công', 'Success'], fail: ['Lỗi', 'Error'],
     };
     const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
     const list = [
@@ -178,6 +355,33 @@ class Component extends DCLogic {
       style: base + (i === this.state.thread ? 'background: var(--accent); color: var(--accent-foreground);' : 'background: transparent;'),
       pick: () => this.setState({ thread: i }),
     }));
+    const lightT = x(['Nhẹ', 'Light']), medT = x(['Vừa', 'Medium']), heavyT = x(['Nặng', 'Heavy']);
+    const opts = (sel) => [['light', lightT], ['medium', medT], ['heavy', heavyT]].map(([v, label]) => ({ label, sel: v === sel }));
+    const cards = [
+      { title: x(['Tạo việc "API hoàn tiền một phần" trong dự án PAY', 'Create task "Partial refund API" in project PAY']),
+        tierLine: x(['Leader chọn cấp: Vừa · Lý do: một API kèm test, không đụng giao thức.', 'Leader picked tier: Medium · Reason: one API with tests, no protocol change.']),
+        options: opts('medium'), hint: x(['Một màn giao diện, CRUD kèm e2e, refactor gọn trong một module.', 'One UI screen, CRUD with e2e, a tidy refactor inside one module.']) },
+      { title: x(['Giao việc 1a1a1a1a cho Claude', 'Assign task 1a1a1a1a to Claude']),
+        tierLine: x(['Leader chưa chọn cấp độ; hub tự suy như run thường.', 'The leader did not pick a tier; the hub infers it like a normal run.']),
+        options: [{ label: x(['Để hub tự suy', 'Let the hub infer it']), sel: true }, ...opts(null)],
+        hint: x(['Hub chọn model và effort theo định tuyến mặc định của dự án.', 'The hub picks model and effort from the project’s default routing.']) },
+    ];
+    const logRows = [
+      { time: '10:12:08', tool: 'leader_action', ok: true, action: x(['Tạo việc "API hoàn tiền một phần" trong PAY', 'Create task "Partial refund API" in PAY']), meta: x(['Cấp: Vừa · Model: Sonnet · Lý do: một API kèm test.', 'Tier: Medium · Model: Sonnet · Reason: one API with tests.']) },
+      { time: '10:12:41', tool: 'leader_action', ok: true, action: x(['Giao việc PAY-46 cho Claude', 'Assign PAY-46 to Claude']), meta: x(['Cấp: Nhẹ · Model: Sonnet · Lý do: đổi chữ trên nút.', 'Tier: Light · Model: Sonnet · Reason: wording change on a button.']) },
+      { time: '10:13:02', tool: 'task_list', ok: false, action: '', meta: '' },
+    ];
+    const log = logRows.map((r) => ({ ...r, outcome: r.ok ? t.ok : t.fail, style: r.ok ? 'background: var(--success-soft); color: var(--success);' : 'background: var(--destructive-soft); color: var(--destructive);' }));
+    const pill = (tone) => ({ ok: 'background: var(--success-soft); color: var(--success);', neutral: 'background: var(--muted); color: var(--muted-foreground); border: 1px solid var(--input);', warn: 'background: var(--warning-soft); color: var(--warning);' })[tone];
+    const sessions = [
+      { state: x(['Đang chạy', 'Running']), stateStyle: pill('ok'), mode: x(['Đề xuất', 'Propose']), modeStyle: pill('neutral'), viewOnly: false, title: 'PAY · sdlc-box-01', meta: 'Sonnet · Trần Đức Duy · 10:03, 14/10' },
+      { state: x(['Đã kết thúc', 'Ended']), stateStyle: pill('neutral'), mode: 'Bypass', modeStyle: pill('warn'), viewOnly: true, title: 'PAY · sdlc-box-02', meta: 'Opus · Lan · 09:12, 13/10' },
+    ].map((se) => ({ ...se, pick: () => this.setState({ mode: 'terminal' }) }));
+    const variants = [['chat', x(['Chat', 'Chat'])], ['open', x(['Mở phiên', 'Open session'])], ['terminal', x(['Đề xuất', 'Propose'])], ['bypass', x(['Bypass và nhật ký', 'Bypass and log'])]]
+      .map(([v, label]) => ({ label, on: mode === v, pick: () => this.setState({ mode: v, drawer: false }) }));
+    const isTerm = mode === 'terminal' || mode === 'bypass';
+    const isBypass = mode === 'bypass';
+    const pending = cards.length;
     const proposal = [
       { key: 'TASK-45', title: x(['API hoàn tiền một phần', 'Partial refund API']), who: x(['Claude · mac-mini-lan · chạy ngay', 'Claude · mac-mini-lan · run now']) },
       { key: 'TASK-46', title: x(['Migration partial_amount', 'partial_amount migration']), who: x(['chưa giao', 'unassigned']) },
@@ -185,6 +389,20 @@ class Component extends DCLogic {
     ];
     return {
       theme: dark ? 'dark' : 'light', lang, dark, t, threads, proposal,
+      narrow, wide: !narrow, variants, sessions, cards, log,
+      isChat: mode === 'chat', isOpen: mode === 'open', isTerm, isBypass, isPropose: !isBypass,
+      rootStyle: 'min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;' + (narrow ? ' max-width: 360px;' : ''),
+      innerStyle: 'flex: 999 1 ' + (narrow ? '0' : '560px') + '; min-width: 0; display: flex; flex-direction: column;',
+      dialogStyle: 'width: 100%; max-width: ' + (narrow ? '328px' : '480px') + '; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 0 0 1px var(--border);',
+      dlg: { proposeOn: mode !== 'bypass', bypassOn: mode === 'bypass', submitOff: mode === 'bypass', submitStyle: mode === 'bypass' ? 'opacity: 0.5; cursor: not-allowed;' : '' },
+      termMainStyle: 'flex: 1; box-sizing: border-box; width: 100%; padding: ' + (narrow ? '12px 16px' : '16px 24px') + '; display: flex; flex-direction: column; gap: 12px;',
+      gridStyle: narrow ? 'display: flex; flex-direction: column; gap: 12px; min-width: 0;' : 'display: grid; grid-template-columns: minmax(0, 1fr) 23rem; gap: 12px; align-items: start;',
+      termStyle: 'height: ' + (narrow ? '280px' : '560px') + ';',
+      modeText: isBypass ? 'Bypass' : x(['Đề xuất', 'Propose']), modeBadge: isBypass ? pill('warn') : pill('neutral'),
+      panelTitle: isBypass ? t.logTitle : t.proposalsTitle, panelHint: isBypass ? t.logHint : t.proposalsHint,
+      panelButton: (isBypass ? t.logTitle : x(['Đề xuất', 'Proposals'])) + ' (' + (isBypass ? log.length : pending) + ')',
+      panelShow: !narrow || this.state.drawer, drawer: this.state.drawer, toggleDrawer: () => this.setState({ drawer: !this.state.drawer }),
+      openDialog: () => this.setState({ mode: 'open' }), backChat: () => this.setState({ mode: 'chat' }), goTerminal: () => this.setState({ mode: 'terminal' }),
       showNew: this.state.showNew, toggleNew: () => this.setState({ showNew: !this.state.showNew }),
       rejecting: this.state.rejecting, notRejecting: !this.state.rejecting,
       startReject: () => this.setState({ rejecting: true }), cancelReject: () => this.setState({ rejecting: false }),
