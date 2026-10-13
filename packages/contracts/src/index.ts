@@ -20,6 +20,7 @@ import { sdlcContract } from "./sdlc.ts";
 import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
+import { terminalContract } from "./terminal.ts";
 import { reviewsContract, workflowsContract } from "./workflows.ts";
 
 export * from "./audit.ts";
@@ -49,6 +50,7 @@ export * from "./sdlc-presets/index.ts";
 export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
+export * from "./terminal.ts";
 export * from "./version.ts";
 export * from "./workflows.ts";
 
@@ -138,6 +140,7 @@ export const contract = {
   docEditor: docEditorContract,
   desktopConnect: desktopConnectContract,
   sdlc: sdlcContract,
+  terminal: terminalContract,
 };
 
 export type Contract = typeof contract;
