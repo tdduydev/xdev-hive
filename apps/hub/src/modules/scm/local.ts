@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { GitProviderError } from "./errors.ts";
 import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
-import type { GitProvider, GitProviderKind, PullRequestState, RepoInfo, RepoRef } from "./types.ts";
+import type { GitProvider, GitProviderKind, PullRequestFile, PullRequestState, RepoInfo, RepoRef } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -71,6 +71,50 @@ export interface LocalPullRequest {
   state?: PullRequestState["state"];
   /** Commit trên nhánh chính sau khi mergePR. */
   mergeSha?: string;
+}
+
+/** Tách đầu ra `git diff` thành từng file; patch bỏ phần đầu (`diff --git`, `index`, `---`, `+++`) như API của GitHub. */
+export function parseGitDiff(out: string): PullRequestFile[] {
+  const files: PullRequestFile[] = [];
+  for (const section of out.split(/^diff --git /m).slice(1)) {
+    const lines = section.split("\n");
+    const firstHunk = lines.findIndex((l) => l.startsWith("@@"));
+    const header = lines.slice(0, firstHunk === -1 ? lines.length : firstHunk);
+    // Git thêm một dấu tab sau đường dẫn có khoảng trắng ở dòng `---`/`+++`.
+    const field = (prefix: string) =>
+      header
+        .find((l) => l.startsWith(prefix))
+        ?.slice(prefix.length)
+        .replace(/\t$/, "");
+    const renamedFrom = field("rename from ");
+    const renamedTo = field("rename to ");
+    // Đường dẫn lấy từ `---`/`+++` hoặc dòng rename; file nhị phân chỉ còn dòng `a/x b/x` đầu tiên.
+    const plain = (field("+++ b/") ?? field("--- a/") ?? lines[0]?.match(/^a\/(.+) b\/\1$/)?.[1]) as string;
+    const path = renamedTo ?? plain;
+    const patch = firstHunk === -1 ? undefined : lines.slice(firstHunk).join("\n").replace(/\n+$/, "");
+    let additions = 0;
+    let deletions = 0;
+    for (const l of lines.slice(firstHunk === -1 ? lines.length : firstHunk)) {
+      if (l.startsWith("+")) additions++;
+      else if (l.startsWith("-")) deletions++;
+    }
+    files.push({
+      path,
+      ...(renamedFrom ? { previousPath: renamedFrom } : {}),
+      status: header.some((l) => l.startsWith("new file mode"))
+        ? "added"
+        : header.some((l) => l.startsWith("deleted file mode"))
+          ? "removed"
+          : renamedFrom
+            ? "renamed"
+            : "modified",
+      additions,
+      deletions,
+      ...(patch === undefined ? {} : { patch }),
+      truncated: false,
+    });
+  }
+  return files;
 }
 
 export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOptions): GitProvider {
@@ -356,6 +400,26 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
     async readFile(ref, path, sha) {
       const dir = await need(ref);
       return git(dir, ["cat-file", "blob", `${sha}:${path}`]).catch(() => null);
+    },
+
+    async prFiles(ref, number) {
+      const dir = await need(ref);
+      const found = await findPR(ref, number);
+      if (!found) return null;
+      const { pr } = found;
+      const head = (await branchSha(dir, pr.head)) ?? pr.headSha;
+      const base = await branchSha(dir, pr.base);
+      if (!base) return [];
+      // Ba chấm: so với điểm tách nhánh, như trang Files changed của GitHub, không lẫn commit mới của nhánh chính.
+      // Chữ đường dẫn tiếng Việt không bị đặt trong dấu nháy nhờ quotepath=false.
+      const out = await git(dir, ["-c", "core.quotepath=false", "diff", "-M", "--no-color", `${base}...${head}`]);
+      return parseGitDiff(out);
+    },
+
+    async setCommitStatus(ref, sha, input) {
+      // Ghi cạnh bình luận để script kiểm được Hive đã đặt status.
+      const dir = await need(ref);
+      await appendFile(join(dir, "hive-statuses.jsonl"), `${JSON.stringify({ sha, ...input })}\n`);
     },
 
     async closePR(ref, number) {

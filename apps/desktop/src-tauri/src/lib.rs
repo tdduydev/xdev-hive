@@ -13,6 +13,7 @@ mod setup_extra;
 mod skills;
 mod tls;
 mod tray_icon;
+mod updates;
 mod usage;
 mod worker;
 mod workspace;
@@ -54,6 +55,9 @@ struct State {
     quitting: AtomicBool,
     /// Ngôn ngữ của app (vi/en) cho chữ trên khay; giao diện báo qua lệnh set_lang.
     lang: Mutex<String>,
+    /// Bản cập nhật đã tải xong, chờ người dùng mở lại (updates.rs).
+    pending_update: Mutex<Option<updates::Pending>>,
+    update_gate: Mutex<updates::Gate>,
 }
 
 struct Tray {
@@ -62,6 +66,11 @@ struct Tray {
     open: MenuItem<Wry>,
     open_app: MenuItem<Wry>,
     quit: MenuItem<Wry>,
+    update_check: MenuItem<Wry>,
+    /// Chỉ nằm trong menu khi có bản đã tải xong.
+    update_restart: MenuItem<Wry>,
+    menu: Menu<Wry>,
+    restart_shown: Mutex<bool>,
     /// Ảnh gốc của biểu tượng khay (RGBA) để vẽ chấm trạng thái lên.
     icon: Option<(Vec<u8>, u32, u32)>,
     /// Trạng thái đang vẽ, để không dựng lại ảnh khi trạng thái không đổi.
@@ -131,6 +140,12 @@ fn refresh_tray(app: &AppHandle) {
             "Mở app trên máy"
         });
         let _ = tray.quit.set_text(if en { "Quit" } else { "Thoát" });
+        let _ = tray.update_check.set_text(if en {
+            "Check for updates"
+        } else {
+            "Kiểm tra bản mới"
+        });
+        sync_restart_item(app, &tray, en);
         if let (Some((rgba, w, h)), Some(icon)) = (&tray.icon, app.tray_by_id(TRAY)) {
             let mut drawn = tray.drawn.lock().ok();
             if drawn.as_deref().map(String::as_str) != Some(view.kind) {
@@ -150,6 +165,33 @@ fn refresh_tray(app: &AppHandle) {
         let _ = icon.set_tooltip(Some(tip));
     }
     let _ = app.emit("worker-state", view);
+}
+
+/// Vị trí của mục "Mở lại để cập nhật" trong menu khay: ngay trên "Kiểm tra bản mới".
+const RESTART_ITEM_AT: usize = 6;
+
+fn sync_restart_item(app: &AppHandle, tray: &Tray, en: bool) {
+    let ready = updates::ready_version(app);
+    let Ok(mut shown) = tray.restart_shown.lock() else {
+        return;
+    };
+    if let Some(version) = &ready {
+        let _ = tray.update_restart.set_text(if en {
+            format!("Restart to update ({version})")
+        } else {
+            format!("Mở lại để cập nhật ({version})")
+        });
+    }
+    match (ready.is_some(), *shown) {
+        (true, false) => {
+            *shown = tray
+                .menu
+                .insert(&tray.update_restart, RESTART_ITEM_AT)
+                .is_ok()
+        }
+        (false, true) => *shown = tray.menu.remove(&tray.update_restart).is_err(),
+        _ => {}
+    }
 }
 
 fn now() -> u64 {
@@ -214,16 +256,6 @@ fn notify(app: &AppHandle, body: &str) {
 /// Tham số chạy worker làm sidecar. `--stdin-control` cũng tắt tự cập nhật của worker: app cập nhật cả gói (kèm
 /// sidecar) qua updater, worker không được tự thay binary nằm trong gói đã ký.
 const SIDECAR_RUN_ARGS: [&str; 3] = ["run", "--status-json", "--stdin-control"];
-
-/// Địa chỉ hub trả bản cập nhật cho app (route /api/v1/desktop/updates của hub, DESK-10).
-fn update_endpoint(hub: &str, os: &str, arch: &str, version: &str) -> Option<url::Url> {
-    url::Url::parse(&format!(
-        "{}/api/v1/desktop/updates/{os}/{arch}/{version}",
-        hub.trim_end_matches('/')
-    ))
-    .ok()
-    .filter(|u| matches!(u.scheme(), "http" | "https"))
-}
 
 fn spawn_worker(app: &AppHandle) -> Result<(), String> {
     let (mut rx, child) = app
@@ -363,24 +395,33 @@ fn toggle(app: &AppHandle) {
     }
 }
 
-/// Thoát app sau khi worker dừng hẳn, để run đang chạy kịp báo kết quả thay vì bị giết giữa chừng.
+/// Dừng worker rồi chờ nó thoát hẳn, để run đang chạy kịp báo kết quả thay vì bị giết giữa chừng.
+async fn stop_worker_and_wait(app: &AppHandle) {
+    dispatch(app, Event::Stop);
+    let deadline = Instant::now() + STOP_GRACE + Duration::from_secs(2);
+    while Instant::now() < deadline
+        && app
+            .state::<State>()
+            .child
+            .lock()
+            .map(|c| c.is_some())
+            .unwrap_or(false)
+    {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
+/// Thoát app sau khi worker dừng hẳn. Có bản cập nhật đã tải thì cài luôn: người dùng thoát thay vì bấm "Mở lại" vẫn
+/// được bản mới ở lần mở sau.
 fn quit(app: &AppHandle) {
     if app.state::<State>().quitting.swap(true, Ordering::SeqCst) {
         return;
     }
-    dispatch(app, Event::Stop);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let deadline = Instant::now() + STOP_GRACE + Duration::from_secs(2);
-        while Instant::now() < deadline
-            && app
-                .state::<State>()
-                .child
-                .lock()
-                .map(|c| c.is_some())
-                .unwrap_or(false)
-        {
-            tokio::time::sleep(Duration::from_millis(200)).await;
+        stop_worker_and_wait(&app).await;
+        if let Err(e) = updates::install_pending(&app) {
+            eprintln!("{e}");
         }
         app.exit(0);
     });
@@ -550,76 +591,20 @@ fn this_machine(app: AppHandle) -> Option<String> {
         .and_then(|m| m.clone())
 }
 
-/// Bản cập nhật lấy từ hub của máy. Chưa có khoá ký trong tauri.conf.json thì bỏ qua: updater chỉ nhận bản ký đúng
-/// khoá đó (hướng dẫn trong apps/desktop/README.md). Trả true khi đã cài một bản, chờ người dùng mở lại app.
-async fn check_updates(app: &AppHandle, hub: &str) -> bool {
-    use tauri_plugin_updater::UpdaterExt;
-    let has_key = app
-        .config()
-        .plugins
-        .0
-        .get("updater")
-        .and_then(|u| u.get("pubkey"))
-        .and_then(|k| k.as_str())
-        .is_some_and(|k| !k.is_empty());
-    if !has_key {
-        return false;
-    }
-    let Some(url) = update_endpoint(
-        hub,
-        std::env::consts::OS,
-        std::env::consts::ARCH,
-        &app.package_info().version.to_string(),
-    ) else {
-        return false;
-    };
-    let updater = match app
-        .updater_builder()
-        .endpoints(vec![url])
-        .and_then(|b| b.build())
-    {
-        Ok(u) => u,
-        Err(e) => {
-            eprintln!("Không dựng được updater: {e}");
-            return false;
-        }
-    };
-    match updater.check().await {
-        Ok(Some(update)) => {
-            notify(
-                app,
-                &format!("Có bản mới {}. Đang tải và cài.", update.version),
-            );
-            match update.download_and_install(|_, _| {}, || {}).await {
-                Ok(()) => {
-                    notify(
-                        app,
-                        &format!(
-                            "Đã cài bản {}. Thoát rồi mở lại app để dùng.",
-                            update.version
-                        ),
-                    );
-                    true
-                }
-                Err(e) => {
-                    eprintln!("Không cài được bản cập nhật: {e}");
-                    false
-                }
-            }
-        }
-        Ok(None) => false,
-        Err(e) => {
-            eprintln!("Không kiểm được bản cập nhật: {e}");
-            false
-        }
-    }
-}
-
 fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     let status = MenuItem::with_id(app, "status", "Worker: đã tắt", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Mở xDev Hive", true, None::<&str>)?;
     let open_app = MenuItem::with_id(app, "app", "Mở app trên máy", true, None::<&str>)?;
     let toggle_item = MenuItem::with_id(app, "toggle", "Bật worker", true, None::<&str>)?;
+    let update_check =
+        MenuItem::with_id(app, "update_check", "Kiểm tra bản mới", true, None::<&str>)?;
+    let update_restart = MenuItem::with_id(
+        app,
+        "update_restart",
+        "Mở lại để cập nhật",
+        true,
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -629,6 +614,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
             &open,
             &open_app,
             &toggle_item,
+            &PredefinedMenuItem::separator(app)?,
+            &update_check,
             &PredefinedMenuItem::separator(app)?,
             &quit_item,
         ],
@@ -650,6 +637,15 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         "open" => open_hub(app),
         "app" => show_app(app),
         "toggle" => toggle(app),
+        "update_check" => updates::check_from_tray(app),
+        "update_restart" => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = updates::relaunch_to_update(app.clone()).await {
+                    notify(&app, &e);
+                }
+            });
+        }
         "quit" => quit(app),
         _ => {}
     })
@@ -660,6 +656,10 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         open,
         open_app,
         quit: quit_item,
+        update_check,
+        update_restart,
+        menu,
+        restart_shown: Mutex::new(false),
         icon: base,
         drawn: Mutex::new("stopped".into()),
     })
@@ -712,13 +712,21 @@ pub fn run() {
             profiles::open_login_terminal,
             profiles::open_cli_terminal,
             cli::folder_tree,
-            cli::propose_doc
+            cli::propose_doc,
+            updates::update_status,
+            updates::check_updates_now,
+            updates::relaunch_to_update
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+            }
+            if let WindowEvent::Focused(true) = event
+                && window.label() == APP
+            {
+                updates::check_on_focus(window.app_handle());
             }
         })
         .setup(|app| {
@@ -758,11 +766,6 @@ pub fn run() {
                         }
                         dispatch(&handle, Event::Start);
                         show_app(&handle);
-                        // App mở nhiều ngày liền vẫn nhận bản mới: kiểm lại sáu giờ một lần.
-                        // Đã cài một bản thì thôi: kiểm tiếp sẽ tải lại đúng bản đó vì app chưa mở lại.
-                        while !check_updates(&handle, &hub).await {
-                            tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
-                        }
                     }
                     Ok(_) => show_register(&handle),
                     Err(e) => {
@@ -770,6 +773,8 @@ pub fn run() {
                         show_register(&handle);
                     }
                 }
+                // Máy chưa đăng ký cũng kiểm (chỉ qua GitHub): app mới cài nhận được bản mới trước cả khi đăng ký.
+                updates::run_periodic(&handle).await;
             });
             let ticker = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -797,22 +802,6 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn update_endpoint_matches_hub_route() {
-        assert_eq!(
-            super::update_endpoint("https://hive.acme.vn/", "macos", "aarch64", "0.2.4")
-                .map(|u| u.to_string()),
-            Some("https://hive.acme.vn/api/v1/desktop/updates/macos/aarch64/0.2.4".into())
-        );
-        assert_eq!(
-            super::update_endpoint("http://192.0.2.10:3000", "windows", "x86_64", "0.2.5")
-                .map(|u| u.path().to_string()),
-            Some("/api/v1/desktop/updates/windows/x86_64/0.2.5".into())
-        );
-        assert!(super::update_endpoint("khong phai url", "macos", "aarch64", "1.0.0").is_none());
-        assert!(super::update_endpoint("file:///etc", "macos", "aarch64", "1.0.0").is_none());
-    }
-
     #[test]
     fn sidecar_runs_under_app_control_without_self_update() {
         // Worker tắt tự cập nhật khi chạy với --stdin-control (worker/cmd/hive-worker TestSidecarDisablesSelfUpdate).

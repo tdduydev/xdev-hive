@@ -20,6 +20,8 @@ export const PERMISSION_TREE: readonly PermissionNode[] = [
     branch("runs", [leaf("runs.read"), leaf("runs.retry"), leaf("runs.cancel")]),
     branch("plans", [leaf("plans.read"), leaf("plans.decide")]),
     branch("leader", [leaf("leader.chat"), leaf("leader.approve")]),
+    // Quyết thay checkpoint tự động của phiên review code (cho đạt dù máy chưa kiểm xong hoặc không đạt).
+    branch("reviews", [leaf("reviews.override", true)]),
   ]),
   branch("knowledge", [
     branch("docs", [leaf("docs.read"), leaf("docs.write"), leaf("docs.delete")]),
@@ -97,6 +99,7 @@ const TEAM_ADMIN_EXTRA = new Set([
   "costs.budget",
   "machines.register",
   "members.invite",
+  "reviews.override",
 ]);
 
 export const systemRoleId = z.enum(["owner", "admin", "member", "team-admin", "team-member", "team-viewer"]);

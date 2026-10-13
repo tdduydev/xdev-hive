@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { GitProviderError } from "./errors.ts";
 import { createGitLabProvider } from "./gitlab.ts";
@@ -630,5 +631,103 @@ describe("GitLab đọc cây và file (kho skill)", () => {
     pool.intercept({ path: `${P}/merge_requests/3`, method: "GET" }).reply(200, { state: "opened" }, JSON_HEADERS);
     pool.intercept({ path: `${P}/merge_requests/3`, method: "PUT" }).reply(200, { state: "closed" }, JSON_HEADERS);
     await gl.closePR(ref, 3);
+  });
+
+  describe("prFiles", () => {
+    const glDiff = (i: number) => ({
+      old_path: `f${i}.ts`,
+      new_path: `f${i}.ts`,
+      diff: "@@ -1 +1 @@\n-a\n+b\n",
+      new_file: false,
+      renamed_file: false,
+      deleted_file: false,
+    });
+
+    it("đổi lược đồ GitLab: đếm dòng đổi, đổi tên, file quá lớn thành truncated", async () => {
+      const { gl, pool } = setup();
+      const fixture = JSON.parse(
+        readFileSync(new URL("./fixtures/gitlab/merge_request_diffs.json", import.meta.url), "utf8"),
+      );
+      pool
+        .intercept({ path: `${P}/merge_requests/3/diffs?per_page=100&page=1`, method: "GET" })
+        .reply(200, fixture, { headers: { "content-type": "application/json", "x-next-page": "" } });
+      const files = await gl.prFiles(ref, 3);
+      expect(files?.map((f) => [f.path, f.status, f.additions, f.deletions, f.truncated])).toEqual([
+        ["README.md", "modified", 2, 1, false],
+        ["src/b.ts", "renamed", 0, 0, false],
+        ["docs/big.json", "modified", 0, 0, true],
+        ["src/c.ts", "added", 2, 0, false],
+        ["gone.txt", "removed", 0, 1, false],
+      ]);
+      expect(files?.[1]?.previousPath).toBe("src/a.ts");
+      expect(files?.[2]).not.toHaveProperty("patch");
+      expect(files?.[0]?.patch).toContain("+mới");
+    });
+
+    it("đi theo x-next-page tới hết", async () => {
+      const { gl, pool } = setup();
+      pool
+        .intercept({ path: `${P}/merge_requests/3/diffs?per_page=100&page=1`, method: "GET" })
+        .reply(200, [glDiff(1)], { headers: { "content-type": "application/json", "x-next-page": "2" } });
+      pool
+        .intercept({ path: `${P}/merge_requests/3/diffs?per_page=100&page=2`, method: "GET" })
+        .reply(200, [glDiff(2)], { headers: { "content-type": "application/json", "x-next-page": "" } });
+      expect((await gl.prFiles(ref, 3))?.map((f) => f.path)).toEqual(["f1.ts", "f2.ts"]);
+    });
+
+    it("dừng ở 3 000 file", async () => {
+      const { gl, pool } = setup();
+      for (let page = 1; page <= 30; page++) {
+        pool.intercept({ path: `${P}/merge_requests/3/diffs?per_page=100&page=${page}`, method: "GET" }).reply(
+          200,
+          Array.from({ length: 100 }, (_, i) => glDiff(page * 100 + i)),
+          { headers: { "content-type": "application/json", "x-next-page": String(page + 1) } },
+        );
+      }
+      expect(await gl.prFiles(ref, 3)).toHaveLength(3000);
+    });
+
+    it("merge request không có thì null", async () => {
+      const { gl, pool } = setup();
+      pool
+        .intercept({ path: `${P}/merge_requests/9/diffs?per_page=100&page=1`, method: "GET" })
+        .reply(404, notFound, JSON_HEADERS);
+      expect(await gl.prFiles(ref, 9)).toBeNull();
+    });
+  });
+
+  describe("setCommitStatus", () => {
+    it("failure thành failed; name là context; cắt mô tả", async () => {
+      const { gl, pool } = setup();
+      pool.intercept({ path: `${P}/statuses/abc123`, method: "POST" }).reply(201, http.json({ id: 1 }), JSON_HEADERS);
+      await gl.setCommitStatus(ref, "abc123", {
+        context: "xdev-hive/review",
+        state: "failure",
+        description: "y".repeat(200),
+        targetUrl: "https://hive.example/reviews/1",
+      });
+      expect(http.calls.at(-1)?.body).toEqual({
+        state: "failed",
+        name: "xdev-hive/review",
+        description: "y".repeat(140),
+        target_url: "https://hive.example/reviews/1",
+      });
+    });
+
+    it("pending và success giữ nguyên tên; 403 thành forbidden", async () => {
+      const { gl, pool } = setup();
+      for (const state of ["pending", "success"] as const) {
+        pool.intercept({ path: `${P}/statuses/abc123`, method: "POST" }).reply(201, http.json({ id: 1 }), JSON_HEADERS);
+        await gl.setCommitStatus(ref, "abc123", { context: "xdev-hive/review", state, description: "" });
+        expect(http.calls.at(-1)?.body).toMatchObject({ state });
+      }
+      pool
+        .intercept({ path: `${P}/statuses/def456`, method: "POST" })
+        .reply(403, { message: "403 Forbidden" }, JSON_HEADERS);
+      const err = await rejected(
+        gl.setCommitStatus(ref, "def456", { context: "c", state: "pending", description: "" }),
+      );
+      expect(err.code).toBe("forbidden");
+    });
   });
 });
