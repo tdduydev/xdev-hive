@@ -257,7 +257,9 @@ test("skills: Hive default skills show label, license and source, and turn on pe
   await expect(shadcn.getByText("Hive mặc định")).toBeVisible();
   await expect(shadcn.getByText("MIT")).toBeVisible();
   await expect(shadcn.getByText("Đang tắt")).toBeVisible();
-  await expect(pack.getByRole("row", { name: /systematic-debugging/ }).getByText("Đang dùng bản của tổ chức")).toBeVisible();
+  await expect(
+    pack.getByRole("row", { name: /systematic-debugging/ }).getByText("Đang dùng bản của tổ chức"),
+  ).toBeVisible();
 
   await pack.getByRole("switch", { name: "Bật shadcn" }).click();
   await expect(shadcn.getByText("Đang bật")).toBeVisible();
