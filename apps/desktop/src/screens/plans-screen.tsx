@@ -14,6 +14,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { ChevronRightIcon, EllipsisIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { type FormEvent, Fragment, type ReactNode, useCallback, useEffect, useId, useState } from "react";
+import { shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import {
   addPlan,
@@ -26,6 +27,7 @@ import {
   lastChecked,
   machineSummary,
   meterTone,
+  openCliTerminal,
   openLoginTerminal,
   type Plan,
   type PlanPatch,
@@ -84,6 +86,9 @@ const text: Dict<{
   rowActions: (label: string) => string;
   edit: string;
   relogin: string;
+  openCli: string;
+  openCliIn: (folder: string) => string;
+  cliOpened: (id: string) => string;
   login: string;
   installCli: string;
   remove: string;
@@ -173,6 +178,9 @@ const text: Dict<{
     rowActions: (label) => `Thao tác cho ${label}`,
     edit: "Sửa",
     relogin: "Đăng nhập lại",
+    openCli: "Mở CLI",
+    openCliIn: (folder) => `Mở trong ${folder}`,
+    cliOpened: (id) => `Đã mở Terminal chạy CLI của ${id}.`,
     login: "Đăng nhập",
     installCli: "Cài CLI",
     remove: "Xoá",
@@ -286,6 +294,9 @@ const text: Dict<{
     rowActions: (label) => `Actions for ${label}`,
     edit: "Edit",
     relogin: "Sign in again",
+    openCli: "Open CLI",
+    openCliIn: (folder) => `Opens in ${folder}`,
+    cliOpened: (id) => `Opened a terminal running ${id}'s CLI.`,
     login: "Sign in",
     installCli: "Install CLI",
     remove: "Remove",
@@ -409,6 +420,7 @@ export function PlansScreen() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Plan | null>(null);
   const [removing, setRemoving] = useState<Plan | null>(null);
+  const [folder] = useFolder();
   // Gói vừa mở đăng nhập từ đây, theo id: lúc bắt đầu chờ.
   const [waiting, setWaiting] = useState<Record<string, number>>({});
 
@@ -483,6 +495,19 @@ export function PlansScreen() {
     }
   }
 
+  async function openCli(p: Plan) {
+    setBusy(p.id);
+    try {
+      await openCliTerminal(p.id, folder);
+      setError(null);
+      setNotice({ tone: "info", text: t.cliOpened(p.id) });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function readAll() {
     setReading(true);
     try {
@@ -507,11 +532,13 @@ export function PlansScreen() {
       t={t}
       lang={lang}
       now={now}
+      folder={folder}
       busy={busy === p.id || reading}
       waiting={p.id in waiting}
       onToggle={() => void act(p.id, () => setPlanEnabled(p.id, !p.enabled))}
       onEdit={() => setEditing(p)}
       onRelogin={() => void relogin(p)}
+      onOpenCli={() => void openCli(p)}
       onRemove={() => setRemoving(p)}
       onResume={() => void act(p.id, () => resumePlan(p.id), t.resumed(p.id))}
     />
@@ -671,11 +698,13 @@ function PlanRow({
   t,
   lang,
   now,
+  folder,
   busy,
   waiting,
   onToggle,
   onEdit,
   onRelogin,
+  onOpenCli,
   onRemove,
   onResume,
 }: {
@@ -683,11 +712,13 @@ function PlanRow({
   t: T;
   lang: Lang;
   now: number;
+  folder: string;
   busy: boolean;
   waiting: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onRelogin: () => void;
+  onOpenCli: () => void;
   onRemove: () => void;
   onResume: () => void;
 }) {
@@ -760,8 +791,10 @@ function PlanRow({
             t={t}
             disabled={busy}
             canRelogin={!!relogin}
+            folder={folder}
             onEdit={onEdit}
             onRelogin={onRelogin}
+            onOpenCli={onOpenCli}
             onRemove={onRemove}
           />
         </span>
@@ -883,16 +916,20 @@ function RowMenu({
   t,
   disabled,
   canRelogin,
+  folder,
   onEdit,
   onRelogin,
+  onOpenCli,
   onRemove,
 }: {
   label: string;
   t: T;
   disabled: boolean;
   canRelogin: boolean;
+  folder: string;
   onEdit: () => void;
   onRelogin: () => void;
+  onOpenCli: () => void;
   onRemove: () => void;
 }) {
   return (
@@ -911,6 +948,14 @@ function RowMenu({
             </Menu.Item>
             <Menu.Item className={MENU_ITEM} disabled={!canRelogin} onClick={onRelogin}>
               {t.relogin}
+            </Menu.Item>
+            <Menu.Item className={cn(MENU_ITEM, "flex-col items-start")} onClick={onOpenCli}>
+              {t.openCli}
+              {folder && (
+                <span title={folder} className="max-w-64 truncate text-xs text-muted-foreground">
+                  {t.openCliIn(shortPath(folder))}
+                </span>
+              )}
             </Menu.Item>
             <Menu.Item
               className={cn(MENU_ITEM, "mt-1 text-destructive data-highlighted:text-destructive")}

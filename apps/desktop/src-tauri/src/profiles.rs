@@ -3,7 +3,8 @@
 //!
 //! Lệnh đăng nhập do worker trả (`accounts add`) đi qua giao diện rồi mới tới đây, nên Rust không chạy chuỗi đó nguyên
 //! văn: chỉ nhận đúng các dạng `claude auth login …` và `codex login …`, và chỉ biến chọn thư mục đăng nhập của CLI, để
-//! một lỗi chèn script ở cửa sổ cũng không mở được Terminal chạy lệnh tuỳ ý.
+//! một lỗi chèn script ở cửa sổ cũng không mở được Terminal chạy lệnh tuỳ ý. "Mở CLI" còn chặt hơn: cửa sổ chỉ gửi id
+//! gói và thư mục, binary và thư mục đăng nhập do Rust đọc từ worker.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -234,12 +235,18 @@ pub async fn cli_profile_resume(app: AppHandle, id: String) -> Result<serde_json
     sidecar_json(&app, id_command("resume", &id)?, vec![]).await
 }
 
-/// Lệnh đăng nhập đã kiểm: CLI, tham số, và biến thư mục đăng nhập (nếu có).
+/// Lệnh đã kiểm để mở trong Terminal (đăng nhập hay mở CLI): CLI, tham số, biến thư mục đăng nhập và thư mục làm việc
+/// (nếu có).
 #[derive(Debug, PartialEq, Eq)]
-struct Login {
+struct Launch {
     argv: Vec<String>,
     env: Option<(&'static str, String)>,
+    cwd: Option<String>,
+    /// Dòng báo ở đầu cửa sổ; chữ cố định, không lấy từ dữ liệu ngoài vì cmd hiểu `&`, `%` trong echo.
+    note: &'static str,
 }
+
+const LOGIN_NOTE: &str = "xDev Hive: đăng nhập gói agent. Xong thì quay lại app, app tự kiểm lại.";
 
 fn unquote(s: &str) -> &str {
     for q in ['\'', '"'] {
@@ -282,7 +289,7 @@ fn parse_login(
     command: &str,
     env: &HashMap<String, String>,
     home: Option<&Path>,
-) -> Result<Login, String> {
+) -> Result<Launch, String> {
     let refused = || format!("Không mở Terminal cho lệnh này: {command}");
     let words: Vec<&str> = command.split_whitespace().collect();
     let (cli, rest) = match words.as_slice() {
@@ -333,31 +340,48 @@ fn parse_login(
         if key != var {
             return Err(format!("Không đặt biến {key} khi đăng nhập {cli}."));
         }
-        if value.trim().is_empty() {
-            continue;
-        }
-        if !valid_dir(value) {
-            return Err(format!("Thư mục đăng nhập không hợp lệ: {value}"));
-        }
-        out_env = Some((var, expand_home(value, home)?));
+        out_env = dir_env(var, value, home)?;
     }
-    Ok(Login { argv, env: out_env })
+    Ok(Launch {
+        argv,
+        env: out_env,
+        cwd: None,
+        note: LOGIN_NOTE,
+    })
+}
+
+/// Biến thư mục đăng nhập của CLI; rỗng là đăng nhập mặc định của CLI nên không đặt biến.
+fn dir_env(
+    var: &'static str,
+    value: &str,
+    home: Option<&Path>,
+) -> Result<Option<(&'static str, String)>, String> {
+    if value.trim().is_empty() {
+        return Ok(None);
+    }
+    if !valid_dir(value) {
+        return Err(format!("Thư mục đăng nhập không hợp lệ: {value}"));
+    }
+    Ok(Some((var, expand_home(value, home)?)))
 }
 
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
-/// Script cho Terminal của macOS hay Linux: tự xoá, đặt thư mục đăng nhập, chạy lệnh của CLI trong shell đăng nhập
-/// của người dùng (PATH có CLI).
+/// Script cho Terminal của macOS hay Linux: tự xoá, đặt thư mục đăng nhập, vào thư mục làm việc, chạy lệnh của CLI
+/// trong shell đăng nhập của người dùng (PATH có CLI).
 #[cfg_attr(windows, allow(dead_code))]
-fn sh_script(login: &Login) -> String {
+fn sh_script(job: &Launch) -> String {
     let mut s = String::from("#!/bin/sh\nrm -f \"$0\"\n");
-    if let Some((key, value)) = &login.env {
+    if let Some((key, value)) = &job.env {
         s.push_str(&format!("export {key}={}\n", sh_quote(value)));
     }
-    s.push_str("echo 'xDev Hive: đăng nhập gói agent. Xong thì quay lại app, app tự kiểm lại.'\n");
-    let argv: Vec<String> = login.argv.iter().map(|a| sh_quote(a)).collect();
+    if let Some(cwd) = &job.cwd {
+        s.push_str(&format!("cd {} || exit 1\n", sh_quote(cwd)));
+    }
+    s.push_str(&format!("echo {}\n", sh_quote(job.note)));
+    let argv: Vec<String> = job.argv.iter().map(|a| sh_quote(a)).collect();
     s.push_str(&argv.join(" "));
     s.push('\n');
     s
@@ -366,13 +390,17 @@ fn sh_script(login: &Login) -> String {
 /// Script cho cmd của Windows. `call` vì CLI cài qua npm là file .cmd: thiếu `call` thì script dừng sau lệnh đó và
 /// cửa sổ đóng trước khi người dùng đọc được kết quả.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn cmd_script(login: &Login) -> String {
+fn cmd_script(job: &Launch) -> String {
     let mut s = String::from("@echo off\r\nchcp 65001 >nul\r\n");
-    if let Some((key, value)) = &login.env {
+    if let Some((key, value)) = &job.env {
         s.push_str(&format!("set \"{key}={value}\"\r\n"));
     }
-    s.push_str("echo xDev Hive: đăng nhập gói agent. Xong thì quay lại app, app tự kiểm lại.\r\n");
-    s.push_str(&format!("call {}\r\n", login.argv.join(" ")));
+    if let Some(cwd) = &job.cwd {
+        // `/d` để đổi cả ổ đĩa.
+        s.push_str(&format!("cd /d \"{cwd}\" || exit /b 1\r\n"));
+    }
+    s.push_str(&format!("echo {}\r\n", job.note));
+    s.push_str(&format!("call {}\r\n", job.argv.join(" ")));
     s.push_str("echo.\r\npause\r\n(goto) 2>nul & del \"%~f0\"\r\n");
     s
 }
@@ -384,7 +412,7 @@ fn write_script(body: &str, ext: &str) -> Result<PathBuf, String> {
         .unwrap_or_default();
     let path =
         std::env::temp_dir().join(format!("hive-login-{}-{nanos}.{ext}", std::process::id()));
-    let fail = |e: std::io::Error| format!("Không ghi được script đăng nhập: {e}");
+    let fail = |e: std::io::Error| format!("Không ghi được script mở Terminal: {e}");
     #[cfg(unix)]
     {
         use std::io::Write;
@@ -402,11 +430,11 @@ fn write_script(body: &str, ext: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn open_terminal(login: &Login) -> Result<(), String> {
-    let shown = login.argv.join(" ");
+fn open_terminal(job: &Launch) -> Result<(), String> {
+    let shown = job.argv.join(" ");
     #[cfg(target_os = "macos")]
     {
-        let script = write_script(&sh_script(login), "command")?;
+        let script = write_script(&sh_script(job), "command")?;
         let status = Command::new("open")
             .args(["-a", "Terminal"])
             .arg(&script)
@@ -423,7 +451,7 @@ fn open_terminal(login: &Login) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let script = write_script(&cmd_script(login), "cmd")?;
+        let script = write_script(&cmd_script(job), "cmd")?;
         let mut cmd = Command::new("cmd");
         cmd.args(["/C", "start", ""]).arg(&script);
         // Cửa sổ của `start` hiện; cmd đứng giữa thì không.
@@ -440,7 +468,7 @@ fn open_terminal(login: &Login) -> Result<(), String> {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let script = write_script(&sh_script(login), "sh")?;
+        let script = write_script(&sh_script(job), "sh")?;
         for (program, flag) in [
             ("x-terminal-emulator", "-e"),
             ("gnome-terminal", "--"),
@@ -465,11 +493,99 @@ pub async fn open_login_terminal(
     command: String,
     env: Option<HashMap<String, String>>,
 ) -> Result<(), String> {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from);
-    let login = parse_login(&command, &env.unwrap_or_default(), home.as_deref())?;
+    let login = parse_login(&command, &env.unwrap_or_default(), home_dir().as_deref())?;
     tauri::async_runtime::spawn_blocking(move || open_terminal(&login))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
+/// Phần của một gói mà "Mở CLI" cần, đọc từ `accounts --json`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Account {
+    id: String,
+    cli: String,
+    config_dir: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Accounts {
+    accounts: Vec<Account>,
+}
+
+/// Binary của từng CLI mở được từ app (antigravity chạy bằng `agy`).
+fn cli_binary(cli: &str) -> Option<&'static str> {
+    match cli {
+        "claude" => Some("claude"),
+        "codex" => Some("codex"),
+        "antigravity" => Some("agy"),
+        _ => None,
+    }
+}
+
+/// Thư mục làm việc của Terminal: phải có thật và là thư mục. Ký tự lạ bị từ chối chứ không thoát chuỗi, để cmd của
+/// Windows cũng an toàn.
+fn work_dir(folder: &str, home: Option<&Path>) -> Result<String, String> {
+    if !valid_dir(folder) {
+        return Err(format!("Thư mục làm việc không hợp lệ: {folder}"));
+    }
+    let dir = expand_home(folder.trim(), home)?;
+    if !Path::new(&dir).is_dir() {
+        return Err(format!(
+            "Thư mục làm việc không có hoặc không phải thư mục: {folder}"
+        ));
+    }
+    Ok(dir)
+}
+
+fn cli_launch(
+    list: &[Account],
+    id: &str,
+    folder: Option<&str>,
+    home: Option<&Path>,
+) -> Result<Launch, String> {
+    let id = id.trim();
+    let plan = list
+        .iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| format!("Không có gói {id}."))?;
+    let binary =
+        cli_binary(&plan.cli).ok_or_else(|| format!("Chưa mở được CLI {} từ app.", plan.cli))?;
+    let env = match (config_env(&plan.cli), plan.config_dir.as_deref()) {
+        (Some(var), Some(dir)) => dir_env(var, dir, home)?,
+        _ => None,
+    };
+    let cwd = folder
+        .filter(|f| !f.trim().is_empty())
+        .map(|f| work_dir(f, home))
+        .transpose()?;
+    Ok(Launch {
+        argv: vec![binary.into()],
+        env,
+        cwd,
+        note: "xDev Hive: mở CLI bằng đăng nhập của gói agent.",
+    })
+}
+
+/// Mở Terminal chạy CLI của một gói, trong thư mục làm việc nếu có (menu ⋯ của màn Gói agent). Cửa sổ chỉ gửi id gói
+/// và thư mục: binary và thư mục đăng nhập lấy từ worker, nên không đường dẫn hay lệnh nào đi từ giao diện vào script.
+/// Gói chưa đăng nhập vẫn mở được: CLI tự đòi đăng nhập.
+#[tauri::command]
+pub async fn open_cli_terminal(
+    app: AppHandle,
+    id: String,
+    folder: Option<String>,
+) -> Result<(), String> {
+    let Accounts { accounts } =
+        sidecar_json(&app, vec!["accounts".into(), "--json".into()], vec![]).await?;
+    let job = cli_launch(&accounts, &id, folder.as_deref(), home_dir().as_deref())?;
+    tauri::async_runtime::spawn_blocking(move || open_terminal(&job))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -661,7 +777,7 @@ mod tests {
 
     #[test]
     fn scripts_quote_and_set_login_folder() {
-        let login = Login {
+        let login = Launch {
             argv: vec![
                 "claude".into(),
                 "auth".into(),
@@ -670,6 +786,8 @@ mod tests {
                 "a@b.vn".into(),
             ],
             env: Some(("CLAUDE_CONFIG_DIR", "/Users/Duy Trần/.claude 2".into())),
+            cwd: None,
+            note: LOGIN_NOTE,
         };
         let sh = sh_script(&login);
         assert!(sh.starts_with("#!/bin/sh\nrm -f \"$0\"\n"));
@@ -677,18 +795,120 @@ mod tests {
         assert!(sh.ends_with("'claude' 'auth' 'login' '--email' 'a@b.vn'\n"));
         assert_eq!(sh_quote("it's"), r"'it'\''s'");
 
-        let cmd = cmd_script(&Login {
+        let cmd = cmd_script(&Launch {
             argv: vec!["codex".into(), "login".into()],
             env: Some((
                 "CODEX_HOME",
                 r"C:\Users\duy\.xdev-hive\accounts\codex-2".into(),
             )),
+            cwd: None,
+            note: LOGIN_NOTE,
         });
         assert!(
             cmd.contains("set \"CODEX_HOME=C:\\Users\\duy\\.xdev-hive\\accounts\\codex-2\"\r\n")
         );
         assert!(cmd.contains("call codex login\r\n"));
         assert!(cmd.contains("pause\r\n"));
+    }
+
+    fn plans() -> Vec<Account> {
+        let plan = |id: &str, cli: &str, dir: Option<&str>| Account {
+            id: id.into(),
+            cli: cli.into(),
+            config_dir: dir.map(String::from),
+        };
+        vec![
+            plan("claude-1", "claude", None),
+            plan("claude-2", "claude", Some("~/.xdev-hive/accounts/claude-2")),
+            plan("codex-2", "codex", Some("/opt/codex 2")),
+            plan("antigravity-1", "antigravity", Some("/ignored")),
+            plan("gemini-1", "gemini", None),
+            plan("claude-9", "claude", Some("/x\"; rm -rf ~; \"")),
+        ]
+    }
+
+    #[test]
+    fn open_cli_uses_plan_binary_env_and_folder() {
+        let home = Path::new("/Users/duy");
+        let folder = env!("CARGO_MANIFEST_DIR");
+
+        let default = cli_launch(&plans(), "claude-1", None, Some(home)).unwrap();
+        assert_eq!(default.argv, ["claude"]);
+        assert_eq!((default.env, default.cwd), (None, None));
+
+        let job = cli_launch(&plans(), " claude-2 ", Some(folder), Some(home)).unwrap();
+        assert_eq!(job.argv, ["claude"]);
+        assert_eq!(
+            job.env,
+            Some((
+                "CLAUDE_CONFIG_DIR",
+                "/Users/duy/.xdev-hive/accounts/claude-2".into()
+            ))
+        );
+        assert_eq!(job.cwd.as_deref(), Some(folder));
+        let sh = sh_script(&job);
+        assert!(
+            sh.contains("export CLAUDE_CONFIG_DIR='/Users/duy/.xdev-hive/accounts/claude-2'\n")
+        );
+        assert!(sh.contains(&format!("cd '{folder}' || exit 1\n")));
+        assert!(sh.ends_with("'claude'\n"));
+        // Thư mục làm việc vào trước khi báo và chạy CLI.
+        assert!(sh.find("cd '").unwrap() < sh.find("echo ").unwrap());
+        let cmd = cmd_script(&job);
+        assert!(cmd.contains(&format!("cd /d \"{folder}\" || exit /b 1\r\n")));
+        assert!(cmd.ends_with("pause\r\n(goto) 2>nul & del \"%~f0\"\r\n"));
+
+        let codex = cli_launch(&plans(), "codex-2", Some("  "), None).unwrap();
+        assert_eq!(codex.argv, ["codex"]);
+        assert_eq!(codex.env, Some(("CODEX_HOME", "/opt/codex 2".into())));
+        assert_eq!(codex.cwd, None, "thư mục trống là không đặt");
+
+        // Antigravity chạy bằng `agy` và không có biến thư mục đăng nhập.
+        let agy = cli_launch(&plans(), "antigravity-1", None, None).unwrap();
+        assert_eq!((agy.argv, agy.env), (vec!["agy".to_string()], None));
+
+        // `~` cần biết thư mục nhà; thư mục nhà thật thì có và là thư mục.
+        assert!(cli_launch(&plans(), "claude-1", Some("~"), None).is_err());
+        let real = std::env::temp_dir();
+        let home = real.parent().unwrap_or(&real);
+        let job = cli_launch(&plans(), "claude-1", Some("~"), Some(home)).unwrap();
+        assert_eq!(job.cwd.as_deref(), Some(home.to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn open_cli_refuses_unknown_input() {
+        let folder = env!("CARGO_MANIFEST_DIR");
+        let refuse =
+            |id: &str, folder: Option<&str>| cli_launch(&plans(), id, folder, None).expect_err(id);
+        assert!(refuse("nope-1", None).contains("Không có gói"));
+        assert!(refuse("", None).contains("Không có gói"));
+        assert!(refuse("gemini-1", None).contains("Chưa mở được CLI gemini"));
+        assert!(
+            refuse("claude-9", None).contains("không hợp lệ"),
+            "thư mục đăng nhập lạ"
+        );
+        assert!(
+            refuse("claude-1", Some("/không/có/thư/mục/này")).contains("không có"),
+            "thư mục không tồn tại"
+        );
+        let file = format!("{folder}/Cargo.toml");
+        assert!(refuse("claude-1", Some(&file)).contains("không phải thư mục"));
+        for bad in [
+            "/tmp; rm -rf ~",
+            "/tmp && id",
+            "/tmp/$(id)",
+            "/tmp/`id`",
+            "/tmp/a'b",
+            "/tmp/a\"b",
+            "/tmp/a|b",
+            "/tmp/a\nb",
+            "%USERPROFILE%",
+        ] {
+            assert!(
+                refuse("claude-1", Some(bad)).contains("không hợp lệ"),
+                "{bad}"
+            );
+        }
     }
 
     #[test]
