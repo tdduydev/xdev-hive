@@ -23,6 +23,7 @@ import {
   findWebhookTarget,
   templateService,
 } from "./modules/catalog/index.ts";
+import { type ChatApiDeps, chatRouter, handleSlackWebhook, handleTelegramWebhook } from "./modules/chat/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
@@ -86,6 +87,8 @@ export interface AppDeps {
   runNotifier?: RunNotifier | undefined;
   /** DNS giả cho test xác minh tên miền SSO; bỏ trống thì tra DNS thật. */
   resolveTxt?: TxtResolver | undefined;
+  /** Thay API Telegram/Slack thật bằng máy chủ giả khi test. */
+  chatApis?: ChatApiDeps | undefined;
 }
 
 export function createApp({
@@ -99,6 +102,7 @@ export function createApp({
   runs,
   runNotifier,
   resolveTxt,
+  chatApis,
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
@@ -183,6 +187,7 @@ export function createApp({
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),
+    chat: chatRouter({ ...shared, ...chatApis, publicUrl }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({
       auth,
@@ -233,6 +238,16 @@ export function createApp({
         c.req.raw,
       ),
     );
+  // Telegram và Slack gọi vào đây không có phiên người dùng; mỗi route tự kiểm secret/chữ ký của bot theo id trong URL.
+  if (pool) {
+    const chat = { pool, masterKey: config.masterKey, runs, jobs, publicUrl, ...chatApis };
+    app.post("/hooks/chat/telegram/:botId", (c) => handleTelegramWebhook(chat, c.req.param("botId"), c.req.raw));
+    for (const route of ["events", "commands", "interact"] as const) {
+      app.post(`/hooks/chat/slack/:botId/${route}`, (c) =>
+        handleSlackWebhook(chat, c.req.param("botId"), route, c.req.raw),
+      );
+    }
+  }
   // tauri-plugin-updater đòi 204 khi không có bản mới; handler oRPC cùng đường dẫn (để có trong OpenAPI) trả 200 với
   // null, nên route này phải đứng trước handler /api.
   app.get("/api/v1/desktop/updates/:os/:arch/:currentVersion", async (c) => {
