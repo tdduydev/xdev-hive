@@ -16,6 +16,16 @@ export const notificationEvent = z.enum([
   "code_review.overdue",
   "code_review.returned",
   "code_review.approved",
+  // AI SDLC (specs/011 FR-047). Tài liệu chờ duyệt dùng `review.awaiting` có sẵn.
+  "sdlc.question",
+  "sdlc.blocked",
+  "sdlc.override",
+  "sdlc.sync_failed",
+  "sdlc.converged",
+  "sdlc.waiting_machine",
+  "sdlc.project_added",
+  "sdlc.auto_approved",
+  "sdlc.auto_revoked",
 ]);
 export type NotificationEvent = z.output<typeof notificationEvent>;
 
