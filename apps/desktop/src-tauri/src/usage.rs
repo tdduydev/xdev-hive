@@ -14,11 +14,15 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 const CLI_TIMEOUT: Duration = Duration::from_secs(30);
 const WINDOW: Duration = Duration::from_secs(7 * 24 * 3600);
 const MAX_SESSIONS: usize = 200;
+/// `/usage` và `/context` mất vài giây mỗi lần mà số liệu đổi chậm: dùng lại kết quả dưới một phút khi đổi màn rồi quay
+/// lại, hay khi màn Token và hộp tài khoản AI cùng hỏi.
+const PRINT_FRESH: Duration = Duration::from_secs(60);
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -193,6 +197,51 @@ pub fn parse_usage(text: &str) -> UsageReport {
         }
     }
     report
+}
+
+type Slot = Arc<Mutex<Option<(Instant, String)>>>;
+
+/// Kết quả còn mới (dưới `max_age`) của khoá thì trả luôn; không thì chạy `run` và nhớ lại khi thành công. Mỗi khoá một
+/// khoá riêng: nhiều màn hỏi cùng lúc thì chỉ một tiến trình chạy, các bên còn lại chờ rồi nhận chung kết quả. Lỗi không
+/// nhớ, để lần sau thử lại.
+fn remembered(
+    memo: &Mutex<HashMap<String, Slot>>,
+    key: String,
+    max_age: Duration,
+    run: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    let slot = memo
+        .lock()
+        .map_err(|e| e.to_string())?
+        .entry(key)
+        .or_default()
+        .clone();
+    let mut slot = slot.lock().map_err(|e| e.to_string())?;
+    if let Some((at, text)) = slot.as_ref()
+        && at.elapsed() < max_age
+    {
+        return Ok(text.clone());
+    }
+    let text = run()?;
+    *slot = Some((Instant::now(), text.clone()));
+    Ok(text)
+}
+
+/// `claude_print` qua bộ nhớ ngắn hạn; `fresh` thì bỏ qua kết quả cũ (nút tải lại).
+fn claude_print_cached(
+    command: &str,
+    folder: Option<&Path>,
+    fresh: bool,
+) -> Result<String, String> {
+    static MEMO: OnceLock<Mutex<HashMap<String, Slot>>> = OnceLock::new();
+    let key = format!(
+        "{command}\0{}",
+        folder.map(|f| f.to_string_lossy()).unwrap_or_default()
+    );
+    let max_age = if fresh { Duration::ZERO } else { PRINT_FRESH };
+    remembered(MEMO.get_or_init(Default::default), key, max_age, || {
+        claude_print(command, folder)
+    })
 }
 
 /// Chạy `claude -p <lệnh>` trong thư mục (để tính đúng CLAUDE.md và skill của thư mục đó), không lưu phiên.
@@ -482,20 +531,26 @@ fn codex_stats(folder: Option<&Path>) -> SessionStats {
 }
 
 #[tauri::command]
-pub async fn claude_context(folder: Option<String>) -> Result<ContextReport, String> {
+pub async fn claude_context(
+    folder: Option<String>,
+    fresh: Option<bool>,
+) -> Result<ContextReport, String> {
     let dir = folder_path(folder.as_deref())?;
     tauri::async_runtime::spawn_blocking(move || {
-        claude_print("/context", dir.as_deref()).map(|t| parse_context(&t))
+        claude_print_cached("/context", dir.as_deref(), fresh == Some(true))
+            .map(|t| parse_context(&t))
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn claude_usage() -> Result<UsageReport, String> {
-    tauri::async_runtime::spawn_blocking(|| claude_print("/usage", None).map(|t| parse_usage(&t)))
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn claude_usage(fresh: Option<bool>) -> Result<UsageReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        claude_print_cached("/usage", None, fresh == Some(true)).map(|t| parse_usage(&t))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Lần gọi tool `Skill` trong một file phiên Claude Code, theo tên skill; chỉ tính khi cwd của phiên nằm trong thư mục.
@@ -573,6 +628,54 @@ pub async fn session_stats(engine: String, folder: Option<String>) -> Result<Ses
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slow_cli_output_runs_once_for_callers_at_the_same_time() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let memo = Mutex::new(HashMap::new());
+        let runs = AtomicUsize::new(0);
+        // `claude -p /usage` thật mất vài giây; 200 ms đủ để hai màn hỏi chồng lên nhau.
+        let slow = || {
+            runs.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(200));
+            Ok::<_, String>(USAGE.to_string())
+        };
+        let started = Instant::now();
+        std::thread::scope(|s| {
+            for _ in 0..3 {
+                s.spawn(|| {
+                    let text = remembered(&memo, "/usage".into(), PRINT_FRESH, slow).unwrap();
+                    assert_eq!(parse_usage(&text).session.unwrap().percent, 11.0);
+                });
+            }
+        });
+        let together = started.elapsed();
+        let again = Instant::now();
+        remembered(&memo, "/usage".into(), PRINT_FRESH, slow).unwrap();
+        eprintln!(
+            "3 lời gọi cùng lúc: {together:?}, {} lần chạy; gọi lại: {:?}",
+            runs.load(Ordering::SeqCst),
+            again.elapsed()
+        );
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+        assert!(again.elapsed() < Duration::from_millis(50));
+
+        // Nút tải lại (max_age 0) chạy lại; khoá khác (thư mục khác) không dùng chung kết quả.
+        remembered(&memo, "/usage".into(), Duration::ZERO, slow).unwrap();
+        remembered(&memo, "/context\0/w/app".into(), PRINT_FRESH, slow).unwrap();
+        assert_eq!(runs.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn failed_cli_output_is_not_remembered() {
+        let memo = Mutex::new(HashMap::new());
+        let failed = remembered(&memo, "/usage".into(), PRINT_FRESH, || {
+            Err("Claude Code báo lỗi (mã 1).".into())
+        });
+        assert!(failed.is_err());
+        let ok = remembered(&memo, "/usage".into(), PRINT_FRESH, || Ok("ok".into()));
+        assert_eq!(ok.unwrap(), "ok");
+    }
 
     // Đầu ra thật của Claude Code 2.1.296 trên máy dev (2026-10-12), rút gọn bảng Skills.
     const CONTEXT: &str = "## Context Usage\n\n**Model:** claude-opus-5-5  \n**Tokens:** 12.7k / 1m (1%)\n\n### Estimated usage by category\n\n| Category | Tokens | Percentage |\n|----------|--------|------------|\n| System prompt | 2.3k | 0.2% |\n| System tools | 6.1k | 0.6% |\n| System tools (deferred) | 13.3k | 1.3% |\n| Skills | 4.3k | 0.4% |\n| Messages | 10 | 0.0% |\n| Free space | 954.3k | 95.4% |\n| Autocompact buffer | 33k | 3.3% |\n\n### Skills\n\n| Skill | Source | Tokens |\n|-------|--------|--------|\n| dataviz | Built-in | ~480 |\n";
