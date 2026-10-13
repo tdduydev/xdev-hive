@@ -14,6 +14,7 @@ import {
   type ProjectSettings,
   type Run,
   type Task,
+  workflowInput,
 } from "@xdev-hive/contracts";
 import {
   type CostEventData,
@@ -2256,5 +2257,212 @@ describe("brief của dự án và khảo sát trước khi sửa (ADR 0022)", (
       briefProject,
     ]);
     await w.close();
+  });
+});
+
+describe("quy trình review code (specs/009)", () => {
+  let crProject = "";
+  let crKey = "";
+  let workflowId = "";
+
+  beforeAll(async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+    crKey = `cr-${tag}`;
+    const p = await seedProject(admin, pool, {
+      orgId: org.orgId,
+      teamId: org.teamId,
+      systemId: org.systemId,
+      adminUserId: org.user("admin"),
+      masterKey,
+      key: crKey,
+    });
+    crProject = p.projectId;
+    provider.seedRepo({ owner: p.owner, name: p.repo });
+    const phases = [
+      {
+        name: "Review",
+        gates: [
+          { id: "rules", name: "Quy tắc", kind: "rule", rules: ["max-files"], maxFiles: 5, slaHours: null },
+          {
+            id: "lead",
+            name: "Người duyệt",
+            kind: "human",
+            reviewers: { users: [], roles: ["team-member"], teams: [], quorum: 1, allowRequester: false },
+            slaHours: 24,
+          },
+        ],
+      },
+    ];
+    // Lưu đúng dạng saveWorkflow ghi: đã qua zod (giá trị mặc định đầy đủ).
+    const w = workflowInput.parse({
+      name: "Code dự án CR",
+      preset: "custom",
+      subject: "code",
+      teamId: org.teamId,
+      docPrefixes: [],
+      code: { projects: [crKey] },
+      phases,
+      enabled: true,
+    });
+    const { rows } = await admin.query(
+      `insert into hive.review_workflows (org_id, team_id, name, preset, subject, doc_prefixes, code, phases, enabled)
+       values ($1, $2, 'Code dự án CR', 'custom', 'code', '{}', $3, $4, true) returning id`,
+      [org.orgId, org.teamId, JSON.stringify(w.code), JSON.stringify(w.phases)],
+    );
+    workflowId = rows[0].id;
+  });
+
+  afterAll(async () => {
+    await admin.query("delete from hive.review_workflows where id = $1", [workflowId]);
+  });
+
+  const reviewOf = async (runId: string) =>
+    (await admin.query("select * from hive.code_reviews where run_id = $1", [runId])).rows[0];
+
+  it("run khớp quy trình: kết luận ngay, mở phiên trong cùng transaction; checkpoint quy tắc dùng bằng chứng của run", async () => {
+    const w = await FakeWorker.connect(await seedMachine(`cr-${tag}`));
+    const task = await newTask("Sửa thanh toán", { projectId: crProject });
+    const run = await startRun(task.id);
+    await w.next("job_offer", (o) => o.runId === run.id);
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    const commands = [{ run: "pnpm test", exit: 0, durationMs: 1200, tail: "ok" }];
+    w.sendRun({
+      type: "run_result",
+      runId: run.id,
+      attempt: 1,
+      exit: 0,
+      headSha: sha,
+      report: { commitCount: 1, changedFiles: ["src/pay.ts", "src/pay.test.ts"], commands },
+      diffStats: { addedLines: 30, deletedLines: 4, changedFiles: ["src/pay.ts", "src/pay.test.ts"] },
+    });
+    await until(async () => (await runRow(run.id)).state === "succeeded");
+    const row = await runRow(run.id);
+    expect(row.pr_url).toMatch(/\/pull\/\d+$/);
+    expect(await taskStatus(task.id)).toBe("review");
+
+    const review = await reviewOf(run.id);
+    expect(review).toMatchObject({
+      workflow_id: workflowId,
+      workflow_name: "Code dự án CR",
+      status: "in_review",
+      head_sha: sha,
+      pr_url: row.pr_url,
+      branch: `ai/${task.key}`,
+      base_branch: "main",
+      requester_user_id: devUserId,
+      changed_files: 2,
+      gate_index: 1,
+    });
+    const { rows: gates } = await admin.query(
+      "select gate_id, status from hive.code_review_gate_runs where review_id = $1 order by started_at",
+      [review.id],
+    );
+    expect(gates).toEqual([
+      { gate_id: "rules", status: "passed" },
+      { gate_id: "lead", status: "waiting" },
+    ]);
+    const { rows: events } = await admin.query("select data from hive.run_events where run_id = $1 and type = $2", [
+      run.id,
+      "code_review",
+    ]);
+    expect(events[0]?.data).toMatchObject({ reviewId: review.id, workflowId, round: 1 });
+    const { rows: audit } = await admin.query(
+      "select data from hive.audit_log where target_id = $1 and action = 'run.finish'",
+      [run.id],
+    );
+    expect(audit[0]?.data).toMatchObject({ workflowId, codeReviewId: review.id });
+
+    // Bằng chứng mà checkpoint quy tắc đọc lại: số liệu, kết quả lệnh kiểm, loại task của lần thử cuối.
+    const evidence = await withTenant(pool, { orgId: org.orgId }, (tx) => engine.runEvidence(tx, run.id));
+    expect(evidence).toEqual({
+      headSha: sha,
+      taskType: null,
+      stats: { addedLines: 30, deletedLines: 4, changedFiles: ["src/pay.ts", "src/pay.test.ts"] },
+      commands,
+      hasAgentReport: false,
+    });
+    await w.close();
+  });
+
+  it("run sửa theo góp ý (queueFixRun): run code mới cùng task, CLI, chủ; không lập kế hoạch; mang góp ý vào prompt", async () => {
+    await admin.query(
+      "update hive.projects set settings = jsonb_set(settings, '{features,planMode}', 'true') where id = $1",
+      [crProject],
+    );
+    try {
+      const w = await FakeWorker.connect(await seedMachine(`fix-${tag}`, ["claude", "codex"]));
+      const task = await newTask("Sửa hoá đơn", { projectId: crProject });
+      const { rows } = await admin.query(
+        `insert into hive.runs (org_id, team_id, task_id, project_id, kind, cli, model, branch, policy_snapshot, created_by, owner_user_id, state, head_sha)
+         values ($1, $2, $3, $4, 'code', 'codex', 'gpt-5', $5, '[]', $6, $6, 'succeeded', $7) returning id`,
+        [org.orgId, org.teamId, task.id, crProject, `ai/${task.key}`, devUserId, sha],
+      );
+      const original = rows[0].id as string;
+      const fix = await withTenant(pool, { orgId: org.orgId }, (tx) =>
+        engine.queueFixRun(tx, {
+          reviewId: randomUUID(),
+          workflowId,
+          runId: original,
+          instructions: "Thêm test cho làm tròn âm.",
+        }),
+      );
+      const fixRow = await runRow(fix.runId);
+      expect(fixRow).toMatchObject({
+        kind: "code",
+        task_id: task.id,
+        cli: "codex",
+        model: "gpt-5",
+        branch: `ai/${task.key}`,
+        created_by: `workflow:${workflowId}`,
+        owner_user_id: devUserId,
+        parent_run_id: null,
+        state: "queued",
+      });
+      // Hẹn giờ `dispatch` giao run sau khi transaction của phiên commit.
+      const offer = await w.next("job_offer", (o) => o.runId === fix.runId);
+      expect(offer.spec).toMatchObject({ kind: "code", cli: "codex", instructions: ["Thêm test cho làm tròn âm."] });
+      expect(String(offer.spec.prompt)).toContain("Thêm test cho làm tròn âm.");
+      w.send({ type: "job_reject", runId: fix.runId, attempt: 1, reason: "test" });
+      await w.close();
+    } finally {
+      await admin.query(
+        "update hive.projects set settings = jsonb_set(settings, '{features,planMode}', 'false') where id = $1",
+        [crProject],
+      );
+      await admin.query(
+        "update hive.runs set state = 'cancelled' where project_id = $1 and state not in ('succeeded', 'failed', 'cancelled', 'needs_review', 'no_changes')",
+        [crProject],
+      );
+    }
+  });
+
+  it("không có quy trình khớp (quy trình tắt): như cũ, không mở phiên", async () => {
+    await admin.query("update hive.review_workflows set enabled = false where id = $1", [workflowId]);
+    try {
+      const w = await FakeWorker.connect(await seedMachine(`nocr-${tag}`));
+      const task = await newTask("Không có quy trình", { projectId: crProject });
+      const run = await startRun(task.id);
+      await w.next("job_offer", (o) => o.runId === run.id);
+      w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+      await w.next("lease", (l) => l.runId === run.id);
+      w.sendRun({
+        type: "run_result",
+        runId: run.id,
+        attempt: 1,
+        exit: 0,
+        headSha: sha,
+        report: { commitCount: 1, changedFiles: ["src/a.ts"] },
+      });
+      await until(async () => (await runRow(run.id)).state === "succeeded");
+      expect(await reviewOf(run.id)).toBeUndefined();
+      const { rows } = await admin.query("select 1 from hive.run_events where run_id = $1 and type = 'code_review'", [
+        run.id,
+      ]);
+      expect(rows).toHaveLength(0);
+      await w.close();
+    } finally {
+      await admin.query("update hive.review_workflows set enabled = true where id = $1", [workflowId]);
+    }
   });
 });
