@@ -237,10 +237,13 @@ pub async fn cli_profile_resume(app: AppHandle, id: String) -> Result<serde_json
 
 /// Lệnh đã kiểm để mở trong Terminal (đăng nhập hay mở CLI): CLI, tham số, biến thư mục đăng nhập và thư mục làm việc
 /// (nếu có).
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct Launch {
     argv: Vec<String>,
     env: Option<(&'static str, String)>,
+    /// PATH của shell đăng nhập (doctor::user_path): Terminal chạy script bằng /bin/sh nên không thấy CLI cài qua nvm,
+    /// Homebrew hay ~/.local/bin nếu thiếu dòng này.
+    path: Option<String>,
     cwd: Option<String>,
     /// Dòng báo ở đầu cửa sổ; chữ cố định, không lấy từ dữ liệu ngoài vì cmd hiểu `&`, `%` trong echo.
     note: &'static str,
@@ -345,6 +348,7 @@ fn parse_login(
     Ok(Launch {
         argv,
         env: out_env,
+        path: None,
         cwd: None,
         note: LOGIN_NOTE,
     })
@@ -374,6 +378,9 @@ fn sh_quote(s: &str) -> String {
 #[cfg_attr(windows, allow(dead_code))]
 fn sh_script(job: &Launch) -> String {
     let mut s = String::from("#!/bin/sh\nrm -f \"$0\"\n");
+    if let Some(path) = job.path.as_deref().filter(|p| !p.is_empty()) {
+        s.push_str(&format!("export PATH={}\n", sh_quote(path)));
+    }
     if let Some((key, value)) = &job.env {
         s.push_str(&format!("export {key}={}\n", sh_quote(value)));
     }
@@ -432,6 +439,13 @@ fn write_script(body: &str, ext: &str) -> Result<PathBuf, String> {
 
 fn open_terminal(job: &Launch) -> Result<(), String> {
     let shown = job.argv.join(" ");
+    // Đọc PATH của shell đăng nhập lúc mở (đã nhớ từ khi app khởi động), không đặt trong hàm dựng để test không phụ
+    // thuộc shell của máy.
+    #[cfg(unix)]
+    let job = &Launch {
+        path: Some(crate::doctor::user_path().to_string()),
+        ..job.clone()
+    };
     #[cfg(target_os = "macos")]
     {
         let script = write_script(&sh_script(job), "command")?;
@@ -568,6 +582,7 @@ fn cli_launch(
     Ok(Launch {
         argv: vec![binary.into()],
         env,
+        path: None,
         cwd,
         note: "xDev Hive: mở CLI bằng đăng nhập của gói agent.",
     })
@@ -786,6 +801,7 @@ mod tests {
                 "a@b.vn".into(),
             ],
             env: Some(("CLAUDE_CONFIG_DIR", "/Users/Duy Trần/.claude 2".into())),
+            path: None,
             cwd: None,
             note: LOGIN_NOTE,
         };
@@ -795,12 +811,23 @@ mod tests {
         assert!(sh.ends_with("'claude' 'auth' 'login' '--email' 'a@b.vn'\n"));
         assert_eq!(sh_quote("it's"), r"'it'\''s'");
 
+        let with_path = sh_script(&Launch {
+            path: Some("/opt/homebrew/bin:/Users/duy/.nvm/versions/node/v26/bin".into()),
+            ..login.clone()
+        });
+        assert!(
+            with_path.contains(
+                "export PATH='/opt/homebrew/bin:/Users/duy/.nvm/versions/node/v26/bin'\n"
+            ),
+            "{with_path}"
+        );
         let cmd = cmd_script(&Launch {
             argv: vec!["codex".into(), "login".into()],
             env: Some((
                 "CODEX_HOME",
                 r"C:\Users\duy\.xdev-hive\accounts\codex-2".into(),
             )),
+            path: None,
             cwd: None,
             note: LOGIN_NOTE,
         });
