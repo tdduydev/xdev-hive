@@ -1,0 +1,5 @@
+#!/bin/sh
+# Chạy kiểm tra tại máy trước khi push để CI không đỏ vì lỗi bắt được sớm. Bỏ qua một lần: git push --no-verify,
+# hoặc HIVE_SKIP_PREPUSH=1 git push.
+[ "${HIVE_SKIP_PREPUSH:-0}" = 1 ] && exit 0
+exec node "$(git rev-parse --show-toplevel)/scripts/pre-push.ts"
