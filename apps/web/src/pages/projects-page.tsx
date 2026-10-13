@@ -40,6 +40,12 @@ const text: Dict<{
   emptyTitle: string;
   emptyCanCreate: string;
   emptyCannotCreate: string;
+  emptyNeedGit: string;
+  emptyNeedGitMember: string;
+  emptyNeedSystem: string;
+  connectGit: string;
+  addSystem: string;
+  createFirst: string;
   noMatch: string;
   clearFilters: string;
   colProject: string;
@@ -70,6 +76,15 @@ const text: Dict<{
     emptyTitle: "Chưa có dự án nào",
     emptyCanCreate: "Bấm “Tạo dự án” để nối một repo GitHub/GitLab có sẵn hoặc tạo repo mới cho agent làm việc.",
     emptyCannotCreate: "Bạn chưa ở trong đội nào có dự án. Nhờ quản trị đội tạo dự án hoặc thêm bạn vào đội.",
+    emptyNeedGit:
+      "Bước đầu: kết nối GitHub hoặc GitLab để hub tạo repo, mở PR và nhận webhook. Sau đó tạo dự án từ repo có sẵn hoặc repo mới.",
+    emptyNeedGitMember:
+      "Tổ chức chưa kết nối GitHub hoặc GitLab. Nhờ quản trị tổ chức thêm kết nối trước khi tạo dự án.",
+    emptyNeedSystem:
+      "Dự án thuộc một hệ thống của đội. Thêm hệ thống (ví dụ “Cổng thanh toán”) cho đội ở trang Đội và hệ thống trước.",
+    connectGit: "Kết nối GitHub/GitLab",
+    addSystem: "Thêm hệ thống",
+    createFirst: "Tạo dự án đầu tiên",
     noMatch: "Không có dự án nào khớp bộ lọc.",
     clearFilters: "Xoá bộ lọc",
     colProject: "Dự án",
@@ -101,6 +116,15 @@ const text: Dict<{
     emptyCanCreate: "Click “New project” to link an existing GitHub/GitLab repo or create a new repo for agents.",
     emptyCannotCreate:
       "You are not in any team with projects. Ask a team admin to create a project or add you to a team.",
+    emptyNeedGit:
+      "First, connect GitHub or GitLab so the hub can create repos, open PRs and receive webhooks. Then create a project from an existing or new repo.",
+    emptyNeedGitMember:
+      "The organization has no GitHub or GitLab connection yet. Ask an organization admin to add one before creating projects.",
+    emptyNeedSystem:
+      "A project belongs to one of a team’s systems. Add a system (e.g. “Payment gateway”) on the Teams & systems page first.",
+    connectGit: "Connect GitHub/GitLab",
+    addSystem: "Add a system",
+    createFirst: "Create the first project",
     noMatch: "No projects match these filters.",
     clearFilters: "Clear filters",
     colProject: "Project",
@@ -157,7 +181,7 @@ export function ProjectsPage() {
   } else if (projects.isError) {
     body = <Alert variant="destructive">{apiErrorMessage(projects.error)}</Alert>;
   } else if (projects.data.length === 0) {
-    body = <EmptyProjects canCreate={canCreate} />;
+    body = <EmptyProjects canCreate={canCreate} ownsTeam={(teamId) => roleOf(teamId) === "admin"} />;
   } else {
     body = (
       <ProjectTable
@@ -183,15 +207,46 @@ export function ProjectsPage() {
   );
 }
 
-function EmptyProjects({ canCreate }: { canCreate: boolean }) {
+/**
+ * Chưa có dự án: chỉ ra bước còn thiếu (kết nối Git, hệ thống của đội) và nút làm bước đó, thay vì để người dùng mở
+ * hộp thoại tạo dự án rồi mới biết thiếu gì.
+ */
+function EmptyProjects({ canCreate, ownsTeam }: { canCreate: boolean; ownsTeam: (teamId: string) => boolean }) {
   const t = useT(text);
+  const { org, api } = useOrg();
+  const connections = useQuery({ ...api.scmConnections.list.queryOptions(), enabled: canCreate });
+  const systems = useQuery({ ...api.systems.list.queryOptions({ input: {} }), enabled: canCreate });
+  const needGit = connections.data?.length === 0;
+  const needSystem = !needGit && systems.data !== undefined && !systems.data.some((s) => ownsTeam(s.teamId));
+  let lead = canCreate ? t.emptyCanCreate : t.emptyCannotCreate;
+  let action: ReactNode =
+    canCreate && connections.data && systems.data ? <CreateProjectButton label={t.createFirst} /> : null;
+  if (canCreate && needGit) {
+    const admin = isOrgAdmin(org.role);
+    lead = admin ? t.emptyNeedGit : t.emptyNeedGitMember;
+    action = admin ? (
+      <Link to="/admin/git" className={buttonVariants({ variant: "default" })}>
+        <Icon name="github" className="size-4" />
+        {t.connectGit}
+      </Link>
+    ) : null;
+  } else if (canCreate && needSystem) {
+    lead = t.emptyNeedSystem;
+    action = (
+      <Link to="/admin/teams" className={buttonVariants({ variant: "default" })}>
+        <Icon name="plus" className="size-4" />
+        {t.addSystem}
+      </Link>
+    );
+  }
   return (
     <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
       <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
         <Icon name="folder" className="size-5" />
       </span>
       <h2 className="text-base font-semibold text-foreground">{t.emptyTitle}</h2>
-      <p className="max-w-md text-muted-foreground">{canCreate ? t.emptyCanCreate : t.emptyCannotCreate}</p>
+      <p className="max-w-md text-muted-foreground">{lead}</p>
+      {action && <div className="mt-2">{action}</div>}
     </Card>
   );
 }

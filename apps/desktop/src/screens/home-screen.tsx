@@ -224,7 +224,7 @@ function Tile({
 }) {
   const body = (
     <>
-      <span className="text-[12.5px] text-muted-foreground">{label}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
       <span className="font-mono text-2xl font-semibold tracking-tight">{value}</span>
       <span
         title={title}
@@ -408,7 +408,7 @@ export function HomeScreen() {
           <h2 className="font-heading text-xl font-semibold tracking-tight">
             {account?.name ? t.hello(account.name) : t.helloAnon}
           </h2>
-          <p className={cn("text-[13px]", hubError || metaError ? "text-destructive" : "text-muted-foreground")}>
+          <p className={cn("text-sm", hubError || metaError ? "text-destructive" : "text-muted-foreground")}>
             {sub}
             {meta?.branch && <span className="font-mono"> · {meta.branch}</span>}
           </p>
@@ -493,7 +493,7 @@ export function HomeScreen() {
         <section className="w-full min-w-0 overflow-hidden rounded-xl border bg-card min-[1000px]:flex-[3]">
           <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
             <div>
-              <h3 className="text-[14.5px] font-semibold">{project ? t.digest : t.digestAll}</h3>
+              <h3 className="text-[15px] font-semibold">{project ? t.digest : t.digestAll}</h3>
               <p className="text-xs text-muted-foreground">{t.digestSub}</p>
             </div>
             {docs && docs.length > 0 && (
@@ -503,11 +503,11 @@ export function HomeScreen() {
             )}
           </div>
           {docs === null ? (
-            <p className={cn("px-4 py-3 text-[13px]", hubError ? "text-destructive" : "text-muted-foreground")}>
+            <p className={cn("px-4 py-3 text-sm", hubError ? "text-destructive" : "text-muted-foreground")}>
               {!account ? t.noAccount : (hubError ?? t.loading)}
             </p>
           ) : docs.length === 0 ? (
-            <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.noDocs}</p>
+            <p className="px-4 py-3 text-sm text-muted-foreground">{t.noDocs}</p>
           ) : (
             <ul>
               {docs.map((d) => {
@@ -516,7 +516,7 @@ export function HomeScreen() {
                 return (
                   <li key={d.key} className="flex items-center gap-3 border-b px-4 py-2.5 last:border-b-0">
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-[13.5px] font-medium">{d.title}</span>
+                      <span className="truncate text-sm font-medium">{d.title}</span>
                       <span className="truncate font-mono text-xs text-muted-foreground">{d.key}</span>
                     </span>
                     {isChanged && projectSeen && <Pill tone="warn">{prev ? t.changedFrom(prev) : t.isNew}</Pill>}
@@ -532,21 +532,21 @@ export function HomeScreen() {
           {!writer && (
             <section className="overflow-hidden rounded-xl border bg-card">
               <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-                <h3 className="text-[14.5px] font-semibold">{t.env}</h3>
+                <h3 className="text-[15px] font-semibold">{t.env}</h3>
                 <a href="#/setup" className="text-xs text-primary">
                   {t.fix}
                 </a>
               </div>
               {checksError ? (
-                <p className="px-4 py-3 text-[13px] text-destructive">{checksError}</p>
+                <p className="px-4 py-3 text-sm text-destructive">{checksError}</p>
               ) : checks === null ? (
-                <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.checking}</p>
+                <p className="px-4 py-3 text-sm text-muted-foreground">{t.checking}</p>
               ) : todo.length === 0 ? (
-                <p className="px-4 py-3 text-[13px] text-success">{folder ? t.envOk : t.envOkMachine}</p>
+                <p className="px-4 py-3 text-sm text-success">{folder ? t.envOk : t.envOkMachine}</p>
               ) : (
                 <ul>
                   {todo.slice(0, 3).map((c) => (
-                    <li key={c.id} className="flex items-center gap-2.5 border-b px-4 py-2 text-[13px] last:border-b-0">
+                    <li key={c.id} className="flex items-center gap-2.5 border-b px-4 py-2 text-sm last:border-b-0">
                       <span
                         aria-hidden="true"
                         className={cn(
@@ -555,7 +555,7 @@ export function HomeScreen() {
                         )}
                       />
                       <span className="flex-1">{c.name}</span>
-                      <span className="font-mono text-xs text-muted-foreground">{t.needs(c.need, c.have)}</span>
+                      <span className="text-xs text-muted-foreground">{t.needs(c.need, c.have)}</span>
                     </li>
                   ))}
                 </ul>
@@ -565,13 +565,13 @@ export function HomeScreen() {
           )}
           <section className="overflow-hidden rounded-xl border bg-card">
             <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-              <h3 className="text-[14.5px] font-semibold">{t.tokens7d}</h3>
+              <h3 className="text-[15px] font-semibold">{t.tokens7d}</h3>
               <a href="#/tokens" className="text-xs text-primary">
                 {t.detail}
               </a>
             </div>
             {statsError ? (
-              <p className="px-4 py-3 text-[13px] text-muted-foreground" title={statsError}>
+              <p className="px-4 py-3 text-sm text-muted-foreground" title={statsError}>
                 {t.statsFailed}
               </p>
             ) : (
@@ -589,7 +589,7 @@ export function HomeScreen() {
                 </div>
                 <div className="flex gap-1.5 px-4 pb-3">
                   {days.map((d) => (
-                    <span key={d.day} className="flex-1 text-center font-mono text-[10.5px] text-muted-foreground">
+                    <span key={d.day} className="flex-1 text-center font-mono text-xs text-muted-foreground">
                       {new Date(`${d.day}T12:00:00Z`).toLocaleDateString(lang, { weekday: "short" })}
                     </span>
                   ))}
