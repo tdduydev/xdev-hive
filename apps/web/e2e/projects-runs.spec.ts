@@ -190,6 +190,49 @@ test("cấu hình dự án: Tiết kiệm token hiện mặc định, sửa và 
   await expect(page.getByRole("textbox", { name: "Output lệnh tối đa" })).toBeDisabled();
 });
 
+test("cấu hình dự án: định tuyến model hiện mặc định, sửa một cấp và lưu đúng bản vá", async ({ page }) => {
+  const h = await open(page, "admin", {
+    "projects/updateSettings": (input) => {
+      const patch = (input as { settings: Record<string, unknown> }).settings;
+      return ok({ ...PROJECT.settings, ...patch });
+    },
+  });
+  await page.goto("/projects/PAY/settings");
+  const routing = page.getByRole("group", { name: "Định tuyến model theo độ khó" });
+  await expect(routing.getByRole("switch", { name: "Bật định tuyến" })).toBeChecked();
+  const heavy = routing.getByRole("textbox", { name: "Số lượt tối đa" }).nth(2);
+  await expect(heavy).toHaveValue("200");
+  await expect(page.getByRole("textbox", { name: "Cửa sổ ngữ cảnh tối đa" })).toHaveValue("200000");
+  await expect(page.getByRole("switch", { name: "Cho agent dùng web" })).not.toBeChecked();
+
+  await heavy.fill("0");
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await expect(page.getByText("Tối thiểu 1 lượt.")).toBeVisible();
+  expect(h.rpcCalls.some((c) => c.path === "projects/updateSettings")).toBe(false);
+
+  await heavy.fill("250");
+  await routing.getByRole("textbox", { name: "Model cố vấn" }).nth(1).fill("opus");
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await expect
+    .poll(() => h.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
+    .toMatchObject({
+      key: "PAY",
+      settings: {
+        routing: {
+          enabled: true,
+          tiers: {
+            medium: { advisor: "opus", maxTurns: 120 },
+            heavy: { model: "opus", maxTurns: 250 },
+          },
+        },
+      },
+    });
+
+  // Tắt định tuyến thì các ô cấp khoá lại.
+  await routing.getByRole("switch", { name: "Bật định tuyến" }).click();
+  await expect(heavy).toBeDisabled();
+});
+
 test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async ({ page }) => {
   await open(page, "admin", { "policies/get": () => ok({ allowFullPermission: false }) });
   await page.goto("/projects/PAY/settings");
