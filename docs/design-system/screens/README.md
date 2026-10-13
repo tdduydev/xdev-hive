@@ -40,7 +40,7 @@ Các file để phẳng một cấp vì `<dc-import name="X">` nạp `X.dc.html`
 | `Sidebar.dc.html` | Mọi màn web | Menu nhiều cấp: Tổng quan, Công việc, Kiến thức, Dự án và hạ tầng, Quản trị agent, Người và quyền, Theo dõi |
 | `Topbar.dc.html` | Mọi màn web | Đường dẫn, tìm kiếm ⌘K, VI/EN, sáng/tối, thông báo |
 | `DataTable.dc.html` | Mọi bảng dữ liệu | Tìm, lọc nhiều lựa chọn có đếm, dòng "Đang lọc", ẩn cột, sắp xếp, chọn hàng loạt, phân trang. Props: `columns`, `rows`, `facets`, `bulk`, `page-size`, `on-row-click`, `active-id` |
-| `AppNav.dc.html` | Mọi màn app máy | Một app, menu theo quyền (`role` = dev, writer, lead); `compact` chỉ còn icon |
+| `AppNav.dc.html` | Mọi màn app máy | Một app, menu theo quyền (`role` = dev, writer, lead); `compact` chỉ còn icon. Có nhóm AI SDLC (xem dưới) |
 
 ## Màn web
 
@@ -95,6 +95,39 @@ Một app cho mọi người, menu hiện theo quyền. Không tách app dev và
 Chế độ quyền, lệnh `/`, cách đăng nhập và đường dẫn skill trong `AppDocs` và `AppSkills` lấy từ Claude Code 2.1.296
 và codex-cli 0.162.1 cài trên máy dev ngày 2026-10-12. Định dạng từng dòng thao tác trong khung chat và chữ của Approve
 for me chưa đối chiếu với phiên tương tác thật.
+
+## AI SDLC (spec 011, T005)
+
+Bảy màn mới và ba biến thể. App máy và web dùng chung một component (`@xdev-hive/sdlc-ui`), nên mỗi màn chỉ có một file:
+dạng cửa sổ app 1440 × 900 (có `AppNav`), còn web đặt cùng nội dung trong `Sidebar` + `Topbar`. Mọi màn có prop `narrow`
+(360 px: một cột, bảng và đồ thị thành danh sách), `dark`, `lang`, và thanh "Trạng thái xem" (bình thường, đang tải, rỗng,
+lỗi, cộng trạng thái riêng của màn) để xem từng trạng thái. Prop `role` (dev, writer, lead) đổi nút theo quyền: nút Chạy
+đợt, Tạm dừng, Tạo ngoại lệ, Huỷ hạng mục chỉ hiện với `sdlc.manage` (lead); người chỉ đọc không thấy nút ghi.
+
+| File | Màn | Route app / web | Story | Giao cho |
+|---|---|---|---|---|
+| `AppSdlcBoard.dc.html` | Bảng hạng mục theo 7 loại giai đoạn + danh sách, chip dự án | `#/sdlc` · `/sdlc` | US7, US12, US16 | T050 `item-board`, `item-list` |
+| `AppSdlcNewItem.dc.html` | Tạo hạng mục, chọn dự án tham gia, gợi ý cỡ và chế độ | tạo từ màn `sdlc` · `/sdlc/new` | US1, US16 | T050 `new-item`, `project-picker` |
+| `AppSdlcItem.dc.html` | Chi tiết: stepper, tab Tổng quan / Dự án / Tài liệu / Contract / Câu hỏi / Task / Truy vết, tự duyệt + Thu hồi, ngoại lệ | `#/sdlc/<dự án>/<NNN>/<tab>` · `/sdlc/$project/$number` | US2–US6, US16–US18 | T051 |
+| `AppSdlcQuestions.dc.html` | Câu hỏi chờ tôi, trả lời nhanh, "Dùng đề xuất" | màn `sdlc-questions` · `/sdlc/questions` | US2 | T050 `questions` |
+| `AppSdlcBreakdown.dc.html` | Duyệt bản tách task: đồ thị theo làn dự án, đợt, độ phủ, lỗi đọc | tab Task của hạng mục, và thẻ trong Chờ tôi duyệt | US5, US16 | T052 `breakdown-review`, `dependency-graph` |
+| `AppSdlcTrace.dc.html` | Ma trận truy vết, độ phủ tổng và theo dự án, CSV | tab Truy vết | US9, US16 | T052 `trace-matrix` |
+| `AppSdlcMetrics.dc.html` | Tiến độ và chỉ số, tỉ lệ tự duyệt và thu hồi | màn `sdlc-metrics` · `/sdlc/metrics` | US12, US18 | T082 |
+| `AppNav.dc.html` (biến thể) | Nhóm menu AI SDLC theo hồ sơ dev / writer (cả BA/PO) / lead | — | US7 | T055 `nav.ts` |
+| `DocEditor.dc.html` (biến thể, prop `sdlc`) | Khung bên "Hạng mục · giai đoạn" | khung của editor | US2, US3 | T053 `sdlc-panel` |
+| `DocReview.dc.html` (biến thể, prop `sdlc`) | Thẻ "Câu hỏi đã trả lời", "Bản tách task", checkpoint theo đội, checkpoint tự duyệt | `/knowledge/reviews` | US3, US5, US16, US18 | T053, T054 |
+
+Ghi chú bàn giao:
+
+- Mọi chữ có cặp vi/en trong `renderVals()`; từ điển của package đặt cùng khoá để sau này không phải dịch lại.
+- Đồ thị phụ thuộc vẽ SVG; cạnh liên dự án khác cạnh thường bằng nét và nhãn, không chỉ màu. Bản dự phòng là danh sách
+  (bắt buộc ở 360 px). Khi làm bằng `@xyflow/react` (T052) giữ cả hai dạng.
+- "Tự duyệt bởi AI" luôn kèm điểm, ngưỡng và hạn thu hồi; nút Thu hồi cần lý do. Contract và giai đoạn yêu cầu của chế
+  độ nặng không bao giờ có nhãn này.
+- Dữ liệu mẫu dùng một bộ chung: hạng mục `012-hoan-tien-mot-phan` (Spec Kit, cỡ L) với `payment-api` là dự án chính,
+  `web-shop` và `mobile-app` tham gia, contract `refund-api`.
+- Chưa có trên canvas Claude Design; khi chép lên canvas thì thêm artboard cho từng file (1440 × 900 và bản `narrow`
+  360 × 1900) và cập nhật `canvas.json`.
 
 ## Phần thiết kế chưa có trong code
 

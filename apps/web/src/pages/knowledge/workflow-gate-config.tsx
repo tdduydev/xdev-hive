@@ -1,11 +1,13 @@
-import type { OrgMember, RejectRoute, ReviewGate, Team } from "@xdev-hive/contracts";
+import { ORPCError } from "@orpc/client";
+import type { GateKind, OrgMember, RejectRoute, ReviewGate, Team } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { ArrowDownIcon, ArrowUpIcon, Trash2Icon, XIcon } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
-import { useLang, useT } from "@/lib/i18n.ts";
+import { type Lang, useLang, useT } from "@/lib/i18n.ts";
 import {
   GATE_KINDS,
   KIND_LABEL,
@@ -15,14 +17,23 @@ import {
   type ReviewerRole,
   ROLE_LABEL,
   RULE_CHECKS,
+  type WorkflowDraft,
+  type WorkflowIssue,
   withKind,
+  workflowIssues,
 } from "@/lib/review-workflows.ts";
 import { cn } from "@/lib/utils.ts";
 import { workflowsText as text } from "@/pages/knowledge/workflows-text.ts";
 
 const SLA_CHOICES = [4, 8, 24, 48, 72];
 /** Gợi ý cho ô model; gõ tên khác vẫn được, chính sách agent của tổ chức quyết model nào dùng được. */
-const MODEL_SUGGESTIONS = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "gpt-5-codex", "gemini-2.5-pro"];
+export const MODEL_SUGGESTIONS = [
+  "claude-sonnet-5-5",
+  "claude-opus-5-5",
+  "claude-haiku-5-5",
+  "gpt-5-codex",
+  "gemini-2.5-pro",
+];
 
 export const segButton = (on: boolean) =>
   cn(
@@ -47,7 +58,7 @@ function useRaw(value: string[], sep: string, join: string) {
 }
 
 /** Danh sách chữ ngăn bằng dấu phẩy. */
-function ListInput({
+export function ListInput({
   value,
   onChange,
   ...props
@@ -73,7 +84,7 @@ function ListInput({
 }
 
 /** Mỗi dòng một mục. */
-function LinesInput({
+export function LinesInput({
   value,
   onChange,
   ...props
@@ -115,6 +126,203 @@ export function Field({
       {children}
       {hint && <span className="text-xs font-normal text-muted-foreground">{hint}</span>}
     </div>
+  );
+}
+
+/** Đầu khung cấu hình: mã, nút dời/xoá và tên checkpoint. */
+export function GateHeader({
+  gate: g,
+  canWrite,
+  canMoveUp,
+  canMoveDown,
+  onRename,
+  onMove,
+  onRemove,
+}: {
+  gate: ReviewGate;
+  canWrite: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onRename: (name: string) => void;
+  onMove: (delta: -1 | 1) => void;
+  onRemove: () => void;
+}) {
+  const t = useT(text);
+  return (
+    <div className="flex flex-col gap-1 border-b px-4 py-3.5">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">{t.config}</span>
+        <span className="font-mono text-xs text-muted-foreground" title={t.gateId}>
+          {g.id}
+        </span>
+        {canWrite && (
+          <span className="ml-auto flex gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t.moveUp}
+              disabled={!canMoveUp}
+              onClick={() => onMove(-1)}
+            >
+              <ArrowUpIcon aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t.moveDown}
+              disabled={!canMoveDown}
+              onClick={() => onMove(1)}
+            >
+              <ArrowDownIcon aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t.removeGate}
+              className="text-destructive hover:text-destructive"
+              onClick={onRemove}
+            >
+              <Trash2Icon aria-hidden="true" />
+            </Button>
+          </span>
+        )}
+      </div>
+      <Input
+        aria-label={t.gateName}
+        maxLength={120}
+        value={g.name}
+        disabled={!canWrite}
+        className="text-[15px] font-semibold md:text-[15px]"
+        onChange={(e) => onRename(e.target.value)}
+      />
+    </div>
+  );
+}
+
+/** Chọn loại checkpoint: AI, người duyệt, quy tắc, cổng CI. */
+export function KindSwitch({
+  kind,
+  disabled,
+  onChange,
+}: {
+  kind: GateKind;
+  disabled: boolean;
+  onChange: (kind: GateKind) => void;
+}) {
+  const t = useT(text);
+  const lang = useLang();
+  const ids = useId();
+  return (
+    <fieldset className="m-0 border-0 p-0 text-sm font-medium">
+      <legend className="mb-1.5">{t.type}</legend>
+      <div className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.75">
+        {GATE_KINDS.map((k) => (
+          <label
+            key={k}
+            className={cn(
+              segButton(kind === k),
+              "px-2",
+              "relative inline-flex items-center has-focus-visible:ring-2 has-focus-visible:ring-ring/50",
+              disabled && "cursor-not-allowed",
+            )}
+          >
+            <input
+              type="radio"
+              name={`${ids}-kind`}
+              value={k}
+              // Ô radio trong suốt phủ cả nhãn: bấm đâu trên đoạn cũng chọn, vẫn là radio thật cho bàn phím.
+              className="absolute inset-0 m-0 cursor-pointer appearance-none rounded-md opacity-0 disabled:cursor-not-allowed"
+              checked={kind === k}
+              disabled={disabled}
+              onChange={() => onChange(k)}
+            />
+            {KIND_LABEL[lang][k]}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Hướng khi bị trả lại và SLA, dùng chung cho tài liệu và code. */
+export function RejectAndSla({
+  gate: g,
+  disabled,
+  onChange,
+}: {
+  gate: ReviewGate;
+  disabled: boolean;
+  onChange: (patch: Partial<ReviewGate>) => void;
+}) {
+  const t = useT(text);
+  const ids = useId();
+  const sla = g.slaHours === null ? "none" : String(g.slaHours);
+  const slaChoices =
+    g.slaHours !== null && !SLA_CHOICES.includes(g.slaHours) ? [...SLA_CHOICES, g.slaHours] : SLA_CHOICES;
+  return (
+    <div className="grid grid-cols-2 gap-2.5">
+      <Field label={t.onReject} htmlFor={`${ids}-reject`}>
+        <NativeSelect
+          id={`${ids}-reject`}
+          value={g.onReject}
+          disabled={disabled}
+          onChange={(e) => onChange({ onReject: e.target.value as RejectRoute })}
+        >
+          {(["author", "agent", "previous"] as const).map((r) => (
+            <option key={r} value={r}>
+              {t.route[r]}
+            </option>
+          ))}
+        </NativeSelect>
+      </Field>
+      <Field label={t.sla} htmlFor={`${ids}-sla`}>
+        <NativeSelect
+          id={`${ids}-sla`}
+          value={sla}
+          disabled={disabled}
+          onChange={(e) => onChange({ slaHours: e.target.value === "none" ? null : Number(e.target.value) })}
+        >
+          {slaChoices.map((h) => (
+            <option key={h} value={h}>
+              {h} {t.hours}
+            </option>
+          ))}
+          <option value="none">{t.noSla}</option>
+        </NativeSelect>
+      </Field>
+    </div>
+  );
+}
+
+/** Lỗi kiểm dữ liệu của hub (BAD_REQUEST kèm issues) đọc theo chỗ sai; lỗi khác để apiErrorMessage nói. */
+export function hubIssuesOf(error: unknown, draft: WorkflowDraft | null, lang: Lang): WorkflowIssue[] | null {
+  if (!draft || !(error instanceof ORPCError) || error.code !== "BAD_REQUEST") return null;
+  const data: unknown = error.data;
+  const raw = typeof data === "object" && data !== null && "issues" in data ? data.issues : null;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const issues = raw.filter(
+    (i): i is { path?: unknown[]; message: string; code?: string } =>
+      typeof i === "object" && i !== null && typeof (i as { message?: unknown }).message === "string",
+  );
+  // Lỗi của dryRun bọc quy trình trong `workflow`; bỏ tầng đó để chỉ chỗ như lỗi của save.
+  return workflowIssues(
+    draft,
+    lang,
+    issues.map((i) => ({ ...i, path: i.path?.[0] === "workflow" ? i.path.slice(1) : (i.path ?? []) })),
+  );
+}
+
+export function IssueAlert({ title, issues }: { title: string; issues: WorkflowIssue[] }) {
+  return (
+    <Alert variant="destructive">
+      <span className="font-medium">{title}</span>
+      <ul className="list-disc pl-5">
+        {issues.map((i, n) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: hai lỗi có thể trùng chữ; thứ tự là thứ tự hợp đồng báo.
+          <li key={n}>{i.where ? `${i.where}: ${i.message}` : i.message}</li>
+        ))}
+      </ul>
+    </Alert>
   );
 }
 
@@ -161,88 +369,20 @@ export function GateConfig({
         ? [{ key: "minChangedLines" as const, label: t.condSize(c.minChangedLines), clear: { minChangedLines: null } }]
         : []),
     ];
-  const sla = g.slaHours === null ? "none" : String(g.slaHours);
-  const slaChoices =
-    g.slaHours !== null && !SLA_CHOICES.includes(g.slaHours) ? [...SLA_CHOICES, g.slaHours] : SLA_CHOICES;
 
   return (
     <>
-      <div className="flex flex-col gap-1 border-b px-4 py-3.5">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{t.config}</span>
-          <span className="font-mono text-xs text-muted-foreground" title={t.gateId}>
-            {g.id}
-          </span>
-          {canWrite && (
-            <span className="ml-auto flex gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t.moveUp}
-                disabled={!canMoveUp}
-                onClick={() => onMove(-1)}
-              >
-                <ArrowUpIcon aria-hidden="true" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t.moveDown}
-                disabled={!canMoveDown}
-                onClick={() => onMove(1)}
-              >
-                <ArrowDownIcon aria-hidden="true" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t.removeGate}
-                className="text-destructive hover:text-destructive"
-                onClick={onRemove}
-              >
-                <Trash2Icon aria-hidden="true" />
-              </Button>
-            </span>
-          )}
-        </div>
-        <Input
-          aria-label={t.gateName}
-          maxLength={120}
-          value={g.name}
-          disabled={disabled}
-          className="text-[15px] font-semibold md:text-[15px]"
-          onChange={(e) => set({ name: e.target.value })}
-        />
-      </div>
+      <GateHeader
+        gate={g}
+        canWrite={canWrite}
+        canMoveUp={canMoveUp}
+        canMoveDown={canMoveDown}
+        onRename={(name) => set({ name })}
+        onMove={onMove}
+        onRemove={onRemove}
+      />
       <div className="flex flex-col gap-3.5 px-4 py-3.5">
-        <fieldset className="m-0 border-0 p-0 text-sm font-medium">
-          <legend className="mb-1.5">{t.type}</legend>
-          <div className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.75">
-            {GATE_KINDS.map((k) => (
-              <label
-                key={k}
-                className={cn(
-                  segButton(g.kind === k),
-                  "px-2",
-                  "relative inline-flex items-center has-focus-visible:ring-2 has-focus-visible:ring-ring/50",
-                  disabled && "cursor-not-allowed",
-                )}
-              >
-                <input
-                  type="radio"
-                  name={`${ids}-kind`}
-                  value={k}
-                  // Ô radio trong suốt phủ cả nhãn: bấm đâu trên đoạn cũng chọn, vẫn là radio thật cho bàn phím.
-                  className="absolute inset-0 m-0 cursor-pointer appearance-none rounded-md opacity-0 disabled:cursor-not-allowed"
-                  checked={g.kind === k}
-                  disabled={disabled}
-                  onChange={() => onChange((x) => withKind(x, k, lang))}
-                />
-                {KIND_LABEL[lang][k]}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <KindSwitch kind={g.kind} disabled={disabled} onChange={(k) => onChange((x) => withKind(x, k, lang))} />
 
         {g.kind === "human" && (
           <Approvers
@@ -456,37 +596,7 @@ export function GateConfig({
           </label>
         </fieldset>
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label={t.onReject} htmlFor={`${ids}-reject`}>
-            <NativeSelect
-              id={`${ids}-reject`}
-              value={g.onReject}
-              disabled={disabled}
-              onChange={(e) => set({ onReject: e.target.value as RejectRoute })}
-            >
-              {(["author", "agent", "previous"] as const).map((r) => (
-                <option key={r} value={r}>
-                  {t.route[r]}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field label={t.sla} htmlFor={`${ids}-sla`}>
-            <NativeSelect
-              id={`${ids}-sla`}
-              value={sla}
-              disabled={disabled}
-              onChange={(e) => set({ slaHours: e.target.value === "none" ? null : Number(e.target.value) })}
-            >
-              {slaChoices.map((h) => (
-                <option key={h} value={h}>
-                  {h} {t.hours}
-                </option>
-              ))}
-              <option value="none">{t.noSla}</option>
-            </NativeSelect>
-          </Field>
-        </div>
+        <RejectAndSla gate={g} disabled={disabled} onChange={set} />
         <Field label={t.after} htmlFor={`${ids}-pass`} hint={t.afterHint}>
           <NativeSelect
             id={`${ids}-pass`}
@@ -516,7 +626,7 @@ export function GateConfig({
   );
 }
 
-function Approvers({
+export function Approvers({
   gate,
   members,
   teams,
