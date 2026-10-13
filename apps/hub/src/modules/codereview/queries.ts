@@ -312,12 +312,13 @@ async function awaitingIds(tx: Tx, reader: UserReader, where: SQL | undefined): 
       requesterUserId: codeReviews.requesterUserId,
       at: cursorAt,
       gate: sql<unknown>`${currentGateJson}`,
-      approvals: sql<{ userId: string; at: string }[] | null>`(select g.approvals from hive.code_review_gate_runs g where g.review_id = ${codeReviews.id} and g.gate_index = ${codeReviews.gateIndex} and g.head_sha = ${codeReviews.headSha} and g.status = 'waiting' order by g.started_at desc limit 1)`,
+      // Ghi rõ tên bảng: trong danh sách cột drizzle bỏ tên bảng, `id` sẽ trỏ vào `g.id` của truy vấn con.
+      approvals: sql<
+        { userId: string; at: string }[] | null
+      >`(select g.approvals from hive.code_review_gate_runs g where g.review_id = hive.code_reviews.id and g.gate_index = hive.code_reviews.gate_index and g.head_sha = hive.code_reviews.head_sha and g.status = 'waiting' order by g.started_at desc limit 1)`,
     })
     .from(codeReviews)
-    .where(
-      and(where, eq(codeReviews.status, "in_review"), sql`${currentGateJson} ->> 'kind' = 'human'`, waitingRun()),
-    )
+    .where(and(where, eq(codeReviews.status, "in_review"), sql`${currentGateJson} ->> 'kind' = 'human'`, waitingRun()))
     .orderBy(...newestFirst);
   return rows.flatMap((r) => {
     // Bản chụp lưu từ phiên bản contract cũ hơn: parse lại để trường thêm sau có mặc định, như `flatGates`.
@@ -541,10 +542,7 @@ export async function detailOf(
     canDecide: summary.awaitingMe,
     canOverride: perms.override && open,
     canEnqueue:
-      perms.enqueue &&
-      review.status === "approved" &&
-      !inMergeQueue &&
-      project?.settings.features.mergeQueue === true,
+      perms.enqueue && review.status === "approved" && !inMergeQueue && project?.settings.features.mergeQueue === true,
     canRecheck: open && (perms.override || reader.principal.userId === review.requesterUserId),
   };
 }

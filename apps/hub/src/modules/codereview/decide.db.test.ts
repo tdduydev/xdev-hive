@@ -213,9 +213,9 @@ describe("duyệt ở checkpoint người duyệt (FR-020)", () => {
     expect(out.gates[0]).toMatchObject({ status: "passed", decidedBy: u("loner"), note: "Ổn", overridden: false });
     expect(out.gates[0]?.approvals.map((a) => a.userId)).toEqual([u("loner")]);
     const actions = await audits(r.id);
-    expect(actions.find((a) => a.action === "codereview.approve" && a.actor_user_id === u("loner"))?.data).toMatchObject(
-      { gateId: "reviewer", done: true },
-    );
+    expect(
+      actions.find((a) => a.action === "codereview.approve" && a.actor_user_id === u("loner"))?.data,
+    ).toMatchObject({ gateId: "reviewer", done: true });
   });
 
   it("người giao việc không quyết được trừ khi checkpoint cho; quản trị tổ chức luôn quyết được (Q2)", async () => {
@@ -228,21 +228,20 @@ describe("duyệt ở checkpoint người duyệt (FR-020)", () => {
     );
     // Quản trị tổ chức là người giao việc vẫn quyết được.
     const own = await openReview(p, { requester: u("admin") });
-    expect((await decide("admin", { id: own.id, headSha: own.headSha, decision: "approve" })).status).toBe(
-      "approved",
-    );
+    expect((await decide("admin", { id: own.id, headSha: own.headSha, decision: "approve" })).status).toBe("approved");
 
     const p2 = await newProject();
     await saveWorkflow(p2, [human({ roles: ["team-member"], allowRequester: true })]);
     const r2 = await openReview(p2, { requester: u("tmember") });
-    expect((await decide("tmember", { id: r2.id, headSha: r2.headSha, decision: "approve" })).status).toBe(
-      "approved",
-    );
+    expect((await decide("tmember", { id: r2.id, headSha: r2.headSha, decision: "approve" })).status).toBe("approved");
   });
 
   it("quorum 2: một người chưa đủ, không duyệt lại được; người thứ hai duyệt thì đi tiếp", async () => {
     const p = await newProject();
-    await saveWorkflow(p, [human({ roles: ["team-member"], quorum: 2 }), human({ users: [u("loner")] }, { id: "lead" })]);
+    await saveWorkflow(p, [
+      human({ roles: ["team-member"], quorum: 2 }),
+      human({ users: [u("loner")] }, { id: "lead" }),
+    ]);
     const r = await openReview(p, { requester: null });
 
     const first = await decide("tmember", { id: r.id, headSha: r.headSha, decision: "approve" });
@@ -282,15 +281,17 @@ describe("duyệt ở checkpoint người duyệt (FR-020)", () => {
     const p = await newProject();
     await saveWorkflow(p, [human({ roles: ["team-member"] })]);
     const r = await openReview(p, { requester: null });
-    expect(
-      await errorCode(() => decide("tmember", { id: r.id, headSha: "a".repeat(40), decision: "approve" })),
-    ).toBe("CODE_REVIEW_HEAD_MOVED");
+    expect(await errorCode(() => decide("tmember", { id: r.id, headSha: "a".repeat(40), decision: "approve" }))).toBe(
+      "CODE_REVIEW_HEAD_MOVED",
+    );
 
-    await provider.commitFiles(p.ref, {
+    // Push tay lên nhánh PR; nhà cung cấp giả không tự dời đầu PR khi commit.
+    const { sha } = await provider.commitFiles(p.ref, {
       branch: r.pr.branch,
       message: "push tay",
       files: [{ path: "src/other.ts", content: "export {}\n" }],
     });
+    provider.setPull(p.ref, r.pr.number, { headSha: sha });
     expect(await errorCode(() => decide("tmember", { id: r.id, headSha: r.headSha, decision: "approve" }))).toBe(
       "CODE_REVIEW_HEAD_MOVED",
     );
