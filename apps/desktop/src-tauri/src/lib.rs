@@ -720,6 +720,7 @@ pub fn run() {
             local_projects::local_project_unbind,
             local_projects::local_project_set_full,
             cli::folder_tree,
+            cli::folder_docs,
             cli::propose_doc,
             updates::update_status,
             updates::check_updates_now,
