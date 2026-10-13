@@ -38,6 +38,9 @@ fn main() {
         "open_login_terminal",
         "folder_tree",
         "propose_doc",
+        "update_status",
+        "check_updates_now",
+        "relaunch_to_update",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");
