@@ -256,7 +256,9 @@ func TestMain(m *testing.M) {
 	if capture := os.Getenv("HIVE_FAKE_AGY"); capture != "" {
 		fakeAgy(capture)
 	}
+	fakeTool()
 	if mode := os.Getenv("HIVE_FAKE_MCP_MODE"); mode != "" {
+		captureClaude()
 		for i, a := range os.Args {
 			if a == "--mcp-config" && i+1 < len(os.Args) {
 				if err := os.WriteFile(os.Getenv("HIVE_CAPTURE_MCP"), []byte(os.Args[i+1]), 0600); err != nil {

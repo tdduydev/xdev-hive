@@ -17,11 +17,13 @@ describe("buildPatch: tiết kiệm token", () => {
       autocompactPct: "70",
       subagentModel: "sonnet",
       cacheTtl: "5m",
+      rtk: true,
+      codegraph: true,
     });
     expect(buildPatch(form, s)).toEqual({ ok: true, patch: null });
   });
 
-  it("chỉ gửi mục tokenSaving khi đổi, đủ năm trường", () => {
+  it("chỉ gửi mục tokenSaving khi đổi, đủ bảy trường", () => {
     const s = base();
     const form = { ...formFromSettings(s), cacheTtl: "1h" as const, bashMaxChars: " 20000 " };
     expect(buildPatch(form, s)).toEqual({
@@ -33,9 +35,21 @@ describe("buildPatch: tiết kiệm token", () => {
           autocompactPct: 70,
           subagentModel: "sonnet",
           cacheTtl: "1h",
+          rtk: true,
+          codegraph: true,
         },
       },
     });
+  });
+
+  it("tắt RTK hoặc CodeGraph tạo bản vá và đọc lại đúng từ settings đã lưu", () => {
+    const s = base();
+    const form = { ...formFromSettings(s), rtk: false, codegraph: false };
+    const r = buildPatch(form, s);
+    expect(r).toMatchObject({ ok: true, patch: { tokenSaving: { rtk: false, codegraph: false } } });
+    const saved: ProjectSettings = { ...s, tokenSaving: { ...s.tokenSaving, rtk: false, codegraph: false } };
+    expect(formFromSettings(saved)).toMatchObject({ rtk: false, codegraph: false });
+    expect(buildPatch(formFromSettings(saved), saved)).toEqual({ ok: true, patch: null });
   });
 
   it("số ngoài khoảng và tên model trống báo lỗi của hub ở đúng ô", () => {

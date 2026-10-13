@@ -97,6 +97,9 @@ type Job struct {
 	// host dùng chung.
 	savingEnv map[string]string
 	accountID string
+	// rtk và codegraph là công cụ tiết kiệm token Run đã bật cho lần thử này (tools.go); nil, rỗng là không có.
+	rtk       *rtkRun
+	codegraph string
 }
 
 type Event struct {
@@ -176,7 +179,10 @@ type Runner struct {
 	Account *accounts.Lease
 	// TokenSaving, nếu có, thay HIVE_WORKER_TOKEN_SAVING (code đặt thắng biến môi trường, như CLICommands).
 	TokenSaving *TokenSavingConfig
-	KillGrace   time.Duration
+	// RTK và CodeGraph, nếu có, thay HIVE_WORKER_RTK và HIVE_WORKER_CODEGRAPH.
+	RTK       *ToolConfig
+	CodeGraph *ToolConfig
+	KillGrace time.Duration
 	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
 	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
 	Grace func() time.Duration
@@ -209,6 +215,16 @@ func (r Runner) tokenSavingConfig() (TokenSavingConfig, error) {
 		return *r.TokenSaving, nil
 	}
 	return TokenSavingFromEnv()
+}
+
+// overridden: CLI chạy bằng lệnh cấu hình riêng thì worker không biết cách gắn hook hay MCP vào lệnh đó.
+func (r Runner) overridden(cli string) bool {
+	if _, ok := r.CLICommands[cli]; ok {
+		return true
+	}
+	fromEnv, err := CommandsFromEnv()
+	_, ok := fromEnv[cli]
+	return err == nil && ok
 }
 
 func Run(ctx context.Context, job Job, sink Sink) error { return (Runner{}).Run(ctx, job, sink) }
@@ -412,6 +428,15 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if r.Sandbox == nil {
 		job.accountID = r.Account.ID()
 	}
+	// Giữ hai writer để log của hook Stop nối tiếp offset của log CLI. Tạo trước CLI để bước chuẩn bị công cụ (dựng chỉ
+	// mục CodeGraph lần đầu mất vài chục giây) hiện ngay trong log của run.
+	stdoutLog := &logWriter{sink: sink, job: job, name: "stdout"}
+	stderrLog := &logWriter{sink: sink, job: job, name: "stderr"}
+	job.codegraph = r.prepareCodeGraph(runCtx, job, work, stderrLog)
+	if job.rtk = r.prepareRTK(runCtx, job, stderrLog); job.rtk != nil {
+		defer job.rtk.cleanup()
+		job.savingEnv = mergeMap(job.savingEnv, job.rtk.env)
+	}
 	cmd, err := r.cliCommand(job)
 	if err != nil {
 		return err
@@ -443,9 +468,6 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			_ = stopMeter()
 		}
 	}()
-	// Giữ hai writer để log của hook Stop nối tiếp offset của log CLI.
-	stdoutLog := &logWriter{sink: sink, job: job, name: "stdout"}
-	stderrLog := &logWriter{sink: sink, job: job, name: "stderr"}
 	process.Stdout = io.MultiWriter(stdoutLog, usage)
 	process.Stderr = stderrLog
 	if r.Account != nil && r.Sandbox == nil {
@@ -500,6 +522,14 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if errors.Is(waitErr, exec.ErrWaitDelay) {
 		// CLI đã thoát thành công, chỉ là process con còn giữ pipe: không coi là lỗi của run.
 		waitErr = nil
+	}
+	if job.rtk != nil {
+		// Đọc sau khi CLI thoát để đủ mọi lệnh của run; số đi trong usage cuối cùng ngay dưới.
+		if saved, err := job.rtk.usage(ctx); err != nil {
+			_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Không đọc được số tiết kiệm của RTK: %v\n", err)
+		} else {
+			usage.setRTK(saved)
+		}
 	}
 	// Usage cuối gửi trước run_result: hub bỏ mọi gói của run đến sau run_result.
 	meterStopped = true
@@ -727,7 +757,12 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				sources = ""
 			}
 			args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", sources, "--strict-mcp-config", "--mcp-config", mcpFile}
-			hookSettings, err := claudeHookSettings(j.Policy.Hooks)
+			hooks := j.Policy.Hooks
+			if j.rtk != nil {
+				// Hook RTK đi cùng file --settings với hook của tổ chức: không ghi vào cấu hình của người dùng hay tài khoản.
+				hooks = append(append([]Hook(nil), hooks...), Hook{Event: "PreToolUse", Name: "rtk", Command: j.rtk.hook, Matcher: "Bash"})
+			}
+			hookSettings, err := claudeHookSettings(hooks)
 			if err != nil {
 				return nil, err
 			}
@@ -752,7 +787,11 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				args = append(args, "--permission-mode", "bypassPermissions")
 			default:
 				// Bash cho phép lệnh test/build tuỳ dự án và commit, không yêu cầu duyệt trong -p.
-				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", "Bash")
+				allowed := "Bash"
+				if j.codegraph != "" {
+					allowed += ",mcp__" + codegraphServerName
+				}
+				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", allowed)
 			}
 			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }, input: InputStreamJSON}, nil
 		case "codex":
