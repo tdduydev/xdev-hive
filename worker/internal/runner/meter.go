@@ -29,6 +29,7 @@ type meter struct {
 	dirty    bool
 	sentAt   time.Time
 	reason   string
+	rtk      *RTKUsage
 }
 
 func newMeter(cli string, budget Budget, emit func(Usage) error, onExceed func(string)) *meter {
@@ -88,7 +89,20 @@ func (m *meter) flush(force bool) error {
 	}
 	m.dirty = false
 	m.sentAt = m.now()
-	return m.emit(m.parser.Usage())
+	u := m.parser.Usage()
+	u.RTK = m.rtk
+	return m.emit(u)
+}
+
+// setRTK gắn số RTK của lần thử vào usage, gửi ở lần flush kế tiếp (usage cuối).
+func (m *meter) setRTK(r *RTKUsage) {
+	if m.parser == nil {
+		return
+	}
+	m.mu.Lock()
+	m.rtk = r
+	m.dirty = true
+	m.mu.Unlock()
 }
 
 // finish đọc nốt dòng cuối không có '\n' rồi gửi usage cuối cùng.
@@ -113,4 +127,20 @@ func (m *meter) exceeded() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.reason
+}
+
+// stopper là parser đọc được việc CLI tự dừng vì chạm giới hạn (--max-turns, --max-budget-usd).
+type stopper interface{ StopSubtype() string }
+
+// stopSubtype trả loại giới hạn CLI tự dừng vì nó; rỗng khi parser không báo hay CLI chưa dừng vì giới hạn.
+func (m *meter) stopSubtype() string {
+	if m.parser == nil {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.parser.(stopper); ok {
+		return s.StopSubtype()
+	}
+	return ""
 }

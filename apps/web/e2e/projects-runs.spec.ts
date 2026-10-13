@@ -68,6 +68,7 @@ const run = (n: number, over: Record<string, unknown>) => ({
   timeoutSec: 3600,
   cost: cost(null),
   explore: null,
+  rtk: null,
   createdBy: "u1",
   ownerUserId: "u1",
   createdAt: "2026-10-11T06:00:00.000Z",
@@ -185,9 +186,64 @@ test("cấu hình dự án: Tiết kiệm token hiện mặc định, sửa và 
       settings: { tokenSaving: { enabled: true, bashMaxChars: 8000, subagentModel: "haiku", cacheTtl: "1h" } },
     });
 
+  // RTK và CodeGraph mặc định bật; tắt từng mục thì bản vá mang đúng giá trị.
+  await expect(page.getByRole("switch", { name: "Nén output lệnh bằng RTK" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Gắn CodeGraph cho agent" })).toBeChecked();
+  await page.getByRole("switch", { name: "Nén output lệnh bằng RTK" }).click();
+  await page.getByRole("switch", { name: "Gắn CodeGraph cho agent" }).click();
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await expect
+    .poll(() => h.rpcCalls.filter((c) => c.path === "projects/updateSettings").at(-1)?.input)
+    .toMatchObject({ key: "PAY", settings: { tokenSaving: { rtk: false, codegraph: false } } });
+
   // Tắt cả nhóm thì các ô khoá lại.
   await page.getByRole("switch", { name: "Bật tiết kiệm token" }).click();
   await expect(page.getByRole("textbox", { name: "Output lệnh tối đa" })).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Nén output lệnh bằng RTK" })).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Gắn CodeGraph cho agent" })).toBeDisabled();
+});
+
+test("cấu hình dự án: định tuyến model hiện mặc định, sửa một cấp và lưu đúng bản vá", async ({ page }) => {
+  const h = await open(page, "admin", {
+    "projects/updateSettings": (input) => {
+      const patch = (input as { settings: Record<string, unknown> }).settings;
+      return ok({ ...PROJECT.settings, ...patch });
+    },
+  });
+  await page.goto("/projects/PAY/settings");
+  const routing = page.getByRole("group", { name: "Định tuyến model theo độ khó" });
+  await expect(routing.getByRole("switch", { name: "Bật định tuyến" })).toBeChecked();
+  const heavy = routing.getByRole("textbox", { name: "Số lượt tối đa" }).nth(2);
+  await expect(heavy).toHaveValue("200");
+  await expect(page.getByRole("textbox", { name: "Cửa sổ ngữ cảnh tối đa" })).toHaveValue("200000");
+  await expect(page.getByRole("switch", { name: "Cho agent dùng web" })).not.toBeChecked();
+
+  await heavy.fill("0");
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await expect(page.getByText("Tối thiểu 1 lượt.")).toBeVisible();
+  expect(h.rpcCalls.some((c) => c.path === "projects/updateSettings")).toBe(false);
+
+  await heavy.fill("250");
+  await routing.getByRole("textbox", { name: "Model cố vấn" }).nth(1).fill("opus");
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await expect
+    .poll(() => h.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
+    .toMatchObject({
+      key: "PAY",
+      settings: {
+        routing: {
+          enabled: true,
+          tiers: {
+            medium: { advisor: "opus", maxTurns: 120 },
+            heavy: { model: "opus", maxTurns: 250 },
+          },
+        },
+      },
+    });
+
+  // Tắt định tuyến thì các ô cấp khoá lại.
+  await routing.getByRole("switch", { name: "Bật định tuyến" }).click();
+  await expect(heavy).toBeDisabled();
 });
 
 test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async ({ page }) => {

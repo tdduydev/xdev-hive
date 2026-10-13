@@ -1,4 +1,4 @@
-import { blockKind, type DocSuggestion, joinBlocks, nextRequirementId, splitBlocks } from "@xdev-hive/contracts";
+import { type DocSuggestion, nextRequirementId, occurrences, splitBlocks } from "@xdev-hive/contracts";
 
 /** Khối chèn được từ menu `/` và thanh công cụ; nội dung mẫu là Markdown để agent đọc tài liệu vẫn hiểu. */
 export type BlockTemplate =
@@ -44,68 +44,6 @@ export function blockTemplate(kind: BlockTemplate, content: string): string {
   }
 }
 
-/** Chèn khối sau khối thứ `index` (-1 là đầu tài liệu). Trả nội dung mới và vị trí khối vừa chèn. */
-export function insertBlock(content: string, index: number, block: string): { content: string; index: number } {
-  const blocks = splitBlocks(content);
-  const at = Math.min(Math.max(index + 1, 0), blocks.length);
-  blocks.splice(at, 0, block);
-  return { content: joinBlocks(blocks), index: at };
-}
-
-/** Thay khối thứ `index`; khối rỗng thì xoá. */
-export function replaceBlock(content: string, index: number, block: string): string {
-  const blocks = splitBlocks(content);
-  if (index < 0 || index >= blocks.length) return joinBlocks([...blocks, block]);
-  blocks.splice(index, 1, ...(block.trim() ? [block] : []));
-  return joinBlocks(blocks);
-}
-
-/** Đổi kiểu khối văn bản giữa tiêu đề và đoạn (ô chọn kiểu khối trên thanh công cụ). */
-export function setTextKind(block: string, kind: "h1" | "h2" | "h3" | "para"): string {
-  const body = block.replace(/^#{1,6}\s+/, "");
-  if (kind === "para") return body;
-  return `${"#".repeat(Number(kind.slice(1)))} ${body}`;
-}
-
-export function textKindOf(block: string): "h1" | "h2" | "h3" | "para" | null {
-  const m = /^(#{1,3})\s/.exec(block);
-  if (m) return `h${m[1]?.length}` as "h1" | "h2" | "h3";
-  return blockKind(block) === "paragraph" ? "para" : null;
-}
-
-/** Bọc đoạn đang chọn bằng ký hiệu Markdown (đậm, nghiêng, gạch, code, liên kết). */
-export function wrapSelection(
-  text: string,
-  start: number,
-  end: number,
-  mark: "bold" | "italic" | "strike" | "code" | "link",
-): { text: string; start: number; end: number } {
-  const [open, close] =
-    mark === "bold"
-      ? ["**", "**"]
-      : mark === "italic"
-        ? ["*", "*"]
-        : mark === "strike"
-          ? ["~~", "~~"]
-          : mark === "code"
-            ? ["`", "`"]
-            : ["[", "](https://)"];
-  const picked = text.slice(start, end) || (mark === "link" ? "liên kết" : "chữ");
-  return {
-    text: text.slice(0, start) + open + picked + close + text.slice(end),
-    start: start + open.length,
-    end: start + open.length + picked.length,
-  };
-}
-
-/** Đánh dấu một ô checklist (dòng thứ `line` của khối). */
-export function toggleCheck(block: string, line: number): string {
-  return block
-    .split("\n")
-    .map((l, i) => (i === line ? l.replace(/\[([ xX])\]/, (_, c: string) => (c.trim() ? "[ ]" : "[x]")) : l))
-    .join("\n");
-}
-
 /** Khối mà đề xuất sửa trỏ vào: khối đầu tiên chứa đoạn gốc; đề xuất thêm mới (gốc rỗng) xếp sau khối cuối. */
 export function suggestionsByBlock(blocks: string[], suggestions: DocSuggestion[]): Map<number, DocSuggestion[]> {
   const out = new Map<number, DocSuggestion[]>();
@@ -132,7 +70,71 @@ export function quoteFor(block: string, selected: string): string {
   return (block.includes(first) ? first : (block.split("\n")[0] ?? block)).slice(0, 500);
 }
 
-/** Tài liệu nhúng trong khối `![[key]]`. */
-export function embedKey(block: string): string | null {
-  return /^!\[\[([a-z0-9][a-z0-9/._-]*)\]\]$/.exec(block.trim())?.[1] ?? null;
+/** Khối của bản nháp kèm vị trí trong chữ gốc, để đoạn gốc của đề xuất cắt đúng từ bản nháp. */
+function locateBlocks(content: string): { text: string; start: number; end: number }[] {
+  let at = 0;
+  return splitBlocks(content).map((text) => {
+    const start = Math.max(content.indexOf(text, at), at);
+    at = start + text.length;
+    return { text, start, end: at };
+  });
+}
+
+/** Các cụm khối khác nhau giữa hai danh sách (LCS theo khối): [đầu, cuối) ở bên cũ và bên mới. */
+function blockHunks(a: string[], b: string[]): { a: [number, number]; b: [number, number] }[] {
+  const n = a.length;
+  const m = b.length;
+  const lcs = new Int32Array((n + 1) * (m + 1));
+  const at = (i: number, j: number) => lcs[i * (m + 1) + j] ?? 0;
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      lcs[i * (m + 1) + j] = a[i] === b[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+  const out: { a: [number, number]; b: [number, number] }[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) {
+      i++;
+      j++;
+      continue;
+    }
+    const start: [number, number] = [i, j];
+    while ((i < n || j < m) && !(i < n && j < m && a[i] === b[j])) {
+      if (j < m && (i >= n || at(i, j + 1) >= at(i + 1, j))) j++;
+      else i++;
+    }
+    out.push({ a: [start[0], i], b: [start[1], j] });
+  }
+  return out;
+}
+
+/**
+ * Chỗ sửa trong chế độ đề xuất thành các đề xuất theo khối. `before` luôn cắt nguyên văn từ bản nháp và chỉ có một chỗ
+ * (hub áp đề xuất bằng cách thay đúng một chỗ); chèn hoặc xoá thuần kèm một khối kề làm mốc.
+ */
+export function suggestionsFromEdit(base: string, edited: string): { before: string; after: string }[] {
+  const a = locateBlocks(base);
+  const b = splitBlocks(edited);
+  return blockHunks(
+    a.map((x) => x.text.trim()),
+    b.map((x) => x.trim()),
+  ).map((h) => {
+    let [from, to] = h.a;
+    const added = b.slice(h.b[0], h.b[1]);
+    if (from === to || !added.length) {
+      if (from > 0) from--;
+      else if (to < a.length) to++;
+    }
+    const cut = (f: number, t: number) => base.slice(a[f]?.start ?? 0, a[t - 1]?.end ?? 0);
+    while (from < to && occurrences(base, cut(from, to)) > 1 && (from > 0 || to < a.length)) {
+      if (from > 0) from--;
+      else to++;
+    }
+    const after = [
+      ...a.slice(from, h.a[0]).map((x) => x.text),
+      ...added,
+      ...a.slice(h.a[1], to).map((x) => x.text),
+    ].join("\n\n");
+    return { before: from < to ? cut(from, to) : "", after };
+  });
 }

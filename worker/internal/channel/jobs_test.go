@@ -544,6 +544,25 @@ func TestDecodeJobPassesTokenSaving(t *testing.T) {
 	}
 }
 
+func TestDecodeJobPassesRoutingAndNewSavingFields(t *testing.T) {
+	spec := `{"repoUrl":"https://git.example/a.git","cli":"claude","model":"opus","effort":"high","advisor":"opus","tier":"heavy","tokenSaving":{"enabled":true,"autocompactWindow":150000,"allowWeb":true}}`
+	job, err := decodeJob(&JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(spec)}, Lease{RunToken: "t"}, "https://hub.example", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Effort != "high" || job.Advisor != "opus" || job.Tier != "heavy" || job.Model != "opus" {
+		t.Fatalf("job = %+v", job)
+	}
+	if job.TokenSaving == nil || job.TokenSaving.AutocompactWindow != 150000 || !job.TokenSaving.AllowWeb {
+		t.Fatalf("TokenSaving = %+v", job.TokenSaving)
+	}
+	// Hub cũ không gửi các trường này: rỗng, worker giữ cách chạy cũ.
+	job, err = decodeJob(&JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repoUrl":"https://git.example/a.git","cli":"claude"}`)}, Lease{RunToken: "t"}, "https://hub.example", "p")
+	if err != nil || job.Effort != "" || job.Advisor != "" || job.Tier != "" {
+		t.Fatalf("job = %+v, err = %v", job, err)
+	}
+}
+
 func TestDecodeJobReadsBriefSHA(t *testing.T) {
 	for spec, want := range map[string]string{`"brief":{"sha":"abc1234"}`: "abc1234", `"brief":null`: "", `"x":1`: ""} {
 		offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"brief","repoUrl":"https://git.example/a.git","cli":"claude",` + spec + `}`)}
