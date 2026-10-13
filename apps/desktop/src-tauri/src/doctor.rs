@@ -267,6 +267,14 @@ fn read_project(folder: &Path) -> ProjectNeeds {
     needs
 }
 
+/// Hỏi PATH của shell đăng nhập ở luồng nền ngay khi app mở. Shell đăng nhập có khi mất vài giây (nạp .zshrc, nvm…);
+/// không làm trước thì lệnh CLI đầu tiên của màn nào cũng phải đợi chừng đó.
+pub(crate) fn warm_user_path() {
+    std::thread::spawn(|| {
+        user_path();
+    });
+}
+
 /// PATH của shell đăng nhập. App mở từ Finder chỉ có PATH tối thiểu (/usr/bin:/bin…), không thấy công cụ cài bằng
 /// Homebrew, nvm hay npm -g; hỏi shell của người dùng một lần, lỗi thì thêm các thư mục hay gặp.
 pub(crate) fn user_path() -> &'static str {
@@ -946,6 +954,23 @@ mod tests {
             assert!(run_with_timeout(cmd, Duration::from_millis(200)).is_none());
             assert!(started.elapsed() < Duration::from_secs(2));
         }
+    }
+
+    #[test]
+    fn login_path_is_read_once_in_the_background() {
+        let started = Instant::now();
+        warm_user_path();
+        assert!(started.elapsed() < Duration::from_millis(100));
+        let first = Instant::now();
+        let path = user_path();
+        let first = first.elapsed();
+        let again = Instant::now();
+        assert_eq!(user_path(), path);
+        eprintln!(
+            "PATH của shell đăng nhập: lần đầu {first:?}, lần sau {:?}",
+            again.elapsed()
+        );
+        assert!(again.elapsed() < Duration::from_millis(1));
     }
 
     #[test]
