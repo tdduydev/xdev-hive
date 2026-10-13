@@ -1,5 +1,5 @@
 {
-  "id": "03f26393-11a1-4598-afd9-d99d80de348d",
+  "id": "2794aa1a-95fa-46ce-bb3f-d8cb423886dd",
   "prevId": "64a6819e-467c-4fb3-8dad-99a53282b410",
   "version": "7",
   "dialect": "postgresql",
@@ -1821,32 +1821,6 @@
           "notNull": true,
           "default": false
         },
-        "labels": {
-          "name": "labels",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::text[]"
-        },
-        "labels_only": {
-          "name": "labels_only",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "accounts": {
-          "name": "accounts",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "accounts_at": {
-          "name": "accounts_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "revoked_at": {
           "name": "revoked_at",
           "type": "timestamp with time zone",
@@ -1952,27 +1926,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'worker'"
-        },
-        "labels": {
-          "name": "labels",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::text[]"
-        },
-        "shared": {
-          "name": "shared",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "labels_only": {
-          "name": "labels_only",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "expires_at": {
           "name": "expires_at",
@@ -7977,6 +7930,12 @@
         },
         "explore": {
           "name": "explore",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rtk": {
+          "name": "rtk",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

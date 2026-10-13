@@ -16,7 +16,7 @@ const featureShared = "shared"
 // capabilities là capability khai trong hello. Chỉ khai accounts-remote khi máy có accounts pool: runner host không có
 // accounts.json nên không có gói để bật/tắt hay đăng nhập.
 func (c Config) capabilities() []string {
-	caps := slices.Clone(runner.Capabilities)
+	caps := runner.MachineCapabilities(c.Sandbox != nil)
 	if c.Accounts != nil {
 		caps = append(caps, capAccountsRemote)
 	}

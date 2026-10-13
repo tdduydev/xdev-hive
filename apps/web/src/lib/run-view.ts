@@ -1,4 +1,4 @@
-import type { OutcomeCheck, Run, RunEventView, RunExplore, RunState } from "@xdev-hive/contracts";
+import type { OutcomeCheck, Run, RunEventView, RunExplore, RunRouting, RunState } from "@xdev-hive/contracts";
 // Bảng việc và trang chủ nằm trong bundle đầu: lấy từ module không zod thay vì cả hợp đồng.
 import { TERMINAL_RUN_STATES } from "@xdev-hive/contracts/run-states";
 import { formatClock, formatDuration } from "@/lib/format.ts";
@@ -258,6 +258,35 @@ export function budgetPercent(costUsd: number | null, capUsd: number | undefined
 /** Token run dùng để khảo sát repo: vào, ra và cache (đọc cộng ghi), để người xem thấy một con số thay vì bốn. */
 export function exploreTokens(explore: RunExplore): number {
   return explore.inputTokens + explore.outputTokens + explore.cacheReadTokens + explore.cacheWriteTokens;
+}
+
+export const TIER_LABEL: Record<RunRouting["tier"], string> = { light: "Nhẹ", medium: "Vừa", heavy: "Nặng" };
+
+/** Nơi hub lấy cấp độ task, để người xem biết cấp này do ai hay cái gì quyết định. */
+const TIER_SOURCE_LABEL: Record<RunRouting["source"], string> = {
+  manual: "Người giao việc đặt",
+  label: "Nhãn task",
+  plan: "Cỡ kế hoạch",
+  type: "Loại task hoặc nhãn",
+  description: "Độ dài mô tả",
+  default: "Mặc định",
+};
+
+/** Các dòng "model đã chọn" của trang run; `reasons` hiện riêng thành danh sách vì dài. */
+export function routingRows(r: RunRouting): { term: string; detail: string }[] {
+  const tier =
+    r.tier === r.baseTier
+      ? TIER_LABEL[r.tier]
+      : `${TIER_LABEL[r.tier]} (nâng từ ${TIER_LABEL[r.baseTier].toLowerCase()})`;
+  const rows = [
+    { term: "Cấp độ", detail: tier },
+    { term: "Nguồn cấp độ", detail: TIER_SOURCE_LABEL[r.source] },
+    { term: "Model", detail: r.model ?? "Theo cấu hình của CLI" },
+  ];
+  if (r.effort) rows.push({ term: "Effort", detail: r.effort });
+  if (r.advisor) rows.push({ term: "Cố vấn", detail: r.advisor });
+  if (r.maxTurns !== null) rows.push({ term: "Số lượt tối đa", detail: String(r.maxTurns) });
+  return rows;
 }
 
 /** Nhãn ngắn của PR/MR từ URL: số ở cuối (…/pull/128, …/merge_requests/12) thành "#128"; không đọc được thì "PR". */

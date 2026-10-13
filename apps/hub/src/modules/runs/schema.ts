@@ -1,4 +1,4 @@
-import type { OutcomeCheck, RunExplore, RunResultView } from "@xdev-hive/contracts";
+import type { OutcomeCheck, RunExplore, RunResultView, RunRtk } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -78,6 +78,8 @@ export const runs = hive
       pinnedMachineId: uuid("pinned_machine_id"),
       cli: text("cli").$type<"claude" | "codex" | "gemini" | "antigravity">(),
       model: text("model"),
+      /** Cấp độ task do người đặt tay (light|medium|heavy); null là hub suy từ task (routing.ts). */
+      tier: text("tier").$type<"light" | "medium" | "heavy">(),
       branch: text("branch").notNull(),
       /** Chính sách kết quả chốt lúc giao, để cấu hình dự án đổi sau không đổi kết quả của run. */
       policySnapshot: jsonb("policy_snapshot").$type<OutcomeCheck[]>().notNull(),
@@ -111,6 +113,11 @@ export const runs = hive
        * CLI không báo được; lần thử mới ghi đè vì số so sánh trước/sau là của một phiên agent.
        */
       explore: jsonb("explore").$type<RunExplore & { attempt: number }>(),
+      /**
+       * Token RTK tiết kiệm được ở lần thử gần nhất, worker báo trong sự kiện cost. null khi run không dùng RTK; lần
+       * thử mới ghi đè vì số luỹ kế là của một phiên agent.
+       */
+      rtk: jsonb("rtk").$type<RunRtk & { attempt: number }>(),
       /** Đề nghị job đang chờ máy trả lời; hết hạn thì hub đề nghị máy khác. */
       offerMachineId: uuid("offer_machine_id"),
       offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),

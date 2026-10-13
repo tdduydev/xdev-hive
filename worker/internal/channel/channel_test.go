@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
 func testConfig(t *testing.T, url string) Config {
@@ -184,6 +186,9 @@ func TestWebsocketURL(t *testing.T) {
 }
 
 func TestTokenAndHeartbeat(t *testing.T) {
+	// Máy dev có thể cài rtk, codegraph: tắt để danh sách capability không tuỳ máy chạy test.
+	t.Setenv(runner.RTKEnv, "off")
+	t.Setenv(runner.CodeGraphEnv, "off")
 	gotAuth := make(chan string, 1)
 	gotHeartbeat := make(chan Heartbeat, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
