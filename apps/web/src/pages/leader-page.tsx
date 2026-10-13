@@ -121,15 +121,6 @@ const text: Dict<
   },
 };
 
-export interface LeaderSearch {
-  /** Cuộc trò chuyện đang mở; bỏ trống thì mở cuộc mới nhất. */
-  thread?: string;
-}
-
-export function validateLeaderSearch(search: Record<string, unknown>): LeaderSearch {
-  return typeof search.thread === "string" ? { thread: search.thread } : {};
-}
-
 /** Chat với leader agent: leader chỉ đề xuất hành động, người có quyền duyệt thì hub mới thực hiện. */
 export function LeaderPage() {
   const t = useT(text);
