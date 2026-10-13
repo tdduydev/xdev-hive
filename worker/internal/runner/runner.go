@@ -45,6 +45,14 @@ func readOnlyKind(kind string) bool {
 	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist
 }
 
+// Binary là lệnh của CLI trên máy: Antigravity cài lệnh `agy`, các CLI khác trùng tên.
+func Binary(cli string) string {
+	if cli == "antigravity" {
+		return "agy"
+	}
+	return cli
+}
+
 type Job struct {
 	Execution                                       string
 	SandboxPolicy                                   *SandboxJobConfig
@@ -347,6 +355,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			}
 		}()
 	}
+	if cmd.notice != "" {
+		_, _ = fmt.Fprintln(stderrLog, cmd.notice)
+	}
 	if tool := hooksOf(job.Policy.Hooks, "PreToolUse", "PostToolUse"); len(tool) > 0 && (job.CLI != "claude" || cmd.input != InputStreamJSON) {
 		// Chỉ Claude Code nhận hook theo tool qua --settings; báo vào log để người xem run biết hook nào không chạy.
 		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] %s không chạy được %d hook PreToolUse/PostToolUse của tổ chức; hook Stop vẫn chạy.\n", job.CLI, len(tool))
@@ -536,6 +547,8 @@ type cliExecCmd struct {
 	cleanup func()
 	// input là Command.Input: InputStreamJSON thì runner gửi prompt và chỉ dẫn qua stdin.
 	input string
+	// notice là dòng runner ghi vào stderr của run trước khi chạy CLI, để người xem run biết CLI bị giới hạn gì.
+	notice string
 }
 
 func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
@@ -669,6 +682,38 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				args[len(args)-1] = "/workspace/" + filepath.Base(policy.Name())
 			}
 			return &cliExecCmd{Cmd: exec.Command("gemini", args...), cleanup: func() { _ = os.Remove(policy.Name()) }}, nil
+		case "antigravity":
+			config, err := writeAntigravityMCPConfig(j)
+			if err != nil {
+				return nil, fmt.Errorf("ghi cấu hình MCP cho Antigravity: %w", err)
+			}
+			args := []string{"-p", j.Prompt, "--output-format", "stream-json"}
+			if j.Timeout > 0 {
+				// Để agy tự dừng lượt trước khi runner phải ngắt nó; context của runner vẫn là chốt chặn sau cùng.
+				args = append(args, "--print-timeout", fmt.Sprintf("%dm", int((j.Timeout+time.Minute-1)/time.Minute)))
+			}
+			if j.Model != "" {
+				args = append(args, "--model", j.Model)
+			}
+			// agy 1.3.3 không có cờ nạp MCP: nó đọc cấu hình worker ghi trong .agents/ của worktree, cộng cả
+			// ~/.gemini/config/mcp_config.json của máy mà worker không chặn được.
+			notice := "[xdev-hive] antigravity nạp MCP của hub từ " + filepath.ToSlash(config) + " trong worktree; agy không có cờ nạp MCP nên cũng nạp server khai trong ~/.gemini/config/mcp_config.json của máy."
+			if config == "" && j.workspace != "" {
+				notice = "[xdev-hive] antigravity chạy không có MCP của hub: repo đã có .agents/mcp_config.json và .agents/plugins/" + antigravityPlugin + "."
+			}
+			if readOnlyKind(j.Kind) {
+				// Chế độ plan và sandbox của agy chặn ghi file và lệnh ghi, nhưng chỉ khi không có
+				// --dangerously-skip-permissions: cờ đó duyệt cả việc ghi, bỏ qua chế độ plan lẫn sandbox (đã thử trên agy
+				// 1.3.3). Thiếu cờ đó agy -p tự từ chối mọi quyền nó không hỏi được, gồm lệnh shell và tool MCP.
+				args = append(args, "--mode", "plan", "--sandbox")
+				notice += fmt.Sprintf("\n[xdev-hive] antigravity chạy run %s ở chế độ plan và sandbox chỉ đọc; agy -p từ chối gọi tool MCP khi không có --dangerously-skip-permissions, nên run không nộp được kết quả qua MCP của hub.", j.Kind)
+			} else {
+				// agy -p không hỏi được quyền nên chỉ chạy không tương tác với --dangerously-skip-permissions. Chế độ
+				// workspace không thêm --sandbox như Codex: sandbox của agy 1.3.3 là sandbox chỉ đọc, chặn cả ghi file trong
+				// worktree lẫn git commit (đã thử trên macOS), nên run code không nộp được gì. Workspace và full vì thế như nhau.
+				args = append(args, "--dangerously-skip-permissions")
+			}
+			return &cliExecCmd{Cmd: exec.Command(Binary(j.CLI), args...), notice: notice}, nil
 		default:
 			return nil, fmt.Errorf("runner: CLI không hợp lệ: %s", j.CLI)
 		}

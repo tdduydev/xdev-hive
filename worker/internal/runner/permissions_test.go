@@ -15,7 +15,7 @@ import (
 
 func TestRunPermissionArguments(t *testing.T) {
 	t.Setenv(CLIOverridesEnv, "")
-	for _, cli := range []string{"claude", "codex", "gemini"} {
+	for _, cli := range []string{"claude", "codex", "gemini", "antigravity"} {
 		for _, mode := range []string{"", "workspace", "full"} {
 			t.Run(cli+"/"+mode, func(t *testing.T) {
 				roots := []string{filepath.Join(t.TempDir(), "cache.git"), filepath.Join(t.TempDir(), "gitdir")}
@@ -57,6 +57,13 @@ func TestRunPermissionArguments(t *testing.T) {
 						if _, err := os.Stat(policy); !os.IsNotExist(err) {
 							t.Fatalf("policy chưa dọn: %v", err)
 						}
+					}
+				case "antigravity":
+					// agy -p chỉ chạy không tương tác khi tự duyệt mọi quyền; --sandbox của agy chặn cả git commit nên
+					// workspace cũng không có nó.
+					wants = []string{"--dangerously-skip-permissions"}
+					if strings.Contains(args, "--sandbox") {
+						t.Fatalf("run code có --sandbox: %v", c.Args)
 					}
 				}
 				for _, want := range wants {
