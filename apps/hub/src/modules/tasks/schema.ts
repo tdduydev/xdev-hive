@@ -52,7 +52,7 @@ export const tasks = hive
       body: text("body").notNull().default(""),
       type: text("type"),
       status: taskStatus("status").notNull().default("todo"),
-      preferredCli: text("preferred_cli").$type<"claude" | "codex" | "gemini">(),
+      preferredCli: text("preferred_cli").$type<"claude" | "codex" | "gemini" | "antigravity">(),
       createdBy: text("created_by").notNull(),
       source: jsonb("source").$type<Record<string, unknown>>().notNull().default({}),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

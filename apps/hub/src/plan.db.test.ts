@@ -16,7 +16,7 @@ import {
 } from "@xdev-hive/contracts";
 import { type HubToWorker, hubToWorker, PROTOCOL_VERSION } from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, inject, it, onTestFinished } from "vitest";
 import WebSocket from "ws";
 import { errorCode, type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
@@ -420,6 +420,34 @@ describe("plan mode", () => {
     // Kết thúc run để lease hết hạn không đưa nó về hàng đợi của máy ở test sau.
     await w.finish(run.id, 0, { commitCount: 0, changedFiles: [] }, null);
     await until(async () => (await runRow(run.id)).state === "no_changes");
+  });
+
+  it("run code của Antigravity: run plan con để dispatch chọn Claude/Codex (agy không gọi được plan_submit)", async () => {
+    await setPlanMode(true);
+    // Run code của Antigravity chỉ được giao khi dự án cho toàn quyền (agy không giới hạn được trong worktree).
+    await admin.query(
+      `update hive.projects set settings = settings || '{"runPermissions":{"mode":"full"}}'::jsonb where id = $1`,
+      [projectId],
+    );
+    onTestFinished(async () => {
+      await admin.query("update hive.projects set settings = settings - 'runPermissions' where id = $1", [projectId]);
+    });
+    taskNo++;
+    const created = await api<Task>("POST", "/v1/tasks", { projectId, title: `Antigravity lập kế hoạch ${taskNo}` });
+    const started = await api<Run>("POST", "/v1/runs", {
+      taskId: created.data.id,
+      cli: "antigravity",
+      model: "gemini-3.8-flash-high",
+    });
+    expect(started.status).toBe(200);
+    expect(started.data).toMatchObject({ state: "planning", cli: "antigravity" });
+    const [child] = await planChildren(started.data.id);
+    expect(child).toMatchObject({ kind: "plan", cli: null, model: null });
+    const w = await FakeWorker.connect(await seedMachine(`agy-plan-${tag}`));
+    const { spec } = await w.take(child.id);
+    expect(spec).toMatchObject({ kind: "plan", cli: "claude" });
+    await api("POST", `/v1/tasks/${created.data.id}/cancel`);
+    await w.close();
   });
 
   it("bật planMode: run plan chỉ đọc → nộp kế hoạch → chờ duyệt → duyệt kèm sửa → run code có kế hoạch trong prompt", async () => {

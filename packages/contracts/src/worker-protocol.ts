@@ -6,7 +6,11 @@ import { sandboxJobConfig } from "./sandbox.ts";
 export const PROTOCOL_VERSION = 1;
 
 export const machineId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
-export const cli = z.enum(["claude", "codex", "gemini"]);
+/**
+ * CLI hub giao run được. Hub cũ kiểm hello và đăng ký máy bằng enum này, nên worker hỏi `clis` của GET /api/v1/health
+ * và chỉ khai CLI hub đó biết (hub chưa trả `clis` thì chỉ claude, codex, gemini).
+ */
+export const cli = z.enum(["claude", "codex", "gemini", "antigravity"]);
 export const workerOs = z.enum(["darwin", "linux", "windows"]);
 
 const runId = z.string().min(1).max(64);

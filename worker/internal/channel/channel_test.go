@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -66,6 +67,54 @@ func TestWelcome(t *testing.T) {
 		}
 	case <-time.After(waitFor):
 		t.Fatal("worker không thoát sau khi huỷ context")
+	}
+}
+
+// Hub cũ kiểm hello bằng enum CLI cũ và từ chối cả gói khi có CLI lạ: worker chỉ khai antigravity khi health của hub
+// có nó trong `clis`.
+func TestHelloOnlyListsCLIsTheHubKnows(t *testing.T) {
+	for _, tc := range []struct {
+		name, health string
+		want         []string
+	}{
+		{"hub mới", `{"status":"ok","version":"2","time":"2026-10-13T00:00:00Z","clis":["claude","codex","gemini","antigravity"]}`, []string{"codex", "antigravity"}},
+		{"hub cũ", `{"status":"ok","version":"1","time":"2026-10-13T00:00:00Z"}`, []string{"codex"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := make(chan Hello, 1)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/health" {
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(tc.health))
+					return
+				}
+				conn, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				got <- receiveHello(t, conn)
+				_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"reply","sessionId":"session","heartbeatSec":30}`))
+				<-r.Context().Done()
+			}))
+			defer srv.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			cfg := testConfig(t, srv.URL)
+			cfg.CLIs = []string{"codex", "antigravity"}
+			done := make(chan error, 1)
+			go func() { done <- cfg.Run(ctx) }()
+			select {
+			case hello := <-got:
+				if !slices.Equal(hello.CLIs, tc.want) {
+					t.Fatalf("hello.clis = %v, cần %v", hello.CLIs, tc.want)
+				}
+			case <-time.After(waitFor):
+				t.Fatal("không nhận hello")
+			}
+			cancel()
+			<-done
+		})
 	}
 }
 

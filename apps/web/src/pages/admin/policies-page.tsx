@@ -42,6 +42,7 @@ const CLIS: { id: Cli; name: string }[] = [
   { id: "claude", name: "Claude Code" },
   { id: "codex", name: "Codex" },
   { id: "gemini", name: "Gemini CLI" },
+  { id: "antigravity", name: "Antigravity" },
 ];
 const TEMPLATE_FILES: { id: TemplateKey; path: string }[] = [
   { id: "agents", path: "AGENTS.md" },
@@ -279,7 +280,8 @@ const text: Dict<{
 };
 
 const formOf = (p: AgentPolicy): Form => ({
-  allowedModels: p.allowedModels,
+  // Chính sách lưu trước khi có CLI mới (vd. Antigravity) không có mục đó: coi như chưa giới hạn model.
+  allowedModels: { ...Object.fromEntries(CLIS.map((c) => [c.id, []])), ...p.allowedModels } as Form["allowedModels"],
   neverAutoUpgrade: p.neverAutoUpgrade,
   defaultPermissionMode: p.defaultPermissionMode,
   allowFullPermission: p.allowFullPermission,
