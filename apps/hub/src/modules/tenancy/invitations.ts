@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { ConflictError, ForbiddenError, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
-import { requireOrgRole } from "./permissions.ts";
+import { requireOrgRole, storableTeamRole } from "./permissions.ts";
 import { iso, type Procedures, type TenancyDeps } from "./procedures.ts";
 import { allowWith } from "./roles.ts";
 import { invitations, orgMembers, orgs, teamMembers, teams } from "./schema.ts";
@@ -181,7 +181,7 @@ export function invitationsRouter({ base, authed, inOrg }: Procedures, deps: Ten
             email,
             orgRole: input.orgRole,
             teamId: input.teamId ?? null,
-            teamRole: input.teamId ? (input.teamRole ?? "member") : null,
+            teamRole: input.teamId ? storableTeamRole(input.teamRole ?? "member") : null,
             tokenHash: hashInviteToken(token),
             expiresAt,
             createdBy: user.id,

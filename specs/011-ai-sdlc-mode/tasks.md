@@ -25,7 +25,7 @@
 
 ## Phase 1: Nền (chặn mọi story)
 
-- [ ] T001 🎯 Contract chế độ AI SDLC
+- [x] T001 🎯 Contract chế độ AI SDLC
   - `sdlc.ts` mới: `sdlcMethod`, `sdlcPhaseKind`, `sdlcSize`, `sdlcStepAction`, `sdlcBlocking`, `breakdownParser`,
     `repoPathTemplate`, `sdlcArtifactScope`, `contractFormat`, `sdlcArtifact` (`scope`, `repeatable`), `sdlcAutoApprove`,
     `sdlcStep`, `sdlcPhase` (`perProjectGates`, `autoApprove`), `sdlcDecomposition`, `sdlcMode` (`superRefine`: id duy

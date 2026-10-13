@@ -16,12 +16,14 @@ import { rolesContract } from "./roles.ts";
 import { runsContract } from "./runs.ts";
 import { sandboxContract } from "./sandbox.ts";
 import { scmContract } from "./scm.ts";
+import { sdlcContract } from "./sdlc.ts";
 import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
 import { reviewsContract, workflowsContract } from "./workflows.ts";
 
 export * from "./audit.ts";
+export * from "./breakdown.ts";
 export * from "./code-reviews.ts";
 export * from "./cost.ts";
 export * from "./desktop-connect.ts";
@@ -42,6 +44,8 @@ export * from "./run-log.ts";
 export * from "./runs.ts";
 export * from "./sandbox.ts";
 export * from "./scm.ts";
+export * from "./sdlc.ts";
+export * from "./sdlc-presets/index.ts";
 export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
@@ -133,6 +137,7 @@ export const contract = {
   codeReviews: codeReviewsContract,
   docEditor: docEditorContract,
   desktopConnect: desktopConnectContract,
+  sdlc: sdlcContract,
 };
 
 export type Contract = typeof contract;

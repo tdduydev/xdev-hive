@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id, orgRoute } from "./common.ts";
+import { machineLabel } from "./fleet.ts";
 import { parseRepoUrl } from "./repo-url.ts";
 import { repoOwner, scmKind } from "./scm.ts";
 import { cli } from "./worker-protocol.ts";
@@ -159,6 +160,69 @@ export const projectBudget = z.object({
   perRunTokens: z.number().int().min(1).max(1_000_000_000).optional(),
 });
 export type ProjectBudget = z.output<typeof projectBudget>;
+
+// Cài đặt AI SDLC của dự án nằm ở đây chứ không ở sdlc.ts: sdlc.ts cần workflows.ts, mà workflows.ts import file này,
+// nên đặt ở sdlc.ts sẽ thành vòng import và zod gặp biến chưa khởi tạo khi nạp module.
+
+/** Mức chặn run code của task thuộc hạng mục khi tài liệu bắt buộc chưa duyệt (specs/011 FR-028). */
+export const sdlcBlocking = z.enum(["hard", "soft", "none"]);
+export type SdlcBlocking = z.output<typeof sdlcBlocking>;
+/** Thứ tự từ lỏng tới chặt, để lấy mức chặt nhất của chế độ và dự án. */
+export const SDLC_BLOCKING_ORDER: readonly SdlcBlocking[] = ["none", "soft", "hard"];
+
+/** Glob đường dẫn theo `matchGlob` (glob.ts). */
+const pathGlob = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[^\\]+$/, "Glob dùng dấu / thay cho dấu \\.");
+
+/**
+ * Tự duyệt AI ở lớp dự án (specs/011 D26, FR-057): chỉ siết thêm so với chế độ. Kiểm lúc xét chứ không lúc lưu, vì mỗi
+ * hạng mục chụp một chế độ khác nhau. Mặc định tắt.
+ */
+export const projectSdlcAutoApprove = z.object({
+  enabled: z.boolean().default(false),
+  /** Chỉ có tác dụng khi cao hơn ngưỡng của chế độ. */
+  minScore: z.number().min(0).max(10).optional(),
+  /** Id giai đoạn được tự duyệt; bỏ trống là mọi giai đoạn chế độ cho phép. */
+  phases: z.array(z.string().max(40)).max(12).optional(),
+  /** Chỉ có tác dụng khi dài hơn hạn thu hồi của chế độ. */
+  revokeHours: z.number().int().min(1).max(168).optional(),
+  denyPaths: z.array(pathGlob).max(50).default([]),
+  denyKeywords: z.array(z.string().trim().min(1).max(60)).max(100).default([]),
+});
+
+/** `project.settings.sdlc` (specs/011 FR-005). Dự án chưa có mục này coi như chưa bật AI SDLC. */
+export const projectSdlcSettings = z.object({
+  enabled: z.boolean().default(false),
+  /** Id preset hoặc slug chế độ tự tạo. */
+  defaultMode: z.string().max(80).nullable().default(null),
+  /** Chế độ được dùng; rỗng là chỉ chế độ mặc định. */
+  modes: z.array(z.string().max(80)).max(20).default([]),
+  /** Chỉ có tác dụng khi chặt hơn chế độ. */
+  blocking: sdlcBlocking.optional(),
+  repoSync: z.enum(["pr", "direct", "off"]).default("pr"),
+  /** Thư mục gốc tài liệu trong repo; bỏ trống là đường dẫn của chế độ. */
+  docsRoot: z
+    .string()
+    .max(120)
+    .regex(/^(?!\/)(?!.*\.\.)[A-Za-z0-9._/-]*$/, "Thư mục tài liệu phải là đường dẫn tương đối trong repo.")
+    .optional(),
+  maxParallel: z.number().int().min(1).max(10).default(2),
+  autoRunWaves: z.boolean().default(false),
+  /** `team`: máy dùng chung của đội (run không chủ); `requester`: máy của người bấm (ADR 0017). */
+  runner: z.enum(["team", "requester"]).default("team"),
+  /** Nhãn máy run AI SDLC và run code của task hạng mục yêu cầu. */
+  labels: z.array(machineLabel).max(5).default([]),
+  /** Từ khoá rủi ro cho gợi ý cỡ việc. */
+  riskKeywords: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
+  autoApprove: projectSdlcAutoApprove.prefault({}),
+});
+export type ProjectSdlcSettings = z.output<typeof projectSdlcSettings>;
+export type ProjectSdlcSettingsInput = z.input<typeof projectSdlcSettings>;
+
 /**
  * Bản tóm tắt repo cho mọi run (ADR 0022). `auto`: hub tự giao run `brief` khi dự án chưa có brief, khi nhánh chính
  * đã đi trước brief `refreshCommits` commit, hoặc khi brief cũ hơn `refreshDays` ngày. Tắt thì chỉ người bấm "Làm mới"
@@ -250,6 +314,8 @@ export const projectSettings = z.object({
   defaultCli: cli.nullable().optional(),
   /** Trần chi phí; không có là không giới hạn (docs/decisions.md: mặc định chỉ theo dõi chi phí). */
   budget: projectBudget.optional(),
+  /** AI SDLC (specs/011); không có là chưa bật, dự án giữ nguyên hành vi cũ (FR-049). */
+  sdlc: projectSdlcSettings.optional(),
   /** Có mặc định vì settings đã lưu trước ADR 0022 không có mục này. */
   brief: briefSettings.default(() => ({ ...DEFAULT_BRIEF_SETTINGS })),
 });
@@ -320,6 +386,8 @@ export const projectSettingsPatch = z
       })
       .nullable()
       .optional(),
+    /** Thay cả mục AI SDLC (mục có nhiều danh sách lồng nhau, vá từng trường dễ sai hơn gửi lại cả mục). */
+    sdlc: projectSdlcSettings.strict().optional(),
     brief: briefSettings.partial().strict().optional(),
   })
   .refine((p) => Object.keys(p).length > 0, "Bản vá settings không có trường nào để đổi.");

@@ -91,6 +91,7 @@ const text: Dict<{
       leader: "Leader",
       doccheck: "Kiểm tài liệu",
       docassist: "Trợ lý tài liệu",
+      sdlc: "AI SDLC",
       brief: "Brief dự án",
     },
     states: RUN_STATE_LABEL,
@@ -135,6 +136,7 @@ const text: Dict<{
       leader: "Leader",
       doccheck: "Doc check",
       docassist: "Doc assistant",
+      sdlc: "AI SDLC",
       brief: "Project brief",
     },
     states: {
