@@ -304,6 +304,40 @@ each account; disabling one account sends every later run to the other.
 4. **Given** an account for a CLI the worker does not drive (for example Antigravity), **Then** the app lists it as not
    supported by the worker and the worker never picks it.
 
+### User Story 14 - Manage Agent Plans Like the v1 App (Priority: P2)
+
+The machine owner manages the CLI accounts (agent plans) from the app as they did in the v1 app: add an account and
+sign in through Terminal, edit or remove it, see how much of each plan's 5-hour session and weekly quota is used, set
+the stop limits at which Hive leaves the rest of the plan to the owner, see which account is cooling down, resume an
+account early, and choose which run roles (plan, implement, review) each account takes. Antigravity accounts are out of
+scope.
+
+**Independent Test**: With a Claude account at 96% of its session quota (stop limit 95%) and a second account at 20%,
+a new run goes to the second account; after "Resume" on the first account, runs may go to it again until the session
+resets.
+
+**Acceptance Scenarios**:
+1. **Given** the AI accounts screen, **When** the user adds a Claude or Codex account with a label and sign-in method,
+   **Then** the worker creates id `<cli>-<n>` (the first account of a CLI uses the default login, later ones get
+   `~/.xdev-hive/accounts/<id>` with mode 0700) and the app opens Terminal with the CLI's login command and config
+   directory variable.
+2. **Given** a signed-in account, **When** the worker runs, **Then** it reads the plan's quota at start, every 10
+   minutes and after each run of that account (Claude through `claude -p /usage`, Codex from its newest session files),
+   keeps it in `accounts-state.json`, and the app shows session and week percent with reset times, or why there is no
+   number ("Chưa đăng nhập", "CLI không báo", …).
+3. **Given** an account whose session or week usage is at or above its stop limit, **When** the worker picks an account,
+   **Then** it skips that account unless the user pressed "Resume", which lifts the limits until the over-limit bar
+   resets (5 hours when the reset time is unknown).
+4. **Given** the CLI reports a usage limit during a run, **Then** the account rests until the reset of the bar that hit
+   its limit when known, otherwise for `cooldownMinutes`; the rest survives a worker restart and "Resume" ends it.
+5. **Given** an account limited to the review role, **When** an implement run starts, **Then** the worker does not pick
+   that account; a plan run needs the "plan" role, a review run "review", every other run "implement".
+6. **Given** the user edits an account, **When** a value is out of range (priority 0–100, concurrency 1–8, cooldown
+   1–1440 minutes, stop limits 1–100%, run timeout 1–720 minutes, at least one role), **Then** nothing is saved and the
+   app shows the error in Vietnamese. Removing an account keeps its login directory.
+7. **Given** the account list, **Then** each account shows one state in this precedence: disabled, no CLI, signed out,
+   running, over limit, cooling, near limit (a bar at 85% or more), ready.
+
 ### Edge Cases
 
 - **What happens if the user's personal MCP token expires while the worker machine token is still valid?**
@@ -353,6 +387,11 @@ each account; disabling one account sends every later run to the other.
 - **FR-028 (US13)**: The worker MUST read the machine's CLI accounts from `accounts.json` next to `worker.json` and pick one per run by priority, concurrency limit and cooldown; it MUST set only the account's config directory variable (`CLAUDE_CONFIG_DIR` for Claude Code, `CODEX_HOME` for Codex) for the CLI process. With no accounts file it uses the CLI's default login as today.
 - **FR-029 (US13)**: The app MUST import the v1 app's accounts once, when no `accounts.json` exists, and MUST let the user enable or disable each account. Account files hold no secrets; login data stays in each account's config directory.
 - **FR-030**: The app window MUST let the user collapse and expand `AppNav` (choice kept across restarts) and choose the interface language from a drop-down list.
+- **FR-031 (US14)**: An account MUST carry `stopAtSession` (1–100, default 95), `stopAtWeek` (1–100, default 90), `roles` (`plan`, `implement`, `review`, default all) and `timeoutMinutes` (default 60) besides the US13 fields; files without them keep working, and the v1 import MUST copy them when present.
+- **FR-032 (US14)**: The worker MUST read each signed-in account's quota (Claude: `/usage` with the account's `CLAUDE_CONFIG_DIR`; Codex: `token_count` events in the newest `$CODEX_HOME/sessions/**/rollout-*.jsonl`, primary as session and secondary as week) at start, every 10 minutes and after each run of the account, and keep it in `accounts-state.json` next to `accounts.json`.
+- **FR-033 (US14)**: When picking an account the worker MUST skip accounts that are signed out, lack the run's role, are cooling down, or have a bar at or above its stop limit unless "Resume" is still in effect. Cooldown lasts until the reset of the over-limit bar when known, else `cooldownMinutes`, and MUST survive a worker restart. A run MUST NOT outlast the account's `timeoutMinutes` when that is shorter than the hub's deadline.
+- **FR-034 (US14)**: `hive-worker accounts` MUST provide `add`, `update`, `remove`, `usage` and `resume` (with `--json`) so the app manages accounts without editing files; `add` returns the login command and environment for Terminal, `update` checks value ranges with Vietnamese errors, `remove` keeps the login directory.
+- **FR-035 (US14)**: The app MUST show per account its state, session and week quota with reset times or the reason there is none, cooldown and resume times, and running runs, and MUST offer add with Terminal sign-in, edit, remove, refresh quota and resume.
 
 ### Key Entities
 
