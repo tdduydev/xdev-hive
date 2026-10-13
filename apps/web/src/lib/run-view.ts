@@ -1,10 +1,6 @@
-import {
-  type OutcomeCheck,
-  type Run,
-  type RunEventView,
-  type RunState,
-  TERMINAL_RUN_STATES,
-} from "@xdev-hive/contracts";
+import type { OutcomeCheck, Run, RunEventView, RunState } from "@xdev-hive/contracts";
+// Bảng việc và trang chủ nằm trong bundle đầu: lấy từ module không zod thay vì cả hợp đồng.
+import { TERMINAL_RUN_STATES } from "@xdev-hive/contracts/run-states";
 import { formatClock, formatDuration } from "@/lib/format.ts";
 
 /** Màu của nhãn trạng thái, khớp `tone` của <Pill>. */

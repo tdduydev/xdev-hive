@@ -1,4 +1,6 @@
-import { type RunSearchInput, type RunStatusGroup, runStatusGroup } from "@xdev-hive/contracts";
+import type { RunSearchInput, RunStatusGroup } from "@xdev-hive/contracts";
+// router.tsx gọi validateRunsSearch nên file này nằm trong bundle đầu: không import schema zod của hợp đồng.
+import { isRunStatusGroup } from "@xdev-hive/contracts/run-states";
 
 export type RunFilter = "all" | RunStatusGroup;
 
@@ -26,10 +28,9 @@ export interface RunsSearch {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function validateRunsSearch(search: Record<string, unknown>): RunsSearch {
-  const status = runStatusGroup.safeParse(search.status);
-  const { project, cli, machine } = search;
+  const { status, project, cli, machine } = search;
   return {
-    ...(status.success ? { status: status.data } : {}),
+    ...(isRunStatusGroup(status) ? { status } : {}),
     ...(typeof project === "string" && project ? { project } : {}),
     ...(typeof cli === "string" && (CLIS as readonly string[]).includes(cli) ? { cli: cli as Cli } : {}),
     ...(typeof machine === "string" && UUID.test(machine) ? { machine } : {}),
