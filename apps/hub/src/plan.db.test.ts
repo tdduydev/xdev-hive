@@ -649,6 +649,15 @@ describe("plan mode", () => {
       "TASK_NOT_FOUND",
     );
     expect((await plansOf(task.id))[0].status).toBe("awaiting");
+    // Ghi chú và bản sửa đi thẳng vào prompt của agent trên máy của chủ run, nên thành viên khác không đưa vào được.
+    expect(
+      await errorCode(() =>
+        as("tmember", (tx) =>
+          engine.planActions.approve(tx, org.user("tmember"), { id: task.id, planId, note: "làm khác đi" }),
+        ),
+      ),
+    ).toBe("RUN_NOT_YOURS");
+    expect((await plansOf(task.id))[0].status).toBe("awaiting");
 
     const { result } = await approve("tadmin");
     expect(result.plan).toMatchObject({

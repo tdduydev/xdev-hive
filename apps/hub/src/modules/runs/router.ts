@@ -3,7 +3,7 @@ import { contract } from "@xdev-hive/contracts";
 import { recordAudit } from "../audit/index.ts";
 import { ConflictError, type RequestContext, withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
-import { type RunsEngine, runForUser } from "./engine.ts";
+import { assertRunActor, type RunsEngine, runForUser } from "./engine.ts";
 import { getRun, latestRuns, listEvents, listLogs, listRuns, searchRuns, withMachineNames } from "./queries.ts";
 
 export interface RunsRouterDeps extends OrgDeps {
@@ -45,7 +45,8 @@ export function runsRouter(deps: RunsRouterDeps) {
     steer: os.steer.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
       const e = engine();
       const { status, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, async (tx) => {
-        await runForUser(tx, user.id, input.id, "member");
+        const run = await runForUser(tx, user.id, input.id, "member");
+        await assertRunActor(tx, run, user.id, "owner");
         const steered = await e.steerRun(tx, input.id, input.input, user.id);
         await recordAudit(tx, {
           action: "run.steer",

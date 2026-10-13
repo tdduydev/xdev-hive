@@ -66,6 +66,7 @@ const run = (n: number, over: Record<string, unknown>) => ({
   timeoutSec: 3600,
   cost: cost(null),
   createdBy: "u1",
+  ownerUserId: "u1",
   createdAt: "2026-10-11T06:00:00.000Z",
   startedAt: null,
   finishedAt: null,

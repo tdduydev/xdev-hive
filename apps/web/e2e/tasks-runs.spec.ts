@@ -93,6 +93,7 @@ const run = (n: number, over: Record<string, unknown>) => ({
   timeoutSec: 3600,
   cost: cost(null),
   createdBy: "u1",
+  ownerUserId: "u1",
   createdAt: "2026-10-11T06:00:00.000Z",
   startedAt: null,
   finishedAt: null,
@@ -376,6 +377,26 @@ test("chi tiết run: pha, log trực tiếp qua SSE, chi phí, chính sách, g�
   await confirm.getByRole("button", { name: "Huỷ run" }).click();
   await expect(confirm).toBeHidden();
   expect(hub.rpcCalls.find((c) => c.path === "runs/cancel")?.input).toEqual({ id: RUNNING.id });
+});
+
+test("run của người khác: thành viên thường không gửi chỉ dẫn hay huỷ được, hub chặn nên nút tắt kèm lý do", async ({
+  page,
+}) => {
+  await open(page, { "runs/get": () => ok({ ...RUNNING, ownerUserId: "u2" }) });
+  await fakeStream(page, [{ event: "end", data: { state: "running" } }]);
+  await page.goto(`/runs/${RUNNING.id}`);
+  await expect(page.getByRole("button", { name: "Gửi chỉ dẫn" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Huỷ run" })).toBeDisabled();
+  await expect(page.getByText("Run chạy trên máy cá nhân của người khác", { exact: false })).toBeVisible();
+});
+
+test("run của đội (không chủ): thành viên huỷ được nhưng chỉ quản trị đội gửi chỉ dẫn", async ({ page }) => {
+  await open(page, { "runs/get": () => ok({ ...RUNNING, ownerUserId: null }) });
+  await fakeStream(page, [{ event: "end", data: { state: "running" } }]);
+  await page.goto(`/runs/${RUNNING.id}`);
+  await expect(page.getByRole("button", { name: "Gửi chỉ dẫn" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Huỷ run" })).toBeEnabled();
+  await expect(page.getByText("Run của đội: chỉ quản trị đội", { exact: false })).toBeVisible();
 });
 
 test("run đã xong: không có nút gửi chỉ dẫn và huỷ; có PR và kết quả kiểm tra", async ({ page }) => {
