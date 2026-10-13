@@ -1,6 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { saveFolder } from "@/lib/folder.ts";
 import { setLang } from "@/lib/i18n.ts";
 import { clock, machineSummary, meterTone, type Plan, planRows, planState, reloginOf } from "@/lib/plans.ts";
 import { LOGIN_POLL_MS, PlansScreen } from "@/screens/plans-screen.tsx";
@@ -98,6 +99,7 @@ function fakeTauri(list = seed()) {
       };
     },
     open_login_terminal: () => null,
+    open_cli_terminal: () => null,
   };
   window.__TAURI__ = {
     core: {
@@ -122,6 +124,7 @@ const sent = (calls: Call[], command: string) => calls.filter((c) => c.command =
 
 beforeEach(() => {
   setLang("vi");
+  saveFolder("");
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(NOW);
 });
@@ -313,6 +316,53 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(sent(calls, "open_login_terminal")).toEqual([
       { command: "claude auth login", env: { CLAUDE_CONFIG_DIR: "~/.xdev-hive/accounts/claude-2" } },
     ]);
+  });
+
+  it("Mở CLI từ menu ⋯ gửi id gói; có thư mục làm việc thì mở ở đó và ghi dòng phụ", async () => {
+    const { calls } = fakeTauri();
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    const u = user();
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Gói phụ" }));
+    const plain = await screen.findByRole("menuitem", { name: "Mở CLI" });
+    expect(within(plain).queryByText(/Mở trong/)).toBeNull();
+    await u.click(plain);
+    expect(sent(calls, "open_cli_terminal")).toEqual([{ id: "claude-2", folder: null }]);
+    expect((await screen.findByRole("status")).textContent).toBe("Đã mở Terminal chạy CLI của claude-2.");
+
+    act(() => saveFolder("/Users/duy/Work/payment-api"));
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Codex mới" }));
+    const item = await screen.findByRole("menuitem", { name: /Mở CLI/ });
+    expect(within(item).getByText("Mở trong ~/Work/payment-api")).toBeTruthy();
+    await u.click(item);
+    // Gói chưa đăng nhập vẫn mở được: CLI tự đòi đăng nhập.
+    expect(sent(calls, "open_cli_terminal")).toEqual([
+      { id: "claude-2", folder: null },
+      { id: "codex-2", folder: "/Users/duy/Work/payment-api" },
+    ]);
+  });
+
+  it("Mở CLI lỗi thì hiện lỗi tiếng Việt", async () => {
+    const fake = fakeTauri();
+    const invoke = window.__TAURI__?.core?.invoke;
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+          if (command === "open_cli_terminal") throw "Thư mục làm việc không có hoặc không phải thư mục: /x";
+          return (invoke as (c: string, a?: Record<string, unknown>) => Promise<T>)(command, args);
+        },
+      },
+    };
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    const u = user();
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Duy Max" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Mở CLI" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Thư mục làm việc không có hoặc không phải thư mục: /x",
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(fake.calls.some((c) => c.command === "open_cli_terminal")).toBe(false);
   });
 
   it("Sửa gửi đúng tham số", async () => {
