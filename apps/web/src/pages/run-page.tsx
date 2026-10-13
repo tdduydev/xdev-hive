@@ -26,6 +26,7 @@ import {
   isTerminal,
   prLabel,
   RUN_STATE_LABEL,
+  routingRows,
   runAccess,
   runPhases,
   runStateTone,
@@ -116,6 +117,7 @@ export function RunPage() {
           </div>
           <aside aria-label="Thông tin run" className="grid min-w-0 gap-4">
             <DetailsCard run={r} now={now} />
+            {r.routing && <RoutingCard routing={r.routing} />}
             <CostCard run={r} capUsd={project.data?.settings.budget?.perRunUsd} />
             {r.explore && <ExploreCard explore={r.explore} />}
             <PolicyCard run={r} />
@@ -357,6 +359,20 @@ function CostCard({ run, capUsd }: { run: Run; capUsd: number | undefined }) {
           { term: "Số lượt", detail: run.cost.turns === null ? "—" : formatInt(run.cost.turns) },
         ]}
       />
+    </SectionCard>
+  );
+}
+
+/** Model và effort hub đã chọn cho lần thử đang giao, kèm từng lý do (định tuyến theo cấp độ task). */
+function RoutingCard({ routing }: { routing: NonNullable<Run["routing"]> }) {
+  return (
+    <SectionCard title="Model đã chọn và vì sao">
+      <DescriptionList alignEnd items={routingRows(routing)} />
+      <ul className="grid list-disc gap-1 pl-4 text-xs text-muted-foreground">
+        {routing.reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
     </SectionCard>
   );
 }

@@ -21,7 +21,7 @@ describe("buildPatch: tiết kiệm token", () => {
     expect(buildPatch(form, s)).toEqual({ ok: true, patch: null });
   });
 
-  it("chỉ gửi mục tokenSaving khi đổi, đủ năm trường", () => {
+  it("chỉ gửi mục tokenSaving khi đổi, đủ bảy trường", () => {
     const s = base();
     const form = { ...formFromSettings(s), cacheTtl: "1h" as const, bashMaxChars: " 20000 " };
     expect(buildPatch(form, s)).toEqual({
@@ -33,9 +33,81 @@ describe("buildPatch: tiết kiệm token", () => {
           autocompactPct: 70,
           subagentModel: "sonnet",
           cacheTtl: "1h",
+          autocompactWindow: 200000,
+          allowWeb: false,
         },
       },
     });
+  });
+
+  it("hub cũ chưa gửi autocompactWindow/allowWeb: hiện mặc định, không tạo bản vá", () => {
+    const s = base();
+    // biome-ignore lint/suspicious/noExplicitAny: mô phỏng tokenSaving lưu trước khi có hai trường mới
+    const { autocompactWindow: _a, allowWeb: _w, ...old } = s.tokenSaving as any;
+    const form = formFromSettings({ ...s, tokenSaving: old });
+    expect(form).toMatchObject({ autocompactWindow: "200000", allowWeb: false });
+    expect(buildPatch(form, { ...s, tokenSaving: old })).toEqual({ ok: true, patch: null });
+  });
+
+  it("cửa sổ ngữ cảnh ngoài khoảng báo lỗi ở ô autocompactWindow", () => {
+    const s = base();
+    const r = buildPatch({ ...formFromSettings(s), autocompactWindow: "1000" }, s);
+    expect(r).toMatchObject({ ok: false, errors: { autocompactWindow: "Tối thiểu 50.000 token." } });
+  });
+});
+
+describe("buildPatch: định tuyến model", () => {
+  it("settings chưa có routing (hub cũ) hiện mặc định và không tạo bản vá", () => {
+    const s = base();
+    // biome-ignore lint/suspicious/noExplicitAny: mô phỏng hub cũ không gửi mục này
+    delete (s as any).routing;
+    const form = formFromSettings(s);
+    expect(form.routing).toBe(true);
+    expect(form.tiers.heavy).toEqual({ model: "opus", effort: "high", maxTurns: "200", advisor: "" });
+    expect(buildPatch(form, s)).toEqual({ ok: true, patch: null });
+  });
+
+  it("chỉ gửi mục routing khi đổi; advisor trống là null", () => {
+    const s = base();
+    const form = formFromSettings(s);
+    form.tiers.medium = { ...form.tiers.medium, advisor: " opus ", maxTurns: "150" };
+    const r = buildPatch(form, s);
+    expect(r).toMatchObject({ ok: true });
+    expect(r.ok && r.patch).toEqual({
+      routing: {
+        enabled: true,
+        tiers: {
+          light: { model: "sonnet", effort: "medium", maxTurns: 60, advisor: null },
+          medium: { model: "sonnet", effort: "high", maxTurns: 150, advisor: "opus" },
+          heavy: { model: "opus", effort: "high", maxTurns: 200, advisor: null },
+        },
+      },
+    });
+  });
+
+  it("tắt định tuyến chỉ đổi cờ enabled", () => {
+    const s = base();
+    const r = buildPatch({ ...formFromSettings(s), routing: false }, s);
+    expect(r.ok && r.patch?.routing?.enabled).toBe(false);
+  });
+
+  it("lỗi gắn vào ô của đúng cấp", () => {
+    const s = base();
+    const form = formFromSettings(s);
+    form.tiers.light = { ...form.tiers.light, maxTurns: "0", model: " " };
+    const r = buildPatch(form, s);
+    expect(r).toMatchObject({
+      ok: false,
+      errors: { "tiers.light.maxTurns": "Tối thiểu 1 lượt.", "tiers.light.model": "Nhập tên model." },
+    });
+    const text = buildPatch({ ...form, tiers: { ...form.tiers, light: { ...form.tiers.light, maxTurns: "abc" } } }, s);
+    expect(!text.ok && text.errors["tiers.light.maxTurns"]).toBe("Nhập một số, hoặc để trống.");
+  });
+
+  it("fieldOfPath đổi đường dẫn routing thành tên ô", () => {
+    expect(fieldOfPath(["routing", "tiers", "heavy", "maxTurns"])).toBe("tiers.heavy.maxTurns");
+    expect(fieldOfPath(["routing", "enabled"])).toBeUndefined();
+    expect(fieldOfPath(["tokenSaving", "autocompactWindow"])).toBe("autocompactWindow");
   });
 
   it("số ngoài khoảng và tên model trống báo lỗi của hub ở đúng ô", () => {
