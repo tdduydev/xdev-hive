@@ -4,7 +4,6 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { WorkerAccounts } from "@/components/worker-accounts.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { hubTool } from "@/lib/hub.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
@@ -272,7 +271,6 @@ export function RunsScreen() {
           </Table>
         )}
       </section>
-      <WorkerAccounts />
     </div>
   );
 }

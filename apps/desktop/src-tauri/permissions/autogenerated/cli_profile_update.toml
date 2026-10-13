@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cli-profile-update"
+description = "Enables the cli_profile_update command without any pre-configured scope."
+commands.allow = ["cli_profile_update"]
+
+[[permission]]
+identifier = "deny-cli-profile-update"
+description = "Denies the cli_profile_update command without any pre-configured scope."
+commands.deny = ["cli_profile_update"]

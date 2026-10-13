@@ -8,6 +8,7 @@ import {
   ListTodoIcon,
   type LucideIcon,
   PlayIcon,
+  ServerIcon,
   WrenchIcon,
   ZapIcon,
 } from "lucide-react";
@@ -75,6 +76,7 @@ export type ScreenId =
   | "skills"
   | "tokens"
   | "setup"
+  | "plans"
   | "runs";
 
 export interface NavItem {
@@ -167,6 +169,14 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     id: "machine",
     label: { vi: "Máy này", en: "This machine" },
     items: [
+      {
+        // Gói đăng ký (tài khoản Claude Code, Codex) worker của máy này chia run cho, như trang Gói agent của app v1.
+        id: "plans",
+        label: { vi: "Gói agent", en: "Agent plans" },
+        icon: ServerIcon,
+        design: "AppNav.dc.html",
+        needs: "runs.local",
+      },
       {
         id: "runs",
         label: { vi: "Lượt chạy trên máy", en: "Runs on this machine" },
