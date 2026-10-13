@@ -16,6 +16,8 @@ type Usage struct {
 	CostUSD          *float64 `json:"costUsd"`
 	Turns            *int     `json:"turns"`
 	Model            *string  `json:"model"`
+	// AccountID là id gói (tài khoản CLI) đã chạy run, để hub tính token theo gói; rỗng khi dùng đăng nhập mặc định.
+	AccountID string `json:"accountId,omitempty"`
 	// Explore chỉ có với Claude (ADR 0022); CLI khác để nil để hub cũ và worker cũ không khác nhau về hình dạng.
 	Explore *ExploreUsage `json:"explore,omitempty"`
 }

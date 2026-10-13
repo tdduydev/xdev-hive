@@ -23617,6 +23617,50 @@
                               "mention": "hive"
                             }
                           },
+                          "tokenSaving": {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "bashMaxChars": {
+                                "type": "integer",
+                                "minimum": 1000,
+                                "maximum": 150000
+                              },
+                              "autocompactPct": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "subagentModel": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 100
+                              },
+                              "cacheTtl": {
+                                "enum": [
+                                  "5m",
+                                  "1h"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "enabled",
+                              "bashMaxChars",
+                              "autocompactPct",
+                              "subagentModel",
+                              "cacheTtl"
+                            ],
+                            "default": {
+                              "enabled": true,
+                              "bashMaxChars": 15000,
+                              "autocompactPct": 70,
+                              "subagentModel": "sonnet",
+                              "cacheTtl": "5m"
+                            }
+                          },
                           "defaultCli": {
                             "anyOf": [
                               {
@@ -24715,6 +24759,50 @@
                             "enabled": false,
                             "label": "hive",
                             "mention": "hive"
+                          }
+                        },
+                        "tokenSaving": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "bashMaxChars": {
+                              "type": "integer",
+                              "minimum": 1000,
+                              "maximum": 150000
+                            },
+                            "autocompactPct": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            },
+                            "subagentModel": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "cacheTtl": {
+                              "enum": [
+                                "5m",
+                                "1h"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "bashMaxChars",
+                            "autocompactPct",
+                            "subagentModel",
+                            "cacheTtl"
+                          ],
+                          "default": {
+                            "enabled": true,
+                            "bashMaxChars": 15000,
+                            "autocompactPct": 70,
+                            "subagentModel": "sonnet",
+                            "cacheTtl": "5m"
                           }
                         },
                         "defaultCli": {
@@ -25817,6 +25905,50 @@
                                 "enabled": false,
                                 "label": "hive",
                                 "mention": "hive"
+                              }
+                            },
+                            "tokenSaving": {
+                              "type": "object",
+                              "properties": {
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "bashMaxChars": {
+                                  "type": "integer",
+                                  "minimum": 1000,
+                                  "maximum": 150000
+                                },
+                                "autocompactPct": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100
+                                },
+                                "subagentModel": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "cacheTtl": {
+                                  "enum": [
+                                    "5m",
+                                    "1h"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "enabled",
+                                "bashMaxChars",
+                                "autocompactPct",
+                                "subagentModel",
+                                "cacheTtl"
+                              ],
+                              "default": {
+                                "enabled": true,
+                                "bashMaxChars": 15000,
+                                "autocompactPct": 70,
+                                "subagentModel": "sonnet",
+                                "cacheTtl": "5m"
                               }
                             },
                             "defaultCli": {
@@ -27072,6 +27204,50 @@
                                 "enabled": false,
                                 "label": "hive",
                                 "mention": "hive"
+                              }
+                            },
+                            "tokenSaving": {
+                              "type": "object",
+                              "properties": {
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "bashMaxChars": {
+                                  "type": "integer",
+                                  "minimum": 1000,
+                                  "maximum": 150000
+                                },
+                                "autocompactPct": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100
+                                },
+                                "subagentModel": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "cacheTtl": {
+                                  "enum": [
+                                    "5m",
+                                    "1h"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "enabled",
+                                "bashMaxChars",
+                                "autocompactPct",
+                                "subagentModel",
+                                "cacheTtl"
+                              ],
+                              "default": {
+                                "enabled": true,
+                                "bashMaxChars": 15000,
+                                "autocompactPct": 70,
+                                "subagentModel": "sonnet",
+                                "cacheTtl": "5m"
                               }
                             },
                             "defaultCli": {
@@ -29864,6 +30040,37 @@
                         },
                         "additionalProperties": false
                       },
+                      "tokenSaving": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "bashMaxChars": {
+                            "type": "integer",
+                            "minimum": 1000,
+                            "maximum": 150000
+                          },
+                          "autocompactPct": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                          },
+                          "subagentModel": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100
+                          },
+                          "cacheTtl": {
+                            "enum": [
+                              "5m",
+                              "1h"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
                       "defaultCli": {
                         "anyOf": [
                           {
@@ -30485,6 +30692,50 @@
                         "enabled": false,
                         "label": "hive",
                         "mention": "hive"
+                      }
+                    },
+                    "tokenSaving": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "bashMaxChars": {
+                          "type": "integer",
+                          "minimum": 1000,
+                          "maximum": 150000
+                        },
+                        "autocompactPct": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "subagentModel": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "cacheTtl": {
+                          "enum": [
+                            "5m",
+                            "1h"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "bashMaxChars",
+                        "autocompactPct",
+                        "subagentModel",
+                        "cacheTtl"
+                      ],
+                      "default": {
+                        "enabled": true,
+                        "bashMaxChars": 15000,
+                        "autocompactPct": 70,
+                        "subagentModel": "sonnet",
+                        "cacheTtl": "5m"
                       }
                     },
                     "defaultCli": {
@@ -45801,6 +46052,16 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "accountId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [
@@ -45809,7 +46070,8 @@
                             "cacheRead",
                             "cacheWrite",
                             "costUsd",
-                            "turns"
+                            "turns",
+                            "accountId"
                           ]
                         },
                         "explore": {
@@ -47053,6 +47315,16 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "accountId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [
@@ -47061,7 +47333,8 @@
                             "cacheRead",
                             "cacheWrite",
                             "costUsd",
-                            "turns"
+                            "turns",
+                            "accountId"
                           ]
                         },
                         "explore": {
@@ -48028,6 +48301,16 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "accountId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -48036,7 +48319,8 @@
                         "cacheRead",
                         "cacheWrite",
                         "costUsd",
-                        "turns"
+                        "turns",
+                        "accountId"
                       ]
                     },
                     "explore": {
@@ -48965,6 +49249,16 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "accountId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -48973,7 +49267,8 @@
                           "cacheRead",
                           "cacheWrite",
                           "costUsd",
-                          "turns"
+                          "turns",
+                          "accountId"
                         ]
                       },
                       "explore": {
@@ -49904,6 +50199,16 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "accountId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -49912,7 +50217,8 @@
                           "cacheRead",
                           "cacheWrite",
                           "costUsd",
-                          "turns"
+                          "turns",
+                          "accountId"
                         ]
                       },
                       "explore": {
@@ -50930,6 +51236,16 @@
                                     "type": "null"
                                   }
                                 ]
+                              },
+                              "accountId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               }
                             },
                             "required": [
@@ -50938,7 +51254,8 @@
                               "cacheRead",
                               "cacheWrite",
                               "costUsd",
-                              "turns"
+                              "turns",
+                              "accountId"
                             ]
                           },
                           "explore": {
@@ -51912,6 +52229,16 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "accountId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -51920,7 +52247,8 @@
                         "cacheRead",
                         "cacheWrite",
                         "costUsd",
-                        "turns"
+                        "turns",
+                        "accountId"
                       ]
                     },
                     "explore": {
@@ -52848,6 +53176,16 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "accountId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -52856,7 +53194,8 @@
                         "cacheRead",
                         "cacheWrite",
                         "costUsd",
-                        "turns"
+                        "turns",
+                        "accountId"
                       ]
                     },
                     "explore": {
@@ -56443,7 +56782,8 @@
                 "day",
                 "task",
                 "cli",
-                "machine"
+                "machine",
+                "account"
               ],
               "type": "string",
               "default": "day"
@@ -56465,7 +56805,8 @@
                         "day",
                         "task",
                         "cli",
-                        "machine"
+                        "machine",
+                        "account"
                       ],
                       "type": "string"
                     },
@@ -63007,6 +63348,37 @@
                                     },
                                     "additionalProperties": false
                                   },
+                                  "tokenSaving": {
+                                    "type": "object",
+                                    "properties": {
+                                      "enabled": {
+                                        "type": "boolean"
+                                      },
+                                      "bashMaxChars": {
+                                        "type": "integer",
+                                        "minimum": 1000,
+                                        "maximum": 150000
+                                      },
+                                      "autocompactPct": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 100
+                                      },
+                                      "subagentModel": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                      },
+                                      "cacheTtl": {
+                                        "enum": [
+                                          "5m",
+                                          "1h"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
                                   "defaultCli": {
                                     "anyOf": [
                                       {
@@ -64160,6 +64532,37 @@
                                         "mention": {
                                           "type": "string",
                                           "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "tokenSaving": {
+                                      "type": "object",
+                                      "properties": {
+                                        "enabled": {
+                                          "type": "boolean"
+                                        },
+                                        "bashMaxChars": {
+                                          "type": "integer",
+                                          "minimum": 1000,
+                                          "maximum": 150000
+                                        },
+                                        "autocompactPct": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 100
+                                        },
+                                        "subagentModel": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        "cacheTtl": {
+                                          "enum": [
+                                            "5m",
+                                            "1h"
+                                          ],
+                                          "type": "string"
                                         }
                                       },
                                       "additionalProperties": false
@@ -65362,6 +65765,37 @@
                                     "mention": {
                                       "type": "string",
                                       "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "tokenSaving": {
+                                  "type": "object",
+                                  "properties": {
+                                    "enabled": {
+                                      "type": "boolean"
+                                    },
+                                    "bashMaxChars": {
+                                      "type": "integer",
+                                      "minimum": 1000,
+                                      "maximum": 150000
+                                    },
+                                    "autocompactPct": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100
+                                    },
+                                    "subagentModel": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 100
+                                    },
+                                    "cacheTtl": {
+                                      "enum": [
+                                        "5m",
+                                        "1h"
+                                      ],
+                                      "type": "string"
                                     }
                                   },
                                   "additionalProperties": false

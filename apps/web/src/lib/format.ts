@@ -41,6 +41,16 @@ export function formatInt(value: number): string {
   return integer.format(value);
 }
 
+/**
+ * Tỉ lệ cache trúng: token đọc từ cache trên tổng token vào (đọc cache + ghi cache + vào thường), như 97,3%. Không có
+ * token vào nào (CLI không báo, run chưa chạy) là gạch ngang thay vì 0%, để không lẫn với cache trượt hoàn toàn.
+ */
+export function formatCacheHit(read: number, write: number, input: number): string {
+  const total = read + write + input;
+  if (total <= 0) return "—";
+  return `${new Intl.NumberFormat("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format((read / total) * 100)}%`;
+}
+
 /** Tỉ lệ 0..1 thành phần trăm nguyên: 0,39 thành "39%". */
 export function formatPercent(share: number): string {
   return `${Math.round(share * 100)}%`;
