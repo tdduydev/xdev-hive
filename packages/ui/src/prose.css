@@ -1,0 +1,468 @@
+/*
+ * Kiểu chữ tài liệu dùng chung cho web và app desktop: chế độ xem Markdown (markdown.tsx) và vùng soạn Tiptap
+ * (packages/doc-editor) cùng dùng lớp `hive-prose`, nên hai chế độ nhìn giống nhau và chỉ sửa một chỗ.
+ * Màu lấy từ token của design system (docs/design-system/tokens.json); chỉ bảng màu cú pháp là riêng vì token chung không
+ * có. Nằm trong @layer components để class tiện ích của Tailwind vẫn ghi đè được.
+ */
+
+:root {
+  /* Cú pháp trên nền code `--code-bg` (sáng): mọi cặp đạt tương phản 4.5:1 (packages/ui/src/prose.test.ts kiểm lại). */
+  --code-bg: var(--muted);
+  --code-fg: #0f172a;
+  --syn-comment: #546378;
+  --syn-keyword: #b4236b;
+  --syn-string: #0b7a4b;
+  --syn-number: #b45309;
+  --syn-title: #1d4ed8;
+  --syn-type: #0f766e;
+  --syn-attr: #7c3aed;
+  --syn-meta: #475569;
+  --syn-addition: #15803d;
+  --syn-deletion: #b91c1c;
+}
+
+.dark {
+  --code-bg: var(--background);
+  --code-fg: #e2e8f0;
+  --syn-comment: #8393ab;
+  --syn-keyword: #f472b6;
+  --syn-string: #6ee7a8;
+  --syn-number: #fbbf24;
+  --syn-title: #7db5ff;
+  --syn-type: #5eead4;
+  --syn-attr: #c4a5ff;
+  --syn-meta: #94a3b8;
+  --syn-addition: #86efac;
+  --syn-deletion: #fca5a5;
+}
+
+@layer components {
+  .hive-prose {
+    min-width: 0;
+    font-size: 14px;
+    line-height: 1.7;
+    overflow-wrap: break-word;
+    color: var(--foreground);
+  }
+  .hive-prose > :first-child {
+    margin-top: 0;
+  }
+  .hive-prose > :last-child {
+    margin-bottom: 0;
+  }
+
+  /* Tiêu đề: thang 24/20/17/15, chỉ h2 có đường kẻ để mắt chia được đoạn dài mà không rối. */
+  .hive-prose :where(h1, h2, h3, h4, h5, h6) {
+    font-family: var(--font-heading, inherit);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+    margin: 1.6em 0 0.5em;
+    text-wrap: balance;
+  }
+  .hive-prose h1 {
+    font-size: 24px;
+    letter-spacing: -0.03em;
+    margin-top: 1.2em;
+  }
+  .hive-prose h2 {
+    font-size: 20px;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--border);
+  }
+  .hive-prose h3 {
+    font-size: 17px;
+  }
+  .hive-prose h4 {
+    font-size: 15px;
+  }
+  .hive-prose :where(h5, h6) {
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .hive-prose :where(p) {
+    margin: 0.75em 0;
+  }
+  .hive-prose :where(strong) {
+    font-weight: 600;
+  }
+  .hive-prose :where(del) {
+    color: var(--muted-foreground);
+  }
+  .hive-prose .hive-planned {
+    border-radius: var(--radius-md, 8px);
+    background: var(--warning-soft);
+    padding: 0.5em 0.75em;
+    color: var(--warning);
+  }
+  .hive-prose li.hive-planned {
+    background: none;
+    padding: 0;
+  }
+
+  .hive-prose :where(a) {
+    color: var(--primary);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
+    text-underline-offset: 3px;
+    overflow-wrap: anywhere;
+  }
+  .hive-prose :where(a):hover {
+    text-decoration-color: currentColor;
+  }
+
+  /* Danh sách: dấu đầu dòng đổi theo cấp để nhận ra độ sâu. */
+  .hive-prose :where(ul, ol) {
+    margin: 0.75em 0;
+    padding-left: 1.5em;
+  }
+  .hive-prose :where(ul) {
+    list-style: disc;
+  }
+  .hive-prose :where(ul ul) {
+    list-style: circle;
+  }
+  .hive-prose :where(ul ul ul) {
+    list-style: square;
+  }
+  .hive-prose :where(ol) {
+    list-style: decimal;
+  }
+  .hive-prose :where(ol ol) {
+    list-style: lower-alpha;
+  }
+  .hive-prose :where(li) {
+    margin: 0.25em 0;
+    padding-left: 0.2em;
+  }
+  .hive-prose :where(li)::marker {
+    color: var(--muted-foreground);
+  }
+  .hive-prose :where(li > p) {
+    margin: 0.25em 0;
+  }
+  .hive-prose :where(li > ul, li > ol) {
+    margin: 0.25em 0;
+  }
+
+  /* Checklist: cả Markdown `- [ ]` (marked) lẫn taskList của Tiptap. */
+  .hive-prose :where(ul.hive-tasks, ul[data-type="taskList"]) {
+    list-style: none;
+    padding-left: 0.1em;
+  }
+  .hive-prose :where(li.hive-task, li[data-checked]) {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6em;
+    padding-left: 0;
+  }
+  .hive-prose :where(li.hive-task > input, li[data-checked] input[type="checkbox"]) {
+    margin-top: 0.45em;
+    flex-shrink: 0;
+    accent-color: var(--primary);
+  }
+  .hive-prose :where(li.hive-task > div, li[data-checked] > div) {
+    flex: 1;
+    min-width: 0;
+  }
+  .hive-prose :where(li.hive-task:has(> input:checked) > div, li[data-checked="true"] > div) {
+    color: var(--muted-foreground);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+  }
+
+  .hive-prose :where(blockquote) {
+    margin: 1em 0;
+    padding: 0.4em 1em;
+    border-left: 3px solid var(--primary);
+    border-radius: 0 var(--radius-md, 8px) var(--radius-md, 8px) 0;
+    background: color-mix(in srgb, var(--primary) 6%, transparent);
+    color: var(--muted-foreground);
+  }
+  .hive-prose :where(blockquote > :first-child) {
+    margin-top: 0;
+  }
+  .hive-prose :where(blockquote > :last-child) {
+    margin-bottom: 0;
+  }
+
+  .hive-prose :where(hr) {
+    margin: 2em 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .hive-prose :where(img) {
+    max-width: 100%;
+    height: auto;
+    margin: 1em 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 10px);
+  }
+
+  /* Bảng: khung bo góc có viền, đầu bảng nền muted, hàng chẵn kẻ sọc nhạt; cuộn ngang khi quá rộng. */
+  .hive-prose :where(.hive-table, .tableWrapper) {
+    margin: 1em 0;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 10px);
+  }
+  .hive-prose :where(table) {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+  .hive-prose :where(.hive-table, .tableWrapper) :where(table) {
+    margin: 0;
+  }
+  .hive-prose :where(th, td) {
+    padding: 0.5em 0.8em;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  .hive-prose :where(th:last-child, td:last-child) {
+    border-right: 0;
+  }
+  .hive-prose :where(tbody tr:last-child td, tr:last-child > td) {
+    border-bottom: 0;
+  }
+  .hive-prose :where(th) {
+    background: var(--muted);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .hive-prose :where(tbody tr:nth-child(even) td) {
+    background: color-mix(in srgb, var(--muted) 45%, transparent);
+  }
+  .hive-prose :where(th > p, td > p) {
+    margin: 0;
+  }
+  .hive-prose .selectedCell {
+    background: color-mix(in srgb, var(--accent) 80%, transparent);
+  }
+
+  /* Code trong dòng: nền riêng và viền mảnh để tách khỏi chữ; cỡ theo em để khớp tiêu đề. */
+  .hive-prose :where(:not(pre) > code) {
+    padding: 0.12em 0.4em;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--muted);
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 0.88em;
+    font-variant-ligatures: none;
+    overflow-wrap: anywhere;
+  }
+
+  /* Khối code: một khung cho cả xem (code-block.tsx) và soạn (doc-editor/editor-views.tsx). */
+  .hive-code {
+    margin: 1em 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 10px);
+    background: var(--code-bg);
+    color: var(--code-fg);
+    overflow: hidden;
+  }
+  .hive-code-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 2rem;
+    padding: 0.2rem 0.4rem 0.2rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    color: var(--muted-foreground);
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 12px;
+    line-height: 1;
+    user-select: none;
+  }
+  .hive-code-lang {
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+  .hive-code-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.5rem;
+    padding: 0 0.45rem;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .hive-code-btn:hover:not(:disabled),
+  .hive-code-btn[aria-pressed="true"] {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+  .hive-code-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .hive-code-btn svg {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+  .hive-code pre {
+    margin: 0;
+    padding: 0.8rem 1rem;
+    overflow-x: auto;
+    background: transparent;
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 13px;
+    line-height: 1.6;
+    tab-size: 2;
+    /* Chuỗi như != hay => hiện đúng từng ký tự, không ghép thành một ký tự dễ nhầm với ký tự khác. */
+    font-variant-ligatures: none;
+  }
+  .hive-code pre code {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    white-space: pre;
+    counter-reset: hive-line;
+  }
+  /* Trình soạn: dòng dài xuống dòng để không phải cuộn ngang khi gõ. */
+  .ProseMirror .hive-code pre code {
+    white-space: pre-wrap;
+  }
+  .hive-line-num {
+    counter-increment: hive-line;
+  }
+  .hive-line-num::before {
+    content: counter(hive-line);
+    display: inline-block;
+    width: 2.5ch;
+    margin-right: 1.5ch;
+    color: var(--muted-foreground);
+    text-align: right;
+    user-select: none;
+  }
+
+  /* Màu cú pháp theo lớp hljs-* (highlight.js); gom các lớp cùng màu cho gọn. */
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--syn-comment);
+    font-style: italic;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-doctag,
+  .hljs-template-tag,
+  .hljs-template-variable {
+    color: var(--syn-keyword);
+  }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-symbol,
+  .hljs-bullet {
+    color: var(--syn-string);
+  }
+  .hljs-number,
+  .hljs-literal,
+  .hljs-variable,
+  .hljs-link {
+    color: var(--syn-number);
+  }
+  .hljs-title,
+  .hljs-section,
+  .hljs-selector-id,
+  .hljs-selector-class {
+    color: var(--syn-title);
+  }
+  .hljs-type,
+  .hljs-built_in,
+  .hljs-class .hljs-title {
+    color: var(--syn-type);
+  }
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-name,
+  .hljs-property,
+  .hljs-params {
+    color: var(--syn-attr);
+  }
+  .hljs-meta,
+  .hljs-operator,
+  .hljs-punctuation,
+  .hljs-subst {
+    color: var(--syn-meta);
+  }
+  .hljs-addition {
+    color: var(--syn-addition);
+  }
+  .hljs-deletion {
+    color: var(--syn-deletion);
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: 700;
+  }
+
+  /* Sơ đồ Mermaid: cùng khung với khối code, nền card để sáng/tối đổi theo token. */
+  .hive-mermaid {
+    margin: 1em 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 10px);
+    background: var(--card);
+    overflow: hidden;
+  }
+  .hive-mermaid-body {
+    display: flex;
+    justify-content: center;
+    padding: 1rem;
+    overflow-x: auto;
+  }
+  .hive-mermaid-canvas {
+    display: flex;
+    justify-content: center;
+  }
+  .hive-mermaid-canvas svg {
+    height: auto;
+    max-width: 100%;
+  }
+  .hive-mermaid-error {
+    width: 100%;
+    color: var(--destructive);
+    font-size: 13px;
+  }
+  .hive-mermaid-error p {
+    margin: 0;
+    font-weight: 600;
+  }
+  .hive-mermaid-error pre {
+    margin: 0.5rem 0 0;
+    padding: 0.5rem 0.7rem;
+    border-radius: 6px;
+    background: var(--destructive-soft);
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 12px;
+    font-variant-ligatures: none;
+    white-space: pre-wrap;
+  }
+  .hive-mermaid-source {
+    margin: 0;
+    padding: 0.8rem 1rem;
+    border-top: 1px solid var(--border);
+    background: var(--code-bg);
+    color: var(--code-fg);
+    font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+    font-size: 13px;
+    line-height: 1.6;
+    font-variant-ligatures: none;
+    overflow-x: auto;
+  }
+}

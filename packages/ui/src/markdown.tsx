@@ -1,125 +1,254 @@
-import { Table, TableBody, TableHead, TableHeader, TableRow, Td } from "@xdev-hive/ui/table";
+import { cn } from "cn";
+import { Marked, type Token, type Tokens } from "marked";
 import { Fragment, type ReactNode } from "react";
+import { CodeBlock } from "./code-block.tsx";
+import { MermaidDiagram } from "./mermaid-diagram.tsx";
+import { type ProseLang, pageLang, proseText } from "./prose-text.ts";
 
-/** Render untrusted knowledge as React text, never HTML; only allow web and mail links. */
-function inline(source: string): ReactNode[] {
-  return source.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^\s)]+\))/g).map((part, index) => {
-    const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
-    let node: ReactNode = part;
-    if (part.startsWith("`"))
-      node = <code className="rounded bg-muted px-1 font-mono text-xs">{part.slice(1, -1)}</code>;
-    else if (part.startsWith("**")) node = <strong>{part.slice(2, -2)}</strong>;
-    else if (part.startsWith("*")) node = <em>{part.slice(1, -1)}</em>;
-    else if (link && /^(https?:\/\/|mailto:)/i.test(link[2] ?? ""))
-      node = (
-        <a
-          className="break-all text-primary underline focus-visible:outline-2 focus-visible:outline-ring"
-          href={link[2]}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {link[1]}
-        </a>
-      );
-    // biome-ignore lint/suspicious/noArrayIndexKey: Tokens are immutable text without component state.
-    return <Fragment key={`${index}:${part}`}>{node}</Fragment>;
+/*
+ * Chế độ xem Markdown dùng chung cho web và app desktop (cùng CSS `hive-prose` với trình soạn Tiptap). Nội dung là chữ
+ * do agent hay người khác viết nên dựng thành phần tử React từ token của marked, không bao giờ chèn HTML.
+ */
+const marked = new Marked({ gfm: true });
+
+export interface MarkdownProps {
+  content: string;
+  lang?: ProseLang;
+  className?: string;
+  /** Hiện số dòng ở khối code ngay từ đầu (người đọc vẫn bật tắt được). */
+  lineNumbers?: boolean;
+  /**
+   * `open`: link web/mail mở tab mới. `text`: chỉ hiện chữ của link (cửa sổ app desktop không nên điều hướng đi đâu cả).
+   */
+  links?: "open" | "text";
+  /** Đoạn hoặc mục thoả điều kiện được tô vàng (khối "chưa có trong code" của màn Tài liệu). */
+  isPlanned?: (text: string) => boolean;
+}
+
+interface Ctx {
+  lineNumbers: boolean | undefined;
+  isPlanned: ((text: string) => boolean) | undefined;
+  lang: ProseLang;
+  links: "open" | "text";
+  next: () => string;
+}
+
+const SAFE_LINK = /^(https?:\/\/|mailto:|#)/i;
+const SAFE_IMAGE = /^https?:\/\//i;
+
+function inline(tokens: Token[] | undefined, ctx: Ctx): ReactNode[] {
+  return (tokens ?? []).map((token): ReactNode => {
+    const key = ctx.next();
+    switch (token.type) {
+      case "strong":
+        return <strong key={key}>{inline((token as Tokens.Strong).tokens, ctx)}</strong>;
+      case "em":
+        return <em key={key}>{inline((token as Tokens.Em).tokens, ctx)}</em>;
+      case "del":
+        return <del key={key}>{inline((token as Tokens.Del).tokens, ctx)}</del>;
+      case "codespan":
+        return <code key={key}>{(token as Tokens.Codespan).text}</code>;
+      case "br":
+        return <br key={key} />;
+      case "link": {
+        const link = token as Tokens.Link;
+        const children = inline(link.tokens, ctx);
+        if (ctx.links === "text" || !SAFE_LINK.test(link.href)) return <Fragment key={key}>{children}</Fragment>;
+        const external = !link.href.startsWith("#");
+        return (
+          <a
+            key={key}
+            href={link.href}
+            title={link.title ?? undefined}
+            {...(external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
+          >
+            {children}
+          </a>
+        );
+      }
+      case "image": {
+        const image = token as Tokens.Image;
+        // Chỉ ảnh web: đường dẫn file hay data: trong tài liệu do agent viết không đáng tin để tải.
+        return SAFE_IMAGE.test(image.href) ? (
+          <img
+            key={key}
+            src={image.href}
+            alt={image.text}
+            title={image.title ?? undefined}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <em key={key}>{image.text || proseText[ctx.lang].image}</em>
+        );
+      }
+      case "checkbox":
+        // Mục danh sách thưa (có dòng trống) đặt `[x] ` vào token inline của đoạn; ô tick do item() vẽ.
+        return null;
+      case "escape":
+      case "text": {
+        const text = token as Tokens.Text;
+        return text.tokens?.length ? (
+          <Fragment key={key}>{inline(text.tokens, ctx)}</Fragment>
+        ) : (
+          <Fragment key={key}>{text.text}</Fragment>
+        );
+      }
+      default:
+        // html thô và loại lạ: hiện nguyên chữ, không dựng thành phần tử.
+        return <Fragment key={key}>{"raw" in token ? String(token.raw) : ""}</Fragment>;
+    }
   });
 }
-export function Markdown({ content }: { content: string }) {
-  const lines = content.replace(/\r\n/g, "\n").split("\n");
-  const blocks: ReactNode[] = [];
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index] ?? "";
-    if (!line.trim()) continue;
-    if (/^```/.test(line)) {
-      const code: string[] = [];
-      while (++index < lines.length && !/^```/.test(lines[index] ?? "")) code.push(lines[index] ?? "");
-      blocks.push(
-        <pre key={index} className="overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">
-          <code>{code.join("\n")}</code>
-        </pre>,
-      );
-    } else if (line.includes("|") && /^\s*\|?\s*:?-{3,}/.test(lines[index + 1] ?? "")) {
-      const cells = (row: string) =>
-        row
-          .trim()
-          .replace(/^\||\|$/g, "")
-          .split("|")
-          .map((cell) => cell.trim());
-      const headers = cells(line).map((content, position) => ({ content, id: `header-${position}` }));
-      const data: { id: string; cells: { id: string; content: string }[] }[] = [];
-      index += 2;
-      while (index < lines.length && (lines[index] ?? "").includes("|"))
-        data.push({
-          id: `row-${index}`,
-          cells: cells(lines[index++] ?? "").map((content, position) => ({ content, id: `cell-${position}` })),
-        });
-      index--;
-      blocks.push(
-        <Table key={index}>
-          <TableHeader>
-            <TableRow>
-              {headers.map((header) => (
-                <TableHead key={header.id}>{inline(header.content)}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.map((row) => (
-              <TableRow key={row.id}>
-                {row.cells.map((cell) => (
-                  <Td key={cell.id}>{inline(cell.content)}</Td>
+
+function plain(token: Token): string {
+  return "text" in token && typeof token.text === "string" ? token.text : "raw" in token ? String(token.raw) : "";
+}
+
+function item(token: Tokens.ListItem, ctx: Ctx): ReactNode {
+  const planned = ctx.isPlanned?.(token.text) ?? false;
+  const body = blocks(token.tokens, ctx, true);
+  return (
+    <li key={ctx.next()} className={cn(token.task && "hive-task", planned && "hive-planned")}>
+      {token.task && (
+        <input
+          type="checkbox"
+          checked={token.checked ?? false}
+          disabled
+          readOnly
+          aria-label={token.checked ? "✓" : "○"}
+        />
+      )}
+      {token.task ? <div>{body}</div> : body}
+    </li>
+  );
+}
+
+/** `tight`: mục danh sách không bọc chữ trong <p> để dòng không giãn cách như đoạn văn. */
+function blocks(tokens: Token[], ctx: Ctx, tight = false): ReactNode[] {
+  const out: ReactNode[] = [];
+  for (const token of tokens) {
+    const key = ctx.next();
+    switch (token.type) {
+      case "space":
+      case "def":
+        break;
+      case "checkbox":
+        // marked 17 đưa `[x] ` vào đầu tokens của mục; ô tick do item() tự vẽ.
+        break;
+      case "heading": {
+        const heading = token as Tokens.Heading;
+        const H = `h${Math.min(Math.max(heading.depth, 1), 6)}` as "h1";
+        out.push(<H key={key}>{inline(heading.tokens, ctx)}</H>);
+        break;
+      }
+      case "paragraph": {
+        const p = token as Tokens.Paragraph;
+        const children = inline(p.tokens, ctx);
+        if (tight) out.push(<Fragment key={key}>{children}</Fragment>);
+        else
+          out.push(
+            <p key={key} className={cn(ctx.isPlanned?.(p.text) && "hive-planned")}>
+              {children}
+            </p>,
+          );
+        break;
+      }
+      case "text": {
+        const text = token as Tokens.Text;
+        out.push(
+          <Fragment key={key}>
+            {inline(text.tokens ?? [{ type: "text", raw: text.text, text: text.text }], ctx)}
+          </Fragment>,
+        );
+        break;
+      }
+      case "code": {
+        const code = token as Tokens.Code;
+        const language = (code.lang ?? "").trim().split(/\s/)[0]?.toLowerCase();
+        out.push(
+          language === "mermaid" ? (
+            <MermaidDiagram key={key} code={code.text} lang={ctx.lang} />
+          ) : (
+            <CodeBlock key={key} code={code.text} language={language} lineNumbers={ctx.lineNumbers} lang={ctx.lang} />
+          ),
+        );
+        break;
+      }
+      case "blockquote":
+        out.push(<blockquote key={key}>{blocks((token as Tokens.Blockquote).tokens, ctx)}</blockquote>);
+        break;
+      case "list": {
+        const list = token as Tokens.List;
+        const hasTask = list.items.some((i) => i.task);
+        const items = list.items.map((i) => item(i, ctx));
+        out.push(
+          list.ordered ? (
+            <ol key={key} start={list.start === "" || list.start === 1 ? undefined : list.start}>
+              {items}
+            </ol>
+          ) : (
+            <ul key={key} className={cn(hasTask && "hive-tasks")}>
+              {items}
+            </ul>
+          ),
+        );
+        break;
+      }
+      case "table": {
+        const table = token as Tokens.Table;
+        out.push(
+          <div key={key} className="hive-table">
+            <table>
+              <thead>
+                <tr>
+                  {table.header.map((cell, i) => (
+                    <th key={ctx.next()} style={table.align[i] ? { textAlign: table.align[i] } : undefined}>
+                      {inline(cell.tokens, ctx)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {table.rows.map((row) => (
+                  <tr key={ctx.next()}>
+                    {row.map((cell, i) => (
+                      <td key={ctx.next()} style={table.align[i] ? { textAlign: table.align[i] } : undefined}>
+                        {inline(cell.tokens, ctx)}
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>,
-      );
-    } else if (/^\s*(?:---+|\*\*\*+)\s*$/.test(line)) blocks.push(<hr key={index} className="border-border" />);
-    else if (/^#{1,6} /.test(line)) {
-      const heading = inline(line.replace(/^#{1,6} /, ""));
-      blocks.push(
-        line.startsWith("# ") ? (
-          <h2 key={index} className="text-xl font-semibold">
-            {heading}
-          </h2>
-        ) : (
-          <h3 key={index} className="text-base font-semibold">
-            {heading}
-          </h3>
-        ),
-      );
-    } else if (/^(?:[-*+] |\d+\. )/.test(line)) {
-      const ordered = /^\d/.test(line);
-      const items: ReactNode[] = [];
-      do {
-        items.push(<li key={index}>{inline((lines[index] ?? "").replace(/^(?:[-*+] |\d+\. )/, ""))}</li>);
-        index++;
-      } while (index < lines.length && /^(?:[-*+] |\d+\. )/.test(lines[index] ?? ""));
-      index--;
-      blocks.push(
-        ordered ? (
-          <ol key={index} className="list-decimal pl-5">
-            {items}
-          </ol>
-        ) : (
-          <ul key={index} className="list-disc pl-5">
-            {items}
-          </ul>
-        ),
-      );
-    } else if (line.startsWith("> "))
-      blocks.push(
-        <blockquote key={index} className="border-l-2 border-border pl-3 text-muted-foreground">
-          {inline(line.slice(2))}
-        </blockquote>,
-      );
-    else
-      blocks.push(
-        <p key={index} className="whitespace-pre-wrap">
-          {inline(line)}
-        </p>,
-      );
+              </tbody>
+            </table>
+          </div>,
+        );
+        break;
+      }
+      case "hr":
+        out.push(<hr key={key} />);
+        break;
+      default:
+        // html khối và loại lạ: hiện nguyên chữ trong đoạn.
+        if (plain(token).trim()) out.push(<p key={key}>{plain(token)}</p>);
+    }
   }
-  return <article className="min-w-0 space-y-3 break-words text-sm leading-relaxed">{blocks}</article>;
+  return out;
+}
+
+export function Markdown({
+  content,
+  lang = pageLang(),
+  className,
+  lineNumbers,
+  links = "open",
+  isPlanned,
+}: MarkdownProps) {
+  let n = 0;
+  const ctx: Ctx = { lang, lineNumbers, links, isPlanned, next: () => `m${n++}` };
+  return (
+    <article className={cn("hive-prose", className)}>
+      {blocks(marked.lexer(content.replace(/\r\n/g, "\n")), ctx)}
+    </article>
+  );
 }
