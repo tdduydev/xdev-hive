@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -35,7 +36,8 @@ func logText(events []Event) string {
 func TestRunnerUsesAccountConfigDir(t *testing.T) {
 	remote, base := makeRemote(t)
 	dir := t.TempDir()
-	pool := accounts.NewPool(writeAccounts(t, `{"accounts":[{"id":"codex-3","label":"duy@example.com","cli":"codex","configDir":"`+dir+`","enabled":true,"maxConcurrent":1}]}`))
+	quoted, _ := json.Marshal(dir) // đường dẫn Windows có dấu \ phải được escape trong JSON
+	pool := accounts.NewPool(writeAccounts(t, `{"accounts":[{"id":"codex-3","label":"duy@example.com","cli":"codex","configDir":`+string(quoted)+`,"enabled":true,"maxConcurrent":1}]}`))
 	lease, err := pool.Acquire("codex")
 	if err != nil || lease == nil {
 		t.Fatalf("acquire = %v, %v", lease, err)
