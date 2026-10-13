@@ -3,6 +3,7 @@ export { findOrgUserByEmail, findSystem, findSystemBySlug, resolveLegacyImportOr
 export { registerMcpTools } from "./mcp-tools.ts";
 export { orphanUsersQueue, purgeOrphanUsers, registerOrphanUsersWorker } from "./orphans.ts";
 export {
+  checkTeamRole,
   notificationRecipients,
   type OrgRole,
   orgRoleOf,
