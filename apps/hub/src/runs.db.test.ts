@@ -1205,6 +1205,7 @@ describe("chi phí và ngân sách", () => {
   const today = new Date().toISOString().slice(0, 10);
   let costProject = "";
   let budgetProject = "";
+  let rtkProject = "";
   let userId = "";
   let costTaskId = "";
 
@@ -1220,6 +1221,7 @@ describe("chi phí và ngân sách", () => {
         ...(settings ? { settings } : {}),
       });
     costProject = (await seed(`cp-${tag}`)).projectId;
+    rtkProject = (await seed(`rk-${tag}`)).projectId;
     budgetProject = (
       await seed(`bp-${tag}`, {
         ...defaultProjectSettings(),
@@ -1335,6 +1337,77 @@ describe("chi phí và ngân sách", () => {
       accountId: "claude-1",
     });
     await w.close();
+  });
+
+  it("RTK: số liệu luỹ kế theo lần thử, gói đến muộn nhỏ hơn bị bỏ, lần thử mới ghi đè", async () => {
+    const m = await seedMachine(`rtk-${tag}`);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["rtk"] });
+    const task = await newTask("Đo RTK", { projectId: rtkProject });
+    const run = await startRun(task.id);
+    expect(run.rtk).toBeNull();
+    await w.next("job_offer", (o) => o.runId === run.id);
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    const lease = await w.next("lease", (l) => l.runId === run.id);
+    await sendCost(w, run.id, 1, cost({ rtk: { commands: 4, savedTokens: 1200 } }));
+    await sendCost(w, run.id, 1, cost({ rtk: { commands: 9, savedTokens: 5000 } }));
+    // Gói đến muộn mang số luỹ kế nhỏ hơn: không làm giảm.
+    await sendCost(w, run.id, 1, cost({ rtk: { commands: 6, savedTokens: 3000 } }));
+    expect((await api<Run>("GET", `/v1/runs/${run.id}`)).data.rtk).toEqual({ commands: 9, savedTokens: 5000 });
+    // Gói cost không có rtk (run không dùng RTK ở giai đoạn này) không xoá số đã có.
+    await sendCost(w, run.id, 1, cost({ inputTokens: 5 }));
+    expect((await api<Run>("GET", `/v1/runs/${run.id}`)).data.rtk).toEqual({ commands: 9, savedTokens: 5000 });
+
+    await admin.query("update hive.run_leases set expires_at = now() - interval '1 second' where id = $1", [
+      lease.leaseId,
+    ]);
+    await engine.fire({ kind: "lease", orgId: org.orgId, runId: run.id, leaseId: lease.leaseId });
+    await w.next("job_offer", (o) => o.runId === run.id && o.attempt === 2);
+    w.send({ type: "job_accept", runId: run.id, attempt: 2 });
+    await w.next("lease", (l) => l.runId === run.id && l.attempt === 2);
+    // Lần thử 2 đếm lại từ 0: số nhỏ hơn của lần thử trước vẫn được ghi.
+    await sendCost(w, run.id, 2, cost({ rtk: { commands: 1, savedTokens: 80 } }));
+    expect((await api<Run>("GET", `/v1/runs/${run.id}`)).data.rtk).toEqual({ commands: 1, savedTokens: 80 });
+    await api("POST", `/v1/runs/${run.id}/cancel`);
+    await w.close();
+  });
+
+  it("prompt nhắc codegraph_explore chỉ khi máy có CodeGraph, dự án bật và công tắc tổng bật", async () => {
+    const withGraph = await seedMachine(`cg-${tag}`, ["claude"], 4);
+    const w = await FakeWorker.connect({ ...withGraph, capabilities: ["codegraph", "rtk"] });
+    const offerPrompt = async (title: string) => {
+      const run = await startRun((await newTask(title, { projectId: rtkProject })).id);
+      const offer = await w.next("job_offer", (o) => o.runId === run.id);
+      await api("POST", `/v1/runs/${run.id}/cancel`);
+      return String(offer.spec.prompt);
+    };
+    const setSaving = (patch: Record<string, unknown>) =>
+      admin.query("update hive.projects set settings = jsonb_set(settings, '{tokenSaving}', $2::jsonb) where id = $1", [
+        rtkProject,
+        JSON.stringify({ ...defaultTokenSaving, ...patch }),
+      ]);
+
+    expect(await offerPrompt("Có CodeGraph")).toContain("`codegraph_explore`");
+    // Settings lưu trước khi có mục codegraph: coi là bật.
+    const { codegraph: _c, rtk: _r, ...old } = defaultTokenSaving;
+    await admin.query(
+      "update hive.projects set settings = jsonb_set(settings, '{tokenSaving}', $2::jsonb) where id = $1",
+      [rtkProject, JSON.stringify(old)],
+    );
+    expect(await offerPrompt("Settings cũ")).toContain("`codegraph_explore`");
+    await setSaving({ codegraph: false });
+    expect(await offerPrompt("Dự án tắt CodeGraph")).not.toContain("codegraph_explore");
+    await setSaving({ enabled: false });
+    expect(await offerPrompt("Công tắc tổng tắt")).not.toContain("codegraph_explore");
+    await w.close();
+
+    await setSaving({});
+    const plain = await seedMachine(`cg-none-${tag}`);
+    const w2 = await FakeWorker.connect({ ...plain, capabilities: ["rtk"] });
+    const run = await startRun((await newTask("Máy không có CodeGraph", { projectId: rtkProject })).id);
+    const offer = await w2.next("job_offer", (o) => o.runId === run.id);
+    expect(String(offer.spec.prompt)).not.toContain("codegraph_explore");
+    await api("POST", `/v1/runs/${run.id}/cancel`);
+    await w2.close();
   });
 
   it("spec mang trần của dự án; vượt trần thì failed; task đã tiêu hết ngân sách thì không giao thêm", async () => {

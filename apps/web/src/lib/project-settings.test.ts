@@ -17,6 +17,8 @@ describe("buildPatch: tiết kiệm token", () => {
       autocompactPct: "70",
       subagentModel: "sonnet",
       cacheTtl: "5m",
+      rtk: true,
+      codegraph: true,
     });
     expect(buildPatch(form, s)).toEqual({ ok: true, patch: null });
   });
@@ -35,9 +37,21 @@ describe("buildPatch: tiết kiệm token", () => {
           cacheTtl: "1h",
           autocompactWindow: 200000,
           allowWeb: false,
+          rtk: true,
+          codegraph: true,
         },
       },
     });
+  });
+
+  it("tắt RTK hoặc CodeGraph tạo bản vá và đọc lại đúng từ settings đã lưu", () => {
+    const s = base();
+    const form = { ...formFromSettings(s), rtk: false, codegraph: false };
+    const r = buildPatch(form, s);
+    expect(r).toMatchObject({ ok: true, patch: { tokenSaving: { rtk: false, codegraph: false } } });
+    const saved: ProjectSettings = { ...s, tokenSaving: { ...s.tokenSaving, rtk: false, codegraph: false } };
+    expect(formFromSettings(saved)).toMatchObject({ rtk: false, codegraph: false });
+    expect(buildPatch(formFromSettings(saved), saved)).toEqual({ ok: true, patch: null });
   });
 
   it("hub cũ chưa gửi autocompactWindow/allowWeb: hiện mặc định, không tạo bản vá", () => {

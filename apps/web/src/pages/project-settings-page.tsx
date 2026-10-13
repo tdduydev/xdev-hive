@@ -94,6 +94,10 @@ const text: Dict<{
   tokensHint: string;
   tokensOn: string;
   tokensOnHint: string;
+  rtk: string;
+  rtkHint: string;
+  codegraph: string;
+  codegraphHint: string;
   bashChars: string;
   bashCharsHint: string;
   compactPct: string;
@@ -210,9 +214,13 @@ const text: Dict<{
     reviewCode: "Review",
     tokensTitle: "Tiết kiệm token",
     tokensHint:
-      "Worker đặt các giới hạn này cho run Claude Code của dự án. Codex, Gemini và Antigravity không bị ảnh hưởng. Bản chỉnh của máy và biến môi trường của dự án có thể ghi đè từng mục.",
+      "Worker đặt các giới hạn này cho run Claude Code của dự án. Codex, Gemini và Antigravity chỉ nhận mục CodeGraph. Bản chỉnh của máy và biến môi trường của dự án có thể ghi đè từng mục.",
     tokensOn: "Bật tiết kiệm token",
-    tokensOnHint: "Tắt thì run Claude Code dùng cấu hình mặc định của CLI.",
+    tokensOnHint: "Tắt thì run Claude Code dùng cấu hình mặc định của CLI, không nén bằng RTK và không gắn CodeGraph.",
+    rtk: "Nén output lệnh bằng RTK",
+    rtkHint: "Chỉ áp khi máy chạy run có rtk, và chỉ với Claude Code.",
+    codegraph: "Gắn CodeGraph cho agent",
+    codegraphHint: "Chỉ áp khi máy chạy run có codegraph. Agent tìm symbol, caller qua codegraph_explore thay vì grep.",
     bashChars: "Output lệnh tối đa",
     bashCharsHint: "Ký tự giữ lại từ một lệnh Bash. Output dài bị đọc lại ở mọi lượt sau nên rất tốn.",
     compactPct: "Tự nén ngữ cảnh khi đầy",
@@ -336,9 +344,14 @@ const text: Dict<{
     reviewCode: "Review",
     tokensTitle: "Token saving",
     tokensHint:
-      "The worker sets these limits for the project's Claude Code runs. Codex, Gemini and Antigravity are not affected. A machine override or a project environment variable can replace each item.",
+      "The worker sets these limits for the project's Claude Code runs. Codex, Gemini and Antigravity only get the CodeGraph item. A machine override or a project environment variable can replace each item.",
     tokensOn: "Turn on token saving",
-    tokensOnHint: "When off, Claude Code runs use the CLI defaults.",
+    tokensOnHint: "When off, Claude Code runs use the CLI defaults, with no RTK compression and no CodeGraph.",
+    rtk: "Compress command output with RTK",
+    rtkHint: "Applies only when the machine running the run has rtk, and only for Claude Code.",
+    codegraph: "Attach CodeGraph to the agent",
+    codegraphHint:
+      "Applies only when the machine has codegraph. The agent finds symbols and callers through codegraph_explore instead of grep.",
     bashChars: "Max command output",
     bashCharsHint:
       "Characters kept from one Bash command. Long output is re-read on every later turn, so it is costly.",
@@ -952,6 +965,20 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               checked={form.tokenSaving}
               onChange={(v) => set("tokenSaving", v)}
               disabled={disabled}
+            />
+            <SwitchRow
+              label={t.rtk}
+              hint={t.rtkHint}
+              checked={form.rtk}
+              onChange={(v) => set("rtk", v)}
+              disabled={disabled || !form.tokenSaving}
+            />
+            <SwitchRow
+              label={t.codegraph}
+              hint={t.codegraphHint}
+              checked={form.codegraph}
+              onChange={(v) => set("codegraph", v)}
+              disabled={disabled || !form.tokenSaving}
             />
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField

@@ -94,6 +94,7 @@ const run = (n: number, over: Record<string, unknown>) => ({
   timeoutSec: 3600,
   cost: cost(null),
   explore: null,
+  rtk: null,
   createdBy: "u1",
   ownerUserId: "u1",
   createdAt: "2026-10-11T06:00:00.000Z",
@@ -119,6 +120,7 @@ const RUNNING = run(4, {
     cacheReadTokens: 60000,
     cacheWriteTokens: 1500,
   },
+  rtk: { commands: 12, savedTokens: 34_500 },
   policySnapshot: [
     { check: "changes", required: true, deny: ["infra/prod/**"] },
     { check: "agentReport", required: true },
@@ -363,6 +365,7 @@ test("chi tiết run: pha, log trực tiếp qua SSE, chi phí, chính sách, g�
   const explore = info.getByRole("region", { name: "Khảo sát trước khi sửa" });
   await expect(explore).toContainText("66.000");
   await expect(explore).not.toContainText("chưa sửa file");
+  await expect(info).toContainText("RTK tiết kiệm ~34.500 token (12 lệnh)");
   await expect(page.getByRole("meter", { name: "Đã dùng 21% trần chi phí của run" })).toBeVisible();
   await expect(info).toContainText("Có commit mới, không đụng infra/prod/**");
   await expect(info).toContainText("Chờ run kết thúc");

@@ -20,6 +20,8 @@ type Usage struct {
 	AccountID string `json:"accountId,omitempty"`
 	// Explore chỉ có với Claude (ADR 0022); CLI khác để nil để hub cũ và worker cũ không khác nhau về hình dạng.
 	Explore *ExploreUsage `json:"explore,omitempty"`
+	// RTK là số lệnh qua RTK và token output RTK ước bớt được trong lần thử; chỉ có khi run dùng RTK (tools.go).
+	RTK *RTKUsage `json:"rtk,omitempty"`
 }
 
 // ExploreUsage là usage dùng để khảo sát repo trước lần sửa file đầu tiên. Edited false là agent chưa sửa gì, số
@@ -36,7 +38,7 @@ type ExploreUsage struct {
 func (u Usage) equal(o Usage) bool {
 	return u.InputTokens == o.InputTokens && u.OutputTokens == o.OutputTokens &&
 		u.CacheReadTokens == o.CacheReadTokens && u.CacheWriteTokens == o.CacheWriteTokens &&
-		eqPtr(u.CostUSD, o.CostUSD) && eqPtr(u.Turns, o.Turns) && eqPtr(u.Model, o.Model) && eqPtr(u.Explore, o.Explore)
+		eqPtr(u.CostUSD, o.CostUSD) && eqPtr(u.Turns, o.Turns) && eqPtr(u.Model, o.Model) && eqPtr(u.Explore, o.Explore) && eqPtr(u.RTK, o.RTK)
 }
 
 func eqPtr[T comparable](a, b *T) bool {

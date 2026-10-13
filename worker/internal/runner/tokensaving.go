@@ -42,6 +42,9 @@ type TokenSavingJob struct {
 	AutocompactWindow int `json:"autocompactWindow"`
 	// AllowWeb cho agent dùng web (WebFetch, WebSearch, web_search của Codex); mặc định tắt.
 	AllowWeb bool `json:"allowWeb"`
+	// RTK, CodeGraph là công tắc công cụ của dự án (tools.go); nil là hub chưa gửi: bật như mặc định của hub.
+	RTK       *bool `json:"rtk"`
+	CodeGraph *bool `json:"codegraph"`
 }
 
 // TokenSavingConfig là cấu hình của máy (xem TokenSavingEnv). Off thắng cả mặc định lẫn spec của hub: chủ máy tắt
