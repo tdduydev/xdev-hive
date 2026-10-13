@@ -20,6 +20,13 @@ func TestRunPermissionArguments(t *testing.T) {
 			t.Run(cli+"/"+mode, func(t *testing.T) {
 				roots := []string{filepath.Join(t.TempDir(), "cache.git"), filepath.Join(t.TempDir(), "gitdir")}
 				c, err := (Runner{}).cliCommand(Job{CLI: cli, RunPermissions: mode, gitRoots: roots, Prompt: "p"})
+				// Antigravity không giới hạn được trong worktree: run code chỉ chạy khi dự án cho toàn quyền.
+				if cli == "antigravity" && mode != "full" {
+					if err == nil || !strings.Contains(err.Error(), "toàn quyền") {
+						t.Fatalf("antigravity mode=%q phải bị từ chối, err = %v", mode, err)
+					}
+					return
+				}
 				if err != nil {
 					t.Fatal(err)
 				}

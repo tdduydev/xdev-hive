@@ -16,7 +16,7 @@ import {
 } from "@xdev-hive/contracts";
 import { type HubToWorker, hubToWorker, PROTOCOL_VERSION } from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, inject, it, onTestFinished } from "vitest";
 import WebSocket from "ws";
 import { errorCode, type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
@@ -424,6 +424,14 @@ describe("plan mode", () => {
 
   it("run code của Antigravity: run plan con để dispatch chọn Claude/Codex (agy không gọi được plan_submit)", async () => {
     await setPlanMode(true);
+    // Run code của Antigravity chỉ được giao khi dự án cho toàn quyền (agy không giới hạn được trong worktree).
+    await admin.query(
+      `update hive.projects set settings = settings || '{"runPermissions":{"mode":"full"}}'::jsonb where id = $1`,
+      [projectId],
+    );
+    onTestFinished(async () => {
+      await admin.query("update hive.projects set settings = settings - 'runPermissions' where id = $1", [projectId]);
+    });
     taskNo++;
     const created = await api<Task>("POST", "/v1/tasks", { projectId, title: `Antigravity lập kế hoạch ${taskNo}` });
     const started = await api<Run>("POST", "/v1/runs", {

@@ -22,6 +22,12 @@ func TestAntigravityArguments(t *testing.T) {
 		for _, mode := range []string{"", "workspace", "full"} {
 			for _, model := range []string{"", "claude-opus-5-5-high"} {
 				cmd, err := (Runner{}).cliCommand(Job{CLI: "antigravity", Kind: kind, RunPermissions: mode, Model: model, Prompt: "prompt", Env: env, Timeout: 90 * time.Second})
+				if !readOnlyKind(kind) && mode != "full" {
+					if err == nil {
+						t.Fatalf("run code mode=%q phải bị từ chối", mode)
+					}
+					continue
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -54,7 +60,7 @@ func TestAntigravityArguments(t *testing.T) {
 		61*time.Minute + time.Second: {"--print-timeout", "62m"},
 		119 * time.Minute:            {"--print-timeout", "119m"},
 	} {
-		cmd, err := (Runner{}).cliCommand(Job{CLI: "antigravity", Prompt: "p", Env: env, Timeout: timeout})
+		cmd, err := (Runner{}).cliCommand(Job{CLI: "antigravity", RunPermissions: "full", Prompt: "p", Env: env, Timeout: timeout})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,7 +96,7 @@ func TestAntigravityMCPConfigInWorkspace(t *testing.T) {
 	}
 
 	work := newRepo(t)
-	cmd, err := (Runner{}).cliCommand(Job{CLI: "antigravity", Kind: "code", Prompt: "p", Env: env, MCPServers: externalTestServers(), workspace: work})
+	cmd, err := (Runner{}).cliCommand(Job{CLI: "antigravity", Kind: "code", RunPermissions: "full", Prompt: "p", Env: env, MCPServers: externalTestServers(), workspace: work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +147,7 @@ func TestAntigravityMCPConfigInWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd, err = (Runner{}).cliCommand(Job{CLI: "antigravity", Kind: "code", Prompt: "p", Env: env, workspace: work})
+	cmd, err = (Runner{}).cliCommand(Job{CLI: "antigravity", Kind: "code", RunPermissions: "full", Prompt: "p", Env: env, workspace: work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +209,7 @@ func TestAntigravityRunWithFakeAgy(t *testing.T) {
 			capture := filepath.Join(t.TempDir(), "capture.json")
 			var events []Event
 			err := (Runner{DataDir: t.TempDir()}).Run(context.Background(), Job{
-				RunID: "agy-" + kind, Kind: kind, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/agy", CLI: "antigravity",
+				RunID: "agy-" + kind, Kind: kind, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/agy", CLI: "antigravity", RunPermissions: "full",
 				Model: "gemini-3.8-flash-high", Prompt: "p", Timeout: 30 * time.Second,
 				Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "run-secret", "HIVE_FAKE_AGY": capture, "HIVE_FAKE_AGY_STREAM": stream},
 			}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
