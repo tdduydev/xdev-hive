@@ -442,6 +442,13 @@
       "when": 1791913527483,
       "tag": "0062_machine_labels_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791914625470,
+      "tag": "0063_terminal_sessions",
+      "breakpoints": true
     }
   ]
 }

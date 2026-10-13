@@ -27,6 +27,8 @@ export interface McpToolContext {
   tx: Tx;
   orgId: string;
   principal: McpPrincipal;
+  /** Việc chạy sau khi transaction commit (vd. báo bộ giao run), để bên nhận thấy dữ liệu vừa ghi. */
+  afterCommit?: ((fn: () => void) => void) | undefined;
 }
 
 export interface McpTool<Input extends z.ZodObject = z.ZodObject, Prepared = undefined> {
@@ -109,9 +111,18 @@ export class McpToolRegistry {
   list(principal?: McpPrincipal): McpTool<z.ZodObject, unknown>[] {
     const tools = [...this.#tools.values()];
     if (!principal) return tools;
-    if (principal.kind === "user") return tools.filter((tool) => !tool.runKinds?.includes("leader"));
+    if (principal.terminal) {
+      const own = tools.filter((tool) => !tool.runKinds?.includes("leader") || TERMINAL_TOOLS.has(tool.name));
+      // Đề xuất: Leader chỉ đọc; mọi việc ghi đi qua leader_action và thành đề xuất chờ người duyệt (LEAD-02).
+      return principal.terminal.mode === "bypass"
+        ? own
+        : own.filter((tool) => TERMINAL_TOOLS.has(tool.name) || (tool.readOnly && !tool.runKinds));
+    }
+    if (principal.kind === "user") {
+      return tools.filter((tool) => !tool.runKinds?.includes("leader") && !TERMINAL_ONLY.has(tool.name));
+    }
     if (principal.runKind === "leader") {
-      return tools.filter((tool) => tool.name === "leader_reply" || tool.name === "leader_propose");
+      return tools.filter((tool) => LEADER_RUN_TOOLS.has(tool.name));
     }
     return tools.filter(
       (tool) =>
@@ -119,6 +130,11 @@ export class McpToolRegistry {
     );
   }
 }
+
+const LEADER_RUN_TOOLS = new Set(["leader_reply", "leader_propose", "leader_tiers"]);
+/** Tool của terminal Leader (đăng ký với `runKinds: ["leader"]` để người dùng OAuth thường không thấy). */
+const TERMINAL_TOOLS = new Set(["leader_action", "leader_tiers"]);
+const TERMINAL_ONLY = new Set(["leader_action"]);
 
 const RUN_TOOLS = new Set([
   "task_get",
