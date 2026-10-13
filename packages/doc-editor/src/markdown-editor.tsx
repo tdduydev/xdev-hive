@@ -56,9 +56,20 @@ export const FILE_SLASH: BlockTemplate[] = [
   "callout",
 ];
 
+/** Vị trí ngay sau bảng chứa con trỏ, nếu có. */
+function afterTable(editor: Editor): number | null {
+  const { $from } = editor.state.selection;
+  for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === "table") return $from.after(d);
+  return null;
+}
+
 /** Chèn khối theo mẫu của blocks.ts tại con trỏ; kiểu chữ và danh sách đổi khối hiện tại thay vì chèn chữ mẫu. */
 export function insertTemplate(editor: Editor, kind: BlockTemplate, codec: MarkdownCodec): boolean {
   const c = editor.chain().focus();
+  // Ô bảng GFM chỉ chứa được chữ một dòng: khối chèn lúc con trỏ trong bảng đặt ngay sau bảng.
+  const after = afterTable(editor);
+  if (after !== null)
+    return c.insertContentAt(after, codec.fragment(blockTemplate(kind, codec.serialize(editor.state.doc)))).run();
   switch (kind) {
     case "h1":
     case "h2":

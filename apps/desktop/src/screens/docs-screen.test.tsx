@@ -415,6 +415,13 @@ describe("DocsScreen", () => {
       text: PROPOSAL,
     });
 
+    // Chế độ Sửa dùng trình soạn chung với web: Markdown hiện dạng soạn, mở ra rồi không sửa thì bản nháp giữ nguyên.
+    await user.click(screen.getByRole("tab", { name: "Sửa" }));
+    const editor = await screen.findByRole("textbox", { name: "Nội dung tài liệu" });
+    expect(within(editor).getByRole("heading", { level: 2, name: "2. Kênh tới hub" })).toBeTruthy();
+    expect(within(editor).getByText("internal/channel/ws.go:42").tagName).toBe("CODE");
+    expect(JSON.parse(localStorage.getItem("hive.docs.drafts") ?? "{}")[KEY].text).toBe(PROPOSAL);
+
     await user.click(screen.getByRole("tab", { name: "So với hub" }));
     expect(screen.getByText("- TODO")).toBeTruthy();
 
@@ -616,10 +623,13 @@ describe("DocsScreen", () => {
     expect(screen.getByText("Tài liệu trên máy")).toBeTruthy();
     expect(within(explorer).getByTitle("docs/guide.md").getAttribute("aria-current")).toBe("true");
     await user.click(screen.getByRole("tab", { name: "Sửa" }));
-    const editor = screen.getByRole("textbox", { name: "docs/guide.md" });
-    await user.clear(editor);
-    await user.type(editor, "# Hướng dẫn{Enter}{Enter}Bản mới.");
-    expect(screen.getByText("Chưa lưu")).toBeTruthy();
+    const editor = await screen.findByRole("textbox", { name: "docs/guide.md" });
+    // Trình soạn Tiptap: jsdom không gõ được vào contenteditable như trình duyệt (gõ thật có ở e2e web), nên chọn hết rồi
+    // dán Markdown.
+    await user.click(editor);
+    await user.keyboard("{Control>}a{/Control}");
+    await user.paste("# Hướng dẫn\n\nBản mới.");
+    expect(await screen.findByText("Chưa lưu")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Lưu vào file" }));
     expect(calls.find((c) => c.command === "write_local_file")?.args).toEqual({
       folder: FOLDER,
