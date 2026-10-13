@@ -99,7 +99,7 @@ export function inline(text: string): ReactNode[] {
     if (m.index > last) out.push(text.slice(last, m.index));
     if (m[1] !== undefined)
       out.push(
-        <code key={n++} className="rounded bg-muted px-1 py-px font-mono text-[12.5px]">
+        <code key={n++} className="rounded bg-muted px-1 py-px font-mono text-sm">
           {m[1]}
         </code>,
       );
@@ -133,7 +133,7 @@ function BlockView({ block }: { block: Block }) {
     }
     case "p":
       return isPlanned(block.text) ? (
-        <p className="mb-2.5 rounded-lg bg-warning-soft px-3 py-2.5 text-[13.5px] text-warning">{inline(block.text)}</p>
+        <p className="mb-2.5 rounded-lg bg-warning-soft px-3 py-2.5 text-sm text-warning">{inline(block.text)}</p>
       ) : (
         <p className="mb-2.5">{inline(block.text)}</p>
       );
@@ -154,7 +154,7 @@ function BlockView({ block }: { block: Block }) {
     }
     case "code":
       return (
-        <pre className="mb-2.5 overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-[12.5px] leading-normal">
+        <pre className="mb-2.5 overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-sm leading-normal">
           <code>{block.text}</code>
         </pre>
       );
@@ -163,7 +163,7 @@ function BlockView({ block }: { block: Block }) {
     case "table":
       return (
         <div className="mb-2.5 overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-sm">
             <tbody>
               {block.rows.map((row, r) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: hàng của bảng tĩnh
@@ -237,13 +237,13 @@ export function SuggestionView({
             className="mb-2.5 rounded-r-md border-l-3 border-success bg-success-soft px-2.5 py-1.5"
           >
             <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="inline-flex h-5 items-center rounded-full bg-card px-1.75 text-[11.5px] font-medium text-success">
+              <span className="inline-flex h-5 items-center rounded-full bg-card px-1.75 text-xs font-medium text-success">
                 {labels.added}
               </span>
               {citations(s.text).map((c) => (
                 <span
                   key={c}
-                  className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-[11.5px] text-secondary-foreground"
+                  className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground"
                 >
                   {c}
                 </span>
@@ -257,10 +257,10 @@ export function SuggestionView({
             data-testid="del"
             className="mb-2.5 flex items-start gap-2 rounded-r-md border-l-3 border-destructive bg-destructive-soft px-2.5 py-1"
           >
-            <span className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-full bg-card px-1.75 text-[11.5px] font-medium text-destructive">
+            <span className="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-full bg-card px-1.75 text-xs font-medium text-destructive">
               {labels.removed}
             </span>
-            <div className="min-w-0 text-[13.5px] whitespace-pre-wrap text-muted-foreground line-through">{s.text}</div>
+            <div className="min-w-0 text-sm whitespace-pre-wrap text-muted-foreground line-through">{s.text}</div>
           </div>
         ),
       )}

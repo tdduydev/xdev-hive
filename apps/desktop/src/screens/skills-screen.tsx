@@ -645,14 +645,14 @@ export function SkillsScreen() {
     <div className="flex flex-col gap-3.5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex min-w-72 flex-1 flex-col gap-1">
-          <p className="text-[13px] text-muted-foreground">{t.lead}</p>
-          {sub && <p className={cn("text-[13px]", hubError ? "text-destructive" : "text-muted-foreground")}>{sub}</p>}
+          <p className="text-sm text-muted-foreground">{t.lead}</p>
+          {sub && <p className={cn("text-sm", hubError ? "text-destructive" : "text-muted-foreground")}>{sub}</p>}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
             {t.target}
             <select
-              className="h-7.5 rounded-lg border border-input bg-background px-2 text-[12.5px] text-foreground"
+              className="h-7.5 rounded-lg border border-input bg-background px-2 text-sm text-foreground"
               value={target}
               onChange={(e) => setTarget(e.target.value as Target)}
             >
@@ -673,11 +673,11 @@ export function SkillsScreen() {
       </header>
 
       {notice && (
-        <p role="status" className={cn("text-[13px]", notice.tone === "bad" ? "text-destructive" : "text-success")}>
+        <p role="status" className={cn("text-sm", notice.tone === "bad" ? "text-destructive" : "text-success")}>
           {notice.text}
         </p>
       )}
-      {localError && <p className="text-[13px] text-destructive">{localError}</p>}
+      {localError && <p className="text-sm text-destructive">{localError}</p>}
 
       <section className="grid grid-cols-1 gap-2.5 min-[760px]:grid-cols-3">
         {[
@@ -696,7 +696,7 @@ export function SkillsScreen() {
                 </Pill>
               ) : null}
             </span>
-            <span className="font-mono text-[11.5px] text-muted-foreground">{c.where}</span>
+            <span className="font-mono text-xs text-muted-foreground">{c.where}</span>
           </div>
         ))}
       </section>
@@ -705,7 +705,7 @@ export function SkillsScreen() {
         <section className="w-full min-w-0 overflow-hidden rounded-xl border bg-card min-[1000px]:flex-1">
           <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5">
             <Input
-              className="h-7.5 max-w-60 text-[13px]"
+              className="h-7.5 max-w-60 text-sm"
               placeholder={t.search}
               aria-label={t.search}
               value={query}
@@ -716,7 +716,7 @@ export function SkillsScreen() {
             />
             <select
               aria-label={t.colState}
-              className="h-7.5 rounded-lg border border-input bg-background px-2 text-[12.5px]"
+              className="h-7.5 rounded-lg border border-input bg-background px-2 text-sm"
               value={stateFilter}
               onChange={(e) => {
                 setStateFilter(e.target.value);
@@ -734,7 +734,7 @@ export function SkillsScreen() {
             </select>
             <select
               aria-label={t.colSource}
-              className="h-7.5 rounded-lg border border-input bg-background px-2 text-[12.5px]"
+              className="h-7.5 rounded-lg border border-input bg-background px-2 text-sm"
               value={scopeFilter}
               onChange={(e) => {
                 setScopeFilter(e.target.value);
@@ -795,7 +795,7 @@ export function SkillsScreen() {
             <TableBody>
               {shown.length === 0 ? (
                 <TableRow>
-                  <Td colSpan={canSync ? 7 : 6} className="text-[13px] text-muted-foreground">
+                  <Td colSpan={canSync ? 7 : 6} className="text-sm text-muted-foreground">
                     {hub || local ? t.empty : t.loading}
                   </Td>
                 </TableRow>
@@ -832,7 +832,7 @@ export function SkillsScreen() {
                         className="flex w-full min-w-0 flex-col text-left"
                         onClick={() => setCurId(r.id)}
                       >
-                        <span className="truncate font-mono text-[13px] font-medium">{r.name}</span>
+                        <span className="truncate font-mono text-sm font-medium">{r.name}</span>
                         {r.description && (
                           <span className="truncate text-xs text-muted-foreground">{r.description}</span>
                         )}
@@ -872,7 +872,7 @@ export function SkillsScreen() {
 
         <aside className="flex w-full min-w-0 flex-col overflow-hidden rounded-xl border bg-card min-[1000px]:w-[min(400px,36%)] min-[1000px]:flex-none">
           {!cur ? (
-            <p className="px-3.5 py-3 text-[13px] text-muted-foreground">{t.pickRow}</p>
+            <p className="px-3.5 py-3 text-sm text-muted-foreground">{t.pickRow}</p>
           ) : (
             <>
               <div className="flex flex-col gap-1.5 border-b px-3.5 py-3">
@@ -881,22 +881,22 @@ export function SkillsScreen() {
                   <Pill tone={STATE_TONE[cur.state]}>{t.state[cur.state]}</Pill>
                 </div>
                 <strong className="font-mono text-[15px]">{cur.name}</strong>
-                {cur.description && <span className="text-[12.5px] text-muted-foreground">{cur.description}</span>}
-                <span className="font-mono text-[11.5px] break-all text-muted-foreground">
+                {cur.description && <span className="text-sm text-muted-foreground">{cur.description}</span>}
+                <span className="font-mono text-xs break-all text-muted-foreground">
                   {repoPath(cur) ? `${repoPath(cur)} → ` : ""}
                   {dirs.claude}/{cur.name}/
                 </span>
               </div>
               <div className="flex flex-col gap-2 px-3.5 py-2.5">
                 {cur.state === "own" || cur.state === "gone" || cur.state === "shadowed" ? (
-                  <p className="text-[13px] text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     {cur.state === "own" ? t.ownNote : cur.state === "gone" ? t.goneNote : t.shadowNote}
                   </p>
                 ) : cur.state === "installed" ? (
-                  <p className="text-[13px] text-success">{t.upToDate}</p>
+                  <p className="text-sm text-success">{t.upToDate}</p>
                 ) : (
                   <>
-                    <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase">
+                    <span className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
                       {diff
                         ? cur.state === "modified"
                           ? t.localVsHub(cur.hub?.version ?? 0)
@@ -904,7 +904,7 @@ export function SkillsScreen() {
                         : t.content(cur.hub?.version ?? 0)}
                     </span>
                     {curHubText === undefined ? (
-                      <p className="text-[13px] text-muted-foreground">{t.loading}</p>
+                      <p className="text-sm text-muted-foreground">{t.loading}</p>
                     ) : (
                       <div className="max-h-72 overflow-auto rounded-lg border py-1.5 font-mono text-xs leading-relaxed">
                         {numbered(
@@ -1032,7 +1032,7 @@ function ProposeForm({
         placeholder={t.proposeNote}
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        className="min-h-16 text-[13px]"
+        className="min-h-16 text-sm"
       />
       <div className="flex justify-end gap-1.5">
         <Button type="button" size="sm" variant="outline" onClick={onCancel}>
