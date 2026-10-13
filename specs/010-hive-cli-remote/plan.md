@@ -10,7 +10,7 @@
 Thêm binary `hive` (Go, cùng module với worker) để mở phiên agent CLI **tương tác** trên máy. Worker giữ PTY của phiên,
 chọn tài khoản theo `accounts.json` và ghi output lên hub qua kênh WSS sẵn có. Điện thoại vào cùng PTY qua web của hub
 (PWA): điện thoại → hub `/ws/terminal` → WSS → worker → PTY. Điều khiển từ xa mặc định tắt và chỉ bật được tại máy.
-Điện thoại phải được ghép tại máy bằng passkey. Worker tự kiểm assertion WebAuthn cho mỗi lần mở phiên hay xin quyền gõ,
+Điện thoại phải được ghép tại máy bằng passkey (hub HTTP không có passkey thì dùng đường lui TOTP, mục D15). Worker tự kiểm assertion WebAuthn cho mỗi lần mở phiên hay xin quyền gõ,
 và kiểm HMAC trên từng gói nhập, nên hub chỉ chuyển tiếp: hub bị chiếm cũng không mở được phiên hay gõ được vào máy.
 
 ## Technical Context
@@ -72,7 +72,8 @@ nào bật từ xa hay thêm thiết bị (FR-012); không vòng import giữa m
 | D11 | Báo "agent cần bạn" | Claude: hook `Notification` gọi `hive __hook attention` (qua socket nội bộ) → `term_event{attention}`. CLI khác: có output rồi im 60 s → `idle`. | Hook là tín hiệu chính xác; hook của Hive đã có (`runner/hooks.go`). Cách đoán theo im lặng chỉ là dự phòng. |
 | D12 | Đăng nhập CLI | Luồng loopback PKCE của app với `purpose: "cli"` (chỉ cấp token cá nhân, client `xdev-hive-cli`) hoặc `--with-token`; lưu keychain. Token **không** cần cho `hive run` (worker ghi bằng danh tính máy); cần cho `--task`, `hive attach <run>`, xem phiên máy khác. | Dùng lại `desktop-connect` đã kiểm; không cấp mã đăng ký máy cho CLI. |
 | D13 | Máy dùng chung, runner host | `hive run` chạy tại máy nhưng không ghi, không từ xa. | Không biết người gõ ở máy dùng chung là ai; ADR 0017 chỉ cho máy cá nhân dùng gói của chủ. |
-| D14 | Tương thích giao thức | `hello.capabilities += "terminal"`; `welcome.features?: string[]`, `welcome.owner?: {userId, shared}`; mỗi bên chỉ gửi `term_*` khi bên kia khai. | Hub cũ đóng 4400 với gói lạ; worker cũ bỏ qua gói lạ nhưng không hiểu. Không tăng `PROTOCOL_VERSION`. |
+| D14 | Tương thích giao thức | `hello.capabilities += "terminal"`; `welcome.features?: string[]`, `welcome.owner?: {userId, shared}`, `welcome.policy?: {totpFallback}`; mỗi bên chỉ gửi `term_*` khi bên kia khai. | Hub cũ đóng 4400 với gói lạ; worker cũ bỏ qua gói lạ nhưng không hiểu. Không tăng `PROTOCOL_VERSION`. |
+| D15 | Hub chạy HTTP | **Đường lui TOTP do worker giữ khoá và tự kiểm**, passkey vẫn là cách chính khi có HTTPS. Khoá 160 bit tạo tại máy, ghép bằng QR `otpauth://` vào app Authenticator, lưu sau khi chủ nhập một mã đúng. `auth` của `term_start`/`term_control` thành union `{kind: "passkey", …} \| {kind: "totp", code, ephPub, ts, nonce}`; mỗi thao tác một mã mới hơn mã trước (lưu `lastStep` ra đĩa), 5 lần sai → khoá máy 5 phút (gấp đôi, tối đa 1 giờ), audit đủ. Tổ chức tắt được bằng chính sách (`welcome.policy.totpFallback`). | Product owner chốt (spec Q2): hub nội bộ chạy HTTP vẫn cần điều khiển từ xa. Hub không giữ khoá nên hub bị chiếm vẫn không tự tạo được mã; hub chỉ chuyển tiếp. Đổi lại TOTP không buộc mã vào yêu cầu (không ký như passkey) và mã đi qua hub, xem mối đe doạ T15–T17. |
 
 ## Kiến trúc
 
@@ -153,6 +154,34 @@ sequenceDiagram
   H-->>P: Đã ghép
 ```
 
+### Thiết kế TOTP trong worker (đường lui khi hub HTTP)
+
+- **Gói**: `worker/internal/remoteauth/totp.go` (RFC 6238, chỉ thư viện chuẩn: `crypto/hmac`, `crypto/sha1`, so sánh
+  hằng thời gian). `Verify(code, now)` thử các bước `t-1, t, t+1`; chỉ nhận bước `> lastStep`.
+- **Tạo và ghép** (socket nội bộ `remote.totp.begin|confirm|disable|unlock`): `begin` sinh khoá 160 bit, trả URI
+  `otpauth://totp/Hive:<máy>?secret=…&issuer=Hive&period=30&digits=6`; app hoặc `hive remote totp enroll` in QR. `confirm`
+  nhận một mã đúng thì mới ghi `totp.json` (0600, nguyên tử; dùng keychain khi có). Hết 10 phút chưa `confirm` thì bỏ khoá.
+  Khoá không bao giờ rời máy và không có trong `term_state`; `term_state.totp = {enabled, locked}`.
+- **Trạng thái bền** (`totp.json`): `{secret, lastStep, failures, lockedUntil, lockLevel}`. Ghi ra đĩa *trước* khi trả kết
+  quả, nên khởi động lại không đặt lại bộ đếm hay cho dùng lại mã.
+- **Kiểm** (`VerifyAuth` chung cho passkey và TOTP, gọi từ T031 và T050): từ chối ngay khi `now < lockedUntil`
+  (`TOTP_LOCKED`); mã sai → `failures++`, đủ 5 thì `lockedUntil = now + 5 phút × 2^lockLevel` (trần 1 giờ);
+  mã đúng nhưng bước `≤ lastStep` → `TOTP_REPLAY`; mã đúng → `lastStep`, `failures = 0`, `lockLevel` giảm dần sau 24 giờ
+  không sai. `ts`, `nonce` của yêu cầu vẫn kiểm như passkey (±120 giây, chống phát lại).
+- **Khi nào dùng**: worker nhận `kind: "totp"` chỉ khi `worker.json` có URL hub là `http://` (hoặc chủ máy bật riêng
+  "Cho TOTP cả trên HTTPS" tại máy), TOTP đã bật tại máy, và `welcome.policy.totpFallback != false`. Web chỉ hiện ô nhập mã
+  khi trang không phải secure context.
+- **Khoá phiên**: với TOTP, `ephPub` không được ký nên hub (hoặc người giữa trên HTTP) có thể thay khoá ECDH, tức đứng giữa
+  và tự suy ra khoá HMAC. Vì vậy HKDF của TOTP trộn thêm mã đã dùng (`info = "hive-totp" ‖ code`) để kẻ không thấy mã không
+  suy ra được khoá; kẻ thấy cả mã lẫn đường truyền (hub bị chiếm, nghe mạng HTTP) thì vẫn chèn được phím. Giới hạn này được
+  ghi nhận (mối đe doạ T15, T16) và là lý do chỉ dùng trong mạng nội bộ.
+- **Chống phá**: bộ đếm sai tính theo máy, không theo kết nối; kẻ có phiên web đánh cắp có thể cố tình làm khoá để chủ
+  không dùng được (từ chối dịch vụ). Chủ máy mở khoá tại máy (`hive remote totp unlock`, app). Chấp nhận vì khoá chỉ
+  làm mất tiện lợi, không mở được máy.
+- **Chính sách**: hub lưu `totpFallback` (mặc định bật) theo tổ chức; hub từ chối request kiểu TOTP với `TOTP_NOT_ALLOWED`
+  và gửi giá trị trong `welcome.policy`; worker cũng tự kiểm trường này nên tắt có hiệu lực cả khi hub bị lỗi một bên.
+  Hub gửi `policy` chỉ để tắt: hub nói bật mà chủ chưa bật TOTP tại máy thì vẫn không có đường nào mở phiên.
+
 ### Luồng: điều khiển từ điện thoại
 
 ```mermaid
@@ -186,17 +215,17 @@ fixture `packages/contracts/fixtures/worker-protocol.json`. Mọi gói dùng `en
 | Hướng | Gói | Trường chính | Ghi chú |
 |---|---|---|---|
 | W → H | `hello` (thêm) | `capabilities` có `terminal` | Worker cũ không gửi |
-| H → W | `welcome` (thêm) | `features?: ["terminal"]`, `owner?: {userId, shared}` | Worker đổi chủ → xoá thiết bị |
-| W → H | `term_state` | `enabled`, `roots[{id, label}]`, `clis[]`, `accounts[{id, label, cli, state}]`, `devices[{id, label, userId, synced}]`, `sessions[{id, origin, controller}]`, `confirmOnMachine` | Sau `welcome` và khi đổi; không gửi đường dẫn tuyệt đối của root, chỉ nhãn |
+| H → W | `welcome` (thêm) | `features?: ["terminal"]`, `owner?: {userId, shared}`, `policy?: {totpFallback}` | Worker đổi chủ → xoá thiết bị |
+| W → H | `term_state` | `enabled`, `totp{enabled, locked}`, `roots[{id, label}]`, `clis[]`, `accounts[{id, label, cli, state}]`, `devices[{id, label, userId, synced}]`, `sessions[{id, origin, controller}]`, `confirmOnMachine` | Sau `welcome` và khi đổi; không gửi đường dẫn tuyệt đối của root, chỉ nhãn |
 | W → H | `term_opened` | `sessionId`, `requestId?`, `origin`, `cli`, `accountLabel`, `cwdLabel`, `projectId?`, `taskId?`, `cols`, `rows`, `record`, `remote` | Phiên tại máy và phiên từ xa |
-| W → H | `term_denied` | `requestId`, `code`, `reason` | `REMOTE_DISABLED`, `ROOT_ESCAPE`, `ROOT_MISSING`, `ASSERTION_*`, `CONFIRM_DENIED`, `CONFIRM_TIMEOUT`, `ACCOUNT_*`, `CLI_MISSING` |
+| W → H | `term_denied` | `requestId`, `code`, `reason` | `REMOTE_DISABLED`, `ROOT_ESCAPE`, `ROOT_MISSING`, `ASSERTION_*`, `TOTP_INVALID`, `TOTP_REPLAY`, `TOTP_LOCKED`, `TOTP_NOT_ALLOWED`, `CONFIRM_DENIED`, `CONFIRM_TIMEOUT`, `ACCOUNT_*`, `CLI_MISSING` |
 | W → H | `term_output` | `sessionId`, `offset`, `bytes` (≤ 32 KiB) | Lưu đĩa tới khi `term_ack` |
 | W → H | `term_event` | `sessionId`, `seq`, `event` (`attention`, `idle`, `controller`, `resize`, `gap`, `input_rejected`, `viewer`), `data` | Enum riêng, không đụng `runEventKind` |
 | W → H | `term_granted` / `term_revoked` | `sessionId`, `connId`, `workerEphPub`, `resumeToken` / `reason` | |
 | W → H | `term_exit` | `sessionId`, `exitCode`, `reason`, `by?` | |
 | W → H | `term_pair_result` | `pairId`, `ok`, `deviceId?`, `reason?` | |
-| H → W | `term_start` | `requestId`, `userId`, `deviceId`, `cli`, `accountId?`, `rootId`, `subdir?`, `model?`, `projectId?`, `taskId?`, `prompt?`, `cols`, `rows`, `auth{assertion, ephPub, ts, nonce}` | `params` của challenge là các trường này theo thứ tự cố định |
-| H → W | `term_control` | `sessionId`, `connId`, `userId`, `deviceId`, `auth{…}` hoặc `resumeToken` | |
+| H → W | `term_start` | `requestId`, `userId`, `deviceId`, `cli`, `accountId?`, `rootId`, `subdir?`, `model?`, `projectId?`, `taskId?`, `prompt?`, `cols`, `rows`, `auth` | `auth` là `{kind: "passkey", assertion, ephPub, ts, nonce}` hoặc `{kind: "totp", code, ephPub, ts, nonce}` (D15); `params` của challenge passkey là các trường này theo thứ tự cố định |
+| H → W | `term_control` | `sessionId`, `connId`, `userId`, `deviceId`, `auth` (như trên) hoặc `resumeToken` | |
 | H → W | `term_input` | `sessionId`, `connId`, `seq`, `data` (≤ 4 KiB), `mac` | |
 | H → W | `term_resize` | `sessionId`, `connId`, `cols`, `rows`, `seq`, `mac` | |
 | H → W | `term_detach` | `sessionId`, `connId` | |
@@ -325,7 +354,7 @@ resize|input_rejected|close|exit|visibility`. Gói từ worker về trạng thá
 ### Bất biến
 
 1. Chỉ người ở máy (người dùng hệ điều hành của worker) bật được từ xa, thêm thư mục, ghép thiết bị.
-2. Mở phiên từ xa và gõ phím từ xa cần passkey có UV của thiết bị đã ghép, worker kiểm; hub không giả được.
+2. Mở phiên từ xa và gõ phím từ xa cần passkey có UV của thiết bị đã ghép, worker kiểm; hub không giả được. Ngoại lệ có chủ ý (Q2): hub HTTP dùng mã TOTP do worker kiểm, mức bảo vệ thấp hơn, xem mối đe doạ T15–T17.
 3. Chỉ chủ máy (máy cá nhân) điều khiển; người khác tối đa chỉ xem khi chủ cho.
 4. Từ xa chỉ mở agent CLI trong danh sách, trong thư mục được phép; không shell, không đối số tự do.
 5. Tắt luôn có hiệu lực ngay, từ máy hoặc từ web; bật chỉ tại máy.
@@ -348,6 +377,9 @@ resize|input_rejected|close|exit|visibility`. Gói từ worker về trạng thá
 | T12 | Làm ngập băng thông | Nghẽn kênh worker/hub | Gom, giới hạn, bỏ khung, đồng bộ lại (D9) | — |
 | T13 | Tiến trình khác của người dùng khác trên máy | Dùng socket nội bộ | Quyền file 0600/DACL, kiểm UID/SID | Tiến trình độc của chính người dùng đó vốn đã có mọi quyền |
 | T14 | Sửa audit để giấu dấu vết | Che việc đã làm | `audit_log` append-only ở hub; `remote-audit.log` tại máy độc lập với hub | — |
+| T15 | Hub chạy HTTP: kẻ nghe mạng nội bộ (cùng LAN, Wi-Fi công cộng) | Đọc output, lấy phím gõ, dùng mã TOTP vừa gõ | Không chặn được ở tầng ứng dụng: HTTP không mã hoá. Giảm: chỉ trong mạng nội bộ, cảnh báo ở app và web, chính sách tổ chức tắt được, mã dùng một lần và hết sau 30 giây | Thấy output và phím; có thể dùng mã đang bay trên đường truyền trước khi người dùng (đua), chèn phím nếu thấy mã. Chuyển hub sang HTTPS là cách xoá hẳn rủi ro |
+| T16 | Hub bị chiếm hoặc phiên web bị đánh cắp, khi dùng đường lui TOTP | Mở phiên, gõ lệnh | Phiên web/token đánh cắp đơn thuần: không có mã thì bị chặn, worker tự kiểm, 5 lần sai khoá máy, audit. Hub không giữ khoá nên không tự tạo mã | Hub bị chiếm *và* đang thấy mã người dùng gõ có thể dùng mã đó một lần; mức bảo vệ chống hub của passkey (T2) không có với TOTP |
+| T17 | Đoán mã TOTP hay phát lại mã | Qua bước xác thực | 10^6 mã, khoá 5 phút sau 5 lần sai (gấp đôi đến 1 giờ), mã không dùng lại (`lastStep` bền), so sánh hằng thời gian | Từ chối dịch vụ bằng cách cố ý làm khoá (chủ mở khoá tại máy) |
 
 ## Hiệu năng, độ trễ, nối lại
 
@@ -369,7 +401,7 @@ specs/010-hive-cli-remote/
 ├── plan.md
 └── tasks.md
 docs/adr/0019-hive-cli-and-remote-sessions.md
-docs/srs.md                         # mục 3.19 RMT-01 … RMT-12, IF-07, NFR-17
+docs/srs.md                         # mục 3.19 RMT-01 … RMT-13, IF-07, NFR-17
 ```
 
 ### Source Code
@@ -429,6 +461,7 @@ scripts/e2e-remote.ts               # MỚI: hub thật + worker thật + CLI gi
 ## Triển khai dần
 
 1. Phát hành worker + `hive` có ghi phiên tại máy (US1) — không có gì từ xa; hub mới khai `features`.
-2. Bật ghép và điều khiển phiên có sẵn (US2, US3, US5) sau cờ hub `HIVE_REMOTE_TERMINAL=1` (mặc định tắt) để thử nội bộ.
+2. Bật ghép và điều khiển phiên có sẵn (US2, US3, US5) sau cờ hub `HIVE_REMOTE_TERMINAL=1` (mặc định tắt) để thử nội bộ. Hub nội bộ HTTP cần thêm TOTP (T008, T025–T028) và
+   chỉ bật cờ khi cảnh báo HTTP đã hiện ở app và web.
 3. Mở phiên từ xa (US4), PWA + đẩy (US7), xem cùng (US8).
 4. Bỏ cờ sau một tuần thử nội bộ không có sự cố bảo mật.

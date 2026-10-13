@@ -296,6 +296,7 @@ Spec [010](../specs/010-hive-cli-remote/spec.md), [ADR 0019](adr/0019-hive-cli-a
 | RMT-10 | The web app shall be installable as a PWA and shall send Web Push notifications when an agent waits for the user, a session ends or a remote session opens, without terminal content in the notification. | Planned | — |
 | RMT-11 | Sessions shall be private to their owner by default. The owner may let team members view a session live and replay it. Only the machine owner shall ever control a session, one controller at a time. | Planned | — |
 | RMT-12 | The desktop app shall provide a remote control screen with the switch, allowed folders, paired devices with QR pairing, confirmation prompts, the session list with disconnect actions, and tray and OS notifications for remote activity. | Planned | — |
+| RMT-13 | When the hub runs over plain HTTP, remote control shall be possible only through a TOTP fallback whose key the worker creates, stores and checks on the machine, never the hub. Each remote session start and control request shall need a fresh code; reuse of a code shall be refused and repeated wrong codes shall lock the machine for a growing delay. The desktop app and web shall warn that session content and keystrokes cross the network unencrypted, and an organization policy shall be able to disable the fallback. Passkeys remain the primary method whenever HTTPS is available. | Planned | — |
 
 ## 4. External interface requirements
 
