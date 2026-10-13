@@ -89,7 +89,7 @@ describe("WriteScreen", () => {
     await userEvent.setup().click(row);
     expect(location.hash).toBe(`#/write/${encodeURIComponent(key)}`);
     // Trình soạn tải lười cả khối Tiptap; máy tải nặng thì quá 1 giây mặc định.
-    expect(await screen.findByDisplayValue("Hoàn tiền một phần", {}, { timeout: 10_000 })).toBeTruthy();
+    expect(await screen.findByDisplayValue("Hoàn tiền một phần")).toBeTruthy();
     expect(paths).toContain("docEditor/state");
   }, 15_000);
 

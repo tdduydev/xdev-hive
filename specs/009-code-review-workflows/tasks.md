@@ -120,7 +120,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{service.ts,jobs.ts,index.ts,ai.ts,merge.ts,service.db.test.ts}`
   - **Phụ thuộc**: T002, T011 · **Mức**: nặng
 
-- [ ] T021 [US2] Nối `runs` với `codereview`
+- [x] T021 [US2] Nối `runs` với `codereview`
   - `verifyCode`: gọi `matchFor`; có quy trình thì đánh giá chính sách bỏ `review` (ghi `skipped` + lý do), không tạo run
     review chéo, không `enqueueMerge`, gọi `startCodeReview` trong transaction kết luận run; không có thì giữ nguyên.
   - `verifyReview`: run review có phiên (tra `run_ids`) thì gọi `onReviewRunFinished` thay vì `verify(parent)`.
@@ -211,7 +211,7 @@
 
 ## Phase 7: User Story 7 — SLA và quyết thay (P3)
 
-- [ ] T060 [P] [US7] Nhắc hạn checkpoint người duyệt
+- [x] T060 [P] [US7] Nhắc hạn checkpoint người duyệt
   - `sla.ts`: job cron 10 phút dùng `hive.code_review_overdue_orgs()`, gửi `code_review.overdue` một lần mỗi lượt chờ.
   - **Scope**: `apps/hub/src/modules/codereview/{sla.ts,sla.db.test.ts}`
   - **Phụ thuộc**: T020 · **Mức**: nhẹ
