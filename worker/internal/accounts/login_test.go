@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -89,6 +90,9 @@ func (r *loginRecorder) next(t *testing.T, kind string) loginStep {
 
 func newTestLogin(t *testing.T, scripts map[string]string) *Login {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("CLI giả là script sh, Windows không chạy được")
+	}
 	bin := t.TempDir()
 	for name, body := range scripts {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {

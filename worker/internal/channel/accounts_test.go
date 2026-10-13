@@ -19,7 +19,10 @@ import (
 // testPool là accounts pool có một tài khoản codex, thư mục nhà riêng cho test.
 func testPool(t *testing.T) *accounts.Pool {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	// Windows lấy thư mục home từ USERPROFILE; thiếu thì test ghi vào home thật của máy chạy.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	path := filepath.Join(t.TempDir(), "accounts.json")
 	if err := accounts.Save(path, 0, []accounts.Account{{ID: "codex-1", Label: "Codex", CLI: "codex", Enabled: true}}); err != nil {
 		t.Fatal(err)
