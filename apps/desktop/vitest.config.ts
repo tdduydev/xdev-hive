@@ -4,6 +4,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  // Giá trị cố định cho test; bản thật gắn lúc build (vite.config.ts).
+  define: { __BUILD_SHA__: JSON.stringify("abc1234"), __BUILD_TIME__: JSON.stringify("2026-10-13T07:05:00.000Z") },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

@@ -66,11 +66,6 @@ const text: Dict<{
   },
 };
 
-/** `?them=1` mở sẵn hộp thoại thêm máy, cho nút "Đăng ký một máy" ở thẻ Bắt đầu của trang chủ. */
-export function validateMachinesSearch(search: Record<string, unknown>): { them?: true } {
-  return search.them === true || search.them === 1 || search.them === "1" ? { them: true } : {};
-}
-
 function Loading() {
   return (
     <p aria-busy="true" className="text-muted-foreground">

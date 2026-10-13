@@ -2,6 +2,7 @@ import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 import { AccountDialog } from "@/components/account-dialog.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
+import { UpdateBanner } from "@/components/update-banner.tsx";
 import { AccountContext, profileOf, useAccount } from "@/lib/account.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
@@ -44,41 +45,44 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
   // Người dùng chưa chọn thì menu tự thu gọn ở màn cần chỗ; đã chọn thì giữ lựa chọn ở mọi màn.
   const collapsed = useNavCollapsed() ?? bleed;
   return (
-    <div className="flex h-svh">
-      <AppNav
-        profile={profile}
-        active={active}
-        account={account}
-        onAccount={() => setAccountOpen(true)}
-        worker={worker}
-        compact={collapsed}
-      />
-      <AccountDialog open={accountOpen} status={status} onOpenChange={setAccountOpen} onChanged={setStatus} />
-      <main className={cn("flex min-w-0 flex-1 flex-col", bleed ? "overflow-hidden" : "overflow-auto")}>
-        <header className="flex h-13 items-center gap-3 border-b px-5">
-          <button
-            type="button"
-            aria-label={collapsed ? t.expand : t.collapse}
-            title={collapsed ? t.expand : t.collapse}
-            aria-expanded={!collapsed}
-            onClick={() => setNavCollapsed(!collapsed)}
-            className="-ml-2 inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            {collapsed ? (
-              <PanelLeftOpenIcon aria-hidden="true" className="size-4" />
-            ) : (
-              <PanelLeftCloseIcon aria-hidden="true" className="size-4" />
-            )}
-          </button>
-          <h1 className="flex-1 truncate font-heading text-base font-semibold">{item?.label[lang]}</h1>
-          <LangToggle />
-        </header>
-        <div className={bleed ? "flex min-h-0 flex-1" : "p-5"}>
-          <AccountContext.Provider value={account}>
-            <Screen />
-          </AccountContext.Provider>
-        </div>
-      </main>
+    <div className="flex h-svh flex-col">
+      <UpdateBanner />
+      <div className="flex min-h-0 flex-1">
+        <AppNav
+          profile={profile}
+          active={active}
+          account={account}
+          onAccount={() => setAccountOpen(true)}
+          worker={worker}
+          compact={collapsed}
+        />
+        <AccountDialog open={accountOpen} status={status} onOpenChange={setAccountOpen} onChanged={setStatus} />
+        <main className={cn("flex min-w-0 flex-1 flex-col", bleed ? "overflow-hidden" : "overflow-auto")}>
+          <header className="flex h-13 items-center gap-3 border-b px-5">
+            <button
+              type="button"
+              aria-label={collapsed ? t.expand : t.collapse}
+              title={collapsed ? t.expand : t.collapse}
+              aria-expanded={!collapsed}
+              onClick={() => setNavCollapsed(!collapsed)}
+              className="-ml-2 inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {collapsed ? (
+                <PanelLeftOpenIcon aria-hidden="true" className="size-4" />
+              ) : (
+                <PanelLeftCloseIcon aria-hidden="true" className="size-4" />
+              )}
+            </button>
+            <h1 className="flex-1 truncate font-heading text-base font-semibold">{item?.label[lang]}</h1>
+            <LangToggle />
+          </header>
+          <div className={bleed ? "flex min-h-0 flex-1" : "p-5"}>
+            <AccountContext.Provider value={account}>
+              <Screen />
+            </AccountContext.Provider>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

@@ -9,6 +9,8 @@ export interface OAuthAppConfig {
 export interface HubConfig {
   port: number;
   version: string;
+  /** Giờ dựng image (file BUILD_TIME ở gốc repo do Dockerfile ghi); null khi chạy từ mã nguồn. */
+  builtAt?: string | null;
   /** Địa chỉ người dùng mở trên trình duyệt; Better Auth dựng URL callback từ đây. */
   publicUrl?: string | undefined;
   /** Kết nối bằng role hive_app; mọi truy vấn dữ liệu tổ chức đi qua đây. */
@@ -113,6 +115,7 @@ export function loadConfig(env: Env = process.env): HubConfig {
   return {
     port,
     version: env.HIVE_VERSION ?? "0.0.0-dev",
+    builtAt: env.HIVE_BUILT_AT ?? buildTime(),
     publicUrl: env.HIVE_PUBLIC_URL ?? `http://localhost:${port}`,
     databaseUrl: env.HIVE_DATABASE_URL,
     jobsDatabaseUrl: env.HIVE_DATABASE_JOBS_URL,
@@ -142,4 +145,14 @@ export function loadConfig(env: Env = process.env): HubConfig {
         ? undefined
         : env.HIVE_WORKER_RELEASES || "https://api.github.com/repos/tdduydev/xdev-hive/releases/latest",
   };
+}
+
+/** Đọc BUILD_TIME ở gốc repo (Dockerfile ghi lúc dựng image); không có hay sai định dạng thì null. */
+function buildTime(): string | null {
+  try {
+    const text = readFileSync(new URL("../../../../../BUILD_TIME", import.meta.url), "utf8").trim();
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(text) ? text : null;
+  } catch {
+    return null;
+  }
 }
