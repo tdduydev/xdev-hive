@@ -35,6 +35,8 @@ sha2 = "0.10"
 # Verifier và state của PKCE khi đăng nhập bằng trình duyệt. Cùng bản đã có trong cây phụ thuộc.
 getrandom = "0.3"
 base64 = "0.22"
+# Terminal nhúng của màn Tài liệu từ code: PTY chạy được trên macOS, Windows (ConPTY) và Linux. 0.9.0 phát hành 02/2025.
+portable-pty = "0.9.0"
 
 [target.'cfg(unix)'.dependencies]
 # Huỷ agent CLI của màn Tài liệu: gửi tín hiệu cho cả nhóm tiến trình. Cùng bản đã có trong cây phụ thuộc.

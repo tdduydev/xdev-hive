@@ -6,9 +6,11 @@ mod browser_login;
 mod capabilities_audit;
 mod cli;
 mod doctor;
+mod files;
 mod hub;
 mod local_projects;
 mod profiles;
+mod pty;
 mod register;
 mod setup_extra;
 mod skills;
@@ -676,6 +678,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(State::default())
         .manage(cli::Runs::default())
+        .manage(pty::Ptys::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
             register_worker,
@@ -722,6 +725,13 @@ pub fn run() {
             cli::folder_tree,
             cli::folder_docs,
             cli::propose_doc,
+            files::folder_list,
+            files::read_local_file,
+            files::write_local_file,
+            pty::pty_open,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_close,
             updates::update_status,
             updates::check_updates_now,
             updates::relaunch_to_update
@@ -731,6 +741,10 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                // Terminal nhúng gắn với cửa sổ đang mở: ẩn cửa sổ thì không để CLI chạy tiếp không ai thấy.
+                if window.label() == APP {
+                    window.app_handle().state::<pty::Ptys>().close_all();
+                }
             }
             if let WindowEvent::Focused(true) = event
                 && window.label() == APP
@@ -797,6 +811,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("không khởi động được xDev Hive desktop")
         .run(|app, event| {
+            if let RunEvent::Exit = event {
+                app.state::<pty::Ptys>().close_all();
+            }
             // Cmd+Q, đăng xuất hệ điều hành: dừng worker êm trước. app.exit() của quit() gửi lại sự kiện kèm mã, cho qua.
             if let RunEvent::ExitRequested {
                 api, code: None, ..
