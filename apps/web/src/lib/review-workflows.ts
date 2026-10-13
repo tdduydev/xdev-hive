@@ -47,8 +47,24 @@ export const KIND_LABEL: Dict<Record<GateKind, string>> = {
 export { REVIEWER_ROLE_LABEL as ROLE_LABEL } from "@xdev-hive/doc-editor";
 
 export const PRESET_LABEL: Dict<Record<WorkflowPreset, string>> = {
-  vi: { aidlc: "AI-DLC (AWS)", speckit: "Spec Kit", bmad: "BMAD", custom: "Tự tạo" },
-  en: { aidlc: "AI-DLC (AWS)", speckit: "Spec Kit", bmad: "BMAD", custom: "Custom" },
+  vi: {
+    aidlc: "AI-DLC (AWS)",
+    speckit: "Spec Kit",
+    bmad: "BMAD",
+    custom: "Tự tạo",
+    "code-basic": "Cơ bản",
+    "code-strict": "Chặt",
+    "code-fast": "Làn nhanh",
+  },
+  en: {
+    aidlc: "AI-DLC (AWS)",
+    speckit: "Spec Kit",
+    bmad: "BMAD",
+    custom: "Custom",
+    "code-basic": "Basic",
+    "code-strict": "Strict",
+    "code-fast": "Fast lane",
+  },
 };
 
 /** Mô tả mặc định của giai đoạn khung mẫu (Workflows.dc.html), hiện khi giai đoạn chưa có mô tả riêng. */
