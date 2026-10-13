@@ -17,6 +17,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
+	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
@@ -194,7 +195,30 @@ func (j *jobs) heartbeat() Heartbeat {
 		runs = append(runs, HeartbeatRun{RunID: a.runID, Attempt: a.attempt, LeaseID: a.leaseID})
 	}
 	j.mu.Unlock()
-	return Heartbeat{Type: "heartbeat", V: protocolVersion, ID: newID(), Load: len(runs), Runs: runs}
+	return Heartbeat{Type: "heartbeat", V: protocolVersion, ID: newID(), Load: len(runs), Runs: runs, LocalProjects: j.localProjects()}
+}
+
+// projectList đọc projects.json mỗi lần cần, để thay đổi trong app có hiệu lực ngay không cần khởi động lại worker.
+func (j *jobs) projectList() ([]projects.Project, error) {
+	if j.cfg.Projects == "" {
+		return nil, nil
+	}
+	return projects.Load(j.cfg.Projects)
+}
+
+// localProjects là phần báo hub trong hello và heartbeat; nil khi máy không có projects.json (runner host) hoặc file
+// hỏng, để hub giữ như máy chưa gắn dự án nào thay vì nhận danh sách sai.
+func (j *jobs) localProjects() *LocalProjects {
+	if j.cfg.Projects == "" {
+		return nil
+	}
+	list, err := j.projectList()
+	if err != nil {
+		j.log.Warn("Không đọc được projects.json; hub coi như máy chưa gắn dự án nào", "error", err)
+		return nil
+	}
+	bound, full := projects.Report(list)
+	return &LocalProjects{Bound: bound, Full: full}
 }
 
 func (j *jobs) onOffer(m *JobOffer) {
@@ -207,6 +231,15 @@ func (j *jobs) onOffer(m *JobOffer) {
 		reason = err.Error()
 	} else if (spec.Execution == "sandbox") != (j.cfg.Sandbox != nil) {
 		reason = "loại thực thi job không khớp chế độ runner"
+	} else if runner.NeedsFull(cli, spec.Kind) && j.cfg.Sandbox == nil {
+		// Hub chọn máy theo heartbeat, có thể chậm hơn công tắc vừa đổi trong app: từ chối để hub giao máy khác thay vì
+		// nhận rồi hỏng.
+		list, err := j.projectList()
+		if err != nil {
+			reason = "không đọc được projects.json: " + err.Error()
+		} else if localProject(runner.Job{ProjectID: strings.ToLower(spec.ProjectID), RunPermissions: spec.RunPermissions}, spec, list).RunPermissions != "full" {
+			reason = fmt.Sprintf("CLI %s cần toàn quyền mà máy chưa cho toàn quyền với dự án này", cli)
+		}
 	}
 	j.mu.Lock()
 	_, offered := j.offers[m.RunID]
@@ -277,6 +310,16 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 		return
 	}
 	job, err := decodeJob(offer, lease, j.cfg.HubURL, j.cfg.Project)
+	if err == nil && j.cfg.Sandbox == nil {
+		var list []projects.Project
+		if list, err = j.projectList(); err != nil {
+			err = fmt.Errorf("không đọc được projects.json: %w", err)
+		} else {
+			var spec jobSpec
+			_ = json.Unmarshal(offer.Spec, &spec)
+			job = localProject(job, spec, list)
+		}
+	}
 	if err == nil && run.waitAccount {
 		run.account, err = j.waitAccount(ctx, job.CLI, accounts.RoleOf(job.Kind), run.runID)
 		if err != nil && ctx.Err() != nil {
