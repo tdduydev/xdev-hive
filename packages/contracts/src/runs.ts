@@ -74,6 +74,8 @@ export const run = z.object({
   timeoutSec: z.number().int(),
   cost: runCost,
   createdBy: z.string(),
+  /** Chủ run: người giao run, và chỉ máy của họ hoặc máy dùng chung chạy được. null là run của đội (Leader, gate AI, webhook). */
+  ownerUserId: z.string().nullable(),
   createdAt: z.iso.datetime(),
   startedAt: z.iso.datetime().nullable(),
   finishedAt: z.iso.datetime().nullable(),
@@ -186,10 +188,20 @@ export const runsContract = {
     .input(runSearchInput)
     .output(runSearchResult),
   get: orgRoute("GET", "/v1/runs/{id}", "Thông tin run", "runs").input(z.object({ id })).output(run),
-  cancel: orgRoute("POST", "/v1/runs/{id}/cancel", "Huỷ run (thành viên đội)", "runs")
+  cancel: orgRoute(
+    "POST",
+    "/v1/runs/{id}/cancel",
+    "Huỷ run (chủ run, quản trị đội; run của đội thì thành viên đội)",
+    "runs",
+  )
     .input(z.object({ id }))
     .output(run),
-  steer: orgRoute("POST", "/v1/runs/{id}/steer", "Gửi chỉ dẫn cho agent của run (thành viên đội)", "runs")
+  steer: orgRoute(
+    "POST",
+    "/v1/runs/{id}/steer",
+    "Gửi chỉ dẫn cho agent của run (chủ run; run của đội thì quản trị đội)",
+    "runs",
+  )
     .input(runSteerInput)
     .output(z.object({ status: runSteerStatus })),
   events: orgRoute("GET", "/v1/runs/{id}/events", "Sự kiện của run sau con trỏ `after`", "runs")
