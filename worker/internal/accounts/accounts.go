@@ -41,8 +41,8 @@ const (
 type Account struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
-	// CLI là CLI hub giao run ("claude", "codex", "gemini"); CLI khác (vd. antigravity) được giữ để app hiện nhưng
-	// worker không bao giờ chọn.
+	// CLI là CLI hub giao run ("claude", "codex", "antigravity", "gemini"); CLI worker không đọc được quota (xem
+	// Supported) được giữ để app hiện nhưng worker không bao giờ chọn.
 	CLI string `json:"cli"`
 	// ConfigDir là thư mục cấu hình của CLI; rỗng là đăng nhập mặc định (~/.claude, ~/.codex). Nhận "~/".
 	ConfigDir       string `json:"configDir,omitempty"`
@@ -135,11 +135,20 @@ type file struct {
 	Accounts    []Account `json:"accounts"`
 }
 
-// envVar là biến môi trường chọn thư mục cấu hình của CLI; CLI không có trong bảng thì worker không chọn tài khoản.
+// envVar là biến môi trường chọn thư mục cấu hình của CLI.
 var envVar = map[string]string{"claude": "CLAUDE_CONFIG_DIR", "codex": "CODEX_HOME"}
 
-// Supported cho biết worker có chọn được tài khoản của CLI này không.
-func Supported(cli string) bool { _, ok := envVar[cli]; return ok }
+// Supported cho biết worker đọc được quota của CLI này và chọn tài khoản theo ngưỡng dừng. Antigravity không có biến
+// chọn thư mục cấu hình nên chỉ có đăng nhập mặc định, nhưng ngưỡng vẫn giữ run lại khi gói gần hết.
+func Supported(cli string) bool { _, ok := envVar[cli]; return ok || cli == "antigravity" }
+
+// binary là tên lệnh của CLI trên PATH.
+func binary(cli string) string {
+	if cli == "antigravity" {
+		return "agy"
+	}
+	return cli
+}
 
 // DefaultPath là accounts.json cạnh file cấu hình worker.
 func DefaultPath(workerConfig string) string {
@@ -227,10 +236,14 @@ func (l *Lease) Label() string {
 
 // Env là biến môi trường cần đặt cho tiến trình CLI; rỗng với đăng nhập mặc định.
 func (l *Lease) Env() map[string]string {
-	if l == nil || l.dir == "" {
+	v, ok := "", false
+	if l != nil {
+		v, ok = envVar[l.account.CLI]
+	}
+	if !ok || l.dir == "" {
 		return nil
 	}
-	return map[string]string{envVar[l.account.CLI]: l.dir}
+	return map[string]string{v: l.dir}
 }
 
 // Timeout là thời gian tối đa của một run trên tài khoản; 0 khi không có tài khoản.
