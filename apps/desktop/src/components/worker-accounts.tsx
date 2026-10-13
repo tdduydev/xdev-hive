@@ -88,10 +88,10 @@ export function WorkerAccounts() {
       <h2 id="worker-accounts" className="text-sm font-semibold">
         {t.title}
       </h2>
-      <p className="text-[13px] text-muted-foreground">{t.lead}</p>
-      {error && <p className="text-[13px] text-destructive">{error}</p>}
-      {!list && !error && <p className="text-[13px] text-muted-foreground">{t.loading}</p>}
-      {list?.length === 0 && <p className="text-[13px] text-muted-foreground">{t.empty}</p>}
+      <p className="text-sm text-muted-foreground">{t.lead}</p>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {!list && !error && <p className="text-sm text-muted-foreground">{t.loading}</p>}
+      {list?.length === 0 && <p className="text-sm text-muted-foreground">{t.empty}</p>}
       {list && list.length > 0 && (
         <ul className="m-0 flex list-none flex-col divide-y p-0">
           {list.map((a) => (
@@ -106,7 +106,7 @@ export function WorkerAccounts() {
               />
               <span className="flex min-w-0 flex-1 flex-col leading-snug">
                 <span className="flex flex-wrap items-center gap-1.5">
-                  <strong className="text-[13.5px] font-medium">{a.label || a.id}</strong>
+                  <strong className="text-sm font-medium">{a.label || a.id}</strong>
                   <span className="text-xs text-muted-foreground">{CLI_NAME[a.cli] ?? a.cli}</span>
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
