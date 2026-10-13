@@ -743,6 +743,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            doctor::warm_user_path();
             let tray = build_tray(app)?;
             app.manage(tray);
             let handle = app.handle().clone();
