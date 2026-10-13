@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Máy</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:28px;font-size:13px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:14px 16px 0;display:flex;flex-direction:column;gap:2px}
+.card-t{margin:0;font-size:15px;font-weight:600}
+.card-b{padding:12px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:9999px;font-size:11.5px;font-weight:500;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:9999px;border:1px solid var(--border);font-size:12px;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
+.input[disabled]{background:var(--muted);cursor:not-allowed}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.row-t{display:flex;flex-direction:column;gap:2px}
+.sw{flex:none;width:36px;height:20px;border-radius:9999px;border:0;padding:2px;cursor:pointer;display:inline-flex;transition:background .2s}
+.sw[disabled]{opacity:.5;cursor:not-allowed}
+.sw span{width:16px;height:16px;border-radius:9999px;background:var(--background);box-shadow:var(--shadow-sm);transition:transform .2s}
+.sk{background:var(--muted);border-radius:6px;animation:sk 1.4s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:.45}}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.mcard{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.bar{height:4px;border-radius:9999px;background:var(--muted);overflow:hidden}
+.sw-lbl{display:flex;align-items:center;gap:8px;font-size:13px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1700px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="machines" lang="{{lang}}" hint-size="240px,1700px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+          <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0; max-width: 760px;">{{t.lead}}</p>
+        </div>
+        <button type="button" class="btn btn-default" onClick="{{toggleAdd}}" aria-expanded="{{add.aria}}" aria-controls="add-machine">+ {{t.add}}</button>
+      </header>
+
+      <sc-if value="{{ui.error}}" hint-placeholder-val="{{false}}">
+        <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive); align-items: center;"><span aria-hidden="true">!</span><span style="flex: 1;"><strong style="font-weight: 600;">{{t.errTitle}}</strong> {{t.errBody}}</span><button type="button" class="btn btn-outline btn-sm">{{t.retry}}</button></div>
+      </sc-if>
+
+      <sc-if value="{{ui.ready}}" hint-placeholder-val="{{true}}">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px;">
+          <sc-for list="{{stats}}" as="st" hint-placeholder-count="4">
+            <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+              <span class="muted" style="font-size: 12.5px;">{{st.label}}</span>
+              <span style="font-family: var(--font-heading); font-size: 26px; line-height: 1.2; font-weight: 600; font-variant-numeric: tabular-nums;">{{st.value}}</span>
+              <span class="hint">{{st.hint}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{add.open}}" hint-placeholder-val="{{true}}">
+        <section id="add-machine" class="card" aria-labelledby="add-title" style="border-color: var(--ring);">
+          <div class="card-h"><h2 id="add-title" class="card-t">{{t.addTitle}}</h2><span class="hint">{{t.addLead}}</span></div>
+          <div class="card-b">
+            <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+              <label class="field" style="flex: 1 1 260px;"><span>{{t.labels}}</span><input class="input mono" value="{{add.labelText}}" placeholder="sdlc, gpu"><span class="hint">{{t.labelHint}}</span></label>
+              <div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 10px;">
+                <div class="row"><div class="row-t"><span style="font-weight: 500;">{{t.shared}}</span><span class="hint">{{t.sharedHint}}</span></div><button type="button" class="sw" role="switch" aria-checked="false" aria-label="{{t.shared}}" style="background: var(--input);"><span></span></button></div>
+                <div class="row"><div class="row-t"><span style="font-weight: 500;">{{t.labelsOnly}}</span><span class="hint">{{t.labelsOnlyHint}}</span></div><button type="button" class="sw" role="switch" aria-checked="false" aria-label="{{t.labelsOnly}}" style="background: var(--input);"><span></span></button></div>
+              </div>
+            </div>
+            <div class="seg" role="group" aria-label="{{t.os}}" style="align-self: flex-start;">
+              <sc-for list="{{add.os}}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{o.pick}}" aria-pressed="{{o.on}}" style="{{o.style}}">{{o.label}}</button></sc-for>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-weight: 500;">{{t.cmdTitle}}</span>
+              <div style="display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--muted);">
+                <code class="mono" style="flex: 1; min-width: 0; padding: 8px 12px; font-size: 12.5px; white-space: pre-wrap; word-break: break-all;">{{add.cmd}}</code>
+                <button type="button" class="btn btn-ghost" style="border-radius: 0; border-left: 1px solid var(--border); height: auto;" aria-label="{{t.copy}}">{{t.copy}}</button>
+              </div>
+              <span class="hint" style="color: var(--warning);">{{t.codeExpiry}}</span>
+            </div>
+            <span class="hint">{{t.teamLink}} <a href="SdlcFleet.dc.html">{{t.teamLinkText}}</a></span>
+          </div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ui.loading}}" hint-placeholder-val="{{false}}">
+        <div style="display: flex; flex-direction: column; gap: 12px;" aria-busy="true"><div class="sk" style="height: 120px;"></div><div class="sk" style="height: 120px;"></div><span class="hint">{{t.loading}}</span></div>
+      </sc-if>
+      <sc-if value="{{ui.empty}}" hint-placeholder-val="{{false}}">
+        <div class="card" style="padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; border-style: dashed;">
+          <strong style="font-size: 15px; font-weight: 600;">{{t.emptyTitle}}</strong><span class="muted" style="max-width: 520px;">{{t.emptyBody}}</span>
+          <button type="button" class="btn btn-default" onClick="{{toggleAdd}}">+ {{t.add}}</button>
+        </div>
+      </sc-if>
+
+      <sc-for list="{{machines}}" as="m" hint-placeholder-count="4">
+        <article class="card mcard" aria-label="{{m.name}}">
+          <div style="display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-start; justify-content: space-between;">
+            <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                <strong class="mono" style="font-size: 14px; font-weight: 600;">{{m.name}}</strong>
+                <span class="badge" style="{{m.statusStyle}}">{{m.status}}</span>
+                <span class="badge" style="{{m.scopeStyle}}">{{m.scope}}</span>
+              </div>
+              <span class="hint">{{m.meta}}</span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 130px;"><span style="font-variant-numeric: tabular-nums;">{{m.slots}}</span><div class="bar" aria-hidden="true"><div style="{{m.bar}}"></div></div></div>
+              <button type="button" class="btn btn-outline btn-sm" onClick="{{m.toggleEdit}}" aria-expanded="{{m.editAria}}">{{t.editLabels}}</button>
+              <button type="button" class="btn btn-outline btn-sm">{{m.action}}</button>
+            </div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+            <sc-if value="{{m.noLabels}}" hint-placeholder-val="{{false}}"><span class="hint">{{t.noLabels}}</span></sc-if>
+            <sc-for list="{{m.labels}}" as="l" hint-placeholder-count="2"><span class="chip mono">{{l.name}}</span></sc-for>
+            <sc-if value="{{m.labelsOnly}}" hint-placeholder-val="{{true}}"><span class="badge" style="background: var(--secondary); color: var(--secondary-foreground);">{{t.labelsOnlyBadge}}</span></sc-if>
+            <sc-for list="{{m.clis}}" as="c" hint-placeholder-count="2"><span class="chip" style="{{c.style}}">{{c.name}}</span></sc-for>
+            <span class="hint" style="margin-left: auto;">{{m.accountsSummary}}</span>
+          </div>
+          <sc-if value="{{m.editing}}" hint-placeholder-val="{{false}}">
+            <div style="border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 12px;">
+              <div class="field">
+                <span>{{t.labels}} <span class="hint">({{m.edit.count}} / 10)</span></span>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                  <sc-for list="{{m.edit.labels}}" as="l" hint-placeholder-count="2"><span class="chip mono">{{l.name}}<button type="button" aria-label="{{l.remove}}" style="border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer; padding: 0 0 0 2px; font: inherit;">×</button></span></sc-for>
+                </div>
+                <div style="display: flex; gap: 8px; max-width: 420px;">
+                  <input class="input mono" aria-label="{{t.newLabel}}" aria-invalid="{{m.edit.invalid}}" value="{{m.edit.draft}}" placeholder="{{t.newLabel}}" style="{{m.edit.inputStyle}}">
+                  <button type="button" class="btn btn-outline">{{t.addLabel}}</button>
+                </div>
+                <span class="hint" style="{{m.edit.hintStyle}}">{{m.edit.hint}}</span>
+              </div>
+              <div class="row" style="max-width: 560px;">
+                <div class="row-t"><span style="font-weight: 500;">{{t.labelsOnly}}</span><span class="hint">{{t.labelsOnlyHint}}</span></div>
+                <button type="button" class="sw" role="switch" onClick="{{m.edit.flipOnly}}" aria-checked="{{m.edit.onlyAria}}" aria-label="{{t.labelsOnly}}" style="{{m.edit.onlyTrack}}"><span style="{{m.edit.onlyKnob}}"></span></button>
+              </div>
+              <span class="hint">{{t.applyNote}}</span>
+              <div style="display: flex; gap: 8px;"><button type="button" class="btn btn-default" disabled="{{m.edit.saveOff}}">{{t.save}}</button><button type="button" class="btn btn-ghost" onClick="{{m.toggleEdit}}">{{t.cancel}}</button></div>
+            </div>
+          </sc-if>
+        </article>
+      </sc-for>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["list","edit","invalid","add","empty","loading","error"],"default":"list"},"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { lang: null, dark: null, add: null, os: 'linux', edit: null, only: {} };
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const view = this.props.view ?? 'list';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      crumb: ['Dự án và hạ tầng', 'Projects and infrastructure'], title: ['Máy', 'Machines'],
+      lead: ['Máy chạy agent của tổ chức. Gắn nhãn để tách máy AI SDLC khỏi máy chạy việc thường; hub chỉ giao run cho máy có đủ nhãn run yêu cầu.', 'The organization’s agent machines. Label them to keep AI SDLC machines apart from everyday ones; the hub only hands a run to a machine that has every label the run requires.'],
+      add: ['Thêm máy', 'Add machine'], errTitle: ['Không tải được danh sách máy.', 'Cannot load the machines.'], errBody: ['Kiểm tra kết nối tới hub rồi thử lại.', 'Check the connection to the hub and try again.'], retry: ['Thử lại', 'Retry'],
+      loading: ['Đang tải danh sách máy…', 'Loading machines…'], emptyTitle: ['Chưa có máy nào', 'No machines yet'], emptyBody: ['Thêm máy để chạy agent. Chỉ cần worker, CLI đã đăng nhập sẵn trên máy; hub không giữ token của CLI.', 'Add a machine to run agents. Only the worker is needed, with the CLI already signed in on the machine; the hub never stores CLI tokens.'],
+      addTitle: ['Thêm máy chạy agent', 'Add an agent machine'], addLead: ['Mã đăng ký dùng một lần; nhãn và cờ trong mã do hub áp lên máy.', 'The registration code is single-use; the labels and flags in it are applied to the machine by the hub.'],
+      labels: ['Nhãn máy', 'Machine labels'], labelHint: ['Cách nhau bằng dấu phẩy. Chữ thường không dấu, số, "-", tối đa 32 ký tự, tối đa 10 nhãn.', 'Comma-separated. Lowercase ASCII letters, digits, "-", up to 32 characters, up to 10 labels.'],
+      shared: ['Máy dùng chung của đội', 'Team-shared machine'], sharedHint: ['Tắt: máy cá nhân, gói thuộc chủ máy.', 'Off: a personal machine, the plans belong to its owner.'],
+      labelsOnly: ['Chỉ nhận run có nhãn của máy', 'Only accept runs with a label of the machine'], labelsOnlyHint: ['Bật cho máy AI SDLC để run thường không chiếm chỗ.', 'Turn on for AI SDLC machines so ordinary runs never take their slots.'],
+      os: ['Hệ điều hành', 'Operating system'], cmdTitle: ['Chạy lệnh này trên máy', 'Run this on the machine'], copy: ['Chép', 'Copy'],
+      codeExpiry: ['Mã dùng một lần, hết hạn sau 14:59.', 'One-time code, expires in 14:59.'],
+      teamLink: ['Máy chuyên cho AI SDLC của đội:', 'Machines dedicated to the team’s AI SDLC:'], teamLinkText: ['Đội máy AI SDLC', 'AI SDLC fleet'],
+      editLabels: ['Nhãn', 'Labels'], noLabels: ['Chưa có nhãn: máy nhận mọi run.', 'No labels: the machine accepts every run.'],
+      labelsOnlyBadge: ['Chỉ run có nhãn', 'Labelled runs only'], newLabel: ['Nhãn mới', 'New label'], addLabel: ['Thêm nhãn', 'Add label'],
+      hintOk: ['Ví dụ: sdlc, gpu, windows.', 'Examples: sdlc, gpu, windows.'], hintBad: ['Nhãn gồm chữ thường không dấu, số, "-", tối đa 32 ký tự.', 'A label is lowercase ASCII letters, digits and "-", up to 32 characters.'],
+      applyNote: ['Áp cho lần giao run kế tiếp, không cần khởi động lại worker. Thay đổi được ghi vào nhật ký kiểm toán.', 'Applies to the next dispatch, no worker restart needed. The change is recorded in the audit log.'],
+      save: ['Lưu', 'Save'], cancel: ['Huỷ', 'Cancel'],
+    };
+    const t = Object.fromEntries(Object.entries(T).map(([k, v]) => [k, x(v)]));
+    const tone = { busy: 'background: var(--accent); color: var(--accent-foreground);', ready: 'background: var(--success-soft); color: var(--success);', paused: 'background: var(--warning-soft); color: var(--warning);', offline: 'background: var(--secondary); color: var(--muted-foreground);' };
+    const statusText = { busy: x(['Đang chạy', 'Busy']), ready: x(['Sẵn sàng', 'Ready']), paused: x(['Tạm dừng', 'Paused']), offline: x(['Mất kết nối', 'Offline']) };
+    const segOn = 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--card); color: var(--foreground); font: inherit; font-size: 13px; font-weight: 600; box-shadow: var(--shadow-sm); cursor: pointer;';
+    const segOff = 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 13px; cursor: pointer;';
+    const hub = 'https://hive.acme.internal';
+    const addOpen = this.state.add ?? (view === 'add' || view === 'empty');
+    const cmds = {
+      linux: 'curl -fsSL ' + hub + '/install.sh | sh -s -- hrc_7Fq2…mK4p',
+      mac: 'curl -fsSL ' + hub + '/install.sh | sh -s -- hrc_7Fq2…mK4p',
+      windows: '$env:HIVE_CODE="hrc_7Fq2…mK4p"; irm ' + hub + '/install.ps1 | iex',
+    };
+    const os = [['linux', 'Linux'], ['mac', 'macOS'], ['windows', 'Windows']].map(([k, label]) => ({ label, on: this.state.os === k ? 'true' : 'false', style: this.state.os === k ? segOn : segOff, pick: () => this.setState({ os: k }) }));
+    const sample = [
+      { id: 'sdlc-01', os: 'Ubuntu 24.04 · amd64', kind: 'busy', shared: true, owner: '', labels: ['sdlc', 'linux'], labelsOnly: true, clis: ['Claude', 'Codex'], used: 2, cap: 2, version: '0.12.0', seen: x(['nhịp 3 giây trước', 'heartbeat 3 s ago']), accounts: x(['3 gói · 3 bật', '3 plans · 3 on']), action: x(['Tạm dừng', 'Pause']) },
+      { id: 'mac-mini-lan', os: 'macOS 26 · arm64', kind: 'ready', shared: true, owner: '', labels: [], labelsOnly: false, clis: ['Claude', 'Codex'], used: 1, cap: 3, version: '0.9.0', seen: x(['nhịp 4 giây trước', 'heartbeat 4 s ago']), accounts: x(['Máy chưa báo gói', 'No plans reported']), action: x(['Tạm dừng', 'Pause']) },
+      { id: 'ci-runner-02', os: 'Debian 13 · amd64', kind: 'paused', shared: true, owner: '', labels: ['gpu'], labelsOnly: false, clis: ['Codex'], used: 0, cap: 2, version: '0.8.2', seen: x(['không nhận run mới', 'not accepting runs']), accounts: x(['Máy chưa báo gói', 'No plans reported']), action: x(['Chạy lại', 'Resume']) },
+      { id: 'an-macbook', os: 'macOS 26 · arm64', kind: 'offline', shared: false, owner: 'An Nguyễn', labels: ['sdlc'], labelsOnly: false, clis: ['Claude'], used: 0, cap: 1, version: '0.12.0', seen: x(['47 phút trước', '47 min ago']), accounts: x(['Gói của chủ máy', 'Owner’s plans']), action: x(['Gỡ máy', 'Remove']) },
+    ];
+    const list = ['empty', 'loading', 'error'].includes(view) ? [] : sample;
+    const editing = this.state.edit ?? (view === 'edit' || view === 'invalid' ? 'sdlc-01' : null);
+    const bad = view === 'invalid';
+    const machines = list.map((m) => {
+      const open = editing === m.id;
+      const only = this.state.only[m.id] ?? m.labelsOnly;
+      const draft = bad ? 'GPU Lớn' : '';
+      return {
+        name: m.id, status: statusText[m.kind], statusStyle: tone[m.kind],
+        scope: m.shared ? x(['Dùng chung', 'Shared']) : x(['Cá nhân · ', 'Personal · ']) + m.owner, scopeStyle: m.shared ? 'background: var(--secondary); color: var(--secondary-foreground);' : 'background: transparent; color: var(--muted-foreground); border: 1px dashed var(--input);',
+        meta: m.os + ' · worker ' + m.version + ' · ' + m.seen,
+        slots: m.used + ' / ' + m.cap + ' ' + x(['slot', 'slots']), bar: 'height: 100%; width: ' + Math.round((m.used / m.cap) * 100) + '%; background: ' + (m.used >= m.cap ? 'var(--warning)' : 'var(--primary)') + ';',
+        action: m.action, accountsSummary: m.accounts,
+        labels: m.labels.map((name) => ({ name })), noLabels: m.labels.length === 0, labelsOnly: m.labelsOnly,
+        clis: m.clis.map((name) => ({ name, style: '' })),
+        editing: open, editAria: open ? 'true' : 'false', toggleEdit: () => this.setState({ edit: open ? '' : m.id }),
+        edit: {
+          count: String(m.labels.length), labels: m.labels.map((name) => ({ name, remove: x(['Bỏ nhãn ', 'Remove label ']) + name })),
+          draft, invalid: bad ? 'true' : 'false', inputStyle: bad ? 'border-color: var(--destructive);' : '',
+          hint: bad ? t.hintBad : t.hintOk, hintStyle: bad ? 'color: var(--destructive);' : '', saveOff: bad,
+          onlyAria: only ? 'true' : 'false', onlyTrack: 'background: ' + (only ? 'var(--primary)' : 'var(--input)') + ';', onlyKnob: only ? 'transform: translateX(16px);' : '',
+          flipOnly: () => this.setState({ only: { ...this.state.only, [m.id]: !only } }),
+        },
+      };
+    });
+    const stats = list.length ? [
+      { label: x(['Máy trực tuyến', 'Machines online']), value: '3 / 4', hint: x(['an-macbook mất kết nối', 'an-macbook is offline']) },
+      { label: x(['Slot còn trống', 'Free slots']), value: '3', hint: x(['trên tổng 8 slot', 'out of 8 slots']) },
+      { label: x(['Run đang chạy', 'Running runs']), value: '3', hint: x(['trên 2 máy', 'on 2 machines']) },
+      { label: x(['Máy có nhãn', 'Labelled machines']), value: '3', hint: x(['1 máy chỉ nhận run có nhãn', '1 only accepts labelled runs']) },
+    ] : [];
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, stats, machines,
+      ui: { error: view === 'error', loading: view === 'loading', empty: view === 'empty', ready: !['loading', 'error', 'empty'].includes(view) },
+      add: { open: addOpen, aria: addOpen ? 'true' : 'false', os, cmd: cmds[this.state.os], labelText: 'sdlc' },
+      toggleAdd: () => this.setState({ add: !addOpen }),
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

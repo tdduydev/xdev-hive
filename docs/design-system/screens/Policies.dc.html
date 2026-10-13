@@ -37,8 +37,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{ou
 pre.code{margin:0;padding:10px 12px;border-radius:8px;background:var(--muted);font-family:var(--font-mono);font-size:12px;line-height:1.6;white-space:pre-wrap}
 </style>
 </helmet>
-<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
-  <dc-import name="Sidebar" active="policies" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+<div data-theme="{{theme}}" style="min-height: 1900px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="policies" lang="{{lang}}" hint-size="240px,1900px"></dc-import>
   <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
     <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
     <main style="box-sizing: border-box; width: 100%; max-width: 1280px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
@@ -105,14 +105,49 @@ pre.code{margin:0;padding:10px 12px;border-radius:8px;background:var(--muted);fo
             <label class="field">{{t.retention}}<select class="input"><option>90 {{t.days}}</option><option>30 {{t.days}}</option><option>365 {{t.days}}</option></select></label>
           </div>
         </section>
+
+        <section id="sdlc" class="card" style="grid-column: 1 / -1;">
+          <div class="card-h" style="flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 2px;"><h2 class="card-t">{{t.sdlc}}</h2><span class="hint">{{t.sdlcHint}}</span></div>
+            <span class="badge" style="{{auto.badge}}">{{auto.badgeText}}</span>
+          </div>
+          <div class="card-b">
+            <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.allow}}</strong><span class="hint">{{t.allowHint}}</span></span><button type="button" role="switch" aria-checked="{{auto.aria}}" aria-label="{{t.allow}}" class="sw" onClick="{{auto.flip}}" style="{{auto.track}}"><span style="{{auto.knob}}"></span></button></div>
+            <sc-if value="{{auto.off}}" hint-placeholder-val="{{false}}">
+              <div role="status" style="display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; font-size: 13px; background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span>{{t.offNote}}<div class="hint" style="color: inherit; opacity: .85;">{{t.offNoteHint}}</div></span></div>
+            </sc-if>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; align-items: start; opacity: {{auto.fade}};">
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <label class="field">{{t.floor}}<span style="display: flex; align-items: center; gap: 8px;"><input class="input mono" value="8" inputmode="decimal" style="max-width: 96px;" disabled="{{auto.off}}"><span class="muted mono">/ 10</span></span><span class="hint">{{t.floorHint}}</span></label>
+                <div style="padding: 10px 12px; border-radius: 8px; background: var(--muted); display: flex; flex-direction: column; gap: 6px;">
+                  <strong style="font-weight: 600; font-size: 13px;">🔒 {{t.always}}</strong>
+                  <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: 13px;"><sc-for list="{{always}}" as="a" hint-placeholder-count="3"><li>{{a}}</li></sc-for></ul>
+                  <span class="hint">{{t.alwaysHint}}</span>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div class="field">{{t.keywords}} <span class="hint">{{t.keywordsHint}}</span>
+                  <span style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--input); border-radius: 8px;"><sc-for list="{{keywords}}" as="k" hint-placeholder-count="6"><span class="chip">{{k}}<button type="button" aria-label="{{t.remove}} {{k}}" style="width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer;">×</button></span></sc-for><button type="button" class="btn btn-ghost btn-sm">+ {{t.add}}</button></span>
+                </div>
+                <div class="field">{{t.paths}} <span class="hint">{{t.pathsHint}}</span>
+                  <span style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--input); border-radius: 8px;"><sc-for list="{{paths}}" as="p" hint-placeholder-count="6"><span class="chip mono">{{p}}<button type="button" aria-label="{{t.remove}} {{p}}" style="width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer;">×</button></span></sc-for><button type="button" class="btn btn-ghost btn-sm">+ {{t.add}}</button></span>
+                </div>
+                <button type="button" class="btn btn-outline btn-sm" style="align-self: flex-start;">{{t.reset}}</button>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; padding-top: 14px; border-top: 1px dashed var(--border);">
+              <sc-for list="{{stats}}" as="s" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 2px;"><span class="hint">{{s.label}}</span><span class="mono" style="font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums;">{{s.value}}</span><span class="hint">{{s.hint}}</span></div></sc-for>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"autoAllowed":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":1900}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { full: false, lang: null, dark: null }; }
+  constructor(props) { super(props); this.state = { full: false, auto: null, lang: null, dark: null }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const dark = this.state.dark ?? !!this.props.dark;
@@ -135,6 +170,16 @@ class Component extends DCLogic {
       tpl: ['Đọc tài liệu và skill qua MCP trước khi sửa code.', 'Read docs and skills over MCP before changing code.'],
       keepSync: ['Mở PR khi mẫu đổi', 'Open a PR when the template changes'], keepSyncHint: ['Hub mở PR cập nhật AGENTS.md cho mọi dự án.', 'The hub opens a PR updating AGENTS.md in every project.'],
       limits: ['Giới hạn chung', 'Global limits'], limitsHint: ['Trần cho mọi dự án; dự án đặt thấp hơn được, cao hơn thì không.', 'Ceilings for every project; projects can go lower, not higher.'],
+      sdlc: ['AI SDLC', 'AI SDLC'], sdlcHint: ['Tự duyệt AI ở giai đoạn rủi ro thấp ("Continue automatically" của AI-DLC). Chế độ nói giai đoạn nào được tự duyệt; dự án chỉ siết thêm được so với chế độ và mục này.', 'AI auto-approval for low-risk phases (AI-DLC "Continue automatically"). The mode says which phases qualify; projects may only tighten the mode and this section.'],
+      allow: ['Cho phép tự duyệt', 'Allow auto-approval'], allowHint: ['Tắt thì hub không tự duyệt cổng nào của tổ chức. Tự duyệt đã ghi vẫn thu hồi được tới hết hạn.', 'When off, the hub auto-approves no gate in the organization. Existing auto-approvals can still be revoked until they expire.'],
+      onBadge: ['Đang cho phép', 'Allowed'], offBadge: ['Đã tắt', 'Turned off'],
+      offNote: ['Đã tắt tự duyệt cho toàn tổ chức.', 'Auto-approval is off for the whole organization.'], offNoteHint: ['3 dự án đang bật tự duyệt sẽ chờ người duyệt từ cổng kế tiếp. 2 lần tự duyệt còn thu hồi được tới 15:30 ngày mai.', '3 projects have auto-approval on and will wait for a person from the next gate. 2 auto-approvals can still be revoked until 15:30 tomorrow.'],
+      floor: ['Sàn ngưỡng điểm', 'Score floor'], floorHint: ['Ngưỡng hiệu lực là mức cao nhất trong chế độ, dự án và sàn này. Thang 0 đến 10.', 'The effective threshold is the highest of mode, project and this floor. Scale of 0 to 10.'],
+      always: ['Luôn cần người duyệt', 'Always needs a person'], alwaysHint: ['Cố định, không tắt được ở bất kỳ lớp nào.', 'Fixed; no layer can turn these off.'],
+      keywords: ['Từ khoá nhạy cảm', 'Sensitive keywords'], keywordsHint: ['Không phân biệt hoa thường và dấu. So với phần thay đổi của tài liệu.', 'Case and accent insensitive. Matched against what the document changes.'],
+      paths: ['Đường dẫn nhạy cảm', 'Sensitive paths'], pathsHint: ['Mẫu glob, so với mọi đường dẫn file nêu trong tài liệu và danh sách file của task.', 'Glob patterns, matched against every file path named in the document and the task file list.'],
+      reset: ['Đặt lại danh sách mặc định', 'Reset to default lists'],
+      st1: ['Cổng đã tự duyệt', 'Gates auto-approved'], st1h: ['30 ngày qua', 'last 30 days'], st2: ['Bị thu hồi', 'Revoked'], st2h: ['trên số tự duyệt', 'of auto-approvals'], st3: ['Điểm trung bình', 'Average score'], st3h: ['ngưỡng hiệu lực 9', 'effective threshold 9'], st4: ['Dự án bật tự duyệt', 'Projects with it on'], st4h: ['trên 12 dự án bật AI SDLC', 'of 12 AI SDLC projects'],
       runBudget: ['Trần mỗi run', 'Per-run cap'], dayBudget: ['Trần mỗi ngày của tổ chức', 'Organization daily cap'], parallel: ['Run song song mỗi máy', 'Parallel runs per machine'], retention: ['Giữ log run', 'Keep run logs'], days: ['ngày', 'days'],
     };
     const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
@@ -149,7 +194,26 @@ class Component extends DCLogic {
       { event: 'Stop', name: x(['Chạy test nhanh trước khi kết thúc', 'Quick tests before finishing']), cmd: 'pnpm check --affected' },
     ];
     const on = this.state.full;
+    const allowed = this.state.auto ?? !!(this.props.autoAllowed ?? true);
+    const auto = {
+      off: !allowed, aria: allowed ? 'true' : 'false', fade: allowed ? '1' : '.5',
+      track: 'background: ' + (allowed ? 'var(--primary)' : 'var(--input)') + ';', knob: allowed ? 'transform: translateX(16px);' : '',
+      badge: allowed ? 'background: var(--success-soft); color: var(--success);' : 'background: var(--warning-soft); color: var(--warning);', badgeText: allowed ? t.onBadge : t.offBadge,
+      flip: () => this.setState({ auto: !allowed }),
+    };
+    const always = [
+      x(['Giai đoạn Yêu cầu của chế độ nặng (cỡ L, XL) hoặc hạng mục cỡ L, XL', 'Requirements phase of a heavy mode (size L, XL) or an L, XL item']),
+      x(['Thay đổi chạm từ khoá hoặc đường dẫn nhạy cảm', 'Changes that touch a sensitive keyword or path']),
+      x(['Contract liên repo', 'Cross-repository contracts']),
+    ];
+    const keywords = ['phí', 'thanh toán', 'hoàn tiền', 'bảo mật', 'mật khẩu', 'token', 'quyền', 'dữ liệu cá nhân', 'fee', 'payment', 'refund', 'security', 'password', 'permission', 'personal data'];
+    const paths = ['.github/**', '**/auth/**', '**/security/**', '**/billing/**', '**/payment*/**', '**/migrations/**'];
+    const stats = [
+      { label: t.st1, value: '41', hint: t.st1h }, { label: t.st2, value: '4 (9,8%)', hint: t.st2h },
+      { label: t.st3, value: '9,3', hint: t.st3h }, { label: t.st4, value: '5', hint: t.st4h },
+    ];
     return {
+      auto, always, keywords, paths, stats,
       theme: dark ? 'dark' : 'light', lang, dark, t, models, hooks,
       tplText: '# ' + '{' + '{project.name}' + '}\n\n' + t.tpl + '\n- Project key: ' + '{' + '{project.key}' + '}\n- MCP: https://hive.acme.vn/mcp',
       fullSw: { aria: on ? 'true' : 'false', track: 'background: ' + (on ? 'var(--destructive)' : 'var(--input)') + ';', knob: on ? 'transform: translateX(16px);' : '', flip: () => this.setState({ full: !on }) },

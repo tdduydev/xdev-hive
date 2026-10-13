@@ -36,8 +36,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .opt{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:10px;cursor:pointer;font-size:14px}
 </style>
 </helmet>
-<div data-theme="{{theme}}" style="min-height: 1900px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
-  <dc-import name="Sidebar" active="projects" lang="{{lang}}" hint-size="240px,1900px"></dc-import>
+<div data-theme="{{theme}}" style="min-height: 3900px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="projects" lang="{{lang}}" hint-size="240px,3900px"></dc-import>
   <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
     <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
     <main style="box-sizing: border-box; width: 100%; max-width: 1180px; padding: 28px 32px 0; display: flex; flex-direction: column; gap: 20px;">
@@ -143,6 +143,104 @@ db/migrations/**</textarea><span class="hint">{{t.globHint}}</span></label>
               </sc-if>
             </div>
           </section>
+
+          <section id="sdlc" class="card">
+            <div class="card-h" style="flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <div style="display: flex; flex-direction: column; gap: 2px;"><h2 class="card-t">AI SDLC</h2><span class="hint" style="font-size: 13px;">{{t.sdlcHint}}</span></div>
+              <sc-if value="{{sdlc.on}}" hint-placeholder-val="{{true}}"><span class="badge" style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; background: var(--accent); color: var(--accent-foreground);">{{t.items}}</span></sc-if>
+            </div>
+            <div class="card-b">
+              <div class="row"><span class="row-t"><strong>{{t.sdlcOn}}</strong><span class="hint">{{t.sdlcOnHint}}</span></span><button type="button" role="switch" aria-checked="{{sdlc.aria}}" aria-label="{{t.sdlcOn}}" class="sw" onClick="{{sdlc.flip}}" style="{{sdlc.track}}"><span style="{{sdlc.knob}}"></span></button></div>
+              <sc-if value="{{sdlc.on}}" hint-placeholder-val="{{true}}">
+                <div style="display: flex; flex-direction: column; gap: 16px; padding-left: 14px; border-left: 2px solid var(--border);">
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px;">
+                    <label class="field">{{t.defMode}}<select class="input"><sc-for list="{{modeOpts}}" as="o" hint-placeholder-count="3"><option>{{o}}</option></sc-for></select></label>
+                    <label class="field">{{t.blocking}}<select class="input"><option>{{t.bMode}}</option><option>{{t.bSoft}}</option><option>{{t.bHard}}</option></select><span class="hint">{{t.blockingHint}}</span></label>
+                  </div>
+                  <div class="field">{{t.allowedModes}}
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 8px;">
+                      <sc-for list="{{allowed}}" as="m" hint-placeholder-count="5">
+                        <label class="opt" style="{{m.style}} padding: 8px 10px; align-items: center;"><input type="checkbox" checked="{{m.on}}" onChange="{{m.flip}}" style="accent-color: var(--primary);"><span class="row-t" style="flex: 1; min-width: 0;"><strong>{{m.name}}</strong><span class="hint">{{m.hint}}</span></span><sc-if value="{{m.heavy}}" hint-placeholder-val="{{false}}"><span class="mono" style="font-size: 11px; padding: 1px 6px; border-radius: 9999px; background: var(--warning-soft); color: var(--warning);">{{t.heavy}}</span></sc-if></label>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div class="field">{{t.repoSync}}
+                    <div role="radiogroup" aria-label="{{t.repoSync}}" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 8px;">
+                      <sc-for list="{{syncs}}" as="r" hint-placeholder-count="3"><label class="opt" style="{{r.style}}"><input type="radio" name="sdlc-sync" checked="{{r.on}}" onChange="{{r.pick}}" style="margin-top: 3px; accent-color: var(--primary);"><span class="row-t"><strong>{{r.label}}</strong><span class="hint">{{r.hint}}</span></span></label></sc-for>
+                    </div>
+                    <span class="hint">{{t.readonlyNote}}</span>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 14px;">
+                    <label class="field">{{t.docsRoot}}<input class="input mono" value="specs/"><span class="hint">{{t.docsRootHint}}</span></label>
+                    <label class="field">{{t.parallel}}<input class="input mono" value="2" inputmode="numeric"><span class="hint">{{t.parallelHint}}</span></label>
+                    <div class="row" style="align-self: end;"><span class="row-t"><strong>{{t.autoWaves}}</strong><span class="hint">{{t.autoWavesHint}}</span></span><button type="button" role="switch" aria-checked="{{waves.aria}}" aria-label="{{t.autoWaves}}" class="sw" onClick="{{waves.flip}}" style="{{waves.track}}"><span style="{{waves.knob}}"></span></button></div>
+                  </div>
+                  <div class="field">{{t.runner}}
+                    <div role="radiogroup" aria-label="{{t.runner}}" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 8px;">
+                      <sc-for list="{{runners}}" as="r" hint-placeholder-count="2"><label class="opt" style="{{r.style}}"><input type="radio" name="sdlc-runner" checked="{{r.on}}" onChange="{{r.pick}}" style="margin-top: 3px; accent-color: var(--primary);"><span class="row-t"><strong>{{r.label}}</strong><span class="hint">{{r.hint}}</span></span></label></sc-for>
+                    </div>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px;">
+                    <div class="field">{{t.labels}} <span class="hint">{{t.labelsHint}}</span>
+                      <span style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--input); border-radius: 8px;"><span class="chip mono" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: 9999px; border: 1px solid var(--border); font-size: 12.5px;">sdlc <span style="color: var(--muted-foreground);">×</span></span><span class="muted" style="font-size: 12.5px; padding: 2px 4px;">+ {{t.add}}</span></span>
+                    </div>
+                    <div class="field">{{t.risk}} <span class="hint">{{t.riskHint}}</span>
+                      <span style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--input); border-radius: 8px;"><sc-for list="{{risk}}" as="k" hint-placeholder-count="4"><span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: 9999px; border: 1px solid var(--border); font-size: 12.5px;">{{k}} <span style="color: var(--muted-foreground);">×</span></span></sc-for><span class="muted" style="font-size: 12.5px; padding: 2px 4px;">+ {{t.add}}</span></span>
+                    </div>
+                  </div>
+                  <div role="note" style="display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; font-size: 13px; background: var(--accent); color: var(--accent-foreground);"><span aria-hidden="true">i</span><span>{{t.partNote}}</span></div>
+                </div>
+              </sc-if>
+            </div>
+          </section>
+
+          <section id="sdlc-auto" class="card">
+            <div class="card-h" style="flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <div style="display: flex; flex-direction: column; gap: 2px;"><h2 class="card-t">{{t.auto}}</h2><span class="hint" style="font-size: 13px;">{{t.autoHint}}</span></div>
+              <span style="{{org.badge}}">{{org.badgeText}}</span>
+            </div>
+            <div class="card-b">
+              <sc-if value="{{org.off}}" hint-placeholder-val="{{false}}">
+                <div role="status" style="display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; font-size: 13px; background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span>{{t.orgOff}}<div class="hint" style="color: inherit; opacity: .85;">{{t.orgOffHint}} <a href="Policies.dc.html#sdlc" style="color: inherit; font-weight: 600;">{{t.orgLink}}</a></div></span></div>
+              </sc-if>
+              <sc-if value="{{org.on}}" hint-placeholder-val="{{true}}">
+                <div class="hint" style="font-size: 13px;">{{t.orgOn}} <a href="Policies.dc.html#sdlc" style="font-weight: 600;">{{t.orgLink}}</a></div>
+              </sc-if>
+              <div class="row" style="opacity: {{org.fade}};"><span class="row-t"><strong>{{t.autoOn}}</strong><span class="hint">{{t.autoOnHint}}</span></span><button type="button" role="switch" aria-checked="{{au.aria}}" aria-label="{{t.autoOn}}" class="sw" onClick="{{au.flip}}" style="{{au.track}}"><span style="{{au.knob}}"></span></button></div>
+              <sc-if value="{{au.on}}" hint-placeholder-val="{{true}}">
+                <div style="display: flex; flex-direction: column; gap: 16px; padding-left: 14px; border-left: 2px solid var(--border); opacity: {{org.fade}};">
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px;">
+                    <label class="field">{{t.minScore}}<span style="display: flex; align-items: center; gap: 8px;"><input class="input mono" value="9" inputmode="decimal" style="max-width: 96px;"><span class="muted mono">/ 10</span></span><span class="hint">{{t.minScoreHint}}</span></label>
+                    <label class="field">{{t.revoke}}<span class="suffix"><input class="input mono" value="24" inputmode="numeric"><em>{{t.hours}}</em></span><span class="hint">{{t.revokeHint}}</span></label>
+                  </div>
+                  <div class="field">{{t.phases}} <span class="hint">{{t.phasesHint}}</span>
+                    <ul style="margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;">
+                      <sc-for list="{{phases}}" as="ph" hint-placeholder-count="4">
+                        <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); {{ph.rowStyle}}">
+                          <input type="checkbox" aria-label="{{ph.name}}" checked="{{ph.on}}" disabled="{{ph.locked}}" onChange="{{ph.flip}}" style="accent-color: var(--primary);">
+                          <span style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; line-height: 1.35;"><span style="font-size: 13.5px; font-weight: 500;">{{ph.name}}</span><span class="hint">{{ph.gate}}</span></span>
+                          <sc-if value="{{ph.locked}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: var(--muted-foreground);">🔒 {{ph.reason}}</span></sc-if>
+                          <sc-if value="{{ph.free}}" hint-placeholder-val="{{true}}"><span class="mono" style="font-size: 12px; padding: 1px 8px; border-radius: 9999px; background: var(--muted);">≥ {{ph.score}}</span></sc-if>
+                        </li>
+                      </sc-for>
+                    </ul>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px;">
+                    <div class="field">{{t.keywords}} <span class="hint">{{t.keywordsHint}}</span>
+                      <span style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--input); border-radius: 8px;">
+                        <sc-for list="{{orgWords}}" as="k" hint-placeholder-count="4"><span title="{{t.fromOrg}}" style="display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 9999px; background: var(--muted); color: var(--muted-foreground); font-size: 12.5px;">🔒 {{k}}</span></sc-for>
+                        <sc-for list="{{ownWords}}" as="k" hint-placeholder-count="2"><span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: 9999px; border: 1px solid var(--border); font-size: 12.5px;">{{k}} <span style="color: var(--muted-foreground);">×</span></span></sc-for>
+                        <span class="muted" style="font-size: 12.5px; padding: 2px 4px;">+ {{t.add}}</span>
+                      </span>
+                    </div>
+                    <label class="field">{{t.paths}}<textarea class="input mono" style="height: 92px; padding: 6px 10px; font-size: 12.5px; resize: vertical;">src/billing/**
+db/migrations/**</textarea><span class="hint">{{t.pathsHint}}</span></label>
+                  </div>
+                  <div role="status" style="padding: 10px 12px; border-radius: 8px; background: var(--success-soft); color: var(--success); font-size: 13px; display: flex; flex-direction: column; gap: 2px;"><strong style="font-weight: 600;">{{t.effective}}</strong><span>{{t.effectiveBody}}</span></div>
+                </div>
+              </sc-if>
+            </div>
+          </section>
           <div style="height: 8px;"></div>
         </div>
       </div>
@@ -167,9 +265,9 @@ db/migrations/**</textarea><span class="hint">{{t.globHint}}</span></label>
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"sdlcOn":{"editor":"boolean","default":true},"autoOn":{"editor":"boolean","default":true},"orgAutoOff":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":3900}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { mode: 'auto', ci: true, queue: true, review: true, plan: true, sandbox: false, perm: 'wt', confirm: false, lang: null, dark: null }; }
+  constructor(props) { super(props); this.state = { mode: 'auto', ci: true, queue: true, review: true, plan: true, sandbox: false, perm: 'wt', confirm: false, sdlc: null, auto: null, waves: false, sync: 'pr', runner: 'team', modes: { speckit: true, bugfix: true, small: true, express: false, custom: true }, ph: { plan: true, tasks: true }, lang: null, dark: null }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const dark = this.state.dark ?? !!this.props.dark;
@@ -196,6 +294,31 @@ class Component extends DCLogic {
       pWt: ['Trong worktree (khuyên dùng)', 'Inside the worktree (recommended)'], pWtHint: ['Agent sửa file và chạy lệnh build, test trong worktree của run; CLI giữ sandbox và chặn thao tác ngoài worktree.', 'The agent edits files and runs builds and tests in the run worktree; the CLI keeps its sandbox and blocks anything outside it.'],
       pFull: ['Toàn quyền', 'Full access'], pFullHint: ['Tắt sandbox và mọi bước hỏi duyệt của CLI. Chỉ dùng trong container dùng một lần hoặc máy riêng cho agent.', 'Turns off the CLI sandbox and every approval prompt. Only for throwaway containers or machines dedicated to agents.'],
       fullBanner: ['Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.', 'Runs in this project use the full rights of the account on the machine that picks them up.'],
+      sdlcHint: ['Bật chế độ vòng đời cho dự án: hạng mục đi từ ý tưởng tới tài liệu đã duyệt, task có phụ thuộc, PR đã review.', 'Turn on the lifecycle mode: items go from an idea to approved documents, tasks with dependencies and reviewed PRs.'],
+      items: ['3 hạng mục đang mở', '3 open items'], sdlcOn: ['Bật AI SDLC cho dự án', 'Enable AI SDLC for this project'], sdlcOnHint: ['Tắt thì task, run, review và merge chạy như cũ; hạng mục đang mở chuyển sang Tạm dừng.', 'When off, tasks, runs, reviews and merges work as before; open items move to Paused.'],
+      defMode: ['Chế độ mặc định', 'Default mode'], blocking: ['Mức chặn', 'Blocking level'], bMode: ['Theo chế độ', 'As the mode says'], bSoft: ['Cảnh báo (soft)', 'Warn (soft)'], bHard: ['Chặn cứng (hard)', 'Hard block (hard)'],
+      blockingHint: ['Chỉ chặt hơn chế độ: chọn mức thấp hơn thì chế độ vẫn giữ mức của nó.', 'Can only be stricter than the mode: a lower choice leaves the mode level in force.'],
+      allowedModes: ['Chế độ được dùng', 'Allowed modes'], heavy: ['Nặng', 'Heavy'],
+      repoSync: ['Ghi tài liệu đã duyệt vào repo', 'Write approved documents to the repo'], readonlyNote: ['Kết nối Git chỉ đọc thì chỉ lưu trên hub; agent vẫn đọc tài liệu qua seed file.', 'With a read-only Git connection documents stay on the hub; agents still read them through seed files.'],
+      docsRoot: ['Thư mục gốc tài liệu', 'Documents root folder'], docsRootHint: ['Chế độ có thể dùng đường dẫn riêng; mục này áp cho khuôn dùng {docsRoot}.', 'A mode may use its own paths; this applies to templates that use {docsRoot}.'],
+      parallel: ['Mức song song', 'Parallelism'], parallelHint: ['Số run code của hạng mục chạy cùng lúc, từ 1 đến 10.', 'Code runs of items at the same time, from 1 to 10.'],
+      autoWaves: ['Tự chạy đợt', 'Run waves automatically'], autoWavesHint: ['Task xong thì hub xét đợt kế mà không chờ người bấm Chạy đợt.', 'When a task finishes the hub starts the next wave without waiting for Run wave.'],
+      runner: ['Nơi chạy agent', 'Where agents run'], labels: ['Nhãn máy yêu cầu', 'Required machine labels'], labelsHint: ['Run chỉ giao cho máy có đủ nhãn. Tối đa 5.', 'Runs go only to machines with every label. Up to 5.'],
+      risk: ['Từ khoá rủi ro', 'Risk keywords'], riskHint: ['Dùng để gợi ý cỡ L khi ý tưởng có từ khoá. Không phải danh sách tự duyệt.', 'Used to suggest size L when an idea contains one. Not the auto-approval list.'],
+      partNote: ['Khi dự án này là dự án tham gia của hạng mục khác, mức song song, nhãn máy và nơi chạy lấy từ mục này cho task của dự án.', 'When this project takes part in another project\'s item, parallelism, machine labels and runner for its tasks come from here.'],
+      auto: ['Tự duyệt AI', 'AI auto-approval'], autoHint: ['Hub tự quyết cổng người khi review AI của giai đoạn đạt ngưỡng. Dự án chỉ siết thêm được so với chế độ và tổ chức.', 'The hub decides a human gate when the AI review of the phase reaches the threshold. Projects can only tighten the mode and the organization.'],
+      orgOnBadge: ['Tổ chức cho phép', 'Organization allows it'], orgOffBadge: ['Tổ chức đã tắt', 'Turned off by organization'],
+      orgOn: ['Sàn ngưỡng của tổ chức là 8/10. Từ khoá và đường dẫn nhạy cảm của tổ chức luôn áp dụng.', 'The organization floor is 8/10. Its sensitive keywords and paths always apply.'], orgLink: ['Chính sách agent', 'Agent policies'],
+      orgOff: ['Tổ chức đã tắt tự duyệt; cài đặt dưới đây chưa có tác dụng.', 'The organization turned auto-approval off; the settings below have no effect yet.'], orgOffHint: ['Quản trị tổ chức bật lại ở', 'An organization admin can turn it back on in'],
+      autoOn: ['Bật tự duyệt cho dự án', 'Enable auto-approval for this project'], autoOnHint: ['Mặc định tắt. Bật thì chỉ giai đoạn chế độ cho phép mới tự duyệt.', 'Off by default. When on, only phases the mode allows are auto-approved.'],
+      minScore: ['Ngưỡng điểm', 'Score threshold'], minScoreHint: ['Chỉ có tác dụng khi cao hơn ngưỡng của chế độ (9) và sàn tổ chức (8). Hiệu lực: 9.', 'Only matters above the mode threshold (9) and the organization floor (8). Effective: 9.'],
+      revoke: ['Hạn thu hồi', 'Revocation window'], hours: ['giờ', 'hours'], revokeHint: ['Chỉ có tác dụng khi dài hơn chế độ (24). Từ 1 đến 168.', 'Only matters above the mode value (24). From 1 to 168.'],
+      phases: ['Giai đoạn được tự duyệt', 'Phases that may be auto-approved'], phasesHint: ['Chỉ liệt kê giai đoạn chế độ Spec Kit cho phép. Bỏ chọn là bớt giai đoạn.', 'Lists only phases the Spec Kit mode allows. Unchecking removes a phase.'],
+      rSpec: ['Chế độ nặng, yêu cầu luôn cần người', 'Heavy mode: requirements always need a person'], rContract: ['Contract liên repo luôn cần người', 'Cross-repository contracts always need a person'],
+      gSpecify: ['Specify · cổng PO', 'Specify · PO gate'], gPlan: ['Plan · cổng Tech lead', 'Plan · Tech lead gate'], gTasks: ['Tasks · cổng Tech lead', 'Tasks · Tech lead gate'], gContract: ['Contract refund-api · cổng mỗi đội', 'Contract refund-api · one gate per team'],
+      keywords: ['Từ khoá nhạy cảm của dự án', 'Project sensitive keywords'], keywordsHint: ['Thêm vào danh sách của tổ chức, không thay thế. Chip có khoá là của tổ chức.', 'Added to the organization list, never replacing it. Locked chips come from the organization.'], fromOrg: ['Từ chính sách tổ chức', 'From organization policy'], add: ['Thêm', 'Add'],
+      paths: ['Đường dẫn nhạy cảm của dự án', 'Project sensitive paths'], pathsHint: ['Mỗi dòng một mẫu glob, cộng với danh sách của tổ chức.', 'One glob pattern per line, on top of the organization list.'],
+      effective: ['Hiệu lực với hạng mục chế độ Spec Kit', 'In effect for Spec Kit items'], effectiveBody: ['Plan và Tasks tự duyệt khi review AI từ 9/10, thu hồi được trong 24 giờ. Specify và contract luôn chờ người.', 'Plan and Tasks are auto-approved when the AI review scores 9/10 or more, revocable for 24 hours. Specify and contracts always wait for a person.'],
       unsaved: ['Có 2 thay đổi chưa lưu', '2 unsaved changes'], discard: ['Bỏ thay đổi', 'Discard'], save: ['Lưu cấu hình', 'Save settings'],
       cfTitle: ['Cho agent toàn quyền?', 'Give agents full access?'], cfDesc: ['CLI sẽ chạy không sandbox và không hỏi duyệt (Claude: bypassPermissions, Codex: bỏ sandbox, Gemini: yolo).', 'The CLI runs without a sandbox or approval prompts (Claude: bypassPermissions, Codex: no sandbox, Gemini: yolo).'],
       cf1: ['Agent đọc và sửa được mọi file tài khoản đó truy cập.', 'The agent can read and change every file that account can reach.'], cf2: ['Agent chạy được mọi lệnh, kể cả lệnh mạng.', 'The agent can run any command, including network commands.'], cf3: ['Lỗi của agent có thể làm hỏng máy nhận việc.', 'An agent mistake can damage the machine.'],
@@ -217,14 +340,46 @@ class Component extends DCLogic {
       ['ci', ['Bắt buộc CI xanh', 'Require green CI'], ['Tắt thì repo không có CI vẫn merge được.', 'When off, repos without CI can still merge.']],
       ['queue', ['Merge queue', 'Merge queue'], ['PR vào hàng, hub cập nhật nhánh theo nhánh chính và merge lần lượt từng PR.', 'PRs queue up; the hub rebases each on main and merges them one by one.']],
     ].map(([k, l, h]) => ({ label: x(l), hint: x(h), ...sw(k) }));
-    const toc = [['#merge', 'Merge'], ['#review', x(T.review)], ['#plan', 'Plan mode'], ['#sandbox', 'Sandbox'], ['#budget', x(T.budget)], ['#model', 'Model'], ['#perm', x(T.perm)]].map(([h, l], i) => ({
+    const toc = [['#merge', 'Merge'], ['#review', x(T.review)], ['#plan', 'Plan mode'], ['#sandbox', 'Sandbox'], ['#budget', x(T.budget)], ['#model', 'Model'], ['#perm', x(T.perm)], ['#sdlc', 'AI SDLC'], ['#sdlc-auto', x(T.auto)]].map(([h, l], i) => ({
       href: h, label: l, style: 'padding: 6px 10px; border-radius: 6px; text-decoration: none; ' + (i === 0 ? 'background: var(--muted); color: var(--foreground); font-weight: 500;' : 'color: var(--muted-foreground);'),
     }));
     const models = [['Claude', 'claude-opus-5-5', 'claude-sonnet-5-5'], ['Codex', '', ''], ['Gemini', '', '']].map(([c, a, b]) => ({
       cli: c, v1: a, v2: b, write: x(['Viết code', 'Writing code']), review: x(['Review', 'Review']),
     }));
     const full = this.state.perm === 'full';
+    const sdlcOn = this.state.sdlc ?? !!(this.props.sdlcOn ?? true);
+    const orgOff = !!(this.props.orgAutoOff ?? false);
+    const autoOn = !orgOff && (this.state.auto ?? !!(this.props.autoOn ?? true));
+    const flipper = (on, key) => ({ on, aria: on ? 'true' : 'false', track: 'background: ' + (on ? 'var(--primary)' : 'var(--input)') + ';', knob: on ? 'transform: translateX(16px);' : '', flip: () => this.setState({ [key]: !on }) });
+    const modeOpts = ['Spec Kit', 'Bugfix', 'Small'];
+    const allowed = [
+      ['speckit', 'Spec Kit', ['Specify, Plan, Tasks, Implement, Converge', 'Specify, Plan, Tasks, Implement, Converge'], true],
+      ['bugfix', 'Bugfix', ['Sửa lỗi cỡ S, chặn mềm', 'Small bug fixes, soft block'], false],
+      ['small', 'Small', ['Việc nhỏ, không tài liệu bắt buộc', 'Small work, no required documents'], false],
+      ['express', 'AI-DLC Express', ['Yêu cầu, Triển khai, Kiểm', 'Requirements, Build, Test'], false],
+      ['custom', 'Spec Kit — Thanh toán', ['Chế độ của đội Backend', 'Backend team mode'], true],
+    ].map(([k, name, h, heavy]) => ({ name, hint: x(h), heavy, on: !!this.state.modes[k], style: this.state.modes[k] ? optOn : optOff, flip: () => this.setState({ modes: { ...this.state.modes, [k]: !this.state.modes[k] } }) }));
+    const syncs = [
+      ['pr', ['Pull request (mặc định)', 'Pull request (default)'], ['Mỗi repo một PR hive/sdlc/NNN-slug, vào hàng merge, không review code lại.', 'One PR per repo on hive/sdlc/NNN-slug, queued for merge, no second code review.']],
+      ['direct', ['Commit thẳng', 'Direct commit'], ['Vào nhánh mặc định không bảo vệ.', 'Into an unprotected default branch.']],
+      ['off', ['Không ghi vào repo', 'Do not write to the repo'], ['Tài liệu chỉ nằm trên hub.', 'Documents stay on the hub only.']],
+    ].map(([k, l, h]) => ({ label: x(l), hint: x(h), on: this.state.sync === k, style: this.state.sync === k ? optOn : optOff, pick: () => this.setState({ sync: k }) }));
+    const runners = [
+      ['team', ['Máy AI SDLC dùng chung của đội (mặc định)', 'Team shared AI SDLC machines (default)'], ['Run không gắn người, chỉ chạy trên máy dùng chung có nhãn yêu cầu.', 'Runs belong to no person and use only shared machines with the required labels.']],
+      ['requester', ['Máy của người bấm', 'Requester machine'], ['Run của người nào chạy trên máy của người đó.', 'Each run uses the machine of whoever started it.']],
+    ].map(([k, l, h]) => ({ label: x(l), hint: x(h), on: this.state.runner === k, style: this.state.runner === k ? optOn : optOff, pick: () => this.setState({ runner: k }) }));
+    const phaseDefs = [
+      ['specify', t.gSpecify, null, t.rSpec], ['plan', t.gPlan, 9], ['tasks', t.gTasks, 9], ['contract', t.gContract, null, t.rContract],
+    ];
+    const phases = phaseDefs.map(([k, gate, score, reason]) => {
+      const locked = !!reason; const on = !locked && !!this.state.ph[k];
+      return { name: gate.split(' · ')[0], gate: gate.split(' · ').slice(1).join(' · '), score, locked, free: !locked, reason: reason || '', on, rowStyle: locked ? 'background: var(--muted);' : '', flip: () => this.setState({ ph: { ...this.state.ph, [k]: !on } }) };
+    });
     return {
+      sdlc: flipper(sdlcOn, 'sdlc'), au: flipper(autoOn, 'auto'), waves: flipper(this.state.waves, 'waves'), modeOpts, allowed, syncs, runners, phases,
+      org: { off: orgOff, on: !orgOff, fade: orgOff ? '.5' : '1', badge: 'display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; ' + (orgOff ? 'background: var(--warning-soft); color: var(--warning);' : 'background: var(--success-soft); color: var(--success);'), badgeText: orgOff ? t.orgOffBadge : t.orgOnBadge },
+      risk: x([['thanh toán', 'đăng nhập', 'di chuyển dữ liệu', 'hoàn tiền'], ['payment', 'sign-in', 'data migration', 'refund']]),
+      orgWords: ['phí', 'thanh toán', 'hoàn tiền', 'bảo mật', 'mật khẩu', 'token', 'quyền'], ownWords: x([['đối soát', 'số dư'], ['reconciliation', 'balance']]),
       theme: dark ? 'dark' : 'light', lang, dark, t, toc, modes, mergeSwitches, models,
       rv: sw('review'), pm: sw('plan'), sb: sw('sandbox'),
       permWt: !full, permFull: full, permA: full ? optOff : optOn, permB: full ? 'border: 1px solid var(--destructive); background: var(--destructive-soft);' : optOff,

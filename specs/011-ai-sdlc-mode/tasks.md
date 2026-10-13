@@ -25,7 +25,7 @@
 
 ## Phase 1: Nền (chặn mọi story)
 
-- [ ] T001 🎯 Contract chế độ AI SDLC
+- [x] T001 🎯 Contract chế độ AI SDLC
   - `sdlc.ts` mới: `sdlcMethod`, `sdlcPhaseKind`, `sdlcSize`, `sdlcStepAction`, `sdlcBlocking`, `breakdownParser`,
     `repoPathTemplate`, `sdlcArtifactScope`, `contractFormat`, `sdlcArtifact` (`scope`, `repeatable`), `sdlcAutoApprove`,
     `sdlcStep`, `sdlcPhase` (`perProjectGates`, `autoApprove`), `sdlcDecomposition`, `sdlcMode` (`superRefine`: id duy
@@ -95,7 +95,7 @@
     (mới), `docs/design-system/screens/{AppNav,DocEditor,DocReview}.dc.html` (biến thể), `docs/design-system/screens/README.md`
   - **Phụ thuộc**: không · **Mức**: vừa
 
-- [ ] T006 [P] Thiết kế màn web cấu hình và quản trị (chế độ có cổng theo dự án, tự duyệt mỗi giai đoạn, contract; mục
+- [x] T006 [P] Thiết kế màn web cấu hình và quản trị (chế độ có cổng theo dự án, tự duyệt mỗi giai đoạn, contract; mục
   Tự duyệt của dự án; mục AI SDLC của chính sách tổ chức)
   - **Scope**: `docs/design-system/screens/{SdlcModes,SdlcFleet,Machines}.dc.html` (mới),
     `docs/design-system/screens/{ProjectSettings,Policies}.dc.html` (biến thể mục AI SDLC)

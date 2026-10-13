@@ -24,6 +24,11 @@ export const PERMISSION_LABEL: Record<string, Dict<string>> = {
   "leader.approve": { vi: "Duyệt đề xuất của leader", en: "Approve leader proposals" },
   reviews: { vi: "Review code", en: "Code review" },
   "reviews.override": { vi: "Quyết thay checkpoint tự động", en: "Override automatic checkpoints" },
+  sdlc: { vi: "AI SDLC", en: "AI SDLC" },
+  "sdlc.read": { vi: "Xem hạng mục", en: "View items" },
+  "sdlc.write": { vi: "Tạo hạng mục, trả lời, soạn tài liệu", en: "Create items, answer, draft docs" },
+  "sdlc.override": { vi: "Ngoại lệ chặn run code", en: "Override run blocking" },
+  "sdlc.modes.write": { vi: "Sửa chế độ AI SDLC", en: "Edit AI SDLC modes" },
   knowledge: { vi: "Kiến thức", en: "Knowledge" },
   docs: { vi: "Tài liệu", en: "Docs" },
   "docs.read": { vi: "Xem", en: "View" },
@@ -115,6 +120,13 @@ export const SYSTEM_ROLE_TEXT: Record<SystemRoleId, { name: Dict<string>; desc: 
   "team-viewer": {
     name: { vi: "Chỉ xem", en: "Viewer" },
     desc: { vi: "Xem việc, run và tài liệu của đội.", en: "Views the team’s tasks, runs and docs." },
+  },
+  "team-ba": {
+    name: { vi: "BA/PO", en: "BA/PO" },
+    desc: {
+      vi: "Tạo hạng mục AI SDLC, soạn và duyệt tài liệu; không chạy agent.",
+      en: "Creates AI SDLC items, drafts and reviews docs; does not run agents.",
+    },
   },
 };
 

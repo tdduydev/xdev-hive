@@ -135,3 +135,21 @@ Ghi chú bàn giao:
 - Chưa có trình soạn tài liệu, quy trình duyệt cấu hình được, vai trò tự tạo, chính sách agent, kết nối gói thuê bao
   trong app.
 - Chưa có i18n: web và app hiện chỉ có tiếng Việt.
+
+## Bàn giao: màn web cấu hình AI SDLC (spec 011, T006)
+
+| File | Màn | Route đề xuất | Story |
+|---|---|---|---|
+| `SdlcModes.dc.html` | Chế độ AI SDLC: preset chỉ đọc và chế độ tự tạo, giai đoạn, tài liệu, cổng (theo dự án), contract, tự duyệt, chạy thử | `/admin/sdlc-modes` | US8, US18 |
+| `ProjectSettings.dc.html` (mục `#sdlc`, `#sdlc-auto`) | Bật AI SDLC, chế độ cho phép, đồng bộ, nơi chạy, Tự duyệt chỉ siết thêm | `/projects/$key/settings` | US8, US18 |
+| `Policies.dc.html` (mục `#sdlc`) | Chính sách tổ chức: cho phép tự duyệt, sàn ngưỡng, `denyPaths`/`denyKeywords` | `/admin/policies` | US18 |
+| `SdlcFleet.dc.html` | Đội máy AI SDLC: nhãn, run đang chạy theo hạng mục và bước, gói và quota, bật/tắt gói, Thêm máy (lệnh cài một dòng) | `/sdlc/fleet` | US13, US15 |
+| `Machines.dc.html` | Máy (bản v2): sửa nhãn, "chỉ nhận run có nhãn", gói, mã đăng ký có nhãn. Bản v1 ở `v1/` | `/machines` | US14 |
+
+- Tweak `view` của `SdlcModes` (`edit`, `preset`, `dryrun`, `invalid`, `empty`, `loading`, `error`), `SdlcFleet` (`list`,
+  `add`, `waiting`, `empty`, `loading`, `error`) và `Machines` (`list`, `edit`, `invalid`, `add`, `empty`, `loading`,
+  `error`) mở từng trạng thái.
+- `Sidebar.dc.html` chưa có mục `sdlc-modes` và `sdlc-fleet` (các màn gọi `active` với hai id đó): menu thật do
+  `apps/web/src/lib/nav.ts` (T054) quyết định.
+- Máy cá nhân chỉ hiện trạng thái và nhãn (ADR 0017); nút bật/tắt gói bị khoá khi worker không báo `accounts-remote`.
+- Màn dùng được từ 360 px (thẻ máy xuống dòng, không bảng ngang).

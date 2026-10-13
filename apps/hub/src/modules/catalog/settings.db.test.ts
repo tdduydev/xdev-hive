@@ -1,6 +1,11 @@
 // projects.updateSettings: vá một phần, quyền, khoá lạ, sửa song song, RLS giữa hai tổ chức.
 import { randomBytes, randomUUID } from "node:crypto";
-import { defaultProjectSettings, type ProjectSettingsPatch, projectSettingsPatch } from "@xdev-hive/contracts";
+import {
+  defaultProjectSettings,
+  defaultTokenSaving,
+  type ProjectSettingsPatch,
+  projectSettingsPatch,
+} from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -137,6 +142,17 @@ describe("projects.updateSettings: vá một phần", () => {
     await admin.query("update hive.projects set settings = settings - 'issueIntake' where id = $1", [p.id]);
     const after = await update("tadmin", p.key, { issueIntake: { enabled: true } });
     expect(after.issueIntake).toEqual({ enabled: true, label: "hive", mention: "hive" });
+  });
+});
+
+describe("projects.updateSettings: Tiết kiệm token", () => {
+  it("dự án lưu trước khi có tokenSaving được điền mặc định; vá từng trường giữ các trường còn lại", async () => {
+    const p = await newProject();
+    await admin.query("update hive.projects set settings = settings - 'tokenSaving' where id = $1", [p.id]);
+    const after = await update("tadmin", p.key, { tokenSaving: { cacheTtl: "1h", bashMaxChars: 30_000 } });
+    expect(after.tokenSaving).toEqual({ ...defaultTokenSaving, cacheTtl: "1h", bashMaxChars: 30_000 });
+    const off = await update("tadmin", p.key, { tokenSaving: { enabled: false } });
+    expect(off.tokenSaving).toEqual({ ...defaultTokenSaving, cacheTtl: "1h", bashMaxChars: 30_000, enabled: false });
   });
 });
 

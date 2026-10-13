@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatAgo,
+  formatCacheHit,
   formatDay,
   formatDayTime,
   formatDuration,
@@ -25,6 +26,12 @@ describe("số và tiền", () => {
   });
   it("không báo USD thì gạch ngang", () => expect(formatUsd(null)).toBe("—"));
   it("số nguyên ngăn nghìn bằng dấu chấm", () => expect(formatInt(182400)).toBe("182.400"));
+});
+
+describe("formatCacheHit", () => {
+  it("đọc cache chia tổng token vào, một chữ số thập phân", () => expect(formatCacheHit(9_730, 200, 70)).toBe("97,3%"));
+  it("không có token vào thì gạch ngang", () => expect(formatCacheHit(0, 0, 0)).toBe("—"));
+  it("cache trượt hoàn toàn là 0%", () => expect(formatCacheHit(0, 500, 20)).toBe("0,0%"));
 });
 
 describe("formatDuration", () => {

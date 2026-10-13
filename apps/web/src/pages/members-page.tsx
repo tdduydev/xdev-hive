@@ -1,7 +1,7 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { type UseQueryResult, useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { Invitation, InvitationStatus, OrgMember, OrgRole } from "@xdev-hive/contracts";
+import type { Invitation, InvitationStatus, OrgMember, OrgRole, TeamRole } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
@@ -80,7 +80,7 @@ const memberText: Dict<{
   lockLabel: (name: string, blocked: boolean) => string;
   acceptedOn: (day: string) => string;
   orgRoles: Record<"owner" | "admin" | "member", string>;
-  teamRoles: Record<"admin" | "member" | "viewer", string>;
+  teamRoles: Record<TeamRole, string>;
   invitationStatus: Record<"pending" | "accepted" | "expired", string>;
 }> = {
   vi: {
@@ -140,7 +140,7 @@ const memberText: Dict<{
     lockLabel: (name, blocked) => `${blocked ? "Mở khoá" : "Khoá"} ${name}`,
     acceptedOn: (day) => `Nhận ${day}`,
     orgRoles: { owner: "Chủ sở hữu", admin: "Quản trị", member: "Thành viên" },
-    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem" },
+    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
     invitationStatus: { pending: "Chờ nhận", accepted: "Đã nhận", expired: "Hết hạn" },
   },
   en: {
@@ -200,7 +200,7 @@ const memberText: Dict<{
     lockLabel: (name, blocked) => `${blocked ? "Unlock" : "Lock"} ${name}`,
     acceptedOn: (day) => `Accepted ${day}`,
     orgRoles: { owner: "Owner", admin: "Admin", member: "Member" },
-    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer" },
+    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
     invitationStatus: { pending: "Pending", accepted: "Accepted", expired: "Expired" },
   },
 };
