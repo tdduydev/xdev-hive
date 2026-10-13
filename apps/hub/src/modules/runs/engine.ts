@@ -13,6 +13,7 @@ import {
   type RunExplore,
   type RunRtk,
   type RunStartInput,
+  type RunTokenGuard,
   type SandboxJobConfig,
   type TaskStatus,
   TERMINAL_RUN_STATES,
@@ -509,6 +510,10 @@ function buildSpec(
     ...(mcpServers.length ? { mcpServers } : {}),
     // Worker đếm nhánh chính đi trước commit này bao nhiêu commit và báo lại trong run_result.report.repo.
     ...(ctx.brief?.commitSha ? { brief: { sha: ctx.brief.commitSha } } : {}),
+    // Nguồn từ khoá của context pack (worker): chỉ phần của task, không lẫn brief hay hướng dẫn chung trong prompt.
+    ...(task && (run.kind === "code" || run.kind === "plan")
+      ? { taskText: run.kind === "code" ? own : task.body ? `${task.title}\n\n${task.body}` : task.title }
+      : {}),
   };
 }
 
@@ -987,6 +992,7 @@ export function createRunsEngine(deps: RunsDeps) {
         else log.warn(`Bỏ sự kiện cost sai dạng: run ${run.id}, seq ${msg.seq}`);
         if (cost?.explore) await applyExplore(tx, run, cost.explore);
         if (cost?.rtk) await applyRtk(tx, run, cost.rtk);
+        if (cost?.guard) await applyTokenGuard(tx, run, cost.guard);
       }
       if (msg.event === "steer_result") await onSteerResult(tx, run, msg.data);
       const to = msg.event === "phase" ? PHASE_STATE[String(msg.data.phase)] : undefined;
@@ -1119,6 +1125,20 @@ export function createRunsEngine(deps: RunsDeps) {
     await tx
       .update(runs)
       .set({ rtk: { ...rtk, attempt: run.attempt } })
+      .where(eq(runs.id, run.id));
+  }
+
+  /** Như applyRtk: số luỹ kế của cùng lần thử không lùi khi gói cost tới lệch thứ tự. */
+  async function applyTokenGuard(tx: Tx, run: RunRow, guard: RunTokenGuard): Promise<void> {
+    const prev = run.tokenGuard;
+    if (
+      prev?.attempt === run.attempt &&
+      (prev.exploreBlocked > guard.exploreBlocked || prev.truncatedChars > guard.truncatedChars)
+    )
+      return;
+    await tx
+      .update(runs)
+      .set({ tokenGuard: { ...guard, attempt: run.attempt } })
       .where(eq(runs.id, run.id));
   }
 

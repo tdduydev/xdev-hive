@@ -23,7 +23,7 @@ describe("buildPatch: tiết kiệm token", () => {
     expect(buildPatch(form, s)).toEqual({ ok: true, patch: null });
   });
 
-  it("chỉ gửi mục tokenSaving khi đổi, đủ bảy trường", () => {
+  it("chỉ gửi mục tokenSaving khi đổi, đủ mọi trường", () => {
     const s = base();
     const form = { ...formFromSettings(s), cacheTtl: "1h" as const, bashMaxChars: " 20000 " };
     expect(buildPatch(form, s)).toEqual({
@@ -39,9 +39,25 @@ describe("buildPatch: tiết kiệm token", () => {
           allowWeb: false,
           rtk: true,
           codegraph: true,
+          contextPack: true,
+          exploreBudget: 4,
+          toolOutputMaxChars: 12000,
         },
       },
     });
+  });
+
+  it("context pack, ngân sách khảo sát và cắt output: 0 là tắt, ô sai báo đúng ô", () => {
+    const s = base();
+    const off = { ...formFromSettings(s), contextPack: false, exploreBudget: "0", toolOutputMaxChars: "0" };
+    expect(buildPatch(off, s)).toMatchObject({
+      ok: true,
+      patch: { tokenSaving: { contextPack: false, exploreBudget: 0, toolOutputMaxChars: 0 } },
+    });
+    const empty = buildPatch({ ...formFromSettings(s), exploreBudget: "" }, s);
+    expect(empty).toMatchObject({ ok: false, errors: { exploreBudget: "Nhập một số." } });
+    const small = buildPatch({ ...formFromSettings(s), toolOutputMaxChars: "500" }, s);
+    expect(small).toMatchObject({ ok: false, errors: { toolOutputMaxChars: "Nhập 0 (tắt) hoặc từ 2.000 ký tự." } });
   });
 
   it("tắt RTK hoặc CodeGraph tạo bản vá và đọc lại đúng từ settings đã lưu", () => {

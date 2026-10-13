@@ -1371,6 +1371,30 @@ describe("chi phí và ngân sách", () => {
     await w.close();
   });
 
+  it("guard: spec có taskText của task, số guard luỹ kế theo lần thử và không lùi", async () => {
+    const m = await seedMachine(`guard-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Sửa LoginHandler trả 500", { projectId: rtkProject });
+    const run = await startRun(task.id);
+    expect(run.tokenGuard).toBeNull();
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    // Chỉ phần của task: không lẫn brief hay hướng dẫn chung của prompt.
+    expect(offer.spec.taskText).toBe("Sửa LoginHandler trả 500\n\nMô tả");
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    await sendCost(w, run.id, 1, cost({ guard: { contextPackFiles: 12, exploreBlocked: 0, truncatedChars: 0 } }));
+    await sendCost(w, run.id, 1, cost({ guard: { contextPackFiles: 12, exploreBlocked: 3, truncatedChars: 9000 } }));
+    await sendCost(w, run.id, 1, cost({ guard: { contextPackFiles: 12, exploreBlocked: 1, truncatedChars: 100 } }));
+    await sendCost(w, run.id, 1, cost({ inputTokens: 7 }));
+    expect((await api<Run>("GET", `/v1/runs/${run.id}`)).data.tokenGuard).toEqual({
+      contextPackFiles: 12,
+      exploreBlocked: 3,
+      truncatedChars: 9000,
+    });
+    await api("POST", `/v1/runs/${run.id}/cancel`);
+    await w.close();
+  });
+
   it("prompt nhắc codegraph_explore chỉ khi máy có CodeGraph, dự án bật và công tắc tổng bật", async () => {
     const withGraph = await seedMachine(`cg-${tag}`, ["claude"], 4);
     const w = await FakeWorker.connect({ ...withGraph, capabilities: ["codegraph", "rtk"] });
