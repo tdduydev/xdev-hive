@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hubToWorker, PROTOCOL_VERSION, steerResultData, workerToHub } from "./worker-protocol.ts";
+import { costEventData, hubToWorker, PROTOCOL_VERSION, steerResultData, workerToHub } from "./worker-protocol.ts";
 
 describe("worker protocol", () => {
   it("nhận gói hello hợp lệ và điền resumeRuns mặc định", () => {
@@ -139,5 +139,27 @@ describe("ràng buộc gói", () => {
   it("heartbeat thiếu runs thì mặc định rỗng", () => {
     const msg = workerToHub.parse({ type: "heartbeat", v: 1, id: "h", load: 0 });
     expect(msg.type === "heartbeat" && msg.runs).toEqual([]);
+  });
+});
+
+describe("sự kiện cost", () => {
+  const base = {
+    inputTokens: 1,
+    outputTokens: 2,
+    cacheReadTokens: 3,
+    cacheWriteTokens: 4,
+    costUsd: null,
+    turns: null,
+    model: null,
+  };
+
+  it("accountId là tuỳ chọn: worker cũ và đăng nhập mặc định không báo", () => {
+    expect(costEventData.parse(base).accountId).toBeUndefined();
+    expect(costEventData.parse({ ...base, accountId: null }).accountId).toBeNull();
+    expect(costEventData.parse({ ...base, accountId: "claude-2" }).accountId).toBe("claude-2");
+  });
+
+  it("từ chối accountId rỗng", () => {
+    expect(costEventData.safeParse({ ...base, accountId: "" }).success).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import {
   type CostSummary,
   DEFAULT_AGENT_POLICY,
   defaultProjectSettings,
+  defaultTokenSaving,
   type ProjectSettings,
   type Run,
   type Task,
@@ -1068,15 +1069,24 @@ describe("chi phí và ngân sách", () => {
     const task = await newTask("Đo chi phí", { projectId: costProject });
     costTaskId = task.id;
     const run = await startRun(task.id);
-    expect(run.cost).toEqual({ tokensIn: 0, tokensOut: 0, cacheRead: 0, cacheWrite: 0, costUsd: null, turns: null });
+    expect(run.cost).toEqual({
+      tokensIn: 0,
+      tokensOut: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      costUsd: null,
+      turns: null,
+      accountId: null,
+    });
     const offer = await w.next("job_offer", (o) => o.runId === run.id);
     // Dự án không đặt trần thì spec không có budget.
     expect(offer.spec.budget).toBeUndefined();
+    expect(offer.spec.tokenSaving).toEqual(defaultTokenSaving);
     w.send({ type: "job_accept", runId: run.id, attempt: 1 });
     const lease1 = await w.next("lease", (l) => l.runId === run.id);
 
     const first = { inputTokens: 100, outputTokens: 10, cacheReadTokens: 1000, cacheWriteTokens: 50, costUsd: 0.1 };
-    await sendCost(w, run.id, 1, cost({ ...first, turns: 1, model: "claude-opus-5-5" }));
+    await sendCost(w, run.id, 1, cost({ ...first, turns: 1, model: "claude-opus-5-5", accountId: "claude-1" }));
     await sendCost(
       w,
       run.id,
@@ -1127,6 +1137,8 @@ describe("chi phí và ngân sách", () => {
       cacheWrite: 80,
       costUsd: 0.25,
       turns: 3,
+      // Lần thử 2 của worker không báo gói (đăng nhập mặc định): giữ gói đã biết thay vì xoá.
+      accountId: "claude-1",
     });
     await w.close();
   });
@@ -1230,6 +1242,10 @@ describe("chi phí và ngân sách", () => {
       });
       const byCli = await q({ groupBy: "cli" });
       expect(byCli.data.groups.map((g) => [g.key, g.runs])).toEqual([["claude", 1]]);
+      const byAccount = await q({ groupBy: "account" });
+      expect(byAccount.data.groups.map((g) => [g.key, g.runs, g.cacheRead, g.cacheWrite])).toEqual([
+        ["claude-1", 1, 3010, 80],
+      ]);
       const byMachine = await q({ groupBy: "machine" });
       const machineId = (
         await runRow((await admin.query("select id from hive.runs where task_id = $1", [costTaskId])).rows[0].id)

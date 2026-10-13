@@ -46,6 +46,7 @@ export function applySettingsPatch(current: ProjectSettings, patch: ProjectSetti
     else delete next.models;
   }
   if (patch.issueIntake) next.issueIntake = assign(current.issueIntake, patch.issueIntake);
+  if (patch.tokenSaving) next.tokenSaving = assign(current.tokenSaving, patch.tokenSaving);
   if (patch.defaultCli !== undefined) next.defaultCli = patch.defaultCli;
   if (patch.budget !== undefined) {
     const budget = patch.budget === null ? {} : assign(current.budget, patch.budget);

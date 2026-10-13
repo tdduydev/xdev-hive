@@ -1,6 +1,7 @@
 import {
   type AssistStartInput,
   type ChecklistItem,
+  defaultTokenSaving,
   type JobMcpServer,
   type JobPolicy,
   type OutcomeCheck,
@@ -418,6 +419,8 @@ function buildSpec(
     branch: run.branch,
     timeoutSec: run.timeoutSec,
     ...(budget ? { budget } : {}),
+    // Dự án tạo trước khi có mục này chưa lưu tokenSaving: gửi mặc định để worker mới và cũ cùng thấy một giá trị.
+    tokenSaving: project.settings.tokenSaving ?? defaultTokenSaving,
     ...(mcpServers.length ? { mcpServers } : {}),
   };
 }

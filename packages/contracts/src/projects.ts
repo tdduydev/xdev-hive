@@ -115,6 +115,36 @@ export type IssueIntake = z.output<typeof issueIntakeSettings>;
 /** Tắt như mọi tính năng mới trong `features`: dự án phải chủ động bật mới nhận việc từ issue. */
 export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", mention: "hive" };
 
+/**
+ * Cài đặt "Tiết kiệm token" cho run Claude Code (worker đặt thành biến môi trường của CLI). Bật mặc định vì số đo
+ * trên máy dev cho thấy output Bash, subagent chạy model nặng và ghi cache 1 giờ là các khoản tốn nhất; dự án nào
+ * cần ngữ cảnh đầy đủ thì tắt hoặc chỉnh từng mục. CLI khác Claude Code không bị ảnh hưởng.
+ */
+export const tokenSavingSettings = z.object({
+  enabled: z.boolean(),
+  /** Số ký tự tối đa của output một lệnh Bash đưa vào ngữ cảnh (BASH_MAX_OUTPUT_LENGTH). */
+  bashMaxChars: z
+    .number("Nhập một số.")
+    .int("Nhập số nguyên.")
+    .min(1000, "Tối thiểu 1.000 ký tự.")
+    .max(150_000, "Tối đa 150.000 ký tự."),
+  /** Phần trăm ngữ cảnh khiến Claude Code tự nén (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE); chỉ hạ được ngưỡng. */
+  autocompactPct: z.number("Nhập một số.").int("Nhập số nguyên.").min(1, "Từ 1 đến 100.").max(100, "Từ 1 đến 100."),
+  /** Model của subagent (CLAUDE_CODE_SUBAGENT_MODEL), vd `sonnet`, `haiku`. */
+  subagentModel: z.string().trim().min(1, "Nhập tên model.").max(100, "Tối đa 100 ký tự."),
+  /** Thời gian giữ cache prompt: `5m` rẻ hơn khi các lượt cách nhau ngắn, `1h` cho run có lượt chờ dài. */
+  cacheTtl: z.enum(["5m", "1h"]),
+});
+export type TokenSaving = z.output<typeof tokenSavingSettings>;
+
+export const defaultTokenSaving: TokenSaving = {
+  enabled: true,
+  bashMaxChars: 15_000,
+  autocompactPct: 70,
+  subagentModel: "sonnet",
+  cacheTtl: "5m",
+};
+
 export const runPermissionMode = z.enum(["workspace", "full"]);
 /**
  * Trần chi phí của dự án. Mỗi trường bỏ trống là không giới hạn. Worker dừng run vượt trần như khi huỷ; hub từ chối
@@ -198,6 +228,8 @@ export const projectSettings = z.object({
    * định vì dự án tạo trước khi có mục này không có nó trong settings đã lưu.
    */
   issueIntake: issueIntakeSettings.default(() => ({ ...defaultIssueIntake })),
+  /** Có mặc định vì dự án tạo trước khi có mục này không có nó trong settings đã lưu. */
+  tokenSaving: tokenSavingSettings.default(() => ({ ...defaultTokenSaving })),
   /**
    * CLI cho run không do người chọn (task từ issue, chạy lại theo bình luận). Bỏ trống thì máy nào có CLI cũng nhận.
    * Không đặt mặc định để settings đã lưu trước đó vẫn hợp lệ.
@@ -262,6 +294,7 @@ export const projectSettingsPatch = z
       })
       .optional(),
     issueIntake: issueIntakeSettings.partial().strict().optional(),
+    tokenSaving: tokenSavingSettings.partial().strict().optional(),
     defaultCli: cli.nullable().optional(),
     budget: z
       .strictObject({
@@ -295,6 +328,7 @@ export function defaultProjectSettings(requiredApprovals = 1): ProjectSettings {
     },
     features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
     issueIntake: { ...defaultIssueIntake },
+    tokenSaving: { ...defaultTokenSaving },
   };
 }
 

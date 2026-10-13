@@ -134,6 +134,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | RUN-10 | The hub shall stop a run that exceeds the project's per-run cost ceiling and refuse new runs for a task that has used its budget. | Implemented | `hub:runs.db.test.ts` |
 | RUN-11 | Members shall search runs by state, project, CLI and machine with cursor paging. | Implemented | `hub:runs-search.db.test.ts`, `web:projects-runs.spec.ts` |
 | RUN-12 | An agent shall be able to ask a person for approval mid-run and wait for the answer. | Planned | — |
+| RUN-13 | For Claude Code runs the worker shall set token-saving environment variables (Bash output length, auto-compact threshold, subagent model, prompt cache TTL, MCP output limit) from the project's "Token saving" settings; the machine configuration and the project's own environment variables shall be able to override each value, and the machine or project shall be able to turn the group off. | Implemented: other CLIs are unchanged | `worker:runner/tokensaving_test.go`, `hub:modules/catalog/settings.db.test.ts`, `web:projects-runs.spec.ts` |
 
 ### 3.6 Machines and workers (FLEET)
 
@@ -195,7 +196,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 |---|---|---|---|
 | OPS-01 | Organization administrators shall configure Telegram and e-mail channels per event type and send a test; secrets shall never be returned. Delivery shall retry temporary failures up to five times. | Implemented | `hub:notify.db.test.ts` |
 | OPS-02 | Each user shall have an in-app inbox with unread count and mark-as-read. | Implemented | `hub:inbox.db.test.ts`, `web:queue-notifications.spec.ts` |
-| OPS-03 | Team administrators shall see tokens and cost per project by task, CLI, machine and day, and the runs stopped by budget. | Implemented | `hub:runs.db.test.ts` |
+| OPS-03 | Team administrators shall see tokens and cost per project by task, CLI, machine, subscription plan (the worker's CLI account) and day, with the prompt cache hit ratio per group and per run, and the runs stopped by budget. | Implemented | `hub:runs.db.test.ts`, `web:admin.spec.ts` |
 | OPS-04 | Administrative writes and every MCP call shall be recorded in an append-only audit log. | Implemented | `hub:modules/audit/audit.db.test.ts` |
 | OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Implemented | `hub:modules/audit/audit.db.test.ts`, `web:audit.spec.ts` (owner/admin; custom auditor roles await RBAC) |
 | OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Implemented | `hub:modules/audit/audit.db.test.ts`, `hub:modules/audit/csv.test.ts`, `web:audit.spec.ts` (owner/admin; 20,000-row limit) |
