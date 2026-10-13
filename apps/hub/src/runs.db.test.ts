@@ -598,6 +598,29 @@ describe("từ chối, huỷ, không có máy", () => {
     await Promise.all([b.close(), c.close()]);
   });
 
+  it("máy đang được giao run khác (tranh khoá máy) thì giao lại ngay khi khoá nhả, không chờ heartbeat", async () => {
+    const m = await seedMachine(`lk-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect(m);
+    // Giao dịch khác đang giữ khoá giao việc của máy, như khi hai run cùng được giao một lúc (e2e 10a).
+    const holder = await admin.connect();
+    await holder.query("begin");
+    await holder.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`runs:machine:${m.id}`]);
+    const task = await newTask("Giao lúc máy đang bị khoá");
+    const run = await startRun(task.id);
+    await new Promise((r) => setTimeout(r, 300));
+    await holder.query("commit");
+    holder.release();
+    const offer = await w.next("job_offer", (o) => o.runId === run.id, 2000);
+    expect(offer.attempt).toBe(1);
+    const waiting = await admin.query("select 1 from hive.run_events where run_id = $1 and type = 'waiting_machine'", [
+      run.id,
+    ]);
+    expect(waiting.rowCount).toBe(0);
+    w.send({ type: "job_reject", runId: run.id, attempt: 1, reason: "test xong" });
+    await api<Run>("POST", `/v1/runs/${run.id}/cancel`);
+    await w.close();
+  });
+
   it("không máy nào có CLI phù hợp thì giữ queued; huỷ run đang chờ thì cancelled ngay", async () => {
     const task = await newTask("Cần Gemini");
     const run = await startRun(task.id, { cli: "gemini" });

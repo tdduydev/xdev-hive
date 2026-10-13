@@ -267,6 +267,14 @@ fn read_project(folder: &Path) -> ProjectNeeds {
     needs
 }
 
+/// Hỏi PATH của shell đăng nhập ở luồng nền ngay khi app mở. Shell đăng nhập có khi mất vài giây (nạp .zshrc, nvm…);
+/// không làm trước thì lệnh CLI đầu tiên của màn nào cũng phải đợi chừng đó.
+pub(crate) fn warm_user_path() {
+    std::thread::spawn(|| {
+        user_path();
+    });
+}
+
 /// PATH của shell đăng nhập. App mở từ Finder chỉ có PATH tối thiểu (/usr/bin:/bin…), không thấy công cụ cài bằng
 /// Homebrew, nvm hay npm -g; hỏi shell của người dùng một lần, lỗi thì thêm các thư mục hay gặp.
 pub(crate) fn user_path() -> &'static str {
@@ -324,10 +332,16 @@ pub(crate) fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<Ou
         buf
     });
     let deadline = Instant::now() + timeout;
+    // Phần lớn lệnh (git, --version) xong trong vài ms: chờ ngắn trước rồi giãn dần tới 50 ms, để lệnh nhanh không phải
+    // đợi trọn một nhịp mà lệnh lâu cũng không hỏi liên tục.
+    let mut pause = Duration::from_millis(1);
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(Duration::from_millis(50));
+            }
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -931,6 +945,18 @@ mod tests {
     }
 
     #[test]
+    fn scans_machine_tools_without_folder() {
+        // Màn Tổng quan và Môi trường quét khi người dùng chưa chọn thư mục: chỉ còn công cụ chung của máy.
+        let dir = project_dir(Some("")).unwrap();
+        let entries = scan(dir.as_deref(), &HubFacts::default());
+        let ids: Vec<&str> = entries.iter().map(|e| e.item.id.as_str()).collect();
+        assert_eq!(ids, TOOLS.iter().map(|t| t.id).collect::<Vec<_>>());
+        assert!(entries.iter().all(|e| e.item.source.is_empty()));
+        let git = entries.iter().find(|e| e.item.id == "git").unwrap();
+        assert!(git.item.required);
+    }
+
+    #[test]
     fn kills_commands_past_the_deadline() {
         #[cfg(unix)]
         {
@@ -939,6 +965,43 @@ mod tests {
             let started = Instant::now();
             assert!(run_with_timeout(cmd, Duration::from_millis(200)).is_none());
             assert!(started.elapsed() < Duration::from_secs(2));
+        }
+    }
+
+    #[test]
+    fn login_path_is_read_once_in_the_background() {
+        let started = Instant::now();
+        warm_user_path();
+        assert!(started.elapsed() < Duration::from_millis(100));
+        let first = Instant::now();
+        let path = user_path();
+        let first = first.elapsed();
+        let again = Instant::now();
+        assert_eq!(user_path(), path);
+        eprintln!(
+            "PATH của shell đăng nhập: lần đầu {first:?}, lần sau {:?}",
+            again.elapsed()
+        );
+        assert!(again.elapsed() < Duration::from_millis(1));
+    }
+
+    #[test]
+    fn quick_commands_return_without_waiting_for_a_poll_tick() {
+        #[cfg(unix)]
+        {
+            // Lấy lần nhanh nhất: máy bận thì một lần lẻ có thể chậm, nhưng không lần nào dưới nhịp chờ 50 ms cũ.
+            let fastest = (0..5)
+                .map(|_| {
+                    let started = Instant::now();
+                    let out =
+                        run_with_timeout(Command::new("true"), Duration::from_secs(5)).unwrap();
+                    assert_eq!(out.code, Some(0));
+                    started.elapsed()
+                })
+                .min()
+                .unwrap();
+            eprintln!("`true` qua run_with_timeout: {fastest:?}");
+            assert!(fastest < Duration::from_millis(30));
         }
     }
 

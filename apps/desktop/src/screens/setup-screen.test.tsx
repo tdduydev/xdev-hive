@@ -136,6 +136,35 @@ describe("SetupScreen", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("Không tìm thấy thư mục /khong-co.");
   });
 
+  it("chưa chọn thư mục: kiểm ngay công cụ chung của máy, không cần chọn gì", async () => {
+    const calls = fakeTauri({ scan_environment: () => ITEMS.filter((i) => !i.source) });
+    render(<SetupScreen />);
+    expect(await screen.findByRole("img", { name: "1 trên 1 mục bắt buộc đã đủ" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Gemini CLI/ })).toBeTruthy();
+    expect(calls).toEqual([{ command: "scan_environment", args: { folder: null, project: null } }]);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("thư mục đã chọn không còn: báo lỗi nhưng vẫn hiện công cụ chung của máy", async () => {
+    saveFolder("/khong-co");
+    const calls = fakeTauri({
+      scan_environment: (args) =>
+        args?.folder ? Promise.reject("Không tìm thấy thư mục /khong-co.") : ITEMS.filter((i) => !i.source),
+      run_install: () => ({ ok: true, code: 0, output: "" }),
+    });
+    render(<SetupScreen />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Không tìm thấy thư mục /khong-co.");
+    expect(await within(alert).findByText(/công cụ chung của máy/)).toBeTruthy();
+    expect(await screen.findByRole("img", { name: "1 trên 1 mục bắt buộc đã đủ" })).toBeTruthy();
+    expect(calls.map((c) => c.args?.folder)).toEqual(["/khong-co", null]);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /^Gemini CLI/ }));
+    await user.click(screen.getByRole("button", { name: "Chạy" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Chạy" }));
+    expect(calls.find((c) => c.command === "run_install")?.args).toEqual({ id: "gemini", folder: null, project: null });
+  });
+
   it("tiếng Anh", async () => {
     setLang("en");
     fakeTauri({ scan_environment: () => ITEMS });

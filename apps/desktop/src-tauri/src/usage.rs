@@ -14,11 +14,16 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 const CLI_TIMEOUT: Duration = Duration::from_secs(30);
 const WINDOW: Duration = Duration::from_secs(7 * 24 * 3600);
 const MAX_SESSIONS: usize = 200;
+const SKILL_WINDOW: Duration = Duration::from_secs(30 * 24 * 3600);
+/// `/usage` và `/context` mất vài giây mỗi lần mà số liệu đổi chậm: dùng lại kết quả dưới một phút khi đổi màn rồi quay
+/// lại, hay khi màn Token và hộp tài khoản AI cùng hỏi.
+const PRINT_FRESH: Duration = Duration::from_secs(60);
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -36,7 +41,7 @@ pub struct ContextReport {
     pub categories: Vec<Category>,
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Limit {
     pub percent: f64,
@@ -193,6 +198,51 @@ pub fn parse_usage(text: &str) -> UsageReport {
         }
     }
     report
+}
+
+type Slot = Arc<Mutex<Option<(Instant, String)>>>;
+
+/// Kết quả còn mới (dưới `max_age`) của khoá thì trả luôn; không thì chạy `run` và nhớ lại khi thành công. Mỗi khoá một
+/// khoá riêng: nhiều màn hỏi cùng lúc thì chỉ một tiến trình chạy, các bên còn lại chờ rồi nhận chung kết quả. Lỗi không
+/// nhớ, để lần sau thử lại.
+fn remembered(
+    memo: &Mutex<HashMap<String, Slot>>,
+    key: String,
+    max_age: Duration,
+    run: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    let slot = memo
+        .lock()
+        .map_err(|e| e.to_string())?
+        .entry(key)
+        .or_default()
+        .clone();
+    let mut slot = slot.lock().map_err(|e| e.to_string())?;
+    if let Some((at, text)) = slot.as_ref()
+        && at.elapsed() < max_age
+    {
+        return Ok(text.clone());
+    }
+    let text = run()?;
+    *slot = Some((Instant::now(), text.clone()));
+    Ok(text)
+}
+
+/// `claude_print` qua bộ nhớ ngắn hạn; `fresh` thì bỏ qua kết quả cũ (nút tải lại).
+fn claude_print_cached(
+    command: &str,
+    folder: Option<&Path>,
+    fresh: bool,
+) -> Result<String, String> {
+    static MEMO: OnceLock<Mutex<HashMap<String, Slot>>> = OnceLock::new();
+    let key = format!(
+        "{command}\0{}",
+        folder.map(|f| f.to_string_lossy()).unwrap_or_default()
+    );
+    let max_age = if fresh { Duration::ZERO } else { PRINT_FRESH };
+    remembered(MEMO.get_or_init(Default::default), key, max_age, || {
+        claude_print(command, folder)
+    })
 }
 
 /// Chạy `claude -p <lệnh>` trong thư mục (để tính đúng CLAUDE.md và skill của thư mục đó), không lưu phiên.
@@ -438,11 +488,91 @@ fn claude_stats(folder: Option<&Path>) -> SessionStats {
     let Some(root) = claude_root() else {
         return SessionStats::default();
     };
-    let sessions: Vec<Session> = claude_files(&root, folder, WINDOW)
+    claude_stats_in(&root, folder)
+}
+
+type FileMemo<T> = Mutex<HashMap<PathBuf, (SystemTime, u64, T)>>;
+
+/// Đọc từng file phiên bằng `read`, dùng lại kết quả của file chưa đổi (cùng giờ sửa và cỡ) từ lần trước. Thư mục phiên
+/// một tuần có thể vài trăm MB (máy dev: 311 MB của Claude) mà mỗi lần mở màn chỉ vài file đang chạy thay đổi. File
+/// phải đọc lại thì chia cho nhiều luồng. Giữ thứ tự của `files`.
+fn read_files<T: Clone + Send>(
+    memo: &FileMemo<T>,
+    files: Vec<PathBuf>,
+    window: Duration,
+    read: fn(&Path) -> T,
+) -> Vec<T> {
+    let stamp = |p: &Path| {
+        let m = std::fs::metadata(p).ok()?;
+        Some((m.modified().ok()?, m.len()))
+    };
+    let files: Vec<_> = files
         .into_iter()
-        .filter_map(|p| read_claude_session(open(&p)?, &stem(&p)))
-        .filter(|s| in_folder(&s.cwd, folder))
+        .map(|p| {
+            let s = stamp(&p);
+            (p, s)
+        })
         .collect();
+    let mut out: Vec<Option<T>> = vec![None; files.len()];
+    let mut todo = Vec::new();
+    if let Ok(memo) = memo.lock() {
+        for (i, (path, s)) in files.iter().enumerate() {
+            match (s, memo.get(path)) {
+                (Some(s), Some((at, len, v))) if *s == (*at, *len) => out[i] = Some(v.clone()),
+                _ => todo.push(i),
+            }
+        }
+    } else {
+        todo = (0..files.len()).collect();
+    }
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(8));
+    let chunk = todo.len().div_ceil(threads).max(1);
+    let files = &files;
+    let parsed: Vec<(usize, T)> = std::thread::scope(|s| {
+        let handles: Vec<_> = todo
+            .chunks(chunk)
+            .map(|part| {
+                s.spawn(move || {
+                    part.iter()
+                        .map(|&i| (i, read(&files[i].0)))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap_or_default())
+            .collect()
+    });
+    if let Ok(mut memo) = memo.lock() {
+        for (i, v) in &parsed {
+            if let (path, Some((at, len))) = &files[*i] {
+                memo.insert(path.clone(), (*at, *len, v.clone()));
+            }
+        }
+        // File ra khỏi cửa sổ thời gian thì không bao giờ được hỏi lại.
+        let now = SystemTime::now();
+        memo.retain(|_, (at, _, _)| now.duration_since(*at).unwrap_or_default() < window);
+    }
+    for (i, v) in parsed {
+        out[i] = Some(v);
+    }
+    out.into_iter().flatten().collect()
+}
+
+fn claude_stats_in(root: &Path, folder: Option<&Path>) -> SessionStats {
+    static MEMO: OnceLock<FileMemo<Option<Session>>> = OnceLock::new();
+    let read = |p: &Path| read_claude_session(open(p)?, &stem(p));
+    let sessions: Vec<Session> = read_files(
+        MEMO.get_or_init(Default::default),
+        claude_files(root, folder, WINDOW),
+        WINDOW,
+        read,
+    )
+    .into_iter()
+    .flatten()
+    .filter(|s| in_folder(&s.cwd, folder))
+    .collect();
     let (totals, sessions) = finish(sessions);
     SessionStats {
         totals,
@@ -460,11 +590,18 @@ fn codex_stats(folder: Option<&Path>) -> SessionStats {
     let Some(root) = root else {
         return SessionStats::default();
     };
+    codex_stats_in(&root, folder)
+}
+
+fn codex_stats_in(root: &Path, folder: Option<&Path>) -> SessionStats {
     let mut stats = SessionStats::default();
     let mut latest = String::new();
-    for path in recent_files(&root, SystemTime::now(), WINDOW) {
-        let Some(reader) = open(&path) else { continue };
-        let (session, limits) = read_codex_session(reader, &stem(&path));
+    type Read = (Option<Session>, Option<(String, Limit, Limit)>);
+    static MEMO: OnceLock<FileMemo<Read>> = OnceLock::new();
+    let read =
+        |p: &Path| -> Read { open(p).map_or((None, None), |r| read_codex_session(r, &stem(p))) };
+    let files = recent_files(root, SystemTime::now(), WINDOW);
+    for (session, limits) in read_files(MEMO.get_or_init(Default::default), files, WINDOW, read) {
         // Hạn mức là của tài khoản, không theo thư mục: lấy sự kiện mới nhất trong mọi phiên.
         if let Some((at, primary, secondary)) = limits {
             if at > latest {
@@ -482,28 +619,43 @@ fn codex_stats(folder: Option<&Path>) -> SessionStats {
 }
 
 #[tauri::command]
-pub async fn claude_context(folder: Option<String>) -> Result<ContextReport, String> {
+pub async fn claude_context(
+    folder: Option<String>,
+    fresh: Option<bool>,
+) -> Result<ContextReport, String> {
     let dir = folder_path(folder.as_deref())?;
     tauri::async_runtime::spawn_blocking(move || {
-        claude_print("/context", dir.as_deref()).map(|t| parse_context(&t))
+        claude_print_cached("/context", dir.as_deref(), fresh == Some(true))
+            .map(|t| parse_context(&t))
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn claude_usage() -> Result<UsageReport, String> {
-    tauri::async_runtime::spawn_blocking(|| claude_print("/usage", None).map(|t| parse_usage(&t)))
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn claude_usage(fresh: Option<bool>) -> Result<UsageReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        claude_print_cached("/usage", None, fresh == Some(true)).map(|t| parse_usage(&t))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-/// Lần gọi tool `Skill` trong một file phiên Claude Code, theo tên skill; chỉ tính khi cwd của phiên nằm trong thư mục.
-pub fn count_skill_uses(
-    reader: impl BufRead,
+/// Cộng lần gọi skill của một file phiên theo tên; chỉ tính khi cwd của phiên nằm trong thư mục.
+fn add_skill_uses(
+    (cwd, found): &(String, Vec<String>),
     folder: Option<&Path>,
     counts: &mut HashMap<String, u32>,
 ) {
+    if in_folder(cwd, folder) {
+        for name in found {
+            *counts.entry(name.clone()).or_default() += 1;
+        }
+    }
+}
+
+/// cwd của một file phiên Claude Code và tên skill của từng lần gọi tool `Skill`, theo thứ tự.
+fn skill_calls(reader: impl BufRead) -> (String, Vec<String>) {
     let mut found: Vec<String> = Vec::new();
     let mut cwd = String::new();
     for line in reader.lines().map_while(Result::ok) {
@@ -531,11 +683,7 @@ pub fn count_skill_uses(
             }
         }
     }
-    if in_folder(&cwd, folder) {
-        for name in found {
-            *counts.entry(name).or_default() += 1;
-        }
-    }
+    (cwd, found)
 }
 
 /// Số lần agent của tôi gọi từng skill trong 30 ngày (màn Skills, cột "Tôi dùng"). Codex không ghi lần đọc skill thành
@@ -544,18 +692,28 @@ pub fn count_skill_uses(
 pub async fn skill_uses(folder: Option<String>) -> Result<HashMap<String, u32>, String> {
     let dir = folder_path(folder.as_deref())?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mut counts = HashMap::new();
-        if let Some(root) = claude_root() {
-            for p in claude_files(&root, dir.as_deref(), Duration::from_secs(30 * 24 * 3600)) {
-                if let Some(r) = open(&p) {
-                    count_skill_uses(r, dir.as_deref(), &mut counts);
-                }
-            }
-        }
-        counts
+        claude_root()
+            .map(|root| skill_uses_in(&root, dir.as_deref()))
+            .unwrap_or_default()
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+fn skill_uses_in(root: &Path, folder: Option<&Path>) -> HashMap<String, u32> {
+    static MEMO: OnceLock<FileMemo<(String, Vec<String>)>> = OnceLock::new();
+    let read = |p: &Path| open(p).map(skill_calls).unwrap_or_default();
+    let files = claude_files(root, folder, SKILL_WINDOW);
+    let mut counts = HashMap::new();
+    for calls in read_files(
+        MEMO.get_or_init(Default::default),
+        files,
+        SKILL_WINDOW,
+        read,
+    ) {
+        add_skill_uses(&calls, folder, &mut counts);
+    }
+    counts
 }
 
 #[tauri::command]
@@ -573,6 +731,127 @@ pub async fn session_stats(engine: String, folder: Option<String>) -> Result<Ses
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slow_cli_output_runs_once_for_callers_at_the_same_time() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let memo = Mutex::new(HashMap::new());
+        let runs = AtomicUsize::new(0);
+        // `claude -p /usage` thật mất vài giây; 200 ms đủ để hai màn hỏi chồng lên nhau.
+        let slow = || {
+            runs.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(200));
+            Ok::<_, String>(USAGE.to_string())
+        };
+        let started = Instant::now();
+        std::thread::scope(|s| {
+            for _ in 0..3 {
+                s.spawn(|| {
+                    let text = remembered(&memo, "/usage".into(), PRINT_FRESH, slow).unwrap();
+                    assert_eq!(parse_usage(&text).session.unwrap().percent, 11.0);
+                });
+            }
+        });
+        let together = started.elapsed();
+        let again = Instant::now();
+        remembered(&memo, "/usage".into(), PRINT_FRESH, slow).unwrap();
+        eprintln!(
+            "3 lời gọi cùng lúc: {together:?}, {} lần chạy; gọi lại: {:?}",
+            runs.load(Ordering::SeqCst),
+            again.elapsed()
+        );
+        assert_eq!(runs.load(Ordering::SeqCst), 1);
+        assert!(again.elapsed() < Duration::from_millis(50));
+
+        // Nút tải lại (max_age 0) chạy lại; khoá khác (thư mục khác) không dùng chung kết quả.
+        remembered(&memo, "/usage".into(), Duration::ZERO, slow).unwrap();
+        remembered(&memo, "/context\0/w/app".into(), PRINT_FRESH, slow).unwrap();
+        assert_eq!(runs.load(Ordering::SeqCst), 3);
+    }
+
+    /// Thư mục phiên giả cỡ thật (máy dev: 391 file Claude, 311 MB trong 7 ngày): `files` file, mỗi file `lines` dòng.
+    fn fake_sessions(tag: &str, files: usize, lines: usize) -> PathBuf {
+        use std::io::Write;
+        let root = std::env::temp_dir().join(format!("hive-usage-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let pad = "x".repeat(800);
+        for f in 0..files {
+            let dir = root.join(format!("-w-app{}", f % 4));
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut out = std::io::BufWriter::new(
+                std::fs::File::create(dir.join(format!("s{f}.jsonl"))).unwrap(),
+            );
+            for i in 0..lines {
+                writeln!(out, r#"{{"type":"assistant","timestamp":"2026-10-12T01:{:02}:00Z","cwd":"/w/app{}","message":{{"id":"m{i}","model":"claude-opus-5-5","content":[{{"type":"text","text":"{pad}"}}],"usage":{{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":900,"output_tokens":10}}}}}}"#, i % 60, f % 4).unwrap();
+            }
+        }
+        root
+    }
+
+    #[test]
+    fn session_stats_read_unchanged_files_once() {
+        let root = fake_sessions("claude", 40, 2000);
+        let first = Instant::now();
+        let a = claude_stats_in(&root, None);
+        let first = first.elapsed();
+        let second = Instant::now();
+        let b = claude_stats_in(&root, None);
+        let second = second.elapsed();
+        eprintln!("session_stats trên 40 file (~70 MB): lần đầu {first:?}, lần sau {second:?}");
+        assert_eq!(a.totals, b.totals);
+        assert_eq!(a.totals.sessions, 40);
+        assert_eq!(a.totals.input, 40 * 2000 * 1002);
+
+        // File đang ghi (phiên còn chạy) thì đọc lại: số liệu luôn mới.
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(root.join("-w-app0/s0.jsonl"))
+                .unwrap();
+            writeln!(f, r#"{{"type":"assistant","timestamp":"2026-10-12T02:00:00Z","cwd":"/w/app0","message":{{"id":"new","usage":{{"input_tokens":5,"cache_read_input_tokens":0,"output_tokens":1}}}}}}"#).unwrap();
+        }
+        let c = claude_stats_in(&root, Some(Path::new("/w/app0")));
+        assert_eq!(c.totals.sessions, 10);
+        assert_eq!(c.totals.input, 10 * 2000 * 1002 + 5);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn skill_uses_read_unchanged_files_once() {
+        use std::io::Write;
+        let root = fake_sessions("skills", 40, 2000);
+        for f in 0..40 {
+            let mut out = std::fs::OpenOptions::new()
+                .append(true)
+                .open(root.join(format!("-w-app{}/s{f}.jsonl", f % 4)))
+                .unwrap();
+            writeln!(out, r#"{{"type":"assistant","cwd":"/w/app{}","message":{{"content":[{{"type":"tool_use","name":"Skill","input":{{"skill":"db-migration"}}}}]}}}}"#, f % 4).unwrap();
+        }
+        let first = Instant::now();
+        let all = skill_uses_in(&root, None);
+        let first = first.elapsed();
+        let second = Instant::now();
+        let again = skill_uses_in(&root, None);
+        let second = second.elapsed();
+        eprintln!("skill_uses trên 40 file (~70 MB): lần đầu {first:?}, lần sau {second:?}");
+        assert_eq!(all.get("db-migration"), Some(&40));
+        assert_eq!(all, again);
+        let one = skill_uses_in(&root, Some(Path::new("/w/app1")));
+        assert_eq!(one.get("db-migration"), Some(&10));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn failed_cli_output_is_not_remembered() {
+        let memo = Mutex::new(HashMap::new());
+        let failed = remembered(&memo, "/usage".into(), PRINT_FRESH, || {
+            Err("Claude Code báo lỗi (mã 1).".into())
+        });
+        assert!(failed.is_err());
+        let ok = remembered(&memo, "/usage".into(), PRINT_FRESH, || Ok("ok".into()));
+        assert_eq!(ok.unwrap(), "ok");
+    }
 
     // Đầu ra thật của Claude Code 2.1.296 trên máy dev (2026-10-12), rút gọn bảng Skills.
     const CONTEXT: &str = "## Context Usage\n\n**Model:** claude-opus-5-5  \n**Tokens:** 12.7k / 1m (1%)\n\n### Estimated usage by category\n\n| Category | Tokens | Percentage |\n|----------|--------|------------|\n| System prompt | 2.3k | 0.2% |\n| System tools | 6.1k | 0.6% |\n| System tools (deferred) | 13.3k | 1.3% |\n| Skills | 4.3k | 0.4% |\n| Messages | 10 | 0.0% |\n| Free space | 954.3k | 95.4% |\n| Autocompact buffer | 33k | 3.3% |\n\n### Skills\n\n| Skill | Source | Tokens |\n|-------|--------|--------|\n| dataviz | Built-in | ~480 |\n";
@@ -683,6 +962,35 @@ mod tests {
     }
 
     #[test]
+    fn codex_limits_come_from_the_newest_file_also_when_remembered() {
+        let root = std::env::temp_dir().join(format!("hive-codex-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("2026/10/12")).unwrap();
+        let session = |at: &str, cwd: &str, percent: f64| {
+            format!(
+                "{{\"timestamp\":\"{at}\",\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{cwd}\"}}}}\n{{\"timestamp\":\"{at}\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"token_count\",\"info\":{{\"total_token_usage\":{{\"input_tokens\":100,\"cached_input_tokens\":50,\"output_tokens\":5}}}},\"rate_limits\":{{\"primary\":{{\"used_percent\":{percent},\"resets_at\":1}},\"secondary\":{{\"used_percent\":{percent},\"resets_at\":2}}}}}}}}\n"
+            )
+        };
+        let old = root.join("2026/10/12/a.jsonl");
+        std::fs::write(&old, session("2026-10-12T01:00:00Z", "/w/api", 10.0)).unwrap();
+        std::fs::write(
+            root.join("2026/10/12/b.jsonl"),
+            session("2026-10-12T05:00:00Z", "/w/web", 40.0),
+        )
+        .unwrap();
+        for _ in 0..2 {
+            let stats = codex_stats_in(&root, Some(Path::new("/w/api")));
+            assert_eq!(stats.totals.sessions, 1);
+            assert_eq!(stats.primary.as_ref().map(|l| l.percent), Some(40.0));
+        }
+        // Phiên cũ chạy tiếp và ghi sự kiện mới hơn: lần đọc sau thấy ngay.
+        std::fs::write(&old, session("2026-10-12T09:00:00Z", "/w/api", 55.0)).unwrap();
+        let stats = codex_stats_in(&root, None);
+        assert_eq!(stats.totals.sessions, 2);
+        assert_eq!(stats.primary.map(|l| l.percent), Some(55.0));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
     fn folder_filter_and_project_dir_encoding() {
         assert!(in_folder("/w/app", Some(Path::new("/w/app"))));
         assert!(in_folder("/w/app/sub", Some(Path::new("/w/app/"))));
@@ -739,11 +1047,19 @@ mod tests {
             "\n",
         );
         let mut counts = HashMap::new();
-        count_skill_uses(log.as_bytes(), Some(Path::new("/w/pay")), &mut counts);
+        add_skill_uses(
+            &skill_calls(log.as_bytes()),
+            Some(Path::new("/w/pay")),
+            &mut counts,
+        );
         assert_eq!(counts.get("db-migration"), Some(&2));
         assert_eq!(counts.len(), 1);
         let mut other = HashMap::new();
-        count_skill_uses(log.as_bytes(), Some(Path::new("/w/other")), &mut other);
+        add_skill_uses(
+            &skill_calls(log.as_bytes()),
+            Some(Path::new("/w/other")),
+            &mut other,
+        );
         assert!(other.is_empty());
     }
 

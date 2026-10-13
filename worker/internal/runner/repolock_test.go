@@ -171,3 +171,23 @@ func TestIsGitLockError(t *testing.T) {
 		}
 	}
 }
+
+// Checkout ngoài khoá vẫn phải cho worktree sạch, đúng nhánh như `worktree add` thường.
+func TestAddWorktreeChecksOutCleanTree(t *testing.T) {
+	remote, base := makeRemote(t)
+	cache := filepath.Join(t.TempDir(), "cache.git")
+	must(t, "git", "clone", "--bare", remote, cache)
+	work := filepath.Join(t.TempDir(), "w")
+	if err := addWorktree(context.Background(), cache, work, "-B", "ai/clean", work, base); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(filepath.Join(work, "README")); err != nil || string(b) != "init" {
+		t.Fatalf("README = %q, %v", b, err)
+	}
+	if st := mustOut(t, "git", "-C", work, "status", "--porcelain"); st != "" {
+		t.Fatalf("worktree bẩn: %q", st)
+	}
+	if br := strings.TrimSpace(mustOut(t, "git", "-C", work, "branch", "--show-current")); br != "ai/clean" {
+		t.Fatalf("nhánh = %q", br)
+	}
+}

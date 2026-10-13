@@ -100,6 +100,7 @@ function fakeTauri() {
     run_cli_stream: () => "run-1",
     cancel_cli_stream: () => null,
     propose_doc: (args) => ({ proposalId: "4f1c2d3e-aaaa", status: "pending", key: args?.key, baseVersion: 3 }),
+    "plugin:dialog|open": () => FOLDER,
   };
   window.__TAURI__ = {
     core: {
@@ -419,12 +420,48 @@ describe("DocsScreen", () => {
     expect(await screen.findByText(/Chưa cài Claude Code trên máy/)).toBeTruthy();
   });
 
-  it("chưa chọn thư mục: màn chọn thư mục; tiếng Anh", () => {
+  it("chưa chọn thư mục: vẫn xem tài liệu trên hub; chỉ khung chat và cây code mời chọn thư mục", async () => {
+    saveFolder("");
+    const { calls } = fakeTauri();
+    renderDocs();
+    const explorer = screen.getByRole("complementary", { name: "Thư mục" });
+    expect(await within(explorer).findByRole("button", { name: /architecture/ })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Kiến trúc payment-api" })).toBeTruthy();
+    expect(within(explorer).getByText("Chưa chọn thư mục")).toBeTruthy();
+    expect(within(explorer).getByText("Chọn thư mục để xem code.")).toBeTruthy();
+    const chat = screen.getByRole("complementary", { name: "Hỏi về thư mục này" });
+    expect(within(chat).getByText(/Chọn thư mục dự án để hỏi AI về code/)).toBeTruthy();
+    expect(within(chat).getByRole("textbox", { name: "Hỏi hoặc yêu cầu viết tài liệu từ code" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.queryByText("Đang đọc…")).toBeNull();
+    expect(calls.find((c) => c.args?.name === "doc_list")?.args).toEqual({ name: "doc_list", args: { limit: 50 } });
+    expect(calls.some((c) => ["workspace_meta", "folder_tree"].includes(c.command))).toBe(false);
+    expect(calls.some((c) => c.args?.name === "project_list")).toBe(false);
+  });
+
+  it("chọn thư mục từ khung chat thì đọc dự án của thư mục; màn chọn thư mục có nút quay lại; tiếng Anh", async () => {
     saveFolder("");
     setLang("en");
-    fakeTauri();
+    const { calls } = fakeTauri();
+    const user = userEvent.setup();
     renderDocs();
+    const explorer = screen.getByRole("complementary", { name: "Explorer" });
+    await user.click(within(explorer).getByRole("button", { name: /No folder chosen/ }));
     expect(screen.getByRole("heading", { name: "Pick a folder to write docs in" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open folder…" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    const chat = screen.getByRole("complementary", { name: "Ask about this folder" });
+    await user.click(within(chat).getByRole("button", { name: "Open folder…" }));
+    expect(localStorage.getItem("hive.folder")).toBe(FOLDER);
+    expect(await screen.findByText("↔ payment-api")).toBeTruthy();
+    expect(calls.filter((c) => c.args?.name === "doc_list").at(-1)?.args).toEqual({
+      name: "doc_list",
+      args: { prefix: "project/payment-api/", limit: 50 },
+    });
+    expect(screen.getByRole("textbox", { name: "Ask, or request docs from the code" })).toHaveProperty(
+      "disabled",
+      false,
+    );
   });
 });

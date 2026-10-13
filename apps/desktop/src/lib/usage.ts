@@ -44,8 +44,13 @@ export interface SessionStats {
 
 const folderArg = (folder: string) => (folder.trim() ? folder.trim() : null);
 
-export const claudeContext = (folder: string) => invoke<ContextReport>("claude_context", { folder: folderArg(folder) });
-export const claudeUsage = () => invoke<UsageReport>("claude_usage");
+/**
+ * `claude -p /context` và `/usage` mất vài giây: Rust dùng lại kết quả dưới một phút và gộp các lời gọi trùng nhau.
+ * `fresh` bỏ qua kết quả đó (nút tải lại).
+ */
+export const claudeContext = (folder: string, fresh = false) =>
+  invoke<ContextReport>("claude_context", { folder: folderArg(folder), fresh });
+export const claudeUsage = (fresh = false) => invoke<UsageReport>("claude_usage", { fresh });
 export const sessionStats = (engine: Engine, folder: string) =>
   invoke<SessionStats>("session_stats", { engine, folder: folderArg(folder) });
 
