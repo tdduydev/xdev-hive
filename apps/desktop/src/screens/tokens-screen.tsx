@@ -215,7 +215,7 @@ function Card({ title, aside, children }: { title: string; aside?: ReactNode; ch
   return (
     <section className="overflow-hidden rounded-xl border bg-card text-card-foreground">
       <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
-        <h2 className="text-[14.5px] font-semibold">{title}</h2>
+        <h2 className="text-[15px] font-semibold">{title}</h2>
         {aside}
       </div>
       {children}
@@ -225,10 +225,10 @@ function Card({ title, aside, children }: { title: string; aside?: ReactNode; ch
 
 function LoadState({ load, children }: { load: Load<unknown>; children: ReactNode }) {
   const t = useT(text);
-  if (load.error) return <p className="px-4 py-3 text-[13px] text-destructive">{load.error}</p>;
+  if (load.error) return <p className="px-4 py-3 text-sm text-destructive">{load.error}</p>;
   if (load.loading && !load.data)
     return (
-      <p role="status" className="flex items-center gap-2 px-4 py-3 text-[13px] text-muted-foreground">
+      <p role="status" className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
         <LoaderCircleIcon aria-hidden="true" className="size-4 animate-spin" />
         {t.loading}
       </p>
@@ -239,7 +239,7 @@ function LoadState({ load, children }: { load: Load<unknown>; children: ReactNod
 function Tile({ label, value, note }: { label: string; value: string; note?: string | undefined }) {
   return (
     <div className="flex flex-col gap-1 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
-      <span className="text-[12.5px] text-muted-foreground">{label}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
       <span className="font-mono text-2xl font-semibold tracking-tight">{value}</span>
       {note && <span className="text-xs text-muted-foreground">{note}</span>}
     </div>
@@ -262,7 +262,7 @@ function ContextBar({ report }: { report: ContextReport }) {
           />
         ))}
       </div>
-      <ul className="grid grid-cols-1 gap-x-4 gap-y-2 text-[12.5px] sm:grid-cols-2 min-[1000px]:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2 min-[1000px]:grid-cols-3">
         {parts.map((c, i) => (
           <li key={c.name} className="flex items-center gap-2">
             <span className={cn("size-2.5 shrink-0 rounded-[3px]", SEGMENT_COLORS[i % SEGMENT_COLORS.length])} />
@@ -308,7 +308,7 @@ export function TokensScreen() {
   return (
     <div className="flex flex-col gap-3.5">
       <header className="flex flex-wrap items-center gap-3">
-        <p className="min-w-60 flex-1 text-[13px] text-muted-foreground">{t.lead}</p>
+        <p className="min-w-60 flex-1 text-sm text-muted-foreground">{t.lead}</p>
         <fieldset className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
           <legend className="sr-only">{t.engine}</legend>
           {(["claude", "codex"] as const).map((e) => (
@@ -317,7 +317,7 @@ export function TokensScreen() {
               type="button"
               aria-pressed={engine === e}
               onClick={() => setEngine(e)}
-              className="h-7 cursor-pointer rounded-md px-2.5 text-[12.5px] text-muted-foreground aria-pressed:bg-card aria-pressed:font-semibold aria-pressed:text-foreground aria-pressed:shadow-sm"
+              className="h-7 cursor-pointer rounded-md px-2.5 text-sm text-muted-foreground aria-pressed:bg-card aria-pressed:font-semibold aria-pressed:text-foreground aria-pressed:shadow-sm"
             >
               {e === "claude" ? "Claude Code" : "Codex"}
             </button>
@@ -410,7 +410,7 @@ export function TokensScreen() {
       {engine === "claude" && (
         <Card title={t.drivers} aside={<span className="font-mono text-xs text-muted-foreground">/usage · 7d</span>}>
           <LoadState load={usage}>
-            <ul className="grid grid-cols-1 gap-x-5 gap-y-2 px-4 py-2.5 text-[13px] sm:grid-cols-2">
+            <ul className="grid grid-cols-1 gap-x-5 gap-y-2 px-4 py-2.5 text-sm sm:grid-cols-2">
               {usage.data?.drivers.map((d) => (
                 <li key={d.text} className="flex items-center gap-2.5">
                   <span className="w-11 text-right font-mono font-semibold">{d.percent}%</span>
@@ -429,13 +429,13 @@ export function TokensScreen() {
 
       <Card title={t.tipsTitle} aside={<span className="text-xs text-muted-foreground">{t.tipsSub}</span>}>
         {tipIds.length === 0 ? (
-          <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.noTips}</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t.noTips}</p>
         ) : (
           <ul>
             {tipIds.map((id) => (
               <li key={id} className="flex flex-col border-b px-4 py-2.5 last:border-b-0">
-                <strong className="text-[13.5px] font-semibold">{t.tips[id].title}</strong>
-                <span className="text-[12.5px] text-muted-foreground">{t.tips[id].why}</span>
+                <strong className="text-sm font-semibold">{t.tips[id].title}</strong>
+                <span className="text-sm text-muted-foreground">{t.tips[id].why}</span>
               </li>
             ))}
           </ul>
@@ -448,7 +448,7 @@ export function TokensScreen() {
       >
         <LoadState load={stats}>
           {s && s.sessions.length === 0 ? (
-            <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.noSessions}</p>
+            <p className="px-4 py-3 text-sm text-muted-foreground">{t.noSessions}</p>
           ) : (
             <div className="overflow-x-auto">
               <Table>
