@@ -115,8 +115,10 @@ const text: Dict<{
   offGroup: (n: number) => string;
   states: Record<PlanState, string>;
   session: string;
+  sessionShort: string;
   week: string;
   byModel: string;
+  byGroup: (n: number) => string;
   weekOf: (model: string) => string;
   groupDisabled: string;
   stopMark: (percent: number) => string;
@@ -233,8 +235,10 @@ const text: Dict<{
       near: "Gần ngưỡng",
     },
     session: "Phiên 5 giờ",
+    sessionShort: "5 giờ",
     week: "Tuần",
     byModel: "Tuần theo model",
+    byGroup: (n) => `${n} nhóm model`,
     weekOf: (model) => `Tuần ${model}`,
     groupDisabled: "Phiên 5 giờ của nhóm này đang tắt",
     stopMark: (percent) => `Ngưỡng dừng ${percent}%`,
@@ -382,8 +386,10 @@ const text: Dict<{
       near: "Near threshold",
     },
     session: "5-hour session",
+    sessionShort: "5 h",
     week: "Week",
     byModel: "Week by model",
+    byGroup: (n) => `${n} model groups`,
     weekOf: (model) => `Week ${model}`,
     groupDisabled: "The 5-hour session of this group is off",
     stopMark: (percent) => `Stop threshold ${percent}%`,
@@ -529,9 +535,9 @@ const BAR_TONE = { ok: "bg-primary", near: "bg-warning", over: "bg-destructive" 
 /** Chữ cái làm logo của CLI: app không có logo thương hiệu của các CLI. */
 const CLI_MARK: Record<string, string> = { claude: "C", codex: "O", antigravity: "A" };
 
-/** Lưới thẻ: 1 cột khi hẹp, 2 cột từ 900px, 3 cột từ 1200px. */
+/** Lưới thẻ gọn: 1 cột khi hẹp, 2 cột từ 560px, 3 cột từ 820px (cửa sổ app thường rộng ~1100px, vùng nội dung ~860px). */
 const CARD_GRID =
-  "m-0 grid list-none grid-cols-1 gap-3 p-0 min-[900px]:grid-cols-2 min-[1200px]:grid-cols-3 [&>li]:min-w-0";
+  "m-0 grid list-none grid-cols-1 items-start gap-2 p-0 min-[560px]:grid-cols-2 min-[820px]:grid-cols-3 [&>li]:min-w-0";
 
 const name = (p: Plan) => p.label || p.id;
 const cliName = (cli: string) => CLI_NAME[cli] ?? cli;
@@ -720,11 +726,11 @@ export function PlansScreen() {
       <section
         aria-label={t.machine}
         style={{ "--cols": perCli.length + 1 } as CSSProperties}
-        className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border bg-border min-[760px]:grid-cols-2 min-[1200px]:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
+        className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border bg-border min-[560px]:grid-cols-2 min-[820px]:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
       >
-        <div className="flex flex-col gap-1.5 bg-card px-4 py-3 text-card-foreground">
+        <div className="flex flex-col gap-1 bg-card px-3 py-2 text-card-foreground">
           <span className="text-sm font-medium text-muted-foreground">{t.machine}</span>
-          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
             <Stat
               label={t.summaryReady}
               value={list ? summary.ready : "—"}
@@ -744,7 +750,7 @@ export function PlansScreen() {
           <div
             key={c.cli}
             data-cli-summary={c.cli}
-            className="flex flex-col gap-1 bg-card px-4 py-3 text-card-foreground"
+            className="flex flex-col gap-0.5 bg-card px-3 py-2 text-card-foreground"
           >
             <span className="flex items-center gap-2">
               <CliMark cli={c.cli} />
@@ -1002,15 +1008,24 @@ function PlanCard({
       data-plan={p.id}
       data-state={state}
       className={cn(
-        "flex h-full flex-col gap-3 rounded-xl border bg-card p-4 text-card-foreground",
+        "flex flex-col gap-1.5 rounded-lg border bg-card px-3 py-2.5 text-card-foreground",
         !p.enabled && "opacity-75",
       )}
     >
-      <div className="flex items-start gap-2">
-        <span className="flex min-w-0 flex-1 flex-col leading-snug">
-          <strong className="truncate text-sm font-semibold">{name(p)}</strong>
-          {p.email && <span className="truncate text-xs text-muted-foreground">{p.email}</span>}
-          <span className="truncate font-mono text-xs text-muted-foreground">{p.id}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="flex min-w-0 flex-1 flex-col leading-tight">
+          <strong className="truncate text-sm font-semibold" title={name(p)}>
+            {name(p)}
+          </strong>
+          <span className="truncate text-xs text-muted-foreground" title={p.email ?? p.id}>
+            {p.email && (
+              <>
+                <span>{p.email}</span>
+                {" · "}
+              </>
+            )}
+            <span className="font-mono">{p.id}</span>
+          </span>
         </span>
         <Pill tone={STATE_TONE[state]}>
           <StateIcon aria-hidden="true" className="size-3.5" />
@@ -1034,9 +1049,10 @@ function PlanCard({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+      <div className={METER_GRID}>
         <Meter
           label={t.session}
+          short={t.sessionShort}
           plan={name(p)}
           limit={session}
           stop={p.stopAtSession ?? DEFAULTS.stopAtSession}
@@ -1046,6 +1062,7 @@ function PlanCard({
         />
         <Meter
           label={t.week}
+          short={t.week}
           plan={name(p)}
           limit={week}
           stop={p.stopAtWeek ?? DEFAULTS.stopAtWeek}
@@ -1055,7 +1072,9 @@ function PlanCard({
         />
         {/* Gói chưa đăng nhập hay thiếu CLI đã có dòng giải thích riêng bên dưới. */}
         {(!session || !week) && p.supported && state !== "signedOut" && state !== "noCli" && (
-          <span className="col-span-2 text-xs text-muted-foreground">{why}</span>
+          <span className="col-span-4 truncate text-xs text-muted-foreground" title={why}>
+            {why}
+          </span>
         )}
       </div>
 
@@ -1063,7 +1082,7 @@ function PlanCard({
       {groups.length > 0 && <GroupLimits groups={groups} plan={name(p)} t={t} />}
 
       {notes && (
-        <div className="flex flex-col items-start gap-1.5 text-xs text-muted-foreground">
+        <div className="flex flex-col items-start gap-1 text-xs text-muted-foreground">
           {!p.supported ? (
             <span>{t.unsupported}</span>
           ) : state === "noCli" ? (
@@ -1100,7 +1119,7 @@ function PlanCard({
         </div>
       )}
 
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
           {t.meta(p.priority, p.active ?? 0, Math.max(p.maxConcurrent, 1))}
         </span>
@@ -1160,8 +1179,16 @@ function Bar({ pct, stop, label, thin }: { pct: number; stop?: number; label: st
   );
 }
 
+/**
+ * Một dòng mỗi thước: nhãn, thanh, phần trăm, giờ reset. Hai thước của thẻ chung một lưới (`METER_GRID`) nên thanh phiên và
+ * tuần thẳng cột dù giờ reset dài ngắn khác nhau.
+ */
+const METER_GRID = "grid grid-cols-[2.75rem_minmax(2.5rem,1fr)_2.25rem_auto] items-center gap-x-2 gap-y-1 text-xs";
+const METER_ROW = "contents [&>*:last-child]:whitespace-nowrap";
+
 function Meter({
   label,
+  short,
   plan,
   limit,
   stop,
@@ -1170,6 +1197,8 @@ function Meter({
   now,
 }: {
   label: string;
+  /** Nhãn hiện trên thẻ; `label` đầy đủ dùng cho trình đọc màn hình. */
+  short: string;
   plan: string;
   limit: Limit | null;
   stop: number;
@@ -1179,25 +1208,30 @@ function Meter({
 }) {
   if (!limit) {
     return (
-      <span data-usage-unknown={label} className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
-        <span>{label}</span>
-        <span className="text-xs font-medium text-foreground">{t.unknown}</span>
+      <span data-usage-unknown={label} className={cn(METER_ROW, "text-muted-foreground")}>
+        <span className="truncate" title={label}>
+          {short}
+        </span>
+        <span className="col-span-3 font-medium text-foreground">{t.unknown}</span>
       </span>
     );
   }
   const pct = pctOf(limit);
+  const reset = limit.resetsAt
+    ? future(limit.resetsAt, now)
+      ? t.resetAt(clock(limit.resetsAt, now, lang))
+      : t.resetPast
+    : null;
   return (
-    <span className="flex min-w-0 flex-col gap-1.5">
-      <span className="flex items-baseline text-xs text-muted-foreground">
-        <span>{label}</span>
-        <span className="ml-auto font-mono text-xs font-semibold text-foreground">{pct}%</span>
+    <span className={METER_ROW}>
+      <span className="truncate text-muted-foreground" title={label}>
+        {short}
       </span>
       <Bar pct={pct} stop={stop} label={`${label}: ${plan}`} />
-      {limit.resetsAt && (
-        <span className="text-xs text-muted-foreground">
-          {future(limit.resetsAt, now) ? t.resetAt(clock(limit.resetsAt, now, lang)) : t.resetPast}
-        </span>
-      )}
+      <span className="text-right font-mono font-semibold">{pct}%</span>
+      <span className="truncate text-muted-foreground" title={reset ?? undefined}>
+        {reset}
+      </span>
     </span>
   );
 }
@@ -1205,19 +1239,21 @@ function Meter({
 /** Claude: tuần theo từng model; không có ngưỡng dừng riêng nên thanh chỉ đổi màu khi gần hết. */
 function ModelWeeks({ models, plan, t }: { models: ModelLimit[]; plan: string; t: T }) {
   return (
-    <div data-models className="flex flex-col gap-1.5 border-t pt-3">
-      <span className="text-xs text-muted-foreground">{t.byModel}</span>
-      {models.map((m) => {
-        const pct = pctOf(m);
-        return (
-          <span key={m.name} className="grid grid-cols-[4.5rem_minmax(0,1fr)_2.75rem] items-center gap-2 text-xs">
-            <span className="truncate">{m.name}</span>
-            <Bar pct={pct} thin label={`${t.weekOf(m.name)}: ${plan}`} />
-            <span className="text-right font-mono font-semibold">{pct}%</span>
-          </span>
-        );
-      })}
-    </div>
+    <details data-models className="group text-xs">
+      <summary className="cursor-pointer text-muted-foreground select-none">{t.byModel}</summary>
+      <div className="mt-1 flex flex-col gap-1">
+        {models.map((m) => {
+          const pct = pctOf(m);
+          return (
+            <span key={m.name} className="grid grid-cols-[4.5rem_minmax(0,1fr)_2.75rem] items-center gap-2 text-xs">
+              <span className="truncate">{m.name}</span>
+              <Bar pct={pct} thin label={`${t.weekOf(m.name)}: ${plan}`} />
+              <span className="text-right font-mono font-semibold">{pct}%</span>
+            </span>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 
@@ -1240,25 +1276,28 @@ function GroupLimits({ groups, plan, t }: { groups: GroupLimit[]; plan: string; 
     );
   };
   return (
-    <div data-groups className="flex flex-col gap-2 border-t pt-3">
-      {groups.map((g) => (
-        <div key={g.name} data-group={g.name} className="flex flex-col gap-1.5">
-          <span className="flex flex-wrap items-baseline gap-x-2 text-xs">
-            <strong className="font-semibold">{g.name}</strong>
-            {g.models && <span className="min-w-0 truncate text-muted-foreground">{g.models}</span>}
-          </span>
-          {g.sessionDisabled ? (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <PowerOffIcon aria-hidden="true" className="size-3.5" />
-              {t.groupDisabled}
+    <details data-groups className="text-xs">
+      <summary className="cursor-pointer text-muted-foreground select-none">{t.byGroup(groups.length)}</summary>
+      <div className="mt-1 flex flex-col gap-1.5">
+        {groups.map((g) => (
+          <div key={g.name} data-group={g.name} className="flex flex-col gap-1.5">
+            <span className="flex flex-wrap items-baseline gap-x-2 text-xs">
+              <strong className="font-semibold">{g.name}</strong>
+              {g.models && <span className="min-w-0 truncate text-muted-foreground">{g.models}</span>}
             </span>
-          ) : (
-            row(g, t.session, g.session)
-          )}
-          {row(g, t.week, g.week)}
-        </div>
-      ))}
-    </div>
+            {g.sessionDisabled ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <PowerOffIcon aria-hidden="true" className="size-3.5" />
+                {t.groupDisabled}
+              </span>
+            ) : (
+              row(g, t.session, g.session)
+            )}
+            {row(g, t.week, g.week)}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
