@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { accountLoginStartInput } from "./fleet.ts";
 import {
   costEventData,
   hubToWorker,
@@ -89,18 +90,12 @@ describe("file mẫu dùng chung với worker Go", async () => {
     expect(hubToWorker.parse(msg)).toEqual(msg);
   });
 
-  // Gói hub chỉ gửi cho worker đã khai capability tương ứng, nên worker Go chưa biết gói vẫn chạy đúng. Mẫu của gói
-  // nằm trong file chung khi worker Go có kiểu cho nó (account_set: specs/011 T061 thêm mẫu và bỏ khỏi danh sách này).
-  const notInGoYet = new Set(["account_set"]);
-
   it("có mẫu cho mọi loại gói", () => {
-    const types = (u: typeof workerToHub | typeof hubToWorker) =>
-      u.options
-        .map((o) => o.shape.type.value)
-        .filter((t) => !notInGoYet.has(t))
-        .sort();
-    expect(fixtures.workerToHub.map((m) => m.type).sort()).toEqual(types(workerToHub));
-    expect(fixtures.hubToWorker.map((m) => m.type).sort()).toEqual(types(hubToWorker));
+    const types = (u: typeof workerToHub | typeof hubToWorker) => u.options.map((o) => o.shape.type.value).sort();
+    // Một loại có thể có nhiều mẫu (account_login_event loại url và done).
+    const seen = (list: { type: string }[]) => [...new Set(list.map((m) => m.type))].sort();
+    expect(seen(fixtures.workerToHub)).toEqual(types(workerToHub));
+    expect(seen(fixtures.hubToWorker)).toEqual(types(hubToWorker));
   });
 });
 
@@ -241,5 +236,40 @@ describe("sự kiện cost", () => {
 
   it("từ chối accountId rỗng", () => {
     expect(costEventData.safeParse({ ...base, accountId: "" }).success).toBe(false);
+  });
+});
+
+describe("đăng nhập gói từ web (T063)", () => {
+  const start = {
+    type: "account_login_start",
+    v: 1,
+    id: "s",
+    requestId: "r",
+    cli: "claude",
+    label: "Gói A",
+    how: "plan",
+  };
+
+  it("chỉ nhận CLI và cách đăng nhập đã biết", () => {
+    expect(hubToWorker.safeParse(start).success).toBe(true);
+    expect(hubToWorker.safeParse({ ...start, cli: "gemini" }).success).toBe(false);
+    expect(hubToWorker.safeParse({ ...start, how: "browser" }).success).toBe(false);
+    expect(hubToWorker.safeParse({ ...start, label: "  " }).success).toBe(false);
+  });
+
+  it("chữ dán và sự kiện có giới hạn độ dài", () => {
+    const input = { type: "account_login_input", v: 1, id: "i", requestId: "r", text: "x".repeat(4097) };
+    expect(hubToWorker.safeParse(input).success).toBe(false);
+    const event = { type: "account_login_event", v: 1, id: "e", requestId: "r", kind: "url", text: "x".repeat(2001) };
+    expect(workerToHub.safeParse(event).success).toBe(false);
+    expect(workerToHub.safeParse({ ...event, kind: "output", text: "" }).success).toBe(false);
+  });
+
+  it("Codex chỉ đăng nhập bằng mã thiết bị; Claude không dùng mã thiết bị", () => {
+    const base = { machineId: "0a0a0a0a-0000-4000-8000-000000000001", label: "Gói" };
+    expect(accountLoginStartInput.safeParse({ ...base, cli: "codex", how: "device" }).success).toBe(true);
+    expect(accountLoginStartInput.safeParse({ ...base, cli: "codex", how: "plan" }).success).toBe(false);
+    expect(accountLoginStartInput.safeParse({ ...base, cli: "claude", how: "device" }).success).toBe(false);
+    expect(accountLoginStartInput.safeParse({ ...base, cli: "claude", how: "token" }).success).toBe(true);
   });
 });
