@@ -69,4 +69,36 @@ describe("nâng cấp database đã có dữ liệu", () => {
       await expect(runMigrations(ownerUrl)).resolves.toBeUndefined();
     });
   }
+
+  it("nâng từ trước migration review code: quy trình tài liệu cũ thành subject = doc", async () => {
+    const tag = "0056_code_review_workflows";
+    const entry = journal.entries.find((e) => e.tag === tag);
+    expect(entry).toBeDefined();
+    const ownerUrl = await emptyDatabase();
+    await runMigrations(ownerUrl, prefixFolder(entry?.idx ?? 0));
+    // Superuser vì hive_owner cũng chịu RLS (FORCE) nên không tự seed được dòng của tổ chức.
+    const adminOnDb = new URL(db.adminUrl);
+    adminOnDb.pathname = new URL(ownerUrl).pathname;
+    const old = new pg.Pool({ connectionString: adminOnDb.toString(), max: 1 });
+    try {
+      const org = randomUUID();
+      await old.query("insert into hive.orgs (id, slug, name, created_by) values ($1, $2, 'o', 'u')", [
+        org,
+        `org-${org.slice(0, 8)}`,
+      ]);
+      await old.query(
+        "insert into hive.review_workflows (org_id, name, preset, doc_prefixes, phases) values ($1, 'cũ', 'aidlc', '{specs/}', '[]')",
+        [org],
+      );
+      await runMigrations(ownerUrl);
+      const { rows } = await old.query("select subject, code from hive.review_workflows where org_id = $1", [org]);
+      expect(rows).toEqual([{ subject: "doc", code: null }]);
+      const tables = await old.query(
+        "select to_regclass('hive.code_reviews') as r, to_regclass('hive.code_review_gate_runs') as g",
+      );
+      expect(tables.rows[0]).toEqual({ r: "hive.code_reviews", g: "hive.code_review_gate_runs" });
+    } finally {
+      await old.end();
+    }
+  });
 });

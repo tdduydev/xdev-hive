@@ -8,10 +8,12 @@ import type {
   ChecksState,
   CommentOptions,
   CommitFilesInput,
+  CommitStatusInput,
   CreateRepoInput,
   FetchLike,
   GitProvider,
   MergeMethod,
+  PullRequestFile,
   PullRequestInput,
   PullRequestState,
   RepoInfo,
@@ -20,6 +22,7 @@ import type {
   ScmUser,
   WebhookInput,
 } from "./types.ts";
+import { COMMIT_STATUS_DESCRIPTION_MAX, MAX_PR_FILES } from "./types.ts";
 
 interface CommonOptions {
   /** GitHub Enterprise Server: `https://ghe.example.com/api/v3`. */
@@ -89,6 +92,23 @@ const GH_MERGEABLE: Record<string, PullRequestState["mergeable"]> = {
 
 // neutral, skipped, success là đạt; stale là chạy dở quá 14 ngày, coi như hỏng.
 const GH_FAILED = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"]);
+
+interface GhPullFile {
+  filename: string;
+  previous_filename?: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  /** Vắng khi file nhị phân hoặc diff quá lớn. */
+  patch?: string;
+}
+
+const GH_FILE_STATUS: Record<string, PullRequestFile["status"]> = {
+  added: "added",
+  removed: "removed",
+  renamed: "renamed",
+  copied: "added",
+};
 
 interface GhHook {
   id: number;
@@ -621,6 +641,50 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
       );
       if (!file?.content) return file ? "" : null;
       return file.encoding === "base64" ? Buffer.from(file.content, "base64").toString("utf8") : file.content;
+    },
+
+    async prFiles(ref: RepoRef, number: number) {
+      const perPage = 100;
+      const out: PullRequestFile[] = [];
+      // GitHub dừng ở 3 000 file (30 trang); trang cuối ngắn hơn per_page báo hết sớm hơn.
+      for (let page = 1; out.length < MAX_PR_FILES; page++) {
+        const files = await orNull(() =>
+          request<GhPullFile[]>("GET /repos/{owner}/{repo}/pulls/{pull_number}/files", {
+            owner: ref.owner,
+            repo: ref.name,
+            pull_number: number,
+            per_page: perPage,
+            page,
+          }),
+        );
+        if (!files) return null;
+        for (const f of files) {
+          out.push({
+            path: f.filename,
+            ...(f.previous_filename ? { previousPath: f.previous_filename } : {}),
+            status: GH_FILE_STATUS[f.status] ?? "modified",
+            additions: f.additions,
+            deletions: f.deletions,
+            ...(f.patch === undefined ? {} : { patch: f.patch }),
+            // File nhị phân và đổi tên thuần không có dòng đổi nên không có patch cũng không phải bị cắt.
+            truncated: f.patch === undefined && f.additions + f.deletions > 0,
+          });
+        }
+        if (files.length < perPage) break;
+      }
+      return out.slice(0, MAX_PR_FILES);
+    },
+
+    async setCommitStatus(ref: RepoRef, sha: string, input: CommitStatusInput) {
+      await request("POST /repos/{owner}/{repo}/statuses/{sha}", {
+        owner: ref.owner,
+        repo: ref.name,
+        sha,
+        state: input.state,
+        context: input.context,
+        description: input.description.slice(0, COMMIT_STATUS_DESCRIPTION_MAX),
+        ...(input.targetUrl ? { target_url: input.targetUrl } : {}),
+      });
     },
 
     async closePR(ref: RepoRef, number: number) {

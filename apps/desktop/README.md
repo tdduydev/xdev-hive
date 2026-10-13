@@ -82,14 +82,26 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
 Tag `v*` đóng gói app cho macOS arm64, Windows x64, Linux amd64 và gắn vào GitHub Release cùng worker; mỗi lần đổi
 app trên `main` có bản thử ở mục Artifacts của workflow `Desktop`. Chi tiết, tên file và ký mã: `docs/releasing.md`.
 
+**Phát hành bằng nút trên GitHub:** Actions → Release → Run workflow (chọn nhánh `main`), nhập `version` dạng `x.y.z`
+(không có chữ `v`, tag chưa tồn tại) và `notes` (markdown, tuỳ chọn). Workflow tạo tag `v<version>` trên commit của `main`,
+dựng worker và app, rồi công bố bản phát hành: thân bài gồm ghi chú, dòng Full Changelog so với tag liền trước và mục
+Contributors. Đẩy tag `v*` bằng tay vẫn chạy như cũ.
+
 ## Cập nhật tự động
 
-App kiểm bản mới lúc mở và sáu giờ một lần, tải và cài bản ký đúng khoá công khai trong `plugins.updater.pubkey` của
-`tauri.conf.json`, rồi báo người dùng mở lại app. Worker đi kèm app không tự cập nhật (app thay cả gói).
+App kiểm bản mới lúc mở, 30 phút một lần và khi cửa sổ app được focus (cách lần kiểm trước ít nhất 5 phút), tải bản ký
+đúng khoá công khai trong `plugins.updater.pubkey` của `tauri.conf.json` rồi hiện dòng "Đã tải bản X. Mở lại để cập nhật"
+ở đầu cửa sổ (cùng mục trong khay). App không tự thoát vì máy có thể đang có run chạy: bản mới được cài khi người dùng
+bấm Mở lại (worker dừng êm trước) hoặc thoát app. Worker đi kèm app không tự cập nhật (app thay cả gói).
+
+- Thứ tự hỏi: hub của máy (nếu đã đăng ký), rồi GitHub
+  `https://github.com/tdduydev/xdev-hive/releases/latest/download/latest.json`. Máy chưa đăng ký chỉ hỏi GitHub. Fork đổi
+  địa chỉ GitHub bằng biến môi trường `HIVE_UPDATE_ENDPOINT`, đặt lúc chạy hoặc lúc build.
+- Lệnh cho giao diện: `update_status`, `check_updates_now`, `relaunch_to_update`; sự kiện `update-ready` `{version, notes}`.
 
 - Khoá riêng nằm ở secret `TAURI_SIGNING_PRIVATE_KEY` (và `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) của repo. Workflow
   `Desktop` chỉ dựng gói cập nhật (`.app.tar.gz`, AppImage, `-setup.exe` kèm `.sig`) khi có secret này.
-- Tag `v*`: `release.yml` ghép chữ ký thành `latest.json` (static JSON của Tauri updater, platform `darwin-aarch64`,
+- Tag `v*` (đẩy tay hoặc do nút Release tạo): `release.yml` ghép chữ ký thành `latest.json` (static JSON của Tauri updater, platform `darwin-aarch64`,
   `linux-x86_64`, `windows-x86_64`) và gắn vào bản phát hành.
 - Hub đọc `latest.json` của bản phát hành mới nhất trên GitHub (đổi bằng `HIVE_DESKTOP_RELEASES`, `off` để tắt; đọc lại
   tối đa mỗi 5 phút) và trả cho app tại `/api/v1/desktop/updates/<os>/<arch>/<phiên bản hiện tại>`. App lấy địa chỉ hub
