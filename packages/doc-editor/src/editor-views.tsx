@@ -6,11 +6,14 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { NodeViewContent, NodeViewWrapper, type ReactNodeViewProps, ReactNodeViewRenderer } from "@tiptap/react";
 import { EMBED_LINE } from "@xdev-hive/contracts";
+import { CopyButton } from "@xdev-hive/ui/code-block";
+import { languageLabel } from "@xdev-hive/ui/highlight";
+import { MermaidDiagram } from "@xdev-hive/ui/mermaid-diagram";
 import { cn } from "cn";
-import { createContext, useContext, useEffect, useId, useState } from "react";
-import type { DocEditorEnv } from "./env.tsx";
+import { createContext, useContext } from "react";
+import { codeHighlight } from "./code-highlight.ts";
+import type { DocEditorEnv, Lang } from "./env.tsx";
 import { DocEmbed, docExtensions, type MarkdownCodec } from "./markdown.ts";
-import { renderMermaid } from "./mermaid.ts";
 import { cleanPastedHtml, looksLikeMarkdown } from "./paste.ts";
 import { type SlashController, slashCommand } from "./slash.ts";
 import type { docEditorText } from "./text.ts";
@@ -18,7 +21,7 @@ import type { docEditorText } from "./text.ts";
 export type EditorText = (typeof docEditorText)["vi"];
 
 /** Node view vẽ trong cây React của EditorContent nên đọc chữ và env qua context thay vì qua props của node. */
-export const ViewContext = createContext<{ t: EditorText; env: DocEditorEnv | null } | null>(null);
+export const ViewContext = createContext<{ t: EditorText; env: DocEditorEnv | null; lang: Lang } | null>(null);
 
 function useView() {
   const v = useContext(ViewContext);
@@ -27,73 +30,37 @@ function useView() {
 }
 
 function CodeBlockView({ node, updateAttributes, editor }: ReactNodeViewProps) {
-  const { t } = useView();
+  const { t, lang: uiLang } = useView();
   const lang = String(node.attrs.language ?? "");
   return (
-    <NodeViewWrapper as="figure" className="my-3">
-      <div contentEditable={false} className="mb-1 flex items-center gap-2 font-mono text-xs text-muted-foreground">
-        {editor.isEditable ? (
-          <input
-            aria-label={t.language}
-            placeholder={t.languagePh}
-            value={lang}
-            spellCheck={false}
-            onChange={(e) => updateAttributes({ language: e.currentTarget.value.trim() || null })}
-            className="h-6 w-32 rounded-md border border-border bg-transparent px-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        ) : (
-          lang && <span>{lang === "mermaid" ? "Mermaid" : lang}</span>
-        )}
+    <NodeViewWrapper as="figure" className="my-4">
+      <div className="hive-code m-0">
+        <div contentEditable={false} className="hive-code-bar">
+          {editor.isEditable ? (
+            <input
+              aria-label={t.language}
+              placeholder={t.languagePh}
+              value={lang}
+              spellCheck={false}
+              onChange={(e) => updateAttributes({ language: e.currentTarget.value.trim() || null })}
+              className="h-6 w-32 rounded-md border border-border bg-transparent px-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          ) : (
+            <span className="hive-code-lang">{languageLabel(lang)}</span>
+          )}
+          <span className="flex-1" />
+          <CopyButton text={node.textContent} lang={uiLang} />
+        </div>
+        <pre>
+          <NodeViewContent<"code"> as="code" className="hljs" />
+        </pre>
       </div>
-      <pre className="overflow-x-auto rounded-lg bg-brand-navy px-3.5 py-3 font-mono text-sm leading-relaxed whitespace-pre-wrap text-[#E2E8F0]">
-        <NodeViewContent<"code"> as="code" />
-      </pre>
-      {lang === "mermaid" && <MermaidPreview code={node.textContent} />}
-    </NodeViewWrapper>
-  );
-}
-
-function MermaidPreview({ code }: { code: string }) {
-  const { t } = useView();
-  const id = `mmd${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const [svg, setSvg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    // Đợi ngừng gõ một chút: vẽ lại mỗi phím vừa chậm vừa nhấp nháy.
-    const h = setTimeout(() => {
-      renderMermaid(id, code).then(
-        (out) => {
-          if (!alive) return;
-          setSvg(out);
-          setError(null);
-        },
-        (e: unknown) => alive && setError(e instanceof Error ? e.message : String(e)),
-      );
-    }, 300);
-    return () => {
-      alive = false;
-      clearTimeout(h);
-    };
-  }, [id, code]);
-  return (
-    <div
-      contentEditable={false}
-      role="img"
-      aria-label={t.mermaidPreview}
-      className="mt-2 overflow-x-auto rounded-lg border border-border bg-card p-3"
-    >
-      {error ? (
-        <p className="text-xs text-destructive">
-          {t.mermaidError}: {error.split("\n")[0]}
-        </p>
-      ) : svg ? (
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG do mermaid dựng với securityLevel strict (đã lọc HTML).
-        <div className="flex justify-center [&_svg]:max-w-full" dangerouslySetInnerHTML={{ __html: svg }} />
-      ) : (
-        <p className="text-xs text-muted-foreground">{t.mermaidLoading}</p>
+      {lang === "mermaid" && (
+        <div contentEditable={false}>
+          <MermaidDiagram code={node.textContent} lang={uiLang} debounceMs={300} hideSource className="mt-2" />
+        </div>
       )}
-    </div>
+    </NodeViewWrapper>
   );
 }
 
@@ -226,6 +193,7 @@ export function editorExtensions(opts: {
     ...docExtensions({
       codeBlock: CodeBlock.configure({ defaultLanguage: null }).extend({
         addNodeView: () => ReactNodeViewRenderer(CodeBlockView),
+        addProseMirrorPlugins: () => [codeHighlight()],
       }),
       docEmbed: DocEmbed.extend({ addNodeView: () => ReactNodeViewRenderer(DocEmbedView) }),
     }),
