@@ -50,7 +50,7 @@ description: "Task list for Desktop Application v2 implementation"
     - `apps/desktop/src/components/AppNav.test.tsx` (new)
   - **Dependencies**: T001.
 
-- [ ] **T003 [P] [US1] Rust Integration Test for Registration Command & Env Token**
+- [x] **T003 [P] [US1] Rust Integration Test for Registration Command & Env Token**
   - **Goal**: Add Rust unit test in `src-tauri/src/register.rs` verifying multiline bash, PowerShell, and cmd command parsing, whitespace trimming, and ensuring tokens are never formatted into CLI flag strings.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/register.rs`
@@ -270,14 +270,14 @@ description: "Task list for Desktop Application v2 implementation"
     - `apps/desktop/src/components/UserSettingsModal.tsx` (new)
   - **Dependencies**: T001.
 
-- [ ] **T024 [P] [US8] Multi-Window Capability Verification & Remote Sandboxing**
+- [x] **T024 [P] [US8] Multi-Window Capability Verification & Remote Sandboxing**
   - **Goal**: Audit `apps/desktop/src-tauri/capabilities/default.json`. Verify that all desktop host commands (`register_worker`, `run_cli_stream`, `sync_skill`, etc.) are bound strictly to windows `["register", "app"]`. Verify the remote Hub window (`main`) has zero permissions, preventing remote XSS or code injection.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/capabilities/default.json`
     - `apps/desktop/src-tauri/src/lib.rs`
   - **Dependencies**: T001.
 
-- [ ] **T025 [P] [US8] Auto-Updater Endpoint & Sidecar Bundle Verification**
+- [x] **T025 [P] [US8] Auto-Updater Endpoint & Sidecar Bundle Verification**
   - **Goal**: Ensure `tauri-plugin-updater` checks `/api/v1/desktop/updates/{os}/{arch}/{version}` when `pubkey` is set. Confirm `SelfUpdate: false` is maintained on the sidecar Go worker so worker binaries are never mutated independently of the app bundle. Add end-to-end build test script for `pnpm --filter @xdev-hive/desktop app:build`.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/lib.rs`
@@ -309,9 +309,9 @@ description: "Task list for Desktop Application v2 implementation"
 - [ ] **T033 Designs for My work and Knowledge**: `AppWork.dc.html` and `AppKnowledge.dc.html` in the design system;
   the screens follow the existing app tables and cards until then. **Dependencies**: T029, T031.
 - [x] **T034 Collapsible AppNav, language drop-down (FR-030)**: button in the window header; choice in localStorage.
-- [ ] **T035 Worker: several CLI accounts (US13, FR-028)**: `accounts.json`, pick by priority, concurrency and
+- [x] **T035 Worker: several CLI accounts (US13, FR-028)**: `accounts.json`, pick by priority, concurrency and
   cooldown, set the config directory variable, cool down on usage-limit messages, account label in run events.
-- [ ] **T036 App: import v1 accounts, AI accounts list (US13, FR-029)**: one-time import from
+- [x] **T036 App: import v1 accounts, AI accounts list (US13, FR-029)**: one-time import from
   `~/.xdev-hive/config.json`, enable or disable per account. **Dependencies**: T035.
 
 ---

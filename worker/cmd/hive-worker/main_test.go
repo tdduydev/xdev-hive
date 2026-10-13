@@ -183,3 +183,12 @@ func TestRunscAllowsHostUDS(t *testing.T) {
 		}
 	}
 }
+
+func TestSidecarDisablesSelfUpdate(t *testing.T) {
+	if selfUpdates(true) {
+		t.Fatal("sidecar của app desktop (--stdin-control) không được tự cập nhật")
+	}
+	if !selfUpdates(false) {
+		t.Fatal("worker chạy riêng vẫn tự cập nhật theo lệnh của hub")
+	}
+}
