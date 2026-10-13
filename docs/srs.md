@@ -262,6 +262,22 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | DESK-10 | The desktop app shall install bundle updates via `tauri-plugin-updater` from `/api/v1/desktop/updates/{os}/{arch}/{version}`, with worker sidecar self-update disabled to prevent binary drift. | Implemented | `hub:desktop-updates.test.ts` (manifest theo nền tảng, phiên bản), `desktop:src-tauri/src/lib.rs` (check_updates), `.github/workflows/desktop.yml` + `release.yml` (ký, latest.json), `worker:internal/channel` (SelfUpdate tắt khi đi kèm app) |
 | DESK-11 | The desktop app shall sign users in through the system browser (RFC 8252 loopback redirect with PKCE S256): after the user approves on the hub, the app shall exchange a single-use code for a machine registration token and a personal token, then register the machine and link the account without manual token entry. | Implemented | `hub:modules/fleet/desktop-connect.db.test.ts`, `web:hub/desktop-connect.spec.ts`, `desktop:src-tauri/src/browser_login.rs` (tests), `desktop:register-screen.test.tsx` |
 
+### 3.18 Code review workflows (CR)
+
+Spec [009](../specs/009-code-review-workflows/spec.md), [ADR 0018](adr/0018-code-review-workflows.md).
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| CR-01 | Team and organization administrators shall configure code review workflows on the review workflow page, choosing per workflow whether it applies to documents or code, with triggers by project, target branch, task type and changed paths, presets, and a dry run against an existing code run. | Planned | — |
+| CR-02 | Code review workflows shall support gates for AI review (one to three CLIs and models, rubric, minimum score, aggregation, blocking severity), automated rules (commands, file count, denied paths, diff size, secrets, agent report), CI on the pull request head, and human reviewers by user, role or team with quorum and SLA, each with conditions on paths, task types and diff size. | Planned | — |
+| CR-03 | When a code run ends `succeeded` or `needs_review` with an open pull request and a matching code workflow, the hub shall start a code review instance and evaluate its gates in order, replacing the outcome policy's cross-review check and automatic merge-queue entry for that run. | Planned | — |
+| CR-04 | Members shall see pull requests awaiting their decision in "Awaiting my review" on the web and in the desktop app, with the diff, AI review results and automated check results, and shall approve or request changes against the head commit they reviewed. | Planned | — |
+| CR-05 | On a request for changes the instance shall route to an agent fix run carrying the feedback as instructions (bounded by a revision limit and the task budget), to the requester, or to the previous human gate; a new commit on the pull request shall start a new round. | Planned | — |
+| CR-06 | An approved instance shall put the pull request into the merge queue automatically or wait for a member, according to the workflow or project merge mode; the merge queue shall not merge a pull request whose code review is not approved. | Planned | — |
+| CR-07 | Projects without a matching code workflow shall keep the existing outcome policy behaviour; administrators may create a code workflow draft from a project's cross-review, CI and approval settings. | Planned | — |
+| CR-08 | AI review runs of a code workflow shall be team runs that run only on shared machines or runner hosts, unless the gate is set to run on the requester's machine. | Planned | — |
+| CR-09 | Gate results, decisions, overrides of automated gates (with a mandatory reason) and routing shall be audited and notified, and overdue human gates shall be reminded once per wait. | Planned | — |
+
 ## 4. External interface requirements
 
 | ID | Requirement | Status |
