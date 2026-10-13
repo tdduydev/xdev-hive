@@ -18,13 +18,13 @@ const CLIS: Cli[] = ["claude", "codex", "gemini", "antigravity"];
 const isCli = (v: string): v is Cli => (CLIS as string[]).includes(v);
 
 /** Nút "Tạo việc" và dialog của nó. `projects` là dự án đang hoạt động; chỉ một dự án thì không hỏi lại. */
-export function CreateTaskButton({ projects }: { projects: Project[] }) {
+export function CreateTaskButton({ projects, label }: { projects: Project[]; label?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <Button variant="default" onClick={() => setOpen(true)} disabled={projects.length === 0}>
         <Icon name="plus" />
-        Tạo việc
+        {label ?? "Tạo việc"}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

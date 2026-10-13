@@ -370,7 +370,7 @@ function LimitInput({
   const [raw, setRaw] = useState(value === null ? "" : String(value));
   useEffect(() => setRaw(value === null ? "" : String(value)), [value]);
   return (
-    <div className="flex flex-col gap-1.5 text-[13px] font-medium">
+    <div className="flex flex-col gap-1.5 text-sm font-medium">
       <label htmlFor={id}>{label}</label>
       <Input
         id={id}
@@ -496,7 +496,7 @@ export function PoliciesPage() {
           <PolicyCard title="Model" hint={t.modelHint}>
             {CLIS.map((c) => (
               <div key={c.id} className="flex flex-col gap-1.5">
-                <span className="text-[13px] font-medium">{c.name}</span>
+                <span className="text-sm font-medium">{c.name}</span>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {form.allowedModels[c.id].length === 0 && (
                     <span className="text-xs text-muted-foreground">{t.anyModel}</span>
@@ -505,7 +505,7 @@ export function PoliciesPage() {
                     <span
                       key={m}
                       className={cn(
-                        "inline-flex h-6.5 items-center gap-1.5 rounded-full border px-2.5 font-mono text-[12.5px]",
+                        "inline-flex h-6.5 items-center gap-1.5 rounded-full border px-2.5 font-mono text-sm",
                         i === 0 && "border-transparent bg-accent text-accent-foreground",
                       )}
                     >
@@ -535,7 +535,7 @@ export function PoliciesPage() {
                         <Input
                           autoFocus
                           aria-label={t.addModel(c.name)}
-                          className="h-7 w-48 font-mono text-[12.5px]"
+                          className="h-7 w-48 font-mono text-sm"
                           value={newModel}
                           onChange={(e) => setNewModel(e.target.value)}
                           onKeyDown={(e) => e.key === "Escape" && setAdding(null)}
@@ -571,7 +571,7 @@ export function PoliciesPage() {
           </PolicyCard>
 
           <PolicyCard title={t.perm} hint={t.permHint}>
-            <div className="flex flex-col gap-1.5 text-[13px] font-medium">
+            <div className="flex flex-col gap-1.5 text-sm font-medium">
               <label htmlFor="policy-default-perm">{t.defaultPerm}</label>
               <NativeSelect
                 id="policy-default-perm"
@@ -616,7 +616,7 @@ export function PoliciesPage() {
               disabled={disabled}
             />
             {form.hooks.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">{t.noHooks}</p>
+              <p className="text-sm text-muted-foreground">{t.noHooks}</p>
             ) : (
               <ul className="overflow-hidden rounded-[10px] border">
                 {form.hooks.map((h, i) => (
@@ -627,7 +627,7 @@ export function PoliciesPage() {
                   >
                     <Pill className="font-mono">{h.event}</Pill>
                     <span className="flex min-w-0 flex-1 flex-col leading-snug">
-                      <span className="text-[13.5px]">{h.name}</span>
+                      <span className="text-sm">{h.name}</span>
                       <span className="truncate font-mono text-xs text-muted-foreground" title={h.command}>
                         {h.command}
                       </span>
@@ -664,7 +664,7 @@ export function PoliciesPage() {
                   aria-selected={tab === f.id}
                   onClick={() => setTab(f.id)}
                   className={cn(
-                    "inline-flex h-6.5 items-center rounded-full border px-2.5 font-mono text-[12.5px]",
+                    "inline-flex h-6.5 items-center rounded-full border px-2.5 font-mono text-sm",
                     tab === f.id && "border-transparent bg-accent text-accent-foreground",
                   )}
                 >
@@ -764,7 +764,7 @@ export function PoliciesPage() {
                   update({ limits: { ...form.limits, maxParallelPerMachine: v === null ? null : Math.round(v) } })
                 }
               />
-              <div className="flex flex-col gap-1.5 text-[13px] font-medium">
+              <div className="flex flex-col gap-1.5 text-sm font-medium">
                 <label htmlFor="policy-retention">{t.retention}</label>
                 <NativeSelect
                   id="policy-retention"
@@ -850,7 +850,7 @@ function HookDialog({
             <DialogTitle>{t.hookTitle}</DialogTitle>
             <DialogDescription>{t.hookDesc}</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-1.5 text-[13px] font-medium">
+          <div className="flex flex-col gap-1.5 text-sm font-medium">
             <label htmlFor={`${ids}-event`}>{t.hookEvent}</label>
             <NativeSelect
               id={`${ids}-event`}
@@ -865,7 +865,7 @@ function HookDialog({
             </NativeSelect>
             <span className="text-xs font-normal text-muted-foreground">{t.eventHint[hook.event]}</span>
           </div>
-          <div className="flex flex-col gap-1.5 text-[13px] font-medium">
+          <div className="flex flex-col gap-1.5 text-sm font-medium">
             <label htmlFor={`${ids}-name`}>{t.hookName}</label>
             <Input
               id={`${ids}-name`}
@@ -875,7 +875,7 @@ function HookDialog({
               onChange={(e) => setHook({ ...hook, name: e.target.value })}
             />
           </div>
-          <div className="flex flex-col gap-1.5 text-[13px] font-medium">
+          <div className="flex flex-col gap-1.5 text-sm font-medium">
             <label htmlFor={`${ids}-command`}>{t.hookCommand}</label>
             <Input
               id={`${ids}-command`}
@@ -887,7 +887,7 @@ function HookDialog({
             />
           </div>
           {toolEvent && (
-            <div className="flex flex-col gap-1.5 text-[13px] font-medium">
+            <div className="flex flex-col gap-1.5 text-sm font-medium">
               <label htmlFor={`${ids}-matcher`}>{t.hookMatcher}</label>
               <Input
                 id={`${ids}-matcher`}
@@ -948,7 +948,7 @@ function PreviewDialog({ templates, onClose }: { templates: InstructionTemplates
             preview.mutate(project);
           }}
         >
-          <div className="flex flex-1 flex-col gap-1.5 text-[13px] font-medium">
+          <div className="flex flex-1 flex-col gap-1.5 text-sm font-medium">
             <label htmlFor={`${ids}-project`}>{t.project}</label>
             <Input
               id={`${ids}-project`}
@@ -974,7 +974,7 @@ function PreviewDialog({ templates, onClose }: { templates: InstructionTemplates
                   aria-selected={file === i}
                   onClick={() => setFile(i)}
                   className={cn(
-                    "inline-flex h-6.5 items-center rounded-full border px-2.5 font-mono text-[12.5px]",
+                    "inline-flex h-6.5 items-center rounded-full border px-2.5 font-mono text-sm",
                     file === i && "border-transparent bg-accent text-accent-foreground",
                   )}
                 >

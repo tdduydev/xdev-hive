@@ -144,7 +144,7 @@
   --color-chart-5: var(--chart-5);
 
   --font-sans: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-heading: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-heading: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, Menlo, monospace;
 
   --radius-sm: calc(var(--radius) * 0.6);
@@ -155,7 +155,10 @@
 }
 
 @theme {
-  --text-2xs: 11px; /* nhãn nhóm ở sidebar */
+  --text-2xs: 12px; /* nhãn nhóm ở sidebar */
+  /* Chữ nhỏ nhất 13px: dấu tiếng Việt chồng hai tầng (ể, ặ) ở 12px khó đọc. */
+  --text-xs: 13px;
+  --text-xs--line-height: 1.45;
   --text-stat: 28px; /* con số trong ô số liệu */
   --text-stat--line-height: 1.15;
   --tracking-caps: 0.06em;
