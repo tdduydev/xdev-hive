@@ -73,8 +73,11 @@ type Job struct {
 	SetupEnv                                        map[string]string
 	// TokenSaving là cấu hình "Tiết kiệm token" của dự án trong spec job; nil là hub cũ (dùng mặc định).
 	TokenSaving *TokenSavingJob
-	Timeout     time.Duration
-	SetupScript string
+	// Effort, Advisor, Tier là lựa chọn của định tuyến theo cấp độ task (spec.effort, spec.advisor, spec.tier); rỗng là hub
+	// cũ hay dự án tắt định tuyến. Effort là low|medium|high; Advisor là model cố vấn của Claude Code (--advisor).
+	Effort, Advisor, Tier string
+	Timeout               time.Duration
+	SetupScript           string
 	// Steers nhận chỉ dẫn của hub cho run này; nil là không có. Kết quả đi ra thành sự kiện "steer_result".
 	Steers           <-chan Steer
 	EnvironmentImage string
@@ -97,6 +100,10 @@ type Job struct {
 	// host dùng chung.
 	savingEnv map[string]string
 	accountID string
+	// claudeVersion là phiên bản claude đã đọc (rỗng là không biết); cliArgs là cờ của nhóm tiết kiệm token. Cả hai do
+	// Run tính trước cliCommand.
+	claudeVersion string
+	cliArgs       []string
 }
 
 type Event struct {
@@ -176,7 +183,9 @@ type Runner struct {
 	Account *accounts.Lease
 	// TokenSaving, nếu có, thay HIVE_WORKER_TOKEN_SAVING (code đặt thắng biến môi trường, như CLICommands).
 	TokenSaving *TokenSavingConfig
-	KillGrace   time.Duration
+	// ClaudeVersion, nếu có, thay kết quả `claude --version` (dùng trong test).
+	ClaudeVersion string
+	KillGrace     time.Duration
 	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
 	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
 	Grace func() time.Duration
@@ -408,7 +417,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	runCtx, stopForBudget := context.WithCancel(runCtx)
 	defer stopForBudget()
 	savingCfg, savingErr := r.tokenSavingConfig()
+	job.claudeVersion = r.claudeVersion(ctx, job)
 	job.savingEnv = savingEnv(savingCfg, job)
+	if env := routingEnv(job); env != nil {
+		job.savingEnv = mergeMap(env, job.savingEnv)
+	}
+	job.cliArgs = savingArgs(savingCfg, job)
 	if r.Sandbox == nil {
 		job.accountID = r.Account.ID()
 	}
@@ -468,6 +482,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if savingErr != nil {
 		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Bỏ qua cấu hình tiết kiệm token của máy: %v\n", savingErr)
 	}
+	if job.CLI == "claude" && job.claudeVersion == "" && r.Sandbox == nil && !r.cliOverridden("claude") {
+		_, _ = fmt.Fprintln(stderrLog, "[xdev-hive] Không đọc được `claude --version`: bỏ các cờ và biến môi trường cần kiểm phiên bản (tiết kiệm token, --max-turns, --advisor).")
+	}
 	if tool := hooksOf(job.Policy.Hooks, "PreToolUse", "PostToolUse"); len(tool) > 0 && (job.CLI != "claude" || cmd.input != InputStreamJSON) {
 		// Chỉ Claude Code nhận hook theo tool qua --settings; báo vào log để người xem run biết hook nào không chạy.
 		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] %s không chạy được %d hook PreToolUse/PostToolUse của tổ chức; hook Stop vẫn chạy.\n", job.CLI, len(tool))
@@ -506,7 +523,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := stopMeter(); err != nil {
 		return err
 	}
-	// Người huỷ cùng lúc thì báo huỷ, không báo vượt ngân sách.
+	// Người huỷ cùng lúc thì báo huỷ, không báo vượt ngân sách. CLI tự dừng vì --max-turns hay --max-budget-usd thì báo
+	// đúng giới hạn đó; số lượt Claude báo khi dừng là giới hạn + 1 nên "vượt ngân sách: 31 > 30" khó hiểu.
+	if reason := cliStopReason(usage.stopSubtype(), job.Budget); reason != "" && ctx.Err() == nil {
+		result = &Result{Status: "failed", Error: reason}
+		return errors.New(reason)
+	}
 	if reason := usage.exceeded(); reason != "" && ctx.Err() == nil {
 		result = &Result{Status: "failed", Error: "Vượt ngân sách: " + reason}
 		return errors.New(result.Error)
@@ -740,6 +762,9 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "--model", j.Model)
 			}
+			args = append(args, j.cliArgs...)
+			routeArgs, routeNotice := claudeRoutingArgs(j)
+			args = append(args, routeArgs...)
 			if readOnlyKind(j.Kind) {
 				// Chế độ plan của Claude Code chặn sửa file và chạy lệnh (đã thử trên claude 2.1.296); tool MCP chỉ gọi được
 				// khi có readOnlyHint, hub đánh dấu plan_submit như vậy.
@@ -754,7 +779,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				// Bash cho phép lệnh test/build tuỳ dự án và commit, không yêu cầu duyệt trong -p.
 				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", "Bash")
 			}
-			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }, input: InputStreamJSON}, nil
+			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }, input: InputStreamJSON, notice: routeNotice}, nil
 		case "codex":
 			url := mcpURL(j.Env)
 			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
@@ -767,6 +792,8 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
+			args = append(args, codexRoutingArgs(j)...)
+			args = append(args, j.cliArgs...)
 			// Run plan và leader giữ sandbox read-only ở trên, không nhận cờ quyền ghi.
 			if readOnlyKind(j.Kind) {
 				args = append(args, "-c", `approval_policy="never"`)

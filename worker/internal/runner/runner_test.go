@@ -313,6 +313,16 @@ func TestFakeCLIHelper(t *testing.T) {
 		fmt.Println(`{"type":"assistant","message":{"id":"m1","model":"claude-test","usage":{"input_tokens":3,"output_tokens":7}}}`)
 		fmt.Println(`{"type":"result","usage":{"input_tokens":3,"output_tokens":9},"total_cost_usd":0.5,"num_turns":1}`)
 		os.Exit(0)
+	case "max-turns", "max-budget":
+		// Claude Code tự dừng vì --max-turns hay --max-budget-usd: tin result có subtype lỗi, thoát mã 1, và num_turns
+		// là giới hạn + 1 (đã thử trên claude 2.1.296).
+		sub, turns := "error_max_turns", 31
+		if os.Getenv("HIVE_FAKE_MODE") == "max-budget" {
+			sub, turns = "error_max_budget_usd", 3
+		}
+		fmt.Println(`{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":3,"output_tokens":7}}}`)
+		fmt.Printf(`{"type":"result","subtype":%q,"is_error":true,"num_turns":%d,"usage":{"input_tokens":3,"output_tokens":9},"total_cost_usd":0.0001}`+"\n", sub, turns)
+		os.Exit(1)
 	case "usage-loop":
 		// CLI giả tiêu 100 token mỗi lượt và không tự dừng: runner phải dừng nó khi vượt trần.
 		for i := 0; i < 1500; i++ {
