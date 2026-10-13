@@ -196,7 +196,8 @@ export function useMarkdownEditor({
   );
 
   useEffect(() => {
-    if (editor && value !== sync.current.value) load(editor, value);
+    // Đang ghép chữ (IME) thì chưa nạp lại: lần vẽ sau khi ghép xong sẽ nạp.
+    if (editor && value !== sync.current.value && !editor.view.composing) load(editor, value);
   });
   useEffect(() => {
     if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
