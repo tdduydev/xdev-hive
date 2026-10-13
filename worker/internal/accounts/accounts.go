@@ -224,6 +224,14 @@ type Lease struct {
 	once    sync.Once
 }
 
+// ID là id tài khoản trong accounts.json; rỗng với đăng nhập mặc định.
+func (l *Lease) ID() string {
+	if l == nil {
+		return ""
+	}
+	return l.account.ID
+}
+
 func (l *Lease) Label() string {
 	if l == nil {
 		return ""
