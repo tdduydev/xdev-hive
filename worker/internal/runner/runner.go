@@ -708,9 +708,12 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				args = append(args, "--mode", "plan", "--sandbox")
 				notice += fmt.Sprintf("\n[xdev-hive] antigravity chạy run %s ở chế độ plan và sandbox chỉ đọc; agy -p từ chối gọi tool MCP khi không có --dangerously-skip-permissions, nên run không nộp được kết quả qua MCP của hub.", j.Kind)
 			} else {
-				// agy -p không hỏi được quyền nên chỉ chạy không tương tác với --dangerously-skip-permissions. Chế độ
-				// workspace không thêm --sandbox như Codex: sandbox của agy 1.3.3 là sandbox chỉ đọc, chặn cả ghi file trong
-				// worktree lẫn git commit (đã thử trên macOS), nên run code không nộp được gì. Workspace và full vì thế như nhau.
+				// agy -p không hỏi được quyền nên chỉ chạy không tương tác với --dangerously-skip-permissions, và sandbox của
+				// agy 1.3.3 là sandbox chỉ đọc (chặn cả ghi file trong worktree lẫn git commit, đã thử trên macOS). Không có
+				// cách giới hạn agy trong worktree, nên chỉ chạy khi dự án cho toàn quyền; hub cũng không giao trường hợp khác.
+				if j.RunPermissions != "full" {
+					return nil, fmt.Errorf("Antigravity chỉ chạy run code khi dự án cho toàn quyền (full): agy không giới hạn được trong thư mục làm việc")
+				}
 				args = append(args, "--dangerously-skip-permissions")
 			}
 			return &cliExecCmd{Cmd: exec.Command(Binary(j.CLI), args...), notice: notice}, nil

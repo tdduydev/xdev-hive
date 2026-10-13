@@ -232,6 +232,11 @@ const SUBMIT_CLIS: readonly string[] = ["claude", "codex"];
  */
 const NO_READONLY_MCP_CLIS: readonly string[] = ["antigravity"];
 /**
+ * CLI không giới hạn được trong thư mục làm việc khi chạy run code (agy 1.3.3: sandbox chặn cả ghi file trong worktree
+ * và git commit, nên phải chạy với --dangerously-skip-permissions). Chỉ giao run code cho chúng khi dự án cho toàn quyền.
+ */
+const FULL_ONLY_CLIS: readonly string[] = ["antigravity"];
+/**
  * Run không có task, lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
  * trình duyệt), docassist (trợ lý của trình soạn tài liệu).
  */
@@ -566,9 +571,12 @@ export function createRunsEngine(deps: RunsDeps) {
         .update(runs)
         .set({ offerMachineId: machine.id, offerExpiresAt: expiresAt, updatedAt: sql`now()` })
         .where(eq(runs.id, run.id));
+      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
       const cli =
         run.cli ??
-        (SUBMIT_KINDS.includes(run.kind) ? machine.clis.find((c) => SUBMIT_CLIS.includes(c)) : machine.clis[0]) ??
+        (SUBMIT_KINDS.includes(run.kind)
+          ? machine.clis.find((c) => SUBMIT_CLIS.includes(c))
+          : machine.clis.find((c) => permission.mode === "full" || !FULL_ONLY_CLIS.includes(c))) ??
         "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
@@ -579,7 +587,6 @@ export function createRunsEngine(deps: RunsDeps) {
         ] ??
         null;
       const model = resolveModel(policy, cli, requested);
-      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
       for (const notice of [model.notice, permission.notice]) {
         if (notice) await noteOnce(tx, run, "policy", { message: notice });
       }
@@ -1698,8 +1705,18 @@ export function createRunsEngine(deps: RunsDeps) {
         );
       }
     }
+    const cli = input.cli ?? task.preferredCli ?? null;
+    if (cli && FULL_ONLY_CLIS.includes(cli) && project) {
+      const mode = resolvePermission(await loadPolicy(tx), project.settings.runPermissions?.mode ?? "workspace").mode;
+      if (mode !== "full") {
+        throw new ConflictError(
+          "CLI_NEEDS_FULL_PERMISSIONS",
+          "Antigravity chỉ chạy run code khi dự án cho toàn quyền: agy không giới hạn được trong thư mục làm việc. Chọn CLI khác hoặc đổi quyền run của dự án.",
+        );
+      }
+    }
     const { row, afterCommit } = await queueRun(tx, task, project, {
-      cli: input.cli ?? task.preferredCli ?? null,
+      cli,
       model: input.model ?? null,
       machineId: input.machineId ?? null,
       createdBy: userId,

@@ -556,6 +556,12 @@ func TestReadOnlyKindsNeverGetWriteFlags(t *testing.T) {
 		for _, kind := range []string{"", "code", KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist} {
 			for _, mode := range []string{"", "workspace", "full"} {
 				cmd, err := (Runner{}).cliCommand(Job{CLI: cli, Kind: kind, RunPermissions: mode, Prompt: "prompt", Env: env})
+				if cli == "antigravity" && !readOnlyKind(kind) && mode != "full" {
+					if err == nil {
+						t.Fatalf("antigravity run code mode=%q phải bị từ chối", mode)
+					}
+					continue
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
