@@ -317,9 +317,10 @@ description: "Task list for Desktop Application v2 implementation"
   `/usage`, Codex rollout files), `accounts-state.json` (cooldown, resume, usage, active runs), pick by role, stop
   limits and cooldown that survives restarts, `accounts add|update|remove|usage|resume`. Go tests in
   `worker/internal/accounts` and `worker/cmd/hive-worker`. **Dependencies**: T035.
-- [ ] **T038 App: manage agent plans like v1 (US14, FR-035)**: AI accounts screen shows state, quota bars, cooldown
+- [x] **T038 App: manage agent plans like v1 (US14, FR-035)**: AI accounts screen shows state, quota bars, cooldown
   and resume; add with Terminal sign-in, edit, remove, refresh quota, resume, through `hive-worker accounts`.
-  **Dependencies**: T036, T037.
+  **Dependencies**: T036, T037. Done in #160; redesigned as blocks grouped by CLI with discovery of existing logins
+  and Antigravity / per-model quota in #179 and #181.
 
 ---
 
