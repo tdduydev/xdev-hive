@@ -442,6 +442,13 @@
       "when": 1791913527483,
       "tag": "0062_machine_labels_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791918573046,
+      "tag": "0063_chat_channels",
+      "breakpoints": true
     }
   ]
 }

@@ -456,6 +456,24 @@ export async function machinesOfUser(tx: Tx, userId: string) {
     .orderBy(desc(machines.lastSeenAt));
 }
 
+/**
+ * Quota tài khoản CLI trên máy của chính người dùng (ADR 0017: máy cá nhân chỉ chủ thấy tài khoản), cho lệnh /quota của
+ * chat. Chỉ tóm tắt worker báo, không chứa token.
+ */
+export async function machineQuotas(tx: Tx, userId: string) {
+  return tx
+    .select({
+      id: machines.id,
+      name: machines.name,
+      online: sql<boolean>`${machines.status} = 'online' and ${machines.pausedAt} is null`,
+      accounts: machines.accounts,
+      accountsAt: machines.accountsAt,
+    })
+    .from(machines)
+    .where(and(eq(machines.registeredBy, userId), eq(machines.kind, "worker"), isNull(machines.revokedAt)))
+    .orderBy(desc(machines.lastSeenAt));
+}
+
 /** Máy trong tổ chức của context (kể cả offline), để kiểm máy người dùng chỉ định khi giao run. */
 export async function findMachine(
   tx: Tx,
