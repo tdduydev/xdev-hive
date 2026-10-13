@@ -45,6 +45,8 @@ export interface NavItem {
   adminOnly?: boolean;
   /** Quyền của vai trò tự tạo làm mục `adminOnly` hiện ra với người không phải quản trị (vd. audit.read). */
   permission?: string;
+  /** Số đếm hiện bên phải mục (vd. PR chờ tôi duyệt); sidebar tự lấy số theo khoá này. */
+  badge?: "codeReviews";
 }
 
 export interface NavGroup {
@@ -127,6 +129,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ClipboardCheckIcon,
         to: route("/knowledge/reviews"),
         match: "/knowledge/reviews",
+        badge: "codeReviews",
       },
     ],
   },

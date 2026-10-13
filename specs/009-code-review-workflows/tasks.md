@@ -165,7 +165,7 @@
   - **Scope**: `packages/code-review/**` (package mới), `pnpm-workspace.yaml` nếu cần, `pnpm-lock.yaml`
   - **Phụ thuộc**: T001, T004 · **Mức**: vừa
 
-- [ ] T032 [US3] Web: tab Code trong "Chờ tôi duyệt"
+- [x] T032 [US3] Web: tab Code trong "Chờ tôi duyệt"
   - `reviews-page.tsx` hai tab có số đếm (`?tab=code&id=`), `code-reviews-tab.tsx`, `lib/code-reviews.ts`, badge menu.
   - Playwright `code-reviews.spec.ts`: hàng chờ, mở PR, diff, duyệt, trả lại theo ba hướng, người không đủ quyền, 360 px,
     tối; hub giả trả diff 100 file (SC-007).
