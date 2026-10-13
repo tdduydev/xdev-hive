@@ -405,6 +405,9 @@ importers:
       '@tanstack/react-router':
         specifier: ^1.170.42
         version: 1.170.42(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@xdev-hive/code-review':
+        specifier: workspace:*
+        version: link:../../packages/code-review
       '@xdev-hive/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
