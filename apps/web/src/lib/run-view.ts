@@ -65,6 +65,27 @@ export const canSteer = (state: RunState): boolean =>
   !isTerminal(state) && state !== "verifying" && state !== "cancelling";
 export const canCancel = (state: RunState): boolean => !isTerminal(state) && state !== "cancelling";
 
+/**
+ * Ai được gửi chỉ dẫn hay huỷ (cùng luật với assertRunActor của hub, ADR 0017): run của người khác chạy trên máy cá nhân
+ * của họ nên chỉ chủ gửi chỉ dẫn được, quản trị đội huỷ được; run của đội (không chủ) thì quản trị đội gửi chỉ dẫn,
+ * thành viên huỷ được.
+ */
+export function runAccess(
+  run: Pick<Run, "ownerUserId">,
+  userId: string,
+  teamAdmin: boolean,
+): { steer: boolean; cancel: boolean; reason: string | null } {
+  const mine = run.ownerUserId === userId;
+  const steer = mine || (run.ownerUserId === null && teamAdmin);
+  const cancel = mine || run.ownerUserId === null || teamAdmin;
+  const reason = steer
+    ? null
+    : run.ownerUserId === null
+      ? "Run của đội: chỉ quản trị đội mới gửi chỉ dẫn được."
+      : "Run chạy trên máy cá nhân của người khác: chỉ người giao run mới gửi chỉ dẫn được.";
+  return { steer, cancel, reason };
+}
+
 export type PhaseStatus = "done" | "current" | "stopped" | "next";
 
 export interface Phase {
