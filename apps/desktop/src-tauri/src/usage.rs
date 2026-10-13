@@ -641,15 +641,7 @@ pub async fn claude_usage(fresh: Option<bool>) -> Result<UsageReport, String> {
     .map_err(|e| e.to_string())?
 }
 
-/// Lần gọi tool `Skill` trong một file phiên Claude Code, theo tên skill; chỉ tính khi cwd của phiên nằm trong thư mục.
-pub fn count_skill_uses(
-    reader: impl BufRead,
-    folder: Option<&Path>,
-    counts: &mut HashMap<String, u32>,
-) {
-    add_skill_uses(&skill_calls(reader), folder, counts);
-}
-
+/// Cộng lần gọi skill của một file phiên theo tên; chỉ tính khi cwd của phiên nằm trong thư mục.
 fn add_skill_uses(
     (cwd, found): &(String, Vec<String>),
     folder: Option<&Path>,
@@ -662,7 +654,7 @@ fn add_skill_uses(
     }
 }
 
-/// cwd của phiên và tên skill của từng lần gọi tool `Skill`, theo thứ tự.
+/// cwd của một file phiên Claude Code và tên skill của từng lần gọi tool `Skill`, theo thứ tự.
 fn skill_calls(reader: impl BufRead) -> (String, Vec<String>) {
     let mut found: Vec<String> = Vec::new();
     let mut cwd = String::new();
@@ -1055,11 +1047,19 @@ mod tests {
             "\n",
         );
         let mut counts = HashMap::new();
-        count_skill_uses(log.as_bytes(), Some(Path::new("/w/pay")), &mut counts);
+        add_skill_uses(
+            &skill_calls(log.as_bytes()),
+            Some(Path::new("/w/pay")),
+            &mut counts,
+        );
         assert_eq!(counts.get("db-migration"), Some(&2));
         assert_eq!(counts.len(), 1);
         let mut other = HashMap::new();
-        count_skill_uses(log.as_bytes(), Some(Path::new("/w/other")), &mut other);
+        add_skill_uses(
+            &skill_calls(log.as_bytes()),
+            Some(Path::new("/w/other")),
+            &mut other,
+        );
         assert!(other.is_empty());
     }
 
