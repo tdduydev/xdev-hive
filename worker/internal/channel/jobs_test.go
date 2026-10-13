@@ -543,3 +543,13 @@ func TestDecodeJobPassesTokenSaving(t *testing.T) {
 		t.Fatalf("job = %+v, err = %v", job.TokenSaving, err)
 	}
 }
+
+func TestDecodeJobReadsBriefSHA(t *testing.T) {
+	for spec, want := range map[string]string{`"brief":{"sha":"abc1234"}`: "abc1234", `"brief":null`: "", `"x":1`: ""} {
+		offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"brief","repoUrl":"https://git.example/a.git","cli":"claude",` + spec + `}`)}
+		job, err := decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p")
+		if err != nil || job.Kind != runner.KindBrief || job.BriefSHA != want {
+			t.Fatalf("%s: %+v, %v", spec, job, err)
+		}
+	}
+}

@@ -34,9 +34,12 @@ const KindDocCheck = "doccheck"
 // KindDocAssist là run trợ lý của trình soạn tài liệu: đọc nhánh chính, chỉ đọc, ghi đề xuất và bình luận qua MCP.
 const KindDocAssist = "docassist"
 
-// Capabilities là việc ngoài run code mà worker khai với hub trong hello. Hub chỉ giao run doccheck, docassist cho
-// worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi.
-var Capabilities = []string{KindDocCheck, KindDocAssist}
+// KindBrief là run viết brief của dự án (ADR 0022): đọc nhánh chính, chỉ đọc, nộp brief qua MCP.
+const KindBrief = "brief"
+
+// Capabilities là việc ngoài run code mà worker khai với hub trong hello. Hub chỉ giao run doccheck, docassist, brief
+// cho worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi.
+var Capabilities = []string{KindDocCheck, KindDocAssist, KindBrief}
 
 // NeedsFull: CLI chỉ chạy run code khi có toàn quyền (agy không giới hạn được trong thư mục làm việc); run chỉ đọc thì
 // không cần.
@@ -45,7 +48,7 @@ func NeedsFull(cli, kind string) bool { return cli == "antigravity" && !readOnly
 // readOnlyKind là nơi duy nhất quyết định run nào chỉ đọc: CLI không nhận cờ ghi (kể cả khi dự án bật quyền full),
 // lệnh override phải tự khai chỉ đọc, và worker không push. Thêm kind mới thì quyết định ở đây trước.
 func readOnlyKind(kind string) bool {
-	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist
+	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist || kind == KindBrief
 }
 
 // Binary là lệnh của CLI trên máy: Antigravity cài lệnh `agy`, các CLI khác trùng tên.
@@ -85,7 +88,9 @@ type Job struct {
 	LocalRepo string
 	// Checks là lệnh kiểm của quy trình review code (spec.checks.commands); chạy sau khi agent xong, trước khi đẩy.
 	// Chỉ run code dùng; run chỉ đọc bỏ qua.
-	Checks    []CheckCommand
+	Checks []CheckCommand
+	// BriefSHA là commit nhánh chính mà brief hiện tại của dự án đã đọc (spec.brief.sha); rỗng là dự án chưa có brief.
+	BriefSHA  string
 	workspace string
 	repoCache string
 	// savingEnv và accountID do Run tính từ cấu hình máy và tài khoản đã giữ; nằm trên Job để đường sandbox và đường
@@ -124,6 +129,8 @@ type Result struct {
 	// Commands đi vào report.commands của run_result; nil (không có lệnh kiểm) thì không xuất hiện, để hub phân biệt
 	// với worker cũ chỉ khi spec có checks.commands.
 	Commands []CommandResult `json:"commands,omitempty"`
+	// Repo đi vào report.repo; luôn có với run do runner chạy (null từng trường khi không đo được).
+	Repo *RepoReport `json:"repo,omitempty"`
 }
 
 // Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job. Input là InputStreamJSON khi
@@ -249,6 +256,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	// Kết quả gửi sau khi dọn worktree: hub coi run_result là hết việc của máy và bỏ mọi sự kiện đến sau nó.
 	var result *Result
+	repo := &RepoReport{}
 	// worktreeGit là gitdir riêng của worktree trong repo; pushed: nhánh của run đã lên origin.
 	var worktreeGit string
 	pushed := false
@@ -289,6 +297,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			result = &Result{Status: status, Error: retErr.Error()}
 		}
 		if result != nil {
+			result.Repo = repo
 			if e := emit(sink, Event{Type: "result", RunID: job.RunID, Attempt: job.Attempt, Result: result}); e != nil {
 				retErr = errors.Join(retErr, e)
 			}
@@ -323,7 +332,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
 			return err
 		}
-	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist {
+	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist || job.Kind == KindBrief {
 		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
 		// của run code.
 		if err := addWorktreeAt(ctx, src.lock, src.dir, work, "--detach", work, "origin/"+job.BaseBranch); err != nil {
@@ -340,6 +349,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		}
 	}
 	job.workspace = work
+	repo = repoReport(ctx, work, job)
 	if job.SandboxPolicy != nil {
 		config, cleanup, err := r.prepareSandboxPolicy(ctx, job.SandboxPolicy)
 		if err != nil {

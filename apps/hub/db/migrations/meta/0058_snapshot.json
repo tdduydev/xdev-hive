@@ -1,5 +1,5 @@
 {
-  "id": "37618d19-9cff-4dca-a1d7-4aab5260c79c",
+  "id": "52715045-3cef-485e-baef-af8848a68f0f",
   "prevId": "8e9cffe5-1d5a-4d03-82ed-b9c2ebaf18e5",
   "version": "7",
   "dialect": "postgresql",
@@ -5014,6 +5014,122 @@
       },
       "isRLSEnabled": true
     },
+    "hive.project_briefs": {
+      "name": "project_briefs",
+      "schema": "hive",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "commit_sha": {
+          "name": "commit_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by_user_id": {
+          "name": "updated_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by_run_id": {
+          "name": "updated_by_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "head_sha": {
+          "name": "head_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "commits_behind": {
+          "name": "commits_behind",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "project_briefs_rw": {
+          "name": "project_briefs_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "project_briefs_content_len": {
+          "name": "project_briefs_content_len",
+          "value": "char_length(content) between 1 and 12000"
+        },
+        "project_briefs_source": {
+          "name": "project_briefs_source",
+          "value": "source in ('agent', 'user')"
+        },
+        "project_briefs_updated_by": {
+          "name": "project_briefs_updated_by",
+          "value": "(updated_by_user_id is null) <> (updated_by_run_id is null)"
+        }
+      },
+      "isRLSEnabled": true
+    },
     "hive.proposals": {
       "name": "proposals",
       "schema": "hive",
@@ -7806,9 +7922,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "account_id": {
-          "name": "account_id",
-          "type": "text",
+        "explore": {
+          "name": "explore",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -7915,6 +8031,22 @@
           ],
           "isUnique": true,
           "where": "state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runs_brief_active": {
+          "name": "runs_brief_active",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "branch like 'brief/%' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -9887,7 +10019,7 @@
     "hive.run_kind": {
       "name": "run_kind",
       "schema": "hive",
-      "values": ["code", "review", "plan", "leader", "doccheck", "docassist"]
+      "values": ["code", "review", "plan", "leader", "doccheck", "docassist", "brief"]
     },
     "hive.run_state": {
       "name": "run_state",

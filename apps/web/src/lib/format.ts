@@ -51,6 +51,11 @@ export function formatCacheHit(read: number, write: number, input: number): stri
   return `${new Intl.NumberFormat("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format((read / total) * 100)}%`;
 }
 
+/** Tỉ lệ 0..1 thành phần trăm nguyên: 0,39 thành "39%". */
+export function formatPercent(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
+
 /** Khoảng thời gian: 45 giây, 6 phút 12 giây, 1 giờ 5 phút. */
 export function formatDuration(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

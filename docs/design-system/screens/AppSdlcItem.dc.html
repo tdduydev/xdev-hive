@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · AI SDLC · Chi tiết hạng mục</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,textarea:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13.5px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none;box-sizing:border-box}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.btn-sm{height:28px;padding:0 8px;font-size:12.5px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.nr .btn{height:36px}
+.nr .btn-sm{height:36px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px;min-width:0}
+.card-h{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.card-t{margin:0;font-size:14.5px;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap;box-sizing:border-box}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
+.input{box-sizing:border-box;padding:8px 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.wrap{overflow-wrap:anywhere;min-width:0}
+.lbl{font-size:13px;font-weight:500;display:flex;flex-direction:column;gap:6px}
+.th{padding:8px 12px;text-align:left;font-size:12px;font-weight:500;color:var(--muted-foreground);border-bottom:1px solid var(--border);white-space:nowrap}
+.td{padding:10px 12px;vertical-align:top;border-bottom:1px solid var(--border)}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
+</style>
+</helmet>
+<!-- Artboard 1440x900 (cửa sổ app); đặt prop narrow = true để xem 360 px (không AppNav, một cột, bảng thành thẻ, stepper cuộn ngang). -->
+<div data-theme="{{theme}}" class="{{rootClass}}" style="{{outerStyle}}">
+  <div style="{{winStyle}}">
+    <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+      <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+        <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+        <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px;">{{t.winTitle}}</span>
+        <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+      </div>
+    </sc-if>
+    <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+      <div style="height: 48px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: var(--sidebar); color: var(--sidebar-foreground);">
+        <a href="AppSdlcBoard.dc.html" aria-label="{{t.back}}" class="btn btn-outline btn-sm" style="width: 36px; padding: 0;"><span aria-hidden="true">←</span></a>
+        <strong style="flex: 1; min-width: 0; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{t.screenName}}</strong>
+        <button type="button" class="btn btn-outline btn-sm" aria-label="{{t.menuAria}}">{{t.menu}}</button>
+      </div>
+    </sc-if>
+    <div style="{{bodyStyle}}">
+      <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="AppNav" active="sdlc" role="{{role}}" lang="{{lang}}" hint-size="220px,800px"></dc-import></sc-if>
+      <main style="{{mainStyle}}">
+
+        <!-- Đường dẫn -->
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12.5px;" class="muted">
+          <a href="AppSdlcBoard.dc.html" style="color: var(--primary); text-decoration: none;">{{t.board}}</a><span aria-hidden="true">/</span><span class="mono">payment-api</span><span aria-hidden="true">/</span><span class="mono">012</span><span style="flex: 1;"></span><span class="mono wrap">{{route}}</span>
+        </div>
+
+        <!-- Đang tải -->
+        <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}">
+          <section aria-busy="true" aria-label="{{t.loading}}" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="card pulse" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;"><div style="height: 22px; width: 55%; border-radius: 6px; background: var(--muted);"></div><div style="display: flex; gap: 8px;"><div style="height: 22px; width: 80px; border-radius: 9999px; background: var(--muted);"></div><div style="height: 22px; width: 40px; border-radius: 9999px; background: var(--muted);"></div><div style="height: 22px; width: 110px; border-radius: 9999px; background: var(--muted);"></div></div><div style="display: flex; gap: 6px; overflow: hidden;"><div style="height: 56px; flex: 1 0 110px; border-radius: 8px; background: var(--muted);"></div><div style="height: 56px; flex: 1 0 110px; border-radius: 8px; background: var(--muted);"></div><div style="height: 56px; flex: 1 0 110px; border-radius: 8px; background: var(--muted);"></div><div style="height: 56px; flex: 1 0 110px; border-radius: 8px; background: var(--muted);"></div></div></div>
+            <div class="pulse" style="height: 40px; border-radius: 8px; background: var(--muted);"></div>
+            <div class="card pulse" style="padding: 16px; display: flex; flex-direction: column; gap: 8px;"><div style="height: 14px; width: 40%; border-radius: 6px; background: var(--muted);"></div><div style="height: 14px; width: 95%; border-radius: 6px; background: var(--muted);"></div><div style="height: 14px; width: 80%; border-radius: 6px; background: var(--muted);"></div><div style="height: 14px; width: 88%; border-radius: 6px; background: var(--muted);"></div></div>
+          </section>
+        </sc-if>
+
+        <!-- Lỗi tải -->
+        <sc-if value="{{isError}}" hint-placeholder-val="{{false}}">
+          <section role="alert" class="card" style="padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+            <span aria-hidden="true" class="badge" style="background: var(--destructive-soft); color: var(--destructive); height: 28px; width: 28px; padding: 0; justify-content: center; font-size: 14px;">!</span>
+            <strong>{{t.errTitle}}</strong>
+            <span class="muted wrap" style="max-width: 480px;">{{t.errText}}</span>
+            <span class="mono muted" style="font-size: 12px;">{{t.errCode}}</span>
+            <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;"><button type="button" class="btn btn-default">{{t.retry}}</button><a href="AppSdlcBoard.dc.html" class="btn btn-outline">{{t.backToBoard}}</a></div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{hasItem}}" hint-placeholder-val="{{true}}">
+          <!-- Đầu trang: tiêu đề, chip, chủ, nút, stepper -->
+          <header class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;">
+              <h1 class="wrap" style="margin: 0; font-family: var(--font-heading); font-size: 22px; line-height: 1.25; font-weight: 600; letter-spacing: -0.03em;">{{t.itemTitle}}</h1>
+              <sc-if value="{{isRo}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--muted); color: var(--muted-foreground);" title="{{t.roTitle}}"><span aria-hidden="true">○</span> {{t.ro}}</span></sc-if>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+              <span class="badge" style="background: var(--accent); color: var(--accent-foreground);">{{t.chipMode}}: Spec Kit</span>
+              <span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">{{t.chipSize}} L</span>
+              <span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">{{t.chipMain}}: payment-api</span>
+              <span class="badge mono" style="border: 1px solid var(--border); color: var(--muted-foreground);">+ web-shop</span>
+              <span class="badge mono" style="border: 1px solid var(--border); color: var(--muted-foreground);">+ mobile-app</span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;">
+              <span style="display: inline-flex; align-items: center; gap: 8px; min-width: 0;">
+                <span aria-hidden="true" style="width: 28px; height: 28px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; background: var(--accent); color: var(--accent-foreground); font-size: 11px; font-weight: 600;">TL</span>
+                <span style="display: flex; flex-direction: column; line-height: 1.3;"><span style="font-size: 13px; font-weight: 500;">Trần Lan</span><span class="muted" style="font-size: 12px;">{{t.owner}} · BA / PO</span></span>
+              </span>
+              <span style="flex: 1;"></span>
+              <sc-if value="{{canManage}}" hint-placeholder-val="{{true}}">
+                <div role="group" aria-label="{{t.actions}}" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <button type="button" class="btn btn-default" disabled="{{runOff}}">{{t.runWave}}</button>
+                  <button type="button" class="btn btn-outline" disabled="{{pauseOff}}">{{pauseLabel}}</button>
+                  <button type="button" class="btn btn-outline" onClick="{{openExc}}">{{t.makeExc}}</button>
+                  <button type="button" class="btn btn-destructive">{{t.cancelItem}}</button>
+                </div>
+              </sc-if>
+            </div>
+            <sc-if value="{{showRunOffText}}" hint-placeholder-val="{{false}}"><div class="muted wrap" style="font-size: 12.5px;"><span aria-hidden="true">○</span> {{runOffText}}</div></sc-if>
+
+            <!-- Stepper 7 giai đoạn: cuộn ngang riêng ở 360 px -->
+            <div role="region" tabindex="0" aria-label="{{t.stepper}}" style="overflow-x: auto; padding-bottom: 4px;">
+              <ol style="margin: 0; padding: 0; list-style: none; display: flex; gap: 6px; min-width: max-content; width: 100%;">
+                <sc-for list="{{steps}}" as="s" hint-placeholder-count="7">
+                  <li aria-current="{{s.cur}}" style="{{s.style}}">
+                    <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600;"><span aria-hidden="true">{{s.mark}}</span><span>{{s.name}}</span></span>
+                    <span style="font-size: 12px;">{{s.state}}</span>
+                  </li>
+                </sc-for>
+              </ol>
+            </div>
+          </header>
+
+          <!-- Dải cảnh báo -->
+          <sc-for list="{{banners}}" as="b" hint-placeholder-count="2">
+            <div role="{{b.role}}" class="alert" style="{{b.style}}"><span aria-hidden="true" style="font-weight: 600;">{{b.mark}}</span><span class="wrap" style="flex: 1;"><strong class="mono" style="font-size: 12.5px;">{{b.code}}</strong> · {{b.text}}</span><a href="#" style="color: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap;">{{b.act}}</a></div>
+          </sc-for>
+
+          <!-- Hộp thoại: Tạo ngoại lệ (khối tĩnh) -->
+          <sc-if value="{{dlgExc}}" hint-placeholder-val="{{false}}">
+            <section aria-label="{{t.dlgView}}" style="padding: 14px; border: 1px dashed var(--input); border-radius: 12px; background: var(--muted);">
+              <div role="dialog" aria-modal="true" aria-labelledby="dlg-exc-t" class="card" style="max-width: 520px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-lg);">
+                <div style="display: flex; flex-direction: column; gap: 4px;"><h2 id="dlg-exc-t" class="card-t" style="font-size: 16px;">{{t.excTitle}}</h2><span class="muted" style="font-size: 13px;">{{t.excLead}}</span></div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <span style="font-size: 13px; font-weight: 500;" id="dlg-exc-scope">{{t.excScope}} *</span>
+                  <div role="radiogroup" aria-labelledby="dlg-exc-scope" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <sc-for list="{{excScopes}}" as="sc" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{sc.on}}" onClick="{{sc.pick}}" style="{{sc.style}}"><span aria-hidden="true">{{sc.mark}}</span> {{sc.label}}</button></sc-for>
+                  </div>
+                </div>
+                <sc-if value="{{excHasTarget}}" hint-placeholder-val="{{true}}">
+                  <label class="lbl">{{excTargetLabel}}<select class="input" style="height: 36px; padding: 0 10px;"><sc-for list="{{excTargets}}" as="o" hint-placeholder-count="3"><option>{{o.label}}</option></sc-for></select></label>
+                </sc-if>
+                <label class="lbl">{{t.reason}} *<textarea class="input" style="height: 72px; resize: vertical;" placeholder="{{t.excReasonHint}}"></textarea><span class="muted num" style="font-size: 12px; font-weight: 400;">0 / 10 · {{t.excReasonNeed}}</span></label>
+                <label class="lbl">{{t.excUntil}} *<input class="input" type="text" value="{{t.excUntilVal}}" style="height: 36px;"><span class="muted" style="font-size: 12px; font-weight: 400;">{{t.excUntilHelp}}</span></label>
+                <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{closeDlg}}">{{t.cancel}}</button><button type="button" class="btn btn-default" disabled="true">{{t.excSubmit}}</button></div>
+              </div>
+            </section>
+          </sc-if>
+
+          <!-- Hộp thoại: Thu hồi tự duyệt (khối tĩnh) -->
+          <sc-if value="{{dlgRevoke}}" hint-placeholder-val="{{false}}">
+            <section aria-label="{{t.dlgView}}" style="padding: 14px; border: 1px dashed var(--input); border-radius: 12px; background: var(--muted);">
+              <div role="dialog" aria-modal="true" aria-labelledby="dlg-rev-t" class="card" style="max-width: 520px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-lg);">
+                <div style="display: flex; flex-direction: column; gap: 4px;"><h2 id="dlg-rev-t" class="card-t" style="font-size: 16px;">{{t.revTitle}}</h2><span class="muted" style="font-size: 13px;">{{t.revLead}}</span></div>
+                <div class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span class="wrap">{{t.revEffect}}</span></div>
+                <span class="mono muted" style="font-size: 12px;">{{t.revWho}}</span>
+                <label class="lbl">{{t.reason}} *<textarea class="input" style="height: 72px; resize: vertical;" placeholder="{{t.revReasonHint}}"></textarea><span class="muted" style="font-size: 12px; font-weight: 400;">{{t.revReasonNeed}}</span></label>
+                <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{closeDlg}}">{{t.cancel}}</button><button type="button" class="btn btn-destructive" disabled="true">{{t.revSubmit}}</button></div>
+              </div>
+            </section>
+          </sc-if>
+
+          <!-- Thanh tab: cuộn ngang riêng -->
+          <div style="overflow-x: auto; border-bottom: 1px solid var(--border);">
+            <div role="tablist" aria-label="{{t.tabsAria}}" style="display: flex; gap: 4px; min-width: max-content;">
+              <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="7"><button type="button" role="tab" aria-selected="{{tb.on}}" aria-controls="panel" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}<sc-if value="{{tb.hasCount}}" hint-placeholder-val="{{true}}"><span class="badge num mono" style="{{tb.countStyle}}">{{tb.count}}</span></sc-if></button></sc-for>
+            </div>
+          </div>
+
+          <div id="panel">
+          <!-- ======================= Tổng quan ======================= -->
+          <sc-if value="{{showOverview}}" hint-placeholder-val="{{true}}">
+            <div role="tabpanel" aria-label="{{t.tabOverview}}" style="display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start;">
+              <div style="flex: 3 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+                <div class="card" style="overflow: hidden;">
+                  <div class="card-h"><h2 class="card-t">{{t.gateTitle}}</h2><span class="badge" style="{{stage.style}}"><span aria-hidden="true">{{stage.mark}}</span> {{stage.name}}</span></div>
+                  <ul style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px;">
+                    <sc-for list="{{gateRows}}" as="g" hint-placeholder-count="3"><li style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;"><span class="mono" style="min-width: 88px;">{{g.doc}}</span><span class="badge" style="{{g.style}}"><span aria-hidden="true">{{g.mark}}</span> {{g.text}}</span></li></sc-for>
+                  </ul>
+                  <div class="alert" style="{{gate.style}} margin: 0 16px 12px;"><span aria-hidden="true" style="font-weight: 600;">{{gate.mark}}</span><span class="wrap"><strong>{{gate.title}}</strong><sc-if value="{{gate.hasCode}}" hint-placeholder-val="{{false}}"> · <span class="mono">{{gate.code}}</span></sc-if><br>{{gate.text}}</span></div>
+                  <div class="muted" style="padding: 0 16px 12px; font-size: 12.5px;">{{t.gateRule}}</div>
+                </div>
+
+                <div class="card" style="overflow: hidden;">
+                  <div class="card-h"><h2 class="card-t">{{t.agentTitle}}</h2><span class="muted" style="font-size: 12.5px;">{{t.agentMeta}}</span></div>
+                  <ul style="margin: 0; padding: 4px 16px 8px; list-style: none; font-size: 13.5px;">
+                    <sc-for list="{{agentSteps}}" as="a" hint-placeholder-count="4">
+                      <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                        <span class="mono" style="min-width: 84px; font-weight: 500;">{{a.name}}</span>
+                        <span class="badge" style="{{a.style}}"><span aria-hidden="true">{{a.mark}}</span> {{a.state}}</span>
+                        <span class="muted wrap" style="flex: 1 1 140px; font-size: 12.5px;">{{a.machine}}</span>
+                        <span class="mono muted wrap" style="font-size: 12px;">{{a.run}}</span>
+                      </li>
+                    </sc-for>
+                  </ul>
+                </div>
+
+                <div class="card" style="overflow: hidden;">
+                  <div class="card-h"><h2 class="card-t">{{t.prTitle}}</h2><a href="CodeReview.dc.html" style="color: var(--primary); font-size: 12.5px;">{{t.openReviews}}</a></div>
+                  <sc-if value="{{hasPrs}}" hint-placeholder-val="{{true}}">
+                    <ul style="margin: 0; padding: 4px 16px 8px; list-style: none; font-size: 13.5px;">
+                      <sc-for list="{{prs}}" as="p" hint-placeholder-count="2">
+                        <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                          <span class="mono" style="font-size: 12.5px;">{{p.repo}} #{{p.num}}</span>
+                          <span class="wrap" style="flex: 1 1 200px;">{{p.title}}</span>
+                          <span class="badge" style="{{p.style}}"><span aria-hidden="true">{{p.mark}}</span> {{p.state}}</span>
+                          <span class="muted num" style="font-size: 12.5px;">{{p.review}}</span>
+                        </li>
+                      </sc-for>
+                    </ul>
+                  </sc-if>
+                  <sc-if value="{{noPrs}}" hint-placeholder-val="{{false}}"><div class="muted" style="padding: 14px 16px; font-size: 13.5px;">{{t.noPrs}}</div></sc-if>
+                </div>
+              </div>
+
+              <aside style="flex: 2 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+                <div class="card" style="overflow: hidden;">
+                  <div class="card-h"><h2 class="card-t">{{t.excListTitle}}</h2><span class="muted num" style="font-size: 12.5px;">{{excCount}}</span></div>
+                  <div class="muted" style="padding: 10px 16px 0; font-size: 12.5px;">{{t.excListLead}}</div>
+                  <sc-if value="{{hasExc}}" hint-placeholder-val="{{true}}">
+                    <ul style="margin: 0; padding: 6px 16px 10px; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px;">
+                      <sc-for list="{{excs}}" as="e" hint-placeholder-count="2">
+                        <li style="display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 8px;">
+                          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span class="badge" style="{{e.style}}">{{e.scope}}</span><span class="muted num" style="font-size: 12.5px;">{{t.until}} {{e.until}}</span></div>
+                          <span class="wrap">{{e.reason}}</span>
+                          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;"><span class="muted" style="font-size: 12.5px;">{{e.by}}</span><sc-if value="{{canManage}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline btn-sm">{{t.revokeExc}}</button></sc-if></div>
+                        </li>
+                      </sc-for>
+                    </ul>
+                  </sc-if>
+                  <sc-if value="{{noExc}}" hint-placeholder-val="{{false}}">
+                    <div style="padding: 10px 16px 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; font-size: 13.5px;"><span class="muted">{{t.noExc}}</span><sc-if value="{{canManage}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline" onClick="{{openExc}}">{{t.makeExc}}</button></sc-if></div>
+                  </sc-if>
+                </div>
+
+                <div class="card" style="overflow: hidden;">
+                  <div class="card-h"><h2 class="card-t">{{t.actTitle}}</h2></div>
+                  <ol style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                    <sc-for list="{{activity}}" as="ac" hint-placeholder-count="5"><li style="display: flex; flex-direction: column; gap: 2px;"><span class="wrap">{{ac.text}}</span><span class="muted num" style="font-size: 12px;">{{ac.when}}</span></li></sc-for>
+                  </ol>
+                </div>
+              </aside>
+            </div>
+          </sc-if>
+
+          <!-- ======================= Dự án ======================= -->
+          <sc-if value="{{showProjects}}" hint-placeholder-val="{{false}}">
+            <div role="tabpanel" aria-label="{{t.tabProjects}}" style="display: flex; flex-direction: column; gap: 14px;">
+              <div class="card" style="overflow: hidden;">
+                <div class="card-h"><h2 class="card-t">{{t.projTitle}}</h2><span class="muted num" style="font-size: 12.5px;">{{projCount}}</span></div>
+                <div class="muted" style="padding: 10px 16px 0; font-size: 12.5px;">{{t.projLead}}</div>
+                <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+                  <div role="region" tabindex="0" aria-label="{{t.projTitle}}" style="overflow-x: auto; padding: 6px 4px 8px;">
+                    <table style="width: 100%; min-width: 980px; border-collapse: collapse; font-size: 13px;">
+                      <thead><tr><th scope="col" class="th">{{t.colProject}}</th><th scope="col" class="th">{{t.colTeam}}</th><th scope="col" class="th">{{t.colGate}}</th><th scope="col" class="th">{{t.colSync}}</th><th scope="col" class="th">{{t.colPar}}</th><th scope="col" class="th">{{t.colWhere}}</th><th scope="col" class="th">{{t.colAi}}</th><sc-if value="{{canManage}}" hint-placeholder-val="{{true}}"><th scope="col" class="th"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">{{t.colAct}}</span></th></sc-if></tr></thead>
+                      <tbody>
+                        <sc-for list="{{projects}}" as="pj" hint-placeholder-count="3">
+                          <tr>
+                            <td class="td"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><strong class="mono">{{pj.name}}</strong><sc-if value="{{pj.main}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--primary); color: var(--primary-foreground);">{{t.mainMark}}</span></sc-if></div></td>
+                            <td class="td">{{pj.team}}</td>
+                            <td class="td"><span class="badge" style="{{pj.gateStyle}}">{{pj.gate}}</span></td>
+                            <td class="td"><span class="badge mono" style="background: var(--muted); color: var(--foreground);">{{pj.sync}}</span></td>
+                            <td class="td num mono">{{pj.par}}</td>
+                            <td class="td"><div style="display: flex; flex-direction: column; gap: 2px;"><span>{{pj.where}}</span><span class="mono muted" style="font-size: 12px;">{{pj.labels}}</span></div></td>
+                            <td class="td"><span class="badge" style="{{pj.aiStyle}}"><span aria-hidden="true">{{pj.aiMark}}</span> {{pj.ai}}</span></td>
+                            <sc-if value="{{canManage}}" hint-placeholder-val="{{true}}"><td class="td"><div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;"><sc-if value="{{pj.canDrop}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline btn-sm" disabled="{{pj.dropOff}}">{{t.dropProj}}</button></sc-if><sc-if value="{{pj.dropNote}}" hint-placeholder-val="{{false}}"><span class="muted wrap" style="font-size: 12px; max-width: 220px;">{{pj.dropNote}}</span></sc-if></div></td></sc-if>
+                          </tr>
+                        </sc-for>
+                      </tbody>
+                    </table>
+                  </div>
+                </sc-if>
+                <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+                  <ul style="margin: 0; padding: 10px 12px 12px; list-style: none; display: flex; flex-direction: column; gap: 10px;">
+                    <sc-for list="{{projects}}" as="pc" hint-placeholder-count="3">
+                      <li style="padding: 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><strong class="mono" style="font-size: 14px;">{{pc.name}}</strong><sc-if value="{{pc.main}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--primary); color: var(--primary-foreground);">{{t.mainMark}}</span></sc-if><span style="flex: 1;"></span><span class="badge" style="{{pc.aiStyle}}"><span aria-hidden="true">{{pc.aiMark}}</span> {{pc.ai}}</span></div>
+                        <dl style="margin: 0; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 8px;">
+                          <dt class="muted">{{t.colTeam}}</dt><dd style="margin: 0;">{{pc.team}}</dd>
+                          <dt class="muted">{{t.colGate}}</dt><dd style="margin: 0;"><span class="badge" style="{{pc.gateStyle}}">{{pc.gate}}</span></dd>
+                          <dt class="muted">{{t.colSync}}</dt><dd class="mono" style="margin: 0;">{{pc.sync}}</dd>
+                          <dt class="muted">{{t.colPar}}</dt><dd class="mono num" style="margin: 0;">{{pc.par}}</dd>
+                          <dt class="muted">{{t.colWhere}}</dt><dd class="wrap" style="margin: 0;">{{pc.where}}<br><span class="mono muted" style="font-size: 12px;">{{pc.labels}}</span></dd>
+                        </dl>
+                        <sc-if value="{{canManage}}" hint-placeholder-val="{{true}}"><div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;"><sc-if value="{{pc.canDrop}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline" disabled="{{pc.dropOff}}">{{t.dropProj}}</button></sc-if><sc-if value="{{pc.dropNote}}" hint-placeholder-val="{{false}}"><span class="muted wrap" style="font-size: 12px;">{{pc.dropNote}}</span></sc-if></div></sc-if>
+                      </li>
+                    </sc-for>
+                  </ul>
+                </sc-if>
+              </div>
+
+              <sc-if value="{{canManage}}" hint-placeholder-val="{{true}}">
+                <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+                  <h2 class="card-t">{{t.addProj}}</h2>
+                  <div style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px;">
+                    <label class="lbl" style="flex: 1 1 220px; min-width: 0;">{{t.pickProj}}<select class="input" style="height: 36px; padding: 0 10px;"><option>billing-batch</option><option>admin-portal</option></select></label>
+                    <button type="button" class="btn btn-default">{{t.addProjBtn}}</button>
+                  </div>
+                  <ul class="muted" style="margin: 0; padding-left: 18px; font-size: 12.5px; display: flex; flex-direction: column; gap: 2px;">
+                    <li>{{t.ruleMax}}</li><li>{{t.rulePerm}}</li><li>{{t.ruleDrop}}</li>
+                  </ul>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- ======================= Tài liệu ======================= -->
+          <sc-if value="{{showDocs}}" hint-placeholder-val="{{false}}">
+            <div role="tabpanel" aria-label="{{t.tabDocs}}" style="display: flex; flex-direction: column; gap: 14px;">
+              <sc-if value="{{noDocs}}" hint-placeholder-val="{{false}}">
+                <section class="card" style="padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+                  <strong>{{t.docsEmptyTitle}}</strong><span class="muted wrap" style="max-width: 460px;">{{t.docsEmptyText}}</span>
+                  <sc-if value="{{canWrite}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-default">{{t.redraft}}</button></sc-if>
+                </section>
+              </sc-if>
+              <sc-for list="{{docs}}" as="d" hint-placeholder-count="4">
+                <article class="card" style="overflow: hidden;">
+                  <div class="card-h">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0;"><h2 class="card-t mono wrap">{{d.name}}</h2><span class="badge" style="background: var(--secondary); color: var(--secondary-foreground);">{{d.phase}}</span></div>
+                    <span class="badge" style="{{d.style}}"><span aria-hidden="true">{{d.mark}}</span> {{d.state}}</span>
+                  </div>
+                  <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px;">
+                    <sc-if value="{{d.hasAi}}" hint-placeholder-val="{{false}}">
+                      <div style="{{d.aiStyle}}">
+                        <span style="display: flex; align-items: flex-start; gap: 8px;"><span aria-hidden="true" style="font-weight: 600;">{{d.aiMark}}</span><span class="wrap" style="flex: 1;"><strong>{{d.aiText}}</strong> · {{d.aiUntil}}</span></span>
+                        <sc-if value="{{d.canRevoke}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-outline btn-sm" onClick="{{openRevoke}}" style="align-self: flex-start;">{{t.revokeAuto}}</button></sc-if>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{d.hasNoAuto}}" hint-placeholder-val="{{false}}"><div class="muted wrap" style="display: flex; gap: 8px; font-size: 13px;"><span aria-hidden="true">i</span><span>{{d.noAuto}}</span></div></sc-if>
+                    <sc-if value="{{d.hasBased}}" hint-placeholder-val="{{false}}"><div class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span class="wrap">{{t.basedOn}}</span></div></sc-if>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <span class="mono muted" style="font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;">{{t.syncByRepo}}</span>
+                      <sc-if value="{{d.hasRepos}}" hint-placeholder-val="{{true}}">
+                        <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px;">
+                          <sc-for list="{{d.repos}}" as="r" hint-placeholder-count="3">
+                            <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;"><span class="mono" style="min-width: 96px;">{{r.repo}}</span><span class="badge" style="{{r.style}}"><span aria-hidden="true">{{r.mark}}</span> {{r.state}}</span><span class="muted wrap" style="flex: 1 1 200px; font-size: 12.5px;">{{r.note}}</span></li>
+                          </sc-for>
+                        </ul>
+                      </sc-if>
+                      <sc-if value="{{d.noSync}}" hint-placeholder-val="{{false}}"><span class="muted" style="font-size: 12.5px;">{{t.syncAfter}}</span></sc-if>
+                    </div>
+                  </div>
+                  <div style="padding: 10px 16px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                    <a href="DocEditor.dc.html" class="btn btn-outline">{{t.openDoc}}</a>
+                    <sc-if value="{{d.canRedraft}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-outline">{{t.redraft}}</button></sc-if>
+                    <sc-if value="{{d.canOverwrite}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-outline" title="{{t.overwriteHint}}">{{t.overwrite}}</button></sc-if>
+                  </div>
+                </article>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <!-- ======================= Contract ======================= -->
+          <sc-if value="{{showContract}}" hint-placeholder-val="{{false}}">
+            <div role="tabpanel" aria-label="{{t.tabContract}}" style="display: flex; flex-direction: column; gap: 14px;">
+              <sc-if value="{{noContract}}" hint-placeholder-val="{{false}}">
+                <section class="card" style="padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+                  <strong>{{t.ctEmptyTitle}}</strong><span class="muted wrap" style="max-width: 460px;">{{t.ctEmptyText}}</span>
+                  <sc-if value="{{canManage}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-default">{{t.addContract}}</button></sc-if>
+                </section>
+              </sc-if>
+              <sc-if value="{{hasContract}}" hint-placeholder-val="{{true}}">
+                <sc-if value="{{showContractWarn}}" hint-placeholder-val="{{true}}"><div role="alert" class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true" style="font-weight: 600;">!</span><span class="wrap">{{t.ctWarn}}</span></div></sc-if>
+                <article class="card" style="overflow: hidden;">
+                  <div class="card-h">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;"><h2 class="card-t mono">refund-api</h2><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">openapi</span></div>
+                    <span class="badge" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">◐</span> {{t.ctState}}</span>
+                  </div>
+                  <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px;">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;">
+                      <span style="display: flex; flex-direction: column; gap: 2px;"><span class="muted" style="font-size: 12px;">{{t.provider}}</span><span class="badge mono" style="background: var(--accent); color: var(--accent-foreground);">payment-api</span></span>
+                      <span aria-hidden="true" class="muted" style="font-size: 18px;">→</span>
+                      <span style="display: flex; flex-direction: column; gap: 2px;"><span class="muted" style="font-size: 12px;">{{t.consumers}}</span><span style="display: flex; flex-wrap: wrap; gap: 6px;"><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">web-shop</span><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">mobile-app</span></span></span>
+                    </div>
+                    <span class="mono muted wrap" style="font-size: 12px;">contracts/refund-api.yaml · v3</span>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                      <span class="mono muted" style="font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;">{{t.teamApprovals}}</span>
+                      <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px;">
+                        <sc-for list="{{teamApprovals}}" as="ta" hint-placeholder-count="3"><li style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;"><span style="min-width: 84px; font-weight: 500;">{{ta.team}}</span><span class="badge" style="{{ta.style}}"><span aria-hidden="true">{{ta.mark}}</span> {{ta.state}}</span><span class="muted" style="font-size: 12.5px;">{{ta.who}}</span></li></sc-for>
+                      </ul>
+                    </div>
+                    <div class="alert" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">i</span><span class="wrap">{{t.ctRule}}</span></div>
+                  </div>
+                  <div style="padding: 10px 16px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px;">
+                    <a href="DocReview.dc.html" class="btn btn-outline">{{t.openContract}}</a>
+                    <sc-if value="{{canManage}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline">{{t.addContract}}</button></sc-if>
+                  </div>
+                </article>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- ======================= Câu hỏi ======================= -->
+          <sc-if value="{{showQuestions}}" hint-placeholder-val="{{false}}">
+            <div role="tabpanel" aria-label="{{t.tabQuestions}}" style="display: flex; flex-direction: column; gap: 14px;">
+              <sc-if value="{{noQuestions}}" hint-placeholder-val="{{false}}">
+                <section class="card" style="padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+                  <strong>{{t.qEmptyTitle}}</strong><span class="muted wrap" style="max-width: 460px;">{{t.qEmptyText}}</span>
+                </section>
+              </sc-if>
+              <sc-if value="{{hasQuestions}}" hint-placeholder-val="{{true}}">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;"><span style="font-size: 13.5px; font-weight: 600;">{{t.qRound}} <span class="num mono">2</span></span><span class="muted num" style="font-size: 12.5px;">{{qSummary}}</span></div>
+                <sc-for list="{{questions}}" as="q" hint-placeholder-count="4">
+                  <article class="card" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;"><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">{{q.id}}</span><span class="badge" style="{{q.style}}"><span aria-hidden="true">{{q.mark}}</span> {{q.state}}</span><span class="muted" style="font-size: 12.5px;">{{q.from}}</span></div>
+                    <p class="wrap" style="margin: 0; font-size: 14px; font-weight: 500;">{{q.text}}</p>
+                    <sc-if value="{{q.open}}" hint-placeholder-val="{{true}}">
+                      <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="padding: 8px 10px; border-radius: 8px; background: var(--muted); font-size: 13px;"><span class="muted">{{t.suggestion}}:</span> <span class="wrap">{{q.suggest}}</span></div>
+                        <sc-if value="{{canWrite}}" hint-placeholder-val="{{true}}">
+                          <textarea class="input" aria-label="{{t.answerFor}} {{q.id}}" style="height: 56px; resize: vertical;" placeholder="{{t.answerHint}}"></textarea>
+                          <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline">{{t.useSuggest}}</button><button type="button" class="btn btn-default">{{t.answer}}</button></div>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{q.answered}}" hint-placeholder-val="{{false}}">
+                      <div style="padding: 8px 10px; border-radius: 8px; background: var(--success-soft); color: var(--success); font-size: 13px;"><span class="wrap">{{q.answer}}</span><br><span class="muted" style="font-size: 12px; color: inherit; opacity: .85;">{{q.by}}</span></div>
+                    </sc-if>
+                  </article>
+                </sc-for>
+                <sc-if value="{{canWrite}}" hint-placeholder-val="{{true}}">
+                  <div class="card" style="padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;">
+                    <span class="muted wrap" style="flex: 1 1 240px; font-size: 13px;">{{t.redraftLead}}</span>
+                    <button type="button" class="btn btn-default">{{t.redraftWith}}</button>
+                  </div>
+                </sc-if>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- ======================= Task ======================= -->
+          <sc-if value="{{showTasks}}" hint-placeholder-val="{{false}}">
+            <div role="tabpanel" aria-label="{{t.tabTasks}}" style="display: flex; flex-direction: column; gap: 14px;">
+              <sc-if value="{{noTasks}}" hint-placeholder-val="{{false}}">
+                <section class="card" style="padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+                  <strong>{{t.tkEmptyTitle}}</strong><span class="muted wrap" style="max-width: 460px;">{{tkEmptyText}}</span>
+                </section>
+              </sc-if>
+              <sc-if value="{{hasTasks}}" hint-placeholder-val="{{true}}">
+                <sc-if value="{{showContractWarn}}" hint-placeholder-val="{{true}}"><div role="alert" class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true" style="font-weight: 600;">!</span><span class="wrap">{{t.ctWarn}}</span></div></sc-if>
+                <div class="card" style="overflow: hidden;">
+                  <div class="card-h"><h2 class="card-t">{{t.wavesTitle}}</h2><span class="muted" style="font-size: 12.5px;">{{t.wavesMeta}}</span></div>
+                  <ul style="margin: 0; padding: 6px 16px 10px; list-style: none; font-size: 13.5px;">
+                    <sc-for list="{{waves}}" as="w" hint-placeholder-count="2">
+                      <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                        <strong style="min-width: 64px;">{{w.name}}</strong>
+                        <span class="badge" style="{{w.style}}"><span aria-hidden="true">{{w.mark}}</span> {{w.state}}</span>
+                        <span class="muted wrap" style="flex: 1 1 200px; font-size: 12.5px;">{{w.note}}</span>
+                        <sc-if value="{{canManage}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-default btn-sm" disabled="{{w.off}}">{{w.btn}}</button></sc-if>
+                      </li>
+                    </sc-for>
+                  </ul>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start;">
+                  <sc-for list="{{lanes}}" as="ln" hint-placeholder-count="3">
+                    <section aria-label="{{ln.aria}}" style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 10px;">
+                      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 8px 12px; border-radius: 10px; background: var(--muted);"><strong class="mono">{{ln.project}}</strong><span class="muted" style="font-size: 12.5px;">{{ln.team}}</span><sc-if value="{{ln.main}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--primary); color: var(--primary-foreground);">{{t.mainMark}}</span></sc-if></div>
+                      <sc-for list="{{ln.tasks}}" as="tk" hint-placeholder-count="2">
+                        <article class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;"><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">{{tk.id}}</span><span class="badge mono" style="border: 1px solid var(--border); color: var(--muted-foreground);">{{tk.wave}}</span><span style="flex: 1;"></span><span class="badge" style="{{tk.style}}"><span aria-hidden="true">{{tk.mark}}</span> {{tk.state}}</span></div>
+                          <strong class="wrap" style="font-size: 13.5px;">{{tk.title}}</strong>
+                          <sc-if value="{{tk.hasDep}}" hint-placeholder-val="{{false}}"><div class="wrap" style="padding: 6px 8px; border-radius: 8px; background: var(--muted); font-size: 12.5px;"><strong>{{tk.dep}}</strong><br><span class="mono muted" style="font-size: 11.5px;">{{tk.depCode}}</span></div></sc-if>
+                          <sc-if value="{{tk.hasPr}}" hint-placeholder-val="{{false}}"><span class="mono muted wrap" style="font-size: 12px;">{{tk.pr}}</span></sc-if>
+                          <div style="display: flex; align-items: center; gap: 8px;"><span class="muted" style="font-size: 12px;">{{t.checklist}}</span><span class="mono num" style="font-size: 12px;">{{tk.check}}</span><span aria-hidden="true" style="flex: 1; height: 6px; border-radius: 9999px; background: var(--muted); overflow: hidden;"><span style="{{tk.bar}}"></span></span></div>
+                          <sc-if value="{{tk.orphan}}" hint-placeholder-val="{{false}}"><div role="alert" class="alert" style="background: var(--warning-soft); color: var(--warning); padding: 6px 8px; font-size: 12.5px;"><span aria-hidden="true">!</span><span class="wrap">{{t.orphan}}</span></div></sc-if>
+                        </article>
+                      </sc-for>
+                    </section>
+                  </sc-for>
+                </div>
+                <div class="muted" style="font-size: 12.5px;">{{t.tasksLink}} <a href="AppSdlcBreakdown.dc.html" style="color: var(--primary);">{{t.openBreakdown}}</a></div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- ======================= Truy vết ======================= -->
+          <sc-if value="{{showTrace}}" hint-placeholder-val="{{false}}">
+            <div role="tabpanel" aria-label="{{t.tabTrace}}" style="display: flex; flex-direction: column; gap: 14px;">
+              <sc-if value="{{noTrace}}" hint-placeholder-val="{{false}}">
+                <section class="card" style="padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+                  <strong>{{t.trEmptyTitle}}</strong><span class="muted wrap" style="max-width: 460px;">{{t.trEmptyText}}</span>
+                </section>
+              </sc-if>
+              <sc-if value="{{hasTrace}}" hint-placeholder-val="{{true}}">
+                <div class="card" style="overflow: hidden;">
+                  <div class="card-h"><h2 class="card-t">{{t.trTitle}}</h2><span class="muted" style="font-size: 12.5px;">FR-001 … FR-006</span></div>
+                  <ul style="margin: 0; padding: 8px 16px 12px; list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px;">
+                    <sc-for list="{{levels}}" as="lv" hint-placeholder-count="3">
+                      <li style="display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;"><span class="wrap" style="flex: 1 1 200px;">{{lv.label}}</span><span class="badge num mono" style="{{lv.style}}"><span aria-hidden="true">{{lv.mark}}</span> {{lv.value}} · {{lv.pct}}</span></div>
+                        <span aria-hidden="true" style="height: 8px; border-radius: 9999px; background: var(--muted); overflow: hidden;"><span style="{{lv.bar}}"></span></span>
+                      </li>
+                    </sc-for>
+                  </ul>
+                </div>
+                <div class="card" style="overflow: hidden;">
+                  <div class="card-h"><h2 class="card-t">{{t.trByProject}}</h2></div>
+                  <ul style="margin: 0; padding: 4px 16px 8px; list-style: none; font-size: 13.5px;">
+                    <sc-for list="{{trProjects}}" as="tp" hint-placeholder-count="3">
+                      <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                        <strong class="mono" style="min-width: 108px;">{{tp.name}}</strong>
+                        <sc-for list="{{tp.cells}}" as="tc" hint-placeholder-count="3"><span class="badge num mono" style="{{tc.style}}" title="{{tc.title}}"><span aria-hidden="true">{{tc.mark}}</span> {{tc.value}}</span></sc-for>
+                      </li>
+                    </sc-for>
+                  </ul>
+                  <div class="muted" style="padding: 0 16px 12px; font-size: 12px;">{{t.trLegend}}</div>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;"><a href="AppSdlcTrace.dc.html" class="btn btn-default">{{t.openTrace}}</a><span class="muted" style="font-size: 12.5px;">{{t.trCsv}}</span></div>
+              </sc-if>
+            </div>
+          </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+        <section aria-label="{{t.states}}" style="display: flex; flex-direction: column; gap: 8px; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><span class="muted" style="font-size: 12.5px;">{{t.states}}</span><div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="12"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div></div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><span class="muted" style="font-size: 12.5px;">{{t.curTab}}</span><div class="seg"><sc-for list="{{tabPicks}}" as="tp2" hint-placeholder-count="7"><button type="button" aria-pressed="{{tp2.on}}" onClick="{{tp2.pick}}" style="{{tp2.style}}">{{tp2.label}}</button></sc-for></div></div>
+        </section>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"role":{"editor":"enum","options":["dev","writer","lead"],"default":"lead"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+// modes: normal,loading,error,waiting,blocked,autoapproved,overdue,rereview,readonly,paused,empty,exception,revoke
+// tabs: overview,projects,docs,contract,questions,tasks,trace   (chạy bộ kiểm với --set=tab:overview,projects,docs,contract,questions,tasks,trace)
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { mode: 'normal', tab: 'overview', lang: null, dialog: null, xs: 'task' }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const narrow = !!this.props.narrow;
+    const wide = !narrow;
+    const role = this.props.role ?? 'lead';
+    const mode = this.state.mode;
+    const TABS = ['overview', 'projects', 'docs', 'contract', 'questions', 'tasks', 'trace'];
+    const tab = TABS.includes(this.state.tab) ? this.state.tab : 'overview';
+
+    // Trạng thái xem -> kịch bản dữ liệu. "exception" và "revoke" chỉ bật hộp thoại trên nền dữ liệu có sẵn.
+    const sc = { exception: 'normal', revoke: 'autoapproved' }[mode] ?? mode;
+    const isLoading = mode === 'loading';
+    const isError = mode === 'error';
+    const hasItem = !isLoading && !isError;
+    const isEmpty = sc === 'empty';
+    const isBlocked = sc === 'blocked';
+    const isRe = sc === 'rereview';
+    const isPaused = sc === 'paused';
+    const isWait = sc === 'waiting';
+    const isAuto = sc === 'autoapproved' || sc === 'readonly';
+    const isOver = sc === 'overdue';
+    const isRo = role === 'dev' || mode === 'readonly';
+    const canManage = role === 'lead' && mode !== 'readonly';
+    const canWrite = !isRo;
+
+    const dlg = this.state.dialog ?? (mode === 'exception' ? 'exception' : mode === 'revoke' ? 'revoke' : 'none');
+    const T = {
+      winTitle: ['xDev Hive · payment-api · AI SDLC · 012', 'xDev Hive · payment-api · AI SDLC · 012'], back: ['Về danh sách hạng mục', 'Back to items'], screenName: ['Hạng mục 012', 'Item 012'], menu: ['Menu', 'Menu'], menuAria: ['Mở menu app', 'Open app menu'],
+      board: ['Hạng mục', 'Items'], loading: ['Đang tải hạng mục', 'Loading item'],
+      errTitle: ['Không tải được hạng mục 012', 'Could not load item 012'], errText: ['Hub không trả lời sau 10 giây. Dữ liệu bạn thấy trước đó có thể đã cũ. Bạn không mất gì: mọi thay đổi đã gửi vẫn nằm trên hub.', 'The hub did not respond within 10 seconds. What you saw before may be stale. Nothing is lost: every change already sent is still on the hub.'], errCode: ['Nguyên nhân: HTTP 503 từ hub · hạng mục 012-hoan-tien-mot-phan', 'Cause: HTTP 503 from the hub · item 012-hoan-tien-mot-phan'], retry: ['Thử lại', 'Retry'], backToBoard: ['Về danh sách hạng mục', 'Back to items'],
+      itemTitle: ['012 · Hoàn tiền một phần', '012 · Partial refunds'], ro: ['Chỉ đọc', 'Read-only'], roTitle: ['Thiếu quyền sdlc.manage hoặc đang ở chế độ chỉ đọc', 'Missing sdlc.manage or in read-only mode'],
+      chipMode: ['Chế độ', 'Mode'], chipSize: ['Cỡ', 'Size'], chipMain: ['Dự án chính', 'Main project'], owner: ['Chủ hạng mục', 'Item owner'], actions: ['Thao tác hạng mục', 'Item actions'],
+      runWave: ['Chạy đợt', 'Run wave'], makeExc: ['Tạo ngoại lệ', 'Create exception'], cancelItem: ['Huỷ hạng mục', 'Cancel item'], stepper: ['7 giai đoạn của hạng mục', 'The 7 phases of the item'],
+      dlgView: ['Hộp thoại (xem tĩnh)', 'Dialog (static view)'],
+      excTitle: ['Tạo ngoại lệ cổng', 'Create a gate exception'], excLead: ['Cho phép chạy dù cổng đang chặn. Ngoại lệ tự hết hạn và ghi vào nhật ký.', 'Allows runs while the gate blocks. The exception expires on its own and is written to the audit log.'], excScope: ['Phạm vi', 'Scope'],
+      reason: ['Lý do', 'Reason'], excReasonHint: ['Vì sao cần chạy khi cổng đang chặn', 'Why you need to run while the gate blocks'], excReasonNeed: ['cần ít nhất 10 ký tự', 'at least 10 characters'], excUntil: ['Hạn', 'Expires'], excUntilVal: ['14/10/2026 17:00', '14/10/2026 17:00'], excUntilHelp: ['Sau hạn, cổng chặn lại như cũ.', 'After this time the gate blocks again.'], cancel: ['Huỷ', 'Cancel'], excSubmit: ['Tạo ngoại lệ', 'Create exception'],
+      revTitle: ['Thu hồi tự duyệt plan.md', 'Revoke auto-approval of plan.md'], revLead: ['Tự duyệt bởi AI · 9,3/10 (ngưỡng 9) · thu hồi được tới 15:30 14/10.', 'Auto-approved by AI · 9.3/10 (threshold 9) · revocable until 15:30 14/10.'],
+      revEffect: ['Tài liệu về trạng thái "Đang duyệt" và mở phiên duyệt mới cho người. Run mới dựa trên plan.md bị chặn tới khi người duyệt xong.', 'The document goes back to "In review" and opens a new human review session. New runs based on plan.md are blocked until a person approves.'], revWho: ['Người thu hồi: bạn · ghi vào nhật ký', 'Revoked by: you · written to the audit log'], revReasonHint: ['Điều gì AI chưa thấy trong plan.md', 'What the AI missed in plan.md'], revReasonNeed: ['Bắt buộc. Hiện cho người duyệt và ghi vào nhật ký.', 'Required. Shown to the reviewer and written to the audit log.'], revSubmit: ['Thu hồi tự duyệt', 'Revoke auto-approval'],
+      tabsAria: ['Các mục của hạng mục', 'Item sections'],
+      tabOverview: ['Tổng quan', 'Overview'], tabProjects: ['Dự án', 'Projects'], tabDocs: ['Tài liệu', 'Documents'], tabContract: ['Contract', 'Contract'], tabQuestions: ['Câu hỏi', 'Questions'], tabTasks: ['Task', 'Tasks'], tabTrace: ['Truy vết', 'Trace'],
+      gateTitle: ['Giai đoạn hiện tại và cổng', 'Current phase and gate'], gateRule: ['Chế độ chặn lấy mức chặt nhất trong các dự án tham gia; tài liệu được xét theo từng dự án.', 'The gate mode takes the strictest across participating projects; documents are checked per project.'],
+      agentTitle: ['Bước agent', 'Agent steps'], agentMeta: ['mỗi bước là một run loại sdlc', 'each step is an sdlc run'],
+      prTitle: ['PR và review gần nhất', 'Latest PRs and reviews'], openReviews: ['Mở Chờ tôi duyệt', 'Open Awaiting my review'], noPrs: ['Chưa có PR nào. PR xuất hiện khi task đầu tiên chạy.', 'No PRs yet. They appear when the first task runs.'],
+      excListTitle: ['Ngoại lệ cổng đang có', 'Active gate exceptions'], excListLead: ['Mỗi ngoại lệ chỉ áp cho phạm vi ghi bên dưới và tự hết hạn.', 'Each exception only applies to the scope shown and expires on its own.'], until: ['hạn', 'until'], revokeExc: ['Thu hồi ngoại lệ', 'Revoke exception'], noExc: ['Chưa có ngoại lệ nào.', 'No exceptions yet.'],
+      actTitle: ['Hoạt động', 'Activity'],
+      projTitle: ['Dự án trong hạng mục', 'Projects in this item'], projLead: ['Cài đặt là bản chụp lúc thêm dự án. Đổi cài đặt dự án không đổi hạng mục đang chạy.', 'Settings are a snapshot taken when the project was added. Changing project settings does not change a running item.'],
+      colProject: ['Dự án', 'Project'], colTeam: ['Đội', 'Team'], colGate: ['Chế độ chặn', 'Gate mode'], colSync: ['Đồng bộ', 'Sync'], colPar: ['Song song', 'Parallel'], colWhere: ['Nơi chạy · nhãn máy', 'Runs on · machine labels'], colAi: ['AI SDLC', 'AI SDLC'], colAct: ['Thao tác', 'Actions'], mainMark: ['Chính', 'Main'], dropProj: ['Bỏ dự án', 'Remove project'],
+      addProj: ['Thêm dự án tham gia', 'Add a participating project'], pickProj: ['Dự án', 'Project'], addProjBtn: ['Thêm dự án', 'Add project'],
+      ruleMax: ['Tối đa 8 dự án mỗi hạng mục (đang 3 / 8).', 'At most 8 projects per item (3 / 8 now).'], rulePerm: ['Chỉ dự án bạn có quyền ghi trên đội của dự án và đã bật AI SDLC.', 'Only projects where you can write for the project team and that have AI SDLC enabled.'], ruleDrop: ['Bỏ dự án đã có task chạy trong hạng mục sẽ bị từ chối; huỷ task trước.', 'Removing a project that already ran tasks in the item is rejected; cancel the tasks first.'],
+      docsEmptyTitle: ['Chưa có tài liệu nào', 'No documents yet'], docsEmptyText: ['Agent soạn spec.md sau khi hạng mục qua bước tiếp nhận. Bạn cũng có thể nhờ agent soạn ngay.', 'The agent drafts spec.md once the item passes intake. You can also ask it to draft now.'], redraft: ['Nhờ agent soạn lại', 'Ask the agent to redraft'], openDoc: ['Mở tài liệu', 'Open document'], overwrite: ['Ghi đè repo bằng baseline', 'Overwrite repo with baseline'], overwriteHint: ['Dành cho quản trị dự án', 'For project admins'],
+      revokeAuto: ['Thu hồi tự duyệt', 'Revoke auto-approval'], syncByRepo: ['Đồng bộ theo repo', 'Sync by repo'], syncAfter: ['Đồng bộ sau khi tài liệu có Baseline.', 'Sync starts once the document has a Baseline.'], basedOn: ['Dựa trên tài liệu đang duyệt lại (plan.md). Chờ người duyệt xong trước khi tin bản này.', 'Based on a document under re-review (plan.md). Wait for the reviewer before trusting this version.'],
+      ctEmptyTitle: ['Chưa có contract', 'No contracts yet'], ctEmptyText: ['Contract mô tả giao diện giữa dự án cung cấp và dự án dùng. Thêm khi các dự án cần thống nhất API trước khi code.', 'A contract describes the interface between the providing and consuming projects. Add one when projects must agree on an API before coding.'], addContract: ['Thêm contract', 'Add contract'],
+      ctWarn: ['Contract refund-api đổi sau khi task T-41 chạy. T-41 đang dùng bản cũ (v2): chạy lại hoặc xác nhận bản cũ còn dùng được.', 'Contract refund-api changed after task T-41 ran. T-41 used the old version (v2): rerun it or confirm the old one still works.'],
+      ctState: ['Đang duyệt 1 / 3 đội', 'In review 1 / 3 teams'], provider: ['Bên cung cấp', 'Provider'], consumers: ['Bên dùng', 'Consumers'], teamApprovals: ['Duyệt theo đội', 'Approval by team'], ctRule: ['Luôn cần người duyệt, không tự duyệt. Mỗi đội một checkpoint; bên dùng không chạy task khi đội mình chưa duyệt.', 'Always needs a human, never auto-approved. One checkpoint per team; a consumer cannot run tasks until its team approves.'], openContract: ['Mở bản duyệt contract', 'Open contract review'],
+      qEmptyTitle: ['Chưa có câu hỏi nào', 'No questions yet'], qEmptyText: ['Agent hỏi khi thiếu thông tin để soạn. Mỗi vòng tối đa 5 câu.', 'The agent asks when it lacks information to draft. At most 5 questions per round.'], qRound: ['Vòng', 'Round'],
+      suggestion: ['Đề xuất của agent', 'Agent suggestion'], answerFor: ['Trả lời câu', 'Answer for'], answerHint: ['Trả lời ngắn, rõ', 'A short, clear answer'], useSuggest: ['Dùng đề xuất', 'Use suggestion'], answer: ['Trả lời', 'Answer'],
+      redraftLead: ['Khi đã trả lời, agent soạn lại tài liệu với các câu trả lời này.', 'Once answered, the agent redrafts the documents with these answers.'], redraftWith: ['Soạn lại với câu trả lời', 'Redraft with answers'],
+      tkEmptyTitle: ['Chưa có bản tách task', 'No task breakdown yet'], wavesTitle: ['Đợt', 'Waves'], wavesMeta: ['đợt sau chờ đợt trước merge', 'a wave waits for the previous one to merge'], checklist: ['Checklist', 'Checklist'], orphan: ['Không còn trong tasks.md. Giữ, hoặc huỷ task này.', 'No longer in tasks.md. Keep it or cancel this task.'], tasksLink: ['Xem đồ thị phụ thuộc và gộp/tách task:', 'See the dependency graph and merge/split tasks:'], openBreakdown: ['Mở bản tách task', 'Open task breakdown'],
+      trEmptyTitle: ['Chưa có gì để truy vết', 'Nothing to trace yet'], trEmptyText: ['Truy vết có sau khi yêu cầu được tách thành task. Cần plan.md và tasks.md đã duyệt.', 'Trace appears once requirements are broken into tasks. It needs plan.md and tasks.md approved.'], trTitle: ['Độ phủ truy vết (tổng)', 'Trace coverage (overall)'], trByProject: ['Độ phủ theo dự án', 'Coverage by project'], trLegend: ['Ba cột theo thứ tự: yêu cầu → thiết kế, yêu cầu → task, task → PR.', 'Three columns in order: requirement → design, requirement → task, task → PR.'], openTrace: ['Mở ma trận truy vết', 'Open trace matrix'], trCsv: ['Ma trận có cột dự án và xuất CSV.', 'The matrix has a project column and CSV export.'],
+      states: ['Trạng thái xem', 'View state'], curTab: ['Tab hiện tại', 'Current tab'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+
+    const tone = {
+      ok: 'background: var(--success-soft); color: var(--success);', warn: 'background: var(--warning-soft); color: var(--warning);', bad: 'background: var(--destructive-soft); color: var(--destructive);',
+      info: 'background: var(--accent); color: var(--accent-foreground);', mute: 'background: var(--muted); color: var(--muted-foreground);', sec: 'background: var(--secondary); color: var(--secondary-foreground);',
+    };
+    const seg = (on) => 'height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const segS = (on) => 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+
+    // ---- Stepper 7 giai đoạn ----
+    const PH = [['Tiếp nhận', 'Intake'], ['Yêu cầu', 'Requirements'], ['Thiết kế', 'Design'], ['Tách task', 'Decomposition'], ['Triển khai', 'Implementation'], ['Kiểm', 'Verification'], ['Phát hành', 'Release']];
+    const SS = {
+      approved: ['✓', ['Đã duyệt', 'Approved'], 'ok'], active: ['●', ['Đang soạn', 'Drafting'], 'info'], review: ['◐', ['Đang duyệt', 'In review'], 'warn'],
+      wait: ['○', ['Chờ', 'Waiting'], 'mute'], skip: ['–', ['Bỏ qua', 'Skipped'], 'mute'],
+    };
+    const flows = {
+      blocked: ['approved', 'approved', 'review', 'wait', 'wait', 'wait', 'skip'],
+      rereview: ['approved', 'approved', 'review', 'approved', 'active', 'wait', 'skip'],
+      empty: ['active', 'wait', 'wait', 'wait', 'wait', 'wait', 'skip'],
+    };
+    const flow = flows[sc] ?? ['approved', 'approved', 'approved', 'approved', 'active', 'wait', 'skip'];
+    const steps = flow.map((k, i) => {
+      const d = SS[k];
+      const cur = k === 'active' || k === 'review';
+      const stateText = k === 'active' && i === 4 ? x(['Đang chạy', 'Running']) : k === 'review' && isRe ? x(['Duyệt lại', 'Re-review']) : x(d[1]);
+      const accent = k === 'approved' ? 'var(--success)' : k === 'active' ? 'var(--primary)' : k === 'review' ? 'var(--warning)' : 'var(--border)';
+      return {
+        name: x(PH[i]), mark: d[0], state: stateText, cur: cur ? 'step' : 'false',
+        style: 'flex: 1 0 128px; min-width: 128px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); border-top: 3px solid ' + accent + '; ' + (cur ? 'background: var(--accent); color: var(--accent-foreground);' : k === 'approved' ? 'background: var(--success-soft); color: var(--success);' : 'background: var(--card); color: var(--muted-foreground);'),
+      };
+    });
+
+    // ---- Dải cảnh báo ----
+    const BN = {
+      sync: ['warn', '!', 'Chưa đồng bộ', ['web-shop: không đẩy được PR hive/sdlc/012 vì repo chưa cấp quyền ghi. Tài liệu vẫn an toàn trên hub.', 'web-shop: could not push PR hive/sdlc/012 because the repo has not granted write access. The documents are safe on the hub.'], ['Xem tab Tài liệu', 'See Documents tab']],
+      blocked: ['bad', '!', 'SDLC_GATE_BLOCKED', ['plan.md (Plan) chưa duyệt. Hạng mục ở chế độ chặn cứng nên chưa tạo được run code.', 'plan.md (Plan) is not approved. The item uses the hard gate, so no code run can be created yet.'], ['Mở plan.md', 'Open plan.md']],
+      waiting: ['warn', '!', 'Chờ máy AI SDLC', ['Run đang chờ: chưa có máy rảnh mang nhãn "sdlc". Run tự chạy khi có máy.', 'The run is waiting: no free machine has the "sdlc" label. It starts when one is free.'], ['Xem đội máy', 'See machines']],
+      rereview: ['warn', '!', 'Dựa trên tài liệu đang duyệt lại', ['plan.md bị thu hồi tự duyệt. tasks.md và run mới dựa trên bản này nên tạm chặn tới khi người duyệt xong.', 'Auto-approval of plan.md was revoked. tasks.md and new runs depend on it, so they are paused until a person approves.'], ['Mở plan.md', 'Open plan.md']],
+      paused: ['warn', '!', 'Tạm dừng', ['Hạng mục tạm dừng vì dự án web-shop đã tắt AI SDLC. Bật lại trong cài đặt dự án để tiếp tục.', 'The item is paused because project web-shop turned AI SDLC off. Turn it back on in project settings to continue.'], ['Mở cài đặt web-shop', 'Open web-shop settings']],
+      overdue: ['info', 'i', 'Quá hạn thu hồi', ['plan.md đã chốt từ 15:30 14/10, không còn thu hồi tự duyệt được. Muốn đổi, mở một vòng duyệt mới.', 'plan.md has been final since 15:30 14/10 and can no longer be revoked. To change it, open a new review round.'], ['Mở plan.md', 'Open plan.md']],
+      auto: ['ok', '✓', 'Tự duyệt bởi AI', ['plan.md được duyệt tự động 9,3/10 (ngưỡng 9). Còn thu hồi được tới 15:30 14/10.', 'plan.md was auto-approved 9.3/10 (threshold 9). Revocable until 15:30 14/10.'], ['Mở plan.md', 'Open plan.md']],
+      readonly: ['info', 'i', 'Chỉ đọc', ['Bạn xem được hạng mục này nhưng không có quyền sdlc.manage nên không có nút ghi.', 'You can view this item but lack sdlc.manage, so there are no write buttons.'], ['Xem quyền của tôi', 'See my access']],
+    };
+    const bnKeys = { normal: ['sync'], waiting: ['waiting', 'sync'], blocked: ['blocked'], autoapproved: ['auto', 'sync'], overdue: ['overdue'], rereview: ['rereview'], readonly: ['readonly', 'auto'], paused: ['paused', 'sync'], empty: [], exception: ['sync'], revoke: ['auto'] }[mode] ?? [];
+    const banners = bnKeys.map((k) => { const b = BN[k]; return { role: k === 'blocked' ? 'alert' : 'status', style: tone[b[0]], mark: b[1], code: b[2], text: x(b[3]), act: x(b[4]) }; });
+
+    // ---- Nút header ----
+    const runOff = isBlocked || isWait || isPaused || isRe || isEmpty;
+    const runOffText = isBlocked ? x(['Chạy đợt bị chặn: SDLC_GATE_BLOCKED, plan.md (Plan) chưa duyệt.', 'Run wave is blocked: SDLC_GATE_BLOCKED, plan.md (Plan) is not approved.'])
+      : isWait ? x(['Chạy đợt chờ máy AI SDLC rảnh.', 'Run wave waits for a free AI SDLC machine.'])
+        : isPaused ? x(['Chạy đợt không dùng được khi hạng mục đang tạm dừng.', 'Run wave is unavailable while the item is paused.'])
+          : isRe ? x(['Run mới bị chặn tới khi plan.md được duyệt lại.', 'New runs are blocked until plan.md is re-approved.'])
+            : x(['Chưa có bản tách task để chạy.', 'There is no task breakdown to run yet.']);
+
+    // ---- Tab ----
+    const counts = { overview: '', projects: '3', docs: isEmpty ? '' : (isBlocked ? '3' : '4'), contract: isEmpty ? '' : '1', questions: isEmpty ? '' : '2', tasks: (isEmpty || isBlocked) ? '' : '5', trace: '' };
+    const tabLabel = { overview: t.tabOverview, projects: t.tabProjects, docs: t.tabDocs, contract: t.tabContract, questions: t.tabQuestions, tasks: t.tabTasks, trace: t.tabTrace };
+    const tabs = TABS.map((k) => {
+      const on = k === tab;
+      return {
+        label: tabLabel[k], count: counts[k], hasCount: counts[k] !== '', on: on ? 'true' : 'false', pick: () => this.setState({ tab: k }),
+        countStyle: 'margin-left: 6px; height: 18px; font-size: 11px; padding: 0 6px; ' + (on ? tone.info : tone.mute),
+        style: 'height: 40px; padding: 0 12px; display: inline-flex; align-items: center; border: 0; border-bottom: 2px solid ' + (on ? 'var(--primary)' : 'transparent') + '; background: transparent; font: inherit; font-size: 13.5px; font-weight: ' + (on ? '600' : '500') + '; color: ' + (on ? 'var(--foreground)' : 'var(--muted-foreground)') + '; cursor: pointer; white-space: nowrap;',
+      };
+    });
+    const tabPicks = TABS.map((k) => ({ label: tabLabel[k], on: k === tab ? 'true' : 'false', style: seg(k === tab), pick: () => this.setState({ tab: k }) }));
+    const M = [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['error', ['Lỗi tải', 'Load error']], ['waiting', ['Chờ máy', 'Waiting for machine']], ['blocked', ['Chặn cứng', 'Hard block']], ['autoapproved', ['Đã tự duyệt còn hạn', 'Auto-approved, revocable']], ['overdue', ['Quá hạn thu hồi', 'Past revoke window']], ['rereview', ['Duyệt lại sau thu hồi', 'Re-review after revoke']], ['readonly', ['Chỉ đọc', 'Read-only']], ['paused', ['Tạm dừng', 'Paused']], ['empty', ['Trống (mới tạo)', 'Empty (new)']], ['exception', ['Hộp thoại: ngoại lệ', 'Dialog: exception']], ['revoke', ['Hộp thoại: thu hồi', 'Dialog: revoke']]];
+    const modes = M.map(([k, l]) => ({ label: x(l), on: mode === k ? 'true' : 'false', style: seg(mode === k), pick: () => this.setState({ mode: k, dialog: null }) }));
+
+    // ---- Tổng quan ----
+    const stageIdx = flow.findIndex((k) => k === 'active' || k === 'review');
+    const stageKey = flow[stageIdx >= 0 ? stageIdx : 4];
+    const stage = { name: x(PH[stageIdx >= 0 ? stageIdx : 4]), mark: SS[stageKey][0], style: tone[SS[stageKey][2]] };
+    const DS = {
+      approved: ['✓', 'ok'], review: ['◐', 'warn'], draft: ['○', 'mute'], none: ['○', 'mute'], rereview: ['◐', 'warn'], drift: ['!', 'warn'],
+    };
+    // Tài liệu theo kịch bản
+    const repoPr = (n) => ({ repo: 'payment-api', mark: '●', style: tone.info, state: x(['PR đã mở', 'PR opened']), note: x(['#' + n + ' · hive/sdlc/012 · chờ merge', '#' + n + ' · hive/sdlc/012 · waiting to merge']) });
+    const repoMerged = (n) => ({ repo: 'payment-api', mark: '✓', style: tone.ok, state: x(['PR đã merge', 'PR merged']), note: x(['#' + n + ' · hive/sdlc/012 · khớp baseline', '#' + n + ' · hive/sdlc/012 · matches baseline']) });
+    const repoWeb = { repo: 'web-shop', mark: '!', style: tone.warn, state: x(['Chưa đồng bộ', 'Not synced']), note: x(['Repo chưa cấp quyền ghi (403). Cấp quyền rồi bấm đồng bộ lại.', 'The repo has not granted write access (403). Grant it, then sync again.']) };
+    const repoMob = { repo: 'mobile-app', mark: '○', style: tone.mute, state: x(['Chỉ lưu trên hub', 'Hub only']), note: x(['Đồng bộ repo đang tắt (off) cho dự án này.', 'Repo sync is off for this project.']) };
+    const repoDrift = { repo: 'payment-api', mark: '!', style: tone.warn, state: x(['Lệch repo', 'Repo drift']), note: x(['Repo có sửa tay sau baseline v1. Hub không tự ghi đè.', 'The repo was edited by hand after baseline v1. The hub does not overwrite it.']) };
+    const doc = (o) => Object.assign({ phase: '', stKey: 'approved', state: '', ver: '', ai: null, noAuto: '', based: false, repos: [], redraft: true, overwrite: false }, o);
+    const noAutoSpec = x(['Không tự duyệt: yêu cầu của chế độ nặng luôn cần người duyệt.', 'Not auto-approved: requirements in a heavy mode always need a person.']);
+    const noAutoKw = x(["Không tự duyệt: từ khoá nhạy cảm 'thanh toán'", "Not auto-approved: sensitive keyword 'thanh toán'"]);
+    const aiLive = { text: x(['Tự duyệt bởi AI · 9,3/10 (ngưỡng 9)', 'Auto-approved by AI · 9.3/10 (threshold 9)']), until: x(['thu hồi được tới 15:30 14/10', 'revocable until 15:30 14/10']), over: false };
+    const aiOver = { text: aiLive.text, until: x(['quá hạn thu hồi từ 15:30 14/10, đã chốt', 'past the revoke window since 15:30 14/10, final']), over: true };
+    const stText = (k, v) => ({ approved: 'Baseline v' + v, review: x(['Đang duyệt', 'In review']), draft: x(['Nháp', 'Draft']), none: x(['Chưa có', 'Not created']), rereview: x(['Duyệt lại sau thu hồi', 'Re-review after revoke']), drift: x(['Lệch repo', 'Repo drift']) })[k];
+    let docsRaw;
+    if (isEmpty) docsRaw = [];
+    else if (isBlocked) docsRaw = [
+      doc({ name: 'spec.md', phase: PH[1], stKey: 'approved', ver: 2, noAuto: noAutoSpec, repos: [repoMerged(398), repoWeb, repoMob] }),
+      doc({ name: 'plan.md', phase: PH[2], stKey: 'review', ver: 1, noAuto: '', repos: [] }),
+      doc({ name: 'data-model.md', phase: PH[2], stKey: 'draft', ver: 0, noAuto: noAutoKw }),
+    ];
+    else docsRaw = [
+      doc({ name: 'spec.md', phase: PH[1], stKey: 'approved', ver: 2, noAuto: noAutoSpec, repos: [repoMerged(398), repoWeb, repoMob] }),
+      doc({ name: 'plan.md', phase: PH[2], stKey: isRe ? 'rereview' : 'approved', ver: 1, ai: isOver ? aiOver : (isAuto || isRe) ? aiLive : null, repos: isRe ? [] : [repoPr(412), repoWeb, repoMob] }),
+      doc({ name: 'data-model.md', phase: PH[2], stKey: 'approved', ver: 1, noAuto: noAutoKw, repos: [repoMerged(405), repoWeb, repoMob] }),
+      doc({ name: 'tasks.md', phase: PH[3], stKey: isRe ? 'approved' : 'drift', ver: 1, based: isRe, repos: isRe ? [] : [repoDrift, repoWeb, repoMob], overwrite: !isRe }),
+    ];
+    const docs = docsRaw.map((d) => {
+      const st = DS[d.stKey];
+      return {
+        name: d.name, phase: x(d.phase), mark: st[0], style: tone[st[1]], state: stText(d.stKey, d.ver),
+        hasAi: !!d.ai, aiText: d.ai ? d.ai.text : '', aiUntil: d.ai ? d.ai.until : '', aiMark: d.ai ? (d.ai.over ? 'i' : '✓') : '',
+        aiStyle: 'padding: 10px 12px; border-radius: 8px; display: flex; flex-direction: column; gap: 8px; ' + (d.ai && d.ai.over ? tone.mute : tone.ok),
+        canRevoke: !!d.ai && !d.ai.over && canWrite,
+        hasNoAuto: !!d.noAuto, noAuto: d.noAuto, hasBased: d.based,
+        hasRepos: d.repos.length > 0, noSync: d.repos.length === 0, repos: d.repos,
+        canRedraft: canWrite && d.redraft, canOverwrite: canManage && d.overwrite,
+      };
+    });
+    const gateDocs = docsRaw.filter((d) => ['spec.md', 'plan.md', 'tasks.md'].includes(d.name));
+    if (isBlocked) gateDocs.push(doc({ name: 'tasks.md', stKey: 'none', ver: 0 }));
+    const gateRows = (isEmpty ? [doc({ name: 'spec.md', stKey: 'none' }), doc({ name: 'plan.md', stKey: 'none' }), doc({ name: 'tasks.md', stKey: 'none' })] : gateDocs).map((d) => { const st = DS[d.stKey]; return { doc: d.name, mark: st[0], style: tone[st[1]], text: stText(d.stKey, d.ver) + (d.name === 'plan.md' && d.stKey === 'review' ? x([' · chờ An (PO)', ' · waiting for An (PO)']) : '') }; });
+    const gate = isBlocked
+      ? { style: tone.bad, mark: '!', title: x(['Cổng chặn', 'Gate blocks']), hasCode: true, code: 'SDLC_GATE_BLOCKED', text: x(['plan.md (Plan) chưa duyệt. Chưa tạo được run code cho hạng mục này.', 'plan.md (Plan) is not approved. No code run can be created for this item yet.']) }
+      : isRe ? { style: tone.warn, mark: '!', title: x(['Cổng tạm chặn run mới', 'Gate pauses new runs']), hasCode: false, code: '', text: x(['plan.md đang duyệt lại sau thu hồi. Run đang chạy tiếp tục; run mới chờ.', 'plan.md is under re-review after a revoke. Running runs continue; new runs wait.']) }
+        : isEmpty ? { style: tone.mute, mark: '○', title: x(['Cổng chưa đánh giá', 'Gate not evaluated']), hasCode: false, code: '', text: x(['Hạng mục đang ở bước tiếp nhận; chưa có tài liệu để xét.', 'The item is at intake; there are no documents to check yet.']) }
+          : { style: tone.ok, mark: '✓', title: x(['Cổng mở', 'Gate open']), hasCode: false, code: '', text: x(['spec.md, plan.md, tasks.md đều đã có Baseline cho payment-api. Tạo được run code.', 'spec.md, plan.md and tasks.md all have a Baseline for payment-api. Code runs can be created.']) };
+
+    // Bước agent
+    const AS = { done: ['✓', ['Xong', 'Done'], 'ok'], run: ['●', ['Đang chạy', 'Running'], 'info'], wait: ['!', ['Chờ máy AI SDLC', 'Waiting for AI SDLC machine'], 'warn'], todo: ['○', ['Chưa chạy', 'Not run'], 'mute'], gate: ['○', ['Chờ cổng', 'Waiting for gate'], 'mute'], paused: ['!', ['Tạm dừng', 'Paused'], 'warn'], sent: ['◐', ['Đã gửi duyệt', 'Sent for review'], 'warn'] };
+    const mach = x(['Claude Code · mac-mini-lan', 'Claude Code · mac-mini-lan']);
+    const agentRaw = isEmpty ? [['draft', 'todo', '—', '—'], ['size', 'todo', '—', '—'], ['breakdown', 'todo', '—', '—'], ['converge', 'todo', '—', '—']]
+      : isBlocked ? [['draft', 'sent', mach, 'r_8f3a'], ['size', 'done', mach, 'r_8f40'], ['breakdown', 'gate', '—', '—'], ['converge', 'gate', '—', '—']]
+        : isWait ? [['draft', 'done', mach, 'r_8f3a'], ['size', 'done', mach, 'r_8f40'], ['breakdown', 'done', mach, 'r_8f4b'], ['converge', 'wait', x(['chưa có máy nhãn "sdlc"', 'no machine with label "sdlc"']), 'r_8f55 · waiting_machine']]
+          : isPaused ? [['draft', 'done', mach, 'r_8f3a'], ['size', 'done', mach, 'r_8f40'], ['breakdown', 'done', mach, 'r_8f4b'], ['converge', 'paused', '—', '—']]
+            : [['draft', 'done', mach, 'r_8f3a'], ['size', 'done', mach, 'r_8f40'], ['breakdown', 'done', mach, 'r_8f4b'], ['converge', 'todo', x(['chạy khi các task trong đợt xong', 'runs when the wave tasks finish']), '—']];
+    const agentSteps = agentRaw.map(([n, k, m, r]) => ({ name: n, mark: AS[k][0], state: x(AS[k][1]), style: tone[AS[k][2]], machine: m, run: r }));
+
+    // Ngoại lệ
+    const excRaw = (isBlocked || isEmpty || isRe) ? [] : [
+      { scope: [['Dự án mobile-app', 'Project mobile-app'], 'info'], reason: ['Chạy thử trên máy mobile khi tài liệu của đội Mobile chưa Baseline.', 'Trial run on the mobile machine while the Mobile team documents have no Baseline yet.'], until: '17:00 15/10', by: 'Nguyễn Minh · 11:20 12/10' },
+      { scope: [['Task T-44', 'Task T-44'], 'warn'], reason: ['Test cần chạy sớm để xác nhận lỗi làm tròn.', 'The tests must run early to confirm the rounding bug.'], until: '12:00 14/10', by: 'Nguyễn Minh · 09:05 13/10' },
+    ];
+    const excs = excRaw.map((e) => ({ scope: x(e.scope[0]), style: tone[e.scope[1]], reason: x(e.reason), until: e.until, by: e.by }));
+
+    const prsRaw = (isEmpty || isBlocked) ? [] : [
+      { repo: 'payment-api', num: 412, title: ['Hoàn tiền một phần: API và giới hạn tổng hoàn', 'Partial refunds: API and total cap'], st: ['warn', '◐', ['Chờ người duyệt', 'Awaiting a person']], review: ['review AI 8,0/10', 'AI review 8.0/10'] },
+      { repo: 'web-shop', num: 57, title: ['Màn lịch sử giao dịch', 'Transaction history screen'], st: ['ok', '✓', ['Đã merge', 'Merged']], review: ['review AI 9,0/10', 'AI review 9.0/10'] },
+    ];
+    const prs = prsRaw.map((p) => ({ repo: p.repo, num: p.num, title: x(p.title), style: tone[p.st[0]], mark: p.st[1], state: x(p.st[2]), review: x(p.review) }));
+    const activityAll = [
+      [['Trần Lan trả lời 2 câu hỏi của agent (vòng 2).', 'Trần Lan answered 2 agent questions (round 2).'], ['09:40 12/10', '09:40 12/10']],
+      [['Agent soạn xong spec.md, plan.md, data-model.md (run r_8f3a).', 'The agent drafted spec.md, plan.md and data-model.md (run r_8f3a).'], ['10:15 12/10', '10:15 12/10']],
+      [['Nguyễn Minh duyệt contract refund-api cho đội Backend.', 'Nguyễn Minh approved contract refund-api for the Backend team.'], ['14:02 12/10', '14:02 12/10']],
+      [['An (PO) duyệt spec.md thành Baseline v2.', 'An (PO) approved spec.md as Baseline v2.'], ['16:30 12/10', '16:30 12/10']],
+      [['Hub gửi PR hive/sdlc/012 vào payment-api (#412).', 'The hub opened PR hive/sdlc/012 in payment-api (#412).'], ['08:20 13/10', '08:20 13/10']],
+    ];
+    const activity = (isEmpty ? [[['Trần Lan tạo hạng mục từ ý tưởng "Hoàn tiền một phần".', 'Trần Lan created the item from the idea "Partial refunds".'], ['08:05 13/10', '08:05 13/10']]] : activityAll).map(([a, w]) => ({ text: x(a), when: x(w) }));
+
+    // ---- Dự án ----
+    const pjRaw = [
+      { name: 'payment-api', main: true, team: 'Backend', gate: 'hard', sync: 'pr', par: 2, where: ['Máy dùng chung', 'Shared machine'], labels: 'sdlc', ai: 'on', canDrop: false },
+      { name: 'web-shop', main: false, team: 'Web', gate: 'hard', sync: 'direct', par: 1, where: ['Máy của đội Web', 'Web team machine'], labels: 'sdlc, web', ai: isPaused ? 'off' : 'on', canDrop: true, hasRun: true },
+      { name: 'mobile-app', main: false, team: 'Mobile', gate: 'soft', sync: 'off', par: 1, where: ['Máy dùng chung', 'Shared machine'], labels: 'sdlc, macos', ai: 'on', canDrop: true, hasRun: false },
+    ];
+    const GM = { hard: [['Chặn cứng', 'Hard block'], 'bad', '!'], soft: [['Cảnh báo', 'Warn only'], 'warn', '◐'], none: [['Không chặn', 'No block'], 'mute', '○'] };
+    const projects = pjRaw.map((p) => ({
+      name: p.name, main: p.main, team: p.team, gate: x(GM[p.gate][0]), gateStyle: tone[GM[p.gate][1]], sync: p.sync, par: p.par, where: x(p.where), labels: p.labels,
+      ai: p.ai === 'on' ? x(['Đang bật', 'Enabled']) : x(['Đã tắt', 'Disabled']), aiMark: p.ai === 'on' ? '✓' : '!', aiStyle: p.ai === 'on' ? tone.ok : tone.bad,
+      canDrop: !p.main, dropOff: p.hasRun ? 'true' : 'false',
+      dropNote: p.hasRun ? x(['Dự án web-shop đã có task chạy trong hạng mục; huỷ task trước.', 'Project web-shop already ran tasks in this item; cancel the tasks first.']) : '',
+    }));
+
+    // ---- Contract ----
+    const hasContract = !isEmpty;
+    const teamApprovals = [
+      { team: 'Backend', mark: '✓', style: tone.ok, state: x(['Đã duyệt', 'Approved']), who: 'Nguyễn Minh · 14:02 12/10' },
+      { team: 'Web', mark: '●', style: tone.info, state: x(['Đang duyệt', 'In review']), who: x(['Lê Quang · chờ trả lời', 'Lê Quang · pending']) },
+      { team: 'Mobile', mark: '○', style: tone.mute, state: x(['Chờ', 'Waiting']), who: x(['Đỗ Hải · chưa tới lượt', 'Đỗ Hải · not yet its turn']) },
+    ];
+    const showContractWarn = !isBlocked && !isEmpty;
+
+    // ---- Câu hỏi ----
+    const qAll = [
+      { id: 'Q1', open: true, from: ['agent draft · spec.md', 'agent draft · spec.md'], text: ['Một giao dịch được hoàn một phần tối đa mấy lần?', 'How many partial refunds can one transaction have?'], suggest: ['Tối đa 3 lần; tổng không vượt số tiền gốc.', 'At most 3 times; the total never exceeds the original amount.'] },
+      { id: 'Q2', open: true, from: ['agent draft · plan.md', 'agent draft · plan.md'], text: ['Thanh toán bằng ví điện tử thì hoàn về ví hay về thẻ gốc?', 'For e-wallet payments, refund to the wallet or to the original card?'], suggest: ['Hoàn về đúng nguồn tiền gốc.', 'Refund to the original source of funds.'] },
+      { id: 'Q3', open: false, from: ['agent draft · spec.md', 'agent draft · spec.md'], text: ['Phí cổng thanh toán có được hoàn lại không?', 'Is the payment gateway fee refunded?'], answer: ['Không hoàn phí; trừ phí vào số tiền hoàn.', 'No fee refund; deduct the fee from the refund amount.'], by: ['Trần Lan · 09:40 12/10', 'Trần Lan · 09:40 12/10'] },
+      { id: 'Q4', open: false, from: ['agent breakdown · tasks.md', 'agent breakdown · tasks.md'], text: ['App mobile có cần hiển thị lịch sử hoàn không?', 'Does the mobile app need to show refund history?'], answer: ['Có, chỉ đọc, không có nút hoàn trên mobile.', 'Yes, read-only, no refund button on mobile.'], by: ['Đỗ Hải · 09:52 12/10', 'Đỗ Hải · 09:52 12/10'] },
+    ];
+    const qList = isEmpty ? [] : qAll;
+    const questions = qList.map((q) => ({
+      id: q.id, open: q.open, answered: !q.open, from: x(q.from), text: x(q.text), suggest: q.suggest ? x(q.suggest) : '', answer: q.answer ? x(q.answer) : '', by: q.by ? x(q.by) : '',
+      state: q.open ? x(['Đang mở', 'Open']) : x(['Đã trả lời', 'Answered']), mark: q.open ? '●' : '✓', style: q.open ? tone.warn : tone.ok,
+    }));
+    const qSummary = x(['2 mở · 2 đã trả lời · tối đa 5 câu mỗi vòng', '2 open · 2 answered · at most 5 per round']);
+
+    // ---- Task ----
+    const noTasks = isEmpty || isBlocked;
+    const TS = { done: ['✓', ['Xong', 'Done'], 'ok'], run: ['●', ['Đang chạy', 'Running'], 'info'], wait: ['!', ['Chờ máy AI SDLC', 'Waiting for AI SDLC machine'], 'warn'], dep: ['○', ['Chờ T-41', 'Waits for T-41'], 'mute'], ready: ['○', ['Sẵn sàng', 'Ready'], 'mute'], paused: ['!', ['Tạm dừng', 'Paused'], 'warn'] };
+    const t41 = isWait ? 'wait' : isPaused ? 'paused' : 'run';
+    const depBox = { dep: x(['Chờ T-41', 'Waits for T-41']), depCode: x(['TASK_DEPENDENCIES_OPEN · T-41 chưa merge', 'TASK_DEPENDENCIES_OPEN · T-41 is not merged']) };
+    const mk = (id, wave, title, st, o) => Object.assign({ id, wave: x(['Đợt ' + wave, 'Wave ' + wave]), title: x(title), mark: TS[st][0], state: x(TS[st][1]), style: tone[TS[st][2]], hasDep: false, dep: '', depCode: '', hasPr: false, pr: '', orphan: false }, o, { check: o.c[0] + ' / ' + o.c[1], bar: 'display: block; height: 100%; width: ' + Math.round((o.c[0] / o.c[1]) * 100) + '%; background: var(--success);' });
+    const lanes = noTasks ? [] : [
+      { project: 'payment-api', team: x(['đội Backend', 'Backend team']), main: true, tasks: [
+        mk('T-41', 1, ['API hoàn tiền một phần', 'Partial refund API'], t41, { c: [3, 5], hasPr: true, pr: 'payment-api #412 · ' + x(['PR đã mở', 'PR opened']) }),
+        mk('T-44', 1, ['Test hoàn tiền và làm tròn', 'Refund and rounding tests'], 'ready', { c: [0, 2], orphan: true }),
+      ] },
+      { project: 'web-shop', team: x(['đội Web', 'Web team']), main: false, tasks: [
+        mk('T-40', 1, ['Màn lịch sử giao dịch', 'Transaction history screen'], 'done', { c: [5, 5], hasPr: true, pr: 'web-shop #57 · ' + x(['PR đã merge', 'PR merged']) }),
+        mk('T-42', 2, ['Màn hoàn tiền một phần', 'Partial refund screen'], 'dep', Object.assign({ c: [0, 4], hasDep: true }, depBox)),
+      ] },
+      { project: 'mobile-app', team: x(['đội Mobile', 'Mobile team']), main: false, tasks: [
+        mk('T-43', 2, ['Hiển thị lịch sử hoàn', 'Show refund history'], 'dep', Object.assign({ c: [0, 3], hasDep: true }, depBox)),
+      ] },
+    ].map((l) => Object.assign(l, { aria: x(['Làn dự án ', 'Project lane ']) + l.project }));
+    const w1off = runOff ? 'true' : 'false';
+    const waves = noTasks ? [] : [
+      { name: x(['Đợt 1', 'Wave 1']), mark: '●', style: tone.info, state: x(['Đang chạy', 'Running']), note: x(['T-40 xong · T-41 ' + (isWait ? 'chờ máy' : 'đang chạy') + ' · T-44 sẵn sàng', 'T-40 done · T-41 ' + (isWait ? 'waiting for a machine' : 'running') + ' · T-44 ready']), btn: x(['Chạy đợt 1', 'Run wave 1']), off: w1off },
+      { name: x(['Đợt 2', 'Wave 2']), mark: '○', style: tone.mute, state: x(['Chờ đợt 1', 'Waits for wave 1']), note: x(['T-42 và T-43 chờ T-41 merge (TASK_DEPENDENCIES_OPEN)', 'T-42 and T-43 wait for T-41 to merge (TASK_DEPENDENCIES_OPEN)']), btn: x(['Chạy đợt 2', 'Run wave 2']), off: 'true' },
+    ];
+    const tkEmptyText = isBlocked ? x(['Bản tách task cần plan.md được duyệt trước (SDLC_GATE_BLOCKED).', 'The task breakdown needs plan.md approved first (SDLC_GATE_BLOCKED).']) : x(['Agent tách task sau khi thiết kế được duyệt. Task và đợt hiện ở đây, theo từng làn dự án.', 'The agent breaks tasks down once the design is approved. Tasks and waves appear here, by project lane.']);
+
+    // ---- Truy vết ----
+    const noTrace = isEmpty || isBlocked;
+    const pctOf = (a, b) => Math.round((a / b) * 100);
+    const lvRaw = [[['Yêu cầu có trong thiết kế', 'Requirements covered by design'], 6, 6], [['Yêu cầu có task', 'Requirements with a task'], 5, 6], [['Task có PR', 'Tasks with a PR'], 2, 5]];
+    const levels = lvRaw.map(([l, a, b]) => ({ label: x(l), value: a + ' / ' + b, pct: pctOf(a, b) + '%', mark: a === b ? '✓' : '!', style: a === b ? tone.ok : tone.warn, bar: 'display: block; height: 100%; width: ' + pctOf(a, b) + '%; background: ' + (a === b ? 'var(--success)' : 'var(--warning)') + ';' }));
+    const trRaw = [['payment-api', [[3, 3], [3, 3], [1, 2]]], ['web-shop', [[2, 2], [2, 2], [1, 2]]], ['mobile-app', [[1, 1], [0, 1], [0, 1]]]];
+    const cellT = [x(['Yêu cầu → thiết kế', 'Requirement → design']), x(['Yêu cầu → task', 'Requirement → task']), x(['Task → PR', 'Task → PR'])];
+    const trProjects = trRaw.map(([n, cs]) => ({ name: n, cells: cs.map(([a, b], i) => ({ value: a + '/' + b, title: cellT[i], mark: a === b ? '✓' : '!', style: a === b ? tone.ok : tone.warn })) }));
+
+    // ---- Hộp thoại ngoại lệ ----
+    const xs = ['task', 'project', 'item'].includes(this.state.xs) ? this.state.xs : 'task';
+    const XS = [['task', ['Task', 'Task']], ['project', ['Dự án', 'Project']], ['item', ['Hạng mục', 'Item']]];
+    const excScopes = XS.map(([k, l]) => ({ label: x(l), on: xs === k ? 'true' : 'false', mark: xs === k ? '●' : '○', pick: () => this.setState({ xs: k }), style: 'height: ' + (narrow ? '36px' : '32px') + '; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; font: inherit; font-size: 13.5px; cursor: pointer; border: 1px solid ' + (xs === k ? 'var(--primary)' : 'var(--border)') + '; background: ' + (xs === k ? 'var(--accent)' : 'var(--background)') + '; color: ' + (xs === k ? 'var(--accent-foreground)' : 'var(--foreground)') + ';' }));
+    const excTargets = xs === 'task' ? ['T-41', 'T-42', 'T-43', 'T-44'].map((l) => ({ label: l })) : xs === 'project' ? ['payment-api', 'web-shop', 'mobile-app'].map((l) => ({ label: l })) : [];
+    const excTargetLabel = xs === 'task' ? x(['Task', 'Task']) : x(['Dự án', 'Project']);
+
+    return {
+      theme: this.props.dark ? 'dark' : 'light', lang, role, t, wide, narrow, hasItem, isLoading, isError, isRo, canManage, canWrite,
+      rootClass: narrow ? 'nr' : '',
+      outerStyle: (narrow ? 'width: 360px; overflow: hidden; ' : 'width: 1440px; height: 900px; box-sizing: border-box; padding: 30px; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); ') + 'font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      winStyle: (narrow ? 'width: 360px; display: flex; flex-direction: column; ' : 'width: 1380px; height: 840px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5); ') + 'background: var(--background); color: var(--foreground);',
+      bodyStyle: narrow ? 'min-width: 0;' : 'flex: 1; min-height: 0; display: flex;',
+      mainStyle: 'min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; ' + (narrow ? 'width: 100%; padding: 16px 16px 32px;' : 'flex: 1; overflow-y: auto; padding: 20px 24px;'),
+      route: '#/sdlc/payment-api/012/' + tab,
+      viS: segS(!en), enS: segS(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+      steps, banners, runOff: runOff ? 'true' : 'false', showRunOffText: canManage && runOff, runOffText, pauseOff: isPaused ? 'true' : 'false', pauseLabel: isPaused ? x(['Tiếp tục', 'Resume']) : x(['Tạm dừng', 'Pause']),
+      openExc: () => this.setState({ dialog: 'exception' }), closeDlg: () => this.setState({ dialog: 'none' }), openRevoke: () => this.setState({ dialog: 'revoke' }),
+      dlgExc: hasItem && dlg === 'exception', dlgRevoke: hasItem && dlg === 'revoke', excScopes, excTargets, excHasTarget: excTargets.length > 0, excTargetLabel,
+      tabs, tabPicks, modes,
+      showOverview: tab === 'overview', showProjects: tab === 'projects', showDocs: tab === 'docs', showContract: tab === 'contract', showQuestions: tab === 'questions', showTasks: tab === 'tasks', showTrace: tab === 'trace',
+      stage, gateRows, gate, agentSteps, excs, hasExc: excs.length > 0, noExc: excs.length === 0, excCount: excs.length, prs, hasPrs: prs.length > 0, noPrs: prs.length === 0, activity,
+      projects, projCount: '3 / 8',
+      docs, noDocs: docs.length === 0,
+      hasContract, noContract: !hasContract, teamApprovals, showContractWarn,
+      questions, hasQuestions: questions.length > 0, noQuestions: questions.length === 0, qSummary,
+      lanes, waves, hasTasks: !noTasks, noTasks, tkEmptyText,
+      levels, trProjects, hasTrace: !noTrace, noTrace,
+    };
+  }
+}
+</script>
+</body>
+</html>

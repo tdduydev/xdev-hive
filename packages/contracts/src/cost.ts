@@ -34,10 +34,30 @@ export const costGroup = costTotals.extend({
 });
 export type CostGroup = z.output<typeof costGroup>;
 
+/**
+ * "Khảo sát trước khi sửa" của run code trong khoảng ngày (ADR 0022): phần agent đọc repo trước lần sửa file đầu tiên.
+ * Chỉ tính run có số đo (Claude, worker mới); run chưa sửa gì tính cả lần chạy. `costShare` và `costUsd` là ước tính:
+ * token khảo sát nhân hệ số giá của Claude (đọc cache 0,1, ghi cache 1,25, output 5 lần input) chia cho cả run.
+ */
+export const costExplore = z.object({
+  runs: z.number().int(),
+  /** Số run đã sửa file; còn lại là run chưa sửa gì. */
+  edited: z.number().int(),
+  turns: z.number().int(),
+  totalTurns: z.number().int(),
+  tokens: z.number().int(),
+  totalTokens: z.number().int(),
+  costShare: z.number().min(0).max(1),
+  costUsd: z.number(),
+});
+export type CostExplore = z.output<typeof costExplore>;
+
 export const costSummary = z.object({
   groupBy: costGroupBy,
   groups: z.array(costGroup),
   total: costTotals,
+  /** null khi trong khoảng ngày không có run code nào có số đo. */
+  explore: costExplore.nullable(),
 });
 export type CostSummary = z.output<typeof costSummary>;
 

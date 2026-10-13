@@ -54,6 +54,16 @@ export function toRun(r: RunRow): Run {
       turns: r.turns,
       accountId: r.accountId,
     },
+    explore: r.explore
+      ? {
+          edited: r.explore.edited,
+          turns: r.explore.turns,
+          inputTokens: r.explore.inputTokens,
+          outputTokens: r.explore.outputTokens,
+          cacheReadTokens: r.explore.cacheReadTokens,
+          cacheWriteTokens: r.explore.cacheWriteTokens,
+        }
+      : null,
     createdBy: r.createdBy,
     ownerUserId: r.ownerUserId,
     createdAt: r.createdAt.toISOString(),

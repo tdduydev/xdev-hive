@@ -18,12 +18,25 @@ type Usage struct {
 	Model            *string  `json:"model"`
 	// AccountID là id gói (tài khoản CLI) đã chạy run, để hub tính token theo gói; rỗng khi dùng đăng nhập mặc định.
 	AccountID string `json:"accountId,omitempty"`
+	// Explore chỉ có với Claude (ADR 0022); CLI khác để nil để hub cũ và worker cũ không khác nhau về hình dạng.
+	Explore *ExploreUsage `json:"explore,omitempty"`
+}
+
+// ExploreUsage là usage dùng để khảo sát repo trước lần sửa file đầu tiên. Edited false là agent chưa sửa gì, số
+// bằng toàn bộ usage tới lúc đó.
+type ExploreUsage struct {
+	Edited           bool  `json:"edited"`
+	Turns            int   `json:"turns"`
+	InputTokens      int64 `json:"inputTokens"`
+	OutputTokens     int64 `json:"outputTokens"`
+	CacheReadTokens  int64 `json:"cacheReadTokens"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens"`
 }
 
 func (u Usage) equal(o Usage) bool {
 	return u.InputTokens == o.InputTokens && u.OutputTokens == o.OutputTokens &&
 		u.CacheReadTokens == o.CacheReadTokens && u.CacheWriteTokens == o.CacheWriteTokens &&
-		eqPtr(u.CostUSD, o.CostUSD) && eqPtr(u.Turns, o.Turns) && eqPtr(u.Model, o.Model)
+		eqPtr(u.CostUSD, o.CostUSD) && eqPtr(u.Turns, o.Turns) && eqPtr(u.Model, o.Model) && eqPtr(u.Explore, o.Explore)
 }
 
 func eqPtr[T comparable](a, b *T) bool {
@@ -72,9 +85,13 @@ type claudeLine struct {
 	Type    string `json:"type"`
 	Model   string `json:"model"`
 	Message *struct {
-		ID    string          `json:"id"`
-		Model string          `json:"model"`
-		Usage *claudeAPIUsage `json:"usage"`
+		ID      string          `json:"id"`
+		Model   string          `json:"model"`
+		Usage   *claudeAPIUsage `json:"usage"`
+		Content []struct {
+			Type string `json:"type"`
+			Name string `json:"name"`
+		} `json:"content"`
 	} `json:"message"`
 	Usage        *claudeAPIUsage `json:"usage"`
 	TotalCostUSD *float64        `json:"total_cost_usd"`
@@ -98,6 +115,20 @@ type claudeUsage struct {
 	turns  *int
 	model  string
 	cached Usage
+	// explore đóng băng ở lần sửa file đầu tiên; nil tới lúc đó.
+	explore *ExploreUsage
+}
+
+// editTools là tool sửa file của Claude Code; Bash không tính vì không phân biệt được lệnh đọc với lệnh ghi.
+var editTools = map[string]bool{"Edit": true, "Write": true, "MultiEdit": true, "NotebookEdit": true}
+
+func (l claudeLine) editsFiles() bool {
+	for _, b := range l.Message.Content {
+		if b.Type == "tool_use" && editTools[b.Name] {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *claudeUsage) Line(line []byte) bool {
@@ -116,6 +147,9 @@ func (c *claudeUsage) Line(line []byte) bool {
 		}
 		if l.Message.Model != "" {
 			c.model = l.Message.Model
+		}
+		if c.explore == nil && l.editsFiles() {
+			c.freezeExplore(l.Message.ID)
 		}
 		prev, seen := c.msgs[l.Message.ID]
 		if !seen {
@@ -160,6 +194,25 @@ func (c *claudeUsage) Line(line []byte) bool {
 	return changed
 }
 
+// freezeExplore chụp usage của các lượt trước lượt có tool sửa file. Lượt sửa không tính: nó là chi phí của việc sửa
+// (cache read của nó là cả ngữ cảnh đã đọc, output là nội dung sửa), còn mục đích của con số là đo phần đọc repo để
+// hiểu bài. Các tin cùng message.id (mỗi khối nội dung một tin) cũng bị loại, kể cả khối đã tới trước tool_use.
+func (c *claudeUsage) freezeExplore(editID string) {
+	e := ExploreUsage{Edited: true}
+	for _, id := range c.order {
+		if id == editID {
+			continue
+		}
+		m := c.msgs[id]
+		e.Turns++
+		e.InputTokens += m.in
+		e.OutputTokens += m.out
+		e.CacheReadTokens += m.cacheRead
+		e.CacheWriteTokens += m.cacheWrite
+	}
+	c.explore = &e
+}
+
 func (c *claudeUsage) compute() Usage {
 	var t tokenCounts
 	for _, id := range c.order {
@@ -188,6 +241,17 @@ func (c *claudeUsage) compute() Usage {
 	if c.model != "" {
 		m := c.model
 		u.Model = &m
+	}
+	if c.explore != nil {
+		e := *c.explore
+		u.Explore = &e
+	} else {
+		// Chưa sửa gì thì cả run là khảo sát: run chỉ đọc báo toàn bộ usage của nó.
+		e := ExploreUsage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, CacheReadTokens: u.CacheReadTokens, CacheWriteTokens: u.CacheWriteTokens}
+		if u.Turns != nil {
+			e.Turns = *u.Turns
+		}
+		u.Explore = &e
 	}
 	return u
 }

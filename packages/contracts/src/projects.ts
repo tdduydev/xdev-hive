@@ -159,6 +159,19 @@ export const projectBudget = z.object({
   perRunTokens: z.number().int().min(1).max(1_000_000_000).optional(),
 });
 export type ProjectBudget = z.output<typeof projectBudget>;
+/**
+ * Bản tóm tắt repo cho mọi run (ADR 0022). `auto`: hub tự giao run `brief` khi dự án chưa có brief, khi nhánh chính
+ * đã đi trước brief `refreshCommits` commit, hoặc khi brief cũ hơn `refreshDays` ngày. Tắt thì chỉ người bấm "Làm mới"
+ * hay sửa tay; brief đã có vẫn vào prompt.
+ */
+export const briefSettings = z.object({
+  auto: z.boolean(),
+  refreshCommits: z.number().int().min(1).max(10_000),
+  refreshDays: z.number().int().min(1).max(365),
+});
+export type BriefSettings = z.output<typeof briefSettings>;
+export const DEFAULT_BRIEF_SETTINGS: BriefSettings = { auto: true, refreshCommits: 50, refreshDays: 7 };
+
 export const mergeMethod = z.enum(["merge", "squash", "rebase"]);
 export type MergeMethod = z.output<typeof mergeMethod>;
 
@@ -237,6 +250,8 @@ export const projectSettings = z.object({
   defaultCli: cli.nullable().optional(),
   /** Trần chi phí; không có là không giới hạn (docs/decisions.md: mặc định chỉ theo dõi chi phí). */
   budget: projectBudget.optional(),
+  /** Có mặc định vì settings đã lưu trước ADR 0022 không có mục này. */
+  brief: briefSettings.default(() => ({ ...DEFAULT_BRIEF_SETTINGS })),
 });
 export type ProjectSettings = z.output<typeof projectSettings>;
 
@@ -305,6 +320,7 @@ export const projectSettingsPatch = z
       })
       .nullable()
       .optional(),
+    brief: briefSettings.partial().strict().optional(),
   })
   .refine((p) => Object.keys(p).length > 0, "Bản vá settings không có trường nào để đổi.");
 export type ProjectSettingsPatch = z.output<typeof projectSettingsPatch>;
@@ -329,6 +345,7 @@ export function defaultProjectSettings(requiredApprovals = 1): ProjectSettings {
     features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
     issueIntake: { ...defaultIssueIntake },
     tokenSaving: { ...defaultTokenSaving },
+    brief: { ...DEFAULT_BRIEF_SETTINGS },
   };
 }
 

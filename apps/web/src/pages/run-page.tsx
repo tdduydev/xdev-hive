@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Run, RunEventView, RunSteerStatus, Task } from "@xdev-hive/contracts";
+import type { Run, RunEventView, RunExplore, RunSteerStatus, Task } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
@@ -22,6 +22,7 @@ import {
   checkRows,
   cliLabel,
   describeEvent,
+  exploreTokens,
   isTerminal,
   prLabel,
   RUN_STATE_LABEL,
@@ -116,6 +117,7 @@ export function RunPage() {
           <aside aria-label="Thông tin run" className="grid min-w-0 gap-4">
             <DetailsCard run={r} now={now} />
             <CostCard run={r} capUsd={project.data?.settings.budget?.perRunUsd} />
+            {r.explore && <ExploreCard explore={r.explore} />}
             <PolicyCard run={r} />
           </aside>
         </div>
@@ -138,6 +140,7 @@ function RunMeta({ run, task }: { run: Run; task: Task | undefined }) {
       {run.kind === "review" && <span>Review chéo</span>}
       {run.kind === "plan" && <span>Lập kế hoạch (chỉ đọc)</span>}
       {run.kind === "doccheck" && <span>Kiểm tài liệu cho quy trình duyệt (chỉ đọc)</span>}
+      {run.kind === "brief" && <span>Viết lại brief dự án (chỉ đọc)</span>}
       {run.kind === "docassist" && <span>Trợ lý của trình soạn tài liệu (chỉ đọc, góp ý thành đề xuất)</span>}
       {run.kind === "plan" && task && (
         <Link to="/tasks/$key/plan" params={{ key: task.key }} className="text-primary hover:text-primary/90">
@@ -352,6 +355,22 @@ function CostCard({ run, capUsd }: { run: Run; capUsd: number | undefined }) {
           { term: "Token ra", detail: formatInt(run.cost.tokensOut) },
           ...(run.cost.accountId ? [{ term: "Gói", detail: run.cost.accountId, mono: true }] : []),
           { term: "Số lượt", detail: run.cost.turns === null ? "—" : formatInt(run.cost.turns) },
+        ]}
+      />
+    </SectionCard>
+  );
+}
+
+/** Phần usage agent dùng để đọc repo trước lần sửa file đầu tiên; cho thấy brief có bớt được việc khảo sát không. */
+function ExploreCard({ explore }: { explore: RunExplore }) {
+  return (
+    <SectionCard title="Khảo sát trước khi sửa">
+      {!explore.edited && <p className="text-xs text-muted-foreground">Agent chưa sửa file nào; số dưới là cả run.</p>}
+      <DescriptionList
+        alignEnd
+        items={[
+          { term: "Số lượt", detail: formatInt(explore.turns) },
+          { term: "Token", detail: formatInt(exploreTokens(explore)) },
         ]}
       />
     </SectionCard>
