@@ -6,7 +6,8 @@ Bản phát hành của `hive-worker` dựng bằng goreleaser (`worker/.gorelea
 ## Các bước
 
 1. `main` xanh CI, đã có mọi thay đổi cần phát hành.
-2. Tạo tag theo semver rồi đẩy lên:
+2. Cách nhanh: Actions → Release → Run workflow trên `main`, nhập `version` (x.y.z) và `notes` (tuỳ chọn); workflow tự tạo
+   tag `v<version>` rồi chạy các bước dưới. Hoặc tạo tag theo semver rồi đẩy lên:
 
    ```sh
    git tag -a v0.2.0 -m "hive-worker 0.2.0" && git push origin v0.2.0
