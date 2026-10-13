@@ -67,6 +67,11 @@ export const knowledgeText: Dict<{
   pageNote: string;
   diff: string;
   noChanges: string;
+  memoryDiscard: string;
+  pendingEmpty: string;
+  pendingHint: string;
+  memoryViews: string;
+  byRun: string;
 }> = {
   vi: {
     docsTitle: "Tài liệu",
@@ -135,6 +140,11 @@ export const knowledgeText: Dict<{
     pageNote: "Số liệu trong trang đang tải",
     diff: "Thay đổi nội dung",
     noChanges: "Nội dung không đổi.",
+    memoryDiscard: "Bỏ",
+    pendingEmpty: "Không có memory nào chờ duyệt.",
+    pendingHint: "Memory do agent đề xuất. Chỉ khi được duyệt, agent mới tìm thấy nó qua memory_search.",
+    memoryViews: "Danh sách memory",
+    byRun: "Run",
   },
   en: {
     docsTitle: "Docs",
@@ -203,5 +213,10 @@ export const knowledgeText: Dict<{
     pageNote: "Counts on the loaded page",
     diff: "Content changes",
     noChanges: "Content is unchanged.",
+    memoryDiscard: "Discard",
+    pendingEmpty: "No memories waiting for approval.",
+    pendingHint: "Memories proposed by agents. Agents find them through memory_search only after approval.",
+    memoryViews: "Memory lists",
+    byRun: "Run",
   },
 };

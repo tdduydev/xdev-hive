@@ -5,13 +5,22 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { DEFAULT_AGENT_POLICY } from "@xdev-hive/contracts";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
+import { saveAgentPolicy } from "./modules/governance/index.ts";
 import { type Auth, createAuth } from "./modules/identity/index.ts";
-import { saveDoc, saveSkill, writeMemory } from "./modules/knowledge/index.ts";
+import {
+  approveMemory,
+  listMemories,
+  rejectMemory,
+  saveDoc,
+  saveSkill,
+  writeMemory,
+} from "./modules/knowledge/index.ts";
 import { createPool, parseMasterKey, withTenant } from "./modules/platform/index.ts";
 import { createRunsEngine, type RunsEngine, runTokenKey, signRunToken } from "./modules/runs/index.ts";
 import { createMemoryProvider } from "./modules/scm/index.ts";
@@ -218,7 +227,7 @@ describe("tool knowledge với run token", () => {
   it("tools/list chỉ có tool knowledge được phép, tool đọc được đánh dấu readOnly", async () => {
     const tools = (await client.listTools()).tools;
     expect(tools.map((t) => t.name)).toEqual(
-      expect.arrayContaining(KNOWLEDGE_TOOLS.filter((n) => n !== "memory_write" && n !== "doc_propose")),
+      expect.arrayContaining(KNOWLEDGE_TOOLS.filter((n) => n !== "doc_propose")),
     );
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name);
     expect(readOnly).toEqual(
@@ -246,12 +255,56 @@ describe("tool knowledge với run token", () => {
   it("run bị từ chối mọi tool ngoài danh sách, kể cả tool ghi knowledge", async () => {
     const before = (await admin.query("select count(*)::int as n from hive.memories where org_id = $1", [orgA.orgId]))
       .rows[0].n;
-    for (const name of ["memory_write", "doc_propose", "hive_whoami", "orgs_list", "teams_list", "systems_list"]) {
+    for (const name of ["doc_propose", "hive_whoami", "orgs_list", "teams_list", "systems_list"]) {
       await expect(client.callTool({ name, arguments: {} })).rejects.toThrow();
     }
     expect(
       (await admin.query("select count(*)::int as n from hive.memories where org_id = $1", [orgA.orgId])).rows[0].n,
     ).toBe(before);
+  });
+
+  describe("memory_write của run code theo chính sách memory của tổ chức (ADR 0022)", () => {
+    const setMemoryPolicy = (mode: "off" | "propose" | "direct", maxPerRun: number) =>
+      inOrg(orgA, "admin", (tx) =>
+        saveAgentPolicy(tx, orgA.user("admin"), { ...DEFAULT_AGENT_POLICY, agentMemory: { mode, maxPerRun } }),
+      );
+    const byRun = async () =>
+      (
+        await admin.query("select status from hive.memories where author_run_id = $1 order by created_at", [run.runId])
+      ).rows.map((r) => r.status as string);
+
+    it("mặc định vào hàng chờ duyệt: không hiện khi tìm cho tới khi thành viên đội duyệt", async () => {
+      const res = await call(client, "memory_write", { kind: "gotcha", content: "Bẫyđềxuất: chạy pnpm openapi." });
+      expect(res.isError).toBe(false);
+      expect(res.json()).toMatchObject({ status: "pending", author: { runId: run.runId } });
+      expect((await call(client, "memory_search", { query: "Bẫyđềxuất" })).json().hits).toHaveLength(0);
+      const pending = await inOrg(orgA, "tmember", (tx) =>
+        listMemories(tx, asUser(orgA, "tmember"), { project: proj.a.key, status: "pending" }),
+      );
+      expect(pending.map((m) => m.id)).toContain(res.json().id);
+      await inOrg(orgA, "tmember", (tx) => approveMemory(tx, asUser(orgA, "tmember"), res.json().id));
+      expect((await call(client, "memory_search", { query: "Bẫyđềxuất" })).json().hits).toHaveLength(1);
+      await expect(
+        inOrg(orgA, "tmember", (tx) => approveMemory(tx, asUser(orgA, "tmember"), res.json().id)),
+      ).rejects.toMatchObject({ code: "MEMORY_DECIDED" });
+      // Bỏ đề xuất thì xoá hẳn.
+      const dropped = (await call(client, "memory_write", { kind: "note", content: "Đềxuấtbỏ." })).json().id;
+      await inOrg(orgA, "tmember", (tx) => rejectMemory(tx, asUser(orgA, "tmember"), dropped));
+      expect((await admin.query("select 1 from hive.memories where id = $1", [dropped])).rowCount).toBe(0);
+    });
+
+    it("chế độ direct ghi thẳng, giới hạn số mục mỗi run, chế độ off từ chối", async () => {
+      await setMemoryPolicy("direct", (await byRun()).length + 1);
+      const direct = await call(client, "memory_write", { kind: "convention", content: "Ghithẳng quy ước." });
+      expect(direct.json()).toMatchObject({ status: "approved" });
+      const over = await call(client, "memory_write", { kind: "note", content: "Quá giới hạn." });
+      expect(over).toMatchObject({ isError: true, text: expect.stringContaining("đã ghi đủ") });
+      await setMemoryPolicy("off", 5);
+      const off = await call(client, "memory_write", { kind: "note", content: "Bị tắt." });
+      expect(off).toMatchObject({ isError: true, text: expect.stringContaining("không cho agent ghi memory") });
+      expect(await byRun()).toEqual(["approved", "approved"]);
+      await setMemoryPolicy("propose", 5);
+    });
   });
 
   it("memory_search mặc định 5 mục, cắt mỗi mục 500 ký tự và báo truncated", async () => {

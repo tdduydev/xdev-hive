@@ -584,3 +584,35 @@ export const docPresence = hive
     (t) => [primaryKey({ columns: [t.orgId, t.key, t.userId] }), orgScoped("doc_presence")],
   )
   .enableRLS();
+
+/**
+ * Bản tóm tắt repo của dự án, đưa vào prompt của mọi run (ADR 0022). Mỗi dự án một dòng; không giữ lịch sử như docs
+ * vì brief được viết lại cả bản mỗi lần làm mới và chỉ bản hiện tại có ích cho agent.
+ */
+export const projectBriefs = hive
+  .table(
+    "project_briefs",
+    {
+      orgId: uuid("org_id").notNull(),
+      teamId: uuid("team_id").notNull(),
+      projectId: uuid("project_id").primaryKey(),
+      content: text("content").notNull(),
+      version: integer("version").notNull().default(1),
+      /** Commit của nhánh chính agent đã đọc; null khi người viết tay lúc chưa có brief nào của agent. */
+      commitSha: text("commit_sha"),
+      source: text("source").$type<"agent" | "user">().notNull(),
+      ...updatedByColumns(),
+      /** Nhánh chính worker thấy ở run gần nhất và số commit nó đi trước commit_sha, để biết khi nào làm mới. */
+      headSha: text("head_sha"),
+      commitsBehind: integer("commits_behind"),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    () => [
+      check("project_briefs_content_len", sql`char_length(content) between 1 and 12000`),
+      check("project_briefs_source", sql`source in ('agent', 'user')`),
+      authorCheck("project_briefs_updated_by", "updated_by"),
+      orgScoped("project_briefs"),
+    ],
+  )
+  .enableRLS();

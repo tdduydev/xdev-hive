@@ -1,17 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import type { KnowledgeScope, Memory, MemoryKind, MemorySearchHit } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { useT } from "@/lib/i18n.ts";
 import { useKnowledgeAccess } from "@/lib/knowledge.ts";
+import { shortId } from "@/lib/run-view.ts";
 import {
   authorLabel,
   DataPages,
@@ -42,6 +46,7 @@ function MemoryScreen() {
   const [editing, setEditing] = useState<Memory | "new">();
   const list = useQuery(api.memory.list.queryOptions({ input: { limit: 50, offset, includeSuperseded: includeOld } }));
   const results = useQuery({ ...api.memory.search.queryOptions({ input: { query, limit: 50 } }), enabled: !!query });
+  const pendingList = useQuery(api.memory.list.queryOptions({ input: { status: "pending", limit: 200 } }));
   const active = query ? results : list;
   const rows = active.data ?? [];
   const columns: Column<Memory | MemorySearchHit>[] = [
@@ -98,94 +103,108 @@ function MemoryScreen() {
       lead={t.memoryLead}
       actions={access.scopes.length > 0 && <Button onClick={() => setEditing("new")}>{t.memoryAdd}</Button>}
     >
-      <form
-        className="flex flex-wrap gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setQuery(search.trim());
-          setSelected(undefined);
-        }}
-      >
-        <Input
-          aria-label={t.searchMemory}
-          placeholder={t.searchMemory}
-          className="min-w-0 flex-1"
-          maxLength={500}
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-        />
-        <Button type="submit">{t.search}</Button>
-      </form>
-      <label htmlFor={`${fieldId}-1`} className="flex items-center gap-2 text-sm">
-        <Checkbox
-          id={`${fieldId}-1`}
-          checked={includeOld}
-          disabled={!!query}
-          onCheckedChange={(checked) => {
-            setIncludeOld(checked);
-            setOffset(0);
-          }}
-        />
-        {t.includeOld}
-      </label>
-      <section aria-label={t.pageNote} className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {kinds.map((kind) => (
-          <DetailCard key={kind}>
-            <span className="text-muted-foreground">{t[kind]}</span>
-            <strong className="font-mono text-2xl">{rows.filter((row) => row.kind === kind).length}</strong>
-          </DetailCard>
-        ))}
-      </section>
-      <QueryState query={active} />
-      {active.data && (
-        <DataTable
-          key={query ? "search" : "list"}
-          columns={columns}
-          rows={rows}
-          selectable={false}
-          placeholder={t.content}
-          facets={[
-            { key: "kind", label: t.kind, value: (row) => t[row.kind] },
-            { key: "scope", label: t.scope, value: (row) => t[row.scope.level] },
-          ]}
-          onRowClick={setSelected}
-          rowLabel={(row) => row.content.slice(0, 60)}
-          activeId={selected?.id ?? ""}
-          emptyContent={t.empty}
-        />
-      )}
-      {!query && (
-        <DataPages
-          offset={offset}
-          count={rows.length}
-          onChange={(value) => {
-            setOffset(value);
-            setSelected(undefined);
-          }}
-        />
-      )}
-      {selected && (
-        <DetailCard>
-          <ScopeBadge scope={selected.scope} />
-          <p className="whitespace-pre-wrap break-words">{selected.content}</p>
-          {selected.files.map((file) => (
-            <code key={file} className="break-all text-xs">
-              {file}
-            </code>
-          ))}
-          {selected.supersededBy ? (
-            <p className="break-all text-muted-foreground">
-              {t.superseded}: {selected.supersededBy}
-            </p>
-          ) : (
-            access.allowed(selected.scope, "write") && (
-              <Button className="self-start" variant="outline" onClick={() => setEditing(selected)}>
-                {t.replace}
-              </Button>
-            )
+      <Tabs defaultValue="approved">
+        <TabsList variant="line" aria-label={t.memoryViews}>
+          <TabsTrigger value="approved">{t.approved}</TabsTrigger>
+          <TabsTrigger value="pending">
+            {t.pending}
+            <Pill small>{pendingList.data?.length ?? "—"}</Pill>
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="pending" className="space-y-3">
+          <PendingMemories list={pendingList} />
+        </TabsContent>
+        <TabsContent value="approved" className="space-y-4">
+          <form
+            className="flex flex-wrap gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setQuery(search.trim());
+              setSelected(undefined);
+            }}
+          >
+            <Input
+              aria-label={t.searchMemory}
+              placeholder={t.searchMemory}
+              className="min-w-0 flex-1"
+              maxLength={500}
+              value={search}
+              onChange={(event) => setSearch(event.currentTarget.value)}
+            />
+            <Button type="submit">{t.search}</Button>
+          </form>
+          <label htmlFor={`${fieldId}-1`} className="flex items-center gap-2 text-sm">
+            <Checkbox
+              id={`${fieldId}-1`}
+              checked={includeOld}
+              disabled={!!query}
+              onCheckedChange={(checked) => {
+                setIncludeOld(checked);
+                setOffset(0);
+              }}
+            />
+            {t.includeOld}
+          </label>
+          <section aria-label={t.pageNote} className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {kinds.map((kind) => (
+              <DetailCard key={kind}>
+                <span className="text-muted-foreground">{t[kind]}</span>
+                <strong className="font-mono text-2xl">{rows.filter((row) => row.kind === kind).length}</strong>
+              </DetailCard>
+            ))}
+          </section>
+          <QueryState query={active} />
+          {active.data && (
+            <DataTable
+              key={query ? "search" : "list"}
+              columns={columns}
+              rows={rows}
+              selectable={false}
+              placeholder={t.content}
+              facets={[
+                { key: "kind", label: t.kind, value: (row) => t[row.kind] },
+                { key: "scope", label: t.scope, value: (row) => t[row.scope.level] },
+              ]}
+              onRowClick={setSelected}
+              rowLabel={(row) => row.content.slice(0, 60)}
+              activeId={selected?.id ?? ""}
+              emptyContent={t.empty}
+            />
           )}
-        </DetailCard>
-      )}
+          {!query && (
+            <DataPages
+              offset={offset}
+              count={rows.length}
+              onChange={(value) => {
+                setOffset(value);
+                setSelected(undefined);
+              }}
+            />
+          )}
+          {selected && (
+            <DetailCard>
+              <ScopeBadge scope={selected.scope} />
+              <p className="whitespace-pre-wrap break-words">{selected.content}</p>
+              {selected.files.map((file) => (
+                <code key={file} className="break-all text-xs">
+                  {file}
+                </code>
+              ))}
+              {selected.supersededBy ? (
+                <p className="break-all text-muted-foreground">
+                  {t.superseded}: {selected.supersededBy}
+                </p>
+              ) : (
+                access.allowed(selected.scope, "write") && (
+                  <Button className="self-start" variant="outline" onClick={() => setEditing(selected)}>
+                    {t.replace}
+                  </Button>
+                )
+              )}
+            </DetailCard>
+          )}
+        </TabsContent>
+      </Tabs>
       {editing && (
         <MemoryEditor
           key={editing === "new" ? "new" : editing.id}
@@ -198,6 +217,68 @@ function MemoryScreen() {
         />
       )}
     </KnowledgeLayout>
+  );
+}
+function PendingMemories({ list }: { list: UseQueryResult<Memory[]> }) {
+  const t = useT(text);
+  const { api } = useOrg();
+  const cache = useQueryClient();
+  const access = useKnowledgeAccess();
+  const approve = useMutation(api.memory.approve.mutationOptions());
+  const reject = useMutation(api.memory.reject.mutationOptions());
+  const busy = approve.isPending || reject.isPending;
+  const decide = async (decision: "approve" | "reject", id: string) => {
+    try {
+      await (decision === "approve" ? approve : reject).mutateAsync({ id });
+      await cache.invalidateQueries({ queryKey: api.memory.key() });
+    } catch {
+      /* Lỗi hiện ngay dưới danh sách; hàng vẫn ở đó để thử lại. */
+    }
+  };
+  return (
+    <>
+      <p className="text-sm text-muted-foreground">{t.pendingHint}</p>
+      <QueryState query={list} />
+      {(approve.error || reject.error) && (
+        <Alert variant="destructive">{apiErrorMessage(approve.error ?? reject.error)}</Alert>
+      )}
+      {list.data?.length === 0 && <p className="text-muted-foreground">{t.pendingEmpty}</p>}
+      <ul className="space-y-3">
+        {list.data?.map((memory) => (
+          <li key={memory.id}>
+            <DetailCard>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full bg-accent px-2 py-1 text-accent-foreground">{t[memory.kind]}</span>
+                <ScopeBadge scope={memory.scope} />
+                {memory.author.runId ? (
+                  <Link
+                    to="/runs/$id"
+                    params={{ id: memory.author.runId }}
+                    className="text-primary hover:text-primary/90"
+                  >
+                    {t.byRun} <span className="font-mono">{shortId(memory.author.runId)}</span>
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">{authorLabel(memory.author)}</span>
+                )}
+              </div>
+              <p className="whitespace-pre-wrap break-words">{memory.content}</p>
+              {memory.files.length > 0 && <code className="break-all text-xs">{memory.files.join(", ")}</code>}
+              {access.allowed(memory.scope, "write") && (
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={busy} onClick={() => decide("approve", memory.id)}>
+                    {t.approve}
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => decide("reject", memory.id)}>
+                    {t.memoryDiscard}
+                  </Button>
+                </div>
+              )}
+            </DetailCard>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 function MemoryEditor({
