@@ -3,7 +3,7 @@ import { LogoIcon, Wordmark } from "@/components/logo.tsx";
 import { type Account, initials } from "@/lib/account.ts";
 import { folderName, pickFolder, shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { navItems, type Profile, type ScreenId } from "@/lib/nav.ts";
+import { navGroups, type Profile, type ScreenId } from "@/lib/nav.ts";
 import type { WorkerView } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
 import { WORKER_DOT, workerSentence } from "@/lib/worker.ts";
@@ -38,9 +38,9 @@ const text: Dict<{
 };
 
 /**
- * Thanh điều hướng của app (AppNav.dc.html): logo, thư mục làm việc, mục theo quyền, người đang dùng. Cửa sổ hẹp
- * hơn 760px, hoặc màn cần chỗ (`compact`), thì chỉ còn icon như bản `compact` của thiết kế (biến thể `compact:` trong
- * styles.css).
+ * Thanh điều hướng của app (AppNav.dc.html): logo, thư mục làm việc, mục theo quyền chia nhóm, người đang dùng. Cửa sổ
+ * hẹp hơn 760px, hoặc màn cần chỗ (`compact`), thì chỉ còn icon như bản `compact` của thiết kế (biến thể `compact:`
+ * trong styles.css); tiêu đề nhóm thành vạch ngăn.
  * Thư mục làm việc, trạng thái worker và người dùng chưa có nguồn dữ liệu (specs/008-desktop-v2 T004, T008, T023):
  * hiện trạng thái trống thay vì số liệu mẫu.
  */
@@ -57,7 +57,7 @@ export function AppNav({
   account?: Account | null;
   onAccount?: () => void;
   worker?: WorkerView | null;
-  /** Luôn chỉ còn icon (màn cần chỗ như Tài liệu), không chỉ khi cửa sổ hẹp. */
+  /** Luôn chỉ còn icon (màn cần chỗ như Tài liệu từ code), không chỉ khi cửa sổ hẹp. */
   compact?: boolean;
 }) {
   const t = useT(text);
@@ -89,35 +89,58 @@ export function AppNav({
         className="mb-2 flex cursor-pointer items-center gap-2 rounded-lg border bg-card px-2 py-1.5 text-left hover:bg-muted compact:hidden"
       >
         <span className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="truncate font-mono text-[12.5px] font-semibold">
-            {folder ? folderName(folder) : t.noFolder}
-          </span>
-          <span className="truncate font-mono text-[11px] text-muted-foreground">
+          <span className="truncate text-sm font-semibold">{folder ? folderName(folder) : t.noFolder}</span>
+          <span className={cn("truncate text-xs text-muted-foreground", folder && "font-mono")}>
             {folder ? shortPath(folder) : t.folder}
           </span>
         </span>
         <ChevronsUpDownIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
       </button>
-      {navItems(profile).map((item) => {
-        const current = item.id === active;
-        return (
-          <a
-            key={item.id}
-            href={`#/${item.id}`}
-            aria-current={current ? "page" : undefined}
-            title={item.label[lang]}
-            className={cn(
-              "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13.5px] text-foreground no-underline hover:bg-muted",
-              "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
-              current && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
-            )}
+      {/* Tiêu đề nhóm làm menu cao hơn; cửa sổ thấp thì cuộn danh sách thay vì đẩy nút tài khoản ra khỏi cửa sổ. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+        {navGroups(profile).map((group, index) => (
+          // Tên nhóm nằm ở aria-label để trình đọc màn hình vẫn nghe được khi menu thu gọn mất tiêu đề.
+          // biome-ignore lint/a11y/useSemanticElements: nhóm liên kết điều hướng, không phải ô nhập của form như fieldset
+          <div
+            key={group.id}
+            role="group"
+            aria-label={group.label[lang]}
+            className={cn("flex flex-col gap-1", index > 0 && "compact:mt-1 compact:border-t compact:pt-2")}
           >
-            <item.icon aria-hidden="true" className="size-4 shrink-0" />
-            <span className="flex-1 compact:sr-only">{item.label[lang]}</span>
-            {item.readOnly && <span className="text-[10.5px] text-muted-foreground compact:hidden">{t.readOnly}</span>}
-          </a>
-        );
-      })}
+            {!compact && (
+              <div
+                aria-hidden="true"
+                className={cn(
+                  "px-2.5 pb-0.5 text-xs font-medium text-muted-foreground compact:hidden",
+                  index > 0 && "pt-2.5",
+                )}
+              >
+                {group.label[lang]}
+              </div>
+            )}
+            {group.items.map((item) => {
+              const current = item.id === active;
+              return (
+                <a
+                  key={item.id}
+                  href={`#/${item.id}`}
+                  aria-current={current ? "page" : undefined}
+                  title={item.label[lang]}
+                  className={cn(
+                    "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-foreground no-underline hover:bg-muted",
+                    "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
+                    current && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
+                  )}
+                >
+                  <item.icon aria-hidden="true" className="size-4 shrink-0" />
+                  <span className="flex-1 compact:sr-only">{item.label[lang]}</span>
+                  {item.readOnly && <span className="text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>}
+                </a>
+              );
+            })}
+          </div>
+        ))}
+      </div>
       {worker && (
         <div
           role="status"
@@ -142,7 +165,7 @@ export function AppNav({
         )}
       >
         {account ? (
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
             {initials(account.name || account.email)}
           </span>
         ) : (
@@ -151,10 +174,10 @@ export function AppNav({
           </span>
         )}
         <span className="flex min-w-0 flex-1 flex-col leading-tight compact:sr-only">
-          <span className={cn("truncate text-[13px]", account ? "font-medium" : "text-muted-foreground")}>
+          <span className={cn("truncate text-sm", account ? "font-medium" : "text-muted-foreground")}>
             {account ? account.name || account.email : t.notLinked}
           </span>
-          {account && <span className="truncate text-[11.5px] text-muted-foreground">{roleLine}</span>}
+          {account && <span className="truncate text-xs text-muted-foreground">{roleLine}</span>}
         </span>
       </button>
     </nav>
