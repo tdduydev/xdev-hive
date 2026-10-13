@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  AgentPolicy,
-  AgentPolicyInput,
-  HookEvent,
-  InstructionTemplates,
-  PolicyHook,
-  TemplatePreview,
+import {
+  type AgentPolicy,
+  type AgentPolicyInput,
+  DEFAULT_AGENT_MEMORY_POLICY,
+  type HookEvent,
+  type InstructionTemplates,
+  type PolicyHook,
+  type TemplatePreview,
 } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
@@ -77,6 +78,15 @@ const text: Dict<{
   ownerOnly: string;
   sandboxReq: string;
   sandboxReqHint: string;
+  memTitle: string;
+  memHint: string;
+  memMode: string;
+  memOff: string;
+  memPropose: string;
+  memDirect: string;
+  memModeHint: Record<Form["agentMemory"]["mode"], string>;
+  memMax: string;
+  memMaxHint: string;
   hooksHint: string;
   managedOnly: string;
   managedOnlyHint: string;
@@ -148,6 +158,19 @@ const text: Dict<{
     ownerOnly: "Mở lại cần quyền “Cho phép CLI toàn quyền” (mặc định chỉ owner).",
     sandboxReq: "Bắt buộc sandbox",
     sandboxReqHint: "Mọi run code phải chạy trong container gVisor trên runner host.",
+    memTitle: "Memory do agent ghi",
+    memHint: "Agent chạy code và review ghi lại điều đã học cho các run sau qua memory_write.",
+    memMode: "Chế độ ghi",
+    memOff: "Tắt",
+    memPropose: "Đề xuất chờ duyệt",
+    memDirect: "Ghi thẳng",
+    memModeHint: {
+      off: "Agent không ghi được memory.",
+      propose: "Memory vào hàng chờ ở trang Memory; chỉ hiện cho agent sau khi thành viên đội duyệt.",
+      direct: "Memory có hiệu lực ngay, không qua duyệt.",
+    },
+    memMax: "Số memory tối đa mỗi run",
+    memMaxHint: "Từ 1 đến 50. Hub từ chối ghi vượt số này.",
     hooksHint: "Lệnh chạy chắc chắn ở các mốc của CLI: trước khi gọi tool, sau khi sửa file, khi kết thúc.",
     managedOnly: "Chỉ chạy hook của tổ chức",
     managedOnlyHint: "Bỏ qua hook và cấu hình .claude/settings.json trong repo.",
@@ -226,6 +249,19 @@ const text: Dict<{
     ownerOnly: "Turning it back on needs the “Allow full-access CLI” permission (owners by default).",
     sandboxReq: "Require sandbox",
     sandboxReqHint: "Every code run must run in a gVisor container on a runner host.",
+    memTitle: "Agent-written memory",
+    memHint: "Code and review agents save what they learned for later runs through memory_write.",
+    memMode: "Write mode",
+    memOff: "Off",
+    memPropose: "Propose, wait for approval",
+    memDirect: "Write directly",
+    memModeHint: {
+      off: "Agents cannot write memory.",
+      propose: "Memories wait on the Memory page and reach agents only after a team member approves them.",
+      direct: "Memories take effect at once, with no review.",
+    },
+    memMax: "Max memories per run",
+    memMaxHint: "1 to 50. The hub rejects writes over this number.",
     hooksHint: "Commands that always run at CLI events: before a tool call, after edits, at the end.",
     managedOnly: "Only run organization hooks",
     managedOnlyHint: "Ignore hooks and .claude/settings.json from repositories.",
@@ -291,6 +327,8 @@ const formOf = (p: AgentPolicy): Form => ({
   templates: p.templates,
   autoSyncTemplates: p.autoSyncTemplates,
   limits: p.limits,
+  // Hub cũ chưa có mục này thì giữ mặc định của hợp đồng, như chính sách lưu trước ADR 0022.
+  agentMemory: p.agentMemory ?? { ...DEFAULT_AGENT_MEMORY_POLICY },
 });
 
 function PolicyCard({
@@ -390,6 +428,50 @@ function LimitInput({
         }}
       />
       {unit && <span className="text-xs font-normal text-muted-foreground">{unit}</span>}
+    </div>
+  );
+}
+
+/** Số nguyên 1..50; gõ dở hoặc ngoài khoảng thì giữ giá trị hợp lệ cuối và báo ô sai, để không lưu số rác. */
+function MaxPerRunInput({
+  label,
+  hint,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  onChange: (v: number) => void;
+  disabled: boolean;
+}) {
+  const id = useId();
+  const [raw, setRaw] = useState(String(value));
+  useEffect(() => setRaw(String(value)), [value]);
+  const n = Number(raw);
+  const valid = Number.isInteger(n) && n >= 1 && n <= 50;
+  return (
+    <div className="flex flex-col gap-1.5 text-sm font-medium">
+      <label htmlFor={id}>{label}</label>
+      <Input
+        id={id}
+        type="number"
+        min="1"
+        max="50"
+        step="1"
+        inputMode="numeric"
+        className="font-mono"
+        value={raw}
+        disabled={disabled}
+        aria-invalid={!valid}
+        onChange={(e) => {
+          setRaw(e.target.value);
+          const next = Number(e.target.value);
+          if (e.target.value.trim() !== "" && Number.isInteger(next) && next >= 1 && next <= 50) onChange(next);
+        }}
+      />
+      <span className={cn("text-xs font-normal", valid ? "text-muted-foreground" : "text-destructive")}>{hint}</span>
     </div>
   );
 }
@@ -605,6 +687,32 @@ export function PoliciesPage() {
               checked={form.requireSandbox}
               onChange={(v) => update({ requireSandbox: v })}
               disabled={disabled}
+            />
+          </PolicyCard>
+
+          <PolicyCard title={t.memTitle} hint={t.memHint}>
+            <div className="flex flex-col gap-1.5 text-sm font-medium">
+              <label htmlFor="policy-memory-mode">{t.memMode}</label>
+              <NativeSelect
+                id="policy-memory-mode"
+                value={form.agentMemory.mode}
+                disabled={disabled}
+                onChange={(e) =>
+                  update({ agentMemory: { ...form.agentMemory, mode: e.target.value as Form["agentMemory"]["mode"] } })
+                }
+              >
+                <option value="off">{t.memOff}</option>
+                <option value="propose">{t.memPropose}</option>
+                <option value="direct">{t.memDirect}</option>
+              </NativeSelect>
+              <span className="text-xs font-normal text-muted-foreground">{t.memModeHint[form.agentMemory.mode]}</span>
+            </div>
+            <MaxPerRunInput
+              label={t.memMax}
+              hint={t.memMaxHint}
+              value={form.agentMemory.maxPerRun}
+              onChange={(maxPerRun) => update({ agentMemory: { ...form.agentMemory, maxPerRun } })}
+              disabled={disabled || form.agentMemory.mode === "off"}
             />
           </PolicyCard>
 

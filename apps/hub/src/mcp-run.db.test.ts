@@ -158,12 +158,22 @@ describe("run token ở /mcp", () => {
     console.log("MCP_LEAN_BYTES", Buffer.byteLength(JSON.stringify(listed)));
     const names = listed.tools.map((t) => t.name);
     expect(names.sort()).toEqual(
-      ["task_get", "task_update", "memory_search", "doc_get", "doc_list", "skill_get", "skill_list"].sort(),
+      [
+        "task_get",
+        "task_update",
+        "memory_search",
+        "memory_write",
+        "doc_get",
+        "doc_list",
+        "skill_get",
+        "skill_list",
+      ].sort(),
     );
     const bytes = Buffer.byteLength(JSON.stringify(listed));
-    // Đo tools/list tại 639cbba trước thay đổi: JSON kết quả client, UTF-8, không kèm envelope JSON-RPC.
-    expect(bytes).toBeLessThan(4500);
-    expect(bytes).toBeLessThan(11_383 * 0.4);
+    // Đo tools/list tại 639cbba trước thay đổi: JSON kết quả client, UTF-8, không kèm envelope JSON-RPC. Run code có
+    // thêm memory_write (ADR 0022, ~400 byte) để ghi điều học được thay vì run sau phải khảo sát lại.
+    expect(bytes).toBeLessThan(5000);
+    expect(bytes).toBeLessThan(11_383 * 0.45);
     expect(listed.tools.every((tool) => !("org" in (tool.inputSchema.properties ?? {})))).toBe(true);
   });
 

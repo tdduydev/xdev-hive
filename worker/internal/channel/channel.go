@@ -124,6 +124,9 @@ type jobSpec struct {
 	Checks      *struct {
 		Commands []runner.CheckCommand `json:"commands"`
 	} `json:"checks"`
+	Brief *struct {
+		SHA string `json:"sha"`
+	} `json:"brief"`
 }
 
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
@@ -153,6 +156,9 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	j.MCPServers = s.MCPServers
 	if s.Checks != nil {
 		j.Checks = s.Checks.Commands
+	}
+	if s.Brief != nil {
+		j.BriefSHA = s.Brief.SHA
 	}
 	if s.Sandbox != nil {
 		j.EnvironmentImage = s.Sandbox.Image.BaseImage
