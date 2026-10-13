@@ -9,6 +9,7 @@ import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { LockIcon } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { ProjectBriefCard } from "@/components/project-brief-card.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
@@ -106,6 +107,14 @@ const text: Dict<{
   cfNote: string;
   cfKeep: string;
   cfGo: string;
+  briefTitle: string;
+  briefHint: string;
+  briefAuto: string;
+  briefAutoHint: string;
+  briefCommits: string;
+  briefCommitsHint: string;
+  briefDays: string;
+  briefDaysHint: string;
 }> = {
   vi: {
     title: "Cấu hình dự án",
@@ -189,6 +198,15 @@ const text: Dict<{
       "Chỉ bật khi run chạy trong container dùng một lần hoặc trên máy riêng cho agent, không chứa dữ liệu quan trọng.",
     cfKeep: "Giữ trong worktree",
     cfGo: "Bật toàn quyền",
+    briefTitle: "Brief dự án",
+    briefHint: "Bản tóm tắt repo đưa vào prompt của mọi run để agent khỏi đọc lại cả dự án.",
+    briefAuto: "Tự cập nhật brief",
+    briefAutoHint:
+      "Hub tự giao run viết brief khi chưa có, khi nhánh chính đi xa, hoặc khi brief đã cũ. Tắt thì chỉ làm mới bằng tay.",
+    briefCommits: "Làm mới sau số commit",
+    briefCommitsHint: "Nhánh chính đi trước brief từng này commit thì làm mới.",
+    briefDays: "Làm mới sau số ngày",
+    briefDaysHint: "Brief cũ hơn từng này ngày thì làm mới khi có run mới.",
   },
   en: {
     title: "Project settings",
@@ -270,6 +288,15 @@ const text: Dict<{
     cfNote: "Only turn this on for throwaway containers or agent-only machines with no important data.",
     cfKeep: "Keep in worktree",
     cfGo: "Enable full access",
+    briefTitle: "Project brief",
+    briefHint: "A summary of the repo that goes into every run's prompt so agents do not re-read the whole project.",
+    briefAuto: "Update the brief automatically",
+    briefAutoHint:
+      "The hub queues a brief run when there is none, when the main branch moves on, or when the brief is stale. Off means refresh by hand only.",
+    briefCommits: "Refresh after commits",
+    briefCommitsHint: "Refresh once the main branch is this many commits ahead of the brief.",
+    briefDays: "Refresh after days",
+    briefDaysHint: "Refresh when a run starts and the brief is older than this.",
   },
 };
 
@@ -301,8 +328,9 @@ export function ProjectSettingsPage() {
       </>
     );
   } else {
-    const canEdit = teamRoleLookup(org.role, members.data, me.id)(project.teamId) === "admin";
-    body = <SettingsEditor key={project.id} project={project} canEdit={canEdit} />;
+    const role = teamRoleLookup(org.role, members.data, me.id)(project.teamId);
+    // Brief mở cho cả thành viên đội (hub cũng cho), còn cấu hình dự án chỉ quản trị đội.
+    body = <SettingsEditor key={project.id} project={project} canEdit={role === "admin"} canBrief={role !== null} />;
   }
 
   return (
@@ -416,7 +444,7 @@ function TextField({
   );
 }
 
-function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boolean }) {
+function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canEdit: boolean; canBrief: boolean }) {
   const { api } = useOrg();
   const t = useT(text);
   // Hub cũ chưa có chính sách thì coi như không khoá, như trước.
@@ -482,6 +510,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
     { href: "#review", label: t.reviewTitle },
     { href: "#plan", label: t.planTitle },
     { href: "#sandbox", label: t.sandboxTitle },
+    { href: "#brief", label: t.briefTitle },
     { href: "#budget", label: t.budgetTitle },
     { href: "#model", label: t.modelTitle },
     { href: "#perm", label: t.permTitle },
@@ -701,6 +730,37 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                 {t.sandboxLink} →
               </Link>
             </p>
+          </Section>
+
+          <Section id="brief" title={t.briefTitle} hint={t.briefHint}>
+            <ProjectBriefCard project={project} canWrite={canBrief} />
+            <SwitchRow
+              label={t.briefAuto}
+              hint={t.briefAutoHint}
+              checked={form.briefAuto}
+              onChange={(v) => set("briefAuto", v)}
+              disabled={disabled}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label={t.briefCommits}
+                hint={t.briefCommitsHint}
+                error={errors.briefRefreshCommits}
+                value={form.briefRefreshCommits}
+                onChange={(v) => set("briefRefreshCommits", v)}
+                disabled={disabled}
+                inputMode="numeric"
+              />
+              <TextField
+                label={t.briefDays}
+                hint={t.briefDaysHint}
+                error={errors.briefRefreshDays}
+                value={form.briefRefreshDays}
+                onChange={(v) => set("briefRefreshDays", v)}
+                disabled={disabled}
+                inputMode="numeric"
+              />
+            </div>
           </Section>
 
           <Section id="budget" title={t.budgetTitle} hint={t.budgetHint}>
