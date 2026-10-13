@@ -4,13 +4,13 @@
 
 **Created**: 2026-10-13
 
-**Status**: Draft (đã ghi quyết định của product owner ngày 2026-10-13; còn 3 câu [NEEDS CLARIFICATION])
+**Status**: Draft (product owner đã chốt mọi câu hỏi ngày 2026-10-13, xem [Clarifications](#clarifications))
 
 **Input**: Yêu cầu của product owner (nguyên văn): "hệ thống này sẽ có chế độ AI SDLC, nghiên cứu xem"; "app client chỉ có
 nhiệm vụ kiểm tra thôi, làm tài liệu thôi, còn AI SDLC phải chạy tất cả trên app ấy"; "có cách nào cho AI SDLC chạy full
 trên web không, và các máy dưới chỉ cài worker chuyên cho AI SDLC".
 
-**Requirements added**: SDLC-01 … SDLC-17 trong [docs/srs.md](../../docs/srs.md#320-ai-sdlc-mode-sdlc).
+**Requirements added**: SDLC-01 … SDLC-20 trong [docs/srs.md](../../docs/srs.md#320-ai-sdlc-mode-sdlc).
 **Decision record**: [ADR 0021](../../docs/adr/0021-ai-sdlc-mode.md).
 
 ## Bối cảnh
@@ -40,7 +40,11 @@ merge, release notes, với cổng người duyệt ở từng giai đoạn và 
 
 | Từ | Nghĩa |
 |---|---|
-| **Hạng mục** (item, intent) | Một đơn vị công việc AI SDLC của một dự án: từ một ý tưởng hoặc issue tới merge và release. Có số thứ tự trong dự án (`012`) và slug (`hoan-tien-mot-phan`). |
+| **Hạng mục** (item, intent) | Một đơn vị công việc AI SDLC: từ một ý tưởng hoặc issue tới merge và release. Có thể trải nhiều dự án (repo). Có số thứ tự trong dự án chính (`012`) và slug (`hoan-tien-mot-phan`). |
+| **Dự án chính** (home project) | Dự án giữ số `NNN` và tài liệu chung (yêu cầu, thiết kế, bản tách task) của hạng mục. Đội của dự án chính là **đội chủ trì**. |
+| **Dự án tham gia** (participant) | Dự án khác của cùng tổ chức có task trong hạng mục (vd. `web-shop`, `mobile-app` cạnh `payment-api`). Có thể thuộc đội khác. |
+| **Contract liên repo** | Tài liệu giao tiếp giữa các dự án (API, sự kiện, schema), có một dự án **cung cấp** và các dự án **dùng**. Là tài liệu riêng của hạng mục, có cổng riêng. |
+| **Tự duyệt AI** (auto-approve) | Hub tự quyết một cổng người khi review AI của giai đoạn đạt ngưỡng và hạng mục không chạm điều kiện nhạy cảm; người duyệt thu hồi được trong N giờ. Tương ứng "Continue automatically" của AI-DLC. |
 | **Chế độ** (mode) | Định nghĩa vòng đời bằng **dữ liệu**: danh sách giai đoạn, tài liệu mỗi giai đoạn (đường dẫn trong repo, mục bắt buộc), bước agent, cổng duyệt, luật tách task, mức chặn. Mỗi phương pháp (AI-DLC, Spec Kit, BMAD, Kiro, OpenSpec) là một hay nhiều **preset** của cùng mô hình. |
 | **Giai đoạn** (phase) | Một bước của chế độ, thuộc một trong 7 loại chuẩn: `intake`, `requirements`, `design`, `decomposition`, `implementation`, `verification`, `release`. Loại chuẩn dùng cho bảng tiến độ và chỉ số. |
 | **Tài liệu giai đoạn** (artifact) | Một tài liệu Markdown của hạng mục, vừa là tài liệu hub (`project/<dự án>/sdlc/<NNN>-<slug>/<tên>`) vừa là file trong repo (vd. `specs/012-hoan-tien/spec.md`). |
@@ -60,6 +64,60 @@ merge, release notes, với cổng người duyệt ở từng giai đoạn và 
   hình (preset chế độ, chính sách chặn, quy trình duyệt, kết nối Git) và quản trị (đội máy AI SDLC).
 - **Máy worker AI SDLC** chạy agent; người vận hành dựng bằng `scripts/install.sh` / `install.ps1`, không cần app.
 
+## Clarifications
+
+### Session 2026-10-13
+
+Product owner chốt các câu hỏi mở của bản nháp đầu (Q1–Q3) và các câu hỏi thêm trong báo cáo lượt soạn trước.
+
+- **Q1. Ghi tài liệu đã duyệt vào repo bằng cách nào?** → Theo đề xuất. Mặc định `pr`: mỗi repo một PR
+  `hive/sdlc/<NNN>-<slug>` chỉ đổi file của hạng mục, hub đặt commit status `xdev-hive/sdlc` = success rồi đưa PR vào hàng
+  merge, **không** qua review code lại (nội dung đã duyệt trên hub). Dự án chọn được `direct` (commit thẳng vào nhánh mặc
+  định không bảo vệ) hoặc `off`. Xem US4, FR-021.
+- **Q2. BA/PO dùng hồ sơ app nào?** → Theo đề xuất. Thêm vai trò hệ thống cấp đội **BA/PO** (`team-ba`): `sdlc.read`,
+  `sdlc.write`, quyền đề xuất tài liệu (`proposals.create`), được chọn làm người duyệt tài liệu, **không** có quyền chạy
+  run hay quản trị máy. `profileOf()` của app xếp người chỉ có vai trò viewer hoặc BA/PO vào hồ sơ `writer`; hồ sơ `writer` có `sdlc.use`.
+  Xem FR-038, FR-061.
+- **Q3. Hạng mục có trải nhiều dự án/repo không?** → **Khác đề xuất: có, ngay bản này.** Một hạng mục có danh sách dự án
+  tham gia (vd. backend + frontend + mobile), một dự án là **dự án chính**. Quyết định chi tiết (người soạn spec chốt theo
+  ý PO, lý do ghi trong [plan.md](plan.md) D19–D24):
+  - Yêu cầu, thiết kế và bản tách task là **tài liệu chung**, nằm ở dự án chính (hub và repo của dự án chính). Lý do: một
+    nguồn sự thật, không có N bản cần đồng bộ chéo; agent ở repo khác đọc qua seed file.
+  - Mỗi task hub thuộc **đúng một dự án** (một run, một PR trong repo của dự án đó). Bản tách task ghi dự án của từng task.
+  - Phụ thuộc giữa task được **trải dự án** (task frontend chờ task backend merge).
+  - **Contract liên repo** (API, sự kiện) là tài liệu riêng, có dự án cung cấp và dự án dùng; được ghi vào repo của dự án
+    cung cấp, và một bản sao chỉ đọc vào repo của mỗi dự án dùng.
+  - Đồng bộ repo theo cài đặt **của từng dự án**; mỗi repo một PR đồng bộ; repo không phải dự án chính nhận một file mục
+    lục trỏ về tài liệu chung.
+  - Quyền: người dùng phải có quyền trên **mọi** dự án mình thao tác (tạo hạng mục, thêm dự án, sửa/chạy task, ngoại lệ).
+    Người duyệt theo dự án: cổng đánh dấu "theo dự án" tách thành một checkpoint cho đội của mỗi dự án tham gia.
+  - Tenancy: hạng mục thuộc **tổ chức** (RLS theo `org_id`) và có **đội chủ trì** là đội của dự án chính. Thành viên đội
+    của bất kỳ dự án tham gia nào xem được hạng mục; chi tiết run, log, PR vẫn theo quyền dự án như hiện nay. Rủi ro: RLS
+    chỉ tách theo tổ chức, phân quyền theo đội do code kiểm (xem plan.md "Rủi ro").
+  - Truy vết và độ phủ tính **theo dự án và tổng**; chặn cứng xét **theo từng dự án** (tài liệu chung + tài liệu của dự án
+    + contract mà dự án cung cấp hoặc dùng; mức chặn theo cài đặt của dự án của task).
+  - MVP có nhiều dự án ở mức tối thiểu (xem [tasks.md](tasks.md) "Implementation Strategy"): danh sách dự án, quyền, tài
+    liệu chung ở dự án chính, task gắn dự án, DAG liên dự án, cổng theo dự án, chặn theo dự án, contract trên hub, độ phủ
+    theo dự án. Sau MVP: đồng bộ repo nhiều repo kèm bản sao contract, agent soạn có checkout nhiều repo, converge theo
+    dự án.
+- **Câu hỏi thêm 6. Run chạy trên máy nào?** → Theo đề xuất. Mặc định máy worker AI SDLC dùng chung của đội (`team`), tuỳ chọn
+  `requester` (máy của người bấm). Hạng mục nhiều dự án: run soạn chạy trên máy của đội chủ trì; run code của task chạy
+  trên máy của đội sở hữu dự án của task.
+- **Câu hỏi thêm 7. Có tự duyệt kiểu "Continue automatically" của AI-DLC?** → **Khác đề xuất: có.** Cổng người ở giai đoạn rủi
+  ro thấp được hub tự quyết khi review AI của giai đoạn đạt ngưỡng:
+  - Chế độ khai giai đoạn nào, cổng người nào được tự duyệt và ngưỡng điểm; dự án chỉ siết thêm (tắt, nâng ngưỡng, bớt
+    giai đoạn, thêm từ khoá/đường dẫn nhạy cảm); **chính sách tổ chức tắt được** toàn bộ.
+  - **Luôn cần người**: giai đoạn `requirements` của chế độ nặng (chế độ có cỡ L hoặc XL, hoặc hạng mục cỡ L/XL); mọi
+    thay đổi chạm đường dẫn nhạy cảm (`denyPaths`) hoặc từ khoá nhạy cảm (phí, thanh toán, bảo mật, mật khẩu, quyền…);
+    contract liên repo.
+  - Ghi audit "Tự duyệt bởi AI" kèm điểm, ngưỡng, lý do; báo người duyệt bị bỏ qua; người duyệt **thu hồi được trong N
+    giờ** (mặc định 24) — thu hồi mở lại cổng người và chặn run code mới phụ thuộc tài liệu đó tới khi người duyệt.
+  - Xem US18, FR-056…FR-060.
+- **Câu hỏi thêm 4 (Windows Service)** → Giữ theo plan: ngoài phạm vi; khuyến nghị Linux/macOS cho máy worker AI SDLC.
+- **Câu hỏi thêm 5 (ngân sách)** → Giữ theo plan: dùng ngân sách task và chi phí ngày hiện có, không thêm ngân sách riêng.
+- **Câu hỏi thêm 8 (khuôn, prompt)** → Giữ theo plan: Hive tự viết lại khuôn và prompt theo tinh thần từng phương pháp,
+  không chép nguyên văn.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Tạo hạng mục từ ý tưởng hoặc issue, chọn chế độ hoặc nhận gợi ý (Priority: P1)
@@ -67,7 +125,8 @@ merge, release notes, với cổng người duyệt ở từng giai đoạn và 
 PO mở app desktop (hoặc web), vào **AI SDLC → Hạng mục → Tạo hạng mục**, chọn dự án `payment-api`, dán ý tưởng "Cho phép
 hoàn tiền một phần cho đơn đã giao" (hoặc dán link issue GitHub/GitLab). Hive gợi ý **cỡ việc** (S, M, L, XL) và **chế độ**
 kèm lý do ("Đụng thanh toán, nhiều màn → L → Spec Kit"). PO giữ gợi ý hoặc chọn chế độ khác trong danh sách dự án cho
-phép, rồi bấm Tạo. Hạng mục `012-hoan-tien-mot-phan` xuất hiện trên bảng ở giai đoạn đầu.
+phép. Tính năng cần sửa cả web và app di động nên PO thêm `web-shop` và `mobile-app` vào **Dự án tham gia** (`payment-api`
+là dự án chính), rồi bấm Tạo. Hạng mục `012-hoan-tien-mot-phan` xuất hiện trên bảng ở giai đoạn đầu, có nhãn ba dự án.
 
 **Why this priority**: Điểm vào của mọi thứ khác. Gợi ý theo cỡ tránh dùng quy trình nặng cho việc nhỏ (phê bình của
 Böckeler: Markdown dài, quá nặng cho bug nhỏ).
@@ -90,6 +149,9 @@ cỡ ≥ M, chế độ `speckit`. Chọn khác gợi ý: audit `sdlc.item.creat
    đầu ở trạng thái "Đang soạn".
 5. **Given** leader của dự án (LEAD-02) đề xuất hành động `sdlc.item.create`, **When** người duyệt đề xuất, **Then** hạng
    mục được tạo như trên, người duyệt là chủ hạng mục.
+6. **Given** người tạo chọn thêm dự án tham gia, **When** gửi, **Then** hub kiểm người tạo có `sdlc.write` trên đội của
+   **mọi** dự án đã chọn và mọi dự án đã bật AI SDLC; thiếu một dự án thì từ chối cả yêu cầu ("Bạn không có quyền AI SDLC
+   trên dự án web-shop."), không tạo hạng mục dở. Chế độ phải nằm trong danh sách cho phép của dự án chính.
 
 ---
 
@@ -172,8 +234,9 @@ agent và người đọc ngay trong repo. Dev sửa `spec.md` trong một PR r�
 **Acceptance Scenarios**:
 
 1. **Given** tài liệu vừa có baseline, **When** job đồng bộ chạy, **Then** hub ghi file vào repo theo cách đồng bộ của dự
-   án (xem [NEEDS CLARIFICATION Q1]) trong ≤ 2 phút, lưu commit SHA và hash nội dung; commit có trailer
-   `Co-authored-by` của người viết và người duyệt.
+   án (Q1: mặc định PR `hive/sdlc/<NNN>-<slug>` có commit status `xdev-hive/sdlc` rồi vào hàng merge, không review code;
+   hoặc `direct`) trong ≤ 2 phút, lưu commit SHA và hash nội dung; commit có trailer `Co-authored-by` của người viết và
+   người duyệt.
 2. **Given** commit lên repo lỗi (mất quyền, nhánh bảo vệ), **When** job chạy, **Then** thử lại theo lịch (tối đa 6 lần
    trong 1 giờ), hạng mục hiện "Chưa đồng bộ" với lý do, quản trị dự án nhận thông báo; run code vẫn đọc được tài liệu
    qua seed file (US2-1) nên không bị chặn vì đồng bộ chậm.
@@ -185,6 +248,13 @@ agent và người đọc ngay trong repo. Dev sửa `spec.md` trong một PR r�
 5. **Given** trên hub đang có bản nháp hoặc phiên duyệt cho cùng tài liệu, **When** repo đổi, **Then** đề xuất từ repo
    vẫn tạo nhưng ghi chú "Xung đột với bản nháp của X"; editor đã có thao tác "Rebase" (spec 005).
 6. **Given** file bị xoá trong repo, **When** push tới, **Then** tài liệu "Lệch repo (đã xoá)", không xoá tài liệu hub.
+7. **Given** hạng mục có ba dự án, **When** baseline của tài liệu chung và một contract ra đời, **Then** mỗi repo nhận
+   **một** PR (hoặc commit `direct`) theo cài đặt của chính dự án đó: repo dự án chính nhận tài liệu chung, repo cung cấp
+   nhận contract, repo dùng nhận bản sao contract chỉ đọc và file mục lục `README.md` trỏ về tài liệu chung. Một repo lỗi
+   không chặn các repo khác.
+8. **Given** PR đồng bộ đã mở, **When** hub đặt commit status `xdev-hive/sdlc` = success, **Then** PR vào hàng merge của dự
+   án mà không mở phiên review code (spec 009); dự án tắt hàng merge thì PR chờ người merge và hạng mục ghi "PR tài liệu
+   chờ merge".
 
 ---
 
@@ -218,6 +288,10 @@ checklist. Thêm task cho `FR-006`, duyệt → 3 task hub có `dependsOn`, chec
    "Không còn trong tasks.md" cho tech lead.
 6. **Given** chế độ nhẹ (`bugfix`, `small`), **When** giai đoạn tách task không có, **Then** hub tạo đúng **một** task với
    checklist lấy từ mục "Cách sửa" / danh sách việc của tài liệu.
+7. **Given** hạng mục nhiều dự án, **When** bộ đọc đọc `tasks.md`, **Then** mỗi task hub có đúng một dự án (thẻ `[@web-shop]`
+   trên dòng task hoặc dòng "Dự án:" dưới tiêu đề phần; không ghi thì là dự án chính); dự án không thuộc hạng mục thì
+   checkpoint `breakdown` không đạt ("Dòng 18: dự án mobile không tham gia hạng mục."); màn Duyệt bản tách xếp task theo làn
+   dự án và tô cạnh phụ thuộc liên dự án.
 
 ---
 
@@ -255,6 +329,8 @@ song song 2 → 2 run cho đợt 1; giả webhook merge PR của task 1 → task
 7. **Given** PR của task có quy trình review code khớp (spec 009), **When** checkpoint AI chạy, **Then** reviewer nhận
    requirement và tiêu chí chấp nhận của task để chấm "đúng spec".
 8. **Given** chủ hạng mục bấm "Tạm dừng", **When** đợt đang chạy, **Then** không tạo run mới; run đang chạy chạy tiếp.
+9. **Given** task `web-shop` phụ thuộc task `payment-api`, **When** PR backend merge, **Then** task frontend mở khoá và đợt
+   kế tạo run trên máy của đội sở hữu `web-shop`, theo mức song song và nhãn máy của `web-shop`.
 
 ---
 
@@ -266,8 +342,8 @@ các màn ở `/sdlc/...` do package `@xdev-hive/sdlc-ui` dựng, cộng trang c
 
 **Why this priority**: PO yêu cầu app là nơi làm toàn bộ luồng và web cũng đi hết luồng; không bắt người dùng mở web.
 
-**Independent Test**: Desktop với hồ sơ `writer` (BA/PO, xem Q2): tạo hạng mục, trả lời câu hỏi, sửa `spec.md`, duyệt
-`spec.md`, xem bảng — không mở web. Hồ sơ `lead`: duyệt bản tách, tạo ngoại lệ, chạy đợt. Cùng kịch bản trên web
+**Independent Test**: Desktop với hồ sơ `writer` (vai trò BA/PO `team-ba`, Q2): tạo hạng mục, trả lời câu hỏi, sửa
+`spec.md`, duyệt `spec.md`, xem bảng — không mở web. Hồ sơ `lead`: duyệt bản tách, tạo ngoại lệ, chạy đợt. Cùng kịch bản trên web
 (Playwright với hub giả) cho ra cùng dữ liệu.
 
 **Acceptance Scenarios**:
@@ -280,6 +356,8 @@ các màn ở `/sdlc/...` do package `@xdev-hive/sdlc-ui` dựng, cộng trang c
    khung bên "Hạng mục 012 · Specify" (khuôn, mục bắt buộc, câu hỏi đã trả lời).
 4. **Given** web, **When** người dùng mở `/sdlc`, **Then** thấy cùng màn với app (cùng component), chữ theo `vi`/`en`.
 5. **Given** người dùng chỉ có quyền đọc, **When** mở hạng mục, **Then** xem được mọi thứ, không có nút ghi.
+6. **Given** người dùng có vai trò BA/PO ở một đội, **When** liên kết app, **Then** hồ sơ là `writer`, có nhóm AI SDLC,
+   tạo hạng mục và duyệt tài liệu được, không thấy "Máy này" và nút Chạy đợt; hub từ chối tạo run code của người đó.
 
 ---
 
@@ -308,6 +386,11 @@ bản chụp cũ.
    FR-011.
 5. **Given** chế độ đang dùng bởi hạng mục mở, **When** sửa, **Then** hạng mục mở giữ bản chụp; trang hiện số hạng mục
    đang dùng bản cũ.
+6. **Given** chế độ có cỡ L hoặc XL, **When** quản trị bật tự duyệt cho giai đoạn `requirements`, **Then** bị từ chối "Giai
+   đoạn yêu cầu của chế độ nặng luôn cần người duyệt."; bật cho cổng không phải `human`, hoặc giai đoạn không có checkpoint
+   AI trước cổng đó, hoặc ngưỡng thấp hơn `passScore` của checkpoint AI cũng bị từ chối.
+7. **Given** cài đặt dự án, **When** quản trị dự án sửa mục Tự duyệt, **Then** chỉ siết thêm được so với chế độ (tắt, nâng
+   ngưỡng, bớt giai đoạn, kéo dài thời hạn thu hồi, thêm từ khoá/đường dẫn nhạy cảm); mặc định tắt.
 
 ---
 
@@ -330,6 +413,9 @@ minh (đã kiểm).
 3. **Given** agent gọi `task_update` với `evidence.requirements = ["FR-001"]` và `evidence.tests`, **When** run kết luận,
    **Then** liên kết `test` được ghi cho FR-001; CI xanh trên commit merge nâng mức "đã kiểm".
 4. **Given** requirement không có task, **When** xem, **Then** dòng tô cảnh báo "Chưa có task".
+5. **Given** hạng mục nhiều dự án, **When** xem Truy vết, **Then** có độ phủ **tổng** và độ phủ **theo từng dự án**
+   (requirement mà task của dự án đó chứa); requirement "đã làm" ở mức tổng khi mọi task chứa nó (ở mọi dự án) đã merge.
+   CSV có cột dự án.
 
 ---
 
@@ -394,6 +480,10 @@ Chỉ số lead time giai đoạn Yêu cầu p50 khớp tính tay trên dữ li�
 2. **Given** hạng mục chờ máy, **When** xem, **Then** thẻ ghi "Chờ máy AI SDLC".
 3. **Given** tab Chỉ số, **When** chọn 30 ngày, **Then** mỗi chỉ số có giá trị, p50/p90 khi là thời gian, và link tới danh
    sách hạng mục góp vào chỉ số.
+4. **Given** lọc theo dự án `web-shop`, **When** xem bảng, **Then** có cả hạng mục mà `web-shop` là dự án tham gia; thẻ
+   ghi các dự án, dự án chính đứng đầu.
+5. **Given** tab Chỉ số, **When** có tự duyệt, **Then** có tỉ lệ cổng được tự duyệt và tỉ lệ bị thu hồi theo chế độ và
+   dự án.
 
 ---
 
@@ -470,6 +560,124 @@ không có nút bật/tắt.
 
 ---
 
+### User Story 16 - Một hạng mục trải nhiều dự án của nhiều đội (Priority: P1)
+
+Tính năng "Hoàn tiền một phần" cần sửa `payment-api` (đội Backend), `web-shop` (đội Web) và `mobile-app` (đội Mobile). PO
+tạo **một** hạng mục ở `payment-api` (dự án chính) với hai dự án tham gia. Yêu cầu và thiết kế viết một lần, ở dự án
+chính. Bản tách task có task của cả ba dự án; task web và mobile phụ thuộc task API. Tech lead mỗi đội duyệt phần task của
+đội mình. Run code của task web chạy trên máy của đội Web, mở PR trong repo `web-shop`. Bảng truy vết cho biết mỗi dự án
+đã làm tới đâu.
+
+**Why this priority**: PO chốt (Q3) hạng mục nhiều dự án có ngay bản này; tính năng thật hầu như luôn đụng nhiều repo.
+
+**Independent Test**: Ba dự án ở hai đội, mỗi dự án bật AI SDLC. Người A có `sdlc.write` ở cả hai đội tạo hạng mục ba dự
+án. Người B chỉ ở đội Web: thấy hạng mục, thấy task của mọi dự án, sửa được task `web-shop`, không chạy được task
+`payment-api` (`FORBIDDEN`), không mở được log run `payment-api`. Người C ở đội thứ ba không tham gia: không thấy hạng mục
+qua danh sách, chi tiết, bảng, câu hỏi, truy vết, MCP. Duyệt `tasks.md` cần tech lead đội Backend **và** tech lead đội
+Web (hai checkpoint). Chặn cứng: `plan.md` đã duyệt nhưng contract `refund-api` chưa → run task `web-shop` bị
+`SDLC_GATE_BLOCKED` ("contract refund-api chưa duyệt"), run task `payment-api` cũng bị chặn vì `payment-api` cung cấp
+contract đó; hạng mục khác không có contract thì chặn chỉ xét tài liệu chung.
+
+**Acceptance Scenarios**:
+
+1. **Given** hạng mục đang mở, **When** chủ hạng mục (hoặc quản trị đội chủ trì) thêm dự án tham gia, **Then** người thêm
+   phải có `sdlc.write` trên đội của dự án mới; dự án mới phải bật AI SDLC; tối đa 8 dự án mỗi hạng mục; audit
+   `sdlc.item.project_add`; quản trị đội của dự án mới nhận thông báo.
+2. **Given** dự án tham gia đã có task đã chạy trong hạng mục, **When** bỏ dự án đó, **Then** bị từ chối "Dự án web-shop đã
+   có task chạy trong hạng mục; huỷ task trước."; dự án chưa có task chạy thì bỏ được, task `todo` của nó thành `cancelled`.
+3. **Given** người dùng thao tác trên task, ngoại lệ hay đợt của dự án X, **When** gửi, **Then** hub kiểm quyền trên đội
+   của dự án X (không đủ quyền ở hạng mục là đủ); ngoại lệ phạm vi cả hạng mục cần `sdlc.override` trên đội của **mọi** dự
+   án tham gia.
+4. **Given** giai đoạn có cổng người đánh dấu "theo dự án", **When** mở phiên duyệt, **Then** cổng tách thành một
+   checkpoint cho mỗi đội có dự án tham gia (hai dự án cùng đội dùng chung một checkpoint, ghi tên cả hai dự án); giai đoạn
+   đạt khi mọi checkpoint đạt.
+5. **Given** task của dự án X, **When** `queueRun`, **Then** chặn cứng xét tài liệu chung bắt buộc trước giai đoạn
+   `implementation`, tài liệu riêng của X, contract mà X cung cấp hoặc dùng; mức chặn là mức chặt nhất của chế độ và cài
+   đặt của X; nhãn máy, nơi chạy và mức song song theo cài đặt của X.
+6. **Given** dự án tham gia tắt AI SDLC hoặc bị lưu trữ, **When** hạng mục tiếp tục, **Then** task của dự án đó bị chặn
+   ("Dự án web-shop đã tắt AI SDLC."), các dự án khác chạy tiếp; dự án chính tắt thì cả hạng mục `paused`.
+7. **Given** run soạn tài liệu chung, **When** dispatch, **Then** run chạy trên máy của đội chủ trì, trong worktree của repo
+   dự án chính; seed file có bản tóm tắt cấu trúc và README của từng repo tham gia và các contract hiện có, để agent biết
+   repo khác mà không cần checkout (checkout nhiều repo để sau MVP).
+
+---
+
+### User Story 17 - Contract liên repo là tài liệu riêng (Priority: P1)
+
+Ở giai đoạn thiết kế, agent đề xuất contract `refund-api` (OpenAPI) do `payment-api` cung cấp, `web-shop` và `mobile-app`
+dùng. Contract là một tài liệu riêng của hạng mục, có cổng riêng: tech lead đội cung cấp và tech lead mỗi đội dùng đều
+duyệt. Task của bên dùng không chạy được tới khi contract có baseline. Contract được ghi vào repo bên cung cấp; bên dùng
+nhận bản sao chỉ đọc để sinh client.
+
+**Why this priority**: Không có contract chung thì task frontend và backend chạy song song sẽ lệch API.
+
+**Independent Test**: Hạng mục ba dự án, chế độ `speckit`. Agent gọi `sdlc_report contracts` với một contract → hub tạo tài
+liệu `project/payment-api/sdlc/012-hoan-tien-mot-phan/contracts/refund-api` ở trạng thái nháp, bên cung cấp `payment-api`,
+bên dùng `web-shop`, `mobile-app`. Gửi duyệt → phiên có 3 checkpoint người (một mỗi đội). Bật tự duyệt cho giai đoạn
+Plan → contract vẫn cần người. Baseline → task `web-shop` hết bị chặn vì contract.
+
+**Acceptance Scenarios**:
+
+1. **Given** hạng mục có ≥ 2 dự án, **When** thêm contract (agent qua `sdlc_report contracts` hoặc người bấm "Thêm
+   contract"), **Then** contract có tên, định dạng (`openapi`, `asyncapi`, `graphql`, `proto`, `jsonschema`, `markdown`),
+   một dự án cung cấp, ≥ 1 dự án dùng, đều thuộc hạng mục; đường dẫn repo theo chế độ (mặc định
+   `specs/{NNN}-{slug}/contracts/<tên>.<đuôi>`).
+2. **Given** contract, **When** gửi duyệt, **Then** cổng là cổng của giai đoạn chứa contract cộng một checkpoint người cho
+   đội của bên cung cấp và mỗi bên dùng; contract **không bao giờ** được tự duyệt.
+3. **Given** contract có baseline mới sau khi task bên dùng đã chạy, **When** baseline, **Then** task đang chạy không bị
+   dừng; task `todo` dùng bản mới; hạng mục ghi cảnh báo "Contract refund-api đổi sau khi task T-41 chạy".
+4. **Given** đồng bộ repo bật, **When** contract có baseline, **Then** repo bên cung cấp nhận file contract; repo mỗi bên
+   dùng nhận bản sao có dòng đầu "Bản sao do xDev Hive đồng bộ từ payment-api; sửa trên hub." (khi định dạng có comment);
+   sửa bản sao trong repo bên dùng thành đề xuất cho contract (như US4), không thành baseline.
+5. **Given** run code của task bên dùng, **When** dispatch, **Then** seed file có contract đã duyệt ở đường dẫn bản sao,
+   kể cả khi PR đồng bộ chưa merge.
+
+---
+
+### User Story 18 - Tự duyệt AI ở giai đoạn rủi ro thấp, người thu hồi được (Priority: P1)
+
+Chế độ `speckit` của đội đặt: giai đoạn Tasks được tự duyệt cổng "Tech lead" khi review AI ≥ 9/10. Hạng mục cỡ M có
+`tasks.md` không chạm từ khoá hay đường dẫn nhạy cảm: checkpoint AI chấm 9.3, hub tự duyệt cổng người, ghi "Tự duyệt bởi
+AI · 9.3/10 (ngưỡng 9) · thu hồi được tới 15:30 ngày 14/10", báo tech lead. Tech lead xem thấy thiếu phụ thuộc, bấm "Thu
+hồi tự duyệt": cổng mở lại, run code mới của hạng mục bị chặn tới khi tech lead duyệt.
+
+**Why this priority**: PO chốt có tự duyệt (khác đề xuất) để việc rủi ro thấp không chờ người; phải có rào cản để không
+lạm dụng.
+
+**Independent Test**: Chế độ có `autoApprove` ở giai đoạn Tasks, ngưỡng 9; dự án bật tự duyệt. (a) AI chấm 9.3, không từ
+khoá → cổng người `approved` với tác nhân `ai-auto`, audit `sdlc.auto_approve` có điểm, ngưỡng, lý do, CLI/model review;
+thông báo `sdlc.auto_approved`. (b) AI chấm 8.7 → chờ người như thường. (c) `tasks.md` có chữ "thanh toán" → chờ người,
+phiên ghi "Không tự duyệt: từ khoá nhạy cảm 'thanh toán'". (d) Giai đoạn Specify của `speckit` (chế độ nặng) → luôn chờ
+người. (e) Chính sách tổ chức tắt tự duyệt → (a) chờ người. (f) Thu hồi trong 24 giờ → phiên duyệt mới chỉ có cổng người,
+`codeRunGate` trả `SDLC_GATE_BLOCKED` "tasks.md đang duyệt lại sau thu hồi"; sau 24 giờ nút thu hồi biến mất.
+
+**Acceptance Scenarios**:
+
+1. **Given** phiên duyệt tới cổng người được phép tự duyệt, **When** mọi checkpoint trước đã đạt, **Then** hub tự duyệt
+   khi và chỉ khi: chính sách tổ chức cho phép; dự án (mọi dự án tham gia, với cổng "theo dự án" thì dự án của checkpoint
+   đó) bật tự duyệt; điểm của checkpoint AI cùng giai đoạn (mức thấp nhất nếu nhiều reviewer) ≥ ngưỡng hiệu lực (cao nhất
+   của chế độ, dự án, sàn của tổ chức); không có phát hiện mức `major` trở lên; không mục nào của danh sách kiểm bị chấm
+   trượt; tài liệu không chạm từ khoá hoặc đường dẫn nhạy cảm (gộp tổ chức + dự án); tài liệu không phải contract; giai
+   đoạn không phải `requirements` của chế độ nặng hoặc hạng mục cỡ L/XL; reviewer AI khác CLI hoặc model với tác giả của
+   bản nháp.
+2. **Given** tự duyệt, **When** ghi, **Then** quyết định của checkpoint có tác nhân hệ thống "Tự duyệt bởi AI", điểm,
+   ngưỡng, lý do (từng điều kiện đã xét), hạn thu hồi; audit `sdlc.auto_approve`; thông báo cho người đủ điều kiện duyệt
+   checkpoint bị bỏ qua và chủ hạng mục; giao diện gắn nhãn "Tự duyệt bởi AI" ở tài liệu, giai đoạn, Chờ tôi duyệt (mục đã
+   xử lý).
+3. **Given** không đủ điều kiện, **When** tới cổng người, **Then** phiên chờ người như thường và ghi một dòng "Không tự
+   duyệt: <lý do>" để người duyệt biết vì sao.
+4. **Given** tự duyệt còn trong hạn thu hồi, **When** người đủ điều kiện duyệt checkpoint đó, chủ hạng mục hoặc người có
+   `sdlc.override` bấm "Thu hồi" kèm lý do, **Then** hub mở phiên duyệt mới trên cùng baseline chỉ gồm các cổng người bị
+   bỏ qua; tài liệu ở trạng thái "Duyệt lại sau thu hồi"; `codeRunGate` coi tài liệu như chưa có baseline cho run mới; run
+   đang chạy không bị dừng; giai đoạn sau không được "Đã duyệt" tới khi duyệt lại xong; audit `sdlc.auto_approve.revoke`.
+5. **Given** duyệt lại sau thu hồi, **When** người duyệt đồng ý, **Then** baseline giữ nguyên (không thêm phiên bản), nhãn
+   đổi thành "Người duyệt sau thu hồi"; khi trả lại thì đi luồng sửa thường, bản sửa thành baseline mới.
+6. **Given** quá hạn thu hồi, **When** xem, **Then** không còn nút thu hồi; muốn đổi thì tạo đề xuất như thường.
+7. **Given** chính sách tổ chức tắt tự duyệt khi có tự duyệt còn trong hạn, **When** tắt, **Then** không có tự duyệt mới;
+   tự duyệt cũ vẫn thu hồi được tới hết hạn.
+
+---
+
 ### Edge Cases
 
 - **Dự án đổi chế độ mặc định khi có hạng mục mở**: hạng mục giữ bản chụp chế độ lúc tạo; đổi chế độ của một hạng mục
@@ -501,6 +709,35 @@ không có nút bật/tắt.
 - **Hub khởi động lại**: mọi bước chuyển là job pg-boss có thử lại; không giữ trạng thái trong bộ nhớ.
 - **Câu hỏi bị bỏ không trả lời quá hạn** (mặc định 3 ngày): nhắc chủ hạng mục một lần; không tự dùng đề xuất.
 
+Nhiều dự án
+
+- **Chủ hạng mục mất quyền ở đội chủ trì**: hạng mục giữ nguyên; quản trị đội chủ trì nhận thông báo và chuyển chủ.
+  Người mất quyền ở một dự án tham gia không thao tác được task của dự án đó nữa (kiểm mỗi lần gọi, không lưu quyền).
+- **Chu trình phụ thuộc trải dự án** (task A web → B api → A): bị từ chối như chu trình trong một dự án.
+- **Phụ thuộc vào task của dự án đã bị bỏ khỏi hạng mục**: không xảy ra vì chỉ bỏ được dự án chưa có task chạy; task
+  `todo` bị huỷ thì task phụ thuộc hiện "Phụ thuộc đã huỷ".
+- **Hai hạng mục của hai dự án chính khác nhau cùng ghi vào một repo tham gia**: thư mục trong repo tham gia mang key của
+  dự án chính (`specs/payment-api-012-hoan-tien/`), không trùng số hạng mục của chính repo đó.
+- **Hai dự án tham gia cùng đội**: cổng "theo dự án" chỉ tạo một checkpoint cho đội đó.
+- **Repo tham gia không có kết nối ghi**: chỉ repo đó "Chỉ lưu trên hub"; repo khác vẫn đồng bộ.
+- **Dự án tham gia chưa bật AI SDLC**: không thêm được; quản trị dự án đó cần bật trước.
+- **Người tạo có quyền ở dự án chính nhưng không ở dự án tham gia**: từ chối cả yêu cầu (US1-6); gợi ý nhờ quản trị đội
+  kia thêm dự án sau.
+
+Tự duyệt
+
+- **Phiên duyệt không có checkpoint AI**: không bao giờ tự duyệt.
+- **Checkpoint AI lỗi hoặc hết thời gian**: không tự duyệt; phiên chờ người.
+- **Nội dung cố ý chèn lệnh để AI chấm cao** (prompt injection): prompt review coi tài liệu là dữ liệu; reviewer phải khác
+  CLI/model với tác giả; vẫn có hạn thu hồi và chỉ số tỉ lệ thu hồi để phát hiện.
+- **Thu hồi khi giai đoạn sau đã được duyệt**: giai đoạn sau giữ baseline, nhưng hạng mục hiện cảnh báo "Dựa trên tài liệu
+  đang duyệt lại" và run code mới bị chặn tới khi duyệt lại xong.
+- **Thu hồi bản tách task khi task đã được tạo**: task `todo` giữ nguyên nhưng bị chặn chạy; duyệt lại có sửa thì áp bản
+  tách mới như FR-026.
+- **Hai người thu hồi cùng lúc**: lần đầu thắng; lần sau nhận "Đã thu hồi bởi X lúc HH:MM.".
+- **Đổi ngưỡng trong chế độ khi hạng mục đang mở**: hạng mục dùng bản chụp; cài đặt dự án và chính sách tổ chức đọc lúc
+  xét (chỉ siết thêm), để tắt có hiệu lực ngay.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -519,13 +756,15 @@ Mô hình chế độ và cấu hình (US8)
 - **FR-004 (SDLC-01)**: Chạy thử chế độ MUST nhận tiêu đề mẫu và trả đường dẫn tài liệu, cổng mỗi giai đoạn, checkpoint bị
   bỏ theo điều kiện; không ghi dữ liệu.
 - **FR-005 (SDLC-01)**: Cài đặt dự án MUST có mục AI SDLC: bật/tắt, chế độ mặc định, chế độ được dùng, mức chặn ghi đè
-  (chỉ chặt hơn chế độ), cách đồng bộ repo (Q1), thư mục gốc tài liệu, mức song song (1–10, mặc định 2), tự chạy đợt,
-  nơi chạy agent (`team` | `requester`), nhãn máy yêu cầu, từ khoá rủi ro cho gợi ý cỡ.
+  (chỉ chặt hơn chế độ), cách đồng bộ repo (`pr` mặc định, `direct`, `off`), thư mục gốc tài liệu, mức song song (1–10,
+  mặc định 2), tự chạy đợt, nơi chạy agent (`team` | `requester`), nhãn máy yêu cầu, từ khoá rủi ro cho gợi ý cỡ, tự duyệt
+  (FR-057).
 
 Hạng mục (US1)
 
 - **FR-006 (SDLC-02)**: Người có `sdlc.write` trên đội của dự án MUST tạo được hạng mục từ ý tưởng (tiêu đề + mô tả), từ
-  issue của repo dự án, hoặc qua hành động leader `sdlc.item.create` đã duyệt.
+  issue của repo dự án, hoặc qua hành động leader `sdlc.item.create` đã duyệt. Hạng mục nhiều dự án cần `sdlc.write` trên
+  đội của mọi dự án (FR-051).
 - **FR-007 (SDLC-02)**: Hub MUST gợi ý cỡ (S/M/L/XL) và chế độ bằng luật tất định trong ≤ 3 giây, và MUST cho chạy bước
   agent `size` (tuỳ chọn) trả cỡ, chế độ, lý do. Lựa chọn cuối cùng của người dùng và gợi ý đều được audit.
 - **FR-008 (SDLC-02)**: Tạo hạng mục MUST cấp số `NNN` duy nhất trong dự án (khoá tư vấn như số task), slug ASCII, chụp
@@ -564,7 +803,9 @@ Duyệt theo giai đoạn (US3)
 Đồng bộ hub ↔ repo (US4)
 
 - **FR-021 (SDLC-05)**: Baseline của tài liệu hạng mục MUST được ghi vào repo dự án ở đường dẫn của chế độ qua `GitProvider`
-  có sẵn, theo cách đồng bộ của dự án (Q1), có trailer tác giả; lưu SHA commit và hash nội dung.
+  có sẵn, theo cách đồng bộ của dự án, có trailer tác giả; lưu SHA commit và hash nội dung. Cách `pr` (mặc định): nhánh
+  `hive/sdlc/<NNN>-<slug>`, một PR mỗi repo mỗi hạng mục (cập nhật PR đang mở), commit status `xdev-hive/sdlc` = success,
+  đưa vào hàng merge, không mở phiên review code. Cách `direct`: commit vào nhánh mặc định.
 - **FR-022 (SDLC-05)**: Hub MUST phát hiện thay đổi file tài liệu trên nhánh mặc định (webhook `push` và job quét định kỳ)
   và tạo đề xuất trên hub khi nội dung khác baseline và commit không do hub đồng bộ; không bao giờ tự thành baseline.
 - **FR-023 (SDLC-05)**: Hạng mục MUST hiện trạng thái đồng bộ từng tài liệu: đã đồng bộ, chờ, lỗi (lý do), lệch repo; có
@@ -580,14 +821,16 @@ Tách task (US5)
 - **FR-026 (SDLC-06)**: Baseline của tài liệu tách việc MUST tạo/cập nhật task hub: `checklist`, `dependsOn`, nguồn
   `sdlc`; so với bản tách trước theo khoá lát (tạo mới, cập nhật task `todo`, huỷ task bỏ còn `todo`, cảnh báo task bỏ đã
   chạy).
-- **FR-027 (SDLC-06)**: Task MUST có checklist (tối đa 50 mục) và phụ thuộc giữa task cùng dự án, không vòng; contract
-  `tasks` trả `checklist`, `dependsOn`, `blockedBy`; bảng việc hiện "Chờ <task>".
+- **FR-027 (SDLC-06)**: Task MUST có checklist (tối đa 50 mục) và phụ thuộc giữa task trong cùng tổ chức, kể cả khác dự
+  án, không vòng; người đặt phụ thuộc phải có quyền sửa task ở **cả hai** dự án; contract `tasks` trả `checklist`,
+  `dependsOn`, `blockedBy` (kèm key dự án khi khác dự án); bảng việc hiện "Chờ <task>".
 
 Chạy và chặn (US6)
 
 - **FR-028 (SDLC-07)**: `queueRun` MUST từ chối run code của task thuộc hạng mục chặn `hard` khi một tài liệu bắt buộc của
-  giai đoạn trước giai đoạn `implementation` chưa có baseline, hoặc bản tách chưa duyệt, trừ khi có ngoại lệ còn hiệu lực
-  (`SDLC_GATE_BLOCKED`, liệt kê tài liệu); `soft` thì cho chạy và ghi cảnh báo.
+  giai đoạn trước giai đoạn `implementation` chưa có baseline (hoặc đang duyệt lại sau thu hồi tự duyệt), hoặc bản tách
+  chưa duyệt, trừ khi có ngoại lệ còn hiệu lực (`SDLC_GATE_BLOCKED`, liệt kê tài liệu); `soft` thì cho chạy và ghi cảnh
+  báo. Với hạng mục nhiều dự án, tài liệu xét và mức chặn theo dự án của task (FR-055).
 - **FR-029 (SDLC-07)**: `queueRun` MUST từ chối run code của task có phụ thuộc chưa `done` (`TASK_DEPENDENCIES_OPEN`),
   trừ khi có ngoại lệ.
 - **FR-030 (SDLC-07)**: Người có `sdlc.override` MUST tạo được ngoại lệ phạm vi task hoặc hạng mục, lý do bắt buộc
@@ -618,8 +861,9 @@ Bảng và chỉ số (US12)
 App desktop và web (US7)
 
 - **FR-038 (SDLC-13)**: App desktop MUST có nhóm menu AI SDLC (Hạng mục, Câu hỏi chờ tôi, Tiến độ) và màn chi tiết hạng
-  mục, tạo hạng mục, duyệt bản tách, truy vết; quyền app mới `sdlc.use`, `sdlc.manage` trong `nav.ts` (`PERMISSIONS`);
-  tài liệu mở bằng màn Soạn tài liệu, duyệt bằng Chờ tôi duyệt có sẵn. App không chạy agent cho AI SDLC.
+  mục, tạo hạng mục, duyệt bản tách, truy vết; quyền app mới `sdlc.use` (hồ sơ `dev`, `writer`, `lead`), `sdlc.manage`
+  (`lead`) trong `nav.ts` (`PERMISSIONS`); tài liệu mở bằng màn Soạn tài liệu, duyệt bằng Chờ tôi duyệt có sẵn. App không
+  chạy agent cho AI SDLC.
 - **FR-039 (SDLC-14)**: Web MUST đi hết luồng như app bằng cùng component trong package `@xdev-hive/sdlc-ui`, cộng cấu hình
   chế độ (`/admin/sdlc-modes`), mục AI SDLC trong cài đặt dự án, đội máy AI SDLC.
 - **FR-040 (SDLC-14)**: Chữ giao diện và lỗi MUST tiếng Việt, có từ điển `vi`/`en`; màn dùng được ở 360 px, sáng và tối.
@@ -642,29 +886,99 @@ Audit, thông báo, an toàn
 
 - **FR-046 (SDLC-17)**: Mọi thao tác ghi MUST có audit: lưu/xoá chế độ, tạo/huỷ hạng mục, gợi ý và lựa chọn chế độ, trả
   lời câu hỏi, bỏ qua giai đoạn, ngoại lệ, chạy đợt, đồng bộ repo (commit, lỗi, ghi đè), tạo task từ bản tách, nhãn máy,
-  bật/tắt gói.
+  bật/tắt gói, thêm/bỏ dự án tham gia, contract (tạo, đổi bên cung cấp/dùng), tự duyệt và thu hồi.
 - **FR-047 (SDLC-17)**: Thông báo mới: `sdlc.question`, `sdlc.phase_ready` (tài liệu chờ duyệt dùng sự kiện spec 004),
-  `sdlc.blocked`, `sdlc.override`, `sdlc.sync_failed`, `sdlc.converged`, `sdlc.waiting_machine`.
-- **FR-048 (NFR-01)**: Bảng mới MUST bật và ép RLS theo `org_id = hive.ctx_org()`.
+  `sdlc.blocked`, `sdlc.override`, `sdlc.sync_failed`, `sdlc.converged`, `sdlc.waiting_machine`, `sdlc.project_added`,
+  `sdlc.auto_approved`, `sdlc.auto_revoked`.
+- **FR-048 (NFR-01)**: Bảng mới MUST bật và ép RLS theo `org_id = hive.ctx_org()`. Phân quyền theo đội/dự án trong tổ
+  chức MUST đi qua một bộ lọc chung của module `sdlc` (FR-052), có test cho mọi route và tool MCP.
 - **FR-049 (SDLC-17)**: Dự án không bật AI SDLC MUST giữ nguyên hành vi task, run, review, merge.
+
+Hạng mục nhiều dự án (US16, US17)
+
+- **FR-050 (SDLC-18)**: Hạng mục MUST có danh sách dự án tham gia (1–8, cùng tổ chức, đều bật AI SDLC), một dự án là dự án
+  chính; số `NNN`, đường dẫn tài liệu chung và chế độ được phép tính theo dự án chính. Thêm dự án được khi hạng mục đang
+  mở; bỏ dự án chỉ khi dự án chưa có task đã chạy trong hạng mục. Đổi dự án chính không hỗ trợ.
+- **FR-051 (SDLC-18)**: Mọi thao tác ghi gắn với một dự án (tạo hạng mục, thêm dự án, sửa/chạy task, chạy đợt, ngoại lệ,
+  đặt phụ thuộc) MUST kiểm quyền của người gọi trên đội của **từng** dự án liên quan; thiếu một là từ chối cả thao tác.
+- **FR-052 (SDLC-18)**: Hạng mục thuộc tổ chức (RLS `org_id`) và có đội chủ trì là đội của dự án chính. Người dùng MUST
+  xem được hạng mục (tài liệu chung, câu hỏi, task của mọi dự án, truy vết) khi là thành viên đội của ít nhất một dự án
+  tham gia; chi tiết run, log, PR giữ quyền theo dự án như hiện nay; người ngoài các đội đó không thấy hạng mục ở bất kỳ
+  route, bảng, chỉ số, thông báo hay tool MCP nào.
+- **FR-053 (SDLC-18)**: Bản tách task MUST gán mỗi task hub vào đúng một dự án tham gia (thẻ trong `tasks.md`, mặc định dự
+  án chính) và cho phép phụ thuộc liên dự án; task được tạo trong dự án của nó.
+- **FR-054 (SDLC-18)**: Cổng người của chế độ MUST đánh dấu được "theo dự án" (`perProjectGates`): khi mở phiên duyệt, hub
+  tách thành một checkpoint cho đội của mỗi dự án tham gia (gộp dự án cùng đội), người duyệt là vai trò cấu hình **trong
+  đội đó**.
+- **FR-055 (SDLC-18)**: Chặn cứng, ngoại lệ, đợt MUST tính theo dự án của task: tài liệu xét = tài liệu chung + tài liệu
+  riêng của dự án + contract dự án cung cấp hoặc dùng; mức chặn = chặt nhất của chế độ và cài đặt dự án; ngoại lệ có phạm
+  vi task, dự án trong hạng mục, hoặc cả hạng mục; mức song song, nhãn máy, nơi chạy theo dự án.
+- **FR-062 (SDLC-19)**: Hạng mục nhiều dự án MUST có contract liên repo: tài liệu riêng với tên, định dạng, một dự án cung
+  cấp, ≥ 1 dự án dùng; tạo bởi người hoặc agent (`sdlc_report contracts`) trong giai đoạn chế độ khai; cổng = cổng của giai
+  đoạn + một checkpoint người cho đội của mỗi bên; là tài liệu bắt buộc trước `implementation` của mọi bên.
+- **FR-063 (SDLC-19)**: Contract MUST được ghi vào repo bên cung cấp và bản sao chỉ đọc vào repo mỗi bên dùng; sửa bản sao
+  trong repo thành đề xuất cho contract; run của task bên dùng nhận contract đã duyệt qua seed file.
+- **FR-064 (SDLC-09, SDLC-18)**: Truy vết, độ phủ, bảng và chỉ số MUST lọc và tính theo từng dự án và tổng.
+- **FR-065 (SDLC-05, SDLC-18)**: Đồng bộ repo MUST chạy theo từng (hạng mục, dự án) với cài đặt đồng bộ của dự án đó; repo
+  không phải dự án chính nhận file mục lục trỏ về tài liệu chung; lỗi ở một repo không chặn repo khác.
+- **FR-066 (SDLC-18)**: Run soạn của tài liệu chung MUST chạy trên máy của đội chủ trì với repo dự án chính; seed file MUST
+  có bản tóm tắt repo tham gia (cây thư mục cấp đầu, README, contract hiện có) do hub đọc qua `GitProvider`.
+
+Tự duyệt (US18)
+
+- **FR-056 (SDLC-20)**: Giai đoạn của chế độ MUST khai được `autoApprove` (cổng người được tự duyệt, ngưỡng điểm 0–10, thời
+  hạn thu hồi 1–168 giờ, mặc định 24). Lưu chế độ MUST từ chối: cổng không phải `human`; giai đoạn không có checkpoint AI
+  trước cổng đó; ngưỡng thấp hơn `passScore` của checkpoint AI; giai đoạn `requirements` của chế độ có cỡ L hoặc XL.
+- **FR-057 (SDLC-20)**: Cài đặt dự án MUST có tự duyệt (mặc định tắt) chỉ siết thêm được: tắt, nâng ngưỡng, bớt giai đoạn,
+  kéo dài hạn thu hồi, thêm `denyPaths`/`denyKeywords`. Chính sách tổ chức MUST có: cho phép hay tắt tự duyệt, sàn ngưỡng,
+  `denyPaths`/`denyKeywords` của tổ chức (có danh sách mặc định: phí, thanh toán, hoàn tiền, bảo mật, mật khẩu, token,
+  quyền, dữ liệu cá nhân và tiếng Anh tương ứng; `.github/**`, `**/auth/**`, `**/security/**`, `**/billing/**`,
+  `**/payment*/**`, `**/migrations/**`).
+- **FR-058 (SDLC-20)**: Hub MUST tự quyết cổng người chỉ khi đủ mọi điều kiện của US18-1, xét lúc phiên tới cổng đó; nội
+  dung xét là phần thay đổi so với baseline (bản đầu: toàn bộ) và mọi đường dẫn file nêu trong tài liệu (với bản tách: danh
+  sách file của task). Contract liên repo và giai đoạn `requirements` của chế độ nặng hoặc hạng mục cỡ L/XL không bao giờ
+  được tự duyệt.
+- **FR-059 (SDLC-20)**: Tự duyệt MUST ghi quyết định với tác nhân hệ thống "Tự duyệt bởi AI", điểm, ngưỡng, lý do, CLI/model
+  của reviewer, hạn thu hồi; audit `sdlc.auto_approve`; thông báo `sdlc.auto_approved`; không đủ điều kiện thì ghi lý do vào
+  phiên.
+- **FR-060 (SDLC-20)**: Trong hạn, người đủ điều kiện duyệt checkpoint bị bỏ qua, chủ hạng mục hoặc người có `sdlc.override`
+  MUST thu hồi được (lý do bắt buộc): mở phiên duyệt mới trên cùng baseline chỉ với cổng người bị bỏ qua, chặn run code mới
+  phụ thuộc tài liệu đó, không cho giai đoạn sau đạt tới khi duyệt lại xong; audit `sdlc.auto_approve.revoke`, thông báo
+  `sdlc.auto_revoked`.
+
+Vai trò BA/PO (US7)
+
+- **FR-061 (SDLC-13)**: Hệ thống MUST có vai trò hệ thống cấp đội BA/PO (`team-ba`) với `sdlc.read`, `sdlc.write`,
+  `docs.read`, `proposals.create` (tên thật của quyền "đề xuất tài liệu" trong `roles.ts`), `tasks.read`, `runs.read`;
+  không có `tasks.create`, `runs.retry|cancel`, `machines.*`, `sdlc.override`. Checkpoint người của quy trình duyệt chọn
+  được vai trò `team-ba` (thêm vào `reviewerRole`). App desktop xếp người chỉ có vai trò viewer hoặc BA/PO vào hồ sơ
+  `writer`.
 
 ### Key Entities
 
 - **Chế độ** (`sdlc_modes`): chế độ tự tạo của tổ chức hoặc đội; preset có sẵn nằm trong contracts (không lưu DB).
   Thuộc tính: tên, phương pháp, hồ sơ, `definition` (schema `sdlcMode`), phiên bản, bật.
-- **Hạng mục** (`sdlc_items`): dự án, số `NNN`, slug, tiêu đề, ý tưởng, nguồn (tay, issue, leader, nhập từ repo), bản chụp
+- **Hạng mục** (`sdlc_items`): dự án chính, đội chủ trì, số `NNN`, slug, tiêu đề, ý tưởng, nguồn (tay, issue, leader, nhập từ repo), bản chụp
   chế độ, cỡ (gợi ý và chọn), trạng thái (`active`, `paused`, `done`, `cancelled`), giai đoạn hiện tại, chủ, nơi chạy,
   trạng thái hội tụ.
 - **Giai đoạn của hạng mục** (`sdlc_item_phases`): trạng thái (`pending`, `drafting`, `awaiting_answers`, `in_review`,
   `approved`, `skipped`), mốc thời gian (để tính lead time).
-- **Tài liệu hạng mục** (`sdlc_artifacts`): key tài liệu hub, đường dẫn repo, bắt buộc, baseline đã biết, trạng thái đồng
-  bộ, SHA và hash của lần đồng bộ, hash trong repo.
+- **Tài liệu hạng mục** (`sdlc_artifacts`): key tài liệu hub, phạm vi (`item`, `project`, `contract`), dự án giữ file,
+  đường dẫn repo, bắt buộc, baseline đã biết, cách duyệt baseline (người, tự duyệt, đang duyệt lại sau thu hồi).
 - **Câu hỏi** (`sdlc_questions`): vòng, nội dung, lựa chọn, đề xuất, câu trả lời, người trả lời, trạng thái.
 - **Bước agent** (`sdlc_steps`): một lần chạy bước (`size`, `draft`, `converge`…), run, vòng, kết quả có cấu trúc.
-- **Lát task** (`sdlc_item_tasks`): task hub thuộc hạng mục, khoá lát (`T003`, `2.1`, `unit-billing`), đợt, requirement.
+- **Lát task** (`sdlc_item_tasks`): task hub thuộc hạng mục, dự án của task, khoá lát (`T003`, `2.1`, `unit-billing`),
+  đợt, requirement.
+- **Dự án tham gia** (`sdlc_item_projects`): hạng mục, dự án, đội, vai (`home`, `participant`), bản chụp cài đặt AI SDLC
+  của dự án, người thêm, lúc thêm/bỏ.
+- **Contract liên repo**: một `sdlc_artifacts` loại `contract` có dự án cung cấp và danh sách dự án dùng.
+- **Trạng thái đồng bộ theo repo** (`sdlc_artifact_syncs`): mỗi (tài liệu, repo) một dòng — nguồn hoặc bản sao — với SHA,
+  hash, trạng thái, lỗi.
+- **Tự duyệt** (`sdlc_auto_approvals`): phiên duyệt, checkpoint, tài liệu, phiên bản, điểm, ngưỡng, lý do, hạn thu hồi,
+  người và lúc thu hồi, phiên duyệt lại.
 - **Phụ thuộc task** (`task_dependencies`, module `tasks`) và **checklist** (`tasks.checklist`).
 - **Liên kết truy vết** (`sdlc_trace_links`): requirement ↔ task/run/PR/commit/test/finding.
-- **Ngoại lệ chặn** (`sdlc_overrides`): phạm vi, lý do, người, hạn, thu hồi.
+- **Ngoại lệ chặn** (`sdlc_overrides`): phạm vi (task, dự án trong hạng mục, cả hạng mục), lý do, người, hạn, thu hồi.
 - **Máy**: thêm `labels`, `labels_only`, `accounts` (tóm tắt), `accounts_at`; **mã đăng ký** thêm nhãn và cờ; **run** thêm
   `required_labels`, loại `sdlc`.
 
@@ -691,10 +1005,21 @@ Audit, thông báo, an toàn
   (test dispatch).
 - **SC-011**: Dự án không bật AI SDLC: 100% test hiện có của task, run, review tài liệu, hàng merge xanh không sửa.
 - **SC-012**: Mọi màn mới dùng được ở 360 px không cuộn ngang, sáng và tối (NFR-11).
+- **SC-013**: 0 thao tác ghi thành công trên dự án mà người gọi không có quyền, và 0 lần lộ hạng mục cho người ngoài các
+  đội tham gia, trên mọi route `sdlc.*`, `tasks.setDependencies` và tool MCP `sdlc_*` (test DB với ba đội).
+- **SC-014**: 0 lần tự duyệt ở giai đoạn `requirements` của chế độ nặng, ở contract, ở tài liệu chạm từ khoá/đường dẫn nhạy
+  cảm, hay khi chính sách tổ chức tắt; 100% lần tự duyệt có dòng audit với điểm, ngưỡng, lý do (test DB theo bảng điều
+  kiện).
+- **SC-015**: Thu hồi tự duyệt chặn run code mới phụ thuộc tài liệu đó ngay trong transaction thu hồi (test DB: run tạo sau
+  thu hồi bị `SDLC_GATE_BLOCKED`).
+- **SC-016**: Kịch bản ba dự án (US16) chạy hết trên web và app: tạo, duyệt tài liệu chung, duyệt contract theo đội, duyệt
+  bản tách theo đội, đợt 1 backend → merge → đợt 2 web + mobile, độ phủ theo dự án đúng (Playwright + test desktop).
 
 ## Out of Scope
 
-- Hạng mục trải nhiều dự án/repo (xem Q3).
+- Hạng mục trải nhiều tổ chức; đổi dự án chính của hạng mục; hạng mục quá 8 dự án.
+- Run agent soạn checkout cùng lúc nhiều repo (bản này dùng bản tóm tắt repo trong seed file; để sau MVP, task T086).
+- Tự duyệt cho review code của PR (spec 009 quyết riêng); tự duyệt contract liên repo.
 - Agent chạy trong app desktop cho AI SDLC (app chỉ duyệt và soạn; trợ lý soạn `docassist` của spec 005 vẫn giữ).
 - Đăng nhập gói CLI từ web (OAuth của CLI cần trình duyệt trên máy chạy); chỉ bật/tắt gói đã có.
 - Chạy worker như Windows Service thật (hiện là `schtasks /SC ONLOGON`, cần phiên đăng nhập); ghi rủi ro, để spec sau.
@@ -710,7 +1035,9 @@ Audit, thông báo, an toàn
 ## Assumptions
 
 - Dự án có kết nối Git ghi được (GitHub hoặc GitLab) để đồng bộ tài liệu; không có thì hạng mục chạy "chỉ trên hub".
-- Hồ sơ app hiện có là `dev`, `writer`, `lead` (`apps/desktop/src/lib/nav.ts`); BA/PO dùng `writer` hoặc `lead` (Q2).
+- Hồ sơ app hiện có là `dev`, `writer`, `lead` (`apps/desktop/src/lib/nav.ts`); BA/PO dùng `writer` nhờ vai trò
+  `team-ba` (Q2), tech lead dùng `lead`.
+- Các dự án của một hạng mục ở cùng tổ chức, mỗi dự án đã có kết nối Git riêng; đội khác nhau có thể sở hữu các dự án.
 - Agent soạn dùng CLI có sẵn trên máy (Claude Code mặc định; Codex, Gemini, Antigravity khi chế độ chọn); hub không cần
   CLI riêng của phương pháp.
 - Prompt của bước do Hive viết, theo tinh thần từng phương pháp, không chép nguyên văn tài liệu của dự án nguồn (giấy phép
@@ -720,18 +1047,3 @@ Audit, thông báo, an toàn
 - Quy trình duyệt spec 004 và editor spec 005 chạy như hiện có; spec 009 (review code) có thể chưa xong — khi chưa có, PR
   của task đi chính sách kết quả của dự án (ADR 0009).
 - Chi phí run `sdlc` tính theo dự án như run khác (OPS-03).
-
-## Câu hỏi còn mở
-
-- **[NEEDS CLARIFICATION Q1] Ghi tài liệu đã duyệt vào repo bằng cách nào?** Commit thẳng vào nhánh mặc định thì nhanh
-  nhưng hay bị bảo vệ nhánh chặn và bỏ qua review; PR thì thêm một bước duyệt cho nội dung đã duyệt trên hub.
-  **Đề xuất**: mặc định `pr`: mỗi lần baseline mở (hoặc cập nhật) một PR `hive/sdlc/<NNN>-<slug>` chỉ đổi file trong thư mục
-  của hạng mục, đặt commit status `xdev-hive/sdlc` = success, rồi tự đưa vào hàng merge (không qua review code vì nội dung
-  đã duyệt trên hub). Dự án được chọn `direct` (commit thẳng, dùng khi nhánh không bảo vệ).
-- **[NEEDS CLARIFICATION Q2] BA/PO dùng hồ sơ app nào?** Hồ sơ `writer` ứng với vai trò `viewer` của hub, nên không ghi được
-  (không tạo hạng mục, không trả lời câu hỏi). **Đề xuất**: giữ 3 hồ sơ; thêm vai trò tuỳ chỉnh hệ thống "BA/PO" (spec 001)
-  có `sdlc.read`, `sdlc.write`, `docs.propose`, duyệt tài liệu, không có `runs.*`; `profileOf()` xếp vai trò có `sdlc.write`
-  mà không có quyền chạy vào hồ sơ `writer`, và `writer` có `sdlc.use`. Menu "Máy này" vẫn ẩn với BA/PO.
-- **[NEEDS CLARIFICATION Q3] Hạng mục có trải nhiều dự án (nhiều repo) không?** Ví dụ tính năng cần sửa cả `payment-api`
-  và `web-shop`. **Đề xuất**: bản này một hạng mục = một dự án; tính năng nhiều repo tạo hạng mục ở dự án chính, tài liệu
-  thiết kế nêu các dự án khác, task cho dự án khác tạo tay. "Sáng kiến" gom nhiều hạng mục để spec sau.
