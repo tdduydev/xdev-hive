@@ -46,7 +46,8 @@ The file sits next to `worker.json` and `accounts.json`:
   yet (imported from the old app); it is never used by runs.
 - One entry per `projectId`. Binding a folder that is already listed as an unlinked entry replaces that entry.
 - Written atomically (temporary file, then rename) under a lock file, with mode 0600, like `accounts.json`.
-- The worker reads the file at every offer, run and heartbeat, so changes made by the app apply without a restart.
+- The worker reads the file at every run, every heartbeat and every offer that needs full permission, so changes made
+  by the app apply without a restart.
 
 Sidecar commands (all accept `--json` and print the list afterwards):
 
