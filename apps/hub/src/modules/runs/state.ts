@@ -64,6 +64,7 @@ export function toRun(r: RunRow): Run {
           cacheWriteTokens: r.explore.cacheWriteTokens,
         }
       : null,
+    rtk: r.rtk ? { commands: r.rtk.commands, savedTokens: r.rtk.savedTokens } : null,
     createdBy: r.createdBy,
     ownerUserId: r.ownerUserId,
     createdAt: r.createdAt.toISOString(),
