@@ -136,6 +136,20 @@ pub fn child_env(
     out
 }
 
+/// Glob của Claude Code dừng sau 20 giây và mặc định quét cả file bị .gitignore: repo lớn (nhất là trên Windows) báo
+/// "Ripgrep search timed out". Nới lên 60 giây và bỏ qua file bị .gitignore (biến trong code.claude.com/docs/en/env-vars);
+/// biến người dùng tự đặt thì giữ.
+pub fn search_env(env: &mut Vec<(OsString, OsString)>) {
+    for (key, value) in [
+        ("CLAUDE_CODE_GLOB_TIMEOUT_SECONDS", "60"),
+        ("CLAUDE_CODE_GLOB_NO_IGNORE", "false"),
+    ] {
+        if !env.iter().any(|(k, _)| k == key) {
+            env.push((key.into(), value.into()));
+        }
+    }
+}
+
 /// Tham số của `claude`. Lời nhắc đọc từ stdin (`-p` không kèm lời nhắc).
 pub fn claude_args(session: Option<&str>) -> Vec<String> {
     let mut args: Vec<String> = [
@@ -761,7 +775,10 @@ pub async fn run_cli_stream(
         Engine::Claude => claude_args(session.as_deref()),
         Engine::Codex => codex_args(&folder, session.as_deref()),
     };
-    let env = child_env(std::env::vars_os(), user_path());
+    let mut env = child_env(std::env::vars_os(), user_path());
+    if matches!(engine, Engine::Claude) {
+        search_env(&mut env);
+    }
     let mut child = command(engine.program(), &args, &folder, env)
         .spawn()
         .map_err(|e| {
@@ -993,6 +1010,9 @@ const SKIP_DIRS: &[&str] = &[
     "vendor",
     "coverage",
     "__pycache__",
+    // .NET và Java: bin/obj là kết quả build; repo lớn trên Windows làm Glob của CLI quá giờ nếu không bỏ.
+    "bin",
+    "obj",
 ];
 const TREE_MAX: usize = 400;
 
@@ -1036,6 +1056,71 @@ pub fn tree(root: &Path) -> Vec<TreeEntry> {
     let mut out = Vec::new();
     walk(root, root, 0, 1, &mut out);
     out
+}
+
+/// Đuôi file được coi là tài liệu khi liệt kê cho agent (agent hỏi "tài liệu nào" thì có sẵn danh sách).
+const DOC_EXTS: &[&str] = &[
+    "md", "mdx", "markdown", "txt", "rst", "adoc", "pdf", "docx", "doc",
+];
+const DOCS_MAX: usize = 80;
+const DOCS_DEPTH: u8 = 4;
+
+fn walk_docs(root: &Path, dir: &Path, depth: u8, out: &mut Vec<String>) {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<(String, bool)> = read
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let is_dir = e.file_type().ok()?.is_dir();
+            (!name.starts_with('.') && !(is_dir && SKIP_DIRS.contains(&name.as_str())))
+                .then_some((name, is_dir))
+        })
+        .collect();
+    // File trước thư mục để tài liệu ở gốc (README, docs/…) có chỗ trước khi chạm giới hạn.
+    entries.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    for (name, is_dir) in entries {
+        if out.len() >= DOCS_MAX {
+            return;
+        }
+        let path = dir.join(&name);
+        if is_dir {
+            if depth < DOCS_DEPTH {
+                walk_docs(root, &path, depth + 1, out);
+            }
+            continue;
+        }
+        let ext = Path::new(&name)
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        if DOC_EXTS.contains(&ext.as_str()) {
+            if let Ok(rel) = path.strip_prefix(root) {
+                out.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+}
+
+/// File tài liệu trong thư mục dự án (tối đa 80, sâu 4 tầng, bỏ thư mục ẩn và thư mục sinh ra).
+pub fn doc_files(root: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    walk_docs(root, root, 0, &mut out);
+    out
+}
+
+/// Danh sách tài liệu đưa vào prompt của màn "Tài liệu từ code": agent biết có tài liệu nào mà không phải Glob cả repo
+/// (repo lớn làm Glob của Claude Code quá giờ 20 giây).
+#[tauri::command]
+pub async fn folder_docs(folder: String) -> Result<Vec<String>, String> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
+    let root = project_folder(&folder, home.as_deref())?;
+    tauri::async_runtime::spawn_blocking(move || doc_files(&root))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1115,6 +1200,44 @@ pub async fn propose_doc(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_env_sets_glob_defaults_but_keeps_user_values() {
+        let mut env: Vec<(OsString, OsString)> =
+            vec![("CLAUDE_CODE_GLOB_TIMEOUT_SECONDS".into(), "120".into())];
+        search_env(&mut env);
+        assert_eq!(
+            env,
+            vec![
+                ("CLAUDE_CODE_GLOB_TIMEOUT_SECONDS".into(), "120".into()),
+                ("CLAUDE_CODE_GLOB_NO_IGNORE".into(), "false".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn doc_files_lists_documents_and_skips_generated_folders() {
+        let root = std::env::temp_dir().join(format!("hive-docs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (path, body) in [
+            ("README.md", "x"),
+            ("docs/spec/srs.docx", "x"),
+            ("docs/plan.pdf", "x"),
+            ("src/main.cs", "x"),
+            ("bin/Debug/notes.md", "x"),
+            ("node_modules/pkg/README.md", "x"),
+            (".git/HEAD.md", "x"),
+        ] {
+            let p = root.join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        assert_eq!(
+            doc_files(&root),
+            ["README.md", "docs/plan.pdf", "docs/spec/srs.docx"]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
     use std::io::Cursor;
 
     #[test]

@@ -24,6 +24,7 @@ import {
   cliAccounts,
   type Engine,
   findProposal,
+  folderDocs,
   folderTree,
   isRead,
   proposeDoc,
@@ -675,6 +676,7 @@ export function DocsScreen() {
   // undefined: đang đọc; null: chưa chọn thư mục hoặc không đọc được.
   const [meta, setMeta] = useState<WorkspaceMeta | null | undefined>(undefined);
   const [tree, setTree] = useState<TreeEntry[] | null>(null);
+  const [folderDocs_, setFolderDocs] = useState<string[] | null>(null);
   const [project, setProject] = useState<HubProject | null | undefined>(undefined);
   const [docs, setDocs] = useState<HubDoc[] | null>(null);
   const [hubError, setHubError] = useState<string | null>(null);
@@ -704,6 +706,7 @@ export function DocsScreen() {
     let alive = true;
     setMeta(undefined);
     setTree(null);
+    setFolderDocs(null);
     setProject(undefined);
     setDocs(null);
     setHubError(null);
@@ -720,6 +723,11 @@ export function DocsScreen() {
     folderTree(folder).then(
       (tr) => alive && setTree(tr),
       () => alive && setTree([]),
+    );
+    // Bản app cũ chưa có lệnh này thì để trống: prompt vẫn có cây thư mục.
+    folderDocs(folder).then(
+      (d) => alive && setFolderDocs(d),
+      () => alive && setFolderDocs([]),
     );
     return () => {
       alive = false;
@@ -877,7 +885,8 @@ export function DocsScreen() {
     setBusy(true);
     try {
       const doc = hubDoc ? { key: hubDoc.key, title: hubDoc.title, draft: draftText } : null;
-      await startRun({ request: req, prompt: buildPrompt(req, doc, lang), docKey: doc?.key ?? null });
+      const map = { tree: tree ?? [], docs: folderDocs_ ?? [] };
+      await startRun({ request: req, prompt: buildPrompt(req, doc, lang, map), docKey: doc?.key ?? null });
     } finally {
       setBusy(false);
     }
