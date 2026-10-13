@@ -444,7 +444,7 @@ func Views(list []Account, st State, home string, now time.Time) []View {
 		}
 		noCLI := false
 		if v.Supported {
-			_, err := lookPath(a.CLI)
+			_, err := lookPath(binary(a.CLI))
 			noCLI = err != nil
 		}
 		resume := time.Time{}
