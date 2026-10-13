@@ -1,0 +1,49 @@
+[
+  {
+    "sha": "bbcd538c8e72b8c175046e27cc8f907076331401",
+    "filename": "file1.txt",
+    "status": "added",
+    "additions": 103,
+    "deletions": 21,
+    "changes": 124,
+    "blob_url": "https://github.com/octocat/Hello-World/blob/6dcb09b5b57875f334f61aebed695e2e4193db5e/file1.txt",
+    "raw_url": "https://github.com/octocat/Hello-World/raw/6dcb09b5b57875f334f61aebed695e2e4193db5e/file1.txt",
+    "contents_url": "https://api.github.com/repos/octocat/Hello-World/contents/file1.txt?ref=6dcb09b5b57875f334f61aebed695e2e4193db5e",
+    "patch": "@@ -132,7 +132,7 @@ module Test @@ -1000,7 +1000,7 @@ module Test"
+  },
+  {
+    "sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    "filename": "src/new-name.ts",
+    "previous_filename": "src/old-name.ts",
+    "status": "renamed",
+    "additions": 1,
+    "deletions": 1,
+    "changes": 2,
+    "patch": "@@ -1 +1 @@\n-export const a = 1;\n+export const a = 2;"
+  },
+  {
+    "sha": "0f1e2d3c4b5a69788796a5b4c3d2e1f001122334",
+    "filename": "docs/huge.json",
+    "status": "modified",
+    "additions": 5200,
+    "deletions": 4100,
+    "changes": 9300
+  },
+  {
+    "sha": "99aabbccddeeff00112233445566778899aabbcc",
+    "filename": "assets/logo.png",
+    "status": "modified",
+    "additions": 0,
+    "deletions": 0,
+    "changes": 0
+  },
+  {
+    "sha": "1234567890abcdef1234567890abcdef12345678",
+    "filename": "old.txt",
+    "status": "removed",
+    "additions": 0,
+    "deletions": 2,
+    "changes": 2,
+    "patch": "@@ -1,2 +0,0 @@\n-một\n-hai"
+  }
+]
