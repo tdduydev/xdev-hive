@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject, type ProjectRow } from "../catalog/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
-import { allowWith, requireTeamRole, type TeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, checkTeamRole, type TeamRole, teamRoleOf, teamRolesOf } from "../tenancy/index.ts";
 import { tasks } from "./schema.ts";
 
 export type TaskRow = typeof tasks.$inferSelect;
@@ -56,10 +56,10 @@ export async function taskForUser(
   permission?: string,
 ): Promise<TaskRow> {
   const row = await loadTask(tx, id);
-  if (!row || !(await teamRoleOf(tx, userId, row.teamId))) throw notFound();
-  if (permission)
-    await allowWith(tx, userId, permission, () => requireTeamRole(tx, userId, row.teamId, min), row.teamId);
-  else await requireTeamRole(tx, userId, row.teamId, min);
+  const role = row && (await teamRoleOf(tx, userId, row.teamId));
+  if (!row || !role) throw notFound();
+  if (permission) await allowWith(tx, userId, permission, async () => checkTeamRole(role, min), row.teamId);
+  else checkTeamRole(role, min);
   return row;
 }
 
@@ -69,8 +69,9 @@ export async function taskForUser(
  */
 export async function taskByKeyForUser(tx: Tx, userId: string, key: string, min: TeamRole): Promise<TaskRow> {
   const [row] = await tx.select().from(tasks).where(eq(tasks.key, key)).orderBy(desc(tasks.createdAt)).limit(1);
-  if (!row || !(await teamRoleOf(tx, userId, row.teamId))) throw notFound();
-  await requireTeamRole(tx, userId, row.teamId, min);
+  const role = row && (await teamRoleOf(tx, userId, row.teamId));
+  if (!row || !role) throw notFound();
+  checkTeamRole(role, min);
   return row;
 }
 
@@ -89,8 +90,9 @@ export async function createTask(
   source: Record<string, unknown> = { kind: "web" },
 ): Promise<Task> {
   const project = await loadProject(tx, input.projectId);
-  if (!project || !(await teamRoleOf(tx, userId, project.teamId))) throw projectNotFound();
-  await requireTeamRole(tx, userId, project.teamId, "member");
+  const role = project && (await teamRoleOf(tx, userId, project.teamId));
+  if (!project || !role) throw projectNotFound();
+  checkTeamRole(role, "member");
   return toTask(await insertTask(tx, project, input, userId, source));
 }
 
@@ -205,10 +207,12 @@ export async function listTasks(
     return rows.map(toTask);
   }
   const rows = await tx.select().from(tasks).where(byStatus).orderBy(desc(tasks.createdAt));
-  // Số đội trong một tổ chức nhỏ, hỏi vai trò từng đội một lần là đủ (như projects.list).
-  const roles = new Map<string, TeamRole | null>();
-  for (const teamId of new Set(rows.map((r) => r.teamId))) roles.set(teamId, await teamRoleOf(tx, userId, teamId));
-  return rows.filter((r) => roles.get(r.teamId)).map(toTask);
+  const roles = await teamRolesOf(
+    tx,
+    userId,
+    rows.map((r) => r.teamId),
+  );
+  return rows.filter((r) => roles.has(r.teamId)).map(toTask);
 }
 
 export async function getTask(tx: Tx, userId: string, id: string): Promise<Task> {

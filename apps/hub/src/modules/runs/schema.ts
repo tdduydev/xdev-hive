@@ -142,6 +142,8 @@ export const runs = hive
       index("runs_project_created").on(t.projectId, t.createdAt),
       // runs.search: mới nhất trước (quét ngược index), phân trang theo (created_at, id).
       index("runs_org_created").on(t.orgId, t.createdAt, t.id),
+      // Ô lọc theo máy của runs.search hỏi từng máy có run của đội nào; team_id trong index để khỏi đọc bảng.
+      index("runs_machine").on(t.machineId, t.teamId),
       orgScoped("runs"),
     ],
   )
