@@ -242,8 +242,11 @@ async function main() {
     const localGit: LocalGit = { root: join(tmp, "git"), prDir: join(tmp, "prs") };
     await mkdir(localGit.root, { recursive: true });
     image = `hive-e2e-sandbox:${randomUUID()}`;
-    await checked("Dựng image môi trường qua mirror ECR", async () => {
-      await runCmd("docker", ["build", "-f", "e2e/sandbox/Dockerfile", "-t", image as string, "."]);
+    await checked("Dựng image môi trường qua mirror", async () => {
+      // CI tải sẵn ảnh Node từ registry còn hạn mức (scripts/ci/pull-image.sh); tại máy thì dùng mặc định của Dockerfile.
+      const node = process.env.HIVE_E2E_NODE_IMAGE;
+      const args = node ? ["--build-arg", `NODE_IMAGE=${node}`] : [];
+      await runCmd("docker", ["build", ...args, "-f", "e2e/sandbox/Dockerfile", "-t", image as string, "."]);
       return { image };
     });
     const db = await startPostgres();
