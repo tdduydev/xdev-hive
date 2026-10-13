@@ -97,8 +97,11 @@ function workflowView(row: typeof reviewWorkflows.$inferSelect, inFlight: number
     id: row.id,
     name: row.name,
     preset: row.preset as ReviewWorkflow["preset"],
+    // Bảng chưa có cột `subject`, `code` (spec 009, migration riêng): mọi quy trình đã lưu là quy trình tài liệu.
+    subject: "doc",
     teamId: row.teamId,
     docPrefixes: row.docPrefixes,
+    code: null,
     phases: row.phases,
     enabled: row.enabled,
     updatedAt: row.updatedAt.toISOString(),

@@ -20,7 +20,7 @@
 
 ## Phase 1: Nền (chặn mọi story)
 
-- [ ] T001 Contract cho quy trình Code và phiên review code
+- [x] T001 Contract cho quy trình Code và phiên review code
   - `workflows.ts`: `workflowSubject`, preset `code-basic|code-strict|code-fast` + `CODE_WORKFLOW_PRESETS`, `ruleCheck`
     thêm `command|max-files|deny-paths|agent-report`, `codeScope`, `codeOptions`, trường checkpoint mới (ai.reviewers,
     aggregate, blockOn, runner; commands, maxFiles, denyPaths; ext.whenNone; reviewers.allowRequester; conditions.paths,

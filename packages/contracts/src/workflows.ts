@@ -1,24 +1,64 @@
 import { z } from "zod";
 import { orgRoute } from "./common.ts";
+import { projectKey } from "./projects.ts";
+import { checkCommand } from "./worker-protocol.ts";
 
 /**
- * Quy trình duyệt tài liệu (specs/004-review-workflows, Workflows.dc.html, DocReview.dc.html). Một quy trình gồm các
- * giai đoạn, mỗi giai đoạn có các checkpoint (gate): AI tự kiểm, người duyệt, quy tắc tự động, cổng CI. Đề xuất sửa tài
- * liệu khớp quy trình thì đi lần lượt qua các gate; qua hết thì hub lưu phiên bản (baseline).
+ * Quy trình duyệt (specs/004-review-workflows, specs/009-code-review-workflows, Workflows.dc.html). Một quy trình gồm
+ * các giai đoạn, mỗi giai đoạn có các checkpoint (gate): AI tự kiểm, người duyệt, quy tắc tự động, cổng CI. Quy trình
+ * áp cho một loại đối tượng (`subject`), chọn khi tạo và không đổi sau: đề xuất sửa tài liệu (`doc`, qua hết thì hub
+ * lưu phiên bản) hoặc PR do run code mở (`code`, qua hết thì PR vào hàng merge).
  */
-export const workflowPreset = z.enum(["aidlc", "speckit", "bmad", "custom"]);
+export const workflowSubject = z.enum(["doc", "code"]);
+export type WorkflowSubject = z.output<typeof workflowSubject>;
+export const DOC_PRESET_IDS = ["aidlc", "speckit", "bmad"] as const;
+export const CODE_PRESET_IDS = ["code-basic", "code-strict", "code-fast"] as const;
+export const workflowPreset = z.enum([...DOC_PRESET_IDS, "custom", ...CODE_PRESET_IDS]);
 export type WorkflowPreset = z.output<typeof workflowPreset>;
+export type CodeWorkflowPreset = (typeof CODE_PRESET_IDS)[number];
 export const gateKind = z.enum(["ai", "human", "rule", "ext"]);
 export type GateKind = z.output<typeof gateKind>;
 export const reviewerRole = z.enum(["org-admin", "team-admin", "team-member"]);
 export type ReviewerRole = z.output<typeof reviewerRole>;
-export const ruleCheck = z.enum(["sections", "requirements", "no-secrets", "max-diff"]);
+/** Quy tắc theo loại: `sections`, `requirements` chỉ cho tài liệu; `command`… chỉ cho code; hai cái giữa dùng chung. */
+export const DOC_RULE_CHECKS = ["sections", "requirements", "no-secrets", "max-diff"] as const;
+export const CODE_RULE_CHECKS = [
+  "command",
+  "max-files",
+  "deny-paths",
+  "max-diff",
+  "no-secrets",
+  "agent-report",
+] as const;
+export const ruleCheck = z.enum([
+  "sections",
+  "requirements",
+  "no-secrets",
+  "max-diff",
+  "command",
+  "max-files",
+  "deny-paths",
+  "agent-report",
+]);
 export type RuleCheck = z.output<typeof ruleCheck>;
 export const rejectRoute = z.enum(["author", "agent", "previous"]);
 export type RejectRoute = z.output<typeof rejectRoute>;
 export const passAction = z.enum(["next", "task", "baseline"]);
 
 const shortText = (max: number) => z.string().trim().min(1).max(max);
+/** Glob đường dẫn hoặc nhánh theo `matchGlob` (glob.ts). */
+const glob = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[^\\]+$/, "Glob dùng dấu / thay cho dấu \\.");
+const taskType = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, "Loại task gồm chữ thường, số và gạch ngang.");
+/** CLI làm reviewer AI cho code. Antigravity chưa có chế độ review chỉ đọc nên không nằm ở đây. */
+export const reviewerCli = z.enum(["claude", "codex", "gemini"]);
+export type ReviewerCli = z.output<typeof reviewerCli>;
+export const findingSeverity = z.enum(["critical", "major", "minor", "info"]);
+export type FindingSeverity = z.output<typeof findingSeverity>;
 
 export const gateConditions = z.object({
   /** Loại tài liệu: đoạn cuối của key (`prd`, `design`…) bằng hoặc bắt đầu bằng `<loại>-`. Rỗng là mọi loại. */
@@ -29,6 +69,11 @@ export const gateConditions = z.object({
   minChangedLines: z.number().int().min(1).max(100_000).nullable().default(null),
   /** Bỏ qua khi thay đổi chỉ là khoảng trắng, dấu câu, định dạng Markdown. */
   skipFormattingOnly: z.boolean().default(false),
+  // Hai điều kiện dưới chỉ cho quy trình code; để optional (không default) để quy trình tài liệu đã lưu parse ra y cũ.
+  /** Chỉ chạy khi diff đụng một trong các glob này. */
+  paths: z.array(glob).max(50).optional(),
+  /** Chỉ chạy với task thuộc một trong các loại này. */
+  taskTypes: z.array(taskType).max(20).optional(),
 });
 export type GateConditions = z.output<typeof gateConditions>;
 
@@ -44,24 +89,48 @@ export const reviewGate = z.object({
       /** Đội (vd. Pháp chế): thành viên và quản trị của đội được duyệt. */
       teams: z.array(z.uuid()).max(20).default([]),
       quorum: z.number().int().min(0).max(50).default(1),
+      /** Quy trình code: chủ run code (người giao việc) cũng được quyết. Tắt theo nguyên tắc bốn mắt (Q2). */
+      allowRequester: z.boolean().optional(),
     })
     .optional(),
   /** Gate quy tắc. */
-  rules: z.array(ruleCheck).max(4).optional(),
+  rules: z.array(ruleCheck).max(8).optional(),
   /** Tiêu đề mục bắt buộc cho quy tắc `sections`. */
   sections: z.array(shortText(120)).max(30).optional(),
   maxDiffLines: z.number().int().min(1).max(100_000).optional(),
-  /** Gate AI: agent đọc tài liệu và chấm theo danh sách kiểm. */
+  /** Quy tắc `command`: worker chạy trong worktree của run code sau khi agent xong. */
+  commands: z.array(checkCommand).min(1).max(5).optional(),
+  /** Quy tắc `max-files`. */
+  maxFiles: z.number().int().min(1).max(10_000).optional(),
+  /** Quy tắc `deny-paths`: diff không được đụng các glob này. */
+  denyPaths: z.array(glob).min(1).max(50).optional(),
+  /** Gate AI: agent đọc tài liệu (hoặc diff của PR) và chấm theo danh sách kiểm (rubric). */
   ai: z
     .object({
       checks: z.array(shortText(300)).min(1).max(20),
       passScore: z.number().min(0).max(10),
       /** Model agent dùng khi kiểm; bỏ trống là model review của dự án. Chính sách agent của tổ chức vẫn áp. */
       model: z.string().trim().min(1).max(200).optional(),
+      // Các trường dưới chỉ cho quy trình code; optional để quy trình tài liệu đã lưu không đổi. Hub tự điền mặc định.
+      /** Mỗi reviewer là một run review chạy song song. */
+      reviewers: z
+        .array(z.object({ cli: reviewerCli, model: z.string().trim().min(1).max(200).optional() }))
+        .min(1)
+        .max(3)
+        .optional(),
+      /** `all` (mặc định): mọi reviewer đạt `passScore`; `avg`: điểm trung bình đạt. */
+      aggregate: z.enum(["all", "avg"]).optional(),
+      /** Có phát hiện từ mức này trở lên thì không đạt dù đủ điểm; null hoặc bỏ trống là không chặn. */
+      blockOn: z.enum(["critical", "major"]).nullable().optional(),
+      /** `team` (mặc định): run của đội trên máy dùng chung; `requester`: chủ là chủ run code gốc. */
+      runner: z.enum(["team", "requester"]).optional(),
     })
     .optional(),
-  /** Gate CI: trạng thái CI của nhánh chính trong repo của dự án. */
-  ext: z.object({ check: z.literal("ci") }).optional(),
+  /**
+   * Gate CI: tài liệu xét nhánh chính của repo dự án, code xét commit đầu của PR. `whenNone` (chỉ code, mặc định
+   * `pass`): kết quả khi repo không có CI.
+   */
+  ext: z.object({ check: z.literal("ci"), whenNone: z.enum(["pass", "fail"]).optional() }).optional(),
   conditions: gateConditions.default({ docTypes: [], keywords: [], minChangedLines: null, skipFormattingOnly: false }),
   slaHours: z
     .number()
@@ -99,21 +168,94 @@ const docPrefix = z
     "Tiền tố có dạng org/…, team/<đội>/…, project/<dự án>/….",
   );
 
+/**
+ * Phạm vi kích hoạt của quy trình code (FR-002). Danh sách rỗng là không lọc theo tiêu chí đó; `baseBranches` rỗng là
+ * nhánh mặc định của dự án.
+ */
+export const codeScope = z.object({
+  projects: z.array(projectKey).max(50).default([]),
+  baseBranches: z.array(glob).max(20).default([]),
+  taskTypes: z.array(taskType).max(20).default([]),
+  paths: z.array(glob).max(50).default([]),
+});
+export type CodeScope = z.output<typeof codeScope>;
+
+/** Việc sau khi đạt và vòng sửa (FR-025…FR-027). Phiên chụp lại các giá trị này lúc mở. */
+export const codeOptions = z.object({
+  /** `project`: theo `merge.mode` của dự án; `auto`: vào hàng merge; `manual`: chờ người bấm. */
+  merge: z.enum(["project", "auto", "manual"]).default("project"),
+  maxAgentRevisions: z.number().int().min(0).max(5).default(2),
+  dismissStaleApprovals: z.boolean().default(false),
+});
+export type CodeOptions = z.output<typeof codeOptions>;
+
+/** Cột `review_workflows.code`: phạm vi và tuỳ chọn gộp một khối; null với quy trình tài liệu. */
+export const codeWorkflow = z.object({ ...codeScope.shape, ...codeOptions.shape });
+export type CodeWorkflow = z.output<typeof codeWorkflow>;
+export type CodeWorkflowInput = z.input<typeof codeWorkflow>;
+
+const DOC_ONLY_RULES = new Set<RuleCheck>(
+  DOC_RULE_CHECKS.filter((r) => !(CODE_RULE_CHECKS as readonly string[]).includes(r)),
+);
+const CODE_ONLY_RULES = new Set<RuleCheck>(
+  CODE_RULE_CHECKS.filter((r) => !(DOC_RULE_CHECKS as readonly string[]).includes(r)),
+);
+const isCodePreset = (p: WorkflowPreset) => (CODE_PRESET_IDS as readonly string[]).includes(p);
+
+type Issue = (message: string, path: (string | number)[]) => void;
+
+/** Checkpoint dùng đúng loại quy tắc và trường của quy trình (FR-004). */
+function checkGateSubject(subject: WorkflowSubject, g: ReviewGate, path: (string | number)[], issue: Issue) {
+  if (subject === "doc") {
+    if (g.rules?.some((r) => CODE_ONLY_RULES.has(r))) issue("Quy tắc này chỉ dùng cho code.", [...path, "rules"]);
+    if (g.ai?.reviewers || g.commands || g.maxFiles || g.denyPaths || g.conditions.paths || g.conditions.taskTypes)
+      issue(`Checkpoint “${g.name}” có cấu hình chỉ dùng cho code.`, path);
+    return;
+  }
+  if (g.rules?.some((r) => DOC_ONLY_RULES.has(r))) issue("Quy tắc này chỉ dùng cho tài liệu.", [...path, "rules"]);
+  if (g.conditions.docTypes.length || g.conditions.keywords.length || g.conditions.skipFormattingOnly)
+    issue("Điều kiện loại tài liệu, từ khoá, định dạng chỉ dùng cho tài liệu.", [...path, "conditions"]);
+  if (g.onPass !== "next") issue("Checkpoint của quy trình code chỉ sang checkpoint kế khi đạt.", [...path, "onPass"]);
+  if (g.kind === "ai" && g.ai && !g.ai.reviewers)
+    issue(`Checkpoint “${g.name}” cần 1–3 reviewer AI.`, [...path, "ai", "reviewers"]);
+  if (g.kind === "ai" && g.ai?.model) issue("Chọn model theo từng reviewer.", [...path, "ai", "model"]);
+  if (g.rules?.includes("command") && !g.commands)
+    issue(`Checkpoint “${g.name}” cần lệnh kiểm.`, [...path, "commands"]);
+  if (g.rules?.includes("max-files") && !g.maxFiles)
+    issue(`Checkpoint “${g.name}” cần số file tối đa.`, [...path, "maxFiles"]);
+  if (g.rules?.includes("deny-paths") && !g.denyPaths)
+    issue(`Checkpoint “${g.name}” cần đường dẫn cấm.`, [...path, "denyPaths"]);
+}
+
 export const workflowInput = z
   .object({
     id: z.uuid().optional(),
     name: shortText(120),
     preset: workflowPreset,
+    /** Loại đối tượng; cố định sau khi tạo. Client cũ không gửi là tài liệu. */
+    subject: workflowSubject.default("doc"),
     /** Đội sở hữu quy trình; null là quy trình của tổ chức. */
     teamId: z.uuid().nullable(),
-    docPrefixes: z.array(docPrefix).min(1).max(20),
+    /** Ít nhất một với tài liệu, rỗng với code. */
+    docPrefixes: z.array(docPrefix).max(20),
+    /** Bắt buộc với code, null với tài liệu. */
+    code: codeWorkflow.nullable().default(null),
     phases: z.array(reviewPhase).min(1).max(10),
     enabled: z.boolean(),
   })
   .superRefine((w, ctx) => {
+    const issue: Issue = (message, path) => ctx.addIssue({ code: "custom", message, path });
     const ids = w.phases.flatMap((p) => p.gates.map((g) => g.id));
-    if (new Set(ids).size !== ids.length)
-      ctx.addIssue({ code: "custom", message: "Mã checkpoint trùng nhau.", path: ["phases"] });
+    if (new Set(ids).size !== ids.length) issue("Mã checkpoint trùng nhau.", ["phases"]);
+    if (w.subject === "doc") {
+      if (!w.docPrefixes.length) issue("Cần ít nhất một tiền tố tài liệu.", ["docPrefixes"]);
+      if (w.code) issue("Quy trình tài liệu không có phạm vi code.", ["code"]);
+      if (isCodePreset(w.preset)) issue("Khung mẫu này dành cho quy trình code.", ["preset"]);
+    } else {
+      if (!w.code) issue("Quy trình code cần phạm vi kích hoạt.", ["code"]);
+      if (w.docPrefixes.length) issue("Quy trình code không dùng tiền tố tài liệu.", ["docPrefixes"]);
+      if (w.preset !== "custom" && !isCodePreset(w.preset)) issue("Khung mẫu này dành cho tài liệu.", ["preset"]);
+    }
     for (const [pi, p] of w.phases.entries()) {
       for (const [gi, g] of p.gates.entries()) {
         const path = ["phases", pi, "gates", gi];
@@ -121,11 +263,10 @@ export const workflowInput = z
           g.kind === "human" &&
           !(g.reviewers && (g.reviewers.users.length || g.reviewers.roles.length || g.reviewers.teams.length))
         )
-          ctx.addIssue({ code: "custom", message: `Checkpoint “${g.name}” cần người duyệt.`, path });
-        if (g.kind === "rule" && !g.rules?.length)
-          ctx.addIssue({ code: "custom", message: `Checkpoint “${g.name}” cần ít nhất một quy tắc.`, path });
-        if (g.kind === "ai" && !g.ai)
-          ctx.addIssue({ code: "custom", message: `Checkpoint “${g.name}” cần danh sách AI kiểm.`, path });
+          issue(`Checkpoint “${g.name}” cần người duyệt.`, path);
+        if (g.kind === "rule" && !g.rules?.length) issue(`Checkpoint “${g.name}” cần ít nhất một quy tắc.`, path);
+        if (g.kind === "ai" && !g.ai) issue(`Checkpoint “${g.name}” cần danh sách AI kiểm.`, path);
+        checkGateSubject(w.subject, g, path, issue);
       }
     }
   });
@@ -135,8 +276,11 @@ export const reviewWorkflow = z.object({
   id: z.uuid(),
   name: z.string(),
   preset: workflowPreset,
+  // Mặc định để hub chưa có cột `subject` (trước migration của spec 009) vẫn trả đúng hợp đồng.
+  subject: workflowSubject.default("doc"),
   teamId: z.uuid().nullable(),
   docPrefixes: z.array(z.string()),
+  code: codeWorkflow.nullable().default(null),
   phases: z.array(reviewPhase),
   enabled: z.boolean(),
   updatedAt: z.iso.datetime(),
@@ -274,8 +418,12 @@ export const dryRunResult = z.object({
 });
 export type DryRunResult = z.output<typeof dryRunResult>;
 
+export const workflowListInput = z.object({ subject: workflowSubject.optional() }).optional();
+
 export const workflowsContract = {
-  list: orgRoute("GET", "/v1/review-workflows", "Quy trình duyệt tài liệu", "reviews").output(z.array(reviewWorkflow)),
+  list: orgRoute("GET", "/v1/review-workflows", "Quy trình duyệt tài liệu và code", "reviews")
+    .input(workflowListInput)
+    .output(z.array(reviewWorkflow)),
   save: orgRoute("POST", "/v1/review-workflows", "Tạo hoặc sửa quy trình duyệt", "reviews")
     .input(workflowInput)
     .output(reviewWorkflow),
@@ -324,8 +472,8 @@ const ai = (id: string, name: string, checks: string[], extra: Partial<ReviewGat
   ...extra,
 });
 
-/** Khung mẫu theo AI-DLC, Spec Kit, BMAD (Workflows.dc.html). Quản trị chọn rồi sửa người duyệt, điều kiện. */
-export const WORKFLOW_PRESETS: Record<Exclude<WorkflowPreset, "custom">, z.input<typeof reviewPhase>[]> = {
+/** Khung mẫu tài liệu theo AI-DLC, Spec Kit, BMAD (Workflows.dc.html). Quản trị chọn rồi sửa người duyệt, điều kiện. */
+const DOC_PRESET_PHASES: Record<(typeof DOC_PRESET_IDS)[number], z.input<typeof reviewPhase>[]> = {
   aidlc: [
     {
       name: "Inception",
@@ -405,3 +553,91 @@ export const WORKFLOW_PRESETS: Record<Exclude<WorkflowPreset, "custom">, z.input
     },
   ],
 };
+
+/** Rubric mặc định của checkpoint AI cho code; khung mẫu và "Tạo từ cấu hình dự án" dùng chung. */
+export const CODE_REVIEW_RUBRIC = [
+  "Thay đổi làm đúng yêu cầu của task, không thừa",
+  "Có test cho hành vi mới hoặc đã sửa",
+  "Không có lỗi bảo mật, không lộ bí mật",
+  "Code dễ đọc và theo quy ước của repo",
+];
+
+const codeRules = (rules: RuleCheck[], extra: Partial<ReviewGateInput> = {}): ReviewGateInput => ({
+  id: "rules",
+  name: "Quy tắc tự động",
+  kind: "rule",
+  rules,
+  slaHours: null,
+  onReject: "agent",
+  ...extra,
+});
+const codeAi = (
+  reviewers: { cli: ReviewerCli }[],
+  passScore: number,
+  extra: Partial<NonNullable<ReviewGateInput["ai"]>> = {},
+): ReviewGateInput => ({
+  id: "ai-review",
+  name: "Review AI",
+  kind: "ai",
+  ai: { checks: CODE_REVIEW_RUBRIC, passScore, reviewers, ...extra },
+  slaHours: null,
+  onReject: "agent",
+});
+const ci = (whenNone: "pass" | "fail"): ReviewGateInput => ({
+  id: "ci",
+  name: "CI trên commit đầu của PR",
+  kind: "ext",
+  ext: { check: "ci", whenNone },
+  slaHours: null,
+  onReject: "agent",
+});
+
+/** Khung mẫu code (FR-008): Cơ bản, Chặt, Làn nhanh. Phạm vi để quản trị tự điền. */
+export const CODE_WORKFLOW_PRESETS: Record<CodeWorkflowPreset, z.input<typeof reviewPhase>[]> = {
+  "code-basic": [
+    { name: "Kiểm tự động", gates: [codeRules(["no-secrets", "max-diff"], { maxDiffLines: 1500 })] },
+    { name: "Review AI", gates: [codeAi([{ cli: "claude" }], 7)] },
+    { name: "Người duyệt", gates: [human("reviewer", "Thành viên đội duyệt", ["team-member"], 24)] },
+  ],
+  "code-strict": [
+    {
+      name: "Kiểm tự động",
+      gates: [codeRules(["no-secrets", "max-diff", "max-files", "agent-report"], { maxDiffLines: 1000, maxFiles: 50 })],
+    },
+    {
+      name: "Review AI",
+      gates: [codeAi([{ cli: "claude" }, { cli: "codex" }], 8, { aggregate: "all", blockOn: "major" })],
+    },
+    { name: "CI", gates: [ci("fail")] },
+    {
+      name: "Người duyệt",
+      gates: [
+        human("reviewer", "Hai thành viên đội duyệt", ["team-member"], 24, {
+          reviewers: { users: [], roles: ["team-member"], quorum: 2 },
+        }),
+      ],
+    },
+  ],
+  "code-fast": [
+    {
+      name: "Máy kiểm",
+      gates: [codeRules(["no-secrets", "max-diff"], { maxDiffLines: 300 }), codeAi([{ cli: "claude" }], 7), ci("pass")],
+    },
+    {
+      name: "Người duyệt",
+      gates: [human("reviewer", "Duyệt khi đổi nhiều", ["team-member"], 8, { conditions: { minChangedLines: 200 } })],
+    },
+  ],
+};
+
+/** Mọi khung mẫu theo mã, để client chỉ cần tra một bảng. */
+export const WORKFLOW_PRESETS: Record<Exclude<WorkflowPreset, "custom">, z.input<typeof reviewPhase>[]> = {
+  ...DOC_PRESET_PHASES,
+  ...CODE_WORKFLOW_PRESETS,
+};
+
+/** Loại đối tượng của khung mẫu; `custom` dùng được cho cả hai. */
+export function presetSubject(preset: WorkflowPreset): WorkflowSubject | null {
+  if (preset === "custom") return null;
+  return isCodePreset(preset) ? "code" : "doc";
+}
