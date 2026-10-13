@@ -34,6 +34,12 @@
                     "time": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "clis": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -3145,7 +3151,8 @@
                       "enum": [
                         "claude",
                         "codex",
-                        "gemini"
+                        "gemini",
+                        "antigravity"
                       ],
                       "type": "string"
                     },
@@ -23159,6 +23166,31 @@
                                     "maxLength": 200
                                   }
                                 }
+                              },
+                              "antigravity": {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "review": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "leader": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "plan": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                }
                               }
                             }
                           },
@@ -23556,7 +23588,8 @@
                                 "enum": [
                                   "claude",
                                   "codex",
-                                  "gemini"
+                                  "gemini",
+                                  "antigravity"
                                 ],
                                 "type": "string"
                               },
@@ -24205,6 +24238,31 @@
                                   "maxLength": 200
                                 }
                               }
+                            },
+                            "antigravity": {
+                              "type": "object",
+                              "properties": {
+                                "code": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "review": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "leader": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "plan": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              }
                             }
                           }
                         },
@@ -24602,7 +24660,8 @@
                               "enum": [
                                 "claude",
                                 "codex",
-                                "gemini"
+                                "gemini",
+                                "antigravity"
                               ],
                               "type": "string"
                             },
@@ -25253,6 +25312,31 @@
                                       "maxLength": 200
                                     }
                                   }
+                                },
+                                "antigravity": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "leader": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "plan": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
                                 }
                               }
                             },
@@ -25650,7 +25734,8 @@
                                   "enum": [
                                     "claude",
                                     "codex",
-                                    "gemini"
+                                    "gemini",
+                                    "antigravity"
                                   ],
                                   "type": "string"
                                 },
@@ -26454,6 +26539,31 @@
                                       "maxLength": 200
                                     }
                                   }
+                                },
+                                "antigravity": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "leader": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "plan": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
                                 }
                               }
                             },
@@ -26851,7 +26961,8 @@
                                   "enum": [
                                     "claude",
                                     "codex",
-                                    "gemini"
+                                    "gemini",
+                                    "antigravity"
                                   ],
                                   "type": "string"
                                 },
@@ -29554,6 +29665,36 @@
                               }
                             },
                             "additionalProperties": false
+                          },
+                          "antigravity": {
+                            "type": "object",
+                            "properties": {
+                              "code": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "review": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "additionalProperties": false
                           }
                         },
                         "additionalProperties": false
@@ -29582,7 +29723,8 @@
                             "enum": [
                               "claude",
                               "codex",
-                              "gemini"
+                              "gemini",
+                              "antigravity"
                             ],
                             "type": "string"
                           },
@@ -29740,6 +29882,31 @@
                           }
                         },
                         "gemini": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "review": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "leader": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "plan": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          }
+                        },
+                        "antigravity": {
                           "type": "object",
                           "properties": {
                             "code": {
@@ -30160,7 +30327,8 @@
                           "enum": [
                             "claude",
                             "codex",
-                            "gemini"
+                            "gemini",
+                            "antigravity"
                           ],
                           "type": "string"
                         },
@@ -38621,7 +38789,8 @@
                     "enum": [
                       "claude",
                       "codex",
-                      "gemini"
+                      "gemini",
+                      "antigravity"
                     ],
                     "type": "string"
                   }
@@ -38696,7 +38865,8 @@
                           "enum": [
                             "claude",
                             "codex",
-                            "gemini"
+                            "gemini",
+                            "antigravity"
                           ],
                           "type": "string"
                         },
@@ -39197,7 +39367,8 @@
                             "enum": [
                               "claude",
                               "codex",
-                              "gemini"
+                              "gemini",
+                              "antigravity"
                             ],
                             "type": "string"
                           },
@@ -39660,7 +39831,8 @@
                           "enum": [
                             "claude",
                             "codex",
-                            "gemini"
+                            "gemini",
+                            "antigravity"
                           ],
                           "type": "string"
                         },
@@ -40091,7 +40263,8 @@
                         "enum": [
                           "claude",
                           "codex",
-                          "gemini"
+                          "gemini",
+                          "antigravity"
                         ],
                         "type": "string"
                       },
@@ -40174,7 +40347,8 @@
                           "enum": [
                             "claude",
                             "codex",
-                            "gemini"
+                            "gemini",
+                            "antigravity"
                           ],
                           "type": "string"
                         },
@@ -40636,7 +40810,8 @@
                           "enum": [
                             "claude",
                             "codex",
-                            "gemini"
+                            "gemini",
+                            "antigravity"
                           ],
                           "type": "string"
                         },
@@ -42832,7 +43007,8 @@
                               "enum": [
                                 "claude",
                                 "codex",
-                                "gemini"
+                                "gemini",
+                                "antigravity"
                               ],
                               "type": "string"
                             },
@@ -44022,7 +44198,8 @@
                               "enum": [
                                 "claude",
                                 "codex",
-                                "gemini"
+                                "gemini",
+                                "antigravity"
                               ],
                               "type": "string"
                             },
@@ -44796,7 +44973,8 @@
                     "enum": [
                       "claude",
                       "codex",
-                      "gemini"
+                      "gemini",
+                      "antigravity"
                     ],
                     "type": "string"
                   },
@@ -44934,7 +45112,8 @@
                           "enum": [
                             "claude",
                             "codex",
-                            "gemini"
+                            "gemini",
+                            "antigravity"
                           ],
                           "type": "string"
                         },
@@ -45809,7 +45988,8 @@
                             "enum": [
                               "claude",
                               "codex",
-                              "gemini"
+                              "gemini",
+                              "antigravity"
                             ],
                             "type": "string"
                           },
@@ -46686,7 +46866,8 @@
                             "enum": [
                               "claude",
                               "codex",
-                              "gemini"
+                              "gemini",
+                              "antigravity"
                             ],
                             "type": "string"
                           },
@@ -47474,7 +47655,8 @@
               "enum": [
                 "claude",
                 "codex",
-                "gemini"
+                "gemini",
+                "antigravity"
               ],
               "type": "string"
             },
@@ -47649,7 +47831,8 @@
                                 "enum": [
                                   "claude",
                                   "codex",
-                                  "gemini"
+                                  "gemini",
+                                  "antigravity"
                                 ],
                                 "type": "string"
                               },
@@ -48569,7 +48752,8 @@
                           "enum": [
                             "claude",
                             "codex",
-                            "gemini"
+                            "gemini",
+                            "antigravity"
                           ],
                           "type": "string"
                         },
@@ -49443,7 +49627,8 @@
                           "enum": [
                             "claude",
                             "codex",
-                            "gemini"
+                            "gemini",
+                            "antigravity"
                           ],
                           "type": "string"
                         },
@@ -58732,7 +58917,8 @@
                     "enum": [
                       "claude",
                       "codex",
-                      "gemini"
+                      "gemini",
+                      "antigravity"
                     ],
                     "type": "string"
                   }
@@ -59233,7 +59419,8 @@
                                 "enum": [
                                   "claude",
                                   "codex",
-                                  "gemini"
+                                  "gemini",
+                                  "antigravity"
                                 ],
                                 "type": "string"
                               }
@@ -59762,6 +59949,36 @@
                                           }
                                         },
                                         "additionalProperties": false
+                                      },
+                                      "antigravity": {
+                                        "type": "object",
+                                        "properties": {
+                                          "code": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "review": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "additionalProperties": false
                                       }
                                     },
                                     "additionalProperties": false
@@ -59790,7 +60007,8 @@
                                         "enum": [
                                           "claude",
                                           "codex",
-                                          "gemini"
+                                          "gemini",
+                                          "antigravity"
                                         ],
                                         "type": "string"
                                       },
@@ -60339,7 +60557,8 @@
                                   "enum": [
                                     "claude",
                                     "codex",
-                                    "gemini"
+                                    "gemini",
+                                    "antigravity"
                                   ],
                                   "type": "string"
                                 }
@@ -60868,6 +61087,36 @@
                                             }
                                           },
                                           "additionalProperties": false
+                                        },
+                                        "antigravity": {
+                                          "type": "object",
+                                          "properties": {
+                                            "code": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "review": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "additionalProperties": false
                                         }
                                       },
                                       "additionalProperties": false
@@ -60896,7 +61145,8 @@
                                           "enum": [
                                             "claude",
                                             "codex",
-                                            "gemini"
+                                            "gemini",
+                                            "antigravity"
                                           ],
                                           "type": "string"
                                         },
@@ -61481,7 +61731,8 @@
                               "enum": [
                                 "claude",
                                 "codex",
-                                "gemini"
+                                "gemini",
+                                "antigravity"
                               ],
                               "type": "string"
                             }
@@ -62019,6 +62270,36 @@
                                         }
                                       },
                                       "additionalProperties": false
+                                    },
+                                    "antigravity": {
+                                      "type": "object",
+                                      "properties": {
+                                        "code": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "review": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "additionalProperties": false
                                     }
                                   },
                                   "additionalProperties": false
@@ -62047,7 +62328,8 @@
                                       "enum": [
                                         "claude",
                                         "codex",
-                                        "gemini"
+                                        "gemini",
+                                        "antigravity"
                                       ],
                                       "type": "string"
                                     },
@@ -72590,6 +72872,17 @@
                             "maxLength": 200,
                             "pattern": "^[A-Za-z0-9._:@/[\\]-]+$"
                           }
+                        },
+                        "antigravity": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200,
+                            "pattern": "^[A-Za-z0-9._:@/[\\]-]+$"
+                          },
+                          "default": []
                         }
                       },
                       "required": [
@@ -73248,6 +73541,17 @@
                           "maxLength": 200,
                           "pattern": "^[A-Za-z0-9._:@/[\\]-]+$"
                         }
+                      },
+                      "antigravity": {
+                        "type": "array",
+                        "maxItems": 20,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200,
+                          "pattern": "^[A-Za-z0-9._:@/[\\]-]+$"
+                        },
+                        "default": []
                       }
                     },
                     "required": [
@@ -73474,6 +73778,17 @@
                             "maxLength": 200,
                             "pattern": "^[A-Za-z0-9._:@/[\\]-]+$"
                           }
+                        },
+                        "antigravity": {
+                          "type": "array",
+                          "maxItems": 20,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200,
+                            "pattern": "^[A-Za-z0-9._:@/[\\]-]+$"
+                          },
+                          "default": []
                         }
                       },
                       "required": [

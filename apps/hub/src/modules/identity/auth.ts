@@ -386,7 +386,9 @@ export function authConfig(o: AuthOptions) {
       }),
       ssoDomainVerified,
       // jwt() giữ khoá ký access token; cổng MCP kiểm chữ ký bằng JWKS lấy thẳng từ Better Auth trong tiến trình.
-      jwt(),
+      // Không gắn header set-auth-jwt vào get-session: không client nào dùng, mà mỗi request API (hub gọi getSession để
+      // biết ai đang gọi) phải đọc bảng jwks và ký một JWT bỏ đi.
+      jwt({ disableSettingJwtHeader: true }),
       ...(mcpEnabled(o.baseURL)
         ? [
             // Hub vừa là authorization server vừa là resource server cho /mcp. Không bật DCR: MCP spec 2026-07-28

@@ -213,3 +213,67 @@ func writeGeminiSettings(j Job) (bool, error) {
 	}
 	return true, appendExclude(j.workspace, ".gemini/settings.json")
 }
+
+// antigravityPlugin là plugin worker ghi khi repo đã có .agents/mcp_config.json. agy đặt tên server của plugin là
+// <plugin>_<server>, nên agent thấy cổng hub là xdev-hive_xdev-hive.
+const antigravityPlugin = "xdev-hive"
+
+// antigravityMCPServers là mục mcpServers của agy: cổng MCP của hub (agy gửi cả header, đã thử trên 1.3.3) và server ngoài
+// được phép.
+func antigravityMCPServers(j Job) map[string]any {
+	out := map[string]any{"xdev-hive": map[string]any{
+		"url":     mcpURL(j.Env),
+		"headers": map[string]string{"Authorization": "Bearer " + j.Env["HIVE_RUN_TOKEN"]},
+	}}
+	blank := hubSecretEnv(j)
+	for _, s := range externalMCPServers(j) {
+		if s.Transport == "http" {
+			out[s.Name] = map[string]any{"url": s.URL}
+			continue
+		}
+		args := s.Args
+		if args == nil {
+			args = []string{}
+		}
+		out[s.Name] = map[string]any{"command": s.Command, "args": args, "env": blank}
+	}
+	return out
+}
+
+// writeAntigravityMCPConfig ghi cấu hình MCP của run vào .agents/ của worktree (agy nạp cả .agents/mcp_config.json lẫn
+// plugin trong .agents/plugins/) và loại khỏi git để agent không commit run token. Repo đã có .agents/mcp_config.json
+// thì không ghi đè (sẽ thành thay đổi trong PR) mà ghi thành plugin riêng. Trả về đường dẫn tương đối của file đã ghi,
+// rỗng khi không ghi.
+func writeAntigravityMCPConfig(j Job) (string, error) {
+	if j.workspace == "" {
+		return "", nil
+	}
+	files := map[string]any{}
+	config := filepath.Join(".agents", "mcp_config.json")
+	if _, err := os.Stat(filepath.Join(j.workspace, config)); err == nil {
+		plugin := filepath.Join(".agents", "plugins", antigravityPlugin)
+		if _, err := os.Stat(filepath.Join(j.workspace, plugin)); err == nil {
+			return "", nil
+		}
+		config = filepath.Join(plugin, "mcp_config.json")
+		files[filepath.Join(plugin, "plugin.json")] = map[string]string{"name": antigravityPlugin}
+	}
+	files[config] = map[string]any{"mcpServers": antigravityMCPServers(j)}
+	for rel, content := range files {
+		path := filepath.Join(j.workspace, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return "", err
+		}
+		b, err := json.MarshalIndent(content, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(path, b, 0o600); err != nil {
+			return "", err
+		}
+		if err := appendExclude(j.workspace, filepath.ToSlash(rel)); err != nil {
+			return "", err
+		}
+	}
+	return config, nil
+}

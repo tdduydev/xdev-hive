@@ -222,9 +222,20 @@ const planInForce = (p: PlanRow) => p.editedContent ?? p.content;
 
 /**
  * Worker chỉ cấu hình MCP của Hive cho Claude và Codex. Run plan phải gọi plan_submit, nên run không chọn CLI thì
- * không giao cho CLI khác (Gemini) để khỏi chắc chắn thất bại.
+ * không giao cho CLI khác (Gemini, Antigravity) để khỏi chắc chắn thất bại.
  */
 const SUBMIT_CLIS: readonly string[] = ["claude", "codex"];
+/**
+ * CLI không gọi được tool MCP khi chạy chỉ đọc: `agy -p` (1.3.3) tự từ chối mọi lời gọi MCP nếu thiếu
+ * --dangerously-skip-permissions, mà cờ đó lại bỏ qua chế độ plan và sandbox nên worker không dùng ở run chỉ đọc. Run
+ * plan, leader của các CLI này chắc chắn không nộp được kết quả.
+ */
+const NO_READONLY_MCP_CLIS: readonly string[] = ["antigravity"];
+/**
+ * CLI không giới hạn được trong thư mục làm việc khi chạy run code (agy 1.3.3: sandbox chặn cả ghi file trong worktree
+ * và git commit, nên phải chạy với --dangerously-skip-permissions). Chỉ giao run code cho chúng khi dự án cho toàn quyền.
+ */
+const FULL_ONLY_CLIS: readonly string[] = ["antigravity"];
 /**
  * Run không có task, lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
  * trình duyệt), docassist (trợ lý của trình soạn tài liệu).
@@ -583,20 +594,22 @@ export function createRunsEngine(deps: RunsDeps) {
         .update(runs)
         .set({ offerMachineId: machine.id, offerExpiresAt: expiresAt, updatedAt: sql`now()` })
         .where(eq(runs.id, run.id));
+      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
       const cli =
         run.cli ??
-        (SUBMIT_KINDS.includes(run.kind) ? machine.clis.find((c) => SUBMIT_CLIS.includes(c)) : machine.clis[0]) ??
+        (SUBMIT_KINDS.includes(run.kind)
+          ? machine.clis.find((c) => SUBMIT_CLIS.includes(c))
+          : machine.clis.find((c) => permission.mode === "full" || !FULL_ONLY_CLIS.includes(c))) ??
         "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
       const requested =
         run.model ??
-        project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[
+        project.settings.models?.[cli as NonNullable<RunRow["cli"]>]?.[
           run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
         ] ??
         null;
       const model = resolveModel(policy, cli, requested);
-      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
       for (const notice of [model.notice, permission.notice]) {
         if (notice) await noteOnce(tx, run, "policy", { message: notice });
       }
@@ -1733,8 +1746,18 @@ export function createRunsEngine(deps: RunsDeps) {
         );
       }
     }
+    const cli = input.cli ?? task.preferredCli ?? null;
+    if (cli && FULL_ONLY_CLIS.includes(cli) && project) {
+      const mode = resolvePermission(await loadPolicy(tx), project.settings.runPermissions?.mode ?? "workspace").mode;
+      if (mode !== "full") {
+        throw new ConflictError(
+          "CLI_NEEDS_FULL_PERMISSIONS",
+          "Antigravity chỉ chạy run code khi dự án cho toàn quyền: agy không giới hạn được trong thư mục làm việc. Chọn CLI khác hoặc đổi quyền run của dự án.",
+        );
+      }
+    }
     const { row, afterCommit } = await queueRun(tx, task, project, {
-      cli: input.cli ?? task.preferredCli ?? null,
+      cli,
       model: input.model ?? null,
       machineId: input.machineId ?? null,
       createdBy: userId,
@@ -1763,6 +1786,12 @@ export function createRunsEngine(deps: RunsDeps) {
       )
       .limit(1);
     if (active) return { runId: active.id, afterCommit: () => undefined };
+    if (input.cli && NO_READONLY_MCP_CLIS.includes(input.cli)) {
+      throw new BadRequestError(
+        "CLI_CANNOT_SUBMIT",
+        `${input.cli} chưa gọi được tool MCP khi chạy chỉ đọc nên không trả lời được trong chat; chọn Claude hoặc Codex.`,
+      );
+    }
     const [row] = await tx
       .insert(runs)
       .values({
@@ -1953,6 +1982,8 @@ export function createRunsEngine(deps: RunsDeps) {
    * chính). Model chỉ chép khi người giao chọn tay; không thì dispatch lấy model `plan` của dự án.
    */
   async function createPlanRun(tx: Tx, parent: RunRow, model: string | null | undefined): Promise<RunRow> {
+    // CLI của run cha không nộp được kế hoạch thì để dispatch chọn Claude hoặc Codex; model chọn tay là của CLI cha.
+    const keep = !parent.cli || !NO_READONLY_MCP_CLIS.includes(parent.cli);
     const [row] = await tx
       .insert(runs)
       .values({
@@ -1962,8 +1993,8 @@ export function createRunsEngine(deps: RunsDeps) {
         projectId: parent.projectId,
         kind: "plan",
         parentRunId: parent.id,
-        cli: parent.cli,
-        model: model ?? null,
+        cli: keep ? parent.cli : null,
+        model: keep ? (model ?? null) : null,
         pinnedMachineId: parent.pinnedMachineId,
         branch: parent.branch,
         policySnapshot: [],
@@ -2139,7 +2170,7 @@ export function createRunsEngine(deps: RunsDeps) {
         ),
       )
       .orderBy(asc(runs.createdAt), asc(runs.id))
-      .for("update");
+      .for("no key update");
     const afters: Array<() => void> = [];
     for (const { id } of active) {
       const run = await lockRun(tx, id);

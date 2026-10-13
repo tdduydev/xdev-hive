@@ -1,10 +1,6 @@
-import {
-  type OutcomeCheck,
-  type Run,
-  type RunEventView,
-  type RunState,
-  TERMINAL_RUN_STATES,
-} from "@xdev-hive/contracts";
+import type { OutcomeCheck, Run, RunEventView, RunState } from "@xdev-hive/contracts";
+// Bảng việc và trang chủ nằm trong bundle đầu: lấy từ module không zod thay vì cả hợp đồng.
+import { TERMINAL_RUN_STATES } from "@xdev-hive/contracts/run-states";
 import { formatClock, formatDuration } from "@/lib/format.ts";
 
 /** Màu của nhãn trạng thái, khớp `tone` của <Pill>. */
@@ -48,7 +44,12 @@ const STATE_TONE: Record<RunState, Tone> = {
 
 export const runStateTone = (state: RunState): Tone => STATE_TONE[state];
 
-export const CLI_LABEL: Record<string, string> = { claude: "Claude", codex: "Codex", gemini: "Gemini" };
+export const CLI_LABEL: Record<string, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  gemini: "Gemini",
+  antigravity: "Antigravity",
+};
 export const cliLabel = (cli: string | null): string => (cli ? (CLI_LABEL[cli] ?? cli) : "CLI bất kỳ");
 
 /** 8 ký tự đầu của id, đủ để người xem phân biệt run như mã commit rút gọn. */

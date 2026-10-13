@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./worker-protocol": "./src/worker-protocol.ts"
+    "./worker-protocol": "./src/worker-protocol.ts",
+    "./run-states": "./src/run-states.ts",
+    "./run-log": "./src/run-log.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
