@@ -14,6 +14,7 @@ export function systemRouter(
       status: "ok" as const,
       version: config.version,
       time: new Date().toISOString(),
+      builtAt: config.builtAt ?? null,
       clis: [...cli.options],
     })),
     desktopUpdate: os.desktopUpdate.handler(async ({ input }) => {
