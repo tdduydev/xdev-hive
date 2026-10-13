@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
@@ -64,6 +65,8 @@ type Config struct {
 	// Project là project key mặc định cho HIVE_PROJECT khi spec của job không có.
 	Project     string
 	CLICommands map[string]runner.Command
+	// Accounts chọn tài khoản CLI cho từng run (accounts.json, spec 008 US13); nil là đăng nhập mặc định của CLI.
+	Accounts *accounts.Pool
 	// StopTimeout là thời gian chờ run đang chạy dừng hẳn khi worker tắt; 0 là 30 giây.
 	StopTimeout time.Duration
 	// OnStatus nhận trạng thái kết nối, để app desktop hiện trên khay hệ thống (hive-worker run --status-json).
