@@ -100,6 +100,12 @@ export const runs = hive
       cacheWrite: bigint("cache_write", { mode: "number" }).notNull().default(0),
       costUsd: numeric("cost_usd", { precision: 14, scale: 6, mode: "number" }),
       turns: integer("turns"),
+      /**
+       * Id gói (tài khoản CLI trên máy) đã chạy run, theo sự kiện cost của worker; lần thử sau ghi đè lần trước. null
+       * khi dùng đăng nhập mặc định hoặc worker cũ chưa báo. Id chỉ có nghĩa trong một máy (accounts.json), nên thống kê
+       * theo gói của dự án gộp các máy dùng cùng id.
+       */
+      accountId: text("account_id"),
       /** Đề nghị job đang chờ máy trả lời; hết hạn thì hub đề nghị máy khác. */
       offerMachineId: uuid("offer_machine_id"),
       offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),

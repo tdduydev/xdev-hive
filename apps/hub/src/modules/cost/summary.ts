@@ -14,11 +14,12 @@ const GROUP_KEY: Record<CostSummaryInput["groupBy"], SQL<string | null>> = {
   // drizzle bỏ tên bảng của cột trong truy vấn con, khiến "id" bị hiểu là cột của run_events.
   cli: sql`coalesce(${runs}.cli, (select e.data->>'cli' from ${runEvents} e where e.run_id = ${runs}.id and e.type = 'offer' order by e.id desc limit 1))`,
   machine: sql`${runs.machineId}::text`,
+  account: sql`${runs.accountId}`,
 };
 
 /**
- * Token, USD và số run của một dự án trong khoảng ngày [from, to] (UTC, theo ngày tạo run), nhóm theo ngày, task, CLI
- * hoặc máy. Chi phí là thông tin quản trị nên chỉ quản trị đội sở hữu dự án (hoặc quản trị tổ chức) xem được.
+ * Token, USD và số run của một dự án trong khoảng ngày [from, to] (UTC, theo ngày tạo run), nhóm theo ngày, task, CLI,
+ * máy hoặc gói. Chi phí là thông tin quản trị nên chỉ quản trị đội sở hữu dự án (hoặc quản trị tổ chức) xem được.
  */
 export async function costSummary(tx: Tx, userId: string, input: CostSummaryInput): Promise<CostSummary> {
   const project = await loadProject(tx, input.projectId);

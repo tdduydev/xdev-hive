@@ -43,6 +43,8 @@ export const runCost = z.object({
   /** null khi CLI không báo USD (Codex, Gemini). */
   costUsd: z.number().nullable(),
   turns: z.number().int().nullable(),
+  /** Id gói (tài khoản CLI trên máy) đã chạy run, theo worker báo; null khi dùng đăng nhập mặc định hay worker cũ. */
+  accountId: z.string().nullable(),
 });
 export type RunCost = z.output<typeof runCost>;
 
