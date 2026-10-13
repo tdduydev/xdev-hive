@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
@@ -43,6 +44,9 @@ type activeRun struct {
 	cancelled atomic.Bool
 	grace     atomic.Int64
 	steers    chan runner.Steer
+	// account là tài khoản CLI giữ cho run từ lúc nhận đề nghị; nil là đăng nhập mặc định.
+	account     *accounts.Lease
+	waitAccount bool
 }
 
 func (r *activeRun) stop(grace time.Duration) {
@@ -56,6 +60,9 @@ func (r *activeRun) stop(grace time.Duration) {
 type pendingOffer struct {
 	msg     *JobOffer
 	expires time.Time
+	account *accounts.Lease
+	// waitAccount: CLI có tài khoản nhưng lúc nhận chưa tài khoản nào rảnh; run chờ tới khi có.
+	waitAccount bool
 }
 
 // runMarker đánh dấu run đang chạy trên máy, kèm seq đã dùng. Worker chết giữa chừng thì lần khởi động sau đọc nó để
@@ -216,8 +223,16 @@ func (j *jobs) onOffer(m *JobOffer) {
 	case !contains(j.cfg.CLIs, cli):
 		reason = fmt.Sprintf("máy không có CLI %q", cli)
 	default:
+		// Giữ tài khoản ngay khi nhận để hai đề nghị cùng lúc không chọn trùng một tài khoản đã đủ run. Không tài khoản
+		// nào rảnh thì vẫn nhận và chờ lúc chạy (execute): từ chối thì hub bỏ máy này cho lần thử, mà run của chủ máy cá
+		// nhân không có máy nào khác nhận.
+		account, err := j.cfg.Accounts.Acquire(cli)
+		if err != nil && !errors.Is(err, accounts.ErrBusy) {
+			reason = fmt.Sprintf("CLI %s: %v", cli, err)
+			break
+		}
 		wait := max(time.Duration(m.TTL)*time.Second, minOfferWait)
-		j.offers[m.RunID] = pendingOffer{msg: m, expires: j.now().Add(wait)}
+		j.offers[m.RunID] = pendingOffer{msg: m, expires: j.now().Add(wait), account: account, waitAccount: err != nil}
 	}
 	j.mu.Unlock()
 	var err error
@@ -243,7 +258,7 @@ func (j *jobs) onLease(l *Lease) {
 	}
 	delete(j.offers, l.RunID)
 	ctx, cancel := context.WithCancel(j.ctx)
-	run := &activeRun{runID: l.RunID, attempt: l.Attempt, leaseID: l.LeaseID, cancel: cancel, steers: make(chan runner.Steer, steerBuffer)}
+	run := &activeRun{runID: l.RunID, attempt: l.Attempt, leaseID: l.LeaseID, cancel: cancel, steers: make(chan runner.Steer, steerBuffer), account: o.account, waitAccount: o.waitAccount}
 	run.grace.Store(int64(defaultGrace))
 	j.active[l.RunID] = run
 	j.wg.Add(1)
@@ -261,9 +276,16 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 		return
 	}
 	job, err := decodeJob(offer, lease, j.cfg.HubURL, j.cfg.Project)
+	if err == nil && run.waitAccount {
+		run.account, err = j.waitAccount(ctx, job.CLI, run.runID)
+		if err != nil && ctx.Err() != nil {
+			_ = sink.Emit(runner.Event{Type: "result", RunID: run.runID, Attempt: run.attempt, Result: &runner.Result{Status: "cancelled", Error: err.Error()}})
+			return
+		}
+	}
 	if err == nil {
 		job.Steers = run.steers
-		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
+		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
 		err = r.Run(ctx, job, sink)
 	}
 	if err != nil {
@@ -279,8 +301,32 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 }
 
+// accountPoll là chu kỳ thử lại khi chờ tài khoản CLI rảnh (hết run khác, hết nghỉ).
+var accountPoll = 15 * time.Second
+
+// waitAccount chờ một tài khoản của CLI rảnh cho run đã nhận lease. Lease của hub vẫn được gia hạn qua heartbeat.
+func (j *jobs) waitAccount(ctx context.Context, cli, runID string) (*accounts.Lease, error) {
+	logged := false
+	for {
+		account, err := j.cfg.Accounts.Acquire(cli)
+		if !errors.Is(err, accounts.ErrBusy) {
+			return account, err
+		}
+		if !logged {
+			j.log.Info("Chờ tài khoản CLI rảnh", "run", runID, "cli", cli)
+			logged = true
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("huỷ khi đang chờ tài khoản %s rảnh: %w", cli, ctx.Err())
+		case <-time.After(accountPoll):
+		}
+	}
+}
+
 func (j *jobs) finish(run *activeRun) {
 	run.cancel()
+	run.account.Release()
 	_ = os.Remove(markerPath(j.markers, run.runID))
 	j.mu.Lock()
 	if j.active[run.runID] == run {
@@ -292,6 +338,9 @@ func (j *jobs) finish(run *activeRun) {
 
 func (j *jobs) cancel(runID string, grace time.Duration) {
 	j.mu.Lock()
+	if o, ok := j.offers[runID]; ok {
+		o.account.Release()
+	}
 	delete(j.offers, runID)
 	run := j.active[runID]
 	j.mu.Unlock()
@@ -351,6 +400,7 @@ func (j *jobs) expireOffers() {
 	j.mu.Lock()
 	for id, o := range j.offers {
 		if now.After(o.expires) {
+			o.account.Release()
 			delete(j.offers, id)
 			j.log.Warn("Bỏ đề nghị job vì không nhận được lease", "run", id)
 		}
