@@ -43,6 +43,7 @@ import {
   removeWorkflow,
   saveWorkflow,
 } from "./reviews.ts";
+import { getPackSkill, listSkillPack, packSkillFiles, setSkillPack } from "./skill-pack.ts";
 import {
   afterSkillChange,
   getSkillRepo,
@@ -225,6 +226,12 @@ export function knowledgeRouter(
         await afterSkillChange(tx, deps, { kind: "sync", orgId });
         return saved;
       }),
+      pack: skills.pack.handler(({ context: { tx, user }, input }) => listSkillPack(tx, asUser(user), input)),
+      packGet: skills.packGet.handler(({ context: { tx, user }, input }) => getPackSkill(tx, asUser(user), input)),
+      packFiles: skills.packFiles.handler(({ context: { tx, user }, input }) =>
+        packSkillFiles(tx, asUser(user), input),
+      ),
+      packSet: skills.packSet.handler(({ context: { tx, user }, input }) => setSkillPack(tx, asUser(user), input)),
     },
     proposals: {
       create: proposals.create.handler(async ({ context: { tx, user, orgId }, input }) => {
