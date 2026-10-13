@@ -1,7 +1,7 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { orgRoute } from "./common.ts";
-import { cli, machineId, workerAccountSummary, workerOs } from "./worker-protocol.ts";
+import { accountLoginCli, accountLoginHow, cli, machineId, workerAccountSummary, workerOs } from "./worker-protocol.ts";
 
 const id = z.uuid("Mã không hợp lệ.");
 // `code` ổn định để client phân biệt lý do mà không phải đọc message.
@@ -79,6 +79,61 @@ export const sdlcFleetMachine = machine.extend({
   canSetAccounts: z.boolean(),
 });
 export type SdlcFleetMachine = z.output<typeof sdlcFleetMachine>;
+
+export const accountLoginStatus = z.enum(["starting", "waiting", "done", "error", "cancelled", "expired"]);
+export type AccountLoginStatus = z.output<typeof accountLoginStatus>;
+
+/**
+ * Phiên đăng nhập gói từ web. Hub chỉ giữ trong bộ nhớ tới khi phiên kết thúc: URL và mã thiết bị là để người dùng mở
+ * trên máy mình; chữ người dùng dán (mã xác nhận, token) không bao giờ có ở đây.
+ */
+export const accountLogin = z.object({
+  requestId: z.string(),
+  machineId: id,
+  cli: accountLoginCli,
+  label: z.string(),
+  how: accountLoginHow,
+  status: accountLoginStatus,
+  /** URL đăng nhập worker bắt được từ CLI. */
+  url: z.string().nullable(),
+  /** Mã thiết bị (Codex `--device-auth`) người dùng nhập ở trang đăng nhập. */
+  code: z.string().nullable(),
+  /** Worker đang chờ người dùng dán chữ (mã xác nhận Claude, token). */
+  needsInput: z.boolean(),
+  accountId: z.string().nullable(),
+  error: z.string().nullable(),
+  startedBy: z.string(),
+  startedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+export type AccountLogin = z.output<typeof accountLogin>;
+
+/**
+ * Gói agent của một máy trên trang Máy (T063). `remote` true khi quản trị đội điều khiển được gói từ web: máy dùng chung,
+ * đang online, worker có capability `accounts-remote`. `reason` nói vì sao không (để web hiện đúng lời nhắc).
+ */
+export const machineAccounts = z.object({
+  machineId: id,
+  accounts: z.array(workerAccountSummary).nullable(),
+  accountsAt: z.iso.datetime().nullable(),
+  remote: z.boolean(),
+  reason: z.enum(["personal", "offline", "old_worker"]).nullable(),
+  /** Phiên đăng nhập đang chạy trên máy (mỗi máy tối đa một), để mở lại bước đang dở. */
+  login: accountLogin.nullable(),
+});
+export type MachineAccounts = z.output<typeof machineAccounts>;
+
+export const accountLoginStartInput = z
+  .object({
+    machineId: id,
+    cli: accountLoginCli,
+    label: z.string().trim().min(1, "Cần tên gói.").max(80, "Tên gói tối đa 80 ký tự."),
+    how: accountLoginHow,
+  })
+  .refine((v) => (v.cli === "codex" ? v.how === "device" : v.how !== "device"), {
+    message: "Codex đăng nhập bằng mã thiết bị; Claude theo gói, SSO, Console hoặc token.",
+    path: ["how"],
+  });
 
 export const registrationOutput = z.object({
   /** Chỉ hiện một lần; hub chỉ lưu băm. */
@@ -225,6 +280,60 @@ export const fleetContract = {
       })
       .input(z.object({ machineId: id, accountId: z.string().min(1).max(64), enabled: z.boolean() }))
       .output(machine),
+    accounts: {
+      list: oc
+        .route({
+          method: "GET",
+          path: "/v1/machines/{machineId}/accounts",
+          summary: "Gói agent của máy và phiên đăng nhập đang chạy (quản trị đội)",
+          tags: ["fleet"],
+        })
+        .errors(userErrors)
+        .input(z.object({ machineId: id }))
+        .output(machineAccounts),
+      loginStart: oc
+        .route({
+          method: "POST",
+          path: "/v1/machines/{machineId}/accounts/logins",
+          summary: "Bắt đầu đăng nhập gói mới trên máy dùng chung; worker trả URL hoặc mã thiết bị",
+          tags: ["fleet"],
+        })
+        .errors({ ...userErrors, CONFLICT: { message: "Máy không đăng nhập gói từ web được.", data: reason } })
+        .input(accountLoginStartInput)
+        .output(accountLogin),
+      loginGet: oc
+        .route({
+          method: "GET",
+          path: "/v1/machines/{machineId}/accounts/logins/{requestId}",
+          summary: "Trạng thái phiên đăng nhập gói",
+          tags: ["fleet"],
+        })
+        .errors(userErrors)
+        .input(z.object({ machineId: id, requestId: z.string().min(1).max(64) }))
+        .output(accountLogin),
+      loginInput: oc
+        .route({
+          method: "POST",
+          path: "/v1/machines/{machineId}/accounts/logins/{requestId}/input",
+          summary: "Gửi mã xác nhận hoặc token người dùng dán xuống máy (hub không lưu)",
+          tags: ["fleet"],
+        })
+        .errors({ ...userErrors, CONFLICT: { message: "Phiên đăng nhập không chờ nhập.", data: reason } })
+        .input(
+          z.object({ machineId: id, requestId: z.string().min(1).max(64), text: z.string().trim().min(1).max(4096) }),
+        )
+        .output(accountLogin),
+      loginCancel: oc
+        .route({
+          method: "POST",
+          path: "/v1/machines/{machineId}/accounts/logins/{requestId}/cancel",
+          summary: "Huỷ phiên đăng nhập gói; worker xoá gói dở",
+          tags: ["fleet"],
+        })
+        .errors(userErrors)
+        .input(z.object({ machineId: id, requestId: z.string().min(1).max(64) }))
+        .output(accountLogin),
+    },
     sdlc: orgRoute("GET", "/v1/machines/sdlc", "Đội máy AI SDLC: máy có nhãn, run đang chạy, gói và quota", "fleet")
       .input(z.object({ teamId: id.optional() }))
       .output(z.array(sdlcFleetMachine)),
