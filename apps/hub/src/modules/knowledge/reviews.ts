@@ -14,10 +14,12 @@ import {
   reviewDecideInput,
   reviewListInput,
   type WorkflowInput,
+  type WorkflowSubject,
   workflowInput,
 } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { z } from "zod";
+import { loadPolicy } from "../governance/index.ts";
 import { authUser } from "../identity/index.ts";
 import { notify } from "../notify/index.ts";
 import {
@@ -97,11 +99,10 @@ function workflowView(row: typeof reviewWorkflows.$inferSelect, inFlight: number
     id: row.id,
     name: row.name,
     preset: row.preset as ReviewWorkflow["preset"],
-    // Bảng chưa có cột `subject`, `code` (spec 009, migration riêng): mọi quy trình đã lưu là quy trình tài liệu.
-    subject: "doc",
+    subject: row.subject,
     teamId: row.teamId,
     docPrefixes: row.docPrefixes,
-    code: null,
+    code: row.code,
     phases: row.phases,
     enabled: row.enabled,
     updatedAt: row.updatedAt.toISOString(),
@@ -110,27 +111,89 @@ function workflowView(row: typeof reviewWorkflows.$inferSelect, inFlight: number
   };
 }
 
-export async function listWorkflows(tx: Tx, principal: Principal): Promise<ReviewWorkflow[]> {
-  const reader = await readerFor(tx, principal);
-  const rows = (await tx.select().from(reviewWorkflows).orderBy(asc(reviewWorkflows.name))).filter((w) =>
-    canRead(reader, { teamId: w.teamId, projectId: null }),
-  );
-  const counts = await tx
+/**
+ * Số phiên đang chạy theo từng quy trình. Phiên review code nằm ở bảng của module `codereview` (nó import module này
+ * nên không import ngược được), vì vậy đếm bằng SQL thẳng; chỉ đọc hai cột.
+ */
+async function inFlightCounts(tx: Tx): Promise<Map<string, number>> {
+  const docs = await tx
     .select({ id: reviewInstances.workflowId, n: sql<number>`count(*)::int` })
     .from(reviewInstances)
     .where(eq(reviewInstances.status, "in_review"))
     .groupBy(reviewInstances.workflowId);
-  const by = new Map(counts.map((c) => [c.id, c.n]));
+  const code = await tx.execute<{ id: string; n: number }>(
+    sql`select workflow_id as id, count(*)::int as n from hive.code_reviews
+        where status = 'in_review' and workflow_id is not null group by workflow_id`,
+  );
+  const out = new Map<string, number>();
+  for (const c of docs) if (c.id) out.set(c.id, c.n);
+  for (const c of code.rows) out.set(c.id, c.n);
+  return out;
+}
+
+export async function listWorkflows(
+  tx: Tx,
+  principal: Principal,
+  subject?: WorkflowSubject,
+): Promise<ReviewWorkflow[]> {
+  const reader = await readerFor(tx, principal);
+  const rows = (
+    await tx
+      .select()
+      .from(reviewWorkflows)
+      .where(subject ? eq(reviewWorkflows.subject, subject) : undefined)
+      .orderBy(asc(reviewWorkflows.name))
+  ).filter((w) => canRead(reader, { teamId: w.teamId, projectId: null }));
+  const by = await inFlightCounts(tx);
   return rows.map((r) => workflowView(r, by.get(r.id) ?? 0));
+}
+
+/**
+ * Quy trình code đang bật mà đội của dự án áp dụng được (của tổ chức hoặc của đúng đội đó), cho `codereview` chọn quy
+ * trình khớp một run. Phạm vi dự án, nhánh, loại task và đường dẫn do `codereview/match.ts` lọc tiếp.
+ */
+export async function listCodeWorkflows(tx: Tx, scope: Scope): Promise<ReviewWorkflow[]> {
+  const rows = await tx
+    .select()
+    .from(reviewWorkflows)
+    .where(and(eq(reviewWorkflows.subject, "code"), eq(reviewWorkflows.enabled, true)))
+    .orderBy(desc(reviewWorkflows.updatedAt));
+  return rows.filter((w) => !w.teamId || w.teamId === scope.teamId).map((w) => workflowView(w, 0));
+}
+
+/**
+ * Model reviewer của quy trình code không được ngoài danh sách chính sách agent (FR-011). Chính sách không có khái
+ * niệm cấm cả CLI: danh sách rỗng là không giới hạn, nên chỉ kiểm model.
+ */
+async function requireAllowedByPolicy(tx: Tx, input: WorkflowInput & { subject: WorkflowSubject }) {
+  if (input.subject !== "code") return;
+  const policy = await loadPolicy(tx);
+  for (const phase of input.phases)
+    for (const gate of phase.gates)
+      for (const r of gate.ai?.reviewers ?? []) {
+        const allowed = policy.allowedModels[r.cli];
+        if (r.model && allowed.length && !allowed.includes(r.model))
+          throw new BadRequestError(
+            "WORKFLOW_MODEL_FORBIDDEN",
+            `Chính sách agent của tổ chức không cho dùng model ${r.model} với ${r.cli}. Chọn một trong: ${allowed.join(", ")}.`,
+          );
+      }
 }
 
 export async function saveWorkflow(tx: Tx, userId: string, raw: WorkflowInput): Promise<ReviewWorkflow> {
   const input = workflowInput.parse(raw);
   await requireWorkflowWrite(tx, userId, input.teamId);
+  await requireAllowedByPolicy(tx, input);
   let row: typeof reviewWorkflows.$inferSelect | undefined;
   if (input.id) {
     const [old] = await tx.select().from(reviewWorkflows).where(eq(reviewWorkflows.id, input.id)).for("update");
     if (!old) throw new NotFoundError("WORKFLOW_NOT_FOUND", "Không tìm thấy quy trình.");
+    // Checkpoint, điều kiện và phiên đang chạy của hai loại khác nhau, nên đổi loại là tạo quy trình mới.
+    if (old.subject !== input.subject)
+      throw new BadRequestError(
+        "WORKFLOW_SUBJECT_FIXED",
+        "Loại áp dụng cố định sau khi tạo; nhân bản quy trình nếu muốn đổi.",
+      );
     // Chuyển quy trình sang đội khác cần quyền ở cả hai phía.
     await requireWorkflowWrite(tx, userId, old.teamId);
     [row] = await tx
@@ -140,6 +203,7 @@ export async function saveWorkflow(tx: Tx, userId: string, raw: WorkflowInput): 
         preset: input.preset,
         teamId: input.teamId,
         docPrefixes: input.docPrefixes,
+        code: input.code,
         phases: input.phases,
         enabled: input.enabled,
         updatedBy: userId,
@@ -155,7 +219,9 @@ export async function saveWorkflow(tx: Tx, userId: string, raw: WorkflowInput): 
         teamId: input.teamId,
         name: input.name,
         preset: input.preset,
+        subject: input.subject,
         docPrefixes: input.docPrefixes,
+        code: input.code,
         phases: input.phases,
         enabled: input.enabled,
         updatedBy: userId,
@@ -171,6 +237,7 @@ export async function saveWorkflow(tx: Tx, userId: string, raw: WorkflowInput): 
     {
       name: row.name,
       preset: row.preset,
+      subject: row.subject,
       enabled: row.enabled,
       gates: flatGates(row.phases).length,
     },
@@ -189,13 +256,17 @@ export async function removeWorkflow(tx: Tx, userId: string, id: string): Promis
     { kind: "user", userId },
     "review_workflow.remove",
     { type: "review_workflow", id },
-    { name: row.name },
+    { name: row.name, subject: row.subject },
   );
 }
 
 /** Quy trình áp cho tài liệu: tiền tố dài nhất thắng, cùng độ dài thì quy trình của đội thắng của tổ chức. */
 export async function matchWorkflow(tx: Tx, key: string, scope: Scope) {
-  const rows = await tx.select().from(reviewWorkflows).where(eq(reviewWorkflows.enabled, true));
+  // Quy trình code không có tiền tố tài liệu nên không bao giờ khớp, nhưng lọc rõ để không lẫn khi cột đó có giá trị.
+  const rows = await tx
+    .select()
+    .from(reviewWorkflows)
+    .where(and(eq(reviewWorkflows.enabled, true), eq(reviewWorkflows.subject, "doc")));
   let best: { row: (typeof rows)[number]; len: number } | null = null;
   for (const row of rows) {
     if (row.teamId && row.teamId !== scope.teamId) continue;
@@ -224,6 +295,8 @@ export async function dryRunWorkflow(
   raw: z.input<typeof dryRunInput>,
 ): Promise<DryRunResult> {
   const { workflow, docKey } = dryRunInput.parse(raw);
+  if (workflow.subject !== "doc")
+    throw new BadRequestError("WORKFLOW_SUBJECT_MISMATCH", "Chạy thử trên tài liệu chỉ dùng cho quy trình tài liệu.");
   const reader = await readerFor(tx, principal);
   const [doc] = await tx.select().from(docs).where(eq(docs.key, docKey));
   if (!doc || !canRead(reader, doc)) throw new NotFoundError("DOC_NOT_FOUND", "Không tìm thấy tài liệu.");
@@ -556,7 +629,7 @@ const isOrgAdmin = (reader: Reader) =>
   reader.kind === "user" && (reader.orgRole === "owner" || reader.orgRole === "admin");
 
 /** Người dùng được chỉ định duyệt gate người duyệt này (theo tên hoặc theo vai trò trong phạm vi tài liệu). */
-function eligible(reader: Reader, gate: ReviewGate, scope: Scope): boolean {
+export function eligible(reader: Reader, gate: ReviewGate, scope: Scope): boolean {
   if (reader.kind !== "user") return false;
   const r = gate.reviewers;
   if (!r) return false;
