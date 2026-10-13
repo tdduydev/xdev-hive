@@ -39,14 +39,23 @@ pub async fn workspace_meta(folder: String) -> Result<WorkspaceMeta, String> {
         return Err(format!("Không tìm thấy thư mục {}.", path.display()));
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let branch = git(&path, &["symbolic-ref", "--short", "HEAD"]);
-        let remote = git(&path, &["remote", "get-url", "origin"]);
+        // Ba lệnh độc lập: chạy song song, màn chờ bằng lệnh chậm nhất thay vì cả ba cộng lại.
+        let (branch, remote, inside) = std::thread::scope(|s| {
+            let branch = s.spawn(|| git(&path, &["symbolic-ref", "--short", "HEAD"]));
+            let remote = s.spawn(|| git(&path, &["remote", "get-url", "origin"]));
+            let inside = git(&path, &["rev-parse", "--is-inside-work-tree"]);
+            (
+                branch.join().ok().flatten(),
+                remote.join().ok().flatten(),
+                inside,
+            )
+        });
         WorkspaceMeta {
             name: path
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default(),
-            is_git: git(&path, &["rev-parse", "--is-inside-work-tree"]).as_deref() == Some("true"),
+            is_git: inside.as_deref() == Some("true"),
             folder: path.to_string_lossy().into_owned(),
             branch,
             remote,
@@ -105,9 +114,19 @@ mod tests {
             "origin",
             "git@github.com:acme/payment-api.git",
         ]);
-        let meta =
-            tauri::async_runtime::block_on(workspace_meta(dir.to_string_lossy().into_owned()))
-                .unwrap();
+        user_path();
+        let mut fastest = std::time::Duration::MAX;
+        let mut meta = None;
+        for _ in 0..5 {
+            let started = std::time::Instant::now();
+            meta = Some(
+                tauri::async_runtime::block_on(workspace_meta(dir.to_string_lossy().into_owned()))
+                    .unwrap(),
+            );
+            fastest = fastest.min(started.elapsed());
+        }
+        eprintln!("workspace_meta (nhanh nhất trong 5 lần): {fastest:?}");
+        let meta = meta.unwrap();
         assert!(meta.is_git);
         assert_eq!(meta.branch.as_deref(), Some("trunk"));
         assert_eq!(
