@@ -70,13 +70,13 @@ export interface WorkerView {
 
 export const workerState = () => invoke<WorkerView | null>("worker_state");
 
-/** Nghe sự kiện "worker-state"; ngoài Tauri thì không làm gì. Trả hàm huỷ nghe. */
-export function onWorkerState(handler: (view: WorkerView) => void): () => void {
+/** Nghe một sự kiện của Rust; ngoài Tauri thì không làm gì. Trả hàm huỷ nghe. */
+export function onTauriEvent<T>(event: string, handler: (payload: T) => void): () => void {
   const listen = window.__TAURI__?.event?.listen;
   if (!listen) return () => {};
   let unlisten: (() => void) | undefined;
   let cancelled = false;
-  void listen<WorkerView>("worker-state", (e) => handler(e.payload)).then((fn) => {
+  void listen<T>(event, (e) => handler(e.payload)).then((fn) => {
     if (cancelled) fn();
     else unlisten = fn;
   });
@@ -85,6 +85,9 @@ export function onWorkerState(handler: (view: WorkerView) => void): () => void {
     unlisten?.();
   };
 }
+
+/** Nghe sự kiện "worker-state". */
+export const onWorkerState = (handler: (view: WorkerView) => void) => onTauriEvent("worker-state", handler);
 
 /** Báo Rust ngôn ngữ của giao diện để chữ trên khay đổi theo. Lỗi (ngoài Tauri) thì bỏ qua. */
 export function syncTrayLang(lang: string): void {
