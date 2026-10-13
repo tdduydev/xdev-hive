@@ -600,19 +600,39 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     const plain = await screen.findByRole("menuitem", { name: "Mở CLI" });
     expect(within(plain).queryByText(/Mở trong/)).toBeNull();
     await u.click(plain);
-    expect(sent(calls, "open_cli_terminal")).toEqual([{ id: "claude-2", folder: null }]);
+    expect(sent(calls, "open_cli_terminal")).toEqual([{ id: "claude-2", folder: null, bypass: false }]);
     expect((await screen.findByRole("status")).textContent).toBe("Đã mở Terminal chạy CLI của claude-2.");
 
     act(() => saveFolder("/Users/duy/Work/payment-api"));
     await u.click(screen.getByRole("button", { name: "Thao tác cho Codex mới" }));
-    const item = await screen.findByRole("menuitem", { name: /Mở CLI/ });
+    const item = await screen.findByRole("menuitem", { name: /^Mở CLIMở trong/ });
     expect(within(item).getByText("Mở trong ~/Work/payment-api")).toBeTruthy();
     await u.click(item);
     // Gói chưa đăng nhập vẫn mở được: CLI tự đòi đăng nhập.
     expect(sent(calls, "open_cli_terminal")).toEqual([
-      { id: "claude-2", folder: null },
-      { id: "codex-2", folder: "/Users/duy/Work/payment-api" },
+      { id: "claude-2", folder: null, bypass: false },
+      { id: "codex-2", folder: "/Users/duy/Work/payment-api", bypass: false },
     ]);
+  });
+
+  it("Mở CLI bỏ hỏi quyền: hỏi xác nhận nêu cờ của CLI, huỷ thì không mở, đồng ý thì gửi bypass", async () => {
+    const { calls } = fakeTauri();
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    const u = user();
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Codex mới" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Mở CLI (bỏ hỏi quyền)" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("--dangerously-bypass-approvals-and-sandbox");
+    await u.click(within(dialog).getByRole("button", { name: "Huỷ" }));
+    expect(sent(calls, "open_cli_terminal")).toEqual([]);
+
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Duy Max" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Mở CLI (bỏ hỏi quyền)" }));
+    const again = await screen.findByRole("dialog");
+    expect(again.textContent).toContain("--dangerously-skip-permissions");
+    await u.click(within(again).getByRole("button", { name: "Mở, bỏ hỏi quyền" }));
+    expect(sent(calls, "open_cli_terminal")).toEqual([{ id: "claude-1", folder: null, bypass: true }]);
   });
 
   it("Mở CLI lỗi thì hiện lỗi tiếng Việt", async () => {
