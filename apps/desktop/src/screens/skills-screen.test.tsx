@@ -245,7 +245,9 @@ describe("SkillsScreen", () => {
     });
     expect(calls.some((c) => c.command === "hub_rpc" && String(c.args?.path).includes("skills/packFiles"))).toBe(true);
     expect(
-      calls.some((c) => c.args?.name === "skill_get" && (c.args?.args as { name: string }).name === "ui-ux-pro-max"),
+      calls.some(
+        (c) => c.args?.name === "skill_get" && (c.args.args as { name?: string } | undefined)?.name === "ui-ux-pro-max",
+      ),
     ).toBe(false);
   });
 
