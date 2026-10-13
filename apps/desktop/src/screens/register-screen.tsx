@@ -162,7 +162,7 @@ export function RegisterScreen() {
               required
               autoComplete="url"
               placeholder="https://hive.cong-ty.vn"
-              className="font-mono text-[13px] md:text-[13px]"
+              className="font-mono text-sm md:text-sm"
               value={hub}
               onChange={(e) => setHub(e.target.value)}
             />
@@ -171,9 +171,9 @@ export function RegisterScreen() {
             {status.kind === "browser" && <LoaderCircleIcon aria-hidden="true" className="animate-spin" />}
             {t.browser}
           </Button>
-          <p className="text-[12.5px] text-muted-foreground">{t.browserHint}</p>
+          <p className="text-sm text-muted-foreground">{t.browserHint}</p>
           <details className="rounded-lg border px-3 py-2.5">
-            <summary className="cursor-pointer text-[13px] font-medium">{t.manual}</summary>
+            <summary className="cursor-pointer text-sm font-medium">{t.manual}</summary>
             <div className="mt-2.5 flex flex-col gap-3.5">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="token">{t.token}</Label>
@@ -182,7 +182,7 @@ export function RegisterScreen() {
                   type="password"
                   autoComplete="off"
                   spellCheck={false}
-                  className="font-mono text-[13px] md:text-[13px]"
+                  className="font-mono text-sm md:text-sm"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                 />
@@ -192,7 +192,7 @@ export function RegisterScreen() {
                 onToggle={(e) => setPasteOpen(e.currentTarget.open)}
                 className="rounded-lg border border-dashed px-3 py-2.5"
               >
-                <summary className="cursor-pointer text-[13px] font-medium">{t.paste}</summary>
+                <summary className="cursor-pointer text-sm font-medium">{t.paste}</summary>
                 <div className="mt-2.5 flex flex-col gap-2">
                   <Label htmlFor="command">{t.cmdLabel}</Label>
                   <Textarea
@@ -210,7 +210,7 @@ export function RegisterScreen() {
                   </Button>
                 </div>
               </details>
-              <p className="text-[12.5px] text-muted-foreground">{t.tokenHint}</p>
+              <p className="text-sm text-muted-foreground">{t.tokenHint}</p>
               <Button type="submit" variant="secondary" disabled={busy || !token.trim()}>
                 {status.kind === "busy" && <LoaderCircleIcon aria-hidden="true" className="animate-spin" />}
                 {t.submit}
@@ -221,7 +221,7 @@ export function RegisterScreen() {
             role="status"
             aria-live="polite"
             className={cn(
-              "min-h-5 text-[13px]",
+              "min-h-5 text-sm",
               status.kind === "error" && "text-destructive",
               status.kind === "parsed" && "text-success",
               status.kind === "busy" && "text-muted-foreground",

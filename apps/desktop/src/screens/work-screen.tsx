@@ -170,7 +170,7 @@ function WorkLists() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-      <p className="text-[13px] text-muted-foreground">{t.lead}</p>
+      <p className="text-sm text-muted-foreground">{t.lead}</p>
       {error && <Alert variant="destructive">{errorText(error)}</Alert>}
 
       <section aria-labelledby="work-tasks" className="flex flex-col gap-2">
@@ -179,9 +179,9 @@ function WorkLists() {
         </h2>
         <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
           {!tasks.data ? (
-            <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.loading}</p>
+            <p className="px-4 py-3 text-sm text-muted-foreground">{t.loading}</p>
           ) : tasks.data.length === 0 ? (
-            <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.noTasks}</p>
+            <p className="px-4 py-3 text-sm text-muted-foreground">{t.noTasks}</p>
           ) : (
             <Table>
               <TableHeader>
@@ -196,7 +196,7 @@ function WorkLists() {
                   <TableRow key={task.id}>
                     <Td className="max-w-96">
                       <span className="flex min-w-0 flex-col">
-                        <span className="truncate font-mono text-[13px] font-medium">{task.key}</span>
+                        <span className="truncate font-mono text-sm font-medium">{task.key}</span>
                         <span className="truncate text-xs text-muted-foreground">{task.title}</span>
                       </span>
                     </Td>
@@ -231,9 +231,9 @@ function WorkLists() {
         </h2>
         <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
           {!runs.data ? (
-            <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.loading}</p>
+            <p className="px-4 py-3 text-sm text-muted-foreground">{t.loading}</p>
           ) : runs.data.items.length === 0 ? (
-            <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.noRuns}</p>
+            <p className="px-4 py-3 text-sm text-muted-foreground">{t.noRuns}</p>
           ) : (
             <Table>
               <TableHeader>
@@ -254,7 +254,7 @@ function WorkLists() {
                         className="flex w-full min-w-0 cursor-pointer flex-col text-left"
                         onClick={() => go(run.id)}
                       >
-                        <span className="truncate font-mono text-[13px] font-medium">{run.taskKey}</span>
+                        <span className="truncate font-mono text-sm font-medium">{run.taskKey}</span>
                         <span className="truncate text-xs text-muted-foreground">{run.taskTitle}</span>
                       </button>
                     </Td>
@@ -353,7 +353,7 @@ function RunView({ runId }: { runId: string }) {
         error ? (
           <Alert variant="destructive">{errorText(error)}</Alert>
         ) : (
-          <p className="text-[13px] text-muted-foreground">{t.loading}</p>
+          <p className="text-sm text-muted-foreground">{t.loading}</p>
         )
       ) : (
         <>
