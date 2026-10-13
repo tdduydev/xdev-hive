@@ -13,7 +13,7 @@ import { Meter } from "@/components/ui/meter.tsx";
 import { Steps } from "@/components/ui/steps.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
-import { formatClock, formatDayTime, formatDuration, formatInt, formatUsd } from "@/lib/format.ts";
+import { formatCacheHit, formatClock, formatDayTime, formatDuration, formatInt, formatUsd } from "@/lib/format.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
 import {
   budgetPercent,
@@ -345,7 +345,12 @@ function CostCard({ run, capUsd }: { run: Run; capUsd: number | undefined }) {
           { term: "Token vào", detail: formatInt(run.cost.tokensIn) },
           { term: "Đọc từ cache", detail: formatInt(run.cost.cacheRead) },
           { term: "Ghi cache", detail: formatInt(run.cost.cacheWrite) },
+          {
+            term: "Cache trúng",
+            detail: formatCacheHit(run.cost.cacheRead, run.cost.cacheWrite, run.cost.tokensIn),
+          },
           { term: "Token ra", detail: formatInt(run.cost.tokensOut) },
+          ...(run.cost.accountId ? [{ term: "Gói", detail: run.cost.accountId, mono: true }] : []),
           { term: "Số lượt", detail: run.cost.turns === null ? "—" : formatInt(run.cost.turns) },
         ]}
       />

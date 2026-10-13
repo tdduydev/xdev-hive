@@ -8,11 +8,14 @@ import { Table, Td, Th } from "@xdev-hive/ui/table";
 import { type FormEvent, useRef, useState } from "react";
 import { Card } from "@/components/ui/card.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
+import { formatCacheHit } from "@/lib/format.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 type Period = 7 | 14 | 30;
-type GroupBy = "cli" | "machine" | "task";
+type GroupBy = "cli" | "machine" | "task" | "account";
+
+const GROUP_HEAD: Record<GroupBy, string> = { cli: "CLI", machine: "Mã máy", task: "Mã việc", account: "Gói" };
 
 function utcDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -120,11 +123,19 @@ export function CostsPage() {
               <Alert variant="destructive">{apiErrorMessage(daily.error)}</Alert>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                   <Metric label="Tổng chi phí đã báo" value={usd(daily.data.total.costUsd)} />
                   <Metric label="Run" value={number(daily.data.total.runs)} />
                   <Metric label="Token vào" value={number(daily.data.total.tokensIn)} />
                   <Metric label="Token ra" value={number(daily.data.total.tokensOut)} />
+                  <Metric
+                    label="Cache trúng"
+                    value={formatCacheHit(
+                      daily.data.total.cacheRead,
+                      daily.data.total.cacheWrite,
+                      daily.data.total.tokensIn,
+                    )}
+                  />
                 </div>
                 <Card className="grid gap-3 p-4">
                   <div>
@@ -138,7 +149,9 @@ export function CostsPage() {
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div>
                         <h2 className="text-base font-semibold text-foreground">Chi tiết chi phí</h2>
-                        <p className="text-xs text-muted-foreground">Nhóm theo CLI, máy hoặc việc.</p>
+                        <p className="text-xs text-muted-foreground">
+                          Nhóm theo CLI, máy, việc hoặc gói. Cache trúng = đọc cache ÷ (đọc + ghi cache + token vào).
+                        </p>
                       </div>
                       <label className="grid min-w-36 gap-1 text-xs font-medium" htmlFor="cost-group">
                         Nhóm theo
@@ -150,6 +163,7 @@ export function CostsPage() {
                           <option value="cli">CLI</option>
                           <option value="machine">Máy</option>
                           <option value="task">Việc</option>
+                          <option value="account">Gói</option>
                         </NativeSelect>
                       </label>
                     </div>
@@ -163,18 +177,20 @@ export function CostsPage() {
                       <Table>
                         <thead>
                           <tr>
-                            <Th>{groupBy === "cli" ? "CLI" : groupBy === "machine" ? "Mã máy" : "Mã việc"}</Th>
+                            <Th>{GROUP_HEAD[groupBy]}</Th>
                             <Th>Run</Th>
                             <Th>Token</Th>
+                            <Th>Cache trúng</Th>
                             <Th>Chi phí</Th>
                           </tr>
                         </thead>
                         <tbody>
                           {grouped.data.groups.map((group) => (
                             <tr key={group.key ?? "unknown"}>
-                              <Td>{group.key ?? "Chưa xác định"}</Td>
+                              <Td>{group.key ?? (groupBy === "account" ? "Đăng nhập mặc định" : "Chưa xác định")}</Td>
                               <Td>{number(group.runs)}</Td>
                               <Td>{number(group.tokensIn + group.tokensOut)}</Td>
+                              <Td>{formatCacheHit(group.cacheRead, group.cacheWrite, group.tokensIn)}</Td>
                               <Td>{usd(group.costUsd)}</Td>
                             </tr>
                           ))}
