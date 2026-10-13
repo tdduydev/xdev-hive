@@ -2,7 +2,8 @@
 //!
 //! App chạy Claude Code hoặc Codex không tương tác trong thư mục người dùng chọn, đọc luồng JSON của CLI và phát từng
 //! sự kiện cho cửa sổ app. Agent chỉ đọc code để đề xuất văn bản; bản nháp nằm trong app và chỉ lên hub khi người
-//! dùng gửi đề xuất (`propose_doc`). Vì vậy app khoá agent ở chế độ chỉ đọc:
+//! dùng gửi đề xuất (`propose_doc`). Vì vậy mặc định app khoá agent ở chế độ chỉ đọc (người dùng tự bật "Accept
+//! edits" hay "Bypass" thì xem `Mode`):
 //! - Claude Code: `--restricted` (bỏ tool chạy lệnh, giam tool file trong thư mục, bỏ qua file settings và hook của
 //!   người dùng lẫn dự án), chỉ `Read,Glob,Grep`, `--strict-mcp-config` không kèm cấu hình nên không nạp MCP server nào
 //!   (MCP xdev-hive trong cấu hình người dùng mang token cá nhân của hub), `--permission-prompts none` để việc gì cần
@@ -150,22 +151,79 @@ pub fn search_env(env: &mut Vec<(OsString, OsString)>) {
     }
 }
 
-/// Tham số của `claude`. Lời nhắc đọc từ stdin (`-p` không kèm lời nhắc).
-pub fn claude_args(session: Option<&str>) -> Vec<String> {
-    let mut args: Vec<String> = [
-        "-p",
-        "--output-format",
-        "stream-json",
-        "--verbose",
-        "--restricted",
-        "--strict-mcp-config",
-        "--tools",
-        "Read,Glob,Grep",
-        "--permission-prompts",
-        "none",
-    ]
-    .map(String::from)
-    .to_vec();
+/// Quyền của agent trong thư mục. Mặc định chỉ đọc; hai chế độ ghi do người dùng bật trong khung chat (Bypass phải
+/// qua hộp xác nhận ở giao diện).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Mode {
+    Read,
+    /// Sửa và tạo file trong thư mục, không chạy lệnh.
+    Edit,
+    /// Bỏ hỏi quyền và sandbox: agent chạy lệnh và sửa file tuỳ ý.
+    Bypass,
+}
+
+impl Mode {
+    pub fn parse(s: Option<&str>) -> Result<Mode, String> {
+        match s.unwrap_or("read") {
+            "" | "read" => Ok(Mode::Read),
+            "edit" => Ok(Mode::Edit),
+            "bypass" => Ok(Mode::Bypass),
+            other => Err(format!("Chế độ không hợp lệ: {other}")),
+        }
+    }
+}
+
+/// Tên model (alias như `opus` hay tên đầy đủ như `gpt-5.5-codex`). Kiểm vì nó vào dòng lệnh: không cho khoảng trắng
+/// hay ký tự lạ, không bắt đầu bằng `-` để không thành cờ của CLI.
+pub fn valid_model(model: &str) -> bool {
+    (1..=64).contains(&model.len())
+        && !model.starts_with('-')
+        && model
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '-'))
+}
+
+/// Tham số của `claude`. Lời nhắc đọc từ stdin (`-p` không kèm lời nhắc). Chỉ đọc và "Accept edits" giữ
+/// `--restricted` (không chạy lệnh, file tool chỉ trong thư mục); `--restricted` từ chối bypassPermissions nên Bypass
+/// bỏ nó, nhưng vẫn không nạp MCP server nào.
+pub fn claude_args(session: Option<&str>, model: Option<&str>, mode: Mode) -> Vec<String> {
+    let mut args: Vec<String> = ["-p", "--output-format", "stream-json", "--verbose"]
+        .map(String::from)
+        .to_vec();
+    match mode {
+        Mode::Read => args.extend(
+            [
+                "--restricted",
+                "--strict-mcp-config",
+                "--tools",
+                "Read,Glob,Grep",
+            ]
+            .map(String::from),
+        ),
+        Mode::Edit => args.extend(
+            [
+                "--restricted",
+                "--strict-mcp-config",
+                "--tools",
+                "Read,Glob,Grep,Edit,Write",
+                "--permission-mode",
+                "acceptEdits",
+            ]
+            .map(String::from),
+        ),
+        Mode::Bypass => args.extend(
+            [
+                "--strict-mcp-config",
+                "--permission-mode",
+                "bypassPermissions",
+            ]
+            .map(String::from),
+        ),
+    }
+    args.extend(["--permission-prompts".into(), "none".into()]);
+    if let Some(m) = model {
+        args.extend(["--model".into(), m.into()]);
+    }
     if let Some(id) = session {
         args.extend(["--resume".into(), id.into()]);
     }
@@ -173,21 +231,34 @@ pub fn claude_args(session: Option<&str>) -> Vec<String> {
 }
 
 /// Tham số của `codex`. `exec resume` không nhận `-s` và `-C` nên đặt sandbox bằng `-c`, thư mục bằng cwd.
-pub fn codex_args(folder: &Path, session: Option<&str>) -> Vec<String> {
+pub fn codex_args(
+    folder: &Path,
+    session: Option<&str>,
+    model: Option<&str>,
+    mode: Mode,
+) -> Vec<String> {
     let common = ["--json", "--ignore-user-config", "--skip-git-repo-check"];
+    let sandbox = match mode {
+        Mode::Read => Some("read-only"),
+        Mode::Edit => Some("workspace-write"),
+        Mode::Bypass => None,
+    };
     let mut args: Vec<String> = vec!["exec".into()];
+    if session.is_some() {
+        args.push("resume".into());
+    }
+    args.extend(common.map(String::from));
+    match (sandbox, session) {
+        (Some(s), None) => args.extend(["--sandbox".into(), s.into()]),
+        (Some(s), Some(_)) => args.extend(["-c".into(), format!("sandbox_mode=\"{s}\"")]),
+        (None, _) => args.push("--dangerously-bypass-approvals-and-sandbox".into()),
+    }
+    if let Some(m) = model {
+        args.extend(["-m".into(), m.into()]);
+    }
     match session {
-        None => {
-            args.extend(common.map(String::from));
-            args.extend(["--sandbox".into(), "read-only".into()]);
-            args.extend(["-C".into(), folder.to_string_lossy().into_owned()]);
-        }
-        Some(id) => {
-            args.push("resume".into());
-            args.extend(common.map(String::from));
-            args.extend(["-c".into(), "sandbox_mode=\"read-only\"".into()]);
-            args.push(id.into());
-        }
+        None => args.extend(["-C".into(), folder.to_string_lossy().into_owned()]),
+        Some(id) => args.push(id.into()),
     }
     args.push("-".into());
     args
@@ -325,6 +396,8 @@ fn claude_tool(block: &Value, folder: &Path) -> AgentEvent {
             let p = relative(&s(&input["file_path"]), folder);
             (p.clone(), vec![p])
         }
+        // Màn tải lại file đang mở khi agent sửa: cần đường dẫn trong thư mục, không phải đường dẫn tuyệt đối.
+        "Edit" | "Write" | "MultiEdit" => (relative(&s(&input["file_path"]), folder), vec![]),
         "Glob" => (s(&input["pattern"]), vec![]),
         "Grep" => {
             let mut a = format!("\"{}\"", s(&input["pattern"]));
@@ -755,8 +828,17 @@ pub async fn run_cli_stream(
     folder: String,
     prompt: String,
     session: Option<String>,
+    model: Option<String>,
+    mode: Option<String>,
 ) -> Result<String, String> {
     let engine = Engine::parse(&engine)?;
+    let mode = Mode::parse(mode.as_deref())?;
+    let model = model
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty());
+    if model.as_deref().is_some_and(|m| !valid_model(m)) {
+        return Err("Tên model không hợp lệ: chỉ gồm chữ, số và . _ : - (tối đa 64 ký tự).".into());
+    }
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from);
@@ -772,8 +854,8 @@ pub async fn run_cli_stream(
         return Err("Phiên không hợp lệ.".into());
     }
     let args = match engine {
-        Engine::Claude => claude_args(session.as_deref()),
-        Engine::Codex => codex_args(&folder, session.as_deref()),
+        Engine::Claude => claude_args(session.as_deref(), model.as_deref(), mode),
+        Engine::Codex => codex_args(&folder, session.as_deref(), model.as_deref(), mode),
     };
     let mut env = child_env(std::env::vars_os(), user_path());
     if matches!(engine, Engine::Claude) {
@@ -1016,7 +1098,7 @@ const SKIP_DIRS: &[&str] = &[
 ];
 const TREE_MAX: usize = 400;
 
-fn walk(root: &Path, dir: &Path, depth: u8, max_depth: u8, out: &mut Vec<TreeEntry>) {
+pub(crate) fn walk(root: &Path, dir: &Path, depth: u8, max_depth: u8, out: &mut Vec<TreeEntry>) {
     let Ok(read) = std::fs::read_dir(dir) else {
         return;
     };
@@ -1367,7 +1449,7 @@ mod tests {
 
     #[test]
     fn claude_runs_read_only() {
-        let args = claude_args(None);
+        let args = claude_args(None, None, Mode::Read);
         let joined = args.join(" ");
         for flag in [
             "-p",
@@ -1385,7 +1467,11 @@ mod tests {
         }
         assert!(!joined.contains("--mcp-config"));
         assert!(!joined.contains("--resume"));
-        let resumed = claude_args(Some("7854d262-d8c6-4701-964c-dee4af8a1f1b"));
+        let resumed = claude_args(
+            Some("7854d262-d8c6-4701-964c-dee4af8a1f1b"),
+            None,
+            Mode::Read,
+        );
         assert_eq!(
             resumed[resumed.len() - 2..],
             ["--resume", "7854d262-d8c6-4701-964c-dee4af8a1f1b"]
@@ -1396,7 +1482,7 @@ mod tests {
     fn codex_runs_read_only() {
         let folder = Path::new("/w/payment-api");
         assert_eq!(
-            codex_args(folder, None),
+            codex_args(folder, None, None, Mode::Read),
             [
                 "exec",
                 "--json",
@@ -1410,7 +1496,12 @@ mod tests {
             ]
         );
         assert_eq!(
-            codex_args(folder, Some("01a12fc6-f57d-7833-bbae-a1fcd5044a11")),
+            codex_args(
+                folder,
+                Some("01a12fc6-f57d-7833-bbae-a1fcd5044a11"),
+                None,
+                Mode::Read
+            ),
             [
                 "exec",
                 "resume",
@@ -1423,6 +1514,92 @@ mod tests {
                 "-"
             ]
         );
+    }
+
+    #[test]
+    fn claude_modes_and_model() {
+        let edit = claude_args(None, Some("sonnet"), Mode::Edit).join(" ");
+        for flag in [
+            "--restricted",
+            "--strict-mcp-config",
+            "--tools Read,Glob,Grep,Edit,Write",
+            "--permission-mode acceptEdits",
+            "--permission-prompts none",
+            "--model sonnet",
+        ] {
+            assert!(edit.contains(flag), "thiếu {flag}");
+        }
+        assert!(!edit.contains("Bash"));
+        let bypass = claude_args(
+            Some("7854d262-d8c6-4701-964c-dee4af8a1f1b"),
+            None,
+            Mode::Bypass,
+        );
+        let joined = bypass.join(" ");
+        assert!(joined.contains("--permission-mode bypassPermissions"));
+        assert!(joined.contains("--strict-mcp-config"));
+        // --restricted từ chối bypassPermissions.
+        assert!(!joined.contains("--restricted"));
+        assert!(!joined.contains("--model"));
+        assert_eq!(
+            bypass[bypass.len() - 2..],
+            ["--resume", "7854d262-d8c6-4701-964c-dee4af8a1f1b"]
+        );
+    }
+
+    #[test]
+    fn codex_modes_and_model() {
+        let folder = Path::new("/w/payment-api");
+        assert_eq!(
+            codex_args(folder, None, Some("gpt-5.5-codex"), Mode::Edit),
+            [
+                "exec",
+                "--json",
+                "--ignore-user-config",
+                "--skip-git-repo-check",
+                "--sandbox",
+                "workspace-write",
+                "-m",
+                "gpt-5.5-codex",
+                "-C",
+                "/w/payment-api",
+                "-"
+            ]
+        );
+        assert_eq!(
+            codex_args(folder, Some("01a12fc6-f57d"), None, Mode::Edit)[5..7],
+            ["-c", "sandbox_mode=\"workspace-write\""]
+        );
+        for session in [None, Some("01a12fc6-f57d")] {
+            let args = codex_args(folder, session, None, Mode::Bypass);
+            assert!(args.contains(&"--dangerously-bypass-approvals-and-sandbox".to_string()));
+            assert!(
+                !args
+                    .iter()
+                    .any(|a| a.contains("sandbox_mode") || a == "--sandbox")
+            );
+        }
+    }
+
+    #[test]
+    fn modes_and_models_are_checked() {
+        assert_eq!(Mode::parse(None), Ok(Mode::Read));
+        assert_eq!(Mode::parse(Some("edit")), Ok(Mode::Edit));
+        assert_eq!(Mode::parse(Some("bypass")), Ok(Mode::Bypass));
+        assert!(Mode::parse(Some("full")).is_err());
+        for ok in ["opus", "claude-opus-5-5", "gpt-5.5-codex", "o4:mini", "a_b"] {
+            assert!(valid_model(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "--dangerously-skip-permissions",
+            "opus --tools Bash",
+            "a/b",
+            "x;rm",
+            &"a".repeat(65),
+        ] {
+            assert!(!valid_model(bad), "{bad}");
+        }
     }
 
     #[test]

@@ -1,6 +1,6 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { segments } from "@/components/doc-view.tsx";
 import { type Account, AccountContext } from "@/lib/account.ts";
 import {
@@ -16,7 +16,44 @@ import {
 import { saveFolder } from "@/lib/folder.ts";
 import type { HubProject } from "@/lib/hub.ts";
 import { setLang } from "@/lib/i18n.ts";
+import { resetTerminals } from "@/lib/pty.ts";
 import { DocsScreen, slugify } from "@/screens/docs-screen.tsx";
+
+/** xterm.js giả: jsdom không có canvas. Ghi lại thứ được vẽ và cho test gõ phím vào. */
+interface FakeTerm {
+  options: Record<string, unknown>;
+  written: (string | Uint8Array)[];
+  type: (data: string) => void;
+}
+const xterm = vi.hoisted(() => ({ terms: [] as FakeTerm[] }));
+vi.mock("@xterm/xterm", () => ({
+  Terminal: class {
+    cols = 80;
+    rows = 24;
+    options: Record<string, unknown>;
+    written: (string | Uint8Array)[] = [];
+    type: (data: string) => void = () => {};
+    constructor(options: Record<string, unknown>) {
+      this.options = options;
+      xterm.terms.push(this);
+    }
+    loadAddon() {}
+    open() {}
+    focus() {}
+    dispose() {}
+    write(data: string | Uint8Array) {
+      this.written.push(data);
+    }
+    onData(handler: (data: string) => void) {
+      this.type = handler;
+      return { dispose() {} };
+    }
+    onResize() {
+      return { dispose() {} };
+    }
+  },
+}));
+vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {} }));
 
 const FOLDER = "/w/payment-api";
 const KEY = "project/payment-api/architecture";
@@ -49,9 +86,17 @@ const PROJECT: HubProject = {
 
 type Call = { command: string; args?: Record<string, unknown> | undefined };
 
+const GUIDE = "# Hướng dẫn\n\nBản cũ.";
+
 function fakeTauri() {
   const calls: Call[] = [];
-  let listener: ((e: { payload: unknown }) => void) | null = null;
+  const listeners: Record<string, (e: { payload: unknown }) => void> = {};
+  const files: Record<string, string> = {
+    "docs/guide.md": GUIDE,
+    "go.mod": "module example.com/w\n\ngo 1.27\n",
+    "internal/channel/ws.go": "package channel\n\nfunc Dial() {}\n",
+  };
+  let ptys = 0;
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     workspace_meta: () => ({
       folder: FOLDER,
@@ -63,9 +108,60 @@ function fakeTauri() {
     folder_tree: () => [
       { path: "internal", dir: true, depth: 0 },
       { path: "internal/channel", dir: true, depth: 1 },
+      { path: "docs", dir: true, depth: 0 },
+      { path: "docs/guide.md", dir: false, depth: 1 },
       { path: "go.mod", dir: false, depth: 0 },
       { path: "Makefile", dir: false, depth: 0 },
     ],
+    folder_docs: () => ["docs/guide.md"],
+    folder_list: (args) =>
+      args?.path === "internal/channel" ? [{ path: "internal/channel/ws.go", dir: false, depth: 2 }] : [],
+    read_local_file: (args) => {
+      const path = String(args?.path);
+      if (!(path in files)) throw `Không tìm thấy ${path}.`;
+      return {
+        content: files[path],
+        size: files[path]?.length,
+        modifiedMs: 1,
+        writable: /\.(md|mdx|markdown|txt)$/.test(path),
+      };
+    },
+    write_local_file: (args) => {
+      files[String(args?.path)] = String(args?.content);
+      return 2;
+    },
+    cli_profiles: () => ({
+      path: "/Users/ha/.xdev-hive/worker.yaml",
+      accounts: [
+        {
+          id: "claude-2",
+          label: "claude-2",
+          cli: "claude",
+          enabled: true,
+          priority: 1,
+          maxConcurrent: 1,
+          cooldownMinutes: 0,
+          supported: true,
+          loggedIn: true,
+          email: "ha@acme.vn",
+        },
+        {
+          id: "codex-1",
+          label: "codex-1",
+          cli: "codex",
+          enabled: true,
+          priority: 1,
+          maxConcurrent: 1,
+          cooldownMinutes: 0,
+          supported: true,
+          loggedIn: true,
+        },
+      ],
+    }),
+    pty_open: () => `pty-${++ptys}`,
+    pty_write: () => null,
+    pty_resize: () => null,
+    pty_close: () => null,
     cli_accounts: () => [
       {
         engine: "claude",
@@ -113,15 +209,16 @@ function fakeTauri() {
     },
     event: {
       listen: async <T,>(event: string, handler: (e: { payload: T }) => void) => {
-        if (event === "cli:event") listener = handler as (e: { payload: unknown }) => void;
+        listeners[event] = handler as (e: { payload: unknown }) => void;
         return () => {};
       },
     },
   };
   const push = async (...events: AgentEvent[]) => {
-    for (const event of events) await act(async () => listener?.({ payload: { runId: "run-1", event } }));
+    for (const event of events) await act(async () => listeners["cli:event"]?.({ payload: { runId: "run-1", event } }));
   };
-  return { calls, push };
+  const emit = (event: string, payload: unknown) => act(async () => listeners[event]?.({ payload }));
+  return { calls, push, emit, files };
 }
 
 const renderDocs = (account: Account | null = ACCOUNT) =>
@@ -236,6 +333,8 @@ describe("DocsScreen", () => {
   beforeEach(() => {
     setLang("vi");
     resetAgentStore();
+    resetTerminals();
+    xterm.terms.length = 0;
     saveFolder(FOLDER);
   });
 
@@ -363,12 +462,16 @@ describe("DocsScreen", () => {
     await screen.findByRole("heading", { name: "Kiến trúc payment-api" });
     await user.click(screen.getByRole("tab", { name: "Codex" }));
     expect(screen.getByRole("button", { name: "Read Only" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "Full Access" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Full Access" }).getAttribute("aria-pressed")).toBe("false");
     await user.type(
       screen.getByRole("textbox", { name: "Hỏi hoặc yêu cầu viết tài liệu từ code" }),
       "Đọc go.mod{Enter}",
     );
-    expect(calls.find((c) => c.command === "run_cli_stream")?.args?.engine).toBe("codex");
+    expect(calls.find((c) => c.command === "run_cli_stream")?.args).toMatchObject({
+      engine: "codex",
+      model: null,
+      mode: "read",
+    });
     await push(
       { kind: "tool", id: "item_1", name: "shell", arg: "cat go.mod", paths: ["go.mod"] },
       { kind: "toolDone", id: "item_1", ok: true, lines: 4, files: null, preview: "module x" },
@@ -481,5 +584,186 @@ describe("DocsScreen", () => {
       "disabled",
       false,
     );
+  });
+
+  it("cây: mở thư mục, xem file code, sửa rồi lưu file tài liệu mà không cần hub", async () => {
+    const { calls, files } = fakeTauri();
+    const user = userEvent.setup();
+    renderDocs(null);
+    const explorer = screen.getByRole("complementary", { name: "Thư mục" });
+    expect(await screen.findByText(/Chọn file ở cột trái để xem code hay sửa tài liệu/)).toBeTruthy();
+
+    // Thư mục cấp 1 có sẵn trong cây; cấp sâu hơn đọc khi bấm.
+    const internal = await within(explorer).findByTitle("internal");
+    expect(internal.getAttribute("aria-expanded")).toBe("false");
+    expect(within(explorer).queryByTitle("internal/channel")).toBeNull();
+    await user.click(internal);
+    expect(internal.getAttribute("aria-expanded")).toBe("true");
+    await user.click(within(explorer).getByTitle("internal/channel"));
+    expect(calls.find((c) => c.command === "folder_list")?.args).toEqual({ folder: FOLDER, path: "internal/channel" });
+    await user.click(await within(explorer).findByTitle("internal/channel/ws.go"));
+    const code = await screen.findByTestId("code");
+    expect(code.textContent).toContain("func Dial() {}");
+    expect(screen.getByText("Chỉ xem")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Lưu vào file" })).toBeNull();
+    // Thu thư mục lại thì con biến mất.
+    await user.click(internal);
+    expect(within(explorer).queryByTitle("internal/channel")).toBeNull();
+
+    await user.click(within(explorer).getByTitle("docs"));
+    await user.click(within(explorer).getByTitle("docs/guide.md"));
+    expect(await screen.findByRole("heading", { name: "Hướng dẫn" })).toBeTruthy();
+    expect(screen.getByText("Tài liệu trên máy")).toBeTruthy();
+    expect(within(explorer).getByTitle("docs/guide.md").getAttribute("aria-current")).toBe("true");
+    await user.click(screen.getByRole("tab", { name: "Sửa" }));
+    const editor = screen.getByRole("textbox", { name: "docs/guide.md" });
+    await user.clear(editor);
+    await user.type(editor, "# Hướng dẫn{Enter}{Enter}Bản mới.");
+    expect(screen.getByText("Chưa lưu")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Lưu vào file" }));
+    expect(calls.find((c) => c.command === "write_local_file")?.args).toEqual({
+      folder: FOLDER,
+      path: "docs/guide.md",
+      content: "# Hướng dẫn\n\nBản mới.",
+    });
+    expect(files["docs/guide.md"]).toBe("# Hướng dẫn\n\nBản mới.");
+    expect(await screen.findByText("Đã lưu vào file")).toBeTruthy();
+    expect(calls.some((c) => c.command === "hub_tool")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Đóng file" }));
+    expect(screen.queryByRole("region", { name: "File trong thư mục" })).toBeNull();
+  });
+
+  it("chọn model, bật Accept edits; agent sửa file thì file đang mở đọc lại; Bypass phải xác nhận", async () => {
+    const { calls, push, files } = fakeTauri();
+    const user = userEvent.setup();
+    renderDocs();
+    await screen.findByRole("heading", { name: "Kiến trúc payment-api" });
+    const explorer = screen.getByRole("complementary", { name: "Thư mục" });
+    await user.click(await within(explorer).findByTitle("docs"));
+    await user.click(within(explorer).getByTitle("docs/guide.md"));
+    expect(await screen.findByText("Bản cũ.")).toBeTruthy();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Model" }), "opus");
+    expect(JSON.parse(localStorage.getItem("hive.docs.models") ?? "{}")).toMatchObject({ claude: "opus" });
+    await user.click(screen.getByRole("button", { name: "Accept edits" }));
+    expect(screen.getByRole("button", { name: "Accept edits" }).getAttribute("aria-pressed")).toBe("true");
+    await user.type(
+      screen.getByRole("textbox", { name: "Hỏi hoặc yêu cầu viết tài liệu từ code" }),
+      "Sửa guide{Enter}",
+    );
+    const run = calls.find((c) => c.command === "run_cli_stream");
+    expect(run?.args).toMatchObject({ engine: "claude", model: "opus", mode: "edit" });
+    expect(String(run?.args?.prompt)).toContain("allowed you to edit and create files");
+    expect(String(run?.args?.prompt)).toContain("`docs/guide.md` open in the editor");
+    // File trên máy đang mở: không đề xuất cho tài liệu hub.
+    expect(String(run?.args?.prompt)).not.toContain("<current-doc>");
+
+    files["docs/guide.md"] = "# Hướng dẫn\n\nAgent đã sửa.";
+    await push(
+      { kind: "tool", id: "t1", name: "Edit", arg: "docs/guide.md", paths: [] },
+      { kind: "toolDone", id: "t1", ok: true, lines: null, files: null, preview: "" },
+    );
+    expect(await screen.findByText("Agent đã sửa.")).toBeTruthy();
+    await push({ ...RESULT, text: "Xong." }, { kind: "exit", code: 0, cancelled: false, stderr: "" });
+
+    // Bypass: hỏi trước; huỷ thì giữ chế độ cũ.
+    await user.click(screen.getByRole("button", { name: "Bypass" }));
+    let dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/tự chạy lệnh, sửa và xoá file/)).toBeTruthy();
+    expect(within(dialog).getByText(/bypassPermissions/)).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Huỷ" }));
+    expect(screen.getByRole("button", { name: "Accept edits" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Bypass" }));
+    dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Bật Bypass" }));
+    expect(screen.getByRole("button", { name: "Bypass" }).getAttribute("aria-pressed")).toBe("true");
+    await user.type(
+      screen.getByRole("textbox", { name: "Hỏi hoặc yêu cầu viết tài liệu từ code" }),
+      "Chạy test{Enter}",
+    );
+    expect(calls.filter((c) => c.command === "run_cli_stream").at(-1)?.args).toMatchObject({ mode: "bypass" });
+    await push({ kind: "exit", code: 0, cancelled: false, stderr: "" });
+
+    // Đổi agent là phiên mới: Bypass về chỉ đọc. Codex nhập tên model; tên lạ thì không gửi.
+    await user.click(screen.getByRole("tab", { name: "Codex" }));
+    expect(screen.getByRole("button", { name: "Read Only" }).getAttribute("aria-pressed")).toBe("true");
+    const codexModel = screen.getByRole("textbox", { name: "Model" });
+    await user.type(codexModel, "gpt 5");
+    expect(screen.getByText(/Tên model chỉ gồm chữ, số/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Gửi" })).toHaveProperty("disabled", true);
+    await user.clear(codexModel);
+    await user.type(codexModel, "gpt-5.5-codex");
+    await user.click(screen.getByRole("button", { name: "Workspace" }));
+    await user.type(screen.getByRole("textbox", { name: "Hỏi hoặc yêu cầu viết tài liệu từ code" }), "Sửa{Enter}");
+    expect(calls.filter((c) => c.command === "run_cli_stream").at(-1)?.args).toMatchObject({
+      engine: "codex",
+      model: "gpt-5.5-codex",
+      mode: "edit",
+    });
+  });
+
+  it("tab Terminal: mở PTY trong thư mục bằng gói đã chọn, gõ phím, bỏ hỏi quyền phải xác nhận, đóng tab", async () => {
+    const { calls, emit } = fakeTauri();
+    const user = userEvent.setup();
+    renderDocs();
+    const panel = screen.getByRole("complementary", { name: "Hỏi về thư mục này" });
+    await user.click(within(panel).getByRole("tab", { name: "Terminal" }));
+    expect(within(panel).getByText(/Mở terminal để chạy Claude Code, Codex, Antigravity hay shell/)).toBeTruthy();
+    await within(panel).findByRole("option", { name: /claude-2 · ha@acme\.vn/ });
+    // Gói của CLI khác không hiện.
+    expect(within(panel).queryByRole("option", { name: /codex-1/ })).toBeNull();
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Gói agent" }), "claude-2");
+    await user.click(within(panel).getAllByRole("button", { name: "Mở terminal" })[0] as HTMLElement);
+    await waitFor(() =>
+      expect(calls.find((c) => c.command === "pty_open")?.args).toEqual({
+        cli: "claude",
+        planId: "claude-2",
+        bypass: false,
+        folder: FOLDER,
+        cols: 80,
+        rows: 24,
+      }),
+    );
+    const term = xterm.terms[0] as FakeTerm;
+    await waitFor(() => expect(within(panel).getByRole("tab", { name: /Claude Code · claude-2/ })).toBeTruthy());
+    await emit("pty:data", { id: "pty-1", data: btoa("Welcome to Claude Code") });
+    expect(new TextDecoder().decode(term.written.at(-1) as Uint8Array)).toBe("Welcome to Claude Code");
+    term.type("/help\r");
+    expect(calls.find((c) => c.command === "pty_write")?.args).toEqual({ id: "pty-1", data: "/help\r" });
+
+    // Bỏ hỏi quyền: hộp xác nhận, rồi terminal mới (tab con) chạy với cờ cố định của Rust.
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Chạy" }), "codex");
+    await user.click(within(panel).getByRole("checkbox", { name: "Bỏ hỏi quyền" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/--dangerously-bypass-approvals-and-sandbox/)).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Mở không hỏi quyền" }));
+    expect(within(panel).getByRole("checkbox", { name: "Bỏ hỏi quyền" })).toHaveProperty("checked", true);
+    await user.click(within(panel).getByRole("button", { name: "Terminal mới" }));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.command === "pty_open").at(-1)?.args).toMatchObject({
+        cli: "codex",
+        planId: null,
+        bypass: true,
+      }),
+    );
+    // Mỗi terminal bỏ hỏi quyền phải xác nhận lại.
+    expect(within(panel).getByRole("checkbox", { name: "Bỏ hỏi quyền" })).toHaveProperty("checked", false);
+    expect(
+      within(panel)
+        .getByRole("tab", { name: /Codex.*bỏ hỏi quyền/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+
+    await emit("pty:exit", { id: "pty-2", code: 0 });
+    expect(within(panel).getByRole("tab", { name: /Codex.*đã thoát/ })).toBeTruthy();
+    await user.click(within(panel).getByRole("button", { name: "Đóng Claude Code · claude-2" }));
+    expect(calls.find((c) => c.command === "pty_close")?.args).toEqual({ id: "pty-1" });
+    expect(within(panel).queryByRole("tab", { name: /claude-2/ })).toBeNull();
+
+    // Sang Chat rồi quay lại: terminal còn đó.
+    await user.click(within(panel).getByRole("tab", { name: "Chat" }));
+    await user.click(within(panel).getByRole("tab", { name: "Terminal" }));
+    expect(within(panel).getByRole("tab", { name: /Codex/ })).toBeTruthy();
   });
 });
