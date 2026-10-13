@@ -245,15 +245,17 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := cloneOnce(ctx, r.DataDir, job.RepoURL, cache); err != nil {
 		return err
 	}
-	if err := gitWrite(ctx, cache, cache, "fetch", "origin", job.BaseBranch+":refs/remotes/origin/"+job.BaseBranch); err != nil {
+	fetch := []string{"fetch", "origin", job.BaseBranch + ":refs/remotes/origin/" + job.BaseBranch}
+	if job.Kind == KindReview {
+		// Run review cần cả nhánh run cha; một lệnh fetch cho hai nhánh đỡ một lần nối và thương lượng với remote.
+		fetch = append(fetch, job.Branch+":refs/remotes/origin/"+job.Branch)
+	}
+	if err := gitWrite(ctx, cache, cache, fetch...); err != nil {
 		return err
 	}
 	if job.Kind == KindReview {
 		// Run review đọc đúng nhánh run cha đã push. Tách HEAD thay vì tạo nhánh local để lỡ agent commit cũng không
 		// có gì trỏ tới nhánh của cha.
-		if err := gitWrite(ctx, cache, cache, "fetch", "origin", job.Branch+":refs/remotes/origin/"+job.Branch); err != nil {
-			return err
-		}
 		if err := addWorktree(ctx, cache, work, "--detach", work, "origin/"+job.Branch); err != nil {
 			return err
 		}
