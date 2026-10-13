@@ -222,9 +222,15 @@ const planInForce = (p: PlanRow) => p.editedContent ?? p.content;
 
 /**
  * Worker chỉ cấu hình MCP của Hive cho Claude và Codex. Run plan phải gọi plan_submit, nên run không chọn CLI thì
- * không giao cho CLI khác (Gemini) để khỏi chắc chắn thất bại.
+ * không giao cho CLI khác (Gemini, Antigravity) để khỏi chắc chắn thất bại.
  */
 const SUBMIT_CLIS: readonly string[] = ["claude", "codex"];
+/**
+ * CLI không gọi được tool MCP khi chạy chỉ đọc: `agy -p` (1.3.3) tự từ chối mọi lời gọi MCP nếu thiếu
+ * --dangerously-skip-permissions, mà cờ đó lại bỏ qua chế độ plan và sandbox nên worker không dùng ở run chỉ đọc. Run
+ * plan, leader của các CLI này chắc chắn không nộp được kết quả.
+ */
+const NO_READONLY_MCP_CLIS: readonly string[] = ["antigravity"];
 /**
  * Run không có task, lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
  * trình duyệt), docassist (trợ lý của trình soạn tài liệu).
@@ -568,7 +574,7 @@ export function createRunsEngine(deps: RunsDeps) {
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
       const requested =
         run.model ??
-        project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[
+        project.settings.models?.[cli as NonNullable<RunRow["cli"]>]?.[
           run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
         ] ??
         null;
@@ -1722,6 +1728,12 @@ export function createRunsEngine(deps: RunsDeps) {
       )
       .limit(1);
     if (active) return { runId: active.id, afterCommit: () => undefined };
+    if (input.cli && NO_READONLY_MCP_CLIS.includes(input.cli)) {
+      throw new BadRequestError(
+        "CLI_CANNOT_SUBMIT",
+        `${input.cli} chưa gọi được tool MCP khi chạy chỉ đọc nên không trả lời được trong chat; chọn Claude hoặc Codex.`,
+      );
+    }
     const [row] = await tx
       .insert(runs)
       .values({
@@ -1912,6 +1924,8 @@ export function createRunsEngine(deps: RunsDeps) {
    * chính). Model chỉ chép khi người giao chọn tay; không thì dispatch lấy model `plan` của dự án.
    */
   async function createPlanRun(tx: Tx, parent: RunRow, model: string | null | undefined): Promise<RunRow> {
+    // CLI của run cha không nộp được kế hoạch thì để dispatch chọn Claude hoặc Codex; model chọn tay là của CLI cha.
+    const keep = !parent.cli || !NO_READONLY_MCP_CLIS.includes(parent.cli);
     const [row] = await tx
       .insert(runs)
       .values({
@@ -1921,8 +1935,8 @@ export function createRunsEngine(deps: RunsDeps) {
         projectId: parent.projectId,
         kind: "plan",
         parentRunId: parent.id,
-        cli: parent.cli,
-        model: model ?? null,
+        cli: keep ? parent.cli : null,
+        model: keep ? (model ?? null) : null,
         pinnedMachineId: parent.pinnedMachineId,
         branch: parent.branch,
         policySnapshot: [],

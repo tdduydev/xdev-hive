@@ -1199,6 +1199,26 @@ describe("chính sách agent của tổ chức", () => {
     }
   });
 
+  it("run Antigravity chỉ giao cho máy có agy và theo model chính sách cho Antigravity", async () => {
+    const claude = await FakeWorker.connect(await seedMachine(`agy-cl-${tag}`, ["claude"]));
+    const agy = await FakeWorker.connect(await seedMachine(`agy-${tag}`, ["antigravity"]));
+    try {
+      await setPolicy({
+        allowedModels: { claude: [], codex: [], gemini: [], antigravity: ["gemini-3.8-flash-high"] },
+        neverAutoUpgrade: true,
+      });
+      const run = await startRun((await newTask("Việc cho Antigravity")).id, { cli: "antigravity" });
+      expect(run.cli).toBe("antigravity");
+      const offer = await agy.next("job_offer", (o) => o.runId === run.id);
+      expect(offer.spec).toMatchObject({ kind: "code", cli: "antigravity", model: "gemini-3.8-flash-high" });
+      await expect(claude.next("job_offer", (o) => o.runId === run.id, 300)).rejects.toThrow();
+      agy.send({ type: "job_reject", runId: run.id, attempt: 1, reason: "test" });
+    } finally {
+      await setPolicy({});
+      await Promise.all([claude.close(), agy.close()]);
+    }
+  });
+
   it("tổ chức chạm trần ngày: run chờ, báo một lần; nâng trần thì giao", async () => {
     const task = await newTask("Đã tiêu nhiều");
     await admin.query(
