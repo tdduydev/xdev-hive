@@ -52,7 +52,7 @@
     `packages/contracts/openapi.json`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T002 🎯 [P] Preset MVP: `bugfix`, `small`, `aidlc-express`, `speckit`
+- [x] T002 🎯 [P] Preset MVP: `bugfix`, `small`, `aidlc-express`, `speckit`
   - Mỗi preset một file: giai đoạn, tài liệu (đường dẫn như bảng ánh xạ của plan.md), khuôn Markdown ngắn, cổng (dùng
     `reviewPhase`), bước agent với prompt viết lại (không chép nguyên văn Spec Kit/AI-DLC; ghi nguồn tham khảo trong
     comment đầu file), `decomposition`; `perProjectGates`, `autoApprove` và contract theo bảng "Mặc định của preset" của
