@@ -3,6 +3,7 @@ package accounts
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -63,7 +64,7 @@ func TestTokenFileLoginAndLeaseEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Mode().Perm() != 0o600 {
+	if st.Mode().Perm() != 0o600 && runtime.GOOS != "windows" {
 		t.Fatalf("quyền %v", st.Mode().Perm())
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
