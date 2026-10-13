@@ -95,8 +95,12 @@ func TestAccountsCommandAddUpdateRemove(t *testing.T) {
 	if got.Label != "Phụ 2" || got.StopAtSession != 80 || strings.Join(got.Roles, ",") != "plan,review" {
 		t.Fatalf("update chưa đổi: %+v", got)
 	}
-	if got.State != "signedOut" || got.Usage.Reason == nil || *got.Usage.Reason != "Chưa đăng nhập" {
+	// Máy CI không cài claude thì trạng thái là noCli; máy dev có claude thì signedOut. Cả hai đều không có số quota.
+	if got.State != "signedOut" && got.State != "noCli" {
 		t.Fatalf("tài khoản chưa đăng nhập: %+v", got)
+	}
+	if got.State == "signedOut" && (got.Usage.Reason == nil || *got.Usage.Reason != "Chưa đăng nhập") {
+		t.Fatalf("lý do khi chưa đăng nhập: %+v", got)
 	}
 
 	// Chưa đăng nhập: đọc quota không chạy CLI, chỉ ghi lý do.
