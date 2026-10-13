@@ -198,7 +198,7 @@
 
 ## Phase 6: User Story 5 — Vào hàng merge (P2)
 
-- [ ] T050 [US5] Hàng merge tôn trọng phiên
+- [x] T050 [US5] Hàng merge tôn trọng phiên
   - `catalog/merge-queue.ts`: `MergeDeps.reviewGate?` → `waiting` "Chờ quy trình duyệt code".
   - `codereview/merge.ts`: `reviewGate`; khi phiên `approved` gọi `enqueueMerge` theo chế độ hiệu lực (FR-027) hoặc gửi
     `code_review.approved`; handler `pull_request.merged|closed` → `merged`/`cancelled`, huỷ run review đang chạy.
