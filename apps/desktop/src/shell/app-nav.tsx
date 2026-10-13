@@ -1,6 +1,7 @@
 import { ChevronsUpDownIcon, UserRoundIcon } from "lucide-react";
 import { LogoIcon, Wordmark } from "@/components/logo.tsx";
 import { type Account, initials } from "@/lib/account.ts";
+import { formatBuiltAt, useBuildInfo } from "@/lib/build-info.ts";
 import { folderName, pickFolder, shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { navGroups, type Profile, type ScreenId } from "@/lib/nav.ts";
@@ -16,6 +17,8 @@ const text: Dict<{
   pick: string;
   notLinked: string;
   profiles: Record<Profile, string>;
+  build: string;
+  devBuild: string;
 }> = {
   vi: {
     aria: "Điều hướng app",
@@ -25,6 +28,8 @@ const text: Dict<{
     pick: "Chọn thư mục làm việc",
     notLinked: "Chưa liên kết tài khoản",
     profiles: { dev: "Dev", writer: "Viết tài liệu", lead: "Trưởng nhóm" },
+    build: "Bản đang chạy",
+    devBuild: "bản dựng tại máy",
   },
   en: {
     aria: "App navigation",
@@ -34,8 +39,23 @@ const text: Dict<{
     pick: "Choose a working folder",
     notLinked: "Account not linked",
     profiles: { dev: "Dev", writer: "Writer", lead: "Lead" },
+    build: "Running build",
+    devBuild: "local build",
   },
 };
+
+/** Phiên bản, mã commit và ngày build ở đáy menu; thu gọn thì chỉ còn trong tooltip của dòng. */
+function BuildLine() {
+  const t = useT(text);
+  const build = useBuildInfo();
+  const built = formatBuiltAt(build.builtAt);
+  const label = `${build.version ? `v${build.version}` : t.devBuild} · ${build.sha} · ${built}`;
+  return (
+    <p title={`${t.build}: ${label}`} className="px-1 pt-1.5 text-xs text-muted-foreground compact:hidden">
+      {label}
+    </p>
+  );
+}
 
 /**
  * Thanh điều hướng của app (AppNav.dc.html): logo, thư mục làm việc, mục theo quyền chia nhóm, người đang dùng. Cửa sổ
@@ -68,7 +88,7 @@ export function AppNav({
     <nav
       aria-label={t.aria}
       data-compact={compact || undefined}
-      className="flex h-svh w-[220px] shrink-0 flex-col gap-1 border-r bg-sidebar px-2.5 py-3 text-sidebar-foreground compact:w-[60px] compact:px-2"
+      className="flex h-full w-[220px] shrink-0 flex-col gap-1 border-r bg-sidebar px-2.5 py-3 text-sidebar-foreground compact:w-[60px] compact:px-2"
     >
       <div className="px-1.5 pb-2 compact:hidden">
         <Wordmark className="h-[34px]" />
@@ -180,6 +200,7 @@ export function AppNav({
           {account && <span className="truncate text-xs text-muted-foreground">{roleLine}</span>}
         </span>
       </button>
+      <BuildLine />
     </nav>
   );
 }
