@@ -91,6 +91,17 @@ jobs:
             [ -n "${!name}" ] && echo "$name=${!name}" >> "$GITHUB_ENV"
           done
           [ -n "$APPLE_SIGNING_IDENTITY" ] && echo "Ký bằng $APPLE_SIGNING_IDENTITY" || echo "::notice::Chưa có secret ký macOS: bản dựng không ký."
+      # Chứng chỉ tự ký (không có APPLE_ID, không notarize): codesign chỉ dùng chứng chỉ được tin cho code signing, nên tin
+      # nó trên runner trước khi Tauri ký. Ký bằng một chứng chỉ cố định làm yêu cầu nhận diện của app ổn định qua các bản
+      # (identifier + certificate thay cho cdhash), keychain không hỏi lại mật khẩu mỗi lần cập nhật.
+      - name: Tin chứng chỉ tự ký
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != '' && env.APPLE_ID == ''
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/sign.p12"
+          openssl pkcs12 -in "$RUNNER_TEMP/sign.p12" -nokeys -clcerts -passin env:APPLE_CERTIFICATE_PASSWORD -legacy -out "$RUNNER_TEMP/sign.pem" 2>/dev/null \
+            || openssl pkcs12 -in "$RUNNER_TEMP/sign.p12" -nokeys -clcerts -passin env:APPLE_CERTIFICATE_PASSWORD -out "$RUNNER_TEMP/sign.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/sign.pem"
+          rm -f "$RUNNER_TEMP/sign.p12" "$RUNNER_TEMP/sign.pem"
       - name: Dựng app
         working-directory: apps/desktop
         env:
@@ -104,6 +115,15 @@ jobs:
           updater=false
           [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && updater=true || echo "::notice::Chưa có khoá ký bản cập nhật: không dựng gói cập nhật."
           pnpm tauri build --config "{\"version\":\"$VERSION\",\"bundle\":{\"createUpdaterArtifacts\":$updater}}"
+      - name: Kiểm chữ ký macOS ổn định
+        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
+        working-directory: apps/desktop
+        # Ký ad-hoc thì yêu cầu nhận diện là cdhash, đổi mỗi bản build và keychain hỏi lại mật khẩu sau mỗi lần cập nhật.
+        run: |
+          app=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)
+          req=$(codesign -d -r- "$app" 2>&1 | grep designated)
+          echo "$req"
+          case "$req" in *cdhash*) echo "::error::App chỉ ký ad-hoc (cdhash), chưa ký bằng chứng chỉ."; exit 1 ;; esac
       - name: Kiểm gói (sidecar có, chạy được, đúng phiên bản)
         working-directory: apps/desktop
         run: pnpm bundle:verify
