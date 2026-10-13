@@ -14,7 +14,7 @@
   đã merge.
 - `packages/contracts/openapi.json` chỉ T001 sinh lại. Task khác cần đổi contract thì báo người điều phối thêm vào T001
   hoặc mở task contract mới, không tự sửa.
-- Migration chỉ T002 sinh (số `0055`). Task khác cần đổi bảng thì làm sau T002 và sinh migration số kế tiếp.
+- Migration chỉ T002 sinh (số `0056`). Task khác cần đổi bảng thì làm sau T002 và sinh migration số kế tiếp.
 
 ---
 
@@ -38,15 +38,15 @@
     `packages/contracts/src/{workflows,code-reviews,glob}.test.ts`, `packages/contracts/openapi.json`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T002 Bảng và migration
+- [x] T002 Bảng và migration
   - `knowledge/schema.ts`: `review_workflows.subject`, `code`, hai CHECK.
   - `codereview/schema.ts` mới: `code_reviews`, `code_review_gate_runs` đúng plan.md (chỉ số, unique một phiên mở mỗi
     PR, `orgScoped`, policy `hive_owner` select).
-  - `pnpm --filter @xdev-hive/hub db:generate` → `0055_code_review_workflows.sql`; thêm tay `FORCE ROW LEVEL SECURITY` và
+  - `pnpm --filter @xdev-hive/hub db:generate` → `0056_code_review_workflows.sql`; thêm tay `FORCE ROW LEVEL SECURITY` và
     hàm `hive.code_review_overdue_orgs()` như 0051.
   - `codereview/rls.db.test.ts`; thêm ca nâng cấp vào `migrations-upgrade.db.test.ts`.
   - **Scope**: `apps/hub/src/modules/knowledge/schema.ts`, `apps/hub/src/modules/codereview/schema.ts`,
-    `apps/hub/src/modules/codereview/rls.db.test.ts`, `apps/hub/db/migrations/0055_*.sql`, `apps/hub/db/migrations/meta/*`,
+    `apps/hub/src/modules/codereview/rls.db.test.ts`, `apps/hub/db/migrations/0056_*.sql`, `apps/hub/db/migrations/meta/*`,
     `apps/hub/src/migrations-upgrade.db.test.ts`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
@@ -58,7 +58,7 @@
     `apps/hub/src/modules/scm/{github,gitlab,local}.test.ts`, `apps/hub/src/modules/scm/fixtures/**`
   - **Phụ thuộc**: không · **Mức**: vừa
 
-- [ ] T004 [P] Thiết kế UI hai màn (cấu hình Code, khung review PR) bằng skill `ui-ux-pro-max`, theo design system và
+- [x] T004 [P] Thiết kế UI hai màn (cấu hình Code, khung review PR) bằng skill `ui-ux-pro-max`, theo design system và
   shadcn/ui; ghi lại thành mô tả component, trạng thái, 360 px, sáng/tối.
   - **Scope**: `docs/design-system/screens/CodeReview.dc.html` (mới), `docs/design-system/screens/Workflows.dc.html`
     (thêm biến thể Code)
