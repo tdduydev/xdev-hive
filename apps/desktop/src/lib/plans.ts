@@ -118,8 +118,8 @@ export const resumePlan = (id: string) => invoke<Plans>("cli_profile_resume", { 
 export const openLoginTerminal = (command: string, env: Record<string, string>) =>
   invoke<void>("open_login_terminal", { command, env });
 /** Mở Terminal chạy CLI của gói; Rust tự lấy binary và thư mục đăng nhập theo id, nên chỉ gửi id và thư mục làm việc. */
-export const openCliTerminal = (id: string, folder: string) =>
-  invoke<void>("open_cli_terminal", { id, folder: folder.trim() || null });
+export const openCliTerminal = (id: string, folder: string, bypass = false) =>
+  invoke<void>("open_cli_terminal", { id, folder: folder.trim() || null, bypass });
 
 /** Đăng nhập tìm thấy trên máy mà accounts.json chưa có (`accounts discover`). */
 export interface FoundLogin {
