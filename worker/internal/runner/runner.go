@@ -231,7 +231,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := gitWrite(ctx, cache, cache, "fetch", "origin", job.Branch+":refs/remotes/origin/"+job.Branch); err != nil {
 			return err
 		}
-		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
+		if err := addWorktree(ctx, cache, work, "--detach", work, "origin/"+job.Branch); err != nil {
 			return err
 		}
 		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
@@ -240,10 +240,10 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist {
 		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
 		// của run code.
-		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.BaseBranch); err != nil {
+		if err := addWorktree(ctx, cache, work, "--detach", work, "origin/"+job.BaseBranch); err != nil {
 			return err
 		}
-	} else if err := gitWrite(ctx, cache, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
+	} else if err := addWorktree(ctx, cache, work, "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
 		return err
 	}
 	job.workspace = work
@@ -529,6 +529,16 @@ func cloneOnce(ctx context.Context, dataDir, repoURL, cache string) error {
 		return err
 	}
 	return gitRetryLocked(ctx, dataDir, "clone", "--bare", repoURL, cache)
+}
+
+// addWorktree chỉ giữ khoá repo cache lúc git đăng ký worktree (sửa config, ref chung). Checkout ghi index riêng của
+// worktree và file trong thư mục run, nên làm ngoài khoá: repo lớn checkout mất vài giây, giữ khoá thì các run song
+// song của cùng repo phải xếp hàng chờ nhau.
+func addWorktree(ctx context.Context, cache, work string, args ...string) error {
+	if err := gitWrite(ctx, cache, cache, append([]string{"worktree", "add", "--no-checkout"}, args...)...); err != nil {
+		return err
+	}
+	return git(ctx, work, "reset", "--hard", "--quiet")
 }
 
 type cliExecCmd struct {
