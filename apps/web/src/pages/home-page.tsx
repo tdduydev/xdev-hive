@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@xdev-hive/ui/button";
+import { GettingStarted } from "@/components/getting-started.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
@@ -74,22 +75,25 @@ export function HomePage() {
     <>
       <PageHeader crumb={current?.org.name ?? t.home} title={t.home} />
       <PageBody>
-        <Card className="mx-auto mt-6 grid w-full max-w-xl gap-5 p-5 sm:mt-10 sm:p-8">
-          <h2 className="font-mono text-sm font-normal text-muted-foreground">
-            {t.hello} {me.name}
-          </h2>
-          {current ? (
-            <OrgOverview current={current} />
-          ) : (
-            <>
-              <h2 className="font-heading text-2xl font-semibold">{t.noOrg}</h2>
-              <p className="text-muted-foreground">
-                {t.invite} <strong className="break-all font-mono font-medium text-foreground">{me.email}</strong>
-                {t.joined}
-              </p>
-            </>
-          )}
-        </Card>
+        <div className="mx-auto mt-6 grid w-full max-w-xl gap-4 sm:mt-10">
+          {current && <GettingStarted current={current} />}
+          <Card className="grid gap-5 p-5 sm:p-8">
+            <h2 className="font-mono text-sm font-normal text-muted-foreground">
+              {t.hello} {me.name}
+            </h2>
+            {current ? (
+              <OrgOverview current={current} />
+            ) : (
+              <>
+                <h2 className="font-heading text-2xl font-semibold">{t.noOrg}</h2>
+                <p className="text-muted-foreground">
+                  {t.invite} <strong className="break-all font-mono font-medium text-foreground">{me.email}</strong>
+                  {t.joined}
+                </p>
+              </>
+            )}
+          </Card>
+        </div>
       </PageBody>
     </>
   );

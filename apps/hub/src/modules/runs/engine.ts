@@ -222,9 +222,20 @@ const planInForce = (p: PlanRow) => p.editedContent ?? p.content;
 
 /**
  * Worker chỉ cấu hình MCP của Hive cho Claude và Codex. Run plan phải gọi plan_submit, nên run không chọn CLI thì
- * không giao cho CLI khác (Gemini) để khỏi chắc chắn thất bại.
+ * không giao cho CLI khác (Gemini, Antigravity) để khỏi chắc chắn thất bại.
  */
 const SUBMIT_CLIS: readonly string[] = ["claude", "codex"];
+/**
+ * CLI không gọi được tool MCP khi chạy chỉ đọc: `agy -p` (1.3.3) tự từ chối mọi lời gọi MCP nếu thiếu
+ * --dangerously-skip-permissions, mà cờ đó lại bỏ qua chế độ plan và sandbox nên worker không dùng ở run chỉ đọc. Run
+ * plan, leader của các CLI này chắc chắn không nộp được kết quả.
+ */
+const NO_READONLY_MCP_CLIS: readonly string[] = ["antigravity"];
+/**
+ * CLI không giới hạn được trong thư mục làm việc khi chạy run code (agy 1.3.3: sandbox chặn cả ghi file trong worktree
+ * và git commit, nên phải chạy với --dangerously-skip-permissions). Chỉ giao run code cho chúng khi dự án cho toàn quyền.
+ */
+const FULL_ONLY_CLIS: readonly string[] = ["antigravity"];
 /**
  * Run không có task, lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
  * trình duyệt), docassist (trợ lý của trình soạn tài liệu).
@@ -461,7 +472,10 @@ export function createRunsEngine(deps: RunsDeps) {
 
   // ---- Giao job ----------------------------------------------------------------------------------------------
 
-  /** Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. */
+  /**
+   * Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. `contended`: có máy phù
+   * hợp bị bỏ qua chỉ vì giao dịch giao run khác đang giữ khoá của nó, nên chưa biết máy đó còn slot hay không.
+   */
   async function pickMachine(tx: Tx, run: RunRow, sandboxed: boolean, policy: Policy) {
     const online = await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker");
     const candidates = online.filter(
@@ -478,13 +492,17 @@ export function createRunsEngine(deps: RunsDeps) {
             ? m.clis.some((c) => SUBMIT_CLIS.includes(c))
             : m.clis.length > 0),
     );
+    let contended = false;
     for (const m of candidates) {
       // Khoá theo máy tới hết transaction để hai run không cùng lấy slot cuối của một máy. Thử khoá (không chờ):
       // máy đang được giao run khác thì xét máy kế tiếp, không xếp hàng chờ.
       const res = await tx.execute<{ locked: boolean }>(
         sql`select pg_try_advisory_xact_lock(hashtextextended(${`runs:machine:${m.id}`}, 0)) as locked`,
       );
-      if (!res.rows[0]?.locked) continue;
+      if (!res.rows[0]?.locked) {
+        contended = true;
+        continue;
+      }
       const [busy] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(runs)
@@ -494,13 +512,28 @@ export function createRunsEngine(deps: RunsDeps) {
             and(eq(runs.offerMachineId, m.id), eq(runs.state, "queued"), gt(runs.offerExpiresAt, new Date())),
           ),
         );
-      if ((busy?.n ?? 0) < machineSlots(policy, m.capacity)) return m;
+      if ((busy?.n ?? 0) < machineSlots(policy, m.capacity)) return { machine: m, contended };
     }
-    return null;
+    return { machine: null, contended };
+  }
+
+  /**
+   * Thử giao lại sau khi giao dịch đang giữ khoá máy commit (thường vài chục ms). Không thử thì run nằm queued tới
+   * heartbeat kế tiếp dù máy còn slot: hai run được giao cùng lúc, run sau chờ tới 30 giây.
+   */
+  const CONTENDED_RETRIES = 5;
+  function dispatchLater(orgId: string, runId: string, retry: number) {
+    if (stopped || retry > CONTENDED_RETRIES) return;
+    const h = setTimeout(() => {
+      timers.delete(h);
+      background(dispatch(orgId, runId, retry), "Không giao được run");
+    }, 50 * retry);
+    h.unref();
+    timers.add(h);
   }
 
   /** Đề nghị run `queued` cho một máy. Không có máy phù hợp thì giữ queued; máy rảnh ra sẽ gọi lại. */
-  async function dispatch(orgId: string, runId: string): Promise<boolean> {
+  async function dispatch(orgId: string, runId: string, retry = 0): Promise<boolean> {
     const offer = await tenant(orgId, async (tx) => {
       const run = await lockRun(tx, runId);
       if (run?.state !== "queued") return null;
@@ -518,7 +551,8 @@ export function createRunsEngine(deps: RunsDeps) {
         return null;
       }
       const sandboxed = sandboxedRun(project, policy, run.kind);
-      const machine = await pickMachine(tx, run, sandboxed, policy);
+      const { machine, contended } = await pickMachine(tx, run, sandboxed, policy);
+      if (!machine && contended) return "contended" as const;
       if (!machine) {
         if (!sandboxed) {
           await noteOnce(tx, run, "waiting_machine", {
@@ -560,20 +594,22 @@ export function createRunsEngine(deps: RunsDeps) {
         .update(runs)
         .set({ offerMachineId: machine.id, offerExpiresAt: expiresAt, updatedAt: sql`now()` })
         .where(eq(runs.id, run.id));
+      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
       const cli =
         run.cli ??
-        (SUBMIT_KINDS.includes(run.kind) ? machine.clis.find((c) => SUBMIT_CLIS.includes(c)) : machine.clis[0]) ??
+        (SUBMIT_KINDS.includes(run.kind)
+          ? machine.clis.find((c) => SUBMIT_CLIS.includes(c))
+          : machine.clis.find((c) => permission.mode === "full" || !FULL_ONLY_CLIS.includes(c))) ??
         "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
       const requested =
         run.model ??
-        project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[
+        project.settings.models?.[cli as NonNullable<RunRow["cli"]>]?.[
           run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
         ] ??
         null;
       const model = resolveModel(policy, cli, requested);
-      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
       for (const notice of [model.notice, permission.notice]) {
         if (notice) await noteOnce(tx, run, "policy", { message: notice });
       }
@@ -617,6 +653,10 @@ export function createRunsEngine(deps: RunsDeps) {
         } satisfies OutgoingMessage,
       };
     });
+    if (offer === "contended") {
+      dispatchLater(orgId, runId, retry + 1);
+      return false;
+    }
     if (!offer) return false;
     // Máy vừa rớt kết nối: hẹn giờ hết hạn đề nghị sẽ chuyển sang máy khác.
     if (!send(offer.machineId, offer.msg)) log.warn(`Không gửi được job_offer tới máy ${offer.machineId}`);
@@ -823,6 +863,7 @@ export function createRunsEngine(deps: RunsDeps) {
   }
 
   async function onRunResult(machine: AuthedMachine, msg: Extract<RunMessage, { type: "run_result" }>) {
+    let cancelledRun: RunRow | null = null;
     const next = await tenant(machine.orgId, async (tx) => {
       const run = await lockRun(tx, msg.runId);
       if (!run || run.attempt !== msg.attempt || run.machineId !== machine.id) return null;
@@ -843,7 +884,7 @@ export function createRunsEngine(deps: RunsDeps) {
       // Agent đã xong: máy không cần giữ lease nữa, slot trống cho run khác.
       await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
       if (run.state === "cancelling") {
-        await finishCancelled(tx, run, {});
+        cancelledRun = await finishCancelled(tx, run, {});
         return "cancelled" as const;
       }
       await transition(tx, run, "verifying", { headSha: msg.headSha }, { exit: msg.exit });
@@ -857,6 +898,7 @@ export function createRunsEngine(deps: RunsDeps) {
     });
     send(machine.id, { type: "ack", runId: msg.runId, uptoSeq: msg.seq });
     if (next === "verify") background(verify(machine.orgId, msg.runId), `verifying run ${msg.runId} lỗi`);
+    if (next === "cancelled" && cancelledRun) verifyParent(cancelledRun);
     if (next) background(dispatchTeam(machine.orgId, machine.teamId), "Không giao được run đang chờ");
   }
 
@@ -1330,6 +1372,15 @@ export function createRunsEngine(deps: RunsDeps) {
     await schedule({ kind: "verify", orgId: run.orgId, runId: run.parentRunId }, new Date(Date.now() + 1000), tx);
   }
 
+  /**
+   * Kết luận run cha ngay sau commit khi run con kết thúc theo đường huỷ hay mất máy; hẹn giờ của childFinished chỉ là
+   * đường dự phòng khi hub chết, chờ nó thì run cha treo thêm 1 giây (cộng chu kỳ quét của pg-boss).
+   */
+  function verifyParent(run: RunRow) {
+    if (run.kind === "code" || !run.parentRunId) return;
+    background(verify(run.orgId, run.parentRunId), `verifying run ${run.parentRunId} lỗi`);
+  }
+
   /** Run plan: succeeded khi agent đã gọi plan_submit. Xong thì kết luận run code cha (chờ duyệt hay thất bại). */
   async function verifyPlan(orgId: string, runId: string): Promise<void> {
     const ctx = await tenant(orgId, async (tx) => {
@@ -1601,10 +1652,12 @@ export function createRunsEngine(deps: RunsDeps) {
         }
         if (run.kind === "doccheck") await docCheckDone(tx, run, null, "Máy chạy run kiểm tài liệu mất kết nối.");
         await childFinished(tx, run);
+        return { failed: run };
       }
       return null;
     });
     if (out && "recheckAt" in out) await schedule(t, out.recheckAt);
+    else if (out && "failed" in out) verifyParent(out.failed);
     else if (out?.requeued) await dispatch(t.orgId, t.runId);
   }
 
@@ -1670,6 +1723,7 @@ export function createRunsEngine(deps: RunsDeps) {
       after: () => {
         child();
         if (offered) send(offered, { type: "cancel", runId: run.id, graceSec: 0 });
+        verifyParent(run);
       },
     };
   }
@@ -1692,8 +1746,18 @@ export function createRunsEngine(deps: RunsDeps) {
         );
       }
     }
+    const cli = input.cli ?? task.preferredCli ?? null;
+    if (cli && FULL_ONLY_CLIS.includes(cli) && project) {
+      const mode = resolvePermission(await loadPolicy(tx), project.settings.runPermissions?.mode ?? "workspace").mode;
+      if (mode !== "full") {
+        throw new ConflictError(
+          "CLI_NEEDS_FULL_PERMISSIONS",
+          "Antigravity chỉ chạy run code khi dự án cho toàn quyền: agy không giới hạn được trong thư mục làm việc. Chọn CLI khác hoặc đổi quyền run của dự án.",
+        );
+      }
+    }
     const { row, afterCommit } = await queueRun(tx, task, project, {
-      cli: input.cli ?? task.preferredCli ?? null,
+      cli,
       model: input.model ?? null,
       machineId: input.machineId ?? null,
       createdBy: userId,
@@ -1722,6 +1786,12 @@ export function createRunsEngine(deps: RunsDeps) {
       )
       .limit(1);
     if (active) return { runId: active.id, afterCommit: () => undefined };
+    if (input.cli && NO_READONLY_MCP_CLIS.includes(input.cli)) {
+      throw new BadRequestError(
+        "CLI_CANNOT_SUBMIT",
+        `${input.cli} chưa gọi được tool MCP khi chạy chỉ đọc nên không trả lời được trong chat; chọn Claude hoặc Codex.`,
+      );
+    }
     const [row] = await tx
       .insert(runs)
       .values({
@@ -1912,6 +1982,8 @@ export function createRunsEngine(deps: RunsDeps) {
    * chính). Model chỉ chép khi người giao chọn tay; không thì dispatch lấy model `plan` của dự án.
    */
   async function createPlanRun(tx: Tx, parent: RunRow, model: string | null | undefined): Promise<RunRow> {
+    // CLI của run cha không nộp được kế hoạch thì để dispatch chọn Claude hoặc Codex; model chọn tay là của CLI cha.
+    const keep = !parent.cli || !NO_READONLY_MCP_CLIS.includes(parent.cli);
     const [row] = await tx
       .insert(runs)
       .values({
@@ -1921,8 +1993,8 @@ export function createRunsEngine(deps: RunsDeps) {
         projectId: parent.projectId,
         kind: "plan",
         parentRunId: parent.id,
-        cli: parent.cli,
-        model: model ?? null,
+        cli: keep ? parent.cli : null,
+        model: keep ? (model ?? null) : null,
         pinnedMachineId: parent.pinnedMachineId,
         branch: parent.branch,
         policySnapshot: [],

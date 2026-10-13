@@ -7,7 +7,7 @@ import (
 )
 
 // Usage là token và chi phí luỹ kế của một lần chạy CLI, gửi lên hub trong run_event "cost".
-// CostUSD, Turns, Model là nil khi CLI không báo (Codex không báo USD, Gemini chưa đọc).
+// CostUSD, Turns, Model là nil khi CLI không báo (Codex và Antigravity không báo USD, Gemini chưa đọc).
 type Usage struct {
 	InputTokens      int64    `json:"inputTokens"`
 	OutputTokens     int64    `json:"outputTokens"`
@@ -41,6 +41,8 @@ func NewUsageParser(cli string) UsageParser {
 		return &claudeUsage{msgs: map[string]tokenCounts{}}
 	case "codex":
 		return &codexUsage{}
+	case "antigravity":
+		return &antigravityUsage{steps: map[int]tokenCounts{}}
 	}
 	return nil
 }
@@ -220,6 +222,80 @@ func (c *codexUsage) Line(line []byte) bool {
 }
 
 func (c *codexUsage) Usage() Usage { return c.u }
+
+// ---- Antigravity: `agy -p --output-format stream-json` ------------------------------------------------------------
+
+type antigravityAPIUsage struct {
+	InputTokens     int64 `json:"input_tokens"`
+	OutputTokens    int64 `json:"output_tokens"`
+	CacheReadTokens int64 `json:"cache_read_tokens"`
+}
+
+// counts tách phần đọc từ cache khỏi input_tokens như Codex, theo usageMetadata của Gemini API (promptTokenCount gồm cả
+// phần cache). output_tokens đã gồm thinking_tokens: mẫu ghi từ agy 1.3.3 có total_tokens = input_tokens + output_tokens.
+func (u antigravityAPIUsage) counts() tokenCounts {
+	return tokenCounts{in: max(0, u.InputTokens-u.CacheReadTokens), out: u.OutputTokens, cacheRead: u.CacheReadTokens}
+}
+
+type antigravityLine struct {
+	Event string `json:"event"`
+	Init  *struct {
+		Model string `json:"model"`
+	} `json:"init"`
+	StepUpdate *struct {
+		StepIndex int                  `json:"step_index"`
+		Usage     *antigravityAPIUsage `json:"usage"`
+	} `json:"step_update"`
+	Result *struct {
+		Usage *antigravityAPIUsage `json:"usage"`
+	} `json:"result"`
+}
+
+// antigravityUsage cộng usage của từng bước agent_response (step_update có usage) theo step_index, rồi lấy số của sự
+// kiện result ở cuối, là tổng các bước. num_turns của result là lượt của người dùng (một với agy -p) nên Turns để nil.
+type antigravityUsage struct {
+	steps  map[int]tokenCounts
+	final  *tokenCounts
+	model  string
+	cached Usage
+}
+
+func (a *antigravityUsage) Line(line []byte) bool {
+	var l antigravityLine
+	if json.Unmarshal(line, &l) != nil {
+		return false
+	}
+	switch {
+	case l.Event == "init" && l.Init != nil:
+		a.model = l.Init.Model
+	case l.Event == "step_update" && l.StepUpdate != nil && l.StepUpdate.Usage != nil:
+		a.steps[l.StepUpdate.StepIndex] = a.steps[l.StepUpdate.StepIndex].max(l.StepUpdate.Usage.counts())
+	case l.Event == "result" && l.Result != nil && l.Result.Usage != nil:
+		f := l.Result.Usage.counts()
+		a.final = &f
+	default:
+		return false
+	}
+	var t tokenCounts
+	for _, s := range a.steps {
+		t.in += s.in
+		t.out += s.out
+		t.cacheRead += s.cacheRead
+	}
+	if a.final != nil {
+		t = t.max(*a.final)
+	}
+	next := Usage{InputTokens: t.in, OutputTokens: t.out, CacheReadTokens: t.cacheRead}
+	if a.model != "" {
+		m := a.model
+		next.Model = &m
+	}
+	changed := !next.equal(a.cached)
+	a.cached = next
+	return changed
+}
+
+func (a *antigravityUsage) Usage() Usage { return a.cached }
 
 // ---- Trần chi phí ------------------------------------------------------------------------------------------------
 

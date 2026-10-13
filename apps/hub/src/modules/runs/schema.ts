@@ -76,7 +76,7 @@ export const runs = hive
       maxAttempts: integer("max_attempts").notNull().default(3),
       machineId: uuid("machine_id"),
       pinnedMachineId: uuid("pinned_machine_id"),
-      cli: text("cli").$type<"claude" | "codex" | "gemini">(),
+      cli: text("cli").$type<"claude" | "codex" | "gemini" | "antigravity">(),
       model: text("model"),
       branch: text("branch").notNull(),
       /** Chính sách kết quả chốt lúc giao, để cấu hình dự án đổi sau không đổi kết quả của run. */

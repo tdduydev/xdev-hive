@@ -1,4 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { type Machine, newerVersion, type WorkerRelease } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
@@ -7,10 +8,63 @@ import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Table, Td, Th } from "@xdev-hive/ui/table";
 import { useState } from "react";
+import { Icon } from "@/components/icons.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { type Dict, useT } from "@/lib/i18n.ts";
+import { hasSharedMachine, shareCandidate } from "@/lib/onboarding.ts";
+import { teamRoleLookup } from "@/lib/projects.ts";
+import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
+
+const text: Dict<{
+  emptyTitle: string;
+  emptyLead: string;
+  emptySteps: string[];
+  emptyMember: string;
+  register: string;
+  noSharedTitle: string;
+  noSharedLead: string;
+  noSharedMember: string;
+  share: string;
+  shareLabel: (name: string) => string;
+}> = {
+  vi: {
+    emptyTitle: "Đội chưa đăng ký máy nào",
+    emptyLead: "Agent chạy trên máy của đội bạn, bằng CLI (Claude Code, Codex, Gemini) đã đăng nhập sẵn trên máy đó.",
+    emptySteps: [
+      "Bấm “Đăng ký máy” để lấy lệnh cài kèm mã dùng một lần, rồi chạy lệnh trên máy dev hoặc máy chủ của đội.",
+      "Máy mới là máy cá nhân: chỉ chạy run của người đăng ký.",
+      "Bật “Cho đội dùng chung” ở một máy để chạy Leader, AI duyệt tài liệu và việc từ webhook.",
+    ],
+    emptyMember: "Nhờ quản trị đội đăng ký máy cho đội.",
+    register: "Đăng ký máy",
+    noSharedTitle: "Đội chưa có máy dùng chung",
+    noSharedLead:
+      "Run của đội chỉ chạy trên máy dùng chung: Leader, AI duyệt tài liệu và việc từ webhook sẽ chờ cho tới khi có một máy dùng chung. Máy cá nhân chỉ chạy run của chủ máy.",
+    noSharedMember: "Nhờ quản trị đội bật “Cho đội dùng chung” ở một máy.",
+    share: "Cho đội dùng chung",
+    shareLabel: (name) => `Cho đội dùng chung máy ${name}`,
+  },
+  en: {
+    emptyTitle: "This team has no machines yet",
+    emptyLead: "Agents run on your team’s machines, using CLIs (Claude Code, Codex, Gemini) already signed in there.",
+    emptySteps: [
+      "Click “Register a machine” to get an install command with a one-time code, then run it on a dev machine or team server.",
+      "A new machine is personal: it only runs the registering person’s runs.",
+      "Turn on “Share with team” on one machine to run the Leader, AI doc reviews and webhook tasks.",
+    ],
+    emptyMember: "Ask a team admin to register a machine for the team.",
+    register: "Register a machine",
+    noSharedTitle: "No shared machine in this team",
+    noSharedLead:
+      "Team runs only run on shared machines: the Leader, AI doc reviews and webhook tasks wait until one exists. Personal machines only run their owner’s runs.",
+    noSharedMember: "Ask a team admin to turn on “Share with team” for a machine.",
+    share: "Share with team",
+    shareLabel: (name) => `Share machine ${name} with the team`,
+  },
+};
 
 function Loading() {
   return (
@@ -200,12 +254,20 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
 }
 
 export function MachinesPage() {
-  const { api } = useOrg();
+  const { api, org } = useOrg();
+  const me = useMe();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { them } = useSearch({ from: "/session/app/in-org/machines" });
   const teams = useQuery(api.teams.list.queryOptions());
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
   const [teamId, setTeamId] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [adding, setAddingState] = useState(Boolean(them));
+  function setAdding(open: boolean) {
+    setAddingState(open);
+    // Đóng hộp thoại thì bỏ ?them để tải lại trang không mở lại nó.
+    if (!open && them) void navigate({ to: "/machines", search: {}, replace: true });
+  }
   const [revokeId, setRevokeId] = useState<string | null>(null);
   const selectedTeam = teams.data?.find((team) => team.id === teamId) ?? teams.data?.[0];
   const teamProjects = projects.data?.filter((project) => project.teamId === selectedTeam?.id) ?? [];
@@ -248,6 +310,7 @@ export function MachinesPage() {
   });
   const members = useQuery(api.orgMembers.list.queryOptions());
   const memberName = new Map((members.data ?? []).map((member) => [member.userId, member.name]));
+  const teamAdmin = selectedTeam ? teamRoleLookup(org.role, members.data, me.id)(selectedTeam.id) === "admin" : false;
   const share = useMutation({
     mutationFn: ({ machineId, shared }: { machineId: string; shared: boolean }) =>
       api.machines.setShared.call({ machineId, shared }),
@@ -300,8 +363,18 @@ export function MachinesPage() {
               <Loading />
             ) : machines.isError ? (
               <Alert variant="destructive">{apiErrorMessage(machines.error)}</Alert>
+            ) : machines.data.length === 0 ? (
+              <EmptyMachines canAdd={teamAdmin} onAdd={() => setAdding(true)} />
             ) : (
               <>
+                {!hasSharedMachine(machines.data) && (
+                  <NoSharedMachine
+                    machine={teamAdmin ? shareCandidate(machines.data) : null}
+                    canShare={teamAdmin}
+                    busy={share.isPending}
+                    onShare={(machine) => share.mutate({ machineId: machine.id, shared: true })}
+                  />
+                )}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <Metric
                     label="Máy trực tuyến"
@@ -335,152 +408,146 @@ export function MachinesPage() {
                       Đã gửi lệnh cập nhật tới {updateSent}. Máy chờ run đang chạy xong, tự cập nhật rồi nối lại.
                     </p>
                   )}
-                  {machines.data.length === 0 ? (
-                    <p className="py-5 text-center text-muted-foreground">Đội chưa đăng ký máy nào.</p>
-                  ) : (
-                    <Table>
-                      <thead>
-                        <tr>
-                          <Th>Máy</Th>
-                          <Th>Loại</Th>
-                          <Th>Hệ điều hành</Th>
-                          <Th>Trạng thái</Th>
-                          <Th>CLI</Th>
-                          <Th>Sức chứa</Th>
-                          <Th>Run</Th>
-                          <Th>Worker</Th>
-                          <Th>Thao tác</Th>
+                  <Table>
+                    <thead>
+                      <tr>
+                        <Th>Máy</Th>
+                        <Th>Loại</Th>
+                        <Th>Hệ điều hành</Th>
+                        <Th>Trạng thái</Th>
+                        <Th>CLI</Th>
+                        <Th>Sức chứa</Th>
+                        <Th>Run</Th>
+                        <Th>Worker</Th>
+                        <Th>Thao tác</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {machines.data.map((machine) => (
+                        <tr key={machine.id}>
+                          <Td>
+                            <b className="font-mono text-xs">{machine.name}</b>
+                          </Td>
+                          <Td>
+                            {/* Máy cá nhân chỉ chạy run của chủ máy; run của đội chỉ chạy trên máy dùng chung (ADR 0017). */}
+                            {machine.shared ? (
+                              <Pill tone="sel">Dùng chung</Pill>
+                            ) : (
+                              <span title="Chỉ chạy run của chủ máy, bằng CLI chủ máy đã đăng nhập">
+                                <Pill>
+                                  Cá nhân ·{" "}
+                                  {machine.registeredBy
+                                    ? (memberName.get(machine.registeredBy) ?? machine.registeredBy)
+                                    : "không rõ"}
+                                </Pill>
+                              </span>
+                            )}
+                          </Td>
+                          <Td>{machine.os}</Td>
+                          <Td>
+                            <div className="grid justify-items-start gap-1">
+                              <MachineStatus
+                                status={machine.status}
+                                busy={activeRuns.some((run) => run.machineId === machine.id)}
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {machine.lastSeenAt
+                                  ? `Nhịp ${new Date(machine.lastSeenAt).toLocaleString("vi-VN")}`
+                                  : "Chưa kết nối"}
+                              </span>
+                            </div>
+                          </Td>
+                          <Td>
+                            <div className="flex flex-wrap gap-1">
+                              {machine.clis.length ? machine.clis.map((cli) => <Pill key={cli}>{cli}</Pill>) : "—"}
+                            </div>
+                          </Td>
+                          <Td>
+                            {Math.min(
+                              activeRuns.filter((run) => run.machineId === machine.id).length,
+                              machine.capacity,
+                            )}{" "}
+                            / {machine.capacity}
+                            <div className="mt-1 h-1 w-20 overflow-hidden rounded bg-muted">
+                              <div
+                                className="h-full bg-primary"
+                                style={{
+                                  width: `${machine.capacity ? (Math.min(activeRuns.filter((run) => run.machineId === machine.id).length, machine.capacity) / machine.capacity) * 100 : 0}%`,
+                                }}
+                              />
+                            </div>
+                          </Td>
+                          <Td>
+                            {runInfoPending
+                              ? "Đang tải…"
+                              : activeRuns
+                                  .filter((run) => run.machineId === machine.id)
+                                  .map((run) => (run.taskId ? taskKeys.get(run.taskId) : "leader"))
+                                  .filter(Boolean)
+                                  .join(", ") || "—"}
+                          </Td>
+                          <Td>
+                            <WorkerVersion machine={machine} latest={latest.data ?? null} />
+                          </Td>
+                          <Td>
+                            {machine.status === "paused" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={machineAction.isPending}
+                                onClick={() => machineAction.mutate({ machineId: machine.id, paused: false })}
+                              >
+                                Chạy lại
+                              </Button>
+                            ) : machine.status !== "revoked" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={machineAction.isPending}
+                                onClick={() => machineAction.mutate({ machineId: machine.id, paused: true })}
+                              >
+                                Tạm dừng
+                              </Button>
+                            ) : null}
+                            {machineAction.isError && <span role="alert">{apiErrorMessage(machineAction.error)}</span>}{" "}
+                            {machine.status !== "revoked" && machine.kind === "worker" && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={share.isPending}
+                                  aria-label={`${machine.shared ? "Thôi dùng chung" : "Cho đội dùng chung"} ${machine.name}`}
+                                  onClick={() => share.mutate({ machineId: machine.id, shared: !machine.shared })}
+                                >
+                                  {machine.shared ? "Thôi dùng chung" : "Cho đội dùng chung"}
+                                </Button>{" "}
+                              </>
+                            )}
+                            {share.isError && <span role="alert">{apiErrorMessage(share.error)}</span>}
+                            {machine.status !== "revoked" && (
+                              <Button variant="outline" size="sm" onClick={() => setRevokeId(machine.id)}>
+                                Thu hồi
+                              </Button>
+                            )}
+                            {canUpdate(machine, latest.data ?? null) && (
+                              <>
+                                {" "}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={updateMachine.isPending}
+                                  aria-label={`Cập nhật worker trên ${machine.name}`}
+                                  onClick={() => updateMachine.mutate(machine)}
+                                >
+                                  Cập nhật
+                                </Button>
+                              </>
+                            )}
+                          </Td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {machines.data.map((machine) => (
-                          <tr key={machine.id}>
-                            <Td>
-                              <b className="font-mono text-xs">{machine.name}</b>
-                            </Td>
-                            <Td>
-                              {/* Máy cá nhân chỉ chạy run của chủ máy; run của đội chỉ chạy trên máy dùng chung (ADR 0017). */}
-                              {machine.shared ? (
-                                <Pill tone="sel">Dùng chung</Pill>
-                              ) : (
-                                <span title="Chỉ chạy run của chủ máy, bằng CLI chủ máy đã đăng nhập">
-                                  <Pill>
-                                    Cá nhân ·{" "}
-                                    {machine.registeredBy
-                                      ? (memberName.get(machine.registeredBy) ?? machine.registeredBy)
-                                      : "không rõ"}
-                                  </Pill>
-                                </span>
-                              )}
-                            </Td>
-                            <Td>{machine.os}</Td>
-                            <Td>
-                              <div className="grid justify-items-start gap-1">
-                                <MachineStatus
-                                  status={machine.status}
-                                  busy={activeRuns.some((run) => run.machineId === machine.id)}
-                                />
-                                <span className="text-xs text-muted-foreground">
-                                  {machine.lastSeenAt
-                                    ? `Nhịp ${new Date(machine.lastSeenAt).toLocaleString("vi-VN")}`
-                                    : "Chưa kết nối"}
-                                </span>
-                              </div>
-                            </Td>
-                            <Td>
-                              <div className="flex flex-wrap gap-1">
-                                {machine.clis.length ? machine.clis.map((cli) => <Pill key={cli}>{cli}</Pill>) : "—"}
-                              </div>
-                            </Td>
-                            <Td>
-                              {Math.min(
-                                activeRuns.filter((run) => run.machineId === machine.id).length,
-                                machine.capacity,
-                              )}{" "}
-                              / {machine.capacity}
-                              <div className="mt-1 h-1 w-20 overflow-hidden rounded bg-muted">
-                                <div
-                                  className="h-full bg-primary"
-                                  style={{
-                                    width: `${machine.capacity ? (Math.min(activeRuns.filter((run) => run.machineId === machine.id).length, machine.capacity) / machine.capacity) * 100 : 0}%`,
-                                  }}
-                                />
-                              </div>
-                            </Td>
-                            <Td>
-                              {runInfoPending
-                                ? "Đang tải…"
-                                : activeRuns
-                                    .filter((run) => run.machineId === machine.id)
-                                    .map((run) => (run.taskId ? taskKeys.get(run.taskId) : "leader"))
-                                    .filter(Boolean)
-                                    .join(", ") || "—"}
-                            </Td>
-                            <Td>
-                              <WorkerVersion machine={machine} latest={latest.data ?? null} />
-                            </Td>
-                            <Td>
-                              {machine.status === "paused" ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={machineAction.isPending}
-                                  onClick={() => machineAction.mutate({ machineId: machine.id, paused: false })}
-                                >
-                                  Chạy lại
-                                </Button>
-                              ) : machine.status !== "revoked" ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={machineAction.isPending}
-                                  onClick={() => machineAction.mutate({ machineId: machine.id, paused: true })}
-                                >
-                                  Tạm dừng
-                                </Button>
-                              ) : null}
-                              {machineAction.isError && (
-                                <span role="alert">{apiErrorMessage(machineAction.error)}</span>
-                              )}{" "}
-                              {machine.status !== "revoked" && machine.kind === "worker" && (
-                                <>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={share.isPending}
-                                    aria-label={`${machine.shared ? "Thôi dùng chung" : "Cho đội dùng chung"} ${machine.name}`}
-                                    onClick={() => share.mutate({ machineId: machine.id, shared: !machine.shared })}
-                                  >
-                                    {machine.shared ? "Thôi dùng chung" : "Cho đội dùng chung"}
-                                  </Button>{" "}
-                                </>
-                              )}
-                              {share.isError && <span role="alert">{apiErrorMessage(share.error)}</span>}
-                              {machine.status !== "revoked" && (
-                                <Button variant="outline" size="sm" onClick={() => setRevokeId(machine.id)}>
-                                  Thu hồi
-                                </Button>
-                              )}
-                              {canUpdate(machine, latest.data ?? null) && (
-                                <>
-                                  {" "}
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={updateMachine.isPending}
-                                    aria-label={`Cập nhật worker trên ${machine.name}`}
-                                    onClick={() => updateMachine.mutate(machine)}
-                                  >
-                                    Cập nhật
-                                  </Button>
-                                </>
-                              )}
-                            </Td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  )}
+                      ))}
+                    </tbody>
+                  </Table>
                 </Card>
                 {machines.data
                   .filter((machine) => machine.status === "offline")
@@ -494,7 +561,7 @@ export function MachinesPage() {
           </>
         )}
       </PageBody>
-      <Dialog open={adding} onOpenChange={setAdding}>
+      <Dialog open={adding && Boolean(selectedTeam)} onOpenChange={setAdding}>
         {adding && selectedTeam && <RegistrationDialog teamId={selectedTeam.id} onClose={() => setAdding(false)} />}
       </Dialog>
       <Dialog
@@ -552,5 +619,73 @@ function Metric({ label, value }: { label: string; value: number | string }) {
       <span className="text-xs text-muted-foreground">{label}</span>
       <b className="text-lg text-foreground">{value}</b>
     </Card>
+  );
+}
+
+function EmptyMachines({ canAdd, onAdd }: { canAdd: boolean; onAdd: () => void }) {
+  const t = useT(text);
+  return (
+    <Card className="grid justify-items-center gap-3 px-6 py-10 text-center">
+      <span className="grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
+        <Icon name="monitor" className="size-5" />
+      </span>
+      <h2 className="text-base font-semibold text-foreground">{t.emptyTitle}</h2>
+      <p className="max-w-lg text-muted-foreground">{t.emptyLead}</p>
+      {canAdd ? (
+        <>
+          <ol className="grid max-w-lg list-decimal gap-1 pl-5 text-left text-sm text-muted-foreground">
+            {t.emptySteps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <Button variant="default" onClick={onAdd}>
+            <Icon name="plus" />
+            {t.register}
+          </Button>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">{t.emptyMember}</p>
+      )}
+    </Card>
+  );
+}
+
+/** Cảnh báo khi đội không có máy dùng chung; `machine` là máy gợi ý bật, null khi người xem không bật được. */
+function NoSharedMachine({
+  machine,
+  canShare,
+  busy,
+  onShare,
+}: {
+  machine: Machine | null;
+  canShare: boolean;
+  busy: boolean;
+  onShare: (machine: Machine) => void;
+}) {
+  const t = useT(text);
+  return (
+    <section
+      aria-labelledby="no-shared-machine"
+      className="grid gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3.5 py-3 text-sm text-warning sm:flex sm:items-center sm:gap-4"
+    >
+      <div className="grid min-w-0 flex-1 gap-1">
+        <h2 id="no-shared-machine" className="font-semibold">
+          {t.noSharedTitle}
+        </h2>
+        <p className="text-foreground">{t.noSharedLead}</p>
+        {!canShare && <p className="text-foreground">{t.noSharedMember}</p>}
+      </div>
+      {machine && (
+        <Button
+          variant="default"
+          className="justify-self-start"
+          disabled={busy}
+          aria-label={t.shareLabel(machine.name)}
+          onClick={() => onShare(machine)}
+        >
+          {t.share} · <span className="font-mono">{machine.name}</span>
+        </Button>
+      )}
+    </section>
   );
 }

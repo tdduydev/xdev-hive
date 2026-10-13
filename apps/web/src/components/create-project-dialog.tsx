@@ -1,9 +1,9 @@
 import { ORPCError } from "@orpc/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { type ProjectCreateInput, type ProjectCreateResult, projectCreateInput } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
-import { Button } from "@xdev-hive/ui/button";
+import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
@@ -13,6 +13,7 @@ import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { SCM_LABEL, teamRoleLookup } from "@/lib/projects.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
 import { slugify } from "@/lib/slug.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -24,6 +25,9 @@ const text: Dict<{
   loading: string;
   noSystem: string;
   noConnection: string;
+  noConnectionAdmin: string;
+  openTeams: string;
+  openGit: string;
   fSystem: string;
   fName: string;
   fNamePh: string;
@@ -59,6 +63,9 @@ const text: Dict<{
     loading: "Đang tải…",
     noSystem: "Chưa có hệ thống nào trong đội bạn quản trị. Thêm hệ thống ở “Đội và hệ thống” trước.",
     noConnection: "Tổ chức chưa có kết nối GitHub/GitLab. Nhờ quản trị tổ chức thêm kết nối trước.",
+    noConnectionAdmin: "Tổ chức chưa có kết nối GitHub/GitLab. Thêm một kết nối để hub tạo hoặc nối repo cho dự án.",
+    openTeams: "Mở Đội và hệ thống",
+    openGit: "Mở Kết nối Git",
     fSystem: "Đội / Hệ thống",
     fName: "Tên dự án",
     fNamePh: "Ví dụ: Cổng thanh toán",
@@ -95,6 +102,9 @@ const text: Dict<{
     noSystem: "No systems in your administered teams. Add a system under Teams and Systems first.",
     noConnection:
       "No GitHub or GitLab connections in the organization. Ask an organization admin to connect one first.",
+    noConnectionAdmin: "No GitHub or GitLab connections yet. Add one so the hub can create or link repos for projects.",
+    openTeams: "Open Teams and systems",
+    openGit: "Open Git connections",
     fSystem: "Team / system",
     fName: "Project name",
     fNamePh: "e.g. Payment gateway",
@@ -126,14 +136,14 @@ const text: Dict<{
 };
 
 /** Nút "Tạo dự án" và dialog của nó; chỉ hiện cho quản trị đội hoặc quản trị tổ chức. */
-export function CreateProjectButton() {
+export function CreateProjectButton({ label }: { label?: string }) {
   const [open, setOpen] = useState(false);
   const t = useT(text);
   return (
     <>
       <Button variant="default" onClick={() => setOpen(true)}>
         <Icon name="plus" />
-        {t.btnCreate}
+        {label ?? t.btnCreate}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] w-140 overflow-y-auto">
@@ -328,7 +338,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
       ) : loadError ? (
         <Alert variant="destructive">{apiErrorMessage(loadError)}</Alert>
       ) : ownSystems.length === 0 || !connection ? (
-        <Alert variant="destructive">{ownSystems.length === 0 ? t.noSystem : t.noConnection}</Alert>
+        <MissingSetup noSystem={ownSystems.length === 0} noConnection={!connection} onLeave={onDone} />
       ) : (
         <>
           <Field invalid={errors.systemId !== undefined}>
@@ -480,5 +490,49 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
         </Button>
       </DialogActions>
     </form>
+  );
+}
+
+/**
+ * Thiếu hệ thống hay kết nối Git thì chưa tạo được dự án: nói rõ cần làm gì và dẫn tới đúng màn. Chỉ quản trị tổ chức
+ * thêm được kết nối Git, nên người khác chỉ nhận câu nhờ quản trị.
+ */
+function MissingSetup({
+  noSystem,
+  noConnection,
+  onLeave,
+}: {
+  noSystem: boolean;
+  noConnection: boolean;
+  onLeave: () => void;
+}) {
+  const { org } = useOrg();
+  const t = useT(text);
+  const admin = isOrgAdmin(org.role);
+  const link = buttonVariants({ variant: "outline", size: "sm" });
+  return (
+    <div
+      role="note"
+      className="grid gap-3 rounded-lg border border-border bg-muted px-3.5 py-3 text-sm text-foreground"
+    >
+      {noSystem && (
+        <div className="grid justify-items-start gap-2">
+          <p>{t.noSystem}</p>
+          <Link to="/admin/teams" className={link} onClick={onLeave}>
+            {t.openTeams}
+          </Link>
+        </div>
+      )}
+      {noConnection && (
+        <div className="grid justify-items-start gap-2">
+          <p>{admin ? t.noConnectionAdmin : t.noConnection}</p>
+          {admin && (
+            <Link to="/admin/git" className={link} onClick={onLeave}>
+              {t.openGit}
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

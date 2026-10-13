@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils.ts";
 const text: Dict<{
   lead: string;
   folderHint: string;
+  machineOnly: string;
   check: string;
   recheck: string;
   scanning: string;
@@ -71,6 +72,7 @@ const text: Dict<{
   vi: {
     lead: "Những gì máy này cần để làm việc: công cụ chung của worker, yêu cầu của thư mục dự án (go.mod, package.json, .nvmrc, .hive/setup.sh) và MCP server tổ chức cho phép.",
     folderHint: "Để trống thì chỉ kiểm công cụ trên máy.",
+    machineOnly: "Dưới đây là công cụ chung của máy; sửa thư mục để kiểm thêm yêu cầu của dự án.",
     check: "Kiểm tra",
     recheck: "Kiểm tra lại",
     scanning: "Đang kiểm tra máy…",
@@ -110,6 +112,7 @@ const text: Dict<{
   en: {
     lead: "What this machine needs: the worker's common tools, the project folder's requirements (go.mod, package.json, .nvmrc, .hive/setup.sh) and the MCP servers the organization allows.",
     folderHint: "Leave empty to check only the tools on this machine.",
+    machineOnly: "Below are the machine's common tools; fix the folder to check the project's needs too.",
     check: "Check",
     recheck: "Re-check",
     scanning: "Checking this machine…",
@@ -193,6 +196,7 @@ export function SetupScreen() {
   const [draft, setDraft] = useState(folder);
   const [items, setItems] = useState<CheckItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [machineOnly, setMachineOnly] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [onlyTodo, setOnlyTodo] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -203,15 +207,28 @@ export function SetupScreen() {
     async (dir: string) => {
       setScanning(true);
       setError(null);
+      setMachineOnly(false);
+      const show = (found: CheckItem[]) => {
+        setItems(found);
+        setSelectedId((id) => (id && found.some((i) => i.id === id) ? id : (found[0]?.id ?? null)));
+      };
       try {
         // Thư mục khớp dự án nào trên hub thì Rust hỏi hub MCP server được phép của dự án đó.
         const key = account ? await projectKeyOf(dir) : null;
         setProject(key);
-        const found = sortChecks(await scanEnvironment(dir, key));
-        setItems(found);
-        setSelectedId((id) => (id && found.some((i) => i.id === id) ? id : (found[0]?.id ?? null)));
+        show(sortChecks(await scanEnvironment(dir, key)));
       } catch (e) {
         setError(errorText(e));
+        // Thư mục hỏng (đã xoá, gõ sai) chỉ làm mất phần theo dự án: công cụ chung của máy vẫn kiểm được.
+        if (dir.trim()) {
+          try {
+            show(sortChecks(await scanEnvironment("")));
+            setProject(null);
+            setMachineOnly(true);
+          } catch {
+            /* Lỗi đầu đã báo. */
+          }
+        }
       } finally {
         setScanning(false);
       }
@@ -234,7 +251,7 @@ export function SetupScreen() {
     <div className="flex flex-col gap-3.5">
       <header className="flex flex-wrap items-center gap-4">
         <ScoreRing ready={ready} required={required} label={t.score(ready, required)} />
-        <p className="min-w-60 flex-1 text-[13px] text-muted-foreground">{t.lead}</p>
+        <p className="min-w-60 flex-1 text-sm text-muted-foreground">{t.lead}</p>
         <Button variant="outline" size="sm" onClick={() => void scan(folder)} disabled={scanning}>
           <RefreshCwIcon aria-hidden="true" className={cn(scanning && "animate-spin")} />
           {t.recheck}
@@ -251,8 +268,9 @@ export function SetupScreen() {
       />
 
       {error && (
-        <p role="alert" className="rounded-lg bg-destructive-soft px-3 py-2 text-[13px] text-destructive">
+        <p role="alert" className="rounded-lg bg-destructive-soft px-3 py-2 text-sm text-destructive">
           {error}
+          {machineOnly && <span className="block text-muted-foreground">{t.machineOnly}</span>}
         </p>
       )}
       {!items && scanning && (
@@ -304,11 +322,11 @@ export function SetupScreen() {
                           className="flex cursor-pointer flex-col text-left"
                           onClick={() => setSelectedId(item.id)}
                         >
-                          <span className="font-mono text-[13px] font-medium whitespace-nowrap">{item.name}</span>
+                          <span className="font-mono text-sm font-medium whitespace-nowrap">{item.name}</span>
                           <span className="text-xs text-muted-foreground">{sourceLabel(item, t)}</span>
                         </button>
                       </Td>
-                      <Td className="text-[13px] whitespace-nowrap">{t.kinds[item.kind]}</Td>
+                      <Td className="text-sm whitespace-nowrap">{t.kinds[item.kind]}</Td>
                       <Td className="font-mono text-xs">{item.need ?? "—"}</Td>
                       <Td className="font-mono text-xs">{item.have ?? "—"}</Td>
                       <Td>
@@ -324,7 +342,14 @@ export function SetupScreen() {
           </section>
           <aside className="w-full min-w-0 rounded-xl border bg-card text-card-foreground min-[1000px]:flex-[2]">
             {selected ? (
-              <Detail key={selected.id} item={selected} folder={folder} project={project} onDone={() => scan(folder)} />
+              <Detail
+                key={selected.id}
+                item={selected}
+                // Đang hiện phần toàn máy vì thư mục hỏng: chạy lệnh cài cũng không gửi thư mục đó.
+                folder={machineOnly ? "" : folder}
+                project={project}
+                onDone={() => scan(folder)}
+              />
             ) : (
               <p className="p-4 text-muted-foreground">{t.pick}</p>
             )}
@@ -385,19 +410,19 @@ function Detail({
           <Pill tone={TONE[item.status]}>{t.statuses[item.status]}</Pill>
         </div>
         <h2 className="font-mono text-[15px] font-semibold">{item.name}</h2>
-        <p className="text-[12.5px] text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {t.needs} <span className="font-mono text-foreground">{item.need ?? "—"}</span> · {t.have.toLowerCase()}{" "}
           <span className="font-mono text-foreground">{item.have ?? "—"}</span>
         </p>
-        <p className="text-[12.5px] text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {t.because} {sourceLabel(item, t)}
         </p>
       </div>
       <div className="flex flex-col gap-2.5 px-3.5 py-3">
         {install ? (
           <>
-            <span className="font-mono text-[11px] tracking-wide text-muted-foreground uppercase">{t.installCmd}</span>
-            <pre className="m-0 rounded-lg bg-brand-navy px-3 py-2.5 font-mono text-[12.5px] whitespace-pre-wrap text-slate-200">
+            <span className="text-xs font-medium text-muted-foreground">{t.installCmd}</span>
+            <pre className="m-0 rounded-lg bg-brand-navy px-3 py-2.5 font-mono text-sm whitespace-pre-wrap text-slate-200">
               {install.command}
             </pre>
             <p className="text-xs text-muted-foreground">{install.runnable ? t.cmdNote : t.adminNote}</p>
@@ -419,11 +444,11 @@ function Detail({
             </div>
             {result && (
               <div role="status" className="flex flex-col gap-1.5">
-                <p className={cn("text-[13px]", "error" in result || !result.ok ? "text-destructive" : "text-success")}>
+                <p className={cn("text-sm", "error" in result || !result.ok ? "text-destructive" : "text-success")}>
                   {"error" in result ? result.error : result.ok ? t.ranOk : t.ranFail(String(result.code ?? "?"))}
                 </p>
                 {"output" in result && result.output && (
-                  <pre className="m-0 max-h-48 overflow-auto rounded-lg bg-muted px-3 py-2 font-mono text-[11.5px] whitespace-pre-wrap">
+                  <pre className="m-0 max-h-48 overflow-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs whitespace-pre-wrap">
                     {result.output}
                   </pre>
                 )}
@@ -431,7 +456,7 @@ function Detail({
             )}
           </>
         ) : (
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             {item.id === "hive-token" && item.status !== "ok" ? t.linkHint : t.nothingToDo}
           </p>
         )}
@@ -442,7 +467,7 @@ function Detail({
             <DialogTitle>{t.confirmTitle}</DialogTitle>
             <DialogDescription>{t.confirmBody}</DialogDescription>
           </DialogHeader>
-          <pre className="m-0 rounded-lg bg-muted px-3 py-2 font-mono text-[12.5px] whitespace-pre-wrap">
+          <pre className="m-0 rounded-lg bg-muted px-3 py-2 font-mono text-sm whitespace-pre-wrap">
             {install?.command}
           </pre>
           <DialogActions>
