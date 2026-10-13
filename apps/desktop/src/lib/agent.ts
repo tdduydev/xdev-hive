@@ -151,11 +151,43 @@ export interface PromptDoc {
  * Yêu cầu gửi cho agent: câu của người dùng, rồi bối cảnh của app (chỉ đọc, tài liệu đích, bản nháp hiện tại, cách
  * trả bản đề xuất). Agent trả cả tài liệu trong một khối ````markdown để app so với bản nháp và tô phần thêm.
  */
-export function buildPrompt(request: string, doc: PromptDoc | null, lang: "vi" | "en"): string {
+/** Bản đồ thư mục đưa vào prompt: hai tầng đầu (đã bỏ thư mục sinh ra) và file tài liệu tìm được. */
+export interface PromptMap {
+  tree: TreeEntry[];
+  docs: string[];
+}
+
+const MAP_MAX = 120;
+
+export function buildPrompt(
+  request: string,
+  doc: PromptDoc | null,
+  lang: "vi" | "en",
+  map: PromptMap | null = null,
+): string {
   const rules = [
     "Context from the xDev Hive desktop app:",
     "- You run read-only in this project folder. Inspect the code with your read and search tools; do not edit files or run commands that change anything.",
   ];
+  if (map) {
+    // Repo lớn làm Glob/Grep cả thư mục quá giờ (20 giây): đưa sẵn bản đồ và danh sách tài liệu để agent tìm đúng chỗ.
+    rules.push(
+      "- The folder can be large: do not Glob or Grep `**` from the root. Search inside the specific folders listed below, and if a search times out, narrow the path instead of repeating it.",
+    );
+    if (map.docs.length > 0) {
+      rules.push(
+        "- Documents found in the folder (when the user mentions a document without naming it, pick from these or ask which one):",
+      );
+      rules.push(...map.docs.map((d) => `  - ${d}`));
+    } else {
+      rules.push("- No document files (.md, .pdf, .docx, .txt…) were found in the top folders.");
+    }
+    if (map.tree.length > 0) {
+      rules.push("- Top folders and files (two levels, generated folders such as node_modules, bin, obj skipped):");
+      rules.push(...map.tree.slice(0, MAP_MAX).map((e) => `  ${"  ".repeat(e.depth)}${e.path}${e.dir ? "/" : ""}`));
+      if (map.tree.length > MAP_MAX) rules.push(`  … ${map.tree.length - MAP_MAX} more`);
+    }
+  }
   if (doc) {
     const language = doc.draft.trim() ? "the language of the current draft" : lang === "vi" ? "Vietnamese" : "English";
     rules.push(
@@ -358,6 +390,7 @@ export interface TreeEntry {
   depth: number;
 }
 export const folderTree = (folder: string) => invoke<TreeEntry[]>("folder_tree", { folder });
+export const folderDocs = (folder: string) => invoke<string[]>("folder_docs", { folder });
 
 export const proposeDoc = (input: { key: string; baseVersion: number; content: string; note: string }) =>
   invoke<{ proposalId: string; status: string; key: string; baseVersion: number }>("propose_doc", input);
