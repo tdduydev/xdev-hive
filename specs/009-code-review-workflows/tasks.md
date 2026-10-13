@@ -87,7 +87,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{match.ts,gates.ts,match.test.ts,gates.test.ts}`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T012 [US1] Chạy thử và tạo từ cấu hình dự án (hub)
+- [x] T012 [US1] Chạy thử và tạo từ cấu hình dự án (hub)
   - `dry-run.ts` + route `codeReviews.dryRun`, `codeReviews.workflowFromProject`; `router.ts` khởi tạo.
   - Test DB: chạy thử trên run có `diffStats`; dự án bật review chéo → bản nháp đúng.
   - **Scope**: `apps/hub/src/modules/codereview/{dry-run.ts,router.ts,index.ts,dry-run.db.test.ts}`
