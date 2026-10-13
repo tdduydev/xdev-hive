@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { id, orgRoute } from "./common.ts";
 import { projectSettingsPatch } from "./projects.ts";
+import { sdlcItemCreate } from "./sdlc.ts";
 import { cli } from "./worker-protocol.ts";
 
 export const leaderRole = z.enum(["user", "leader", "system"]);
@@ -20,6 +21,8 @@ export const leaderAction = z.discriminatedUnion("type", [
     projectKey: z.string().min(1).max(100),
     patch: projectSettingsPatch,
   }),
+  // Leader đề xuất mở hạng mục AI SDLC cho việc lớn (specs/011 US1-5); người duyệt đề xuất thành chủ hạng mục.
+  z.object({ type: z.literal("sdlc.item.create"), item: sdlcItemCreate }),
 ]);
 export type LeaderAction = z.output<typeof leaderAction>;
 

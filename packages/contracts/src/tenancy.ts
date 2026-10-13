@@ -25,7 +25,11 @@ const id = z.uuid("Mã không hợp lệ.");
 const userId = z.string().min(1, "Thiếu mã người dùng.");
 
 export const orgRole = z.enum(["owner", "admin", "member"]);
-export const teamRole = z.enum(["admin", "member", "viewer"]);
+/**
+ * Thứ hạng `viewer < ba < member < admin` nằm ở hub (specs/011 D27): `ba` là BA/PO, soạn và duyệt tài liệu AI SDLC
+ * nhưng không tạo task, không chạy run, nên mọi chỗ đòi `member` vẫn từ chối `ba`.
+ */
+export const teamRole = z.enum(["admin", "member", "viewer", "ba"]);
 export const memberStatus = z.enum(["active", "pending", "blocked"]);
 /** Người đăng nhập SSO lần đầu: vào hàng chờ duyệt, hay thành thành viên ngay (chưa thuộc đội nào). */
 export const ssoJoin = z.enum(["pending", "member"]);

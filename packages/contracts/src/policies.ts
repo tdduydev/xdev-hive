@@ -57,6 +57,63 @@ export const policyLimits = z.object({
 export type PolicyLimits = z.output<typeof policyLimits>;
 
 /**
+ * Đường dẫn và từ khoá nhạy cảm mặc định của tổ chức cho tự duyệt AI (specs/011 FR-057): tài liệu chạm vào thì luôn cần
+ * người duyệt. Từ khoá so không phân biệt hoa thường và bỏ dấu, nên chỉ cần một dạng mỗi từ.
+ */
+export const DEFAULT_SDLC_DENY_PATHS: readonly string[] = [
+  ".github/**",
+  "**/auth/**",
+  "**/security/**",
+  "**/billing/**",
+  "**/payment*/**",
+  "**/migrations/**",
+];
+export const DEFAULT_SDLC_DENY_KEYWORDS: readonly string[] = [
+  "phí",
+  "thanh toán",
+  "hoàn tiền",
+  "bảo mật",
+  "mật khẩu",
+  "token",
+  "quyền",
+  "dữ liệu cá nhân",
+  "fee",
+  "payment",
+  "refund",
+  "security",
+  "password",
+  "permission",
+  "personal data",
+];
+
+const policyGlob = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[^\\]+$/, "Glob dùng dấu / thay cho dấu \\.");
+
+/** Lớp tổ chức của tự duyệt AI (specs/011 D26): tắt được toàn bộ, đặt sàn ngưỡng, thêm danh sách nhạy cảm. */
+export const orgSdlcPolicy = z.object({
+  autoApprove: z
+    .object({
+      allowed: z.boolean().default(true),
+      minScoreFloor: z.number().min(0).max(10).default(8),
+      denyPaths: z
+        .array(policyGlob)
+        .max(100)
+        .default(() => [...DEFAULT_SDLC_DENY_PATHS]),
+      denyKeywords: z
+        .array(z.string().trim().min(1).max(60))
+        .max(200)
+        .default(() => [...DEFAULT_SDLC_DENY_KEYWORDS]),
+    })
+    .prefault({}),
+});
+export type OrgSdlcPolicy = z.output<typeof orgSdlcPolicy>;
+export const DEFAULT_ORG_SDLC_POLICY: OrgSdlcPolicy = orgSdlcPolicy.parse({});
+
+/**
  * Memory agent ghi trong run code và review (ADR 0022): `off` không cho ghi, `propose` vào hàng chờ duyệt của trang
  * Memory, `direct` ghi thẳng. `maxPerRun` chặn agent ghi tràn lan.
  */
@@ -84,6 +141,11 @@ export const agentPolicyInput = z.object({
   /** Mẫu đổi thì hub mở PR cập nhật file hướng dẫn ở mọi dự án đang hoạt động. */
   autoSyncTemplates: z.boolean(),
   limits: policyLimits,
+  /**
+   * AI SDLC (specs/011). Bỏ trống thì hub giữ giá trị đã lưu, để client chưa biết mục này lưu trang chính sách không xoá
+   * mất cấu hình tự duyệt.
+   */
+  sdlc: orgSdlcPolicy.optional(),
   /** Có mặc định vì chính sách đã lưu trước ADR 0022 không có mục này. */
   agentMemory: agentMemoryPolicy.default(() => ({ ...DEFAULT_AGENT_MEMORY_POLICY })),
 });
@@ -104,6 +166,8 @@ export const agentPolicy = agentPolicyInput.extend({
   templateSync: templateSyncResult.nullable(),
   /** Mẫu chuẩn của hub, để trang chính sách hiện và khôi phục khi mẫu của tổ chức là null. */
   defaultTemplates: z.object({ agents: z.string(), claude: z.string(), mcp: z.string() }),
+  /** Hub chưa đọc mục này thì không trả; client dùng `DEFAULT_ORG_SDLC_POLICY`. */
+  sdlc: orgSdlcPolicy.optional(),
 });
 export type AgentPolicy = z.output<typeof agentPolicy>;
 
