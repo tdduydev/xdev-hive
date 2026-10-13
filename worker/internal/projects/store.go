@@ -140,6 +140,10 @@ func repoKey(raw string) string {
 	}
 	if u.Scheme == "file" {
 		p := u.Path
+		// "file://C:/x" (hai gạch) thì url.Parse coi "C:" là máy chủ; ổ đĩa một chữ thì ghép lại thành đường dẫn.
+		if len(u.Host) == 2 && u.Host[1] == ':' {
+			p = "/" + u.Host + p
+		}
 		// file:///C:/x của Windows có Path "/C:/x".
 		if runtime.GOOS == "windows" && len(p) > 2 && p[0] == '/' && p[2] == ':' {
 			p = p[1:]
