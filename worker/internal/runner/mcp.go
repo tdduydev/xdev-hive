@@ -93,7 +93,7 @@ func hubSecretEnv(j Job) map[string]string {
 // claudeMCPEntries là mục mcpServers của Claude Code cho server ngoài, ghi chung file --mcp-config với cổng của hub.
 func claudeMCPEntries(j Job) map[string]any {
 	servers := externalMCPServers(j)
-	if len(servers) == 0 {
+	if len(servers) == 0 && j.codegraph == "" {
 		return nil
 	}
 	blank := hubSecretEnv(j)
@@ -109,7 +109,31 @@ func claudeMCPEntries(j Job) map[string]any {
 		}
 		out[s.Name] = map[string]any{"type": "stdio", "command": s.Command, "args": args, "env": blank}
 	}
+	if j.codegraph != "" {
+		command, args, env := codegraphServer(j)
+		// alwaysLoad: không để tool tìm kiếm của Claude Code hoãn codegraph_explore, vì agent phải thấy nó ngay từ lượt
+		// đầu mới bỏ được bước dò repo bằng grep (claude 2.1.296 nhận khoá này trong --mcp-config).
+		out[codegraphServerName] = map[string]any{"type": "stdio", "command": command, "args": args, "env": env, "alwaysLoad": true}
+	}
 	return out
+}
+
+// codegraphServerName là tên server CodeGraph của run; ghi sau server ngoài nên server ngoài trùng tên không đè được
+// bản worker đã kiểm. Tool của nó có tên mcp__codegraph__… trong Claude Code.
+const codegraphServerName = "codegraph"
+
+// tomlEnv ghi bảng env của Codex theo thứ tự khoá cố định.
+func tomlEnv(env map[string]string) string {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, tomlString(k)+"="+tomlString(env[k]))
+	}
+	return "{" + strings.Join(out, ",") + "}"
 }
 
 // tomlString ghi chuỗi cơ bản của TOML. Chuỗi JSON là chuỗi TOML hợp lệ (cùng cách thoát \", \\, \n, \uXXXX), còn %q
@@ -122,7 +146,7 @@ func tomlString(s string) string {
 // codexMCPArgs là các cờ -c thêm server ngoài vào bảng mcp_servers của Codex, sau cờ xoá bảng và cổng của hub.
 func codexMCPArgs(j Job) []string {
 	servers := externalMCPServers(j)
-	if len(servers) == 0 {
+	if len(servers) == 0 && j.codegraph == "" {
 		return nil
 	}
 	blank := hubSecretEnv(j)
@@ -150,6 +174,14 @@ func codexMCPArgs(j Job) []string {
 		}
 		out = append(out, "-c", "mcp_servers."+s.Name+"="+value)
 	}
+	if j.codegraph != "" {
+		command, args, env := codegraphServer(j)
+		quoted := make([]string, 0, len(args))
+		for _, a := range args {
+			quoted = append(quoted, tomlString(a))
+		}
+		out = append(out, "-c", fmt.Sprintf("mcp_servers.%s={command=%s,args=[%s],env=%s}", codegraphServerName, tomlString(command), strings.Join(quoted, ","), tomlEnv(env)))
+	}
 	return out
 }
 
@@ -172,6 +204,10 @@ func geminiMCPServers(j Job) map[string]any {
 		}
 		out[s.Name] = map[string]any{"command": s.Command, "args": args, "env": blank}
 	}
+	if j.codegraph != "" {
+		command, args, env := codegraphServer(j)
+		out[codegraphServerName] = map[string]any{"command": command, "args": args, "env": env}
+	}
 	return out
 }
 
@@ -182,6 +218,9 @@ func geminiMCPArgs(j Job) []string {
 	names := []string{"xdev-hive"}
 	for _, s := range externalMCPServers(j) {
 		names = append(names, s.Name)
+	}
+	if j.codegraph != "" {
+		names = append(names, codegraphServerName)
 	}
 	args := make([]string, 0, len(names))
 	for _, n := range names {
@@ -236,6 +275,10 @@ func antigravityMCPServers(j Job) map[string]any {
 			args = []string{}
 		}
 		out[s.Name] = map[string]any{"command": s.Command, "args": args, "env": blank}
+	}
+	if j.codegraph != "" {
+		command, args, env := codegraphServer(j)
+		out[codegraphServerName] = map[string]any{"command": command, "args": args, "env": env}
 	}
 	return out
 }
