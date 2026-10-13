@@ -48,6 +48,13 @@ func TestRunnerPublishesAndNoChanges(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(data, "runs", tc.name+"-1")); !os.IsNotExist(err) {
 				t.Fatalf("worktree remains: %v", err)
 			}
+			// Push không ghi upstream vào config chung của repo cache (config phình theo số run, push phải giữ khoá).
+			caches, _ := filepath.Glob(filepath.Join(data, "repos", "*.git"))
+			for _, c := range caches {
+				if cfg, _ := os.ReadFile(filepath.Join(c, "config")); strings.Contains(string(cfg), "[branch ") {
+					t.Fatalf("config của repo cache có mục branch:\n%s", cfg)
+				}
+			}
 		})
 	}
 }
@@ -765,5 +772,46 @@ func TestWriteReviewDiffForReadOnlyReviewer(t *testing.T) {
 	// File diff không được làm worktree review thành "có thay đổi".
 	if status := strings.TrimSpace(mustOut(t, "git", "-C", work, "status", "--porcelain")); status != "" {
 		t.Fatalf("git status = %q", status)
+	}
+}
+
+// Worktree đã gỡ khỏi git trước khi gửi kết quả; file của nó được xoá sau qua RemoveDir, và ReapOrphans dọn thư mục
+// bỏ dở nếu worker chết trước khi xoá xong.
+func TestRunnerRemovesWorktreeAfterResult(t *testing.T) {
+	remote, base := makeRemote(t)
+	data := t.TempDir()
+	var removed []string
+	var resultSeen bool
+	r := Runner{DataDir: data, CLICommands: fakeCommands("commit"), RemoveDir: func(dir string) {
+		if !resultSeen {
+			t.Error("RemoveDir gọi trước khi gửi kết quả")
+		}
+		removed = append(removed, dir)
+	}}
+	job := Job{RunID: "trash", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/trash", CLI: "codex", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "commit"}}
+	err := r.Run(context.Background(), job, SinkFunc(func(e Event) error {
+		if e.Type == "result" {
+			resultSeen = true
+			caches, _ := filepath.Glob(filepath.Join(data, "repos", "*.git"))
+			if n := strings.Count(mustOut(t, "git", "--git-dir", caches[0], "worktree", "list", "--porcelain"), "worktree "); n != 1 {
+				t.Errorf("còn %d worktree đăng ký khi gửi kết quả", n)
+			}
+		}
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 1 || !strings.HasPrefix(filepath.Base(removed[0]), trashPrefix) {
+		t.Fatalf("removed = %v", removed)
+	}
+	if _, err := os.Stat(filepath.Join(data, "runs", "trash-1")); !os.IsNotExist(err) {
+		t.Fatalf("worktree remains: %v", err)
+	}
+	if err := ReapOrphans(data, []string{"other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(removed[0]); !os.IsNotExist(err) {
+		t.Fatalf("ReapOrphans không dọn thư mục bỏ: %v", err)
 	}
 }
