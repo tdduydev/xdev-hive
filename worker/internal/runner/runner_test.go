@@ -49,6 +49,13 @@ func TestRunnerPublishesAndNoChanges(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(data, "runs", tc.name+"-1")); !os.IsNotExist(err) {
 				t.Fatalf("worktree remains: %v", err)
 			}
+			// Push không ghi upstream vào config chung của repo cache (config phình theo số run, push phải giữ khoá).
+			caches, _ := filepath.Glob(filepath.Join(data, "repos", "*.git"))
+			for _, c := range caches {
+				if cfg, _ := os.ReadFile(filepath.Join(c, "config")); strings.Contains(string(cfg), "[branch ") {
+					t.Fatalf("config của repo cache có mục branch:\n%s", cfg)
+				}
+			}
 		})
 	}
 }
