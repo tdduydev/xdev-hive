@@ -111,6 +111,8 @@ export const costEventData = z.object({
   costUsd: z.number().min(0).nullable(),
   turns: z.number().int().min(0).nullable(),
   model: z.string().max(200).nullable(),
+  /** Id gói (tài khoản CLI trong accounts.json của máy) đã chạy run; thiếu khi worker cũ hoặc dùng đăng nhập mặc định. */
+  accountId: z.string().min(1).max(100).nullish(),
   /**
    * Usage trước lần sửa file đầu tiên. Đi trong sự kiện cost thay vì loại sự kiện mới vì hub cũ bỏ khoá lạ của data
    * nhưng đóng kết nối khi gặp loại sự kiện lạ. Worker cũ và CLI chưa đọc được (Codex, Gemini, Antigravity) không gửi.

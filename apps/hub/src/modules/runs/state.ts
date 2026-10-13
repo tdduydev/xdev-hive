@@ -52,6 +52,7 @@ export function toRun(r: RunRow): Run {
       cacheWrite: r.cacheWrite,
       costUsd: r.costUsd,
       turns: r.turns,
+      accountId: r.accountId,
     },
     explore: r.explore
       ? {

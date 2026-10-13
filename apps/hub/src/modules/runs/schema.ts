@@ -101,6 +101,12 @@ export const runs = hive
       costUsd: numeric("cost_usd", { precision: 14, scale: 6, mode: "number" }),
       turns: integer("turns"),
       /**
+       * Id gói (tài khoản CLI trên máy) đã chạy run, theo sự kiện cost của worker; lần thử sau ghi đè lần trước. null
+       * khi dùng đăng nhập mặc định hoặc worker cũ chưa báo. Id chỉ có nghĩa trong một máy (accounts.json), nên thống kê
+       * theo gói của dự án gộp các máy dùng cùng id.
+       */
+      accountId: text("account_id"),
+      /**
        * Khảo sát trước lần sửa file đầu tiên của lần thử gần nhất (ADR 0022), worker báo trong sự kiện cost. null khi
        * CLI không báo được; lần thử mới ghi đè vì số so sánh trước/sau là của một phiên agent.
        */

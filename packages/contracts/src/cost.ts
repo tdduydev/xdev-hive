@@ -3,7 +3,7 @@ import { id, orgRoute } from "./common.ts";
 
 const day = z.iso.date("Ngày phải có dạng YYYY-MM-DD.");
 
-export const costGroupBy = z.enum(["day", "task", "cli", "machine"]);
+export const costGroupBy = z.enum(["day", "task", "cli", "machine", "account"]);
 export type CostGroupBy = z.output<typeof costGroupBy>;
 
 export const costSummaryInput = z
@@ -29,7 +29,7 @@ export const costTotals = z.object({
 export type CostTotals = z.output<typeof costTotals>;
 
 export const costGroup = costTotals.extend({
-  /** Ngày (YYYY-MM-DD), id task, tên CLI hoặc id máy; null khi run chưa có CLI hay máy. */
+  /** Ngày (YYYY-MM-DD), id task, tên CLI, id máy hoặc id gói; null khi run chưa có CLI, máy hay gói (đăng nhập mặc định). */
   key: z.string().nullable(),
 });
 export type CostGroup = z.output<typeof costGroup>;
