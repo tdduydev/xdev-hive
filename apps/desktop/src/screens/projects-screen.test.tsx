@@ -1,0 +1,327 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it } from "vitest";
+import { type Account, AccountContext } from "@/lib/account.ts";
+import { setLang } from "@/lib/i18n.ts";
+import type { LocalProject, LocalProjects } from "@/lib/local-projects.ts";
+import { ProjectsScreen } from "@/screens/projects-screen.tsx";
+
+const ACCOUNT: Account = {
+  name: "Phạm Hà",
+  email: "ha@acme.vn",
+  orgId: "o1",
+  orgName: "Acme",
+  orgRole: "member",
+  teams: [{ id: "t1", name: "Thanh toán", role: "admin" }],
+};
+const at = "2026-10-13T00:00:00.000Z";
+const P1 = "0a0a0a0a-0000-4000-8000-000000000001";
+const P2 = "0a0a0a0a-0000-4000-8000-000000000002";
+const NEW = "0a0a0a0a-0000-4000-8000-000000000009";
+
+const project = (id: string, key: string, name: string, url: string) => ({
+  id,
+  systemId: "0a0a0a0a-0000-4000-8000-0000000000a1",
+  teamId: "0a0a0a0a-0000-4000-8000-0000000000b1",
+  key,
+  name,
+  state: "active",
+  repo: {
+    mode: "existing",
+    connectionId: "0a0a0a0a-0000-4000-8000-0000000000c1",
+    kind: "github",
+    owner: "acme",
+    name: key,
+    defaultBranch: "main",
+    visibility: "private",
+    httpUrl: url,
+    sshUrl: null,
+    webUrl: url.replace(/\.git$/, ""),
+  },
+  settings: {},
+  createdBy: "u1",
+  createdAt: at,
+  updatedAt: at,
+});
+const PAY = project(P1, "pay", "payment-api", "https://github.com/acme/payment-api.git");
+const WEB = project(P2, "web", "web-shop", "https://github.com/acme/web-shop.git");
+
+const entry = (over: Partial<LocalProject>): LocalProject => ({
+  projectId: "",
+  name: "app",
+  folder: "/Users/ha/Work/app",
+  fullPermission: false,
+  exists: true,
+  isGit: true,
+  ...over,
+});
+
+interface Call {
+  command: string;
+  args?: Record<string, unknown> | undefined;
+}
+
+/**
+ * Tauri giả: hub sau hub_rpc theo thủ tục RPC, sidecar `hive-worker projects` giữ danh sách trong bộ nhớ như worker.
+ */
+function fakeApp(opts: {
+  hub: Record<string, unknown>;
+  local: LocalProject[];
+  exists?: boolean;
+  legacy?: LocalProject[];
+  picked?: string;
+}) {
+  const calls: Call[] = [];
+  let list = [...opts.local];
+  let exists = opts.exists ?? true;
+  const view = (imported = 0): LocalProjects => ({ path: "/x/projects.json", exists, imported, projects: list });
+  const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
+    local_projects: () => view(),
+    local_projects_import: () => {
+      exists = true;
+      list = [...list, ...(opts.legacy ?? [])];
+      return view(opts.legacy?.length ?? 0);
+    },
+    local_project_bind: (a) => {
+      const id = String(a?.id);
+      const folder = String(a?.folder);
+      const old = list.find((l) => l.projectId === id);
+      list = [
+        ...list.filter((l) => l.projectId !== id && !(l.projectId === "" && l.folder === folder)),
+        entry({
+          projectId: id,
+          name: String(a?.name),
+          folder,
+          fullPermission: old?.fullPermission ?? false,
+          origin: (a?.repoUrl as string | null) ?? list.find((l) => l.folder === folder)?.origin,
+        }),
+      ];
+      return view();
+    },
+    local_project_unbind: (a) => {
+      list = list.filter((l) => (a?.id ? l.projectId !== a.id : l.folder !== a?.folder));
+      return view();
+    },
+    local_project_set_full: (a) => {
+      list = list.map((l) => (l.projectId === a?.id ? { ...l, fullPermission: Boolean(a?.full) } : l));
+      return view();
+    },
+    "plugin:dialog|open": () => opts.picked ?? null,
+    open_hub_page: () => null,
+    hub_rpc: (a) => {
+      const path =
+        String(a?.path)
+          .replace(/^\/rpc\//, "")
+          .split("?")[0] ?? "";
+      const body = opts.hub[path];
+      return {
+        status: body === undefined ? 404 : 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          body === undefined
+            ? { json: { defined: false, code: "NOT_FOUND", status: 404, message: "x" } }
+            : { json: typeof body === "function" ? body(a?.body ? JSON.parse(String(a.body)).json : null) : body },
+        ),
+      };
+    },
+  };
+  window.__TAURI__ = {
+    core: {
+      invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+        calls.push({ command, args });
+        const h = handlers[command];
+        if (!h) throw new Error(`lệnh chưa giả: ${command}`);
+        return (await h(args)) as T;
+      },
+    },
+  };
+  return calls;
+}
+
+const policy = (allowFullPermission: boolean) => ({ allowFullPermission });
+
+const renderScreen = (account: Account | null = ACCOUNT) =>
+  render(
+    <AccountContext.Provider value={account}>
+      <ProjectsScreen />
+    </AccountContext.Provider>,
+  );
+
+const row = async (name: string) => (await screen.findByText(name)).closest("li") as HTMLElement;
+
+describe("ProjectsScreen", () => {
+  beforeEach(() => {
+    setLang("vi");
+    location.hash = "#/projects";
+  });
+
+  it("lần đầu nhập repo của app cũ, tự gắn theo remote origin rồi theo tên, còn lại vào mục chưa có trên hub", async () => {
+    const calls = fakeApp({
+      hub: { "projects/list": [PAY, WEB], "policies/get": policy(true) },
+      local: [],
+      exists: false,
+      legacy: [
+        entry({ name: "thanh-toan", folder: "/w/pay", origin: "git@github.com:acme/payment-api.git" }),
+        entry({ name: "web", folder: "/w/web", origin: undefined }),
+        entry({ name: "cu", folder: "/w/cu", origin: "https://gitlab.com/acme/cu.git" }),
+      ],
+    });
+    renderScreen();
+    expect(await screen.findByText("Đã nhập 3 repo từ app cũ, tự gắn 2 dự án.")).toBeTruthy();
+    const binds = calls.filter((c) => c.command === "local_project_bind").map((c) => [c.args?.id, c.args?.folder]);
+    expect(binds).toEqual([
+      [P1, "/w/pay"],
+      [P2, "/w/web"],
+    ]);
+    expect(within(await row("payment-api")).getByText("Đã gắn")).toBeTruthy();
+    // Gắn theo tên mà repo không có origin: hiện để người dùng sửa.
+    expect(within(await row("web-shop")).getByText("Remote không khớp")).toBeTruthy();
+    const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
+    expect(within(waiting).getByText("cu")).toBeTruthy();
+    expect(within(waiting).getByRole("button", { name: "Tạo dự án trên hub từ repo cu" })).toBeTruthy();
+  });
+
+  it("chọn thư mục gắn dự án và gửi URL repo để worker kiểm origin; thư mục mất hiện rõ", async () => {
+    const calls = fakeApp({
+      hub: { "projects/list": [PAY, WEB], "policies/get": policy(true) },
+      local: [entry({ projectId: P2, name: "web-shop", folder: "/w/web", exists: false })],
+      picked: "/Users/ha/Work/payment-api",
+    });
+    renderScreen();
+    expect(within(await row("web-shop")).getByText("Thư mục mất")).toBeTruthy();
+    const pay = await row("payment-api");
+    expect(within(pay).getByText("Chưa gắn")).toBeTruthy();
+    await userEvent.setup().click(within(pay).getByRole("button", { name: "Chọn thư mục repo của payment-api" }));
+    expect(await screen.findByText("Đã gắn payment-api.")).toBeTruthy();
+    expect(calls.find((c) => c.command === "local_project_bind")?.args).toEqual({
+      id: P1,
+      folder: "/Users/ha/Work/payment-api",
+      name: "payment-api",
+      repoUrl: "https://github.com/acme/payment-api.git",
+    });
+    expect(within(await row("payment-api")).getByText("Đã gắn")).toBeTruthy();
+  });
+
+  it("bật toàn quyền phải xác nhận rủi ro; tắt thì không hỏi", async () => {
+    const calls = fakeApp({
+      hub: { "projects/list": [PAY], "policies/get": policy(true) },
+      local: [entry({ projectId: P1, name: "payment-api", folder: "/w/pay", origin: PAY.repo.httpUrl })],
+    });
+    renderScreen();
+    const user = userEvent.setup();
+    const toggle = await screen.findByRole("switch", { name: "Cho toàn quyền trên máy này với payment-api" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    await user.click(toggle);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Antigravity: --dangerously-skip-permissions")).toBeTruthy();
+    expect(within(dialog).getByText(/không sandbox và không hỏi duyệt/)).toBeTruthy();
+    // Huỷ thì không ghi gì.
+    await user.click(within(dialog).getByRole("button", { name: "Huỷ" }));
+    expect(calls.some((c) => c.command === "local_project_set_full")).toBe(false);
+    await user.click(toggle);
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Bật toàn quyền" }));
+    expect(await screen.findByText("Đã cho toàn quyền với payment-api trên máy này.")).toBeTruthy();
+    expect(calls.find((c) => c.command === "local_project_set_full")?.args).toEqual({ id: P1, full: true });
+    const on = screen.getByRole("switch", { name: "Cho toàn quyền trên máy này với payment-api" });
+    expect(on.getAttribute("aria-checked")).toBe("true");
+    await user.click(on);
+    expect(await screen.findByText("Đã tắt toàn quyền với payment-api.")).toBeTruthy();
+    expect(calls.filter((c) => c.command === "local_project_set_full").at(-1)?.args).toEqual({ id: P1, full: false });
+  });
+
+  it("tổ chức cấm toàn quyền: công tắc tắt, khoá và nêu lý do; dự án chưa gắn cũng khoá", async () => {
+    fakeApp({
+      hub: { "projects/list": [PAY, WEB], "policies/get": policy(false) },
+      local: [entry({ projectId: P1, name: "payment-api", folder: "/w/pay", fullPermission: true })],
+    });
+    renderScreen();
+    const toggle = await screen.findByRole("switch", { name: "Cho toàn quyền trên máy này với payment-api" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+    expect(within(await row("payment-api")).getByText(/Tổ chức không cho toàn quyền CLI/)).toBeTruthy();
+    const web = screen.getByRole("switch", { name: "Cho toàn quyền trên máy này với web-shop" });
+    expect((web as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("tạo dự án từ repo: thiếu kết nối Git thì báo và dẫn tới trang Kết nối Git", async () => {
+    const calls = fakeApp({
+      hub: { "projects/list": [], "policies/get": policy(true), "systems/list": [], "scmConnections/list": [] },
+      local: [entry({ name: "cu", folder: "/w/cu", origin: "https://gitlab.example.com/acme/cu.git" })],
+    });
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Tạo dự án trên hub từ repo cu" }));
+    expect(await screen.findByText(/chưa có kết nối Git cho gitlab.example.com/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Mở trang Kết nối Git" }));
+    expect(calls.find((c) => c.command === "open_hub_page")?.args).toEqual({ path: "/admin/git" });
+    expect((screen.getByRole("button", { name: "Tạo dự án" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("tạo dự án từ repo bằng kết nối Git khớp máy chủ rồi gắn thư mục", async () => {
+    let created: Record<string, unknown> | null = null;
+    const calls = fakeApp({
+      hub: {
+        "projects/list": [],
+        "policies/get": policy(true),
+        "systems/list": [
+          {
+            id: "0a0a0a0a-0000-4000-8000-0000000000a1",
+            teamId: "t1",
+            slug: "core",
+            name: "Lõi",
+            description: null,
+            createdAt: at,
+          },
+        ],
+        "scmConnections/list": [
+          {
+            id: "0a0a0a0a-0000-4000-8000-0000000000c1",
+            kind: "github",
+            name: "GitHub",
+            baseUrl: null,
+            defaultOwner: "acme",
+            authMode: "app",
+            appId: null,
+            installationId: null,
+            createdAt: at,
+          },
+        ],
+        "projects/create": (input: Record<string, unknown>) => {
+          created = input;
+          return { dryRun: false, projectId: NEW, state: "provisioning", steps: [], warnings: [] };
+        },
+      },
+      local: [entry({ name: "Payment API", folder: "/w/pay", origin: "git@github.com:acme/payment-api.git" })],
+    });
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Tạo dự án trên hub từ repo Payment API" }));
+    expect(((await screen.findByLabelText("Project key")) as HTMLInputElement).value).toBe("payment-api");
+    await user.click(screen.getByRole("button", { name: "Tạo dự án" }));
+    expect(await screen.findByText("Đã tạo dự án Payment API trên hub và gắn thư mục.")).toBeTruthy();
+    expect(created).toMatchObject({
+      systemId: "0a0a0a0a-0000-4000-8000-0000000000a1",
+      key: "payment-api",
+      name: "Payment API",
+      repo: {
+        mode: "existing",
+        connectionId: "0a0a0a0a-0000-4000-8000-0000000000c1",
+        url: "git@github.com:acme/payment-api.git",
+      },
+      dryRun: false,
+    });
+    expect(calls.find((c) => c.command === "local_project_bind")?.args).toMatchObject({
+      id: NEW,
+      folder: "/w/pay",
+      repoUrl: "git@github.com:acme/payment-api.git",
+    });
+  });
+
+  it("chưa liên kết tài khoản thì không gọi hub, vẫn hiện repo trên máy", async () => {
+    const calls = fakeApp({ hub: {}, local: [entry({ name: "cu", folder: "/w/cu" })] });
+    renderScreen(null);
+    expect(await screen.findByText(/Liên kết tài khoản/)).toBeTruthy();
+    expect(await screen.findByText("cu")).toBeTruthy();
+    expect(calls.some((c) => c.command === "hub_rpc")).toBe(false);
+  });
+});

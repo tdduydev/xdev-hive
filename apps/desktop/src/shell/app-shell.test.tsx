@@ -17,6 +17,7 @@ describe("menu theo hồ sơ", () => {
       "write",
       "docs",
       "plans",
+      "projects",
       "runs",
       "setup",
       "skills",
@@ -33,7 +34,7 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(11);
+    expect(items).toHaveLength(12);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 
@@ -42,7 +43,7 @@ describe("menu theo hồ sơ", () => {
     expect(groups.map((g) => [g.label.vi, g.items.map((i) => i.label.vi)])).toEqual([
       ["Công việc", ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"]],
       ["Tài liệu", ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"]],
-      ["Máy này", ["Gói agent", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh"]],
+      ["Máy này", ["Gói agent", "Dự án trên máy", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh"]],
     ]);
     expect(groups.map((g) => g.label.en)).toEqual(["Work", "Docs", "This machine"]);
     expect(groups[1]?.items.find((i) => i.id === "docs")?.label.en).toBe("Docs from code");
@@ -131,7 +132,7 @@ describe("AppShell", () => {
     ).toEqual([
       ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"],
       ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"],
-      ["Gói agent", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh"],
+      ["Gói agent", "Dự án trên máy", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh"],
     ]);
     for (const title of ["Công việc", "Tài liệu", "Máy này"]) expect(within(nav).getByText(title)).toBeTruthy();
     expect(within(nav).getByRole("link", { name: "Tài liệu từ code" }).getAttribute("href")).toBe("#/docs");
