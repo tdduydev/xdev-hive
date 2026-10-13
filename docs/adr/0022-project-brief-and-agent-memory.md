@@ -26,14 +26,17 @@ the Memory page). The ask is to reuse it, not to build a new memory system.
    `user`) and the last drift a worker reported (`head_sha`, `commits_behind`).
 2. **Refresh by a read-only run.** A new run kind `brief` (read-only like `plan`, worker capability `brief`, worktree
    detached on the base branch) asks a cheap model (Sonnet when the CLI is Claude and the project did not pick a
-   model) to write the brief and submit it with MCP tool `brief_submit`. The prompt carries the current brief so
-   human edits are kept. The hub queues it, at most one live per project (`runs_brief_active`), when:
+   model) to write the brief and submit it with MCP tool `brief_submit`; the hub saves it when the run finishes
+   cleanly. The prompt carries the current brief so human edits are kept. The hub queues it, at most one live per
+   project (`runs_brief_active`, filtered on branch `brief/%` because of 55P04), when:
    - the project has no brief and a run is started (`settings.brief.auto`, on by default);
    - a worker reports the base branch is `refreshCommits` (default 50) commits past `commit_sha`;
    - the brief is older than `refreshDays` (default 7) when a run is started;
    - a team member presses "Làm mới" on the web.
-   Brief runs are team runs (`owner_user_id` null), so they need a shared machine or a runner host, like Leader and
-   AI gates.
+   A brief run belongs to the user whose action caused it (the one who started the code run, or pressed "Làm
+   mới"), so a project without a shared machine still gets a brief from that user's machine; drift reported by a team
+   run makes a team run. Automatic triggers only queue when an online machine usable for that owner declares the
+   `brief` capability, so old workers never leave a brief run waiting forever.
 3. **Brief in every prompt.** `buildSpec` prepends the brief and a short instruction block to the prompt of every run
    kind that works on the repository (code, review, plan, leader, doccheck, docassist): read the brief and call
    `memory_search` first, open only the files that matter, do not list or dump the whole repository; when the brief
@@ -61,7 +64,7 @@ the Memory page). The ask is to reuse it, not to build a new memory system.
   over the brief.
 - Bad: every prompt grows by up to 12,000 characters; cached prompt prefixes make repeat cost low for Claude
   [inference].
-- Bad: projects without a shared machine never get an automatic brief; users can still write one by hand.
+- Bad: an automatic brief run spends a little of the subscription of the user who started the triggering run.
 
 ## Alternatives considered
 

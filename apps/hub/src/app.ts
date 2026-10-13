@@ -193,6 +193,7 @@ export function createApp({
       providerFactory: providerFactory ?? defaultProviderFactory,
       publicUrl,
       docAssist: runs?.docAssist,
+      briefs: runs?.briefs,
     }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),
