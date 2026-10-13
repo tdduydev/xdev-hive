@@ -1,6 +1,9 @@
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
 import { queryClient } from "@/lib/hub-query.tsx";
+
+// Chunk Tiptap tải lười; máy CI tải nặng thì quá 1 giây mặc định của findBy*/waitFor.
+configure({ asyncUtilTimeout: 10_000 });
 
 // jsdom không dựng bố cục; ProseMirror (trình soạn Tiptap) đo vị trí con trỏ để cuộn và đặt menu.
 const noRects = () => Object.assign([], { item: () => null }) as unknown as DOMRectList;
