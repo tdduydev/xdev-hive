@@ -135,3 +135,41 @@ func makeBigRemote(tb testing.TB, files, branches int) (string, string) {
 }
 
 func gitCmd(args ...string) *exec.Cmd { return exec.Command("git", args...) }
+
+// BenchmarkReviewFetch so một lệnh fetch hai nhánh (run review) với hai lệnh fetch riêng như trước.
+func BenchmarkReviewFetch(b *testing.B) {
+	remote, base := makeBigRemote(b, 500, 200)
+	cache := filepath.Join(b.TempDir(), "cache.git")
+	if out, err := gitCmd("clone", "-q", "--bare", fileURL(remote), cache).CombinedOutput(); err != nil {
+		b.Fatalf("%v\n%s", err, out)
+	}
+	baseRef := base + ":refs/remotes/origin/" + base
+	parentRef := "ai/old-000:refs/remotes/origin/ai/old-000"
+	reset := func() {
+		for _, ref := range []string{"refs/remotes/origin/" + base, "refs/remotes/origin/ai/old-000"} {
+			_ = gitCmd("--git-dir", cache, "update-ref", "-d", ref).Run()
+		}
+	}
+	fetch := func(refs ...string) {
+		if out, err := gitCmd(append([]string{"--git-dir", cache, "fetch", "-q", "origin"}, refs...)...).CombinedOutput(); err != nil {
+			b.Fatalf("%v\n%s", err, out)
+		}
+	}
+	b.Run("two", func(b *testing.B) {
+		for range b.N {
+			b.StopTimer()
+			reset()
+			b.StartTimer()
+			fetch(baseRef)
+			fetch(parentRef)
+		}
+	})
+	b.Run("one", func(b *testing.B) {
+		for range b.N {
+			b.StopTimer()
+			reset()
+			b.StartTimer()
+			fetch(baseRef, parentRef)
+		}
+	})
+}
