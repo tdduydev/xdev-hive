@@ -19,6 +19,7 @@ describe("menu theo hồ sơ", () => {
       "skills",
       "tokens",
       "setup",
+      "plans",
       "runs",
     ]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
@@ -32,7 +33,7 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(10);
+    expect(items).toHaveLength(11);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 
