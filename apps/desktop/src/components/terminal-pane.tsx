@@ -8,11 +8,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
+import { TERMINAL_FONT_SIZES } from "@xdev-hive/ui/terminal-theme";
 import { FolderOpenIcon, PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type CliProfile, cliProfiles } from "@/lib/agent.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
-import { attachTerminal, closeTerminal, openTerminal, selectTerminal, type TermCli, useTerminals } from "@/lib/pty.ts";
+import {
+  attachTerminal,
+  closeTerminal,
+  openTerminal,
+  selectTerminal,
+  setTermFontSize,
+  type TermCli,
+  useTerminals,
+} from "@/lib/pty.ts";
 import { cn } from "@/lib/utils.ts";
 
 const CLIS: { id: TermCli; label: string }[] = [
@@ -45,6 +54,7 @@ const text: Dict<{
   failed: string;
   bypassBadge: string;
   signedOut: string;
+  fontSize: string;
 }> = {
   vi: {
     run: "Chạy",
@@ -75,6 +85,7 @@ const text: Dict<{
     failed: "lỗi",
     bypassBadge: "bỏ hỏi quyền",
     signedOut: "chưa đăng nhập",
+    fontSize: "Cỡ chữ terminal",
   },
   en: {
     run: "Run",
@@ -105,6 +116,7 @@ const text: Dict<{
     failed: "error",
     bypassBadge: "no prompts",
     signedOut: "signed out",
+    fontSize: "Terminal font size",
   },
 };
 
@@ -122,7 +134,7 @@ function TermView({ id }: { id: string }) {
  */
 export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickFolder: () => void }) {
   const t = useT(text);
-  const { sessions, active } = useTerminals();
+  const { sessions, active, fontSize } = useTerminals();
   const [cli, setCli] = useState<TermCli>("claude");
   const [planId, setPlanId] = useState("");
   const [bypass, setBypass] = useState(false);
@@ -207,6 +219,19 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
           {t.bypass}
         </label>
         <span className="flex-1" />
+        <select
+          aria-label={t.fontSize}
+          title={t.fontSize}
+          value={fontSize}
+          onChange={(e) => setTermFontSize(Number(e.target.value))}
+          className={cn(select, "w-14")}
+        >
+          {TERMINAL_FONT_SIZES.map((n) => (
+            <option key={n} value={n}>
+              {n}px
+            </option>
+          ))}
+        </select>
         <Button size="sm" className="h-6.5" disabled={!folder} onClick={open}>
           <PlusIcon aria-hidden="true" />
           {sessions.length ? t.newTab : t.open}
