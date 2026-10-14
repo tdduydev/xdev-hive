@@ -81,14 +81,14 @@ export function webhookUrls(publicUrl: string, bot: { id: string; kind: ChatBotK
 }
 
 export const botView =
-  (publicUrl: string) =>
+  (publicUrl: string, pollingBotIds: string[] = []) =>
   (b: BotRecord): ChatBot => ({
     id: b.id,
     kind: b.kind,
     name: b.name,
     target: b.target,
     enabled: b.enabled,
-    webhooks: webhookUrls(publicUrl, b),
+    webhooks: b.kind === "telegram" && pollingBotIds.includes(b.id) ? [] : webhookUrls(publicUrl, b),
     createdAt: b.createdAt.toISOString(),
     updatedAt: b.updatedAt.toISOString(),
   });
@@ -108,6 +108,9 @@ function storedConfig(input: ReturnType<typeof chatBotConfig.parse>, previous?: 
     kind: "telegram",
     botToken: input.botToken,
     webhookSecret: previous?.kind === "telegram" ? previous.webhookSecret : randomBytes(24).toString("base64url"),
+    ...(previous?.kind === "telegram" && previous.botToken === input.botToken && previous.nextUpdateId !== undefined
+      ? { nextUpdateId: previous.nextUpdateId }
+      : {}),
   };
 }
 
@@ -276,6 +279,36 @@ export async function findChatBot(
   } catch {
     return null;
   }
+}
+
+/** Giữ con trỏ trong JSON đã mã hoá, và khoá dòng để không ghi đè cấu hình quản trị vừa đổi. */
+export async function saveTelegramOffset(
+  pool: pg.Pool,
+  master: MasterKey,
+  bot: ResolvedBot,
+  nextUpdateId: number,
+): Promise<void> {
+  await withTenant(pool, { orgId: bot.orgId }, async (tx) => {
+    const [row] = await tx
+      .select({ configEnc: chatBots.configEnc })
+      .from(chatBots)
+      .where(eq(chatBots.id, bot.id))
+      .for("update");
+    if (!row) return;
+    const config = decryptBotConfig(master, bot.id, row.configEnc);
+    // Token đổi sang bot khác có hàng update riêng; không mang con trỏ của bot cũ sang.
+    if (config.kind !== "telegram" || config.botToken !== bot.config.botToken) return;
+    await tx
+      .update(chatBots)
+      .set({
+        configEnc: encryptSecret(
+          master,
+          JSON.stringify({ ...config, nextUpdateId: Math.max(config.nextUpdateId ?? 0, nextUpdateId) }),
+          secretContext(bot.id),
+        ),
+      })
+      .where(eq(chatBots.id, bot.id));
+  });
 }
 
 /** Cài đặt của tổ chức trong context, trộn với mặc định. Không kiểm vai trò: webhook và gửi tin cần đọc. */

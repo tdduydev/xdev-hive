@@ -11,7 +11,7 @@ import {
   registerTemplateSyncWorker,
   templateSyncQueue,
 } from "./modules/catalog/index.ts";
-import { chatQueue, installChatHooks, registerChatWorker } from "./modules/chat/index.ts";
+import { chatQueue, installChatHooks, registerChatWorker, startTelegramPolling } from "./modules/chat/index.ts";
 import {
   codeReviewQueue,
   codeReviewSlaQueue,
@@ -249,6 +249,27 @@ if (roles.includes("jobs") && jobs) {
 const embedder = config.embeddings ? createOpenAIEmbedder(config.embeddings) : undefined;
 if (roles.includes("jobs") && jobs && pool && embedder) await registerEmbedWorker(jobs, { pool, embedder });
 
+const telegramPolling =
+  roles.includes("api") && pool && config.masterKey
+    ? startTelegramPolling({
+        pool,
+        masterKey: config.masterKey,
+        jobs,
+        runs,
+        publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+        telegramPollingBotIds: config.telegramPollingBotIds,
+        codeReviews: {
+          masterKey: config.masterKey,
+          providerFactory: defaultProviderFactory,
+          jobs,
+          publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+          startReviewRuns: runs?.startReviewRuns,
+          queueFixRun: runs?.queueFixRun,
+          runEvidence: runs?.runEvidence,
+        },
+      })
+    : undefined;
+
 if (roles.includes("api")) {
   const server = serve(
     { fetch: createApp({ config, auth, pool, jobs, runs, embedder }).fetch, port: config.port },
@@ -274,6 +295,6 @@ if (roles.includes("api")) {
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
     runs?.stop();
-    void (jobs?.stop() ?? Promise.resolve()).finally(() => process.exit(0));
+    void Promise.all([telegramPolling?.stop(), jobs?.stop()]).finally(() => process.exit(0));
   });
 }

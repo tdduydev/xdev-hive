@@ -1,5 +1,5 @@
 {
-  "id": "e1d1a71c-c0c6-4c1c-9ce6-defb52e1f1cb",
+  "id": "ced6eb65-5a0a-4c40-8eb2-73ae805d7253",
   "prevId": "e5aa2191-1f10-4510-a4ee-f60aac67427e",
   "version": "7",
   "dialect": "postgresql",
@@ -3048,7 +3048,14 @@
           "name": "team_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'desktop'"
         },
         "user_id": {
           "name": "user_id",
@@ -3146,7 +3153,12 @@
           "using": "org_id = hive.ctx_org()"
         }
       },
-      "checkConstraints": {},
+      "checkConstraints": {
+        "desktop_connect_codes_purpose": {
+          "name": "desktop_connect_codes_purpose",
+          "value": "\"hive\".\"desktop_connect_codes\".\"purpose\" = 'cli' or (\"hive\".\"desktop_connect_codes\".\"purpose\" = 'desktop' and \"hive\".\"desktop_connect_codes\".\"team_id\" is not null)"
+        }
+      },
       "isRLSEnabled": true
     },
     "hive.machine_tokens": {
@@ -10562,18 +10574,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "pr_number": {
-          "name": "pr_number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pr_url": {
-          "name": "pr_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -14137,6 +14137,315 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
+    "hive.machine_remote_state": {
+      "name": "machine_remote_state",
+      "schema": "hive",
+      "columns": {
+        "machine_id": {
+          "name": "machine_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "roots": {
+          "name": "roots",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "clis": {
+          "name": "clis",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "accounts": {
+          "name": "accounts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "totp_enabled": {
+          "name": "totp_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "totp_locked_until": {
+          "name": "totp_locked_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirm_on_machine": {
+          "name": "confirm_on_machine",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "machine_remote_state_org": {
+          "name": "machine_remote_state_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "machine_remote_state_rw": {
+          "name": "machine_remote_state_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "hive.push_subscriptions": {
+      "name": "push_subscriptions",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "p256dh": {
+          "name": "p256dh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth": {
+          "name": "auth",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_label": {
+          "name": "device_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "push_subscriptions_org_user": {
+          "name": "push_subscriptions_org_user",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "push_subscriptions_org_endpoint": {
+          "name": "push_subscriptions_org_endpoint",
+          "nullsNotDistinct": false,
+          "columns": ["org_id", "endpoint"]
+        }
+      },
+      "policies": {
+        "push_subscriptions_rw": {
+          "name": "push_subscriptions_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "hive.remote_devices": {
+      "name": "remote_devices",
+      "schema": "hive",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "machine_id": {
+          "name": "machine_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "synced": {
+          "name": "synced",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "remote_devices_org_user": {
+          "name": "remote_devices_org_user",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "remote_devices_machine_id_id_pk": {
+          "name": "remote_devices_machine_id_id_pk",
+          "columns": ["machine_id", "id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {
+        "remote_devices_rw": {
+          "name": "remote_devices_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
     "hive.terminal_chunks": {
       "name": "terminal_chunks",
       "schema": "hive",
@@ -14217,6 +14526,147 @@
           "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
+        },
+        "terminal_chunks_owner_select": {
+          "name": "terminal_chunks_owner_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["hive_owner"],
+          "using": "true"
+        },
+        "terminal_chunks_owner_purge": {
+          "name": "terminal_chunks_owner_purge",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
+          "to": ["hive_owner"],
+          "using": "true"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "hive.terminal_events": {
+      "name": "terminal_events",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "terminal_events_session": {
+          "name": "terminal_events_session",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "terminal_events_org": {
+          "name": "terminal_events_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "terminal_events_session_id_org_id_terminal_sessions_id_org_id_fk": {
+          "name": "terminal_events_session_id_org_id_terminal_sessions_id_org_id_fk",
+          "tableFrom": "terminal_events",
+          "tableTo": "terminal_sessions",
+          "schemaTo": "hive",
+          "columnsFrom": ["session_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "terminal_events_rw": {
+          "name": "terminal_events_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
         }
       },
       "checkConstraints": {},
@@ -14245,11 +14695,25 @@
           "primaryKey": false,
           "notNull": true
         },
+        "origin": {
+          "name": "origin",
+          "type": "terminal_origin",
+          "typeSchema": "hive",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'hub'"
+        },
         "project_id": {
           "name": "project_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "machine_id": {
           "name": "machine_id",
@@ -14268,7 +14732,7 @@
           "type": "terminal_mode",
           "typeSchema": "hive",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "cli": {
           "name": "cli",
@@ -14281,7 +14745,7 @@
           "name": "model",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "advisor": {
           "name": "advisor",
@@ -14315,6 +14779,25 @@
         },
         "plan_id": {
           "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cwd_label": {
+          "name": "cwd_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "remote": {
+          "name": "remote",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "request_id": {
+          "name": "request_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -14463,6 +14946,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "terminal_sessions_task": {
+          "name": "terminal_sessions_task",
+          "columns": [
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -14484,7 +14982,12 @@
           "withCheck": "org_id = hive.ctx_org()"
         }
       },
-      "checkConstraints": {},
+      "checkConstraints": {
+        "terminal_sessions_hub_fields": {
+          "name": "terminal_sessions_hub_fields",
+          "value": "\"hive\".\"terminal_sessions\".\"origin\" <> 'hub' or (\"hive\".\"terminal_sessions\".\"project_id\" is not null and \"hive\".\"terminal_sessions\".\"mode\" is not null and \"hive\".\"terminal_sessions\".\"model\" is not null)"
+        }
+      },
       "isRLSEnabled": true
     }
   },
@@ -14674,6 +15177,11 @@
       "name": "terminal_mode",
       "schema": "hive",
       "values": ["propose", "bypass"]
+    },
+    "hive.terminal_origin": {
+      "name": "terminal_origin",
+      "schema": "hive",
+      "values": ["hub", "local", "remote"]
     },
     "hive.terminal_state": {
       "name": "terminal_state",

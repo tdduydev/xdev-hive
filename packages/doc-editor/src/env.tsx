@@ -19,6 +19,22 @@ export interface DocEditorEnv {
   lang: Lang;
   errorMessage: (error: unknown) => string;
   link: (props: { to: DocEditorLink; className?: string; children: ReactNode }) => ReactNode;
+  /**
+   * Bật khung bên "Hạng mục" cho tài liệu `project/<k>/sdlc/…` (specs/011 T053). Tách khỏi `DocEditorLink` để app chủ
+   * chưa có màn AI SDLC không phải xử lý liên kết tới hạng mục; bỏ trống thì tài liệu mở như mọi tài liệu khác.
+   */
+  sdlc?: DocEditorSdlc;
+}
+
+export interface DocEditorSdlc {
+  /** Mở hạng mục (`tab` như `SdlcItemTab` của `@xdev-hive/sdlc-ui`). */
+  itemLink: (props: {
+    projectKey: string;
+    number: number;
+    tab?: "tasks" | "questions";
+    className?: string;
+    children: ReactNode;
+  }) => ReactNode;
 }
 
 const Env = createContext<DocEditorEnv | null>(null);
