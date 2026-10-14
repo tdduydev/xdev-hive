@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { Project, ProjectSettings } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
-import { Button } from "@xdev-hive/ui/button";
+import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
+import { usePermissions } from "@/lib/permissions.ts";
 import {
   buildPatch,
   codeWorkflowsForProject,
@@ -31,6 +32,7 @@ import {
   type TierForm,
 } from "@/lib/project-settings.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -63,6 +65,7 @@ const text: Dict<{
   reviewHint: string;
   workflowReview: (name: string) => string;
   workflowProtection: string;
+  workflowCreate: string;
   reviewOn: string;
   reviewAgent: string;
   minScore: string;
@@ -186,6 +189,7 @@ const text: Dict<{
     workflowReview: (name) => `Quy trình ${name} đang thay review chéo cho run khớp phạm vi.`,
     workflowProtection:
       "Bảo vệ nhánh: yêu cầu status xdev-hive/review và đặt số người approve về 0. Phê duyệt trên GitHub/GitLab không được tính vào checkpoint.",
+    workflowCreate: "Tạo quy trình từ cấu hình này",
     reviewOn: "Bật review chéo",
     reviewAgent: "Agent review",
     minScore: "Điểm tối thiểu",
@@ -320,6 +324,7 @@ const text: Dict<{
     workflowReview: (name) => `Workflow ${name} replaces cross-review for runs matching its scope.`,
     workflowProtection:
       "Branch protection: require the xdev-hive/review status and set required approvals to 0. GitHub/GitLab approvals do not count towards checkpoints.",
+    workflowCreate: "Create a workflow from this configuration",
     reviewOn: "Enable cross-review",
     reviewAgent: "Reviewing agent",
     minScore: "Minimum score",
@@ -574,10 +579,12 @@ function TextField({
 }
 
 function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canEdit: boolean; canBrief: boolean }) {
-  const { api } = useOrg();
+  const { org, api } = useOrg();
   const t = useT(text);
   const workflows = useQuery({ ...api.reviewWorkflows.list.queryOptions(), retry: false });
   const codeWorkflows = codeWorkflowsForProject(workflows.data ?? [], project);
+  const can = usePermissions();
+  const canCreateWorkflow = isOrgAdmin(org.role) || can("workflows.write");
   // Hub cũ chưa có chính sách thì coi như không khoá, như trước.
   const policy = useQuery({ ...api.policies.get.queryOptions(), retry: false });
   const fullLocked = policy.data?.allowFullPermission === false;
@@ -777,6 +784,15 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                   <p>{t.workflowProtection}</p>
                 </div>
               </Alert>
+            )}
+            {canCreateWorkflow && (
+              <Link
+                to="/knowledge/workflows"
+                search={{ duan: project.key }}
+                className={cx(buttonVariants({ variant: "outline" }), "w-fit")}
+              >
+                {t.workflowCreate}
+              </Link>
             )}
             <SwitchRow
               label={t.reviewOn}
