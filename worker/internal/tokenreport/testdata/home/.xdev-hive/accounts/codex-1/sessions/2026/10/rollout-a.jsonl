@@ -1,0 +1,9 @@
+{"timestamp":"2026-10-01T12:00:00Z","type":"session_meta","payload":{"cwd":"/Users/u/work/app","originator":"codex_cli","cli_version":"0.99.0"}}
+{"timestamp":"2026-10-01T12:00:00Z","type":"turn_context","payload":{"model":"gpt-6"}}
+{"timestamp":"2026-10-01T12:00:01Z","type":"response_item","payload":{"type":"function_call","call_id":"c1","name":"shell"}}
+{"timestamp":"2026-10-01T12:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":600,"cache_write_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":10},"last_token_usage":{"input_tokens":1000}}}}
+{"timestamp":"2026-10-01T12:00:03Z","type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"jjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj"}}
+{"timestamp":"2026-10-01T12:00:03Z","type":"response_item","payload":{"type":"custom_tool_call","call_id":"c2","name":"apply_patch"}}
+{"timestamp":"2026-10-01T12:00:04Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":2500,"cached_input_tokens":1800,"cache_write_input_tokens":20,"output_tokens":90,"reasoning_output_tokens":30},"last_token_usage":{"input_tokens":1500}}}}
+{"timestamp":"2026-10-01T12:00:05Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"c2","output":{"ok":true,"n":1}}}
+{"timestamp":"2026-10-01T12:00:06Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":4000,"cached_input_tokens":3000,"cache_write_input_tokens":20,"output_tokens":120,"reasoning_output_tokens":40},"last_token_usage":{"input_tokens":1500}}}}
