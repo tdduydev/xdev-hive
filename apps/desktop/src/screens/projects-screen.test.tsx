@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, AccountContext } from "@/lib/account.ts";
@@ -211,6 +211,8 @@ describe("ProjectsScreen", () => {
     const user = userEvent.setup();
     const toggle = await screen.findByRole("switch", { name: "Cho toàn quyền trên máy này với payment-api" });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
+    // Công tắc khoá tới khi chính sách tổ chức và danh sách trên máy tải xong.
+    await waitFor(() => expect((toggle as HTMLButtonElement).disabled).toBe(false));
     await user.click(toggle);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Antigravity: --dangerously-skip-permissions")).toBeTruthy();
@@ -223,7 +225,8 @@ describe("ProjectsScreen", () => {
     expect(await screen.findByText("Đã cho toàn quyền với payment-api trên máy này.")).toBeTruthy();
     expect(calls.find((c) => c.command === "local_project_set_full")?.args).toEqual({ id: P1, full: true });
     const on = screen.getByRole("switch", { name: "Cho toàn quyền trên máy này với payment-api" });
-    expect(on.getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => expect(on.getAttribute("aria-checked")).toBe("true"));
+    await waitFor(() => expect((on as HTMLButtonElement).disabled).toBe(false));
     await user.click(on);
     expect(await screen.findByText("Đã tắt toàn quyền với payment-api.")).toBeTruthy();
     expect(calls.filter((c) => c.command === "local_project_set_full").at(-1)?.args).toEqual({ id: P1, full: false });
@@ -238,7 +241,7 @@ describe("ProjectsScreen", () => {
     const toggle = await screen.findByRole("switch", { name: "Cho toàn quyền trên máy này với payment-api" });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect((toggle as HTMLButtonElement).disabled).toBe(true);
-    expect(within(await row("payment-api")).getByText(/Tổ chức không cho toàn quyền CLI/)).toBeTruthy();
+    expect(await within(await row("payment-api")).findByText(/Tổ chức không cho toàn quyền CLI/)).toBeTruthy();
     const web = screen.getByRole("switch", { name: "Cho toàn quyền trên máy này với web-shop" });
     expect((web as HTMLButtonElement).disabled).toBe(true);
   });
