@@ -2,7 +2,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { authUser } from "../identity/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
-import { requireOrgRole, requireTeamRole, storableTeamRole } from "./permissions.ts";
+import { requireOrgRole, requireTeamRole } from "./permissions.ts";
 import { iso, onUnique, type Procedures, slugTaken } from "./procedures.ts";
 import { allowWith } from "./roles.ts";
 import { orgMembers, teamMembers, teams } from "./schema.ts";
@@ -142,12 +142,11 @@ export function teamMembersRouter({ inOrg }: Procedures) {
     }),
 
     add: inOrg.teamMembers.add.handler(async ({ context: { tx, user, orgId }, input }) => {
-      const role = storableTeamRole(input.role);
       const team = await getTeam(tx, input.teamId);
       await allowWith(tx, user.id, "teams.manage", () => requireTeamRole(tx, user.id, team.id, "admin"), team.id);
       await requireActiveMember(tx, input.userId);
       await onUnique(
-        () => tx.insert(teamMembers).values({ teamId: team.id, orgId, userId: input.userId, role }),
+        () => tx.insert(teamMembers).values({ teamId: team.id, orgId, userId: input.userId, role: input.role }),
         alreadyInTeam,
       );
       await recordAudit(tx, {
@@ -160,13 +159,12 @@ export function teamMembersRouter({ inOrg }: Procedures) {
     }),
 
     setRole: inOrg.teamMembers.setRole.handler(async ({ context: { tx, user }, input }) => {
-      const role = storableTeamRole(input.role);
       const team = await getTeam(tx, input.teamId);
       await allowWith(tx, user.id, "teams.manage", () => requireTeamRole(tx, user.id, team.id, "admin"), team.id);
       const before = await teamMemberView(tx, team.id, input.userId);
       await tx
         .update(teamMembers)
-        .set({ role })
+        .set({ role: input.role })
         .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.userId, input.userId)));
       await recordAudit(tx, {
         action: "team_member.set_role",

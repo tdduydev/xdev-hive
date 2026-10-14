@@ -160,7 +160,111 @@
       "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
       "exitCode": null,
       "reason": "idle",
-      "message": "Phiên không hoạt động quá 30 phút nên đã đóng."
+      "message": "Phiên không hoạt động quá 30 phút nên đã đóng.",
+      "by": "user-1"
+    },
+    {
+      "type": "term_opened",
+      "v": 1,
+      "id": "to2",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "accountLabel": "Claude Max của An",
+      "permissions": "workspace",
+      "origin": "local",
+      "cli": "claude",
+      "cwdLabel": "xdev-hive/apps",
+      "projectId": "proj-1",
+      "taskId": "task-1",
+      "cols": 120,
+      "rows": 40,
+      "record": true,
+      "remote": true
+    },
+    {
+      "type": "term_state",
+      "v": 1,
+      "id": "ts1",
+      "enabled": true,
+      "totp": {
+        "enabled": true,
+        "locked": true,
+        "lockedUntil": "2026-10-14T03:05:00.000Z"
+      },
+      "roots": [
+        {
+          "id": "root-ab12cd",
+          "label": "Code"
+        }
+      ],
+      "clis": ["claude", "codex"],
+      "accounts": [
+        {
+          "id": "acc-1",
+          "label": "Claude Max",
+          "cli": "claude",
+          "state": "ready"
+        }
+      ],
+      "devices": [
+        {
+          "id": "dev-9f8e7d",
+          "label": "iPhone của An",
+          "userId": "user-1",
+          "synced": true
+        }
+      ],
+      "sessions": [
+        {
+          "id": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+          "origin": "remote",
+          "controller": "remote"
+        }
+      ],
+      "confirmOnMachine": false
+    },
+    {
+      "type": "term_denied",
+      "v": 1,
+      "id": "td1",
+      "requestId": "7c1d2e3f-4a5b-4c6d-9e8f-1a2b3c4d5e6f",
+      "code": "TOTP_REPLAY",
+      "reason": "Mã này vừa được dùng. Chờ mã mới rồi thử lại."
+    },
+    {
+      "type": "term_event",
+      "v": 1,
+      "id": "te1",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "seq": 3,
+      "event": "attention",
+      "data": {
+        "message": "Claude cần bạn duyệt lệnh"
+      }
+    },
+    {
+      "type": "term_granted",
+      "v": 1,
+      "id": "tg1",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "connId": "conn-4f3e2d1c",
+      "workerEphPub": "BKbnrmhI9wxqTrEbojLTAhRC0iXx1dkPJKOJK1KNja736SvC3tDA8c0-g-mVkF3-QXrW_ILEIUcU0LqpcGyiZnY",
+      "resumeToken": "gYr7I6DKq-9ltxHBbgPUfKK8GaAEfBUS"
+    },
+    {
+      "type": "term_revoked",
+      "v": 1,
+      "id": "tr1",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "connId": "conn-4f3e2d1c",
+      "reason": "taken"
+    },
+    {
+      "type": "term_pair_result",
+      "v": 1,
+      "id": "tp1",
+      "pairId": "pair-0a1b2c3d",
+      "ok": true,
+      "deviceId": "dev-9f8e7d"
     }
   ],
   "hubToWorker": [
@@ -171,7 +275,14 @@
       "sessionId": "s-1",
       "heartbeatSec": 30,
       "accessTokenExp": "2026-10-11T00:15:00.000Z",
-      "features": ["shared"]
+      "features": ["shared"],
+      "owner": {
+        "userId": "user-1",
+        "shared": false
+      },
+      "policy": {
+        "totpFallback": true
+      }
     },
     {
       "type": "upgrade_required",
@@ -314,6 +425,16 @@
       "data": "eGluIGNow6BvDQ=="
     },
     {
+      "type": "term_input",
+      "v": 1,
+      "id": "ti2",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "data": "bHMK",
+      "connId": "conn-4f3e2d1c",
+      "seq": 7,
+      "mac": "GVmlwaJI-Xw-i_WtBuYzXA"
+    },
+    {
       "type": "term_resize",
       "v": 1,
       "id": "h-term-resize",
@@ -326,7 +447,103 @@
       "v": 1,
       "id": "h-term-close",
       "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
-      "reason": "Người mở đã đóng phiên."
+      "reason": "Người mở đã đóng phiên.",
+      "by": "user-1"
+    },
+    {
+      "type": "term_start",
+      "v": 1,
+      "id": "tst1",
+      "requestId": "7c1d2e3f-4a5b-4c6d-9e8f-1a2b3c4d5e6f",
+      "userId": "user-1",
+      "deviceId": "dev-9f8e7d",
+      "cli": "claude",
+      "accountId": "acc-1",
+      "rootId": "root-ab12cd",
+      "subdir": "apps/web",
+      "model": "sonnet",
+      "permissions": "ask",
+      "projectId": "proj-1",
+      "taskId": "task-1",
+      "prompt": "Sửa lỗi đăng nhập",
+      "cols": 44,
+      "rows": 30,
+      "auth": {
+        "kind": "passkey",
+        "assertion": {
+          "credentialId": "1mP5T4DKNR4mOcuWBIYSTgo-01MLmG2AB695DRUs1Vw",
+          "authenticatorData": "yjMHmjz2nM-Ao_s2ETUj6ekRUo9qdu7nLUSkgyw9MzX8d64-Sw",
+          "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0In0",
+          "signature": "8_FaI-Q_E4js5FwvALpBv9KSCyJ51ANwdlX2FTwRQgVkV2HvDLZp5MmHm7Lbtkxf3Y3hAhHzB_0NA2a2uWzu5cfvRa_WSQ"
+        },
+        "ephPub": "BDlqAnZbDPa3YnCvimyRBrYTNxw8zbd68gcpDjd2cn_YhCr12OyS2XBbw3idizwh5Ace831wb3azBYI5m5n0SCo",
+        "ts": 1792000000,
+        "nonce": "eWaQ09KE7AmPDzC1jGb5Wg"
+      }
+    },
+    {
+      "type": "term_control",
+      "v": 1,
+      "id": "tc1",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "connId": "conn-4f3e2d1c",
+      "userId": "user-1",
+      "deviceId": "dev-9f8e7d",
+      "auth": {
+        "kind": "totp",
+        "code": "287082",
+        "ephPub": "BDlqAnZbDPa3YnCvimyRBrYTNxw8zbd68gcpDjd2cn_YhCr12OyS2XBbw3idizwh5Ace831wb3azBYI5m5n0SCo",
+        "ts": 1792000000,
+        "nonce": "zpFc0J3QeEt39SMF_LRDXQ"
+      }
+    },
+    {
+      "type": "term_control",
+      "v": 1,
+      "id": "tc2",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "connId": "conn-5a4b3c2d",
+      "userId": "user-1",
+      "deviceId": "dev-9f8e7d",
+      "resumeToken": "gYr7I6DKq-9ltxHBbgPUfKK8GaAEfBUS"
+    },
+    {
+      "type": "term_detach",
+      "v": 1,
+      "id": "tdt1",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "connId": "conn-4f3e2d1c"
+    },
+    {
+      "type": "term_ack",
+      "v": 1,
+      "id": "ta1",
+      "sessionId": "5b0f8c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e",
+      "upto": 12
+    },
+    {
+      "type": "term_disable",
+      "v": 1,
+      "id": "tdis1",
+      "by": "user-1"
+    },
+    {
+      "type": "term_pair",
+      "v": 1,
+      "id": "tpair1",
+      "pairId": "pair-0a1b2c3d",
+      "userId": "user-1",
+      "label": "iPhone của An",
+      "credentialId": "1mP5T4DKNR4mOcuWBIYSTgo-01MLmG2AB695DRUs1Vw",
+      "spki": "PkJrx0SEDgiWQRdzBZlSj4j7sDIFlChlNHq411Xaa_MoT6Bw2mtySkqmJ6rFBBwjH20xxTxHlyNXqsOsCJ4swJ_ec_0qPr141rd-dlbAAyAH_9JFNUSIRHL0bg",
+      "tag": "nM3qSMMl6cDfwAXBfDpN5mzyRx9aBJq9dno6bPuTWY4"
+    },
+    {
+      "type": "term_device_revoke",
+      "v": 1,
+      "id": "tdr1",
+      "deviceId": "dev-9f8e7d",
+      "by": "user-1"
     }
   ]
 }

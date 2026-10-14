@@ -254,8 +254,6 @@ test("skills: Hive default skills show label, license and source, and turn on pe
   await expect(pack.getByRole("heading", { name: "Skill mặc định của Hive" })).toBeVisible();
   await expect(pack.getByRole("link", { name: "tdduydev/xdev-skills@d246ca6" })).toBeVisible();
   const shadcn = pack.getByRole("row", { name: /shadcn/ });
-  await expect(shadcn.getByText("Hive mặc định")).toBeVisible();
-  await expect(shadcn.getByText("MIT")).toBeVisible();
   await expect(shadcn.getByText("Đang tắt")).toBeVisible();
   await expect(
     pack.getByRole("row", { name: /systematic-debugging/ }).getByText("Đang dùng bản của tổ chức"),
@@ -279,11 +277,15 @@ test("skills: Hive default skills show label, license and source, and turn on pe
     project: "hive",
   });
 
-  // Chi tiết: giấy phép, bản gốc, SKILL.md; bỏ đặt riêng thì theo tổ chức.
+  // Chi tiết (hộp thoại): nhãn, giấy phép, bản gốc, SKILL.md; bỏ đặt riêng thì theo tổ chức.
   await pack.getByRole("button", { name: "Mở dòng web-design-guidelines" }).click();
-  await expect(pack.getByRole("link", { name: /vercel-labs\/agent-skills@d246ca6/ })).toBeVisible();
-  await expect(pack.locator("article")).toContainText("Các bước của skill.");
-  await pack.getByRole("button", { name: "Theo phạm vi rộng hơn" }).click();
+  const detail = page.getByRole("dialog");
+  await expect(detail.getByText("Hive mặc định")).toBeVisible();
+  await expect(detail.getByText("MIT")).toBeVisible();
+  await expect(detail.getByRole("link", { name: /vercel-labs\/agent-skills@d246ca6/ })).toBeVisible();
+  await expect(detail.locator("article")).toContainText("Các bước của skill.");
+  await detail.getByRole("button", { name: "Theo phạm vi rộng hơn" }).click();
+  await page.keyboard.press("Escape");
   await expect(web.getByText("Theo mặc định của Hive")).toBeVisible();
   expect(hub.rpcCalls.filter((c) => c.path === "skills/packSet").at(-1)?.input).toEqual({
     name: "web-design-guidelines",
@@ -291,7 +293,7 @@ test("skills: Hive default skills show label, license and source, and turn on pe
     project: "hive",
   });
   await pack.getByRole("button", { name: "Mở dòng hive-run-etiquette" }).click();
-  await expect(pack.getByText("Viết riêng cho Hive")).toBeVisible();
+  await expect(page.getByRole("dialog").getByText("Viết riêng cho Hive")).toBeVisible();
 });
 
 test("skills: members cannot change Hive default skills for the whole organization", async ({ page }) => {
@@ -390,11 +392,14 @@ test("skills: connect a repository with an existing Git connection", async ({ pa
 test("memory: hybrid search, kind filter, write and supersede", async ({ page }) => {
   const hub = await setup(page);
   await page.goto("/knowledge/memory");
-  await page.getByRole("button", { name: "Loại", exact: true }).click();
-  await page.getByRole("checkbox", { name: "Quyết định", exact: true }).check();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("status").filter({ hasText: "Đang lọc" })).toContainText("Quyết định");
-  await page.getByRole("button", { name: "Xoá hết bộ lọc" }).click();
+  // Một ô tìm duy nhất: không còn ô lọc cục bộ thứ hai trong bảng.
+  await expect(page.getByRole("textbox")).toHaveCount(1);
+  const kinds = page.getByRole("group", { name: "Loại", exact: true });
+  await kinds.getByRole("button", { name: "Bẫy đã gặp" }).click();
+  await expect(kinds.getByRole("button", { name: "Bẫy đã gặp" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("table")).not.toContainText(memory.content);
+  await expect(page.getByText("Không có memory nào khớp")).toBeVisible();
+  await kinds.getByRole("button", { name: "Tất cả" }).click();
   await page.getByRole("button", { name: "Thêm memory" }).click();
   await page.getByRole("dialog").getByRole("textbox", { name: "Nội dung", exact: true }).fill("Quy ước mới");
   await page.getByRole("button", { name: "Lưu", exact: true }).click();
@@ -408,6 +413,7 @@ test("memory: hybrid search, kind filter, write and supersede", async ({ page })
   await page.getByRole("textbox", { name: "Tìm theo từ và theo nghĩa…" }).fill("tiền");
   await page.getByRole("button", { name: "Tìm", exact: true }).click();
   await expect(page.getByRole("table")).toContainText("Từ, Nghĩa");
+  await expect(page.getByRole("status")).toContainText("tiền");
   expect(hub.rpcCalls.find((call) => call.path === "memory/search")?.input).toEqual({ query: "tiền", limit: 50 });
   expect(hub.rpcCalls.find((call) => call.path === "memory/write")?.input).toMatchObject({
     scope: { level: "org" },
@@ -416,6 +422,8 @@ test("memory: hybrid search, kind filter, write and supersede", async ({ page })
   expect(hub.rpcCalls.find((call) => call.path === "memory/supersede")?.input).toMatchObject({
     content: "Quy ước thay thế",
   });
+  await page.getByRole("button", { name: "Xoá tìm kiếm" }).click();
+  await expect(page.getByRole("table")).not.toContainText("Từ, Nghĩa");
 });
 
 for (const action of ["approve", "reject"] as const) {
@@ -430,8 +438,10 @@ for (const action of ["approve", "reject"] as const) {
     await expect(diff.locator(".bg-success-soft")).toContainText("Round per line.");
     await page.getByLabel("Ghi chú khi duyệt").fill("Đã kiểm tra");
     await page.getByRole("button", { name: action === "approve" ? "Duyệt" : "Từ chối", exact: true }).click();
+    // Quyết xong thì hộp thoại đóng và dòng rời tab "Chờ duyệt".
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("table")).not.toContainText(doc.key);
-    await page.getByLabel("Trạng thái", { exact: true }).selectOption(action === "approve" ? "approved" : "rejected");
+    await page.getByRole("tab", { name: action === "approve" ? "Đã duyệt" : "Bị từ chối" }).click();
     await expect(page.getByRole("table")).toContainText(doc.key);
     expect(hub.rpcCalls.find((call) => call.path === `proposals/${action}`)?.input).toEqual({
       id: proposal.id,
@@ -487,6 +497,7 @@ test("team admin can decide team proposals but cannot decide org proposals", asy
   await page.getByRole("button", { name: `Mở dòng ${doc.key}` }).click();
   await expect(page.getByRole("region", { name: "Thay đổi nội dung" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Duyệt", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Mở dòng team/platform/money" }).click();
   await expect(page.getByRole("button", { name: "Duyệt", exact: true })).toBeEnabled();
 });
@@ -528,7 +539,13 @@ test("memory write error preserves form content", async ({ page }) => {
   await expect(dialog.getByRole("textbox", { name: "Nội dung", exact: true })).toHaveValue("Giữ nội dung");
 });
 
-for (const route of ["docs", "skills", "memory", "proposals"]) {
+const EMPTY_TITLE = {
+  docs: "Chưa có tài liệu nào",
+  skills: "Chưa có skill của tổ chức",
+  memory: "Chưa có memory nào",
+  proposals: "Không có đề xuất nào đang chờ",
+} as const;
+for (const route of ["docs", "skills", "memory", "proposals"] as const) {
   test(`${route}: empty and recoverable load error`, async ({ page }) => {
     let broken = true;
     await setup(page, {
@@ -540,8 +557,8 @@ for (const route of ["docs", "skills", "memory", "proposals"]) {
     await page.goto(`/knowledge/${route}`);
     await expect(page.getByRole("alert")).toContainText("Không có quyền đọc.");
     broken = false;
-    await page.getByRole("button", { name: "Thử lại", exact: true }).click();
-    await expect(page.getByText("Chưa có dữ liệu.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Tải lại", exact: true }).click();
+    await expect(page.getByRole("heading", { name: EMPTY_TITLE[route], exact: true })).toBeVisible();
   });
   for (const scheme of ["light", "dark"] as const) {
     test(`${route}: ${scheme}, English, 360px without page overflow`, async ({ page }, testInfo) => {

@@ -18,6 +18,7 @@ import {
   authorize,
   authorView,
   canRead,
+  docGrant,
   iso,
   type Principal,
   projectContext,
@@ -55,7 +56,7 @@ async function loadDoc(tx: Tx, key: string): Promise<DocRow | null> {
 /** Tài liệu mà người gọi đọc được; không thấy thì báo như không tồn tại. */
 async function readable(tx: Tx, reader: Reader, key: string): Promise<DocRow> {
   const d = await loadDoc(tx, key);
-  if (!d || !canRead(reader, d)) throw notFound();
+  if (!d || !(canRead(reader, d) || (await docGrant(tx, reader, key))?.read)) throw notFound();
   return d;
 }
 
@@ -66,8 +67,10 @@ async function readable(tx: Tx, reader: Reader, key: string): Promise<DocRow> {
 export async function docScope(tx: Tx, reader: Reader, key: string): Promise<Scope> {
   const d = await loadDoc(tx, key);
   if (!d) return scopeOfDocKey(tx, reader, key);
-  if (!canRead(reader, d)) throw notFound();
-  return d;
+  if (canRead(reader, d)) return d;
+  const grant = await docGrant(tx, reader, key);
+  if (!grant) throw notFound();
+  return { teamId: d.teamId, projectId: d.projectId, proposeGranted: grant.propose };
 }
 
 /** Phiên bản hiện tại của tài liệu theo key (0 khi chưa có). Dùng khi tạo đề xuất để báo sớm base đã cũ. */
