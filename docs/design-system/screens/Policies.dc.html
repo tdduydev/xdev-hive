@@ -37,8 +37,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{ou
 pre.code{margin:0;padding:10px 12px;border-radius:8px;background:var(--muted);font-family:var(--font-mono);font-size:12px;line-height:1.6;white-space:pre-wrap}
 </style>
 </helmet>
-<div data-theme="{{theme}}" style="min-height: 1900px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
-  <dc-import name="Sidebar" active="policies" lang="{{lang}}" hint-size="240px,1900px"></dc-import>
+<div data-theme="{{theme}}" style="min-height: 2500px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="policies" lang="{{lang}}" hint-size="240px,2500px"></dc-import>
   <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
     <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
     <main style="box-sizing: border-box; width: 100%; max-width: 1280px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
@@ -140,14 +140,62 @@ pre.code{margin:0;padding:10px 12px;border-radius:8px;background:var(--muted);fo
             </div>
           </div>
         </section>
+
+        <section id="artifacts" class="card" style="grid-column: 1 / -1;">
+          <div class="card-h" style="flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 2px;"><h2 class="card-t">{{t.art}}</h2><span class="hint">{{t.artHint}}</span></div>
+            <span class="badge" style="{{art.badge}}">{{art.badgeText}}</span>
+          </div>
+          <div class="card-b">
+            <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.artOn}}</strong><span class="hint">{{t.artOnHint}}</span></span><button type="button" role="switch" aria-checked="{{art.aria}}" aria-label="{{t.artOn}}" class="sw" onClick="{{art.flip}}" style="{{art.track}}"><span style="{{art.knob}}"></span></button></div>
+            <sc-if value="{{art.off}}" hint-placeholder-val="{{false}}">
+              <div role="status" style="display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; font-size: 13px; background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span>{{t.artOffNote}}<div class="hint" style="color: inherit; opacity: .85;">{{t.artOffNoteHint}}</div></span></div>
+            </sc-if>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; align-items: start; opacity: {{art.fade}};">
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <fieldset style="margin: 0; padding: 0; border: 0; min-width: 0;">
+                  <legend style="padding: 0; font-size: 13px; font-weight: 500; margin-bottom: 6px;">{{t.artTypes}}</legend>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{artTypes}}" as="a" hint-placeholder-count="5"><label class="chip" style="{{a.style}}"><input type="checkbox" checked="{{a.on}}" disabled="{{a.soon}}" style="accent-color: var(--primary);">{{a.label}}<sc-if value="{{a.soon}}" hint-placeholder-val="{{false}}"><span class="hint">· {{t.soon}}</span></sc-if></label></sc-for></div>
+                  <span class="hint" style="display: block; margin-top: 4px;">{{t.artTypesHint}}</span>
+                </fieldset>
+                <fieldset style="margin: 0; padding: 0; border: 0; min-width: 0;">
+                  <legend style="padding: 0; font-size: 13px; font-weight: 500; margin-bottom: 6px;">{{t.artScopes}}</legend>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{artScopes}}" as="a" hint-placeholder-count="4"><label class="chip" style="{{a.style}}"><input type="checkbox" checked="{{a.on}}" disabled="{{a.soon}}" style="accent-color: var(--primary);">{{a.label}}<sc-if value="{{a.soon}}" hint-placeholder-val="{{false}}"><span class="hint">· {{t.soon}}</span></sc-if></label></sc-for></div>
+                </fieldset>
+                <div style="padding: 10px 12px; border-radius: 8px; background: var(--muted); display: flex; flex-direction: column; gap: 6px;">
+                  <strong style="font-weight: 600; font-size: 13px;">🔒 {{t.artFixed}}</strong>
+                  <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: 13px;"><sc-for list="{{artFixed}}" as="a" hint-placeholder-count="3"><li>{{a}}</li></sc-for></ul>
+                  <span class="hint">{{t.artFixedHint}}</span>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 14px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 14px;">
+                  <sc-for list="{{artLimits}}" as="f" hint-placeholder-count="6">
+                    <div class="field"><label for="{{f.id}}">{{f.label}}</label>
+                      <span style="display: flex; align-items: center; gap: 8px;"><input id="{{f.id}}" class="input mono" value="{{f.value}}" inputmode="numeric" aria-invalid="{{f.invalid}}" aria-describedby="{{f.id}}-h" disabled="{{art.off}}" style="{{f.inputStyle}}"><span class="muted mono">{{f.unit}}</span></span>
+                      <span id="{{f.id}}-h" class="hint" style="{{f.hintStyle}}" role="{{f.role}}">{{f.hint}}</span></div>
+                  </sc-for>
+                </div>
+                <div style="padding: 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 10px;">
+                  <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.links}}</strong><span class="hint">{{t.linksHint}}</span></span><button type="button" role="switch" aria-checked="{{lnk.aria}}" aria-label="{{t.links}}" class="sw" onClick="{{lnk.flip}}" style="{{lnk.track}}"><span style="{{lnk.knob}}"></span></button></div>
+                  <label class="field">{{t.linksMax}}<span style="display: flex; align-items: center; gap: 8px;"><input class="input mono" value="30" inputmode="numeric" style="max-width: 96px;" disabled="{{lnk.off}}"><span class="muted mono">{{t.days}}</span></span><span class="hint">{{t.linksMaxHint}}</span></label>
+                  <sc-if value="{{lnk.off}}" hint-placeholder-val="{{false}}"><div role="status" style="padding: 8px 10px; border-radius: 8px; font-size: 13px; background: var(--warning-soft); color: var(--warning);">{{t.linksOffNote}}</div></sc-if>
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px 16px; padding-top: 14px; border-top: 1px dashed var(--border);">
+              <a href="ArtifactUsage.dc.html">{{t.toUsage}}</a><a href="AdminPublicLinks.dc.html">{{t.toLinks}}</a>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"autoAllowed":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":1900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"autoAllowed":{"editor":"boolean","default":true},"artifacts":{"editor":"enum","options":["on","off","error"],"default":"on"},"$preview":{"width":1440,"height":2500}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { full: false, auto: null, lang: null, dark: null }; }
+  constructor(props) { super(props); this.state = { full: false, auto: null, art: null, links: null, lang: null, dark: null }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const dark = this.state.dark ?? !!this.props.dark;
@@ -180,6 +228,19 @@ class Component extends DCLogic {
       paths: ['Đường dẫn nhạy cảm', 'Sensitive paths'], pathsHint: ['Mẫu glob, so với mọi đường dẫn file nêu trong tài liệu và danh sách file của task.', 'Glob patterns, matched against every file path named in the document and the task file list.'],
       reset: ['Đặt lại danh sách mặc định', 'Reset to default lists'],
       st1: ['Cổng đã tự duyệt', 'Gates auto-approved'], st1h: ['30 ngày qua', 'last 30 days'], st2: ['Bị thu hồi', 'Revoked'], st2h: ['trên số tự duyệt', 'of auto-approvals'], st3: ['Điểm trung bình', 'Average score'], st3h: ['ngưỡng hiệu lực 9', 'effective threshold 9'], st4: ['Dự án bật tự duyệt', 'Projects with it on'], st4h: ['trên 12 dự án bật AI SDLC', 'of 12 AI SDLC projects'],
+      art: ['Artifacts', 'Artifacts'], artHint: ['Sản phẩm agent tạo ở Leader chat, Terminal Leader và run: sơ đồ, báo cáo, trang HTML. Chỉ hạ được giới hạn, không vượt trần của người vận hành (biến môi trường của hub).', 'Work agents produce in Leader chat, Terminal Leader and runs: diagrams, reports, HTML pages. You can only lower limits, never exceed the operator ceiling (hub environment variables).'],
+      artOn: ['Bật Artifact cho tổ chức', 'Turn on Artifacts for the organization'], artOnHint: ['Tắt thì không ai tạo hay sửa được artifact; artifact đã có vẫn đọc được và link công khai ngừng phục vụ.', 'When off, nobody can create or edit artifacts; existing ones stay readable and public links stop being served.'],
+      artOnBadge: ['Đang bật', 'On'], artOffBadge: ['Đã tắt', 'Off'],
+      artOffNote: ['Đã tắt Artifact cho toàn tổ chức.', 'Artifacts are off for the whole organization.'], artOffNoteHint: ['Tool artifact_create trả ARTIFACT_TYPE_DISABLED cho agent; 412 artifact hiện có chuyển sang chỉ đọc.', 'The artifact_create tool returns ARTIFACT_TYPE_DISABLED to agents; the 412 existing artifacts become read-only.'],
+      artTypes: ['Loại được phép', 'Allowed types'], artTypesHint: ['Tắt một loại thì không tạo mới được loại đó; artifact cũ vẫn xem được.', 'Turning a type off blocks new ones of that type; existing ones stay viewable.'],
+      artScopes: ['Phạm vi được phép', 'Allowed scopes'], soon: ['sắp có', 'soon'],
+      artFixed: ['Cố định, không chỉnh được', 'Fixed, not adjustable'], artFixedHint: ['Các mục này không có công tắc ở bất kỳ lớp nào.', 'No layer offers a switch for these.'],
+      artVerBytes: ['Cỡ tối đa mỗi phiên bản', 'Max size per version'], artVers: ['Số phiên bản tối đa mỗi artifact', 'Max versions per artifact'], artRunArt: ['Artifact tối đa mỗi run', 'Max artifacts per run'], artRunVer: ['Phiên bản tối đa mỗi run', 'Max versions per run'], artBlob: ['Cỡ tối đa ảnh và PDF', 'Max image and PDF size'], artQuota: ['Dung lượng của tổ chức', 'Organization storage'],
+      ceil: ['Trần của người vận hành', 'Operator ceiling'], ceilBad: ['Vượt trần của người vận hành', 'Exceeds the operator ceiling'], artVersHint: ['Tối đa 1.000; tới giới hạn thì gợi ý "Nhân bản thành artifact mới".', 'Up to 1,000; at the limit the user is offered "Duplicate as a new artifact".'],
+      links: ['Cho phép link công khai', 'Allow public links'], linksHint: ['Người ngoài tổ chức xem một phiên bản, không cần đăng nhập.', 'People outside the organization view one version without signing in.'],
+      linksMax: ['Hạn tối đa của link', 'Maximum link lifetime'], linksMaxHint: ['1 đến 30 ngày. Không có link vĩnh viễn.', '1 to 30 days. There are no permanent links.'],
+      linksOffNote: ['Đã tắt link công khai: mọi link đang có ngừng phục vụ ngay (trả như không tồn tại) và không tạo được link mới.', 'Public links are off: every existing link stops being served at once (as if it did not exist) and no new link can be created.'],
+      toUsage: ['Xem dung lượng artifact →', 'View artifact storage →'], toLinks: ['Link công khai của tổ chức →', 'Organization public links →'],
       runBudget: ['Trần mỗi run', 'Per-run cap'], dayBudget: ['Trần mỗi ngày của tổ chức', 'Organization daily cap'], parallel: ['Run song song mỗi máy', 'Parallel runs per machine'], retention: ['Giữ log run', 'Keep run logs'], days: ['ngày', 'days'],
     };
     const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
@@ -212,7 +273,37 @@ class Component extends DCLogic {
       { label: t.st1, value: '41', hint: t.st1h }, { label: t.st2, value: '4 (9,8%)', hint: t.st2h },
       { label: t.st3, value: '9,3', hint: t.st3h }, { label: t.st4, value: '5', hint: t.st4h },
     ];
+    const artMode = this.props.artifacts ?? 'on';
+    const artOn = this.state.art ?? (artMode !== 'off');
+    const art = {
+      off: !artOn, aria: artOn ? 'true' : 'false', fade: artOn ? '1' : '.5',
+      track: 'background: ' + (artOn ? 'var(--primary)' : 'var(--input)') + ';', knob: artOn ? 'transform: translateX(16px);' : '',
+      badge: artOn ? 'background: var(--success-soft); color: var(--success);' : 'background: var(--warning-soft); color: var(--warning);', badgeText: artOn ? t.artOnBadge : t.artOffBadge,
+      flip: () => this.setState({ art: !artOn }),
+    };
+    const linksOn = this.state.links ?? true;
+    const lnk = {
+      off: !linksOn || !artOn, aria: linksOn ? 'true' : 'false',
+      track: 'background: ' + (linksOn ? 'var(--primary)' : 'var(--input)') + ';', knob: linksOn ? 'transform: translateX(16px);' : '',
+      flip: () => this.setState({ links: !linksOn }),
+    };
+    const chip = (on, soon) => 'padding-right: 10px; cursor: ' + (soon ? 'not-allowed' : 'pointer') + ';' + (soon ? ' opacity: .6;' : '') + (on && !soon ? ' background: var(--accent); color: var(--accent-foreground); border-color: transparent;' : '');
+    const artTypes = [['Markdown', 1, 0], ['Code', 1, 0], ['HTML', 1, 0], ['Mermaid', 1, 0], ['React', 1, 0], ['SVG', 0, 1], ['JSON', 0, 1], ['CSV', 0, 1], [x(['Ảnh', 'Image']), 0, 1], ['PDF', 0, 1]].map(([label, on, soon]) => ({ label, on: !!on, soon: !!soon, style: chip(on, soon) }));
+    const artScopes = [[x(['Riêng tư', 'Private']), 1, 0], [x(['Dự án', 'Project']), 1, 0], [x(['Đội', 'Team']), 0, 1], [x(['Cả tổ chức', 'Whole organization']), 0, 1]].map(([label, on, soon]) => ({ label, on: !!on, soon: !!soon, style: chip(on, soon) }));
+    const artFixed = [
+      x(['Khung cách ly không có mạng và không có CDN ngoài', 'The isolated frame has no network and no external CDN']),
+      x(['Quét bí mật luôn chặn lưu, không có chế độ che', 'Secret scanning always blocks saving; there is no redact mode']),
+      x(['Quản trị không đọc được artifact riêng tư của người khác', 'Admins cannot read other people\'s private artifacts']),
+    ];
+    const bad = artMode === 'error';
+    const lim = (id, label, value, unit, ceil, hint, invalid) => ({ id, label, value, unit, invalid: invalid ? 'true' : 'false', role: invalid ? 'alert' : 'note', hint: invalid ? t.ceilBad + ' (' + ceil + ').' : (hint ?? (ceil ? t.ceil + ': ' + ceil : '')), inputStyle: invalid ? 'border-color: var(--destructive);' : '', hintStyle: invalid ? 'color: var(--destructive);' : '' });
+    const artLimits = [
+      lim('art-ver-bytes', t.artVerBytes, bad ? '4' : '1', 'MiB', '1 MiB', null, bad), lim('art-vers', t.artVers, '200', '', '1.000', t.artVersHint, false),
+      lim('art-run-art', t.artRunArt, '20', '', '', null, false), lim('art-run-ver', t.artRunVer, '100', '', '', null, false),
+      lim('art-blob', t.artBlob, '20', 'MiB', '20 MiB', null, false), lim('art-quota', t.artQuota, '2', 'GiB', '2 GiB', null, false),
+    ];
     return {
+      art, lnk, artTypes, artScopes, artFixed, artLimits,
       auto, always, keywords, paths, stats,
       theme: dark ? 'dark' : 'light', lang, dark, t, models, hooks,
       tplText: '# ' + '{' + '{project.name}' + '}\n\n' + t.tpl + '\n- Project key: ' + '{' + '{project.key}' + '}\n- MCP: https://hive.acme.vn/mcp',

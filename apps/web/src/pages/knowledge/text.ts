@@ -7,6 +7,8 @@ export const knowledgeText: Dict<{
   docsMcpNote: string;
   skillsLead: string;
   skillsSearch: string;
+  skillsLearned: string;
+  skillsViews: string;
   memoryLead: string;
   memoryAdd: string;
   proposalsTitle: string;
@@ -80,6 +82,8 @@ export const knowledgeText: Dict<{
     docsMcpNote: "Agent đọc tài liệu này bằng",
     skillsLead: "Skill (SKILL.md) nạp cho agent khi chạy.",
     skillsSearch: "Tìm skill, mô tả, đường dẫn…",
+    skillsLearned: "Đề xuất từ agent",
+    skillsViews: "Skill và đề xuất từ agent",
     memoryLead: "Ghi nhớ ngắn của agent và người. Agent tìm qua memory_search trước khi làm.",
     memoryAdd: "Thêm memory",
     proposalsTitle: "Đề xuất sửa",
@@ -153,6 +157,8 @@ export const knowledgeText: Dict<{
     docsMcpNote: "Agents read this doc with",
     skillsLead: "Skills (SKILL.md) loaded into agent runs.",
     skillsSearch: "Search skill, description, path…",
+    skillsLearned: "Agent proposals",
+    skillsViews: "Skills and agent proposals",
     memoryLead: "Short notes from agents and people. Agents search them with memory_search before working.",
     memoryAdd: "Add memory",
     proposalsTitle: "Proposals",
