@@ -37,6 +37,7 @@ import {
 } from "./access.ts";
 import { artifactViews } from "./artifact-view.ts";
 import { itemAutoApprovals } from "./autoapprove.ts";
+import { itemTaskViews } from "./breakdown.ts";
 import { contractWarnings } from "./contracts.ts";
 import { resolveMode } from "./modes.ts";
 import {
@@ -899,6 +900,8 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
     ).map((t) => [t.id, t.name]),
   );
   const keyOf = (projectId: string) => ctx.projects.get(projectId)?.key ?? "";
+  const projectKeys = new Map([...ctx.projects].map(([pid, p]) => [pid, p.key]));
+  const itemTasks = await itemTaskViews(tx, item, projectKeys);
   const now = Date.now();
 
   const writable = await Promise.all(members.map((m) => hasTeamPermission(tx, userId, m.teamId, "sdlc.write")));
@@ -948,7 +951,7 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
         approvedAt: isoOrNull(row?.approvedAt ?? null),
       };
     }),
-    artifacts: await artifactViews(tx, item, artifacts, new Map([...ctx.projects].map(([id, p]) => [id, p.key]))),
+    artifacts: await artifactViews(tx, item, artifacts, projectKeys),
     questions: questions.map((q) => ({
       id: q.id,
       itemId: item.id,
@@ -983,8 +986,7 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
       createdAt: iso(s.createdAt),
       finishedAt: isoOrNull(s.finishedAt),
     })),
-    // Task do bản tách (T030) điền.
-    tasks: [],
+    tasks: itemTasks.tasks,
     overrides: overrides.map((o) => ({
       id: o.id,
       itemId: o.itemId,
@@ -999,7 +1001,7 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
       active: !o.revokedAt && (!o.expiresAt || o.expiresAt.getTime() > now),
     })),
     autoApprovals: await itemAutoApprovals(tx, userId, item),
-    warnings: await contractWarnings(tx, item),
+    warnings: [...itemTasks.warnings, ...(await contractWarnings(tx, item))],
     convergeRound: item.convergeRound,
     convergedAt: isoOrNull(item.convergedAt),
     can: {

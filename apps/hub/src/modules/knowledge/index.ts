@@ -23,6 +23,7 @@ export {
   assistOutput,
   assistScope,
   draftForAgent,
+  editorState,
   saveDraft,
 } from "./editor.ts";
 export { createOpenAIEmbedder, type Embedder, EmbedderError } from "./embedder.ts";
