@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { artifactsContract } from "./artifacts.ts";
 import { auditContract } from "./audit.ts";
 import { codeReviewsContract } from "./code-reviews.ts";
 import { costsContract } from "./cost.ts";
@@ -24,6 +25,7 @@ import { tenancyContract } from "./tenancy.ts";
 import { terminalContract } from "./terminal.ts";
 import { reviewsContract, workflowsContract } from "./workflows.ts";
 
+export * from "./artifacts.ts";
 export * from "./audit.ts";
 export * from "./breakdown.ts";
 export * from "./code-reviews.ts";
@@ -48,6 +50,7 @@ export * from "./sandbox.ts";
 export * from "./scm.ts";
 export * from "./sdlc.ts";
 export * from "./sdlc-presets/index.ts";
+export * from "./secret-scan.ts";
 export * from "./skill-learning.ts";
 export * from "./skills-sync.ts";
 export * from "./tasks.ts";
@@ -144,6 +147,7 @@ export const contract = {
   desktopConnect: desktopConnectContract,
   sdlc: sdlcContract,
   terminal: terminalContract,
+  artifacts: artifactsContract,
 };
 
 export type Contract = typeof contract;
