@@ -372,9 +372,11 @@ describe("đăng nhập gói từ web (T063)", () => {
     const done = await get(m.id, login.requestId);
     expect(done).toMatchObject({ accountId: "claude-2", url: null, code: null });
 
-    const audit = await admin.query("select action, data::text as data from hive.audit_log where target_id = $1", [
-      m.id,
-    ]);
+    // Hub đặt trạng thái trong bộ nhớ trước rồi mới ghi audit (worker không chờ DB), nên chờ dòng audit thay vì đọc ngay.
+    const auditOf = () =>
+      admin.query("select action, data::text as data from hive.audit_log where target_id = $1", [m.id]);
+    await until(async () => (await auditOf()).rows.some((r) => r.action === "machine.account_login.done"));
+    const audit = await auditOf();
     expect(audit.rows.map((r) => r.action)).toEqual(
       expect.arrayContaining([
         "machine.account_login.start",
@@ -427,6 +429,7 @@ describe("đăng nhập gói từ web (T063)", () => {
     w.ws.close();
     await w.closed;
     await until(async () => (await get(m.id, second.requestId)).status === "error");
+    await until(async () => (await auditData("machine.account_login.error")).length > 0);
     const actors = (await auditData("machine.account_login.error")).map((a) => a.actor_user_id);
     expect(actors).toContain(null);
   });

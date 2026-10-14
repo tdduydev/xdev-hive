@@ -96,6 +96,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       </button>
     </sc-if>
 
+    <sc-if value="{{fromArt}}" hint-placeholder-val="{{false}}">
+      <div role="note" style="margin: 8px 12px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; background: var(--accent); color: var(--accent-foreground);"><span aria-hidden="true">◇</span><span style="flex: 1 1 240px; min-width: 0;">{{fromArtText}}</span><a href="ArtifactDetail.dc.html" style="color: inherit; font-weight: 600;">{{fromArtLink}}</a></div>
+    </sc-if>
+
     <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0;">
       <section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
         <div role="toolbar" aria-label="{{t.toolbar}}" style="{{toolbarStyle}}">
@@ -288,6 +292,57 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
             <p class="muted" style="margin: 0; font-size: 12px;">{{t.aiNote}}</p>
           </div>
         </sc-if>
+        <sc-if value="{{tabArtifact}}" hint-placeholder-val="{{false}}">
+          <div role="tabpanel" aria-label="{{af.title}}" style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+
+<!-- Mục Artifact (T006, US10/US11): gắn artifact vào {{af.targetLong}}, Chuyển thành tài liệu, Lưu vào repo. Thiết kế dùng chung ở bốn màn; chỉ đổi chữ theo nơi đặt. -->
+<section aria-label="{{af.title}}" style="background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: 12px; font-size: 14px;">
+  <div style="padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; border-bottom: 1px solid var(--border);">
+    <h2 style="margin: 0; font-size: 15px; font-weight: 600;">{{af.title}}</h2>
+    <span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; background: var(--muted); color: var(--muted-foreground);">{{af.count}}</span>
+    <span style="flex: 1;"></span>
+    <button type="button" onClick="{{af.openAttach}}" style="{{af.btnOutline}}" disabled="{{af.attachOff}}">+ {{af.attachLabel}}</button>
+  </div>
+  <p style="margin: 0; padding: 8px 16px 0; font-size: 12.5px; color: var(--muted-foreground);">{{af.hint}}</p>
+
+  <sc-if value="{{af.showOffline}}" hint-placeholder-val="{{false}}"><div role="status" style="margin: 10px 16px 0; display: flex; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">○</span><span>{{af.offline}}</span></div></sc-if>
+  <sc-if value="{{af.showLoading}}" hint-placeholder-val="{{false}}"><div role="status" aria-label="{{af.loading}}" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;"><span style="height: 40px; border-radius: 8px; background: var(--muted); opacity: .6;"></span><span style="height: 40px; border-radius: 8px; background: var(--muted); opacity: .4;"></span><span style="font-size: 12.5px; color: var(--muted-foreground);">{{af.loading}}</span></div></sc-if>
+  <sc-if value="{{af.showError}}" hint-placeholder-val="{{false}}"><div role="alert" style="margin: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 8px; font-size: 13px; background: var(--destructive-soft); color: var(--destructive);"><span aria-hidden="true">!</span><span style="flex: 1; min-width: 140px;">{{af.error}}</span><button type="button" style="{{af.btnOutline}}">{{af.retry}}</button></div></sc-if>
+  <sc-if value="{{af.showEmpty}}" hint-placeholder-val="{{false}}"><div style="padding: 22px 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;"><strong style="font-size: 14px;">{{af.emptyTitle}}</strong><span style="max-width: 320px; font-size: 13px; color: var(--muted-foreground);">{{af.emptyBody}}</span></div></sc-if>
+
+  <sc-if value="{{af.showList}}" hint-placeholder-val="{{true}}">
+    <ul style="margin: 8px 0 0; padding: 0; list-style: none;">
+      <sc-for list="{{af.rows}}" as="r" hint-placeholder-count="3">
+        <li style="position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 10px; padding: 10px 16px; border-top: 1px solid var(--border);">
+          <span style="flex: none; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 9999px; font-family: var(--font-mono); font-size: 12px; white-space: nowrap; background: var(--secondary); color: var(--secondary-foreground);">{{r.type}}</span>
+          <span style="flex: 1 1 150px; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+            <a href="ArtifactDetail.dc.html" style="color: var(--foreground); font-weight: 500; text-decoration: none; overflow-wrap: anywhere;">{{r.title}}</a>
+            <span style="font-size: 12.5px; color: var(--muted-foreground);">{{r.meta}}</span>
+            <span style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+              <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 9999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; {{r.scopeStyle}}">{{r.scope}}</span>
+              <sc-if value="{{r.fromDoc}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: var(--muted-foreground);">{{r.docNote}}</span></sc-if>
+            </span>
+          </span>
+          <span style="flex: none; position: relative; margin-left: auto; display: flex; align-items: center; gap: 4px;">
+            <button type="button" style="{{af.btnGhost}}">{{af.open}}</button>
+            <button type="button" aria-haspopup="menu" aria-expanded="{{r.menuAria}}" aria-label="{{r.menuLabel}}" onClick="{{r.toggleMenu}}" style="{{af.btnIcon}}">⋯</button>
+          <sc-if value="{{r.menuOpen}}" hint-placeholder-val="{{false}}">
+            <div role="menu" aria-label="{{r.menuLabel}}" style="position: absolute; right: 0; top: 32px; z-index: 4; min-width: 220px; padding: 4px; border-radius: 10px; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); box-shadow: var(--shadow-lg); display: flex; flex-direction: column;">
+              <button type="button" role="menuitem" style="{{af.menuItem}}">{{af.open}}</button>
+              <sc-if value="{{r.canDoc}}" hint-placeholder-val="{{false}}"><button type="button" role="menuitem" onClick="{{af.openDoc}}" style="{{af.menuItem}}">{{af.toDoc}}</button></sc-if>
+              <sc-if value="{{r.canRepo}}" hint-placeholder-val="{{false}}"><button type="button" role="menuitem" onClick="{{af.openRepo}}" style="{{af.menuItem}}">{{af.toRepo}}</button></sc-if>
+              <button type="button" role="menuitem" style="{{af.menuItemDanger}}">{{af.detach}}</button>
+            </div>
+          </sc-if>
+          </span>
+        </li>
+      </sc-for>
+    </ul>
+  </sc-if>
+</section>
+
+          </div>
+        </sc-if>
         <sc-if value="{{tabHistory}}" hint-placeholder-val="{{false}}">
           <ol style="margin: 0; padding: 14px 14px 14px 30px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px;">
             <sc-for list="{{history}}" as="h" hint-placeholder-count="4"><li><strong style="font-weight: 600;">{{h.v}}</strong> · {{h.who}} <span class="muted">· {{h.when}}</span><div class="muted" style="font-size: 12.5px;">{{h.note}}</div></li></sc-for>
@@ -297,6 +352,70 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     </div>
   </div>
 
+
+<sc-if value="{{af.dlgAttach}}" hint-placeholder-val="{{false}}">
+  <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 20;">
+    <div role="dialog" aria-modal="true" aria-labelledby="af-attach-t" style="width: 100%; max-width: 520px; max-height: 90vh; overflow: auto; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 12px; background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 14px;">
+      <h2 id="af-attach-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{af.attachTitle}}</h2>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{af.search}}<input placeholder="{{af.searchPh}}" style="height: 32px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--input); border-radius: 8px; background: transparent; color: var(--foreground); font: inherit; font-size: 14px; width: 100%;"></label>
+      <div role="radiogroup" aria-label="{{af.attachTitle}}" style="display: flex; flex-direction: column; gap: 6px;">
+        <sc-for list="{{af.cands}}" as="c" hint-placeholder-count="3">
+          <button type="button" role="radio" aria-checked="{{c.checked}}" onClick="{{c.pick}}" style="{{c.style}}">
+            <span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 9999px; font-family: var(--font-mono); font-size: 12px; background: var(--secondary); color: var(--secondary-foreground);">{{c.type}}</span>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; line-height: 1.35;"><span style="font-weight: 500; overflow-wrap: anywhere;">{{c.title}}</span><span style="font-size: 12.5px; color: var(--muted-foreground);">{{c.meta}}</span></span>
+            <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 9999px; font-size: 11.5px; font-weight: 500; {{c.scopeStyle}}">{{c.scope}}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" onClick="{{af.close}}" style="{{af.btnOutline}}">{{af.cancel}}</button><button type="button" onClick="{{af.attachGo}}" style="{{af.btnPrimary}}" disabled="{{af.attachGoOff}}">{{af.attachLabel}}</button></div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{af.dlgShare}}" hint-placeholder-val="{{false}}">
+  <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 20;">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="af-share-t" aria-describedby="af-share-d" style="width: 100%; max-width: 480px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 12px; background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 14px;">
+      <h2 id="af-share-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{af.shareTitle}}</h2>
+      <p id="af-share-d" style="margin: 0; color: var(--muted-foreground);">{{af.shareBody}}</p>
+      <div style="padding: 10px 12px; border-radius: 8px; font-size: 13px; background: var(--warning-soft); color: var(--warning);">{{af.shareWarn}}</div>
+      <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;"><button type="button" onClick="{{af.close}}" style="{{af.btnOutline}}">{{af.shareNo}}</button><button type="button" onClick="{{af.close}}" style="{{af.btnPrimary}}">{{af.shareYes}}</button></div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{af.dlgDoc}}" hint-placeholder-val="{{false}}">
+  <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 20;">
+    <div role="dialog" aria-modal="true" aria-labelledby="af-doc-t" style="width: 100%; max-width: 520px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 12px; background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 14px;">
+      <h2 id="af-doc-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{af.toDoc}}</h2>
+      <p style="margin: 0; color: var(--muted-foreground);">{{af.docBody}}</p>
+      <sc-if value="{{af.docDone}}" hint-placeholder-val="{{false}}">
+        <div role="status" style="padding: 10px 12px; border-radius: 8px; font-size: 13px; background: var(--success-soft); color: var(--success);">{{af.docDoneText}} <a href="Proposals.dc.html" style="color: inherit; font-weight: 600;">{{af.docDoneLink}}</a></div>
+      </sc-if>
+      <sc-if value="{{af.docForm}}" hint-placeholder-val="{{true}}">
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{af.docKey}}<input value="{{af.docKeyVal}}" aria-invalid="{{af.docInvalid}}" aria-describedby="af-doc-h" style="{{af.docInputStyle}}"><span id="af-doc-h" role="{{af.docHintRole}}" style="{{af.docHintStyle}}">{{af.docHint}}</span></label>
+        <div style="padding: 8px 10px; border-radius: 8px; font-size: 12.5px; background: var(--muted); color: var(--muted-foreground);">{{af.docFrom}}</div>
+      </sc-if>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" onClick="{{af.close}}" style="{{af.btnOutline}}">{{af.docCloseLabel}}</button><sc-if value="{{af.docForm}}" hint-placeholder-val="{{true}}"><button type="button" onClick="{{af.docGo}}" style="{{af.btnPrimary}}">{{af.docGoLabel}}</button></sc-if></div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{af.dlgRepo}}" hint-placeholder-val="{{false}}">
+  <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 20;">
+    <div role="dialog" aria-modal="true" aria-labelledby="af-repo-t" style="width: 100%; max-width: 520px; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; gap: 12px; background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 14px;">
+      <h2 id="af-repo-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{af.toRepo}}</h2>
+      <p style="margin: 0; color: var(--muted-foreground);">{{af.repoBody}}</p>
+      <sc-if value="{{af.repoDone}}" hint-placeholder-val="{{false}}">
+        <div role="status" style="padding: 10px 12px; border-radius: 8px; font-size: 13px; background: var(--success-soft); color: var(--success);">{{af.repoDoneText}} <a href="CodeReview.dc.html" style="color: inherit; font-weight: 600;">{{af.repoDoneLink}}</a></div>
+      </sc-if>
+      <sc-if value="{{af.repoForm}}" hint-placeholder-val="{{true}}">
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{af.repoPath}}<input value="{{af.repoPathVal}}" aria-invalid="{{af.repoInvalid}}" aria-describedby="af-repo-h" style="{{af.repoInputStyle}}"><span id="af-repo-h" role="{{af.repoHintRole}}" style="{{af.repoHintStyle}}">{{af.repoHint}}</span></label>
+        <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; background: var(--muted);"><dt style="color: var(--muted-foreground);">{{af.repoBranchLbl}}</dt><dd style="margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere;">hive/artifact/7K2M-v5</dd><dt style="color: var(--muted-foreground);">{{af.repoTargetLbl}}</dt><dd style="margin: 0; font-family: var(--font-mono);">{{af.repoTarget}}</dd></dl>
+      </sc-if>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" onClick="{{af.close}}" style="{{af.btnOutline}}">{{af.repoCloseLabel}}</button><sc-if value="{{af.repoForm}}" hint-placeholder-val="{{true}}"><button type="button" onClick="{{af.repoGo}}" style="{{af.btnPrimary}}">{{af.repoGoLabel}}</button></sc-if></div>
+    </div>
+  </div>
+</sc-if>
   <sc-if value="{{submitOpen}}" hint-placeholder-val="{{false}}">
     <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 30;">
       <div role="dialog" aria-modal="true" aria-labelledby="sb-t" class="card" style="width: 100%; max-width: 520px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg);">
@@ -312,12 +431,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"sdlc":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"artifacts":{"editor":"enum","options":["none","normal","empty","loading","error","offline","attach","share","toDoc","toDocError","toRepo","toRepoError"],"default":"none"},"fromArtifact":{"editor":"boolean","default":false},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"sdlc":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
 // modes: normal,drafting,waiting,stepError,drift,conflict,contract,readonly
 // Biến thể sdlc (prop sdlc = true): state sdlcMode = trạng thái xem (đọc thêm state.mode cho bộ kiểm); tab mặc định là "Hạng mục".
 // Khi sdlc = false mọi thứ như cũ: tab mặc định "Bình luận", không có khung "Hạng mục".
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { sug: 'pending', tab: null, submit: false, suggest: true, lang: null, sdlcMode: null, drawer: true }; }
+  constructor(props) { super(props); this.state = { afMode: null, afDlg: undefined, afMenu: null, afPick: null, afDone: false, sug: 'pending', tab: null, submit: false, suggest: true, lang: null, sdlcMode: null, drawer: true }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const en = lang === 'en';
@@ -361,8 +480,8 @@ class Component extends DCLogic {
     const slash = [['H', ['Tiêu đề', 'Heading'], ['Mục lớn', 'Section']], ['☑', ['Checklist', 'Checklist'], ['Tiêu chí chấp nhận', 'Acceptance criteria']], ['▦', ['Bảng', 'Table'], ['Yêu cầu, ma trận', 'Requirements matrix']], ['R#', ['Yêu cầu có mã', 'Requirement with id'], ['Tự đánh R-4', 'Auto-numbers R-4']], ['{}', ['Khối code', 'Code block'], ['Có tô màu cú pháp', 'Syntax highlighted']], ['◇', ['Sơ đồ Mermaid', 'Mermaid diagram'], ['Luồng, sequence, ER', 'Flow, sequence, ER']], ['↗', ['Nhúng tài liệu', 'Embed doc'], ['Liên kết tới doc khác', 'Link another doc']], ['✦', ['Viết bằng AI', 'Write with AI'], ['Dùng gói thuê bao', 'Uses your subscription']]].map(([i, l, h]) => ({ ico: i, label: x(l), hint: x(h) }));
     const aiActions = [[['Viết tiếp đoạn này', 'Continue writing'], ['Theo giọng của tài liệu', 'Matches the doc voice']], [['Kiểm đủ mục theo mẫu PRD', 'Check against the PRD template'], ['Báo mục còn thiếu', 'Lists missing sections']], [['Sinh tiêu chí chấp nhận từ yêu cầu', 'Draft acceptance criteria'], ['Mỗi R-n một tiêu chí', 'One per R-n']], [['Đối chiếu tài liệu liên quan', 'Cross-check related docs'], ['payment-api/money, runbook', 'payment-api/money, runbook']], [['Dịch sang tiếng Anh', 'Translate to English'], ['Giữ thuật ngữ trong glossary', 'Keeps glossary terms']]].map(([l, h]) => ({ label: x(l), hint: x(h) }));
     const history = [['v3', 'Trần Lan', ['đang sửa', 'editing'], ['3 đề xuất AI chờ nhận', '3 AI suggestions pending']], ['v2', 'Trần Lan', ['hôm qua', 'yesterday'], ['Bị trả lại ở checkpoint Product owner: thiếu tiêu chí chấp nhận', 'Returned at Product owner: missing acceptance criteria']], ['v1', 'Claude (gói Max)', ['2 ngày trước', '2 d ago'], ['Bản nháp đầu, viết từ yêu cầu của leader', 'First draft from the leader brief']]].map(([v, w, wh, n]) => ({ v, who: w, when: x(wh), note: x(n) }));
-    const tb = this.state.tab ?? (sdlc ? 'item' : 'comments');
-    const tabs = [...(sdlc ? [['item', ['Hạng mục', 'Item']]] : []), ['comments', ['Bình luận · 1', 'Comments · 1']], ['ai', ['AI', 'AI']], ['history', ['Phiên bản', 'Versions']]].map(([k, l]) => ({ label: x(l), sel: tb === k ? 'true' : 'false', pick: () => this.setState({ tab: k }), style: 'height: ' + (narrow ? '44px' : '40px') + '; padding: 0 10px; background: transparent; border: 0; margin-bottom: -1px; font: inherit; font-size: 13px; cursor: pointer; ' + (narrow ? 'white-space: nowrap; ' : '') + (tb === k ? 'color: var(--foreground); font-weight: 600; border-bottom: 2px solid var(--foreground);' : 'color: var(--muted-foreground); border-bottom: 2px solid transparent;') }));
+    const tb = this.state.tab ?? ((this.props.artifacts ?? 'none') !== 'none' ? 'artifact' : sdlc ? 'item' : 'comments');
+    const tabs = [...(sdlc ? [['item', ['Hạng mục', 'Item']]] : []), ['comments', ['Bình luận · 1', 'Comments · 1']], ['ai', ['AI', 'AI']], ['artifact', ['Artifact', 'Artifacts']], ['history', ['Phiên bản', 'Versions']]].map(([k, l]) => ({ label: x(l), sel: tb === k ? 'true' : 'false', pick: () => this.setState({ tab: k }), style: 'height: ' + (narrow ? '44px' : '40px') + '; padding: 0 8px; background: transparent; border: 0; margin-bottom: -1px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; ' + (tb === k ? 'color: var(--foreground); font-weight: 600; border-bottom: 2px solid var(--foreground);' : 'color: var(--muted-foreground); border-bottom: 2px solid transparent;') }));
     const ai = 'background: var(--accent); color: var(--accent-foreground);'; const hu = 'background: var(--warning-soft); color: var(--warning);';
     const nextGates = [[x(['AI', 'AI']), ai, x(['Kiểm đủ mục, mâu thuẫn với tài liệu khác', 'Completeness and conflicts with other docs']), 'Claude'], [x(['Người', 'Human']), hu, 'Product owner', 'Nguyễn Minh'], [x(['Người', 'Human']), hu, x(['Pháp chế (khi có từ khoá phí, hoàn tiền)', 'Legal (when fees or refunds are mentioned)']), x(['Nhóm Pháp chế', 'Legal group'])]].map(([k, s, l, w]) => ({ kind: k, kindStyle: s, label: l, who: w }));
     const seg = (on) => 'height: ' + (this.props.narrow ? '36px' : '24px') + '; min-width: 30px; padding: 0 6px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 11.5px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
@@ -426,7 +545,117 @@ class Component extends DCLogic {
     const drawerOpen = this.state.drawer;
     const drawerBar = sdlc && narrow;
     const wide = !narrow;
+
+    const af = (() => {
+      const host = 'doc';
+      const S = this.state;
+      const mode = S.afMode ?? this.props.artifacts ?? 'normal';
+      const DLG = { attach: 'attach', share: 'share', toDoc: 'toDoc', toDocError: 'toDoc', toRepo: 'toRepo', toRepoError: 'toRepo' };
+      const dlg = S.afDlg === undefined ? (DLG[mode] ?? null) : S.afDlg;
+      const bad = S.afDlg === undefined && (mode === 'toDocError' || mode === 'toRepoError');
+      const listMode = DLG[mode] ? 'normal' : mode;
+      const H = {
+        task: { target: ['TASK-44', 'TASK-44'], long: ['task TASK-44', 'task TASK-44'], proj: 'hive-worker', title: ['Artifact', 'Artifacts'], hint: ['Artifact gắn với task này, gồm cả artifact do run của task tạo. Agent của run đọc được chúng qua artifact_get.', 'Artifacts linked to this task, including ones its runs created. Run agents can read them through artifact_get.'] },
+        project: { target: ['payment-api', 'payment-api'], long: ['dự án payment-api', 'project payment-api'], proj: 'payment-api', title: ['Artifact của dự án', 'Project artifacts'], hint: ['Artifact có phạm vi dự án này, cả do người và agent tạo. Người có vai trò member trở lên sửa được.', 'Artifacts scoped to this project, made by people and agents. Members and above can edit them.'] },
+        sdlc: { target: ['012-hoan-tien-mot-phan', '012-partial-refund'], long: ['hạng mục 012-hoan-tien-mot-phan', 'item 012-partial-refund'], proj: 'payment-api', title: ['Artifact', 'Artifacts'], hint: ['Run của hạng mục nhận danh sách artifact này trong prompt.', 'Runs of this item receive this artifact list in their prompt.'] },
+        doc: { target: ['project/payment-api/refund-api', 'project/payment-api/refund-api'], long: ['tài liệu project/payment-api/refund-api', 'document project/payment-api/refund-api'], proj: 'payment-api', title: ['Artifact liên quan', 'Related artifacts'], hint: ['Gắn artifact không đổi nội dung tài liệu và không qua duyệt.', 'Linking an artifact does not change the document and needs no review.'] },
+      }[host];
+      const R = {
+        task: [
+          { id: 'a1', type: 'mermaid', title: ['Sơ đồ luồng proxy', 'Proxy flow diagram'], ver: 2, who: ['Run b04e7a19 (lập kế hoạch)', 'Run b04e7a19 (planning)'], when: ['10:12', '10:12'], scope: 'project', repo: true },
+          { id: 'a2', type: 'markdown', title: ['Ghi chú kiểm thử proxy', 'Proxy test notes'], ver: 1, who: ['Trần Lan', 'Trần Lan'], when: ['hôm qua', 'yesterday'], scope: 'project', md: true },
+        ],
+        project: [
+          { id: 'a1', type: 'markdown', title: ['Checklist release', 'Release checklist'], ver: 3, who: ['Trần Lan', 'Trần Lan'], when: ['hôm nay', 'today'], scope: 'project', md: true },
+          { id: 'a2', type: 'mermaid', title: ['Luồng hoàn tiền', 'Refund flow'], ver: 5, who: ['Leader', 'Leader'], when: ['10:14', '10:14'], scope: 'project', repo: true },
+          { id: 'a3', type: 'react', title: ['Báo cáo hoàn tiền theo tuần', 'Weekly refund report'], ver: 2, who: ['Run 3f9c20d1', 'Run 3f9c20d1'], when: ['hôm qua', 'yesterday'], scope: 'project' },
+          { id: 'a4', type: 'html', title: ['Wireframe nút hoàn tiền', 'Refund button wireframe'], ver: 1, who: ['Minh Anh', 'Minh Anh'], when: ['10/10', 'Oct 10'], scope: 'project', repo: true },
+        ],
+        sdlc: [
+          { id: 'a1', type: 'mermaid', title: ['Luồng hoàn tiền', 'Refund flow'], ver: 5, who: ['Leader', 'Leader'], when: ['10:14', '10:14'], scope: 'project', repo: true },
+          { id: 'a2', type: 'html', title: ['Wireframe màn hoàn tiền', 'Refund screen wireframe'], ver: 1, who: ['Minh Anh', 'Minh Anh'], when: ['hôm qua', 'yesterday'], scope: 'project', repo: true },
+        ],
+        doc: [
+          { id: 'a1', type: 'mermaid', title: ['Sơ đồ kiến trúc API hoàn tiền', 'Refund API architecture'], ver: 4, who: ['Trần Lan', 'Trần Lan'], when: ['hôm qua', 'yesterday'], scope: 'project', repo: true },
+          { id: 'a2', type: 'markdown', title: ['Checklist release', 'Release checklist'], ver: 3, who: ['Trần Lan', 'Trần Lan'], when: ['hôm nay', 'today'], scope: 'project', md: true, fromDoc: true },
+        ],
+      }[host];
+      const empty = listMode === 'empty';
+      const list = empty || listMode === 'loading' || listMode === 'error' ? [] : R;
+      const A = {
+        attach: ['Gắn artifact', 'Link an artifact'], open: ['Mở', 'Open'], menu: ['Thao tác cho', 'Actions for'], detach: ['Bỏ gắn', 'Unlink'],
+        toDoc: ['Chuyển thành tài liệu', 'Convert to document'], toRepo: ['Lưu vào repo', 'Save to repo'],
+        loading: ['Đang tải artifact…', 'Loading artifacts…'], retry: ['Thử lại', 'Retry'], error: ['Chưa tải được danh sách artifact.', 'Could not load the artifact list.'],
+        offline: ['Đang offline. Hiện bản đã tải lúc 10:12; chưa gắn hay bỏ gắn được.', 'You are offline. Showing the copy loaded at 10:12; you cannot link or unlink yet.'],
+        emptyTitle: ['Chưa có artifact nào', 'No artifacts yet'], emptyBody: [host === 'doc' ? 'Gắn sơ đồ hay bản nháp liên quan để người đọc tài liệu mở được.' : 'Agent hoặc bạn tạo artifact, rồi gắn vào đây để agent và đội dùng chung.', host === 'doc' ? 'Link diagrams or drafts so readers of the document can open them.' : 'Agents or you create an artifact, then link it here so agents and the team share it.'],
+        search: ['Tìm artifact của bạn', 'Search your artifacts'], searchPh: ['Tiêu đề hoặc loại', 'Title or type'], cancel: ['Thôi', 'Cancel'],
+        private: ['Riêng tư', 'Private'], project: ['Dự án ' + H.proj, 'Project ' + H.proj],
+        shareTitle: ['Chia sẻ cho dự án ' + H.proj + ' để agent và đội đọc được?', 'Share with project ' + H.proj + ' so agents and the team can read it?'],
+        shareBody: ['"Ghi chú nháp hoàn tiền" đang riêng tư. Gắn vào ' + H.long[0] + ' cần phạm vi dự án (ARTIFACT_SCOPE_TOO_NARROW).', '"Refund draft notes" is private. Linking it to ' + H.long[1] + ' needs project scope (ARTIFACT_SCOPE_TOO_NARROW).'],
+        shareWarn: ['Mọi thành viên của dự án sẽ đọc được; vai trò member trở lên sửa được. Bạn vẫn là chủ và đổi lại phạm vi sau được.', 'Every project member can read it; members and above can edit it. You stay the owner and can change the scope later.'],
+        shareNo: ['Không chia sẻ, không gắn', 'Do not share or link'], shareYes: ['Chia sẻ và gắn', 'Share and link'],
+        docBody: ['Hub tạo một đề xuất tài liệu từ bản đang xem. Đề xuất đi quy trình duyệt như mọi đề xuất; artifact giữ nguyên.', 'The hub creates a document proposal from this version. It goes through review like any proposal; the artifact stays as it is.'],
+        docKey: ['Key tài liệu', 'Document key'], docHintOk: ['Dạng phạm vi/dự án/tên, chỉ chữ thường, số và dấu gạch.', 'Form scope/project/name; lowercase letters, digits and hyphens only.'], docHintBad: ['Đã có tài liệu với key này. Chọn key khác hoặc sửa tài liệu đó.', 'A document with this key already exists. Pick another key or edit that document.'],
+        docFrom: ['Từ artifact "Checklist release" v3 · chỉ loại markdown chuyển được', 'From artifact "Release checklist" v3 · only markdown can be converted'], docGo: ['Tạo đề xuất', 'Create proposal'], docClose: ['Thôi', 'Cancel'], docDoneClose: ['Xong', 'Done'],
+        docDone: ['Đã tạo đề xuất "Từ artifact Checklist release v3".', 'Created the proposal "From artifact Release checklist v3".'], docDoneLink: ['Mở đề xuất', 'Open proposal'],
+        repoBody: ['Hub mở một PR trên repo của dự án với bản đang xem. Cần quyền ghi dự án; PR đi theo chính sách kết quả của dự án.', 'The hub opens a PR on the project repo with this version. Needs write access to the project; the PR follows the project result policy.'],
+        repoPath: ['Đường dẫn trong repo', 'Path in the repo'], repoHintOk: ['Đường dẫn tương đối. Không ghi vào .git/, .github/workflows/ hay .gitlab-ci.yml.', 'Relative path. Cannot write to .git/, .github/workflows/ or .gitlab-ci.yml.'], repoHintBad: ['Không ghi được vào .github/workflows/. Chọn đường dẫn khác.', 'Cannot write to .github/workflows/. Pick another path.'],
+        repoBranch: ['Nhánh', 'Branch'], repoTarget: ['Nhánh đích', 'Target'], repoGo: ['Mở PR', 'Open PR'], repoDone: ['Đã mở PR trên payment-api.', 'Opened a PR on payment-api.'], repoDoneLink: ['Xem PR', 'View PR'],
+        attachedTitle: ['Gắn artifact vào ' + H.long[0], 'Link an artifact to ' + H.long[1]],
+      };
+      const a = (k) => x(A[k]);
+      const btn = 'height: 32px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; border: 1px solid transparent; ';
+      const scopeStyle = (s) => s === 'private' ? 'background: var(--warning-soft); color: var(--warning);' : 'background: var(--accent); color: var(--accent-foreground);';
+      const rows = list.map((r) => ({
+        type: r.type, title: x(r.title), meta: 'v' + r.ver + ' · ' + x(r.who) + ' · ' + x(r.when),
+        scope: r.scope === 'private' ? a('private') : a('project'), scopeStyle: scopeStyle(r.scope),
+        fromDoc: !!r.fromDoc, docNote: x(['Là nguồn của tài liệu này', 'Source of this document']),
+        canDoc: !!r.md, canRepo: !!r.repo, menuOpen: S.afMenu === r.id, menuAria: S.afMenu === r.id ? 'true' : 'false', menuLabel: a('menu') + ' ' + x(r.title),
+        toggleMenu: () => this.setState({ afMenu: S.afMenu === r.id ? null : r.id }),
+      }));
+      const cands = [
+        { id: 'c1', type: 'markdown', title: ['Ghi chú nháp hoàn tiền', 'Refund draft notes'], ver: 1, who: ['Bạn', 'You'], when: ['10:20', '10:20'], scope: 'private' },
+        { id: 'c2', type: 'mermaid', title: ['Luồng hoàn tiền', 'Refund flow'], ver: 5, who: ['Bạn', 'You'], when: ['10:14', '10:14'], scope: 'project' },
+        { id: 'c3', type: 'html', title: ['Wireframe nút hoàn tiền', 'Refund button wireframe'], ver: 1, who: ['Bạn', 'You'], when: ['10/10', 'Oct 10'], scope: 'project' },
+      ];
+      const pick = S.afPick ?? 'c1';
+      const sel = cands.find((c) => c.id === pick) ?? cands[0];
+      const candVals = cands.map((c) => ({
+        type: c.type, title: x(c.title), meta: 'v' + c.ver + ' · ' + x(c.when), scope: c.scope === 'private' ? a('private') : a('project'), scopeStyle: scopeStyle(c.scope),
+        checked: pick === c.id ? 'true' : 'false', pick: () => this.setState({ afPick: c.id }),
+        style: 'display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font: inherit; color: var(--foreground); cursor: pointer; ' + (pick === c.id ? 'background: var(--accent); border: 1px solid var(--primary);' : 'background: transparent; border: 1px solid var(--border);'),
+      }));
+      const done = S.afDone === true;
+      const docBad = bad && mode === 'toDocError', repoBad = bad && mode === 'toRepoError';
+      const inputBase = 'height: 32px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; background: transparent; color: var(--foreground); font: inherit; font-family: var(--font-mono); font-size: 13.5px; width: 100%; border: 1px solid ';
+      const close = () => this.setState({ afDlg: null, afDone: false, afMenu: null });
+      return {
+        title: x(H.title), targetLong: x(H.long), count: String(rows.length),
+        hint: x(H.hint), attachLabel: a('attach'), open: a('open'), toDoc: a('toDoc'), toRepo: a('toRepo'), detach: a('detach'),
+        attachOff: listMode === 'offline' || listMode === 'loading', openAttach: () => this.setState({ afDlg: 'attach', afMenu: null }),
+        showOffline: listMode === 'offline', showLoading: listMode === 'loading', showError: listMode === 'error', showEmpty: empty, showList: rows.length > 0,
+        loading: a('loading'), retry: a('retry'), error: a('error'), offline: a('offline'), emptyTitle: a('emptyTitle'), emptyBody: a('emptyBody'), rows,
+        btnOutline: btn + 'background: var(--background); color: var(--foreground); border-color: var(--border);',
+        btnPrimary: btn + 'background: var(--primary); color: var(--primary-foreground);',
+        btnGhost: btn + 'height: 28px; font-size: 13px; padding: 0 8px; background: transparent; color: var(--primary);',
+        btnIcon: btn + 'height: 28px; width: 28px; padding: 0; background: transparent; color: var(--muted-foreground); font-size: 16px;',
+        menuItem: 'height: 34px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--foreground); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;',
+        menuItemDanger: 'height: 34px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--destructive); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;',
+        dlgAttach: dlg === 'attach', dlgShare: dlg === 'share', dlgDoc: dlg === 'toDoc', dlgRepo: dlg === 'toRepo',
+        attachTitle: a('attachedTitle'), search: a('search'), searchPh: a('searchPh'), cancel: a('cancel'), cands: candVals,
+        attachGoOff: false, attachGo: () => this.setState({ afDlg: sel.scope === 'private' ? 'share' : null }),
+        close, shareTitle: a('shareTitle'), shareBody: a('shareBody'), shareWarn: a('shareWarn'), shareNo: a('shareNo'), shareYes: a('shareYes'),
+        docBody: a('docBody'), docKey: a('docKey'), docKeyVal: docBad ? 'project/payment-api/release-checklist' : 'project/payment-api/release-checklist-v3', docInvalid: docBad ? 'true' : 'false',
+        docInputStyle: inputBase + (docBad ? 'var(--destructive);' : 'var(--input);'), docHintRole: docBad ? 'alert' : 'note', docHint: docBad ? a('docHintBad') : a('docHintOk'), docHintStyle: 'font-size: 12.5px; font-weight: 400; ' + (docBad ? 'color: var(--destructive);' : 'color: var(--muted-foreground);'),
+        docFrom: a('docFrom'), docGo: () => this.setState({ afDone: true }), docGoLabel: a('docGo'), docDone: done, docForm: !done, docDoneText: a('docDone'), docDoneLink: a('docDoneLink'), docCloseLabel: done ? a('docDoneClose') : a('docClose'),
+        repoBody: a('repoBody'), repoPath: a('repoPath'), repoPathVal: repoBad ? '.github/workflows/refund.mmd' : 'docs/diagrams/refund.mmd', repoInvalid: repoBad ? 'true' : 'false',
+        repoInputStyle: inputBase + (repoBad ? 'var(--destructive);' : 'var(--input);'), repoHintRole: repoBad ? 'alert' : 'note', repoHint: repoBad ? a('repoHintBad') : a('repoHintOk'), repoHintStyle: 'font-size: 12.5px; font-weight: 400; ' + (repoBad ? 'color: var(--destructive);' : 'color: var(--muted-foreground);'),
+        repoBranchLbl: a('repoBranch'), repoTargetLbl: a('repoTarget'), repoTarget: 'main', repoGo: () => this.setState({ afDone: true }), repoGoLabel: a('repoGo'), repoDone: done, repoForm: !done, repoDoneText: a('repoDone'), repoDoneLink: a('repoDoneLink'), repoCloseLabel: done ? a('docDoneClose') : a('cancel'),
+        openDoc: () => this.setState({ afDlg: 'toDoc', afMenu: null, afDone: false }), openRepo: () => this.setState({ afDlg: 'toRepo', afMenu: null, afDone: false }),
+      };
+    })();
     return {
+      af,
       theme: this.props.dark ? 'dark' : 'light', lang, t, steps, slash, aiActions, history, tabs, nextGates,
       sdlc, narrow, wide, sd, rootClass: narrow ? 'narrow' : '',
       rootStyle: (narrow ? 'width: 360px; ' : 'min-height: 1000px; ') + 'display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
@@ -450,7 +679,7 @@ class Component extends DCLogic {
       sugPending: this.state.sug === 'pending', sugAccepted: this.state.sug === 'accepted', sugRejected: this.state.sug === 'rejected',
       accept: () => this.setState({ sug: 'accepted' }), reject: () => this.setState({ sug: 'rejected' }),
       modeLabel: this.state.suggest ? x(['Chế độ: Đề xuất', 'Mode: Suggesting']) : x(['Chế độ: Sửa thẳng', 'Mode: Editing']), flipMode: () => this.setState({ suggest: !this.state.suggest }),
-      tabComments: tb === 'comments', tabAi: tb === 'ai', tabHistory: tb === 'history', toggleAi: () => this.setState({ tab: 'ai' }),
+      tabComments: tb === 'comments', tabArtifact: tb === 'artifact', fromArt: !!this.props.fromArtifact, fromArtText: x(['Tài liệu này là đề xuất tạo từ artifact "Checklist release" v3. Nội dung bên dưới đã đi theo quy trình duyệt như mọi đề xuất.', 'This document is a proposal created from the artifact "Release checklist" v3. The content below goes through review like any proposal.']), fromArtLink: x(['Mở artifact', 'Open artifact']), tabAi: tb === 'ai', tabHistory: tb === 'history', toggleAi: () => this.setState({ tab: 'ai' }),
       submitOpen: this.state.submit, openSubmit: () => this.setState({ submit: true }), closeSubmit: () => this.setState({ submit: false }),
       viS: seg(!en), enS: seg(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
     };

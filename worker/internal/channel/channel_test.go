@@ -203,7 +203,7 @@ func TestTokenAndHeartbeat(t *testing.T) {
 			t.Errorf("hello có mảng null: %+v", hello)
 		}
 		// Hub chỉ giao run kiểm tài liệu, trợ lý tài liệu và brief cho worker khai doccheck, docassist, brief.
-		if len(hello.Capabilities) != 3 || hello.Capabilities[0] != "doccheck" || hello.Capabilities[1] != "docassist" || hello.Capabilities[2] != "brief" {
+		if len(hello.Capabilities) != 4 || hello.Capabilities[0] != "doccheck" || hello.Capabilities[1] != "docassist" || hello.Capabilities[2] != "brief" || hello.Capabilities[3] != "skill_proposal" {
 			t.Errorf("hello.capabilities = %v", hello.Capabilities)
 		}
 		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30}`))

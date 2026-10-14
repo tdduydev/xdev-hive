@@ -177,7 +177,13 @@ const text: Dict<{
   addStep: (step: number) => string;
   addPickCli: string;
   addCliHints: Record<AddableCli, string>;
-  addAntigravity: string;
+  addAntigravityHint: string;
+  agyTitle: string;
+  agySteps: readonly string[];
+  agyLimit: string;
+  agyFind: string;
+  agyNone: string;
+  agyFindFailed: (error: string) => string;
   addChangeCli: string;
   addLead: string;
   accountLabel: string;
@@ -310,7 +316,19 @@ const text: Dict<{
       claude: "Gói Pro, Max, Team, SSO hay Console",
       codex: "Đăng nhập bằng ChatGPT",
     },
-    addAntigravity: "Antigravity không đăng nhập từ đây: đăng nhập trong ứng dụng Antigravity, app tự tìm thấy.",
+    addAntigravityHint: "Đăng nhập trong ứng dụng Antigravity, rồi tìm trên máy",
+    agyTitle: "Thêm gói Antigravity",
+    agySteps: [
+      "Mở ứng dụng Antigravity và đăng nhập tài khoản muốn dùng.",
+      "Quay lại đây, bấm “Tìm đăng nhập trên máy”.",
+      "Tích đăng nhập Antigravity vừa thấy rồi bấm Thêm.",
+    ],
+    agyLimit:
+      "Antigravity không tách tài khoản theo thư mục: đăng nhập nằm trong keychain của máy, nên mỗi máy chỉ có một gói Antigravity. Muốn đổi tài khoản thì đăng nhập lại trong ứng dụng Antigravity.",
+    agyFind: "Tìm đăng nhập trên máy",
+    agyNone:
+      "Chưa thấy đăng nhập Antigravity nào chưa thêm. Hãy đăng nhập trong ứng dụng Antigravity rồi tìm lại; nếu máy đã có gói Antigravity thì không thêm được gói thứ hai.",
+    agyFindFailed: (error) => `Không tìm được đăng nhập trên máy: ${error}`,
     addChangeCli: "Đổi CLI",
     addLead:
       "Đăng nhập thêm một tài khoản của CLI trên máy này, trong thư mục đăng nhập riêng để worker xoay vòng các gói.",
@@ -469,7 +487,19 @@ const text: Dict<{
       claude: "Pro, Max, Team, SSO or Console plan",
       codex: "Sign in with ChatGPT",
     },
-    addAntigravity: "Antigravity is not signed in from here: sign in inside the Antigravity app and this app finds it.",
+    addAntigravityHint: "Sign in inside the Antigravity app, then scan this machine",
+    agyTitle: "Add Antigravity plan",
+    agySteps: [
+      "Open the Antigravity app and sign in with the account you want to use.",
+      "Come back here and press “Find sign-ins on this machine”.",
+      "Tick the Antigravity sign-in that shows up and press Add.",
+    ],
+    agyLimit:
+      "Antigravity does not split accounts by folder: its sign-in lives in the machine's keychain, so each machine has one Antigravity plan. To switch accounts, sign in again inside the Antigravity app.",
+    agyFind: "Find sign-ins on this machine",
+    agyNone:
+      "No Antigravity sign-in that is not added yet. Sign in inside the Antigravity app and search again; if this machine already has an Antigravity plan, a second one cannot be added.",
+    agyFindFailed: (error) => `Could not search this machine: ${error}`,
     addChangeCli: "Change CLI",
     addLead:
       "Sign in one more CLI account on this machine, in a sign-in folder of its own so the worker can rotate plans.",
@@ -566,6 +596,8 @@ const future = (iso: string | null | undefined, now: number) => !!iso && Date.pa
 const pctOf = (limit: Limit) => Math.max(0, Math.min(100, Math.round(limit.percent)));
 const foundKey = (f: FoundLogin) => `${f.cli}|${f.configDir ?? ""}`;
 const isAddable = (cli: string): cli is AddableCli => (ADDABLE_CLIS as readonly string[]).includes(cli);
+/** Hộp Thêm gói còn có thẻ Antigravity: không có form đăng nhập, chỉ hướng dẫn rồi tìm trên máy. */
+type AddDialogCli = AddableCli | "antigravity";
 
 /** Giờ của trang, nhích mỗi phút: giờ reset và giờ nghỉ không đổi nhanh hơn thế. */
 function useMinute(): number {
@@ -591,7 +623,7 @@ export function PlansScreen() {
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [showOff, setShowOff] = useState<Record<string, boolean>>({});
-  const [adding, setAdding] = useState<{ cli: AddableCli | null } | null>(null);
+  const [adding, setAdding] = useState<{ cli: AddDialogCli | null } | null>(null);
   const [editing, setEditing] = useState<Plan | null>(null);
   const [removing, setRemoving] = useState<Plan | null>(null);
   const [bypassing, setBypassing] = useState<Plan | null>(null);
@@ -625,6 +657,23 @@ export function PlansScreen() {
   useEffect(() => {
     void discover();
   }, [discover]);
+
+  // Nút của hướng dẫn Antigravity: tìm lại ngay rồi mở hộp liệt kê; không thấy thì nói rõ vì sao, khác băng im lặng.
+  async function findLogins() {
+    setAdding(null);
+    try {
+      const { found: list } = await discoverPlans();
+      setFound(list ?? []);
+      if (list?.some((f) => f.cli === "antigravity")) {
+        setFoundHidden(false);
+        setFoundOpen(true);
+      } else {
+        setNotice({ tone: "info", text: t.agyNone });
+      }
+    } catch (e) {
+      setNotice({ tone: "bad", text: t.agyFindFailed(errorText(e)) });
+    }
+  }
 
   const waitingIds = Object.keys(waiting).sort().join(",");
   useEffect(() => {
@@ -865,7 +914,7 @@ export function PlansScreen() {
             <h2 className="text-base font-semibold">{cliName(cli)}</h2>
             <Pill>{t.cliCount(on.length + off.length)}</Pill>
             <span className="flex-1" />
-            {isAddable(cli) && (
+            {(isAddable(cli) || cli === "antigravity") && (
               <Button size="sm" variant="outline" onClick={() => setAdding({ cli })}>
                 <PlusIcon aria-hidden="true" />
                 {t.addFor(cliName(cli))}
@@ -897,6 +946,7 @@ export function PlansScreen() {
         list={all}
         t={t}
         onOpenChange={(o) => !o && setAdding(null)}
+        onFindLogins={() => void findLogins()}
         onAdded={(id, terminalError, command) => {
           setAdding(null);
           void load();
@@ -1528,17 +1578,19 @@ function AddPlanDialog({
   list,
   t,
   onOpenChange,
+  onFindLogins,
   onAdded,
 }: {
   open: boolean;
-  initialCli: AddableCli | null;
+  initialCli: AddDialogCli | null;
   list: Plan[];
   t: T;
   onOpenChange: (open: boolean) => void;
+  onFindLogins: () => void;
   onAdded: (id: string, terminalError: string | null, command: string) => void;
 }) {
   const id = useId();
-  const [cli, setCli] = useState<AddableCli | null>(initialCli);
+  const [cli, setCli] = useState<AddDialogCli | null>(initialCli);
   const [label, setLabel] = useState("");
   const [how, setHow] = useState<LoginWay>("plan");
   const [email, setEmail] = useState("");
@@ -1546,9 +1598,9 @@ function AddPlanDialog({
   const [error, setError] = useState<string | null>(null);
   const fallback = cli ? `${CLI_NAME[cli]} ${list.filter((p) => p.cli === cli).length + 1}` : "";
 
-  function pick(next: AddableCli | null) {
+  function pick(next: AddDialogCli | null) {
     setCli(next);
-    if (next) setHow(LOGIN_WAYS[next][0] as LoginWay);
+    if (next && next !== "antigravity") setHow(LOGIN_WAYS[next][0] as LoginWay);
     setError(null);
   }
 
@@ -1562,7 +1614,7 @@ function AddPlanDialog({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!cli) return;
+    if (!cli || cli === "antigravity") return;
     setBusy(true);
     try {
       const added = await addPlan({ cli, label: label.trim() || fallback, how, email });
@@ -1585,27 +1637,50 @@ function AddPlanDialog({
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t.addTitle}</DialogTitle>
-          <DialogDescription>{t.addStep(cli ? 2 : 1)}</DialogDescription>
+          <DialogDescription>{cli === "antigravity" ? t.agyTitle : t.addStep(cli ? 2 : 1)}</DialogDescription>
         </DialogHeader>
         {!cli ? (
-          <>
-            <fieldset aria-label={t.addPickCli} className="m-0 grid min-w-0 gap-2.5 border-0 p-0 sm:grid-cols-2">
-              {ADDABLE_CLIS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={CLI_NAME[c]}
-                  onClick={() => pick(c)}
-                  className="flex cursor-pointer flex-col items-start gap-2 rounded-xl border bg-card p-3 text-left hover:border-primary hover:bg-accent"
-                >
-                  <CliMark cli={c} large />
-                  <strong className="text-sm font-semibold">{CLI_NAME[c]}</strong>
-                  <span className="text-xs text-muted-foreground">{t.addCliHints[c]}</span>
-                </button>
+          <fieldset aria-label={t.addPickCli} className="m-0 grid min-w-0 gap-2.5 border-0 p-0 sm:grid-cols-2">
+            {ADDABLE_CLIS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                aria-label={CLI_NAME[c]}
+                onClick={() => pick(c)}
+                className="flex cursor-pointer flex-col items-start gap-2 rounded-xl border bg-card p-3 text-left hover:border-primary hover:bg-accent"
+              >
+                <CliMark cli={c} large />
+                <strong className="text-sm font-semibold">{CLI_NAME[c]}</strong>
+                <span className="text-xs text-muted-foreground">{t.addCliHints[c]}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-label={CLI_NAME.antigravity}
+              onClick={() => pick("antigravity")}
+              className="flex cursor-pointer flex-col items-start gap-2 rounded-xl border bg-card p-3 text-left hover:border-primary hover:bg-accent"
+            >
+              <CliMark cli="antigravity" large />
+              <strong className="text-sm font-semibold">{CLI_NAME.antigravity}</strong>
+              <span className="text-xs text-muted-foreground">{t.addAntigravityHint}</span>
+            </button>
+          </fieldset>
+        ) : cli === "antigravity" ? (
+          <div className="grid gap-y-3">
+            <div className="flex items-center gap-2">
+              <CliMark cli={cli} />
+              <strong className="text-sm font-semibold">{CLI_NAME[cli]}</strong>
+              <Button type="button" size="xs" variant="ghost" onClick={() => pick(null)}>
+                {t.addChangeCli}
+              </Button>
+            </div>
+            <ol className="m-0 grid list-decimal gap-1 pl-5 text-sm">
+              {t.agySteps.map((step) => (
+                <li key={step}>{step}</li>
               ))}
-            </fieldset>
-            <p className="text-xs text-muted-foreground">{t.addAntigravity}</p>
-          </>
+            </ol>
+            <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{t.agyLimit}</p>
+          </div>
         ) : (
           <form id={`${id}-form`} onSubmit={submit} className="grid gap-y-3">
             <div className="flex items-center gap-2">
@@ -1665,7 +1740,7 @@ function AddPlanDialog({
             )}
           </form>
         )}
-        {cli && <p className="text-xs text-muted-foreground">{t.addNote}</p>}
+        {cli && cli !== "antigravity" && <p className="text-xs text-muted-foreground">{t.addNote}</p>}
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -1675,7 +1750,13 @@ function AddPlanDialog({
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             {t.cancel}
           </Button>
-          {cli && (
+          {cli === "antigravity" && (
+            <Button type="button" onClick={onFindLogins}>
+              <ScanSearchIcon aria-hidden="true" />
+              {t.agyFind}
+            </Button>
+          )}
+          {cli && cli !== "antigravity" && (
             <Button type="submit" form={`${id}-form`} disabled={busy}>
               {busy ? t.adding : t.addAndSignIn}
             </Button>

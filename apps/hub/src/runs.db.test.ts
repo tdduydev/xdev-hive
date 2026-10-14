@@ -360,6 +360,7 @@ describe("run từ đầu tới PR", () => {
       runPermissions: "workspace",
       repoUrl: expect.stringContaining("gitlab.com"),
     });
+    expect(offer.spec.checks).toBeUndefined();
     w.send({ type: "job_accept", runId: run.id, attempt: 1 });
     const lease = await w.next("lease", (l) => l.runId === run.id);
     const claims = createRunTokenVerifier({ authSecret: secret, publicUrl })(lease.runToken);
@@ -487,6 +488,72 @@ describe("máy tạm dừng", () => {
     await until(async () => (await runRow(running.id)).state === "no_changes");
     await secondWorker.close();
     await firstWorker.close();
+  });
+});
+
+describe("lệnh kiểm của chính sách kết quả (RUN-07)", () => {
+  it.each([
+    { exit: 0, required: true, outcome: "succeeded" },
+    { exit: 1, required: true, outcome: "failed" },
+    { exit: -1, required: true, outcome: "failed" },
+    { exit: 1, required: false, outcome: "needs_review" },
+    { exit: undefined, required: true, outcome: "needs_review" },
+  ])("lệnh trả $exit, bắt buộc $required → $outcome", async ({ exit, required, outcome }) => {
+    const settings = defaultProjectSettings();
+    settings.outcome.default.push(
+      { check: "command", required, run: "pnpm test", timeout: "20s" },
+      { check: "command", required, run: "pnpm lint", timeout: "2m" },
+      { check: "command", required, run: "pnpm build", timeout: "2h" },
+    );
+    const p = await seedProject(admin, pool, {
+      orgId: org.orgId,
+      teamId: org.teamId,
+      systemId: org.systemId,
+      adminUserId: org.user("admin"),
+      masterKey,
+      key: `cmd-${randomUUID().slice(0, 6)}`,
+      settings,
+    });
+    provider.seedRepo({ owner: p.owner, name: p.repo });
+    const w = await FakeWorker.connect(await seedMachine(`cmd-${randomUUID().slice(0, 6)}`));
+    const task = await newTask("Kiểm tra kết quả lệnh", { projectId: p.projectId });
+    const run = await startRun(task.id);
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec.checks).toEqual({
+      commands: [
+        { run: "pnpm test", timeoutSec: 20 },
+        { run: "pnpm lint", timeoutSec: 120 },
+        { run: "pnpm build", timeoutSec: 3600 },
+      ],
+    });
+    // Kết luận phải dùng bản chụp của run dù quản trị đổi chính sách khi worker đang chạy.
+    await admin.query(
+      "update hive.projects set settings = jsonb_set(settings, '{outcome,default}', '[]') where id = $1",
+      [p.projectId],
+    );
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    const commands = ["pnpm test", "pnpm lint", "pnpm build"].map((run, i) => ({
+      run,
+      exit: i === 0 ? exit : 0,
+      durationMs: 1200,
+      tail: "kết quả lệnh",
+    }));
+    w.sendRun({
+      type: "run_result",
+      runId: run.id,
+      attempt: 1,
+      exit: 0,
+      headSha: sha,
+      report: { commitCount: 1, changedFiles: ["src/a.ts"], ...(exit === undefined ? {} : { commands }) },
+    });
+    await until(async () => (await runRow(run.id)).state === outcome);
+    const row = await runRow(run.id);
+    expect(row.result.checks.filter((c: { check: string }) => c.check === "command")).toHaveLength(3);
+    expect(row.result.checks[1].passed).toBe(exit === undefined ? null : exit === 0);
+    if (outcome === "succeeded") expect(row.pr_url).toMatch(/\/pull\/\d+$/);
+    else expect(row.pr_url).toBeNull();
+    await w.close();
   });
 });
 
@@ -1368,6 +1435,30 @@ describe("chi phí và ngân sách", () => {
     // Lần thử 2 đếm lại từ 0: số nhỏ hơn của lần thử trước vẫn được ghi.
     await sendCost(w, run.id, 2, cost({ rtk: { commands: 1, savedTokens: 80 } }));
     expect((await api<Run>("GET", `/v1/runs/${run.id}`)).data.rtk).toEqual({ commands: 1, savedTokens: 80 });
+    await api("POST", `/v1/runs/${run.id}/cancel`);
+    await w.close();
+  });
+
+  it("guard: spec có taskText của task, số guard luỹ kế theo lần thử và không lùi", async () => {
+    const m = await seedMachine(`guard-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Sửa LoginHandler trả 500", { projectId: rtkProject });
+    const run = await startRun(task.id);
+    expect(run.tokenGuard).toBeNull();
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    // Chỉ phần của task: không lẫn brief hay hướng dẫn chung của prompt.
+    expect(offer.spec.taskText).toBe("Sửa LoginHandler trả 500\n\nMô tả");
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    await sendCost(w, run.id, 1, cost({ guard: { contextPackFiles: 12, exploreBlocked: 0, truncatedChars: 0 } }));
+    await sendCost(w, run.id, 1, cost({ guard: { contextPackFiles: 12, exploreBlocked: 3, truncatedChars: 9000 } }));
+    await sendCost(w, run.id, 1, cost({ guard: { contextPackFiles: 12, exploreBlocked: 1, truncatedChars: 100 } }));
+    await sendCost(w, run.id, 1, cost({ inputTokens: 7 }));
+    expect((await api<Run>("GET", `/v1/runs/${run.id}`)).data.tokenGuard).toEqual({
+      contextPackFiles: 12,
+      exploreBlocked: 3,
+      truncatedChars: 9000,
+    });
     await api("POST", `/v1/runs/${run.id}/cancel`);
     await w.close();
   });
@@ -2260,6 +2351,83 @@ describe("brief của dự án và khảo sát trước khi sửa (ADR 0022)", (
   });
 });
 
+describe("run đề xuất skill (specs/014)", () => {
+  let learnProject = "";
+  const proposalReport = {
+    proposals: [{ kind: "new", name: "lam-tron-tien", description: "d", content: "c", reason: "r" }],
+  };
+  const createRun = (projectId: string, prompt = "Tóm tắt các run khó") =>
+    withTenant(pool, { orgId: org.orgId }, (tx) =>
+      engine.skillLearning.createRun(tx, { projectId, batchId: randomUUID(), prompt }),
+    );
+
+  beforeAll(async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+    learnProject = (
+      await seedProject(admin, pool, {
+        orgId: org.orgId,
+        teamId: org.teamId,
+        systemId: org.systemId,
+        adminUserId: org.user("admin"),
+        masterKey,
+        key: `sl-${tag}`,
+      })
+    ).projectId;
+  });
+
+  it("máy chưa khai skill_proposal thì không tạo run, để lô thử lại sau", async () => {
+    const m = await seedMachine(`sl-old-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["brief"] });
+    expect(await createRun(learnProject)).toEqual({ ok: false, reason: "no_machine" });
+    expect(
+      (await admin.query("select 1 from hive.runs where project_id = $1 and kind = 'skill_proposal'", [learnProject]))
+        .rowCount,
+    ).toBe(0);
+    await w.close();
+  });
+
+  it("giao cho máy đã khai: chỉ đọc, sonnet, effort medium, lời nhắc của lô; nộp xong thì succeeded", async () => {
+    const m = await seedMachine(`sl-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["skill_proposal"] });
+    const started = await createRun(learnProject, "Các việc khó của dự án");
+    if (!started.ok) throw new Error(started.reason);
+    started.afterCommit();
+    const offer = await w.next("job_offer", (o) => o.runId === started.runId);
+    expect(offer.spec).toMatchObject({
+      kind: "skill_proposal",
+      cli: "claude",
+      model: "sonnet",
+      effort: "medium",
+      taskId: null,
+      prompt: "Các việc khó của dự án",
+    });
+    expect((await runRow(started.runId)).owner_user_id).toBeNull();
+    w.send({ type: "job_accept", runId: started.runId, attempt: 1 });
+    await w.next("lease", (l) => l.runId === started.runId);
+    await admin.query(
+      `insert into hive.run_events (org_id, run_id, attempt, seq, type, data) values ($1, $2, 1, null, 'skill_proposal_report', $3)`,
+      [org.orgId, started.runId, JSON.stringify(proposalReport)],
+    );
+    w.sendRun({ type: "run_result", runId: started.runId, attempt: 1, exit: 0, headSha: null, report: null });
+    await until(async () => (await runRow(started.runId)).state === "succeeded", 15_000);
+    await w.close();
+  });
+
+  it("agent thoát êm mà không nộp thì run failed", async () => {
+    const m = await seedMachine(`sl2-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["skill_proposal"] });
+    const started = await createRun(learnProject);
+    if (!started.ok) throw new Error(started.reason);
+    started.afterCommit();
+    await w.next("job_offer", (o) => o.runId === started.runId);
+    w.send({ type: "job_accept", runId: started.runId, attempt: 1 });
+    await w.next("lease", (l) => l.runId === started.runId);
+    w.sendRun({ type: "run_result", runId: started.runId, attempt: 1, exit: 0, headSha: null, report: null });
+    await until(async () => (await runRow(started.runId)).state === "failed", 15_000);
+    await w.close();
+  });
+});
+
 describe("quy trình review code (specs/009)", () => {
   let crProject = "";
   let crKey = "";
@@ -2282,7 +2450,15 @@ describe("quy trình review code (specs/009)", () => {
       {
         name: "Review",
         gates: [
-          { id: "rules", name: "Quy tắc", kind: "rule", rules: ["max-files"], maxFiles: 5, slaHours: null },
+          {
+            id: "rules",
+            name: "Quy tắc",
+            kind: "rule",
+            rules: ["max-files", "command"],
+            commands: [{ run: "pnpm test", timeoutSec: 300 }],
+            maxFiles: 5,
+            slaHours: null,
+          },
           {
             id: "lead",
             name: "Người duyệt",
@@ -2323,7 +2499,8 @@ describe("quy trình review code (specs/009)", () => {
     const w = await FakeWorker.connect(await seedMachine(`cr-${tag}`));
     const task = await newTask("Sửa thanh toán", { projectId: crProject });
     const run = await startRun(task.id);
-    await w.next("job_offer", (o) => o.runId === run.id);
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec.checks).toEqual({ commands: [{ run: "pnpm test", timeoutSec: 300 }] });
     w.send({ type: "job_accept", runId: run.id, attempt: 1 });
     await w.next("lease", (l) => l.runId === run.id);
     const commands = [{ run: "pnpm test", exit: 0, durationMs: 1200, tail: "ok" }];
@@ -2385,6 +2562,97 @@ describe("quy trình review code (specs/009)", () => {
     await w.close();
   });
 
+  it("gộp lệnh quy trình và outcome, không chạy trùng và giữ thời hạn chặt nhất", async () => {
+    const outcome = [
+      { check: "changes", required: true },
+      { check: "command", required: true, run: "pnpm test", timeout: "15m" },
+      { check: "command", required: true, run: "pnpm lint", timeout: "2m" },
+    ];
+    await admin.query(
+      "update hive.projects set settings = jsonb_set(settings, '{outcome,default}', $2) where id = $1",
+      [crProject, JSON.stringify(outcome)],
+    );
+    let runId = "";
+    try {
+      const w = await FakeWorker.connect(await seedMachine(`combine-${tag}`));
+      const task = await newTask("Gộp lệnh kiểm", { projectId: crProject });
+      const run = await startRun(task.id);
+      runId = run.id;
+      const offer = await w.next("job_offer", (o) => o.runId === run.id);
+      expect(offer.spec.checks).toEqual({
+        commands: [
+          { run: "pnpm test", timeoutSec: 300 },
+          { run: "pnpm lint", timeoutSec: 120 },
+        ],
+      });
+      await w.close();
+    } finally {
+      await admin.query("update hive.runs set state = 'cancelled' where id = $1", [runId]);
+      await admin.query(
+        "update hive.projects set settings = jsonb_set(settings, '{outcome,default}', $2) where id = $1",
+        [crProject, JSON.stringify(defaultProjectSettings().outcome.default)],
+      );
+    }
+  });
+
+  it.each([
+    { exit: undefined, status: "waiting" },
+    { exit: 1, status: "failed" },
+    { exit: null, status: "failed" },
+  ])("checkpoint command: kết quả $exit → $status", async ({ exit, status }) => {
+    const w = await FakeWorker.connect(await seedMachine(`gatecmd-${randomUUID().slice(0, 6)}`));
+    const task = await newTask("Kiểm tra lệnh của checkpoint", { projectId: crProject });
+    const run = await startRun(task.id);
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec.checks).toEqual({ commands: [{ run: "pnpm test", timeoutSec: 300 }] });
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    w.sendRun({
+      type: "run_result",
+      runId: run.id,
+      attempt: 1,
+      exit: 0,
+      headSha: sha,
+      report: {
+        commitCount: 1,
+        changedFiles: ["src/a.ts"],
+        ...(exit === undefined ? {} : { commands: [{ run: "pnpm test", exit, durationMs: 1200, tail: "lỗi" }] }),
+      },
+      diffStats: { addedLines: 1, deletedLines: 0, changedFiles: ["src/a.ts"] },
+    });
+    await until(async () => (await runRow(run.id)).state === "succeeded");
+    const review = await reviewOf(run.id);
+    expect(review.gate_index).toBe(0);
+    const { rows } = await admin.query("select status, note from hive.code_review_gate_runs where review_id = $1", [
+      review.id,
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe(status);
+    if (exit === undefined) expect(rows[0].note).toContain("Máy chưa hỗ trợ chạy lệnh kiểm");
+    await w.close();
+  });
+
+  it("quy trình không khớp loại task không gửi lệnh của nó", async () => {
+    await admin.query(
+      "update hive.review_workflows set code = jsonb_set(code, '{taskTypes}', '[\"docs\"]') where id = $1",
+      [workflowId],
+    );
+    let runId = "";
+    try {
+      const w = await FakeWorker.connect(await seedMachine(`scope-command-${tag}`));
+      const task = await newTask("Task ngoài phạm vi quy trình", { projectId: crProject, type: "code" });
+      const run = await startRun(task.id);
+      runId = run.id;
+      expect((await w.next("job_offer", (o) => o.runId === run.id)).spec.checks).toBeUndefined();
+      await w.close();
+    } finally {
+      if (runId) await admin.query("update hive.runs set state = 'cancelled' where id = $1", [runId]);
+      await admin.query("update hive.review_workflows set code = jsonb_set(code, '{taskTypes}', '[]') where id = $1", [
+        workflowId,
+      ]);
+    }
+  });
+
   it("run sửa theo góp ý (queueFixRun): run code mới cùng task, CLI, chủ; không lập kế hoạch; mang góp ý vào prompt", async () => {
     await admin.query(
       "update hive.projects set settings = jsonb_set(settings, '{features,planMode}', 'true') where id = $1",
@@ -2422,6 +2690,7 @@ describe("quy trình review code (specs/009)", () => {
       // Hẹn giờ `dispatch` giao run sau khi transaction của phiên commit.
       const offer = await w.next("job_offer", (o) => o.runId === fix.runId);
       expect(offer.spec).toMatchObject({ kind: "code", cli: "codex", instructions: ["Thêm test cho làm tròn âm."] });
+      expect(offer.spec.checks).toEqual({ commands: [{ run: "pnpm test", timeoutSec: 300 }] });
       expect(String(offer.spec.prompt)).toContain("Thêm test cho làm tròn âm.");
       w.send({ type: "job_reject", runId: fix.runId, attempt: 1, reason: "test" });
       await w.close();
@@ -2443,7 +2712,8 @@ describe("quy trình review code (specs/009)", () => {
       const w = await FakeWorker.connect(await seedMachine(`nocr-${tag}`));
       const task = await newTask("Không có quy trình", { projectId: crProject });
       const run = await startRun(task.id);
-      await w.next("job_offer", (o) => o.runId === run.id);
+      const offer = await w.next("job_offer", (o) => o.runId === run.id);
+      expect(offer.spec.checks).toBeUndefined();
       w.send({ type: "job_accept", runId: run.id, attempt: 1 });
       await w.next("lease", (l) => l.runId === run.id);
       w.sendRun({

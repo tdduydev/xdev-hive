@@ -436,6 +436,38 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ---
 
+## Phase 0b: Lát đầu — Terminal Leader trên máy dùng chung (spec Q4, plan "Lát đầu") ✅
+
+Làm trước các phase trên cho máy **dùng chung** trên web máy tính (Leader của AI SDLC, specs/011 FR-067). Không thay các
+task passkey/TOTP/`hive`/PWA ở trên: những task đó vẫn mở cho máy cá nhân.
+
+- [x] T100 Contract lát đầu: gói `term_open|term_input|term_resize|term_close` và `term_opened|term_output|term_exit`,
+  `TERMINAL_CAPABILITY`, `TERMINAL_LIMITS`, fixture; route `terminal.*` và khung WS trình duyệt (`terminal.ts`); quyền
+  `leader.terminal`; `tier`/`tierReason` của đề xuất Leader và `approvals.approve {tier}`; `pnpm openapi`.
+  - **Scope**: `packages/contracts/src/{worker-protocol.ts,terminal.ts,terminal.test.ts,leader.ts,roles.ts,index.ts}`, fixtures, `openapi.json`
+- [x] T101 Worker: gói `internal/pty` dùng chung (creack/pty, đăng nhập gói chuyển sang dùng; Windows báo chưa hỗ trợ —
+  phần ConPTY của T003 vẫn mở).
+- [x] T102 Worker: `runner.PrepareInteractive` (worktree tạm tách HEAD, quyền theo `projects.Effective`, MCP riêng,
+  env bỏ bí mật, tiết kiệm token, effort, advisor có điều kiện phiên bản) và `internal/terminal.Host` (PTY, gom output
+  40 ms/32 KiB, 256 KiB/s, che bí mật kể cả bị cắt giữa hai lần đọc, 4 phiên/máy, đóng sau 30 phút không hoạt động,
+  `CloseAll` khi mất hub); gói `accounts.Pool.AcquireInteractive` (D10); kênh khai `terminal`, chỉ nhận `term_open` trên
+  máy dùng chung. Test với `/bin/sh` (một phần của T010, T011).
+- [x] T103 Hub: module `terminal` (bảng `terminal_sessions`, `terminal_chunks`, RLS ép, migration `0063`), mở phiên (cờ
+  `HIVE_REMOTE_TERMINAL`, quyền, máy dùng chung, giới hạn số phiên, cuộc trò chuyện chứa đề xuất), chuyển gói worker, che
+  bí mật trước khi lưu, đóng khi máy mất kết nối (một phần T013, T041).
+- [x] T104 Hub: `/ws/terminal` (vé một lần, Origin, vòng đệm, nối lại theo seq, người xem chỉ xem, giới hạn nhập) (phần
+  máy dùng chung của T030, T080).
+- [x] T105 Hub: token MCP của phiên, tool `leader_action` (Đề xuất → đề xuất chờ duyệt; Bypass → làm ngay, audit
+  `terminal.action`) và `leader_tiers`; đóng phiên khi người mở mất quyền; Leader chat cũng gắn cấp độ; người duyệt đổi
+  cấp, task mang nhãn `tier:`, run dispatch mang `tier`.
+- [x] T106 Web: "Mở terminal Leader" trên trang Leader, hộp thoại (dự án, máy, gói, Đề xuất/Bypass có xác nhận, model và
+  chi phí ước tính), trang phiên xterm.js 6.0.0 + fit, khung đề xuất (sửa cấp độ trước khi duyệt) hoặc nhật ký Bypass,
+  trạng thái kết nối, tự nối lại, Cho đội xem, đóng phiên; thiết kế `Leader.dc.html` biến thể terminal (phần máy dùng chung
+  của T006, T032).
+- [x] T107 Kiểm: Go (`go test ./...`), hub DB (`terminal.db.test.ts`: quyền thành viên/BA/quản trị, máy cá nhân, Bypass
+  chưa xác nhận, che bí mật, Origin, vé dùng lại, người xem, MCP theo chế độ, đổi cấp khi duyệt, Bypass + run theo cấp, mất
+  quyền, máy bận, mất kết nối; `terminal/rls.db.test.ts`), contracts, web Playwright với WS giả.
+
 ## Phụ thuộc và song song
 
 ```text
