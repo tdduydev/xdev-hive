@@ -378,7 +378,10 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - Đã làm: cài đặt dự án ở `pages/project-sdlc-settings.tsx`, hai mục lưu riêng nhưng mỗi lần gửi cả `settings.sdlc`;
     `/admin/policies` bỏ `sdlc` khỏi lần lưu mục khác để hub giữ bản đã lưu; BA/PO chọn được qua `lib/roles.ts`.
     SC-009 đã kiểm qua `sdlc-mvp.spec.ts`: tạo, trả lời, duyệt spec/plan/research và bản tách, chạy đợt, mở PR.
-    Quyết định duyệt làm mới cache AI SDLC. Chưa làm: hàng số liệu của mục AI SDLC trong chính sách (contract chưa có).
+    Quyết định duyệt làm mới cache AI SDLC. SPEC11W6UI thêm hàng số liệu cuối mục AI SDLC của chính sách
+    (`policies-sdlc-stats.tsx`, đọc `sdlc.metrics` 30 ngày): tỉ lệ tự duyệt và thu hồi cao nhất theo chế độ, số dự án bật
+    tự duyệt; hub lỗi hoặc không có quyền thì ẩn hàng. Hub chỉ trả tỉ lệ nên không có ô số cổng và điểm trung bình như
+    thiết kế.
 
 - [x] T055 🎯 Desktop: nhóm menu AI SDLC và màn
   - `nav.ts`: quyền `sdlc.use` (dev, writer, lead), `sdlc.manage` (lead), nhóm `sdlc` (Hạng mục, Câu hỏi chờ tôi, Tiến
@@ -503,6 +506,10 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - SPEC11W5UI đã làm phần UI theo hợp đồng `sdlc.metrics`: `metrics.tsx` (khoảng 7/30/90 ngày, lọc dự án và chế độ, lead
     time p50/p90 có nút thắt, bảy thẻ chỉ số, bảng tự duyệt), web `/sdlc/metrics` + menu "Chỉ số", màn app
     `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`. Còn hub `metrics.ts` và route; chưa đo SC-007.
+  - SPEC11W6UI (US12 AS3): màn Chỉ số có liên kết "Mở bảng hạng mục với bộ lọc này" mang dự án và chế độ sang bảng (web
+    `/sdlc?project=…&mode=…`, app `#/sdlc/loc?project=…&mode=…`). `sdlc.items.list` chưa lọc theo thời gian nên bảng
+    không giới hạn theo khoảng ngày và màn nói rõ điều đó; muốn đúng "hạng mục góp vào số liệu" cần thêm lọc ngày vào
+    hợp đồng.
 
 - [ ] T083 [P] Preset và bộ đọc còn lại
   - `aidlc-feature`, `aidlc-enterprise`, `bmad-quick`, `bmad-method`, `kiro-requirements`, `kiro-design`, `kiro-bugfix`,
@@ -555,6 +562,8 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - SPEC11UI2 đã đối chiếu phần UI và lưu 11 ảnh tại `apps/web/e2e/screenshots/spec11ui2/`; kết quả và giới hạn ở
     `ui-validation.md`. Chưa chạy phân tích toàn bộ đặc tả; giữ mở cho đợt tích hợp hub/worker.
   - SPEC11W5UI thêm 4 ảnh 360 px sáng/tối (Chỉ số, Hội tụ) tại `apps/web/e2e/screenshots/spec11w5ui/`.
+  - SPEC11W6UI thêm 4 ảnh 360 px sáng/tối (Chỉ số có liên kết sang bảng, hàng số liệu trong chính sách) tại
+    `apps/web/e2e/screenshots/spec11w6ui/`.
 
 ---
 

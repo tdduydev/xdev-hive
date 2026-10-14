@@ -9,7 +9,8 @@ export type { Lang, SdlcItemTab } from "./types.ts";
 
 /** Trang trong app chủ mà màn AI SDLC liên kết tới; web dựng bằng router, app desktop bằng hash của màn. */
 export type SdlcLink =
-  | { kind: "board" }
+  /** Bộ lọc mở sẵn khi đi từ màn khác (Chỉ số); bỏ trống là mọi dự án, mọi chế độ. */
+  | { kind: "board"; projectId?: string; modeRef?: string }
   | { kind: "new" }
   | { kind: "questions" }
   | { kind: "item"; projectKey: string; number: number; tab?: SdlcItemTab }
