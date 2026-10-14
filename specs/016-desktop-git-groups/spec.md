@@ -68,8 +68,9 @@ Trạng thái mỗi repo, đọc bằng `git status --porcelain=v2 --branch` (kh
 
 Thao tác: **Clone thiếu**, **Fetch**, **Pull tất cả**, mở thư mục, mở terminal.
 
-1. Pull = `fetch --prune` rồi `pull --ff-only` chỉ khi repo đang Behind. Có thay đổi, Lệch, Lỗi thì **bỏ qua** và báo lý
-   do. Không stash, không reset, không merge.
+1. Pull = `fetch --prune` rồi tiến nhánh nhanh (`merge --ff-only @{u}`, tương đương `pull --ff-only` mà không gọi mạng lần
+   hai) chỉ khi repo đang Behind. Có thay đổi, Lệch, Lỗi thì **bỏ qua** và báo lý do. Không stash, không reset, không
+   tạo merge commit.
 2. Chạy song song tối đa 4 repo, hiện tiến độ từng repo và tổng; nút **Huỷ** dừng git đang chạy và không bắt đầu repo mới.
 3. Clone xong thì repo vào `projects.json` (mục chưa gắn dự án), nên hiện trong danh sách Dự án trên máy.
 4. Credential: HTTPS dùng `GIT_ASKPASS` trỏ chính `hive-worker` (đọc token từ biến môi trường của tiến trình con),
