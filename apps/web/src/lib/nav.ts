@@ -27,6 +27,7 @@ import {
   SettingsIcon,
   ShieldCheckIcon,
   ShieldIcon,
+  SmartphoneIcon,
   SparklesIcon,
   SquareStackIcon,
   UserCogIcon,
@@ -93,6 +94,13 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: MessagesSquareIcon,
         to: "/leader",
         match: "/leader",
+      },
+      {
+        id: "remote",
+        label: { vi: "Điều khiển từ xa", en: "Remote control" },
+        icon: SmartphoneIcon,
+        to: "/remote",
+        match: "/remote",
       },
       {
         id: "artifacts",

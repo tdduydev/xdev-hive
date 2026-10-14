@@ -53,6 +53,8 @@ const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"
 const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
 const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
+const RemotePage = lazyRouteComponent(() => import("@/pages/remote/remote-page.tsx"), "RemotePage");
+const RemoteSessionPage = lazyRouteComponent(() => import("@/pages/remote/session-page.tsx"), "RemoteSessionPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
 const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
 const CostsPage = lazyRouteComponent(() => import("@/pages/costs-page.tsx"), "CostsPage");
@@ -274,6 +276,18 @@ const leaderTerminalRoute = createRoute({
   component: LeaderTerminalPage,
 });
 
+/** Điều khiển từ xa (specs/010): danh sách phiên và phát lại; xterm.js nặng nên trang phiên là chunk riêng. */
+const remoteRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/remote",
+  component: RemotePage,
+});
+const remoteSessionRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/remote/$id",
+  component: RemoteSessionPage,
+});
+
 /** Artifact (specs/012): thư viện, chi tiết; `/v/$n` là đường dẫn phiên bản mà agent dán vào chữ trả lời. */
 const artifactsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
@@ -475,6 +489,8 @@ const routeTree = rootRoute.addChildren([
         runsRoute,
         leaderRoute,
         leaderTerminalRoute,
+        remoteRoute,
+        remoteSessionRoute,
         artifactsRoute,
         artifactRoute,
         artifactVersionRoute,

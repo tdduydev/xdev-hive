@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"path/filepath"
 	"slices"
@@ -21,7 +20,7 @@ import (
 const localStopWait = 10 * time.Second
 
 // startLocalIPC mở socket nội bộ cho `hive` (specs/010 T004, T011), trả hàm đóng và Handler ghi phiên lên hub (đệm
-// trong recordDir). Không mở được (worker khác đang nghe, Windows chưa hỗ trợ) thì chỉ ghi log và Handler nil: run từ
+// trong recordDir). Không mở được (worker khác đang nghe) thì chỉ ghi log và Handler nil: run từ
 // hub vẫn chạy, worker không khai `terminal` với hub vì không có phiên nào để ghi.
 func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remote) (func(), terminal.Handler) {
 	path, err := localipc.DefaultPath()
@@ -31,11 +30,7 @@ func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remot
 	}
 	ln, err := localipc.Listen(path)
 	if err != nil {
-		if errors.Is(err, localipc.ErrUnsupported) {
-			slog.Info("Socket nội bộ chưa hỗ trợ trên hệ điều hành này; lệnh hive không dùng được")
-		} else {
-			slog.Warn("Không mở được socket nội bộ; lệnh hive không dùng được", "path", path, "error", err)
-		}
+		slog.Warn("Không mở được socket nội bộ; lệnh hive không dùng được", "path", path, "error", err)
 		return func() {}, nil
 	}
 	commands, err := runner.CommandsFromEnv()

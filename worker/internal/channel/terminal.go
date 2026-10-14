@@ -21,7 +21,7 @@ const featureTerminal = "terminal"
 
 const msgTerminalNotShared = "Chỉ mở terminal Leader trên máy dùng chung."
 
-// terminalCapable: runner host không có PTY cho người dùng gõ (CLI chạy trong container), Windows chưa có PTY, máy
+// terminalCapable: runner host không có PTY cho người dùng gõ (CLI chạy trong container), Windows không có ConPTY, máy
 // không có claude thì không khai.
 func (c Config) terminalCapable() bool {
 	return c.Sandbox == nil && pty.Supported && contains(c.CLIs, "claude")
