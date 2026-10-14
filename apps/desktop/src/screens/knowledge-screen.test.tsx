@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
@@ -83,6 +83,8 @@ describe("KnowledgeScreen", () => {
     });
     render(<KnowledgeScreen />);
     const user = userEvent.setup();
+    // Ô tìm giữ câu tìm lần trước ở biến của module (màn bị dựng lại khi đổi hash), nên test chạy sau thấy sẵn chữ cũ.
+    await user.clear(screen.getByLabelText("Tìm tri thức"));
     await user.type(screen.getByLabelText("Tìm tri thức"), "hoan tien");
     await user.click(screen.getByRole("button", { name: "Tìm" }));
 
@@ -90,7 +92,7 @@ describe("KnowledgeScreen", () => {
     expect(await within(docs).findByText("Hoàn tiền một phần")).toBeTruthy();
     expect(within(docs).queryByText("Nhập môn")).toBeNull();
     expect(await screen.findByText(/đi qua bảng refunds/)).toBeTruthy();
-    expect(within(screen.getByRole("region", { name: "Skill" })).getByText("refund-flow")).toBeTruthy();
+    expect(await within(await screen.findByRole("region", { name: "Skill" })).findByText("refund-flow")).toBeTruthy();
     expect(calls.find((c) => c.path === "memory/search")?.query).toContain('"query":"hoan tien"');
 
     await user.click(within(docs).getByText("Hoàn tiền một phần"));
@@ -111,8 +113,10 @@ describe("KnowledgeScreen", () => {
     fakeHub({ "docs/list": [doc], "skills/list": [skill], "memory/search": [] });
     render(<KnowledgeScreen />);
     const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("Tìm tri thức"));
     await user.type(screen.getByLabelText("Tìm tri thức"), "kubernetes");
     await user.click(screen.getByRole("button", { name: "Tìm" }));
-    expect((await screen.findAllByText("Không có kết quả.")).length).toBe(3);
+    // Ba mục (tài liệu, skill, ký ức) tải độc lập; findAll trả ngay khi có mục đầu.
+    await waitFor(() => expect(screen.getAllByText("Không có kết quả.")).toHaveLength(3));
   });
 });

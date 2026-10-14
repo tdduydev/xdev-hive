@@ -28,6 +28,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/channel"
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
+	"github.com/tdduydev/xdev-hive/worker/internal/gitgroups"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
@@ -37,6 +38,11 @@ import (
 )
 
 func main() {
+	// Git gọi lại chính hive-worker làm GIT_ASKPASS khi clone, fetch theo nhóm Git (gitgroups); câu hỏi của git là đối số
+	// tự do nên phải xét trước khi đọc lệnh.
+	if os.Getenv(gitgroups.AskpassEnv) == "1" {
+		os.Exit(gitgroups.Askpass(os.Args[1:], os.Stdout))
+	}
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)
@@ -67,6 +73,8 @@ func main() {
 		os.Exit(optimizeCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "projects":
 		os.Exit(projectsCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "gitgroups":
+		os.Exit(gitgroupsCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "memory":
 		os.Exit(memoryCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "service":
@@ -80,7 +88,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {

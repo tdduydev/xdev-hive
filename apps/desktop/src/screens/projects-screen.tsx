@@ -14,6 +14,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { FolderOpenIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { ConnectHive } from "@/components/connect-hive.tsx";
+import { GitGroupsSection } from "@/components/git-groups.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { pickFolder, shortPath } from "@/lib/folder.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
@@ -359,6 +360,8 @@ function ProjectsView() {
           )}
         </div>
       </section>
+
+      <GitGroupsSection onCloned={load} />
 
       <Dialog open={confirming !== null} onOpenChange={(o) => !o && busy === null && setConfirming(null)}>
         <DialogContent showCloseButton={false}>

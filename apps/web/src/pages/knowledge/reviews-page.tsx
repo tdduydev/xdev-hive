@@ -262,7 +262,6 @@ function DocReviews(): ReactNode {
             pageSize={5}
             caption={t.queue}
             placeholder={t.search}
-            selectable={false}
             facets={[
               { key: "type", label: t.type, value: (row) => row.docType },
               { key: "gate", label: t.gate, value: (row) => row.gate?.name ?? null },

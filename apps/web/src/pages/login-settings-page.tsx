@@ -7,6 +7,7 @@ import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
 import { type ReactNode, useId, useState } from "react";
 import { Icon, type IconName } from "@/components/icons.tsx";
+import { DangerZone } from "@/components/page/danger-zone.tsx";
 import { FormRow, RadioCards, SettingsSection } from "@/components/page/settings.tsx";
 import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
 import { PeopleCopyField } from "@/components/person.tsx";
@@ -65,9 +66,7 @@ const text: Dict<{
   domainVerificationHint: string;
   recordNameTXT: string;
   value: string;
-  dangerTitle: string;
   dangerHint: string;
-  removeRowLabel: string;
   removeRowHint: string;
   removeOrganizationSSO: string;
   removeHint: string;
@@ -130,9 +129,7 @@ const text: Dict<{
     domainVerificationHint: "Chứng minh tổ chức giữ tên miền email bằng bản ghi TXT trên DNS.",
     recordNameTXT: "Tên bản ghi (TXT)",
     value: "Giá trị",
-    dangerTitle: "Vùng nguy hiểm",
     dangerHint: "Thao tác ở đây ảnh hưởng tới cách mọi người đăng nhập.",
-    removeRowLabel: "Gỡ SSO của tổ chức",
     removeRowHint: "Người đang dùng SSO phải đăng nhập bằng cách khác. Họ vẫn là thành viên.",
     removeOrganizationSSO: "Gỡ SSO của tổ chức?",
     removeHint:
@@ -207,9 +204,7 @@ const text: Dict<{
     domainVerificationHint: "Prove the organization owns its email domain with a DNS TXT record.",
     recordNameTXT: "Record name (TXT)",
     value: "Value",
-    dangerTitle: "Danger zone",
     dangerHint: "Actions here change how everyone signs in.",
-    removeRowLabel: "Remove organization SSO",
     removeRowHint: "People using SSO must sign in another way. They remain members.",
     removeOrganizationSSO: "Remove organization SSO?",
     removeHint:
@@ -287,7 +282,7 @@ export function LoginSettingsPage() {
         <Methods settings={settings.data} />
         <SsoForm settings={settings.data} defaultDomain={org.emailDomain} />
         <DomainVerification settings={settings.data} />
-        {settings.data.provider && <DangerZone />}
+        {settings.data.provider && <RemoveSsoZone />}
       </>
     );
 
@@ -669,19 +664,17 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
   );
 }
 
-function DangerZone() {
+function RemoveSsoZone() {
   const t = useT(text);
   const refresh = useRefreshSettings();
   const [removing, setRemoving] = useState(false);
   return (
     <>
-      <SettingsSection id="danger" title={t.dangerTitle} description={t.dangerHint}>
-        <FormRow label={t.removeRowLabel} hint={t.removeRowHint}>
-          <Button variant="destructive" className="justify-self-start" onClick={() => setRemoving(true)}>
-            {t.removeSSO}
-          </Button>
-        </FormRow>
-      </SettingsSection>
+      <DangerZone description={`${t.dangerHint} ${t.removeRowHint}`}>
+        <Button variant="destructive" onClick={() => setRemoving(true)}>
+          {t.removeSSO}
+        </Button>
+      </DangerZone>
       <Dialog open={removing} onOpenChange={setRemoving}>
         <DialogContent>
           <RemoveSso onDone={() => setRemoving(false)} onRemoved={refresh} />
