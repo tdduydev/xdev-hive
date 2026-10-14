@@ -101,7 +101,8 @@ export interface SettingsForm {
   toolOutputMaxChars: string;
 }
 
-const text = (n: number | undefined): string => (n === undefined ? "" : String(n));
+// null là "không giới hạn" trong bản vá; hub có thể trả lại nguyên như vậy.
+const text = (n: number | null | undefined): string => (n === undefined || n === null ? "" : String(n));
 
 /** Bước review chéo do màn này sửa: bước review đầu tiên trong chính sách mặc định của dự án. */
 const reviewIndex = (checks: OutcomeCheck[]): number => checks.findIndex((c) => c.check === "review");
@@ -382,4 +383,58 @@ export function saveErrors(error: unknown): { errors: FieldErrors; message?: str
     if (Object.keys(errors).length > 0) return { errors };
   }
   return { errors: {}, message: apiErrorMessage(error) };
+}
+
+/**
+ * Ô của từng mục trên màn cấu hình (admin-layout.md § Decisions 4: lưu từng mục). Mỗi ô thuộc đúng một mục, để lưu
+ * một mục không gửi kèm thay đổi đang gõ dở ở mục khác.
+ */
+export const SETTINGS_SECTIONS = {
+  merge: ["mergeMode", "requiredApprovals", "mergeMethod", "requireCi", "mergeQueue"],
+  review: ["crossReview", "reviewBy", "reviewMinScore", "reviewRequired", "reviewMinLines", "reviewPaths"],
+  run: ["planMode", "sandbox"],
+  brief: ["briefAuto", "briefRefreshCommits", "briefRefreshDays"],
+  budget: ["perRunUsd", "perTaskUsd", "maxTurns"],
+  model: ["models"],
+  tokens: [
+    "tokenSaving",
+    "bashMaxChars",
+    "autocompactPct",
+    "subagentModel",
+    "cacheTtl",
+    "autocompactWindow",
+    "allowWeb",
+    "rtk",
+    "codegraph",
+    "contextPack",
+    "exploreBudget",
+    "toolOutputMaxChars",
+  ],
+  routing: ["routing", "tiers"],
+  perm: ["runPermissions"],
+} as const satisfies Record<string, readonly (keyof SettingsForm)[]>;
+
+export type SettingsSectionId = keyof typeof SETTINGS_SECTIONS;
+export const SETTINGS_SECTION_IDS = Object.keys(SETTINGS_SECTIONS) as SettingsSectionId[];
+
+/** Mục chứa một ô; nhận cả tên lỗi theo ô (`models.claude.code`, `tiers.light.model`). */
+export function sectionOfField(field: string): SettingsSectionId | undefined {
+  const key = field.split(".")[0];
+  return SETTINGS_SECTION_IDS.find((id) => (SETTINGS_SECTIONS[id] as readonly string[]).includes(key ?? ""));
+}
+
+/** `form` với các ô của `section` chép từ `from`; ô của mục khác giữ nguyên. */
+export function withSection(form: SettingsForm, from: SettingsForm, section: SettingsSectionId): SettingsForm {
+  const next = { ...form };
+  for (const key of SETTINGS_SECTIONS[section]) Object.assign(next, { [key]: from[key] });
+  return next;
+}
+
+/** Bản vá chỉ của một mục: ô của mục khác lấy lại từ settings đang lưu, nên thay đổi chưa lưu ở đó không bị gửi đi. */
+export function buildSectionPatch(
+  form: SettingsForm,
+  current: ProjectSettings,
+  section: SettingsSectionId,
+): BuildResult {
+  return buildPatch(withSection(formFromSettings(current), form, section), current);
 }

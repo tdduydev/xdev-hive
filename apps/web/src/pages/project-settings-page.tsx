@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Machine, Project, ProjectSettings } from "@xdev-hive/contracts";
+import type { Machine, Project, ProjectSettings, ProjectSettingsPatch } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
@@ -9,28 +9,41 @@ import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { LockIcon } from "lucide-react";
-import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { type ReactNode, useId, useMemo, useState } from "react";
+import {
+  FormRow,
+  RadioCards,
+  type SectionSave,
+  SettingsLayout,
+  SettingsNav,
+  SettingsSection,
+  SwitchRow,
+} from "@/components/page/settings.tsx";
+import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
 import { ProjectBriefCard } from "@/components/project-brief-card.tsx";
-import { Card } from "@/components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
-import { Switch } from "@/components/ui/switch.tsx";
+import { SectionsSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import {
-  buildPatch,
+  buildSectionPatch,
   codeWorkflowsForProject,
   type FieldErrors,
   formFromSettings,
   type PermissionMode,
   REVIEW_CLIS,
   SETTINGS_CLIS,
+  SETTINGS_SECTION_IDS,
   type SettingsForm,
+  type SettingsSectionId,
   saveErrors,
+  sectionOfField,
   TASK_TIERS,
   type TaskTier,
   type TierForm,
+  withSection,
 } from "@/lib/project-settings.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
@@ -41,6 +54,7 @@ import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{
   title: string;
+  description: string;
   projectsCrumb: string;
   sectionsNav: string;
   loading: string;
@@ -79,6 +93,8 @@ const text: Dict<{
   filesMatch: string;
   globHint: string;
   onlyWhenHint: string;
+  runTitle: string;
+  runHint: string;
   planTitle: string;
   planHint: string;
   sandboxTitle: string;
@@ -101,16 +117,16 @@ const text: Dict<{
   tokensHint: string;
   tokensOn: string;
   tokensOnHint: string;
-  rtk: string;
-  rtkHint: string;
-  codegraph: string;
-  codegraphHint: string;
   contextPack: string;
   contextPackHint: string;
   exploreBudget: string;
   exploreBudgetHint: string;
   toolOutput: string;
   toolOutputHint: string;
+  rtk: string;
+  rtkHint: string;
+  codegraph: string;
+  codegraphHint: string;
   bashChars: string;
   bashCharsHint: string;
   compactPct: string;
@@ -154,11 +170,8 @@ const text: Dict<{
   machineFull: string;
   machineFullIdle: string;
   machineStatus: Record<Machine["status"], string>;
-  unsavedChanges: (n: number) => string;
   savedBanner: string;
-  discard: string;
-  save: string;
-  saving: string;
+  invalid: string;
   cfTitle: string;
   cfDesc: string;
   cf1: string;
@@ -178,6 +191,7 @@ const text: Dict<{
 }> = {
   vi: {
     title: "Cấu hình dự án",
+    description: "Cách agent làm việc trên dự án: merge, review, ngân sách, model, token và quyền trên máy.",
     projectsCrumb: "Dự án",
     sectionsNav: "Các phần",
     loading: "Đang tải…",
@@ -218,6 +232,8 @@ const text: Dict<{
     filesMatch: "Có đổi file khớp",
     globHint: "Mỗi dòng một mẫu đường dẫn kiểu glob.",
     onlyWhenHint: "Bỏ trống cả hai thì review mọi run. Điền cả hai thì đạt một trong hai là review.",
+    runTitle: "Kế hoạch và sandbox",
+    runHint: "Run có cần kế hoạch được duyệt trước không, và chạy ở đâu.",
     planTitle: "Plan mode",
     planHint: "Agent viết kế hoạch, người trong đội duyệt rồi run mới chạy.",
     sandboxTitle: "Sandbox",
@@ -243,10 +259,6 @@ const text: Dict<{
       "Worker đặt các giới hạn này cho run Claude Code của dự án. Codex, Gemini và Antigravity chỉ nhận mục CodeGraph. Bản chỉnh của máy và biến môi trường của dự án có thể ghi đè từng mục.",
     tokensOn: "Bật tiết kiệm token",
     tokensOnHint: "Tắt thì run Claude Code dùng cấu hình mặc định của CLI, không nén bằng RTK và không gắn CodeGraph.",
-    rtk: "Nén output lệnh bằng RTK",
-    rtkHint: "Chỉ áp khi máy chạy run có rtk, và chỉ với Claude Code.",
-    codegraph: "Gắn CodeGraph cho agent",
-    codegraphHint: "Chỉ áp khi máy chạy run có codegraph. Agent tìm symbol, caller qua codegraph_explore thay vì grep.",
     contextPack: "Dựng context pack trước run",
     contextPackHint:
       "Worker chọn sẵn các file liên quan tới task (đường dẫn, symbol nhắc tới, file hay đổi cùng) và đưa vào đầu run, để agent khỏi dò repo.",
@@ -256,6 +268,10 @@ const text: Dict<{
     toolOutput: "Cắt output tool dài",
     toolOutputHint:
       "Output dài hơn bị cắt, giữ đầu, cuối và dòng lỗi; bản đầy đủ lưu ra file cho agent đọc theo đoạn. 0 là tắt. Chỉ Claude Code.",
+    rtk: "Nén output lệnh bằng RTK",
+    rtkHint: "Chỉ áp khi máy chạy run có rtk, và chỉ với Claude Code.",
+    codegraph: "Gắn CodeGraph cho agent",
+    codegraphHint: "Chỉ áp khi máy chạy run có codegraph. Agent tìm symbol, caller qua codegraph_explore thay vì grep.",
     bashChars: "Output lệnh tối đa",
     bashCharsHint: "Ký tự giữ lại từ một lệnh Bash. Output dài bị đọc lại ở mọi lượt sau nên rất tốn.",
     compactPct: "Tự nén ngữ cảnh khi đầy",
@@ -305,11 +321,8 @@ const text: Dict<{
     machineFull: "Toàn quyền",
     machineFullIdle: "Toàn quyền đang bị chính sách tổ chức chặn",
     machineStatus: { online: "Sẵn sàng", offline: "Mất kết nối", paused: "Tạm dừng", revoked: "Đã thu hồi" },
-    unsavedChanges: (n) => `Có ${n} thay đổi chưa lưu`,
-    savedBanner: "Đã lưu cấu hình. Run giao sau đây dùng cấu hình mới.",
-    discard: "Bỏ thay đổi",
-    save: "Lưu cấu hình",
-    saving: "Đang lưu…",
+    savedBanner: "Đã lưu. Run giao sau đây dùng cấu hình mới.",
+    invalid: "Có ô chưa hợp lệ, xem chữ đỏ bên dưới từng ô.",
     cfTitle: "Cho agent toàn quyền?",
     cfDesc:
       "CLI sẽ chạy không sandbox và không hỏi duyệt (Claude: bypassPermissions, Codex: bỏ sandbox, Gemini: yolo, Antigravity: --dangerously-skip-permissions).",
@@ -332,6 +345,7 @@ const text: Dict<{
   },
   en: {
     title: "Project settings",
+    description: "How agents work on this project: merge, review, budget, models, tokens and machine permissions.",
     projectsCrumb: "Projects",
     sectionsNav: "Sections",
     loading: "Loading…",
@@ -372,6 +386,8 @@ const text: Dict<{
     filesMatch: "Changed files match",
     globHint: "One glob path pattern per line.",
     onlyWhenHint: "Leave both empty to review every run. Fill both and either one triggers a review.",
+    runTitle: "Plans and sandbox",
+    runHint: "Whether runs need an approved plan first, and where they run.",
     planTitle: "Plan mode",
     planHint: "The agent writes a plan; someone on the team approves it before the run starts.",
     sandboxTitle: "Sandbox",
@@ -396,11 +412,6 @@ const text: Dict<{
       "The worker sets these limits for the project's Claude Code runs. Codex, Gemini and Antigravity only get the CodeGraph item. A machine override or a project environment variable can replace each item.",
     tokensOn: "Turn on token saving",
     tokensOnHint: "When off, Claude Code runs use the CLI defaults, with no RTK compression and no CodeGraph.",
-    rtk: "Compress command output with RTK",
-    rtkHint: "Applies only when the machine running the run has rtk, and only for Claude Code.",
-    codegraph: "Attach CodeGraph to the agent",
-    codegraphHint:
-      "Applies only when the machine has codegraph. The agent finds symbols and callers through codegraph_explore instead of grep.",
     contextPack: "Build a context pack before the run",
     contextPackHint:
       "The worker picks files related to the task (mentioned paths and symbols, files often changed together) and puts them at the start of the run, so the agent does not scan the repo.",
@@ -410,6 +421,11 @@ const text: Dict<{
     toolOutput: "Trim long tool output",
     toolOutputHint:
       "Longer output is trimmed to its start, end and error lines; the full text is saved to a file the agent can read in parts. 0 turns it off. Claude Code only.",
+    rtk: "Compress command output with RTK",
+    rtkHint: "Applies only when the machine running the run has rtk, and only for Claude Code.",
+    codegraph: "Attach CodeGraph to the agent",
+    codegraphHint:
+      "Applies only when the machine has codegraph. The agent finds symbols and callers through codegraph_explore instead of grep.",
     bashChars: "Max command output",
     bashCharsHint:
       "Characters kept from one Bash command. Long output is re-read on every later turn, so it is costly.",
@@ -462,11 +478,8 @@ const text: Dict<{
     machineFull: "Full access",
     machineFullIdle: "Full access is blocked by the organization policy",
     machineStatus: { online: "Ready", offline: "Offline", paused: "Paused", revoked: "Revoked" },
-    unsavedChanges: (n) => `${n} unsaved changes`,
-    savedBanner: "Settings saved. Subsequent runs will use the new settings.",
-    discard: "Discard",
-    save: "Save settings",
-    saving: "Saving…",
+    savedBanner: "Saved. Subsequent runs will use the new settings.",
+    invalid: "Some fields are invalid; see the red text under each field.",
     cfTitle: "Give agents full access?",
     cfDesc:
       "The CLI runs without a sandbox or approval prompts (Claude: bypassPermissions, Codex: no sandbox, Gemini: yolo, Antigravity: --dangerously-skip-permissions).",
@@ -501,11 +514,7 @@ export function ProjectSettingsPage() {
 
   let body: ReactNode;
   if (projects.isPending || (members.isPending && org.role === "member")) {
-    body = (
-      <p aria-busy="true" className="text-muted-foreground">
-        {t.loading}
-      </p>
-    );
+    body = <SectionsSkeleton label={t.loading} />;
   } else if (projects.isError || !project) {
     body = (
       <>
@@ -523,8 +532,8 @@ export function ProjectSettingsPage() {
 
   return (
     <>
-      <PageHeader crumb={crumb} title={t.title} />
-      <PageBody>{body}</PageBody>
+      <PageHeader crumb={crumb} title={t.title} description={t.description} width="form" />
+      <PageBody width="form">{body}</PageBody>
     </>
   );
 }
@@ -544,24 +553,7 @@ function Crumb({ project, projectKey }: { project: Project | undefined; projectK
   );
 }
 
-function Section({ id, title, hint, children }: { id?: string; title?: string; hint?: string; children: ReactNode }) {
-  const headingId = useId();
-  return (
-    <Card id={id} className="grid gap-4 p-5 scroll-mt-20" role="group" aria-labelledby={title ? headingId : undefined}>
-      {title && (
-        <div className="grid gap-0.5">
-          <h2 id={headingId} className="text-base font-semibold text-foreground">
-            {title}
-          </h2>
-          {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-        </div>
-      )}
-      {children}
-    </Card>
-  );
-}
-
-/** Máy của đội đã gắn dự án với repo local hay bật toàn quyền cho dự án (ADR 0020); chỉ đọc. */
+/** Máy của đội đã gắn dự án với repo local hay bật toàn quyền cho dự án (ADR 0020); chỉ đọc nên không có nút Lưu. */
 function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked: boolean }) {
   const { api } = useOrg();
   const t = useT(text);
@@ -574,7 +566,7 @@ function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked
     (m) => m.status !== "revoked" && (m.boundProjects?.includes(project.id) || m.fullProjects?.includes(project.id)),
   );
   return (
-    <Section id="machines" title={t.machinesTitle} hint={t.machinesHint}>
+    <SettingsSection id="machines" title={t.machinesTitle} description={t.machinesHint}>
       {machines.isPending ? (
         <p aria-busy="true" className="text-sm text-muted-foreground">
           {t.machinesLoading}
@@ -586,10 +578,7 @@ function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked
       ) : (
         <ul className="m-0 grid list-none gap-2 p-0">
           {linked.map((m) => (
-            <li
-              key={m.id}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border px-3.5 py-2.5 text-sm"
-            >
+            <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
               <strong className="font-medium text-foreground">{m.name}</strong>
               <span className="text-xs text-muted-foreground">{m.os}</span>
               <Pill tone={m.status === "online" ? "ok" : m.status === "paused" ? "warn" : "neutral"}>
@@ -606,32 +595,7 @@ function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked
           ))}
         </ul>
       )}
-    </Section>
-  );
-}
-
-function SwitchRow({
-  label,
-  hint,
-  checked,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled: boolean;
-}) {
-  const id = useId();
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <label htmlFor={id} className="grid cursor-pointer gap-0.5">
-        <span className="text-sm font-medium text-foreground">{label}</span>
-        {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-      </label>
-      <Switch id={id} checked={checked} onCheckedChange={onChange} disabled={disabled} aria-label={label} />
-    </div>
+    </SettingsSection>
   );
 }
 
@@ -695,8 +659,8 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   const [saved, setSaved] = useState<ProjectSettings>(project.settings);
   const [form, setForm] = useState<SettingsForm>(() => formFromSettings(project.settings));
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [failure, setFailure] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  // Kết quả lưu gần nhất của từng mục: hiện ở chân mục đó, không ở chỗ chung.
+  const [results, setResults] = useState<Partial<Record<SettingsSectionId, { done?: true; failure?: string }>>>({});
   const [confirmFull, setConfirmFull] = useState(false);
   const effortId = useId();
   const ids = {
@@ -709,203 +673,202 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   };
 
   const save = useMutation({
-    mutationFn: (patch: NonNullable<Extract<ReturnType<typeof buildPatch>, { ok: true }>["patch"]>) =>
+    mutationFn: ({ patch }: { section: SettingsSectionId; patch: ProjectSettingsPatch }) =>
       api.projects.updateSettings.call({ key: project.key, settings: patch }),
-    onSuccess: async (next) => {
+    onSuccess: async (next, { section }) => {
       setSaved(next);
-      setForm(formFromSettings(next));
-      setDone(true);
+      // Chỉ mục vừa lưu lấy lại giá trị hub trả; mục khác giữ bản nháp đang sửa.
+      setForm((f) => withSection(f, formFromSettings(next), section));
+      setResults((r) => ({ ...r, [section]: { done: true } }));
       await queryClient.invalidateQueries({ queryKey: api.projects.key() });
     },
-    onError: (error) => {
+    onError: (error, { section }) => {
       const r = saveErrors(error);
-      setErrors(r.errors);
-      setFailure(r.message ?? null);
+      setErrors((e) => ({ ...clearSection(e, section), ...r.errors }));
+      setResults((all) => ({ ...all, [section]: { failure: r.message ?? t.invalid } }));
     },
   });
 
   const disabled = !canEdit || save.isPending;
+  const touch = (section: SettingsSectionId | undefined) => {
+    if (section && results[section]?.done) setResults((r) => ({ ...r, [section]: {} }));
+  };
   const set = <K extends keyof SettingsForm>(k: K, v: SettingsForm[K]) => {
-    setDone(false);
+    touch(sectionOfField(k));
     setForm((f) => ({ ...f, [k]: v }));
   };
   const setModel = (cli: (typeof SETTINGS_CLIS)[number], kind: "code" | "review", v: string) => {
-    setDone(false);
+    touch("model");
     setForm((f) => ({ ...f, models: { ...f.models, [cli]: { ...f.models[cli], [kind]: v } } }));
   };
   const setTier = <K extends keyof TierForm>(tier: TaskTier, k: K, v: TierForm[K]) => {
-    setDone(false);
+    touch("routing");
     setForm((f) => ({ ...f, tiers: { ...f.tiers, [tier]: { ...f.tiers[tier], [k]: v } } }));
   };
-  const built = buildPatch(form, saved);
-  const dirty = !built.ok || built.patch !== null;
+  const built = Object.fromEntries(
+    SETTINGS_SECTION_IDS.map((id) => [id, buildSectionPatch(form, saved, id)]),
+  ) as Record<SettingsSectionId, ReturnType<typeof buildSectionPatch>>;
+  const isDirty = (id: SettingsSectionId) => !built[id].ok || built[id].patch !== null;
+  const anyDirty = SETTINGS_SECTION_IDS.some(isDirty);
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setFailure(null);
-    setDone(false);
-    if (!built.ok) {
-      setErrors(built.errors);
-      setFailure(built.message ?? "Có ô chưa hợp lệ, xem chữ đỏ bên dưới từng ô.");
-      return;
-    }
-    setErrors({});
-    if (built.patch) save.mutate(built.patch);
-  }
+  /** Nút Lưu, Huỷ và trạng thái ở chân từng mục; người chỉ xem không có. */
+  const sectionSave = (section: SettingsSectionId): SectionSave | undefined => {
+    if (!canEdit) return undefined;
+    const result = built[section];
+    return {
+      dirty: isDirty(section),
+      saving: save.isPending && save.variables?.section === section,
+      disabled: save.isPending,
+      saved: results[section]?.done === true,
+      error: results[section]?.failure,
+      savedLabel: t.savedBanner,
+      onSave: () => {
+        if (!result.ok) {
+          setErrors((e) => ({ ...clearSection(e, section), ...result.errors }));
+          setResults((r) => ({ ...r, [section]: { failure: result.message ?? t.invalid } }));
+          return;
+        }
+        setErrors((e) => clearSection(e, section));
+        setResults((r) => ({ ...r, [section]: {} }));
+        if (result.patch) save.mutate({ section, patch: result.patch });
+      },
+      onDiscard: () => {
+        setForm((f) => withSection(f, formFromSettings(saved), section));
+        setErrors((e) => clearSection(e, section));
+        setResults((r) => ({ ...r, [section]: {} }));
+      },
+    };
+  };
 
   function choosePermission(mode: PermissionMode) {
     if (mode === "full" && form.runPermissions !== "full") setConfirmFull(true);
     else set("runPermissions", mode);
   }
 
-  const toc = [
-    { href: "#merge", label: t.mergeTitle },
-    { href: "#review", label: t.reviewTitle },
-    { href: "#plan", label: t.planTitle },
-    { href: "#sandbox", label: t.sandboxTitle },
-    { href: "#brief", label: t.briefTitle },
-    { href: "#budget", label: t.budgetTitle },
-    { href: "#model", label: t.modelTitle },
-    { href: "#tokens", label: t.tokensTitle },
-    { href: "#perm", label: t.permTitle },
-    ...(canEdit ? [{ href: "#machines", label: t.machinesTitle }] : []),
-  ];
+  const nav = useMemo(
+    () => [
+      { id: "merge", label: t.mergeTitle },
+      { id: "review", label: t.reviewTitle },
+      { id: "run", label: t.runTitle },
+      { id: "brief", label: t.briefTitle },
+      { id: "budget", label: t.budgetTitle },
+      { id: "model", label: t.modelTitle },
+      { id: "tokens", label: t.tokensTitle },
+      { id: "routing", label: t.routingTitle },
+      { id: "perm", label: t.permTitle },
+      ...(canEdit ? [{ id: "machines", label: t.machinesTitle }] : []),
+    ],
+    [t, canEdit],
+  );
+  const tokenOff = disabled || !form.tokenSaving;
+  const routingOff = disabled || !form.routing;
 
   return (
-    <form noValidate onSubmit={onSubmit} className="grid gap-6">
+    <div className="grid gap-4">
+      <UnsavedChangesGuard when={anyDirty} />
       {!canEdit && (
         <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">
           {t.readOnlyBanner}
         </p>
       )}
 
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        {/* TOC sidebar */}
-        <nav aria-label={t.sectionsNav} className="sticky top-4 hidden w-48 shrink-0 flex-col gap-1 text-sm lg:flex">
-          {toc.map((s) => (
-            <a
-              key={s.href}
-              href={s.href}
-              className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              {s.label}
-            </a>
-          ))}
-        </nav>
-
-        {/* Content sections */}
-        <div className="min-w-0 flex-1 grid gap-4">
-          <Section id="merge" title={t.mergeTitle} hint={t.mergeHint}>
-            <div role="radiogroup" aria-label={t.modeLabel} className="grid gap-2 sm:grid-cols-2">
-              {(
-                [
-                  ["review", t.modeReview, t.modeReviewHint],
-                  ["auto", t.modeAuto, t.modeAutoHint],
-                ] as const
-              ).map(([value, label, hint]) => {
-                const on = form.mergeMode === value;
-                return (
-                  <label
-                    key={value}
-                    className={cx(
-                      "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm transition-colors",
-                      on ? "border-primary bg-accent/40" : "border-border hover:bg-muted/40",
-                      disabled && "cursor-not-allowed opacity-60",
-                    )}
-                  >
-                    <input
-                      type="radio"
-                      name="mergeMode"
-                      value={value}
-                      checked={on}
-                      onChange={() => set("mergeMode", value)}
-                      disabled={disabled}
-                      className="mt-0.5 size-4 accent-primary"
-                    />
-                    <span className="grid gap-0.5">
-                      <strong className="font-medium text-foreground">{label}</strong>
-                      <span className="text-xs text-muted-foreground">{hint}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField
-                label={t.reviewers}
-                hint={t.reviewersHint}
-                error={errors.requiredApprovals}
-                value={form.requiredApprovals}
-                onChange={(v) => set("requiredApprovals", v)}
+      <SettingsLayout nav={<SettingsNav label={t.sectionsNav} items={nav} />}>
+        <SettingsSection id="merge" save={sectionSave("merge")} title={t.mergeTitle} description={t.mergeHint}>
+          <RadioCards
+            name="mergeMode"
+            label={t.modeLabel}
+            columns={2}
+            value={form.mergeMode}
+            onChange={(value) => set("mergeMode", value)}
+            disabled={disabled}
+            options={[
+              { value: "review", title: t.modeReview, description: t.modeReviewHint },
+              { value: "auto", title: t.modeAuto, description: t.modeAutoHint },
+            ]}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              label={t.reviewers}
+              hint={t.reviewersHint}
+              error={errors.requiredApprovals}
+              value={form.requiredApprovals}
+              onChange={(v) => set("requiredApprovals", v)}
+              disabled={disabled}
+              inputMode="numeric"
+            />
+            <Field invalid={errors.mergeMethod !== undefined}>
+              <FieldLabel htmlFor={ids.method}>{t.method}</FieldLabel>
+              <NativeSelect
+                id={ids.method}
+                value={form.mergeMethod}
+                onChange={(e) => set("mergeMethod", e.currentTarget.value as SettingsForm["mergeMethod"])}
                 disabled={disabled}
-                inputMode="numeric"
-              />
-              <Field invalid={errors.mergeMethod !== undefined}>
-                <FieldLabel htmlFor={ids.method}>{t.method}</FieldLabel>
-                <NativeSelect
-                  id={ids.method}
-                  value={form.mergeMethod}
-                  onChange={(e) => set("mergeMethod", e.currentTarget.value as SettingsForm["mergeMethod"])}
-                  disabled={disabled}
-                >
-                  <option value="">{t.mDefault}</option>
-                  <option value="squash">Squash</option>
-                  <option value="merge">Merge commit</option>
-                  <option value="rebase">Rebase</option>
-                </NativeSelect>
-                {errors.mergeMethod && <FieldError>{errors.mergeMethod}</FieldError>}
-              </Field>
-            </div>
-            <SwitchRow
-              label={t.ciLabel}
-              hint={t.ciHint}
-              checked={form.requireCi}
-              onChange={(v) => set("requireCi", v)}
-              disabled={disabled}
-            />
-            <SwitchRow
-              label={t.queueLabel}
-              hint={t.queueHint}
-              checked={form.mergeQueue}
-              onChange={(v) => set("mergeQueue", v)}
-              disabled={disabled}
-            />
-          </Section>
+              >
+                <option value="">{t.mDefault}</option>
+                <option value="squash">Squash</option>
+                <option value="merge">Merge commit</option>
+                <option value="rebase">Rebase</option>
+              </NativeSelect>
+              {errors.mergeMethod && <FieldError>{errors.mergeMethod}</FieldError>}
+            </Field>
+          </div>
+          <SwitchRow
+            label={t.ciLabel}
+            hint={t.ciHint}
+            checked={form.requireCi}
+            onChange={(v) => set("requireCi", v)}
+            disabled={disabled}
+          />
+          <SwitchRow
+            label={t.queueLabel}
+            hint={t.queueHint}
+            checked={form.mergeQueue}
+            onChange={(v) => set("mergeQueue", v)}
+            disabled={disabled}
+          />
+        </SettingsSection>
 
-          <Section id="review" title={t.reviewTitle} hint={t.reviewHint}>
-            {codeWorkflows.length > 0 && (
-              <Alert>
-                <div className="grid gap-2 break-words">
-                  {codeWorkflows.map((workflow) => (
-                    <Link
-                      key={workflow.id}
-                      to="/knowledge/workflows"
-                      className="text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
-                    >
-                      {t.workflowReview(workflow.name)}
-                    </Link>
-                  ))}
-                  <p>{t.workflowProtection}</p>
-                </div>
-              </Alert>
-            )}
-            {canCreateWorkflow && (
+        <SettingsSection
+          id="review"
+          save={sectionSave("review")}
+          title={t.reviewTitle}
+          description={t.reviewHint}
+          actions={
+            canCreateWorkflow && (
               <Link
                 to="/knowledge/workflows"
                 search={{ duan: project.key }}
-                className={cx(buttonVariants({ variant: "outline" }), "w-fit")}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
               >
                 {t.workflowCreate}
               </Link>
-            )}
-            <SwitchRow
-              label={t.reviewOn}
-              checked={form.crossReview}
-              onChange={(v) => set("crossReview", v)}
-              disabled={disabled}
-            />
+            )
+          }
+        >
+          {codeWorkflows.length > 0 && (
+            <Alert>
+              <div className="grid gap-2 break-words">
+                {codeWorkflows.map((workflow) => (
+                  <Link
+                    key={workflow.id}
+                    to="/knowledge/workflows"
+                    className="text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    {t.workflowReview(workflow.name)}
+                  </Link>
+                ))}
+                <p>{t.workflowProtection}</p>
+              </div>
+            </Alert>
+          )}
+          <SwitchRow
+            label={t.reviewOn}
+            checked={form.crossReview}
+            onChange={(v) => set("crossReview", v)}
+            disabled={disabled}
+          >
             {form.crossReview && (
-              <div className="grid gap-4 border-l-2 border-border pl-3.5">
+              <>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field invalid={errors.reviewBy !== undefined}>
                     <FieldLabel htmlFor={ids.reviewBy}>{t.reviewAgent}</FieldLabel>
@@ -940,7 +903,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                   onChange={(v) => set("reviewRequired", v)}
                   disabled={disabled}
                 />
-                <fieldset className="grid gap-3 rounded-lg border border-dashed border-border p-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                <fieldset className="grid min-w-0 gap-3 rounded-lg border border-dashed border-border p-3 sm:grid-cols-[180px_minmax(0,1fr)]">
                   <legend className="px-1.5 text-xs font-medium text-foreground">{t.onlyWhen}</legend>
                   <TextField
                     label={t.linesFrom}
@@ -979,262 +942,259 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                   </div>
                   <span className="text-xs text-muted-foreground sm:col-span-2">{t.onlyWhenHint}</span>
                 </fieldset>
-              </div>
+              </>
             )}
-          </Section>
+          </SwitchRow>
+        </SettingsSection>
 
-          <Section id="plan">
-            <SwitchRow
-              label={t.planTitle}
-              hint={t.planHint}
-              checked={form.planMode}
-              onChange={(v) => set("planMode", v)}
-              disabled={disabled}
-            />
-          </Section>
-
-          <Section id="sandbox">
-            <SwitchRow
-              label={t.sandboxTitle}
-              hint={t.sandboxHint}
-              checked={form.sandbox}
-              onChange={(v) => set("sandbox", v)}
-              disabled={disabled}
-            />
-            <p className="text-xs">
-              <Link
-                to="/projects/$key/sandbox"
-                params={{ key: project.key }}
-                className="text-primary hover:text-primary/90"
-              >
-                {t.sandboxLink} →
-              </Link>
-            </p>
-          </Section>
-
-          <Section id="brief" title={t.briefTitle} hint={t.briefHint}>
-            <ProjectBriefCard project={project} canWrite={canBrief} />
-            <SwitchRow
-              label={t.briefAuto}
-              hint={t.briefAutoHint}
-              checked={form.briefAuto}
-              onChange={(v) => set("briefAuto", v)}
-              disabled={disabled}
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField
-                label={t.briefCommits}
-                hint={t.briefCommitsHint}
-                error={errors.briefRefreshCommits}
-                value={form.briefRefreshCommits}
-                onChange={(v) => set("briefRefreshCommits", v)}
-                disabled={disabled}
-                inputMode="numeric"
-              />
-              <TextField
-                label={t.briefDays}
-                hint={t.briefDaysHint}
-                error={errors.briefRefreshDays}
-                value={form.briefRefreshDays}
-                onChange={(v) => set("briefRefreshDays", v)}
-                disabled={disabled}
-                inputMode="numeric"
-              />
-            </div>
-          </Section>
-
-          <Section id="budget" title={t.budgetTitle} hint={t.budgetHint}>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <TextField
-                label={t.perRun}
-                error={errors.perRunUsd}
-                value={form.perRunUsd}
-                onChange={(v) => set("perRunUsd", v)}
-                disabled={disabled}
-                inputMode="decimal"
-                placeholder={t.unlimited}
-                suffix="USD"
-              />
-              <TextField
-                label={t.perTask}
-                hint={t.perTaskHint}
-                error={errors.perTaskUsd}
-                value={form.perTaskUsd}
-                onChange={(v) => set("perTaskUsd", v)}
-                disabled={disabled}
-                inputMode="decimal"
-                placeholder={t.unlimited}
-                suffix="USD"
-              />
-              <TextField
-                label={t.maxTurns}
-                hint={t.maxTurnsHint}
-                error={errors.maxTurns}
-                value={form.maxTurns}
-                onChange={(v) => set("maxTurns", v)}
-                disabled={disabled}
-                inputMode="numeric"
-                placeholder={t.unlimited}
-              />
-            </div>
-          </Section>
-
-          <Section id="model" title={t.modelTitle} hint={t.modelHint}>
-            <div className="grid gap-3 pt-1">
-              {SETTINGS_CLIS.map((cli) => (
-                <div key={cli} className="grid items-end gap-3 border-b border-border pb-3 sm:grid-cols-[80px_1fr_1fr]">
-                  <strong className="pb-2 text-sm font-semibold text-foreground">{CLI_LABEL[cli]}</strong>
-                  <TextField
-                    label={`${t.writeCode} (${CLI_LABEL[cli]})`}
-                    error={errors[`models.${cli}.code`]}
-                    value={form.models[cli].code}
-                    onChange={(v) => setModel(cli, "code", v)}
-                    disabled={disabled}
-                    placeholder={t.cliDefault}
-                  />
-                  <TextField
-                    label={`${t.reviewCode} (${CLI_LABEL[cli]})`}
-                    error={errors[`models.${cli}.review`]}
-                    value={form.models[cli].review}
-                    onChange={(v) => setModel(cli, "review", v)}
-                    disabled={disabled}
-                    placeholder={t.cliDefault}
-                  />
-                </div>
-              ))}
-            </div>
-          </Section>
-
-          <Section id="tokens" title={t.tokensTitle} hint={t.tokensHint}>
-            <SwitchRow
-              label={t.tokensOn}
-              hint={t.tokensOnHint}
-              checked={form.tokenSaving}
-              onChange={(v) => set("tokenSaving", v)}
-              disabled={disabled}
-            />
-            <SwitchRow
-              label={t.rtk}
-              hint={t.rtkHint}
-              checked={form.rtk}
-              onChange={(v) => set("rtk", v)}
-              disabled={disabled || !form.tokenSaving}
-            />
-            <SwitchRow
-              label={t.codegraph}
-              hint={t.codegraphHint}
-              checked={form.codegraph}
-              onChange={(v) => set("codegraph", v)}
-              disabled={disabled || !form.tokenSaving}
-            />
-            <SwitchRow
-              label={t.contextPack}
-              hint={t.contextPackHint}
-              checked={form.contextPack}
-              onChange={(v) => set("contextPack", v)}
-              disabled={disabled || !form.tokenSaving}
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField
-                label={t.exploreBudget}
-                hint={t.exploreBudgetHint}
-                error={errors.exploreBudget}
-                value={form.exploreBudget}
-                onChange={(v) => set("exploreBudget", v)}
-                disabled={disabled || !form.tokenSaving}
-                inputMode="numeric"
-                suffix="lệnh"
-              />
-              <TextField
-                label={t.toolOutput}
-                hint={t.toolOutputHint}
-                error={errors.toolOutputMaxChars}
-                value={form.toolOutputMaxChars}
-                onChange={(v) => set("toolOutputMaxChars", v)}
-                disabled={disabled || !form.tokenSaving}
-                inputMode="numeric"
-                suffix="ký tự"
-              />
-              <TextField
-                label={t.bashChars}
-                hint={t.bashCharsHint}
-                error={errors.bashMaxChars}
-                value={form.bashMaxChars}
-                onChange={(v) => set("bashMaxChars", v)}
-                disabled={disabled || !form.tokenSaving}
-                inputMode="numeric"
-                suffix="ký tự"
-              />
-              <TextField
-                label={t.compactPct}
-                hint={t.compactPctHint}
-                error={errors.autocompactPct}
-                value={form.autocompactPct}
-                onChange={(v) => set("autocompactPct", v)}
-                disabled={disabled || !form.tokenSaving}
-                inputMode="numeric"
-                suffix="%"
-              />
-              <TextField
-                label={t.subagent}
-                hint={t.subagentHint}
-                error={errors.subagentModel}
-                value={form.subagentModel}
-                onChange={(v) => set("subagentModel", v)}
-                disabled={disabled || !form.tokenSaving}
-              />
-              <Field invalid={errors.cacheTtl !== undefined}>
-                <FieldLabel htmlFor={ids.cacheTtl}>{t.cacheTtl}</FieldLabel>
-                <NativeSelect
-                  id={ids.cacheTtl}
-                  value={form.cacheTtl}
-                  onChange={(e) => set("cacheTtl", e.currentTarget.value as SettingsForm["cacheTtl"])}
-                  disabled={disabled || !form.tokenSaving}
+        <SettingsSection id="run" save={sectionSave("run")} title={t.runTitle} description={t.runHint}>
+          <SwitchRow
+            label={t.planTitle}
+            hint={t.planHint}
+            checked={form.planMode}
+            onChange={(v) => set("planMode", v)}
+            disabled={disabled}
+          />
+          <SwitchRow
+            label={t.sandboxTitle}
+            hint={
+              <>
+                {t.sandboxHint}{" "}
+                <Link
+                  to="/projects/$key/sandbox"
+                  params={{ key: project.key }}
+                  className="text-primary hover:text-primary/90"
                 >
-                  <option value="5m">{t.cacheTtl5}</option>
-                  <option value="1h">{t.cacheTtl1h}</option>
-                </NativeSelect>
-                {errors.cacheTtl ? <FieldError>{errors.cacheTtl}</FieldError> : <FieldHint>{t.cacheTtlHint}</FieldHint>}
-              </Field>
-              <TextField
-                label={t.compactWindow}
-                hint={t.compactWindowHint}
-                error={errors.autocompactWindow}
-                value={form.autocompactWindow}
-                onChange={(v) => set("autocompactWindow", v)}
-                disabled={disabled || !form.tokenSaving}
-                inputMode="numeric"
-                suffix="token"
-              />
-            </div>
-            <SwitchRow
-              label={t.allowWeb}
-              hint={t.allowWebHint}
-              checked={form.allowWeb}
-              onChange={(v) => set("allowWeb", v)}
-              disabled={disabled || !form.tokenSaving}
-            />
-          </Section>
+                  {t.sandboxLink} →
+                </Link>
+              </>
+            }
+            checked={form.sandbox}
+            onChange={(v) => set("sandbox", v)}
+            disabled={disabled}
+          />
+        </SettingsSection>
 
-          <Section id="routing" title={t.routingTitle} hint={t.routingHint}>
-            <SwitchRow
-              label={t.routingOn}
-              hint={t.routingOnHint}
-              checked={form.routing}
-              onChange={(v) => set("routing", v)}
+        <SettingsSection id="brief" save={sectionSave("brief")} title={t.briefTitle} description={t.briefHint}>
+          <ProjectBriefCard project={project} canWrite={canBrief} />
+          <SwitchRow
+            label={t.briefAuto}
+            hint={t.briefAutoHint}
+            checked={form.briefAuto}
+            onChange={(v) => set("briefAuto", v)}
+            disabled={disabled}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              label={t.briefCommits}
+              hint={t.briefCommitsHint}
+              error={errors.briefRefreshCommits}
+              value={form.briefRefreshCommits}
+              onChange={(v) => set("briefRefreshCommits", v)}
               disabled={disabled}
+              inputMode="numeric"
             />
-            {TASK_TIERS.map((tier) => (
-              <div key={tier} className="grid gap-3 sm:grid-cols-4">
-                <strong className="text-sm font-semibold text-foreground sm:col-span-4">
-                  {{ light: t.tierLight, medium: t.tierMedium, heavy: t.tierHeavy }[tier]}
-                </strong>
+            <TextField
+              label={t.briefDays}
+              hint={t.briefDaysHint}
+              error={errors.briefRefreshDays}
+              value={form.briefRefreshDays}
+              onChange={(v) => set("briefRefreshDays", v)}
+              disabled={disabled}
+              inputMode="numeric"
+            />
+          </div>
+        </SettingsSection>
+
+        <SettingsSection id="budget" save={sectionSave("budget")} title={t.budgetTitle} description={t.budgetHint}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <TextField
+              label={t.perRun}
+              error={errors.perRunUsd}
+              value={form.perRunUsd}
+              onChange={(v) => set("perRunUsd", v)}
+              disabled={disabled}
+              inputMode="decimal"
+              placeholder={t.unlimited}
+              suffix="USD"
+            />
+            <TextField
+              label={t.perTask}
+              hint={t.perTaskHint}
+              error={errors.perTaskUsd}
+              value={form.perTaskUsd}
+              onChange={(v) => set("perTaskUsd", v)}
+              disabled={disabled}
+              inputMode="decimal"
+              placeholder={t.unlimited}
+              suffix="USD"
+            />
+            <TextField
+              label={t.maxTurns}
+              hint={t.maxTurnsHint}
+              error={errors.maxTurns}
+              value={form.maxTurns}
+              onChange={(v) => set("maxTurns", v)}
+              disabled={disabled}
+              inputMode="numeric"
+              placeholder={t.unlimited}
+            />
+          </div>
+        </SettingsSection>
+
+        <SettingsSection id="model" save={sectionSave("model")} title={t.modelTitle} description={t.modelHint}>
+          {SETTINGS_CLIS.map((cli) => (
+            <FormRow key={cli} label={CLI_LABEL[cli] ?? cli}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  label={`${t.writeCode} (${CLI_LABEL[cli]})`}
+                  error={errors[`models.${cli}.code`]}
+                  value={form.models[cli].code}
+                  onChange={(v) => setModel(cli, "code", v)}
+                  disabled={disabled}
+                  placeholder={t.cliDefault}
+                />
+                <TextField
+                  label={`${t.reviewCode} (${CLI_LABEL[cli]})`}
+                  error={errors[`models.${cli}.review`]}
+                  value={form.models[cli].review}
+                  onChange={(v) => setModel(cli, "review", v)}
+                  disabled={disabled}
+                  placeholder={t.cliDefault}
+                />
+              </div>
+            </FormRow>
+          ))}
+        </SettingsSection>
+
+        <SettingsSection id="tokens" save={sectionSave("tokens")} title={t.tokensTitle} description={t.tokensHint}>
+          <SwitchRow
+            label={t.tokensOn}
+            hint={t.tokensOnHint}
+            checked={form.tokenSaving}
+            onChange={(v) => set("tokenSaving", v)}
+            disabled={disabled}
+          />
+          <SwitchRow
+            label={t.rtk}
+            hint={t.rtkHint}
+            checked={form.rtk}
+            onChange={(v) => set("rtk", v)}
+            disabled={tokenOff}
+          />
+          <SwitchRow
+            label={t.codegraph}
+            hint={t.codegraphHint}
+            checked={form.codegraph}
+            onChange={(v) => set("codegraph", v)}
+            disabled={tokenOff}
+          />
+          <SwitchRow
+            label={t.contextPack}
+            hint={t.contextPackHint}
+            checked={form.contextPack}
+            onChange={(v) => set("contextPack", v)}
+            disabled={tokenOff}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              label={t.exploreBudget}
+              hint={t.exploreBudgetHint}
+              error={errors.exploreBudget}
+              value={form.exploreBudget}
+              onChange={(v) => set("exploreBudget", v)}
+              disabled={tokenOff}
+              inputMode="numeric"
+              suffix="lệnh"
+            />
+            <TextField
+              label={t.toolOutput}
+              hint={t.toolOutputHint}
+              error={errors.toolOutputMaxChars}
+              value={form.toolOutputMaxChars}
+              onChange={(v) => set("toolOutputMaxChars", v)}
+              disabled={tokenOff}
+              inputMode="numeric"
+              suffix="ký tự"
+            />
+            <TextField
+              label={t.bashChars}
+              hint={t.bashCharsHint}
+              error={errors.bashMaxChars}
+              value={form.bashMaxChars}
+              onChange={(v) => set("bashMaxChars", v)}
+              disabled={tokenOff}
+              inputMode="numeric"
+              suffix="ký tự"
+            />
+            <TextField
+              label={t.compactPct}
+              hint={t.compactPctHint}
+              error={errors.autocompactPct}
+              value={form.autocompactPct}
+              onChange={(v) => set("autocompactPct", v)}
+              disabled={tokenOff}
+              inputMode="numeric"
+              suffix="%"
+            />
+            <TextField
+              label={t.subagent}
+              hint={t.subagentHint}
+              error={errors.subagentModel}
+              value={form.subagentModel}
+              onChange={(v) => set("subagentModel", v)}
+              disabled={tokenOff}
+            />
+            <Field invalid={errors.cacheTtl !== undefined}>
+              <FieldLabel htmlFor={ids.cacheTtl}>{t.cacheTtl}</FieldLabel>
+              <NativeSelect
+                id={ids.cacheTtl}
+                value={form.cacheTtl}
+                onChange={(e) => set("cacheTtl", e.currentTarget.value as SettingsForm["cacheTtl"])}
+                disabled={tokenOff}
+              >
+                <option value="5m">{t.cacheTtl5}</option>
+                <option value="1h">{t.cacheTtl1h}</option>
+              </NativeSelect>
+              {errors.cacheTtl ? <FieldError>{errors.cacheTtl}</FieldError> : <FieldHint>{t.cacheTtlHint}</FieldHint>}
+            </Field>
+            <TextField
+              label={t.compactWindow}
+              hint={t.compactWindowHint}
+              error={errors.autocompactWindow}
+              value={form.autocompactWindow}
+              onChange={(v) => set("autocompactWindow", v)}
+              disabled={tokenOff}
+              inputMode="numeric"
+              suffix="token"
+            />
+          </div>
+          <SwitchRow
+            label={t.allowWeb}
+            hint={t.allowWebHint}
+            checked={form.allowWeb}
+            onChange={(v) => set("allowWeb", v)}
+            disabled={tokenOff}
+          />
+        </SettingsSection>
+
+        <SettingsSection id="routing" save={sectionSave("routing")} title={t.routingTitle} description={t.routingHint}>
+          <SwitchRow
+            label={t.routingOn}
+            hint={t.routingOnHint}
+            checked={form.routing}
+            onChange={(v) => set("routing", v)}
+            disabled={disabled}
+          />
+          {TASK_TIERS.map((tier) => (
+            <FormRow key={tier} label={{ light: t.tierLight, medium: t.tierMedium, heavy: t.tierHeavy }[tier]}>
+              <div className="grid gap-3 sm:grid-cols-2">
                 <TextField
                   label={t.tierModel}
                   error={errors[`tiers.${tier}.model`]}
                   value={form.tiers[tier].model}
                   onChange={(v) => setTier(tier, "model", v)}
-                  disabled={disabled || !form.routing}
+                  disabled={routingOff}
                 />
                 <Field invalid={errors[`tiers.${tier}.effort`] !== undefined}>
                   <FieldLabel htmlFor={`${effortId}-${tier}`}>{t.tierEffort}</FieldLabel>
@@ -1242,7 +1202,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                     id={`${effortId}-${tier}`}
                     value={form.tiers[tier].effort}
                     onChange={(e) => setTier(tier, "effort", e.currentTarget.value as TierForm["effort"])}
-                    disabled={disabled || !form.routing}
+                    disabled={routingOff}
                   >
                     <option value="low">low</option>
                     <option value="medium">medium</option>
@@ -1255,7 +1215,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                   error={errors[`tiers.${tier}.maxTurns`]}
                   value={form.tiers[tier].maxTurns}
                   onChange={(v) => setTier(tier, "maxTurns", v)}
-                  disabled={disabled || !form.routing}
+                  disabled={routingOff}
                   inputMode="numeric"
                   suffix={t.tierTurnsSuffix}
                 />
@@ -1265,114 +1225,49 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                   error={errors[`tiers.${tier}.advisor`]}
                   value={form.tiers[tier].advisor}
                   onChange={(v) => setTier(tier, "advisor", v)}
-                  disabled={disabled || !form.routing}
+                  disabled={routingOff}
                 />
               </div>
-            ))}
-          </Section>
+            </FormRow>
+          ))}
+        </SettingsSection>
 
-          <Section id="perm" title={t.permTitle}>
-            <div role="radiogroup" aria-label={t.permTitle} className="grid gap-2">
-              <label
-                className={cx(
-                  "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm transition-colors",
-                  form.runPermissions === "workspace"
-                    ? "border-primary bg-accent/40"
-                    : "border-border hover:bg-muted/40",
-                  disabled && "cursor-not-allowed opacity-60",
-                )}
-              >
-                <input
-                  type="radio"
-                  name="runPermissions"
-                  value="workspace"
-                  checked={form.runPermissions === "workspace"}
-                  onChange={() => choosePermission("workspace")}
-                  disabled={disabled}
-                  className="mt-0.5 size-4 accent-primary"
-                />
-                <span className="grid gap-0.5">
-                  <strong className="font-medium text-foreground">{t.pWt}</strong>
-                  <span className="text-xs text-muted-foreground">{t.pWtHint}</span>
-                </span>
-              </label>
-
-              <label
-                className={cx(
-                  "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm transition-colors",
-                  form.runPermissions === "full"
-                    ? "border-destructive bg-destructive-soft text-destructive"
-                    : "border-border hover:bg-muted/40",
-                  disabled && "cursor-not-allowed opacity-60",
-                )}
-              >
-                <input
-                  type="radio"
-                  name="runPermissions"
-                  value="full"
-                  checked={form.runPermissions === "full"}
-                  onChange={() => choosePermission("full")}
-                  disabled={disabled || (fullLocked && form.runPermissions !== "full")}
-                  className="mt-0.5 size-4 accent-destructive"
-                />
-                <span className="grid gap-0.5">
-                  <strong className={form.runPermissions === "full" ? "text-destructive" : "text-foreground"}>
-                    {t.pFull}
-                  </strong>
-                  <span className="text-xs text-muted-foreground">{t.pFullHint}</span>
-                </span>
-              </label>
-            </div>
-            {fullLocked ? (
-              <p className="flex items-start gap-2 rounded-lg bg-muted px-3.5 py-2.5 text-xs text-muted-foreground">
-                <LockIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-                {t.fullLocked}
-              </p>
-            ) : (
-              form.runPermissions === "full" && (
-                <p role="alert" className="rounded-lg bg-destructive-soft px-3.5 py-2.5 text-xs text-destructive">
-                  {t.fullBanner}
-                </p>
-              )
-            )}
-            {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
-          </Section>
-
-          {/* Hub chỉ cho quản trị đội xem danh sách máy, nên thành viên thường không có mục này. */}
-          {canEdit && <ProjectMachines project={project} fullLocked={fullLocked} />}
-        </div>
-      </div>
-
-      {canEdit && (
-        <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-background py-3">
-          {dirty && <span className="mr-auto text-xs text-muted-foreground">{t.unsavedChanges(1)}</span>}
-          {failure && (
-            <Alert variant="destructive" className="mr-auto">
-              {failure}
-            </Alert>
-          )}
-          {done && !failure && (
-            <p role="status" className="mr-auto text-xs text-success">
-              {t.savedBanner}
+        <SettingsSection id="perm" save={sectionSave("perm")} title={t.permTitle}>
+          <RadioCards
+            name="runPermissions"
+            label={t.permTitle}
+            value={form.runPermissions}
+            onChange={choosePermission}
+            disabled={disabled}
+            options={[
+              { value: "workspace", title: t.pWt, description: t.pWtHint },
+              {
+                value: "full",
+                title: t.pFull,
+                description: t.pFullHint,
+                tone: "destructive",
+                disabled: fullLocked && form.runPermissions !== "full",
+              },
+            ]}
+          />
+          {fullLocked ? (
+            <p className="flex items-start gap-2 rounded-lg bg-muted px-3.5 py-2.5 text-xs text-muted-foreground">
+              <LockIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+              {t.fullLocked}
             </p>
+          ) : (
+            form.runPermissions === "full" && (
+              <p role="alert" className="rounded-lg bg-destructive-soft px-3.5 py-2.5 text-xs text-destructive">
+                {t.fullBanner}
+              </p>
+            )
           )}
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setForm(formFromSettings(saved));
-              setErrors({});
-              setFailure(null);
-            }}
-            disabled={!dirty || save.isPending}
-          >
-            {t.discard}
-          </Button>
-          <Button type="submit" variant="default" disabled={!dirty || save.isPending}>
-            {save.isPending ? t.saving : t.save}
-          </Button>
-        </div>
-      )}
+          {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
+        </SettingsSection>
+
+        {/* Hub chỉ cho quản trị đội xem danh sách máy, nên thành viên thường không có mục này. */}
+        {canEdit && <ProjectMachines project={project} fullLocked={fullLocked} />}
+      </SettingsLayout>
 
       <Dialog open={confirmFull} onOpenChange={setConfirmFull}>
         <DialogContent>
@@ -1400,6 +1295,11 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           </DialogActions>
         </DialogContent>
       </Dialog>
-    </form>
+    </div>
   );
+}
+
+/** Bỏ lỗi ô của một mục trước khi kiểm hay lưu lại mục đó. */
+function clearSection(errors: FieldErrors, section: SettingsSectionId): FieldErrors {
+  return Object.fromEntries(Object.entries(errors).filter(([field]) => sectionOfField(field) !== section));
 }
