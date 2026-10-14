@@ -235,7 +235,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `worker/internal/channel/jobs_test.go`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T021 🎯 [US2] [US14] `runs`: loại `sdlc`, cổng, nhãn
+- [x] T021 🎯 [US2] [US14] `runs`: loại `sdlc`, cổng, nhãn
   - `engine.ts`: `CAPABILITY_KINDS` + `sdlc`; `startSdlcRun(tx, input)` (dự án = dự án chính; chủ theo `runner`,
     `required_labels`, `spec.sdlc.seed/collect`, prompt do `sdlc` truyền vào); run code của task hạng mục lấy nơi chạy,
     nhãn từ cài đặt dự án của task (do `sdlc` truyền qua `startRun`); `verify` → `verifySdlc` gọi `sdlc.onSdlcRunFinished`;
@@ -248,7 +248,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/runs/{engine.ts,mcp.ts,index.ts}`, `apps/hub/src/{runs.db.test.ts,runs-sdlc.db.test.ts}`
   - **Phụ thuộc**: T013 · **Mức**: nặng
 
-- [ ] T022 🎯 [US2] Bước agent, prompt, câu hỏi, MCP
+- [x] T022 🎯 [US2] Bước agent, prompt, câu hỏi, MCP
   - `steps.ts`: tạo bước (qua deps `startSdlcRun`), `onSdlcRunFinished` (artifacts → `doc_drafts` qua `knowledge`,
     `size`/`findings` → `result`, `autoSubmit`, lỗi → bước `failed`), giới hạn lượt agent sửa.
   - `prompt.ts`: dựng prompt theo bước (biến `{idea}`, `{artifacts}`, `{answers}`, `{feedback}`, `{constitution}`,
