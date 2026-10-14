@@ -39,8 +39,8 @@ export interface Column<Row> extends SearchColumn<Row> {
   align?: "start" | "end";
   /**
    * Ghim cột khi bảng cuộn ngang: `start` cho cột tên (chỉ cột hiện đầu tiên), `end` cho cột thao tác (chỉ cột cuối),
-   * để người dùng không mất ngữ cảnh của dòng khi kéo sang phải. Cột `end` chỉ ghim từ 640 px: ở 360 px ghim cả hai
-   * đầu thì không còn chỗ cho các cột giữa.
+   * để người dùng không mất ngữ cảnh của dòng khi kéo sang phải. Chỉ ghim từ 640 px: ở 360 px cột tên có thể che hết
+   * chỗ cho thao tác khi cuộn tới cuối bảng.
    */
   pin?: "start" | "end";
 }
@@ -201,18 +201,19 @@ export function DataTable<Row extends { id: string }>({
   const result = paginateRows(sorted, serverPaging ? 0 : page, serverPaging ? Math.max(1, sorted.length) : size);
   const visible = columns.filter((column) => !hidden.has(column.key));
   const pinStart = visible[0]?.pin === "start" ? visible[0].key : undefined;
-  const pinEnd = !onRowClick && visible.at(-1)?.pin === "end" ? visible.at(-1)?.key : undefined;
+  const pinEnd = visible.at(-1)?.pin === "end" ? visible.at(-1)?.key : undefined;
   // Ô ghim cần nền đặc, không thì chữ của cột cuộn bên dưới lộ ra; hover của dòng tô lại nền đó.
   const pinCell = (key: string, head = false) =>
     key === pinStart
       ? cn(
-          "sticky z-10 bg-card shadow-[inset_-1px_0_0_var(--border)]",
+          "z-10 bg-card sm:sticky sm:shadow-[inset_-1px_0_0_var(--border)]",
           selectable ? "left-10" : "left-0",
           !head && "[tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted",
         )
       : key === pinEnd
         ? cn(
-            "right-0 z-10 bg-card sm:sticky sm:shadow-[inset_1px_0_0_var(--border)]",
+            "z-10 bg-card sm:sticky sm:shadow-[inset_1px_0_0_var(--border)]",
+            onRowClick ? "right-10" : "right-0",
             !head && "[tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted",
           )
         : undefined;
@@ -377,7 +378,7 @@ export function DataTable<Row extends { id: string }>({
           <TableHeader>
             <TableRow>
               {selectable && (
-                <TableHead className={cn("w-10 pl-3", pinStart && "sticky left-0 z-10 bg-card")}>
+                <TableHead className={cn("w-10 pl-3", pinStart && "sm:sticky left-0 z-10 bg-card")}>
                   <Checkbox
                     aria-label={t.selectPage}
                     checked={allPage}
@@ -445,7 +446,7 @@ export function DataTable<Row extends { id: string }>({
                 </TableHead>
               ))}
               {onRowClick && (
-                <TableHead>
+                <TableHead className={pinEnd ? "w-10 min-w-10 bg-card sm:sticky sm:right-0 sm:z-10" : undefined}>
                   <span className="sr-only">{t.open("")}</span>
                 </TableHead>
               )}
@@ -473,7 +474,7 @@ export function DataTable<Row extends { id: string }>({
                     className={cn(
                       "w-10",
                       pinStart &&
-                        "sticky left-0 z-10 bg-card [tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted",
+                        "sm:sticky left-0 z-10 bg-card [tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted",
                     )}
                   >
                     <Checkbox
@@ -503,7 +504,13 @@ export function DataTable<Row extends { id: string }>({
                   </Td>
                 ))}
                 {onRowClick && (
-                  <Td>
+                  <Td
+                    className={
+                      pinEnd
+                        ? "w-10 min-w-10 px-1.5 bg-card sm:sticky sm:right-0 sm:z-10 [tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted"
+                        : undefined
+                    }
+                  >
                     <Button
                       variant="ghost"
                       size="icon-sm"
