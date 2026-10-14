@@ -63,6 +63,9 @@ export default async function globalSetup() {
     HIVE_AUTH_SECRET: randomBytes(32).toString("base64"),
     HIVE_ALLOW_EMAIL_SIGNUP: "1",
     HIVE_ORG_CREATORS: OWNER.email,
+    // Test không ra Internet: API release của GitHub hay trả 403 trên runner CI dùng chung IP.
+    HIVE_WORKER_RELEASES: "off",
+    HIVE_DESKTOP_RELEASES: "off",
   };
   try {
     await hubCommand(["src/cli.ts", "db:bootstrap"], env);

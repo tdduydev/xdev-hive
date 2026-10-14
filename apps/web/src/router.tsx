@@ -19,6 +19,7 @@ import {
   validateReviewsSearch,
   validateTasksSearch,
   validateTeamsSearch,
+  validateWorkflowsSearch,
 } from "@/lib/route-search.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
 
@@ -48,6 +49,7 @@ const ReviewsPage = lazyRouteComponent(() => import("@/pages/knowledge/reviews-p
 const SkillsPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillsPage");
 const WorkflowsPage = lazyRouteComponent(() => import("@/pages/knowledge/workflows-page.tsx"), "WorkflowsPage");
 const LeaderPage = lazyRouteComponent(() => import("@/pages/leader-page.tsx"), "LeaderPage");
+const LeaderTerminalPage = lazyRouteComponent(() => import("@/pages/leader-terminal-page.tsx"), "LeaderTerminalPage");
 const LoginPage = lazyRouteComponent(() => import("@/pages/login-page.tsx"), "LoginPage");
 const LoginSettingsPage = lazyRouteComponent(() => import("@/pages/login-settings-page.tsx"), "LoginSettingsPage");
 const MachinesPage = lazyRouteComponent(() => import("@/pages/machines-page.tsx"), "MachinesPage");
@@ -231,6 +233,13 @@ const leaderRoute = createRoute({
   component: LeaderPage,
 });
 
+/** Phiên terminal Leader: xterm.js nặng nên cả trang là một chunk riêng, chỉ tải khi mở phiên. */
+const leaderTerminalRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/leader/terminal/$id",
+  component: LeaderTerminalPage,
+});
+
 const runsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/runs",
@@ -291,7 +300,12 @@ const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/skills", component: SkillsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory", component: MemoryPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/workflows", component: WorkflowsPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/workflows",
+    validateSearch: validateWorkflowsSearch,
+    component: WorkflowsPage,
+  }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/knowledge/reviews",
@@ -323,6 +337,7 @@ const routeTree = rootRoute.addChildren([
         planRoute,
         runsRoute,
         leaderRoute,
+        leaderTerminalRoute,
         runRoute,
         teamsRoute,
         membersRoute,

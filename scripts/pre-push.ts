@@ -5,6 +5,7 @@
  * - Đổi packages/contracts: openapi.json phải khớp (CI cũng kiểm).
  * - Đổi worker/: gofmt, go vet, go test.
  * Test DB của hub cần Docker; trên macOS dùng Colima thì tự đặt biến như AGENTS.md hướng dẫn.
+ * Bản đầy đủ sát CI (build, Playwright, E2E smoke, cargo) là `pnpm ci:local`, chạy trước khi commit.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -75,7 +76,9 @@ if (files.some((f) => f.startsWith("worker/"))) {
     process.exit(1);
   }
   run("go vet", "go", ["vet", "./..."], worker);
+  // CI chạy worker trên Windows: vet chéo bắt lỗi biên dịch của file _windows.go mà máy Mac/Linux không dựng.
+  run("go vet (GOOS=windows)", "go", ["vet", "./..."], worker, { ...env, GOOS: "windows" });
   run("go test", "go", ["test", "./..."], worker);
 }
 
-console.log("\n✓ pre-push: kiểm tra xong");
+console.log("\n✓ pre-push: kiểm tra xong (bản đầy đủ như CI: pnpm ci:local)");

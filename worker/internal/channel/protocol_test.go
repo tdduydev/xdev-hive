@@ -47,7 +47,7 @@ func TestProtocolRoundTrip(t *testing.T) {
 		seen[want["type"].(string)] = true
 	}
 	// Mọi loại Go biết phải có mẫu, để thêm gói mới mà quên cập nhật một bên thì test hỏng.
-	for _, typ := range []string{"hello", "heartbeat", "job_accept", "job_reject", "run_event", "log_chunk", "run_result", "welcome", "upgrade_required", "heartbeat_ack", "job_offer", "lease", "ack", "steer", "approval_result", "cancel", "drain", "update", "account_set", "account_login_start", "account_login_input", "account_login_cancel", "account_login_event"} {
+	for _, typ := range []string{"hello", "heartbeat", "job_accept", "job_reject", "run_event", "log_chunk", "run_result", "welcome", "upgrade_required", "heartbeat_ack", "job_offer", "lease", "ack", "steer", "approval_result", "cancel", "drain", "update", "account_set", "account_login_start", "account_login_input", "account_login_cancel", "account_login_event", "term_opened", "term_output", "term_exit", "term_open", "term_input", "term_resize", "term_close"} {
 		if newMessage(typ) == nil {
 			t.Errorf("newMessage thiếu %s", typ)
 		}
@@ -55,8 +55,8 @@ func TestProtocolRoundTrip(t *testing.T) {
 			t.Errorf("file mẫu thiếu %s", typ)
 		}
 	}
-	if len(seen) != 23 {
-		t.Errorf("file mẫu có %d loại, Go biết 23", len(seen))
+	if len(seen) != 30 {
+		t.Errorf("file mẫu có %d loại, Go biết 30", len(seen))
 	}
 }
 

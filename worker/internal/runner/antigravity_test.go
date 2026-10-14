@@ -18,7 +18,7 @@ import (
 func TestAntigravityArguments(t *testing.T) {
 	t.Setenv(CLIOverridesEnv, "")
 	env := map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "run-secret"}
-	for _, kind := range []string{"", "code", KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist, KindBrief} {
+	for _, kind := range []string{"", "code", KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist, KindBrief, KindSkillProposal} {
 		for _, mode := range []string{"", "workspace", "full"} {
 			for _, model := range []string{"", "claude-opus-5-5-high"} {
 				cmd, err := (Runner{}).cliCommand(Job{CLI: "antigravity", Kind: kind, RunPermissions: mode, Model: model, Prompt: "prompt", Env: env, Timeout: 90 * time.Second})
