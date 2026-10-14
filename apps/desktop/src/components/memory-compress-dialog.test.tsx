@@ -18,7 +18,7 @@ const proposal = (path: string, before: string, content: string, newLines: numbe
 
 /** Tauri giả: ghi lại lệnh; `fail` làm lệnh đó trả lỗi. */
 function fakeTauri(compression: unknown, fail?: { command: string; message: string }) {
-  const calls: { command: string; args?: Record<string, unknown> }[] = [];
+  const calls: { command: string; args: Record<string, unknown> | undefined }[] = [];
   window.__TAURI__ = {
     core: {
       invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
