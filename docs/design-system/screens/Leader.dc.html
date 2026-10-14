@@ -26,8 +26,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .mono{font-family:var(--font-mono)}
 .input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
 .field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500}
+.leader-artifacts{container-type:inline-size}.leader-artifacts-shell{display:flex;min-width:0}.leader-artifacts-main{flex:1;min-width:0}@container(max-width:1279px){.leader-artifacts-nav{display:none}}
 </style>
 </helmet>
+<sc-if value="{{artifacts}}" hint-placeholder-val="{{true}}"><div class="leader-artifacts" data-theme="{{theme}}" style="{{artifactStyle}}"><div class="leader-artifacts-shell"><aside class="leader-artifacts-nav"><dc-import name="Sidebar" active="leader" lang="{{lang}}" hint-size="240px,1000px"></dc-import></aside><div class="leader-artifacts-main"><dc-import name="ArtifactPanel" layout="chat" lang="{{lang}}" dark="{{dark}}" view="{{artifactView}}" hint-size="100%,1000px"></dc-import></div></div></div></sc-if>
+<sc-if value="{{legacy}}" hint-placeholder-val="{{false}}">
 <div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
   <dc-import name="Sidebar" active="leader" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
   <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
@@ -139,8 +142,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
     </main>
   </div>
 </div>
+</sc-if>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000},"artifacts":{"editor":"boolean","default":true},"narrow":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["ready","loading","empty","error","offline","runtime","compile","newer","editing","deleted"],"default":"ready"}}'>
 class Component extends DCLogic {
   constructor(props) { super(props); this.state = { thread: 0, rejecting: false, showNew: false, lang: null, dark: null }; }
   renderVals() {
@@ -184,6 +188,7 @@ class Component extends DCLogic {
       { key: 'TASK-47', title: x(['Nút hoàn tiền trên web', 'Refund button on web']), who: x(['chưa giao', 'unassigned']) },
     ];
     return {
+      artifacts: this.props.artifacts ?? true, legacy: !(this.props.artifacts ?? true), artifactView: this.props.view ?? 'ready', artifactStyle: 'width:'+(this.props.narrow?'360px':'100%')+';max-width:100%;',
       theme: dark ? 'dark' : 'light', lang, dark, t, threads, proposal,
       showNew: this.state.showNew, toggleNew: () => this.setState({ showNew: !this.state.showNew }),
       rejecting: this.state.rejecting, notRejecting: !this.state.rejecting,

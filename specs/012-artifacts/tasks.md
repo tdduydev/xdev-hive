@@ -84,7 +84,7 @@
   - **Scope**: `packages/artifacts-runtime/**` (package mới), `pnpm-lock.yaml`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T005 🎯 [P] Thiết kế màn MVP bằng skill `ui-ux-pro-max`, design system v2, shadcn/ui; mỗi màn có trạng thái rỗng /
+- [x] T005 🎯 [P] Thiết kế màn MVP bằng skill `ui-ux-pro-max`, design system v2, shadcn/ui; mỗi màn có trạng thái rỗng /
   đang tải / lỗi / offline, 360 px, sáng/tối, chữ vi/en (xem "Màn cần thiết kế", các dòng MVP).
   - **Scope**: `docs/design-system/screens/{ArtifactPanel,ArtifactLibrary,ArtifactDetail,ArtifactVersions,ArtifactShare,ArtifactPublicLink,PublicArtifactPage,ArtifactFixRequest,AdminPublicLinks,AppLeader,AppArtifacts}.dc.html`
     (mới), `docs/design-system/screens/{Leader,AppNav}.dc.html` (biến thể), `docs/design-system/screens/README.md`
