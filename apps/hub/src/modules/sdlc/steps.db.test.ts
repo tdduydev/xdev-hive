@@ -13,7 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "v
 import { errorCode, type OrgFixture, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
 import { editorState } from "../knowledge/index.ts";
-import { McpToolRegistry } from "../mcp/registry.ts";
+import { McpToolRegistry } from "../mcp/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { createMemoryProvider, type MemoryProvider } from "../scm/index.ts";
 import { createItem, getItem } from "./items.ts";
