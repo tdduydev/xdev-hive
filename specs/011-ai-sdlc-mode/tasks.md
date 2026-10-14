@@ -225,7 +225,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 3: Agent soạn và hỏi lại (US2) 🎯
 
-- [ ] T020 🎯 [P] Worker chạy run `sdlc`
+- [x] T020 🎯 [P] Worker chạy run `sdlc`
   - `runner`: kind `sdlc` dùng worktree tạm từ nhánh mặc định (như `doccheck`, kể cả dự án có thư mục trên máy theo ADR
     0020), không `readOnlyKind`, quyền `workspace`; ghi `spec.sdlc.seed` (kiểm đường dẫn nằm trong worktree, không theo
     symlink ra ngoài); sau khi CLI thoát đọc `collect`, sha256, giới hạn (20 file, 200 000 ký tự/file, 2 MB tổng), trả
