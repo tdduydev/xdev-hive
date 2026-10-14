@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
+import type pg from "pg";
 import { loadProject } from "../catalog/index.ts";
-import type { MasterKey, Tx } from "../platform/index.ts";
+import { type Jobs, type MasterKey, type Tx, withTenant } from "../platform/index.ts";
 import {
   type CommitStatusInput,
   type GitProvider,
@@ -7,7 +9,7 @@ import {
   type ProviderFactory,
   type RepoRef,
 } from "../scm/index.ts";
-import type { codeReviews } from "./schema.ts";
+import { codeReviews } from "./schema.ts";
 
 type ReviewRow = typeof codeReviews.$inferSelect;
 
@@ -15,6 +17,7 @@ type ReviewRow = typeof codeReviews.$inferSelect;
 export const REVIEW_STATUS_CONTEXT = "xdev-hive/review";
 
 export interface ReviewStatusDeps {
+  jobs?: Jobs | undefined;
   providerFactory?: ProviderFactory | undefined;
   masterKey?: MasterKey | undefined;
   /** Địa chỉ web để `targetUrl` dẫn về phiên review. */
@@ -112,10 +115,38 @@ export async function deliverReviewStatus(
 
 /**
  * Đặt status theo trạng thái hiện tại của phiên. Chỉ phần đọc nằm trong transaction của người gọi; lời gọi mạng chạy
- * tiếp ở nền (như bình luận của `ai.ts`) để không giữ transaction chờ nhà cung cấp. Cần chờ kết quả (test) thì gọi
+ * qua job sau khi commit để không đăng trạng thái của transaction đã rollback. Không có jobs thì gửi ở nền. Cần chờ kết quả (test) thì gọi
  * `prepareReviewStatus` rồi `deliverReviewStatus`.
  */
 export async function publishReviewStatus(tx: Tx, review: ReviewRow, deps: ReviewStatusDeps): Promise<void> {
+  if (!reviewStatusOf(review) || !deps.providerFactory || !deps.masterKey) return;
+  if (deps.jobs) {
+    await deps.jobs.enqueue(codeReviewStatusQueue.name, { orgId: review.orgId, reviewId: review.id }, { tx });
+    return;
+  }
   const delivery = await prepareReviewStatus(tx, review, deps);
   if (delivery) void deliverReviewStatus(delivery, deps.logger);
+}
+
+export const codeReviewStatusQueue = { name: "codereview-status" } as const;
+
+/** Đọc trạng thái mới nhất để job cũ không đặt lại pending sau khi phiên đã duyệt hoặc bị thay thế. */
+export async function handleReviewStatusJob(
+  deps: ReviewStatusDeps & { pool: pg.Pool },
+  job: { orgId: string; reviewId: string },
+): Promise<void> {
+  const delivery = await withTenant(deps.pool, { orgId: job.orgId }, async (tx) => {
+    const [review] = await tx.select().from(codeReviews).where(eq(codeReviews.id, job.reviewId));
+    return review ? prepareReviewStatus(tx, review, deps) : null;
+  });
+  if (delivery) await deliverReviewStatus(delivery, deps.logger);
+}
+
+export async function registerReviewStatusWorker(
+  jobs: Jobs,
+  deps: ReviewStatusDeps & { pool: pg.Pool },
+): Promise<void> {
+  await jobs.work<{ orgId: string; reviewId: string }>(codeReviewStatusQueue.name, ({ data }) =>
+    handleReviewStatusJob(deps, data),
+  );
 }

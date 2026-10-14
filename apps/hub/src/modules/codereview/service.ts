@@ -15,6 +15,8 @@ import { onApproved } from "./merge.ts";
 import { keepApprovals, openNextRound, type QueueFixRunInput, type RoutingDeps, routeReturn } from "./routing.ts";
 import { codeReviewGateRuns, codeReviews } from "./schema.ts";
 
+import { publishReviewStatus, type ReviewStatusDeps } from "./status.ts";
+
 export const CODE_REVIEW_QUEUE = "codereview";
 export const codeReviewQueue = {
   name: CODE_REVIEW_QUEUE,
@@ -68,7 +70,7 @@ export interface RunEvidence {
 
 export type { QueueFixRunInput };
 
-export interface CodeReviewDeps extends AiGateDeps, RoutingDeps {
+export interface CodeReviewDeps extends AiGateDeps, RoutingDeps, ReviewStatusDeps {
   jobs?: Jobs | undefined;
   /** Địa chỉ web để link trong thông báo. */
   publicUrl?: string | undefined;
@@ -207,6 +209,7 @@ export async function startCodeReview(
     round: row.round,
     outranked: m.outranked.map((o) => o.name),
   });
+  await publishReviewStatus(tx, row, deps);
   await scheduleAdvance(tx, row, deps);
   return row;
 }
@@ -309,12 +312,13 @@ async function recordGate(
   return row;
 }
 
-async function moveTo(tx: Tx, review: CodeReviewRow, index: number): Promise<CodeReviewRow> {
+async function moveTo(tx: Tx, review: CodeReviewRow, index: number, deps: CodeReviewDeps): Promise<CodeReviewRow> {
   const [row] = await tx
     .update(codeReviews)
     .set({ gateIndex: index, status: "in_review", updatedAt: sql`now()` })
     .where(eq(codeReviews.id, review.id))
     .returning();
+  await publishReviewStatus(tx, row ?? review, deps);
   return row ?? review;
 }
 
@@ -340,7 +344,7 @@ async function returnReview(
       actorUserId: null,
     },
     deps,
-    async (tx2, row, at) => void (await scheduleAdvance(tx2, await moveTo(tx2, row, at), deps)),
+    async (tx2, row, at) => void (await scheduleAdvance(tx2, await moveTo(tx2, row, at, deps), deps)),
   );
   return (await lockReview(tx, routed.review.id)) ?? routed.review;
 }
@@ -388,7 +392,7 @@ export async function advanceReview(
       }
       if (v.status === "failed") return returnReview(tx, review, i, gate, ruleRun.id, v.note, deps);
       // Thiếu bằng chứng: dừng ở đây chờ người quyết thay (FR-017, FR-022).
-      return moveTo(tx, review, i);
+      return moveTo(tx, review, i, deps);
     }
 
     if (await keepApprovals(tx, review, i, gate)) {
@@ -397,7 +401,7 @@ export async function advanceReview(
     }
     const due = gate.kind === "human" && gate.slaHours ? new Date(Date.now() + gate.slaHours * 3_600_000) : null;
     const gateRun = await recordGate(tx, review, i, gate, { status: "waiting", dueAt: due });
-    const row = await moveTo(tx, review, i);
+    const row = await moveTo(tx, review, i, deps);
     if (gate.kind === "human") await notifyReviewers(tx, row, gate, gateRun.id, deps);
     else if (gate.kind === "ai") await startAiGate(tx, row, gateRun, gate, deps);
     else if (gate.kind === "ext" && deps.jobs)
@@ -465,7 +469,7 @@ export async function completeAutoGate(
     score: result.score ?? null,
   });
   if (result.status === "failed") return returnReview(tx, review, review.gateIndex, gate, run.id, result.note, deps);
-  const next = await moveTo(tx, review, review.gateIndex + 1);
+  const next = await moveTo(tx, review, review.gateIndex + 1, deps);
   await scheduleAdvance(tx, next, deps);
   return next;
 }
@@ -491,6 +495,7 @@ export async function cancelCodeReview(
   reviewId: string,
   reason: string,
   actorUserId: string | null = null,
+  deps: ReviewStatusDeps = {},
 ): Promise<CodeReviewRow | null> {
   const review = await lockReview(tx, reviewId);
   if (!review || !OPEN.includes(review.status)) return review;
@@ -504,6 +509,7 @@ export async function cancelCodeReview(
     .where(eq(codeReviews.id, review.id))
     .returning();
   await auditReview(tx, "codereview.cancel", review, { reason, from: review.status }, actorUserId);
+  await publishReviewStatus(tx, row ?? review, deps);
   return row ?? review;
 }
 
