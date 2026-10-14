@@ -1,4 +1,6 @@
 import { Tabs } from "@base-ui/react/tabs";
+import { Link, type LinkProps } from "@tanstack/react-router";
+import { ArrowLeftIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { cx } from "@/lib/cx.ts";
 
@@ -45,6 +47,62 @@ export function PageHeader({
           )}
         </div>
         {children && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{children}</div>}
+      </div>
+    </header>
+  );
+}
+
+/**
+ * Đầu trang chi tiết (admin-layout.md § Decisions 3): link ← về danh sách, tên đối tượng cùng huy hiệu trạng thái, nút
+ * thao tác (nút phụ, nút chính, rồi ⋯) bên phải, một dòng số liệu/meta. Tab của trang (`PageTabList`) đặt ngay dưới.
+ */
+export function DetailHeader({
+  back,
+  title,
+  leading,
+  status,
+  meta,
+  width = "wide",
+  children,
+}: {
+  /** Danh sách chứa đối tượng; tên danh sách là chữ của link. */
+  back: { to: NonNullable<LinkProps["to"]>; label: string };
+  title: string;
+  /** Ô nhận diện trước tên (ô màu của đội, avatar). */
+  leading?: ReactNode;
+  /** Huy hiệu trạng thái (`Pill`) cạnh tên. */
+  status?: ReactNode;
+  meta?: ReactNode;
+  width?: PageWidth;
+  children?: ReactNode;
+}) {
+  return (
+    <header className="px-4 pt-4 pb-1 md:px-6 md:pt-5">
+      <div className={cx("grid gap-2", WIDTH[width])}>
+        <Link
+          to={back.to}
+          className="-ml-1 flex w-fit items-center gap-1 rounded-md px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          <ArrowLeftIcon aria-hidden="true" className="size-3.5" />
+          {back.label}
+        </Link>
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+          <div className="flex min-w-0 flex-1 basis-80 items-center gap-3">
+            {leading}
+            <div className="grid min-w-0 gap-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+                <h1 className="font-heading text-xl font-semibold tracking-tight break-words text-foreground">
+                  {title}
+                </h1>
+                {status}
+              </div>
+              {meta && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">{meta}</div>
+              )}
+            </div>
+          </div>
+          {children && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{children}</div>}
+        </div>
       </div>
     </header>
   );

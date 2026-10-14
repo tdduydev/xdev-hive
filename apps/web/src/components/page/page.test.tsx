@@ -8,9 +8,15 @@ import { DataTable } from "@/components/data-table/data-table.tsx";
 import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
-import { FormRow, RadioCards, SettingsNav, SettingsSection, SwitchRow } from "@/components/page/settings.tsx";
+import {
+  FormRow,
+  RadioCards,
+  type SectionSave,
+  SettingsNav,
+  SettingsSection,
+  SwitchRow,
+} from "@/components/page/settings.tsx";
 import { StatCard, StatGrid } from "@/components/page/stat-card.tsx";
-import { StickyFormFooter } from "@/components/page/sticky-form-footer.tsx";
 import { EmptyState, SectionsSkeleton, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
 
@@ -207,46 +213,63 @@ describe("settings", () => {
   });
 });
 
-describe("StickyFormFooter", () => {
-  it("disables both buttons until something changes", () => {
-    render(<StickyFormFooter dirty={false} saving={false} onDiscard={() => {}} />);
-    expect((screen.getByRole("button", { name: "Lưu thay đổi" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Huỷ thay đổi" }) as HTMLButtonElement).disabled).toBe(true);
+describe("SettingsSection save", () => {
+  const save = (over: Partial<SectionSave> = {}): SectionSave => ({
+    dirty: false,
+    saving: false,
+    onSave: () => {},
+    onDiscard: () => {},
+    ...over,
+  });
+  const section = (s: SectionSave) => (
+    <SettingsSection id="budget" title="Ngân sách" save={s}>
+      <input aria-label="Mỗi run" />
+    </SettingsSection>
+  );
+
+  it("is its own form; Save is off and Cancel hidden until the section changes", () => {
+    render(section(save()));
+    const group = screen.getByRole("group", { name: "Ngân sách" });
+    expect(group.tagName).toBe("FORM");
+    expect((screen.getByRole("button", { name: "Lưu" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Huỷ" })).toBeNull();
   });
 
-  it("says there are unsaved changes, then errors, then saved", () => {
+  it("saves on Enter and on the button, discards, and reports status inside the section", () => {
+    const onSave = vi.fn();
     const onDiscard = vi.fn();
-    const { rerender } = render(
-      <StickyFormFooter dirty saving={false} onDiscard={onDiscard} saveLabel="Lưu cấu hình" />,
-    );
+    const { rerender } = render(section(save({ dirty: true, onSave, onDiscard })));
     expect(screen.getByText("Có thay đổi chưa lưu")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Huỷ thay đổi" }));
+    fireEvent.submit(screen.getByRole("group", { name: "Ngân sách" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lưu" }));
+    expect(onSave).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "Huỷ" }));
     expect(onDiscard).toHaveBeenCalled();
-    expect((screen.getByRole("button", { name: "Lưu cấu hình" }) as HTMLButtonElement).type).toBe("submit");
 
-    rerender(<StickyFormFooter dirty saving={false} onDiscard={onDiscard} error="Hub từ chối." />);
+    rerender(section(save({ dirty: true, error: "Hub từ chối." })));
     expect(screen.getByRole("alert").textContent).toBe("Hub từ chối.");
-
-    rerender(
-      <StickyFormFooter dirty={false} saving={false} saved onDiscard={onDiscard} savedLabel="Đã lưu cấu hình." />,
-    );
-    expect(screen.getByRole("status").textContent).toBe("Đã lưu cấu hình.");
-
-    rerender(<StickyFormFooter dirty saving onDiscard={onDiscard} />);
+    rerender(section(save({ saved: true, savedLabel: "Đã lưu ngân sách." })));
+    expect(screen.getByRole("status").textContent).toBe("Đã lưu ngân sách.");
+    rerender(section(save({ dirty: true, saving: true })));
     expect((screen.getByRole("button", { name: "Đang lưu…" }) as HTMLButtonElement).disabled).toBe(true);
   });
-  it("asks before closing the tab only while there are unsaved changes", () => {
-    const unload = () => {
-      const event = new Event("beforeunload", { cancelable: true });
-      window.dispatchEvent(event);
-      return event.defaultPrevented;
-    };
-    const { rerender, unmount } = render(<StickyFormFooter dirty={false} saving={false} onDiscard={() => {}} />);
-    expect(unload()).toBe(false);
-    rerender(<StickyFormFooter dirty saving={false} onDiscard={() => {}} />);
-    expect(unload()).toBe(true);
-    unmount();
-    expect(unload()).toBe(false);
+
+  it("does not save while another section is saving", () => {
+    const onSave = vi.fn();
+    render(section(save({ dirty: true, disabled: true, onSave })));
+    expect((screen.getByRole("button", { name: "Lưu" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(screen.getByRole("group", { name: "Ngân sách" }));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("read-only sections have no save bar", () => {
+    render(
+      <SettingsSection title="Ngân sách">
+        <p>x</p>
+      </SettingsSection>,
+    );
+    expect(screen.getByRole("group", { name: "Ngân sách" }).tagName).toBe("DIV");
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });
 
