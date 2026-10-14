@@ -12,6 +12,7 @@ export const SDLC_TABS: readonly SdlcItemTab[] = [
   "questions",
   "tasks",
   "trace",
+  "converge",
 ];
 export const sdlcTabOf = (value: string | undefined): SdlcItemTab =>
   SDLC_TABS.find((tab) => tab === value) ?? "overview";

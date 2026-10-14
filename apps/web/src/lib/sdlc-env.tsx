@@ -16,6 +16,7 @@ export const SDLC_TABS: readonly SdlcItemTab[] = [
   "questions",
   "tasks",
   "trace",
+  "converge",
 ];
 
 export function sdlcTabOf(value: string | undefined): SdlcItemTab {
