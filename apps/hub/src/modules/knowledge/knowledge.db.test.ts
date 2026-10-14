@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
+import { DEFAULT_AGENT_POLICY } from "@xdev-hive/contracts";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { errorCode, type OrgFixture, pgCode, seedOrg } from "../../../test/org-fixture.ts";
+import { saveAgentPolicy } from "../governance/index.ts";
 import { createPool, type Tx, withTenant } from "../platform/index.ts";
 import type { Principal } from "./access.ts";
 import { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
-import { listMemories, searchMemory, supersedeMemory, writeMemory } from "./memory.ts";
+import { approveMemory, listMemories, searchMemory, supersedeMemory, writeMemory } from "./memory.ts";
 import { approveProposal, createProposal, listProposals, proposeDoc, rejectProposal } from "./proposals.ts";
 import { docs, docVersions, memories, proposals, skills, skillVersions } from "./schema.ts";
 import { getSkill, listSkills, listSkillsWithHidden, saveSkill } from "./skills.ts";
@@ -212,6 +214,55 @@ describe("memory: ghi và phân quyền", () => {
     );
     const { rows } = await admin.query("select action, actor_user_id from hive.audit_log where target_id = $1", [m.id]);
     expect(rows).toEqual([{ action: "memory.write", actor_user_id: org.user("tmember") }]);
+  });
+
+  describe("source: machine (memory đẩy lên từ app trên máy)", () => {
+    const machine = (content: string) => ({
+      scope: projectScope(),
+      kind: "note" as const,
+      content,
+      source: "machine" as const,
+    });
+    const setMode = (mode: "off" | "propose" | "direct") =>
+      as("admin", (tx) =>
+        saveAgentPolicy(tx, org.user("admin"), { ...DEFAULT_AGENT_POLICY, agentMemory: { mode, maxPerRun: 5 } }),
+      );
+    afterAll(() => setMode(DEFAULT_AGENT_POLICY.agentMemory.mode));
+
+    it("không có source thì vẫn duyệt sẵn như trước", async () => {
+      const m = await as("tmember", (tx, p) =>
+        writeMemory(tx, p, { scope: projectScope(), kind: "note", content: "Tay gõ" }),
+      );
+      expect(m.status).toBe("approved");
+    });
+
+    it("vào hàng chờ duyệt dù chính sách cho agent ghi thẳng; không hiện khi tìm cho tới khi duyệt", async () => {
+      await setMode("direct");
+      const m = await as("tmember", (tx, p) => writeMemory(tx, p, machine("Máyđẩylên: dùng bảng refunds.")));
+      expect(m).toMatchObject({ status: "pending", author: { userId: org.user("tmember"), runId: null } });
+      const hits = () => as("tmember", (tx, p) => searchMemory(tx, p, { project: project.key, query: "Máyđẩylên" }));
+      expect(await hits()).toHaveLength(0);
+      const pending = await as("tmember", (tx, p) => listMemories(tx, p, { project: project.key, status: "pending" }));
+      expect(pending.map((x) => x.id)).toContain(m.id);
+      await as("tmember", (tx, p) => approveMemory(tx, p, m.id));
+      expect(await hits()).toHaveLength(1);
+      const { rows } = await admin.query("select data from hive.audit_log where target_id = $1", [m.id]);
+      expect(rows[0].data).toMatchObject({ status: "pending", source: "machine" });
+    });
+
+    it("người xem đội vẫn không đề xuất được", async () => {
+      await setMode("propose");
+      expect(await errorCode(() => as("tviewer", (tx, p) => writeMemory(tx, p, machine("x"))))).toBe(
+        "TEAM_ROLE_REQUIRED",
+      );
+    });
+
+    it("tổ chức tắt memory của agent thì từ chối", async () => {
+      await setMode("off");
+      expect(await errorCode(() => as("tmember", (tx, p) => writeMemory(tx, p, machine("x"))))).toBe(
+        "AGENT_MEMORY_OFF",
+      );
+    });
   });
 });
 
