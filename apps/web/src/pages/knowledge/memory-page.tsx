@@ -213,7 +213,7 @@ function ApprovedMemories() {
               </label>
             </>
           }
-          activeFilters={searching ? [{ key: "query", label: t.searching, values: query, clear: clearSearch }] : []}
+          activeFilters={searching ? [{ key: "query", label: t.search, values: query, clear: clearSearch }] : []}
           rowLabel={(row) => row.content.slice(0, 60)}
           onRowClick={(row) => navigate({ to: "/knowledge/memory/$memoryId", params: { memoryId: row.id } })}
           emptyContent={
