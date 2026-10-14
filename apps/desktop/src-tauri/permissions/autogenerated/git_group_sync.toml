@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-git-group-sync"
+description = "Enables the git_group_sync command without any pre-configured scope."
+commands.allow = ["git_group_sync"]
+
+[[permission]]
+identifier = "deny-git-group-sync"
+description = "Denies the git_group_sync command without any pre-configured scope."
+commands.deny = ["git_group_sync"]

@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   AUDIT_RETENTION_MAX_DAYS,
   AUDIT_RETENTION_MIN_DAYS,
@@ -42,6 +43,7 @@ import { formatClock, formatDay } from "@/lib/format.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import { validateAuditSearch } from "@/lib/route-search.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -222,8 +224,8 @@ type Range = AuditFilters["range"];
 const RANGES = [1, 7, 30, 365] as const satisfies readonly Range[];
 
 /**
- * Hub lọc và phân trang (con trỏ), nên trang chỉ có một ô tìm và một bộ phân trang, đều của hub. Không dùng DataTable vì
- * ô lọc cục bộ của nó chỉ lọc 20 dòng đang thấy, đứng cạnh ô tìm của hub thì người dùng không biết ô nào tìm gì.
+ * Hub lọc và phân trang (con trỏ), nên trang chỉ có một ô tìm và một bộ phân trang, đều của hub. Bảng tự dựng thay vì
+ * DataTable: bảng chỉ đọc, không sắp xếp hay ẩn cột, và cả hàng lọc là ô chọn của hub.
  */
 function AuditViewer() {
   const { api, org } = useOrg();
@@ -232,7 +234,11 @@ function AuditViewer() {
   const canExport = admin || can("audit.export");
   const t = useT(text);
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState<AuditFilters>({ range: 7 });
+  const navigate = useNavigate();
+  const search = useSearch({ from: "/session/app/in-org/admin/audit" });
+  // Kiểm lại vì router giữ cả khoá thô không hợp lệ (lib/route-search.ts).
+  const valid = validateAuditSearch(search);
+  const filters: AuditFilters = { ...valid, range: valid.range ?? 7 };
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [page, setPage] = useState(0);
   const cursor = cursors[page];
@@ -256,15 +262,22 @@ function AuditViewer() {
       },
     }),
   );
-  function update<K extends keyof AuditFilters>(key: K, value: AuditFilters[K] | undefined) {
-    setFilters((prev) => {
-      const next = { ...prev };
-      if (value === undefined || value === "") delete next[key];
-      else next[key] = value as AuditFilters[K];
-      return next;
+  // Bộ lọc nằm trong URL để gửi được link nhật ký đã lọc; 7 ngày là mặc định nên không ghi.
+  function setFilters(next: AuditFilters) {
+    const { range, ...rest } = next;
+    void navigate({
+      to: "/admin/audit",
+      search: validateAuditSearch({ ...rest, ...(range === 7 ? {} : { range }) }),
+      replace: true,
     });
     setPage(0);
     setCursors([undefined]);
+  }
+  function update<K extends keyof AuditFilters>(key: K, value: AuditFilters[K] | undefined) {
+    const next = { ...filters };
+    if (value === undefined || value === "") delete next[key];
+    else next[key] = value as AuditFilters[K];
+    setFilters(next);
   }
   const labels: Record<FilterKey, string> = {
     q: t.search,
@@ -306,11 +319,7 @@ function AuditViewer() {
       label: labels[key],
       value: key in options ? (options[key as keyof typeof options].find(([id]) => id === value)?.[1] ?? value) : value,
     }));
-  const clearAll = () => {
-    setFilters((prev) => ({ range: prev.range }));
-    setPage(0);
-    setCursors([undefined]);
-  };
+  const clearAll = () => setFilters({ range: filters.range });
   const busy = list.isFetching;
 
   let table: ReactNode;

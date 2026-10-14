@@ -1,9 +1,12 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createApp } from "./app.ts";
 import { createAuth } from "./modules/identity/index.ts";
-import { createPool } from "./modules/platform/index.ts";
+import { createPool, parseMasterKey } from "./modules/platform/index.ts";
 
 // Lớp API của artifacts.* qua HTTP (OpenAPI): lỗi mang chi tiết trong `data`, audit bí mật ghi bằng transaction riêng
 // sau khi request rollback. Nghiệp vụ chi tiết ở modules/artifacts/artifacts.db.test.ts và access.db.test.ts.
@@ -118,5 +121,116 @@ describe("API HTTP", () => {
     } finally {
       orgId = saved;
     }
+  });
+});
+
+describe("khung cách ly qua app.ts", () => {
+  const webDist = mkdtempSync(join(tmpdir(), "hive-web-"));
+  writeFileSync(join(webDist, "index.html"), "<!doctype html><title>SPA</title>");
+  const httpApp = createApp({
+    config: {
+      port: 0,
+      version: "t",
+      publicUrl: "http://localhost:3000",
+      masterKey: parseMasterKey(randomBytes(32).toString("base64")),
+    },
+    auth: createAuth({
+      pool: authPool,
+      baseURL: "http://localhost:3000",
+      secret: "test-secret-0123456789abcdef-0123456789",
+      allowEmailSignUp: true,
+    }),
+    pool: app,
+    webDist,
+  });
+  let cookie = "";
+  let orgId = "";
+
+  async function api(method: string, path: string, body?: unknown) {
+    const headers: Record<string, string> = { cookie, "x-hive-org": orgId };
+    if (body !== undefined) headers["content-type"] = "application/json";
+    const res = await httpApp.request(`/api/v1${path}`, {
+      method,
+      headers,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    return {
+      status: res.status,
+      json: (await res.json()) as Record<string, unknown> & { data?: Record<string, unknown> },
+    };
+  }
+
+  beforeAll(async () => {
+    const res = await httpApp.request("/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Mai", email: `frame-${tag}@example.com`, password: "mat-khau-du-dai-123" }),
+    });
+    expect(res.status).toBe(200);
+    cookie = res.headers
+      .getSetCookie()
+      .map((c) => c.split(";")[0])
+      .join("; ");
+    const userId = ((await res.json()) as { user: { id: string } }).user.id;
+    orgId = randomUUID();
+    await admin.query("insert into hive.orgs (id, slug, name, created_by) values ($1, $2, $2, $3)", [
+      orgId,
+      `frame-api-${tag}`,
+      userId,
+    ]);
+    await admin.query("insert into hive.org_members (org_id, user_id, role) values ($1, $2, 'owner')", [orgId, userId]);
+  });
+
+  afterAll(() => rmSync(webDist, { recursive: true, force: true }));
+
+  it("frameUrl → khung mở được dù có hay không cookie phiên; frameDocument cho app", async () => {
+    const created = await api("POST", "/artifacts", { type: "html", title: "Trang", content: "<b>chào</b>" });
+    const id = (created.json.artifact as { id: string }).id;
+    const issued = await api("GET", `/artifacts/${id}/versions/1/frame-url?theme=dark`);
+    expect(issued.status).toBe(200);
+    const url = new URL(issued.json.url as string);
+    expect(url.origin).toBe("http://localhost:3000");
+    expect(url.pathname.startsWith("/_artifact/frame/")).toBe(true);
+    const anonymous = await httpApp.request(url.pathname);
+    expect(anonymous.status).toBe(200);
+    expect(anonymous.headers.get("content-security-policy")).toContain("http://localhost:3000/_artifact/lib/");
+    const body = await anonymous.text();
+    expect(body).toContain("<b>chào</b>");
+    expect(body).not.toContain("<title>SPA</title>");
+    const withSession = await httpApp.request(url.pathname, { headers: { cookie, "x-hive-org": orgId } });
+    expect(withSession.status).toBe(200);
+    expect(withSession.headers.get("set-cookie")).toBeNull();
+    expect(await withSession.text()).toBe(body);
+    const doc = await api("GET", `/artifacts/${id}/versions/1/frame-document`);
+    expect(doc.status).toBe(200);
+    expect(doc.json.html).toContain("<b>chào</b>");
+    expect(doc.json.csp).toContain("hive-artifact://localhost/lib/");
+  });
+
+  it("phiên người dùng không mở được khung khi vé hỏng; đường lạ dưới /_artifact/ không ra SPA", async () => {
+    expect((await httpApp.request("/_artifact/frame/abc.def", { headers: { cookie } })).status).toBe(403);
+    for (const path of ["/_artifact/khong-co", "/_artifact/lib/khong-co.js", "/_artifact/rpc/artifacts"]) {
+      const res = await httpApp.request(path, { headers: { cookie } });
+      expect(res.status, path).toBe(404);
+      expect(await res.text(), path).not.toContain("SPA");
+    }
+    // SPA vẫn phục vụ đường khác như trước.
+    expect(await (await httpApp.request("/artifacts")).text()).toContain("SPA");
+  });
+
+  it("preview: bí mật bị chặn 400 kèm dòng, audit ghi dù rollback; nội dung sạch thì có URL khung", async () => {
+    const blocked = await api("POST", "/artifacts/preview", { type: "html", content: `<p>a</p>\n${FAKE_TOKEN}` });
+    expect(blocked.status).toBe(400);
+    expect(blocked.json.data).toMatchObject({ code: "ARTIFACT_SECRET_FOUND" });
+    expect(JSON.stringify(blocked.json)).not.toContain(FAKE_TOKEN);
+    const rows = await auditRows(orgId, "artifact.secret.blocked");
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows)).not.toContain(FAKE_TOKEN);
+    const ok = await api("POST", "/artifacts/preview", { type: "html", content: "<p>nháp</p>", theme: "light" });
+    expect(ok.status).toBe(200);
+    expect(ok.json.compileError).toBeNull();
+    const frame = await httpApp.request(new URL(ok.json.url as string).pathname);
+    expect(frame.status).toBe(200);
+    expect(frame.headers.get("cache-control")).toBe("private, no-store");
   });
 });
