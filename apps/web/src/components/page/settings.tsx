@@ -11,14 +11,18 @@ const text: Dict<{ save: string; saving: string; discard: string; unsaved: strin
 };
 
 /**
- * Trang cài đặt nhiều mục (admin-layout.md § Form cài đặt): mục lục bám theo cuộn bên trái từ 1024 px, các mục là card
- * xếp dọc bên phải. Dưới 1024 px mục lục thành hàng chip cuộn ngang để vẫn nhảy nhanh được tới mục cuối.
+ * Trang cài đặt nhiều mục (admin-layout.md § Form cài đặt): mục lục bám theo cuộn bên trái khi cột nội dung rộng từ
+ * 896 px, các mục là card xếp dọc bên phải. Hẹp hơn thì mục lục thành hàng chip cuộn ngang để vẫn nhảy nhanh được tới
+ * mục cuối. Đo theo cột nội dung chứ không theo màn hình: trong khu quản trị sidebar và menu Quản trị đã chiếm 448 px,
+ * thêm cột mục lục ở 1100 px thì form chỉ còn khoảng 360 px.
  */
 export function SettingsLayout({ nav, children }: { nav?: ReactNode; children: ReactNode }) {
   return (
-    <div className="grid min-w-0 gap-4 lg:grid-cols-[12rem_minmax(0,1fr)] lg:items-start lg:gap-8">
-      {nav}
-      <div className="grid min-w-0 gap-4">{children}</div>
+    <div className="@container/settings min-w-0">
+      <div className="grid min-w-0 gap-4 @4xl/settings:grid-cols-[12rem_minmax(0,1fr)] @4xl/settings:items-start @4xl/settings:gap-8">
+        {nav}
+        <div className="grid min-w-0 gap-4">{children}</div>
+      </div>
     </div>
   );
 }
@@ -53,8 +57,8 @@ export function SettingsNav({ label, items }: { label: string; items: readonly S
     return () => observer.disconnect();
   }, [items]);
   return (
-    <nav aria-label={label} className="min-w-0 lg:sticky lg:top-16">
-      <ul className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin] lg:mx-0 lg:grid lg:overflow-visible lg:px-0 lg:pb-0">
+    <nav aria-label={label} className="min-w-0 @4xl/settings:sticky @4xl/settings:top-16">
+      <ul className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin] @4xl/settings:mx-0 @4xl/settings:grid @4xl/settings:overflow-visible @4xl/settings:px-0 @4xl/settings:pb-0">
         {items.map((item) => (
           <li key={item.id} className="shrink-0">
             <a
@@ -63,9 +67,9 @@ export function SettingsNav({ label, items }: { label: string; items: readonly S
               onClick={() => setActive(item.id)}
               className={cx(
                 "block rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                "border border-border lg:border-transparent",
+                "border border-border @4xl/settings:border-transparent",
                 item.id === active
-                  ? "bg-accent font-medium text-accent-foreground lg:border-l-2 lg:border-l-primary"
+                  ? "bg-accent font-medium text-accent-foreground @4xl/settings:border-l-2 @4xl/settings:border-l-primary"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
