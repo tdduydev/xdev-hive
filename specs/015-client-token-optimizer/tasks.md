@@ -240,7 +240,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - Số ADR lấy kế tiếp trên `main` lúc commit.
   - **PHẠM VI**: `docs/adr/00NN-client-token-optimizer.md` (mới), `docs/token-optimizer.md` (mới)
 
-- [ ] **T015 [nhẹ] Gom script đo** (sau T006)
+- [x] **T015 [nhẹ] Gom script đo** (sau T006)
   - **Goal**: `scripts/token-audit.ts` gọi `hive-worker optimize report --json` khi có sidecar. Hoặc xoá script và
     cập nhật đường dẫn trong research.md.
   - **PHẠM VI**: `scripts/token-audit.ts`, `specs/015-client-token-optimizer/research.md` (một dòng đường dẫn)
