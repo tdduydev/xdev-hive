@@ -39,6 +39,9 @@ function pack() {
   return loaded;
 }
 
+/** Tên các skill mặc định của Hive, để đề xuất skill mới không trùng chúng. */
+export const packSkillNames = (): string[] => [...pack().byName.keys()];
+
 const notFound = () => new NotFoundError("SKILL_NOT_FOUND", "Không tìm thấy skill.");
 
 function metaOf(name: string): PackSkillMeta {
