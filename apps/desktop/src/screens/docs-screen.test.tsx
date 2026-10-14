@@ -11,6 +11,7 @@ import {
   citations,
   emptyChat,
   extractProposal,
+  getChat,
   resetAgentStore,
 } from "@/lib/agent.ts";
 import { saveFolder } from "@/lib/folder.ts";
@@ -23,6 +24,7 @@ import { DocsScreen, slugify } from "@/screens/docs-screen.tsx";
 interface FakeTerm {
   options: Record<string, unknown>;
   written: (string | Uint8Array)[];
+  focused: number;
   type: (data: string) => void;
 }
 const xterm = vi.hoisted(() => ({ terms: [] as FakeTerm[] }));
@@ -32,6 +34,7 @@ vi.mock("@xterm/xterm", () => ({
     rows = 24;
     options: Record<string, unknown>;
     written: (string | Uint8Array)[] = [];
+    focused = 0;
     type: (data: string) => void = () => {};
     constructor(options: Record<string, unknown>) {
       this.options = options;
@@ -40,7 +43,9 @@ vi.mock("@xterm/xterm", () => ({
     unicode = { activeVersion: "6" };
     loadAddon() {}
     open() {}
-    focus() {}
+    focus() {
+      this.focused++;
+    }
     dispose() {}
     write(data: string | Uint8Array) {
       this.written.push(data);
@@ -216,6 +221,8 @@ function fakeTauri() {
     },
   };
   const push = async (...events: AgentEvent[]) => {
+    // Màn còn đang dựng lời nhắc hay chờ run_cli_stream trả id thì chưa nhận sự kiện của lượt chạy: sự kiện đến sớm bị bỏ.
+    await waitFor(() => expect(getChat().runId).not.toBeNull());
     for (const event of events) await act(async () => listeners["cli:event"]?.({ payload: { runId: "run-1", event } }));
   };
   const emit = (event: string, payload: unknown) => act(async () => listeners[event]?.({ payload }));
@@ -456,7 +463,7 @@ describe("DocsScreen", () => {
         stderr: "",
       },
     );
-    await user.click(screen.getByRole("button", { name: "Bỏ tất cả" }));
+    await user.click(await screen.findByRole("button", { name: "Bỏ tất cả" }));
     expect(screen.queryByText("Có đề xuất chưa nhận")).toBeNull();
     expect(screen.getByText("Khớp bản v3 trên hub")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Mở lại đề xuất" }));
@@ -469,17 +476,19 @@ describe("DocsScreen", () => {
     renderDocs();
     await screen.findByRole("heading", { name: "Kiến trúc payment-api" });
     await user.click(screen.getByRole("tab", { name: "Codex" }));
-    expect(screen.getByRole("button", { name: "Read Only" }).getAttribute("aria-pressed")).toBe("true");
+    expect((await screen.findByRole("button", { name: "Read Only" })).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Full Access" }).getAttribute("aria-pressed")).toBe("false");
     await user.type(
       screen.getByRole("textbox", { name: "Hỏi hoặc yêu cầu viết tài liệu từ code" }),
       "Đọc go.mod{Enter}",
     );
-    expect(calls.find((c) => c.command === "run_cli_stream")?.args).toMatchObject({
-      engine: "codex",
-      model: null,
-      mode: "read",
-    });
+    await waitFor(() =>
+      expect(calls.find((c) => c.command === "run_cli_stream")?.args).toMatchObject({
+        engine: "codex",
+        model: null,
+        mode: "read",
+      }),
+    );
     await push(
       { kind: "tool", id: "item_1", name: "shell", arg: "cat go.mod", paths: ["go.mod"] },
       { kind: "toolDone", id: "item_1", ok: true, lines: 4, files: null, preview: "module x" },
@@ -540,7 +549,7 @@ describe("DocsScreen", () => {
     const user = userEvent.setup();
     renderDocs(null);
     await user.click(screen.getByRole("button", { name: "Mẫu yêu cầu" }));
-    await user.click(screen.getByRole("menuitem", { name: /Tài liệu kiến trúc/ }));
+    await user.click(await screen.findByRole("menuitem", { name: /Tài liệu kiến trúc/ }));
     const box = screen.getByRole("textbox", { name: "Hỏi hoặc yêu cầu viết tài liệu từ code" }) as HTMLTextAreaElement;
     expect(box.value).toContain("Viết tài liệu kiến trúc từ code hiện có");
     await user.click(screen.getByRole("button", { name: "Gửi" }));
@@ -562,7 +571,7 @@ describe("DocsScreen", () => {
       "disabled",
       true,
     );
-    expect(screen.queryByText("Đang đọc…")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
     expect(calls.find((c) => c.args?.name === "doc_list")?.args).toEqual({ name: "doc_list", args: { limit: 50 } });
     expect(calls.some((c) => ["workspace_meta", "folder_tree"].includes(c.command))).toBe(false);
     expect(calls.some((c) => c.args?.name === "project_list")).toBe(false);
@@ -580,7 +589,7 @@ describe("DocsScreen", () => {
     await user.click(screen.getByRole("button", { name: "Back" }));
     const chat = screen.getByRole("complementary", { name: "Ask about this folder" });
     await user.click(within(chat).getByRole("button", { name: "Open folder…" }));
-    expect(localStorage.getItem("hive.folder")).toBe(FOLDER);
+    await waitFor(() => expect(localStorage.getItem("hive.folder")).toBe(FOLDER));
     expect(await screen.findByText("↔ payment-api")).toBeTruthy();
     expect(calls.filter((c) => c.args?.name === "doc_list").at(-1)?.args).toEqual({
       name: "doc_list",
@@ -696,7 +705,7 @@ describe("DocsScreen", () => {
 
     // Đổi agent là phiên mới: Bypass về chỉ đọc. Codex nhập tên model; tên lạ thì không gửi.
     await user.click(screen.getByRole("tab", { name: "Codex" }));
-    expect(screen.getByRole("button", { name: "Read Only" }).getAttribute("aria-pressed")).toBe("true");
+    expect((await screen.findByRole("button", { name: "Read Only" })).getAttribute("aria-pressed")).toBe("true");
     const codexModel = screen.getByRole("textbox", { name: "Model" });
     await user.type(codexModel, "gpt 5");
     expect(screen.getByText(/Tên model chỉ gồm chữ, số/)).toBeTruthy();
@@ -737,7 +746,10 @@ describe("DocsScreen", () => {
     const term = xterm.terms[0] as FakeTerm;
     await waitFor(() => expect(within(panel).getByRole("tab", { name: /Claude Code · claude-2/ })).toBeTruthy());
     await emit("pty:data", { id: "pty-1", data: btoa("Welcome to Claude Code") });
-    expect(new TextDecoder().decode(term.written.at(-1) as Uint8Array)).toBe("Welcome to Claude Code");
+    // Output đến trước khi pty_open trả id thì được giữ lại, vẽ khi terminal chuyển sang chạy.
+    await waitFor(() =>
+      expect(new TextDecoder().decode(term.written.at(-1) as Uint8Array)).toBe("Welcome to Claude Code"),
+    );
     term.type("/help\r");
     expect(calls.find((c) => c.command === "pty_write")?.args).toEqual({ id: "pty-1", data: "/help\r" });
 
@@ -764,6 +776,8 @@ describe("DocsScreen", () => {
         .getAttribute("aria-selected"),
     ).toBe("true");
 
+    // Terminal chỉ nhận pty:exit sau khi pty_open trả id; lúc đó app gọi focus().
+    await waitFor(() => expect((xterm.terms[1] as FakeTerm).focused).toBeGreaterThan(0));
     await emit("pty:exit", { id: "pty-2", code: 0 });
     expect(within(panel).getByRole("tab", { name: /Codex.*đã thoát/ })).toBeTruthy();
     await user.click(within(panel).getByRole("button", { name: "Đóng Claude Code · claude-2" }));
