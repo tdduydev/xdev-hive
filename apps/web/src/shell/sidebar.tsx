@@ -16,6 +16,7 @@ import {
   SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui/sidebar.tsx";
+import { countLabel, useAwaitingCodeReviews } from "@/lib/code-reviews.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { activeNavItem, NAV_HOME, type NavGroup, type NavItem, visibleGroups } from "@/lib/nav.ts";
 import { orgStore } from "@/lib/org-store.ts";
@@ -25,9 +26,13 @@ import { useOrgs } from "@/shell/org-context.ts";
 import { OrgSwitcher } from "@/shell/org-switcher.tsx";
 import { UserCard } from "@/shell/user-card.tsx";
 
-const text: Dict<{ nav: string; needsOrg: string }> = {
-  vi: { nav: "Điều hướng chính", needsOrg: "Cần thuộc một tổ chức" },
-  en: { nav: "Main navigation", needsOrg: "Join an organization first" },
+const text: Dict<{ nav: string; needsOrg: string; awaitingPrs: (n: number) => string }> = {
+  vi: { nav: "Điều hướng chính", needsOrg: "Cần thuộc một tổ chức", awaitingPrs: (n) => `${n} PR đang chờ bạn duyệt` },
+  en: {
+    nav: "Main navigation",
+    needsOrg: "Join an organization first",
+    awaitingPrs: (n) => `${n} PRs awaiting your review`,
+  },
 };
 
 const OPEN_KEY = "hive.nav.open";
@@ -50,6 +55,19 @@ function ItemBody({ item }: { item: NavItem }) {
       <IconComponent aria-hidden="true" />
       <span>{item.label[lang]}</span>
     </>
+  );
+}
+
+/** Chỉ mục có badge mới gọi hub lấy số, nên các nhóm khác không tốn thêm request. */
+function CodeReviewsBadge() {
+  const t = useT(text);
+  const awaiting = useAwaitingCodeReviews();
+  if (awaiting === 0) return null;
+  return (
+    <span className="ml-auto shrink-0 rounded-md bg-accent px-1.5 text-xs font-medium text-accent-foreground tabular-nums">
+      <span className="sr-only">{t.awaitingPrs(awaiting)}</span>
+      <span aria-hidden="true">{countLabel(awaiting)}</span>
+    </span>
   );
 }
 
@@ -113,6 +131,7 @@ function Group({
                   isActive={item.id === activeId}
                 >
                   <ItemBody item={item} />
+                  {item.badge === "codeReviews" && <CodeReviewsBadge />}
                 </SidebarMenuSubButton>
               ) : (
                 <DisabledItem item={item} sub />

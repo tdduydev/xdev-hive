@@ -3,7 +3,15 @@ import { desktopConnectContract, fleetContract } from "@xdev-hive/contracts";
 import type pg from "pg";
 import type { Auth } from "../identity/index.ts";
 import { ForbiddenError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
-import { disconnectMachine, sendToMachine } from "./connections.ts";
+import {
+  cancelAccountLogin,
+  getAccountLogin,
+  inputAccountLogin,
+  listMachineAccounts,
+  setMachineAccount,
+  startAccountLogin,
+} from "./accounts.ts";
+import { disconnectMachine, isConnected, sendToMachine } from "./connections.ts";
 import {
   approveDesktopConnect,
   desktopConnectOptions,
@@ -13,15 +21,21 @@ import {
 import { FleetError } from "./errors.ts";
 import { CLOSE } from "./gateway.ts";
 import {
+  findMachine,
   listMachines,
   pauseMachine,
   requestMachineUpdate,
   resumeMachine,
   revokeMachine,
+  setMachineLabels,
   setMachineShared,
 } from "./machines.ts";
 import { createRegistration, registerMachine } from "./registration.ts";
 import { installCommands, type WorkerReleaseCache } from "./releases.ts";
+import { listSdlcFleet } from "./sdlc-fleet.ts";
+
+/** Mã đóng để worker nối lại ngay (1012: dịch vụ khởi động lại), không phải lỗi. */
+const CLOSE_RECONNECT = 1012;
 
 export interface FleetDeps {
   auth?: Auth | undefined;
@@ -56,16 +70,35 @@ export function fleetRouter(deps: FleetDeps) {
     return deps.pool;
   };
 
-  /** Chạy fn trong transaction của tổ chức đang chọn, với người đang đăng nhập. Quyền đội do fn tự kiểm. */
-  const inOrg = async <T>(headers: Headers, fn: (tx: Tx, userId: string) => Promise<T>): Promise<T> => {
+  /** Người đang đăng nhập và tổ chức đang chọn. */
+  const orgContext = async (headers: Headers) => {
     const session = deps.auth ? await deps.auth.api.getSession({ headers }) : null;
     if (!session) throw new ORPCError("UNAUTHORIZED", { message: "Chưa đăng nhập." });
     const pool = requirePool();
     const orgId = headers.get(ORG_HEADER);
     if (!orgId) throw new ORPCError("BAD_REQUEST", { message: `Chưa chọn tổ chức (header ${ORG_HEADER}).` });
     if (!UUID.test(orgId)) throw new ORPCError("BAD_REQUEST", { message: "Mã tổ chức không hợp lệ." });
-    const userId = session.user.id;
+    return { pool, userId: session.user.id, orgId };
+  };
+
+  /** Chạy fn trong transaction của tổ chức đang chọn, với người đang đăng nhập. Quyền đội do fn tự kiểm. */
+  const inOrg = async <T>(headers: Headers, fn: (tx: Tx, userId: string) => Promise<T>): Promise<T> => {
+    const { pool, userId, orgId } = await orgContext(headers);
     return withTenant(pool, { userId, orgId }, (tx) => fn(tx, userId)).catch(toORPC);
+  };
+
+  /** Như inOrg, rồi chạy `after` sau khi commit (gửi lệnh xuống máy), đổi lỗi nghiệp vụ của nó như nhau. */
+  const thenSend = async <T, R>(
+    headers: Headers,
+    fn: (tx: Tx, userId: string) => Promise<T>,
+    after: (value: T) => R,
+  ): Promise<R> => {
+    const value = await inOrg(headers, fn);
+    try {
+      return after(value);
+    } catch (error) {
+      return toORPC(error);
+    }
   };
 
   const machinesOs = implement(fleetContract.machines).$context<RequestContext>();
@@ -80,7 +113,11 @@ export function fleetRouter(deps: FleetDeps) {
       ),
       createRegistration: machinesOs.createRegistration.handler(async ({ context, input }) => {
         const { token, expiresAt } = await inOrg(context.headers, (tx, userId) =>
-          createRegistration(tx, userId, input.teamId, input.kind),
+          createRegistration(tx, userId, input.teamId, input.kind, {
+            labels: input.labels,
+            shared: input.shared,
+            labelsOnly: input.labelsOnly,
+          }),
         );
         return {
           token,
@@ -98,8 +135,59 @@ export function fleetRouter(deps: FleetDeps) {
       pause: machinesOs.pause.handler(({ context, input }) =>
         inOrg(context.headers, (tx, userId) => pauseMachine(tx, userId, input.machineId)),
       ),
-      setShared: machinesOs.setShared.handler(({ context, input }) =>
-        inOrg(context.headers, (tx, userId) => setMachineShared(tx, userId, input.machineId, input.shared)),
+      setShared: machinesOs.setShared.handler(async ({ context, input }) => {
+        const { machine, changed } = await inOrg(context.headers, async (tx, userId) => {
+          const before = await findMachine(tx, input.machineId);
+          const machine = await setMachineShared(tx, userId, input.machineId, input.shared);
+          return { machine, changed: before?.shared !== input.shared };
+        });
+        // Worker chỉ biết máy dùng chung qua welcome; cho nối lại để nhận cờ mới. Run đang chạy vẫn tiếp tục.
+        if (changed && machine.capabilities?.includes("accounts-remote") && isConnected(machine.id))
+          disconnectMachine(machine.id, CLOSE_RECONNECT, "Máy đổi chế độ dùng chung");
+        return machine;
+      }),
+      setLabels: machinesOs.setLabels.handler(({ context, input }) =>
+        inOrg(context.headers, (tx, userId) => setMachineLabels(tx, userId, input.machineId, input)),
+      ),
+      setAccount: machinesOs.setAccount.handler(({ context, input }) =>
+        thenSend(
+          context.headers,
+          (tx, userId) => setMachineAccount(tx, userId, input),
+          (machine) => {
+            if (!sendToMachine(machine.id, { type: "account_set", accountId: input.accountId, enabled: input.enabled }))
+              throw new FleetError("conflict", "MACHINE_NOT_CONNECTED", "Máy vừa ngắt kết nối khỏi hub; thử lại sau.");
+            return machine;
+          },
+        ),
+      ),
+      accounts: {
+        list: machinesOs.accounts.list.handler(({ context, input }) =>
+          inOrg(context.headers, (tx, userId) => listMachineAccounts(tx, userId, input.machineId)),
+        ),
+        loginStart: machinesOs.accounts.loginStart.handler(async ({ context, input }) => {
+          const { pool, userId, orgId } = await orgContext(context.headers);
+          return startAccountLogin(pool, { userId, orgId }, input).catch(toORPC);
+        }),
+        loginGet: machinesOs.accounts.loginGet.handler(({ context, input }) =>
+          inOrg(context.headers, (tx, userId) => getAccountLogin(tx, userId, input)),
+        ),
+        loginInput: machinesOs.accounts.loginInput.handler(({ context, input }) =>
+          thenSend(
+            context.headers,
+            (tx, userId) => inputAccountLogin(tx, userId, input),
+            ({ send }) => send(input.text),
+          ),
+        ),
+        loginCancel: machinesOs.accounts.loginCancel.handler(({ context, input }) =>
+          thenSend(
+            context.headers,
+            (tx, userId) => cancelAccountLogin(tx, userId, input),
+            ({ commit }) => commit(),
+          ),
+        ),
+      },
+      sdlc: machinesOs.sdlc.handler(({ context, input }) =>
+        inOrg(context.headers, (tx, userId) => listSdlcFleet(tx, userId, input.teamId)),
       ),
       resume: machinesOs.resume.handler(({ context, input }) =>
         inOrg(context.headers, (tx, userId) => resumeMachine(tx, userId, input.machineId)),

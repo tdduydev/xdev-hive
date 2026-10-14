@@ -123,7 +123,11 @@ type jobSpec struct {
 	Policy      runner.JobPolicy   `json:"policy"`
 	// TokenSaving là cài đặt "Tiết kiệm token" của dự án; nil với hub cũ.
 	TokenSaving *runner.TokenSavingJob `json:"tokenSaving"`
-	Checks      *struct {
+	// Effort, Advisor, Tier: lựa chọn của định tuyến theo cấp độ task; rỗng với hub cũ hay dự án tắt định tuyến.
+	Effort  string `json:"effort"`
+	Advisor string `json:"advisor"`
+	Tier    string `json:"tier"`
+	Checks  *struct {
 		Commands []runner.CheckCommand `json:"commands"`
 	} `json:"checks"`
 	Brief *struct {
@@ -157,6 +161,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv, Policy: s.Policy, ProjectID: strings.ToLower(s.ProjectID)}
 	j.MCPServers = s.MCPServers
 	j.TokenSaving = s.TokenSaving
+	j.Effort, j.Advisor, j.Tier = s.Effort, s.Advisor, s.Tier
 	if s.Checks != nil {
 		j.Checks = s.Checks.Commands
 	}
@@ -270,6 +275,14 @@ func (c Config) Run(ctx context.Context) error {
 			return fmt.Errorf("dọn container cũ: %w", err)
 		}
 	}
+	// Phiên đăng nhập gói từ web không sống qua lần khởi động: tài khoản dở còn lại là rác của lần worker chết giữa chừng.
+	if c.Accounts != nil {
+		if n, err := accounts.CleanupPending(c.Accounts.Path(), c.Accounts.Home()); err != nil {
+			c.Logger.Warn("Không dọn được tài khoản đăng nhập dở", "error", err)
+		} else if n > 0 {
+			c.Logger.Info("Đã dọn tài khoản đăng nhập dở từ lần chạy trước", "count", n)
+		}
+	}
 	if c.MinBackoff <= 0 {
 		c.MinBackoff = time.Second
 	}
@@ -363,7 +376,7 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 		c.Logger.Warn("Hub chưa nhận các CLI này; cập nhật hub để giao run cho chúng", "clis", dropped)
 	}
 	// Hub đòi mảng, không nhận null; slice nil của Go mã hoá thành null.
-	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: clis, Capacity: c.Capacity, Capabilities: runner.MachineCapabilities(c.Sandbox != nil), ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
+	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: clis, Capacity: c.Capacity, Capabilities: c.capabilities(), ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
 	if memory := hostMemoryMB(); memory > 0 {
 		hello.MemoryMB = memory
 	}
@@ -419,6 +432,7 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 		case <-ctx.Done():
 		}
 	}()
+	jobs.setShared(welcome)
 	if err := jobs.attach(ctx, conn); err != nil {
 		return err
 	}
@@ -475,6 +489,14 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 			}
 		case *Steer:
 			jobs.steer(m)
+		case *AccountSet:
+			jobs.onAccountSet(m)
+		case *AccountLoginStart:
+			jobs.onLoginStart(m)
+		case *AccountLoginInput:
+			jobs.onLoginInput(m)
+		case *AccountLoginCancel:
+			jobs.onLoginCancel(m)
 		default:
 			c.Logger.Info("Chưa xử lý gói từ hub", "type", fmt.Sprintf("%T", m))
 		}

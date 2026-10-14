@@ -29,6 +29,7 @@ import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
   type Embedder,
+  handleRunSkills,
   handleSkillWebhook,
   registerMcpTools as knowledgeMcpTools,
   knowledgeRouter,
@@ -233,6 +234,10 @@ export function createApp({
         c.req.raw,
       ),
     );
+  // Worker lấy skill để chép vào worktree của run (knowledge/run-skills.ts); xác thực bằng run token như /mcp.
+  const skillRunTokens = runTokens ?? runs?.mcpRunTokens;
+  if (pool && skillRunTokens)
+    app.post("/api/v1/run/skills", (c) => handleRunSkills({ pool, runTokens: skillRunTokens }, c.req.raw));
   // tauri-plugin-updater đòi 204 khi không có bản mới; handler oRPC cùng đường dẫn (để có trong OpenAPI) trả 200 với
   // null, nên route này phải đứng trước handler /api.
   app.get("/api/v1/desktop/updates/:os/:arch/:currentVersion", async (c) => {

@@ -8,11 +8,13 @@ import {
   type CostSummary,
   DEFAULT_AGENT_POLICY,
   defaultProjectSettings,
+  defaultRouting,
   defaultTokenSaving,
   type ProjectBrief,
   type ProjectSettings,
   type Run,
   type Task,
+  workflowInput,
 } from "@xdev-hive/contracts";
 import {
   type CostEventData,
@@ -497,6 +499,197 @@ describe("model theo cấu hình dự án", () => {
     expect(run.model).toBe("claude-override-model");
     const offer = await w.next("job_offer", (o) => o.runId === run.id);
     expect(offer.spec).toMatchObject({ model: "claude-override-model" });
+    await w.close();
+  });
+});
+
+describe("định tuyến model và effort theo cấp độ task", () => {
+  let plainProject = "";
+  let offProject = "";
+  let customProject = "";
+  const seed = (key: string, settings: ProjectSettings) =>
+    seedProject(admin, pool, {
+      orgId: org.orgId,
+      teamId: org.teamId,
+      systemId: org.systemId,
+      adminUserId: org.user("admin"),
+      masterKey,
+      key,
+      settings,
+    });
+
+  beforeAll(async () => {
+    // Dự án mặc định của file này có sẵn models.claude.code, mà model cấu hình thắng định tuyến.
+    plainProject = (await seed(`rtp-${tag}`, defaultProjectSettings())).projectId;
+    offProject = (
+      await seed(`rto-${tag}`, { ...defaultProjectSettings(), routing: { ...defaultRouting, enabled: false } })
+    ).projectId;
+    customProject = (
+      await seed(`rtc-${tag}`, {
+        ...defaultProjectSettings(),
+        budget: { maxTurns: 33 },
+        routing: {
+          enabled: true,
+          tiers: {
+            ...defaultRouting.tiers,
+            medium: { model: "haiku", effort: "low", maxTurns: 90, advisor: "opus" },
+          },
+        },
+      })
+    ).projectId;
+  });
+
+  it("task không có tín hiệu: cấp vừa, sonnet + effort high, 120 lượt; run hiện lý do", async () => {
+    const m = await seedMachine(`rt-default-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Việc bình thường", { projectId: plainProject });
+    const run = await startRun(task.id);
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec).toMatchObject({ model: "sonnet", effort: "high", tier: "medium", budget: { maxTurns: 120 } });
+    expect(offer.spec.advisor).toBeUndefined();
+    const view = await api<Run>("GET", `/v1/runs/${run.id}`);
+    expect(view.data.routing).toMatchObject({
+      tier: "medium",
+      baseTier: "medium",
+      source: "default",
+      model: "sonnet",
+      effort: "high",
+      maxTurns: 120,
+    });
+    expect(view.data.routing?.reasons.join(" ")).toContain("cấp vừa");
+    await w.close();
+  });
+
+  it("loại task docs → nhẹ; nhãn issue tier:heavy → nặng; người đặt tay thắng tất cả", async () => {
+    const m = await seedMachine(`rt-tiers-${tag}`, ["claude"], 4);
+    const w = await FakeWorker.connect(m);
+    const docs = await newTask("Sửa chữ", { type: "docs", projectId: plainProject });
+    const docsRun = await startRun(docs.id);
+    const docsOffer = await w.next("job_offer", (o) => o.runId === docsRun.id);
+    expect(docsOffer.spec).toMatchObject({
+      model: "sonnet",
+      effort: "medium",
+      tier: "light",
+      budget: { maxTurns: 60 },
+    });
+
+    const heavy = await newTask("Việc lớn", { projectId: plainProject });
+    await admin.query(`update hive.tasks set source = source || '{"labels":["Tier:heavy"]}'::jsonb where id = $1`, [
+      heavy.id,
+    ]);
+    const heavyRun = await startRun(heavy.id);
+    const heavyOffer = await w.next("job_offer", (o) => o.runId === heavyRun.id);
+    expect(heavyOffer.spec).toMatchObject({ model: "opus", effort: "high", tier: "heavy", budget: { maxTurns: 200 } });
+
+    const manual = await newTask("Đặt tay nhẹ", { type: "security", projectId: plainProject });
+    const manualRun = await startRun(manual.id, { tier: "light" });
+    expect(manualRun.tier).toBe("light");
+    const manualOffer = await w.next("job_offer", (o) => o.runId === manualRun.id);
+    expect(manualOffer.spec).toMatchObject({ model: "sonnet", effort: "medium", tier: "light" });
+    const view = await api<Run>("GET", `/v1/runs/${manualRun.id}`);
+    expect(view.data.routing).toMatchObject({ source: "manual", tier: "light" });
+    await w.close();
+  });
+
+  it("lease hết hạn rồi thử lại thì nâng một cấp, ghi lý do", async () => {
+    const m = await seedMachine(`rt-retry-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Việc nhẹ nhưng máy treo", { type: "docs", projectId: plainProject });
+    const run = await startRun(task.id);
+    const offer1 = await w.next("job_offer", (o) => o.runId === run.id && o.attempt === 1);
+    expect(offer1.spec).toMatchObject({ tier: "light", model: "sonnet", effort: "medium" });
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    const lease1 = await w.next("lease", (l) => l.runId === run.id);
+    await admin.query("update hive.run_leases set expires_at = now() - interval '1 second' where id = $1", [
+      lease1.leaseId,
+    ]);
+    await engine.fire({ kind: "lease", orgId: org.orgId, runId: run.id, leaseId: lease1.leaseId });
+    const offer2 = await w.next("job_offer", (o) => o.runId === run.id && o.attempt === 2);
+    expect(offer2.spec).toMatchObject({ tier: "medium", model: "sonnet", effort: "high" });
+    const view = await api<Run>("GET", `/v1/runs/${run.id}`);
+    expect(view.data.routing).toMatchObject({ tier: "medium", baseTier: "light" });
+    expect(view.data.routing?.reasons.join(" ")).toContain("Thử lại sau lỗi nên nâng từ cấp nhẹ lên vừa");
+    await w.close();
+  });
+
+  it("run trước của task đã lỗi thì run mới (attempt 1) cũng lên một cấp", async () => {
+    const m = await seedMachine(`rt-prior-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Sửa chữ nhưng lần trước lỗi", { type: "docs", projectId: plainProject });
+    const first = await startRun(task.id);
+    const offer1 = await w.next("job_offer", (o) => o.runId === first.id);
+    expect(offer1.spec).toMatchObject({ tier: "light", model: "sonnet", effort: "medium" });
+    w.send({ type: "job_accept", runId: first.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === first.id);
+    w.sendRun({
+      type: "run_result",
+      runId: first.id,
+      attempt: 1,
+      exit: 1,
+      headSha: null,
+      report: { status: "failed" },
+    });
+    await until(async () => (await runRow(first.id)).state === "failed");
+
+    const second = await startRun(task.id);
+    const offer2 = await w.next("job_offer", (o) => o.runId === second.id);
+    expect(offer2.attempt).toBe(1);
+    expect(offer2.spec).toMatchObject({ tier: "medium", model: "sonnet", effort: "high", budget: { maxTurns: 120 } });
+    await w.close();
+  });
+
+  it("model người chọn thắng định tuyến, effort vẫn theo cấp", async () => {
+    const m = await seedMachine(`rt-explicit-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Chọn model tay", { projectId: plainProject });
+    const run = await startRun(task.id, { model: "claude-override-model" });
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec).toMatchObject({ model: "claude-override-model", effort: "high" });
+    const view = await api<Run>("GET", `/v1/runs/${run.id}`);
+    expect(view.data.routing?.model).toBe("claude-override-model");
+    expect(view.data.routing?.reasons.join(" ")).toContain("định tuyến chỉ chọn effort");
+    await w.close();
+  });
+
+  it("dự án tắt định tuyến: spec không có effort, tier, model, trần lượt", async () => {
+    const m = await seedMachine(`rt-off-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Không định tuyến", { projectId: offProject });
+    const run = await startRun(task.id);
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec.effort).toBeUndefined();
+    expect(offer.spec.tier).toBeUndefined();
+    expect(offer.spec.model).toBeNull();
+    expect(offer.spec.budget).toBeUndefined();
+    const view = await api<Run>("GET", `/v1/runs/${run.id}`);
+    expect(view.data.routing).toBeNull();
+    await w.close();
+  });
+
+  it("ánh xạ riêng của dự án; budget.maxTurns của dự án thắng trần lượt theo cấp; cố vấn đi vào spec", async () => {
+    const m = await seedMachine(`rt-custom-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Ánh xạ riêng", { projectId: customProject });
+    const run = await startRun(task.id);
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec).toMatchObject({
+      model: "haiku",
+      effort: "low",
+      advisor: "opus",
+      tier: "medium",
+      budget: { maxTurns: 33 },
+    });
+    await w.close();
+  });
+
+  it("Codex chỉ nhận effort: model giữ nguyên, không có trần lượt", async () => {
+    const m = await seedMachine(`rt-codex-${tag}`, ["codex"]);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Codex định tuyến", { type: "security", projectId: plainProject });
+    const run = await startRun(task.id, { cli: "codex" });
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec).toMatchObject({ effort: "high", tier: "heavy", model: null });
+    expect(offer.spec.budget).toBeUndefined();
     await w.close();
   });
 });
@@ -1083,8 +1276,8 @@ describe("chi phí và ngân sách", () => {
       accountId: null,
     });
     const offer = await w.next("job_offer", (o) => o.runId === run.id);
-    // Dự án không đặt trần thì spec không có budget.
-    expect(offer.spec.budget).toBeUndefined();
+    // Chỉ có trần lượt mặc định của cấp vừa (định tuyến); không có trần tiền hay token.
+    expect(offer.spec.budget).toEqual({ maxTurns: defaultRouting.tiers.medium.maxTurns });
     expect(offer.spec.tokenSaving).toEqual(defaultTokenSaving);
     w.send({ type: "job_accept", runId: run.id, attempt: 1 });
     const lease1 = await w.next("lease", (l) => l.runId === run.id);
@@ -2064,5 +2257,212 @@ describe("brief của dự án và khảo sát trước khi sửa (ADR 0022)", (
       briefProject,
     ]);
     await w.close();
+  });
+});
+
+describe("quy trình review code (specs/009)", () => {
+  let crProject = "";
+  let crKey = "";
+  let workflowId = "";
+
+  beforeAll(async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+    crKey = `cr-${tag}`;
+    const p = await seedProject(admin, pool, {
+      orgId: org.orgId,
+      teamId: org.teamId,
+      systemId: org.systemId,
+      adminUserId: org.user("admin"),
+      masterKey,
+      key: crKey,
+    });
+    crProject = p.projectId;
+    provider.seedRepo({ owner: p.owner, name: p.repo });
+    const phases = [
+      {
+        name: "Review",
+        gates: [
+          { id: "rules", name: "Quy tắc", kind: "rule", rules: ["max-files"], maxFiles: 5, slaHours: null },
+          {
+            id: "lead",
+            name: "Người duyệt",
+            kind: "human",
+            reviewers: { users: [], roles: ["team-member"], teams: [], quorum: 1, allowRequester: false },
+            slaHours: 24,
+          },
+        ],
+      },
+    ];
+    // Lưu đúng dạng saveWorkflow ghi: đã qua zod (giá trị mặc định đầy đủ).
+    const w = workflowInput.parse({
+      name: "Code dự án CR",
+      preset: "custom",
+      subject: "code",
+      teamId: org.teamId,
+      docPrefixes: [],
+      code: { projects: [crKey] },
+      phases,
+      enabled: true,
+    });
+    const { rows } = await admin.query(
+      `insert into hive.review_workflows (org_id, team_id, name, preset, subject, doc_prefixes, code, phases, enabled)
+       values ($1, $2, 'Code dự án CR', 'custom', 'code', '{}', $3, $4, true) returning id`,
+      [org.orgId, org.teamId, JSON.stringify(w.code), JSON.stringify(w.phases)],
+    );
+    workflowId = rows[0].id;
+  });
+
+  afterAll(async () => {
+    await admin.query("delete from hive.review_workflows where id = $1", [workflowId]);
+  });
+
+  const reviewOf = async (runId: string) =>
+    (await admin.query("select * from hive.code_reviews where run_id = $1", [runId])).rows[0];
+
+  it("run khớp quy trình: kết luận ngay, mở phiên trong cùng transaction; checkpoint quy tắc dùng bằng chứng của run", async () => {
+    const w = await FakeWorker.connect(await seedMachine(`cr-${tag}`));
+    const task = await newTask("Sửa thanh toán", { projectId: crProject });
+    const run = await startRun(task.id);
+    await w.next("job_offer", (o) => o.runId === run.id);
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    const commands = [{ run: "pnpm test", exit: 0, durationMs: 1200, tail: "ok" }];
+    w.sendRun({
+      type: "run_result",
+      runId: run.id,
+      attempt: 1,
+      exit: 0,
+      headSha: sha,
+      report: { commitCount: 1, changedFiles: ["src/pay.ts", "src/pay.test.ts"], commands },
+      diffStats: { addedLines: 30, deletedLines: 4, changedFiles: ["src/pay.ts", "src/pay.test.ts"] },
+    });
+    await until(async () => (await runRow(run.id)).state === "succeeded");
+    const row = await runRow(run.id);
+    expect(row.pr_url).toMatch(/\/pull\/\d+$/);
+    expect(await taskStatus(task.id)).toBe("review");
+
+    const review = await reviewOf(run.id);
+    expect(review).toMatchObject({
+      workflow_id: workflowId,
+      workflow_name: "Code dự án CR",
+      status: "in_review",
+      head_sha: sha,
+      pr_url: row.pr_url,
+      branch: `ai/${task.key}`,
+      base_branch: "main",
+      requester_user_id: devUserId,
+      changed_files: 2,
+      gate_index: 1,
+    });
+    const { rows: gates } = await admin.query(
+      "select gate_id, status from hive.code_review_gate_runs where review_id = $1 order by started_at",
+      [review.id],
+    );
+    expect(gates).toEqual([
+      { gate_id: "rules", status: "passed" },
+      { gate_id: "lead", status: "waiting" },
+    ]);
+    const { rows: events } = await admin.query("select data from hive.run_events where run_id = $1 and type = $2", [
+      run.id,
+      "code_review",
+    ]);
+    expect(events[0]?.data).toMatchObject({ reviewId: review.id, workflowId, round: 1 });
+    const { rows: audit } = await admin.query(
+      "select data from hive.audit_log where target_id = $1 and action = 'run.finish'",
+      [run.id],
+    );
+    expect(audit[0]?.data).toMatchObject({ workflowId, codeReviewId: review.id });
+
+    // Bằng chứng mà checkpoint quy tắc đọc lại: số liệu, kết quả lệnh kiểm, loại task của lần thử cuối.
+    const evidence = await withTenant(pool, { orgId: org.orgId }, (tx) => engine.runEvidence(tx, run.id));
+    expect(evidence).toEqual({
+      headSha: sha,
+      taskType: null,
+      stats: { addedLines: 30, deletedLines: 4, changedFiles: ["src/pay.ts", "src/pay.test.ts"] },
+      commands,
+      hasAgentReport: false,
+    });
+    await w.close();
+  });
+
+  it("run sửa theo góp ý (queueFixRun): run code mới cùng task, CLI, chủ; không lập kế hoạch; mang góp ý vào prompt", async () => {
+    await admin.query(
+      "update hive.projects set settings = jsonb_set(settings, '{features,planMode}', 'true') where id = $1",
+      [crProject],
+    );
+    try {
+      const w = await FakeWorker.connect(await seedMachine(`fix-${tag}`, ["claude", "codex"]));
+      const task = await newTask("Sửa hoá đơn", { projectId: crProject });
+      const { rows } = await admin.query(
+        `insert into hive.runs (org_id, team_id, task_id, project_id, kind, cli, model, branch, policy_snapshot, created_by, owner_user_id, state, head_sha)
+         values ($1, $2, $3, $4, 'code', 'codex', 'gpt-5', $5, '[]', $6, $6, 'succeeded', $7) returning id`,
+        [org.orgId, org.teamId, task.id, crProject, `ai/${task.key}`, devUserId, sha],
+      );
+      const original = rows[0].id as string;
+      const fix = await withTenant(pool, { orgId: org.orgId }, (tx) =>
+        engine.queueFixRun(tx, {
+          reviewId: randomUUID(),
+          workflowId,
+          runId: original,
+          instructions: "Thêm test cho làm tròn âm.",
+        }),
+      );
+      const fixRow = await runRow(fix.runId);
+      expect(fixRow).toMatchObject({
+        kind: "code",
+        task_id: task.id,
+        cli: "codex",
+        model: "gpt-5",
+        branch: `ai/${task.key}`,
+        created_by: `workflow:${workflowId}`,
+        owner_user_id: devUserId,
+        parent_run_id: null,
+        state: "queued",
+      });
+      // Hẹn giờ `dispatch` giao run sau khi transaction của phiên commit.
+      const offer = await w.next("job_offer", (o) => o.runId === fix.runId);
+      expect(offer.spec).toMatchObject({ kind: "code", cli: "codex", instructions: ["Thêm test cho làm tròn âm."] });
+      expect(String(offer.spec.prompt)).toContain("Thêm test cho làm tròn âm.");
+      w.send({ type: "job_reject", runId: fix.runId, attempt: 1, reason: "test" });
+      await w.close();
+    } finally {
+      await admin.query(
+        "update hive.projects set settings = jsonb_set(settings, '{features,planMode}', 'false') where id = $1",
+        [crProject],
+      );
+      await admin.query(
+        "update hive.runs set state = 'cancelled' where project_id = $1 and state not in ('succeeded', 'failed', 'cancelled', 'needs_review', 'no_changes')",
+        [crProject],
+      );
+    }
+  });
+
+  it("không có quy trình khớp (quy trình tắt): như cũ, không mở phiên", async () => {
+    await admin.query("update hive.review_workflows set enabled = false where id = $1", [workflowId]);
+    try {
+      const w = await FakeWorker.connect(await seedMachine(`nocr-${tag}`));
+      const task = await newTask("Không có quy trình", { projectId: crProject });
+      const run = await startRun(task.id);
+      await w.next("job_offer", (o) => o.runId === run.id);
+      w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+      await w.next("lease", (l) => l.runId === run.id);
+      w.sendRun({
+        type: "run_result",
+        runId: run.id,
+        attempt: 1,
+        exit: 0,
+        headSha: sha,
+        report: { commitCount: 1, changedFiles: ["src/a.ts"] },
+      });
+      await until(async () => (await runRow(run.id)).state === "succeeded");
+      expect(await reviewOf(run.id)).toBeUndefined();
+      const { rows } = await admin.query("select 1 from hive.run_events where run_id = $1 and type = 'code_review'", [
+        run.id,
+      ]);
+      expect(rows).toHaveLength(0);
+      await w.close();
+    } finally {
+      await admin.query("update hive.review_workflows set enabled = true where id = $1", [workflowId]);
+    }
   });
 });

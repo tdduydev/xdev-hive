@@ -85,6 +85,7 @@ func (u claudeAPIUsage) counts() tokenCounts {
 
 type claudeLine struct {
 	Type    string `json:"type"`
+	Subtype string `json:"subtype"`
 	Model   string `json:"model"`
 	Message *struct {
 		ID      string          `json:"id"`
@@ -117,6 +118,9 @@ type claudeUsage struct {
 	turns  *int
 	model  string
 	cached Usage
+	// stop là subtype của tin result khi Claude tự dừng vì chạm giới hạn (error_max_turns, error_max_budget_usd), đã thử
+	// trên claude 2.1.296: cả hai thoát mã 1 và num_turns của error_max_turns là giới hạn + 1.
+	stop string
 	// explore đóng băng ở lần sửa file đầu tiên; nil tới lúc đó.
 	explore *ExploreUsage
 }
@@ -132,6 +136,9 @@ func (l claudeLine) editsFiles() bool {
 	}
 	return false
 }
+
+// StopSubtype là lý do Claude tự dừng vì giới hạn; rỗng khi chưa dừng hay dừng vì lý do khác.
+func (c *claudeUsage) StopSubtype() string { return c.stop }
 
 func (c *claudeUsage) Line(line []byte) bool {
 	var l claudeLine
@@ -159,6 +166,9 @@ func (c *claudeUsage) Line(line []byte) bool {
 		}
 		c.msgs[l.Message.ID] = prev.max(l.Message.Usage.counts())
 	case "result":
+		if l.Subtype == "error_max_turns" || l.Subtype == "error_max_budget_usd" {
+			c.stop = l.Subtype
+		}
 		// Khi Claude tự dừng vì --max-budget-usd, result.usage toàn số 0 còn modelUsage mới có số thật: lấy số lớn
 		// nhất của từng trường để usage không bao giờ giảm.
 		var f tokenCounts

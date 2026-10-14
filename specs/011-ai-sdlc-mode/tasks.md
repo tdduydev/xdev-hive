@@ -52,7 +52,7 @@
     `packages/contracts/openapi.json`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T002 🎯 [P] Preset MVP: `bugfix`, `small`, `aidlc-express`, `speckit`
+- [x] T002 🎯 [P] Preset MVP: `bugfix`, `small`, `aidlc-express`, `speckit`
   - Mỗi preset một file: giai đoạn, tài liệu (đường dẫn như bảng ánh xạ của plan.md), khuôn Markdown ngắn, cổng (dùng
     `reviewPhase`), bước agent với prompt viết lại (không chép nguyên văn Spec Kit/AI-DLC; ghi nguồn tham khảo trong
     comment đầu file), `decomposition`; `perProjectGates`, `autoApprove` và contract theo bảng "Mặc định của preset" của
@@ -62,7 +62,7 @@
   - **Scope**: `packages/contracts/src/sdlc-presets/{index.ts,bugfix.ts,small.ts,aidlc-express.ts,speckit.ts,presets.test.ts}`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T003 🎯 [P] Bộ đọc/ghi bản tách task (thuần)
+- [x] T003 🎯 [P] Bộ đọc/ghi bản tách task (thuần)
   - `parseBreakdown(markdown, decomposition)` cho `hive-tasks` (định dạng tasks.md của repo này: `T###`, `[P]`, `[USn]`,
     "Phụ thuộc") và `speckit-tasks`; độ mịn `item`, `heading`, `single`; phụ thuộc, phát hiện chu trình, đợt (sắp topo),
     requirement theo regex; thẻ dự án (`[@key]` trên dòng task, dòng "Dự án: key" dưới tiêu đề phần, mặc định dự án chính;
@@ -382,7 +382,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 7: Máy worker AI SDLC (US13, US14, US15)
 
-- [ ] T060 [P] [US13] [US14] Hub: nhãn máy, mã đăng ký có nhãn, tóm tắt gói, `account_set`
+- [x] T060 [P] [US13] [US14] Hub: nhãn máy, mã đăng ký có nhãn, tóm tắt gói, `account_set`
   - `machines.ts` (`setMachineLabels`, audit `machine.labels`), `registration.ts` (nhãn, `shared`, `labelsOnly` từ mã),
     `gateway.ts` (lưu `heartbeat.accounts`, gửi `account_set` khi capability `accounts-remote` + máy `shared`, báo `shared`
     trong `welcome.features`), route nhãn và gói; route `GET /v1/machines/sdlc` đặt ở `fleet/router.ts` (máy có nhãn, run
@@ -391,14 +391,17 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     giá trị cũ.
   - **Scope**: `apps/hub/src/modules/fleet/{machines.ts,registration.ts,gateway.ts,router.ts,index.ts,fleet-sdlc.db.test.ts}`
   - **Phụ thuộc**: T004 · **Mức**: vừa
+  - Đã làm cùng T063: migration `0060_machine_labels_accounts.sql`, `fleet/sdlc-fleet.ts` (`machines.sdlc`, run lấy qua
+    `provideSdlcFleetRuns` cho T070 nối), test ở `apps/hub/src/fleet-accounts.db.test.ts`.
 
-- [ ] T061 [P] [US13] [US15] Worker: tóm tắt gói, `account_set`, nhắc linger
+- [x] T061 [P] [US13] [US15] Worker: tóm tắt gói, `account_set`, nhắc linger
   - Heartbeat gửi tóm tắt (không token, nhãn thay email); xử lý `account_set` (khoá file, ghi nguyên tử, chỉ khi hub báo
     `shared`); capability `accounts-remote`; `install.sh` nhắc `loginctl enable-linger` trên Linux.
   - `gofmt -l .`, `go vet ./...`, `go test ./...`.
   - **Scope**: `worker/internal/accounts/{summary.go,summary_test.go,remote.go,remote_test.go}`,
     `worker/internal/channel/{protocol.go,client.go,client_test.go}`, `scripts/install.sh`
   - **Phụ thuộc**: T001 · **Mức**: vừa
+  - Đã làm cùng T063; kênh không có `client.go` nên phần nối nằm ở `worker/internal/channel/{accounts.go,accounts_test.go}`.
 
 - [ ] T062 [US15] Web: Đội máy AI SDLC và nhãn trên trang Máy
   - `sdlc-ui` `fleet-table.tsx`; trang `/sdlc/fleet` (Thêm máy = mã đăng ký có nhãn, lệnh cài một dòng cho Linux/macOS/
@@ -406,6 +409,24 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `packages/sdlc-ui/src/fleet-table.tsx` + test, `apps/web/src/pages/sdlc/fleet-page.tsx`,
     `apps/web/src/pages/machines-page.tsx`, `apps/web/e2e/sdlc-fleet.spec.ts`
   - **Phụ thuộc**: T060, T054, T006 · **Mức**: vừa
+
+- [x] T063 [US15] Đăng nhập gói từ web (Claude Code, Codex) cho máy dùng chung không màn hình (FR-062)
+  - Giao thức: `account_login_start|input|cancel` (hub → worker), `account_login_event { kind: url|code|prompt|done|error }`
+    (worker → hub), cùng điều kiện `accounts-remote` + máy `shared` như `account_set`; tối đa một phiên/máy, 10 phút.
+  - Worker: gói dở (`pending`) với thư mục cấu hình mới; `claude auth login [--sso|--console]` hoặc `codex login
+    --device-auth` trong PTY (`creack/pty`; Windows báo chưa hỗ trợ); chỉ gửi URL, mã thiết bị, lời nhắc cố định; dán
+    token `claude setup-token` ghi file 0600 + `CLAUDE_CODE_OAUTH_TOKEN`; huỷ/lỗi/hết hạn/khởi động lại xoá gói dở.
+  - Hub: phiên trong bộ nhớ, không lưu mã/URL/token; route `machines.accounts.{list,loginStart,loginGet,loginInput,
+    loginCancel}`, `machines.setAccount`; chỉ quản trị đội sở hữu máy hoặc quản trị tổ chức; audit
+    `machine.account_login.*` không có mã. Web hỏi `loginGet` mỗi 1,5 giây (không thêm kênh đẩy).
+  - Web: nút "Gói agent" ở trang Máy mở hộp thoại: danh sách gói (đăng nhập, quota phiên/tuần, bật/tắt), "Thêm gói" theo
+    bước; vi/en, 360 px. Thiết kế: biến thể Gói agent trong `docs/design-system/screens/Machines.dc.html`.
+  - **Scope**: `packages/contracts/src/{worker-protocol.ts,fleet.ts}`, `packages/contracts/fixtures/worker-protocol.json`,
+    `apps/hub/src/modules/fleet/accounts.ts`, `apps/hub/src/fleet-accounts.db.test.ts`,
+    `worker/internal/accounts/{login.go,login_test.go,pty_unix.go,pty_windows.go,remote.go}`,
+    `worker/internal/channel/accounts.go`, `apps/web/src/pages/machine-accounts.tsx`,
+    `apps/web/e2e/machine-accounts.spec.ts`, `docs/design-system/screens/Machines.dc.html`
+  - **Phụ thuộc**: T060, T061 · **Mức**: nặng
 
 ---
 
@@ -547,8 +568,8 @@ T005, T006 (không phụ thuộc)
 | tenancy | T018 | `tenancy/**` |
 | governance | T017 (phần policy) | `governance/policies.ts`, `governance/index.ts` |
 | runs | T021 → T086 (phần `spec.sdlc`) | `runs/engine.ts`, `runs/mcp.ts`, `runs.db.test.ts` |
-| fleet | T060 | `fleet/**` |
-| worker | T020 → T061 → T086 | `worker/internal/channel/**` (T020 chỉ test, T061 sửa protocol), `worker/internal/runner/**` (T020, T086) |
+| fleet | T060 → T063 | `fleet/**` |
+| worker | T020 → T061 → T063 → T086 | `worker/internal/channel/**` (T020 chỉ test, T061 sửa protocol), `worker/internal/runner/**` (T020, T086) |
 | ui-pkg | T050 → T051 → T052 → T062 (phần package) → T084 | `packages/sdlc-ui/**` |
 | doc-editor | T053 | `packages/doc-editor/**` |
 | web | T054 → T062 → T084 → T091 | `apps/web/src/router.tsx`, `lib/nav.ts`, `e2e/fake-hub.ts`, `pages/admin/policies-page.tsx` |

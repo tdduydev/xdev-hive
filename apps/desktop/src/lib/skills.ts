@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { hub } from "@/lib/hub-rpc.ts";
 import { invoke } from "@/lib/tauri.ts";
 
 /** Nơi cài skill, khớp `Target` trong src-tauri/src/skills.rs. */
@@ -18,20 +19,38 @@ export interface ApplyResult {
   conflicts: string[];
 }
 
-/** Skill trên hub theo skill_list; `hidden` là bản phạm vi rộng hơn bị bản hẹp hơn che. */
+/**
+ * Skill trên hub theo skill_list; `hidden` là bản phạm vi rộng hơn bị bản hẹp hơn che. `hive` là bộ skill mặc định
+ * của Hive (có giấy phép và file kèm theo), tổ chức hoặc dự án đã bật.
+ */
 export interface HubSkillItem {
   name: string;
   description: string;
-  scope: "org" | "team" | "project";
+  scope: "org" | "team" | "project" | "hive";
   version: number;
   teamId?: string;
   repoPath?: string;
+  license?: string;
+  files?: number;
 }
 
 export interface SkillFile {
   name: string;
   version: number;
   text: string;
+  /** File kèm SKILL.md (scripts, references); khớp `ExtraFile` trong src-tauri/src/skills.rs. */
+  extra?: { path: string; text: string }[];
+}
+
+/** Skill mặc định của Hive cùng mọi file kèm theo, lấy một lần qua API thay vì đọc từng trang qua MCP. */
+export async function hivePackFile(name: string, version: number): Promise<SkillFile> {
+  const { files } = await hub.skills.packFiles({ name });
+  return {
+    name,
+    version,
+    text: files.find((f) => f.path === "SKILL.md")?.text ?? "",
+    extra: files.filter((f) => f.path !== "SKILL.md"),
+  };
 }
 
 export const CLI_DIRS: Record<Target, { claude: string; codex: string }> = {

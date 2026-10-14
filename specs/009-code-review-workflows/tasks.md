@@ -120,7 +120,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{service.ts,jobs.ts,index.ts,ai.ts,merge.ts,service.db.test.ts}`
   - **Phụ thuộc**: T002, T011 · **Mức**: nặng
 
-- [ ] T021 [US2] Nối `runs` với `codereview`
+- [x] T021 [US2] Nối `runs` với `codereview`
   - `verifyCode`: gọi `matchFor`; có quy trình thì đánh giá chính sách bỏ `review` (ghi `skipped` + lý do), không tạo run
     review chéo, không `enqueueMerge`, gọi `startCodeReview` trong transaction kết luận run; không có thì giữ nguyên.
   - `verifyReview`: run review có phiên (tra `run_ids`) thì gọi `onReviewRunFinished` thay vì `verify(parent)`.
@@ -133,7 +133,7 @@
     `apps/hub/src/{runs.db.test.ts,review.db.test.ts}`
   - **Phụ thuộc**: T020 · **Mức**: nặng
 
-- [ ] T022 [US2] Checkpoint AI
+- [x] T022 [US2] Checkpoint AI
   - `ai.ts`: tạo một run review mỗi reviewer qua deps, lưu `run_ids`; `onReviewRunFinished` gom kết quả vào `details`,
     gộp theo `gates.ts`, kết luận khi đủ; run review lỗi/huỷ → checkpoint không đạt với lý do; đăng một bình luận tổng
     hợp lên PR (`commentOnIssue`).
@@ -148,7 +148,7 @@
 
 ## Phase 4: User Story 3 — "Chờ tôi duyệt" cho PR (P1)
 
-- [ ] T030 [US3] Đọc và quyết định (hub)
+- [x] T030 [US3] Đọc và quyết định (hub)
   - `queries.ts`: list (scope, status, dự án, SLA, con trỏ), count, get (`canDecide`, `canOverride`, `canEnqueue`),
     files (qua `prFiles`, đệm theo `head_sha` 10 phút).
   - `decide.ts`: approve (quorum), changes (gọi `routing` của T040 qua hàm nội bộ; trước T040 chỉ hướng `author`),
@@ -165,7 +165,7 @@
   - **Scope**: `packages/code-review/**` (package mới), `pnpm-workspace.yaml` nếu cần, `pnpm-lock.yaml`
   - **Phụ thuộc**: T001, T004 · **Mức**: vừa
 
-- [ ] T032 [US3] Web: tab Code trong "Chờ tôi duyệt"
+- [x] T032 [US3] Web: tab Code trong "Chờ tôi duyệt"
   - `reviews-page.tsx` hai tab có số đếm (`?tab=code&id=`), `code-reviews-tab.tsx`, `lib/code-reviews.ts`, badge menu.
   - Playwright `code-reviews.spec.ts`: hàng chờ, mở PR, diff, duyệt, trả lại theo ba hướng, người không đủ quyền, 360 px,
     tối; hub giả trả diff 100 file (SC-007).
@@ -173,7 +173,7 @@
     `apps/web/src/lib/{code-reviews.ts,code-reviews.test.ts,nav.ts}`, `apps/web/e2e/{code-reviews.spec.ts,fake-hub.ts,code-reviews-fixture.ts}`
   - **Phụ thuộc**: T013 (cùng `fake-hub.ts`), T031 · **Mức**: vừa
 
-- [ ] T033 [P] [US3] Desktop: tab Code trong màn "Chờ tôi duyệt"
+- [x] T033 [P] [US3] Desktop: tab Code trong màn "Chờ tôi duyệt"
   - Dùng `@xdev-hive/code-review`; từ điển vi/en; route `#/reviews/code/<id>`.
   - **Scope**: `apps/desktop/src/screens/{reviews-screen.tsx,reviews-screen.test.tsx}`, `apps/desktop/package.json`
   - **Phụ thuộc**: T031 · **Mức**: vừa
@@ -184,7 +184,7 @@
 
 ## Phase 5: User Story 4 — Trả lại và vòng mới (P1)
 
-- [ ] T040 [US4] Hướng trả lại, run sửa, vòng
+- [x] T040 [US4] Hướng trả lại, run sửa, vòng
   - `routing.ts`: `agent` (chỉ dẫn ≤ 16 000 ký tự từ ghi chú, phát hiện chặn, đuôi lệnh lỗi; `queueFixRun`; đếm lượt;
     hết lượt/hết ngân sách → `author`), `author` (task `todo`, `code_review.returned`), `previous` (xoá phê duyệt
     checkpoint đó); `supersede` + vòng mới với bản chụp cũ, `resume_gate_index`, `dismissStaleApprovals`.
@@ -198,7 +198,7 @@
 
 ## Phase 6: User Story 5 — Vào hàng merge (P2)
 
-- [ ] T050 [US5] Hàng merge tôn trọng phiên
+- [x] T050 [US5] Hàng merge tôn trọng phiên
   - `catalog/merge-queue.ts`: `MergeDeps.reviewGate?` → `waiting` "Chờ quy trình duyệt code".
   - `codereview/merge.ts`: `reviewGate`; khi phiên `approved` gọi `enqueueMerge` theo chế độ hiệu lực (FR-027) hoặc gửi
     `code_review.approved`; handler `pull_request.merged|closed` → `merged`/`cancelled`, huỷ run review đang chạy.
@@ -211,7 +211,7 @@
 
 ## Phase 7: User Story 7 — SLA và quyết thay (P3)
 
-- [ ] T060 [P] [US7] Nhắc hạn checkpoint người duyệt
+- [x] T060 [P] [US7] Nhắc hạn checkpoint người duyệt
   - `sla.ts`: job cron 10 phút dùng `hive.code_review_overdue_orgs()`, gửi `code_review.overdue` một lần mỗi lượt chờ.
   - **Scope**: `apps/hub/src/modules/codereview/{sla.ts,sla.db.test.ts}`
   - **Phụ thuộc**: T020 · **Mức**: nhẹ

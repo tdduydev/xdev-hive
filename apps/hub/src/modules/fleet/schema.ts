@@ -1,9 +1,11 @@
+import type { WorkerAccountSummary } from "@xdev-hive/contracts/worker-protocol";
 import { sql } from "drizzle-orm";
 import {
   boolean,
   foreignKey,
   index,
   integer,
+  jsonb,
   pgPolicy,
   pgRole,
   pgSchema,
@@ -68,6 +70,16 @@ export const machines = hive
        * nhận run của người đã đăng ký máy, vì CLI trên máy đăng nhập bằng tài khoản (gói thuê bao) của chính họ.
        */
       shared: boolean("shared").notNull().default(false),
+      /** Nhãn máy (specs/011 FR-041): chỉ hub đặt, để máy không tự nhận nhãn để lấy việc. */
+      labels: text("labels").array().notNull().default(sql`'{}'::text[]`),
+      /** Chỉ nhận run có ít nhất một nhãn của máy. */
+      labelsOnly: boolean("labels_only").notNull().default(false),
+      /**
+       * Tóm tắt tài khoản CLI từ heartbeat (specs/011 FR-043): không token, không email. null khi worker chưa báo; heartbeat
+       * thiếu trường thì giữ giá trị cũ.
+       */
+      accounts: jsonb("accounts").$type<WorkerAccountSummary[]>(),
+      accountsAt: timestamp("accounts_at", { withTimezone: true }),
       revokedAt: timestamp("revoked_at", { withTimezone: true }),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },
@@ -116,6 +128,10 @@ export const registrationTokens = hive
       teamId: uuid("team_id").notNull(),
       tokenHash: text("token_hash").notNull().unique(),
       kind: machineKind("kind").notNull().default("worker"),
+      /** Máy đăng ký bằng mã này nhận sẵn nhãn và cờ (specs/011 FR-042), để lệnh cài một dòng không cần cờ mới. */
+      labels: text("labels").array().notNull().default(sql`'{}'::text[]`),
+      shared: boolean("shared").notNull().default(false),
+      labelsOnly: boolean("labels_only").notNull().default(false),
       expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
       usedAt: timestamp("used_at", { withTimezone: true }),
       /** Máy đã dùng mã này (không có khoá ngoại để giữ dấu vết cả khi máy bị xoá). */
