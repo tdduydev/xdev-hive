@@ -220,7 +220,7 @@
 
 ## Phase 8: Nối hub
 
-- [ ] T070 Nối deps, router, job, handler
+- [x] T070 Nối deps, router, job, handler
   - `main.ts`: tạo `CodeReviewDeps` (từ engine: `startReviewRuns`, `queueFixRun`), `registerCodeReviewWorker`, SLA cron,
     handler SCM của `codereview`, `MergeDeps.reviewGate`.
   - `app.ts`: `codeReviews: codeReviewRouter(...)`.
@@ -267,7 +267,7 @@
 
 ## Phase 11: Tài liệu và hoàn thiện
 
-- [ ] T100 [P] Cập nhật tài liệu kiến trúc: module `codereview` và luồng trong `docs/architecture.md`, `docs/add.md`,
+- [x] T100 [P] Cập nhật tài liệu kiến trúc: module `codereview` và luồng trong `docs/architecture.md`, `docs/add.md`,
   `docs/sdd.md`; trạng thái CR-xx, RUN-07 trong `docs/srs.md`; ghi chú ADR 0009 khi `command` chạy thật.
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md}`, `docs/adr/0009-configurable-outcome-policy.md`
   - **Phụ thuộc**: T070, T091 · **Mức**: nhẹ

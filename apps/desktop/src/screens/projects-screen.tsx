@@ -1,5 +1,5 @@
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
-import type { Project } from "@xdev-hive/contracts";
+import type { Project, ProjectCreateInput, ProjectCreateResult } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import {
@@ -89,8 +89,17 @@ const text: Dict<{
   key: string;
   name: string;
   protect: string;
+  approvals: string;
+  approvalsHint: string;
   webhook: string;
+  createCheck: string;
+  checking: string;
+  planTitle: string;
+  planLead: (key: string) => string;
+  planBack: string;
+  planWarnings: string;
   createSubmit: string;
+  creating: string;
   created: (name: string) => string;
 }> = {
   vi: {
@@ -148,8 +157,17 @@ const text: Dict<{
     key: "Project key",
     name: "Tên dự án",
     protect: "Bảo vệ nhánh chính",
+    approvals: "Số người duyệt",
+    approvalsHint: "Số người phải duyệt PR trước khi merge vào nhánh chính; 0 là không cần.",
     webhook: "Thêm webhook",
+    createCheck: "Kiểm tra trước",
+    checking: "Đang kiểm tra…",
+    planTitle: "Kiểm tra xong, chưa tạo gì",
+    planLead: (key) => `Khi bấm Tạo dự án, hub sẽ làm lần lượt các bước sau cho ${key}:`,
+    planBack: "Quay lại sửa",
+    planWarnings: "Cảnh báo",
     createSubmit: "Tạo dự án",
+    creating: "Đang tạo…",
     created: (name) => `Đã tạo dự án ${name} trên hub và gắn thư mục.`,
   },
   en: {
@@ -208,8 +226,17 @@ const text: Dict<{
     key: "Project key",
     name: "Project name",
     protect: "Protect the default branch",
+    approvals: "Required approvals",
+    approvalsHint: "Reviewers that must approve a PR before it merges into the default branch; 0 means none.",
     webhook: "Add a webhook",
+    createCheck: "Check first",
+    checking: "Checking…",
+    planTitle: "Checked, nothing created yet",
+    planLead: (key) => `When you press Create project, the hub runs these steps for ${key}:`,
+    planBack: "Back to edit",
+    planWarnings: "Warnings",
     createSubmit: "Create project",
+    creating: "Creating…",
     created: (name) => `Created project ${name} on the hub and bound the folder.`,
   },
 };
@@ -567,34 +594,64 @@ function CreateProjectDialog({
   const [key, setKey] = useState(() => suggestKey(repo.name));
   const [name, setName] = useState(repo.name);
   const [protect, setProtect] = useState(true);
+  const [approvals, setApprovals] = useState("1");
   const [webhook, setWebhook] = useState(true);
+  const [plan, setPlan] = useState<{ input: ProjectCreateInput; res: ProjectCreateResult } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Mỗi lần mở hộp thoại một khoá: bấm lại sau lỗi mạng không tạo trùng dự án.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
-  const ids = { system: useId(), key: useId(), name: useId() };
+  const ids = { system: useId(), key: useId(), name: useId(), approvals: useId() };
 
   const host = repoHost(repo.origin);
   const connection = connections.data ? connectionFor(connections.data, host) : undefined;
   const system = systemId || systems.data?.[0]?.id || "";
   const blocked = !host ? t.noRemote : connections.data && !connection ? t.noConnection(host) : null;
 
-  async function submit() {
+  // Gọi dry-run như form web: hub chỉ kiểm quyền và trả kế hoạch, người dùng xem rồi mới tạo.
+  async function check() {
     if (!connection || !repo.origin || !system) return;
+    const count = Number(approvals);
+    if (!approvals.trim() || !Number.isInteger(count) || count < 0 || count > 6) {
+      setError(t.approvalsHint);
+      return;
+    }
+    const input: ProjectCreateInput = {
+      systemId: system,
+      key: key.trim(),
+      name: name.trim(),
+      repo: { mode: "existing", connectionId: connection.id, url: repo.origin },
+      protection: { protectDefault: protect, requiredApprovals: count },
+      webhook,
+      idempotencyKey,
+      dryRun: true,
+    };
     setBusy(true);
+    setError(null);
     try {
-      const res = await hub.projects.create({
-        systemId: system,
-        key: key.trim(),
-        name: name.trim(),
-        repo: { mode: "existing", connectionId: connection.id, url: repo.origin },
-        protection: { protectDefault: protect, requiredApprovals: 1 },
-        webhook,
-        idempotencyKey,
-        dryRun: false,
-      });
+      const res = await hub.projects.create(input);
+      // Hub cũ không biết dryRun sẽ tạo luôn dự án: gắn thư mục thay vì bắt tạo lại.
+      if (!res.dryRun && res.projectId) await bind(res.projectId);
+      else setPlan({ input, res });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bind(projectId: string) {
+    onCreated(await bindProject(projectId, repo.folder, name.trim(), repo.origin ?? null), name.trim());
+  }
+
+  async function create() {
+    if (!plan) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await hub.projects.create({ ...plan.input, dryRun: false });
       if (!res.projectId) throw new Error(t.noRemote);
-      onCreated(await bindProject(res.projectId, repo.folder, name.trim(), repo.origin), name.trim());
+      await bind(res.projectId);
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -615,7 +672,30 @@ function CreateProjectDialog({
         {(error || systems.error || connections.error) && (
           <Alert variant="destructive">{error ?? errorText(systems.error ?? connections.error)}</Alert>
         )}
-        {blocked ? (
+        {plan ? (
+          <div className="grid gap-3">
+            <p className="text-sm font-medium">{t.planTitle}</p>
+            <p className="text-sm text-muted-foreground">{t.planLead(plan.input.key)}</p>
+            <ol className="m-0 grid list-decimal gap-1 pl-5 text-sm">
+              {plan.res.steps.map((step) => (
+                <li key={`${step.kind}-${step.target ?? ""}`}>
+                  {step.title}
+                  {step.target && <span className="font-mono text-xs text-muted-foreground"> {step.target}</span>}
+                </li>
+              ))}
+            </ol>
+            {plan.res.warnings.length > 0 && (
+              <ul
+                aria-label={t.planWarnings}
+                className="m-0 grid list-none gap-1 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning"
+              >
+                {plan.res.warnings.map((w) => (
+                  <li key={w.code}>{w.message}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : blocked ? (
           <div className="flex flex-col items-start gap-2">
             <Alert>{blocked}</Alert>
             {host && (
@@ -654,6 +734,23 @@ function CreateProjectDialog({
               <input type="checkbox" checked={protect} onChange={(e) => setProtect(e.target.checked)} />
               {t.protect}
             </label>
+            <div className="grid gap-1.5">
+              <Label htmlFor={ids.approvals}>{t.approvals}</Label>
+              <Input
+                id={ids.approvals}
+                type="number"
+                min={0}
+                max={6}
+                inputMode="numeric"
+                value={approvals}
+                disabled={!protect}
+                aria-describedby={`${ids.approvals}-hint`}
+                onChange={(e) => setApprovals(e.target.value)}
+              />
+              <span id={`${ids.approvals}-hint`} className="text-xs text-muted-foreground">
+                {t.approvalsHint}
+              </span>
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={webhook} onChange={(e) => setWebhook(e.target.checked)} />
               {t.webhook}
@@ -661,12 +758,18 @@ function CreateProjectDialog({
           </div>
         )}
         <DialogActions>
-          <Button variant="outline" disabled={busy} onClick={onClose}>
-            {t.cancel}
+          <Button variant="outline" disabled={busy} onClick={plan ? () => setPlan(null) : onClose}>
+            {plan ? t.planBack : t.cancel}
           </Button>
-          <Button disabled={busy || !!blocked || !connection || !system} onClick={() => void submit()}>
-            {t.createSubmit}
-          </Button>
+          {plan ? (
+            <Button disabled={busy} onClick={() => void create()}>
+              {busy ? t.creating : t.createSubmit}
+            </Button>
+          ) : (
+            <Button disabled={busy || !!blocked || !connection || !system} onClick={() => void check()}>
+              {busy ? t.checking : t.createCheck}
+            </Button>
+          )}
         </DialogActions>
       </DialogContent>
     </Dialog>
