@@ -1,14 +1,6 @@
-import type { Project, ScmConnection } from "@xdev-hive/contracts";
+import type { Project } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import {
-  bindingState,
-  connectionFor,
-  type LocalProject,
-  matchLegacy,
-  repoHost,
-  sameRepo,
-  suggestKey,
-} from "@/lib/local-projects.ts";
+import { bindingState, type LocalProject, matchLegacy, sameRepo } from "@/lib/local-projects.ts";
 
 const hubProject = (over: Partial<Project> & { id: string; key: string; name: string }, url: string): Project =>
   ({
@@ -56,7 +48,6 @@ describe("so URL repo như worker", () => {
     expect(sameRepo("https://github.com/acme/app", "https://gitlab.com/acme/app")).toBe(false);
     expect(sameRepo(undefined, "https://github.com/acme/app")).toBe(false);
     expect(sameRepo("/Users/ha/app", "/Users/ha/app")).toBe(false);
-    expect(repoHost("git@GitHub.com:acme/app.git")).toBe("github.com");
   });
 });
 
@@ -103,33 +94,5 @@ describe("ghép repo của app cũ với dự án hub", () => {
       ],
     );
     expect(got.map((m) => [m.folder, m.project.id])).toEqual([["/y", "p1"]]);
-  });
-});
-
-describe("tạo dự án từ repo", () => {
-  const conn = (over: Partial<ScmConnection>): ScmConnection => ({
-    id: "c",
-    kind: "github",
-    name: "GitHub",
-    baseUrl: null,
-    defaultOwner: null,
-    authMode: "app",
-    appId: null,
-    installationId: null,
-    createdAt: "2026-10-13T00:00:00.000Z",
-    ...over,
-  });
-  it("chọn kết nối Git theo máy chủ của origin", () => {
-    const list = [conn({ id: "gh" }), conn({ id: "gl", kind: "gitlab", baseUrl: "https://gitlab.example.com" })];
-    expect(connectionFor(list, "github.com")?.id).toBe("gh");
-    expect(connectionFor(list, "gitlab.example.com")?.id).toBe("gl");
-    expect(connectionFor(list, "gitlab.com")).toBeUndefined();
-    expect(connectionFor(list, null)).toBeUndefined();
-  });
-  it("gợi ý project key theo luật của hub", () => {
-    expect(suggestKey("Payment API")).toBe("payment-api");
-    expect(suggestKey("2fa_Đăng nhập")).toBe("fa-dang-nhap");
-    expect(suggestKey("x")).toBe("xx");
-    expect(suggestKey("a".repeat(60))).toHaveLength(40);
   });
 });

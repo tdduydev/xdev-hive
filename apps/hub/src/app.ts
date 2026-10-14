@@ -24,6 +24,7 @@ import {
   loadProject,
   templateService,
 } from "./modules/catalog/index.ts";
+import { type ChatApiDeps, chatRouter, handleSlackWebhook, handleTelegramWebhook } from "./modules/chat/index.ts";
 import { type CodeRunPort, codeReviewsRouter } from "./modules/codereview/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
@@ -97,6 +98,8 @@ export interface AppDeps {
   runNotifier?: RunNotifier | undefined;
   /** DNS giả cho test xác minh tên miền SSO; bỏ trống thì tra DNS thật. */
   resolveTxt?: TxtResolver | undefined;
+  /** Thay API Telegram/Slack thật bằng máy chủ giả khi test. */
+  chatApis?: ChatApiDeps | undefined;
 }
 
 export function createApp({
@@ -110,6 +113,7 @@ export function createApp({
   runs,
   runNotifier,
   resolveTxt,
+  chatApis,
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
@@ -225,6 +229,7 @@ export function createApp({
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),
+    chat: chatRouter({ ...shared, ...chatApis, publicUrl }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({
       auth,
@@ -289,6 +294,16 @@ export function createApp({
         c.req.raw,
       ),
     );
+  // Telegram và Slack gọi vào đây không có phiên người dùng; mỗi route tự kiểm secret/chữ ký của bot theo id trong URL.
+  if (pool) {
+    const chat = { pool, masterKey: config.masterKey, runs, jobs, publicUrl, ...chatApis };
+    app.post("/hooks/chat/telegram/:botId", (c) => handleTelegramWebhook(chat, c.req.param("botId"), c.req.raw));
+    for (const route of ["events", "commands", "interact"] as const) {
+      app.post(`/hooks/chat/slack/:botId/${route}`, (c) =>
+        handleSlackWebhook(chat, c.req.param("botId"), route, c.req.raw),
+      );
+    }
+  }
   // Worker lấy skill để chép vào worktree của run (knowledge/run-skills.ts); xác thực bằng run token như /mcp.
   const skillRunTokens = runTokens ?? runs?.mcpRunTokens;
   if (pool && skillRunTokens)
