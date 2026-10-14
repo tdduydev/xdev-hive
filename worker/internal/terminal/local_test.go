@@ -424,3 +424,20 @@ func TestLocalRecordsToHub(t *testing.T) {
 		}
 	})
 }
+
+// remote.* qua socket nội bộ thật tới Remote; máy không có Remote thì báo chưa hỗ trợ.
+func TestLocalRoutesRemoteOps(t *testing.T) {
+	path := startLocal(t, &Local{Remote: newRemote(t)})
+	var out struct {
+		Status RemoteStatus `json:"status"`
+	}
+	if err := dial(t, path).Call(map[string]string{"op": "remote.enable"}, &out); err != nil || !out.Status.Enabled {
+		t.Fatalf("remote.enable = %+v %v", out, err)
+	}
+	bare := startLocal(t, &Local{})
+	err := dial(t, bare).Call(map[string]string{"op": "remote.status"}, nil)
+	var re *localipc.RemoteError
+	if !errors.As(err, &re) || re.Code != localipc.CodeUnsupported {
+		t.Fatalf("không có Remote: %v", err)
+	}
+}

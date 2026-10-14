@@ -56,6 +56,8 @@ type Local struct {
 	Commands map[string]runner.Command
 	Logger   *slog.Logger
 	Recorder *Recorder
+	// Remote nhận remote.* và watch của socket nội bộ; nil là máy không có điều khiển từ xa.
+	Remote *Remote
 
 	MaxSessions int
 	TailBytes   int
@@ -156,7 +158,7 @@ func (l *Local) log() *slog.Logger {
 }
 
 // Handle là localipc.Handler cho các op session.*.
-func (l *Local) Handle(_ context.Context, c *localipc.Conn, req localipc.Request) error {
+func (l *Local) Handle(ctx context.Context, c *localipc.Conn, req localipc.Request) error {
 	switch req.Op {
 	case "session.create":
 		var p CreateParams
@@ -196,6 +198,9 @@ func (l *Local) Handle(_ context.Context, c *localipc.Conn, req localipc.Request
 		}
 		s.stop(ReasonKilled, "Phiên đã bị ngắt bằng hive kill.")
 		return c.OK(map[string]any{"id": s.id})
+	}
+	if l.Remote != nil && (req.Op == "watch" || strings.HasPrefix(req.Op, "remote.")) {
+		return l.Remote.Handle(ctx, c, req)
 	}
 	return c.Fail(localipc.CodeUnsupported, "hive-worker chưa nhận thao tác "+clip(req.Op, 40)+".")
 }
