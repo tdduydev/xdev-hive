@@ -1,9 +1,21 @@
-const day = new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+import { getLang, type Lang } from "@/lib/i18n.ts";
 
-/** Ngày theo kiểu Việt Nam (11/10/2026), theo múi giờ của máy người xem. */
-export function formatDay(iso: string): string {
+/*
+ * Ngày theo ngôn ngữ giao diện: bản VI là 11/10/2026, bản EN viết tên tháng (Oct 11, 2026) vì người đọc tiếng Anh hiểu
+ * 11/10 là ngày 10 tháng 11. Hàm nhận `lang` để test và chuỗi chỉ có tiếng Việt cố định được; bỏ trống thì theo ngôn ngữ
+ * đang chọn, component gọi đã vẽ lại khi đổi ngôn ngữ vì dùng `useT`.
+ */
+const day: Record<Lang, Intl.DateTimeFormat> = {
+  vi: new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }),
+  en: new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: "numeric" }),
+};
+const monthDay = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" });
+const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+/** Ngày (11/10/2026 hay Oct 11, 2026), theo múi giờ của máy người xem. */
+export function formatDay(iso: string, lang: Lang = getLang()): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "—" : day.format(date);
+  return Number.isNaN(date.getTime()) ? "—" : day[lang].format(date);
 }
 
 const clock = new Intl.DateTimeFormat("vi-VN", {
@@ -22,10 +34,11 @@ export function formatClock(iso: string): string {
   return Number.isNaN(date.getTime()) ? "—" : clock.format(date);
 }
 
-/** Giờ:phút và ngày/tháng (14:02, 11/10), cho mốc bắt đầu của run. */
-export function formatDayTime(iso: string): string {
+/** Giờ:phút và ngày/tháng (14:02, 11/10 hay 14:02, Oct 11), cho mốc bắt đầu của run. */
+export function formatDayTime(iso: string, lang: Lang = getLang()): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
+  if (lang === "en") return `${hourMinute.format(date)}, ${monthDay.format(date)}`;
   // Tự ghép ngày/tháng: Intl của vi-VN cho "11-10" khi bỏ năm.
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${hourMinute.format(date)}, ${pad(date.getDate())}/${pad(date.getMonth() + 1)}`;
@@ -68,13 +81,15 @@ export function formatDuration(ms: number): string {
 }
 
 /** Thời điểm so với `now`: vừa xong, 12 phút trước, 3 giờ trước, hôm qua, rồi tới ngày. */
-export function formatAgo(iso: string, now: number): string {
+export function formatAgo(iso: string, now: number, lang: Lang = getLang()): string {
   const at = new Date(iso).getTime();
   if (Number.isNaN(at)) return "—";
   const sec = Math.max(0, Math.floor((now - at) / 1000));
-  if (sec < 60) return "vừa xong";
-  if (sec < 3600) return `${Math.floor(sec / 60)} phút trước`;
-  if (sec < 24 * 3600) return `${Math.floor(sec / 3600)} giờ trước`;
-  if (sec < 48 * 3600) return "hôm qua";
-  return formatDay(iso);
+  const en = lang === "en";
+  if (sec < 60) return en ? "just now" : "vừa xong";
+  if (sec < 3600) return en ? relative.format(-Math.floor(sec / 60), "minute") : `${Math.floor(sec / 60)} phút trước`;
+  if (sec < 24 * 3600)
+    return en ? relative.format(-Math.floor(sec / 3600), "hour") : `${Math.floor(sec / 3600)} giờ trước`;
+  if (sec < 48 * 3600) return en ? "yesterday" : "hôm qua";
+  return formatDay(iso, lang);
 }

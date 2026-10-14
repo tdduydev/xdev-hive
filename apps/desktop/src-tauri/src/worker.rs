@@ -7,6 +7,8 @@ use serde::Deserialize;
 pub const NOTIFY_AFTER_SECS: u64 = 60;
 /// Mã thoát của `hive-worker run` khi hub từ chối máy (token thu hồi, máy bị xoá): chạy lại cũng vô ích.
 pub const EXIT_REJECTED: i32 = 3;
+/// Worker khác đang giữ khoá của người dùng; tự chạy lại sẽ chỉ gây vòng lặp báo lỗi.
+pub const EXIT_ALREADY_RUNNING: i32 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
@@ -226,6 +228,12 @@ impl Worker {
         if !self.wanted {
             self.status = Status::Stopped;
             return vec![];
+        }
+        if code == Some(EXIT_ALREADY_RUNNING) {
+            self.wanted = false;
+            let msg = "Đã có worker đang chạy. Hãy tắt worker ở bản app hoặc dịch vụ khác trước khi bật tại đây.".to_string();
+            self.status = Status::Failed(msg.clone());
+            return vec![Action::Notify(msg)];
         }
         if code == Some(EXIT_REJECTED) {
             self.wanted = false;

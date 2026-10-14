@@ -114,6 +114,26 @@ describe("Markdown", () => {
     );
     expect(container.querySelectorAll("p.hive-planned")).toHaveLength(1);
   });
+
+  it("lets the host replace web images and chosen code blocks", () => {
+    const { container } = render(
+      <Markdown
+        content={
+          "![logo](https://example.com/a.png)\n\n![local](file:///tmp/x.png)\n\n```mermaid\nA\n```\n\n```ts\nb\n```"
+        }
+        renderImage={({ key, alt, src }) => <button key={key} type="button">{`${alt} ${src}`}</button>}
+        renderCode={({ key, language, text }) =>
+          language === "mermaid" ? <output key={key}>{text}</output> : undefined
+        }
+      />,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("button", { name: "logo https://example.com/a.png" })).toBeTruthy();
+    expect(container.textContent).toContain("local");
+    expect(container.querySelector("output")?.textContent).toBe("A");
+    expect(container.querySelector(".hive-mermaid-canvas, .hive-mermaid")).toBeNull();
+    expect(container.querySelector("pre")?.textContent).toContain("b");
+  });
 });
 
 describe("Markdown mermaid", () => {
