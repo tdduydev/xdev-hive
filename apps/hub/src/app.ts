@@ -9,7 +9,7 @@ import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import type pg from "pg";
-import { artifactsRouter } from "./modules/artifacts/index.ts";
+import { registerMcpTools as artifactsMcpTools, artifactsRouter } from "./modules/artifacts/index.ts";
 import {
   exportAudit,
   getAuditRetention,
@@ -133,6 +133,7 @@ export function createApp({
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
   leaderMcpTools(registry, { runs });
+  artifactsMcpTools(registry, { pool, jobs, publicUrl });
   const terminal = {
     enabled: config.remoteTerminal ?? false,
     publicUrl,

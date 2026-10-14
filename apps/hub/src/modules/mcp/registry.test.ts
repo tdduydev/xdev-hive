@@ -53,4 +53,25 @@ describe("McpToolRegistry", () => {
       "leader_propose",
     ]);
   });
+  it("cờ forLeader mở thêm tool cho run leader; run thường chỉ thấy tool đó khi nằm trong RUN_TOOLS", () => {
+    const registry = new McpToolRegistry();
+    registry.register({ ...tool("leader_reply"), runKinds: ["leader"] });
+    registry.register({ ...tool("artifact_create"), forLeader: true });
+    registry.register({ ...tool("artifact_get"), forLeader: true, readOnly: true });
+    registry.register(tool("memory_write"));
+    const run = { kind: "run" as const, userId: "u", scopes: [] };
+    expect(registry.list({ ...run, runKind: "leader" }).map((t) => t.name)).toEqual([
+      "leader_reply",
+      "artifact_create",
+      "artifact_get",
+    ]);
+    // Bốn tool artifact_* nằm trong RUN_TOOLS: run có task thấy chúng, tool khác không có trong danh sách thì không.
+    expect(registry.list({ ...run, runKind: "code" }).map((t) => t.name)).toEqual(["artifact_create", "artifact_get"]);
+    // Người dùng OAuth/PAT thấy tool forLeader (không riêng của leader) nhưng không thấy tool chỉ của leader.
+    expect(registry.list({ ...run, kind: "user" }).map((t) => t.name)).toEqual([
+      "artifact_create",
+      "artifact_get",
+      "memory_write",
+    ]);
+  });
 });
