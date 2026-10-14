@@ -19,7 +19,7 @@ func TestStartLocalIPC(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	path := filepath.Join(dir, "run", "hive.sock")
 	t.Setenv(localipc.PathEnv, path)
-	stop := startLocalIPC(nil)
+	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil)
 	c, h, err := localipc.Dial(path, "hive/test")
 	if err != nil {
 		t.Fatal(err)

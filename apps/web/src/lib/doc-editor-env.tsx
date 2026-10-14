@@ -26,5 +26,25 @@ export function useWebDocEnv(): DocEditorEnv {
           {children}
         </Link>
       ),
+    sdlc: {
+      itemLink: ({ projectKey, number, tab, className, children }) =>
+        tab ? (
+          <Link
+            to="/sdlc/$project/$number/$tab"
+            params={{ project: projectKey, number: String(number), tab }}
+            className={className}
+          >
+            {children}
+          </Link>
+        ) : (
+          <Link
+            to="/sdlc/$project/$number"
+            params={{ project: projectKey, number: String(number) }}
+            className={className}
+          >
+            {children}
+          </Link>
+        ),
+    },
   };
 }

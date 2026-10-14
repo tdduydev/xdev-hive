@@ -1,6 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { type FakeChatApis, startFakeChatApis } from "../../../test/chat-fakes.ts";
-import { ChatSendError, probeBot, type StoredBotConfig, sendChat, slackBlocks, telegramText } from "./adapters.ts";
+import {
+  ChatSendError,
+  probeBot,
+  type StoredBotConfig,
+  sendChat,
+  slackBlocks,
+  telegramCall,
+  telegramText,
+} from "./adapters.ts";
 
 let fake: FakeChatApis;
 beforeAll(async () => {
@@ -18,6 +26,33 @@ const slack: StoredBotConfig = { kind: "slack", botToken: "xoxb-1234567890-abcde
 const apis = () => ({ telegramApi: fake.telegramApi, slackApi: fake.slackApi });
 
 describe("Telegram", () => {
+  it("huỷ được request getUpdates đang chờ", async () => {
+    const controller = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    const pending = telegramCall(
+      telegram,
+      "getUpdates",
+      { timeout: 30 },
+      {
+        fetch: async (_url, init) =>
+          new Promise((_resolve, reject) => {
+            requestSignal = init?.signal ?? undefined;
+            requestSignal?.addEventListener("abort", () => reject(new Error("đã huỷ")), { once: true });
+          }),
+      },
+      { signal: controller.signal, timeoutMs: 40_000 },
+    );
+    const outcome = expect(pending).rejects.toBeInstanceOf(ChatSendError);
+    controller.abort();
+    await outcome;
+    expect(requestSignal?.aborted).toBe(true);
+  });
+  it("kiểm tra bot polling gỡ webhook và giữ update đang chờ", async () => {
+    const result = await probeBot(telegram, "https://hive.example/hooks/chat/telegram/abc", apis(), true);
+    expect(result.message).toContain("long polling");
+    expect(fake.calls.find((c) => c.method === "deleteWebhook")?.body).toEqual({ drop_pending_updates: false });
+    expect(fake.calls.some((c) => c.method === "setWebhook")).toBe(false);
+  });
   it("gửi tin HTML đã thoát ký tự, kèm nút callback và nút URL", async () => {
     await sendChat(
       telegram,

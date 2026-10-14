@@ -27,7 +27,8 @@ const label = (u: { username?: string; first_name?: string; last_name?: string }
 
 // ---- Telegram --------------------------------------------------------------------------------------------------
 
-interface TelegramUpdate {
+export interface TelegramUpdate {
+  update_id: number;
   message?: {
     text?: string;
     chat: { id: number; type: string };
@@ -50,6 +51,7 @@ export async function handleTelegramWebhook(deps: ChatDeps, botId: string, req: 
   if (!bot || bot.config.kind !== "telegram") return json({ error: "not_found" }, 404);
   const secret = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
   if (!safeEqual(secret, bot.config.webhookSecret)) return json({ error: "forbidden" }, 403);
+  if (deps.telegramPollingBotIds?.includes(botId)) return json({ ok: true });
   if (!bot.enabled) return json({ ok: true });
   const raw = await readBody(req);
   if (raw === null) return json({ error: "too_large" }, 413);
@@ -67,7 +69,7 @@ export async function handleTelegramWebhook(deps: ChatDeps, botId: string, req: 
   return json({ ok: true });
 }
 
-async function processTelegram(deps: ChatDeps, bot: ResolvedBot, update: TelegramUpdate): Promise<void> {
+export async function processTelegram(deps: ChatDeps, bot: ResolvedBot, update: TelegramUpdate): Promise<void> {
   const config = bot.config;
   if (config.kind !== "telegram") return;
   const reply = async (chatId: string | number, messages: OutMessage[]) => {

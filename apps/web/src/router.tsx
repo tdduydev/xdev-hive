@@ -44,6 +44,11 @@ import { SessionLayout } from "@/shell/session-layout.tsx";
  * Mỗi trang là một chunk riêng, tải khi vào route (hoặc khi rê chuột lên link, nhờ defaultPreload). Bundle đầu chỉ còn
  * router, khung app và thư viện dùng chung, nên trang đầu tiên hiện nhanh hơn.
  */
+const ArtifactDetailPage = lazyRouteComponent(() => import("@/pages/artifacts/detail-page.tsx"), "ArtifactDetailPage");
+const ArtifactLibraryPage = lazyRouteComponent(
+  () => import("@/pages/artifacts/library-page.tsx"),
+  "ArtifactLibraryPage",
+);
 const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"), "AuditPage");
 const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
@@ -89,6 +94,10 @@ const RunPage = lazyRouteComponent(() => import("@/pages/run-page.tsx"), "RunPag
 const RunsPage = lazyRouteComponent(() => import("@/pages/runs-page.tsx"), "RunsPage");
 const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "ProjectSandboxPage");
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
+const SdlcBoardPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcBoardPage");
+const SdlcItemPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcItemPage");
+const SdlcNewPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcNewPage");
+const SdlcQuestionsPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcQuestionsPage");
 const ProjectTasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "ProjectTasksPage");
 const TasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "TasksPage");
 const TeamDetailPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamDetailPage");
@@ -262,6 +271,23 @@ const leaderTerminalRoute = createRoute({
   component: LeaderTerminalPage,
 });
 
+/** Artifact (specs/012): thư viện, chi tiết; `/v/$n` là đường dẫn phiên bản mà agent dán vào chữ trả lời. */
+const artifactsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts",
+  component: ArtifactLibraryPage,
+});
+const artifactRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts/$id",
+  component: ArtifactDetailPage,
+});
+const artifactVersionRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts/$id/v/$n",
+  component: ArtifactDetailPage,
+});
+
 const runsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/runs",
@@ -348,6 +374,18 @@ const roleRoute = createRoute({
   component: RoleDetailPage,
 });
 
+/**
+ * AI SDLC (specs/011 T054). Đường dẫn tĩnh `new`, `questions` thắng đường dẫn có tham số cùng độ dài; key dự án luôn
+ * bắt đầu bằng chữ và số hạng mục là số nên hai loại không lẫn.
+ */
+const sdlcRoutes = [
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc", component: SdlcBoardPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/new", component: SdlcNewPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/questions", component: SdlcQuestionsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number", component: SdlcItemPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number/$tab", component: SdlcItemPage }),
+];
+
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
 const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
@@ -431,6 +469,9 @@ const routeTree = rootRoute.addChildren([
         runsRoute,
         leaderRoute,
         leaderTerminalRoute,
+        artifactsRoute,
+        artifactRoute,
+        artifactVersionRoute,
         runRoute,
         teamsRoute,
         teamRoute,
@@ -445,6 +486,7 @@ const routeTree = rootRoute.addChildren([
         costsRoute,
         roleRoute,
         ...v2Routes,
+        ...sdlcRoutes,
       ]),
     ]),
   ]),
