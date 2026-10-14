@@ -159,7 +159,7 @@
     `apps/hub/src/leader.db.test.ts`
   - **Phụ thuộc**: T011 · **Mức**: vừa
 
-- [ ] T014 🎯 Biên dịch `react` trên hub
+- [x] T014 🎯 Biên dịch `react` trên hub
   - `compile.ts` `compileReact(source, manifest) → { compiled } | { compileError } | ImportNotAllowed` theo plan.md D8
     (`sucrase` JSX + TS, `es-module-lexer`, chỉ tên trong manifest, `import()` động bị từ chối, giới hạn 2 s); nối vào
     điểm gọi của T010 (lưu phiên bản) và T012 (`preview`); bật `react` trong `MVP_TYPES` mặc định nếu T001 chưa bật.
