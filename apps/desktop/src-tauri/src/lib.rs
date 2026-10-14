@@ -740,6 +740,7 @@ pub fn run() {
             optimizer::optimizer_report,
             memory_store::memory_scan,
             memory_store::memory_apply,
+            memory_store::memory_compress,
             local_projects::local_projects,
             local_projects::local_projects_import,
             local_projects::local_project_bind,
