@@ -62,6 +62,7 @@ func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remot
 		}
 		cancel()
 		<-done
+		recorder.Close()
 	}, recorder
 }
 

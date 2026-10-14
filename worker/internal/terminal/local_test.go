@@ -375,6 +375,7 @@ func TestLocalSlowClientDropped(t *testing.T) {
 func TestLocalRecordsToHub(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-bimat-khong-lo")
 	rec := &Recorder{Dir: filepath.Join(shortDir(t), "terminal")}
+	t.Cleanup(rec.Close)
 	link := newFakeLink()
 	rec.OnWelcome(personal(), link)
 	path := startLocal(t, &Local{Recorder: rec})
