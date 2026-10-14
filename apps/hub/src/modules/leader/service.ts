@@ -5,6 +5,7 @@ import { loadProject } from "../catalog/index.ts";
 import type { Tx } from "../platform/index.ts";
 import { ConflictError, NotFoundError } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
+import type { SdlcDeps } from "../sdlc/index.ts";
 import { emitLeaderActivity, executeLeaderAction, tierChoice } from "./actions.ts";
 import { assembleLeaderPrompt, formatTranscript, projectContext } from "./prompt.ts";
 import { approvals, chatMessages, chatThreads } from "./schema.ts";
@@ -130,6 +131,7 @@ export async function approveApproval(
   userId: string,
   id: string,
   tier?: "light" | "medium" | "heavy",
+  sdlc: SdlcDeps = {},
 ) {
   await expireApprovals(tx);
   const [row] = await tx.select().from(approvals).where(eq(approvals.id, id)).for("update");
@@ -139,7 +141,7 @@ export async function approveApproval(
   const action =
     tier && (proposed.type === "task.create" || proposed.type === "run.dispatch") ? { ...proposed, tier } : proposed;
   const choice = await tierChoice(tx, action);
-  const { result, afterCommit: afterCommitAction } = await executeLeaderAction(tx, userId, action, runsEngine);
+  const { result, afterCommit: afterCommitAction } = await executeLeaderAction(tx, userId, action, runsEngine, sdlc);
   const [updated] = await tx
     .update(approvals)
     .set({ status: "approved", decidedBy: userId, action })
