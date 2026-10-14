@@ -21,3 +21,13 @@ export {
   startCodeReview,
 } from "./service.ts";
 export { type CodeReviewSlaDeps, codeReviewSlaQueue, registerCodeReviewSla } from "./sla.ts";
+export {
+  codeReviewStatusQueue,
+  deliverReviewStatus,
+  prepareReviewStatus,
+  publishReviewStatus,
+  REVIEW_STATUS_CONTEXT,
+  type ReviewStatusDeps,
+  registerReviewStatusWorker,
+  reviewStatusOf,
+} from "./status.ts";

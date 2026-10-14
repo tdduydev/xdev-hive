@@ -17,6 +17,8 @@ import {
   currentGateRun,
 } from "./service.ts";
 
+import { REVIEW_STATUS_CONTEXT } from "./status.ts";
+
 /** Checkpoint CI còn chờ thì hỏi lại sau chừng này; quá số lần thì coi như không đạt để người giao việc biết. */
 export const CI_RECHECK_MS = 2 * 60_000;
 export const CI_MAX_CHECKS = 60;
@@ -105,7 +107,9 @@ async function runCi(deps: CodeReviewWorkerDeps, job: Extract<CodeReviewJob, { k
       ),
     );
   if (!pre.repo) return void (await finish(false, "Không đọc được repo của dự án để kiểm CI.", "none"));
-  const state = await pre.repo.provider.checksFor(pre.repo.ref, job.headSha);
+  const state = await pre.repo.provider.checksFor(pre.repo.ref, job.headSha, {
+    excludeContexts: [REVIEW_STATUS_CONTEXT],
+  });
   const v = ciVerdict(pre.gate, state);
   if (v.status !== "waiting") return void (await finish(v.status === "passed", v.note, state));
   if (job.attempt + 1 >= CI_MAX_CHECKS) return void (await finish(false, "CI chạy quá lâu, chưa có kết quả.", state));
