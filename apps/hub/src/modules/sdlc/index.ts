@@ -1,5 +1,6 @@
 // Chế độ AI SDLC (specs/011-ai-sdlc-mode): hạng mục, giai đoạn, cổng. Module khác chỉ import file này.
 import type { Tx } from "../platform/index.ts";
+import { traceSettledRun } from "./trace.ts";
 
 export { canReadItem, requireProjectWrite, visibleItemsWhere } from "./access.ts";
 export { type CodeRunGate, codeRunGate } from "./gate.ts";
@@ -29,6 +30,7 @@ export {
   type SdlcJob,
   type SdlcRunRequest,
   type SdlcStepStart,
+  type SdlcTaskRunRequest,
   type SdlcWorkflow,
   scheduleAdvance,
   workflowFor,
@@ -42,6 +44,7 @@ export {
   sdlcQuestionsQueue,
 } from "./questions.ts";
 export { sdlcRouter } from "./router.ts";
+export { finishImplementation, onSdlcMerged, registerSdlcScmHandlers, type SdlcScmDeps, traceCi } from "./scm.ts";
 export { onSdlcRunFinished, queueAuthorFix, type SdlcRunOutcome, stepRoutes, withStepRuns } from "./steps.ts";
 export {
   handleSdlcPullJob,
@@ -58,8 +61,10 @@ export {
   syncItemProject,
   syncRoute,
 } from "./sync.ts";
+export { buildTrace, getTrace, traceCsv, traceRoute } from "./trace.ts";
+export { autoWave, runWave, startWave, type WaveResult, waveRoutes } from "./waves.ts";
 
-/** Run code của task vừa kết luận, cho truy vết và đợt kế (plan.md "Luồng" bước 7). */
+/** Run code của task vừa kết luận, cho truy vết (plan.md "Luồng" bước 7). */
 export interface SettledCodeRun {
   id: string;
   taskId: string | null;
@@ -69,7 +74,9 @@ export interface SettledCodeRun {
 }
 
 /**
- * `runs` gọi trong transaction kết luận run code (D17). Khung để `runs` nối trước; T031 (`trace.ts`) làm thân: liên kết
- * run, PR, test từ `task_update.evidence`, xét đợt kế. Chưa có thân thì không làm gì (SC-011).
+ * `runs` gọi trong transaction kết luận run code (D17): liên kết `run`, `pr`, `test` từ `task_update.evidence`. Đợt kế
+ * chạy khi PR merge (scm.ts), không chạy ở đây: run kết luận chưa làm task `done`.
  */
-export async function onCodeRunSettled(_tx: Tx, _run: SettledCodeRun): Promise<void> {}
+export async function onCodeRunSettled(tx: Tx, run: SettledCodeRun): Promise<void> {
+  await traceSettledRun(tx, run);
+}

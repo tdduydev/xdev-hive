@@ -45,7 +45,7 @@ interface ProjectRef {
   role: "home" | "participant";
 }
 
-async function itemProjectRefs(tx: Tx, itemId: string): Promise<ProjectRef[]> {
+export async function itemProjectRefs(tx: Tx, itemId: string): Promise<ProjectRef[]> {
   const out: ProjectRef[] = [];
   for (const m of await activeItemProjects(tx, itemId)) {
     const project = await loadProject(tx, m.projectId);
@@ -314,6 +314,19 @@ export async function onBreakdownBaseline(
 
 /** Requirement của tài liệu nguồn (spec…) theo baseline, hoặc bản nháp nếu chưa có baseline, để tính độ phủ. */
 async function requirementsOf(tx: Tx, principal: Principal, item: SdlcItemRow, d: SdlcDecomposition) {
+  const out = (await requirementSources(tx, principal, item, d)).flatMap(
+    (content) => findRequirements(content, d.requirementId) ?? [],
+  );
+  return [...new Set(out)];
+}
+
+/** Nội dung baseline của các tài liệu nguồn requirement; truy vết (trace.ts) lấy thêm câu chữ của requirement. */
+export async function requirementSources(
+  tx: Tx,
+  principal: Principal,
+  item: SdlcItemRow,
+  d: SdlcDecomposition,
+): Promise<string[]> {
   const out: string[] = [];
   for (const source of d.requirementSource) {
     const [row] = await tx
@@ -328,13 +341,12 @@ async function requirementsOf(tx: Tx, principal: Principal, item: SdlcItemRow, d
       );
     if (!row?.version) continue;
     try {
-      const doc = await getDoc(tx, principal, { key: row.docKey, version: row.version });
-      out.push(...(findRequirements(doc.content, d.requirementId) ?? []));
+      out.push((await getDoc(tx, principal, { key: row.docKey, version: row.version })).content);
     } catch {
       // Không đọc được tài liệu nguồn thì độ phủ thiếu phần đó; không làm hỏng màn bản tách.
     }
   }
-  return [...new Set(out)];
+  return out;
 }
 
 async function breakdownView(

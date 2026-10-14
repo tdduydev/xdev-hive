@@ -55,7 +55,9 @@ export const SDLC_SYSTEM_ACTOR = "system:sdlc";
 
 export type SdlcJob =
   | { kind: "advance"; orgId: string; itemId: string }
-  | { kind: "issue-comment"; orgId: string; itemId: string };
+  | { kind: "issue-comment"; orgId: string; itemId: string }
+  /** Đọc CI của commit merge cho truy vết (scm.ts); `poll` đếm số lần đã hỏi khi CI còn chạy. */
+  | { kind: "trace-ci"; orgId: string; itemId: string; taskId: string; sha: string; poll: number };
 
 /** Một bước agent cần run `sdlc`; T022 dựng prompt, seed, collect rồi gọi `runs.startSdlcRun`. */
 export interface SdlcStepStart {
@@ -98,6 +100,23 @@ export interface SdlcDeps {
   startSdlcRun?: ((tx: Tx, input: SdlcStepStart) => Promise<{ runId: string } | null>) | undefined;
   /** `runs.startSdlcRun`; `withStepRuns` (steps.ts) dựng `startSdlcRun` từ đây. */
   createSdlcRun?: ((tx: Tx, request: SdlcRunRequest) => Promise<{ runId: string } | null>) | undefined;
+  /**
+   * Run code cho task của đợt (`runs.queueRun`, qua cổng chặn D10). Lỗi nghiệp vụ ném như khi người giao tay; đợt ghi lại
+   * thành lý do bỏ qua. `afterCommit` đẩy run tới máy, gọi sau khi transaction commit.
+   */
+  startTaskRun?:
+    | ((tx: Tx, request: SdlcTaskRunRequest) => Promise<{ runId: string; afterCommit: () => void }>)
+    | undefined;
+}
+
+export interface SdlcTaskRunRequest {
+  taskId: string;
+  /** Theo `runner` của dự án của task: null là run của đội. */
+  ownerUserId: string | null;
+  requiredLabels: string[];
+  createdBy: string;
+  /** null: hub tự chạy đợt. */
+  actorUserId: string | null;
 }
 
 export const phaseApplies = (phase: SdlcPhase, size: SdlcSize) => !phase.sizes.length || phase.sizes.includes(size);
