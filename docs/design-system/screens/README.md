@@ -45,6 +45,19 @@ Các file để phẳng một cấp vì `<dc-import name="X">` nạp `X.dc.html`
 | `DataTable.dc.html` | Mọi bảng dữ liệu | Tìm, lọc nhiều lựa chọn có đếm, dòng "Đang lọc", ẩn cột, sắp xếp, chọn hàng loạt, phân trang. Props: `columns`, `rows`, `facets`, `bulk`, `page-size`, `on-row-click`, `active-id` |
 | `AppNav.dc.html` | Mọi màn app máy | Một app, menu theo quyền (`role` = dev, writer, lead); `compact` chỉ còn icon. Có nhóm AI SDLC (xem dưới) |
 
+## Mẫu trang quản trị (2026-10-14)
+
+Bốn mẫu theo [`../admin-layout.md`](../admin-layout.md). Mỗi mẫu có prop `lang`, `dark`, `narrow` (360 px), `state`
+(`normal`, `loading`, `empty`, `error`; mẫu cài đặt dùng `empty` cho chế độ chỉ đọc) và thanh "Trạng thái xem" để xem
+từng trạng thái. Chưa chép lên canvas.
+
+| File | Mẫu | Trang làm chuẩn trong code |
+|---|---|---|
+| `AdminListTemplate.dc.html` | Danh sách: tab có số đếm, thanh lọc, bảng có cột số canh phải, cột ghim, chọn nhiều, phân trang | `/admin/members` |
+| `AdminDetailTemplate.dc.html` | Chi tiết: tiêu đề có meta, tab, khối thông tin, bảng liên quan, vùng nguy hiểm | — |
+| `AdminSettingsTemplate.dc.html` | Cài đặt nhiều mục: mục lục bám cuộn, mục dạng card, hàng nhãn–ô, công tắc, thẻ radio, thanh lưu dính | `/projects/$key/settings` |
+| `AdminDashboardTemplate.dc.html` | Số liệu: thẻ số liệu có xu hướng, biểu đồ có bảng thay thế, bảng theo dự án | — (Chi phí) |
+
 ## Màn web
 
 | File | Màn | Route |
