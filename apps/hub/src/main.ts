@@ -4,6 +4,7 @@ import { createApp } from "./app.ts";
 import { artifactPurgeQueue, registerArtifactPurgeWorker } from "./modules/artifacts/index.ts";
 import { auditRetentionQueue, registerAuditRetentionWorker } from "./modules/audit/index.ts";
 import {
+  enqueueMerge,
   mergeQueue,
   provisionQueue,
   registerMergeWorker,
@@ -25,6 +26,7 @@ import {
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
+  provideSdlcFleetRuns,
   registerFleetOfflineWorker,
   registerRunHandlers,
   registerTerminalHandlers,
@@ -33,6 +35,8 @@ import { createAuth, mcpMode } from "./modules/identity/index.ts";
 import {
   createOpenAIEmbedder,
   embedQueue,
+  provideDocAccess,
+  provideReviewHooks,
   registerEmbedWorker,
   registerReviewWorker,
   registerSkillGitWorker,
@@ -62,6 +66,20 @@ import {
   scmEventQueue,
   scmEvents,
 } from "./modules/scm/index.ts";
+import {
+  docAccessFor,
+  registerQuestionReminders,
+  registerSdlcScmHandlers,
+  registerSdlcSync,
+  registerSdlcWorker,
+  type SdlcDeps,
+  sdlcFleetRuns,
+  sdlcPullQueue,
+  sdlcQuestionsQueue,
+  sdlcQueue,
+  sdlcReviewHooks,
+  sdlcSyncQueue,
+} from "./modules/sdlc/index.ts";
 import { registerSkillLearningWorker, skillLearningPrQueue, skillLearningQueue } from "./modules/skilllearn/index.ts";
 import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./modules/tenancy/index.ts";
 import { attachTerminalGateway, createTerminalHandlers } from "./modules/terminal/index.ts";
@@ -136,6 +154,10 @@ jobs = config.jobsDatabaseUrl
         codeReviewStatusQueue,
         codeReviewSlaQueue,
         artifactPurgeQueue,
+        sdlcQueue,
+        sdlcQuestionsQueue,
+        sdlcSyncQueue,
+        sdlcPullQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
@@ -161,6 +183,18 @@ const runs =
     : undefined;
 if (!runs) console.warn("Chưa cấu hình HIVE_AUTH_SECRET: chưa ký được run token, không giao được run.");
 if (runs) registerRunHandlers(runs.handlers);
+
+// Deps AI SDLC của engine có cổng tạo run bước và run đợt; không có engine thì hạng mục vẫn đi qua cổng duyệt, chỉ không
+// tạo được run. Hook của knowledge cài ở mọi vai trò: phiên duyệt chạy cả trong route (api) lẫn job (jobs).
+const sdlcDeps: SdlcDeps = runs?.sdlcDeps ?? {
+  jobs,
+  publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+  providerFactory: defaultProviderFactory,
+  masterKey: config.masterKey,
+};
+provideReviewHooks(sdlcReviewHooks(sdlcDeps));
+provideDocAccess(docAccessFor);
+provideSdlcFleetRuns(sdlcFleetRuns);
 
 // Thông báo và câu trả lời của leader đi tới chat qua hai hook mà notify và leader để ngỏ (không import chat được vì vòng
 // phụ thuộc). Cài ở mọi vai trò: notify() chạy cả trong tiến trình api lẫn jobs.
@@ -243,6 +277,17 @@ if (roles.includes("jobs") && jobs) {
     await registerInboxCleanupWorker(jobs, pool);
     await registerAuditRetentionWorker(jobs, { pool });
     await registerArtifactPurgeWorker(jobs, { pool, publicUrl: config.publicUrl });
+    await registerSdlcWorker(jobs, { ...sdlcDeps, pool });
+    await registerQuestionReminders(jobs, { pool, publicUrl: sdlcDeps.publicUrl });
+    // `sdlc` không import `catalog` hàng merge trực tiếp: PR ghi tài liệu vào repo đi chung hàng merge với PR của run.
+    await registerSdlcSync(jobs, {
+      pool,
+      providerFactory: defaultProviderFactory,
+      masterKey: config.masterKey,
+      publicUrl: sdlcDeps.publicUrl,
+      enqueueMerge: (tx, input) => enqueueMerge(tx, input, { jobs }),
+    });
+    registerSdlcScmHandlers(sdlcDeps);
   }
 }
 

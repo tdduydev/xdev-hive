@@ -16,7 +16,7 @@ import {
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject } from "../catalog/index.ts";
-import { editorState, getDoc, type Principal, saveDraft } from "../knowledge/index.ts";
+import { editorState, getDoc, type Principal, type RuleContextExtras, saveDraft } from "../knowledge/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError, type RequestContext, type Tx } from "../platform/index.ts";
 import {
   createSystemTask,
@@ -308,6 +308,28 @@ export async function onBreakdownBaseline(
     return null;
   }
   return applyBreakdown(tx, item, content, version);
+}
+
+/**
+ * Dữ liệu cho luật `breakdown`, `coverage` khi duyệt tài liệu tách việc. Requirement đọc bằng quyền chủ hạng mục như
+ * `onBreakdownBaseline`: người duyệt có thể không đọc được tài liệu ở dự án chính.
+ */
+export async function breakdownRuleInput(
+  tx: Tx,
+  item: SdlcItemRow,
+  artifact: { phaseId: string; artifactId: string },
+): Promise<RuleContextExtras["breakdown"]> {
+  const d = item.mode.decomposition;
+  if (!d || d.phase !== artifact.phaseId || d.artifact !== artifact.artifactId) return undefined;
+  const projects = await itemProjectRefs(tx, item.id);
+  return {
+    decomposition: d,
+    context: {
+      homeProject: projects.find((p) => p.role === "home")?.key ?? "",
+      projects: projects.map((p) => p.key),
+    },
+    requirements: await requirementsOf(tx, { kind: "user", userId: item.ownerUserId }, item, d),
+  };
 }
 
 // ---- Xem, lưu ------------------------------------------------------------------------------------------------------
