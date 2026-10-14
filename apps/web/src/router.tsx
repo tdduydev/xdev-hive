@@ -18,6 +18,7 @@ import {
   validateOnboardingSearch,
   validateReviewsSearch,
   validateTasksSearch,
+  validateTeamSearch,
   validateTeamsSearch,
   validateWorkflowsSearch,
 } from "@/lib/route-search.ts";
@@ -70,6 +71,7 @@ const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-page
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
 const ProjectTasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "ProjectTasksPage");
 const TasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "TasksPage");
+const TeamDetailPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamDetailPage");
 const TeamsPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamsPage");
 
 /*
@@ -257,7 +259,18 @@ const teamsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/admin/teams",
   validateSearch: validateTeamsSearch,
+  beforeLoad: ({ search }) => {
+    if (search.doi)
+      throw redirect({ to: "/admin/teams/$teamId", params: { teamId: search.doi }, search: {}, replace: true });
+  },
   component: TeamsPage,
+});
+
+const teamRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/admin/teams/$teamId",
+  validateSearch: validateTeamSearch,
+  component: TeamDetailPage,
 });
 
 const membersRoute = createRoute({
@@ -340,6 +353,7 @@ const routeTree = rootRoute.addChildren([
         leaderTerminalRoute,
         runRoute,
         teamsRoute,
+        teamRoute,
         membersRoute,
         loginSettingsRoute,
         mergeQueueRoute,

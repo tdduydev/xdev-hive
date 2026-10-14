@@ -84,12 +84,19 @@ export function validateOnboardingSearch(search: Record<string, unknown>): Onboa
 }
 
 export interface TeamsSearch {
-  /** Đội đang xem; không có thì xem đội đầu tiên. */
+  /** Link cũ /admin/teams?doi=<id> (trước khi đội có trang riêng); route chuyển sang /admin/teams/<id>. */
   doi?: string;
 }
 
 export function validateTeamsSearch(search: Record<string, unknown>): TeamsSearch {
   return typeof search.doi === "string" ? { doi: search.doi } : {};
+}
+
+/** Tab của trang đội; không có là Tổng quan. */
+export type TeamTab = "thanh-vien" | "he-thong";
+
+export function validateTeamSearch(search: Record<string, unknown>): { tab?: TeamTab } {
+  return search.tab === "thanh-vien" || search.tab === "he-thong" ? { tab: search.tab } : {};
 }
 
 export type MembersTab = "dang-hoat-dong" | "loi-moi" | "cho-duyet";

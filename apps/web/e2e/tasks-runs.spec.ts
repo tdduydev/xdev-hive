@@ -188,12 +188,9 @@ test("bảng việc: số liệu, lọc, tìm, mở run gần nhất", async ({ 
   await expect(page.getByRole("heading", { name: "Bảng việc" })).toBeVisible();
   const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
   await expect(nav.getByRole("link", { name: "Bảng việc" })).toHaveAttribute("aria-current", "page");
-  // Mục chưa có màn vẫn trỏ tới route sẽ có.
-  await expect(nav.getByRole("link", { name: "Máy", includeHidden: true })).toHaveAttribute("href", "/machines");
-  await expect(nav.getByRole("link", { name: "Chi phí và token", includeHidden: true })).toHaveAttribute(
-    "href",
-    "/admin/costs",
-  );
+  // Màn quản trị (Máy, Chi phí…) nằm trong menu Quản trị; sidebar chính chỉ có một mục dẫn vào.
+  await expect(nav.getByRole("link", { name: "Máy", includeHidden: true })).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "Quản trị" })).toHaveAttribute("href", "/admin/members");
   await expect(nav.getByRole("link", { name: "Thông báo", includeHidden: true })).toHaveAttribute(
     "href",
     "/notifications",
