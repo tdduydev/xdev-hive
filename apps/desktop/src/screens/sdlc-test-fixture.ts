@@ -7,6 +7,7 @@ import {
   type SdlcAutoApproval,
   type SdlcItemDetail,
   type SdlcItemSummary,
+  type SdlcMetrics,
   type SdlcModeView,
   type SdlcPhaseKind,
   type SdlcQuestion,
@@ -242,6 +243,24 @@ function itemDetail(canWrite: boolean, participants: Project[]): SdlcItemDetail 
   };
 }
 
+export const METRICS: SdlcMetrics = {
+  from: "2026-09-14T03:42:00.000Z",
+  to: NOW,
+  items: 9,
+  leadTimeHours: SDLC_PHASE_KINDS.map((kind) => ({
+    kind,
+    duration: kind === "design" ? { p50: 50, p90: 120, count: 9 } : { p50: 4, p90: 10, count: 9 },
+  })),
+  gateWaitHours: { p50: 3, p90: 12, count: 14 },
+  returnRate: 0.2,
+  questionsPerItem: 2,
+  coverage: { requirements: 10, planned: 90, done: 70, verified: 50 },
+  convergeRounds: 1.5,
+  codeReviewRoundsPerPr: 1.1,
+  costUsdPerItem: 6.4,
+  autoApproval: [{ modeRef: "speckit", projectKey: null, autoRate: 0.5, revokeRate: 0 }],
+};
+
 /**
  * `canWrite: false` là người chỉ có `sdlc.read`; `participants` là dự án tham gia (mặc định web-shop). `answered` và
  * `revoked` giữ thứ hub nhận để test đọc lại.
@@ -316,6 +335,7 @@ export function sdlcFixture(opts: { canWrite?: boolean; participants?: Project[]
       };
       return ok(revoked.find((a) => a.id === id));
     },
+    "sdlc/metrics": () => ok(METRICS),
     "sdlc/questions/count": () => ok({ open: state.questions.filter((q) => q.status === "open").length }),
     "sdlc/questions/list": (input) => {
       const { openOnly } = (input ?? {}) as { openOnly?: boolean };

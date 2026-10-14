@@ -13,6 +13,7 @@ import {
   type SdlcBreakdownView,
   type SdlcItemDetail,
   type SdlcItemSummary,
+  type SdlcMetrics,
   type SdlcModeView,
   type SdlcPhaseKind,
   type SdlcQuestion,
@@ -420,6 +421,38 @@ export function traceView(over: Partial<SdlcTrace> = {}): SdlcTrace {
   };
 }
 
+export function metricsView(over: Partial<SdlcMetrics> = {}): SdlcMetrics {
+  const hours: Partial<Record<SdlcPhaseKind, [number, number]>> = {
+    intake: [2, 6],
+    requirements: [30, 72],
+    design: [12, 40],
+    decomposition: [3, 8],
+    implementation: [20, 50],
+    verification: [6, 20],
+  };
+  return {
+    from: "2026-09-14T03:42:00.000Z",
+    to: NOW,
+    items: 12,
+    leadTimeHours: SDLC_PHASE_KINDS.map((kind) => {
+      const h = hours[kind];
+      return { kind, duration: h ? { p50: h[0], p90: h[1], count: 10 } : { p50: null, p90: null, count: 0 } };
+    }),
+    gateWaitHours: { p50: 5.5, p90: 26, count: 18 },
+    returnRate: 0.25,
+    questionsPerItem: 1.5,
+    coverage: { requirements: 24, planned: 92, done: 75, verified: 60 },
+    convergeRounds: 1.4,
+    codeReviewRoundsPerPr: 1.2,
+    costUsdPerItem: 7.8,
+    autoApproval: [
+      { modeRef: "speckit", projectKey: null, autoRate: 0.4, revokeRate: 0.05 },
+      { modeRef: "speckit", projectKey: PAYMENT.key, autoRate: 0.3, revokeRate: null },
+    ],
+    ...over,
+  };
+}
+
 /** Client giả theo đúng đường dẫn của hợp đồng; test chỉ cần những thủ tục màn gọi. */
 export function fakeClient(
   data: {
@@ -430,6 +463,7 @@ export function fakeClient(
     item?: SdlcItemDetail;
     breakdown?: SdlcBreakdownView;
     trace?: SdlcTrace;
+    metrics?: SdlcMetrics;
   } = {},
 ) {
   const item = data.item ?? itemDetail();
@@ -494,6 +528,10 @@ export function fakeClient(
         ...(data.trace ?? traceView()),
         csv: input.format === "csv" ? "requirement,task\nFR-001,T-41\n" : null,
       })),
+      metrics: vi.fn(
+        async (_input: { from: string; to: string; projectId?: string; modeRef?: string }) =>
+          data.metrics ?? metricsView(),
+      ),
       questions: {
         list: vi.fn(async (input: { openOnly?: boolean; itemId?: string }) => ({
           items: (data.questions ?? []).filter(

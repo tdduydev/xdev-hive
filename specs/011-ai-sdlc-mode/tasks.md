@@ -495,6 +495,9 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/sdlc/{metrics.ts,metrics.test.ts,metrics.db.test.ts}`, `packages/sdlc-ui/src/metrics.tsx`,
     `apps/web/src/pages/sdlc/metrics-page.tsx`, `apps/desktop/src/screens/sdlc-metrics-screen.tsx`
   - **Phụ thuộc**: T031, T054, T055 · **Mức**: vừa
+  - SPEC11W5UI đã làm phần UI theo hợp đồng `sdlc.metrics`: `metrics.tsx` (khoảng 7/30/90 ngày, lọc dự án và chế độ, lead
+    time p50/p90 có nút thắt, bảy thẻ chỉ số, bảng tự duyệt), web `/sdlc/metrics` + menu "Chỉ số", màn app
+    `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`. Còn hub `metrics.ts` và route; chưa đo SC-007.
 
 - [ ] T083 [P] Preset và bộ đọc còn lại
   - `aidlc-feature`, `aidlc-enterprise`, `bmad-quick`, `bmad-method`, `kiro-requirements`, `kiro-design`, `kiro-bugfix`,

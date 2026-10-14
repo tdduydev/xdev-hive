@@ -15,6 +15,7 @@ export { formatUsd, formatWhen } from "./format.ts";
 export { type BoardView, ItemBoard, type ItemBoardProps } from "./item-board.tsx";
 export { ITEM_TABS, ItemDetail, type ItemDetailProps, TaskList } from "./item-detail.tsx";
 export { ItemCard, ItemList, type ItemListProps, ProjectChips } from "./item-list.tsx";
+export { formatHours, Metrics } from "./metrics.tsx";
 export { allowedModes, NewItem, type NewItemProps } from "./new-item.tsx";
 export { OverrideDialog, type OverrideDialogProps } from "./override-dialog.tsx";
 export { EmptyState } from "./parts.tsx";
