@@ -179,6 +179,7 @@ async function systemRoles(tx: Tx) {
     role("team-admin", "team", teamN("admin")),
     role("team-member", "team", teamN("member")),
     role("team-viewer", "team", teamN("viewer")),
+    role("team-ba", "team", teamN("ba")),
   ];
 }
 
