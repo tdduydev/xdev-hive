@@ -241,3 +241,20 @@ test("cài đặt AI SDLC ở 360 px, giao diện tối: không tràn ngang", as
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
     .toBeLessThanOrEqual(0);
 });
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`chính sách tổ chức, mục AI SDLC có số liệu ở 360 px, ${scheme}`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await setup(page);
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto("/admin/policies");
+    const stats = group(page, "AI SDLC").getByRole("region", { name: "Số liệu tự duyệt AI SDLC" });
+    await expect(stats).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+      .toBeLessThanOrEqual(0);
+    // Trang chính sách dài; chụp khung nhìn quanh hàng số liệu. Chụp cả mục thì thanh đầu trang dính đè lên ảnh.
+    await stats.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`sdlc-policy-stats-360-${scheme}.png`) });
+  });
+}
