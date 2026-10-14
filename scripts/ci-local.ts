@@ -256,7 +256,8 @@ if (workerTouched) {
   // CI chạy worker trên cả Windows; vet chéo bắt lỗi biên dịch của file _windows.go mà máy Mac/Linux không dựng.
   cmd("go vet (GOOS=windows)", "go", ["vet", "./..."], { cwd: worker, env: { ...env, GOOS: "windows" } });
   cmd("go vet (GOOS=linux)", "go", ["vet", "./..."], { cwd: worker, env: { ...env, GOOS: "linux" } });
-  cmd("go test", "go", ["test", "./..."], { cwd: worker });
+  // -count=1: như vitest ở trên, không dùng kết quả cache của lần chạy xanh trước.
+  cmd("go test", "go", ["test", "-count=1", "./..."], { cwd: worker });
   cmd("go build hive-worker", "go", ["build", "-o", "bin/", "./cmd/hive-worker"], { cwd: worker });
   if (touched(/^scripts\/install\.sh$/) && spawnSync("shellcheck", ["--version"], { stdio: "ignore" }).status === 0) {
     cmd("shellcheck install.sh", "shellcheck", ["-s", "sh", "scripts/install.sh"]);
