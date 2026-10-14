@@ -173,7 +173,7 @@ func TestCLIArgs(t *testing.T) {
 }
 
 func TestEscaper(t *testing.T) {
-	var e escaper
+	e := escaper{key: escKey}
 	out, acts := e.feed([]byte("ab\x1d"))
 	if string(out) != "ab" || len(acts) != 0 || !e.pending {
 		t.Fatalf("1: %q %q", out, acts)
@@ -182,6 +182,59 @@ func TestEscaper(t *testing.T) {
 	out, acts = e.feed([]byte("tc\x1d\x1dx\x1dqy\x1ddzz"))
 	if string(out) != "c\x1dx\x1dqy" || string(acts) != "td" {
 		t.Fatalf("2: %q %q", out, acts)
+	}
+}
+
+func TestParseEscape(t *testing.T) {
+	for in, want := range map[string]byte{"ctrl-]": 0x1d, "Ctrl-A": 0x01, "ctrl+b": 0x02, "^x": 0x18, "ctrl-\\": 0x1c, "none": noEscape} {
+		got, err := parseEscape(in)
+		if err != nil || got != want {
+			t.Errorf("%q: %#x %v, muốn %#x", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "a", "ctrl-", "ctrl-ab", "ctrl-1", "alt-x", "ctrl-[", "ctrl-m", "ctrl-i", "ctrl-j", "ctrl-h"} {
+		if _, err := parseEscape(in); err == nil {
+			t.Errorf("%q: muốn lỗi", in)
+		}
+	}
+	if got := escName(0x01); got != "Ctrl-A" {
+		t.Fatalf("escName: %q", got)
+	}
+	if got := escHint(0x1d, true); got != "Ctrl-] t để giành quyền, Ctrl-] d để tách." {
+		t.Fatalf("escHint: %q", got)
+	}
+}
+
+func TestEscaperCustomKeyAndNone(t *testing.T) {
+	e := escaper{key: 0x01}
+	// Ctrl-] không còn là tiền tố; Ctrl-A Ctrl-A gửi một Ctrl-A.
+	out, acts := e.feed([]byte("\x1dd\x01\x01\x01t\x01d"))
+	if string(out) != "\x1dd\x01" || string(acts) != "td" {
+		t.Fatalf("ctrl-a: %q %q", out, acts)
+	}
+	n := escaper{key: noEscape}
+	out, acts = n.feed([]byte("\x1dd\x01d"))
+	if string(out) != "\x1dd\x01d" || len(acts) != 0 {
+		t.Fatalf("none: %q %q", out, acts)
+	}
+}
+
+func TestChatEscapeFlag(t *testing.T) {
+	a := newTestApp("", nil)
+	o, code := a.parseChat([]string{"--escape", "ctrl-a"}, false)
+	if code != exitOK || o.escape != 0x01 {
+		t.Fatalf("ctrl-a: %d %#x", code, o.escape)
+	}
+	o, code = a.parseChat(nil, false)
+	if code != exitOK || o.escape != escKey {
+		t.Fatalf("mặc định: %d %#x", code, o.escape)
+	}
+	if _, code := a.parseChat([]string{"--escape", "ctrl-["}, false); code != exitUsage || !strings.Contains(a.err.String(), "Esc") {
+		t.Fatalf("ctrl-[: %d %q", code, a.err.String())
+	}
+	b := newTestApp("", nil)
+	if code := b.attachCmd([]string{"abc", "--escape", "x"}); code != exitUsage || !strings.Contains(b.err.String(), "--escape") {
+		t.Fatalf("attach: %d %q", code, b.err.String())
 	}
 }
 
@@ -234,7 +287,7 @@ func TestInteractRestoresTerminal(t *testing.T) {
 		_ = w.WriteFrame(localipc.FrameOut, []byte("xin chào"))
 		_ = w.WriteCtl(localipc.Ctl{Type: localipc.CtlExit, Reason: "exit", Code: &code7})
 	})
-	if code := a.interact(c, "abc", modeControl); code != exitFailed {
+	if code := a.interact(c, "abc", modeControl, escKey); code != exitFailed {
 		t.Fatalf("mã %d", code)
 	}
 	if a.con.raw != 1 || a.con.restored != 1 {
@@ -248,7 +301,7 @@ func TestInteractRestoresTerminal(t *testing.T) {
 	b := newTestApp("", stdinR)
 	b.con.tty = true
 	c = fakeSession(t, func(w *localipc.Conn) { _ = w.Close() })
-	if code := b.interact(c, "abc", modeControl); code != exitFailed || b.con.restored != 1 || !strings.Contains(b.err.String(), "Mất kết nối") {
+	if code := b.interact(c, "abc", modeControl, escKey); code != exitFailed || b.con.restored != 1 || !strings.Contains(b.err.String(), "Mất kết nối") {
 		t.Fatalf("mất kết nối: mã %d restore %d err %q", code, b.con.restored, b.err.String())
 	}
 
@@ -256,7 +309,7 @@ func TestInteractRestoresTerminal(t *testing.T) {
 	r := newTestApp("", stdinR)
 	r.con.tty = true
 	r.con.rawErr = errors.New("không phải tty")
-	if code := r.interact(c, "abc", modeControl); code != exitFailed || !strings.Contains(r.err.String(), "chế độ raw") {
+	if code := r.interact(c, "abc", modeControl, escKey); code != exitFailed || !strings.Contains(r.err.String(), "chế độ raw") {
 		t.Fatalf("raw lỗi: %d %q", code, r.err.String())
 	}
 }
@@ -280,7 +333,7 @@ func TestInteractDetachSendsCtl(t *testing.T) {
 		}
 	}()
 	a := newTestApp("", strings.NewReader("ls\r\x1dt\x1dd"))
-	if code := a.interact(localipc.NewConn(client), "abc", modeView); code != exitOK {
+	if code := a.interact(localipc.NewConn(client), "abc", modeView, escKey); code != exitOK {
 		t.Fatalf("mã %d: %s", code, a.err.String())
 	}
 	if (<-got).Type != localipc.CtlTake || (<-got).Type != localipc.CtlDetach {
