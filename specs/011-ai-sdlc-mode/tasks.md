@@ -497,7 +497,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     (thêm giai đoạn release)
   - **Phụ thuộc**: T080 · **Mức**: vừa
 
-- [ ] T082 [US12] Chỉ số và bảng tiến độ đầy đủ
+- [x] T082 [US12] Chỉ số và bảng tiến độ đầy đủ
   - `metrics.ts` (lead time theo giai đoạn p50/p90, chờ cổng, trả lại, câu hỏi, độ phủ, converge, vòng review code, chi phí
     qua `cost`, tỉ lệ tự duyệt và thu hồi theo chế độ/dự án/người tạo; lọc theo dự án gồm dự án tham gia), route; `sdlc-ui` `metrics.tsx`; màn app `sdlc-metrics`, web `/sdlc/metrics`. SC-007 với 500 hạng mục.
   - **Scope**: `apps/hub/src/modules/sdlc/{metrics.ts,metrics.test.ts,metrics.db.test.ts}`, `packages/sdlc-ui/src/metrics.tsx`,
@@ -505,7 +505,10 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T031, T054, T055 · **Mức**: vừa
   - SPEC11W5UI đã làm phần UI theo hợp đồng `sdlc.metrics`: `metrics.tsx` (khoảng 7/30/90 ngày, lọc dự án và chế độ, lead
     time p50/p90 có nút thắt, bảy thẻ chỉ số, bảng tự duyệt), web `/sdlc/metrics` + menu "Chỉ số", màn app
-    `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`. Còn hub `metrics.ts` và route; chưa đo SC-007.
+    `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`.
+  - SPEC11W6HUB làm hub `metrics.ts` và route `sdlc.metrics`: hạng mục tạo trong [from, to) mà người gọi đọc được; chờ cổng
+    chỉ tính cổng người không tự duyệt; chi phí chỉ tính hạng mục của đội người gọi quản trị hoặc có `costs.read`. Hợp đồng
+    chưa có chiều "người tạo" cho tỉ lệ tự duyệt; chưa đo SC-007 với 500 hạng mục.
 
 - [x] T083 [P] Preset và bộ đọc còn lại
   - `aidlc-feature`, `aidlc-enterprise`, `bmad-quick`, `bmad-method`, `kiro-requirements`, `kiro-design`, `kiro-bugfix`,
