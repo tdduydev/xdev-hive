@@ -93,7 +93,7 @@ afterAll(async () => {
   await Promise.all([admin.end(), app.end()]);
 });
 
-/** Hạng mục speckit đã xong triển khai: giai đoạn converge (cuối) bắt đầu và tự chạy vòng 1. */
+/** Hạng mục speckit đã xong triển khai: giai đoạn converge bắt đầu và tự chạy vòng 1; release sau đó còn chờ. */
 async function atConverge(over: Partial<SdlcItemCreate> = {}) {
   const item = await as("tmember", (tx) =>
     createItem(
@@ -112,7 +112,7 @@ async function atConverge(over: Partial<SdlcItemCreate> = {}) {
   );
   await admin.query("update hive.sdlc_steps set status = 'succeeded' where item_id = $1", [item.id]);
   await admin.query(
-    `update hive.sdlc_item_phases set status = case when phase_id = 'converge' then 'pending' else 'approved' end
+    `update hive.sdlc_item_phases set status = case when phase_id in ('converge', 'release') then 'pending' else 'approved' end
       where item_id = $1`,
     [item.id],
   );
@@ -217,7 +217,7 @@ describe("converge theo dự án (US10)", () => {
     });
     expect(await itemRow(item.id)).toMatchObject({ phase_index: 4, converged_at: null });
 
-    // Vòng 2 do người bấm; mọi dự án đạt hết thì hội tụ, giai đoạn cuối đạt nên hạng mục xong.
+    // Vòng 2 do người bấm; mọi dự án đạt hết thì hội tụ, giai đoạn đạt và hạng mục sang release (US11).
     requests = [];
     await runConverge(item.id);
     const round2 = (await convergeRows(item.id)).filter((r) => r.round === 2);
@@ -230,7 +230,13 @@ describe("converge theo dự án (US10)", () => {
       await report(row.run_id, projectId, [{ requirementId: "FR-002", status: "met", evidence: "history.ts" }]);
     await finish(round2[0].run_id);
     expect((await finish(round2[1].run_id))?.message).toContain("Đã hội tụ ở vòng 2");
-    expect(await itemRow(item.id)).toMatchObject({ status: "done", converge_round: 2, converged_at: expect.any(Date) });
+    expect(await itemRow(item.id)).toMatchObject({
+      status: "active",
+      phase_index: 5,
+      converge_round: 2,
+      converged_at: expect.any(Date),
+    });
+    expect(requests.at(-1)?.title).toContain("release-notes");
     expect(await convergePhase(item.id)).toMatchObject({ status: "approved", note: null });
     const inbox = await admin.query("select title from hive.inbox_items where org_id = $1 and user_id = $2", [
       org.orgId,

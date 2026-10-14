@@ -55,7 +55,8 @@ export const SDLC_SYSTEM_ACTOR = "system:sdlc";
 
 export type SdlcJob =
   | { kind: "advance"; orgId: string; itemId: string }
-  | { kind: "issue-comment"; orgId: string; itemId: string }
+  /** `done`: hạng mục vừa đóng, bình luận tóm tắt và link release notes (US11); bỏ trống là lúc tạo (US1-2). */
+  | { kind: "issue-comment"; orgId: string; itemId: string; event?: "done" }
   /** Đọc CI của commit merge cho truy vết (scm.ts); `poll` đếm số lần đã hỏi khi CI còn chạy. */
   | { kind: "trace-ci"; orgId: string; itemId: string; taskId: string; sha: string; poll: number };
 
@@ -184,7 +185,7 @@ async function phaseReady(tx: Tx, item: SdlcItemRow, phase: SdlcPhase): Promise<
 }
 
 /** Sang giai đoạn kế chưa bị bỏ; hết giai đoạn thì hạng mục xong. */
-async function moveNext(tx: Tx, item: SdlcItemRow, rows: PhaseRow[]): Promise<SdlcItemRow> {
+async function moveNext(tx: Tx, item: SdlcItemRow, rows: PhaseRow[], deps: SdlcDeps): Promise<SdlcItemRow> {
   const next = rows.find((r) => r.phaseIndex > item.phaseIndex && r.status !== "skipped");
   if (!next) {
     const [done] = await tx
@@ -193,6 +194,13 @@ async function moveNext(tx: Tx, item: SdlcItemRow, rows: PhaseRow[]): Promise<Sd
       .where(eq(sdlcItems.id, item.id))
       .returning();
     await recordAudit(tx, { action: "sdlc.item.done", targetType: "sdlc_item", targetId: item.id, data: {} });
+    // Bình luận đi qua job như lúc tạo: lỗi của GitHub/GitLab không được làm hỏng transaction đóng hạng mục.
+    if (item.source.kind === "issue" && deps.jobs)
+      await deps.jobs.enqueue(
+        SDLC_QUEUE,
+        { kind: "issue-comment", orgId: item.orgId, itemId: item.id, event: "done" } satisfies SdlcJob,
+        { tx },
+      );
     return done ?? item;
   }
   if (next.status === "pending") {
@@ -270,11 +278,12 @@ export async function advance(tx: Tx, itemId: string, deps: SdlcDeps = {}): Prom
     const row = rows.find((r) => r.phaseIndex === item?.phaseIndex);
     if (!phase || !row) {
       // Mọi giai đoạn đã qua (hoặc bản chụp không còn giai đoạn ở vị trí này): đóng hạng mục.
-      if (item.status === "active") item = await moveNext(tx, { ...item, phaseIndex: item.mode.phases.length }, []);
+      if (item.status === "active")
+        item = await moveNext(tx, { ...item, phaseIndex: item.mode.phases.length }, [], deps);
       return item;
     }
     if (row.status === "skipped" || row.status === "approved") {
-      item = await moveNext(tx, item, rows);
+      item = await moveNext(tx, item, rows, deps);
       if (item.status !== "active") return item;
       continue;
     }
@@ -288,7 +297,7 @@ export async function advance(tx: Tx, itemId: string, deps: SdlcDeps = {}): Prom
     if (await phaseReady(tx, item, phase)) {
       await markApproved(tx, row, null);
       row.status = "approved";
-      item = await moveNext(tx, item, rows);
+      item = await moveNext(tx, item, rows, deps);
       if (item.status !== "active") return item;
       continue;
     }

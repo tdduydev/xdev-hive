@@ -46,7 +46,7 @@ describe("preset", () => {
   });
 
   it("prompt chỉ dùng biến mà hub điền", () => {
-    const allowed = new Set(["idea", "artifacts", "answers", "feedback", "constitution", "projects"]);
+    const allowed = new Set(["idea", "artifacts", "answers", "feedback", "constitution", "projects", "release"]);
     for (const id of SDLC_PRESET_IDS)
       for (const phase of preset(id).phases)
         for (const step of phase.steps)
@@ -174,7 +174,17 @@ describe("mặc định theo bảng của plan.md", () => {
     const m = preset("speckit");
     expect(m).toMatchObject({ method: "speckit", blocking: "hard", sizes: ["M", "L"] });
     expect(isHeavySdlc(m.sizes)).toBe(true);
-    expect(m.phases.map((p) => p.id)).toEqual(["specify", "plan", "tasks", "implement", "converge"]);
+    expect(m.phases.map((p) => p.id)).toEqual(["specify", "plan", "tasks", "implement", "converge", "release"]);
+    // US11: release notes rồi retro tự chạy khi hội tụ; hạng mục đóng khi người duyệt cả hai.
+    const release = phaseOf(m, "release");
+    expect(release).toMatchObject({ kind: "release", optional: true });
+    expect(release.steps.map((s) => [s.action, s.auto])).toEqual([
+      ["release-notes", true],
+      ["retro", true],
+    ]);
+    expect(release.artifacts.every((a) => a.required)).toBe(true);
+    expect(release.steps.every((s) => s.prompt.includes("{release}"))).toBe(true);
+    expect(release.steps[1]?.prompt).toContain("`lessons`");
 
     const specify = phaseOf(m, "specify");
     expect(specify.kind).toBe("requirements");
