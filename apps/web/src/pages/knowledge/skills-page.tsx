@@ -1,31 +1,26 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { SkillSummary } from "@xdev-hive/contracts";
 import { Markdown } from "@xdev-hive/ui/markdown";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
+import { DescriptionList } from "@/components/ui/description-list.tsx";
 import { LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { useT } from "@/lib/i18n.ts";
-import {
-  authorLabel,
-  DetailDialog,
-  EmptyRows,
-  QueryState,
-  ScopeBadge,
-  useTabParam,
-  When,
-} from "@/pages/knowledge/common.tsx";
+import type { SkillTab } from "@/lib/route-search.ts";
+import { authorLabel, DetailFallback, EmptyRows, QueryState, ScopeBadge, When } from "@/pages/knowledge/common.tsx";
 import { SkillLearningTab, usePendingLearned } from "@/pages/knowledge/skill-learning-tab.tsx";
 import { SkillPackSection } from "@/pages/knowledge/skill-pack-section.tsx";
 import { SkillRepoCard } from "@/pages/knowledge/skill-repo-card.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
-import { PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
+import { DetailHeader, PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
 
 const text = knowledgeText;
-const TABS = ["de-xuat"] as const;
 
 export function SkillsPage() {
   const { org } = useOrg();
@@ -35,9 +30,9 @@ function SkillsScreen() {
   const t = useT(text);
   const { api } = useOrg();
   const list = useQuery(api.skills.list.queryOptions({ input: {} }));
-  const [selected, setSelected] = useState<SkillSummary>();
+  const navigate = useNavigate();
   const learned = usePendingLearned();
-  const [tab, setTab] = useTabParam(TABS);
+  const { tab = "skills" } = useSearch({ from: "/session/app/in-org/knowledge/skills" });
   const columns: Column<SkillSummary>[] = [
     {
       key: "name",
@@ -85,7 +80,12 @@ function SkillsScreen() {
   return (
     <>
       <PageHeader title="Skills" description={t.skillsLead} />
-      <Tabs.Root value={tab ?? "skills"} onValueChange={(value) => setTab(value === "skills" ? undefined : "de-xuat")}>
+      <Tabs.Root
+        value={tab}
+        onValueChange={(value) =>
+          navigate({ to: "/knowledge/skills", search: value === "de-xuat" ? { tab: "de-xuat" } : {}, replace: true })
+        }
+      >
         <PageTabList label={t.skillsViews}>
           <PageTab value="skills" count={list.data?.length}>
             Skills
@@ -106,11 +106,9 @@ function SkillsScreen() {
                   rows={list.data}
                   minWidth={620}
                   placeholder={t.skillsSearch}
-                  selectable={false}
                   facets={[{ key: "scope", label: t.scope, value: (row) => t[row.scope.level] }]}
                   rowLabel={(row) => row.name}
-                  activeId={selected?.id ?? ""}
-                  onRowClick={setSelected}
+                  onRowClick={(row) => navigate({ to: "/knowledge/skills/$skillId", params: { skillId: row.id } })}
                   emptyContent={<EmptyRows title={t.skillsEmptyTitle} description={t.skillsEmptyBody} />}
                 />
               )}
@@ -124,28 +122,124 @@ function SkillsScreen() {
           </PageBody>
         </Tabs.Panel>
       </Tabs.Root>
-      {selected && <SkillDetail key={selected.id} skill={selected} onClose={() => setSelected(undefined)} />}
     </>
   );
 }
-function SkillDetail({ skill, onClose }: { skill: SkillSummary; onClose: () => void }) {
+export function SkillDetailPage() {
+  const { org } = useOrg();
+  const { skillId } = useParams({ from: "/session/app/in-org/knowledge/skills/$skillId" });
+  return <SkillDetailScreen key={`${org.id}:${skillId}`} id={skillId} />;
+}
+
+function SkillDetailScreen({ id }: { id: string }) {
   const t = useT(text);
   const { api } = useOrg();
-  const detail = useQuery(api.skills.get.queryOptions({ input: { id: skill.id } }));
+  const navigate = useNavigate();
+  const { tab = "tong-quan" } = useSearch({ from: "/session/app/in-org/knowledge/skills/$skillId" });
+  const detail = useQuery(api.skills.get.queryOptions({ input: { id } }));
+  const skill = detail.data;
+  if (!skill) return <DetailFallback query={detail} title="Skills" back="/knowledge/skills" />;
   return (
-    <DetailDialog
-      title={skill.name}
-      onClose={onClose}
-      badges={<ScopeBadge scope={skill.scope} />}
-      description={
-        <>
-          SKILL.md · v{skill.version} · {skill.repoPath ?? t.hubOnlyHint}
-        </>
+    <>
+      <DetailHeader
+        back={{ to: "/knowledge/skills", label: "Skills" }}
+        title={skill.name}
+        status={skill.repoPath ? <Pill tone="ok">{t.inGit}</Pill> : <Pill>{t.hubOnly}</Pill>}
+        meta={
+          <>
+            <ScopeBadge scope={skill.scope} />
+            <span className="font-mono">v{skill.version}</span>
+            <span>
+              {authorLabel(skill.updatedBy)} · <When iso={skill.updatedAt} />
+            </span>
+            <span className="basis-full text-sm">{skill.description}</span>
+          </>
+        }
+      />
+      <Tabs.Root
+        value={tab}
+        onValueChange={(value: SkillTab | "tong-quan") =>
+          navigate({
+            to: "/knowledge/skills/$skillId",
+            params: { skillId: id },
+            search: value === "tong-quan" ? {} : { tab: value },
+            replace: true,
+          })
+        }
+      >
+        <PageTabList label={t.skillViews}>
+          <PageTab value="tong-quan">{t.overview}</PageTab>
+          <PageTab value="hoc-duoc">{t.learnedTab}</PageTab>
+          <PageTab value="phien-ban" count={skill.version}>
+            {t.versionsTab}
+          </PageTab>
+        </PageTabList>
+        <Tabs.Panel value="tong-quan">
+          <PageBody width="wide">
+            <DescriptionList
+              items={[
+                { term: t.path, detail: skill.repoPath ?? t.hubOnlyHint, mono: !!skill.repoPath },
+                { term: t.version, detail: `v${skill.version}`, mono: true },
+                { term: t.updated, detail: <When iso={skill.updatedAt} /> },
+              ]}
+            />
+            <PageSection title="SKILL.md">
+              <Markdown content={skill.content} />
+            </PageSection>
+          </PageBody>
+        </Tabs.Panel>
+        <Tabs.Panel value="hoc-duoc">
+          <PageBody width="wide">
+            <SkillLearningTab skill={skill.name} />
+          </PageBody>
+        </Tabs.Panel>
+        <Tabs.Panel value="phien-ban">
+          <PageBody width="wide">
+            <SkillVersions id={id} latest={skill.version} />
+          </PageBody>
+        </Tabs.Panel>
+      </Tabs.Root>
+    </>
+  );
+}
+
+/** Hub giữ mọi bản của skill nhưng không có danh sách bản: chọn số bản rồi đọc nội dung bản đó. */
+function SkillVersions({ id, latest }: { id: string; latest: number }) {
+  const t = useT(text);
+  const fieldId = useId();
+  const { api } = useOrg();
+  const [version, setVersion] = useState(latest);
+  const detail = useQuery(api.skills.get.queryOptions({ input: { id, version } }));
+  return (
+    <PageSection
+      title={t.versionsTab}
+      description={t.versionsLead}
+      actions={
+        <label htmlFor={fieldId} className="flex items-center gap-2 text-sm">
+          {t.versionPick}
+          <NativeSelect
+            id={fieldId}
+            value={String(version)}
+            onChange={(event) => setVersion(Number(event.currentTarget.value))}
+          >
+            {Array.from({ length: latest }, (_, index) => latest - index).map((value) => (
+              <option key={value} value={value}>
+                v{value}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
       }
     >
-      <p className="text-sm text-muted-foreground">{skill.description}</p>
       <QueryState query={detail} />
-      {detail.data && <Markdown content={detail.data.content} />}
-    </DetailDialog>
+      {detail.data && (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {authorLabel(detail.data.updatedBy)} · <When iso={detail.data.updatedAt} />
+          </p>
+          <Markdown content={detail.data.content} />
+        </>
+      )}
+    </PageSection>
   );
 }
