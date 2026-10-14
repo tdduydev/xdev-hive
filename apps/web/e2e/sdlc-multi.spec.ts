@@ -6,8 +6,9 @@ import {
   DEFAULT_ORG_SDLC_POLICY,
   type OrgSdlcPolicy,
   type ProjectSettings,
+  type SdlcMetrics,
 } from "@xdev-hive/contracts";
-import { ok } from "./fake-hub.ts";
+import { fail, ok } from "./fake-hub.ts";
 import { inOrg } from "./reviews-fixture.ts";
 import { MOBILE, PAYMENT, sdlcFixture, WEB } from "./sdlc-fixture.ts";
 
@@ -27,7 +28,27 @@ function policyOf(sdlc: OrgSdlcPolicy = DEFAULT_ORG_SDLC_POLICY): AgentPolicy {
   } as AgentPolicy;
 }
 
-async function setup(page: Page, opts: { orgPolicy?: AgentPolicy } = {}) {
+// Hub chỉ trả tỉ lệ theo chế độ/dự án; mục chính sách chọn dòng cao nhất của cả chế độ.
+const metricsOf = (): SdlcMetrics => ({
+  from: "2026-09-14T03:42:00.000Z",
+  to: "2026-10-14T03:42:00.000Z",
+  items: 9,
+  leadTimeHours: [],
+  gateWaitHours: { p50: null, p90: null, count: 0 },
+  returnRate: null,
+  questionsPerItem: null,
+  coverage: null,
+  convergeRounds: null,
+  codeReviewRoundsPerPr: null,
+  costUsdPerItem: null,
+  autoApproval: [
+    { modeRef: "speckit", projectKey: null, autoRate: 0.4, revokeRate: 0.05 },
+    { modeRef: "bugfix", projectKey: null, autoRate: 0.25, revokeRate: 0.125 },
+    { modeRef: "speckit", projectKey: PAYMENT.key, autoRate: 0.9, revokeRate: 0.5 },
+  ],
+});
+
+async function setup(page: Page, opts: { orgPolicy?: AgentPolicy; metrics?: null } = {}) {
   const sdlc = sdlcFixture({ participants: [WEB, MOBILE] });
   // Hub giả giữ bản đã lưu như hub thật: lưu mục sau ghép lên bản của lần trước.
   let settings: ProjectSettings = PAYMENT.settings;
@@ -40,6 +61,7 @@ async function setup(page: Page, opts: { orgPolicy?: AgentPolicy } = {}) {
       return ok(settings);
     },
     "policies/get": () => ok(policy),
+    "sdlc/metrics": () => (opts.metrics === null ? fail("FORBIDDEN", 403, "Không có quyền.") : ok(metricsOf())),
     "policies/update": (input) => {
       policy = { ...policy, ...(input as AgentPolicyInput) } as AgentPolicy;
       return ok(policy);
@@ -179,6 +201,26 @@ test("chính sách tổ chức: mục AI SDLC lưu riêng; lưu mục khác khô
   await limits.getByRole("button", { name: "Lưu" }).click();
   await expect.poll(() => policySaves().length).toBe(2);
   expect(policySaves()[1]).not.toHaveProperty("sdlc");
+});
+
+test("chính sách tổ chức: hàng số liệu tự duyệt 30 ngày; không đọc được chỉ số thì ẩn hàng", async ({ page }) => {
+  await setup(page);
+  await page.goto("/admin/policies");
+  const stats = group(page, "AI SDLC").getByRole("region", { name: "Số liệu tự duyệt AI SDLC" });
+  // Dòng theo dự án (90%) không tính: so các chế độ với nhau mới có nghĩa với quản trị tổ chức.
+  await expect(stats).toContainText("Tỉ lệ tự duyệt cao nhất40%Spec Kit · 30 ngày qua");
+  await expect(stats).toContainText("Tỉ lệ thu hồi cao nhất12,5%Sửa lỗi · 30 ngày qua");
+  await expect(stats).toContainText("Dự án bật tự duyệt0trên 2 dự án bật AI SDLC");
+  await group(page, "AI SDLC").getByRole("link", { name: "Xem chỉ số theo chế độ và dự án" }).click();
+  await expect(page).toHaveURL(/\/sdlc\/metrics$/);
+});
+
+test("chính sách tổ chức: hub từ chối chỉ số thì form AI SDLC vẫn dùng được", async ({ page }) => {
+  await setup(page, { metrics: null });
+  await page.goto("/admin/policies");
+  const sdlc = group(page, "AI SDLC");
+  await expect(sdlc.getByRole("switch", { name: "Cho phép tự duyệt" })).toBeVisible();
+  await expect(sdlc.getByRole("region", { name: "Số liệu tự duyệt AI SDLC" })).toHaveCount(0);
 });
 
 test("cài đặt AI SDLC ở 360 px, giao diện tối: không tràn ngang", async ({ page }, testInfo) => {
