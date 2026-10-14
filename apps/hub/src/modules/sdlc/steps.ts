@@ -18,6 +18,7 @@ import {
   getDoc,
   type Principal,
   saveDraft,
+  saveRunDraft,
   submitDraft,
 } from "../knowledge/index.ts";
 import { notify } from "../notify/index.ts";
@@ -404,15 +405,28 @@ export interface SdlcRunOutcome {
 }
 
 /**
- * Ghi file agent trả về vào bản nháp dưới tên chủ hạng mục: knowledge không cho run sửa bản nháp (agent chỉ đề xuất),
- * còn ở đây hub chép kết quả của bước mà chủ đã giao; run nào ghi nằm ở `sdlc_steps.result`. null: chủ không còn quyền.
+ * Ghi file agent trả về vào bản nháp dưới tên run (FR-014). Tài liệu của repo khác mà run (dự án chính) không thấy thì
+ * ghi dưới tên chủ hạng mục, người đã giao việc; run nào ghi vẫn nằm ở `sdlc_steps.result`. null: không ai ghi được.
  */
-async function writeArtifact(tx: Tx, item: SdlcItemRow, row: ArtifactRow, content: string): Promise<number | null> {
+async function writeArtifact(
+  tx: Tx,
+  item: SdlcItemRow,
+  runId: string,
+  row: ArtifactRow,
+  content: string,
+): Promise<number | null> {
   const owner = readerFor(item);
   try {
     const { draft } = await editorState(tx, owner, { key: row.docKey });
-    const saved = await saveDraft(tx, owner, { key: row.docKey, content, revision: draft.revision });
-    return saved.revision;
+    const input = { key: row.docKey, content, revision: draft.revision };
+    if (row.projectId === item.projectId) {
+      try {
+        return (await saveRunDraft(tx, { kind: "run", runId, projectId: item.projectId }, input)).revision;
+      } catch (e) {
+        if (!(e instanceof ForbiddenError)) throw e;
+      }
+    }
+    return (await saveDraft(tx, owner, input)).revision;
   } catch (e) {
     if (e instanceof ForbiddenError) return null;
     throw e;
@@ -488,7 +502,7 @@ export async function onSdlcRunFinished(
       skipped.push(file.path);
       continue;
     }
-    const revision = await writeArtifact(tx, item, target, file.content);
+    const revision = await writeArtifact(tx, item, outcome.runId, target, file.content);
     if (revision === null) skipped.push(file.path);
     else saved.push({ artifactId: target.id, docKey: target.docKey, revision, sha256: file.sha256 });
   }
