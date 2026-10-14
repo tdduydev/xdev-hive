@@ -40,6 +40,13 @@ export function formatTranscript(messages: ThreadMessage[], budget = HISTORY_CHA
 export const TIER_RULE =
   "Mỗi đề xuất task.create hoặc run.dispatch phải có `tier` (light|medium|heavy) và `tierReason` ngắn; gọi MCP `leader_tiers` để xem ý nghĩa từng cấp và model hub sẽ dùng. Gợi ý: tài liệu, đổi chữ, test nhỏ là light; một màn, CRUD, refactor gọn là medium; nhiều module, giao thức, bảo mật, migration, hiệu năng là heavy.";
 
+/**
+ * Việc lớn đi qua hạng mục AI SDLC (specs/011 US1-5) thay vì một loạt task: spec, duyệt, tách task có phụ thuộc. Leader
+ * chỉ đề xuất; người duyệt thành chủ hạng mục.
+ */
+export const SDLC_RULE =
+  "Việc lớn (cần spec hay thiết kế trước khi code, nhiều module, hoặc chạm nhiều dự án) thì đề xuất `sdlc.item.create` thay vì nhiều task.create: `item` gồm `projectId` (dự án chính), `title`, `idea` (yêu cầu đầy đủ), `modeRef` (chế độ dự án cho dùng, vd. speckit, aidlc-express, bugfix), `size` (S|M|L|XL), `participants` (id dự án tham gia, nếu có). Chỉ dự án đã bật AI SDLC mới tạo được hạng mục; lỗi nhỏ, việc rõ thì vẫn task.create.";
+
 export function assembleLeaderPrompt(params: {
   transcript: string;
   projectName: string;
@@ -52,6 +59,7 @@ export function assembleLeaderPrompt(params: {
     "Trả lời người dùng bằng đúng một lần gọi MCP `leader_reply`.",
     "Mọi hành động phải được đề xuất bằng MCP `leader_propose`; không tự thực hiện thay đổi.",
     TIER_RULE,
+    SDLC_RULE,
     `Dự án: ${params.projectName} (${params.projectKey}); nhánh chính: ${params.defaultBranch ?? "main"}.`,
     "Lịch sử cuộc trò chuyện (giữ tin đầu và các tin gần nhất trong ngân sách ký tự):",
     params.transcript,

@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import type { RequestContext } from "../platform/index.ts";
 import { ConflictError, NotFoundError, withTenant } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
+import type { SdlcDeps } from "../sdlc/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import { chatMessages, chatThreads } from "./schema.ts";
 import {
@@ -19,6 +20,8 @@ import {
 export interface LeaderRouterDeps extends OrgDeps {
   runs?: RunsEngine | undefined;
   approvalTtlSec?: number | undefined;
+  /** Để hạng mục AI SDLC do Leader đề xuất bắt đầu giai đoạn đầu ngay khi được duyệt. */
+  sdlc?: SdlcDeps | undefined;
 }
 
 export function leaderRouter(deps: LeaderRouterDeps) {
@@ -64,7 +67,7 @@ export function leaderRouter(deps: LeaderRouterDeps) {
         .handler(({ context: { tx }, input }) => listApprovals(tx, input.status, input.threadId)),
       approve: os.approvals.approve.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
         const { response, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, (tx) =>
-          approveApproval(deps.runs, tx, user.id, input.id, input.tier),
+          approveApproval(deps.runs, tx, user.id, input.id, input.tier, deps.sdlc),
         );
         afterCommit?.();
         return response;
