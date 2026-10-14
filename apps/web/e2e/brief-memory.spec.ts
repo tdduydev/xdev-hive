@@ -215,6 +215,10 @@ test("memory: duyệt hoặc bỏ memory agent đề xuất ở tab Chờ duyệ
   });
 
   await panel.getByRole("button", { name: "Bỏ" }).click();
+  // Bỏ memory hỏi lại: hộp thoại nêu nội dung sẽ bị bỏ.
+  const confirm = page.getByRole("dialog", { name: "Bỏ memory này?" });
+  await expect(confirm).toContainText("Đừng gọi API thật trong test.");
+  await confirm.getByRole("button", { name: "Bỏ memory" }).click();
   await expect(panel).toContainText("Không có memory nào chờ duyệt.");
   expect(hub.rpcCalls.find((c) => c.path === "memory/reject")?.input).toEqual({
     id: "0a0a0a0a-0000-4000-8000-000000000102",
