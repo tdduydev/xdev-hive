@@ -37,6 +37,8 @@ import {
   currentGateRun,
 } from "./service.ts";
 
+import { publishReviewStatus } from "./status.ts";
+
 export interface DecideDeps extends CodeReviewDeps, CodeReviewReadDeps {
   /**
    * Huỷ run review của checkpoint AI bị quyết thay hoặc chạy lại (module `runs` cài vào qua main.ts như
@@ -101,6 +103,7 @@ async function resumeAt(tx: Tx, review: CodeReviewRow, index: number, deps: Deci
     .where(eq(codeReviews.id, review.id))
     .returning();
   if (!row) return;
+  await publishReviewStatus(tx, row, deps);
   if (deps.jobs)
     await deps.jobs.enqueue(
       CODE_REVIEW_QUEUE,
