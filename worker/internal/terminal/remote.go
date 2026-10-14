@@ -384,8 +384,20 @@ func (r *Remote) Handle(ctx context.Context, c *localipc.Conn, req localipc.Requ
 		if err := req.Decode(&p); err != nil {
 			return c.Fail(localipc.CodeBadRequest, err.Error())
 		}
-		if !r.decide(p.PairID, p.Allow) {
+		if !r.decide(p.PairID, eventPairRequest, p.Allow) {
 			return c.Fail(localipc.CodeNotFound, "Không có yêu cầu ghép nào đang chờ với mã này.")
+		}
+		return c.OK(nil)
+	case "remote.start.decide":
+		var p struct {
+			RequestID string `json:"requestId"`
+			Allow     bool   `json:"allow"`
+		}
+		if err := req.Decode(&p); err != nil {
+			return c.Fail(localipc.CodeBadRequest, err.Error())
+		}
+		if !r.decide(p.RequestID, eventStartRequest, p.Allow) {
+			return c.Fail(localipc.CodeNotFound, "Không có yêu cầu mở phiên nào đang chờ với mã này.")
 		}
 		return c.OK(nil)
 	}

@@ -502,12 +502,20 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ## Phase 6: User Story 4 — Mở phiên mới từ điện thoại (P2)
 
-- [ ] T050 [US4] Worker: `term_start`
+- [x] T050 [US4] Worker: `term_start`
   - Kiểm assertion; `rootId` + `subdir` (giải symlink, `ROOT_ESCAPE`, `ROOT_MISSING`); CLI có trên máy; tài khoản; model
     và mức quyền theo chính sách do hub gửi, không toàn quyền trừ khi `allowFullAccess` tại máy; "Hỏi trên máy" qua
     `watch` (60 s); `term_opened`/`term_denied`.
   - **Scope**: `worker/internal/terminal/{start.go,start_test.go}`
   - **Phụ thuộc**: T040 (cùng làn) · **Mức**: nặng
+  - Đã làm (SPEC10W7): `start.go` kiểm chữ ký (`Action: "start"`) trước mọi điều kiện của máy, rồi CLI (`LocalCLIs` và
+    `Remote.CLIs`), root + subdir (`..`, đường tuyệt đối, symlink ra ngoài → `ROOT_ESCAPE`), model (regex, lạ thì bỏ),
+    mức quyền (`full` hạ về `workspace` khi chưa `allowFullAccess`). Đối số CLI do máy dựng; lời nhắc sau `--` (gemini
+    `--prompt-interactive=`), file `.cmd`/`.bat` trên Windows thì gõ lời nhắc vào PTY. "Hỏi tại máy" dùng chung
+    `ask`/`decide` với ghép (`start_request`/`start_done`, `remote.start.decide {requestId, allow}`). `term_opened` có
+    `requestId`, `origin: remote`, `cwdLabel`, `permissions`; audit `start`/`start_denied`. Test thêm
+    `start_unit_test.go` (chạy cả Windows). Chưa có: `term_opened` chưa cấp quyền điều khiển, điện thoại gửi `control`
+    sau khi mở (T051/T052 chốt).
 
 - [ ] T051 [US4] Hub: route `start`
   - Kiểm chủ máy, máy online có `terminal` và bật từ xa; gắn chính sách agent của tổ chức (model, mức quyền) vào
