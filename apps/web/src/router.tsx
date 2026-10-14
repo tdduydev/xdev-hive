@@ -14,10 +14,12 @@ import {
   validateLeaderSearch,
   validateLoginSearch,
   validateMachinesSearch,
+  validateMemberSearch,
   validateMembersSearch,
   validateOnboardingSearch,
   validateReviewsSearch,
   validateTasksSearch,
+  validateTeamSearch,
   validateTeamsSearch,
   validateWorkflowsSearch,
 } from "@/lib/route-search.ts";
@@ -54,6 +56,7 @@ const LoginPage = lazyRouteComponent(() => import("@/pages/login-page.tsx"), "Lo
 const LoginSettingsPage = lazyRouteComponent(() => import("@/pages/login-settings-page.tsx"), "LoginSettingsPage");
 const MachinesPage = lazyRouteComponent(() => import("@/pages/machines-page.tsx"), "MachinesPage");
 const McpConsentPage = lazyRouteComponent(() => import("@/pages/mcp-consent-page.tsx"), "McpConsentPage");
+const MemberDetailPage = lazyRouteComponent(() => import("@/pages/members-page.tsx"), "MemberDetailPage");
 const MembersPage = lazyRouteComponent(() => import("@/pages/members-page.tsx"), "MembersPage");
 const MergeQueuePage = lazyRouteComponent(() => import("@/pages/merge-queue-page.tsx"), "MergeQueuePage");
 const NotificationsPage = lazyRouteComponent(() => import("@/pages/notifications-page.tsx"), "NotificationsPage");
@@ -70,6 +73,7 @@ const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-page
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
 const ProjectTasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "ProjectTasksPage");
 const TasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "TasksPage");
+const TeamDetailPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamDetailPage");
 const TeamsPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamsPage");
 
 /*
@@ -257,7 +261,18 @@ const teamsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/admin/teams",
   validateSearch: validateTeamsSearch,
+  beforeLoad: ({ search }) => {
+    if (search.doi)
+      throw redirect({ to: "/admin/teams/$teamId", params: { teamId: search.doi }, search: {}, replace: true });
+  },
   component: TeamsPage,
+});
+
+const teamRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/admin/teams/$teamId",
+  validateSearch: validateTeamSearch,
+  component: TeamDetailPage,
 });
 
 const membersRoute = createRoute({
@@ -265,6 +280,13 @@ const membersRoute = createRoute({
   path: "/admin/members",
   validateSearch: validateMembersSearch,
   component: MembersPage,
+});
+
+const memberRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/admin/members/$userId",
+  validateSearch: validateMemberSearch,
+  component: MemberDetailPage,
 });
 
 const loginSettingsRoute = createRoute({
@@ -340,7 +362,9 @@ const routeTree = rootRoute.addChildren([
         leaderTerminalRoute,
         runRoute,
         teamsRoute,
+        teamRoute,
         membersRoute,
+        memberRoute,
         loginSettingsRoute,
         mergeQueueRoute,
         notificationsRoute,
