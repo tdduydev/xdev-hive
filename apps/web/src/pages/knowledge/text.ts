@@ -74,20 +74,14 @@ export const knowledgeText: Dict<{
   skillsOrgLead: string;
   skillsEmptyTitle: string;
   skillsEmptyBody: string;
-  memoryFilters: string;
   includeOldSearch: string;
-  searching: string;
-  clearSearch: string;
   noResults: string;
   noResultsHint: string;
   memoryEmptyTitle: string;
   memoryEmptyBody: string;
   noRows: string;
   rows: (from: number, to: number) => string;
-  previousPage: string;
-  nextPage: string;
   open: string;
-  openRow: string;
   saving: string;
   pendingEmptyHint: string;
   discardTitle: string;
@@ -101,6 +95,28 @@ export const knowledgeText: Dict<{
   proposalsNoneHint: string;
   proposalsReasonTitle: string;
   skillMissing: string;
+  notFound: string;
+  backToList: string;
+  changesTab: string;
+  overview: string;
+  learnedTab: string;
+  versionsTab: string;
+  proposalViews: string;
+  skillViews: string;
+  proposalHistoryLead: (target: string) => string;
+  proposalHistoryEmpty: string;
+  thisProposal: string;
+  decidedAt: string;
+  decidedBy: string;
+  learnedLead: string;
+  learnedEmpty: string;
+  learnedEmptyHint: string;
+  versionPick: string;
+  versionsLead: string;
+  path: string;
+  filesTitle: string;
+  supersededBy: string;
+  memoryOf: (kind: string) => string;
 }> = {
   vi: {
     choose: "Chọn một dòng để xem nội dung.",
@@ -110,20 +126,14 @@ export const knowledgeText: Dict<{
     skillsOrgLead: "Skill của tổ chức, đội và dự án; agent nạp theo phạm vi của run.",
     skillsEmptyTitle: "Chưa có skill của tổ chức",
     skillsEmptyBody: "Skill trong kho Git hay do agent đề xuất và được duyệt sẽ hiện ở đây.",
-    memoryFilters: "Lọc memory",
     includeOldSearch: "Tìm kiếm chỉ trả memory hiện hành.",
-    searching: "Đang tìm:",
-    clearSearch: "Xoá tìm kiếm",
     noResults: "Không có memory nào khớp",
     noResultsHint: "Thử từ khoá khác hoặc xoá tìm kiếm để xem cả danh sách.",
     memoryEmptyTitle: "Chưa có memory nào",
     memoryEmptyBody: "Memory đã duyệt hiện ở đây. Thêm memory đầu tiên hoặc chờ agent đề xuất.",
     noRows: "Không có dòng nào",
     rows: (from, to) => `Dòng ${from}–${to}`,
-    previousPage: "Trang trước",
-    nextPage: "Trang sau",
     open: "Mở",
-    openRow: "Mở dòng",
     saving: "Đang lưu…",
     pendingEmptyHint: "Khi agent đề xuất một memory mới, nó chờ ở đây cho tới khi có người duyệt.",
     discardTitle: "Bỏ memory này?",
@@ -203,6 +213,28 @@ export const knowledgeText: Dict<{
     pendingHint: "Memory do agent đề xuất. Chỉ khi được duyệt, agent mới tìm thấy nó qua memory_search.",
     memoryViews: "Danh sách memory",
     byRun: "Run",
+    notFound: "Không tìm thấy mục này. Có thể nó đã bị xoá hoặc bạn không có quyền xem.",
+    backToList: "Về danh sách",
+    changesTab: "Thay đổi",
+    overview: "Tổng quan",
+    learnedTab: "Học được",
+    versionsTab: "Phiên bản",
+    proposalViews: "Phần của đề xuất",
+    skillViews: "Phần của skill",
+    proposalHistoryLead: (target) => `Mọi đề xuất cho ${target}, mới nhất trước.`,
+    proposalHistoryEmpty: "Chưa có đề xuất nào khác cho đích này.",
+    thisProposal: "Đề xuất đang xem",
+    decidedAt: "Quyết định lúc",
+    decidedBy: "Người quyết định",
+    learnedLead: "Agent đề xuất sửa skill này sau các run; duyệt ở tab Đề xuất từ agent của trang Skills.",
+    learnedEmpty: "Chưa có đề xuất nào từ agent",
+    learnedEmptyHint: "Khi agent thấy skill này cần sửa sau một run, đề xuất của nó hiện ở đây.",
+    versionPick: "Xem bản",
+    versionsLead: "Nội dung SKILL.md của từng bản đã lưu.",
+    path: "Đường dẫn",
+    filesTitle: "File liên quan",
+    supersededBy: "Đã thay bằng",
+    memoryOf: (kind) => `Memory · ${kind}`,
   },
   en: {
     choose: "Select a row to view its content.",
@@ -212,20 +244,14 @@ export const knowledgeText: Dict<{
     skillsOrgLead: "Skills of the organization, teams and projects; agents load them by the run's scope.",
     skillsEmptyTitle: "No organization skills yet",
     skillsEmptyBody: "Skills in the Git repository, or proposed by agents and approved, show up here.",
-    memoryFilters: "Filter memories",
     includeOldSearch: "Search only returns current memories.",
-    searching: "Searching:",
-    clearSearch: "Clear search",
     noResults: "No memory matches",
     noResultsHint: "Try another keyword, or clear the search to see the whole list.",
     memoryEmptyTitle: "No memories yet",
     memoryEmptyBody: "Approved memories show up here. Add the first one or wait for an agent to propose one.",
     noRows: "No rows",
     rows: (from, to) => `Rows ${from}–${to}`,
-    previousPage: "Previous page",
-    nextPage: "Next page",
     open: "Open",
-    openRow: "Open row",
     saving: "Saving…",
     pendingEmptyHint: "When an agent proposes a new memory it waits here until someone approves it.",
     discardTitle: "Discard this memory?",
@@ -305,5 +331,27 @@ export const knowledgeText: Dict<{
     pendingHint: "Memories proposed by agents. Agents find them through memory_search only after approval.",
     memoryViews: "Memory lists",
     byRun: "Run",
+    notFound: "This item was not found. It may have been removed, or you may not have access to it.",
+    backToList: "Back to the list",
+    changesTab: "Changes",
+    overview: "Overview",
+    learnedTab: "Learned",
+    versionsTab: "Versions",
+    proposalViews: "Proposal sections",
+    skillViews: "Skill sections",
+    proposalHistoryLead: (target) => `Every proposal for ${target}, newest first.`,
+    proposalHistoryEmpty: "No other proposals for this target yet.",
+    thisProposal: "This proposal",
+    decidedAt: "Decided",
+    decidedBy: "Decided by",
+    learnedLead: "Edits agents proposed for this skill after runs; review them in the Agent proposals tab of Skills.",
+    learnedEmpty: "No agent proposals yet",
+    learnedEmptyHint: "When an agent finds this skill needs an edit after a run, its proposal shows up here.",
+    versionPick: "Show version",
+    versionsLead: "SKILL.md content of each saved version.",
+    path: "Path",
+    filesTitle: "Related files",
+    supersededBy: "Replaced by",
+    memoryOf: (kind) => `Memory · ${kind}`,
   },
 };

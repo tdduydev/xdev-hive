@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-git-group-status"
+description = "Enables the git_group_status command without any pre-configured scope."
+commands.allow = ["git_group_status"]
+
+[[permission]]
+identifier = "deny-git-group-status"
+description = "Denies the git_group_status command without any pre-configured scope."
+commands.deny = ["git_group_status"]

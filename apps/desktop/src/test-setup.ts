@@ -1,5 +1,5 @@
 import { cleanup, configure } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, expect, vi } from "vitest";
 import { queryClient } from "@/lib/hub-query.tsx";
 
 // Chunk Tiptap tải lười; máy CI tải nặng thì quá 1 giây mặc định của findBy*/waitFor.
@@ -21,10 +21,16 @@ console.error = (...args: unknown[]) => {
   consoleError(...args);
 };
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   const misuse = baseUiErrors.splice(0);
   if (misuse.length) throw new Error(`Base UI cảnh báo dùng sai component:\n${misuse.join("\n")}`);
+  // Lời gọi hub còn bay (mutation vừa gửi, refetch sau invalidate) mà về sau clear() sẽ ghi dữ liệu của test này vào
+  // cache của test kế: dữ liệu còn mới 30 giây nên test kế không gọi lại mà dùng luôn bản lạc đó. Chờ chúng xong trước.
+  // Test cố ý treo lời gọi (kiểm trạng thái đang tải) thì hết hạn chờ, vẫn xoá.
+  await vi
+    .waitFor(() => expect(queryClient.isFetching() + queryClient.isMutating()).toBe(0), { timeout: 3000 })
+    .catch(() => {});
   // Dữ liệu hub còn mới 30 giây (hub-query.tsx): không xoá thì test sau đọc lại dữ liệu giả của test trước.
   queryClient.clear();
   delete window.__TAURI__;
