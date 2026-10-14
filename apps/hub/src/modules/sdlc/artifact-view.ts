@@ -62,7 +62,7 @@ export async function artifactViews(
         error: s.syncError,
         attempts: s.syncAttempts,
         syncedAt: isoOrNull(s.syncedAt),
-        prUrl: null,
+        prUrl: s.prUrl,
       })),
   }));
 }

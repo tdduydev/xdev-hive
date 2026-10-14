@@ -5,7 +5,7 @@ import { loadProject } from "../catalog/index.ts";
 import { findMachineByRef } from "../fleet/index.ts";
 import type { McpPrincipal, McpToolRegistry } from "../mcp/index.ts";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../platform/index.ts";
-import { loadTask, taskByKeyForUser, toTask } from "../tasks/index.ts";
+import { loadTask, taskByKeyForUser, toTask, updateChecklist } from "../tasks/index.ts";
 import { teamRoleOf } from "../tenancy/index.ts";
 import { searchRuns } from "./queries.ts";
 import { reviewReportInput } from "./review.ts";
@@ -76,19 +76,36 @@ export function registerMcpTools(registry: McpToolRegistry): void {
   registry.register({
     name: "task_update",
     title: "Báo cáo task",
-    description: "Ghi báo cáo và đề xuất trạng thái cho task của run hiện tại.",
+    // Mô tả ngắn: tools/list của run code có ngân sách byte (mcp-run.db.test.ts).
+    description:
+      "Ghi báo cáo, đề xuất trạng thái task của run. `checklist`: mục đã xong; `evidence`: requirement, test đã chạy.",
     input: z.object({
       status: z.enum(["review", "done"]).optional().describe("Đề xuất trạng thái task sau run."),
       note: z.string().min(1).max(20_000).describe("Báo cáo: đã làm gì, kiểm tra ra sao, còn vướng gì."),
+      checklist: z
+        .array(z.object({ id: z.string().max(40), done: z.boolean() }))
+        .max(50)
+        .optional(),
+      evidence: z
+        .object({ requirements: z.array(z.string().max(40)).max(100), tests: z.array(z.string().max(500)).max(100) })
+        .partial()
+        .optional(),
     }),
-    handler: async ({ status, note }, { tx, principal }) => {
+    handler: async ({ status, note, checklist, evidence }, { tx, principal }) => {
       const { runId, attempt } = requireRun(principal);
       // Khoá dòng run để báo cáo không lọt vào giữa lúc run chuyển sang verifying hay lần thử mới.
       const run = await lockRun(tx, runId);
       if (!run || run.attempt !== attempt || !ON_MACHINE.includes(run.state)) throw runNotActive();
+      // Checklist là tiến độ của task, không phải kết luận run: ghi ngay để người xem thấy agent đang tới đâu.
+      if (checklist?.length && run.taskId) await updateChecklist(tx, run.taskId, checklist);
       // Ghi sự kiện thay vì đổi thẳng task.status: run kết thúc sẽ đặt trạng thái task theo chính sách kết quả, đổi
       // trước thì bị ghi đè và người xem thấy task nhảy trạng thái.
-      await hubEvent(tx, run, "agent_report", { note, status: status ?? null });
+      await hubEvent(tx, run, "agent_report", {
+        note,
+        status: status ?? null,
+        ...(checklist?.length ? { checklist } : {}),
+        ...(evidence ? { evidence } : {}),
+      });
       await notifyRun(tx, run.id);
       return { runId: run.id, attempt: run.attempt, taskId: run.taskId, recorded: "agent_report" };
     },
