@@ -680,6 +680,10 @@ async function notifyReviewers(tx: Tx, inst: InstanceRow, gate: ReviewGate, deps
       eventKey: `review:${inst.id}:${inst.gateIndex}:${Date.now()}`,
       recipientIds: [...ids],
       link: deps.publicUrl ? `${deps.publicUrl.replace(/\/+$/, "")}/knowledge/reviews?id=${inst.id}` : null,
+      actions: [
+        { kind: "review.approve", reviewId: inst.id },
+        { kind: "review.changes", reviewId: inst.id },
+      ],
     },
     { jobs: deps.jobs },
   );
