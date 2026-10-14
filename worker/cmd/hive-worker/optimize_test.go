@@ -309,14 +309,19 @@ func TestOptimizeRTK(t *testing.T) {
 	settings := e.write(t, ".xdev-hive/accounts/claude-2/settings.json", "{}\n")
 	e.accounts(t, `{"id":"claude-2","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-2"}`)
 
-	if code, _, errOut := e.run(t, "enable", "--profile", "claude-2", "--rtk"); code != 1 || !strings.Contains(errOut, "rtk") {
-		t.Fatalf("không có rtk phải báo lỗi rõ: %d %q", code, errOut)
+	// Windows báo "chưa hỗ trợ" trước khi tìm rtk: cài rtk cũng không giúp được người dùng ở đó.
+	wantErr := "không thấy rtk"
+	if runtime.GOOS == "windows" {
+		wantErr = "chưa hỗ trợ trên Windows"
+	}
+	if code, _, errOut := e.run(t, "enable", "--profile", "claude-2", "--rtk"); code != 1 || !strings.Contains(errOut, wantErr) {
+		t.Fatalf("không có rtk phải báo lỗi rõ (%q): %d %q", wantErr, code, errOut)
 	}
 	if got := readFile(t, settings); got != "{}\n" {
 		t.Fatalf("lỗi không được ghi gì:\n%s", got)
 	}
 	if runtime.GOOS == "windows" {
-		t.Skip("RTK chưa hỗ trợ Windows; script sh giả chỉ chạy trên Unix")
+		t.Skip("script sh giả chỉ chạy trên Unix")
 	}
 
 	bin := t.TempDir()
