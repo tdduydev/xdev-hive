@@ -96,6 +96,7 @@ const RunPage = lazyRouteComponent(() => import("@/pages/run-page.tsx"), "RunPag
 const RunsPage = lazyRouteComponent(() => import("@/pages/runs-page.tsx"), "RunsPage");
 const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "ProjectSandboxPage");
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
+const SdlcMetricsPage = lazyRouteComponent(() => import("@/pages/sdlc/metrics-page.tsx"), "SdlcMetricsPage");
 const SdlcModesPage = lazyRouteComponent(() => import("@/pages/admin/sdlc-modes-page.tsx"), "SdlcModesPage");
 const SdlcFleetPage = lazyRouteComponent(() => import("@/pages/sdlc/fleet-page.tsx"), "SdlcFleetPage");
 const SdlcBoardPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcBoardPage");
@@ -391,7 +392,7 @@ const roleRoute = createRoute({
 });
 
 /**
- * AI SDLC (specs/011 T054). Đường dẫn tĩnh `new`, `questions` thắng đường dẫn có tham số cùng độ dài; key dự án luôn
+ * AI SDLC (specs/011 T054). Đường dẫn tĩnh `new`, `questions`, `metrics` thắng đường dẫn có tham số cùng độ dài; key dự án luôn
  * bắt đầu bằng chữ và số hạng mục là số nên hai loại không lẫn.
  */
 const sdlcRoutes = [
@@ -400,6 +401,7 @@ const sdlcRoutes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc", component: SdlcBoardPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/new", component: SdlcNewPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/questions", component: SdlcQuestionsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/metrics", component: SdlcMetricsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number", component: SdlcItemPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number/$tab", component: SdlcItemPage }),
 ];

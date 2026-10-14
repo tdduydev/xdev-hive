@@ -69,3 +69,23 @@ Merge không có xung đột; các thay đổi nền hub/worker/contracts thuộ
   118 qua, 12 bỏ qua do không đặt thư mục chụp ảnh máy.
 
 Các giới hạn hub thật/Tauri và phần còn chờ ở trên vẫn áp dụng. Không chạy full `pnpm ci:local`.
+
+## SPEC11W5UI: Chỉ số và Hội tụ
+
+| Yêu cầu | Bằng chứng |
+|---|---|
+| US12, FR-037, T082 (phần UI) | `metrics.tsx`: khoảng 7/30/90 ngày, lọc dự án và chế độ, lead time p50/p90 theo giai đoạn có nút thắt, bảy thẻ chỉ số, bảng tự duyệt theo chế độ/dự án; web `/sdlc/metrics`, màn app `sdlc-metrics` mời kết nối khi chưa có hub. |
+| US10, T080 (phần UI) | `converge-panel.tsx`: "Chưa hội tụ (vòng r/max)", "Đã hội tụ", hết vòng thì báo đã dừng và không cho chạy thêm; chọn vòng; mâu thuẫn có "Sửa code: thêm task" và "Sửa tài liệu"; chế độ không có bước `converge` thì không có tab. |
+| SC-012 | 4 ảnh 360 px sáng/tối trong [screenshots/spec11w5ui](../../apps/web/e2e/screenshots/spec11w5ui), không tràn ngang. |
+
+Kiểm:
+
+- `pnpm biome check --write .`: thành công; 18 cảnh báo và 2 thông tin có sẵn, file mới không có cảnh báo.
+- `pnpm --filter @xdev-hive/sdlc-ui typecheck`, `… web typecheck`, `… desktop typecheck` (chạy lần lượt): thành công.
+- `pnpm deps`: không có vi phạm (1.472 module, 6.425 phụ thuộc).
+- Vitest: sdlc-ui 12 file / 71 test, web 36 file / 590 test, desktop 31 file / 242 test, đều qua.
+- `HIVE_WEB_E2E_PORT=4392 HIVE_WEB_E2E_WORKERS=2 pnpm --filter @xdev-hive/web exec playwright test e2e/sdlc-converge.spec.ts
+  e2e/sdlc.spec.ts e2e/sdlc-mvp.spec.ts e2e/sdlc-multi.spec.ts e2e/sdlc-metrics.spec.ts`: 22 bài qua.
+
+Giới hạn: hub chưa có `metrics.ts` và `converge.ts`, nên UI chỉ kiểm với hub giả theo hợp đồng. Hình dạng
+`step.result.findings` là giả định theo `sdlc_report` loại `findings`; cần kiểm lại khi hub ghi kết quả bước.

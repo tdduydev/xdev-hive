@@ -10,7 +10,7 @@ import { PageBody } from "@/shell/page-header.tsx";
  * API và quyền. Mỗi component tự có tiêu đề trang nên ở đây không dùng PageHeader.
  */
 
-function SdlcPage({ children }: { children: ReactNode }) {
+export function SdlcPage({ children }: { children: ReactNode }) {
   const { org } = useOrg();
   return (
     <SdlcProvider env={useWebSdlcEnv()}>
