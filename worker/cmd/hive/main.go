@@ -68,18 +68,20 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
   logout                  xoá token trên máy
   whoami                  đang đăng nhập bằng ai, hub nào
   chat [--cli claude|codex|gemini] [--account ID] [--model M] [--task KEY | --project KEY] [--no-record] [--force]
-       [-- đối số thêm cho CLI]
+       [--escape KEY] [-- đối số thêm cho CLI]
                           mở phiên agent tương tác trong thư mục hiện tại
   run "<lời nhắc>" [cờ như chat]
                           như chat, gửi lời nhắc làm câu đầu
   ls [--json] [--all]     liệt kê phiên trên máy (--all: phiên đang chạy trên mọi máy của bạn, cần đăng nhập)
-  attach <id> [--view]    gắn lại vào phiên (--view: chỉ xem)
+  attach <id> [--view] [--escape KEY]
+                          gắn lại vào phiên (--view: chỉ xem)
   kill <id>               ngắt phiên
   remote <lệnh>           điều khiển từ xa máy này: status, on, off, roots, devices, pair, set, watch
                           (hive remote help để xem đủ)
   version                 phiên bản hive và hive-worker
 
 Trong phiên: Ctrl-] d để tách (phiên chạy tiếp), Ctrl-] t để giành quyền điều khiển, Ctrl-] Ctrl-] gửi Ctrl-].
+Đổi phím tiền tố bằng --escape ctrl-<phím> (vd. ctrl-a); --escape none gửi mọi phím cho agent.
 `
 
 func (a *app) usage() int {
@@ -149,8 +151,6 @@ func (a *app) fail(err error) int {
 	switch {
 	case errors.Is(err, localipc.ErrNotRunning):
 		return a.errorf(exitUsage, "%s", msgNotRunning)
-	case errors.Is(err, localipc.ErrUnsupported):
-		return a.errorf(exitUsage, "hive chưa hỗ trợ trên Windows: socket nội bộ tới hive-worker chưa làm.")
 	case errors.Is(err, localipc.ErrDenied):
 		return a.errorf(exitDenied, "hive-worker từ chối kết nối: chỉ người dùng đang chạy worker mới dùng được.")
 	case errors.As(err, &ve):
