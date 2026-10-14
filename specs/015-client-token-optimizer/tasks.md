@@ -125,7 +125,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - `worker/cmd/hive-worker/main.go`: một `case "optimize"` và chuỗi cách dùng.
   - **Test**: chạy end-to-end trên `HOME` giả: bật → `status --json` → tắt.
 
-- [ ] **T010 [US3] [US4] [vừa] Thao tác memory và lệnh `hive-worker memory`** (sau T005; chạy song song với T004 nhưng
+- [x] **T010 [US3] [US4] [vừa] Thao tác memory và lệnh `hive-worker memory`** (sau T005; chạy song song với T004 nhưng
   sửa `main.go` sau T004)
   - **Goal**:
     - Lệnh `memory scan|edit|delete|restore|merge|share|unshare --json`.
