@@ -89,7 +89,7 @@ const text: Dict<{
     allowedMcp: "MCP được phép",
     mcpTools: "MCP và công cụ",
     linkHint:
-      "Liên kết tài khoản ở thẻ người dùng góc dưới bên trái để agent trên máy gọi được tài liệu, skill và memory của hub.",
+      "Kết nối Hive ở thẻ tài khoản góc dưới bên trái để agent trên máy gọi được tài liệu, skill và memory của hub.",
     statuses: { ok: "Đủ", outdated: "Cũ", mismatch: "Khác bản", missing: "Thiếu", optional: "Không bắt buộc" },
     thisMachine: "máy này",
     because: "Vì:",
@@ -129,7 +129,7 @@ const text: Dict<{
     allowedMcp: "Allowed MCP",
     mcpTools: "MCP & tools",
     linkHint:
-      "Link your account from the user card at the bottom left so agents on this machine can reach the hub's docs, skills and memory.",
+      "Connect to Hive from the account card at the bottom left so agents on this machine can reach the hub's docs, skills and memory.",
     statuses: {
       ok: "OK",
       outdated: "Outdated",

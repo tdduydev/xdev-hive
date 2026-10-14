@@ -28,7 +28,7 @@ func StatePath(accountsPath string) string {
 // LoadState đọc trạng thái; file không có thì trả rỗng, không lỗi.
 func LoadState(path string) (State, error) {
 	var s State
-	b, err := os.ReadFile(path)
+	b, err := readFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return s, err
 	}
@@ -105,7 +105,8 @@ func withLock(path string, fn func() error) error {
 			_ = f.Close()
 			break
 		}
-		if !errors.Is(err, os.ErrExist) {
+		// Windows: file khoá vừa bị xoá mà còn handle mở (trình diệt virus) thì tạo lại báo "Access is denied" như đang bị giữ.
+		if !errors.Is(err, os.ErrExist) && !transient(err) {
 			return err
 		}
 		if st, err := os.Stat(lock); err == nil && time.Since(st.ModTime()) > staleLock {
@@ -146,5 +147,5 @@ func writeJSON(path string, v any) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), path)
+	return rename(tmp.Name(), path)
 }

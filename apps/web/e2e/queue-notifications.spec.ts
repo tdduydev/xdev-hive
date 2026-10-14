@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
+  DEFAULT_CHAT_SETTINGS,
   defaultProjectSettings,
   type InboxItem,
   type MergeQueueEntry,
@@ -105,6 +106,10 @@ async function setup(page: Page, rpc: Record<string, RpcHandler> = {}, role = "o
       "teamMembers/list": () =>
         ok([{ userId: USER.id, name: USER.name, email: USER.email, image: null, teamId, role: teamRole }]),
       "notificationChannels/list": () => ok([channel]),
+      "chat/links/list": () => ok([]),
+      "chat/links/available": () => ok([]),
+      "chat/bots/list": () => ok([]),
+      "chat/settings/get": () => ok(DEFAULT_CHAT_SETTINGS),
       "inbox/list": () => ok({ items: [inboxItem], nextCursor: null }),
       "inbox/unreadCount": () => ok({ count: 1 }),
       ...rpc,

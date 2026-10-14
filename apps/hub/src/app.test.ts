@@ -109,6 +109,19 @@ describe("dự án và kết nối Git khi chưa đăng nhập", () => {
   });
 });
 
+describe("review code khi chưa đăng nhập", () => {
+  // 401 thay vì 404 chứng tỏ router codeReviews đã nối vào app.
+  it.each([
+    ["GET", "/api/v1/code-reviews"],
+    ["GET", "/api/v1/code-reviews/count"],
+    ["POST", "/api/v1/code-reviews/decide"],
+    ["POST", "/api/v1/code-reviews/dry-run"],
+  ])("%s %s trả 401", async (method, path) => {
+    const res = await app.request(path, { method, ...(method === "POST" && { body: "{}" }) });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("API máy khi chưa có đăng nhập", () => {
   it("GET /api/v1/teams/{teamId}/machines trả 401", async () => {
     const res = await app.request("/api/v1/teams/00000000-0000-4000-8000-000000000000/machines");

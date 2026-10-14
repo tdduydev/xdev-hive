@@ -9,6 +9,8 @@ const msg = (role: ChatMessage["role"]): ChatMessage => ({
   content: "x",
   runId: null,
   createdAt: "2026-10-12T00:00:00.000Z",
+  artifact: null,
+  pageErrors: null,
 });
 
 describe("describeAction", () => {

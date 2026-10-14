@@ -73,6 +73,13 @@ export function toRun(r: RunRow): Run {
         }
       : null,
     rtk: r.rtk ? { commands: r.rtk.commands, savedTokens: r.rtk.savedTokens } : null,
+    tokenGuard: r.tokenGuard
+      ? {
+          contextPackFiles: r.tokenGuard.contextPackFiles,
+          exploreBlocked: r.tokenGuard.exploreBlocked,
+          truncatedChars: r.tokenGuard.truncatedChars,
+        }
+      : null,
     createdBy: r.createdBy,
     ownerUserId: r.ownerUserId,
     createdAt: r.createdAt.toISOString(),
