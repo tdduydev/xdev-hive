@@ -8,6 +8,9 @@ import { codeReviewText } from "./text.ts";
 const now = Date.parse("2026-10-13T01:00:00.000Z");
 const base = { now, t: codeReviewText.vi, onDecide: vi.fn() };
 
+// delay mặc định chờ một macrotask sau mỗi thao tác; máy tải cao thì mỗi lần chờ kéo dài và test chạm trần thời gian.
+const user = userEvent.setup({ delay: null });
+
 describe("CodeReviewPane", () => {
   it("ghép tiêu đề, máy đã kiểm, AI, diff, các vòng và quyết định", () => {
     render(<CodeReviewPane detail={detail()} files={{ status: "ready", data: files() }} {...base} />);

@@ -504,6 +504,22 @@ describe("GitLab merge request cho merge queue", () => {
     expect(await gl.checksFor(ref, sha)).toBe(state);
   });
 
+  it.each([
+    [[], "none"],
+    [[{ name: "test", status: "success" }], "success"],
+    [[{ name: "test", status: "failed" }], "failure"],
+    [[{ name: "test", status: "running" }], "pending"],
+    [[{ name: "test", status: "skipped" }], "none"],
+    [[{ name: "test", status: "failed", allow_failure: true }], "success"],
+  ])("checkpoint CI bỏ status review khỏi pipeline %j → %s", async (other, state) => {
+    const { gl, pool } = setup();
+    const sha = "b".repeat(40);
+    pool
+      .intercept({ path: `${P}/repository/commits/${sha}/statuses?per_page=100&page=1`, method: "GET" })
+      .reply(200, [{ name: "xdev-hive/review", status: "pending" }, ...other], JSON_HEADERS);
+    expect(await gl.checksFor(ref, sha, { excludeContexts: ["xdev-hive/review"] })).toBe(state);
+  });
+
   it("mergePR gửi sha và squash, trả sha của commit trên nhánh chính", async () => {
     const { gl, pool } = setup();
     pool

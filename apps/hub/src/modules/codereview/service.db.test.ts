@@ -10,6 +10,9 @@ import { createPool, type Jobs, parseMasterKey, type Tx, withTenant } from "../p
 import { createMemoryProvider, type MemoryProvider } from "../scm/index.ts";
 import type { StartReviewRunsInput } from "./ai.ts";
 import { CI_MAX_CHECKS, type CodeReviewWorkerDeps, handleCodeReviewJob } from "./jobs.ts";
+import { onPullRequestEnded } from "./merge.ts";
+
+import { onBranchPushed } from "./scm.ts";
 import {
   advanceReview,
   type CodeReviewJob,
@@ -20,6 +23,7 @@ import {
   type RunEvidence,
   startCodeReview,
 } from "./service.ts";
+import { handleReviewStatusJob, REVIEW_STATUS_CONTEXT } from "./status.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -33,11 +37,14 @@ let provider: MemoryProvider;
 
 // ---- Hàng đợi và cổng giả ------------------------------------------------------------------------------------------
 
+const statusJobs: { orgId: string; reviewId: string }[] = [];
 const queued: { data: CodeReviewJob; startAfter: Date | undefined }[] = [];
 const jobs: Jobs = {
   start: async () => {},
   stop: async () => {},
   enqueue: async (_queue, data, opts) => {
+    if (_queue === "codereview-status") statusJobs.push(data as { orgId: string; reviewId: string });
+    if (_queue !== "codereview") return randomUUID();
     queued.push({ data: data as CodeReviewJob, startAfter: opts?.startAfter });
     return randomUUID();
   },
@@ -83,6 +90,7 @@ interface P {
   projectId: string;
   key: string;
   ref: { owner: string; name: string };
+  repo: ReturnType<MemoryProvider["seedRepo"]>;
 }
 
 let seq = 0;
@@ -98,8 +106,8 @@ async function newProject(): Promise<P> {
     key,
   });
   const ref = { owner: p.owner, name: p.repo };
-  provider.seedRepo(ref);
-  return { projectId: p.projectId, key, ref };
+  const repo = provider.seedRepo(ref);
+  return { projectId: p.projectId, key, ref, repo };
 }
 
 async function openPR(p: P, branch: string, files: Record<string, string> = { "src/pay.ts": "export {}\n" }) {
@@ -203,6 +211,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   queued.splice(0);
+  statusJobs.splice(0);
   reviewRuns.splice(0);
 });
 
@@ -599,5 +608,53 @@ describe("huỷ phiên", () => {
     // Job tới muộn không làm gì với phiên đã huỷ.
     await sys((tx) => advanceReview(tx, id, deps, { files: null }));
     expect(await gateRuns(id)).toHaveLength(1);
+  });
+});
+
+describe("status theo luồng T070", () => {
+  const flushStatuses = async () => {
+    for (const job of statusJobs.splice(0)) await handleReviewStatusJob(deps, job);
+  };
+  it("mở phiên, CI trả lại, push vòng mới, duyệt, huỷ qua webhook; job cũ đọc trạng thái mới", async () => {
+    const p = await newProject();
+    await saveWorkflow(p, [CI]);
+    const pr = await openPR(p, "ai/status");
+    const row = await sys((tx) => startCodeReview(tx, codeRun(p, pr), deps));
+    const repo = p.repo;
+    const status = (sha: string) => repo.statuses.get(sha)?.get(REVIEW_STATUS_CONTEXT)?.state;
+    expect(status(pr.headSha)).toBeUndefined();
+    const oldJob = statusJobs[0];
+    await flushStatuses();
+    expect(status(pr.headSha)).toBe("pending");
+    provider.setChecks(p.ref, pr.headSha, "failure");
+    await settle();
+    await settle();
+    await flushStatuses();
+    expect(status(pr.headSha)).toBe("failure");
+    const nextSha = "a".repeat(40);
+    const next = await sys((tx) =>
+      onBranchPushed(tx, { projectId: p.projectId, branch: row?.branch ?? "", headSha: nextSha }, deps),
+    );
+    await flushStatuses();
+    expect(status(nextSha)).toBe("pending");
+    provider.setChecks(p.ref, nextSha, "success");
+    await settle();
+    await settle();
+    await flushStatuses();
+    expect((await reviewRow(next?.id ?? "")).status).toBe("approved");
+    expect(status(nextSha)).toBe("success");
+    await handleReviewStatusJob(deps, oldJob as { orgId: string; reviewId: string });
+    expect(status(nextSha)).toBe("success");
+    expect((await reviewRow(row?.id ?? "")).status).toBe("superseded");
+    const closingSha = "b".repeat(40);
+    await sys((tx) =>
+      onBranchPushed(tx, { projectId: p.projectId, branch: row?.branch ?? "", headSha: closingSha }, deps),
+    );
+    await flushStatuses();
+    expect(status(closingSha)).toBe("pending");
+    await sys((tx) => onPullRequestEnded(tx, { projectId: p.projectId, prNumber: pr.number, outcome: "closed" }, deps));
+    await flushStatuses();
+    expect(status(closingSha)).toBe("success");
+    expect(repo.statuses.get(closingSha)?.get(REVIEW_STATUS_CONTEXT)?.description).toContain("đã huỷ");
   });
 });
