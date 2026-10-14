@@ -10,11 +10,13 @@ import {
   SDLC_PHASE_KINDS,
   SDLC_PRESETS,
   type SdlcAutoApproval,
+  type SdlcBreakdownView,
   type SdlcItemDetail,
   type SdlcItemSummary,
   type SdlcModeView,
   type SdlcPhaseKind,
   type SdlcQuestion,
+  type SdlcTrace,
 } from "@xdev-hive/contracts";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
@@ -313,6 +315,111 @@ export function itemDetail(over: Partial<SdlcItemDetail> = {}): SdlcItemDetail {
   };
 }
 
+/** Bản tách hai dự án: T003 ở web-shop chờ T002 ở payment-api (cạnh liên dự án); FR-003 chưa có task. */
+export function breakdownView(over: Partial<SdlcBreakdownView> = {}): SdlcBreakdownView {
+  const task = (key: string, project: string, over: Record<string, unknown> = {}) => ({
+    sliceKey: key,
+    title: `Việc ${key}`,
+    body: "",
+    project,
+    requirementIds: [] as string[],
+    checklist: [] as { id: string; text: string; requirementIds: string[] }[],
+    dependsOn: [] as string[],
+    files: [] as string[],
+    parallel: true,
+    line: 1,
+    ...over,
+  });
+  const cov = { requirements: 3, planned: 66.7, done: 0, verified: 0 };
+  return {
+    itemId: itemDetail().id,
+    source: "draft",
+    docKey: "project/payment-api/sdlc/012-hoan-tien-mot-phan/tasks",
+    revision: 3,
+    breakdown: {
+      parser: "hive-tasks",
+      granularity: "item",
+      requirements: ["FR-001", "FR-002", "FR-003"],
+      tasks: [
+        task("T001", PAYMENT.key, {
+          requirementIds: ["FR-001"],
+          checklist: [
+            { id: "a", text: "Bảng hoàn tiền", requirementIds: ["FR-001"] },
+            { id: "b", text: "API hoàn tiền", requirementIds: ["FR-001"] },
+          ],
+        }),
+        task("T002", PAYMENT.key, { requirementIds: ["FR-002"], dependsOn: ["T001"] }),
+        task("T003", WEB.key, { requirementIds: ["FR-002"], dependsOn: ["T002"] }),
+      ],
+      waves: [["T001"], ["T002"], ["T003"]],
+    },
+    errors: [],
+    coverage: {
+      total: cov,
+      byProject: [
+        { projectKey: PAYMENT.key, coverage: cov },
+        { projectKey: WEB.key, coverage: { requirements: 1, planned: 100, done: 0, verified: 0 } },
+      ],
+      missing: ["FR-003"],
+    },
+    ...over,
+  };
+}
+
+export function traceView(over: Partial<SdlcTrace> = {}): SdlcTrace {
+  const taskRow = (n: number, projectKey: string, over: Record<string, unknown> = {}) => ({
+    taskId: uuid(600 + n),
+    key: `T-${40 + n}`,
+    projectKey,
+    status: "done" as const,
+    runId: null,
+    prUrl: null,
+    mergeSha: null,
+    tests: [] as string[],
+    ci: "none" as const,
+    ...over,
+  });
+  return {
+    itemId: itemDetail().id,
+    rows: [
+      {
+        requirementId: "FR-001",
+        text: "Hoàn tiền một phần",
+        tasks: [
+          taskRow(1, PAYMENT.key, {
+            runId: uuid(801),
+            prUrl: "https://github.com/acme/payment-api/pull/7",
+            mergeSha: "abcdef1234567",
+            tests: ["refund.test.ts"],
+            ci: "success",
+          }),
+          taskRow(2, WEB.key),
+        ],
+        findings: [],
+        planned: true,
+        done: true,
+        verified: true,
+      },
+      {
+        requirementId: "FR-003",
+        text: "Gửi email",
+        tasks: [],
+        findings: [],
+        planned: false,
+        done: false,
+        verified: false,
+      },
+    ],
+    total: { requirements: 2, planned: 50, done: 50, verified: 50 },
+    byProject: [
+      { projectKey: PAYMENT.key, coverage: { requirements: 1, planned: 100, done: 100, verified: 100 } },
+      { projectKey: WEB.key, coverage: { requirements: 1, planned: 100, done: 100, verified: 0 } },
+    ],
+    csv: null,
+    ...over,
+  };
+}
+
 /** Client giả theo đúng đường dẫn của hợp đồng; test chỉ cần những thủ tục màn gọi. */
 export function fakeClient(
   data: {
@@ -321,6 +428,8 @@ export function fakeClient(
     modes?: SdlcModeView[];
     questions?: SdlcQuestion[];
     item?: SdlcItemDetail;
+    breakdown?: SdlcBreakdownView;
+    trace?: SdlcTrace;
   } = {},
 ) {
   const item = data.item ?? itemDetail();
@@ -373,6 +482,18 @@ export function fakeClient(
       },
       contracts: { create: vi.fn(async (input: Record<string, unknown>) => input) },
       sync: vi.fn(async (_input: { id: string; projectId: string; action: string }) => []),
+      breakdown: {
+        get: vi.fn(async (_input: { id: string; source?: string }) => data.breakdown ?? breakdownView()),
+        save: vi.fn(async (input: { breakdown: SdlcBreakdownView["breakdown"]; baseRevision: number }) => ({
+          ...(data.breakdown ?? breakdownView()),
+          breakdown: input.breakdown,
+          revision: input.baseRevision + 1,
+        })),
+      },
+      trace: vi.fn(async (input: { id: string; projectId?: string; format?: string }) => ({
+        ...(data.trace ?? traceView()),
+        csv: input.format === "csv" ? "requirement,task\nFR-001,T-41\n" : null,
+      })),
       questions: {
         list: vi.fn(async (input: { openOnly?: boolean; itemId?: string }) => ({
           items: (data.questions ?? []).filter(

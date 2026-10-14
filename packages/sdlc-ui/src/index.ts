@@ -24,3 +24,5 @@ export { answerOf, Questions, type QuestionsProps, useOpenQuestionCount } from "
 export { latestRuns, StepsPanel } from "./steps-panel.tsx";
 export { SyncStatus, type SyncStatusProps } from "./sync-status.tsx";
 export { type SdlcText, sdlcText } from "./text.ts";
+// Bản tách (`@xdev-hive/sdlc-ui/breakdown`) không xuất ở đây: nó kéo theo `@xyflow/react` và CSS của nó.
+export { downloadCsv, TraceMatrix } from "./trace-matrix.tsx";

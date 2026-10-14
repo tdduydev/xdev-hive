@@ -341,13 +341,16 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - Đã làm: tab Task và Truy vết nhận nội dung qua `renderTasks`/`renderTrace` (T052 điền); mặc định là danh sách task
     theo đợt. "Duyệt từng đội" của contract dẫn tới phiên duyệt (contract chưa trả checkpoint theo đội trong `sdlcArtifactView`).
 
-- [ ] T052 🎯 Package `@xdev-hive/sdlc-ui` — duyệt bản tách và truy vết
+- [x] T052 🎯 Package `@xdev-hive/sdlc-ui` — duyệt bản tách và truy vết
   - `breakdown-review.tsx` (gộp/tách, sửa phụ thuộc, chuyển mục task ↔ checklist, đổi dự án của task, độ phủ, lỗi đọc),
     `dependency-graph.tsx` (`@xyflow/react`, làn theo dự án, cạnh liên dự án tô riêng, có dạng danh sách cho 360 px),
     `trace-matrix.tsx` (cột dự án, độ phủ tổng và theo dự án, CSV).
   - **Scope**: `packages/sdlc-ui/src/{breakdown-review.tsx,dependency-graph.tsx,trace-matrix.tsx}` + test,
     `packages/sdlc-ui/package.json` (thêm `@xyflow/react`), `pnpm-lock.yaml`
   - **Phụ thuộc**: T051, T003 · **Mức**: vừa
+  - Đã làm: thao tác sửa thuần ở `breakdown-edit.ts` (tính lại đợt, từ chối chu trình); tab Task có nút chuyển "Task đã
+    tạo" ↔ "Bản tách" (nạp lười), tab Truy vết là `TraceMatrix`. Bản tách xuất ở `@xdev-hive/sdlc-ui/breakdown` để màn
+    khác (ReviewPane) không kéo `@xyflow` qua `index.ts`; app chủ cần nạp CSS qua Vite như mọi import CSS.
 
 - [ ] T053 [P] `doc-editor`: khung bên "Hạng mục" và thẻ trong ReviewPane
   - Khung bên khi key thuộc `project/<k>/sdlc/…`: giai đoạn, khuôn, mục bắt buộc, câu hỏi đã trả lời, "Nhờ agent soạn
