@@ -506,6 +506,10 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - SPEC11W5UI đã làm phần UI theo hợp đồng `sdlc.metrics`: `metrics.tsx` (khoảng 7/30/90 ngày, lọc dự án và chế độ, lead
     time p50/p90 có nút thắt, bảy thẻ chỉ số, bảng tự duyệt), web `/sdlc/metrics` + menu "Chỉ số", màn app
     `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`. Còn hub `metrics.ts` và route; chưa đo SC-007.
+  - SPEC11W6UI (US12 AS3): màn Chỉ số có liên kết "Mở bảng hạng mục với bộ lọc này" mang dự án và chế độ sang bảng (web
+    `/sdlc?project=…&mode=…`, app `#/sdlc/loc?project=…&mode=…`). `sdlc.items.list` chưa lọc theo thời gian nên bảng
+    không giới hạn theo khoảng ngày và màn nói rõ điều đó; muốn đúng "hạng mục góp vào số liệu" cần thêm lọc ngày vào
+    hợp đồng.
 
 - [ ] T083 [P] Preset và bộ đọc còn lại
   - `aidlc-feature`, `aidlc-enterprise`, `bmad-quick`, `bmad-method`, `kiro-requirements`, `kiro-design`, `kiro-bugfix`,
