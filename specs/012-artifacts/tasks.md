@@ -123,7 +123,7 @@
     + test tương ứng
   - **Phụ thuộc**: T001, T002, T003 · **Mức**: nặng
 
-- [ ] T011 🎯 Tool MCP `artifact_*`
+- [x] T011 🎯 Tool MCP `artifact_*`
   - `artifacts/mcp-tools.ts`: bốn tool (plan.md "MCP"), quyền run theo FR-032, liên kết tự động `run`/`task`/
     `chat_thread`/`terminal_session`, từ chối `doccheck`/`docassist`/`brief` (`ARTIFACT_RUN_KIND`), lỗi xung đột kèm bản
     mới nhất, `duplicateOf` (đọc được bản gốc → `private` của người mở cuộc trò chuyện), `compileError` trong kết quả.
@@ -149,7 +149,7 @@
     `apps/hub/.env.example`, `Dockerfile` (nếu cần)
   - **Phụ thuộc**: T004, T010 · **Mức**: nặng
 
-- [ ] T013 🎯 Leader: thẻ artifact trong chat
+- [x] T013 🎯 Leader: thẻ artifact trong chat
   - `leader` cung cấp `ThreadHost` (`assertRunThread` dùng lại kiểm của `leader_reply`; `postArtifactCard` thêm tin nhắn thẻ,
     cập nhật `updated_at`); router trả `chatMessage.artifact`; xoá cuộc trò chuyện xoá liên kết `chat_thread`.
   - `leader/prompt.ts`: đoạn hướng dẫn artifact (US5-7); `prompt.test.ts`.
