@@ -63,7 +63,7 @@ export function taskBadge(task: Task, run: Run | null): TaskBadge {
 export function runActivity(run: Run | null, now: number): string {
   if (!run) return "Chưa chạy";
   const tries = run.attempt > 1 ? ` · thử ${run.attempt}/${run.maxAttempts}` : "";
-  if (run.finishedAt) return `xong ${formatAgo(run.finishedAt, now)}${tries}`;
+  if (run.finishedAt) return `xong ${formatAgo(run.finishedAt, now, "vi")}${tries}`;
   if (run.state === "queued") return `xếp hàng ${formatDuration(now - Date.parse(run.createdAt))}${tries}`;
   if (run.startedAt) return `chạy được ${formatDuration(now - Date.parse(run.startedAt))}${tries}`;
   return `${RUN_STATE_LABEL[run.state].toLowerCase()}${tries}`;

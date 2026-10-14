@@ -242,7 +242,7 @@ describe("ReviewsScreen", () => {
     const row = await screen.findByRole("button", { name: "Duyệt PR Hoàn tiền một phần" });
     expect(row.textContent).toContain("#128");
     expect(calls.find((c) => c.path === "codeReviews/list")?.query).toContain('"scope":"mine"');
-    expect(screen.getByRole("tab", { name: /Code/ }).textContent).toContain("2");
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Code/ }).textContent).toContain("2"));
   });
 
   it("PR không có gì chờ thì báo trống", async () => {
