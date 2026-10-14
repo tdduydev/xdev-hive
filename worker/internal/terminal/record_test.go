@@ -93,7 +93,10 @@ func waitRec(t *testing.T, what string, ok func() bool) {
 
 func newRecorder(t *testing.T) *Recorder {
 	t.Helper()
-	return &Recorder{Dir: filepath.Join(t.TempDir(), "terminal"), Flush: time.Millisecond}
+	r := &Recorder{Dir: filepath.Join(t.TempDir(), "terminal"), Flush: time.Millisecond}
+	// Cleanup chạy ngược thứ tự đăng ký nên Close đóng file đệm trước khi TempDir xoá; Windows không xoá được file đang mở.
+	t.Cleanup(r.Close)
+	return r
 }
 
 func personal() WelcomeInfo {

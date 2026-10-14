@@ -286,6 +286,17 @@ func (r *Recorder) dropLocked(s *RecordedSession) {
 	}
 }
 
+// Close đóng và xoá mọi file đệm còn mở. Windows không xoá được file đang mở, nên thư mục đệm chỉ dọn được sau khi gọi
+// hàm này; ở các nền tảng khác nó chỉ bỏ sớm những file mà lần chạy sau cũng sẽ xoá.
+func (r *Recorder) Close() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, s := range r.sessions {
+		r.dropLocked(s)
+	}
+	r.sessions = nil
+}
+
 // removeLocked bỏ phiên đã gửi xong (exit đã gửi, mọi output đã ack).
 func (r *Recorder) removeDoneLocked() {
 	kept := r.sessions[:0]
