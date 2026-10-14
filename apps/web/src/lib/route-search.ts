@@ -122,6 +122,13 @@ export function validateMachinesSearch(search: Record<string, unknown>): { them?
   return search.them === true || search.them === 1 || search.them === "1" ? { them: true } : {};
 }
 
+/** Tab của trang một máy; không có là Tổng quan. */
+export type MachineTab = "goi-agent" | "luot-chay";
+
+export function validateMachineSearch(search: Record<string, unknown>): { tab?: MachineTab } {
+  return search.tab === "goi-agent" || search.tab === "luot-chay" ? { tab: search.tab } : {};
+}
+
 /** Tab của trang một vai trò (/admin/roles/$roleId); không có là Quyền. */
 export type RoleTab = "nguoi";
 

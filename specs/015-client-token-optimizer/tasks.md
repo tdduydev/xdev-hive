@@ -113,7 +113,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
 
 ## Đợt 2: lệnh con và thao tác memory
 
-- [ ] **T004 [US1] [US2] [vừa] Lệnh `hive-worker optimize`** (sau T001, T003, T006)
+- [x] **T004 [US1] [US2] [vừa] Lệnh `hive-worker optimize`** (sau T001, T003, T006)
   - **Goal**:
     - `optimize status|enable --profile ID --level balanced|aggressive [--rtk]|disable --profile ID|restore --profile ID
       [--backup TS]|link|report [--profile ID] [--days N]`, có `--json`. Thông báo lỗi tiếng Việt.
@@ -199,7 +199,8 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - `apps/desktop/src/components/memory-compress-dialog.tsx` (mới) và test.
     - `apps/desktop/src/screens/memory-screen.tsx`: một nút mở dialog.
 
-- [ ] **T012 [P] [US6] [vừa] Đồng bộ memory với hub khi đã đăng nhập**
+- [x] **T012 [P] [US6] [vừa] Đồng bộ memory với hub khi đã đăng nhập**
+  - **Còn lại**: chèn `<MemoryHubSync projectKey items />` vào `memory-screen.tsx` chờ T009 merge. Hub cần thêm cờ `source: "machine"`.
   - **Goal**:
     - Kiểm `memoryContract.write` và `proposalsContract.create` trong `packages/contracts/src/knowledge.ts` xem có tạo
       được memory chờ duyệt từ máy không.
@@ -234,7 +235,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
 
 ## Đợt 5: tài liệu, dọn
 
-- [ ] **T014 [P] [nhẹ] ADR và hướng dẫn**
+- [x] **T014 [P] [nhẹ] ADR và hướng dẫn**
   - **Goal**:
     - ADR "Bộ tối ưu token và quản lý memory trên client": chọn phương án (a), lý do bỏ (b) và (c), số đo từ research.md.
     - Hướng dẫn người dùng tiếng Việt: bật/tắt, mức, gỡ sạch, đọc bảng trước/sau.
