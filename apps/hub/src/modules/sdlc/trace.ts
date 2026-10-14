@@ -143,6 +143,7 @@ export interface TraceLinkRow {
   ref: string;
   taskId: string | null;
   runId: string | null;
+  projectId?: string | null;
   data: Record<string, unknown>;
 }
 
@@ -159,7 +160,8 @@ export interface TraceInput {
 }
 
 const percent = (n: number, of: number) => (of ? Math.round((n / of) * 1000) / 10 : 0);
-const FINDING_STATUSES = new Set(["met", "partial", "missing", "contradicts"]);
+const FINDING_RANK = { met: 0, partial: 1, missing: 2, contradicts: 3 } as const;
+const FINDING_STATUSES = new Set(Object.keys(FINDING_RANK));
 
 /**
  * Ma trận truy vết và độ phủ ba mức (SC-006), hàm thuần. `planned`: có task; `done`: mọi task chứa requirement `done`;
@@ -205,14 +207,22 @@ export function buildTrace(input: TraceInput): Omit<SdlcTrace, "csv"> {
           ci: ci === "success" || ci === "failure" || ci === "pending" ? ci : "none",
         };
       });
+    // Converge chạy một run mỗi dự án: lọc theo dự án thì chỉ xét phát hiện của dự án đó; cùng vòng thì mức xấu nhất
+    // đứng cuối để kết luận của yêu cầu là mức đã gộp.
     const findings = input.links
-      .filter((l) => l.requirementId === r.id && l.kind === "finding" && FINDING_STATUSES.has(String(l.data.status)))
+      .filter(
+        (l) =>
+          l.requirementId === r.id &&
+          l.kind === "finding" &&
+          FINDING_STATUSES.has(String(l.data.status)) &&
+          (!input.projectId || !l.projectId || l.projectId === input.projectId),
+      )
       .map((l) => ({
         status: l.data.status as SdlcTraceRow["findings"][number]["status"],
         evidence: typeof l.data.evidence === "string" ? l.data.evidence : "",
         round: typeof l.data.round === "number" ? l.data.round : 0,
       }))
-      .sort((a, b) => a.round - b.round);
+      .sort((a, b) => a.round - b.round || FINDING_RANK[a.status] - FINDING_RANK[b.status]);
     return { requirementId: r.id, text: r.text, findings, cells, ...levels(cells, findings.at(-1)?.status) };
   });
 

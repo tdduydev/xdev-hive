@@ -478,7 +478,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 9: Sau MVP
 
-- [ ] T080 [US10] Converge
+- [x] T080 [US10] Converge
   - Bước `converge` (prompt, `sdlc_report findings`), liên kết `finding`, vòng tối đa, phát hiện → bước `draft` của tài liệu
     tách việc; hai hướng cho `contradicts`; UI tab Hội tụ trong `item-detail`. Hạng mục nhiều dự án: một run `converge`
     mỗi dự án (repo của dự án, máy của đội đó), gộp phát hiện; phát hiện gắn `project_id`.
@@ -490,6 +490,13 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     yêu cầu đạt; "Sửa code: thêm task" mở tài liệu tách task hoặc tab Task, "Sửa tài liệu" mở tài liệu nguồn yêu cầu),
     tab Hội tụ chỉ hiện khi chế độ có bước `converge`, đường dẫn tab ở web và app, vitest và `e2e/sdlc-converge.spec.ts`.
     UI đọc `step.result.findings` theo `sdlcFinding`; còn hub `converge.ts`, liên kết `finding`, gộp phát hiện theo dự án.
+  - SPEC11W6HUB làm hub `converge.ts`: mỗi lần chạy là một vòng (`converge_round`), một run mỗi dự án đang tham gia (repo
+    và nhãn máy của dự án đó, chung số vòng); `sdlc_report findings` lưu mảng phát hiện gắn `projectId`; run không báo phát
+    hiện thì lỗi. Đủ run của vòng mới kết luận: ghi liên kết `finding` (gắn `project_id`), không còn thiếu → `converged_at`,
+    báo chủ, giai đoạn đạt; còn thiếu và còn vòng → giao lại bước `draft` của giai đoạn tách việc kèm danh sách phát hiện và
+    hai hướng cho `contradicts`; hết vòng → dừng, ghi chú giai đoạn, báo chủ, chặn vòng mới (`SDLC_CONVERGE_ROUNDS`).
+    Vòng 1 tự chạy khi vào giai đoạn converge (`auto`). Độ phủ lọc theo dự án chỉ xét phát hiện của dự án đó. Chưa có sự
+    kiện thông báo riêng cho "hết vòng" (dùng chung `sdlc.converged`); một vòng có run lỗi vẫn tính là đã dùng.
 
 - [ ] T081 [US11] Release notes và retro
   - Bước `release-notes`, `retro`; đề xuất cho constitution; đóng hạng mục, bình luận issue.

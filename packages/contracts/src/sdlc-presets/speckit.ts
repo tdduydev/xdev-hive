@@ -218,10 +218,19 @@ Nếu repo có skill \`speckit-converge\` thì dùng nó; không thì làm theo 
 Tài liệu của hạng mục:
 {artifacts}
 
+Dự án:
+{projects}
+
 Cách làm:
-1. Với mỗi \`FR-nnn\`, tìm code và test thực hiện nó rồi kết luận: met (đạt), partial (một phần), missing (chưa có), diverged (làm khác spec).
-2. Mỗi kết luận kèm bằng chứng: file và dòng, tên test. Không có bằng chứng thì là missing, không đoán.
-3. Báo bằng \`sdlc_report\` loại \`findings\`; chỉ liệt kê phần chưa đạt đủ để hub đề xuất task bổ sung.`;
+1. Hạng mục nhiều dự án có một run converge cho mỗi repo. Chỉ kết luận yêu cầu có task thuộc repo này (thẻ dự án trong
+   \`tasks.md\`, task không có thẻ là của dự án chính); bỏ qua yêu cầu chỉ thuộc dự án khác.
+2. Với mỗi \`FR-nnn\` đó, tìm code và test thực hiện nó rồi kết luận: met (đạt), partial (một phần), missing (chưa có),
+   contradicts (code làm khác spec).
+3. Mỗi kết luận kèm bằng chứng: file và dòng, tên test. Không có bằng chứng thì là missing, không đoán.
+4. Với partial, missing, contradicts, ghi \`suggestedTask\`: task bổ sung ngắn gọn để làm cho đạt. Với contradicts, nói rõ
+   code hay tài liệu có vẻ sai để người duyệt chọn sửa code hay sửa tài liệu.
+5. Báo một lần bằng \`sdlc_report\` loại \`findings\`, liệt kê mọi yêu cầu đã xét kể cả met; hub dùng met để đánh dấu đã kiểm.
+   Mọi yêu cầu đạt thì hạng mục hội tụ.`;
 
 export const speckit = sdlcMode.parse({
   id: "speckit",
@@ -429,7 +438,8 @@ export const speckit = sdlcMode.parse({
           id: "converge-spec",
           action: "converge",
           artifacts: ["spec", "plan", "tasks"],
-          auto: false,
+          // Mọi task xong thì giai đoạn này bắt đầu và chạy vòng 1 ngay (US10); vòng sau do người bấm.
+          auto: true,
           maxQuestions: 0,
           skill: "speckit-converge",
           prompt: CONVERGE_PROMPT,

@@ -182,7 +182,8 @@ export function registerMcpTools(registry: McpToolRegistry): void {
     title: "Báo kết quả bước AI SDLC",
     description:
       "Chỉ dành cho run AI SDLC: báo kết quả có cấu trúc của bước. `size`: {size: S|M|L|XL, modeRef, reason}. " +
-      "`findings`: {findings: [{requirementId, status: met|partial|missing|contradicts, evidence, suggestedTask?}]}. " +
+      "`findings`: {findings: [{requirementId, status: met|partial|missing|contradicts, evidence, suggestedTask?}]} cho " +
+      "yêu cầu thuộc repo của run. " +
       "`analysis`: {score?, findings: [{severity, message, artifact?}], checklist?}. `summary`: {summary}. " +
       "`contracts`: {contracts: [{name, format, provider, consumers[], content}]} với provider/consumers là key dự án " +
       "tham gia; mỗi contract thành bản nháp chờ duyệt. Gọi lại cùng loại thì lần sau ghi đè.",
@@ -208,9 +209,15 @@ export function registerMcpTools(registry: McpToolRegistry): void {
         });
         extra = { created: out.created, rejected: out.rejected };
       }
+      // Phát hiện converge là danh sách gắn dự án của run (màn Hội tụ đọc thẳng `result.findings`); hạng mục nhiều dự
+      // án có một run mỗi dự án, hub gộp theo dự án khi chốt vòng.
+      const value =
+        report.kind === "findings"
+          ? report.data.findings.map((f) => ({ ...f, projectId: run.projectId }))
+          : { ...report.data, ...extra };
       await tx
         .update(sdlcSteps)
-        .set({ result: { ...(step.result ?? {}), [report.kind]: { ...report.data, ...extra } } })
+        .set({ result: { ...(step.result ?? {}), [report.kind]: value } })
         .where(eq(sdlcSteps.id, step.id));
       return { recorded: report.kind, ...extra };
     },
