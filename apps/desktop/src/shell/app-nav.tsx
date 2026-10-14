@@ -1,4 +1,4 @@
-import { ChevronsUpDownIcon, ChevronUpIcon, UserRoundIcon } from "lucide-react";
+import { ChevronsUpDownIcon, ChevronUpIcon, CloudOffIcon, UserRoundIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LogoIcon, Wordmark } from "@/components/logo.tsx";
 import { type Account, initials } from "@/lib/account.ts";
@@ -17,6 +17,8 @@ const text: Dict<{
   noFolder: string;
   pick: string;
   notLinked: string;
+  signIn: string;
+  needsHubTitle: string;
   profiles: Record<Profile, string>;
   build: string;
   devBuild: string;
@@ -28,7 +30,9 @@ const text: Dict<{
     folder: "Thư mục làm việc",
     noFolder: "Chưa chọn thư mục",
     pick: "Chọn thư mục làm việc",
-    notLinked: "Chưa liên kết tài khoản",
+    notLinked: "Chưa đăng nhập",
+    signIn: "Đăng nhập để kết nối Hive",
+    needsHubTitle: "Cần kết nối Hive",
     profiles: { dev: "Dev", writer: "Viết tài liệu", lead: "Trưởng nhóm" },
     build: "Bản đang chạy",
     devBuild: "bản dựng tại máy",
@@ -40,7 +44,9 @@ const text: Dict<{
     folder: "Working folder",
     noFolder: "No folder chosen",
     pick: "Choose a working folder",
-    notLinked: "Account not linked",
+    notLinked: "Not signed in",
+    signIn: "Sign in to connect to Hive",
+    needsHubTitle: "Needs a Hive connection",
     profiles: { dev: "Dev", writer: "Writer", lead: "Lead" },
     build: "Running build",
     devBuild: "local build",
@@ -106,6 +112,8 @@ function BuildLine() {
  * trong styles.css); tiêu đề nhóm thành vạch ngăn.
  * Thư mục làm việc, trạng thái worker và người dùng chưa có nguồn dữ liệu (specs/008-desktop-v2 T004, T008, T023):
  * hiện trạng thái trống thay vì số liệu mẫu.
+ * Chưa đăng nhập (`connected` false) thì mục cần hub vẫn hiện, chỉ mờ đi kèm biểu tượng mất kết nối: người dùng biết mục có đó
+ * và vào được để thấy lời mời kết nối.
  */
 export function AppNav({
   profile,
@@ -114,6 +122,7 @@ export function AppNav({
   onAccount,
   worker,
   compact = false,
+  connected = true,
 }: {
   profile: Profile;
   active: ScreenId;
@@ -122,6 +131,8 @@ export function AppNav({
   worker?: WorkerView | null;
   /** Luôn chỉ còn icon (màn cần chỗ như Tài liệu từ code), không chỉ khi cửa sổ hẹp. */
   compact?: boolean;
+  /** Đã đăng nhập Hive; chưa thì mục cần hub mờ đi kèm nhãn. */
+  connected?: boolean;
 }) {
   const t = useT(text);
   const lang = useLang();
@@ -200,22 +211,30 @@ export function AppNav({
               )}
               {group.items.map((item) => {
                 const current = item.id === active;
+                const offline = !connected && !!item.hub;
                 return (
                   <a
                     key={item.id}
                     href={`#/${item.id}`}
                     aria-current={current ? "page" : undefined}
-                    title={item.label[lang]}
+                    title={offline ? `${item.label[lang]} · ${t.needsHubTitle}` : item.label[lang]}
+                    data-offline={offline || undefined}
                     className={cn(
                       "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-foreground no-underline hover:bg-muted",
                       "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
+                      offline && "text-muted-foreground",
                       current && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
                     )}
                   >
                     <item.icon aria-hidden="true" className="size-4 shrink-0" />
                     <span className="flex-1 compact:sr-only">{item.label[lang]}</span>
-                    {item.readOnly && (
-                      <span className="text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>
+                    {offline ? (
+                      // Biểu tượng chứ không phải chữ, để tên mục cho trình đọc màn hình vẫn đúng tên màn.
+                      <CloudOffIcon aria-hidden="true" className="size-3.5 text-muted-foreground compact:hidden" />
+                    ) : (
+                      item.readOnly && (
+                        <span className="text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>
+                      )
                     )}
                   </a>
                 );
@@ -295,7 +314,7 @@ export function AppNav({
           <span className={cn("truncate text-sm", account ? "font-medium" : "text-muted-foreground")}>
             {account ? account.name || account.email : t.notLinked}
           </span>
-          {account && <span className="truncate text-xs text-muted-foreground">{roleLine}</span>}
+          <span className="truncate text-xs text-muted-foreground">{account ? roleLine : t.signIn}</span>
         </span>
       </button>
     </nav>

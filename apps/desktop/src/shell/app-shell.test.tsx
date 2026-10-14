@@ -140,7 +140,7 @@ describe("AppShell", () => {
 
   it("không hiện người dùng hay thư mục mẫu khi chưa có dữ liệu", () => {
     render(<AppShell profile="writer" />);
-    expect(screen.getByText("Chưa liên kết tài khoản")).toBeTruthy();
+    expect(screen.getByText("Chưa đăng nhập")).toBeTruthy();
     expect(screen.getByText("Chưa chọn thư mục")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Môi trường" })).toBeNull();
     // Người xem đội: Tài liệu từ code và Skills đều chỉ đọc (không cài skill lên máy).
@@ -160,6 +160,83 @@ describe("AppShell", () => {
     expect(within(nav).getByRole("group", { name: "This machine" })).toBeTruthy();
     expect(within(nav).getByText("Work")).toBeTruthy();
     expect(screen.getByRole("heading", { level: 1, name: "Runs on this machine" })).toBeTruthy();
+  });
+});
+
+describe("chưa đăng nhập", () => {
+  beforeEach(() => setLang("vi"));
+
+  async function open(id: string) {
+    await act(async () => {
+      location.hash = `#/${id}`;
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+  }
+
+  it("mở thẳng giao diện chính, không có màn chặn đăng nhập", async () => {
+    render(<AppShell />);
+    expect(screen.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Điều hướng app" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /Chưa đăng nhập/ })).toBeTruthy();
+  });
+
+  it("màn chỉ có dữ liệu trên hub mời kết nối Hive, nút mở hộp thoại tài khoản", async () => {
+    render(<AppShell />);
+    const user = userEvent.setup();
+    for (const id of ["work", "reviews", "knowledge", "write", "runs"]) {
+      await open(id);
+      expect(await screen.findByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeTruthy();
+    }
+    await user.click(screen.getByRole("button", { name: "Kết nối Hive" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" })).toBeTruthy();
+  });
+
+  it("màn trên máy dùng được, không hiện lời mời kết nối thay cho màn", async () => {
+    render(<AppShell />);
+    for (const id of ["home", "docs", "plans", "projects", "setup", "skills", "tokens"]) {
+      await open(id);
+      expect(screen.queryByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeNull();
+    }
+  });
+
+  it("mục cần hub vẫn ở menu, chỉ mờ đi kèm chú thích", () => {
+    render(<AppShell />);
+    const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
+    const offline = within(nav)
+      .getAllByRole("link")
+      .filter((a) => a.hasAttribute("data-offline"))
+      .map((a) => a.getAttribute("href"));
+    expect(offline).toEqual(["#/work", "#/reviews", "#/knowledge", "#/write", "#/runs"]);
+    expect(within(nav).getByRole("link", { name: "Việc của tôi" }).getAttribute("title")).toBe(
+      "Việc của tôi · Cần kết nối Hive",
+    );
+  });
+
+  it("đã đăng nhập thì không mờ mục nào, màn hub hiện như cũ", async () => {
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T,>(command: string) =>
+          (command === "account_status"
+            ? {
+                hub: "https://hive.acme.vn",
+                linked: true,
+                account: { name: "Hà", email: "ha@acme.vn", orgId: "o", orgName: "Acme", orgRole: "member", teams: [] },
+                error: null,
+              }
+            : null) as T,
+      },
+    };
+    location.hash = "#/runs";
+    render(<AppShell />);
+    expect(await screen.findByText("Hà")).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
+    expect(
+      within(nav)
+        .getAllByRole("link")
+        .some((a) => a.hasAttribute("data-offline")),
+    ).toBe(false);
+    expect(screen.queryByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeNull();
   });
 });
 
@@ -206,7 +283,7 @@ describe("đóng mở menu và chọn ngôn ngữ", () => {
   });
 
   it("màn cần chỗ tự thu gọn khi chưa chọn, vẫn mở rộng được", async () => {
-    location.hash = "#/write";
+    location.hash = "#/docs";
     render(<AppShell />);
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
     expect(nav.hasAttribute("data-compact")).toBe(true);
