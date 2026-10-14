@@ -15,7 +15,7 @@ import {
   type TerminalServerFrame,
   terminalClientFrame,
 } from "@xdev-hive/contracts";
-import { type RemoteAuth, TERM_DENY_MESSAGES, termDenyCode } from "@xdev-hive/contracts/terminal-auth";
+import { type RemoteAuth, TERM_DENY_MESSAGES, TOTP_DEVICE_ID, termDenyCode } from "@xdev-hive/contracts/terminal-auth";
 import { and, eq } from "drizzle-orm";
 import type pg from "pg";
 import { type WebSocket, WebSocketServer } from "ws";
@@ -96,12 +96,6 @@ export function originAllowed(origin: string | undefined, host: string | undefin
 }
 
 const ACTIVE: ReadonlyArray<RemoteSession["state"]> = ["opening", "running"];
-
-/**
- * `term_control` bắt buộc `deviceId` nhưng mã TOTP không gắn với thiết bị nào: hub điền mã cố định này, worker bỏ qua nó
- * khi kiểm TOTP và chỉ dùng để so lúc nối lại bằng `resumeToken`.
- */
-export const TOTP_DEVICE_ID = "totp-code";
 
 /** Chủ máy theo hub (người đăng ký máy cá nhân): chỉ người này được xin quyền gõ, kể cả khi phiên cho đội xem. */
 async function isMachineOwner(tx: Tx, userId: string, machineId: string): Promise<boolean> {

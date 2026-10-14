@@ -9,6 +9,7 @@ import {
   remoteServerFrame,
   TERMINAL_WS_CLOSE,
 } from "@xdev-hive/contracts";
+import { TOTP_DEVICE_ID } from "@xdev-hive/contracts/terminal-auth";
 import { type HubToWorker, hubToWorker, PROTOCOL_VERSION } from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
@@ -21,7 +22,7 @@ import { disableRemote } from "./devices.ts";
 import { createTerminalHandlers } from "./gateway.ts";
 import { liveSession, resetMachineBuckets } from "./live.ts";
 import { getRemoteSession, listRemoteSessions } from "./queries.ts";
-import { attachTerminalGateway, remoteTicket, TOTP_DEVICE_ID, withRemoteLive } from "./ws.ts";
+import { attachTerminalGateway, remoteTicket, withRemoteLive } from "./ws.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
