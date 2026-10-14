@@ -3,21 +3,26 @@ import type { Dict } from "@/lib/i18n.ts";
 
 /** Chữ của màn Quy trình duyệt (Workflows.dc.html), dùng chung cho trang và khung cấu hình checkpoint. */
 export const workflowsText: Dict<{
-  knowledge: string;
   title: string;
-  lead: string;
+  description: string;
   test: string;
-  publish: string;
-  saving: string;
-  saved: string;
-  unsaved: string;
+  create: string;
   readOnly: string;
   workflow: string;
+  filter: string;
+  filterAll: string;
   newWorkflow: string;
   newName: string;
   off: string;
+  sectionsNav: string;
+  general: string;
+  generalHint: string;
+  subject: string;
+  subjectHint: string;
+  subjectDesc: Record<"doc" | "code", string>;
   preset: string;
-  appliesTo: string;
+  prefixes: string;
+  prefixesHint: string;
   addPrefix: string;
   prefixPh: string;
   removeChip: (v: string) => string;
@@ -28,6 +33,8 @@ export const workflowsText: Dict<{
   inFlight: (n: number) => string;
   remove: string;
   pipeline: string;
+  pipelineTitle: string;
+  pipelineHint: string;
   addGate: string;
   newGateName: string;
   outputs: string;
@@ -133,23 +140,30 @@ export const workflowsText: Dict<{
   removeTitle: string;
   removeBody: (name: string, n: number) => string;
   removeConfirm: string;
+  danger: string;
+  dangerHint: string;
 }> = {
   vi: {
-    knowledge: "Kiến thức",
     title: "Quy trình duyệt",
-    lead: "Mỗi loại tài liệu đi qua các checkpoint theo giai đoạn của AI SDLC. Checkpoint có thể là AI tự kiểm, người duyệt, quy tắc tự động hoặc cổng CI; điều kiện quyết định checkpoint nào chạy.",
+    description: "Tài liệu và PR của agent đi qua những checkpoint nào trước khi được chốt hoặc merge.",
     test: "Chạy thử trên 1 tài liệu",
-    publish: "Áp dụng quy trình",
-    saving: "Đang lưu…",
-    saved: "Đã áp dụng quy trình.",
-    unsaved: "Có thay đổi chưa áp dụng.",
+    create: "Tạo quy trình",
     readOnly: "Bạn chỉ xem được quy trình duyệt. Cần quyền “Sửa quy trình duyệt” để thay đổi.",
     workflow: "Quy trình",
+    filter: "Lọc quy trình theo loại",
+    filterAll: "Tất cả",
     newWorkflow: "Quy trình mới",
     newName: "Quy trình mới",
     off: "đang tắt",
+    sectionsNav: "Các mục của quy trình",
+    general: "Thông tin chung",
+    generalHint: "Tên, đội sở hữu, loại áp dụng và quy trình có đang nhận việc mới hay không.",
+    subject: "Loại áp dụng",
+    subjectHint: "Quy trình duyệt tài liệu trong kho kiến thức hay PR do agent mở.",
+    subjectDesc: { doc: "PRD, thiết kế, spec trong kho kiến thức", code: "PR do agent mở, trước khi merge" },
     preset: "Khung mẫu",
-    appliesTo: "Áp cho",
+    prefixes: "Tiền tố tài liệu",
+    prefixesHint: "Tài liệu có key bắt đầu bằng một trong các tiền tố này đi qua quy trình.",
     addPrefix: "Thêm tiền tố tài liệu",
     prefixPh: "project/<dự án>/prd",
     removeChip: (v) => `Bỏ ${v}`,
@@ -160,6 +174,8 @@ export const workflowsText: Dict<{
     inFlight: (n) => (n ? `${n} phiên duyệt đang chạy theo quy trình này` : "Chưa có phiên duyệt nào đang chạy"),
     remove: "Xoá quy trình",
     pipeline: "Các checkpoint",
+    pipelineTitle: "Giai đoạn và checkpoint",
+    pipelineHint: "Chạy theo thứ tự từ trái sang phải. Bấm một checkpoint để cấu hình.",
     addGate: "Thêm checkpoint",
     newGateName: "Checkpoint mới",
     outputs: "Tài liệu đầu ra",
@@ -256,47 +272,54 @@ export const workflowsText: Dict<{
     condTypeShort: (v) => `loại ${v}`,
     condKwShort: (v) => `có ${v}`,
     condSkipShort: "bỏ qua sửa định dạng",
-    invalid: "Quy trình chưa áp dụng được:",
+    invalid: "Chưa lưu được:",
     empty: "Chưa có quy trình duyệt",
     emptyHint: "Quản trị tổ chức hoặc người có quyền “Sửa quy trình duyệt” tạo quy trình từ khung mẫu.",
     dryTitle: "Chạy thử trên 1 tài liệu",
     dryDesc:
-      "Hub xem bản đang sửa (chưa cần áp dụng) sẽ chạy những checkpoint nào với tài liệu này. Không tạo phiên duyệt.",
+      "Hub xem bản đang sửa (chưa cần lưu) sẽ chạy những checkpoint nào với tài liệu này. Không tạo phiên duyệt.",
     docKey: "Key tài liệu",
     run: "Chạy thử",
     running: "Đang chạy thử…",
     close: "Đóng",
     docType: "Loại tài liệu",
-    notMatched: "Tài liệu này không nằm trong phần “Áp cho” của quy trình nên sẽ không đi qua quy trình.",
+    notMatched: "Key của tài liệu không khớp tiền tố nào của quy trình nên tài liệu sẽ không đi qua quy trình.",
     runs: "Chạy",
     skips: "Bỏ qua",
     dryGates: "Checkpoint với tài liệu này",
     presetTitle: (name) => `Dùng khung mẫu ${name}?`,
     presetBody:
-      "Các giai đoạn và checkpoint đang có được thay bằng khung mẫu. Chưa áp dụng thì quy trình đang chạy chưa đổi.",
+      "Các giai đoạn và checkpoint đang có được thay bằng khung mẫu. Quy trình đang chạy chỉ đổi khi bạn lưu mục Giai đoạn và checkpoint.",
     presetApply: "Dùng khung mẫu",
     cancel: "Huỷ",
     removeTitle: "Xoá quy trình?",
     removeBody: (name, n) =>
       `Quy trình “${name}” bị xoá${n ? `; ${n} phiên duyệt đang chạy theo quy trình này` : ""}. Không hoàn tác được.`,
     removeConfirm: "Xoá quy trình",
+    danger: "Vùng nguy hiểm",
+    dangerHint: "Xoá quy trình không hoàn tác được.",
   },
   en: {
-    knowledge: "Knowledge",
     title: "Review workflows",
-    lead: "Each doc type passes checkpoints along the AI SDLC phases. A checkpoint is an AI check, a human approval, an automatic rule or a CI gate; conditions decide which ones run.",
+    description: "Which checkpoints docs and agent PRs pass before they are baselined or merged.",
     test: "Dry-run on a doc",
-    publish: "Publish workflow",
-    saving: "Saving…",
-    saved: "Workflow published.",
-    unsaved: "You have unpublished changes.",
+    create: "Create workflow",
     readOnly: "You can only view review workflows. Editing needs the “Edit review workflows” permission.",
     workflow: "Workflow",
+    filter: "Filter workflows by kind",
+    filterAll: "All",
     newWorkflow: "New workflow",
     newName: "New workflow",
     off: "off",
+    sectionsNav: "Workflow sections",
+    general: "General",
+    generalHint: "Name, owning team, what the workflow reviews and whether it takes new work.",
+    subject: "Reviews",
+    subjectHint: "Docs in the knowledge base, or PRs opened by agents.",
+    subjectDesc: { doc: "PRDs, designs and specs in the knowledge base", code: "PRs opened by agents, before merge" },
     preset: "Preset",
-    appliesTo: "Applies to",
+    prefixes: "Doc key prefixes",
+    prefixesHint: "Docs whose key starts with one of these prefixes go through this workflow.",
     addPrefix: "Add a doc key prefix",
     prefixPh: "project/<project>/prd",
     removeChip: (v) => `Remove ${v}`,
@@ -307,6 +330,8 @@ export const workflowsText: Dict<{
     inFlight: (n) => (n ? `${n} reviews in flight on this workflow` : "No reviews in flight"),
     remove: "Delete workflow",
     pipeline: "Checkpoints",
+    pipelineTitle: "Phases and checkpoints",
+    pipelineHint: "They run left to right. Pick a checkpoint to configure it.",
     addGate: "Add checkpoint",
     newGateName: "New checkpoint",
     outputs: "Output artifacts",
@@ -403,30 +428,32 @@ export const workflowsText: Dict<{
     condTypeShort: (v) => `type ${v}`,
     condKwShort: (v) => `mentions ${v}`,
     condSkipShort: "skip formatting-only",
-    invalid: "The workflow cannot be published yet:",
+    invalid: "Not saved:",
     empty: "No review workflows yet",
     emptyHint: "Org admins or people with “Edit review workflows” create one from a preset.",
     dryTitle: "Dry-run on a doc",
     dryDesc:
-      "The hub shows which checkpoints of the draft (no need to publish) would run for this doc. No review is created.",
+      "The hub shows which checkpoints of the draft (no need to save) would run for this doc. No review is created.",
     docKey: "Doc key",
     run: "Dry-run",
     running: "Running…",
     close: "Close",
     docType: "Doc type",
-    notMatched: "This doc is outside the workflow's “Applies to” prefixes, so it would not enter this workflow.",
+    notMatched: "The doc key matches none of the workflow's prefixes, so the doc would not enter this workflow.",
     runs: "Runs",
     skips: "Skipped",
     dryGates: "Checkpoints for this doc",
     presetTitle: (name) => `Use the ${name} preset?`,
     presetBody:
-      "The current phases and checkpoints are replaced. Nothing changes for running reviews until you publish.",
+      "The current phases and checkpoints are replaced. Running reviews change only when you save Phases and checkpoints.",
     presetApply: "Use preset",
     cancel: "Cancel",
     removeTitle: "Delete workflow?",
     removeBody: (name, n) =>
       `“${name}” will be deleted${n ? `; ${n} reviews are in flight on it` : ""}. This cannot be undone.`,
     removeConfirm: "Delete workflow",
+    danger: "Danger zone",
+    dangerHint: "Deleting a workflow cannot be undone.",
   },
 };
 
