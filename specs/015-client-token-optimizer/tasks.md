@@ -234,7 +234,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
 
 ## Đợt 5: tài liệu, dọn
 
-- [ ] **T014 [P] [nhẹ] ADR và hướng dẫn**
+- [x] **T014 [P] [nhẹ] ADR và hướng dẫn**
   - **Goal**:
     - ADR "Bộ tối ưu token và quản lý memory trên client": chọn phương án (a), lý do bỏ (b) và (c), số đo từ research.md.
     - Hướng dẫn người dùng tiếng Việt: bật/tắt, mức, gỡ sạch, đọc bảng trước/sau.
