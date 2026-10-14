@@ -1,6 +1,6 @@
 # Đánh giá token và memory trên máy client (2026-10-14)
 
-**Spec**: [spec.md](spec.md) · **Script đo**: [`scripts/token-audit.ts`](../../scripts/token-audit.ts)
+**Spec**: [spec.md](spec.md) · **Script đo**: [`scripts/token-audit.ts`](../../scripts/token-audit.ts) (ưu tiên `hive-worker optimize report --json` từ `~/.xdev-hive/bin` hoặc PATH; không có binary thì dùng cách đo cũ, có sidecar thì luôn trả JSON).
 
 Đo trên Mac mini dev ngày 14/10/2026, đọc transcript (chỉ đọc) của mọi gói trong `~/.xdev-hive/accounts/*` và thư mục
 mặc định `~/.claude`, `~/.codex`. Báo cáo chỉ có số tổng hợp, không có prompt, output tool hay tên dự án.

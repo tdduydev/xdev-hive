@@ -18,7 +18,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .btn-default{background:var(--primary);color:var(--primary-foreground)}
 .btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
 .btn-destructive-solid{background:var(--destructive);color:var(--background)}
-.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card{scroll-margin-top:112px;background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
 .card-h{padding:16px 20px 0;display:flex;flex-direction:column;gap:2px}
 .card-t{margin:0;font-size:15px;font-weight:600}
 .card-b{padding:16px 20px 20px;display:flex;flex-direction:column;gap:16px}
@@ -49,8 +49,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
         </div>
       </header>
 
-      <div style="display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start;">
-        <nav aria-label="{{t.sections}}" style="flex: 1 1 180px; max-width: 200px; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px;">
+      <div style="display: flex; flex-direction: column; gap: 16px; min-width: 0;">
+        <nav aria-label="{{t.sections}}" style="position: sticky; top: 52px; z-index: 2; width: 100%; box-sizing: border-box; display: flex; gap: 4px; overflow-x: auto; padding: 8px 0; background: var(--background); border-bottom: 1px solid var(--border); font-size: 13.5px;">
           <sc-for list="{{toc}}" as="s" hint-placeholder-count="8">
             <a href="{{s.href}}" style="{{s.style}}">{{s.label}}</a>
           </sc-for>
@@ -341,7 +341,7 @@ class Component extends DCLogic {
       ['queue', ['Merge queue', 'Merge queue'], ['PR vào hàng, hub cập nhật nhánh theo nhánh chính và merge lần lượt từng PR.', 'PRs queue up; the hub rebases each on main and merges them one by one.']],
     ].map(([k, l, h]) => ({ label: x(l), hint: x(h), ...sw(k) }));
     const toc = [['#merge', 'Merge'], ['#review', x(T.review)], ['#plan', 'Plan mode'], ['#sandbox', 'Sandbox'], ['#budget', x(T.budget)], ['#model', 'Model'], ['#perm', x(T.perm)], ['#sdlc', 'AI SDLC'], ['#sdlc-auto', x(T.auto)]].map(([h, l], i) => ({
-      href: h, label: l, style: 'padding: 6px 10px; border-radius: 6px; text-decoration: none; ' + (i === 0 ? 'background: var(--muted); color: var(--foreground); font-weight: 500;' : 'color: var(--muted-foreground);'),
+      href: h, label: l, style: 'flex: none; white-space: nowrap; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; text-decoration: none; ' + (i === 0 ? 'background: var(--muted); color: var(--foreground); font-weight: 500;' : 'color: var(--muted-foreground);'),
     }));
     const models = [['Claude', 'claude-opus-5-5', 'claude-sonnet-5-5'], ['Codex', '', ''], ['Gemini', '', '']].map(([c, a, b]) => ({
       cli: c, v1: a, v2: b, write: x(['Viết code', 'Writing code']), review: x(['Review', 'Review']),
