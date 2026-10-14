@@ -49,6 +49,7 @@ import { cx } from "@/lib/cx.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import { SdlcPolicyStats } from "@/pages/admin/policies-sdlc-stats.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -1295,6 +1296,7 @@ function PolicyEditor({
               )}
             </div>
           </div>
+          <SdlcPolicyStats />
         </SettingsSection>
       </SettingsLayout>
 
