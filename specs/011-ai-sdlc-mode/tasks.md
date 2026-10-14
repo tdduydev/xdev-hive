@@ -303,7 +303,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 5: Đồng bộ hub ↔ repo (US4, US17) — Q1 đã chốt
 
-- [ ] T040 [US4] [US17] Đồng bộ tài liệu với repo của từng dự án
+- [x] T040 [US4] [US17] Đồng bộ tài liệu với repo của từng dự án
   - `sync.ts`: job `sdlc-sync(itemId, projectId)` (một job mỗi repo; gộp file của repo; `pr` mặc định: nhánh
     `hive/sdlc/<ref>-<slug>`, PR, commit status `xdev-hive/sdlc` = success, `enqueueMerge` với `runId` null qua deps,
     không review code; `direct`; `off`; trailer `Hive-Sdlc-Item` + `Co-authored-by`; thử lại; `sdlc.sync_failed` cho quản
