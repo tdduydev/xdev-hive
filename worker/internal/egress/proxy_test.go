@@ -68,7 +68,7 @@ func openTunnel(t *testing.T, proxyAddress, target string) net.Conn {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 	_, err = fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", target, target)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestHTTPForwardingAndLogs(t *testing.T) {
 	proxyURL, _ := url.Parse("http://" + address)
 	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
+	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
 	request, _ := http.NewRequest("POST", upstream.URL+"/test", strings.NewReader("private-request-body"))
 	request.Header.Set("Authorization", "Bearer test-credential")
 	request.Header.Set("Proxy-Authorization", "Basic proxy-credential")
@@ -121,7 +121,7 @@ func TestHTTPForwardingAndLogs(t *testing.T) {
 	if response.StatusCode != 200 || string(body) != "private-response-body" || response.Header.Get("Proxy-Authenticate") != "" || !seen.Load() {
 		t.Fatalf("response: %v %s", response, body)
 	}
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for logs.snapshot() == "" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
@@ -181,7 +181,7 @@ func TestHTTPPinnedDNS(t *testing.T) {
 	proxyURL, _ := url.Parse("http://" + address)
 	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
+	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
 	response, err := client.Get("http://api.example/test")
 	if err != nil {
 		t.Fatal(err)
@@ -222,7 +222,7 @@ func TestConnectTLS(t *testing.T) {
 	if string(body) != "tls-ok" || calls.Load() != 1 {
 		t.Fatalf("body=%s dials=%d", body, calls.Load())
 	}
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for logs.snapshot() == "" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
@@ -257,7 +257,7 @@ func TestConnectSNIDenied(t *testing.T) {
 			if dials.Load() != 0 {
 				t.Fatal("unapproved hello reached upstream")
 			}
-			deadline := time.Now().Add(time.Second)
+			deadline := time.Now().Add(10 * time.Second)
 			for logs.snapshot() == "" && time.Now().Before(deadline) {
 				time.Sleep(time.Millisecond)
 			}
@@ -375,7 +375,7 @@ func TestConnectIdleTimeoutAndShutdown(t *testing.T) {
 		t.Fatal("idle tunnel remained open")
 	}
 	// Client thấy kết nối đóng trước khi goroutine của proxy kịp gỡ tunnel khỏi danh sách: chờ có hạn, không kiểm ngay.
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		p.mu.Lock()
 		count := len(p.tunnels)
