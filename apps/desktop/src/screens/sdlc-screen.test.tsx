@@ -50,6 +50,23 @@ describe("AI SDLC desktop", () => {
     expect(await screen.findByRole("region", { name: "Bảng hạng mục theo giai đoạn" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Tạo hạng mục" })).toBeNull();
   });
+  it("mở từ màn Chỉ số: bảng lọc sẵn theo dự án và chế độ trên hash", async () => {
+    const { calls } = installSdlcHub();
+    location.hash = `#/sdlc/loc?project=${PAYMENT.id}&mode=bugfix`;
+    render(
+      <AccountContext.Provider value={ba}>
+        <SdlcScreen />
+      </AccountContext.Provider>,
+    );
+    expect(await screen.findByRole("region", { name: "Bảng hạng mục theo giai đoạn" })).toBeTruthy();
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path === "sdlc/board").at(-1)?.input).toMatchObject({
+        projectId: PAYMENT.id,
+        modeRef: "bugfix",
+      }),
+    );
+    expect((screen.getByLabelText("Dự án") as HTMLSelectElement).value).toBe(PAYMENT.id);
+  });
   it("lỗi tải có thông báo và thử lại", async () => {
     const { rpc } = installSdlcHub();
     delete rpc["sdlc/items/get"];

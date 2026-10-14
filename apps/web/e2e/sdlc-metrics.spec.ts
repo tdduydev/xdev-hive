@@ -80,6 +80,24 @@ test("menu Chỉ số mở trang; lead time có nút thắt, thẻ chỉ số v�
   await expect(page.getByRole("columnheader", { name: "p90" })).toBeVisible();
 });
 
+test("từ chỉ số mở bảng hạng mục lọc sẵn theo dự án và chế độ", async ({ page }) => {
+  await setup(page);
+  // Truy vấn bảng có thể đi bằng GET (input trên URL) hoặc POST, nên gom cả hai để kiểm bộ lọc tới hub.
+  const boards: string[] = [];
+  page.on("request", (req) => {
+    if (req.url().includes("/rpc/sdlc/board")) boards.push(`${decodeURIComponent(req.url())} ${req.postData() ?? ""}`);
+  });
+  await page.goto("/sdlc/metrics");
+  await page.getByLabel("Dự án", { exact: true }).selectOption(PAYMENT.id);
+  await page.getByLabel("Chế độ", { exact: true }).selectOption("bugfix");
+  await expect(page.getByText(/không lọc theo khoảng thời gian/)).toBeVisible();
+  await page.getByRole("link", { name: "Mở bảng hạng mục với bộ lọc này" }).click();
+  await expect(page).toHaveURL(new RegExp(`/sdlc\\?project=${PAYMENT.id}&mode=bugfix$`));
+  await expect(page.getByLabel("Dự án", { exact: true })).toHaveValue(PAYMENT.id);
+  await expect(page.getByLabel("Chế độ", { exact: true })).toHaveValue("bugfix");
+  await expect.poll(() => boards.at(-1) ?? "").toContain('"modeRef":"bugfix"');
+});
+
 test("chưa có dữ liệu mời chọn 90 ngày; lỗi hub có nút thử lại", async ({ page }) => {
   const { inputs, hub } = await setup(page, { items: 0, fail: true });
   await page.goto("/sdlc/metrics");
