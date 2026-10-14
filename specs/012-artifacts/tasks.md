@@ -104,7 +104,7 @@
 
 ## Phase 2: Lõi hub (US1, US2, US4, US5) 🎯
 
-- [ ] T010 🎯 Module `artifacts`: dịch vụ, quyền, giới hạn, router
+- [x] T010 🎯 Module `artifacts`: dịch vụ, quyền, giới hạn, router
   - `access.ts` (`readerFor`, `visibleArtifactsWhere`, `assertCan(action)` theo bảng quyền plan.md), `service.ts` (tạo,
     phiên bản mới với khoá lạc quan, đổi tên, phạm vi, chủ, nhân bản, xoá mềm, khôi phục, tombstone, liệt kê/tìm với con
     trỏ), `limits.ts` (trần env + chính sách tổ chức, khoá tư vấn theo tổ chức, giới hạn run), quét bí mật (chỉ chặn,
