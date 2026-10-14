@@ -223,9 +223,21 @@ export function registerMcpTools(registry: McpToolRegistry, deps: ArtifactMcpDep
     readOnly: true,
     handler: async (input, { tx, orgId, principal }) =>
       withDetail({ orgId, principal }, deps, async () => {
-        const { reader, origin } = await callerOf(tx, principal, input);
+        const { reader, origin, threadId } = await callerOf(tx, principal, input);
         const { threadId: _thread, ...rest } = input;
-        return result(await updateArtifact(tx, reader, rest, { ...write, origin }));
+        const written = await updateArtifact(tx, reader, rest, { ...write, origin });
+        // FR-040: sửa từ cuộc trò chuyện cũng thêm thẻ phiên bản mới và gắn cuộc trò chuyện (gắn trùng thì bỏ qua).
+        if (threadId) {
+          await linkInternal(tx, reader, { id: written.artifact.id, orgId }, { kind: "chat_thread", id: threadId });
+          await threadHostOf()?.postArtifactCard(tx, {
+            threadId,
+            artifactId: written.artifact.id,
+            version: written.version.version,
+            title: written.artifact.title,
+            runId: reader.kind === "run" ? reader.runId : null,
+          });
+        }
+        return result(written);
       }),
   });
 
