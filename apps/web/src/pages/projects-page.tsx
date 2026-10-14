@@ -1,17 +1,20 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import type { CostSummary, Project, TeamWithCounts } from "@xdev-hive/contracts";
-import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
-import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
-import { Table, Td, Th } from "@xdev-hive/ui/table";
-import { SearchIcon } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { EllipsisIcon, FolderIcon } from "lucide-react";
+import { type ReactNode, useMemo } from "react";
 import { CreateProjectButton } from "@/components/create-project-dialog.tsx";
+import { DataTable } from "@/components/data-table/data-table.tsx";
 import { Icon } from "@/components/icons.tsx";
-import { Card } from "@/components/ui/card.tsx";
-import { apiErrorMessage } from "@/lib/api-errors.ts";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
+import { EmptyState, LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { formatUsd } from "@/lib/format.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import {
@@ -46,33 +49,27 @@ const text: Dict<{
   connectGit: string;
   addSystem: string;
   createFirst: string;
-  noMatch: string;
-  clearFilters: string;
   colProject: string;
-  colRepo: string;
   colTeam: string;
   colStatus: string;
-  colPlan: string;
-  colSandbox: string;
   colRunning: string;
   colCost: string;
-  config: string;
-  viewConfig: string;
+  actions: string;
+  actionsFor: (name: string) => string;
+  board: string;
+  mergeQueue: string;
+  sandbox: string;
   newTabSr: string;
   costRestricted: string;
   filterStatus: string;
   filterTeam: string;
-  filterAll: string;
-  on: string;
-  off: string;
-  rowsMatched: (matched: number, total: number) => string;
 }> = {
   vi: {
     title: "Dự án",
-    lead: "Mỗi dự án nối một repo GitHub hoặc GitLab cho agent làm việc.",
+    lead: "Mỗi dự án nối một repo GitHub hoặc GitLab cho agent làm việc. Bấm một dòng để mở cấu hình dự án.",
     create: "Tạo dự án",
     search: "Tìm tên, key, repo…",
-    loading: "Đang tải…",
+    loading: "Đang tải dự án…",
     emptyTitle: "Chưa có dự án nào",
     emptyCanCreate: "Bấm “Tạo dự án” để nối một repo GitHub/GitLab có sẵn hoặc tạo repo mới cho agent làm việc.",
     emptyCannotCreate: "Bạn chưa ở trong đội nào có dự án. Nhờ quản trị đội tạo dự án hoặc thêm bạn vào đội.",
@@ -85,33 +82,27 @@ const text: Dict<{
     connectGit: "Kết nối GitHub/GitLab",
     addSystem: "Thêm hệ thống",
     createFirst: "Tạo dự án đầu tiên",
-    noMatch: "Không có dự án nào khớp bộ lọc.",
-    clearFilters: "Xoá bộ lọc",
     colProject: "Dự án",
-    colRepo: "Repo",
     colTeam: "Đội sở hữu",
     colStatus: "Trạng thái",
-    colPlan: "Plan mode",
-    colSandbox: "Sandbox",
     colRunning: "Đang chạy",
     colCost: `Chi phí ${COST_DAYS} ngày`,
-    config: "Cấu hình",
-    viewConfig: "Xem cấu hình",
+    actions: "Thao tác",
+    actionsFor: (name) => `Thao tác với dự án ${name}`,
+    board: "Bảng việc",
+    mergeQueue: "Hàng merge",
+    sandbox: "Sandbox",
     newTabSr: "(mở ở tab mới)",
     costRestricted: "Chỉ quản trị đội sở hữu xem được chi phí",
     filterStatus: "Trạng thái",
     filterTeam: "Đội",
-    filterAll: "Tất cả",
-    on: "Bật",
-    off: "Tắt",
-    rowsMatched: (matched, total) => `${matched} / ${total} dòng khớp`,
   },
   en: {
     title: "Projects",
-    lead: "Each project links a GitHub or GitLab repo for agents to work in.",
+    lead: "Each project links a GitHub or GitLab repo for agents to work in. Click a row to open the project settings.",
     create: "New project",
     search: "Search name, key, repo…",
-    loading: "Loading…",
+    loading: "Loading projects…",
     emptyTitle: "No projects yet",
     emptyCanCreate: "Click “New project” to link an existing GitHub/GitLab repo or create a new repo for agents.",
     emptyCannotCreate:
@@ -125,30 +116,24 @@ const text: Dict<{
     connectGit: "Connect GitHub/GitLab",
     addSystem: "Add a system",
     createFirst: "Create the first project",
-    noMatch: "No projects match these filters.",
-    clearFilters: "Clear filters",
     colProject: "Project",
-    colRepo: "Repo",
     colTeam: "Owning team",
     colStatus: "Status",
-    colPlan: "Plan mode",
-    colSandbox: "Sandbox",
     colRunning: "Running",
     colCost: `Cost, ${COST_DAYS} days`,
-    config: "Settings",
-    viewConfig: "View settings",
+    actions: "Actions",
+    actionsFor: (name) => `Actions for project ${name}`,
+    board: "Task board",
+    mergeQueue: "Merge queue",
+    sandbox: "Sandbox",
     newTabSr: "(opens in a new tab)",
     costRestricted: "Only owning team admins can view cost",
     filterStatus: "Status",
     filterTeam: "Team",
-    filterAll: "All",
-    on: "On",
-    off: "Off",
-    rowsMatched: (matched, total) => `${matched} of ${total} rows match`,
   },
 };
 
-/** /projects: dự án của mọi đội mình có vai trò. */
+/** /projects: dự án của mọi đội mình có vai trò. Bấm dòng mở cấu hình dự án (admin-layout.md § Decisions 2). */
 export function ProjectsPage() {
   const me = useMe();
   const { org, api } = useOrg();
@@ -172,37 +157,26 @@ export function ProjectsPage() {
     (members.data?.find((m) => m.userId === me.id)?.teams ?? []).some((t) => t.role === "admin");
 
   let body: ReactNode;
-  if (projects.isPending) {
-    body = (
-      <p aria-busy="true" className="text-muted-foreground">
-        {t.loading}
-      </p>
-    );
-  } else if (projects.isError) {
-    body = <Alert variant="destructive">{apiErrorMessage(projects.error)}</Alert>;
-  } else if (projects.data.length === 0) {
+  if (projects.isPending) body = <TableSkeleton label={t.loading} columns={6} />;
+  else if (projects.isError) body = <LoadFailure error={projects.error} retry={projects.refetch} />;
+  else if (projects.data.length === 0)
     body = <EmptyProjects canCreate={canCreate} ownsTeam={(teamId) => roleOf(teamId) === "admin"} />;
-  } else {
+  else
     body = (
       <ProjectTable
         projects={projects.data}
         teams={new Map((teams.data ?? []).map((team) => [team.id, team]))}
         running={latest.data ? activeRunCounts(latest.data) : undefined}
         costOf={costOf}
-        canManage={(p) => roleOf(p.teamId) === "admin"}
       />
     );
-  }
 
   return (
     <>
-      <PageHeader crumb={org.name} title={t.title}>
+      <PageHeader title={t.title} description={t.lead}>
         {canCreate && <CreateProjectButton />}
       </PageHeader>
-      <PageBody>
-        <p className="-mt-2 text-sm text-muted-foreground">{t.lead}</p>
-        {body}
-      </PageBody>
+      <PageBody>{body}</PageBody>
     </>
   );
 }
@@ -239,16 +213,7 @@ function EmptyProjects({ canCreate, ownsTeam }: { canCreate: boolean; ownsTeam: 
       </Link>
     );
   }
-  return (
-    <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-      <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
-        <Icon name="folder" className="size-5" />
-      </span>
-      <h2 className="text-base font-semibold text-foreground">{t.emptyTitle}</h2>
-      <p className="max-w-md text-muted-foreground">{lead}</p>
-      {action && <div className="mt-2">{action}</div>}
-    </Card>
-  );
+  return <EmptyState icon={FolderIcon} title={t.emptyTitle} description={lead} action={action} />;
 }
 
 function TeamCell({ team }: { team: TeamWithCounts | undefined }) {
@@ -272,218 +237,159 @@ function ProjectTable({
   teams,
   running,
   costOf,
-  canManage,
 }: {
   projects: Project[];
   teams: Map<string, TeamWithCounts>;
   running: Map<string, number> | undefined;
   costOf: Map<string, { data?: CostSummary | undefined; isPending: boolean } | undefined>;
-  canManage: (p: Project) => boolean;
 }) {
   const t = useT(text);
   const lang = useLang();
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [teamFilter, setTeamFilter] = useState<string>("all");
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return projects.filter((p) => {
-      if (statusFilter !== "all" && p.state !== statusFilter) return false;
-      if (teamFilter !== "all" && p.teamId !== teamFilter) return false;
-      if (!q) return true;
-      const matchName = p.name.toLowerCase().includes(q);
-      const matchKey = p.key.toLowerCase().includes(q);
-      const matchRepo = repoPath(p).toLowerCase().includes(q);
-      return matchName || matchKey || matchRepo;
-    });
-  }, [projects, query, statusFilter, teamFilter]);
-
-  const uniqueTeams = useMemo(() => {
-    const ids = new Set(projects.map((p) => p.teamId));
-    return Array.from(ids)
-      .map((id) => teams.get(id))
-      .filter((tm): tm is TeamWithCounts => Boolean(tm));
-  }, [projects, teams]);
+  const navigate = useNavigate();
+  const teamOptions = useMemo(
+    () =>
+      [...new Set(projects.map((p) => p.teamId))].flatMap((id) => {
+        const team = teams.get(id);
+        return team ? [{ value: team.id, label: team.name }] : [];
+      }),
+    [projects, teams],
+  );
 
   return (
-    <div className="grid gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-56 max-w-sm flex-1">
-          <Input
-            value={query}
-            onValueChange={setQuery}
-            placeholder={t.search}
-            aria-label={t.search}
-            className="h-8 pl-8 text-xs"
-          />
-          <span className="pointer-events-none absolute top-2 left-2.5 text-muted-foreground">
-            <SearchIcon className="size-3.5" />
-          </span>
-        </div>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          aria-label={t.filterStatus}
-          className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <option value="all">
-            {t.filterStatus}: {t.filterAll}
-          </option>
-          {Object.entries(PROJECT_STATE).map(([state, item]) => (
-            <option key={state} value={state}>
-              {item.label[lang]}
-            </option>
-          ))}
-        </select>
-
-        {uniqueTeams.length > 0 && (
-          <select
-            value={teamFilter}
-            onChange={(e) => setTeamFilter(e.target.value)}
-            aria-label={t.filterTeam}
-            className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="all">
-              {t.filterTeam}: {t.filterAll}
-            </option>
-            {uniqueTeams.map((tm) => (
-              <option key={tm.id} value={tm.id}>
-                {tm.name}
-              </option>
-            ))}
-          </select>
-        )}
-
-        {(query || statusFilter !== "all" || teamFilter !== "all") && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setQuery("");
-              setStatusFilter("all");
-              setTeamFilter("all");
-            }}
-          >
-            {t.clearFilters}
-          </Button>
-        )}
-
-        <span className="ml-auto font-mono text-xs text-muted-foreground">
-          {t.rowsMatched(filtered.length, projects.length)}
-        </span>
-      </div>
-
-      <Card className="overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="grid justify-items-center gap-2 p-8 text-center text-muted-foreground">
-            <p>{t.noMatch}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setQuery("");
-                setStatusFilter("all");
-                setTeamFilter("all");
-              }}
-            >
-              {t.clearFilters}
-            </Button>
-          </div>
-        ) : (
-          <Table className="min-w-215">
-            <caption className="sr-only">{t.title}</caption>
-            <thead>
-              <tr>
-                <Th>{t.colProject}</Th>
-                <Th>{t.colRepo}</Th>
-                <Th>{t.colTeam}</Th>
-                <Th>{t.colStatus}</Th>
-                <Th className="text-right">{t.colRunning}</Th>
-                <Th className="text-right">{t.colCost}</Th>
-                <Th>
-                  <span className="sr-only">{t.config}</span>
-                </Th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p) => {
-                const state = PROJECT_STATE[p.state];
-                const cost = costOf.get(p.id);
-                return (
-                  <tr key={p.id}>
-                    <Td className="min-w-55">
-                      <span className="grid leading-tight">
-                        <Link
-                          to="/projects/$key"
-                          params={{ key: p.key }}
-                          className="font-medium text-primary hover:text-primary/90"
-                        >
-                          {p.name}
-                        </Link>
-                        <span className="font-mono text-xs text-muted-foreground">{p.key}</span>
-                      </span>
-                    </Td>
-                    <Td className="whitespace-nowrap">
-                      <span className="inline-flex items-center gap-2">
-                        <Icon name={p.repo.kind} className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="sr-only">{SCM_LABEL[p.repo.kind]}: </span>
-                        {p.repo.webUrl ? (
-                          <a
-                            href={p.repo.webUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-mono text-xs text-primary hover:text-primary/90"
-                          >
-                            {repoPath(p)}
-                            <span className="sr-only"> {t.newTabSr}</span>
-                          </a>
-                        ) : (
-                          <span className="font-mono text-xs text-foreground">{repoPath(p)}</span>
-                        )}
-                      </span>
-                    </Td>
-                    <Td className="whitespace-nowrap">
-                      <TeamCell team={teams.get(p.teamId)} />
-                    </Td>
-                    <Td className="whitespace-nowrap">
-                      <Pill tone={state.tone} dot>
-                        {state.label[lang]}
-                      </Pill>
-                    </Td>
-                    <Td className="text-right text-foreground tabular-nums">
-                      {running ? (running.get(p.id) ?? 0) : "—"}
-                    </Td>
-                    <Td className="text-right whitespace-nowrap text-foreground tabular-nums">
-                      {!cost ? (
-                        <span title={t.costRestricted} className="text-muted-foreground">
-                          —<span className="sr-only">{t.costRestricted}</span>
-                        </span>
-                      ) : cost.data ? (
-                        formatUsd(cost.data.total.costUsd)
-                      ) : (
-                        <span className="text-muted-foreground">{cost.isPending ? "…" : "—"}</span>
-                      )}
-                    </Td>
-                    <Td className="text-right whitespace-nowrap">
-                      <Link
-                        to="/projects/$key/settings"
-                        params={{ key: p.key }}
-                        className={buttonVariants({ variant: "ghost", size: "sm" })}
-                      >
-                        <Icon name="gear" className="size-4" />
-                        {canManage(p) ? t.config : t.viewConfig}
-                        <span className="sr-only"> {p.name}</span>
-                      </Link>
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        )}
-      </Card>
-    </div>
+    <DataTable
+      rows={projects}
+      rowLabel={(p) => p.name}
+      caption={t.title}
+      placeholder={t.search}
+      selectable={false}
+      minWidth={720}
+      onRowClick={(p) => void navigate({ to: "/projects/$key/settings", params: { key: p.key } })}
+      facets={[
+        {
+          key: "state",
+          label: t.filterStatus,
+          value: (p) => p.state,
+          options: Object.entries(PROJECT_STATE).map(([value, item]) => ({ value, label: item.label[lang] })),
+        },
+        ...(teamOptions.length > 0
+          ? [{ key: "team", label: t.filterTeam, value: (p: Project) => p.teamId, options: teamOptions }]
+          : []),
+      ]}
+      columns={[
+        {
+          key: "project",
+          label: t.colProject,
+          value: (p) => `${p.name} ${p.key} ${repoPath(p)}`,
+          sortable: true,
+          hideable: false,
+          pin: "start",
+          cell: (p) => (
+            <span className="grid min-w-44 leading-tight">
+              <Link
+                to="/projects/$key"
+                params={{ key: p.key }}
+                className="truncate font-medium text-primary hover:text-primary/90"
+              >
+                {p.name}
+              </Link>
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="font-mono">{p.key}</span>
+                <span aria-hidden="true">·</span>
+                <Icon name={p.repo.kind} className="size-3.5 shrink-0" />
+                <span className="sr-only">{SCM_LABEL[p.repo.kind]}: </span>
+                {p.repo.webUrl ? (
+                  <a
+                    href={p.repo.webUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate font-mono text-primary hover:text-primary/90"
+                  >
+                    {repoPath(p)}
+                    <span className="sr-only"> {t.newTabSr}</span>
+                  </a>
+                ) : (
+                  <span className="truncate font-mono">{repoPath(p)}</span>
+                )}
+              </span>
+            </span>
+          ),
+        },
+        {
+          key: "team",
+          label: t.colTeam,
+          value: (p) => teams.get(p.teamId)?.name,
+          className: "whitespace-nowrap",
+          cell: (p) => <TeamCell team={teams.get(p.teamId)} />,
+        },
+        {
+          key: "state",
+          label: t.colStatus,
+          value: (p) => PROJECT_STATE[p.state].label[lang],
+          cell: (p) => (
+            <Pill tone={PROJECT_STATE[p.state].tone} dot>
+              {PROJECT_STATE[p.state].label[lang]}
+            </Pill>
+          ),
+        },
+        {
+          key: "running",
+          label: t.colRunning,
+          value: (p) => running?.get(p.id) ?? 0,
+          align: "end",
+          cell: (p) => (running ? (running.get(p.id) ?? 0) : "—"),
+        },
+        {
+          key: "cost",
+          label: t.colCost,
+          value: (p) => costOf.get(p.id)?.data?.total.costUsd,
+          sortable: true,
+          align: "end",
+          className: "whitespace-nowrap",
+          cell: (p) => {
+            const cost = costOf.get(p.id);
+            if (!cost)
+              return (
+                <span title={t.costRestricted} className="text-muted-foreground">
+                  —<span className="sr-only">{t.costRestricted}</span>
+                </span>
+              );
+            if (cost.data) return formatUsd(cost.data.total.costUsd);
+            return <span className="text-muted-foreground">{cost.isPending ? "…" : "—"}</span>;
+          },
+        },
+        {
+          key: "actions",
+          label: t.actions,
+          value: () => null,
+          hideable: false,
+          align: "end",
+          pin: "end",
+          cell: (p) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.actionsFor(p.name)} />}>
+                <EllipsisIcon aria-hidden="true" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                <DropdownMenuItem onClick={() => void navigate({ to: "/projects/$key", params: { key: p.key } })}>
+                  {t.board}
+                </DropdownMenuItem>
+                {p.settings?.features?.mergeQueue && (
+                  <DropdownMenuItem
+                    onClick={() => void navigate({ to: "/projects/$key/merge-queue", params: { key: p.key } })}
+                  >
+                    {t.mergeQueue}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => void navigate({ to: "/projects/$key/sandbox", params: { key: p.key } })}
+                >
+                  {t.sandbox}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ),
+        },
+      ]}
+    />
   );
 }
