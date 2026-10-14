@@ -739,6 +739,52 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(react@19.3.0)
 
+  packages/sdlc-ui:
+    dependencies:
+      '@orpc/contract':
+        specifier: ^1.15.5
+        version: 1.15.5(@opentelemetry/api@1.9.1)
+      '@orpc/tanstack-query':
+        specifier: ^1.15.5
+        version: 1.15.5(@opentelemetry/api@1.9.1)(@orpc/client@1.15.5(@opentelemetry/api@1.9.1))(@tanstack/query-core@5.104.1)
+      '@tanstack/react-query':
+        specifier: ^5.104.1
+        version: 5.104.1(react@19.3.0)
+      '@xdev-hive/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@xdev-hive/ui':
+        specifier: workspace:*
+        version: link:../ui
+      cn:
+        specifier: ^0.4.0
+        version: 0.4.0
+      lucide-react:
+        specifier: ^1.55.0
+        version: 1.55.0(@types/react@19.3.0)(react@19.3.0)
+    devDependencies:
+      '@testing-library/react':
+        specifier: 16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: 14.6.7
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      jsdom:
+        specifier: 30.1.1
+        version: 30.1.1(@noble/hashes@2.4.0)
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
+
   packages/skill-pack: {}
 
   packages/ui:
