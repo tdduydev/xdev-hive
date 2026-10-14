@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -81,8 +82,12 @@ func TestPrepareInteractiveBare(t *testing.T) {
 	}
 	mcp := args[slices.Index(args, "--mcp-config")+1]
 	st, err := os.Stat(mcp)
-	if err != nil || st.Mode().Perm() != 0o600 {
+	if err != nil {
 		t.Fatalf("file MCP %s: %v %v", mcp, st, err)
+	}
+	// Windows dùng ACL, không biểu diễn quyền truy cập bằng các bit mode Unix.
+	if runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
+		t.Fatalf("quyền file MCP %s = %o, muốn 600", mcp, st.Mode().Perm())
 	}
 	var cfg struct {
 		MCPServers map[string]struct {
@@ -117,7 +122,7 @@ func TestPrepareInteractiveBoundRepoAndOverride(t *testing.T) {
 	spec := interactiveSpec(remote, base)
 	spec.ProjectID = "0A0A0A0A-0000-4000-8000-000000000003"
 	spec.Projects = []projects.Project{{ProjectID: "0a0a0a0a-0000-4000-8000-000000000003", Folder: repo}}
-	r := Runner{DataDir: data, CLICommands: map[string]Command{"claude": {Path: "/bin/sh", Args: []string{"-c", "echo [{{prompt}}]"}}}}
+	r := Runner{DataDir: data, CLICommands: map[string]Command{"claude": {Path: "claude-test", Args: []string{"--prompt", "[{{prompt}}]"}}}}
 	it, err := r.PrepareInteractive(context.Background(), spec)
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +130,7 @@ func TestPrepareInteractiveBoundRepoAndOverride(t *testing.T) {
 	if it.Permissions != "workspace" {
 		t.Fatalf("máy chưa bật toàn quyền mà permissions = %s", it.Permissions)
 	}
-	if got := it.Cmd.Args; !slices.Equal(got, []string{"/bin/sh", "-c", "echo []"}) {
+	if got := it.Cmd.Args; !slices.Equal(got, []string{"claude-test", "--prompt", "[]"}) {
 		t.Fatalf("args = %v", got)
 	}
 	if out := mustOut(t, "git", "-C", repo, "worktree", "list"); !strings.Contains(out, "terminals") {
@@ -157,8 +162,9 @@ func TestInteractiveArgsWorkspaceAndOldClaude(t *testing.T) {
 	t.Setenv("DISABLE_TELEMETRY", "")
 	t.Setenv("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "")
 	spec := InteractiveSpec{Model: "sonnet", Advisor: "opus"}
+	mcp := filepath.Join(t.TempDir(), "m.json")
 	// Không đọc được phiên bản: bỏ cờ cần kiểm phiên bản (--advisor, --exclude-dynamic-…), giữ cờ chung.
-	args := interactiveArgs(Job{CLI: "claude", Advisor: "opus"}, TokenSavingConfig{}, "/tmp/m.json", spec, "workspace")
+	args := interactiveArgs(Job{CLI: "claude", Advisor: "opus"}, TokenSavingConfig{}, mcp, spec, "workspace")
 	joined := strings.Join(args, " ")
 	if strings.Contains(joined, "--advisor") || strings.Contains(joined, "--exclude-dynamic") || strings.Contains(joined, "--append-system-prompt") {
 		t.Fatalf("args = %v", args)
@@ -167,7 +173,7 @@ func TestInteractiveArgsWorkspaceAndOldClaude(t *testing.T) {
 		t.Fatalf("args = %v", args)
 	}
 	t.Setenv("DISABLE_TELEMETRY", "1")
-	args = interactiveArgs(Job{CLI: "claude", Advisor: "opus", claudeVersion: "2.1.296"}, TokenSavingConfig{Off: true}, "/tmp/m.json", spec, "full")
+	args = interactiveArgs(Job{CLI: "claude", Advisor: "opus", claudeVersion: "2.1.296"}, TokenSavingConfig{Off: true}, mcp, spec, "full")
 	if joined := strings.Join(args, " "); strings.Contains(joined, "--advisor") || strings.Contains(joined, "--exclude-dynamic") {
 		t.Fatalf("telemetry tắt hay tiết kiệm token tắt mà vẫn có cờ: %v", args)
 	}
@@ -185,7 +191,7 @@ func TestSecretEnvName(t *testing.T) {
 func TestReapTerminals(t *testing.T) {
 	remote, base := makeRemote(t)
 	data := t.TempDir()
-	r := Runner{DataDir: data, CLICommands: map[string]Command{"claude": {Path: "/bin/sh"}}}
+	r := Runner{DataDir: data, CLICommands: map[string]Command{"claude": {Path: "claude-test"}}}
 	if _, err := r.PrepareInteractive(context.Background(), interactiveSpec(remote, base)); err != nil {
 		t.Fatal(err)
 	}
