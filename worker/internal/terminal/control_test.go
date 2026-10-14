@@ -32,6 +32,7 @@ type ctlEnv struct {
 	link *fakeLink
 	tc   *tclient
 	hub  string
+	path string
 
 	mu  sync.Mutex
 	now time.Time
@@ -70,8 +71,8 @@ func newCtlEnv(t *testing.T, tune func(*Controller)) *ctlEnv {
 	}
 	rec.Controller, l.Controller, e.rem.Controller = e.ctl, e.ctl, e.ctl
 	rec.OnWelcome(personal(), e.link)
-	path := startLocal(t, l)
-	e.tc, _ = gate(t, path, createReq(t, nil))
+	e.path = startLocal(t, l)
+	e.tc, _ = gate(t, e.path, createReq(t, nil))
 	e.tc.waitCtl(t, localipc.CtlControl)
 	e.tc.waitOut(t, "READY")
 	e.hub = l.List()[0].HubID

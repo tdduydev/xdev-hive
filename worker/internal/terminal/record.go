@@ -248,6 +248,11 @@ func (s *RecordedSession) Write(b []byte) {
 
 // Close báo phiên đã kết thúc; reason là lý do của phiên tại máy, đổi sang lý do của hợp đồng.
 func (s *RecordedSession) Close(code *int, reason, message string) {
+	s.CloseBy(code, reason, message, "")
+}
+
+// CloseBy như Close, kèm người ngắt (userId của hub hoặc "machine"); rỗng là "machine".
+func (s *RecordedSession) CloseBy(code *int, reason, message, by string) {
 	if s == nil {
 		return
 	}
@@ -257,8 +262,11 @@ func (s *RecordedSession) Close(code *int, reason, message string) {
 	if s.exit != nil {
 		return
 	}
-	e := Exit{SessionID: s.id, ExitCode: code, Reason: ReasonExit, Message: clip(message, 500), By: "machine"}
-	if reason != ReasonExit {
+	if by == "" {
+		by = byMachine
+	}
+	e := Exit{SessionID: s.id, ExitCode: code, Reason: reason, Message: clip(message, 500), By: clip(by, 64)}
+	if reason != ReasonExit && reason != ReasonIdle {
 		e.Reason = ReasonClosed
 	}
 	s.exit = &e

@@ -132,9 +132,14 @@ func (j *jobs) onTermResize(m *TermResize) {
 	}
 }
 
+// onTermClose chuyển cho cả Host (phiên Leader) và Handler (phiên trên máy cá nhân): mã phiên là của hub nên chỉ một
+// bên có, bên kia bỏ qua.
 func (j *jobs) onTermClose(m *TermClose) {
 	if j.term != nil {
 		j.term.Close(m.SessionID, m.Reason)
+	}
+	if h := j.cfg.Terminal; h != nil {
+		h.CloseSession(terminal.CloseRequest{SessionID: m.SessionID, Reason: m.Reason, By: m.By})
 	}
 }
 

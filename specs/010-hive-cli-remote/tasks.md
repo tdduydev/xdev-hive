@@ -411,7 +411,18 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 ## Phase 5: User Story 5 — Ngắt, giới hạn, audit (P1) 🎯 MVP
 
-- [ ] T040 [US5] Worker: tắt khẩn cấp và giới hạn thời gian
+- [x] T040 [US5] Worker: tắt khẩn cấp và giới hạn thời gian
+  - Đã làm (SPEC10W6): `limits.go`. Phiên tại máy có `origin` (`local` | `remote`; `CreateParams.origin` không đọc từ
+    JSON nên client socket nội bộ không tự nhận là phiên từ xa, T050 đặt khi mở). Tắt từ xa (máy, `term_disable`, máy
+    thành dùng chung) → `RevokeAll(disabled)` rồi `endRemote`: SIGHUP, chờ `RemoteKillGrace` 10 s, kill cả nhóm; phiên
+    `hive chat` giữ nguyên. `term_close` kênh chuyển cho cả Host và `Handler.CloseSession` (mới); phiên trên máy cá nhân
+    bị ngắt với `term_exit {reason: closed, by: userId}`. Mỗi phút kiểm phiên mở từ xa: không client (terminal tại máy
+    hay quyền gõ từ xa) và không output quá `detachedHours` (2 giờ) → `term_exit idle`; chạy quá `maxHours` (12 giờ) →
+    `closed`; giới hạn đọc lại `remote.json` mỗi lần. Audit mới: `session_close` (hive kill, term_close, tắt từ xa),
+    `session_limit`, `session_end` (phiên có ghi lên hub hoặc mở từ xa). `hive ls --json` thêm `origin`, `controller`
+    cho dấu trên khay của app. Chọn theo kịch bản US5-4: giới hạn 2 giờ chỉ áp cho phiên mở từ xa, phiên `hive chat`
+    tách ra như tmux không tự ngắt (FR-023 viết chung, cần chủ dự án xác nhận). Người xem trên hub không được tính là
+    client vì worker không biết họ; đóng người xem khi tắt là việc của hub (T041) theo `term_state`.
   - Tắt từ xa: thu quyền, đóng người xem từ xa, kết thúc phiên mở từ xa (SIGHUP, 10 s, kill), giữ phiên tại máy, trong
     ≤ 2 s; `term_close`; phiên không client + không output 2 giờ; phiên từ xa quá 12 giờ; ghi `remote-audit.log` đủ mục.
   - **Scope**: `worker/internal/terminal/{limits.go,limits_test.go,remote.go,host.go}`
