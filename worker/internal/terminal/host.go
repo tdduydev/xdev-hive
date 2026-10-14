@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -106,7 +105,7 @@ type session struct {
 	mu      sync.Mutex
 	reason  string
 	message string
-	f       *os.File
+	f       pty.Terminal
 }
 
 // stop đặt lý do kết thúc (lý do đầu tiên thắng) rồi huỷ phiên.
@@ -229,7 +228,7 @@ func (h *Host) Resize(id string, cols, rows int) {
 	if f == nil {
 		return
 	}
-	if err := pty.Resize(f, cols, rows); err != nil {
+	if err := f.Resize(cols, rows); err != nil {
 		h.log().Debug("Không đổi được cỡ PTY", "session", id, "error", err)
 	}
 }
@@ -398,7 +397,7 @@ loop:
 	return code, ReasonExit, ""
 }
 
-func (h *Host) writeInput(s *session, f *os.File, exited <-chan struct{}) {
+func (h *Host) writeInput(s *session, f pty.Terminal, exited <-chan struct{}) {
 	for {
 		select {
 		case b := <-s.input:
@@ -413,7 +412,7 @@ func (h *Host) writeInput(s *session, f *os.File, exited <-chan struct{}) {
 
 // pumpOutput đọc PTY, che bí mật, gom theo Flush hoặc ChunkBytes rồi gửi trong giới hạn RateBytes/giây. Kênh giữa đọc
 // và gửi nhỏ nên gửi chậm thì đọc dừng và CLI bị chặn ghi: chờ chứ không bỏ byte. Kênh trả về đóng khi đã gửi hết.
-func (h *Host) pumpOutput(s *session, f *os.File, secrets []string) <-chan struct{} {
+func (h *Host) pumpOutput(s *session, f pty.Terminal, secrets []string) <-chan struct{} {
 	chunkBytes := orDefault(h.ChunkBytes, DefaultChunkBytes)
 	flush := orDefault(h.Flush, DefaultFlush)
 	chunks := make(chan []byte, 4)

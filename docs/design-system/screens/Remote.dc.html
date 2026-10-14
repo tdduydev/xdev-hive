@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remote · xDev Hive</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet><style>
+body{margin:0}.rm-board{container-type:inline-size;background:var(--background);color:var(--foreground);font:14px/1.5 var(--font-sans);min-width:0;color-scheme:light}.rm-board[data-theme=dark]{color-scheme:dark}
+.rm-board *{box-sizing:border-box}.rm-board :is(h1,h2,h3,p){margin:0}.rm-board :is(h1,h2,h3){font-family:var(--font-heading);text-wrap:balance}.rm-board h1{font-size:1.125rem}.rm-board h2{font-size:1rem}.rm-board h3{font-size:.875rem}
+.rm-board :is(button,input,textarea,select,a):focus-visible{outline:2px solid var(--ring);outline-offset:2px}.rm-board :is(button,input,textarea,select){font:inherit}.rm-board :is(button,a){touch-action:manipulation}.rm-board a{color:var(--primary);text-underline-offset:3px}
+.rm-board button{cursor:pointer}.rm-board button:disabled{opacity:.5;cursor:not-allowed}.rm-board :is(input,textarea,select){width:100%;min-width:0;min-height:44px;background:var(--background);color:var(--foreground);border:1px solid var(--input);border-radius:var(--radius);padding:.5rem .75rem}
+/* Mọi nút chạm cao tối thiểu 44 px: điện thoại là thiết bị chính của màn này. */
+.rm-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;min-width:44px;padding:.375rem .875rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);color:var(--foreground);font-weight:500;text-decoration:none}.rm-board a.rm-btn{color:var(--foreground)}.rm-btn:hover:not(:disabled){background:var(--muted)}.rm-btn.primary{background:var(--primary);color:var(--primary-foreground);border-color:transparent}.rm-btn.danger{color:var(--destructive);border-color:var(--destructive)}.rm-btn.block{width:100%}
+.rm-stack{display:flex;flex-direction:column;gap:.75rem;min-width:0}.rm-row{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;min-width:0}.rm-spread{justify-content:space-between}.rm-grow{flex:1;min-width:0}.rm-muted{color:var(--muted-foreground)}.rm-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}.rm-small{font-size:.75rem}
+.rm-card{border:1px solid var(--border);border-radius:calc(var(--radius)*1.5);padding:.875rem;background:var(--card);min-width:0}.rm-card :is(p,h2,h3){overflow-wrap:anywhere}
+.rm-pill{display:inline-flex;align-items:center;gap:.375rem;background:var(--muted);color:var(--muted-foreground);padding:.125rem .5rem;border-radius:999px;font-size:.75rem;white-space:nowrap}.rm-pill.ok{background:var(--success-soft);color:var(--success)}.rm-pill.warn{background:var(--warning-soft);color:var(--warning)}.rm-pill.bad{background:var(--destructive-soft);color:var(--destructive)}.rm-pill::before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:currentColor}
+.rm-alert{padding:.75rem 1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--muted);overflow-wrap:anywhere}.rm-alert.warning{background:var(--warning-soft);color:var(--warning)}.rm-alert.error{background:var(--destructive-soft);color:var(--destructive)}.rm-alert.success{background:var(--success-soft);color:var(--success)}
+.rm-design{padding:.5rem .75rem;border-bottom:1px dashed var(--border);font-size:.75rem}.rm-design select{width:auto;min-height:0;max-width:100%;padding:.25rem}.rm-design .rm-btn{min-height:32px;padding:.125rem .5rem}
+.rm-top{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;padding-top:max(.5rem,env(safe-area-inset-top));border-bottom:1px solid var(--border);background:var(--card)}
+.rm-main{padding:.75rem;padding-bottom:max(1rem,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:.75rem;min-height:560px}
+.rm-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.5rem}
+.rm-session{display:grid;gap:.25rem;min-height:44px;padding:.625rem .75rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--background);color:inherit;text-align:left;width:100%}
+/* Thật dùng xterm với `terminalTheme` (sáng/tối theo trang); ở đây chỉ minh hoạ bằng token thẻ. */
+.rm-term{flex:1;min-height:260px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);padding:.5rem;font:.75rem/1.45 var(--font-mono);overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.rm-keys{display:flex;gap:.375rem;overflow-x:auto;padding-bottom:.25rem;scroll-snap-type:x proximity}.rm-keys .rm-btn{scroll-snap-align:start;flex:none;padding:.25rem .5rem}.rm-keys .rm-btn[aria-pressed=true]{background:var(--accent);color:var(--accent-foreground);border-color:var(--primary)}
+.rm-sheet-wrap{position:relative;min-height:640px}.rm-backdrop{position:absolute;inset:0;background:var(--backdrop)}.rm-sheet{position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:1rem 1rem 0 0;padding:1rem;padding-bottom:max(1rem,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:.75rem}
+.rm-grab{align-self:center;width:2.5rem;height:.25rem;border-radius:999px;background:var(--border)}
+.rm-field{display:flex;flex-direction:column;gap:.375rem;font-weight:500;min-width:0}
+.rm-qr{width:9rem;height:9rem;align-self:center;border:1px solid var(--border);border-radius:var(--radius);background:repeating-conic-gradient(var(--foreground) 0 25%,var(--card) 0 50%) 0 0/1.125rem 1.125rem}
+.rm-steps{margin:0;padding-left:1.25rem;display:flex;flex-direction:column;gap:.5rem}
+.rm-skeleton{height:4rem;background:var(--muted);border-radius:var(--radius)}
+.rm-skip{position:absolute;left:-999px}.rm-skip:focus{left:.5rem;top:.5rem;background:var(--card);padding:.5rem;z-index:5}
+@media (prefers-reduced-motion:no-preference){.rm-btn{transition:background-color .15s}}
+@container (min-width:640px){.rm-main{max-width:720px;margin:auto;width:100%}}
+</style></helmet>
+<div class="rm-board" data-theme="{{theme}}" lang="{{lang}}" style="{{boardStyle}}">
+<a class="rm-skip" href="#rm-main">{{t.skip}}</a>
+<sc-if value="{{showTools}}" hint-placeholder-val="{{true}}"><section class="rm-design rm-row" aria-label="{{t.states}}" data-design-tools>
+<label class="rm-row">{{t.states}}<select name="design-state" value="{{view}}" onChange="{{setView}}"><sc-for list="{{modes}}" as="mode"><option value="{{mode.value}}">{{mode.label}}</option></sc-for></select></label>
+<button type="button" class="rm-btn" onClick="{{toVi}}" aria-label="Tiếng Việt">VI</button><button type="button" class="rm-btn" onClick="{{toEn}}" aria-label="English">EN</button><button type="button" class="rm-btn" onClick="{{toggleTheme}}">{{t.theme}}</button><button type="button" class="rm-btn" onClick="{{toggleSize}}">{{t.size}}</button>
+</section></sc-if>
+
+<header class="rm-top"><sc-if value="{{canBack}}"><button type="button" class="rm-btn" aria-label="{{t.back}}" onClick="{{goList}}">←</button></sc-if><h1 class="rm-grow">{{title}}</h1><sc-if value="{{isList}}"><a class="rm-btn" href="#devices" onClick="{{goDevices}}">{{t.devices}}</a></sc-if></header>
+
+<main id="rm-main" class="rm-main">
+<sc-if value="{{showHttp}}"><p role="alert" class="rm-alert warning">{{t.http}}</p></sc-if>
+<sc-if value="{{hasMessage}}"><p role="status" class="rm-alert success">{{message}}</p></sc-if>
+
+<!-- Danh sách: máy của tôi và phiên -->
+<sc-if value="{{isLoading}}"><div class="rm-stack" aria-busy="true"><div class="rm-skeleton"></div><div class="rm-skeleton"></div><div class="rm-skeleton"></div></div></sc-if>
+<sc-if value="{{isError}}"><div class="rm-alert error rm-stack" role="alert"><p>{{t.loadFailed}}</p><button type="button" class="rm-btn" onClick="{{retry}}">{{t.retry}}</button></div></sc-if>
+<sc-if value="{{isOffline}}"><p role="alert" class="rm-alert warning">{{t.offline}}</p></sc-if>
+<sc-if value="{{isEmpty}}"><div class="rm-card rm-stack"><h2>{{t.emptyTitle}}</h2><p class="rm-muted">{{t.emptyBody}}</p><p class="rm-mono rm-small">hive remote on</p></div></sc-if>
+<sc-if value="{{isList}}">
+<section class="rm-stack" aria-labelledby="rm-machines"><h2 id="rm-machines">{{t.machines}}</h2>
+<ul class="rm-list"><sc-for list="{{machines}}" as="m"><li class="rm-card rm-stack">
+<div class="rm-row rm-spread"><strong class="rm-grow">{{m.name}}</strong><span class="{{m.pillClass}}">{{m.state}}</span></div>
+<p class="rm-muted rm-small">{{m.detail}}</p>
+<button type="button" class="rm-btn primary block" disabled="{{m.cannotOpen}}" onClick="{{openSheet}}">{{t.newSession}}</button>
+<sc-if value="{{m.cannotOpen}}"><p class="rm-small rm-muted">{{m.reason}}</p></sc-if>
+</li></sc-for></ul></section>
+<section class="rm-stack" aria-labelledby="rm-sessions"><h2 id="rm-sessions">{{t.sessions}}</h2>
+<ul class="rm-list"><sc-for list="{{sessions}}" as="s"><li><button type="button" class="rm-session" onClick="{{s.open}}">
+<span class="rm-row"><span class="{{s.pillClass}}">{{s.state}}</span><span class="rm-pill">{{s.cli}}</span><sc-if value="{{s.team}}"><span class="rm-pill">{{t.team}}</span></sc-if></span>
+<strong>{{s.title}}</strong><span class="rm-muted rm-small">{{s.meta}}</span></button></li></sc-for></ul></section>
+<section class="rm-card rm-stack" aria-labelledby="rm-pwa"><h3 id="rm-pwa">{{t.pwaTitle}}</h3><p class="rm-muted">{{t.pwaShort}}</p><button type="button" class="rm-btn block" onClick="{{goPwa}}">{{t.pwaHow}}</button></section>
+</sc-if>
+
+<!-- Terminal: thanh phím và ô soạn -->
+<sc-if value="{{isTerminal}}">
+<div class="rm-row"><span class="rm-pill ok" role="status">{{t.connected}}</span><span class="rm-pill">{{t.controlling}}</span><span class="rm-muted rm-small rm-grow">payment-api · claude</span></div>
+<section class="rm-term rm-mono" aria-label="{{t.terminal}}" tabindex="0">$ claude
+✻ Welcome to Claude Code
+
+&gt; Sửa test thanh toán bị lỗi múi giờ
+● Đang đọc src/payments/refund.test.ts…
+● Bash(pnpm test refund)
+  ✗ 1 failed · 12 passed
+Cho phép chạy `git diff`? (y/n)</section>
+<div class="rm-stack" role="toolbar" aria-label="{{t.keyBar}}">
+<div class="rm-keys"><button type="button" class="rm-btn">Esc</button><button type="button" class="rm-btn">Tab</button><button type="button" class="rm-btn" aria-pressed="true">Ctrl</button><button type="button" class="rm-btn" aria-pressed="false">Alt</button><button type="button" class="rm-btn" aria-label="{{t.up}}">↑</button><button type="button" class="rm-btn" aria-label="{{t.down}}">↓</button><button type="button" class="rm-btn" aria-label="{{t.left}}">←</button><button type="button" class="rm-btn" aria-label="{{t.right}}">→</button><button type="button" class="rm-btn">Ctrl-C</button><button type="button" class="rm-btn">Ctrl-D</button><button type="button" class="rm-btn">/</button><button type="button" class="rm-btn">Enter</button></div>
+<div class="rm-row"><label class="rm-field rm-grow"><span class="rm-small rm-muted">{{t.compose}}</span><input name="compose" type="text" autocomplete="off" autocapitalize="off" placeholder="{{t.composeHint}}"></label><button type="button" class="rm-btn primary" onClick="{{send}}">{{t.sendLine}}</button></div>
+</div>
+<div class="rm-row"><button type="button" class="rm-btn" onClick="{{toggleShare}}" aria-pressed="{{team}}">{{t.share}}</button><button type="button" class="rm-btn danger" onClick="{{goList}}">{{t.disconnect}}</button></div>
+<p class="rm-muted rm-small">{{t.shareHint}}</p>
+</sc-if>
+
+<!-- Ghép thiết bị -->
+<sc-if value="{{isPair}}">
+<div class="rm-card rm-stack"><h2>{{t.pairTitle}}</h2><ol class="rm-steps"><li>{{t.pair1}}</li><li>{{t.pair2}}</li><li>{{t.pair3}}</li></ol>
+<label class="rm-field">{{t.deviceName}}<input name="device-name" type="text" value="iPhone của An" autocomplete="off"></label>
+<button type="button" class="rm-btn primary block" onClick="{{startPair}}">{{t.pairBtn}}</button>
+<p role="status" class="rm-alert">{{t.pairWait}}</p></div>
+</sc-if>
+
+<!-- Thiết bị đã ghép -->
+<sc-if value="{{isDevices}}">
+<section class="rm-stack"><h2>{{t.devicesTitle}}</h2><p class="rm-muted">{{t.devicesBody}}</p>
+<ul class="rm-list"><sc-for list="{{devices}}" as="d"><li class="rm-card rm-stack"><div class="rm-row rm-spread"><strong class="rm-grow">{{d.name}}</strong><sc-if value="{{d.current}}"><span class="rm-pill ok">{{t.thisDevice}}</span></sc-if></div><p class="rm-muted rm-small">{{d.meta}}</p><button type="button" class="rm-btn danger" onClick="{{d.revoke}}">{{t.revoke}}</button></li></sc-for></ul>
+<button type="button" class="rm-btn block" onClick="{{goPair}}">{{t.pairNew}}</button></section>
+</sc-if>
+
+<!-- Hướng dẫn cài PWA -->
+<sc-if value="{{isPwa}}">
+<section class="rm-card rm-stack"><h2>{{t.pwaTitle}}</h2><p class="rm-muted">{{t.pwaWhy}}</p>
+<h3>iPhone / iPad (Safari)</h3><ol class="rm-steps"><li>{{t.ios1}}</li><li>{{t.ios2}}</li><li>{{t.ios3}}</li></ol>
+<h3>Android (Chrome)</h3><ol class="rm-steps"><li>{{t.and1}}</li><li>{{t.and2}}</li></ol>
+<p class="rm-alert">{{t.pwaNote}}</p></section>
+</sc-if>
+
+<!-- Mở phiên mới: bottom sheet -->
+<sc-if value="{{isSheet}}"><div class="rm-sheet-wrap"><div class="rm-backdrop" onClick="{{goList}}"></div>
+<div class="rm-sheet" role="dialog" aria-modal="true" aria-label="{{t.newSession}}"><span class="rm-grab" aria-hidden="true"></span><h2>{{t.newSession}} · MacBook của An</h2>
+<label class="rm-field">CLI<select name="cli"><option>claude</option><option>codex</option><option>gemini</option></select></label>
+<label class="rm-field">{{t.account}}<select name="account"><option>{{t.auto}}</option><option>Claude Max team</option><option>Claude Pro An</option></select></label>
+<label class="rm-field">{{t.folder}}<select name="root"><option>~/code</option><option>~/work</option></select></label>
+<label class="rm-field">{{t.subdir}}<input name="subdir" type="text" value="payment-api" autocomplete="off"></label>
+<label class="rm-field">{{t.task}}<select name="task"><option>{{t.noTask}}</option><option>PAY-42 Hoàn tiền một phần</option></select></label>
+<label class="rm-field">{{t.opening}}<textarea name="opening" rows="2" placeholder="{{t.openingHint}}"></textarea></label>
+<button type="button" class="rm-btn primary block" onClick="{{startSession}}">{{t.openFace}}</button>
+<button type="button" class="rm-btn block" onClick="{{goList}}">{{t.cancel}}</button></div></div></sc-if>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":true},"view":{"editor":"enum","options":["list","terminal","sheet","pair","devices","pwa","empty","loading","error","offline","http"],"default":"list"},"embedded":{"editor":"boolean","default":false},"$preview":{"width":360,"height":780}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const narrow = this.state.narrow ?? (this.props.narrow ?? true);
+    const view = this.state.view ?? this.props.view ?? 'list';
+    const x = (p) => p[lang === 'en' ? 1 : 0];
+    const T = {
+      states:['Trạng thái thiết kế','Design state'],theme:['Đổi sáng/tối','Toggle theme'],size:['Đổi cỡ 360 px','Toggle 360 px'],skip:['Đến nội dung chính','Skip to content'],back:['Quay lại','Back'],
+      title:['Điều khiển từ xa','Remote control'],devices:['Thiết bị','Devices'],machines:['Máy của tôi','My machines'],sessions:['Phiên','Sessions'],newSession:['Mở phiên mới','New session'],team:['Cho đội xem','Shared'],
+      http:['Hub chạy HTTP: nội dung phiên và phím gõ không được mã hoá trên đường truyền. Chỉ dùng trong mạng nội bộ.','Hub runs on HTTP: session content and keystrokes are not encrypted in transit. Use only on an internal network.'],
+      loadFailed:['Không tải được danh sách máy và phiên.','Could not load machines and sessions.'],retry:['Tải lại','Retry'],offline:['Mất kết nối tới hub. Đang hiện dữ liệu đã tải; mở phiên và ngắt phiên tạm tắt.','No connection to the hub. Showing loaded data; opening and ending sessions are disabled.'],
+      emptyTitle:['Chưa máy nào bật điều khiển từ xa','No machine has remote control on'],emptyBody:['Mở app desktop, vào Điều khiển từ xa rồi bật, hoặc chạy lệnh dưới trên máy. Bật từ xa chỉ làm được tại máy.','Open the desktop app, go to Remote control and switch it on, or run the command below on the machine. Switching on is only possible at the machine.'],
+      connected:['Đã kết nối','Connected'],controlling:['Bạn đang giữ phím','You hold the keys'],terminal:['Terminal','Terminal'],keyBar:['Thanh phím terminal','Terminal key bar'],up:['Mũi tên lên','Arrow up'],down:['Mũi tên xuống','Arrow down'],left:['Mũi tên trái','Arrow left'],right:['Mũi tên phải','Arrow right'],
+      compose:['Soạn dòng','Compose line'],composeHint:['Gõ dài hoặc có dấu rồi gửi','Type a long or accented line, then send'],sendLine:['Gửi dòng','Send line'],share:['Cho đội xem','Share with team'],disconnect:['Rời phiên','Leave'],shareHint:['Người xem trong đội chỉ xem, không gõ được. Tắt là họ bị ngắt trong 2 giây.','Team viewers can only watch. Turning it off disconnects them within 2 seconds.'],
+      pairTitle:['Ghép điện thoại với máy','Pair this phone with a machine'],pair1:['Trên máy, mở app desktop → Điều khiển từ xa → Ghép điện thoại, hoặc chạy `hive remote pair`.','On the machine, open the desktop app → Remote control → Pair phone, or run `hive remote pair`.'],pair2:['Quét mã QR bằng điện thoại này (đã đăng nhập hub).','Scan the QR code with this phone (signed in to the hub).'],pair3:['Xác thực Face ID / vân tay để tạo passkey, rồi bấm Cho phép trên máy.','Confirm with Face ID / fingerprint to create a passkey, then tap Allow on the machine.'],
+      deviceName:['Tên thiết bị','Device name'],pairBtn:['Tạo passkey và ghép','Create passkey and pair'],pairWait:['Đang chờ chủ máy bấm Cho phép tại máy (tối đa 60 giây)…','Waiting for the owner to tap Allow at the machine (up to 60 seconds)…'],
+      devicesTitle:['Thiết bị đã ghép','Paired devices'],devicesBody:['Chỉ thêm thiết bị mới được tại máy. Gỡ thiết bị ở đây hoặc trên máy.','New devices can only be added at the machine. You can remove devices here or at the machine.'],thisDevice:['Thiết bị này','This device'],revoke:['Gỡ thiết bị','Remove device'],pairNew:['Ghép thiết bị mới','Pair a new device'],
+      pwaTitle:['Cài lên màn hình chính','Add to Home Screen'],pwaShort:['Cài để nhận thông báo khi agent cần bạn trả lời.','Install to get notified when an agent needs your reply.'],pwaHow:['Xem cách cài','How to install'],pwaWhy:['Trên iPhone, thông báo đẩy chỉ hoạt động sau khi cài web lên màn hình chính.','On iPhone, push notifications only work after adding the web app to the Home Screen.'],
+      ios1:['Mở trang này trong Safari.','Open this page in Safari.'],ios2:['Bấm nút Chia sẻ.','Tap the Share button.'],ios3:['Chọn “Thêm vào MH chính”, rồi mở từ biểu tượng mới.','Choose “Add to Home Screen”, then open from the new icon.'],and1:['Bấm menu ⋮ của Chrome.','Tap the Chrome ⋮ menu.'],and2:['Chọn “Cài đặt ứng dụng”.','Choose “Install app”.'],pwaNote:['Cần hub chạy HTTPS. Trên HTTP không cài được và không có thông báo đẩy; điều khiển từ xa dùng mã Authenticator.','Needs the hub on HTTPS. On HTTP there is no install or push; remote control uses the Authenticator code.'],
+      account:['Tài khoản','Account'],auto:['Tự chọn','Auto'],folder:['Thư mục được phép','Allowed folder'],subdir:['Thư mục con','Subfolder'],task:['Task (không bắt buộc)','Task (optional)'],noTask:['Không gắn task','No task'],opening:['Câu mở đầu (không bắt buộc)','Opening message (optional)'],openingHint:['Ví dụ: sửa test thanh toán','e.g. fix the payment test'],openFace:['Mở bằng Face ID','Open with Face ID'],cancel:['Huỷ','Cancel'],
+      done:['Đã mở phiên mẫu.','Sample session opened.'],paired:['Đã ghép “iPhone của An” (mẫu).','Paired “iPhone của An” (sample).'],revoked:['Đã gỡ thiết bị (mẫu).','Device removed (sample).']
+    };
+    const t = Object.fromEntries(Object.entries(T).map(([k, v]) => [k, x(v)]));
+    const titles = {terminal:'payment-api',sheet:t.newSession,pair:t.pairTitle,devices:t.devicesTitle,pwa:t.pwaTitle};
+    const set = (v, message = '') => () => this.setState({ view: v, message });
+    const machines = [
+      {name:'MacBook của An',pillClass:'rm-pill ok',state:lang==='en'?'Online · remote on':'Online · từ xa bật',detail:lang==='en'?'2 allowed folders · 1 device · 1 session':'2 thư mục được phép · 1 thiết bị · 1 phiên',cannotOpen:false,reason:''},
+      {name:'mini-server',pillClass:'rm-pill',state:'Offline',detail:lang==='en'?'Last seen 10 minutes ago':'Thấy lần cuối 10 phút trước',cannotOpen:true,reason:lang==='en'?'Machine is offline. Open hive-worker on it and retry.':'Máy đang offline. Mở hive-worker trên máy rồi thử lại.'},
+      {name:'devbox-02',pillClass:'rm-pill warn',state:lang==='en'?'Remote off':'Từ xa tắt',detail:lang==='en'?'Only recordings are available':'Chỉ xem được bản ghi',cannotOpen:true,reason:lang==='en'?'No allowed folder yet. Add one at the machine.':'Chưa có thư mục được phép. Thêm tại máy.'}
+    ];
+    const sessions = [
+      {state:lang==='en'?'Running':'Đang chạy',pillClass:'rm-pill ok',cli:'claude',team:true,title:'PAY-42 · payment-api',meta:'MacBook của An · 12 phút',open:set('terminal')},
+      {state:lang==='en'?'Ended':'Đã kết thúc',pillClass:'rm-pill',cli:'codex',team:false,title:'~/code/web-admin',meta:'MacBook của An · '+(lang==='en'?'yesterday 16:20':'hôm qua 16:20'),open:set('terminal')}
+    ];
+    const devices = [
+      {name:'iPhone của An',current:true,meta:lang==='en'?'Paired 12/10 · last used today':'Ghép 12/10 · dùng hôm nay',revoke:set('devices',t.revoked)},
+      {name:'iPad',current:false,meta:lang==='en'?'Paired 02/10 · last used 3 days ago':'Ghép 02/10 · dùng 3 ngày trước',revoke:set('devices',t.revoked)}
+    ];
+    const isList = ['list','offline','http','loading','error','empty'].includes(view);
+    const showMain = view === 'list' || view === 'offline' || view === 'http';
+    return {
+      t,lang,dark,narrow,view,theme:dark?'dark':'light',showTools:!this.props.embedded,
+      boardStyle:'width:'+(narrow?'360px':'100%')+';max-width:100%;min-height:'+(this.props.embedded?'0':'780px')+';',
+      modes:['list','terminal','sheet','pair','devices','pwa','empty','loading','error','offline','http'].map(v=>({value:v,label:{list:x(['Danh sách','List']),terminal:'Terminal',sheet:x(['Mở phiên mới','New session']),pair:x(['Ghép','Pair']),devices:x(['Thiết bị','Devices']),pwa:'PWA',empty:x(['Rỗng','Empty']),loading:x(['Đang tải…','Loading…']),error:x(['Lỗi tải','Load error']),offline:'Offline',http:'HTTP'}[v]})),
+      setView:e=>this.setState({view:e.target.value,message:''}),toVi:()=>this.setState({lang:'vi'}),toEn:()=>this.setState({lang:'en'}),toggleTheme:()=>this.setState({dark:!dark}),toggleSize:()=>this.setState({narrow:!narrow}),
+      title:isList?t.title:titles[view],canBack:!isList,isList:showMain,
+      isLoading:view==='loading',isError:view==='error',isOffline:view==='offline',isEmpty:view==='empty',showHttp:view==='http',
+      isTerminal:view==='terminal',isPair:view==='pair',isDevices:view==='devices',isPwa:view==='pwa',isSheet:view==='sheet',
+      machines:showMain?machines:[],sessions:showMain?sessions:[],devices,team:!!this.state.team,
+      message:this.state.message||'',hasMessage:!!this.state.message,
+      goList:set('list'),goDevices:set('devices'),goPair:set('pair'),goPwa:set('pwa'),openSheet:set('sheet'),startSession:set('terminal',t.done),startPair:set('devices',t.paired),
+      retry:set('list'),send:()=>{},toggleShare:()=>this.setState({team:!this.state.team})
+    };
+  }
+}
+</script>
+</body>
+</html>

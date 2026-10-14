@@ -12,11 +12,13 @@ import (
 	"time"
 )
 
-// Supported: hệ điều hành có socket nội bộ.
-const Supported = true
-
-// ErrUnsupported chỉ dùng trên Windows; khai ở đây để code gọi biên dịch trên mọi hệ điều hành.
-var ErrUnsupported = errors.New("socket nội bộ chưa hỗ trợ trên hệ điều hành này")
+func defaultPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "xdev-hive", "run", "hive.sock"), nil
+}
 
 // Listen mở Unix socket ở path: thư mục 0700 của người dùng hiện tại, socket 0600. Socket cũ không còn ai nghe (worker
 // trước chết) thì xoá; còn worker khác nghe thì trả ErrInUse.

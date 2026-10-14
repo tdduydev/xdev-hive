@@ -78,7 +78,7 @@ type localSession struct {
 	account   string
 	started   time.Time
 	cmd       *exec.Cmd
-	f         *os.File
+	f         pty.Terminal
 	lease     *accounts.Lease
 	rec       *RecordedSession
 
@@ -630,7 +630,7 @@ func (l *Local) handleFrame(s *localSession, cl *localClient, typ byte, data []b
 	case localipc.FrameResize:
 		var sz localipc.Size
 		if json.Unmarshal(data, &sz) == nil && sz.Cols > 0 && sz.Rows > 0 && s.controlledBy(cl) {
-			if err := pty.Resize(s.f, min(sz.Cols, maxSize), min(sz.Rows, maxSize)); err != nil {
+			if err := s.f.Resize(min(sz.Cols, maxSize), min(sz.Rows, maxSize)); err != nil {
 				l.log().Debug("Không đổi được cỡ PTY", "session", s.id, "error", err)
 			}
 		}
