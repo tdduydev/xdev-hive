@@ -9,6 +9,7 @@ import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import type pg from "pg";
+import { registerMcpTools as artifactsMcpTools, artifactsRouter } from "./modules/artifacts/index.ts";
 import {
   exportAudit,
   getAuditRetention,
@@ -132,6 +133,7 @@ export function createApp({
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
   leaderMcpTools(registry, { runs });
+  artifactsMcpTools(registry, { pool, jobs, publicUrl });
   const terminal = {
     enabled: config.remoteTerminal ?? false,
     publicUrl,
@@ -264,6 +266,7 @@ export function createApp({
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
     terminal: terminalRouter({ auth, pool, terminal }),
+    artifacts: artifactsRouter({ auth, pool, jobs, publicUrl }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
