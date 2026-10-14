@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { CODE_WORKFLOW_ID, codeWorkflowsFixture, fail, PAYMENT_PROJECT_ID } from "./fake-hub.ts";
 import { inOrg, PRD_WORKFLOW_ID, type Role, TEAM_ID, workflowsFixture } from "./reviews-fixture.ts";
@@ -464,6 +466,10 @@ for (const width of [1440, 1100, 360] as const) {
       await expect(config(page).getByRole("textbox", { name: "Tên checkpoint" })).toHaveValue("Review AI");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`workflows-code-${width}-${scheme}.png`), fullPage: true });
+      const dir = process.env.HIVE_CODEREVIEW_SHOTS_DIR;
+      if (!dir) return;
+      await mkdir(dir, { recursive: true });
+      await page.screenshot({ path: resolve(dir, `workflows-code-${width}-${scheme}.png`), fullPage: true });
     });
 
     test(`ảnh màn quy trình ${width}, ${scheme}`, async ({ page }, testInfo) => {
