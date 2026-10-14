@@ -27,7 +27,15 @@ import type { ProviderFactory } from "../scm/index.ts";
 import { teams } from "../tenancy/index.ts";
 import { activeItemProjects, requireItemManage } from "./access.ts";
 import { contractCheckpointTeams } from "./contracts.ts";
-import { sdlcArtifactSyncs, sdlcArtifacts, sdlcItemPhases, sdlcItemProjects, sdlcItems, sdlcSteps } from "./schema.ts";
+import {
+  sdlcArtifactSyncs,
+  sdlcArtifacts,
+  sdlcAutoApprovals,
+  sdlcItemPhases,
+  sdlcItemProjects,
+  sdlcItems,
+  sdlcSteps,
+} from "./schema.ts";
 
 /*
  * Máy trạng thái giai đoạn của hạng mục (plan.md "Luồng"). Giai đoạn đạt khi mọi tài liệu bắt buộc của nó có baseline;
@@ -104,10 +112,17 @@ async function phaseRows(tx: Tx, itemId: string): Promise<PhaseRow[]> {
 
 /**
  * Giai đoạn có tài liệu bắt buộc thì đạt khi mọi tài liệu đó có baseline chưa bị thu hồi; tài liệu tuỳ chọn không chặn.
- * Không có tài liệu bắt buộc thì đạt khi các bước tự chạy đã xong. Triển khai không bao giờ tự đạt ở đây.
+ * Không có tài liệu bắt buộc thì đạt khi các bước tự chạy đã xong. Triển khai không bao giờ tự đạt ở đây. Giai đoạn
+ * trước còn tài liệu đang duyệt lại sau thu hồi tự duyệt thì chưa đạt (D26): bản này dựa trên tài liệu có thể đổi.
  */
 async function phaseReady(tx: Tx, item: SdlcItemRow, phase: SdlcPhase): Promise<boolean> {
   if (phase.kind === "implementation") return false;
+  const index = item.mode.phases.findIndex((p) => p.id === phase.id);
+  const revoked = await tx
+    .select({ phaseId: sdlcArtifacts.phaseId })
+    .from(sdlcArtifacts)
+    .where(and(eq(sdlcArtifacts.itemId, item.id), eq(sdlcArtifacts.approval, "revoked")));
+  if (revoked.some((r) => item.mode.phases.findIndex((p) => p.id === r.phaseId) < index)) return false;
   const required = await tx
     .select({ version: sdlcArtifacts.baselineVersion, approval: sdlcArtifacts.approval })
     .from(sdlcArtifacts)
@@ -317,6 +332,12 @@ export async function onBaseline(tx: Tx, event: SdlcBaselineEvent, deps: SdlcDep
     .where(eq(sdlcArtifacts.id, artifact.id));
   // Duyệt lại không tạo phiên bản mới nên repo không có gì để ghi.
   if (!event.reaffirm) await markSyncPending(tx, artifact.id);
+  // Lần tự duyệt ghi lúc checkpoint đạt, chưa biết phiên bản; thu hồi cần phiên bản để biết baseline nào bị bác.
+  if (event.autoApproved && !event.reaffirm)
+    await tx
+      .update(sdlcAutoApprovals)
+      .set({ version: event.version })
+      .where(and(eq(sdlcAutoApprovals.reviewId, event.reviewId), eq(sdlcAutoApprovals.artifactId, artifact.id)));
   await recordAudit(tx, {
     action: "sdlc.artifact.baseline",
     targetType: "sdlc_item",
@@ -339,8 +360,10 @@ export async function onBaseline(tx: Tx, event: SdlcBaselineEvent, deps: SdlcDep
   if (!phase || !row || row.status === "approved" || row.status === "skipped") return;
   if (!(await phaseReady(tx, item, phase))) return;
   await markApproved(tx, row, null);
-  // Giai đoạn sau đạt sớm (tài liệu soạn trước) thì chờ tới lượt; `advance` sẽ đi qua nó.
-  if (item.status === "active" && row.phaseIndex === item.phaseIndex) await scheduleAdvance(tx, item, deps);
+  // Giai đoạn sau đạt sớm (tài liệu soạn trước) thì chờ tới lượt; `advance` sẽ đi qua nó. Duyệt lại sau thu hồi thì
+  // giai đoạn đang chạy (thường đã ở sau) có thể vừa hết bị giữ, nên đi tiếp dù không phải giai đoạn hiện tại.
+  if (item.status === "active" && (row.phaseIndex === item.phaseIndex || event.reaffirm))
+    await scheduleAdvance(tx, item, deps);
 }
 
 /** Repo nào để `off` thì tài liệu chỉ ở hub; còn lại chờ job đồng bộ (T040) ghi vào repo. */

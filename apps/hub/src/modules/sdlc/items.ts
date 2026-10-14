@@ -36,6 +36,7 @@ import {
   visibleItemsWhere,
 } from "./access.ts";
 import { artifactViews } from "./artifact-view.ts";
+import { itemAutoApprovals } from "./autoapprove.ts";
 import { contractWarnings } from "./contracts.ts";
 import { resolveMode } from "./modes.ts";
 import {
@@ -982,7 +983,7 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
       createdAt: iso(s.createdAt),
       finishedAt: isoOrNull(s.finishedAt),
     })),
-    // Task do bản tách (T030) điền; tự duyệt do T017 điền.
+    // Task do bản tách (T030) điền.
     tasks: [],
     overrides: overrides.map((o) => ({
       id: o.id,
@@ -997,7 +998,7 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
       revokedBy: o.revokedBy ? person(names, o.revokedBy) : null,
       active: !o.revokedAt && (!o.expiresAt || o.expiresAt.getTime() > now),
     })),
-    autoApprovals: [],
+    autoApprovals: await itemAutoApprovals(tx, userId, item),
     warnings: await contractWarnings(tx, item),
     convergeRound: item.convergeRound,
     convergedAt: isoOrNull(item.convergedAt),
