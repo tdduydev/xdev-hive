@@ -551,20 +551,39 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
       }
     },
 
-    async checksFor(ref: RepoRef, sha: string): Promise<ChecksState> {
+    async checksFor(ref: RepoRef, sha: string, opts?: { excludeContexts?: readonly string[] }): Promise<ChecksState> {
       const repo = { owner: ref.owner, repo: ref.name, ref: sha };
       // Hai nguồn CI của GitHub: commit status (CI ngoài, API cũ) và check run (GitHub Actions, App).
-      const status = await request<{ state: string; total_count: number }>(
-        "GET /repos/{owner}/{repo}/commits/{ref}/status",
-        repo,
-      );
+      const status = await request<{
+        state: string;
+        total_count: number;
+        statuses: Array<{ context: string; state: string }>;
+      }>("GET /repos/{owner}/{repo}/commits/{ref}/status", {
+        ...repo,
+        ...(opts?.excludeContexts?.length ? { per_page: 100, page: 1 } : {}),
+      });
       const checks = await request<{ check_runs: Array<{ status: string; conclusion: string | null }> }>(
         "GET /repos/{owner}/{repo}/commits/{ref}/check-runs",
         { ...repo, per_page: 100 },
       );
       const states: ChecksState[] = [];
       // Không có status nào thì GitHub vẫn trả state "pending" với total_count 0.
-      if (status.total_count > 0) {
+      if (opts?.excludeContexts?.length) {
+        // Checkpoint CI không được chờ chính status của phiên review đang chạy.
+        let items = status.statuses;
+        for (let page = 1; ; page++) {
+          for (const item of items) {
+            if (!opts.excludeContexts.includes(item.context))
+              states.push(item.state === "success" ? "success" : item.state === "pending" ? "pending" : "failure");
+          }
+          if (items.length < 100) break;
+          const next = await request<{ statuses: Array<{ context: string; state: string }> }>(
+            "GET /repos/{owner}/{repo}/commits/{ref}/status",
+            { ...repo, per_page: 100, page: page + 1 },
+          );
+          items = next.statuses;
+        }
+      } else if (status.total_count > 0) {
         states.push(status.state === "success" ? "success" : status.state === "pending" ? "pending" : "failure");
       }
       for (const run of checks.check_runs) {
