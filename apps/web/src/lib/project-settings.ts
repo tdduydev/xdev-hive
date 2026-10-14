@@ -95,6 +95,10 @@ export interface SettingsForm {
   tiers: Record<TaskTier, TierForm>;
   rtk: boolean;
   codegraph: boolean;
+  /** Context pack, ngân sách khảo sát và cắt output tool của worker; ô số "0" là tắt mục đó. */
+  contextPack: boolean;
+  exploreBudget: string;
+  toolOutputMaxChars: string;
 }
 
 const text = (n: number | undefined): string => (n === undefined ? "" : String(n));
@@ -154,6 +158,9 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     // Hub cũ chưa có hai mục này: hub mới đọc thiếu là bật.
     rtk: saving.rtk ?? defaultTokenSaving.rtk,
     codegraph: saving.codegraph ?? defaultTokenSaving.codegraph,
+    contextPack: saving.contextPack ?? defaultTokenSaving.contextPack,
+    exploreBudget: String(saving.exploreBudget ?? defaultTokenSaving.exploreBudget),
+    toolOutputMaxChars: String(saving.toolOutputMaxChars ?? defaultTokenSaving.toolOutputMaxChars),
   };
 }
 
@@ -255,6 +262,9 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       allowWeb: form.allowWeb,
       rtk: form.rtk,
       codegraph: form.codegraph,
+      contextPack: form.contextPack,
+      exploreBudget: requiredNum(form.exploreBudget, "exploreBudget", errors),
+      toolOutputMaxChars: requiredNum(form.toolOutputMaxChars, "toolOutputMaxChars", errors),
     },
     routing: {
       enabled: form.routing,
@@ -298,7 +308,9 @@ export function fieldOfPath(path: readonly PropertyKey[]): string | undefined {
         key === "autocompactPct" ||
         key === "subagentModel" ||
         key === "cacheTtl" ||
-        key === "autocompactWindow"
+        key === "autocompactWindow" ||
+        key === "exploreBudget" ||
+        key === "toolOutputMaxChars"
         ? key
         : undefined;
     case "routing": {

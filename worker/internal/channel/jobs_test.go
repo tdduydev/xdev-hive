@@ -572,3 +572,15 @@ func TestDecodeJobReadsBriefSHA(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeJobPassesTaskTextAndGuardSettings(t *testing.T) {
+	spec := `{"repoUrl":"https://git.example/a.git","cli":"claude","taskText":"Sửa LoginHandler","tokenSaving":{"enabled":true,"contextPack":false,"exploreBudget":0,"toolOutputMaxChars":8000}}`
+	job, err := decodeJob(&JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(spec)}, Lease{RunToken: "t"}, "https://hub.example", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := job.TokenSaving
+	if job.TaskText != "Sửa LoginHandler" || ts == nil || ts.ContextPack == nil || *ts.ContextPack || ts.ExploreBudget == nil || *ts.ExploreBudget != 0 || ts.ToolOutputMaxChars == nil || *ts.ToolOutputMaxChars != 8000 {
+		t.Fatalf("job = %+v, tokenSaving = %+v", job, ts)
+	}
+}
