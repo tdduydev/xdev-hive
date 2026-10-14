@@ -253,7 +253,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `apps/web/src/lib/nav.ts`, `apps/web/e2e/{fake-hub.ts,artifacts.spec.ts,artifact-sandbox.spec.ts}`, `apps/web/package.json`
   - **Phụ thuộc**: T012, T013, T021, T022, T023 · **Mức**: nặng
 
-- [ ] T031 🎯 Web: màn quản trị Link công khai, e2e link công khai và "Nhờ Leader sửa"
+- [x] T031 🎯 Web: màn quản trị Link công khai, e2e link công khai và "Nhờ Leader sửa"
   - `pages/admin/public-links-page.tsx` (bật/tắt `publicLinks`, `maxDays`, bảng link của tổ chức từ `public-links-table`,
     Thu hồi); `router.tsx`, `nav.ts` (mục trong Quản trị).
   - `e2e/fake-hub.ts`: route `publicLinks.*`, `askLeaderFix`, `/_artifact/s/*` (dùng `buildPublicPage` thật).
