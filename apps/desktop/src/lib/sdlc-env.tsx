@@ -19,10 +19,28 @@ export const sdlcTabOf = (value: string | undefined): SdlcItemTab =>
 export const itemHash = (projectKey: string, number: number, tab?: string) =>
   `#/sdlc/${encodeURIComponent(projectKey)}/${number}${tab && tab !== "overview" ? `/${tab}` : ""}`;
 
+/** `#/sdlc/loc?project=…&mode=…`: tham số sau `loc` là bộ lọc mở sẵn, không phải key dự án (key không có `?`). */
+export function boardHash(projectId?: string, modeRef?: string): string {
+  const query = new URLSearchParams({
+    ...(projectId ? { project: projectId } : {}),
+    ...(modeRef ? { mode: modeRef } : {}),
+  });
+  return query.size ? `#/sdlc/loc?${query}` : "#/sdlc";
+}
+
+/** Đọc bộ lọc từ tham số màn Hạng mục; không phải dạng `loc?…` thì null. */
+export function boardFilterOf(param: string): { projectId?: string; modeRef?: string } | null {
+  if (!param.startsWith("loc?")) return null;
+  const query = new URLSearchParams(param.slice(4));
+  const projectId = query.get("project");
+  const modeRef = query.get("mode");
+  return { ...(projectId ? { projectId } : {}), ...(modeRef ? { modeRef } : {}) };
+}
+
 function hashOf(to: SdlcLink): string | null {
   switch (to.kind) {
     case "board":
-      return "#/sdlc";
+      return boardHash(to.projectId, to.modeRef);
     case "new":
       return "#/sdlc/new";
     case "questions":
