@@ -66,7 +66,7 @@
     `apps/hub/db/migrations/00NN_artifacts.sql`, `apps/hub/db/migrations/meta/*`, `apps/hub/src/migrations-upgrade.db.test.ts`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T004 🎯 [P] Package `@xdev-hive/artifacts-runtime`
+- [x] T004 🎯 [P] Package `@xdev-hive/artifacts-runtime`
   - `scripts/build-lib.ts`: dựng `dist/lib/<tên>@<ver>/…` (ESM) cho `react`, `react/jsx-runtime`, `react-dom`,
     `react-dom/client`, `recharts` (gộp phụ thuộc của nó vào một file, để `react` là import ngoài), `lucide-react`,
     `@tailwindcss/browser`, `mermaid`, `markdown-it`; và `lib-manifest.json` (tên → đường dẫn, SRI sha384); script chạy
