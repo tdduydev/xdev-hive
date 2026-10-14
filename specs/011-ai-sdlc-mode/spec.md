@@ -975,6 +975,17 @@ Vai trò BA/PO (US7)
   Rủi ro được chấp nhận: token `setup-token` sống 1 năm và đi qua hub một lần trên kênh WSS đã xác thực; ai đọc được thư
   mục gói trên máy dùng chung (root, chủ tài khoản dịch vụ) dùng được gói, như đăng nhập tại máy.
 
+Leader trong terminal (spec 010 lát máy dùng chung)
+
+- **FR-067 (SDLC-22)**: Leader của AI SDLC MUST chạy được thành phiên Claude CLI tương tác trên máy dùng chung của đội, web
+  hiện bằng xterm.js qua `/ws/terminal` (specs/010 T100–T107): quản trị đội và BA/PO (quyền `leader.terminal`) mở phiên
+  cho dự án đội mình, chọn máy, gói và chế độ **Đề xuất** (mặc định, hành động của Leader thành đề xuất duyệt ngay khung
+  bên cạnh, LEAD-02) hoặc **Bypass** (tool hub chạy bằng quyền người mở, phải xác nhận, audit từng lần gọi). Leader (cả
+  Leader chat) MUST gắn cấp độ `light|medium|heavy` kèm lý do cho task và run nó đề xuất (tool `leader_tiers` trả ý nghĩa
+  và model của từng cấp); người duyệt sửa được cấp trước khi duyệt, hub giao run theo định tuyến của cấp đó và ghi "cấp độ
+  + model + lý do" vào audit. Phiên Leader mặc định sonnet effort high (kèm cố vấn khi dự án bật cho cấp vừa), người mở
+  chọn được opus và thấy chi phí trung bình mỗi run của từng model 30 ngày qua.
+
 ### Key Entities
 
 - **Chế độ** (`sdlc_modes`): chế độ tự tạo của tổ chức hoặc đội; preset có sẵn nằm trong contracts (không lưu DB).

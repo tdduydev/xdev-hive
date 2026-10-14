@@ -537,3 +537,12 @@ Product owner chốt ngày 2026-10-13.
   chính sách; TOTP vẫn chặn phiên web hay token bị đánh cắp đơn thuần.
 - **Q3, toàn quyền cho phiên từ xa**: Phiên mở từ xa không chạy toàn quyền, trừ khi chủ máy bật riêng tại máy **và**
   chính sách tổ chức cho phép (FR-019).
+- **Q4, lát đầu: Terminal Leader trên máy dùng chung (2026-10-13)**: Làm trước phần máy **dùng chung** trên web máy tính
+  (chưa PWA điện thoại, chưa passkey/TOTP): "AI SDLC trên web dùng xterm.js làm Leader và mở Claude CLI vào đó để nói
+  chuyện". Máy dùng chung không có "chủ máy" để giữ passkey, nên xác thực bằng **phiên web + vai trò + audit**: chỉ quản
+  trị đội và BA/PO (quyền `leader.terminal`) của đội sở hữu dự án mở phiên; phiên riêng tư, chủ phiên bật "Cho đội xem"
+  (chỉ xem, như Q1). Claude có hai chế độ thao tác hub: Đề xuất (mặc định) và Bypass (chọn khi mở, có xác nhận, audit
+  từng lần gọi tool). Quyền trên máy theo ADR 0020: toàn quyền khi máy bật cho dự án và tổ chức cho `allowFullPermission`,
+  không thì Accept edits trong worktree tạm của phiên; không đẩy. **Máy cá nhân vẫn chưa mở được từ xa**: hub và worker
+  đều từ chối `term_open` cho máy không dùng chung tới khi có passkey của US2–US4. Xem plan.md mục "Lát đầu" và tasks
+  T100–T107.
