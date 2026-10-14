@@ -215,7 +215,8 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - Nếu cần: `packages/contracts/src/knowledge.ts`, `packages/contracts/openapi.json`,
       `apps/hub/src/modules/knowledge/<file memory>.ts` và test.
 
-- [ ] **T013 [P] [US7] [nặng] Context pack cục bộ qua `UserPromptSubmit`** (sau T002)
+- [x] **T013 [P] [US7] [nặng] Context pack cục bộ qua `UserPromptSubmit`** (sau T002)
+  - **Còn lại**: ô chọn trong `optimizer-panel.tsx` chờ T008 merge (preset đã có `PresetOptions.ContextPack`).
   - **Goal**:
     - `hive-worker hook prompt --local`: chỉ ở prompt đầu tiên của phiên, gọi `buildContextPack` với thư mục `cwd` và
       prompt. Timeout 5 giây, ngân sách 14.000 ký tự. Trả `additionalContext`.
