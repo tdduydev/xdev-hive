@@ -1,0 +1,4 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["harness.tsx", "browser-fixtures.ts"]
+}

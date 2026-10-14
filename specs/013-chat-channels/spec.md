@@ -94,8 +94,20 @@ ngoài che bí mật và code.
 - **CHAT-03** Webhook Telegram kiểm `X-Telegram-Bot-Api-Secret-Token`; Slack kiểm chữ ký v0 và độ lệch giờ ≤ 5 phút.
 - **CHAT-04** Lệnh và nút không gọi LLM; chỉ tin tự do trong chat riêng tới Leader.
 - **CHAT-05** Chữ giao diện và lỗi tiếng Việt.
+- **CHAT-06** Telegram long polling bật theo UUID bot trong `HIVE_TELEGRAM_POLL_BOT_IDS` (cách nhau bằng dấu phẩy).
+  Vai trò `api` gỡ webhook nhưng giữ update đang chờ, gọi `getUpdates` với timeout 30 giây, xử lý lệnh/nút/tin Leader
+  như webhook. PostgreSQL advisory lock theo token tránh hai tiến trình cùng poll; con trỏ nằm trong `config_enc`
+  và chỉ tăng sau khi xử lý xong. Lỗi tạm thử lại sau 5 giây; dừng hub huỷ request và nhả khoá. Bot tắt hay đổi token
+  được kiểm lại sau mỗi lượt chờ. Không cần HTTPS công khai, không cần migration mới.
+- **CHAT-07** Thông báo checkpoint người duyệt code có SHA đầy đủ, link xem thay đổi và nút Duyệt code / Trả lại code.
+  Hành động lưu cả `headSha` và `gateRunId` trong outbox. Hàm quyết định của web kiểm SHA với nhà cung cấp Git,
+  quyền, người giao việc, quorum và lượt checkpoint dưới khoá; nút cũ không quyết được checkpoint tiếp theo cùng SHA.
+  Trả lại đi theo hướng mặc định của checkpoint, với ghi chú “Trả lại qua chat (không ghi lý do).”. Người duyệt cần
+  mở web để ghi góp ý cụ thể. Không có nút quyết thay checkpoint tự động.
+
+Kiểm thử bổ sung: database kiểm polling (khôi phục con trỏ, retry, khoá giữa tiến trình, dừng, bot tắt, đổi token,
+webhook không chạy trùng), thông báo code → outbox → nút → quyết định/audit, SHA cũ, checkpoint cũ, quyền và quorum.
 
 ## Ngoài phạm vi bản này
 
-Long polling Telegram, Discord/Teams, bot theo đội, quyết định checkpoint code review qua chat (cần head SHA), chế độ
-tự duyệt qua chat, chat nhóm cho tin tự do, định dạng Slack phong phú.
+Discord/Teams, bot theo đội, chế độ tự duyệt qua chat, chat nhóm cho tin tự do, định dạng Slack phong phú.
