@@ -200,6 +200,30 @@ export const skillVersions = hive
   .enableRLS();
 
 /**
+ * Bật/tắt skill trong bộ mặc định của Hive (packages/skill-pack). Chỉ lưu chỗ khác mặc định: project_id null là đặt
+ * cho cả tổ chức, có project_id là đặt riêng cho dự án (thắng đặt của tổ chức). Nội dung skill nằm trong gói, không ở
+ * database, nên không có bản ghi nào cho tổ chức chưa chỉnh gì.
+ */
+export const skillPackSettings = hive
+  .table(
+    "skill_pack_settings",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      projectId: uuid("project_id"),
+      name: text("name").notNull(),
+      enabled: boolean("enabled").notNull(),
+      updatedByUserId: text("updated_by_user_id").notNull(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      unique("skill_pack_settings_scope_name").on(t.orgId, t.projectId, t.name).nullsNotDistinct(),
+      orgScoped("skill_pack_settings"),
+    ],
+  )
+  .enableRLS();
+
+/**
  * Đề xuất sửa tài liệu hoặc skill, chờ quản trị đội duyệt. Giữ nguyên nội dung đề xuất và base_version: duyệt thì
  * lưu như một lần save với base đó, nên tài liệu đã đổi sau khi đề xuất sẽ báo xung đột thay vì bị ghi đè.
  */

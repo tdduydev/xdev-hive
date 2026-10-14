@@ -3,17 +3,7 @@ import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Table, TableBody, TableHead, TableHeader, TableRow, Td } from "@xdev-hive/ui/table";
 import { cn } from "cn";
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
-  Columns3,
-  PlusCircle,
-  Search,
-  X,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Columns3, PlusCircle, X } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import {
   type Facet,
@@ -25,6 +15,7 @@ import {
   type Sort,
   sortRows,
 } from "@/components/data-table/model.ts";
+import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
 import {
   DropdownMenu,
@@ -44,6 +35,14 @@ export interface Column<Row> extends SearchColumn<Row> {
   hideable?: boolean;
   hidden?: boolean;
   className?: string;
+  /** `end` cho cột số (tiền, token, thời lượng) và cột thao tác: canh phải, chữ số đều cột. */
+  align?: "start" | "end";
+  /**
+   * Ghim cột khi bảng cuộn ngang: `start` cho cột tên (chỉ cột hiện đầu tiên), `end` cho cột thao tác (chỉ cột cuối),
+   * để người dùng không mất ngữ cảnh của dòng khi kéo sang phải. Cột `end` chỉ ghim từ 640 px: ở 360 px ghim cả hai
+   * đầu thì không còn chỗ cho các cột giữa.
+   */
+  pin?: "start" | "end";
 }
 export interface BulkAction<Row> {
   key: string;
@@ -72,6 +71,25 @@ export interface DataTableProps<Row extends { id: string }> {
   /** Server-side scopes remain visible and clearable alongside local filters. */
   activeFilters?: readonly ActiveFilter[];
   emptyContent?: ReactNode;
+  /** Bề rộng tối thiểu của bảng (px) trước khi cuộn ngang. Bảng ít cột nên đặt nhỏ hơn mặc định để khỏi cuộn. */
+  minWidth?: number;
+  /** Nút của bảng đặt cạnh nút Cột, ví dụ Xuất CSV. */
+  toolbar?: ReactNode;
+  /**
+   * Hub trả theo trang (offset, con trỏ): bảng hiện mọi dòng của trang đó và chân bảng dùng nút trang của hub thay cho
+   * phân trang cục bộ, để không có hai bộ phân trang chồng nhau.
+   */
+  serverPaging?: ServerPaging;
+}
+export interface ServerPaging {
+  /** Vị trí hiện tại, ví dụ "Trang 2 của nhật ký" hay "Dòng 51–100". */
+  label: string;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+  previousLabel?: string;
+  nextLabel?: string;
 }
 
 const text: Dict<{
@@ -162,6 +180,9 @@ export function DataTable<Row extends { id: string }>({
   selectable = true,
   activeFilters = [],
   emptyContent,
+  minWidth = 1060,
+  toolbar,
+  serverPaging,
 }: DataTableProps<Row>) {
   const t = useT(text);
   const sizeId = useId();
@@ -176,8 +197,25 @@ export function DataTable<Row extends { id: string }>({
   const [size, setSize] = useState(pageSize);
   const state = { query, filters };
   const filtered = filterRows(rows, columns, facets, state);
-  const result = paginateRows(sortRows(filtered, columns, sort), page, size);
+  const sorted = sortRows(filtered, columns, sort);
+  const result = paginateRows(sorted, serverPaging ? 0 : page, serverPaging ? Math.max(1, sorted.length) : size);
   const visible = columns.filter((column) => !hidden.has(column.key));
+  const pinStart = visible[0]?.pin === "start" ? visible[0].key : undefined;
+  const pinEnd = !onRowClick && visible.at(-1)?.pin === "end" ? visible.at(-1)?.key : undefined;
+  // Ô ghim cần nền đặc, không thì chữ của cột cuộn bên dưới lộ ra; hover của dòng tô lại nền đó.
+  const pinCell = (key: string, head = false) =>
+    key === pinStart
+      ? cn(
+          "sticky z-10 bg-card shadow-[inset_-1px_0_0_var(--border)]",
+          selectable ? "left-10" : "left-0",
+          !head && "[tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted",
+        )
+      : key === pinEnd
+        ? cn(
+            "right-0 z-10 bg-card sm:sticky sm:shadow-[inset_1px_0_0_var(--border)]",
+            !head && "[tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted",
+          )
+        : undefined;
   // Filtering and refreshes must not leave hidden rows in a bulk operation.
   const selectedRows = filtered.filter((row) => selected.has(row.id));
   const allPage = result.rows.length > 0 && result.rows.every((row) => selected.has(row.id));
@@ -220,24 +258,54 @@ export function DataTable<Row extends { id: string }>({
   };
   return (
     <div className="grid min-w-0 gap-2.5 [&_button:not(:disabled)]:cursor-pointer">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <div className="relative w-full sm:w-64">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground"
-          />
-          <Input
-            className="pl-8"
-            aria-label={placeholder ?? t.search}
-            placeholder={placeholder ?? t.search}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.currentTarget.value);
-              setPage(0);
-              setSelected(new Set());
-            }}
-          />
-        </div>
+      <FilterBar
+        actions={
+          <>
+            {toolbar}
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+                <Columns3 aria-hidden="true" />
+                {t.columns}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-48">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t.showColumns}</DropdownMenuLabel>
+                  {columns
+                    .filter((column) => column.hideable !== false)
+                    .map((column) => (
+                      <DropdownMenuCheckboxItem
+                        key={column.key}
+                        className="cursor-pointer"
+                        checked={!hidden.has(column.key)}
+                        disabled={visible.length === 1 && !hidden.has(column.key)}
+                        closeOnClick={false}
+                        onCheckedChange={(checked) =>
+                          setHidden((prev) => {
+                            const next = new Set(prev);
+                            if (checked) next.delete(column.key);
+                            else next.add(column.key);
+                            return next;
+                          })
+                        }
+                      >
+                        {column.label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      >
+        <FilterSearch
+          placeholder={placeholder ?? t.search}
+          value={query}
+          onChange={(value) => {
+            setQuery(value);
+            setPage(0);
+            setSelected(new Set());
+          }}
+        />
         {facets.map((facet) => (
           <FacetFilter
             key={facet.key}
@@ -247,41 +315,7 @@ export function DataTable<Row extends { id: string }>({
             onChange={(values) => updateFilter(facet.key, values)}
           />
         ))}
-        <div className="sm:ml-auto">
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
-              <Columns3 aria-hidden="true" />
-              {t.columns}
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-48">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>{t.showColumns}</DropdownMenuLabel>
-                {columns
-                  .filter((column) => column.hideable !== false)
-                  .map((column) => (
-                    <DropdownMenuCheckboxItem
-                      key={column.key}
-                      className="cursor-pointer"
-                      checked={!hidden.has(column.key)}
-                      disabled={visible.length === 1 && !hidden.has(column.key)}
-                      closeOnClick={false}
-                      onCheckedChange={(checked) =>
-                        setHidden((prev) => {
-                          const next = new Set(prev);
-                          if (checked) next.delete(column.key);
-                          else next.add(column.key);
-                          return next;
-                        })
-                      }
-                    >
-                      {column.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+      </FilterBar>
       {active.length > 0 && (
         <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
           <span className="text-muted-foreground">{t.filtering}</span>
@@ -336,13 +370,14 @@ export function DataTable<Row extends { id: string }>({
           </div>
         </div>
       )}
-      <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
-        <Table className="min-w-265">
+      {/* Nền hover của ô ghim: trộn sẵn muted/50 lên card cho giống dòng thường (dòng dùng màu trong suốt). */}
+      <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card [--pin-hover:color-mix(in_oklab,var(--muted)_50%,var(--card))]">
+        <Table style={{ minWidth }}>
           {caption && <caption className="sr-only">{caption}</caption>}
           <TableHeader>
             <TableRow>
               {selectable && (
-                <TableHead className="w-10 pl-3">
+                <TableHead className={cn("w-10 pl-3", pinStart && "sticky left-0 z-10 bg-card")}>
                   <Checkbox
                     aria-label={t.selectPage}
                     checked={allPage}
@@ -364,7 +399,12 @@ export function DataTable<Row extends { id: string }>({
               {visible.map((column) => (
                 <TableHead
                   key={column.key}
-                  className={cn("text-xs text-muted-foreground", column.className)}
+                  className={cn(
+                    "text-xs text-muted-foreground",
+                    column.align === "end" && "text-right",
+                    pinCell(column.key, true),
+                    column.className,
+                  )}
                   aria-sort={
                     column.sortable
                       ? sort?.key === column.key
@@ -379,7 +419,7 @@ export function DataTable<Row extends { id: string }>({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="-ml-2 text-inherit"
+                      className={column.align === "end" ? "-mr-2 text-inherit" : "-ml-2 text-inherit"}
                       onClick={() => {
                         setSort({
                           key: column.key,
@@ -420,13 +460,22 @@ export function DataTable<Row extends { id: string }>({
                 onClick={
                   onRowClick
                     ? (event) => {
-                        if (!(event.target as HTMLElement).closest("a,button,input,[role=checkbox]")) onRowClick(row);
+                        const target = event.target as HTMLElement;
+                        // Sự kiện React đi qua portal: bấm mục của menu ⋯ (nằm ngoài dòng trong DOM) cũng tới đây.
+                        if (!event.currentTarget.contains(target)) return;
+                        if (!target.closest("a,button,input,select,textarea,label,[role=checkbox]")) onRowClick(row);
                       }
                     : undefined
                 }
               >
                 {selectable && (
-                  <Td className="w-10">
+                  <Td
+                    className={cn(
+                      "w-10",
+                      pinStart &&
+                        "sticky left-0 z-10 bg-card [tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted",
+                    )}
+                  >
                     <Checkbox
                       aria-label={`${t.select} ${rowLabel(row)}`}
                       checked={selected.has(row.id)}
@@ -442,7 +491,14 @@ export function DataTable<Row extends { id: string }>({
                   </Td>
                 )}
                 {visible.map((column) => (
-                  <Td key={column.key} className={column.className}>
+                  <Td
+                    key={column.key}
+                    className={cn(
+                      column.align === "end" && "text-right tabular-nums",
+                      pinCell(column.key),
+                      column.className,
+                    )}
+                  >
                     {column.cell ? column.cell(row) : (column.value(row) ?? "—")}
                   </Td>
                 ))}
@@ -476,53 +532,81 @@ export function DataTable<Row extends { id: string }>({
             )}
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
-          <span className="text-muted-foreground" aria-live="polite">
-            {t.range(result.from, result.to, result.total)}
-          </span>
-          <label htmlFor={sizeId} className="flex items-center gap-2 sm:ml-auto">
-            {t.perPage}
-            <NativeSelect
-              id={sizeId}
-              className="w-18"
-              size="sm"
-              value={size}
-              onChange={(event) => {
-                setSize(Number(event.currentTarget.value));
-                setPage(0);
-              }}
-            >
-              {[...new Set([10, 20, 50, 100, pageSize])]
-                .sort((a, b) => a - b)
-                .map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-            </NativeSelect>
-          </label>
-          <span>{t.page(result.page + 1, result.pages)}</span>
-          <div className="flex gap-1">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={t.previous}
-              disabled={result.page === 0}
-              onClick={() => setPage(result.page - 1)}
-            >
-              <ChevronLeft aria-hidden="true" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={t.next}
-              disabled={result.page === result.pages - 1}
-              onClick={() => setPage(result.page + 1)}
-            >
-              <ChevronRight aria-hidden="true" />
-            </Button>
+        {serverPaging ? (
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
+            <span className="text-muted-foreground" aria-live="polite">
+              {serverPaging.label}
+            </span>
+            <div className="flex gap-1 sm:ml-auto">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={serverPaging.previousLabel ?? t.previous}
+                disabled={!serverPaging.hasPrevious}
+                onClick={serverPaging.onPrevious}
+              >
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={serverPaging.nextLabel ?? t.next}
+                disabled={!serverPaging.hasNext}
+                onClick={serverPaging.onNext}
+              >
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
+            <span className="text-muted-foreground" aria-live="polite">
+              {t.range(result.from, result.to, result.total)}
+            </span>
+            <label htmlFor={sizeId} className="flex items-center gap-2 sm:ml-auto">
+              {t.perPage}
+              <NativeSelect
+                id={sizeId}
+                className="w-18"
+                size="sm"
+                value={size}
+                onChange={(event) => {
+                  setSize(Number(event.currentTarget.value));
+                  setPage(0);
+                }}
+              >
+                {[...new Set([10, 20, 50, 100, pageSize])]
+                  .sort((a, b) => a - b)
+                  .map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+              </NativeSelect>
+            </label>
+            <span>{t.page(result.page + 1, result.pages)}</span>
+            <div className="flex gap-1">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={t.previous}
+                disabled={result.page === 0}
+                onClick={() => setPage(result.page - 1)}
+              >
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={t.next}
+                disabled={result.page === result.pages - 1}
+                onClick={() => setPage(result.page + 1)}
+              >
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

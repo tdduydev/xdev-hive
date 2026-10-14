@@ -31,6 +31,9 @@ describe("tiết kiệm token trong dự án", () => {
       allowWeb: false,
       rtk: true,
       codegraph: true,
+      contextPack: true,
+      exploreBudget: 4,
+      toolOutputMaxChars: 12_000,
     });
     expect(defaultTokenSaving.enabled).toBe(true);
   });
@@ -45,6 +48,29 @@ describe("tiết kiệm token trong dự án", () => {
       tokenSaving: { ...old, rtk: false, codegraph: false },
     }).tokenSaving;
     expect(off).toMatchObject({ rtk: false, codegraph: false });
+  });
+
+  it("mục tokenSaving lưu trước khi có context pack và hook vẫn đọc được với mặc định bật", () => {
+    const { contextPack: _p, exploreBudget: _b, toolOutputMaxChars: _c, ...old } = defaultTokenSaving;
+    const parsed = projectSettings.parse({ ...defaultProjectSettings(), tokenSaving: old }).tokenSaving;
+    expect(parsed).toMatchObject({ contextPack: true, exploreBudget: 4, toolOutputMaxChars: 12_000 });
+  });
+
+  it("exploreBudget và toolOutputMaxChars: 0 là tắt, ngưỡng cắt dưới 2.000 ký tự bị từ chối", () => {
+    expect(
+      projectSettingsPatch.parse({ tokenSaving: { exploreBudget: 0, toolOutputMaxChars: 0 } }).tokenSaving,
+    ).toEqual({
+      exploreBudget: 0,
+      toolOutputMaxChars: 0,
+    });
+    for (const bad of [
+      { exploreBudget: -1 },
+      { exploreBudget: 51 },
+      { toolOutputMaxChars: 500 },
+      { toolOutputMaxChars: 1.5 },
+    ]) {
+      expect(projectSettingsPatch.safeParse({ tokenSaving: bad }).success).toBe(false);
+    }
   });
 
   it("bản vá không tự điền mặc định cho trường vắng", () => {

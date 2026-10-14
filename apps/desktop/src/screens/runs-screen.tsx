@@ -65,7 +65,7 @@ const text: Dict<{
   vi: {
     lead: "Run mà hub đã giao cho máy này, mới nhất trước. Bấm một dòng để xem log và kết quả trên web của hub.",
     noMachine: "Máy chưa đăng ký với hub: đăng ký ở cửa sổ Đăng ký máy để nhận việc.",
-    noAccount: "Liên kết tài khoản ở thẻ người dùng góc dưới bên trái để xem run của máy này.",
+    noAccount: "Kết nối Hive ở thẻ tài khoản góc dưới bên trái để xem run của máy này.",
     loading: "Đang đọc…",
     empty: "Máy này chưa chạy run nào.",
     refresh: "Làm mới",
@@ -95,7 +95,7 @@ const text: Dict<{
     lead: "Runs the hub gave to this machine, newest first. Click a row to see its log and result on the hub's web.",
     noMachine:
       "This machine is not registered with a hub yet: register it in the Register machine window to take work.",
-    noAccount: "Link your account from the user card at the bottom left to see this machine's runs.",
+    noAccount: "Connect to Hive from the account card at the bottom left to see this machine's runs.",
     loading: "Reading…",
     empty: "This machine has not run anything yet.",
     refresh: "Refresh",

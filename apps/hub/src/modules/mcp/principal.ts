@@ -15,6 +15,11 @@ export interface McpPrincipal {
   /** Dự án của run: run không có task (leader, doccheck) đọc tri thức theo dự án này. */
   projectId?: string | undefined;
   attempt?: number | undefined;
+  /**
+   * Phiên terminal Leader cấp token (specs/010, FR-067): Claude trong terminal gọi tool bằng quyền của người mở phiên.
+   * `propose` chỉ thấy tool đọc và `leader_action` (thành đề xuất chờ duyệt); `bypass` thấy tool của người mở.
+   */
+  terminal?: { sessionId: string; mode: "propose" | "bypass"; threadId: string | null; projectId: string } | undefined;
   /** Client OAuth đã xin token (hoặc định danh của run); ghi vào audit để biết lời gọi đến từ CLI nào. */
   clientId?: string | undefined;
   scopes: string[];

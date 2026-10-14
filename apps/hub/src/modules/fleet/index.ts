@@ -8,6 +8,9 @@ export {
   type RunHandlers,
   type RunMessage,
   registerRunHandlers,
+  registerTerminalHandlers,
+  type TerminalHandlers,
+  type TerminalMessage,
   WORKER_WS_PATH,
 } from "./gateway.ts";
 export {
@@ -21,6 +24,7 @@ export {
   type MachineProjects,
   machineIsPaused,
   machineNames,
+  machineQuotas,
   machinesGrantingFull,
   machinesOfUser,
   pauseMachine,
@@ -28,6 +32,7 @@ export {
   resumeMachine,
   setMachineLabels,
   setMachineShared,
+  sharedWorkerMachines,
 } from "./machines.ts";
 export { installCommands, WORKER_DOWNLOADS, WorkerReleaseCache } from "./releases.ts";
 export { type FleetDeps, fleetRouter } from "./router.ts";

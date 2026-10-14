@@ -260,6 +260,6 @@ describe("SetupScreen", () => {
     await userEvent
       .setup()
       .click((await screen.findAllByText("Token MCP xDev Hive")).find((e) => e.closest("tr")) as HTMLElement);
-    expect(await screen.findByText(/Liên kết tài khoản ở thẻ người dùng/)).toBeTruthy();
+    expect(await screen.findByText(/Kết nối Hive ở thẻ tài khoản/)).toBeTruthy();
   });
 });
