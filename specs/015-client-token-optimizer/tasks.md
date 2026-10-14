@@ -149,7 +149,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
 
 ## Đợt 3: desktop (sau DESKCLIENT merge)
 
-- [ ] **T007 [P] [US1] [US2] [US3] [vừa] Lệnh Tauri gọi sidecar** (sau T004, T010)
+- [x] **T007 [P] [US1] [US2] [US3] [vừa] Lệnh Tauri gọi sidecar** (sau T004, T010)
   - **Goal**:
     - `optimizer_status`, `optimizer_enable`, `optimizer_disable`, `optimizer_restore`, `optimizer_report`,
       `memory_scan`, `memory_apply`: chạy sidecar với `--json`, như `profiles.rs`.
