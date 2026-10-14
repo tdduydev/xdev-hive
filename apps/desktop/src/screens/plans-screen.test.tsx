@@ -316,8 +316,8 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     await screen.findByText("Antigravity chính");
     const section = block("antigravity");
     expect(within(section).getByRole("heading", { name: "Antigravity" })).toBeTruthy();
-    // Antigravity không có luồng đăng nhập trong app: không có nút Thêm gói riêng.
-    expect(within(section).queryByRole("button", { name: /Thêm gói/ })).toBeNull();
+    // Antigravity không đăng nhập từ app: nút ở khối chỉ mở hướng dẫn rồi tìm trên máy.
+    expect(within(section).getByRole("button", { name: "Thêm gói Antigravity" })).toBeTruthy();
     const r = row("antigravity-1");
     const first = r.querySelector('[data-group="Claude and GPT models"]') as HTMLElement;
     expect(first.textContent).toContain("Claude Sonnet, GPT-OSS");
@@ -418,7 +418,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     // Bước 1: chọn CLI bằng thẻ, chưa có cách đăng nhập.
     expect(within(dialog).getByText("Bước 1/2: chọn CLI.")).toBeTruthy();
     expect(within(dialog).queryByRole("radio")).toBeNull();
-    expect(within(dialog).getByText(/Antigravity không đăng nhập từ đây/)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Antigravity" })).toBeTruthy();
 
     await u.click(within(dialog).getByRole("button", { name: "Codex" }));
     const ways = () =>
@@ -568,6 +568,48 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       render(<PlansScreen />);
       await screen.findByText("Duy Max");
       expect(screen.queryByRole("region", { name: /Tìm thấy/ })).toBeNull();
+    });
+
+    const agy: FoundLogin = {
+      cli: "antigravity",
+      configDir: null,
+      loggedIn: null,
+      email: null,
+      suggestedId: "antigravity-1",
+      note: "Antigravity giữ đăng nhập trong keyring, worker không kiểm được",
+    };
+
+    it("Thêm gói Antigravity: hướng dẫn, ghi giới hạn một tài khoản/máy, rồi mở hộp tìm đăng nhập", async () => {
+      const { calls } = fakeTauri(seed(), [structuredClone(agy)]);
+      render(<PlansScreen />);
+      await screen.findByText("Duy Max");
+      const u = user();
+      await u.click(screen.getByRole("button", { name: "Thêm gói" }));
+      const dialog = await screen.findByRole("dialog", { name: "Thêm gói" });
+      await u.click(within(dialog).getByRole("button", { name: "Antigravity" }));
+      expect(within(dialog).getByText(/Mở ứng dụng Antigravity và đăng nhập/)).toBeTruthy();
+      expect(within(dialog).getByText(/mỗi máy chỉ có một gói Antigravity/)).toBeTruthy();
+      // Không có form đăng nhập: Antigravity không có thư mục đăng nhập riêng.
+      expect(within(dialog).queryByRole("radio")).toBeNull();
+      expect(within(dialog).queryByRole("button", { name: "Thêm và đăng nhập" })).toBeNull();
+
+      await u.click(within(dialog).getByRole("button", { name: "Tìm đăng nhập trên máy" }));
+      const found = await screen.findByRole("dialog", { name: "Tìm thấy 1 đăng nhập chưa thêm" });
+      expect(within(found).getByText("Đăng nhập mặc định của Antigravity")).toBeTruthy();
+      expect(sent(calls, "cli_profile_discover").length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("Tìm đăng nhập Antigravity mà không thấy thì báo rõ lý do", async () => {
+      fakeTauri(seed(), []);
+      render(<PlansScreen />);
+      await screen.findByText("Duy Max");
+      const u = user();
+      await u.click(screen.getByRole("button", { name: "Thêm gói" }));
+      const dialog = await screen.findByRole("dialog", { name: "Thêm gói" });
+      await u.click(within(dialog).getByRole("button", { name: "Antigravity" }));
+      await u.click(within(dialog).getByRole("button", { name: "Tìm đăng nhập trên máy" }));
+      expect((await screen.findByRole("status")).textContent).toMatch(/Chưa thấy đăng nhập Antigravity nào chưa thêm/);
+      expect(screen.queryByRole("dialog")).toBeNull();
     });
 
     it("Ẩn đóng băng", async () => {

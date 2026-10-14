@@ -267,12 +267,12 @@
 
 ## Phase 11: Tài liệu và hoàn thiện
 
-- [ ] T100 [P] Cập nhật tài liệu kiến trúc: module `codereview` và luồng trong `docs/architecture.md`, `docs/add.md`,
+- [x] T100 [P] Cập nhật tài liệu kiến trúc: module `codereview` và luồng trong `docs/architecture.md`, `docs/add.md`,
   `docs/sdd.md`; trạng thái CR-xx, RUN-07 trong `docs/srs.md`; ghi chú ADR 0009 khi `command` chạy thật.
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md}`, `docs/adr/0009-configurable-outcome-policy.md`
   - **Phụ thuộc**: T070, T091 · **Mức**: nhẹ
 
-- [ ] T101 Commit status `xdev-hive/review` và gợi ý bảo vệ nhánh — **chỉ làm khi Q1 chốt theo đề xuất**.
+- [x] T101 Commit status `xdev-hive/review` và gợi ý bảo vệ nhánh — **chỉ làm khi Q1 chốt theo đề xuất**.
   - **Scope**: `apps/hub/src/modules/codereview/{status.ts,status.db.test.ts}`, `apps/web/src/pages/project-settings-page.tsx`
   - **Phụ thuộc**: T003, T070, T080 · **Mức**: vừa
 

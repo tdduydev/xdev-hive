@@ -13,6 +13,7 @@ import {
   type RunExplore,
   type RunRtk,
   type RunStartInput,
+  type RunTokenGuard,
   type SandboxJobConfig,
   type TaskStatus,
   TERMINAL_RUN_STATES,
@@ -584,6 +585,10 @@ function buildSpec(
     ...(ctx.commands.length ? { checks: { commands: ctx.commands } } : {}),
     // Worker đếm nhánh chính đi trước commit này bao nhiêu commit và báo lại trong run_result.report.repo.
     ...(ctx.brief?.commitSha ? { brief: { sha: ctx.brief.commitSha } } : {}),
+    // Nguồn từ khoá của context pack (worker): chỉ phần của task, không lẫn brief hay hướng dẫn chung trong prompt.
+    ...(task && (run.kind === "code" || run.kind === "plan")
+      ? { taskText: run.kind === "code" ? own : task.body ? `${task.title}\n\n${task.body}` : task.title }
+      : {}),
   };
 }
 
@@ -1100,6 +1105,7 @@ export function createRunsEngine(deps: RunsDeps) {
         else log.warn(`Bỏ sự kiện cost sai dạng: run ${run.id}, seq ${msg.seq}`);
         if (cost?.explore) await applyExplore(tx, run, cost.explore);
         if (cost?.rtk) await applyRtk(tx, run, cost.rtk);
+        if (cost?.guard) await applyTokenGuard(tx, run, cost.guard);
       }
       if (msg.event === "steer_result") await onSteerResult(tx, run, msg.data);
       const to = msg.event === "phase" ? PHASE_STATE[String(msg.data.phase)] : undefined;
@@ -1232,6 +1238,20 @@ export function createRunsEngine(deps: RunsDeps) {
     await tx
       .update(runs)
       .set({ rtk: { ...rtk, attempt: run.attempt } })
+      .where(eq(runs.id, run.id));
+  }
+
+  /** Như applyRtk: số luỹ kế của cùng lần thử không lùi khi gói cost tới lệch thứ tự. */
+  async function applyTokenGuard(tx: Tx, run: RunRow, guard: RunTokenGuard): Promise<void> {
+    const prev = run.tokenGuard;
+    if (
+      prev?.attempt === run.attempt &&
+      (prev.exploreBlocked > guard.exploreBlocked || prev.truncatedChars > guard.truncatedChars)
+    )
+      return;
+    await tx
+      .update(runs)
+      .set({ tokenGuard: { ...guard, attempt: run.attempt } })
       .where(eq(runs.id, run.id));
   }
 
@@ -2173,6 +2193,14 @@ export function createRunsEngine(deps: RunsDeps) {
       {
         orgId: run.orgId,
         event: "plan.awaiting_approval",
+        // Người giao việc là người duyệt: vào hộp thư của họ và tới chat của họ (nếu đã liên kết) kèm nút Duyệt/Trả lại.
+        recipientIds: [run.createdBy],
+        actions: task
+          ? [
+              { kind: "plan.approve", taskId: task.id, planId: plan.id },
+              { kind: "plan.reject", taskId: task.id, planId: plan.id },
+            ]
+          : [],
         title: `Kế hoạch của ${key} chờ duyệt`,
         body: [
           task?.title ?? "",
@@ -2404,7 +2432,7 @@ export function createRunsEngine(deps: RunsDeps) {
   async function startLeaderRun(
     tx: Tx,
     userId: string,
-    input: { threadId: string; projectId: string; prompt: string; cli?: RunRow["cli"] },
+    input: { threadId: string; projectId: string; prompt: string; cli?: RunRow["cli"]; model?: string | null },
   ) {
     const project = await projectFor(tx, userId, input.projectId, "member");
     if (!projectReady(project)) throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo.");
@@ -2437,7 +2465,7 @@ export function createRunsEngine(deps: RunsDeps) {
         leaderThreadId: input.threadId,
         kind: "leader",
         cli: input.cli ?? null,
-        model: input.cli ? (project.settings.models?.[input.cli]?.leader ?? null) : null,
+        model: input.model ?? (input.cli ? (project.settings.models?.[input.cli]?.leader ?? null) : null),
         branch: `leader/${input.threadId}`,
         policySnapshot: [],
         createdBy: userId,

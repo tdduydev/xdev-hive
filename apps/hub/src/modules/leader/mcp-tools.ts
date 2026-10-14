@@ -6,6 +6,7 @@ import type { McpToolRegistry } from "../mcp/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../platform/index.ts";
 import { type RunsEngine, runEvents, runs } from "../runs/index.ts";
 import { describeAction, emitLeaderActivity, executeLeaderAction, tierChoice, tierTable } from "./actions.ts";
+import { emitLeaderEvent } from "./observer.ts";
 import { approvals, chatMessages, chatThreads } from "./schema.ts";
 
 const requireLeaderRun = (principal: { kind: string; runKind?: string | undefined; runId?: string | undefined }) => {
@@ -42,6 +43,7 @@ export function registerMcpTools(
         .insert(runEvents)
         .values({ orgId: run.orgId, runId, attempt: run.attempt, type: "leader_reply", data: {} });
       await tx.update(chatThreads).set({ updatedAt: sql`now()` }).where(eq(chatThreads.id, threadId));
+      await emitLeaderEvent(tx, { threadId, kind: "reply", content });
       return { recorded: true };
     },
   });
@@ -82,6 +84,7 @@ export function registerMcpTools(
         .insert(chatMessages)
         .values({ orgId: thread.orgId, threadId, role: "leader", content: rationale, runId });
       if (!approval) throw new Error("Không tạo được đề xuất.");
+      await emitLeaderEvent(tx, { threadId, kind: "proposal", content: rationale, approvalId: approval.id });
       return { approvalId: approval.id, status: approval.status, expiresAt: approval.expiresAt.toISOString() };
     },
   });

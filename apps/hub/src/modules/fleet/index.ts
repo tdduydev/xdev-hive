@@ -24,6 +24,7 @@ export {
   type MachineProjects,
   machineIsPaused,
   machineNames,
+  machineQuotas,
   machinesGrantingFull,
   machinesOfUser,
   pauseMachine,

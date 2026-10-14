@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Project, ProjectSettings, ProjectSettingsPatch } from "@xdev-hive/contracts";
+import type { Machine, Project, ProjectSettings, ProjectSettingsPatch } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { LockIcon } from "lucide-react";
 import { type ReactNode, useId, useMemo, useState } from "react";
@@ -116,6 +117,12 @@ const text: Dict<{
   tokensHint: string;
   tokensOn: string;
   tokensOnHint: string;
+  contextPack: string;
+  contextPackHint: string;
+  exploreBudget: string;
+  exploreBudgetHint: string;
+  toolOutput: string;
+  toolOutputHint: string;
   rtk: string;
   rtkHint: string;
   codegraph: string;
@@ -154,6 +161,15 @@ const text: Dict<{
   pFullHint: string;
   fullBanner: string;
   fullLocked: string;
+  machinesTitle: string;
+  machinesHint: string;
+  machinesLoading: string;
+  machinesFailed: (error: string) => string;
+  machinesEmpty: string;
+  machineBound: string;
+  machineFull: string;
+  machineFullIdle: string;
+  machineStatus: Record<Machine["status"], string>;
   savedBanner: string;
   invalid: string;
   cfTitle: string;
@@ -243,6 +259,15 @@ const text: Dict<{
       "Worker đặt các giới hạn này cho run Claude Code của dự án. Codex, Gemini và Antigravity chỉ nhận mục CodeGraph. Bản chỉnh của máy và biến môi trường của dự án có thể ghi đè từng mục.",
     tokensOn: "Bật tiết kiệm token",
     tokensOnHint: "Tắt thì run Claude Code dùng cấu hình mặc định của CLI, không nén bằng RTK và không gắn CodeGraph.",
+    contextPack: "Dựng context pack trước run",
+    contextPackHint:
+      "Worker chọn sẵn các file liên quan tới task (đường dẫn, symbol nhắc tới, file hay đổi cùng) và đưa vào đầu run, để agent khỏi dò repo.",
+    exploreBudget: "Ngân sách khảo sát",
+    exploreBudgetHint:
+      "Số lệnh dò cả repo (find, ls -R, grep -r…) agent được chạy trước lần sửa đầu; quá thì bị từ chối. 0 là tắt. Chỉ Claude Code.",
+    toolOutput: "Cắt output tool dài",
+    toolOutputHint:
+      "Output dài hơn bị cắt, giữ đầu, cuối và dòng lỗi; bản đầy đủ lưu ra file cho agent đọc theo đoạn. 0 là tắt. Chỉ Claude Code.",
     rtk: "Nén output lệnh bằng RTK",
     rtkHint: "Chỉ áp khi máy chạy run có rtk, và chỉ với Claude Code.",
     codegraph: "Gắn CodeGraph cho agent",
@@ -286,6 +311,16 @@ const text: Dict<{
       "Tắt sandbox và mọi bước hỏi duyệt của CLI. Chỉ dùng trong container dùng một lần hoặc máy riêng cho agent.",
     fullBanner: "Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.",
     fullLocked: "Chính sách agent của tổ chức không cho dự án bật toàn quyền; run chạy trong worktree.",
+    machinesTitle: "Máy đã gắn dự án này",
+    machinesHint:
+      "Máy của đội đã gắn dự án với một repo local, và máy đã bật toàn quyền cho dự án (cài ở app desktop trên máy đó). Chỉ để xem.",
+    machinesLoading: "Đang tải danh sách máy…",
+    machinesFailed: (error) => `Không tải được danh sách máy: ${error}`,
+    machinesEmpty: "Chưa máy nào gắn dự án này với repo local.",
+    machineBound: "Đã gắn repo local",
+    machineFull: "Toàn quyền",
+    machineFullIdle: "Toàn quyền đang bị chính sách tổ chức chặn",
+    machineStatus: { online: "Sẵn sàng", offline: "Mất kết nối", paused: "Tạm dừng", revoked: "Đã thu hồi" },
     savedBanner: "Đã lưu. Run giao sau đây dùng cấu hình mới.",
     invalid: "Có ô chưa hợp lệ, xem chữ đỏ bên dưới từng ô.",
     cfTitle: "Cho agent toàn quyền?",
@@ -377,6 +412,15 @@ const text: Dict<{
       "The worker sets these limits for the project's Claude Code runs. Codex, Gemini and Antigravity only get the CodeGraph item. A machine override or a project environment variable can replace each item.",
     tokensOn: "Turn on token saving",
     tokensOnHint: "When off, Claude Code runs use the CLI defaults, with no RTK compression and no CodeGraph.",
+    contextPack: "Build a context pack before the run",
+    contextPackHint:
+      "The worker picks files related to the task (mentioned paths and symbols, files often changed together) and puts them at the start of the run, so the agent does not scan the repo.",
+    exploreBudget: "Exploration budget",
+    exploreBudgetHint:
+      "How many repo-wide scans (find, ls -R, grep -r…) the agent may run before its first edit; more are refused. 0 turns it off. Claude Code only.",
+    toolOutput: "Trim long tool output",
+    toolOutputHint:
+      "Longer output is trimmed to its start, end and error lines; the full text is saved to a file the agent can read in parts. 0 turns it off. Claude Code only.",
     rtk: "Compress command output with RTK",
     rtkHint: "Applies only when the machine running the run has rtk, and only for Claude Code.",
     codegraph: "Attach CodeGraph to the agent",
@@ -424,6 +468,16 @@ const text: Dict<{
       "Turns off the CLI sandbox and every approval prompt. Only for throwaway containers or machines dedicated to agents.",
     fullBanner: "Runs in this project use the full rights of the account on the machine that picks them up.",
     fullLocked: "The organization's agent policy does not let projects enable full access; runs stay in the worktree.",
+    machinesTitle: "Machines linked to this project",
+    machinesHint:
+      "Team machines that linked this project to a local repository, and machines that turned on full access for it (set in the desktop app on that machine). Read only.",
+    machinesLoading: "Loading machines…",
+    machinesFailed: (error) => `Could not load machines: ${error}`,
+    machinesEmpty: "No machine has linked this project to a local repository yet.",
+    machineBound: "Local repo linked",
+    machineFull: "Full access",
+    machineFullIdle: "Full access is blocked by the organization policy",
+    machineStatus: { online: "Ready", offline: "Offline", paused: "Paused", revoked: "Revoked" },
     savedBanner: "Saved. Subsequent runs will use the new settings.",
     invalid: "Some fields are invalid; see the red text under each field.",
     cfTitle: "Give agents full access?",
@@ -496,6 +550,52 @@ function Crumb({ project, projectKey }: { project: Project | undefined; projectK
         {project?.name ?? projectKey}
       </Link>
     </>
+  );
+}
+
+/** Máy của đội đã gắn dự án với repo local hay bật toàn quyền cho dự án (ADR 0020); chỉ đọc nên không có nút Lưu. */
+function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked: boolean }) {
+  const { api } = useOrg();
+  const t = useT(text);
+  const machines = useQuery({
+    ...api.machines.list.queryOptions({ input: { teamId: project.teamId } }),
+    retry: false,
+  });
+  // Máy đã thu hồi không nhận run nữa, nên không đáng hiện ở đây.
+  const linked = (machines.data ?? []).filter(
+    (m) => m.status !== "revoked" && (m.boundProjects?.includes(project.id) || m.fullProjects?.includes(project.id)),
+  );
+  return (
+    <SettingsSection id="machines" title={t.machinesTitle} description={t.machinesHint}>
+      {machines.isPending ? (
+        <p aria-busy="true" className="text-sm text-muted-foreground">
+          {t.machinesLoading}
+        </p>
+      ) : machines.isError ? (
+        <Alert variant="destructive">{t.machinesFailed(apiErrorMessage(machines.error))}</Alert>
+      ) : linked.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t.machinesEmpty}</p>
+      ) : (
+        <ul className="m-0 grid list-none gap-2 p-0">
+          {linked.map((m) => (
+            <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+              <strong className="font-medium text-foreground">{m.name}</strong>
+              <span className="text-xs text-muted-foreground">{m.os}</span>
+              <Pill tone={m.status === "online" ? "ok" : m.status === "paused" ? "warn" : "neutral"}>
+                {t.machineStatus[m.status]}
+              </Pill>
+              <span className="flex-1" />
+              {m.boundProjects?.includes(project.id) && <Pill tone="sel">{t.machineBound}</Pill>}
+              {m.fullProjects?.includes(project.id) && (
+                <Pill tone={fullLocked ? "neutral" : "warn"} title={fullLocked ? t.machineFullIdle : undefined}>
+                  {t.machineFull}
+                </Pill>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </SettingsSection>
   );
 }
 
@@ -656,8 +756,9 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
       { id: "tokens", label: t.tokensTitle },
       { id: "routing", label: t.routingTitle },
       { id: "perm", label: t.permTitle },
+      ...(canEdit ? [{ id: "machines", label: t.machinesTitle }] : []),
     ],
-    [t],
+    [t, canEdit],
   );
   const tokenOff = disabled || !form.tokenSaving;
   const routingOff = disabled || !form.routing;
@@ -988,7 +1089,34 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             onChange={(v) => set("codegraph", v)}
             disabled={tokenOff}
           />
+          <SwitchRow
+            label={t.contextPack}
+            hint={t.contextPackHint}
+            checked={form.contextPack}
+            onChange={(v) => set("contextPack", v)}
+            disabled={tokenOff}
+          />
           <div className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              label={t.exploreBudget}
+              hint={t.exploreBudgetHint}
+              error={errors.exploreBudget}
+              value={form.exploreBudget}
+              onChange={(v) => set("exploreBudget", v)}
+              disabled={tokenOff}
+              inputMode="numeric"
+              suffix="lệnh"
+            />
+            <TextField
+              label={t.toolOutput}
+              hint={t.toolOutputHint}
+              error={errors.toolOutputMaxChars}
+              value={form.toolOutputMaxChars}
+              onChange={(v) => set("toolOutputMaxChars", v)}
+              disabled={tokenOff}
+              inputMode="numeric"
+              suffix="ký tự"
+            />
             <TextField
               label={t.bashChars}
               hint={t.bashCharsHint}
@@ -1136,6 +1264,9 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           )}
           {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
         </SettingsSection>
+
+        {/* Hub chỉ cho quản trị đội xem danh sách máy, nên thành viên thường không có mục này. */}
+        {canEdit && <ProjectMachines project={project} fullLocked={fullLocked} />}
       </SettingsLayout>
 
       <Dialog open={confirmFull} onOpenChange={setConfirmFull}>
