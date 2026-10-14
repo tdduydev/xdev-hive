@@ -21,16 +21,18 @@ export function PersonAvatar({ person }: { person: PersonLike }) {
 }
 
 /** Ô "Người" trong bảng: avatar, tên, email; `extra` hiện cạnh tên (vd. "bạn", "Đã khoá"). */
-export function Who({ person, extra }: { person: PersonLike; extra?: ReactNode }) {
+export function Who({ person, extra, inline = false }: { person: PersonLike; extra?: ReactNode; inline?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
       <PersonAvatar person={person} />
-      <span className="min-w-0">
-        <span className="flex items-center gap-1.5">
-          <b className="truncate font-medium text-foreground">{person.name}</b>
+      <span className={inline ? "flex min-w-0 max-w-72 items-center gap-2" : "min-w-0"}>
+        <span className={inline ? "flex min-w-0 max-w-36 shrink-0 items-center gap-1.5" : "flex items-center gap-1.5"}>
+          <b title={person.name} className="truncate font-medium text-foreground">
+            {person.name}
+          </b>
           {extra}
         </span>
-        <span className="block truncate">
+        <span className="block truncate" title={person.email}>
           <small className="text-xs text-muted-foreground">{person.email}</small>
         </span>
       </span>

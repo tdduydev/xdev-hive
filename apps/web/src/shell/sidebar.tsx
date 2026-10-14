@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible.tsx";
 import {
@@ -15,6 +15,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar.tsx";
 import { countLabel, useAwaitingCodeReviews } from "@/lib/code-reviews.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
@@ -35,11 +36,25 @@ import { useOrgs } from "@/shell/org-context.ts";
 import { OrgSwitcher } from "@/shell/org-switcher.tsx";
 import { UserCard } from "@/shell/user-card.tsx";
 
-const text: Dict<{ nav: string; needsOrg: string; awaitingPrs: (n: number) => string }> = {
-  vi: { nav: "Điều hướng chính", needsOrg: "Cần thuộc một tổ chức", awaitingPrs: (n) => `${n} PR đang chờ bạn duyệt` },
+const text: Dict<{
+  nav: string;
+  needsOrg: string;
+  expand: string;
+  collapse: string;
+  awaitingPrs: (n: number) => string;
+}> = {
+  vi: {
+    nav: "Điều hướng chính",
+    needsOrg: "Cần thuộc một tổ chức",
+    expand: "Mở rộng điều hướng",
+    collapse: "Thu gọn điều hướng",
+    awaitingPrs: (n) => `${n} PR đang chờ bạn duyệt`,
+  },
   en: {
     nav: "Main navigation",
     needsOrg: "Join an organization first",
+    expand: "Expand navigation",
+    collapse: "Collapse navigation",
     awaitingPrs: (n) => `${n} PRs awaiting your review`,
   },
 };
@@ -172,6 +187,8 @@ export function AppSidebar() {
   const groups = visible.filter((g) => g.area !== "admin");
   const admin = adminHome(visible);
   const inAdmin = inAdminArea(pathname);
+  const { open, isMobile, toggleSidebar } = useSidebar();
+  const iconOnly = inAdmin && !open && !isMobile;
   const [userOpen, setUserOpen] = useState<Record<string, boolean>>(readOpen);
   const setOpen = (id: string, open: boolean) => {
     const next = { ...userOpen, [id]: open };
@@ -187,18 +204,20 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-3">
-        <div className="flex items-center gap-2.5 px-1.5 py-1 group-data-[collapsible=icon]:px-0">
+        <div title="xDev Hive" className="flex items-center gap-2.5 px-1.5 py-1 group-data-[collapsible=icon]:px-0">
           <img src="/xdev-hive-icon.svg" alt="" className="size-7 shrink-0" />
           <span className="truncate font-heading text-base font-semibold text-foreground group-data-[collapsible=icon]:hidden">
             xDev Hive
           </span>
         </div>
-        <OrgSwitcher
-          orgs={orgs.map((o) => ({ id: o.id, name: o.name, role: ORG_ROLE_LABEL[o.role] }))}
-          currentId={current?.org.id}
-          onSelect={orgStore.set}
-          canCreate={canCreateOrg}
-        />
+        {!iconOnly && (
+          <OrgSwitcher
+            orgs={orgs.map((o) => ({ id: o.id, name: o.name, role: ORG_ROLE_LABEL[o.role] }))}
+            currentId={current?.org.id}
+            onSelect={orgStore.set}
+            canCreate={canCreateOrg}
+          />
+        )}
       </SidebarHeader>
       <SidebarContent>
         <nav aria-label={t.nav} className="contents">
@@ -209,21 +228,35 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   render={<Link to={NAV_HOME.to} aria-current={active?.id === "home" ? "page" : undefined} />}
                   isActive={active?.id === "home"}
+                  title={iconOnly ? NAV_HOME.label[lang] : undefined}
                   tooltip={NAV_HOME.label[lang]}
                 >
                   <ItemBody item={NAV_HOME} />
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {groups.map((group) => (
-                <Group
-                  key={group.id}
-                  group={group}
-                  hasOrg={hasOrg}
-                  activeId={active?.id}
-                  open={isOpen(group)}
-                  onOpenChange={(open) => setOpen(group.id, open)}
-                />
-              ))}
+              {groups.map((group) =>
+                iconOnly ? (
+                  <SidebarMenuItem key={group.id}>
+                    <SidebarMenuButton
+                      render={<Link to={group.items[0]?.to ?? NAV_HOME.to} aria-label={group.label[lang]} />}
+                      title={group.label[lang]}
+                      tooltip={group.label[lang]}
+                      isActive={group.items.some((item) => item.id === active?.id)}
+                    >
+                      <ItemBody item={group} />
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : (
+                  <Group
+                    key={group.id}
+                    group={group}
+                    hasOrg={hasOrg}
+                    activeId={active?.id}
+                    open={isOpen(group)}
+                    onOpenChange={(open) => setOpen(group.id, open)}
+                  />
+                ),
+              )}
               {admin && (
                 <SidebarMenuItem>
                   {hasOrg ? (
@@ -242,6 +275,7 @@ export function AppSidebar() {
                         />
                       }
                       isActive={inAdmin}
+                      title={iconOnly ? NAV_ADMIN.label[lang] : undefined}
                       tooltip={NAV_ADMIN.label[lang]}
                     >
                       <ItemBody item={NAV_ADMIN} />
@@ -256,7 +290,21 @@ export function AppSidebar() {
         </nav>
       </SidebarContent>
       <SidebarFooter>
-        <UserCard />
+        {inAdmin && !isMobile && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={toggleSidebar}
+                aria-label={open ? t.collapse : t.expand}
+                tooltip={open ? t.collapse : t.expand}
+              >
+                {open ? <PanelLeftCloseIcon aria-hidden="true" /> : <PanelLeftOpenIcon aria-hidden="true" />}
+                <span>{open ? t.collapse : t.expand}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
+        {!iconOnly && <UserCard />}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
