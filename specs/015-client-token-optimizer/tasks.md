@@ -162,7 +162,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - `apps/desktop/src-tauri/capabilities/default.json` nếu cần.
   - **Test**: Rust unit test parse JSON của sidecar, dùng chuỗi mẫu.
 
-- [ ] **T008 [US1] [US2] [vừa] Khối "Tối ưu" trong màn Token** (sau T007)
+- [x] **T008 [US1] [US2] [vừa] Khối "Tối ưu" trong màn Token** (sau T007)
   - **Goal**:
     - Bảng gói: CLI, phiên bản, mức, trạng thái, nút Bật/Tắt/Khôi phục, lý do bỏ khoá.
     - Bảng trước/sau theo nguồn phiên: token quy đổi mỗi lượt, ngữ cảnh đỉnh, phiên > 400k, cache hit, ký tự đã cắt,

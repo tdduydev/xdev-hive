@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import {
+  type ConnectPurpose,
   DESKTOP_CONNECT_PREFIX,
   type DesktopConnectApproveInput,
   type DesktopConnectExchangeOutput,
@@ -20,8 +21,12 @@ import { hashToken, newToken, withTokenLookup } from "./tokens.ts";
 /** Đủ để đăng nhập trên trình duyệt rồi quay về app; ngắn để mã lọt ra ngoài cũng hết hạn sớm. */
 export const DESKTOP_CONNECT_TTL_MS = 5 * 60 * 1000;
 
-/** Token cá nhân của app desktop; module mcp tạo (main.ts truyền vào) để fleet không import mcp. */
-export type IssuePersonalToken = (tx: Tx, userId: string) => Promise<{ token: string; expiresAt: Date }>;
+/** Token cá nhân của app desktop hay CLI; module mcp tạo (main.ts truyền vào) để fleet không import mcp. */
+export type IssuePersonalToken = (
+  tx: Tx,
+  userId: string,
+  purpose: ConnectPurpose,
+) => Promise<{ token: string; expiresAt: Date }>;
 
 // Mã sai, hết hạn, đã dùng hay verifier sai đều cùng một lỗi, để người dò không biết mã nào từng tồn tại.
 const invalidCode = () =>
@@ -50,7 +55,8 @@ export async function desktopConnectOptions(tx: Tx, userId: string): Promise<Des
 
 /**
  * Người dùng bấm Cho phép trên web. Chỉ chuyển trình duyệt về 127.0.0.1 (RFC 8252 mục 7.3): trang khác không nhận
- * được mã, và mã một mình vô dụng nếu không có verifier mà chỉ app giữ.
+ * được mã, và mã một mình vô dụng nếu không có verifier mà chỉ app giữ. `cli` không cần quyền đăng ký máy: CLI chỉ nhận
+ * token cá nhân, thứ người dùng vẫn tự tạo được ở trang token MCP.
  */
 export async function approveDesktopConnect(
   tx: Tx,
@@ -58,14 +64,16 @@ export async function approveDesktopConnect(
   raw: DesktopConnectApproveInput,
 ): Promise<{ redirectUrl: string; expiresAt: string }> {
   const input = desktopConnectApproveInput.parse(raw);
-  await canRegister(tx, userId, input.teamId);
+  const teamId = input.purpose === "desktop" ? input.teamId : null;
+  if (teamId) await canRegister(tx, userId, teamId);
   const code = newToken(DESKTOP_CONNECT_PREFIX);
   const expiresAt = new Date(Date.now() + DESKTOP_CONNECT_TTL_MS);
   const [row] = await tx
     .insert(desktopConnectCodes)
     .values({
       orgId: sql`hive.ctx_org()`,
-      teamId: input.teamId,
+      teamId,
+      purpose: input.purpose,
       userId,
       tokenHash: hashToken(code),
       challenge: input.challenge,
@@ -77,7 +85,7 @@ export async function approveDesktopConnect(
     action: "desktop.connect.approve",
     targetType: "desktop_connect_code",
     targetId: row?.id,
-    data: { teamId: input.teamId, machine: input.machine },
+    data: { purpose: input.purpose, teamId, machine: input.machine },
   });
   const url = new URL(`http://127.0.0.1:${input.port}/callback`);
   url.searchParams.set("code", code);
@@ -92,7 +100,7 @@ function pkceMatches(verifier: string, challenge: string): boolean {
 }
 
 /**
- * App đổi mã lấy mã đăng ký máy và token cá nhân. Không có phiên người dùng: tìm mã bằng băm để biết tổ chức, rồi
+ * App đổi mã lấy mã đăng ký máy và token cá nhân (CLI chỉ lấy token cá nhân). Không có phiên người dùng: tìm mã bằng băm để biết tổ chức, rồi
  * trong transaction của tổ chức đó (thay người đã bấm Cho phép) đánh dấu mã đã dùng và tạo hai token. Quyền đăng ký
  * máy được kiểm lại ở đây, nên người bị gỡ quyền trong năm phút đó không đổi được mã.
  */
@@ -119,18 +127,30 @@ export async function exchangeDesktopConnect(
       .for("update");
     if (!row || row.expiresAt <= new Date() || !pkceMatches(input.verifier, row.challenge)) throw invalidCode();
     await tx.update(desktopConnectCodes).set({ usedAt: new Date() }).where(eq(desktopConnectCodes.id, row.id));
+    const audit = { actorUserId: row.userId, targetType: "desktop_connect_code", targetId: row.id };
+    const common = { hubUrl: deps.publicUrl.replace(/\/+$/, ""), machine: row.machine };
+    if (row.purpose === "cli") {
+      const personal = await deps.issuePersonalToken(tx, row.userId, "cli");
+      await recordAudit(tx, { ...audit, action: "cli.connect.exchange", data: { machine: row.machine } });
+      return {
+        purpose: "cli",
+        ...common,
+        personalToken: personal.token,
+        personalTokenExpiresAt: personal.expiresAt.toISOString(),
+      };
+    }
+    // Ràng buộc của bảng bắt `desktop` có đội; kiểm lại để TypeScript biết.
+    if (!row.teamId) throw invalidCode();
     const registration = await createRegistration(tx, row.userId, row.teamId);
-    const personal = await deps.issuePersonalToken(tx, row.userId);
+    const personal = await deps.issuePersonalToken(tx, row.userId, "desktop");
     await recordAudit(tx, {
+      ...audit,
       action: "desktop.connect.exchange",
-      actorUserId: row.userId,
-      targetType: "desktop_connect_code",
-      targetId: row.id,
       data: { teamId: row.teamId, machine: row.machine },
     });
     return {
-      hubUrl: deps.publicUrl.replace(/\/+$/, ""),
-      machine: row.machine,
+      purpose: "desktop",
+      ...common,
       teamId: row.teamId,
       registrationToken: registration.token,
       personalToken: personal.token,

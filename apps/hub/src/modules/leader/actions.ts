@@ -3,6 +3,7 @@ import { defaultRouting, LEADER_TIER_GUIDE, type LeaderAction, type TaskTier } f
 import { loadProject, updateProjectSettings } from "../catalog/index.ts";
 import type { Tx } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
+import { createItem, type SdlcDeps } from "../sdlc/index.ts";
 import { createTask, loadTask } from "../tasks/index.ts";
 
 export interface ActionOutcome {
@@ -72,6 +73,7 @@ export async function executeLeaderAction(
   userId: string,
   action: LeaderAction,
   runs: RunsEngine | undefined,
+  sdlc: SdlcDeps = {},
 ): Promise<ActionOutcome> {
   if (action.type === "task.create") {
     // Cấp độ đi qua nhãn `tier:` của task để định tuyến của run code (runs/routing.ts) dùng đúng cấp Leader chọn.
@@ -103,6 +105,13 @@ export async function executeLeaderAction(
     const cancelled = await runs.cancelRun(tx, userId, action.runId);
     return { result: { run: cancelled.run }, afterCommit: cancelled.afterCommit };
   }
+  if (action.type === "sdlc.item.create") {
+    // Người duyệt đề xuất là chủ hạng mục (US1-5): quyền ở mọi dự án tham gia kiểm như khi tạo trên web.
+    const item = await createItem(tx, userId, action.item, sdlc, { sourceKind: "leader" });
+    return {
+      result: { item: { id: item.id, ref: item.ref, title: item.title, projectKey: item.project.key } },
+    };
+  }
   return { result: null };
 }
 
@@ -118,7 +127,7 @@ export function describeAction(action: LeaderAction): string {
     case "project.settings":
       return `Đổi cài đặt dự án ${action.projectKey}`;
     case "sdlc.item.create":
-      return "Tạo hạng mục AI SDLC";
+      return `Tạo hạng mục AI SDLC "${action.item.title.slice(0, 120)}"`;
   }
 }
 
