@@ -28971,6 +28971,22 @@
                               "codegraph": {
                                 "type": "boolean",
                                 "default": true
+                              },
+                              "contextPack": {
+                                "type": "boolean",
+                                "default": true
+                              },
+                              "exploreBudget": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 50,
+                                "default": 4
+                              },
+                              "toolOutputMaxChars": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 200000,
+                                "default": 12000
                               }
                             },
                             "required": [
@@ -28989,7 +29005,10 @@
                               "autocompactWindow": 200000,
                               "allowWeb": false,
                               "rtk": true,
-                              "codegraph": true
+                              "codegraph": true,
+                              "contextPack": true,
+                              "exploreBudget": 4,
+                              "toolOutputMaxChars": 12000
                             }
                           },
                           "routing": {
@@ -30443,6 +30462,22 @@
                             "codegraph": {
                               "type": "boolean",
                               "default": true
+                            },
+                            "contextPack": {
+                              "type": "boolean",
+                              "default": true
+                            },
+                            "exploreBudget": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 50,
+                              "default": 4
+                            },
+                            "toolOutputMaxChars": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 200000,
+                              "default": 12000
                             }
                           },
                           "required": [
@@ -30461,7 +30496,10 @@
                             "autocompactWindow": 200000,
                             "allowWeb": false,
                             "rtk": true,
-                            "codegraph": true
+                            "codegraph": true,
+                            "contextPack": true,
+                            "exploreBudget": 4,
+                            "toolOutputMaxChars": 12000
                           }
                         },
                         "routing": {
@@ -31917,6 +31955,22 @@
                                 "codegraph": {
                                   "type": "boolean",
                                   "default": true
+                                },
+                                "contextPack": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "exploreBudget": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 50,
+                                  "default": 4
+                                },
+                                "toolOutputMaxChars": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 200000,
+                                  "default": 12000
                                 }
                               },
                               "required": [
@@ -31935,7 +31989,10 @@
                                 "autocompactWindow": 200000,
                                 "allowWeb": false,
                                 "rtk": true,
-                                "codegraph": true
+                                "codegraph": true,
+                                "contextPack": true,
+                                "exploreBudget": 4,
+                                "toolOutputMaxChars": 12000
                               }
                             },
                             "routing": {
@@ -33544,6 +33601,22 @@
                                 "codegraph": {
                                   "type": "boolean",
                                   "default": true
+                                },
+                                "contextPack": {
+                                  "type": "boolean",
+                                  "default": true
+                                },
+                                "exploreBudget": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 50,
+                                  "default": 4
+                                },
+                                "toolOutputMaxChars": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 200000,
+                                  "default": 12000
                                 }
                               },
                               "required": [
@@ -33562,7 +33635,10 @@
                                 "autocompactWindow": 200000,
                                 "allowWeb": false,
                                 "rtk": true,
-                                "codegraph": true
+                                "codegraph": true,
+                                "contextPack": true,
+                                "exploreBudget": 4,
+                                "toolOutputMaxChars": 12000
                               }
                             },
                             "routing": {
@@ -36702,6 +36778,19 @@
                           },
                           "codegraph": {
                             "type": "boolean"
+                          },
+                          "contextPack": {
+                            "type": "boolean"
+                          },
+                          "exploreBudget": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 50
+                          },
+                          "toolOutputMaxChars": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 200000
                           }
                         },
                         "additionalProperties": false
@@ -37636,6 +37725,22 @@
                         "codegraph": {
                           "type": "boolean",
                           "default": true
+                        },
+                        "contextPack": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "exploreBudget": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 50,
+                          "default": 4
+                        },
+                        "toolOutputMaxChars": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 200000,
+                          "default": 12000
                         }
                       },
                       "required": [
@@ -37654,7 +37759,10 @@
                         "autocompactWindow": 200000,
                         "allowWeb": false,
                         "rtk": true,
-                        "codegraph": true
+                        "codegraph": true,
+                        "contextPack": true,
+                        "exploreBudget": 4,
+                        "toolOutputMaxChars": 12000
                       }
                     },
                     "routing": {
@@ -56457,6 +56565,38 @@
                             }
                           ]
                         },
+                        "tokenGuard": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "contextPackFiles": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "exploreBlocked": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "truncatedChars": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "contextPackFiles",
+                                "exploreBlocked",
+                                "truncatedChars"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "createdBy": {
                           "type": "string"
                         },
@@ -57872,6 +58012,38 @@
                             }
                           ]
                         },
+                        "tokenGuard": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "contextPackFiles": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "exploreBlocked": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "truncatedChars": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "contextPackFiles",
+                                "exploreBlocked",
+                                "truncatedChars"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "createdBy": {
                           "type": "string"
                         },
@@ -59011,6 +59183,38 @@
                           "required": [
                             "commands",
                             "savedTokens"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tokenGuard": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "contextPackFiles": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "exploreBlocked": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "truncatedChars": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "contextPackFiles",
+                            "exploreBlocked",
+                            "truncatedChars"
                           ]
                         },
                         {
@@ -60204,6 +60408,38 @@
                           }
                         ]
                       },
+                      "tokenGuard": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "contextPackFiles": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "exploreBlocked": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "truncatedChars": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "contextPackFiles",
+                              "exploreBlocked",
+                              "truncatedChars"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "createdBy": {
                         "type": "string"
                       },
@@ -61299,6 +61535,38 @@
                             "required": [
                               "commands",
                               "savedTokens"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "tokenGuard": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "contextPackFiles": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "exploreBlocked": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "truncatedChars": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "contextPackFiles",
+                              "exploreBlocked",
+                              "truncatedChars"
                             ]
                           },
                           {
@@ -62495,6 +62763,38 @@
                               }
                             ]
                           },
+                          "tokenGuard": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "contextPackFiles": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "exploreBlocked": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "truncatedChars": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "contextPackFiles",
+                                  "exploreBlocked",
+                                  "truncatedChars"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdBy": {
                             "type": "string"
                           },
@@ -63640,6 +63940,38 @@
                         }
                       ]
                     },
+                    "tokenGuard": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "contextPackFiles": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "exploreBlocked": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "truncatedChars": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "contextPackFiles",
+                            "exploreBlocked",
+                            "truncatedChars"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "createdBy": {
                       "type": "string"
                     },
@@ -64732,6 +65064,38 @@
                           "required": [
                             "commands",
                             "savedTokens"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tokenGuard": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "contextPackFiles": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "exploreBlocked": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "truncatedChars": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "contextPackFiles",
+                            "exploreBlocked",
+                            "truncatedChars"
                           ]
                         },
                         {
@@ -75091,6 +75455,19 @@
                                       },
                                       "codegraph": {
                                         "type": "boolean"
+                                      },
+                                      "contextPack": {
+                                        "type": "boolean"
+                                      },
+                                      "exploreBudget": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 50
+                                      },
+                                      "toolOutputMaxChars": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 200000
                                       }
                                     },
                                     "additionalProperties": false
@@ -76714,6 +77091,19 @@
                                         },
                                         "codegraph": {
                                           "type": "boolean"
+                                        },
+                                        "contextPack": {
+                                          "type": "boolean"
+                                        },
+                                        "exploreBudget": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 50
+                                        },
+                                        "toolOutputMaxChars": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 200000
                                         }
                                       },
                                       "additionalProperties": false
@@ -78362,6 +78752,19 @@
                                     },
                                     "codegraph": {
                                       "type": "boolean"
+                                    },
+                                    "contextPack": {
+                                      "type": "boolean"
+                                    },
+                                    "exploreBudget": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 50
+                                    },
+                                    "toolOutputMaxChars": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 200000
                                     }
                                   },
                                   "additionalProperties": false
@@ -177650,6 +178053,19 @@
                                           },
                                           "codegraph": {
                                             "type": "boolean"
+                                          },
+                                          "contextPack": {
+                                            "type": "boolean"
+                                          },
+                                          "exploreBudget": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 50
+                                          },
+                                          "toolOutputMaxChars": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 200000
                                           }
                                         },
                                         "additionalProperties": false

@@ -18,10 +18,15 @@ import (
 // hơn chưa kiểm nên không bật. Hai biến có số phiên bản lấy từ tài liệu env-vars của Claude Code (chưa tự thử).
 var claudeMinVersion = map[string]string{
 	"--exclude-dynamic-system-prompt-sections": "2.1.296",
-	"--tools":                                "2.1.296",
-	"--disallowedTools":                      "2.1.296",
-	"--max-turns":                            "2.1.296",
-	"--advisor":                              "2.1.296",
+	"--tools":                     "2.1.296",
+	"--disallowedTools":           "2.1.296",
+	"--max-turns":                 "2.1.296",
+	"--advisor":                   "2.1.296",
+	"--append-system-prompt-file": "2.1.296",
+	"--add-dir":                   "2.1.296",
+	// Không phải cờ: hook dạng exec (command + args) và PostToolUse updatedToolOutput, đã thử trên claude 2.1.296.
+	"hook-args":                              "2.1.296",
+	"updatedToolOutput":                      "2.1.296",
 	"CLAUDE_CODE_SUBAGENT_MODEL_FORCE":       "2.1.257",
 	"CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH": "2.1.280",
 }
