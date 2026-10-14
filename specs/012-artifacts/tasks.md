@@ -149,7 +149,7 @@
     `apps/hub/.env.example`, `Dockerfile` (nếu cần)
   - **Phụ thuộc**: T004, T010 · **Mức**: nặng
 
-- [ ] T013 🎯 Leader: thẻ artifact trong chat
+- [x] T013 🎯 Leader: thẻ artifact trong chat
   - `leader` cung cấp `ThreadHost` (`assertRunThread` dùng lại kiểm của `leader_reply`; `postArtifactCard` thêm tin nhắn thẻ,
     cập nhật `updated_at`); router trả `chatMessage.artifact`; xoá cuộc trò chuyện xoá liên kết `chat_thread`.
   - `leader/prompt.ts`: đoạn hướng dẫn artifact (US5-7); `prompt.test.ts`.
