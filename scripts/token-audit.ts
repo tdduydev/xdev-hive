@@ -46,6 +46,8 @@ interface Session {
   models: Set<string>;
   versions: Set<string>;
   peakContext: number;
+  // Ngữ cảnh ở lượt gọi đầu: system prompt, định nghĩa tool/MCP, CLAUDE.md, memory; phần trả mỗi lượt dù chưa làm gì.
+  firstContext: number;
 }
 
 const args = process.argv.slice(2);
@@ -127,6 +129,7 @@ function newSession(cli: Session["cli"], account: string): Session {
     models: new Set(),
     versions: new Set(),
     peakContext: 0,
+    firstContext: 0,
   };
 }
 
@@ -258,10 +261,9 @@ async function readClaude(file: string, account: string): Promise<Session> {
       s.cacheRead += u.cache_read_input_tokens ?? 0;
       s.cacheWrite5m += w5m;
       s.cacheWrite1h += w1h;
-      s.peakContext = Math.max(
-        s.peakContext,
-        (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
-      );
+      const context = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+      s.peakContext = Math.max(s.peakContext, context);
+      if (!s.firstContext) s.firstContext = context;
       return;
     }
     if (type === "user" && Array.isArray(msg.content)) {
@@ -302,7 +304,10 @@ async function readCodex(file: string, account: string): Promise<Session> {
         s.calls++;
         last = info.total_token_usage;
         const l = (info as { last_token_usage?: Record<string, number> }).last_token_usage;
-        if (l) s.peakContext = Math.max(s.peakContext, l.input_tokens ?? 0);
+        if (l) {
+          s.peakContext = Math.max(s.peakContext, l.input_tokens ?? 0);
+          if (!s.firstContext) s.firstContext = l.input_tokens ?? 0;
+        }
       }
     }
     if (p.type === "function_call" || p.type === "custom_tool_call" || p.type === "local_shell_call") {
@@ -342,6 +347,9 @@ interface Group {
   cacheWrite1h: number;
   weighted: number;
   peakOver150k: number;
+  // Vượt cửa sổ 200k: phiên đang chạy bằng ngữ cảnh 1M, mỗi lượt đọc lại cả phần đó qua cache.
+  peakOver400k: number;
+  weightedOver400k: number;
   compactions: number;
 }
 
@@ -356,6 +364,8 @@ function group(list: Session[]): Group {
     cacheWrite1h: 0,
     weighted: 0,
     peakOver150k: 0,
+    peakOver400k: 0,
+    weightedOver400k: 0,
     compactions: 0,
   };
   for (const s of list) {
@@ -367,6 +377,10 @@ function group(list: Session[]): Group {
     g.cacheWrite1h += s.cacheWrite1h;
     g.weighted += weighted(s);
     if (s.peakContext > 150_000) g.peakOver150k++;
+    if (s.peakContext > 400_000) {
+      g.peakOver400k++;
+      g.weightedOver400k += weighted(s);
+    }
     g.compactions += s.compactions;
   }
   return g;
@@ -495,6 +509,9 @@ async function main(): Promise<void> {
         cacheHit: Number(hitRate(g).toFixed(3)),
         rtkSessions: list.filter((s) => s.rtk).length,
         guardSessions: list.filter((s) => s.guard).length,
+        medianCalls: median(list.map((s) => s.calls)),
+        medianFirstContext: median(list.map((s) => s.firstContext).filter((n) => n > 0)),
+        medianPeakContext: median(list.map((s) => s.peakContext)),
         weightedShare: {
           input: Number((g.input / g.weighted).toFixed(3)),
           cacheRead: Number(((0.1 * g.cacheRead) / g.weighted).toFixed(3)),
