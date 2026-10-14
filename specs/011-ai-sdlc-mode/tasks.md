@@ -125,7 +125,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{modes.ts,suggest.ts,suggest.test.ts,modes.db.test.ts}`
   - **Phụ thuộc**: T002, T004 · **Mức**: vừa
 
-- [ ] T012 🎯 [US1] [US3] Hạng mục và máy trạng thái giai đoạn
+- [x] T012 🎯 [US1] [US3] Hạng mục và máy trạng thái giai đoạn
   - `items.ts`: tạo (số `NNN`, slug, chụp chế độ và cài đặt, dòng `sdlc_item_projects` `home`, tài liệu hub theo khuôn,
     `sdlc_artifacts` + `sdlc_artifact_syncs` nguồn, `sdlc_item_phases`), từ issue (chống trùng, bình luận lên issue qua
     `scm`), tạm dừng/tiếp tục/huỷ, đổi chế độ khi chưa có baseline. Bản này chỉ dự án chính; T015 thêm dự án tham gia và
