@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,15 @@ func TestBriefIsReadOnlyKindWithCapability(t *testing.T) {
 		found = found || c == KindBrief
 	}
 	if !found {
+		t.Fatalf("Capabilities = %v", Capabilities)
+	}
+}
+
+func TestSkillProposalIsReadOnlyKindWithCapability(t *testing.T) {
+	if !readOnlyKind(KindSkillProposal) || NeedsFull("antigravity", KindSkillProposal) {
+		t.Fatal("run skill_proposal phải chỉ đọc")
+	}
+	if !slices.Contains(Capabilities, KindSkillProposal) {
 		t.Fatalf("Capabilities = %v", Capabilities)
 	}
 }

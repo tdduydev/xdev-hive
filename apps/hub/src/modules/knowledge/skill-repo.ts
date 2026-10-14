@@ -115,6 +115,10 @@ function view(row: typeof skillRepos.$inferSelect, hubOnly: number): SkillRepo {
   };
 }
 
+export async function hasSkillRepo(tx: Tx): Promise<boolean> {
+  return (await repoRow(tx)) !== null;
+}
+
 export async function getSkillRepo(tx: Tx): Promise<SkillRepo | null> {
   const row = await repoRow(tx);
   return row ? view(row, await hubOnlyCount(tx)) : null;
@@ -497,6 +501,48 @@ export async function openProposalPR(deps: SkillRepoDeps, orgId: string, proposa
   await withTenant(deps.pool, ctx, (tx) =>
     tx.update(proposals).set({ gitPrNumber: pr.number, gitPrUrl: pr.url }).where(eq(proposals.id, p.id)),
   );
+}
+
+/**
+ * Một commit trên nhánh riêng và một PR vào nhánh chính của kho skill. Dùng cho đề xuất đã duyệt (skill agent học
+ * được); trả null khi tổ chức chưa nối kho hoặc đội/dự án của phạm vi không còn.
+ */
+export async function openSkillPR(
+  deps: SkillRepoDeps,
+  orgId: string,
+  input: {
+    branch: string;
+    scope: Scope;
+    name: string;
+    description: string;
+    content: string;
+    message: string;
+    title: string;
+    body: string;
+  },
+): Promise<{ number: number; url: string } | null> {
+  const loaded = await withTenant(deps.pool, { orgId }, async (tx) => {
+    const row = await repoRow(tx);
+    if (!row) return null;
+    const folder = await folderOf(tx, input.scope);
+    if (!folder) return null;
+    return { row, folder, provider: await providerFor(tx, deps, row.connectionId) };
+  });
+  if (!loaded) return null;
+  const { row, folder, provider } = loaded;
+  const ref = { owner: row.owner, name: row.name };
+  await provider.commitFiles(ref, {
+    branch: input.branch,
+    fromBranch: row.branch,
+    message: input.message,
+    files: [
+      {
+        path: `${folder}/${input.name}/SKILL.md`,
+        content: renderSkillFile(input.name, input.description, input.content),
+      },
+    ],
+  });
+  return provider.openPR(ref, { head: input.branch, base: row.branch, title: input.title, body: input.body });
 }
 
 /** Đề xuất đã quyết trên hub: đóng PR. Bản duyệt vào nhánh chính qua lần đồng bộ (đẩy skill đã sửa). */
