@@ -76,6 +76,7 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `fleet` | Máy, đăng ký, cổng WSS, phiên bản worker | `machines`, `machine_tokens`, `registration_tokens` |
 | `sandbox` | Image môi trường, allowlist mạng, cấu hình sandbox của tổ chức | `sandbox_org_settings`, `env_images`, `egress_allowlists` |
 | `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, bộ skill mặc định của Hive (`packages/skill-pack`, bật/tắt theo tổ chức và dự án), đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `skill_pack_settings`, `proposals`, `legacy_*` |
+| `skilllearn` | Agent đề xuất skill sau việc khó (ADR 0025): chọn run đáng học, lô mỗi ngày mỗi dự án chạy run `skill_proposal` chỉ đọc, bỏ trùng, hạn mức theo ngày, duyệt thành PR vào kho skill hoặc skill của tổ chức, số liệu | `skill_learning_batches`, `skill_learning_marks`, `learned_skill_proposals` |
 | `leader` | Chat với leader agent, đề xuất hành động cần người duyệt | `chat_threads`, `chat_messages`, `approvals` |
 | `mcp` | Cổng MCP: xác thực token, giới hạn tool theo vai trò, ghi audit | — (dùng module khác) |
 | `notify` | Telegram, email, hộp thư trong app | `notification_channels`, `notifications`, `inbox_items` |

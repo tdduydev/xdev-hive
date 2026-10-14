@@ -255,7 +255,7 @@
   - **Scope**: `worker/internal/runner/{checks.go,checks_test.go,runner.go}`, `worker/internal/channel/jobs_test.go`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T091 Hub gửi lệnh và đánh giá `command`
+- [x] T091 Hub gửi lệnh và đánh giá `command`
   - `buildSpec` thêm `checks.commands` từ quy trình khớp (checkpoint `rule` có `command`) và từ `outcome.command`;
     `evaluatePolicy` đánh giá `command` từ `report.commands` (thiếu → như cũ "chưa hỗ trợ"); cập nhật RUN-07.
   - **Scope**: `apps/hub/src/modules/runs/{engine.ts,policy.ts,policy.test.ts}`, `apps/hub/src/runs.db.test.ts`
