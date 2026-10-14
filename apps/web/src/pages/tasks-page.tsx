@@ -33,7 +33,9 @@ import {
   filterRows,
   runActivity,
 } from "@/lib/task-board.ts";
+import { sessionsWithTask } from "@/lib/terminal/sessions.ts";
 import { useNow } from "@/lib/use-now.ts";
+import { RemoteSessionRow } from "@/pages/remote/session-row.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -237,8 +239,34 @@ function Board({
       <PageBody>
         {notice}
         {body}
+        <InteractiveSessions projectId={projectId} now={now} />
       </PageBody>
     </>
+  );
+}
+
+/**
+ * Phiên tương tác (CLI chạy trên máy cá nhân) gắn với việc của bảng này. Chỉ hiện khi có phiên: lỗi tải hay máy chưa
+ * hỗ trợ không được làm hỏng bảng việc, và người không dùng điều khiển từ xa không thấy mục thừa.
+ */
+function InteractiveSessions({ projectId, now }: { projectId: string | undefined; now: number }) {
+  const { api } = useOrg();
+  const sessions = useQuery(api.remote.list.queryOptions({ input: projectId ? { projectId } : {} }));
+  const rows = sessionsWithTask(sessions.data ?? []);
+  if (rows.length === 0) return null;
+  return (
+    <section aria-labelledby="task-sessions-title" className="grid min-w-0 content-start gap-2">
+      <h2 id="task-sessions-title" className="font-heading text-lg font-semibold">
+        Phiên tương tác
+      </h2>
+      <ul className="grid min-w-0 gap-2">
+        {rows.map((session) => (
+          <li key={session.id} className="min-w-0">
+            <RemoteSessionRow session={session} now={now} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

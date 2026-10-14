@@ -30,7 +30,7 @@ func TestPumpDetachIgnoresCloseItCaused(t *testing.T) {
 		}()
 
 		a := newTestApp("", strings.NewReader("")) // hết stdin ngay: tách
-		code, msg := a.pump(localipc.NewConn(clientEnd), "abcd", modeControl)
+		code, msg := a.pump(localipc.NewConn(clientEnd), "abcd", modeControl, escKey)
 		_ = clientEnd.Close()
 		if code != exitOK || strings.Contains(msg, "Mất kết nối") {
 			t.Fatalf("lần %d: tách phải thoát %d, được %d %q", i, exitOK, code, msg)

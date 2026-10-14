@@ -16,7 +16,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -109,16 +108,13 @@ type RemoteError struct {
 
 func (e *RemoteError) Error() string { return e.Message }
 
-// DefaultPath là <UserConfigDir>/xdev-hive/run/hive.sock, hoặc HIVE_SOCKET nếu đặt.
+// DefaultPath là <UserConfigDir>/xdev-hive/run/hive.sock (Windows: named pipe \\.\pipe\xdev-hive-<SID>), hoặc
+// HIVE_SOCKET nếu đặt.
 func DefaultPath() (string, error) {
 	if p := os.Getenv(PathEnv); p != "" {
 		return p, nil
 	}
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "xdev-hive", "run", "hive.sock"), nil
+	return defaultPath()
 }
 
 // Request là một yêu cầu đã đọc; Decode đọc các trường riêng của op.
