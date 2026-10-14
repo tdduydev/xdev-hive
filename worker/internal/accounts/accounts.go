@@ -86,13 +86,13 @@ func (a Account) withDefaults() Account {
 	return a
 }
 
-// RoleOf là vai trò tài khoản cần nhận cho run loại kind: run plan và brief là "plan" (brief chỉ đọc, rẻ như plan),
+// RoleOf là vai trò tài khoản cần nhận cho run loại kind: run plan, brief và skill_proposal là "plan" (chỉ đọc, rẻ như plan),
 // review là "review", còn lại "implement".
 func RoleOf(kind string) string {
 	switch kind {
 	case RolePlan, RoleReview:
 		return kind
-	case "brief":
+	case "brief", "skill_proposal":
 		return RolePlan
 	}
 	return RoleImplement
@@ -169,7 +169,7 @@ func Load(path string) ([]Account, error) {
 
 func read(path string) (file, error) {
 	var f file
-	b, err := os.ReadFile(path)
+	b, err := readFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return f, nil
 	}
@@ -469,6 +469,102 @@ func (p *Pool) Acquire(cli, role string) (*Lease, error) {
 	}
 	if len(why) == 0 {
 		return nil, fmt.Errorf("%w: không tài khoản %s nào đang bật", ErrBusy, cli)
+	}
+	return nil, fmt.Errorf("%w: %s", ErrBusy, strings.Join(why, "; "))
+}
+
+// ErrNoAccount: gói người mở chọn không có, không thuộc CLI, tắt, chưa đăng nhập hay đang nghỉ. Lỗi trả về bọc nó kèm
+// lý do tiếng Việt để báo người mở.
+var ErrNoAccount = errors.New("không dùng được gói đã chọn")
+
+// AcquireInteractive giữ gói cho phiên tương tác (terminal Leader, specs/010 D10): id khác rỗng thì đúng gói đó, rỗng thì
+// gói rảnh nhất theo thứ tự như run. Bỏ gói tắt, chưa đăng nhập, đang nghỉ; không áp ngưỡng dừng và vai trò, vì phần
+// quota trên ngưỡng là phần để dành cho người dùng tay, mà phiên tương tác chính là người dùng tay. Phiên tính là đang
+// dùng (như một run) để run tránh gói đang có người gõ, nhưng không bị chặn bởi maxConcurrent: người mở đang chờ trước
+// màn hình, còn run thì chờ được. Trả (nil, nil) khi id rỗng và CLI không có gói nào: chạy bằng
+// đăng nhập mặc định.
+func (p *Pool) AcquireInteractive(cli, id string) (*Lease, error) {
+	if p == nil || !Supported(cli) {
+		if id != "" {
+			return nil, fmt.Errorf("%w: máy không có danh sách gói của %s", ErrNoAccount, cli)
+		}
+		return nil, nil
+	}
+	list, err := Load(p.path)
+	if err != nil {
+		return nil, err
+	}
+	st, err := LoadState(p.state)
+	if err != nil {
+		return nil, err
+	}
+	now := p.now()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	usable := func(a Account) string {
+		loggedIn, _ := loginOf(a, p.home)
+		switch {
+		case a.CLI != cli:
+			return "không phải gói " + cli
+		case a.Pending:
+			return "đang đăng nhập dở"
+		case !a.Enabled:
+			return "đang tắt"
+		case loggedIn != nil && !*loggedIn:
+			return "chưa đăng nhập"
+		case st.CoolUntil[a.ID].After(now):
+			return "đang nghỉ tới " + st.CoolUntil[a.ID].Local().Format("15:04 02/01")
+		}
+		return ""
+	}
+	take := func(a Account) *Lease {
+		p.active[a.ID]++
+		p.syncActive()
+		return &Lease{pool: p, account: a, dir: p.expand(a.ConfigDir)}
+	}
+	if id != "" {
+		for _, a := range list {
+			if a.ID != id {
+				continue
+			}
+			if why := usable(a); why != "" {
+				return nil, fmt.Errorf("%w: gói %s %s", ErrNoAccount, a.Label, why)
+			}
+			return take(a), nil
+		}
+		return nil, fmt.Errorf("%w: máy không có gói %s", ErrNoAccount, id)
+	}
+	hasAny := false
+	var why []string
+	var full *Account
+	for _, a := range p.candidates(list, cli, st, now) {
+		hasAny = true
+		if reason := usable(a); reason != "" {
+			why = append(why, a.ID+" "+reason)
+			continue
+		}
+		// Gói còn chỗ trước, gói đang chạy đủ run chỉ khi không còn gói nào khác.
+		if p.active[a.ID] >= a.MaxConcurrent {
+			if full == nil {
+				full = &a
+			}
+			continue
+		}
+		return take(a), nil
+	}
+	if full != nil {
+		return take(*full), nil
+	}
+	for _, a := range list {
+		if a.CLI == cli && !a.Pending {
+			hasAny = true
+		}
+	}
+	if !hasAny {
+		return nil, nil
+	}
+	if len(why) == 0 {
+		return nil, fmt.Errorf("%w: không gói %s nào đang bật", ErrBusy, cli)
 	}
 	return nil, fmt.Errorf("%w: %s", ErrBusy, strings.Join(why, "; "))
 }

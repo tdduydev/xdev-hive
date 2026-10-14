@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { CODE_WORKFLOW_ID, codeWorkflowsFixture, PAYMENT_PROJECT_ID } from "./fake-hub.ts";
+import { CODE_WORKFLOW_ID, codeWorkflowsFixture, fail, PAYMENT_PROJECT_ID } from "./fake-hub.ts";
 import { inOrg, PRD_WORKFLOW_ID, type Role, TEAM_ID, workflowsFixture } from "./reviews-fixture.ts";
 
 async function setup(page: Page, role: Role = "admin", mine?: string[]) {
@@ -296,6 +296,40 @@ test("tạo từ cấu hình dự án: bản nháp chưa lưu cho tới khi áp 
   await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
   await expect(page.getByText("Đã áp dụng quy trình.")).toBeVisible();
   expect(state.saved.at(-1)).toMatchObject({ subject: "code", code: { projects: ["reconcile"] } });
+});
+
+test("?duan= dựng bản nháp từ đúng dự án nguồn, chưa lưu và xoá tham số khỏi URL", async ({ page }) => {
+  const { state, code } = await setupCode(page);
+  await page.goto("/knowledge/workflows?duan=reconcile");
+  await expect(page.getByText("Có thay đổi chưa áp dụng.")).toBeVisible();
+  await expect(page).toHaveURL(/\/knowledge\/workflows$/);
+  expect(code.calls.fromProject).toEqual(["reconcile"]);
+  expect(state.saved).toHaveLength(0);
+  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
+  await expect(page.getByText("Đã áp dụng quy trình.")).toBeVisible();
+  expect(state.saved.at(-1)).toMatchObject({ subject: "code", code: { projects: ["reconcile"] } });
+});
+
+test("?duan= báo lỗi khi hub không dựng được bản nháp và không lưu gì", async ({ page }) => {
+  const fixture = workflowsFixture();
+  const code = codeWorkflowsFixture(fixture.state);
+  await inOrg(page, "admin", {
+    ...fixture.rpc,
+    ...code.rpc,
+    "codeReviews/workflowFromProject": () => fail("NOT_FOUND", 404, "Không tìm thấy dự án."),
+  });
+  await page.goto("/knowledge/workflows?duan=reconcile");
+  await expect(page.getByRole("alert").filter({ hasText: "Không tìm thấy dự án." })).toBeVisible();
+  expect(fixture.state.saved).toHaveLength(0);
+});
+
+test("người chỉ đọc mở ?duan= thì không dựng bản nháp", async ({ page }) => {
+  const { state, code } = await setupCode(page, "member");
+  await page.goto("/knowledge/workflows?duan=reconcile");
+  await expect(page.getByText("Bạn chỉ xem được quy trình duyệt.")).toBeVisible();
+  await expect(page).toHaveURL(/\/knowledge\/workflows$/);
+  expect(code.calls.fromProject).toEqual([]);
+  expect(state.saved).toHaveLength(0);
 });
 
 test("người chỉ đọc xem quy trình Code nhưng không sửa được", async ({ page }) => {

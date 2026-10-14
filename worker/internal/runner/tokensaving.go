@@ -45,6 +45,11 @@ type TokenSavingJob struct {
 	// RTK, CodeGraph là công tắc công cụ của dự án (tools.go); nil là hub chưa gửi: bật như mặc định của hub.
 	RTK       *bool `json:"rtk"`
 	CodeGraph *bool `json:"codegraph"`
+	// ContextPack, ExploreBudget, ToolOutputMaxChars là phần guard.go và contextpack.go; nil là hub chưa gửi (mặc định:
+	// bật, 4, 12000). 0 ở hai mục số là tắt mục đó.
+	ContextPack        *bool `json:"contextPack"`
+	ExploreBudget      *int  `json:"exploreBudget"`
+	ToolOutputMaxChars *int  `json:"toolOutputMaxChars"`
 }
 
 // TokenSavingConfig là cấu hình của máy (xem TokenSavingEnv). Off thắng cả mặc định lẫn spec của hub: chủ máy tắt

@@ -1,6 +1,8 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { artifactsContract } from "./artifacts.ts";
 import { auditContract } from "./audit.ts";
+import { chatContract } from "./chat.ts";
 import { codeReviewsContract } from "./code-reviews.ts";
 import { costsContract } from "./cost.ts";
 import { desktopConnectContract } from "./desktop-connect.ts";
@@ -17,11 +19,14 @@ import { runsContract } from "./runs.ts";
 import { sandboxContract } from "./sandbox.ts";
 import { scmContract } from "./scm.ts";
 import { sdlcContract } from "./sdlc.ts";
+import { skillLearningContract } from "./skill-learning.ts";
 import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
+import { terminalContract } from "./terminal.ts";
 import { reviewsContract, workflowsContract } from "./workflows.ts";
 
+export * from "./artifacts.ts";
 export * from "./audit.ts";
 export * from "./breakdown.ts";
 export * from "./code-reviews.ts";
@@ -46,9 +51,12 @@ export * from "./sandbox.ts";
 export * from "./scm.ts";
 export * from "./sdlc.ts";
 export * from "./sdlc-presets/index.ts";
+export * from "./secret-scan.ts";
+export * from "./skill-learning.ts";
 export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
+export * from "./terminal.ts";
 export * from "./version.ts";
 export * from "./workflows.ts";
 
@@ -116,6 +124,7 @@ export const contract = {
   scmConnections: scmContract,
   notificationChannels: notificationChannelsContract,
   inbox: inboxContract,
+  chat: chatContract,
   projects: projectsContract,
   memory: memoryContract,
   docs: docsContract,
@@ -131,6 +140,7 @@ export const contract = {
   mcpAdmin: mcpAdminContract,
   roles: rolesContract,
   skillRepo: skillRepoContract,
+  skillLearning: skillLearningContract,
   policies: policiesContract,
   reviewWorkflows: workflowsContract,
   reviews: reviewsContract,
@@ -138,9 +148,12 @@ export const contract = {
   docEditor: docEditorContract,
   desktopConnect: desktopConnectContract,
   sdlc: sdlcContract,
+  terminal: terminalContract,
+  artifacts: artifactsContract,
 };
 
 export type Contract = typeof contract;
 
+export * from "./chat.ts";
 export * from "./fleet.ts";
 export * from "./leader.ts";

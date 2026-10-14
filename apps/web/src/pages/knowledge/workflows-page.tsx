@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { DryRunResult, ReviewGate, ReviewWorkflow, WorkflowPreset, WorkflowSubject } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
@@ -14,7 +15,7 @@ import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { PlusIcon, Trash2Icon, XIcon } from "lucide-react";
-import { type FormEvent, useId, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
@@ -233,6 +234,23 @@ function WorkflowsScreen() {
     },
   });
 
+  // Nút "Tạo quy trình từ cấu hình này" ở Cài đặt dự án dẫn tới đây kèm `?duan=`: dựng bản nháp, không lưu.
+  const { duan } = useSearch({ from: "/session/app/in-org/knowledge/workflows" });
+  const navigate = useNavigate();
+  const handedOff = useRef<string | null>(null);
+  const fromSearch = useMutation({
+    mutationFn: (projectKey: string) => api.codeReviews.workflowFromProject.call({ projectKey }),
+    onSuccess: (input, projectKey) =>
+      openDraft(input, projects.data?.find((p) => p.key === projectKey)?.teamId ?? null),
+  });
+  // Chờ danh sách dự án để biết đội của dự án nguồn; chỉ chạy một lần cho mỗi giá trị `duan`.
+  useEffect(() => {
+    if (!duan || projects.isPending || handedOff.current === duan) return;
+    handedOff.current = duan;
+    if (canWrite) fromSearch.mutate(duan);
+    void navigate({ to: "/knowledge/workflows", search: {}, replace: true });
+  }, [duan, projects.isPending, canWrite, fromSearch.mutate, navigate]);
+
   // So phần gửi hub: cấu hình của loại gate khác giữ trong nháp không làm quy trình thành "có thay đổi".
   const dirty =
     !!draft &&
@@ -334,6 +352,7 @@ function WorkflowsScreen() {
         {issues.length > 0 && <IssueAlert title={t.invalid} issues={issues} />}
         {hubIssues && <IssueAlert title={t.invalid} issues={hubIssues} />}
         {save.error && !hubIssues && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
+        {fromSearch.error && <Alert variant="destructive">{apiErrorMessage(fromSearch.error)}</Alert>}
         {saved && !dirty && (
           <p role="status" className="text-sm text-success">
             {t.saved}
