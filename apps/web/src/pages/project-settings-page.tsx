@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Project, ProjectSettings } from "@xdev-hive/contracts";
+import type { Machine, Project, ProjectSettings } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { LockIcon } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
@@ -144,6 +145,15 @@ const text: Dict<{
   pFullHint: string;
   fullBanner: string;
   fullLocked: string;
+  machinesTitle: string;
+  machinesHint: string;
+  machinesLoading: string;
+  machinesFailed: (error: string) => string;
+  machinesEmpty: string;
+  machineBound: string;
+  machineFull: string;
+  machineFullIdle: string;
+  machineStatus: Record<Machine["status"], string>;
   unsavedChanges: (n: number) => string;
   savedBanner: string;
   discard: string;
@@ -285,6 +295,16 @@ const text: Dict<{
       "Tắt sandbox và mọi bước hỏi duyệt của CLI. Chỉ dùng trong container dùng một lần hoặc máy riêng cho agent.",
     fullBanner: "Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.",
     fullLocked: "Chính sách agent của tổ chức không cho dự án bật toàn quyền; run chạy trong worktree.",
+    machinesTitle: "Máy đã gắn dự án này",
+    machinesHint:
+      "Máy của đội đã gắn dự án với một repo local, và máy đã bật toàn quyền cho dự án (cài ở app desktop trên máy đó). Chỉ để xem.",
+    machinesLoading: "Đang tải danh sách máy…",
+    machinesFailed: (error) => `Không tải được danh sách máy: ${error}`,
+    machinesEmpty: "Chưa máy nào gắn dự án này với repo local.",
+    machineBound: "Đã gắn repo local",
+    machineFull: "Toàn quyền",
+    machineFullIdle: "Toàn quyền đang bị chính sách tổ chức chặn",
+    machineStatus: { online: "Sẵn sàng", offline: "Mất kết nối", paused: "Tạm dừng", revoked: "Đã thu hồi" },
     unsavedChanges: (n) => `Có ${n} thay đổi chưa lưu`,
     savedBanner: "Đã lưu cấu hình. Run giao sau đây dùng cấu hình mới.",
     discard: "Bỏ thay đổi",
@@ -432,6 +452,16 @@ const text: Dict<{
       "Turns off the CLI sandbox and every approval prompt. Only for throwaway containers or machines dedicated to agents.",
     fullBanner: "Runs in this project use the full rights of the account on the machine that picks them up.",
     fullLocked: "The organization's agent policy does not let projects enable full access; runs stay in the worktree.",
+    machinesTitle: "Machines linked to this project",
+    machinesHint:
+      "Team machines that linked this project to a local repository, and machines that turned on full access for it (set in the desktop app on that machine). Read only.",
+    machinesLoading: "Loading machines…",
+    machinesFailed: (error) => `Could not load machines: ${error}`,
+    machinesEmpty: "No machine has linked this project to a local repository yet.",
+    machineBound: "Local repo linked",
+    machineFull: "Full access",
+    machineFullIdle: "Full access is blocked by the organization policy",
+    machineStatus: { online: "Ready", offline: "Offline", paused: "Paused", revoked: "Revoked" },
     unsavedChanges: (n) => `${n} unsaved changes`,
     savedBanner: "Settings saved. Subsequent runs will use the new settings.",
     discard: "Discard",
@@ -528,6 +558,55 @@ function Section({ id, title, hint, children }: { id?: string; title?: string; h
       )}
       {children}
     </Card>
+  );
+}
+
+/** Máy của đội đã gắn dự án với repo local hay bật toàn quyền cho dự án (ADR 0020); chỉ đọc. */
+function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked: boolean }) {
+  const { api } = useOrg();
+  const t = useT(text);
+  const machines = useQuery({
+    ...api.machines.list.queryOptions({ input: { teamId: project.teamId } }),
+    retry: false,
+  });
+  // Máy đã thu hồi không nhận run nữa, nên không đáng hiện ở đây.
+  const linked = (machines.data ?? []).filter(
+    (m) => m.status !== "revoked" && (m.boundProjects?.includes(project.id) || m.fullProjects?.includes(project.id)),
+  );
+  return (
+    <Section id="machines" title={t.machinesTitle} hint={t.machinesHint}>
+      {machines.isPending ? (
+        <p aria-busy="true" className="text-sm text-muted-foreground">
+          {t.machinesLoading}
+        </p>
+      ) : machines.isError ? (
+        <Alert variant="destructive">{t.machinesFailed(apiErrorMessage(machines.error))}</Alert>
+      ) : linked.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t.machinesEmpty}</p>
+      ) : (
+        <ul className="m-0 grid list-none gap-2 p-0">
+          {linked.map((m) => (
+            <li
+              key={m.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border px-3.5 py-2.5 text-sm"
+            >
+              <strong className="font-medium text-foreground">{m.name}</strong>
+              <span className="text-xs text-muted-foreground">{m.os}</span>
+              <Pill tone={m.status === "online" ? "ok" : m.status === "paused" ? "warn" : "neutral"}>
+                {t.machineStatus[m.status]}
+              </Pill>
+              <span className="flex-1" />
+              {m.boundProjects?.includes(project.id) && <Pill tone="sel">{t.machineBound}</Pill>}
+              {m.fullProjects?.includes(project.id) && (
+                <Pill tone={fullLocked ? "neutral" : "warn"} title={fullLocked ? t.machineFullIdle : undefined}>
+                  {t.machineFull}
+                </Pill>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
 
@@ -689,6 +768,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
     { href: "#model", label: t.modelTitle },
     { href: "#tokens", label: t.tokensTitle },
     { href: "#perm", label: t.permTitle },
+    ...(canEdit ? [{ href: "#machines", label: t.machinesTitle }] : []),
   ];
 
   return (
@@ -1257,6 +1337,9 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             )}
             {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
           </Section>
+
+          {/* Hub chỉ cho quản trị đội xem danh sách máy, nên thành viên thường không có mục này. */}
+          {canEdit && <ProjectMachines project={project} fullLocked={fullLocked} />}
         </div>
       </div>
 
