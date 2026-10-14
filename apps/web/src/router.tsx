@@ -13,6 +13,7 @@ import { authRedirect, legacyRedirect } from "@/lib/redirect.ts";
 import {
   validateLeaderSearch,
   validateLoginSearch,
+  validateMachineSearch,
   validateMachinesSearch,
   validateMemberSearch,
   validateMembersSearch,
@@ -54,6 +55,7 @@ const LeaderPage = lazyRouteComponent(() => import("@/pages/leader-page.tsx"), "
 const LeaderTerminalPage = lazyRouteComponent(() => import("@/pages/leader-terminal-page.tsx"), "LeaderTerminalPage");
 const LoginPage = lazyRouteComponent(() => import("@/pages/login-page.tsx"), "LoginPage");
 const LoginSettingsPage = lazyRouteComponent(() => import("@/pages/login-settings-page.tsx"), "LoginSettingsPage");
+const MachineDetailPage = lazyRouteComponent(() => import("@/pages/machines-page.tsx"), "MachineDetailPage");
 const MachinesPage = lazyRouteComponent(() => import("@/pages/machines-page.tsx"), "MachinesPage");
 const McpConsentPage = lazyRouteComponent(() => import("@/pages/mcp-consent-page.tsx"), "McpConsentPage");
 const MemberDetailPage = lazyRouteComponent(() => import("@/pages/members-page.tsx"), "MemberDetailPage");
@@ -312,6 +314,12 @@ const machinesRoute = createRoute({
   validateSearch: validateMachinesSearch,
   component: MachinesPage,
 });
+const machineRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/machines/$machineId",
+  validateSearch: validateMachineSearch,
+  component: MachineDetailPage,
+});
 const gitRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/git", component: GitConnectionsPage });
 const costsRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/costs", component: CostsPage });
 
@@ -369,6 +377,7 @@ const routeTree = rootRoute.addChildren([
         mergeQueueRoute,
         notificationsRoute,
         machinesRoute,
+        machineRoute,
         gitRoute,
         costsRoute,
         ...v2Routes,
