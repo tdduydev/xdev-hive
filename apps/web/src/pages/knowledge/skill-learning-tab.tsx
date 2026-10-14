@@ -5,16 +5,20 @@ import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Markdown } from "@xdev-hive/ui/markdown";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
-import { Pill } from "@xdev-hive/ui/pill";
+import { Pill, type PillProps } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { Card } from "@/components/ui/card.tsx";
+import { PageSection } from "@/components/page/page-section.tsx";
+import { SegmentedControl } from "@/components/page/segmented-control.tsx";
+import { StatCard, StatGrid } from "@/components/page/stat-card.tsx";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field.tsx";
+import { LoadFailure, SectionsSkeleton, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { contentDiff, useKnowledgeAccess } from "@/lib/knowledge.ts";
 import { shortId } from "@/lib/run-view.ts";
-import { DetailCard, QueryState, ScopeBadge } from "@/pages/knowledge/common.tsx";
+import { DetailDialog, EmptyRows, ScopeBadge, When } from "@/pages/knowledge/common.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 
 const text: Dict<{
@@ -41,7 +45,9 @@ const text: Dict<{
   created: string;
   search: string;
   empty: string;
-  choose: string;
+  emptyHint: string;
+  loading: string;
+  listTitle: string;
   triggers: Record<LearnTrigger, string>;
   sourceRuns: string;
   newScope: string;
@@ -92,7 +98,9 @@ const text: Dict<{
     created: "Đề xuất lúc",
     search: "Tìm skill, dự án, lý do…",
     empty: "Chưa có đề xuất nào từ agent.",
-    choose: "Chọn một đề xuất để xem SKILL.md.",
+    emptyHint: "Khi agent rút ra một skill sau việc khó, đề xuất sẽ hiện ở đây để người quản trị duyệt.",
+    loading: "Đang tải đề xuất skill…",
+    listTitle: "Đề xuất từ agent",
     triggers: {
       retries: "Thử lại nhiều lần",
       cost: "Chi phí vượt p90",
@@ -147,7 +155,9 @@ const text: Dict<{
     created: "Proposed",
     search: "Search skill, project, reason…",
     empty: "No agent proposals yet.",
-    choose: "Select a proposal to read its SKILL.md.",
+    emptyHint: "When an agent distils a skill after a hard task, the proposal shows up here for an admin to review.",
+    loading: "Loading skill proposals…",
+    listTitle: "Agent proposals",
     triggers: {
       retries: "Retried a lot",
       cost: "Cost above p90",
@@ -180,10 +190,10 @@ const text: Dict<{
 };
 
 const STATUSES: SkillProposalStatus[] = ["pending", "approved", "rejected"];
-const STATUS_CLASS: Record<SkillProposalStatus, string> = {
-  pending: "bg-warning-soft text-warning",
-  approved: "bg-success-soft text-success",
-  rejected: "bg-destructive-soft text-destructive",
+const STATUS_TONE: Record<SkillProposalStatus, NonNullable<PillProps["tone"]>> = {
+  pending: "warn",
+  approved: "ok",
+  rejected: "bad",
 };
 
 /** Số đề xuất đang chờ, để hiện trên nhãn tab ở trang Skills. */
@@ -194,7 +204,6 @@ export function usePendingLearned() {
 
 export function SkillLearningTab() {
   const t = useT(text);
-  const fieldId = useId();
   const { api } = useOrg();
   const [status, setStatus] = useState<SkillProposalStatus | "all">("pending");
   const [picked, setPicked] = useState<LearnedSkillProposal>();
@@ -210,14 +219,15 @@ export function SkillLearningTab() {
       label: t.skill,
       value: (row) => row.name,
       sortable: true,
+      pin: "start",
       cell: (row) => (
-        <div>
+        <div className="min-w-0 space-y-0.5">
           <strong className="font-mono">{row.name}</strong>
-          <p className="text-xs text-muted-foreground">{row.description}</p>
+          <p className="line-clamp-2 text-xs text-muted-foreground">{row.description}</p>
         </div>
       ),
     },
-    { key: "reason", label: t.reason, value: (row) => row.reason, hidden: true },
+    { key: "reason", label: t.reason, value: (row) => row.reason, hidden: true, hideable: false },
     { key: "project", label: t.project, value: (row) => row.projectKey },
     { key: "kind", label: t.kind, value: (row) => (row.kind === "new" ? t.kindNew : t.kindEdit) },
     {
@@ -225,86 +235,86 @@ export function SkillLearningTab() {
       label: t.status,
       value: (row) => t[row.status],
       cell: (row) => (
-        <span className={`rounded-full px-2 py-1 text-xs ${STATUS_CLASS[row.status]}`}>{t[row.status]}</span>
+        <Pill tone={STATUS_TONE[row.status]} dot>
+          {t[row.status]}
+        </Pill>
       ),
     },
-    { key: "created", label: t.created, value: (row) => row.createdAt, sortable: true },
+    {
+      key: "created",
+      label: t.created,
+      value: (row) => row.createdAt,
+      sortable: true,
+      cell: (row) => <When iso={row.createdAt} />,
+    },
   ];
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">{t.lead}</p>
+    <>
       {stats.data && !stats.data.enabled && <Alert>{t.disabled}</Alert>}
-      <QueryState query={stats} />
+      {stats.isPending && <SectionsSkeleton sections={1} label={t.loading} />}
+      {stats.isError && <LoadFailure error={stats.error} retry={stats.refetch} />}
       {stats.data && (
-        <section aria-label={t.statsLabel} className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard
-            label={t.proposals}
-            value={String(stats.data.proposals)}
-            hint={`${t.windowDays(stats.data.days)} · ${t.today(stats.data.today.used, stats.data.today.limit)}`}
-          />
-          <StatCard
-            label={t.approvalRate}
-            value={stats.data.approvalRate === null ? "—" : `${Math.round(stats.data.approvalRate * 100)}%`}
-            hint={`${stats.data.approved} ${t.approved.toLowerCase()} · ${stats.data.rejected} ${t.rejected.toLowerCase()}`}
-          />
-          <StatCard label={t.duplicates} value={String(stats.data.duplicates)} hint={t.windowDays(stats.data.days)} />
-          <StatCard
-            label={t.cost}
-            value={stats.data.costUsd === null ? "—" : `${stats.data.costUsd.toFixed(2)} USD`}
-            hint={t.tokens(stats.data.tokens)}
-          />
+        <section aria-label={t.statsLabel}>
+          <StatGrid>
+            <StatCard
+              label={t.proposals}
+              value={String(stats.data.proposals)}
+              hint={`${t.windowDays(stats.data.days)} · ${t.today(stats.data.today.used, stats.data.today.limit)}`}
+            />
+            <StatCard
+              label={t.approvalRate}
+              value={stats.data.approvalRate === null ? "—" : `${Math.round(stats.data.approvalRate * 100)}%`}
+              hint={`${stats.data.approved} ${t.approved.toLowerCase()} · ${stats.data.rejected} ${t.rejected.toLowerCase()}`}
+            />
+            <StatCard label={t.duplicates} value={String(stats.data.duplicates)} hint={t.windowDays(stats.data.days)} />
+            <StatCard
+              label={t.cost}
+              value={stats.data.costUsd === null ? "—" : `${stats.data.costUsd.toFixed(2)} USD`}
+              hint={t.tokens(stats.data.tokens)}
+            />
+          </StatGrid>
         </section>
       )}
-      <label htmlFor={`${fieldId}-1`} className="block max-w-xs space-y-1">
-        <span className="text-sm">{t.status}</span>
-        <NativeSelect
-          aria-label={t.status}
-          id={`${fieldId}-1`}
-          value={status}
-          onChange={(event) => {
-            setStatus(event.currentTarget.value as SkillProposalStatus | "all");
-            setPicked(undefined);
-          }}
-        >
-          <option value="all">{t.all}</option>
-          {STATUSES.map((value) => (
-            <option key={value} value={value}>
-              {t[value]}
-            </option>
-          ))}
-        </NativeSelect>
-      </label>
-      <QueryState query={list} />
-      {list.data && (
-        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
+      <PageSection
+        title={t.listTitle}
+        description={t.lead}
+        actions={
+          <SegmentedControl
+            label={t.status}
+            value={status}
+            onChange={(value) => {
+              setStatus(value);
+              setPicked(undefined);
+            }}
+            options={[...STATUSES, "all" as const].map((value) => ({
+              value,
+              label: value === "all" ? t.all : t[value],
+            }))}
+          />
+        }
+      >
+        {list.isPending && <TableSkeleton label={t.loading} columns={5} />}
+        {list.isError && <LoadFailure error={list.error} retry={list.refetch} />}
+        {list.data && (
           <DataTable
             columns={columns}
             rows={list.data}
+            minWidth={640}
             placeholder={t.search}
             selectable={false}
             rowLabel={(row) => row.name}
             activeId={picked?.id ?? ""}
             onRowClick={setPicked}
-            emptyContent={t.empty}
+            emptyContent={<EmptyRows title={t.empty} description={t.emptyHint} />}
           />
-          {selected ? <LearnedDetail key={selected.id} proposal={selected} /> : <DetailCard>{t.choose}</DetailCard>}
-        </div>
-      )}
-    </div>
+        )}
+      </PageSection>
+      {selected && <LearnedDetail key={selected.id} proposal={selected} onClose={() => setPicked(undefined)} />}
+    </>
   );
 }
 
-function StatCard({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <Card size="sm" className="gap-1 px-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-heading text-2xl font-semibold">{value}</p>
-      <p className="text-xs text-muted-foreground">{hint}</p>
-    </Card>
-  );
-}
-
-function LearnedDetail({ proposal }: { proposal: LearnedSkillProposal }) {
+function LearnedDetail({ proposal, onClose }: { proposal: LearnedSkillProposal; onClose: () => void }) {
   const t = useT(text);
   const fieldId = useId();
   const { api } = useOrg();
@@ -375,19 +385,39 @@ function LearnedDetail({ proposal }: { proposal: LearnedSkillProposal }) {
     }
   }
   return (
-    <DetailCard>
-      <div className="flex flex-wrap items-center gap-2">
-        <ScopeBadge scope={proposal.scope} />
-        <Pill small>{proposal.kind === "new" ? t.kindNew : t.kindEdit}</Pill>
-        <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_CLASS[current.status]}`}>{t[current.status]}</span>
-      </div>
-      <h2 className="break-all font-mono text-lg font-semibold">{proposal.name}</h2>
-      <p className="text-muted-foreground">{proposal.description}</p>
-      <p className="text-xs text-muted-foreground">
-        {proposal.projectKey}
-        {proposal.kind === "edit" && ` · v${proposal.baseVersion}`}
-      </p>
-      <section className="space-y-1">
+    <DetailDialog
+      title={proposal.name}
+      onClose={onClose}
+      badges={
+        <>
+          <ScopeBadge scope={proposal.scope} />
+          <Pill>{proposal.kind === "new" ? t.kindNew : t.kindEdit}</Pill>
+          <Pill tone={STATUS_TONE[current.status]} dot>
+            {t[current.status]}
+          </Pill>
+        </>
+      }
+      description={
+        <>
+          {proposal.projectKey}
+          {proposal.kind === "edit" && ` · v${proposal.baseVersion}`}
+        </>
+      }
+      footer={
+        canDecide && (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" disabled={pending} onClick={decideReject}>
+              {t.rejectLabel}
+            </Button>
+            <Button disabled={pending} onClick={decideApprove}>
+              {pending ? t.working : repo.data ? t.approveToPr : t.approve}
+            </Button>
+          </div>
+        )
+      }
+    >
+      <p className="text-sm text-muted-foreground">{proposal.description}</p>
+      <section className="grid gap-1.5">
         <h3 className="text-sm font-medium">{t.reason}</h3>
         <p className="whitespace-pre-wrap break-words">{proposal.reason}</p>
         <div className="flex flex-wrap gap-1">
@@ -411,18 +441,20 @@ function LearnedDetail({ proposal }: { proposal: LearnedSkillProposal }) {
       {diff ? (
         <section aria-label={t.diff} className="overflow-hidden rounded-lg border border-border font-mono text-xs">
           <div className="border-b border-border bg-muted p-2">{t.diff}</div>
-          {diff.map((line) => (
-            <div
-              key={line.id}
-              className={`flex min-w-0 gap-2 px-3 py-1 ${line.kind === "added" ? "bg-success-soft text-success" : line.kind === "removed" ? "bg-destructive-soft text-destructive" : "text-muted-foreground"}`}
-            >
-              <span aria-hidden="true">{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</span>
-              <span className="min-w-0 whitespace-pre-wrap break-all">{line.content || " "}</span>
-            </div>
-          ))}
+          <div className="max-h-80 overflow-y-auto overscroll-contain">
+            {diff.map((line) => (
+              <div
+                key={line.id}
+                className={`flex min-w-0 gap-2 px-3 py-1 ${line.kind === "added" ? "bg-success-soft text-success" : line.kind === "removed" ? "bg-destructive-soft text-destructive" : "text-muted-foreground"}`}
+              >
+                <span aria-hidden="true">{line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}</span>
+                <span className="min-w-0 whitespace-pre-wrap break-all">{line.content || " "}</span>
+              </div>
+            ))}
+          </div>
         </section>
       ) : (
-        <section aria-label={t.proposedContent} className="space-y-1">
+        <section aria-label={t.proposedContent} className="grid gap-1.5">
           <h3 className="text-sm font-medium">{t.proposedContent}</h3>
           <Markdown content={proposal.content} />
         </section>
@@ -437,12 +469,12 @@ function LearnedDetail({ proposal }: { proposal: LearnedSkillProposal }) {
         <Alert variant="destructive">{apiErrorMessage(approve.error ?? reject.error)}</Alert>
       )}
       {canDecide && (
-        <div className="space-y-3 border-t border-border pt-3">
+        <div className="grid gap-3 border-t border-border pt-4">
           {proposal.kind === "new" && (
-            <label htmlFor={`${fieldId}-1`} className="block space-y-1">
-              <span className="text-sm">{t.newScope}</span>
+            <Field>
+              <FieldLabel htmlFor={`${fieldId}-scope`}>{t.newScope}</FieldLabel>
               <NativeSelect
-                id={`${fieldId}-1`}
+                id={`${fieldId}-scope`}
                 value={scope}
                 disabled={pending}
                 onChange={(event) => setScope(event.currentTarget.value as "project" | "team" | "org")}
@@ -451,46 +483,37 @@ function LearnedDetail({ proposal }: { proposal: LearnedSkillProposal }) {
                 <option value="team">{t.scopeTeam}</option>
                 <option value="org">{t.scopeOrg}</option>
               </NativeSelect>
-            </label>
+            </Field>
           )}
-          <label htmlFor={`${fieldId}-2`} className="block space-y-1">
-            <span className="text-sm">{t.noteLabel}</span>
+          <Field>
+            <FieldLabel htmlFor={`${fieldId}-note`}>{t.noteLabel}</FieldLabel>
             <Textarea
-              id={`${fieldId}-2`}
+              id={`${fieldId}-note`}
               maxLength={500}
               placeholder={t.notePh}
               value={note}
               disabled={pending}
               onChange={(event) => setNote(event.currentTarget.value)}
             />
-          </label>
-          <label htmlFor={`${fieldId}-3`} className="block space-y-1">
-            <span className="text-sm">{t.rejectReason}</span>
+          </Field>
+          <Field invalid={needReason && reason.trim().length < 3}>
+            <FieldLabel htmlFor={`${fieldId}-reason`}>{t.rejectReason}</FieldLabel>
             <Textarea
-              id={`${fieldId}-3`}
+              id={`${fieldId}-reason`}
               maxLength={500}
               placeholder={t.rejectReasonPh}
               value={reason}
               disabled={pending}
-              aria-invalid={needReason && reason.trim().length < 3}
               onChange={(event) => {
                 setReason(event.currentTarget.value);
                 setNeedReason(false);
               }}
             />
-            {needReason && <span className="text-xs text-destructive">{t.rejectNeeds}</span>}
-          </label>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" disabled={pending} onClick={decideReject}>
-              {t.rejectLabel}
-            </Button>
-            <Button disabled={pending} onClick={decideApprove}>
-              {pending ? t.working : repo.data ? t.approveToPr : t.approve}
-            </Button>
-          </div>
+            {needReason && <FieldError>{t.rejectNeeds}</FieldError>}
+          </Field>
         </div>
       )}
-    </DetailCard>
+    </DetailDialog>
   );
 }
 
