@@ -23,6 +23,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
+	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
 )
 
 const protocolVersion = 1
@@ -78,6 +79,9 @@ type Config struct {
 	OnStatus func(Status)
 	// SelfUpdate: nhận lệnh `update` của hub. Tắt với worker đi kèm app desktop, vì app tự cập nhật cả gói.
 	SelfUpdate bool
+	// Terminal điều khiển phiên terminal trên máy cá nhân theo gói term_* của hub (specs/010). nil là máy chưa hỗ trợ:
+	// gói đó bị bỏ qua, kênh vẫn chạy.
+	Terminal terminal.Handler
 }
 
 // Status là trạng thái kết nối tới hub. Error chỉ có khi State là "disconnected" hoặc "stopped" vì lỗi.
@@ -389,7 +393,7 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 		c.Logger.Warn("Hub chưa nhận các CLI này; cập nhật hub để giao run cho chúng", "clis", dropped)
 	}
 	// Hub đòi mảng, không nhận null; slice nil của Go mã hoá thành null.
-	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: clis, Capacity: c.Capacity, Capabilities: c.capabilities(), ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
+	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: clis, Capacity: c.Capacity, Capabilities: c.helloCapabilities(), ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
 	if memory := hostMemoryMB(); memory > 0 {
 		hello.MemoryMB = memory
 	}
@@ -450,6 +454,12 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 		return err
 	}
 	defer jobs.detach(conn)
+	link := newTermLink(ctx, jobs, welcome)
+	if c.Terminal != nil {
+		// Sau attach để Handler gửi được term_state ngay; hết phiên (defer chạy trước detach) thì báo để nó bỏ người xem.
+		c.Terminal.OnWelcome(welcomeInfo(welcome), link)
+		defer c.Terminal.OnDisconnect()
+	}
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -473,6 +483,9 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 		msg, err := Decode(payload)
 		if err != nil {
 			c.Logger.Warn("Bỏ qua gói không đọc được từ hub", "error", err)
+			continue
+		}
+		if jobs.routeRemote(link, msg) {
 			continue
 		}
 		switch m := msg.(type) {
