@@ -5,6 +5,7 @@ import { loadProject } from "../catalog/index.ts";
 import { type Jobs, type Tx, withTenant } from "../platform/index.ts";
 import { loadConnection } from "../scm/index.ts";
 import { advance, SDLC_QUEUE, type SdlcDeps, type SdlcJob } from "./phases.ts";
+import { doneComment } from "./release.ts";
 import { sdlcItems } from "./schema.ts";
 import { traceCi } from "./scm.ts";
 
@@ -43,10 +44,15 @@ async function commentOnIssue(deps: SdlcWorkerDeps, job: Extract<SdlcJob, { kind
   if (!pre) return;
   const { item, project, provider } = pre;
   const ref = sdlcItemRef(item.number);
+  const url = itemUrl(deps.publicUrl, project.key, item.number);
+  const body =
+    job.event === "done"
+      ? await tenant((tx) => doneComment(tx, item, url))
+      : `Đã tạo hạng mục AI SDLC ${ref} “${item.title}” (${item.mode.name}) trên xDev Hive: ${url}`;
   await provider.commentOnIssue(
     { owner: project.repoOwner, name: project.repoName },
     item.source.issueNumber ?? 0,
-    `Đã tạo hạng mục AI SDLC ${ref} “${item.title}” (${item.mode.name}) trên xDev Hive: ${itemUrl(deps.publicUrl, project.key, item.number)}`,
+    body,
   );
 }
 

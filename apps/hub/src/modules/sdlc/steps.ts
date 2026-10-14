@@ -53,6 +53,7 @@ import {
   type PromptProject,
   SEED_DIR,
 } from "./prompt.ts";
+import { RELEASE_ACTIONS, releaseBrief } from "./release.ts";
 import { repoDigest } from "./repo-digest.ts";
 import { sdlcArtifacts, sdlcItemPhases, sdlcQuestions, sdlcSteps } from "./schema.ts";
 
@@ -239,6 +240,12 @@ export async function planStep(
     promptProjects.push({ key: p.key, role, digestPath: path });
   }
 
+  let release: string | null = null;
+  if (RELEASE_ACTIONS.includes(step.action)) {
+    release = `${SEED_DIR}/release.md`;
+    addSeed(release, await releaseBrief(tx, item));
+  }
+
   const answered = await tx
     .select({ text: sdlcQuestions.text, answer: sdlcQuestions.answer })
     .from(sdlcQuestions)
@@ -257,6 +264,7 @@ export async function planStep(
     feedback: input.instructions,
     projects: promptProjects,
     contracts,
+    release,
   });
   return { prompt, job: { step: step.id, seed, collect } };
 }

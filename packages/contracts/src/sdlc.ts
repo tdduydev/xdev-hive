@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id, orgRoute, queryFlag } from "./common.ts";
+import { DOC_MAX_CHARS, docKey } from "./knowledge.ts";
 import { projectKey, projectSdlcSettings, sdlcBlocking } from "./projects.ts";
 import { runState } from "./runs.ts";
 import { taskChecklistItem, taskStatus } from "./tasks.ts";
@@ -231,7 +232,7 @@ export const sdlcStep = z.object({
   model: z.string().trim().min(1).max(80).optional(),
   /** "speckit-specify": prompt gọi skill này nếu repo có. */
   skill: z.string().trim().min(1).max(80).optional(),
-  /** Markdown có biến {idea} {artifacts} {answers} {feedback} {constitution} {projects}. */
+  /** Markdown có biến {idea} {artifacts} {answers} {feedback} {constitution} {projects} {release}. */
   prompt: z.string().min(1).max(20_000),
   maxQuestions: z.number().int().min(0).max(5).default(5),
   autoSubmit: z.boolean().default(false),
@@ -1235,6 +1236,18 @@ export const sdlcReportInput = z.discriminatedUnion("kind", [
     }),
   }),
   z.object({ kind: z.literal("summary"), data: z.object({ summary: z.string().max(20_000) }) }),
+  /**
+   * Bài học của retro (FR-036): toàn bộ nội dung mới của constitution/steering; hub tạo đề xuất thường. Bỏ `key` là
+   * `project/<dự án chính>/constitution`.
+   */
+  z.object({
+    kind: z.literal("lessons"),
+    data: z.object({
+      key: docKey.optional(),
+      content: z.string().min(1).max(DOC_MAX_CHARS),
+      reason: z.string().trim().min(1).max(2000),
+    }),
+  }),
   z.object({
     kind: z.literal("contracts"),
     data: z.object({

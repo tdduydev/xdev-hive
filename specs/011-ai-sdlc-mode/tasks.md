@@ -498,11 +498,18 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     Vòng 1 tự chạy khi vào giai đoạn converge (`auto`). Độ phủ lọc theo dự án chỉ xét phát hiện của dự án đó. Chưa có sự
     kiện thông báo riêng cho "hết vòng" (dùng chung `sdlc.converged`); một vòng có run lỗi vẫn tính là đã dùng.
 
-- [ ] T081 [US11] Release notes và retro
+- [x] T081 [US11] Release notes và retro
   - Bước `release-notes`, `retro`; đề xuất cho constitution; đóng hạng mục, bình luận issue.
   - **Scope**: `apps/hub/src/modules/sdlc/{release.ts,release.db.test.ts}`, `packages/contracts/src/sdlc-presets/*.ts`
     (thêm giai đoạn release)
   - **Phụ thuộc**: T080 · **Mức**: vừa
+  - SPEC11W6HUB: speckit thêm giai đoạn `release` (tuỳ chọn) sau converge, hai bước tự chạy lần lượt `release-notes` rồi
+    `retro`, hai tài liệu bắt buộc, cổng PO duyệt; hạng mục chỉ đóng khi cả hai có baseline. Bước `release-notes`/`retro`
+    nhận seed `.hive/sdlc/release.md` (PR đã merge kèm requirement, độ phủ, chỉ số theo giai đoạn) và biến prompt
+    `{release}`. Retro báo bài học bằng `sdlc_report` loại `lessons`; hub tạo đề xuất thường cho
+    `project/<dự án chính>/constitution` (chưa có tài liệu thì base 0), chỉ nhận key của dự án trong hạng mục. Đóng hạng
+    mục có issue nguồn thì job `issue-comment` (`event: "done"`) bình luận tóm tắt và link release notes. Task không gắn
+    requirement không có dòng PR; AI-DLC/BMAD giữ giai đoạn release cũ (không bắt buộc, tự qua).
 
 - [x] T082 [US12] Chỉ số và bảng tiến độ đầy đủ
   - `metrics.ts` (lead time theo giai đoạn p50/p90, chờ cổng, trả lại, câu hỏi, độ phủ, converge, vòng review code, chi phí

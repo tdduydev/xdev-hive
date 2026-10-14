@@ -11,7 +11,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { RequestContext, Tx } from "../platform/index.ts";
 import { loadTask } from "../tasks/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
-import { itemForUser } from "./access.ts";
+import { itemForUser, type SdlcItemRow } from "./access.ts";
 import { itemProjectRefs, requirementSources } from "./breakdown.ts";
 import { sdlcItemTasks, sdlcTraceLinks } from "./schema.ts";
 
@@ -329,6 +329,20 @@ export async function getTrace(
   input: { id: string; projectId?: string | undefined; format?: "json" | "csv" | undefined },
 ): Promise<SdlcTrace> {
   const item = await itemForUser(tx, userId, input.id);
+  const { titles: _, ...trace } = await itemTrace(tx, userId, item, input.projectId);
+  return { ...trace, csv: input.format === "csv" ? traceCsv(trace) : null };
+}
+
+/**
+ * Ma trận của hạng mục đã đọc được; câu chữ requirement đọc bằng quyền `userId` (release notes, retro dùng quyền chủ hạng
+ * mục). Kèm tiêu đề task để bản phát hành ghi được tên việc.
+ */
+export async function itemTrace(
+  tx: Tx,
+  userId: string,
+  item: SdlcItemRow,
+  projectId?: string | undefined,
+): Promise<Omit<SdlcTrace, "csv"> & { titles: Map<string, string> }> {
   const d = item.mode.decomposition;
   const requirements = d
     ? requirementTexts(await requirementSources(tx, { kind: "user", userId }, item, d), d.requirementId)
@@ -341,9 +355,11 @@ export async function getTrace(
     .where(and(eq(sdlcItemTasks.itemId, item.id), eq(sdlcItemTasks.removed, false)))
     .orderBy(asc(sdlcItemTasks.wave), asc(sdlcItemTasks.sliceKey));
   const tasks: TraceTaskInput[] = [];
+  const titles = new Map<string, string>();
   for (const l of itemTasks) {
     const task = await loadTask(tx, l.taskId);
     if (!task || task.status === "cancelled") continue;
+    titles.set(task.id, task.title);
     tasks.push({
       taskId: task.id,
       key: task.key,
@@ -365,8 +381,7 @@ export async function getTrace(
         )
         .orderBy(asc(sdlcTraceLinks.createdAt), asc(sdlcTraceLinks.id))
     : [];
-  const trace = buildTrace({ itemId: item.id, requirements, tasks, links, projects, projectId: input.projectId });
-  return { ...trace, csv: input.format === "csv" ? traceCsv(trace) : null };
+  return { ...buildTrace({ itemId: item.id, requirements, tasks, links, projects, projectId }), titles };
 }
 
 export function traceRoute(deps: OrgDeps) {
