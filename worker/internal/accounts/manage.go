@@ -490,6 +490,10 @@ func loginOf(a Account, home string) (*bool, string) {
 			file = filepath.Join(dir, ".claude.json")
 		}
 		ok, email = claudeLogin(file)
+		// Đăng nhập bằng token (remote.go) không có oauthAccount; file token có chữ là đã đăng nhập.
+		if !ok && dir != "" && oauthToken(dir) != "" {
+			ok = true
+		}
 	case "codex":
 		if dir == "" {
 			dir = filepath.Join(home, ".codex")

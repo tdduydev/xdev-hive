@@ -5,6 +5,7 @@ import { PROTOCOL_VERSION, type WorkerToHub, workerToHub } from "@xdev-hive/cont
 import type pg from "pg";
 import { type WebSocket, WebSocketServer } from "ws";
 import type { Jobs } from "../platform/index.ts";
+import { onAccountLoginEvent, onMachineDisconnected } from "./accounts.ts";
 import { registerConnection, sendToMachine, unregisterConnection } from "./connections.ts";
 import { type AuthedMachine, authenticateMachine, markOffline, markOnline } from "./machines.ts";
 
@@ -21,7 +22,27 @@ export const CLOSE = {
 
 type Heartbeat = Extract<WorkerToHub, { type: "heartbeat" }>;
 type Hello = Extract<WorkerToHub, { type: "hello" }>;
-export type RunMessage = Exclude<WorkerToHub, { type: "hello" | "heartbeat" }>;
+export type TerminalMessage = Extract<WorkerToHub, { type: "term_opened" | "term_output" | "term_exit" }>;
+export type RunMessage = Exclude<
+  WorkerToHub,
+  { type: "hello" | "heartbeat" | "account_login_event" } | TerminalMessage
+>;
+
+/** Gói terminal Leader (specs/010). Module terminal đăng ký qua registerTerminalHandlers; fleet không import terminal. */
+export interface TerminalHandlers {
+  onMessage?: (machine: AuthedMachine, msg: TerminalMessage) => Promise<void>;
+  /** Máy mất kết nối: phiên của máy không còn đường tới PTY. */
+  onDisconnected?: (machine: AuthedMachine) => Promise<void>;
+}
+
+let terminalHandlers: TerminalHandlers = {};
+
+export function registerTerminalHandlers(handlers: TerminalHandlers): () => void {
+  terminalHandlers = handlers;
+  return () => {
+    if (terminalHandlers === handlers) terminalHandlers = {};
+  };
+}
 
 /** Xử lý gói của run. Module runs đăng ký qua registerRunHandlers; fleet không import runs. */
 export interface RunHandlers {
@@ -130,13 +151,14 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         const { os, version, clis, capacity, capabilities } = msg;
         // Worker cũ không báo dự án đã gắn: xoá danh sách của lần nối trước, vì bản cũ không còn áp công tắc của máy.
         const projects = { boundProjects: msg.localProjects?.bound ?? [], fullProjects: msg.localProjects?.full ?? [] };
-        if (!(await markOnline(opts.pool, machine, { os, version, clis, capacity, capabilities, ...projects }))) {
-          return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
-        }
+        const online = await markOnline(opts.pool, machine, { os, version, clis, capacity, capabilities, ...projects });
+        if (!online) return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
         if (ws.readyState !== ws.OPEN) return;
         session = randomUUID();
         registerConnection(machine.id, ws);
-        sendToMachine(machine.id, { type: "welcome", sessionId: session, heartbeatSec });
+        // Worker chỉ nhận account_set và đăng nhập gói khi hub báo máy dùng chung (ADR 0017).
+        const features = online.shared ? ["shared"] : [];
+        sendToMachine(machine.id, { type: "welcome", sessionId: session, heartbeatSec, features });
         log.info(`Máy ${machine.name} (${machine.id}) đã kết nối, phiên ${session}`);
         touch();
         await (opts.onHello ?? registered.onHello)?.(machine, msg);
@@ -146,12 +168,20 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
       switch (msg.type) {
         case "hello":
           return ws.close(CLOSE.badMessage, "Đã gửi hello rồi");
+        case "account_login_event":
+          return onAccountLoginEvent(machine, msg);
+        case "term_opened":
+        case "term_output":
+        case "term_exit":
+          return terminalHandlers.onMessage?.(machine, msg);
         case "heartbeat": {
           const projects = msg.localProjects && {
             boundProjects: msg.localProjects.bound,
             fullProjects: msg.localProjects.full,
           };
-          if (!(await markOnline(opts.pool, machine, projects))) return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
+          if (!(await markOnline(opts.pool, machine, { ...projects, accounts: msg.accounts }))) {
+            return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
+          }
           const onHeartbeat = opts.onHeartbeat ?? registered.onHeartbeat;
           const { renewed, cancel } = (await onHeartbeat?.(machine, msg)) ?? { renewed: [], cancel: [] };
           sendToMachine(machine.id, { type: "heartbeat_ack", renewed, cancel });
@@ -176,6 +206,12 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
       clearTimeout(helloTimer);
       clearTimeout(idle);
       if (!session || !unregisterConnection(machine.id, ws)) return;
+      onMachineDisconnected(machine.id).catch((error: unknown) =>
+        log.error("Không kết thúc được phiên đăng nhập gói của máy", error),
+      );
+      terminalHandlers
+        .onDisconnected?.(machine)
+        .catch((error: unknown) => log.error("Không kết thúc được phiên terminal của máy", error));
       // Đợi các gói đang xử lý xong để markOffline không bị một heartbeat chạy sau ghi đè thành online.
       queue = queue.then(() =>
         markOffline(opts.pool, machine, { jobs: opts.jobs, notifyAfterSec: opts.offlineNotifySec }).catch(

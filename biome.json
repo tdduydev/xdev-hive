@@ -10,6 +10,7 @@
       "**",
       "!.legacy",
       "!.claude/skills",
+      "!packages/skill-pack/skills",
       "!.specify",
       "!**/dist",
       "!**/openapi.json",

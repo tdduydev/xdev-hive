@@ -22,11 +22,63 @@
       "v": 1,
       "id": "m-hb",
       "load": 1,
-      "runs": [{ "runId": "run-1", "attempt": 2, "leaseId": "lease-1" }],
-      "localProjects": { "bound": ["0a0a0a0a-0000-4000-8000-000000000003"], "full": [] }
+      "runs": [
+        {
+          "runId": "run-1",
+          "attempt": 2,
+          "leaseId": "lease-1"
+        }
+      ],
+      "localProjects": {
+        "bound": ["0a0a0a0a-0000-4000-8000-000000000003"],
+        "full": []
+      },
+      "accounts": [
+        {
+          "id": "claude-2",
+          "cli": "claude",
+          "label": "Gói Max đội A",
+          "roles": ["code", "plan"],
+          "enabled": true,
+          "loggedIn": true,
+          "sessionPct": 42,
+          "weekPct": 17.5,
+          "resetsAt": "2026-10-11T05:00:00.000Z",
+          "stopAtSession": 90,
+          "stopAtWeek": 0,
+          "inUse": 1
+        },
+        {
+          "id": "codex-1",
+          "cli": "codex",
+          "label": "Codex",
+          "roles": [],
+          "enabled": false,
+          "loggedIn": null,
+          "sessionPct": null,
+          "weekPct": null,
+          "resetsAt": null,
+          "stopAtSession": 0,
+          "stopAtWeek": 0,
+          "inUse": 0
+        }
+      ]
     },
-    { "type": "job_accept", "v": 1, "id": "m-accept", "runId": "run-1", "attempt": 1 },
-    { "type": "job_reject", "v": 1, "id": "m-reject", "runId": "run-1", "attempt": 1, "reason": "máy đã đầy" },
+    {
+      "type": "job_accept",
+      "v": 1,
+      "id": "m-accept",
+      "runId": "run-1",
+      "attempt": 1
+    },
+    {
+      "type": "job_reject",
+      "v": 1,
+      "id": "m-reject",
+      "runId": "run-1",
+      "attempt": 1,
+      "reason": "máy đã đầy"
+    },
     {
       "type": "run_event",
       "v": 1,
@@ -35,7 +87,10 @@
       "attempt": 1,
       "seq": 7,
       "event": "tool_call",
-      "data": { "tool": "bash", "input": "ls" }
+      "data": {
+        "tool": "bash",
+        "input": "ls"
+      }
     },
     {
       "type": "log_chunk",
@@ -56,8 +111,56 @@
       "seq": 9,
       "exit": 0,
       "headSha": "0123456789abcdef0123456789abcdef01234567",
-      "report": { "summary": "xong" },
-      "diffStats": { "addedLines": 7, "deletedLines": 5, "changedFiles": ["src/a.ts", "assets/icon.bin"] }
+      "report": {
+        "summary": "xong"
+      },
+      "diffStats": {
+        "addedLines": 7,
+        "deletedLines": 5,
+        "changedFiles": ["src/a.ts", "assets/icon.bin"]
+      }
+    },
+    {
+      "type": "account_login_event",
+      "v": 1,
+      "id": "m-login-url",
+      "requestId": "login-1",
+      "kind": "url",
+      "text": "https://claude.ai/oauth/authorize?code=true&client_id=x"
+    },
+    {
+      "type": "account_login_event",
+      "v": 1,
+      "id": "m-login-done",
+      "requestId": "login-1",
+      "kind": "done",
+      "text": "",
+      "accountId": "claude-2"
+    },
+    {
+      "type": "term_opened",
+      "v": 1,
+      "id": "m-term-opened",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "accountLabel": "Gói Max đội A",
+      "permissions": "workspace"
+    },
+    {
+      "type": "term_output",
+      "v": 1,
+      "id": "m-term-out",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "seq": 0,
+      "data": "G1szMm0+IBtbMG1YaW4gY2jDoG8NCg=="
+    },
+    {
+      "type": "term_exit",
+      "v": 1,
+      "id": "m-term-exit",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "exitCode": null,
+      "reason": "idle",
+      "message": "Phiên không hoạt động quá 30 phút nên đã đóng."
     }
   ],
   "hubToWorker": [
@@ -67,7 +170,8 @@
       "id": "h-welcome",
       "sessionId": "s-1",
       "heartbeatSec": 30,
-      "accessTokenExp": "2026-10-11T00:15:00.000Z"
+      "accessTokenExp": "2026-10-11T00:15:00.000Z",
+      "features": ["shared"]
     },
     {
       "type": "upgrade_required",
@@ -77,14 +181,23 @@
       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "sig": "sig"
     },
-    { "type": "heartbeat_ack", "v": 1, "id": "h-hback", "renewed": ["lease-1"], "cancel": ["run-2"] },
+    {
+      "type": "heartbeat_ack",
+      "v": 1,
+      "id": "h-hback",
+      "renewed": ["lease-1"],
+      "cancel": ["run-2"]
+    },
     {
       "type": "job_offer",
       "v": 1,
       "id": "h-offer",
       "runId": "run-1",
       "attempt": 1,
-      "spec": { "repo": "acme/web", "cli": "claude" },
+      "spec": {
+        "repo": "acme/web",
+        "cli": "claude"
+      },
       "ttl": 30
     },
     {
@@ -97,7 +210,13 @@
       "expiresAt": "2026-10-11T00:05:00.000Z",
       "runToken": "jwt"
     },
-    { "type": "ack", "v": 1, "id": "h-ack", "runId": "run-1", "uptoSeq": 9 },
+    {
+      "type": "ack",
+      "v": 1,
+      "id": "h-ack",
+      "runId": "run-1",
+      "uptoSeq": 9
+    },
     {
       "type": "steer",
       "v": 1,
@@ -115,8 +234,99 @@
       "requestId": "req-1",
       "decision": "approve"
     },
-    { "type": "cancel", "v": 1, "id": "h-cancel", "runId": "run-1", "graceSec": 10 },
-    { "type": "drain", "v": 1, "id": "h-drain" },
-    { "type": "update", "v": 1, "id": "h-update", "version": "0.2.0" }
+    {
+      "type": "cancel",
+      "v": 1,
+      "id": "h-cancel",
+      "runId": "run-1",
+      "graceSec": 10
+    },
+    {
+      "type": "drain",
+      "v": 1,
+      "id": "h-drain"
+    },
+    {
+      "type": "update",
+      "v": 1,
+      "id": "h-update",
+      "version": "0.2.0"
+    },
+    {
+      "type": "account_set",
+      "v": 1,
+      "id": "h-account-set",
+      "accountId": "claude-2",
+      "enabled": false
+    },
+    {
+      "type": "account_login_start",
+      "v": 1,
+      "id": "h-login-start",
+      "requestId": "login-1",
+      "cli": "claude",
+      "label": "Gói Max đội A",
+      "how": "plan"
+    },
+    {
+      "type": "account_login_input",
+      "v": 1,
+      "id": "h-login-input",
+      "requestId": "login-1",
+      "text": "code-from-browser#state"
+    },
+    {
+      "type": "account_login_cancel",
+      "v": 1,
+      "id": "h-login-cancel",
+      "requestId": "login-1"
+    },
+    {
+      "type": "term_open",
+      "v": 1,
+      "id": "h-term-open",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "projectId": "0a0a0a0a-0000-4000-8000-000000000003",
+      "mode": "propose",
+      "cols": 120,
+      "rows": 32,
+      "cli": "claude",
+      "repoUrl": "https://github.com/acme/web.git",
+      "baseBranch": "main",
+      "projectKey": "WEB",
+      "accountId": "claude-2",
+      "model": "sonnet",
+      "effort": "high",
+      "advisor": "opus",
+      "runPermissions": "full",
+      "fullAllowed": true,
+      "mcpToken": "eyJhbGciOi.terminal.token",
+      "systemPrompt": "Bạn là Leader của dự án WEB.",
+      "tokenSaving": {
+        "enabled": true
+      }
+    },
+    {
+      "type": "term_input",
+      "v": 1,
+      "id": "h-term-in",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "data": "eGluIGNow6BvDQ=="
+    },
+    {
+      "type": "term_resize",
+      "v": 1,
+      "id": "h-term-resize",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "cols": 100,
+      "rows": 30
+    },
+    {
+      "type": "term_close",
+      "v": 1,
+      "id": "h-term-close",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "reason": "Người mở đã đóng phiên."
+    }
   ]
 }

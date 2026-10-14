@@ -1,9 +1,51 @@
 import { ORPCError } from "@orpc/client";
-import { defaultProjectSettings, type ProjectSettings } from "@xdev-hive/contracts";
+import { defaultProjectSettings, type ProjectSettings, reviewWorkflow } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { buildPatch, fieldOfPath, formFromSettings, saveErrors } from "@/lib/project-settings.ts";
+import {
+  buildPatch,
+  codeWorkflowsForProject,
+  fieldOfPath,
+  formFromSettings,
+  saveErrors,
+} from "@/lib/project-settings.ts";
 
 const base = (): ProjectSettings => defaultProjectSettings(1);
+
+describe("quy trình code có thể áp dụng cho dự án", () => {
+  const teamId = "7e7e7e7e-0000-4000-8000-000000000001";
+  const workflow = reviewWorkflow.parse({
+    id: "7e7e7e7e-0000-4000-8000-000000000002",
+    name: "Review release",
+    preset: "code-basic",
+    subject: "code",
+    teamId,
+    docPrefixes: [],
+    code: { projects: ["pay"], baseBranches: ["release/*"] },
+    phases: [],
+    enabled: true,
+    updatedAt: "2026-10-13T00:00:00.000Z",
+    updatedBy: null,
+    inFlight: 0,
+  });
+  const code = workflow.code;
+  if (!code) throw new Error("Fixture phải có phạm vi code.");
+
+  it("giữ quy trình giới hạn nhánh và quy trình của đội hoặc tổ chức", () => {
+    const orgWorkflow = { ...workflow, teamId: null, code: { ...code, projects: [] } };
+    expect(codeWorkflowsForProject([workflow, orgWorkflow], { key: "pay", teamId })).toEqual([workflow, orgWorkflow]);
+  });
+
+  it("loại quy trình tắt, tài liệu, thiếu phạm vi, khác dự án hoặc khác đội", () => {
+    const candidates = [
+      { ...workflow, enabled: false },
+      { ...workflow, subject: "doc" as const },
+      { ...workflow, code: null },
+      { ...workflow, code: { ...code, projects: ["other"] } },
+      { ...workflow, teamId: "7e7e7e7e-0000-4000-8000-000000000003" },
+    ];
+    expect(codeWorkflowsForProject(candidates, { key: "pay", teamId })).toEqual([]);
+  });
+});
 
 describe("buildPatch: tiết kiệm token", () => {
   it("settings chưa có tokenSaving (hub cũ) hiện mặc định và không tạo bản vá", () => {

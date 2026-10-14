@@ -16,6 +16,10 @@ jobs:
   typescript:
     name: TypeScript (lint, typecheck, ranh giới, test, build)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Runner bỏ đi sau mỗi job nên không cần Ryuk dọn container; bớt một ảnh phải tải từ Docker Hub (hay bị 429).
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -24,6 +28,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Test có database dùng ảnh pgvector: tải trước qua bản sao, Testcontainers thấy ảnh có sẵn thì không tải lại.
+      - name: Ảnh Postgres cho test
+        run: echo "HIVE_TEST_POSTGRES_IMAGE=$(scripts/ci/pull-image.sh pgvector/pgvector:0.8.7-pg18-trixie)" >> "$GITHUB_ENV"
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm deps
@@ -47,7 +54,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Trình duyệt Chromium
         working-directory: apps/web
-        run: pnpm exec playwright install --with-deps chromium
+        run: ../../scripts/ci/retry.sh 3 pnpm exec playwright install --with-deps chromium
       - name: Playwright
         working-directory: apps/web
         run: pnpm exec playwright test
@@ -67,6 +74,7 @@ jobs:
         # Worker chạy trên máy dev của cả ba hệ điều hành, nên test đủ ba.
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: worker
@@ -112,13 +120,17 @@ jobs:
           go-version-file: worker/go.mod
           cache: false
       - run: pnpm install --frozen-lockfile
+      - name: Ảnh Postgres cho test
+        run: echo "HIVE_TEST_POSTGRES_IMAGE=$(scripts/ci/pull-image.sh pgvector/pgvector:0.8.7-pg18-trixie)" >> "$GITHUB_ENV"
       # Chế độ mặc định: Postgres qua Testcontainers (Docker có sẵn trên runner), không ra mạng ngoài.
       - run: pnpm e2e:smoke
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
 
   sandbox-e2e:
     name: E2E sandbox (gVisor)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -133,10 +145,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Runner của GitHub không có gVisor: cài từ kho apt chính thức rồi đăng ký runtime runsc cho Docker.
       - name: Cài gVisor (runsc)
+        # Kho apt và khoá của gVisor ở ngoài GitHub, đôi khi lỗi mạng một lần: thử lại thay vì đỏ cả job.
         run: |
-          curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          scripts/ci/retry.sh 3 curl -fsSL -o /tmp/gvisor.key https://gvisor.dev/archive.key
+          sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg /tmp/gvisor.key
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list >/dev/null
-          sudo apt-get update && sudo apt-get install -y runsc
+          scripts/ci/retry.sh 3 sudo apt-get update
+          scripts/ci/retry.sh 3 sudo apt-get install -y runsc
           # host-uds=open: container nối được unix socket của egress proxy (gVisor mặc định chặn); runner host kiểm cờ này.
           sudo runsc install -- --host-uds=open
           sudo systemctl restart docker
@@ -145,9 +160,12 @@ jobs:
         id: node
         run: echo "image=$(scripts/ci/pull-image.sh "$(sed -n 's/^ARG NODE_IMAGE=//p' Dockerfile)")" >> "$GITHUB_OUTPUT"
       # Mã 77 là bỏ qua do thiếu Docker/runsc: sau bước cài ở trên thì đó là CI chưa đạt.
+      - name: Ảnh Postgres cho test
+        run: echo "HIVE_TEST_POSTGRES_IMAGE=$(scripts/ci/pull-image.sh pgvector/pgvector:0.8.7-pg18-trixie)" >> "$GITHUB_ENV"
       - run: pnpm e2e:sandbox
         env:
           HIVE_E2E_NODE_IMAGE: ${{ steps.node.outputs.image }}
+          TESTCONTAINERS_RYUK_DISABLED: "true"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

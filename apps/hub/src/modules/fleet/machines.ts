@@ -1,4 +1,5 @@
-import type { Machine, MachineKind } from "@xdev-hive/contracts";
+import { type Machine, type MachineKind, machineLabels } from "@xdev-hive/contracts";
+import type { WorkerAccountSummary } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
@@ -23,12 +24,59 @@ export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
   createdAt: m.createdAt.toISOString(),
   shared: m.shared || m.kind === "host",
   registeredBy: m.registeredBy,
+  labels: m.labels,
+  labelsOnly: m.labelsOnly,
+  capabilities: m.capabilities,
+  accounts: m.accounts,
+  accountsAt: m.accountsAt?.toISOString() ?? null,
 });
+
+/**
+ * Như toMachine nhưng bỏ tóm tắt gói của máy cá nhân người khác: gói trên máy cá nhân là tài khoản riêng của chủ máy
+ * (ADR 0017), quản trị đội không cần biết.
+ */
+export const toMachineFor = (m: typeof machines.$inferSelect, userId: string): Machine => {
+  const out = toMachine(m);
+  return m.shared || m.registeredBy === userId ? out : { ...out, accounts: null, accountsAt: null };
+};
 
 export async function listMachines(tx: Tx, userId: string, teamId: string): Promise<Machine[]> {
   await allowWith(tx, userId, "machines.read", () => requireTeamRole(tx, userId, teamId, "admin"), teamId);
   const rows = await tx.select().from(machines).where(eq(machines.teamId, teamId)).orderBy(asc(machines.name));
-  return rows.map(toMachine);
+  return rows.map((m) => toMachineFor(m, userId));
+}
+
+/**
+ * Quản trị đội đặt nhãn máy và cờ "chỉ nhận run có nhãn" (specs/011 FR-041). Áp cho lần giao run kế; run đang chạy
+ * không bị ảnh hưởng.
+ */
+export async function setMachineLabels(
+  tx: Tx,
+  userId: string,
+  machineId: string,
+  input: { labels: string[]; labelsOnly: boolean },
+): Promise<Machine> {
+  const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
+  if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  await requireTeamRole(tx, userId, found.teamId, "admin");
+  if (found.status === "revoked") throw new FleetError("conflict", "MACHINE_REVOKED", "Máy đã bị thu hồi.");
+  const labels = machineLabels.parse(input.labels);
+  const [row] = await tx
+    .update(machines)
+    .set({ labels, labelsOnly: input.labelsOnly })
+    .where(eq(machines.id, machineId))
+    .returning();
+  if (!row) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  const same = found.labelsOnly === input.labelsOnly && found.labels.join(",") === labels.join(",");
+  if (!same) {
+    await recordAudit(tx, {
+      action: "machine.labels",
+      targetType: "machine",
+      targetId: machineId,
+      data: { name: row.name, teamId: row.teamId, from: found.labels, to: labels, labelsOnly: input.labelsOnly },
+    });
+  }
+  return toMachineFor(row, userId);
 }
 
 /**
@@ -58,7 +106,7 @@ export async function revokeMachine(tx: Tx, userId: string, machineId: string): 
     targetId: machineId,
     data: { name: row.name, teamId: row.teamId },
   });
-  return toMachine(row);
+  return toMachineFor(row, userId);
 }
 
 /**
@@ -87,7 +135,7 @@ export async function requestMachineUpdate(
     targetId: machineId,
     data: { name: found.name, teamId: found.teamId, from: found.version, to: version ?? "latest" },
   });
-  return toMachine(found);
+  return toMachineFor(found, userId);
 }
 
 async function setMachinePaused(tx: Tx, userId: string, machineId: string, paused: boolean): Promise<Machine> {
@@ -109,7 +157,7 @@ async function setMachinePaused(tx: Tx, userId: string, machineId: string, pause
       data: { name: row.name, teamId: row.teamId },
     });
   }
-  return toMachine(row);
+  return toMachineFor(row, userId);
 }
 
 export async function machineIsPaused(tx: Tx, machineId: string): Promise<boolean> {
@@ -140,7 +188,7 @@ export async function setMachineShared(tx: Tx, userId: string, machineId: string
       data: { name: row.name, teamId: row.teamId, registeredBy: row.registeredBy },
     });
   }
-  return toMachine(row);
+  return toMachineFor(row, userId);
 }
 
 export const pauseMachine = (tx: Tx, userId: string, machineId: string) =>
@@ -214,27 +262,30 @@ export interface MachineProjects {
 }
 
 /**
- * Ghi máy đang online. Trả false khi máy vừa bị thu hồi, để gateway đóng kết nối. Điều kiện revoked_at is null nằm
- * trong câu UPDATE nên không có khe giữa lúc kiểm và lúc ghi.
+ * Ghi máy đang online. Trả null khi máy vừa bị thu hồi, để gateway đóng kết nối. Điều kiện revoked_at is null nằm
+ * trong câu UPDATE nên không có khe giữa lúc kiểm và lúc ghi. `shared` để gateway báo cờ trong welcome.
  */
 export async function markOnline(
   pool: pg.Pool,
   m: AuthedMachine,
-  info?: Partial<MachineInfo & MachineProjects>,
-): Promise<boolean> {
+  info?: Partial<MachineInfo & MachineProjects> & { accounts?: WorkerAccountSummary[] | undefined },
+): Promise<{ shared: boolean } | null> {
+  const { accounts, ...rest } = info ?? {};
   const rows = await withTenant(pool, { orgId: m.orgId }, (tx) =>
     tx
       .update(machines)
       .set({
-        ...info,
+        ...rest,
+        // Heartbeat thiếu accounts (worker cũ, runner host) thì giữ tóm tắt đã biết.
+        ...(accounts ? { accounts, accountsAt: sql`now()` } : {}),
         status: "online",
         lastSeenAt: sql`now()`,
         offlineNotifiedAt: null,
       })
       .where(and(eq(machines.id, m.id), isNull(machines.revokedAt)))
-      .returning({ id: machines.id }),
+      .returning({ shared: machines.shared }),
   );
-  return rows.length > 0;
+  return rows[0] ?? null;
 }
 
 /** Ghi máy offline khi kết nối đóng. Không đụng máy đã bị thu hồi. */
@@ -403,6 +454,34 @@ export async function machinesOfUser(tx: Tx, userId: string) {
     .from(machines)
     .where(and(eq(machines.registeredBy, userId), eq(machines.kind, "worker"), isNull(machines.revokedAt)))
     .orderBy(desc(machines.lastSeenAt));
+}
+
+/**
+ * Máy dùng chung của đội cho terminal Leader (specs/010 lát đầu): máy worker chưa thu hồi, kèm trạng thái, capability,
+ * dự án đã gắn và tóm tắt gói. Máy cá nhân không có ở đây: chưa mở được từ xa khi chưa có passkey (FR-012).
+ */
+export async function sharedWorkerMachines(tx: Tx, teamId: string) {
+  return tx
+    .select({
+      id: machines.id,
+      teamId: machines.teamId,
+      name: machines.name,
+      capabilities: machines.capabilities,
+      boundProjects: machines.boundProjects,
+      fullProjects: machines.fullProjects,
+      accounts: machines.accounts,
+      online: sql<boolean>`${machines.status} = 'online' and ${machines.pausedAt} is null`,
+    })
+    .from(machines)
+    .where(
+      and(
+        eq(machines.teamId, teamId),
+        eq(machines.kind, "worker"),
+        eq(machines.shared, true),
+        isNull(machines.revokedAt),
+      ),
+    )
+    .orderBy(machines.name);
 }
 
 /** Máy trong tổ chức của context (kể cả offline), để kiểm máy người dùng chỉ định khi giao run. */

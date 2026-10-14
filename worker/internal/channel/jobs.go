@@ -19,6 +19,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
+	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
 )
 
 const (
@@ -98,12 +99,16 @@ type jobs struct {
 	// updating: đang drain để cập nhật (lệnh `update` của hub) chứ không phải để tắt; update là phiên bản cần cài.
 	updating bool
 	update   string
-	done     chan struct{}
-	wg       sync.WaitGroup
+	// shared: hub báo máy dùng chung trong welcome của phiên hiện tại; chỉ khi đó mới nhận lệnh gói (accounts.go).
+	shared bool
+	// term giữ phiên terminal Leader (terminal.go); nil khi máy không khai capability terminal.
+	term *terminal.Host
+	done chan struct{}
+	wg   sync.WaitGroup
 }
 
 func newJobs(ctx context.Context, cfg Config) *jobs {
-	return &jobs{
+	j := &jobs{
 		cfg:     cfg,
 		ctx:     ctx,
 		log:     cfg.Logger,
@@ -114,6 +119,8 @@ func newJobs(ctx context.Context, cfg Config) *jobs {
 		offers:  map[string]pendingOffer{},
 		done:    make(chan struct{}),
 	}
+	j.term = newTerminalHost(j)
+	return j
 }
 
 // write gửi một gói qua kết nối hiện tại, errOffline khi chưa có kết nối.
@@ -159,9 +166,14 @@ func (j *jobs) attach(ctx context.Context, conn *websocket.Conn) error {
 
 func (j *jobs) detach(conn *websocket.Conn) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.conn == conn {
+	current := j.conn == conn
+	if current {
 		j.conn, j.connCtx = nil, nil
+	}
+	j.mu.Unlock()
+	if current {
+		j.cancelLogin()
+		j.closeTerminals("Worker mất kết nối hub nên phiên đã đóng.")
 	}
 }
 
@@ -195,7 +207,11 @@ func (j *jobs) heartbeat() Heartbeat {
 		runs = append(runs, HeartbeatRun{RunID: a.runID, Attempt: a.attempt, LeaseID: a.leaseID})
 	}
 	j.mu.Unlock()
-	return Heartbeat{Type: "heartbeat", V: protocolVersion, ID: newID(), Load: len(runs), Runs: runs, LocalProjects: j.localProjects()}
+	hb := Heartbeat{Type: "heartbeat", V: protocolVersion, ID: newID(), Load: len(runs), Runs: runs, LocalProjects: j.localProjects()}
+	if list := j.accountSummaries(); list != nil {
+		hb.Accounts = &list
+	}
+	return hb
 }
 
 // projectList đọc projects.json mỗi lần cần, để thay đổi trong app có hiệu lực ngay không cần khởi động lại worker.
@@ -329,7 +345,7 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	if err == nil {
 		job.Steers = run.steers
-		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }, RemoveDir: j.removeDir}
+		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }, RemoveDir: j.removeDir, HTTP: j.cfg.HTTP}
 		err = r.Run(ctx, job, sink)
 	}
 	if err != nil {
@@ -495,6 +511,7 @@ func (j *jobs) finished() bool {
 
 // wait chờ các run đang chạy dừng hẳn (CLI thoát, worktree được gỡ, kết quả ghi xuống đĩa) khi worker tắt.
 func (j *jobs) wait(timeout time.Duration) {
+	j.waitTerminals(timeout)
 	ch := make(chan struct{})
 	go func() { j.wg.Wait(); close(ch) }()
 	select {

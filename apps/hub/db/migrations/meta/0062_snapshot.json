@@ -1,5 +1,5 @@
 {
-  "id": "dc8eca3e-acbe-423c-bf1e-a91dacb5e898",
+  "id": "04bf052c-a560-414e-9577-e0be0e2b42bc",
   "prevId": "1c8c0b0c-0294-4938-84af-49a8cf2347a0",
   "version": "7",
   "dialect": "postgresql",
@@ -1821,6 +1821,32 @@
           "notNull": true,
           "default": false
         },
+        "labels": {
+          "name": "labels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "labels_only": {
+          "name": "labels_only",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "accounts": {
+          "name": "accounts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accounts_at": {
+          "name": "accounts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "revoked_at": {
           "name": "revoked_at",
           "type": "timestamp with time zone",
@@ -1926,6 +1952,27 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'worker'"
+        },
+        "labels": {
+          "name": "labels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "shared": {
+          "name": "shared",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "labels_only": {
+          "name": "labels_only",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "expires_at": {
           "name": "expires_at",
@@ -7942,12 +7989,6 @@
         },
         "rtk": {
           "name": "rtk",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "token_guard": {
-          "name": "token_guard",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

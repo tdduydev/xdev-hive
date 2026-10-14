@@ -1,4 +1,4 @@
-import type { MachineKind, RegisterInput, RegisterOutput } from "@xdev-hive/contracts";
+import { type MachineKind, machineLabels, type RegisterInput, type RegisterOutput } from "@xdev-hive/contracts";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
@@ -10,25 +10,46 @@ import { hashToken, MACHINE_PREFIX, newToken, REGISTRATION_PREFIX, withTokenLook
 
 export const REGISTRATION_TTL_MS = 60 * 60 * 1000;
 
+/** Nhãn và cờ máy nhận sẵn khi đăng ký bằng mã (máy worker AI SDLC, specs/011 FR-042). */
+export interface RegistrationFlags {
+  labels?: string[];
+  shared?: boolean;
+  labelsOnly?: boolean;
+}
+
 /** Tạo mã đăng ký cho một đội. Trả mã gốc một lần; database chỉ giữ băm. */
 export async function createRegistration(
   tx: Tx,
   userId: string,
   teamId: string,
   kind: MachineKind = "worker",
+  flags: RegistrationFlags = {},
 ): Promise<{ token: string; expiresAt: Date }> {
   await allowWith(tx, userId, "machines.register", () => requireTeamRole(tx, userId, teamId, "admin"), teamId);
   const token = newToken(REGISTRATION_PREFIX);
   const expiresAt = new Date(Date.now() + REGISTRATION_TTL_MS);
+  const labels = machineLabels.parse(flags.labels ?? []);
+  const shared = flags.shared ?? false;
+  const labelsOnly = flags.labelsOnly ?? false;
   const [row] = await tx
     .insert(registrationTokens)
-    .values({ orgId: sql`hive.ctx_org()`, teamId, kind, tokenHash: hashToken(token), expiresAt, createdBy: userId })
+    .values({
+      orgId: sql`hive.ctx_org()`,
+      teamId,
+      kind,
+      tokenHash: hashToken(token),
+      expiresAt,
+      createdBy: userId,
+      labels,
+      shared,
+      labelsOnly,
+    })
     .returning({ id: registrationTokens.id });
   await recordAudit(tx, {
     action: "machine.registration.create",
     targetType: "registration_token",
     targetId: row?.id,
-    data: { teamId, kind, expiresAt: expiresAt.toISOString() },
+    data: { teamId, kind, expiresAt: expiresAt.toISOString(), labels, shared, labelsOnly },
   });
   return { token, expiresAt };
 }
@@ -66,6 +87,9 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
         teamId: registrationTokens.teamId,
         kind: registrationTokens.kind,
         createdBy: registrationTokens.createdBy,
+        labels: registrationTokens.labels,
+        shared: registrationTokens.shared,
+        labelsOnly: registrationTokens.labelsOnly,
       });
     if (!claimed) throw invalidRegistration();
 
@@ -78,6 +102,11 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
       publicKey: input.publicKey ?? null,
       registeredBy: claimed.createdBy,
     };
+    // Mã thường (không nhãn, không dùng chung) không xoá nhãn và cờ quản trị đội đã đặt cho máy cài lại.
+    const flags = {
+      ...(claimed.labels.length > 0 ? { labels: claimed.labels, labelsOnly: claimed.labelsOnly } : {}),
+      ...(claimed.shared ? { shared: true } : {}),
+    };
     const [existing] = await tx.select().from(machines).where(eq(machines.name, input.machineId));
     if (existing && (existing.teamId !== claimed.teamId || existing.kind !== claimed.kind)) {
       throw new FleetError("conflict", "MACHINE_NAME_TAKEN", `Tên máy "${input.machineId}" đã được đội khác dùng.`);
@@ -87,13 +116,13 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
     const [machine] = existing
       ? await tx
           .update(machines)
-          .set({ ...info, status: "offline", revokedAt: null })
+          .set({ ...info, ...flags, status: "offline", revokedAt: null })
           .where(eq(machines.id, existing.id))
           .returning()
       : await onNameTaken(input.machineId, () =>
           tx
             .insert(machines)
-            .values({ ...info, orgId: found.orgId, teamId: claimed.teamId, name: input.machineId })
+            .values({ ...info, ...flags, orgId: found.orgId, teamId: claimed.teamId, name: input.machineId })
             .returning(),
         );
     if (!machine) throw new Error("Không ghi được máy.");
