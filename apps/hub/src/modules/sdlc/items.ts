@@ -35,6 +35,10 @@ import {
   requireProjectWrite,
   visibleItemsWhere,
 } from "./access.ts";
+import { artifactViews } from "./artifact-view.ts";
+import { itemAutoApprovals } from "./autoapprove.ts";
+import { itemTaskViews } from "./breakdown.ts";
+import { contractWarnings } from "./contracts.ts";
 import { resolveMode } from "./modes.ts";
 import {
   initialPhases,
@@ -861,17 +865,6 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
     .from(sdlcArtifacts)
     .where(eq(sdlcArtifacts.itemId, item.id))
     .orderBy(asc(sdlcArtifacts.phaseId), asc(sdlcArtifacts.artifactId), asc(sdlcArtifacts.instance));
-  const syncs = artifacts.length
-    ? await tx
-        .select()
-        .from(sdlcArtifactSyncs)
-        .where(
-          inArray(
-            sdlcArtifactSyncs.artifactId,
-            artifacts.map((a) => a.id),
-          ),
-        )
-    : [];
   const questions = await tx
     .select()
     .from(sdlcQuestions)
@@ -907,7 +900,8 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
     ).map((t) => [t.id, t.name]),
   );
   const keyOf = (projectId: string) => ctx.projects.get(projectId)?.key ?? "";
-  const nameOfArtifact = new Map(item.mode.phases.flatMap((p) => p.artifacts.map((a) => [`${p.id}/${a.id}`, a.name])));
+  const projectKeys = new Map([...ctx.projects].map(([pid, p]) => [pid, p.key]));
+  const itemTasks = await itemTaskViews(tx, item, projectKeys);
   const now = Date.now();
 
   const writable = await Promise.all(members.map((m) => hasTeamPermission(tx, userId, m.teamId, "sdlc.write")));
@@ -957,40 +951,7 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
         approvedAt: isoOrNull(row?.approvedAt ?? null),
       };
     }),
-    artifacts: artifacts.map((a) => ({
-      id: a.id,
-      phaseId: a.phaseId,
-      artifactId: a.artifactId,
-      name: nameOfArtifact.get(`${a.phaseId}/${a.artifactId}`) ?? a.artifactId,
-      scope: a.scope,
-      instance: a.instance,
-      required: a.required,
-      docKey: a.docKey,
-      repoPath: a.repoPath,
-      projectId: a.projectId,
-      consumerProjectIds: a.consumerProjectIds,
-      contractFormat: (a.contractFormat as SdlcItemDetail["artifacts"][number]["contractFormat"]) ?? null,
-      baselineVersion: a.baselineVersion,
-      approval: a.approval,
-      // Phiên duyệt và bản nháp nằm ở `knowledge`; màn hạng mục mở trình soạn theo `docKey` để xem.
-      reviewId: null,
-      hasDraft: false,
-      syncs: syncs
-        .filter((s) => s.artifactId === a.id)
-        .map((s) => ({
-          projectId: s.projectId,
-          projectKey: keyOf(s.projectId),
-          kind: s.kind,
-          repoPath: s.repoPath,
-          state: s.syncState,
-          syncedVersion: s.syncedVersion,
-          syncedCommit: s.syncedCommit,
-          error: s.syncError,
-          attempts: s.syncAttempts,
-          syncedAt: isoOrNull(s.syncedAt),
-          prUrl: null,
-        })),
-    })),
+    artifacts: await artifactViews(tx, item, artifacts, projectKeys),
     questions: questions.map((q) => ({
       id: q.id,
       itemId: item.id,
@@ -1025,8 +986,7 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
       createdAt: iso(s.createdAt),
       finishedAt: isoOrNull(s.finishedAt),
     })),
-    // Task, tự duyệt và cảnh báo do bản tách (T030), tự duyệt (T017), contract (T016) điền.
-    tasks: [],
+    tasks: itemTasks.tasks,
     overrides: overrides.map((o) => ({
       id: o.id,
       itemId: o.itemId,
@@ -1040,8 +1000,8 @@ export async function itemDetail(tx: Tx, userId: string, id: string): Promise<Sd
       revokedBy: o.revokedBy ? person(names, o.revokedBy) : null,
       active: !o.revokedAt && (!o.expiresAt || o.expiresAt.getTime() > now),
     })),
-    autoApprovals: [],
-    warnings: [],
+    autoApprovals: await itemAutoApprovals(tx, userId, item),
+    warnings: [...itemTasks.warnings, ...(await contractWarnings(tx, item))],
     convergeRound: item.convergeRound,
     convergedAt: isoOrNull(item.convergedAt),
     can: {
