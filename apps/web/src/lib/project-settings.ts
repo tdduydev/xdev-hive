@@ -7,6 +7,7 @@ import {
   type ProjectSettings,
   type ProjectSettingsPatch,
   projectSettingsPatch,
+  type ReviewWorkflow,
   type RoutingEffort,
   TASK_TIERS,
   type TaskTier,
@@ -23,6 +24,21 @@ export type MergeMode = ProjectSettings["merge"]["mode"];
 export type PermissionMode = "workspace" | "full";
 export type { TaskTier };
 export { TASK_TIERS };
+
+export function codeWorkflowsForProject(
+  workflows: ReviewWorkflow[],
+  project: { key: string; teamId: string },
+): ReviewWorkflow[] {
+  // Nhánh, loại task và đường dẫn chỉ xác định được khi có run; đây là các quy trình có thể áp dụng cho dự án.
+  return workflows.filter(
+    (w) =>
+      w.enabled &&
+      w.subject === "code" &&
+      w.code !== null &&
+      (w.teamId === null || w.teamId === project.teamId) &&
+      (w.code.projects.length === 0 || w.code.projects.includes(project.key)),
+  );
+}
 
 /** Ô của một cấp độ task trong mục định tuyến; ô số giữ dạng chuỗi như các ô khác. */
 export interface TierForm {

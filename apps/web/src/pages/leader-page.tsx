@@ -1,22 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { Approval, ChatMessage, Project } from "@xdev-hive/contracts";
+import type { ChatMessage, Project } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
-import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { SearchIcon, SquarePenIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
+import { ApprovalCard } from "@/components/approval-card.tsx";
+import { OpenTerminalButton } from "@/components/open-terminal-dialog.tsx";
+import { TerminalSessions } from "@/components/terminal-sessions.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Field, FieldLabel } from "@/components/ui/field.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
 import { formatDayTime } from "@/lib/format.ts";
-import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { awaitingLeader, describeAction } from "@/lib/leader.ts";
+import { type Dict, useT } from "@/lib/i18n.ts";
+import { awaitingLeader } from "@/lib/leader.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -28,7 +30,6 @@ const text: Dict<
     | "enterHint"
     | "you"
     | "system"
-    | "expires"
     | "threads"
     | "emptyTitle"
     | "emptyDescription"
@@ -43,15 +44,7 @@ const text: Dict<
     | "composerLabel"
     | "composerPlaceholder"
     | "sending"
-    | "send"
-    | "proposal"
-    | "pending"
-    | "rejectReason"
-    | "cancel"
-    | "reject"
-    | "rejectMore"
-    | "executing"
-    | "approve",
+    | "send",
     string
   >
 > = {
@@ -62,7 +55,6 @@ const text: Dict<
     enterHint: "Enter để gửi · Shift+Enter xuống dòng",
     you: "Bạn",
     system: "Hệ thống",
-    expires: "Hết hạn",
     threads: "Cuộc trò chuyện",
     emptyTitle: "Chưa có cuộc trò chuyện nào",
     emptyDescription: "Tạo cuộc trò chuyện để hỏi leader về dự án, nhờ chia việc hoặc giao việc cho agent.",
@@ -78,14 +70,6 @@ const text: Dict<
     composerPlaceholder: "Hỏi về dự án, nhờ chia việc, hoặc nhờ giao việc cho agent",
     sending: "Đang gửi…",
     send: "Gửi",
-    proposal: "Đề xuất của leader",
-    pending: "Chờ duyệt",
-    rejectReason: "Lý do từ chối",
-    cancel: "Thôi",
-    reject: "Từ chối",
-    rejectMore: "Từ chối…",
-    executing: "Đang thực hiện…",
-    approve: "Duyệt và thực hiện",
   },
   en: {
     search: "Search conversations",
@@ -94,7 +78,6 @@ const text: Dict<
     enterHint: "Enter to send · Shift+Enter for a new line",
     you: "You",
     system: "System",
-    expires: "Expires",
     threads: "Conversations",
     emptyTitle: "No conversations yet",
     emptyDescription: "Create a conversation to ask about a project, split work or assign tasks to agents.",
@@ -110,14 +93,6 @@ const text: Dict<
     composerPlaceholder: "Ask about a project, split work, or have the leader assign tasks to agents",
     sending: "Sending…",
     send: "Send",
-    proposal: "Leader proposal",
-    pending: "Awaiting approval",
-    rejectReason: "Reason for rejecting",
-    cancel: "Never mind",
-    reject: "Reject",
-    rejectMore: "Reject…",
-    executing: "Running…",
-    approve: "Approve and run",
   },
 };
 
@@ -201,6 +176,7 @@ export function LeaderPage() {
             !threads.data.some((thread) =>
               thread.title.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()),
             ) && <p className="text-sm text-muted-foreground">{t.noMatches}</p>}
+          <TerminalSessions />
         </aside>
         {selected ? (
           <Thread key={selected} threadId={selected} projects={projects.data} />
@@ -213,7 +189,9 @@ export function LeaderPage() {
 
   return (
     <>
-      <PageHeader title="Leader" />
+      <PageHeader title="Leader">
+        {projects.data && projects.data.length > 0 && <OpenTerminalButton projects={projects.data} />}
+      </PageHeader>
       <PageBody>{body}</PageBody>
     </>
   );
@@ -287,7 +265,7 @@ function Thread({ threadId, projects }: { threadId: string; projects: readonly P
     refetchInterval: (q) => (awaitingLeader(q.state.data?.messages) ? 3000 : false),
   });
   const approvals = useQuery({
-    ...api.leader.approvals.list.queryOptions({ input: { status: "pending" } }),
+    ...api.leader.approvals.list.queryOptions({ input: { status: "pending", threadId } }),
     refetchInterval: 10_000,
   });
   const send = useMutation({
@@ -381,78 +359,5 @@ function Message({ message }: { message: ChatMessage }) {
       </span>
       <p className="whitespace-pre-wrap break-words">{message.content}</p>
     </li>
-  );
-}
-
-function ApprovalCard({ approval, projects }: { approval: Approval; projects: readonly Project[] | undefined }) {
-  const t = useT(text);
-  const lang = useLang();
-  const { api } = useOrg();
-  const queryClient = useQueryClient();
-  const reasonId = useId();
-  const [rejecting, setRejecting] = useState(false);
-  const [reason, setReason] = useState("");
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: api.leader.approvals.list.key() });
-    await queryClient.invalidateQueries({ queryKey: api.leader.threads.get.key() });
-  };
-  const approve = useMutation({
-    mutationFn: () => api.leader.approvals.approve.call({ id: approval.id }),
-    onSuccess: refresh,
-  });
-  const reject = useMutation({
-    mutationFn: () => api.leader.approvals.reject.call({ id: approval.id, reason: reason.trim() }),
-    onSuccess: refresh,
-  });
-  const busy = approve.isPending || reject.isPending;
-  const error = approve.error ?? reject.error;
-
-  return (
-    <Card className="grid gap-2.5 p-3.5 ring-warning" aria-label={t.proposal}>
-      <div className="flex flex-wrap items-center gap-2">
-        <Pill tone="warn" small>
-          {t.pending}
-        </Pill>
-        <span className="text-xs text-muted-foreground">
-          {t.expires} {formatDayTime(approval.expiresAt)}
-        </span>
-      </div>
-      <p className="rounded-lg border border-border p-3 font-medium break-words text-foreground">
-        {describeAction(approval.action, projects, lang)}
-      </p>
-      {error && <Alert variant="destructive">{apiErrorMessage(error)}</Alert>}
-      {rejecting ? (
-        <form
-          noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (reason.trim()) reject.mutate();
-          }}
-          className="grid gap-2"
-        >
-          <label htmlFor={reasonId} className="text-xs font-medium text-foreground">
-            {t.rejectReason}
-          </label>
-          <Textarea autoFocus id={reasonId} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" onClick={() => setRejecting(false)} disabled={busy}>
-              {t.cancel}
-            </Button>
-            <Button type="submit" variant="destructive" disabled={busy || !reason.trim()}>
-              {t.reject}
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={() => setRejecting(true)} disabled={busy}>
-            {t.rejectMore}
-          </Button>
-          <Button variant="default" onClick={() => approve.mutate()} disabled={busy}>
-            {approve.isPending ? t.executing : t.approve}
-          </Button>
-        </div>
-      )}
-    </Card>
   );
 }

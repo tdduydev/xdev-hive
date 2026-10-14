@@ -144,6 +144,8 @@ function RunMeta({ run, task }: { run: Run; task: Task | undefined }) {
       {run.kind === "plan" && <span>Lập kế hoạch (chỉ đọc)</span>}
       {run.kind === "doccheck" && <span>Kiểm tài liệu cho quy trình duyệt (chỉ đọc)</span>}
       {run.kind === "brief" && <span>Viết lại brief dự án (chỉ đọc)</span>}
+      {run.kind === "skill_proposal" && <span>Đề xuất skill từ các việc khó (chỉ đọc)</span>}
+      {run.kind === "code" && isTerminal(run.state) && <LearnMark runId={run.id} />}
       {run.kind === "docassist" && <span>Trợ lý của trình soạn tài liệu (chỉ đọc, góp ý thành đề xuất)</span>}
       {run.kind === "plan" && task && (
         <Link to="/tasks/$key/plan" params={{ key: task.key }} className="text-primary hover:text-primary/90">
@@ -161,6 +163,32 @@ function RunMeta({ run, task }: { run: Run; task: Task | undefined }) {
         </a>
       )}
     </div>
+  );
+}
+
+/**
+ * Đánh dấu run “nên thành skill” (specs/014): lô học của ngày sau sẽ xét run này dù nó không thử lại hay đắt. Hub chưa
+ * trả trạng thái đã đánh dấu, nên nút chỉ nhớ trong phiên xem; đánh dấu lại là an toàn.
+ */
+function LearnMark({ runId }: { runId: string }) {
+  const { api } = useOrg();
+  const [marked, setMarked] = useState(false);
+  const mark = useMutation(api.skillLearning.mark.mutationOptions());
+  async function toggle() {
+    try {
+      const res = await mark.mutateAsync({ runId, marked: !marked });
+      setMarked(res.marked);
+    } catch {
+      /* Lỗi hiện ở dưới nút. */
+    }
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button variant="outline" size="sm" disabled={mark.isPending} aria-pressed={marked} onClick={toggle}>
+        {marked ? "Đã đánh dấu nên thành skill" : "Nên thành skill"}
+      </Button>
+      {mark.error && <span className="text-destructive">{apiErrorMessage(mark.error)}</span>}
+    </span>
   );
 }
 

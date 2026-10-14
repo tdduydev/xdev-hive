@@ -72,7 +72,12 @@ else
 fi
 asset="hive-worker_${os}_${arch}.tar.gz"
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+cleanup() {
+	# Chỉ xoá file do script tạo để không xoá nhầm nội dung khác trong thư mục tạm.
+	rm -f "$tmp/checksums.txt" "$tmp/checksums.txt.sig" "$tmp/$asset" "$tmp/release-signing.pem" "$tmp/hive-worker"
+	rmdir "$tmp"
+}
+trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 fetch() {
@@ -140,4 +145,12 @@ if [ -n "$token" ]; then
 	fi
 elif [ "$service" = 1 ]; then
 	"$bin" service restart
+fi
+
+# Dịch vụ systemd --user dừng khi người dùng đăng xuất; máy không màn hình (AI SDLC, máy dùng chung) cần linger để
+# worker chạy cả khi không ai đăng nhập. Chỉ nhắc, vì bật linger cần quyền quản trị máy.
+if [ "$service" = 1 ] && [ "$os" = linux ] && command -v loginctl >/dev/null 2>&1; then
+	if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
+		printf 'Máy không màn hình: chạy "sudo loginctl enable-linger %s" để worker vẫn chạy khi bạn đăng xuất.\n' "$(id -un)"
+	fi
 fi

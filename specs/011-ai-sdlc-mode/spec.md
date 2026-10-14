@@ -557,6 +557,10 @@ không có nút bật/tắt.
    "Cập nhật worker để điều khiển gói từ web.".
 3. **Given** mọi gói của máy dưới ngưỡng dừng, **When** dispatch, **Then** máy từ chối offer như hiện nay; trang hiện "Hết
    quota tới HH:MM".
+4. **Given** máy dùng chung không màn hình có worker hỗ trợ `accounts-remote`, **When** quản trị đội bấm "Thêm gói" trên
+   web, chọn Claude Code, mở URL hub chuyển lên, dán mã xác nhận, **Then** worker đăng nhập gói trong thư mục cấu hình mới,
+   web báo "Đã đăng nhập" và gói mới vào danh sách ở heartbeat kế; hub không lưu mã (FR-062). Với Codex, web hiện URL và mã
+   thiết bị rồi tự xong khi người dùng xác nhận.
 
 ---
 
@@ -878,7 +882,8 @@ Máy worker AI SDLC (US13–US15)
 - **FR-043 (SDLC-16)**: Worker MUST gửi tóm tắt tài khoản CLI trong heartbeat (tuỳ chọn, không token, không email đầy đủ);
   hub lưu và hiện trên web cho quản trị đội (máy dùng chung) và chủ máy (máy cá nhân).
 - **FR-044 (SDLC-16)**: Quản trị đội MUST bật/tắt được một tài khoản trên máy dùng chung có worker hỗ trợ `accounts-remote`
-  (tin nhắn hub → worker `account_set`); thêm tài khoản vẫn làm trên máy (`hive-worker accounts add|discover`).
+  (tin nhắn hub → worker `account_set`); thêm tài khoản làm trên máy (`hive-worker accounts add|discover`) hoặc từ web
+  (FR-062).
 - **FR-045 (SDLC-16)**: Web MUST có trang Đội máy AI SDLC: máy có nhãn của dự án/đội, trạng thái, slot, run đang chạy (hạng
   mục, bước), gói và quota, nút Thêm máy (mã đăng ký có nhãn).
 
@@ -953,6 +958,33 @@ Vai trò BA/PO (US7)
   không có `tasks.create`, `runs.retry|cancel`, `machines.*`, `sdlc.override`. Checkpoint người của quy trình duyệt chọn
   được vai trò `team-ba` (thêm vào `reviewerRole`). App desktop xếp người chỉ có vai trò viewer hoặc BA/PO vào hồ sơ
   `writer`.
+
+Đăng nhập gói từ web (T063)
+
+- **FR-062 (SDLC-21)**: Quản trị đội sở hữu máy (hoặc quản trị tổ chức) MUST thêm được gói Claude Code hoặc Codex trên máy
+  dùng chung không màn hình ngay từ web, khi worker khai `accounts-remote`. Hub gửi `account_login_start { requestId, cli,
+  label, how }`; worker tạo gói dở với thư mục cấu hình mới (`~/.xdev-hive/accounts/<id>`, 0700), chạy trong PTY
+  `claude auth login [--sso|--console]` (`CLAUDE_CONFIG_DIR`) hoặc `codex login --device-auth` (`CODEX_HOME`), và chỉ báo
+  về `account_login_event` gồm URL đăng nhập, mã thiết bị và lời nhắc cố định của worker, không gửi output thô của CLI.
+  Người dùng mở URL trên máy mình; mã xác nhận Claude dán trên web đi qua `account_login_input` thẳng vào PTY. Worker xác
+  nhận bằng `claude auth status` (thoát 0) hoặc `auth.json` của Codex rồi bật gói và báo `done`. Cách thứ hai cho Claude:
+  dán token `claude setup-token`; worker ghi file 0600 trong thư mục gói và đưa vào `CLAUDE_CODE_OAUTH_TOKEN` khi chạy.
+  Mỗi máy tối đa một phiên, hết hạn sau 10 phút; huỷ, lỗi, hết hạn, mất kết nối hay worker khởi động lại MUST xoá gói dở.
+  Hub giữ phiên trong bộ nhớ, MUST NOT lưu URL, mã, token hay chữ dán vào database hay log; audit
+  `machine.account_login.{start,input,cancel,done,error,expired}` không có mã. Windows chưa có PTY: worker báo chưa hỗ trợ.
+  Rủi ro được chấp nhận: token `setup-token` sống 1 năm và đi qua hub một lần trên kênh WSS đã xác thực; ai đọc được thư
+  mục gói trên máy dùng chung (root, chủ tài khoản dịch vụ) dùng được gói, như đăng nhập tại máy.
+
+Leader trong terminal (spec 010 lát máy dùng chung)
+
+- **FR-067 (SDLC-22)**: Leader của AI SDLC MUST chạy được thành phiên Claude CLI tương tác trên máy dùng chung của đội, web
+  hiện bằng xterm.js qua `/ws/terminal` (specs/010 T100–T107): quản trị đội và BA/PO (quyền `leader.terminal`) mở phiên
+  cho dự án đội mình, chọn máy, gói và chế độ **Đề xuất** (mặc định, hành động của Leader thành đề xuất duyệt ngay khung
+  bên cạnh, LEAD-02) hoặc **Bypass** (tool hub chạy bằng quyền người mở, phải xác nhận, audit từng lần gọi). Leader (cả
+  Leader chat) MUST gắn cấp độ `light|medium|heavy` kèm lý do cho task và run nó đề xuất (tool `leader_tiers` trả ý nghĩa
+  và model của từng cấp); người duyệt sửa được cấp trước khi duyệt, hub giao run theo định tuyến của cấp đó và ghi "cấp độ
+  + model + lý do" vào audit. Phiên Leader mặc định sonnet effort high (kèm cố vấn khi dự án bật cho cấp vừa), người mở
+  chọn được opus và thấy chi phí trung bình mỗi run của từng model 30 ngày qua.
 
 ### Key Entities
 

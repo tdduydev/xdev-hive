@@ -58,6 +58,9 @@ type Account struct {
 	Roles []string `json:"roles"`
 	// TimeoutMinutes chặn thời gian một run trên tài khoản; run vẫn dừng sớm hơn nếu hub đặt thời hạn ngắn hơn.
 	TimeoutMinutes int `json:"timeoutMinutes"`
+	// Pending: đang đăng nhập từ web (login.go) nên chưa là tài khoản dùng được. Pool không tính nó, và worker khởi động
+	// lại thì xoá (CleanupPending), để phiên đăng nhập dở không để lại tài khoản chưa đăng nhập.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // withDefaults điền trường file cũ (US13) hay app v1 không ghi, để worker và app thấy cùng một giá trị.
@@ -83,13 +86,13 @@ func (a Account) withDefaults() Account {
 	return a
 }
 
-// RoleOf là vai trò tài khoản cần nhận cho run loại kind: run plan và brief là "plan" (brief chỉ đọc, rẻ như plan),
+// RoleOf là vai trò tài khoản cần nhận cho run loại kind: run plan, brief và skill_proposal là "plan" (chỉ đọc, rẻ như plan),
 // review là "review", còn lại "implement".
 func RoleOf(kind string) string {
 	switch kind {
 	case RolePlan, RoleReview:
 		return kind
-	case "brief":
+	case "brief", "skill_proposal":
 		return RolePlan
 	}
 	return RoleImplement
@@ -166,7 +169,7 @@ func Load(path string) ([]Account, error) {
 
 func read(path string) (file, error) {
 	var f file
-	b, err := os.ReadFile(path)
+	b, err := readFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return f, nil
 	}
@@ -212,11 +215,25 @@ type Pool struct {
 	active map[string]int
 	// reread nhận id tài khoản vừa xong run để Watch đọc lại quota của nó.
 	reread chan string
+
+	loginOnce sync.Once
+	login     *Login
 }
 
 func NewPool(path string) *Pool {
 	home, _ := os.UserHomeDir()
 	return &Pool{path: path, state: StatePath(path), home: home, now: time.Now, active: map[string]int{}, reread: make(chan string, 16)}
+}
+
+// Path là accounts.json; Home là thư mục nhà dùng để mở rộng "~/" trong ConfigDir. Kênh worker cần cả hai để báo tóm
+// tắt tài khoản và đăng nhập từ web mà không giữ bản sao cấu hình.
+func (p *Pool) Path() string { return p.path }
+func (p *Pool) Home() string { return p.home }
+
+// Login là phiên đăng nhập gói từ web của máy này; mỗi máy chỉ một phiên nên chỉ có một Login cho mỗi Pool.
+func (p *Pool) Login() *Login {
+	p.loginOnce.Do(func() { p.login = NewLogin(p.path, p.home) })
+	return p.login
 }
 
 // Lease là tài khoản đã giữ cho một run; nil là chạy bằng đăng nhập mặc định.
@@ -254,7 +271,15 @@ func (l *Lease) Env() map[string]string {
 	if !ok || l.dir == "" {
 		return nil
 	}
-	return map[string]string{v: l.dir}
+	env := map[string]string{v: l.dir}
+	// Gói đăng nhập bằng token `claude setup-token` không có oauthAccount trong thư mục cấu hình; CLI chỉ biết token qua
+	// biến này.
+	if l.account.CLI == "claude" {
+		if token := oauthToken(l.dir); token != "" {
+			env[tokenEnv] = token
+		}
+	}
+	return env
 }
 
 // Timeout là thời gian tối đa của một run trên tài khoản; 0 khi không có tài khoản.
@@ -356,7 +381,7 @@ func (p *Pool) syncActive() {
 func (p *Pool) candidates(list []Account, cli string, st State, now time.Time) []Account {
 	var out []Account
 	for _, a := range list {
-		if a.CLI == cli && a.Enabled {
+		if a.CLI == cli && a.Enabled && !a.Pending {
 			out = append(out, a)
 		}
 	}
@@ -413,7 +438,8 @@ func (p *Pool) Acquire(cli, role string) (*Lease, error) {
 	}
 	hasAny := false
 	for _, a := range list {
-		if a.CLI == cli {
+		// Tài khoản đang đăng nhập dở không tính: CLI chưa có tài khoản nào dùng được thì chạy bằng đăng nhập mặc định.
+		if a.CLI == cli && !a.Pending {
 			hasAny = true
 			break
 		}
@@ -443,6 +469,102 @@ func (p *Pool) Acquire(cli, role string) (*Lease, error) {
 	}
 	if len(why) == 0 {
 		return nil, fmt.Errorf("%w: không tài khoản %s nào đang bật", ErrBusy, cli)
+	}
+	return nil, fmt.Errorf("%w: %s", ErrBusy, strings.Join(why, "; "))
+}
+
+// ErrNoAccount: gói người mở chọn không có, không thuộc CLI, tắt, chưa đăng nhập hay đang nghỉ. Lỗi trả về bọc nó kèm
+// lý do tiếng Việt để báo người mở.
+var ErrNoAccount = errors.New("không dùng được gói đã chọn")
+
+// AcquireInteractive giữ gói cho phiên tương tác (terminal Leader, specs/010 D10): id khác rỗng thì đúng gói đó, rỗng thì
+// gói rảnh nhất theo thứ tự như run. Bỏ gói tắt, chưa đăng nhập, đang nghỉ; không áp ngưỡng dừng và vai trò, vì phần
+// quota trên ngưỡng là phần để dành cho người dùng tay, mà phiên tương tác chính là người dùng tay. Phiên tính là đang
+// dùng (như một run) để run tránh gói đang có người gõ, nhưng không bị chặn bởi maxConcurrent: người mở đang chờ trước
+// màn hình, còn run thì chờ được. Trả (nil, nil) khi id rỗng và CLI không có gói nào: chạy bằng
+// đăng nhập mặc định.
+func (p *Pool) AcquireInteractive(cli, id string) (*Lease, error) {
+	if p == nil || !Supported(cli) {
+		if id != "" {
+			return nil, fmt.Errorf("%w: máy không có danh sách gói của %s", ErrNoAccount, cli)
+		}
+		return nil, nil
+	}
+	list, err := Load(p.path)
+	if err != nil {
+		return nil, err
+	}
+	st, err := LoadState(p.state)
+	if err != nil {
+		return nil, err
+	}
+	now := p.now()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	usable := func(a Account) string {
+		loggedIn, _ := loginOf(a, p.home)
+		switch {
+		case a.CLI != cli:
+			return "không phải gói " + cli
+		case a.Pending:
+			return "đang đăng nhập dở"
+		case !a.Enabled:
+			return "đang tắt"
+		case loggedIn != nil && !*loggedIn:
+			return "chưa đăng nhập"
+		case st.CoolUntil[a.ID].After(now):
+			return "đang nghỉ tới " + st.CoolUntil[a.ID].Local().Format("15:04 02/01")
+		}
+		return ""
+	}
+	take := func(a Account) *Lease {
+		p.active[a.ID]++
+		p.syncActive()
+		return &Lease{pool: p, account: a, dir: p.expand(a.ConfigDir)}
+	}
+	if id != "" {
+		for _, a := range list {
+			if a.ID != id {
+				continue
+			}
+			if why := usable(a); why != "" {
+				return nil, fmt.Errorf("%w: gói %s %s", ErrNoAccount, a.Label, why)
+			}
+			return take(a), nil
+		}
+		return nil, fmt.Errorf("%w: máy không có gói %s", ErrNoAccount, id)
+	}
+	hasAny := false
+	var why []string
+	var full *Account
+	for _, a := range p.candidates(list, cli, st, now) {
+		hasAny = true
+		if reason := usable(a); reason != "" {
+			why = append(why, a.ID+" "+reason)
+			continue
+		}
+		// Gói còn chỗ trước, gói đang chạy đủ run chỉ khi không còn gói nào khác.
+		if p.active[a.ID] >= a.MaxConcurrent {
+			if full == nil {
+				full = &a
+			}
+			continue
+		}
+		return take(a), nil
+	}
+	if full != nil {
+		return take(*full), nil
+	}
+	for _, a := range list {
+		if a.CLI == cli && !a.Pending {
+			hasAny = true
+		}
+	}
+	if !hasAny {
+		return nil, nil
+	}
+	if len(why) == 0 {
+		return nil, fmt.Errorf("%w: không gói %s nào đang bật", ErrBusy, cli)
 	}
 	return nil, fmt.Errorf("%w: %s", ErrBusy, strings.Join(why, "; "))
 }

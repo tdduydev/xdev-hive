@@ -96,10 +96,18 @@ test("quản trị sửa model, hook, mẫu file, giới hạn rồi lưu đúng
   await memoryMode.selectOption("direct");
   await page.getByRole("spinbutton", { name: "Số memory tối đa mỗi run" }).fill("8");
 
+  // Học skill từ việc khó: mặc định tắt (tốn token); bật rồi đặt hạn mức đề xuất mỗi ngày.
+  const learning = page.getByRole("switch", { name: "Bật học skill" });
+  await expect(learning).not.toBeChecked();
+  await expect(page.getByRole("spinbutton", { name: "Số đề xuất tối đa mỗi ngày" })).toBeDisabled();
+  await learning.click();
+  await page.getByRole("spinbutton", { name: "Số đề xuất tối đa mỗi ngày" }).fill("3");
+
   await expect(page.getByText("Có thay đổi chưa lưu.")).toBeVisible();
   await page.getByRole("button", { name: "Lưu chính sách" }).click();
   await expect(page.getByText("Đã lưu chính sách.")).toBeVisible();
   const saved = hub.rpcCalls.find((c) => c.path === "policies/update")?.input as AgentPolicyInput;
+  expect(saved.skillLearning).toEqual({ enabled: true, maxPerDay: 3 });
   expect(saved.allowedModels.claude).toEqual(["claude-sonnet-5-5", "claude-haiku-5-5"]);
   expect(saved.neverAutoUpgrade).toBe(true);
   expect(saved.hooks).toEqual([

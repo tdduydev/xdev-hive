@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { ReviewStatus, ReviewSummary, SlaState } from "@xdev-hive/contracts";
 import {
@@ -12,32 +12,94 @@ import {
 import { Button } from "@xdev-hive/ui/button";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { BotIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
 import { FilterChips } from "@/components/ui/filter-chips.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
+import { awaitingCount, countLabel, useAwaitingCodeReviews } from "@/lib/code-reviews.ts";
 import { useWebDocEnv } from "@/lib/doc-editor-env.tsx";
-import { useLang, useT } from "@/lib/i18n.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
+import { CodeReviewsTab } from "./code-reviews-tab.tsx";
 
 type Scope = "mine" | "all";
 const STATUSES: ReviewStatus[] = ["in_review", "changes_requested", "approved", "cancelled"];
 const SLA_STATES: SlaState[] = ["overdue", "due-soon", "on-time", "none"];
 
-/** Hàng chờ duyệt tài liệu (DocReview.dc.html): bảng phiên duyệt, thay đổi so với bản đã duyệt, quyết định. */
-export function ReviewsPage() {
-  const { org } = useOrg();
+const tabText: Dict<{ tabs: string; docs: string; code: string; awaiting: (n: number) => string }> = {
+  vi: { tabs: "Loại duyệt", docs: "Tài liệu", code: "Code", awaiting: (n) => `${n} đang chờ bạn` },
+  en: { tabs: "Review type", docs: "Docs", code: "Code", awaiting: (n) => `${n} awaiting you` },
+};
+
+/** Số chờ tôi trên nhãn tab; ẩn khi chưa biết hoặc bằng 0 để tab không báo việc không có. */
+function TabCount({ n }: { n: number | undefined }) {
+  const t = useT(tabText);
+  if (!n) return null;
   return (
-    <DocEditorProvider env={useWebDocEnv()}>
-      <ReviewsScreen key={org.id} />
-    </DocEditorProvider>
+    <span className="rounded-sm bg-foreground/5 px-1 font-mono text-2xs tabular-nums">
+      <span className="sr-only">{t.awaiting(n)}</span>
+      <span aria-hidden="true">{countLabel(n)}</span>
+    </span>
   );
 }
 
-function ReviewsScreen() {
+/**
+ * "Chờ tôi duyệt": hai tab, Tài liệu (DocReview.dc.html) và Code (CodeReview.dc.html), mỗi tab có số phiên chờ tôi.
+ * `?tab=code&id=` dẫn thẳng tới một PR; URL cũ `?id=` vẫn là tài liệu.
+ */
+export function ReviewsPage() {
+  const { org, api } = useOrg();
+  const t = useT(tabText);
+  const reviewsText = useT(reviewText);
+  const search = useSearch({ from: "/session/app/in-org/knowledge/reviews" });
+  const navigate = useNavigate({ from: "/knowledge/reviews" });
+  const docEnv = useWebDocEnv();
+  const tab = search.tab ?? "docs";
+  // Hub chưa có route đếm tài liệu; danh sách "chờ tôi" tối đa 100 phiên đủ cho số hiện trên tab.
+  const docs = useQuery(api.reviews.list.queryOptions({ input: { scope: "mine", limit: 100 } }));
+  const codeAwaiting = useAwaitingCodeReviews();
+  return (
+    <>
+      <PageHeader crumb={reviewsText.knowledge} title={reviewsText.title} />
+      <PageBody>
+        <Tabs
+          key={org.id}
+          value={tab}
+          onValueChange={(value) => navigate({ search: value === "code" ? { tab: "code" } : {}, replace: true })}
+        >
+          <TabsList variant="line" aria-label={t.tabs}>
+            <TabsTrigger value="docs">
+              {t.docs}
+              <TabCount n={docs.data ? awaitingCount(docs.data.items) : undefined} />
+            </TabsTrigger>
+            <TabsTrigger value="code">
+              {t.code}
+              <TabCount n={codeAwaiting} />
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="docs" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
+            <DocEditorProvider env={docEnv}>
+              <DocReviews />
+            </DocEditorProvider>
+          </TabsContent>
+          <TabsContent value="code" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
+            <CodeReviewsTab
+              selectedId={search.id}
+              onSelect={(id) => navigate({ search: { tab: "code", id }, replace: true })}
+            />
+          </TabsContent>
+        </Tabs>
+      </PageBody>
+    </>
+  );
+}
+
+/** Hàng chờ duyệt tài liệu (DocReview.dc.html): bảng phiên duyệt, thay đổi so với bản đã duyệt, quyết định. */
+function DocReviews(): ReactNode {
   const { api } = useOrg();
   const t = useT(reviewText);
   const lang = useLang();
@@ -162,91 +224,88 @@ function ReviewsScreen() {
 
   return (
     <>
-      <PageHeader crumb={t.knowledge} title={t.title} />
-      <PageBody>
-        <div className="flex flex-wrap items-center gap-3">
-          <FilterChips
-            label={t.scope}
-            chips={[
-              { key: "mine", label: t.mine },
-              { key: "all", label: t.all },
+      <div className="flex flex-wrap items-center gap-3">
+        <FilterChips
+          label={t.scope}
+          chips={[
+            { key: "mine", label: t.mine },
+            { key: "all", label: t.all },
+          ]}
+          value={scope}
+          onChange={setScope}
+        />
+        <label htmlFor={`${ids}-status`} className="flex items-center gap-2 text-sm font-medium">
+          {t.status}
+          <NativeSelect
+            id={`${ids}-status`}
+            size="sm"
+            className="w-44"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as ReviewStatus | "")}
+          >
+            <option value="">{t.anyStatus}</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {t.statusText[s]}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+      </div>
+      {list.isPending && <LoadingState />}
+      {list.isError && <LoadFailure error={list.error} retry={() => list.refetch()} />}
+      {list.data && (
+        <div className="grid min-w-0 gap-2">
+          <DataTable
+            columns={columns}
+            rows={items}
+            pageSize={5}
+            caption={t.queue}
+            placeholder={t.search}
+            selectable={false}
+            facets={[
+              { key: "type", label: t.type, value: (row) => row.docType },
+              { key: "gate", label: t.gate, value: (row) => row.gate?.name ?? null },
+              { key: "sla", label: t.sla, value: (row) => row.gate?.sla ?? "none", options: slaOptions },
+              {
+                key: "author",
+                label: t.by,
+                value: (row) => (row.author.runId ? "ai" : "person"),
+                options: [
+                  { value: "ai", label: t.agent },
+                  { value: "person", label: t.person },
+                ],
+              },
             ]}
-            value={scope}
-            onChange={setScope}
+            onRowClick={(row) => select(row.id)}
+            rowLabel={(row) => row.docTitle}
+            activeId={selectedId ?? ""}
+            emptyContent={scope === "mine" ? t.emptyMine : t.emptyAll}
           />
-          <label htmlFor={`${ids}-status`} className="flex items-center gap-2 text-sm font-medium">
-            {t.status}
-            <NativeSelect
-              id={`${ids}-status`}
+          {list.hasNextPage && (
+            <Button
+              variant="outline"
               size="sm"
-              className="w-44"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as ReviewStatus | "")}
+              className="justify-self-center"
+              disabled={list.isFetchingNextPage}
+              onClick={() => list.fetchNextPage()}
             >
-              <option value="">{t.anyStatus}</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {t.statusText[s]}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
+              {t.loadMore}
+            </Button>
+          )}
         </div>
-        {list.isPending && <LoadingState />}
-        {list.isError && <LoadFailure error={list.error} retry={() => list.refetch()} />}
-        {list.data && (
-          <div className="grid min-w-0 gap-2">
-            <DataTable
-              columns={columns}
-              rows={items}
-              pageSize={5}
-              caption={t.queue}
-              placeholder={t.search}
-              selectable={false}
-              facets={[
-                { key: "type", label: t.type, value: (row) => row.docType },
-                { key: "gate", label: t.gate, value: (row) => row.gate?.name ?? null },
-                { key: "sla", label: t.sla, value: (row) => row.gate?.sla ?? "none", options: slaOptions },
-                {
-                  key: "author",
-                  label: t.by,
-                  value: (row) => (row.author.runId ? "ai" : "person"),
-                  options: [
-                    { value: "ai", label: t.agent },
-                    { value: "person", label: t.person },
-                  ],
-                },
-              ]}
-              onRowClick={(row) => select(row.id)}
-              rowLabel={(row) => row.docTitle}
-              activeId={selectedId ?? ""}
-              emptyContent={scope === "mine" ? t.emptyMine : t.emptyAll}
-            />
-            {list.hasNextPage && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="justify-self-center"
-                disabled={list.isFetchingNextPage}
-                onClick={() => list.fetchNextPage()}
-              >
-                {t.loadMore}
-              </Button>
-            )}
-          </div>
-        )}
-        {selectedId ? (
-          <ReviewPane
-            key={selectedId}
-            id={selectedId}
-            now={now}
-            // Quyết định xong thì tài liệu rời hàng "chờ tôi"; ghim lựa chọn để người duyệt vẫn thấy kết quả.
-            onDecided={() => select(selectedId)}
-          />
-        ) : (
-          list.data && items.length > 0 && <p className="text-muted-foreground">{t.pick}</p>
-        )}
-      </PageBody>
+      )}
+      {selectedId ? (
+        <ReviewPane
+          key={selectedId}
+          id={selectedId}
+          now={now}
+          // Quyết định xong thì tài liệu rời hàng "chờ tôi"; ghim lựa chọn để người duyệt vẫn thấy kết quả.
+          onDecided={() => select(selectedId)}
+        />
+      ) : (
+        list.data && items.length > 0 && <p className="text-muted-foreground">{t.pick}</p>
+      )}
     </>
   );
 }

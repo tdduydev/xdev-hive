@@ -4,8 +4,11 @@ import { Markdown } from "@xdev-hive/ui/markdown";
 import { Pill } from "@xdev-hive/ui/pill";
 import { useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { useT } from "@/lib/i18n.ts";
 import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "@/pages/knowledge/common.tsx";
+import { SkillLearningTab, usePendingLearned } from "@/pages/knowledge/skill-learning-tab.tsx";
+import { SkillPackSection } from "@/pages/knowledge/skill-pack-section.tsx";
 import { SkillRepoCard } from "@/pages/knowledge/skill-repo-card.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -20,6 +23,7 @@ function SkillsScreen() {
   const { api } = useOrg();
   const list = useQuery(api.skills.list.queryOptions({ input: {} }));
   const [selected, setSelected] = useState<SkillSummary>();
+  const learned = usePendingLearned();
   const columns: Column<SkillSummary>[] = [
     {
       key: "name",
@@ -52,24 +56,39 @@ function SkillsScreen() {
   ];
   return (
     <KnowledgeLayout title="Skills" lead={t.skillsLead}>
-      <SkillRepoCard />
-      <QueryState query={list} />
-      {list.data && (
-        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
-          <DataTable
-            columns={columns}
-            rows={list.data}
-            placeholder={t.skillsSearch}
-            selectable={false}
-            facets={[{ key: "scope", label: t.scope, value: (row) => t[row.scope.level] }]}
-            rowLabel={(row) => row.name}
-            activeId={selected?.id ?? ""}
-            onRowClick={setSelected}
-            emptyContent={t.empty}
-          />
-          {selected ? <SkillDetail key={selected.id} skill={selected} /> : <DetailCard>{t.choose}</DetailCard>}
-        </div>
-      )}
+      <Tabs defaultValue="skills">
+        <TabsList variant="line" aria-label={t.skillsViews}>
+          <TabsTrigger value="skills">Skills</TabsTrigger>
+          <TabsTrigger value="learned">
+            {t.skillsLearned}
+            <Pill small>{learned.data?.length ?? "—"}</Pill>
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="skills" className="space-y-4">
+          <SkillRepoCard />
+          <QueryState query={list} />
+          {list.data && (
+            <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
+              <DataTable
+                columns={columns}
+                rows={list.data}
+                placeholder={t.skillsSearch}
+                selectable={false}
+                facets={[{ key: "scope", label: t.scope, value: (row) => t[row.scope.level] }]}
+                rowLabel={(row) => row.name}
+                activeId={selected?.id ?? ""}
+                onRowClick={setSelected}
+                emptyContent={t.empty}
+              />
+              {selected ? <SkillDetail key={selected.id} skill={selected} /> : <DetailCard>{t.choose}</DetailCard>}
+            </div>
+          )}
+          <SkillPackSection />
+        </TabsContent>
+        <TabsContent value="learned">
+          <SkillLearningTab />
+        </TabsContent>
+      </Tabs>
     </KnowledgeLayout>
   );
 }

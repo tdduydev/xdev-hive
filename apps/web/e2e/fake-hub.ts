@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, WebSocketRoute } from "@playwright/test";
 import {
   type AuditExportInput,
   type CodeDryRunResult,
@@ -572,4 +572,376 @@ export function codeWorkflowsFixture(state: { workflows: ReviewWorkflow[] }) {
     },
   };
   return { calls, rpc };
+}
+
+export const ACCOUNTS_ORG = {
+  id: "0a0a0a0a-0000-4000-8000-00000000000a",
+  slug: "acme-dev",
+  name: "Acme Software xDev",
+  role: "owner",
+  emailDomain: null,
+  createdAt: "2026-10-01T03:00:00.000Z",
+};
+export const SHARED_MACHINE_ID = "8e8e8e8e-0000-4000-8000-000000000001";
+export const PERSONAL_MACHINE_ID = "8e8e8e8e-0000-4000-8000-000000000002";
+
+/**
+ * Gói agent trên trang Máy (T063): hai máy (một dùng chung có `accounts-remote`, một cá nhân) và các route
+ * `machines/accounts/*` cùng `machines/setAccount`. Đăng nhập giả lập đúng hợp đồng:
+ * - Claude: `waiting` kèm URL và `needsInput`; gửi mã (`loginInput`) thì `done` với `accountId` "claude-2".
+ * - Codex: `starting` rồi URL + mã thiết bị; sau `codexPolls` lần hỏi thì `done` với "codex-2".
+ * Chữ người dùng dán chỉ được ghi ở `state.pasted` để test kiểm hub nhận đúng, không bao giờ nằm trong phiên trả về.
+ */
+export function machineAccountsFixture(opts: { codexPolls?: number } = {}) {
+  const at = "2026-10-13T08:00:00.000Z";
+  const teamId = "7e7e7e7e-0000-4000-8000-000000000001";
+  const machine = (id: string, name: string, shared: boolean) => ({
+    id,
+    teamId,
+    kind: "worker",
+    name,
+    os: "linux",
+    version: "1.3.0",
+    clis: ["claude", "codex"],
+    capacity: 2,
+    status: "online",
+    lastSeenAt: at,
+    createdAt: at,
+    shared,
+    registeredBy: "u2",
+  });
+  const account = (id: string, cli: string, label: string, over: Record<string, unknown> = {}) => ({
+    id,
+    cli,
+    label,
+    roles: [],
+    enabled: true,
+    loggedIn: true,
+    sessionPct: 32,
+    weekPct: 85,
+    resetsAt: "2026-10-13T11:00:00.000Z",
+    stopAtSession: 0,
+    stopAtWeek: 0,
+    inUse: 0,
+    ...over,
+  });
+  type Login = Record<string, unknown> & { requestId: string; cli: string; status: string };
+  const state = {
+    accounts: [
+      account("claude-1", "claude", "Claude Max team"),
+      account("codex-1", "codex", "Codex Plus", { loggedIn: false, sessionPct: null, weekPct: null, resetsAt: null }),
+    ],
+    login: null as Login | null,
+    polls: 0,
+    pasted: [] as string[],
+  };
+  const codexPolls = opts.codexPolls ?? 2;
+  const session = (over: Record<string, unknown>): Login => ({ ...state.login, ...over }) as Login;
+  const rpc: Record<string, RpcHandler> = {
+    "orgs/mine": () => ok({ orgs: [ACCOUNTS_ORG], canCreateOrg: false }),
+    "teams/list": () =>
+      ok([
+        { id: teamId, slug: "sdlc", name: "AI SDLC", color: "#004CFF", createdAt: at, systemCount: 0, memberCount: 1 },
+      ]),
+    "projects/list": () => ok([]),
+    "orgMembers/list": () => ok([]),
+    "machines/workerRelease": () => ok(null),
+    "machines/list": () =>
+      ok([
+        {
+          ...machine(SHARED_MACHINE_ID, "sdlc-box-01", true),
+          capabilities: ["sdlc", "accounts-remote"],
+          accounts: state.accounts,
+        },
+        { ...machine(PERSONAL_MACHINE_ID, "dev-ha", false), accounts: null },
+      ]),
+    "machines/accounts/list": (input) => {
+      const { machineId } = input as { machineId: string };
+      if (machineId === PERSONAL_MACHINE_ID) {
+        return ok({ machineId, accounts: null, accountsAt: null, remote: false, reason: "personal", login: null });
+      }
+      const active = state.login && ["starting", "waiting"].includes(state.login.status) ? state.login : null;
+      return ok({ machineId, accounts: state.accounts, accountsAt: at, remote: true, reason: null, login: active });
+    },
+    "machines/setAccount": (input) => {
+      const { machineId, accountId, enabled } = input as { machineId: string; accountId: string; enabled: boolean };
+      state.accounts = state.accounts.map((a) => (a.id === accountId ? { ...a, enabled } : a));
+      return ok({ ...machine(machineId, "sdlc-box-01", true), accounts: state.accounts });
+    },
+    "machines/accounts/loginStart": (input) => {
+      const { machineId, cli, label, how } = input as {
+        machineId: string;
+        cli: "claude" | "codex";
+        label: string;
+        how: string;
+      };
+      state.polls = 0;
+      state.login = {
+        requestId: `login-${cli}`,
+        machineId,
+        cli,
+        label,
+        how,
+        status: cli === "claude" ? "waiting" : "starting",
+        url: cli === "claude" ? "https://claude.ai/oauth/authorize?code=true&state=abc" : null,
+        code: null,
+        needsInput: cli === "claude",
+        accountId: null,
+        error: null,
+        startedBy: "u1",
+        startedAt: at,
+        expiresAt: "2026-10-13T08:10:00.000Z",
+      };
+      return ok(state.login);
+    },
+    "machines/accounts/loginGet": () => {
+      if (!state.login) return fail("NOT_FOUND", 404, "Không có phiên đăng nhập.");
+      if (state.login.cli === "codex" && state.login.status !== "done") {
+        state.polls += 1;
+        state.login =
+          state.polls > codexPolls
+            ? session({ status: "done", url: null, code: null, accountId: "codex-2" })
+            : session({ status: "waiting", url: "https://auth.openai.com/codex/device", code: "ABCD-1234" });
+        if (state.login.status === "done") {
+          state.accounts = [...state.accounts, account("codex-2", "codex", String(state.login.label))];
+        }
+      }
+      return ok(state.login);
+    },
+    "machines/accounts/loginInput": (input) => {
+      const { text } = input as { text: string };
+      state.pasted.push(text);
+      state.login = session({ status: "done", needsInput: false, accountId: "claude-2" });
+      state.accounts = [...state.accounts, account("claude-2", "claude", String(state.login.label))];
+      return ok(state.login);
+    },
+    "machines/accounts/loginCancel": () => {
+      state.login = session({ status: "cancelled", needsInput: false });
+      return ok(state.login);
+    },
+  };
+  return { state, rpc };
+}
+
+const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
+const fromB64 = (data: string) => Buffer.from(data, "base64").toString("utf8");
+
+export const TERMINAL_ORG = ACCOUNTS_ORG;
+export const TERMINAL_PROJECT = { id: "9a9a9a9a-0000-4000-8000-000000000001", key: "PAY", name: "payment-api" };
+export const TERMINAL_MACHINE = "8e8e8e8e-0000-4000-8000-0000000000a1";
+export const TERMINAL_BUSY_MACHINE = "8e8e8e8e-0000-4000-8000-0000000000a2";
+export const TERMINAL_OFFLINE_MACHINE = "8e8e8e8e-0000-4000-8000-0000000000a3";
+export const TERMINAL_THREAD = "4d4d4d4d-0000-4000-8000-0000000000a1";
+export const TERMINAL_SESSION_ID = "7b7b7b7b-0000-4000-8000-0000000000a1";
+const T0 = "2026-10-14T01:00:00.000Z";
+
+export function terminalSession(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: TERMINAL_SESSION_ID,
+    projectId: TERMINAL_PROJECT.id,
+    projectKey: TERMINAL_PROJECT.key,
+    projectName: TERMINAL_PROJECT.name,
+    machineId: TERMINAL_MACHINE,
+    machineName: "sdlc-box-01",
+    ownerId: USER.id,
+    ownerName: USER.name,
+    isOwner: true,
+    mode: "propose",
+    model: "sonnet",
+    advisor: null,
+    state: "running",
+    visibility: "private",
+    permissions: "workspace",
+    accountLabel: "Claude Max team",
+    threadId: TERMINAL_THREAD,
+    cols: 120,
+    rows: 32,
+    exitCode: null,
+    endReason: null,
+    bytes: 0,
+    createdAt: T0,
+    endedAt: null,
+    ...over,
+  };
+}
+
+export function terminalProposal(over: Record<string, unknown> = {}) {
+  return {
+    id: "6f6f6f6f-0000-4000-8000-0000000000a1",
+    threadId: TERMINAL_THREAD,
+    action: {
+      type: "task.create",
+      projectId: TERMINAL_PROJECT.id,
+      title: "Thêm hoàn tiền một phần",
+      body: "",
+      tier: "medium",
+      tierReason: "Một màn UI kèm e2e.",
+    },
+    status: "pending",
+    expiresAt: "2026-10-15T01:00:00.000Z",
+    decidedBy: null,
+    reason: null,
+    createdAt: "2026-10-14T01:05:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * Terminal Leader (route `terminal.*`): máy, phiên, đề xuất và nhật ký Bypass. `state` cho test đọc body đã gửi lên
+ * và đổi dữ liệu giữa các lần hỏi lại. Máy `busy` và máy offline có sẵn để thử cách hộp thoại xử lý.
+ */
+export function terminalFixture(
+  opts: { session?: Record<string, unknown>; options?: Record<string, unknown>; chunks?: string[] } = {},
+) {
+  const state = {
+    session: terminalSession(opts.session),
+    sessions: [] as Record<string, unknown>[],
+    proposals: [terminalProposal()] as Record<string, unknown>[],
+    actions: [] as Record<string, unknown>[],
+    canInput: true,
+    tickets: 0,
+    opened: [] as unknown[],
+    approved: [] as unknown[],
+    rejected: [] as unknown[],
+    closed: 0,
+    visibility: [] as unknown[],
+    chunkCalls: [] as unknown[],
+  };
+  state.sessions = [state.session];
+  const chunks = (opts.chunks ?? []).map((text, seq) => ({ seq, data: b64(text) }));
+  const machine = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    online: true,
+    fullAccess: false,
+    busy: false,
+    accounts: [
+      { id: "claude-1", label: "Claude Max team", loggedIn: true, sessionPct: 32, weekPct: 85 },
+      { id: "claude-2", label: "Claude Pro Ha", loggedIn: false, sessionPct: null, weekPct: null },
+    ],
+    ...over,
+  });
+  const rpc: Record<string, RpcHandler> = {
+    "orgs/mine": () => ok({ orgs: [TERMINAL_ORG], canCreateOrg: false }),
+    "projects/list": () => ok([TERMINAL_PROJECT]),
+    "leader/threads/list": () => ok([]),
+    "leader/approvals/list": () => ok([]),
+    "terminal/options": () =>
+      ok({
+        enabled: true,
+        allowed: true,
+        machines: [
+          machine(TERMINAL_MACHINE, "sdlc-box-01", { fullAccess: true }),
+          machine(TERMINAL_BUSY_MACHINE, "sdlc-box-02", { busy: true }),
+          machine(TERMINAL_OFFLINE_MACHINE, "sdlc-box-03", { online: false }),
+        ],
+        defaultModel: "sonnet",
+        advisor: null,
+        costs: [
+          { model: "sonnet", avgRunUsd: 0.42, runs: 31 },
+          { model: "opus", avgRunUsd: null, runs: 0 },
+        ],
+        ...opts.options,
+      }),
+    "terminal/open": (input) => {
+      state.opened.push(input);
+      const body = input as { mode: string; model: string; machineId: string };
+      state.session = terminalSession({
+        ...opts.session,
+        mode: body.mode,
+        model: body.model,
+        machineId: body.machineId,
+      });
+      state.sessions = [state.session];
+      return ok(state.session);
+    },
+    "terminal/list": () => ok(state.sessions),
+    "terminal/get": () => ok(state.session),
+    "terminal/ticket": () => {
+      state.tickets += 1;
+      return ok({ ticket: `ticket-${state.tickets}`, expiresAt: "2026-10-14T01:01:00.000Z", canInput: state.canInput });
+    },
+    "terminal/activity": () => ok({ proposals: state.proposals, actions: state.actions }),
+    "terminal/chunks": (input) => {
+      state.chunkCalls.push(input);
+      const { after } = input as { after: number };
+      return ok({ chunks: chunks.filter((chunk) => chunk.seq > after), more: false });
+    },
+    "terminal/close": () => {
+      state.closed += 1;
+      state.session = { ...state.session, state: "closed", endReason: "closed", endedAt: T0 };
+      return ok(state.session);
+    },
+    "terminal/setVisibility": (input) => {
+      state.visibility.push(input);
+      state.session = { ...state.session, visibility: (input as { visibility: string }).visibility };
+      return ok(state.session);
+    },
+    "leader/approvals/approve": (input) => {
+      state.approved.push(input);
+      const { id, tier } = input as { id: string; tier?: string };
+      state.proposals = state.proposals.map((p) =>
+        p.id === id ? { ...p, status: "approved", action: { ...(p.action as object), ...(tier ? { tier } : {}) } } : p,
+      );
+      return ok({ approval: state.proposals[0], result: { taskKey: "PAY-12" } });
+    },
+    "leader/approvals/reject": (input) => {
+      state.rejected.push(input);
+      const { id, reason } = input as { id: string; reason: string };
+      state.proposals = state.proposals.map((p) => (p.id === id ? { ...p, status: "rejected", reason } : p));
+      return ok(state.proposals[0]);
+    },
+  };
+  return { state, rpc };
+}
+
+/**
+ * WebSocket `/ws/terminal` giả. Mỗi lần nối là một phần tử của `sockets`: ghi khung trình duyệt gửi (`received`),
+ * trả `hello` ngay khi nối, phát `out` cho khung `in` (echo) và `pong` cho `ping`. Test chủ động `send` hoặc `drop`.
+ */
+export async function fakeTerminalSocket(
+  page: Page,
+  fixture: ReturnType<typeof terminalFixture>,
+  opts: { echo?: boolean } = {},
+) {
+  type Frame = Record<string, unknown> & { t: string };
+  const sockets: { url: string; received: Frame[]; ws: WebSocketRoute; seq: number }[] = [];
+  const controller = {
+    sockets,
+    /** Khung `out` cuối cùng đã phát, để test kiểm `resume`. */
+    get last() {
+      return sockets[sockets.length - 1];
+    },
+    send(frame: unknown) {
+      controller.last?.ws.send(JSON.stringify(frame));
+    },
+    out(text: string) {
+      const socket = controller.last;
+      if (!socket) return;
+      socket.ws.send(JSON.stringify({ t: "out", seq: socket.seq, data: b64(text) }));
+      socket.seq += 1;
+    },
+    drop(code = 1006) {
+      controller.last?.ws.close({ code, reason: "test" });
+    },
+    inputs(): string[] {
+      return sockets.flatMap((s) => s.received.filter((f) => f.t === "in").map((f) => fromB64(String(f.data))));
+    },
+  };
+  await page.routeWebSocket(/\/ws\/terminal/, (ws) => {
+    const socket = { url: ws.url(), received: [] as Frame[], ws, seq: 0 };
+    // `seq` tiếp nối giữa các lần nối: hub đánh số trong phiên, không theo kết nối.
+    const previous = sockets[sockets.length - 1];
+    if (previous) socket.seq = previous.seq;
+    sockets.push(socket);
+    ws.send(JSON.stringify({ t: "hello", session: fixture.state.session, canInput: fixture.state.canInput }));
+    ws.onMessage((raw) => {
+      const frame = JSON.parse(String(raw)) as Frame;
+      socket.received.push(frame);
+      if (frame.t === "ping") ws.send(JSON.stringify({ t: "pong" }));
+      if (frame.t === "in" && opts.echo !== false && fixture.state.canInput)
+        controller.out(fromB64(String(frame.data)));
+    });
+  });
+  return controller;
 }

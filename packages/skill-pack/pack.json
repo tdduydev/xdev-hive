@@ -1,0 +1,526 @@
+{
+  "source": {
+    "repo": "tdduydev/xdev-skills",
+    "commit": "fb33b3b474af0737c4974d50c82ce87dd3cd9b1c",
+    "path": "library"
+  },
+  "skills": [
+    {
+      "name": "ui-ux-pro-max",
+      "description": "UI/UX design intelligence for web, mobile, and desktop. This skill should be used when designing, building, reviewing, or fixing interfaces, including pages, components, design systems, accessibility, interaction, responsive layout, typography, color, charts, and stack-specific UI implementation. Searchable local data: 79 searchable styles (50 active), 192 product palettes and reasoning profiles, 74 font pairings, 119 UX guidelines, 105 icons, 17 GSAP presets, 25 chart types, and 22 stacks.",
+      "group": "ui",
+      "defaultOn": true,
+      "license": "MIT",
+      "upstream": {
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+        "commit": "7246805992a42b7bba37d4cac83b01416f0c6c44",
+        "path": ".claude/skills/ui-ux-pro-max",
+        "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/tree/7246805992a42b7bba37d4cac83b01416f0c6c44/.claude/skills/ui-ux-pro-max"
+      },
+      "hash": "8dcc8c69197750b390ce880d7a3f3637549bcdf9bbd845c508ef4cc738e993ba",
+      "version": 1,
+      "files": 75,
+      "bytes": 3584561
+    },
+    {
+      "name": "ui-styling",
+      "description": "Create beautiful, accessible user interfaces with shadcn/ui components (built on Radix UI + Tailwind), Tailwind CSS utility-first styling, and canvas-based visual designs. Use when building user interfaces, implementing design systems, creating responsive layouts, adding accessible components (dialogs, dropdowns, forms, tables), customizing themes and colors, implementing dark mode, generating visual designs and posters, or establishing consistent styling patterns across applications.",
+      "group": "ui",
+      "defaultOn": false,
+      "license": "MIT AND Apache-2.0",
+      "upstream": {
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+        "commit": "7246805992a42b7bba37d4cac83b01416f0c6c44",
+        "path": ".claude/skills/ui-styling",
+        "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/tree/7246805992a42b7bba37d4cac83b01416f0c6c44/.claude/skills/ui-styling"
+      },
+      "hash": "09252cda3edb57b6824862f49491d14e9b30e52984752ade57f474ad62814b66",
+      "version": 1,
+      "files": 18,
+      "bytes": 179343
+    },
+    {
+      "name": "design-system",
+      "description": "Token architecture, component specifications, and slide generation. Three-layer tokens (primitive→semantic→component), CSS variables, spacing/typography scales, component specs, strategic slide creation. Use for design tokens, systematic design, brand-compliant presentations.",
+      "group": "ui",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+        "commit": "7246805992a42b7bba37d4cac83b01416f0c6c44",
+        "path": ".claude/skills/design-system",
+        "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/tree/7246805992a42b7bba37d4cac83b01416f0c6c44/.claude/skills/design-system"
+      },
+      "hash": "1fbf58c4bee6440eff459f809c5c933ab2a4c61a266d4b6f58ad996f67cb05e6",
+      "version": 1,
+      "files": 29,
+      "bytes": 184213
+    },
+    {
+      "name": "frontend-design",
+      "description": "Guidance for distinctive, intentional visual design when building new UI or reshaping an existing one. Helps with aesthetic direction, typography, and making choices that don't read as templated defaults.",
+      "group": "ui",
+      "defaultOn": false,
+      "license": "Apache-2.0",
+      "upstream": {
+        "repo": "anthropics/skills",
+        "commit": "dbd4588f9e1033efb41dad4bef2f7947c8993d44",
+        "path": "skills/frontend-design",
+        "url": "https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/frontend-design"
+      },
+      "hash": "703bc837a02ad55cd32016e861fb55f8b938707bbad212a9919ed8de4fc32565",
+      "version": 1,
+      "files": 3,
+      "bytes": 20032
+    },
+    {
+      "name": "web-design-guidelines",
+      "description": "Review UI code for Web Interface Guidelines compliance. Use when asked to \"review my UI\", \"check accessibility\", \"audit design\", \"review UX\", or \"check my site against best practices\".",
+      "group": "ui",
+      "defaultOn": true,
+      "license": "MIT",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "commit": "063bee94c3f4df8453406c830b0a7df0f2860278",
+        "path": "skills/web-design-guidelines",
+        "url": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278/skills/web-design-guidelines"
+      },
+      "hash": "fcceb3a48acf64bc424c0c3705404d36aa7a503d46a207d6a591232af439e82c",
+      "version": 1,
+      "files": 5,
+      "bytes": 12921
+    },
+    {
+      "name": "vercel-react-best-practices",
+      "description": "React and Next.js performance optimization guidelines from Vercel Engineering. This skill should be used when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, or performance improvements.",
+      "group": "ui",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "commit": "063bee94c3f4df8453406c830b0a7df0f2860278",
+        "path": "skills/react-best-practices",
+        "url": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278/skills/react-best-practices"
+      },
+      "hash": "3cb6a688064d2f1ea5d8009996a80340396b7641d5e78a25e02eefc16e2b722a",
+      "version": 1,
+      "files": 78,
+      "bytes": 232448
+    },
+    {
+      "name": "vercel-composition-patterns",
+      "description": "React composition patterns that scale. Use when refactoring components with boolean prop proliferation, building flexible component libraries, or designing reusable APIs. Triggers on tasks involving compound components, render props, context providers, or component architecture. Includes React 19 API changes.",
+      "group": "ui",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "vercel-labs/agent-skills",
+        "commit": "063bee94c3f4df8453406c830b0a7df0f2860278",
+        "path": "skills/composition-patterns",
+        "url": "https://github.com/vercel-labs/agent-skills/tree/063bee94c3f4df8453406c830b0a7df0f2860278/skills/composition-patterns"
+      },
+      "hash": "47a66a9b15316c617399f99905b7c0a3eab6614490d32d366ee1e8fe357651fe",
+      "version": 1,
+      "files": 16,
+      "bytes": 52404
+    },
+    {
+      "name": "shadcn",
+      "description": "Manages shadcn components and projects — adding, searching, fixing, debugging, styling, and composing UI, including chat interfaces. Provides project context, component docs, and usage examples. Applies when working with shadcn/ui, component registries, presets, --preset codes, or any project with a components.json file. Also triggers for \"shadcn init\", \"create an app with --preset\", \"switch to --preset\", and for building a design system or applying a DESIGN.md or brand spec to shadcn/ui.",
+      "group": "ui",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "shadcn-ui/ui",
+        "commit": "30a58d4498f270af1c1e981a7d78a15cf5740841",
+        "path": "skills/shadcn",
+        "url": "https://github.com/shadcn-ui/ui/tree/30a58d4498f270af1c1e981a7d78a15cf5740841/skills/shadcn"
+      },
+      "hash": "bff5207cb646616101238c43269d71b53a373e3c95ca4ba5543655029597f5b8",
+      "version": 1,
+      "files": 19,
+      "bytes": 134538
+    },
+    {
+      "name": "test-driven-development",
+      "description": "Use when implementing any feature or bugfix, before writing implementation code",
+      "group": "engineering",
+      "defaultOn": true,
+      "license": "MIT",
+      "upstream": {
+        "repo": "obra/superpowers",
+        "commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+        "path": "skills/test-driven-development",
+        "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/test-driven-development"
+      },
+      "hash": "6ab5175627d2df800fe4ffb8639b03aa37cdc015bd8fd5684fa47a3901d6cf8f",
+      "version": 1,
+      "files": 4,
+      "bytes": 19407
+    },
+    {
+      "name": "systematic-debugging",
+      "description": "Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes",
+      "group": "engineering",
+      "defaultOn": true,
+      "license": "MIT",
+      "upstream": {
+        "repo": "obra/superpowers",
+        "commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+        "path": "skills/systematic-debugging",
+        "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/systematic-debugging"
+      },
+      "hash": "0196d0ddded6a9e30480b3a7cf2435042130152200fa67cfec5e9811c803ae53",
+      "version": 1,
+      "files": 8,
+      "bytes": 30693
+    },
+    {
+      "name": "verification-before-completion",
+      "description": "Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always",
+      "group": "engineering",
+      "defaultOn": true,
+      "license": "MIT",
+      "upstream": {
+        "repo": "obra/superpowers",
+        "commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+        "path": "skills/verification-before-completion",
+        "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/verification-before-completion"
+      },
+      "hash": "2c1f3e4bf9b54575b456971256cd512026aec531de2a98fe73159720b1cf05b7",
+      "version": 1,
+      "files": 3,
+      "bytes": 5235
+    },
+    {
+      "name": "brainstorming",
+      "description": "You MUST use this before any creative work - creating features, building components, adding functionality, modifying behavior, or planning anything new, in software or out of it (a talk, a business, a renovation).",
+      "group": "engineering",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "obra/superpowers",
+        "commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+        "path": "skills/brainstorming",
+        "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/brainstorming"
+      },
+      "hash": "712007f192f890ea27bd879c8dd5e0f7cd1ac41c9dd724cf4d7794ecb7e98d9f",
+      "version": 1,
+      "files": 10,
+      "bytes": 75557
+    },
+    {
+      "name": "writing-plans",
+      "description": "Use when you have a spec or requirements for a multi-step task, before touching code",
+      "group": "engineering",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "obra/superpowers",
+        "commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+        "path": "skills/writing-plans",
+        "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/writing-plans"
+      },
+      "hash": "6071d863d56aa83c92f68810e199bc7286e6ee6a0ec29cc2d88d6c08d591ab1d",
+      "version": 1,
+      "files": 3,
+      "bytes": 11856
+    },
+    {
+      "name": "requesting-code-review",
+      "description": "Use when completing tasks, implementing major features, or before merging to verify work meets requirements",
+      "group": "engineering",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "obra/superpowers",
+        "commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+        "path": "skills/requesting-code-review",
+        "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/requesting-code-review"
+      },
+      "hash": "27f97a4867c6756c38aa864367ce5d13deec750735012ed35b8811e08eae8c85",
+      "version": 1,
+      "files": 4,
+      "bytes": 10980
+    },
+    {
+      "name": "receiving-code-review",
+      "description": "Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation",
+      "group": "engineering",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "obra/superpowers",
+        "commit": "bb92a77741419a4ab5f06e711a283343f1ada0c3",
+        "path": "skills/receiving-code-review",
+        "url": "https://github.com/obra/superpowers/tree/bb92a77741419a4ab5f06e711a283343f1ada0c3/skills/receiving-code-review"
+      },
+      "hash": "e4c2dc4b9c47ad795e010f67158ef7ed47f6f57a0dc86f97652b60b5378b2cb6",
+      "version": 1,
+      "files": 3,
+      "bytes": 7756
+    },
+    {
+      "name": "webapp-testing",
+      "description": "Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs.",
+      "group": "testing",
+      "defaultOn": false,
+      "license": "Apache-2.0",
+      "upstream": {
+        "repo": "anthropics/skills",
+        "commit": "dbd4588f9e1033efb41dad4bef2f7947c8993d44",
+        "path": "skills/webapp-testing",
+        "url": "https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/webapp-testing"
+      },
+      "hash": "c14da2968d0d2608746d407c7369378996d62df33cee9a015d8457e6ae8538bc",
+      "version": 1,
+      "files": 7,
+      "bytes": 22858
+    },
+    {
+      "name": "differential-review",
+      "description": "Performs security-focused differential review of code changes. Adapts analysis depth to codebase size, uses git blame for context, calculates blast radius by counting callers, checks test coverage of modified code, and generates a markdown report. Use when reviewing a PR, commit, or diff for security vulnerabilities, checking whether a change re-introduces a previously fixed bug, asking what else a change could break, or finding which modified code has no test covering it.",
+      "group": "security",
+      "defaultOn": false,
+      "license": "CC-BY-SA-4.0",
+      "upstream": {
+        "repo": "trailofbits/skills",
+        "commit": "8e54050ae63c2f62224c35b1616efe71865b4777",
+        "path": "plugins/differential-review/skills/differential-review",
+        "url": "https://github.com/trailofbits/skills/tree/8e54050ae63c2f62224c35b1616efe71865b4777/plugins/differential-review/skills/differential-review"
+      },
+      "hash": "d137b6a6011747c7faf3861f0f559a592289a21bad6ae5fe7f22f606a5fcc2f1",
+      "version": 1,
+      "files": 9,
+      "bytes": 57363
+    },
+    {
+      "name": "sharp-edges",
+      "description": "Identifies error-prone APIs, dangerous configurations, and footgun designs that enable security mistakes. Use when reviewing API designs, configuration schemas, cryptographic library ergonomics, or evaluating whether code follows 'secure by default' and 'pit of success' principles. Triggers: footgun, misuse-resistant, secure defaults, API usability, dangerous configuration.",
+      "group": "security",
+      "defaultOn": false,
+      "license": "CC-BY-SA-4.0",
+      "upstream": {
+        "repo": "trailofbits/skills",
+        "commit": "8e54050ae63c2f62224c35b1616efe71865b4777",
+        "path": "plugins/sharp-edges/skills/sharp-edges",
+        "url": "https://github.com/trailofbits/skills/tree/8e54050ae63c2f62224c35b1616efe71865b4777/plugins/sharp-edges/skills/sharp-edges"
+      },
+      "hash": "8e9951d4bb0ee68c5d2804224179f3c1d37c71f54c5d0152fb8fdb49b262468e",
+      "version": 1,
+      "files": 21,
+      "bytes": 151269
+    },
+    {
+      "name": "mcp-builder",
+      "description": "Guide for creating high-quality MCP (Model Context Protocol) servers that enable LLMs to interact with external services through well-designed tools. Use when building MCP servers to integrate external APIs or services, whether in Python (FastMCP) or Node/TypeScript (MCP SDK).",
+      "group": "tools",
+      "defaultOn": false,
+      "license": "Apache-2.0",
+      "upstream": {
+        "repo": "anthropics/skills",
+        "commit": "dbd4588f9e1033efb41dad4bef2f7947c8993d44",
+        "path": "skills/mcp-builder",
+        "url": "https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/mcp-builder"
+      },
+      "hash": "99f3d86440c12d908111cac9dd0f238ae0aa5f0e6f270b55b9fd40d2988dc796",
+      "version": 1,
+      "files": 11,
+      "bytes": 122208
+    },
+    {
+      "name": "skill-creator",
+      "description": "Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better triggering accuracy.",
+      "group": "tools",
+      "defaultOn": false,
+      "license": "Apache-2.0",
+      "upstream": {
+        "repo": "anthropics/skills",
+        "commit": "dbd4588f9e1033efb41dad4bef2f7947c8993d44",
+        "path": "skills/skill-creator",
+        "url": "https://github.com/anthropics/skills/tree/dbd4588f9e1033efb41dad4bef2f7947c8993d44/skills/skill-creator"
+      },
+      "hash": "ceac086a390346e72bc7367bc5bcaa79793d47e6c4bc144c897fe0ef1abcbba9",
+      "version": 1,
+      "files": 19,
+      "bytes": 225452
+    },
+    {
+      "name": "speckit-constitution",
+      "description": "Create or update the project constitution from interactive or provided principle inputs.",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "be1c8a6c0ddaa1b09df5138f39417e8b583738ef540296f3b2aab1acc4e9c23e",
+      "version": 1,
+      "files": 3,
+      "bytes": 12399
+    },
+    {
+      "name": "speckit-specify",
+      "description": "Create or update the feature specification from a natural language feature description.",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "738eddba622d556b4960c22bb960e8a655a8fdd8e137a5bc0348171116d514c3",
+      "version": 1,
+      "files": 3,
+      "bytes": 20504
+    },
+    {
+      "name": "speckit-clarify",
+      "description": "Identify underspecified areas in the current feature spec by asking up to 5 highly targeted clarification questions and encoding answers back into the spec.",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "d71ff06554b5004cbecc5f14ec10e2d015ea6c35792056356238c523dd4ec6db",
+      "version": 1,
+      "files": 3,
+      "bytes": 21566
+    },
+    {
+      "name": "speckit-plan",
+      "description": "Execute the implementation planning workflow using the plan template to generate design artifacts.",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "d88eb7603c562232e959113f7079c5397977658046e7891e002c21e4e7c30ff1",
+      "version": 1,
+      "files": 3,
+      "bytes": 10093
+    },
+    {
+      "name": "speckit-tasks",
+      "description": "Generate an actionable, dependency-ordered tasks.md for the feature based on available design artifacts.",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "103ad1e8b3fd5ee0a1e4c6ed56cfa2406862180854eb03e4e4060a2e5d3473b4",
+      "version": 1,
+      "files": 3,
+      "bytes": 13434
+    },
+    {
+      "name": "speckit-analyze",
+      "description": "Perform a non-destructive cross-artifact consistency and quality analysis across spec.md, plan.md, and tasks.md after task generation.",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "f82e9c601c79a781cb6a4f27ee8d9afbed82a1e8ad4ec153072b16b8ada0c32b",
+      "version": 1,
+      "files": 3,
+      "bytes": 13894
+    },
+    {
+      "name": "speckit-checklist",
+      "description": "Generate a custom checklist for the current feature based on user requirements.",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "4238bf6c69c9100e13ca296d961747ed6c40ef6acb96cb47eae6b739a6ea1d8a",
+      "version": 1,
+      "files": 3,
+      "bytes": 24520
+    },
+    {
+      "name": "speckit-implement",
+      "description": "Execute the implementation plan by processing and executing all tasks defined in tasks.md",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "fa442c8a29555f6b9d9f51dfa2a02b253028b4390a60ebb44c97b27898f41c82",
+      "version": 1,
+      "files": 3,
+      "bytes": 14958
+    },
+    {
+      "name": "speckit-converge",
+      "description": "Assess the current codebase against the feature's spec, plan, and tasks, then append any remaining unbuilt work as new tasks to tasks.md so implement can complete it.",
+      "group": "sdlc",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": {
+        "repo": "github/spec-kit",
+        "commit": "0282d03eb6fc3091b3deaa3a855d4030dc40cd6c",
+        "path": "",
+        "url": "https://github.com/github/spec-kit"
+      },
+      "hash": "615184b6f8a51f11468099218742c59f495d05e08321848f493ca1bbbe90fb81",
+      "version": 1,
+      "files": 3,
+      "bytes": 15265
+    },
+    {
+      "name": "hive-run-etiquette",
+      "description": "How to work inside an xDev Hive run — read the brief, search team memory, explore narrowly, commit in small steps and report clearly. Use at the start of every Hive code or review run, and whenever you are unsure how much to explore or what to hand back.",
+      "group": "hive",
+      "defaultOn": true,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "c97112392618a692aa145391b749381f749ffd7a003f7d2a2a913c4bfbe4ea3c",
+      "version": 1,
+      "files": 3,
+      "bytes": 4411
+    },
+    {
+      "name": "vietnamese-ui-copy",
+      "description": "Write and review Vietnamese interface text — labels, buttons, empty states, errors, toasts — with one consistent voice, Vietnamese terms instead of stray English, and Vietnamese date, number and currency formats. Use whenever a task adds or changes text users see in a Vietnamese UI.",
+      "group": "hive",
+      "defaultOn": true,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "a02a6da9b74dd7039bd33d7937e0b3d0bb04c9b1e1ff8df72762a49d94828211",
+      "version": 1,
+      "files": 3,
+      "bytes": 5988
+    }
+  ]
+}
