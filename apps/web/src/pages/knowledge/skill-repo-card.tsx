@@ -13,8 +13,17 @@ import {
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill, type PillProps } from "@xdev-hive/ui/pill";
+import { EllipsisIcon, TriangleAlertIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
@@ -48,6 +57,9 @@ const text: Dict<{
   cancel: string;
   removeTitle: string;
   removeBody: string;
+  more: string;
+  errorLabel: string;
+  warnLabel: string;
 }> = {
   vi: {
     aria: "Kho skill",
@@ -78,6 +90,9 @@ const text: Dict<{
     cancel: "Huỷ",
     removeTitle: "Gỡ kho skill?",
     removeBody: "Skill trên hub giữ nguyên nhưng không còn đồng bộ với Git. Webhook trên repo sẽ được gỡ.",
+    more: "Thêm thao tác với kho skill",
+    errorLabel: "Lỗi đồng bộ",
+    warnLabel: "Cảnh báo",
   },
   en: {
     aria: "Skill repository",
@@ -108,6 +123,9 @@ const text: Dict<{
     cancel: "Cancel",
     removeTitle: "Disconnect the skill repository?",
     removeBody: "Skills stay on the hub but no longer sync with Git. The repository webhook is removed.",
+    more: "More actions for the skill repository",
+    errorLabel: "Sync error",
+    warnLabel: "Warning",
   },
 };
 
@@ -151,8 +169,8 @@ export function SkillRepoCard() {
   return (
     <DetailCard>
       <section aria-label={t.aria} className="flex min-w-0 flex-col gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="min-w-0 flex-1 basis-64">
             <p className="text-xs text-muted-foreground">{t.label}</p>
             {r ? (
               <p className="flex flex-wrap items-center gap-2">
@@ -163,25 +181,36 @@ export function SkillRepoCard() {
                   {t.status[r.status]}
                 </Pill>
               </p>
+            ) : repo.isPending ? (
+              <Skeleton className="mt-1 h-5 w-48" />
             ) : (
-              <p className="font-medium">{repo.isPending ? "…" : t.none}</p>
+              <p className="font-medium">{t.none}</p>
             )}
           </div>
-          {r && (admin || can("skills.write")) && (
-            <Button size="sm" disabled={sync.isPending || r.status === "syncing"} onClick={() => sync.mutate()}>
-              {r.status === "syncing" ? t.syncing : t.sync}
-            </Button>
-          )}
-          {admin && (
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-              {r ? t.change : t.connect}
-            </Button>
-          )}
-          {admin && r && (
-            <Button variant="outline" size="sm" onClick={() => setRemoving(true)}>
-              {t.remove}
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {r && (admin || can("skills.write")) && (
+              <Button size="sm" disabled={sync.isPending || r.status === "syncing"} onClick={() => sync.mutate()}>
+                {r.status === "syncing" ? t.syncing : t.sync}
+              </Button>
+            )}
+            {admin && (
+              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                {r ? t.change : t.connect}
+              </Button>
+            )}
+            {admin && r && (
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t.more} />}>
+                  <EllipsisIcon aria-hidden="true" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem variant="destructive" onClick={() => setRemoving(true)}>
+                    {t.remove}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
         {r ? (
           <p className="text-xs text-muted-foreground">
@@ -193,14 +222,17 @@ export function SkillRepoCard() {
           !repo.isPending && <p className="text-sm text-muted-foreground">{t.noneHint}</p>
         )}
         {r?.error && (
+          // Nhãn và biểu tượng đi cùng màu để cảnh báo và lỗi không chỉ khác nhau ở màu chữ.
           <p
-            className={
-              r.status === "failed"
-                ? "text-sm whitespace-pre-line text-destructive"
-                : "text-sm whitespace-pre-line text-warning"
-            }
+            className={cx(
+              "flex items-start gap-2 text-sm whitespace-pre-line",
+              r.status === "failed" ? "text-destructive" : "text-warning",
+            )}
           >
-            {r.error}
+            <TriangleAlertIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <span>
+              <strong>{r.status === "failed" ? t.errorLabel : t.warnLabel}:</strong> {r.error}
+            </span>
           </p>
         )}
         {(sync.isError || remove.isError) && (

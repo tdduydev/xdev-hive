@@ -184,6 +184,43 @@ test("danh sách dự án: hiện dự án và dẫn tới bảng việc của d
   await expect(page).toHaveURL(/\/projects\/PAY/);
 });
 
+test("danh sách dự án: bấm dòng mở cấu hình, nút ⋯ mở bảng việc, bảng không cuộn ngang ở 1100px", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await open(page, "member");
+  await page.goto("/projects");
+  const table = page.getByRole("table");
+  await expect(table.getByRole("columnheader", { name: "Trạng thái" })).toBeVisible();
+  const scroll = await table.evaluate((el) => {
+    const box = el.closest<HTMLElement>("[data-slot=table-container]");
+    return box ? box.scrollWidth - box.clientWidth : -1;
+  });
+  expect(scroll).toBeLessThanOrEqual(0);
+  await page
+    .getByRole("button", { name: /Thao tác với dự án/ })
+    .first()
+    .click();
+  await page.getByRole("menuitem", { name: "Bảng việc" }).click();
+  await expect(page).toHaveURL(/\/projects\/PAY$/);
+  await page.goto("/projects");
+  await page
+    .getByRole("row", { name: /payment-api/ })
+    .getByText("Hoạt động")
+    .click();
+  await expect(page).toHaveURL("/projects/PAY/settings");
+});
+
+test("danh sách dự án: lỗi tải có nút tải lại", async ({ page }) => {
+  let broken = true;
+  await open(page, "member", {
+    "projects/list": () => (broken ? fail("FORBIDDEN", 403, "Bạn không có quyền xem dự án.") : ok([PROJECT])),
+  });
+  await page.goto("/projects");
+  await expect(page.getByRole("alert")).toContainText("Bạn không có quyền xem dự án.");
+  broken = false;
+  await page.getByRole("button", { name: "Tải lại" }).click();
+  await expect(page.getByText("payment-api").first()).toBeVisible();
+});
+
 test("cấu hình dự án: lưu từng mục, bật toàn quyền phải xác nhận, rời trang khi chưa lưu thì hỏi", async ({ page }) => {
   // Hub giữ bản đã lưu giữa hai lần lưu, như hub thật: lần lưu mục sau không trả lại ngân sách cũ.
   let settings = PROJECT.settings;
