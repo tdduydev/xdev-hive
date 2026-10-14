@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import type { AuditLogItem, AuditQueryInput, AuditRetention, AuditRetentionInput } from "@xdev-hive/contracts";
 import { fail, fakeAuditExport, fakeHub, ok, type RpcHandler } from "./fake-hub.ts";
@@ -69,7 +70,7 @@ async function setup(
 test("server filters compose and cursor navigation sends the selected organization", async ({ page }) => {
   const hub = await setup(page);
   await page.goto("/admin/audit");
-  await expect(page.getByRole("heading", { name: "Nhật ký" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Nhật ký", exact: true })).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "payment-api" })).toHaveCount(20);
   await page.getByRole("button", { name: "Trang sau của nhật ký" }).click();
   await expect(page.getByRole("row").filter({ hasText: "payment-api" })).toHaveCount(5);
@@ -125,7 +126,8 @@ test("exports CSV and JSON with the current server filters", async ({ page }, te
   await page.getByLabel("Tìm đối tượng, người làm, IP…", { exact: true }).fill("payment-api-0");
   for (const format of ["CSV", "JSON"]) {
     const waiting = page.waitForEvent("download");
-    await page.getByRole("button", { name: `Xuất ${format}`, exact: true }).click();
+    await page.getByRole("button", { name: "Xuất", exact: true }).click();
+    await page.getByRole("menuitem", { name: `Xuất ${format}`, exact: true }).click();
     const download = await waiting;
     expect(download.suggestedFilename()).toBe(`audit.${format.toLowerCase()}`);
     const path = testInfo.outputPath(download.suggestedFilename());
@@ -152,13 +154,14 @@ test("administrator sees loading state and export errors", async ({ page }) => {
     await route.fulfill(ok({ items: rows.slice(0, 20), nextCursor: "next-page" }));
   });
   await page.goto("/admin/audit");
-  await expect(page.getByRole("status").filter({ hasText: "Đang tải…" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Đang tải nhật ký…" })).toBeVisible();
   release();
   await expect(page.getByRole("row").filter({ hasText: "payment-api" })).toHaveCount(20);
   await page.route("**/rpc/audit/export", (route) =>
     route.fulfill(fail("FORBIDDEN", 403, "Bạn không có quyền xuất nhật ký.")),
   );
-  await page.getByRole("button", { name: "Xuất CSV", exact: true }).click();
+  await page.getByRole("button", { name: "Xuất", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Xuất CSV", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Bạn không có quyền xuất nhật ký.");
 });
 
@@ -207,7 +210,7 @@ test("auditors with audit.read see the retention but cannot change it", async ({
   await expect(page.getByText("Chỉ đọc, giữ 365 ngày.")).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "payment-api" })).toHaveCount(20);
   await expect(page.getByLabel("Thời hạn lưu", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Xuất CSV" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Xuất", exact: true })).toHaveCount(0);
   expect(hub.rpcCalls.some((c) => c.path === "audit/setRetention")).toBe(false);
 });
 
@@ -215,7 +218,7 @@ test("members see a permission message without audit requests or export controls
   const hub = await setup(page, { role: "member" });
   await page.goto("/admin/audit");
   await expect(page.getByRole("alert")).toContainText("Chỉ chủ sở hữu và quản trị tổ chức");
-  await expect(page.getByRole("button", { name: "Xuất CSV" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Xuất", exact: true })).toHaveCount(0);
   expect(hub.rpcCalls.some((c) => c.path.startsWith("audit/"))).toBe(false);
   await expect(page.getByRole("navigation").getByRole("link", { name: "Nhật ký", exact: true })).toHaveCount(0);
 });
@@ -238,10 +241,10 @@ test("empty, API denial, failure and retry", async ({ page }) => {
   await page.reload();
   await expect(page.getByRole("alert")).toContainText("Bạn không có quyền xem nhật ký.");
   status = "error";
-  await page.getByRole("button", { name: "Thử lại" }).click();
+  await page.getByRole("button", { name: "Tải lại" }).click();
   await expect(page.getByRole("alert")).toContainText("Không tải được nhật ký.");
   status = "ok";
-  await page.getByRole("button", { name: "Thử lại" }).click();
+  await page.getByRole("button", { name: "Tải lại" }).click();
   await expect(page.getByRole("row").filter({ hasText: "payment-api" })).toHaveCount(20);
 });
 
@@ -252,15 +255,15 @@ for (const theme of ["light", "dark"] as const) {
     await setup(page);
     await page.goto("/admin/audit");
     await expect(page.getByRole("row").filter({ hasText: "payment-api" })).toHaveCount(20);
-    await expect(page.getByRole("heading", { name: "Nhật ký" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Nhật ký", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "30 ngày", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("button", { name: "30 ngày", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`audit-${theme}-vi.png`), fullPage: true });
     await page.getByRole("button", { name: "EN", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Export CSV" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
     await expect(page.getByLabel("Actor type", { exact: true })).toBeVisible();
     await expect(page.getByText("Read-only, kept for 365 days.")).toBeVisible();
     await expect(page.getByLabel("Retention", { exact: true })).toHaveValue("365");
@@ -268,4 +271,45 @@ for (const theme of ["light", "dark"] as const) {
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`audit-${theme}-en.png`), fullPage: true });
   });
+}
+
+for (const width of [1440, 1100, 360]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`Nhật ký ${width} ${theme}: bảng vừa khung, một bộ phân trang`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript((value) => localStorage.setItem("hive.theme", value), theme);
+      await setup(page);
+      await page.goto("/admin/audit");
+      await expect(page.getByRole("row").filter({ hasText: "payment-api" })).toHaveCount(20);
+      await expect(page.getByRole("button", { name: /Trang sau/ })).toHaveCount(1);
+      await page.getByLabel("Kết quả", { exact: true }).selectOption("ok");
+      await expectFits(page, width);
+      await shot(page, `audit-${width}-${theme}-vi`);
+      await page.getByRole("button", { name: "EN", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Audit log", exact: true })).toBeVisible();
+      await expectFits(page, width);
+      await shot(page, `audit-${width}-${theme}-en`);
+    });
+  }
+}
+
+async function expectFits(page: Page, width: number) {
+  if (width >= 1100)
+    for (const table of await page.getByRole("table").all())
+      await expect
+        .poll(() =>
+          table.evaluate((el) => (el.parentElement ? el.parentElement.scrollWidth - el.parentElement.clientWidth : 0)),
+        )
+        .toBeLessThanOrEqual(1);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+    .toBeLessThanOrEqual(1);
+}
+
+/** Ảnh trước/sau cho người duyệt UI; chỉ chụp khi đặt HIVE_ADMINUI_SHOTS_DIR, CI không ghi file. */
+async function shot(page: Page, name: string) {
+  const dir = process.env.HIVE_ADMINUI_SHOTS_DIR;
+  if (!dir) return;
+  await mkdir(dir, { recursive: true });
+  await page.screenshot({ path: resolve(dir, `${name}.png`), fullPage: true });
 }

@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { fakeHub, ok, type RpcHandler } from "./fake-hub.ts";
 
@@ -75,7 +77,9 @@ test("sandbox tổ chức: bật danh sách đề xuất, thêm mục hợp lệ
     "sandbox/removeAllowlist": () => ok({ removed: true }),
   });
   await page.goto("/admin/sandbox");
-  await page.getByLabel(/Dùng danh sách đề xuất/).check();
+  await page.getByRole("switch", { name: "Dùng danh sách đề xuất" }).click();
+  expect(hub.rpcCalls.some((c) => c.path === "sandbox/updateOrgSettings")).toBe(false);
+  await page.getByRole("button", { name: "Lưu chính sách", exact: true }).click();
   await expect
     .poll(() => hub.rpcCalls.find((c) => c.path === "sandbox/updateOrgSettings")?.input)
     .toEqual({
@@ -99,6 +103,9 @@ test("sandbox tổ chức: bật danh sách đề xuất, thêm mục hợp lệ
     });
 
   await page.getByRole("button", { name: "Xoá registry.npmjs.org:443" }).click();
+  const confirm = page.getByRole("dialog");
+  await expect(confirm.getByRole("heading", { name: "Xoá mục mạng registry.npmjs.org:443?" })).toBeVisible();
+  await confirm.getByRole("button", { name: "Xoá", exact: true }).click();
   await expect
     .poll(() => hub.rpcCalls.find((c) => c.path === "sandbox/removeAllowlist")?.input)
     .toEqual({
@@ -158,3 +165,44 @@ test("cấu hình dự án: bật sandbox gửi đúng bản vá và có link t�
   await page.getByRole("link", { name: "Allowlist mạng và image môi trường của dự án" }).click();
   await expect(page).toHaveURL("/projects/PAY/sandbox");
 });
+
+for (const width of [1440, 1100, 360]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`Sandbox ${width} ${theme}: trang tổ chức và trang dự án`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript((value) => localStorage.setItem("hive.theme", value), theme);
+      await open(page, {
+        "sandbox/getImage": () =>
+          ok({ baseImage: "node:24-bookworm-slim", setupScriptHash: HASH, updatedAt: "2026-10-12T01:00:00.000Z" }),
+      });
+      await page.goto("/admin/sandbox");
+      await expect(page.getByRole("list", { name: "Danh sách mục mạng" })).toContainText("registry.npmjs.org:443");
+      await page.getByRole("switch", { name: "Khoá allowlist" }).click();
+      await expectFits(page);
+      await shot(page, `sandbox-${width}-${theme}-vi`);
+      await page.getByRole("button", { name: "EN", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Organization policy" })).toBeVisible();
+      await expectFits(page);
+      await shot(page, `sandbox-${width}-${theme}-en`);
+      await page.getByRole("button", { name: "VI", exact: true }).click();
+      await page.goto("/projects/PAY/sandbox");
+      await expect(page.getByLabel("Image gốc")).toHaveValue("node:24-bookworm-slim");
+      await expectFits(page);
+      await shot(page, `sandbox-project-${width}-${theme}-vi`);
+    });
+  }
+}
+
+async function expectFits(page: Page) {
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+    .toBeLessThanOrEqual(1);
+}
+
+/** Ảnh trước/sau cho người duyệt UI; chỉ chụp khi đặt HIVE_ADMINUI_SHOTS_DIR, CI không ghi file. */
+async function shot(page: Page, name: string) {
+  const dir = process.env.HIVE_ADMINUI_SHOTS_DIR;
+  if (!dir) return;
+  await mkdir(dir, { recursive: true });
+  await page.screenshot({ path: resolve(dir, `${name}.png`), fullPage: true });
+}

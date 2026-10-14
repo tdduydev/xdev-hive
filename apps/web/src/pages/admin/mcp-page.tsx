@@ -1,5 +1,8 @@
+import { Tabs } from "@base-ui/react/tabs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { McpAdminTool, McpServerRule, McpUserToken } from "@xdev-hive/contracts";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import type { McpAdminTool, McpUserToken } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
@@ -12,22 +15,24 @@ import {
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { Copy, KeyRound, Plus } from "lucide-react";
+import { Copy, KeyRound } from "lucide-react";
 import { useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar.tsx";
-import { Switch } from "@/components/ui/switch.tsx";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
-import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { Field, FieldLabel } from "@/components/ui/field.tsx";
+import { LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { formatDay } from "@/lib/format.ts";
+import { type Dict, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { McpServersTab } from "@/pages/admin/mcp-servers-tab.tsx";
 import { useOrg } from "@/shell/org-context.ts";
-import { PageBody, PageHeader } from "@/shell/page-header.tsx";
+import { PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
 
 const text: Dict<{
   title: string;
-  crumb: string;
   lead: string;
+  endpoint: string;
+  tabs: string;
   tools: string;
   servers: string;
   tokens: string;
@@ -35,7 +40,8 @@ const text: Dict<{
   searchTokens: string;
   copyEndpoint: string;
   newToken: string;
-  addServer: string;
+  creating: string;
+  saving: string;
   group: string;
   caller: string;
   calls: string;
@@ -52,6 +58,14 @@ const text: Dict<{
   actions: string;
   revoke: string;
   extend: string;
+  turnOn: string;
+  turnOff: string;
+  turnOnTitle: (name: string) => string;
+  turnOffTitle: (name: string) => string;
+  turnOnHint: string;
+  turnOffHint: string;
+  turnOnConfirm: string;
+  turnOffConfirm: string;
   cancel: string;
   close: string;
   copy: string;
@@ -59,6 +73,7 @@ const text: Dict<{
   once: string;
   days: string;
   loading: string;
+  noTokensTitle: string;
   noTokens: string;
   noTools: string;
   memberHint: string;
@@ -72,14 +87,13 @@ const text: Dict<{
   extendTitle: string;
   extendHint: string;
   copyError: string;
-  failed: string;
-  retry: string;
   descriptions: Record<string, string>;
 }> = {
   vi: {
     title: "MCP và công cụ",
-    crumb: "Quản trị agent",
     lead: "Tool agent gọi được qua cổng MCP của hub, MCP server ngoài được phép dùng, và token của người dùng.",
+    endpoint: "Cổng MCP:",
+    tabs: "Nhóm MCP",
     tools: "Tool của hub",
     servers: "MCP server ngoài",
     tokens: "Token MCP",
@@ -87,7 +101,8 @@ const text: Dict<{
     searchTokens: "Tìm token, người, client…",
     copyEndpoint: "Chép địa chỉ",
     newToken: "Tạo token",
-    addServer: "Thêm server",
+    creating: "Đang tạo…",
+    saving: "Đang lưu…",
     group: "Nhóm",
     caller: "Ai gọi được",
     calls: "Lượt gọi 7 ngày",
@@ -104,14 +119,23 @@ const text: Dict<{
     actions: "Thao tác",
     revoke: "Thu hồi",
     extend: "Gia hạn",
+    turnOn: "Bật",
+    turnOff: "Tắt",
+    turnOnTitle: (n) => `Bật tool ${n}?`,
+    turnOffTitle: (n) => `Tắt tool ${n}?`,
+    turnOnHint: "Run và người dùng có quyền gọi lại được tool này qua cổng MCP của hub.",
+    turnOffHint: "Cổng MCP của hub từ chối mọi lượt gọi tool này, của run lẫn người dùng, cho tới khi bật lại.",
+    turnOnConfirm: "Bật tool",
+    turnOffConfirm: "Tắt tool",
     cancel: "Huỷ",
     close: "Đóng",
     copy: "Chép token",
     copied: "Đã chép",
     once: "Token chỉ hiện một lần. Hãy chép và lưu ở nơi an toàn; bạn không thể xem lại token sau khi đóng hộp thoại.",
     days: "ngày",
-    loading: "Đang tải…",
-    noTokens: "Chưa có token MCP. Tạo token để kết nối client của bạn.",
+    loading: "Đang tải dữ liệu MCP…",
+    noTokensTitle: "Chưa có token MCP",
+    noTokens: "Tạo token để kết nối client của bạn (Claude Code, Cursor, VS Code…).",
     noTools: "Chưa có tool MCP.",
     memberHint:
       "Bạn quản lý token của mình. Chỉ chủ sở hữu và quản trị được bật/tắt tool, xem và gia hạn token của mọi người.",
@@ -124,15 +148,14 @@ const text: Dict<{
     revokeHint: "Client dùng token này sẽ bị từ chối ở lần gọi kế tiếp.",
     extendTitle: "Gia hạn token",
     extendHint: "Hạn mới tính từ hôm nay, tối đa 90 ngày. Token đã thu hồi không thể gia hạn.",
-    copyError: "Không chép được. Hãy chọn và chép token thủ công.",
-    failed: "Không tải được dữ liệu MCP.",
-    retry: "Thử lại",
+    copyError: "Không chép được. Hãy chọn và chép thủ công.",
     descriptions: {},
   },
   en: {
     title: "MCP and tools",
-    crumb: "Agent administration",
     lead: "Tools agents call through the hub MCP gateway, allowed external MCP servers, and user tokens.",
+    endpoint: "MCP gateway:",
+    tabs: "MCP areas",
     tools: "Hub tools",
     servers: "External MCP servers",
     tokens: "MCP tokens",
@@ -140,7 +163,8 @@ const text: Dict<{
     searchTokens: "Search token, owner, client…",
     copyEndpoint: "Copy endpoint",
     newToken: "New token",
-    addServer: "Add server",
+    creating: "Creating…",
+    saving: "Saving…",
     group: "Group",
     caller: "Who can call",
     calls: "Calls, 7d",
@@ -157,14 +181,24 @@ const text: Dict<{
     actions: "Actions",
     revoke: "Revoke",
     extend: "Extend",
+    turnOn: "Turn on",
+    turnOff: "Turn off",
+    turnOnTitle: (n) => `Turn on tool ${n}?`,
+    turnOffTitle: (n) => `Turn off tool ${n}?`,
+    turnOnHint: "Runs and users with access can call this tool through the hub MCP gateway again.",
+    turnOffHint:
+      "The hub MCP gateway rejects every call to this tool, from runs and users, until it is turned back on.",
+    turnOnConfirm: "Turn on tool",
+    turnOffConfirm: "Turn off tool",
     cancel: "Cancel",
     close: "Close",
     copy: "Copy token",
     copied: "Copied",
     once: "This token is shown only once. Copy and store it safely; you cannot view it again after closing this dialog.",
     days: "days",
-    loading: "Loading…",
-    noTokens: "No MCP tokens yet. Create a token to connect your client.",
+    loading: "Loading MCP data…",
+    noTokensTitle: "No MCP tokens yet",
+    noTokens: "Create a token to connect your client (Claude Code, Cursor, VS Code…).",
     noTools: "No MCP tools yet.",
     memberHint:
       "You manage your own tokens. Only owners and administrators can toggle tools, view and extend everyone's tokens.",
@@ -177,9 +211,7 @@ const text: Dict<{
     revokeHint: "Clients using this token will be rejected on their next request.",
     extendTitle: "Extend token",
     extendHint: "The new expiry is measured from today, up to 90 days. Revoked tokens cannot be extended.",
-    copyError: "Could not copy. Select and copy the token manually.",
-    failed: "Could not load MCP data.",
-    retry: "Retry",
+    copyError: "Could not copy. Select and copy it manually.",
     descriptions: {
       doc_list: "List docs in scope",
       doc_get: "Read a doc",
@@ -209,10 +241,16 @@ export function McpPage() {
   return <McpOrgPage key={org.id} />;
 }
 
+type McpTab = "tools" | "server" | "token";
+const isMcpTab = (value: unknown): value is McpTab => value === "server" || value === "token";
+
 function McpOrgPage() {
   const t = useT(text);
-  const lang = useLang();
   const { org, api } = useOrg();
+  const navigate = useNavigate();
+  // Route /admin/mcp chưa khai validateSearch nên đọc `?tab=` thô và tự kiểm.
+  // TODO(admin-layout): thêm validateMcpSearch vào lib/route-search.ts + router.tsx để `tab` có kiểu.
+  const search: { tab?: unknown } = useSearch({ strict: false });
   const canManage = org.role === "owner" || org.role === "admin";
   // Quy tắc server ngoài: quản trị tổ chức hoặc vai trò tự tạo có mcp.servers (hub kiểm lại).
   const canManageServers = usePermissions()("mcp.servers");
@@ -220,19 +258,22 @@ function McpOrgPage() {
   const tools = useQuery(api.mcpAdmin.listTools.queryOptions({ refetchInterval: 30_000 }));
   const tokens = useQuery(api.mcpAdmin.listTokens.queryOptions({ refetchInterval: 30_000 }));
   const servers = useQuery({ ...api.mcpAdmin.listServers.queryOptions(), enabled: canManageServers });
-  const [tab, setTab] = useState("tools");
-  const [editingServer, setEditingServer] = useState<McpServerRule | "new" | null>(null);
+  const tab: McpTab = isMcpTab(search.tab) && (search.tab !== "server" || canManageServers) ? search.tab : "tools";
   const [creating, setCreating] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [clientId, setClientId] = useState("cursor");
   const [days, setDays] = useState(30);
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<{ token: McpUserToken; action: "revoke" | "extend" } | null>(null);
+  const [toggling, setToggling] = useState<McpAdminTool | null>(null);
   const [extensionDays, setExtensionDays] = useState(90);
   const refreshTokens = () => queryClient.invalidateQueries({ queryKey: api.mcpAdmin.listTokens.key() });
   const toggle = useMutation({
     mutationFn: (input: { toolName: string; enabled: boolean }) => api.mcpAdmin.setTool.call(input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: api.mcpAdmin.listTools.key() }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: api.mcpAdmin.listTools.key() });
+      setToggling(null);
+    },
   });
   const create = useMutation({
     gcTime: 0,
@@ -261,8 +302,6 @@ function McpOrgPage() {
       setNotice(t.copyError);
     }
   };
-  const date = (value: string) =>
-    new Intl.DateTimeFormat(lang === "vi" ? "vi-VN" : "en", { dateStyle: "medium" }).format(new Date(value));
   const status = (token: McpUserToken) =>
     token.revokedAt
       ? t.revoked
@@ -278,33 +317,60 @@ function McpOrgPage() {
       value: (r) => `${r.name} ${t.descriptions[r.name] ?? r.description}`,
       sortable: true,
       hideable: false,
+      pin: "start",
       cell: (r) => (
-        <div className="max-w-64">
+        <div className="max-w-64 min-w-0">
           <span className="font-mono font-medium">{r.name}</span>
-          <p className="text-xs text-muted-foreground">{t.descriptions[r.name] ?? r.description}</p>
+          <p className="truncate text-xs text-muted-foreground">{t.descriptions[r.name] ?? r.description}</p>
         </div>
       ),
     },
     { key: "group", label: t.group, value: (r) => t.groups[r.group] },
-    { key: "caller", label: t.caller, value: (r) => t.callers[r.caller], className: "text-muted-foreground" },
-    { key: "calls", label: t.calls, value: (r) => r.calls, sortable: true, className: "font-mono text-right" },
-    { key: "errors", label: t.errors, value: (r) => r.errors, sortable: true, className: "font-mono text-right" },
+    // Ẩn mặc định (vẫn lọc được bằng facet) để bảng vừa cột nội dung khoảng 790 px ở màn 1100.
+    {
+      key: "caller",
+      label: t.caller,
+      value: (r) => t.callers[r.caller],
+      hidden: true,
+      className: "text-muted-foreground",
+    },
+    { key: "calls", label: t.calls, value: (r) => r.calls, sortable: true, align: "end" },
+    { key: "errors", label: t.errors, value: (r) => r.errors, sortable: true, align: "end" },
     {
       key: "state",
       label: t.state,
       value: (r) => (r.enabled ? t.on : t.off),
       cell: (r) => (
-        <div className="flex items-center gap-3">
-          <Pill tone={r.enabled ? "ok" : "neutral"}>{r.enabled ? t.on : t.off}</Pill>
-          <Switch
-            aria-label={`${t.state} ${r.name}`}
-            checked={r.enabled}
-            disabled={!canManage || toggle.isPending}
-            onCheckedChange={(enabled) => toggle.mutate({ toolName: r.name, enabled })}
-          />
-        </div>
+        <Pill tone={r.enabled ? "ok" : "neutral"} dot>
+          {r.enabled ? t.on : t.off}
+        </Pill>
       ),
     },
+    ...(canManage
+      ? [
+          {
+            key: "actions",
+            label: t.actions,
+            value: () => "",
+            hideable: false,
+            align: "end",
+            pin: "end",
+            cell: (r) => (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`${r.enabled ? t.turnOff : t.turnOn} ${r.name}`}
+                onClick={() => {
+                  toggle.reset();
+                  setToggling(r);
+                }}
+              >
+                {r.enabled ? t.turnOff : t.turnOn}
+              </Button>
+            ),
+          } satisfies Column<McpAdminTool>,
+        ]
+      : []),
   ];
   const tokenColumns: Column<McpUserToken>[] = [
     {
@@ -313,8 +379,9 @@ function McpOrgPage() {
       value: (r) => `${r.clientId} ${r.prefix}`,
       sortable: true,
       hideable: false,
+      pin: "start",
       cell: (r) => (
-        <div>
+        <div className="min-w-0">
           <span className="font-medium">{r.clientId}</span>
           <p className="font-mono text-xs text-muted-foreground">{r.prefix}…</p>
         </div>
@@ -324,27 +391,13 @@ function McpOrgPage() {
       key: "owner",
       label: t.owner,
       value: (r) => `${r.ownerName ?? r.userId} ${r.userId}`,
-      cell: (r) => (
-        <div className="flex items-center gap-2">
-          <Avatar size="sm">
-            <AvatarFallback>
-              {(r.ownerName ?? r.userId)
-                .split(/\s+/)
-                .slice(-2)
-                .map((part) => part[0])
-                .join("")}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <span>{r.ownerName ?? r.userId}</span>
-            <p className="text-xs text-muted-foreground">{r.clientId}</p>
-          </div>
-        </div>
-      ),
+      cell: (r) => <span className="block max-w-48 truncate">{r.ownerName ?? r.userId}</span>,
     },
     {
       key: "lifetime",
       label: t.lifetime,
+      align: "end",
+      className: "whitespace-nowrap",
       value: (r) =>
         `${Math.ceil((new Date(r.expiresAt).getTime() - new Date(r.createdAt).getTime()) / 86_400_000)} ${t.days}`,
     },
@@ -354,10 +407,10 @@ function McpOrgPage() {
       value: (r) => r.expiresAt,
       sortable: true,
       cell: (r) => (
-        <div className="space-y-1">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Pill tone={status(r) === t.expiring ? "warn" : status(r) === t.valid ? "ok" : "neutral"}>{status(r)}</Pill>
-          <p className="text-xs text-muted-foreground">{date(r.expiresAt)}</p>
-        </div>
+          <span className="text-xs text-muted-foreground tabular-nums">{formatDay(r.expiresAt)}</span>
+        </span>
       ),
     },
     {
@@ -365,18 +418,20 @@ function McpOrgPage() {
       label: t.last,
       value: (r) => r.lastUsedAt,
       sortable: true,
-      cell: (r) => (r.lastUsedAt ? date(r.lastUsedAt) : t.never),
+      cell: (r) => (r.lastUsedAt ? <span className="tabular-nums">{formatDay(r.lastUsedAt)}</span> : t.never),
     },
     {
       key: "actions",
       label: t.actions,
       value: () => "",
       hideable: false,
+      align: "end",
+      pin: "end",
       cell: (r) => (
-        <div className="flex gap-2">
+        <span className="inline-flex gap-1">
           {canManage && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               disabled={!!r.revokedAt}
               onClick={() => {
@@ -388,8 +443,9 @@ function McpOrgPage() {
             </Button>
           )}
           <Button
-            variant="destructive"
+            variant="ghost"
             size="sm"
+            className="text-destructive hover:text-destructive"
             disabled={!!r.revokedAt}
             onClick={() => {
               manage.reset();
@@ -398,87 +454,78 @@ function McpOrgPage() {
           >
             {t.revoke}
           </Button>
-        </div>
+        </span>
       ),
     },
   ];
   const endpoint = `${window.location.origin}/mcp`;
+  const newToken = (
+    <Button
+      size="sm"
+      onClick={() => {
+        setSecret(null);
+        setNotice("");
+        create.reset();
+        setCreating(true);
+      }}
+    >
+      <KeyRound aria-hidden="true" />
+      {t.newToken}
+    </Button>
+  );
   return (
     <>
-      <PageHeader crumb={t.crumb} title={t.title}>
-        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-          <code className="max-w-full break-all rounded-lg border border-border bg-card px-3 py-1.5 text-xs">
-            {endpoint}
-          </code>
-          {tab === "tokens" ? (
-            <Button
-              onClick={() => {
-                setSecret(null);
-                setNotice("");
-                create.reset();
-                setCreating(true);
-              }}
-            >
-              <KeyRound aria-hidden="true" />
-              {t.newToken}
-            </Button>
-          ) : tab === "servers" && canManageServers ? (
-            <Button onClick={() => setEditingServer("new")}>
-              <Plus aria-hidden="true" />
-              {t.addServer}
-            </Button>
-          ) : (
-            <Button onClick={() => void copy(endpoint)}>
+      <PageHeader
+        title={t.title}
+        description={t.lead}
+        meta={
+          <span className="flex min-w-0 max-w-full items-center gap-1.5">
+            <span>{t.endpoint}</span>
+            <code className="min-w-0 rounded bg-muted px-1.5 py-0.5 font-mono break-all text-foreground">
+              {endpoint}
+            </code>
+            <Button variant="ghost" size="icon-xs" aria-label={t.copyEndpoint} onClick={() => void copy(endpoint)}>
               <Copy aria-hidden="true" />
-              {t.copyEndpoint}
             </Button>
-          )}
-        </div>
-      </PageHeader>
-      <PageBody>
-        <p className="-mt-2 text-sm text-muted-foreground">{t.lead}</p>
-        {!canManage && <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{t.memberHint}</p>}
-        {notice && (
-          <p role="status" className="text-sm text-muted-foreground">
-            {notice}
-          </p>
-        )}
-        {toggle.error && (
-          <p role="alert" className="text-destructive">
-            {toggle.error.message}
-          </p>
-        )}
-        <Tabs
-          value={tab}
-          onValueChange={(value) => {
-            setTab(String(value));
-            setNotice("");
-          }}
-        >
-          <TabsList variant="line" className="h-auto w-full flex-wrap justify-start gap-4 border-b border-border p-0">
-            <TabsTrigger className="min-h-10 flex-none px-1 whitespace-normal after:!bottom-[-1px]" value="tools">
-              {t.tools}
-              <Pill small>{tools.data?.tools.length ?? "—"}</Pill>
-            </TabsTrigger>
-            <TabsTrigger className="min-h-10 flex-none px-1 whitespace-normal after:!bottom-[-1px]" value="servers">
+          </span>
+        }
+      />
+      <Tabs.Root
+        value={tab}
+        onValueChange={(value: McpTab) => {
+          setNotice("");
+          void navigate({ to: "/admin/mcp", search: value === "tools" ? {} : { tab: value }, replace: true });
+        }}
+      >
+        <PageTabList label={t.tabs}>
+          <PageTab value="tools" count={tools.data?.tools.length}>
+            {t.tools}
+          </PageTab>
+          {canManageServers && (
+            <PageTab value="server" count={servers.data?.rules.length}>
               {t.servers}
-              {canManageServers && <Pill small>{servers.data?.rules.length ?? "—"}</Pill>}
-            </TabsTrigger>
-            <TabsTrigger className="min-h-10 flex-none px-1 whitespace-normal after:!bottom-[-1px]" value="tokens">
-              {t.tokens}
-              <Pill small>{tokens.data?.tokens.length ?? "—"}</Pill>
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="tools">
+            </PageTab>
+          )}
+          <PageTab value="token" count={tokens.data?.tokens.length}>
+            {t.tokens}
+          </PageTab>
+        </PageTabList>
+        <PageBody>
+          {!canManage && (
+            <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-xs text-foreground">
+              {t.memberHint}
+            </p>
+          )}
+          {notice && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {notice}
+            </p>
+          )}
+          <Tabs.Panel value="tools" className="min-w-0">
             {tools.isPending ? (
-              <p role="status">{t.loading}</p>
+              <TableSkeleton label={t.loading} columns={6} />
             ) : tools.error ? (
-              <div role="alert">
-                <p>{t.failed}</p>
-                <Button variant="outline" onClick={() => void tools.refetch()}>
-                  {t.retry}
-                </Button>
-              </div>
+              <LoadFailure error={tools.error} retry={tools.refetch} />
             ) : (
               <DataTable
                 columns={toolColumns}
@@ -486,6 +533,8 @@ function McpOrgPage() {
                 selectable={false}
                 caption={t.tools}
                 placeholder={t.searchTools}
+                minWidth={760}
+                rowLabel={(r) => r.name}
                 emptyContent={t.noTools}
                 facets={[
                   { key: "group", label: t.group, value: (r) => t.groups[r.group] },
@@ -494,20 +543,17 @@ function McpOrgPage() {
                 ]}
               />
             )}
-          </TabsContent>
-          <TabsContent value="servers">
-            <McpServersTab canManage={canManageServers} editing={editingServer} onEdit={setEditingServer} />
-          </TabsContent>
-          <TabsContent value="tokens">
+          </Tabs.Panel>
+          {canManageServers && (
+            <Tabs.Panel value="server" className="min-w-0">
+              <McpServersTab />
+            </Tabs.Panel>
+          )}
+          <Tabs.Panel value="token" className="min-w-0">
             {tokens.isPending ? (
-              <p role="status">{t.loading}</p>
+              <TableSkeleton label={t.loading} columns={6} />
             ) : tokens.error ? (
-              <div role="alert">
-                <p>{t.failed}</p>
-                <Button variant="outline" onClick={() => void tokens.refetch()}>
-                  {t.retry}
-                </Button>
-              </div>
+              <LoadFailure error={tokens.error} retry={tokens.refetch} />
             ) : (
               <DataTable
                 columns={tokenColumns}
@@ -515,166 +561,193 @@ function McpOrgPage() {
                 selectable={false}
                 caption={t.tokens}
                 placeholder={t.searchTokens}
-                emptyContent={t.noTokens}
+                minWidth={780}
+                rowLabel={(r) => `${r.clientId} ${r.prefix}`}
+                toolbar={newToken}
+                emptyContent={
+                  <span className="grid justify-items-center gap-1">
+                    <span className="font-medium text-foreground">{t.noTokensTitle}</span>
+                    <span>{t.noTokens}</span>
+                  </span>
+                }
                 facets={[
                   { key: "expiry", label: t.expires, value: status },
                   { key: "client", label: "Client", value: (r) => r.clientId },
                 ]}
               />
             )}
-          </TabsContent>
-        </Tabs>
-        <Dialog
-          open={creating}
-          onOpenChange={(open) => {
-            if (create.isPending) return;
-            setCreating(open);
-            if (!open) {
-              setSecret(null);
-              create.reset();
-              setNotice("");
-            }
-          }}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>{t.newToken}</DialogTitle>
-              <DialogDescription>{t.once}</DialogDescription>
-            </DialogHeader>
-            {secret ? (
-              <>
-                <Input
-                  aria-label="Token"
-                  className="font-mono text-xs"
-                  readOnly
-                  value={secret}
-                  onFocus={(event) => event.currentTarget.select()}
-                />
-                <Button onClick={() => void copy(secret)}>
-                  <Copy aria-hidden="true" />
-                  {t.copy}
-                </Button>
-                {notice && <p role="status">{notice}</p>}
-                <DialogActions>
-                  <Button
-                    onClick={() => {
-                      setSecret(null);
-                      setCreating(false);
-                      setNotice("");
-                    }}
-                  >
-                    {t.close}
-                  </Button>
-                </DialogActions>
-              </>
-            ) : (
-              <form
-                className="space-y-4"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  create.mutate();
-                }}
-              >
-                <label htmlFor="mcp-client" className="grid gap-1.5">
-                  Client
-                  <NativeSelect
-                    id="mcp-client"
-                    aria-label="Client"
-                    value={clientId}
-                    onChange={(event) => setClientId(event.currentTarget.value)}
-                  >
-                    {["claude-code", "cursor", "vscode", "codex", "hermes"].map((client) => (
-                      <option key={client} value={client}>
-                        {client}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </label>
-                <label htmlFor="mcp-lifetime" className="grid gap-1.5">
-                  {t.lifetime}
-                  <NativeSelect
-                    id="mcp-lifetime"
-                    aria-label={t.lifetime}
-                    value={days}
-                    onChange={(event) => setDays(Number(event.currentTarget.value))}
-                  >
-                    {[7, 30, 90].map((n) => (
-                      <option key={n} value={n}>
-                        {n} {t.days}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </label>
-                {create.error && (
-                  <p role="alert" className="text-destructive">
-                    {create.error.message}
-                  </p>
-                )}
-                <DialogActions>
-                  <Button variant="outline" disabled={create.isPending} onClick={() => setCreating(false)}>
-                    {t.cancel}
-                  </Button>
-                  <Button type="submit" disabled={create.isPending}>
-                    {create.isPending ? t.loading : t.newToken}
-                  </Button>
-                </DialogActions>
-              </form>
-            )}
-          </DialogContent>
-        </Dialog>
-        <Dialog
-          open={!!selected}
-          onOpenChange={(open) => {
-            if (!open && !manage.isPending) setSelected(null);
-          }}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>{selected?.action === "extend" ? t.extendTitle : t.revokeTitle}</DialogTitle>
-              <DialogDescription>{selected?.action === "extend" ? t.extendHint : t.revokeHint}</DialogDescription>
-            </DialogHeader>
-            <p className="break-all font-mono text-xs">
-              {selected?.token.clientId} · {selected?.token.prefix}…
-            </p>
-            {selected?.action === "extend" && (
-              <label htmlFor="mcp-extension-lifetime" className="grid gap-1.5">
-                {t.lifetime}
-                <NativeSelect
-                  id="mcp-extension-lifetime"
-                  aria-label={t.lifetime}
-                  value={extensionDays}
-                  onChange={(event) => setExtensionDays(Number(event.currentTarget.value))}
+          </Tabs.Panel>
+        </PageBody>
+      </Tabs.Root>
+      <Dialog
+        open={creating}
+        onOpenChange={(open) => {
+          if (create.isPending) return;
+          setCreating(open);
+          if (!open) {
+            setSecret(null);
+            create.reset();
+            setNotice("");
+          }
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{t.newToken}</DialogTitle>
+            <DialogDescription>{t.once}</DialogDescription>
+          </DialogHeader>
+          {secret ? (
+            <>
+              <Input
+                aria-label="Token"
+                className="font-mono text-xs"
+                readOnly
+                value={secret}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <Button onClick={() => void copy(secret)}>
+                <Copy aria-hidden="true" />
+                {t.copy}
+              </Button>
+              {notice && <p role="status">{notice}</p>}
+              <DialogActions>
+                <Button
+                  onClick={() => {
+                    setSecret(null);
+                    setCreating(false);
+                    setNotice("");
+                  }}
                 >
-                  {[30, 90].map((n) => (
+                  {t.close}
+                </Button>
+              </DialogActions>
+            </>
+          ) : (
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                create.mutate();
+              }}
+            >
+              <Field>
+                <FieldLabel htmlFor="mcp-client">Client</FieldLabel>
+                <NativeSelect
+                  id="mcp-client"
+                  value={clientId}
+                  onChange={(event) => setClientId(event.currentTarget.value)}
+                >
+                  {["claude-code", "cursor", "vscode", "codex", "hermes"].map((client) => (
+                    <option key={client} value={client}>
+                      {client}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="mcp-lifetime">{t.lifetime}</FieldLabel>
+                <NativeSelect
+                  id="mcp-lifetime"
+                  value={days}
+                  onChange={(event) => setDays(Number(event.currentTarget.value))}
+                >
+                  {[7, 30, 90].map((n) => (
                     <option key={n} value={n}>
                       {n} {t.days}
                     </option>
                   ))}
                 </NativeSelect>
-              </label>
-            )}
-            {manage.error && (
-              <p role="alert" className="text-destructive">
-                {manage.error.message}
-              </p>
-            )}
-            <DialogActions>
-              <Button variant="outline" disabled={manage.isPending} onClick={() => setSelected(null)}>
-                {t.cancel}
-              </Button>
-              <Button
-                variant={selected?.action === "revoke" ? "destructive" : "default"}
-                disabled={manage.isPending}
-                onClick={() => {
-                  if (selected) manage.mutate({ id: selected.token.id, action: selected.action });
-                }}
+              </Field>
+              {create.error && <Alert variant="destructive">{apiErrorMessage(create.error)}</Alert>}
+              <DialogActions>
+                <Button variant="outline" disabled={create.isPending} onClick={() => setCreating(false)}>
+                  {t.cancel}
+                </Button>
+                <Button type="submit" disabled={create.isPending}>
+                  {create.isPending ? t.creating : t.newToken}
+                </Button>
+              </DialogActions>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!selected}
+        onOpenChange={(open) => {
+          if (!open && !manage.isPending) setSelected(null);
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{selected?.action === "extend" ? t.extendTitle : t.revokeTitle}</DialogTitle>
+            <DialogDescription>{selected?.action === "extend" ? t.extendHint : t.revokeHint}</DialogDescription>
+          </DialogHeader>
+          <p className="break-all font-mono text-xs">
+            {selected?.token.clientId} · {selected?.token.prefix}…
+          </p>
+          {selected?.action === "extend" && (
+            <Field>
+              <FieldLabel htmlFor="mcp-extension-lifetime">{t.lifetime}</FieldLabel>
+              <NativeSelect
+                id="mcp-extension-lifetime"
+                value={extensionDays}
+                onChange={(event) => setExtensionDays(Number(event.currentTarget.value))}
               >
-                {manage.isPending ? t.loading : selected?.action === "extend" ? t.extend : t.revoke}
-              </Button>
-            </DialogActions>
-          </DialogContent>
-        </Dialog>
-      </PageBody>
+                {[30, 90].map((n) => (
+                  <option key={n} value={n}>
+                    {n} {t.days}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+          )}
+          {manage.error && <Alert variant="destructive">{apiErrorMessage(manage.error)}</Alert>}
+          <DialogActions>
+            <Button variant="outline" disabled={manage.isPending} onClick={() => setSelected(null)}>
+              {t.cancel}
+            </Button>
+            <Button
+              variant={selected?.action === "revoke" ? "destructive-solid" : "default"}
+              disabled={manage.isPending}
+              onClick={() => {
+                if (selected) manage.mutate({ id: selected.token.id, action: selected.action });
+              }}
+            >
+              {manage.isPending ? t.saving : selected?.action === "extend" ? t.extend : t.revoke}
+            </Button>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={!!toggling}
+        onOpenChange={(open) => {
+          if (!open && !toggle.isPending) setToggling(null);
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>
+              {toggling?.enabled ? t.turnOffTitle(toggling.name) : t.turnOnTitle(toggling?.name ?? "")}
+            </DialogTitle>
+            <DialogDescription>{toggling?.enabled ? t.turnOffHint : t.turnOnHint}</DialogDescription>
+          </DialogHeader>
+          {toggle.error && <Alert variant="destructive">{apiErrorMessage(toggle.error)}</Alert>}
+          <DialogActions>
+            <Button variant="outline" disabled={toggle.isPending} onClick={() => setToggling(null)}>
+              {t.cancel}
+            </Button>
+            <Button
+              variant={toggling?.enabled ? "destructive-solid" : "default"}
+              disabled={toggle.isPending}
+              onClick={() => {
+                if (toggling) toggle.mutate({ toolName: toggling.name, enabled: !toggling.enabled });
+              }}
+            >
+              {toggle.isPending ? t.saving : toggling?.enabled ? t.turnOffConfirm : t.turnOnConfirm}
+            </Button>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
