@@ -3,14 +3,15 @@
 Bản chép đầy đủ canvas "xDev Hive — các màn còn thiếu" trên Claude Design:
 https://claude.ai/artifact/2iBZNpAxyzovmmVKL5L9cW
 
-Canvas là nơi sửa. Sửa trên canvas rồi chép lại vào đây, không sửa tay hai nơi. Bản cũ (design system v1, 8 màn)
+Các màn gốc sửa trên canvas rồi chép lại vào đây. Các màn bổ sung của spec 011 và 012 được thiết kế trong repo,
+chưa chép lên canvas; dùng bản trong repo khi triển khai các spec này. Bản cũ (design system v1, 8 màn)
 nằm trong [`v1/`](v1/README.md).
 
 ## Thư mục
 
 | Đường dẫn | Là gì |
 |---|---|
-| `*.dc.html` | 41 artboard, mỗi file một màn hoặc một thành phần dùng chung. Tên file là tên artboard trên canvas |
+| `*.dc.html` | Mỗi file một màn hoặc một thành phần dùng chung. Tên file là tên artboard trên canvas khi được chép lên |
 | `canvas.json` | Bố cục canvas: vị trí, kích thước, tiêu đề từng artboard, các hàng và ghi chú |
 | `ds/xdev-hive/` | Token v2 mà artboard nạp (`tokens.css` sinh từ `tokens.json`, cùng giá trị với `../tokens.json`) |
 | `v1/` | Thiết kế cũ theo design system v1 (navy, `canvas`/`surface`) |
@@ -50,7 +51,7 @@ Các file để phẳng một cấp vì `<dc-import name="X">` nạp `X.dc.html`
 |---|---|---|
 | `Home.dc.html` | Trang chủ | `/` |
 | `Main.dc.html` | Lượt chạy (DataTable 1.286 dòng mẫu) | `/runs` |
-| `Leader.dc.html` | Leader | `/leader` |
+| `Leader.dc.html` | Leader: chat, hộp thoại mở terminal, màn terminal, Bypass và nhật ký (xem "Terminal Leader" dưới) | `/leader`, `/leader/terminal/$id` |
 | `Plan.dc.html` | Kế hoạch, duyệt và từ chối | `/tasks/$key/plan` |
 | `Projects.dc.html` | Dự án | `/projects` |
 | `ProjectSettings.dc.html` | Cấu hình dự án | `/projects/$key/settings` |
@@ -78,6 +79,28 @@ Các file để phẳng một cấp vì `<dc-import name="X">` nạp `X.dc.html`
 
 Route của `Docs`, `DocEditor`, `Skills`, `Memory`, `Proposals`, `Workflows`, `DocReview`, `Roles`, `McpTools`,
 `Policies`, `Audit` là đề xuất; web chưa có các màn này.
+
+## Terminal Leader (Leader.dc.html)
+
+`Leader.dc.html` dùng chung thanh "Biến thể" cho chat và terminal. Mặc định `artifacts=true`, `view=ready`: chat kèm
+khung artifact; các trạng thái artifact (`loading`, `empty`, `error`, `offline`, `runtime`, `compile`, `newer`, `editing`,
+`deleted`) vẫn nằm trong tab Chat. Chọn "Mở phiên" để mở terminal, rồi quay về Chat để xem artifact.
+Đặt `artifacts=false` để xem chat cũ kèm danh sách phiên terminal. Prop `view` còn nhận `chat`, `open`, `terminal`, `bypass`,
+cộng `narrow` (khung 360 px,
+không Sidebar), `dark`, `lang`. Bảng màu và hành vi của xterm xem [`../prose-and-terminal.md`](../prose-and-terminal.md).
+
+| Biến thể | Nội dung | Ghi chú |
+|---|---|---|
+| `chat` (`artifacts=false`) | Nút **Mở terminal Leader** trên đầu cột trái; mục "Phiên terminal" liệt kê phiên: trạng thái, chế độ, máy, model, người mở, link; phiên của người khác có nhãn "Chỉ xem" | Nút chỉ hiện khi tổ chức có dự án |
+| `open` | Hộp thoại: dự án, máy (chỉ máy online; máy đủ phiên bị khoá kèm lý do), gói của máy, chế độ Đề xuất / Bypass, model Sonnet (mặc định) / Opus kèm chi phí ước tính 30 ngày (null thì "chưa đủ dữ liệu"), quyền trên máy (Toàn quyền hoặc Accept edits trong worktree tạm) | Hộp thoại tự gọi `terminal.options`: hub chưa bật hay thiếu quyền thì thay form bằng một câu giải thích |
+| `terminal` | Trang phiên: đầu trang có trạng thái kết nối, "Cho đội xem", "Đóng phiên"; hàng huy hiệu chế độ, model, máy, gói, quyền; xterm toàn khung; khung phải "Đề xuất của phiên": mỗi thẻ có hành động, **cấp độ Leader chọn + lý do**, ô chọn cấp (Nhẹ, Vừa, Nặng) kèm ý nghĩa của cấp, nút Duyệt và Từ chối | Đề xuất cũ không có cấp: ô chọn có thêm "Để hub tự suy" và duyệt không gửi `tier` |
+| `bypass` | Như `terminal` nhưng huy hiệu Bypass (cảnh báo) và khung phải là "Nhật ký hành động": giờ, tool, kết quả, cấp độ, model, lý do | Hộp thoại mở phiên Bypass: cảnh báo đỏ + ô tick xác nhận bắt buộc, nút Mở terminal khoá tới khi tick |
+| `narrow` (360 px) | Một cột: terminal 60% chiều cao màn, dưới là nút "Đề xuất (n)" / "Nhật ký (n)" mở ngăn chứa khung phải | Hộp thoại rộng tối đa 328 px, cuộn dọc |
+
+Trạng thái kết nối ở đầu trang: Đang kết nối (xanh), Đã kết nối (lục), Mất kết nối, đang nối lại… (vàng), Phiên đã kết thúc
+(xám, kèm lý do và bản ghi phát lại ở cỡ cột của lúc chạy). Người xem không phải chủ phiên thấy "Chỉ xem": terminal không
+nhận phím, không có công tắc "Cho đội xem" và nút "Đóng phiên". Canvas chưa vẽ lại các biến thể này bằng công cụ Claude
+Design; artboard chép từ code web (`apps/web/src/pages/leader-terminal-page.tsx`).
 
 ## App máy (desktop)
 
@@ -155,3 +178,88 @@ Ghi chú bàn giao:
   `apps/web/src/lib/nav.ts` (T054) quyết định.
 - Máy cá nhân chỉ hiện trạng thái và nhãn (ADR 0017); nút bật/tắt gói bị khoá khi worker không báo `accounts-remote`.
 - Màn dùng được từ 360 px (thẻ máy xuống dòng, không bảng ngang).
+
+
+## Bàn giao: Artifact MVP (spec 012, T005)
+
+Thiết kế theo [spec đã chốt](../../../specs/012-artifacts/spec.md#clarifications),
+[plan](../../../specs/012-artifacts/plan.md#ui) và [ADR 0023](../../adr/0023-artifacts.md).
+Đã dùng `ui-ux-pro-max` cho mật độ công cụ cộng tác và bố cục hộp thoại; màu, chữ, độ bo giữ nguyên v2.
+Đây là thiết kế tương tác với dữ liệu mẫu, chưa phải tính năng của web/app. Chưa đưa lên canvas hoặc sửa `canvas.json`.
+
+| File | Màn / nơi dùng | Bàn giao |
+|---|---|---|
+| `ArtifactPanel.dc.html` | Tab artifact, thanh công cụ, năm loại MVP, khung cạnh chat hoặc toàn màn | T020; `layout=chat` cho chat + thẻ tham chiếu + đề xuất + khung |
+| `ArtifactLibrary.dc.html` | `/artifacts`: tìm, lọc cá nhân/dự án, loại, nguồn, dự án, thùng rác; bảng/thẻ | T022, T030; `desktop=true` thêm bản đã tải |
+| `ArtifactDetail.dc.html` | `/artifacts/:id[/v/:n]`: nội dung, phiên bản, liên kết, hoạt động | T022, T030; prop `tab` chọn vùng |
+| `ArtifactVersions.dc.html` | Chọn hai bản, khác biệt dòng, cạnh nhau, đặt tên, xác nhận khôi phục | T021; tác giả người/run, nguồn, thời gian, kích thước và lời nhắn |
+| `ArtifactShare.dc.html` | Cá nhân/dự án, xác nhận chia sẻ cả lịch sử, chuyển chủ, lối vào link công khai | T021; chuyển chủ xác nhận thu hồi link |
+| `ArtifactPublicLink.dc.html` | Chọn phiên bản, hạn, URL một lần, danh sách và xác nhận thu hồi | T023; `maxDays` mô phỏng trần chính sách |
+| `PublicArtifactPage.dc.html` | `/_artifact/s/:token`: tiêu đề, loại, bản, hạn, cảnh báo và vùng khung | T004, T015; 404 chung, 429, offline và lỗi biên dịch |
+| `ArtifactFixRequest.dc.html` | Xem/sửa/bỏ lỗi, lời nhắn, chọn đích, xác nhận gửi | T023; `fromThread=false` chỉ cho cuộc trò chuyện mới |
+| `AdminPublicLinks.dc.html` | `/admin/public-links`: bật/tắt, hạn tối đa, bảng/thẻ link, thu hồi | T031; chỉ metadata, không có lối mở nội dung |
+| `AppLeader.dc.html` | Leader tối thiểu trong app: cuộc trò chuyện, chat, gửi, đề xuất, thẻ và khung | T041; `role=dev/writer/lead` |
+| `AppArtifacts.dc.html` | Thư viện app, bộ lọc bản đã tải, bản offline | T041; dùng lại `ArtifactLibrary` |
+| `Leader.dc.html` (biến thể) | Leader web và khung artifact | T030; `artifacts=true` mặc định; `false` xem thiết kế cũ |
+| `AppNav.dc.html` (biến thể) | Leader và Artifact cho cả ba hồ sơ | T041; `artifacts=false` mô phỏng hub chưa hỗ trợ |
+
+### Cách xem và trạng thái
+
+- Mỗi màn mới có prop `lang=vi/en`, `dark`, `narrow` (360 px), `view` và `embedded`. Thanh có nhãn
+  “Trạng thái thiết kế” chỉ dành cho người xem artboard; `embedded=true` ẩn thanh này. Trang công khai chỉ chọn prop
+  trên canvas, không có thanh điều khiển trong trang.
+- Tất cả 11 màn mới có `ready`, `loading`, `empty`, `error`, `offline`. `ArtifactPublicLink.empty` giữ form tạo nhưng
+  danh sách chưa có link; `PublicArtifactPage.empty` dùng cùng 404 với link không hợp lệ.
+- `ArtifactPanel`: thêm `newer`, `editing`, `runtime`, `compile`, `deleted`, `uncached`, `unavailable`. Chọn prop `type` hoặc loại trên thanh thiết kế để thử
+  `markdown`, `code`, `html`, `mermaid`, `react`. Bản mới trong lúc sửa không thay nội dung đang gõ.
+- `ArtifactLibrary` / `AppArtifacts`: `trash`; `ArtifactDetail.tab`: `content`, `versions`, `links`, `activity`.
+- `ArtifactPublicLink`: `once`, `nonowner`, `disabled`, `limit`, `compile`, `secret`. Đổi `maxDays` để thử trần 1…30.
+  Chỉ URL mẫu `EXAMPLE_ONLY` xuất hiện trong hộp một lần, không phải token dùng được.
+- `ArtifactFixRequest`: `readonly`, `unavailable`, `overflow` (27 lỗi đầu vào, chỉ giữ 20).
+  Mỗi lỗi và lời nhắn tối đa 2 000 ký tự. Bỏ hết lỗi vẫn gửi được nếu có lời nhắn.
+- `AdminPublicLinks`: `disabled`; `PublicArtifactPage`: `notfound`, `ratelimited`, `compile`.
+  Các nguyên nhân mã sai/hết hạn/thu hồi/chính sách tắt đều dùng cùng 404, không nêu nguyên nhân riêng.
+- Nút và bộ lọc thực hiện chuyển trạng thái mẫu trong canvas, không gọi hub. Sao chép chỉ minh hoạ phản hồi;
+  tải về là file mẫu. Dữ liệu mẫu dùng ngày 14/10/2026, hiển thị qua `Intl` theo ngôn ngữ.
+
+### Bố cục và component khi triển khai
+
+- Dùng component hiện có trong `@xdev-hive/ui`: `Button`, `Card`, `Badge`, `Field`, `Input`, `Select`, `Tabs`,
+  `Alert`, `Skeleton`, `Empty`, `Table`, `Dialog`, `AlertDialog`, `Sheet`, `Resizable` theo shadcn/ui Base UI (ADR 0013).
+  Markup/CSS trong artboard thể hiện bố cục; không chép chúng thành bộ component mới.
+- Từ 1024 px: chat và khung chia đôi; cỡ khung 30–70% có điều khiển bàn phím. Triển khai nhớ cỡ và trạng thái đóng
+  theo người dùng. Dưới 1024 px: `Sheet` toàn màn, nút “Về cuộc trò chuyện”; thẻ chat mở lại đúng bản.
+  360 px: bảng thành thẻ, bộ lọc một cột, nút tối thiểu 44 px, không cuộn ngang trang.
+- Hộp thoại trên canvas là bản xem không modal. Bản thật dùng Base UI để giữ focus, Escape đóng, trả focus về nút mở,
+  cuộn bên trong và không che trường đang focus. Tên/miêu tả hộp và nhãn trường lấy từ cặp vi/en trong `renderVals()`.
+  Lưu trạng thái lọc/tab/phiên bản trên URL khi triển khai, giữ cảnh báo khi rời bản sửa chưa lưu.
+- Khi offline, app chỉ đọc bản đã tải; sửa, chia sẻ, lịch sử, tạo/thu hồi link, gửi chat và nhờ sửa đều tắt.
+  Artifact chưa tải cần kết nối hub. Bộ đệm 200 MiB theo hồ sơ/tổ chức, xoá khi đăng xuất/đổi tổ chức.
+  Không có hàng đợi sửa offline. Web mất mạng chỉ giữ nội dung đang mở, không hứa có thư viện offline.
+- Khác biệt luôn có dấu `−` / `+` cùng token destructive/success; không chỉ dựa vào màu.
+  Khôi phục tạo bản mới, không xoá lịch sử. Chia sẻ rộng hơn phải xác nhận cả phiên bản cũ.
+
+### Quyền và vùng nội dung không tin cậy
+
+- Chỉ chủ tạo link, kể cả khi người khác có quyền sửa. Hạn mặc định 7 ngày hoặc trần thấp hơn;
+  không có link vĩnh viễn; tối đa 10 link còn hiệu lực. URL chỉ xuất hiện một lần, đóng/ẩn hộp là mất.
+  Danh sách chỉ có bản, thời gian tạo/hạn, lượt xem, lần xem cuối và Thu hồi; không có nút lấy lại URL.
+- Link ghim bản đang chọn, thay bản mới không tự cập nhật link. Chuyển chủ hoặc xoá artifact thu hồi mọi link.
+  Tắt chính sách ngừng phục vụ ngay; bật lại chỉ cho link chưa hết hạn/thu hồi.
+  Quét bí mật chặn tạo link, chỉ báo dòng/loại; lỗi biên dịch vẫn cho tạo kèm cảnh báo.
+- Quản trị chỉ xem metadata artifact đã công khai và thu hồi link; không đọc artifact cá nhân từ màn quản trị.
+  Cá nhân và dự án là hai phạm vi MVP. Không có lựa chọn đội/tổ chức, CDN hoặc chế độ che bí mật.
+- Nội dung trong vùng xem là minh hoạ tĩnh/an toàn của artboard. Bản thật **bắt buộc** dùng `SandboxFrame` nạp URL vé
+  cùng host hub (`/_artifact/frame/:ticket`), `sandbox=allow-scripts`, CSP chặn mạng và thư viện đóng gói sẵn;
+  app nạp `hive-artifact://`. Không dùng `srcdoc`, không thực thi chữ của agent trong trang cha.
+  “Dừng trang” gỡ iframe; lấy lỗi qua schema postMessage và kiểm `event.source` (T020).
+- Trang công khai thật là HTML tĩnh không script, không SPA/RPC/cookie; chỉ tiêu đề đã escape, loại, phiên bản, hạn,
+  cảnh báo ngoài khung và iframe. Không có tên tổ chức/chủ/dự án, lịch sử, chia sẻ hoặc nhờ Leader sửa.
+  `data-dc-script` và `support.js` trong artboard chỉ dùng cho canvas, không đưa vào HTML công khai.
+- “Nhờ Leader sửa” chỉ hiện khi có lỗi và có quyền Leader. Không có quyền: nút tắt kèm giải thích.
+  Đích là cuộc trò chuyện đang mở của người xem hoặc một cuộc trò chuyện mới của chính họ;
+  từ thư viện/chi tiết mặc định cuộc trò chuyện mới. Chỉ đọc thì Leader nhân bản cá nhân rồi sửa.
+  Lỗi là dữ liệu không tin cậy; không tự gửi khi trang báo lỗi, không gửi quá 20 mục.
+
+Phần sau MVP (T006) có làn riêng: soạn tay đầy đủ, Terminal Leader, chính sách artifact tổng thể, dung lượng,
+liên kết task/run/dự án/hạng mục và chuyển thành tài liệu/lưu repo không được thêm vào các màn MVP này.
