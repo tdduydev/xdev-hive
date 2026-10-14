@@ -53,6 +53,8 @@ type Remote struct {
 	watchers  map[*watcher]struct{}
 	decisions map[string]*decision
 	onChange  func()
+	// totpPending là khoá TOTP vừa tạo, chờ chủ máy nhập một mã đúng (T025).
+	totpPending *totpPending
 }
 
 func (r *Remote) log() *slog.Logger {
@@ -306,6 +308,9 @@ func (r *Remote) removeDevice(id, by string) bool {
 
 // Handle xử lý remote.* và watch của socket nội bộ.
 func (r *Remote) Handle(ctx context.Context, c *localipc.Conn, req localipc.Request) error {
+	if strings.HasPrefix(req.Op, "remote.totp.") {
+		return r.handleTOTP(c, req)
+	}
 	switch req.Op {
 	case "watch":
 		return r.watch(ctx, c)

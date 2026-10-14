@@ -292,7 +292,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/cmd/hive/{remote.go,remote_test.go,qr.go}`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: T012, T020 · **Mức**: vừa
 
-- [ ] T025 [US2] Worker: tạo và quản lý khoá TOTP
+- [x] T025 [US2] Worker: tạo và quản lý khoá TOTP
+  - Đã làm (SPEC10W4): `totp_enroll.go` (`remote.totp.begin` trả `uri`, `secret` base32, `expiresAt`; khoá chờ chỉ giữ
+    trong bộ nhớ, `begin` lại thay khoá chờ cũ; `confirm` sai 5 lần thì bỏ khoá chờ; lưu bằng `TOTPStore.Enable` nên mã
+    xác nhận không dùng lại được; `disable`/`unlock` tại máy; audit không có khoá hay mã). Chế độ `host` không mở socket
+    nội bộ nên không có đường vào; máy dùng chung bị từ chối.
   - Thao tác socket nội bộ `remote.totp.begin|confirm|disable|unlock` (T020 đã có khung `remote.*`): sinh khoá, URI
     `otpauth://`, chỉ lưu sau khi `confirm` bằng mã đúng, hết hạn 10 phút; tắt/đổi khoá tại máy; `term_state.totp`; từ chối
     khi chế độ `host` hoặc máy dùng chung; ghi `remote-audit.log` (`totp_enroll|totp_disable|totp_unlock`), không ghi khoá
