@@ -65,7 +65,13 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `packages/contracts/openapi.json`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T003 [P] Worker: gói PTY
+- [x] T003 [P] Worker: gói PTY
+  - Đã làm (SPEC10W5): ConPTY gọi thẳng `x/sys/windows` (không thêm `go-pty`: `creack/pty` đã chạy Unix từ T101).
+    `Start` trả `pty.Terminal` (`Read`, `Write`, `Close`, `Resize`) trên mọi hệ điều hành; Windows: `CreateProcess` với
+    pseudo console, stdio không kế thừa từ worker, job `KILL_ON_JOB_CLOSE` cho `KillGroup` cả cây, `HangupGroup` đóng
+    console (CTRL_CLOSE_EVENT), tiến trình thoát thì đóng console để `Read` nhận EOF; `Supported` dò
+    `CreatePseudoConsole`. Test Windows dùng chính file test làm CLI giả: echo, resize, mã thoát, 10 MB output, kill
+    cây, hangup. Bên gọi (`accounts`, `terminal`) đổi sang `Terminal.Resize`.
   - `internal/pty`: bọc `aymanbagabas/go-pty` (Unix + ConPTY): `Start(cmd, env, dir, cols, rows)`, `Resize`, `Read`,
     `Write`, `Signal(hup|int|kill)`, `Wait`; nhóm tiến trình để kill cả cây.
   - Test với CLI giả (Go test binary): echo, output 10 MB, resize, thoát mã khác 0, kill cây; CI Windows chạy test ConPTY.

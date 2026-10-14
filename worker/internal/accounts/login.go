@@ -41,8 +41,8 @@ const (
 	msgSave       = "Không lưu được đăng nhập của gói."
 )
 
-// errNoPTY: Windows chưa có PTY trong worker (gói pty trả ErrUnsupported).
-var errNoPTY = errors.New("Windows chưa hỗ trợ đăng nhập gói từ web; đăng nhập tại máy bằng hive-worker accounts add.")
+// errNoPTY: Windows cũ không có ConPTY (gói pty trả ErrUnsupported).
+var errNoPTY = errors.New("Windows bản này chưa có ConPTY (cần Windows 10 1809 trở lên) nên không đăng nhập gói từ web được; đăng nhập tại máy bằng hive-worker accounts add.")
 
 // startPTY chạy cmd trong một PTY. Cột rộng để CLI không tự ngắt dòng giữa URL đăng nhập (URL bị ngắt thì web nhận URL
 // cụt).
