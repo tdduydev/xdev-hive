@@ -175,6 +175,9 @@ const specs = e2eSpecs();
 const hubTouched = touched(/^(apps\/hub|packages\/contracts)\//) || touched(ROOT_WIDE);
 const workerTouched = touched(/^worker\//) || touched(/^\.github\/workflows\/ci\.yml$/);
 
+if (touched(/^(xdev-skills(?:\/|$)|\.gitmodules$|packages\/skill-pack\/)/) || touched(ROOT_WIDE))
+  cmd("bộ skill khớp submodule", "node", ["packages/skill-pack/scripts/sync.ts", "check"]);
+
 if (touched(/\.(ts|tsx|js|mjs|cjs|json|jsonc|css)$/) || touched(ROOT_WIDE)) cmd("lint (biome)", "pnpm", ["lint"]);
 
 if (tsAffected) {

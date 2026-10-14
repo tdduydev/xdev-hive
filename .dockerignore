@@ -1,4 +1,7 @@
 .git
+# Hub dùng bản vendored; không gửi nguồn submodule và metadata Git của nó vào image.
+xdev-skills
+.e2e
 node_modules
 **/node_modules
 **/.env
