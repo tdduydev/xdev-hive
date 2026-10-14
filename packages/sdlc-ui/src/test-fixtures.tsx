@@ -316,6 +316,31 @@ export function itemDetail(over: Partial<SdlcItemDetail> = {}): SdlcItemDetail {
   };
 }
 
+/** Lần chạy bước `converge-spec`; `result.findings` theo `sdlc_report` loại `findings`. */
+export function convergeRun(
+  round: number,
+  findings: Record<string, unknown>[],
+  over: Partial<SdlcItemDetail["steps"][number]> = {},
+): SdlcItemDetail["steps"][number] {
+  return {
+    id: uuid(720 + round),
+    phaseId: "converge",
+    stepId: "converge-spec",
+    action: "converge",
+    round,
+    status: "succeeded",
+    run: { id: uuid(820 + round), state: "succeeded" },
+    waitingReason: null,
+    instructions: null,
+    result: { findings },
+    error: null,
+    createdBy: "u1",
+    createdAt: NOW,
+    finishedAt: NOW,
+    ...over,
+  };
+}
+
 /** Bản tách hai dự án: T003 ở web-shop chờ T002 ở payment-api (cạnh liên dự án); FR-003 chưa có task. */
 export function breakdownView(over: Partial<SdlcBreakdownView> = {}): SdlcBreakdownView {
   const task = (key: string, project: string, over: Record<string, unknown> = {}) => ({

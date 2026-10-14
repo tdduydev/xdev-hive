@@ -1,6 +1,7 @@
 // Màn AI SDLC dùng chung cho web và app desktop (specs/011 plan.md D16). App chủ chỉ dựng route, menu và `SdlcEnv`.
 export { AutoApproval, AutoApprovalBadge, formatScore } from "./auto-approval.tsx";
 export { ContractsPanel } from "./contracts-panel.tsx";
+export { ConvergePanel, convergeSteps } from "./converge-panel.tsx";
 export {
   type Lang,
   type SdlcCan,
