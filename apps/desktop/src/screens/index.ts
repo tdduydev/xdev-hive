@@ -8,6 +8,8 @@ import { PlansScreen } from "@/screens/plans-screen.tsx";
 import { ProjectsScreen } from "@/screens/projects-screen.tsx";
 import { ReviewsScreen } from "@/screens/reviews-screen.tsx";
 import { RunsScreen } from "@/screens/runs-screen.tsx";
+import { SdlcQuestionsScreen } from "@/screens/sdlc-questions-screen.tsx";
+import { SdlcProgressScreen, SdlcScreen } from "@/screens/sdlc-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
 import { SkillsScreen } from "@/screens/skills-screen.tsx";
 import { TokensScreen } from "@/screens/tokens-screen.tsx";
@@ -16,6 +18,9 @@ import { WriteScreen } from "@/screens/write-screen.tsx";
 
 /** Màn của cửa sổ app theo mục AppNav; đủ mọi mục nên không còn trang "Sắp có". */
 export const SCREENS: Record<ScreenId, ComponentType> = {
+  sdlc: SdlcScreen,
+  "sdlc-questions": SdlcQuestionsScreen,
+  "sdlc-progress": SdlcProgressScreen,
   docs: DocsScreen,
   home: HomeScreen,
   knowledge: KnowledgeScreen,

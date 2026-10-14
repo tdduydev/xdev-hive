@@ -10,6 +10,7 @@ export {
   SdlcProvider,
   useSdlcEnv,
 } from "./env.tsx";
+export { FleetTable } from "./fleet-table.tsx";
 export { formatUsd, formatWhen } from "./format.ts";
 export { type BoardView, ItemBoard, type ItemBoardProps } from "./item-board.tsx";
 export { ITEM_TABS, ItemDetail, type ItemDetailProps, TaskList } from "./item-detail.tsx";
