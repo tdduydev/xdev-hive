@@ -104,7 +104,7 @@
 
 ## Phase 2: Lõi hub (US1, US2, US4, US5) 🎯
 
-- [ ] T010 🎯 Module `artifacts`: dịch vụ, quyền, giới hạn, router
+- [x] T010 🎯 Module `artifacts`: dịch vụ, quyền, giới hạn, router
   - `access.ts` (`readerFor`, `visibleArtifactsWhere`, `assertCan(action)` theo bảng quyền plan.md), `service.ts` (tạo,
     phiên bản mới với khoá lạc quan, đổi tên, phạm vi, chủ, nhân bản, xoá mềm, khôi phục, tombstone, liệt kê/tìm với con
     trỏ), `limits.ts` (trần env + chính sách tổ chức, khoá tư vấn theo tổ chức, giới hạn run), quét bí mật (chỉ chặn,
@@ -123,7 +123,7 @@
     + test tương ứng
   - **Phụ thuộc**: T001, T002, T003 · **Mức**: nặng
 
-- [ ] T011 🎯 Tool MCP `artifact_*`
+- [x] T011 🎯 Tool MCP `artifact_*`
   - `artifacts/mcp-tools.ts`: bốn tool (plan.md "MCP"), quyền run theo FR-032, liên kết tự động `run`/`task`/
     `chat_thread`/`terminal_session`, từ chối `doccheck`/`docassist`/`brief` (`ARTIFACT_RUN_KIND`), lỗi xung đột kèm bản
     mới nhất, `duplicateOf` (đọc được bản gốc → `private` của người mở cuộc trò chuyện), `compileError` trong kết quả.
@@ -135,7 +135,7 @@
   - **Scope**: `apps/hub/src/modules/artifacts/{mcp-tools.ts,mcp-artifacts.db.test.ts}`, `apps/hub/src/modules/mcp/{registry.ts,registry.test.ts}`
   - **Phụ thuộc**: T010 · **Mức**: vừa
 
-- [ ] T012 🎯 Route khung cách ly, vé, thư viện tĩnh
+- [x] T012 🎯 Route khung cách ly, vé, thư viện tĩnh
   - `ticket.ts` (HMAC, khoá HKDF từ khoá chủ, hạn ≤ 5 phút, phiên bản hoặc bản xem trước; trường `s` cho link công khai
     để T015 dùng), `frame-routes.ts` (`/_artifact/frame/:ticket`, `/_artifact/lib/*` từ `artifacts-runtime/dist/lib` với
     `Access-Control-Allow-Origin: *` và cache `immutable`; header ở FR-071; 410 khi xoá/tombstone; không đọc cookie hay
@@ -149,7 +149,7 @@
     `apps/hub/.env.example`, `Dockerfile` (nếu cần)
   - **Phụ thuộc**: T004, T010 · **Mức**: nặng
 
-- [ ] T013 🎯 Leader: thẻ artifact trong chat
+- [x] T013 🎯 Leader: thẻ artifact trong chat
   - `leader` cung cấp `ThreadHost` (`assertRunThread` dùng lại kiểm của `leader_reply`; `postArtifactCard` thêm tin nhắn thẻ,
     cập nhật `updated_at`); router trả `chatMessage.artifact`; xoá cuộc trò chuyện xoá liên kết `chat_thread`.
   - `leader/prompt.ts`: đoạn hướng dẫn artifact (US5-7); `prompt.test.ts`.
@@ -159,7 +159,7 @@
     `apps/hub/src/leader.db.test.ts`
   - **Phụ thuộc**: T011 · **Mức**: vừa
 
-- [ ] T014 🎯 Biên dịch `react` trên hub
+- [x] T014 🎯 Biên dịch `react` trên hub
   - `compile.ts` `compileReact(source, manifest) → { compiled } | { compileError } | ImportNotAllowed` theo plan.md D8
     (`sucrase` JSX + TS, `es-module-lexer`, chỉ tên trong manifest, `import()` động bị từ chối, giới hạn 2 s); nối vào
     điểm gọi của T010 (lưu phiên bản) và T012 (`preview`); bật `react` trong `MVP_TYPES` mặc định nếu T001 chưa bật.
@@ -169,7 +169,7 @@
     (chỉ chỗ gọi), `apps/hub/package.json`, `pnpm-lock.yaml`
   - **Phụ thuộc**: T004 (manifest), T010, T012 · **Mức**: nặng
 
-- [ ] T015 🎯 Link công khai trên hub
+- [x] T015 🎯 Link công khai trên hub
   - `public-links.ts`: route `publicLinks.create/list/revoke/orgList` (FR-140, FR-141, FR-147; quét bí mật lại; chính
     sách `publicLinks`; trần `HIVE_ARTIFACT_LINK_MAX_DAYS`), `GET /_artifact/s/:token` (plan.md D21: băm → hàm resolve →
     `withTenant` → `buildPublicPage` + vé `s:`; 404 đồng nhất), kiểm link ở route khung khi vé có `s`, cập nhật
@@ -200,7 +200,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 3: Package giao diện dùng chung (US1–US4, US7) 🎯
 
-- [ ] T020 🎯 `@xdev-hive/artifacts-ui` — khung, thẻ, trình xem, khung cách ly
+- [x] T020 🎯 `@xdev-hive/artifacts-ui` — khung, thẻ, trình xem, khung cách ly
   - `env.tsx` (`ArtifactsEnv`), `text.ts` (vi/en), `card.tsx`, `panel.tsx` (tab, thanh công cụ, tự mở artifact mới trừ khi
     đang sửa, trạng thái: tải, lỗi, bản mới hơn, offline, đã xoá), `sandbox-frame.tsx` (plan.md D16, nút Dừng trang, nhãn
     "Nội dung do agent tạo", gom ≤ 20 tin `error`/`console`), `viewer/{markdown,code,html,mermaid,react}.tsx` (markdown qua
@@ -214,21 +214,21 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `pnpm-lock.yaml`
   - **Phụ thuộc**: T001, T004, T005 · **Mức**: nặng
 
-- [ ] T021 🎯 `@xdev-hive/artifacts-ui` — phiên bản, so sánh, chia sẻ, sửa tay tối thiểu
+- [x] T021 🎯 `@xdev-hive/artifacts-ui` — phiên bản, so sánh, chia sẻ, sửa tay tối thiểu
   - `versions.tsx` (danh sách, đặt tên, khôi phục), `compare.tsx` (diff dòng bằng `line-diff`, cạnh nhau), `share-dialog.tsx`
     (phạm vi `private`/`project`, cảnh báo phiên bản cũ), `editor.tsx` tối thiểu (ô soạn chữ cho `markdown`/`code`/`html`/
     `mermaid`, xem trước qua `preview`, xung đột "Xem khác biệt rồi gộp", dòng bí mật được đánh dấu).
   - **Scope**: `packages/artifacts-ui/src/{versions.tsx,compare.tsx,share-dialog.tsx,editor.tsx}` + test
   - **Phụ thuộc**: T020 · **Mức**: vừa
 
-- [ ] T022 🎯 [P] `@xdev-hive/artifacts-ui` — thư viện và chi tiết
+- [x] T022 🎯 [P] `@xdev-hive/artifacts-ui` — thư viện và chi tiết
   - `library.tsx` (lọc phạm vi/loại/nguồn/dự án, tìm, con trỏ, thùng rác, dạng thẻ ở 360 px), `detail.tsx` (vùng xem + tab
     Phiên bản, Liên kết, Hoạt động).
   - **Scope**: `packages/artifacts-ui/src/{library.tsx,detail.tsx}` + test
   - **Phụ thuộc**: T020 (song song với T021: khác file; `index.ts` của package do T020 export sẵn tên, T021/T022 chỉ điền
     file) · **Mức**: vừa
 
-- [ ] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
+- [x] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
   - `public-link-dialog.tsx` (chỉ chủ: chọn phiên bản, hạn 1…`maxDays`, cảnh báo "Người ngoài tổ chức sẽ xem được bản
     này." / lỗi biên dịch, hiện link một lần + Sao chép, danh sách link: phiên bản, hạn, lượt xem, Thu hồi),
     `fix-request-dialog.tsx` (danh sách lỗi sửa/xoá được, lời nhắn, chọn đích "Cuộc trò chuyện này"/"Cuộc trò chuyện mới",

@@ -689,6 +689,11 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
 pub fn run() {
     tls::ensure();
     tauri::Builder::default()
+        // Đăng ký đầu tiên: bản thứ hai phải thoát trước khi dựng tray hay bật worker thứ hai. App chưa có deep link
+        // hay tham số dòng lệnh để chuyển giao, nên chỉ cần đưa cửa sổ bản đang chạy lên trước.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_app(app);
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
