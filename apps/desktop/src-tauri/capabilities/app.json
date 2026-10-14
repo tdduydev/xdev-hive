@@ -46,6 +46,7 @@
     "allow-optimizer-report",
     "allow-memory-scan",
     "allow-memory-apply",
+    "allow-memory-compress",
     "allow-local-projects",
     "allow-local-projects-import",
     "allow-local-project-bind",

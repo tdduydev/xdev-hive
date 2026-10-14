@@ -5,9 +5,11 @@ import { type AuthedMachine, sendToMachine, type TerminalHandlers, type Terminal
 import { withTenant } from "../platform/index.ts";
 import { liveSession, pushOutput, trackSession, untrackSession } from "./live.ts";
 import { maskSecrets } from "./mask.ts";
+import { onPairResult } from "./pairing.ts";
 import { isPersonalOrigin, machineOwner, recordEvent, recordOpened, welcomeFor } from "./record.ts";
 import { terminalChunks, terminalSessions } from "./schema.ts";
 import { broadcastState, endSession, loadSession, notifyEnded } from "./service.ts";
+import { recordState } from "./state.ts";
 
 const PERSONAL_EXIT_TEXT: Record<string, string> = {
   exit: "CLI đã thoát.",
@@ -37,6 +39,8 @@ export function createTerminalHandlers(pool: pg.Pool): Required<TerminalHandlers
   async function onMessage(machine: AuthedMachine, msg: TerminalMessage): Promise<void> {
     const tenant = { orgId: machine.orgId };
     if (msg.type === "term_event") return recordEvent(pool, machine, msg);
+    if (msg.type === "term_state") return recordState(pool, machine, msg);
+    if (msg.type === "term_pair_result") return onPairResult(machine, msg);
     if (msg.type === "term_opened" && isPersonalOrigin(msg.origin)) {
       await recordOpened(pool, machine, msg);
       return;

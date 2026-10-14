@@ -5,7 +5,7 @@ export { canOpenTerminal, TERMINAL_PERMISSION } from "./access.ts";
 export { createTerminalHandlers } from "./gateway.ts";
 export { maskSecrets } from "./mask.ts";
 export { chainVerifiers, createTerminalTokenVerifier, sweepOnce } from "./mcp-tokens.ts";
-export { remoteRouter, type TerminalRouterDeps, terminalRouter } from "./router.ts";
+export { type RemoteRouterDeps, remoteRouter, type TerminalRouterDeps, terminalRouter } from "./router.ts";
 export { terminalChunks, terminalSessions } from "./schema.ts";
 export type { TerminalDeps } from "./service.ts";
 export { signTerminalToken, terminalTokenKey, verifyTerminalToken } from "./token.ts";
