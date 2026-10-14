@@ -242,3 +242,98 @@ func Due(g Group, now time.Time) bool {
 	last, err := time.Parse(time.RFC3339, g.LastAutoFetchAt)
 	return err != nil || now.Sub(last) >= time.Duration(g.AutoFetchMinutes)*time.Minute
 }
+
+// AddHost thêm kết nối; đã có kết nối cùng loại, cùng máy chủ và cùng tài khoản thì cập nhật tên của kết nối đó (token
+// mới ghi đè token cũ trong keychain theo id).
+func (c *Config) AddHost(h Host) Host {
+	for i, cur := range c.Hosts {
+		if cur.Kind == h.Kind && strings.EqualFold(cur.URL, h.URL) && strings.EqualFold(cur.Username, h.Username) {
+			c.Hosts[i].Name = h.Name
+			return c.Hosts[i]
+		}
+	}
+	h.ID = newID()
+	c.Hosts = append(c.Hosts, h)
+	return h
+}
+
+// RemoveHost xoá kết nối; còn nhóm dùng thì từ chối và nêu tên nhóm.
+func (c *Config) RemoveHost(id string) error {
+	var used []string
+	for _, g := range c.Groups {
+		if g.HostID == id {
+			used = append(used, g.Path)
+		}
+	}
+	if len(used) > 0 {
+		return fmt.Errorf("kết nối đang được nhóm %s dùng; xoá nhóm trước", strings.Join(used, ", "))
+	}
+	for i, h := range c.Hosts {
+		if h.ID == id {
+			c.Hosts = append(c.Hosts[:i], c.Hosts[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("không có kết nối này")
+}
+
+// AddGroup thêm nhóm; cùng kết nối, cùng group và cùng thư mục gốc thì từ chối vì sẽ clone trùng.
+func (c *Config) AddGroup(g Group) (Group, error) {
+	for _, cur := range c.Groups {
+		if cur.HostID == g.HostID && strings.EqualFold(cur.Path, g.Path) && strings.EqualFold(filepath.Clean(cur.Root), filepath.Clean(g.Root)) {
+			return g, fmt.Errorf("đã theo dõi group %s vào %s", g.Path, g.Root)
+		}
+	}
+	g.ID = newID()
+	if g.Repos == nil {
+		g.Repos = []Repo{}
+	}
+	c.Groups = append(c.Groups, g)
+	return g, nil
+}
+
+// RemoveGroup bỏ theo dõi; thư mục đã clone và mục trong Dự án trên máy giữ nguyên.
+func (c *Config) RemoveGroup(id string) error {
+	for i, g := range c.Groups {
+		if g.ID == id {
+			c.Groups = append(c.Groups[:i], c.Groups[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("không có nhóm này")
+}
+
+// maxAutoFetch: tự fetch thưa hơn một ngày thì không còn là "định kỳ" nữa.
+const maxAutoFetch = 24 * 60
+
+// Check kiểm nhóm trước khi lưu và điền cách clone mặc định.
+func (g *Group) Check() error {
+	g.Root = strings.TrimSpace(g.Root)
+	if g.Root == "" || !filepath.IsAbs(g.Root) {
+		return fmt.Errorf("thư mục gốc %q phải là đường dẫn tuyệt đối", g.Root)
+	}
+	g.Root = filepath.Clean(g.Root)
+	switch g.Protocol {
+	case "":
+		g.Protocol = ProtocolHTTPS
+	case ProtocolHTTPS, ProtocolSSH:
+	default:
+		return fmt.Errorf("cách clone %q không hỗ trợ (https hoặc ssh)", g.Protocol)
+	}
+	g.Filter = strings.TrimSpace(g.Filter)
+	if g.Filter != "" {
+		if len(g.Filter) > 500 {
+			return errors.New("bộ lọc quá dài")
+		}
+		if _, err := regexp.Compile(g.Filter); err != nil {
+			return fmt.Errorf("bộ lọc %q không phải regex hợp lệ", g.Filter)
+		}
+	}
+	if g.AutoFetchMinutes < 0 || (g.AutoFetchMinutes > 0 && g.AutoFetchMinutes < 5) || g.AutoFetchMinutes > maxAutoFetch {
+		return fmt.Errorf("tự fetch mỗi 5 tới %d phút, hoặc 0 để tắt", maxAutoFetch)
+	}
+	if len(g.Excluded) > 10000 {
+		return errors.New("danh sách bỏ chọn quá dài")
+	}
+	return nil
+}
