@@ -14,6 +14,7 @@ import {
   validateLeaderSearch,
   validateLoginSearch,
   validateMachinesSearch,
+  validateMemberSearch,
   validateMembersSearch,
   validateOnboardingSearch,
   validateReviewsSearch,
@@ -55,6 +56,7 @@ const LoginPage = lazyRouteComponent(() => import("@/pages/login-page.tsx"), "Lo
 const LoginSettingsPage = lazyRouteComponent(() => import("@/pages/login-settings-page.tsx"), "LoginSettingsPage");
 const MachinesPage = lazyRouteComponent(() => import("@/pages/machines-page.tsx"), "MachinesPage");
 const McpConsentPage = lazyRouteComponent(() => import("@/pages/mcp-consent-page.tsx"), "McpConsentPage");
+const MemberDetailPage = lazyRouteComponent(() => import("@/pages/members-page.tsx"), "MemberDetailPage");
 const MembersPage = lazyRouteComponent(() => import("@/pages/members-page.tsx"), "MembersPage");
 const MergeQueuePage = lazyRouteComponent(() => import("@/pages/merge-queue-page.tsx"), "MergeQueuePage");
 const NotificationsPage = lazyRouteComponent(() => import("@/pages/notifications-page.tsx"), "NotificationsPage");
@@ -280,6 +282,13 @@ const membersRoute = createRoute({
   component: MembersPage,
 });
 
+const memberRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/admin/members/$userId",
+  validateSearch: validateMemberSearch,
+  component: MemberDetailPage,
+});
+
 const loginSettingsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/admin/sign-in-settings",
@@ -355,6 +364,7 @@ const routeTree = rootRoute.addChildren([
         teamsRoute,
         teamRoute,
         membersRoute,
+        memberRoute,
         loginSettingsRoute,
         mergeQueueRoute,
         notificationsRoute,

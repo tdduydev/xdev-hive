@@ -460,7 +460,10 @@ export function DataTable<Row extends { id: string }>({
                 onClick={
                   onRowClick
                     ? (event) => {
-                        if (!(event.target as HTMLElement).closest("a,button,input,[role=checkbox]")) onRowClick(row);
+                        const target = event.target as HTMLElement;
+                        // Sự kiện React đi qua portal: bấm mục của menu ⋯ (nằm ngoài dòng trong DOM) cũng tới đây.
+                        if (!event.currentTarget.contains(target)) return;
+                        if (!target.closest("a,button,input,select,textarea,label,[role=checkbox]")) onRowClick(row);
                       }
                     : undefined
                 }

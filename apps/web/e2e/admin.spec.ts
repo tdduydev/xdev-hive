@@ -127,7 +127,8 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
   await switcher(page).click();
   await page.getByRole("menuitemradio", { name: /Acme Software xDev/ }).click();
   await expect(switcher(page)).toContainText("Chủ sở hữu");
-  await expect(page.getByRole("button", { name: "Thêm người" })).toBeVisible();
+  // Nút chính ở đầu trang đội và nút trong tab Thành viên.
+  await expect(page.getByRole("button", { name: "Thêm người" })).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Thao tác khác" })).toBeVisible();
   await expect(page.getByLabel("Vai trò của Lê Hà trong đội")).toHaveValue("admin");
   expect(orgsOf("teams/list")).toContain(ORG_A.id);
@@ -877,6 +878,36 @@ test("lỗi khi đổi vai trò: hiện câu tiếng Việt của hub, ô chọn
     org: ORG_A.id,
     input: { userId: HA.userId, role: "admin" },
   });
+});
+
+test("thành viên: bấm dòng mở trang của người đó, tab Đội có URL, đổi vai trò ngay trên dòng không mở trang", async ({
+  page,
+}) => {
+  await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
+  const hub = await fakeHub(page, {
+    signedIn: true,
+    rpc: { ...twoOrgs(), "orgMembers/setRole": (input) => ok(input) },
+  });
+  await page.goto("/admin/members");
+  await page.getByLabel("Vai trò tổ chức của Lê Hà").selectOption({ label: "Quản trị" });
+  await expect.poll(() => hub.rpcCalls.some((c) => c.path === "orgMembers/setRole")).toBe(true);
+  await expect(page).toHaveURL("/admin/members");
+
+  await page.getByRole("row", { name: /Lê Hà/ }).getByText("ha.le@example.com").click();
+  await expect(page).toHaveURL(`/admin/members/${HA.userId}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Lê Hà" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Thành viên", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Thêm vào đội" })).toBeVisible();
+  await page.getByRole("tab", { name: /Đội tham gia/ }).click();
+  await expect(page).toHaveURL(`/admin/members/${HA.userId}?tab=doi`);
+  await expect(page.getByRole("link", { name: TEAM.name })).toHaveAttribute("href", `/admin/teams/${TEAM.id}`);
+  await expect(page.getByText("Quản trị đội")).toBeVisible();
+
+  // Vào thẳng link của người không còn trong tổ chức: báo không tìm thấy, có đường về danh sách.
+  await page.goto("/admin/members/khong-co");
+  await expect(page.getByText("Không tìm thấy thành viên này.", { exact: false })).toBeVisible();
+  await page.getByRole("link", { name: "Về danh sách thành viên" }).click();
+  await expect(page).toHaveURL("/admin/members");
 });
 
 test("chưa thuộc tổ chức, không được tạo: trang quản trị và màn tạo tổ chức về trang chủ", async ({ page }) => {
