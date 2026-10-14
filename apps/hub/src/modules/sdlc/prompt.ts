@@ -43,6 +43,8 @@ export interface PromptProject {
   role: "home" | "participant";
   /** File tóm tắt repo đã seed; null khi không đọc được repo. */
   digestPath: string | null;
+  /** Repo của worktree; bỏ trống là dự án chính (converge chạy trên repo của từng dự án). */
+  worktree?: boolean | undefined;
 }
 
 export interface PromptContract {
@@ -115,13 +117,18 @@ function projectsBlock(projects: PromptProject[]): string {
   const others = projects.filter((p) => p.role === "participant");
   const home = projects.find((p) => p.role === "home");
   if (!others.length) return `Hạng mục chỉ thuộc dự án ${home?.key ?? "chính"}.`;
+  const repo = projects.find((p) => p.worktree) ?? home;
   return [
-    `Dự án chính: ${home?.key ?? "?"} (repo của worktree này). Dự án tham gia:`,
-    ...others.map((p) =>
-      p.digestPath
-        ? `- ${p.key}: tóm tắt repo ở \`${p.digestPath}\``
-        : `- ${p.key}: hub chưa đọc được repo; hỏi bằng sdlc_ask nếu cần biết cấu trúc`,
-    ),
+    repo && repo !== home
+      ? `Dự án chính: ${home?.key ?? "?"}. Repo của worktree này: ${repo.key} (dự án tham gia). Dự án khác:`
+      : `Dự án chính: ${home?.key ?? "?"} (repo của worktree này). Dự án tham gia:`,
+    ...projects
+      .filter((p) => p !== repo)
+      .map((p) =>
+        p.digestPath
+          ? `- ${p.key}: tóm tắt repo ở \`${p.digestPath}\``
+          : `- ${p.key}: hub chưa đọc được repo; hỏi bằng sdlc_ask nếu cần biết cấu trúc`,
+      ),
   ].join("\n");
 }
 

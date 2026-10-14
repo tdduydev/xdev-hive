@@ -170,7 +170,10 @@ async function phaseReady(tx: Tx, item: SdlcItemRow, phase: SdlcPhase): Promise<
     .where(
       and(eq(sdlcArtifacts.itemId, item.id), eq(sdlcArtifacts.phaseId, phase.id), eq(sdlcArtifacts.required, true)),
     );
-  if (required.length) return required.every((a) => a.version !== null && a.approval !== "revoked");
+  if (required.length && !required.every((a) => a.version !== null && a.approval !== "revoked")) return false;
+  // Giai đoạn có converge chỉ đạt khi hội tụ (converge.ts); hết vòng mà chưa hội tụ thì người sửa tay hoặc bỏ qua.
+  if (phase.steps.some((s) => s.action === "converge")) return item.convergedAt !== null;
+  if (required.length) return true;
   const auto = phase.steps.filter((s) => s.auto);
   if (!auto.length) return true;
   const done = await tx
