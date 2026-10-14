@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
@@ -128,14 +128,15 @@ describe("TokensScreen", () => {
   it("Claude: ô số liệu, ngữ cảnh theo nhóm, thứ tiêu hạn mức, gợi ý và phiên", async () => {
     const calls = fakeTauri(claudeHandlers);
     render(<TokensScreen />);
+    // Ngữ cảnh, hạn mức và thống kê phiên tải bằng ba lệnh riêng, về không theo thứ tự.
     expect(await screen.findByText("12,7k", { selector: "span.text-2xl" })).toBeTruthy();
-    expect(screen.getByText("95%")).toBeTruthy();
-    expect(screen.getByText("11%")).toBeTruthy();
-    expect(screen.getByText("trên 1M của claude-opus-5-5")).toBeTruthy();
-    expect(screen.getByText("hạn mức tiêu ở mức ngữ cảnh trên 150k")).toBeTruthy();
-    expect(screen.getByText("Gọn ngữ cảnh sớm hơn")).toBeTruthy();
+    expect(await screen.findByText("95%")).toBeTruthy();
+    expect(await screen.findByText("11%")).toBeTruthy();
+    expect(await screen.findByText("trên 1M của claude-opus-5-5")).toBeTruthy();
+    expect(await screen.findByText("hạn mức tiêu ở mức ngữ cảnh trên 150k")).toBeTruthy();
+    expect(await screen.findByText("Gọn ngữ cảnh sớm hơn")).toBeTruthy();
     expect(screen.queryByText("Free space")).toBeNull();
-    const table = screen.getByRole("table");
+    const table = await screen.findByRole("table");
     expect(within(table).getAllByText("payment-api")).toHaveLength(2);
     expect(calls.find((c) => c.command === "session_stats")?.args).toEqual({ engine: "claude", folder: null });
   });
@@ -159,14 +160,19 @@ describe("TokensScreen", () => {
     render(<TokensScreen />);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Thư mục dự án"), "/w/api");
-    await user.click(screen.getAllByRole("button", { name: "Đọc lại" }).at(-1) as HTMLElement);
-    await screen.findByText("95%");
-    expect(
-      calls
-        .filter((c) => c.args?.folder === "/w/api")
-        .map((c) => c.command)
-        .sort(),
-    ).toEqual(["claude_context", "session_stats"]);
+    const submit = screen.getAllByRole("button", { name: "Đọc lại" }).at(-1) as HTMLButtonElement;
+    // Nút gửi của ô thư mục khoá trong lúc màn đang đọc lần đầu; bấm lúc đó không làm gì.
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    await user.click(submit);
+    // 95% đã hiện từ lần đọc lúc mở màn, chưa chứng tỏ lần đọc theo thư mục xong.
+    await waitFor(() =>
+      expect(
+        calls
+          .filter((c) => c.args?.folder === "/w/api")
+          .map((c) => c.command)
+          .sort(),
+      ).toEqual(["claude_context", "session_stats"]),
+    );
     expect(localStorage.getItem("hive.folder")).toBe("/w/api");
   });
 
@@ -182,10 +188,10 @@ describe("TokensScreen", () => {
     render(<TokensScreen />);
     expect(await screen.findByText("Không đọc được ~/.claude.")).toBeTruthy();
     expect(await screen.findByText("hạn mức tiêu ở mức ngữ cảnh trên 150k")).toBeTruthy();
-    expect(screen.getByText("12,7k", { selector: "span.text-2xl" })).toBeTruthy();
+    expect(await screen.findByText("12,7k", { selector: "span.text-2xl" })).toBeTruthy();
     const input = screen.getByText("Token vào 7 ngày").parentElement as HTMLElement;
     expect(within(input).getByText("—")).toBeTruthy();
-    expect(screen.queryByText("Đang đọc…")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
     expect(calls.filter((c) => c.command !== "claude_usage").every((c) => c.args?.folder === null)).toBe(true);
   });
 
@@ -194,7 +200,7 @@ describe("TokensScreen", () => {
     fakeTauri(claudeHandlers);
     render(<TokensScreen />);
     expect(await screen.findByText("of your usage was at >150k context")).toBeTruthy();
-    expect(screen.getByText("Compact context earlier")).toBeTruthy();
-    expect(screen.getByText("12.7k", { selector: "span.text-2xl" })).toBeTruthy();
+    expect(await screen.findByText("Compact context earlier")).toBeTruthy();
+    expect(await screen.findByText("12.7k", { selector: "span.text-2xl" })).toBeTruthy();
   });
 });
