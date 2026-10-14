@@ -9,6 +9,9 @@
 This document follows a reduced [arc42](https://arc42.org) outline. It describes what is built. Planned work that is not
 in the code is listed in [section 11](#11-risks-technical-debt-and-planned-work), not mixed into the design.
 
+Spec 009 sections were checked against `origin/main` at `bf891f4` on 14 October 2026. They describe implemented
+module services and explicitly identify remaining hub integration; other sections retain the baseline above.
+
 ## 1. Introduction and goals
 
 xDev Hive lets teams in one organization hand tasks to coding agent CLIs (Claude Code, Codex, Gemini CLI), share
@@ -118,6 +121,7 @@ flowchart LR
 | `scm` | GitHub and GitLab clients, organization Git connections, webhooks | `scm_connections`, `webhook_deliveries` |
 | `tasks` | Tasks and plan-mode plans | `tasks`, `plans` |
 | `runs` | Dispatch, offers, leases, run events and logs, outcome policy, review, SSE | `runs`, `run_events`, `run_logs`, `run_leases` |
+| `codereview` | Agent PR review instances, rule/AI/CI/human gates, revision rounds, SLA and merge gate; hub wiring pending T070 | `code_reviews`, `code_review_gate_runs` |
 | `knowledge` | Memory (full-text and vector), documents, skills, proposals, legacy import | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `proposals`, `legacy_*` |
 | `leader` | Leader chat and proposals that need human approval | `chat_threads`, `chat_messages`, `approvals` |
 | `sandbox` | Egress allowlists, environment images, organization sandbox settings | `sandbox_org_settings`, `egress_allowlists`, `env_images` |
@@ -217,6 +221,56 @@ Run states: `queued`, `planning`, `awaiting_plan`, `leased`, `preparing`, `runni
 
 Review, plan and leader runs are read-only on the machine: Claude runs with `--permission-mode plan`, Codex with
 `--sandbox read-only`, Gemini with `--approval-mode plan`, and the worker refuses to push for these kinds.
+
+#### Code review workflows (spec 009)
+
+Implementation checked against `origin/main` at `bf891f4` on 14 October 2026: module services and client views exist;
+production router, job, SCM and dependency wiring (T070) and hub command delivery/evaluation (T091) are pending.
+The following flow describes the module design, not a fully connected production feature.
+
+Workflow definitions stay in `knowledge.review_workflows`, with an immutable `subject` (`doc` or `code`) and Code
+scope/options. `codereview` owns the separate runtime tables. Only PRs opened by Hive runs qualify. A matching
+workflow replaces the outcome policy's `review` check (recorded as skipped) and direct automatic merge enqueue for
+that run; the remaining outcome checks still apply. No match keeps the existing cross-review and merge behaviour.
+Creating a workflow from project settings produces an unsaved draft, never an automatic conversion.
+
+```mermaid
+flowchart LR
+  R["Code run: succeeded / needs_review + PR"] --> M{"Matching Code workflow?"}
+  M -->|No| O["Existing outcome review and merge queue"]
+  M -->|Yes| S["Snapshot workflow and PR head SHA"]
+  S --> G["Ordered rule / AI / CI / human gates"]
+  G -->|Approved| Q["Auto enqueue or wait for member"]
+  G -->|Changes requested| F["Agent fix / requester / previous human gate"]
+  F -->|New commit| N["Supersede; next round with first snapshot"]
+  N --> G
+  Q --> E["Merge queue reviewGate; merge / close webhook"]
+```
+
+AI gates start one read-only `review` run per reviewer (one to three), aggregate scores and blocking findings, and
+post one summary PR comment. They are team runs by default (`owner_user_id = null`, `created_by = workflow:<id>`)
+on shared machines or runner hosts; `runner: requester` inherits the original code run owner. Human decisions use
+quorum, SLA and the SHA reviewed. The requester cannot approve unless the gate permits it; organization admins can
+decide. Automated gate overrides require permission and a reason. Audit and notifications record transitions;
+overdue human gates are reminded once per wait.
+
+Agent fixes reuse `code` runs on the same task, branch, CLI and owner, without planning; revision count (default two)
+and task budget bound them. Every new head supersedes the previous instance and reruns automated gates with the
+first round's snapshot. Earlier human approvals can carry forward unless `dismissStaleApprovals` is enabled.
+The merge gate holds unapproved PRs in `waiting`; merge/close webhooks finish instances as `merged`/`cancelled`.
+
+To avoid an import cycle, `runs` calls `codereview/index.ts`, while `codereview` receives `startReviewRuns` and
+`queueFixRun` from `main.ts`. The catalog merge queue receives `reviewGate` by injection too. T070 must connect these
+ports, the `codeReviews` router, the `codereview` queue, SLA cron and SCM handlers.
+
+The worker command runner is implemented (T090): `spec.checks.commands` runs after the agent, before push, returning
+`report.commands` with exit code, duration and redacted output tails. T091 must supply workflow and outcome commands
+and evaluate outcome results in the hub. Missing evidence (old worker or a manual push round) leaves command gates
+waiting for a person. Outcome `command` and `ci` remain unsupported in the hub until implemented; workflow CI is a
+separate gate. Q1 is settled: use commit status `xdev-hive/review` for branch protection, not provider approvals for
+human gates; publishing that status and the settings guidance still await T101.
+
+See [ADR 0018](adr/0018-code-review-workflows.md) and [SRS CR-01–CR-09](srs.md#318-code-review-workflows-cr).
 
 ### 6.4 A sandboxed run
 
@@ -375,7 +429,8 @@ original notes:
 | Item | State |
 |---|---|
 | Single `api` process | Offers and commands go over sockets held by one process. Several `api` processes need NOTIFY-based forwarding |
-| Outcome checks `command` and `ci` | Accepted in project settings but not evaluated; they lead to `needs_review` |
+| Outcome checks `command` and `ci` | Worker command execution exists (T090), but hub delivery/evaluation awaits T091; unsupported checks still lead to `needs_review`. Workflow CI is separate |
+| Code review workflows (spec 009) | Module services and clients exist; production router/jobs/SCM/dependency wiring awaits T070. Commit status and branch protection guidance await T101 |
 | In-run approvals | `approval_needed` and `approval_result` exist in the protocol, but nothing moves a run to `awaiting_input` |
 | Git credentials in runs | Runs use the machine's Git credentials; scoped per-run Git tokens are not implemented |
 | Machine key pairs and short-lived access tokens | Not implemented (`welcome.accessTokenExp` is unused) |
