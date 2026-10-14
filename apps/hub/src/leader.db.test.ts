@@ -13,9 +13,15 @@ import WebSocket from "ws";
 import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
+import { provideLinkTarget, provideThreadHost, purgeArtifacts } from "./modules/artifacts/index.ts";
 import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
-import { appendLeaderSystemMessage, queuedLeaderPrompt } from "./modules/leader/index.ts";
+import {
+  appendLeaderSystemMessage,
+  createThreadHost,
+  createThreadLinkTarget,
+  queuedLeaderPrompt,
+} from "./modules/leader/index.ts";
 import { createPool, parseMasterKey } from "./modules/platform/index.ts";
 import { createRunsEngine, type RunsEngine } from "./modules/runs/index.ts";
 import { createMemoryProvider, type MemoryProvider } from "./modules/scm/index.ts";
@@ -79,6 +85,14 @@ beforeAll(async () => {
     leaderQueuedPrompt: queuedLeaderPrompt,
   });
   unregister = registerRunHandlers(engine.handlers);
+  // Hook thật của module leader (main.ts nối ở T050); postFixRequest thuộc T016.
+  provideThreadHost({
+    ...createThreadHost(),
+    postFixRequest: async () => {
+      throw new Error("chưa có ở T013");
+    },
+  });
+  provideLinkTarget("chat_thread", createThreadLinkTarget());
   const app = createApp({
     config: { port: 0, version: "test", publicUrl: baseURL },
     auth,
@@ -134,6 +148,8 @@ afterEach(async () => {
 
 afterAll(async () => {
   unregister();
+  provideThreadHost(undefined);
+  provideLinkTarget("chat_thread", undefined);
   await Promise.all([...openWorkers].map((w) => w.close()));
   await Promise.all(clients.map((c) => c.close().catch(() => {})));
   engine.stop();
@@ -648,5 +664,147 @@ describe("Leader chat e2e", () => {
       }),
     );
     expect([403, 404]).toContain(sendB.status);
+  });
+});
+
+describe("Thẻ artifact trong chat", () => {
+  /** Mở cuộc trò chuyện, gửi tin, worker nhận run: trả thread, run, mã run token và prompt giao cho worker. */
+  async function startRun(title: string) {
+    const worker = await FakeWorker.connect(await seedMachine(`ldr-art-${randomUUID().slice(0, 6)}`));
+    const thread = (await api<ChatThread>("POST", "/v1/leader/threads", { projectId: projectIdA, title })).data;
+    const sent = await api<{ runId: string }>("POST", `/v1/leader/threads/${thread.id}/messages`, {
+      content: "Vẽ giúp tôi sơ đồ luồng đăng nhập",
+      cli: "claude",
+    });
+    const { spec, runToken } = await worker.take(sent.data.runId);
+    return { worker, thread, runId: sent.data.runId, runToken, prompt: (spec as { prompt: string }).prompt };
+  }
+  const history = async (threadId: string) =>
+    (await api<{ messages: ChatMessage[] }>("GET", `/v1/leader/threads/${threadId}`)).data.messages;
+  const text = (res: unknown) => (res as { content: { text: string }[] }).content.map((c) => c.text).join("\n");
+
+  it("run leader tạo rồi sửa artifact: thẻ đúng thứ tự, artifact trong threads.get, liên kết chat_thread, prompt có hướng dẫn", async () => {
+    const { worker, thread, runId, runToken, prompt } = await startRun("Sơ đồ đăng nhập");
+    expect(prompt).toContain("artifact_create");
+    expect(prompt).toContain("artifact_update");
+    const client = await mcpClient(runToken);
+    expect((await client.listTools()).tools.map((t) => t.name)).toEqual(
+      expect.arrayContaining(["leader_reply", "artifact_create", "artifact_update", "artifact_get", "artifact_list"]),
+    );
+    const before = (await admin.query("select updated_at from hive.chat_threads where id = $1", [thread.id])).rows[0]
+      .updated_at as Date;
+
+    const created = await client.callTool({
+      name: "artifact_create",
+      arguments: { type: "mermaid", title: "Luồng đăng nhập", content: "graph TD; A-->B", threadId: thread.id },
+    });
+    expect((created as { isError?: boolean }).isError).toBeFalsy();
+    const artifactId = (JSON.parse(text(created)) as { id: string }).id;
+    await client.callTool({ name: "leader_reply", arguments: { threadId: thread.id, content: "Đã vẽ xong." } });
+    const updated = await client.callTool({
+      name: "artifact_update",
+      arguments: { id: artifactId, content: "graph TD; A-->B-->C", baseVersion: 1, threadId: thread.id },
+    });
+    expect((updated as { isError?: boolean }).isError).toBeFalsy();
+
+    const messages = await history(thread.id);
+    expect(messages.map((m) => [m.role, m.content, m.artifact?.version ?? null])).toEqual([
+      ["user", "Vẽ giúp tôi sơ đồ luồng đăng nhập", null],
+      ["leader", "Luồng đăng nhập", 1],
+      ["leader", "Đã vẽ xong.", null],
+      ["leader", "Luồng đăng nhập", 2],
+    ]);
+    expect(messages[1]?.artifact).toEqual({
+      id: artifactId,
+      version: 1,
+      title: "Luồng đăng nhập",
+      type: "mermaid",
+      deleted: false,
+    });
+    expect(messages[1]?.runId).toBe(runId);
+    const after = (await admin.query("select updated_at from hive.chat_threads where id = $1", [thread.id])).rows[0]
+      .updated_at as Date;
+    expect(after.getTime()).toBeGreaterThan(before.getTime());
+    const links = (
+      await admin.query("select target_kind, target_id from hive.artifact_links where artifact_id = $1", [artifactId])
+    ).rows;
+    expect(links).toContainEqual({ target_kind: "chat_thread", target_id: thread.id });
+
+    // Tin nhắn kế tiếp: lịch sử đưa cho Leader nêu id artifact để sửa đúng bản.
+    await worker.finish(runId, 0);
+    await until(async () => {
+      const { rows } = await admin.query("select state from hive.runs where id = $1", [runId]);
+      return rows[0]?.state === "succeeded";
+    });
+    const next = await api<{ runId: string }>("POST", `/v1/leader/threads/${thread.id}/messages`, {
+      content: "Thêm bước C nữa",
+      cli: "claude",
+    });
+    const offer = await worker.take(next.data.runId);
+    expect((offer.spec as { prompt: string }).prompt).toContain(`[artifact ${artifactId}, phiên bản 2]`);
+  });
+
+  it("threadId của run khác bị từ chối ARTIFACT_LINK_FORBIDDEN: không tạo artifact, không thêm thẻ", async () => {
+    const { thread, runToken } = await startRun("Thread của run");
+    const other = (await api<ChatThread>("POST", "/v1/leader/threads", { projectId: projectIdA, title: "Thread khác" }))
+      .data;
+    const client = await mcpClient(runToken);
+    const denied = await client.callTool({
+      name: "artifact_create",
+      arguments: { type: "markdown", title: "Lạc thread", content: "x", threadId: other.id },
+    });
+    expect((denied as { isError?: boolean }).isError).toBe(true);
+    // Cổng MCP trả chữ của lỗi, không trả mã: đây là chữ của ARTIFACT_LINK_FORBIDDEN.
+    expect(text(denied)).toBe("Không gắn được artifact vào đây.");
+    expect(await history(other.id)).toHaveLength(0);
+    expect((await history(thread.id)).filter((m) => m.artifact)).toHaveLength(0);
+    const { rows } = await admin.query("select 1 from hive.artifacts where org_id = $1 and title = 'Lạc thread'", [
+      orgA.orgId,
+    ]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("artifact vào thùng rác: thẻ báo đã xoá; xoá hẳn: thẻ còn, artifact null và tin nhắn còn nguyên tổ chức", async () => {
+    const { thread, runToken } = await startRun("Xoá artifact");
+    const client = await mcpClient(runToken);
+    const created = await client.callTool({
+      name: "artifact_create",
+      arguments: { type: "markdown", title: "Ghi chú tạm", content: "# tạm", threadId: thread.id },
+    });
+    const artifactId = (JSON.parse(text(created)) as { id: string }).id;
+
+    await admin.query("update hive.artifacts set deleted_at = now() where id = $1", [artifactId]);
+    let card = (await history(thread.id)).find((m) => m.artifact);
+    expect(card?.artifact).toMatchObject({ id: artifactId, title: "Ghi chú tạm", deleted: true });
+
+    await admin.query("delete from hive.artifacts where id = $1", [artifactId]);
+    card = (await history(thread.id)).find((m) => m.content === "Ghi chú tạm");
+    expect(card).toBeDefined();
+    expect(card?.artifact).toBeNull();
+    const { rows } = await admin.query(
+      "select org_id, artifact_id, artifact_version from hive.chat_messages where id = $1",
+      [card?.id],
+    );
+    expect(rows[0]).toEqual({ org_id: orgA.orgId, artifact_id: null, artifact_version: 1 });
+  });
+
+  it("xoá cuộc trò chuyện: job dọn xoá liên kết chat_thread còn lại", async () => {
+    const { thread, runToken } = await startRun("Xoá cuộc trò chuyện");
+    const client = await mcpClient(runToken);
+    const created = await client.callTool({
+      name: "artifact_create",
+      arguments: { type: "markdown", title: "Theo cuộc trò chuyện", content: "x", threadId: thread.id },
+    });
+    const artifactId = (JSON.parse(text(created)) as { id: string }).id;
+    const linked = () =>
+      admin.query("select 1 from hive.artifact_links where artifact_id = $1 and target_kind = 'chat_thread'", [
+        artifactId,
+      ]);
+    expect((await linked()).rowCount).toBe(1);
+    await admin.query("delete from hive.chat_threads where id = $1", [thread.id]);
+    await purgeArtifacts(pool);
+    expect((await linked()).rowCount).toBe(0);
+    // Artifact không mất theo cuộc trò chuyện: chỉ liên kết.
+    expect((await admin.query("select 1 from hive.artifacts where id = $1", [artifactId])).rowCount).toBe(1);
   });
 });
