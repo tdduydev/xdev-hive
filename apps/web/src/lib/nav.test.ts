@@ -43,6 +43,7 @@ describe("AI SDLC", () => {
     expect(sdlc(visibleGroups(false, (p) => p === "sdlc.read"))?.items.map((i) => i.id)).toEqual([
       "sdlc-items",
       "sdlc-questions",
+      "sdlc-metrics",
     ]);
     expect(sdlc(visibleGroups(false))).toBeUndefined();
     expect(sdlc(visibleGroups(false, (p) => p === "machines.read"))?.items.map((i) => i.id)).toEqual(["sdlc-fleet"]);
@@ -53,6 +54,7 @@ describe("AI SDLC", () => {
         .some((i) => i.id === "sdlc-modes"),
     ).toBe(true);
     expect(activeNavItem("/sdlc/questions")?.id).toBe("sdlc-questions");
+    expect(activeNavItem("/sdlc/metrics")?.id).toBe("sdlc-metrics");
     expect(activeNavItem("/sdlc/payment-api/12/tasks")?.id).toBe("sdlc-items");
     expect(inAdminArea("/sdlc")).toBe(false);
   });

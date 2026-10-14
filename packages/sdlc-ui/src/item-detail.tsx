@@ -8,6 +8,7 @@ import { cn } from "cn";
 import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 import { AutoApproval, AutoApprovalBadge } from "./auto-approval.tsx";
 import { ContractsPanel } from "./contracts-panel.tsx";
+import { ConvergePanel, convergeSteps } from "./converge-panel.tsx";
 import { type SdlcItemTab, useSdlcEnv, useText } from "./env.tsx";
 import { formatUsd, formatWhen, type Tone } from "./format.ts";
 import { OverrideDialog } from "./override-dialog.tsx";
@@ -30,6 +31,7 @@ export const ITEM_TABS: readonly SdlcItemTab[] = [
   "questions",
   "tasks",
   "trace",
+  "converge",
 ];
 
 export interface ItemDetailProps {
@@ -41,8 +43,8 @@ export interface ItemDetailProps {
 }
 
 /**
- * Chi tiết hạng mục (AppSdlcItem.dc.html): đầu trang có chế độ, cỡ, dự án chính, chủ và thao tác; thanh giai đoạn; bảy
- * tab. Mọi thao tác ghi đi qua hub, rồi làm mới cả nhóm `sdlc` vì bảng và câu hỏi cũng đổi theo.
+ * Chi tiết hạng mục (AppSdlcItem.dc.html): đầu trang có chế độ, cỡ, dự án chính, chủ và thao tác; thanh giai đoạn; tám
+ * tab (tab hội tụ chỉ khi chế độ có bước `converge`). Mọi thao tác ghi đi qua hub, rồi làm mới cả nhóm `sdlc` vì bảng và câu hỏi cũng đổi theo.
  */
 export function ItemDetail({ projectKey, number, tab, onTabChange }: ItemDetailProps) {
   const { api, link, errorMessage } = useSdlcEnv();
@@ -84,6 +86,9 @@ export function ItemDetail({ projectKey, number, tab, onTabChange }: ItemDetailP
     );
 
   const item = query.data;
+  // Chế độ nhẹ không có bước hội tụ thì không hiện tab, kể cả khi đường dẫn cũ trỏ tới nó.
+  const tabs = convergeSteps(item).length ? ITEM_TABS : ITEM_TABS.filter((k) => k !== "converge");
+  const shown = tabs.includes(current) ? current : "overview";
   const counts: Partial<Record<SdlcItemTab, number>> = {
     projects: item.projectsDetail.length,
     docs: item.artifacts.filter((a) => a.scope !== "contract").length,
@@ -100,6 +105,7 @@ export function ItemDetail({ projectKey, number, tab, onTabChange }: ItemDetailP
     questions: () => <Questions itemId={item.id} embedded />,
     tasks: () => <TasksTab item={item} />,
     trace: () => <TraceMatrix item={item} />,
+    converge: () => <ConvergePanel item={item} />,
   };
 
   return (
@@ -119,18 +125,18 @@ export function ItemDetail({ projectKey, number, tab, onTabChange }: ItemDetailP
       )}
       <PhaseStepper phases={item.phases} />
       <div role="tablist" aria-label={d.tabsAria} className="flex gap-1 overflow-x-auto border-b border-border">
-        {ITEM_TABS.map((key) => (
+        {tabs.map((key) => (
           <button
             key={key}
             id={`${ids}-tab-${key}`}
             type="button"
             role="tab"
-            aria-selected={current === key}
+            aria-selected={shown === key}
             aria-controls={`${ids}-panel`}
             onClick={() => select(key)}
             className={cn(
               "-mb-px inline-flex min-h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-sm",
-              current === key ? "border-primary font-semibold" : "border-transparent text-muted-foreground",
+              shown === key ? "border-primary font-semibold" : "border-transparent text-muted-foreground",
             )}
           >
             {d.tabs[key]}
@@ -138,8 +144,8 @@ export function ItemDetail({ projectKey, number, tab, onTabChange }: ItemDetailP
           </button>
         ))}
       </div>
-      <div id={`${ids}-panel`} role="tabpanel" aria-labelledby={`${ids}-tab-${current}`}>
-        {panels[current]()}
+      <div id={`${ids}-panel`} role="tabpanel" aria-labelledby={`${ids}-tab-${shown}`}>
+        {panels[shown]()}
       </div>
     </div>
   );
