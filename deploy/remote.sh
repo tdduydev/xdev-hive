@@ -2,6 +2,7 @@
 # Triển khai hub lên một máy chủ qua SSH: deploy/remote.sh <user@máy-chủ> [git-ref, mặc định HEAD]
 #
 # Mã nguồn gửi từ máy dev bằng `git archive` (repo private: máy chủ không cần quyền GitHub), đúng commit của ref.
+# git archive không chứa submodule: hub dùng packages/skill-pack/skills đã vendored, không cần tải xdev-skills.
 # Lần đầu cần HIVE_PUBLIC_URL. Mật khẩu và secret được sinh ngay trên máy chủ, quyền 600, không in ra và không chép về
 # máy dev. Lần sau giữ nguyên .env, chỉ thêm biến mới còn thiếu.
 #
