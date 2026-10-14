@@ -380,7 +380,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     SC-009 đã kiểm qua `sdlc-mvp.spec.ts`: tạo, trả lời, duyệt spec/plan/research và bản tách, chạy đợt, mở PR.
     Quyết định duyệt làm mới cache AI SDLC. Chưa làm: hàng số liệu của mục AI SDLC trong chính sách (contract chưa có).
 
-- [ ] T055 🎯 Desktop: nhóm menu AI SDLC và màn
+- [x] T055 🎯 Desktop: nhóm menu AI SDLC và màn
   - `nav.ts`: quyền `sdlc.use` (dev, writer, lead), `sdlc.manage` (lead), nhóm `sdlc` (Hạng mục, Câu hỏi chờ tôi, Tiến
     độ); `account.ts` `profileOf()`: mọi đội là `viewer` hoặc `ba` → `writer` (D27); màn `sdlc-screen.tsx` (bảng + chi tiết + tạo + bản tách + truy vết theo
     hash `#/sdlc/<project>/<NNN>/<tab>`), `sdlc-questions-screen.tsx`; `write-screen.tsx` truyền env mở rộng cho khung bên;
@@ -391,6 +391,9 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `apps/desktop/src/screens/{index.ts,sdlc-screen.tsx,sdlc-questions-screen.tsx,write-screen.tsx,reviews-screen.tsx}` + test,
     `apps/desktop/package.json`
   - **Phụ thuộc**: T052, T053 · **Mức**: vừa
+  - Đã làm: UI dùng chung qua cầu Rust, hash chi tiết/tab, quyền BA theo đội, khung bên và thẻ duyệt; thiếu kết nối
+    thì mời kết nối Hive. SC-009 có test qua các màn thật, SC-016 kiểm hạng mục ba dự án và thu hồi. Tiến độ dùng danh
+    sách giai đoạn/độ phủ; số liệu tổng hợp chờ T082. Tailwind quét cả package `sdlc-ui` khi dựng app.
 
 ---
 

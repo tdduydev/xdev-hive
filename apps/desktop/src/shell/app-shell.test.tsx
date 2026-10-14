@@ -13,6 +13,9 @@ describe("menu theo hồ sơ", () => {
       "home",
       "work",
       "reviews",
+      "sdlc",
+      "sdlc-questions",
+      "sdlc-progress",
       "knowledge",
       "write",
       "docs",
@@ -28,13 +31,24 @@ describe("menu theo hồ sơ", () => {
 
   it("writer: không thấy Việc của tôi, Môi trường và Lượt chạy; người xem đội chỉ đọc tài liệu", () => {
     const items = navItems("writer");
-    expect(items.map((i) => i.id)).toEqual(["home", "reviews", "knowledge", "write", "docs", "skills", "tokens"]);
+    expect(items.map((i) => i.id)).toEqual([
+      "home",
+      "reviews",
+      "sdlc",
+      "sdlc-questions",
+      "sdlc-progress",
+      "knowledge",
+      "write",
+      "docs",
+      "skills",
+      "tokens",
+    ]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
   });
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(12);
+    expect(items).toHaveLength(15);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 
@@ -42,17 +56,19 @@ describe("menu theo hồ sơ", () => {
     const groups = navGroups("lead");
     expect(groups.map((g) => [g.label.vi, g.items.map((i) => i.label.vi)])).toEqual([
       ["Công việc", ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"]],
+      ["AI SDLC", ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ"]],
       ["Tài liệu", ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"]],
       ["Máy này", ["Gói agent", "Dự án trên máy", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh"]],
     ]);
-    expect(groups.map((g) => g.label.en)).toEqual(["Work", "Docs", "This machine"]);
-    expect(groups[1]?.items.find((i) => i.id === "docs")?.label.en).toBe("Docs from code");
+    expect(groups.map((g) => g.label.en)).toEqual(["Work", "AI SDLC", "Docs", "This machine"]);
+    expect(groups[2]?.items.find((i) => i.id === "docs")?.label.en).toBe("Docs from code");
   });
 
   it("writer vẫn thấy cả ba nhóm, chỉ bớt mục trong nhóm", () => {
     const groups = navGroups("writer");
     expect(groups.map((g) => [g.id, g.items.map((i) => i.id)])).toEqual([
       ["work", ["home", "reviews"]],
+      ["sdlc", ["sdlc", "sdlc-questions", "sdlc-progress"]],
       ["docs", ["knowledge", "write", "docs"]],
       ["machine", ["skills", "tokens"]],
     ]);
@@ -63,8 +79,8 @@ describe("menu theo hồ sơ", () => {
     const groups = NAV_GROUPS.map((g) =>
       g.id === "machine" ? { ...g, items: g.items.filter((i) => i.id === "runs" || i.id === "setup") } : g,
     );
-    expect(navGroups("writer", groups).map((g) => g.id)).toEqual(["work", "docs"]);
-    expect(navGroups("dev", groups).map((g) => g.id)).toEqual(["work", "docs", "machine"]);
+    expect(navGroups("writer", groups).map((g) => g.id)).toEqual(["work", "sdlc", "docs"]);
+    expect(navGroups("dev", groups).map((g) => g.id)).toEqual(["work", "sdlc", "docs", "machine"]);
   });
 
   it("đường dẫn lạ về Tổng quan", () => {
@@ -122,7 +138,7 @@ describe("AppShell", () => {
     render(<AppShell profile="lead" />);
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
     const groups = within(nav).getAllByRole("group");
-    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["Công việc", "Tài liệu", "Máy này"]);
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["Công việc", "AI SDLC", "Tài liệu", "Máy này"]);
     expect(
       groups.map((g) =>
         within(g)
@@ -131,10 +147,12 @@ describe("AppShell", () => {
       ),
     ).toEqual([
       ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"],
+      ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ"],
       ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"],
       ["Gói agent", "Dự án trên máy", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh"],
     ]);
-    for (const title of ["Công việc", "Tài liệu", "Máy này"]) expect(within(nav).getByText(title)).toBeTruthy();
+    for (const title of ["Công việc", "AI SDLC", "Tài liệu", "Máy này"])
+      expect(within(nav).getByText(title)).toBeTruthy();
     expect(within(nav).getByRole("link", { name: "Tài liệu từ code" }).getAttribute("href")).toBe("#/docs");
   });
 
@@ -183,7 +201,7 @@ describe("chưa đăng nhập", () => {
   it("màn chỉ có dữ liệu trên hub mời kết nối Hive, nút mở hộp thoại tài khoản", async () => {
     render(<AppShell />);
     const user = userEvent.setup();
-    for (const id of ["work", "reviews", "knowledge", "write", "runs"]) {
+    for (const id of ["work", "reviews", "sdlc", "sdlc-questions", "sdlc-progress", "knowledge", "write", "runs"]) {
       await open(id);
       expect(await screen.findByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeTruthy();
     }
@@ -207,7 +225,16 @@ describe("chưa đăng nhập", () => {
       .getAllByRole("link")
       .filter((a) => a.hasAttribute("data-offline"))
       .map((a) => a.getAttribute("href"));
-    expect(offline).toEqual(["#/work", "#/reviews", "#/knowledge", "#/write", "#/runs"]);
+    expect(offline).toEqual([
+      "#/work",
+      "#/reviews",
+      "#/sdlc",
+      "#/sdlc-questions",
+      "#/sdlc-progress",
+      "#/knowledge",
+      "#/write",
+      "#/runs",
+    ]);
     expect(within(nav).getByRole("link", { name: "Việc của tôi" }).getAttribute("title")).toBe(
       "Việc của tôi · Cần kết nối Hive",
     );
