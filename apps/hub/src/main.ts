@@ -13,9 +13,11 @@ import {
 import {
   codeReviewQueue,
   codeReviewSlaQueue,
+  codeReviewStatusQueue,
   registerCodeReviewScm,
   registerCodeReviewSla,
   registerCodeReviewWorker,
+  registerReviewStatusWorker,
   reviewGate,
 } from "./modules/codereview/index.ts";
 import {
@@ -128,6 +130,7 @@ jobs = config.jobsDatabaseUrl
         auditRetentionQueue,
         templateSyncQueue,
         codeReviewQueue,
+        codeReviewStatusQueue,
         codeReviewSlaQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
@@ -216,6 +219,7 @@ if (roles.includes("jobs") && jobs) {
       runEvidence: runs?.runEvidence,
     };
     await registerCodeReviewWorker(jobs, codeReviewDeps);
+    await registerReviewStatusWorker(jobs, codeReviewDeps);
     await registerCodeReviewSla(jobs, { pool, publicUrl: codeReviewDeps.publicUrl });
     registerCodeReviewScm(scmEvents, { ...codeReviewDeps, jobs });
     await registerScmEventWorker(jobs, { pool });
