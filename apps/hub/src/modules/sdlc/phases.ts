@@ -26,6 +26,7 @@ import {
 import type { ProviderFactory } from "../scm/index.ts";
 import { teams } from "../tenancy/index.ts";
 import { activeItemProjects, requireItemManage } from "./access.ts";
+import { onBreakdownBaseline } from "./breakdown.ts";
 import { contractCheckpointTeams } from "./contracts.ts";
 import {
   sdlcArtifactSyncs,
@@ -332,6 +333,8 @@ export async function onBaseline(tx: Tx, event: SdlcBaselineEvent, deps: SdlcDep
     .where(eq(sdlcArtifacts.id, artifact.id));
   // Duyệt lại không tạo phiên bản mới nên repo không có gì để ghi.
   if (!event.reaffirm) await markSyncPending(tx, artifact.id);
+  // Bản tách đọc từ chính baseline này (T030); lỗi đọc thì rollback cả baseline để không có baseline mà thiếu task.
+  if (!event.reaffirm) await onBreakdownBaseline(tx, item, artifact, event.version);
   // Lần tự duyệt ghi lúc checkpoint đạt, chưa biết phiên bản; thu hồi cần phiên bản để biết baseline nào bị bác.
   if (event.autoApproved && !event.reaffirm)
     await tx
