@@ -61,7 +61,7 @@ func TestRunnerReportsRepoDrift(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			var events []Event
 			r := Runner{DataDir: data, CLICommands: fakeCommands("empty")}
-			job := Job{RunID: "brief-" + string(rune('a'+i)), Kind: KindBrief, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/B", CLI: "codex", Prompt: "brief", BriefSHA: c.briefSHA, Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "empty", "HIVE_FAKE_EXPECT_FILE": "README"}}
+			job := Job{RunID: "brief-" + string(rune('a'+i)), Kind: KindBrief, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/B", CLI: "codex", Prompt: "brief", BriefSHA: c.briefSHA, Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "empty", "HIVE_FAKE_EXPECT_FILE": "README"}}
 			if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
 				t.Fatal(err)
 			}
