@@ -31,6 +31,8 @@ export interface HubConfig {
   notifyAllowPrivate?: boolean | undefined;
   /** Mở /mcp cho agent trong run khi HIVE_PUBLIC_URL là http (mạng tin cậy). OAuth của người dùng vẫn chỉ chạy qua https. */
   mcpAllowHttp?: boolean | undefined;
+  /** Bật Terminal Leader (HIVE_REMOTE_TERMINAL=1, specs/010): Claude CLI tương tác trên máy dùng chung qua /ws/terminal. */
+  remoteTerminal?: boolean | undefined;
   github?: OAuthAppConfig | undefined;
   gitlab?: (OAuthAppConfig & { issuer?: string | undefined }) | undefined;
   /** API tương thích OpenAI embeddings cho tìm memory theo nghĩa. Không đặt thì chỉ tìm theo từ. */
@@ -131,6 +133,7 @@ export function loadConfig(env: Env = process.env): HubConfig {
     allowEmailSignUp: env.HIVE_ALLOW_EMAIL_SIGNUP === "1",
     notifyAllowPrivate: env.HIVE_NOTIFY_ALLOW_PRIVATE === "1",
     mcpAllowHttp: env.HIVE_MCP_ALLOW_HTTP === "1",
+    remoteTerminal: env.HIVE_REMOTE_TERMINAL === "1",
     github: oauthApp(env, "HIVE_GITHUB"),
     gitlab: gitlab && { ...gitlab, issuer: env.HIVE_GITLAB_ISSUER },
     embeddings: embeddings(env),

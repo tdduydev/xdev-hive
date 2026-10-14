@@ -42,6 +42,9 @@ func main() {
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "hook":
+		// Ẩn khỏi trợ giúp: Claude Code gọi lệnh này làm hook của run (runner/guard.go), người dùng không gọi tay.
+		os.Exit(runner.HookMain(os.Args[2:], os.Stdin, os.Stdout))
 	case "egress-proxy":
 		os.Exit(egressProxy(os.Args[2:], os.Stderr))
 	case "version":

@@ -181,11 +181,20 @@ describe("đăng ký máy", () => {
 
 describe("danh sách và thu hồi", () => {
   it("admin đội xem được máy của đội; thành viên thường thì không", async () => {
-    await register((await newRegistration()).token, `ds-${tag}`);
+    const mine = await register((await newRegistration()).token, `ds-${tag}`);
+    await admin.query("update hive.machines set bound_projects = $2, full_projects = $3 where id = $1", [
+      mine.id,
+      ["p-bound", "p-full"],
+      ["p-full"],
+    ]);
     const list = await withTenant(app, { userId: user("admin"), orgId: orgA }, (tx) =>
       listMachines(tx, user("admin"), teamA),
     );
     expect(list.map((m) => m.name)).toContain(`ds-${tag}`);
+    // Dự án gắn repo local và dự án bật toàn quyền (ADR 0020) đi kèm để web hiện cho quản trị đội.
+    const listed = list.find((m) => m.id === mine.id);
+    expect(listed?.boundProjects).toEqual(["p-bound", "p-full"]);
+    expect(listed?.fullProjects).toEqual(["p-full"]);
     expect(list.every((m) => m.teamId === teamA)).toBe(true);
     expect(
       await fleetCode(() =>
