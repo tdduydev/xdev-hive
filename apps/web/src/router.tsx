@@ -14,11 +14,14 @@ import {
   validateLeaderSearch,
   validateLoginSearch,
   validateMachinesSearch,
+  validateMemberSearch,
   validateMembersSearch,
   validateOnboardingSearch,
   validateReviewsSearch,
   validateTasksSearch,
+  validateTeamSearch,
   validateTeamsSearch,
+  validateWorkflowsSearch,
 } from "@/lib/route-search.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
 
@@ -48,10 +51,12 @@ const ReviewsPage = lazyRouteComponent(() => import("@/pages/knowledge/reviews-p
 const SkillsPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillsPage");
 const WorkflowsPage = lazyRouteComponent(() => import("@/pages/knowledge/workflows-page.tsx"), "WorkflowsPage");
 const LeaderPage = lazyRouteComponent(() => import("@/pages/leader-page.tsx"), "LeaderPage");
+const LeaderTerminalPage = lazyRouteComponent(() => import("@/pages/leader-terminal-page.tsx"), "LeaderTerminalPage");
 const LoginPage = lazyRouteComponent(() => import("@/pages/login-page.tsx"), "LoginPage");
 const LoginSettingsPage = lazyRouteComponent(() => import("@/pages/login-settings-page.tsx"), "LoginSettingsPage");
 const MachinesPage = lazyRouteComponent(() => import("@/pages/machines-page.tsx"), "MachinesPage");
 const McpConsentPage = lazyRouteComponent(() => import("@/pages/mcp-consent-page.tsx"), "McpConsentPage");
+const MemberDetailPage = lazyRouteComponent(() => import("@/pages/members-page.tsx"), "MemberDetailPage");
 const MembersPage = lazyRouteComponent(() => import("@/pages/members-page.tsx"), "MembersPage");
 const MergeQueuePage = lazyRouteComponent(() => import("@/pages/merge-queue-page.tsx"), "MergeQueuePage");
 const NotificationsPage = lazyRouteComponent(() => import("@/pages/notifications-page.tsx"), "NotificationsPage");
@@ -68,6 +73,7 @@ const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-page
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
 const ProjectTasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "ProjectTasksPage");
 const TasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "TasksPage");
+const TeamDetailPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamDetailPage");
 const TeamsPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamsPage");
 
 /*
@@ -231,6 +237,13 @@ const leaderRoute = createRoute({
   component: LeaderPage,
 });
 
+/** Phiên terminal Leader: xterm.js nặng nên cả trang là một chunk riêng, chỉ tải khi mở phiên. */
+const leaderTerminalRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/leader/terminal/$id",
+  component: LeaderTerminalPage,
+});
+
 const runsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/runs",
@@ -248,7 +261,18 @@ const teamsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/admin/teams",
   validateSearch: validateTeamsSearch,
+  beforeLoad: ({ search }) => {
+    if (search.doi)
+      throw redirect({ to: "/admin/teams/$teamId", params: { teamId: search.doi }, search: {}, replace: true });
+  },
   component: TeamsPage,
+});
+
+const teamRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/admin/teams/$teamId",
+  validateSearch: validateTeamSearch,
+  component: TeamDetailPage,
 });
 
 const membersRoute = createRoute({
@@ -256,6 +280,13 @@ const membersRoute = createRoute({
   path: "/admin/members",
   validateSearch: validateMembersSearch,
   component: MembersPage,
+});
+
+const memberRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/admin/members/$userId",
+  validateSearch: validateMemberSearch,
+  component: MemberDetailPage,
 });
 
 const loginSettingsRoute = createRoute({
@@ -291,7 +322,12 @@ const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/skills", component: SkillsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory", component: MemoryPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/workflows", component: WorkflowsPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/workflows",
+    validateSearch: validateWorkflowsSearch,
+    component: WorkflowsPage,
+  }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/knowledge/reviews",
@@ -323,9 +359,12 @@ const routeTree = rootRoute.addChildren([
         planRoute,
         runsRoute,
         leaderRoute,
+        leaderTerminalRoute,
         runRoute,
         teamsRoute,
+        teamRoute,
         membersRoute,
+        memberRoute,
         loginSettingsRoute,
         mergeQueueRoute,
         notificationsRoute,

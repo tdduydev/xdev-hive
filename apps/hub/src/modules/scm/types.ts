@@ -161,7 +161,7 @@ export interface GitProvider {
    * nhật đè khi agent vừa push thêm (GitLab không hỗ trợ, bỏ qua). Không cập nhật được vì xung đột thì lỗi conflict.
    */
   updatePRBranch(ref: RepoRef, number: number, expectedHeadSha: string): Promise<void>;
-  checksFor(ref: RepoRef, sha: string): Promise<ChecksState>;
+  checksFor(ref: RepoRef, sha: string, opts?: { excludeContexts?: readonly string[] }): Promise<ChecksState>;
   /**
    * Merge PR nếu head vẫn là `sha`. Head đã đổi hoặc PR không còn merge được thì lỗi conflict, để merge queue xem lại
    * PR thay vì merge commit chưa qua CI.

@@ -9,21 +9,13 @@ test("đã đăng nhập: mở /login thì vào /, thấy khung app như mockup"
   await expect(page.getByText("Chưa thuộc tổ chức nào")).toBeVisible();
 
   const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
-  for (const group of ["Công việc", "Kiến thức", "Dự án và hạ tầng", "Quản trị agent", "Người và quyền", "Theo dõi"]) {
+  for (const group of ["Công việc", "Kiến thức"]) {
     await expect(nav.getByRole("button", { name: group })).toBeVisible();
   }
+  // Nhóm quản trị không còn ở sidebar chính: chỉ một mục "Quản trị" dẫn vào menu riêng.
+  await expect(nav.getByRole("button", { name: "Người và quyền" })).toHaveCount(0);
   // Chưa thuộc tổ chức nào: mọi mục mờ, không bấm được, nói rõ vì sao.
-  for (const label of [
-    "Bảng việc",
-    "Lượt chạy",
-    "Máy",
-    "Dự án",
-    "Thành viên",
-    "Đội và hệ thống",
-    "Thông báo",
-    "Chi phí và token",
-    "Đăng nhập",
-  ]) {
+  for (const label of ["Bảng việc", "Lượt chạy", "Tài liệu", "Quản trị"]) {
     const entry = nav.locator("[aria-disabled=true]").filter({ hasText: label });
     await expect(entry).toBeVisible();
     await expect(entry).toHaveAttribute("title", "Cần thuộc một tổ chức");
@@ -156,8 +148,45 @@ test("sidebar: nhóm của màn đang mở tự mở; mở hay đóng nhóm thì
   await expect(nav.getByRole("link", { name: "Lượt chạy" })).toBeVisible();
   await page.reload();
   await expect(nav.getByRole("button", { name: "Công việc" })).toHaveAttribute("aria-expanded", "true");
+});
+
+test("menu Quản trị: một mục ở sidebar chính mở menu thứ hai; ← quay lại trang trước; hẹp thì thành ô chọn", async ({
+  page,
+}) => {
+  await inOrg(page);
+  await page.route("**/rpc/runs/search**", (route) =>
+    route.fulfill({ json: { json: { items: [], nextCursor: null } } }),
+  );
+  await page.goto("/runs");
+  const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
+  await nav.getByRole("link", { name: "Quản trị" }).click();
+  await expect(page).toHaveURL("/admin/members");
+  await expect(nav.getByRole("link", { name: "Quản trị" })).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("navigation", { name: "Đường dẫn" })).toContainText("Quản trị");
+
+  const admin = page.getByRole("navigation", { name: "Điều hướng quản trị" });
+  for (const group of ["Người và quyền", "Dự án và hạ tầng", "Quản trị agent", "Theo dõi"]) {
+    await expect(admin.getByRole("heading", { name: group })).toBeVisible();
+  }
+  await expect(admin.getByRole("link", { name: "Thành viên" })).toHaveAttribute("aria-current", "page");
   // Mục chỉ quản trị dùng thấy được với quản trị tổ chức.
-  await expect(nav.getByRole("link", { name: "Nhật ký", includeHidden: true })).toHaveAttribute("href", "/admin/audit");
+  await expect(admin.getByRole("link", { name: "Nhật ký" })).toHaveAttribute("href", "/admin/audit");
+  await admin.getByRole("link", { name: "Dự án", exact: true }).click();
+  await expect(page).toHaveURL("/projects");
+  await expect(admin.getByRole("link", { name: "Dự án", exact: true })).toHaveAttribute("aria-current", "page");
+
+  await page.getByRole("link", { name: "Quay lại trang trước khi vào Quản trị" }).click();
+  await expect(page).toHaveURL("/runs");
+  await expect(page.getByRole("navigation", { name: "Điều hướng quản trị" })).toHaveCount(0);
+
+  // Dưới 1024 px menu thứ hai thành ô chọn trang, vẫn đủ nhóm.
+  await page.setViewportSize({ width: 800, height: 900 });
+  await page.goto("/admin/members");
+  await expect(page.getByRole("navigation", { name: "Điều hướng quản trị" })).toBeHidden();
+  const pick = page.getByRole("combobox", { name: "Chọn trang quản trị" });
+  await expect(pick).toHaveValue("members");
+  await pick.selectOption({ label: "Nhật ký" });
+  await expect(page).toHaveURL("/admin/audit");
 });
 
 test("⌘K mở bảng lệnh, gõ tên màn rồi Enter thì đi tới màn đó; đường dẫn ở thanh trên đổi theo", async ({ page }) => {

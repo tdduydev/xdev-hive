@@ -483,6 +483,26 @@ describe("GitHub PR cho merge queue", () => {
     expect(await gh.checksFor(ref, sha)).toBe(state);
   });
 
+  it.each([
+    [[], "none"],
+    [[{ context: "ci/test", state: "success" }], "success"],
+    [[{ context: "ci/test", state: "failure" }], "failure"],
+    [[{ context: "ci/test", state: "pending" }], "pending"],
+  ])("checkpoint CI bỏ qua status của phiên review, giữ CI khác %j → %s", async (other, state) => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: `${STATUS}?per_page=100&page=1`, method: "GET" }).reply(
+      200,
+      {
+        state: "pending",
+        total_count: other.length + 1,
+        statuses: [{ context: "xdev-hive/review", state: "pending" }, ...other],
+      },
+      JSON_HEADERS,
+    );
+    pool.intercept({ path: RUNS, method: "GET" }).reply(200, { check_runs: [] }, JSON_HEADERS);
+    expect(await gh.checksFor(ref, sha, { excludeContexts: ["xdev-hive/review"] })).toBe(state);
+  });
+
   it("mergePR gửi cách merge và sha", async () => {
     const { gh, pool } = setup();
     pool

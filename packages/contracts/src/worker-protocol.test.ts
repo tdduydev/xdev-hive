@@ -248,6 +248,15 @@ describe("sự kiện cost", () => {
       expect(costEventData.safeParse({ ...base, rtk: bad }).success).toBe(false);
     }
   });
+
+  it("guard là tuỳ chọn và chỉ nhận số nguyên không âm", () => {
+    expect(costEventData.parse(base).guard).toBeUndefined();
+    const guard = { contextPackFiles: 14, exploreBlocked: 2, truncatedChars: 30_000 };
+    expect(costEventData.parse({ ...base, guard }).guard).toEqual(guard);
+    for (const bad of [{ ...guard, exploreBlocked: -1 }, { ...guard, truncatedChars: 1.5 }, { contextPackFiles: 1 }]) {
+      expect(costEventData.safeParse({ ...base, guard: bad }).success).toBe(false);
+    }
+  });
 });
 
 describe("đăng nhập gói từ web (T063)", () => {
