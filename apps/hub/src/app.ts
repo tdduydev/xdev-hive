@@ -282,7 +282,7 @@ export function createApp({
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
     terminal: terminalRouter({ auth, pool, terminal }),
-    remote: remoteRouter({ auth, pool }),
+    remote: remoteRouter({ auth, pool, remote: { enabled: terminal.enabled, publicUrl } }),
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.

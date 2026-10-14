@@ -44,6 +44,11 @@ import { SessionLayout } from "@/shell/session-layout.tsx";
  * Mỗi trang là một chunk riêng, tải khi vào route (hoặc khi rê chuột lên link, nhờ defaultPreload). Bundle đầu chỉ còn
  * router, khung app và thư viện dùng chung, nên trang đầu tiên hiện nhanh hơn.
  */
+const ArtifactDetailPage = lazyRouteComponent(() => import("@/pages/artifacts/detail-page.tsx"), "ArtifactDetailPage");
+const ArtifactLibraryPage = lazyRouteComponent(
+  () => import("@/pages/artifacts/library-page.tsx"),
+  "ArtifactLibraryPage",
+);
 const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"), "AuditPage");
 const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
@@ -266,6 +271,23 @@ const leaderTerminalRoute = createRoute({
   component: LeaderTerminalPage,
 });
 
+/** Artifact (specs/012): thư viện, chi tiết; `/v/$n` là đường dẫn phiên bản mà agent dán vào chữ trả lời. */
+const artifactsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts",
+  component: ArtifactLibraryPage,
+});
+const artifactRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts/$id",
+  component: ArtifactDetailPage,
+});
+const artifactVersionRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts/$id/v/$n",
+  component: ArtifactDetailPage,
+});
+
 const runsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/runs",
@@ -447,6 +469,9 @@ const routeTree = rootRoute.addChildren([
         runsRoute,
         leaderRoute,
         leaderTerminalRoute,
+        artifactsRoute,
+        artifactRoute,
+        artifactVersionRoute,
         runRoute,
         teamsRoute,
         teamRoute,
