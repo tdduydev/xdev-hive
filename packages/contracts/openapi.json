@@ -110331,6 +110331,10 @@
                     ],
                     "type": "string"
                   },
+                  "gateRunId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
                   "note": {
                     "type": "string",
                     "maxLength": 4000
