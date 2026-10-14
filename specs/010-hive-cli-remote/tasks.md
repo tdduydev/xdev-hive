@@ -175,7 +175,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `worker/internal/accounts/{accounts.go,accounts_test.go}`, `worker/cmd/hive-worker/{main.go,main_test.go}`
   - **Phụ thuộc**: T003, T004, T010 · **Mức**: nặng
 
-- [ ] T012 [US1] CLI `hive`: đăng nhập, chat/run, ls, kill
+- [x] T012 [US1] CLI `hive`: đăng nhập, chat/run, ls, kill
   - Một phần (SPEC10NEXT): `chat`, `run`, `ls [--json]`, `attach [--view]`, `kill`, `version`, phím Ctrl-] d/t, raw
     mode, SIGWINCH, mã thoát.
   - Đã làm (SPEC10W4): `login` (loopback PKCE `purpose: cli`, `--with-token` đọc stdin, `--no-browser`, `--hub`/
@@ -183,6 +183,9 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     không có keychain thì `hive.json` 0600 + cảnh báo), `logout`, `whoami`; `--task`/`--project` tra hub bằng token cá
     nhân rồi gửi id cho worker; `ls --all` (phiên đang chạy trên mọi máy, từ `remote.list`); `--no-record`.
     **Còn**: `__hook` (làm cùng T072), `--escape`.
+  - Đã làm (SPEC10W5): `--escape KEY` cho `chat`, `run`, `attach` (`ctrl-<phím>`, `^<phím>`, `none`; từ chối Esc/Tab/
+    Enter/Backspace vì agent cần; dòng hướng dẫn in theo phím đang dùng). `__hook` chuyển sang T072 (cần tín hiệu của
+    worker).
   - `cmd/hive`: `login` (loopback PKCE `purpose: cli`, `--with-token`), keychain (`dev.xdev.hive`/URL hub; không có thì
     file 0600 + cảnh báo), `logout`, `whoami`; `chat`/`run` (raw mode bằng `x/term`, SIGWINCH/console resize, phím tách
     và giành quyền, khôi phục terminal), `--task`/`--project` tra hub bằng token cá nhân; `ls`, `kill`, `version`;
@@ -473,7 +476,8 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://10.86.22
 - [ ] T072 [US7] Worker: tín hiệu "agent cần bạn"
   - Claude tương tác: file settings tạm với hook `Notification` (+ `Stop`) gọi `hive __hook attention`, ghép với hook
     quản lý của tổ chức như `runner/hooks.go`; CLI khác: im 60 s sau output → `idle`; gửi `term_event`.
-  - **Scope**: `worker/internal/terminal/{attention.go,attention_test.go}`
+  - Lệnh `hive __hook` (chuyển từ T012): gửi tín hiệu tới worker qua socket nội bộ.
+  - **Scope**: `worker/internal/terminal/{attention.go,attention_test.go}`, `worker/cmd/hive/{main.go,hook.go,hook_test.go}`
   - **Phụ thuộc**: T050 (cùng làn) · **Mức**: vừa
 
 ---

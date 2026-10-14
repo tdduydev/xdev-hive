@@ -25,6 +25,12 @@ type chatOptions struct {
 	noRecord bool
 	// task, project là key trên hub (PAY-12, PAY); tra bằng token của hive login.
 	task, project string
+	escape        byte
+}
+
+// escapeFlag thêm --escape cho lệnh gắn vào phiên; đọc giá trị bằng parseEscape sau khi parse.
+func escapeFlag(fs *flag.FlagSet) *string {
+	return fs.String("escape", "ctrl-]", "phím tiền tố cho lệnh trong phiên (ctrl-<phím> hoặc none)")
 }
 
 func newFlagSet(name string, w io.Writer) *flag.FlagSet {
@@ -69,9 +75,13 @@ func (a *app) parseChat(args []string, withPrompt bool) (chatOptions, int) {
 	fs.BoolVar(&o.noRecord, "no-record", false, "không ghi phiên lên hub")
 	// Phiên tại máy chưa mở được từ xa nên cờ này đã đúng mặc định; nhận để script viết theo plan chạy được.
 	fs.Bool("no-remote", false, "không cho điều khiển từ xa")
+	escape := escapeFlag(fs)
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return o, exitUsage
+	}
+	if o.escape, err = parseEscape(*escape); err != nil {
+		return o, a.errorf(exitUsage, "%v", err)
 	}
 	if o.task != "" && o.project != "" {
 		return o, a.errorf(exitUsage, "Chỉ dùng một trong --task và --project: task đã thuộc một dự án.")
@@ -147,8 +157,8 @@ func (a *app) chat(args []string, withPrompt bool) int {
 	if resp.Account != "" {
 		account = ", gói " + resp.Account
 	}
-	fmt.Fprintf(a.stderr, "hive: phiên %s (%s%s). Ctrl-] d để tách, gắn lại bằng hive attach %s.\n", resp.ID, o.cli, account, resp.ID)
-	return a.interact(c, resp.ID, modeControl)
+	fmt.Fprintf(a.stderr, "hive: phiên %s (%s%s). %s Gắn lại bằng hive attach %s.\n", resp.ID, o.cli, account, escHint(o.escape, false), resp.ID)
+	return a.interact(c, resp.ID, modeControl, o.escape)
 }
 
 // resolveLink tra --task/--project trên hub trước khi mở phiên, để gõ sai key thì báo ngay thay vì ghi phiên không liên
@@ -188,12 +198,17 @@ func (a *app) resolveLink(o chatOptions) (projectID, taskID string, code int) {
 func (a *app) attachCmd(args []string) int {
 	fs := newFlagSet("attach", a.stderr)
 	view := fs.Bool("view", false, "chỉ xem, không gõ")
+	escFlag := escapeFlag(fs)
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
 		return exitUsage
 	}
 	if len(pos) != 1 {
-		return a.errorf(exitUsage, "Cách dùng: hive attach <id> [--view].")
+		return a.errorf(exitUsage, "Cách dùng: hive attach <id> [--view] [--escape KEY].")
+	}
+	esc, err := parseEscape(*escFlag)
+	if err != nil {
+		return a.errorf(exitUsage, "%v", err)
 	}
 	mode := modeControl
 	if *view {
@@ -211,11 +226,11 @@ func (a *app) attachCmd(args []string) int {
 		return a.fail(err)
 	}
 	if mode == modeView {
-		fmt.Fprintf(a.stderr, "hive: đang xem phiên %s. Ctrl-] t để giành quyền, Ctrl-] d để tách.\n", resp.ID)
+		fmt.Fprintf(a.stderr, "hive: đang xem phiên %s. %s\n", resp.ID, escHint(esc, true))
 	} else {
-		fmt.Fprintf(a.stderr, "hive: đã gắn phiên %s. Ctrl-] d để tách.\n", resp.ID)
+		fmt.Fprintf(a.stderr, "hive: đã gắn phiên %s. %s\n", resp.ID, escHint(esc, false))
 	}
-	return a.interact(c, resp.ID, mode)
+	return a.interact(c, resp.ID, mode, esc)
 }
 
 type sessionInfo struct {
