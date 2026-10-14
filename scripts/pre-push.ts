@@ -51,6 +51,9 @@ if (!env.DOCKER_HOST && existsSync(colima)) {
 const web = files.filter((f) => /\.(ts|tsx|js|mjs|cjs|json|jsonc|css)$/.test(f) && existsSync(join(root, f)));
 if (web.length) run("biome (file đổi)", "pnpm", ["exec", "biome", "check", "--no-errors-on-unmatched", ...web]);
 
+if (files.some((f) => /^(xdev-skills(?:\/|$)|\.gitmodules$|packages\/skill-pack\/)/.test(f)))
+  run("bộ skill khớp submodule", "node", ["packages/skill-pack/scripts/sync.ts", "check"]);
+
 const ts = files.some((f) => /^(apps|packages|scripts)\//.test(f) && !f.startsWith("apps/desktop/src-tauri/"));
 if (ts) {
   run(

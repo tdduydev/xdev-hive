@@ -11,6 +11,7 @@
       "!.legacy",
       "!.claude/skills",
       "!packages/skill-pack/skills",
+      "!xdev-skills",
       "!.specify",
       "!**/dist",
       "!**/openapi.json",

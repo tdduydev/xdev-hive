@@ -22,12 +22,16 @@ jobs:
       TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: true
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Bộ skill khớp submodule
+        run: node packages/skill-pack/scripts/sync.ts check
       # Test có database dùng ảnh pgvector: tải trước qua bản sao, Testcontainers thấy ảnh có sẵn thì không tải lại.
       - name: Ảnh Postgres cho test
         run: echo "HIVE_TEST_POSTGRES_IMAGE=$(scripts/ci/pull-image.sh pgvector/pgvector:0.8.7-pg18-trixie)" >> "$GITHUB_ENV"
