@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { artifactPageErrors, artifactType } from "./artifacts.ts";
 import { id, orgRoute } from "./common.ts";
 import { projectSettingsPatch } from "./projects.ts";
 import { sdlcItemCreate } from "./sdlc.ts";
@@ -26,12 +27,28 @@ export const leaderAction = z.discriminatedUnion("type", [
 ]);
 export type LeaderAction = z.output<typeof leaderAction>;
 
+/** Thẻ artifact trong tin nhắn (specs/012 C12, D10). */
+export const chatArtifactRef = z.object({
+  id,
+  version: z.int().min(1),
+  title: z.string(),
+  type: artifactType,
+  /** Artifact đang trong thùng rác: thẻ hiện "Artifact đã bị xoá". Xoá hẳn thì `artifact` của tin nhắn thành null. */
+  deleted: z.boolean().default(false),
+});
+export type ChatArtifactRef = z.output<typeof chatArtifactRef>;
+
 export const chatMessage = z.object({
   id,
   role: leaderRole,
+  // Tin nhắn thẻ vẫn có `content` là tiêu đề artifact, để client chưa biết thẻ hiện được chữ.
   content: z.string(),
   runId: id.nullable(),
   createdAt: z.iso.datetime(),
+  // Có mặc định vì hub trước specs/012 không trả hai trường này.
+  artifact: chatArtifactRef.nullable().default(null),
+  /** Tin "Nhờ Leader sửa" (C18): lỗi của trang, dữ liệu không tin cậy do trang viết. */
+  pageErrors: artifactPageErrors.nullable().default(null),
 });
 export type ChatMessage = z.output<typeof chatMessage>;
 
