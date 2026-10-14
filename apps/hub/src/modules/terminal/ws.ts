@@ -54,6 +54,7 @@ import { getRemoteSession } from "./queries.ts";
 import { machineOwner, personal } from "./record.ts";
 import { remoteDevices, terminalSessions } from "./schema.ts";
 import { loadSession, readChunks, sessionView } from "./service.ts";
+import { totpAllowed } from "./totp.ts";
 
 /**
  * Giới hạn gõ mỗi kết nối: dán một đoạn dài vẫn qua (đệm 64 KiB), nhưng một trang không làm ngập kênh worker (chung
@@ -325,10 +326,29 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
       }
     };
 
+    /**
+     * Tổ chức đã tắt mã Authenticator: chặn ở hub, không chờ worker, vì máy chỉ nhận chính sách mới khi nối lại. Đọc
+     * chính sách mỗi lần xin vì nó đổi được trong lúc kết nối còn mở.
+     */
+    const totpBlocked = async () => {
+      if (!session || (await totpAllowed(opts.pool, ticket.orgId))) return false;
+      const s = session;
+      await withTenant(opts.pool, tenant, (tx) =>
+        recordAudit(tx, {
+          action: "terminal.deny",
+          targetType: "terminal_session",
+          targetId: s.id,
+          data: { connId, machineId: s.machineId, code: "TOTP_NOT_ALLOWED" },
+        }),
+      );
+      return true;
+    };
+
     const control = (deviceId: string, proof: { auth: RemoteAuth } | { resumeToken: string }) => {
       if (!conn || !session) return;
       if (!isConnected(conn.machineId)) return error("MACHINE_OFFLINE");
       conn.pendingDeviceId = deviceId;
+      conn.pendingTotp = "auth" in proof && proof.auth.kind === "totp";
       sendToMachine(conn.machineId, {
         type: "term_control",
         sessionId: session.id,
@@ -358,12 +378,16 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
           if (!conn.canControl || (grant && grant.userId !== ticket.userId)) {
             return send({ t: "denied", code: "AUTH_STALE", message: TERM_DENY_MESSAGES.AUTH_STALE });
           }
+          if ((grant ? grant.totp : deviceId === TOTP_DEVICE_ID) && (await totpBlocked())) {
+            return send({ t: "denied", code: "TOTP_NOT_ALLOWED", message: TERM_DENY_MESSAGES.TOTP_NOT_ALLOWED });
+          }
           return control(deviceId, { resumeToken: frame.resumeToken });
         }
         case "control": {
           if (block) return error(block);
           const deviceId = frame.deviceId ?? (frame.auth.kind === "totp" ? TOTP_DEVICE_ID : undefined);
           if (!deviceId) return error("DEVICE_NOT_FOUND");
+          if (frame.auth.kind === "totp" && (await totpBlocked())) return error("TOTP_NOT_ALLOWED");
           return control(deviceId, { auth: frame.auth });
         }
         case "release":
@@ -583,11 +607,15 @@ export function withRemoteLive(
       // Worker từ chối `control` bằng sự kiện (không có requestId cho `term_denied`); chỉ kết nối xin mới cần biết.
       const code = termDenyCode.safeParse(data.denied).data ?? "AUTH_INVALID";
       const message = typeof data.reason === "string" ? data.reason : TERM_DENY_MESSAGES[code];
+      const totp = conn?.pendingTotp ?? false;
       if (conn) {
         conn.pendingDeviceId = null;
+        conn.pendingTotp = false;
         conn.send({ t: "denied", code, message });
       }
       await audit(machine, conn?.userId ?? null, "terminal.deny", msg.sessionId, { connId: data.connId, code });
+      if (totp)
+        await audit(machine, conn?.userId ?? null, "terminal.totp_fail", msg.sessionId, { connId: data.connId, code });
       return;
     }
     if (msg.event === "controller") {
@@ -640,12 +668,16 @@ export function withRemoteLive(
         userId: conn.userId,
         deviceId,
         connId: conn.connId,
+        totp: conn.pendingTotp,
         expiresAt: Number.POSITIVE_INFINITY,
       });
+      const totp = conn.pendingTotp;
       conn.granted = true;
       conn.pendingDeviceId = null;
+      conn.pendingTotp = false;
       conn.send({ t: "granted", workerEphPub: msg.workerEphPub, resumeToken: msg.resumeToken });
       await audit(machine, conn.userId, "terminal.control_grant", msg.sessionId, { connId: conn.connId, deviceId });
+      if (totp) await audit(machine, conn.userId, "terminal.totp_ok", msg.sessionId, { connId: conn.connId });
       await notifyControl(machine, live, conn.connId, deviceId);
       return;
     }
