@@ -72,10 +72,14 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/pty/**`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T004 [P] Worker: socket nội bộ
+- [x] T004 [P] Worker: socket nội bộ
   - Một phần (SPEC10NEXT): Unix socket (`HIVE_SOCKET` ghi đè đường dẫn), kiểm UID bằng `SO_PEERCRED`/`LOCAL_PEERCRED`,
-    dọn socket cũ, bắt tay, khung nhị phân, test đủ ca. **Còn**: Windows named pipe + DACL + kiểm SID (hiện báo "chưa hỗ
-    trợ trên Windows").
+    dọn socket cũ, bắt tay, khung nhị phân, test đủ ca.
+  - Đã làm (SPEC10W5): Windows named pipe `\\.\pipe\xdev-hive-<SID>` qua `go-winio` (đường dẫn file như `HIVE_SOCKET`
+    được băm ra tên pipe), DACL được bảo vệ chỉ SID hiện tại, tạo lần đầu bằng `FILE_CREATE` nên pipe đã có thì
+    `ErrInUse`; server kiểm SID client (`GetNamedPipeClientProcessId`), client kiểm SID tiến trình giữ pipe
+    (`GetNamedPipeServerProcessId`) để chặn người khác giữ trước tên pipe. Test chung chạy cả Unix lẫn Windows
+    (`server_test.go`), riêng Windows: tên pipe, SDDL, pipe đang dùng, mở lại sau khi đóng. Bỏ `ErrUnsupported`.
   - `internal/localipc`: server/client; Unix socket 0600 trong thư mục 0700, kiểm UID bằng `SO_PEERCRED`
     (Linux) / `LOCAL_PEERCRED` (macOS); Windows named pipe với DACL chỉ SID hiện tại và kiểm SID client; bắt tay phiên
     bản; yêu cầu JSON một dòng; chuyển sang khung nhị phân `[loại u8][độ dài u32][dữ liệu]` sau `attach`.

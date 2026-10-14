@@ -151,8 +151,6 @@ func (a *app) fail(err error) int {
 	switch {
 	case errors.Is(err, localipc.ErrNotRunning):
 		return a.errorf(exitUsage, "%s", msgNotRunning)
-	case errors.Is(err, localipc.ErrUnsupported):
-		return a.errorf(exitUsage, "hive chưa hỗ trợ trên Windows: socket nội bộ tới hive-worker chưa làm.")
 	case errors.Is(err, localipc.ErrDenied):
 		return a.errorf(exitDenied, "hive-worker từ chối kết nối: chỉ người dùng đang chạy worker mới dùng được.")
 	case errors.As(err, &ve):
