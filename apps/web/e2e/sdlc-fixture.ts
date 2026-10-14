@@ -61,6 +61,7 @@ function project(n: number, key: string, teamId: string, enabled = true): Projec
 
 export const PAYMENT = project(1, "payment-api", TEAM_BACKEND);
 export const WEB = project(2, "web-shop", TEAM_WEB);
+export const MOBILE = project(3, "mobile-app", TEAM_WEB);
 export const ITEM_ID = uid(112);
 
 function modeView(ref: "speckit" | "bugfix"): SdlcModeView {
@@ -160,7 +161,7 @@ function autoApproval(): SdlcAutoApproval {
   };
 }
 
-function itemDetail(canWrite: boolean): SdlcItemDetail {
+function itemDetail(canWrite: boolean, participants: Project[]): SdlcItemDetail {
   const settings = PAYMENT.settings.sdlc ?? projectSdlcSettings.parse({ enabled: true });
   const artifact = (n: number, phaseId: string, artifactId: string) => ({
     id: uid(n),
@@ -189,7 +190,11 @@ function itemDetail(canWrite: boolean): SdlcItemDetail {
     sizeSuggested: "L",
     suggestion: null,
     settings,
-    projectsDetail: [PAYMENT, WEB].map((p, i) => ({
+    projects: [
+      { ...refOf(PAYMENT), role: "home" },
+      ...participants.map((p) => ({ ...refOf(p), role: "participant" as const })),
+    ],
+    projectsDetail: [PAYMENT, ...participants].map((p, i) => ({
       ...refOf(p),
       teamId: p.teamId,
       teamName: i ? "Web" : "Backend",
@@ -235,11 +240,19 @@ function itemDetail(canWrite: boolean): SdlcItemDetail {
   };
 }
 
-/** `canWrite: false` là người chỉ có `sdlc.read`. `answered` giữ câu trả lời hub nhận để test đọc lại. */
-export function sdlcFixture(opts: { canWrite?: boolean } = {}) {
+/**
+ * `canWrite: false` là người chỉ có `sdlc.read`; `participants` là dự án tham gia (mặc định web-shop). `answered` và
+ * `revoked` giữ thứ hub nhận để test đọc lại.
+ */
+export function sdlcFixture(opts: { canWrite?: boolean; participants?: Project[] } = {}) {
   const canWrite = opts.canWrite ?? true;
-  const state = { questions: [question(1), question(2)], answered: [] as unknown[] };
-  const item = itemDetail(canWrite);
+  const state = {
+    questions: [question(1), question(2)],
+    answered: [] as unknown[],
+    revoked: [] as { id: string; reason: string }[],
+    created: [] as unknown[],
+    item: itemDetail(canWrite, opts.participants ?? [WEB]),
+  };
   const rpc: Record<string, RpcHandler> = {
     "projects/list": () => ok([PAYMENT, WEB]),
     "sdlc/board": () =>
@@ -247,7 +260,60 @@ export function sdlcFixture(opts: { canWrite?: boolean } = {}) {
         columns: SDLC_PHASE_KINDS.map((kind) => ({ kind, items: kind === "design" ? [summary()] : [] })),
       }),
     "sdlc/modes/list": () => ok([modeView("speckit"), modeView("bugfix")]),
-    "sdlc/items/get": () => ok(item),
+    "sdlc/items/get": () => ok(state.item),
+    // Ý tưởng nói "lỗi" thì gợi ý cỡ S, chế độ Bugfix như bộ gợi ý của hub.
+    "sdlc/suggest": (input) => {
+      const { idea } = input as { idea: string };
+      const bug = /lỗi/i.test(idea);
+      return ok({
+        size: bug ? "S" : "L",
+        modeRef: bug ? "bugfix" : "speckit",
+        reason: bug ? "Sửa lỗi nhỏ → S → Bugfix" : "Đụng thanh toán, nhiều màn → L → Spec Kit",
+        alternatives: [],
+      });
+    },
+    "sdlc/items/create": (input) => {
+      const { title, modeRef, size } = input as { title: string; modeRef: string; size: SdlcItemDetail["size"] };
+      state.created.push(input);
+      const mode = SDLC_PRESETS[modeRef as keyof typeof SDLC_PRESETS] ?? SPECKIT;
+      state.item = {
+        ...state.item,
+        id: uid(113),
+        number: 13,
+        ref: "013",
+        slug: "sua-loi-lam-tron",
+        title,
+        modeRef,
+        modeName: mode.name,
+        mode,
+        size,
+        openQuestions: 0,
+        questions: [],
+        autoApprovals: [],
+      };
+      return ok(state.item);
+    },
+    "sdlc/autoApprovals/revoke": (input) => {
+      const { id, reason } = input as { id: string; reason: string };
+      state.revoked.push({ id, reason });
+      const revoked = state.item.autoApprovals.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              revokedAt: NOW,
+              revokedBy: { userId: "u1", name: "Trần Đức Duy" },
+              revokeReason: reason,
+              canRevoke: false,
+            }
+          : a,
+      );
+      state.item = {
+        ...state.item,
+        autoApprovals: revoked,
+        artifacts: state.item.artifacts.map((a) => (a.artifactId === "spec" ? { ...a, approval: "none" as const } : a)),
+      };
+      return ok(revoked.find((a) => a.id === id));
+    },
     "sdlc/questions/count": () => ok({ open: state.questions.filter((q) => q.status === "open").length }),
     "sdlc/questions/list": (input) => {
       const { openOnly } = (input ?? {}) as { openOnly?: boolean };

@@ -95,3 +95,21 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+test("sửa lỗi nhỏ (SC-003): từ bảng tới hạng mục Bugfix trong không quá 5 thao tác", async ({ page }) => {
+  const { state } = await setup(page);
+  await page.goto("/sdlc");
+  // Mỗi dòng dưới đây là một thao tác của người dùng.
+  await page.getByRole("link", { name: "Tạo hạng mục" }).first().click();
+  await page.getByLabel("Dự án chính").selectOption({ label: "payment-api" });
+  await page.getByLabel("Tiêu đề").fill("Sửa lỗi làm tròn số tiền");
+  await page
+    .getByRole("textbox", { name: "Ý tưởng" })
+    .fill("Lỗi làm tròn khi hoàn tiền số lẻ, lệch 1 đồng so với sổ cái.");
+  await expect(page.getByText("Sửa lỗi nhỏ → S → Bugfix")).toBeVisible();
+  await page.getByRole("button", { name: "Tạo hạng mục" }).click();
+
+  await expect(page).toHaveURL(/\/sdlc\/payment-api\/13$/);
+  expect(state.created).toEqual([expect.objectContaining({ modeRef: "bugfix", size: "S" })]);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Sửa lỗi làm tròn số tiền");
+});
