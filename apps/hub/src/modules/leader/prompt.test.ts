@@ -67,6 +67,7 @@ describe("artifact trong prompt", () => {
     });
     expect(prompt).toContain(ARTIFACT_RULE);
     expect(prompt).toContain(SDLC_RULE);
+    expect(prompt.split(SDLC_RULE)).toHaveLength(2);
     expect(prompt).toContain(TIER_RULE);
     expect(ARTIFACT_RULE).toContain("artifact_create");
     expect(ARTIFACT_RULE).toContain("artifact_update");
