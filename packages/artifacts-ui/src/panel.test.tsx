@@ -4,6 +4,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { ArtifactRef, ArtifactsEnv } from "./env.tsx";
 import { ArtifactPanel, type ArtifactSelection, panelTabs } from "./panel.tsx";
+import { asFake, editClient } from "./test-edit-fixtures.tsx";
 import { detail, fakeClient, ID_A, ID_B, ID_C, renderWithEnv, testEnv } from "./test-fixtures.tsx";
 
 const user = userEvent.setup({ delay: null });
@@ -74,7 +75,8 @@ describe("ArtifactPanel", () => {
   });
 
   it("đang sửa thì không tự mở, chỉ chấm báo trên tab", async () => {
-    const panel = setup([refA, refB], testEnv(fakeClient(details)), { id: ID_A, version: 1 });
+    // Vào chế độ sửa dựng ô soạn thật, cần thêm thủ tục `update`/`preview` mà fakeClient của khung không có.
+    const panel = setup([refA, refB], testEnv(asFake(editClient(details))), { id: ID_A, version: 1 });
     await user.click(await screen.findByRole("button", { name: "Sửa" }));
     panel.onValueChange.mockClear();
 

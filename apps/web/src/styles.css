@@ -9,6 +9,7 @@
 @source "../../../packages/ui/src";
 @source "../../../packages/doc-editor/src";
 @source "../../../packages/code-review/src";
+@source "../../../packages/artifacts-ui/src";
 
 /*
  * Design system v2: docs/design-system/xdev-hive/MASTER.md (UI UX Pro Max: Minimalism & Swiss, bảng màu công cụ dev,
