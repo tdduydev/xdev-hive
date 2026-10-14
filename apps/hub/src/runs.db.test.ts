@@ -2327,6 +2327,83 @@ describe("brief của dự án và khảo sát trước khi sửa (ADR 0022)", (
   });
 });
 
+describe("run đề xuất skill (specs/014)", () => {
+  let learnProject = "";
+  const proposalReport = {
+    proposals: [{ kind: "new", name: "lam-tron-tien", description: "d", content: "c", reason: "r" }],
+  };
+  const createRun = (projectId: string, prompt = "Tóm tắt các run khó") =>
+    withTenant(pool, { orgId: org.orgId }, (tx) =>
+      engine.skillLearning.createRun(tx, { projectId, batchId: randomUUID(), prompt }),
+    );
+
+  beforeAll(async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+    learnProject = (
+      await seedProject(admin, pool, {
+        orgId: org.orgId,
+        teamId: org.teamId,
+        systemId: org.systemId,
+        adminUserId: org.user("admin"),
+        masterKey,
+        key: `sl-${tag}`,
+      })
+    ).projectId;
+  });
+
+  it("máy chưa khai skill_proposal thì không tạo run, để lô thử lại sau", async () => {
+    const m = await seedMachine(`sl-old-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["brief"] });
+    expect(await createRun(learnProject)).toEqual({ ok: false, reason: "no_machine" });
+    expect(
+      (await admin.query("select 1 from hive.runs where project_id = $1 and kind = 'skill_proposal'", [learnProject]))
+        .rowCount,
+    ).toBe(0);
+    await w.close();
+  });
+
+  it("giao cho máy đã khai: chỉ đọc, sonnet, effort medium, lời nhắc của lô; nộp xong thì succeeded", async () => {
+    const m = await seedMachine(`sl-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["skill_proposal"] });
+    const started = await createRun(learnProject, "Các việc khó của dự án");
+    if (!started.ok) throw new Error(started.reason);
+    started.afterCommit();
+    const offer = await w.next("job_offer", (o) => o.runId === started.runId);
+    expect(offer.spec).toMatchObject({
+      kind: "skill_proposal",
+      cli: "claude",
+      model: "sonnet",
+      effort: "medium",
+      taskId: null,
+      prompt: "Các việc khó của dự án",
+    });
+    expect((await runRow(started.runId)).owner_user_id).toBeNull();
+    w.send({ type: "job_accept", runId: started.runId, attempt: 1 });
+    await w.next("lease", (l) => l.runId === started.runId);
+    await admin.query(
+      `insert into hive.run_events (org_id, run_id, attempt, seq, type, data) values ($1, $2, 1, null, 'skill_proposal_report', $3)`,
+      [org.orgId, started.runId, JSON.stringify(proposalReport)],
+    );
+    w.sendRun({ type: "run_result", runId: started.runId, attempt: 1, exit: 0, headSha: null, report: null });
+    await until(async () => (await runRow(started.runId)).state === "succeeded", 15_000);
+    await w.close();
+  });
+
+  it("agent thoát êm mà không nộp thì run failed", async () => {
+    const m = await seedMachine(`sl2-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["skill_proposal"] });
+    const started = await createRun(learnProject);
+    if (!started.ok) throw new Error(started.reason);
+    started.afterCommit();
+    await w.next("job_offer", (o) => o.runId === started.runId);
+    w.send({ type: "job_accept", runId: started.runId, attempt: 1 });
+    await w.next("lease", (l) => l.runId === started.runId);
+    w.sendRun({ type: "run_result", runId: started.runId, attempt: 1, exit: 0, headSha: null, report: null });
+    await until(async () => (await runRow(started.runId)).state === "failed", 15_000);
+    await w.close();
+  });
+});
+
 describe("quy trình review code (specs/009)", () => {
   let crProject = "";
   let crKey = "";
