@@ -89,6 +89,7 @@ const RunPage = lazyRouteComponent(() => import("@/pages/run-page.tsx"), "RunPag
 const RunsPage = lazyRouteComponent(() => import("@/pages/runs-page.tsx"), "RunsPage");
 const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "ProjectSandboxPage");
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
+const SdlcModesPage = lazyRouteComponent(() => import("@/pages/admin/sdlc-modes-page.tsx"), "SdlcModesPage");
 const SdlcFleetPage = lazyRouteComponent(() => import("@/pages/sdlc/fleet-page.tsx"), "SdlcFleetPage");
 const SdlcBoardPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcBoardPage");
 const SdlcItemPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcItemPage");
@@ -358,6 +359,7 @@ const roleRoute = createRoute({
  * bắt đầu bằng chữ và số hạng mục là số nên hai loại không lẫn.
  */
 const sdlcRoutes = [
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/sdlc-modes", component: SdlcModesPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/fleet", component: SdlcFleetPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc", component: SdlcBoardPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/new", component: SdlcNewPage }),

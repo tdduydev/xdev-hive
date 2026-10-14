@@ -503,13 +503,17 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `packages/contracts/src/{breakdown-parsers/*.ts,breakdown-parsers.test.ts}`
   - **Phụ thuộc**: T002, T003 · **Mức**: vừa
 
-- [ ] T084 [P] Trang cấu hình chế độ (web)
+- [x] T084 [P] Trang cấu hình chế độ (web)
   - `sdlc-ui` `mode-editor.tsx` (giai đoạn, tài liệu có phạm vi item/project/contract, cổng dùng lại trình sửa checkpoint
     của trang Quy trình duyệt, cổng theo dự án, tự duyệt mỗi giai đoạn với lỗi FR-056 hiện tại chỗ, bước, chạy thử); trang
     `/admin/sdlc-modes`; Playwright `sdlc-modes.spec.ts`.
   - **Scope**: `packages/sdlc-ui/src/mode-editor.tsx` + test, `apps/web/src/pages/admin/sdlc-modes-page.tsx`,
     `apps/web/e2e/sdlc-modes.spec.ts`
   - **Phụ thuộc**: T011, T054, T006 · **Mức**: vừa
+  - Đã làm: `/admin/sdlc-modes`, sao chép preset, lưu/xoá chế độ đội/tổ chức, chạy thử; sửa giai đoạn, tài liệu/phạm vi,
+    cổng theo dự án, tự duyệt, bước agent và nguồn tách task. Dùng lại `GateConfig`, bổ sung BA/PO và ba luật AI SDLC
+    vào danh sách chọn. Lỗi FR-056 hiện ngay giai đoạn; giữ dấu phân cách khi nhập danh sách, sinh mã tài liệu duy nhất
+    trong cả chế độ. Vitest và Playwright kiểm lưu/xoá/chạy thử, chỉ đọc, FR-056, 360 px sáng/tối.
 
 - [ ] T085 Ngữ cảnh spec cho review code (spec 009)
   - `codereview` nhận deps `specContextFor` cho checkpoint AI; prompt review có requirement và tiêu chí của task.

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./mode-editor": "./src/mode-editor.tsx",
     "./breakdown": "./src/breakdown-review.tsx"
   },
   "scripts": {
