@@ -43,11 +43,12 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .term .dim{color:var(--muted-foreground)}.term .ok{color:var(--success)}.term .warn{color:var(--warning)}.term .pri{color:var(--primary)}
 .cursor{display:inline-block;width:2px;height:15px;vertical-align:text-bottom;background:var(--primary)}
 .sel{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.leader-artifacts{container-type:inline-size}.leader-artifacts-nav{flex:none}@container(max-width:1279px){.leader-artifacts-nav{display:none}}
 </style>
 </helmet>
-<div data-theme="{{theme}}" style="{{rootStyle}}">
+<div class="leader-artifacts" data-theme="{{theme}}" style="{{rootStyle}}">
   <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
-    <dc-import name="Sidebar" active="leader" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+    <aside class="leader-artifacts-nav"><dc-import name="Sidebar" active="leader" lang="{{lang}}" hint-size="240px,1000px"></dc-import></aside>
   </sc-if>
   <div style="{{innerStyle}}">
     <dc-import name="Topbar" crumb="Leader" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
@@ -58,7 +59,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
         </sc-for>
       </span>
     </nav>
-    <sc-if value="{{isChat}}" hint-placeholder-val="{{true}}">
+    <sc-if value="{{artifacts}}" hint-placeholder-val="{{true}}"><dc-import name="ArtifactPanel" layout="chat" lang="{{lang}}" dark="{{dark}}" view="{{artifactView}}" hint-size="100%,1000px"></dc-import></sc-if>
+    <sc-if value="{{legacy}}" hint-placeholder-val="{{false}}">
     <main style="flex: 1; box-sizing: border-box; width: 100%; padding: 20px 24px; display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch;">
 
       <aside style="flex: 1 1 280px; max-width: 300px; min-width: 240px; display: flex; flex-direction: column; gap: 12px;">
@@ -287,15 +289,18 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["chat","open","terminal","bypass"],"default":"chat"},"$preview":{"width":1440,"height":1000}}'>
-// modes: chat,open,terminal,bypass
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"artifacts":{"editor":"boolean","default":true},"view":{"editor":"enum","options":["ready","loading","empty","error","offline","runtime","compile","newer","editing","deleted","chat","open","terminal","bypass"],"default":"ready"},"$preview":{"width":1440,"height":1000}}'>
 class Component extends DCLogic {
   constructor(props) { super(props); this.state = { thread: 0, rejecting: false, showNew: false, lang: null, dark: null, mode: null, drawer: false }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const dark = this.state.dark ?? !!this.props.dark;
     // Biến thể terminal (LEADTERM): chat | open (hộp thoại mở phiên) | terminal (Đề xuất) | bypass (nhật ký). `narrow` là khung 360 px.
-    const mode = this.state.mode ?? this.props.view ?? 'chat';
+    // Artifact và terminal dùng hai tập trạng thái khác nhau nhưng cùng tab chat.
+    const terminalViews = ['chat', 'open', 'terminal', 'bypass'];
+    const mode = this.state.mode ?? (terminalViews.includes(this.props.view) ? this.props.view : 'chat');
+    const artifacts = mode === 'chat' && (this.props.artifacts ?? true);
+    const artifactView = terminalViews.includes(this.props.view) ? 'ready' : (this.props.view ?? 'ready');
     const narrow = !!this.props.narrow;
     const en = lang === 'en';
     const x = (p) => (en ? p[1] : p[0]);
@@ -388,6 +393,7 @@ class Component extends DCLogic {
       { key: 'TASK-47', title: x(['Nút hoàn tiền trên web', 'Refund button on web']), who: x(['chưa giao', 'unassigned']) },
     ];
     return {
+      artifacts, legacy: mode === 'chat' && !artifacts, artifactView,
       theme: dark ? 'dark' : 'light', lang, dark, t, threads, proposal,
       narrow, wide: !narrow, variants, sessions, cards, log,
       isChat: mode === 'chat', isOpen: mode === 'open', isTerm, isBypass, isPropose: !isBypass,
