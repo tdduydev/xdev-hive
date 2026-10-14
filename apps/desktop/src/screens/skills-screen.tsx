@@ -15,6 +15,7 @@ import {
   type DiffLine,
   diffHunks,
   type HubSkillItem,
+  hivePackFile,
   type InstalledSkill,
   idleTokens,
   installedSkills,
@@ -107,7 +108,7 @@ const text: Dict<{
     sync: (n) => `Đồng bộ ${n} bản mới`,
     synced: "Đã đồng bộ",
     noFolder: "Chọn thư mục làm việc ở góc trên bên trái, hoặc cài vào tài khoản của tôi.",
-    noAccount: "Liên kết tài khoản để lấy skill từ hub.",
+    noAccount: "Kết nối Hive để lấy skill từ hub. Skill đã cài trên máy vẫn dùng được.",
     unmatched: "Thư mục chưa khớp dự án nào trên hub: chỉ hiện skill của tổ chức.",
     loading: "Đang đọc…",
     search: "Tìm skill…",
@@ -141,7 +142,7 @@ const text: Dict<{
     next: "Trang sau",
     empty: "Không có skill nào khớp.",
     pickRow: "Chọn một skill để xem chi tiết.",
-    scope: { org: "Tổ chức", team: "Đội", project: "Dự án", local: "Trên máy" },
+    scope: { hive: "Hive mặc định", org: "Tổ chức", team: "Đội", project: "Dự án", local: "Trên máy" },
     team: (name) => `Đội · ${name}`,
     project: (name) => `Dự án · ${name}`,
     state: {
@@ -179,7 +180,7 @@ const text: Dict<{
     sync: (n) => `Sync ${n} updates`,
     synced: "Synced",
     noFolder: "Choose a working folder at the top left, or install to your account.",
-    noAccount: "Link your account to get skills from the hub.",
+    noAccount: "Connect to Hive to get skills from the hub. Skills installed on this machine still work.",
     unmatched: "This folder does not match a hub project: showing organization skills only.",
     loading: "Reading…",
     search: "Search skills…",
@@ -213,7 +214,7 @@ const text: Dict<{
     next: "Next page",
     empty: "No skills match.",
     pickRow: "Pick a skill to see details.",
-    scope: { org: "Organization", team: "Team", project: "Project", local: "This machine" },
+    scope: { hive: "Hive default", org: "Organization", team: "Team", project: "Project", local: "This machine" },
     team: (name) => `Team · ${name}`,
     project: (name) => `Project · ${name}`,
     state: {
@@ -255,7 +256,13 @@ const STATE_TONE: Record<SkillState, Tone> = {
   shadowed: "neutral",
   gone: "bad",
 };
-const SCOPE_TONE: Record<ScopeKind, Tone> = { org: "sel", team: "ok", project: "neutral", local: "neutral" };
+const SCOPE_TONE: Record<ScopeKind, Tone> = {
+  hive: "sel",
+  org: "sel",
+  team: "ok",
+  project: "neutral",
+  local: "neutral",
+};
 /** Trạng thái mà "Đồng bộ" và "Cài / cập nhật" xử lý; còn lại là việc người dùng tự quyết. */
 const PENDING: SkillState[] = ["update", "missing"];
 const PAGE = 8;
@@ -297,8 +304,11 @@ async function listHubSkills(project: string | null) {
     if (page.hidden) hidden = page.hidden;
     offset = page.nextOffset;
   }
-  // Không có dự án thì skill_list trả mọi phạm vi mình thấy; chỉ skill của tổ chức chắc chắn áp cho thư mục lạ.
-  return project ? { skills, hidden } : { skills: skills.filter((s) => s.scope === "org"), hidden: [] };
+  // Không có dự án thì skill_list trả mọi phạm vi mình thấy; chỉ skill của tổ chức (và skill mặc định tổ chức bật)
+  // chắc chắn áp cho thư mục lạ.
+  return project
+    ? { skills, hidden }
+    : { skills: skills.filter((s) => s.scope === "org" || s.scope === "hive"), hidden: [] };
 }
 
 /** Nội dung SKILL.md đầy đủ trên hub (skill_get trả theo trang). */
@@ -445,6 +455,7 @@ export function SkillsScreen() {
         return name ? t.team(name) : t.scope.team;
       }
       if (s.scope === "project") return project ? t.project(project.name) : t.scope.project;
+      if (s.scope === "hive") return s.license ? `${t.scope.hive} · ${s.license}` : t.scope.hive;
       return t.scope.org;
     },
     [t, teamName, project],
@@ -548,6 +559,8 @@ export function SkillsScreen() {
       const files = await Promise.all(
         items.map(async (r) => {
           const s = r.hub as HubSkillItem;
+          // Skill mặc định của Hive có scripts, references đi kèm: cài cả thư mục để agent chạy được như ở run.
+          if (s.scope === "hive") return hivePackFile(s.name, s.version);
           const key = `${s.name}@${s.version}`;
           const txt = texts[key] ?? (await hubSkillText(s, project_));
           return { name: s.name, version: s.version, text: txt };
@@ -641,13 +654,15 @@ export function SkillsScreen() {
       : null;
   const repoPath = (r: Row) =>
     r.hub?.repoPath ??
-    (r.hub?.scope === "org"
-      ? `org/${r.name}/SKILL.md`
-      : r.hub?.scope === "project" && project
-        ? `projects/${project.key}/${r.name}/SKILL.md`
-        : r.hub
-          ? `${r.name}/SKILL.md`
-          : null);
+    (r.hub?.scope === "hive"
+      ? `tdduydev/xdev-skills · library/${r.name}/`
+      : r.hub?.scope === "org"
+        ? `org/${r.name}/SKILL.md`
+        : r.hub?.scope === "project" && project
+          ? `projects/${project.key}/${r.name}/SKILL.md`
+          : r.hub
+            ? `${r.name}/SKILL.md`
+            : null);
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -982,7 +997,7 @@ export function SkillsScreen() {
                           {t.disableMe}
                         </Button>
                       )}
-                      {canPropose && cur.state === "modified" && cur.hub && (
+                      {canPropose && cur.state === "modified" && cur.hub && cur.hub.scope !== "hive" && (
                         <Button size="sm" variant="outline" disabled={busy} onClick={() => setProposing(cur.id)}>
                           {t.propose}
                         </Button>

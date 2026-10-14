@@ -1,4 +1,4 @@
-import { briefSubmitInput, planContent, type Task } from "@xdev-hive/contracts";
+import { briefSubmitInput, planContent, skillProposalSubmitInput, type Task } from "@xdev-hive/contracts";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { loadProject } from "../catalog/index.ts";
@@ -142,6 +142,32 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       await hubEvent(tx, run, "plan_report", content);
       await notifyRun(tx, run.id);
       return { runId: run.id, attempt: run.attempt, recorded: "plan_report", steps: content.steps.length };
+    },
+  });
+
+  registry.register({
+    name: "skill_proposal_submit",
+    title: "Nộp đề xuất skill",
+    description:
+      "Chỉ dành cho run đề xuất skill: nộp tối đa 3 SKILL.md mới hoặc bản sửa skill đã có, mỗi cái kèm lý do. Nộp " +
+      "mảng rỗng khi không có gì đáng thành skill. Hub chỉ nhận lần gọi cuối cùng; người duyệt quyết định có dùng không.",
+    input: skillProposalSubmitInput,
+    runKinds: ["skill_proposal"],
+    // Như brief_submit: run chạy chỉ đọc nên Claude ở chế độ plan chỉ gọi được tool có readOnlyHint.
+    readOnly: true,
+    handler: async (input, { tx, principal }) => {
+      const { runId, attempt } = requireRun(principal);
+      const run = await lockRun(tx, runId);
+      if (!run || run.attempt !== attempt || !ON_MACHINE.includes(run.state)) throw runNotActive();
+      if (run.kind !== "skill_proposal") {
+        throw new ForbiddenError(
+          "SKILL_PROPOSAL_RUN_REQUIRED",
+          "Chỉ run đề xuất skill mới gọi được skill_proposal_submit.",
+        );
+      }
+      await hubEvent(tx, run, "skill_proposal_report", input);
+      await notifyRun(tx, run.id);
+      return { runId: run.id, attempt: run.attempt, recorded: "skill_proposal_report", count: input.proposals.length };
     },
   });
 

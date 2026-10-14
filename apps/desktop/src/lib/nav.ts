@@ -91,6 +91,8 @@ export interface NavItem {
   needs: Permission;
   /** Có quyền xem mà thiếu quyền này thì mục hiện nhãn "chỉ đọc". */
   writes?: Permission;
+  /** Màn chỉ có dữ liệu trên hub: chưa đăng nhập thì hiện lời mời kết nối Hive thay cho màn. */
+  hub?: true;
 }
 
 export interface NavGroup {
@@ -121,8 +123,9 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         id: "work",
         label: { vi: "Việc của tôi", en: "My work" },
         icon: ListTodoIcon,
-        design: "AppNav.dc.html",
+        design: "AppWork.dc.html",
         needs: "work.mine",
+        hub: true,
       },
       {
         // Phiên duyệt tài liệu đang chờ mình ở checkpoint hiện tại (spec 008 US11). Ai đọc được tài liệu cũng có thể
@@ -132,6 +135,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: ClipboardCheckIcon,
         design: "DocReview.dc.html",
         needs: "docs.read",
+        hub: true,
       },
     ],
   },
@@ -144,8 +148,9 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         id: "knowledge",
         label: { vi: "Tra cứu tri thức", en: "Knowledge" },
         icon: LibraryIcon,
-        design: "AppNav.dc.html",
+        design: "AppKnowledge.dc.html",
         needs: "docs.read",
+        hub: true,
       },
       {
         // Trình soạn tài liệu dùng chung với web (packages/doc-editor, spec 008 US9). Ai đọc được tài liệu đều mở được;
@@ -155,6 +160,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: FilePenLineIcon,
         design: "DocEditor.dc.html",
         needs: "docs.read",
+        hub: true,
       },
       {
         // Agent đọc code của thư mục dự án rồi soạn bản nháp; nhãn nói rõ nguồn để không lẫn với Soạn tài liệu.
@@ -193,6 +199,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: PlayIcon,
         design: "AppNav.dc.html",
         needs: "runs.local",
+        hub: true,
       },
       {
         id: "setup",

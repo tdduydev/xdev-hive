@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Artifact · Soạn tay</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[role=textbox]:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:var(--bh,32px);padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn-sm{height:28px;font-size:13px;padding:0 8px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.hint{font-size:12.5px;color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
+.input{height:var(--bh,32px);box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.tb{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:var(--foreground);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font:inherit;font-size:13px;font-weight:600}
+.ln{display:flex;font-family:var(--font-mono);font-size:12.5px;line-height:1.7}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
+</style>
+</helmet>
+<!-- Artboard web 1440x1000. Prop narrow = true cho 360 px: bỏ Sidebar/Topbar, một cột, Soạn và Xem trước thành hai tab. -->
+<div data-theme="{{theme}}" style="{{rootStyle}}">
+  <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="Sidebar" active="artifacts" lang="{{lang}}" hint-size="240px,1000px"></dc-import></sc-if>
+  <div style="flex: 999 1 0; min-width: 0; display: flex; flex-direction: column;">
+    <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="Topbar" crumb="{{t.crumbTop}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import></sc-if>
+    <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+      <header style="height: 52px; flex: none; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);">
+        <button type="button" class="btn btn-ghost" aria-label="{{t.back}}" style="width: 36px; padding: 0;"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+        <strong style="flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{t.title}}</strong>
+        <button type="button" class="btn btn-default" disabled="{{saveOff}}">{{t.save}}</button>
+      </header>
+    </sc-if>
+
+    <main style="{{mainStyle}}">
+      <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+        <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px;">
+          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+            <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+            <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge" role="status" style="{{status.style}}"><span aria-hidden="true">{{status.mark}}</span>{{status.text}}</span>
+            <button type="button" class="btn btn-outline">{{t.cancel}}</button>
+            <button type="button" class="btn btn-default" disabled="{{saveOff}}">{{saveLabel}}</button>
+          </div>
+        </header>
+      </sc-if>
+      <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}"><span class="badge" role="status" style="{{status.style}}; align-self: flex-start;"><span aria-hidden="true">{{status.mark}}</span>{{status.text}}</span></sc-if>
+
+      <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+      <section aria-label="{{t.states}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+        <span class="muted" style="font-size: 12.5px;">{{t.states}}</span>
+        <div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="10"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+      </section>
+
+      <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}">
+        <div role="status" aria-label="{{t.loading}}" class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+          <span class="pulse" style="height: 32px; border-radius: 8px; background: var(--muted);"></span>
+          <span class="pulse" style="height: 280px; border-radius: 8px; background: var(--muted);"></span>
+          <span class="muted" style="font-size: 13px;">{{t.loading}}</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{notLoading}}" hint-placeholder-val="{{true}}">
+        <!-- Lỗi cạnh ô gây lỗi (dòng, loại) và tóm tắt có role=alert; chuỗi bí mật không bao giờ hiện lại trên màn. -->
+        <sc-if value="{{showSecret}}" hint-placeholder-val="{{false}}">
+          <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive); align-items: center;">
+            <span aria-hidden="true">!</span>
+            <span style="flex: 1; min-width: 0;"><strong style="font-weight: 600;">{{t.secretTitle}}</strong><br>{{t.secretBody}}</span>
+            <a href="#dong-12" style="color: inherit; font-weight: 600;">{{t.secretJump}}</a>
+          </div>
+        </sc-if>
+        <sc-if value="{{showTooLarge}}" hint-placeholder-val="{{false}}">
+          <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive);"><span aria-hidden="true">!</span><span><strong style="font-weight: 600;">{{t.largeTitle}}</strong><br>{{t.largeBody}}</span></div>
+        </sc-if>
+        <sc-if value="{{showSaveError}}" hint-placeholder-val="{{false}}">
+          <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive); align-items: center;"><span aria-hidden="true">!</span><span style="flex: 1; min-width: 0;">{{t.errBody}}</span><button type="button" class="btn btn-outline btn-sm">{{t.retry}}</button></div>
+        </sc-if>
+        <sc-if value="{{showOffline}}" hint-placeholder-val="{{false}}">
+          <div role="status" class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">○</span><span><strong style="font-weight: 600;">{{t.offTitle}}</strong><br>{{t.offBody}}</span></div>
+        </sc-if>
+        <sc-if value="{{showConflict}}" hint-placeholder-val="{{false}}">
+          <div role="alert" class="card" style="padding: 12px 14px; border-color: var(--warning); display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; gap: 8px; align-items: flex-start; color: var(--warning);"><span aria-hidden="true">!</span><span style="color: var(--foreground);"><strong style="font-weight: 600;">{{t.confTitle}}</strong><br><span class="muted" style="font-size: 13px;">{{t.confBody}}</span></span></div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <button type="button" class="btn btn-default" onClick="{{toggleDiff}}" aria-expanded="{{diffAria}}">{{t.confDiff}}</button>
+              <button type="button" class="btn btn-outline">{{t.confFork}}</button>
+              <button type="button" class="btn btn-ghost">{{t.confDrop}}</button>
+            </div>
+            <sc-if value="{{diffOpen}}" hint-placeholder-val="{{true}}">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 10px;">
+                <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+                  <div style="padding: 6px 10px; background: var(--muted); font-size: 12.5px; font-weight: 600;">{{t.theirs}}</div>
+                  <sc-for list="{{diffTheirs}}" as="d" hint-placeholder-count="3"><div class="ln" style="{{d.style}}"><span style="width: 28px; flex: none; text-align: center;" aria-hidden="true">{{d.sign}}</span><span style="white-space: pre-wrap; min-width: 0;">{{d.text}}</span></div></sc-for>
+                </div>
+                <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+                  <div style="padding: 6px 10px; background: var(--muted); font-size: 12.5px; font-weight: 600;">{{t.mine}}</div>
+                  <sc-for list="{{diffMine}}" as="d" hint-placeholder-count="3"><div class="ln" style="{{d.style}}"><span style="width: 28px; flex: none; text-align: center;" aria-hidden="true">{{d.sign}}</span><span style="white-space: pre-wrap; min-width: 0;">{{d.text}}</span></div></sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <section aria-label="{{t.meta}}" style="display: grid; grid-template-columns: {{metaCols}}; gap: 12px; align-items: end;">
+          <label class="field">{{t.fTitle}}<input class="input" value="{{titleVal}}" placeholder="{{t.fTitlePh}}" maxlength="200" aria-describedby="title-hint"><span id="title-hint" class="hint">{{t.fTitleHint}}</span></label>
+          <label class="field">{{t.fType}}<select class="input" onChange="{{onType}}" disabled="{{typeLocked}}"><sc-for list="{{typeOpts}}" as="o" hint-placeholder-count="5"><option value="{{o.v}}" selected="{{o.sel}}">{{o.label}}</option></sc-for></select><span class="hint">{{t.fTypeHint}}</span></label>
+          <label class="field">{{t.fScope}}<select class="input"><option>{{t.scopePrivate}}</option><option>{{t.scopeProject}}</option></select><span class="hint">{{t.fScopeHint}}</span></label>
+          <label class="field">{{t.fMsg}}<input class="input" placeholder="{{t.fMsgPh}}"><span class="hint">{{t.fMsgHint}}</span></label>
+        </section>
+
+        <sc-if value="{{narrowPreviewable}}" hint-placeholder-val="{{false}}">
+          <div role="tablist" aria-label="{{t.title}}" class="seg" style="align-self: flex-start;"><sc-for list="{{panes}}" as="p" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{p.on}}" onClick="{{p.pick}}" style="{{p.style}}">{{p.label}}</button></sc-for></div>
+        </sc-if>
+
+        <div style="display: grid; grid-template-columns: {{bodyCols}}; gap: 14px; align-items: stretch;">
+          <sc-if value="{{showEditor}}" hint-placeholder-val="{{true}}">
+            <section class="card" aria-label="{{t.editor}}" style="min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+              <div class="card-h">
+                <sc-if value="{{isMd}}" hint-placeholder-val="{{false}}">
+                  <div role="toolbar" aria-label="{{t.toolbar}}" style="display: flex; flex-wrap: wrap; gap: 2px; align-items: center;">
+                    <button type="button" class="tb" aria-label="{{t.bold}}">B</button><button type="button" class="tb" aria-label="{{t.italic}}" style="font-style: italic;">I</button><button type="button" class="tb mono" aria-label="{{t.inlineCode}}">&lt;/&gt;</button>
+                    <span aria-hidden="true" style="width: 1px; height: 18px; background: var(--border); margin: 0 4px;"></span>
+                    <button type="button" class="tb" aria-label="{{t.h2}}">H2</button><button type="button" class="tb" aria-label="{{t.list}}">•</button><button type="button" class="tb" aria-label="{{t.checklist}}">☑</button><button type="button" class="tb mono" aria-label="{{t.codeBlock}}">{}</button><button type="button" class="tb" aria-label="{{t.table}}">▦</button><button type="button" class="tb mono" aria-label="{{t.mermaid}}">◇</button>
+                  </div>
+                  <span class="hint" style="margin-left: auto;">{{t.mdNote}}</span>
+                </sc-if>
+                <sc-if value="{{notMd}}" hint-placeholder-val="{{true}}">
+                  <span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">{{langLabel}}</span>
+                  <span class="hint">{{t.codeNote}}</span>
+                  <button type="button" class="btn btn-outline btn-sm" style="margin-left: auto;" disabled="{{previewOff}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8z"></path></svg>{{t.preview}}</button>
+                </sc-if>
+              </div>
+
+              <sc-if value="{{isMd}}" hint-placeholder-val="{{false}}">
+                <div role="textbox" aria-multiline="true" aria-label="{{t.editor}}" tabindex="0" style="flex: 1; padding: 16px 20px; min-height: 340px; display: flex; flex-direction: column; gap: 10px; line-height: 1.7;">
+                  <sc-if value="{{mdEmpty}}" hint-placeholder-val="{{false}}"><span class="muted">{{t.mdPlaceholder}}</span></sc-if>
+                  <sc-if value="{{mdFilled}}" hint-placeholder-val="{{true}}">
+                    <h2 style="margin: 0; font-size: 20px; font-weight: 600; padding-bottom: 6px; border-bottom: 1px solid var(--border);">{{t.mdH}}</h2>
+                    <p style="margin: 0;">{{t.mdP}} <code class="mono" style="font-size: 12.5px; padding: 1px 5px; border-radius: 4px; background: var(--muted); border: 1px solid var(--border);">pnpm check</code></p>
+                    <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;">
+                      <sc-for list="{{mdItems}}" as="i" hint-placeholder-count="4"><li style="display: flex; gap: 8px; align-items: center;"><input type="checkbox" checked="{{i.done}}" aria-label="{{i.text}}" style="accent-color: var(--primary); width: 16px; height: 16px;"><span style="{{i.style}}">{{i.text}}</span></li></sc-for>
+                    </ul>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{notMd}}" hint-placeholder-val="{{true}}">
+                <div role="textbox" aria-multiline="true" aria-label="{{t.editor}}" tabindex="0" style="flex: 1; min-height: 340px; overflow-x: auto; padding: 8px 0; background: var(--card);">
+                  <sc-if value="{{codeEmpty}}" hint-placeholder-val="{{false}}"><div style="padding: 12px 16px;" class="muted">{{t.codePlaceholder}}</div></sc-if>
+                  <sc-for list="{{lines}}" as="l" hint-placeholder-count="12">
+                    <div id="{{l.id}}" class="ln" style="{{l.style}}"><span class="num" style="width: 44px; flex: none; text-align: right; padding-right: 10px; color: var(--muted-foreground);" aria-hidden="true">{{l.n}}</span><span style="white-space: pre; min-width: 0;">{{l.text}}</span><sc-if value="{{l.flag}}" hint-placeholder-val="{{false}}"><span class="badge" style="margin-left: 12px; align-self: center; background: var(--destructive); color: var(--background);">{{l.flagText}}</span></sc-if></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <div style="padding: 6px 12px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px;" class="muted">
+                <span class="num" style="{{sizeStyle}}">{{sizeText}}</span>
+                <span>{{t.draft}}</span>
+                <span class="mono" style="margin-left: auto;">{{t.cursor}}</span>
+              </div>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{showPreview}}" hint-placeholder-val="{{true}}">
+            <section class="card" aria-label="{{t.previewTitle}}" style="min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+              <div class="card-h">
+                <strong style="font-size: 13.5px;">{{t.previewTitle}}</strong>
+                <span class="badge" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">🔒</span>{{t.sandbox}}</span>
+                <button type="button" class="btn btn-ghost btn-sm" style="margin-left: auto;">{{t.rerun}}</button>
+              </div>
+              <div style="flex: 1; min-height: 340px; padding: 14px; background: #FFFFFF; color: #0F172A; display: flex; flex-direction: column; gap: 10px;">
+                <sc-if value="{{pvIdle}}" hint-placeholder-val="{{false}}"><div class="muted" style="margin: auto; text-align: center; max-width: 260px; color: #475569;">{{t.pvIdle}}</div></sc-if>
+                <sc-if value="{{pvLoading}}" hint-placeholder-val="{{false}}"><div role="status" class="pulse" style="margin: auto; color: #475569;">{{t.pvLoading}}</div></sc-if>
+                <sc-if value="{{pvCompile}}" hint-placeholder-val="{{false}}">
+                  <div role="alert" style="padding: 12px; border: 1px solid #C81E1E; border-radius: 8px; background: #FEF2F2; color: #C81E1E; display: flex; flex-direction: column; gap: 6px;">
+                    <strong>{{t.pvCompileTitle}}</strong><span class="mono" style="font-size: 12.5px;">{{t.pvCompileMsg}}</span>
+                    <a href="#dong-7" style="color: #C81E1E; font-weight: 600;">{{t.pvCompileJump}}</a>
+                  </div>
+                </sc-if>
+                <sc-if value="{{pvOk}}" hint-placeholder-val="{{true}}">
+                  <sc-if value="{{isHtml}}" hint-placeholder-val="{{false}}">
+                    <h3 style="margin: 0; font-size: 17px;">{{t.pvHtmlH}}</h3>
+                    <table style="border-collapse: collapse; font-size: 13.5px;"><tbody><sc-for list="{{pvRows}}" as="r" hint-placeholder-count="3"><tr><td style="padding: 6px 10px; border: 1px solid #E2E8F0;">{{r.a}}</td><td class="num mono" style="padding: 6px 10px; border: 1px solid #E2E8F0; text-align: right;">{{r.b}}</td></tr></sc-for></tbody></table>
+                  </sc-if>
+                  <sc-if value="{{isMermaid}}" hint-placeholder-val="{{false}}">
+                    <svg role="img" aria-label="{{t.pvMermaidAlt}}" viewBox="0 0 320 270" width="100%" style="max-width: 360px; align-self: center;">
+                      <defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" fill="#475569"></path></marker></defs>
+                      <rect x="95" y="6" width="130" height="38" rx="8" fill="#E5EDFF" stroke="#1D4ED8"></rect><text x="160" y="30" text-anchor="middle" font-size="13" fill="#0F172A">{{t.mm1}}</text>
+                      <path d="M160 44v34" stroke="#475569" marker-end="url(#ah)"></path>
+                      <rect x="95" y="80" width="130" height="38" rx="8" fill="#E5EDFF" stroke="#1D4ED8"></rect><text x="160" y="104" text-anchor="middle" font-size="13" fill="#0F172A">{{t.mm2}}</text>
+                      <path d="M160 118v34" stroke="#475569" marker-end="url(#ah)"></path>
+                      <rect x="95" y="154" width="130" height="38" rx="8" fill="#E5EDFF" stroke="#1D4ED8"></rect><text x="160" y="178" text-anchor="middle" font-size="13" fill="#0F172A">{{t.mm3}}</text>
+                      <path d="M160 192v34" stroke="#475569" marker-end="url(#ah)"></path>
+                      <rect x="95" y="228" width="130" height="38" rx="8" fill="#F0FDF4" stroke="#15803D"></rect><text x="160" y="252" text-anchor="middle" font-size="13" fill="#0F172A">{{t.mm4}}</text>
+                    </svg>
+                  </sc-if>
+                  <sc-if value="{{isReact}}" hint-placeholder-val="{{false}}">
+                    <h3 style="margin: 0; font-size: 17px;">{{t.pvReactH}}</h3>
+                    <div style="display: flex; align-items: flex-end; gap: 10px; height: 120px; padding: 8px 4px; border-bottom: 1px solid #E2E8F0;" aria-hidden="true"><span style="width: 28px; height: 40%; background: #1D4ED8; border-radius: 4px 4px 0 0;"></span><span style="width: 28px; height: 65%; background: #1D4ED8; border-radius: 4px 4px 0 0;"></span><span style="width: 28px; height: 90%; background: #1D4ED8; border-radius: 4px 4px 0 0;"></span><span style="width: 28px; height: 55%; background: #1D4ED8; border-radius: 4px 4px 0 0;"></span></div>
+                    <button type="button" style="align-self: flex-start; height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: #1D4ED8; color: #FFFFFF; font: inherit; font-size: 14px;">{{t.pvReactBtn}}</button>
+                  </sc-if>
+                </sc-if>
+              </div>
+            </section>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{showLeave}}" hint-placeholder-val="{{false}}">
+          <div style="{{leaveStyle}}">
+            <div role="alertdialog" aria-modal="true" aria-labelledby="leave-t" aria-describedby="leave-d" class="card" style="width: 100%; max-width: 420px; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-lg);">
+              <h2 id="leave-t" style="margin: 0; font-size: 17px; font-weight: 600;">{{t.leaveTitle}}</h2>
+              <p id="leave-d" class="muted" style="margin: 0; font-size: 14px;">{{t.leaveBody}}</p>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;"><button type="button" class="btn btn-outline">{{t.leaveStay}}</button><button type="button" class="btn btn-destructive">{{t.leaveDrop}}</button></div>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"type":{"editor":"enum","options":["markdown","code","html","mermaid","react"],"default":"markdown"},"editing":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+// modes: normal,loading,empty,error,offline,conflict,secret,toolarge,compile,leave
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { mode: 'normal', type: null, pane: 'edit', diff: true, lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const narrow = !!this.props.narrow;
+    const S = this.state;
+    const mode = S.mode;
+    const type = S.type ?? this.props.type ?? 'markdown';
+    const editing = !!this.props.editing;
+    const isMd = type === 'markdown';
+    const previewable = type === 'html' || type === 'mermaid' || type === 'react';
+    const T = {
+      crumbTop: ['Artifact', 'Artifact'], crumb: editing ? ['Artifact / Luồng hoàn tiền / Sửa', 'Artifacts / Refund flow / Edit'] : ['Artifact / Mới', 'Artifacts / New'],
+      title: editing ? ['Sửa artifact', 'Edit artifact'] : ['Artifact mới', 'New artifact'], back: ['Quay lại', 'Back'],
+      cancel: ['Huỷ', 'Cancel'], save: ['Lưu', 'Save'], states: ['Trạng thái xem', 'View state'],
+      loading: ['Đang tải artifact…', 'Loading artifact…'],
+      meta: ['Thông tin artifact', 'Artifact details'],
+      fTitle: ['Tiêu đề', 'Title'], fTitlePh: ['Ví dụ: Checklist release', 'e.g. Release checklist'], fTitleHint: ['1 đến 200 ký tự.', '1 to 200 characters.'],
+      fType: ['Loại', 'Type'], fTypeHint: [editing ? 'Không đổi được sau khi tạo.' : 'Chỉ hiện loại tổ chức cho phép.', editing ? 'Cannot change after creation.' : 'Only types your organization allows.'],
+      fScope: ['Phạm vi', 'Scope'], scopePrivate: ['Riêng tư (chỉ mình tôi)', 'Private (only me)'], scopeProject: ['Dự án payment-api', 'Project payment-api'], fScopeHint: ['Mặc định riêng tư; đổi sau được.', 'Private by default; change it later.'],
+      fMsg: ['Ghi chú bản', 'Version note'], fMsgPh: ['Ví dụ: thêm bước rollback', 'e.g. add rollback step'], fMsgHint: ['Tuỳ chọn, hiện trong lịch sử phiên bản.', 'Optional; shown in version history.'],
+      editor: ['Ô soạn', 'Editor'], toolbar: ['Định dạng', 'Formatting'],
+      bold: ['In đậm', 'Bold'], italic: ['In nghiêng', 'Italic'], inlineCode: ['Mã trong dòng', 'Inline code'], h2: ['Tiêu đề 2', 'Heading 2'], list: ['Danh sách', 'List'], checklist: ['Danh sách việc', 'Checklist'], codeBlock: ['Khối code', 'Code block'], table: ['Bảng', 'Table'], mermaid: ['Sơ đồ Mermaid', 'Mermaid diagram'],
+      mdNote: ['Soạn kiểu Tiptap, không có bình luận hay duyệt', 'Tiptap editing, no comments or review'],
+      codeNote: ['Tô màu cú pháp; Tab thụt dòng, Esc rời ô soạn', 'Syntax coloured; Tab indents, Esc leaves the editor'],
+      preview: ['Xem trước', 'Preview'], previewTitle: ['Xem trước', 'Preview'], sandbox: ['Khung cách ly · không có mạng', 'Isolated frame · no network'], rerun: ['Chạy lại', 'Run again'],
+      mdPlaceholder: ['Bắt đầu viết. Gõ / để chèn khối.', 'Start writing. Type / to insert a block.'], codePlaceholder: ['Dán hoặc gõ nội dung ở đây.', 'Paste or type your content here.'],
+      mdH: ['Checklist release payment-api', 'payment-api release checklist'], mdP: ['Làm theo thứ tự, chạy', 'Follow in order, run'],
+      draft: ['Bản nháp giữ trong trình duyệt, không lưu lên hub', 'Draft stays in this browser, not saved to the hub'], cursor: ['Dòng 12, cột 8', 'Ln 12, Col 8'],
+      secretTitle: ['Có chuỗi giống bí mật ở dòng 12 (GitHub token).', 'Text that looks like a secret on line 12 (GitHub token).'], secretBody: ['Xoá rồi lưu lại. Hub không lưu và không hiện lại chuỗi đó.', 'Remove it and save again. The hub does not store or show it back.'], secretJump: ['Tới dòng 12', 'Go to line 12'], secretFlag: ['GitHub token', 'GitHub token'],
+      largeTitle: ['Nội dung quá lớn: 1,3 MiB trên giới hạn 1 MiB.', 'Content too large: 1.3 MiB over the 1 MiB limit.'], largeBody: ['Rút gọn hoặc tách thành hai artifact rồi lưu lại.', 'Shorten it or split it into two artifacts, then save again.'],
+      errBody: ['Chưa lưu được vì hub không trả lời. Nội dung của bạn vẫn còn trong ô soạn.', 'Could not save because the hub did not respond. Your content is still in the editor.'], retry: ['Thử lại', 'Retry'],
+      offTitle: ['Đang offline.', 'You are offline.'], offBody: ['Chưa lưu được. Bản nháp giữ trong trình duyệt; nối mạng lại rồi bấm Lưu.', 'Cannot save yet. The draft stays in this browser; reconnect, then press Save.'],
+      confTitle: ['Artifact đã có bản v4 trong lúc bạn sửa từ v3.', 'The artifact got v4 while you were editing from v3.'], confBody: ['Leader tạo v4 lúc 10:14. Lưu đè sẽ làm mất thay đổi đó, nên hub chưa lưu bản của bạn (ARTIFACT_VERSION_CONFLICT).', 'Leader created v4 at 10:14. Saving over it would lose that change, so the hub did not save yours (ARTIFACT_VERSION_CONFLICT).'],
+      confDiff: ['Xem khác biệt rồi gộp', 'Review differences and merge'], confFork: ['Lưu thành artifact riêng', 'Save as a separate artifact'], confDrop: ['Bỏ thay đổi của tôi', 'Discard my changes'],
+      theirs: ['Bản v4 (Leader)', 'v4 (Leader)'], mine: ['Bản của bạn (từ v3)', 'Yours (from v3)'],
+      pvIdle: ['Bấm "Xem trước" để chạy nội dung chưa lưu trong khung cách ly.', 'Press "Preview" to run the unsaved content in the isolated frame.'], pvLoading: ['Đang dựng xem trước…', 'Building preview…'],
+      pvCompileTitle: ['Lỗi biên dịch', 'Compile error'], pvCompileMsg: ['Dòng 7: Unexpected token, expected ")"', 'Line 7: Unexpected token, expected ")"'], pvCompileJump: ['Tới dòng 7', 'Go to line 7'],
+      pvHtmlH: ['Hoàn tiền một phần', 'Partial refund'], pvMermaidAlt: ['Sơ đồ luồng hoàn tiền', 'Refund flow diagram'], mm1: ['Yêu cầu hoàn', 'Request'], mm2: ['Kiểm số tiền', 'Check amount'], mm3: ['Gọi cổng', 'Call gateway'], mm4: ['Đã hoàn', 'Refunded'],
+      pvReactH: ['Hoàn tiền theo tuần', 'Refunds per week'], pvReactBtn: ['Tải lại', 'Reload'],
+      leaveTitle: ['Bỏ thay đổi chưa lưu?', 'Discard unsaved changes?'], leaveBody: ['Bạn đã sửa nội dung nhưng chưa lưu. Rời đi thì bản nháp trong trình duyệt bị bỏ.', 'You edited the content but have not saved it. Leaving discards the draft kept in this browser.'], leaveStay: ['Ở lại soạn', 'Keep editing'], leaveDrop: ['Bỏ thay đổi', 'Discard changes'],
+      editorPane: ['Soạn', 'Edit'], previewPane: ['Xem trước', 'Preview'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+
+    const seg = (on) => 'height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const M = [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Rỗng', 'Empty']], ['error', ['Lỗi lưu', 'Save error']], ['offline', ['Offline', 'Offline']], ['conflict', ['Xung đột', 'Conflict']], ['secret', ['Có bí mật', 'Secret found']], ['toolarge', ['Quá lớn', 'Too large']], ['compile', ['Lỗi biên dịch', 'Compile error']], ['leave', ['Rời trang', 'Leaving']]];
+    const modes = M.map(([k, l]) => ({ label: x(l), on: mode === k ? 'true' : 'false', style: seg(mode === k), pick: () => this.setState({ mode: k, diff: true }) }));
+
+    // Mẫu theo loại. Dòng bị đánh dấu là chuỗi bí mật mẫu; màn chỉ vẽ ô trống, không bao giờ in lại chuỗi.
+    const SAMPLES = {
+      code: ['import { refund } from "./gateway";', '', 'export type RefundInput = {', '  paymentId: string;', '  amount: number;', '};', '', '// Số tiền hoàn không được vượt giao dịch gốc.', 'export async function partialRefund(i: RefundInput) {', '  const p = await load(i.paymentId);', '  if (i.amount > p.amount) throw new Error("amount");', '  const TOKEN = "••••••••••••••••••••";', '  return refund(p, i.amount, TOKEN);', '}'],
+      html: ['<main class="refund">', '  <h3>Hoàn tiền một phần</h3>', '  <table>', '    <tr><td>Giao dịch gốc</td><td>1.200.000 ₫</td></tr>', '    <tr><td>Đã hoàn</td><td>300.000 ₫</td></tr>', '    <tr><td>Còn hoàn được</td><td>900.000 ₫</td></tr>', '  </table>', '  <style>', '    .refund { font: 14px system-ui; padding: 16px }', '    td { padding: 6px 10px; border: 1px solid #e2e8f0 }', '  </style>', '  <' + 'script>const KEY = "••••••••••••••••••••";</' + 'script>', '</main>'],
+      mermaid: ['flowchart TD', '  A[Yêu cầu hoàn] --> B{Kiểm số tiền}', '  B -- vượt --> X[Từ chối]', '  B -- hợp lệ --> C[Gọi cổng thanh toán]', '  C --> D[Ghi bảng refunds]', '  D --> E[Báo khách]', '  %% ghi chú', '  classDef ok fill:#F0FDF4,stroke:#15803D', '  class E ok', '', '  %% ghi chú nội bộ', '  %% key = ••••••••••••••••••••', '  C -. lỗi .-> X'],
+      react: ['import { useState } from "react";', 'import { BarChart, Bar, XAxis } from "recharts";', '', 'const data = [{ w: "T1", v: 4 }, { w: "T2", v: 7 }];', '', 'export default function App() {', '  const [n, setN] = useState(0;', '  return (', '    <div className="p-4">', '      <BarChart width={300} height={160} data={data}><Bar dataKey="v" /><XAxis dataKey="w" /></BarChart>', '      <button onClick={() => setN(n + 1)}>Tải lại {n}</button>', '      {/* khoá: •••••••••••••••••••• */}', '    </div>', '  );', '}'],
+    };
+    const FLAG = { code: 12, html: 12, mermaid: 12, react: 12 };
+    const empty = mode === 'empty';
+    const rows = SAMPLES[type] ?? [];
+    const lines = (empty ? [] : rows).map((raw, i) => {
+      const n = i + 1;
+      const flagged = mode === 'secret' && n === FLAG[type];
+      const errLine = mode === 'compile' && type === 'react' && n === 7;
+      const cmt = /^\s*(\/\/|%%|\{\/\*)/.test(raw);
+      const text = type === 'react' && mode !== 'compile' ? raw.replace('useState(0;', 'useState(0);') : raw;
+      const style = 'padding-right: 12px; min-width: max-content; ' + (flagged ? 'background: var(--destructive-soft); box-shadow: inset 3px 0 0 var(--destructive);' : errLine ? 'background: var(--warning-soft); box-shadow: inset 3px 0 0 var(--warning);' : '') + (cmt ? ' color: var(--syn-comment, var(--muted-foreground));' : '');
+      return { id: 'dong-' + n, n, text: text || ' ', style, flag: flagged, flagText: x(T.secretFlag) };
+    });
+
+    const items = [
+      { text: x(['Chạy migration trên môi trường staging', 'Run migrations on staging']), done: true },
+      { text: x(['Kiểm hoàn tiền một phần với 3 cổng', 'Check partial refunds on 3 gateways']), done: true },
+      { text: x(['Cập nhật tài liệu API', 'Update the API docs']), done: false },
+      { text: x(['Có kế hoạch rollback', 'Have a rollback plan']), done: false },
+    ].map((i) => ({ ...i, style: i.done ? 'text-decoration: line-through; opacity: .65;' : '' }));
+
+    const diffTheirs = [{ sign: ' ', text: '  const [n, setN] = useState(0);', style: '' }, { sign: '+', text: '  const [w, setW] = useState("T1");', style: 'background: var(--success-soft); color: var(--success);' }, { sign: '−', text: '  return <div className="p-4">', style: 'background: var(--destructive-soft); color: var(--destructive);' }];
+    const diffMine = [{ sign: ' ', text: '  const [n, setN] = useState(0);', style: '' }, { sign: '+', text: '  const [open, setOpen] = useState(false);', style: 'background: var(--success-soft); color: var(--success);' }, { sign: '−', text: '  return <div className="p-4">', style: 'background: var(--destructive-soft); color: var(--destructive);' }];
+
+    const sizeBlocked = mode === 'toolarge';
+    const sizeKib = empty ? '0' : sizeBlocked ? '1,3 MiB' : isMd ? '1,8 KiB' : '0,9 KiB';
+    const status = mode === 'error' ? { mark: '!', text: x(['Chưa lưu được', 'Not saved']), style: 'background: var(--destructive-soft); color: var(--destructive);' }
+      : mode === 'offline' ? { mark: '○', text: x(['Offline · chưa lưu', 'Offline · not saved']), style: 'background: var(--warning-soft); color: var(--warning);' }
+      : mode === 'conflict' ? { mark: '!', text: x(['Xung đột · cần gộp', 'Conflict · merge needed']), style: 'background: var(--warning-soft); color: var(--warning);' }
+      : mode === 'secret' || mode === 'toolarge' ? { mark: '!', text: x(['Bị chặn lưu', 'Save blocked']), style: 'background: var(--destructive-soft); color: var(--destructive);' }
+      : empty ? { mark: '○', text: x(['Chưa có nội dung', 'No content yet']), style: 'background: var(--muted); color: var(--muted-foreground);' }
+      : editing ? { mark: '●', text: x(['Chưa lưu · đang ở v3', 'Unsaved · on v3']), style: 'background: var(--warning-soft); color: var(--warning);' }
+      : { mark: '●', text: x(['Chưa lưu · bản đầu', 'Unsaved · first version']), style: 'background: var(--warning-soft); color: var(--warning);' };
+    const blocked = ['secret', 'toolarge', 'conflict', 'offline', 'empty'].includes(mode);
+
+    const pvState = mode === 'compile' && type === 'react' ? 'compile' : mode === 'empty' ? 'idle' : mode === 'loading' ? 'loading' : 'ok';
+    const onEdit = S.pane === 'edit';
+    const panes = [['edit', t.editorPane], ['preview', t.previewPane]].map(([k, l]) => ({ label: l, on: S.pane === k ? 'true' : 'false', style: seg(S.pane === k), pick: () => this.setState({ pane: k }) }));
+    const showEditor = !narrow || !previewable || onEdit;
+    const showPreview = previewable && (!narrow || !onEdit) && mode !== 'loading';
+    const typeOpts = [['markdown', ['Markdown', 'Markdown']], ['code', ['Code', 'Code']], ['html', ['HTML', 'HTML']], ['mermaid', ['Mermaid', 'Mermaid']], ['react', ['React', 'React']]].map(([v, l]) => ({ v, label: x(l), sel: v === type }));
+    const langLabel = { code: 'TypeScript', html: 'HTML', mermaid: 'Mermaid', react: 'TSX' }[type] ?? '';
+    const metaCols = narrow ? '1fr' : 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.6fr)';
+    const bodyCols = narrow ? '1fr' : (previewable ? 'minmax(0, 1.25fr) minmax(0, 1fr)' : '1fr');
+
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, narrow, wide: !narrow, t, modes, status, type,
+      rootStyle: narrow ? 'position: relative; width: 360px; display: flex; flex-direction: column; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; --bh: 36px;' : 'position: relative; min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      mainStyle: narrow ? 'box-sizing: border-box; width: 100%; padding: 16px 16px 32px; display: flex; flex-direction: column; gap: 14px;' : 'box-sizing: border-box; width: 100%; max-width: 1280px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 14px;',
+      isLoading: mode === 'loading', notLoading: mode !== 'loading',
+      showSecret: mode === 'secret', showTooLarge: sizeBlocked, showSaveError: mode === 'error', showOffline: mode === 'offline', showConflict: mode === 'conflict', showLeave: mode === 'leave',
+      diffOpen: S.diff, diffAria: S.diff ? 'true' : 'false', toggleDiff: () => this.setState({ diff: !S.diff }), diffTheirs, diffMine,
+      titleVal: empty ? '' : x(['Luồng hoàn tiền một phần', 'Partial refund flow']), typeOpts, typeLocked: editing, onType: (e) => this.setState({ type: e.target.value }),
+      metaCols, bodyCols, narrowPreviewable: narrow && previewable, panes,
+      showEditor, showPreview, isMd, notMd: !isMd, mdEmpty: empty, mdFilled: !empty, mdItems: items, langLabel, lines, codeEmpty: empty,
+      previewOff: empty || mode === 'offline', isHtml: type === 'html', isMermaid: type === 'mermaid', isReact: type === 'react',
+      pvIdle: pvState === 'idle', pvLoading: pvState === 'loading', pvCompile: pvState === 'compile', pvOk: pvState === 'ok',
+      pvRows: [{ a: x(['Giao dịch gốc', 'Original payment']), b: '1.200.000 ₫' }, { a: x(['Đã hoàn', 'Refunded']), b: '300.000 ₫' }, { a: x(['Còn hoàn được', 'Refundable']), b: '900.000 ₫' }],
+      sizeText: sizeKib + ' / 1 MiB', sizeStyle: sizeBlocked ? 'color: var(--destructive); font-weight: 600;' : '',
+      leaveStyle: 'position: absolute; inset: 0; background: var(--backdrop); display: flex; justify-content: center; padding: 16px; z-index: 5; ' + (narrow ? 'align-items: flex-start; padding-top: 140px;' : 'align-items: center;'),
+      saveOff: blocked, saveLabel: editing ? x(['Lưu thành v4', 'Save as v4']) : x(['Lưu bản đầu', 'Save first version']),
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>
