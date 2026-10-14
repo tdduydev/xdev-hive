@@ -9,10 +9,12 @@ import {
   NotFoundError,
   type RequestContext,
   type Tx,
+  withTenant,
 } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares, type SessionUser } from "../tenancy/index.ts";
 import type { ArtifactErrorDetail } from "./access.ts";
 import { readerFor } from "./access.ts";
+import { askLeaderFix } from "./fix-request.ts";
 import { createPreview, frameDocument, frameUrl, libManifestLoader } from "./frame-routes.ts";
 import { createPublicLink, listPublicLinks, orgListPublicLinks, revokePublicLink } from "./public-links.ts";
 import {
@@ -82,22 +84,25 @@ const stampOrg = os.$context<{ orgId: string }>().middleware(async ({ context, n
 });
 
 /**
- * Route `artifacts.*`. `askLeaderFix` ở T016, `toDoc`/`toRepo` sau MVP: chưa đăng ký thì oRPC
+ * Route `artifacts.*`. `toDoc`/`toRepo` sau MVP: chưa đăng ký thì oRPC
  * trả 404 cho route đó.
  */
 export function artifactsRouter(deps: ArtifactsRouterDeps) {
-  const { authed, inOrg } = orgMiddlewares(deps);
-  const o = implement(contract.artifacts)
-    .$context<RequestContext>()
-    .use(authed)
-    .use(artifactErrors)
-    .use(inOrg)
-    .use(stampOrg);
+  const { authed, inOrg, orgMember } = orgMiddlewares(deps);
+  const base = implement(contract.artifacts).$context<RequestContext>().use(authed).use(artifactErrors);
+  const o = base.use(inOrg).use(stampOrg);
   const write = { jobs: deps.jobs, publicUrl: deps.publicUrl };
   const as = (tx: Tx, user: SessionUser) => readerFor(tx, { kind: "user", userId: user.id });
   const frame = { frameKey: deps.frameKey, publicUrl: deps.publicUrl ?? "http://localhost:3000" };
   const manifest = libManifestLoader();
   return {
+    askLeaderFix: base.askLeaderFix.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
+      const { response, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, async (tx) =>
+        askLeaderFix(tx, await as(tx, user), input),
+      );
+      afterCommit?.();
+      return response;
+    }),
     settings: o.settings.handler(({ context: { tx } }) => getSettings(tx)),
     list: o.list.handler(async ({ context: { tx, user }, input }) => listArtifacts(tx, await as(tx, user), input)),
     get: o.get.handler(async ({ context: { tx, user }, input }) => getArtifact(tx, await as(tx, user), input)),

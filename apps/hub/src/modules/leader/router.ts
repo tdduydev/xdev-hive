@@ -47,7 +47,10 @@ export function leaderRouter(deps: LeaderRouterDeps) {
           .where(eq(chatMessages.threadId, row.id))
           .orderBy(chatMessages.createdAt);
         const facts = await cardFacts(tx, user.id, messages);
-        return { thread: threadView(row), messages: messages.map((m) => messageView(m, cardOf(m, facts))) };
+        return {
+          thread: threadView(row),
+          messages: messages.map((m) => ({ ...messageView(m, cardOf(m, facts)), pageErrors: m.pageErrors })),
+        };
       }),
       send: os.threads.send.use(inOrg).handler(async ({ context: { pool, user, orgId }, input }) => {
         const runsEngine = deps.runs;
