@@ -257,6 +257,32 @@ func ImportLegacy(legacy, dst string, force bool) (int, error) {
 	return n, err
 }
 
+// AddFolder thêm repo chưa gắn dự án (repo app vừa clone theo nhóm Git). Thư mục đã có trong danh sách, kể cả đã gắn
+// dự án, thì không làm gì và trả false.
+func AddFolder(path, folder, name string) (bool, error) {
+	if abs, err := filepath.Abs(strings.TrimSpace(folder)); err == nil {
+		folder = abs
+	}
+	if name = strings.TrimSpace(name); name == "" {
+		name = filepath.Base(folder)
+	}
+	added := false
+	err := modify(path, func(f *file) error {
+		if containsFolder(f.Projects, folder) {
+			return nil
+		}
+		f.Projects = append(f.Projects, Project{Name: name, Folder: folder})
+		added = true
+		return nil
+	})
+	return added, err
+}
+
+// WithLock và WriteJSON cho file JSON khác nằm cạnh projects.json (gitgroups.json) dùng cùng cách khoá và ghi.
+func WithLock(path string, fn func() error) error { return withLock(path, fn) }
+
+func WriteJSON(path string, v any) error { return writeJSON(path, v) }
+
 func containsFolder(list []Project, folder string) bool {
 	for _, p := range list {
 		if samePath(p.Folder, folder) {
