@@ -141,7 +141,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{items.ts,phases.ts,jobs.ts,access.ts,index.ts,router.ts,items.db.test.ts,phases.db.test.ts}`
   - **Phụ thuộc**: T004, T011 · **Mức**: nặng
 
-- [ ] T013 🎯 [US6] Cổng chặn run code và ngoại lệ
+- [x] T013 🎯 [US6] Cổng chặn run code và ngoại lệ
   - `gate.ts`: `codeRunGate(tx, {taskId, kind})` theo dự án của task (plan.md "Chặn ở engine"): dự án đã bỏ/tắt AI SDLC;
     phụ thuộc chưa `done` ở mọi dự án; tài liệu bắt buộc trước `implementation` có `scope` item, project của dự án đó,
     contract dự án đó cung cấp/dùng; `approval = revoked` coi như chưa có baseline; mức chặn chặt nhất của chế độ và cài
