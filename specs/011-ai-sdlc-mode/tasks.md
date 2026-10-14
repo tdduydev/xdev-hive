@@ -283,7 +283,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/sdlc/{breakdown.ts,breakdown.db.test.ts}`
   - **Phụ thuộc**: T010, T015, T003 · **Mức**: nặng
 
-- [ ] T031 🎯 [US6] [US9] Chạy đợt và truy vết cơ bản
+- [x] T031 🎯 [US6] [US9] Chạy đợt và truy vết cơ bản
   - `waves.ts`: task sẵn sàng (phụ thuộc ở mọi dự án `done`), `maxParallel` **theo dự án**, chạy qua deps `startRun`
     (chủ, `requiredLabels` theo cài đặt dự án của task), chỉ task của dự án người bấm có quyền; tự chạy khi task `done`;
     tạm dừng.

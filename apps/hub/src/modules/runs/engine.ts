@@ -112,6 +112,7 @@ import {
   onSdlcRunFinished,
   type SdlcDeps,
   type SdlcRunRequest,
+  type SdlcTaskRunRequest,
   specContextFor,
   withStepRuns,
 } from "../sdlc/index.ts";
@@ -2096,7 +2097,22 @@ export function createRunsEngine(deps: RunsDeps) {
     providerFactory: deps.providerFactory,
     masterKey: deps.masterKey,
     createSdlcRun: startSdlcRun,
+    startTaskRun: startSdlcTaskRun,
   });
+
+  /** Đợt AI SDLC: run code của task như người giao tay, chủ và nhãn máy theo cài đặt dự án của task (D24). */
+  async function startSdlcTaskRun(tx: Tx, req: SdlcTaskRunRequest) {
+    const task = await loadTask(tx, req.taskId);
+    if (!task) throw new NotFoundError("TASK_NOT_FOUND", "Không tìm thấy task.");
+    const { row, afterCommit } = await queueRun(tx, task, await loadProject(tx, task.projectId), {
+      cli: task.preferredCli ?? null,
+      createdBy: req.createdBy,
+      actorUserId: req.actorUserId,
+      ownerUserId: req.ownerUserId,
+      requiredLabels: req.requiredLabels,
+    });
+    return { runId: row.id, afterCommit };
+  }
 
   /** Cổng `codereview` dùng khi `runs` mở phiên hay báo run review xong trong transaction của mình. */
   const codeReviewDeps: CodeReviewDeps = {
