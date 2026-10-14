@@ -20,3 +20,11 @@ export {
   type RunEvidence,
   startCodeReview,
 } from "./service.ts";
+export {
+  deliverReviewStatus,
+  prepareReviewStatus,
+  publishReviewStatus,
+  REVIEW_STATUS_CONTEXT,
+  type ReviewStatusDeps,
+  reviewStatusOf,
+} from "./status.ts";

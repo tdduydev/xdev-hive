@@ -272,7 +272,7 @@
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md}`, `docs/adr/0009-configurable-outcome-policy.md`
   - **Phụ thuộc**: T070, T091 · **Mức**: nhẹ
 
-- [ ] T101 Commit status `xdev-hive/review` và gợi ý bảo vệ nhánh — **chỉ làm khi Q1 chốt theo đề xuất**.
+- [x] T101 Commit status `xdev-hive/review` và gợi ý bảo vệ nhánh — **chỉ làm khi Q1 chốt theo đề xuất**.
   - **Scope**: `apps/hub/src/modules/codereview/{status.ts,status.db.test.ts}`, `apps/web/src/pages/project-settings-page.tsx`
   - **Phụ thuộc**: T003, T070, T080 · **Mức**: vừa
 
