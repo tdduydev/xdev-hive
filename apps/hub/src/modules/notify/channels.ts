@@ -3,7 +3,7 @@ import {
   type NotificationChannelCreateInput,
   type NotificationChannelKind,
   type NotificationChannelUpdateInput,
-  type NotificationEvent,
+  type NotificationChannelEvent,
   notificationChannelConfig,
   notificationChannelCreateInput,
   notificationChannelUpdateInput,
@@ -28,7 +28,7 @@ export interface ChannelRecord {
   id: string;
   kind: NotificationChannelKind;
   name: string;
-  events: NotificationEvent[];
+  events: NotificationChannelEvent[];
   enabled: boolean;
   target: string;
   createdAt: Date;
@@ -47,7 +47,7 @@ export const channelColumns = {
   id: notificationChannels.id,
   kind: notificationChannels.kind,
   name: notificationChannels.name,
-  events: sql<NotificationEvent[]>`${notificationChannels.events}`,
+  events: sql<NotificationChannelEvent[]>`${notificationChannels.events}`,
   enabled: notificationChannels.enabled,
   target: notificationChannels.target,
   createdAt: notificationChannels.createdAt,

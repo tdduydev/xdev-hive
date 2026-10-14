@@ -46,7 +46,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     vector
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T002 Contract API `terminal.*` và đăng nhập CLI
+- [x] T002 Contract API `terminal.*` và đăng nhập CLI
+  - Đã làm (SPEC10W3): route phiên máy cá nhân nằm ở contract `remote` (`/v1/remote/…`), không gộp vào `terminal` của
+    phiên Leader để không nới quyền bên nào; khung WS `remoteClientFrame`/`remoteServerFrame`; `REMOTE_LIMITS`,
+    `remoteErrors`, `REMOTE_AUDIT_ACTIONS`. `desktop-connect`: `purpose: "desktop" | "cli"`, output là union theo
+    `purpose`. `notify`: ba sự kiện `terminal.*` chỉ cho hộp thư/đẩy của chủ máy (`notificationChannelEvent` loại chúng
+    khỏi kênh tổ chức). Chính sách: `remote.totpFallback` (mặc định bật; lưu chính sách từ client cũ giữ giá trị cũ).
   - `terminal.ts`: kiểu phiên, máy (trạng thái từ xa), thiết bị, route ở plan.md (`machines`, `list`, `get`, `chunks`,
     `ticket`, `start`, `close`, `setVisibility`, `disableRemote`, `pairOptions`, `pairComplete`, `devices`,
     `revokeDevice`, `pushKey`, `pushSubscribe`, `pushUnsubscribe`); khung WS trình duyệt (`resume`, `control`, `in`,
