@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { InstallApp } from "@/components/install-app.tsx";
 import { PersonAvatar } from "@/components/person.tsx";
 import { fetchHealth, formatBuiltAt, shortVersion } from "@/lib/build-info.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
@@ -44,6 +45,7 @@ export function UserCard() {
           <SignOutButton />
         </span>
       </div>
+      <InstallApp />
       <BuildInfo />
     </div>
   );

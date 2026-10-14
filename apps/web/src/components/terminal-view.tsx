@@ -4,13 +4,22 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
-import { useEffect, useRef } from "react";
+import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
 import { base64ToBytes, clampSize } from "@/lib/terminal.ts";
 import { type Connection, type TerminalHandlers, TerminalSocket } from "@/lib/terminal-socket.ts";
 
 export type ReplayStatus = "idle" | "loading" | "done" | "failed";
 
+/** Cho trang gửi phím không đi qua bàn phím của xterm (thanh phím, ô soạn dòng trên điện thoại). */
+export interface TerminalViewHandle {
+  send: (data: string) => void;
+  focus: () => void;
+}
+
 export interface TerminalViewProps {
+  ref?: Ref<TerminalViewHandle>;
+  /** Biến đổi chữ gõ trên bàn phím của xterm trước khi gửi (Ctrl/Alt đang giữ ở thanh phím). */
+  transformInput?: (data: string) => string;
   sessionId: string;
   /** Cỡ lúc phiên chạy: phát lại bản ghi của phiên đã đóng dùng đúng cỡ này để TUI không bị vỡ dòng. */
   cols: number;
@@ -47,6 +56,15 @@ export function TerminalView(props: TerminalViewProps) {
   // Props đổi mỗi lần vẽ (hàm, đối tượng): effect đọc qua ref để không dựng lại terminal hay socket.
   const latest = useRef(props);
   latest.current = props;
+
+  useImperativeHandle(
+    props.ref,
+    () => ({
+      send: (data) => socketRef.current?.sendInput(data),
+      focus: () => termRef.current?.focus(),
+    }),
+    [],
+  );
 
   // 1. Terminal.
   // biome-ignore lint/correctness/useExhaustiveDependencies: dựng lại chỉ khi đổi phiên; mọi thứ khác đọc qua `latest`.
@@ -91,7 +109,10 @@ export function TerminalView(props: TerminalViewProps) {
       }
     };
     refit();
-    const data = term.onData((input) => socketRef.current?.sendInput(input));
+    const data = term.onData((input) => {
+      const transform = latest.current.transformInput;
+      socketRef.current?.sendInput(transform ? transform(input) : input);
+    });
     const resized = term.onResize(({ cols, rows }) => socketRef.current?.resize(cols, rows));
     const observer = new ResizeObserver(refit);
     observer.observe(host);
