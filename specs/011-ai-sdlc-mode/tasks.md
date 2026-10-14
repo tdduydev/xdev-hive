@@ -154,7 +154,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{gate.ts,overrides.ts,gate.test.ts,gate.db.test.ts}`
   - **Phụ thuộc**: T010, T015 · **Mức**: nặng
 
-- [ ] T014 🎯 [US3] Nối `knowledge` với hạng mục
+- [x] T014 🎯 [US3] Nối `knowledge` với hạng mục
   - `reviews.ts`: `ReviewDeps.workflowFor?(tx, docKey)` hỏi trước `matchWorkflow` (trong `startReview`, `previewSubmit`);
     `finish` gọi `deps.onBaseline?` trong transaction; hướng `agent` gọi `deps.queueAuthorFix?` khi có (thay task chung);
     `traceOf` dùng `deps.traceFor?` khi có.
