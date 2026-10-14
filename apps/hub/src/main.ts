@@ -57,6 +57,7 @@ import {
   scmEventQueue,
   scmEvents,
 } from "./modules/scm/index.ts";
+import { registerSkillLearningWorker, skillLearningPrQueue, skillLearningQueue } from "./modules/skilllearn/index.ts";
 import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./modules/tenancy/index.ts";
 
 const config = loadConfig();
@@ -119,6 +120,8 @@ jobs = config.jobsDatabaseUrl
         orphanUsersQueue,
         runLogRetentionQueue,
         skillGitQueue,
+        skillLearningQueue,
+        skillLearningPrQueue,
         reviewQueue,
         auditRetentionQueue,
         templateSyncQueue,
@@ -179,6 +182,15 @@ if (roles.includes("jobs") && jobs) {
       providerFactory: defaultProviderFactory,
       publicUrl: catalogDeps.publicUrl,
       jobs,
+    });
+    // Chạy cùng tiến trình với lõi giao run (runs cài cổng tạo run đề xuất skill); không có runs thì chỉ mở PR.
+    await registerSkillLearningWorker(jobs, {
+      pool,
+      masterKey: config.masterKey,
+      providerFactory: defaultProviderFactory,
+      publicUrl: catalogDeps.publicUrl,
+      runs: runs?.skillLearning,
+      logger: console,
     });
   }
   if (pool) {
