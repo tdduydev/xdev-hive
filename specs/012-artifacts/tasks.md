@@ -169,7 +169,7 @@
     (chỉ chỗ gọi), `apps/hub/package.json`, `pnpm-lock.yaml`
   - **Phụ thuộc**: T004 (manifest), T010, T012 · **Mức**: nặng
 
-- [ ] T015 🎯 Link công khai trên hub
+- [x] T015 🎯 Link công khai trên hub
   - `public-links.ts`: route `publicLinks.create/list/revoke/orgList` (FR-140, FR-141, FR-147; quét bí mật lại; chính
     sách `publicLinks`; trần `HIVE_ARTIFACT_LINK_MAX_DAYS`), `GET /_artifact/s/:token` (plan.md D21: băm → hàm resolve →
     `withTenant` → `buildPublicPage` + vé `s:`; 404 đồng nhất), kiểm link ở route khung khi vé có `s`, cập nhật
