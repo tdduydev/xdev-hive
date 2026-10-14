@@ -108,10 +108,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/remoteauth/**`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T006 [P] Thiết kế UI bằng skill `ui-ux-pro-max`, theo design system và shadcn/ui: web điện thoại (danh sách máy và
+- [x] T006 [P] Thiết kế UI bằng skill `ui-ux-pro-max`, theo design system và shadcn/ui: web điện thoại (danh sách máy và
   phiên, terminal với thanh phím và ô soạn, mở phiên mới, ghép, thiết bị, hướng dẫn cài PWA) và màn app desktop Điều khiển
   từ xa (công tắc, thư mục, thiết bị + QR, phiên, hộp xác nhận); 360 px, sáng/tối.
   - **Scope**: `docs/design-system/screens/{Remote.dc.html,AppRemote.dc.html}` (mới), `docs/design-system/screens/README.md`
+  - Đã làm (SPEC10W5): hai màn có trạng thái `view`, vi/en, sáng/tối, 360 px, chạm 44 px; bàn giao trong README (chưa
+    đưa lên canvas).
   - **Phụ thuộc**: không · **Mức**: vừa
 
 - [x] T007 Bảng và migration module `terminal`
@@ -229,7 +231,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/hub/src/modules/runs/retention.ts`, `apps/hub/src/{main.ts,app.ts,fleet.db.test.ts}`
   - **Phụ thuộc**: T002, T007 · **Mức**: nặng
 
-- [ ] T014 [P] [US1] Web: danh sách phiên và phát lại bản ghi
+- [x] T014 [P] [US1] Web: danh sách phiên và phát lại bản ghi
+  - Đã làm (SPEC10W5): `/remote` (máy của tôi với trạng thái từ xa, phiên đang chạy trước), `/remote/$id` phát lại qua
+    `remote.chunks` bằng `TerminalView` sẵn có (`live={false}`, chỉ đọc; phiên đang chạy hỏi lại mỗi 5 giây), mục
+    "Phiên tương tác" trên bảng việc (chỉ hiện khi có phiên), menu "Điều khiển từ xa". Thêm `pages/remote/session-row.tsx`
+    dùng chung. Không thêm gói npm. Playwright `remote.spec.ts`: danh sách, phát lại, 360 px sáng/tối, tiếng Anh.
   - `components/terminal-view.tsx` (xterm.js + fit, chỉ đọc, tải lười, tắt OSC 52, link cần xác nhận), `pages/remote/`
     `remote-page.tsx` (máy của tôi, phiên), `session-page.tsx` chế độ phát lại (đọc `chunks` theo trang), mục "Phiên
     tương tác" trên trang task; mục menu "Điều khiển từ xa".
