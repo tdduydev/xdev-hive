@@ -118,7 +118,7 @@
   - **Scope**: `apps/hub/src/modules/tasks/{tasks.ts,router.ts,index.ts,dependencies.ts,dependencies.db.test.ts}`
   - **Phụ thuộc**: T004 · **Mức**: vừa
 
-- [ ] T011 🎯 [P] [US8] [US1] Chế độ và gợi ý cỡ
+- [x] T011 🎯 [P] [US8] [US1] Chế độ và gợi ý cỡ
   - `modes.ts`: preset + chế độ tự tạo trong phạm vi (đội > tổ chức), lưu (kiểm chính sách agent qua `governance`),
     xoá, chạy thử; `suggest.ts` thuần (nhãn issue, độ dài, từ khoá rủi ro của dự án → cỡ, chế độ cho phép phù hợp).
   - Test: `suggest.test.ts`; `modes.db.test.ts` (preset chỉ đọc, đường dẫn cấm, quyền `sdlc.modes.write`).
