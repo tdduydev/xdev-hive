@@ -29,6 +29,7 @@ const jobs: Jobs = {
   start: async () => {},
   stop: async () => {},
   enqueue: async (_queue, data) => {
+    if (_queue !== "codereview") return randomUUID();
     queued.push(data as CodeReviewJob);
     return randomUUID();
   },

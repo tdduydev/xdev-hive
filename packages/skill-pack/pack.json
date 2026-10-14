@@ -1,7 +1,7 @@
 {
   "source": {
     "repo": "tdduydev/xdev-skills",
-    "commit": "fb33b3b474af0737c4974d50c82ce87dd3cd9b1c",
+    "commit": "d246ca68816356dc3cea9737e7d41a82569582eb",
     "path": "library"
   },
   "skills": [
@@ -521,6 +521,18 @@
       "version": 1,
       "files": 3,
       "bytes": 5988
+    },
+    {
+      "name": "product-owner",
+      "description": "Act as product owner and design a feature before any code is written — one-page PRD, user story map with MVP cut, RICE/MoSCoW prioritization, user-side acceptance (UAT) review and competitor comparison. Use when a request is a product idea or a vague feature (\"add X\", \"improve Y\"), when scope or priority is unclear, or before running speckit-specify; asks the person in chat or, in an unattended run, records [Giả định] assumptions.",
+      "group": "engineering",
+      "defaultOn": false,
+      "license": "MIT",
+      "upstream": null,
+      "hash": "be99a62e812d7e62b0a223d87dedb79c231e8632b02115d609a12bfe8633759d",
+      "version": 1,
+      "files": 7,
+      "bytes": 15075
     }
   ]
 }
