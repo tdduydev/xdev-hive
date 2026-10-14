@@ -115,11 +115,12 @@ test("người không có quyền sửa vai trò chỉ xem được", async ({ p
   await expect(page.getByRole("checkbox", { name: "Xem nhật ký" })).toBeDisabled();
 });
 
-test("vai trò tự tạo có audit.read thấy mục Nhật ký trong sidebar dù là thành viên", async ({ page }) => {
+test("vai trò tự tạo có audit.read thấy mục Nhật ký trong menu Quản trị dù là thành viên", async ({ page }) => {
   await setup(page, "member", ["tasks.read", "audit.read"]);
-  await page.goto("/");
-  await expect(page.getByRole("link", { name: "Nhật ký", includeHidden: true })).toHaveCount(1);
-  await expect(page.getByRole("link", { name: "Vai trò và quyền", includeHidden: true })).toHaveCount(0);
+  await page.goto("/admin/members");
+  const admin = page.getByRole("navigation", { name: "Điều hướng quản trị" });
+  await expect(admin.getByRole("link", { name: "Nhật ký" })).toHaveCount(1);
+  await expect(admin.getByRole("link", { name: "Vai trò và quyền" })).toHaveCount(0);
 });
 
 for (const scheme of ["light", "dark"] as const) {

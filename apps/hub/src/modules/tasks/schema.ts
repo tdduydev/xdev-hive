@@ -1,6 +1,7 @@
-import type { PlanContent } from "@xdev-hive/contracts";
+import type { PlanContent, TaskChecklistItem } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
+  check,
   foreignKey,
   index,
   integer,
@@ -8,6 +9,7 @@ import {
   pgPolicy,
   pgRole,
   pgSchema,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -55,6 +57,7 @@ export const tasks = hive
       preferredCli: text("preferred_cli").$type<"claude" | "codex" | "gemini" | "antigravity">(),
       createdBy: text("created_by").notNull(),
       source: jsonb("source").$type<Record<string, unknown>>().notNull().default({}),
+      checklist: jsonb("checklist").$type<TaskChecklistItem[]>().notNull().default([]),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
       updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     },
@@ -108,6 +111,39 @@ export const plans = hive
       // Dispatch tìm kế hoạch đã duyệt của run code; huỷ run tìm kế hoạch còn chờ.
       index("plans_run").on(t.runId),
       pgPolicy("plans_rw", { for: "all", to: hiveApp, using: inOrg, withCheck: inOrg }),
+    ],
+  )
+  .enableRLS();
+
+/**
+ * Task chỉ được giao khi mọi task nó phụ thuộc đã xong (specs/011 FR-028). Hai đầu có thể khác dự án (D24) nên quyền
+ * trên hai dự án kiểm trong code; khoá kép theo tổ chức giữ hai đầu cùng tổ chức vì khoá ngoại bỏ qua RLS.
+ */
+export const taskDependencies = hive
+  .table(
+    "task_dependencies",
+    {
+      orgId: uuid("org_id").notNull(),
+      taskId: uuid("task_id").notNull(),
+      dependsOnId: uuid("depends_on_id").notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      primaryKey({ columns: [t.taskId, t.dependsOnId] }),
+      check("task_dependencies_self", sql`task_id <> depends_on_id`),
+      foreignKey({
+        name: "task_dependencies_task_fk",
+        columns: [t.taskId, t.orgId],
+        foreignColumns: [tasks.id, tasks.orgId],
+      }).onDelete("cascade"),
+      foreignKey({
+        name: "task_dependencies_depends_on_fk",
+        columns: [t.dependsOnId, t.orgId],
+        foreignColumns: [tasks.id, tasks.orgId],
+      }).onDelete("cascade"),
+      // Xong một task thì tìm task đang chờ nó.
+      index("task_dependencies_rev").on(t.dependsOnId),
+      pgPolicy("task_dependencies_rw", { for: "all", to: hiveApp, using: inOrg, withCheck: inOrg }),
     ],
   )
   .enableRLS();
