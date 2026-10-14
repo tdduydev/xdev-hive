@@ -185,7 +185,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{participants.ts,access.ts,phases.ts,participants.db.test.ts,access.db.test.ts,phases.db.test.ts}`
   - **Phụ thuộc**: T012, T014 · **Mức**: nặng
 
-- [ ] T016 🎯 [US17] Contract liên repo
+- [x] T016 🎯 [US17] Contract liên repo
   - `contracts.ts` (D23): `contracts.create|update` (bên cung cấp, bên dùng thuộc hạng mục; `requireProjectWrite` mọi
     bên), tạo `sdlc_artifacts` `scope = contract` + tài liệu hub + `sdlc_artifact_syncs` (nguồn ở bên cung cấp, bản sao
     ở bên dùng); nhận `sdlc_report contracts` từ T022 (hàm `contractsFromReport`); `workflowFor` thêm checkpoint cho đội
@@ -195,7 +195,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{contracts.ts,contracts.db.test.ts}`
   - **Phụ thuộc**: T015 · **Mức**: vừa
 
-- [ ] T017 🎯 [US18] Tự duyệt AI và thu hồi
+- [x] T017 🎯 [US18] Tự duyệt AI và thu hồi
   - `autoapprove.ts` (D25, D26): `autoDecide` — thuần (`decide(input) → {approve, reasons}` theo bảng điều kiện của
     plan.md "Tự duyệt") + đọc DB (chính sách tổ chức qua `governance`, cài đặt dự án, điểm checkpoint `ai`, run tác giả
     bản nháp); ghi `sdlc_auto_approvals`, audit `sdlc.auto_approve`, thông báo `sdlc.auto_approved`;
@@ -272,7 +272,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 4: Tách task, chạy đợt, truy vết cơ bản (US5, US6, US9) 🎯
 
-- [ ] T030 🎯 [US5] Baseline tài liệu tách việc → task hub
+- [x] T030 🎯 [US5] Baseline tài liệu tách việc → task hub
   - `breakdown.ts` (hub): `applyBaseline` (tạo task **trong dự án của task** với `checklist`, `dependsOn` (kể cả liên dự
     án, gọi `setTaskDependencies` bằng tác nhân hệ thống), `source = sdlc`, `sdlc_item_tasks.project_id`, liên kết truy vết
     `task`; so bản trước theo khoá lát: tạo, cập nhật task `todo`, huỷ task bỏ còn `todo`, cảnh báo task bỏ đã chạy; đổi
@@ -441,7 +441,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/{main.ts,app.ts,app.test.ts}`, `apps/hub/src/modules/sdlc/router.ts` (gộp các hàm đăng ký route)
   - **Phụ thuộc**: T013, T016, T017, T018, T021, T022, T031 (T040, T060 khi có) · **Mức**: vừa
 
-- [ ] T071 [P] Leader: hành động `sdlc.item.create`
+- [x] T071 [P] Leader: hành động `sdlc.item.create`
   - Thực thi khi người duyệt đề xuất; prompt leader biết đề xuất tạo hạng mục cho việc lớn.
   - **Scope**: `apps/hub/src/modules/leader/{router.ts,prompt.ts,leader-sdlc.db.test.ts}`
   - **Phụ thuộc**: T012 · **Mức**: nhẹ

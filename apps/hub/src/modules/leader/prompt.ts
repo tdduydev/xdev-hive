@@ -70,6 +70,13 @@ export async function loadTranscript(tx: Tx, threadId: string): Promise<string> 
 export const ARTIFACT_RULE =
   "Nội dung dài (hơn 30 dòng), sơ đồ, trang tương tác hay bảng thì tạo artifact bằng MCP `artifact_create` (kèm `threadId` của cuộc trò chuyện này) rồi nói ngắn trong `leader_reply` thay vì dán vào câu trả lời. Sửa artifact đã có (xem dòng `[artifact <id>, phiên bản N]` trong lịch sử, hoặc `artifact_list`) thì đọc bằng `artifact_get` rồi `artifact_update` với `baseVersion`; không tạo bản trùng.";
 
+/**
+ * Việc lớn đi qua hạng mục AI SDLC (specs/011 US1-5) thay vì một loạt task: spec, duyệt, tách task có phụ thuộc. Leader
+ * chỉ đề xuất; người duyệt thành chủ hạng mục.
+ */
+export const SDLC_RULE =
+  "Việc lớn (cần spec hay thiết kế trước khi code, nhiều module, hoặc chạm nhiều dự án) thì đề xuất `sdlc.item.create` thay vì nhiều task.create: `item` gồm `projectId` (dự án chính), `title`, `idea` (yêu cầu đầy đủ), `modeRef` (chế độ dự án cho dùng, vd. speckit, aidlc-express, bugfix), `size` (S|M|L|XL), `participants` (id dự án tham gia, nếu có). Chỉ dự án đã bật AI SDLC mới tạo được hạng mục; lỗi nhỏ, việc rõ thì vẫn task.create.";
+
 export function assembleLeaderPrompt(params: {
   transcript: string;
   projectName: string;
@@ -83,6 +90,7 @@ export function assembleLeaderPrompt(params: {
     "Mọi hành động phải được đề xuất bằng MCP `leader_propose`; không tự thực hiện thay đổi.",
     TIER_RULE,
     ARTIFACT_RULE,
+    SDLC_RULE,
     `Dự án: ${params.projectName} (${params.projectKey}); nhánh chính: ${params.defaultBranch ?? "main"}.`,
     "Lịch sử cuộc trò chuyện (giữ tin đầu và các tin gần nhất trong ngân sách ký tự):",
     params.transcript,
