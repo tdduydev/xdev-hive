@@ -29,6 +29,12 @@ import (
 // startRemote chạy socket nội bộ với phần từ xa thật của worker (thư mục tạm), máy riêng của u1.
 func startRemote(t *testing.T) (string, *terminal.Remote) {
 	t.Helper()
+	return startRemoteWith(t, nil)
+}
+
+// startRemoteWith cho sửa Remote trước khi socket nhận kết nối, để test không ghi trường đang được goroutine khác đọc.
+func startRemoteWith(t *testing.T, edit func(*terminal.Remote)) (string, *terminal.Remote) {
+	t.Helper()
 	dir := shortTemp(t)
 	r := &terminal.Remote{
 		Store:       remoteauth.NewStore(dir),
@@ -41,6 +47,9 @@ func startRemote(t *testing.T) (string, *terminal.Remote) {
 		ConfirmWait: 5 * time.Second,
 	}
 	r.OnWelcome(terminal.WelcomeInfo{Terminal: true, Owner: &terminal.WelcomeOwner{UserID: "u1"}})
+	if edit != nil {
+		edit(r)
+	}
 	path := filepath.Join(dir, "run", "hive.sock")
 	ln, err := localipc.Listen(path)
 	if err != nil {

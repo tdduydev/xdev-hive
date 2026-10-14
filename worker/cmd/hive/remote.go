@@ -34,6 +34,7 @@ const remoteUsage = `Cách dùng: hive remote <lệnh> [--json]
   set <khoá> <giá trị>    confirm-on-machine on|off, idle-minutes N, detached-hours N, max-hours N,
                           allow-full-access on|off, totp-on-https on|off
   watch [--json]          theo dõi sự kiện và trả lời yêu cầu ghép (--json: mỗi dòng một JSON, stdin nhận yêu cầu JSON)
+  totp <lệnh>             mã Authenticator khi hub chạy HTTP (hive remote totp help)
 `
 
 const remoteRisk = "Agent có thể chạy lệnh trên máy này khi bạn điều khiển từ điện thoại."
@@ -80,6 +81,7 @@ type remoteReply struct {
 	Status remoteStatus `json:"status"`
 	Root   remoteRoot   `json:"root"`
 	Pair   pairInfo     `json:"pair"`
+	TOTP   totpEnroll   `json:"totp"`
 }
 
 // remoteEvent là một dòng của watch: sự kiện (có "event") hoặc trả lời cho yêu cầu gửi trên cùng kết nối.
@@ -145,6 +147,8 @@ func (a *app) remote(args []string) int {
 		return a.remoteSet(rest)
 	case "watch":
 		return a.remoteWatch(rest)
+	case "totp":
+		return a.remoteTOTP(rest)
 	case "help", "-h", "--help":
 		fmt.Fprint(a.stdout, remoteUsage)
 		return exitOK
@@ -467,12 +471,15 @@ func (a *app) printSettings(st remoteStatus) {
 	fmt.Fprintf(a.stdout, "Ngắt khi không dùng: %d phút · giữ phiên đã tách: %d giờ · tối đa: %d giờ\n",
 		st.IdleMinutes, st.DetachedHours, st.MaxHours)
 	fmt.Fprintf(a.stdout, "Phiên từ xa chạy toàn quyền: %s\n", yesNo(st.AllowFullAccess))
-	switch {
-	case st.TOTP.Locked:
+	a.printTOTP(st)
+}
+
+func (a *app) printTOTP(st remoteStatus) {
+	if st.TOTP.Locked {
 		fmt.Fprintf(a.stdout, "Mã Authenticator: đang khoá tới %s (mở bằng hive remote totp unlock)\n", st.TOTP.LockedUntil.Local().Format("15:04"))
-	default:
-		fmt.Fprintf(a.stdout, "Mã Authenticator: %s\n", onOff(st.TOTP.Enabled))
+		return
 	}
+	fmt.Fprintf(a.stdout, "Mã Authenticator: %s\n", onOff(st.TOTP.Enabled))
 }
 
 func (a *app) remotePair(args []string) int {

@@ -29,6 +29,8 @@ type TOTPEnroll struct {
 	URI       string    `json:"uri"`
 	Secret    string    `json:"secret"`
 	ExpiresAt time.Time `json:"expiresAt"`
+	// HubURL để lệnh cảnh báo khi hub chạy HTTP (mã đi trên đường không mã hoá).
+	HubURL string `json:"hubUrl,omitempty"`
 }
 
 func (r *Remote) handleTOTP(c *localipc.Conn, req localipc.Request) error {
@@ -53,7 +55,7 @@ func (r *Remote) handleTOTP(c *localipc.Conn, req localipc.Request) error {
 		r.totpPending = p
 		r.mu.Unlock()
 		enc := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(secret)
-		return c.OK(map[string]any{"totp": TOTPEnroll{URI: remoteauth.TOTPURI(r.Machine, secret), Secret: enc, ExpiresAt: p.expires.UTC()}})
+		return c.OK(map[string]any{"totp": TOTPEnroll{URI: remoteauth.TOTPURI(r.Machine, secret), Secret: enc, ExpiresAt: p.expires.UTC(), HubURL: r.HubURL}})
 	case "remote.totp.confirm":
 		var in struct{ Code string }
 		if err := req.Decode(&in); err != nil {
