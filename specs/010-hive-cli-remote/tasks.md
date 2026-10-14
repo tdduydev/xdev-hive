@@ -295,7 +295,15 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `apps/hub/src/modules/terminal/{pairing.ts,devices.ts,state.ts,router.ts,index.ts,pairing.db.test.ts}`
   - **Phụ thuộc**: T013 · **Mức**: nặng
 
-- [ ] T022 [US2] Web: ghép và thiết bị
+- [x] T022 [US2] Web: ghép và thiết bị
+  - Đã làm (SPEC10W6): `webauthn.ts` (đọc bí mật `#s=` rồi xoá khỏi URL bằng `history.replaceState`, chưa đăng nhập thì
+    `stashPairSecret` cất vào sessionStorage để `?redirect=` không mang bí mật; `createPasskey` bắt UV và đọc
+    `getPublicKey()`, `pairProof` tính tag HMAC, `getAssertion` dùng challenge chuẩn hoá từ contracts; nhớ thiết bị đã
+    ghép trong localStorage). `pair-page.tsx` (`/remote/pair?m=&p=#s=`: không phải secure context thì báo "Cần hub chạy
+    HTTPS", máy không thuộc mình thì báo trước khi gọi ghép, hiện câu lỗi của hub, cho thử lại), `devices-page.tsx`
+    (`/remote/devices`: theo máy, gỡ có hộp xác nhận, máy offline không gỡ được), `remote-page.tsx` thêm trạng thái từ
+    xa của máy và cảnh báo HTTP. Playwright với virtual authenticator: ghép thành công, mã hết hạn, máy người khác (web và
+    hub), HTTP, thiếu bí mật, chưa đăng nhập, gỡ thiết bị, tiếng Anh, 360 px sáng/tối. Chưa thử trên điện thoại thật.
   - `lib/terminal/webauthn.ts` (tạo passkey UV bắt buộc, `getPublicKey()`, đọc bí mật từ fragment rồi xoá khỏi URL, tính
     tag; lấy assertion với challenge chuẩn hoá từ contracts), `pair-page.tsx`, `devices-page.tsx`; trang báo "Cần hub chạy
     HTTPS" khi không phải secure context; trạng thái từ xa của máy trên `remote-page.tsx`.
