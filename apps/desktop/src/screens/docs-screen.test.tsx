@@ -518,9 +518,7 @@ describe("DocsScreen", () => {
   it("chưa liên kết tài khoản: không gọi hub, vẫn hỏi agent được", async () => {
     const { calls } = fakeTauri();
     renderDocs(null);
-    expect(
-      (await screen.findAllByText("Liên kết tài khoản để mở tài liệu của dự án trên hub.")).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Kết nối Hive để mở tài liệu của dự án trên hub.")).length).toBeGreaterThan(0);
     expect(calls.some((c) => c.command === "hub_tool")).toBe(false);
     expect(screen.getByRole("textbox", { name: "Hỏi hoặc yêu cầu viết tài liệu từ code" })).toBeTruthy();
   });
