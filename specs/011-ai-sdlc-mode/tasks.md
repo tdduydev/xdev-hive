@@ -352,13 +352,16 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     tạo" ↔ "Bản tách" (nạp lười), tab Truy vết là `TraceMatrix`. Bản tách xuất ở `@xdev-hive/sdlc-ui/breakdown` để màn
     khác (ReviewPane) không kéo `@xyflow` qua `index.ts`; app chủ cần nạp CSS qua Vite như mọi import CSS.
 
-- [ ] T053 [P] `doc-editor`: khung bên "Hạng mục" và thẻ trong ReviewPane
+- [x] T053 [P] `doc-editor`: khung bên "Hạng mục" và thẻ trong ReviewPane
   - Khung bên khi key thuộc `project/<k>/sdlc/…`: giai đoạn, khuôn, mục bắt buộc, câu hỏi đã trả lời, "Nhờ agent soạn
     lại" (gọi `sdlc.items.step` qua `DocEditorEnv` mở rộng tuỳ chọn); ReviewPane thêm thẻ "Câu hỏi đã trả lời", "Bản tách
     task" (nhận component qua props, không import `sdlc-ui`); checkpoint theo đội hiện tên đội và dự án; checkpoint có
     `auto` hiện "Tự duyệt bởi AI · điểm/ngưỡng" và slot nút Thu hồi (qua props); sự kiện "Không tự duyệt: …".
   - **Scope**: `packages/doc-editor/src/{env.tsx,doc-editor.tsx,review-pane.tsx,sdlc-panel.tsx,text.ts}` + test
   - **Phụ thuộc**: T001, T005 · **Mức**: vừa
+  - Đã làm: khung bên bật khi app chủ truyền `env.sdlc.itemLink`; ReviewPane nhận `sdlc={{ breakdown, revoke }}`. Tên
+    đội và dự án của checkpoint theo đội lấy từ tên cổng hub đặt (`phases.ts`), contract không có trường đội riêng. Sự
+    kiện "Không tự duyệt" đọc từ ghi chú cổng có tiền tố đó.
 
 - [ ] T054 🎯 Web: luồng AI SDLC và cấu hình dự án
   - Route `/sdlc`, `/sdlc/new`, `/sdlc/questions`, `/sdlc/$project/$number` (+ tab), `lib/sdlc-env.tsx`, menu
