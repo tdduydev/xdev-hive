@@ -1,5 +1,5 @@
-import { Link, useLocation } from "@tanstack/react-router";
-import { ChevronRightIcon } from "lucide-react";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { ChevronRightIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible.tsx";
 import {
@@ -15,10 +15,20 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar.tsx";
 import { countLabel, useAwaitingCodeReviews } from "@/lib/code-reviews.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { activeNavItem, NAV_HOME, type NavGroup, type NavItem, visibleGroups } from "@/lib/nav.ts";
+import {
+  activeNavItem,
+  adminHome,
+  inAdminArea,
+  NAV_ADMIN,
+  NAV_HOME,
+  type NavGroup,
+  type NavItem,
+  visibleGroups,
+} from "@/lib/nav.ts";
 import { orgStore } from "@/lib/org-store.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin, ORG_ROLE_LABEL } from "@/lib/roles.ts";
@@ -26,11 +36,25 @@ import { useOrgs } from "@/shell/org-context.ts";
 import { OrgSwitcher } from "@/shell/org-switcher.tsx";
 import { UserCard } from "@/shell/user-card.tsx";
 
-const text: Dict<{ nav: string; needsOrg: string; awaitingPrs: (n: number) => string }> = {
-  vi: { nav: "Điều hướng chính", needsOrg: "Cần thuộc một tổ chức", awaitingPrs: (n) => `${n} PR đang chờ bạn duyệt` },
+const text: Dict<{
+  nav: string;
+  needsOrg: string;
+  expand: string;
+  collapse: string;
+  awaitingPrs: (n: number) => string;
+}> = {
+  vi: {
+    nav: "Điều hướng chính",
+    needsOrg: "Cần thuộc một tổ chức",
+    expand: "Mở rộng điều hướng",
+    collapse: "Thu gọn điều hướng",
+    awaitingPrs: (n) => `${n} PR đang chờ bạn duyệt`,
+  },
   en: {
     nav: "Main navigation",
     needsOrg: "Join an organization first",
+    expand: "Expand navigation",
+    collapse: "Collapse navigation",
     awaitingPrs: (n) => `${n} PRs awaiting your review`,
   },
 };
@@ -47,7 +71,7 @@ function readOpen(): Record<string, boolean> {
   }
 }
 
-function ItemBody({ item }: { item: NavItem }) {
+function ItemBody({ item }: { item: Pick<NavItem, "icon" | "label"> }) {
   const lang = useLang();
   const IconComponent = item.icon;
   return (
@@ -72,7 +96,7 @@ function CodeReviewsBadge() {
 }
 
 /** Mục không bấm được khi chưa thuộc tổ chức nào: mọi màn ở đây là dữ liệu của một tổ chức. */
-function DisabledItem({ item, sub }: { item: NavItem; sub?: boolean }) {
+function DisabledItem({ item, sub }: { item: Pick<NavItem, "icon" | "label">; sub?: boolean }) {
   const t = useT(text);
   const Button = sub ? SidebarMenuSubButton : SidebarMenuButton;
   return (
@@ -145,18 +169,26 @@ function Group({
 }
 
 /**
- * Thanh bên theo Sidebar.dc.html: logo, ô chọn tổ chức, mục Tổng quan, sáu nhóm thu gọn được, người đang đăng nhập.
- * Nhóm chứa màn đang mở tự mở; nhóm người dùng tự mở hay đóng thì nhớ. Chưa thuộc tổ chức nào thì mở hết để thấy có gì.
+ * Thanh bên theo Sidebar.dc.html: logo, ô chọn tổ chức, mục Tổng quan, nhóm Công việc và Kiến thức thu gọn được, mục
+ * Quản trị, người đang đăng nhập. Các nhóm quản trị nằm trong menu thứ hai (shell/admin-nav.tsx), sidebar chỉ giữ một
+ * mục dẫn vào đó. Nhóm chứa màn đang mở tự mở; nhóm người dùng tự mở hay đóng thì nhớ. Chưa thuộc tổ chức nào thì mở
+ * hết để thấy có gì.
  */
 export function AppSidebar() {
   const { orgs, current, canCreateOrg } = useOrgs();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const t = useT(text);
   const lang = useLang();
   const hasOrg = current !== null;
   const active = activeNavItem(pathname);
   const can = usePermissions();
-  const groups = visibleGroups(!current || isOrgAdmin(current.org.role), can);
+  const visible = visibleGroups(!current || isOrgAdmin(current.org.role), can);
+  const groups = visible.filter((g) => g.area !== "admin");
+  const admin = adminHome(visible);
+  const inAdmin = inAdminArea(pathname);
+  const { open, isMobile, toggleSidebar } = useSidebar();
+  const iconOnly = inAdmin && !open && !isMobile;
   const [userOpen, setUserOpen] = useState<Record<string, boolean>>(readOpen);
   const setOpen = (id: string, open: boolean) => {
     const next = { ...userOpen, [id]: open };
@@ -172,18 +204,20 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-3">
-        <div className="flex items-center gap-2.5 px-1.5 py-1 group-data-[collapsible=icon]:px-0">
+        <div title="xDev Hive" className="flex items-center gap-2.5 px-1.5 py-1 group-data-[collapsible=icon]:px-0">
           <img src="/xdev-hive-icon.svg" alt="" className="size-7 shrink-0" />
           <span className="truncate font-heading text-base font-semibold text-foreground group-data-[collapsible=icon]:hidden">
             xDev Hive
           </span>
         </div>
-        <OrgSwitcher
-          orgs={orgs.map((o) => ({ id: o.id, name: o.name, role: ORG_ROLE_LABEL[o.role] }))}
-          currentId={current?.org.id}
-          onSelect={orgStore.set}
-          canCreate={canCreateOrg}
-        />
+        {!iconOnly && (
+          <OrgSwitcher
+            orgs={orgs.map((o) => ({ id: o.id, name: o.name, role: ORG_ROLE_LABEL[o.role] }))}
+            currentId={current?.org.id}
+            onSelect={orgStore.set}
+            canCreate={canCreateOrg}
+          />
+        )}
       </SidebarHeader>
       <SidebarContent>
         <nav aria-label={t.nav} className="contents">
@@ -194,27 +228,83 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   render={<Link to={NAV_HOME.to} aria-current={active?.id === "home" ? "page" : undefined} />}
                   isActive={active?.id === "home"}
+                  title={iconOnly ? NAV_HOME.label[lang] : undefined}
                   tooltip={NAV_HOME.label[lang]}
                 >
                   <ItemBody item={NAV_HOME} />
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {groups.map((group) => (
-                <Group
-                  key={group.id}
-                  group={group}
-                  hasOrg={hasOrg}
-                  activeId={active?.id}
-                  open={isOpen(group)}
-                  onOpenChange={(open) => setOpen(group.id, open)}
-                />
-              ))}
+              {groups.map((group) =>
+                iconOnly ? (
+                  <SidebarMenuItem key={group.id}>
+                    <SidebarMenuButton
+                      render={<Link to={group.items[0]?.to ?? NAV_HOME.to} aria-label={group.label[lang]} />}
+                      title={group.label[lang]}
+                      tooltip={group.label[lang]}
+                      isActive={group.items.some((item) => item.id === active?.id)}
+                    >
+                      <ItemBody item={group} />
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : (
+                  <Group
+                    key={group.id}
+                    group={group}
+                    hasOrg={hasOrg}
+                    activeId={active?.id}
+                    open={isOpen(group)}
+                    onOpenChange={(open) => setOpen(group.id, open)}
+                  />
+                ),
+              )}
+              {admin && (
+                <SidebarMenuItem>
+                  {hasOrg ? (
+                    <SidebarMenuButton
+                      // "true" chứ không phải "page": trang đang mở là mục sáng trong menu Quản trị, mục này chỉ là cả khu.
+                      // Thẻ <a> thường: Link của router luôn gắn aria-current="page" khi đang ở đúng trang đích (/admin/members).
+                      render={
+                        <a
+                          href={admin.to}
+                          aria-current={inAdmin ? "true" : undefined}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                            e.preventDefault();
+                            void navigate({ to: admin.to });
+                          }}
+                        />
+                      }
+                      isActive={inAdmin}
+                      title={iconOnly ? NAV_ADMIN.label[lang] : undefined}
+                      tooltip={NAV_ADMIN.label[lang]}
+                    >
+                      <ItemBody item={NAV_ADMIN} />
+                    </SidebarMenuButton>
+                  ) : (
+                    <DisabledItem item={NAV_ADMIN} />
+                  )}
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroup>
         </nav>
       </SidebarContent>
       <SidebarFooter>
-        <UserCard />
+        {inAdmin && !isMobile && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={toggleSidebar}
+                aria-label={open ? t.collapse : t.expand}
+                tooltip={open ? t.collapse : t.expand}
+              >
+                {open ? <PanelLeftCloseIcon aria-hidden="true" /> : <PanelLeftOpenIcon aria-hidden="true" />}
+                <span>{open ? t.collapse : t.expand}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
+        {!iconOnly && <UserCard />}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

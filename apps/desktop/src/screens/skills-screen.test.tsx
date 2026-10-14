@@ -146,7 +146,7 @@ const rowOf = async (name: string, nth = 0) =>
 
 // Màn Skills gọi nhiều lệnh Tauri giả trước khi hiện nút đồng bộ; trên máy CI bận, quá 1 giây mặc định của findBy*
 // thì test hỏng ngẫu nhiên.
-const SLOW = { timeout: 4000 };
+const SLOW = { timeout: 10_000 };
 
 describe("trạng thái và so bản", () => {
   it("phân loại skill trên máy so với hub", () => {
@@ -358,6 +358,8 @@ describe("SkillsScreen", () => {
     expect(screen.queryByRole("button", { name: /^db-migration/ })).toBeNull();
     expect(screen.getByText(/Chọn thư mục làm việc ở góc trên bên trái, hoặc cài vào tài khoản/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Chọn thư mục" })).toBeTruthy();
+    // Khung xem trước của dòng đang chọn tải nội dung qua skill_get; chờ nó xong rồi mới khẳng định không còn "Đang đọc…".
+    await screen.findByText("Đọc diff.", undefined, SLOW);
     expect(screen.queryByText("Đang đọc…")).toBeNull();
     expect(calls.some((c) => c.command === "workspace_meta" || c.command === "installed_skills")).toBe(false);
     expect(calls.find((c) => c.args?.name === "skill_list")?.args).toEqual({
@@ -387,7 +389,11 @@ describe("SkillsScreen", () => {
     setLang("en");
     const calls = fakeTauri();
     renderSkills(null);
-    expect(await screen.findByText("Link your account to get skills from the hub.")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Connect to Hive to get skills from the hub. Skills installed on this machine still work.",
+      ),
+    ).toBeTruthy();
     expect(within(await rowOf("my-own")).getByText("Added by me")).toBeTruthy();
     expect(within(await rowOf("code-review")).getByText("This machine")).toBeTruthy();
     expect(calls.some((c) => c.command === "hub_tool")).toBe(false);

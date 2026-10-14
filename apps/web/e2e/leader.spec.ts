@@ -48,6 +48,7 @@ async function open(page: Page, rpc: Record<string, RpcHandler> = {}) {
           messages: [msg(1, "user", "Chia việc giúp mình"), msg(2, "leader", "Đề xuất tạo việc.")],
         }),
       "leader/approvals/list": () => ok([APPROVAL]),
+      "terminal/list": () => ok([]),
       ...rpc,
     },
   });
@@ -72,6 +73,45 @@ test("leader: xem tin nhắn và duyệt đề xuất tạo việc", async ({ pa
     .toEqual({
       id: APPROVAL.id,
     });
+});
+
+test("leader: đề xuất có cấp độ và lý do, sửa cấp rồi duyệt gửi tier mới", async ({ page }) => {
+  const leveled = {
+    ...APPROVAL,
+    action: { ...APPROVAL.action, tier: "light", tierReason: "Chỉ đổi chữ trên nút." },
+  };
+  const hub = await open(page, {
+    "leader/approvals/list": () => ok([leveled]),
+    "leader/approvals/approve": () =>
+      ok({ approval: { ...leveled, status: "approved" }, result: { taskKey: "PAY-9" } }),
+  });
+  await page.goto("/leader");
+  const card = page.getByLabel("Đề xuất của leader");
+  await expect(card).toContainText("Leader chọn cấp: Nhẹ");
+  await expect(card).toContainText("Chỉ đổi chữ trên nút.");
+  const tier = card.getByLabel("Cấp độ khi duyệt");
+  await expect(tier).toHaveValue("light");
+  await expect(card).toContainText("Tài liệu, đổi chữ");
+  await tier.selectOption("heavy");
+  await expect(card).toContainText("Nhiều module, giao thức, bảo mật");
+  await card.getByRole("button", { name: "Duyệt và thực hiện" }).click();
+  await expect
+    .poll(() => hub.rpcCalls.find((c) => c.path === "leader/approvals/approve")?.input)
+    .toEqual({ id: APPROVAL.id, tier: "heavy" });
+});
+
+test("leader: đề xuất cũ không có cấp độ thì để hub tự suy và duyệt không gửi tier", async ({ page }) => {
+  const hub = await open(page, {
+    "leader/approvals/approve": () => ok({ approval: { ...APPROVAL, status: "approved" }, result: null }),
+  });
+  await page.goto("/leader");
+  const card = page.getByLabel("Đề xuất của leader");
+  await expect(card).toContainText("Leader chưa chọn cấp độ");
+  await expect(card.getByLabel("Cấp độ khi duyệt")).toHaveValue("");
+  await card.getByRole("button", { name: "Duyệt và thực hiện" }).click();
+  await expect
+    .poll(() => hub.rpcCalls.find((c) => c.path === "leader/approvals/approve")?.input)
+    .toEqual({ id: APPROVAL.id });
 });
 
 test("leader: từ chối đề xuất bắt buộc có lý do", async ({ page }) => {

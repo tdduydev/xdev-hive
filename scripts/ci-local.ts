@@ -46,6 +46,13 @@ function git(...a: string[]): string[] | null {
 }
 
 function changedFiles(): string[] | null {
+  // Khi đang merge, HEAD vẫn là nhánh cũ: so với base để không tính cả phần vừa nhận từ main.
+  if (git("rev-parse", "--verify", "MERGE_HEAD") !== null) {
+    const merged = git("diff", "--name-only", base);
+    if (merged === null) return null;
+    const untracked = git("ls-files", "--others", "--exclude-standard") ?? [];
+    return [...new Set([...merged, ...untracked])].sort();
+  }
   const committed = git("diff", "--name-only", `${base}...HEAD`);
   // Không có base (clone nông, chưa fetch): không biết phần nào đổi thì chạy hết.
   if (committed === null) return null;
@@ -174,6 +181,9 @@ const scriptsTouched = touched(/^scripts\/.*\.ts$/) || touched(ROOT_WIDE);
 const specs = e2eSpecs();
 const hubTouched = touched(/^(apps\/hub|packages\/contracts)\//) || touched(ROOT_WIDE);
 const workerTouched = touched(/^worker\//) || touched(/^\.github\/workflows\/ci\.yml$/);
+
+if (touched(/^(xdev-skills(?:\/|$)|\.gitmodules$|packages\/skill-pack\/)/) || touched(ROOT_WIDE))
+  cmd("bộ skill khớp submodule", "node", ["packages/skill-pack/scripts/sync.ts", "check"]);
 
 if (touched(/\.(ts|tsx|js|mjs|cjs|json|jsonc|css)$/) || touched(ROOT_WIDE)) cmd("lint (biome)", "pnpm", ["lint"]);
 

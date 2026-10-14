@@ -18,10 +18,15 @@ import (
 // hơn chưa kiểm nên không bật. Hai biến có số phiên bản lấy từ tài liệu env-vars của Claude Code (chưa tự thử).
 var claudeMinVersion = map[string]string{
 	"--exclude-dynamic-system-prompt-sections": "2.1.296",
-	"--tools":                                "2.1.296",
-	"--disallowedTools":                      "2.1.296",
-	"--max-turns":                            "2.1.296",
-	"--advisor":                              "2.1.296",
+	"--tools":                     "2.1.296",
+	"--disallowedTools":           "2.1.296",
+	"--max-turns":                 "2.1.296",
+	"--advisor":                   "2.1.296",
+	"--append-system-prompt-file": "2.1.296",
+	"--add-dir":                   "2.1.296",
+	// Không phải cờ: hook dạng exec (command + args) và PostToolUse updatedToolOutput, đã thử trên claude 2.1.296.
+	"hook-args":                              "2.1.296",
+	"updatedToolOutput":                      "2.1.296",
 	"CLAUDE_CODE_SUBAGENT_MODEL_FORCE":       "2.1.257",
 	"CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH": "2.1.280",
 }
@@ -38,6 +43,10 @@ func claudeSupports(version, feature string) bool {
 	}
 	return compareVersions(version, min) >= 0
 }
+
+// ClaudeSupports cho phần ngoài runner (bộ tối ưu của app client) chọn biến và dạng hook theo cùng bảng claudeMinVersion
+// với run.
+func ClaudeSupports(version, feature string) bool { return claudeSupports(version, feature) }
 
 var versionRe = regexp.MustCompile(`\d+(?:\.\d+)+`)
 
@@ -88,6 +97,10 @@ func detectClaudeVersion(ctx context.Context) string {
 	versionCache.v, versionCache.at = parseClaudeVersion(string(out)), time.Now()
 	return versionCache.v
 }
+
+// DetectClaudeVersion là detectClaudeVersion cho phần ngoài runner; dùng chung cache để lệnh `optimize` và run không
+// hỏi CLI hai lần.
+func DetectClaudeVersion(ctx context.Context) string { return detectClaudeVersion(ctx) }
 
 // claudeVersion là phiên bản dùng để chọn cờ cho run này. ClaudeVersion của Runner (đặt trong test) thắng; sandbox hay
 // lệnh cấu hình riêng thì không hỏi, vì `claude` trên máy host không phải CLI sẽ chạy.

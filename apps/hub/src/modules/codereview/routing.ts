@@ -21,6 +21,8 @@ import {
 import { setTaskStatus } from "../tasks/index.ts";
 import { codeReviewGateRuns, codeReviews } from "./schema.ts";
 
+import { publishReviewStatus, type ReviewStatusDeps } from "./status.ts";
+
 // File này không import `service.ts`: `service.ts` gọi vào đây khi checkpoint tự động không đạt và khi mở vòng mới,
 // mà `pnpm deps` cấm vòng (kể cả import kiểu). Bước "đi tiếp từ checkpoint" vì thế do người gọi truyền vào (`Resume`).
 
@@ -46,7 +48,7 @@ export interface QueueFixRunInput {
   instructions: string;
 }
 
-export interface RoutingDeps {
+export interface RoutingDeps extends ReviewStatusDeps {
   jobs?: Jobs | undefined;
   publicUrl?: string | undefined;
   /** Tạo run sửa (module `runs` cài vào). Không có thì hướng `agent` chuyển về người giao việc. */
@@ -398,6 +400,7 @@ export async function routeReturn(
     },
     input.actorUserId,
   );
+  if (route !== "previous") await publishReviewStatus(tx, current, deps);
   return { review: current, route, reason, fixRunId };
 }
 
@@ -540,6 +543,7 @@ export async function openNextRound(tx: Tx, open: ReviewRow, next: NextRound, de
     source: next.source,
     resumeGateIndex: row.resumeGateIndex,
   });
+  await publishReviewStatus(tx, row, deps);
   return row;
 }
 
