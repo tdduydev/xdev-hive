@@ -332,6 +332,9 @@ importers:
       '@orpc/server':
         specifier: ^1.15.5
         version: 1.15.5(@opentelemetry/api@1.9.1)(ws@8.22.0)
+      '@xdev-hive/artifacts-runtime':
+        specifier: workspace:*
+        version: link:../../packages/artifacts-runtime
       '@xdev-hive/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
