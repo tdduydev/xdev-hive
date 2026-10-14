@@ -419,7 +419,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `control_revoke`, `control_denied`, `input_rejected`. Test `control_test.go` (Unix, CLI giả sh) theo TOTP vector cố định.
   - **Phụ thuộc**: T020 (cùng làn), T005 · **Mức**: nặng
 
-- [ ] T032 [US3] Web: màn terminal điều khiển trên điện thoại
+- [x] T032 [US3] Web: màn terminal điều khiển trên điện thoại
   - `lib/terminal/ws-client.ts` (vé, `resume`, hàng đợi nhập, `visibilitychange`), `input-mac.ts` (ECDH, HKDF, HMAC bằng
     WebCrypto; khoá không xuất được, chỉ trong bộ nhớ), `keys.ts` (thanh phím, Ctrl giữ), ô soạn dòng (IME tiếng Việt),
     nút Điều khiển → passkey; cỡ chữ; tối thiểu 40 cột ở 360 px.
@@ -428,6 +428,15 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `apps/web/src/lib/terminal/{ws-client.ts,ws-client.test.ts,input-mac.ts,input-mac.test.ts,keys.ts}`,
     `apps/web/src/components/{terminal-view.tsx,terminal-keys.tsx}`, `apps/web/src/pages/remote/session-page.tsx`,
     `apps/web/e2e/{remote-control.spec.ts,fake-hub.ts}`
+  - Đã làm (SPEC10W7): `RemoteSocket` (ws-client.ts) dựng trên vé `remote.ticket`, `resume {after}`, backoff 1–10 s,
+    `visibilitychange`; vé 400/403/404/409 là lỗi cuối, 503 thì nối lại. Xin quyền: `newControlAttempt` (khoá tạm ECDH
+    không xuất được) → passkey của thiết bị đã ghép (`hive.remote.devices`) → `control {auth}`; `granted` thì suy khoá
+    HMAC, `InputSigner` ký `in`/`resize` với `seq` từ 1, giữ khoá và `seq` khi nối lại bằng `resumeToken` (không hỏi
+    passkey). Gói ký cho `connId` cũ bị bỏ; nhập lúc đang nối lại xếp hàng tối đa 64, lúc mất kết nối thì bỏ. Người xem
+    giữ cỡ PTY và cuộn ngang; người điều khiển fit theo màn và gửi `resize` đã ký; cỡ chữ mặc định 12 px ở màn hẹp
+    (≥ 40 cột ở 360 px). `TerminalView` nhận `connect`/`fit`. `TOTP_DEVICE_ID` chuyển sang contracts để web dùng chung.
+    Thiết bị chưa ghép thì chỉ đường tới trang ghép, không hỏi passkey. Fake hub có `fakeRemoteSocket` kiểm chữ ký
+    passkey và HMAC thật. Chưa làm: nhánh TOTP ở web (T052).
   - **Phụ thuộc**: T022 (cùng làn, `webauthn.ts`), T030 · **Mức**: nặng
 
 ---
