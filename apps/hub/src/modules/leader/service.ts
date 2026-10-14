@@ -1,11 +1,11 @@
 import { type LeaderAction, leaderAction } from "@xdev-hive/contracts";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
-import { loadProject, updateProjectSettings } from "../catalog/index.ts";
+import { loadProject } from "../catalog/index.ts";
 import type { Tx } from "../platform/index.ts";
 import { ConflictError, NotFoundError } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
-import { createTask } from "../tasks/index.ts";
+import { emitLeaderActivity, executeLeaderAction, tierChoice } from "./actions.ts";
 import { assembleLeaderPrompt, formatTranscript, projectContext } from "./prompt.ts";
 import { approvals, chatMessages, chatThreads } from "./schema.ts";
 
@@ -112,50 +112,55 @@ export async function sendLeaderMessage(
   };
 }
 
-export async function listApprovals(tx: Tx, status?: (typeof approvals.$inferSelect)["status"]) {
+export async function listApprovals(tx: Tx, status?: (typeof approvals.$inferSelect)["status"], threadId?: string) {
   await expireApprovals(tx);
   const rows = await tx
     .select()
     .from(approvals)
-    .where(status ? eq(approvals.status, status) : undefined)
+    .where(
+      and(status ? eq(approvals.status, status) : undefined, threadId ? eq(approvals.threadId, threadId) : undefined),
+    )
     .orderBy(desc(approvals.createdAt));
   return rows.map(approvalView);
 }
 
-export async function approveApproval(runsEngine: RunsEngine | undefined, tx: Tx, userId: string, id: string) {
+export async function approveApproval(
+  runsEngine: RunsEngine | undefined,
+  tx: Tx,
+  userId: string,
+  id: string,
+  tier?: "light" | "medium" | "heavy",
+) {
   await expireApprovals(tx);
   const [row] = await tx.select().from(approvals).where(eq(approvals.id, id)).for("update");
   if (row?.status !== "pending") throw new ConflictError("APPROVAL_NOT_PENDING", "Đề xuất không còn chờ duyệt.");
-  const action = leaderAction.parse(row.action);
-  let result: Record<string, unknown> | null = null;
-  let afterCommit: (() => void) | undefined;
-  if (action.type === "task.create") result = { task: await createTask(tx, userId, action) };
-  else if (action.type === "project.settings")
-    result = { settings: await updateProjectSettings(tx, userId, action.projectKey, action.patch) };
-  else if (action.type === "run.dispatch") {
-    if (!runsEngine) throw new Error("Hub chưa cấu hình giao run.");
-    const queued = await runsEngine.startRun(tx, userId, {
-      taskId: action.taskId,
-      ...(action.cli ? { cli: action.cli } : {}),
-    });
-    result = { run: queued.run };
-    afterCommit = queued.afterCommit;
-  } else if (action.type === "run.cancel") {
-    if (!runsEngine) throw new Error("Hub chưa cấu hình giao run.");
-    const cancelled = await runsEngine.cancelRun(tx, userId, action.runId);
-    result = { run: cancelled.run };
-    afterCommit = cancelled.afterCommit;
-  }
+  const proposed = leaderAction.parse(row.action);
+  // Người duyệt sửa cấp độ Leader đã chọn: hành động lưu lại với cấp mới để lịch sử khớp việc đã làm.
+  const action =
+    tier && (proposed.type === "task.create" || proposed.type === "run.dispatch") ? { ...proposed, tier } : proposed;
+  const choice = await tierChoice(tx, action);
+  const { result, afterCommit: afterCommitAction } = await executeLeaderAction(tx, userId, action, runsEngine);
   const [updated] = await tx
     .update(approvals)
-    .set({ status: "approved", decidedBy: userId })
+    .set({ status: "approved", decidedBy: userId, action })
     .where(eq(approvals.id, row.id))
     .returning();
   await recordAudit(tx, {
     action: "leader.approval.approve",
     targetType: "approval",
     targetId: row.id,
-    data: { action: action.type },
+    data: {
+      action: action.type,
+      ...(choice
+        ? {
+            tier: choice.tier,
+            tierReason: choice.reason,
+            model: choice.model,
+            // Cấp Leader đề xuất khi người duyệt đã đổi, để audit thấy ai chọn cấp nào.
+            ...("tier" in proposed && proposed.tier !== choice.tier ? { proposedTier: proposed.tier ?? null } : {}),
+          }
+        : {}),
+    },
   });
   await tx.insert(chatMessages).values({
     orgId: row.orgId,
@@ -164,7 +169,13 @@ export async function approveApproval(runsEngine: RunsEngine | undefined, tx: Tx
     content: "Đề xuất đã được duyệt và thực hiện.",
   });
   if (!updated) throw new Error("Không cập nhật được đề xuất.");
-  return { response: { approval: approvalView(updated), result }, afterCommit };
+  return {
+    response: { approval: approvalView(updated), result },
+    afterCommit: () => {
+      afterCommitAction?.();
+      emitLeaderActivity(updated.threadId);
+    },
+  };
 }
 
 export async function rejectApproval(tx: Tx, userId: string, id: string, reason: string) {
@@ -190,6 +201,7 @@ export async function rejectApproval(tx: Tx, userId: string, id: string, reason:
     content: `Đề xuất bị từ chối: ${reason}`,
   });
   if (!updated) throw new Error("Không cập nhật được đề xuất.");
+  emitLeaderActivity(updated.threadId);
   return approvalView(updated);
 }
 

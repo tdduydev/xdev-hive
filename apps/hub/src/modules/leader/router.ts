@@ -59,10 +59,12 @@ export function leaderRouter(deps: LeaderRouterDeps) {
       }),
     },
     approvals: {
-      list: os.approvals.list.use(inOrg).handler(({ context: { tx }, input }) => listApprovals(tx, input.status)),
+      list: os.approvals.list
+        .use(inOrg)
+        .handler(({ context: { tx }, input }) => listApprovals(tx, input.status, input.threadId)),
       approve: os.approvals.approve.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
         const { response, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, (tx) =>
-          approveApproval(deps.runs, tx, user.id, input.id),
+          approveApproval(deps.runs, tx, user.id, input.id, input.tier),
         );
         afterCommit?.();
         return response;
