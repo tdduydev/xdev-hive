@@ -44,7 +44,7 @@
     `packages/contracts/openapi.json`
   - **Phụ thuộc**: không · **Mức**: vừa
 
-- [ ] T002 🎯 [P] Bộ quét bí mật dùng chung
+- [x] T002 🎯 [P] Bộ quét bí mật dùng chung
   - Thân `scanSecrets` theo plan.md D12; trả `{ line, kind }`, không trả chuỗi. Không có hàm che (PO chốt chặn).
   - Fixture `fixtures/secret-scan.json` ≥ 15 mẫu dương (mỗi loại) + mẫu âm (SHA git, UUID, base64 ảnh nhỏ, `password:` rỗng).
   - Test Go đọc cùng fixture, ghi nhận mẫu worker chưa bắt (`t.Skip` kèm tên mẫu, không sửa `checks.go`).
