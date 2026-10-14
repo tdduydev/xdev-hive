@@ -203,6 +203,14 @@ export const agentSkillLearningPolicy = z.object({
 export type AgentSkillLearningPolicy = z.output<typeof agentSkillLearningPolicy>;
 export const DEFAULT_AGENT_SKILL_LEARNING_POLICY: AgentSkillLearningPolicy = { enabled: false, maxPerDay: 5 };
 
+/**
+ * Điều khiển máy cá nhân từ xa (specs/010 D15). `totpFallback`: cho dùng mã Authenticator khi hub chạy HTTP. Tổ chức chỉ
+ * tắt được: worker vẫn tự kiểm và chủ máy vẫn phải bật TOTP tại máy.
+ */
+export const agentRemotePolicy = z.object({ totpFallback: z.boolean() });
+export type AgentRemotePolicy = z.output<typeof agentRemotePolicy>;
+export const DEFAULT_AGENT_REMOTE_POLICY: AgentRemotePolicy = { totpFallback: true };
+
 export const agentPolicyInput = z.object({
   allowedModels,
   /** Hub không để CLI tự chọn model: run không chỉ định model thì dùng model đầu trong danh sách của CLI đó. */
@@ -235,6 +243,8 @@ export const agentPolicyInput = z.object({
   artifacts: orgArtifactPolicy.optional(),
   /** Có mặc định vì chính sách đã lưu trước specs/014 không có mục này. */
   skillLearning: agentSkillLearningPolicy.default(() => ({ ...DEFAULT_AGENT_SKILL_LEARNING_POLICY })),
+  /** Có mặc định vì chính sách đã lưu trước specs/010 không có mục này. */
+  remote: agentRemotePolicy.default(() => ({ ...DEFAULT_AGENT_REMOTE_POLICY })),
 });
 export type AgentPolicyInput = z.input<typeof agentPolicyInput>;
 
@@ -273,6 +283,7 @@ export const DEFAULT_AGENT_POLICY: z.output<typeof agentPolicyInput> = {
   limits: { perRunUsd: null, dailyUsd: null, maxParallelPerMachine: null, runLogRetentionDays: 365 },
   agentMemory: { ...DEFAULT_AGENT_MEMORY_POLICY },
   skillLearning: { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
+  remote: { ...DEFAULT_AGENT_REMOTE_POLICY },
 };
 
 /** Phần chính sách worker cần để chạy run: hook và việc bỏ cấu hình của repo. Ghi trong spec của job_offer. */
