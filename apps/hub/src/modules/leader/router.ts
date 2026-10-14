@@ -6,6 +6,7 @@ import { ConflictError, NotFoundError, withTenant } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
 import type { SdlcDeps } from "../sdlc/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { cardFacts, cardOf } from "./cards.ts";
 import { chatMessages, chatThreads } from "./schema.ts";
 import {
   approveApproval,
@@ -37,7 +38,7 @@ export function leaderRouter(deps: LeaderRouterDeps) {
         .handler(async ({ context: { tx } }) =>
           (await tx.select().from(chatThreads).orderBy(desc(chatThreads.updatedAt))).map(threadView),
         ),
-      get: os.threads.get.use(inOrg).handler(async ({ context: { tx }, input }) => {
+      get: os.threads.get.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
         const [row] = await tx.select().from(chatThreads).where(eq(chatThreads.id, input.id));
         if (!row) throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
         const messages = await tx
@@ -45,7 +46,8 @@ export function leaderRouter(deps: LeaderRouterDeps) {
           .from(chatMessages)
           .where(eq(chatMessages.threadId, row.id))
           .orderBy(chatMessages.createdAt);
-        return { thread: threadView(row), messages: messages.map(messageView) };
+        const facts = await cardFacts(tx, user.id, messages);
+        return { thread: threadView(row), messages: messages.map((m) => messageView(m, cardOf(m, facts))) };
       }),
       send: os.threads.send.use(inOrg).handler(async ({ context: { pool, user, orgId }, input }) => {
         const runsEngine = deps.runs;

@@ -80,7 +80,6 @@ function DocsScreen() {
             columns={columns}
             rows={list.data}
             minWidth={560}
-            selectable={false}
             placeholder={t.docsSearch}
             facets={[{ key: "scope", label: t.scope, value: (row) => t[row.scope.level] }]}
             activeId={selected?.id ?? ""}

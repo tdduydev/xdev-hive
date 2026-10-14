@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-git-groups"
+description = "Enables the git_groups command without any pre-configured scope."
+commands.allow = ["git_groups"]
+
+[[permission]]
+identifier = "deny-git-groups"
+description = "Denies the git_groups command without any pre-configured scope."
+commands.deny = ["git_groups"]

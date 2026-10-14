@@ -11,7 +11,7 @@ export {
 export { queuedLeaderPrompt } from "./continuation.ts";
 export { registerMcpTools } from "./mcp-tools.ts";
 export { type LeaderEvent, provideLeaderObserver } from "./observer.ts";
-export { SDLC_RULE, TIER_RULE } from "./prompt.ts";
+export { ARTIFACT_RULE, SDLC_RULE, TIER_RULE } from "./prompt.ts";
 export { type LeaderRouterDeps, leaderRouter } from "./router.ts";
 export { approvals, chatMessages, chatThreads } from "./schema.ts";
 export {
@@ -23,3 +23,4 @@ export {
   sendLeaderMessage,
 } from "./service.ts";
 export { appendLeaderSystemMessage } from "./system-message.ts";
+export { createThreadHost, createThreadLinkTarget } from "./thread-host.ts";

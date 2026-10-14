@@ -58,8 +58,8 @@ describe("liên kết tài khoản", () => {
     render(<AppShell />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
-    const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByLabelText("Token MCP cá nhân"), "hive_pat_abc");
+    const dialog = await screen.findByRole("dialog");
+    await user.type(await within(dialog).findByLabelText("Token MCP cá nhân"), "hive_pat_abc");
     await user.click(within(dialog).getByRole("button", { name: "Đăng nhập" }));
     expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
     expect(calls.find((c) => c.command === "account_link")?.args).toEqual({ token: "hive_pat_abc" });
@@ -74,8 +74,8 @@ describe("liên kết tài khoản", () => {
     render(<AppShell />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
-    const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByLabelText("Token MCP cá nhân"), "hive_pat_bad");
+    const dialog = await screen.findByRole("dialog");
+    await user.type(await within(dialog).findByLabelText("Token MCP cá nhân"), "hive_pat_bad");
     await user.click(within(dialog).getByRole("button", { name: "Đăng nhập" }));
     expect((await within(dialog).findByRole("alert")).textContent).toContain("Token không còn dùng được");
   });
@@ -102,8 +102,8 @@ describe("liên kết tài khoản", () => {
     render(<AppShell />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("alert").textContent).toContain("Token không còn dùng được.");
+    const dialog = await screen.findByRole("dialog");
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("Token không còn dùng được.");
     await user.click(within(dialog).getByRole("button", { name: "Đăng xuất" }));
     expect(calls.some((c) => c.command === "account_unlink")).toBe(true);
   });
@@ -120,10 +120,11 @@ describe("liên kết tài khoản", () => {
     render(<AppShell />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
-    const dialog = screen.getByRole("dialog");
+    const dialog = await screen.findByRole("dialog");
     // Chưa có hub thì chưa có chỗ dán token cá nhân: kết nối máy trước.
+    const hub = await within(dialog).findByLabelText("Địa chỉ hub công khai");
     expect(within(dialog).queryByLabelText("Token MCP cá nhân")).toBeNull();
-    await user.type(within(dialog).getByLabelText("Địa chỉ hub công khai"), HUB);
+    await user.type(hub, HUB);
     await user.click(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
     expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
     expect(calls.find((c) => c.command === "browser_login")?.args).toEqual({ hub: HUB });
@@ -135,8 +136,9 @@ describe("liên kết tài khoản", () => {
     render(<AppShell />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Phạm Hà/ }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Đăng xuất" }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Đóng" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Đăng xuất" }));
+    await user.click(within(dialog).getByRole("button", { name: "Đóng" }));
     expect(await screen.findByRole("button", { name: /Chưa đăng nhập/ })).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
     expect(within(nav).getByRole("link", { name: "Gói agent" }).hasAttribute("data-offline")).toBe(false);

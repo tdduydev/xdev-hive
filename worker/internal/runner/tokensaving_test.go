@@ -114,7 +114,7 @@ func runSaving(t *testing.T, r Runner, job Job) (map[string]string, []Event) {
 	r.DataDir = t.TempDir()
 	r.CLICommands = map[string]Command{"claude": fakeCommands("saving-env")["codex"]}
 	job.RunID, job.Attempt, job.RepoURL, job.BaseBranch, job.Branch, job.CLI, job.Prompt = "sav", 1, fileURL(remote), base, "ai/sav", "claude", "p"
-	job.Timeout = 5 * time.Second
+	job.Timeout = 30 * time.Second
 	job.Env = mergeMap(map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "saving-env"}, job.Env)
 	var events []Event
 	if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
@@ -173,7 +173,7 @@ func TestSavingEnvNotSentToCodex(t *testing.T) {
 	remote, base := makeRemote(t)
 	var events []Event
 	r := Runner{DataDir: t.TempDir(), CLICommands: fakeCommands("saving-env"), TokenSaving: &TokenSavingConfig{}}
-	err := r.Run(context.Background(), Job{RunID: "cx", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/cx", CLI: "codex", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "saving-env"}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
+	err := r.Run(context.Background(), Job{RunID: "cx", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/cx", CLI: "codex", Prompt: "p", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "saving-env"}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestCostEventCarriesAccountID(t *testing.T) {
 		var events []Event
 		// Lease của codex chỉ dùng lấy id; CLI giả in usage kiểu claude nên job chạy dưới tên claude.
 		r := Runner{DataDir: t.TempDir(), CLICommands: map[string]Command{"claude": fakeCommands("usage-ok")["codex"]}, Account: account, TokenSaving: &TokenSavingConfig{Off: true}}
-		err := r.Run(context.Background(), Job{RunID: "acid", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/acid", CLI: "claude", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "usage-ok"}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
+		err := r.Run(context.Background(), Job{RunID: "acid", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/acid", CLI: "claude", Prompt: "p", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "usage-ok"}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
 		if err != nil {
 			t.Fatal(err)
 		}

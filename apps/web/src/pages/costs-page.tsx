@@ -2,20 +2,19 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link } from "@tanstack/react-router";
 import type { CostExplore, Project } from "@xdev-hive/contracts";
 import { Button } from "@xdev-hive/ui/button";
-import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Table, Td, Th } from "@xdev-hive/ui/table";
 import { CoinsIcon, FolderKanbanIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import { SettingsSection } from "@/components/page/settings.tsx";
 import { StatCard, StatGrid } from "@/components/page/stat-card.tsx";
+import { UnitField } from "@/components/page/unit-field.tsx";
 import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field.tsx";
 import { EmptyState, LoadFailure, SectionsSkeleton, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { formError } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
@@ -450,16 +449,7 @@ function GroupTable({ groups, groupBy }: { groups: ReadonlyArray<Omit<Group, "id
     },
   ];
   if (rows.length === 0) return <EmptyState compact icon={CoinsIcon} title={t.noRuns} description={t.noRunsHint} />;
-  return (
-    <DataTable
-      columns={columns}
-      rows={rows}
-      selectable={false}
-      minWidth={560}
-      placeholder={t.searchGroup}
-      caption={t.detailTitle}
-    />
-  );
+  return <DataTable columns={columns} rows={rows} minWidth={560} placeholder={t.searchGroup} caption={t.detailTitle} />;
 }
 
 type Stopped = {
@@ -521,14 +511,7 @@ function StoppedTable({ runs }: { runs: ReadonlyArray<Omit<Stopped, "id">> }) {
     },
   ];
   return (
-    <DataTable
-      columns={columns}
-      rows={rows}
-      selectable={false}
-      minWidth={640}
-      placeholder={t.searchStopped}
-      caption={t.stoppedTitle}
-    />
+    <DataTable columns={columns} rows={rows} minWidth={640} placeholder={t.searchStopped} caption={t.stoppedTitle} />
   );
 }
 
@@ -712,7 +695,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
         }}
       >
         <div className="grid gap-4 sm:grid-cols-3">
-          <BudgetField
+          <UnitField
             label={t.perRun}
             value={draft.perRunUsd}
             onChange={(v) => edit("perRunUsd", v)}
@@ -720,7 +703,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
             inputMode="decimal"
             placeholder={t.unlimited}
           />
-          <BudgetField
+          <UnitField
             label={t.perTask}
             value={draft.perTaskUsd}
             onChange={(v) => edit("perTaskUsd", v)}
@@ -728,7 +711,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
             inputMode="decimal"
             placeholder={t.unlimited}
           />
-          <BudgetField
+          <UnitField
             label={t.maxTurns}
             value={draft.maxTurns}
             onChange={(v) => edit("maxTurns", v)}
@@ -739,45 +722,5 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
         </div>
       </SettingsSection>
     </>
-  );
-}
-
-// TODO(admin-layout): ô số có hậu tố đơn vị cũng có ở project-settings-page.tsx (TextField); gộp vào components/page khi điều phối cho sửa file dùng chung.
-function BudgetField({
-  label,
-  value,
-  onChange,
-  suffix,
-  inputMode,
-  placeholder,
-  error,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  suffix: string;
-  inputMode: "decimal" | "numeric";
-  placeholder: string;
-  error?: string;
-}) {
-  const id = useId();
-  return (
-    <Field invalid={error !== undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <div className="relative flex items-center">
-        <Input
-          id={id}
-          value={value}
-          onValueChange={onChange}
-          inputMode={inputMode}
-          placeholder={placeholder}
-          autoComplete="off"
-          spellCheck={false}
-          className="pr-14 font-mono text-sm"
-        />
-        <span className="pointer-events-none absolute right-3 font-mono text-xs text-muted-foreground">{suffix}</span>
-      </div>
-      {error && <FieldError>{error}</FieldError>}
-    </Field>
   );
 }
