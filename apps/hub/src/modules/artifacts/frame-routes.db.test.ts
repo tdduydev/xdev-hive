@@ -15,6 +15,8 @@ import {
   frameUrl,
   libManifestLoader,
 } from "./frame-routes.ts";
+import { createPublicLink, PublicViewLog, revokePublicLink } from "./public-links.ts";
+import { parseTrustedProxies, publicRateLimiter } from "./rate-limit.ts";
 import { createArtifact, deleteArtifact } from "./service.ts";
 import { frameTicketKey, signFrameTicket } from "./ticket.ts";
 import { tombstoneVersion } from "./versions.ts";
@@ -144,7 +146,7 @@ describe("route khung", () => {
     expect(await res.text()).toContain("Vé khung");
   });
 
-  it("vé `s` (link công khai) chưa có nhánh kiểm link thì không mở được", async () => {
+  it("vé `s` trỏ tới link không có thì không mở được, dù artifact và phiên bản có thật", async () => {
     const created = await create("tmember", "html", "<p>công khai</p>");
     const { ticket } = signFrameTicket(frameKey, {
       o: org.orgId,
@@ -326,5 +328,163 @@ describe("thư viện tĩnh", () => {
       expect(await res.text(), path).not.toContain('"name"');
     }
     expect((await routes.request("/_artifact/frame/x", { method: "POST" })).status).toBe(404);
+  });
+});
+
+describe("link công khai", () => {
+  /** Route riêng mỗi ca: bộ đếm tốc độ nằm trong route, dùng chung thì ca này ăn hạn mức của ca khác. */
+  const publicRoutes = (opts: { ip?: number; link?: number; remote?: string; trusted?: string } = {}) =>
+    frameRoutes({
+      pool: app,
+      ...deps,
+      rateLimiter: publicRateLimiter({ ipPerMinute: opts.ip ?? 1000, linkPerMinute: opts.link ?? 1000 }),
+      viewLog: new PublicViewLog(),
+      remoteAddress: () => opts.remote ?? "203.0.113.10",
+      trustedProxies: parseTrustedProxies(opts.trusted),
+    });
+
+  const share = async (type: "html" | "markdown" | "code", content: string, title = "Bảng giá") => {
+    const created = await as("tmember", (tx, r) => createArtifact(tx, r, { type, title, content }));
+    const { link, url } = await as("tmember", (tx, r) =>
+      createPublicLink(tx, r, { id: created.artifact.id, version: 1, expiresInDays: 7 }, deps),
+    );
+    return { id: created.artifact.id, link, path: new URL(url).pathname };
+  };
+
+  const frameSrc = (html: string) => {
+    const src = /<iframe[^>]* src="([^"]+)"/.exec(html)?.[1];
+    if (!src) throw new Error("trang không có khung");
+    return src.replaceAll("&amp;", "&");
+  };
+
+  it("trang tĩnh: không script, header FR-143, tiêu đề đã escape, không lộ tổ chức hay chủ; khung chạy nội dung", async () => {
+    const routes = publicRoutes();
+    const { path } = await share("html", "<h1>Giá hoàn tiền</h1><script>1</script>", '<img src=x onerror="alert(1)">');
+    const res = await routes.request(path);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(res.headers.get("content-security-policy")).toBe(
+      `default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-src ${HUB}/_artifact/frame/; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+    );
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(res.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("set-cookie")).toBeNull();
+    const html = await res.text();
+    expect(html).not.toMatch(/<script/i);
+    expect(html).not.toContain("<img src=x");
+    expect(html).toContain("&#60;img src=x");
+    expect(html).toContain("html · v1 · Hết hạn");
+    expect(html).toContain("Nội dung do agent tạo — không nhập mật khẩu hay dữ liệu bí mật.");
+    expect(html).toContain('sandbox="allow-scripts"');
+    for (const secret of [org.orgId, org.user("tmember"), "Giá hoàn tiền"]) expect(html).not.toContain(secret);
+
+    const src = frameSrc(html);
+    expect(src.startsWith(`${HUB}/_artifact/frame/`)).toBe(true);
+    const frame = await routes.request(new URL(src).pathname);
+    expect(frame.status).toBe(200);
+    // Khung của link công khai không giữ cache: link thu hồi xong thì tải lại là hết.
+    expect(frame.headers.get("cache-control")).toBe("private, no-store");
+    expect(frame.headers.get("content-security-policy")).toBe(buildCsp({ libBase: LIB_BASE }));
+    expect(await frame.text()).toContain("<h1>Giá hoàn tiền</h1>");
+  });
+
+  it("cookie phiên và Authorization bị bỏ qua: cùng trang, cùng 404", async () => {
+    const routes = publicRoutes();
+    const { path } = await share("html", "<p>cookie</p>");
+    const creds = { cookie: "better-auth.session_token=abc", authorization: "Bearer hive_pat_khong_dung" };
+    const plainRes = await routes.request(path);
+    const withCreds = await routes.request(path, { headers: creds });
+    expect(withCreds.status).toBe(200);
+    // Vé trong khung có hạn tính theo giây nên có thể khác; phần còn lại phải giống hệt.
+    const strip = (html: string) => html.replace(/\/_artifact\/frame\/[^"]+/, "");
+    expect(strip(await withCreds.text())).toBe(strip(await plainRes.text()));
+    const missing = `/_artifact/s/${randomBytes(32).toString("base64url")}`;
+    const a = await routes.request(missing);
+    const b = await routes.request(missing, { headers: creds });
+    expect([a.status, b.status]).toEqual([404, 404]);
+    expect(await b.text()).toBe(await a.text());
+  });
+
+  it("markdown và code cũng mở trong khung", async () => {
+    const routes = publicRoutes();
+    for (const [type, content, expected] of [
+      ["markdown", "# Tiêu đề\n\n<b>thô</b>", "# Tiêu đề"],
+      ["code", "const x = '<b>';", "const x ="],
+    ] as const) {
+      const { path } = await share(type, content);
+      const html = await (await routes.request(path)).text();
+      expect(html).toContain(`${type} · v1`);
+      const frame = await routes.request(new URL(frameSrc(html)).pathname);
+      expect(frame.status, type).toBe(200);
+      expect(await frame.text(), type).toContain(expected);
+    }
+  });
+
+  it("vé khung của link đã thu hồi hết dùng ngay; vé `s` không mở được phiên bản khác", async () => {
+    const routes = publicRoutes();
+    const { id, link, path } = await share("html", "<p>v1</p>");
+    const src = new URL(frameSrc(await (await routes.request(path)).text())).pathname;
+    // Vé `s` của đúng link nhưng đổi sang phiên bản không được chia sẻ.
+    const { ticket: otherVersion } = signFrameTicket(frameKey, { o: org.orgId, a: id, v: 2, s: link.id, t: "light" });
+    expect((await routes.request(`/_artifact/frame/${otherVersion}`)).status).toBe(404);
+    await as("tmember", (tx, r) => revokePublicLink(tx, r, { linkId: link.id }, deps));
+    const res = await routes.request(src);
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("Liên kết không tồn tại hoặc đã hết hạn.");
+  });
+
+  it("61 yêu cầu/phút từ một IP → 429 kèm Retry-After; khung của link công khai tính chung; IP khác vẫn mở", async () => {
+    const routes = publicRoutes({ ip: 60, remote: "203.0.113.61" });
+    const { path } = await share("html", "<p>dò</p>");
+    const html = await (await routes.request(path)).text();
+    const frame = new URL(frameSrc(html)).pathname;
+    expect((await routes.request(frame)).status).toBe(200);
+    for (let i = 0; i < 58; i++) {
+      const res = await routes.request(`/_artifact/s/${randomBytes(32).toString("base64url")}`);
+      expect(res.status).toBe(404);
+    }
+    const blocked = await routes.request(path);
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
+    expect(blocked.headers.get("cache-control")).toBe("no-store");
+    expect(await blocked.text()).toBe("Quá nhiều yêu cầu. Thử lại sau.");
+    expect((await routes.request(frame)).status).toBe(429);
+    // Vé khung thường (người đã đăng nhập) không bị giới hạn này.
+    const own = await as("tmember", async (tx, r) => {
+      const created = await createArtifact(tx, r, { type: "html", title: "x", content: "<p>x</p>" });
+      return frameUrl(tx, r, { id: created.artifact.id, version: 1, theme: "light" }, deps);
+    });
+    expect((await routes.request(pathOf(own.url))).status).toBe(200);
+  });
+
+  it("mỗi link tối đa N yêu cầu/phút dù đến từ nhiều IP", async () => {
+    let n = 0;
+    const routes = frameRoutes({
+      pool: app,
+      ...deps,
+      rateLimiter: publicRateLimiter({ ipPerMinute: 1000, linkPerMinute: 3 }),
+      viewLog: new PublicViewLog(),
+      remoteAddress: () => `198.51.100.${++n}`,
+    });
+    const { path } = await share("html", "<p>nhiều nơi</p>");
+    const statuses = [];
+    for (let i = 0; i < 4; i++) statuses.push((await routes.request(path)).status);
+    expect(statuses).toEqual([200, 200, 200, 429]);
+  });
+
+  it("X-Forwarded-For chỉ được tin khi kết nối đến từ proxy đã khai báo", async () => {
+    const { path } = await share("html", "<p>proxy</p>");
+    const viaProxy = publicRoutes({ ip: 1, remote: "::ffff:172.18.0.2", trusted: "172.16.0.0/12" });
+    const xff = (ip: string) => ({ headers: { "x-forwarded-for": `6.6.6.6, ${ip}` } });
+    expect((await viaProxy.request(path, xff("198.51.100.1"))).status).toBe(200);
+    expect((await viaProxy.request(path, xff("198.51.100.2"))).status).toBe(200);
+    expect((await viaProxy.request(path, xff("198.51.100.1"))).status).toBe(429);
+
+    // Không qua proxy tin cậy: header giả không mở thêm hạn mức.
+    const direct = publicRoutes({ ip: 1, remote: "203.0.113.77", trusted: "172.16.0.0/12" });
+    expect((await direct.request(path, xff("198.51.100.1"))).status).toBe(200);
+    expect((await direct.request(path, xff("198.51.100.2"))).status).toBe(429);
   });
 });
