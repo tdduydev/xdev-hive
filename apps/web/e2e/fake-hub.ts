@@ -954,6 +954,131 @@ export async function fakeTerminalSocket(
   return controller;
 }
 
+// ---- Điều khiển từ xa (specs/010): route `remote.*` --------------------------------------------------------------------
+
+export const REMOTE_SESSION_LIVE = "7b7b7b7b-0000-4000-8000-0000000000b1";
+export const REMOTE_SESSION_ENDED = "7b7b7b7b-0000-4000-8000-0000000000b2";
+export const REMOTE_SESSION_COLLEAGUE = "7b7b7b7b-0000-4000-8000-0000000000b3";
+
+export function remoteSession(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: REMOTE_SESSION_ENDED,
+    machineId: TERMINAL_MACHINE,
+    machineName: "sdlc-box-01",
+    ownerId: USER.id,
+    ownerName: USER.name,
+    isOwner: true,
+    origin: "local",
+    cli: "claude",
+    accountLabel: "Claude Max team",
+    cwdLabel: "payment-api/apps/hub",
+    projectId: TERMINAL_PROJECT.id,
+    projectKey: TERMINAL_PROJECT.key,
+    taskId: null,
+    taskKey: null,
+    state: "closed",
+    visibility: "private",
+    remote: true,
+    controller: null,
+    cols: 100,
+    rows: 30,
+    exitCode: 0,
+    endReason: "exit",
+    bytes: 12_595,
+    createdAt: "2026-10-14T01:00:00.000Z",
+    endedAt: "2026-10-14T01:05:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * Phiên tương tác và máy cá nhân (route `remote.*`). Mặc định có một phiên đang chạy gắn việc PAY-12, một phiên đã
+ * kết thúc có bản ghi và một phiên của đồng nghiệp (chỉ xem). `pageSize` ép `remote.chunks` trả từng trang nhỏ để thử
+ * phát lại theo trang.
+ */
+export function remoteFixture(
+  opts: { chunks?: string[]; pageSize?: number; sessions?: Record<string, unknown>[] } = {},
+) {
+  const state = {
+    sessions: opts.sessions ?? [
+      remoteSession({
+        id: REMOTE_SESSION_LIVE,
+        state: "running",
+        exitCode: null,
+        endReason: null,
+        endedAt: null,
+        bytes: 812,
+        createdAt: "2026-10-15T01:00:00.000Z",
+        taskId: "5a5a5a5a-0000-4000-8000-0000000000b1",
+        taskKey: "PAY-12",
+        controller: "local",
+      }),
+      remoteSession(),
+      remoteSession({
+        id: REMOTE_SESSION_COLLEAGUE,
+        ownerId: COLLEAGUE.id,
+        ownerName: COLLEAGUE.name,
+        isOwner: false,
+        visibility: "team",
+        machineName: "minh-anh-mac",
+        createdAt: "2026-10-12T01:00:00.000Z",
+        endedAt: "2026-10-12T01:30:00.000Z",
+      }),
+    ],
+    chunkCalls: [] as { id: string; after: number; limit: number }[],
+  };
+  const chunks = (opts.chunks ?? []).map((text, seq) => ({ seq, data: b64(text) }));
+  const machine = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    online: true,
+    terminal: true,
+    remote: {
+      enabled: true,
+      roots: [{ id: "r1", label: "payment-api" }],
+      clis: ["claude"],
+      accounts: [],
+      totp: { enabled: false, locked: false, lockedUntil: null },
+      confirmOnMachine: true,
+      updatedAt: "2026-10-15T00:00:00.000Z",
+    },
+    totpAllowed: false,
+    sessions: [],
+    ...over,
+  });
+  const rpc = {
+    "orgs/mine": () => ok({ orgs: [TERMINAL_ORG], canCreateOrg: false }),
+    "remote/machines": () =>
+      ok([
+        machine(TERMINAL_MACHINE, "sdlc-box-01", {
+          sessions: state.sessions.filter((s) => s.machineId === TERMINAL_MACHINE),
+        }),
+        machine(TERMINAL_BUSY_MACHINE, "tắt-từ-xa", { remote: { ...machine("x", "x").remote, enabled: false } }),
+        machine(TERMINAL_OFFLINE_MACHINE, "máy-offline", { online: false }),
+      ]),
+    "remote/list": (input: unknown) => {
+      const { taskId, projectId } = (input ?? {}) as { taskId?: string; projectId?: string };
+      return ok(
+        state.sessions.filter(
+          (s) => (!taskId || s.taskId === taskId) && (!projectId || !s.projectId || s.projectId === projectId),
+        ),
+      );
+    },
+    "remote/get": (input: unknown) => {
+      const found = state.sessions.find((s) => s.id === (input as { id: string }).id);
+      return found ? ok(found) : fail("SESSION_NOT_FOUND", 404, "Không tìm thấy phiên.");
+    },
+    "remote/chunks": (input: unknown) => {
+      const call = input as { id: string; after: number; limit: number };
+      state.chunkCalls.push(call);
+      const rest = chunks.filter((chunk) => chunk.seq > call.after);
+      const size = opts.pageSize ?? call.limit;
+      return ok({ chunks: rest.slice(0, size), more: rest.length > size });
+    },
+  };
+  return { state, rpc };
+}
+
 // ---- Artifact (specs/012) ---------------------------------------------------------------------------------------------
 
 export const ARTIFACT_ORG = { id: "0a0a0a0a-0000-4000-8000-0000000000a7", slug: "acme", name: "Acme" };
