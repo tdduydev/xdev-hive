@@ -187,7 +187,9 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
 
 ## Đợt 4: mở rộng (P3)
 
-- [ ] **T011 [US5] [vừa] AI nén memory có duyệt** (sau T010, T009)
+- [x] **T011 [US5] [vừa] AI nén memory có duyệt** (sau T010, T009)
+  - **Còn lại**: chèn nút mở `<MemoryCompressDialog open onOpenChange profile project files onApplied />` vào `memory-screen.tsx`
+    chờ T009 merge. Lệnh Tauri `memory_compress` đã thêm cùng T011.
   - **Goal**:
     - `hive-worker memory compress --profile ID --project KEY [--files …] --json`: chạy `claude -p --restricted
       --strict-mcp-config --tools Read,Glob,Grep` (như docs agent) và trả đề xuất `{files:[{path,content}], tokensUsed}`.
