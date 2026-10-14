@@ -28,7 +28,7 @@
 
 ## Phase 1: Nền (chặn mọi story)
 
-- [ ] T001 🎯 Contract artifacts
+- [x] T001 🎯 Contract artifacts
   - `artifacts.ts` mới: schema, input, route `artifactsContract` đủ như plan.md "Contracts" (kể cả `publicLinks.*`,
     `askLeaderFix`, và route sau MVP `toDoc`, `toRepo`, `usage` để `openapi.json` ổn định), input bốn tool MCP (kể cả
     `duplicateOf`), lỗi `ARTIFACT_*` (kể cả `ARTIFACT_LINK_OWNER_ONLY`, `ARTIFACT_LINK_LIMIT`,
