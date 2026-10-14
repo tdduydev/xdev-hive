@@ -485,6 +485,11 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/sdlc/{converge.ts,converge.db.test.ts}`,
     `packages/contracts/src/sdlc-presets/speckit.ts`, `packages/sdlc-ui/src/converge-panel.tsx`
   - **Phụ thuộc**: T031, T051 · **Mức**: nặng
+  - SPEC11W5UI đã làm phần UI theo hợp đồng hiện có: `converge-panel.tsx` (trạng thái "Chưa hội tụ (vòng r/max)", "Đã
+    hội tụ", hết vòng thì báo đã dừng và không cho chạy thêm; chọn vòng; phát hiện xếp mâu thuẫn → thiếu → một phần, ẩn
+    yêu cầu đạt; "Sửa code: thêm task" mở tài liệu tách task hoặc tab Task, "Sửa tài liệu" mở tài liệu nguồn yêu cầu),
+    tab Hội tụ chỉ hiện khi chế độ có bước `converge`, đường dẫn tab ở web và app, vitest và `e2e/sdlc-converge.spec.ts`.
+    UI đọc `step.result.findings` theo `sdlcFinding`; còn hub `converge.ts`, liên kết `finding`, gộp phát hiện theo dự án.
 
 - [ ] T081 [US11] Release notes và retro
   - Bước `release-notes`, `retro`; đề xuất cho constitution; đóng hạng mục, bình luận issue.
@@ -498,6 +503,9 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/sdlc/{metrics.ts,metrics.test.ts,metrics.db.test.ts}`, `packages/sdlc-ui/src/metrics.tsx`,
     `apps/web/src/pages/sdlc/metrics-page.tsx`, `apps/desktop/src/screens/sdlc-metrics-screen.tsx`
   - **Phụ thuộc**: T031, T054, T055 · **Mức**: vừa
+  - SPEC11W5UI đã làm phần UI theo hợp đồng `sdlc.metrics`: `metrics.tsx` (khoảng 7/30/90 ngày, lọc dự án và chế độ, lead
+    time p50/p90 có nút thắt, bảy thẻ chỉ số, bảng tự duyệt), web `/sdlc/metrics` + menu "Chỉ số", màn app
+    `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`. Còn hub `metrics.ts` và route; chưa đo SC-007.
 
 - [x] T083 [P] Preset và bộ đọc còn lại
   - `aidlc-feature`, `aidlc-enterprise`, `bmad-quick`, `bmad-method`, `kiro-requirements`, `kiro-design`, `kiro-bugfix`,
@@ -552,6 +560,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T054, T055 · **Mức**: nhẹ
   - SPEC11UI2 đã đối chiếu phần UI và lưu 11 ảnh tại `apps/web/e2e/screenshots/spec11ui2/`; kết quả và giới hạn ở
     `ui-validation.md`. Chưa chạy phân tích toàn bộ đặc tả; giữ mở cho đợt tích hợp hub/worker.
+  - SPEC11W5UI thêm 4 ảnh 360 px sáng/tối (Chỉ số, Hội tụ) tại `apps/web/e2e/screenshots/spec11w5ui/`.
 
 ---
 
