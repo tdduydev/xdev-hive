@@ -5,6 +5,7 @@ import { Th } from "@xdev-hive/ui/table";
 import { UsersIcon } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataTable } from "@/components/data-table/data-table.tsx";
+import { DangerZone } from "@/components/page/danger-zone.tsx";
 import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
@@ -17,6 +18,7 @@ import {
   SwitchRow,
 } from "@/components/page/settings.tsx";
 import { StatCard, StatGrid } from "@/components/page/stat-card.tsx";
+import { UnitField } from "@/components/page/unit-field.tsx";
 import { EmptyState, SectionsSkeleton, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
 
@@ -211,6 +213,36 @@ describe("settings", () => {
     fireEvent.click(screen.getByRole("link", { name: "Review chéo" }));
     expect(screen.getByRole("link", { name: "Review chéo" }).getAttribute("aria-current")).toBe("location");
   });
+
+  it("destructive switch turns red only when on", () => {
+    render(<SwitchRow label="Toàn quyền" checked tone="destructive" onChange={() => {}} />);
+    expect(screen.getByRole("switch", { name: "Toàn quyền" }).className).toContain("data-checked:bg-destructive");
+  });
+
+  it("danger zone is a region named by its title", () => {
+    render(
+      <DangerZone description="Xoá vai trò không hoàn tác được.">
+        <button type="button">Xoá</button>
+      </DangerZone>,
+    );
+    const zone = screen.getByRole("region", { name: "Vùng nguy hiểm" });
+    expect(zone.textContent).toContain("Xoá vai trò không hoàn tác được.");
+    expect(screen.getByRole("button", { name: "Xoá" })).toBeTruthy();
+  });
+
+  it("unit field shows the unit and puts the error in place of the hint", () => {
+    const { rerender } = render(
+      <UnitField label="Trần" hint="Bỏ trống là không giới hạn." value="5" onChange={() => {}} suffix="USD" />,
+    );
+    expect((screen.getByRole("textbox", { name: "Trần" }) as HTMLInputElement).value).toBe("5");
+    expect(screen.getByText("USD")).toBeTruthy();
+    expect(screen.getByText("Bỏ trống là không giới hạn.")).toBeTruthy();
+    rerender(
+      <UnitField label="Trần" hint="Bỏ trống là không giới hạn." error="Phải là số." value="x" onChange={() => {}} />,
+    );
+    expect(screen.getByText("Phải là số.")).toBeTruthy();
+    expect(screen.queryByText("Bỏ trống là không giới hạn.")).toBeNull();
+  });
 });
 
 describe("SettingsSection save", () => {
@@ -284,6 +316,7 @@ describe("DataTable layout options", () => {
       <DataTable
         rows={rows}
         minWidth={640}
+        selectable
         toolbar={<button type="button">Xuất CSV</button>}
         columns={[
           { key: "name", label: "Người", value: (r) => r.name, pin: "start" },
@@ -302,6 +335,34 @@ describe("DataTable layout options", () => {
     expect(actions?.className).toContain("sm:sticky");
     const cell = screen.getByText("12.4");
     expect(cell.className).toContain("tabular-nums");
+  });
+
+  it("has no select column unless there are bulk actions", () => {
+    const columns = [{ key: "name", label: "Người", value: (r: (typeof rows)[number]) => r.name }];
+    const { rerender } = render(<DataTable rows={rows} columns={columns} />);
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    rerender(<DataTable rows={rows} columns={columns} bulk={[{ key: "remove", label: "Xoá", onClick: () => {} }]} />);
+    expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(0);
+  });
+
+  it("a page-owned search does not filter rows locally and submits on Enter", () => {
+    const onSubmit = vi.fn();
+    const columns = [{ key: "name", label: "Người", value: (r: (typeof rows)[number]) => r.name }];
+    render(
+      <DataTable
+        rows={rows}
+        columns={columns}
+        search={{ value: "zzz", onChange: () => {}, onSubmit, placeholder: "Tìm theo nghĩa" }}
+      />,
+    );
+    expect(screen.getByText("Lê Hà")).toBeTruthy();
+    fireEvent.submit(screen.getByRole("textbox", { name: "Tìm theo nghĩa" }));
+    expect(onSubmit).toHaveBeenCalledWith("zzz");
+  });
+
+  it("search={false} removes the search box", () => {
+    render(<DataTable rows={rows} search={false} columns={[{ key: "name", label: "Người", value: (r) => r.name }]} />);
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
 

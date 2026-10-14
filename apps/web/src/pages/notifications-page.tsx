@@ -361,7 +361,6 @@ function Channels() {
         rowLabel={(channel) => channel.name}
         caption={t.channelsTitle}
         placeholder={t.search}
-        selectable={false}
         minWidth={620}
         onRowClick={(channel) => setDialog({ kind: "edit", channel })}
         {...(dialog?.kind === "edit" ? { activeId: dialog.channel.id } : {})}

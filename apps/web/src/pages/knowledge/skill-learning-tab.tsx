@@ -301,7 +301,6 @@ export function SkillLearningTab() {
             rows={list.data}
             minWidth={640}
             placeholder={t.search}
-            selectable={false}
             rowLabel={(row) => row.name}
             activeId={picked?.id ?? ""}
             onRowClick={setPicked}

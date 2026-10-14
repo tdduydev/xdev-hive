@@ -261,7 +261,6 @@ function ProjectTable({
       rowLabel={(p) => p.name}
       caption={t.title}
       placeholder={t.search}
-      selectable={false}
       minWidth={720}
       onRowClick={(p) => void navigate({ to: "/projects/$key/settings", params: { key: p.key } })}
       facets={[

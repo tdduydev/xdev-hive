@@ -106,7 +106,6 @@ function SkillsScreen() {
                   rows={list.data}
                   minWidth={620}
                   placeholder={t.skillsSearch}
-                  selectable={false}
                   facets={[{ key: "scope", label: t.scope, value: (row) => t[row.scope.level] }]}
                   rowLabel={(row) => row.name}
                   activeId={selected?.id ?? ""}

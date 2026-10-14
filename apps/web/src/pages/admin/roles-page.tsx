@@ -26,6 +26,7 @@ import { Textarea } from "@xdev-hive/ui/textarea";
 import { ChevronRightIcon, EllipsisIcon, LockIcon, PlusIcon, SearchXIcon, UsersIcon } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useMemo, useState } from "react";
 import { DataTable } from "@/components/data-table/data-table.tsx";
+import { DangerZone } from "@/components/page/danger-zone.tsx";
 import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import { type SectionSave, SettingsNav, SettingsSection } from "@/components/page/settings.tsx";
@@ -84,7 +85,6 @@ const text: Dict<{
   remove: string;
   removeTitle: (name: string) => string;
   removeBody: string;
-  dangerZone: string;
   dangerHint: string;
   cancel: string;
   expand: string;
@@ -170,7 +170,6 @@ const text: Dict<{
     remove: "Xoá vai trò",
     removeTitle: (name) => `Xoá vai trò ${name}?`,
     removeBody: "Vai trò bị xoá hẳn. Vai trò còn gán cho người hoặc đội thì hub từ chối: gỡ hết ở tab Người trước.",
-    dangerZone: "Vùng nguy hiểm",
     dangerHint: "Xoá vai trò không hoàn tác được. Chỉ xoá được khi không còn gán cho ai.",
     cancel: "Huỷ",
     expand: "Mở ",
@@ -257,7 +256,6 @@ const text: Dict<{
     removeTitle: (name) => `Delete the ${name} role?`,
     removeBody:
       "The role is deleted for good. The hub refuses while it is still assigned: remove everyone on the People tab first.",
-    dangerZone: "Danger zone",
     dangerHint: "Deleting a role cannot be undone. Only roles nobody has can be deleted.",
     cancel: "Cancel",
     expand: "Expand ",
@@ -408,7 +406,6 @@ export function RolesPage() {
         rows={rows}
         rowLabel={(row) => row.name}
         placeholder={t.search}
-        selectable={false}
         onRowClick={(row) => void open(row.id)}
         pageSize={20}
         minWidth={640}
@@ -1151,20 +1148,11 @@ function PermissionsTab({
       })}
 
       {onRemove && canWrite && (
-        <section
-          aria-labelledby="role-danger"
-          className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl bg-card px-4 py-3.5 ring-1 ring-destructive/60 sm:px-5"
-        >
-          <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
-            <h2 id="role-danger" className="text-base font-semibold text-foreground">
-              {t.dangerZone}
-            </h2>
-            <p className="text-xs text-pretty text-muted-foreground">{t.dangerHint}</p>
-          </div>
+        <DangerZone description={t.dangerHint}>
           <Button variant="destructive" onClick={onRemove}>
             {t.remove}
           </Button>
-        </section>
+        </DangerZone>
       )}
 
       <Dialog open={!!confirmDanger} onOpenChange={(o) => !o && setConfirmDanger(null)}>
@@ -1294,7 +1282,6 @@ function AssignmentsTab({ role, canWrite }: { role: CustomRole; canWrite: boolea
           rows={rows}
           rowLabel={(row) => row.name}
           placeholder={t.searchPeople}
-          selectable={false}
           minWidth={480}
           toolbar={assignButton}
           columns={[
@@ -1511,7 +1498,6 @@ function SystemPeopleTab({ role }: { role: SystemView }) {
           rows={rows}
           rowLabel={(row) => (row.team ? `${row.name} · ${row.team}` : row.name)}
           placeholder={t.searchPeople}
-          selectable={false}
           minWidth={teamRole ? 480 : 320}
           onRowClick={(row) => void navigate({ to: "/admin/members/$userId", params: { userId: row.userId } })}
           columns={[

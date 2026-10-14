@@ -12,6 +12,7 @@ import { EllipsisIcon, MonitorIcon, NetworkIcon } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { DataTable } from "@/components/data-table/data-table.tsx";
 import { Icon } from "@/components/icons.tsx";
+import { DangerZone } from "@/components/page/danger-zone.tsx";
 import { FilterBar } from "@/components/page/filter-bar.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
@@ -483,18 +484,6 @@ const osName = (os: string) => OS_NAME[os] ?? os;
 const UNKNOWN_TEAM = "00000000-0000-4000-8000-000000000000";
 const RUNS_PAGE = 20;
 
-/** "12 phút trước" theo ngôn ngữ giao diện; `formatAgo` chỉ có tiếng Việt. */
-function ago(iso: string, now: number, lang: Lang): string {
-  if (lang === "vi") return formatAgo(iso, now);
-  const sec = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000));
-  if (Number.isNaN(sec)) return "—";
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  if (sec < 60) return "just now";
-  if (sec < 3600) return rtf.format(-Math.floor(sec / 60), "minute");
-  if (sec < 24 * 3600) return rtf.format(-Math.floor(sec / 3600), "hour");
-  return rtf.format(-Math.floor(sec / (24 * 3600)), "day");
-}
-
 function outdated(machine: Machine, latest: WorkerRelease | null): boolean {
   return latest !== null && newerVersion(latest.version, machine.version);
 }
@@ -812,7 +801,6 @@ export function MachinesPage() {
               rows={list}
               rowLabel={(machine) => machine.name}
               placeholder={t.search}
-              selectable={false}
               onRowClick={(machine) => void open(machine)}
               minWidth={760}
               facets={[
@@ -865,7 +853,7 @@ export function MachinesPage() {
                         className="text-xs whitespace-nowrap text-muted-foreground"
                         title={machine.lastSeenAt ? formatDayTime(machine.lastSeenAt) : undefined}
                       >
-                        {machine.lastSeenAt ? t.seen(ago(machine.lastSeenAt, now, lang)) : t.never}
+                        {machine.lastSeenAt ? t.seen(formatAgo(machine.lastSeenAt, now, lang)) : t.never}
                       </span>
                     </span>
                   ),
@@ -1176,7 +1164,7 @@ export function MachineDetailPage() {
             <span>{osName(machine.os)}</span>
             {machine.version && <span className="font-mono">{t.workerVersion(machine.version)}</span>}
             <span title={machine.lastSeenAt ? formatDayTime(machine.lastSeenAt) : undefined}>
-              {machine.lastSeenAt ? t.seen(ago(machine.lastSeenAt, now, lang)) : t.never}
+              {machine.lastSeenAt ? t.seen(formatAgo(machine.lastSeenAt, now, lang)) : t.never}
             </span>
             <ScopePill machine={machine} owner={owner(machine)} small />
           </>
@@ -1306,7 +1294,6 @@ function MachineOverview({
   // Trang đầu của tab Lượt chạy, cùng khoá truy vấn: run đang giữ chỗ luôn nằm trong các run mới nhất.
   const runs = useMachineRuns(machine.id, undefined);
   const running = runs.data?.items.filter(isActiveRun) ?? [];
-  const headingId = useId();
   return (
     <>
       {machine.status === "offline" && <Alert variant="destructive">{t.offline(machine.name)}</Alert>}
@@ -1348,7 +1335,7 @@ function MachineOverview({
                 {
                   term: t.infoLastSeen,
                   detail: machine.lastSeenAt ? (
-                    <span title={formatDayTime(machine.lastSeenAt)}>{ago(machine.lastSeenAt, now, lang)}</span>
+                    <span title={formatDayTime(machine.lastSeenAt)}>{formatAgo(machine.lastSeenAt, now, lang)}</span>
                   ) : (
                     t.never
                   ),
@@ -1395,24 +1382,11 @@ function MachineOverview({
         </PageSection>
       </div>
       {machine.status !== "revoked" && (
-        <section
-          aria-labelledby={headingId}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-4 ring-1 ring-destructive/60"
-        >
-          <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
-            <h2 id={headingId} className="text-base font-semibold text-foreground">
-              {t.danger}
-            </h2>
-            <p className="text-sm text-muted-foreground">{t.dangerLead}</p>
-          </div>
-          <Button
-            variant="outline"
-            className="border-destructive text-destructive hover:text-destructive"
-            onClick={onRevoke}
-          >
+        <DangerZone title={t.danger} description={t.dangerLead}>
+          <Button variant="destructive" onClick={onRevoke}>
             {t.revokeMachine}
           </Button>
-        </section>
+        </DangerZone>
       )}
     </>
   );
@@ -1436,7 +1410,6 @@ function MachineRuns({ machineId }: { machineId: string }) {
       rows={runs.data.items}
       rowLabel={(row) => `${shortId(row.id)} ${row.taskKey}`}
       placeholder={t.searchRuns}
-      selectable={false}
       minWidth={680}
       onRowClick={(row) => void navigate({ to: "/runs/$id", params: { id: row.id } })}
       serverPaging={{

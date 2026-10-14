@@ -17,6 +17,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { LockIcon, PlusIcon, Trash2Icon, WorkflowIcon, XIcon } from "lucide-react";
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
+import { DangerZone } from "@/components/page/danger-zone.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import {
   FormRow,
@@ -845,7 +846,21 @@ function WorkflowsScreen() {
               </div>
             </SettingsSection>
 
-            {canWrite && base && <DangerZone name={base.name} onRemove={() => setRemoving(true)} />}
+            {canWrite && base && (
+              <DangerZone
+                title={t.danger}
+                description={
+                  <>
+                    <span className="font-medium text-foreground">{base.name}</span> · {t.dangerHint}
+                  </>
+                }
+              >
+                <Button variant="destructive" onClick={() => setRemoving(true)}>
+                  <Trash2Icon aria-hidden="true" />
+                  {t.remove}
+                </Button>
+              </DangerZone>
+            )}
           </SettingsLayout>
         )}
       </PageBody>
@@ -901,34 +916,6 @@ type GateConfigProps = React.ComponentProps<typeof GateConfig>;
 /** Khung cấu hình checkpoint theo loại quy trình: tài liệu và code dùng chung đầu khung, khác phần thân. */
 function GateConfigFor({ subject, ...props }: GateConfigProps & { subject: WorkflowSubject }) {
   return subject === "code" ? <CodeGateConfig {...props} /> : <GateConfig {...props} />;
-}
-
-/**
- * Vùng nguy hiểm cuối trang (admin-layout.md § Thanh tiêu đề): thao tác phá huỷ không nằm cạnh ô sửa thường ngày.
- * TODO(admin-layout): chưa có khối "Vùng nguy hiểm" dùng chung trong components/page.
- */
-function DangerZone({ name, onRemove }: { name: string; onRemove: () => void }) {
-  const t = useT(text);
-  const headingId = useId();
-  return (
-    <section
-      aria-labelledby={headingId}
-      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl bg-card px-4 py-3.5 text-sm ring-1 ring-destructive/40 sm:px-5"
-    >
-      <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
-        <h2 id={headingId} className="text-base font-semibold text-foreground">
-          {t.danger}
-        </h2>
-        <p className="text-xs text-pretty text-muted-foreground">
-          <span className="font-medium text-foreground">{name}</span> · {t.dangerHint}
-        </p>
-      </div>
-      <Button variant="destructive" onClick={onRemove}>
-        <Trash2Icon aria-hidden="true" />
-        {t.remove}
-      </Button>
-    </section>
-  );
 }
 
 function DryRunDialog({ draft, onClose }: { draft: WorkflowDraft; onClose: () => void }) {

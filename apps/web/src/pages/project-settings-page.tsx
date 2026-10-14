@@ -19,6 +19,7 @@ import {
   SettingsSection,
   SwitchRow,
 } from "@/components/page/settings.tsx";
+import { UnitField } from "@/components/page/unit-field.tsx";
 import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
 import { ProjectBriefCard } from "@/components/project-brief-card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
@@ -599,52 +600,6 @@ function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked
   );
 }
 
-function TextField({
-  label,
-  hint,
-  error,
-  value,
-  onChange,
-  disabled,
-  inputMode,
-  placeholder,
-  suffix,
-}: {
-  label: string;
-  hint?: string;
-  error: string | undefined;
-  value: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
-  inputMode?: "decimal" | "numeric";
-  placeholder?: string;
-  suffix?: string;
-}) {
-  const id = useId();
-  return (
-    <Field invalid={error !== undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <div className="relative flex items-center">
-        <Input
-          id={id}
-          value={value}
-          onValueChange={onChange}
-          disabled={disabled}
-          inputMode={inputMode}
-          placeholder={placeholder}
-          autoComplete="off"
-          spellCheck={false}
-          className={cx("font-mono text-sm", suffix && "pr-12")}
-        />
-        {suffix && (
-          <span className="pointer-events-none absolute right-3 font-mono text-xs text-muted-foreground">{suffix}</span>
-        )}
-      </div>
-      {error ? <FieldError>{error}</FieldError> : hint && <FieldHint>{hint}</FieldHint>}
-    </Field>
-  );
-}
-
 function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canEdit: boolean; canBrief: boolean }) {
   const { org, api } = useOrg();
   const t = useT(text);
@@ -787,7 +742,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             ]}
           />
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
+            <UnitField
               label={t.reviewers}
               hint={t.reviewersHint}
               error={errors.requiredApprovals}
@@ -886,7 +841,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                     </NativeSelect>
                     {errors.reviewBy && <FieldError>{errors.reviewBy}</FieldError>}
                   </Field>
-                  <TextField
+                  <UnitField
                     label={t.minScore}
                     hint={t.minScoreHint}
                     error={errors.reviewMinScore}
@@ -905,7 +860,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                 />
                 <fieldset className="grid min-w-0 gap-3 rounded-lg border border-dashed border-border p-3 sm:grid-cols-[180px_minmax(0,1fr)]">
                   <legend className="px-1.5 text-xs font-medium text-foreground">{t.onlyWhen}</legend>
-                  <TextField
+                  <UnitField
                     label={t.linesFrom}
                     error={errors.reviewMinLines}
                     value={form.reviewMinLines}
@@ -985,7 +940,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             disabled={disabled}
           />
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
+            <UnitField
               label={t.briefCommits}
               hint={t.briefCommitsHint}
               error={errors.briefRefreshCommits}
@@ -994,7 +949,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               disabled={disabled}
               inputMode="numeric"
             />
-            <TextField
+            <UnitField
               label={t.briefDays}
               hint={t.briefDaysHint}
               error={errors.briefRefreshDays}
@@ -1008,7 +963,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
 
         <SettingsSection id="budget" save={sectionSave("budget")} title={t.budgetTitle} description={t.budgetHint}>
           <div className="grid gap-4 sm:grid-cols-3">
-            <TextField
+            <UnitField
               label={t.perRun}
               error={errors.perRunUsd}
               value={form.perRunUsd}
@@ -1018,7 +973,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               placeholder={t.unlimited}
               suffix="USD"
             />
-            <TextField
+            <UnitField
               label={t.perTask}
               hint={t.perTaskHint}
               error={errors.perTaskUsd}
@@ -1029,7 +984,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               placeholder={t.unlimited}
               suffix="USD"
             />
-            <TextField
+            <UnitField
               label={t.maxTurns}
               hint={t.maxTurnsHint}
               error={errors.maxTurns}
@@ -1046,7 +1001,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           {SETTINGS_CLIS.map((cli) => (
             <FormRow key={cli} label={CLI_LABEL[cli] ?? cli}>
               <div className="grid gap-3 sm:grid-cols-2">
-                <TextField
+                <UnitField
                   label={`${t.writeCode} (${CLI_LABEL[cli]})`}
                   error={errors[`models.${cli}.code`]}
                   value={form.models[cli].code}
@@ -1054,7 +1009,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                   disabled={disabled}
                   placeholder={t.cliDefault}
                 />
-                <TextField
+                <UnitField
                   label={`${t.reviewCode} (${CLI_LABEL[cli]})`}
                   error={errors[`models.${cli}.review`]}
                   value={form.models[cli].review}
@@ -1097,7 +1052,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             disabled={tokenOff}
           />
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
+            <UnitField
               label={t.exploreBudget}
               hint={t.exploreBudgetHint}
               error={errors.exploreBudget}
@@ -1107,7 +1062,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               inputMode="numeric"
               suffix="lệnh"
             />
-            <TextField
+            <UnitField
               label={t.toolOutput}
               hint={t.toolOutputHint}
               error={errors.toolOutputMaxChars}
@@ -1117,7 +1072,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               inputMode="numeric"
               suffix="ký tự"
             />
-            <TextField
+            <UnitField
               label={t.bashChars}
               hint={t.bashCharsHint}
               error={errors.bashMaxChars}
@@ -1127,7 +1082,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               inputMode="numeric"
               suffix="ký tự"
             />
-            <TextField
+            <UnitField
               label={t.compactPct}
               hint={t.compactPctHint}
               error={errors.autocompactPct}
@@ -1137,7 +1092,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               inputMode="numeric"
               suffix="%"
             />
-            <TextField
+            <UnitField
               label={t.subagent}
               hint={t.subagentHint}
               error={errors.subagentModel}
@@ -1158,7 +1113,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               </NativeSelect>
               {errors.cacheTtl ? <FieldError>{errors.cacheTtl}</FieldError> : <FieldHint>{t.cacheTtlHint}</FieldHint>}
             </Field>
-            <TextField
+            <UnitField
               label={t.compactWindow}
               hint={t.compactWindowHint}
               error={errors.autocompactWindow}
@@ -1189,7 +1144,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           {TASK_TIERS.map((tier) => (
             <FormRow key={tier} label={{ light: t.tierLight, medium: t.tierMedium, heavy: t.tierHeavy }[tier]}>
               <div className="grid gap-3 sm:grid-cols-2">
-                <TextField
+                <UnitField
                   label={t.tierModel}
                   error={errors[`tiers.${tier}.model`]}
                   value={form.tiers[tier].model}
@@ -1210,7 +1165,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                   </NativeSelect>
                   {errors[`tiers.${tier}.effort`] && <FieldError>{errors[`tiers.${tier}.effort`]}</FieldError>}
                 </Field>
-                <TextField
+                <UnitField
                   label={t.tierMaxTurns}
                   error={errors[`tiers.${tier}.maxTurns`]}
                   value={form.tiers[tier].maxTurns}
@@ -1219,7 +1174,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
                   inputMode="numeric"
                   suffix={t.tierTurnsSuffix}
                 />
-                <TextField
+                <UnitField
                   label={t.tierAdvisor}
                   {...(tier === "medium" ? { hint: t.tierAdvisorHint } : {})}
                   error={errors[`tiers.${tier}.advisor`]}
