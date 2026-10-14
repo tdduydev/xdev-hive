@@ -17,7 +17,13 @@ import {
   type TaskStatus,
   TERMINAL_RUN_STATES,
 } from "@xdev-hive/contracts";
-import { type DiffStats, diffStats, reportRepo, steerResultData } from "@xdev-hive/contracts/worker-protocol";
+import {
+  checkCommandResult,
+  type DiffStats,
+  diffStats,
+  reportRepo,
+  steerResultData,
+} from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, desc, eq, gt, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
@@ -29,6 +35,18 @@ import {
   type ProjectRow,
   projectFor,
 } from "../catalog/index.ts";
+import {
+  type CodeReviewDeps,
+  type CodeReviewRun,
+  type FinishedReviewRun,
+  matchFor,
+  onReviewRunFinished,
+  type QueueFixRunInput,
+  type RunEvidence,
+  type StartedReviewRun,
+  type StartReviewRunsInput,
+  startCodeReview,
+} from "../codereview/index.ts";
 import {
   type AuthedMachine,
   findMachine,
@@ -152,7 +170,9 @@ export const runsTimerQueue = {
 export type RunTimer =
   | { kind: "offer"; orgId: string; runId: string; attempt: number; machineId: string }
   | { kind: "lease"; orgId: string; runId: string; leaseId: string }
-  | { kind: "verify"; orgId: string; runId: string };
+  | { kind: "verify"; orgId: string; runId: string }
+  // Run tạo trong transaction của module khác (run review, run sửa của quy trình review code): chỉ giao sau commit.
+  | { kind: "dispatch"; orgId: string; runId: string };
 
 export interface RunsDeps {
   /** Pool của hive_app. */
@@ -303,6 +323,20 @@ function reviewEvidence(child: RunRow, report: ReviewReport | null): ReviewEvide
   return { status: "failed", reason: why ?? `run review kết thúc ở trạng thái ${child.state}.` };
 }
 
+/**
+ * Sự kiện ghi lúc tạo run review cho checkpoint AI của quy trình review code: dispatch đọc lại để dựng lời nhắc. Run
+ * này không có run cha (xem startReviewRuns) nên PR cũng lấy từ đây.
+ */
+const REVIEW_PROMPT_EVENT = "review_prompt";
+const stringsOf = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+function parseWorkflowReview(data: Record<string, unknown>) {
+  return {
+    rubric: stringsOf(data.rubric),
+    focusPaths: stringsOf(data.focusPaths),
+    prUrl: typeof data.prUrl === "string" ? data.prUrl : null,
+  };
+}
+
 /** Chỉ dẫn đã ghi cho run (mọi lần thử): run giao lại sau khi mất máy vẫn mang theo chỉ dẫn người review đã gửi. */
 async function instructionsOf(tx: Tx, runId: string): Promise<string[]> {
   const rows = await tx
@@ -330,6 +364,32 @@ async function noteOnce(tx: Tx, run: RunRow, type: string, data: { message: stri
   if (!seen) await hubEvent(tx, run, type, data);
 }
 
+/** Chọn quy trình review code trước khi mở PR: `matchFor` chỉ cần nhánh đích, là nhánh chính như lúc mở PR. */
+const PR_TO_OPEN = { number: 0, url: "" };
+
+/** Run code dưới dạng module `codereview` nhận; `pr` null khi run không có PR (không mở phiên). */
+function codeReviewRunOf(
+  run: RunRow,
+  task: TaskRow | null,
+  project: ProjectRow,
+  stats: DiffStats | null,
+  pr: { number: number; url: string } | null,
+  reasons: string[] = [],
+): CodeReviewRun {
+  return {
+    id: run.id,
+    teamId: run.teamId,
+    projectId: run.projectId,
+    taskId: run.taskId,
+    ownerUserId: run.ownerUserId,
+    taskType: task?.type ?? null,
+    headSha: run.headSha,
+    pr: pr && { ...pr, branch: run.branch, baseBranch: project.defaultBranch ?? "main" },
+    stats,
+    reasons,
+  };
+}
+
 /** Trạng thái task theo kết quả run: có PR thì chờ người review, không có gì để nộp hay lỗi thì quay về todo. */
 function taskStatusFor(outcome: Outcome | "cancelled", prUrl: string | null): TaskStatus {
   if (outcome === "succeeded") return prUrl ? "review" : "done";
@@ -351,6 +411,8 @@ interface SpecContext {
   /** Hook bắt buộc của tổ chức, worker chạy ở các mốc của CLI. */
   policy: JobPolicy;
   parentPrUrl: string | null;
+  /** Run review của checkpoint AI trong quy trình review code: mục kiểm và đường dẫn trọng tâm. */
+  reviewRubric: { rubric: string[]; focusPaths: string[] } | null;
   /** Run code: kế hoạch đã duyệt mà run phải làm theo. */
   approvedPlan: PlanRow | null;
   /** Run plan: kế hoạch lần trước của task nếu bị từ chối. */
@@ -397,6 +459,8 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
       branch: run.branch,
       baseBranch,
       prUrl: ctx.parentPrUrl,
+      rubric: ctx.reviewRubric?.rubric,
+      focusPaths: ctx.reviewRubric?.focusPaths,
     });
   }
   // Run plan đọc nhánh chính ở chế độ chỉ đọc; worker không push.
@@ -712,6 +776,15 @@ export function createRunsEngine(deps: RunsDeps) {
       const [parent] = run.parentRunId
         ? await tx.select({ prUrl: runs.prUrl }).from(runs).where(eq(runs.id, run.parentRunId))
         : [];
+      const [reviewContext] =
+        run.kind === "review"
+          ? await tx
+              .select({ data: runEvents.data })
+              .from(runEvents)
+              .where(and(eq(runEvents.runId, run.id), eq(runEvents.type, REVIEW_PROMPT_EVENT)))
+              .limit(1)
+          : [];
+      const workflowReview = reviewContext ? parseWorkflowReview(reviewContext.data) : null;
       const approvedPlan = run.kind === "code" ? await approvedPlanOf(tx, run.id) : null;
       const latest = run.kind === "plan" && task ? await latestPlanOf(tx, task.id) : null;
       const [leaderContext] = PROMPT_KINDS.includes(run.kind)
@@ -833,7 +906,8 @@ export function createRunsEngine(deps: RunsDeps) {
             runPermissions: permission.mode,
             fullAllowed: policy.allowFullPermission,
             policy: jobPolicy,
-            parentPrUrl: parent?.prUrl ?? null,
+            parentPrUrl: parent?.prUrl ?? workflowReview?.prUrl ?? null,
+            reviewRubric: workflowReview,
             approvedPlan,
             rejectedPlan: latest?.status === "rejected" ? latest : null,
             sandbox,
@@ -1443,6 +1517,8 @@ export function createRunsEngine(deps: RunsDeps) {
   /**
    * Run code: mở PR khi thành công. Chính sách có kiểm tra `review` và dự án bật review chéo thì chưa kết luận: mở PR,
    * tạo run review cho CLI `by`, giữ run ở verifying tới khi run review xong rồi chạy lại chính sách với điểm review.
+   * Run khớp quy trình review code (D3): bỏ kiểm tra `review`, kết luận ngay và mở phiên review code thay cho review
+   * chéo và hàng merge.
    */
   async function verifyCode(orgId: string, runId: string): Promise<void> {
     const ctx = await tenant(orgId, async (tx) => {
@@ -1464,6 +1540,11 @@ export function createRunsEngine(deps: RunsDeps) {
         : undefined;
       const child = reviewCheck ? await childRunOf(tx, run.id, "review") : null;
       const childReport = child?.state === "succeeded" ? await reviewReportOf(tx, child) : null;
+      // Run review chéo đã tạo trước khi quy trình được bật thì đi tiếp đường cũ, không bỏ dở run review đó.
+      const workflow =
+        project && !child
+          ? await matchFor(tx, codeReviewRunOf(run, task, project, stats.success ? stats.data : null, PR_TO_OPEN))
+          : null;
       return {
         run,
         data,
@@ -1471,14 +1552,15 @@ export function createRunsEngine(deps: RunsDeps) {
         project,
         task,
         conn,
-        reviewCheck,
+        reviewCheck: workflow ? undefined : reviewCheck,
         child,
         childReport,
         diffStats: stats.success ? stats.data : undefined,
+        workflow,
       };
     });
     if (!ctx) return;
-    const { run, data, project, task, reviewCheck, child } = ctx;
+    const { run, data, project, task, reviewCheck, child, workflow } = ctx;
     if (child && !TERMINAL_RUN_STATES.includes(child.state)) {
       // Run review còn chạy: không kết luận. Run review xong sẽ gọi lại verify; hẹn lại ở đây chỉ là lưới an toàn khi
       // hub chết đúng lúc run review kết thúc.
@@ -1495,6 +1577,7 @@ export function createRunsEngine(deps: RunsDeps) {
       hasAgentReport: ctx.hasAgentReport,
       review,
       diffStats: ctx.diffStats,
+      reviewWorkflow: workflow?.workflow.name,
     });
     let outcome = ev.outcome;
     let checks = ev.checks;
@@ -1560,11 +1643,44 @@ export function createRunsEngine(deps: RunsDeps) {
         await notifyRun(tx, locked.id);
         return () => background(dispatch(orgId, child.id), "Không giao được run review");
       }
-      await transition(tx, locked, outcome, { result, prUrl, finishedAt: new Date() }, { reasons, prUrl });
+      const finished = await transition(
+        tx,
+        locked,
+        outcome,
+        { result, prUrl, finishedAt: new Date() },
+        { reasons, prUrl },
+      );
       if (locked.taskId) await setTaskStatus(tx, locked.taskId, taskStatusFor(outcome, prUrl));
+      // Quy trình mở phiên cùng transaction kết luận run: không có PR nào của run khớp quy trình mà không có phiên.
+      // Phiên đạt mới vào hàng merge (codereview), nên không vào thẳng ở đây.
+      const codeReview =
+        workflow && project && (outcome === "succeeded" || outcome === "needs_review")
+          ? await startCodeReview(
+              tx,
+              codeReviewRunOf(
+                finished,
+                task,
+                project,
+                ctx.diffStats ?? null,
+                prUrl && prNumber !== null ? { number: prNumber, url: prUrl } : null,
+                reasons,
+              ),
+              codeReviewDeps,
+              workflow,
+            )
+          : null;
+      if (codeReview) {
+        await hubEvent(tx, finished, "code_review", {
+          reviewId: codeReview.id,
+          workflowId: codeReview.workflowId,
+          workflow: codeReview.workflowName,
+          round: codeReview.round,
+        });
+      }
       // Chế độ auto: PR của run đạt chính sách vào thẳng hàng merge, cùng transaction để không có run succeeded mà
       // PR bị bỏ quên ngoài hàng. Chế độ review chờ người đưa vào hàng.
       if (
+        !workflow &&
         outcome === "succeeded" &&
         prNumber !== null &&
         project?.settings.merge.mode === "auto" &&
@@ -1592,7 +1708,13 @@ export function createRunsEngine(deps: RunsDeps) {
         actorUserId: null,
         targetType: "run",
         targetId: locked.id,
-        data: { outcome, prUrl, taskId: locked.taskId, checks },
+        data: {
+          outcome,
+          prUrl,
+          taskId: locked.taskId,
+          checks,
+          ...(workflow ? { workflowId: workflow.workflow.id, codeReviewId: codeReview?.id ?? null } : {}),
+        },
       });
       await notifyOutcome(tx, locked, task, outcome, reasons, prUrl);
       return null;
@@ -1635,9 +1757,138 @@ export function createRunsEngine(deps: RunsDeps) {
     return row;
   }
 
+  // ---- Quy trình review code (specs/009-code-review-workflows) ------------------------------------------------
+
+  const workflowActor = (workflowId: string | null) => (workflowId ? `workflow:${workflowId}` : "workflow");
+  // Không có pg-boss thì hẹn giờ là setTimeout, chạy được trước khi transaction của người gọi commit (run chưa thấy).
+  const afterCommitSoon = () => new Date(Date.now() + 1000);
+
+  /**
+   * Run review cho checkpoint AI (D4/D5), mỗi reviewer một run chạy song song. Không đặt `parent_run_id`: chỉ mục
+   * `runs_review_active` chỉ cho một run con đang sống mỗi run cha, mà một checkpoint có nhiều reviewer; phiên nối với
+   * run review qua `code_review_gate_runs.run_ids`, run code của vòng ghi trong sự kiện lời nhắc. Gọi trong transaction
+   * của `codereview` nên chỉ giao sau commit (hẹn giờ `dispatch`).
+   */
+  async function startReviewRuns(tx: Tx, input: StartReviewRunsInput): Promise<StartedReviewRun[]> {
+    const project = await loadProject(tx, input.projectId);
+    if (!project) throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án của phiên review code.");
+    const [code] = await tx
+      .select({ timeoutSec: runs.timeoutSec, prUrl: runs.prUrl })
+      .from(runs)
+      .where(eq(runs.id, input.parentRunId));
+    const sandboxed = sandboxedRun(project, await loadPolicy(tx), "review");
+    const online = await listOnlineMachines(tx, project.teamId, sandboxed ? "host" : "worker");
+    const by = workflowActor(input.workflowId);
+    const started: StartedReviewRun[] = [];
+    for (const reviewer of input.reviewers) {
+      const [row] = await tx
+        .insert(runs)
+        .values({
+          orgId: sql`hive.ctx_org()`,
+          teamId: project.teamId,
+          taskId: input.taskId,
+          projectId: project.id,
+          kind: "review",
+          cli: reviewer.cli,
+          model: reviewer.model,
+          branch: input.branch,
+          policySnapshot: [],
+          ...(code ? { timeoutSec: code.timeoutSec } : {}),
+          createdBy: by,
+          ownerUserId: input.ownerUserId,
+        })
+        .returning();
+      if (!row) throw new Error("Không ghi được run review của quy trình.");
+      await hubEvent(tx, row, "state", { from: null, to: "queued", by: "workflow", reviewId: input.reviewId });
+      await hubEvent(tx, row, REVIEW_PROMPT_EVENT, {
+        reviewId: input.reviewId,
+        workflowId: input.workflowId,
+        codeRunId: input.parentRunId,
+        prNumber: input.prNumber,
+        prUrl: code?.prUrl ?? null,
+        headSha: input.headSha,
+        rubric: input.rubric,
+        focusPaths: input.focusPaths,
+      });
+      await notifyRun(tx, row.id);
+      await recordAudit(tx, {
+        action: "run.start",
+        actorUserId: null,
+        targetType: "run",
+        targetId: row.id,
+        data: { taskId: row.taskId, cli: row.cli, kind: "review", by, reviewId: input.reviewId },
+      });
+      await schedule({ kind: "dispatch", orgId: row.orgId, runId: row.id }, afterCommitSoon(), tx);
+      const ready = online.some((m) => m.clis.includes(reviewer.cli) && usableBy(m, row, sandboxed));
+      started.push({
+        runId: row.id,
+        cli: reviewer.cli,
+        model: reviewer.model,
+        state: ready ? "queued" : "waiting_machine",
+      });
+    }
+    return started;
+  }
+
+  /**
+   * Run sửa theo góp ý khi phiên trả lại cho agent (D6): run code mới của cùng task, nhánh, CLI và chủ như run của vòng,
+   * không lập kế hoạch lại. Gọi trong transaction của `codereview` nên chỉ giao sau commit.
+   */
+  async function queueFixRun(tx: Tx, input: QueueFixRunInput): Promise<{ runId: string }> {
+    const [run] = await tx.select().from(runs).where(eq(runs.id, input.runId));
+    const task = run?.taskId ? await loadTask(tx, run.taskId) : null;
+    if (!run || !task) throw new NotFoundError("RUN_NOT_FOUND", "Không tìm thấy run code hay task của phiên review.");
+    const { row } = await queueRun(tx, task, await loadProject(tx, run.projectId), {
+      cli: run.cli,
+      model: run.model,
+      createdBy: workflowActor(input.workflowId),
+      actorUserId: null,
+      ownerUserId: run.ownerUserId,
+      instructions: [input.instructions],
+      plan: false,
+    });
+    await schedule({ kind: "dispatch", orgId: row.orgId, runId: row.id }, afterCommitSoon(), tx);
+    return { runId: row.id };
+  }
+
+  /** Bằng chứng của run code cho checkpoint quy tắc: kết quả của lần thử cuối, đọc lại mỗi lần phiên đi tiếp. */
+  async function runEvidence(tx: Tx, runId: string): Promise<RunEvidence | null> {
+    const [run] = await tx.select().from(runs).where(eq(runs.id, runId));
+    if (!run) return null;
+    const data = await resultOf(tx, run);
+    const [report] = await tx
+      .select({ id: runEvents.id })
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "agent_report")))
+      .limit(1);
+    const task = run.taskId ? await loadTask(tx, run.taskId) : null;
+    const stats = diffStats.safeParse(data.diffStats);
+    const commands = checkCommandResult.array().safeParse((data.report as Record<string, unknown> | null)?.commands);
+    return {
+      headSha: typeof data.headSha === "string" ? data.headSha : run.headSha,
+      taskType: task?.type ?? null,
+      stats: stats.success ? stats.data : null,
+      // Worker cũ không có `commands`: null để checkpoint chờ người thay vì coi như mọi lệnh đạt.
+      commands: commands.success ? commands.data : null,
+      hasAgentReport: Boolean(report),
+    };
+  }
+
+  /** Cổng `codereview` dùng khi `runs` mở phiên hay báo run review xong trong transaction của mình. */
+  const codeReviewDeps: CodeReviewDeps = {
+    jobs: deps.jobs,
+    publicUrl: deps.publicUrl,
+    providerFactory: deps.providerFactory,
+    masterKey: deps.masterKey,
+    startReviewRuns,
+    queueFixRun,
+    runEvidence,
+  };
+
   /**
    * Run review: succeeded khi agent đã gọi review_submit (tương đương `agentReport` trên `review_report`). Xong thì
-   * đăng nhận xét lên PR của run cha và chạy lại chính sách của run cha.
+   * đăng nhận xét lên PR của run cha và chạy lại chính sách của run cha. Run review của checkpoint AI trong quy trình
+   * review code thì báo phiên; phiên gộp kết quả các reviewer và tự đăng một bình luận tổng hợp.
    */
   async function verifyReview(orgId: string, runId: string): Promise<void> {
     const ctx = await tenant(orgId, async (tx) => {
@@ -1657,7 +1908,7 @@ export function createRunsEngine(deps: RunsDeps) {
     const ev = evaluateReviewRun({ exit: exitOf(data) ?? 1, report, score: review?.score ?? null });
     const finished = await tenant(orgId, async (tx) => {
       const locked = await lockRun(tx, runId);
-      if (locked?.state !== "verifying") return false;
+      if (locked?.state !== "verifying") return null;
       const result: RunResult = {
         exit: exitOf(data),
         commitCount: null,
@@ -1680,10 +1931,19 @@ export function createRunsEngine(deps: RunsDeps) {
         targetId: locked.id,
         data: { outcome: ev.outcome, kind: "review", parentRunId: locked.parentRunId, score: review?.score ?? null },
       });
-      await childFinished(tx, locked);
-      return true;
+      const workflow = await childFinished(tx, locked, {
+        state: ev.outcome,
+        review: review && {
+          score: review.score,
+          summary: review.summary,
+          findings: review.findings.map((f) => ({ ...f, line: f.line ?? null })),
+          checklist: review.checklist?.map((c) => ({ ...c, note: c.note ?? null })),
+        },
+        error: ev.outcome === "succeeded" ? null : (ev.reasons[0] ?? null),
+      });
+      return { workflow };
     });
-    if (!finished) return;
+    if (!finished || finished.workflow) return;
     if (ev.outcome === "succeeded" && review) {
       background(postReview(ctx, review), `Không đăng được review của run ${run.id} lên PR`);
     }
@@ -1692,11 +1952,16 @@ export function createRunsEngine(deps: RunsDeps) {
 
   /**
    * Run review hay run plan kết thúc theo bất kỳ đường nào (xong, lỗi, hết lượt, bị huỷ): hẹn chạy lại verify của run
-   * cha trong cùng transaction, để hub chết ngay sau commit thì hẹn giờ vẫn kết luận được run cha.
+   * cha trong cùng transaction, để hub chết ngay sau commit thì hẹn giờ vẫn kết luận được run cha. Run review thuộc
+   * phiên review code thì báo phiên trong cùng transaction thay vì run cha, và trả true.
    */
-  async function childFinished(tx: Tx, run: RunRow): Promise<void> {
-    if (run.kind === "code" || !run.parentRunId) return;
+  async function childFinished(tx: Tx, run: RunRow, ended?: Omit<FinishedReviewRun, "id">): Promise<boolean> {
+    if (run.kind === "review" && ended && (await onReviewRunFinished(tx, { id: run.id, ...ended }, codeReviewDeps))) {
+      return true;
+    }
+    if (run.kind === "code" || !run.parentRunId) return false;
     await schedule({ kind: "verify", orgId: run.orgId, runId: run.parentRunId }, new Date(Date.now() + 1000), tx);
+    return false;
   }
 
   /**
@@ -1978,7 +2243,7 @@ export function createRunsEngine(deps: RunsDeps) {
           );
         }
         if (run.kind === "doccheck") await docCheckDone(tx, run, null, "Máy chạy run kiểm tài liệu mất kết nối.");
-        await childFinished(tx, run);
+        await childFinished(tx, run, { state: "failed", review: null, error: reasons[0] ?? null });
         return { failed: run };
       }
       return null;
@@ -1991,6 +2256,10 @@ export function createRunsEngine(deps: RunsDeps) {
   async function fire(t: RunTimer): Promise<void> {
     if (t.kind === "offer") return onOfferTimeout(t);
     if (t.kind === "lease") return onLeaseTimeout(t);
+    if (t.kind === "dispatch") {
+      await dispatch(t.orgId, t.runId);
+      return;
+    }
     return verify(t.orgId, t.runId);
   }
 
@@ -2013,7 +2282,7 @@ export function createRunsEngine(deps: RunsDeps) {
       await deps.leaderMessage?.(tx, run.leaderThreadId, "Leader run đã bị huỷ.");
     } else if (run.kind === "doccheck") {
       await docCheckDone(tx, run, null, "Run kiểm tài liệu đã bị huỷ.");
-    } else await childFinished(tx, run);
+    } else await childFinished(tx, run, { state: "cancelled", review: null, error: "Run review đã bị huỷ." });
     return row;
   }
 
@@ -2703,6 +2972,13 @@ export function createRunsEngine(deps: RunsDeps) {
     cancelRunsOfTask,
     /** Run đề xuất skill của lô hằng ngày; main.ts đưa vào module skilllearn (nó phụ thuộc runs, không ngược lại). */
     skillLearning: { createRun: createSkillProposalRun },
+    /**
+     * Cổng cho `codereview` (CodeReviewDeps): main.ts cài vào worker của hàng đợi `codereview`, vì `codereview` không
+     * import `runs`.
+     */
+    startReviewRuns,
+    queueFixRun,
+    runEvidence,
     /** Brief của dự án; router của knowledge gọi qua đây (knowledge không import runs). */
     briefs: { activeRun: activeBriefRun, refresh: refreshBrief },
     /** Duyệt và từ chối kế hoạch; router của tasks gọi qua đây (tasks không import runs). */

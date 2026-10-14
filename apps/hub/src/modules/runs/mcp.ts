@@ -98,8 +98,9 @@ export function registerMcpTools(registry: McpToolRegistry): void {
     name: "review_submit",
     title: "Nộp kết quả review chéo",
     description:
-      "Chỉ dành cho run review chéo: nộp điểm (0–10), tóm tắt và các phát hiện cho PR của run cha. Hub đăng nhận " +
-      "xét lên PR và dùng điểm cho kiểm tra review của chính sách kết quả. Gọi lại thì lần sau cùng được tính.",
+      "Chỉ dành cho run review chéo: nộp điểm (0–10), tóm tắt và các phát hiện cho PR của run cha, kèm checklist " +
+      "khi lời nhắc có danh sách mục kiểm. Hub đăng nhận xét lên PR và dùng điểm cho kiểm tra review của chính sách " +
+      "kết quả hoặc checkpoint AI của quy trình review code. Gọi lại thì lần sau cùng được tính.",
     input: reviewReportInput,
     runKinds: ["review"],
     // Run review chạy chỉ đọc: Claude ở chế độ plan chỉ gọi được tool có readOnlyHint (như plan_submit).

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -112,8 +113,13 @@ func TestInstallSkillsCopiesIntoWorktreeWithoutDirtyingGit(t *testing.T) {
 	if err != nil || string(b) != "a,b\n" {
 		t.Fatalf("file kèm theo: %q %v", b, err)
 	}
-	if info, err := os.Stat(filepath.Join(work, ".claude", "skills", "ui-ux-pro-max", "scripts", "search.py")); err != nil || info.Mode().Perm()&0o100 == 0 {
-		t.Fatalf("script phải chạy được: %v %v", info, err)
+	info, err := os.Stat(filepath.Join(work, ".claude", "skills", "ui-ux-pro-max", "scripts", "search.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows không có bit thực thi, Mode().Perm() ở đó không phản ánh quyền chạy.
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o100 == 0 {
+		t.Fatalf("script phải chạy được: %v", info.Mode())
 	}
 	if b, _ := os.ReadFile(filepath.Join(own, "SKILL.md")); string(b) != "bản của repo" {
 		t.Fatalf("ghi đè skill của repo: %q", b)

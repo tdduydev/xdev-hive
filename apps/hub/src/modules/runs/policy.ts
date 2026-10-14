@@ -1,5 +1,8 @@
-import type { CheckOutcome, OutcomeCheck } from "@xdev-hive/contracts";
+import { type CheckOutcome, matchGlob, type OutcomeCheck } from "@xdev-hive/contracts";
 import type { DiffStats } from "@xdev-hive/contracts/worker-protocol";
+
+// Chuyển sang contracts để `codereview` dùng mà không import `runs`; giữ tên cũ cho code đang gọi.
+export { matchGlob };
 
 export type Outcome = "succeeded" | "no_changes" | "needs_review" | "failed";
 
@@ -13,6 +16,11 @@ export interface Evidence {
   diffStats?: DiffStats | undefined;
   /** Kết quả review chéo cho kiểm tra `review`. Bỏ trống khi dự án tắt tính năng: kiểm tra đó cần người xem như cũ. */
   review?: ReviewEvidence | undefined;
+  /**
+   * Tên quy trình review code khớp run (D3): quy trình đảm nhận review nên kiểm tra `review` bỏ qua, không tạo run
+   * review chéo. Các kiểm tra khác vẫn chạy như cổng vào.
+   */
+  reviewWorkflow?: string | undefined;
 }
 
 /**
@@ -129,7 +137,9 @@ export function evaluatePolicy(policy: OutcomeCheck[], ev: Evidence): Evaluation
         message: problems.length ? problems.join(" ") : `${commitCount ?? "Có"} commit, ${changedFiles.length} file.`,
       });
     } else if (c.check === "review") {
-      const reason = reviewSkipReason(c, ev.diffStats);
+      const reason = ev.reviewWorkflow
+        ? `Quy trình ${ev.reviewWorkflow} đảm nhận review.`
+        : reviewSkipReason(c, ev.diffStats);
       checks.push(
         reason
           ? { check: c.check, required: c.required, passed: null, skipped: true, message: reason }
@@ -183,27 +193,6 @@ export function evaluatePolicy(policy: OutcomeCheck[], ev: Evidence): Evaluation
   }
   if (soft.length) return { ...base, outcome: "needs_review", checks, reasons: soft.map((c) => c.message) };
   return { ...base, outcome: "succeeded", checks, reasons: [] };
-}
-
-/** Glob kiểu gitignore rút gọn: `**` khớp nhiều cấp thư mục, `*` và `?` không vượt qua `/`. */
-export function matchGlob(glob: string, path: string): boolean {
-  let re = "";
-  for (let i = 0; i < glob.length; i++) {
-    const ch = glob[i] as string;
-    if (ch === "*") {
-      if (glob[i + 1] === "*") {
-        i++;
-        // `**/` khớp cả không cấp nào.
-        if (glob[i + 1] === "/") {
-          i++;
-          re += "(?:.*/)?";
-        } else re += ".*";
-      } else re += "[^/]*";
-    } else if (ch === "?") re += "[^/]";
-    else re += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  }
-  // Glob trỏ vào thư mục (`infra/prod`) cũng chặn mọi thứ bên trong.
-  return new RegExp(`^${re}(?:/.*)?$`).test(path);
 }
 
 /**
