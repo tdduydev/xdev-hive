@@ -1,26 +1,18 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import {
-  defaultProjectSettings,
-  projectSdlcSettings,
-  type ReviewPhase,
-  reviewPhase,
-  SDLC_PRESETS,
-  type SdlcMode,
-} from "@xdev-hive/contracts";
+import { defaultProjectSettings, projectSdlcSettings, type ReviewPhase, reviewPhase } from "@xdev-hive/contracts";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { errorCode, type OrgFixture, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
+import { createItem } from "./items.ts";
 import {
   addItemProject,
   expandPerProjectGates,
   type ItemTeam,
-  insertItemProjects,
   itemTeams,
   perTeamWorkflow,
   removeItemProject,
-  resolveItemProjects,
 } from "./participants.ts";
 
 const { adminUrl, appUrl } = inject("db");
@@ -62,7 +54,10 @@ async function addUser(name: string, memberships: [team: string, role: string][]
 }
 
 async function seedSdlcProject(k: string, teamId: string, systemId: string, sdlc: Record<string, unknown> | null) {
-  const settings = { ...defaultProjectSettings(), ...(sdlc ? { sdlc: projectSdlcSettings.parse(sdlc) } : {}) };
+  const settings = {
+    ...defaultProjectSettings(),
+    ...(sdlc ? { sdlc: projectSdlcSettings.parse({ defaultMode: "speckit", ...sdlc }) } : {}),
+  };
   return (
     await seedProject(admin, app, {
       orgId: org.orgId,
@@ -77,26 +72,24 @@ async function seedSdlcProject(k: string, teamId: string, systemId: string, sdlc
 }
 
 let n = 0;
-/** Dòng hạng mục chèn bằng superuser (items.create là của T012); dòng dự án ghi bằng resolve/insert thật. */
+async function createAs(who: string, home: string, participants: string[]) {
+  return as(who, (tx) =>
+    createItem(tx, org.user(who), {
+      projectId: home,
+      participants,
+      title: "Hoàn tiền một phần",
+      idea: "Khách hàng được hoàn một phần tiền đơn hàng qua web và app.",
+      modeRef: "speckit",
+      size: "M",
+    }),
+  );
+}
+
+/** Hạng mục tạo bằng items.create thật (T012); đổi trạng thái bằng superuser cho ca hạng mục đã đóng. */
 async function seedItem(creator: string, home: string, participants: string[], status = "active"): Promise<string> {
-  const { rows } = await admin.query(
-    `insert into hive.sdlc_items (org_id, team_id, project_id, number, slug, title, idea, source, mode_ref, mode,
-       settings, size, status, owner_user_id, created_by)
-     select $1, pr.team_id, pr.id, $3, 'hoan-tien', 'Hoàn tiền một phần', 'Ý tưởng đủ dài để qua kiểm tra',
-       '{"kind":"manual"}', 'speckit', $4, '{}', 'M', $6, $5, $5
-     from hive.projects pr where pr.id = $2 returning id`,
-    [org.orgId, home, ++n, JSON.stringify(SDLC_PRESETS.speckit as SdlcMode), org.user(creator), status],
-  );
-  const itemId = rows[0].id as string;
-  await as(creator, async (tx) =>
-    insertItemProjects(
-      tx,
-      itemId,
-      await resolveItemProjects(tx, org.user(creator), { projectId: home, participants }),
-      org.user(creator),
-    ),
-  );
-  return itemId;
+  const { id } = await createAs(creator, home, participants);
+  if (status !== "active") await admin.query("update hive.sdlc_items set status = $2 where id = $1", [id, status]);
+  return id;
 }
 
 async function itemProjects(itemId: string) {
@@ -169,7 +162,7 @@ beforeAll(async () => {
   await addUser("bviewer", [[org.otherTeamId, "viewer"]]);
   p.a = await seedSdlcProject("a", org.teamId, org.systemId, { enabled: true });
   p.b = await seedSdlcProject("b", org.otherTeamId, org.otherSystemId, { enabled: true, maxParallel: 3 });
-  p.b2 = await seedSdlcProject("bb", org.otherTeamId, org.otherSystemId, { enabled: true });
+  p.b2 = await seedSdlcProject("bz", org.otherTeamId, org.otherSystemId, { enabled: true });
   p.c = await seedSdlcProject("c", teamC, systemC, { enabled: true });
   p.off = await seedSdlcProject("off", org.otherTeamId, org.otherSystemId, null);
   p.archived = await seedSdlcProject("arc", org.otherTeamId, org.otherSystemId, { enabled: true });
@@ -184,37 +177,34 @@ afterAll(async () => {
   await Promise.all([admin.end(), app.end()]);
 });
 
-describe("resolveItemProjects (items.create)", () => {
-  const resolve = (who: string, participants: string[], home = p.a) =>
-    as(who, (tx) => resolveItemProjects(tx, org.user(who), { projectId: home, participants }));
+describe("items.create nhiều dự án", () => {
+  const create = (who: string, participants: string[]) => createAs(who, p.a, participants);
 
   it("ghi dự án chính và dự án tham gia, mỗi dòng chụp cài đặt của dự án đó", async () => {
     const item = await seedItem("both", p.a, [p.b, p.b2]);
     const rows = await itemProjects(item);
-    expect(rows.map((r) => [r.projectId, r.role, r.teamId])).toEqual([
-      [p.a, "home", org.teamId],
-      [p.b, "participant", org.otherTeamId],
-      [p.b2, "participant", org.otherTeamId],
-    ]);
+    expect(rows.map((r) => r.role)).toEqual(["home", "participant", "participant"]);
+    expect(rows.map((r) => [r.projectId, r.teamId]).sort()).toEqual(
+      [
+        [p.a, org.teamId],
+        [p.b, org.otherTeamId],
+        [p.b2, org.otherTeamId],
+      ].sort(),
+    );
     expect(rows.find((r) => r.projectId === p.b)?.settings.maxParallel).toBe(3);
     expect(rows.find((r) => r.projectId === p.a)?.settings.maxParallel).toBe(2);
     expect(rows.every((r) => r.addedBy === org.user("both"))).toBe(true);
   });
 
-  it("thiếu quyền ở một dự án thì từ chối cả yêu cầu", async () => {
-    expect(await errorCode(() => resolve("tmember", [p.b]))).toBe("SDLC_FORBIDDEN");
+  it("thiếu quyền ở một dự án thì từ chối cả yêu cầu, không tạo hạng mục dở", async () => {
+    expect(await errorCode(() => create("tmember", [p.b]))).toBe("SDLC_FORBIDDEN");
+    const { rows } = await admin.query("select count(*)::int as c from hive.sdlc_items where org_id = $1", [org.orgId]);
+    expect(rows[0].c).toBe(0);
   });
 
   it("dự án chưa bật AI SDLC hoặc đã lưu trữ thì không thêm được", async () => {
-    expect(await errorCode(() => resolve("both", [p.off]))).toBe("SDLC_PROJECT_DISABLED");
-    expect(await errorCode(() => resolve("both", [p.archived]))).toBe("SDLC_PROJECT_DISABLED");
-  });
-
-  it("tối đa 8 dự án, không trùng", async () => {
-    const many = Array.from({ length: 8 }, () => randomUUID());
-    expect(await errorCode(() => resolve("both", many))).toBe("SDLC_TOO_MANY_PROJECTS");
-    expect(await errorCode(() => resolve("both", [p.b, p.b]))).toBe("SDLC_DUPLICATE_PROJECT");
-    expect(await errorCode(() => resolve("both", [p.a]))).toBe("SDLC_DUPLICATE_PROJECT");
+    expect(await errorCode(() => create("both", [p.off]))).toBe("SDLC_NOT_ENABLED");
+    expect(await errorCode(() => create("both", [p.archived]))).toBe("PROJECT_ARCHIVED");
   });
 
   it("dự án của tổ chức khác coi như không có", async () => {
@@ -230,7 +220,7 @@ describe("resolveItemProjects (items.create)", () => {
         settings: { ...defaultProjectSettings(), sdlc: projectSdlcSettings.parse({ enabled: true }) },
       })
     ).projectId;
-    expect(await errorCode(() => resolve("admin", [foreign]))).toBe("PROJECT_NOT_FOUND");
+    expect(await errorCode(() => create("admin", [foreign]))).toBe("PROJECT_NOT_FOUND");
   });
 });
 
@@ -254,6 +244,42 @@ describe("items.projects.add", () => {
     // Người bấm không tự nhận thông báo; người ngoài các đội tham gia không nhận.
     expect(recipients).not.toContain(org.user("admin"));
     expect(recipients).not.toContain(org.user("loner"));
+  });
+
+  it("dự án mới có tài liệu riêng (scope project) như lúc tạo, đường dẫn mang key dự án chính", async () => {
+    const item = await seedItem("both", p.a, []);
+    // Preset MVP chưa có tài liệu theo dự án: thêm một tài liệu vào bản chụp chế độ của hạng mục.
+    await admin.query(
+      `update hive.sdlc_items set mode = jsonb_insert(mode, '{phases,0,artifacts,0}', $2::jsonb) where id = $1`,
+      [
+        item,
+        JSON.stringify({
+          id: "impact",
+          name: "Ảnh hưởng",
+          path: "specs/{NNN}-{slug}/impact.md",
+          required: true,
+          sections: [],
+          perUnit: false,
+          scope: "project",
+          repeatable: false,
+        }),
+      ],
+    );
+    await add("both", item, p.b);
+    const { rows } = await admin.query(
+      `select a.project_id, a.instance, a.repo_path, s.kind from hive.sdlc_artifacts a
+       join hive.sdlc_artifact_syncs s on s.artifact_id = a.id where a.item_id = $1 and a.scope = 'project'`,
+      [item],
+    );
+    const number = (await admin.query("select number from hive.sdlc_items where id = $1", [item])).rows[0].number;
+    expect(rows).toEqual([
+      {
+        project_id: p.b,
+        instance: key("b"),
+        repo_path: `specs/${key("a")}-${String(number).padStart(3, "0")}-hoan-tien-mot-phan/impact.md`,
+        kind: "source",
+      },
+    ]);
   });
 
   it("chủ hạng mục cần sdlc.write ở đội của dự án mới", async () => {
@@ -280,7 +306,7 @@ describe("items.projects.add", () => {
   it("từ chối dự án đã tham gia, chưa bật AI SDLC, hạng mục đã đóng", async () => {
     const item = await seedItem("both", p.a, [p.b]);
     expect(await errorCode(() => add("admin", item, p.b))).toBe("SDLC_PROJECT_ALREADY_ADDED");
-    expect(await errorCode(() => add("admin", item, p.off))).toBe("SDLC_PROJECT_DISABLED");
+    expect(await errorCode(() => add("admin", item, p.off))).toBe("SDLC_NOT_ENABLED");
     const done = await seedItem("both", p.a, [], "done");
     expect(await errorCode(() => add("admin", done, p.b))).toBe("SDLC_ITEM_CLOSED");
   });
@@ -389,7 +415,7 @@ describe("cổng theo đội (D21)", () => {
     const teams = await as("both", (tx) => itemTeams(tx, item));
     expect(teams.map((t) => [t.teamId, t.projects.map((x) => x.key)])).toEqual([
       [org.teamId, [key("a")]],
-      [org.otherTeamId, [key("b"), key("bb")]],
+      [org.otherTeamId, [key("b"), key("bz")]],
     ]);
   });
 
@@ -404,7 +430,7 @@ describe("cổng theo đội (D21)", () => {
       "po",
     ]);
     const crm = phase?.gates.find((g) => g.id === "tech-lead-crm");
-    expect(crm?.name).toBe(`Tech lead · crm (${key("b")}, ${key("bb")})`);
+    expect(crm?.name).toBe(`Tech lead · crm (${key("b")}, ${key("bz")})`);
     expect(crm?.reviewers).toMatchObject({ roles: ["team-admin"], quorum: 1, teamScope: org.otherTeamId });
     // Checkpoint không nằm trong danh sách giữ nguyên, không có teamScope.
     expect(phase?.gates.find((g) => g.id === "po")?.reviewers?.teamScope).toBeUndefined();

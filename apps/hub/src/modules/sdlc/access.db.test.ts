@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { defaultProjectSettings, projectSdlcSettings, SDLC_PRESETS, type SdlcMode } from "@xdev-hive/contracts";
+import { defaultProjectSettings, projectSdlcSettings } from "@xdev-hive/contracts";
 import { eq } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
@@ -15,7 +15,7 @@ import {
   requireProjectWrite,
   visibleItemsWhere,
 } from "./access.ts";
-import { insertItemProjects, resolveItemProjects } from "./participants.ts";
+import { createItem } from "./items.ts";
 import { sdlcItems } from "./schema.ts";
 
 /*
@@ -38,7 +38,10 @@ const key = (p: string) => `${p}${tag}`;
 const as = <T>(who: string, fn: (tx: Tx) => Promise<T>) =>
   withTenant(app, { userId: org.user(who), orgId: org.orgId }, fn);
 
-const enabled = () => ({ ...defaultProjectSettings(), sdlc: projectSdlcSettings.parse({ enabled: true }) });
+const enabled = () => ({
+  ...defaultProjectSettings(),
+  sdlc: projectSdlcSettings.parse({ enabled: true, defaultMode: "speckit" }),
+});
 
 async function addUser(name: string, memberships: [team: string, role: string][]) {
   const id = org.user(name);
@@ -70,27 +73,19 @@ async function seedSdlcProject(k: string, teamId: string, systemId: string) {
   ).projectId;
 }
 
-let n = 0;
-/** Dòng hạng mục chèn bằng superuser (tạo hạng mục là việc của items.ts, T012); dòng dự án ghi bằng hàm thật. */
+/** Hạng mục tạo bằng items.create thật (T012): dòng dự án tham gia, tài liệu, bản nháp như thật. */
 async function seedItem(creator: string, home: string, participants: string[]): Promise<string> {
-  const { rows } = await admin.query(
-    `insert into hive.sdlc_items (org_id, team_id, project_id, number, slug, title, idea, source, mode_ref, mode,
-       settings, size, owner_user_id, created_by)
-     select $1, p.team_id, p.id, $3, 'hoan-tien', 'Hoàn tiền một phần', 'Ý tưởng đủ dài để qua kiểm tra',
-       '{"kind":"manual"}', 'speckit', $4, '{}', 'M', $5, $5
-     from hive.projects p where p.id = $2 returning id`,
-    [org.orgId, home, ++n, JSON.stringify(SDLC_PRESETS.speckit as SdlcMode), org.user(creator)],
+  const item = await as(creator, (tx) =>
+    createItem(tx, org.user(creator), {
+      projectId: home,
+      participants,
+      title: "Hoàn tiền một phần",
+      idea: "Khách hàng được hoàn một phần tiền đơn hàng qua web và app.",
+      modeRef: "speckit",
+      size: "M",
+    }),
   );
-  const itemId = rows[0].id as string;
-  await as(creator, async (tx) =>
-    insertItemProjects(
-      tx,
-      itemId,
-      await resolveItemProjects(tx, org.user(creator), { projectId: home, participants }),
-      org.user(creator),
-    ),
-  );
-  return itemId;
+  return item.id;
 }
 
 const visibleIds = (who: string) =>
@@ -256,12 +251,13 @@ describe("itemViewers", () => {
 });
 
 describe("docAccessFor", () => {
-  async function seedArtifact(itemId: string, docKey: string) {
-    await admin.query(
-      `insert into hive.sdlc_artifacts (org_id, project_id, item_id, phase_id, artifact_id, required, doc_key, repo_path)
-       values ($1, $2, $3, 'specify', 'spec', true, $4, 'specs/001-hoan-tien/spec.md')`,
-      [org.orgId, project.a, itemId, docKey],
+  /** Doc key thật của tài liệu chung (scope item) mà items.create đã lập ở dự án chính. */
+  async function sharedDocKey(itemId: string): Promise<string> {
+    const { rows } = await admin.query(
+      "select doc_key from hive.sdlc_artifacts where item_id = $1 and scope = 'item' order by doc_key limit 1",
+      [itemId],
     );
+    return rows[0].doc_key as string;
   }
 
   const grant = (who: string, docKey: string) =>
@@ -273,8 +269,7 @@ describe("docAccessFor", () => {
 
   it("đội tham gia đọc và đề xuất tài liệu chung; viewer chỉ đọc; đội ngoài không có gì", async () => {
     const item = await seedItem("both", project.a, [project.b]);
-    const docKey = `project/${key("a")}/sdlc/001-hoan-tien/spec`;
-    await seedArtifact(item, docKey);
+    const docKey = await sharedDocKey(item);
     expect(await grant("bmember", docKey)).toEqual({ read: true, propose: true });
     expect(await grant("bviewer", docKey)).toEqual({ read: true, propose: false });
     expect(await grant("aba", docKey)).toEqual({ read: true, propose: true });
@@ -284,8 +279,7 @@ describe("docAccessFor", () => {
 
   it("run của dự án tham gia chỉ đọc; run của dự án ngoài không có gì", async () => {
     const item = await seedItem("both", project.a, [project.b]);
-    const docKey = `project/${key("a")}/sdlc/001-hoan-tien/plan`;
-    await seedArtifact(item, docKey);
+    const docKey = await sharedDocKey(item);
     expect(await runGrant(project.b, docKey)).toEqual({ read: true, propose: false });
     expect(await runGrant(project.c, docKey)).toBeNull();
   });
@@ -296,8 +290,7 @@ describe("docAccessFor", () => {
 
   it("dự án bị bỏ thì đội của nó mất quyền đọc tài liệu chung", async () => {
     const item = await seedItem("both", project.a, [project.b]);
-    const docKey = `project/${key("a")}/sdlc/001-hoan-tien/tasks`;
-    await seedArtifact(item, docKey);
+    const docKey = await sharedDocKey(item);
     await admin.query("update hive.sdlc_item_projects set removed_at = now() where item_id = $1 and project_id = $2", [
       item,
       project.b,
