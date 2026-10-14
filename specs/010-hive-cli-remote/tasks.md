@@ -479,7 +479,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `apps/hub/src/modules/terminal/{close.ts,router.ts,audit.db.test.ts}`
   - **Phụ thuộc**: T030 · **Mức**: vừa
 
-- [ ] T027 [US2] [US3] Hub: đường lui TOTP và chính sách
+- [x] T027 [US2] [US3] Hub: đường lui TOTP và chính sách
   - Chấp nhận `auth.kind = "totp"` ở `control` (và `start` khi T051 xong) chỉ khi chính sách tổ chức `totpFallback` bật
     (`TOTP_NOT_ALLOWED` nếu tắt), chuyển tiếp mã tới worker không đọc, không lưu mã; `welcome.policy` gửi khi nối và khi
     đổi chính sách; hiện `totp` của máy trong `machines`; audit `terminal.totp_ok|totp_fail|totp_locked|totp_enroll|
@@ -487,6 +487,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - Test DB: chính sách tắt chặn, mã không bao giờ vào DB hay log, người khác chủ máy, audit đủ (SC-013), `welcome`
     cũ không có `policy` vẫn chạy.
   - **Scope**: `apps/hub/src/modules/terminal/{totp.ts,router.ts,index.ts,gateway.ts,totp.db.test.ts}`
+  - Đã làm (SPEC10W7): `ws.ts` đọc chính sách mỗi lần `control` TOTP, tắt thì trả `TOTP_NOT_ALLOWED` (audit
+    `terminal.deny`) và không chuyển mã tới máy; quyền đã cấp bằng mã thì `resume` cũng bị từ chối (`Grant.totp`).
+    `welcome.policy` khi nối đã có từ T021; đổi chính sách thì `policiesRouter` gọi `remotePolicyHook` (app.ts truyền
+    vào để tránh vòng governance ↔ terminal) sau khi commit, máy cá nhân có `terminal` bị đóng 1012 để nối lại nhận
+    bản mới. Audit: `totp_ok`/`totp_fail` theo `term_granted`/từ chối của lần `control` dùng mã (`pendingTotp`),
+    `totp_enroll`/`totp_disable`/`totp_locked` theo `term_state` (`source: machine`). `term_start` bằng TOTP để T051.
   - **Phụ thuộc**: T030, T041 (cùng làn), T008 · **Mức**: nặng
 
 **Checkpoint MVP**: US1 + US2 + US3 + US5 chạy sau cờ `HIVE_REMOTE_TERMINAL=1`; T091 (test tấn công, gồm ca TOTP) phải xanh

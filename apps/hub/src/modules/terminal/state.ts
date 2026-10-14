@@ -9,6 +9,7 @@ import { liveSession, untrackSession } from "./live.ts";
 import { machineOwner, personal } from "./record.ts";
 import { machineRemoteState, remoteDevices, terminalSessions } from "./schema.ts";
 import { endSession } from "./service.ts";
+import { auditTotpState } from "./totp.ts";
 
 /**
  * Bản sao trên hub của trạng thái từ xa tại máy (`term_state`, specs/010 T021). Nguồn thật là `remote.json` trên máy;
@@ -64,6 +65,12 @@ export async function recordState(pool: pg.Pool, machine: AuthedMachine, msg: St
     for (const r of msg.roots)
       if (!before.has(r.id)) await audit("terminal.root_add", { rootId: r.id, label: r.label });
     for (const [id, label] of before) if (!after.has(id)) await audit("terminal.root_remove", { rootId: id, label });
+    await auditTotpState(
+      prev ? { enabled: prev.totpEnabled, lockedUntil: prev.totpLockedUntil } : null,
+      { enabled: msg.totp.enabled, lockedUntil },
+      now,
+      audit,
+    );
 
     await syncDevices(tx, machine, msg.devices, audit);
     return {

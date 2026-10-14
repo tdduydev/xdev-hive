@@ -30,6 +30,8 @@ export interface Grant {
   userId: string;
   deviceId: string;
   connId: string;
+  /** Cấp bằng mã Authenticator: tổ chức tắt TOTP thì nối lại bằng `resumeToken` cũng bị chặn. */
+  totp: boolean;
   /** Vô hạn khi kết nối còn mở; đóng thì còn `resumeSec` như worker (FR-021). */
   expiresAt: number;
 }
@@ -216,6 +218,8 @@ export class RemoteConn {
   canControl: boolean;
   /** Thiết bị của lần `control` đang chờ worker trả lời. */
   pendingDeviceId: string | null = null;
+  /** Lần `control` đang chờ dùng mã Authenticator: audit `terminal.totp_ok|totp_fail` theo kết quả. */
+  pendingTotp = false;
   granted = false;
   closed = false;
   readonly #sink: RemoteSink;
