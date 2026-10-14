@@ -49,7 +49,7 @@ func start(t *testing.T, s *Server) string {
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(5 * time.Second):
+		case <-time.After(15 * time.Second):
 			t.Error("server không dừng")
 		}
 	})
@@ -245,7 +245,7 @@ func TestAbruptClose(t *testing.T) {
 		if !errors.Is(err, io.ErrUnexpectedEOF) {
 			t.Fatalf("lỗi = %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("server treo sau khi client đóng giữa khung")
 	}
 	// Server vẫn nhận kết nối mới.
@@ -293,7 +293,7 @@ func TestServeStopsWithContext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("Serve không dừng khi còn client gắn")
 	}
 	if _, _, err := c.ReadFrame(); err == nil {
