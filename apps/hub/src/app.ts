@@ -14,6 +14,8 @@ import {
   artifactsRouter,
   frameRoutes,
   frameTicketKey,
+  provideLinkTarget,
+  provideThreadHost,
 } from "./modules/artifacts/index.ts";
 import {
   exportAudit,
@@ -43,7 +45,12 @@ import {
   registerMcpTools as knowledgeMcpTools,
   knowledgeRouter,
 } from "./modules/knowledge/index.ts";
-import { registerMcpTools as leaderMcpTools, leaderRouter } from "./modules/leader/index.ts";
+import {
+  createThreadHost,
+  createThreadLinkTarget,
+  registerMcpTools as leaderMcpTools,
+  leaderRouter,
+} from "./modules/leader/index.ts";
 import {
   createMcpEndpoint,
   issueDesktopToken,
@@ -139,6 +146,8 @@ export function createApp({
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
   leaderMcpTools(registry, { runs });
+  provideThreadHost(createThreadHost(runs));
+  provideLinkTarget("chat_thread", createThreadLinkTarget());
   artifactsMcpTools(registry, { pool, jobs, publicUrl });
   const terminal = {
     enabled: config.remoteTerminal ?? false,
