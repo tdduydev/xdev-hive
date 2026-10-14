@@ -268,8 +268,15 @@ async function rejectPathConflicts(
  * Bản nháp đầu theo khuôn của chế độ (US1-4), dưới tên người tạo. Người tạo không soạn được tài liệu của đội đó, hay
  * key đã có bản nháp (đổi chế độ giữ cùng tài liệu) thì giữ nguyên: khuôn chỉ là chỗ bắt đầu, không bắt buộc.
  */
-async function seedDraft(tx: Tx, userId: string, item: SdlcItemRow, a: PlannedArtifact): Promise<void> {
-  if (!a.template) return;
+async function seedDraft(
+  tx: Tx,
+  userId: string,
+  item: SdlcItemRow,
+  a: PlannedArtifact,
+  imported: string | undefined,
+): Promise<void> {
+  const content = imported ?? a.template;
+  if (!content) return;
   try {
     await saveDraft(
       tx,
@@ -277,7 +284,7 @@ async function seedDraft(tx: Tx, userId: string, item: SdlcItemRow, a: PlannedAr
       {
         key: a.docKey,
         title: `${a.name} · ${sdlcItemRef(item.number)} ${item.title}`.slice(0, 200),
-        content: a.template,
+        content,
         revision: 0,
       },
     );
@@ -286,12 +293,16 @@ async function seedDraft(tx: Tx, userId: string, item: SdlcItemRow, a: PlannedAr
   }
 }
 
-/** Ghi tài liệu đã lập: dòng `sdlc_artifacts`, dòng đồng bộ nguồn ở repo giữ file, bản nháp theo khuôn. */
+/**
+ * Ghi tài liệu đã lập: dòng `sdlc_artifacts`, dòng đồng bộ nguồn ở repo giữ file, bản nháp theo khuôn, hoặc theo nội
+ * dung file có sẵn trong repo (`imported`, theo đường dẫn) khi nhận thư mục.
+ */
 export async function insertArtifacts(
   tx: Tx,
   userId: string,
   item: SdlcItemRow,
   plan: PlannedArtifact[],
+  imported: ReadonlyMap<string, string> = new Map(),
 ): Promise<void> {
   for (const a of plan) {
     const [row] = await tx
@@ -317,7 +328,7 @@ export async function insertArtifacts(
       kind: "source",
       repoPath: a.repoPath,
     });
-    await seedDraft(tx, userId, item, a);
+    await seedDraft(tx, userId, item, a, imported.get(a.repoPath));
   }
 }
 
@@ -326,6 +337,8 @@ export async function insertArtifacts(
 export interface CreateItemOptions {
   /** `leader`: hành động `sdlc.item.create` đã duyệt; người duyệt là chủ (US1-5). */
   sourceKind?: "manual" | "leader" | undefined;
+  /** Nhận thư mục có sẵn trong repo (FR-009, `import.ts`): số và slug theo tên thư mục, bản nháp đầu là file trong repo. */
+  imported?: { number: number; slug: string; path: string; contents: ReadonlyMap<string, string> } | undefined;
 }
 
 export async function createItem(
@@ -363,11 +376,24 @@ export async function createItem(
 
   // Khoá theo dự án chính tới hết transaction để hai hạng mục tạo cùng lúc không lấy cùng số (FR-008).
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`sdlc_items:${home.id}`}, 0))`);
-  const [{ next } = { next: 1 }] = await tx
-    .select({ next: sql<number>`coalesce(max(${sdlcItems.number}), 0)::int + 1` })
-    .from(sdlcItems)
-    .where(eq(sdlcItems.projectId, home.id));
-  const slug = sdlcSlug(input.title);
+  const imported = opts.imported;
+  let next: number;
+  if (imported) {
+    const [taken] = await tx
+      .select({ id: sdlcItems.id })
+      .from(sdlcItems)
+      .where(and(eq(sdlcItems.projectId, home.id), eq(sdlcItems.number, imported.number)));
+    if (taken)
+      throw new ConflictError("SDLC_IMPORT_TAKEN", `Dự án ${home.key} đã có hạng mục ${sdlcItemRef(imported.number)}.`);
+    next = imported.number;
+  } else {
+    const [row] = await tx
+      .select({ next: sql<number>`coalesce(max(${sdlcItems.number}), 0)::int + 1` })
+      .from(sdlcItems)
+      .where(eq(sdlcItems.projectId, home.id));
+    next = row?.next ?? 1;
+  }
+  const slug = imported?.slug ?? sdlcSlug(input.title);
   const date = new Date().toISOString().slice(0, 10);
   const withSettings = (p: ProjectRow) => ({ id: p.id, key: p.key, settings: settingsOf.get(p.id) ?? settings });
   const plan = planArtifacts(mode.definition, {
@@ -377,7 +403,16 @@ export async function createItem(
     slug,
     date,
   });
-  await rejectPathConflicts(tx, deps, all, plan);
+  if (imported) {
+    const dir = plan.find((a) => a.projectId === home.id && a.itemDir !== null)?.itemDir;
+    if (dir !== imported.path)
+      throw new BadRequestError(
+        "SDLC_IMPORT_LAYOUT",
+        `Thư mục ${imported.path} không khớp mẫu đường dẫn của chế độ ${mode.ref} (${dir ?? "không có thư mục riêng"}).`,
+      );
+  }
+  // Nhận thư mục có sẵn thì file trong repo chính là tài liệu: chỉ kiểm trùng với hạng mục khác, không kiểm repo.
+  await rejectPathConflicts(tx, imported ? {} : deps, all, plan);
 
   const phases = initialPhases(mode.definition, input.size);
   const [item] = await tx
@@ -391,10 +426,10 @@ export async function createItem(
       title: input.title,
       idea: input.idea,
       source: {
-        kind: issueNumber !== null ? "issue" : (opts.sourceKind ?? "manual"),
+        kind: imported ? "repo" : issueNumber !== null ? "issue" : (opts.sourceKind ?? "manual"),
         url: input.issueUrl ?? null,
         issueNumber,
-        path: null,
+        path: imported?.path ?? null,
       },
       modeRef: mode.ref,
       mode: mode.definition,
@@ -434,7 +469,7 @@ export async function createItem(
       startedAt: r.status === "drafting" ? new Date() : null,
     })),
   );
-  await insertArtifacts(tx, userId, item, plan);
+  await insertArtifacts(tx, userId, item, plan, imported?.contents);
 
   await recordAudit(tx, {
     action: "sdlc.item.create",
@@ -446,6 +481,12 @@ export async function createItem(
       participants: participants.map((p) => p.id),
       source: item.source.kind,
       issueNumber,
+      ...(imported
+        ? {
+            path: imported.path,
+            importedPaths: plan.filter((a) => imported.contents.has(a.repoPath)).map((a) => a.repoPath),
+          }
+        : {}),
       // FR-007: ghi cả gợi ý và lựa chọn cuối để đo độ khớp của gợi ý.
       suggestion: input.suggestion ?? null,
       chosen: { modeRef: mode.ref, size: input.size },
@@ -457,7 +498,8 @@ export async function createItem(
       { kind: "issue-comment", orgId: item.orgId, itemId: item.id } satisfies SdlcJob,
       { tx },
     );
-  await scheduleAdvance(tx, item, deps);
+  // Thư mục nhận về đã có bản đầu: bước soạn tự động của giai đoạn đầu sẽ ghi đè bản người đã viết.
+  if (!imported) await scheduleAdvance(tx, item, deps);
   return itemDetail(tx, userId, item.id);
 }
 

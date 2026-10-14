@@ -137,6 +137,8 @@ type jobSpec struct {
 	Brief *struct {
 		SHA string `json:"sha"`
 	} `json:"brief"`
+	// SDLC là spec.sdlc của run sdlc (file ghi trước, file thu về sau); nil với kind khác và hub cũ.
+	SDLC *runner.SdlcJob `json:"sdlc"`
 	// TaskText là tiêu đề, mô tả và kế hoạch đã duyệt của task, nguồn từ khoá của context pack; rỗng với hub cũ.
 	TaskText string `json:"taskText"`
 }
@@ -181,6 +183,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	if s.Brief != nil {
 		j.BriefSHA = s.Brief.SHA
 	}
+	j.SDLC = s.SDLC
 	if s.Sandbox != nil {
 		j.EnvironmentImage = s.Sandbox.Image.BaseImage
 	}
