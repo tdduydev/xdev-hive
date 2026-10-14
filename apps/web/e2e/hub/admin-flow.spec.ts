@@ -140,22 +140,28 @@ test("thêm người vào đội, đổi vai trò trong đội và vai trò tổ
 
   const row = page.getByRole("row", { name: new RegExp(MEMBER.name) });
   await expect(row).toContainText("Thanh toán");
-  const orgRole = page.getByLabel(`Vai trò tổ chức của ${MEMBER.name}`);
-  await expect(orgRole).toHaveValue("member");
-  await orgRole.selectOption({ label: "Quản trị" });
-  await expect(orgRole).toBeEnabled();
+  await expect(row).toContainText("Thành viên");
+  await page.getByRole("button", { name: `Thao tác: ${MEMBER.name}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: "Đổi vai trò" }).click();
+  const roleDialog = page.getByRole("dialog", { name: "Đổi vai trò" });
+  await roleDialog.getByLabel("Vai trò", { exact: true }).selectOption("admin");
+  await expect(roleDialog).toContainText("Thành viên → Quản trị");
+  await roleDialog.getByRole("button", { name: "Xác nhận" }).click();
+  await expect(roleDialog).toBeHidden();
   // Không tự đổi vai trò hay tự khoá mình.
   await expect(page.getByLabel(`Vai trò tổ chức của ${OWNER.name}`)).toHaveCount(0);
   await expect(page.getByRole("button", { name: `Khoá ${OWNER.name}` })).toHaveCount(0);
 
-  await page.getByRole("button", { name: `Khoá ${MEMBER.name}` }).click();
+  await page.getByRole("button", { name: `Thao tác: ${MEMBER.name}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: `Khoá ${MEMBER.name}` }).click();
   await expect(row).toContainText("Đã khoá");
   await expect(page.getByRole("tab", { name: "Đang hoạt động · 1" })).toBeVisible();
-  await page.getByRole("button", { name: `Mở khoá ${MEMBER.name}` }).click();
+  await page.getByRole("button", { name: `Thao tác: ${MEMBER.name}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: `Mở khoá ${MEMBER.name}` }).click();
   await expect(row).not.toContainText("Đã khoá");
 
   await page.reload();
-  await expect(page.getByLabel(`Vai trò tổ chức của ${MEMBER.name}`)).toHaveValue("admin");
+  await expect(page.getByRole("row", { name: new RegExp(MEMBER.name) })).toContainText("Quản trị");
   await page.getByLabel("Tìm thành viên").fill("le ha");
   await expect(page.getByRole("row", { name: new RegExp(OWNER.name) })).toHaveCount(0);
   await expect(page.getByRole("row", { name: new RegExp(MEMBER.name) })).toBeVisible();
@@ -263,7 +269,7 @@ test("mời người: tạo lời mời, mở link ở phiên khác, đăng ký 
   await page.getByRole("tab", { name: /Đang hoạt động/ }).click();
   const member = page.getByRole("row", { name: new RegExp(INVITEE.name) });
   await expect(member).toContainText("Thanh toán");
-  await expect(page.getByLabel(`Vai trò tổ chức của ${INVITEE.name}`)).toHaveValue("member");
+  await expect(member).toContainText("Thành viên");
 });
 
 test("thu hồi lời mời: link cũ báo không tìm thấy", async ({ page }) => {

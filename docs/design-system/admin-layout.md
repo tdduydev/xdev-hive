@@ -29,6 +29,20 @@ Chosen by the product owner on 2026-10-14. They override anything below that dis
    page-wide save bar (`StickyFormFooter` was removed). Leaving the page with unsaved sections asks first
    (`UnsavedChangesGuard`; closing the tab uses `beforeunload`).
 
+5. **The main sidebar starts as a 56 px icon rail in admin.** It shows the logo, Tổng quan, Công việc,
+   Kiến thức and Quản trị with name tooltips. Work and knowledge icons open the first visible page in their group.
+   The expand/collapse button, topbar toggle and ⌘B share the admin preference, stored in
+   `localStorage["hive.nav.admin-expanded"]` with guarded reads/writes. The 208 px admin menu stays as it is.
+   Leaving admin restores the sidebar state used outside admin; on phones the existing drawer stays available.
+6. **Project settings use one sticky horizontal section bar above the form.** Scrollable chips highlight the
+   section being read and links scroll to that section with clearance for the topbar and section bar. There is
+   no fourth contents column, including on wide screens. The active chip scrolls into horizontal view.
+7. **Member roles are badges in the table.** Change a role from the member detail page or the row's ⋯ menu,
+   in a confirmation dialog naming the person and showing the old → new role before sending the request.
+   Name and email share one line. Login methods, last activity and joined date are hidden by default and can be
+   enabled through Columns. At 1440 and 1100 px the default columns fit; when extra columns or an expanded sidebar
+   require scrolling, pin Person and actions. Bulk role changes show the same transition for every selected person.
+
 Templates (Claude Design components, open on the canvas or read the source):
 
 | File | Pattern | Reference page in code |
@@ -91,10 +105,9 @@ PageBody          description list / related table / sections with their own Sav
 
 ### Width and grid
 
-- Gutters: 16 px below 768 px, 24 px from 768 px (`p-4 md:p-6`). The sidebar is 240 px (icon rail when collapsed)
-  and admin pages add the 208 px admin menu from 1024 px: at 1100 px the content column of an admin page is about
-  600 px, at 1440 px about 970 px. Design every admin table for 600 px first (pin the first column, hide secondary
-  columns by default).
+- Gutters: 16 px below 768 px, 24 px from 768 px (`p-4 md:p-6`). The main sidebar is 256 px when expanded and starts at 56 px in admin.
+  Admin pages add the 208 px menu from 1024 px: after 24 px gutters the usable width is about 788 px at 1100 px
+  and 1128 px at 1440 px. Pin identifying/action columns and hide secondary columns by default.
 - `PageBody width`: `full` for tables and dashboards (no cap), `wide` (1360 px) for detail pages and reading
   surfaces, `form` (1120 px) for settings. Give `PageHeader` the same `width` so the title lines up with the content.
 - Content is left-aligned. Do not centre pages on wide screens; the eye starts at the sidebar.
@@ -145,21 +158,19 @@ PageBody          description list / related table / sections with their own Sav
   previous/next replace the local pager; never show both). `Table`/`Th variant="plain"`/`Td` for small static
   tables. Always inside its own
   bordered, rounded container; the page never scrolls horizontally, the table container does.
-- Density: header 40 px (`text-xs` muted, sentence case), rows about 44 px (`py-2.5`), 14 px text. A second line in a
-  cell (email under name, branch under task) is `text-xs` muted.
+- Density: header 40 px (`text-xs` muted, sentence case), rows about 44 px (`py-2.5`), 14 px text. Secondary cell text (email next to the member name, branch under task) is `text-xs` muted.
 - Alignment: text and status left; numbers, money, durations, token counts and the actions column right
   (`align: "end"`, tabular figures). Dates: relative time with the absolute date in `title`, or `formatDay`.
 - Status is a `Pill` with a word; colour never carries state alone.
 - `minWidth`: set it to the sum of the columns you need, not the default 1060 px. A table of 3–4 columns should not
   scroll at 836 px. When it does scroll, pin the identifying column (`pin: "start"`, first visible column) and the
-  actions column (`pin: "end"`, last column).
+  actions column (`pin: "end"`, last column). Pinning starts at 640 px so a wide name cell cannot cover phone actions.
 - Row actions: at most two visible text buttons (`ghost`, `size="sm"`); more go into a `⋯` menu. Every icon-only
   button has an `aria-label` that names the row (`Thu hồi lời mời cho a@b.vn`). Destructive row actions ask for
   confirmation in a dialog that names the object.
 - Rows of a list whose objects have a detail page are clickable (`onRowClick` → navigate to the detail URL; Decision
   2). DataTable adds the chevron button (keyboard and screen readers) and ignores clicks on links, buttons, inputs,
-  selects and portalled menus inside the row. Keep inline controls (role select, lock) and the `⋯` menu for quick
-  actions; the detail page holds everything else.
+  selects and portalled menus inside the row. Keep the `⋯` menu for quick actions; member roles stay as badges and changes ask for confirmation.
 - Selection: checkbox column only when there are bulk actions the current user may run. The bulk bar replaces
   nothing: it sits above the table and states `Đã chọn n dòng`.
 - Pagination footer: range, rows per page, page n / total, previous/next. Default 20 rows; 10 for tables that share
@@ -182,8 +193,7 @@ PageBody          description list / related table / sections with their own Sav
 
 ## Settings forms
 
-- Four or more sections: `SettingsLayout` with `SettingsNav` (sticky list when the content column is at least 896 px
-  wide, a container query, so on admin pages it appears from about 1400 px; chip row below) and one
+- Four or more sections: `SettingsLayout` with `SettingsNav` (sticky horizontal chips above the form at every width) and one
   `SettingsSection` per topic. Fewer: sections stacked without nav.
 - `SettingsSection`: card with a header (title, one-line description, optional secondary action such as "Tạo quy trình
   từ cấu hình này") and a body of rows separated by hairlines. Every section has a title; no untitled cards.
