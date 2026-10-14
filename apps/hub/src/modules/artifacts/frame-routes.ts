@@ -5,19 +5,30 @@ import { brotliCompress, gzip, constants as zlibConstants } from "node:zlib";
 import {
   buildCsp,
   buildFrameDocument,
+  buildPublicPage,
   FRAME_TYPES,
   type FrameTheme,
   type FrameType,
   type LibManifest,
+  publicPageHeaders,
 } from "@xdev-hive/artifacts-runtime";
 import { LIB_DIST_DIR, readLibManifest } from "@xdev-hive/artifacts-runtime/node";
 import type { ArtifactType } from "@xdev-hive/contracts";
 import { and, eq, sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import type pg from "pg";
 import { ConflictError, ForbiddenError, type Tx, withTenant } from "../platform/index.ts";
 import { artifactError, type Reader } from "./access.ts";
 import { artifactPolicyOf } from "./limits.ts";
+import { countView, PublicViewLog, publicTarget, resolvePublicLink } from "./public-links.ts";
+import {
+  clientIp,
+  type PublicRateLimiter,
+  parseTrustedProxies,
+  publicRateLimiter,
+  type TrustedProxies,
+  type Verdict,
+} from "./rate-limit.ts";
 import { artifactPreviews, artifacts } from "./schema.ts";
 import { artifactFor, compileFor } from "./service.ts";
 import { FRAME_TICKET_TTL_SEC, type FrameTicket, signFrameTicket, verifyFrameTicket } from "./ticket.ts";
@@ -180,6 +191,13 @@ export interface FrameRoutesDeps extends FrameDeps {
   pool?: pg.Pool | undefined;
   /** Thư mục `dist/lib` của `@xdev-hive/artifacts-runtime`. */
   libDir?: string | undefined;
+  /** Mặc định đọc `HIVE_TRUSTED_PROXIES`. */
+  trustedProxies?: TrustedProxies | undefined;
+  /** Mặc định 60/phút mỗi IP, 600/phút mỗi link (D22); test truyền bộ riêng để không dính lượt của ca khác. */
+  rateLimiter?: PublicRateLimiter | undefined;
+  viewLog?: PublicViewLog | undefined;
+  /** Địa chỉ kết nối; mặc định lấy từ socket của `@hono/node-server`, test giả bằng hàm này. */
+  remoteAddress?: ((c: Context) => string | undefined) | undefined;
 }
 
 /** FR-071: header chung của mọi phản hồi khung, kể cả trang lỗi. */
@@ -205,6 +223,8 @@ type Loaded = {
   compiled: string | null;
   compileError: string | null;
   preview: boolean;
+  /** Vé `s`: phục vụ cho người ngoài nên không giữ cache, để link vừa thu hồi không còn mở được từ cache. */
+  publicLink: boolean;
 };
 
 /** `null`: không có (vé trỏ tới thứ không tồn tại trong tổ chức của vé); `gone`: đã xoá hoặc đã bị xoá vì bí mật. */
@@ -224,11 +244,23 @@ async function loadFramed(tx: Tx, t: FrameTicket): Promise<Loaded | "gone" | nul
         compileError = error instanceof Error ? error.message : String(error);
       }
     }
-    return { type: p.type, content: p.content, compiled: p.compiled, compileError, preview: true };
+    return { type: p.type, content: p.content, compiled: p.compiled, compileError, preview: true, publicLink: false };
   }
-  // Vé của link công khai cần kiểm lại link (còn hạn, chưa thu hồi, chính sách bật) mỗi lần nạp; chưa có nhánh đó thì
-  // không nhận, để vé `s` không bao giờ mở được nội dung mà link đã thu hồi.
-  if (t.s) return null;
+  // Vé của link công khai được kiểm lại link mỗi lần nạp (còn hạn, chưa thu hồi, chính sách bật…): vé sống 5 phút, link
+  // có thể bị thu hồi trong khoảng đó. Mọi lý do đều là "không có" để không dò được link đã từng tồn tại.
+  if (t.s) {
+    const target = await publicTarget(tx, t.s);
+    if (!target || target.artifactId !== t.a || target.version !== t.v || !isFrameType(target.type)) return null;
+    await countView(tx, target.linkId);
+    return {
+      type: target.type,
+      content: target.content,
+      compiled: target.compiled,
+      compileError: target.compileError,
+      preview: false,
+      publicLink: true,
+    };
+  }
   const [a] = await tx
     .select({ type: artifacts.type, deletedAt: artifacts.deletedAt })
     .from(artifacts)
@@ -238,10 +270,17 @@ async function loadFramed(tx: Tx, t: FrameTicket): Promise<Loaded | "gone" | nul
   const v = await versionRow(tx, t.a, t.v);
   if (!v) return null;
   if (v.tombstonedAt || v.content === null) return "gone";
-  return { type: a.type, content: v.content, compiled: v.compiled, compileError: v.compileError, preview: false };
+  return {
+    type: a.type,
+    content: v.content,
+    compiled: v.compiled,
+    compileError: v.compileError,
+    preview: false,
+    publicLink: false,
+  };
 }
 
-function plain(status: 403 | 404 | 410 | 503, text: string): Response {
+function plain(status: 403 | 404 | 410 | 429 | 503, text: string, extra: Record<string, string> = {}): Response {
   return new Response(text, {
     status,
     headers: {
@@ -250,9 +289,45 @@ function plain(status: 403 | 404 | 410 | 503, text: string): Response {
       "Cache-Control": "no-store",
       // Trang lỗi cũng có thể bị mở trực tiếp; không có lý do cho nó chạy gì.
       "Content-Security-Policy": "default-src 'none'; sandbox",
+      ...extra,
     },
   });
 }
+
+const PUBLIC_NOT_FOUND_TEXT = "Liên kết không tồn tại hoặc đã hết hạn.";
+const TOO_MANY_TEXT = "Quá nhiều yêu cầu. Thử lại sau.";
+
+/**
+ * Trang 404 của link công khai: một trang cho mọi lý do (mã sai, hết hạn, thu hồi, thùng rác, tombstone, chính sách tắt),
+ * cùng nội dung và header, để người ngoài không phân biệt được link chưa từng có với link đã tắt (FR-142, SC-012).
+ */
+const PUBLIC_NOT_FOUND_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Không tìm thấy</title><style>body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:#fff;color:#18181b}main{max-width:640px;margin:0 auto;padding:4rem 1rem}h1{font-size:1.25rem;margin:0}@media (prefers-color-scheme:dark){body{background:#09090b;color:#fafafa}}</style></head><body><main><h1>${PUBLIC_NOT_FOUND_TEXT}</h1></main></body></html>`;
+
+function publicNotFound(): Response {
+  return new Response(PUBLIC_NOT_FOUND_PAGE, {
+    status: 404,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      "X-Robots-Tag": "noindex, nofollow",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+const tooMany = (verdict: Extract<Verdict, { ok: false }>) =>
+  plain(429, TOO_MANY_TEXT, { "Retry-After": String(verdict.retryAfterSec), "X-Robots-Tag": "noindex, nofollow" });
+
+/** Địa chỉ socket do `@hono/node-server` đặt vào `c.env`; không có (test, adapter khác) thì không biết IP. */
+function socketAddress(c: Context): string | undefined {
+  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
+  return env?.incoming?.socket?.remoteAddress;
+}
+
+const VIEW_FLUSH_MS = 60_000;
 
 /**
  * `/_artifact/frame/:ticket` và `/_artifact/lib/*`. Đăng ký trước SPA và trước `/rpc`, `/api` (FR-073); mọi đường khác
@@ -263,17 +338,35 @@ export function frameRoutes(deps: FrameRoutesDeps): Hono {
   const libDir = resolve(deps.libDir ?? LIB_DIST_DIR);
   const manifest = libManifestLoader(libDir);
   const libBase = hubLibBase(deps.publicUrl);
+  const trusted = deps.trustedProxies ?? parseTrustedProxies(process.env.HIVE_TRUSTED_PROXIES);
+  const limiter = deps.rateLimiter ?? publicRateLimiter();
+  const viewLog = deps.viewLog ?? new PublicViewLog();
+  const remoteOf = deps.remoteAddress ?? socketAddress;
+  const ipOf = (c: Context) => clientIp(remoteOf(c), c.req.header("x-forwarded-for"), trusted);
+  const pool = deps.pool;
+  if (pool) setInterval(() => void viewLog.flush(pool), VIEW_FLUSH_MS).unref();
 
   app.get("/_artifact/frame/:ticket", async (c) => {
     const ticket = deps.frameKey ? verifyFrameTicket(deps.frameKey, c.req.param("ticket")) : null;
     if (!ticket) return plain(403, "Vé khung không hợp lệ hoặc đã hết hạn. Tải lại khung để nhận vé mới.");
+    // Khung của link công khai do người ngoài mở nên chung hạn mức với trang `/s/`; vé khác cần người đã đăng nhập.
+    const publicLink = "s" in ticket && ticket.s ? ticket.s : null;
+    const ip = publicLink ? ipOf(c) : null;
+    if (publicLink && ip) {
+      const verdict = limiter.ip(ip);
+      if (!verdict.ok) return tooMany(verdict);
+      const perLink = limiter.link(publicLink);
+      if (!perLink.ok) return tooMany(perLink);
+    }
     if (!deps.pool) return plain(503, "Hub chưa nối database nên chưa mở được artifact.");
     const libs = manifest();
     if (!libs) return plain(503, "Hub chưa có bộ thư viện của khung artifact.");
     // Ngữ cảnh tổ chức lấy từ vé đã ký, không người dùng: RLS giữ truy vấn trong đúng tổ chức của vé.
     const found = await withTenant(deps.pool, { orgId: ticket.o }, (tx) => loadFramed(tx, ticket));
-    if (found === null) return plain(404, "Không tìm thấy artifact.");
+    if (found === null) return plain(404, publicLink ? PUBLIC_NOT_FOUND_TEXT : "Không tìm thấy artifact.");
     if (found === "gone") return plain(410, "Artifact hoặc phiên bản này đã bị xoá.");
+    if (publicLink && ip && "a" in ticket)
+      viewLog.record({ orgId: ticket.o, linkId: publicLink, artifactId: ticket.a, version: ticket.v, ip });
     const html = buildFrameDocument({
       type: found.type,
       content: found.content,
@@ -291,8 +384,47 @@ export function frameRoutes(deps: FrameRoutesDeps): Hono {
         "Content-Security-Policy": buildCsp({ libBase }),
         // Bản xem trước đổi theo từng lần gõ và có thể chứa thứ người dùng chưa định lưu; phiên bản thì bất biến nên
         // giữ trong cache riêng đúng bằng đời của vé.
-        "Cache-Control": found.preview ? "private, no-store" : `private, max-age=${FRAME_TICKET_TTL_SEC}`,
+        "Cache-Control":
+          found.preview || found.publicLink ? "private, no-store" : `private, max-age=${FRAME_TICKET_TTL_SEC}`,
       },
+    });
+  });
+
+  /*
+   * Trang link công khai (D21, FR-143): trang tĩnh không script, nội dung nằm trong khung với vé `s` dựng ngay lúc trả
+   * trang. Không đọc cookie hay `Authorization`; giới hạn IP đứng trước mọi truy vấn database để dò mã tốn hạn mức.
+   */
+  app.get("/_artifact/s/:token", async (c) => {
+    const verdict = limiter.ip(ipOf(c));
+    if (!verdict.ok) return tooMany(verdict);
+    if (!deps.pool || !deps.frameKey) return plain(503, "Hub chưa sẵn sàng mở link công khai.");
+    const key = deps.frameKey;
+    const pool = deps.pool;
+    const link = await resolvePublicLink(pool, c.req.param("token"));
+    if (!link) return publicNotFound();
+    const perLink = limiter.link(link.linkId);
+    if (!perLink.ok) return tooMany(perLink);
+    const target = await withTenant(pool, { orgId: link.orgId }, (tx) => publicTarget(tx, link.linkId));
+    if (!target || !isFrameType(target.type)) return publicNotFound();
+    // Trang không có script nên không biết người xem dùng nền tối; khung theo nền sáng như trang (trang tự đổi màu).
+    const { ticket } = signFrameTicket(key, {
+      o: link.orgId,
+      a: target.artifactId,
+      v: target.version,
+      s: target.linkId,
+      t: "light",
+    });
+    const url = frameUrlOf(deps.publicUrl, ticket);
+    const html = buildPublicPage({
+      title: target.title,
+      type: target.type,
+      version: target.version,
+      expiresAt: target.expiresAt,
+      frameUrl: url,
+    });
+    return new Response(html, {
+      status: 200,
+      headers: { ...publicPageHeaders({ frameUrl: url }), "Content-Type": "text/html; charset=utf-8" },
     });
   });
 
