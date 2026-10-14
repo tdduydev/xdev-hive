@@ -94,6 +94,8 @@ Một app cho mọi người, menu hiện theo quyền. Không tách app dev và
 | `AppTokens.dc.html` | Ngữ cảnh theo nhóm của `/context`, thứ tiêu hạn mức theo `/usage`, gợi ý tối ưu |
 | `AppSetup.dc.html` | Môi trường: CLI, runtime, công cụ, MCP, thư viện dự án, kèm lệnh cài |
 | `AppPlans.dc.html` | Gói agent nhóm theo CLI: ô "Cả máy", khối Claude Code / Codex / Antigravity với lưới thẻ gói, băng tìm đăng nhập chưa thêm, hộp thêm gói theo bước. Tweak `view` mở hộp thêm hoặc hộp tìm thấy |
+| `AppWork.dc.html` | Việc của tôi (hồ sơ dev và lead, quyền `work.mine`): bảng "Task của tôi" có nút Giao cho agent, bảng "Lượt chạy của tôi", và màn theo dõi một run (trạng thái, lý do đang chờ máy, log trực tiếp). Tweak `view`: `list`, `run`, `waiting`, `loading`, `empty`, `error` |
+| `AppKnowledge.dc.html` | Tra cứu tri thức (mọi hồ sơ, chỉ đọc): một ô tìm cho Tài liệu, Memory và Skill, bản đọc tài liệu có nút sang trình soạn và bản đọc skill. Tweak `view`: `results`, `start`, `none`, `loading`, `error`, `doc`, `skill` |
 
 Chế độ quyền, lệnh `/`, cách đăng nhập và đường dẫn skill trong `AppDocs` và `AppSkills` lấy từ Claude Code 2.1.296
 và codex-cli 0.162.1 cài trên máy dev ngày 2026-10-12. Định dạng từng dòng thao tác trong khung chat và chữ của Approve
