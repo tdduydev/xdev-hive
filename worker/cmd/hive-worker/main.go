@@ -388,7 +388,7 @@ func run(args []string) int {
 	pool := accounts.NewPool(accounts.DefaultPath(path))
 	go pool.Watch(ctx)
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
-	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "xdev-hive", "worker", "terminal"))
+	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "xdev-hive", "worker", "terminal"), newRemote(cfg, path, detectCLIs()))
 	defer stopLocal()
 	slots := *capacity
 	if !flagSet(fs, "capacity") {

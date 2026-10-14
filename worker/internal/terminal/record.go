@@ -45,8 +45,8 @@ type RecordOpen struct {
 	Cols, Rows             int
 }
 
-// Recorder là Handler của kênh cho phiên trên máy cá nhân. Điều khiển từ xa (ghép, cấp quyền, mở phiên từ xa) chưa có
-// nên mọi yêu cầu từ xa bị từ chối như máy chưa bật từ xa (T020, T031, T050 thay phần này).
+// Recorder là Handler của kênh cho phiên trên máy cá nhân. Ghép, tắt và gỡ thiết bị chuyển cho Remote; mở phiên và
+// cấp quyền từ xa chưa có nên bị từ chối như máy chưa bật từ xa (T031, T050 thay phần này).
 type Recorder struct {
 	// Dir chứa đệm `<phiên>.pending`; file còn lại từ lần chạy trước bị xoá vì PTY của chúng đã mất.
 	Dir        string
@@ -54,8 +54,11 @@ type Recorder struct {
 	Flush      time.Duration
 	ChunkBytes int
 	Logger     *slog.Logger
-	// BaseState dựng phần term_state ngoài danh sách phiên (bật từ xa, thư mục, thiết bị). nil là chưa bật gì.
+	// BaseState dựng phần term_state ngoài danh sách phiên (bật từ xa, thư mục, thiết bị); nil thì lấy từ Remote, không
+	// có Remote là chưa bật gì.
 	BaseState func() State
+	// Remote nhận term_pair, term_disable, term_device_revoke; nil là máy không có điều khiển từ xa.
+	Remote *Remote
 
 	once     sync.Once
 	wake     chan struct{}
@@ -403,8 +406,11 @@ func (r *Recorder) pass() bool {
 
 func (r *Recorder) stateLocked() State {
 	var st State
-	if r.BaseState != nil {
+	switch {
+	case r.BaseState != nil:
 		st = r.BaseState()
+	case r.Remote != nil:
+		st = r.Remote.State()
 	}
 	st.Sessions = nil
 	for _, s := range r.sessions {
@@ -419,6 +425,10 @@ func (r *Recorder) stateLocked() State {
 // OnWelcome: hub khai "terminal" và máy không dùng chung thì ghi và gửi bù; không thì bỏ mọi đệm và thôi ghi.
 func (r *Recorder) OnWelcome(info WelcomeInfo, send Sender) {
 	r.init()
+	if r.Remote != nil {
+		r.Remote.OnChange(r.StateChanged)
+		r.Remote.OnWelcome(info)
+	}
 	r.mu.Lock()
 	r.off = !info.Terminal || (info.Owner != nil && info.Owner.Shared)
 	if r.off {
@@ -431,6 +441,15 @@ func (r *Recorder) OnWelcome(info WelcomeInfo, send Sender) {
 		r.link = send
 		r.resync = true
 	}
+	r.mu.Unlock()
+	r.signal()
+}
+
+// StateChanged gửi term_state mới ở lượt gửi kế tiếp (bật/tắt, thư mục, thiết bị đổi tại máy).
+func (r *Recorder) StateChanged() {
+	r.init()
+	r.mu.Lock()
+	r.dirty = true
 	r.mu.Unlock()
 	r.signal()
 }
@@ -508,14 +527,38 @@ func (r *Recorder) Control(req ControlRequest) {
 }
 
 func (r *Recorder) Pair(req PairRequest) {
-	r.reply(func(l Sender) error { return l.PairResult(PairResult{PairID: req.PairID, Reason: "disabled"}) })
+	if r.Remote == nil {
+		r.reply(func(l Sender) error { return l.PairResult(PairResult{PairID: req.PairID, Reason: pairDisabled}) })
+		return
+	}
+	// Chờ người ở máy bấm Cho phép tới 50 giây: không được chặn vòng đọc của kênh. Gửi kết quả qua kết nối lúc trả lời,
+	// vì kết nối lúc nhận có thể đã đứt.
+	go func() {
+		res := r.Remote.HandlePair(req)
+		r.mu.Lock()
+		link := r.link
+		r.mu.Unlock()
+		if link != nil {
+			_ = link.PairResult(res)
+		}
+	}()
 }
 
-func (r *Recorder) Detach(DetachRequest)             {}
-func (r *Recorder) Input(InputRequest)               {}
-func (r *Recorder) Resize(ResizeRequest)             {}
-func (r *Recorder) Disable(DisableRequest)           {}
-func (r *Recorder) DeviceRevoke(DeviceRevokeRequest) {}
+func (r *Recorder) Disable(req DisableRequest) {
+	if r.Remote != nil {
+		go r.Remote.HubDisable(req)
+	}
+}
+
+func (r *Recorder) DeviceRevoke(req DeviceRevokeRequest) {
+	if r.Remote != nil {
+		go r.Remote.HubDeviceRevoke(req)
+	}
+}
+
+func (r *Recorder) Detach(DetachRequest) {}
+func (r *Recorder) Input(InputRequest)   {}
+func (r *Recorder) Resize(ResizeRequest) {}
 
 const remoteDisabledText = "Máy chưa bật điều khiển từ xa. Chủ máy bật tại máy (app hoặc `hive remote on`)."
 

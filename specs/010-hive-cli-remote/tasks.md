@@ -244,7 +244,16 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 ## Phase 3: User Story 2 — Bật từ xa và ghép điện thoại (P1) 🎯 MVP
 
-- [ ] T020 [US2] Worker: bật/tắt, thư mục, ghép, thiết bị
+- [x] T020 [US2] Worker: bật/tắt, thư mục, ghép, thiết bị
+  - Đã làm (SPEC10W4): `terminal.Remote` (`remote.go`: `remote.status|enable|disable|roots.add|roots.remove|
+    devices.remove|settings`; root phải là thư mục tuyệt đối có thật, lưu dạng đã giải symlink, trùng/cả ổ đĩa bị từ
+    chối, tối đa 32; `term_state` chỉ có nhãn), `pairing.go` (`remote.pair.begin` trả `pairId`, bí mật và URL QR
+    `…/remote/pair?m=<tên máy>&p=<pairId>#s=<bí mật>` — `m` là tên máy trong hello, web (T022) tra ra id; term_pair kiểm
+    tag, chủ máy theo welcome, hỏi qua `watch`, chờ 50 s, `remote.pair.decide`; ghép lại cùng passkey thay bản cũ),
+    `watch.go` (trạng thái rồi sự kiện `state|pair_request|pair_done`, nhận `remote.pair.decide` trên cùng kết nối, phát
+    lại yêu cầu đang chờ), `audit.go` (`remote-audit.log` cạnh worker.json, 0600, xoay 10 MB × 5). `Recorder` chuyển
+    `term_pair|term_disable|term_device_revoke` cho `Remote`, gửi `term_state` mỗi khi đổi. welcome máy dùng chung → tắt;
+    đổi chủ → xoá thiết bị. Runner host không mở socket nội bộ nên không có đường bật. Kết thúc phiên từ xa khi tắt để T040.
   - Thao tác socket nội bộ `remote.*`, `watch`; `term_state` sau `welcome` và khi đổi; nhận `term_pair` (kiểm tag, hỏi
     xác nhận qua `watch`, lưu, `term_pair_result`), `term_disable`, `term_device_revoke`; từ chối bật ở chế độ `host` và
     máy dùng chung; `owner` trong `welcome` khác `ownerUserId` → xoá thiết bị; `remote-audit.log` (JSON dòng, xoay 10 MB ×
