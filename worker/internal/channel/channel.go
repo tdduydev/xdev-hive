@@ -135,6 +135,14 @@ type jobSpec struct {
 	} `json:"brief"`
 }
 
+// normalizeRepoURL: hub cũ gửi "owner/repo" của GitHub thay cho URL.
+func normalizeRepoURL(repo string) string {
+	if repo != "" && !strings.Contains(repo, "://") && !strings.HasPrefix(repo, "git@") {
+		return "https://github.com/" + strings.Trim(repo, "/") + ".git"
+	}
+	return repo
+}
+
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	var s jobSpec
 	if err := json.Unmarshal(o.Spec, &s); err != nil {
@@ -147,9 +155,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	if repo == "" {
 		repo = s.Repo
 	}
-	if repo != "" && !strings.Contains(repo, "://") && !strings.HasPrefix(repo, "git@") {
-		repo = "https://github.com/" + strings.Trim(repo, "/") + ".git"
-	}
+	repo = normalizeRepoURL(repo)
 	switch {
 	case s.ProjectKey != "":
 		project = s.ProjectKey
@@ -274,6 +280,10 @@ func (c Config) Run(ctx context.Context) error {
 		if err := runner.ReapSandboxOrphans(ctx, *c.Sandbox); err != nil {
 			return fmt.Errorf("dọn container cũ: %w", err)
 		}
+	}
+	// Phiên terminal Leader không sống qua lần khởi động: worktree còn trong terminals/ là rác.
+	if err := runner.ReapTerminals(c.DataDir); err != nil {
+		c.Logger.Warn("Không dọn được worktree của phiên terminal cũ", "error", err)
 	}
 	// Phiên đăng nhập gói từ web không sống qua lần khởi động: tài khoản dở còn lại là rác của lần worker chết giữa chừng.
 	if c.Accounts != nil {
@@ -497,6 +507,14 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 			jobs.onLoginInput(m)
 		case *AccountLoginCancel:
 			jobs.onLoginCancel(m)
+		case *TermOpen:
+			jobs.onTermOpen(m)
+		case *TermInput:
+			jobs.onTermInput(m)
+		case *TermResize:
+			jobs.onTermResize(m)
+		case *TermClose:
+			jobs.onTermClose(m)
 		default:
 			c.Logger.Info("Chưa xử lý gói từ hub", "type", fmt.Sprintf("%T", m))
 		}
