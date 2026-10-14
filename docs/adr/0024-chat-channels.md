@@ -48,3 +48,27 @@ and would have no tenant or role model.
 - One bot per organization and kind keeps tenant routing trivial: the bot id in the URL selects the organization.
 - A chat account can be linked to one user per bot; unlinking on the web or with `/unlink` frees it.
 - Discord, Teams, per-team bots and rich Slack formatting are out of scope.
+
+## Follow-up: T011 and T012 (2026-10-14)
+
+Telegram long polling is now opt-in per bot UUID through `HIVE_TELEGRAM_POLL_BOT_IDS` on the API process. It removes
+the webhook without dropping pending updates, shares webhook command/action handling, and uses a separate PostgreSQL
+session with an advisory lock per token. The next update id is stored inside the encrypted bot config, preserving
+the cursor across restarts without a new table or migration. Token replacement resets the cursor; replacing the same
+token preserves it. Transient failures retry after five seconds and shutdown cancels the pending request. There is
+an at-least-once window between the business transaction and saving the cursor, so free-text Leader turns can repeat
+after a crash in that window. Each polling bot consumes one extra database connection.
+
+Human code-review checkpoints now have chat buttons containing server-side `headSha` and `gateRunId`. Notifications
+show the full SHA and link to the diff; decisions reuse the web function, including provider head checks, permissions,
+requester exclusion and quorum. Checking the gate run under the review lock prevents a stale button from approving a
+later checkpoint on the same SHA. Chat returns use the checkpoint's configured route and a fixed Vietnamese note;
+detailed feedback still uses the web. Automatic gate overrides remain on the web.
+
+Operation: create the Telegram bot on the web, obtain its UUID from `GET /v1/chat/bots`, set the comma-separated env
+list, and restart the API process. The connection test reports polling and does not register a webhook for that bot.
+To return to webhooks, remove the UUID, restart the API process, then run the connection test with an HTTPS public URL.
+Polling IDs must be configured consistently on all API instances so an instance cannot reinstall the webhook.
+
+Reference: [Telegram Bot API: getUpdates](https://core.telegram.org/bots/api#getupdates) and
+[deleteWebhook](https://core.telegram.org/bots/api#deletewebhook).

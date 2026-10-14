@@ -23,6 +23,7 @@ export {
   deliverOutbox,
   registerChatWorker,
 } from "./outbox.ts";
+export { startTelegramPolling } from "./polling.ts";
 export { linkAttemptLimiter, messageLimiter } from "./rate-limit.ts";
 export { type ChatRouterDeps, chatRouter } from "./router.ts";
 export { handleSlackWebhook, handleTelegramWebhook } from "./webhooks.ts";

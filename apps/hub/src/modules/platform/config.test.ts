@@ -72,3 +72,16 @@ describe("loadConfig: SMTP nội bộ", () => {
     expect(loadConfig({ HIVE_NOTIFY_ALLOW_PRIVATE: "1" }).notifyAllowPrivate).toBe(true);
   });
 });
+
+describe("loadConfig: Telegram long polling", () => {
+  it("mặc định dùng webhook; chuẩn hoá UUID và bỏ ID trùng", () => {
+    const id = "abcdef01-2345-6789-abcd-ef0123456789";
+    expect(loadConfig({}).telegramPollingBotIds).toEqual([]);
+    expect(loadConfig({ HIVE_TELEGRAM_POLL_BOT_IDS: ` ${id.toUpperCase()},,${id}` }).telegramPollingBotIds).toEqual([
+      id,
+    ]);
+  });
+  it("từ chối danh sách ID sai", () => {
+    expect(() => loadConfig({ HIVE_TELEGRAM_POLL_BOT_IDS: "không-phải-uuid" })).toThrow(/HIVE_TELEGRAM_POLL_BOT_IDS/);
+  });
+});
