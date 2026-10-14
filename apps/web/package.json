@@ -26,6 +26,7 @@
     "@xdev-hive/code-review": "workspace:*",
     "@xdev-hive/contracts": "workspace:*",
     "@xdev-hive/doc-editor": "workspace:*",
+    "@xdev-hive/sdlc-ui": "workspace:*",
     "@xdev-hive/ui": "workspace:*",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-unicode11": "0.9.0",
