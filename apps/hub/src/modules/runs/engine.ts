@@ -2193,6 +2193,14 @@ export function createRunsEngine(deps: RunsDeps) {
       {
         orgId: run.orgId,
         event: "plan.awaiting_approval",
+        // Người giao việc là người duyệt: vào hộp thư của họ và tới chat của họ (nếu đã liên kết) kèm nút Duyệt/Trả lại.
+        recipientIds: [run.createdBy],
+        actions: task
+          ? [
+              { kind: "plan.approve", taskId: task.id, planId: plan.id },
+              { kind: "plan.reject", taskId: task.id, planId: plan.id },
+            ]
+          : [],
         title: `Kế hoạch của ${key} chờ duyệt`,
         body: [
           task?.title ?? "",
@@ -2424,7 +2432,7 @@ export function createRunsEngine(deps: RunsDeps) {
   async function startLeaderRun(
     tx: Tx,
     userId: string,
-    input: { threadId: string; projectId: string; prompt: string; cli?: RunRow["cli"] },
+    input: { threadId: string; projectId: string; prompt: string; cli?: RunRow["cli"]; model?: string | null },
   ) {
     const project = await projectFor(tx, userId, input.projectId, "member");
     if (!projectReady(project)) throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo.");
@@ -2457,7 +2465,7 @@ export function createRunsEngine(deps: RunsDeps) {
         leaderThreadId: input.threadId,
         kind: "leader",
         cli: input.cli ?? null,
-        model: input.cli ? (project.settings.models?.[input.cli]?.leader ?? null) : null,
+        model: input.model ?? (input.cli ? (project.settings.models?.[input.cli]?.leader ?? null) : null),
         branch: `leader/${input.threadId}`,
         policySnapshot: [],
         createdBy: userId,
