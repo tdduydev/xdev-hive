@@ -3,6 +3,7 @@ import {
   validateAuditSearch,
   validateMcpSearch,
   validateProposalsSearch,
+  validateSdlcBoardSearch,
   validateSkillSearch,
 } from "@/lib/route-search.ts";
 
@@ -21,5 +22,13 @@ describe("route search", () => {
       validateAuditSearch({ range: 30, actorType: "run", source: "bogus", q: "x".repeat(250), action: "" }),
     ).toEqual({ range: 30, actorType: "run", q: "x".repeat(200) });
     expect(validateAuditSearch({ range: "7" })).toEqual({});
+  });
+
+  it("keeps the AI SDLC board filters only when they are non-empty text", () => {
+    expect(validateSdlcBoardSearch({ project: "p1", mode: "speckit" })).toEqual({ project: "p1", mode: "speckit" });
+    expect({ project: 3, mode: "", ...validateSdlcBoardSearch({ project: 3, mode: "" }) }).toEqual({
+      project: undefined,
+      mode: undefined,
+    });
   });
 });
