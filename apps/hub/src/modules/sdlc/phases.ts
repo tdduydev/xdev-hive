@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import {
   type ReviewGate,
   type ReviewPhase,
+  reviewGate,
+  reviewPhase,
   type SdlcMode,
   type SdlcPhase,
   type SdlcPhaseStatus,
@@ -24,6 +26,7 @@ import {
 import type { ProviderFactory } from "../scm/index.ts";
 import { teams } from "../tenancy/index.ts";
 import { activeItemProjects, requireItemManage } from "./access.ts";
+import { contractCheckpointTeams } from "./contracts.ts";
 import { sdlcArtifactSyncs, sdlcArtifacts, sdlcItemPhases, sdlcItemProjects, sdlcItems, sdlcSteps } from "./schema.ts";
 
 /*
@@ -424,6 +427,10 @@ export async function workflowFor(tx: Tx, docKey: string): Promise<SdlcWorkflow 
       phaseId: sdlcArtifacts.phaseId,
       number: sdlcItems.number,
       mode: sdlcItems.mode,
+      scope: sdlcArtifacts.scope,
+      instance: sdlcArtifacts.instance,
+      providerProjectId: sdlcArtifacts.projectId,
+      consumerProjectIds: sdlcArtifacts.consumerProjectIds,
     })
     .from(sdlcArtifacts)
     .innerJoin(sdlcItems, eq(sdlcItems.id, sdlcArtifacts.itemId))
@@ -431,6 +438,11 @@ export async function workflowFor(tx: Tx, docKey: string): Promise<SdlcWorkflow 
   if (!row) return null;
   const phase = row.mode.phases.find((p) => p.id === row.phaseId);
   if (!phase) return null;
+  if (row.scope === "contract")
+    return {
+      name: `${sdlcItemRef(row.number)} · ${phase.name} · contract ${row.instance}`,
+      phases: contractPhases(phase.gate, contractParties(await itemTeams(tx, row.itemId), row)),
+    };
   return {
     name: `${sdlcItemRef(row.number)} · ${phase.name}`,
     phases: await perTeamWorkflow(tx, row.itemId, phase.gate, phase.perProjectGates),
@@ -502,13 +514,21 @@ export function expandPerProjectGates(
   itemTeamList: readonly ItemTeam[],
 ): ReviewPhase[] {
   if (perProjectGates.length === 0 || itemTeamList.length <= 1) return phases.map((p) => ({ ...p }));
-  const wanted = new Set(perProjectGates);
+  return scopeGatesToTeams(phases, (g) => perProjectGates.includes(g.id), itemTeamList);
+}
+
+/** Nhân mỗi checkpoint người được chọn thành một checkpoint cho mỗi đội trong `teamList`, kể cả khi chỉ có một đội. */
+export function scopeGatesToTeams(
+  phases: readonly ReviewPhase[],
+  pick: (gate: ReviewGate) => boolean,
+  teamList: readonly ItemTeam[],
+): ReviewPhase[] {
   return phases.map((phase) => {
     const used = new Set(phase.gates.map((g) => g.id));
     const gates = phase.gates.flatMap((gate): ReviewGate[] => {
-      if (gate.kind !== "human" || !wanted.has(gate.id)) return [gate];
+      if (gate.kind !== "human" || !pick(gate)) return [gate];
       used.delete(gate.id);
-      return itemTeamList.map((team, i) => ({
+      return teamList.map((team, i) => ({
         ...gate,
         id: teamGateId(gate.id, team, i, used),
         name: clip(`${gate.name} · ${team.name} (${team.projects.map((p) => p.key).join(", ")})`, 120),
@@ -535,4 +555,46 @@ export async function perTeamWorkflow(
 ): Promise<ReviewPhase[]> {
   if (perProjectGates.length === 0) return phases.map((p) => ({ ...p }));
   return expandPerProjectGates(phases, perProjectGates, await itemTeams(tx, itemId));
+}
+
+// ---- Cổng của contract (D23) ---------------------------------------------------------------------------------------
+
+/** Đội của các bên contract, bên cung cấp trước; mỗi đội chỉ giữ dự án là một bên để tên checkpoint nói đúng bên nào. */
+export function contractParties(
+  teamList: readonly ItemTeam[],
+  contract: { providerProjectId: string; consumerProjectIds: readonly string[] },
+): ItemTeam[] {
+  const participants = teamList.flatMap((t) =>
+    t.projects.map((p) => ({ projectId: p.id, key: p.key, teamId: t.teamId })),
+  );
+  const parties = new Set([contract.providerProjectId, ...contract.consumerProjectIds]);
+  return contractCheckpointTeams(
+    { providerProjectId: contract.providerProjectId, consumerProjectIds: [...contract.consumerProjectIds] },
+    participants,
+  ).flatMap((teamId) => {
+    const team = teamList.find((t) => t.teamId === teamId);
+    return team ? [{ ...team, projects: team.projects.filter((p) => parties.has(p.id)) }] : [];
+  });
+}
+
+const CONTRACT_GATE = reviewGate.parse({
+  id: "contract",
+  name: "Các bên đồng ý contract",
+  kind: "human",
+  reviewers: { roles: ["team-admin"] },
+});
+
+/**
+ * Cổng giai đoạn cộng một checkpoint người cho mỗi đội là một bên (D23). Bỏ checkpoint quy tắc của giai đoạn: chúng kiểm
+ * mục bắt buộc của tài liệu Markdown trong giai đoạn, còn contract là file OpenAPI/proto… nên sẽ luôn trượt. Giai đoạn
+ * không có checkpoint người thì thêm một, vì contract không bao giờ được qua mà thiếu người của các đội.
+ */
+export function contractPhases(gate: readonly ReviewPhase[], parties: readonly ItemTeam[]): ReviewPhase[] {
+  const kept = gate
+    .map((p) => ({ ...p, gates: p.gates.filter((g) => g.kind !== "rule") }))
+    .filter((p) => p.gates.length > 0);
+  const phases = kept.some((p) => p.gates.some((g) => g.kind === "human"))
+    ? kept
+    : [...kept, reviewPhase.parse({ name: "Duyệt contract", gates: [CONTRACT_GATE] })];
+  return parties.length > 0 ? scopeGatesToTeams(phases, () => true, parties) : phases;
 }
