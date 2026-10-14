@@ -10,12 +10,15 @@ import {
   registerTemplateSyncWorker,
   templateSyncQueue,
 } from "./modules/catalog/index.ts";
+import { chatQueue, installChatHooks, registerChatWorker } from "./modules/chat/index.ts";
 import {
   codeReviewQueue,
   codeReviewSlaQueue,
+  codeReviewStatusQueue,
   registerCodeReviewScm,
   registerCodeReviewSla,
   registerCodeReviewWorker,
+  registerReviewStatusWorker,
   reviewGate,
 } from "./modules/codereview/index.ts";
 import {
@@ -117,6 +120,7 @@ jobs = config.jobsDatabaseUrl
         scmEventQueue,
         embedQueue,
         notifyQueue,
+        chatQueue,
         inboxCleanupQueue,
         fleetOfflineQueue,
         orphanUsersQueue,
@@ -128,6 +132,7 @@ jobs = config.jobsDatabaseUrl
         auditRetentionQueue,
         templateSyncQueue,
         codeReviewQueue,
+        codeReviewStatusQueue,
         codeReviewSlaQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
@@ -154,6 +159,10 @@ const runs =
     : undefined;
 if (!runs) console.warn("Chưa cấu hình HIVE_AUTH_SECRET: chưa ký được run token, không giao được run.");
 if (runs) registerRunHandlers(runs.handlers);
+
+// Thông báo và câu trả lời của leader đi tới chat qua hai hook mà notify và leader để ngỏ (không import chat được vì vòng
+// phụ thuộc). Cài ở mọi vai trò: notify() chạy cả trong tiến trình api lẫn jobs.
+installChatHooks(pool ? { jobs, publicUrl: config.publicUrl ?? `http://localhost:${config.port}` } : undefined);
 
 if (roles.includes("jobs") && jobs) {
   if (runs) await runs.registerJobs(jobs);
@@ -216,11 +225,17 @@ if (roles.includes("jobs") && jobs) {
       runEvidence: runs?.runEvidence,
     };
     await registerCodeReviewWorker(jobs, codeReviewDeps);
+    await registerReviewStatusWorker(jobs, codeReviewDeps);
     await registerCodeReviewSla(jobs, { pool, publicUrl: codeReviewDeps.publicUrl });
     registerCodeReviewScm(scmEvents, { ...codeReviewDeps, jobs });
     await registerScmEventWorker(jobs, { pool });
     // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
     await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
+    await registerChatWorker(jobs, {
+      pool,
+      masterKey: config.masterKey,
+      publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+    });
     await registerOrphanUsersWorker(jobs, { pool, keepEmails: config.orgCreators });
     await registerRunLogRetentionWorker(jobs, pool);
     await registerInboxCleanupWorker(jobs, pool);
