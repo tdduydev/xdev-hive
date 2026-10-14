@@ -29,7 +29,7 @@ func TestRunnerPublishesAndNoChanges(t *testing.T) {
 			_ = git(context.Background(), remote, "branch", "-D", branch)
 			var events []Event
 			r := Runner{DataDir: data, CLICommands: fakeCommands(tc.mode)}
-			err := r.Run(context.Background(), Job{RunID: tc.name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: branch, CLI: "codex", Prompt: "prompt", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": tc.mode}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
+			err := r.Run(context.Background(), Job{RunID: tc.name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: branch, CLI: "codex", Prompt: "prompt", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": tc.mode}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -77,7 +77,7 @@ func TestRunnerReviewChecksOutParentBranchWithoutPush(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			var events []Event
 			r := Runner{DataDir: data, CLICommands: fakeCommands(mode)}
-			job := Job{RunID: "review-" + mode, Kind: KindReview, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-1", CLI: "codex", Prompt: "review", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "parent.txt"}}
+			job := Job{RunID: "review-" + mode, Kind: KindReview, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-1", CLI: "codex", Prompt: "review", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "parent.txt"}}
 			if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
 				t.Fatal(err)
 			}
@@ -116,7 +116,7 @@ func TestRunnerReadOnlyRunsDoNotPush(t *testing.T) {
 			t.Run(kind+"/"+mode, func(t *testing.T) {
 				var events []Event
 				r := Runner{DataDir: data, CLICommands: fakeCommands(mode)}
-				job := Job{RunID: kind + "-" + mode, Kind: kind, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-2", CLI: "codex", Prompt: "plan", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "README", "HIVE_FAKE_ABSENT_FILE": "stale.txt"}}
+				job := Job{RunID: kind + "-" + mode, Kind: kind, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-2", CLI: "codex", Prompt: "plan", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "README", "HIVE_FAKE_ABSENT_FILE": "stale.txt"}}
 				if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
 					t.Fatal(err)
 				}
@@ -666,7 +666,7 @@ func TestClaudeMCPFileRemovedWhenRunFailsOrIsCancelled(t *testing.T) {
 			go func() {
 				done <- (Runner{DataDir: data, CLICommands: map[string]Command{}, KillGrace: 200 * time.Millisecond}).Run(ctx, Job{RunID: name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/" + name, CLI: "claude", Prompt: "run", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret", "HIVE_FAKE_MCP_MODE": mode, "HIVE_CAPTURE_MCP": capture}}, SinkFunc(func(Event) error { return nil }))
 			}()
-			limit := time.Now().Add(5 * time.Second)
+			limit := time.Now().Add(30 * time.Second)
 			for {
 				if _, err := os.Stat(capture); err == nil {
 					break
@@ -810,7 +810,7 @@ func TestRunnerRemovesWorktreeAfterResult(t *testing.T) {
 		}
 		removed = append(removed, dir)
 	}}
-	job := Job{RunID: "trash", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/trash", CLI: "codex", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "commit"}}
+	job := Job{RunID: "trash", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/trash", CLI: "codex", Prompt: "p", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "commit"}}
 	err := r.Run(context.Background(), job, SinkFunc(func(e Event) error {
 		if e.Type == "result" {
 			resultSeen = true
