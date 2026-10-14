@@ -54,7 +54,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--ring);outline-offse
   </div>
 </nav>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["home","sdlc","sdlc-questions","sdlc-metrics","sdlc-mine","sdlc-blocked","sdlc-wave","docs","skills","tokens","setup","runs"],"default":"home"},"role":{"editor":"enum","options":["dev","writer","lead"],"default":"dev"},"compact":{"editor":"boolean","default":false},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"$preview":{"width":220,"height":800}}'>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["home","sdlc","sdlc-questions","sdlc-metrics","sdlc-mine","sdlc-blocked","sdlc-wave","docs","skills","tokens","setup","runs","leader","artifacts"],"default":"home"},"role":{"editor":"enum","options":["dev","writer","lead"],"default":"dev"},"compact":{"editor":"boolean","default":false},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"$preview":{"width":220,"height":800},"artifacts":{"editor":"boolean","default":true}}'>
 // One app for everyone: items show or hide by permission, never by a separate app mode.
 class Component extends DCLogic {
   renderVals() {
@@ -66,13 +66,15 @@ class Component extends DCLogic {
     // Nhóm AI SDLC (spec 011, US7): mọi hồ sơ có sdlc.use thấy Hạng mục, Câu hỏi chờ tôi, Tiến độ; dev thêm Việc của tôi; sdlc.manage thêm Ngoại lệ chặn, Chạy đợt.
     // Writer (kể cả BA/PO) có sdlc.use nhưng vẫn không có env.manage / runs.local, nên không thấy Máy này hay Môi trường.
     const P = {
-      dev: ['docs.read', 'skills.read', 'skills.sync', 'tokens.read', 'env.manage', 'runs.local', 'sdlc.use', 'sdlc.mine'],
-      writer: ['docs.read', 'docs.write', 'skills.read', 'tokens.read', 'sdlc.use'],
-      lead: ['docs.read', 'docs.write', 'skills.read', 'skills.write', 'skills.sync', 'tokens.read', 'env.manage', 'runs.local', 'sdlc.use', 'sdlc.manage'],
+      dev: ['docs.read', 'skills.read', 'skills.sync', 'tokens.read', 'env.manage', 'runs.local', 'leader.use', 'artifacts.read', 'sdlc.use', 'sdlc.mine'],
+      writer: ['docs.read', 'docs.write', 'skills.read', 'tokens.read', 'leader.use', 'artifacts.read', 'sdlc.use'],
+      lead: ['docs.read', 'docs.write', 'skills.read', 'skills.write', 'skills.sync', 'tokens.read', 'env.manage', 'runs.local', 'leader.use', 'artifacts.read', 'sdlc.use', 'sdlc.manage'],
     }[role];
     const can = (p) => P.includes(p);
     const defs = [
       ['home', ['Tổng quan', 'Overview'], 'AppHome.dc.html', 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', 'docs.read'],
+      ['leader', ['Leader', 'Leader'], 'AppLeader.dc.html', 'M4 4h16v12H8l-4 4zM8 8h8M8 12h5', 'leader.use'],
+      ['artifacts', ['Artifact', 'Artifact'], 'AppArtifacts.dc.html', 'M4 3h12l4 4v14H4zM14 3v6h6M8 13h8M8 17h5', 'artifacts.read'],
       ['head-sdlc', ['AI SDLC', 'AI SDLC'], null, null, 'sdlc.use'],
       ['sdlc', ['Hạng mục', 'Items'], 'AppSdlcBoard.dc.html', 'M3 4h5v16H3zM10 4h5v10h-5zM17 4h4v6h-4z', 'sdlc.use'],
       ['sdlc-questions', ['Câu hỏi chờ tôi', 'Questions for me'], 'AppSdlcQuestions.dc.html', 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01', 'sdlc.use', null, '5', 'warn'],
@@ -88,7 +90,7 @@ class Component extends DCLogic {
       ['runs', ['Lượt chạy trên máy', 'Runs on this machine'], '#', 'M6 3v18l15-9z', 'runs.local'],
     ];
     const tone = { warn: 'background: var(--warning-soft); color: var(--warning);', bad: 'background: var(--destructive-soft); color: var(--destructive);' };
-    const items = defs.filter((d) => can(d[4])).map(([k, l, href, icon, , full, badge, tn]) => {
+    const items = defs.filter((d) => can(d[4]) && (this.props.artifacts !== false || !['leader','artifacts'].includes(d[0]))).map(([k, l, href, icon, , full, badge, tn]) => {
       if (k.startsWith('head-') || k.startsWith('sep-')) {
         // Tiêu đề nhóm: ở chế độ compact chỉ còn đường kẻ.
         const lab = k.startsWith('head-') ? x(l) : '';
