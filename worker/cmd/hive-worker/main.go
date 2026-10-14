@@ -365,6 +365,9 @@ func run(args []string) int {
 	// maxParallel của file, hoặc tổng số run các tài khoản bật cho phép; tối đa maxAutoCapacity.
 	pool := accounts.NewPool(accounts.DefaultPath(path))
 	go pool.Watch(ctx)
+	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
+	stopLocal := startLocalIPC(pool)
+	defer stopLocal()
 	slots := *capacity
 	if !flagSet(fs, "capacity") {
 		if slots, err = accounts.Capacity(accounts.DefaultPath(path), maxAutoCapacity); err != nil {
