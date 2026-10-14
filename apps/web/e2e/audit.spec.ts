@@ -106,8 +106,23 @@ test("server filters compose and cursor navigation sends the selected organizati
       action: "memory.write",
       q: "10.0.0.7",
     });
+  await expect(page).toHaveURL(/actorType=run/);
+  await expect(page).toHaveURL(/range=30/);
   await page.getByRole("button", { name: "Xoá hết bộ lọc", exact: true }).click();
   await expect(page.getByRole("row").filter({ hasText: "payment-api" })).toHaveCount(20);
+  await expect(page).not.toHaveURL(/actorType=/);
+});
+
+test("filters live in the URL so a filtered link opens the same view", async ({ page }) => {
+  const hub = await setup(page);
+  await page.goto("/admin/audit?actorType=run&range=30&q=10.0.0.7&source=bogus");
+  await expect(page.getByLabel("Loại người làm", { exact: true })).toHaveValue("run");
+  await expect(page.getByLabel("Tìm đối tượng, người làm, IP…", { exact: true })).toHaveValue("10.0.0.7");
+  await expect(page.getByRole("button", { name: "30 ngày", exact: true })).toHaveAttribute("aria-pressed", "true");
+  // Giá trị lạ trong URL bị bỏ, không gửi lên hub.
+  await expect
+    .poll(() => hub.rpcCalls.filter((c) => c.path === "audit/list").at(-1)?.input)
+    .toEqual({ range: 30, limit: 20, actorType: "run", q: "10.0.0.7" });
 });
 
 test("exports CSV and JSON with the current server filters", async ({ page }, testInfo) => {

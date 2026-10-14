@@ -302,7 +302,6 @@ export function CodeReviewsTab({
             pageSize={5}
             caption={t.queue}
             placeholder={t.search}
-            selectable={false}
             facets={[
               { key: "project", label: t.project, value: (row) => row.project.key },
               { key: "gate", label: t.gate, value: (row) => row.gate?.name ?? null },
