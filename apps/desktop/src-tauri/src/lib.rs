@@ -7,6 +7,7 @@ mod capabilities_audit;
 mod cli;
 mod doctor;
 mod files;
+mod git_groups;
 mod hub;
 mod local_projects;
 mod profiles;
@@ -686,6 +687,11 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
 pub fn run() {
     tls::ensure();
     tauri::Builder::default()
+        // Đăng ký đầu tiên: bản thứ hai phải thoát trước khi dựng tray hay bật worker thứ hai. App chưa có deep link
+        // hay tham số dòng lệnh để chuyển giao, nên chỉ cần đưa cửa sổ bản đang chạy lên trước.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_app(app);
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
@@ -693,6 +699,7 @@ pub fn run() {
         .manage(State::default())
         .manage(cli::Runs::default())
         .manage(pty::Ptys::default())
+        .manage(git_groups::Jobs::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
             register_worker,
@@ -736,6 +743,19 @@ pub fn run() {
             local_projects::local_project_bind,
             local_projects::local_project_unbind,
             local_projects::local_project_set_full,
+            git_groups::git_groups,
+            git_groups::git_host_add,
+            git_groups::git_host_remove,
+            git_groups::git_group_suggest,
+            git_groups::git_group_add,
+            git_groups::git_group_update,
+            git_groups::git_group_refresh,
+            git_groups::git_group_remove,
+            git_groups::git_group_status,
+            git_groups::git_group_sync,
+            git_groups::git_group_cancel,
+            git_groups::open_folder,
+            git_groups::open_folder_terminal,
             cli::folder_tree,
             cli::folder_docs,
             cli::propose_doc,
@@ -768,6 +788,7 @@ pub fn run() {
         })
         .setup(|app| {
             doctor::warm_user_path();
+            git_groups::start_auto_fetch(app.handle().clone());
             let tray = build_tray(app)?;
             app.manage(tray);
             let handle = app.handle().clone();

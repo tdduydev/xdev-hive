@@ -4,6 +4,13 @@ import type { RequestContext } from "../platform/index.ts";
 import { withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import {
+  getRemoteSession,
+  listRemoteSessions,
+  remoteMachines,
+  remoteSessionChunks,
+  setRemoteVisibility,
+} from "./queries.ts";
+import {
   closeSession,
   getSession,
   listSessions,
@@ -54,5 +61,23 @@ export function terminalRouter(deps: TerminalRouterDeps) {
     activity: os.activity
       .use(inOrg)
       .handler(({ context: { tx, user }, input }) => sessionActivity(tx, user.id, input.id)),
+  };
+}
+
+/**
+ * Phiên trên máy cá nhân (specs/010 US1). Chỉ đọc bản ghi và đổi "Cho đội xem"; vé xem trực tiếp, mở phiên, ghép, thiết
+ * bị và đẩy thông báo thêm ở T021, T030, T051, T071. Ghi phiên luôn bật: `HIVE_REMOTE_TERMINAL` chỉ chặn phần từ xa.
+ */
+export function remoteRouter(deps: OrgDeps) {
+  const { authed, inOrg } = orgMiddlewares(deps);
+  const os = implement(contract.remote).$context<RequestContext>().use(authed);
+  return {
+    machines: os.machines.use(inOrg).handler(({ context: { tx, user } }) => remoteMachines(tx, user.id)),
+    list: os.list.use(inOrg).handler(({ context: { tx, user }, input }) => listRemoteSessions(tx, user.id, input)),
+    get: os.get.use(inOrg).handler(({ context: { tx, user }, input }) => getRemoteSession(tx, user.id, input.id)),
+    chunks: os.chunks.use(inOrg).handler(({ context: { tx, user }, input }) => remoteSessionChunks(tx, user.id, input)),
+    setVisibility: os.setVisibility
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => setRemoteVisibility(tx, user.id, input.id, input.visibility)),
   };
 }

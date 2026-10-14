@@ -15,8 +15,8 @@ let org: OrgFixture & { user: (n: string) => string };
 const issued: string[] = [];
 const deps = {
   publicUrl: "http://hub.test:3000/",
-  issuePersonalToken: async (_tx: Tx, userId: string) => {
-    issued.push(userId);
+  issuePersonalToken: async (_tx: Tx, userId: string, purpose: "desktop" | "cli") => {
+    issued.push(`${purpose}:${userId}`);
     return { token: `hive_pat_fake_${userId}`, expiresAt: new Date("2027-01-10T00:00:00.000Z") };
   },
 };
@@ -90,11 +90,12 @@ describe("đăng nhập app desktop bằng trình duyệt", () => {
       personalToken: `hive_pat_fake_${org.user("tadmin")}`,
       personalTokenExpiresAt: "2027-01-10T00:00:00.000Z",
     });
-    expect(issued).toContain(org.user("tadmin"));
+    expect(issued).toContain(`desktop:${org.user("tadmin")}`);
     expect(await errorCode(() => exchangeDesktopConnect(app, { code, verifier }, deps))).toBe(
       "DESKTOP_CONNECT_INVALID",
     );
 
+    if (out.purpose !== "desktop") throw new Error("thiếu mã đăng ký máy");
     const reg = await registerMachine(app, {
       registrationToken: out.registrationToken,
       machineId: out.machine,
@@ -162,5 +163,50 @@ describe("đăng nhập app desktop bằng trình duyệt", () => {
         org.user("tadmin"),
       ]);
     }
+  });
+
+  it("`hive login` (purpose cli): người không có quyền đăng ký máy vẫn lấy được token cá nhân, không có mã đăng ký", async () => {
+    const { verifier, challenge } = pkce();
+    const { redirectUrl } = await as("tmember", (tx) =>
+      approveDesktopConnect(tx, org.user("tmember"), {
+        purpose: "cli",
+        machine: `cli-${tag}`,
+        port: 50_126,
+        state: state(),
+        challenge,
+      }),
+    );
+    const out = await exchangeDesktopConnect(app, { code: codeOf(redirectUrl), verifier }, deps);
+    expect(out).toEqual({
+      purpose: "cli",
+      hubUrl: "http://hub.test:3000",
+      machine: `cli-${tag}`,
+      personalToken: `hive_pat_fake_${org.user("tmember")}`,
+      personalTokenExpiresAt: "2027-01-10T00:00:00.000Z",
+    });
+    expect(issued).toContain(`cli:${org.user("tmember")}`);
+    const { rows } = await admin.query(
+      "select action from hive.audit_log where org_id = $1 and actor_user_id = $2 and action like '%connect.exchange'",
+      [org.orgId, org.user("tmember")],
+    );
+    expect(rows.map((r) => r.action)).toEqual(["cli.connect.exchange"]);
+    const { rows: codes } = await admin.query(
+      "select team_id, purpose from hive.desktop_connect_codes where org_id = $1 and machine = $2",
+      [org.orgId, `cli-${tag}`],
+    );
+    expect(codes).toEqual([{ team_id: null, purpose: "cli" }]);
+  });
+
+  it("thiếu `purpose` là app desktop cũ và vẫn phải chọn đội", async () => {
+    await expect(
+      as("tadmin", (tx) =>
+        approveDesktopConnect(tx, org.user("tadmin"), {
+          machine: "no-team",
+          port: 50_127,
+          state: state(),
+          ...pkce(),
+        } as never),
+      ),
+    ).rejects.toThrow();
   });
 });
