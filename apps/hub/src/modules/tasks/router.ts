@@ -2,8 +2,9 @@ import { implement } from "@orpc/server";
 import { contract, type PlanApproveInput, type PlanDecision, type PlanRejectInput } from "@xdev-hive/contracts";
 import { ConflictError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { setTaskDependencies, withDependencies } from "./dependencies.ts";
 import { getPlan, listPlans } from "./plans.ts";
-import { cancelTask, createTask, getTask, listTasks, updateTask } from "./tasks.ts";
+import { cancelTask, createTask, getTask, listTasks, toTask, updateTask } from "./tasks.ts";
 
 type PlanAction<I> = (tx: Tx, userId: string, input: I) => Promise<{ result: PlanDecision; afterCommit: () => void }>;
 
@@ -43,6 +44,10 @@ export function tasksRouter(deps: TasksDeps) {
       );
       afterCommit();
       return task;
+    }),
+    setDependencies: os.setDependencies.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
+      const { task } = await setTaskDependencies(tx, user.id, input);
+      return withDependencies(tx, toTask(task));
     }),
     plans: {
       get: os.plans.get.use(inOrg).handler(({ context: { tx, user }, input }) => getPlan(tx, user.id, input.id)),

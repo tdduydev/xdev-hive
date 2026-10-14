@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Hook cục bộ (`hive-worker hook pre-tool|post-tool --local`) là guard của run gắn vào phiên Claude Code người dùng tự
+// Hook cục bộ (`hive-worker hook pre-tool|post-tool|prompt --local`) là guard của run gắn vào phiên Claude Code người dùng tự
 // mở, qua settings.json của gói (specs/015-client-token-optimizer). Không có thư mục của run nên trạng thái để theo
 // session_id trong ~/.xdev-hive/optimizer/sessions/<id>/; pre-tool chỉ nhắc, vì chặn giữa lúc người dùng đang làm tay
 // gây khó chịu hơn số token tiết kiệm được.
@@ -30,6 +30,8 @@ const (
 type localHookInput struct {
 	hookInput
 	SessionID string `json:"session_id"`
+	// Prompt chỉ có ở UserPromptSubmit (hook prompt).
+	Prompt string `json:"prompt"`
 }
 
 // localConfig là cấu hình của phiên, lấy từ manifest một lần rồi giữ trong thư mục phiên: người dùng bật/tắt hay đổi
@@ -87,6 +89,8 @@ func localHookMain(sub string, stdin io.Reader, stdout io.Writer) (code int) {
 		reply = localPreTool(dir, cfg, in.hookInput)
 	case "post-tool":
 		reply = localPostTool(dir, sid, home, cfg, in.hookInput)
+	case "prompt":
+		reply = localPrompt(dir, in)
 	}
 	if reply != nil {
 		_ = json.NewEncoder(stdout).Encode(reply)

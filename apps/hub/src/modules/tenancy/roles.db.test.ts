@@ -6,7 +6,15 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { seedUsers } from "../../../test/seed.ts";
 import type { Auth } from "../identity/index.ts";
 import { createPool, withTenant } from "../platform/index.ts";
-import { allowWith, customPermissions, effectivePermissions, requireOrgRole, rolesRouter } from "./index.ts";
+import {
+  allowWith,
+  customPermissions,
+  effectivePermissions,
+  requireOrgRole,
+  requireTeamRole,
+  rolesRouter,
+  tenancyRouter,
+} from "./index.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -17,6 +25,8 @@ const owner = u("owner");
 const orgAdmin = u("admin");
 const member = u("member");
 const viewer = u("viewer");
+const ba = u("ba");
+const invitee = `${u("invitee")}@seed.test`;
 const blocked = u("blocked");
 const onlyB = u("only-b");
 const orgA = randomUUID();
@@ -27,6 +37,14 @@ let teamA2 = "";
 const router = (userId: string) =>
   rolesRouter({
     pool: app,
+    auth: {
+      api: { getSession: async () => ({ user: { id: userId, name: userId, email: `${userId}@seed.test` } }) },
+    } as unknown as Auth,
+  });
+const tenancy = (userId: string) =>
+  tenancyRouter({
+    pool: app,
+    publicUrl: "https://hive.test",
     auth: {
       api: { getSession: async () => ({ user: { id: userId, name: userId, email: `${userId}@seed.test` } }) },
     } as unknown as Auth,
@@ -54,7 +72,7 @@ async function errorCode(run: () => Promise<unknown>): Promise<string | undefine
 }
 
 beforeAll(async () => {
-  await seedUsers(admin, [owner, orgAdmin, member, viewer, blocked, onlyB]);
+  await seedUsers(admin, [owner, orgAdmin, member, viewer, ba, blocked, onlyB]);
   await admin.query(
     "insert into hive.orgs (id, slug, name, created_by) values ($1::uuid, $1::text, 'A', $3), ($2::uuid, $2::text, 'B', $4)",
     [orgA, orgB, owner, onlyB],
@@ -62,8 +80,9 @@ beforeAll(async () => {
   await admin.query(
     `insert into hive.org_members (org_id, user_id, role, status) values
        ($1, $3, 'owner', 'active'), ($1, $4, 'admin', 'active'), ($1, $5, 'member', 'active'),
-       ($1, $6, 'member', 'active'), ($1, $7, 'member', 'blocked'), ($2, $8, 'owner', 'active')`,
-    [orgA, orgB, owner, orgAdmin, member, viewer, blocked, onlyB],
+       ($1, $6, 'member', 'active'), ($1, $7, 'member', 'blocked'), ($2, $8, 'owner', 'active'),
+       ($1, $9, 'member', 'active')`,
+    [orgA, orgB, owner, orgAdmin, member, viewer, blocked, onlyB, ba],
   );
   const team = async (s: string) =>
     (await admin.query("insert into hive.teams (org_id, slug, name) values ($1, $2, $2) returning id", [orgA, s]))
@@ -72,8 +91,8 @@ beforeAll(async () => {
   teamA2 = await team(`tb-${randomUUID().slice(0, 6)}`);
   await admin.query(
     `insert into hive.team_members (team_id, org_id, user_id, role) values
-       ($1, $3, $4, 'viewer'), ($1, $3, $5, 'member'), ($2, $3, $5, 'member'), ($1, $3, $6, 'member')`,
-    [teamA, teamA2, orgA, viewer, member, blocked],
+       ($1, $3, $4, 'viewer'), ($1, $3, $5, 'member'), ($2, $3, $5, 'member'), ($1, $3, $6, 'member'), ($1, $3, $7, 'ba')`,
+    [teamA, teamA2, orgA, viewer, member, blocked, ba],
   );
 });
 
@@ -232,11 +251,69 @@ describe("gán vai trò và quyền hiệu lực", () => {
   });
 });
 
+describe("vai trò BA/PO (specs/011 D27)", () => {
+  const role = (userId: string, min: "viewer" | "ba" | "member" | "admin") =>
+    inA(userId, (tx) => requireTeamRole(tx, userId, teamA, min));
+
+  it("thứ hạng viewer < ba < member: BA/PO qua cổng đọc, bị chặn ở mọi cổng đòi thành viên", async () => {
+    expect(await errorCode(() => role(ba, "viewer"))).toBeUndefined();
+    expect(await errorCode(() => role(ba, "ba"))).toBeUndefined();
+    expect(await errorCode(() => role(ba, "member"))).toBe("TEAM_ROLE_REQUIRED");
+    expect(await errorCode(() => role(ba, "admin"))).toBe("TEAM_ROLE_REQUIRED");
+    // Người xem không lên được cổng của BA/PO, thành viên thì vượt qua.
+    expect(await errorCode(() => role(viewer, "ba"))).toBe("TEAM_ROLE_REQUIRED");
+    expect(await errorCode(() => role(member, "ba"))).toBeUndefined();
+  });
+
+  it("danh sách vai trò có team-ba với đúng bộ quyền, không có quyền tạo task, chạy run, quản trị máy", async () => {
+    const list = await call(router(member).list, undefined, ctx());
+    const teamBa = list.system.find((r) => r.id === "team-ba");
+    expect(teamBa).toMatchObject({ scope: "team", memberCount: 1 });
+    expect(teamBa?.permissions).toEqual(expect.arrayContaining(["sdlc.read", "sdlc.write", "docs.read"]));
+    expect(teamBa?.permissions).not.toEqual(
+      expect.arrayContaining(["tasks.create", "runs.retry", "machines.register", "docs.write"]),
+    );
+    expect(teamBa?.permissions).toEqual([...SYSTEM_ROLE_PERMISSIONS["team-ba"]]);
+  });
+
+  it("quyền hiệu lực trong đội lấy từ team-ba", async () => {
+    const granted = await inA(ba, (tx) => effectivePermissions(tx, ba, teamA));
+    for (const k of SYSTEM_ROLE_PERMISSIONS["team-ba"]) expect(granted.has(k)).toBe(true);
+  });
+
+  it("quản trị đội đổi vai trò, thêm người, mời bằng ba; BA/PO thì không quản trị được đội", async () => {
+    const r = tenancy(orgAdmin);
+    expect(await call(r.teamMembers.setRole, { teamId: teamA, userId: viewer, role: "ba" }, ctx())).toMatchObject({
+      userId: viewer,
+      role: "ba",
+    });
+    expect(await call(r.teamMembers.setRole, { teamId: teamA, userId: viewer, role: "viewer" }, ctx())).toMatchObject({
+      role: "viewer",
+    });
+    expect(
+      await errorCode(() => call(tenancy(ba).teamMembers.add, { teamId: teamA, userId: owner, role: "ba" }, ctx())),
+    ).toBe("TEAM_ROLE_REQUIRED");
+    await call(r.invitations.create, { emails: [invitee], teamId: teamA, teamRole: "ba" }, ctx());
+    const stored = await admin.query("select team_role from hive.invitations where org_id = $1 and email = $2", [
+      orgA,
+      invitee,
+    ]);
+    expect(stored.rows[0]).toEqual({ team_role: "ba" });
+  });
+
+  it("danh sách thành viên trả vai trò ba trong teams[] cho app", async () => {
+    const members = await call(tenancy(orgAdmin).orgMembers.list, undefined, ctx());
+    expect(members.find((m) => m.userId === ba)?.teams).toEqual([
+      expect.objectContaining({ teamId: teamA, role: "ba" }),
+    ]);
+  });
+});
+
 describe("danh sách và cô lập tổ chức", () => {
   it("liệt kê vai trò hệ thống kèm số người và vai trò tự tạo kèm người, đội được gán", async () => {
     const list = await call(router(member).list, undefined, ctx());
     const sys = Object.fromEntries(list.system.map((r) => [r.id, r.memberCount]));
-    expect(sys).toMatchObject({ owner: 1, admin: 1, member: 2, "team-viewer": 1 });
+    expect(sys).toMatchObject({ owner: 1, admin: 1, member: 3, "team-viewer": 1, "team-ba": 1 });
     expect(list.custom.length).toBeGreaterThan(0);
   });
 
