@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, AccountContext } from "@/lib/account.ts";
@@ -207,18 +207,19 @@ describe("HomeScreen", () => {
     renderHome();
     expect(await screen.findByText("Quy ước tiền tệ")).toBeTruthy();
     expect(screen.getByText(/Chưa chọn thư mục làm việc: số liệu dưới đây tính trên cả máy/)).toBeTruthy();
-    expect(screen.getByText("1/2")).toBeTruthy();
-    expect(screen.getByText("Đang chạy")).toBeTruthy();
-    expect(screen.getByText("hive.acme.vn")).toBeTruthy();
-    expect(screen.getByText("2M")).toBeTruthy();
+    // Máy, worker, token tải bằng các lệnh Tauri riêng, không cùng lúc với tài liệu trên hub.
+    expect(await screen.findByText("1/2")).toBeTruthy();
+    expect(await screen.findByText("Đang chạy")).toBeTruthy();
+    expect(await screen.findByText("hive.acme.vn")).toBeTruthy();
+    expect(await screen.findByText("2M")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Tài liệu trên hub" })).toBeTruthy();
     const skills = screen.getByText("Skill áp cho thư mục").parentElement as HTMLElement;
     expect(within(skills).getByText("—")).toBeTruthy();
     expect(within(skills).getByText("Chọn thư mục để xem skill của dự án")).toBeTruthy();
     expect(within(skills).getByRole("button", { name: "Chọn thư mục" })).toBeTruthy();
     expect(screen.getByText(/Mới kiểm công cụ chung của máy/)).toBeTruthy();
-    expect(screen.queryByText("Đang đọc…")).toBeNull();
-    expect(screen.queryByText("Đang kiểm tra…")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Đang kiểm tra…")).toBeNull());
     expect(calls.find((c) => c.command === "scan_environment")?.args).toEqual({ folder: null, project: null });
     expect(calls.find((c) => c.command === "session_stats")?.args).toEqual({ engine: "claude", folder: null });
     expect(calls.find((c) => c.args?.name === "doc_list")?.args).toEqual({ name: "doc_list", args: {} });
@@ -254,8 +255,8 @@ describe("HomeScreen", () => {
     expect((await screen.findAllByText("Không đọc được hub")).length).toBe(2);
     expect(screen.getByText("không đọc được trạng thái")).toBeTruthy();
     expect(screen.getAllByText("Hub không trả lời.").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Đang đọc…")).toBeNull();
-    expect(screen.queryByText("Đang kiểm tra…")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Đang kiểm tra…")).toBeNull());
   });
 
   it("thư mục không đọc được: báo lỗi thư mục, phần còn lại vẫn chạy", async () => {
@@ -264,8 +265,8 @@ describe("HomeScreen", () => {
     renderHome();
     expect((await screen.findAllByText("Không đọc được thư mục khong-co.")).length).toBe(2);
     expect(await screen.findByText("Quy ước tiền tệ")).toBeTruthy();
-    expect(screen.getByText("2M")).toBeTruthy();
-    expect(screen.queryByText("Đang đọc…")).toBeNull();
+    expect(await screen.findByText("2M")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
   });
 
   it("phiên trên máy đọc lỗi: ô token và biểu đồ báo lý do", async () => {

@@ -8,6 +8,8 @@ FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @xdev-hive/web build
+# Thư viện của khung artifact (dist/lib), hub phục vụ ở /_artifact/lib/.
+RUN pnpm --filter @xdev-hive/artifacts-runtime build
 # Giờ dựng image: hub trả trong /api/v1/health (builtAt) để web hiện "build ngày …".
 RUN date -u +%Y-%m-%dT%H:%M:%SZ > /repo/BUILD_TIME
 
