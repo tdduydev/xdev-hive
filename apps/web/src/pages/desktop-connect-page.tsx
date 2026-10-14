@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { connectState, loopbackPort, pkceChallenge } from "@xdev-hive/contracts";
+import { connectPurpose, connectState, loopbackPort, pkceChallenge } from "@xdev-hive/contracts";
 import { machineId } from "@xdev-hive/contracts/worker-protocol";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
@@ -18,6 +18,7 @@ const text: Dict<{
   title: string;
   body: (machine: string) => string;
   bullets: [string, string];
+  cli: { title: string; body: (machine: string) => string; bullets: [string, string]; bad: string; done: string };
   org: string;
   team: string;
   noTeam: string;
@@ -37,6 +38,16 @@ const text: Dict<{
       "Worker trên máy nhận việc của đội và chạy bằng CLI đã đăng nhập sẵn trên máy.",
       "App gọi hub thay bạn bằng token cá nhân (hạn 90 ngày, thu hồi được ở MCP và công cụ → Token MCP).",
     ],
+    cli: {
+      title: "Đăng nhập lệnh hive trên máy này?",
+      body: (machine) => `Lệnh hive trên máy ${machine} sẽ đăng nhập bằng tài khoản của bạn.`,
+      bullets: [
+        "hive dùng token để tìm task, dự án và xem phiên của bạn; không đăng ký máy vào đội nào.",
+        "Token cá nhân hạn 90 ngày, thu hồi được ở MCP và công cụ → Token MCP.",
+      ],
+      bad: "Liên kết đăng nhập không hợp lệ. Chạy lại `hive login` trong terminal.",
+      done: "Đã cho phép. Quay lại terminal để hoàn tất.",
+    },
     org: "Tổ chức",
     team: "Đội",
     noTeam: "Bạn chưa là quản trị đội nào trong tổ chức này nên chưa đăng ký máy được. Nhờ quản trị đội cấp quyền.",
@@ -55,6 +66,16 @@ const text: Dict<{
       "The worker on this machine takes the team's tasks and runs them with the CLIs already signed in there.",
       "The app calls the hub as you with a personal token (90 days, revocable under MCP & tools → MCP tokens).",
     ],
+    cli: {
+      title: "Sign in the hive command on this machine?",
+      body: (machine) => `The hive command on ${machine} will be signed in as you.`,
+      bullets: [
+        "hive uses the token to look up your tasks, projects and sessions; it does not register the machine to a team.",
+        "The personal token lasts 90 days and is revocable under MCP & tools → MCP tokens.",
+      ],
+      bad: "This sign-in link is not valid. Run `hive login` again in your terminal.",
+      done: "Allowed. Go back to your terminal to finish.",
+    },
     org: "Organization",
     team: "Team",
     noTeam: "You are not a team admin in this organization, so you cannot register machines yet. Ask a team admin.",
@@ -68,6 +89,12 @@ const text: Dict<{
   },
 };
 
+/** Chữ theo client đang đăng nhập; đọc thẳng query để cả báo lỗi liên kết hỏng cũng đúng client. */
+function useText() {
+  const all = useT(text);
+  return new URLSearchParams(window.location.search).get("purpose") === "cli" ? { ...all, ...all.cli } : all;
+}
+
 /** Tham số app gửi kèm; sai bất cứ cái nào thì không cho phép, vì chuyển về địa chỉ khác là lộ mã. */
 function readParams() {
   const q = new URLSearchParams(window.location.search);
@@ -75,8 +102,16 @@ function readParams() {
   const state = connectState.safeParse(q.get("state"));
   const challenge = pkceChallenge.safeParse(q.get("challenge"));
   const machine = machineId.safeParse(q.get("machine"));
-  if (!port.success || !state.success || !challenge.success || !machine.success) return null;
-  return { port: port.data, state: state.data, challenge: challenge.data, machine: machine.data };
+  // App desktop cũ không gửi `purpose`.
+  const purpose = connectPurpose.safeParse(q.get("purpose") ?? "desktop");
+  if (!port.success || !state.success || !challenge.success || !machine.success || !purpose.success) return null;
+  return {
+    purpose: purpose.data,
+    port: port.data,
+    state: state.data,
+    challenge: challenge.data,
+    machine: machine.data,
+  };
 }
 
 /**
@@ -84,7 +119,7 @@ function readParams() {
  * (router đưa qua /login nếu chưa), chọn đội rồi bấm Cho phép; hub trả địa chỉ 127.0.0.1 của app kèm mã đổi.
  */
 export function DesktopConnectPage() {
-  const t = useT(text);
+  const t = useText();
   const fieldId = useId();
   const [params] = useState(readParams);
   const mine = useQuery(orgsMineQuery);
@@ -136,7 +171,8 @@ export function DesktopConnectPage() {
                 </NativeSelect>
               </label>
             )}
-            {org && <Consent key={org.id} orgId={org.id} params={params} />}
+            {org && params.purpose === "cli" && <Consent key={org.id} orgId={org.id} params={params} />}
+            {org && params.purpose === "desktop" && <DesktopConsent key={org.id} orgId={org.id} params={params} />}
           </>
         )}
       </Card>
@@ -144,32 +180,16 @@ export function DesktopConnectPage() {
   );
 }
 
-function Consent({ orgId, params }: { orgId: string; params: NonNullable<ReturnType<typeof readParams>> }) {
+type Params = NonNullable<ReturnType<typeof readParams>>;
+
+/** App desktop: chọn đội máy sẽ đăng ký vào. */
+function DesktopConsent({ orgId, params }: { orgId: string; params: Params }) {
   const t = useT(text);
   const fieldId = useId();
-  const api = orgApi(orgId);
-  const options = useQuery(api.desktopConnect.options.queryOptions());
+  const options = useQuery(orgApi(orgId).desktopConnect.options.queryOptions());
   const teams = options.data?.teams ?? [];
   const [teamId, setTeamId] = useState<string | null>(null);
   const team = teams.find((x) => x.id === teamId) ?? teams[0];
-  const [answer, setAnswer] = useState<"allowed" | "denied" | null>(null);
-  const approve = useMutation({
-    mutationFn: (id: string) => api.desktopConnect.approve.call({ teamId: id, ...params }),
-    onSuccess: ({ redirectUrl }) => {
-      setAnswer("allowed");
-      window.location.assign(redirectUrl);
-    },
-  });
-
-  function deny() {
-    setAnswer("denied");
-    // Báo app để nó thôi chờ; chỉ có error và state, không có mã.
-    const url = new URL(`http://127.0.0.1:${params.port}/callback`);
-    url.searchParams.set("error", "access_denied");
-    url.searchParams.set("state", params.state);
-    window.location.assign(url.toString());
-  }
-
   return (
     <>
       {options.isError && <Alert variant="destructive">{apiErrorMessage(options.error)}</Alert>}
@@ -190,6 +210,41 @@ function Consent({ orgId, params }: { orgId: string; params: NonNullable<ReturnT
           </NativeSelect>
         </label>
       )}
+      <Consent orgId={orgId} params={params} teamId={team?.id ?? null} />
+    </>
+  );
+}
+
+/** `teamId` chỉ có nghĩa với app desktop; `cli` không cần đội (contracts/desktop-connect.ts). */
+function Consent({ orgId, params, teamId }: { orgId: string; params: Params; teamId?: string | null }) {
+  const t = useText();
+  const api = orgApi(orgId);
+  const [answer, setAnswer] = useState<"allowed" | "denied" | null>(null);
+  const approve = useMutation({
+    mutationFn: () => {
+      const { purpose, ...rest } = params;
+      return api.desktopConnect.approve.call(
+        purpose === "cli" ? { purpose, ...rest } : { purpose, teamId: teamId ?? "", ...rest },
+      );
+    },
+    onSuccess: ({ redirectUrl }) => {
+      setAnswer("allowed");
+      window.location.assign(redirectUrl);
+    },
+  });
+  const ready = params.purpose === "cli" || Boolean(teamId);
+
+  function deny() {
+    setAnswer("denied");
+    // Báo app để nó thôi chờ; chỉ có error và state, không có mã.
+    const url = new URL(`http://127.0.0.1:${params.port}/callback`);
+    url.searchParams.set("error", "access_denied");
+    url.searchParams.set("state", params.state);
+    window.location.assign(url.toString());
+  }
+
+  return (
+    <>
       {approve.isError && <Alert variant="destructive">{apiErrorMessage(approve.error)}</Alert>}
       {answer && (
         <p role="status" className="text-sm text-muted-foreground">
@@ -200,10 +255,7 @@ function Consent({ orgId, params }: { orgId: string; params: NonNullable<ReturnT
         <Button variant="outline" disabled={approve.isPending || answer !== null} onClick={deny}>
           {t.deny}
         </Button>
-        <Button
-          disabled={!team || approve.isPending || answer !== null}
-          onClick={() => team && approve.mutate(team.id)}
-        >
+        <Button disabled={!ready || approve.isPending || answer !== null} onClick={() => approve.mutate()}>
           {approve.isPending ? t.allowing : t.allow}
         </Button>
       </div>

@@ -162,6 +162,9 @@ export async function decideCodeReview(
   if (input.headSha !== review.headSha) throw headMoved();
   const cur = flatGates(review.phases)[review.gateIndex];
   const run = await currentGateRun(tx, review);
+  if (input.gateRunId && input.gateRunId !== run?.id) {
+    throw new ConflictError("CODE_REVIEW_GATE_MOVED", "Checkpoint đã thay đổi. Mở trên web để xem lại.");
+  }
   if (!cur || !run || !canDecideAt(reader, review, cur.gate, run)) throw decideRefusal(reader, review, cur?.gate, run);
   const gate = cur.gate;
 
