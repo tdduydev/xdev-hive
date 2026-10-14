@@ -562,6 +562,8 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - SPEC11UI2 đã đối chiếu phần UI và lưu 11 ảnh tại `apps/web/e2e/screenshots/spec11ui2/`; kết quả và giới hạn ở
     `ui-validation.md`. Chưa chạy phân tích toàn bộ đặc tả; giữ mở cho đợt tích hợp hub/worker.
   - SPEC11W5UI thêm 4 ảnh 360 px sáng/tối (Chỉ số, Hội tụ) tại `apps/web/e2e/screenshots/spec11w5ui/`.
+  - SPEC11W6UI thêm 4 ảnh 360 px sáng/tối (Chỉ số có liên kết sang bảng, hàng số liệu trong chính sách) tại
+    `apps/web/e2e/screenshots/spec11w6ui/`.
 
 ---
 
