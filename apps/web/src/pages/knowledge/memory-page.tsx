@@ -1,41 +1,42 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { KnowledgeScope, Memory, MemoryKind, MemorySearchHit } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { Textarea } from "@xdev-hive/ui/textarea";
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
-import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
+import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { PageSection } from "@/components/page/page-section.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
 import { Field, FieldLabel } from "@/components/ui/field.tsx";
 import { EmptyState, LoadFailure, SectionsSkeleton, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
 import { useT } from "@/lib/i18n.ts";
 import { useKnowledgeAccess } from "@/lib/knowledge.ts";
 import { shortId } from "@/lib/run-view.ts";
 import {
   authorLabel,
-  DetailDialog,
+  DetailFallback,
   EmptyRows,
+  offsetPaging,
   PAGE_SIZE,
   ScopeBadge,
-  useTabParam,
+  useRowById,
   When,
 } from "@/pages/knowledge/common.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
-import { PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
+import { DetailHeader, PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
 
 const text = knowledgeText;
 const kinds: MemoryKind[] = ["decision", "convention", "gotcha", "note"];
-const TABS = ["cho-duyet"] as const;
 type Row = Memory | MemorySearchHit;
 
 export function MemoryPage() {
@@ -46,22 +47,29 @@ function MemoryScreen() {
   const t = useT(text);
   const { api } = useOrg();
   const access = useKnowledgeAccess();
-  const [tab, setTab] = useTabParam(TABS);
-  const [editing, setEditing] = useState<Memory | "new">();
+  const navigate = useNavigate();
+  const { tab = "da-duyet" } = useSearch({ from: "/session/app/in-org/knowledge/memory" });
+  const [adding, setAdding] = useState(false);
   const pendingList = useQuery(api.memory.list.queryOptions({ input: { status: "pending", limit: 200 } }));
   return (
     <>
       <PageHeader title="Memory" description={t.memoryLead}>
         {access.scopes.length > 0 && (
-          <Button onClick={() => setEditing("new")}>
+          <Button onClick={() => setAdding(true)}>
             <PlusIcon aria-hidden="true" />
             {t.memoryAdd}
           </Button>
         )}
       </PageHeader>
       <Tabs.Root
-        value={tab ?? "da-duyet"}
-        onValueChange={(value) => setTab(value === "da-duyet" ? undefined : "cho-duyet")}
+        value={tab}
+        onValueChange={(value) =>
+          navigate({
+            to: "/knowledge/memory",
+            search: value === "cho-duyet" ? { tab: "cho-duyet" } : {},
+            replace: true,
+          })
+        }
       >
         <PageTabList label={t.memoryViews}>
           <PageTab value="da-duyet">{t.approved}</PageTab>
@@ -76,37 +84,29 @@ function MemoryScreen() {
         </Tabs.Panel>
         <Tabs.Panel value="da-duyet">
           <PageBody>
-            <ApprovedMemories onReplace={setEditing} />
+            <ApprovedMemories />
           </PageBody>
         </Tabs.Panel>
       </Tabs.Root>
-      {editing && (
-        <MemoryEditor
-          key={editing === "new" ? "new" : editing.id}
-          memory={editing === "new" ? undefined : editing}
-          onClose={() => setEditing(undefined)}
-          onSaved={() => setEditing(undefined)}
-        />
-      )}
+      {adding && <MemoryEditor onClose={() => setAdding(false)} onSaved={() => setAdding(false)} />}
     </>
   );
 }
 
 /**
- * Một ô tìm duy nhất: gõ rồi Enter hay "Tìm" thì hub tìm theo từ và theo nghĩa trên toàn bộ memory; ô trống là danh sách
- * phân trang. DataTable có ô lọc cục bộ riêng nên không dùng ở đây, để người dùng không phải đoán ô nào tìm gì.
+ * Một ô tìm duy nhất, của trang: gõ rồi Enter hay "Tìm" thì hub tìm theo từ và theo nghĩa trên toàn bộ memory; ô trống
+ * là danh sách phân trang. Bảng không lọc chữ cục bộ, để người dùng không phải đoán ô nào tìm gì.
  */
-function ApprovedMemories({ onReplace }: { onReplace: (memory: Memory) => void }) {
+function ApprovedMemories() {
   const t = useT(text);
   const fieldId = useId();
   const { api } = useOrg();
-  const access = useKnowledgeAccess();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [includeOld, setIncludeOld] = useState(false);
   const [kind, setKind] = useState<MemoryKind | "all">("all");
-  const [selected, setSelected] = useState<Memory>();
   const list = useQuery(
     api.memory.list.queryOptions({ input: { limit: PAGE_SIZE, offset, includeSuperseded: includeOld } }),
   );
@@ -117,220 +117,255 @@ function ApprovedMemories({ onReplace }: { onReplace: (memory: Memory) => void }
   const active = query ? results : list;
   const rows: Row[] = (active.data ?? []).filter((row) => kind === "all" || row.kind === kind);
   const searching = !!query;
-  const submit = (value: string) => {
-    setQuery(value.trim());
-    setSelected(undefined);
+  const clearSearch = () => {
+    setSearch("");
+    setQuery("");
   };
+  const columns: Column<Row>[] = [
+    {
+      key: "content",
+      label: t.content,
+      value: (row) => row.content,
+      pin: "start",
+      className: "max-w-md",
+      cell: (row) => (
+        <div className="min-w-0">
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            <KindPill kind={row.kind} />
+            {row.supersededBy && <Pill>{t.superseded}</Pill>}
+          </div>
+          <p className="line-clamp-3 break-words whitespace-pre-wrap">{row.content}</p>
+        </div>
+      ),
+    },
+    {
+      key: "scope",
+      label: t.scope,
+      value: (row) => t[row.scope.level],
+      cell: (row) => <ScopeBadge scope={row.scope} />,
+    },
+    {
+      key: "author",
+      label: t.author,
+      value: (row) => authorLabel(row.author),
+      cell: (row) => <span className="text-xs break-all text-muted-foreground">{authorLabel(row.author)}</span>,
+    },
+    ...(searching
+      ? ([
+          {
+            key: "score",
+            label: t.score,
+            value: (row) => ("score" in row ? row.score : 0),
+            sortable: true,
+            align: "end",
+            cell: (row) => ("score" in row ? row.score.toFixed(2) : "—"),
+          },
+          {
+            key: "matchedBy",
+            label: t.matchedBy,
+            value: (row) => ("matchedBy" in row ? row.matchedBy.map((mode) => t[mode]).join(", ") : "—"),
+          },
+        ] satisfies Column<Row>[])
+      : []),
+    {
+      key: "updated",
+      label: t.updated,
+      value: (row) => row.createdAt,
+      sortable: true,
+      cell: (row) => <When iso={row.createdAt} />,
+    },
+  ];
   return (
     <>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit(search);
-        }}
-      >
-        <FilterBar label={t.memoryFilters}>
-          <FilterSearch value={search} onChange={setSearch} placeholder={t.searchMemory} className="sm:w-80" />
-          <Button type="submit" variant="outline" size="sm">
-            {t.search}
-          </Button>
-          <SegmentedControl
-            label={t.kind}
-            value={kind}
-            onChange={setKind}
-            options={[{ value: "all", label: t.all }, ...kinds.map((value) => ({ value, label: t[value] }))]}
-          />
-          <label
-            htmlFor={`${fieldId}-old`}
-            className="flex items-center gap-2 text-sm whitespace-nowrap sm:ml-auto"
-            title={searching ? t.includeOldSearch : undefined}
-          >
-            <Checkbox
-              id={`${fieldId}-old`}
-              checked={includeOld}
-              disabled={searching}
-              onCheckedChange={(checked) => {
-                setIncludeOld(checked);
-                setOffset(0);
-              }}
-            />
-            {t.includeOld}
-          </label>
-        </FilterBar>
-      </form>
-      {searching && (
-        <div role="status" className="flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="text-muted-foreground">{t.searching}</span>
-          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-accent py-0.5 pr-1 pl-2.5 text-accent-foreground">
-            <span className="min-w-0 break-words">{query}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label={t.clearSearch}
-              onClick={() => {
-                setSearch("");
-                submit("");
-              }}
-            >
-              <XIcon aria-hidden="true" />
-            </Button>
-          </span>
-        </div>
-      )}
       {active.isPending && <TableSkeleton label={t.loading} columns={5} />}
       {active.isError && <LoadFailure error={active.error} retry={active.refetch} />}
       {active.data && (
-        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
-          <Table style={{ minWidth: searching ? 760 : 620 }}>
-            <TableHeader>
-              <TableRow>
-                <Th variant="plain">{t.content}</Th>
-                <Th variant="plain">{t.scope}</Th>
-                <Th variant="plain">{t.author}</Th>
-                {searching && (
-                  <>
-                    <Th variant="plain" className="text-right">
-                      {t.score}
-                    </Th>
-                    <Th variant="plain">{t.matchedBy}</Th>
-                  </>
-                )}
-                <Th variant="plain">{t.updated}</Th>
-                <Th variant="plain" className="w-10 min-w-10">
-                  <span className="sr-only">{t.open}</span>
-                </Th>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.id === selected?.id ? "selected" : undefined}
-                  className="cursor-pointer"
-                  onClick={(event) => {
-                    if (!(event.target as HTMLElement).closest("a,button")) setSelected(row);
-                  }}
-                >
-                  <Td className="max-w-md">
-                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                      <KindPill kind={row.kind} />
-                      {row.supersededBy && <Pill>{t.superseded}</Pill>}
-                    </div>
-                    <p className="line-clamp-3 break-words whitespace-pre-wrap">{row.content}</p>
-                  </Td>
-                  <Td>
-                    <ScopeBadge scope={row.scope} />
-                  </Td>
-                  <Td className="max-w-40 text-xs break-all text-muted-foreground">{authorLabel(row.author)}</Td>
-                  {searching && (
-                    <>
-                      <Td className="text-right tabular-nums">{"score" in row ? row.score.toFixed(2) : "—"}</Td>
-                      <Td className="text-xs text-muted-foreground">
-                        {"matchedBy" in row ? row.matchedBy.map((mode) => t[mode]).join(", ") : "—"}
-                      </Td>
-                    </>
-                  )}
-                  <Td className="text-xs whitespace-nowrap text-muted-foreground">
-                    <When iso={row.createdAt} />
-                  </Td>
-                  <Td className="w-10 px-1.5">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`${t.openRow} ${row.content.slice(0, 60)}`}
-                      onClick={() => setSelected(row)}
-                    >
-                      <ChevronRightIcon aria-hidden="true" />
-                    </Button>
-                  </Td>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {rows.length === 0 && (
-            <div className="grid justify-items-center gap-3 px-4 py-10 text-center text-muted-foreground">
-              {searching || kind !== "all" ? (
-                <EmptyRows title={t.noResults} description={t.noResultsHint} />
-              ) : (
-                <EmptyRows title={t.memoryEmptyTitle} description={t.memoryEmptyBody} />
-              )}
-            </div>
-          )}
-          {!searching && (
-            <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
-              <span className="text-muted-foreground" aria-live="polite">
-                {active.data.length === 0 ? t.noRows : t.rows(offset + 1, offset + active.data.length)}
-              </span>
-              <div className="flex gap-1 sm:ml-auto">
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label={t.previousPage}
-                  disabled={offset === 0}
-                  onClick={() => {
-                    setOffset(Math.max(0, offset - PAGE_SIZE));
-                    setSelected(undefined);
-                  }}
-                >
-                  <ChevronLeftIcon aria-hidden="true" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label={t.nextPage}
-                  disabled={active.data.length < PAGE_SIZE}
-                  onClick={() => {
-                    setOffset(offset + PAGE_SIZE);
-                    setSelected(undefined);
-                  }}
-                >
-                  <ChevronRightIcon aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      {selected && (
-        <DetailDialog
-          title={t[selected.kind]}
-          mono={false}
-          onClose={() => setSelected(undefined)}
-          badges={<ScopeBadge scope={selected.scope} />}
-          description={`${authorLabel(selected.author)} · ${new Date(selected.createdAt).toLocaleDateString()}`}
-          footer={
-            !selected.supersededBy &&
-            access.allowed(selected.scope, "write") && (
-              <Button
-                className="justify-self-end"
-                variant="outline"
-                onClick={() => {
-                  onReplace(selected);
-                  setSelected(undefined);
-                }}
+        <DataTable
+          // Đổi giữa danh sách và kết quả tìm thì bộ cột đổi; dựng lại bảng để thứ tự sắp và cột ẩn không lệch.
+          key={searching ? "search" : "list"}
+          columns={columns}
+          rows={rows}
+          minWidth={searching ? 760 : 620}
+          search={{ value: search, onChange: setSearch, placeholder: t.searchMemory, onSubmit: setQuery }}
+          filters={
+            <>
+              <SegmentedControl
+                label={t.kind}
+                value={kind}
+                onChange={setKind}
+                options={[{ value: "all", label: t.all }, ...kinds.map((value) => ({ value, label: t[value] }))]}
+              />
+              <label
+                htmlFor={`${fieldId}-old`}
+                className={cx("flex items-center gap-2 text-sm whitespace-nowrap", searching && "opacity-60")}
+                title={searching ? t.includeOldSearch : undefined}
               >
-                {t.replace}
-              </Button>
+                <Checkbox
+                  id={`${fieldId}-old`}
+                  checked={includeOld}
+                  disabled={searching}
+                  onCheckedChange={(checked) => {
+                    setIncludeOld(checked);
+                    setOffset(0);
+                  }}
+                />
+                {t.includeOld}
+              </label>
+            </>
+          }
+          activeFilters={searching ? [{ key: "query", label: t.searching, values: query, clear: clearSearch }] : []}
+          rowLabel={(row) => row.content.slice(0, 60)}
+          onRowClick={(row) => navigate({ to: "/knowledge/memory/$memoryId", params: { memoryId: row.id } })}
+          emptyContent={
+            searching || kind !== "all" ? (
+              <EmptyRows title={t.noResults} description={t.noResultsHint} />
+            ) : (
+              <EmptyRows title={t.memoryEmptyTitle} description={t.memoryEmptyBody} />
             )
           }
-        >
-          <p className="whitespace-pre-wrap break-words">{selected.content}</p>
-          {selected.files.length > 0 && (
+          {...(searching ? {} : { serverPaging: offsetPaging(t, offset, active.data.length, setOffset) })}
+        />
+      )}
+    </>
+  );
+}
+
+export function MemoryDetailPage() {
+  const { org } = useOrg();
+  const { memoryId } = useParams({ from: "/session/app/in-org/knowledge/memory/$memoryId" });
+  return <MemoryDetailScreen key={`${org.id}:${memoryId}`} id={memoryId} />;
+}
+
+function MemoryDetailScreen({ id }: { id: string }) {
+  const t = useT(text);
+  const { api } = useOrg();
+  const navigate = useNavigate();
+  const access = useKnowledgeAccess();
+  const cache = useQueryClient();
+  const [replacing, setReplacing] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  const decision = useMutation({
+    mutationFn: async (action: "approve" | "reject") => {
+      await (action === "approve" ? api.memory.approve : api.memory.reject).call({ id });
+      await cache.invalidateQueries({ queryKey: api.memory.key() });
+      return action;
+    },
+    // Bỏ thì memory không còn: về hàng chờ. Duyệt thì ở lại, trạng thái đổi sau khi tải lại.
+    onSuccess: (action) => {
+      if (action === "reject") void navigate({ to: "/knowledge/memory", search: { tab: "cho-duyet" } });
+    },
+    onSettled: () => setDiscarding(false),
+  });
+  const found = useRowById<Memory>(api.memory.key(), id, [
+    (page) => api.memory.list.call({ ...page, includeSuperseded: true }),
+    (page) => api.memory.list.call({ ...page, status: "pending" }),
+  ]);
+  const memory = found.data;
+  if (!memory) return <DetailFallback query={found} title="Memory" back="/knowledge/memory" />;
+  const canReplace = memory.status === "approved" && !memory.supersededBy && access.allowed(memory.scope, "write");
+  const canDecide = memory.status === "pending" && access.allowed(memory.scope, "write");
+  return (
+    <>
+      <DetailHeader
+        back={{ to: "/knowledge/memory", label: "Memory" }}
+        title={t.memoryOf(t[memory.kind])}
+        status={
+          memory.supersededBy ? (
+            <Pill>{t.superseded}</Pill>
+          ) : memory.status === "pending" ? (
+            <Pill tone="warn" dot>
+              {t.pending}
+            </Pill>
+          ) : (
+            <Pill tone="ok" dot>
+              {t.current}
+            </Pill>
+          )
+        }
+        meta={
+          <>
+            <ScopeBadge scope={memory.scope} />
+            <KindPill kind={memory.kind} />
+            {memory.author.runId ? (
+              <Link to="/runs/$id" params={{ id: memory.author.runId }} className="text-primary hover:text-primary/90">
+                {t.byRun} <span className="font-mono">{shortId(memory.author.runId)}</span>
+              </Link>
+            ) : (
+              <span>{authorLabel(memory.author)}</span>
+            )}
+            <When iso={memory.createdAt} />
+          </>
+        }
+      >
+        {canReplace && (
+          <Button variant="outline" onClick={() => setReplacing(true)}>
+            {t.replace}
+          </Button>
+        )}
+        {canDecide && (
+          <>
+            <Button variant="outline" disabled={decision.isPending} onClick={() => setDiscarding(true)}>
+              {t.memoryDiscard}
+            </Button>
+            <Button disabled={decision.isPending} onClick={() => decision.mutate("approve")}>
+              {t.approve}
+            </Button>
+          </>
+        )}
+      </DetailHeader>
+      <PageBody width="wide">
+        {memory.status === "pending" && <p className="text-sm text-muted-foreground">{t.pendingHint}</p>}
+        {decision.error && <Alert variant="destructive">{apiErrorMessage(decision.error)}</Alert>}
+        <PageSection title={t.content}>
+          <p className="whitespace-pre-wrap break-words">{memory.content}</p>
+        </PageSection>
+        {memory.files.length > 0 && (
+          <PageSection title={t.filesTitle}>
             <ul className="grid gap-1">
-              {selected.files.map((file) => (
+              {memory.files.map((file) => (
                 <li key={file}>
                   <code className="text-xs break-all">{file}</code>
                 </li>
               ))}
             </ul>
-          )}
-          {selected.supersededBy && (
-            <p className="break-all text-sm text-muted-foreground">
-              {t.superseded}: {selected.supersededBy}
-            </p>
-          )}
-        </DetailDialog>
+          </PageSection>
+        )}
+        {memory.supersededBy && (
+          <p className="text-sm text-muted-foreground">
+            {t.supersededBy}{" "}
+            <Link
+              to="/knowledge/memory/$memoryId"
+              params={{ memoryId: memory.supersededBy }}
+              className="font-mono break-all text-primary hover:text-primary/90"
+            >
+              {shortId(memory.supersededBy)}
+            </Link>
+          </p>
+        )}
+      </PageBody>
+      <Dialog open={discarding} onOpenChange={(open) => !open && !decision.isPending && setDiscarding(false)}>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>{t.discardTitle}</DialogTitle>
+          <DialogDescription className="line-clamp-4 whitespace-pre-wrap">{memory.content}</DialogDescription>
+          <DialogActions>
+            <Button variant="outline" disabled={decision.isPending} onClick={() => setDiscarding(false)}>
+              {t.keep}
+            </Button>
+            <Button variant="destructive-solid" disabled={decision.isPending} onClick={() => decision.mutate("reject")}>
+              {t.discardConfirm}
+            </Button>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
+      {replacing && (
+        <MemoryEditor
+          memory={memory}
+          onClose={() => setReplacing(false)}
+          onSaved={(next) => {
+            setReplacing(false);
+            void navigate({ to: "/knowledge/memory/$memoryId", params: { memoryId: next.id } });
+          }}
+        />
       )}
     </>
   );
@@ -391,7 +426,13 @@ function PendingMemories({ list }: { list: UseQueryResult<Memory[]> }) {
                   <When iso={memory.createdAt} />
                 </span>
               </div>
-              <p className="whitespace-pre-wrap break-words">{memory.content}</p>
+              <Link
+                to="/knowledge/memory/$memoryId"
+                params={{ memoryId: memory.id }}
+                className="whitespace-pre-wrap break-words hover:text-primary"
+              >
+                {memory.content}
+              </Link>
               {memory.files.length > 0 && <code className="break-all text-xs">{memory.files.join(", ")}</code>}
               {access.allowed(memory.scope, "write") && (
                 <div className="flex gap-2">
@@ -435,7 +476,7 @@ function MemoryEditor({
 }: {
   memory?: Memory | undefined;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (memory: Memory) => void;
 }) {
   const t = useT(text);
   const fieldId = useId();
@@ -473,9 +514,10 @@ function MemoryEditor({
             };
             if (pending) return;
             try {
+              let saved: Memory;
               if (memory) {
                 if (!access.allowed(memory.scope, "write")) return;
-                await supersede.mutateAsync({ id: memory.id, ...input });
+                saved = await supersede.mutateAsync({ id: memory.id, ...input });
               } else if (selectedScope) {
                 const scope: KnowledgeScope =
                   selectedScope.level === "org"
@@ -483,10 +525,10 @@ function MemoryEditor({
                     : selectedScope.level === "team"
                       ? { level: "team", teamId: selectedScope.teamId ?? "" }
                       : { level: "project", projectId: selectedScope.projectId ?? "" };
-                await write.mutateAsync({ scope, ...input });
+                saved = await write.mutateAsync({ scope, ...input });
               } else return;
               await cache.invalidateQueries({ queryKey: api.memory.key() });
-              onSaved();
+              onSaved(saved);
             } catch {
               /* The mutation error remains visible next to the input. */
             }

@@ -202,15 +202,22 @@ export function usePendingLearned() {
   return useQuery(api.skillLearning.list.queryOptions({ input: { status: "pending", limit: 200 } }));
 }
 
-export function SkillLearningTab() {
+/**
+ * Đề xuất học được của agent. Trong trang một skill (`skill`) chỉ còn đề xuất cho tên skill đó, mọi trạng thái, không
+ * có số liệu chung; hub không lọc theo tên nên lọc ở đây trên 200 đề xuất mới nhất.
+ */
+export function SkillLearningTab({ skill }: { skill?: string } = {}) {
   const t = useT(text);
   const { api } = useOrg();
-  const [status, setStatus] = useState<SkillProposalStatus | "all">("pending");
+  const [status, setStatus] = useState<SkillProposalStatus | "all">(skill ? "all" : "pending");
   const [picked, setPicked] = useState<LearnedSkillProposal>();
-  const stats = useQuery(api.skillLearning.stats.queryOptions({ input: { days: 30 } }));
-  const list = useQuery(
-    api.skillLearning.list.queryOptions({ input: { ...(status === "all" ? {} : { status }), limit: 100 } }),
-  );
+  const stats = useQuery({ ...api.skillLearning.stats.queryOptions({ input: { days: 30 } }), enabled: !skill });
+  const list = useQuery({
+    ...api.skillLearning.list.queryOptions({
+      input: { ...(status === "all" ? {} : { status }), limit: skill ? 200 : 100 },
+    }),
+    select: (rows) => (skill ? rows.filter((row) => row.name === skill) : rows),
+  });
   // Duyệt xong thì dòng rời bộ lọc "chờ duyệt"; giữ dòng đã chọn để kết quả quyết không biến mất cùng lúc tải lại.
   const selected = list.data?.find((row) => row.id === picked?.id) ?? picked;
   const columns: Column<LearnedSkillProposal>[] = [
@@ -251,7 +258,7 @@ export function SkillLearningTab() {
   return (
     <>
       {stats.data && !stats.data.enabled && <Alert>{t.disabled}</Alert>}
-      {stats.isPending && <SectionsSkeleton sections={1} label={t.loading} />}
+      {!skill && stats.isPending && <SectionsSkeleton sections={1} label={t.loading} />}
       {stats.isError && <LoadFailure error={stats.error} retry={stats.refetch} />}
       {stats.data && (
         <section aria-label={t.statsLabel}>

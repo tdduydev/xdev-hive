@@ -32,6 +32,7 @@ import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { NOTIFICATION_EVENT_LABEL, NOTIFICATION_EVENTS, parseChannelForm } from "@/lib/notification-channels.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import type { NotificationsTab as NotificationsSearchTab } from "@/lib/route-search.ts";
 import { ChatSection } from "@/pages/chat-channels.tsx";
 import { Inbox } from "@/pages/notification-inbox.tsx";
 import { useOrg } from "@/shell/org-context.ts";
@@ -240,7 +241,7 @@ const text: Dict<{
   },
 };
 
-type NotificationsTab = "hop-thu" | "kenh";
+type NotificationsTab = "hop-thu" | NotificationsSearchTab;
 
 /**
  * /notifications: hộp thư của người dùng (ai cũng có) và kênh gửi đi của tổ chức (chỉ quản trị). Hai phần tách bằng
@@ -251,10 +252,8 @@ export function NotificationsPage() {
   const { org, api } = useOrg();
   const navigate = useNavigate();
   const admin = isOrgAdmin(org.role);
-  // TODO(admin-layout): route /notifications chưa có validateSearch trong router.tsx (file dùng chung); đọc `tab` thô
-  // ở đây cho tới khi người điều phối thêm `validateNotificationsSearch` vào lib/route-search.ts.
-  const { tab: rawTab } = useSearch({ strict: false }) as { tab?: unknown };
-  const tab: NotificationsTab = admin && rawTab === "kenh" ? "kenh" : "hop-thu";
+  const search = useSearch({ from: "/session/app/in-org/notifications" });
+  const tab: NotificationsTab = admin && search.tab ? search.tab : "hop-thu";
   const unread = useQuery(api.inbox.unreadCount.queryOptions({ refetchInterval: 30_000 }));
 
   const inbox = (
@@ -272,7 +271,7 @@ export function NotificationsPage() {
           onValueChange={(value: NotificationsTab) =>
             navigate({
               to: "/notifications",
-              search: (value === "hop-thu" ? {} : { tab: value }) as Record<string, never>,
+              search: value === "hop-thu" ? {} : { tab: value },
               replace: true,
             })
           }

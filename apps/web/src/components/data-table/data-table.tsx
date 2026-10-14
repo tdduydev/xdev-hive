@@ -333,7 +333,7 @@ export function DataTable<Row extends { id: string }>({
               setSelected(new Set());
             }}
           />
-        ) : search && search.onSubmit ? (
+        ) : search !== false && search.onSubmit ? (
           <form
             className="contents"
             onSubmit={(event) => {
