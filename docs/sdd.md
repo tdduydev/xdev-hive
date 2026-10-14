@@ -10,9 +10,8 @@ The ADD explains how the system is put together. This document records the detai
 consistent: entities and tables, interfaces, state machines, algorithms and limits. Views already covered by the ADD
 are referenced, not repeated.
 
-Spec 009 update checked against `origin/main` at `bf891f4` on 14 October 2026: `codereview` services exist, but hub
-wiring (T070) and command delivery/outcome evaluation (T091) are pending. Sections below distinguish these remaining
-integration steps from the implemented module design.
+Spec 009 update checked against `origin/main` at `8676c4f` on 14 October 2026: hub wiring (T070) and command
+delivery/outcome evaluation (T091) are implemented. Commit status remains pending (T101).
 
 ## 1. Design concerns
 
@@ -132,7 +131,7 @@ The permission noted in each operation's summary is enforced in the hub module.
 | Notifications | `GET/POST /notification-channels`, `PATCH/DELETE /notification-channels/{id}`, `POST /notification-channels/{id}/test`; `GET /inbox`, `GET /inbox/unread-count`, `POST /inbox/read`, `POST /inbox/read-all` |
 | Costs | `GET /costs/summary`, `GET /costs/budget-stopped` |
 | Reviews | `GET/POST /review-workflows`, `POST /review-workflows/remove`, `POST /review-workflows/dry-run`, `GET /reviews`, `GET /reviews/item`, `POST /reviews/decide` |
-| Code reviews | `codeReviews.list/count/get/files/decide/override/enqueue/recheck/dryRun/workflowFromProject`; contract and router exist, application router registration pending T070 |
+| Code reviews | `codeReviews.list/count/get/files/decide/override/enqueue/recheck/dryRun/workflowFromProject`; registered in the application router |
 | Policies | `GET/POST /policies`, `POST /policies/templates/preview`, `POST /policies/templates/sync` |
 
 Errors carry an oRPC code (`UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `BAD_REQUEST`) and a stable
@@ -256,19 +255,19 @@ expired lease moves the run to `lost`, then to `queued` with `attempt + 1` while
 
 The policy snapshot on the run lists checks in order. Evaluation: a failed required check gives `failed`; no new
 commit when the policy has a `changes` check gives `no_changes`; a failed optional check or a check the hub cannot
-evaluate yet (`command`, `ci`) gives `needs_review`; otherwise `succeeded`. A `review` check first runs a child review
-run and waits for its score.
+evaluate yet (`ci`, or commands with missing evidence) gives `needs_review`; otherwise `succeeded`.
+A `review` check first runs a child review run and waits for its score.
 
 The worker supports `spec.checks.commands` and returns `report.commands` after executing commands in the code
-worktree after the agent and before push (T090). The hub does not yet build this command list or evaluate outcome
-command results (T091), so RUN-07 remains partial. Missing command evidence must preserve the existing unsupported
-outcome behaviour; workflow command gates wait for a person. Workflow CI gates poll the PR head independently of
+worktree after the agent and before push. At dispatch the hub combines commands from the policy snapshot and
+matching workflow, including conditional gates, deduplicating trimmed commands with the shortest timeout.
+Outcome commands pass on exit 0 and fail otherwise (including timeout/start errors); missing evidence yields
+`needs_review`, while workflow command gates wait for a person. Workflow CI gates poll the PR head independently of
 the outcome `ci` check, which remains unsupported.
 
 #### Code review workflow execution
 
-`runs` already matches Code workflows and skips `outcome.review` with a reason when matched (T021). The intended
-entry point opens an instance only for `succeeded`/`needs_review` code runs with a PR. Matching uses project scope,
+`runs` matches Code workflows and skips `outcome.review` with a reason when matched. The entry point opens an instance only for `succeeded`/`needs_review` code runs with a PR. Matching uses project scope,
 target branch, task type and changed paths; explicit project scope outranks team scope, then organization scope,
 with latest update breaking ties. No match preserves the existing run policy and merge path.
 
@@ -289,9 +288,10 @@ Approval enqueues according to the effective workflow/project merge mode when th
 waits for a member or manual merge. `reviewGate` keeps unapproved instances waiting; merge/close webhooks mark them
 `merged`/`cancelled`. SLA reminders are once per human wait; mutations are audited and relevant members notified.
 
-T070 must register the API router, worker, SLA cron and SCM handlers and inject `startReviewRuns`, `queueFixRun` and
-`MergeDeps.reviewGate` from `main.ts`. `codereview` never imports `runs`; both this injection and the catalog merge
-port prevent cycles. The proposed commit status is settled by spec 009 Q1 (`xdev-hive/review`); T101 implementation
+`app.ts` registers the API router and injects run ports. The jobs role in `main.ts` registers the `codereview`
+worker, the ten-minute `codereview-sla` cron and push/merge/close SCM handlers, injecting `startReviewRuns`,
+`queueFixRun`, `runEvidence` and `MergeDeps.reviewGate`. CI polls every two minutes, at most 60 times.
+`codereview` never imports `runs`; both this injection and the catalog merge port prevent cycles. The proposed commit status is settled by spec 009 Q1 (`xdev-hive/review`); T101 implementation
 is pending. Provider approvals do not count as Hive human decisions.
 
 ### 6.4 Effective allowlist and egress decision
@@ -341,7 +341,7 @@ Decisions are recorded in [docs/adr](adr/README.md). Requirement areas map to mo
 | PROJ | `catalog`, `scm` | |
 | TASK | `tasks`, `scm` | |
 | RUN | `runs`, `catalog` (merge queue), `cost` | worker `channel`, `runner` |
-| CR | `codereview`, `knowledge` (workflow definitions), `runs`, `catalog`, `scm`, `notify`, `audit` | shared `packages/code-review`, web/desktop review views; worker command runner; T070/T091 integration pending |
+| CR | `codereview`, `knowledge` (workflow definitions), `runs`, `catalog`, `scm`, `notify`, `audit` | shared `packages/code-review`, web/desktop review views; worker command runner; production router/jobs/SCM/run ports and command delivery/evaluation connected |
 | FLEET | `fleet` | worker `service`, `update`, install scripts |
 | SBX | `sandbox` | worker `runner`, `egress` |
 | POL | `governance`, `runs` (dispatch), `catalog` (templates) | worker `runner` (hooks) |
