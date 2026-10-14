@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-optimizer-restore"
+description = "Enables the optimizer_restore command without any pre-configured scope."
+commands.allow = ["optimizer_restore"]
+
+[[permission]]
+identifier = "deny-optimizer-restore"
+description = "Denies the optimizer_restore command without any pre-configured scope."
+commands.deny = ["optimizer_restore"]

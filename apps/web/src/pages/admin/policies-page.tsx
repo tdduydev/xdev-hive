@@ -801,6 +801,7 @@ function PolicyEditor({
               })
             }
             disabled={disabled || (fullLocked && !form.allowFullPermission)}
+            tone="destructive"
           />
           <SwitchRow
             label={t.sandboxReq}

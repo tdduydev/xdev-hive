@@ -201,7 +201,7 @@ describe("chưa đăng nhập", () => {
       expect(await screen.findByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeTruthy();
     }
     await user.click(screen.getByRole("button", { name: "Kết nối Hive" }));
-    const dialog = screen.getByRole("dialog");
+    const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" })).toBeTruthy();
   });
 

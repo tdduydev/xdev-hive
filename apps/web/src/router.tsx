@@ -11,15 +11,23 @@ import { meQuery } from "@/lib/me.ts";
 import { orgsMineQuery } from "@/lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "@/lib/redirect.ts";
 import {
+  validateAuditSearch,
   validateLeaderSearch,
   validateLoginSearch,
   validateMachineSearch,
   validateMachinesSearch,
+  validateMcpSearch,
   validateMemberSearch,
   validateMembersSearch,
+  validateMemorySearch,
+  validateNotificationsSearch,
   validateOnboardingSearch,
+  validateProposalSearch,
+  validateProposalsSearch,
   validateReviewsSearch,
   validateRoleSearch,
+  validateSkillSearch,
+  validateSkillsSearch,
   validateTasksSearch,
   validateTeamSearch,
   validateTeamsSearch,
@@ -48,9 +56,15 @@ const HomePage = lazyRouteComponent(() => import("@/pages/home-page.tsx"), "Home
 const InvitePage = lazyRouteComponent(() => import("@/pages/invite-page.tsx"), "InvitePage");
 const DocEditorPage = lazyRouteComponent(() => import("@/pages/knowledge/doc-editor-page.tsx"), "DocEditorPage");
 const DocsPage = lazyRouteComponent(() => import("@/pages/knowledge/docs-page.tsx"), "DocsPage");
+const MemoryDetailPage = lazyRouteComponent(() => import("@/pages/knowledge/memory-page.tsx"), "MemoryDetailPage");
 const MemoryPage = lazyRouteComponent(() => import("@/pages/knowledge/memory-page.tsx"), "MemoryPage");
+const ProposalDetailPage = lazyRouteComponent(
+  () => import("@/pages/knowledge/proposals-page.tsx"),
+  "ProposalDetailPage",
+);
 const ProposalsPage = lazyRouteComponent(() => import("@/pages/knowledge/proposals-page.tsx"), "ProposalsPage");
 const ReviewsPage = lazyRouteComponent(() => import("@/pages/knowledge/reviews-page.tsx"), "ReviewsPage");
+const SkillDetailPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillDetailPage");
 const SkillsPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillsPage");
 const WorkflowsPage = lazyRouteComponent(() => import("@/pages/knowledge/workflows-page.tsx"), "WorkflowsPage");
 const LeaderPage = lazyRouteComponent(() => import("@/pages/leader-page.tsx"), "LeaderPage");
@@ -308,6 +322,7 @@ const mergeQueueRoute = createRoute({
 const notificationsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/notifications",
+  validateSearch: validateNotificationsSearch,
   component: NotificationsPage,
 });
 const machinesRoute = createRoute({
@@ -337,9 +352,37 @@ const roleRoute = createRoute({
 const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/$key/edit", component: DocEditorPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/skills", component: SkillsPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory", component: MemoryPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/skills",
+    validateSearch: validateSkillsSearch,
+    component: SkillsPage,
+  }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/skills/$skillId",
+    validateSearch: validateSkillSearch,
+    component: SkillDetailPage,
+  }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/memory",
+    validateSearch: validateMemorySearch,
+    component: MemoryPage,
+  }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory/$memoryId", component: MemoryDetailPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/proposals",
+    validateSearch: validateProposalsSearch,
+    component: ProposalsPage,
+  }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/proposals/$proposalId",
+    validateSearch: validateProposalSearch,
+    component: ProposalDetailPage,
+  }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/knowledge/workflows",
@@ -353,9 +396,19 @@ const v2Routes = [
     component: ReviewsPage,
   }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/roles", component: RolesPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/mcp", component: McpPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/admin/mcp",
+    validateSearch: validateMcpSearch,
+    component: McpPage,
+  }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/policies", component: PoliciesPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/audit", component: AuditPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/admin/audit",
+    validateSearch: validateAuditSearch,
+    component: AuditPage,
+  }),
 ];
 
 const routeTree = rootRoute.addChildren([
