@@ -386,18 +386,20 @@ test("màn Chi phí: chọn khoảng ngày, nhóm dữ liệu và cập nhật n
   });
   await page.goto("/admin/costs");
   await expect(page.getByRole("heading", { name: "Chi phí và token", exact: true })).toBeVisible();
-  await expect(page.getByText("1,25 US$", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("1,25 USD", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Vượt trần USD/run")).toBeVisible();
-  const explore = page.getByRole("group", { name: "Khảo sát trước khi sửa" });
+  const explore = page.getByRole("region", { name: "Khảo sát trước khi sửa" });
   await expect(explore).toContainText("39%");
-  await expect(explore).toContainText("0,49 US$");
+  await expect(explore).toContainText("0,49 USD");
   await page.screenshot({ path: "e2e/screenshots/costs.png", fullPage: true });
   // Cache trúng = 9.000 / (9.000 + 100 + 900): ở ô tổng và ở bảng chi tiết.
   await expect(page.getByText("90,0%", { exact: true })).toHaveCount(2);
-  await page.getByLabel("Khoảng thời gian").selectOption("7");
-  await page.getByLabel("Nhóm theo").selectOption("machine");
+  await page.getByRole("group", { name: "Khoảng thời gian" }).getByRole("button", { name: "7 ngày" }).click();
+  await expect(page.getByRole("button", { name: "7 ngày" })).toHaveAttribute("aria-pressed", "true");
+  const groupBy = page.getByRole("group", { name: "Nhóm theo" });
+  await groupBy.getByRole("button", { name: "Máy" }).click();
   await expect(page.getByRole("columnheader", { name: "Mã máy" })).toBeVisible();
-  await page.getByLabel("Nhóm theo").selectOption("account");
+  await groupBy.getByRole("button", { name: "Gói" }).click();
   await expect(page.getByRole("columnheader", { name: "Gói" })).toBeVisible();
   await expect
     .poll(() =>
@@ -755,12 +757,15 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
   // Tên miền điền sẵn từ tên miền email của tổ chức.
   await expect(page.getByLabel("Tên miền email")).toHaveValue("example.com");
 
-  const callback = page.getByLabel("Callback URL (dán vào cấu hình app bên nhà cung cấp)");
+  const callback = page.getByLabel("Callback URL", { exact: true });
   await expect(callback).toHaveValue(SSO_NONE.callbackUrl);
   await page.getByRole("button", { name: "Chép callback URL" }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(SSO_NONE.callbackUrl);
 
-  await page.getByRole("button", { name: "Lưu" }).click();
+  // Mục chưa sửa gì thì chưa lưu được; nhập một Issuer sai để thấy lỗi từng ô.
+  await expect(page.getByRole("button", { name: "Lưu", exact: true })).toBeDisabled();
+  await page.getByLabel("Issuer URL").fill("không phải URL");
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
   await expect(page.getByText("Nhập Issuer URL dạng https://")).toBeVisible();
   await expect(page.getByText("Nhập Client ID.")).toBeVisible();
   await expect(page.getByText("Nhập Client secret khi cấu hình SSO lần đầu.")).toBeVisible();
@@ -769,10 +774,8 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
   await page.getByLabel("Issuer URL").fill("https://login.microsoftonline.com/3f2a/v2.0");
   await page.getByLabel("Client ID").fill("8c1d5e2a-abcd");
   await page.getByLabel("Client secret").fill("bi-mat-cua-idp");
-  await page.getByLabel("Khi người mới đăng nhập SSO lần đầu").selectOption({
-    label: "Tự thêm vào tổ chức với vai trò Thành viên, chưa thuộc đội nào",
-  });
-  await page.getByRole("button", { name: "Lưu" }).click();
+  await page.getByRole("radio", { name: /Tự thêm vào tổ chức/ }).check();
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
 
   await expect(page.getByText("Đã lưu cấu hình SSO.")).toBeVisible();
   expect(hub.rpcCalls.find((c) => c.path === "ssoProviders/upsert")).toMatchObject({
@@ -829,7 +832,7 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
   await expect(page.getByText("Người có email tên miền này đăng nhập bằng SSO của tổ chức.")).toBeVisible();
   await page.getByLabel("Issuer URL").fill("https://idp-moi.example.com");
   await page.getByLabel("Client ID").fill("client-ab12");
-  await page.getByRole("button", { name: "Lưu" }).click();
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
   await expect(page.getByText(/Không đọc được cấu hình OIDC từ Issuer URL/)).toBeVisible();
   await expect(page.getByLabel("Issuer URL")).toHaveAttribute("aria-invalid", "true");
   expect(hub.rpcCalls.find((c) => c.path === "ssoProviders/upsert")?.input).toEqual({
@@ -857,7 +860,7 @@ test("cài đặt đăng nhập: tên miền đã có tổ chức khác khai th�
   await page.getByLabel("Issuer URL").fill("https://login.microsoftonline.com/3f2a/v2.0");
   await page.getByLabel("Client ID").fill("8c1d5e2a-abcd");
   await page.getByLabel("Client secret").fill("bi-mat-cua-idp");
-  await page.getByRole("button", { name: "Lưu" }).click();
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
   await expect(page.getByText(message)).toBeVisible();
   await expect(page.getByLabel("Tên miền email")).toHaveAttribute("aria-invalid", "true");
 });
@@ -1203,7 +1206,7 @@ for (const scheme of ["light", "dark"] as const) {
       ["members", "/admin/members", "Thành viên"],
       ["teams", "/admin/teams", "Đội và hệ thống"],
       ["team", `/admin/teams/${TEAM.id}?tab=thanh-vien`, TEAM.name],
-      ["sign-in-settings", "/admin/sign-in-settings", "Cài đặt đăng nhập"],
+      ["sign-in-settings", "/admin/sign-in-settings", "Đăng nhập"],
     ] as const) {
       await page.setViewportSize({ width: 1440, height: 1000 });
       await page.goto(route);
@@ -1248,14 +1251,15 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.getByRole("dialog").getByText("Enter a name.")).toBeVisible();
     await page.keyboard.press("Escape");
     await page.goto("/admin/sign-in-settings");
-    await expect(page.getByRole("heading", { name: "Sign-in settings", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign-in", exact: true })).toBeVisible();
     await expect(page.getByLabel("Email domain")).toHaveValue("example.com");
     await expect(page.getByRole("button", { name: "Copy TXT record value" })).toBeVisible();
+    await page.getByLabel("Client secret").fill("new-secret");
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Enter a Client ID.")).toBeVisible();
-    await expect(page.getByLabel("When someone signs in with SSO for the first time")).toContainText(
-      "Queue for approval (recommended)",
-    );
+    await expect(
+      page.getByRole("radiogroup", { name: "When someone signs in with SSO for the first time" }),
+    ).toContainText("Queue for approval (recommended)");
   });
 }
 for (const theme of ["light", "dark"] as const) {
