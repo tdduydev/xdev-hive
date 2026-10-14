@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-remote-totp-enroll"
+description = "Enables the remote_totp_enroll command without any pre-configured scope."
+commands.allow = ["remote_totp_enroll"]
+
+[[permission]]
+identifier = "deny-remote-totp-enroll"
+description = "Denies the remote_totp_enroll command without any pre-configured scope."
+commands.deny = ["remote_totp_enroll"]
