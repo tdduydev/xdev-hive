@@ -2,11 +2,9 @@ import { implement } from "@orpc/server";
 import {
   contract,
   type ProjectSdlcSettings,
-  projectSdlcSettings,
   type ReviewGate,
   type ReviewPhase,
   SDLC_MAX_PROJECTS,
-  type SdlcItemDetail,
   sdlcItemRef,
 } from "@xdev-hive/contracts";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -31,6 +29,7 @@ import {
   requireProjectWrite,
   type SdlcItemRow,
 } from "./access.ts";
+import { insertArtifacts, itemDetail, planArtifacts, sdlcSettingsOf } from "./items.ts";
 import { sdlcItemProjects, sdlcItemTasks } from "./schema.ts";
 
 /*
@@ -39,82 +38,50 @@ import { sdlcItemProjects, sdlcItemTasks } from "./schema.ts";
  * đổi cài đặt giữa chừng không đổi luật của hạng mục đang chạy.
  */
 
-export type ItemProjectRole = "home" | "participant";
-
-export interface ResolvedItemProject {
-  project: ProjectRow;
-  role: ItemProjectRole;
-  settings: ProjectSdlcSettings;
-}
-
 export interface ParticipantDeps {
   jobs?: Jobs | undefined;
   /** Địa chỉ web để link trong thông báo. */
   publicUrl?: string | undefined;
-  /**
-   * Tạo tài liệu `scope: project` cho dự án vừa thêm; logic dựng tài liệu theo khuôn nằm ở items.ts (T012), nên gắn
-   * qua deps thay vì gọi thẳng.
-   */
-  onProjectAdded?: ((tx: Tx, item: SdlcItemRow, project: ProjectRow) => Promise<void>) | undefined;
 }
 
-/** Cài đặt AI SDLC của dự án đã điền mặc định; dự án chưa có mục `sdlc` coi như chưa bật. */
-export function sdlcSettingsOf(project: ProjectRow): ProjectSdlcSettings {
-  return projectSdlcSettings.parse(project.settings.sdlc ?? {});
+/** Như kiểm dự án của items.create (cùng mã lỗi): dự án đang hoạt động và đã bật AI SDLC; trả cài đặt để chụp. */
+function requireSdlcProject(project: ProjectRow): ProjectSdlcSettings {
+  if (project.state === "archived") throw new ConflictError("PROJECT_ARCHIVED", `Dự án ${project.key} đã lưu trữ.`);
+  if (project.state !== "active")
+    throw new ConflictError("PROJECT_NOT_READY", `Dự án ${project.key} chưa khởi tạo xong.`);
+  const settings = sdlcSettingsOf(project);
+  if (!settings.enabled)
+    throw new BadRequestError(
+      "SDLC_NOT_ENABLED",
+      `Dự án ${project.key} chưa bật AI SDLC; quản trị dự án cần bật trước.`,
+    );
+  return settings;
 }
 
-/** Dự án dùng được trong hạng mục: đang hoạt động (không lưu trữ, không dở khởi tạo) và đã bật AI SDLC. */
-export function sdlcEnabled(project: ProjectRow): boolean {
-  return project.state === "active" && sdlcSettingsOf(project).enabled;
-}
-
-const disabled = (p: ProjectRow) =>
-  new ConflictError("SDLC_PROJECT_DISABLED", `Dự án ${p.key} chưa bật AI SDLC; quản trị dự án cần bật trước.`);
 const tooMany = () => new BadRequestError("SDLC_TOO_MANY_PROJECTS", `Hạng mục có tối đa ${SDLC_MAX_PROJECTS} dự án.`);
 const closed = () =>
   new ConflictError("SDLC_ITEM_CLOSED", "Hạng mục đã xong hoặc đã huỷ, không đổi dự án tham gia được.");
 
 /**
- * Kiểm dự án của `items.create` (US1-6): tối đa 8, cùng tổ chức (RLS: dự án tổ chức khác coi như không có), người tạo có
- * `sdlc.write` ở đội của mọi dự án, mọi dự án đã bật AI SDLC. Thiếu một thì từ chối cả yêu cầu, chưa ghi gì.
+ * Tài liệu `scope: project` của dự án vừa thêm, lập như lúc tạo hạng mục (đường dẫn `<home>-<NNN>` trong repo tham gia).
+ * Tài liệu đã có từ lần tham gia trước được giữ nguyên (insertArtifacts bỏ qua key trùng).
  */
-export async function resolveItemProjects(
+async function addProjectArtifacts(
   tx: Tx,
   userId: string,
-  input: { projectId: string; participants?: readonly string[] | undefined },
-): Promise<ResolvedItemProject[]> {
-  const participants = input.participants ?? [];
-  if (participants.includes(input.projectId) || new Set(participants).size !== participants.length)
-    throw new BadRequestError("SDLC_DUPLICATE_PROJECT", "Dự án tham gia trùng nhau hoặc trùng dự án chính.");
-  if (participants.length + 1 > SDLC_MAX_PROJECTS) throw tooMany();
-  const projects = await requireProjectWrite(tx, userId, [input.projectId, ...participants], "sdlc.write");
-  for (const p of projects) if (!sdlcEnabled(p)) throw disabled(p);
-  return projects.map((project) => ({
-    project,
-    role: project.id === input.projectId ? "home" : "participant",
-    settings: sdlcSettingsOf(project),
-  }));
-}
-
-/** Ghi dòng dự án cho hạng mục vừa tạo, trong transaction của items.create. */
-export async function insertItemProjects(
-  tx: Tx,
-  itemId: string,
-  resolved: readonly ResolvedItemProject[],
-  userId: string,
+  item: SdlcItemRow,
+  home: ProjectRow,
+  project: ProjectRow,
+  settings: ProjectSdlcSettings,
 ): Promise<void> {
-  if (resolved.length === 0) return;
-  await tx.insert(sdlcItemProjects).values(
-    resolved.map((r) => ({
-      orgId: sql`hive.ctx_org()`,
-      itemId,
-      projectId: r.project.id,
-      teamId: r.project.teamId,
-      role: r.role,
-      settings: r.settings,
-      addedBy: userId,
-    })),
-  );
+  const plan = planArtifacts(item.mode, {
+    home: { id: home.id, key: home.key, settings: item.settings },
+    projects: [{ id: project.id, key: project.key, settings }],
+    number: item.number,
+    slug: item.slug,
+    date: item.createdAt.toISOString().slice(0, 10),
+  }).filter((a) => a.scope === "project" && a.projectId === project.id);
+  await insertArtifacts(tx, userId, item, plan);
 }
 
 function itemLink(publicUrl: string | undefined, homeKey: string, item: SdlcItemRow): string | null {
@@ -142,12 +109,13 @@ export async function addItemProject(
   const item = await openItemForManage(tx, userId, input.id);
   const [project] = await requireProjectWrite(tx, userId, [input.projectId], "sdlc.write");
   if (!project) throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
-  if (!sdlcEnabled(project)) throw disabled(project);
+  const settings = requireSdlcProject(project);
   const current = await activeItemProjects(tx, item.id);
   if (current.some((p) => p.projectId === project.id))
     throw new ConflictError("SDLC_PROJECT_ALREADY_ADDED", `Dự án ${project.key} đã tham gia hạng mục.`);
   if (current.length >= SDLC_MAX_PROJECTS) throw tooMany();
-  const settings = sdlcSettingsOf(project);
+  const home = await loadProject(tx, item.projectId);
+  if (!home) throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án chính của hạng mục.");
   await tx
     .insert(sdlcItemProjects)
     .values({
@@ -163,7 +131,7 @@ export async function addItemProject(
       target: [sdlcItemProjects.itemId, sdlcItemProjects.projectId],
       set: { teamId: project.teamId, settings, addedBy: userId, addedAt: sql`now()`, removedAt: null },
     });
-  await deps.onProjectAdded?.(tx, item, project);
+  await addProjectArtifacts(tx, userId, item, home, project, settings);
   await recordAudit(tx, {
     action: "sdlc.item.project_add",
     targetType: "sdlc_item",
@@ -174,8 +142,7 @@ export async function addItemProject(
   const admins = (await teamMemberIds(tx, project.teamId, "admin")).filter((id) => id !== userId);
   const recipientIds = await itemViewers(tx, item, admins);
   if (recipientIds.length === 0) return;
-  const home = await loadProject(tx, item.projectId);
-  const ref = `${home?.key ?? ""}-${sdlcItemRef(item.number)}`;
+  const ref = `${home.key}-${sdlcItemRef(item.number)}`;
   await notify(
     tx,
     {
@@ -185,7 +152,7 @@ export async function addItemProject(
       body: `Hạng mục “${item.title}” (${ref}) giờ có dự án ${project.key} tham gia; đội của bạn duyệt và làm phần việc của dự án này.`,
       eventKey: `sdlc:${item.id}:project_added:${project.id}:${Date.now()}`,
       recipientIds,
-      link: home ? itemLink(deps.publicUrl, home.key, item) : null,
+      link: itemLink(deps.publicUrl, home.key, item),
     },
     { jobs: deps.jobs },
   );
@@ -356,23 +323,18 @@ export async function perTeamWorkflow(
 
 // ---- Route `items.projects.*` --------------------------------------------------------------------------------------
 
-export interface ParticipantRouteDeps extends OrgDeps, ParticipantDeps {
-  /** Chi tiết hạng mục do items.ts (T012) dựng; route trả chi tiết sau khi đổi như contract. */
-  itemDetail: (tx: Tx, userId: string, itemId: string) => Promise<SdlcItemDetail>;
-}
-
 /** Hàm đăng ký riêng để router.ts chỉ thêm một dòng `projects: participantRoutes(deps)` (T070 gộp). */
-export function participantRoutes(deps: ParticipantRouteDeps) {
+export function participantRoutes(deps: OrgDeps & ParticipantDeps) {
   const { authed, inOrg } = orgMiddlewares(deps);
   const os = implement(contract.sdlc.items.projects).$context<RequestContext>().use(authed);
   return {
     add: os.add.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
       await addItemProject(tx, user.id, input, deps);
-      return deps.itemDetail(tx, user.id, input.id);
+      return itemDetail(tx, user.id, input.id);
     }),
     remove: os.remove.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
       await removeItemProject(tx, user.id, input);
-      return deps.itemDetail(tx, user.id, input.id);
+      return itemDetail(tx, user.id, input.id);
     }),
   };
 }
