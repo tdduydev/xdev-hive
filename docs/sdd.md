@@ -10,6 +10,10 @@ The ADD explains how the system is put together. This document records the detai
 consistent: entities and tables, interfaces, state machines, algorithms and limits. Views already covered by the ADD
 are referenced, not repeated.
 
+Spec 009 update checked against `origin/main` at `bf891f4` on 14 October 2026: `codereview` services exist, but hub
+wiring (T070) and command delivery/outcome evaluation (T091) are pending. Sections below distinguish these remaining
+integration steps from the implemented module design.
+
 ## 1. Design concerns
 
 | Concern | Addressed in |
@@ -50,6 +54,10 @@ erDiagram
   CHAT_THREADS ||--o{ CHAT_MESSAGES : contains
   CHAT_THREADS ||--o{ APPROVALS : proposes
   RUNS ||--o{ RUNS : "parent of (review, plan)"
+  PROJECTS ||--o{ CODE_REVIEWS : "reviews PR"
+  RUNS ||--o{ CODE_REVIEWS : "produces round"
+  REVIEW_WORKFLOWS |o--o{ CODE_REVIEWS : "snapshotted by"
+  CODE_REVIEWS ||--o{ CODE_REVIEW_GATE_RUNS : "executes gates"
 ```
 
 Every table in schema `hive` carries `org_id`, has row-level security enabled and forced, and is queried through
@@ -86,7 +94,9 @@ Every table in schema `hive` carries `org_id`, has row-level security enabled an
 | sandbox | `sandbox_org_settings` | `locked`, `use_suggested_defaults` |
 | sandbox | `egress_allowlists` | `rule`; `project_id` null means organization-wide |
 | sandbox | `env_images` | One per project: `base_image`, `setup_script_hash` |
-| knowledge | `review_workflows`, `review_instances`, `review_gate_runs` | Review workflows (phases and gates as jsonb), one review instance per doc proposal with a snapshot of the workflow, one gate run per gate execution (`waiting`, `passed`, `failed`, `skipped`) |
+| knowledge | `review_workflows`, `review_instances`, `review_gate_runs` | Workflow definitions with immutable `subject` (`doc`/`code`), phases/gates as jsonb and Code scope/options; document runtime remains one snapshot per doc proposal and gate runs (`waiting`, `passed`, `failed`, `skipped`) |
+| codereview | `code_reviews` | PR review round keyed by run/project/PR/head SHA: workflow snapshot, `round`, `gate_index`, requester, revision count, status (`in_review`, `changes_requested`, `approved`, `merged`, `cancelled`, `superseded`); RLS enabled and forced |
+| codereview | `code_review_gate_runs` | Gate result: status, checklist, AI reviewers/run IDs, command evidence, approvals, decision/override reason, SLA deadline; RLS enabled and forced |
 | knowledge | `doc_drafts`, `doc_suggestions`, `doc_threads`, `doc_comments`, `doc_snapshots`, `doc_presence` | Document editor, keyed by doc key: one shared draft per doc (optimistic `revision`), inline suggestions (`pending`, `accepted`, `rejected`), comment threads anchored to a quote, named snapshots (a submitted snapshot links to its proposal), presence seen in the last minute |
 | governance | `agent_policies` | One per organization: `policy` (jsonb, schema `agentPolicyInput` in contracts), `template_sync`; runs keep the applied policy in `runs.agent_policy_snapshot` |
 | notify | `notification_channels`, `notifications`, `inbox_items` | Channels hold `config_enc`; notifications have `status` (`queued`, `sent`, `failed`) and `attempts` |
@@ -122,6 +132,7 @@ The permission noted in each operation's summary is enforced in the hub module.
 | Notifications | `GET/POST /notification-channels`, `PATCH/DELETE /notification-channels/{id}`, `POST /notification-channels/{id}/test`; `GET /inbox`, `GET /inbox/unread-count`, `POST /inbox/read`, `POST /inbox/read-all` |
 | Costs | `GET /costs/summary`, `GET /costs/budget-stopped` |
 | Reviews | `GET/POST /review-workflows`, `POST /review-workflows/remove`, `POST /review-workflows/dry-run`, `GET /reviews`, `GET /reviews/item`, `POST /reviews/decide` |
+| Code reviews | `codeReviews.list/count/get/files/decide/override/enqueue/recheck/dryRun/workflowFromProject`; contract and router exist, application router registration pending T070 |
 | Policies | `GET/POST /policies`, `POST /policies/templates/preview`, `POST /policies/templates/sync` |
 
 Errors carry an oRPC code (`UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `BAD_REQUEST`) and a stable
@@ -248,6 +259,41 @@ commit when the policy has a `changes` check gives `no_changes`; a failed option
 evaluate yet (`command`, `ci`) gives `needs_review`; otherwise `succeeded`. A `review` check first runs a child review
 run and waits for its score.
 
+The worker supports `spec.checks.commands` and returns `report.commands` after executing commands in the code
+worktree after the agent and before push (T090). The hub does not yet build this command list or evaluate outcome
+command results (T091), so RUN-07 remains partial. Missing command evidence must preserve the existing unsupported
+outcome behaviour; workflow command gates wait for a person. Workflow CI gates poll the PR head independently of
+the outcome `ci` check, which remains unsupported.
+
+#### Code review workflow execution
+
+`runs` already matches Code workflows and skips `outcome.review` with a reason when matched (T021). The intended
+entry point opens an instance only for `succeeded`/`needs_review` code runs with a PR. Matching uses project scope,
+target branch, task type and changed paths; explicit project scope outranks team scope, then organization scope,
+with latest update breaking ties. No match preserves the existing run policy and merge path.
+
+`codereview` snapshots the workflow and head SHA, advances ordered gates through the `codereview` pg-boss queue and
+skips gates whose conditions do not match. Rule gates consume diff/report/command evidence. AI gates create one to
+three `review` runs, aggregate by `all` or `avg` plus blocking severity, and post a summary comment. Team ownership is
+the default; requester ownership is optional. CI gates check the same head SHA. Human decisions lock the instance,
+check reviewer eligibility and quorum, and compare the reviewed SHA to the provider head. The requester needs the
+explicit self-approval option; organization admins can decide. Overrides require `reviews.override` and a reason.
+
+Returns route to `agent`, `author` or the previous human gate. Agent fixes retain task, branch, CLI and owner without
+planning and obey revision/budget limits; unavailable fixes fall back to the requester. A new head supersedes the
+instance and starts another round from the first workflow snapshot. Automated evidence is rerun; prior human
+approvals before the returned gate persist unless stale approvals are dismissed. Manual push rounds cannot reuse
+command evidence from the old SHA.
+
+Approval enqueues according to the effective workflow/project merge mode when the queue is enabled, otherwise
+waits for a member or manual merge. `reviewGate` keeps unapproved instances waiting; merge/close webhooks mark them
+`merged`/`cancelled`. SLA reminders are once per human wait; mutations are audited and relevant members notified.
+
+T070 must register the API router, worker, SLA cron and SCM handlers and inject `startReviewRuns`, `queueFixRun` and
+`MergeDeps.reviewGate` from `main.ts`. `codereview` never imports `runs`; both this injection and the catalog merge
+port prevent cycles. The proposed commit status is settled by spec 009 Q1 (`xdev-hive/review`); T101 implementation
+is pending. Provider approvals do not count as Hive human decisions.
+
 ### 6.4 Effective allowlist and egress decision
 
 Effective allowlist = organization entries + (project entries unless the organization locked the list) + the five
@@ -295,6 +341,7 @@ Decisions are recorded in [docs/adr](adr/README.md). Requirement areas map to mo
 | PROJ | `catalog`, `scm` | |
 | TASK | `tasks`, `scm` | |
 | RUN | `runs`, `catalog` (merge queue), `cost` | worker `channel`, `runner` |
+| CR | `codereview`, `knowledge` (workflow definitions), `runs`, `catalog`, `scm`, `notify`, `audit` | shared `packages/code-review`, web/desktop review views; worker command runner; T070/T091 integration pending |
 | FLEET | `fleet` | worker `service`, `update`, install scripts |
 | SBX | `sandbox` | worker `runner`, `egress` |
 | POL | `governance`, `runs` (dispatch), `catalog` (templates) | worker `runner` (hooks) |
