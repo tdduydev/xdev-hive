@@ -53,7 +53,7 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(17);
+    expect(items).toHaveLength(18);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 
