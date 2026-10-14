@@ -74,20 +74,14 @@ export const knowledgeText: Dict<{
   skillsOrgLead: string;
   skillsEmptyTitle: string;
   skillsEmptyBody: string;
-  memoryFilters: string;
   includeOldSearch: string;
-  searching: string;
-  clearSearch: string;
   noResults: string;
   noResultsHint: string;
   memoryEmptyTitle: string;
   memoryEmptyBody: string;
   noRows: string;
   rows: (from: number, to: number) => string;
-  previousPage: string;
-  nextPage: string;
   open: string;
-  openRow: string;
   saving: string;
   pendingEmptyHint: string;
   discardTitle: string;
@@ -132,20 +126,14 @@ export const knowledgeText: Dict<{
     skillsOrgLead: "Skill của tổ chức, đội và dự án; agent nạp theo phạm vi của run.",
     skillsEmptyTitle: "Chưa có skill của tổ chức",
     skillsEmptyBody: "Skill trong kho Git hay do agent đề xuất và được duyệt sẽ hiện ở đây.",
-    memoryFilters: "Lọc memory",
     includeOldSearch: "Tìm kiếm chỉ trả memory hiện hành.",
-    searching: "Đang tìm:",
-    clearSearch: "Xoá tìm kiếm",
     noResults: "Không có memory nào khớp",
     noResultsHint: "Thử từ khoá khác hoặc xoá tìm kiếm để xem cả danh sách.",
     memoryEmptyTitle: "Chưa có memory nào",
     memoryEmptyBody: "Memory đã duyệt hiện ở đây. Thêm memory đầu tiên hoặc chờ agent đề xuất.",
     noRows: "Không có dòng nào",
     rows: (from, to) => `Dòng ${from}–${to}`,
-    previousPage: "Trang trước",
-    nextPage: "Trang sau",
     open: "Mở",
-    openRow: "Mở dòng",
     saving: "Đang lưu…",
     pendingEmptyHint: "Khi agent đề xuất một memory mới, nó chờ ở đây cho tới khi có người duyệt.",
     discardTitle: "Bỏ memory này?",
@@ -256,20 +244,14 @@ export const knowledgeText: Dict<{
     skillsOrgLead: "Skills of the organization, teams and projects; agents load them by the run's scope.",
     skillsEmptyTitle: "No organization skills yet",
     skillsEmptyBody: "Skills in the Git repository, or proposed by agents and approved, show up here.",
-    memoryFilters: "Filter memories",
     includeOldSearch: "Search only returns current memories.",
-    searching: "Searching:",
-    clearSearch: "Clear search",
     noResults: "No memory matches",
     noResultsHint: "Try another keyword, or clear the search to see the whole list.",
     memoryEmptyTitle: "No memories yet",
     memoryEmptyBody: "Approved memories show up here. Add the first one or wait for an agent to propose one.",
     noRows: "No rows",
     rows: (from, to) => `Rows ${from}–${to}`,
-    previousPage: "Previous page",
-    nextPage: "Next page",
     open: "Open",
-    openRow: "Open row",
     saving: "Saving…",
     pendingEmptyHint: "When an agent proposes a new memory it waits here until someone approves it.",
     discardTitle: "Discard this memory?",

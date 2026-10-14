@@ -236,7 +236,9 @@ function AuditViewer() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const search = useSearch({ from: "/session/app/in-org/admin/audit" });
-  const filters: AuditFilters = { ...search, range: search.range ?? 7 };
+  // Kiểm lại vì router giữ cả khoá thô không hợp lệ (lib/route-search.ts).
+  const valid = validateAuditSearch(search);
+  const filters: AuditFilters = { ...valid, range: valid.range ?? 7 };
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [page, setPage] = useState(0);
   const cursor = cursors[page];
