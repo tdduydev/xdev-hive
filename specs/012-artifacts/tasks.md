@@ -90,7 +90,7 @@
     (mới), `docs/design-system/screens/{Leader,AppNav}.dc.html` (biến thể), `docs/design-system/screens/README.md`
   - **Phụ thuộc**: không · **Mức**: vừa
 
-- [ ] T006 [P] Thiết kế màn sau MVP: soạn tay, Terminal Leader, chính sách, dung lượng, mục Artifact ở task/run/dự án/hạng
+- [x] T006 [P] Thiết kế màn sau MVP: soạn tay, Terminal Leader, chính sách, dung lượng, mục Artifact ở task/run/dự án/hạng
   mục, chuyển thành tài liệu, lưu vào repo.
   - **Scope**: `docs/design-system/screens/{ArtifactEditor,ArtifactUsage}.dc.html` (mới),
     `docs/design-system/screens/{Policies,Plan,Projects,AppSdlcItem,DocEditor}.dc.html` (biến thể),

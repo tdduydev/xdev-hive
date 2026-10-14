@@ -33,6 +33,19 @@ export function validateReviewsSearch(search: Record<string, unknown>): ReviewsS
   };
 }
 
+export interface WorkflowsSearch {
+  /** Khoá dự án nguồn: trang tự dựng bản nháp quy trình code từ cấu hình dự án đó (chưa lưu). */
+  duan?: string;
+}
+
+export function validateWorkflowsSearch(search: Record<string, unknown>): WorkflowsSearch {
+  return typeof search.duan === "string" &&
+    /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(search.duan) &&
+    search.duan.length <= 40
+    ? { duan: search.duan }
+    : {};
+}
+
 export interface LeaderSearch {
   /** Cuộc trò chuyện đang mở; bỏ trống thì mở cuộc mới nhất. */
   thread?: string;

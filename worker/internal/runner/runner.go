@@ -38,9 +38,12 @@ const KindDocAssist = "docassist"
 // KindBrief là run viết brief của dự án (ADR 0022): đọc nhánh chính, chỉ đọc, nộp brief qua MCP.
 const KindBrief = "brief"
 
-// Capabilities là việc ngoài run code mà worker khai với hub trong hello. Hub chỉ giao run doccheck, docassist, brief
-// cho worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi.
-var Capabilities = []string{KindDocCheck, KindDocAssist, KindBrief}
+// KindSkillProposal là run đề xuất skill từ việc khó (specs/014): đọc nhánh chính, chỉ đọc, nộp SKILL.md qua MCP.
+const KindSkillProposal = "skill_proposal"
+
+// Capabilities là việc ngoài run code mà worker khai với hub trong hello. Hub chỉ giao run doccheck, docassist, brief,
+// skill_proposal cho worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi.
+var Capabilities = []string{KindDocCheck, KindDocAssist, KindBrief, KindSkillProposal}
 
 // NeedsFull: CLI chỉ chạy run code khi có toàn quyền (agy không giới hạn được trong thư mục làm việc); run chỉ đọc thì
 // không cần.
@@ -49,7 +52,7 @@ func NeedsFull(cli, kind string) bool { return cli == "antigravity" && !readOnly
 // readOnlyKind là nơi duy nhất quyết định run nào chỉ đọc: CLI không nhận cờ ghi (kể cả khi dự án bật quyền full),
 // lệnh override phải tự khai chỉ đọc, và worker không push. Thêm kind mới thì quyết định ở đây trước.
 func readOnlyKind(kind string) bool {
-	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist || kind == KindBrief
+	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist || kind == KindBrief || kind == KindSkillProposal
 }
 
 // Binary là lệnh của CLI trên máy: Antigravity cài lệnh `agy`, các CLI khác trùng tên.
@@ -360,7 +363,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
 			return err
 		}
-	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist || job.Kind == KindBrief {
+	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist || job.Kind == KindBrief || job.Kind == KindSkillProposal {
 		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
 		// của run code.
 		if err := addWorktreeAt(ctx, src.lock, src.dir, work, "--detach", work, "origin/"+job.BaseBranch); err != nil {
