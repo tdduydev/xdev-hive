@@ -256,3 +256,40 @@ với mọi gói.
     `unshare` dọn cả hai.
   - Kiểm sau `share` trên `HOME` giả bằng `hive-worker` đã build và `claude` thật (máy chủ giả): phiên của `claude-2` đọc
     được `MEMORY.md` chung và ghi `from-claude-2.md` vào thư mục chung mà không hỏi quyền.
+
+## 10. Đo trước/sau (T016)
+
+### Cách đo
+
+- Mốc nền được lưu ngày 14/10/2026, trước khi bật `balanced` cho bốn gói Claude. Mỗi báo cáo tổng hợp dùng
+  `hive-worker optimize report --json --days 7 --profile claude-4` (lặp lại với `claude-5`, `claude-6`, `claude-7`).
+- Sau 7 ngày, đối chiếu báo cáo tự chạy ngày 21/10/2026 của cùng gói với mốc nền tương ứng. Chỉ ghi số tổng hợp; không
+  đưa nội dung prompt, output hay đường dẫn máy vào báo cáo này.
+- Token quy đổi theo công thức ở mục 2: input + 0,1 × cache đọc + 1,25 × cache ghi 5 phút + 2 × cache ghi 1 giờ +
+  5 × output. Cache hit là tỉ lệ input được phục vụ từ cache. Ngữ cảnh đỉnh và số phiên vượt ngưỡng được tính theo
+  từng phiên, với các ngưỡng >150k và >400k token.
+- Đọc cache write 1 giờ và 5 phút theo số token ghi của từng loại TTL trong báo cáo; đây là số liệu mô tả, không cộng
+  trực tiếp với nhau để suy ra tiết kiệm.
+
+### Mốc nền theo gói
+
+| Gói | Phiên | Token quy đổi | Cache hit | Phiên đỉnh >150k | Phiên đỉnh >400k | Cache write 1 giờ | Cache write 5 phút | Sau 7 ngày |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| claude-4 | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | đo 2026-10-21 |
+| claude-5 | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | đo 2026-10-21 |
+| claude-6 | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | đo 2026-10-21 |
+| claude-7 | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | Chưa có số liệu | đo 2026-10-21 |
+
+Các JSON nền hiện chưa được chép vào worktree, nên bảng giữ trạng thái chưa có số liệu thay vì suy đoán giá trị. Khi
+điền số, dùng số đếm và tổng token của đúng từng profile; không phân bổ số tổng hợp của nhóm `interactive` ở mục 2 cho
+các gói.
+
+### Ngưỡng đối chiếu
+
+- **SC-001**: sau 7 ngày mức `balanced`, trung vị ngữ cảnh đỉnh của phiên tương tác phải ≤200k token; số phiên có
+  đỉnh >400k phải giảm ít nhất 80% so với mốc nền.
+- **SC-002**: token quy đổi trung bình mỗi lượt API của phiên tương tác phải giảm ít nhất 25% so với mốc 7 ngày trước
+  khi bật. Mốc chung hiện có ở mục 2 là 1.460,7M / 32.110 ≈45,5k token/lượt; kết quả T016 cần so sánh cùng tập
+  bốn gói và cùng khoảng thời gian.
+- Cột “Sau 7 ngày” sẽ được điền sau khi có báo cáo 21/10; hiện trạng chưa xác định, T016 chưa hoàn tất và không được
+  đánh dấu xong.
