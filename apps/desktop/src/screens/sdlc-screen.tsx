@@ -42,7 +42,7 @@ export function SdlcScreen() {
   );
 }
 
-/** Danh sách đã có giai đoạn, việc chờ và độ phủ; số liệu tổng hợp chờ API của T082. */
+/** Danh sách đã có giai đoạn, việc chờ và độ phủ; số liệu tổng hợp ở màn Chỉ số (sdlc-metrics-screen.tsx). */
 export function SdlcProgressScreen() {
   return (
     <QueryClientProvider client={queryClient}>

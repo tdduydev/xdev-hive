@@ -8,6 +8,7 @@ import { PlansScreen } from "@/screens/plans-screen.tsx";
 import { ProjectsScreen } from "@/screens/projects-screen.tsx";
 import { ReviewsScreen } from "@/screens/reviews-screen.tsx";
 import { RunsScreen } from "@/screens/runs-screen.tsx";
+import { SdlcMetricsScreen } from "@/screens/sdlc-metrics-screen.tsx";
 import { SdlcQuestionsScreen } from "@/screens/sdlc-questions-screen.tsx";
 import { SdlcProgressScreen, SdlcScreen } from "@/screens/sdlc-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
@@ -21,6 +22,7 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   sdlc: SdlcScreen,
   "sdlc-questions": SdlcQuestionsScreen,
   "sdlc-progress": SdlcProgressScreen,
+  "sdlc-metrics": SdlcMetricsScreen,
   docs: DocsScreen,
   home: HomeScreen,
   knowledge: KnowledgeScreen,
