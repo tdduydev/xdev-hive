@@ -1,6 +1,6 @@
 import { Button } from "@xdev-hive/ui/button";
 import { CheckIcon, CircleAlertIcon } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Switch } from "@/components/ui/switch.tsx";
 import { cx } from "@/lib/cx.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
@@ -11,18 +11,13 @@ const text: Dict<{ save: string; saving: string; discard: string; unsaved: strin
 };
 
 /**
- * Trang cài đặt nhiều mục (admin-layout.md § Form cài đặt): mục lục bám theo cuộn bên trái khi cột nội dung rộng từ
- * 896 px, các mục là card xếp dọc bên phải. Hẹp hơn thì mục lục thành hàng chip cuộn ngang để vẫn nhảy nhanh được tới
- * mục cuối. Đo theo cột nội dung chứ không theo màn hình: trong khu quản trị sidebar và menu Quản trị đã chiếm 448 px,
- * thêm cột mục lục ở 1100 px thì form chỉ còn khoảng 360 px.
+ * Thanh mục nằm trên form ở mọi kích thước để menu quản trị không ép form thành cột thứ tư.
  */
 export function SettingsLayout({ nav, children }: { nav?: ReactNode; children: ReactNode }) {
   return (
-    <div className="@container/settings min-w-0">
-      <div className="grid min-w-0 gap-4 @4xl/settings:grid-cols-[12rem_minmax(0,1fr)] @4xl/settings:items-start @4xl/settings:gap-8">
-        {nav}
-        <div className="grid min-w-0 gap-4">{children}</div>
-      </div>
+    <div className="grid min-w-0 gap-4">
+      {nav}
+      <div className="grid min-w-0 gap-4">{children}</div>
     </div>
   );
 }
@@ -33,32 +28,51 @@ export interface SettingsNavItem {
 }
 
 /**
- * Mục lục của trang cài đặt. Mục đang đọc sáng lên theo vị trí cuộn (IntersectionObserver); trình duyệt không có thì
- * chỉ còn là danh sách link, vẫn dùng được.
+ * Dùng vị trí đầu mục để mục dài hơn màn hình vẫn được đánh dấu đúng khi cuộn sâu trong form.
  */
 export function SettingsNav({ label, items }: { label: string; items: readonly SettingsNavItem[] }) {
   const [active, setActive] = useState(items[0]?.id);
+  const list = useRef<HTMLUListElement>(null);
   useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
-    const seen = new Map<string, boolean>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) seen.set(entry.target.id, entry.isIntersecting);
-        const first = items.find((item) => seen.get(item.id));
-        if (first) setActive(first.id);
-      },
-      // Mục coi là "đang đọc" khi đầu của nó đã qua thanh trên và còn nằm ở nửa trên màn hình.
-      { rootMargin: "-56px 0px -55% 0px" },
-    );
-    for (const item of items) {
-      const el = document.getElementById(item.id);
-      if (el) observer.observe(el);
+    let frame = 0;
+    function update() {
+      let current = items[0]?.id;
+      for (const item of items) {
+        const el = document.getElementById(item.id);
+        if (el && el.getBoundingClientRect().top <= 120) current = item.id;
+      }
+      if (window.scrollY > 0 && window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2) {
+        current = items.at(-1)?.id;
+      }
+      setActive(current);
     }
-    return () => observer.disconnect();
+    function schedule() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    }
+    update();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
   }, [items]);
+  useEffect(() => {
+    if (!active) return;
+    const container = list.current;
+    const link = container?.querySelector<HTMLAnchorElement>('[aria-current="location"]');
+    if (!container || !link) return;
+    const outer = container.getBoundingClientRect();
+    const inner = link.getBoundingClientRect();
+    if (inner.left < outer.left || inner.right > outer.right) {
+      container.scrollLeft += inner.left - outer.left - (outer.width - inner.width) / 2;
+    }
+  }, [active]);
   return (
-    <nav aria-label={label} className="min-w-0 @4xl/settings:sticky @4xl/settings:top-16">
-      <ul className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin] @4xl/settings:mx-0 @4xl/settings:grid @4xl/settings:overflow-visible @4xl/settings:px-0 @4xl/settings:pb-0">
+    <nav aria-label={label} className="sticky top-13 z-10 min-w-0 border-b border-border bg-background py-2">
+      <ul ref={list} className="flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
         {items.map((item) => (
           <li key={item.id} className="shrink-0">
             <a
@@ -67,9 +81,9 @@ export function SettingsNav({ label, items }: { label: string; items: readonly S
               onClick={() => setActive(item.id)}
               className={cx(
                 "block rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                "border border-border @4xl/settings:border-transparent",
+                "border border-border",
                 item.id === active
-                  ? "bg-accent font-medium text-accent-foreground @4xl/settings:border-l-2 @4xl/settings:border-l-primary"
+                  ? "bg-accent font-medium text-accent-foreground"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
@@ -121,7 +135,7 @@ export function SettingsSection({
   children: ReactNode;
 }) {
   const headingId = useId();
-  const className = "min-w-0 scroll-mt-20 rounded-xl bg-card text-sm text-card-foreground ring-1 ring-foreground/10";
+  const className = "min-w-0 scroll-mt-28 rounded-xl bg-card text-sm text-card-foreground ring-1 ring-foreground/10";
   const content = (
     <>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-border px-4 py-3.5 sm:px-5">
