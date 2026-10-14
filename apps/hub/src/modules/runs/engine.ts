@@ -18,6 +18,7 @@ import {
   TERMINAL_RUN_STATES,
 } from "@xdev-hive/contracts";
 import {
+  type CheckCommand,
   checkCommandResult,
   type DiffStats,
   diffStats,
@@ -395,6 +396,7 @@ function taskStatusFor(outcome: Outcome | "cancelled", prUrl: string | null): Ta
 }
 
 interface SpecContext {
+  commands: CheckCommand[];
   instructions: string[];
   budget: JobBudget | undefined;
   /** Model và quyền CLI sau khi áp Chính sách agent của tổ chức. */
@@ -571,6 +573,7 @@ function buildSpec(
     // Dự án tạo trước khi có mục này chưa lưu tokenSaving: gửi mặc định để worker mới và cũ cùng thấy một giá trị.
     tokenSaving: project.settings.tokenSaving ?? defaultTokenSaving,
     ...(mcpServers.length ? { mcpServers } : {}),
+    ...(ctx.commands.length ? { checks: { commands: ctx.commands } } : {}),
     // Worker đếm nhánh chính đi trước commit này bao nhiêu commit và báo lại trong run_result.report.repo.
     ...(ctx.brief?.commitSha ? { brief: { sha: ctx.brief.commitSha } } : {}),
   };
@@ -854,6 +857,33 @@ export function createRunsEngine(deps: RunsDeps) {
         });
       }
       const jobPolicy = jobPolicyOf(policy);
+      const workflow =
+        run.kind === "code" ? await matchFor(tx, codeReviewRunOf(run, task, project, null, PR_TO_OPEN)) : null;
+      const commands: CheckCommand[] = [];
+      if (run.kind === "code") {
+        for (const check of run.policySnapshot) {
+          if (check.check !== "command") continue;
+          const amount = Number.parseInt(check.timeout, 10);
+          const unit = check.timeout.slice(-1);
+          commands.push({
+            run: check.run.trim(),
+            timeoutSec: Math.max(10, Math.min(3600, amount * (unit === "h" ? 3600 : unit === "m" ? 60 : 1))),
+          });
+        }
+        // Chưa biết diff lúc giao job: chạy cả lệnh của checkpoint có điều kiện để không bỏ sót bằng chứng.
+        for (const phase of workflow?.workflow.phases ?? []) {
+          for (const gate of phase.gates) {
+            if (gate.kind === "rule" && gate.rules?.includes("command")) commands.push(...(gate.commands ?? []));
+          }
+        }
+      }
+      // Một lệnh dùng ở nhiều cổng chỉ cần chạy một lần, với thời hạn chặt nhất.
+      const uniqueCommands = new Map<string, CheckCommand>();
+      for (const command of commands) {
+        const run = command.run.trim();
+        const previous = uniqueCommands.get(run);
+        uniqueCommands.set(run, { run, timeoutSec: Math.min(previous?.timeoutSec ?? Infinity, command.timeoutSec) });
+      }
       const briefRow = await loadBrief(tx, project.id);
       const brief: BriefForPrompt | null = briefRow
         ? {
@@ -891,6 +921,7 @@ export function createRunsEngine(deps: RunsDeps) {
           attempt: run.attempt,
           ttl: offerTtlSec,
           spec: buildSpec(run, task, project, cli, {
+            commands: [...uniqueCommands.values()],
             instructions,
             budget,
             model: model.model,
