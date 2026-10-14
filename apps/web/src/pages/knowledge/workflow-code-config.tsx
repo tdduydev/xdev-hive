@@ -13,9 +13,12 @@ import {
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { PlusIcon, XIcon } from "lucide-react";
+import { InfoIcon, PlusIcon, XIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
+import { FormRow, RadioCards, SwitchRow } from "@/components/page/settings.tsx";
+import { Checkbox } from "@/components/ui/checkbox.tsx";
+import { Field, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
@@ -35,7 +38,6 @@ import {
 import { cn } from "@/lib/utils.ts";
 import {
   Approvers,
-  Field,
   GateHeader,
   hubIssuesOf,
   IssueAlert,
@@ -50,12 +52,8 @@ import { useOrg } from "@/shell/org-context.ts";
 
 /** Chữ riêng của quy trình code (Workflows.dc.html, biến thể Code); chữ dùng chung với tài liệu ở workflows-text.ts. */
 export const codeText: Dict<{
-  subject: string;
   locked: string;
   lockedHint: string;
-  filter: string;
-  filterAll: string;
-  lead: string;
   test: string;
   fromProject: string;
   scope: string;
@@ -73,11 +71,15 @@ export const codeText: Dict<{
   scopePaths: string;
   scopePathsHint: string;
   onPassTitle: string;
+  onPassHint: string;
   mergeMode: string;
   mergeProject: string;
   mergeAuto: string;
   mergeManual: string;
   mergeHint: string;
+  mergeProjectHint: string;
+  mergeManualHint: string;
+  allProjects: string;
   agentFixes: string;
   agentFixesHint: string;
   dropApprovals: string;
@@ -152,12 +154,8 @@ export const codeText: Dict<{
   condLine: (parts: string[]) => string;
 }> = {
   vi: {
-    subject: "Áp cho",
     locked: "Loại áp dụng cố định sau khi lưu",
     lockedHint: "Muốn đổi, nhân bản quy trình",
-    filter: "Hiện",
-    filterAll: "Tất cả",
-    lead: "PR do agent mở đi qua các checkpoint: máy kiểm, review AI, CI rồi người duyệt. Trả lại có thể giao agent sửa; đạt thì vào hàng merge.",
     test: "Chạy thử trên 1 PR",
     fromProject: "Tạo từ cấu hình dự án",
     scope: "Phạm vi kích hoạt",
@@ -175,11 +173,15 @@ export const codeText: Dict<{
     scopePaths: "Đường dẫn đổi",
     scopePathsHint: "Mỗi dòng một glob. Trống: mọi thay đổi.",
     onPassTitle: "Khi đạt và khi trả lại",
+    onPassHint: "PR đạt thì merge thế nào; bị trả lại thì agent được sửa mấy lượt.",
     mergeMode: "Chế độ merge",
     mergeProject: "Theo cấu hình dự án",
     mergeAuto: "Tự vào hàng merge",
     mergeManual: "Chờ người bấm",
-    mergeHint: "“Tự vào hàng” cần dự án bật merge queue; không thì PR chờ người merge.",
+    mergeHint: "Cần dự án bật merge queue; không thì PR chờ người merge.",
+    mergeProjectHint: "Dùng chế độ merge trong cài đặt của từng dự án.",
+    mergeManualHint: "PR đạt chờ người bấm merge.",
+    allProjects: "Mọi dự án của đội sở hữu",
     agentFixes: "Số lượt agent sửa tối đa",
     agentFixesHint: "0–5. Hết lượt, hoặc hết ngân sách task, PR về người giao việc.",
     dropApprovals: "Bỏ phê duyệt cũ khi có commit mới",
@@ -247,7 +249,7 @@ export const codeText: Dict<{
     dryNoPr: "chưa có PR",
     fromTitle: "Tạo từ cấu hình dự án",
     fromDesc:
-      "Dựng bản nháp từ review chéo, CI bắt buộc và số người duyệt của dự án. Chưa lưu cho tới khi bạn bấm Áp dụng quy trình.",
+      "Dựng bản nháp từ review chéo, CI bắt buộc và số người duyệt của dự án. Chưa lưu cho tới khi bạn bấm Tạo quy trình.",
     fromProjectLabel: "Dự án",
     fromCreate: "Tạo bản nháp",
     fromCreating: "Đang tạo…",
@@ -258,12 +260,8 @@ export const codeText: Dict<{
     condLine: (parts) => `khi ${parts.join("; ")}`,
   },
   en: {
-    subject: "Applies to",
     locked: "Type is fixed once saved",
     lockedHint: "To change it, duplicate the workflow",
-    filter: "Show",
-    filterAll: "All",
-    lead: "PRs opened by agents pass checkpoints: machine checks, AI review, CI, then a person. A return can send the agent to revise; a pass goes to the merge queue.",
     test: "Dry-run on a PR",
     fromProject: "Create from project settings",
     scope: "Trigger scope",
@@ -281,11 +279,15 @@ export const codeText: Dict<{
     scopePaths: "Changed paths",
     scopePathsHint: "One glob per line. Empty: any change.",
     onPassTitle: "On pass and on return",
+    onPassHint: "How a passing PR is merged, and how many times the agent may revise a returned one.",
     mergeMode: "Merge mode",
     mergeProject: "Follow project settings",
     mergeAuto: "Enqueue automatically",
     mergeManual: "Wait for a person",
-    mergeHint: "“Automatic” needs the project merge queue; otherwise the PR waits for a person.",
+    mergeHint: "Needs the project merge queue; otherwise the PR waits for a person.",
+    mergeProjectHint: "Use each project's merge setting.",
+    mergeManualHint: "A passing PR waits for someone to merge it.",
+    allProjects: "Every project of the owning team",
     agentFixes: "Max agent revisions",
     agentFixesHint: "0–5. When used up, or the task budget runs out, the PR goes back to the task owner.",
     dropApprovals: "Drop old approvals on a new commit",
@@ -353,7 +355,7 @@ export const codeText: Dict<{
     dryNoPr: "no PR yet",
     fromTitle: "Create from project settings",
     fromDesc:
-      "Builds a draft from the project's cross review, required CI and approver count. Nothing is saved until you publish the workflow.",
+      "Builds a draft from the project's cross review, required CI and approver count. Nothing is saved until you create the workflow.",
     fromProjectLabel: "Project",
     fromCreate: "Create draft",
     fromCreating: "Creating…",
@@ -389,12 +391,11 @@ export function codeGateCond(g: ReviewGate, tc: (typeof codeText)["vi"], size: (
 }
 
 const chipClass = "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs";
-const card = "m-0 flex min-w-0 flex-col gap-3 rounded-xl border bg-card px-4 py-3.5 text-card-foreground";
 
 type ScopeChange = Partial<NonNullable<WorkflowDraft["code"]>>;
 
-/** Phạm vi kích hoạt và việc sau khi đạt của quy trình code (hai thẻ phía trên các checkpoint). */
-export function CodeScope({
+/** Các hàng của mục "Phạm vi kích hoạt": quy trình code chỉ nhận PR khớp cả bốn ô. */
+export function CodeScopeRows({
   draft,
   canWrite,
   projects,
@@ -411,126 +412,134 @@ export function CodeScope({
   if (!code) return null;
   const free = projects.filter((p) => !code.projects.includes(p.key));
   return (
-    <div className="flex flex-wrap items-stretch gap-4">
-      <fieldset className={cn(card, "flex-[3_1_480px]")}>
-        <legend className="px-1.5 text-sm font-semibold">{tc.scope}</legend>
-        <span className="-mt-1.5 text-xs text-muted-foreground">{tc.scopeHint}</span>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
-          <Field label={tc.scopeProjects} htmlFor={`${ids}-projects`} hint={tc.scopeProjectsHint}>
-            <span className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-lg border border-input p-1.5 font-normal">
-              {code.projects.map((key) => (
-                <span key={key} className={cn(chipClass, "border-border font-mono")}>
-                  {key}
-                  {canWrite && (
-                    <button
-                      type="button"
-                      aria-label={tc.removeProject(key)}
-                      className="cursor-pointer text-muted-foreground hover:text-foreground"
-                      onClick={() => onChange({ projects: code.projects.filter((k) => k !== key) })}
-                    >
-                      <XIcon className="size-3" aria-hidden="true" />
-                    </button>
-                  )}
-                </span>
-              ))}
+    <>
+      <FormRow label={tc.scopeProjects} hint={tc.scopeProjectsHint}>
+        <span className="flex min-h-8 flex-wrap items-center gap-1.5 rounded-lg border border-input p-1.5">
+          {code.projects.length === 0 && !canWrite && (
+            <span className="px-1 text-sm text-muted-foreground">{tc.allProjects}</span>
+          )}
+          {code.projects.map((key) => (
+            <span key={key} className={cn(chipClass, "border-border font-mono")}>
+              {key}
               {canWrite && (
-                <select
-                  id={`${ids}-projects`}
-                  aria-label={tc.addProject}
-                  value=""
-                  className="h-6 min-w-30 flex-1 cursor-pointer bg-transparent text-sm text-muted-foreground outline-none"
-                  onChange={(e) => e.target.value && onChange({ projects: [...code.projects, e.target.value] })}
+                <button
+                  type="button"
+                  aria-label={tc.removeProject(key)}
+                  className="cursor-pointer text-muted-foreground hover:text-foreground"
+                  onClick={() => onChange({ projects: code.projects.filter((k) => k !== key) })}
                 >
-                  <option value="">+ {tc.addProject}</option>
-                  {free.map((p) => (
-                    <option key={p.id} value={p.key}>
-                      {p.key} · {p.name}
-                    </option>
-                  ))}
-                </select>
+                  <XIcon className="size-3" aria-hidden="true" />
+                </button>
               )}
             </span>
-          </Field>
-          <Field label={tc.scopeBranch} htmlFor={`${ids}-branch`} hint={tc.scopeBranchHint}>
-            <ListInput
-              id={`${ids}-branch`}
-              placeholder={tc.scopeBranchPh}
-              value={code.baseBranches}
-              disabled={!canWrite}
-              onChange={(baseBranches) => onChange({ baseBranches })}
-            />
-          </Field>
-          <Field label={tc.scopeKinds} htmlFor={`${ids}-kinds`} hint={tc.scopeKindsHint}>
-            <ListInput
-              id={`${ids}-kinds`}
-              placeholder={tc.scopeKindsPh}
-              value={code.taskTypes}
-              disabled={!canWrite}
-              onChange={(taskTypes) => onChange({ taskTypes })}
-            />
-          </Field>
-          <Field label={tc.scopePaths} htmlFor={`${ids}-paths`} hint={tc.scopePathsHint}>
-            <LinesInput
-              id={`${ids}-paths`}
-              className="min-h-16 font-mono text-sm"
-              value={code.paths}
-              disabled={!canWrite}
-              onChange={(paths) => onChange({ paths })}
-            />
-          </Field>
-        </div>
-      </fieldset>
-      <fieldset className={cn(card, "flex-[2_1_320px]")}>
-        <legend className="px-1.5 text-sm font-semibold">{tc.onPassTitle}</legend>
-        <Field label={tc.mergeMode} htmlFor={`${ids}-merge`} hint={tc.mergeHint}>
-          <NativeSelect
-            id={`${ids}-merge`}
-            value={code.merge}
-            disabled={!canWrite}
-            onChange={(e) => onChange({ merge: e.target.value as typeof code.merge })}
-          >
-            <option value="project">{tc.mergeProject}</option>
-            <option value="auto">{tc.mergeAuto}</option>
-            <option value="manual">{tc.mergeManual}</option>
-          </NativeSelect>
-        </Field>
-        <Field label={tc.agentFixes} htmlFor={`${ids}-fixes`} hint={tc.agentFixesHint}>
-          <Input
-            id={`${ids}-fixes`}
-            type="number"
-            min="0"
-            max="5"
-            className="w-24 font-mono"
-            value={String(code.maxAgentRevisions)}
-            disabled={!canWrite}
-            onChange={(e) => {
-              const n = Math.round(Number(e.target.value));
-              if (e.target.value !== "" && Number.isFinite(n)) onChange({ maxAgentRevisions: n });
-            }}
-          />
-        </Field>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="mt-0.75 size-4 accent-primary"
-            checked={code.dismissStaleApprovals}
-            disabled={!canWrite}
-            onChange={(e) => onChange({ dismissStaleApprovals: e.target.checked })}
-          />
-          <span>
-            {tc.dropApprovals}
-            <span className="block text-xs text-muted-foreground">{tc.dropApprovalsHint}</span>
-          </span>
-        </label>
-      </fieldset>
-    </div>
+          ))}
+          {canWrite && (
+            <select
+              aria-label={tc.addProject}
+              value=""
+              className="h-6 min-w-30 flex-1 cursor-pointer rounded-sm bg-transparent text-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              onChange={(e) => e.target.value && onChange({ projects: [...code.projects, e.target.value] })}
+            >
+              <option value="">+ {tc.addProject}</option>
+              {free.map((p) => (
+                <option key={p.id} value={p.key}>
+                  {p.key} · {p.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </span>
+      </FormRow>
+      <FormRow label={tc.scopeBranch} hint={tc.scopeBranchHint} htmlFor={`${ids}-branch`}>
+        <ListInput
+          id={`${ids}-branch`}
+          placeholder={tc.scopeBranchPh}
+          value={code.baseBranches}
+          disabled={!canWrite}
+          onChange={(baseBranches) => onChange({ baseBranches })}
+        />
+      </FormRow>
+      <FormRow label={tc.scopeKinds} hint={tc.scopeKindsHint} htmlFor={`${ids}-kinds`}>
+        <ListInput
+          id={`${ids}-kinds`}
+          placeholder={tc.scopeKindsPh}
+          value={code.taskTypes}
+          disabled={!canWrite}
+          onChange={(taskTypes) => onChange({ taskTypes })}
+        />
+      </FormRow>
+      <FormRow label={tc.scopePaths} hint={tc.scopePathsHint} htmlFor={`${ids}-paths`}>
+        <LinesInput
+          id={`${ids}-paths`}
+          className="min-h-16 font-mono text-sm"
+          value={code.paths}
+          disabled={!canWrite}
+          onChange={(paths) => onChange({ paths })}
+        />
+      </FormRow>
+      {/* Quy trình khớp thì thay review chéo cũ (D3), nên quản trị biết điều gì sẽ đổi trước khi lưu phạm vi. */}
+      <p className="flex items-start gap-2 text-xs text-pretty text-muted-foreground">
+        <InfoIcon aria-hidden="true" className="mt-px size-3.5 shrink-0" />
+        {tc.replaces}
+      </p>
+    </>
   );
 }
 
-/** Ghi chú cuối khối phạm vi: quy trình khớp thì thay review chéo cũ (D3), nên quản trị biết điều gì sẽ đổi. */
-export function CodeReplacesNote() {
+/** Các hàng của mục "Khi đạt và khi trả lại" của quy trình code. */
+export function CodeOnPassRows({
+  draft,
+  canWrite,
+  onChange,
+}: {
+  draft: WorkflowDraft;
+  canWrite: boolean;
+  onChange: (patch: ScopeChange) => void;
+}) {
   const tc = useT(codeText);
-  return <Alert>{tc.replaces}</Alert>;
+  const ids = useId();
+  const code = draft.code;
+  if (!code) return null;
+  return (
+    <>
+      <FormRow label={tc.mergeMode}>
+        <RadioCards
+          name={`${ids}-merge`}
+          label={tc.mergeMode}
+          value={code.merge}
+          disabled={!canWrite}
+          onChange={(merge) => onChange({ merge })}
+          options={[
+            { value: "project", title: tc.mergeProject, description: tc.mergeProjectHint },
+            { value: "auto", title: tc.mergeAuto, description: tc.mergeHint },
+            { value: "manual", title: tc.mergeManual, description: tc.mergeManualHint },
+          ]}
+        />
+      </FormRow>
+      <FormRow label={tc.agentFixes} hint={tc.agentFixesHint} htmlFor={`${ids}-fixes`}>
+        <Input
+          id={`${ids}-fixes`}
+          type="number"
+          min="0"
+          max="5"
+          className="w-24 font-mono"
+          value={String(code.maxAgentRevisions)}
+          disabled={!canWrite}
+          onChange={(e) => {
+            const n = Math.round(Number(e.target.value));
+            if (e.target.value !== "" && Number.isFinite(n)) onChange({ maxAgentRevisions: n });
+          }}
+        />
+      </FormRow>
+      <SwitchRow
+        label={tc.dropApprovals}
+        hint={tc.dropApprovalsHint}
+        checked={code.dismissStaleApprovals}
+        disabled={!canWrite}
+        onChange={(dismissStaleApprovals) => onChange({ dismissStaleApprovals })}
+      />
+    </>
+  );
 }
 
 /** Khung cấu hình một checkpoint của quy trình code: cùng khung với tài liệu, phần thân theo loại của code. */
@@ -557,6 +566,7 @@ export function CodeGateConfig({
 }) {
   const tc = useT(codeText);
   const lang = useLang();
+  const ids = useId();
   const disabled = !canWrite;
   const set = (patch: Partial<ReviewGate>) => onChange((x) => ({ ...x, ...patch }));
   return (
@@ -570,7 +580,7 @@ export function CodeGateConfig({
         onMove={onMove}
         onRemove={onRemove}
       />
-      <div className="flex flex-col gap-3.5 px-4 py-3.5">
+      <div className="flex flex-col gap-3.5 pt-3.5 xl:pl-4">
         <KindSwitch kind={g.kind} disabled={disabled} onChange={(k) => onChange((x) => withKind(x, k, lang, "code"))} />
         {g.kind === "human" && (
           <>
@@ -581,14 +591,14 @@ export function CodeGateConfig({
               disabled={disabled}
               onChange={(reviewers) => set({ reviewers })}
             />
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.75 size-4 accent-primary"
+            <label htmlFor={`${ids}-requester`} className="flex items-start gap-2 text-sm">
+              <Checkbox
+                id={`${ids}-requester`}
+                className="mt-0.5"
                 checked={g.reviewers?.allowRequester ?? false}
                 disabled={disabled}
-                onChange={(e) =>
-                  g.reviewers && set({ reviewers: { ...g.reviewers, allowRequester: e.target.checked } })
+                onCheckedChange={(allowRequester) =>
+                  g.reviewers && set({ reviewers: { ...g.reviewers, allowRequester } })
                 }
               />
               <span>
@@ -687,7 +697,8 @@ function AiFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disabled:
           </Button>
         )}
       </fieldset>
-      <Field label={tc.rubric} htmlFor={`${ids}-rubric`} hint={tc.rubricHint}>
+      <Field>
+        <FieldLabel htmlFor={`${ids}-rubric`}>{tc.rubric}</FieldLabel>
         <LinesInput
           id={`${ids}-rubric`}
           className="min-h-23 text-sm"
@@ -695,9 +706,11 @@ function AiFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disabled:
           disabled={disabled}
           onChange={(checks) => setAi({ checks })}
         />
+        <FieldHint>{tc.rubricHint}</FieldHint>
       </Field>
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label={tc.minScore} htmlFor={`${ids}-score`}>
+        <Field>
+          <FieldLabel htmlFor={`${ids}-score`}>{tc.minScore}</FieldLabel>
           <span className="flex items-center gap-2">
             <Input
               id={`${ids}-score`}
@@ -716,7 +729,8 @@ function AiFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disabled:
             <span className="font-mono text-sm text-muted-foreground">/ 10</span>
           </span>
         </Field>
-        <Field label={tc.combine} htmlFor={`${ids}-aggregate`}>
+        <Field>
+          <FieldLabel htmlFor={`${ids}-aggregate`}>{tc.combine}</FieldLabel>
           <NativeSelect
             id={`${ids}-aggregate`}
             value={ai.aggregate ?? "all"}
@@ -728,7 +742,8 @@ function AiFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disabled:
           </NativeSelect>
         </Field>
       </div>
-      <Field label={tc.blockOn} htmlFor={`${ids}-block`}>
+      <Field>
+        <FieldLabel htmlFor={`${ids}-block`}>{tc.blockOn}</FieldLabel>
         <NativeSelect
           id={`${ids}-block`}
           value={ai.blockOn ?? "none"}
@@ -745,7 +760,8 @@ function AiFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disabled:
           ))}
         </NativeSelect>
       </Field>
-      <Field label={tc.runWhere} htmlFor={`${ids}-runner`} hint={tc.aiPolicyHint}>
+      <Field>
+        <FieldLabel htmlFor={`${ids}-runner`}>{tc.runWhere}</FieldLabel>
         <NativeSelect
           id={`${ids}-runner`}
           value={ai.runner ?? "team"}
@@ -755,6 +771,7 @@ function AiFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disabled:
           <option value="team">{tc.whereTeam}</option>
           <option value="requester">{tc.whereRequester}</option>
         </NativeSelect>
+        <FieldHint>{tc.aiPolicyHint}</FieldHint>
       </Field>
     </>
   );
@@ -774,7 +791,8 @@ function NumberField({
   onChange: (n: number | undefined) => void;
 }) {
   return (
-    <Field label={label} htmlFor={id}>
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         id={id}
         type="number"
@@ -803,20 +821,19 @@ function RuleFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disable
     <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
       <legend className="mb-1.5 text-sm font-medium">{tc.ruleKind}</legend>
       {CODE_RULE_ORDER.map((r) => (
-        <label key={r} className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 accent-primary"
+        <label key={r} htmlFor={`${ids}-rule-${r}`} className="flex items-center gap-2 text-sm">
+          <Checkbox
+            id={`${ids}-rule-${r}`}
             checked={has(r)}
             disabled={disabled}
-            onChange={(e) =>
+            onCheckedChange={(checked) =>
               onChange((x) => ({
                 ...x,
-                rules: e.target.checked
+                rules: checked
                   ? CODE_RULE_ORDER.filter((k) => k === r || x.rules?.includes(k))
                   : (x.rules ?? []).filter((k) => k !== r),
                 // Lệnh đầu tiên điền sẵn để quy tắc vừa bật đã hợp lệ.
-                ...(e.target.checked && r === "command" && !x.commands?.length ? { commands: [DEFAULT_COMMAND] } : {}),
+                ...(checked && r === "command" && !x.commands?.length ? { commands: [DEFAULT_COMMAND] } : {}),
               }))
             }
           />
@@ -849,7 +866,8 @@ function RuleFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disable
               className="flex items-end gap-1.5"
             >
               <span className="min-w-0 flex-1">
-                <Field label={tc.cmd(i + 1)} htmlFor={`${ids}-cmd-${i}`}>
+                <Field>
+                  <FieldLabel htmlFor={`${ids}-cmd-${i}`}>{tc.cmd(i + 1)}</FieldLabel>
                   <Input
                     id={`${ids}-cmd-${i}`}
                     maxLength={500}
@@ -921,7 +939,8 @@ function RuleFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disable
         />
       )}
       {has("deny-paths") && (
-        <Field label={tc.denyGlobs} htmlFor={`${ids}-deny`} hint={tc.denyGlobsHint}>
+        <Field>
+          <FieldLabel htmlFor={`${ids}-deny`}>{tc.denyGlobs}</FieldLabel>
           <LinesInput
             id={`${ids}-deny`}
             className="min-h-16 font-mono text-sm"
@@ -929,6 +948,7 @@ function RuleFields({ gate: g, disabled, onChange }: { gate: ReviewGate; disable
             disabled={disabled}
             onChange={(denyPaths) => onChange((x) => ({ ...x, denyPaths }))}
           />
+          <FieldHint>{tc.denyGlobsHint}</FieldHint>
         </Field>
       )}
     </fieldset>
@@ -949,10 +969,13 @@ function ExtFields({
   const ids = useId();
   return (
     <>
-      <Field label={t.extCheck} htmlFor={`${ids}-ext`} hint={tc.ciHeadHint}>
+      <Field>
+        <FieldLabel htmlFor={`${ids}-ext`}>{t.extCheck}</FieldLabel>
         <Input id={`${ids}-ext`} className="bg-muted" value={tc.ciHead} disabled readOnly />
+        <FieldHint>{tc.ciHeadHint}</FieldHint>
       </Field>
-      <Field label={tc.noCi} htmlFor={`${ids}-none`}>
+      <Field>
+        <FieldLabel htmlFor={`${ids}-none`}>{tc.noCi}</FieldLabel>
         <NativeSelect
           id={`${ids}-none`}
           value={g.ext?.whenNone ?? "pass"}
@@ -986,8 +1009,8 @@ function Conditions({ gate: g, canWrite, onChange }: { gate: ReviewGate; canWrit
       : []),
   ];
   return (
-    <fieldset className="m-0 flex flex-col gap-2.5 rounded-[10px] border border-dashed border-input px-3 pt-1.5 pb-2.5">
-      <legend className="px-1.5 text-sm font-medium">{t.when}</legend>
+    <fieldset className="m-0 flex flex-col gap-2.5 border-0 border-t border-border p-0 pt-3">
+      <legend className="float-left mb-1.5 w-full text-sm font-medium">{t.when}</legend>
       <span className="flex flex-wrap items-center gap-1.5 text-sm">
         {chips.length === 0 && <span className="text-muted-foreground">{t.always}</span>}
         {chips.map((chip) => (
@@ -1013,7 +1036,8 @@ function Conditions({ gate: g, canWrite, onChange }: { gate: ReviewGate; canWrit
       </span>
       {open && (
         <div className="grid gap-2.5">
-          <Field label={tc.condPathsLabel} htmlFor={`${ids}-paths`}>
+          <Field>
+            <FieldLabel htmlFor={`${ids}-paths`}>{tc.condPathsLabel}</FieldLabel>
             <LinesInput
               id={`${ids}-paths`}
               className="min-h-14 font-mono text-sm"
@@ -1022,7 +1046,8 @@ function Conditions({ gate: g, canWrite, onChange }: { gate: ReviewGate; canWrit
               onChange={(paths) => setCond({ paths })}
             />
           </Field>
-          <Field label={tc.condTaskTypesLabel} htmlFor={`${ids}-types`}>
+          <Field>
+            <FieldLabel htmlFor={`${ids}-types`}>{tc.condTaskTypesLabel}</FieldLabel>
             <ListInput
               id={`${ids}-types`}
               placeholder={tc.condTaskTypesPh}
@@ -1031,7 +1056,8 @@ function Conditions({ gate: g, canWrite, onChange }: { gate: ReviewGate; canWrit
               onChange={(taskTypes) => setCond({ taskTypes })}
             />
           </Field>
-          <Field label={t.condSizeLabel} htmlFor={`${ids}-size`}>
+          <Field>
+            <FieldLabel htmlFor={`${ids}-size`}>{t.condSizeLabel}</FieldLabel>
             <Input
               id={`${ids}-size`}
               type="number"
@@ -1081,7 +1107,8 @@ export function CodeDryRunDialog({
           <Alert>{tc.fromNoProjects}</Alert>
         ) : (
           <>
-            <Field label={tc.dryProject} htmlFor={`${ids}-project`}>
+            <Field>
+              <FieldLabel htmlFor={`${ids}-project`}>{tc.dryProject}</FieldLabel>
               <NativeSelect id={`${ids}-project`} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                 {choices.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -1140,7 +1167,8 @@ function DryRunRuns({ draft, projectId }: { draft: WorkflowDraft; projectId: str
     <>
       <form onSubmit={submit} className="flex items-end gap-2">
         <div className="flex-1">
-          <Field label={tc.dryRun} htmlFor={`${ids}-run`}>
+          <Field>
+            <FieldLabel htmlFor={`${ids}-run`}>{tc.dryRun}</FieldLabel>
             <NativeSelect
               id={`${ids}-run`}
               className="font-mono"
@@ -1241,7 +1269,8 @@ export function FromProjectDialog({
           {projects.length === 0 ? (
             <Alert>{tc.fromNoProjects}</Alert>
           ) : (
-            <Field label={tc.fromProjectLabel} htmlFor={`${ids}-project`}>
+            <Field>
+              <FieldLabel htmlFor={`${ids}-project`}>{tc.fromProjectLabel}</FieldLabel>
               <NativeSelect id={`${ids}-project`} value={key} onChange={(e) => setKey(e.target.value)}>
                 {projects.map((p) => (
                   <option key={p.id} value={p.key}>
