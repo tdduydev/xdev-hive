@@ -224,7 +224,7 @@ export function createApp({
       pool,
       publicUrl,
       workerReleases: new WorkerReleaseCache(config.workerReleases),
-      issuePersonalToken: (tx, userId) => issueDesktopToken(tx, userId, registry),
+      issuePersonalToken: (tx, userId, purpose) => issueDesktopToken(tx, userId, registry, purpose),
     }),
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),

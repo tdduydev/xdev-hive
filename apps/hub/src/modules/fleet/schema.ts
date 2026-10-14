@@ -1,7 +1,9 @@
+import type { ConnectPurpose } from "@xdev-hive/contracts";
 import type { WorkerAccountSummary } from "@xdev-hive/contracts/worker-protocol";
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -157,7 +159,9 @@ export const desktopConnectCodes = hive
     {
       id: uuid("id").primaryKey().defaultRandom(),
       orgId: uuid("org_id").notNull(),
-      teamId: uuid("team_id").notNull(),
+      /** Đội máy sẽ đăng ký vào; null với `cli` vì CLI chỉ nhận token cá nhân. */
+      teamId: uuid("team_id"),
+      purpose: text("purpose").$type<ConnectPurpose>().notNull().default("desktop"),
       userId: text("user_id").notNull(),
       tokenHash: text("token_hash").notNull().unique(),
       challenge: text("challenge").notNull(),
@@ -168,6 +172,10 @@ export const desktopConnectCodes = hive
     },
     (t) => [
       foreignKey({ columns: [t.teamId, t.orgId], foreignColumns: [teams.id, teams.orgId] }).onDelete("cascade"),
+      check(
+        "desktop_connect_codes_purpose",
+        sql`${t.purpose} = 'cli' or (${t.purpose} = 'desktop' and ${t.teamId} is not null)`,
+      ),
       ...tokenPolicies("desktop_connect_codes"),
     ],
   )
