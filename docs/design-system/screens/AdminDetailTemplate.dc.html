@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Mẫu trang chi tiết (admin-layout.md)</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+.al{container-type:inline-size;background:var(--background);color:var(--foreground);font:14px/1.5 var(--font-sans);color-scheme:light;min-height:900px;display:flex}
+.al[data-theme=dark]{color-scheme:dark}
+.al *{box-sizing:border-box}.al :is(h1,h2,h3,p,dl,dd,ul){margin:0}.al ul{padding:0;list-style:none}
+.al :is(button,input,select,textarea,a):focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.al :is(button,input,select,textarea){font:inherit}.al button{cursor:pointer}.al button:disabled{opacity:.5;cursor:not-allowed}
+.al a{color:var(--primary);text-decoration:none}.al a:hover{text-decoration:underline;text-underline-offset:3px}
+.al-col{flex:999 1 560px;min-width:0;display:flex;flex-direction:column}
+.al-nav{flex:none}
+.al-header{padding:24px 24px 4px;display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px 24px}
+.al-header>div:first-child{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.al-crumb{font-size:12px;color:var(--muted-foreground)}
+.al h1{font-family:var(--font-heading);font-size:20px;line-height:1.3;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.al-desc{color:var(--muted-foreground);max-width:48rem;text-wrap:pretty}
+.al-meta{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted-foreground)}
+.al-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.al-body{padding:16px 24px 24px;display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-content:start}
+.al-body.form{max-width:1120px}.al-body.wide{max-width:1360px}
+.al-tabs{display:flex;gap:4px;margin-top:12px;padding:0 16px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
+.al-tab{display:inline-flex;align-items:center;gap:6px;padding:10px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted-foreground);font-weight:500;white-space:nowrap}
+.al-tab[aria-selected=true]{color:var(--foreground);border-bottom-color:var(--primary)}
+.al-count{min-width:20px;padding:0 6px;border-radius:999px;background:var(--muted);color:var(--muted-foreground);font-size:12px;line-height:20px;text-align:center;font-variant-numeric:tabular-nums}
+.al-count.warn{background:var(--warning-soft);color:var(--warning)}
+.al-btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;border:1px solid var(--border);background:var(--background);color:var(--foreground);font-weight:500;white-space:nowrap}
+.al-btn:hover:not(:disabled){background:var(--muted)}
+.al-btn.primary{background:var(--primary);color:var(--primary-foreground);border-color:transparent}.al-btn.primary:hover:not(:disabled){background:var(--primary);opacity:.9}
+.al-btn.ghost{border-color:transparent;background:transparent}.al-btn.sm{height:28px;font-size:13px;padding:0 8px}
+.al-btn.dashed{border-style:dashed}.al-btn.danger{color:var(--destructive);border-color:var(--destructive)}
+.al-btn.danger-solid{background:var(--destructive);color:#fff;border-color:transparent}
+.al-input,.al-select{height:32px;width:100%;min-width:0;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground)}
+.al-filter{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.al-filter .al-search{width:256px;max-width:100%}.al-filter .al-right{margin-left:auto;display:flex;gap:8px}
+.al-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px}
+.al-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;border-radius:999px;background:var(--accent);color:var(--accent-foreground)}
+.al-chip button{border:0;background:none;color:inherit;width:20px;height:20px;border-radius:999px}
+.al-tablebox{border:1px solid var(--border);border-radius:12px;background:var(--card);overflow:hidden;min-width:0}
+.al-scroll{overflow-x:auto}
+.al-table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
+.al-table th{height:40px;padding:0 12px;text-align:left;font-size:12px;font-weight:500;color:var(--muted-foreground);white-space:nowrap;border-bottom:1px solid var(--border);background:var(--card)}
+.al-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;background:var(--card)}
+.al-table tr:last-child td{border-bottom:0}.al-table tbody tr:hover td{background:color-mix(in oklab,var(--muted) 50%,var(--card))}
+.al-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.al-table .pin-start{position:sticky;left:0;z-index:1;box-shadow:inset -1px 0 0 var(--border)}
+.al-table .pin-end{position:sticky;right:0;z-index:1;box-shadow:inset 1px 0 0 var(--border);text-align:right}
+.al-sub{font-size:12px;color:var(--muted-foreground)}.al-mono{font-family:var(--font-mono);font-size:12.5px}
+.al-person{display:flex;align-items:center;gap:10px;min-width:0}.al-ava{width:28px;height:28px;border-radius:999px;background:var(--muted);display:grid;place-items:center;font-size:11px;font-weight:600;flex:none}
+.al-pill{display:inline-flex;align-items:center;gap:6px;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.al-pill.ok{background:var(--success-soft);color:var(--success)}.al-pill.warn{background:var(--warning-soft);color:var(--warning)}.al-pill.bad{background:var(--destructive-soft);color:var(--destructive)}.al-pill.off{background:var(--muted);color:var(--muted-foreground)}.al-pill.run{background:var(--accent);color:var(--accent-foreground)}
+.al-foot{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 12px;border-top:1px solid var(--border);font-size:12px}
+.al-foot .al-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.al-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;background:var(--foreground);color:var(--background)}
+.al-bulk .al-btn{background:transparent;color:var(--background);border-color:color-mix(in oklab,var(--background) 30%,transparent)}
+.al-card{border-radius:12px;background:var(--card);box-shadow:0 0 0 1px color-mix(in oklab,var(--foreground) 10%,transparent);min-width:0}
+.al-card-h{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 16px;padding:14px 20px;border-bottom:1px solid var(--border)}
+.al-card-h>div:first-child{flex:1 1 256px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.al h2{font-size:16px;font-weight:600}.al-card-h p{font-size:12px;color:var(--muted-foreground);text-wrap:pretty}
+.al-rows>*{padding:16px 20px}.al-rows>*+*{border-top:1px solid var(--border)}
+.al-formrow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px 24px}
+.al-label{display:flex;flex-direction:column;gap:2px}.al-label b{font-weight:500}.al-label span,.al-hint{font-size:12px;color:var(--muted-foreground)}
+.al-switchrow{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.al-switch{width:32px;height:18px;border-radius:999px;border:0;background:var(--input);position:relative;flex:none;margin-top:2px}
+.al-switch::after{content:"";position:absolute;top:1px;left:1px;width:16px;height:16px;border-radius:999px;background:var(--background);transition:transform .15s}
+.al-switch[aria-checked=true]{background:var(--primary)}.al-switch[aria-checked=true]::after{transform:translateX(14px)}
+.al-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.al-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.al-field{display:flex;flex-direction:column;gap:6px;min-width:0}.al-field>b{font-weight:500}
+.al-suffix{position:relative}.al-suffix span{position:absolute;right:10px;top:7px;font:12px var(--font-mono);color:var(--muted-foreground)}
+.al-radio{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.al-radio label{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer}
+.al-radio label[data-on=true]{border-color:var(--primary);background:color-mix(in oklab,var(--accent) 40%,transparent)}
+.al-radio label[data-danger=true][data-on=true]{border-color:var(--destructive);background:var(--destructive-soft)}
+.al-settings{display:grid;grid-template-columns:12rem minmax(0,1fr);gap:32px;align-items:start}
+.al-toc{position:sticky;top:64px;display:flex;flex-direction:column;gap:2px}
+.al-toc a{display:block;padding:6px 10px;border-radius:6px;color:var(--muted-foreground);white-space:nowrap}
+.al-toc a[aria-current]{background:var(--accent);color:var(--accent-foreground);font-weight:500;box-shadow:inset 2px 0 0 var(--primary)}
+.al-savebar{position:sticky;bottom:0;margin:0 -24px -24px;padding:12px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;border-top:1px solid var(--border);background:color-mix(in oklab,var(--background) 85%,transparent);backdrop-filter:blur(8px)}
+.al-savebar .al-right{margin-left:auto;display:flex;gap:8px}
+.al-dot{width:8px;height:8px;border-radius:999px;background:var(--warning);display:inline-block}
+.al-note{padding:10px 14px;border-radius:8px;background:var(--muted);border:1px solid var(--border)}
+.al-alert{padding:12px 14px;border-radius:8px;background:var(--destructive-soft);color:var(--destructive);display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.al-empty{border:1px dashed var(--border);border-radius:12px;padding:40px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.al-empty .ico{width:32px;height:32px;border-radius:8px;background:var(--muted);display:grid;place-items:center}
+.al-empty p{color:var(--muted-foreground);max-width:24rem}
+.al-sk{background:var(--muted);border-radius:6px;height:12px;animation:alp 1.6s ease-in-out infinite}
+@keyframes alp{50%{opacity:.5}}@media (prefers-reduced-motion:reduce){.al-sk{animation:none}}
+.al-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.al-stat{padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.al-stat .top{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:500;color:var(--muted-foreground)}
+.al-stat .v{font:600 24px/1.2 var(--font-heading);font-variant-numeric:tabular-nums}
+.al-stat .ico{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;background:var(--muted)}
+.al-up-bad{color:var(--destructive);font-size:12px}.al-up-good{color:var(--success);font-size:12px}
+.al-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px}.al-dl dt{color:var(--muted-foreground)}.al-dl dd{overflow-wrap:anywhere}
+.al-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 12px;border-bottom:1px dashed var(--border);font-size:12px;width:100%}
+.al-tools select{height:26px;width:auto}
+.al-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+@container (max-width:1023px){.al-settings{grid-template-columns:minmax(0,1fr);gap:16px}.al-toc{position:static;flex-direction:row;overflow-x:auto}.al-toc a{border:1px solid var(--border)}.al-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:767px){.al-header{padding:20px 16px 4px}.al-body{padding:16px}.al-tabs{padding:0 8px}.al-formrow{grid-template-columns:minmax(0,1fr)}.al-savebar{margin:0 -16px -16px;padding:12px 16px}.al-grid3{grid-template-columns:minmax(0,1fr)}}
+@container (max-width:639px){.al-nav{display:none}.al-filter .al-search{width:100%}.al-filter .al-right{margin-left:0}.al-grid2,.al-radio,.al-stats{grid-template-columns:minmax(0,1fr)}.al-table .pin-end{position:static;box-shadow:none}.al-actions{width:100%}}
+</style>
+</helmet>
+<div class="al" data-theme="{{theme}}" lang="{{lang}}" style="{{boardStyle}}">
+<sc-if value="{{showTools}}" hint-placeholder-val="{{true}}"><div class="al-tools" data-design-tools><label>{{t.stateLabel}} <select class="al-select" value="{{view}}" onChange="{{setView}}"><sc-for list="{{views}}" as="v"><option value="{{v.value}}">{{v.label}}</option></sc-for></select></label><button type="button" class="al-btn sm" onClick="{{toggleLang}}">VI / EN</button><button type="button" class="al-btn sm" onClick="{{toggleTheme}}">{{t.theme}}</button><button type="button" class="al-btn sm" onClick="{{toggleNarrow}}">360 px</button></div></sc-if>
+<div class="al-nav"><dc-import name="Sidebar" active="teams" lang="{{lang}}" hint-size="240px,900px"></dc-import></div>
+<div class="al-col">
+  <dc-import name="Topbar" crumb="{{t.list}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+  <header class="al-header" style="max-width:1360px">
+    <div><p class="al-crumb"><a href="#">{{t.list}}</a></p><h1>{{t.title}}</h1><p class="al-desc">{{t.desc}}</p><p class="al-meta"><span>{{t.metaMembers}}</span><span>{{t.metaSystems}}</span><span>{{t.metaProjects}}</span><span>{{t.metaCreated}}</span></p></div>
+    <div class="al-actions"><button type="button" class="al-btn" aria-label="{{t.more}}">⋯</button><button type="button" class="al-btn">{{t.edit}}</button><button type="button" class="al-btn primary">+ {{t.addPeople}}</button></div>
+  </header>
+  <div role="tablist" aria-label="{{t.sections}}" class="al-tabs"><sc-for list="{{tabs}}" as="tb" hint-placeholder-count="4"><button type="button" role="tab" class="al-tab" aria-selected="{{tb.sel}}" onClick="{{tb.pick}}">{{tb.label}} <span class="al-count">{{tb.count}}</span></button></sc-for></div>
+  <main class="al-body wide">
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}"><div role="status" aria-busy="true" class="al-grid2"><span class="al-sr">{{t.loading}}</span><div class="al-card" style="padding:20px;display:grid;gap:12px"><div class="al-sk" style="width:40%"></div><div class="al-sk"></div><div class="al-sk" style="width:70%"></div></div><div class="al-card" style="padding:20px;display:grid;gap:12px"><div class="al-sk" style="width:40%"></div><div class="al-sk"></div><div class="al-sk" style="width:70%"></div></div></div></sc-if>
+    <sc-if value="{{isError}}" hint-placeholder-val="{{false}}"><div role="alert" class="al-alert">{{t.error}}<button type="button" class="al-btn sm" onClick="{{retry}}">{{t.retry}}</button></div></sc-if>
+    <sc-if value="{{notLoading}}">
+    <div class="al-grid2">
+      <section class="al-card" aria-labelledby="d-about"><div class="al-card-h"><div><h2 id="d-about">{{t.about}}</h2><p>{{t.aboutHint}}</p></div></div>
+        <dl class="al-dl" style="padding:16px 20px"><sc-for list="{{facts}}" as="f" hint-placeholder-count="5"><dt>{{f.k}}</dt><dd class="{{f.cls}}">{{f.v}}</dd></sc-for></dl></section>
+      <section class="al-card" aria-labelledby="d-sys"><div class="al-card-h"><div><h2 id="d-sys">{{t.systems}}</h2><p>{{t.systemsHint}}</p></div><button type="button" class="al-btn sm">+ {{t.addSystem}}</button></div>
+        <ul class="al-rows"><sc-for list="{{systems}}" as="s" hint-placeholder-count="2"><li style="display:flex;justify-content:space-between;gap:12px"><span><b style="font-weight:500">{{s.name}}</b><br><span class="al-sub">{{s.desc}}</span></span><span class="al-mono al-sub">{{s.slug}}</span></li></sc-for></ul></section>
+    </div>
+    <section aria-labelledby="d-people" style="display:grid;gap:12px">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px"><div style="flex:1 1 256px"><h2 id="d-people">{{t.people}}</h2><p class="al-sub" style="font-size:14px">{{t.peopleHint}}</p></div><input class="al-input" style="width:256px;max-width:100%" aria-label="{{t.search}}" placeholder="{{t.search}}"></div>
+      <sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}"><section class="al-empty"><span class="ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg></span><h2>{{t.emptyTitle}}</h2><p>{{t.emptyDesc}}</p><button type="button" class="al-btn primary">+ {{t.addPeople}}</button></section></sc-if>
+      <sc-if value="{{hasPeople}}"><div class="al-tablebox"><div class="al-scroll"><table class="al-table" style="min-width:640px"><thead><tr><th class="pin-start">{{t.person}}</th><th>{{t.teamRole}}</th><th class="num">{{t.runs}}</th><th>{{t.joined}}</th><th class="pin-end">{{t.actions}}</th></tr></thead>
+        <tbody><sc-for list="{{people}}" as="p" hint-placeholder-count="4"><tr><td class="pin-start"><div class="al-person"><span class="al-ava">{{p.ini}}</span><span><b style="font-weight:500">{{p.name}}</b><br><span class="al-sub">{{p.email}}</span></span></div></td><td><select class="al-select" style="width:160px" aria-label="{{p.roleLabel}}"><option>{{p.role}}</option></select></td><td class="num">{{p.runs}}</td><td>{{p.joined}}</td><td class="pin-end"><button type="button" class="al-btn ghost sm" aria-label="{{p.removeLabel}}">{{t.remove}}</button></td></tr></sc-for></tbody></table></div></div></sc-if>
+    </section>
+    <section class="al-card" aria-labelledby="d-danger" style="box-shadow:0 0 0 1px var(--destructive)"><div class="al-card-h"><div><h2 id="d-danger">{{t.danger}}</h2><p>{{t.dangerHint}}</p></div><button type="button" class="al-btn danger">{{t.delete}}</button></div></section>
+    </sc-if>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","loading","empty","error"],"default":"normal"},"embedded":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+const commonVals = (self, x, lang, dark, narrow, view) => ({
+  theme: dark ? 'dark' : 'light', lang, dark,
+  boardStyle: narrow ? 'width:360px;min-height:1600px' : '',
+  showTools: !self.props.embedded,
+  views: [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Rỗng', 'Empty']], ['error', ['Lỗi', 'Error']]].map(([value, l]) => ({ value, label: x(l) })),
+  view, setView: (e) => self.setState({ view: e.target.value }), retry: () => self.setState({ view: 'normal' }),
+  isLoading: view === 'loading', isError: view === 'error', isEmpty: view === 'empty', isReady: view === 'normal', notLoading: view !== 'loading',
+  toggleLang: () => self.setState({ lang: lang === 'en' ? 'vi' : 'en' }), toggleTheme: () => self.setState({ dark: !dark }), toggleNarrow: () => self.setState({ narrow: !narrow }),
+  setLang: (v) => self.setState({ lang: v }), setTheme: (v) => self.setState({ dark: v }),
+});
+const commonText = (x) => ({ stateLabel: x(['Trạng thái xem', 'View state']), theme: x(['Sáng/tối', 'Light/dark']), retry: x(['Tải lại', 'Retry']) });
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { lang: null, dark: null, narrow: null, view: null, tab: 'overview' }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const narrow = this.state.narrow ?? !!this.props.narrow;
+    const view = this.state.view ?? this.props.state ?? 'normal';
+    const x = (p) => (lang === 'en' ? p[1] : p[0]);
+    const t = {
+      ...commonText(x), list: x(['Đội và hệ thống', 'Teams & systems']), title: x(['Thanh toán', 'Payments']),
+      desc: x(['Đội giữ cổng thanh toán và đối soát. Dự án của đội chỉ người trong đội giao việc được.', 'Owns the payment gateway and reconciliation. Only team members can assign work to its projects.']),
+      metaMembers: x(['6 người', '6 people']), metaSystems: x(['2 hệ thống', '2 systems']), metaProjects: x(['3 dự án', '3 projects']), metaCreated: x(['Tạo 01/10/2026', 'Created Oct 1, 2026']),
+      more: x(['Thao tác khác', 'More actions']), edit: x(['Sửa đội', 'Edit team']), addPeople: x(['Thêm người', 'Add people']), sections: x(['Các phần của đội', 'Team sections']),
+      loading: x(['Đang tải đội…', 'Loading team…']), error: x(['Không tải được đội Thanh toán. Thử lại, hoặc về danh sách đội.', 'Could not load the Payments team. Retry, or go back to the team list.']),
+      about: x(['Thông tin', 'About']), aboutHint: x(['Tên và mã dùng trong route, nhánh và thông báo.', 'Name and slug used in routes, branches and notifications.']),
+      systems: x(['Hệ thống', 'Systems']), systemsHint: x(['Phần mềm đội này chịu trách nhiệm.', 'Software this team is responsible for.']), addSystem: x(['Thêm hệ thống', 'Add system']),
+      people: x(['Người trong đội', 'Team members']), peopleHint: x(['Vai trò trong đội quyết ai duyệt kế hoạch và sửa cấu hình dự án.', 'Team roles decide who approves plans and edits project settings.']),
+      search: x(['Tìm người…', 'Search people…']), person: x(['Người', 'Person']), teamRole: x(['Vai trò trong đội', 'Team role']), runs: x(['Run 30 ngày', 'Runs (30 d)']), joined: x(['Vào đội', 'Joined']), actions: x(['Thao tác', 'Actions']), remove: x(['Bỏ khỏi đội', 'Remove']),
+      emptyTitle: x(['Đội chưa có ai', 'No one in this team yet']), emptyDesc: x(['Thêm người để họ giao việc cho dự án của đội.', 'Add people so they can assign work to the team’s projects.']),
+      danger: x(['Vùng nguy hiểm', 'Danger zone']), dangerHint: x(['Xoá đội gỡ mọi người khỏi đội. Dự án của đội phải chuyển sang đội khác trước.', 'Deleting the team removes everyone from it. Move its projects to another team first.']), delete: x(['Xoá đội Thanh toán', 'Delete the Payments team']),
+    };
+    const ppl = [['Lê Hà', 'ha.le@acme.vn', ['Quản trị đội', 'Team admin'], 148], ['Trần Đức Duy', 'duy@acme.vn', ['Thành viên', 'Member'], 92], ['Võ Thu Trang', 'trang.vo@acme.vn', ['BA/PO', 'BA/PO'], 12], ['Bùi Ngọc Lan', 'lan.bui@acme.vn', ['Chỉ xem', 'Viewer'], 0]];
+    const tabs = [['overview', ['Tổng quan', 'Overview'], ''], ['projects', ['Dự án', 'Projects'], 3], ['activity', ['Hoạt động', 'Activity'], ''], ['settings', ['Cài đặt', 'Settings'], '']].map(([k, l, n]) => ({ label: x(l), count: n, sel: this.state.tab === k ? 'true' : 'false', pick: () => this.setState({ tab: k }) }));
+    return {
+      ...commonVals(this, x, lang, dark, narrow, view), t, tabs,
+      facts: [[x(['Tên', 'Name']), x(['Thanh toán', 'Payments']), ''], [x(['Mã', 'Slug']), 'thanh-toan', 'al-mono'], [x(['Màu', 'Colour']), '#004CFF', 'al-mono'], [x(['Quản trị đội', 'Team admins']), 'Lê Hà', ''], [x(['Tạo lúc', 'Created']), '01/10/2026 10:00', '']].map(([k, v, cls]) => ({ k, v, cls })),
+      systems: [{ name: x(['Cổng thanh toán', 'Payment gateway']), desc: x(['Nhận thanh toán thẻ', 'Card payments']), slug: 'cong' }, { name: x(['Đối soát', 'Reconciliation']), desc: x(['Đối chiếu với ngân hàng cuối ngày', 'End-of-day bank matching']), slug: 'doi-soat' }],
+      hasPeople: view !== 'empty',
+      people: ppl.map(([name, email, role, runs]) => ({ name, email, role: x(role), runs, joined: '02/10/2026', ini: name.split(' ').slice(-2).map((w) => w[0]).join(''), roleLabel: x(['Vai trò trong đội của ', 'Team role of ']) + name, removeLabel: x(['Bỏ ', 'Remove ']) + name + x([' khỏi đội', ' from the team']) })),
+    };
+  }
+}
+</script>
+</body>
+</html>
