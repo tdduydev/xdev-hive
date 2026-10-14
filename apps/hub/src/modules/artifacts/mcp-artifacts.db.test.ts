@@ -506,14 +506,20 @@ describe("run có task", () => {
     expect(audit.at(-1)?.data).toMatchObject({ runId: run.runId });
   });
 
-  it("loại react bị tắt tới khi T014 bật biên dịch", async () => {
+  it("run tạo artifact react qua bộ biên dịch đã bật ở T014", async () => {
     const run = await seedRun("code", org.user("tmember"));
-    const denied = await call(run.token, "artifact_create", {
+    const created = await call(run.token, "artifact_create", {
       type: "react",
       title: "R",
       content: "export default () => null",
     });
-    expect(denied.isError).toBe(true);
+    expect(created.isError).toBe(false);
+    const { id } = JSON.parse(created.text) as { id: string };
+    const version = (
+      await rows("select compiled, compile_error from hive.artifact_versions where artifact_id = $1", [id])
+    )[0];
+    expect(version.compiled).toContain("export default");
+    expect(version.compile_error).toBeNull();
   });
 });
 
