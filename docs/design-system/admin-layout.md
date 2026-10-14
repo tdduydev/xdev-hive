@@ -182,7 +182,8 @@ PageBody          description list / related table / sections with their own Sav
 
 ## Settings forms
 
-- Four or more sections: `SettingsLayout` with `SettingsNav` (sticky list at ≥1024 px, chip row below) and one
+- Four or more sections: `SettingsLayout` with `SettingsNav` (sticky list when the content column is at least 896 px
+  wide, a container query, so on admin pages it appears from about 1400 px; chip row below) and one
   `SettingsSection` per topic. Fewer: sections stacked without nav.
 - `SettingsSection`: card with a header (title, one-line description, optional secondary action such as "Tạo quy trình
   từ cấu hình này") and a body of rows separated by hairlines. Every section has a title; no untitled cards.
