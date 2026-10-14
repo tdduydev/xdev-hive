@@ -120,7 +120,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{service.ts,jobs.ts,index.ts,ai.ts,merge.ts,service.db.test.ts}`
   - **Phụ thuộc**: T002, T011 · **Mức**: nặng
 
-- [ ] T021 [US2] Nối `runs` với `codereview`
+- [x] T021 [US2] Nối `runs` với `codereview`
   - `verifyCode`: gọi `matchFor`; có quy trình thì đánh giá chính sách bỏ `review` (ghi `skipped` + lý do), không tạo run
     review chéo, không `enqueueMerge`, gọi `startCodeReview` trong transaction kết luận run; không có thì giữ nguyên.
   - `verifyReview`: run review có phiên (tra `run_ids`) thì gọi `onReviewRunFinished` thay vì `verify(parent)`.
@@ -133,7 +133,7 @@
     `apps/hub/src/{runs.db.test.ts,review.db.test.ts}`
   - **Phụ thuộc**: T020 · **Mức**: nặng
 
-- [ ] T022 [US2] Checkpoint AI
+- [x] T022 [US2] Checkpoint AI
   - `ai.ts`: tạo một run review mỗi reviewer qua deps, lưu `run_ids`; `onReviewRunFinished` gom kết quả vào `details`,
     gộp theo `gates.ts`, kết luận khi đủ; run review lỗi/huỷ → checkpoint không đạt với lý do; đăng một bình luận tổng
     hợp lên PR (`commentOnIssue`).
@@ -148,7 +148,7 @@
 
 ## Phase 4: User Story 3 — "Chờ tôi duyệt" cho PR (P1)
 
-- [ ] T030 [US3] Đọc và quyết định (hub)
+- [x] T030 [US3] Đọc và quyết định (hub)
   - `queries.ts`: list (scope, status, dự án, SLA, con trỏ), count, get (`canDecide`, `canOverride`, `canEnqueue`),
     files (qua `prFiles`, đệm theo `head_sha` 10 phút).
   - `decide.ts`: approve (quorum), changes (gọi `routing` của T040 qua hàm nội bộ; trước T040 chỉ hướng `author`),
