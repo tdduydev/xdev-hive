@@ -129,9 +129,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/remoteauth/{totp.go,totp_test.go,verify.go,verify_test.go}`
   - **Phụ thuộc**: T001, T005 (cùng làn) · **Mức**: nặng
 
-- [ ] T010 [US1] Worker: kiểu gói `term_*` và chuyển gói
-  - Một phần (SPEC10NEXT): kiểu Go mọi gói mới trong `protocol.go` + test fixture. **Còn**: `channel.go` đọc
-    `welcome.owner/policy`, chuyển gói H→W tới `terminal.Handler`.
+- [x] T010 [US1] Worker: kiểu gói `term_*` và chuyển gói
+  - Đã làm (SPEC10NEXT, SPEC10W3): kiểu Go mọi gói mới trong `protocol.go` + test fixture; `channel.go` khai `terminal`
+    khi có `Config.Terminal`, chuyển `welcome.features/owner/policy` và gói H→W (`term_input/resize` chỉ khi có
+    `connId`) tới `terminal.Handler`; `Sender` gắn với ctx của phiên, hub không khai `terminal` thì trả
+    `ErrHubNoTerminal` và không ghi gì. `cmd/hive-worker` chưa nối Handler (T011).
   - `protocol.go`: kiểu Go cho mọi gói mới; test đọc fixture dùng chung.
   - `channel.go`: khai `terminal` trong `hello.capabilities`; đọc `welcome.features`/`owner`; chỉ gửi `term_*` khi hub
     khai; chuyển gói H→W `term_*` tới `terminal.Handler` (interface mới trong `internal/terminal/handler.go`); hàm gửi
