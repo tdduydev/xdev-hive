@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p .",
+    "typecheck": "tsc -p . && tsc -p tsconfig.sw.json",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:hub": "playwright test -c playwright.hub.config.ts"
@@ -51,6 +51,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "pg": "^8.23.1",
     "tailwindcss": "^4.3.3",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vite-plugin-pwa": "^2.0.0"
   }
 }
