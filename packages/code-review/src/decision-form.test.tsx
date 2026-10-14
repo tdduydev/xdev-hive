@@ -8,6 +8,9 @@ import { codeReviewText } from "./text.ts";
 const t = codeReviewText.vi;
 const props = { pending: false, t };
 
+// delay mặc định chờ một macrotask sau mỗi thao tác; máy tải cao thì mỗi lần chờ kéo dài và test chạm trần thời gian.
+const user = userEvent.setup({ delay: null });
+
 describe("DecisionForm", () => {
   it("duyệt gắn headSha đã xem", async () => {
     const onDecide = vi.fn();

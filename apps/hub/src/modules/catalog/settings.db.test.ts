@@ -189,6 +189,9 @@ describe("projects.updateSettings: tokenSaving mới và định tuyến", () =>
       allowWeb: true,
       rtk: true,
       codegraph: true,
+      contextPack: true,
+      exploreBudget: 4,
+      toolOutputMaxChars: 12_000,
     });
     const window = await update("tadmin", p.key, { tokenSaving: { autocompactWindow: 120_000 } });
     expect(window.tokenSaving).toMatchObject({ autocompactWindow: 120_000, allowWeb: true, bashMaxChars: 9000 });

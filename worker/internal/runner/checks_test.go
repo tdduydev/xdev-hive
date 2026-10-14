@@ -121,8 +121,9 @@ func TestRunChecksRunsInWorktreeWithAllowlistedEnv(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-leak")
 	dir := t.TempDir()
 	var log strings.Builder
+	// Chỉ khớp tên biến: giá trị như PATH có thể chứa chữ TOKEN khi thư mục worktree đặt tên theo task.
 	res, err := (Runner{KillGrace: time.Second}).runChecks(context.Background(), Job{RunID: "r", Env: map[string]string{"HIVE_RUN_TOKEN": "run-token-xyz", "HIVE_PROJECT": "web"}, Checks: []CheckCommand{
-		{Run: `pwd; echo "project=$HIVE_PROJECT ci=$CI"; env | grep -E 'TOKEN|API_KEY' || echo sạch`, TimeoutSec: 10},
+		{Run: `pwd; echo "project=$HIVE_PROJECT ci=$CI"; env | grep -E '^[A-Z_]*(TOKEN|API_KEY)[A-Z_]*=' || echo sạch`, TimeoutSec: 10},
 	}}, dir, &log)
 	if err != nil {
 		t.Fatal(err)

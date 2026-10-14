@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { NotificationEvent } from "@xdev-hive/contracts";
+import type { ChatAction, NotificationEvent } from "@xdev-hive/contracts";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type pg from "pg";
 import { type Jobs, type MasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { notificationRecipients } from "../tenancy/index.ts";
 import { decryptConfig } from "./channels.ts";
+import { fanoutNotification } from "./fanout.ts";
 import { inboxItems, notificationChannels, notifications } from "./schema.ts";
 import { DeliveryError, type SendDeps, send } from "./send.ts";
 
@@ -36,6 +37,8 @@ export interface NotifyInput {
   recipientIds?: string[] | undefined;
   /** Đường dẫn tới trang liên quan trên web Hive; chỉ nhận http(s). */
   link?: string | null | undefined;
+  /** Hành động cho nút trong tin chat (Telegram/Slack); hộp thư và kênh admin không dùng. */
+  actions?: ChatAction[] | undefined;
 }
 
 export interface NotifyOptions {
@@ -83,6 +86,20 @@ export async function notify(tx: Tx, input: NotifyInput, opts: NotifyOptions = {
         })),
       )
       .onConflictDoNothing();
+    await fanoutNotification(
+      tx,
+      {
+        orgId: input.orgId,
+        event: input.event,
+        title: clip(input.title.trim(), TITLE_MAX),
+        body: clip(input.body.trim(), BODY_MAX),
+        link: safeLink(input.link),
+        eventKey,
+        recipients,
+        actions: input.actions ?? [],
+      },
+      { jobs: opts.jobs },
+    );
   }
   const channels = await tx
     .select({ id: notificationChannels.id })

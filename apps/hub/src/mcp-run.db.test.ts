@@ -248,6 +248,59 @@ describe("run token ở /mcp", () => {
     expect((await rawList(tokenFor({ ...check, taskId: a.taskId }))).status).toBe(401);
   });
 
+  it("run đề xuất skill thấy skill_proposal_submit; run code gọi thì bị từ chối; quá ba đề xuất bị chặn", async () => {
+    const a = seeded.a as Seeded;
+    const { rows } = await admin.query(
+      `insert into hive.runs (org_id, team_id, task_id, project_id, kind, state, branch, policy_snapshot, created_by)
+       select org_id, team_id, null, project_id, 'skill_proposal', 'running', $2, '[]'::jsonb, created_by
+       from hive.runs where id = $1 returning id`,
+      [a.runId, `skill-learning/${tag}`],
+    );
+    const runId = rows[0].id as string;
+    const client = await connect(tokenFor({ taskId: runId, key: "", runId }));
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).toEqual(
+      expect.arrayContaining(["skill_proposal_submit", "skill_get", "skill_list", "memory_search"]),
+    );
+    const one = {
+      kind: "new",
+      name: "lam-tron-tien",
+      description: "Dùng khi tính tiền",
+      content: "## Khi nào dùng\nTính tiền.",
+      reason: "Thử lại 3 lần",
+    };
+    expect(
+      text(await client.callTool({ name: "skill_proposal_submit", arguments: { proposals: [one, one, one, one] } }))
+        .isError,
+    ).toBe(true);
+    expect(
+      text(
+        await client.callTool({
+          name: "skill_proposal_submit",
+          arguments: { proposals: [{ ...one, name: "Sai Tên" }] },
+        }),
+      ).isError,
+    ).toBe(true);
+    expect(
+      json(await client.callTool({ name: "skill_proposal_submit", arguments: { proposals: [one] } })),
+    ).toMatchObject({
+      recorded: "skill_proposal_report",
+      count: 1,
+    });
+    // Mảng rỗng hợp lệ: agent thấy không có gì đáng thành skill.
+    expect(json(await client.callTool({ name: "skill_proposal_submit", arguments: { proposals: [] } }))).toMatchObject({
+      count: 0,
+    });
+    const { rows: events } = await admin.query(
+      "select count(*)::int as n from hive.run_events where run_id = $1 and type = 'skill_proposal_report'",
+      [runId],
+    );
+    expect(events[0].n).toBe(2);
+    // Run code không có tool này trong danh sách.
+    const code = await connect(tokenFor(a));
+    expect((await code.listTools()).tools.map((t) => t.name)).not.toContain("skill_proposal_submit");
+  });
+
   it("run trợ lý tài liệu đọc bản nháp, đề xuất, bình luận rồi nộp tóm tắt", async () => {
     const a = seeded.a as Seeded;
     const { rows } = await admin.query(
