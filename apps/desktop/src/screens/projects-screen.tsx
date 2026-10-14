@@ -1,5 +1,5 @@
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
-import type { Project, ProjectCreateInput, ProjectCreateResult } from "@xdev-hive/contracts";
+import type { Project } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import {
@@ -10,22 +10,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
-import { Input } from "@xdev-hive/ui/input";
-import { Label } from "@xdev-hive/ui/label";
-import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { FolderOpenIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
+import { ConnectHive } from "@/components/connect-hive.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { pickFolder, shortPath } from "@/lib/folder.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
-import { hub } from "@/lib/hub-rpc.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import {
   type BindingState,
   bindingState,
   bindProject,
-  connectionFor,
   forgetFolder,
   importLegacyProjects,
   type LocalProject,
@@ -34,12 +30,10 @@ import {
   matchLegacy,
   projectRepoLabel,
   projectRepoUrls,
-  repoHost,
   setProjectFull,
-  suggestKey,
   unbindProject,
 } from "@/lib/local-projects.ts";
-import { errorText, invoke } from "@/lib/tauri.ts";
+import { errorText } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
 
 const text: Dict<{
@@ -69,8 +63,6 @@ const text: Dict<{
   bound: (name: string) => string;
   fullOn: (name: string) => string;
   fullOff: (name: string) => string;
-  create: string;
-  createLabel: (name: string) => string;
   forget: string;
   forgetLabel: (name: string) => string;
   goneFromHub: string;
@@ -80,37 +72,17 @@ const text: Dict<{
   confirmWarn: string;
   cancel: string;
   confirm: string;
-  createTitle: (name: string) => string;
-  createLead: string;
-  noRemote: string;
-  noConnection: (host: string) => string;
-  openGit: string;
-  system: string;
-  key: string;
-  name: string;
-  protect: string;
-  approvals: string;
-  approvalsHint: string;
-  webhook: string;
-  createCheck: string;
-  checking: string;
-  planTitle: string;
-  planLead: (key: string) => string;
-  planBack: string;
-  planWarnings: string;
-  createSubmit: string;
-  creating: string;
-  created: (name: string) => string;
 }> = {
   vi: {
     lead: "Gắn mỗi dự án của hub với thư mục repo trên máy này. Run của dự án đã gắn tạo worktree từ repo đó (nhánh của run hiện trong repo), không chạy trong thư mục bạn đang làm.",
-    noAccount: "Liên kết tài khoản ở thẻ người dùng góc dưới bên trái để xem dự án của bạn trên hub.",
+    noAccount: "Kết nối Hive để xem và gắn dự án của bạn trên hub. Repo trên máy bên dưới vẫn quản lý được.",
     loading: "Đang đọc…",
     refresh: "Làm mới",
     hubProjects: "Dự án trên hub",
     noProjects: "Bạn chưa thấy dự án nào trên hub.",
     localOnly: "Repo trên máy chưa có trên hub",
-    localOnlyLead: "Repo nhập từ app cũ mà chưa khớp dự án nào của hub.",
+    localOnlyLead:
+      "Repo nhập từ app cũ mà chưa khớp dự án nào của hub. Dự án mới tạo trên web của Hive, rồi bấm Làm mới để gắn.",
     noLocalOnly: "Không có repo nào chờ.",
     states: { unbound: "Chưa gắn", bound: "Đã gắn", mismatch: "Remote không khớp", missing: "Thư mục mất" },
     pick: "Chọn thư mục",
@@ -129,8 +101,6 @@ const text: Dict<{
     bound: (name) => `Đã gắn ${name}.`,
     fullOn: (name) => `Đã cho toàn quyền với ${name} trên máy này.`,
     fullOff: (name) => `Đã tắt toàn quyền với ${name}.`,
-    create: "Tạo dự án trên hub",
-    createLabel: (name) => `Tạo dự án trên hub từ repo ${name}`,
     forget: "Bỏ khỏi danh sách",
     forgetLabel: (name) => `Bỏ ${name} khỏi danh sách`,
     goneFromHub: "Không còn thấy dự án này trên hub.",
@@ -147,38 +117,17 @@ const text: Dict<{
       "Agent có quyền như tài khoản của bạn trên máy: đọc, sửa, xoá file ngoài worktree, chạy mọi lệnh, dùng mạng và thông tin đăng nhập của bạn. Chỉ bật cho dự án bạn tin mã nguồn và việc giao cho agent.",
     cancel: "Huỷ",
     confirm: "Bật toàn quyền",
-    createTitle: (name) => `Tạo dự án trên hub từ ${name}`,
-    createLead: "Hub nối dự án với repo này (remote origin), commit file mẫu cho agent rồi máy này gắn thư mục.",
-    noRemote: "Repo chưa có remote origin dạng https hoặc ssh; thêm origin rồi thử lại.",
-    noConnection: (host) =>
-      `Tổ chức chưa có kết nối Git cho ${host}. Quản trị tổ chức thêm kết nối ở trang Kết nối Git trên web rồi quay lại.`,
-    openGit: "Mở trang Kết nối Git",
-    system: "Hệ thống",
-    key: "Project key",
-    name: "Tên dự án",
-    protect: "Bảo vệ nhánh chính",
-    approvals: "Số người duyệt",
-    approvalsHint: "Số người phải duyệt PR trước khi merge vào nhánh chính; 0 là không cần.",
-    webhook: "Thêm webhook",
-    createCheck: "Kiểm tra trước",
-    checking: "Đang kiểm tra…",
-    planTitle: "Kiểm tra xong, chưa tạo gì",
-    planLead: (key) => `Khi bấm Tạo dự án, hub sẽ làm lần lượt các bước sau cho ${key}:`,
-    planBack: "Quay lại sửa",
-    planWarnings: "Cảnh báo",
-    createSubmit: "Tạo dự án",
-    creating: "Đang tạo…",
-    created: (name) => `Đã tạo dự án ${name} trên hub và gắn thư mục.`,
   },
   en: {
     lead: "Bind each hub project to a repository folder on this machine. Runs of a bound project create their worktree from that repository (the run's branch shows up there), never in the folder you are working in.",
-    noAccount: "Link your account from the user card at the bottom left to see your hub projects.",
+    noAccount: "Connect to Hive to see and bind your hub projects. The repositories below still work.",
     loading: "Reading…",
     refresh: "Refresh",
     hubProjects: "Hub projects",
     noProjects: "You cannot see any project on the hub yet.",
     localOnly: "Repositories on this machine without a hub project",
-    localOnlyLead: "Repositories imported from the old app that match no hub project.",
+    localOnlyLead:
+      "Repositories imported from the old app that match no hub project. Create new projects on the Hive web, then press Refresh to bind.",
     noLocalOnly: "Nothing waiting.",
     states: { unbound: "Not bound", bound: "Bound", mismatch: "Remote mismatch", missing: "Folder missing" },
     pick: "Choose folder",
@@ -197,8 +146,6 @@ const text: Dict<{
     bound: (name) => `Bound ${name}.`,
     fullOn: (name) => `Full permission on for ${name} on this machine.`,
     fullOff: (name) => `Full permission off for ${name}.`,
-    create: "Create hub project",
-    createLabel: (name) => `Create a hub project from repository ${name}`,
     forget: "Remove from list",
     forgetLabel: (name) => `Remove ${name} from the list`,
     goneFromHub: "This project is no longer visible on the hub.",
@@ -215,29 +162,6 @@ const text: Dict<{
       "The agent gets your account's rights on this machine: read, change and delete files outside the worktree, run any command, use the network and your credentials. Only enable it for projects whose code and tasks you trust.",
     cancel: "Cancel",
     confirm: "Allow full permission",
-    createTitle: (name) => `Create a hub project from ${name}`,
-    createLead:
-      "The hub links the project to this repository (origin remote), commits the agent templates, then this machine binds the folder.",
-    noRemote: "The repository has no https or ssh origin remote; add one and try again.",
-    noConnection: (host) =>
-      `The organization has no Git connection for ${host}. An organization admin adds one on the Git connections page of the web, then come back.`,
-    openGit: "Open Git connections",
-    system: "System",
-    key: "Project key",
-    name: "Project name",
-    protect: "Protect the default branch",
-    approvals: "Required approvals",
-    approvalsHint: "Reviewers that must approve a PR before it merges into the default branch; 0 means none.",
-    webhook: "Add a webhook",
-    createCheck: "Check first",
-    checking: "Checking…",
-    planTitle: "Checked, nothing created yet",
-    planLead: (key) => `When you press Create project, the hub runs these steps for ${key}:`,
-    planBack: "Back to edit",
-    planWarnings: "Warnings",
-    createSubmit: "Create project",
-    creating: "Creating…",
-    created: (name) => `Created project ${name} on the hub and bound the folder.`,
   },
 };
 
@@ -273,7 +197,6 @@ function ProjectsView() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<Project | null>(null);
-  const [creating, setCreating] = useState<LocalProject | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -367,7 +290,7 @@ function ProjectsView() {
         </h2>
         <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
           {!account ? (
-            <p className="px-4 py-3 text-sm text-muted-foreground">{t.noAccount}</p>
+            <ConnectHive inline note={t.noAccount} />
           ) : !hubList || !local ? (
             <p className="px-4 py-3 text-sm text-muted-foreground">{t.loading}</p>
           ) : hubList.length === 0 ? (
@@ -417,11 +340,6 @@ function ProjectsView() {
                       {l.projectId ? t.goneFromHub : l.origin ? t.origin(l.origin) : t.noOrigin}
                     </span>
                   </span>
-                  {!l.projectId && account && (
-                    <Button size="sm" aria-label={t.createLabel(l.name)} onClick={() => setCreating(l)}>
-                      {t.create}
-                    </Button>
-                  )}
                   <Button
                     size="sm"
                     variant="outline"
@@ -472,20 +390,6 @@ function ProjectsView() {
           </DialogActions>
         </DialogContent>
       </Dialog>
-
-      {creating && (
-        <CreateProjectDialog
-          repo={creating}
-          t={t}
-          onClose={() => setCreating(null)}
-          onCreated={(list, name) => {
-            setLocal(list);
-            setCreating(null);
-            setNotice(t.created(name));
-            void projects.refetch();
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -574,204 +478,5 @@ function ProjectRow({
         )}
       </div>
     </li>
-  );
-}
-
-function CreateProjectDialog({
-  repo,
-  t,
-  onClose,
-  onCreated,
-}: {
-  repo: LocalProject;
-  t: (typeof text)["vi"];
-  onClose: () => void;
-  onCreated: (list: LocalProjects, name: string) => void;
-}) {
-  const systems = useQuery(api.systems.list.queryOptions({ input: {} }));
-  const connections = useQuery(api.scmConnections.list.queryOptions());
-  const [systemId, setSystemId] = useState("");
-  const [key, setKey] = useState(() => suggestKey(repo.name));
-  const [name, setName] = useState(repo.name);
-  const [protect, setProtect] = useState(true);
-  const [approvals, setApprovals] = useState("1");
-  const [webhook, setWebhook] = useState(true);
-  const [plan, setPlan] = useState<{ input: ProjectCreateInput; res: ProjectCreateResult } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Mỗi lần mở hộp thoại một khoá: bấm lại sau lỗi mạng không tạo trùng dự án.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
-  const ids = { system: useId(), key: useId(), name: useId(), approvals: useId() };
-
-  const host = repoHost(repo.origin);
-  const connection = connections.data ? connectionFor(connections.data, host) : undefined;
-  const system = systemId || systems.data?.[0]?.id || "";
-  const blocked = !host ? t.noRemote : connections.data && !connection ? t.noConnection(host) : null;
-
-  // Gọi dry-run như form web: hub chỉ kiểm quyền và trả kế hoạch, người dùng xem rồi mới tạo.
-  async function check() {
-    if (!connection || !repo.origin || !system) return;
-    const count = Number(approvals);
-    if (!approvals.trim() || !Number.isInteger(count) || count < 0 || count > 6) {
-      setError(t.approvalsHint);
-      return;
-    }
-    const input: ProjectCreateInput = {
-      systemId: system,
-      key: key.trim(),
-      name: name.trim(),
-      repo: { mode: "existing", connectionId: connection.id, url: repo.origin },
-      protection: { protectDefault: protect, requiredApprovals: count },
-      webhook,
-      idempotencyKey,
-      dryRun: true,
-    };
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await hub.projects.create(input);
-      // Hub cũ không biết dryRun sẽ tạo luôn dự án: gắn thư mục thay vì bắt tạo lại.
-      if (!res.dryRun && res.projectId) await bind(res.projectId);
-      else setPlan({ input, res });
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function bind(projectId: string) {
-    onCreated(await bindProject(projectId, repo.folder, name.trim(), repo.origin ?? null), name.trim());
-  }
-
-  async function create() {
-    if (!plan) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await hub.projects.create({ ...plan.input, dryRun: false });
-      if (!res.projectId) throw new Error(t.noRemote);
-      await bind(res.projectId);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t.createTitle(repo.name)}</DialogTitle>
-          <DialogDescription>{t.createLead}</DialogDescription>
-        </DialogHeader>
-        <p className="truncate font-mono text-xs text-muted-foreground">
-          {repo.origin ? t.origin(repo.origin) : t.noOrigin}
-        </p>
-        {(error || systems.error || connections.error) && (
-          <Alert variant="destructive">{error ?? errorText(systems.error ?? connections.error)}</Alert>
-        )}
-        {plan ? (
-          <div className="grid gap-3">
-            <p className="text-sm font-medium">{t.planTitle}</p>
-            <p className="text-sm text-muted-foreground">{t.planLead(plan.input.key)}</p>
-            <ol className="m-0 grid list-decimal gap-1 pl-5 text-sm">
-              {plan.res.steps.map((step) => (
-                <li key={`${step.kind}-${step.target ?? ""}`}>
-                  {step.title}
-                  {step.target && <span className="font-mono text-xs text-muted-foreground"> {step.target}</span>}
-                </li>
-              ))}
-            </ol>
-            {plan.res.warnings.length > 0 && (
-              <ul
-                aria-label={t.planWarnings}
-                className="m-0 grid list-none gap-1 rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning"
-              >
-                {plan.res.warnings.map((w) => (
-                  <li key={w.code}>{w.message}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : blocked ? (
-          <div className="flex flex-col items-start gap-2">
-            <Alert>{blocked}</Alert>
-            {host && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  void invoke("open_hub_page", { path: "/admin/git" }).catch((e) => setError(errorText(e)))
-                }
-              >
-                {t.openGit}
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor={ids.system}>{t.system}</Label>
-              <NativeSelect id={ids.system} value={system} onChange={(e) => setSystemId(e.target.value)}>
-                {(systems.data ?? []).map((s) => (
-                  <NativeSelectOption key={s.id} value={s.id}>
-                    {s.name}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={ids.key}>{t.key}</Label>
-              <Input id={ids.key} value={key} onChange={(e) => setKey(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={ids.name}>{t.name}</Label>
-              <Input id={ids.name} value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={protect} onChange={(e) => setProtect(e.target.checked)} />
-              {t.protect}
-            </label>
-            <div className="grid gap-1.5">
-              <Label htmlFor={ids.approvals}>{t.approvals}</Label>
-              <Input
-                id={ids.approvals}
-                type="number"
-                min={0}
-                max={6}
-                inputMode="numeric"
-                value={approvals}
-                disabled={!protect}
-                aria-describedby={`${ids.approvals}-hint`}
-                onChange={(e) => setApprovals(e.target.value)}
-              />
-              <span id={`${ids.approvals}-hint`} className="text-xs text-muted-foreground">
-                {t.approvalsHint}
-              </span>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={webhook} onChange={(e) => setWebhook(e.target.checked)} />
-              {t.webhook}
-            </label>
-          </div>
-        )}
-        <DialogActions>
-          <Button variant="outline" disabled={busy} onClick={plan ? () => setPlan(null) : onClose}>
-            {plan ? t.planBack : t.cancel}
-          </Button>
-          {plan ? (
-            <Button disabled={busy} onClick={() => void create()}>
-              {busy ? t.creating : t.createSubmit}
-            </Button>
-          ) : (
-            <Button disabled={busy || !!blocked || !connection || !system} onClick={() => void check()}>
-              {busy ? t.checking : t.createCheck}
-            </Button>
-          )}
-        </DialogActions>
-      </DialogContent>
-    </Dialog>
   );
 }
