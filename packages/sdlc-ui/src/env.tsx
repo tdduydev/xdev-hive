@@ -3,11 +3,9 @@ import type { RouterUtils } from "@orpc/tanstack-query";
 import type { Contract } from "@xdev-hive/contracts";
 import { createContext, type ReactNode, useContext } from "react";
 import { type SdlcText, sdlcText } from "./text.ts";
+import type { Lang, SdlcItemTab } from "./types.ts";
 
-export type Lang = "vi" | "en";
-
-/** Tab của chi tiết hạng mục; cũng là đoạn cuối của đường dẫn trên web và hash trên app. */
-export type SdlcItemTab = "overview" | "projects" | "docs" | "contracts" | "questions" | "tasks" | "trace";
+export type { Lang, SdlcItemTab } from "./types.ts";
 
 /** Trang trong app chủ mà màn AI SDLC liên kết tới; web dựng bằng router, app desktop bằng hash của màn. */
 export type SdlcLink =

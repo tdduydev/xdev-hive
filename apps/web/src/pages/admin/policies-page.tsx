@@ -4,6 +4,7 @@ import {
   type AgentPolicy,
   type AgentPolicyInput,
   DEFAULT_AGENT_MEMORY_POLICY,
+  DEFAULT_AGENT_REMOTE_POLICY,
   DEFAULT_AGENT_SKILL_LEARNING_POLICY,
   DEFAULT_ORG_SDLC_POLICY,
   DEFAULT_SDLC_DENY_KEYWORDS,
@@ -507,6 +508,7 @@ const formOf = (p: AgentPolicy): Form => ({
   // Hub cũ chưa có mục này thì giữ mặc định của hợp đồng, như chính sách lưu trước ADR 0022.
   agentMemory: p.agentMemory ?? { ...DEFAULT_AGENT_MEMORY_POLICY },
   skillLearning: p.skillLearning ?? { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
+  remote: p.remote ?? { ...DEFAULT_AGENT_REMOTE_POLICY },
   sdlc: p.sdlc ?? DEFAULT_ORG_SDLC_POLICY,
 });
 
