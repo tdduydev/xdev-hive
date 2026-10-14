@@ -24,6 +24,9 @@ import {
   type DiffStats,
   diffStats,
   reportRepo,
+  type SdlcJobSpec,
+  sdlcJobSpec,
+  sdlcReportArtifacts,
   steerResultData,
 } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, desc, eq, gt, inArray, ne, notInArray, or, sql } from "drizzle-orm";
@@ -103,6 +106,15 @@ import {
   type ScmEventRegistry,
   scmEvents,
 } from "../scm/index.ts";
+import {
+  codeRunGate,
+  onCodeRunSettled,
+  onSdlcRunFinished,
+  type SdlcDeps,
+  type SdlcRunRequest,
+  specContextFor,
+  withStepRuns,
+} from "../sdlc/index.ts";
 import {
   approvedPlanOf,
   decidePlan,
@@ -304,11 +316,11 @@ const FULL_ONLY_CLIS: readonly string[] = ["antigravity"];
  * Run không có task. Lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
  * trình duyệt), docassist (trợ lý của trình soạn tài liệu); riêng brief dựng lúc giao từ brief hiện tại (ADR 0022).
  */
-const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck", "docassist", "brief", "skill_proposal"];
+const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck", "docassist", "brief", "skill_proposal", "sdlc"];
 /** Run phải nộp kết quả qua tool MCP nên chỉ giao cho CLI gọi được tool khi chạy không tương tác. */
 const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck", "docassist", "brief", "skill_proposal"];
 /** Worker cũ không biết các kind này sẽ chạy chúng như run code (có quyền ghi): chỉ giao cho máy đã khai kind đó. */
-const CAPABILITY_KINDS: readonly RunRow["kind"][] = ["doccheck", "docassist", "brief", "skill_proposal"];
+const CAPABILITY_KINDS: readonly RunRow["kind"][] = ["doccheck", "docassist", "brief", "skill_proposal", "sdlc"];
 /** Run được ghi memory trong lúc chạy (tool memory_write mở cho các kind này, ADR 0022). */
 const MEMORY_WRITE_KINDS: readonly RunRow["kind"][] = ["code", "review"];
 /**
@@ -317,6 +329,36 @@ const MEMORY_WRITE_KINDS: readonly RunRow["kind"][] = ["code", "review"];
  */
 const BRIEF_MODELS: Partial<Record<string, string>> = { claude: "sonnet" };
 const promptEvent = (kind: RunRow["kind"]) => (kind === "leader" ? "leader_prompt" : `${kind}_prompt`);
+
+/**
+ * Nhãn máy (specs/011 D13): run có `required_labels` chỉ giao cho máy có đủ nhãn; máy `labels_only` chỉ nhận run có
+ * nhãn mà nó có, để máy dành cho AI SDLC không bị run thường chiếm slot.
+ */
+export function labelsMatch(
+  m: { labels: readonly string[]; labelsOnly: boolean },
+  required: readonly string[],
+): boolean {
+  if (m.labelsOnly && required.length === 0) return false;
+  return required.every((l) => m.labels.includes(l));
+}
+
+/**
+ * Lý do chờ máy của run AI SDLC hay run có nhãn: chưa máy nào có worker mới (capability `sdlc`) hoặc có đủ nhãn. null
+ * thì dùng lý do chung (máy cá nhân, máy dùng chung).
+ */
+async function sdlcWaitingReason(tx: Tx, run: RunRow, sandboxed: boolean): Promise<string | null> {
+  if (run.kind !== "sdlc" && run.requiredLabels.length === 0) return null;
+  const online = (await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker")).filter((m) =>
+    usableBy(m, run, sandboxed),
+  );
+  if (run.kind === "sdlc" && !online.some((m) => m.capabilities.includes("sdlc")))
+    return "Cần worker mới: chưa máy online nào của đội chạy được bước AI SDLC. Cập nhật worker trên máy dùng chung của đội.";
+  if (run.requiredLabels.length && !online.some((m) => labelsMatch(m, run.requiredLabels))) {
+    const missing = run.requiredLabels.filter((l) => !online.some((m) => m.labels.includes(l)));
+    return `Chờ máy có nhãn ${run.requiredLabels.join(", ")}${missing.length ? ` (chưa máy online nào có ${missing.join(", ")})` : ""}. Quản trị đội gắn nhãn cho máy ở trang Máy.`;
+  }
+  return null;
+}
 
 function reviewEvidence(child: RunRow, report: ReviewReport | null): ReviewEvidence {
   if (child.state === "succeeded" && report) return { status: "done", score: report.score, by: child.cli };
@@ -431,6 +473,10 @@ interface SpecContext {
   memoryWrite: AgentMemoryPolicy | null;
   /** Máy chạy run có CodeGraph và dự án để mục này bật: prompt nhắc agent dùng `codegraph_explore`. */
   codegraph: boolean;
+  /** Run `sdlc`: seed và collect của bước, tiêu đề bước (ghi lúc tạo run). */
+  sdlc?: { job: SdlcJobSpec; title: string } | null | undefined;
+  /** Run code của task hạng mục AI SDLC: ngữ cảnh spec (`sdlc.specContextFor`). */
+  sdlcContext?: string | null | undefined;
 }
 
 const CODEGRAPH_HINT =
@@ -485,7 +531,10 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
   if (run.kind === "leader") return ctx.leaderPrompt ?? "Hãy trả lời người dùng qua công cụ MCP leader_reply.";
   if (run.kind === "doccheck") return ctx.leaderPrompt ?? "Hãy kiểm tài liệu rồi gọi công cụ MCP doc_check_submit.";
   if (run.kind === "docassist") return ctx.leaderPrompt ?? "Hãy đọc bản nháp bằng doc_draft_get rồi góp ý.";
-  const prompt = task.body ? `${task.title}\n\n${task.body}` : task.title;
+  if (run.kind === "sdlc") return ctx.leaderPrompt ?? "Hãy soạn tài liệu của bước AI SDLC theo sdlc_context.";
+  const base = task.body ? `${task.title}\n\n${task.body}` : task.title;
+  // Task của hạng mục AI SDLC: tài liệu đã duyệt và requirement đi cùng đề bài để agent làm đúng phạm vi.
+  const prompt = ctx.sdlcContext ? `${base}\n\n${ctx.sdlcContext}` : base;
   const plan = ctx.approvedPlan;
   return plan ? `${prompt}\n\n${approvedPlanPrompt(planMarkdown(planInForce(plan)), plan.note)}` : prompt;
 }
@@ -553,7 +602,7 @@ function buildSpec(
     taskKey: task?.key ?? null,
     projectId: project.id,
     projectKey: project.key,
-    title: task?.title ?? "Trao đổi với leader",
+    title: task?.title ?? ctx.sdlc?.title ?? "Trao đổi với leader",
     prompt: instructions.length
       ? `${prompt}\n\nChỉ dẫn thêm từ người review:\n${instructions.map((i) => `- ${i}`).join("\n")}`
       : prompt,
@@ -570,7 +619,8 @@ function buildSpec(
       : run.kind === "skill_proposal"
         ? { effort: "medium" }
         : {}),
-    runPermissions: ctx.runPermissions,
+    // Run sdlc chỉ ghi tài liệu trong worktree tạm: không cần toàn quyền dù dự án cho (plan.md "Worker impact").
+    runPermissions: run.kind === "sdlc" ? "workspace" : ctx.runPermissions,
     fullAllowed: ctx.fullAllowed,
     // Bỏ khi không có gì để worker cũ (chưa biết trường này) và worker mới nhận cùng một spec như trước.
     ...(ctx.policy.hooks.length || ctx.policy.managedHooksOnly ? { policy: ctx.policy } : {}),
@@ -583,6 +633,8 @@ function buildSpec(
     tokenSaving: project.settings.tokenSaving ?? defaultTokenSaving,
     ...(mcpServers.length ? { mcpServers } : {}),
     ...(ctx.commands.length ? { checks: { commands: ctx.commands } } : {}),
+    // Worker cũ không biết trường này: hub chỉ giao run sdlc cho máy khai capability `sdlc` (CAPABILITY_KINDS).
+    ...(ctx.sdlc ? { sdlc: ctx.sdlc.job } : {}),
     // Worker đếm nhánh chính đi trước commit này bao nhiêu commit và báo lại trong run_result.report.repo.
     ...(ctx.brief?.commitSha ? { brief: { sha: ctx.brief.commitSha } } : {}),
     // Nguồn từ khoá của context pack (worker): chỉ phần của task, không lẫn brief hay hướng dẫn chung trong prompt.
@@ -687,6 +739,7 @@ export function createRunsEngine(deps: RunsDeps) {
         !run.rejectedBy.includes(m.id) &&
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
         (!CAPABILITY_KINDS.includes(run.kind) || m.capabilities.includes(run.kind)) &&
+        labelsMatch(m, run.requiredLabels) &&
         (run.cli
           ? m.clis.includes(run.cli) && runsCli(m, run.cli)
           : SUBMIT_KINDS.includes(run.kind)
@@ -759,13 +812,15 @@ export function createRunsEngine(deps: RunsDeps) {
       if (!machine && contended) return "contended" as const;
       if (!machine) {
         if (!sandboxed) {
+          const special = await sdlcWaitingReason(tx, run, sandboxed);
           await noteOnce(tx, run, "waiting_machine", {
             message:
-              run.kind === "code" && run.cli && FULL_ONLY_CLIS.includes(run.cli)
+              special ??
+              (run.kind === "code" && run.cli && FULL_ONLY_CLIS.includes(run.cli)
                 ? "Antigravity cần toàn quyền: chờ một máy được dùng cho run này có toàn quyền với dự án (dự án cho toàn quyền, hoặc bật “Cho toàn quyền trên máy này” ở màn Dự án trên máy của app desktop)."
                 : run.ownerUserId
                   ? "Chờ máy của người giao việc hoặc máy dùng chung của đội online; máy cá nhân của người khác không chạy run này."
-                  : "Run của đội chỉ chạy trên máy dùng chung; đội chưa có máy dùng chung nào sẵn sàng. Quản trị đội bật Dùng chung cho một máy ở trang Máy.",
+                  : "Run của đội chỉ chạy trên máy dùng chung; đội chưa có máy dùng chung nào sẵn sàng. Quản trị đội bật Dùng chung cho một máy ở trang Máy."),
           });
         }
         return null;
@@ -803,6 +858,8 @@ export function createRunsEngine(deps: RunsDeps) {
             .orderBy(desc(runEvents.id))
             .limit(1)
         : [];
+      const sdlcJob = run.kind === "sdlc" ? sdlcJobSpec.safeParse(leaderContext?.prompt.sdlc) : null;
+      const sdlcContext = run.kind === "code" && task ? await specContextFor(tx, task.id) : null;
       const expiresAt = new Date(Date.now() + offerTtlSec * 1000);
       await tx
         .update(runs)
@@ -958,6 +1015,10 @@ export function createRunsEngine(deps: RunsDeps) {
             memoryWrite:
               MEMORY_WRITE_KINDS.includes(run.kind) && policy.agentMemory.mode !== "off" ? policy.agentMemory : null,
             codegraph: codegraphAvailable(machine, project, sandboxed),
+            sdlc: sdlcJob?.success
+              ? { job: sdlcJob.data, title: String(leaderContext?.prompt.title ?? "Bước AI SDLC") }
+              : null,
+            sdlcContext,
           }),
         } satisfies OutgoingMessage,
       };
@@ -1362,7 +1423,48 @@ export function createRunsEngine(deps: RunsDeps) {
     else if (run.kind === "docassist") await verifyDocAssist(orgId, runId);
     else if (run.kind === "brief") await verifyBrief(orgId, runId);
     else if (run.kind === "skill_proposal") await verifySkillProposal(orgId, runId);
+    else if (run.kind === "sdlc") await verifySdlc(orgId, runId);
     else await verifyLeader(orgId, runId);
+  }
+
+  /**
+   * Run sdlc: file agent ghi (`report.artifacts`) vào bản nháp tài liệu, câu hỏi mở chờ người; module sdlc quyết run
+   * đạt hay không (không ghi tài liệu nào và không hỏi gì là lỗi của bước).
+   */
+  async function verifySdlc(orgId: string, runId: string): Promise<void> {
+    await tenant(orgId, async (tx) => {
+      const run = await lockRun(tx, runId);
+      if (run?.kind !== "sdlc" || run.state !== "verifying") return;
+      const data = await resultOf(tx, run);
+      const report = (data.report ?? null) as Record<string, unknown> | null;
+      const artifacts = sdlcReportArtifacts.safeParse(report?.artifacts ?? []);
+      const workerError = typeof report?.error === "string" && report.error ? report.error : null;
+      const ok = exitOf(data) === 0 && report?.status !== "failed" && !workerError && artifacts.success;
+      const error = ok
+        ? null
+        : (workerError ??
+          (artifacts.success ? "Run soạn tài liệu lỗi hoặc hết thời gian." : "Worker trả tài liệu sai dạng."));
+      const out = await onSdlcRunFinished(
+        tx,
+        { runId: run.id, ok, artifacts: artifacts.success ? artifacts.data : null, error },
+        sdlcDeps,
+      );
+      const succeeded = out ? out.succeeded : ok;
+      await transition(
+        tx,
+        run,
+        succeeded ? "succeeded" : "failed",
+        { finishedAt: new Date() },
+        { message: out?.message ?? error ?? "Run soạn tài liệu đã xong." },
+      );
+      await recordAudit(tx, {
+        action: "sdlc.run.finish",
+        actorUserId: null,
+        targetType: "run",
+        targetId: run.id,
+        data: { succeeded, itemId: out?.itemId ?? null },
+      });
+    });
   }
 
   /** Run brief: succeeded khi agent đã gọi brief_submit; brief lưu trong cùng transaction với kết luận của run. */
@@ -1773,6 +1875,7 @@ export function createRunsEngine(deps: RunsDeps) {
         },
       });
       await notifyOutcome(tx, locked, task, outcome, reasons, prUrl);
+      await onCodeRunSettled(tx, finished);
       return null;
     });
     after?.();
@@ -1929,6 +2032,71 @@ export function createRunsEngine(deps: RunsDeps) {
       hasAgentReport: Boolean(report),
     };
   }
+
+  /** Bước của run sdlc thành lỗi (mất máy, huỷ) để giai đoạn không đứng chờ một run đã chết. */
+  async function sdlcFailed(tx: Tx, run: RunRow, error: string, cancelled = false): Promise<void> {
+    await onSdlcRunFinished(tx, { runId: run.id, ok: false, artifacts: null, error, cancelled }, sdlcDeps);
+  }
+
+  /**
+   * Run sdlc cho một bước agent (D5): như doccheck, không có task, lời nhắc và seed/collect ghi ở sự kiện `sdlc_prompt`.
+   * Gọi trong transaction của `sdlc` (job advance, route, kết luận run trước) nên chỉ giao sau commit.
+   */
+  async function startSdlcRun(tx: Tx, req: SdlcRunRequest): Promise<{ runId: string } | null> {
+    const project = await loadProject(tx, req.projectId);
+    if (!project || !projectReady(project)) return null;
+    const [row] = await tx
+      .insert(runs)
+      .values({
+        orgId: sql`hive.ctx_org()`,
+        teamId: project.teamId,
+        taskId: null,
+        projectId: project.id,
+        kind: "sdlc",
+        cli: req.cli,
+        model: req.model,
+        branch: `sdlc/${req.stepRowId}`,
+        policySnapshot: [],
+        requiredLabels: req.requiredLabels,
+        createdBy: req.createdBy,
+        ownerUserId: req.ownerUserId,
+      })
+      .returning();
+    if (!row) throw new Error("Không ghi được run soạn tài liệu.");
+    await hubEvent(tx, row, "state", { from: null, to: "queued", by: req.createdBy });
+    await hubEvent(tx, row, "sdlc_prompt", {
+      itemId: req.itemId,
+      stepRowId: req.stepRowId,
+      title: req.title,
+      prompt: req.prompt,
+      sdlc: req.job,
+    });
+    await notifyRun(tx, row.id);
+    await recordAudit(tx, {
+      action: "run.start",
+      actorUserId: null,
+      targetType: "run",
+      targetId: row.id,
+      data: {
+        kind: "sdlc",
+        itemId: req.itemId,
+        stepRowId: req.stepRowId,
+        labels: req.requiredLabels,
+        by: req.createdBy,
+      },
+    });
+    await schedule({ kind: "dispatch", orgId: row.orgId, runId: row.id }, afterCommitSoon(), tx);
+    return { runId: row.id };
+  }
+
+  /** Cổng `sdlc`: bước kế tự chạy sau khi run soạn xong tạo run sdlc mới qua chính engine này. */
+  const sdlcDeps: SdlcDeps = withStepRuns({
+    jobs: deps.jobs,
+    publicUrl: deps.publicUrl,
+    providerFactory: deps.providerFactory,
+    masterKey: deps.masterKey,
+    createSdlcRun: startSdlcRun,
+  });
 
   /** Cổng `codereview` dùng khi `runs` mở phiên hay báo run review xong trong transaction của mình. */
   const codeReviewDeps: CodeReviewDeps = {
@@ -2297,6 +2465,7 @@ export function createRunsEngine(deps: RunsDeps) {
         if (run.taskId) {
           await setTaskStatus(tx, run.taskId, "todo");
           await notifyOutcome(tx, run, await loadTask(tx, run.taskId), "failed", reasons, null);
+          await onCodeRunSettled(tx, { ...run, state: "failed" });
         }
       } else {
         if (run.kind === "leader" && run.leaderThreadId) {
@@ -2307,6 +2476,7 @@ export function createRunsEngine(deps: RunsDeps) {
           );
         }
         if (run.kind === "doccheck") await docCheckDone(tx, run, null, "Máy chạy run kiểm tài liệu mất kết nối.");
+        if (run.kind === "sdlc") await sdlcFailed(tx, run, "Máy chạy bước AI SDLC mất kết nối.");
         await childFinished(tx, run, { state: "failed", review: null, error: reasons[0] ?? null });
         return { failed: run };
       }
@@ -2342,6 +2512,9 @@ export function createRunsEngine(deps: RunsDeps) {
       await setTaskStatus(tx, run.taskId, "todo");
       // Huỷ khi kế hoạch còn chờ duyệt: không còn run nào chạy theo kế hoạch đó.
       await supersedePlans(tx, run.id);
+      await onCodeRunSettled(tx, row);
+    } else if (run.kind === "sdlc") {
+      await sdlcFailed(tx, run, "Run soạn tài liệu đã bị huỷ.", true);
     } else if (run.kind === "leader" && run.leaderThreadId) {
       await deps.leaderMessage?.(tx, run.leaderThreadId, "Leader run đã bị huỷ.");
     } else if (run.kind === "doccheck") {
@@ -2580,6 +2753,8 @@ export function createRunsEngine(deps: RunsDeps) {
       instructions?: string[];
       /** Lập kế hoạch trước; bỏ trống thì theo cờ `features.planMode` của dự án. */
       plan?: boolean;
+      /** Nhãn máy bắt buộc (đợt AI SDLC truyền theo dự án của task); bỏ trống thì task hạng mục lấy nhãn của dự án. */
+      requiredLabels?: string[];
     },
   ): Promise<{ row: RunRow; afterCommit: () => void }> {
     // Kiểm sớm image sandbox của dự án để người giao thấy lỗi ngay thay vì run nằm chờ mãi.
@@ -2590,7 +2765,11 @@ export function createRunsEngine(deps: RunsDeps) {
     if (!projectReady(project)) {
       throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo, chưa giao task được.");
     }
+    // Mọi đường tạo run code (web, app, Leader, @bot, issue, run sửa của review code) đều qua đây (D10).
+    const gate = await codeRunGate(tx, { taskId: task.id, kind: "code" });
+    if (gate.block) throw new ConflictError(gate.code, gate.message, { itemId: gate.itemId, missing: gate.missing });
     await assertTaskBudget(tx, task.id, project.settings.budget);
+    const requiredLabels = opts.requiredLabels ?? (gate.itemId ? (project.settings.sdlc?.labels ?? []) : []);
     const outcome = project.settings.outcome;
     const policy = (task.type ? outcome.byType[task.type] : undefined) ?? outcome.default;
     let row: RunRow | undefined;
@@ -2613,6 +2792,7 @@ export function createRunsEngine(deps: RunsDeps) {
           pinnedMachineId: opts.machineId ?? null,
           branch: `ai/${task.key}`,
           policySnapshot: policy,
+          requiredLabels,
           createdBy: opts.createdBy,
           ownerUserId: opts.ownerUserId ?? null,
         })
@@ -2626,6 +2806,10 @@ export function createRunsEngine(deps: RunsDeps) {
     }
     if (!row) throw new Error("Không ghi được run.");
     await hubEvent(tx, row, "state", { from: null, to: "queued", by: opts.createdBy });
+    if (!gate.block && gate.warn)
+      await hubEvent(tx, row, "sdlc_gate_warn", { message: gate.warn, itemId: gate.itemId });
+    if (!gate.block && gate.overrideId)
+      await hubEvent(tx, row, "sdlc.override_used", { overrideId: gate.overrideId, itemId: gate.itemId });
     for (const input of opts.instructions ?? []) {
       await hubEvent(tx, row, "steer", { input, by: opts.createdBy, delivered: false });
     }
@@ -3018,6 +3202,9 @@ export function createRunsEngine(deps: RunsDeps) {
     startRun,
     startLeaderRun,
     startDocCheck,
+    /** Run sdlc của bước agent; main.ts cài vào `SdlcDeps.createSdlcRun` (sdlc không import runs). */
+    startSdlcRun,
+    sdlcDeps,
     /** Trợ lý của trình soạn tài liệu; router của knowledge gọi qua đây (knowledge không import runs). */
     docAssist: {
       targets: assistTargets,
