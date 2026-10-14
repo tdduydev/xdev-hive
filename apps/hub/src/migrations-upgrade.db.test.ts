@@ -13,8 +13,8 @@ import { bootstrapRoles, runMigrations } from "./modules/platform/index.ts";
  * không khởi động được sau deploy vì vậy. Test dựng database dừng ngay trước mỗi migration có `ADD VALUE` rồi nâng cấp.
  */
 const MIGRATIONS = fileURLToPath(new URL("../db/migrations", import.meta.url));
-// Mỗi ca dựng lại toàn bộ lịch sử migration; Docker dùng chung giữa các worktree có thể vượt 30 giây.
-const UPGRADE_TIMEOUT = 120_000;
+// Mỗi ca dựng lại toàn bộ lịch sử migration; Docker dùng chung giữa các worktree có thể vượt hai phút.
+const UPGRADE_TIMEOUT = 240_000;
 const journal = JSON.parse(readFileSync(join(MIGRATIONS, "meta/_journal.json"), "utf8")) as {
   entries: Array<{ idx: number; tag: string }>;
 };
@@ -156,6 +156,58 @@ describe("nâng cấp database đã có dữ liệu", () => {
         await old.query("update hive.runs set kind = 'sdlc' where id = $1", [run]);
         const fn = await old.query("select to_regprocedure('hive.sdlc_active_orgs()') as f");
         expect(fn.rows[0].f).toBe("hive.sdlc_active_orgs()");
+      } finally {
+        await old.end();
+      }
+    },
+    UPGRADE_TIMEOUT,
+  );
+  it(
+    "nâng từ trước migration artifacts: tin nhắn leader cũ giữ nguyên, bảng và hàm artifacts có đủ",
+    async () => {
+      const tag = "0069_artifacts";
+      const entry = journal.entries.find((e) => e.tag === tag);
+      expect(entry).toBeDefined();
+      const ownerUrl = await emptyDatabase();
+      await runMigrations(ownerUrl, prefixFolder(entry?.idx ?? 0));
+      const adminOnDb = new URL(db.adminUrl);
+      adminOnDb.pathname = new URL(ownerUrl).pathname;
+      const old = new pg.Pool({ connectionString: adminOnDb.toString(), max: 1 });
+      try {
+        const org = randomUUID();
+        await old.query("insert into hive.orgs (id, slug, name, created_by) values ($1, $2, 'o', 'u')", [
+          org,
+          `org-${org.slice(0, 8)}`,
+        ]);
+        const thread = (
+          await old.query(
+            "insert into hive.chat_threads (org_id, created_by, title) values ($1, 'u', 't') returning id",
+            [org],
+          )
+        ).rows[0].id;
+        await old.query(
+          "insert into hive.chat_messages (org_id, thread_id, role, content) values ($1, $2, 'user', 'tin cũ')",
+          [org, thread],
+        );
+        await runMigrations(ownerUrl);
+        const { rows } = await old.query(
+          "select content, artifact_id, artifact_version, page_errors from hive.chat_messages where org_id = $1",
+          [org],
+        );
+        expect(rows).toEqual([{ content: "tin cũ", artifact_id: null, artifact_version: null, page_errors: null }]);
+        const objects = await old.query(
+          `select to_regclass('hive.artifacts') as a, to_regclass('hive.artifact_public_links') as l,
+                to_regprocedure('hive.artifact_tombstone(uuid)') as t,
+                to_regprocedure('hive.artifact_public_link_resolve(text)') as r,
+                to_regprocedure('hive.artifact_purge(integer, integer)') as p`,
+        );
+        expect(objects.rows[0]).toEqual({
+          a: "hive.artifacts",
+          l: "hive.artifact_public_links",
+          t: "hive.artifact_tombstone(uuid)",
+          r: "hive.artifact_public_link_resolve(text)",
+          p: "hive.artifact_purge(integer,integer)",
+        });
       } finally {
         await old.end();
       }

@@ -4,13 +4,14 @@ import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
-import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { Icon, type IconName } from "@/components/icons.tsx";
+import { FormRow, RadioCards, SettingsSection } from "@/components/page/settings.tsx";
+import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
 import { PeopleCopyField } from "@/components/person.tsx";
-import { Card } from "@/components/ui/card.tsx";
-import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
+import { Field, FieldError } from "@/components/ui/field.tsx";
+import { LoadFailure, SectionsSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorCode, apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { formatDay } from "@/lib/format.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
@@ -21,9 +22,10 @@ import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{
   domainUnverified: string;
-  admin: string;
-  signInSettings: string;
+  title: string;
+  description: string;
   signInMethods: string;
+  signInMethodsHint: string;
   configureHint: string;
   addedAutomatically: string;
   queued: string;
@@ -34,8 +36,8 @@ const text: Dict<{
   savedNeverShownAgain: string;
   leaveEmptyToKeepIt: string;
   secretHint: string;
-  saving: string;
-  save: string;
+  saved: string;
+  checkFields: string;
   txtRecordName: string;
   txtRecordValue: string;
   requesting: string;
@@ -45,7 +47,6 @@ const text: Dict<{
   removeSSO: string;
   adminOnly: string;
   loading: string;
-  lead: string;
   setAtHubLevel: string;
   on: string;
   notConfigured: string;
@@ -53,14 +54,21 @@ const text: Dict<{
   emailDomain: string;
   domainHint: string;
   callback: string;
+  callbackHint: string;
   firstLogin: string;
-  ssoSettingsSaved: string;
+  firstLoginHint: string;
+  issuerHint: string;
   verified: string;
   waitingToSaveSettings: string;
   notVerified: string;
   domainVerification: string;
+  domainVerificationHint: string;
   recordNameTXT: string;
   value: string;
+  dangerTitle: string;
+  dangerHint: string;
+  removeRowLabel: string;
+  removeRowHint: string;
   removeOrganizationSSO: string;
   removeHint: string;
   cancel: string;
@@ -74,15 +82,16 @@ const text: Dict<{
   claimHint: (domain: string | undefined) => string;
   verifiedMessage: (domain: string) => string;
   requestRecord: (domain: string) => string;
-  joinLabels: Record<"pending" | "member", string>;
+  joinLabels: Record<SsoJoin, { title: string; description: string }>;
 }> = {
   vi: {
     domainUnverified:
       "Tên miền chưa được xác minh nên SSO chưa tạo tài khoản mới và chưa tự thêm người vào tổ chức: người mới vào bằng link mời. Xác minh tên miền bằng bản ghi TXT ở phần bên dưới.",
-    admin: "Quản trị",
-    signInSettings: "Cài đặt đăng nhập",
+    title: "Đăng nhập",
+    description: "Cách người trong tổ chức đăng nhập vào hub: SSO của công ty và xác minh tên miền email.",
     signInMethods: "Cách đăng nhập",
-    configureHint: "Chưa cấu hình. Điền form bên dưới để bật.",
+    signInMethodsHint: "Trạng thái từng cách đăng nhập của tổ chức.",
+    configureHint: "Chưa cấu hình. Điền mục SSO bên dưới để bật.",
     addedAutomatically: "tự thêm vào tổ chức",
     queued: "chờ duyệt",
     oauthHint: "OAuth app chung của hub, quản trị hub cấu hình.",
@@ -92,8 +101,8 @@ const text: Dict<{
     savedNeverShownAgain: "Đã lưu, không hiện lại",
     leaveEmptyToKeepIt: "Để trống nếu không đổi.",
     secretHint: "Hub lưu mã hoá và không bao giờ hiện lại secret.",
-    saving: "Đang lưu…",
-    save: "Lưu",
+    saved: "Đã lưu cấu hình SSO.",
+    checkFields: "Chưa lưu được. Kiểm tra các ô báo lỗi rồi lưu lại.",
     txtRecordName: "tên bản ghi TXT",
     txtRecordValue: "giá trị bản ghi TXT",
     requesting: "Đang lấy…",
@@ -103,22 +112,28 @@ const text: Dict<{
     removeSSO: "Gỡ SSO",
     adminOnly: "Chỉ quản trị tổ chức xem và sửa được cài đặt đăng nhập.",
     loading: "Đang tải…",
-    lead: "Cách người trong tổ chức đăng nhập vào hub.",
     setAtHubLevel: "Cấu hình ở hub",
     on: "Đang bật",
     notConfigured: "Chưa cấu hình",
     ssoHint: "Dùng nhà cung cấp danh tính của công ty, ví dụ Microsoft Entra, Google Workspace, Keycloak.",
     emailDomain: "Tên miền email",
     domainHint: "Người có email tên miền này đăng nhập bằng SSO của tổ chức.",
-    callback: "Callback URL (dán vào cấu hình app bên nhà cung cấp)",
+    callback: "Callback URL",
+    callbackHint: "Dán vào cấu hình app bên nhà cung cấp.",
     firstLogin: "Khi người mới đăng nhập SSO lần đầu",
-    ssoSettingsSaved: "Đã lưu cấu hình SSO.",
+    firstLoginHint: "Chỉ áp dụng khi tên miền đã xác minh.",
+    issuerHint: "Lấy trong cấu hình app bên nhà cung cấp.",
     verified: "Đã xác minh",
     waitingToSaveSettings: "Chờ lưu cấu hình",
     notVerified: "Chưa xác minh",
     domainVerification: "Xác minh tên miền",
+    domainVerificationHint: "Chứng minh tổ chức giữ tên miền email bằng bản ghi TXT trên DNS.",
     recordNameTXT: "Tên bản ghi (TXT)",
     value: "Giá trị",
+    dangerTitle: "Vùng nguy hiểm",
+    dangerHint: "Thao tác ở đây ảnh hưởng tới cách mọi người đăng nhập.",
+    removeRowLabel: "Gỡ SSO của tổ chức",
+    removeRowHint: "Người đang dùng SSO phải đăng nhập bằng cách khác. Họ vẫn là thành viên.",
     removeOrganizationSSO: "Gỡ SSO của tổ chức?",
     removeHint:
       "Người đang đăng nhập bằng SSO sẽ phải dùng cách khác (GitHub, GitLab, email). Họ vẫn là thành viên của tổ chức. Cấu hình lại SSO thì callback URL giữ nguyên.",
@@ -136,17 +151,24 @@ const text: Dict<{
     verifiedMessage: (domain) => `Đã xác minh tên miền ${domain}.`,
     requestRecord: (domain) => `Lấy bản ghi TXT cho ${domain}`,
     joinLabels: {
-      pending: "Vào hàng chờ duyệt (khuyên dùng)",
-      member: "Tự thêm vào tổ chức với vai trò Thành viên, chưa thuộc đội nào",
+      pending: {
+        title: "Vào hàng chờ duyệt (khuyên dùng)",
+        description: "Quản trị duyệt từng người trước khi họ vào tổ chức.",
+      },
+      member: {
+        title: "Tự thêm vào tổ chức",
+        description: "Vai trò Thành viên, chưa thuộc đội nào.",
+      },
     },
   },
   en: {
     domainUnverified:
       "The domain is not verified, so SSO cannot create accounts or add new organization members yet. New people need an invite link. Verify the domain with a TXT record below.",
-    admin: "Admin",
-    signInSettings: "Sign-in settings",
+    title: "Sign-in",
+    description: "How people in the organization sign in to the hub: company SSO and email domain verification.",
     signInMethods: "Sign-in methods",
-    configureHint: "Not configured. Fill out the form below to enable it.",
+    signInMethodsHint: "Status of each way people sign in to the organization.",
+    configureHint: "Not configured. Fill out the SSO section below to enable it.",
     addedAutomatically: "added automatically",
     queued: "queued",
     oauthHint: "Shared hub OAuth app, set up by the hub admin.",
@@ -156,8 +178,8 @@ const text: Dict<{
     savedNeverShownAgain: "Saved, never shown again",
     leaveEmptyToKeepIt: "Leave empty to keep it.",
     secretHint: "The hub encrypts the secret and never shows it again.",
-    saving: "Saving…",
-    save: "Save",
+    saved: "SSO settings saved.",
+    checkFields: "Not saved. Check the fields with errors and try again.",
     txtRecordName: "TXT record name",
     txtRecordValue: "TXT record value",
     requesting: "Requesting…",
@@ -167,22 +189,28 @@ const text: Dict<{
     removeSSO: "Remove SSO",
     adminOnly: "Only organization admins can view and edit sign-in settings.",
     loading: "Loading…",
-    lead: "How people in the organization sign in to the hub.",
     setAtHubLevel: "Set at hub level",
     on: "On",
     notConfigured: "Not configured",
     ssoHint: "Use your company identity provider, e.g. Microsoft Entra, Google Workspace, Keycloak.",
     emailDomain: "Email domain",
     domainHint: "People with this email domain sign in through the organization SSO.",
-    callback: "Callback URL (paste into the provider app settings)",
+    callback: "Callback URL",
+    callbackHint: "Paste into the provider app settings.",
     firstLogin: "When someone signs in with SSO for the first time",
-    ssoSettingsSaved: "SSO settings saved.",
+    firstLoginHint: "Applies only when the domain is verified.",
+    issuerHint: "Find it in the provider app settings.",
     verified: "Verified",
     waitingToSaveSettings: "Waiting to save settings",
     notVerified: "Not verified",
     domainVerification: "Domain verification",
+    domainVerificationHint: "Prove the organization owns its email domain with a DNS TXT record.",
     recordNameTXT: "Record name (TXT)",
     value: "Value",
+    dangerTitle: "Danger zone",
+    dangerHint: "Actions here change how everyone signs in.",
+    removeRowLabel: "Remove organization SSO",
+    removeRowHint: "People using SSO must sign in another way. They remain members.",
     removeOrganizationSSO: "Remove organization SSO?",
     removeHint:
       "People using SSO will need another sign-in method (GitHub, GitLab, email). They remain organization members. The callback URL stays the same when SSO is configured again.",
@@ -200,7 +228,16 @@ const text: Dict<{
       `Prove ownership of ${domain} with a DNS TXT record. A domain claimed by another unverified organization will transfer to yours.`,
     verifiedMessage: (domain) => `${domain} is verified.`,
     requestRecord: (domain) => `Request TXT record for ${domain}`,
-    joinLabels: { pending: "Queue for approval (recommended)", member: "Add them as a Member with no team" },
+    joinLabels: {
+      pending: {
+        title: "Queue for approval (recommended)",
+        description: "An admin approves each person before they join the organization.",
+      },
+      member: {
+        title: "Add them automatically",
+        description: "Member role, no team.",
+      },
+    },
   },
 };
 
@@ -222,6 +259,12 @@ function useRequestVerification() {
   });
 }
 
+function useRefreshSettings() {
+  const { api } = useOrg();
+  const queryClient = useQueryClient();
+  return (next: SsoSettings) => queryClient.setQueryData(api.ssoProviders.get.queryKey(), next);
+}
+
 /** Màn 5 của mockup: các cách đăng nhập của tổ chức và form SSO (OIDC). Chỉ quản trị tổ chức xem được. */
 export function LoginSettingsPage() {
   const t = useT(text);
@@ -230,39 +273,35 @@ export function LoginSettingsPage() {
   const settings = useQuery(api.ssoProviders.get.queryOptions({ enabled: admin }));
 
   let body: ReactNode;
-  if (!admin) body = <Card className="px-6 py-10 text-center text-muted-foreground">{t.adminOnly}</Card>;
-  else if (settings.isPending)
+  if (!admin)
     body = (
-      <p aria-busy="true" className="text-muted-foreground">
-        {t.loading}
+      <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">
+        {t.adminOnly}
       </p>
     );
-  else if (settings.isError) body = <Alert variant="destructive">{apiErrorMessage(settings.error)}</Alert>;
+  else if (settings.isPending) body = <SectionsSkeleton label={t.loading} />;
+  else if (settings.isError) body = <LoadFailure error={settings.error} retry={settings.refetch} />;
   else
     body = (
       <>
         <Methods settings={settings.data} />
         <SsoForm settings={settings.data} defaultDomain={org.emailDomain} />
         <DomainVerification settings={settings.data} />
+        {settings.data.provider && <DangerZone />}
       </>
     );
 
   return (
     <>
-      <PageHeader crumb={t.admin} title={t.signInSettings} />
-      <PageBody>
-        <div className="grid w-full max-w-5xl gap-5">
-          <p className="text-muted-foreground">{t.lead}</p>
-          {body}
-        </div>
-      </PageBody>
+      <PageHeader title={t.title} description={t.description} width="form" />
+      <PageBody width="form">{body}</PageBody>
     </>
   );
 }
 
 function Method({ icon, name, detail, status }: { icon: IconName; name: string; detail: string; status: ReactNode }) {
   return (
-    <li className="flex flex-wrap items-center gap-3 border-b border-border px-4.5 py-3.5 last:border-b-0">
+    <li className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
       <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted">
         <Icon name={icon} className="size-5" />
       </span>
@@ -284,8 +323,8 @@ function Methods({ settings }: { settings: SsoSettings }) {
   const sso = settings.provider;
   const hubWide = <Pill>{t.setAtHubLevel}</Pill>;
   return (
-    <Card>
-      <ul aria-label={t.signInMethods}>
+    <SettingsSection title={t.signInMethods} description={t.signInMethodsHint}>
+      <ul aria-label={t.signInMethods} className="grid divide-y divide-border">
         <Method
           icon="key"
           name="SSO (OIDC)"
@@ -306,7 +345,7 @@ function Methods({ settings }: { settings: SsoSettings }) {
         <Method icon="gitlab" name="GitLab" detail={t.oauthHint} status={hubWide} />
         <Method icon="mail" name={t.emailAndPassword} detail={t.emailHint} status={<Pill tone="ok">{t.on}</Pill>} />
       </ul>
-    </Card>
+    </SettingsSection>
   );
 }
 
@@ -318,84 +357,127 @@ interface SsoInput {
   join: SsoJoin;
 }
 
+type SsoDraft = SsoFormValues & { join: SsoJoin };
+
+/**
+ * Hub không trả Client ID đầy đủ lẫn secret, nên hai ô này luôn bắt đầu trống và "có thay đổi" nghĩa là đã nhập gì đó.
+ * Chưa cấu hình thì tên miền điền sẵn từ tên miền email của tổ chức và chưa tính là thay đổi.
+ */
+function draftOf(settings: SsoSettings, defaultDomain: string | null): SsoDraft {
+  const provider = settings.provider;
+  return {
+    issuer: provider?.issuer ?? "",
+    domain: provider?.domain ?? defaultDomain ?? "",
+    clientId: "",
+    clientSecret: "",
+    join: settings.join,
+  };
+}
+
 function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDomain: string | null }) {
   const t = useT(text);
   const { api } = useOrg();
-  const queryClient = useQueryClient();
-  const joinId = useId();
+  const refresh = useRefreshSettings();
+  const ids = { issuer: useId(), domain: useId(), clientId: useId(), clientSecret: useId(), callback: useId() };
   const provider = settings.provider;
   const configured = provider !== null;
+  const [draft, setDraft] = useState<SsoDraft>(() => draftOf(settings, defaultDomain));
   const [errors, setErrors] = useState<SsoFormErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
-  // Secret chỉ ghi: lưu xong thì xoá khỏi ô, không giữ trong trang lâu hơn cần.
-  const [secret, setSecret] = useState("");
   const [saved, setSaved] = useState(false);
-  const [removing, setRemoving] = useState(false);
   // Tên miền đang bị tổ chức khác giữ: tổ chức này giành lại được nếu chứng minh giữ DNS (hub kiểm bản ghi TXT).
   const [taken, setTaken] = useState<string | null>(null);
   const claim = useRequestVerification();
-  const refresh = (next: SsoSettings) => queryClient.setQueryData(api.ssoProviders.get.queryKey(), next);
+  const base = draftOf(settings, defaultDomain);
+  const dirty = (Object.keys(base) as (keyof SsoDraft)[]).some((key) => draft[key] !== base[key]);
+  // Gỡ SSO ở vùng nguy hiểm: form quay về trạng thái chưa cấu hình thay vì giữ giá trị của cấu hình vừa gỡ.
+  const [wasConfigured, setWasConfigured] = useState(configured);
+  if (wasConfigured !== configured) {
+    setWasConfigured(configured);
+    if (!configured) {
+      setDraft(base);
+      setSaved(false);
+    }
+  }
+
   const save = useMutation({
     mutationFn: (input: SsoInput) => api.ssoProviders.upsert.call(input),
     onSuccess: (next) => {
-      setSecret("");
+      // Secret chỉ ghi: lưu xong thì xoá khỏi ô, không giữ trong trang lâu hơn cần.
+      setDraft(draftOf(next, defaultDomain));
       setSaved(true);
       refresh(next);
     },
     onError: (error, input) => {
       setTaken(apiErrorCode(error) === "SSO_DOMAIN_TAKEN" ? input.domain : null);
       const { field, message } = formError(error, SSO_ERROR_FIELDS);
-      if (field === "issuer" || field === "domain" || field === "clientId" || field === "clientSecret")
+      if (field === "issuer" || field === "domain" || field === "clientId" || field === "clientSecret") {
         setErrors({ [field]: message });
-      else setFailure(message);
+        setFailure(t.checkFields);
+      } else setFailure(message);
     },
   });
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
+  function edit<K extends keyof SsoDraft>(key: K, value: SsoDraft[K]) {
+    setDraft((d) => ({ ...d, [key]: value }));
+    setSaved(false);
+  }
+
+  function onSave() {
     const values: SsoFormValues = {
-      issuer: String(form.get("issuer") ?? "").trim(),
-      domain: String(form.get("domain") ?? "")
-        .trim()
-        .toLowerCase(),
-      clientId: String(form.get("clientId") ?? "").trim(),
-      clientSecret: String(form.get("clientSecret") ?? ""),
+      issuer: draft.issuer.trim(),
+      domain: draft.domain.trim().toLowerCase(),
+      clientId: draft.clientId.trim(),
+      clientSecret: draft.clientSecret,
     };
     const local = checkSsoForm(values, configured);
+    const invalid = Object.values(local).some(Boolean);
     setErrors(local);
-    setFailure(null);
+    setFailure(invalid ? t.checkFields : null);
     setSaved(false);
     setTaken(null);
     claim.reset();
-    if (Object.values(local).some(Boolean)) return;
-    const join = SSO_JOINS.find((j) => j === form.get("join")) ?? "pending";
+    if (invalid) return;
     const { clientSecret, ...rest } = values;
-    save.mutate({ ...rest, join, ...(clientSecret ? { clientSecret } : {}) });
+    save.mutate({ ...rest, join: draft.join, ...(clientSecret ? { clientSecret } : {}) });
   }
 
   const busy = save.isPending;
   return (
-    <Card className="grid gap-3.5 px-4.5 py-4">
-      <div className="flex items-center gap-2.5">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">SSO (OIDC)</h2>
-          <p className="text-sm text-muted-foreground">{t.ssoHint}</p>
-        </div>
-        {configured && (
-          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setRemoving(true)} disabled={busy}>
-            {t.removeSSO}
-          </Button>
+    <>
+      <UnsavedChangesGuard when={dirty} />
+      <SettingsSection
+        id="sso"
+        title="SSO (OIDC)"
+        description={t.ssoHint}
+        save={{
+          dirty,
+          saving: busy,
+          saved,
+          error: failure,
+          savedLabel: t.saved,
+          onSave,
+          onDiscard: () => {
+            setDraft(base);
+            setErrors({});
+            setFailure(null);
+            setTaken(null);
+            claim.reset();
+          },
+        }}
+      >
+        {provider && !provider.domainVerified && (
+          <p role="note" className="rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
+            {t.domainUnverified}
+          </p>
         )}
-      </div>
-      <form noValidate onSubmit={onSubmit} className="grid gap-3.5">
-        <div className="grid grid-cols-1 items-start gap-3.5 app:grid-cols-2">
+        <FormRow label="Issuer URL" hint={t.issuerHint} htmlFor={ids.issuer}>
           <Field invalid={errors.issuer !== undefined}>
-            <FieldLabel>Issuer URL</FieldLabel>
             <Input
-              name="issuer"
+              id={ids.issuer}
               type="url"
-              defaultValue={provider?.issuer ?? ""}
+              value={draft.issuer}
+              onValueChange={(v) => edit("issuer", v)}
               placeholder="https://login.microsoftonline.com/<tenant>/v2.0"
               disabled={busy}
               autoComplete="off"
@@ -403,102 +485,94 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
             />
             {errors.issuer && <FieldError>{errors.issuer}</FieldError>}
           </Field>
+        </FormRow>
+        <FormRow label={t.emailDomain} hint={t.domainHint} htmlFor={ids.domain}>
           <Field invalid={errors.domain !== undefined}>
-            <FieldLabel>{t.emailDomain}</FieldLabel>
             <Input
-              name="domain"
-              defaultValue={provider?.domain ?? defaultDomain ?? ""}
+              id={ids.domain}
+              value={draft.domain}
+              onValueChange={(v) => edit("domain", v)}
               placeholder="congty.vn"
               disabled={busy}
               autoComplete="off"
               spellCheck={false}
             />
-            {errors.domain ? (
+            {errors.domain && (
               <>
                 <FieldError>{errors.domain}</FieldError>
                 {taken && !claim.isSuccess && (
-                  <Button variant="outline" size="sm" onClick={() => claim.mutate(taken)} disabled={claim.isPending}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="justify-self-start"
+                    onClick={() => claim.mutate(taken)}
+                    disabled={claim.isPending}
+                  >
                     {claim.isPending ? t.requestingRecord : t.verifyTaken(taken)}
                   </Button>
                 )}
                 {claim.isError && <FieldError>{apiErrorMessage(claim.error)}</FieldError>}
               </>
-            ) : provider && !provider.domainVerified ? (
-              <FieldHint>{t.domainUnverified}</FieldHint>
-            ) : (
-              <FieldHint>{t.domainHint}</FieldHint>
             )}
           </Field>
+        </FormRow>
+        <FormRow
+          label="Client ID"
+          hint={provider?.clientIdLastFour ? t.clientHint(provider.clientIdLastFour) : undefined}
+          htmlFor={ids.clientId}
+        >
           <Field invalid={errors.clientId !== undefined}>
-            <FieldLabel>Client ID</FieldLabel>
             <Input
-              name="clientId"
+              id={ids.clientId}
+              value={draft.clientId}
+              onValueChange={(v) => edit("clientId", v)}
+              // Hub chỉ trả 4 ký tự cuối, mà lưu thì cần Client ID đầy đủ.
               placeholder={provider?.clientIdLastFour ? `…${provider.clientIdLastFour}` : undefined}
               disabled={busy}
               autoComplete="off"
               spellCheck={false}
             />
-            {errors.clientId ? (
-              <FieldError>{errors.clientId}</FieldError>
-            ) : (
-              provider?.clientIdLastFour && (
-                // Hub chỉ trả 4 ký tự cuối, mà lưu thì cần Client ID đầy đủ.
-                <FieldHint>{t.clientHint(provider.clientIdLastFour)}</FieldHint>
-              )
-            )}
+            {errors.clientId && <FieldError>{errors.clientId}</FieldError>}
           </Field>
+        </FormRow>
+        <FormRow
+          label="Client secret"
+          hint={configured ? t.leaveEmptyToKeepIt : t.secretHint}
+          htmlFor={ids.clientSecret}
+        >
           <Field invalid={errors.clientSecret !== undefined}>
-            <FieldLabel>Client secret</FieldLabel>
             <Input
-              name="clientSecret"
+              id={ids.clientSecret}
               type="password"
-              value={secret}
-              onValueChange={setSecret}
+              value={draft.clientSecret}
+              onValueChange={(v) => edit("clientSecret", v)}
               placeholder={configured ? t.savedNeverShownAgain : undefined}
               disabled={busy}
               autoComplete="new-password"
             />
-            {errors.clientSecret ? (
-              <FieldError>{errors.clientSecret}</FieldError>
-            ) : (
-              <FieldHint>{configured ? t.leaveEmptyToKeepIt : t.secretHint}</FieldHint>
-            )}
+            {errors.clientSecret && <FieldError>{errors.clientSecret}</FieldError>}
           </Field>
-        </div>
-        <Field>
-          <FieldLabel>{t.callback}</FieldLabel>
-          <PeopleCopyField value={settings.callbackUrl} copyLabel="callback URL" />
-        </Field>
-        <div className="grid gap-1.5">
-          <label htmlFor={joinId} className="text-sm font-medium text-foreground">
-            {t.firstLogin}
-          </label>
-          <NativeSelect id={joinId} name="join" defaultValue={settings.join} disabled={busy}>
-            {SSO_JOINS.map((j) => (
-              <option key={j} value={j}>
-                {t.joinLabels[j]}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-        {failure && <Alert variant="destructive">{failure}</Alert>}
-        {saved && !failure && (
-          <p role="status" className="rounded-lg bg-success-soft px-3.5 py-2.5 text-sm text-success">
-            {t.ssoSettingsSaved}
-          </p>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button type="submit" variant="default" disabled={busy}>
-            {busy ? t.saving : t.save}
-          </Button>
-        </div>
-      </form>
-      <Dialog open={removing} onOpenChange={setRemoving}>
-        <DialogContent>
-          <RemoveSso onDone={() => setRemoving(false)} onRemoved={refresh} />
-        </DialogContent>
-      </Dialog>
-    </Card>
+        </FormRow>
+        <FormRow label={t.callback} hint={t.callbackHint} htmlFor={ids.callback}>
+          <PeopleCopyField id={ids.callback} value={settings.callbackUrl} copyLabel="callback URL" />
+        </FormRow>
+        <FormRow label={t.firstLogin} hint={t.firstLoginHint}>
+          <RadioCards
+            name="join"
+            label={t.firstLogin}
+            value={draft.join}
+            onChange={(v) => edit("join", v)}
+            disabled={busy}
+            options={SSO_JOINS.map((j) => ({
+              value: j,
+              title: t.joinLabels[j].title,
+              description: t.joinLabels[j].description,
+            }))}
+          />
+        </FormRow>
+      </SettingsSection>
+    </>
   );
 }
 
@@ -512,6 +586,8 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
   const { api } = useOrg();
   const queryClient = useQueryClient();
   const request = useRequestVerification();
+  const recordNameId = useId();
+  const recordValueId = useId();
   const [checked, setChecked] = useState(false);
   const check = useMutation({
     mutationFn: () => api.ssoProviders.checkDomainVerification.call(),
@@ -537,26 +613,42 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
   );
 
   return (
-    <Card className="grid gap-3.5 px-4.5 py-4">
-      <div className="flex items-center gap-2.5">
-        <h2 className="text-base font-semibold text-foreground">{t.domainVerification}</h2>
-        <span className="ml-auto">{status}</span>
-      </div>
+    <SettingsSection
+      id="domain"
+      title={t.domainVerification}
+      description={t.domainVerificationHint}
+      actions={
+        <>
+          {status}
+          {!verified && canRequest && (
+            <Button
+              variant={pending ? "outline" : "default"}
+              size="sm"
+              onClick={() => request.mutate(undefined)}
+              disabled={request.isPending}
+            >
+              {request.isPending ? t.requesting : t.requestRecord(provider.domain)}
+            </Button>
+          )}
+          {!verified && pending && !pending.verified && (
+            <Button variant="default" size="sm" onClick={() => check.mutate()} disabled={check.isPending}>
+              {check.isPending ? t.checking : t.check}
+            </Button>
+          )}
+        </>
+      }
+    >
       {verified && provider ? (
         <p className="text-muted-foreground">{t.verifiedHint(provider.domain)}</p>
       ) : pending ? (
         <>
           <p className="text-muted-foreground">{t.recordHint(pending.domain, formatDay(pending.expiresAt))}</p>
-          <div className="grid grid-cols-1 items-start gap-3.5 app:grid-cols-2">
-            <Field>
-              <FieldLabel>{t.recordNameTXT}</FieldLabel>
-              <PeopleCopyField value={pending.recordName} copyLabel={t.txtRecordName} />
-            </Field>
-            <Field>
-              <FieldLabel>{t.value}</FieldLabel>
-              <PeopleCopyField value={pending.recordValue} copyLabel={t.txtRecordValue} />
-            </Field>
-          </div>
+          <FormRow label={t.recordNameTXT} htmlFor={recordNameId}>
+            <PeopleCopyField id={recordNameId} value={pending.recordName} copyLabel={t.txtRecordName} />
+          </FormRow>
+          <FormRow label={t.value} htmlFor={recordValueId}>
+            <PeopleCopyField id={recordValueId} value={pending.recordValue} copyLabel={t.txtRecordValue} />
+          </FormRow>
           {pending.verified && (
             <p role="status" className="rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
               {t.recordMatched(pending.domain)}
@@ -573,25 +665,29 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
           {t.verifiedMessage(provider.domain)}
         </p>
       )}
-      {!verified && (
-        <div className="flex justify-end gap-2">
-          {canRequest && (
-            <Button
-              variant={pending ? "outline" : "default"}
-              onClick={() => request.mutate(undefined)}
-              disabled={request.isPending}
-            >
-              {request.isPending ? t.requesting : t.requestRecord(provider.domain)}
-            </Button>
-          )}
-          {pending && !pending.verified && (
-            <Button variant="default" onClick={() => check.mutate()} disabled={check.isPending}>
-              {check.isPending ? t.checking : t.check}
-            </Button>
-          )}
-        </div>
-      )}
-    </Card>
+    </SettingsSection>
+  );
+}
+
+function DangerZone() {
+  const t = useT(text);
+  const refresh = useRefreshSettings();
+  const [removing, setRemoving] = useState(false);
+  return (
+    <>
+      <SettingsSection id="danger" title={t.dangerTitle} description={t.dangerHint}>
+        <FormRow label={t.removeRowLabel} hint={t.removeRowHint}>
+          <Button variant="destructive" className="justify-self-start" onClick={() => setRemoving(true)}>
+            {t.removeSSO}
+          </Button>
+        </FormRow>
+      </SettingsSection>
+      <Dialog open={removing} onOpenChange={setRemoving}>
+        <DialogContent>
+          <RemoveSso onDone={() => setRemoving(false)} onRemoved={refresh} />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -614,7 +710,7 @@ function RemoveSso({ onDone, onRemoved }: { onDone: () => void; onRemoved: (next
         <Button variant="outline" onClick={onDone} disabled={remove.isPending}>
           {t.cancel}
         </Button>
-        <Button variant="default" onClick={() => remove.mutate()} disabled={remove.isPending}>
+        <Button variant="destructive-solid" onClick={() => remove.mutate()} disabled={remove.isPending}>
           {remove.isPending ? t.removing : t.removeSSO}
         </Button>
       </DialogActions>

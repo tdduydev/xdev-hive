@@ -14,10 +14,12 @@ import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
-import { Pencil, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { PageSection } from "@/components/page/page-section.tsx";
+import { LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -43,7 +45,7 @@ const text: Dict<{
   remove: string;
   changeRule: string;
   empty: string;
-  noAccess: string;
+  loading: string;
   addServer: string;
   editServer: string;
   formHint: string;
@@ -94,7 +96,7 @@ const text: Dict<{
     remove: "Xoá",
     changeRule: "Đổi quy tắc",
     empty: "Chưa có quy tắc nào. Run chỉ dùng cổng MCP của hub cho tới khi bạn thêm server được phép.",
-    noAccess: "Chỉ chủ sở hữu, quản trị hoặc người có quyền quản lý MCP server được xem và sửa quy tắc server ngoài.",
+    loading: "Đang tải quy tắc server…",
     addServer: "Thêm server",
     editServer: "Sửa quy tắc server",
     formHint:
@@ -152,8 +154,7 @@ const text: Dict<{
     remove: "Delete",
     changeRule: "Change rule",
     empty: "No rules yet. Runs only use the hub MCP gateway until you add an allowed server.",
-    noAccess:
-      "Only owners, administrators or people allowed to manage MCP servers can view and edit external server rules.",
+    loading: "Loading server rules…",
     addServer: "Add server",
     editServer: "Edit server rule",
     formHint:
@@ -209,22 +210,14 @@ const inputOf = (r: McpServerRule, rule: Effect = r.rule): McpServerRuleInput =>
   launch: r.launch,
 });
 
-/** Tab "MCP server ngoài" (MCP-05/06) của /admin/mcp theo docs/design-system/screens/McpTools.dc.html. */
-export function McpServersTab({
-  canManage,
-  editing,
-  onEdit,
-}: {
-  canManage: boolean;
-  /** `"new"` là đang thêm; quy tắc là đang sửa. Trang giữ state vì nút "Thêm server" nằm ở đầu trang. */
-  editing: McpServerRule | "new" | null;
-  onEdit: (value: McpServerRule | "new" | null) => void;
-}) {
+/** Tab "MCP server ngoài" (MCP-05/06) của /admin/mcp. Trang chỉ hiện tab này cho người có quyền `mcp.servers`. */
+export function McpServersTab() {
   const t = useT(text);
   const { api } = useOrg();
   const queryClient = useQueryClient();
-  const rules = useQuery({ ...api.mcpAdmin.listServers.queryOptions(), enabled: canManage });
-  const projects = useQuery({ ...api.projects.list.queryOptions({ input: {} }), enabled: canManage });
+  const rules = useQuery(api.mcpAdmin.listServers.queryOptions());
+  const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
+  const [editing, setEditing] = useState<McpServerRule | "new" | null>(null);
   const [removing, setRemoving] = useState<McpServerRule[] | null>(null);
   const refresh = () => queryClient.invalidateQueries({ queryKey: api.mcpAdmin.key() });
   const flip = useMutation({
@@ -241,7 +234,6 @@ export function McpServersTab({
     onSuccess: () => setRemoving(null),
     onSettled: () => void refresh(),
   });
-  if (!canManage) return <p className="mt-2 rounded-lg bg-muted p-3 text-sm text-muted-foreground">{t.noAccess}</p>;
   const scopeLabel = (r: McpServerRule) => (r.projectId ? (r.projectKey ?? r.projectId.slice(0, 8)) : t.org);
   const columns: Column<McpServerRule>[] = [
     {
@@ -250,10 +242,14 @@ export function McpServersTab({
       value: (r) => `${r.name} ${r.key} ${r.launch ? launchLabel(r.launch) : ""}`,
       sortable: true,
       hideable: false,
+      pin: "start",
       cell: (r) => (
-        <div className="max-w-72 min-w-0">
+        <div className="max-w-48 min-w-0">
           <span className="font-medium">{r.name}</span>
-          <p className="truncate font-mono text-xs text-muted-foreground">
+          <p
+            className="truncate font-mono text-xs text-muted-foreground"
+            title={r.launch ? launchLabel(r.launch) : undefined}
+          >
             {r.launch ? `${r.key} · ${launchLabel(r.launch)}` : t.ruleOnly}
           </p>
         </div>
@@ -263,7 +259,8 @@ export function McpServersTab({
       key: "match",
       label: t.match,
       value: matchLabel,
-      cell: (r) => <span className="break-all font-mono text-xs">{matchLabel(r)}</span>,
+      // Mẫu khớp dài (lệnh, URL) xuống dòng ở dấu cách/gạch chéo trong cột hẹp thay vì đẩy bảng cuộn ngang ở 1100 px.
+      cell: (r) => <span className="block max-w-44 font-mono text-xs break-words">{matchLabel(r)}</span>,
     },
     {
       key: "rule",
@@ -275,60 +272,82 @@ export function McpServersTab({
       key: "scope",
       label: t.scope,
       value: scopeLabel,
-      cell: (r) => <span className="font-mono text-xs">{scopeLabel(r)}</span>,
+      cell: (r) => <span className="font-mono text-xs whitespace-nowrap">{scopeLabel(r)}</span>,
     },
     {
       key: "actions",
       label: t.actions,
       value: () => "",
       hideable: false,
+      align: "end",
+      pin: "end",
       cell: (r) => (
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon-sm" aria-label={`${t.edit} ${r.name}`} onClick={() => onEdit(r)}>
-            <Pencil aria-hidden="true" />
+        <span className="inline-flex gap-1">
+          <Button variant="ghost" size="sm" aria-label={`${t.edit} ${r.name}`} onClick={() => setEditing(r)}>
+            {t.edit}
           </Button>
-          <Button variant="ghost" size="icon-sm" aria-label={`${t.remove} ${r.name}`} onClick={() => setRemoving([r])}>
-            <Trash2 aria-hidden="true" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            aria-label={`${t.remove} ${r.name}`}
+            onClick={() => setRemoving([r])}
+          >
+            {t.remove}
           </Button>
-        </div>
+        </span>
       ),
     },
   ];
   return (
-    <div className="space-y-4 pt-2">
-      <p className="text-sm text-muted-foreground">{t.lead}</p>
-      {flip.error && <Alert variant="destructive">{apiErrorMessage(flip.error)}</Alert>}
-      {rules.isPending ? (
-        <LoadingState />
-      ) : rules.error ? (
-        <LoadFailure error={rules.error} retry={() => rules.refetch()} />
-      ) : (
-        <DataTable
-          columns={columns}
-          rows={rules.data.rules}
-          caption={t.server}
-          placeholder={t.search}
-          emptyContent={t.empty}
-          rowLabel={(r) => r.name}
-          bulk={[
-            { key: "rule", label: t.changeRule, onClick: (rows) => flip.mutate(rows), disabled: () => flip.isPending },
-            { key: "delete", label: t.remove, onClick: (rows) => setRemoving(rows) },
-          ]}
-          facets={[
-            { key: "rule", label: t.rule, value: (r) => (r.rule === "allow" ? t.allow : t.deny) },
-            { key: "scope", label: t.scope, value: scopeLabel },
-            { key: "kind", label: t.matchBy, value: (r) => t.matchTypes[r.matchType] },
-          ]}
-        />
-      )}
+    <div className="grid min-w-0 gap-6">
+      <div className="grid min-w-0 gap-3">
+        <p className="text-sm text-muted-foreground">{t.lead}</p>
+        {flip.error && <Alert variant="destructive">{apiErrorMessage(flip.error)}</Alert>}
+        {rules.isPending ? (
+          <TableSkeleton label={t.loading} columns={5} />
+        ) : rules.error ? (
+          <LoadFailure error={rules.error} retry={rules.refetch} />
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={rules.data.rules}
+            caption={t.server}
+            placeholder={t.search}
+            minWidth={720}
+            emptyContent={t.empty}
+            rowLabel={(r) => r.name}
+            toolbar={
+              <Button size="sm" onClick={() => setEditing("new")}>
+                <Plus aria-hidden="true" />
+                {t.addServer}
+              </Button>
+            }
+            bulk={[
+              {
+                key: "rule",
+                label: t.changeRule,
+                onClick: (rows) => flip.mutate(rows),
+                disabled: () => flip.isPending,
+              },
+              { key: "delete", label: t.remove, onClick: (rows) => setRemoving(rows) },
+            ]}
+            facets={[
+              { key: "rule", label: t.rule, value: (r) => (r.rule === "allow" ? t.allow : t.deny) },
+              { key: "scope", label: t.scope, value: scopeLabel },
+              { key: "kind", label: t.matchBy, value: (r) => t.matchTypes[r.matchType] },
+            ]}
+          />
+        )}
+      </div>
       <EffectivePreview projects={projects.data ?? []} />
       {editing && (
         <ServerRuleDialog
           rule={editing === "new" ? null : editing}
           projects={projects.data ?? []}
-          onClose={() => onEdit(null)}
+          onClose={() => setEditing(null)}
           onSaved={() => {
-            onEdit(null);
+            setEditing(null);
             void refresh();
           }}
         />
@@ -361,7 +380,7 @@ export function McpServersTab({
               {t.cancel}
             </Button>
             <Button
-              variant="destructive"
+              variant="destructive-solid"
               disabled={remove.isPending}
               onClick={() => removing && remove.mutate(removing)}
             >
@@ -395,16 +414,20 @@ function EffectivePreview({ projects }: { projects: { id: string; key: string; n
     api.mcpAdmin.previewServers.queryOptions({ input: projectId ? { projectId } : {}, refetchInterval: 30_000 }),
   );
   return (
-    <section aria-labelledby={`${id}-title`} className="space-y-3 rounded-xl border border-border bg-card p-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h2 id={`${id}-title`} className="font-heading text-base font-semibold">
-            {t.previewTitle}
-          </h2>
-          <p className="text-xs text-muted-foreground">{t.previewLead}</p>
-        </div>
-        <Labeled id={`${id}-scope`} label={t.previewScope}>
-          <NativeSelect id={`${id}-scope`} value={projectId} onChange={(e) => setProjectId(e.currentTarget.value)}>
+    <PageSection
+      title={t.previewTitle}
+      description={t.previewLead}
+      actions={
+        <span className="flex items-center gap-2">
+          <label htmlFor={`${id}-scope`} className="text-sm whitespace-nowrap text-muted-foreground">
+            {t.previewScope}
+          </label>
+          <NativeSelect
+            id={`${id}-scope`}
+            className="w-40"
+            value={projectId}
+            onChange={(e) => setProjectId(e.currentTarget.value)}
+          >
             <option value="">{t.org}</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
@@ -412,35 +435,44 @@ function EffectivePreview({ projects }: { projects: { id: string; key: string; n
               </option>
             ))}
           </NativeSelect>
-        </Labeled>
+        </span>
+      }
+    >
+      <div className="min-w-0 rounded-xl border border-border bg-card">
+        {preview.isPending ? (
+          <div role="status" aria-busy="true" className="grid gap-2 p-3">
+            <span className="sr-only">{t.loading}</span>
+            <Skeleton aria-hidden="true" className="h-9 w-full" />
+            <Skeleton aria-hidden="true" className="h-9 w-2/3" />
+          </div>
+        ) : preview.error ? (
+          <div className="p-3">
+            <LoadFailure error={preview.error} retry={preview.refetch} />
+          </div>
+        ) : preview.data.servers.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t.previewEmpty}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {preview.data.servers.map((s) => (
+              <li key={s.ruleId} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                <div className="min-w-0">
+                  <span className="font-mono text-sm font-medium">{s.key}</span>
+                  <p className="font-mono text-xs break-all text-muted-foreground">{launchLabel(s.launch)}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {s.decidedBy ? t.decidedBy(s.decidedBy.name) : t.noRule}
+                  </span>
+                  <Pill tone={s.allowed ? "ok" : "bad"} dot>
+                    {s.allowed ? t.sent : t.blocked}
+                  </Pill>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-      {preview.isPending ? (
-        <LoadingState />
-      ) : preview.error ? (
-        <LoadFailure error={preview.error} retry={() => preview.refetch()} />
-      ) : preview.data.servers.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t.previewEmpty}</p>
-      ) : (
-        <ul className="divide-y divide-border">
-          {preview.data.servers.map((s) => (
-            <li key={s.ruleId} className="flex flex-wrap items-center justify-between gap-2 py-2">
-              <div className="min-w-0">
-                <span className="font-mono text-sm font-medium">{s.key}</span>
-                <p className="break-all font-mono text-xs text-muted-foreground">{launchLabel(s.launch)}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {s.decidedBy ? t.decidedBy(s.decidedBy.name) : t.noRule}
-                </span>
-                <Pill tone={s.allowed ? "ok" : "bad"} dot>
-                  {s.allowed ? t.sent : t.blocked}
-                </Pill>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    </PageSection>
   );
 }
 

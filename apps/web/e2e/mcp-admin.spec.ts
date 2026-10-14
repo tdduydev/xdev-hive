@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { fakeHub, mcpAdminFixture, ok } from "./fake-hub.ts";
 
@@ -37,12 +39,17 @@ for (const role of ["owner", "admin"] as const) {
       });
     });
     await page.goto("/admin/mcp");
-    const toggle = page.getByRole("switch", { name: "Trạng thái doc_get" });
-    await expect(toggle).toBeChecked();
-    await toggle.click();
-    await expect(toggle).not.toBeChecked();
-    await toggle.click();
-    await expect(toggle).toBeChecked();
+    // Bật/tắt tool áp cho cả tổ chức nên đi qua hộp thoại xác nhận, không đổi ngay trên dòng.
+    await page.getByRole("button", { name: "Tắt doc_get", exact: true }).click();
+    let confirm = page.getByRole("dialog");
+    await expect(confirm.getByRole("heading", { name: "Tắt tool doc_get?" })).toBeVisible();
+    await confirm.getByRole("button", { name: "Tắt tool", exact: true }).click();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    expect(state.tools[0]?.enabled).toBe(false);
+    await page.getByRole("button", { name: "Bật doc_get", exact: true }).click();
+    confirm = page.getByRole("dialog");
+    await confirm.getByRole("button", { name: "Bật tool", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Tắt doc_get", exact: true })).toBeVisible();
     expect(state.tools[0]?.enabled).toBe(true);
     await page.getByRole("tab", { name: /Token MCP/ }).click();
     await page.getByRole("button", { name: "Tạo token", exact: true }).click();
@@ -85,7 +92,8 @@ for (const role of ["owner", "admin"] as const) {
 test("MCP member: only own tokens, disabled tool controls and no extension", async ({ page }) => {
   const { hub } = await setup(page, "member");
   await page.goto("/admin/mcp");
-  await expect(page.getByRole("switch", { name: "Trạng thái doc_get" })).toBeDisabled();
+  await expect(page.getByRole("table")).toContainText("doc_get");
+  await expect(page.getByRole("button", { name: "Tắt doc_get", exact: true })).toHaveCount(0);
   await expect(page.getByText(/Bạn quản lý token của mình/)).toBeVisible();
   await page.getByRole("tab", { name: /Token MCP/ }).click();
   await expect(page.getByText("hive_pat_test1…")).toBeVisible();
@@ -95,8 +103,10 @@ test("MCP member: only own tokens, disabled tool controls and no extension", asy
   await page.getByRole("dialog").getByRole("button", { name: "Thu hồi", exact: true }).click();
   await expect(page.getByText("Đã thu hồi", { exact: true })).toBeVisible();
   expect(hub.rpcCalls.some((c) => c.path === "mcpAdmin/setTool" || c.path === "mcpAdmin/extendToken")).toBe(false);
-  await page.getByRole("tab", { name: /MCP server ngoài/ }).click();
-  await expect(page.getByText(/Chỉ chủ sở hữu, quản trị hoặc người có quyền quản lý MCP server/)).toBeVisible();
+  // Tab bị ẩn khi không có quyền, kể cả khi mở thẳng bằng URL.
+  await expect(page.getByRole("tab", { name: /MCP server ngoài/ })).toHaveCount(0);
+  await page.goto("/admin/mcp?tab=server");
+  await expect(page.getByRole("tab", { name: /Tool của hub/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: "Thêm server", exact: true })).toHaveCount(0);
   expect(hub.rpcCalls.some((c) => c.path.startsWith("mcpAdmin/") && c.path.includes("Server"))).toBe(false);
 });
@@ -284,16 +294,67 @@ test("MCP: loading, empty state and retry after API failure", async ({ page }) =
     await route.fallback();
   });
   await page.goto("/admin/mcp", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("tabpanel").getByRole("status")).toHaveText("Đang tải…");
+  await expect(page.getByRole("tabpanel").getByRole("status")).toHaveText("Đang tải dữ liệu MCP…");
   release();
   await expect(page.getByRole("table")).toContainText("doc_get");
   await page.getByRole("tab", { name: /Token MCP/ }).click();
-  await expect(page.getByText("Chưa có token MCP. Tạo token để kết nối client của bạn.")).toBeVisible();
+  await expect(page).toHaveURL("/admin/mcp?tab=token");
+  await expect(page.getByText("Chưa có token MCP", { exact: true })).toBeVisible();
   await page.route("**/rpc/mcpAdmin/listTokens**", (route) => route.abort("connectionrefused"));
   await page.reload();
-  await page.getByRole("tab", { name: /Token MCP/ }).click();
-  await expect(page.getByRole("alert")).toContainText("Không tải được dữ liệu MCP.");
+  // Tab nằm trong URL nên tải lại vẫn ở tab Token.
+  await expect(page.getByRole("tab", { name: /Token MCP/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("alert")).toContainText("Không kết nối được hub.");
   await page.unroute("**/rpc/mcpAdmin/listTokens**");
-  await page.getByRole("button", { name: "Thử lại", exact: true }).click();
-  await expect(page.getByText("Chưa có token MCP. Tạo token để kết nối client của bạn.")).toBeVisible();
+  await page.getByRole("button", { name: "Tải lại", exact: true }).click();
+  await expect(page.getByText("Chưa có token MCP", { exact: true })).toBeVisible();
 });
+
+for (const width of [1440, 1100, 360]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`MCP ${width} ${theme}: ba tab có URL, bảng vừa khung`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript((value) => localStorage.setItem("hive.theme", value), theme);
+      await setup(page);
+      await page.goto("/admin/mcp");
+      await expect(page.getByRole("table")).toContainText("doc_get");
+      await expectFits(page, width);
+      await shot(page, `mcp-tools-${width}-${theme}-vi`);
+      await page.getByRole("tab", { name: /MCP server ngoài/ }).click();
+      await expect(page).toHaveURL("/admin/mcp?tab=server");
+      await expect(page.getByRole("table")).toContainText("Filesystem");
+      await expectFits(page, width);
+      await shot(page, `mcp-servers-${width}-${theme}-vi`);
+      await page.getByRole("tab", { name: /Token MCP/ }).click();
+      await expect(page).toHaveURL("/admin/mcp?tab=token");
+      await expect(page.getByRole("table")).toContainText("hive_pat_test2");
+      await expectFits(page, width);
+      await shot(page, `mcp-tokens-${width}-${theme}-vi`);
+      await page.getByRole("button", { name: "EN", exact: true }).click();
+      await expect(page.getByRole("tab", { name: /MCP tokens/ })).toHaveAttribute("aria-selected", "true");
+      await expectFits(page, width);
+      await shot(page, `mcp-tokens-${width}-${theme}-en`);
+    });
+  }
+}
+
+async function expectFits(page: Page, width: number) {
+  if (width >= 1100)
+    for (const table of await page.getByRole("table").all())
+      await expect
+        .poll(() =>
+          table.evaluate((el) => (el.parentElement ? el.parentElement.scrollWidth - el.parentElement.clientWidth : 0)),
+        )
+        .toBeLessThanOrEqual(1);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+    .toBeLessThanOrEqual(1);
+}
+
+/** Ảnh trước/sau cho người duyệt UI; chỉ chụp khi đặt HIVE_ADMINUI_SHOTS_DIR, CI không ghi file. */
+async function shot(page: Page, name: string) {
+  const dir = process.env.HIVE_ADMINUI_SHOTS_DIR;
+  if (!dir) return;
+  await mkdir(dir, { recursive: true });
+  await page.screenshot({ path: resolve(dir, `${name}.png`), fullPage: true });
+}
