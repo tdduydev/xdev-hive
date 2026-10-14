@@ -103,7 +103,7 @@ describe("nâng cấp database đã có dữ liệu", () => {
   });
 
   it("nâng từ trước migration AI SDLC: task và run cũ có checklist, nhãn rỗng; dùng được vai trò ba và run sdlc", async () => {
-    const tag = "0063_ai_sdlc";
+    const tag = "0068_ai_sdlc";
     const entry = journal.entries.find((e) => e.tag === tag);
     expect(entry).toBeDefined();
     const ownerUrl = await emptyDatabase();

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,9 +38,12 @@ const KindDocAssist = "docassist"
 // KindBrief là run viết brief của dự án (ADR 0022): đọc nhánh chính, chỉ đọc, nộp brief qua MCP.
 const KindBrief = "brief"
 
-// Capabilities là việc ngoài run code mà worker khai với hub trong hello. Hub chỉ giao run doccheck, docassist, brief
-// cho worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi.
-var Capabilities = []string{KindDocCheck, KindDocAssist, KindBrief}
+// KindSkillProposal là run đề xuất skill từ việc khó (specs/014): đọc nhánh chính, chỉ đọc, nộp SKILL.md qua MCP.
+const KindSkillProposal = "skill_proposal"
+
+// Capabilities là việc ngoài run code mà worker khai với hub trong hello. Hub chỉ giao run doccheck, docassist, brief,
+// skill_proposal cho worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi.
+var Capabilities = []string{KindDocCheck, KindDocAssist, KindBrief, KindSkillProposal}
 
 // NeedsFull: CLI chỉ chạy run code khi có toàn quyền (agy không giới hạn được trong thư mục làm việc); run chỉ đọc thì
 // không cần.
@@ -48,7 +52,7 @@ func NeedsFull(cli, kind string) bool { return cli == "antigravity" && !readOnly
 // readOnlyKind là nơi duy nhất quyết định run nào chỉ đọc: CLI không nhận cờ ghi (kể cả khi dự án bật quyền full),
 // lệnh override phải tự khai chỉ đọc, và worker không push. Thêm kind mới thì quyết định ở đây trước.
 func readOnlyKind(kind string) bool {
-	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist || kind == KindBrief
+	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist || kind == KindBrief || kind == KindSkillProposal
 }
 
 // Binary là lệnh của CLI trên máy: Antigravity cài lệnh `agy`, các CLI khác trùng tên.
@@ -93,7 +97,10 @@ type Job struct {
 	// Chỉ run code dùng; run chỉ đọc bỏ qua.
 	Checks []CheckCommand
 	// BriefSHA là commit nhánh chính mà brief hiện tại của dự án đã đọc (spec.brief.sha); rỗng là dự án chưa có brief.
-	BriefSHA  string
+	BriefSHA string
+	// TaskText là tiêu đề, mô tả và kế hoạch đã duyệt của task (spec.taskText), nguồn từ khoá của context pack; rỗng
+	// với hub cũ (lấy từ prompt).
+	TaskText  string
 	workspace string
 	repoCache string
 	// savingEnv và accountID do Run tính từ cấu hình máy và tài khoản đã giữ; nằm trên Job để đường sandbox và đường
@@ -107,6 +114,8 @@ type Job struct {
 	// rtk và codegraph là công cụ tiết kiệm token Run đã bật cho lần thử này (tools.go); nil, rỗng là không có.
 	rtk       *rtkRun
 	codegraph string
+	// guard là thư mục tạm và hook của context pack, ngân sách khảo sát, cắt output (guard.go); nil là không có.
+	guard *guardRun
 }
 
 type Event struct {
@@ -191,6 +200,8 @@ type Runner struct {
 	// RTK và CodeGraph, nếu có, thay HIVE_WORKER_RTK và HIVE_WORKER_CODEGRAPH.
 	RTK       *ToolConfig
 	CodeGraph *ToolConfig
+	// HookExe, nếu có, thay os.Executable() làm lệnh hook của run (guard.go); test đặt bản build của hive-worker.
+	HookExe   string
 	KillGrace time.Duration
 	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
 	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
@@ -198,6 +209,8 @@ type Runner struct {
 	// RemoveDir, nếu có, nhận thư mục worktree cũ để xoá sau khi Run trả về (worker xoá nền để máy rảnh nhận run
 	// mới ngay). Không có thì Run xoá trước khi trả về.
 	RemoveDir func(dir string)
+	// HTTP gọi hub ngoài kênh WSS (lấy skill cho worktree); nil là client mặc định.
+	HTTP *http.Client
 }
 
 // trashPrefix là tên thư mục worktree đã gỡ còn chờ xoá trong runs/; ReapOrphans dọn chúng nếu worker chết giữa chừng.
@@ -357,7 +370,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
 			return err
 		}
-	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist || job.Kind == KindBrief {
+	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist || job.Kind == KindBrief || job.Kind == KindSkillProposal {
 		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
 		// của run code.
 		if err := addWorktreeAt(ctx, src.lock, src.dir, work, "--detach", work, "origin/"+job.BaseBranch); err != nil {
@@ -375,6 +388,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	job.workspace = work
 	repo = repoReport(ctx, work, job)
+	if wantsSkills(job) {
+		// Thiếu skill thì agent vẫn đọc được qua MCP: lỗi chỉ ghi ra stderr của worker, không làm hỏng run.
+		if _, err := installSkills(ctx, r.HTTP, filepath.Join(r.DataDir, "skills"), job, work); err != nil {
+			fmt.Fprintf(os.Stderr, "hive-worker: không chép được skill cho run %s: %v\n", job.RunID, err)
+		}
+	}
 	if job.SandboxPolicy != nil {
 		config, cleanup, err := r.prepareSandboxPolicy(ctx, job.SandboxPolicy)
 		if err != nil {
@@ -451,6 +470,30 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		defer job.rtk.cleanup()
 		job.savingEnv = mergeMap(job.savingEnv, job.rtk.env)
 	}
+	packFiles := 0
+	// CLI chạy bằng lệnh cấu hình riêng (CLI giả của e2e) không nhận cờ hay hook của worker, như RTK và CodeGraph.
+	if packOn, budget, maxChars := guardSettings(savingCfg, job); !r.overridden(job.CLI) && (packOn || budget > 0 || maxChars > 0) {
+		pack := ""
+		if packOn && (job.Kind == "" || job.Kind == "code" || job.Kind == KindPlan) {
+			pack, packFiles = r.contextPack(runCtx, job, work, stderrLog)
+		}
+		guard, err := r.prepareGuard(job, pack, budget, maxChars, job.codegraph != "")
+		if err != nil {
+			_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Chạy run không có context pack và hook tiết kiệm token: %v\n", err)
+			packFiles = 0
+		} else if guard != nil {
+			job.guard = guard
+			defer guard.cleanup()
+			job.savingEnv = mergeMap(job.savingEnv, map[string]string{GuardDirEnv: guard.dir})
+			if pack != "" && !r.packInSystemPrompt(job) {
+				// CLI khác Claude (hay Claude trong sandbox, không thấy thư mục của run) nhận pack ở đầu prompt.
+				job.Prompt = pack + "\n\n---\n\n" + job.Prompt
+			}
+			if len(guard.hooks) > 0 {
+				_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Hook tiết kiệm token: ngân sách khảo sát %d lệnh trước lần sửa đầu, cắt output tool quá %d ký tự (0 là tắt).\n", budget, maxChars)
+			}
+		}
+	}
 	cmd, err := r.cliCommand(job)
 	if err != nil {
 		return err
@@ -476,6 +519,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	// Không dùng StdoutPipe: Wait đóng đầu đọc ngay khi process thoát, goroutine đọc log còn dở sẽ gặp
 	// "file already closed" (hay gặp trên macOS). Để exec tự chép log: Wait chờ chép xong rồi mới trả về.
 	usage, stopMeter := startMeter(job, sink, stopForBudget)
+	if job.guard != nil {
+		usage.setGuard(&GuardUsage{ContextPackFiles: packFiles})
+	}
 	meterStopped := false
 	defer func() {
 		if !meterStopped {
@@ -547,6 +593,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		} else {
 			usage.setRTK(saved)
 		}
+	}
+	if job.guard != nil {
+		usage.setGuard(job.guard.usage(packFiles))
 	}
 	// Usage cuối gửi trước run_result: hub bỏ mọi gói của run đến sau run_result.
 	meterStopped = true
@@ -784,12 +833,23 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				// Hook RTK đi cùng file --settings với hook của tổ chức: không ghi vào cấu hình của người dùng hay tài khoản.
 				hooks = append(append([]Hook(nil), hooks...), Hook{Event: "PreToolUse", Name: "rtk", Command: j.rtk.hook, Matcher: "Bash"})
 			}
-			hookSettings, err := claudeHookSettings(hooks)
+			var guardHooks map[string][]any
+			if j.guard != nil {
+				guardHooks = j.guard.hookEntries()
+			}
+			hookSettings, err := claudeHookSettingsWith(hooks, guardHooks)
 			if err != nil {
 				return nil, err
 			}
 			if hookSettings != "" {
 				args = append(args, "--settings", hookSettings)
+			}
+			if j.guard != nil && j.guard.packFile != "" && r.packInSystemPrompt(j) {
+				args = append(args, claudeFlags(j.claudeVersion, [][]string{{"--append-system-prompt-file", j.guard.packFile}})...)
+			}
+			if len(guardHooks["PostToolUse"]) > 0 {
+				// Output đầy đủ của tool bị cắt nằm trong thư mục của run, ngoài worktree; agent phải Read được ở đó.
+				args = append(args, claudeFlags(j.claudeVersion, [][]string{{"--add-dir", j.guard.dir}})...)
 			}
 			if j.Budget.MaxCostUSD != nil {
 				args = append(args, "--max-budget-usd", strconv.FormatFloat(*j.Budget.MaxCostUSD, 'f', -1, 64))

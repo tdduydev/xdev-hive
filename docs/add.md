@@ -9,6 +9,9 @@
 This document follows a reduced [arc42](https://arc42.org) outline. It describes what is built. Planned work that is not
 in the code is listed in [section 11](#11-risks-technical-debt-and-planned-work), not mixed into the design.
 
+Spec 009 sections were checked against `origin/main` at `8676c4f` on 14 October 2026, including production wiring
+(T070) and command delivery/evaluation (T091); other sections retain the baseline above.
+
 ## 1. Introduction and goals
 
 xDev Hive lets teams in one organization hand tasks to coding agent CLIs (Claude Code, Codex, Gemini CLI), share
@@ -118,6 +121,7 @@ flowchart LR
 | `scm` | GitHub and GitLab clients, organization Git connections, webhooks | `scm_connections`, `webhook_deliveries` |
 | `tasks` | Tasks and plan-mode plans | `tasks`, `plans` |
 | `runs` | Dispatch, offers, leases, run events and logs, outcome policy, review, SSE | `runs`, `run_events`, `run_logs`, `run_leases` |
+| `codereview` | Agent PR review instances, rule/AI/CI/human gates, revision rounds, SLA and merge gate | `code_reviews`, `code_review_gate_runs` |
 | `knowledge` | Memory (full-text and vector), documents, skills, proposals, legacy import | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `proposals`, `legacy_*` |
 | `leader` | Leader chat and proposals that need human approval | `chat_threads`, `chat_messages`, `approvals` |
 | `sandbox` | Egress allowlists, environment images, organization sandbox settings | `sandbox_org_settings`, `egress_allowlists`, `env_images` |
@@ -179,11 +183,12 @@ sequenceDiagram
     W->>H: run_event / log_chunk (seq, offset)
     H->>W: ack (upto seq)
   end
+  W->>W: run spec.checks.commands in worktree
   W->>G: git push branch
-  W->>H: run_result (exit, head SHA, report)
+  W->>H: run_result (exit, head SHA, report.commands)
   H->>H: outcome policy
   H->>G: open pull request
-  H->>H: optional cross-review run, merge queue
+  H->>H: matching Code workflow or cross-review, then merge queue
 ```
 
 - **Offers and leases.** An offer expires after 30 seconds; a lease lasts 90 seconds and is renewed by heartbeats.
@@ -196,7 +201,7 @@ sequenceDiagram
   most once per run every 200 ms. Each hub process holds one
   `LISTEN` connection and streams Server-Sent Events to browsers; the cursor `<eventId>.<logId>` is the
   `Last-Event-ID`, so a reconnecting browser misses nothing.
-- **Outcome policy.** The project's checks (`changes`, `agentReport`, `review`, plus `command` and `ci` which are not
+- **Outcome policy.** The project's checks (`changes`, `agentReport`, `review`, `command`, plus `ci` which is not
   evaluated yet) decide between `succeeded`, `no_changes`, `needs_review` and `failed`. The policy is snapshotted on
   the run.
 - **Steering.** A developer can send extra instructions to a running Claude run (stream-json input); the worker
@@ -217,6 +222,60 @@ Run states: `queued`, `planning`, `awaiting_plan`, `leased`, `preparing`, `runni
 
 Review, plan and leader runs are read-only on the machine: Claude runs with `--permission-mode plan`, Codex with
 `--sandbox read-only`, Gemini with `--approval-mode plan`, and the worker refuses to push for these kinds.
+
+#### Code review workflows (spec 009)
+
+Implementation checked against `origin/main` at `8676c4f` on 14 October 2026: the following flow includes
+production router, job, SCM and dependency wiring (T070) and hub command delivery/evaluation (T091).
+
+Workflow definitions stay in `knowledge.review_workflows`, with an immutable `subject` (`doc` or `code`) and Code
+scope/options. `codereview` owns the separate runtime tables. Only PRs opened by Hive runs qualify. A matching
+workflow replaces the outcome policy's `review` check (recorded as skipped) and direct automatic merge enqueue for
+that run; the remaining outcome checks still apply. No match keeps the existing cross-review and merge behaviour.
+Creating a workflow from project settings produces an unsaved draft, never an automatic conversion.
+
+```mermaid
+flowchart LR
+  R["Code run: succeeded / needs_review + PR"] --> M{"Matching Code workflow?"}
+  M -->|No| O["Existing outcome review and merge queue"]
+  M -->|Yes| S["Snapshot workflow and PR head SHA"]
+  S --> G["Ordered rule / AI / CI / human gates"]
+  G -->|Approved| Q["Auto enqueue or wait for member"]
+  G -->|Changes requested| F["Agent fix / requester / previous human gate"]
+  F -->|New commit| N["Supersede; next round with first snapshot"]
+  N --> G
+  Q --> E["Merge queue reviewGate; merge / close webhook"]
+```
+
+AI gates start one read-only `review` run per reviewer (one to three), aggregate scores and blocking findings, and
+post one summary PR comment. They are team runs by default (`owner_user_id = null`, `created_by = workflow:<id>`)
+on shared machines or runner hosts; `runner: requester` inherits the original code run owner. Human decisions use
+quorum, SLA and the SHA reviewed. The requester cannot approve unless the gate permits it; organization admins can
+decide. Automated gate overrides require permission and a reason. Audit and notifications record transitions;
+overdue human gates are reminded once per wait.
+
+Agent fixes reuse `code` runs on the same task, branch, CLI and owner, without planning; revision count (default two)
+and task budget bound them. Every new head supersedes the previous instance and reruns automated gates with the
+first round's snapshot. Earlier human approvals can carry forward unless `dismissStaleApprovals` is enabled.
+The merge gate holds unapproved PRs in `waiting`; merge/close webhooks finish instances as `merged`/`cancelled`.
+
+To avoid an import cycle, `runs` calls `codereview/index.ts`, while `codereview` receives `startReviewRuns`,
+`queueFixRun` and `runEvidence` through dependency injection in `app.ts` and `main.ts`. `app.ts` registers the
+`codeReviews` router. The jobs role in `main.ts` registers the `codereview` worker, CI polling every two minutes
+(up to 60 checks), the `codereview-sla` cron every ten minutes, and push/merge/close SCM handlers. The catalog merge
+queue receives `reviewGate` by injection too.
+
+The hub builds `spec.checks.commands` from the run policy snapshot and the workflow matched at dispatch,
+including conditional command gates because the diff is not yet known. It deduplicates trimmed commands using the
+shortest timeout. The worker runs them after the agent, before push, returning `report.commands` with exit code,
+duration and redacted output tails. The hub evaluates outcome commands: zero passes, nonzero fails; required
+failures yield `failed`, optional failures yield `needs_review`. Missing outcome evidence yields `needs_review`;
+missing workflow evidence (old worker or a manual push round) leaves command gates waiting for a person. Evidence
+from a different head SHA is not reused. Outcome `ci` remains unsupported; workflow CI is a separate gate.
+Q1 is settled: use commit status `xdev-hive/review` for branch protection, not provider approvals for
+human gates; publishing that status and the settings guidance still await T101.
+
+See [ADR 0018](adr/0018-code-review-workflows.md) and [SRS CR-01–CR-09](srs.md#318-code-review-workflows-cr).
 
 ### 6.4 A sandboxed run
 
@@ -375,7 +434,8 @@ original notes:
 | Item | State |
 |---|---|
 | Single `api` process | Offers and commands go over sockets held by one process. Several `api` processes need NOTIFY-based forwarding |
-| Outcome checks `command` and `ci` | Accepted in project settings but not evaluated; they lead to `needs_review` |
+| Outcome check `ci` | Not evaluated; leads to `needs_review`. Outcome commands are delivered and evaluated; workflow CI is separate |
+| Code review workflows (spec 009) | Runtime wiring and command checks are implemented. Commit status and branch protection guidance await T101 |
 | In-run approvals | `approval_needed` and `approval_result` exist in the protocol, but nothing moves a run to `awaiting_input` |
 | Git credentials in runs | Runs use the machine's Git credentials; scoped per-run Git tokens are not implemented |
 | Machine key pairs and short-lived access tokens | Not implemented (`welcome.accessTokenExp` is unused) |

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArtifactVersions · xDev Hive</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet><style>
+body{margin:0}.ar-board{container-type:inline-size;background:var(--background);color:var(--foreground);font:14px/1.5 var(--font-sans);min-width:0;color-scheme:light}.ar-board[data-theme=dark]{color-scheme:dark}
+.ar-board *{box-sizing:border-box}.ar-board :is(h1,h2,h3,p){margin:0}.ar-board :is(h1,h2,h3){font-family:var(--font-heading);text-wrap:balance}.ar-board h1{font-size:1.25rem}.ar-board h2{font-size:1rem}.ar-board h3{font-size:.875rem}
+.ar-board :is(button,input,textarea,select,a):focus-visible{outline:2px solid var(--ring);outline-offset:2px}.ar-board :is(button,input,textarea,select){font:inherit}.ar-board :is(button,a){touch-action:manipulation}.ar-board a{color:var(--primary);text-underline-offset:3px}.ar-board a:hover{text-decoration-thickness:2px}
+.ar-board button{cursor:pointer}.ar-board button:disabled{opacity:.5;cursor:not-allowed}.ar-board :is(input,textarea,select){width:100%;min-width:0;background:var(--background);color:var(--foreground);border:1px solid var(--input);border-radius:var(--radius);padding:.5rem .75rem}.ar-board textarea{resize:vertical}.ar-board input[type=checkbox],.ar-board input[type=radio]{width:auto;accent-color:var(--primary)}
+.ar-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:36px;padding:.375rem .75rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);color:var(--foreground);font-weight:500;text-decoration:none;white-space:normal}.ar-board a.ar-btn{color:var(--foreground)}.ar-btn:hover:not(:disabled){background:var(--muted)}.ar-btn.primary{background:var(--primary);color:var(--primary-foreground);border-color:transparent}.ar-btn.primary:hover:not(:disabled){opacity:.9}.ar-btn.danger{color:var(--destructive);border-color:var(--destructive)}
+.ar-stack{display:flex;flex-direction:column;gap:1rem;min-width:0}.ar-row{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .75rem;min-width:0}.ar-spread{justify-content:space-between}.ar-grow{flex:1;min-width:0}.ar-muted{color:var(--muted-foreground)}.ar-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}.ar-card{border:1px solid var(--border);border-radius:calc(var(--radius)*1.5);padding:1rem;background:var(--card);min-width:0}.ar-card p,.ar-card h2,.ar-card h3{overflow-wrap:anywhere}.ar-badge{align-self:flex-start;display:inline-flex;align-items:center;gap:.375rem;background:var(--muted);color:var(--muted-foreground);padding:.125rem .5rem;border-radius:var(--radius);font-size:.75rem}.ar-badge.selected{background:var(--accent);color:var(--accent-foreground)}
+.ar-alert{padding:.75rem 1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--muted);overflow-wrap:anywhere}.ar-alert.warning{background:var(--warning-soft);color:var(--warning)}.ar-alert.error{background:var(--destructive-soft);color:var(--destructive)}.ar-alert.success{background:var(--success-soft);color:var(--success)}
+.ar-main{padding:1.5rem;max-width:1200px;margin:auto;width:100%}.ar-toolbar{padding:.75rem 1rem;border-bottom:1px solid var(--border);background:var(--card)}.ar-design{padding:.5rem 1rem;border-bottom:1px dashed var(--border);font-size:.75rem}.ar-design select{width:auto;max-width:100%;padding:.25rem}.ar-design label{min-width:0;max-width:100%}.ar-tabs{display:flex;gap:.5rem;flex-wrap:wrap}.ar-tabs [aria-pressed=true]{background:var(--accent);color:var(--accent-foreground);border-color:var(--primary)}
+.ar-shell{display:flex;min-height:800px}.ar-content{flex:1;min-width:0}.ar-chat-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem}.ar-chat{min-width:0}.ar-panel{min-width:0;min-height:640px}.ar-preview{min-height:280px;display:flex;flex-direction:column;gap:1rem;justify-content:center;padding:1.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--background)}
+.ar-code{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--muted);padding:1rem;border-radius:var(--radius);font: .8125rem/1.7 var(--font-mono)}.ar-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.ar-field{display:flex;flex-direction:column;gap:.375rem;font-weight:500;min-width:0}.ar-table{width:100%;border-collapse:collapse;text-align:left;font-variant-numeric:tabular-nums}.ar-table :is(th,td){padding:.75rem;border-bottom:1px solid var(--border);overflow-wrap:anywhere}.ar-table th{font-weight:500;background:var(--muted)}.ar-table td{vertical-align:top}.ar-cards{display:none}.ar-skeleton{height:1rem;background:var(--muted);border-radius:var(--radius);width:80%}.ar-empty{padding:3rem 1rem;text-align:center;align-items:center}.ar-overlay{padding:2rem 1rem;background:var(--backdrop);min-height:760px;display:flex;align-items:flex-start;justify-content:center}.ar-dialog{width:100%;max-width:640px;box-shadow:var(--shadow-lg);overscroll-behavior:contain}.ar-dialog:focus-visible{outline:2px solid var(--ring)}.ar-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.ar-skip{position:absolute;left:1rem;top:0;transform:translateY(-200%)}.ar-skip:focus{position:relative;transform:none}.ar-diff-add{color:var(--success);background:var(--success-soft)}.ar-diff-del{color:var(--destructive);background:var(--destructive-soft)}
+@container (max-width:1023px){.ar-chat-layout{grid-template-columns:minmax(0,1fr)}.ar-chat-layout[data-panel-open=true]>.ar-chat{display:none}.ar-chat-layout[data-panel-open=false]>.ar-panel{display:none}.ar-mobile{display:inline-flex}.ar-nav{display:none}.ar-panel{min-height:760px}.ar-thread-list{display:none}}
+@container (min-width:1024px){.ar-mobile{display:none}.ar-thread-list{width:220px;flex:none}}
+@container (max-width:640px){.ar-main{padding:1rem;padding-bottom:max(1rem,env(safe-area-inset-bottom))}.ar-grid{grid-template-columns:minmax(0,1fr)}.ar-table{display:none}.ar-cards{display:flex;flex-direction:column;gap:.75rem}.ar-overlay{padding:1rem .5rem}.ar-preview{padding:1rem}.ar-btn{min-height:44px}.ar-toolbar{padding:.75rem}.ar-dialog{max-height:none}.ar-design{gap:.5rem}}
+</style></helmet>
+<div class="ar-board" data-theme="{{theme}}" lang="{{lang}}" style="{{boardStyle}}">
+<a class="ar-skip" href="#artifact-versions-main">{{t.skip}}</a>
+<sc-if value="{{showTools}}" hint-placeholder-val="{{true}}"><section class="ar-design ar-row" aria-label="{{t.states}}" data-design-tools>
+<label class="ar-row">{{t.states}}<select name="design-state" value="{{view}}" onChange="{{setView}}"><sc-for list="{{modes}}" as="mode"><option value="{{mode.value}}">{{mode.label}}</option></sc-for></select></label>
+<button type="button" class="ar-btn" onClick="{{toVi}}" aria-label="Tiếng Việt">VI</button><button type="button" class="ar-btn" onClick="{{toEn}}" aria-label="English">EN</button><button type="button" class="ar-btn" onClick="{{toggleTheme}}">{{t.theme}}</button><button type="button" class="ar-btn" onClick="{{toggleSize}}">{{t.size}}</button>
+</section></sc-if>
+
+
+<main class="ar-main ar-stack" id="artifact-versions-main"><header class="ar-row ar-spread"><div><h1>{{t.versions}}</h1><p>{{t.title}}</p></div><a class="ar-btn" href="ArtifactDetail.dc.html">{{t.close}}</a></header>
+<sc-if value="{{isOffline}}" hint-placeholder-val="{{false}}"><p role="status" class="ar-alert warning">{{t.offline}}</p></sc-if>
+<sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}"><section class="ar-card ar-stack" aria-busy="true" aria-label="{{t.loading}}"><span role="status">{{t.loading}}</span><div class="ar-skeleton"></div><div class="ar-skeleton" style="width:55%"></div><div class="ar-preview ar-skeleton" style="width:100%"></div></section></sc-if>
+<sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}"><section class="ar-card ar-stack ar-empty"><h2>{{t.empty}}</h2><p class="ar-muted">{{t.emptyHelp}}</p><a class="ar-btn" href="Leader.dc.html">{{t.newThread}}</a></section></sc-if>
+<sc-if value="{{isError}}" hint-placeholder-val="{{false}}"><section role="alert" class="ar-alert error ar-stack"><p>{{t.error}}</p><button type="button" class="ar-btn" onClick="{{retry}}">{{t.retry}}</button></section></sc-if>
+<sc-if value="{{hasMessage}}" hint-placeholder-val="{{false}}"><p role="status" aria-live="polite" class="ar-alert success">{{message}}</p></sc-if>
+
+
+<sc-if value="{{normal}}">
+<div class="ar-grid"><label class="ar-field">{{t.from}}<select name="from-version" value="{{from}}" onChange="{{setFrom}}"><option value="1">v1</option><option value="2">v2</option><option value="3">v3</option><option value="4">v4</option></select></label><label class="ar-field">{{t.to}}<select name="to-version" value="{{to}}" onChange="{{setTo}}"><option value="1">v1</option><option value="2">v2</option><option value="3">v3</option><option value="4">v4</option></select></label></div>
+<p class="ar-muted">{{t.immutable}}</p>
+<nav class="ar-tabs" aria-label="{{t.compare}}"><button type="button" class="ar-btn" aria-pressed="{{diff}}" onClick="{{pickDiff}}">{{t.diff}}</button><button type="button" class="ar-btn" aria-pressed="{{side}}" onClick="{{pickSide}}">{{t.side}}</button></nav>
+<sc-if value="{{same}}"><p role="status" class="ar-alert warning">{{t.same}}</p></sc-if>
+<sc-if value="{{diff}}"><section class="ar-card ar-stack"><h2>{{comparison}}</h2><pre class="ar-code"><span class="ar-diff-del">− return amount * 0.02;</span>
+<span class="ar-diff-add">+ return amount * 0.015;</span></pre><p class="ar-muted">{{t.legend}}</p></section></sc-if>
+<sc-if value="{{side}}"><div class="ar-grid"><section class="ar-card ar-stack"><h2>{{fromLabel}}</h2><p>{{t.before}}</p></section><section class="ar-card ar-stack"><h2>{{toLabel}}</h2><p>{{t.after}}</p></section></div></sc-if>
+<ol class="ar-stack" style="padding-left:1.5rem"><sc-for list="{{versions}}" as="version"><li class="ar-card ar-stack"><div class="ar-row ar-spread"><strong class="ar-mono">{{version.number}} · {{version.name}}</strong><span class="ar-badge">{{version.origin}}</span></div><p>{{version.author}} · <time datetime="2026-10-14T03:42:00Z">{{version.date}}</time> · <span class="ar-mono">{{version.size}}</span></p><p>{{version.message}}</p><div class="ar-row"><button type="button" class="ar-btn" disabled="{{blocked}}" onClick="{{version.rename}}">{{t.rename}}</button><button type="button" class="ar-btn" disabled="{{blocked}}" onClick="{{version.restore}}">{{t.restoreVersion}}</button></div></li></sc-for></ol>
+<sc-if value="{{naming}}"><section role="dialog" aria-labelledby="name-title" class="ar-card ar-stack"><h2 id="name-title">{{t.rename}}</h2><label class="ar-field">{{t.name}}<input name="version-name" value="{{versionName}}" onInput="{{setName}}" autocomplete="off" maxlength="100"></label><div class="ar-row"><button type="button" class="ar-btn" onClick="{{cancel}}">{{t.cancel}}</button><button type="button" class="ar-btn primary" onClick="{{saveName}}">{{t.save}}</button></div></section></sc-if>
+<sc-if value="{{restoring}}"><section role="dialog" aria-labelledby="restore-title" class="ar-card ar-stack"><h2 id="restore-title">{{restoreTitle}}</h2><p>{{t.restoreHelp}}</p><div class="ar-row"><button type="button" class="ar-btn" onClick="{{cancel}}">{{t.cancel}}</button><button type="button" class="ar-btn primary" onClick="{{restore}}">{{t.confirm}}</button></div></section></sc-if>
+</sc-if></main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["ready","loading","empty","error","offline"],"default":"ready"},"embedded":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  renderVals() {
+
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const narrow = this.state.narrow ?? !!this.props.narrow;
+    const view = this.state.view ?? this.props.view ?? 'ready';
+    const x = (p) => p[lang === 'en' ? 1 : 0];
+    const T = {"close":["Đóng","Close"],"retry":["Thử lại","Retry"],"loading":["Đang tải…","Loading…"],"empty":["Chưa có phiên bản để so sánh","No versions to compare"],"emptyHelp":["Mở một artifact đã lưu để xem lịch sử.","Open a saved artifact to view its history."],"error":["Không tải được dữ liệu. Kiểm tra kết nối rồi thử lại.","Could not load data. Check your connection and retry."],"offline":["Đang offline — kết nối hub để dùng thao tác này.","Offline — connect to the hub to use this action."],"states":["Trạng thái thiết kế","Design state"],"theme":["Đổi sáng/tối","Toggle theme"],"size":["Đổi cỡ 360 px","Toggle 360 px"],"versions":["Phiên bản","Versions"],"private":["Cá nhân","Private"],"project":["Dự án","Project"],"cancel":["Thôi","Cancel"],"save":["Lưu thay đổi","Save changes"],"confirm":["Xác nhận","Confirm"],"done":["Đã lưu thay đổi mẫu.","Sample changes saved."],"title":["Máy tính phí hoàn tiền","Refund fee calculator"],"newThread":["Cuộc trò chuyện mới","New conversation"],"copied":["Đã sao chép.","Copied."],"compare":["Xem khác biệt rồi gộp","Review differences and merge"],"from":["Bản trước","Earlier version"],"to":["Bản sau","Later version"],"diff":["Khác biệt","Differences"],"side":["Cạnh nhau","Side by side"],"immutable":["Mỗi lần lưu tạo một phiên bản. Khôi phục giữ nguyên toàn bộ lịch sử.","Each save creates a version. Restoring preserves the entire history."],"same":["Chọn hai phiên bản khác nhau để so sánh.","Choose two different versions to compare."],"legend":["Dấu −: dòng xoá · Dấu +: dòng thêm.","−: removed line · +: added line."],"before":["Phí hoàn tiền: 2%","Refund fee: 2%"],"after":["Phí hoàn tiền: 1,5%","Refund fee: 1.5%"],"rename":["Đặt tên bản","Name version"],"name":["Tên phiên bản","Version name"],"restoreVersion":["Khôi phục bản này","Restore this version"],"restoreHelp":["Tạo v5 từ bản đã chọn; không xoá các phiên bản giữa.","Creates v5 from the selected version; keeps intervening versions."],"restored":["Đã tạo v5 từ phiên bản đã chọn.","Created v5 from the selected version."],"named":["Bản gửi khách","Client draft"],"initial":["Bản đầu tiên","Initial draft"],"feeChange":["Điều chỉnh phí theo chính sách mới","Adjust fee to the new policy"],"skip":["Đến nội dung chính","Skip to content"]};
+    const t = Object.fromEntries(Object.entries(T).map(([k,v]) => [k,x(v)]));
+    const normal = !['loading','empty','error'].includes(view);
+    const blocked = view === 'offline' || view === 'loading';
+    const selectView = (v) => this.setState({ view:v, message:'' });
+    const modeLabels = {"ready":["Sẵn sàng","Ready"],"loading":["Đang tải…","Loading…"],"empty":["Rỗng","Empty"],"error":["Lỗi tải","Load error"],"offline":["Offline","Offline"]};
+    const modes = ["ready", "loading", "empty", "error", "offline"].map(v => ({value:v,label:x(modeLabels[v])}));
+    const base = {onlineActions:!blocked,lang,dark,narrow,view,t,modes,normal,blocked,isLoading:view==='loading',isEmpty:view==='empty',isError:view==='error',isOffline:view==='offline',showTools:!this.props.embedded,
+      theme:dark?'dark':'light',boardStyle:'width: '+(this.props.embedded?'100%':narrow?'360px':'100%')+'; max-width:100%; min-height: '+(this.props.embedded?'0':'800px')+';',
+      setView:e=>selectView(e.target.value),retry:()=>selectView('ready'),toVi:()=>this.setState({lang:'vi'}),toEn:()=>this.setState({lang:'en'}),toggleTheme:()=>this.setState({dark:!dark}),toggleSize:()=>this.setState({narrow:!narrow}),message:this.state.message || '',hasMessage:!!this.state.message,
+      saved:()=>this.setState({message:t.done}),copy:()=>this.setState({message:t.copied}),
+    };
+
+
+
+    const from=this.state.from??'1',to=this.state.to??'4',side=!!this.state.side;
+    const date=new Intl.DateTimeFormat(lang==='en'?'en-GB':'vi-VN',{dateStyle:'short',timeStyle:'short'}).format(new Date('2026-10-14T03:42:00Z'));
+    const versions=[4,3,2,1].map(n=>({number:'v'+n,name:this.state.names?.[n]??(n===4?t.named:''),author:n===3?'Phạm Hà':'run_8f3 · Claude / Sonnet',origin:n===3?x(['Người sửa','Human edit']):'Leader',date,size:'4 KiB',message:n===1?t.initial:t.feeChange,rename:()=>this.setState({naming:n,versionName:this.state.names?.[n]??''}),restore:()=>this.setState({restoring:n})}));
+    return {...base,normal:normal&&!blocked,from,to,versions,side,diff:!side,same:from===to,comparison:'v'+from+' → v'+to,fromLabel:'v'+from,toLabel:'v'+to,setFrom:e=>this.setState({from:e.target.value}),setTo:e=>this.setState({to:e.target.value}),pickDiff:()=>this.setState({side:false}),pickSide:()=>this.setState({side:true}),
+      naming:!!this.state.naming,versionName:this.state.versionName??'',setName:e=>this.setState({versionName:e.target.value}),saveName:()=>this.setState({names:{...this.state.names,[this.state.naming]:this.state.versionName??''},naming:null,message:t.done}),
+      restoring:!!this.state.restoring,restoreTitle:t.restoreVersion+' · v'+this.state.restoring,cancel:()=>this.setState({naming:null,restoring:null}),restore:()=>this.setState({restoring:null,message:t.restored}),
+    };
+
+  }
+}
+</script>
+</body>
+</html>

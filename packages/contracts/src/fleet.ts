@@ -52,6 +52,10 @@ export const machine = z.object({
   /** Tóm tắt tài khoản CLI từ heartbeat; null hoặc không có khi worker chưa báo ("Máy chưa báo gói"). */
   accounts: z.array(workerAccountSummary).nullable().optional(),
   accountsAt: z.iso.datetime().nullable().optional(),
+  /** Id dự án máy đã gắn với một repo local (ADR 0020). Rỗng khi không trả. */
+  boundProjects: z.array(z.string()).optional(),
+  /** Id dự án máy đã bật toàn quyền (ADR 0020); run chỉ nhận toàn quyền khi chính sách tổ chức cũng cho. */
+  fullProjects: z.array(z.string()).optional(),
 });
 export type Machine = z.output<typeof machine>;
 

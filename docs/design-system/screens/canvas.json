@@ -24,7 +24,7 @@
       "y": 0,
       "w": 1440,
       "h": 1000,
-      "title": "Leader · /leader",
+      "title": "Leader · /leader, /leader/terminal/$id",
       "expand": "fill",
       "is_interactive": true
     },
@@ -364,6 +364,22 @@
       "title": "Chờ tôi duyệt · Code (PR) · /knowledge/reviews?tab=code",
       "is_interactive": true,
       "expand": "fill"
+    },
+    "AppWork.dc.html": {
+      "x": 7600,
+      "y": 12720,
+      "w": 1440,
+      "h": 900,
+      "title": "App · Việc của tôi",
+      "is_interactive": true
+    },
+    "AppKnowledge.dc.html": {
+      "x": 9120,
+      "y": 12720,
+      "w": 1440,
+      "h": 900,
+      "title": "App · Tra cứu tri thức",
+      "is_interactive": true
     }
   },
   "order": [
@@ -408,7 +424,9 @@
     "AppSkills.dc.html",
     "AppTokens.dc.html",
     "AppSetup.dc.html",
-    "AppPlans.dc.html"
+    "AppPlans.dc.html",
+    "AppWork.dc.html",
+    "AppKnowledge.dc.html"
   ],
   "notes": {
     "rowWork": {
