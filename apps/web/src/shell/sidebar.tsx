@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible.tsx";
@@ -162,6 +162,7 @@ function Group({
 export function AppSidebar() {
   const { orgs, current, canCreateOrg } = useOrgs();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const t = useT(text);
   const lang = useLang();
   const hasOrg = current !== null;
@@ -228,7 +229,18 @@ export function AppSidebar() {
                   {hasOrg ? (
                     <SidebarMenuButton
                       // "true" chứ không phải "page": trang đang mở là mục sáng trong menu Quản trị, mục này chỉ là cả khu.
-                      render={<Link to={admin.to} aria-current={inAdmin ? "true" : undefined} />}
+                      // Thẻ <a> thường: Link của router luôn gắn aria-current="page" khi đang ở đúng trang đích (/admin/members).
+                      render={
+                        <a
+                          href={admin.to}
+                          aria-current={inAdmin ? "true" : undefined}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                            e.preventDefault();
+                            void navigate({ to: admin.to });
+                          }}
+                        />
+                      }
                       isActive={inAdmin}
                       tooltip={NAV_ADMIN.label[lang]}
                     >

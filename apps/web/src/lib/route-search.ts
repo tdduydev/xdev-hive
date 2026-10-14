@@ -99,6 +99,13 @@ export function validateTeamSearch(search: Record<string, unknown>): { tab?: Tea
   return search.tab === "thanh-vien" || search.tab === "he-thong" ? { tab: search.tab } : {};
 }
 
+/** Tab của trang một thành viên; không có là Tổng quan. */
+export type MemberTab = "doi";
+
+export function validateMemberSearch(search: Record<string, unknown>): { tab?: MemberTab } {
+  return search.tab === "doi" ? { tab: search.tab } : {};
+}
+
 export type MembersTab = "dang-hoat-dong" | "loi-moi" | "cho-duyet";
 
 export interface MembersSearch {
