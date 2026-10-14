@@ -64,6 +64,8 @@ func main() {
 		os.Exit(showConfig(os.Args[2:], os.Stdout, os.Stderr))
 	case "accounts":
 		os.Exit(accountsCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "optimize":
+		os.Exit(optimizeCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "projects":
 		os.Exit(projectsCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "memory":
@@ -79,7 +81,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
