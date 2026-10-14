@@ -23,6 +23,13 @@ export function useDesktopDocEnv(): DocEditorEnv {
     api,
     lang,
     errorMessage: errorText,
+    sdlc: {
+      itemLink: ({ projectKey, number, tab, className, children }) => (
+        <a className={className} href={`#/sdlc/${encodeURIComponent(projectKey)}/${number}${tab ? `/${tab}` : ""}`}>
+          {children}
+        </a>
+      ),
+    },
     link: ({ to, className, children }) => (
       <button
         type="button"

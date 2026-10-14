@@ -377,9 +377,10 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T052, T053 · **Mức**: vừa
   - Đã làm: cài đặt dự án ở `pages/project-sdlc-settings.tsx`, hai mục lưu riêng nhưng mỗi lần gửi cả `settings.sdlc`;
     `/admin/policies` bỏ `sdlc` khỏi lần lưu mục khác để hub giữ bản đã lưu; BA/PO chọn được qua `lib/roles.ts`.
-    Chưa làm: e2e luồng MVP đầy đủ (SC-009), hàng số liệu của mục AI SDLC trong chính sách (contract chưa có).
+    SC-009 đã kiểm qua `sdlc-mvp.spec.ts`: tạo, trả lời, duyệt spec/plan/research và bản tách, chạy đợt, mở PR.
+    Quyết định duyệt làm mới cache AI SDLC. Chưa làm: hàng số liệu của mục AI SDLC trong chính sách (contract chưa có).
 
-- [ ] T055 🎯 Desktop: nhóm menu AI SDLC và màn
+- [x] T055 🎯 Desktop: nhóm menu AI SDLC và màn
   - `nav.ts`: quyền `sdlc.use` (dev, writer, lead), `sdlc.manage` (lead), nhóm `sdlc` (Hạng mục, Câu hỏi chờ tôi, Tiến
     độ); `account.ts` `profileOf()`: mọi đội là `viewer` hoặc `ba` → `writer` (D27); màn `sdlc-screen.tsx` (bảng + chi tiết + tạo + bản tách + truy vết theo
     hash `#/sdlc/<project>/<NNN>/<tab>`), `sdlc-questions-screen.tsx`; `write-screen.tsx` truyền env mở rộng cho khung bên;
@@ -390,6 +391,9 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `apps/desktop/src/screens/{index.ts,sdlc-screen.tsx,sdlc-questions-screen.tsx,write-screen.tsx,reviews-screen.tsx}` + test,
     `apps/desktop/package.json`
   - **Phụ thuộc**: T052, T053 · **Mức**: vừa
+  - Đã làm: UI dùng chung qua cầu Rust, hash chi tiết/tab, quyền BA theo đội, khung bên và thẻ duyệt; thiếu kết nối
+    thì mời kết nối Hive. SC-009 có test qua các màn thật (BA/PO duyệt, thành viên chạy đợt), SC-016 kiểm hạng mục ba dự án và thu hồi. Tiến độ dùng danh
+    sách giai đoạn/độ phủ; số liệu tổng hợp chờ T082. Tailwind quét cả package `sdlc-ui` khi dựng app.
 
 ---
 
@@ -416,12 +420,15 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T001 · **Mức**: vừa
   - Đã làm cùng T063; kênh không có `client.go` nên phần nối nằm ở `worker/internal/channel/{accounts.go,accounts_test.go}`.
 
-- [ ] T062 [US15] Web: Đội máy AI SDLC và nhãn trên trang Máy
+- [x] T062 [US15] Web: Đội máy AI SDLC và nhãn trên trang Máy
   - `sdlc-ui` `fleet-table.tsx`; trang `/sdlc/fleet` (Thêm máy = mã đăng ký có nhãn, lệnh cài một dòng cho Linux/macOS/
     Windows); trang `/machines` thêm nhãn, "chỉ nhận run có nhãn", gói; Playwright `sdlc-fleet.spec.ts`.
   - **Scope**: `packages/sdlc-ui/src/fleet-table.tsx` + test, `apps/web/src/pages/sdlc/fleet-page.tsx`,
     `apps/web/src/pages/machines-page.tsx`, `apps/web/e2e/sdlc-fleet.spec.ts`
   - **Phụ thuộc**: T060, T054, T006 · **Mức**: vừa
+  - Đã làm: `/sdlc/fleet`, lọc đội, run/quota, bật/tắt gói theo quyền hub trả; thêm máy dùng chung có nhãn `sdlc`,
+    cờ chỉ nhận run có nhãn và lệnh cài cho ba hệ điều hành. Trang Máy sửa nhãn/cờ qua menu phụ. Vitest và Playwright
+    kiểm quyền chỉ đọc, tải lỗi/thử lại, thao tác ghi, 360 px sáng/tối.
 
 - [x] T063 [US15] Đăng nhập gói từ web (Claude Code, Codex) cho máy dùng chung không màn hình (FR-062)
   - Giao thức: `account_login_start|input|cancel` (hub → worker), `account_login_event { kind: url|code|prompt|done|error }`
@@ -496,13 +503,17 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `packages/contracts/src/{breakdown-parsers/*.ts,breakdown-parsers.test.ts}`
   - **Phụ thuộc**: T002, T003 · **Mức**: vừa
 
-- [ ] T084 [P] Trang cấu hình chế độ (web)
+- [x] T084 [P] Trang cấu hình chế độ (web)
   - `sdlc-ui` `mode-editor.tsx` (giai đoạn, tài liệu có phạm vi item/project/contract, cổng dùng lại trình sửa checkpoint
     của trang Quy trình duyệt, cổng theo dự án, tự duyệt mỗi giai đoạn với lỗi FR-056 hiện tại chỗ, bước, chạy thử); trang
     `/admin/sdlc-modes`; Playwright `sdlc-modes.spec.ts`.
   - **Scope**: `packages/sdlc-ui/src/mode-editor.tsx` + test, `apps/web/src/pages/admin/sdlc-modes-page.tsx`,
     `apps/web/e2e/sdlc-modes.spec.ts`
   - **Phụ thuộc**: T011, T054, T006 · **Mức**: vừa
+  - Đã làm: `/admin/sdlc-modes`, sao chép preset, lưu/xoá chế độ đội/tổ chức, chạy thử; sửa giai đoạn, tài liệu/phạm vi,
+    cổng theo dự án, tự duyệt, bước agent và nguồn tách task. Dùng lại `GateConfig`, bổ sung BA/PO và ba luật AI SDLC
+    vào danh sách chọn. Lỗi FR-056 hiện ngay giai đoạn; giữ dấu phân cách khi nhập danh sách, sinh mã tài liệu duy nhất
+    trong cả chế độ. Vitest và Playwright kiểm lưu/xoá/chạy thử, chỉ đọc, FR-056, 360 px sáng/tối.
 
 - [ ] T085 Ngữ cảnh spec cho review code (spec 009)
   - `codereview` nhận deps `specContextFor` cho checkpoint AI; prompt review có requirement và tiêu chí của task.
@@ -533,6 +544,8 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 - [ ] T091 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp ảnh màn mới (sáng, tối, 360 px).
   - **Scope**: `specs/011-ai-sdlc-mode/*`, `apps/web/e2e/screenshots/**`
   - **Phụ thuộc**: T054, T055 · **Mức**: nhẹ
+  - SPEC11UI2 đã đối chiếu phần UI và lưu 11 ảnh tại `apps/web/e2e/screenshots/spec11ui2/`; kết quả và giới hạn ở
+    `ui-validation.md`. Chưa chạy phân tích toàn bộ đặc tả; giữ mở cho đợt tích hợp hub/worker.
 
 ---
 
