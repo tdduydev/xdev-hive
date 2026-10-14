@@ -2,15 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { envImageInput, type Project, SUGGESTED_EGRESS_RULES } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
-import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
-import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { AllowlistEditor } from "@/components/allowlist-editor.tsx";
-import { Card } from "@/components/ui/card.tsx";
-import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
-import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
-import { Switch } from "@/components/ui/switch.tsx";
+import { FormRow, SettingsSection, SwitchRow } from "@/components/page/settings.tsx";
+import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
+import { Field, FieldError } from "@/components/ui/field.tsx";
+import { LoadFailure, SectionsSkeleton } from "@/components/ui/query-state.tsx";
+import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
@@ -18,11 +19,15 @@ import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
+type OrgPolicy = { locked: boolean; useSuggestedDefaults: boolean };
+
 const orgText: Dict<{
   title: string;
   lead: string;
+  loading: string;
   readOnlyBanner: string;
   policyTitle: string;
+  savePolicy: string;
   suggestedLabel: string;
   suggestedHint: string;
   lockLabel: string;
@@ -32,9 +37,11 @@ const orgText: Dict<{
 }> = {
   vi: {
     title: "Sandbox",
-    lead: "Áp dụng cho run sandbox của mọi dự án trong tổ chức. Mặc định chặn hết.",
+    lead: "Mạng mà run sandbox của mọi dự án trong tổ chức được ra. Mặc định chặn hết.",
+    loading: "Đang tải chính sách sandbox…",
     readOnlyBanner: "Bạn đang xem ở chế độ chỉ đọc. Chỉ quản trị tổ chức sửa được chính sách sandbox.",
     policyTitle: "Chính sách của tổ chức",
+    savePolicy: "Lưu chính sách",
     suggestedLabel: "Dùng danh sách đề xuất",
     suggestedHint: "Cho run ra các địa chỉ hay cần:",
     lockLabel: "Khoá allowlist",
@@ -44,9 +51,11 @@ const orgText: Dict<{
   },
   en: {
     title: "Sandbox",
-    lead: "Applies to sandbox runs of every project in the organization. Everything is blocked by default.",
+    lead: "Network access for sandbox runs of every project in the organization. Everything is blocked by default.",
+    loading: "Loading sandbox policy…",
     readOnlyBanner: "You are viewing in read-only mode. Only organization admins can edit sandbox policies.",
     policyTitle: "Organization policy",
+    savePolicy: "Save policy",
     suggestedLabel: "Use the suggested list",
     suggestedHint: "Let runs reach commonly needed hosts:",
     lockLabel: "Lock the allowlist",
@@ -58,9 +67,11 @@ const orgText: Dict<{
 
 const projectText: Dict<{
   title: string;
+  lead: (key: string) => string;
   projectsCrumb: string;
   loading: string;
   notFound: (k: string) => string;
+  backToProjects: string;
   offBanner: string;
   openSettings: string;
   effectiveTitle: string;
@@ -77,14 +88,15 @@ const projectText: Dict<{
   hashLabel: string;
   hashHint: string;
   saveImage: string;
-  savingImage: string;
   savedImage: string;
 }> = {
   vi: {
     title: "Sandbox",
+    lead: (k) => `Allowlist mạng và image môi trường cho run sandbox của dự án ${k}.`,
     projectsCrumb: "Dự án",
-    loading: "Đang tải…",
+    loading: "Đang tải sandbox của dự án…",
     notFound: (k) => `Không tìm thấy dự án ${k}, hoặc bạn không ở trong đội sở hữu dự án.`,
+    backToProjects: "Về danh sách dự án",
     offBanner: "Dự án chưa bật sandbox nên run vẫn chạy trên máy dev. Bật ở cấu hình dự án.",
     openSettings: "Mở cấu hình",
     effectiveTitle: "Allowlist hiệu lực",
@@ -97,18 +109,19 @@ const projectText: Dict<{
     imageTitle: "Image môi trường",
     imageHint: "Runner host dựng image một lần và cache theo hash của script setup.",
     baseImageLabel: "Image gốc",
-    baseImageHint: "Image có sẵn CLI agent cần dùng; runner host dựng và cache theo hash script setup.",
+    baseImageHint: "Image có sẵn các CLI agent mà run cần.",
     hashLabel: "SHA-256 của .hive/setup.sh",
     hashHint: "Lấy bằng sha256sum .hive/setup.sh trong repo của dự án.",
     saveImage: "Lưu image",
-    savingImage: "Đang lưu…",
     savedImage: "Đã lưu image môi trường.",
   },
   en: {
     title: "Sandbox",
+    lead: (k) => `Network allowlist and environment image for sandbox runs of project ${k}.`,
     projectsCrumb: "Projects",
-    loading: "Loading…",
+    loading: "Loading project sandbox…",
     notFound: (k) => `Project ${k} not found, or you are not in the owning team.`,
+    backToProjects: "Back to projects",
     offBanner:
       "Sandbox is off for this project, so runs still execute on dev machines. Turn it on in project settings.",
     openSettings: "Open settings",
@@ -126,25 +139,9 @@ const projectText: Dict<{
     hashLabel: "SHA-256 of .hive/setup.sh",
     hashHint: "Get it with sha256sum .hive/setup.sh in the project repo.",
     saveImage: "Save image",
-    savingImage: "Saving…",
     savedImage: "Environment image saved.",
   },
 };
-
-function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  const id = useId();
-  return (
-    <Card className="grid gap-3 p-5" role="group" aria-labelledby={id}>
-      <div className="grid gap-0.5">
-        <h2 id={id} className="text-base font-semibold text-foreground">
-          {title}
-        </h2>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </div>
-      {children}
-    </Card>
-  );
-}
 
 /** Chính sách sandbox của tổ chức: khoá allowlist, danh sách đề xuất và mục mạng dùng chung cho mọi dự án. */
 export function SandboxAdminPage() {
@@ -153,83 +150,91 @@ export function SandboxAdminPage() {
   const queryClient = useQueryClient();
   const settings = useQuery(api.sandbox.getOrgSettings.queryOptions({ input: {} }));
   const admin = isOrgAdmin(org.role);
-  const [draft, setDraft] = useState<{ locked: boolean; useSuggestedDefaults: boolean } | null>(null);
+  const [draft, setDraft] = useState<OrgPolicy | null>(null);
   const save = useMutation({
-    mutationFn: (next: { locked: boolean; useSuggestedDefaults: boolean }) => api.sandbox.updateOrgSettings.call(next),
-    onError: () => setDraft(null),
+    mutationFn: (next: OrgPolicy) => api.sandbox.updateOrgSettings.call(next),
     onSuccess: async (next) => {
       queryClient.setQueryData(api.sandbox.getOrgSettings.queryKey({ input: {} }), next);
       setDraft(null);
       await queryClient.invalidateQueries({ queryKey: api.sandbox.effectiveAllowlist.key() });
     },
   });
+  const saved = settings.data
+    ? { locked: settings.data.locked, useSuggestedDefaults: settings.data.useSuggestedDefaults }
+    : null;
+  const dirty =
+    draft !== null &&
+    saved !== null &&
+    (draft.locked !== saved.locked || draft.useSuggestedDefaults !== saved.useSuggestedDefaults);
 
-  let policy: ReactNode;
-  if (settings.isPending) policy = <LoadingState />;
-  else if (settings.isError) policy = <LoadFailure error={settings.error} retry={settings.refetch} />;
+  let body: ReactNode;
+  if (settings.isPending) body = <SectionsSkeleton sections={2} label={t.loading} />;
+  else if (settings.isError) body = <LoadFailure error={settings.error} retry={settings.refetch} />;
   else {
     const s = draft ?? settings.data;
-    const change = (next: { locked: boolean; useSuggestedDefaults: boolean }) => {
+    const change = (next: OrgPolicy) => {
+      save.reset();
       setDraft(next);
-      save.mutate(next);
     };
-    policy = (
-      <div className="grid gap-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="grid gap-1">
-            <span className="text-sm font-medium text-foreground">{t.suggestedLabel}</span>
-            <span className="text-xs text-muted-foreground">
-              {t.suggestedHint}{" "}
-              <span className="inline-flex flex-wrap gap-1 pt-1">
-                {SUGGESTED_EGRESS_RULES.map((rule) => (
-                  <code key={rule} className="rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-foreground">
-                    {rule}
-                  </code>
-                ))}
-              </span>
-            </span>
-          </div>
-          <Switch
+    body = (
+      <>
+        <SettingsSection
+          title={t.policyTitle}
+          save={
+            admin
+              ? {
+                  dirty,
+                  saving: save.isPending,
+                  saved: save.isSuccess,
+                  error: save.isError ? apiErrorMessage(save.error) : undefined,
+                  onSave: () => save.mutate({ locked: s.locked, useSuggestedDefaults: s.useSuggestedDefaults }),
+                  onDiscard: () => {
+                    save.reset();
+                    setDraft(null);
+                  },
+                  saveLabel: t.savePolicy,
+                }
+              : undefined
+          }
+        >
+          <SwitchRow
+            label={t.suggestedLabel}
+            hint={
+              <>
+                {t.suggestedHint}{" "}
+                <span className="font-mono text-foreground/80">{SUGGESTED_EGRESS_RULES.join(", ")}</span>
+              </>
+            }
             checked={s.useSuggestedDefaults}
             disabled={!admin || save.isPending}
-            onCheckedChange={(checked) => change({ ...s, useSuggestedDefaults: checked })}
-            aria-label={t.suggestedLabel}
+            onChange={(checked) => change({ ...s, useSuggestedDefaults: checked })}
           />
-        </div>
-
-        <div className="h-px bg-border" />
-
-        <div className="flex items-start justify-between gap-4">
-          <div className="grid gap-0.5">
-            <span className="text-sm font-medium text-foreground">{t.lockLabel}</span>
-            <span className="text-xs text-muted-foreground">{t.lockHint}</span>
-          </div>
-          <Switch
+          <SwitchRow
+            label={t.lockLabel}
+            hint={t.lockHint}
             checked={s.locked}
             disabled={!admin || save.isPending}
-            onCheckedChange={(checked) => change({ ...s, locked: checked })}
-            aria-label={t.lockLabel}
+            onChange={(checked) => change({ ...s, locked: checked })}
           />
-        </div>
-        {save.isError && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
-      </div>
+        </SettingsSection>
+        <SettingsSection title={t.rulesTitle} description={t.rulesHint}>
+          <AllowlistEditor canEdit={admin} />
+        </SettingsSection>
+      </>
     );
   }
 
   return (
     <>
-      <PageHeader title={t.title} />
-      <PageBody>
-        <p className="-mt-2 text-sm text-muted-foreground">{t.lead}</p>
+      <PageHeader title={t.title} description={t.lead} width="form" />
+      <PageBody width="form">
+        <UnsavedChangesGuard when={dirty} />
         {!admin && (
           <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-xs text-foreground">
             {t.readOnlyBanner}
           </p>
         )}
-        <Section title={t.policyTitle}>{policy}</Section>
-        <Section title={t.rulesTitle} hint={t.rulesHint}>
-          <AllowlistEditor canEdit={admin} />
-        </Section>
+        {body}
       </PageBody>
     </>
   );
@@ -244,29 +249,43 @@ export function ProjectSandboxPage() {
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
   const members = useQuery(api.orgMembers.list.queryOptions({ input: {} }));
   const project = projects.data?.find((p) => p.key === key);
+  const link = "rounded-sm text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring";
   const crumb = (
     <>
-      <Link to="/projects" className="text-primary hover:text-primary/90">
+      <Link to="/projects" className={link}>
         {t.projectsCrumb}
       </Link>
       {" / "}
-      <span className="font-mono">{key}</span>
-      {" / Sandbox"}
+      {project ? (
+        <Link to="/projects/$key/settings" params={{ key }} className={cx(link, "font-mono")}>
+          {key}
+        </Link>
+      ) : (
+        <span className="font-mono">{key}</span>
+      )}
     </>
   );
 
   let body: ReactNode;
-  if (projects.isPending || members.isPending) body = <LoadingState />;
+  if (projects.isPending || members.isPending) body = <SectionsSkeleton sections={3} label={t.loading} />;
   else if (projects.isError) body = <LoadFailure error={projects.error} retry={projects.refetch} />;
-  else if (!project) body = <Alert variant="destructive">{t.notFound(key)}</Alert>;
+  else if (!project)
+    body = (
+      <Alert variant="destructive" className="grid justify-items-start gap-2">
+        {t.notFound(key)}
+        <Link to="/projects" className={cx(link, "text-sm font-medium")}>
+          {t.backToProjects}
+        </Link>
+      </Alert>
+    );
   else {
     const canEdit = teamRoleLookup(org.role, members.data, me.id)(project.teamId) === "admin";
     body = <ProjectSandbox project={project} canEdit={canEdit} />;
   }
   return (
     <>
-      <PageHeader crumb={crumb} title={t.title} />
-      <PageBody>{body}</PageBody>
+      <PageHeader crumb={crumb} title={t.title} description={t.lead(key)} width="form" />
+      <PageBody width="form">{body}</PageBody>
     </>
   );
 }
@@ -292,66 +311,78 @@ function ProjectSandbox({ project, canEdit }: { project: Project; canEdit: boole
           </Link>
         </div>
       )}
-      <Section title={t.effectiveTitle} hint={t.effectiveHint}>
+      <SettingsSection title={t.effectiveTitle} description={t.effectiveHint}>
         {effective.isPending ? (
-          <LoadingState />
+          <div role="status" aria-busy="true" className="flex flex-wrap gap-1.5">
+            <span className="sr-only">{t.loading}</span>
+            <Skeleton aria-hidden="true" className="h-6 w-40" />
+            <Skeleton aria-hidden="true" className="h-6 w-32" />
+            <Skeleton aria-hidden="true" className="h-6 w-44" />
+          </div>
         ) : effective.isError ? (
           <LoadFailure error={effective.error} retry={effective.refetch} />
         ) : effective.data.rules.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{t.noRules}</p>
+          <p className="text-sm text-muted-foreground">{t.noRules}</p>
         ) : (
           <ul aria-label={t.effectiveAria} className="flex flex-wrap gap-1.5">
             {effective.data.rules.map((rule) => (
               <li key={rule}>
-                <code className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-foreground">{rule}</code>
+                <code className="rounded-md border border-border px-2 py-0.5 font-mono text-xs text-foreground">
+                  {rule}
+                </code>
               </li>
             ))}
           </ul>
         )}
-      </Section>
-      <Section title={t.projectRulesTitle} hint={t.projectRulesHint}>
+      </SettingsSection>
+      <SettingsSection title={t.projectRulesTitle} description={t.projectRulesHint}>
         <AllowlistEditor
           projectId={project.id}
           canEdit={canEdit}
           {...(effective.data?.locked ? { lockedNote: t.lockedNote } : {})}
         />
-      </Section>
-      <Section title={t.imageTitle} hint={t.imageHint}>
-        <EnvImageForm project={project} canEdit={canEdit} />
-      </Section>
+      </SettingsSection>
+      <EnvImageSection project={project} canEdit={canEdit} />
     </>
   );
 }
 
-function EnvImageForm({ project, canEdit }: { project: Project; canEdit: boolean }) {
+interface ImageDraft {
+  baseImage: string;
+  setupScriptHash: string;
+}
+
+function EnvImageSection({ project, canEdit }: { project: Project; canEdit: boolean }) {
   const { api } = useOrg();
   const t = useT(projectText);
   const queryClient = useQueryClient();
   const ids = { image: useId(), hash: useId() };
   const image = useQuery(api.sandbox.getImage.queryOptions({ input: { projectId: project.id } }));
+  const [draft, setDraft] = useState<ImageDraft | null>(null);
   const [errors, setErrors] = useState<{ baseImage?: string; setupScriptHash?: string }>({});
-  const [done, setDone] = useState(false);
   const save = useMutation({
-    mutationFn: (input: { baseImage: string; setupScriptHash: string }) =>
-      api.sandbox.setImage.call({ projectId: project.id, ...input }),
-    onSuccess: async () => {
-      setDone(true);
-      await queryClient.invalidateQueries({ queryKey: api.sandbox.getImage.key() });
+    mutationFn: (input: ImageDraft) => api.sandbox.setImage.call({ projectId: project.id, ...input }),
+    onSuccess: (next) => {
+      queryClient.setQueryData(api.sandbox.getImage.queryKey({ input: { projectId: project.id } }), next);
+      setDraft(null);
     },
   });
+  const stored: ImageDraft = {
+    baseImage: image.data?.baseImage ?? "",
+    setupScriptHash: image.data?.setupScriptHash ?? "",
+  };
+  const value = draft ?? stored;
+  const dirty =
+    draft !== null && (draft.baseImage !== stored.baseImage || draft.setupScriptHash !== stored.setupScriptHash);
+  const edit = (patch: Partial<ImageDraft>) => {
+    save.reset();
+    setDraft({ ...value, ...patch });
+  };
 
-  if (image.isPending) return <LoadingState />;
-  if (image.isError) return <LoadFailure error={image.error} retry={image.refetch} />;
-
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setDone(false);
-    const data = new FormData(e.currentTarget);
+  function submit() {
     const parsed = envImageInput.safeParse({
-      baseImage: String(data.get("baseImage") ?? "").trim(),
-      setupScriptHash: String(data.get("setupScriptHash") ?? "")
-        .trim()
-        .toLowerCase(),
+      baseImage: value.baseImage.trim(),
+      setupScriptHash: value.setupScriptHash.trim().toLowerCase(),
     });
     if (!parsed.success) {
       const next: typeof errors = {};
@@ -360,6 +391,8 @@ function EnvImageForm({ project, canEdit }: { project: Project; canEdit: boolean
         next[field] ??= issue.message;
       }
       setErrors(next);
+      // Lỗi nằm dưới ô; đưa con trỏ tới ô sai đầu tiên để người dùng sửa ngay.
+      document.getElementById(next.baseImage ? ids.image : ids.hash)?.focus();
       return;
     }
     setErrors({});
@@ -367,47 +400,68 @@ function EnvImageForm({ project, canEdit }: { project: Project; canEdit: boolean
   }
 
   return (
-    <form noValidate onSubmit={onSubmit} className="grid gap-3">
-      <Field invalid={errors.baseImage !== undefined}>
-        <FieldLabel htmlFor={ids.image}>{t.baseImageLabel}</FieldLabel>
-        <Input
-          id={ids.image}
-          name="baseImage"
-          defaultValue={image.data?.baseImage ?? ""}
-          placeholder="node:24-bookworm-slim"
-          className="font-mono text-xs"
-          disabled={!canEdit}
-        />
-        {errors.baseImage ? <FieldError>{errors.baseImage}</FieldError> : <FieldHint>{t.baseImageHint}</FieldHint>}
-      </Field>
-      <Field invalid={errors.setupScriptHash !== undefined}>
-        <FieldLabel htmlFor={ids.hash}>{t.hashLabel}</FieldLabel>
-        <Input
-          id={ids.hash}
-          name="setupScriptHash"
-          defaultValue={image.data?.setupScriptHash ?? ""}
-          className="font-mono text-xs"
-          disabled={!canEdit}
-        />
-        {errors.setupScriptHash ? (
-          <FieldError>{errors.setupScriptHash}</FieldError>
-        ) : (
-          <FieldHint>{t.hashHint}</FieldHint>
-        )}
-      </Field>
-      {save.isError && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
-      {done && (
-        <p role="status" className="text-xs text-success">
-          {t.savedImage}
-        </p>
-      )}
-      {canEdit && (
-        <div className="flex justify-end">
-          <Button type="submit" variant="default" disabled={save.isPending}>
-            {save.isPending ? t.savingImage : t.saveImage}
-          </Button>
+    <SettingsSection
+      title={t.imageTitle}
+      description={t.imageHint}
+      save={
+        canEdit && image.data !== undefined
+          ? {
+              dirty,
+              saving: save.isPending,
+              saved: save.isSuccess,
+              error: save.isError ? apiErrorMessage(save.error) : undefined,
+              onSave: submit,
+              onDiscard: () => {
+                save.reset();
+                setErrors({});
+                setDraft(null);
+              },
+              saveLabel: t.saveImage,
+              savedLabel: t.savedImage,
+            }
+          : undefined
+      }
+    >
+      <UnsavedChangesGuard when={dirty} />
+      {image.isPending ? (
+        <div role="status" aria-busy="true" className="grid gap-3">
+          <span className="sr-only">{t.loading}</span>
+          <Skeleton aria-hidden="true" className="h-9 w-full" />
+          <Skeleton aria-hidden="true" className="h-9 w-full" />
         </div>
+      ) : image.isError ? (
+        <LoadFailure error={image.error} retry={image.refetch} />
+      ) : (
+        <>
+          <FormRow label={t.baseImageLabel} hint={t.baseImageHint} htmlFor={ids.image}>
+            <Field invalid={errors.baseImage !== undefined}>
+              <Input
+                id={ids.image}
+                value={value.baseImage}
+                onChange={(e) => edit({ baseImage: e.currentTarget.value })}
+                placeholder="node:24-bookworm-slim"
+                className="font-mono text-xs"
+                spellCheck={false}
+                disabled={!canEdit}
+              />
+              {errors.baseImage && <FieldError>{errors.baseImage}</FieldError>}
+            </Field>
+          </FormRow>
+          <FormRow label={t.hashLabel} hint={t.hashHint} htmlFor={ids.hash}>
+            <Field invalid={errors.setupScriptHash !== undefined}>
+              <Input
+                id={ids.hash}
+                value={value.setupScriptHash}
+                onChange={(e) => edit({ setupScriptHash: e.currentTarget.value })}
+                className="font-mono text-xs"
+                spellCheck={false}
+                disabled={!canEdit}
+              />
+              {errors.setupScriptHash && <FieldError>{errors.setupScriptHash}</FieldError>}
+            </Field>
+          </FormRow>
+        </>
       )}
-    </form>
+    </SettingsSection>
   );
 }
