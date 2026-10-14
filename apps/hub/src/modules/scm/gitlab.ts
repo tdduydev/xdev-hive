@@ -467,7 +467,28 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
       await rest("PUT", `${mrPath(ref, number)}/rebase`);
     },
 
-    async checksFor(ref: RepoRef, sha: string): Promise<ChecksState> {
+    async checksFor(ref: RepoRef, sha: string, opts?: { excludeContexts?: readonly string[] }): Promise<ChecksState> {
+      if (opts?.excludeContexts?.length) {
+        // Status ngoài được ghép vào pipeline; bỏ status review trước khi tổng hợp để tránh phiên chờ chính nó.
+        const states: ChecksState[] = [];
+        for (let page = 1; ; page++) {
+          const items = await rest<Array<{ name: string; status: string; allow_failure: boolean }>>(
+            "GET",
+            `projects/${encodeURIComponent(projectPath(ref))}/repository/commits/${sha}/statuses?per_page=100&page=${page}`,
+          );
+          for (const item of items) {
+            if (opts.excludeContexts.includes(item.name) || item.status === "skipped") continue;
+            if (item.status === "success") states.push("success");
+            else if (item.status === "failed" || item.status === "canceled")
+              states.push(item.allow_failure ? "success" : "failure");
+            else states.push("pending");
+          }
+          if (items.length < 100) break;
+        }
+        if (states.includes("failure")) return "failure";
+        if (states.includes("pending")) return "pending";
+        return states.length ? "success" : "none";
+      }
       const q = new URLSearchParams({ sha, order_by: "id", sort: "desc", per_page: "1" });
       const [pipeline] = await rest<Array<{ status: string }>>(
         "GET",

@@ -390,19 +390,15 @@ function CodeDetail({ id, now }: { id: string; now: number }) {
     mutationFn: (input: DecisionSubmit) => api.codeReviews.decide.call({ id, ...input }),
     onSuccess: done,
   });
-  const override = useMutation({
-    mutationFn: (input: { headSha: string; passed: boolean; note: string }) =>
-      api.codeReviews.override.call({ id, ...input }),
-    onSuccess: done,
-  });
+  // Quyết thay checkpoint tự động là việc quản trị (quyền reviews.override), chỉ làm trên web; nút chạy lại kiểm nằm
+  // trong cùng khung đó nên cũng không có ở app.
   const enqueue = useMutation({ mutationFn: () => api.codeReviews.enqueue.call({ id }), onSuccess: done });
-  const recheck = useMutation({ mutationFn: () => api.codeReviews.recheck.call({ id }), onSuccess: done });
   const reload = () => {
     if (query.data) setViewed(query.data);
     void files.refetch();
   };
 
-  const failure = [decide, override, enqueue, recheck].find((m) => m.error)?.error;
+  const failure = [decide, enqueue].find((m) => m.error)?.error;
   return (
     <div className="flex w-full flex-col gap-4">
       <div>
@@ -433,13 +429,11 @@ function CodeDetail({ id, now }: { id: string; now: number }) {
           latestHeadSha={query.data?.pr.headSha ?? null}
           now={now}
           t={c}
-          pending={decide.isPending || override.isPending || enqueue.isPending || recheck.isPending}
+          pending={decide.isPending || enqueue.isPending}
           error={failure ? errorText(failure) : null}
           link={codeLink}
           onDecide={(input) => decide.mutate(input)}
-          onOverride={(input) => override.mutate(input)}
           onEnqueue={() => enqueue.mutate()}
-          onRecheck={() => recheck.mutate()}
           onReload={reload}
         />
       )}

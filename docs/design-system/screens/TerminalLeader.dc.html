@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Terminal Leader · Artifact bên cạnh</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,[role=tab]:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:var(--bh,32px);padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:28px;font-size:13px;padding:0 8px}
+.btn-icon{width:28px;padding:0}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.hint{font-size:12.5px;color:var(--muted-foreground)}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.tl{font-family:var(--font-mono);font-size:13px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
+</style>
+</helmet>
+<!-- Artboard web 1440x1000, route đề xuất /leader/terminal/$sessionId. Prop narrow = true cho 360 px: bỏ Sidebar/Topbar, hai tab Terminal và Artifact. LEADTERM chưa có màn thiết kế nên file này là bản mới; khi LEADTERM vẽ khung terminal, giữ nguyên cột phải. -->
+<div data-theme="{{theme}}" style="{{rootStyle}}">
+  <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="Sidebar" active="leader" lang="{{lang}}" hint-size="240px,1000px"></dc-import></sc-if>
+  <div style="flex: 999 1 0; min-width: 0; display: flex; flex-direction: column;">
+    <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import></sc-if>
+    <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+      <header style="height: 52px; flex: none; box-sizing: border-box; padding: 0 12px 0 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);">
+        <strong style="flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{t.title}}</strong>
+        <span class="badge" style="{{sess.style}}"><span class="dot"></span>{{sess.text}}</span>
+      </header>
+    </sc-if>
+
+    <main style="{{mainStyle}}">
+      <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+        <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 16px;">
+          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+            <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+            <h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+            <span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); font-weight: 400;">mac-mini-lan · claude-4</span>
+            <span class="badge" style="{{sess.style}}"><span class="dot"></span>{{sess.text}}</span>
+            <button type="button" class="btn btn-outline btn-sm" aria-pressed="{{panelAria}}" onClick="{{togglePanel}}">{{panelBtn}}</button>
+          </div>
+        </header>
+      </sc-if>
+
+      <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+      <section aria-label="{{t.states}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+        <span class="muted" style="font-size: 12.5px;">{{t.states}}</span>
+        <div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="9"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+      </section>
+
+      <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+        <div role="tablist" aria-label="{{t.title}}" class="seg" style="align-self: flex-start;"><sc-for list="{{pane}}" as="p" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{p.on}}" onClick="{{p.pick}}" style="{{p.style}}">{{p.label}}<sc-if value="{{p.badge}}" hint-placeholder-val="{{false}}"><span class="badge" style="margin-left: 6px; height: 18px; padding: 0 6px; background: var(--primary); color: var(--primary-foreground);">{{p.count}}</span></sc-if></button></sc-for></div>
+      </sc-if>
+
+      <sc-if value="{{showToast}}" hint-placeholder-val="{{false}}">
+        <div role="status" class="alert" style="background: var(--accent); color: var(--accent-foreground); align-items: center;"><span aria-hidden="true">●</span><span style="flex: 1; min-width: 0;">{{t.toast}}</span><button type="button" class="btn btn-outline btn-sm">{{t.open}}</button></div>
+      </sc-if>
+
+      <div style="{{splitStyle}}">
+        <sc-if value="{{showTerm}}" hint-placeholder-val="{{true}}">
+          <section aria-label="{{t.termLabel}}" class="card" style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+            <div style="padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="mono" style="font-size: 12.5px;">~/Work/payment-api</span>
+              <span class="badge" style="{{ctl.style}}">{{ctl.text}}</span>
+              <span style="flex: 1;"></span>
+              <span class="hint mono">xterm-256color · 120×32</span>
+            </div>
+            <sc-if value="{{termOffline}}" hint-placeholder-val="{{false}}"><div role="alert" class="alert" style="margin: 10px 12px 0; background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">○</span><span>{{t.termOff}}</span></div></sc-if>
+            <div role="log" aria-label="{{t.termLabel}}" tabindex="0" style="flex: 1; min-height: {{termMin}}; padding: 12px 14px; overflow: auto; display: flex; flex-direction: column;">
+              <sc-for list="{{termLines}}" as="l" hint-placeholder-count="10"><div class="tl" style="{{l.style}}">{{l.text}}</div></sc-for>
+              <sc-if value="{{termLive}}" hint-placeholder-val="{{true}}"><div class="tl"><span style="color: var(--primary);">›</span> <span aria-hidden="true" style="display: inline-block; width: 8px; height: 15px; vertical-align: -2px; background: var(--primary);"></span></div></sc-if>
+            </div>
+            <div style="padding: 6px 12px; border-top: 1px solid var(--border);" class="hint">{{t.termHint}}</div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{showPanel}}" hint-placeholder-val="{{true}}">
+          <aside aria-label="{{t.panel}}" class="card" style="{{panelStyle}}">
+            <div style="padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+              <strong style="font-size: 14px; flex: 1; min-width: 0;">{{t.panel}}</strong>
+              <span class="badge" style="{{poll.style}}"><span class="dot"></span>{{poll.text}}</span>
+              <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-ghost btn-icon" aria-label="{{t.hidePanel}}" onClick="{{togglePanel}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></sc-if>
+            </div>
+
+            <sc-if value="{{pLoading}}" hint-placeholder-val="{{false}}">
+              <div role="status" aria-label="{{t.loading}}" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;"><span class="pulse" style="height: 30px; border-radius: 8px; background: var(--muted);"></span><span class="pulse" style="height: 260px; border-radius: 8px; background: var(--muted);"></span><span class="hint">{{t.loading}}</span></div>
+            </sc-if>
+            <sc-if value="{{pError}}" hint-placeholder-val="{{false}}">
+              <div style="padding: 14px;"><div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive); align-items: center;"><span aria-hidden="true">!</span><span style="flex: 1; min-width: 0;">{{t.listErr}}</span><button type="button" class="btn btn-outline btn-sm">{{t.retry}}</button></div></div>
+            </sc-if>
+            <sc-if value="{{pEmpty}}" hint-placeholder-val="{{false}}">
+              <div style="padding: 28px 18px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px;">
+                <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 10px; background: var(--muted); display: inline-flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path></svg></span>
+                <strong style="font-size: 15px;">{{t.emptyTitle}}</strong>
+                <p class="muted" style="margin: 0; max-width: 300px; font-size: 13.5px;">{{t.emptyBody}}</p>
+                <code class="mono" style="padding: 8px 10px; border-radius: 8px; background: var(--muted); font-size: 12.5px; text-align: left; max-width: 100%; overflow-wrap: anywhere;">{{t.emptyExample}}</code>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{pBody}}" hint-placeholder-val="{{true}}">
+              <div role="tablist" aria-label="{{t.panel}}" style="padding: 6px 8px 0; display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto;">
+                <sc-for list="{{artTabs}}" as="a" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{a.on}}" onClick="{{a.pick}}" style="{{a.style}}"><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px;">{{a.title}}</span><sc-if value="{{a.fresh}}" hint-placeholder-val="{{false}}"><span class="badge" style="height: 16px; padding: 0 5px; font-size: 11px; background: var(--primary); color: var(--primary-foreground);">{{t.fresh}}</span></sc-if></button></sc-for>
+              </div>
+              <div style="padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; border-bottom: 1px solid var(--border);">
+                <span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground);">{{cur.type}}</span>
+                <span class="badge mono" style="background: var(--muted); color: var(--muted-foreground);">v{{cur.ver}}</span>
+                <span class="badge" style="background: var(--muted); color: var(--muted-foreground);">{{t.private}}</span>
+                <span style="flex: 1;"></span>
+                <button type="button" class="btn btn-outline btn-sm">{{t.full}}</button>
+              </div>
+              <div style="flex: 1; min-height: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+                <span class="badge" style="align-self: flex-start; background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">🔒</span>{{t.agentLabel}}</span>
+                <div style="flex: 1; min-height: 260px; border: 1px solid var(--border); border-radius: 8px; background: #FFFFFF; color: #0F172A; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+                  <sc-if value="{{pageErr}}" hint-placeholder-val="{{false}}">
+                    <div role="alert" style="padding: 12px; border: 1px solid #C81E1E; border-radius: 8px; background: #FEF2F2; color: #C81E1E; display: flex; flex-direction: column; gap: 4px;"><strong>{{t.pageErrTitle}}</strong><span class="mono" style="font-size: 12.5px;">{{t.pageErrMsg}}</span></div>
+                  </sc-if>
+                  <sc-if value="{{showDiagram}}" hint-placeholder-val="{{true}}">
+                    <svg role="img" aria-label="{{t.diagAlt}}" viewBox="0 0 320 270" width="100%" style="max-width: 360px; align-self: center;">
+                      <defs><marker id="ah2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" fill="#475569"></path></marker></defs>
+                      <rect x="95" y="6" width="130" height="38" rx="8" fill="#E5EDFF" stroke="#1D4ED8"></rect><text x="160" y="30" text-anchor="middle" font-size="13" fill="#0F172A">{{t.mm1}}</text>
+                      <path d="M160 44v34" stroke="#475569" marker-end="url(#ah2)"></path>
+                      <rect x="95" y="80" width="130" height="38" rx="8" fill="#E5EDFF" stroke="#1D4ED8"></rect><text x="160" y="104" text-anchor="middle" font-size="13" fill="#0F172A">{{t.mm2}}</text>
+                      <path d="M160 118v34" stroke="#475569" marker-end="url(#ah2)"></path>
+                      <rect x="95" y="154" width="130" height="38" rx="8" fill="#E5EDFF" stroke="#1D4ED8"></rect><text x="160" y="178" text-anchor="middle" font-size="13" fill="#0F172A">{{t.mm3}}</text>
+                      <path d="M160 192v34" stroke="#475569" marker-end="url(#ah2)"></path>
+                      <rect x="95" y="228" width="130" height="38" rx="8" fill="#F0FDF4" stroke="#15803D"></rect><text x="160" y="252" text-anchor="middle" font-size="13" fill="#0F172A">{{t.mm4}}</text>
+                    </svg>
+                  </sc-if>
+                  <sc-if value="{{showDoc}}" hint-placeholder-val="{{false}}">
+                    <h3 style="margin: 0; font-size: 17px;">{{t.docH}}</h3>
+                    <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px;"><sc-for list="{{docItems}}" as="i" hint-placeholder-count="3"><li>{{i}}</li></sc-for></ul>
+                  </sc-if>
+                </div>
+                <sc-if value="{{pageErr}}" hint-placeholder-val="{{false}}">
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><button type="button" class="btn btn-default">{{t.askFix}}</button><span class="hint" style="flex: 1; min-width: 160px;">{{t.askFixHint}}</span></div>
+                </sc-if>
+                <sc-if value="{{pOffline}}" hint-placeholder-val="{{false}}"><span class="hint">{{t.cached}}</span></sc-if>
+              </div>
+            </sc-if>
+          </aside>
+        </sc-if>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+// modes: normal,loading,empty,error,offline,fresh,pageerror,ended
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { mode: 'normal', tab: 0, pane: 'term', panel: true, lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const narrow = !!this.props.narrow;
+    const S = this.state;
+    const mode = S.mode;
+    const T = {
+      crumb: ['Leader / Terminal', 'Leader / Terminal'], title: ['Terminal Leader', 'Terminal Leader'], states: ['Trạng thái xem', 'View state'],
+      termLabel: ['Terminal của phiên', 'Session terminal'], termHint: ['Hive gắn token của phiên vào MCP, nên agent gọi artifact_create với terminalSessionId của phiên này.', 'Hive puts the session token into MCP, so the agent calls artifact_create with this session\'s terminalSessionId.'],
+      termOff: ['Mất kết nối tới terminal, đang nối lại. Phiên vẫn chạy trên máy; khung Artifact bên cạnh vẫn đọc được.', 'Lost the connection to the terminal, reconnecting. The session keeps running on the machine; the Artifact panel stays readable.'],
+      panel: ['Artifact của phiên', 'Session artifacts'], hidePanel: ['Ẩn khung Artifact', 'Hide Artifact panel'], showPanelBtn: ['Hiện khung Artifact', 'Show Artifact panel'], hidePanelBtn: ['Ẩn khung Artifact', 'Hide Artifact panel'],
+      loading: ['Đang tải artifact của phiên…', 'Loading session artifacts…'], retry: ['Thử lại', 'Retry'],
+      listErr: ['Chưa tải được artifact của phiên. Terminal vẫn chạy bình thường.', 'Could not load the session artifacts. The terminal keeps working.'],
+      emptyTitle: ['Phiên này chưa có artifact', 'No artifacts in this session yet'], emptyBody: ['Nhờ agent trong terminal tạo sơ đồ, báo cáo hay trang HTML. Artifact hiện ở đây trong vòng 3 giây.', 'Ask the agent in the terminal for a diagram, report or HTML page. It shows up here within 3 seconds.'],
+      emptyExample: ['Vẽ luồng hoàn tiền thành sơ đồ rồi lưu thành artifact', 'Draw the refund flow as a diagram and save it as an artifact'],
+      toast: ['Agent vừa tạo artifact "Luồng hoàn tiền".', 'The agent just created the artifact "Refund flow".'], open: ['Mở', 'Open'], fresh: ['Mới', 'New'],
+      private: ['Riêng tư', 'Private'], full: ['Mở toàn màn', 'Open full screen'], agentLabel: ['Nội dung do agent tạo', 'Content created by an agent'],
+      pageErrTitle: ['Trang báo lỗi', 'The page reported errors'], pageErrMsg: ['ReferenceError: rows is not defined', 'ReferenceError: rows is not defined'],
+      askFix: ['Nhờ Leader sửa', 'Ask Leader to fix'], askFixHint: ['Gửi lỗi vào một cuộc trò chuyện Leader mới của bạn; bạn xem lại lỗi trước khi gửi.', 'Sends the errors to a new Leader conversation of yours; you review them before sending.'],
+      cached: ['Đang xem bản đã tải lúc 10:12. Sẽ cập nhật khi nối lại.', 'Showing the copy loaded at 10:12. It updates when you reconnect.'],
+      diagAlt: ['Sơ đồ luồng hoàn tiền', 'Refund flow diagram'], mm1: ['Yêu cầu hoàn', 'Request'], mm2: ['Kiểm số tiền', 'Check amount'], mm3: ['Gọi cổng', 'Call gateway'], mm4: ['Đã hoàn', 'Refunded'],
+      docH: ['Ghi chú phiên', 'Session notes'], tabTerm: ['Terminal', 'Terminal'], tabArt: ['Artifact', 'Artifacts'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const seg = (on) => 'height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const M = [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Rỗng', 'Empty']], ['error', ['Lỗi tải', 'Load error']], ['offline', ['Offline', 'Offline']], ['fresh', ['Có artifact mới', 'New artifact']], ['pageerror', ['Trang báo lỗi', 'Page error']], ['ended', ['Phiên đã kết thúc', 'Session ended']]];
+    const modes = M.map(([k, l]) => ({ label: x(l), on: mode === k ? 'true' : 'false', style: seg(mode === k), pick: () => this.setState({ mode: k, tab: 0 }) }));
+
+    const sess = mode === 'ended' ? { text: x(['Đã kết thúc', 'Ended']), style: 'background: var(--muted); color: var(--muted-foreground);' }
+      : mode === 'offline' ? { text: x(['Đang nối lại', 'Reconnecting']), style: 'background: var(--warning-soft); color: var(--warning);' }
+      : { text: x(['Đang chạy', 'Running']), style: 'background: var(--success-soft); color: var(--success);' };
+    const ctl = mode === 'ended' ? { text: x(['Chỉ xem lại', 'Replay only']), style: 'background: var(--muted); color: var(--muted-foreground);' } : { text: x(['Bạn đang điều khiển', 'You are in control']), style: 'background: var(--accent); color: var(--accent-foreground);' };
+    const poll = mode === 'offline' ? { text: x(['Offline', 'Offline']), style: 'background: var(--warning-soft); color: var(--warning);' }
+      : mode === 'ended' ? { text: x(['Đã dừng cập nhật', 'Updates stopped']), style: 'background: var(--muted); color: var(--muted-foreground);' }
+      : mode === 'error' ? { text: x(['Chưa cập nhật', 'Not updated']), style: 'background: var(--destructive-soft); color: var(--destructive);' }
+      : { text: x(['Cập nhật mỗi 3 giây', 'Updates every 3 s']), style: 'background: var(--success-soft); color: var(--success);' };
+
+    // Màu dòng terminal lấy từ token (mỗi màu đạt tương phản AA trên --card), không dùng mã màu riêng.
+    const L = (text, c) => ({ text, style: c ? 'color: ' + c + ';' : '' });
+    const base = [
+      L('$ hive chat', 'var(--muted-foreground)'), L('Claude Code · ' + x(['gói', 'plan']) + ' claude-4 · ~/Work/payment-api', 'var(--muted-foreground)'), L(''),
+      L('> ' + x(['Vẽ luồng hoàn tiền một phần thành sơ đồ', 'Draw the partial refund flow as a diagram'])),
+      L('● ' + x(['Đọc billing/refund.go', 'Read billing/refund.go']), 'var(--muted-foreground)'),
+    ];
+    const created = [
+      L('● hive.artifact_create  type=mermaid  title="' + x(['Luồng hoàn tiền', 'Refund flow']) + '"', 'var(--primary)'),
+      L('  ✓ art_7K2M…  v1 · ' + x(['riêng tư · phiên này', 'private · this session']), 'var(--success)'),
+      L(x(['Đã tạo sơ đồ "Luồng hoàn tiền" ở khung bên phải.', 'Created the diagram "Refund flow" in the panel on the right.'])),
+    ];
+    const errorLines = [L('  ! ' + x(['Trang báo lỗi: rows is not defined', 'Page reported: rows is not defined']), 'var(--warning)')];
+    const noArt = mode === 'empty' || mode === 'loading' || mode === 'error';
+    const termLines = noArt ? base.slice(0, 3).concat([L('> ' + x(['Chào Leader', 'Hello Leader']))]) : base.concat(created).concat(mode === 'pageerror' ? errorLines : []);
+    if (mode === 'ended') termLines.push(L('[' + x(['Phiên đã kết thúc · mã thoát 0', 'Session ended · exit code 0']) + ']', 'var(--muted-foreground)'));
+
+    const twoArts = mode === 'normal' || mode === 'fresh' || mode === 'offline' || mode === 'ended' || mode === 'pageerror';
+    const arts = [
+      { title: x(['Luồng hoàn tiền', 'Refund flow']), type: 'mermaid', ver: 1, fresh: mode === 'fresh' },
+      { title: x(['Ghi chú phiên', 'Session notes']), type: 'markdown', ver: 3, fresh: false },
+    ].slice(0, mode === 'pageerror' ? 1 : twoArts ? 2 : 1);
+    const cur = arts[Math.min(S.tab, arts.length - 1)] ?? arts[0];
+    const artTabs = arts.map((a, i) => ({
+      title: a.title, fresh: a.fresh, on: i === S.tab ? 'true' : 'false', pick: () => this.setState({ tab: i }),
+      style: 'height: 32px; padding: 0 10px; border: 0; border-bottom: 2px solid ' + (i === S.tab ? 'var(--primary)' : 'transparent') + '; margin-bottom: -1px; background: transparent; color: ' + (i === S.tab ? 'var(--foreground)' : 'var(--muted-foreground)') + '; font: inherit; font-size: 13px; font-weight: ' + (i === S.tab ? '600' : '500') + '; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; flex: none;',
+    }));
+    const pLoading = mode === 'loading', pError = mode === 'error', pEmpty = mode === 'empty';
+    const pBody = !pLoading && !pError && !pEmpty;
+    const count = pBody ? arts.length : 0;
+    const showPanelNow = narrow ? S.pane === 'art' : S.panel;
+    const showTermNow = narrow ? S.pane === 'term' : true;
+    const pane = [['term', t.tabTerm, 0], ['art', t.tabArt, count]].map(([k, l, c]) => ({ label: l, count: c, badge: c > 0, on: S.pane === k ? 'true' : 'false', style: seg(S.pane === k), pick: () => this.setState({ pane: k }) }));
+    const showArtTab = cur.type === 'markdown';
+
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, narrow, wide: !narrow, t, modes, sess, ctl, poll, pane,
+      rootStyle: narrow ? 'width: 360px; display: flex; flex-direction: column; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; --bh: 36px;' : 'min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      mainStyle: narrow ? 'box-sizing: border-box; width: 100%; padding: 14px 16px 28px; display: flex; flex-direction: column; gap: 12px;' : 'box-sizing: border-box; width: 100%; padding: 20px 24px 28px; display: flex; flex-direction: column; gap: 12px; flex: 1;',
+      splitStyle: narrow ? 'display: flex; flex-direction: column; gap: 12px;' : 'flex: 1; display: flex; gap: 14px; align-items: stretch; min-height: 780px;',
+      panelStyle: narrow ? 'display: flex; flex-direction: column; overflow: hidden;' : 'width: 480px; flex: none; display: flex; flex-direction: column; overflow: hidden;',
+      showTerm: showTermNow, showPanel: showPanelNow, togglePanel: () => this.setState({ panel: !S.panel }),
+      panelAria: S.panel ? 'true' : 'false', panelBtn: S.panel ? t.hidePanelBtn : t.showPanelBtn,
+      termLines, termLive: mode !== 'ended', termOffline: mode === 'offline', termMin: narrow ? '300px' : '600px',
+      showToast: mode === 'fresh', pLoading, pError, pEmpty, pBody, pOffline: mode === 'offline',
+      artTabs, cur, pageErr: mode === 'pageerror', showDiagram: pBody && cur.type === 'mermaid' && mode !== 'pageerror', showDoc: pBody && showArtTab,
+      docItems: [x(['Đã đọc billing/refund.go', 'Read billing/refund.go']), x(['Còn thiếu kiểm số tiền', 'Amount check is missing']), x(['Cần thêm test cho hoàn một phần', 'Add tests for partial refunds'])],
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

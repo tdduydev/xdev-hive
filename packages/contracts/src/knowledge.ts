@@ -272,6 +272,61 @@ export const skillGetInput = z
   .refine((v) => (v.id === undefined) !== (v.name === undefined), "Cần đúng một trong id hoặc name.");
 export type SkillGetInput = z.input<typeof skillGetInput>;
 
+/**
+ * Skill trong bộ mặc định của Hive (packages/skill-pack): chỉ đọc, mỗi tổ chức và dự án bật/tắt riêng. Skill cùng tên
+ * của tổ chức, đội hay dự án được dùng thay bản mặc định.
+ */
+export const packSkill = z.object({
+  name: z.string(),
+  description: z.string(),
+  /** Nhóm trong danh mục: ui, engineering, testing, security, tools, sdlc, hive. */
+  group: z.string(),
+  /** SPDX của giấy phép, vd. `MIT`, `Apache-2.0`, `CC-BY-SA-4.0`. */
+  license: z.string(),
+  /** Repo gốc; null là skill viết riêng cho Hive. */
+  upstream: z.object({ repo: z.string(), commit: z.string(), path: z.string(), url: z.string() }).nullable(),
+  /** Hive bật sẵn khi tổ chức chưa chỉnh. */
+  defaultOn: z.boolean(),
+  /** Tổ chức đặt riêng; null là theo mặc định của Hive. */
+  org: z.boolean().nullable(),
+  /** Dự án đặt riêng (chỉ có khi hỏi theo dự án); null là theo tổ chức. */
+  project: z.boolean().nullable(),
+  /** Bật ở phạm vi đang hỏi: dự án nếu có, không thì tổ chức. */
+  enabled: z.boolean(),
+  /** Phạm vi có skill cùng tên đang được dùng thay bản mặc định; null là không bị che. */
+  shadowedBy: scopeLevel.nullable(),
+  /** Tăng mỗi lần nội dung skill trong gói đổi. */
+  version: z.number().int(),
+  files: z.number().int(),
+  bytes: z.number().int(),
+});
+export type PackSkill = z.output<typeof packSkill>;
+
+export const skillPack = z.object({
+  /** Kho và commit của bản đang đóng gói, để ghi nguồn trên trang Skills. */
+  source: z.object({ repo: z.string(), commit: z.string() }),
+  skills: z.array(packSkill),
+});
+export type SkillPack = z.output<typeof skillPack>;
+
+export const skillPackListInput = z.object({ project: projectRef.optional() });
+export type SkillPackListInput = z.input<typeof skillPackListInput>;
+export const skillPackGetInput = z.object({ name: skillName, project: projectRef.optional() });
+export type SkillPackGetInput = z.input<typeof skillPackGetInput>;
+export const skillPackSetInput = z.object({
+  name: skillName,
+  /** Có dự án thì đặt cho dự án (quản trị đội), không thì cho cả tổ chức (quản trị tổ chức). */
+  project: projectRef.optional(),
+  /** null: bỏ đặt riêng, theo phạm vi rộng hơn. */
+  enabled: z.boolean().nullable(),
+});
+export type SkillPackSetInput = z.input<typeof skillPackSetInput>;
+
+export const packSkillFile = z.object({ path: z.string(), text: z.string() });
+export const packSkillDetail = packSkill.extend({ content: z.string(), paths: z.array(z.string()) });
+export const packSkillFiles = z.object({ name: z.string(), hash: z.string(), files: z.array(packSkillFile) });
+export type PackSkillFiles = z.output<typeof packSkillFiles>;
+
 // ---------------------------------------------------------------------------------------------------------------
 // Đề xuất sửa
 
@@ -394,6 +449,28 @@ export const skillsContract = {
   save: orgRoute("POST", "/v1/skills", "Lưu phiên bản mới của skill (quản trị đội)", "knowledge")
     .input(skillSaveInput)
     .output(skill),
+  pack: orgRoute(
+    "GET",
+    "/v1/skills/pack",
+    "Bộ skill mặc định của Hive, kèm trạng thái bật của tổ chức hoặc dự án",
+    "knowledge",
+  )
+    .input(skillPackListInput)
+    .output(skillPack),
+  packGet: orgRoute("GET", "/v1/skills/pack/item", "Đọc SKILL.md của một skill mặc định", "knowledge")
+    .input(skillPackGetInput)
+    .output(packSkillDetail),
+  packFiles: orgRoute("GET", "/v1/skills/pack/files", "Mọi file của một skill mặc định, để cài vào máy", "knowledge")
+    .input(skillPackGetInput)
+    .output(packSkillFiles),
+  packSet: orgRoute(
+    "POST",
+    "/v1/skills/pack",
+    "Bật, tắt hoặc bỏ đặt riêng một skill mặc định cho tổ chức (quản trị tổ chức) hoặc dự án (quản trị đội)",
+    "knowledge",
+  )
+    .input(skillPackSetInput)
+    .output(packSkill),
 };
 
 export const proposalsContract = {

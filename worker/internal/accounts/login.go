@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/pty"
 )
 
 // Loại bước đăng nhập gói worker báo hub (account_login_event.kind).
@@ -39,8 +41,21 @@ const (
 	msgSave       = "Không lưu được đăng nhập của gói."
 )
 
-// errNoPTY: Windows chưa có PTY trong worker; pty_windows.go trả lỗi này.
+// errNoPTY: Windows chưa có PTY trong worker (gói pty trả ErrUnsupported).
 var errNoPTY = errors.New("Windows chưa hỗ trợ đăng nhập gói từ web; đăng nhập tại máy bằng hive-worker accounts add.")
+
+// startPTY chạy cmd trong một PTY. Cột rộng để CLI không tự ngắt dòng giữa URL đăng nhập (URL bị ngắt thì web nhận URL
+// cụt).
+func startPTY(cmd *exec.Cmd) (io.ReadWriteCloser, error) {
+	f, err := pty.Start(cmd, 500, 50)
+	if errors.Is(err, pty.ErrUnsupported) {
+		return nil, errNoPTY
+	}
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
 
 // LoginEvent nhận từng bước của phiên đăng nhập để gửi hub. accountID chỉ có ở "done". Mỗi phiên có đúng một bước cuối
 // ("done" hoặc "error"), trừ khi bị huỷ (hub tự biết nên không báo lại).
@@ -418,7 +433,7 @@ func (l *Login) cliFlow(ctx context.Context, s *loginSession, cli, how, dir stri
 	for {
 		select {
 		case <-ctx.Done():
-			killGroup(cmd)
+			pty.KillGroup(cmd)
 			<-exited
 			return ctx.Err()
 		case text := <-s.input:

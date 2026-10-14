@@ -6,12 +6,14 @@ import { notify } from "../notify/index.ts";
 import { BadRequestError, type Jobs, type Tx } from "../platform/index.ts";
 import { codeReviewGateRuns, codeReviews } from "./schema.ts";
 
+import { publishReviewStatus, type ReviewStatusDeps } from "./status.ts";
+
 type ReviewRow = typeof codeReviews.$inferSelect;
 
 /** Trạng thái còn mở: mỗi PR tối đa một phiên ở các trạng thái này (chỉ mục `code_reviews_open_pr`). */
 const OPEN = ["in_review", "changes_requested", "approved"];
 
-export interface ApprovedDeps {
+export interface ApprovedDeps extends ReviewStatusDeps {
   jobs?: Jobs | undefined;
   publicUrl?: string | undefined;
 }
@@ -57,6 +59,7 @@ export async function onApproved(tx: Tx, review: ReviewRow, deps: ApprovedDeps):
     .where(eq(codeReviews.id, review.id))
     .returning();
   const approved = row ?? review;
+  await publishReviewStatus(tx, approved, deps);
   const project = await loadProject(tx, approved.projectId);
   const mode =
     approved.options.merge === "project" ? project?.settings.merge.mode === "auto" : approved.options.merge === "auto";
@@ -113,7 +116,7 @@ export interface PullRequestEnded {
   outcome: "merged" | "closed";
 }
 
-export interface EndedDeps {
+export interface EndedDeps extends ReviewStatusDeps {
   /**
    * Huỷ run review đang chạy của phiên (module `runs` cài vào qua main.ts vì `runs` import `codereview`). Không có thì
    * run review chạy nốt rồi `onReviewRunFinished` thấy phiên đã đóng và bỏ qua.
@@ -163,5 +166,6 @@ export async function onPullRequestEnded(
     reason,
     from: review.status,
   });
+  await publishReviewStatus(tx, row ?? review, deps);
   return row ?? review;
 }
