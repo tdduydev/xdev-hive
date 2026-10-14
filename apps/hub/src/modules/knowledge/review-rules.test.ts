@@ -1,6 +1,7 @@
-import { reviewGate } from "@xdev-hive/contracts";
+import { parseBreakdown, reviewGate } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  type BreakdownRuleInput,
   diffCounts,
   docTypeOf,
   formattingOnly,
@@ -82,5 +83,122 @@ describe("quy tắc của quy trình duyệt", () => {
     expect(requiredApprovals(gate({ kind: "human", reviewers: { users: [], roles: ["team-admin"], quorum: 0 } }))).toBe(
       1,
     );
+  });
+});
+
+// Bộ đọc bản tách là việc của spec 011 T003; khung hiện tại ném lỗi. Các ca cần bộ đọc thật tự bật khi T003 vào.
+const parserReady = (() => {
+  try {
+    parseBreakdown(
+      "",
+      { parser: "hive-tasks", granularity: "item", requirementId: "R-\\d+", maxTasks: 30, maxChecklist: 20 },
+      {
+        homeProject: "pay",
+        projects: [],
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+const sdlcCtx = (content: string, extra: Record<string, unknown> = {}) => ({
+  docType: "tasks",
+  content,
+  base: "",
+  ...extra,
+});
+const breakdownInput = (requirements: string[]): BreakdownRuleInput => ({
+  decomposition: {
+    parser: "hive-tasks",
+    granularity: "item",
+    requirementId: "FR-\\d{3}",
+    maxTasks: 30,
+    maxChecklist: 20,
+  },
+  context: { homeProject: "pay", projects: [] },
+  requirements,
+});
+const TASKS_MD = [
+  "# Tasks",
+  "- [ ] T001 Cổng hoàn tiền (FR-001)",
+  "  - **Phụ thuộc**: không",
+  "- [ ] T002 Màn hoàn tiền (FR-002)",
+  "  - **Phụ thuộc**: T001",
+  "",
+].join("\n");
+
+describe("quy tắc của tài liệu hạng mục AI SDLC", () => {
+  it("requirementsOf nhận mẫu mã riêng của chế độ và vẫn dùng R-n khi không đưa mẫu", () => {
+    const md =
+      "## Yêu cầu\n- **FR-001**: Hoàn tiền\n  - Tiêu chí: 7 ngày\n- FR-002. Có phí\n- R-9: không phải mã của chế độ\n";
+    expect(requirementsOf(md, "FR-\\d{3}").map((r) => [r.id, r.acceptance.length])).toEqual([
+      ["FR-001", 1],
+      ["FR-002", 0],
+    ]);
+    expect(requirementsOf(md, /FR-\d{3}/).map((r) => r.id)).toEqual(["FR-001", "FR-002"]);
+    expect(requirementsOf(md).map((r) => r.id)).toEqual(["R-9"]);
+    // Mẫu có nhóm riêng không làm lệch mã và nội dung.
+    expect(requirementsOf("- FR-001: Hoàn tiền", "(FR)-\\d{3}")[0]).toMatchObject({ id: "FR-001", text: "Hoàn tiền" });
+  });
+
+  it("no-open-questions: dấu [NEEDS CLARIFICATION còn lại và câu hỏi mở của hạng mục", () => {
+    const g = gate({ rules: ["no-open-questions"] });
+    const clean = ruleChecklist(g, sdlcCtx("# Spec\nĐã rõ.\n", { openQuestions: 0 }));
+    expect(clean.map((c) => [c.label, c.passed])).toEqual([
+      ["Không còn dấu [NEEDS CLARIFICATION]", true],
+      ["Không còn câu hỏi mở của hạng mục", true],
+    ]);
+    const dirty = ruleChecklist(
+      g,
+      sdlcCtx("# Spec\n- FR-001 [NEEDS CLARIFICATION: hạn mức?]\nđủ\n- FR-002 [needs clarification: phí?]\n", {
+        openQuestions: 2,
+      }),
+    );
+    expect(dirty.map((c) => c.passed)).toEqual([false, false]);
+    expect(dirty[0]?.note).toContain("dòng 2, 4");
+    expect(dirty[1]?.note).toContain("2 câu hỏi");
+    // Tài liệu ngoài hạng mục không có số câu hỏi: chỉ kiểm dấu trong văn bản.
+    expect(ruleChecklist(g, sdlcCtx("# Spec\n"))).toHaveLength(1);
+  });
+
+  it("breakdown và coverage không đạt khi tài liệu không thuộc hạng mục", () => {
+    for (const rule of ["breakdown", "coverage"] as const) {
+      const [item] = ruleChecklist(gate({ rules: [rule] }), sdlcCtx(TASKS_MD));
+      expect(item).toMatchObject({ passed: false });
+      expect(item?.note).toContain("không thuộc hạng mục");
+    }
+  });
+
+  it.skipIf(!parserReady)("breakdown: bản tách đọc được thì đạt, lỗi thì báo dòng", () => {
+    const g = gate({ rules: ["breakdown"] });
+    const ok = ruleChecklist(g, sdlcCtx(TASKS_MD, { breakdown: breakdownInput([]) }));
+    expect(ok.map((c) => [c.label, c.passed])).toEqual([
+      ["Bản tách task đọc được", true],
+      ["Có ít nhất một task", true],
+    ]);
+    const bad = ruleChecklist(
+      g,
+      sdlcCtx(TASKS_MD.replace("**Phụ thuộc**: T001", "**Phụ thuộc**: T099"), { breakdown: breakdownInput([]) }),
+    );
+    expect(bad).toHaveLength(1);
+    expect(bad[0]).toMatchObject({ label: "Bản tách task đọc được", passed: false });
+    expect(bad[0]?.note).toContain("T099");
+    const none = ruleChecklist(g, sdlcCtx("# Tasks\nchưa có gì\n", { breakdown: breakdownInput([]) }));
+    expect(none[0]?.passed).toBe(false);
+  });
+
+  it.skipIf(!parserReady)("coverage: requirement chưa có task thì liệt kê, đủ thì đạt", () => {
+    const g = gate({ rules: ["coverage"] });
+    const full = ruleChecklist(g, sdlcCtx(TASKS_MD, { breakdown: breakdownInput(["FR-001", "FR-002"]) }));
+    expect(full).toEqual([{ label: "Mọi requirement đều có task", passed: true, note: null }]);
+    const gap = ruleChecklist(g, sdlcCtx(TASKS_MD, { breakdown: breakdownInput(["FR-001", "FR-002", "FR-003"]) }));
+    expect(gap[0]).toMatchObject({ passed: false });
+    expect(gap[0]?.note).toContain("FR-003");
+    const empty = ruleChecklist(g, sdlcCtx(TASKS_MD, { breakdown: breakdownInput([]) }));
+    expect(empty[0]).toMatchObject({ passed: false, note: expect.stringContaining("Không thấy requirement") });
+    const unreadable = ruleChecklist(g, sdlcCtx("# Tasks\n", { breakdown: breakdownInput(["FR-001"]) }));
+    expect(unreadable[0]?.note).toContain("chưa đọc được");
   });
 });
