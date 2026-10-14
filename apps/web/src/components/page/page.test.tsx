@@ -5,6 +5,7 @@ import { Th } from "@xdev-hive/ui/table";
 import { UsersIcon } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataTable } from "@/components/data-table/data-table.tsx";
+import { ChipInput } from "@/components/page/chip-input.tsx";
 import { DangerZone } from "@/components/page/danger-zone.tsx";
 import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
@@ -410,6 +411,35 @@ describe("SegmentedControl", () => {
     expect(screen.getByRole("button", { name: "7 ngày" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "24 giờ" }));
     expect(onChange).toHaveBeenCalledWith("24h");
+  });
+});
+
+describe("ChipInput", () => {
+  it("adds a chip on Enter without submitting the form, skips duplicates and removes chips", () => {
+    const onChange = vi.fn();
+    const onSubmit = vi.fn((e: { preventDefault: () => void }) => e.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <ChipInput values={["docs/"]} onChange={onChange} canWrite addLabel="Thêm tiền tố" placeholder="tiền tố" />
+      </form>,
+    );
+    const input = screen.getByRole("textbox", { name: "Thêm tiền tố" });
+    fireEvent.change(input, { target: { value: " specs/ " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onChange).toHaveBeenLastCalledWith(["docs/", "specs/"]);
+    expect(onSubmit).not.toHaveBeenCalled();
+    onChange.mockClear();
+    fireEvent.change(input, { target: { value: "docs/" } });
+    fireEvent.blur(input);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Bỏ docs/" }));
+    expect(onChange).toHaveBeenLastCalledWith([]);
+  });
+
+  it("read-only shows the values without add or remove controls", () => {
+    render(<ChipInput values={[]} onChange={() => {}} canWrite={false} addLabel="Thêm" placeholder="giá trị" />);
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
 
