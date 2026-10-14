@@ -163,7 +163,7 @@ test("brief dự án: chưa có thì viết tay từ phiên bản 0 và lưu ng�
 
   await card.getByRole("switch", { name: "Tự cập nhật brief" }).click();
   await card.getByRole("textbox", { name: "Làm mới sau số commit" }).fill("20");
-  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await card.getByRole("button", { name: "Lưu", exact: true }).click();
   await expect
     .poll(() => hub.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
     .toMatchObject({ key: "PAY", settings: { brief: { auto: false, refreshCommits: 20, refreshDays: 7 } } });

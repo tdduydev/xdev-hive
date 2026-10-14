@@ -10,11 +10,23 @@ import {
   registerTemplateSyncWorker,
   templateSyncQueue,
 } from "./modules/catalog/index.ts";
+import { chatQueue, installChatHooks, registerChatWorker } from "./modules/chat/index.ts";
+import {
+  codeReviewQueue,
+  codeReviewSlaQueue,
+  codeReviewStatusQueue,
+  registerCodeReviewScm,
+  registerCodeReviewSla,
+  registerCodeReviewWorker,
+  registerReviewStatusWorker,
+  reviewGate,
+} from "./modules/codereview/index.ts";
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
   registerFleetOfflineWorker,
   registerRunHandlers,
+  registerTerminalHandlers,
 } from "./modules/fleet/index.ts";
 import { createAuth, mcpMode } from "./modules/identity/index.ts";
 import {
@@ -47,8 +59,11 @@ import {
   onScmEvent,
   registerScmEventWorker,
   scmEventQueue,
+  scmEvents,
 } from "./modules/scm/index.ts";
+import { registerSkillLearningWorker, skillLearningPrQueue, skillLearningQueue } from "./modules/skilllearn/index.ts";
 import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./modules/tenancy/index.ts";
+import { attachTerminalGateway, createTerminalHandlers } from "./modules/terminal/index.ts";
 
 const config = loadConfig();
 const roles = config.roles ?? ["api", "jobs"];
@@ -105,14 +120,20 @@ jobs = config.jobsDatabaseUrl
         scmEventQueue,
         embedQueue,
         notifyQueue,
+        chatQueue,
         inboxCleanupQueue,
         fleetOfflineQueue,
         orphanUsersQueue,
         runLogRetentionQueue,
         skillGitQueue,
+        skillLearningQueue,
+        skillLearningPrQueue,
         reviewQueue,
         auditRetentionQueue,
         templateSyncQueue,
+        codeReviewQueue,
+        codeReviewStatusQueue,
+        codeReviewSlaQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
@@ -139,6 +160,10 @@ const runs =
 if (!runs) console.warn("Chưa cấu hình HIVE_AUTH_SECRET: chưa ký được run token, không giao được run.");
 if (runs) registerRunHandlers(runs.handlers);
 
+// Thông báo và câu trả lời của leader đi tới chat qua hai hook mà notify và leader để ngỏ (không import chat được vì vòng
+// phụ thuộc). Cài ở mọi vai trò: notify() chạy cả trong tiến trình api lẫn jobs.
+installChatHooks(pool ? { jobs, publicUrl: config.publicUrl ?? `http://localhost:${config.port}` } : undefined);
+
 if (roles.includes("jobs") && jobs) {
   if (runs) await runs.registerJobs(jobs);
   if (!pool || !config.masterKey) {
@@ -152,7 +177,8 @@ if (roles.includes("jobs") && jobs) {
       jobs,
     };
     await registerProvisionWorker(jobs, catalogDeps);
-    await registerMergeWorker(jobs, catalogDeps);
+    // `catalog` không import `codereview` (vòng phụ thuộc), nên cổng chờ phiên review được tiêm ở đây.
+    await registerMergeWorker(jobs, { ...catalogDeps, reviewGate });
     await registerTemplateSyncWorker(jobs, catalogDeps);
     await registerReviewWorker(jobs, {
       pool,
@@ -168,6 +194,15 @@ if (roles.includes("jobs") && jobs) {
       publicUrl: catalogDeps.publicUrl,
       jobs,
     });
+    // Chạy cùng tiến trình với lõi giao run (runs cài cổng tạo run đề xuất skill); không có runs thì chỉ mở PR.
+    await registerSkillLearningWorker(jobs, {
+      pool,
+      masterKey: config.masterKey,
+      providerFactory: defaultProviderFactory,
+      publicUrl: catalogDeps.publicUrl,
+      runs: runs?.skillLearning,
+      logger: console,
+    });
   }
   if (pool) {
     await registerFleetOfflineWorker(jobs, {
@@ -178,9 +213,29 @@ if (roles.includes("jobs") && jobs) {
     // Mọi sự kiện Git vào audit; module runs xử lý PR merge/đóng, issue có nhãn và bình luận nhắc bot.
     onScmEvent("*", auditScmEvent);
     runs?.registerScmHandlers();
+    // `runs` import `codereview` (mở phiên khi run kết thúc), nên các cổng tạo run, đọc bằng chứng cài vào từ đây.
+    // Thiếu khoá chủ thì phiên vẫn chạy, chỉ không đọc được diff và không đăng bình luận lên PR.
+    const codeReviewDeps = {
+      pool,
+      masterKey: config.masterKey,
+      providerFactory: defaultProviderFactory,
+      publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+      startReviewRuns: runs?.startReviewRuns,
+      queueFixRun: runs?.queueFixRun,
+      runEvidence: runs?.runEvidence,
+    };
+    await registerCodeReviewWorker(jobs, codeReviewDeps);
+    await registerReviewStatusWorker(jobs, codeReviewDeps);
+    await registerCodeReviewSla(jobs, { pool, publicUrl: codeReviewDeps.publicUrl });
+    registerCodeReviewScm(scmEvents, { ...codeReviewDeps, jobs });
     await registerScmEventWorker(jobs, { pool });
     // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
     await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
+    await registerChatWorker(jobs, {
+      pool,
+      masterKey: config.masterKey,
+      publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+    });
     await registerOrphanUsersWorker(jobs, { pool, keepEmails: config.orgCreators });
     await registerRunLogRetentionWorker(jobs, pool);
     await registerInboxCleanupWorker(jobs, pool);
@@ -199,13 +254,17 @@ if (roles.includes("api")) {
     },
   );
   // serve() tạo server HTTP/1.1 khi không cấu hình http2; WebSocket chỉ nâng cấp được trên HTTP/1.1.
-  if (pool)
+  if (pool) {
     attachWorkerGateway(server as Server, {
       pool,
       jobs,
       publicUrl: config.publicUrl,
       offlineNotifySec: config.machineOfflineNotifySec,
     });
+    // Terminal Leader chạy cùng tiến trình với cổng worker: gói term_* chỉ đi được qua kết nối WSS tiến trình này giữ.
+    registerTerminalHandlers(createTerminalHandlers(pool));
+    attachTerminalGateway(server as Server, { pool, publicUrl: config.publicUrl });
+  }
 }
 
 // pg-boss nhả job đang giữ khi dừng êm, để tiến trình khác nhận lại ngay thay vì chờ hết hạn.

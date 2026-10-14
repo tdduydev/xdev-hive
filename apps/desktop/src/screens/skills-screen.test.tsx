@@ -65,7 +65,21 @@ const LOCAL: InstalledSkill[] = [
   { name: "my-own", version: null, modified: false, dirs: [".claude/skills"], text: "của tôi" },
 ];
 
-function fakeTauri(local: InstalledSkill[] = LOCAL) {
+const HIVE: HubSkillItem = {
+  name: "ui-ux-pro-max",
+  description: "Thiết kế giao diện",
+  scope: "hive",
+  version: 1,
+  license: "MIT",
+  files: 3,
+};
+const PACK_FILES = [
+  { path: "SKILL.md", text: "---\nname: ui-ux-pro-max\n---\nThiết kế.\n" },
+  { path: "data/styles.csv", text: "a,b\n" },
+  { path: "scripts/search.py", text: "print(1)\n" },
+];
+
+function fakeTauri(local: InstalledSkill[] = LOCAL, hub: HubSkillItem[] = HUB) {
   const calls: { command: string; args?: Record<string, unknown> | undefined }[] = [];
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     workspace_meta: () => ({
@@ -78,7 +92,7 @@ function fakeTauri(local: InstalledSkill[] = LOCAL) {
     hub_tool: (args) => {
       const a = args?.args as Record<string, unknown>;
       if (args?.name === "project_list") return { projects: [PROJECT] };
-      if (args?.name === "skill_list") return { skills: HUB, hidden: HIDDEN, truncated: false, nextOffset: null };
+      if (args?.name === "skill_list") return { skills: hub, hidden: HIDDEN, truncated: false, nextOffset: null };
       if (args?.name === "skill_get") return { content: BODY[String(a.name)], offset: 0, nextOffset: null };
       throw new Error(`tool chưa giả: ${String(args?.name)}`);
     },
@@ -90,6 +104,22 @@ function fakeTauri(local: InstalledSkill[] = LOCAL) {
     }),
     remove_skills: (args) => ({ done: args?.names, conflicts: [] }),
     propose_skill: () => ({ proposalId: "p1" }),
+    // Skill mặc định của Hive lấy đủ file qua API (oRPC sau lệnh hub_rpc), không qua MCP.
+    hub_rpc: (a) => {
+      const path = String(a?.path)
+        .replace(/^\/rpc\//, "")
+        .split("?")[0];
+      const known = path === "skills/packFiles";
+      return {
+        status: known ? 200 : 404,
+        contentType: "application/json",
+        body: JSON.stringify(
+          known
+            ? { json: { name: "ui-ux-pro-max", hash: "h", files: PACK_FILES } }
+            : { json: { defined: false, code: "NOT_FOUND", status: 404, message: "x" } },
+        ),
+      };
+    },
   };
   window.__TAURI__ = {
     core: {
@@ -196,6 +226,29 @@ describe("SkillsScreen", () => {
       target: "project",
       folder: "/w/payment-api",
     });
+  });
+
+  it("skill mặc định của Hive: nhãn kèm giấy phép, cài cả file kèm theo", async () => {
+    const calls = fakeTauri(LOCAL, [...HUB, HIVE]);
+    renderSkills();
+    const row = await rowOf("ui-ux-pro-max");
+    expect(within(row).getByText("Hive mặc định · MIT")).toBeTruthy();
+    expect(within(row).getByText("Chưa cài")).toBeTruthy();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Đồng bộ 3 bản mới" }, SLOW));
+    expect(await screen.findByText("Đã cài 3 skill.")).toBeTruthy();
+    const files = calls.find((c) => c.command === "install_skills")?.args?.files as { name: string }[];
+    expect(files.find((f) => f.name === "ui-ux-pro-max")).toEqual({
+      name: "ui-ux-pro-max",
+      version: 1,
+      text: PACK_FILES[0]?.text,
+      extra: PACK_FILES.slice(1),
+    });
+    expect(calls.some((c) => c.command === "hub_rpc" && String(c.args?.path).includes("skills/packFiles"))).toBe(true);
+    expect(
+      calls.some(
+        (c) => c.args?.name === "skill_get" && (c.args.args as { name?: string } | undefined)?.name === "ui-ux-pro-max",
+      ),
+    ).toBe(false);
   });
 
   it("Đồng bộ cài bản mới và skill chưa cài, không đụng skill đã sửa tay", async () => {
@@ -334,7 +387,11 @@ describe("SkillsScreen", () => {
     setLang("en");
     const calls = fakeTauri();
     renderSkills(null);
-    expect(await screen.findByText("Link your account to get skills from the hub.")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Connect to Hive to get skills from the hub. Skills installed on this machine still work.",
+      ),
+    ).toBeTruthy();
     expect(within(await rowOf("my-own")).getByText("Added by me")).toBeTruthy();
     expect(within(await rowOf("code-review")).getByText("This machine")).toBeTruthy();
     expect(calls.some((c) => c.command === "hub_tool")).toBe(false);

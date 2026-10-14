@@ -399,11 +399,12 @@ describe("tool knowledge với run token", () => {
     expect(skills.skills).toHaveLength(10);
     expect(skills.truncated).toBe(true);
     expect(skills.nextOffset).toBe(10);
+    // 13 skill của dự án, rồi 7 skill mặc định Hive bật sẵn.
     const rest = (await call(client, "skill_list", { offset: skills.nextOffset })).json();
-    expect(rest.skills).toHaveLength(3);
+    expect(rest.skills).toHaveLength(10);
     expect(rest.nextOffset).toBeNull();
     const all = (await call(client, "skill_list", { limit: 50 })).json();
-    expect(all.skills).toHaveLength(13);
+    expect(all.skills).toHaveLength(20);
     expect(all.truncated).toBe(false);
     expect([...skills.skills, ...rest.skills]).toEqual(all.skills);
   });

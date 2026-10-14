@@ -33,6 +33,19 @@ export function validateReviewsSearch(search: Record<string, unknown>): ReviewsS
   };
 }
 
+export interface WorkflowsSearch {
+  /** Khoá dự án nguồn: trang tự dựng bản nháp quy trình code từ cấu hình dự án đó (chưa lưu). */
+  duan?: string;
+}
+
+export function validateWorkflowsSearch(search: Record<string, unknown>): WorkflowsSearch {
+  return typeof search.duan === "string" &&
+    /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(search.duan) &&
+    search.duan.length <= 40
+    ? { duan: search.duan }
+    : {};
+}
+
 export interface LeaderSearch {
   /** Cuộc trò chuyện đang mở; bỏ trống thì mở cuộc mới nhất. */
   thread?: string;
@@ -71,12 +84,26 @@ export function validateOnboardingSearch(search: Record<string, unknown>): Onboa
 }
 
 export interface TeamsSearch {
-  /** Đội đang xem; không có thì xem đội đầu tiên. */
+  /** Link cũ /admin/teams?doi=<id> (trước khi đội có trang riêng); route chuyển sang /admin/teams/<id>. */
   doi?: string;
 }
 
 export function validateTeamsSearch(search: Record<string, unknown>): TeamsSearch {
   return typeof search.doi === "string" ? { doi: search.doi } : {};
+}
+
+/** Tab của trang đội; không có là Tổng quan. */
+export type TeamTab = "thanh-vien" | "he-thong";
+
+export function validateTeamSearch(search: Record<string, unknown>): { tab?: TeamTab } {
+  return search.tab === "thanh-vien" || search.tab === "he-thong" ? { tab: search.tab } : {};
+}
+
+/** Tab của trang một thành viên; không có là Tổng quan. */
+export type MemberTab = "doi";
+
+export function validateMemberSearch(search: Record<string, unknown>): { tab?: MemberTab } {
+  return search.tab === "doi" ? { tab: search.tab } : {};
 }
 
 export type MembersTab = "dang-hoat-dong" | "loi-moi" | "cho-duyet";

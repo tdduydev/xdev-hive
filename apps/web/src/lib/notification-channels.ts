@@ -24,6 +24,8 @@ export const NOTIFICATION_EVENT_LABEL: Record<NotificationEvent, string> = {
   "sdlc.project_added": "Dự án được thêm vào hạng mục",
   "sdlc.auto_approved": "Tự duyệt bởi AI",
   "sdlc.auto_revoked": "Thu hồi tự duyệt",
+  "artifact.quota": "Dung lượng artifact sắp hết",
+  "artifact.public_link.revoked": "Link công khai bị thu hồi",
 };
 
 export const NOTIFICATION_EVENTS = Object.keys(NOTIFICATION_EVENT_LABEL) as NotificationEvent[];

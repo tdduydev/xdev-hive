@@ -21,6 +21,7 @@ import {
   PlayIcon,
   PlugIcon,
   ScrollTextIcon,
+  SettingsIcon,
   ShieldCheckIcon,
   ShieldIcon,
   SparklesIcon,
@@ -53,6 +54,11 @@ export interface NavGroup {
   id: string;
   label: Dict<string>;
   icon: LucideIcon;
+  /**
+   * `admin`: nhóm nằm trong menu Quản trị (menu trái thứ hai, admin-layout.md § Decisions), sidebar chính chỉ còn một
+   * mục "Quản trị" thay cho các nhóm này.
+   */
+  area?: "admin";
   items: NavItem[];
 }
 
@@ -65,7 +71,10 @@ export const NAV_HOME: NavItem = {
   match: "/",
 };
 
-/** Cây điều hướng theo Sidebar.dc.html; sidebar, bảng lệnh ⌘K và đường dẫn ở Topbar cùng đọc. */
+/**
+ * Cây điều hướng theo Sidebar.dc.html; sidebar, menu Quản trị, bảng lệnh ⌘K và đường dẫn ở Topbar cùng đọc. Nhóm
+ * `area: "admin"` xếp theo thứ tự của menu Quản trị.
+ */
 export const NAV_GROUPS: NavGroup[] = [
   {
     id: "work",
@@ -134,64 +143,8 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "proj",
-    label: { vi: "Dự án và hạ tầng", en: "Projects & infra" },
-    icon: FolderIcon,
-    items: [
-      { id: "projects", label: { vi: "Dự án", en: "Projects" }, icon: FolderIcon, to: "/projects", match: "/projects" },
-      {
-        id: "machines",
-        label: { vi: "Máy", en: "Machines" },
-        icon: MonitorIcon,
-        to: route("/machines"),
-        match: "/machines",
-      },
-      {
-        id: "git",
-        label: { vi: "Kết nối Git", en: "Git connections" },
-        icon: GitBranchIcon,
-        to: "/admin/git",
-        match: "/admin/git",
-        adminOnly: true,
-      },
-      {
-        id: "sandbox",
-        label: { vi: "Sandbox", en: "Sandbox" },
-        icon: ShieldIcon,
-        to: "/admin/sandbox",
-        match: "/admin/sandbox",
-        adminOnly: true,
-        permission: "sandbox.read",
-      },
-    ],
-  },
-  {
-    id: "agents",
-    label: { vi: "Quản trị agent", en: "Agent governance" },
-    icon: BotIcon,
-    items: [
-      {
-        id: "mcp",
-        label: { vi: "MCP và công cụ", en: "MCP & tools" },
-        icon: PlugIcon,
-        to: route("/admin/mcp"),
-        match: "/admin/mcp",
-        adminOnly: true,
-        permission: "mcp.servers",
-      },
-      {
-        id: "policies",
-        label: { vi: "Chính sách agent", en: "Agent policies" },
-        icon: ShieldCheckIcon,
-        to: route("/admin/policies"),
-        match: "/admin/policies",
-        adminOnly: true,
-        permission: "policies.write",
-      },
-    ],
-  },
-  {
     id: "access",
+    area: "admin",
     label: { vi: "Người và quyền", en: "People & access" },
     icon: UsersIcon,
     items: [
@@ -230,7 +183,67 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "proj",
+    area: "admin",
+    label: { vi: "Dự án và hạ tầng", en: "Projects & infra" },
+    icon: FolderIcon,
+    items: [
+      { id: "projects", label: { vi: "Dự án", en: "Projects" }, icon: FolderIcon, to: "/projects", match: "/projects" },
+      {
+        id: "machines",
+        label: { vi: "Máy", en: "Machines" },
+        icon: MonitorIcon,
+        to: route("/machines"),
+        match: "/machines",
+      },
+      {
+        id: "git",
+        label: { vi: "Kết nối Git", en: "Git connections" },
+        icon: GitBranchIcon,
+        to: "/admin/git",
+        match: "/admin/git",
+        adminOnly: true,
+      },
+      {
+        id: "sandbox",
+        label: { vi: "Sandbox", en: "Sandbox" },
+        icon: ShieldIcon,
+        to: "/admin/sandbox",
+        match: "/admin/sandbox",
+        adminOnly: true,
+        permission: "sandbox.read",
+      },
+    ],
+  },
+  {
+    id: "agents",
+    area: "admin",
+    label: { vi: "Quản trị agent", en: "Agent governance" },
+    icon: BotIcon,
+    items: [
+      {
+        id: "mcp",
+        label: { vi: "MCP và công cụ", en: "MCP & tools" },
+        icon: PlugIcon,
+        to: route("/admin/mcp"),
+        match: "/admin/mcp",
+        adminOnly: true,
+        permission: "mcp.servers",
+      },
+      {
+        id: "policies",
+        label: { vi: "Chính sách agent", en: "Agent policies" },
+        icon: ShieldCheckIcon,
+        to: route("/admin/policies"),
+        match: "/admin/policies",
+        adminOnly: true,
+        permission: "policies.write",
+      },
+    ],
+  },
+  {
     id: "ops",
+    area: "admin",
     label: { vi: "Theo dõi", en: "Monitoring" },
     icon: ActivityIcon,
     items: [
@@ -261,13 +274,32 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/** Mục lẻ cuối sidebar chính, mở menu Quản trị (các nhóm `area: "admin"`). */
+export const NAV_ADMIN = {
+  id: "admin",
+  label: { vi: "Quản trị", en: "Admin" } satisfies Dict<string>,
+  icon: SettingsIcon,
+};
+
+/*
+ * Bảng việc của một dự án là màn làm việc, không phải màn quản trị, dù nằm dưới /projects: không hiện menu Quản trị
+ * để cột thẻ đủ rộng, và sáng mục Bảng việc như /tasks.
+ */
+const PROJECT_BOARD = /^\/projects\/[^/]+\/?$/;
+
 /** Mục khớp đường dẫn hiện tại (khớp dài nhất), để sáng mục ở sidebar và hiện tên màn ở Topbar. */
 export function activeNavItem(pathname: string): NavItem | undefined {
   const all = [NAV_HOME, ...NAV_GROUPS.flatMap((g) => g.items)];
   if (pathname === "/") return NAV_HOME;
+  if (PROJECT_BOARD.test(pathname)) return all.find((item) => item.id === "tasks");
   return all
     .filter((item) => item.match !== "/" && pathname.startsWith(item.match))
     .sort((a, b) => b.match.length - a.match.length)[0];
+}
+
+/** Nhóm chứa mục, để thanh trên ghi "tổ chức › nhóm › trang" như sidebar. Tổng quan không thuộc nhóm nào. */
+export function navGroupOf(item: NavItem | undefined): NavGroup | undefined {
+  return item ? NAV_GROUPS.find((g) => g.items.some((i) => i.id === item.id)) : undefined;
 }
 
 /**
@@ -279,4 +311,14 @@ export function visibleGroups(isAdmin: boolean, can: (permission: string) => boo
     ...g,
     items: g.items.filter((i) => !i.adminOnly || isAdmin || (i.permission !== undefined && can(i.permission))),
   })).filter((g) => g.items.length > 0);
+}
+
+/** Đường dẫn thuộc một mục của menu Quản trị: khung app hiện menu trái thứ hai và sáng mục "Quản trị". */
+export function inAdminArea(pathname: string): boolean {
+  return navGroupOf(activeNavItem(pathname))?.area === "admin";
+}
+
+/** Nơi mục "Quản trị" của sidebar chính dẫn tới: mục đầu tiên người dùng được thấy trong menu Quản trị. */
+export function adminHome(groups: readonly NavGroup[]): NavItem | undefined {
+  return groups.find((g) => g.area === "admin")?.items[0];
 }
