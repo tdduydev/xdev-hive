@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   type NotificationChannelCreateInput,
+  type NotificationChannelEvent,
   type NotificationChannelKind,
   type NotificationChannelUpdateInput,
-  type NotificationChannelEvent,
   notificationChannelConfig,
   notificationChannelCreateInput,
   notificationChannelUpdateInput,
