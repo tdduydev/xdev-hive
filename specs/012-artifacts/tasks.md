@@ -135,7 +135,7 @@
   - **Scope**: `apps/hub/src/modules/artifacts/{mcp-tools.ts,mcp-artifacts.db.test.ts}`, `apps/hub/src/modules/mcp/{registry.ts,registry.test.ts}`
   - **Phụ thuộc**: T010 · **Mức**: vừa
 
-- [ ] T012 🎯 Route khung cách ly, vé, thư viện tĩnh
+- [x] T012 🎯 Route khung cách ly, vé, thư viện tĩnh
   - `ticket.ts` (HMAC, khoá HKDF từ khoá chủ, hạn ≤ 5 phút, phiên bản hoặc bản xem trước; trường `s` cho link công khai
     để T015 dùng), `frame-routes.ts` (`/_artifact/frame/:ticket`, `/_artifact/lib/*` từ `artifacts-runtime/dist/lib` với
     `Access-Control-Allow-Origin: *` và cache `immutable`; header ở FR-071; 410 khi xoá/tombstone; không đọc cookie hay
@@ -159,7 +159,7 @@
     `apps/hub/src/leader.db.test.ts`
   - **Phụ thuộc**: T011 · **Mức**: vừa
 
-- [ ] T014 🎯 Biên dịch `react` trên hub
+- [x] T014 🎯 Biên dịch `react` trên hub
   - `compile.ts` `compileReact(source, manifest) → { compiled } | { compileError } | ImportNotAllowed` theo plan.md D8
     (`sucrase` JSX + TS, `es-module-lexer`, chỉ tên trong manifest, `import()` động bị từ chối, giới hạn 2 s); nối vào
     điểm gọi của T010 (lưu phiên bản) và T012 (`preview`); bật `react` trong `MVP_TYPES` mặc định nếu T001 chưa bật.
@@ -200,7 +200,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 3: Package giao diện dùng chung (US1–US4, US7) 🎯
 
-- [ ] T020 🎯 `@xdev-hive/artifacts-ui` — khung, thẻ, trình xem, khung cách ly
+- [x] T020 🎯 `@xdev-hive/artifacts-ui` — khung, thẻ, trình xem, khung cách ly
   - `env.tsx` (`ArtifactsEnv`), `text.ts` (vi/en), `card.tsx`, `panel.tsx` (tab, thanh công cụ, tự mở artifact mới trừ khi
     đang sửa, trạng thái: tải, lỗi, bản mới hơn, offline, đã xoá), `sandbox-frame.tsx` (plan.md D16, nút Dừng trang, nhãn
     "Nội dung do agent tạo", gom ≤ 20 tin `error`/`console`), `viewer/{markdown,code,html,mermaid,react}.tsx` (markdown qua
@@ -228,7 +228,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Phụ thuộc**: T020 (song song với T021: khác file; `index.ts` của package do T020 export sẵn tên, T021/T022 chỉ điền
     file) · **Mức**: vừa
 
-- [ ] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
+- [x] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
   - `public-link-dialog.tsx` (chỉ chủ: chọn phiên bản, hạn 1…`maxDays`, cảnh báo "Người ngoài tổ chức sẽ xem được bản
     này." / lỗi biên dịch, hiện link một lần + Sao chép, danh sách link: phiên bản, hạn, lượt xem, Thu hồi),
     `fix-request-dialog.tsx` (danh sách lỗi sửa/xoá được, lời nhắn, chọn đích "Cuộc trò chuyện này"/"Cuộc trò chuyện mới",

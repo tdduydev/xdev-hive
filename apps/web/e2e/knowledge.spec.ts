@@ -405,10 +405,15 @@ test("memory: hybrid search, kind filter, write and supersede", async ({ page })
   await page.getByRole("button", { name: "Lưu", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("table")).toContainText("Quy ước mới");
+  // Memory có trang riêng (Decision 2); thay xong thì sang trang của memory mới.
   await page.getByRole("button", { name: "Mở dòng Quy ước mới" }).click();
+  await expect(page).toHaveURL(/\/knowledge\/memory\/0a0a0a0a-0000-4000-8000-000000000008$/);
   await page.getByRole("button", { name: "Thay memory", exact: true }).click();
   await page.getByRole("dialog").getByRole("textbox", { name: "Nội dung", exact: true }).fill("Quy ước thay thế");
   await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await expect(page).toHaveURL(/\/knowledge\/memory\/0a0a0a0a-0000-4000-8000-000000000009$/);
+  await expect(page.locator("main").last()).toContainText("Quy ước thay thế");
+  await page.locator("main").last().getByRole("link", { name: "Memory", exact: true }).click();
   await expect(page.getByRole("table")).toContainText("Quy ước thay thế");
   await page.getByRole("textbox", { name: "Tìm theo từ và theo nghĩa…" }).fill("tiền");
   await page.getByRole("button", { name: "Tìm", exact: true }).click();
@@ -422,7 +427,7 @@ test("memory: hybrid search, kind filter, write and supersede", async ({ page })
   expect(hub.rpcCalls.find((call) => call.path === "memory/supersede")?.input).toMatchObject({
     content: "Quy ước thay thế",
   });
-  await page.getByRole("button", { name: "Xoá tìm kiếm" }).click();
+  await page.getByRole("button", { name: "Bỏ lọc Tìm", exact: true }).click();
   await expect(page.getByRole("table")).not.toContainText("Từ, Nghĩa");
 });
 
@@ -438,8 +443,11 @@ for (const action of ["approve", "reject"] as const) {
     await expect(diff.locator(".bg-success-soft")).toContainText("Round per line.");
     await page.getByLabel("Ghi chú khi duyệt").fill("Đã kiểm tra");
     await page.getByRole("button", { name: action === "approve" ? "Duyệt" : "Từ chối", exact: true }).click();
-    // Quyết xong thì hộp thoại đóng và dòng rời tab "Chờ duyệt".
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // Quyết xong thì trang chi tiết ở lại với trạng thái mới, và dòng rời tab "Chờ duyệt".
+    const main = page.locator("main").last();
+    await expect(main.getByText(action === "approve" ? "Đã duyệt" : "Bị từ chối", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Duyệt", exact: true })).toHaveCount(0);
+    await main.getByRole("link", { name: "Đề xuất sửa", exact: true }).click();
     await expect(page.getByRole("table")).not.toContainText(doc.key);
     await page.getByRole("tab", { name: action === "approve" ? "Đã duyệt" : "Bị từ chối" }).click();
     await expect(page.getByRole("table")).toContainText(doc.key);
@@ -497,9 +505,39 @@ test("team admin can decide team proposals but cannot decide org proposals", asy
   await page.getByRole("button", { name: `Mở dòng ${doc.key}` }).click();
   await expect(page.getByRole("region", { name: "Thay đổi nội dung" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Duyệt", exact: true })).toHaveCount(0);
-  await page.keyboard.press("Escape");
+  await page.goBack();
   await page.getByRole("button", { name: "Mở dòng team/platform/money" }).click();
   await expect(page.getByRole("button", { name: "Duyệt", exact: true })).toBeEnabled();
+});
+
+test("proposal page opens from a link, keeps its tab in the URL and lists the target's history", async ({ page }) => {
+  await setup(page);
+  // Link dán tay (không đi qua bảng): trang tự tìm đề xuất trong danh sách của hub.
+  await page.goto(`/knowledge/proposals/${proposal.id}?tab=lich-su`);
+  await expect(page.getByRole("heading", { name: doc.key, exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Lịch sử" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("row").filter({ hasText: "Đề xuất đang xem" })).toHaveCount(1);
+  await page.getByRole("tab", { name: "Thay đổi" }).click();
+  await expect(page).not.toHaveURL(/tab=/);
+  await expect(page.getByRole("region", { name: "Thay đổi nội dung" })).toContainText("Round per line.");
+  await page.goto("/knowledge/proposals/0a0a0a0a-0000-4000-8000-0000000000ff");
+  await expect(page.getByRole("alert")).toContainText("Không tìm thấy mục này");
+  await expect(page.getByRole("link", { name: "Về danh sách" })).toHaveAttribute("href", "/knowledge/proposals");
+});
+
+test("skill page: overview, agent proposals for the skill and older versions", async ({ page }) => {
+  const hub = await setup(page);
+  await page.goto(`/knowledge/skills/${skill.id}`);
+  await expect(page.getByRole("heading", { name: skill.name, exact: true })).toBeVisible();
+  await expect(page.locator("article pre")).toContainText("const safe = true;");
+  await page.getByRole("tab", { name: "Phiên bản" }).click();
+  await expect(page).toHaveURL(/tab=phien-ban/);
+  await page.getByLabel("Xem bản").selectOption("1");
+  await expect
+    .poll(() => hub.rpcCalls.filter((c) => c.path === "skills/get").at(-1)?.input)
+    .toEqual({ id: skill.id, version: 1 });
+  await page.getByRole("tab", { name: "Học được" }).click();
+  await expect(page).toHaveURL(/tab=hoc-duoc/);
 });
 
 test("skill proposal reads the exact scope and base version when names repeat", async ({ page }) => {
@@ -569,10 +607,6 @@ for (const route of ["docs", "skills", "memory", "proposals"] as const) {
       await page.goto(`/knowledge/${route}`);
       // Trang Skills có thêm bảng skill mặc định của Hive bên dưới.
       await expect(page.getByRole("table").first()).toBeVisible();
-      await page
-        .getByRole("button", { name: /Open row/ })
-        .first()
-        .click();
       await expect(page.locator("main").last()).toContainText(
         route === "docs"
           ? "Versioned markdown docs"
@@ -582,8 +616,15 @@ for (const route of ["docs", "skills", "memory", "proposals"] as const) {
               ? "Short notes"
               : "team admins decide",
       );
+      await page
+        .getByRole("button", { name: /Open row/ })
+        .first()
+        .click();
+      // Đề xuất, skill và memory mở trang riêng (Decision 2); tài liệu mở khối chi tiết cạnh danh sách.
+      if (route !== "docs") await expect(page).toHaveURL(new RegExp(`/knowledge/${route}/[^/?]+$`));
       if (route === "docs" || route === "skills") await expect(page.locator("article").first()).toBeVisible();
       if (route === "proposals") await expect(page.getByRole("region", { name: "Content changes" })).toBeVisible();
+      if (route === "memory") await expect(page.locator("main").last()).toContainText(memory.content);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`${route}-${scheme}.png`), fullPage: true });
     });

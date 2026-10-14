@@ -506,14 +506,47 @@ describe("run có task", () => {
     expect(audit.at(-1)?.data).toMatchObject({ runId: run.runId });
   });
 
-  it("loại react bị tắt tới khi T014 bật biên dịch", async () => {
+  it("react biên dịch khi tạo; lỗi cú pháp khi sửa trả compileError và vẫn lưu phiên bản", async () => {
+    const run = await seedRun("code", org.user("tmember"));
+    const created = await call(run.token, "artifact_create", {
+      type: "react",
+      title: "R",
+      content: "export default () => <p>Xin chào</p>;",
+    });
+    expect(created.isError).toBe(false);
+    const out = created.json();
+    expect(out).toMatchObject({ version: 1, url: `/artifacts/${out.id}/v/1` });
+    expect(out).not.toHaveProperty("compileError");
+    const broken = await call(run.token, "artifact_update", {
+      id: out.id,
+      baseVersion: 1,
+      content: "export default () => <p>;",
+    });
+    expect(broken.isError).toBe(false);
+    expect(broken.json()).toMatchObject({ version: 2, compileError: expect.any(String) });
+    const versions = await rows(
+      "select version, compiled, compile_error from hive.artifact_versions where artifact_id = $1 order by version",
+      [out.id],
+    );
+    expect(versions).toEqual([
+      { version: 1, compiled: expect.stringContaining('from "react/jsx-runtime"'), compile_error: null },
+      { version: 2, compiled: null, compile_error: broken.json().compileError },
+    ]);
+  });
+
+  it("react không lưu khi import ngoài bộ thư viện đóng gói, lỗi trả tên module", async () => {
     const run = await seedRun("code", org.user("tmember"));
     const denied = await call(run.token, "artifact_create", {
       type: "react",
       title: "R",
-      content: "export default () => null",
+      content: 'import _ from "lodash"; export default () => _.noop();',
     });
     expect(denied.isError).toBe(true);
+    expect(denied.text).toContain("Import không có trong bộ thư viện đóng gói");
+    expect(denied.text).toContain('"imports":["lodash"]');
+    expect(
+      (await rows("select count(*)::int as n from hive.artifact_versions where author_run_id = $1", [run.runId]))[0],
+    ).toEqual({ n: 0 });
   });
 });
 

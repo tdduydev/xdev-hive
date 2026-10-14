@@ -9,7 +9,12 @@ import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import type pg from "pg";
-import { registerMcpTools as artifactsMcpTools, artifactsRouter } from "./modules/artifacts/index.ts";
+import {
+  registerMcpTools as artifactsMcpTools,
+  artifactsRouter,
+  frameRoutes,
+  frameTicketKey,
+} from "./modules/artifacts/index.ts";
 import {
   exportAudit,
   getAuditRetention,
@@ -148,6 +153,7 @@ export function createApp({
     masterKey: config.masterKey,
     providerFactory: providerFactory ?? defaultProviderFactory,
   };
+  const frameKey = config.masterKey ? frameTicketKey(config.masterKey) : undefined;
   const auditMiddleware = orgMiddlewares({ auth, pool });
   const auditBase = implement(contract.audit)
     .$context<RequestContext>()
@@ -266,7 +272,7 @@ export function createApp({
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
     terminal: terminalRouter({ auth, pool, terminal }),
-    artifacts: artifactsRouter({ auth, pool, jobs, publicUrl }),
+    artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
@@ -349,6 +355,9 @@ export function createApp({
     // Đăng ký trước handler /api và SPA để /mcp không rơi vào index.html.
     app.all("/mcp", (c) => mcp(c.req.raw));
   }
+  // Khung cách ly của artifact không dùng phiên người dùng (vé đã ký); đứng trước /rpc, /api và SPA để không đường nào
+  // dưới /_artifact/ trả nội dung của web hay API (FR-073).
+  app.route("/", frameRoutes({ pool, frameKey, publicUrl }));
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
