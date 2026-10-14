@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Quản trị · Dung lượng artifact</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:var(--bh,32px);padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.btn-sm{height:28px;font-size:13px;padding:0 8px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.hint{font-size:12.5px;color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+table{border-collapse:collapse;width:100%}
+th{text-align:left;font-size:12.5px;font-weight:500;color:var(--muted-foreground);padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:14px}
+th.r,td.r{text-align:right}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
+</style>
+</helmet>
+<!-- Artboard web 1440x1100. Prop narrow = true cho 360 px: bỏ Sidebar/Topbar, bảng thành danh sách thẻ. -->
+<div data-theme="{{theme}}" style="{{rootStyle}}">
+  <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="Sidebar" active="policies" lang="{{lang}}" hint-size="240px,1100px"></dc-import></sc-if>
+  <div style="flex: 999 1 0; min-width: 0; display: flex; flex-direction: column;">
+    <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import></sc-if>
+    <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+      <header style="height: 52px; flex: none; box-sizing: border-box; padding: 0 12px 0 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);">
+        <strong style="flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{t.title}}</strong>
+        <button type="button" class="btn btn-outline" aria-haspopup="menu" aria-label="{{t.menu}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>{{t.menu}}</button>
+      </header>
+    </sc-if>
+
+    <main style="{{mainStyle}}">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+          <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0; max-width: 680px;">{{t.lead}}</p>
+        </div>
+        <a href="Policies.dc.html#artifacts" class="btn btn-outline">{{t.toPolicy}}</a>
+      </header>
+
+      <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+      <section aria-label="{{t.states}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+        <span class="muted" style="font-size: 12.5px;">{{t.states}}</span>
+        <div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="8"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+      </section>
+
+      <sc-if value="{{showOffline}}" hint-placeholder-val="{{false}}"><div role="status" class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">○</span><span>{{t.offBody}}</span></div></sc-if>
+      <sc-if value="{{showError}}" hint-placeholder-val="{{false}}"><div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive); align-items: center;"><span aria-hidden="true">!</span><span style="flex: 1; min-width: 0;">{{t.errBody}}</span><button type="button" class="btn btn-outline btn-sm">{{t.retry}}</button></div></sc-if>
+      <sc-if value="{{showOff}}" hint-placeholder-val="{{false}}"><div role="status" class="alert" style="background: var(--muted); color: var(--foreground);"><span aria-hidden="true">○</span><span>{{t.offOrgBody}} <a href="Policies.dc.html#artifacts">{{t.toPolicy}}</a></span></div></sc-if>
+
+      <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}">
+        <div role="status" aria-label="{{t.loading}}" style="display: flex; flex-direction: column; gap: 14px;">
+          <span class="pulse card" style="height: 150px;"></span>
+          <span class="pulse card" style="height: 260px;"></span>
+          <span class="muted" style="font-size: 13px;">{{t.loading}}</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{showBody}}" hint-placeholder-val="{{true}}">
+        <section class="card" aria-label="{{t.quota}}" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <h2 style="margin: 0; font-size: 15px; font-weight: 600;">{{t.quota}}</h2>
+              <span class="hint">{{t.quotaHint}}</span>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <span class="mono num" style="font-size: 26px; font-weight: 600;">{{usedText}}</span>
+              <span class="muted num">/ {{capText}}</span>
+              <span class="badge num" style="{{pctBadge}}">{{pctText}}</span>
+            </div>
+          </div>
+
+          <div style="position: relative; padding-top: 18px;">
+            <span class="hint" style="position: absolute; top: 0; left: 80%; transform: translateX(-50%); white-space: nowrap;">{{t.threshold}}</span>
+            <div role="progressbar" aria-label="{{t.quota}}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{pctNow}}" aria-valuetext="{{pctValueText}}" style="display: flex; height: 14px; border-radius: 9999px; overflow: hidden; background: var(--muted);">
+              <sc-for list="{{segs}}" as="s" hint-placeholder-count="3"><span style="{{s.style}}"></span></sc-for>
+            </div>
+            <span aria-hidden="true" style="position: absolute; left: 80%; top: 14px; width: 2px; height: 22px; background: var(--foreground);"></span>
+          </div>
+          <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px;">
+            <sc-for list="{{segs}}" as="s" hint-placeholder-count="3"><li style="display: flex; align-items: center; gap: 6px;"><span aria-hidden="true" style="{{s.dot}}"></span>{{s.label}} <strong class="num" style="font-weight: 600;">{{s.value}}</strong></li></sc-for>
+          </ul>
+
+          <sc-if value="{{showWarn}}" hint-placeholder-val="{{false}}">
+            <div role="alert" class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span><strong style="font-weight: 600;">{{t.warnTitle}}</strong><br>{{t.warnBody}}</span></div>
+          </sc-if>
+          <sc-if value="{{showFull}}" hint-placeholder-val="{{false}}">
+            <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive);"><span aria-hidden="true">!</span><span><strong style="font-weight: 600;">{{t.fullTitle}}</strong><br>{{t.fullBody}}</span></div>
+          </sc-if>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 10px; padding-top: 12px; border-top: 1px dashed var(--border);">
+            <sc-for list="{{stats}}" as="s" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 2px;"><span class="hint">{{s.label}}</span><span class="mono num" style="font-size: 20px; font-weight: 600;">{{s.value}}</span><span class="hint">{{s.hint}}</span></div></sc-for>
+          </div>
+        </section>
+
+        <sc-if value="{{showEmpty}}" hint-placeholder-val="{{false}}">
+          <section class="card" style="padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+            <h2 style="margin: 0; font-size: 16px; font-weight: 600;">{{t.emptyTitle}}</h2>
+            <p class="muted" style="margin: 0; max-width: 420px;">{{t.emptyBody}}</p>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{showTables}}" hint-placeholder-val="{{true}}">
+          <div role="tablist" aria-label="{{t.title}}" class="seg" style="align-self: flex-start;"><sc-for list="{{tabs}}" as="tb" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{tb.on}}" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}</button></sc-for></div>
+
+          <section class="card" aria-label="{{tabLabel}}" style="overflow: hidden;">
+            <sc-if value="{{byPerson}}" hint-placeholder-val="{{false}}"><div class="hint" style="padding: 10px 12px; border-bottom: 1px solid var(--border);">{{t.privNote}}</div></sc-if>
+            <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+              <table>
+                <thead><tr><th scope="col">{{colName}}</th><th scope="col" class="r">{{t.cArt}}</th><th scope="col" class="r">{{t.cVer}}</th><th scope="col" class="r" aria-sort="descending">{{t.cSize}} ↓</th><th scope="col" style="width: 26%;">{{t.cShare}}</th><th scope="col"><span class="sr-only" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">{{t.cAct}}</span></th></tr></thead>
+                <tbody>
+                  <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+                    <tr>
+                      <th scope="row" style="padding: 10px 12px; font-size: 14px; font-weight: 500; color: var(--foreground); border-bottom: 1px solid var(--border);"><span style="display: flex; flex-direction: column; line-height: 1.35;"><span>{{r.name}}</span><span class="hint">{{r.sub}}</span></span></th>
+                      <td class="r num mono">{{r.art}}</td><td class="r num mono">{{r.ver}}</td><td class="r num mono">{{r.size}}</td>
+                      <td><span style="display: flex; align-items: center; gap: 8px;"><span aria-hidden="true" style="flex: 1; height: 6px; border-radius: 9999px; background: var(--muted); overflow: hidden;"><span style="{{r.bar}}"></span></span><span class="num mono" style="font-size: 12.5px; width: 42px; text-align: right;">{{r.pct}}</span></span></td>
+                      <td class="r"><sc-if value="{{r.left}}" hint-placeholder-val="{{false}}"><span style="display: inline-flex; align-items: center; gap: 8px;"><span class="badge" style="background: var(--muted); color: var(--muted-foreground);">{{t.left}}</span><button type="button" class="btn btn-destructive btn-sm">{{t.del}}</button></span></sc-if></td>
+                    </tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </sc-if>
+            <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+              <ul style="margin: 0; padding: 0; list-style: none;">
+                <sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+                  <li style="padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px;">
+                    <span style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;"><strong style="font-weight: 500; min-width: 0; overflow-wrap: anywhere;">{{r.name}}</strong><span class="mono num">{{r.size}}</span></span>
+                    <span aria-hidden="true" style="height: 6px; border-radius: 9999px; background: var(--muted); overflow: hidden;"><span style="{{r.bar}}"></span></span>
+                    <span class="hint"><span class="num">{{r.art}}</span> {{t.cArtLow}} · <span class="num">{{r.ver}}</span> {{t.cVerLow}} · <span class="num">{{r.pct}}</span></span>
+                    <sc-if value="{{r.left}}" hint-placeholder-val="{{false}}"><span style="display: flex; align-items: center; gap: 8px;"><span class="badge" style="background: var(--muted); color: var(--muted-foreground);">{{t.left}}</span><button type="button" class="btn btn-destructive btn-sm">{{t.del}}</button></span></sc-if>
+                  </li>
+                </sc-for>
+              </ul>
+            </sc-if>
+          </section>
+        </sc-if>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1100}}'>
+// modes: normal,loading,empty,error,offline,warn,full,disabled
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { mode: 'normal', tab: 'project', lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const narrow = !!this.props.narrow;
+    const S = this.state;
+    const mode = S.mode;
+    const T = {
+      crumb: ['Quản trị agent', 'Agent governance'], title: ['Dung lượng artifact', 'Artifact storage'], menu: ['Menu', 'Menu'],
+      lead: ['Số liệu theo dự án và theo người. Hub chỉ đếm dung lượng, không cho quản trị tổ chức đọc nội dung artifact riêng tư của người khác.', 'Figures per project and per person. The hub only counts storage; organization admins cannot read other people\'s private artifacts.'],
+      toPolicy: ['Chính sách Artifacts', 'Artifacts policy'], states: ['Trạng thái xem', 'View state'],
+      loading: ['Đang tính dung lượng…', 'Counting storage…'],
+      offBody: ['Đang offline. Số liệu là bản lúc 10:02, chưa cập nhật.', 'You are offline. Figures are from 10:02 and not updated.'],
+      errBody: ['Chưa tải được dung lượng. Thử lại sau ít phút.', 'Could not load storage. Try again in a few minutes.'], retry: ['Thử lại', 'Retry'],
+      offOrgBody: ['Tổ chức đang tắt Artifact. Số liệu bên dưới là phần đã lưu trước đó; không ai tạo được artifact mới.', 'Artifacts are turned off for the organization. Figures below are what was stored before; nobody can create new artifacts.'],
+      quota: ['Dung lượng tổ chức', 'Organization storage'], quotaHint: ['Tính cả phiên bản cũ và thùng rác. Quản trị hạ được hạn mức, không vượt trần của người vận hành.', 'Counts old versions and the trash. Admins can lower the limit, not exceed the operator ceiling.'],
+      threshold: ['Ngưỡng báo 80%', '80% alert threshold'],
+      warnTitle: ['Đã dùng hơn 80% dung lượng.', 'More than 80% of storage is used.'], warnBody: ['Quản trị tổ chức nhận thông báo "artifact.quota" mỗi ngày một lần. Xoá artifact cũ, dọn thùng rác hoặc hạ giới hạn phiên bản để giải phóng.', 'Organization admins get an "artifact.quota" notification once a day. Delete old artifacts, empty the trash or lower the version limit to free space.'],
+      fullTitle: ['Hết dung lượng.', 'Storage is full.'], fullBody: ['Mọi lần lưu mới bị từ chối (ARTIFACT_QUOTA_EXCEEDED); agent nhận lỗi này trong kết quả tool. Xoá bớt hoặc nhờ người vận hành nâng trần.', 'Every new save is refused (ARTIFACT_QUOTA_EXCEEDED); agents get this error in the tool result. Delete some data or ask the operator to raise the ceiling.'],
+      emptyTitle: ['Chưa có artifact nào', 'No artifacts yet'], emptyBody: ['Khi agent hoặc người dùng tạo artifact, dung lượng hiện ở đây.', 'Storage appears here once agents or people create artifacts.'],
+      tabProject: ['Theo dự án', 'By project'], tabPerson: ['Theo người', 'By person'],
+      privNote: ['Dòng "Riêng tư" chỉ là số: nội dung artifact riêng tư không hiện ở màn này.', 'Figures only: the content of private artifacts is not shown on this screen.'],
+      cName: ['Dự án', 'Project'], cPerson: ['Người', 'Person'], cArt: ['Artifact', 'Artifacts'], cVer: ['Phiên bản', 'Versions'], cSize: ['Dung lượng', 'Size'], cShare: ['Tỉ lệ của tổ chức', 'Share of organization'], cAct: ['Thao tác', 'Actions'],
+      cArtLow: ['artifact', 'artifacts'], cVerLow: ['phiên bản', 'versions'], left: ['Đã rời tổ chức', 'Left the organization'], del: ['Xoá artifact', 'Delete artifacts'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const seg = (on) => 'height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const M = [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Rỗng', 'Empty']], ['error', ['Lỗi tải', 'Load error']], ['offline', ['Offline', 'Offline']], ['warn', ['Trên 80%', 'Over 80%']], ['full', ['Hết dung lượng', 'Full']], ['disabled', ['Đã tắt Artifact', 'Artifacts off']]];
+    const modes = M.map(([k, l]) => ({ label: x(l), on: mode === k ? 'true' : 'false', style: seg(mode === k), pick: () => this.setState({ mode: k }) }));
+    const tabs = [['project', t.tabProject], ['person', t.tabPerson]].map(([k, l]) => ({ label: l, on: S.tab === k ? 'true' : 'false', style: seg(S.tab === k), pick: () => this.setState({ tab: k }) }));
+
+    // Dung lượng dùng theo từng trạng thái (MiB), hạn mức 2 GiB.
+    const CAP = 2048;
+    const USED = { normal: 1150, offline: 1150, error: 1150, disabled: 1150, warn: 1760, full: 2048, empty: 0, loading: 0 };
+    const used = USED[mode] ?? 1150;
+    const pct = Math.round((used / CAP) * 100);
+    const fmt = (mib) => {
+      const v = mib >= 1024 ? (mib / 1024).toFixed(2) + ' GiB' : mib >= 10 ? Math.round(mib) + ' MiB' : mib.toFixed(1) + ' MiB';
+      return en ? v : v.replace('.', ',');
+    };
+    const cur = used * 0.62, old = used * 0.28, trash = used * 0.10;
+    const part = (mib) => 'width: ' + ((mib / CAP) * 100).toFixed(2) + '%;';
+    const segs = [
+      { label: x(['Phiên bản hiện tại', 'Current versions']), v: cur, c: 'var(--primary)' },
+      { label: x(['Phiên bản cũ', 'Older versions']), v: old, c: 'var(--brand-blue)' },
+      { label: x(['Thùng rác (30 ngày)', 'Trash (30 days)']), v: trash, c: 'var(--muted-foreground)' },
+    ].map((s) => ({ label: s.label, value: fmt(s.v), style: part(s.v) + ' background: ' + s.c + ';', dot: 'width: 10px; height: 10px; border-radius: 3px; background: ' + s.c + ';' }));
+    const pctBadge = pct >= 100 ? 'background: var(--destructive-soft); color: var(--destructive);' : pct >= 80 ? 'background: var(--warning-soft); color: var(--warning);' : 'background: var(--success-soft); color: var(--success);';
+    const stats = [
+      { label: x(['Artifact', 'Artifacts']), value: used ? '412' : '0', hint: x(['đang dùng', 'in use']) },
+      { label: x(['Phiên bản', 'Versions']), value: used ? '2.386' : '0', hint: x(['trung bình 5,8 mỗi artifact', 'about 5.8 per artifact']) },
+      { label: x(['Trong thùng rác', 'In the trash']), value: used ? '23' : '0', hint: x(['xoá hẳn sau 30 ngày', 'purged after 30 days']) },
+      { label: x(['Link công khai còn hạn', 'Active public links']), value: used ? '7' : '0', hint: x(['xem ở "Link công khai"', 'see "Public links"']) },
+    ];
+
+    const W = used ? 1 : 0;
+    const projects = [
+      { name: 'payment-api', sub: x(['Cổng thanh toán', 'Payment gateway']), a: 118, v: 733, w: 0.30 }, { name: 'hive-worker', sub: 'Worker', a: 82, v: 466, w: 0.20 },
+      { name: 'web-portal', sub: x(['Cổng khách hàng', 'Customer portal']), a: 61, v: 337, w: 0.13 }, { name: 'docs-site', sub: x(['Trang tài liệu', 'Docs site']), a: 34, v: 150, w: 0.07 },
+      { name: x(['Riêng tư (không thuộc dự án)', 'Private (no project)']), sub: x(['chỉ có số, không có nội dung', 'counts only, no content']), a: 117, v: 700, w: 0.30 },
+    ];
+    const people = [
+      { name: 'Minh Anh', sub: 'minh.anh@acme.vn', a: 96, v: 590, w: 0.27 }, { name: 'Thanh Hà', sub: 'ha.thanh@acme.vn', a: 71, v: 402, w: 0.19 }, { name: 'Quốc Bảo', sub: 'bao.quoc@acme.vn', a: 64, v: 358, w: 0.16 },
+      { name: 'Ngọc Lan', sub: 'lan.ngoc@acme.vn', a: 150, v: 930, w: 0.30 }, { name: 'Văn Long', sub: 'long.van@acme.vn', a: 31, v: 106, w: 0.08, left: true },
+    ];
+    const byPerson = S.tab === 'person';
+    const rows = (byPerson ? people : projects).map((r) => {
+      const mib = used * r.w;
+      const p = used ? Math.round(r.w * 100) : 0;
+      return { name: r.name, sub: r.sub, art: String(r.a * W), ver: String(r.v * W).replace(/\B(?=(\d{3})+(?!\d))/g, '.'), size: fmt(mib), pct: p + '%', bar: 'display: block; height: 100%; background: var(--primary); width: ' + p + '%;', left: !!r.left };
+    });
+
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, narrow, wide: !narrow, t, modes, tabs,
+      rootStyle: narrow ? 'width: 360px; display: flex; flex-direction: column; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; --bh: 36px;' : 'min-height: 1100px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      mainStyle: narrow ? 'box-sizing: border-box; width: 100%; padding: 16px 16px 32px; display: flex; flex-direction: column; gap: 14px;' : 'box-sizing: border-box; width: 100%; max-width: 1280px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 14px;',
+      isLoading: mode === 'loading', showBody: mode !== 'loading' && mode !== 'error', showError: mode === 'error', showOffline: mode === 'offline', showOff: mode === 'disabled',
+      showWarn: mode === 'warn', showFull: mode === 'full', showEmpty: mode === 'empty', showTables: mode !== 'empty' && mode !== 'loading' && mode !== 'error',
+      usedText: fmt(used), capText: fmt(CAP), pctText: pct + '%', pctBadge, pctNow: String(pct), pctValueText: fmt(used) + ' / ' + fmt(CAP) + ' (' + pct + '%)',
+      segs, stats, rows, byPerson, colName: byPerson ? t.cPerson : t.cName, tabLabel: byPerson ? t.tabPerson : t.tabProject,
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>
