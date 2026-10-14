@@ -530,7 +530,6 @@ function McpOrgPage() {
               <DataTable
                 columns={toolColumns}
                 rows={tools.data.tools}
-                selectable={false}
                 caption={t.tools}
                 placeholder={t.searchTools}
                 minWidth={760}
@@ -558,7 +557,6 @@ function McpOrgPage() {
               <DataTable
                 columns={tokenColumns}
                 rows={tokens.data.tokens}
-                selectable={false}
                 caption={t.tokens}
                 placeholder={t.searchTokens}
                 minWidth={780}

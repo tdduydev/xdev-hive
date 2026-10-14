@@ -152,7 +152,6 @@ function ProposalList({ status }: { status: ProposalStatus | "all" }) {
         rows={list.data}
         minWidth={680}
         placeholder={t.proposalsSearch}
-        selectable={false}
         facets={[{ key: "kind", label: t.kind, value: kindLabel }]}
         onRowClick={(row) => setSelectedId(row.id)}
         rowLabel={(row) => row.target}

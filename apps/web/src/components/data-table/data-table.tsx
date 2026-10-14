@@ -67,6 +67,7 @@ export interface DataTableProps<Row extends { id: string }> {
   rowLabel?: (row: Row) => string;
   placeholder?: string;
   caption?: string;
+  /** Cột chọn và thanh thao tác hàng loạt. Mặc định chỉ bật khi có `bulk` (admin-layout.md § Bảng: Chọn nhiều). */
   selectable?: boolean;
   /** Server-side scopes remain visible and clearable alongside local filters. */
   activeFilters?: readonly ActiveFilter[];
@@ -80,6 +81,23 @@ export interface DataTableProps<Row extends { id: string }> {
    * phân trang cục bộ, để không có hai bộ phân trang chồng nhau.
    */
   serverPaging?: ServerPaging;
+  /**
+   * Ô tìm do trang giữ, khi hub tìm thay cho lọc cục bộ (memory, nhật ký): bảng không lọc dòng theo chữ nữa, để không có
+   * hai ô tìm cho cùng một bảng. `false` bỏ hẳn ô tìm.
+   */
+  search?: TableSearch | false;
+  /** Bộ lọc riêng của trang (công tắc, nhóm nút) đứng sau các facet, trước nút của bảng. */
+  filters?: ReactNode;
+}
+export interface TableSearch {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  /**
+   * Có thì chỉ tìm khi bấm Enter hay nút Tìm (hub tìm theo nghĩa, gọi mỗi phím là tốn); không có thì trang tự quyết
+   * khi nào gọi hub theo `value`.
+   */
+  onSubmit?: (value: string) => void;
 }
 export interface ServerPaging {
   /** Vị trí hiện tại, ví dụ "Trang 2 của nhật ký" hay "Dòng 51–100". */
@@ -107,6 +125,7 @@ const text: Dict<{
   next: string;
   search: string;
   keyword: string;
+  submit: string;
   clear: string;
   select: string;
   selected: (n: number) => string;
@@ -131,6 +150,7 @@ const text: Dict<{
     next: "Trang sau",
     search: "Tìm…",
     keyword: "Từ khoá",
+    submit: "Tìm",
     clear: "Bỏ lọc",
     select: "Chọn",
     selected: (n) => `Đã chọn ${n} dòng`,
@@ -155,6 +175,7 @@ const text: Dict<{
     next: "Next page",
     search: "Search…",
     keyword: "Keyword",
+    submit: "Search",
     clear: "Clear",
     select: "Select",
     selected: (n) => `${n} selected`,
@@ -177,16 +198,20 @@ export function DataTable<Row extends { id: string }>({
   rowLabel = (row) => row.id,
   placeholder,
   caption,
-  selectable = true,
+  selectable = bulk.length > 0,
   activeFilters = [],
   emptyContent,
   minWidth = 1060,
   toolbar,
   serverPaging,
+  search,
+  filters: pageFilters,
 }: DataTableProps<Row>) {
   const t = useT(text);
   const sizeId = useId();
-  const [query, setQuery] = useState("");
+  const [localQuery, setQuery] = useState("");
+  // Ô tìm của trang (hay không có ô tìm) thì hub đã lọc: chữ trong ô không lọc thêm ở đây.
+  const query = search === undefined ? localQuery : "";
   const [filters, setFilters] = useState<Filters>({});
   const [sort, setSort] = useState<Sort | null>(null);
   const [hidden, setHidden] = useState(
@@ -298,15 +323,43 @@ export function DataTable<Row extends { id: string }>({
           </>
         }
       >
-        <FilterSearch
-          placeholder={placeholder ?? t.search}
-          value={query}
-          onChange={(value) => {
-            setQuery(value);
-            setPage(0);
-            setSelected(new Set());
-          }}
-        />
+        {search === undefined ? (
+          <FilterSearch
+            placeholder={placeholder ?? t.search}
+            value={localQuery}
+            onChange={(value) => {
+              setQuery(value);
+              setPage(0);
+              setSelected(new Set());
+            }}
+          />
+        ) : search && search.onSubmit ? (
+          <form
+            className="contents"
+            onSubmit={(event) => {
+              event.preventDefault();
+              search.onSubmit?.(search.value.trim());
+            }}
+          >
+            <FilterSearch
+              placeholder={search.placeholder ?? placeholder ?? t.search}
+              value={search.value}
+              onChange={search.onChange}
+              className="sm:w-80"
+            />
+            <Button type="submit" variant="outline" size="sm">
+              {t.submit}
+            </Button>
+          </form>
+        ) : (
+          search && (
+            <FilterSearch
+              placeholder={search.placeholder ?? placeholder ?? t.search}
+              value={search.value}
+              onChange={search.onChange}
+            />
+          )
+        )}
         {facets.map((facet) => (
           <FacetFilter
             key={facet.key}
@@ -316,6 +369,7 @@ export function DataTable<Row extends { id: string }>({
             onChange={(values) => updateFilter(facet.key, values)}
           />
         ))}
+        {pageFilters}
       </FilterBar>
       {active.length > 0 && (
         <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs">

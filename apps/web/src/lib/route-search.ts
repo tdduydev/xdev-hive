@@ -135,3 +135,89 @@ export type RoleTab = "nguoi";
 export function validateRoleSearch(search: Record<string, unknown>): { tab?: RoleTab } {
   return search.tab === "nguoi" ? { tab: search.tab } : {};
 }
+
+/** Tab của /admin/mcp; không có là Tool. */
+export type McpTab = "server" | "token";
+
+export function validateMcpSearch(search: Record<string, unknown>): { tab?: McpTab } {
+  return search.tab === "server" || search.tab === "token" ? { tab: search.tab } : {};
+}
+
+/** Tab của /notifications; không có là Hộp thư. */
+export type NotificationsTab = "kenh";
+
+export function validateNotificationsSearch(search: Record<string, unknown>): { tab?: NotificationsTab } {
+  return search.tab === "kenh" ? { tab: search.tab } : {};
+}
+
+const pick = <T extends string>(values: readonly T[], value: unknown): T | undefined =>
+  values.find((item) => item === value);
+
+/** Một chuỗi lọc gửi thẳng lên hub: bỏ chuỗi rỗng, cắt theo giới hạn của hub để URL dán tay không làm hub trả 400. */
+const text = (value: unknown, max = 200): string | undefined =>
+  typeof value === "string" && value ? value.slice(0, max) : undefined;
+
+/** Bộ lọc của nhật ký kiểm toán; giá trị như `AuditFilters` của hợp đồng (khoảng 7 ngày là mặc định, không ghi). */
+export interface AuditSearch {
+  range?: 1 | 30 | 365;
+  q?: string;
+  actorType?: "user" | "run" | "system";
+  area?: "work" | "know" | "proj" | "people" | "agent" | "other";
+  source?: "web" | "mcp" | "hub";
+  result?: "ok" | "denied";
+  actorId?: string;
+  action?: string;
+}
+
+/** Bộ lọc nằm trong URL (admin-layout.md § Thanh lọc) để gửi được link nhật ký đã lọc cho người khác. */
+export function validateAuditSearch(search: Record<string, unknown>): AuditSearch {
+  const range = pick(["1", "30", "365"], String(search.range));
+  const values = {
+    range: range ? (Number(range) as 1 | 30 | 365) : undefined,
+    q: text(search.q),
+    actorType: pick(["user", "run", "system"], search.actorType),
+    area: pick(["work", "know", "proj", "people", "agent", "other"], search.area),
+    source: pick(["web", "mcp", "hub"], search.source),
+    result: pick(["ok", "denied"], search.result),
+    actorId: text(search.actorId),
+    action: text(search.action),
+  };
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)) as AuditSearch;
+}
+
+/** Tab của /knowledge/skills; không có là danh sách skill. */
+export type SkillsTab = "de-xuat";
+
+export function validateSkillsSearch(search: Record<string, unknown>): { tab?: SkillsTab } {
+  return search.tab === "de-xuat" ? { tab: search.tab } : {};
+}
+
+/** Tab của /knowledge/memory; không có là Đã duyệt. */
+export type MemoryTab = "cho-duyet";
+
+export function validateMemorySearch(search: Record<string, unknown>): { tab?: MemoryTab } {
+  return search.tab === "cho-duyet" ? { tab: search.tab } : {};
+}
+
+/** Tab của /knowledge/proposals; không có là Chờ duyệt. */
+export type ProposalsTab = "da-duyet" | "tu-choi" | "tat-ca";
+
+export function validateProposalsSearch(search: Record<string, unknown>): { tab?: ProposalsTab } {
+  const tab = pick(["da-duyet", "tu-choi", "tat-ca"], search.tab);
+  return tab ? { tab } : {};
+}
+
+/** Tab của trang một đề xuất; không có là Thay đổi. */
+export type ProposalTab = "lich-su";
+
+export function validateProposalSearch(search: Record<string, unknown>): { tab?: ProposalTab } {
+  return search.tab === "lich-su" ? { tab: search.tab } : {};
+}
+
+/** Tab của trang một skill; không có là Tổng quan. */
+export type SkillTab = "hoc-duoc" | "phien-ban";
+
+export function validateSkillSearch(search: Record<string, unknown>): { tab?: SkillTab } {
+  const tab = pick(["hoc-duoc", "phien-ban"], search.tab);
+  return tab ? { tab } : {};
+}
