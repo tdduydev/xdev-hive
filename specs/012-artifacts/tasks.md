@@ -221,7 +221,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Scope**: `packages/artifacts-ui/src/{versions.tsx,compare.tsx,share-dialog.tsx,editor.tsx}` + test
   - **Phụ thuộc**: T020 · **Mức**: vừa
 
-- [ ] T022 🎯 [P] `@xdev-hive/artifacts-ui` — thư viện và chi tiết
+- [x] T022 🎯 [P] `@xdev-hive/artifacts-ui` — thư viện và chi tiết
   - `library.tsx` (lọc phạm vi/loại/nguồn/dự án, tìm, con trỏ, thùng rác, dạng thẻ ở 360 px), `detail.tsx` (vùng xem + tab
     Phiên bản, Liên kết, Hoạt động).
   - **Scope**: `packages/artifacts-ui/src/{library.tsx,detail.tsx}` + test
