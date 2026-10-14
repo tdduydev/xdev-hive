@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ItemBoard, ItemDetail, NewItem, Questions, SdlcProvider } from "@xdev-hive/sdlc-ui";
 import type { ReactNode } from "react";
 import { sdlcTabOf, useWebSdlcEnv } from "@/lib/sdlc-env.tsx";
@@ -21,9 +21,11 @@ export function SdlcPage({ children }: { children: ReactNode }) {
 }
 
 export function SdlcBoardPage() {
+  const { project, mode } = useSearch({ from: "/session/app/in-org/sdlc" });
   return (
     <SdlcPage>
-      <ItemBoard />
+      {/* Bộ lọc trên URL chỉ là điểm mở; mở lại với bộ lọc khác thì dựng lại bảng thay vì giữ lựa chọn cũ. */}
+      <ItemBoard key={`${project ?? ""}|${mode ?? ""}`} initialProjectId={project} initialModeRef={mode} />
     </SdlcPage>
   );
 }
