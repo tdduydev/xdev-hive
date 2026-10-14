@@ -232,11 +232,13 @@
 
 ## Phase 9: User Story 6 — Tương thích và chuyển đổi (P2)
 
-- [ ] T080 [US6] Cài đặt dự án báo quy trình đang thay review chéo
+- [x] T080 [US6] Cài đặt dự án báo quy trình đang thay review chéo
   - Ghi chú + link quy trình ở mục Review chéo; nút "Tạo quy trình từ cấu hình này" mở trang Quy trình duyệt với bản
     nháp.
   - **Scope**: `apps/web/src/pages/project-settings-page.tsx`, `apps/web/src/lib/{project-settings.ts,project-settings.test.ts}`,
-    `apps/web/e2e/projects-runs.spec.ts`
+    `apps/web/e2e/projects-runs.spec.ts`; mở rộng: `apps/web/src/pages/knowledge/workflows-page.tsx`,
+    `apps/web/src/{router.tsx,lib/route-search.ts,lib/code-reviews.test.ts}`, `apps/web/e2e/workflows.spec.ts`
+    (nút dẫn tới `/knowledge/workflows?duan=<key>`, trang dựng bản nháp bằng `codeReviews.workflowFromProject`)
   - **Phụ thuộc**: T013, T012 · **Mức**: nhẹ
 
 - [ ] T081 [US6] Kiểm hồi quy: chạy toàn bộ `pnpm check` và bộ DB test của run, review chéo, hàng merge không sửa test
