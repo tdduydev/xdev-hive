@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -130,9 +129,6 @@ func TestUsageAndUnsupported(t *testing.T) {
 func TestWorkerMissing(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "khong-co.sock")
 	want := msgNotRunning
-	if runtime.GOOS == "windows" {
-		want = "chưa hỗ trợ trên Windows"
-	}
 	for _, args := range [][]string{{"chat"}, {"run", "sửa lỗi"}, {"ls"}, {"attach", "abc"}, {"kill", "abc"}, {"version"}} {
 		a := newTestApp(missing, nil)
 		if code := a.run(args); code != exitUsage || !strings.Contains(a.err.String(), want) {
