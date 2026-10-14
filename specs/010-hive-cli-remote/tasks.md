@@ -366,7 +366,20 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 ## Phase 4: User Story 3 — Xem và điều khiển từ điện thoại (P1) 🎯 MVP
 
-- [ ] T030 [US3] Hub: `/ws/terminal`
+- [x] T030 [US3] Hub: `/ws/terminal`
+  - Đã làm (SPEC10W6): `ticket.ts` (vé dùng một lần 60 s; vé từ xa có tiền tố `r.`, vé Leader và vé từ xa không thay
+    nhau; vé bị đốt ngay lần dùng đầu, kể cả khi Origin sai sau đó), `remote.ticket` trong `router.ts`. `ws.ts`: Origin
+    phải khớp `HIVE_PUBLIC_URL` hoặc Host (403); vé từ xa đã dùng/hết hạn đóng 4401, phiên không thấy 4404, quá người
+    xem hoặc bỏ khung 4429, người xem gửi `control`/`in`/`resize` bị đóng 4403. `live.ts`: vòng đệm 512 KiB mỗi phiên,
+    nối lại theo offset (vòng đệm trước, thiếu thì đọc DB từng trang 200), 512 KiB/s mỗi người xem và 2 MiB/s mỗi máy,
+    chậm hay tồn quá 1 MiB thì `sync` + đuôi 128 KiB, ping 20 s. `withRemoteLive` chuyển `term_granted`/`term_revoked`
+    đúng `connId`, `term_event controller` có `denied` thành `{t:"denied"}` cho riêng kết nối đó (worker từ chối qua
+    sự kiện này vì `term_denied` cần `requestId` uuid), `term_detach` khi đóng WS hay `release`, nối lại bằng
+    `resumeToken` (sai thì `AUTH_STALE`), `term_exit` → `{t:"state"}`; audit `terminal.attach|detach|control_grant|
+    control_take|control_revoke|deny|input_rejected`. `fleet/gateway.ts` thêm `onRemote` tách riêng. Test
+    `ws.db.test.ts` (vé dùng lại, Origin sai, người xem gửi phím, nối lại không mất byte, client chậm nhận `sync`, hub
+    khởi động lại đọc DB) và `live.test.ts`. Còn: hub khởi động lại mất quyền đang cấp (phải xác thực lại); nhiều tiến
+    trình hub thì mỗi tiến trình chỉ thấy máy nối vào nó; `controller` trong `remote.get|list` vẫn `null`.
   - `ws.ts` (vé một lần 60 s qua route `ticket`, `Origin` bằng `HIVE_PUBLIC_URL`, mã đóng 4401/4403/4404/4429),
     `live.ts` (vòng đệm 512 KiB, người xem, chuyển `control`/`in`/`resize` tới worker chỉ cho kết nối của chủ máy, chuyển
     `term_granted`/`term_revoked`, nối lại theo offset, 512 KiB/s mỗi người xem, 2 MiB/s mỗi máy, đồng bộ lại khi đệm
