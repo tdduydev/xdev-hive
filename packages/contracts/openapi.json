@@ -516,6 +516,18 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "boundProjects": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "fullProjects": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
                       }
                     },
                     "required": [
@@ -1392,6 +1404,18 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "boundProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fullProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -1913,6 +1937,18 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "boundProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fullProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -2452,6 +2488,18 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "boundProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fullProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -2973,6 +3021,18 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "boundProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fullProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -3510,6 +3570,18 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "boundProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fullProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -4128,6 +4200,18 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "boundProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fullProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -4677,6 +4761,18 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "boundProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "fullProjects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "required": [
@@ -7678,6 +7774,18 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "boundProjects": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "fullProjects": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
                       },
                       "teamName": {
                         "type": "string"
