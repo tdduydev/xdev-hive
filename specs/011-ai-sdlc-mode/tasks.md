@@ -52,7 +52,7 @@
     `packages/contracts/openapi.json`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T002 🎯 [P] Preset MVP: `bugfix`, `small`, `aidlc-express`, `speckit`
+- [x] T002 🎯 [P] Preset MVP: `bugfix`, `small`, `aidlc-express`, `speckit`
   - Mỗi preset một file: giai đoạn, tài liệu (đường dẫn như bảng ánh xạ của plan.md), khuôn Markdown ngắn, cổng (dùng
     `reviewPhase`), bước agent với prompt viết lại (không chép nguyên văn Spec Kit/AI-DLC; ghi nguồn tham khảo trong
     comment đầu file), `decomposition`; `perProjectGates`, `autoApprove` và contract theo bảng "Mặc định của preset" của
@@ -62,7 +62,7 @@
   - **Scope**: `packages/contracts/src/sdlc-presets/{index.ts,bugfix.ts,small.ts,aidlc-express.ts,speckit.ts,presets.test.ts}`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T003 🎯 [P] Bộ đọc/ghi bản tách task (thuần)
+- [x] T003 🎯 [P] Bộ đọc/ghi bản tách task (thuần)
   - `parseBreakdown(markdown, decomposition)` cho `hive-tasks` (định dạng tasks.md của repo này: `T###`, `[P]`, `[USn]`,
     "Phụ thuộc") và `speckit-tasks`; độ mịn `item`, `heading`, `single`; phụ thuộc, phát hiện chu trình, đợt (sắp topo),
     requirement theo regex; thẻ dự án (`[@key]` trên dòng task, dòng "Dự án: key" dưới tiêu đề phần, mặc định dự án chính;
