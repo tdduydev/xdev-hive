@@ -9,6 +9,7 @@
  * ngoài worker: agent chạy song song, script), "interactive" (người gõ: terminal của app, terminal thường), "test" (test
  * Go/Rust tạo repo tạm). Token output tool ước lượng bằng ký tự / 4 vì transcript không ghi số token của từng khối.
  */
+import { spawnSync } from "node:child_process";
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -482,6 +483,19 @@ function codexMemory() {
 }
 
 async function main(): Promise<void> {
+  const binary = process.platform === "win32" ? "hive-worker.exe" : "hive-worker";
+  // Ưu tiên liên kết mà app cập nhật để số đo dùng cùng phiên bản với sidecar.
+  for (const command of [join(home, ".xdev-hive", "bin", binary), binary]) {
+    const result = spawnSync(command, ["optimize", "report", ...args.filter((arg) => arg !== "--json"), "--json"], {
+      stdio: "inherit",
+    });
+    if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") continue;
+    // Sidecar đã chạy thì giữ lỗi của nó, tránh trả một báo cáo khác khiến người dùng tưởng lệnh thành công.
+    if (result.error) console.error("Không chạy được báo cáo token từ sidecar.");
+    process.exitCode = result.status ?? 1;
+    return;
+  }
+
   const sessions: Session[] = [];
   for (const r of claudeRoots()) {
     for (const f of walk(r.dir, (n) => n.endsWith(".jsonl"))) {
