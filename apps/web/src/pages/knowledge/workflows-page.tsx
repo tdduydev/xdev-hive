@@ -14,11 +14,22 @@ import {
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { PlusIcon, Trash2Icon, XIcon } from "lucide-react";
+import { LockIcon, PlusIcon, Trash2Icon, WorkflowIcon, XIcon } from "lucide-react";
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
-import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
-import { Switch } from "@/components/ui/switch.tsx";
+import { SegmentedControl } from "@/components/page/segmented-control.tsx";
+import {
+  FormRow,
+  RadioCards,
+  type SectionSave,
+  SettingsLayout,
+  SettingsNav,
+  SettingsSection,
+  SwitchRow,
+} from "@/components/page/settings.tsx";
+import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
+import { Field, FieldLabel } from "@/components/ui/field.tsx";
+import { EmptyState, LoadFailure, SectionsSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
@@ -48,14 +59,14 @@ import { cn } from "@/lib/utils.ts";
 import {
   CodeDryRunDialog,
   CodeGateConfig,
-  CodeReplacesNote,
-  CodeScope,
+  CodeOnPassRows,
+  CodeScopeRows,
   codeGateCond,
   codeGateWho,
   codeText,
   FromProjectDialog,
 } from "@/pages/knowledge/workflow-code-config.tsx";
-import { Field, GateConfig, hubIssuesOf, IssueAlert, segButton } from "@/pages/knowledge/workflow-gate-config.tsx";
+import { GateConfig, hubIssuesOf, IssueAlert } from "@/pages/knowledge/workflow-gate-config.tsx";
 import { type WorkflowsText, workflowsText } from "@/pages/knowledge/workflows-text.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -63,6 +74,43 @@ import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 const NEW = "new";
 const text = workflowsText;
 type T = WorkflowsText;
+
+/** Các mục lưu riêng của quy trình (admin-layout.md § Decisions 4). Phạm vi và khi đạt chỉ có ở quy trình code. */
+type SectionId = "general" | "scope" | "pass" | "pipeline";
+
+const SECTION_ANCHOR: Record<SectionId, string> = {
+  general: "quy-trinh-chung",
+  scope: "quy-trinh-pham-vi",
+  pass: "quy-trinh-khi-dat",
+  pipeline: "quy-trinh-giai-doan",
+};
+
+/**
+ * Lấy ô của một mục từ `from` đặt vào `to`. Lưu một mục gửi bản đã lưu cộng đúng ô của mục đó, nên chữ đang gõ dở ở
+ * mục khác không bị gửi theo; Huỷ một mục cũng chỉ trả lại ô của mục đó.
+ */
+function withSection(id: SectionId, to: WorkflowDraft, from: WorkflowDraft): WorkflowDraft {
+  if (id === "general")
+    return { ...to, name: from.name, teamId: from.teamId, enabled: from.enabled, docPrefixes: from.docPrefixes };
+  if (id === "pipeline") return { ...to, preset: from.preset, phases: from.phases };
+  if (!to.code || !from.code) return to;
+  const c = from.code;
+  return {
+    ...to,
+    code:
+      id === "scope"
+        ? { ...to.code, projects: c.projects, baseBranches: c.baseBranches, taskTypes: c.taskTypes, paths: c.paths }
+        : {
+            ...to.code,
+            merge: c.merge,
+            maxAgentRevisions: c.maxAgentRevisions,
+            dismissStaleApprovals: c.dismissStaleApprovals,
+          },
+  };
+}
+
+// So phần gửi hub: cấu hình của loại gate khác giữ trong nháp không làm quy trình thành "có thay đổi".
+const sameInput = (a: WorkflowDraft, b: WorkflowDraft) => JSON.stringify(toInput(a)) === JSON.stringify(toInput(b));
 
 function gateWho(
   g: ReviewGate,
@@ -103,39 +151,49 @@ function gateCond(g: ReviewGate, subject: WorkflowSubject, lang: Lang, t: T): st
   return parts.length ? t.condLine(parts) : "";
 }
 
-/** Chip có nút bỏ và ô thêm ngắn ở cuối (tiền tố "Áp cho", tài liệu đầu ra). */
+const issueLine = (t: T, issues: WorkflowIssue[]) =>
+  `${t.invalid} ${issues.map((i) => (i.where ? `${i.where}: ${i.message}` : i.message)).join(" · ")}`;
+
+/**
+ * Chip có nút bỏ và ô thêm ở cuối (tiền tố tài liệu, tài liệu đầu ra). Enter thêm chip chứ không gửi form của mục
+ * đang chứa nó.
+ * TODO(admin-layout): chưa có ô nhiều giá trị dạng chip dùng chung; người duyệt và dự án của phạm vi cũng tự dựng.
+ */
 function ChipList({
   values,
   onChange,
   canWrite,
   addLabel,
   placeholder,
-  chipClass,
+  boxed = false,
 }: {
   values: string[];
   onChange: (v: string[]) => void;
   canWrite: boolean;
   addLabel: string;
   placeholder: string;
-  chipClass?: string;
+  /** Có viền như một ô nhập (trong form); không viền khi nằm trong cột giai đoạn. */
+  boxed?: boolean;
 }) {
   const t = useT(text);
   const [draft, setDraft] = useState("");
-  function add(e: FormEvent) {
-    e.preventDefault();
+  function add() {
     const v = draft.trim();
     if (v && !values.includes(v)) onChange([...values, v]);
     setDraft("");
   }
   return (
-    <span className="flex min-w-0 flex-wrap items-center gap-1">
+    <span
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-1",
+        boxed && "min-h-8 rounded-lg border border-input p-1.5 dark:bg-input/30",
+      )}
+    >
+      {values.length === 0 && !canWrite && <span className="px-1 text-sm text-muted-foreground">—</span>}
       {values.map((v) => (
         <span
           key={v}
-          className={cn(
-            "inline-flex h-6 items-center gap-1 rounded-full border border-border px-2 font-mono text-xs",
-            chipClass,
-          )}
+          className="inline-flex h-6 max-w-full items-center gap-1 rounded-full border border-border bg-card px-2 font-mono text-xs break-all"
         >
           {v}
           {canWrite && (
@@ -151,18 +209,24 @@ function ChipList({
         </span>
       ))}
       {canWrite && (
-        <form onSubmit={add} className="inline-flex">
-          <input
-            aria-label={addLabel}
-            placeholder={`+ ${placeholder}`}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={(e) => {
-              if (draft.trim()) add(e);
-            }}
-            className="h-6 w-48 rounded-full border border-dashed border-input bg-transparent px-2 font-mono text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
-          />
-        </form>
+        <input
+          aria-label={addLabel}
+          placeholder={`+ ${placeholder}`}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            add();
+          }}
+          onBlur={() => {
+            if (draft.trim()) add();
+          }}
+          className={cn(
+            "h-6 min-w-0 rounded-full bg-transparent px-2 font-mono text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40",
+            boxed ? "flex-[1_1_10rem]" : "w-48 border border-dashed border-input focus-visible:border-ring",
+          )}
+        />
       )}
     </span>
   );
@@ -191,11 +255,13 @@ function WorkflowsScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, WorkflowDraft>>({});
   const [gateSel, setGateSel] = useState<string | null>(null);
-  const [showIssues, setShowIssues] = useState(false);
-  const [saved, setSaved] = useState(false);
+  // Mục vừa bấm Lưu mà quy trình còn lỗi: lỗi hiện ở chân mục đó và tự hết khi sửa xong.
+  const [checking, setChecking] = useState<SectionId | null>(null);
+  const [savedAt, setSavedAt] = useState<SectionId | null>(null);
   const [presetAsk, setPresetAsk] = useState<WorkflowPreset | null>(null);
   const [removing, setRemoving] = useState(false);
   const [dryOpen, setDryOpen] = useState(false);
+  const configRef = useRef<HTMLElement>(null);
   const ids = useId();
   // Bộ lọc "Code" thì quy trình mới cũng là quy trình code, để không phải đổi loại ngay sau khi bấm.
   const freshSubject = filter === "code" ? "code" : "doc";
@@ -208,18 +274,27 @@ function WorkflowsScreen() {
   const stays = selected === NEW || visible.some((w) => w.id === selected);
   const key = (stays ? selected : null) ?? visible[0]?.id ?? (canWrite ? NEW : null);
   const base = workflows.find((w) => w.id === key) ?? null;
-  const draft: WorkflowDraft | null = key ? (drafts[key] ?? (base ? draftOf(base) : key === NEW ? fresh : null)) : null;
+  const baseDraft = useMemo(() => (base ? draftOf(base) : null), [base]);
+  const draft: WorkflowDraft | null = key ? (drafts[key] ?? baseDraft ?? (key === NEW ? fresh : null)) : null;
+  const isNew = draft?.id === null;
+  const isCode = draft?.subject === "code";
 
   const save = useMutation({
-    mutationFn: (d: WorkflowDraft) => api.reviewWorkflows.save.call(toInput(d)),
-    onSuccess: (next, d) => {
+    mutationFn: (v: { draft: WorkflowDraft; section: SectionId }) => api.reviewWorkflows.save.call(toInput(v.draft)),
+    onSuccess: (next, { draft: sent, section }) => {
       queryClient.setQueryData(api.reviewWorkflows.list.queryKey(), (old: ReviewWorkflow[] | undefined) =>
         old?.some((w) => w.id === next.id) ? old.map((w) => (w.id === next.id ? next : w)) : [...(old ?? []), next],
       );
-      setDrafts(({ [d.id ?? NEW]: _, ...rest }) => rest);
+      const stored = draftOf(next);
+      // Mục khác của quy trình vẫn giữ thay đổi chưa lưu; quy trình mới thì cả bản nháp đã thành quy trình.
+      setDrafts(({ [sent.id ?? NEW]: cur, ...rest }) => {
+        if (!cur || sent.id === null) return rest;
+        const kept = withSection(section, cur, stored);
+        return sameInput(kept, stored) ? rest : { ...rest, [next.id]: kept };
+      });
       setSelected(next.id);
-      setSaved(true);
-      setShowIssues(false);
+      setSavedAt(section);
+      setChecking(null);
     },
   });
   const remove = useMutation({
@@ -230,6 +305,7 @@ function WorkflowsScreen() {
       );
       setDrafts(({ [id]: _, ...rest }) => rest);
       setSelected(null);
+      setSavedAt(null);
       setRemoving(false);
     },
   });
@@ -251,24 +327,34 @@ function WorkflowsScreen() {
     void navigate({ to: "/knowledge/workflows", search: {}, replace: true });
   }, [duan, projects.isPending, canWrite, fromSearch.mutate, navigate]);
 
-  // So phần gửi hub: cấu hình của loại gate khác giữ trong nháp không làm quy trình thành "có thay đổi".
-  const dirty =
-    !!draft &&
-    (draft.id === null || (!!base && JSON.stringify(toInput(draft)) !== JSON.stringify(toInput(draftOf(base)))));
+  // Rời trang thì mất mọi bản nháp (kể cả của quy trình đang không mở); bản nháp mới chưa sửa gì thì không hỏi.
+  const anyDirty =
+    canWrite &&
+    Object.entries(drafts).some(([k, d]) => {
+      if (k === NEW) return !sameInput(d, newDraft(defaultPreset(d.subject), text[lang].newName, lang));
+      const w = workflows.find((x) => x.id === k);
+      return !!w && !sameInput(d, draftOf(w));
+    });
 
   const header = (
-    <PageHeader crumb={t.knowledge} title={t.title}>
-      {canWrite && draft?.subject === "code" && (
+    <PageHeader title={t.title} description={t.description}>
+      {canWrite && isCode && (
         <Button variant="outline" onClick={() => setFromOpen(true)}>
           {tc.fromProject}
         </Button>
       )}
       <Button variant="outline" disabled={!draft} onClick={() => setDryOpen(true)}>
-        {draft?.subject === "code" ? tc.test : t.test}
+        {isCode ? tc.test : t.test}
       </Button>
       {canWrite && (
-        <Button disabled={!draft || !dirty || save.isPending} onClick={() => draft && apply(draft)}>
-          {save.isPending ? t.saving : t.publish}
+        <Button
+          onClick={() => {
+            setDrafts((all) => (all[NEW] ? all : { ...all, [NEW]: fresh }));
+            pick(NEW);
+          }}
+        >
+          <PlusIcon aria-hidden="true" />
+          {t.newWorkflow}
         </Button>
       )}
     </PageHeader>
@@ -279,28 +365,59 @@ function WorkflowsScreen() {
       <>
         {header}
         <PageBody>
-          {list.isPending ? <LoadingState /> : <LoadFailure error={list.error} retry={() => list.refetch()} />}
+          {list.isPending ? <SectionsSkeleton /> : <LoadFailure error={list.error} retry={() => list.refetch()} />}
         </PageBody>
       </>
     );
   }
 
-  const issues = showIssues && draft ? workflowIssues(draft, lang) : [];
-  const hubIssues = save.error ? hubIssuesOf(save.error, draft, lang) : null;
+  // Quy trình mới gửi cả bản nháp vì hub chưa có gì; quy trình đã lưu gửi bản đã lưu cộng ô của mục.
+  const sentFor = (id: SectionId, d: WorkflowDraft) => (baseDraft && d.id !== null ? withSection(id, baseDraft, d) : d);
+  const dirtyOf = (id: SectionId) =>
+    !!draft && (isNew || (!!baseDraft && !sameInput(withSection(id, baseDraft, draft), baseDraft)));
+  const issues = checking && draft ? workflowIssues(sentFor(checking, draft), lang) : [];
+  const sent = save.variables;
+  const hubIssues = save.error && sent ? hubIssuesOf(save.error, sent.draft, lang) : null;
   const badGates = new Set([...issues, ...(hubIssues ?? [])].map((i) => i.gateId).filter(Boolean));
 
-  function apply(d: WorkflowDraft) {
-    setSaved(false);
+  function errorOf(id: SectionId) {
+    if (checking === id && issues.length) return issueLine(t, issues);
+    if (!save.error || sent?.section !== id) return undefined;
+    return hubIssues ? issueLine(t, hubIssues) : apiErrorMessage(save.error);
+  }
+  function sectionSave(id: SectionId): SectionSave | undefined {
+    if (!canWrite || !draft) return undefined;
+    return {
+      dirty: dirtyOf(id),
+      saving: save.isPending && sent?.section === id,
+      saved: savedAt === id,
+      error: errorOf(id),
+      disabled: save.isPending,
+      ...(isNew ? { saveLabel: t.create } : {}),
+      onSave: () => submit(id),
+      onDiscard: () => discard(id),
+    };
+  }
+  function submit(id: SectionId) {
+    if (!draft) return;
+    const d = sentFor(id, draft);
+    setSavedAt(null);
     if (workflowIssues(d, lang).length) {
-      setShowIssues(true);
+      setChecking(id);
       return;
     }
-    save.mutate(d);
+    save.mutate({ draft: d, section: id });
+  }
+  function discard(id: SectionId) {
+    if (!draft || !key) return;
+    const origin = baseDraft ?? newDraft(defaultPreset(draft.subject), t.newName, lang);
+    setDrafts((all) => ({ ...all, [key]: withSection(id, draft, origin) }));
+    setChecking(null);
+    if (save.isError) save.reset();
   }
   function update(patch: Partial<WorkflowDraft>) {
     if (!draft || !key) return;
-    setSaved(false);
-    save.reset();
+    if (save.isError) save.reset();
     setDrafts((all) => ({ ...all, [key]: { ...draft, ...patch } }));
   }
   function patchGate(id: string, fn: (g: ReviewGate) => ReviewGate) {
@@ -310,9 +427,16 @@ function WorkflowsScreen() {
   function pick(next: string) {
     setSelected(next);
     setGateSel(null);
-    setSaved(false);
-    setShowIssues(false);
+    setSavedAt(null);
+    setChecking(null);
     save.reset();
+  }
+  function selectGate(id: string) {
+    setGateSel(id);
+    // Dưới 1280 px khung cấu hình nằm dưới các giai đoạn: đưa nó vào tầm nhìn để thấy ngay checkpoint vừa chọn.
+    if (window.matchMedia("(min-width: 80rem)").matches) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    configRef.current?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
   }
   function applyPreset(preset: WorkflowPreset) {
     if (!draft) return;
@@ -323,8 +447,7 @@ function WorkflowsScreen() {
   // Loại chỉ đổi được khi bản nháp chưa lưu; sau khi lưu hub không cho đổi.
   function changeSubject(subject: WorkflowSubject) {
     if (!draft || !key || draft.id || draft.subject === subject) return;
-    setSaved(false);
-    save.reset();
+    if (save.isError) save.reset();
     setDrafts((all) => ({ ...all, [key]: withSubject(draft, subject, lang) }));
     setGateSel(null);
   }
@@ -336,354 +459,394 @@ function WorkflowsScreen() {
 
   const gates = draft?.phases.flatMap((p) => p.gates) ?? [];
   const cur = gates.find((g) => g.id === gateSel) ?? gates[0] ?? null;
-  const isCode = draft?.subject === "code";
   const presetShort = isCode
     ? "Code"
     : draft && draft.preset !== "custom"
       ? PRESET_LABEL.en[draft.preset].replace(" (AWS)", "")
       : "#";
+  const sections: SectionId[] = isCode ? ["general", "scope", "pass", "pipeline"] : ["general", "pipeline"];
+  const sectionTitle: Record<SectionId, string> = {
+    general: t.general,
+    scope: tc.scope,
+    pass: tc.onPassTitle,
+    pipeline: t.pipelineTitle,
+  };
 
   return (
     <>
       {header}
       <PageBody>
-        <p className="-mt-2 max-w-3xl text-muted-foreground">{isCode ? tc.lead : t.lead}</p>
-        {!canWrite && <Alert>{t.readOnly}</Alert>}
-        {issues.length > 0 && <IssueAlert title={t.invalid} issues={issues} />}
-        {hubIssues && <IssueAlert title={t.invalid} issues={hubIssues} />}
-        {save.error && !hubIssues && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
+        {canWrite && <UnsavedChangesGuard when={anyDirty} />}
+        {!canWrite && <Alert role="note">{t.readOnly}</Alert>}
         {fromSearch.error && <Alert variant="destructive">{apiErrorMessage(fromSearch.error)}</Alert>}
-        {saved && !dirty && (
-          <p role="status" className="text-sm text-success">
-            {t.saved}
-          </p>
-        )}
-        {canWrite && dirty && <p className="text-sm text-muted-foreground">{t.unsaved}</p>}
 
-        {!draft && <EmptyState title={t.empty} description={t.emptyHint} />}
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+          <div className="grid w-full gap-1.5 sm:w-80">
+            <label htmlFor={`${ids}-wf`} className="text-sm font-medium">
+              {t.workflow}
+            </label>
+            <NativeSelect id={`${ids}-wf`} value={key ?? ""} onChange={(e) => pick(e.target.value)}>
+              {visible.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {(drafts[w.id]?.name ?? w.name) || w.name}
+                  {w.subject === "code" ? ` · ${SUBJECT_LABEL[lang].code}` : ""}
+                  {w.enabled ? "" : ` (${t.off})`}
+                </option>
+              ))}
+              {(key === NEW || drafts[NEW]) && <option value={NEW}>{drafts[NEW]?.name || t.newName}</option>}
+            </NativeSelect>
+          </div>
+          <SegmentedControl
+            label={t.filter}
+            value={filter}
+            onChange={(f) => {
+              setFilter(f);
+              setGateSel(null);
+            }}
+            options={[
+              { value: "all", label: t.filterAll },
+              ...SUBJECTS.map((sj) => ({ value: sj, label: SUBJECT_LABEL[lang][sj] })),
+            ]}
+          />
+        </div>
+
+        {!draft && <EmptyState icon={WorkflowIcon} title={t.empty} description={t.emptyHint} />}
         {draft && (
-          <>
-            <section className="flex flex-col gap-3 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
-              <div className="flex flex-wrap items-center gap-3">
-                <fieldset className="m-0 flex flex-wrap items-center gap-2 border-0 p-0">
-                  <legend className="float-left text-sm font-medium">{tc.subject}</legend>
-                  <span className="inline-flex gap-0.5 rounded-lg bg-muted p-0.75">
-                    {SUBJECTS.map((sj) => (
-                      <label
-                        key={sj}
-                        className={cn(
-                          segButton(draft.subject === sj),
-                          "relative inline-flex items-center has-focus-visible:ring-2 has-focus-visible:ring-ring/50",
-                        )}
-                      >
-                        <input
-                          type="radio"
-                          name={`${ids}-subject`}
-                          value={sj}
-                          // Ô radio trong suốt phủ cả nhãn, như bộ chọn loại checkpoint. Loại cố định sau khi lưu:
-                          // hub từ chối đổi, nên chỉ bản nháp mới chọn được.
-                          className="absolute inset-0 m-0 cursor-pointer appearance-none rounded-md opacity-0 disabled:cursor-not-allowed"
-                          checked={draft.subject === sj}
-                          disabled={!canWrite || draft.id !== null}
-                          onChange={() => changeSubject(sj)}
-                        />
-                        {SUBJECT_LABEL[lang][sj]}
-                      </label>
-                    ))}
-                  </span>
-                  {draft.id !== null && (
-                    <span className="text-xs text-muted-foreground" title={tc.lockedHint}>
-                      🔒 {tc.locked}
+          <SettingsLayout
+            nav={
+              isCode ? (
+                <SettingsNav
+                  label={t.sectionsNav}
+                  items={sections.map((id) => ({ id: SECTION_ANCHOR[id], label: sectionTitle[id] }))}
+                />
+              ) : undefined
+            }
+          >
+            <SettingsSection
+              id={SECTION_ANCHOR.general}
+              title={t.general}
+              description={t.generalHint}
+              save={sectionSave("general")}
+            >
+              <FormRow
+                label={t.subject}
+                hint={
+                  draft.id === null ? (
+                    t.subjectHint
+                  ) : (
+                    <span className="inline-flex items-center gap-1" title={tc.lockedHint}>
+                      <LockIcon aria-hidden="true" className="size-3" />
+                      {tc.locked}
                     </span>
-                  )}
-                </fieldset>
-                <fieldset className="m-0 flex flex-wrap items-center gap-2 border-0 p-0">
-                  <legend className="float-left text-sm text-muted-foreground">{tc.filter}</legend>
-                  <span className="inline-flex gap-0.5 rounded-lg bg-muted p-0.75">
-                    {(["all", ...SUBJECTS] as const).map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        aria-pressed={filter === f}
-                        className={segButton(filter === f)}
-                        onClick={() => {
-                          setFilter(f);
-                          setGateSel(null);
-                        }}
-                      >
-                        {f === "all" ? tc.filterAll : SUBJECT_LABEL[lang][f]}
-                      </button>
-                    ))}
-                  </span>
-                </fieldset>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 border-t border-dashed border-input pt-3">
-                <label htmlFor={`${ids}-wf`} className="flex w-full items-center gap-2 text-sm font-medium sm:w-auto">
-                  {t.workflow}
-                  <NativeSelect
-                    id={`${ids}-wf`}
-                    className="min-w-0 flex-1 sm:w-65 sm:flex-none"
-                    value={key ?? ""}
-                    onChange={(e) => pick(e.target.value)}
-                  >
-                    {visible.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {(drafts[w.id]?.name ?? w.name) || w.name}
-                        {w.subject === "code" ? ` · ${SUBJECT_LABEL[lang].code}` : ""}
-                        {w.enabled ? "" : ` (${t.off})`}
-                      </option>
-                    ))}
-                    {(key === NEW || drafts[NEW]) && <option value={NEW}>{drafts[NEW]?.name || t.newName}</option>}
-                  </NativeSelect>
-                  {isCode && <Pill tone="neutral">{SUBJECT_LABEL[lang].code}</Pill>}
-                </label>
-                {canWrite && key !== NEW && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setDrafts((all) => (all[NEW] ? all : { ...all, [NEW]: fresh }));
-                      pick(NEW);
-                    }}
-                  >
-                    <PlusIcon aria-hidden="true" />
-                    {t.newWorkflow}
-                  </Button>
-                )}
-                <fieldset className="m-0 flex flex-wrap items-center gap-3 border-0 p-0">
-                  <legend className="float-left text-sm text-muted-foreground">{t.preset}</legend>
-                  <span className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.75">
-                    {presetsOf(draft.subject).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        aria-pressed={draft.preset === p}
-                        disabled={!canWrite}
-                        className={segButton(draft.preset === p)}
-                        onClick={() => {
-                          if (p === draft.preset) return;
-                          if (draft.id) setPresetAsk(p);
-                          else applyPreset(p);
-                        }}
-                      >
-                        {PRESET_LABEL[lang][p]}
-                      </button>
-                    ))}
-                  </span>
-                </fieldset>
-                {!isCode && (
-                  <span className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
-                    <span className="text-sm text-muted-foreground">{t.appliesTo}</span>
-                    <ChipList
-                      values={draft.docPrefixes}
-                      onChange={(docPrefixes) => update({ docPrefixes })}
-                      canWrite={canWrite}
-                      addLabel={t.addPrefix}
-                      placeholder={t.prefixPh}
-                    />
-                  </span>
-                )}
-              </div>
-              <WorkflowMeta
-                draft={draft}
-                base={base}
-                canWrite={canWrite}
-                teams={teams.data ?? []}
-                onChange={update}
-                onRemove={() => setRemoving(true)}
+                  )
+                }
+              >
+                <RadioCards
+                  name={`${ids}-subject`}
+                  label={t.subject}
+                  value={draft.subject}
+                  onChange={changeSubject}
+                  // Hub từ chối đổi loại của quy trình đã lưu, nên chỉ bản nháp mới chọn được.
+                  disabled={!canWrite || draft.id !== null}
+                  columns={2}
+                  options={SUBJECTS.map((sj) => ({
+                    value: sj,
+                    title: SUBJECT_LABEL[lang][sj],
+                    description: t.subjectDesc[sj],
+                  }))}
+                />
+              </FormRow>
+              <FormRow label={t.name} htmlFor={`${ids}-name`}>
+                <Input
+                  id={`${ids}-name`}
+                  maxLength={120}
+                  value={draft.name}
+                  disabled={!canWrite}
+                  onChange={(e) => update({ name: e.target.value })}
+                />
+              </FormRow>
+              <FormRow label={t.team} htmlFor={`${ids}-team`}>
+                <NativeSelect
+                  id={`${ids}-team`}
+                  value={draft.teamId ?? ""}
+                  disabled={!canWrite}
+                  onChange={(e) => update({ teamId: e.target.value || null })}
+                >
+                  <option value="">{t.wholeOrg}</option>
+                  {(teams.data ?? []).map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </FormRow>
+              {!isCode && (
+                <FormRow label={t.prefixes} hint={t.prefixesHint}>
+                  <ChipList
+                    boxed
+                    values={draft.docPrefixes}
+                    onChange={(docPrefixes) => update({ docPrefixes })}
+                    canWrite={canWrite}
+                    addLabel={t.addPrefix}
+                    placeholder={t.prefixPh}
+                  />
+                </FormRow>
+              )}
+              <SwitchRow
+                label={t.enabled}
+                hint={t.inFlight(base?.inFlight ?? 0)}
+                checked={draft.enabled}
+                disabled={!canWrite}
+                onChange={(enabled) => update({ enabled })}
               />
-            </section>
+            </SettingsSection>
 
             {isCode && (
               <>
-                <CodeScope
-                  draft={draft}
-                  canWrite={canWrite}
-                  projects={projects.data ?? []}
-                  onChange={(patch) => update({ code: draft.code && { ...draft.code, ...patch } })}
-                />
-                <CodeReplacesNote />
+                <SettingsSection
+                  id={SECTION_ANCHOR.scope}
+                  title={tc.scope}
+                  description={tc.scopeHint}
+                  save={sectionSave("scope")}
+                >
+                  <CodeScopeRows
+                    draft={draft}
+                    canWrite={canWrite}
+                    projects={projects.data ?? []}
+                    onChange={(patch) => update({ code: draft.code && { ...draft.code, ...patch } })}
+                  />
+                </SettingsSection>
+                <SettingsSection
+                  id={SECTION_ANCHOR.pass}
+                  title={tc.onPassTitle}
+                  description={tc.onPassHint}
+                  save={sectionSave("pass")}
+                >
+                  <CodeOnPassRows
+                    draft={draft}
+                    canWrite={canWrite}
+                    onChange={(patch) => update({ code: draft.code && { ...draft.code, ...patch } })}
+                  />
+                </SettingsSection>
               </>
             )}
 
-            <div className="flex flex-wrap items-start gap-4">
-              <section aria-label={t.pipeline} className="flex min-w-0 flex-[999_1_640px] gap-3 overflow-x-auto pb-1.5">
-                {draft.phases.map((p, pi) => (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: giai đoạn không có mã; thứ tự là thứ tự chạy.
-                    key={pi}
-                    className="flex flex-[1_0_230px] flex-col gap-2.5 rounded-xl bg-muted p-3"
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
+            <SettingsSection
+              id={SECTION_ANCHOR.pipeline}
+              title={t.pipelineTitle}
+              description={t.pipelineHint}
+              save={sectionSave("pipeline")}
+              actions={
+                <SegmentedControl
+                  label={t.preset}
+                  size="sm"
+                  value={draft.preset}
+                  onChange={(p) => {
+                    if (p === draft.preset) return;
+                    if (draft.id) setPresetAsk(p);
+                    else applyPreset(p);
+                  }}
+                  options={presetsOf(draft.subject).map((p) => ({
+                    value: p,
+                    label: PRESET_LABEL[lang][p],
+                    disabled: !canWrite,
+                  }))}
+                />
+              }
+            >
+              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)]">
+                <section aria-label={t.pipeline} className="flex min-w-0 gap-3 self-start overflow-x-auto pb-1.5">
+                  {draft.phases.map((p, pi) => (
+                    <div
+                      // biome-ignore lint/suspicious/noArrayIndexKey: giai đoạn không có mã; thứ tự là thứ tự chạy.
+                      key={pi}
+                      className="flex flex-[1_0_220px] flex-col gap-2.5 rounded-xl bg-muted p-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        {canWrite ? (
+                          <input
+                            aria-label={t.phaseName(pi + 1)}
+                            value={p.name}
+                            onChange={(e) =>
+                              update({
+                                phases: draft.phases.map((x, i) => (i === pi ? { ...x, name: e.target.value } : x)),
+                              })
+                            }
+                            className="-ml-1.5 h-7 w-0 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 font-heading text-sm font-semibold tracking-[-0.02em] outline-none hover:border-input focus-visible:border-ring focus-visible:bg-card focus-visible:ring-2 focus-visible:ring-ring/40"
+                          />
+                        ) : (
+                          <strong className="font-heading text-sm tracking-[-0.02em]">{p.name}</strong>
+                        )}
+                        <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">
+                          {presetShort} {pi + 1}
+                        </span>
+                        {canWrite && draft.phases.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={t.removePhase(p.name)}
+                            onClick={() => update({ phases: draft.phases.filter((_, i) => i !== pi) })}
+                          >
+                            <XIcon aria-hidden="true" />
+                          </Button>
+                        )}
+                      </div>
                       {canWrite ? (
-                        <input
-                          aria-label={t.phaseName(pi + 1)}
-                          value={p.name}
+                        <textarea
+                          aria-label={t.phaseDesc(pi + 1)}
+                          rows={1}
+                          maxLength={300}
+                          // Giai đoạn của khung mẫu chưa có mô tả riêng thì gợi ý mô tả mặc định như thiết kế.
+                          placeholder={PHASE_DESC[p.name]?.[lang] ?? t.phaseDescPh}
+                          value={p.description ?? ""}
                           onChange={(e) =>
                             update({
-                              phases: draft.phases.map((x, i) => (i === pi ? { ...x, name: e.target.value } : x)),
+                              phases: draft.phases.map((x, i) =>
+                                i === pi ? { ...x, description: e.target.value } : x,
+                              ),
                             })
                           }
-                          className="w-0 min-w-0 flex-1 rounded-sm bg-transparent font-heading text-sm font-semibold tracking-[-0.02em] outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                          className="-mx-1.5 -mt-1.5 field-sizing-content resize-none rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-xs text-muted-foreground outline-none placeholder:text-muted-foreground hover:border-input focus-visible:border-ring focus-visible:bg-card focus-visible:ring-2 focus-visible:ring-ring/40"
                         />
                       ) : (
-                        <strong className="font-heading text-sm tracking-[-0.02em]">{p.name}</strong>
+                        (p.description || PHASE_DESC[p.name]) && (
+                          <span className="-mt-1.5 text-xs text-muted-foreground">
+                            {p.description || PHASE_DESC[p.name]?.[lang]}
+                          </span>
+                        )
                       )}
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {presetShort} {pi + 1}
-                      </span>
-                      {canWrite && draft.phases.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={t.removePhase(p.name)}
-                          onClick={() => update({ phases: draft.phases.filter((_, i) => i !== pi) })}
+                      {p.gates.length === 0 && <span className="text-xs text-muted-foreground">{t.noGates}</span>}
+                      {p.gates.map((g, gi) => {
+                        const on = g.id === cur?.id;
+                        const cond = gateCond(g, draft.subject, lang, t);
+                        return (
+                          <div key={g.id} className="flex flex-col items-stretch gap-1.5">
+                            <button
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => selectGate(g.id)}
+                              className={cn(
+                                "flex cursor-pointer flex-col gap-1 rounded-[10px] border bg-card px-3 py-2.5 text-left text-card-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                                on ? "border-primary ring-2 ring-accent" : "border-border",
+                                badGates.has(g.id) && "border-destructive ring-2 ring-destructive-soft",
+                              )}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <GateKindBadge kind={g.kind} />
+                                <span className="ml-auto font-mono text-xs text-muted-foreground">
+                                  {g.slaHours ? `${g.slaHours}h` : "—"}
+                                </span>
+                              </span>
+                              <span className="text-sm font-semibold">{g.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {gateWho(g, draft.subject, names, teamNames, lang, t)}
+                              </span>
+                              {cond && <span className="text-xs text-warning">⤷ {cond}</span>}
+                            </button>
+                            {gi < p.gates.length - 1 && (
+                              <span
+                                aria-hidden="true"
+                                className="text-center text-xs leading-none text-muted-foreground"
+                              >
+                                ↓
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {canWrite && (
+                        <button
+                          type="button"
+                          className="h-8.5 cursor-pointer rounded-lg border border-dashed border-input bg-transparent text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                          onClick={() => {
+                            const g = newGate(t.newGateName, allGateIds(draft.phases), lang, draft.subject);
+                            update({
+                              phases: draft.phases.map((x, i) => (i === pi ? { ...x, gates: [...x.gates, g] } : x)),
+                            });
+                            setGateSel(g.id);
+                          }}
                         >
-                          <XIcon aria-hidden="true" />
-                        </Button>
+                          + {t.addGate}
+                        </button>
+                      )}
+                      {/* Quy trình Code duyệt PR, không có tài liệu đầu ra theo giai đoạn. */}
+                      {draft.subject !== "code" && (
+                        <div className="mt-0.5 flex flex-col gap-1 border-t border-dashed border-input pt-2 text-xs">
+                          <span className="text-muted-foreground">{t.outputs}</span>
+                          <ChipList
+                            values={p.outputs}
+                            onChange={(outputs) =>
+                              update({ phases: draft.phases.map((x, i) => (i === pi ? { ...x, outputs } : x)) })
+                            }
+                            canWrite={canWrite}
+                            addLabel={t.addOutput(p.name)}
+                            placeholder={t.outputPh}
+                          />
+                        </div>
                       )}
                     </div>
-                    {canWrite ? (
-                      <textarea
-                        aria-label={t.phaseDesc(pi + 1)}
-                        rows={1}
-                        maxLength={300}
-                        // Giai đoạn của khung mẫu chưa có mô tả riêng thì gợi ý mô tả mặc định như thiết kế.
-                        placeholder={PHASE_DESC[p.name]?.[lang] ?? t.phaseDescPh}
-                        value={p.description ?? ""}
-                        onChange={(e) =>
-                          update({
-                            phases: draft.phases.map((x, i) => (i === pi ? { ...x, description: e.target.value } : x)),
-                          })
-                        }
-                        className="-mt-1.5 field-sizing-content resize-none rounded-sm bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                      />
-                    ) : (
-                      (p.description || PHASE_DESC[p.name]) && (
-                        <span className="-mt-1.5 text-xs text-muted-foreground">
-                          {p.description || PHASE_DESC[p.name]?.[lang]}
-                        </span>
-                      )
-                    )}
-                    {p.gates.length === 0 && <span className="text-xs text-muted-foreground">{t.noGates}</span>}
-                    {p.gates.map((g, gi) => {
-                      const on = g.id === cur?.id;
-                      const cond = gateCond(g, draft.subject, lang, t);
-                      return (
-                        <div key={g.id} className="flex flex-col items-stretch gap-1.5">
-                          <button
-                            type="button"
-                            aria-pressed={on}
-                            onClick={() => setGateSel(g.id)}
-                            className={cn(
-                              "flex cursor-pointer flex-col gap-1 rounded-[10px] border bg-card px-3 py-2.5 text-left text-card-foreground",
-                              on ? "border-primary ring-2 ring-accent" : "border-border",
-                              badGates.has(g.id) && "border-destructive ring-2 ring-destructive-soft",
-                            )}
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <GateKindBadge kind={g.kind} />
-                              <span className="ml-auto font-mono text-xs text-muted-foreground">
-                                {g.slaHours ? `${g.slaHours}h` : "—"}
-                              </span>
-                            </span>
-                            <span className="text-sm font-semibold">{g.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {gateWho(g, draft.subject, names, teamNames, lang, t)}
-                            </span>
-                            {cond && <span className="text-xs text-warning">⤷ {cond}</span>}
-                          </button>
-                          {gi < p.gates.length - 1 && (
-                            <span aria-hidden="true" className="text-center text-xs leading-none text-muted-foreground">
-                              ↓
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {canWrite && (
-                      <button
-                        type="button"
-                        className="h-8.5 cursor-pointer rounded-lg border border-dashed border-input bg-transparent text-sm text-muted-foreground hover:text-foreground"
-                        onClick={() => {
-                          const g = newGate(t.newGateName, allGateIds(draft.phases), lang, draft.subject);
-                          update({
-                            phases: draft.phases.map((x, i) => (i === pi ? { ...x, gates: [...x.gates, g] } : x)),
-                          });
-                          setGateSel(g.id);
-                        }}
-                      >
-                        + {t.addGate}
-                      </button>
-                    )}
-                    {/* Quy trình Code duyệt PR, không có tài liệu đầu ra theo giai đoạn. */}
-                    {draft.subject !== "code" && (
-                      <div className="mt-0.5 flex flex-col gap-1 border-t border-dashed border-input pt-2 text-xs">
-                        <span className="text-muted-foreground">{t.outputs}</span>
-                        <ChipList
-                          values={p.outputs}
-                          onChange={(outputs) =>
-                            update({ phases: draft.phases.map((x, i) => (i === pi ? { ...x, outputs } : x)) })
-                          }
-                          canWrite={canWrite}
-                          addLabel={t.addOutput(p.name)}
-                          placeholder={t.outputPh}
-                          chipClass="bg-card"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {canWrite && draft.phases.length < 10 && (
-                  <button
-                    type="button"
-                    aria-label={t.addPhase}
-                    title={t.addPhase}
-                    className="flex min-h-40 flex-[0_0_40px] cursor-pointer items-center justify-center rounded-xl border border-dashed border-input text-muted-foreground hover:text-foreground"
-                    onClick={() =>
-                      update({
-                        phases: [
-                          ...draft.phases,
-                          { name: t.newPhase(draft.phases.length + 1), outputs: [], gates: [] },
-                        ],
-                      })
-                    }
-                  >
-                    <PlusIcon className="size-4" aria-hidden="true" />
-                  </button>
-                )}
-              </section>
+                  ))}
+                  {canWrite && draft.phases.length < 10 && (
+                    <button
+                      type="button"
+                      aria-label={t.addPhase}
+                      title={t.addPhase}
+                      className="flex min-h-40 flex-[0_0_40px] cursor-pointer items-center justify-center rounded-xl border border-dashed border-input text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                      onClick={() =>
+                        update({
+                          phases: [
+                            ...draft.phases,
+                            { name: t.newPhase(draft.phases.length + 1), outputs: [], gates: [] },
+                          ],
+                        })
+                      }
+                    >
+                      <PlusIcon className="size-4" aria-hidden="true" />
+                    </button>
+                  )}
+                </section>
 
-              <aside
-                aria-label={t.config}
-                className="flex w-full min-w-75 flex-[1_1_340px] flex-col overflow-hidden rounded-xl border bg-card text-card-foreground md:max-w-100"
-              >
-                {cur ? (
-                  <GateConfigFor
-                    // Ô nhiều dòng giữ chữ đang gõ; đổi quy trình, khung mẫu hay gate thì dựng lại từ dữ liệu mới.
-                    key={`${key}:${draft.preset}:${cur.id}`}
-                    subject={draft.subject}
-                    gate={cur}
-                    canWrite={canWrite}
-                    members={members.data ?? []}
-                    teams={teams.data ?? []}
-                    canMoveUp={gates[0]?.id !== cur.id}
-                    canMoveDown={gates.at(-1)?.id !== cur.id}
-                    onChange={(fn) => patchGate(cur.id, fn)}
-                    onMove={(delta) => update({ phases: moveGate(draft.phases, cur.id, delta) })}
-                    onRemove={() => {
-                      update({
-                        phases: draft.phases.map((p) => ({ ...p, gates: p.gates.filter((g) => g.id !== cur.id) })),
-                      });
-                      setGateSel(null);
-                    }}
-                  />
-                ) : (
-                  <p className="px-4 py-3.5 text-sm text-muted-foreground">{t.pickGate}</p>
-                )}
-              </aside>
-            </div>
-          </>
+                {/* Khung cấu hình dính khi cuộn để vẫn thấy checkpoint đang sửa; dưới 1280 px nó nằm dưới các giai
+                    đoạn và cuộn theo trang. */}
+                <aside
+                  ref={configRef}
+                  aria-label={t.config}
+                  className={cn(
+                    "min-w-0 border-t border-border pt-4 xl:sticky xl:self-start xl:overflow-y-auto xl:overscroll-contain xl:border-t-0 xl:border-l xl:pt-1 xl:pr-1 xl:pb-1",
+                    isCode
+                      ? "scroll-mt-28 xl:top-28 xl:max-h-[calc(100dvh-8rem)]"
+                      : "scroll-mt-16 xl:top-16 xl:max-h-[calc(100dvh-5rem)]",
+                  )}
+                >
+                  {cur ? (
+                    <GateConfigFor
+                      // Ô nhiều dòng giữ chữ đang gõ; đổi quy trình, khung mẫu hay gate thì dựng lại từ dữ liệu mới.
+                      key={`${key}:${draft.preset}:${cur.id}`}
+                      subject={draft.subject}
+                      gate={cur}
+                      canWrite={canWrite}
+                      members={members.data ?? []}
+                      teams={teams.data ?? []}
+                      canMoveUp={gates[0]?.id !== cur.id}
+                      canMoveDown={gates.at(-1)?.id !== cur.id}
+                      onChange={(fn) => patchGate(cur.id, fn)}
+                      onMove={(delta) => update({ phases: moveGate(draft.phases, cur.id, delta) })}
+                      onRemove={() => {
+                        update({
+                          phases: draft.phases.map((p) => ({ ...p, gates: p.gates.filter((g) => g.id !== cur.id) })),
+                        });
+                        setGateSel(null);
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground xl:pl-4">{t.pickGate}</p>
+                  )}
+                </aside>
+              </div>
+            </SettingsSection>
+
+            {canWrite && base && <DangerZone name={base.name} onRemove={() => setRemoving(true)} />}
+          </SettingsLayout>
         )}
       </PageBody>
 
@@ -740,72 +903,31 @@ function GateConfigFor({ subject, ...props }: GateConfigProps & { subject: Workf
   return subject === "code" ? <CodeGateConfig {...props} /> : <GateConfig {...props} />;
 }
 
-function WorkflowMeta({
-  draft,
-  base,
-  canWrite,
-  teams,
-  onChange,
-  onRemove,
-}: {
-  draft: WorkflowDraft;
-  base: ReviewWorkflow | null;
-  canWrite: boolean;
-  teams: { id: string; name: string }[];
-  onChange: (patch: Partial<WorkflowDraft>) => void;
-  onRemove: () => void;
-}) {
+/**
+ * Vùng nguy hiểm cuối trang (admin-layout.md § Thanh tiêu đề): thao tác phá huỷ không nằm cạnh ô sửa thường ngày.
+ * TODO(admin-layout): chưa có khối "Vùng nguy hiểm" dùng chung trong components/page.
+ */
+function DangerZone({ name, onRemove }: { name: string; onRemove: () => void }) {
   const t = useT(text);
-  const ids = useId();
+  const headingId = useId();
   return (
-    <div className="flex flex-wrap items-end gap-3 border-t border-dashed border-input pt-3">
-      <div className="w-full sm:w-60">
-        <Field label={t.name} htmlFor={`${ids}-name`}>
-          <Input
-            id={`${ids}-name`}
-            maxLength={120}
-            value={draft.name}
-            disabled={!canWrite}
-            onChange={(e) => onChange({ name: e.target.value })}
-          />
-        </Field>
+    <section
+      aria-labelledby={headingId}
+      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl bg-card px-4 py-3.5 text-sm ring-1 ring-destructive/40 sm:px-5"
+    >
+      <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
+        <h2 id={headingId} className="text-base font-semibold text-foreground">
+          {t.danger}
+        </h2>
+        <p className="text-xs text-pretty text-muted-foreground">
+          <span className="font-medium text-foreground">{name}</span> · {t.dangerHint}
+        </p>
       </div>
-      <div className="w-full sm:w-52">
-        <Field label={t.team} htmlFor={`${ids}-team`}>
-          <NativeSelect
-            id={`${ids}-team`}
-            value={draft.teamId ?? ""}
-            disabled={!canWrite}
-            onChange={(e) => onChange({ teamId: e.target.value || null })}
-          >
-            <option value="">{t.wholeOrg}</option>
-            {teams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </NativeSelect>
-        </Field>
-      </div>
-      <label htmlFor={`${ids}-on`} className="flex h-8 cursor-pointer items-center gap-2 text-sm font-medium">
-        <Switch
-          id={`${ids}-on`}
-          aria-label={t.enabled}
-          checked={draft.enabled}
-          disabled={!canWrite}
-          onCheckedChange={(enabled) => onChange({ enabled })}
-        />
-        {t.enabled}
-      </label>
-      <span className="flex h-8 items-center text-xs text-muted-foreground">{t.inFlight(base?.inFlight ?? 0)}</span>
-      <span className="flex-1" />
-      {canWrite && base && (
-        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={onRemove}>
-          <Trash2Icon aria-hidden="true" />
-          {t.remove}
-        </Button>
-      )}
-    </div>
+      <Button variant="destructive" onClick={onRemove}>
+        <Trash2Icon aria-hidden="true" />
+        {t.remove}
+      </Button>
+    </section>
   );
 }
 
@@ -837,7 +959,8 @@ function DryRunDialog({ draft, onClose }: { draft: WorkflowDraft; onClose: () =>
         </DialogHeader>
         <form onSubmit={submit} className="flex items-end gap-2">
           <div className="flex-1">
-            <Field label={t.docKey} htmlFor={`${ids}-key`}>
+            <Field>
+              <FieldLabel htmlFor={`${ids}-key`}>{t.docKey}</FieldLabel>
               <Input
                 id={`${ids}-key`}
                 required

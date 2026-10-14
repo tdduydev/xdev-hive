@@ -390,7 +390,7 @@ const WHERE: Dict<{
 }> = {
   vi: {
     name: "Tên quy trình",
-    prefixes: "Áp cho",
+    prefixes: "Tiền tố tài liệu",
     scope: "Phạm vi kích hoạt",
     scopeField: {
       projects: "dự án",
@@ -424,7 +424,7 @@ const WHERE: Dict<{
   },
   en: {
     name: "Workflow name",
-    prefixes: "Applies to",
+    prefixes: "Doc key prefixes",
     scope: "Trigger scope",
     scopeField: {
       projects: "projects",
