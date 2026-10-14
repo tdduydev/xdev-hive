@@ -42,6 +42,11 @@ export interface McpTool<Input extends z.ZodObject = z.ZodObject, Prepared = und
   /** Tool chỉ đọc; client MCP dùng gợi ý này để khỏi hỏi người dùng trước khi gọi. */
   readOnly?: boolean | undefined;
   /**
+   * Run `leader` thấy thêm tool này. `list()` giữ run `leader` ở danh sách hẹp (chỉ trả lời và đề xuất); cờ để module
+   * khác (artifacts) mở thêm tool cho Leader mà không phải sửa mcp.
+   */
+  forLeader?: boolean | undefined;
+  /**
    * Chạy trước handler, ngoài transaction, sau khi đã chọn tổ chức. Dành cho việc chờ mạng (vd. gọi API embeddings)
    * để không giữ kết nối database trong lúc chờ; kết quả truyền vào handler.
    */
@@ -122,7 +127,7 @@ export class McpToolRegistry {
       return tools.filter((tool) => !tool.runKinds?.includes("leader") && !TERMINAL_ONLY.has(tool.name));
     }
     if (principal.runKind === "leader") {
-      return tools.filter((tool) => LEADER_RUN_TOOLS.has(tool.name));
+      return tools.filter((tool) => LEADER_RUN_TOOLS.has(tool.name) || tool.forLeader);
     }
     return tools.filter(
       (tool) =>
@@ -144,4 +149,10 @@ const RUN_TOOLS = new Set([
   "doc_list",
   "skill_get",
   "skill_list",
+  // Ghi artifact là ghi dữ liệu hub, không ghi repo nên run chỉ đọc repo (plan, review) vẫn dùng được; các loại run có
+  // đầu ra riêng (doccheck, docassist, brief) bị handler từ chối bằng ARTIFACT_RUN_KIND.
+  "artifact_create",
+  "artifact_update",
+  "artifact_get",
+  "artifact_list",
 ]);
