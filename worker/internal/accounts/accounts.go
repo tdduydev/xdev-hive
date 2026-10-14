@@ -169,7 +169,7 @@ func Load(path string) ([]Account, error) {
 
 func read(path string) (file, error) {
 	var f file
-	b, err := os.ReadFile(path)
+	b, err := readFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return f, nil
 	}
