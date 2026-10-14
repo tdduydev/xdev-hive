@@ -258,6 +258,7 @@ describe("kết luận run sdlc", () => {
     // SC-008: tài liệu agent ghi đọc được ngay trên hub khi run kết luận.
     expect(Date.now() - t0).toBeLessThan(5000);
     expect(state.draft.content).toBe(content);
+    expect(state.draft.updatedBy).toMatchObject({ userId: null, runId: steps[1].run_id });
     const result = (await stepRows(item.id))[1].result;
     expect(result.artifacts).toEqual([expect.objectContaining({ docKey: key, sha256: expect.any(String) })]);
   });
