@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { jobMcpServer } from "./mcp-admin.ts";
 import { sandboxJobConfig } from "./sandbox.ts";
+import { base64url, ephPub, remoteAuth, termDenyCode } from "./terminal-auth.ts";
 
 /** Phiên bản giao thức worker ↔ hub (docs/architecture.md mục 5). Tăng khi đổi gói theo cách không tương thích. */
 export const PROTOCOL_VERSION = 1;
@@ -317,6 +318,13 @@ export const welcome = z.object({
    * máy cá nhân không được để quản trị đội đổi tài khoản của chủ máy (ADR 0017). Hub cũ không gửi.
    */
   features: z.array(z.string().max(40)).max(20).optional(),
+  /**
+   * Chủ máy theo hub (specs/010 D14). Worker đổi chủ (`userId` khác `ownerUserId` trong remote.json) thì xoá thiết bị đã
+   * ghép; `shared` thì từ chối bật từ xa. Hub cũ không gửi.
+   */
+  owner: z.object({ userId: z.string().min(1).max(64), shared: z.boolean() }).optional(),
+  /** Chính sách tổ chức liên quan tới điều khiển từ xa. Hub chỉ dùng để tắt: thiếu trường thì worker theo cài đặt tại máy. */
+  policy: z.object({ totpFallback: z.boolean() }).optional(),
 });
 
 export const upgradeRequired = z.object({
@@ -508,6 +516,19 @@ export const terminalMode = z.enum(["propose", "bypass"]);
 export type TerminalMode = z.output<typeof terminalMode>;
 
 const termSessionId = z.uuid();
+const termRequestId = z.uuid();
+const termUserId = z.string().min(1).max(64);
+/** Id do worker sinh (thiết bị, root, mã ghép) hoặc hub sinh (kết nối WS): chữ base64url, không lộ thông tin máy. */
+const remoteId = z.string().regex(/^[A-Za-z0-9_-]{6,64}$/);
+/** `local`: `hive chat` tại máy; `remote`: mở từ điện thoại; `hub`: phiên Leader do hub mở trên máy dùng chung. */
+export const termOrigin = z.enum(["local", "remote", "hub"]);
+export type TermOrigin = z.output<typeof termOrigin>;
+/** Bằng chứng trên gói nhập của phiên điều khiển từ xa; phiên Leader trên máy dùng chung không gửi. */
+const inputProof = {
+  connId: remoteId.optional(),
+  seq: seq.optional(),
+  mac: z.base64url().length(22).optional(),
+};
 export const terminalCols = z.number().int().min(20).max(500);
 export const terminalRows = z.number().int().min(5).max(200);
 /** Chuỗi base64 giải ra tối đa `bytes` byte (đếm theo byte thật, không theo độ dài chuỗi, vì 4/3 làm tròn lên). */
@@ -533,6 +554,24 @@ export const termOpened = z.object({
   accountLabel: z.string().max(80).nullable(),
   /** Quyền thật worker áp sau khi xét công tắc toàn quyền của máy (ADR 0020); hub ghi lại để hiện cho người mở. */
   permissions: z.enum(["workspace", "full"]),
+  /**
+   * Các trường dưới chỉ có ở phiên trên máy cá nhân (`hive chat` tại máy, mở từ xa bằng `term_start`); phiên `term_open`
+   * của Leader không gửi nên hub cũ vẫn nhận gói này.
+   */
+  origin: termOrigin.optional(),
+  /** `requestId` của `term_start` khi phiên mở từ xa. */
+  requestId: termRequestId.optional(),
+  cli: cli.optional(),
+  /** Nhãn thư mục (nhãn root + thư mục con), không có đường dẫn tuyệt đối. */
+  cwdLabel: z.string().max(200).optional(),
+  projectId: z.string().min(1).max(64).optional(),
+  taskId: z.string().min(1).max(64).optional(),
+  cols: terminalCols.optional(),
+  rows: terminalRows.optional(),
+  /** Phiên có ghi lên hub không (máy dùng chung, runner host, `--no-record` thì không). */
+  record: z.boolean().optional(),
+  /** Phiên có cho điều khiển từ xa không (`--no-remote`, từ xa đang tắt thì không). */
+  remote: z.boolean().optional(),
 });
 
 /** Output của PTY, đã che bí mật worker biết (token MCP của phiên, token gói). `seq` tăng dần từ 0 trong một phiên. */
@@ -550,6 +589,8 @@ export const termExit = z.object({
   reason: termExitReason,
   /** Câu tiếng Việt cho người dùng (vd. lý do từ chối). */
   message: z.string().max(500).optional(),
+  /** Ai đóng phiên (userId, `machine` khi đóng tại máy). */
+  by: z.string().min(1).max(64).optional(),
 });
 
 /**
@@ -586,11 +627,15 @@ export const termOpen = z.object({
   tokenSaving: z.record(z.string(), z.unknown()).optional(),
 });
 
-/** Phím người mở gõ trên web. Hub chỉ chuyển của chủ phiên, sau giới hạn tốc độ. */
+/**
+ * Phím người mở gõ trên web. Hub chỉ chuyển của chủ phiên, sau giới hạn tốc độ. Phiên trên máy cá nhân (điều khiển từ xa)
+ * thêm `connId`, `seq` tăng nghiêm ngặt và `mac` (FR-017, `inputMacPayload`); worker bỏ gói thiếu hoặc sai.
+ */
 export const termInput = z.object({
   ...envelope("term_input"),
   sessionId: termSessionId,
   data: base64Max(TERMINAL_LIMITS.inputBytes),
+  ...inputProof,
 });
 
 export const termResize = z.object({
@@ -598,6 +643,7 @@ export const termResize = z.object({
   sessionId: termSessionId,
   cols: terminalCols,
   rows: terminalRows,
+  ...inputProof,
 });
 
 /** Đóng phiên: worker dừng cả nhóm tiến trình, xoá worktree tạm, trả `term_exit` lý do `closed`. */
@@ -605,6 +651,141 @@ export const termClose = z.object({
   ...envelope("term_close"),
   sessionId: termSessionId,
   reason: z.string().max(200).optional(),
+  /** userId người đóng (chủ phiên, quản trị đội); worker ghi vào remote-audit.log. */
+  by: z.string().min(1).max(64).optional(),
+});
+
+// ---- Điều khiển từ xa phiên trên máy cá nhân (specs/010 US2–US5; passkey/TOTP kiểm ở worker) ----
+
+/** Chủ máy ghép thiết bị: bí mật ghép không qua hub nên hub không thay được khoá (`pairTag`, FR-014). */
+export const termPair = z.object({
+  ...envelope("term_pair"),
+  pairId: remoteId,
+  userId: termUserId,
+  label: z.string().min(1).max(80),
+  credentialId: base64url(1024),
+  /** Khoá công khai ES256 dạng SPKI DER (`AuthenticatorAttestationResponse.getPublicKey()`), base64url. */
+  spki: base64url(512),
+  tag: z.base64url().length(43),
+});
+
+/**
+ * Mở phiên mới từ điện thoại. Mọi trường trong `StartParams` (terminal-auth.ts) được ký trong challenge; `model` và
+ * `permissions` do hub điền theo chính sách tổ chức (FR-019), worker vẫn không chạy toàn quyền nếu máy chưa cho.
+ */
+export const termStart = z.object({
+  ...envelope("term_start"),
+  requestId: termRequestId,
+  userId: termUserId,
+  deviceId: remoteId,
+  cli,
+  accountId: z.string().min(1).max(64).optional(),
+  rootId: remoteId,
+  subdir: z.string().min(1).max(500).optional(),
+  model: z.string().min(1).max(100).optional(),
+  permissions: z.enum(["ask", "workspace", "full"]).optional(),
+  projectId: z.string().min(1).max(64).optional(),
+  taskId: z.string().min(1).max(64).optional(),
+  // min(1): worker coi chuỗi rỗng là không có khi dựng lại challenge, nên rỗng sẽ không khớp chữ ký.
+  prompt: z.string().min(1).max(20_000).optional(),
+  cols: terminalCols,
+  rows: terminalRows,
+  auth: remoteAuth,
+});
+
+/**
+ * Xin quyền gõ cho một kết nối WS. Lần đầu cần `auth`; nối lại trong 2 phút dùng `resumeToken` để giữ khoá cũ (FR-021).
+ * Thiếu cả hai thì worker từ chối `AUTH_INVALID`.
+ */
+export const termControl = z.object({
+  ...envelope("term_control"),
+  sessionId: termSessionId,
+  connId: remoteId,
+  userId: termUserId,
+  deviceId: remoteId,
+  auth: remoteAuth.optional(),
+  resumeToken: z.base64url().max(64).optional(),
+});
+
+/** Kết nối WS rời phiên (đóng tab, mất mạng); worker giữ quyền chờ `resumeToken` tới hạn. */
+export const termDetach = z.object({ ...envelope("term_detach"), sessionId: termSessionId, connId: remoteId });
+
+/** Hub đã ghi bền output tới `upto` (gồm cả `upto`); worker xoá phần đệm đĩa tương ứng. */
+export const termAck = z.object({ ...envelope("term_ack"), sessionId: termSessionId, upto: seq });
+
+/** Tắt điều khiển từ xa ngay (FR-022). Không có gói bật: chỉ bật được tại máy (FR-012). */
+export const termDisable = z.object({ ...envelope("term_disable"), by: termUserId });
+
+export const termDeviceRevoke = z.object({ ...envelope("term_device_revoke"), deviceId: remoteId, by: termUserId });
+
+/** Trạng thái điều khiển từ xa tại máy; gửi sau `welcome` và mỗi khi đổi. Không có đường dẫn tuyệt đối hay khoá. */
+export const termState = z.object({
+  ...envelope("term_state"),
+  enabled: z.boolean(),
+  totp: z.object({ enabled: z.boolean(), locked: z.boolean(), lockedUntil: z.iso.datetime().optional() }),
+  roots: z.array(z.object({ id: remoteId, label: z.string().min(1).max(80) })).max(32),
+  clis: z.array(cli).max(8),
+  accounts: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        label: z.string().max(80),
+        cli,
+        state: z.enum(["ready", "cooldown", "disabled", "logged_out"]),
+      }),
+    )
+    .max(32),
+  devices: z
+    .array(z.object({ id: remoteId, label: z.string().min(1).max(80), userId: termUserId, synced: z.boolean() }))
+    .max(32),
+  sessions: z
+    .array(z.object({ id: termSessionId, origin: termOrigin, controller: z.enum(["local", "remote"]).nullable() }))
+    .max(64),
+  confirmOnMachine: z.boolean(),
+});
+
+export const termDenied = z.object({
+  ...envelope("term_denied"),
+  requestId: termRequestId,
+  code: termDenyCode,
+  /** Câu tiếng Việt cho người dùng; không chứa mã TOTP hay chi tiết khoá. */
+  reason: z.string().max(500),
+});
+
+/** Sự kiện của phiên, enum riêng để không đụng `runEventKind` (hub cũ đóng kết nối khi gặp loại lạ). */
+export const termEventKind = z.enum(["attention", "idle", "controller", "resize", "gap", "input_rejected", "viewer"]);
+export type TermEventKind = z.output<typeof termEventKind>;
+
+export const termEvent = z.object({
+  ...envelope("term_event"),
+  sessionId: termSessionId,
+  seq,
+  event: termEventKind,
+  data: z.record(z.string(), z.unknown()).optional(),
+});
+
+/** Worker cấp quyền gõ cho `connId`; trình duyệt suy ra khoá HMAC từ `workerEphPub` (`deriveInputKey`). */
+export const termGranted = z.object({
+  ...envelope("term_granted"),
+  sessionId: termSessionId,
+  connId: remoteId,
+  workerEphPub: ephPub,
+  resumeToken: z.base64url().max(64),
+});
+
+export const termRevoked = z.object({
+  ...envelope("term_revoked"),
+  sessionId: termSessionId,
+  connId: remoteId,
+  reason: z.enum(["taken", "idle", "disabled", "device_revoked", "input_rejected", "closed", "expired"]),
+});
+
+export const termPairResult = z.object({
+  ...envelope("term_pair_result"),
+  pairId: remoteId,
+  ok: z.boolean(),
+  deviceId: remoteId.optional(),
+  reason: z.enum(["expired", "bad_tag", "denied", "timeout", "user_mismatch", "disabled"]).optional(),
 });
 
 export const workerToHub = z.discriminatedUnion("type", [
@@ -619,6 +800,12 @@ export const workerToHub = z.discriminatedUnion("type", [
   termOpened,
   termOutput,
   termExit,
+  termState,
+  termDenied,
+  termEvent,
+  termGranted,
+  termRevoked,
+  termPairResult,
 ]);
 export const hubToWorker = z.discriminatedUnion("type", [
   welcome,
@@ -640,6 +827,13 @@ export const hubToWorker = z.discriminatedUnion("type", [
   termInput,
   termResize,
   termClose,
+  termStart,
+  termControl,
+  termDetach,
+  termAck,
+  termDisable,
+  termPair,
+  termDeviceRevoke,
 ]);
 export type WorkerToHub = z.output<typeof workerToHub>;
 export type HubToWorker = z.output<typeof hubToWorker>;
