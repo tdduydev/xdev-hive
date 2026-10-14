@@ -246,7 +246,12 @@ describe("memory: ghi và phân quyền", () => {
       expect(pending.map((x) => x.id)).toContain(m.id);
       await as("tmember", (tx, p) => approveMemory(tx, p, m.id));
       expect(await hits()).toHaveLength(1);
-      const { rows } = await admin.query("select data from hive.audit_log where target_id = $1", [m.id]);
+      // Sau khi duyệt có cả memory.write và memory.approve; thứ tự dòng audit không được bảo đảm.
+      const { rows } = await admin.query(
+        "select data from hive.audit_log where target_id = $1 and action = 'memory.write'",
+        [m.id],
+      );
+      expect(rows).toHaveLength(1);
       expect(rows[0].data).toMatchObject({ status: "pending", source: "machine" });
     });
 

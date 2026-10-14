@@ -9,7 +9,7 @@ import type {
   SdlcSyncState,
   TaskStatus,
 } from "@xdev-hive/contracts";
-import type { SdlcItemTab } from "./env.tsx";
+import type { SdlcItemTab } from "./types.ts";
 
 /** Chữ của màn AI SDLC (AppSdlc*.dc.html). T051–T052 thêm phần chi tiết, bản tách, truy vết vào đây. */
 const vi = {
