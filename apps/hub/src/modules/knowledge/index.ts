@@ -23,6 +23,7 @@ export {
   assistOutput,
   assistScope,
   draftForAgent,
+  saveDraft,
 } from "./editor.ts";
 export { createOpenAIEmbedder, type Embedder, EmbedderError } from "./embedder.ts";
 export { type ImportReport, importLegacy, type LegacyImportOptions } from "./legacy-import.ts";
@@ -47,7 +48,7 @@ export {
 } from "./memory.ts";
 export { approveProposal, createProposal, listProposals, proposeDoc, rejectProposal } from "./proposals.ts";
 export { type ReviewJobDeps, registerReviewWorker, remindOverdue } from "./review-jobs.ts";
-export { flatGates, requiredApprovals, requirementsOf, slaOf } from "./review-rules.ts";
+export { docTypeOf, flatGates, gateApplies, requiredApprovals, requirementsOf, slaOf } from "./review-rules.ts";
 export {
   AI_AUTO_ACTOR,
   type AuthorFixRequest,

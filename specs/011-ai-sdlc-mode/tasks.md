@@ -118,14 +118,14 @@
   - **Scope**: `apps/hub/src/modules/tasks/{tasks.ts,router.ts,index.ts,dependencies.ts,dependencies.db.test.ts}`
   - **Phụ thuộc**: T004 · **Mức**: vừa
 
-- [ ] T011 🎯 [P] [US8] [US1] Chế độ và gợi ý cỡ
+- [x] T011 🎯 [P] [US8] [US1] Chế độ và gợi ý cỡ
   - `modes.ts`: preset + chế độ tự tạo trong phạm vi (đội > tổ chức), lưu (kiểm chính sách agent qua `governance`),
     xoá, chạy thử; `suggest.ts` thuần (nhãn issue, độ dài, từ khoá rủi ro của dự án → cỡ, chế độ cho phép phù hợp).
   - Test: `suggest.test.ts`; `modes.db.test.ts` (preset chỉ đọc, đường dẫn cấm, quyền `sdlc.modes.write`).
   - **Scope**: `apps/hub/src/modules/sdlc/{modes.ts,suggest.ts,suggest.test.ts,modes.db.test.ts}`
   - **Phụ thuộc**: T002, T004 · **Mức**: vừa
 
-- [ ] T012 🎯 [US1] [US3] Hạng mục và máy trạng thái giai đoạn
+- [x] T012 🎯 [US1] [US3] Hạng mục và máy trạng thái giai đoạn
   - `items.ts`: tạo (số `NNN`, slug, chụp chế độ và cài đặt, dòng `sdlc_item_projects` `home`, tài liệu hub theo khuôn,
     `sdlc_artifacts` + `sdlc_artifact_syncs` nguồn, `sdlc_item_phases`), từ issue (chống trùng, bình luận lên issue qua
     `scm`), tạm dừng/tiếp tục/huỷ, đổi chế độ khi chưa có baseline. Bản này chỉ dự án chính; T015 thêm dự án tham gia và
@@ -171,7 +171,7 @@
   - **Scope**: `apps/hub/src/modules/knowledge/{reviews.ts,review-rules.ts,review-jobs.ts,editor.ts,access.ts,index.ts,review-rules.test.ts,reviews.db.test.ts,access.db.test.ts}`
   - **Phụ thuộc**: T001, T003 · **Mức**: nặng
 
-- [ ] T015 🎯 [US16] Hạng mục nhiều dự án: dự án tham gia, quyền, cổng theo đội
+- [x] T015 🎯 [US16] Hạng mục nhiều dự án: dự án tham gia, quyền, cổng theo đội
   - `participants.ts`: `items.create` nhận `participants` (≤ 7 + dự án chính; cùng tổ chức; đã bật AI SDLC; chụp cài đặt
     từng dự án); `items.projects.add|remove` (D19: bỏ chỉ khi chưa có task đã chạy, huỷ task `todo`); audit, thông báo
     `sdlc.project_added`.
