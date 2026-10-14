@@ -39,7 +39,7 @@ export {
 } from "./memory.ts";
 export { approveProposal, createProposal, listProposals, proposeDoc, rejectProposal } from "./proposals.ts";
 export { type ReviewJobDeps, registerReviewWorker, remindOverdue } from "./review-jobs.ts";
-export { flatGates, requiredApprovals, slaOf } from "./review-rules.ts";
+export { docTypeOf, flatGates, gateApplies, requiredApprovals, slaOf } from "./review-rules.ts";
 export {
   aiGateContext,
   applyAiResult,
