@@ -45,3 +45,15 @@ Không chép style sang chỗ khác. Màu đi theo token (`tokens.json`), đổi
 - Font mono 13px, thanh trên có ô chọn cỡ chữ (11–18px, nhớ trong `localStorage`). Tắt ligature vì xterm vẽ từng ô.
 - Link `http(s)` trong output bấm được (addon web-links); bề rộng ô theo Unicode 11 cho emoji và chữ Việt.
 - Tiến trình trong PTY chạy với `TERM=xterm-256color`, `COLORTERM=truecolor`, `FORCE_COLOR=1`, `CLICOLOR=1`, `CLICOLOR_FORCE=1` và `LS_COLORS` mặc định (chỉ dùng 16 màu ANSI nên theme quyết định màu thật). Không đặt `NO_COLOR`.
+
+### Terminal Leader trên web
+
+- Dùng cùng bảng màu (`terminalTheme` đọc `--card`, `--foreground`, `--primary` đang áp dụng; đổi sáng/tối thì đổi theme tại chỗ,
+  không dựng lại terminal), cùng font, cỡ chữ 11–18px (nhớ ở `localStorage` `hive.terminal.fontSize`), Unicode 11.
+- Chữ trong terminal là output của CLI nên không tin: không bật OSC 52 (CLI không ghi được vào clipboard; chuỗi bị nuốt), link
+  `http(s)` bấm được nhưng hỏi xác nhận rồi mới mở tab mới (`noopener`).
+- Kết nối: Đang kết nối, Đã kết nối, "Mất kết nối, đang nối lại…" (backoff 1 → 10 s, vé mới mỗi lần, gửi `resume` sau `seq` cuối),
+  "Phiên đã kết thúc" kèm lý do. Phím gõ lúc mất kết nối bị bỏ, không xếp hàng. Phiên đã đóng phát lại bản ghi ở đúng cỡ cột và
+  dòng của lúc chạy (cuộn khi khung nhỏ hơn).
+- Người xem (không phải chủ phiên) không gõ được; `disableStdin` bật và hub cũng từ chối khung `in`.
+- 360 px: terminal cao 60% màn; khung đề xuất/nhật ký thành ngăn mở bằng nút dưới terminal.
