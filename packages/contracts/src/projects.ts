@@ -151,6 +151,20 @@ const tokenSavingShape = {
   rtk: z.boolean(),
   /** Gắn MCP CodeGraph (`codegraph_explore`) và giữ chỉ mục code khi máy chạy run có codegraph. */
   codegraph: z.boolean(),
+  /**
+   * Worker dựng sẵn danh sách file liên quan tới task (đường dẫn, symbol nhắc tới, file hay đổi cùng trong git log, tìm
+   * theo từ khoá) và tiêm vào đầu run, vì agent tốn phần lớn chi phí để dò repo trước lần sửa đầu. Mọi CLI.
+   */
+  contextPack: z.boolean(),
+  /** Số lệnh dò repo (find, ls -R, grep -r…) được chạy trước lần sửa đầu; quá thì hook từ chối. 0 là tắt; chỉ Claude Code. */
+  exploreBudget: z.number("Nhập một số.").int("Nhập số nguyên.").min(0, "Từ 0 đến 50.").max(50, "Từ 0 đến 50."),
+  /** Output một tool dài hơn chừng này ký tự thì bị cắt (giữ đầu, cuối, dòng lỗi). 0 là tắt; chỉ Claude Code. */
+  toolOutputMaxChars: z
+    .number("Nhập một số.")
+    .int("Nhập số nguyên.")
+    .min(0, "Nhập 0 (tắt) hoặc từ 2.000 ký tự.")
+    .max(200_000, "Tối đa 200.000 ký tự.")
+    .refine((v) => v === 0 || v >= 2000, "Nhập 0 (tắt) hoặc từ 2.000 ký tự."),
 };
 
 // rtk và codegraph có mặc định vì settings đã lưu trước khi có hai mục này không chứa chúng. Mặc định chỉ đặt ở bản
@@ -171,6 +185,9 @@ export type TokenSaving = z.output<typeof tokenSavingSettings>;
 const storedTokenSaving = tokenSavingSettings.extend({
   autocompactWindow: tokenSavingSettings.shape.autocompactWindow.default(200_000),
   allowWeb: tokenSavingSettings.shape.allowWeb.default(false),
+  contextPack: tokenSavingSettings.shape.contextPack.default(true),
+  exploreBudget: tokenSavingSettings.shape.exploreBudget.default(4),
+  toolOutputMaxChars: tokenSavingSettings.shape.toolOutputMaxChars.default(12_000),
 });
 
 export const defaultTokenSaving: TokenSaving = {
@@ -183,6 +200,9 @@ export const defaultTokenSaving: TokenSaving = {
   allowWeb: false,
   rtk: true,
   codegraph: true,
+  contextPack: true,
+  exploreBudget: 4,
+  toolOutputMaxChars: 12_000,
 };
 
 /** Cấp độ task: nhẹ (chữ, tài liệu, sửa nhỏ), vừa (một màn, CRUD), nặng (nhiều module, giao thức, bảo mật). */

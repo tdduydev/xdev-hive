@@ -22,6 +22,8 @@ type Usage struct {
 	Explore *ExploreUsage `json:"explore,omitempty"`
 	// RTK là số lệnh qua RTK và token output RTK ước bớt được trong lần thử; chỉ có khi run dùng RTK (tools.go).
 	RTK *RTKUsage `json:"rtk,omitempty"`
+	// Guard là số của context pack, ngân sách khảo sát và cắt output (guard.go); chỉ có khi run dùng chúng.
+	Guard *GuardUsage `json:"guard,omitempty"`
 }
 
 // ExploreUsage là usage dùng để khảo sát repo trước lần sửa file đầu tiên. Edited false là agent chưa sửa gì, số
@@ -38,7 +40,7 @@ type ExploreUsage struct {
 func (u Usage) equal(o Usage) bool {
 	return u.InputTokens == o.InputTokens && u.OutputTokens == o.OutputTokens &&
 		u.CacheReadTokens == o.CacheReadTokens && u.CacheWriteTokens == o.CacheWriteTokens &&
-		eqPtr(u.CostUSD, o.CostUSD) && eqPtr(u.Turns, o.Turns) && eqPtr(u.Model, o.Model) && eqPtr(u.Explore, o.Explore) && eqPtr(u.RTK, o.RTK)
+		eqPtr(u.CostUSD, o.CostUSD) && eqPtr(u.Turns, o.Turns) && eqPtr(u.Model, o.Model) && eqPtr(u.Explore, o.Explore) && eqPtr(u.RTK, o.RTK) && eqPtr(u.Guard, o.Guard)
 }
 
 func eqPtr[T comparable](a, b *T) bool {
