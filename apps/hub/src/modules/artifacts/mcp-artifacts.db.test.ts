@@ -506,14 +506,57 @@ describe("run có task", () => {
     expect(audit.at(-1)?.data).toMatchObject({ runId: run.runId });
   });
 
-  it("loại react bị tắt tới khi T014 bật biên dịch", async () => {
-    const run = await seedRun("code", org.user("tmember"));
-    const denied = await call(run.token, "artifact_create", {
+  it("run code nhận react và lưu bản JSX đã biên dịch", async () => {
+    const run = await seedRun("code", org.user("tmember"), { task: true });
+    const content = "export default () => <p>Xin chào</p>;";
+    const created = await call(run.token, "artifact_create", {
       type: "react",
       title: "R",
-      content: "export default () => null",
+      content,
     });
-    expect(denied.isError).toBe(true);
+    expect(created.isError).toBe(false);
+    const out = created.json();
+    expect(out).toMatchObject({ version: 1, url: `/artifacts/${out.id}/v/1` });
+    expect(out).not.toHaveProperty("compileError");
+    const [version] = await rows(
+      "select content, compiled, compile_error from hive.artifact_versions where artifact_id = $1 and version = 1",
+      [out.id],
+    );
+    expect(version).toMatchObject({
+      content,
+      compiled: expect.stringContaining('from "react/jsx-runtime"'),
+      compile_error: null,
+    });
+    expect(version.compiled).not.toContain("<p>");
+  });
+
+  it("chính sách tổ chức tắt react thì tool từ chối và không lưu artifact", async () => {
+    const run = await seedRun("code", org.user("tmember"), { task: true });
+    const [original] = await rows("select policy from hive.agent_policies where org_id = $1", [org.orgId]);
+    const reactCount = async () =>
+      (await rows("select count(*)::int as n from hive.artifacts where org_id = $1 and type = 'react'", [org.orgId]))[0]
+        .n;
+    const before = await reactCount();
+    await admin.query(
+      `update hive.agent_policies set policy = jsonb_set(policy, '{artifacts,types}', '["markdown"]'::jsonb)
+       where org_id = $1`,
+      [org.orgId],
+    );
+    try {
+      const denied = await call(run.token, "artifact_create", {
+        type: "react",
+        title: "R",
+        content: "export default () => <p/>;",
+      });
+      expect(denied.isError).toBe(true);
+      expect(denied.text).toContain(artifactError("ARTIFACT_TYPE_DISABLED").message);
+      expect(await reactCount()).toBe(before);
+    } finally {
+      await admin.query("update hive.agent_policies set policy = $1 where org_id = $2", [
+        JSON.stringify(original.policy),
+        org.orgId,
+      ]);
+    }
   });
 });
 
