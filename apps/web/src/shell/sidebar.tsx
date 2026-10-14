@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import { useState } from "react";
@@ -42,6 +43,7 @@ const text: Dict<{
   expand: string;
   collapse: string;
   awaitingPrs: (n: number) => string;
+  openQuestions: (n: number) => string;
 }> = {
   vi: {
     nav: "Điều hướng chính",
@@ -49,6 +51,7 @@ const text: Dict<{
     expand: "Mở rộng điều hướng",
     collapse: "Thu gọn điều hướng",
     awaitingPrs: (n) => `${n} PR đang chờ bạn duyệt`,
+    openQuestions: (n) => `${n} câu hỏi đang chờ bạn trả lời`,
   },
   en: {
     nav: "Main navigation",
@@ -56,6 +59,7 @@ const text: Dict<{
     expand: "Expand navigation",
     collapse: "Collapse navigation",
     awaitingPrs: (n) => `${n} PRs awaiting your review`,
+    openQuestions: (n) => `${n} questions awaiting your answer`,
   },
 };
 
@@ -91,6 +95,27 @@ function CodeReviewsBadge() {
     <span className="ml-auto shrink-0 rounded-md bg-accent px-1.5 text-xs font-medium text-accent-foreground tabular-nums">
       <span className="sr-only">{t.awaitingPrs(awaiting)}</span>
       <span aria-hidden="true">{countLabel(awaiting)}</span>
+    </span>
+  );
+}
+
+function SdlcQuestionsBadge() {
+  const t = useT(text);
+  const { current } = useOrgs();
+  const count = useQuery({
+    queryKey: ["org", current?.org.id ?? "none", "sdlc", "questions", "count"],
+    queryFn: () => (current ? current.api.sdlc.questions.count.call({}) : Promise.resolve({ open: 0 })),
+    enabled: !!current,
+    refetchInterval: 60_000,
+    // Hub chưa có AI SDLC thì bỏ số, không làm menu chờ thử lại.
+    retry: false,
+  });
+  const open = count.data?.open ?? 0;
+  if (open === 0) return null;
+  return (
+    <span className="ml-auto shrink-0 rounded-md bg-accent px-1.5 text-xs font-medium text-accent-foreground tabular-nums">
+      <span className="sr-only">{t.openQuestions(open)}</span>
+      <span aria-hidden="true">{countLabel(open)}</span>
     </span>
   );
 }
@@ -156,6 +181,7 @@ function Group({
                 >
                   <ItemBody item={item} />
                   {item.badge === "codeReviews" && <CodeReviewsBadge />}
+                  {item.badge === "sdlcQuestions" && <SdlcQuestionsBadge />}
                 </SidebarMenuSubButton>
               ) : (
                 <DisabledItem item={item} sub />
