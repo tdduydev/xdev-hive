@@ -1,4 +1,12 @@
 import { z } from "zod";
+import {
+  ARTIFACT_LIMITS,
+  ARTIFACT_MVP_SCOPES,
+  ARTIFACT_MVP_TYPES,
+  ARTIFACT_TYPES,
+  artifactScope,
+  artifactType,
+} from "./artifacts.ts";
 import { orgRoute } from "./common.ts";
 import { runPermissionMode } from "./projects.ts";
 
@@ -124,6 +132,66 @@ export const agentMemoryPolicy = z.object({
 export type AgentMemoryPolicy = z.output<typeof agentMemoryPolicy>;
 export const DEFAULT_AGENT_MEMORY_POLICY: AgentMemoryPolicy = { mode: "propose", maxPerRun: 5 };
 
+/**
+ * Artifact của tổ chức (specs/012 FR-122, C10). Mọi trường có mặc định để chính sách lưu trước spec 012 vẫn đọc được.
+ * Tổ chức chỉ hạ được: hub hạ tiếp các số về trần người vận hành (`HIVE_ARTIFACT_*`) khi đọc. Không có danh sách CDN
+ * (C8) và không có chế độ quét bí mật (C11: luôn chặn), nên không trường nào ở đây nới được khung cách ly.
+ */
+export const orgArtifactPolicy = z.object({
+  enabled: z.boolean().default(true),
+  types: z
+    .array(artifactType)
+    .max(ARTIFACT_TYPES.length)
+    .default(() => [...ARTIFACT_MVP_TYPES]),
+  scopes: z
+    .array(artifactScope)
+    .max(artifactScope.options.length)
+    .default(() => [...ARTIFACT_MVP_SCOPES]),
+  maxVersionBytes: z
+    .number()
+    .int()
+    .min(1024)
+    .max(ARTIFACT_LIMITS.versionBytesCeiling)
+    .default(ARTIFACT_LIMITS.defaultVersionBytes),
+  maxBlobBytes: z
+    .number()
+    .int()
+    .min(1024)
+    .max(ARTIFACT_LIMITS.blobBytesCeiling)
+    .default(ARTIFACT_LIMITS.defaultBlobBytes),
+  maxVersions: z
+    .number()
+    .int()
+    .min(1)
+    .max(ARTIFACT_LIMITS.maxVersionsCeiling)
+    .default(ARTIFACT_LIMITS.defaultMaxVersions),
+  runLimits: z
+    .object({
+      artifacts: z.number().int().min(0).max(1000).default(ARTIFACT_LIMITS.defaultRunArtifacts),
+      versions: z.number().int().min(0).max(10_000).default(ARTIFACT_LIMITS.defaultRunVersions),
+    })
+    .prefault({}),
+  orgQuotaBytes: z
+    .number()
+    .int()
+    .min(1024 * 1024)
+    .max(ARTIFACT_LIMITS.orgQuotaBytesCeiling)
+    .default(ARTIFACT_LIMITS.defaultOrgQuotaBytes),
+  publicLinks: z
+    .object({
+      enabled: z.boolean().default(true),
+      maxDays: z
+        .number()
+        .int()
+        .min(1)
+        .max(ARTIFACT_LIMITS.publicLinkMaxDays)
+        .default(ARTIFACT_LIMITS.publicLinkMaxDays),
+    })
+    .prefault({}),
+});
+export type OrgArtifactPolicy = z.output<typeof orgArtifactPolicy>;
+export const DEFAULT_ORG_ARTIFACT_POLICY: OrgArtifactPolicy = orgArtifactPolicy.parse({});
+
 export const agentPolicyInput = z.object({
   allowedModels,
   /** Hub không để CLI tự chọn model: run không chỉ định model thì dùng model đầu trong danh sách của CLI đó. */
@@ -148,6 +216,12 @@ export const agentPolicyInput = z.object({
   sdlc: orgSdlcPolicy.optional(),
   /** Có mặc định vì chính sách đã lưu trước ADR 0022 không có mục này. */
   agentMemory: agentMemoryPolicy.default(() => ({ ...DEFAULT_AGENT_MEMORY_POLICY })),
+  /**
+   * Artifact (specs/012). Bỏ trống như `sdlc`: trang chính sách chưa biết mục này gửi lên không có nó, nếu điền mặc định
+   * ở đây thì mỗi lần lưu trang đó sẽ xoá cấu hình artifact đã đặt qua API. Hub giữ giá trị đã lưu khi thiếu, và đọc
+   * thiếu thì dùng `DEFAULT_ORG_ARTIFACT_POLICY`.
+   */
+  artifacts: orgArtifactPolicy.optional(),
 });
 export type AgentPolicyInput = z.input<typeof agentPolicyInput>;
 
@@ -168,6 +242,8 @@ export const agentPolicy = agentPolicyInput.extend({
   defaultTemplates: z.object({ agents: z.string(), claude: z.string(), mcp: z.string() }),
   /** Hub chưa đọc mục này thì không trả; client dùng `DEFAULT_ORG_SDLC_POLICY`. */
   sdlc: orgSdlcPolicy.optional(),
+  /** Hub chưa đọc mục này thì không trả; client dùng `DEFAULT_ORG_ARTIFACT_POLICY`. */
+  artifacts: orgArtifactPolicy.optional(),
 });
 export type AgentPolicy = z.output<typeof agentPolicy>;
 
