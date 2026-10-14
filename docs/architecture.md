@@ -2,9 +2,8 @@
 
 Bản thiết kế ngày 11/10/2026, đối chiếu lại với code ngày 12/10/2026 (commit `c550537`). Phần thiết kế chưa có trong code ghi **[Chưa làm]**. Hiện trạng đầy đủ, bằng tiếng Anh, ở [add.md](add.md). Các lựa chọn công nghệ và phạm vi đã chốt nằm ở [decisions.md](decisions.md). Nguồn tham khảo ghi ở cuối file. Điều tự suy ra, chưa có nguồn, ghi **[Suy luận]**.
 
-Cập nhật riêng spec 009 ngày 14/10/2026, đối chiếu `origin/main` tại `bf891f4`: module `codereview` đã có,
-nhưng nối hub (T070) và gửi/đánh giá lệnh ở hub (T091) chưa merge. Luồng ở mục 4.3 ghi rõ phần còn chờ;
-không coi quy trình Code đã chạy đầy đủ trên hub.
+Cập nhật riêng spec 009 ngày 14/10/2026, đối chiếu `origin/main` tại `8676c4f`: hub đã nối module
+`codereview` (T070) và gửi/đánh giá lệnh kiểm (T091). Luồng thực tế ở mục 4.3; commit status còn chờ T101.
 
 ## 1. Tổng quan
 
@@ -77,7 +76,7 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `scm` | GitHub App, GitLab, kết nối Git của tổ chức, webhook vào, mở PR/MR | `scm_connections`, `webhook_deliveries` |
 | `tasks` | Task, plan mode, nhận việc từ issue | `tasks`, `plans` |
 | `runs` | Máy trạng thái của run, lease, chính sách kết quả, review chéo, SSE | `runs`, `run_events`, `run_logs`, `run_leases` |
-| `codereview` | Phiên review PR do run code mở: checkpoint quy tắc, AI, CI, người duyệt; trả lại, vòng sửa, SLA và cổng hàng merge. **[Chưa làm]** nối router/job/deps ở hub (T070) | `code_reviews`, `code_review_gate_runs` |
+| `codereview` | Phiên review PR do run code mở: checkpoint quy tắc, AI, CI, người duyệt; trả lại, vòng sửa, SLA và cổng hàng merge. | `code_reviews`, `code_review_gate_runs` |
 | `fleet` | Máy, đăng ký, cổng WSS, phiên bản worker | `machines`, `machine_tokens`, `registration_tokens` |
 | `sandbox` | Image môi trường, allowlist mạng, cấu hình sandbox của tổ chức | `sandbox_org_settings`, `env_images`, `egress_allowlists` |
 | `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, bộ skill mặc định của Hive (`packages/skill-pack`, bật/tắt theo tổ chức và dự án), đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `skill_pack_settings`, `proposals`, `legacy_*` |
@@ -169,11 +168,11 @@ stateDiagram-v2
 
 - Mọi chuyển trạng thái ghi một dòng `run_events` và gọi `pg_notify('hive_runs', runId)` trong cùng transaction. **[Chưa làm]** chuyển sang `awaiting_input`: hub chưa xử lý `approval_needed`.
 - Mỗi lần thử có `attempt` riêng. Hub từ chối mọi gói của `attempt` cũ (fencing), nên worker treo rồi sống lại không ghi đè được run đã giao lại. [9]
-- **Chính sách kết quả** chạy ở hub, ở bước `verifying`, theo cấu hình dự án ([decisions.md](decisions.md)). **[Chưa làm]** kiểm tra `command` và `ci`: hub nhận cấu hình nhưng chưa chạy, kết quả thành `needs_review`. Hub lưu `policy_snapshot` vào run để kết quả không đổi khi cấu hình đổi sau.
+- **Chính sách kết quả** chạy ở hub, ở bước `verifying`, theo cấu hình dự án ([decisions.md](decisions.md)). `command` được gửi cho worker và đánh giá từ báo cáo; thiếu kết quả thì `needs_review`. **[Chưa làm]** kiểm tra `ci` của chính sách kết quả; checkpoint CI của quy trình Code chạy riêng. Hub lưu `policy_snapshot` vào run để kết quả không đổi khi cấu hình đổi sau.
 - **Review chéo:** bước `review` tạo một run con loại `review` trên cùng nhánh, với CLI ghi trong kiểm tra review (ví dụ Codex viết, Claude review; trùng CLI run cha vẫn được, để dự án chỉ có một loại CLI vẫn dùng được). Run cha chờ kết quả.
 
 Quy trình Code khớp run thay riêng kiểm tra review chéo và việc tự vào hàng merge; các kiểm tra khác của chính sách
-kết quả vẫn là cổng vào. Cơ chế trong `runs` đã có (T021), còn phụ thuộc nối hub T070; xem mục 4.3.
+kết quả vẫn là cổng vào; xem mục 4.3.
 
 ### 4.2 Giao job và lease
 
@@ -188,7 +187,7 @@ trang Quy trình duyệt với tài liệu. `knowledge.review_workflows` lưu `s
 và cấu hình Code; `codereview` sở hữu phiên và lượt checkpoint riêng, không dùng `review_instances` của tài liệu.
 Chỉ PR do run Hive mở thuộc phạm vi này; phê duyệt trên GitHub/GitLab không tính vào checkpoint người duyệt.
 
-Luồng đã có ở module, **[Chưa làm]** nối đầy đủ vào hub (T070):
+Luồng thực tế trên hub:
 
 1. Run code kết thúc `succeeded` hoặc `needs_review`, có PR và khớp quy trình theo dự án, nhánh đích, loại task,
    đường dẫn đổi → bỏ kiểm tra `outcome.review` (ghi `skipped`), mở phiên tại `head_sha`, chưa tự vào hàng merge.
@@ -202,16 +201,20 @@ Luồng đã có ở module, **[Chưa làm]** nối đầy đủ vào hub (T070)
    Commit mới thay phiên cũ bằng `superseded`, mở vòng mới với bản chụp vòng đầu; kiểm tra tự động chạy lại.
    Phê duyệt người trước checkpoint trả lại được giữ, trừ khi bật `dismissStaleApprovals`.
 4. Phiên `approved` vào hàng merge theo chế độ hiệu lực (`project`, `auto`, `manual`); hàng merge phải chờ nếu
-   phiên chưa duyệt. Webhook merge/đóng PR kết thúc phiên thành `merged`/`cancelled`. Các handler và cổng merge đã có,
-   còn chờ T070 đăng ký. Mọi quyết định gắn SHA đã xem; quyết thay checkpoint tự động cần quyền và lý do.
+   phiên chưa duyệt. Webhook push tay mở vòng mới; merge/đóng PR kết thúc phiên thành `merged`/`cancelled`.
+   Mọi quyết định gắn SHA đã xem; quyết thay checkpoint tự động cần quyền và lý do.
 
-`runs` import `codereview/index.ts`; `codereview` không import ngược `runs`. `main.ts` sẽ tiêm `startReviewRuns`,
-`queueFixRun`, đăng ký router, job `codereview`, nhắc SLA và handler SCM; `catalog` nhận `reviewGate` qua deps để
-tránh vòng import. Mọi dữ liệu phiên đi qua `withTenant()`, hai bảng bật và ép RLS.
+`runs` import `codereview/index.ts`; `codereview` không import ngược `runs`. `app.ts` đăng ký router
+`codeReviews`, tiêm cổng tạo run và đọc bằng chứng. Vai trò `jobs` trong `main.ts` tiêm `startReviewRuns`,
+`queueFixRun`, `runEvidence`, đăng ký worker `codereview` (CI hỏi lại mỗi 2 phút, tối đa 60 lần),
+cron `codereview-sla` mỗi 10 phút và handler SCM. `catalog` nhận `reviewGate` qua deps để tránh vòng import.
+Mọi dữ liệu phiên đi qua `withTenant()`, hai bảng bật và ép RLS.
 
 Worker đã hỗ trợ `spec.checks.commands`, chạy lệnh trong worktree run code sau agent, trước khi đẩy và trả
-`report.commands` (mã thoát, thời gian, đuôi output đã che bí mật). **[Chưa làm]** hub gửi lệnh từ quy trình và
-`outcome.command`, đánh giá kết quả chính sách (T091); RUN-07 vẫn một phần. Thiếu kết quả (worker cũ hoặc vòng do
+`report.commands` (mã thoát, thời gian, đuôi output đã che bí mật). Hub gom lệnh từ quy trình khớp lúc giao job
+và `outcome.command` trong bản chụp chính sách, bỏ trùng theo lệnh đã trim, lấy thời hạn ngắn nhất. Hub đánh giá
+mã thoát: 0 đạt, khác 0 không đạt; kiểm tra bắt buộc không đạt làm run `failed`, kiểm tra mềm làm `needs_review`.
+RUN-07 vẫn một phần vì `outcome.ci` chưa được đánh giá. Thiếu kết quả (worker cũ hoặc vòng do
 push tay) thì checkpoint lệnh chờ người xem, không dùng kết quả của SHA cũ. Q1 đã chốt status `xdev-hive/review`
 và gợi ý bảo vệ nhánh, nhưng phần triển khai status còn ở T101; không dùng approve của nhà cung cấp thay checkpoint.
 
