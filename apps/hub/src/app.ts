@@ -229,7 +229,7 @@ export function createApp({
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),
-    chat: chatRouter({ ...shared, ...chatApis, publicUrl }),
+    chat: chatRouter({ ...shared, ...chatApis, publicUrl, telegramPollingBotIds: config.telegramPollingBotIds }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({
       auth,
@@ -296,7 +296,23 @@ export function createApp({
     );
   // Telegram và Slack gọi vào đây không có phiên người dùng; mỗi route tự kiểm secret/chữ ký của bot theo id trong URL.
   if (pool) {
-    const chat = { pool, masterKey: config.masterKey, runs, jobs, publicUrl, ...chatApis };
+    const chat = {
+      pool,
+      masterKey: config.masterKey,
+      runs,
+      jobs,
+      publicUrl,
+      ...chatApis,
+      telegramPollingBotIds: config.telegramPollingBotIds,
+      codeReviews: {
+        ...shared,
+        jobs,
+        publicUrl,
+        startReviewRuns: runs?.startReviewRuns,
+        queueFixRun: runs?.queueFixRun,
+        runEvidence: runs?.runEvidence,
+      },
+    };
     app.post("/hooks/chat/telegram/:botId", (c) => handleTelegramWebhook(chat, c.req.param("botId"), c.req.raw));
     for (const route of ["events", "commands", "interact"] as const) {
       app.post(`/hooks/chat/slack/:botId/${route}`, (c) =>
