@@ -253,6 +253,9 @@ export const sdlcArtifactSyncs = hive
       syncError: text("sync_error"),
       syncAttempts: integer("sync_attempts").notNull().default(0),
       syncedAt: timestamp("synced_at", { withTimezone: true }),
+      /** PR đồng bộ của repo (cách `pr`); giữ sau khi merge để màn hạng mục còn link. */
+      prNumber: integer("pr_number"),
+      prUrl: text("pr_url"),
     },
     (t) => [
       primaryKey({ columns: [t.artifactId, t.projectId] }),

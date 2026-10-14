@@ -26,7 +26,8 @@ export async function mapDomainErrors<T>({ next }: { next: () => Promise<T> }): 
 }
 
 function toORPC(code: string, error: ForbiddenError | NotFoundError | ConflictError | BadRequestError) {
-  return new ORPCError(code, { message: error.message, data: { code: error.code }, cause: error });
+  const extra = error instanceof ConflictError ? error.data : undefined;
+  return new ORPCError(code, { message: error.message, data: { ...extra, code: error.code }, cause: error });
 }
 
 /** Message mặc định của oRPC là tiếng Anh; nêu trường sai đầu tiên để người dùng sửa được ngay. */

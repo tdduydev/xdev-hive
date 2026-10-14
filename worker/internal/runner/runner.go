@@ -42,15 +42,17 @@ const KindBrief = "brief"
 const KindSkillProposal = "skill_proposal"
 
 // Capabilities là việc ngoài run code mà worker khai với hub trong hello. Hub chỉ giao run doccheck, docassist, brief,
-// skill_proposal cho worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi.
-var Capabilities = []string{KindDocCheck, KindDocAssist, KindBrief, KindSkillProposal}
+// skill_proposal, sdlc cho worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi (và
+// với sdlc còn đẩy nhánh).
+var Capabilities = []string{KindDocCheck, KindDocAssist, KindBrief, KindSkillProposal, KindSdlc}
 
 // NeedsFull: CLI chỉ chạy run code khi có toàn quyền (agy không giới hạn được trong thư mục làm việc); run chỉ đọc thì
 // không cần.
 func NeedsFull(cli, kind string) bool { return cli == "antigravity" && !readOnlyKind(kind) }
 
 // readOnlyKind là nơi duy nhất quyết định run nào chỉ đọc: CLI không nhận cờ ghi (kể cả khi dự án bật quyền full),
-// lệnh override phải tự khai chỉ đọc, và worker không push. Thêm kind mới thì quyết định ở đây trước.
+// lệnh override phải tự khai chỉ đọc, và worker không push. Thêm kind mới thì quyết định ở đây trước. KindSdlc cố ý không
+// nằm ở đây: agent phải ghi được tài liệu vào worktree; việc không push của nó do nhánh riêng trong Run bảo đảm.
 func readOnlyKind(kind string) bool {
 	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck || kind == KindDocAssist || kind == KindBrief || kind == KindSkillProposal
 }
@@ -96,6 +98,8 @@ type Job struct {
 	// Checks là lệnh kiểm của quy trình review code (spec.checks.commands); chạy sau khi agent xong, trước khi đẩy.
 	// Chỉ run code dùng; run chỉ đọc bỏ qua.
 	Checks []CheckCommand
+	// SDLC là spec.sdlc của run KindSdlc: file cần ghi trước khi chạy và file cần thu về sau khi chạy; nil với kind khác.
+	SDLC *SdlcJob
 	// BriefSHA là commit nhánh chính mà brief hiện tại của dự án đã đọc (spec.brief.sha); rỗng là dự án chưa có brief.
 	BriefSHA string
 	// TaskText là tiêu đề, mô tả và kế hoạch đã duyệt của task (spec.taskText), nguồn từ khoá của context pack; rỗng
@@ -150,6 +154,8 @@ type Result struct {
 	Commands []CommandResult `json:"commands,omitempty"`
 	// Repo đi vào report.repo; luôn có với run do runner chạy (null từng trường khi không đo được).
 	Repo *RepoReport `json:"repo,omitempty"`
+	// Artifacts đi vào report.artifacts của run sdlc; vắng ở mọi kind khác.
+	Artifacts []SdlcArtifact `json:"artifacts,omitempty"`
 }
 
 // Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job. Input là InputStreamJSON khi
@@ -370,7 +376,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
 			return err
 		}
-	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist || job.Kind == KindBrief || job.Kind == KindSkillProposal {
+	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist || job.Kind == KindBrief || job.Kind == KindSkillProposal || job.Kind == KindSdlc {
 		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
 		// của run code.
 		if err := addWorktreeAt(ctx, src.lock, src.dir, work, "--detach", work, "origin/"+job.BaseBranch); err != nil {
@@ -416,6 +422,13 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			err = runSetup(ctx, work, job.SetupScript, mergeMap(job.Env, job.SetupEnv))
 		}
 		if err != nil {
+			result = &Result{Status: "failed", Error: err.Error()}
+			return err
+		}
+	}
+	if job.Kind == KindSdlc && job.SDLC != nil {
+		// Sau setup để script cài đặt của dự án không xoá mất file vừa ghi; trước CLI để agent thấy chúng ngay.
+		if err := writeSdlcSeed(work, job.SDLC.Seed); err != nil {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
@@ -625,7 +638,8 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		result = &Result{Status: status, Error: e.Error()}
 		return e
 	}
-	if !readOnlyKind(job.Kind) {
+	// Hook Stop của tổ chức kiểm code sắp đẩy; run sdlc chỉ soạn tài liệu và không đẩy gì nên không chạy chúng.
+	if !readOnlyKind(job.Kind) && job.Kind != KindSdlc {
 		if err := r.runStopHooks(ctx, job, work, stdoutLog, stderrLog); err != nil {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
@@ -633,6 +647,25 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "verifying"}); err != nil {
 		return err
+	}
+	if job.Kind == KindSdlc {
+		// Nhánh riêng, trả về trước đường commit và push của run code: tài liệu đi về hub trong report.artifacts, và hub
+		// quyết định commit sau khi người duyệt (nếu có). Agent lỡ commit trong worktree tạm cũng không lên remote.
+		var collect []SdlcCollect
+		if job.SDLC != nil {
+			collect = job.SDLC.Collect
+		}
+		artifacts, err := collectSdlcArtifacts(work, collect)
+		if err != nil {
+			result = &Result{Status: "failed", Error: err.Error()}
+			return err
+		}
+		sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
+		if err != nil {
+			return err
+		}
+		result = &Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), ChangedFiles: []string{}, Artifacts: artifacts}
+		return nil
 	}
 	if readOnlyKind(job.Kind) {
 		// Run review và run plan không nộp code: hub chấm theo việc agent đã gọi review_submit hay plan_submit, nên không

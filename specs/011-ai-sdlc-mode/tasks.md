@@ -225,7 +225,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 3: Agent soạn và hỏi lại (US2) 🎯
 
-- [ ] T020 🎯 [P] Worker chạy run `sdlc`
+- [x] T020 🎯 [P] Worker chạy run `sdlc`
   - `runner`: kind `sdlc` dùng worktree tạm từ nhánh mặc định (như `doccheck`, kể cả dự án có thư mục trên máy theo ADR
     0020), không `readOnlyKind`, quyền `workspace`; ghi `spec.sdlc.seed` (kiểm đường dẫn nằm trong worktree, không theo
     symlink ra ngoài); sau khi CLI thoát đọc `collect`, sha256, giới hạn (20 file, 200 000 ký tự/file, 2 MB tổng), trả
@@ -235,7 +235,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `worker/internal/channel/jobs_test.go`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T021 🎯 [US2] [US14] `runs`: loại `sdlc`, cổng, nhãn
+- [x] T021 🎯 [US2] [US14] `runs`: loại `sdlc`, cổng, nhãn
   - `engine.ts`: `CAPABILITY_KINDS` + `sdlc`; `startSdlcRun(tx, input)` (dự án = dự án chính; chủ theo `runner`,
     `required_labels`, `spec.sdlc.seed/collect`, prompt do `sdlc` truyền vào); run code của task hạng mục lấy nơi chạy,
     nhãn từ cài đặt dự án của task (do `sdlc` truyền qua `startRun`); `verify` → `verifySdlc` gọi `sdlc.onSdlcRunFinished`;
@@ -248,7 +248,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/runs/{engine.ts,mcp.ts,index.ts}`, `apps/hub/src/{runs.db.test.ts,runs-sdlc.db.test.ts}`
   - **Phụ thuộc**: T013 · **Mức**: nặng
 
-- [ ] T022 🎯 [US2] Bước agent, prompt, câu hỏi, MCP
+- [x] T022 🎯 [US2] Bước agent, prompt, câu hỏi, MCP
   - `steps.ts`: tạo bước (qua deps `startSdlcRun`), `onSdlcRunFinished` (artifacts → `doc_drafts` qua `knowledge`,
     `size`/`findings` → `result`, `autoSubmit`, lỗi → bước `failed`), giới hạn lượt agent sửa.
   - `prompt.ts`: dựng prompt theo bước (biến `{idea}`, `{artifacts}`, `{answers}`, `{feedback}`, `{constitution}`,
@@ -303,7 +303,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 5: Đồng bộ hub ↔ repo (US4, US17) — Q1 đã chốt
 
-- [ ] T040 [US4] [US17] Đồng bộ tài liệu với repo của từng dự án
+- [x] T040 [US4] [US17] Đồng bộ tài liệu với repo của từng dự án
   - `sync.ts`: job `sdlc-sync(itemId, projectId)` (một job mỗi repo; gộp file của repo; `pr` mặc định: nhánh
     `hive/sdlc/<ref>-<slug>`, PR, commit status `xdev-hive/sdlc` = success, `enqueueMerge` với `runId` null qua deps,
     không review code; `direct`; `off`; trailer `Hive-Sdlc-Item` + `Co-authored-by`; thử lại; `sdlc.sync_failed` cho quản
