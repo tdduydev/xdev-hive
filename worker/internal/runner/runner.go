@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,6 +199,8 @@ type Runner struct {
 	// RemoveDir, nếu có, nhận thư mục worktree cũ để xoá sau khi Run trả về (worker xoá nền để máy rảnh nhận run
 	// mới ngay). Không có thì Run xoá trước khi trả về.
 	RemoveDir func(dir string)
+	// HTTP gọi hub ngoài kênh WSS (lấy skill cho worktree); nil là client mặc định.
+	HTTP *http.Client
 }
 
 // trashPrefix là tên thư mục worktree đã gỡ còn chờ xoá trong runs/; ReapOrphans dọn chúng nếu worker chết giữa chừng.
@@ -375,6 +378,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	job.workspace = work
 	repo = repoReport(ctx, work, job)
+	if wantsSkills(job) {
+		// Thiếu skill thì agent vẫn đọc được qua MCP: lỗi chỉ ghi ra stderr của worker, không làm hỏng run.
+		if _, err := installSkills(ctx, r.HTTP, filepath.Join(r.DataDir, "skills"), job, work); err != nil {
+			fmt.Fprintf(os.Stderr, "hive-worker: không chép được skill cho run %s: %v\n", job.RunID, err)
+		}
+	}
 	if job.SandboxPolicy != nil {
 		config, cleanup, err := r.prepareSandboxPolicy(ctx, job.SandboxPolicy)
 		if err != nil {

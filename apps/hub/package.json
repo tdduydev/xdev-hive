@@ -28,6 +28,7 @@
     "@orpc/openapi": "^1.15.5",
     "@orpc/server": "^1.15.5",
     "@xdev-hive/contracts": "workspace:*",
+    "@xdev-hive/skill-pack": "workspace:*",
     "better-auth": "^1.7.7",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
