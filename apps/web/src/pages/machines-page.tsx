@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatAgo, formatDay, formatDayTime } from "@/lib/format.ts";
-import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { hasSharedMachine, shareCandidate } from "@/lib/onboarding.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
 import type { MachineTab } from "@/lib/route-search.ts";

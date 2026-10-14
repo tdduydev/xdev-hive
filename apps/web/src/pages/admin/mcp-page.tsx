@@ -24,6 +24,7 @@ import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatDay } from "@/lib/format.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
+import type { McpTab as McpSearchTab } from "@/lib/route-search.ts";
 import { McpServersTab } from "@/pages/admin/mcp-servers-tab.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
@@ -241,16 +242,13 @@ export function McpPage() {
   return <McpOrgPage key={org.id} />;
 }
 
-type McpTab = "tools" | "server" | "token";
-const isMcpTab = (value: unknown): value is McpTab => value === "server" || value === "token";
+type McpTab = "tools" | NonNullable<McpSearchTab>;
 
 function McpOrgPage() {
   const t = useT(text);
   const { org, api } = useOrg();
   const navigate = useNavigate();
-  // Route /admin/mcp chưa khai validateSearch nên đọc `?tab=` thô và tự kiểm.
-  // TODO(admin-layout): thêm validateMcpSearch vào lib/route-search.ts + router.tsx để `tab` có kiểu.
-  const search: { tab?: unknown } = useSearch({ strict: false });
+  const search = useSearch({ from: "/session/app/in-org/admin/mcp" });
   const canManage = org.role === "owner" || org.role === "admin";
   // Quy tắc server ngoài: quản trị tổ chức hoặc vai trò tự tạo có mcp.servers (hub kiểm lại).
   const canManageServers = usePermissions()("mcp.servers");
@@ -258,7 +256,7 @@ function McpOrgPage() {
   const tools = useQuery(api.mcpAdmin.listTools.queryOptions({ refetchInterval: 30_000 }));
   const tokens = useQuery(api.mcpAdmin.listTokens.queryOptions({ refetchInterval: 30_000 }));
   const servers = useQuery({ ...api.mcpAdmin.listServers.queryOptions(), enabled: canManageServers });
-  const tab: McpTab = isMcpTab(search.tab) && (search.tab !== "server" || canManageServers) ? search.tab : "tools";
+  const tab: McpTab = search.tab && (search.tab !== "server" || canManageServers) ? search.tab : "tools";
   const [creating, setCreating] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [clientId, setClientId] = useState("cursor");
