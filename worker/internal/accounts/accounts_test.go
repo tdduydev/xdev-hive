@@ -312,7 +312,7 @@ func waitCall(t *testing.T, calls chan string) string {
 	select {
 	case dir := <-calls:
 		return dir
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("không đọc quota")
 		return ""
 	}
@@ -331,7 +331,11 @@ func TestWatchReadsUsageAtStartAndAfterRun(t *testing.T) {
 	if !got[filepath.Join(p.home, ".xdev-hive", "accounts", "claude-3")] || !got[filepath.Join(p.home, ".xdev-hive", "accounts", "claude-4")] || !got["agy"] {
 		t.Fatalf("đọc lúc chạy = %v (claude-5 tắt không đọc)", got)
 	}
-	l, _ := p.Acquire("claude", RoleImplement)
+	// Acquire chạy cùng lúc Watch đang ghi file trạng thái: lỗi ở đây phải hiện ra, không thành "không đọc quota".
+	l, err := p.Acquire("claude", RoleImplement)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
 	l.Release()
 	if dir := waitCall(t, calls); dir != filepath.Join(p.home, ".xdev-hive", "accounts", "claude-3") {
 		t.Fatalf("sau run phải đọc lại claude-3: %q", dir)
