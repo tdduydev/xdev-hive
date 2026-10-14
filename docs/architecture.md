@@ -28,7 +28,7 @@ flowchart TB
     CLIAG["CLI agent<br/>gọi MCP"]
     GITU["Issue / PR trên<br/>GitHub, GitLab"]
   end
-  EDGE["Caddy (tuỳ chọn, profile https)<br/>/rpc · /api · /mcp · /ws/worker · /hooks/git"]
+  EDGE["Caddy (tuỳ chọn, profile https)<br/>/rpc · /api · /mcp · /ws/worker · /ws/terminal · /hooks/git"]
   subgraph HUB["Hub (một image, hai vai trò)"]
     direction LR
     API["api<br/>oRPC, SSE, MCP, webhook,<br/>WSS cho worker và runner host"]
@@ -78,6 +78,7 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, bộ skill mặc định của Hive (`packages/skill-pack`, bật/tắt theo tổ chức và dự án), đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `skill_pack_settings`, `proposals`, `legacy_*` |
 | `skilllearn` | Agent đề xuất skill sau việc khó (ADR 0025): chọn run đáng học, lô mỗi ngày mỗi dự án chạy run `skill_proposal` chỉ đọc, bỏ trùng, hạn mức theo ngày, duyệt thành PR vào kho skill hoặc skill của tổ chức, số liệu | `skill_learning_batches`, `skill_learning_marks`, `learned_skill_proposals` |
 | `leader` | Chat với leader agent, đề xuất hành động cần người duyệt | `chat_threads`, `chat_messages`, `approvals` |
+| `terminal` | Terminal Leader: phiên Claude CLI tương tác trên máy dùng chung, chuyển tiếp web ↔ worker qua `/ws/terminal`, bản ghi đã che bí mật (specs/010 lát đầu) | `terminal_sessions`, `terminal_chunks` |
 | `mcp` | Cổng MCP: xác thực token, giới hạn tool theo vai trò, ghi audit | — (dùng module khác) |
 | `notify` | Telegram, email, hộp thư trong app | `notification_channels`, `notifications`, `inbox_items` |
 | `cost` | Tổng hợp token, chi phí theo run, đội, dự án, người, CLI. Chỉ theo dõi; cột chi phí nằm trên `runs` | — |
