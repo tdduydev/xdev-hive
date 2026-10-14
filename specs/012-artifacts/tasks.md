@@ -181,7 +181,7 @@
     (nhánh vé `s:`, route `/s/`), `apps/hub/src/modules/artifacts/router.ts` (gắn route `publicLinks.*`), `apps/hub/.env.example`
   - **Phụ thuộc**: T010, T012 · **Mức**: nặng
 
-- [ ] T016 🎯 "Nhờ Leader sửa" trên hub
+- [x] T016 🎯 "Nhờ Leader sửa" trên hub
   - `artifacts/fix-request.ts`: route `askLeaderFix` (FR-151); `leader` cung cấp `ThreadHost.postFixRequest` (kiểm/tạo
     cuộc trò chuyện của người gọi, tin nhắn người dùng có `artifact_*` và `page_errors`, khởi động run `leader` như
     `threads.send`); router leader trả `pageErrors`; `leader/prompt.ts` dựng khối `<page-errors>` (FR-152) và quyền
