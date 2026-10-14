@@ -1,0 +1,3 @@
+[submodule "xdev-skills"]
+	path = xdev-skills
+	url = https://github.com/tdduydev/xdev-skills
