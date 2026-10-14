@@ -369,12 +369,23 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/hub/src/main.ts`
   - **Phụ thuộc**: T021 (cùng làn) · **Mức**: nặng
 
-- [ ] T031 [US3] Worker: cấp quyền điều khiển
+- [x] T031 [US3] Worker: cấp quyền điều khiển
   - `term_control`: kiểm assertion (T005), ECDH, cấp quyền (thu của người cũ), resize theo người điều khiển; `term_input`
     và `term_resize` kiểm `seq` + HMAC (3 lỗi → thu quyền, `input_rejected`); `resumeToken` 2 phút; hết 15 phút không gõ
     → thu; terminal tại máy giành lại; dòng báo trên terminal tại máy.
   - Test: đủ ca của US3 kịch bản 2–6 với vector cố định.
   - **Scope**: `worker/internal/terminal/{control.go,control_test.go,session.go}`
+  - Đã làm (SPEC10W6): `Controller` (control.go) nhận term_control/detach/input/resize qua `Recorder`; phiên tra theo mã
+    hub (`Local.byHubID`, không có session.go riêng). `machineId` của challenge là tên máy trong hello. Từ chối quyền
+    không dùng `term_denied` (cần `requestId`) mà gửi `term_event` `controller` `{connId, denied, reason}`; cấp quyền
+    gửi `term_granted` rồi `controller {connId, controller: "remote", label}`; thu quyền gửi `term_revoked` rồi
+    `controller {connId, controller: "local"|null, reason}`. Gói sai gửi `input_rejected {connId, count}`, đủ 3 (cộng
+    dồn, gói đúng không xoá) thì thu `input_rejected`. `term_detach` hay mất hub giữ quyền 2 phút cho `resumeToken`
+    (cùng userId, deviceId; khoá và seq cũ); quá hạn `expired`, nối lại báo `AUTH_STALE`. Terminal tại máy nhận
+    `taken` "Đang điều khiển từ xa bởi <nhãn thiết bị>."; `Ctrl-] t` hay `hive attach` thu quyền từ xa (`taken`).
+    Tắt từ xa, máy thành dùng chung → `disabled`; gỡ thiết bị → `device_revoked`; phiên kết thúc → `closed`.
+    `term_state.sessions[].controller` theo người điều khiển. Audit tại máy: `control_grant`, `control_resume`,
+    `control_revoke`, `control_denied`, `input_rejected`. Test `control_test.go` (Unix, CLI giả sh) theo TOTP vector cố định.
   - **Phụ thuộc**: T020 (cùng làn), T005 · **Mức**: nặng
 
 - [ ] T032 [US3] Web: màn terminal điều khiển trên điện thoại

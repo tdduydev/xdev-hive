@@ -58,6 +58,8 @@ type Local struct {
 	Recorder *Recorder
 	// Remote nhận remote.* và watch của socket nội bộ; nil là máy không có điều khiển từ xa.
 	Remote *Remote
+	// Controller giữ quyền gõ từ xa; Local báo nó khi người ở máy giành lại hay phiên kết thúc.
+	Controller *Controller
 
 	MaxSessions int
 	TailBytes   int
@@ -92,8 +94,10 @@ type localSession struct {
 	tail    []byte
 	clients map[*localClient]struct{}
 	ctl     *localClient
-	ended   bool
-	exit    localipc.Ctl
+	// remote là quyền gõ từ xa đang giữ phiên; ctl và remote không cùng khác nil.
+	remote *grant
+	ended  bool
+	exit   localipc.Ctl
 }
 
 type localFrame struct {
@@ -446,6 +450,7 @@ func (l *Local) run(s *localSession, secrets []string) {
 		}
 	}
 	s.finish(ctl)
+	l.Controller.sessionClosed(s.rec.ID())
 	s.rec.Close(ctl.Code, ctl.Reason, ctl.Message)
 	l.mu.Lock()
 	if l.sessions[s.id] == s {
@@ -539,6 +544,7 @@ func (s *localSession) dropLocked(cl *localClient) {
 	delete(s.clients, cl)
 	if s.ctl == cl {
 		s.ctl = nil
+		s.rec.SetController("")
 	}
 }
 
@@ -666,8 +672,73 @@ func (s *localSession) takeLocked(cl *localClient) {
 	if old := s.ctl; old != nil {
 		s.enqueue(old, ctlFrame(localipc.Ctl{Type: localipc.CtlTaken, Message: "Terminal khác đã giành quyền điều khiển; bạn đang xem."}))
 	}
+	if g := s.remote; g != nil {
+		s.remote = nil
+		// Thu quyền phải báo hub và ghi audit; không làm trong khoá phiên (s.mu đứng trước khoá của Controller).
+		go g.c.localTook(g)
+	}
 	s.ctl = cl
+	s.rec.SetController(ControllerLocal)
 	s.enqueue(cl, ctlFrame(localipc.Ctl{Type: localipc.CtlControl}))
+}
+
+// byHubID tìm phiên theo mã trên hub (term_control mang mã này, không phải mã ngắn của hive ls).
+func (l *Local) byHubID(id string) *localSession {
+	if l == nil || id == "" {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, s := range l.sessions {
+		if s != nil && s.rec.ID() == id {
+			return s
+		}
+	}
+	return nil
+}
+
+// giveRemote trao quyền gõ cho g; terminal đang điều khiển chỉ còn xem kèm dòng báo ai đang gõ (US3 kịch bản 2).
+func (s *localSession) giveRemote(g *grant) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ended {
+		return false
+	}
+	if old := s.ctl; old != nil {
+		s.enqueue(old, ctlFrame(localipc.Ctl{Type: localipc.CtlTaken, Message: "Đang điều khiển từ xa bởi " + g.label + "."}))
+		s.ctl = nil
+	}
+	s.remote = g
+	s.rec.SetController(ControllerRemote)
+	return true
+}
+
+// releaseRemote bỏ quyền của g nếu g còn giữ; không trả quyền cho terminal nào, người ở máy tự giành khi cần.
+func (s *localSession) releaseRemote(g *grant) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.remote == g {
+		s.remote = nil
+		s.rec.SetController("")
+	}
+}
+
+func (s *localSession) remoteWrite(g *grant, data []byte) {
+	s.mu.Lock()
+	ok := s.remote == g && !s.ended
+	s.mu.Unlock()
+	if ok {
+		_, _ = s.f.Write(data)
+	}
+}
+
+func (s *localSession) remoteResize(g *grant, cols, rows int) {
+	s.mu.Lock()
+	ok := s.remote == g && !s.ended
+	s.mu.Unlock()
+	if ok && cols > 0 && rows > 0 {
+		_ = s.f.Resize(min(cols, maxSize), min(rows, maxSize))
+	}
 }
 
 // CloseAll ngắt mọi phiên (worker tắt) và từ chối phiên mới.
