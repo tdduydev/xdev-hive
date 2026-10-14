@@ -34,6 +34,7 @@ export {
   setMachineShared,
   sharedWorkerMachines,
 } from "./machines.ts";
+export { createRegistration, registerMachine } from "./registration.ts";
 export { installCommands, WORKER_DOWNLOADS, WorkerReleaseCache } from "./releases.ts";
 export { type FleetDeps, fleetRouter } from "./router.ts";
 export { provideSdlcFleetRuns, type SdlcFleetRun } from "./sdlc-fleet.ts";

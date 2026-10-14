@@ -138,13 +138,18 @@ export async function createToken(
   return { token, info: tokenInfo(row) };
 }
 
-/** Token cá nhân cho app desktop đăng nhập bằng trình duyệt (fleet/desktop-connect.ts); hạn dài nhất cho phép. */
+/**
+ * Token cá nhân cho app desktop hay CLI `hive` đăng nhập bằng trình duyệt (fleet/desktop-connect.ts); hạn dài nhất cho
+ * phép. Client riêng để trang token MCP cho người dùng thấy và thu hồi từng cái.
+ */
 export async function issueDesktopToken(
   tx: Tx,
   userId: string,
   registry: McpToolRegistry,
+  purpose: "desktop" | "cli" = "desktop",
 ): Promise<{ token: string; expiresAt: Date }> {
-  const { token, info } = await createToken(tx, userId, registry, { clientId: "xdev-hive-desktop", lifetimeDays: 90 });
+  const clientId = purpose === "cli" ? "xdev-hive-cli" : "xdev-hive-desktop";
+  const { token, info } = await createToken(tx, userId, registry, { clientId, lifetimeDays: 90 });
   return { token, expiresAt: new Date(info.expiresAt) };
 }
 
