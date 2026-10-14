@@ -47,6 +47,7 @@ import {
 import { teamRoleLookup } from "@/lib/projects.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
+import { ProjectSdlcSections } from "@/pages/project-sdlc-settings.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -154,6 +155,7 @@ const text: Dict<{
   tierAdvisorHint: string;
   tierTurnsSuffix: string;
   permTitle: string;
+  sdlcAutoTitle: string;
   pWt: string;
   pWtHint: string;
   pFull: string;
@@ -302,6 +304,7 @@ const text: Dict<{
     tierAdvisorHint: "Để trống là tắt. Model chính chỉ hỏi cố vấn ở điểm quyết định; tắt khi máy đã tắt telemetry.",
     tierTurnsSuffix: "lượt",
     permTitle: "Quyền CLI của run",
+    sdlcAutoTitle: "Tự duyệt AI",
     pWt: "Trong worktree (khuyên dùng)",
     pWtHint:
       "Agent sửa file và chạy lệnh build, test trong worktree của run; CLI giữ sandbox và chặn thao tác ngoài worktree.",
@@ -459,6 +462,7 @@ const text: Dict<{
       "Leave empty to turn off. The main model only asks the advisor at decision points; off when the machine disables telemetry.",
     tierTurnsSuffix: "turns",
     permTitle: "CLI permissions for runs",
+    sdlcAutoTitle: "AI auto-approval",
     pWt: "Inside the worktree (recommended)",
     pWtHint:
       "The agent edits files and runs builds and tests in the run worktree; the CLI keeps its sandbox and blocks anything outside it.",
@@ -709,6 +713,8 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
       { id: "tokens", label: t.tokensTitle },
       { id: "routing", label: t.routingTitle },
       { id: "perm", label: t.permTitle },
+      { id: "sdlc", label: "AI SDLC" },
+      { id: "sdlc-auto", label: t.sdlcAutoTitle },
       ...(canEdit ? [{ id: "machines", label: t.machinesTitle }] : []),
     ],
     [t, canEdit],
@@ -1217,6 +1223,8 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           )}
           {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
         </SettingsSection>
+
+        <ProjectSdlcSections project={project} canEdit={canEdit} orgPolicy={policy.data?.sdlc} />
 
         {/* Hub chỉ cho quản trị đội xem danh sách máy, nên thành viên thường không có mục này. */}
         {canEdit && <ProjectMachines project={project} fullLocked={fullLocked} />}

@@ -7,6 +7,9 @@ import type {
   ReviewerRole,
   ReviewStatus,
   ReviewSummary,
+  SdlcAutoApproval,
+  SdlcItemDetail,
+  SdlcQuestion,
   SlaState,
 } from "@xdev-hive/contracts";
 import { diffBlocks, lineDiff } from "@xdev-hive/contracts";
@@ -18,6 +21,7 @@ import { Textarea } from "@xdev-hive/ui/textarea";
 import { cn } from "cn";
 import { type ReactNode, useId, useMemo, useRef, useState } from "react";
 import { type Dict, type Lang, useDocEditorEnv } from "./env.tsx";
+import { AnsweredList, answeredQuestions, formatAt, formatScore, useSdlcItem, useSdlcText } from "./sdlc-panel.tsx";
 
 /*
  * Khung duyệt tài liệu (DocReview.dc.html) dùng chung cho hàng chờ duyệt của web quản trị và màn Chờ tôi duyệt của app
@@ -379,11 +383,37 @@ function stepOf(g: GateRun, d: ReviewDetail): StepState {
   return d.status === "in_review" && d.gate?.id === g.gateId ? "current" : "todo";
 }
 
+/**
+ * Phần riêng của tài liệu hạng mục AI SDLC (specs/011 T053). Component của `@xdev-hive/sdlc-ui` đến qua đây để
+ * doc-editor không phụ thuộc package đó (sdlc-ui kéo `@xyflow` cho bản tách).
+ */
+export interface ReviewPaneSdlc {
+  /** Nội dung thẻ "Bản tách task" khi tài liệu là tài liệu tách việc của chế độ. */
+  breakdown?: (item: SdlcItemDetail) => ReactNode;
+  /** Nút Thu hồi cạnh checkpoint tự duyệt còn hạn mà người xem được thu hồi; lý do và gọi hub do app chủ lo. */
+  revoke?: (approval: SdlcAutoApproval) => ReactNode;
+}
+
+/** Hub ghi câu này vào ghi chú checkpoint khi không tự duyệt (specs/011 D25); là sự kiện, không phải góp ý của người. */
+const NOT_AUTO_NOTE = "Không tự duyệt:";
+
 /** Một phiên duyệt: tiến trình checkpoint, thay đổi, checklist, truy vết và quyết định của người gọi. */
-export function ReviewPane({ id, now, onDecided }: { id: string; now: number; onDecided: () => void }) {
-  const { api, errorMessage } = useDocEditorEnv();
+export function ReviewPane({
+  id,
+  now,
+  onDecided,
+  sdlc,
+}: {
+  id: string;
+  now: number;
+  onDecided: () => void;
+  sdlc?: ReviewPaneSdlc;
+}) {
+  const env = useDocEditorEnv();
+  const { api, errorMessage } = env;
   const t = useReviewText();
   const detail = useQuery(api.reviews.get.queryOptions({ input: { id } }));
+  const { item, artifact } = useSdlcItem(detail.data?.docKey ?? "", !!(env.sdlc || sdlc));
   if (detail.isPending) return <p className="text-muted-foreground">{t.loading}</p>;
   if (detail.isError)
     return (
@@ -398,6 +428,11 @@ export function ReviewPane({ id, now, onDecided }: { id: string; now: number; on
   const checked = d.gates.filter(
     (g) => (g.kind === "ai" || g.kind === "rule") && (g.checklist.length || g.score !== null),
   );
+  const it = item.data;
+  const answered = it ? answeredQuestions(it, artifact) : [];
+  const decomposition = it?.mode.decomposition;
+  const isBreakdown =
+    !!artifact && artifact.phaseId === decomposition?.phase && artifact.artifactId === decomposition.artifact;
   return (
     <section aria-label={t.detail} className="flex flex-wrap items-start gap-4">
       <div className="flex min-w-0 flex-[3_1_560px] flex-col gap-4">
@@ -405,9 +440,24 @@ export function ReviewPane({ id, now, onDecided }: { id: string; now: number; on
         <DiffCard d={d} />
       </div>
       <aside className="flex min-w-0 flex-[2_1_380px] flex-col gap-4">
+        {d.gates.map(
+          (g) =>
+            g.auto && (
+              <AutoCard
+                key={`auto:${g.gateId}`}
+                gate={g}
+                auto={g.auto}
+                approval={it?.autoApprovals.find((a) => a.id === g.auto?.approvalId)}
+                now={now}
+                revoke={sdlc?.revoke}
+              />
+            ),
+        )}
         {checked.map((g) => (
           <ChecklistCard key={g.gateId} gate={g} />
         ))}
+        {answered.length > 0 && <AnsweredCard questions={answered} />}
+        {it && isBreakdown && sdlc?.breakdown && <BreakdownCard item={it}>{sdlc.breakdown(it)}</BreakdownCard>}
         <TraceCard d={d} />
         <DecisionCard d={d} onDecided={onDecided} />
       </aside>
@@ -439,9 +489,16 @@ function Card({
 
 function ReviewHeader({ d, now }: { d: ReviewDetail; now: number }) {
   const t = useReviewText();
+  const st = useSdlcText();
+  const { lang } = useDocEditorEnv();
   const steps: { key: string; label: string; phase?: string; state: StepState }[] = [
     { key: "@draft", label: t.draft, state: "done" },
-    ...d.gates.map((g) => ({ key: g.gateId, label: g.name, phase: g.phase, state: stepOf(g, d) })),
+    ...d.gates.map((g) => ({
+      key: g.gateId,
+      label: g.auto ? `${g.name} · ${st.autoShort(formatScore(g.auto.score, lang))}` : g.name,
+      phase: g.phase,
+      state: stepOf(g, d),
+    })),
     { key: "@baseline", label: t.baseline(d.baseVersion + 1), state: d.status === "approved" ? "done" : "todo" },
   ];
   const notes = d.gates.filter((g) => g.note);
@@ -493,12 +550,22 @@ function ReviewHeader({ d, now }: { d: ReviewDetail; now: number }) {
       {notes.length > 0 && (
         <div className="flex flex-col gap-1 border-t border-dashed border-input pt-2 text-sm">
           <span className="text-xs text-muted-foreground">{t.notes}</span>
-          {notes.map((g) => (
-            <p key={g.gateId} className="m-0">
-              <strong className="font-medium">{g.name}</strong>
-              {g.decidedBy && <span className="text-muted-foreground"> · {g.decidedBy}</span>}: {g.note}
-            </p>
-          ))}
+          {notes.map((g) =>
+            g.note?.startsWith(NOT_AUTO_NOTE) ? (
+              <p key={g.gateId} className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Pill small tone="warn">
+                  {st.notAuto}
+                </Pill>
+                <strong className="font-medium">{g.name}</strong>
+                <span>{g.note.slice(NOT_AUTO_NOTE.length).trim()}</span>
+              </p>
+            ) : (
+              <p key={g.gateId} className="m-0">
+                <strong className="font-medium">{g.name}</strong>
+                {g.decidedBy && <span className="text-muted-foreground"> · {g.decidedBy}</span>}: {g.note}
+              </p>
+            ),
+          )}
         </div>
       )}
     </div>
@@ -595,6 +662,108 @@ function ChecklistCard({ gate }: { gate: GateRun }) {
           </li>
         ))}
       </ul>
+    </Card>
+  );
+}
+
+/** Checkpoint người do AI tự duyệt: điểm, ngưỡng, điều kiện đã xét, hạn thu hồi; nút Thu hồi do app chủ đưa vào. */
+function AutoCard({
+  gate,
+  auto,
+  approval,
+  now,
+  revoke,
+}: {
+  gate: GateRun;
+  auto: NonNullable<GateRun["auto"]>;
+  approval: SdlcAutoApproval | undefined;
+  now: number;
+  revoke: ReviewPaneSdlc["revoke"];
+}) {
+  const t = useSdlcText();
+  const { lang } = useDocEditorEnv();
+  const open = approval && !approval.revokedAt && Date.parse(approval.revocableUntil) > now;
+  return (
+    <Card
+      title={`${t.autoTitle} · ${gate.name}`}
+      meta={
+        <Pill tone={approval?.revokedAt ? "warn" : "ok"}>
+          {formatScore(auto.score, lang)}/{formatScore(auto.threshold, lang)}
+        </Pill>
+      }
+    >
+      <div className="flex flex-col gap-2 px-4 py-2.5 text-sm">
+        <p className="m-0">{t.autoBadge(formatScore(auto.score, lang), formatScore(auto.threshold, lang))}</p>
+        {approval && approval.reasons.length > 0 && (
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
+            {approval.reasons.map((r) => (
+              <li key={r.check} className="flex items-start gap-2">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "inline-flex size-4.5 flex-none items-center justify-center rounded-full text-xs",
+                    r.passed ? "bg-success-soft text-success" : "bg-warning-soft text-warning",
+                  )}
+                >
+                  {r.passed ? "✓" : "!"}
+                </span>
+                <span>
+                  <span className="sr-only">{r.passed ? "✓ " : "! "}</span>
+                  {r.detail || r.check}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {approval?.reviewer && (
+          <p className="m-0 text-xs text-muted-foreground">
+            {t.autoBy}: {approval.reviewer.cli}
+            {approval.reviewer.model ? ` · ${approval.reviewer.model}` : ""}
+          </p>
+        )}
+        {approval?.revokedAt && (
+          <p className="m-0 text-warning">{t.revoked(approval.revokedBy?.name ?? "—", approval.revokeReason ?? "")}</p>
+        )}
+        {approval && !approval.revokedAt && (
+          <p className="m-0 text-xs text-muted-foreground">
+            {open
+              ? t.revocableUntil(formatAt(approval.revocableUntil, lang))
+              : t.revokeOver(formatAt(approval.revocableUntil, lang))}
+          </p>
+        )}
+        {open && approval.canRevoke && revoke?.(approval)}
+      </div>
+    </Card>
+  );
+}
+
+function AnsweredCard({ questions }: { questions: SdlcQuestion[] }) {
+  const t = useSdlcText();
+  return (
+    <Card title={t.qaTitle} meta={<Pill small>{questions.length}</Pill>}>
+      <div className="flex flex-col gap-2 px-4 py-2.5">
+        <AnsweredList questions={questions} />
+        <p className="m-0 text-xs text-muted-foreground">{t.qaNote}</p>
+      </div>
+    </Card>
+  );
+}
+
+function BreakdownCard({ item, children }: { item: SdlcItemDetail; children: ReactNode }) {
+  const t = useSdlcText();
+  const { sdlc } = useDocEditorEnv();
+  return (
+    <Card
+      title={t.bdTitle}
+      meta={sdlc?.itemLink({
+        projectKey: item.project.key,
+        number: item.number,
+        tab: "tasks",
+        className: "text-sm underline",
+        children: t.bdOpen,
+      })}
+    >
+      <div className="px-4 py-2.5">{children}</div>
     </Card>
   );
 }

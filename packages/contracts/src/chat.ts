@@ -113,6 +113,18 @@ export const chatAction = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("plan.reject"), taskId: id, planId: id }),
   z.object({ kind: z.literal("review.approve"), reviewId: id }),
   z.object({ kind: z.literal("review.changes"), reviewId: id }),
+  z.object({
+    kind: z.literal("code_review.approve"),
+    reviewId: id,
+    headSha: z.string().regex(/^[0-9a-f]{40,64}$/, "SHA commit không hợp lệ."),
+    gateRunId: id,
+  }),
+  z.object({
+    kind: z.literal("code_review.changes"),
+    reviewId: id,
+    headSha: z.string().regex(/^[0-9a-f]{40,64}$/, "SHA commit không hợp lệ."),
+    gateRunId: id,
+  }),
   z.object({ kind: z.literal("run.cancel"), runId: id }),
 ]);
 export type ChatAction = z.output<typeof chatAction>;
