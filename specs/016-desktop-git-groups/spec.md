@@ -35,7 +35,7 @@ gọi API kiểm token (`/api/v4/user`, `/user`) rồi mới lưu.
    log, không vào tham số dòng lệnh.
 2. **Given** token sai, **When** thêm, **Then** báo "Token không dùng được…" và không lưu gì.
 3. **Given** đã đăng nhập Hive và tổ chức có kết nối Git, **When** mở form, **Then** có thể chọn một kết nối của tổ chức
-   để điền sẵn loại, URL và group mặc định. Token vẫn là token cá nhân: hub không gửi secret của tổ chức xuống máy.
+   để điền sẵn loại, URL và tên. Token vẫn là token cá nhân: hub không gửi secret của tổ chức xuống máy.
 4. **Given** kết nối còn nhóm dùng, **When** xoá, **Then** từ chối và nêu tên nhóm.
 
 ### US2 - Thêm nhóm theo dõi (P1)
