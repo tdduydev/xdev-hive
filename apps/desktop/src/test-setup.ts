@@ -12,6 +12,13 @@ Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 Element.prototype.getClientRects ??= noRects;
 document.elementFromPoint ??= () => null;
 
+// jsdom không đo bố cục; đồ thị phụ thuộc dùng ResizeObserver trong trình duyệt thật.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 // Base UI chỉ in cảnh báo dùng sai (vd. Button render <a> mà thiếu nativeButton={false}) ra console, mỗi loại một lần:
 // test xanh nhưng log CI đầy cảnh báo và lỗi a11y lọt qua. Biến cảnh báo đó thành test hỏng.
 const baseUiErrors: string[] = [];

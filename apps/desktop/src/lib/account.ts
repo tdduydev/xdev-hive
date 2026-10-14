@@ -9,7 +9,7 @@ export interface Account {
   orgId: string;
   orgName: string;
   orgRole: "owner" | "admin" | "member" | null;
-  teams: { id: string; name: string; role: "admin" | "member" | "viewer" }[];
+  teams: { id: string; name: string; role: "admin" | "member" | "viewer" | "ba" }[];
 }
 
 export interface AccountStatus {
@@ -25,13 +25,13 @@ export const unlinkAccount = () => invoke<AccountStatus>("account_unlink");
 
 /**
  * Hồ sơ menu từ vai trò thật (specs/008-desktop-v2): lead = owner/admin tổ chức hoặc admin một đội; writer = chỉ là
- * người xem ở mọi đội mình thuộc; còn lại là dev. Chưa liên kết tài khoản thì dev, như trước khi có danh tính.
+ * người xem hoặc BA/PO ở mọi đội mình thuộc; còn lại là dev. Chưa liên kết tài khoản thì dev, như trước khi có danh tính.
  */
 export function profileOf(account: Account | null): Profile {
   if (!account) return "dev";
   if (account.orgRole === "owner" || account.orgRole === "admin") return "lead";
   if (account.teams.some((t) => t.role === "admin")) return "lead";
-  if (account.teams.length > 0 && account.teams.every((t) => t.role === "viewer")) return "writer";
+  if (account.teams.length > 0 && account.teams.every((t) => t.role === "viewer" || t.role === "ba")) return "writer";
   return "dev";
 }
 
