@@ -357,13 +357,16 @@ func TestLocalSlowClientDropped(t *testing.T) {
 	s.mu.Lock()
 	s.clients[cl] = struct{}{}
 	s.mu.Unlock()
+	// Gửi từng dòng và chờ tiếng vọng rồi mới gửi tiếp: gửi liền thì hai dòng có thể về chung một lần đọc PTY, thành một
+	// khung và hàng một chỗ không bao giờ đầy.
 	tc.send(t, "a\n")
+	tc.waitOut(t, "got:a")
 	tc.send(t, "b\n")
 	tc.waitOut(t, "got:b")
-	s.mu.Lock()
-	_, still := s.clients[cl]
-	s.mu.Unlock()
-	if still || !cl.closed {
-		t.Fatal("client chậm phải bị tách")
-	}
+	eventually(t, "client chậm bị tách", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		_, still := s.clients[cl]
+		return !still && cl.closed
+	})
 }

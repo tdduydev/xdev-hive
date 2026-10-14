@@ -148,11 +148,17 @@ func TestGitWriteRetriesHeldRefLock(t *testing.T) {
 		t.Fatalf("ref = %s, muốn %s", got, want)
 	}
 
-	start := time.Now()
-	if err := gitWrite(context.Background(), cache, cache, "fetch", "origin", "no-such-branch:refs/remotes/origin/no-such-branch"); err == nil {
+	// Thử lại sẽ ngủ gitLockBackoff: đặt rất dài và có hạn ctx để lần thử lại hiện ra là hết giờ, không dựa vào việc git
+	// chạy nhanh hơn một ngưỡng ms.
+	savedBackoff := gitLockBackoff
+	gitLockBackoff = time.Hour
+	defer func() { gitLockBackoff = savedBackoff }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := gitWrite(ctx, cache, cache, "fetch", "origin", "no-such-branch:refs/remotes/origin/no-such-branch"); err == nil {
 		t.Fatal("fetch nhánh không có phải lỗi")
 	}
-	if time.Since(start) >= gitLockBackoff {
+	if ctx.Err() != nil {
 		t.Fatal("lỗi không phải khoá ref vẫn bị thử lại")
 	}
 }
