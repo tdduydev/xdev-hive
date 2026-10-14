@@ -105,6 +105,12 @@ const text: Dict<{
   rtkHint: string;
   codegraph: string;
   codegraphHint: string;
+  contextPack: string;
+  contextPackHint: string;
+  exploreBudget: string;
+  exploreBudgetHint: string;
+  toolOutput: string;
+  toolOutputHint: string;
   bashChars: string;
   bashCharsHint: string;
   compactPct: string;
@@ -241,6 +247,15 @@ const text: Dict<{
     rtkHint: "Chỉ áp khi máy chạy run có rtk, và chỉ với Claude Code.",
     codegraph: "Gắn CodeGraph cho agent",
     codegraphHint: "Chỉ áp khi máy chạy run có codegraph. Agent tìm symbol, caller qua codegraph_explore thay vì grep.",
+    contextPack: "Dựng context pack trước run",
+    contextPackHint:
+      "Worker chọn sẵn các file liên quan tới task (đường dẫn, symbol nhắc tới, file hay đổi cùng) và đưa vào đầu run, để agent khỏi dò repo.",
+    exploreBudget: "Ngân sách khảo sát",
+    exploreBudgetHint:
+      "Số lệnh dò cả repo (find, ls -R, grep -r…) agent được chạy trước lần sửa đầu; quá thì bị từ chối. 0 là tắt. Chỉ Claude Code.",
+    toolOutput: "Cắt output tool dài",
+    toolOutputHint:
+      "Output dài hơn bị cắt, giữ đầu, cuối và dòng lỗi; bản đầy đủ lưu ra file cho agent đọc theo đoạn. 0 là tắt. Chỉ Claude Code.",
     bashChars: "Output lệnh tối đa",
     bashCharsHint: "Ký tự giữ lại từ một lệnh Bash. Output dài bị đọc lại ở mọi lượt sau nên rất tốn.",
     compactPct: "Tự nén ngữ cảnh khi đầy",
@@ -386,6 +401,15 @@ const text: Dict<{
     codegraph: "Attach CodeGraph to the agent",
     codegraphHint:
       "Applies only when the machine has codegraph. The agent finds symbols and callers through codegraph_explore instead of grep.",
+    contextPack: "Build a context pack before the run",
+    contextPackHint:
+      "The worker picks files related to the task (mentioned paths and symbols, files often changed together) and puts them at the start of the run, so the agent does not scan the repo.",
+    exploreBudget: "Exploration budget",
+    exploreBudgetHint:
+      "How many repo-wide scans (find, ls -R, grep -r…) the agent may run before its first edit; more are refused. 0 turns it off. Claude Code only.",
+    toolOutput: "Trim long tool output",
+    toolOutputHint:
+      "Longer output is trimmed to its start, end and error lines; the full text is saved to a file the agent can read in parts. 0 turns it off. Claude Code only.",
     bashChars: "Max command output",
     bashCharsHint:
       "Characters kept from one Bash command. Long output is re-read on every later turn, so it is costly.",
@@ -1103,7 +1127,34 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               onChange={(v) => set("codegraph", v)}
               disabled={disabled || !form.tokenSaving}
             />
+            <SwitchRow
+              label={t.contextPack}
+              hint={t.contextPackHint}
+              checked={form.contextPack}
+              onChange={(v) => set("contextPack", v)}
+              disabled={disabled || !form.tokenSaving}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label={t.exploreBudget}
+                hint={t.exploreBudgetHint}
+                error={errors.exploreBudget}
+                value={form.exploreBudget}
+                onChange={(v) => set("exploreBudget", v)}
+                disabled={disabled || !form.tokenSaving}
+                inputMode="numeric"
+                suffix="lệnh"
+              />
+              <TextField
+                label={t.toolOutput}
+                hint={t.toolOutputHint}
+                error={errors.toolOutputMaxChars}
+                value={form.toolOutputMaxChars}
+                onChange={(v) => set("toolOutputMaxChars", v)}
+                disabled={disabled || !form.tokenSaving}
+                inputMode="numeric"
+                suffix="ký tự"
+              />
               <TextField
                 label={t.bashChars}
                 hint={t.bashCharsHint}
