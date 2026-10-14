@@ -247,6 +247,7 @@ func (r *Remote) OnWelcome(info WelcomeInfo) {
 	}
 	if owner.Shared {
 		r.Controller.RevokeAll(RevokeDisabled)
+		r.Controller.endRemote("hub")
 	}
 	r.changed()
 }
@@ -291,6 +292,7 @@ func (r *Remote) disable(by string) bool {
 	}
 	r.audit("remote_disable", by, nil)
 	r.Controller.RevokeAll(RevokeDisabled)
+	r.Controller.endRemote(by)
 	r.changed()
 	return true
 }
