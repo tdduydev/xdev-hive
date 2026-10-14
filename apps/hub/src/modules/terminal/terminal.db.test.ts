@@ -9,8 +9,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import WebSocket from "ws";
 import { errorCode, type OrgFixture, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
-import { attachWorkerGateway, registerTerminalHandlers } from "../fleet/index.ts";
-import { createRegistration, registerMachine } from "../fleet/registration.ts";
+import { attachWorkerGateway, createRegistration, registerMachine, registerTerminalHandlers } from "../fleet/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { createTerminalHandlers } from "./gateway.ts";
 import {

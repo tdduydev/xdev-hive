@@ -243,7 +243,13 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/terminal/{remote.go,pairing.go,audit.go,watch.go,remote_test.go,pairing_test.go}`
   - **Phụ thuộc**: T005, T011 · **Mức**: nặng
 
-- [ ] T021 [US2] Hub: ghép, thiết bị, trạng thái từ xa
+- [x] T021 [US2] Hub: ghép, thiết bị, trạng thái từ xa
+  - Đã làm (SPEC10W4): `state.ts` (`term_state` → `machine_remote_state` + `remote_devices`, audit nguồn máy cho bật/tắt,
+    thư mục, thiết bị máy thôi báo; phiên hub còn "đang chạy" mà máy không còn giữ thì kết thúc), `pairing.ts`
+    (`pairOptions` rp = host `HIVE_PUBLIC_URL`; `pairComplete` không giữ transaction trong lúc chờ máy, mã ghép đang chờ
+    thì không nhận lần hai), `devices.ts` (`devices`, `revokeDevice` cần máy online vì quyền nằm ở máy, `disableRemote`
+    cho chủ máy hoặc quản trị đội). Cờ `HIVE_REMOTE_TERMINAL` chỉ chặn ghép; gỡ và tắt khẩn cấp luôn chạy.
+    `excludeCredentials` để trống vì hub không giữ id passkey. `fleet/gateway.ts` chuyển `term_state`/`term_pair_result`.
   - `pairing.ts` (`pairOptions`: tuỳ chọn WebAuthn, `pairComplete`: kiểm chủ máy/máy cá nhân/online → `term_pair`, chờ
     `term_pair_result`), `devices.ts` (`devices`, `revokeDevice` → `term_device_revoke`), `machine_remote_state` từ
     `term_state`, `disableRemote`; audit `terminal.pair|pair_denied|device_revoke|remote_enable|remote_disable|root_*`.
