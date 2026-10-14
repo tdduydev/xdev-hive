@@ -683,7 +683,7 @@ async function tryAutoDecide(
     .select()
     .from(reviewGateRuns)
     .where(eq(reviewGateRuns.instanceId, inst.id))
-    .orderBy(asc(reviewGateRuns.startedAt));
+    .orderBy(asc(reviewGateRuns.startedAt), asc(reviewGateRuns.gateIndex));
   const latest = new Map<number, GateRunRow>();
   for (const r of runs) if (r.gateIndex < index) latest.set(r.gateIndex, r);
   const checkpoints: AutoCheckpoint[] = flat.slice(0, index).flatMap((f) => {
@@ -892,7 +892,7 @@ async function onlyAutoApproved(tx: Tx, inst: InstanceRow): Promise<boolean> {
     .select()
     .from(reviewGateRuns)
     .where(eq(reviewGateRuns.instanceId, inst.id))
-    .orderBy(asc(reviewGateRuns.startedAt));
+    .orderBy(asc(reviewGateRuns.startedAt), asc(reviewGateRuns.gateIndex));
   const latest = new Map<number, GateRunRow>();
   for (const r of runs) latest.set(r.gateIndex, r);
   const humans = [...latest.entries()].filter(
@@ -1357,7 +1357,7 @@ export async function getReview(tx: Tx, userId: string, id: string, rawDeps?: Re
     .select()
     .from(reviewGateRuns)
     .where(eq(reviewGateRuns.instanceId, inst.id))
-    .orderBy(asc(reviewGateRuns.startedAt));
+    .orderBy(asc(reviewGateRuns.startedAt), asc(reviewGateRuns.gateIndex));
   const nameOf = await names(tx, [
     inst.authorUserId ?? "",
     ...runs.flatMap((r) => [r.decidedBy ?? "", ...r.approvals.map((a) => a.userId)]),
