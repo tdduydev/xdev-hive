@@ -147,6 +147,23 @@ test("cấu hình dự án: báo quy trình code giới hạn nhánh đang thay 
   await expect(page).toHaveURL(/\/knowledge\/workflows$/);
 });
 
+test("cấu hình dự án: nút tạo quy trình dẫn tới trang Quy trình duyệt với dự án nguồn", async ({ page }) => {
+  await open(page, "admin", {
+    "projects/list": () => ok([{ ...PROJECT, key: "pay" }]),
+    "reviewWorkflows/list": () => ok([]),
+  });
+  await page.goto("/projects/pay/settings");
+  const create = page.getByRole("link", { name: "Tạo quy trình từ cấu hình này" });
+  await expect(create).toHaveAttribute("href", "/knowledge/workflows?duan=pay");
+});
+
+test("cấu hình dự án: người chỉ đọc không thấy nút tạo quy trình", async ({ page }) => {
+  await open(page, "member", { "reviewWorkflows/list": () => ok([]) });
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByRole("heading", { name: "Review chéo", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tạo quy trình từ cấu hình này" })).toHaveCount(0);
+});
+
 test("cấu hình dự án: chưa có quy trình code thì không báo thay review chéo", async ({ page }) => {
   await open(page, "admin", { "reviewWorkflows/list": () => ok([]) });
   await page.goto("/projects/PAY/settings");
