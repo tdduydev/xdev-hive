@@ -36,7 +36,8 @@ describe("ArtifactLibrary", () => {
         expect.anything(),
       ),
     );
-    expect(screen.getAllByText("Luồng hoàn tiền")).toHaveLength(2);
+    // Đổi bộ lọc là khoá truy vấn mới nên danh sách trống tới khi hub trả về; assert đồng bộ sẽ chạy đua với lần tải đó.
+    expect(await screen.findAllByText("Luồng hoàn tiền")).toHaveLength(2);
   });
 
   it("tải con trỏ, bỏ dòng trùng, rồi bỏ trang cũ khi đổi bộ lọc", async () => {
