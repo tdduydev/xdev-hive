@@ -197,7 +197,8 @@ if (tsAffected) {
       },
     });
   }
-  cmd("test (vitest, có database)", "pnpm", ["exec", "turbo", "run", "test", ...f]);
+  // Không đọc cache của turbo: test chập chờn từng xanh một lần sẽ được "phát lại" xanh mãi, còn CI chạy lại thật.
+  cmd("test (vitest, có database)", "pnpm", ["exec", "turbo", "run", "test", "--cache=local:w", ...f]);
   cmd("build", "pnpm", ["exec", "turbo", "run", "build", ...f]);
 }
 
