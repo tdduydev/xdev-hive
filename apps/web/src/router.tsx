@@ -34,6 +34,7 @@ import {
   validateWorkflowsSearch,
 } from "@/lib/route-search.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
+import { stashPairSecret } from "@/lib/terminal/webauthn.ts";
 
 import { LoadErrorPage, NotFoundPage, PendingPage } from "@/pages/status-pages.tsx";
 import { AppShell } from "@/shell/app-shell.tsx";
@@ -55,6 +56,8 @@ const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "
 const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
 const RemotePage = lazyRouteComponent(() => import("@/pages/remote/remote-page.tsx"), "RemotePage");
 const RemoteSessionPage = lazyRouteComponent(() => import("@/pages/remote/session-page.tsx"), "RemoteSessionPage");
+const RemotePairPage = lazyRouteComponent(() => import("@/pages/remote/pair-page.tsx"), "RemotePairPage");
+const RemoteDevicesPage = lazyRouteComponent(() => import("@/pages/remote/devices-page.tsx"), "RemoteDevicesPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
 const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
 const CostsPage = lazyRouteComponent(() => import("@/pages/costs-page.tsx"), "CostsPage");
@@ -130,7 +133,9 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
     }
     const me = await context.queryClient.ensureQueryData(meQuery);
     const { redirect: back } = location.search as { redirect?: unknown };
-    const href = authRedirect({ pathname: location.pathname, href: location.href, redirect: back }, me !== null);
+    // Link ghép mang bí mật trong fragment: chưa đăng nhập thì cất bí mật lại để `?redirect=` không mang nó lên hub.
+    const from = me === null ? stashPairSecret(location.href) : location.href;
+    const href = authRedirect({ pathname: location.pathname, href: from, redirect: back }, me !== null);
     if (href) throw redirect({ href, replace: true });
   },
   component: Outlet,
@@ -285,6 +290,23 @@ const remoteSessionRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/remote/$id",
   component: RemoteSessionPage,
+});
+/** Trang mở từ mã QR của máy: `?m=<tên máy>&p=<pairId>#s=<bí mật>`; trang tự đọc fragment nên search chỉ giữ m, p. */
+const remotePairRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/remote/pair",
+  validateSearch: (search: Record<string, unknown>): { m?: string; p?: string } => ({
+    ...(typeof search.m === "string" && { m: search.m }),
+    ...(typeof search.p === "string" && { p: search.p }),
+  }),
+  component: RemotePairPage,
+});
+const remoteDevicesRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/remote/devices",
+  validateSearch: (search: Record<string, unknown>): { machine?: string } =>
+    typeof search.machine === "string" && search.machine ? { machine: search.machine } : {},
+  component: RemoteDevicesPage,
 });
 
 /** Artifact (specs/012): thư viện, chi tiết; `/v/$n` là đường dẫn phiên bản mà agent dán vào chữ trả lời. */
@@ -488,6 +510,8 @@ const routeTree = rootRoute.addChildren([
         leaderRoute,
         leaderTerminalRoute,
         remoteRoute,
+        remotePairRoute,
+        remoteDevicesRoute,
         remoteSessionRoute,
         artifactsRoute,
         artifactRoute,
