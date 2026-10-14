@@ -544,6 +544,8 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 - [ ] T091 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp ảnh màn mới (sáng, tối, 360 px).
   - **Scope**: `specs/011-ai-sdlc-mode/*`, `apps/web/e2e/screenshots/**`
   - **Phụ thuộc**: T054, T055 · **Mức**: nhẹ
+  - SPEC11UI2 đã đối chiếu phần UI và lưu 11 ảnh tại `apps/web/e2e/screenshots/spec11ui2/`; kết quả và giới hạn ở
+    `ui-validation.md`. Chưa chạy phân tích toàn bộ đặc tả; giữ mở cho đợt tích hợp hub/worker.
 
 ---
 
