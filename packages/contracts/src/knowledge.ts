@@ -50,6 +50,11 @@ export const memoryWriteInput = z.object({
   kind: memoryKind,
   content: memoryContent,
   files: memoryFiles.default([]),
+  /**
+   * `machine`: memory lấy từ thư mục memory cục bộ của app trên máy người dùng. Hub luôn đặt chờ duyệt như memory agent
+   * đề xuất, vì nội dung do agent ghi trên máy, chưa ai trong đội xem. `user` là người gõ trực tiếp.
+   */
+  source: z.enum(["user", "machine"]).default("user"),
 });
 export type MemoryWriteInput = z.input<typeof memoryWriteInput>;
 
