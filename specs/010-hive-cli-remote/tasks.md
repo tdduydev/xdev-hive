@@ -353,7 +353,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/cmd/hive/{remote_totp.go,remote_totp_test.go}`
   - **Phụ thuộc**: T024 (cùng làn), T025 · **Mức**: vừa
 
-- [ ] T023 [US2] [US5] Desktop: màn Điều khiển từ xa
+- [x] T023 [US2] [US5] Desktop: màn Điều khiển từ xa
   - `remote.rs`: sidecar `hive remote watch --json`, lệnh `remote_*` gọi `hive remote … --json`; cửa sổ xác nhận ghép và
     "Hỏi trên máy"; thông báo hệ điều hành; khay "Tắt điều khiển từ xa ngay" và chấm khi có người điều khiển từ xa.
   - `remote-screen.tsx`: công tắc (xác nhận lần hai), thư mục (chọn bằng hộp thoại thư mục), thiết bị + QR, tuỳ chọn,
@@ -364,6 +364,10 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/desktop/src/shell/*` (mục AppNav), `apps/desktop/src-tauri/src/{remote.rs,tray_icon.rs,lib.rs}`,
     `apps/desktop/src-tauri/capabilities/*.json`, `apps/desktop/src-tauri/src/capabilities_audit.rs`
   - **Phụ thuộc**: T015 (cùng `lib.rs`, `tauri.conf.json`), T024, T026 · **Mức**: vừa
+  - Đã làm (SPEC10W6): `remote.rs` (sidecar `hive remote watch --json`, 15 lệnh `remote_*`, cửa sổ xác nhận ghép,
+    thông báo hệ điều hành, khay "Tắt điều khiển từ xa ngay", chấm xanh dương góc trên phải khi `hive ls --json` có
+    phiên `origin`/`controller` = `remote`); `lib/remote.ts`, `remote-screen.tsx` (vi/en) + mục AppNav;
+    `capabilities_audit.rs` chặn `remote_*` ngoài cửa sổ app. Chưa thử cửa sổ Tauri và khay thật.
 
 **Checkpoint**: chủ máy bật từ xa và ghép được điện thoại; chưa điều khiển được.
 

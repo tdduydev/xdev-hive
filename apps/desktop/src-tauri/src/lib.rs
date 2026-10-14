@@ -16,6 +16,7 @@ mod optimizer;
 mod profiles;
 mod pty;
 mod register;
+mod remote;
 mod setup_extra;
 mod skills;
 mod tls;
@@ -70,6 +71,8 @@ struct State {
 struct Tray {
     status: MenuItem<Wry>,
     toggle: MenuItem<Wry>,
+    /// "Tắt điều khiển từ xa ngay": chỉ bấm được khi điều khiển từ xa đang bật.
+    remote_off: MenuItem<Wry>,
     open: MenuItem<Wry>,
     open_app: MenuItem<Wry>,
     quit: MenuItem<Wry>,
@@ -147,6 +150,13 @@ fn refresh_tray(app: &AppHandle) {
             "Mở app trên máy"
         });
         let _ = tray.quit.set_text(if en { "Quit" } else { "Thoát" });
+        let _ = tray.remote_off.set_text(if en {
+            "Turn off remote control now"
+        } else {
+            "Tắt điều khiển từ xa ngay"
+        });
+        let remote = app.state::<remote::Remote>();
+        let _ = tray.remote_off.set_enabled(remote.enabled());
         let _ = tray.update_check.set_text(if en {
             "Check for updates"
         } else {
@@ -155,11 +165,19 @@ fn refresh_tray(app: &AppHandle) {
         sync_restart_item(app, &tray, en);
         if let (Some((rgba, w, h)), Some(icon)) = (&tray.icon, app.tray_by_id(TRAY)) {
             let mut drawn = tray.drawn.lock().ok();
-            if drawn.as_deref().map(String::as_str) != Some(view.kind) {
-                let dotted = tray_icon::with_dot(rgba, *w, *h, tray_icon::dot_color(view.kind));
+            // Khoá vẽ gồm cả chấm điều khiển từ xa: đổi một trong hai là vẽ lại.
+            let key = format!("{}|{}", view.kind, remote.active());
+            if drawn.as_deref().map(String::as_str) != Some(key.as_str()) {
+                let dotted = tray_icon::with_dots(
+                    rgba,
+                    *w,
+                    *h,
+                    tray_icon::dot_color(view.kind),
+                    remote.active(),
+                );
                 let _ = icon.set_icon(Some(tauri::image::Image::new_owned(dotted, *w, *h)));
                 if let Some(d) = drawn.as_mut() {
-                    **d = view.kind.to_string();
+                    **d = key;
                 }
             }
         }
@@ -174,8 +192,8 @@ fn refresh_tray(app: &AppHandle) {
     let _ = app.emit("worker-state", view);
 }
 
-/// Vị trí của mục "Mở lại để cập nhật" trong menu khay: ngay trên "Kiểm tra bản mới".
-const RESTART_ITEM_AT: usize = 6;
+/// Vị trí của mục "Mở lại để cập nhật" trong menu khay: ngay trên "Kiểm tra bản mới" (sau mục "Tắt điều khiển từ xa").
+const RESTART_ITEM_AT: usize = 7;
 
 fn sync_restart_item(app: &AppHandle, tray: &Tray, en: bool) {
     let ready = updates::ready_version(app);
@@ -626,6 +644,13 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         true,
         None::<&str>,
     )?;
+    let remote_off = MenuItem::with_id(
+        app,
+        "remote_off",
+        "Tắt điều khiển từ xa ngay",
+        false,
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -635,6 +660,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
             &open,
             &open_app,
             &toggle_item,
+            &remote_off,
             &PredefinedMenuItem::separator(app)?,
             &update_check,
             &PredefinedMenuItem::separator(app)?,
@@ -658,6 +684,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         "open" => open_hub(app),
         "app" => show_app(app),
         "toggle" => toggle(app),
+        "remote_off" => remote::disable_from_tray(app),
         "update_check" => updates::check_from_tray(app),
         "update_restart" => {
             let app = app.clone();
@@ -674,6 +701,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     Ok(Tray {
         status,
         toggle: toggle_item,
+        remote_off,
         open,
         open_app,
         quit: quit_item,
@@ -682,7 +710,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         menu,
         restart_shown: Mutex::new(false),
         icon: base,
-        drawn: Mutex::new("stopped".into()),
+        drawn: Mutex::new("stopped|false".into()),
     })
 }
 
@@ -702,6 +730,7 @@ pub fn run() {
         .manage(State::default())
         .manage(cli::Runs::default())
         .manage(pty::Ptys::default())
+        .manage(remote::Remote::default())
         .manage(git_groups::Jobs::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
@@ -781,7 +810,22 @@ pub fn run() {
             updates::check_updates_now,
             updates::relaunch_to_update,
             hive_cli::hive_cli_status,
-            hive_cli::hive_cli_install
+            hive_cli::hive_cli_install,
+            remote::remote_status,
+            remote::remote_enable,
+            remote::remote_disable,
+            remote::remote_root_add,
+            remote::remote_root_remove,
+            remote::remote_device_remove,
+            remote::remote_pair,
+            remote::remote_set,
+            remote::remote_pair_decide,
+            remote::remote_totp_enroll,
+            remote::remote_totp_confirm,
+            remote::remote_totp_disable,
+            remote::remote_totp_unlock,
+            remote::remote_sessions,
+            remote::remote_session_kill
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.
@@ -803,6 +847,7 @@ pub fn run() {
             doctor::warm_user_path();
             optimizer::link_on_start(app.handle());
             git_groups::start_auto_fetch(app.handle().clone());
+            remote::start(app.handle());
             let tray = build_tray(app)?;
             app.manage(tray);
             let handle = app.handle().clone();
@@ -861,6 +906,7 @@ pub fn run() {
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 app.state::<pty::Ptys>().close_all();
+                remote::stop(app);
             }
             // Cmd+Q, đăng xuất hệ điều hành: dừng worker êm trước. app.exit() của quit() gửi lại sự kiện kèm mã, cho qua.
             if let RunEvent::ExitRequested {
