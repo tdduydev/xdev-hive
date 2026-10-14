@@ -306,8 +306,9 @@ description: "Task list for Desktop Application v2 implementation"
 - [x] **T032 Navigation profiles**: show T028–T031 in `AppNav` by profile (`dev`, `writer`, `lead`), see "Role mapping
   to Hub permissions" in spec.md; tested in `apps/desktop/src/shell/app-shell.test.tsx`. Write docs and Awaiting my
   review reuse `DocEditor.dc.html` and `DocReview.dc.html` through `packages/doc-editor`. **Dependencies**: T028–T031.
-- [ ] **T033 Designs for My work and Knowledge**: `AppWork.dc.html` and `AppKnowledge.dc.html` in the design system;
-  the screens follow the existing app tables and cards until then. **Dependencies**: T029, T031.
+- [x] **T033 Designs for My work and Knowledge**: `AppWork.dc.html` and `AppKnowledge.dc.html` in the design system
+  (with `AppNav` entries for both and `canvas.json` boards); they mirror the existing screens. **Dependencies**:
+  T029, T031.
 - [x] **T034 Collapsible AppNav, language drop-down (FR-030)**: button in the window header; choice in localStorage.
 - [x] **T035 Worker: several CLI accounts (US13, FR-028)**: `accounts.json`, pick by priority, concurrency and
   cooldown, set the config directory variable, cool down on usage-limit messages, account label in run events.

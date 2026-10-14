@@ -42,6 +42,9 @@ func main() {
 		os.Exit(2)
 	}
 	switch os.Args[1] {
+	case "hook":
+		// Ẩn khỏi trợ giúp: Claude Code gọi lệnh này làm hook của run (runner/guard.go), người dùng không gọi tay.
+		os.Exit(runner.HookMain(os.Args[2:], os.Stdin, os.Stdout))
 	case "egress-proxy":
 		os.Exit(egressProxy(os.Args[2:], os.Stderr))
 	case "version":
@@ -62,6 +65,8 @@ func main() {
 		os.Exit(accountsCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "projects":
 		os.Exit(projectsCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "memory":
+		os.Exit(memoryCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "service":
 		os.Exit(serviceCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "update":
@@ -73,7 +78,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {

@@ -2,6 +2,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { artifactsContract } from "./artifacts.ts";
 import { auditContract } from "./audit.ts";
+import { chatContract } from "./chat.ts";
 import { codeReviewsContract } from "./code-reviews.ts";
 import { costsContract } from "./cost.ts";
 import { desktopConnectContract } from "./desktop-connect.ts";
@@ -22,6 +23,7 @@ import { skillLearningContract } from "./skill-learning.ts";
 import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
+import { terminalContract } from "./terminal.ts";
 import { reviewsContract, workflowsContract } from "./workflows.ts";
 
 export * from "./artifacts.ts";
@@ -54,6 +56,7 @@ export * from "./skill-learning.ts";
 export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
+export * from "./terminal.ts";
 export * from "./version.ts";
 export * from "./workflows.ts";
 
@@ -121,6 +124,7 @@ export const contract = {
   scmConnections: scmContract,
   notificationChannels: notificationChannelsContract,
   inbox: inboxContract,
+  chat: chatContract,
   projects: projectsContract,
   memory: memoryContract,
   docs: docsContract,
@@ -144,10 +148,12 @@ export const contract = {
   docEditor: docEditorContract,
   desktopConnect: desktopConnectContract,
   sdlc: sdlcContract,
+  terminal: terminalContract,
   artifacts: artifactsContract,
 };
 
 export type Contract = typeof contract;
 
+export * from "./chat.ts";
 export * from "./fleet.ts";
 export * from "./leader.ts";

@@ -44,7 +44,10 @@ func hooksOf(hooks []Hook, events ...string) []Hook {
 
 // claudeHookSettings dựng JSON cho cờ --settings của Claude Code từ hook PreToolUse/PostToolUse. Hook từ --settings vẫn
 // chạy khi --setting-sources rỗng (đã thử trên claude 2.1.296), nên "chỉ hook của tổ chức" là bỏ nguồn project.
-func claudeHookSettings(hooks []Hook) (string, error) {
+func claudeHookSettings(hooks []Hook) (string, error) { return claudeHookSettingsWith(hooks, nil) }
+
+// claudeHookSettingsWith thêm các mục đã dựng sẵn (hook của worker, guard.go) sau hook của tổ chức.
+func claudeHookSettingsWith(hooks []Hook, extra map[string][]any) (string, error) {
 	byEvent := map[string][]any{}
 	for _, h := range hooksOf(hooks, "PreToolUse", "PostToolUse") {
 		entry := map[string]any{"hooks": []any{map[string]any{"type": "command", "command": h.Command}}}
@@ -52,6 +55,12 @@ func claudeHookSettings(hooks []Hook) (string, error) {
 			entry["matcher"] = h.Matcher
 		}
 		byEvent[h.Event] = append(byEvent[h.Event], entry)
+	}
+	for _, event := range []string{"PreToolUse", "PostToolUse"} {
+		byEvent[event] = append(byEvent[event], extra[event]...)
+		if len(byEvent[event]) == 0 {
+			delete(byEvent, event)
+		}
 	}
 	if len(byEvent) == 0 {
 		return "", nil

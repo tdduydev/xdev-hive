@@ -184,11 +184,13 @@ test("danh sách dự án: hiện dự án và dẫn tới bảng việc của d
   await expect(page).toHaveURL(/\/projects\/PAY/);
 });
 
-test("cấu hình dự án: quản trị sửa ngân sách, bật toàn quyền phải xác nhận, lưu đúng bản vá", async ({ page }) => {
+test("cấu hình dự án: lưu từng mục, bật toàn quyền phải xác nhận, rời trang khi chưa lưu thì hỏi", async ({ page }) => {
+  // Hub giữ bản đã lưu giữa hai lần lưu, như hub thật: lần lưu mục sau không trả lại ngân sách cũ.
+  let settings = PROJECT.settings;
   const h = await open(page, "admin", {
     "projects/updateSettings": (input) => {
-      const patch = (input as { settings: Record<string, unknown> }).settings;
-      return ok({ ...PROJECT.settings, ...patch });
+      settings = { ...settings, ...(input as { settings: Record<string, unknown> }).settings };
+      return ok(settings);
     },
   });
   await page.goto("/projects/PAY/settings");
@@ -205,13 +207,56 @@ test("cấu hình dự án: quản trị sửa ngân sách, bật toàn quyền 
   await page.getByRole("dialog").getByRole("button", { name: "Bật toàn quyền" }).click();
   await expect(page.getByLabel(/Toàn quyền/)).toBeChecked();
 
-  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
-  await expect
-    .poll(() => h.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
-    .toMatchObject({
-      key: "PAY",
-      settings: { budget: { perRunUsd: 3.5 }, runPermissions: { mode: "full" } },
-    });
+  // Mỗi mục có nút Lưu riêng: lưu Ngân sách chỉ gửi ngân sách, mục Quyền vẫn chờ lưu.
+  const budget = page.getByRole("group", { name: "Ngân sách" });
+  const perm = page.getByRole("group", { name: "Quyền CLI của run" });
+  await expect(page.getByRole("group", { name: "Merge" }).getByRole("button", { name: "Lưu" })).toBeDisabled();
+  await expect(perm).toContainText("Có thay đổi chưa lưu");
+  await budget.getByRole("button", { name: "Lưu" }).click();
+  await expect(budget.getByRole("status")).toContainText("Đã lưu");
+  const saves = () =>
+    h.rpcCalls
+      .filter((c) => c.path === "projects/updateSettings")
+      .map((c) => c.input as { key: string; settings: Record<string, unknown> });
+  expect(saves()).toHaveLength(1);
+  expect(saves()[0]).toMatchObject({ key: "PAY", settings: { budget: { perRunUsd: 3.5 } } });
+  expect(Object.keys(saves()[0]?.settings ?? {})).toEqual(["budget"]);
+  await expect(perm).toContainText("Có thay đổi chưa lưu");
+
+  // Còn mục chưa lưu thì rời trang phải xác nhận; ở lại thì giữ bản nháp.
+  await page.getByRole("navigation", { name: "Điều hướng quản trị" }).getByRole("link", { name: "Máy" }).click();
+  const leave = page.getByRole("dialog", { name: "Rời trang khi còn thay đổi chưa lưu?" });
+  await leave.getByRole("button", { name: "Ở lại" }).click();
+  await expect(page).toHaveURL("/projects/PAY/settings");
+  await expect(page.getByLabel(/Toàn quyền/)).toBeChecked();
+
+  await perm.getByRole("button", { name: "Lưu" }).click();
+  await expect.poll(() => saves().at(-1)).toEqual({ key: "PAY", settings: { runPermissions: { mode: "full" } } });
+  await expect(perm.getByRole("status")).toContainText("Đã lưu");
+  await page.getByRole("navigation", { name: "Điều hướng quản trị" }).getByRole("link", { name: "Máy" }).click();
+  await expect(page).toHaveURL("/machines");
+});
+
+test("cấu hình dự án: Huỷ hoàn tác đúng mục, rời trang sau khi chấp nhận bỏ thay đổi", async ({ page }) => {
+  await open(page, "admin", {});
+  await page.goto("/projects/PAY/settings");
+  const budget = page.getByRole("group", { name: "Ngân sách" });
+  const run = page.getByRole("group", { name: "Kế hoạch và sandbox" });
+  const perRun = budget.getByRole("textbox", { name: "Mỗi run" });
+  const before = await perRun.inputValue();
+  await perRun.fill("9");
+  await run.getByRole("switch", { name: "Sandbox" }).click();
+  await budget.getByRole("button", { name: "Huỷ" }).click();
+  await expect(perRun).toHaveValue(before);
+  await expect(budget.getByRole("button", { name: "Lưu" })).toBeDisabled();
+  await expect(run.getByRole("switch", { name: "Sandbox" })).toBeChecked();
+
+  await page.getByRole("navigation", { name: "Điều hướng quản trị" }).getByRole("link", { name: "Máy" }).click();
+  await page
+    .getByRole("dialog", { name: "Rời trang khi còn thay đổi chưa lưu?" })
+    .getByRole("button", { name: "Rời trang" })
+    .click();
+  await expect(page).toHaveURL("/machines");
 });
 
 test("cấu hình dự án: Tiết kiệm token hiện mặc định, sửa và lưu đúng bản vá, số sai báo ở ô", async ({ page }) => {
@@ -229,15 +274,17 @@ test("cấu hình dự án: Tiết kiệm token hiện mặc định, sửa và 
   await expect(page.getByRole("textbox", { name: "Model của subagent" })).toHaveValue("sonnet");
   await expect(page.getByLabel("Thời gian giữ cache")).toHaveValue("5m");
 
+  const tokens = page.getByRole("group", { name: "Tiết kiệm token" });
   await page.getByRole("textbox", { name: "Output lệnh tối đa" }).fill("500");
-  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await tokens.getByRole("button", { name: "Lưu" }).click();
   await expect(page.getByText("Tối thiểu 1.000 ký tự.")).toBeVisible();
+  await expect(tokens.getByRole("alert")).toContainText("Có ô chưa hợp lệ");
   expect(h.rpcCalls.some((c) => c.path === "projects/updateSettings")).toBe(false);
 
   await page.getByRole("textbox", { name: "Output lệnh tối đa" }).fill("8000");
   await page.getByRole("textbox", { name: "Model của subagent" }).fill("haiku");
   await page.getByLabel("Thời gian giữ cache").selectOption("1h");
-  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await tokens.getByRole("button", { name: "Lưu" }).click();
   await expect
     .poll(() => h.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
     .toMatchObject({
@@ -250,7 +297,7 @@ test("cấu hình dự án: Tiết kiệm token hiện mặc định, sửa và 
   await expect(page.getByRole("switch", { name: "Gắn CodeGraph cho agent" })).toBeChecked();
   await page.getByRole("switch", { name: "Nén output lệnh bằng RTK" }).click();
   await page.getByRole("switch", { name: "Gắn CodeGraph cho agent" }).click();
-  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await tokens.getByRole("button", { name: "Lưu" }).click();
   await expect
     .poll(() => h.rpcCalls.filter((c) => c.path === "projects/updateSettings").at(-1)?.input)
     .toMatchObject({ key: "PAY", settings: { tokenSaving: { rtk: false, codegraph: false } } });
@@ -278,13 +325,13 @@ test("cấu hình dự án: định tuyến model hiện mặc định, sửa m�
   await expect(page.getByRole("switch", { name: "Cho agent dùng web" })).not.toBeChecked();
 
   await heavy.fill("0");
-  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await routing.getByRole("button", { name: "Lưu" }).click();
   await expect(page.getByText("Tối thiểu 1 lượt.")).toBeVisible();
   expect(h.rpcCalls.some((c) => c.path === "projects/updateSettings")).toBe(false);
 
   await heavy.fill("250");
   await routing.getByRole("textbox", { name: "Model cố vấn" }).nth(1).fill("opus");
-  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await routing.getByRole("button", { name: "Lưu" }).click();
   await expect
     .poll(() => h.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
     .toMatchObject({
@@ -311,6 +358,66 @@ test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async
   await expect(page.getByText("Chính sách agent của tổ chức không cho dự án bật toàn quyền")).toBeVisible();
   await expect(page.getByLabel(/Toàn quyền/)).toBeDisabled();
   await expect(page.getByLabel(/Trong worktree/)).toBeEnabled();
+});
+
+test("cấu hình dự án: quản trị đội thấy máy đã gắn repo local và máy bật toàn quyền", async ({ page }) => {
+  const machine = (id: string, name: string, over: Record<string, unknown>) => ({
+    id,
+    teamId: TEAM_ID,
+    kind: "worker",
+    name,
+    os: "darwin",
+    version: "0.9.0",
+    clis: ["claude"],
+    capacity: 2,
+    status: "online",
+    lastSeenAt: NOW,
+    createdAt: NOW,
+    shared: true,
+    registeredBy: null,
+    ...over,
+  });
+  const h = await open(page, "admin", {
+    "machines/list": () =>
+      ok([
+        machine("3c3c3c3c-0000-4000-8000-000000000001", "mac-mini-lan", {
+          boundProjects: [PROJECT.id],
+          fullProjects: [PROJECT.id],
+        }),
+        machine("3c3c3c3c-0000-4000-8000-000000000002", "dev-ha", { boundProjects: [PROJECT.id], fullProjects: [] }),
+        machine("3c3c3c3c-0000-4000-8000-000000000003", "may-khac", { boundProjects: ["other"], fullProjects: [] }),
+        machine("3c3c3c3c-0000-4000-8000-000000000004", "da-thu-hoi", {
+          status: "revoked",
+          boundProjects: [PROJECT.id],
+        }),
+      ]),
+  });
+  await page.goto("/projects/PAY/settings");
+  const section = page.getByRole("group", { name: "Máy đã gắn dự án này" });
+  const rows = section.getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("mac-mini-lan");
+  await expect(rows.nth(0)).toContainText("Đã gắn repo local");
+  await expect(rows.nth(0)).toContainText("Toàn quyền");
+  await expect(rows.nth(1)).toContainText("dev-ha");
+  await expect(rows.nth(1)).not.toContainText("Toàn quyền");
+  await expect(section).not.toContainText("may-khac");
+  await expect(section).not.toContainText("da-thu-hoi");
+  expect(h.rpcCalls.find((c) => c.path === "machines/list")?.input).toEqual({ teamId: TEAM_ID });
+});
+
+test("cấu hình dự án: chưa máy nào gắn thì báo trống", async ({ page }) => {
+  await open(page, "admin", { "machines/list": () => ok([]) });
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByText("Chưa máy nào gắn dự án này với repo local.")).toBeVisible();
+});
+
+test("cấu hình dự án: thành viên thường không thấy mục máy và không gọi danh sách máy", async ({ page }) => {
+  const h = await open(page, "member");
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByRole("heading", { name: "Quyền CLI của run" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Máy đã gắn dự án này" })).toHaveCount(0);
+  expect(h.rpcCalls.filter((c) => c.path === "machines/list")).toHaveLength(0);
 });
 
 test("cấu hình dự án: thành viên thường chỉ xem", async ({ page }) => {

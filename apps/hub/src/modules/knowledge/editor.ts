@@ -44,7 +44,7 @@ import {
 } from "./access.ts";
 import { docScope } from "./docs.ts";
 import { diffCounts, docTypeOf, flatGates, gateApplies } from "./review-rules.ts";
-import { matchWorkflow, proposeWithReview, type ReviewDeps } from "./reviews.ts";
+import { DERIVED_WORKFLOW_ID, proposeWithReview, type ReviewDeps, resolveWorkflow } from "./reviews.ts";
 import {
   docComments,
   docDrafts,
@@ -370,10 +370,10 @@ export async function editorState(tx: Tx, principal: Principal, raw: { key: stri
       })),
     };
   } else {
-    const wf = await matchWorkflow(tx, key, ctx.scope);
+    const wf = await resolveWorkflow(tx, key, ctx.scope);
     if (wf)
       workflow = {
-        id: wf.id,
+        id: wf.id ?? DERIVED_WORKFLOW_ID,
         name: wf.name,
         steps: flatGates(wf.phases).map((f) => ({
           gateId: f.gate.id,
@@ -713,6 +713,7 @@ function reviewerText(gate: ReviewGate): string {
     "org-admin": "Quản trị tổ chức",
     "team-admin": "Quản trị đội",
     "team-member": "Thành viên đội",
+    "team-ba": "BA/PO của đội",
   };
   const parts = [
     ...(r?.roles ?? []).map((x) => roles[x] ?? x),
@@ -727,10 +728,10 @@ export async function previewSubmit(tx: Tx, principal: Principal, raw: { key: st
   const ctx = await docContext(tx, principal, key);
   const content = draftContent(ctx);
   const { added, deleted } = diffCounts(ctx.latest.content, content);
-  const wf = await matchWorkflow(tx, key, ctx.scope);
+  const wf = await resolveWorkflow(tx, key, ctx.scope);
   const gctx = { docType: docTypeOf(key), content, base: ctx.latest.content };
   return {
-    workflow: wf ? { id: wf.id, name: wf.name } : null,
+    workflow: wf ? { id: wf.id ?? DERIVED_WORKFLOW_ID, name: wf.name } : null,
     gates: wf
       ? flatGates(wf.phases).map(({ gate }) => {
           const applies = gateApplies(gate, gctx);

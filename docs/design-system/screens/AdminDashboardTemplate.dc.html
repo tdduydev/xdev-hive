@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Mẫu trang số liệu (admin-layout.md)</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+.al{container-type:inline-size;background:var(--background);color:var(--foreground);font:14px/1.5 var(--font-sans);color-scheme:light;min-height:900px;display:flex}
+.al[data-theme=dark]{color-scheme:dark}
+.al *{box-sizing:border-box}.al :is(h1,h2,h3,p,dl,dd,ul){margin:0}.al ul{padding:0;list-style:none}
+.al :is(button,input,select,textarea,a):focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.al :is(button,input,select,textarea){font:inherit}.al button{cursor:pointer}.al button:disabled{opacity:.5;cursor:not-allowed}
+.al a{color:var(--primary);text-decoration:none}.al a:hover{text-decoration:underline;text-underline-offset:3px}
+.al-col{flex:999 1 560px;min-width:0;display:flex;flex-direction:column}
+.al-nav{flex:none;display:flex}
+.al-side{width:240px;flex:none;padding:12px 10px;display:flex;flex-direction:column;gap:14px;background:var(--sidebar);color:var(--sidebar-foreground);border-right:1px solid var(--border)}
+.al-brand{display:flex;align-items:center;height:40px;padding:0 6px}
+.al-org{display:flex;align-items:center;gap:10px;padding:7px 8px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--foreground);text-align:left}
+.al-org-mark{width:26px;height:26px;border-radius:6px;background:var(--brand-navy);color:#B8F1FF;display:grid;place-items:center;font:600 12px var(--font-mono);flex:none}
+.al-org-txt{display:flex;flex-direction:column;line-height:1.3;min-width:0}.al-org-txt span{font-size:12px;color:var(--muted-foreground)}
+.al .al-tree,.al .al-nsub,.al .al-alist{display:flex;flex-direction:column;gap:2px}
+.al .al-nsub{margin:2px 0 4px 17px;padding-left:8px;border-left:1px solid var(--border);gap:1px}
+.al .al-nl{display:flex;align-items:center;gap:10px;height:32px;padding:0 8px 0 10px;border-radius:6px;color:var(--sidebar-foreground);font-size:14px;text-decoration:none}
+.al .al-nl:hover{background:var(--muted);text-decoration:none}
+.al .al-nsub .al-nl{height:30px;padding-left:12px;color:var(--muted-foreground);font-size:13.5px}
+.al .al-alist{gap:1px}.al .al-alist .al-nl{height:30px;font-size:13.5px}
+.al .al-nl[aria-current]{background:var(--accent);color:var(--accent-foreground);font-weight:600}
+.al-ngrp{display:flex;align-items:center;gap:10px;height:32px;padding:0 8px 0 10px}
+.al-user{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 6px 2px;border-top:1px solid var(--border)}
+.al-user>span:first-child{width:28px;height:28px;border-radius:999px;background:var(--accent);color:var(--accent-foreground);display:grid;place-items:center;font-size:12px;font-weight:600}
+.al-user>span:last-child{display:flex;flex-direction:column;line-height:1.3;min-width:0}.al-user small{font-size:12px;color:var(--muted-foreground)}
+.al-admin{width:208px;flex:none;padding:12px 10px;display:flex;flex-direction:column;gap:14px;background:var(--background);border-right:1px solid var(--border)}
+.al .al-back{display:flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:6px;color:var(--foreground);font-weight:500;text-decoration:none}
+.al .al-back:hover{background:var(--muted);text-decoration:none}
+.al-agrp{display:flex;flex-direction:column;gap:4px}.al-ah{padding:0 10px;font-size:12px;font-weight:500;color:var(--muted-foreground)}
+.al-mnav{display:none;align-items:center;gap:12px;padding:12px 24px 0}.al-mnav .al-select{flex:1}
+.al-header{padding:24px 24px 4px;display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px 24px}
+.al-header>div:first-child{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.al-crumb{font-size:12px;color:var(--muted-foreground)}
+.al h1{font-family:var(--font-heading);font-size:20px;line-height:1.3;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.al-desc{color:var(--muted-foreground);max-width:48rem;text-wrap:pretty}
+.al-meta{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted-foreground)}
+.al-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.al-body{padding:16px 24px 24px;display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-content:start}
+.al-body.form{max-width:1120px}.al-body.wide{max-width:1360px}
+.al-tabs{display:flex;gap:4px;margin-top:12px;padding:0 16px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
+.al-tab{display:inline-flex;align-items:center;gap:6px;padding:10px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted-foreground);font-weight:500;white-space:nowrap}
+.al-tab[aria-selected=true]{color:var(--foreground);border-bottom-color:var(--primary)}
+.al-count{min-width:20px;padding:0 6px;border-radius:999px;background:var(--muted);color:var(--muted-foreground);font-size:12px;line-height:20px;text-align:center;font-variant-numeric:tabular-nums}
+.al-count.warn{background:var(--warning-soft);color:var(--warning)}
+.al-btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;border:1px solid var(--border);background:var(--background);color:var(--foreground);font-weight:500;white-space:nowrap}
+.al-btn:hover:not(:disabled){background:var(--muted)}
+.al-btn.primary{background:var(--primary);color:var(--primary-foreground);border-color:transparent}.al-btn.primary:hover:not(:disabled){background:var(--primary);opacity:.9}
+.al-btn.ghost{border-color:transparent;background:transparent}.al-btn.sm{height:28px;font-size:13px;padding:0 8px}
+.al-btn.dashed{border-style:dashed}.al-btn.danger{color:var(--destructive);border-color:var(--destructive)}
+.al-btn.danger-solid{background:var(--destructive);color:#fff;border-color:transparent}
+.al-input,.al-select{height:32px;width:100%;min-width:0;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground)}
+.al-filter{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.al-filter .al-search{width:256px;max-width:100%}.al-filter .al-right{margin-left:auto;display:flex;gap:8px}
+.al-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px}
+.al-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;border-radius:999px;background:var(--accent);color:var(--accent-foreground)}
+.al-chip button{border:0;background:none;color:inherit;width:20px;height:20px;border-radius:999px}
+.al-tablebox{border:1px solid var(--border);border-radius:12px;background:var(--card);overflow:hidden;min-width:0}
+.al-scroll{overflow-x:auto}
+.al-table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
+.al-table th{height:40px;padding:0 12px;text-align:left;font-size:12px;font-weight:500;color:var(--muted-foreground);white-space:nowrap;border-bottom:1px solid var(--border);background:var(--card)}
+.al-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;background:var(--card)}
+.al-table tr:last-child td{border-bottom:0}.al-table tbody tr:hover td{background:color-mix(in oklab,var(--muted) 50%,var(--card))}
+.al-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.al-table .pin-start{position:sticky;left:0;z-index:1;box-shadow:inset -1px 0 0 var(--border)}
+.al-table .pin-end{position:sticky;right:0;z-index:1;box-shadow:inset 1px 0 0 var(--border);text-align:right}
+.al-sub{font-size:12px;color:var(--muted-foreground)}.al-mono{font-family:var(--font-mono);font-size:12.5px}
+.al-person{display:flex;align-items:center;gap:10px;min-width:0}.al-ava{width:28px;height:28px;border-radius:999px;background:var(--muted);display:grid;place-items:center;font-size:11px;font-weight:600;flex:none}
+.al-pill{display:inline-flex;align-items:center;gap:6px;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.al-pill.ok{background:var(--success-soft);color:var(--success)}.al-pill.warn{background:var(--warning-soft);color:var(--warning)}.al-pill.bad{background:var(--destructive-soft);color:var(--destructive)}.al-pill.off{background:var(--muted);color:var(--muted-foreground)}.al-pill.run{background:var(--accent);color:var(--accent-foreground)}
+.al-foot{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 12px;border-top:1px solid var(--border);font-size:12px}
+.al-foot .al-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.al-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;background:var(--foreground);color:var(--background)}
+.al-bulk .al-btn{background:transparent;color:var(--background);border-color:color-mix(in oklab,var(--background) 30%,transparent)}
+.al-card{border-radius:12px;background:var(--card);box-shadow:0 0 0 1px color-mix(in oklab,var(--foreground) 10%,transparent);min-width:0}
+.al-card-h{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 16px;padding:14px 20px;border-bottom:1px solid var(--border)}
+.al-card-h>div:first-child{flex:1 1 256px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.al h2{font-size:16px;font-weight:600}.al-card-h p{font-size:12px;color:var(--muted-foreground);text-wrap:pretty}
+.al-rows>*{padding:16px 20px}.al-rows>*+*{border-top:1px solid var(--border)}
+.al-formrow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px 24px}
+.al-label{display:flex;flex-direction:column;gap:2px}.al-label b{font-weight:500}.al-label span,.al-hint{font-size:12px;color:var(--muted-foreground)}
+.al-switchrow{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.al-switch{width:32px;height:18px;border-radius:999px;border:0;background:var(--input);position:relative;flex:none;margin-top:2px}
+.al-switch::after{content:"";position:absolute;top:1px;left:1px;width:16px;height:16px;border-radius:999px;background:var(--background);transition:transform .15s}
+.al-switch[aria-checked=true]{background:var(--primary)}.al-switch[aria-checked=true]::after{transform:translateX(14px)}
+.al-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.al-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.al-field{display:flex;flex-direction:column;gap:6px;min-width:0}.al-field>b{font-weight:500}
+.al-suffix{position:relative}.al-suffix span{position:absolute;right:10px;top:7px;font:12px var(--font-mono);color:var(--muted-foreground)}
+.al-radio{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.al-radio label{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--border);border-radius:8px;cursor:pointer}
+.al-radio label[data-on=true]{border-color:var(--primary);background:color-mix(in oklab,var(--accent) 40%,transparent)}
+.al-radio label[data-danger=true][data-on=true]{border-color:var(--destructive);background:var(--destructive-soft)}
+.al-settings{display:grid;grid-template-columns:12rem minmax(0,1fr);gap:32px;align-items:start}
+.al-toc{position:sticky;top:64px;display:flex;flex-direction:column;gap:2px}
+.al-toc a{display:block;padding:6px 10px;border-radius:6px;color:var(--muted-foreground);white-space:nowrap}
+.al-toc a[aria-current]{background:var(--accent);color:var(--accent-foreground);font-weight:500;box-shadow:inset 2px 0 0 var(--primary)}
+.al-savebar{position:sticky;bottom:0;margin:0 -24px -24px;padding:12px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;border-top:1px solid var(--border);background:color-mix(in oklab,var(--background) 85%,transparent);backdrop-filter:blur(8px)}
+.al-savebar .al-right{margin-left:auto;display:flex;gap:8px}
+.al-dot{width:8px;height:8px;border-radius:999px;background:var(--warning);display:inline-block}
+.al-note{padding:10px 14px;border-radius:8px;background:var(--muted);border:1px solid var(--border)}
+.al-alert{padding:12px 14px;border-radius:8px;background:var(--destructive-soft);color:var(--destructive);display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.al-empty{border:1px dashed var(--border);border-radius:12px;padding:40px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.al-empty .ico{width:32px;height:32px;border-radius:8px;background:var(--muted);display:grid;place-items:center}
+.al-empty p{color:var(--muted-foreground);max-width:24rem}
+.al-sk{background:var(--muted);border-radius:6px;height:12px;animation:alp 1.6s ease-in-out infinite}
+@keyframes alp{50%{opacity:.5}}@media (prefers-reduced-motion:reduce){.al-sk{animation:none}}
+.al-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.al-stat{padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.al-stat .top{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:500;color:var(--muted-foreground)}
+.al-stat .v{font:600 24px/1.2 var(--font-heading);font-variant-numeric:tabular-nums}
+.al-stat .ico{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;background:var(--muted)}
+.al-up-bad{color:var(--destructive);font-size:12px}.al-up-good{color:var(--success);font-size:12px}
+.al-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px}.al-dl dt{color:var(--muted-foreground)}.al-dl dd{overflow-wrap:anywhere}
+.al-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 12px;border-bottom:1px dashed var(--border);font-size:12px;width:100%}
+.al-tools select{height:26px;width:auto}
+.al-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+@container (max-width:1023px){.al-admin{display:none}.al-mnav{display:flex}.al-settings{grid-template-columns:minmax(0,1fr);gap:16px}.al-toc{position:static;flex-direction:row;overflow-x:auto}.al-toc a{border:1px solid var(--border)}.al-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:767px){.al-mnav{padding:12px 16px 0}.al-header{padding:20px 16px 4px}.al-body{padding:16px}.al-tabs{padding:0 8px}.al-formrow{grid-template-columns:minmax(0,1fr)}.al-savebar{margin:0 -16px -16px;padding:12px 16px}.al-grid3{grid-template-columns:minmax(0,1fr)}}
+@container (max-width:639px){.al-nav{display:none}.al-filter .al-search{width:100%}.al-filter .al-right{margin-left:0}.al-grid2,.al-radio,.al-stats{grid-template-columns:minmax(0,1fr)}.al-table .pin-end{position:static;box-shadow:none}.al-actions{width:100%}}
+
+.al-side[data-expanded=false]{width:56px;padding:12px 8px}
+.al-side[data-expanded=false] :is(.al-org,.al-nsub,.al-user,.al-nl>span,.al-ngrp>span){display:none}
+.al-side[data-expanded=false] :is(.al-nl,.al-ngrp){justify-content:center;padding:0;height:36px}
+.al-side[data-expanded=false] .al-brand{overflow:hidden;padding:0;width:28px;margin:auto}
+.al-expand{margin-top:auto;flex:none}
+</style>
+</helmet>
+<div class="al" data-theme="{{theme}}" lang="{{lang}}" style="{{boardStyle}}">
+<sc-if value="{{showTools}}" hint-placeholder-val="{{true}}"><div class="al-tools" data-design-tools><label>{{t.stateLabel}} <select class="al-select" value="{{view}}" onChange="{{setView}}"><sc-for list="{{views}}" as="v"><option value="{{v.value}}">{{v.label}}</option></sc-for></select></label><button type="button" class="al-btn sm" onClick="{{toggleLang}}">VI / EN</button><button type="button" class="al-btn sm" onClick="{{toggleTheme}}">{{t.theme}}</button><button type="button" class="al-btn sm" onClick="{{toggleNarrow}}">360 px</button></div></sc-if>
+<div class="al-nav">
+<nav class="al-side" data-expanded="{{sidebarExpanded}}" aria-label="{{fr.mainAria}}">
+  <div class="al-brand"><dc-import name="Logo" height="40" hint-size="91px,40px"></dc-import></div>
+  <button type="button" class="al-org" aria-label="{{fr.switchOrg}}"><span class="al-org-mark" aria-hidden="true">A</span><span class="al-org-txt"><b>Acme Software</b><span>{{fr.admin}}</span></span></button>
+  <ul class="al-tree">
+    <li><a class="al-nl" href="#" title="{{fr.home}}" aria-label="{{fr.home}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7 8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM6.5 14v-4h3v4"/></svg><span>{{fr.home}}</span></a></li>
+    <sc-for list="{{workGroups}}" as="g" hint-placeholder-count="2"><li><a class="al-ngrp" href="#" title="{{g.label}}" aria-label="{{g.label}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{g.icon}}"/></svg><span>{{g.label}}</span></a><ul class="al-nsub"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><li><a class="al-nl" href="#">{{it.label}}</a></li></sc-for></ul></li></sc-for>
+    <li><a class="al-nl" href="#" aria-current="true" title="{{fr.admin}}" aria-label="{{fr.admin}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>{{fr.admin}}</span></a></li>
+  </ul>
+  <button type="button" class="al-btn ghost al-expand" aria-label="{{sidebarToggleLabel}}" title="{{sidebarToggleLabel}}" onClick="{{toggleSidebar}}">⇔</button>
+  <div class="al-user"><span aria-hidden="true">TL</span><span><b style="font-weight:500">Trần Lan</b><small>lan@acme.vn</small></span></div>
+</nav>
+<nav class="al-admin" aria-label="{{fr.adminAria}}">
+  <a class="al-back" href="#">← {{fr.admin}}</a>
+  <sc-for list="{{adminGroups}}" as="g" hint-placeholder-count="4"><div class="al-agrp"><p class="al-ah">{{g.label}}</p><ul class="al-alist"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><li><a class="al-nl" href="#" aria-current="{{it.cur}}">{{it.label}}</a></li></sc-for></ul></div></sc-for>
+</nav>
+</div>
+<div class="al-col">
+  <dc-import name="Topbar" crumb="{{fr.crumb}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+  <div class="al-mnav"><a href="#">← {{fr.admin}}</a><select class="al-select" aria-label="{{fr.pick}}"><sc-for list="{{adminGroups}}" as="g" hint-placeholder-count="4"><optgroup label="{{g.label}}"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><option value="{{it.id}}" selected="{{it.sel}}">{{it.label}}</option></sc-for></optgroup></sc-for></select></div>
+  <header class="al-header">
+    <div><h1>{{t.title}}</h1><p class="al-desc">{{t.desc}}</p><p class="al-meta"><span>{{t.updated}}</span></p></div>
+    <div class="al-actions"><div role="radiogroup" aria-label="{{t.period}}" style="display:inline-flex;border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px"><sc-for list="{{periods}}" as="p" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{p.on}}" class="al-btn ghost sm" style="{{p.style}}" onClick="{{p.pick}}">{{p.label}}</button></sc-for></div><button type="button" class="al-btn">{{t.export}}</button></div>
+  </header>
+  <main class="al-body">
+    <sc-if value="{{isError}}" hint-placeholder-val="{{false}}"><div role="alert" class="al-alert">{{t.error}}<button type="button" class="al-btn sm" onClick="{{retry}}">{{t.retry}}</button></div></sc-if>
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}"><div role="status" aria-busy="true" style="display:grid;gap:16px"><span class="al-sr">{{t.loading}}</span><div class="al-stats"><sc-for list="{{four}}" as="i" hint-placeholder-count="4"><div class="al-card al-stat"><div class="al-sk" style="width:50%"></div><div class="al-sk" style="height:28px;width:70%"></div><div class="al-sk" style="width:60%"></div></div></sc-for></div><div class="al-card" style="height:280px;padding:20px"><div class="al-sk" style="height:100%"></div></div></div></sc-if>
+    <sc-if value="{{showData}}" hint-placeholder-val="{{true}}">
+    <div class="al-stats"><sc-for list="{{stats}}" as="s" hint-placeholder-count="4"><a href="#" class="al-card al-stat" style="color:inherit;text-decoration:none"><span class="top">{{s.label}}<span class="ico" style="{{s.icoStyle}}" aria-hidden="true">{{s.icon}}</span></span><span class="v">{{s.value}}</span><span class="{{s.trendClass}}">{{s.trend}}</span></a></sc-for></div>
+    <section class="al-card" aria-labelledby="c-chart"><div class="al-card-h"><div><h2 id="c-chart">{{t.chart}}</h2><p>{{t.chartHint}}</p></div><div role="radiogroup" aria-label="{{t.groupBy}}" style="display:inline-flex;gap:4px"><sc-for list="{{groups}}" as="g" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{g.on}}" class="al-btn sm" style="{{g.style}}" onClick="{{g.pick}}">{{g.label}}</button></sc-for></div></div>
+      <sc-if value="{{isEmpty}}"><div class="al-empty" style="margin:20px;border-style:dashed"><h2>{{t.emptyTitle}}</h2><p>{{t.emptyDesc}}</p></div></sc-if>
+      <sc-if value="{{hasData}}"><div style="padding:16px 20px"><svg viewBox="0 0 700 220" width="100%" height="220" role="img" aria-label="{{t.chartAlt}}"><g stroke="var(--border)" stroke-width="1"><line x1="40" y1="20" x2="700" y2="20"/><line x1="40" y1="80" x2="700" y2="80"/><line x1="40" y1="140" x2="700" y2="140"/><line x1="40" y1="200" x2="700" y2="200"/></g><g font-size="11" fill="var(--muted-foreground)" font-family="var(--font-mono)"><text x="0" y="24">60</text><text x="0" y="84">40</text><text x="0" y="144">20</text><text x="8" y="204">0</text></g><g><sc-for list="{{bars}}" as="b" hint-placeholder-count="14"><rect x="{{b.x}}" y="{{b.y}}" width="34" height="{{b.h}}" rx="3" fill="var(--primary)"><title>{{b.title}}</title></rect></sc-for></g></svg>
+        <p class="al-sub">{{t.chartNote}}</p></div></sc-if></section>
+    <section aria-labelledby="c-table" style="display:grid;gap:12px"><div><h2 id="c-table">{{t.byProject}}</h2><p class="al-sub" style="font-size:14px">{{t.byProjectHint}}</p></div>
+      <div class="al-tablebox"><div class="al-scroll"><table class="al-table" style="min-width:720px"><thead><tr><th class="pin-start">{{t.project}}</th><th class="num">{{t.runs}}</th><th class="num">{{t.tokens}}</th><th class="num">{{t.cache}}</th><th class="num">{{t.cost}}</th><th>{{t.budget}}</th></tr></thead>
+        <tbody><sc-for list="{{rows}}" as="r" hint-placeholder-count="4"><tr><td class="pin-start"><b style="font-weight:500">{{r.name}}</b><br><span class="al-sub al-mono">{{r.key}}</span></td><td class="num">{{r.runs}}</td><td class="num">{{r.tokens}}</td><td class="num">{{r.cache}}</td><td class="num">{{r.cost}}</td><td><span style="display:flex;align-items:center;gap:8px"><span style="flex:1;height:6px;border-radius:99px;background:var(--muted);overflow:hidden;min-width:80px"><span style="{{r.barStyle}}"></span></span><span class="{{r.pillClass}}">{{r.budget}}</span></span></td></tr></sc-for></tbody></table></div></div></section>
+    </sc-if>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","loading","empty","error"],"default":"normal"},"embedded":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+const frameVals = (x, active) => {
+  // Menu quản trị thứ hai (Quyết định 1): cùng nhóm và thứ tự với `area: "admin"` trong lib/nav.ts.
+  const adminTree = [
+    [['Người và quyền', 'People & access'], [['members', ['Thành viên', 'Members']], ['teams', ['Đội và hệ thống', 'Teams & systems']], ['roles', ['Vai trò và quyền', 'Roles & permissions']], ['signin', ['Đăng nhập', 'Sign-in']]]],
+    [['Dự án và hạ tầng', 'Projects & infra'], [['projects', ['Dự án', 'Projects']], ['machines', ['Máy', 'Machines']], ['sandbox', ['Sandbox', 'Sandbox']]]],
+    [['Quản trị agent', 'Agent governance'], [['mcp', ['MCP và công cụ', 'MCP & tools']], ['policies', ['Chính sách agent', 'Agent policies']]]],
+    [['Theo dõi', 'Monitoring'], [['costs', ['Chi phí và token', 'Costs & tokens']], ['notifications', ['Thông báo', 'Notifications']], ['audit', ['Nhật ký', 'Audit log']]]],
+  ];
+  const adminGroups = adminTree.map(([g, items]) => ({ label: x(g), items: items.map(([id, l]) => ({ id, label: x(l), cur: id === active ? 'page' : null, sel: id === active })) }));
+  const page = adminGroups.flatMap((g) => g.items).find((i) => i.sel);
+  const workGroups = [
+    { label: x(['Công việc', 'Work']), icon: 'M2.5 3.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1zM9.5 3.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z', items: [x(['Bảng việc', 'Board']), x(['Lượt chạy', 'Runs']), 'Leader'].map((label) => ({ label })) },
+    { label: x(['Kiến thức', 'Knowledge']), icon: 'M2.5 3h4a2 2 0 0 1 1.5.7A2 2 0 0 1 9.5 3h4v10h-4a1.5 1.5 0 0 0-1.5 1.5A1.5 1.5 0 0 0 6.5 13h-4zM8 3.7v10.8', items: [x(['Tài liệu', 'Docs']), 'Skills', 'Memory', x(['Đề xuất sửa', 'Proposals']), x(['Quy trình duyệt', 'Review workflows']), x(['Chờ tôi duyệt', 'Awaiting my review'])].map((label) => ({ label })) },
+  ];
+  const admin = x(['Quản trị', 'Admin']);
+  return {
+    adminGroups, workGroups,
+    fr: { home: x(['Tổng quan', 'Overview']), admin, crumb: admin + ' › ' + page.label, mainAria: x(['Điều hướng chính', 'Main navigation']), adminAria: x(['Menu quản trị', 'Admin menu']), pick: x(['Chọn trang quản trị', 'Choose an admin page']), switchOrg: x(['Đổi tổ chức', 'Switch organization']) },
+  };
+};
+const commonVals = (self, x, lang, dark, narrow, view) => ({
+  sidebarExpanded: !!self.state.sidebarExpanded,
+  sidebarToggleLabel: x(self.state.sidebarExpanded ? ['Thu gọn điều hướng', 'Collapse navigation'] : ['Mở rộng điều hướng', 'Expand navigation']),
+  toggleSidebar: () => self.setState({ sidebarExpanded: !self.state.sidebarExpanded }),
+  theme: dark ? 'dark' : 'light', lang, dark,
+  boardStyle: narrow ? 'width:360px;min-height:1600px' : '',
+  showTools: !self.props.embedded,
+  views: [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Rỗng', 'Empty']], ['error', ['Lỗi', 'Error']]].map(([value, l]) => ({ value, label: x(l) })),
+  view, setView: (e) => self.setState({ view: e.target.value }), retry: () => self.setState({ view: 'normal' }),
+  isLoading: view === 'loading', isError: view === 'error', isEmpty: view === 'empty', isReady: view === 'normal', notLoading: view !== 'loading',
+  toggleLang: () => self.setState({ lang: lang === 'en' ? 'vi' : 'en' }), toggleTheme: () => self.setState({ dark: !dark }), toggleNarrow: () => self.setState({ narrow: !narrow }),
+  setLang: (v) => self.setState({ lang: v }), setTheme: (v) => self.setState({ dark: v }),
+});
+const commonText = (x) => ({ stateLabel: x(['Trạng thái xem', 'View state']), theme: x(['Sáng/tối', 'Light/dark']), retry: x(['Tải lại', 'Retry']) });
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { lang: null, dark: null, narrow: null, view: null, period: '7d', group: 'project' }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const narrow = this.state.narrow ?? !!this.props.narrow;
+    const view = this.state.view ?? this.props.state ?? 'normal';
+    const x = (p) => (lang === 'en' ? p[1] : p[0]);
+    const money = (v) => (lang === 'en' ? '$' + v.toFixed(2) : v.toFixed(2).replace('.', ',') + ' USD');
+    const num = (v) => v.toLocaleString(lang === 'en' ? 'en-US' : 'vi-VN');
+    const empty = view === 'empty';
+    const t = {
+      ...commonText(x), group: x(['Theo dõi', 'Monitoring']), title: x(['Chi phí và token', 'Cost & tokens']),
+      desc: x(['Agent tiêu bao nhiêu theo dự án, máy và tài khoản; dự án nào sắp chạm ngân sách.', 'What agents spend by project, machine and account, and which projects are near their budget.']),
+      updated: x(['Cập nhật 2 phút trước', 'Updated 2 min ago']), period: x(['Khoảng thời gian', 'Period']), export: x(['Xuất CSV', 'Export CSV']),
+      loading: x(['Đang tải số liệu…', 'Loading figures…']), error: x(['Không tải được số liệu chi phí. Thử lại sau ít phút.', 'Could not load cost figures. Try again in a few minutes.']),
+      chart: x(['Chi phí theo ngày', 'Cost per day']), chartHint: x(['USD, chỉ run Claude báo được chi phí.', 'USD; only Claude runs report cost.']), groupBy: x(['Nhóm theo', 'Group by']),
+      chartAlt: x(['Biểu đồ cột chi phí 14 ngày, cao nhất 52 USD ngày 10/10.', 'Bar chart of cost over 14 days, peak 52 USD on Oct 10.']), chartNote: x(['Rê chuột lên cột để xem số; bảng dưới có cùng số liệu.', 'Hover a bar for its value; the table below has the same figures.']),
+      emptyTitle: x(['Chưa có run nào trong khoảng này', 'No runs in this period']), emptyDesc: x(['Chọn khoảng dài hơn, hoặc giao việc cho agent để bắt đầu có số liệu.', 'Pick a longer period, or assign work to an agent to start collecting figures.']),
+      byProject: x(['Theo dự án', 'By project']), byProjectHint: x(['Sắp theo chi phí, cao nhất trước.', 'Sorted by cost, highest first.']),
+      project: x(['Dự án', 'Project']), runs: 'Run', tokens: 'Token', cache: x(['Cache trúng', 'Cache hit']), cost: x(['Chi phí', 'Cost']), budget: x(['Ngân sách tháng', 'Monthly budget']),
+    };
+    const pick = (k, v) => () => this.setState({ [k]: v });
+    const seg = (on) => (on ? 'background:var(--accent);color:var(--accent-foreground)' : '');
+    const vals = [12, 18, 9, 22, 31, 27, 14, 19, 33, 52, 41, 28, 24, 36];
+    return {
+      ...commonVals(this, x, lang, dark, narrow, view), ...frameVals(x, 'costs'), t, four: [1, 2, 3, 4],
+      showData: view === 'normal' || empty, hasData: !empty,
+      periods: [['24h', ['24 giờ', '24 h']], ['7d', ['7 ngày', '7 d']], ['30d', ['30 ngày', '30 d']]].map(([k, l]) => ({ label: x(l), on: this.state.period === k ? 'true' : 'false', style: seg(this.state.period === k), pick: pick('period', k) })),
+      groups: [['project', ['Dự án', 'Project']], ['machine', ['Máy', 'Machine']], ['account', ['Tài khoản', 'Account']]].map(([k, l]) => ({ label: x(l), on: this.state.group === k ? 'true' : 'false', style: seg(this.state.group === k), pick: pick('group', k) })),
+      stats: [
+        [x(['Chi phí', 'Cost']), empty ? money(0) : money(386.42), x(['+12% so với 7 ngày trước', '+12% vs previous 7 days']), 'al-up-bad', '$', 'background:var(--warning-soft);color:var(--warning)'],
+        [x(['Run', 'Runs']), empty ? '0' : num(1286), x(['+4% so với 7 ngày trước', '+4% vs previous 7 days']), 'al-up-good', '▶', ''],
+        [x(['Token', 'Tokens']), empty ? '0' : '48,2 M', x(['Trung bình 37 K mỗi run', '37 K per run on average']), 'al-sub', 'T', ''],
+        [x(['Cache trúng', 'Cache hit']), empty ? '—' : '71%', x(['Mục tiêu từ 60%', 'Target 60% or more']), 'al-sub', '%', 'background:var(--success-soft);color:var(--success)'],
+      ].map(([label, value, trend, trendClass, icon, icoStyle]) => ({ label, value, trend, trendClass, icon, icoStyle })),
+      bars: vals.map((v, i) => ({ x: 48 + i * 46, y: 200 - v * 3, h: v * 3, title: `${i + 1}/10: ${money(v)}` })),
+      rows: (empty ? [] : [['payment-api', 'PAY', 412, 18.2e6, '74%', 162.3, 0.81], ['hive-worker', 'HW', 388, 14.9e6, '69%', 121.07, 0.6], ['mobile-app', 'MOB', 301, 9.6e6, '70%', 71.6, 0.36], ['partner-portal', 'PP', 185, 5.5e6, '65%', 31.45, 0.16]]).map(([name, key, runs, tok, cache, cost, used]) => ({
+        name, key, runs: num(runs), tokens: (tok / 1e6).toFixed(1).replace('.', lang === 'en' ? '.' : ',') + ' M', cache, cost: money(cost),
+        barStyle: `display:block;height:100%;width:${Math.round(used * 100)}%;background:${used > 0.8 ? 'var(--warning)' : 'var(--primary)'}`,
+        budget: Math.round(used * 100) + '%', pillClass: 'al-pill ' + (used > 0.8 ? 'warn' : 'off'),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

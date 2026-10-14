@@ -119,7 +119,7 @@ describe("RunsScreen", () => {
     expect(calls.some((c) => c.command === "hub_tool")).toBe(false);
     calls = fakeTauri([]);
     renderRuns(null);
-    expect((await screen.findAllByText(/Liên kết tài khoản/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Kết nối Hive ở thẻ tài khoản/)).length).toBeGreaterThan(0);
     expect(calls.some((c) => c.command === "hub_tool")).toBe(false);
   });
 

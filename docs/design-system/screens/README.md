@@ -45,13 +45,28 @@ Các file để phẳng một cấp vì `<dc-import name="X">` nạp `X.dc.html`
 | `DataTable.dc.html` | Mọi bảng dữ liệu | Tìm, lọc nhiều lựa chọn có đếm, dòng "Đang lọc", ẩn cột, sắp xếp, chọn hàng loạt, phân trang. Props: `columns`, `rows`, `facets`, `bulk`, `page-size`, `on-row-click`, `active-id` |
 | `AppNav.dc.html` | Mọi màn app máy | Một app, menu theo quyền (`role` = dev, writer, lead); `compact` chỉ còn icon. Có nhóm AI SDLC (xem dưới) |
 
+## Mẫu trang quản trị (2026-10-14)
+
+Bốn mẫu theo [`../admin-layout.md`](../admin-layout.md). Mỗi mẫu có prop `lang`, `dark`, `narrow` (360 px), `state`
+(`normal`, `loading`, `empty`, `error`; mẫu cài đặt dùng `empty` cho chế độ chỉ đọc) và thanh "Trạng thái xem" để xem
+từng trạng thái. Chưa chép lên canvas.
+
+| File | Mẫu | Trang làm chuẩn trong code |
+|---|---|---|
+| `AdminListTemplate.dc.html` | Danh sách: tab có số đếm, thanh lọc, bảng có cột số canh phải, cột ghim, chọn nhiều, phân trang. Bấm cả dòng (hoặc nút ›) mở trang chi tiết, không có panel bên cạnh | `/admin/members` |
+| `AdminDetailTemplate.dc.html` | Chi tiết: liên kết "← danh sách", ô màu + tên + trạng thái, nút phụ + một nút chính + ⋯, một dòng meta; tab theo URL (`?tab=`: Tổng quan, Thành viên, Hệ thống), khối thông tin, bảng liên quan, vùng nguy hiểm | `/admin/teams/$teamId` |
+| `AdminSettingsTemplate.dc.html` | Cài đặt nhiều mục: mục lục bám cuộn, mục dạng card, hàng nhãn–ô, công tắc, thẻ radio. Mỗi mục có chân riêng (● Có thay đổi chưa lưu, ✓ Đã lưu, lỗi, Huỷ, Lưu), không có thanh lưu chung; có hộp thoại "Rời trang khi còn thay đổi chưa lưu?" minh hoạ | `/projects/$key/settings` |
+| `AdminDashboardTemplate.dc.html` | Số liệu: thẻ số liệu có xu hướng, biểu đồ có bảng thay thế, bảng theo dự án | — (Chi phí) |
+
+Cả bốn mẫu dùng khung quản trị (Quyết định 1): thanh bên chính chỉ còn Tổng quan, Công việc, Kiến thức và một mục "Quản trị" (icon bánh răng, được tô); bên phải nó là menu quản trị thứ hai rộng 208 px với liên kết "← Quản trị" và bốn nhóm (Người và quyền, Dự án và hạ tầng, Quản trị agent, Theo dõi), trang hiện tại được tô. Từ 360 px cả hai cột ẩn, thay bằng một hàng "← Quản trị" + ô chọn "Chọn trang quản trị" phía trên tiêu đề. Khung này vẽ thẳng trong mỗi mẫu (không dùng `Sidebar.dc.html`, vẫn là menu cũ cho các màn khác); đường dẫn trên `Topbar` là "Quản trị › trang".
+
 ## Màn web
 
 | File | Màn | Route |
 |---|---|---|
 | `Home.dc.html` | Trang chủ | `/` |
 | `Main.dc.html` | Lượt chạy (DataTable 1.286 dòng mẫu) | `/runs` |
-| `Leader.dc.html` | Leader | `/leader` |
+| `Leader.dc.html` | Leader: chat, hộp thoại mở terminal, màn terminal, Bypass và nhật ký (xem "Terminal Leader" dưới) | `/leader`, `/leader/terminal/$id` |
 | `Plan.dc.html` | Kế hoạch, duyệt và từ chối | `/tasks/$key/plan` |
 | `Projects.dc.html` | Dự án | `/projects` |
 | `ProjectSettings.dc.html` | Cấu hình dự án | `/projects/$key/settings` |
@@ -80,6 +95,28 @@ Các file để phẳng một cấp vì `<dc-import name="X">` nạp `X.dc.html`
 Route của `Docs`, `DocEditor`, `Skills`, `Memory`, `Proposals`, `Workflows`, `DocReview`, `Roles`, `McpTools`,
 `Policies`, `Audit` là đề xuất; web chưa có các màn này.
 
+## Terminal Leader (Leader.dc.html)
+
+`Leader.dc.html` dùng chung thanh "Biến thể" cho chat và terminal. Mặc định `artifacts=true`, `view=ready`: chat kèm
+khung artifact; các trạng thái artifact (`loading`, `empty`, `error`, `offline`, `runtime`, `compile`, `newer`, `editing`,
+`deleted`) vẫn nằm trong tab Chat. Chọn "Mở phiên" để mở terminal, rồi quay về Chat để xem artifact.
+Đặt `artifacts=false` để xem chat cũ kèm danh sách phiên terminal. Prop `view` còn nhận `chat`, `open`, `terminal`, `bypass`,
+cộng `narrow` (khung 360 px,
+không Sidebar), `dark`, `lang`. Bảng màu và hành vi của xterm xem [`../prose-and-terminal.md`](../prose-and-terminal.md).
+
+| Biến thể | Nội dung | Ghi chú |
+|---|---|---|
+| `chat` (`artifacts=false`) | Nút **Mở terminal Leader** trên đầu cột trái; mục "Phiên terminal" liệt kê phiên: trạng thái, chế độ, máy, model, người mở, link; phiên của người khác có nhãn "Chỉ xem" | Nút chỉ hiện khi tổ chức có dự án |
+| `open` | Hộp thoại: dự án, máy (chỉ máy online; máy đủ phiên bị khoá kèm lý do), gói của máy, chế độ Đề xuất / Bypass, model Sonnet (mặc định) / Opus kèm chi phí ước tính 30 ngày (null thì "chưa đủ dữ liệu"), quyền trên máy (Toàn quyền hoặc Accept edits trong worktree tạm) | Hộp thoại tự gọi `terminal.options`: hub chưa bật hay thiếu quyền thì thay form bằng một câu giải thích |
+| `terminal` | Trang phiên: đầu trang có trạng thái kết nối, "Cho đội xem", "Đóng phiên"; hàng huy hiệu chế độ, model, máy, gói, quyền; xterm toàn khung; khung phải "Đề xuất của phiên": mỗi thẻ có hành động, **cấp độ Leader chọn + lý do**, ô chọn cấp (Nhẹ, Vừa, Nặng) kèm ý nghĩa của cấp, nút Duyệt và Từ chối | Đề xuất cũ không có cấp: ô chọn có thêm "Để hub tự suy" và duyệt không gửi `tier` |
+| `bypass` | Như `terminal` nhưng huy hiệu Bypass (cảnh báo) và khung phải là "Nhật ký hành động": giờ, tool, kết quả, cấp độ, model, lý do | Hộp thoại mở phiên Bypass: cảnh báo đỏ + ô tick xác nhận bắt buộc, nút Mở terminal khoá tới khi tick |
+| `narrow` (360 px) | Một cột: terminal 60% chiều cao màn, dưới là nút "Đề xuất (n)" / "Nhật ký (n)" mở ngăn chứa khung phải | Hộp thoại rộng tối đa 328 px, cuộn dọc |
+
+Trạng thái kết nối ở đầu trang: Đang kết nối (xanh), Đã kết nối (lục), Mất kết nối, đang nối lại… (vàng), Phiên đã kết thúc
+(xám, kèm lý do và bản ghi phát lại ở cỡ cột của lúc chạy). Người xem không phải chủ phiên thấy "Chỉ xem": terminal không
+nhận phím, không có công tắc "Cho đội xem" và nút "Đóng phiên". Canvas chưa vẽ lại các biến thể này bằng công cụ Claude
+Design; artboard chép từ code web (`apps/web/src/pages/leader-terminal-page.tsx`).
+
 ## App máy (desktop)
 
 Một app cho mọi người, menu hiện theo quyền. Không tách app dev và app viết tài liệu.
@@ -94,6 +131,8 @@ Một app cho mọi người, menu hiện theo quyền. Không tách app dev và
 | `AppTokens.dc.html` | Ngữ cảnh theo nhóm của `/context`, thứ tiêu hạn mức theo `/usage`, gợi ý tối ưu |
 | `AppSetup.dc.html` | Môi trường: CLI, runtime, công cụ, MCP, thư viện dự án, kèm lệnh cài |
 | `AppPlans.dc.html` | Gói agent nhóm theo CLI: ô "Cả máy", khối Claude Code / Codex / Antigravity với lưới thẻ gói, băng tìm đăng nhập chưa thêm, hộp thêm gói theo bước. Tweak `view` mở hộp thêm hoặc hộp tìm thấy |
+| `AppWork.dc.html` | Việc của tôi (hồ sơ dev và lead, quyền `work.mine`): bảng "Task của tôi" có nút Giao cho agent, bảng "Lượt chạy của tôi", và màn theo dõi một run (trạng thái, lý do đang chờ máy, log trực tiếp). Tweak `view`: `list`, `run`, `waiting`, `loading`, `empty`, `error` |
+| `AppKnowledge.dc.html` | Tra cứu tri thức (mọi hồ sơ, chỉ đọc): một ô tìm cho Tài liệu, Memory và Skill, bản đọc tài liệu có nút sang trình soạn và bản đọc skill. Tweak `view`: `results`, `start`, `none`, `loading`, `error`, `doc`, `skill` |
 
 Chế độ quyền, lệnh `/`, cách đăng nhập và đường dẫn skill trong `AppDocs` và `AppSkills` lấy từ Claude Code 2.1.296
 và codex-cli 0.162.1 cài trên máy dev ngày 2026-10-12. Định dạng từng dòng thao tác trong khung chat và chữ của Approve

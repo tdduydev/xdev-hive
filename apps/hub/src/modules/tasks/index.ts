@@ -1,5 +1,11 @@
 // Task của dự án và kế hoạch của plan mode. Module khác chỉ import file này.
 export {
+  dependenciesOf,
+  setTaskDependencies,
+  type TaskDependencyView,
+  withDependencies,
+} from "./dependencies.ts";
+export {
   approvedPlanOf,
   decidePlan,
   findPlan,
@@ -29,5 +35,6 @@ export {
   taskForUser,
   taskSummaries,
   toTask,
+  updateChecklist,
   updateTask,
 } from "./tasks.ts";

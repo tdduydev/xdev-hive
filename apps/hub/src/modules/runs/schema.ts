@@ -1,4 +1,4 @@
-import type { OutcomeCheck, RunExplore, RunResultView, RunRtk } from "@xdev-hive/contracts";
+import type { OutcomeCheck, RunExplore, RunResultView, RunRtk, RunTokenGuard } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -37,6 +37,7 @@ export const runKind = hive.enum("run_kind", [
   "docassist",
   "brief",
   "skill_proposal",
+  "sdlc",
 ]);
 export const runState = hive.enum("run_state", [
   "queued",
@@ -89,6 +90,8 @@ export const runs = hive
       model: text("model"),
       /** Cấp độ task do người đặt tay (light|medium|heavy); null là hub suy từ task (routing.ts). */
       tier: text("tier").$type<"light" | "medium" | "heavy">(),
+      /** Chỉ giao cho máy có đủ các nhãn này (specs/011 FR-040); chép từ cài đặt AI SDLC của dự án lúc tạo run. */
+      requiredLabels: text("required_labels").array().notNull().default(sql`'{}'::text[]`),
       branch: text("branch").notNull(),
       /** Chính sách kết quả chốt lúc giao, để cấu hình dự án đổi sau không đổi kết quả của run. */
       policySnapshot: jsonb("policy_snapshot").$type<OutcomeCheck[]>().notNull(),
@@ -127,6 +130,11 @@ export const runs = hive
        * thử mới ghi đè vì số luỹ kế là của một phiên agent.
        */
       rtk: jsonb("rtk").$type<RunRtk & { attempt: number }>(),
+      /**
+       * Context pack, lệnh khảo sát bị chặn và ký tự output đã cắt ở lần thử gần nhất (worker báo trong sự kiện cost).
+       * null khi run không dùng; lần thử mới ghi đè như rtk.
+       */
+      tokenGuard: jsonb("token_guard").$type<RunTokenGuard & { attempt: number }>(),
       /** Đề nghị job đang chờ máy trả lời; hết hạn thì hub đề nghị máy khác. */
       offerMachineId: uuid("offer_machine_id"),
       offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),

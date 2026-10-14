@@ -1,5 +1,6 @@
 import type { RunEventView, RunState } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
+import { formatInt } from "@/lib/format.ts";
 import {
   budgetPercent,
   canCancel,
@@ -11,6 +12,7 @@ import {
   routingRows,
   runAccess,
   runPhases,
+  tokenGuardSummary,
 } from "@/lib/run-view.ts";
 import { makeRun } from "@/lib/test-fixtures.ts";
 
@@ -223,5 +225,22 @@ describe("routingRows", () => {
     const rows = routingRows({ ...base, model: null, maxTurns: null });
     expect(rows).toContainEqual({ term: "Model", detail: "Theo cấu hình của CLI" });
     expect(rows.some((r) => r.term === "Số lượt tối đa")).toBe(false);
+  });
+});
+
+describe("tokenGuardSummary", () => {
+  it("chỉ nêu số khác 0", () => {
+    expect(tokenGuardSummary({ contextPackFiles: 12, exploreBlocked: 3, truncatedChars: 45_000 })).toBe(
+      `Context pack: 12 file · chặn 3 lệnh khảo sát · cắt ${formatInt(45_000)} ký tự output`,
+    );
+    expect(tokenGuardSummary({ contextPackFiles: 5, exploreBlocked: 0, truncatedChars: 0 })).toBe(
+      "Context pack: 5 file",
+    );
+  });
+
+  it("không có gì để nói thì null", () => {
+    expect(tokenGuardSummary(null)).toBeNull();
+    expect(tokenGuardSummary(undefined)).toBeNull();
+    expect(tokenGuardSummary({ contextPackFiles: 0, exploreBlocked: 0, truncatedChars: 0 })).toBeNull();
   });
 });

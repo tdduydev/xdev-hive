@@ -1,7 +1,15 @@
-import type { OutcomeCheck, Run, RunEventView, RunExplore, RunRouting, RunState } from "@xdev-hive/contracts";
+import type {
+  OutcomeCheck,
+  Run,
+  RunEventView,
+  RunExplore,
+  RunRouting,
+  RunState,
+  RunTokenGuard,
+} from "@xdev-hive/contracts";
 // Bảng việc và trang chủ nằm trong bundle đầu: lấy từ module không zod thay vì cả hợp đồng.
 import { TERMINAL_RUN_STATES } from "@xdev-hive/contracts/run-states";
-import { formatClock, formatDuration } from "@/lib/format.ts";
+import { formatClock, formatDuration, formatInt } from "@/lib/format.ts";
 
 /** Màu của nhãn trạng thái, khớp `tone` của <Pill>. */
 export type Tone = "neutral" | "ok" | "warn" | "bad" | "sel";
@@ -258,6 +266,19 @@ export function budgetPercent(costUsd: number | null, capUsd: number | undefined
 /** Token run dùng để khảo sát repo: vào, ra và cache (đọc cộng ghi), để người xem thấy một con số thay vì bốn. */
 export function exploreTokens(explore: RunExplore): number {
   return explore.inputTokens + explore.outputTokens + explore.cacheReadTokens + explore.cacheWriteTokens;
+}
+
+/**
+ * Một dòng tóm tắt việc tiết kiệm token của worker ở lần thử gần nhất; null khi không có gì để nói (run không dùng
+ * hoặc mọi số bằng 0).
+ */
+export function tokenGuardSummary(guard: RunTokenGuard | null | undefined): string | null {
+  if (!guard) return null;
+  const parts: string[] = [];
+  if (guard.contextPackFiles > 0) parts.push(`Context pack: ${formatInt(guard.contextPackFiles)} file`);
+  if (guard.exploreBlocked > 0) parts.push(`chặn ${formatInt(guard.exploreBlocked)} lệnh khảo sát`);
+  if (guard.truncatedChars > 0) parts.push(`cắt ${formatInt(guard.truncatedChars)} ký tự output`);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 export const TIER_LABEL: Record<RunRouting["tier"], string> = { light: "Nhẹ", medium: "Vừa", heavy: "Nặng" };
