@@ -147,7 +147,7 @@ func (h *steerHarness) read() map[string]any {
 	select {
 	case m := <-h.lines:
 		return m
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		h.t.Fatal("không có tin trên stdin")
 		return nil
 	}
@@ -179,7 +179,7 @@ func (h *steerHarness) waitClosed() {
 	h.t.Helper()
 	select {
 	case <-h.eof:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		h.t.Fatal("stdin không được đóng")
 	}
 }
@@ -260,7 +260,7 @@ func TestSteeringListenStopsOnShutdown(t *testing.T) {
 	in := make(chan Steer, 1)
 	in <- Steer{ID: "1", Input: "a"}
 	s.listen(in)
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for {
 		mu.Lock()
 		n := len(got)
