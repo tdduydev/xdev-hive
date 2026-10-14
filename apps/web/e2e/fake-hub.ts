@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
-import type { Page, WebSocketRoute } from "@playwright/test";
+import type { Page, Request, WebSocketRoute } from "@playwright/test";
 import { buildCsp, buildFrameDocument, type LibManifest } from "@xdev-hive/artifacts-runtime";
 import { LIB_DIST_DIR, readLibManifest } from "@xdev-hive/artifacts-runtime/node";
 import {
@@ -1376,10 +1376,13 @@ const LIB_TYPES: Record<string, string> = {
 export async function fakeArtifactFrames(page: Page, fixture: ArtifactsFixture) {
   const manifest = artifactLib();
   const frameRequests: string[] = [];
-  page.on("request", (request) => {
-    const frame = request.frame();
-    // Yêu cầu điều hướng của chính iframe (nạp tài liệu khung) có frame là khung đó; mọi thứ khác từ khung cũng vậy.
-    if (frame !== page.mainFrame() && !request.url().startsWith("data:")) frameRequests.push(request.url());
+  // Chỉ yêu cầu thật sự ra mạng: Chromium vẫn báo sự kiện `request` cho yêu cầu mà CSP chặn ngay trong trình duyệt.
+  const fromFrame = (request: Request) =>
+    request.frame() !== page.mainFrame() && !request.url().startsWith("data:") && frameRequests.push(request.url());
+  page.on("requestfinished", fromFrame);
+  page.on("requestfailed", (request) => {
+    // Chromium ghi lý do là "csp" (hoặc mã net::ERR_BLOCKED_BY_CSP ở bản khác).
+    if (!/^csp$|ERR_BLOCKED_BY_CSP/.test(request.failure()?.errorText ?? "")) fromFrame(request);
   });
   await page.route("**/_artifact/**", async (route) => {
     const url = new URL(route.request().url());

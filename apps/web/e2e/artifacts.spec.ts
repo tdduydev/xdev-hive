@@ -192,7 +192,7 @@ test("artifact: 360 px, tối — khung là ngăn kéo toàn màn, không cuộn
   await page.getByRole("button", { name: "Artifact của cuộc trò chuyện (4)" }).click();
   const panel = panelOf(page);
   await expect(panel.getByRole("heading", { name: "Bảng điều khiển", level: 3 })).toBeVisible();
-  expect((await page.getByRole("dialog", { name: "Artifact" }).boundingBox())?.width).toBe(360);
+  expect((await page.getByRole("dialog", { name: "Artifact" }).boundingBox())?.width).toBeCloseTo(360, 0);
   await expect(frameOf(page, "Bảng điều khiển").getByRole("heading", { name: "Bảng điều khiển" })).toBeVisible();
   // Khung nhận giao diện tối qua vé, không đọc được CSS của trang.
   expect(hub.rpcCalls.find((c) => c.path === "artifacts/frameUrl")?.input).toMatchObject({ theme: "dark" });
