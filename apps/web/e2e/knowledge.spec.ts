@@ -539,13 +539,13 @@ test("memory write error preserves form content", async ({ page }) => {
   await expect(dialog.getByRole("textbox", { name: "Nội dung", exact: true })).toHaveValue("Giữ nội dung");
 });
 
-const EMPTY_TITLE: Record<string, string> = {
+const EMPTY_TITLE = {
   docs: "Chưa có tài liệu nào",
   skills: "Chưa có skill của tổ chức",
   memory: "Chưa có memory nào",
   proposals: "Không có đề xuất nào đang chờ",
-};
-for (const route of ["docs", "skills", "memory", "proposals"]) {
+} as const;
+for (const route of ["docs", "skills", "memory", "proposals"] as const) {
   test(`${route}: empty and recoverable load error`, async ({ page }) => {
     let broken = true;
     await setup(page, {
