@@ -15,13 +15,18 @@ const Supported = true
 
 // Start chạy cmd trong một PTY cỡ cols×rows. pty.Start đặt Setsid nên tiến trình là chủ nhóm riêng, KillGroup dừng
 // được cả cây con.
-func Start(cmd *exec.Cmd, cols, rows int) (*os.File, error) {
-	return cpty.StartWithSize(cmd, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+func Start(cmd *exec.Cmd, cols, rows int) (Terminal, error) {
+	f, err := cpty.StartWithSize(cmd, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	if err != nil {
+		return nil, err
+	}
+	return file{f}, nil
 }
 
-// Resize đổi cỡ PTY; tiến trình nhận SIGWINCH và vẽ lại.
-func Resize(f *os.File, cols, rows int) error {
-	return cpty.Setsize(f, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+type file struct{ *os.File }
+
+func (f file) Resize(cols, rows int) error {
+	return cpty.Setsize(f.File, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 
 // HangupGroup gửi SIGHUP cho cả nhóm tiến trình, như khi đóng cửa sổ terminal: CLI tương tác tự dọn rồi thoát.
