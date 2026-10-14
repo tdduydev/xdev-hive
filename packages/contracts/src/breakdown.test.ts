@@ -246,7 +246,7 @@ describe("parseBreakdown — lỗi", () => {
     expect(errorsOf(sections, "heading")).toEqual(["Dòng 1: phụ thuộc vòng “A” → “B” → “A”."]);
   });
 
-  it("vượt giới hạn checklist, không có task, regex sai, bộ đọc chưa có", () => {
+  it("vượt giới hạn checklist, không có task, regex sai, độ mịn bộ đọc không hiểu", () => {
     const many = ["## Lớn", "", ...Array.from({ length: 21 }, (_, k) => `- [ ] T${String(k + 1).padStart(3, "0")} x`)];
     expect(errorsOf(many.join("\n"), "heading")).toEqual([
       "Dòng 1: “Lớn” có 21 mục checklist, vượt giới hạn 20. Tách thành nhiều phần nhỏ hơn (mỗi phần một task).",
@@ -254,8 +254,8 @@ describe("parseBreakdown — lỗi", () => {
     expect(errorsOf("# Tasks\n\nChưa có gì.\n")).toEqual(["Không tìm thấy dòng task nào (dạng “- [ ] T001 Mô tả”)."]);
     const bad = parseBreakdown("- [ ] T001 a\n", { ...dec("hive-tasks", "item"), requirementId: "FR-(" }, ctx);
     expect(bad.errors).toEqual([{ line: 0, message: "Mẫu mã requirement không phải regex hợp lệ." }]);
-    const kiro = parseBreakdown("- [ ] 1. a\n", dec("kiro-tasks", "item"), ctx);
-    expect(kiro.errors).toEqual([{ line: 0, message: "Bộ đọc “kiro-tasks” chưa có." }]);
+    const kiro = parseBreakdown("- [ ] 1. a\n", dec("kiro-tasks", "heading"), ctx);
+    expect(kiro.errors).toEqual([{ line: 0, message: "Bộ đọc “kiro-tasks” không tách theo độ mịn “heading”." }]);
   });
 
   it("phụ thuộc ghi dạng khoảng và task của spec khác", () => {
