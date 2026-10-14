@@ -30,7 +30,7 @@ import {
 import { Kbd } from "@/components/ui/kbd.tsx";
 import { SidebarTrigger } from "@/components/ui/sidebar.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { activeNavItem, NAV_HOME, navGroupOf, visibleGroups } from "@/lib/nav.ts";
+import { activeNavItem, NAV_ADMIN, NAV_HOME, navGroupOf, visibleGroups } from "@/lib/nav.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { readTheme, setTheme, type ThemeChoice } from "@/lib/theme.ts";
@@ -169,7 +169,7 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
 
 /**
  * Thanh trên theo Topbar.dc.html: đường dẫn (tổ chức › nhóm › trang, nhóm ẩn dưới 1024 px), tìm kiếm ⌘K, VI/EN,
- * sáng/tối, thông báo.
+ * sáng/tối, thông báo. Trang quản trị ghi "Quản trị" thay cho nhóm: nhóm con đã hiện ở menu Quản trị bên trái.
  */
 export function Topbar() {
   const t = useT(text);
@@ -178,7 +178,8 @@ export function Topbar() {
   const { pathname } = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const active = activeNavItem(pathname);
-  const group = navGroupOf(active);
+  const navGroup = navGroupOf(active);
+  const group = navGroup?.area === "admin" ? NAV_ADMIN : navGroup;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

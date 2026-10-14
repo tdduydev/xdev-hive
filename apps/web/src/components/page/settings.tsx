@@ -1,6 +1,14 @@
-import { type ReactNode, useEffect, useId, useState } from "react";
+import { Button } from "@xdev-hive/ui/button";
+import { CheckIcon, CircleAlertIcon } from "lucide-react";
+import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
 import { Switch } from "@/components/ui/switch.tsx";
 import { cx } from "@/lib/cx.ts";
+import { type Dict, useT } from "@/lib/i18n.ts";
+
+const text: Dict<{ save: string; saving: string; discard: string; unsaved: string; saved: string }> = {
+  vi: { save: "Lưu", saving: "Đang lưu…", discard: "Huỷ", unsaved: "Có thay đổi chưa lưu", saved: "Đã lưu" },
+  en: { save: "Save", saving: "Saving…", discard: "Cancel", unsaved: "Unsaved changes", saved: "Saved" },
+};
 
 /**
  * Trang cài đặt nhiều mục (admin-layout.md § Form cài đặt): mục lục bám theo cuộn bên trái từ 1024 px, các mục là card
@@ -71,31 +79,47 @@ export function SettingsNav({ label, items }: { label: string; items: readonly S
 }
 
 /**
+ * Lưu riêng một mục (admin-layout.md § Decisions 4): mục có thay đổi thì nút Lưu bật và Huỷ hiện ra; kết quả lưu
+ * ("Đã lưu" hay lỗi) nằm ngay ở chân mục đó. Trang tự giữ bản nháp và gọi hub; mục chỉ vẽ trạng thái.
+ */
+export interface SectionSave {
+  dirty: boolean;
+  saving: boolean;
+  /** Vừa lưu xong và chưa sửa gì thêm. */
+  saved?: boolean;
+  error?: ReactNode;
+  onSave: () => void;
+  onDiscard: () => void;
+  /** Khoá nút Lưu khi mục khác đang lưu (hub nhận từng bản vá một). */
+  disabled?: boolean;
+  saveLabel?: string;
+  savedLabel?: string;
+}
+
+/**
  * Một mục cài đặt: card có đầu (tiêu đề, mô tả, nút phụ) tách bằng viền, thân là các hàng FormRow/SwitchRow cách nhau
- * bằng đường kẻ. `role="group"` để trình đọc màn hình đọc tên mục khi vào một ô bên trong.
+ * bằng đường kẻ. `role="group"` để trình đọc màn hình đọc tên mục khi vào một ô bên trong. Có `save` thì mục là một
+ * `<form>` riêng: Enter trong ô lưu đúng mục đó, chân mục có trạng thái và nút Huỷ, Lưu.
  */
 export function SettingsSection({
   id,
   title,
   description,
   actions,
+  save,
   children,
 }: {
   id?: string;
   title: string;
   description?: ReactNode;
   actions?: ReactNode;
+  save?: SectionSave | undefined;
   children: ReactNode;
 }) {
   const headingId = useId();
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: tên nhóm là h2 có sẵn trong đầu card, fieldset buộc dùng legend.
-    <div
-      id={id}
-      role="group"
-      aria-labelledby={headingId}
-      className="min-w-0 scroll-mt-20 rounded-xl bg-card text-sm text-card-foreground ring-1 ring-foreground/10"
-    >
+  const className = "min-w-0 scroll-mt-20 rounded-xl bg-card text-sm text-card-foreground ring-1 ring-foreground/10";
+  const content = (
+    <>
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-border px-4 py-3.5 sm:px-5">
         <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
           <h2 id={headingId} className="text-base font-semibold text-foreground">
@@ -106,6 +130,74 @@ export function SettingsSection({
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
       <div className="grid divide-y divide-border px-4 sm:px-5 [&>*]:py-4">{children}</div>
+      {save && <SectionSaveBar save={save} />}
+    </>
+  );
+  if (save) {
+    const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      if (save.dirty && !save.saving && !save.disabled) save.onSave();
+    };
+    return (
+      // biome-ignore lint/a11y/useSemanticElements: tên nhóm là h2 có sẵn trong đầu card, fieldset buộc dùng legend.
+      <form
+        id={id}
+        role="group"
+        aria-labelledby={headingId}
+        noValidate
+        onSubmit={onSubmit}
+        data-dirty={save.dirty || undefined}
+        className={className}
+      >
+        {content}
+      </form>
+    );
+  }
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: tên nhóm là h2 có sẵn trong đầu card, fieldset buộc dùng legend.
+    <div id={id} role="group" aria-labelledby={headingId} className={className}>
+      {content}
+    </div>
+  );
+}
+
+function SectionSaveBar({ save }: { save: SectionSave }) {
+  const t = useT(text);
+  let status: ReactNode = null;
+  if (save.error)
+    status = (
+      <p role="alert" className="flex min-w-0 items-start gap-1.5 text-sm text-destructive">
+        <CircleAlertIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+        <span className="min-w-0 break-words">{save.error}</span>
+      </p>
+    );
+  else if (save.saved && !save.dirty)
+    status = (
+      <p role="status" className="flex items-center gap-1.5 text-sm text-success">
+        <CheckIcon aria-hidden="true" className="size-4" />
+        {save.savedLabel ?? t.saved}
+      </p>
+    );
+  else if (save.dirty)
+    status = (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <span aria-hidden="true" className="size-2 rounded-full bg-warning" />
+        {t.unsaved}
+      </p>
+    );
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-b-xl border-t border-border bg-muted/40 px-4 py-2.5 sm:px-5">
+      <div className="min-w-0 flex-1 basis-48">{status}</div>
+      <div className="ml-auto flex gap-2">
+        {save.dirty && (
+          <Button type="button" variant="outline" size="sm" onClick={save.onDiscard} disabled={save.saving}>
+            {t.discard}
+          </Button>
+        )}
+        <Button type="submit" variant="default" size="sm" disabled={!save.dirty || save.saving || save.disabled}>
+          {save.saving ? t.saving : (save.saveLabel ?? t.save)}
+        </Button>
+      </div>
     </div>
   );
 }
