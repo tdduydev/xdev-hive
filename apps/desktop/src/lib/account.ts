@@ -63,3 +63,10 @@ export function useAccount() {
 /** Tài khoản đã liên kết cho các màn trong bảng SCREENS (màn không nhận props). AppShell cấp giá trị. */
 export const AccountContext = createContext<Account | null>(null);
 export const useLinkedAccount = () => useContext(AccountContext);
+
+/**
+ * Mở hộp thoại kết nối Hive từ bất kỳ màn nào (AppShell cấp). Null khi màn chạy ngoài AppShell (test riêng màn): nút
+ * Kết nối ẩn đi thay vì bấm không có tác dụng.
+ */
+export const ConnectContext = createContext<(() => void) | null>(null);
+export const useConnect = () => useContext(ConnectContext);

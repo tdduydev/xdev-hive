@@ -79,7 +79,11 @@ func captureClaude() {
 		b, _ := os.ReadFile(os.Args[i+1])
 		mcp = string(b)
 	}
-	b, _ := json.Marshal(map[string]any{"args": os.Args[1:], "mcp": mcp, "path": os.Getenv("PATH"), "telemetry": os.Getenv("RTK_TELEMETRY_DISABLED"), "db": os.Getenv("RTK_DB_PATH")})
+	if dir := os.Getenv(GuardDirEnv); dir != "" {
+		// Như hook của run đã chặn hai lệnh và cắt 500 ký tự.
+		_ = os.WriteFile(filepath.Join(dir, "state.json"), []byte(`{"blocked":2,"truncatedChars":500}`), 0o600)
+	}
+	b, _ := json.Marshal(map[string]any{"args": os.Args[1:], "mcp": mcp, "path": os.Getenv("PATH"), "telemetry": os.Getenv("RTK_TELEMETRY_DISABLED"), "db": os.Getenv("RTK_DB_PATH"), "guard": os.Getenv(GuardDirEnv)})
 	_ = os.WriteFile(p, b, 0o600)
 }
 

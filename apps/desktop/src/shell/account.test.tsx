@@ -57,10 +57,10 @@ describe("liên kết tài khoản", () => {
     });
     render(<AppShell />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /Chưa liên kết tài khoản/ }));
+    await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByLabelText("Token MCP cá nhân"), "hive_pat_abc");
-    await user.click(within(dialog).getByRole("button", { name: "Liên kết" }));
+    await user.click(within(dialog).getByRole("button", { name: "Đăng nhập" }));
     expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
     expect(calls.find((c) => c.command === "account_link")?.args).toEqual({ token: "hive_pat_abc" });
     expect(screen.getByText("Dev · Thanh toán")).toBeTruthy();
@@ -73,10 +73,10 @@ describe("liên kết tài khoản", () => {
     });
     render(<AppShell />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /Chưa liên kết tài khoản/ }));
+    await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByLabelText("Token MCP cá nhân"), "hive_pat_bad");
-    await user.click(within(dialog).getByRole("button", { name: "Liên kết" }));
+    await user.click(within(dialog).getByRole("button", { name: "Đăng nhập" }));
     expect((await within(dialog).findByRole("alert")).textContent).toContain("Token không còn dùng được");
   });
 
@@ -101,19 +101,45 @@ describe("liên kết tài khoản", () => {
     });
     render(<AppShell />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /Chưa liên kết tài khoản/ }));
+    await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("alert").textContent).toContain("Token không còn dùng được.");
-    await user.click(within(dialog).getByRole("button", { name: "Gỡ liên kết" }));
+    await user.click(within(dialog).getByRole("button", { name: "Đăng xuất" }));
     expect(calls.some((c) => c.command === "account_unlink")).toBe(true);
   });
 
-  it("máy chưa đăng ký: không cho liên kết", async () => {
-    fakeTauri({ account_status: () => ({ hub: null, linked: false, account: null, error: null }) });
+  it("máy chưa đăng ký: kết nối Hive ngay trong hộp thoại, xong thì đọc lại tài khoản", async () => {
+    let status: AccountStatus = { hub: null, linked: false, account: null, error: null };
+    const calls = fakeTauri({
+      account_status: () => status,
+      browser_login: () => {
+        status = linked(ACCOUNT);
+        return "may-ha";
+      },
+    });
     render(<AppShell />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /Chưa liên kết tài khoản/ }));
-    expect(screen.getByText(/Máy chưa đăng ký với hub nào/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Liên kết" })).toBeNull();
+    await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
+    const dialog = screen.getByRole("dialog");
+    // Chưa có hub thì chưa có chỗ dán token cá nhân: kết nối máy trước.
+    expect(within(dialog).queryByLabelText("Token MCP cá nhân")).toBeNull();
+    await user.type(within(dialog).getByLabelText("Địa chỉ hub công khai"), HUB);
+    await user.click(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
+    expect(calls.find((c) => c.command === "browser_login")?.args).toEqual({ hub: HUB });
+    expect(screen.getByText("Dev · Thanh toán")).toBeTruthy();
+  });
+
+  it("đăng xuất: về trạng thái chưa đăng nhập, mục trên máy vẫn dùng được", async () => {
+    fakeTauri({ account_status: () => linked(ACCOUNT), account_unlink: () => unlinked });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Phạm Hà/ }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Đăng xuất" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Đóng" }));
+    expect(await screen.findByRole("button", { name: /Chưa đăng nhập/ })).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
+    expect(within(nav).getByRole("link", { name: "Gói agent" }).hasAttribute("data-offline")).toBe(false);
+    expect(within(nav).getByRole("link", { name: "Việc của tôi" }).hasAttribute("data-offline")).toBe(true);
   });
 });

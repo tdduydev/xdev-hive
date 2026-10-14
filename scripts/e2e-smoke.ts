@@ -447,6 +447,9 @@ export async function startHub(db: DbUrls, tmp: string, localGit: LocalGit | nul
     HIVE_ALLOW_EMAIL_SIGNUP: "1",
     // Database có sẵn có thể đã có tổ chức; cho người thử tạo thêm tổ chức.
     HIVE_ORG_CREATORS: names.email,
+    // Không hỏi API release của GitHub: runner CI dùng chung IP nên hay bị 403 vì hết lượt, log nhiễu cảnh báo.
+    HIVE_WORKER_RELEASES: "off",
+    HIVE_DESKTOP_RELEASES: "off",
     ...(localGit ? { HIVE_E2E: "1", HIVE_E2E_GIT_ROOT: localGit.root, HIVE_E2E_PR_DIR: localGit.prDir } : {}),
   };
   console.log(`  node apps/hub/src/main.ts trên ${url}`);
