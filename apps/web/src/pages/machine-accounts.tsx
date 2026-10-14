@@ -2,11 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AccountLogin, Machine, MachineAccounts } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
-import { DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { CopyField } from "@/components/copy-field.tsx";
+import { PageSection } from "@/components/page/page-section.tsx";
+import { type RadioCardOption, RadioCards } from "@/components/page/settings.tsx";
+import { LoadFailure, LoadingState, SectionsSkeleton } from "@/components/ui/query-state.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
@@ -18,7 +21,7 @@ type AccountLoginHow = AccountLogin["how"];
 type WorkerAccountSummary = NonNullable<MachineAccounts["accounts"]>[number];
 
 type Reason = NonNullable<MachineAccounts["reason"]>;
-type HowOption = { value: Exclude<AccountLoginHow, "device">; label: string; hint: string };
+type HowOption = RadioCardOption<Exclude<AccountLoginHow, "device">>;
 type Ended = "error" | "expired" | "cancelled";
 
 const text: Dict<{
@@ -26,8 +29,8 @@ const text: Dict<{
   reason: Record<Reason, string>;
   title: string;
   lead: string;
+  dialogLead: string;
   loading: string;
-  close: string;
   notReported: string;
   noAccounts: string;
   listLabel: string;
@@ -43,6 +46,9 @@ const text: Dict<{
   noData: string;
   resets: (at: string) => string;
   add: string;
+  resume: string;
+  pending: (label: string) => string;
+  finish: string;
   steps: string[];
   stepsLabel: string;
   label: string;
@@ -89,9 +95,9 @@ const text: Dict<{
       old_worker: "Cập nhật worker để điều khiển gói từ web.",
     },
     title: "Gói agent",
-    lead: "Đăng nhập gói chạy ngay trên máy: hub chỉ chuyển đường dẫn đăng nhập và mã bạn dán, không lưu token.",
+    lead: "Gói CLI đã đăng nhập trên máy và quota còn lại. Đăng nhập chạy ngay trên máy: hub chỉ chuyển đường dẫn và mã bạn dán, không lưu token.",
+    dialogLead: "Đăng nhập chạy ngay trên máy: hub chỉ chuyển đường dẫn và mã bạn dán, không lưu token.",
     loading: "Đang tải…",
-    close: "Đóng",
     notReported: "Máy chưa báo gói.",
     noAccounts: "Máy chưa có gói nào.",
     listLabel: "Danh sách gói",
@@ -107,6 +113,9 @@ const text: Dict<{
     noData: "Chưa có số liệu",
     resets: (at) => `Làm mới ${at}`,
     add: "Thêm gói",
+    resume: "Tiếp tục đăng nhập",
+    pending: (label) => `Đang đăng nhập gói ${label}: mở lại để làm tiếp bước đang dở.`,
+    finish: "Xong",
     steps: ["Chọn gói", "Cách đăng nhập", "Đăng nhập", "Xong"],
     stepsLabel: "Các bước thêm gói",
     label: "Tên gói",
@@ -115,19 +124,19 @@ const text: Dict<{
     how: [
       {
         value: "plan",
-        label: "Theo gói Pro/Max",
-        hint: "Đăng nhập bằng tài khoản Claude có gói Pro hoặc Max (mặc định).",
+        title: "Theo gói Pro/Max",
+        description: "Đăng nhập bằng tài khoản Claude có gói Pro hoặc Max (mặc định).",
       },
-      { value: "sso", label: "SSO", hint: "Đăng nhập bằng SSO của công ty." },
+      { value: "sso", title: "SSO", description: "Đăng nhập bằng SSO của công ty." },
       {
         value: "console",
-        label: "Console API",
-        hint: "Tính tiền theo API của Anthropic Console, không dùng gói Pro/Max.",
+        title: "Console API",
+        description: "Tính tiền theo API của Anthropic Console, không dùng gói Pro/Max.",
       },
       {
         value: "token",
-        label: "Dán token từ claude setup-token",
-        hint: "Chạy claude setup-token trên máy bạn, rồi dán token vào đây.",
+        title: "Dán token từ claude setup-token",
+        description: "Chạy claude setup-token trên máy bạn, rồi dán token vào đây.",
       },
     ],
     howClaude: "Cách đăng nhập Claude Code",
@@ -175,9 +184,10 @@ const text: Dict<{
       old_worker: "Update the worker to manage accounts from the web.",
     },
     title: "Agent accounts",
-    lead: "Sign-in runs on the machine itself: the hub only relays the sign-in link and the code you paste, and never stores tokens.",
+    lead: "CLI accounts signed in on the machine and their remaining quota. Sign-in runs on the machine: the hub only relays the link and the code you paste, and never stores tokens.",
+    dialogLead:
+      "Sign-in runs on the machine: the hub only relays the link and the code you paste, and never stores tokens.",
     loading: "Loading…",
-    close: "Close",
     notReported: "The machine has not reported its accounts yet.",
     noAccounts: "The machine has no accounts yet.",
     listLabel: "Accounts",
@@ -193,19 +203,30 @@ const text: Dict<{
     noData: "No data yet",
     resets: (at) => `Resets ${at}`,
     add: "Add account",
+    resume: "Continue sign-in",
+    pending: (label) => `Signing in account ${label}: reopen to continue where you left off.`,
+    finish: "Done",
     steps: ["Account", "Sign-in method", "Sign in", "Done"],
     stepsLabel: "Steps to add an account",
     label: "Account name",
     labelPlaceholder: "e.g. claude-max-team",
     next: "Continue",
     how: [
-      { value: "plan", label: "Pro/Max plan", hint: "Sign in with a Claude account on a Pro or Max plan (default)." },
-      { value: "sso", label: "SSO", hint: "Sign in with your company SSO." },
-      { value: "console", label: "Console API", hint: "Billed through the Anthropic Console API, not a Pro/Max plan." },
+      {
+        value: "plan",
+        title: "Pro/Max plan",
+        description: "Sign in with a Claude account on a Pro or Max plan (default).",
+      },
+      { value: "sso", title: "SSO", description: "Sign in with your company SSO." },
+      {
+        value: "console",
+        title: "Console API",
+        description: "Billed through the Anthropic Console API, not a Pro/Max plan.",
+      },
       {
         value: "token",
-        label: "Paste a claude setup-token token",
-        hint: "Run claude setup-token on your computer, then paste the token here.",
+        title: "Paste a claude setup-token token",
+        description: "Run claude setup-token on your computer, then paste the token here.",
       },
     ],
     howClaude: "How to sign in to Claude Code",
@@ -260,16 +281,23 @@ function useLocale() {
   return useLang() === "en" ? "en-GB" : "vi-VN";
 }
 
-/** Gói agent của một máy (T063): danh sách gói, bật/tắt và thêm gói mới bằng đăng nhập từ web. */
-export function MachineAccountsDialog({ machine, onClose }: { machine: Machine; onClose: () => void }) {
+/** Nút của từng bước dính đáy thân hộp thoại: luồng 4 bước có thể cao hơn màn hình mà nút vẫn bấm được. */
+const STEP_ACTIONS = "sticky bottom-0 bg-popover pt-2";
+
+/**
+ * Tab Gói agent của trang máy (T063): danh sách gói, bật/tắt từng gói, và nút mở hộp thoại thêm gói bằng đăng nhập từ
+ * web. Danh sách nằm trên trang để đọc quota không phải mở hộp thoại; chỉ luồng đăng nhập nhiều bước ở trong hộp thoại.
+ */
+export function MachineAccountsPanel({ machine }: { machine: Machine }) {
   const t = useT(text);
   const { api } = useOrg();
   const queryClient = useQueryClient();
+  const [adding, setAdding] = useState(false);
   const accounts = useQuery({
     ...api.machines.accounts.list.queryOptions({ input: { machineId: machine.id } }),
-    // Quota đổi theo heartbeat của worker; hỏi lại để thanh quota không đứng yên khi hộp thoại mở lâu.
+    // Quota đổi theo heartbeat của worker; hỏi lại để thanh quota không đứng yên khi trang mở lâu.
     refetchInterval: 15_000,
-    // Mở lại hộp thoại phải thấy phiên đăng nhập đang dở ngay, không đợi hết staleTime mặc định của app.
+    // Quay lại tab phải thấy phiên đăng nhập đang dở ngay, không đợi hết staleTime mặc định của app.
     staleTime: 0,
   });
   const toggle = useMutation({
@@ -280,42 +308,53 @@ export function MachineAccountsDialog({ machine, onClose }: { machine: Machine; 
       await queryClient.invalidateQueries({ queryKey: api.machines.list.key() });
     },
   });
-  const data = accounts.data;
 
+  if (accounts.isPending) return <SectionsSkeleton sections={1} label={t.loading} />;
+  if (accounts.isError) return <LoadFailure error={accounts.error} retry={accounts.refetch} />;
+  const data = accounts.data;
+  const pending = data.login && isActive(data.login) ? data.login : null;
   return (
-    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
-      <DialogTitle>
-        {t.title} · <span className="font-mono">{machine.name}</span>
-      </DialogTitle>
-      <DialogDescription>{t.lead}</DialogDescription>
-      {accounts.isPending ? (
-        <p aria-busy="true" className="text-muted-foreground">
-          {t.loading}
+    <PageSection
+      title={t.title}
+      description={t.lead}
+      actions={
+        data.remote && (
+          <Button variant={pending ? "outline" : "default"} onClick={() => setAdding(true)}>
+            {pending ? t.resume : t.add}
+          </Button>
+        )
+      }
+    >
+      {data.reason && (
+        <p role="status" className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-foreground">
+          {t.reason[data.reason]}
         </p>
-      ) : accounts.isError ? (
-        <Alert variant="destructive">{apiErrorMessage(accounts.error)}</Alert>
-      ) : (
-        <>
-          {data?.reason && (
-            <p role="status" className="rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-foreground">
-              {t.reason[data.reason]}
-            </p>
-          )}
-          {toggle.isError && <Alert variant="destructive">{apiErrorMessage(toggle.error)}</Alert>}
-          <AccountList
-            data={data}
-            pendingId={toggle.isPending ? toggle.variables.accountId : null}
-            onToggle={(accountId, enabled) => toggle.mutate({ accountId, enabled })}
-          />
-          <AddAccount machine={machine} data={data} />
-        </>
       )}
-      <DialogActions>
-        <Button variant="outline" onClick={onClose}>
-          {t.close}
-        </Button>
-      </DialogActions>
-    </DialogContent>
+      {pending && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t.pending(pending.label)}
+        </p>
+      )}
+      {toggle.isError && <Alert variant="destructive">{apiErrorMessage(toggle.error)}</Alert>}
+      <AccountList
+        data={data}
+        pendingId={toggle.isPending ? toggle.variables.accountId : null}
+        onToggle={(accountId, enabled) => toggle.mutate({ accountId, enabled })}
+      />
+      <Dialog open={adding} onOpenChange={setAdding}>
+        {adding && (
+          <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-xl">
+            <DialogTitle className="pr-8">
+              {t.add} · <span className="font-mono">{machine.name}</span>
+            </DialogTitle>
+            <DialogDescription>{t.dialogLead}</DialogDescription>
+            <div className="-mx-1 grid min-h-0 gap-3 overflow-y-auto overscroll-contain px-1">
+              <AddAccount machine={machine} data={data} onClose={() => setAdding(false)} />
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
+    </PageSection>
   );
 }
 
@@ -338,7 +377,7 @@ function AccountList({
   if (data.accounts.length === 0) return <p className="text-muted-foreground">{t.noAccounts}</p>;
   return (
     <section aria-label={t.listLabel} className="grid gap-2">
-      <ul className="grid gap-2">
+      <ul className="grid gap-3 lg:grid-cols-2">
         {data.accounts.map((account) => (
           <AccountRow
             key={account.id}
@@ -377,7 +416,7 @@ function AccountRow({
         ? (["warn", t.loggedOut] as const)
         : (["neutral", t.unknown] as const);
   return (
-    <li className="grid gap-2 rounded-lg border border-border p-3">
+    <li className="grid content-start gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
       <div className="flex items-start justify-between gap-3">
         <div className="grid min-w-0 gap-1">
           <b className="break-words font-medium text-foreground">{account.label || account.id}</b>
@@ -443,8 +482,7 @@ interface Draft {
   how: AccountLoginHow;
 }
 
-function AddAccount({ machine, data }: { machine: Machine; data: MachineAccounts | undefined }) {
-  const t = useT(text);
+function AddAccount({ machine, data, onClose }: { machine: Machine; data: MachineAccounts; onClose: () => void }) {
   const { api } = useOrg();
   const queryClient = useQueryClient();
   const [step, setStep] = useState<1 | 2>(1);
@@ -465,7 +503,14 @@ function AddAccount({ machine, data }: { machine: Machine; data: MachineAccounts
         login,
       );
       setRequestId(login.requestId);
+      // Tab dưới hộp thoại báo "phiên đang dở" và mở lại đúng bước nếu người dùng đóng hộp thoại giữa chừng.
+      void queryClient.invalidateQueries({ queryKey: api.machines.accounts.list.key() });
     },
+  });
+  // Chỉ đọc cache mà LoginSession đang hỏi lại, để thanh bước sang "Xong" cùng lúc với nội dung.
+  const live = useQuery({
+    ...api.machines.accounts.loginGet.queryOptions({ input: { machineId: machine.id, requestId: sessionId ?? "" } }),
+    enabled: false,
   });
 
   function reset(nextStep: 1 | 2) {
@@ -476,14 +521,11 @@ function AddAccount({ machine, data }: { machine: Machine; data: MachineAccounts
     void queryClient.invalidateQueries({ queryKey: api.machines.accounts.list.key() });
   }
 
-  if (!data?.remote && !sessionId) return null;
+  if (!data.remote && !sessionId) return null;
 
-  const stage = sessionId ? 2 : step - 1;
+  const stage = sessionId ? (live.data?.status === "done" ? 3 : 2) : step - 1;
   return (
-    <section aria-labelledby="add-account" className="grid gap-3 rounded-lg border border-border p-3">
-      <h3 id="add-account" className="font-medium text-foreground">
-        {t.add}
-      </h3>
+    <>
       <Stepper current={stage} />
       {sessionId ? (
         <LoginSession
@@ -495,6 +537,7 @@ function AddAccount({ machine, data }: { machine: Machine; data: MachineAccounts
             setDraft((d) => ({ ...d, label: "" }));
             reset(1);
           }}
+          onClose={onClose}
         />
       ) : step === 1 ? (
         <ChooseStep draft={draft} onChange={setDraft} onNext={() => setStep(2)} />
@@ -508,7 +551,7 @@ function AddAccount({ machine, data }: { machine: Machine; data: MachineAccounts
           error={start.isError ? apiErrorMessage(start.error) : null}
         />
       )}
-    </section>
+    </>
   );
 }
 
@@ -545,45 +588,15 @@ function Stepper({ current }: { current: number }) {
   );
 }
 
-function RadioCards<T extends string>({
-  name,
-  legend,
-  value,
-  options,
-  onChange,
-}: {
-  name: string;
-  legend: string;
-  value: T;
-  options: { value: T; label: string; hint?: string }[];
-  onChange: (value: T) => void;
-}) {
+/** Nhãn hiện trên nhóm radio: RadioCards dùng chung chỉ đặt tên cho trình đọc màn hình. */
+function Choice({ legend, children }: { legend: string; children: ReactNode }) {
   return (
-    <fieldset className="grid gap-2 border-0 p-0">
-      <legend className="mb-1 text-xs font-medium">{legend}</legend>
-      {options.map((option) => (
-        <label
-          key={option.value}
-          className={cx(
-            "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm transition-colors",
-            option.value === value ? "border-primary bg-accent/40" : "border-border hover:bg-muted/40",
-          )}
-        >
-          <input
-            type="radio"
-            name={name}
-            value={option.value}
-            checked={option.value === value}
-            onChange={() => onChange(option.value)}
-            className="mt-0.5 size-4 accent-primary"
-          />
-          <span className="grid min-w-0 gap-0.5">
-            <span className="font-medium text-foreground">{option.label}</span>
-            {option.hint && <span className="break-words text-xs text-muted-foreground">{option.hint}</span>}
-          </span>
-        </label>
-      ))}
-    </fieldset>
+    <div className="grid gap-1.5">
+      <span aria-hidden="true" className="text-xs font-medium">
+        {legend}
+      </span>
+      {children}
+    </div>
   );
 }
 
@@ -606,17 +619,20 @@ function ChooseStep({
         if (label) onNext();
       }}
     >
-      <RadioCards
-        name="account-cli"
-        legend="CLI"
-        value={draft.cli}
-        options={[
-          { value: "claude", label: "Claude Code" },
-          { value: "codex", label: "Codex" },
-        ]}
-        // Codex chỉ có mã thiết bị; Claude mặc định theo gói Pro/Max.
-        onChange={(cli) => onChange({ ...draft, cli, how: cli === "codex" ? "device" : "plan" })}
-      />
+      <Choice legend="CLI">
+        <RadioCards
+          name="account-cli"
+          label="CLI"
+          value={draft.cli}
+          columns={2}
+          options={[
+            { value: "claude", title: "Claude Code" },
+            { value: "codex", title: "Codex" },
+          ]}
+          // Codex chỉ có mã thiết bị; Claude mặc định theo gói Pro/Max.
+          onChange={(cli) => onChange({ ...draft, cli, how: cli === "codex" ? "device" : "plan" })}
+        />
+      </Choice>
       <label className="grid gap-1 text-xs font-medium" htmlFor="account-label">
         {t.label}
         <Input
@@ -628,7 +644,7 @@ function ChooseStep({
           onChange={(event) => onChange({ ...draft, label: event.target.value })}
         />
       </label>
-      <DialogActions>
+      <DialogActions className={STEP_ACTIONS}>
         <Button type="submit" variant="default" disabled={!label}>
           {t.next}
         </Button>
@@ -656,21 +672,25 @@ function HowStep({
   return (
     <div className="grid gap-3">
       {draft.cli === "claude" ? (
-        <RadioCards
-          name="account-how"
-          legend={t.howClaude}
-          value={draft.how as Exclude<AccountLoginHow, "device">}
-          options={t.how}
-          onChange={(how) => onChange({ ...draft, how })}
-        />
+        <Choice legend={t.howClaude}>
+          <RadioCards
+            name="account-how"
+            label={t.howClaude}
+            value={draft.how as Exclude<AccountLoginHow, "device">}
+            options={t.how}
+            onChange={(how) => onChange({ ...draft, how })}
+          />
+        </Choice>
       ) : (
-        <RadioCards
-          name="account-how"
-          legend={t.howCodex}
-          value="device"
-          options={[{ value: "device", label: t.device, hint: t.deviceHint }]}
-          onChange={() => {}}
-        />
+        <Choice legend={t.howCodex}>
+          <RadioCards
+            name="account-how"
+            label={t.howCodex}
+            value="device"
+            options={[{ value: "device", title: t.device, description: t.deviceHint }]}
+            onChange={() => {}}
+          />
+        </Choice>
       )}
       {draft.how === "token" && (
         <p
@@ -681,7 +701,7 @@ function HowStep({
         </p>
       )}
       {error && <Alert variant="destructive">{error}</Alert>}
-      <DialogActions>
+      <DialogActions className={STEP_ACTIONS}>
         <Button variant="outline" onClick={onBack} disabled={pending}>
           {t.back}
         </Button>
@@ -698,11 +718,13 @@ function LoginSession({
   requestId,
   onRetry,
   onAnother,
+  onClose,
 }: {
   machineId: string;
   requestId: string;
   onRetry: () => void;
   onAnother: () => void;
+  onClose: () => void;
 }) {
   const t = useT(text);
   const locale = useLocale();
@@ -734,18 +756,12 @@ function LoginSession({
     void queryClient.invalidateQueries({ queryKey: api.machines.list.key() });
   }, [status, queryClient, api]);
 
-  if (session.isPending) {
-    return (
-      <p aria-busy="true" className="text-muted-foreground">
-        {t.loadingSession}
-      </p>
-    );
-  }
+  if (session.isPending) return <LoadingState label={t.loadingSession} />;
   if (session.isError || !login) {
     return (
       <div className="grid gap-3">
         <Alert variant="destructive">{session.isError ? apiErrorMessage(session.error) : t.ended.error}</Alert>
-        <DialogActions>
+        <DialogActions className={STEP_ACTIONS}>
           <Button variant="default" onClick={onRetry}>
             {t.retry}
           </Button>
@@ -765,9 +781,12 @@ function LoginSession({
             </>
           )}
         </p>
-        <DialogActions>
+        <DialogActions className={STEP_ACTIONS}>
           <Button variant="outline" onClick={onAnother}>
             {t.another}
+          </Button>
+          <Button variant="default" onClick={onClose}>
+            {t.finish}
           </Button>
         </DialogActions>
       </div>
@@ -777,7 +796,7 @@ function LoginSession({
     return (
       <div className="grid gap-3">
         <Alert variant="destructive">{login.error || t.ended[login.status]}</Alert>
-        <DialogActions>
+        <DialogActions className={STEP_ACTIONS}>
           <Button variant="default" onClick={onRetry}>
             {t.retry}
           </Button>
@@ -854,7 +873,7 @@ function LoginSession({
       <p className="text-xs text-muted-foreground">
         {t.expires(new Date(login.expiresAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }))}
       </p>
-      <DialogActions>
+      <DialogActions className={STEP_ACTIONS}>
         <Button variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
           {t.cancel}
         </Button>
