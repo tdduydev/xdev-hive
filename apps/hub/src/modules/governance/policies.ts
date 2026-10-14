@@ -63,8 +63,9 @@ export async function saveAgentPolicy(
   input: AgentPolicyInput,
 ): Promise<{ policy: AgentPolicy; templatesChanged: boolean }> {
   await allowWith(tx, userId, "policies.write", () => requireOrgRole(tx, userId, "admin"));
-  const next = agentPolicyInput.parse(input);
   const before = await loadPolicy(tx);
+  // Client chưa biết mục `remote` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt.
+  const next = agentPolicyInput.parse(input.remote === undefined ? { ...input, remote: before.remote } : input);
   if (allowsFull(next) && !allowsFull(before)) {
     const granted = await effectivePermissions(tx, userId);
     if (!granted.has("policies.fullaccess")) {

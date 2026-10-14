@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-optimizer-status"
+description = "Enables the optimizer_status command without any pre-configured scope."
+commands.allow = ["optimizer_status"]
+
+[[permission]]
+identifier = "deny-optimizer-status"
+description = "Denies the optimizer_status command without any pre-configured scope."
+commands.deny = ["optimizer_status"]

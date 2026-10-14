@@ -4,6 +4,7 @@ import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/t
 import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { FolderForm } from "@/components/folder-form.tsx";
+import { OptimizerPanel } from "@/components/optimizer-panel.tsx";
 import { useFolder } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
@@ -307,6 +308,7 @@ export function TokensScreen() {
 
   return (
     <div className="flex flex-col gap-3.5">
+      <OptimizerPanel />
       <header className="flex flex-wrap items-center gap-3">
         <p className="min-w-60 flex-1 text-sm text-muted-foreground">{t.lead}</p>
         <fieldset className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">

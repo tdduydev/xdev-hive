@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
-import { PROTOCOL_VERSION, type WorkerToHub, workerToHub } from "@xdev-hive/contracts/worker-protocol";
+import {
+  type HubToWorker,
+  PROTOCOL_VERSION,
+  type WorkerToHub,
+  workerToHub,
+} from "@xdev-hive/contracts/worker-protocol";
 import type pg from "pg";
 import { type WebSocket, WebSocketServer } from "ws";
 import type { Jobs } from "../platform/index.ts";
@@ -22,15 +27,17 @@ export const CLOSE = {
 
 type Heartbeat = Extract<WorkerToHub, { type: "heartbeat" }>;
 type Hello = Extract<WorkerToHub, { type: "hello" }>;
-export type TerminalMessage = Extract<WorkerToHub, { type: "term_opened" | "term_output" | "term_exit" }>;
-/**
- * Gói điều khiển từ xa phiên trên máy cá nhân (specs/010 US2–US5). Worker chỉ gửi khi hub khai `terminal` cho máy cá nhân,
- * việc hub này chưa làm (T013), nên tới đây là worker lỗi: bỏ qua thay vì đóng kết nối làm hỏng run đang chạy.
- */
-type RemoteTerminalMessage = Extract<
+type Welcome = Extract<HubToWorker, { type: "welcome" }>;
+type OnlineMachine = NonNullable<Awaited<ReturnType<typeof markOnline>>>;
+export type TerminalMessage = Extract<
   WorkerToHub,
-  { type: "term_state" | "term_denied" | "term_event" | "term_granted" | "term_revoked" | "term_pair_result" }
+  { type: "term_opened" | "term_output" | "term_exit" | "term_event" | "term_state" | "term_pair_result" }
 >;
+/**
+ * Gói điều khiển từ xa phiên trên máy cá nhân (specs/010 US3–US5) mà hub chưa xử lý (T030, T051). Worker chỉ gửi khi hub
+ * khai `terminal`; tới đây thì bỏ qua thay vì đóng kết nối làm hỏng run đang chạy.
+ */
+type RemoteTerminalMessage = Extract<WorkerToHub, { type: "term_denied" | "term_granted" | "term_revoked" }>;
 export type RunMessage = Exclude<
   WorkerToHub,
   { type: "hello" | "heartbeat" | "account_login_event" } | TerminalMessage | RemoteTerminalMessage
@@ -39,6 +46,11 @@ export type RunMessage = Exclude<
 /** Gói terminal Leader (specs/010). Module terminal đăng ký qua registerTerminalHandlers; fleet không import terminal. */
 export interface TerminalHandlers {
   onMessage?: (machine: AuthedMachine, msg: TerminalMessage) => Promise<void>;
+  /**
+   * Phần `welcome` của phiên tương tác: `features` thêm `terminal` khi hub nhận phiên máy cá nhân, `owner`, `policy`
+   * (specs/010 D14). Không đăng ký thì welcome như cũ, worker không gửi gói `term_*` của máy cá nhân.
+   */
+  welcome?: (machine: AuthedMachine, online: OnlineMachine) => Promise<Pick<Welcome, "features" | "owner" | "policy">>;
   /** Máy mất kết nối: phiên của máy không còn đường tới PTY. */
   onDisconnected?: (machine: AuthedMachine) => Promise<void>;
 }
@@ -166,7 +178,14 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         registerConnection(machine.id, ws);
         // Worker chỉ nhận account_set và đăng nhập gói khi hub báo máy dùng chung (ADR 0017).
         const features = online.shared ? ["shared"] : [];
-        sendToMachine(machine.id, { type: "welcome", sessionId: session, heartbeatSec, features });
+        const extra = (await terminalHandlers.welcome?.(machine, online)) ?? {};
+        sendToMachine(machine.id, {
+          type: "welcome",
+          sessionId: session,
+          heartbeatSec,
+          ...extra,
+          features: [...features, ...(extra.features ?? [])],
+        });
         log.info(`Máy ${machine.name} (${machine.id}) đã kết nối, phiên ${session}`);
         touch();
         await (opts.onHello ?? registered.onHello)?.(machine, msg);
@@ -181,13 +200,13 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         case "term_opened":
         case "term_output":
         case "term_exit":
-          return terminalHandlers.onMessage?.(machine, msg);
-        case "term_state":
-        case "term_denied":
         case "term_event":
+        case "term_state":
+        case "term_pair_result":
+          return terminalHandlers.onMessage?.(machine, msg);
+        case "term_denied":
         case "term_granted":
         case "term_revoked":
-        case "term_pair_result":
           log.warn(`Máy ${machine.id} gửi ${msg.type} khi hub chưa bật điều khiển từ xa; bỏ qua`);
           return;
         case "heartbeat": {

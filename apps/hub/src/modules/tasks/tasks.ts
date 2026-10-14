@@ -294,6 +294,34 @@ export async function updateChecklist(tx: Tx, id: string, marks: { id: string; d
 }
 
 /**
+ * Sửa task do hệ thống tạo khi nguồn của nó đổi (bản tách của AI SDLC duyệt lại): không kiểm quyền người. Chỉ sửa task
+ * còn `todo`: task đã chạy giữ nguyên chữ để run và PR khớp với việc đã giao.
+ */
+export async function updateSystemTask(
+  tx: Tx,
+  id: string,
+  patch: { title?: string; body?: string; checklist?: TaskChecklistItem[] },
+): Promise<TaskRow | null> {
+  const set: Partial<typeof tasks.$inferInsert> = {};
+  if (patch.title !== undefined) set.title = patch.title;
+  if (patch.body !== undefined) set.body = patch.body;
+  if (patch.checklist !== undefined) set.checklist = checkChecklist(patch.checklist);
+  const [row] = await tx
+    .update(tasks)
+    .set({ ...set, updatedAt: sql`now()` })
+    .where(and(eq(tasks.id, id), eq(tasks.status, "todo")))
+    .returning();
+  if (row)
+    await recordAudit(tx, {
+      action: "task.update",
+      targetType: "task",
+      targetId: row.id,
+      data: { fields: Object.keys(set) },
+    });
+  return row ?? null;
+}
+
+/**
  * Huỷ task. `cancelRuns` (module runs gắn vào) huỷ run đang chạy trong cùng transaction và trả việc cần làm sau commit
  * (gửi lệnh huỷ tới máy), để lệnh huỷ không tới máy khi transaction rollback.
  */

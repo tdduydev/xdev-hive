@@ -185,7 +185,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{participants.ts,access.ts,phases.ts,participants.db.test.ts,access.db.test.ts,phases.db.test.ts}`
   - **Phụ thuộc**: T012, T014 · **Mức**: nặng
 
-- [ ] T016 🎯 [US17] Contract liên repo
+- [x] T016 🎯 [US17] Contract liên repo
   - `contracts.ts` (D23): `contracts.create|update` (bên cung cấp, bên dùng thuộc hạng mục; `requireProjectWrite` mọi
     bên), tạo `sdlc_artifacts` `scope = contract` + tài liệu hub + `sdlc_artifact_syncs` (nguồn ở bên cung cấp, bản sao
     ở bên dùng); nhận `sdlc_report contracts` từ T022 (hàm `contractsFromReport`); `workflowFor` thêm checkpoint cho đội
@@ -195,7 +195,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{contracts.ts,contracts.db.test.ts}`
   - **Phụ thuộc**: T015 · **Mức**: vừa
 
-- [ ] T017 🎯 [US18] Tự duyệt AI và thu hồi
+- [x] T017 🎯 [US18] Tự duyệt AI và thu hồi
   - `autoapprove.ts` (D25, D26): `autoDecide` — thuần (`decide(input) → {approve, reasons}` theo bảng điều kiện của
     plan.md "Tự duyệt") + đọc DB (chính sách tổ chức qua `governance`, cài đặt dự án, điểm checkpoint `ai`, run tác giả
     bản nháp); ghi `sdlc_auto_approvals`, audit `sdlc.auto_approve`, thông báo `sdlc.auto_approved`;
@@ -272,7 +272,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 4: Tách task, chạy đợt, truy vết cơ bản (US5, US6, US9) 🎯
 
-- [ ] T030 🎯 [US5] Baseline tài liệu tách việc → task hub
+- [x] T030 🎯 [US5] Baseline tài liệu tách việc → task hub
   - `breakdown.ts` (hub): `applyBaseline` (tạo task **trong dự án của task** với `checklist`, `dependsOn` (kể cả liên dự
     án, gọi `setTaskDependencies` bằng tác nhân hệ thống), `source = sdlc`, `sdlc_item_tasks.project_id`, liên kết truy vết
     `task`; so bản trước theo khoá lát: tạo, cập nhật task `todo`, huỷ task bỏ còn `todo`, cảnh báo task bỏ đã chạy; đổi
@@ -321,39 +321,49 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 6: Giao diện dùng chung, web, app (US7, US8) 🎯
 
-- [ ] T050 🎯 [P] Package `@xdev-hive/sdlc-ui` — khung, bảng, tạo hạng mục, câu hỏi
+- [x] T050 🎯 [P] Package `@xdev-hive/sdlc-ui` — khung, bảng, tạo hạng mục, câu hỏi
   - `env.tsx` (`SdlcEnv`: api, lang, link, can, errorMessage — như `DocEditorEnv`), `text.ts` (vi/en), `item-board.tsx`
     (chip dự án, lọc khớp dự án tham gia), `item-list.tsx`, `new-item.tsx` (gợi ý cỡ/chế độ, issue, `project-picker.tsx`:
     dự án chính + dự án tham gia, chỉ dự án có quyền, báo dự án chưa bật), `questions.tsx`; test component.
   - **Scope**: `packages/sdlc-ui/**` (package mới: `package.json`, `src/{index.ts,env.tsx,text.ts,item-board.tsx,item-list.tsx,new-item.tsx,project-picker.tsx,questions.tsx}`, test),
     `pnpm-workspace.yaml` nếu cần, `pnpm-lock.yaml`
   - **Phụ thuộc**: T001, T005 · **Mức**: vừa
+  - Đã làm: thêm `format.ts`, `parts.tsx`, `test-fixtures.tsx`. Contract chưa có route đọc issue nên màn tạo không xem
+    trước tiêu đề/nhãn của issue; hub đọc issue khi gợi ý và khi tạo. App chủ còn phải thêm `@source` của package vào CSS.
 
-- [ ] T051 🎯 Package `@xdev-hive/sdlc-ui` — chi tiết hạng mục
+- [x] T051 🎯 Package `@xdev-hive/sdlc-ui` — chi tiết hạng mục
   - `item-detail.tsx` (tab Tổng quan, Dự án, Tài liệu, Contract, Câu hỏi, Task, Truy vết), `phase-stepper.tsx`,
     `sync-status.tsx` (theo repo), `override-dialog.tsx` (phạm vi task/dự án/hạng mục), `steps-panel.tsx` (bước agent,
     trạng thái máy), `projects-panel.tsx` (đội, thêm/bỏ dự án), `contracts-panel.tsx` (bên cung cấp → bên dùng, duyệt
     từng đội, Thêm contract), `auto-approval.tsx` (nhãn "Tự duyệt bởi AI", điểm/ngưỡng/lý do, hạn, Thu hồi kèm lý do).
   - **Scope**: `packages/sdlc-ui/src/{item-detail.tsx,phase-stepper.tsx,sync-status.tsx,override-dialog.tsx,steps-panel.tsx,projects-panel.tsx,contracts-panel.tsx,auto-approval.tsx}` + test
   - **Phụ thuộc**: T050 · **Mức**: vừa
+  - Đã làm: tab Task và Truy vết nhận nội dung qua `renderTasks`/`renderTrace` (T052 điền); mặc định là danh sách task
+    theo đợt. "Duyệt từng đội" của contract dẫn tới phiên duyệt (contract chưa trả checkpoint theo đội trong `sdlcArtifactView`).
 
-- [ ] T052 🎯 Package `@xdev-hive/sdlc-ui` — duyệt bản tách và truy vết
+- [x] T052 🎯 Package `@xdev-hive/sdlc-ui` — duyệt bản tách và truy vết
   - `breakdown-review.tsx` (gộp/tách, sửa phụ thuộc, chuyển mục task ↔ checklist, đổi dự án của task, độ phủ, lỗi đọc),
     `dependency-graph.tsx` (`@xyflow/react`, làn theo dự án, cạnh liên dự án tô riêng, có dạng danh sách cho 360 px),
     `trace-matrix.tsx` (cột dự án, độ phủ tổng và theo dự án, CSV).
   - **Scope**: `packages/sdlc-ui/src/{breakdown-review.tsx,dependency-graph.tsx,trace-matrix.tsx}` + test,
     `packages/sdlc-ui/package.json` (thêm `@xyflow/react`), `pnpm-lock.yaml`
   - **Phụ thuộc**: T051, T003 · **Mức**: vừa
+  - Đã làm: thao tác sửa thuần ở `breakdown-edit.ts` (tính lại đợt, từ chối chu trình); tab Task có nút chuyển "Task đã
+    tạo" ↔ "Bản tách" (nạp lười), tab Truy vết là `TraceMatrix`. Bản tách xuất ở `@xdev-hive/sdlc-ui/breakdown` để màn
+    khác (ReviewPane) không kéo `@xyflow` qua `index.ts`; app chủ cần nạp CSS qua Vite như mọi import CSS.
 
-- [ ] T053 [P] `doc-editor`: khung bên "Hạng mục" và thẻ trong ReviewPane
+- [x] T053 [P] `doc-editor`: khung bên "Hạng mục" và thẻ trong ReviewPane
   - Khung bên khi key thuộc `project/<k>/sdlc/…`: giai đoạn, khuôn, mục bắt buộc, câu hỏi đã trả lời, "Nhờ agent soạn
     lại" (gọi `sdlc.items.step` qua `DocEditorEnv` mở rộng tuỳ chọn); ReviewPane thêm thẻ "Câu hỏi đã trả lời", "Bản tách
     task" (nhận component qua props, không import `sdlc-ui`); checkpoint theo đội hiện tên đội và dự án; checkpoint có
     `auto` hiện "Tự duyệt bởi AI · điểm/ngưỡng" và slot nút Thu hồi (qua props); sự kiện "Không tự duyệt: …".
   - **Scope**: `packages/doc-editor/src/{env.tsx,doc-editor.tsx,review-pane.tsx,sdlc-panel.tsx,text.ts}` + test
   - **Phụ thuộc**: T001, T005 · **Mức**: vừa
+  - Đã làm: khung bên bật khi app chủ truyền `env.sdlc.itemLink`; ReviewPane nhận `sdlc={{ breakdown, revoke }}`. Tên
+    đội và dự án của checkpoint theo đội lấy từ tên cổng hub đặt (`phases.ts`), contract không có trường đội riêng. Sự
+    kiện "Không tự duyệt" đọc từ ghi chú cổng có tiền tố đó.
 
-- [ ] T054 🎯 Web: luồng AI SDLC và cấu hình dự án
+- [x] T054 🎯 Web: luồng AI SDLC và cấu hình dự án
   - Route `/sdlc`, `/sdlc/new`, `/sdlc/questions`, `/sdlc/$project/$number` (+ tab), `lib/sdlc-env.tsx`, menu
     (`lib/nav.ts`), mục AI SDLC trong cài đặt dự án (gồm Tự duyệt: bật, ngưỡng, giai đoạn, hạn thu hồi, từ khoá/đường dẫn
     nhạy cảm), mục AI SDLC trong `/admin/policies` (cho phép tự duyệt, sàn ngưỡng, danh sách nhạy cảm của tổ chức), thẻ bản
@@ -365,6 +375,9 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `apps/web/src/pages/knowledge/reviews-page.tsx`, `apps/web/src/lib/{nav.ts,sdlc-env.tsx,project-settings.ts}`,
     `apps/web/e2e/{sdlc.spec.ts,sdlc-multi.spec.ts,fake-hub.ts,sdlc-fixture.ts}`, `apps/web/package.json`
   - **Phụ thuộc**: T052, T053 · **Mức**: vừa
+  - Đã làm: cài đặt dự án ở `pages/project-sdlc-settings.tsx`, hai mục lưu riêng nhưng mỗi lần gửi cả `settings.sdlc`;
+    `/admin/policies` bỏ `sdlc` khỏi lần lưu mục khác để hub giữ bản đã lưu; BA/PO chọn được qua `lib/roles.ts`.
+    Chưa làm: e2e luồng MVP đầy đủ (SC-009), hàng số liệu của mục AI SDLC trong chính sách (contract chưa có).
 
 - [ ] T055 🎯 Desktop: nhóm menu AI SDLC và màn
   - `nav.ts`: quyền `sdlc.use` (dev, writer, lead), `sdlc.manage` (lead), nhóm `sdlc` (Hạng mục, Câu hỏi chờ tôi, Tiến
@@ -441,7 +454,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/{main.ts,app.ts,app.test.ts}`, `apps/hub/src/modules/sdlc/router.ts` (gộp các hàm đăng ký route)
   - **Phụ thuộc**: T013, T016, T017, T018, T021, T022, T031 (T040, T060 khi có) · **Mức**: vừa
 
-- [ ] T071 [P] Leader: hành động `sdlc.item.create`
+- [x] T071 [P] Leader: hành động `sdlc.item.create`
   - Thực thi khi người duyệt đề xuất; prompt leader biết đề xuất tạo hạng mục cho việc lớn.
   - **Scope**: `apps/hub/src/modules/leader/{router.ts,prompt.ts,leader-sdlc.db.test.ts}`
   - **Phụ thuộc**: T012 · **Mức**: nhẹ

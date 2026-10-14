@@ -36,6 +36,8 @@ export const ACTION_LABEL: Record<ChatAction["kind"], string> = {
   "plan.reject": "Trả lại",
   "review.approve": "Duyệt",
   "review.changes": "Trả lại",
+  "code_review.approve": "Duyệt code",
+  "code_review.changes": "Trả lại code",
   "run.cancel": "Huỷ run",
 };
 
