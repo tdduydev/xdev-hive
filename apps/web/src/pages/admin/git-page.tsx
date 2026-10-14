@@ -12,10 +12,17 @@ import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Table, Td, Th } from "@xdev-hive/ui/table";
 import { Textarea } from "@xdev-hive/ui/textarea";
-import { type FormEvent, useState } from "react";
+import { EllipsisIcon, GitBranchIcon, Trash2Icon } from "lucide-react";
+import { type FormEvent, Fragment, useState } from "react";
 import { Icon } from "@/components/icons.tsx";
-import { Card } from "@/components/ui/card.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
+import { EmptyState, LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { formatDay } from "@/lib/format.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
@@ -25,7 +32,6 @@ import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{
-  crumb: string;
   title: string;
   lead: string;
   add: string;
@@ -45,6 +51,9 @@ const text: Dict<{
   test: string;
   testing: string;
   remove: string;
+  removeItem: string;
+  moreFor: (name: string) => string;
+  testOf: (name: string) => string;
   testOk: string;
   testFail: string;
   missing: (scopes: string) => string;
@@ -80,7 +89,6 @@ const text: Dict<{
   invalid: string;
 }> = {
   vi: {
-    crumb: "Dự án và hạ tầng",
     title: "Kết nối Git",
     lead: "Hub dùng kết nối GitHub hoặc GitLab để tạo repo, mở PR, đặt webhook và cấp quyền clone cho agent.",
     add: "Thêm kết nối",
@@ -100,7 +108,10 @@ const text: Dict<{
     authToken: "Token",
     test: "Kiểm tra",
     testing: "Đang kiểm tra…",
-    remove: "Xoá",
+    remove: "Xoá kết nối",
+    removeItem: "Xoá kết nối…",
+    moreFor: (n) => `Thao tác khác cho kết nối ${n}`,
+    testOf: (n) => `Kiểm tra ${n}`,
     testOk: "Kết nối dùng được",
     testFail: "Kết nối chưa dùng được",
     missing: (s) => `Thiếu quyền: ${s}.`,
@@ -137,7 +148,6 @@ const text: Dict<{
     invalid: "Dữ liệu chưa hợp lệ.",
   },
   en: {
-    crumb: "Projects & infra",
     title: "Git connections",
     lead: "The hub uses a GitHub or GitLab connection to create repos, open PRs, set webhooks and grant agents clone access.",
     add: "Add connection",
@@ -157,7 +167,10 @@ const text: Dict<{
     authToken: "Token",
     test: "Test",
     testing: "Testing…",
-    remove: "Remove",
+    remove: "Remove connection",
+    removeItem: "Remove connection…",
+    moreFor: (n) => `More actions for connection ${n}`,
+    testOf: (n) => `Test ${n}`,
     testOk: "Connection works",
     testFail: "Connection is not usable yet",
     missing: (s) => `Missing permissions: ${s}.`,
@@ -206,7 +219,8 @@ export function GitConnectionsPage() {
 
   return (
     <>
-      <PageHeader crumb={t.crumb} title={t.title}>
+      <PageHeader title={t.title} description={t.lead}>
+        {/* Danh sách rỗng đã có nút này trong khung trống; hai nút cùng tên làm người đọc màn hình khó chọn. */}
         {admin && connections.data && connections.data.length > 0 && (
           <Button variant="default" onClick={() => setAdding(true)}>
             <Icon name="plus" />
@@ -215,36 +229,37 @@ export function GitConnectionsPage() {
         )}
       </PageHeader>
       <PageBody>
-        <p className="-mt-2 text-sm text-muted-foreground">{t.lead}</p>
         {connections.isPending ? (
-          <p aria-busy="true" className="text-muted-foreground">
-            {t.loading}
-          </p>
+          <TableSkeleton label={t.loading} rows={3} columns={6} />
         ) : connections.isError ? (
-          <Alert variant="destructive">{apiErrorMessage(connections.error)}</Alert>
+          <LoadFailure error={connections.error} retry={connections.refetch} />
         ) : connections.data.length === 0 ? (
-          <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-            <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
-              <Icon name="github" className="size-5" />
-            </span>
-            <h2 className="text-base font-semibold text-foreground">{t.emptyTitle}</h2>
-            <p className="max-w-md text-muted-foreground">{admin ? t.emptyAdmin : t.emptyMember}</p>
-            {admin && (
-              <Button variant="default" className="mt-2" onClick={() => setAdding(true)}>
-                <Icon name="plus" />
-                {t.add}
-              </Button>
-            )}
-          </Card>
+          <EmptyState
+            icon={GitBranchIcon}
+            title={t.emptyTitle}
+            description={admin ? t.emptyAdmin : t.emptyMember}
+            action={
+              admin && (
+                <Button variant="default" onClick={() => setAdding(true)}>
+                  <Icon name="plus" />
+                  {t.add}
+                </Button>
+              )
+            }
+          />
         ) : (
           <>
-            {!admin && <p className="text-sm text-muted-foreground">{t.adminOnly}</p>}
+            {!admin && (
+              <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-xs text-foreground">
+                {t.adminOnly}
+              </p>
+            )}
             <ConnectionTable connections={connections.data} admin={admin} onRemove={setRemoving} />
           </>
         )}
       </PageBody>
       <Dialog open={adding} onOpenChange={setAdding}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] w-140 overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           {adding && <AddConnectionForm onDone={() => setAdding(false)} />}
         </DialogContent>
       </Dialog>
@@ -279,85 +294,113 @@ function ConnectionTable({
     onSuccess: (result, id) => setResults((r) => ({ ...r, [id]: result })),
     onError: (error, id) => setResults((r) => ({ ...r, [id]: apiErrorMessage(error) })),
   });
+  const columns = admin ? 6 : 5;
   return (
-    <Card className="overflow-hidden">
-      <Table className="min-w-180">
+    <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+      {/* Ô tên có thể hai dòng (địa chỉ API): canh trên để chữ các cột cùng một hàng chân. */}
+      <Table className="[&_td]:align-top" style={{ minWidth: 640 }}>
         <caption className="sr-only">{t.title}</caption>
         <thead>
           <tr>
-            <Th>{t.colName}</Th>
-            <Th>{t.colKind}</Th>
-            <Th>{t.colAuth}</Th>
-            <Th>{t.colOwner}</Th>
-            <Th>{t.colCreated}</Th>
-            {admin && <Th>{t.actions}</Th>}
+            <Th variant="plain">{t.colName}</Th>
+            <Th variant="plain">{t.colKind}</Th>
+            <Th variant="plain">{t.colAuth}</Th>
+            <Th variant="plain">{t.colOwner}</Th>
+            <Th variant="plain">{t.colCreated}</Th>
+            {admin && (
+              <Th variant="plain" className="text-right">
+                {t.actions}
+              </Th>
+            )}
           </tr>
         </thead>
         <tbody>
           {connections.map((c) => {
             const result = results[c.id];
             return (
-              <tr key={c.id}>
-                <Td>
-                  <span className="grid gap-1">
-                    <b className="font-medium text-foreground">{c.name}</b>
-                    {c.baseUrl && <span className="font-mono text-xs text-muted-foreground">{c.baseUrl}</span>}
-                    {result !== undefined && <TestResult result={result} />}
-                  </span>
-                </Td>
-                <Td className="whitespace-nowrap">
-                  <span className="inline-flex items-center gap-2">
-                    <Icon name={c.kind} className="size-4 text-muted-foreground" />
-                    {SCM_LABEL[c.kind]}
-                  </span>
-                </Td>
-                <Td className="whitespace-nowrap">{c.authMode === "app" ? t.authApp : t.authToken}</Td>
-                <Td className="font-mono text-xs">{c.defaultOwner ?? "—"}</Td>
-                <Td className="whitespace-nowrap">{formatDay(c.createdAt)}</Td>
-                {admin && (
-                  <Td className="whitespace-nowrap">
-                    <span className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        aria-label={`${t.test} ${c.name}`}
-                        disabled={test.isPending}
-                        onClick={() => test.mutate(c.id)}
-                      >
-                        {test.isPending && test.variables === c.id ? t.testing : t.test}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        aria-label={`${t.remove} ${c.name}`}
-                        onClick={() => onRemove(c)}
-                      >
-                        {t.remove}
-                      </Button>
+              <Fragment key={c.id}>
+                <tr className={result !== undefined ? "[&>td]:border-b-0" : undefined}>
+                  <Td>
+                    <span className="grid gap-0.5">
+                      <span className="font-medium text-foreground">{c.name}</span>
+                      {c.baseUrl && (
+                        <span className="font-mono text-xs break-all text-muted-foreground">{c.baseUrl}</span>
+                      )}
                     </span>
                   </Td>
+                  <Td className="whitespace-nowrap">
+                    <span className="inline-flex items-center gap-2">
+                      <Icon name={c.kind} className="size-4 text-muted-foreground" />
+                      {SCM_LABEL[c.kind]}
+                    </span>
+                  </Td>
+                  <Td className="whitespace-nowrap">{c.authMode === "app" ? t.authApp : t.authToken}</Td>
+                  <Td className="font-mono text-xs">{c.defaultOwner ?? "—"}</Td>
+                  <Td className="whitespace-nowrap tabular-nums">{formatDay(c.createdAt)}</Td>
+                  {admin && (
+                    <Td className="py-1.5 text-right whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`${t.test} ${c.name}`}
+                          disabled={test.isPending}
+                          onClick={() => test.mutate(c.id)}
+                        >
+                          {test.isPending && test.variables === c.id ? t.testing : t.test}
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="icon-sm" aria-label={t.moreFor(c.name)} />}
+                          >
+                            <EllipsisIcon aria-hidden="true" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-44">
+                            <DropdownMenuItem variant="destructive" onClick={() => onRemove(c)}>
+                              <Trash2Icon aria-hidden="true" />
+                              {t.removeItem}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </span>
+                    </Td>
+                  )}
+                </tr>
+                {/* Kết quả kiểm tra nằm ở dòng riêng ngay dưới, để dòng kết nối không đổi chiều cao và cột không lệch. */}
+                {result !== undefined && (
+                  <tr className="bg-muted/30">
+                    <Td colSpan={columns} className="pt-0 whitespace-normal">
+                      <TestResult name={c.name} result={result} />
+                    </Td>
+                  </tr>
                 )}
-              </tr>
+              </Fragment>
             );
           })}
         </tbody>
       </Table>
-    </Card>
+    </div>
   );
 }
 
-function TestResult({ result }: { result: ScmConnectionTestResult | string }) {
+function TestResult({ name, result }: { name: string; result: ScmConnectionTestResult | string }) {
   const t = useT(text);
-  if (typeof result === "string") return <span className="text-xs text-destructive">{result}</span>;
+  if (typeof result === "string")
+    return (
+      <p role="alert" className="pt-2 text-xs text-destructive">
+        {t.testOf(name)}: {result}
+      </p>
+    );
   return (
-    <span role="status" className="grid justify-items-start gap-1 text-xs text-muted-foreground">
+    <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-muted-foreground">
+      <span className="sr-only">{t.testOf(name)}:</span>
       <Pill tone={result.ok ? "ok" : "warn"} small>
         {result.ok ? t.testOk : t.testFail}
       </Pill>
       {result.message && <span>{result.message}</span>}
       {result.missingScopes.length > 0 && <span>{t.missing(result.missingScopes.join(", "))}</span>}
       {result.unverifiedScopes.length > 0 && <span>{t.unverified(result.unverifiedScopes.join(", "))}</span>}
-    </span>
+    </div>
   );
 }
 
@@ -534,7 +577,7 @@ function RemoveConnection({ connection, onDone }: { connection: ScmConnection; o
         <Button variant="outline" onClick={onDone}>
           {t.cancel}
         </Button>
-        <Button variant="default" disabled={remove.isPending} onClick={() => remove.mutate()}>
+        <Button variant="destructive-solid" disabled={remove.isPending} onClick={() => remove.mutate()}>
           {remove.isPending ? t.removing : t.remove}
         </Button>
       </DialogActions>
