@@ -6,6 +6,7 @@ export {
   removeChannel,
   updateChannel,
 } from "./channels.ts";
+export { type NotifyFanoutInput, provideNotifyFanout } from "./fanout.ts";
 export {
   cleanupInbox,
   INBOX_CLEANUP_QUEUE,

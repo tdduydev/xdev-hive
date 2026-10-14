@@ -470,6 +470,13 @@
       "when": 1791954452821,
       "tag": "0066_runs_token_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791960059899,
+      "tag": "0067_chat_channels",
+      "breakpoints": true
     }
   ]
 }
