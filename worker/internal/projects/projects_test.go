@@ -259,3 +259,25 @@ func TestInspect(t *testing.T) {
 		t.Fatalf("thư mục mất = %+v", v)
 	}
 }
+
+func TestAddFolderSkipsKnownFolders(t *testing.T) {
+	dir := repo(t, "https://gitlab.com/acme/api.git")
+	file := filepath.Join(t.TempDir(), "projects.json")
+	if err := Bind(file, idA, dir, "api", ""); err != nil {
+		t.Fatal(err)
+	}
+	if added, err := AddFolder(file, dir, "api"); err != nil || added {
+		t.Fatalf("thêm thư mục đã gắn = %v, %v", added, err)
+	}
+	other := repo(t, "https://gitlab.com/acme/web.git")
+	if added, err := AddFolder(file, other, ""); err != nil || !added {
+		t.Fatalf("thêm repo mới = %v, %v", added, err)
+	}
+	if added, _ := AddFolder(file, other+string(filepath.Separator), "web"); added {
+		t.Fatal("thêm trùng thư mục")
+	}
+	list, _ := Load(file)
+	if len(list) != 2 || list[1].ProjectID != "" || list[1].Name != filepath.Base(other) {
+		t.Fatalf("danh sách = %+v", list)
+	}
+}

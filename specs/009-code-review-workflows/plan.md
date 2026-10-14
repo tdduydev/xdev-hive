@@ -61,7 +61,7 @@ chọn); không vòng import giữa module (`pnpm deps`)
 | D8 | Vòng (round) | Mỗi `head_sha` một phiên; commit mới đóng phiên cũ (`superseded`), mở phiên vòng `n+1` với **bản chụp quy trình của vòng 1**. Checkpoint tự động chạy lại; phê duyệt người ở trước checkpoint đã trả lại được giữ, trừ khi bật `dismissStaleApprovals`. | Bằng chứng (điểm AI, CI, lệnh) gắn với một commit. Giữ phê duyệt cũ tránh bắt người duyệt sớm duyệt lại vì sửa nhỏ, có cờ cho đội cần chặt. |
 | D9 | Hàng merge biết trạng thái review | `MergeDeps` thêm `reviewGate(tx, projectId, prNumber, headSha)` tiêm từ `main.ts`; trả `waiting` với ghi chú khi phiên chưa `approved`. | `catalog` không import `codereview` (tránh vòng vì `codereview` gọi `enqueueMerge`). |
 | D10 | Diff hiển thị | Lấy từ nhà cung cấp Git: `GitProvider.prFiles(ref, number)` (GitHub `pulls/{n}/files`, GitLab `merge_requests/{iid}/diffs`), không lưu DB; bộ nhớ đệm theo `head_sha` trong tiến trình 10 phút. | Diff đã nằm ở nhà cung cấp; lưu vào DB tốn chỗ và lệch khi push. Bộ đệm theo SHA không bao giờ sai. |
-| D11 | Phê duyệt trên GitHub/GitLab | Chờ Q1. Mặc định đề xuất: commit status `xdev-hive/review` qua `GitProvider.setCommitStatus`; trang cài đặt dự án gợi ý đổi bảo vệ nhánh. | Bot mở PR không tự approve được; status check là cách chuẩn cho cổng ngoài. |
+| D11 | Phê duyệt trên GitHub/GitLab | Q1 đã chốt (2026-10-13) theo đề xuất: commit status `xdev-hive/review` qua `GitProvider.setCommitStatus`; trang cài đặt dự án gợi ý đổi bảo vệ nhánh. | Bot mở PR không tự approve được; status check là cách chuẩn cho cổng ngoài. |
 
 ## Project Structure
 
@@ -345,7 +345,7 @@ stateDiagram-v2
 3. Trả lại hướng `agent`: tiêm `queueFixRun(tx, review, instructions)`; run sửa xong vào `verifyCode` → bước 1 thấy phiên
    `changes_requested` của PR → `superseded` + vòng mới với bản chụp cũ, `resume_gate_index`.
 4. Push (webhook) vào `branch` có phiên mở với SHA khác: vòng mới, `run_id` giữ run gần nhất, lệnh không có kết quả.
-5. Đạt: `enqueueMerge` khi chế độ hiệu lực `auto` và `features.mergeQueue`; `setCommitStatus(success)` nếu Q1 chốt.
+5. Đạt: `enqueueMerge` khi chế độ hiệu lực `auto` và `features.mergeQueue`; `setCommitStatus(success)` (Q1 đã chốt).
 
 Mọi bước ghi trong transaction có `withTenant`, khoá hàng `code_reviews` (`FOR UPDATE`) như `lockRun`.
 
@@ -414,7 +414,7 @@ Loại sự kiện mới trong `notificationEvent`: `code_review.awaiting`, `cod
 2. Checkpoint `ai` nhiều reviewer + bình luận PR.
 3. Web cấu hình + hàng chờ; desktop tab Code.
 4. Worker chạy lệnh (đồng thời bật `outcome.command`, cập nhật RUN-07, ADR 0009).
-5. Commit status (sau khi chốt Q1).
+5. Commit status (Q1 đã chốt, làm ở T101).
 
 Mọi bước chỉ có hiệu lực khi có quy trình `subject = 'code'` bật, nên merge từng bước không đổi hành vi dự án hiện có.
 

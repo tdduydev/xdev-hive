@@ -4,10 +4,11 @@ import { z } from "zod";
 import { recordAudit } from "../audit/index.ts";
 import type { McpToolRegistry } from "../mcp/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../platform/index.ts";
-import { type RunsEngine, runEvents, runs } from "../runs/index.ts";
+import { type RunsEngine, runEvents } from "../runs/index.ts";
 import { describeAction, emitLeaderActivity, executeLeaderAction, tierChoice, tierTable } from "./actions.ts";
 import { emitLeaderEvent } from "./observer.ts";
 import { approvals, chatMessages, chatThreads } from "./schema.ts";
+import { loadRunThread } from "./thread-host.ts";
 
 const requireLeaderRun = (principal: { kind: string; runKind?: string | undefined; runId?: string | undefined }) => {
   if (principal.kind !== "run" || principal.runKind !== "leader" || !principal.runId) {
@@ -30,14 +31,7 @@ export function registerMcpTools(
     readOnly: true,
     handler: async ({ threadId, content }, { tx, principal }) => {
       const runId = requireLeaderRun(principal);
-      const [run] = await tx
-        .select({ kind: runs.kind, projectId: runs.projectId, orgId: runs.orgId, attempt: runs.attempt })
-        .from(runs)
-        .where(eq(runs.id, runId));
-      const [thread] = await tx.select().from(chatThreads).where(eq(chatThreads.id, threadId));
-      if (run?.kind !== "leader" || !thread || (thread.projectId && thread.projectId !== run.projectId)) {
-        throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện của leader run.");
-      }
+      const { run, thread } = await loadRunThread(tx, runId, threadId);
       await tx.insert(chatMessages).values({ orgId: thread.orgId, threadId, role: "leader", content, runId });
       await tx
         .insert(runEvents)
@@ -61,14 +55,7 @@ export function registerMcpTools(
     readOnly: true,
     handler: async ({ threadId, action, rationale }, { tx, principal }) => {
       const runId = requireLeaderRun(principal);
-      const [run] = await tx
-        .select({ kind: runs.kind, projectId: runs.projectId })
-        .from(runs)
-        .where(eq(runs.id, runId));
-      const [thread] = await tx.select().from(chatThreads).where(eq(chatThreads.id, threadId));
-      if (run?.kind !== "leader" || !thread || (thread.projectId && thread.projectId !== run.projectId)) {
-        throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện của leader run.");
-      }
+      const { thread } = await loadRunThread(tx, runId, threadId);
       const checked = leaderAction.safeParse(action);
       if (!checked.success) throw new BadRequestError("LEADER_ACTION_INVALID", "Đề xuất hành động không hợp lệ.");
       const [approval] = await tx
