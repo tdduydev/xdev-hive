@@ -9,6 +9,7 @@ import { saveDoc, type TraceRequest } from "../knowledge/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { createItem } from "./items.ts";
 import { onBaseline } from "./phases.ts";
+import { reviewSpecFor } from "./prompt.ts";
 import { ruleContext, traceFor } from "./review-hooks.ts";
 
 const { adminUrl, appUrl } = inject("db");
@@ -34,6 +35,7 @@ const SPEC = `# Spec
 ## Yêu cầu
 
 - **FR-001**: Hệ thống MUST xuất CSV.
+  - Tiêu chí chấp nhận: file có cột ngày và số tiền.
 - **FR-002**: Hệ thống MUST tổng hợp theo tháng.
 - **FR-003**: Hệ thống MUST chạy theo lịch.
 `;
@@ -74,7 +76,9 @@ async function seedItem() {
       { key: spec, content: SPEC, baseVersion: 0 },
     );
     // Đặt thẳng baseline của spec: chỉ cần nguồn requirement, không cần chạy chuyển giai đoạn của onBaseline.
-    await tx.execute(sql`update hive.sdlc_artifacts set baseline_version = ${s.version} where doc_key = ${spec}`);
+    await tx.execute(
+      sql`update hive.sdlc_artifacts set baseline_version = ${s.version}, approval = 'human' where doc_key = ${spec}`,
+    );
   });
   await as(async (tx) => {
     const doc = await saveDoc(
@@ -187,5 +191,28 @@ describe("traceFor", () => {
     const { spec } = await seedItem();
     expect(await as((tx) => traceFor(tx, req(`wiki/${tag}`, SPEC)))).toBeNull();
     expect(await as((tx) => traceFor(tx, req(spec, "# Spec\n\nChưa có yêu cầu.")))).toBeNull();
+  });
+});
+
+describe("reviewSpecFor", () => {
+  it("requirement của task kèm câu chữ và tiêu chí từ spec baseline, tài liệu đã duyệt; task ngoài hạng mục thì null", async () => {
+    const { item, spec } = await seedItem();
+    const { rows } = await admin.query(
+      "select slice_key, task_id from hive.sdlc_item_tasks where item_id = $1 order by slice_key",
+      [item.id],
+    );
+    const got = await as((tx) => reviewSpecFor(tx, rows[0].task_id));
+    expect(got).toMatchObject({
+      item: `${item.ref} · Xuất báo cáo`,
+      requirements: [
+        {
+          id: "FR-001",
+          text: expect.stringContaining("xuất CSV"),
+          acceptance: [expect.stringContaining("cột ngày")],
+        },
+      ],
+    });
+    expect(got?.docs).toContainEqual({ name: "spec.md", docKey: spec, version: 1 });
+    expect(await as((tx) => reviewSpecFor(tx, randomUUID()))).toBeNull();
   });
 });

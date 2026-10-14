@@ -518,10 +518,13 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     vào danh sách chọn. Lỗi FR-056 hiện ngay giai đoạn; giữ dấu phân cách khi nhập danh sách, sinh mã tài liệu duy nhất
     trong cả chế độ. Vitest và Playwright kiểm lưu/xoá/chạy thử, chỉ đọc, FR-056, 360 px sáng/tối.
 
-- [ ] T085 Ngữ cảnh spec cho review code (spec 009)
+- [x] T085 Ngữ cảnh spec cho review code (spec 009)
   - `codereview` nhận deps `specContextFor` cho checkpoint AI; prompt review có requirement và tiêu chí của task.
   - **Scope**: `apps/hub/src/modules/codereview/{ai.ts,prompt.ts}`, `apps/hub/src/main.ts`
   - **Phụ thuộc**: T031, spec 009 T022 · **Mức**: vừa
+  - Đã làm: `sdlc.reviewSpecFor` (requirement của task, câu chữ và tiêu chí từ bản baseline của tài liệu nguồn, tài liệu
+    đã duyệt), `codereview/prompt.ts` `reviewSpecLines`; cài ở main.ts và app.ts. Engine chuyển `specContext` cùng
+    `guidance` (trước đây bị bỏ, reviewer không thấy ngưỡng của checkpoint) qua sự kiện `review_prompt` vào `reviewPrompt`.
 
 - [ ] T086 [US16] Run soạn checkout nhiều repo
   - Hub: `spec.sdlc.repos?: [{ projectKey, cloneUrl, branch, dir }]` cho run `sdlc` của hạng mục nhiều dự án (chỉ repo

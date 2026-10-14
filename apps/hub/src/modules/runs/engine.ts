@@ -378,6 +378,8 @@ function parseWorkflowReview(data: Record<string, unknown>) {
   return {
     rubric: stringsOf(data.rubric),
     focusPaths: stringsOf(data.focusPaths),
+    guidance: stringsOf(data.guidance),
+    specContext: stringsOf(data.specContext),
     prUrl: typeof data.prUrl === "string" ? data.prUrl : null,
   };
 }
@@ -457,8 +459,8 @@ interface SpecContext {
   /** Hook bắt buộc của tổ chức, worker chạy ở các mốc của CLI. */
   policy: JobPolicy;
   parentPrUrl: string | null;
-  /** Run review của checkpoint AI trong quy trình review code: mục kiểm và đường dẫn trọng tâm. */
-  reviewRubric: { rubric: string[]; focusPaths: string[] } | null;
+  /** Run review của checkpoint AI trong quy trình review code: mục kiểm, đường dẫn trọng tâm, quy tắc chấm, ngữ cảnh spec. */
+  reviewRubric: ReturnType<typeof parseWorkflowReview> | null;
   /** Run code: kế hoạch đã duyệt mà run phải làm theo. */
   approvedPlan: PlanRow | null;
   /** Run plan: kế hoạch lần trước của task nếu bị từ chối. */
@@ -511,6 +513,8 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
       prUrl: ctx.parentPrUrl,
       rubric: ctx.reviewRubric?.rubric,
       focusPaths: ctx.reviewRubric?.focusPaths,
+      guidance: ctx.reviewRubric?.guidance,
+      specContext: ctx.reviewRubric?.specContext,
     });
   }
   // Run plan đọc nhánh chính ở chế độ chỉ đọc; worker không push.
@@ -1969,6 +1973,8 @@ export function createRunsEngine(deps: RunsDeps) {
         headSha: input.headSha,
         rubric: input.rubric,
         focusPaths: input.focusPaths,
+        guidance: input.guidance,
+        specContext: input.specContext,
       });
       await notifyRun(tx, row.id);
       await recordAudit(tx, {

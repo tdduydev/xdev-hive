@@ -70,7 +70,7 @@ import {
 } from "./modules/runs/index.ts";
 import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
-import { type SdlcDeps, registerMcpTools as sdlcMcpTools, sdlcRouter } from "./modules/sdlc/index.ts";
+import { reviewSpecFor, type SdlcDeps, registerMcpTools as sdlcMcpTools, sdlcRouter } from "./modules/sdlc/index.ts";
 import { skillLearningRouter } from "./modules/skilllearn/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
@@ -282,6 +282,7 @@ export function createApp({
       startReviewRuns: runs?.startReviewRuns,
       queueFixRun: runs?.queueFixRun,
       runEvidence: runs?.runEvidence,
+      specContextFor: reviewSpecFor,
       runs: codeRuns,
     }),
     costs: costsRouter({ auth, pool }),
@@ -341,6 +342,7 @@ export function createApp({
         startReviewRuns: runs?.startReviewRuns,
         queueFixRun: runs?.queueFixRun,
         runEvidence: runs?.runEvidence,
+        specContextFor: reviewSpecFor,
       },
     };
     app.post("/hooks/chat/telegram/:botId", (c) => handleTelegramWebhook(chat, c.req.param("botId"), c.req.raw));
