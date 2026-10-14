@@ -23,9 +23,17 @@ export const CLOSE = {
 type Heartbeat = Extract<WorkerToHub, { type: "heartbeat" }>;
 type Hello = Extract<WorkerToHub, { type: "hello" }>;
 export type TerminalMessage = Extract<WorkerToHub, { type: "term_opened" | "term_output" | "term_exit" }>;
+/**
+ * Gói điều khiển từ xa phiên trên máy cá nhân (specs/010 US2–US5). Worker chỉ gửi khi hub khai `terminal` cho máy cá nhân,
+ * việc hub này chưa làm (T013), nên tới đây là worker lỗi: bỏ qua thay vì đóng kết nối làm hỏng run đang chạy.
+ */
+type RemoteTerminalMessage = Extract<
+  WorkerToHub,
+  { type: "term_state" | "term_denied" | "term_event" | "term_granted" | "term_revoked" | "term_pair_result" }
+>;
 export type RunMessage = Exclude<
   WorkerToHub,
-  { type: "hello" | "heartbeat" | "account_login_event" } | TerminalMessage
+  { type: "hello" | "heartbeat" | "account_login_event" } | TerminalMessage | RemoteTerminalMessage
 >;
 
 /** Gói terminal Leader (specs/010). Module terminal đăng ký qua registerTerminalHandlers; fleet không import terminal. */
@@ -174,6 +182,14 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         case "term_output":
         case "term_exit":
           return terminalHandlers.onMessage?.(machine, msg);
+        case "term_state":
+        case "term_denied":
+        case "term_event":
+        case "term_granted":
+        case "term_revoked":
+        case "term_pair_result":
+          log.warn(`Máy ${machine.id} gửi ${msg.type} khi hub chưa bật điều khiển từ xa; bỏ qua`);
+          return;
         case "heartbeat": {
           const projects = msg.localProjects && {
             boundProjects: msg.localProjects.bound,

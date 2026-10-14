@@ -6,13 +6,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./worker-protocol": "./src/worker-protocol.ts",
+    "./terminal-auth": "./src/terminal-auth.ts",
     "./run-states": "./src/run-states.ts",
     "./run-log": "./src/run-log.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "openapi": "node scripts/openapi.ts"
+    "openapi": "node scripts/openapi.ts",
+    "vectors:terminal-auth": "node scripts/terminal-auth-vectors.ts"
   },
   "dependencies": {
     "@orpc/contract": "^1.15.5",
