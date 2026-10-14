@@ -1,0 +1,350 @@
+import { readFile } from "node:fs/promises";
+import { extname, resolve, sep } from "node:path";
+import { promisify } from "node:util";
+import { brotliCompress, gzip, constants as zlibConstants } from "node:zlib";
+import {
+  buildCsp,
+  buildFrameDocument,
+  FRAME_TYPES,
+  type FrameTheme,
+  type FrameType,
+  type LibManifest,
+} from "@xdev-hive/artifacts-runtime";
+import { LIB_DIST_DIR, readLibManifest } from "@xdev-hive/artifacts-runtime/node";
+import type { ArtifactType } from "@xdev-hive/contracts";
+import { and, eq, sql } from "drizzle-orm";
+import { Hono } from "hono";
+import type pg from "pg";
+import { ConflictError, ForbiddenError, type Tx, withTenant } from "../platform/index.ts";
+import { artifactError, type Reader } from "./access.ts";
+import { artifactPolicyOf } from "./limits.ts";
+import { artifactPreviews, artifacts } from "./schema.ts";
+import { artifactFor, compileFor } from "./service.ts";
+import { FRAME_TICKET_TTL_SEC, type FrameTicket, signFrameTicket, verifyFrameTicket } from "./ticket.ts";
+import { checkContent, type VersionRow, versionRow } from "./versions.ts";
+
+/*
+ * Khung cách ly trên host của hub (plan.md D4–D7, FR-070…FR-073). `/_artifact/*` không có phiên người dùng: không đọc
+ * cookie hay `Authorization` (cùng host nên trình duyệt vẫn gửi cookie, ta bỏ qua), mọi quyền đến từ vé đã ký. Tài liệu
+ * khung chạy trong `iframe sandbox="allow-scripts"` với origin mờ, CSP chỉ cho nạp thư viện từ `/_artifact/lib/`.
+ */
+
+/** Thư mục thư viện mà app desktop phục vụ qua giao thức `hive-artifact` (D17); app đổi host nếu nền tảng khác. */
+export const APP_LIB_BASE = "hive-artifact://localhost/lib/";
+
+const PREVIEW_TTL = sql`now() + interval '10 minutes'`;
+/** Bản xem trước còn hạn tối đa mỗi người: soạn liên tục sinh nhiều bản, giữ dung lượng bị chiếm có trần. */
+const PREVIEWS_PER_USER = 20;
+
+export interface FrameDeps {
+  /** Khoá vé (`frameTicketKey`); không có khi hub thiếu `HIVE_MASTER_KEY`, lúc đó không cấp hay nhận vé. */
+  frameKey?: Buffer | undefined;
+  /** URL công khai của hub: URL khung và nguồn thư viện trong CSP dựng từ đây. */
+  publicUrl: string;
+}
+
+const frameUrlOf = (publicUrl: string, ticket: string) => new URL(`/_artifact/frame/${ticket}`, publicUrl).href;
+export const hubLibBase = (publicUrl: string) => new URL("/_artifact/lib/", publicUrl).href;
+
+const isFrameType = (type: ArtifactType): type is FrameType => (FRAME_TYPES as readonly string[]).includes(type);
+
+function assertFrameType(type: ArtifactType): asserts type is FrameType {
+  if (!isFrameType(type)) throw artifactError("ARTIFACT_TYPE_DISABLED", "Loại artifact này không mở trong khung.");
+}
+
+function requireKey(deps: FrameDeps): Buffer {
+  if (!deps.frameKey)
+    throw new ConflictError(
+      "ARTIFACT_FRAME_UNAVAILABLE",
+      "Hub chưa đặt HIVE_MASTER_KEY nên chưa mở được khung artifact.",
+    );
+  return deps.frameKey;
+}
+
+/** Đọc manifest thư viện một lần; chưa dựng thì lần sau đọc lại (dựng xong không phải khởi động lại hub). */
+export function libManifestLoader(libDir: string = LIB_DIST_DIR): () => LibManifest | null {
+  let cached: LibManifest | null = null;
+  return () => {
+    if (cached) return cached;
+    try {
+      cached = readLibManifest(libDir);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+    }
+    return cached;
+  };
+}
+
+/** Phiên bản xem được trong khung: còn nội dung (chưa xoá vì bí mật) và artifact không nằm trong thùng rác. */
+async function framedVersion(tx: Tx, reader: Reader, input: { id: string; version: number }) {
+  const row = await artifactFor(tx, reader, input.id);
+  if (row.deletedAt) throw artifactError("ARTIFACT_NOT_FOUND", "Artifact đang ở thùng rác. Khôi phục trước khi xem.");
+  assertFrameType(row.type);
+  const v = await versionRow(tx, row.id, input.version);
+  if (!v) throw artifactError("ARTIFACT_NOT_FOUND", "Không tìm thấy phiên bản này.");
+  if (v.tombstonedAt || v.content === null)
+    throw artifactError("ARTIFACT_NOT_FOUND", "Phiên bản này đã bị xoá vì chứa bí mật.");
+  return { row: { ...row, type: row.type }, v: v as VersionRow & { content: string } };
+}
+
+/** `artifacts.frameUrl`: vé ≤ 5 phút cho đúng một phiên bản người gọi đọc được. */
+export async function frameUrl(
+  tx: Tx,
+  reader: Reader,
+  input: { id: string; version: number; theme: FrameTheme },
+  deps: FrameDeps,
+): Promise<{ url: string; expiresAt: string }> {
+  const { row, v } = await framedVersion(tx, reader, input);
+  const { ticket, expiresAt } = signFrameTicket(requireKey(deps), {
+    o: row.orgId,
+    a: row.id,
+    v: v.version,
+    t: input.theme,
+  });
+  return { url: frameUrlOf(deps.publicUrl, ticket), expiresAt: expiresAt.toISOString() };
+}
+
+/**
+ * `artifacts.frameDocument`: tài liệu khung đã dựng cho app desktop đệm và mở offline (D17), để app không phải chép
+ * `buildFrameDocument` sang Rust. Thư viện trỏ vào giao thức của app, không phải hub, vì lúc mở có thể không có mạng.
+ */
+export async function frameDocument(
+  tx: Tx,
+  reader: Reader,
+  input: { id: string; version: number; theme: FrameTheme },
+  manifest: () => LibManifest | null,
+): Promise<{ html: string; csp: string }> {
+  const { row, v } = await framedVersion(tx, reader, input);
+  const libs = manifest();
+  if (!libs) throw new ConflictError("ARTIFACT_FRAME_UNAVAILABLE", "Hub chưa có bộ thư viện của khung artifact.");
+  return {
+    html: buildFrameDocument({
+      type: row.type,
+      content: v.content,
+      compiled: v.compiled,
+      compileError: v.compileError,
+      theme: input.theme,
+      manifest: libs,
+      libBase: APP_LIB_BASE,
+    }),
+    csp: buildCsp({ libBase: APP_LIB_BASE }),
+  };
+}
+
+/**
+ * `artifacts.preview` (D14): nội dung chưa lưu vào bảng tạm 10 phút rồi cấp vé `p:`, vì nội dung quá dài cho URL và khung
+ * phải nạp bằng URL (D4). Cùng kiểm như khi lưu: loại bật, cỡ, bí mật (chặn, audit ở lớp router), biên dịch `react`.
+ */
+export async function createPreview(
+  tx: Tx,
+  reader: Reader,
+  input: { type: ArtifactType; content: string; theme: FrameTheme },
+  deps: FrameDeps,
+): Promise<{ url: string; expiresAt: string; compileError: string | null }> {
+  if (reader.kind !== "user") throw new ForbiddenError("FORBIDDEN", "Chỉ người dùng xem trước được.");
+  const { userId } = reader;
+  const key = requireKey(deps);
+  const policy = await artifactPolicyOf(tx);
+  assertFrameType(input.type);
+  checkContent(policy, input.type, { content: input.content, compiled: { compiled: null, compileError: null } }, null);
+  const compiled = await compileFor(input.type, input.content);
+  await tx.execute(sql`
+    delete from hive.artifact_previews where id in (
+      select id from hive.artifact_previews where user_id = ${userId}
+      order by expires_at desc offset ${PREVIEWS_PER_USER - 1}
+    )`);
+  const [row] = await tx
+    .insert(artifactPreviews)
+    .values({
+      orgId: sql`hive.ctx_org()`,
+      userId,
+      type: input.type,
+      content: input.content,
+      compiled: compiled.compiled,
+      expiresAt: PREVIEW_TTL,
+    })
+    .returning({ id: artifactPreviews.id, orgId: artifactPreviews.orgId });
+  if (!row) throw new Error("Không lưu được bản xem trước.");
+  const { ticket, expiresAt } = signFrameTicket(key, { o: row.orgId, p: row.id, t: input.theme });
+  return {
+    url: frameUrlOf(deps.publicUrl, ticket),
+    expiresAt: expiresAt.toISOString(),
+    compileError: compiled.compileError,
+  };
+}
+
+// ---- Route HTTP ----------------------------------------------------------------------------------------------------
+
+export interface FrameRoutesDeps extends FrameDeps {
+  /** Không có khi chạy test đơn vị không cần database; lúc đó chỉ phục vụ thư viện. */
+  pool?: pg.Pool | undefined;
+  /** Thư mục `dist/lib` của `@xdev-hive/artifacts-runtime`. */
+  libDir?: string | undefined;
+}
+
+/** FR-071: header chung của mọi phản hồi khung, kể cả trang lỗi. */
+const FRAME_HEADERS = {
+  "Cross-Origin-Resource-Policy": "same-site",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+} as const;
+
+const LIB_TYPES: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json",
+  ".map": "application/json",
+  ".woff2": "font/woff2",
+};
+const COMPRESSIBLE = new Set([".css", ".js", ".mjs", ".json", ".map"]);
+
+type Loaded = {
+  type: FrameType;
+  content: string;
+  compiled: string | null;
+  compileError: string | null;
+  preview: boolean;
+};
+
+/** `null`: không có (vé trỏ tới thứ không tồn tại trong tổ chức của vé); `gone`: đã xoá hoặc đã bị xoá vì bí mật. */
+async function loadFramed(tx: Tx, t: FrameTicket): Promise<Loaded | "gone" | null> {
+  if ("p" in t) {
+    const [p] = await tx
+      .select()
+      .from(artifactPreviews)
+      .where(and(eq(artifactPreviews.id, t.p), sql`${artifactPreviews.expiresAt} > now()`));
+    if (!p || !isFrameType(p.type)) return null;
+    let compileError: string | null = null;
+    // Bảng xem trước không có cột lỗi biên dịch: `react` không có bản biên dịch nghĩa là biên dịch lỗi, dựng lại để có chữ lỗi.
+    if (p.type === "react" && !p.compiled) {
+      try {
+        compileError = (await compileFor(p.type, p.content)).compileError;
+      } catch (error) {
+        compileError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    return { type: p.type, content: p.content, compiled: p.compiled, compileError, preview: true };
+  }
+  // Vé của link công khai cần kiểm lại link (còn hạn, chưa thu hồi, chính sách bật) mỗi lần nạp; chưa có nhánh đó thì
+  // không nhận, để vé `s` không bao giờ mở được nội dung mà link đã thu hồi.
+  if (t.s) return null;
+  const [a] = await tx
+    .select({ type: artifacts.type, deletedAt: artifacts.deletedAt })
+    .from(artifacts)
+    .where(eq(artifacts.id, t.a));
+  if (!a || !isFrameType(a.type)) return null;
+  if (a.deletedAt) return "gone";
+  const v = await versionRow(tx, t.a, t.v);
+  if (!v) return null;
+  if (v.tombstonedAt || v.content === null) return "gone";
+  return { type: a.type, content: v.content, compiled: v.compiled, compileError: v.compileError, preview: false };
+}
+
+function plain(status: 403 | 404 | 410 | 503, text: string): Response {
+  return new Response(text, {
+    status,
+    headers: {
+      ...FRAME_HEADERS,
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      // Trang lỗi cũng có thể bị mở trực tiếp; không có lý do cho nó chạy gì.
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+    },
+  });
+}
+
+/**
+ * `/_artifact/frame/:ticket` và `/_artifact/lib/*`. Đăng ký trước SPA và trước `/rpc`, `/api` (FR-073); mọi đường khác
+ * dưới `/_artifact/` trả 404 thay vì rơi vào `index.html` của web.
+ */
+export function frameRoutes(deps: FrameRoutesDeps): Hono {
+  const app = new Hono();
+  const libDir = resolve(deps.libDir ?? LIB_DIST_DIR);
+  const manifest = libManifestLoader(libDir);
+  const libBase = hubLibBase(deps.publicUrl);
+
+  app.get("/_artifact/frame/:ticket", async (c) => {
+    const ticket = deps.frameKey ? verifyFrameTicket(deps.frameKey, c.req.param("ticket")) : null;
+    if (!ticket) return plain(403, "Vé khung không hợp lệ hoặc đã hết hạn. Tải lại khung để nhận vé mới.");
+    if (!deps.pool) return plain(503, "Hub chưa nối database nên chưa mở được artifact.");
+    const libs = manifest();
+    if (!libs) return plain(503, "Hub chưa có bộ thư viện của khung artifact.");
+    // Ngữ cảnh tổ chức lấy từ vé đã ký, không người dùng: RLS giữ truy vấn trong đúng tổ chức của vé.
+    const found = await withTenant(deps.pool, { orgId: ticket.o }, (tx) => loadFramed(tx, ticket));
+    if (found === null) return plain(404, "Không tìm thấy artifact.");
+    if (found === "gone") return plain(410, "Artifact hoặc phiên bản này đã bị xoá.");
+    const html = buildFrameDocument({
+      type: found.type,
+      content: found.content,
+      compiled: found.compiled,
+      compileError: found.compileError,
+      theme: ticket.t,
+      manifest: libs,
+      libBase,
+    });
+    return new Response(html, {
+      status: 200,
+      headers: {
+        ...FRAME_HEADERS,
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": buildCsp({ libBase }),
+        // Bản xem trước đổi theo từng lần gõ và có thể chứa thứ người dùng chưa định lưu; phiên bản thì bất biến nên
+        // giữ trong cache riêng đúng bằng đời của vé.
+        "Cache-Control": found.preview ? "private, no-store" : `private, max-age=${FRAME_TICKET_TTL_SEC}`,
+      },
+    });
+  });
+
+  // File thư viện không đổi trong suốt tiến trình (tên có phiên bản), nên chỉ nén một lần rồi giữ bản nén như /assets/.
+  const compressed = new Map<string, Promise<Uint8Array<ArrayBuffer>>>();
+  const brotli = promisify(brotliCompress);
+  const gz = promisify(gzip);
+  const encode = (encoding: "br" | "gzip", body: Buffer) =>
+    (encoding === "br"
+      ? brotli(body, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } })
+      : gz(body, { level: 9 })
+    ).then((b) => new Uint8Array(b));
+
+  app.get("/_artifact/lib/*", async (c) => {
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(new URL(c.req.url).pathname);
+    } catch {
+      return c.notFound();
+    }
+    const requested = resolve(libDir, `.${pathname.slice("/_artifact/lib".length)}`);
+    if (!requested.startsWith(`${libDir}${sep}`)) return c.notFound();
+    let body: Buffer;
+    try {
+      body = await readFile(requested);
+    } catch {
+      return c.notFound();
+    }
+    const ext = extname(requested);
+    const headers: Record<string, string> = {
+      "Content-Type": LIB_TYPES[ext] ?? "application/octet-stream",
+      // Khung là origin mờ (`Origin: null`) nên nạp module là yêu cầu CORS; thư viện là mã công khai, không phụ thuộc
+      // người gọi, nên `*` không lộ gì.
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "X-Content-Type-Options": "nosniff",
+    };
+    if (!COMPRESSIBLE.has(ext) || body.length < 1024) return c.body(new Uint8Array(body), 200, headers);
+    headers.Vary = "Accept-Encoding";
+    const accept = c.req.header("accept-encoding") ?? "";
+    const encoding = /\bbr\b/.test(accept) ? "br" : /\bgzip\b/.test(accept) ? "gzip" : null;
+    if (!encoding) return c.body(new Uint8Array(body), 200, headers);
+    const key = `${encoding}:${requested}`;
+    let packed = compressed.get(key);
+    if (!packed) {
+      packed = encode(encoding, body);
+      compressed.set(key, packed);
+      packed.catch(() => compressed.delete(key));
+    }
+    return c.body(await packed, 200, { ...headers, "Content-Encoding": encoding });
+  });
+
+  app.all("/_artifact/*", () => plain(404, "Không tìm thấy."));
+  return app;
+}

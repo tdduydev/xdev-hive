@@ -13,6 +13,7 @@ import {
 import { type OrgDeps, orgMiddlewares, type SessionUser } from "../tenancy/index.ts";
 import type { ArtifactErrorDetail } from "./access.ts";
 import { readerFor } from "./access.ts";
+import { createPreview, frameDocument, frameUrl, libManifestLoader } from "./frame-routes.ts";
 import {
   addLink,
   createArtifact,
@@ -36,6 +37,8 @@ import { isSecretBlocked, listVersions, recordSecretBlocked, renameVersion, tomb
 export interface ArtifactsRouterDeps extends OrgDeps {
   jobs?: Jobs | undefined;
   publicUrl?: string | undefined;
+  /** Khoá vé khung (`frameTicketKey`); không có thì `frameUrl` và `preview` báo hub chưa đặt khoá chủ. */
+  frameKey?: Buffer | undefined;
 }
 
 const STATUS = [
@@ -78,8 +81,8 @@ const stampOrg = os.$context<{ orgId: string }>().middleware(async ({ context, n
 });
 
 /**
- * Route `artifacts.*` của T010. Route khung (`frameUrl`, `preview`, `frameDocument`) ở T012, `publicLinks.*` ở T015,
- * `askLeaderFix` ở T016, `toDoc`/`toRepo` sau MVP: chưa đăng ký thì oRPC trả 404 cho route đó.
+ * Route `artifacts.*`. `publicLinks.*` ở T015, `askLeaderFix` ở T016, `toDoc`/`toRepo` sau MVP: chưa đăng ký thì oRPC
+ * trả 404 cho route đó.
  */
 export function artifactsRouter(deps: ArtifactsRouterDeps) {
   const { authed, inOrg } = orgMiddlewares(deps);
@@ -91,6 +94,8 @@ export function artifactsRouter(deps: ArtifactsRouterDeps) {
     .use(stampOrg);
   const write = { jobs: deps.jobs, publicUrl: deps.publicUrl };
   const as = (tx: Tx, user: SessionUser) => readerFor(tx, { kind: "user", userId: user.id });
+  const frame = { frameKey: deps.frameKey, publicUrl: deps.publicUrl ?? "http://localhost:3000" };
+  const manifest = libManifestLoader();
   return {
     settings: o.settings.handler(({ context: { tx } }) => getSettings(tx)),
     list: o.list.handler(async ({ context: { tx, user }, input }) => listArtifacts(tx, await as(tx, user), input)),
@@ -136,6 +141,15 @@ export function artifactsRouter(deps: ArtifactsRouterDeps) {
         removeLink(tx, await as(tx, user), input),
       ),
     },
+    frameUrl: o.frameUrl.handler(async ({ context: { tx, user }, input }) =>
+      frameUrl(tx, await as(tx, user), input, frame),
+    ),
+    preview: o.preview.handler(async ({ context: { tx, user }, input }) =>
+      createPreview(tx, await as(tx, user), input, frame),
+    ),
+    frameDocument: o.frameDocument.handler(async ({ context: { tx, user }, input }) =>
+      frameDocument(tx, await as(tx, user), input, manifest),
+    ),
     usage: o.usage.handler(({ context: { tx, user } }) => usage(tx, user.id)),
   };
 }

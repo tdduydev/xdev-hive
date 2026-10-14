@@ -11,6 +11,7 @@ export {
   readerFor,
   visibleArtifactsWhere,
 } from "./access.ts";
+export { APP_LIB_BASE, type FrameRoutesDeps, frameRoutes } from "./frame-routes.ts";
 export {
   allLinkTargets,
   type LinkTarget,
@@ -42,6 +43,7 @@ export {
   updateArtifact,
   visibleSummaries,
 } from "./service.ts";
+export { FRAME_TICKET_TTL_SEC, frameTicketKey, signFrameTicket, verifyFrameTicket } from "./ticket.ts";
 export {
   type ArtifactDeps,
   type Compiled,

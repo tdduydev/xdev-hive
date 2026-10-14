@@ -27,6 +27,7 @@
     "@octokit/core": "^7.0.8",
     "@orpc/openapi": "^1.15.5",
     "@orpc/server": "^1.15.5",
+    "@xdev-hive/artifacts-runtime": "workspace:*",
     "@xdev-hive/contracts": "workspace:*",
     "@xdev-hive/skill-pack": "workspace:*",
     "better-auth": "^1.7.7",
