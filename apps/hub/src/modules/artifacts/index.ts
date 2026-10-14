@@ -23,6 +23,7 @@ export {
   threadHostOf,
 } from "./hooks.ts";
 export { artifactPolicyOf, type OperatorCeilings, operatorCeilings } from "./limits.ts";
+export { type ArtifactMcpDeps, registerMcpTools } from "./mcp-tools.ts";
 export {
   ARTIFACT_PURGE_QUEUE,
   artifactPurgeQueue,
