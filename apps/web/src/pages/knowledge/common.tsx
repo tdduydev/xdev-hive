@@ -1,11 +1,13 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, type LinkProps } from "@tanstack/react-router";
 import type { KnowledgeAuthor, ScopeView } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Pill } from "@xdev-hive/ui/pill";
 import type { ReactNode } from "react";
 import type { ServerPaging } from "@/components/data-table/data-table.tsx";
 import { Card } from "@/components/ui/card.tsx";
-import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { LoadFailure, LoadingState, SectionsSkeleton } from "@/components/ui/query-state.tsx";
 import { cx } from "@/lib/cx.ts";
 import { formatDay } from "@/lib/format.ts";
 import { useLang, useT } from "@/lib/i18n.ts";
@@ -36,22 +38,73 @@ export function KnowledgeLayout({
   );
 }
 
+/** Số dòng mỗi lần đọc khi tìm một dòng theo id: giới hạn trên của danh sách ở hub. */
+const SCAN_PAGE = 200;
+
 /**
- * Tab của trang nằm ở `?tab=`; tab đầu không có tham số. Các route kiến thức chưa có `validateSearch` riêng nên đọc
- * tham số thô và chỉ nhận giá trị trong `tabs`.
- * TODO(admin-layout): chuyển sang `validateSearch` ở router.tsx / lib/route-search.ts như members và teams.
+ * Hub chưa có lời gọi đọc một đề xuất hay một memory theo id. Đi từ bảng sang thì dòng đã nằm trong cache của danh
+ * sách nên trang hiện ngay; link dán tay thì đọc lần lượt từng trang (mỗi nguồn một trạng thái) tới khi gặp. `null` là
+ * không có, hoặc người xem không thấy được.
  */
-export function useTabParam<T extends string>(
-  tabs: readonly T[],
-): readonly [T | undefined, (tab: T | undefined) => void] {
-  const search: { tab?: unknown } = useSearch({ strict: false });
-  const navigate = useNavigate();
-  const current = tabs.find((tab) => tab === search.tab);
-  return [
-    current,
-    // `as never`: route chưa khai báo `tab` nên kiểu của search không nhận, JSON bỏ khoá `undefined` nên tab đầu không có tham số.
-    (tab) => void navigate({ to: ".", search: ((prev: object) => ({ ...prev, tab })) as never, replace: true }),
-  ] as const;
+export function useRowById<Row extends { id: string }>(
+  listKey: QueryKey,
+  id: string,
+  sources: readonly ((page: { offset: number; limit: number }) => Promise<Row[]>)[],
+) {
+  const cache = useQueryClient();
+  return useQuery({
+    queryKey: [...listKey, "by-id", id],
+    queryFn: async () => {
+      for (const source of sources) {
+        for (let offset = 0; offset <= 100_000; offset += SCAN_PAGE) {
+          const rows = await source({ offset, limit: SCAN_PAGE });
+          const row = rows.find((item) => item.id === id);
+          if (row) return row;
+          if (rows.length < SCAN_PAGE) break;
+        }
+      }
+      return null;
+    },
+    initialData: () => {
+      for (const [, data] of cache.getQueriesData<unknown>({ queryKey: listKey })) {
+        const row = Array.isArray(data) ? (data as Row[]).find((item) => item?.id === id) : undefined;
+        if (row) return row;
+      }
+      return undefined;
+    },
+  });
+}
+
+/** Trang chi tiết khi chưa có dòng: khung chờ, lỗi tải, hoặc không tìm thấy kèm link về danh sách. */
+export function DetailFallback({
+  query,
+  title,
+  back,
+}: {
+  query: { isPending: boolean; error: unknown; refetch: () => unknown };
+  title: string;
+  back: NonNullable<LinkProps["to"]>;
+}) {
+  const t = useT(text);
+  return (
+    <>
+      <PageHeader title={title} width="wide" />
+      <PageBody width="wide">
+        {query.isPending ? (
+          <SectionsSkeleton label={t.loading} />
+        ) : query.error ? (
+          <LoadFailure error={query.error} retry={query.refetch} />
+        ) : (
+          <>
+            <Alert variant="destructive">{t.notFound}</Alert>
+            <Link to={back} className="w-fit text-primary hover:text-primary/90">
+              {t.backToList}
+            </Link>
+          </>
+        )}
+      </PageBody>
+    </>
+  );
 }
 
 /**
@@ -70,15 +123,14 @@ export function QueryState({
   return null;
 }
 
-/** Khối chi tiết của trang Tài liệu (phần chi tiết dùng chung còn lại; trang khác mở chi tiết bằng `DetailDialog`). */
+/** Khối chi tiết của trang Tài liệu. */
 export function DetailCard({ children, className }: { children: ReactNode; className?: string }) {
   return <Card className={cx("min-w-0 gap-3 border border-border p-4", className)}>{children}</Card>;
 }
 
 /**
- * Chi tiết một dòng của danh sách kiến thức, trong hộp thoại cuộn trong thân với nút quyết định luôn thấy.
- * TODO(admin-layout): đề xuất, skill và memory nên có trang riêng (`/knowledge/proposals/$id`…) theo Decision 2; khi
- * router có route đó thì thân của hộp thoại này chuyển nguyên sang `DetailHeader` + `PageBody`.
+ * Chi tiết một dòng không có trang riêng (skill mặc định, đề xuất học được của agent), trong hộp thoại cuộn trong thân
+ * với nút quyết định luôn thấy. Đề xuất, skill và memory có trang riêng (Decision 2).
  */
 export function DetailDialog({
   title,

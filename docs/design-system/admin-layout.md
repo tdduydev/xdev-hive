@@ -18,7 +18,8 @@ Chosen by the product owner on 2026-10-14. They override anything below that dis
    user may not open stay hidden. Below 1024 px the menu becomes one select (grouped options) above the page title.
    Like GitHub or Linear settings.
 2. **Clicking a list row opens a detail page.** The detail page has its own URL (`/admin/teams/$teamId`,
-   `/admin/members/$userId`). The whole row is clickable (`onRowClick`), a chevron button at the end opens it from
+   `/admin/members/$userId`, `/knowledge/proposals/$proposalId`, `/knowledge/skills/$skillId`,
+   `/knowledge/memory/$memoryId`). The whole row is clickable (`onRowClick`), a chevron button at the end opens it from
    the keyboard, and the `⋯` row menu keeps quick actions. No slide-over panels for details.
 3. **A detail page is a summary header plus horizontal tabs.** `DetailHeader`: "← list" link, name + status pill,
    secondary actions, one primary button and `⋯`, one line of meta. Below it `PageTabList`, tab in the URL (`?tab=`;
@@ -66,13 +67,19 @@ every state can be reviewed without the hub.
 | Page-level tabs with counts | `PageTabList`, `PageTab` (inside Base UI `Tabs.Root`) | same |
 | Titled block inside a page | `PageSection` | `apps/web/src/components/page/page-section.tsx` |
 | Search + filters + table actions | `FilterBar`, `FilterSearch` (DataTable uses them) | `apps/web/src/components/page/filter-bar.tsx` |
-| Client-side table | `DataTable` (`align`, `pin`, `minWidth`, `toolbar`, `serverPaging`) | `apps/web/src/components/data-table/data-table.tsx` |
+| Client-side table | `DataTable` (`align`, `pin`, `minWidth`, `toolbar`, `serverPaging`, `search`, `filters`, `selectable`) | `apps/web/src/components/data-table/data-table.tsx` |
 | Server-side or simple table | `Table`, `Th variant="plain"`, `Td` (`caps` stays for the desktop app) | `packages/ui/src/table.tsx` |
 | Period, kind or group-by switch | `SegmentedControl` (`aria-pressed` buttons) | `apps/web/src/components/page/segmented-control.tsx` |
 | Topbar breadcrumb group | `navGroupOf` | `apps/web/src/lib/nav.ts` |
 | Key figures | `StatGrid`, `StatCard` | `apps/web/src/components/page/stat-card.tsx` |
 | Settings page | `SettingsLayout`, `SettingsNav`, `SettingsSection`, `FormRow`, `SwitchRow`, `RadioCards` | `apps/web/src/components/page/settings.tsx` |
 | Save one section | `SettingsSection save={…}` (`SectionSave`) | `apps/web/src/components/page/settings.tsx` |
+| Risky on/off (full access) | `SwitchRow tone="destructive"` | same |
+| Number with a unit inside the input | `UnitField` (`suffix`: `USD`, `%`, `token`) | `apps/web/src/components/page/unit-field.tsx` |
+| Free-typed list of values (prefixes, paths) | `ChipInput` (`boxed` inside a form) | `apps/web/src/components/page/chip-input.tsx` |
+| Destructive actions at the bottom of a detail or settings page | `DangerZone` | `apps/web/src/components/page/danger-zone.tsx` |
+| Typed `?tab=` and URL filters | `validate…Search` (wired in `router.tsx`) | `apps/web/src/lib/route-search.ts` |
+| Dates and times by UI language | `formatDay`, `formatDayTime`, `formatAgo` | `apps/web/src/lib/format.ts` |
 | Ask before leaving with unsaved sections | `UnsavedChangesGuard` | `apps/web/src/components/page/unsaved-guard.tsx` |
 | Loading, error, empty | `TableSkeleton`, `SectionsSkeleton`, `LoadingState`, `LoadFailure`, `EmptyState` | `apps/web/src/components/ui/query-state.tsx` |
 | Label + input + hint + error | `Field`, `FieldLabel`, `FieldHint`, `FieldError` | `apps/web/src/components/ui/field.tsx` |
@@ -136,7 +143,10 @@ PageBody          description list / related table / sections with their own Sav
 - Use `PageTabList` + `PageTab` for sibling views of the same object or list (Active / Invitations / Pending).
   Counts sit in a badge after the label; use `tone="warning"` when the count is work waiting for someone.
 - The selected tab is in the URL (`?xem=` for existing routes, `?tab=` for new ones) so it can be linked and survives
-  reload. Default tab = no param.
+  reload. Default tab = no param. Every route with a tab or filter param has a `validate…Search` in
+  `lib/route-search.ts` wired as `validateSearch` in `router.tsx`, so `navigate({ search })` is typed (no `as never`)
+  and an unknown value falls back to the default tab. Validators return the key as explicit `undefined` when the value
+  is invalid: TanStack Router merges the raw search with the validated one, so a dropped key would leak through.
 - Do not use tabs for fewer than two views, for steps of a flow (use `Steps`) or to hide one long form (use
   `SettingsNav`).
 - Hidden tabs (permission) disappear; they are not disabled.
@@ -147,6 +157,10 @@ PageBody          description list / related table / sections with their own Sav
 
 - Order: search (256 px, full width on phones), facet filters (dashed outline buttons with a count badge), then
   table actions pushed right (Columns, Export). Use `FilterBar`/`FilterSearch` when the table is not a `DataTable`.
+  Page-specific controls (a switch, a `SegmentedControl`) go in `DataTable filters`, after the facets.
+- When the hub searches (semantic memory search, audit), pass `search={{ value, onChange, onSubmit?, submit }}` to
+  `DataTable`: the box is the page's, rows are not filtered locally, and there is never a second search box. With
+  `onSubmit` the hub is called on Enter or the Tìm button only. `search={false}` removes the box.
 - Search placeholders say what is searched and end with `…`: `Tìm tên, email…`.
 - When any filter is active show the "Đang lọc" row: one chip per filter with its own clear button, "Xoá hết bộ
   lọc", and `n / total dòng khớp`. Server-side filters (audit, runs) are reflected in the URL and appear in the
@@ -160,7 +174,7 @@ PageBody          description list / related table / sections with their own Sav
   bordered, rounded container; the page never scrolls horizontally, the table container does.
 - Density: header 40 px (`text-xs` muted, sentence case), rows about 44 px (`py-2.5`), 14 px text. Secondary cell text (email next to the member name, branch under task) is `text-xs` muted.
 - Alignment: text and status left; numbers, money, durations, token counts and the actions column right
-  (`align: "end"`, tabular figures). Dates: relative time with the absolute date in `title`, or `formatDay`.
+  (`align: "end"`, tabular figures). Dates: relative time (`formatAgo`) with the absolute date in `title`, or `formatDay`.
 - Status is a `Pill` with a word; colour never carries state alone.
 - `minWidth`: set it to the sum of the columns you need, not the default 1060 px. A table of 3–4 columns should not
   scroll at 836 px. When it does scroll, pin the identifying column (`pin: "start"`, first visible column) and the
@@ -171,7 +185,8 @@ PageBody          description list / related table / sections with their own Sav
 - Rows of a list whose objects have a detail page are clickable (`onRowClick` → navigate to the detail URL; Decision
   2). DataTable adds the chevron button (keyboard and screen readers) and ignores clicks on links, buttons, inputs,
   selects and portalled menus inside the row. Keep the `⋯` menu for quick actions; member roles stay as badges and changes ask for confirmation.
-- Selection: checkbox column only when there are bulk actions the current user may run. The bulk bar replaces
+- Selection: checkbox column only when there are bulk actions the current user may run (`DataTable` turns
+  `selectable` on only when `bulk` is non-empty). The bulk bar replaces
   nothing: it sits above the table and states `Đã chọn n dòng`.
 - Pagination footer: range, rows per page, page n / total, previous/next. Default 20 rows; 10 for tables that share
   the page with other content.
@@ -204,9 +219,14 @@ PageBody          description list / related table / sections with their own Sav
     stacked below. Pass `htmlFor` for a single control; without it the row is a named group.
   - Plain 2- or 3-column grids of `Field`s for related numbers (budget per run / per task / max turns).
   - `RadioCards` for choices that need a sentence each (merge mode, CLI permissions). `tone: "destructive"` for the
-    risky option; picking it opens a confirm dialog listing consequences.
-- Units are suffixes inside the input (`USD`, `%`, `token`); placeholders show the default (`Không giới hạn`,
-  `Mặc định của CLI`), never act as labels.
+    risky option; picking it opens a confirm dialog listing consequences. A switch that grants risky access (full
+    permissions) is `SwitchRow tone="destructive"`: it turns red when on.
+  - `ChipInput` for a free-typed list (document prefixes, output paths): Enter adds a chip without submitting the
+    section, blur keeps a half-typed value. Picking from known objects (people, projects) is a select, not a chip input.
+- Units are suffixes inside the input (`UnitField suffix="USD"`, `%`, `token`); placeholders show the default
+  (`Không giới hạn`, `Mặc định của CLI`), never act as labels.
+- Destructive actions (delete, revoke, remove) sit in one `DangerZone` at the bottom of the detail or settings page,
+  outside the sections with Save. Its buttons open a confirm dialog naming the object; the zone itself does not ask.
 - Validation: errors appear under the field (`FieldError`) after submit or blur; the section footer shows one summary
   sentence. Focus moves to the first invalid field.
 - Save per section (Decision 4): pass `save` to `SettingsSection`. The section becomes a `<form>` (Enter saves that
@@ -276,6 +296,9 @@ Theo dõi) render in the admin menu (`AdminFrame`, Decision 1). ⌘K still lists
 - UI text is Vietnamese with an English pair in the page's `Dict`; errors from the hub stay Vietnamese.
 - Sentence case for titles, buttons and column headers. Loading labels end with `…`.
 - Numbers and money through `lib/format.ts` (`formatInt`, `formatUsd`, `formatPercent`, `formatDuration`).
+- Dates through `lib/format.ts` too; they follow the UI language: VI `11/10/2026`, `14:02, 11/10`, `3 phút trước`;
+  EN `Oct 11, 2026`, `14:02, Oct 11`, `3 minutes ago`. Never print `dd/mm/yyyy` in the English UI (an English reader
+  takes 11/10 as 10 November). Pass `lang` only for strings that are always Vietnamese.
 - Identifiers (`ai/TASK-42`, `hwr_…`, URLs, emails) are `font-mono` and wrap with `break-all` only inside tables.
 
 ## Migration checklist (per page)
@@ -287,6 +310,7 @@ Theo dõi) render in the admin menu (`AdminFrame`, Decision 1). ⌘K still lists
 4. Loading → skeleton; errors → `LoadFailure` with retry; empty → `EmptyState` with first action.
 5. Forms → `SettingsSection` rows with `save` per section, `UnsavedChangesGuard`, read-only note.
 6. Objects with details → row click to a detail page with `DetailHeader` and URL tabs; no side panel.
-7. No local copies of shared components; no hard-coded `Đang tải…`.
+7. No local copies of shared components (`DangerZone`, `ChipInput`, `UnitField`, `SwitchRow`); no hard-coded
+   `Đang tải…`; no `as never` on `navigate({ search })`.
 8. Playwright: update names that changed (tab names now `Đang hoạt động 3`), screenshots at 1440/1100/360, light
    and dark, VI/EN; run the page's spec.

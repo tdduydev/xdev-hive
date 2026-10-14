@@ -104,7 +104,7 @@
 
 ## Phase 2: Lõi hub (US1, US2, US4, US5) 🎯
 
-- [ ] T010 🎯 Module `artifacts`: dịch vụ, quyền, giới hạn, router
+- [x] T010 🎯 Module `artifacts`: dịch vụ, quyền, giới hạn, router
   - `access.ts` (`readerFor`, `visibleArtifactsWhere`, `assertCan(action)` theo bảng quyền plan.md), `service.ts` (tạo,
     phiên bản mới với khoá lạc quan, đổi tên, phạm vi, chủ, nhân bản, xoá mềm, khôi phục, tombstone, liệt kê/tìm với con
     trỏ), `limits.ts` (trần env + chính sách tổ chức, khoá tư vấn theo tổ chức, giới hạn run), quét bí mật (chỉ chặn,
@@ -135,7 +135,7 @@
   - **Scope**: `apps/hub/src/modules/artifacts/{mcp-tools.ts,mcp-artifacts.db.test.ts}`, `apps/hub/src/modules/mcp/{registry.ts,registry.test.ts}`
   - **Phụ thuộc**: T010 · **Mức**: vừa
 
-- [ ] T012 🎯 Route khung cách ly, vé, thư viện tĩnh
+- [x] T012 🎯 Route khung cách ly, vé, thư viện tĩnh
   - `ticket.ts` (HMAC, khoá HKDF từ khoá chủ, hạn ≤ 5 phút, phiên bản hoặc bản xem trước; trường `s` cho link công khai
     để T015 dùng), `frame-routes.ts` (`/_artifact/frame/:ticket`, `/_artifact/lib/*` từ `artifacts-runtime/dist/lib` với
     `Access-Control-Allow-Origin: *` và cache `immutable`; header ở FR-071; 410 khi xoá/tombstone; không đọc cookie hay

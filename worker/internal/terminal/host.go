@@ -275,17 +275,20 @@ func idleText(d time.Duration) string {
 
 func (h *Host) run(s *session, req OpenRequest) {
 	defer h.wg.Done()
-	defer func() {
+	// Gỡ phiên khỏi bảng trước khi báo term_exit: hub nhận exit rồi mở lại cùng id (hoặc đếm phiên) không được gặp phiên ma
+	// vừa bị bỏ term_open là trùng, hay vừa tính vào giới hạn.
+	exit := func(code *int, reason, message string) {
 		h.mu.Lock()
 		if h.sessions[s.id] == s {
 			delete(h.sessions, s.id)
 		}
 		h.mu.Unlock()
 		s.cancel()
-	}()
+		h.exit(s.id, code, reason, message)
+	}
 	lease, err := h.Accounts.AcquireInteractive("claude", req.AccountID)
 	if err != nil {
-		h.exit(s.id, nil, ReasonDenied, "Không dùng được gói Claude cho phiên này: "+err.Error())
+		exit(nil, ReasonDenied, "Không dùng được gói Claude cho phiên này: "+err.Error())
 		return
 	}
 	r := h.Runner
@@ -295,17 +298,17 @@ func (h *Host) run(s *session, req OpenRequest) {
 		lease.Release()
 		if s.ctx.Err() != nil {
 			reason, msg := s.result()
-			h.exit(s.id, nil, orReason(reason), msg)
+			exit(nil, orReason(reason), msg)
 			return
 		}
 		h.log().Warn("Không chuẩn bị được phiên terminal", "session", s.id, "error", err)
-		h.exit(s.id, nil, ReasonError, "Không chuẩn bị được phiên terminal: "+err.Error())
+		exit(nil, ReasonError, "Không chuẩn bị được phiên terminal: "+err.Error())
 		return
 	}
 	code, reason, msg := h.serve(s, req, lease, it)
 	it.Cleanup()
 	lease.Release()
-	h.exit(s.id, code, reason, msg)
+	exit(code, reason, msg)
 }
 
 func orReason(r string) string {
