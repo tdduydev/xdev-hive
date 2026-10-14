@@ -22,7 +22,27 @@ export const CLOSE = {
 
 type Heartbeat = Extract<WorkerToHub, { type: "heartbeat" }>;
 type Hello = Extract<WorkerToHub, { type: "hello" }>;
-export type RunMessage = Exclude<WorkerToHub, { type: "hello" | "heartbeat" | "account_login_event" }>;
+export type TerminalMessage = Extract<WorkerToHub, { type: "term_opened" | "term_output" | "term_exit" }>;
+export type RunMessage = Exclude<
+  WorkerToHub,
+  { type: "hello" | "heartbeat" | "account_login_event" } | TerminalMessage
+>;
+
+/** Gói terminal Leader (specs/010). Module terminal đăng ký qua registerTerminalHandlers; fleet không import terminal. */
+export interface TerminalHandlers {
+  onMessage?: (machine: AuthedMachine, msg: TerminalMessage) => Promise<void>;
+  /** Máy mất kết nối: phiên của máy không còn đường tới PTY. */
+  onDisconnected?: (machine: AuthedMachine) => Promise<void>;
+}
+
+let terminalHandlers: TerminalHandlers = {};
+
+export function registerTerminalHandlers(handlers: TerminalHandlers): () => void {
+  terminalHandlers = handlers;
+  return () => {
+    if (terminalHandlers === handlers) terminalHandlers = {};
+  };
+}
 
 /** Xử lý gói của run. Module runs đăng ký qua registerRunHandlers; fleet không import runs. */
 export interface RunHandlers {
@@ -150,6 +170,10 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
           return ws.close(CLOSE.badMessage, "Đã gửi hello rồi");
         case "account_login_event":
           return onAccountLoginEvent(machine, msg);
+        case "term_opened":
+        case "term_output":
+        case "term_exit":
+          return terminalHandlers.onMessage?.(machine, msg);
         case "heartbeat": {
           const projects = msg.localProjects && {
             boundProjects: msg.localProjects.bound,
@@ -185,6 +209,9 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
       onMachineDisconnected(machine.id).catch((error: unknown) =>
         log.error("Không kết thúc được phiên đăng nhập gói của máy", error),
       );
+      terminalHandlers
+        .onDisconnected?.(machine)
+        .catch((error: unknown) => log.error("Không kết thúc được phiên terminal của máy", error));
       // Đợi các gói đang xử lý xong để markOffline không bị một heartbeat chạy sau ghi đè thành online.
       queue = queue.then(() =>
         markOffline(opts.pool, machine, { jobs: opts.jobs, notifyAfterSec: opts.offlineNotifySec }).catch(

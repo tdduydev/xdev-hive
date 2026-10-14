@@ -36,7 +36,8 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: "node_modules" },
-    exclude: { path: ["(^|/)dist/", "src-tauri/"] },
+    // Bộ skill mặc định là dữ liệu (script mẫu của skill), không phải code của repo.
+    exclude: { path: ["(^|/)dist/", "src-tauri/", "^packages/skill-pack/skills/"] },
     // TypeScript 7 chưa có API lập trình nên dùng swc để đọc file .ts.
     parser: "swc",
     tsPreCompilationDeps: true,
