@@ -609,6 +609,7 @@ export async function startWorker(api: HubClient, teamId: string, tmp: string, s
     // HOME và thư mục cache riêng: worker không đụng cache của máy người chạy. CLI thật cần HOME thật (đăng nhập).
     Object.assign(workerEnv, {
       HOME: join(tmp, "home"),
+      USERPROFILE: join(tmp, "home"),
       XDG_CACHE_HOME: join(tmp, "cache"),
       LocalAppData: join(tmp, "cache"),
       HIVE_WORKER_CLI_OVERRIDES: JSON.stringify({

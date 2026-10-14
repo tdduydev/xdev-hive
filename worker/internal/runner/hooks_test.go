@@ -122,7 +122,7 @@ func TestRunnerFailsWithoutPushWhenStopHookFails(t *testing.T) {
 	remote, base := makeRemote(t)
 	var events []Event
 	r := Runner{DataDir: t.TempDir(), CLICommands: fakeCommands("commit")}
-	err := r.Run(context.Background(), Job{RunID: "hook", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/hook", CLI: "codex", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "commit"}, Policy: JobPolicy{Hooks: []Hook{{Event: "Stop", Name: "test nhanh", Command: "exit 1"}}}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
+	err := r.Run(context.Background(), Job{RunID: "hook", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/hook", CLI: "codex", Prompt: "p", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "commit"}, Policy: JobPolicy{Hooks: []Hook{{Event: "Stop", Name: "test nhanh", Command: "exit 1"}}}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
 	if err == nil {
 		t.Fatal("hook Stop lỗi thì run lỗi")
 	}

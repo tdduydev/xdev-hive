@@ -268,13 +268,17 @@ export function FormRow({
   );
 }
 
-/** Hàng bật/tắt: nhãn và gợi ý bên trái, công tắc bên phải ở mọi bề ngang. Bấm cả nhãn cũng bật/tắt. */
+/**
+ * Hàng bật/tắt: nhãn và gợi ý bên trái, công tắc bên phải ở mọi bề ngang. Bấm cả nhãn cũng bật/tắt. `tone="destructive"`
+ * cho công tắc mở quyền rủi ro (toàn quyền): bật thì công tắc đỏ, để người xem nhận ra ngay khi lướt qua mục.
+ */
 export function SwitchRow({
   label,
   hint,
   checked,
   onChange,
   disabled = false,
+  tone = "default",
   children,
 }: {
   label: string;
@@ -282,6 +286,7 @@ export function SwitchRow({
   checked: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
+  tone?: "default" | "destructive";
   /** Ô phụ chỉ hiện khi bật (thụt vào dưới hàng). */
   children?: ReactNode;
 }) {
@@ -295,7 +300,7 @@ export function SwitchRow({
         </label>
         <Switch
           id={id}
-          className="mt-0.5"
+          className={cx("mt-0.5", tone === "destructive" && "data-checked:bg-destructive")}
           checked={checked}
           onCheckedChange={onChange}
           disabled={disabled}
