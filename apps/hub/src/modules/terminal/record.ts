@@ -40,7 +40,7 @@ export async function machineOwner(tx: Tx, machineId: string): Promise<MachineOw
   return m ? { shared: m.shared, kind: m.kind, ownerUserId: m.registered_by } : null;
 }
 
-const personal = (m: MachineOwner | null): m is MachineOwner & { ownerUserId: string } =>
+export const personal = (m: MachineOwner | null): m is MachineOwner & { ownerUserId: string } =>
   m !== null && !m.shared && m.kind === "worker" && m.ownerUserId !== null;
 
 /**

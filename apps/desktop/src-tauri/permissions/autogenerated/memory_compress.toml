@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-memory-compress"
+description = "Enables the memory_compress command without any pre-configured scope."
+commands.allow = ["memory_compress"]
+
+[[permission]]
+identifier = "deny-memory-compress"
+description = "Denies the memory_compress command without any pre-configured scope."
+commands.deny = ["memory_compress"]
