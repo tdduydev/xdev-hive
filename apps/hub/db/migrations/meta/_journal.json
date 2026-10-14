@@ -442,6 +442,13 @@
       "when": 1791913527483,
       "tag": "0062_machine_labels_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791915907448,
+      "tag": "0063_skill_pack_settings",
+      "breakpoints": true
     }
   ]
 }
