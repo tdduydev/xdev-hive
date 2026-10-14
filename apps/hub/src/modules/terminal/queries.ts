@@ -25,7 +25,7 @@ const ACTIVE = ["opening", "running"];
 const forbidden = (code: RemoteErrorCode) => new ForbiddenError(code, remoteErrors[code]);
 const notFound = () => new NotFoundError("SESSION_NOT_FOUND", remoteErrors.SESSION_NOT_FOUND);
 
-type Row = {
+export type Row = {
   id: string;
   team_id: string;
   machine_id: string;
@@ -91,8 +91,8 @@ function view(r: Row, viewerId: string): RemoteSession {
     state: r.state,
     visibility: r.visibility,
     remote: r.remote,
-    // Ai giữ phím chỉ worker biết; hub điền khi có `/ws/terminal` của máy cá nhân (T030).
-    controller: null,
+    // Ai giữ phím chỉ worker biết (`term_event controller`, `term_state`); hub chỉ nhớ cho phiên đang theo dõi.
+    controller: liveSession(r.id)?.remote.controller ?? null,
     cols: r.cols,
     rows: r.rows,
     exitCode: r.exit_code,
@@ -109,8 +109,16 @@ async function canView(tx: Tx, userId: string, r: Row): Promise<boolean> {
   return r.visibility === "team" && (await teamRoleOf(tx, userId, r.team_id)) !== null;
 }
 
-async function visible(tx: Tx, userId: string, id: string): Promise<Row> {
+/** Phiên chưa qua kiểm quyền xem: chỉ cho thao tác có luật quyền riêng (ngắt phiên, `close.ts`). */
+export async function remoteRow(tx: Tx, id: string): Promise<Row | undefined> {
   const [r] = await select(tx, sql`s.id = ${id}`);
+  return r;
+}
+
+export const remoteView = view;
+
+async function visible(tx: Tx, userId: string, id: string): Promise<Row> {
+  const r = await remoteRow(tx, id);
   if (!r || !(await canView(tx, userId, r))) throw notFound();
   return r;
 }

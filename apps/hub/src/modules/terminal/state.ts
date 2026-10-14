@@ -4,7 +4,8 @@ import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import type { AuthedMachine } from "../fleet/index.ts";
 import { type Tx, withTenant } from "../platform/index.ts";
-import { untrackSession } from "./live.ts";
+import { closeMachineViewers } from "./close.ts";
+import { liveSession, untrackSession } from "./live.ts";
 import { machineOwner, personal } from "./record.ts";
 import { machineRemoteState, remoteDevices, terminalSessions } from "./schema.ts";
 import { endSession } from "./service.ts";
@@ -20,10 +21,10 @@ type State = Extract<WorkerToHub, { type: "term_state" }>;
 const LOCK_FALLBACK_MS = 60 * 60 * 1000;
 
 export async function recordState(pool: pg.Pool, machine: AuthedMachine, msg: State): Promise<void> {
-  const ended = await withTenant(pool, { orgId: machine.orgId }, async (tx) => {
+  const { ended, disabled } = await withTenant(pool, { orgId: machine.orgId }, async (tx) => {
     const owner = await machineOwner(tx, machine.id);
     // Máy dùng chung không có phần từ xa (worker cũng từ chối bật): bỏ qua thay vì lưu trạng thái giả.
-    if (!personal(owner)) return [];
+    if (!personal(owner)) return { ended: [], disabled: false };
     const actor = owner.ownerUserId;
     const [prev] = await tx.select().from(machineRemoteState).where(eq(machineRemoteState.machineId, machine.id));
     const now = new Date();
@@ -65,9 +66,18 @@ export async function recordState(pool: pg.Pool, machine: AuthedMachine, msg: St
     for (const [id, label] of before) if (!after.has(id)) await audit("terminal.root_remove", { rootId: id, label });
 
     await syncDevices(tx, machine, msg.devices, audit);
-    return endMissingSessions(tx, machine, new Set(msg.sessions.map((s) => s.id)));
+    return {
+      ended: await endMissingSessions(tx, machine, new Set(msg.sessions.map((s) => s.id))),
+      disabled: (prev?.enabled ?? false) && !msg.enabled,
+    };
   });
   for (const id of ended) untrackSession(id);
+  // Tắt tại máy (app, khay, `hive remote off`): worker không biết người xem trên hub nên hub đóng họ (FR-022).
+  if (disabled) closeMachineViewers(machine.id);
+  for (const s of msg.sessions) {
+    const live = liveSession(s.id);
+    if (live && live.machineId === machine.id) live.remote.controller = s.controller;
+  }
 }
 
 async function syncDevices(

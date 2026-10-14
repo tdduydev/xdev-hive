@@ -16,7 +16,7 @@ import {
   terminalClientFrame,
 } from "@xdev-hive/contracts";
 import { type RemoteAuth, TERM_DENY_MESSAGES, termDenyCode } from "@xdev-hive/contracts/terminal-auth";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type pg from "pg";
 import { type WebSocket, WebSocketServer } from "ws";
 import { recordAudit } from "../audit/index.ts";
@@ -29,7 +29,9 @@ import {
   type TerminalMessage,
 } from "../fleet/index.ts";
 import { onLeaderActivity } from "../leader/index.ts";
+import { notify } from "../notify/index.ts";
 import { NotFoundError, type Tx, withTenant } from "../platform/index.ts";
+import { machineRemoteDisabled } from "./close.ts";
 import {
   Bucket,
   consumeTicket,
@@ -50,7 +52,7 @@ import {
 import { startRoleSweep } from "./mcp-tokens.ts";
 import { getRemoteSession } from "./queries.ts";
 import { machineOwner, personal } from "./record.ts";
-import { terminalSessions } from "./schema.ts";
+import { remoteDevices, terminalSessions } from "./schema.ts";
 import { loadSession, readChunks, sessionView } from "./service.ts";
 
 /**
@@ -95,16 +97,31 @@ export function originAllowed(origin: string | undefined, host: string | undefin
 
 const ACTIVE: ReadonlyArray<RemoteSession["state"]> = ["opening", "running"];
 
+/**
+ * `term_control` bắt buộc `deviceId` nhưng mã TOTP không gắn với thiết bị nào: hub điền mã cố định này, worker bỏ qua nó
+ * khi kiểm TOTP và chỉ dùng để so lúc nối lại bằng `resumeToken`.
+ */
+export const TOTP_DEVICE_ID = "totp-code";
+
 /** Chủ máy theo hub (người đăng ký máy cá nhân): chỉ người này được xin quyền gõ, kể cả khi phiên cho đội xem. */
 async function isMachineOwner(tx: Tx, userId: string, machineId: string): Promise<boolean> {
   const m = await machineOwner(tx, machineId);
   return personal(m) && m.ownerUserId === userId;
 }
 
-/** Vì sao chủ máy chưa xin quyền gõ được; null khi được. Passkey/TOTP vẫn do worker kiểm. */
-export function remoteControlBlock(s: RemoteSession, owner: boolean, enabled: boolean): RemoteErrorCode | null {
+/**
+ * Vì sao chủ máy chưa xin quyền gõ được; null khi được. Passkey/TOTP vẫn do worker kiểm. `machineOff`: máy đã báo tắt
+ * từ xa (`term_state`), không xin để khỏi chờ worker từ chối.
+ */
+export function remoteControlBlock(
+  s: RemoteSession,
+  owner: boolean,
+  enabled: boolean,
+  machineOff = false,
+): RemoteErrorCode | null {
   if (!owner) return "MACHINE_NOT_YOURS";
   if (!enabled) return "REMOTE_DISABLED_HUB";
+  if (machineOff) return "REMOTE_NOT_ENABLED";
   if (!ACTIVE.includes(s.state)) return "SESSION_ENDED";
   if (!s.remote) return "SESSION_NOT_REMOTE";
   return null;
@@ -120,7 +137,8 @@ export async function remoteTicket(
 ): Promise<{ ticket: string; expiresAt: string; canControl: boolean }> {
   const s = await getRemoteSession(tx, userId, id);
   const owner = s.isOwner && (await isMachineOwner(tx, userId, s.machineId));
-  const canControl = remoteControlBlock(s, owner, deps.enabled) === null;
+  const off = await machineRemoteDisabled(tx, s.machineId);
+  const canControl = remoteControlBlock(s, owner, deps.enabled, off) === null;
   const { ticket, expiresAt } = issueRemoteTicket({ sessionId: s.id, orgId, userId, canControl });
   return { ticket, expiresAt: expiresAt.toISOString(), canControl };
 }
@@ -271,6 +289,23 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
       sendToMachine(conn.machineId, { type: "term_detach", sessionId: ticket.sessionId, connId });
     };
 
+    // Ghi audit khi cỡ đổi thật, không ghi mỗi khung: xoay điện thoại hay kéo bàn phím gửi nhiều resize liền nhau.
+    let lastSize = "";
+    const auditResize = (cols: number, rows: number) => {
+      const size = `${cols}x${rows}`;
+      if (size === lastSize || !session) return;
+      lastSize = size;
+      const s = session;
+      withTenant(opts.pool, tenant, (tx) =>
+        recordAudit(tx, {
+          action: "terminal.resize",
+          targetType: "terminal_session",
+          targetId: s.id,
+          data: { connId, machineId: s.machineId, cols, rows },
+        }),
+      ).catch((e: unknown) => log.error("Không ghi được audit đổi cỡ terminal", e));
+    };
+
     const forward = (frame: Extract<RemoteClientFrame, { t: "in" | "resize" }>) => {
       if (!conn || !session) return;
       if (!conn.granted) return error("TERMINAL_READ_ONLY");
@@ -292,6 +327,7 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
           rows: frame.rows,
           ...proof,
         });
+        auditResize(frame.cols, frame.rows);
       }
     };
 
@@ -322,16 +358,20 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
           if (!frame.resumeToken || closed) return;
           const live = current();
           const grant = live && findGrant(live, frame.resumeToken);
-          if (!conn.canControl || !grant || grant.userId !== ticket.userId) {
+          // Hub khởi động lại thì mất bảng quyền đã cấp nhưng worker còn giữ: chuyển tiếp với thiết bị trình duyệt nhớ,
+          // worker vẫn so token với đúng userId/deviceId của lần cấp nên trình duyệt không mạo danh được thiết bị khác.
+          const deviceId = grant ? grant.deviceId : (frame.deviceId ?? TOTP_DEVICE_ID);
+          if (!conn.canControl || (grant && grant.userId !== ticket.userId)) {
             return send({ t: "denied", code: "AUTH_STALE", message: TERM_DENY_MESSAGES.AUTH_STALE });
           }
-          return control(grant.deviceId, { resumeToken: frame.resumeToken });
+          return control(deviceId, { resumeToken: frame.resumeToken });
         }
-        case "control":
+        case "control": {
           if (block) return error(block);
-          // TOTP không gắn với thiết bị nhưng `term_control` bắt buộc `deviceId` (ghi chú T030 cho T027).
-          if (!frame.deviceId) return error("DEVICE_NOT_FOUND");
-          return control(frame.deviceId, { auth: frame.auth });
+          const deviceId = frame.deviceId ?? (frame.auth.kind === "totp" ? TOTP_DEVICE_ID : undefined);
+          if (!deviceId) return error("DEVICE_NOT_FOUND");
+          return control(deviceId, { auth: frame.auth });
+        }
         case "release":
           return detach();
         case "in":
@@ -354,7 +394,7 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
           .select({ teamId: terminalSessions.teamId, threadId: terminalSessions.threadId })
           .from(terminalSessions)
           .where(eq(terminalSessions.id, s.id));
-        return { s, owner, teamId: row?.teamId ?? "" };
+        return { s, owner, teamId: row?.teamId ?? "", off: await machineRemoteDisabled(tx, s.machineId) };
       });
       if (!opened) return ws.close(TERMINAL_WS_CLOSE.notFound, "Không tìm thấy phiên");
       if (closed) return;
@@ -378,7 +418,7 @@ export function attachTerminalGateway(server: Server, opts: TerminalGatewayOptio
           return ws.close(TERMINAL_WS_CLOSE.rateLimited, "Phiên đã đủ người xem");
         }
       }
-      block = remoteControlBlock(s, owner, opts.remoteEnabled ?? false);
+      block = remoteControlBlock(s, owner, opts.remoteEnabled ?? false, opened.off);
       session = s;
       conn = new RemoteConn({
         connId,
@@ -501,6 +541,7 @@ export function withRemoteLive(
   pool: pg.Pool,
   base: Required<TerminalHandlers>,
   logger: Pick<Console, "error"> = console,
+  opts: { publicUrl?: string | undefined } = {},
 ): Handlers {
   const audit = (machine: AuthedMachine, userId: string | null, action: string, sessionId: string, data: object) =>
     withTenant(pool, { orgId: machine.orgId }, (tx) =>
@@ -512,6 +553,28 @@ export function withRemoteLive(
         data: { ...data, machineId: machine.id },
       }),
     );
+  /**
+   * Hộp thư của chủ máy (OPS-02): ai đó cầm được passkey hay mã thì chủ máy vẫn thấy ngay trên mọi thiết bị đang đăng
+   * nhập. Sự kiện riêng nên không đi ra kênh chung của tổ chức.
+   */
+  const notifyControl = (machine: AuthedMachine, live: LiveSession, connId: string, deviceId: string) =>
+    withTenant(pool, { orgId: machine.orgId }, async (tx) => {
+      const [device] = await tx
+        .select({ label: remoteDevices.label })
+        .from(remoteDevices)
+        .where(and(eq(remoteDevices.machineId, machine.id), eq(remoteDevices.id, deviceId)));
+      const who = device?.label ?? (deviceId === TOTP_DEVICE_ID ? "mã Authenticator" : "thiết bị đã ghép");
+      const base = opts.publicUrl?.replace(/\/+$/, "");
+      await notify(tx, {
+        orgId: machine.orgId,
+        event: "terminal.remote_session",
+        recipientIds: [live.ownerUserId],
+        title: `Phiên trên ${machine.name} đang được điều khiển từ xa`,
+        body: `Quyền gõ vừa được cấp qua ${who}. Không phải bạn thì tắt điều khiển từ xa ngay trên app hoặc trang Máy của tôi.`,
+        eventKey: `terminal.remote_session:${live.id}:${connId}`,
+        link: base ? `${base}/remote/${live.id}` : null,
+      });
+    });
   const ownLive = (machine: AuthedMachine, sessionId: string) => {
     const live = liveSession(sessionId);
     return live && live.machineId === machine.id ? live : undefined;
@@ -589,6 +652,7 @@ export function withRemoteLive(
       conn.pendingDeviceId = null;
       conn.send({ t: "granted", workerEphPub: msg.workerEphPub, resumeToken: msg.resumeToken });
       await audit(machine, conn.userId, "terminal.control_grant", msg.sessionId, { connId: conn.connId, deviceId });
+      await notifyControl(machine, live, conn.connId, deviceId);
       return;
     }
     // term_revoked: khoá cũ hết hiệu lực ở worker nên token nối lại cũng bỏ.

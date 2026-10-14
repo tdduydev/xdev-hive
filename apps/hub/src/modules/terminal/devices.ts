@@ -5,6 +5,7 @@ import { recordAudit } from "../audit/index.ts";
 import { sendToMachine } from "../fleet/index.ts";
 import { ConflictError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
 import { teamRoleOf } from "../tenancy/index.ts";
+import { closeMachineViewers } from "./close.ts";
 import { remoteMachine } from "./queries.ts";
 import { machineRemoteState, remoteDevices } from "./schema.ts";
 
@@ -131,6 +132,8 @@ export async function disableRemote(tx: Tx, userId: string, machineId: string): 
   // Worker không có `terminal` thì chưa bao giờ bật được từ xa, và có thể không hiểu gói `term_disable`.
   requireReachable(m);
   if (!sendToMachine(machineId, { type: "term_disable", by: userId })) throw conflict("MACHINE_OFFLINE");
+  // Không chờ `term_state` của máy: người xem phải bị đóng trong 2 giây kể cả khi máy chậm báo lại.
+  closeMachineViewers(machineId);
   await tx
     .update(machineRemoteState)
     .set({ enabled: false, updatedAt: new Date() })

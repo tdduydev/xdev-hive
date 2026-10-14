@@ -388,7 +388,8 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     control_take|control_revoke|deny|input_rejected`. `fleet/gateway.ts` thêm `onRemote` tách riêng. Test
     `ws.db.test.ts` (vé dùng lại, Origin sai, người xem gửi phím, nối lại không mất byte, client chậm nhận `sync`, hub
     khởi động lại đọc DB) và `live.test.ts`. Còn: hub khởi động lại mất quyền đang cấp (phải xác thực lại); nhiều tiến
-    trình hub thì mỗi tiến trình chỉ thấy máy nối vào nó; `controller` trong `remote.get|list` vẫn `null`.
+    trình hub thì mỗi tiến trình chỉ thấy máy nối vào nó; `controller` trong `remote.get|list` vẫn `null`. Ý đầu và ý
+    cuối đã vá ở T041.
   - `ws.ts` (vé một lần 60 s qua route `ticket`, `Origin` bằng `HIVE_PUBLIC_URL`, mã đóng 4401/4403/4404/4429),
     `live.ts` (vòng đệm 512 KiB, người xem, chuyển `control`/`in`/`resize` tới worker chỉ cho kết nối của chủ máy, chuyển
     `term_granted`/`term_revoked`, nối lại theo offset, 512 KiB/s mỗi người xem, 2 MiB/s mỗi máy, đồng bộ lại khi đệm
@@ -450,7 +451,20 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/terminal/{limits.go,limits_test.go,remote.go,host.go}`
   - **Phụ thuộc**: T031 · **Mức**: vừa
 
-- [ ] T041 [US5] Hub: ngắt, audit đủ, thông báo trong app
+- [x] T041 [US5] Hub: ngắt, audit đủ, thông báo trong app
+  - Đã làm (SPEC10W7): `close.ts`. Route `remote.close` cho chủ phiên và quản trị đội của máy (người khác nhận
+    `SESSION_NOT_FOUND`, phiên đã xong `SESSION_ENDED`, máy offline `MACHINE_OFFLINE`), gửi `term_close {by}` và audit
+    `terminal.close` (`ownerUserId` khi người ngắt không phải chủ); worker báo `term_exit` thì ghi `terminal.exit`.
+    `closeMachineViewers`: tắt từ xa trên web (`disableRemote`, không chờ máy báo lại) hoặc tại máy (`term_state`
+    `enabled` từ bật sang tắt) thì bỏ mọi quyền hub nhớ, gửi `revoked disabled` cho kết nối đang gõ và đóng mọi người
+    xem 4403. Máy đã báo tắt thì vé mới không xin quyền gõ (`REMOTE_NOT_ENABLED`). Cấp quyền gõ tạo mục hộp thư
+    `terminal.remote_session` cho chủ máy (nhãn thiết bị, link `/remote/<id>`). Audit `terminal.resize` khi cỡ đổi
+    thật. Vá chỗ hở T030: `controller` trong `remote.get|list` lấy từ `term_event controller` và `term_state`; `control`
+    bằng TOTP không cần `deviceId` (hub điền `TOTP_DEVICE_ID = "totp-code"`, worker bỏ qua khi kiểm TOTP); khung `resume`
+    thêm `deviceId` tuỳ chọn, hub không còn nhớ token (khởi động lại) thì vẫn chuyển `term_control` cho worker kiểm
+    (không gửi `deviceId` thì dùng mã TOTP), nên quyền đã cấp qua được hub khởi động lại mà không cần lưu DB. Test
+    `audit.db.test.ts` (đủ audit SC-006, hộp thư, ngắt theo vai trò, tắt trên web và tại máy đóng người xem < 2 s,
+    `controller`, nối lại sau khi mất bảng quyền).
   - Route `close`, `disableRemote` tới mọi người xem; tắt từ xa → đóng WS của máy trong ≤ 2 s; hộp thư trong app có mục
     "Phiên … đang được điều khiển từ xa" (OPS-02); test đủ audit (SC-006).
   - **Scope**: `apps/hub/src/modules/terminal/{close.ts,router.ts,audit.db.test.ts}`
