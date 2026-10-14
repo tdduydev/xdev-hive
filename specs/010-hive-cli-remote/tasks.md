@@ -65,17 +65,27 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `packages/contracts/openapi.json`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T003 [P] Worker: gói PTY
+- [x] T003 [P] Worker: gói PTY
+  - Đã làm (SPEC10W5): ConPTY gọi thẳng `x/sys/windows` (không thêm `go-pty`: `creack/pty` đã chạy Unix từ T101).
+    `Start` trả `pty.Terminal` (`Read`, `Write`, `Close`, `Resize`) trên mọi hệ điều hành; Windows: `CreateProcess` với
+    pseudo console, stdio không kế thừa từ worker, job `KILL_ON_JOB_CLOSE` cho `KillGroup` cả cây, `HangupGroup` đóng
+    console (CTRL_CLOSE_EVENT), tiến trình thoát thì đóng console để `Read` nhận EOF; `Supported` dò
+    `CreatePseudoConsole`. Test Windows dùng chính file test làm CLI giả: echo, resize, mã thoát, 10 MB output, kill
+    cây, hangup. Bên gọi (`accounts`, `terminal`) đổi sang `Terminal.Resize`.
   - `internal/pty`: bọc `aymanbagabas/go-pty` (Unix + ConPTY): `Start(cmd, env, dir, cols, rows)`, `Resize`, `Read`,
     `Write`, `Signal(hup|int|kill)`, `Wait`; nhóm tiến trình để kill cả cây.
   - Test với CLI giả (Go test binary): echo, output 10 MB, resize, thoát mã khác 0, kill cây; CI Windows chạy test ConPTY.
   - **Scope**: `worker/internal/pty/**`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T004 [P] Worker: socket nội bộ
+- [x] T004 [P] Worker: socket nội bộ
   - Một phần (SPEC10NEXT): Unix socket (`HIVE_SOCKET` ghi đè đường dẫn), kiểm UID bằng `SO_PEERCRED`/`LOCAL_PEERCRED`,
-    dọn socket cũ, bắt tay, khung nhị phân, test đủ ca. **Còn**: Windows named pipe + DACL + kiểm SID (hiện báo "chưa hỗ
-    trợ trên Windows").
+    dọn socket cũ, bắt tay, khung nhị phân, test đủ ca.
+  - Đã làm (SPEC10W5): Windows named pipe `\\.\pipe\xdev-hive-<SID>` qua `go-winio` (đường dẫn file như `HIVE_SOCKET`
+    được băm ra tên pipe), DACL được bảo vệ chỉ SID hiện tại, tạo lần đầu bằng `FILE_CREATE` nên pipe đã có thì
+    `ErrInUse`; server kiểm SID client (`GetNamedPipeClientProcessId`), client kiểm SID tiến trình giữ pipe
+    (`GetNamedPipeServerProcessId`) để chặn người khác giữ trước tên pipe. Test chung chạy cả Unix lẫn Windows
+    (`server_test.go`), riêng Windows: tên pipe, SDDL, pipe đang dùng, mở lại sau khi đóng. Bỏ `ErrUnsupported`.
   - `internal/localipc`: server/client; Unix socket 0600 trong thư mục 0700, kiểm UID bằng `SO_PEERCRED`
     (Linux) / `LOCAL_PEERCRED` (macOS); Windows named pipe với DACL chỉ SID hiện tại và kiểm SID client; bắt tay phiên
     bản; yêu cầu JSON một dòng; chuyển sang khung nhị phân `[loại u8][độ dài u32][dữ liệu]` sau `attach`.
@@ -98,10 +108,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/remoteauth/**`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T006 [P] Thiết kế UI bằng skill `ui-ux-pro-max`, theo design system và shadcn/ui: web điện thoại (danh sách máy và
+- [x] T006 [P] Thiết kế UI bằng skill `ui-ux-pro-max`, theo design system và shadcn/ui: web điện thoại (danh sách máy và
   phiên, terminal với thanh phím và ô soạn, mở phiên mới, ghép, thiết bị, hướng dẫn cài PWA) và màn app desktop Điều khiển
   từ xa (công tắc, thư mục, thiết bị + QR, phiên, hộp xác nhận); 360 px, sáng/tối.
   - **Scope**: `docs/design-system/screens/{Remote.dc.html,AppRemote.dc.html}` (mới), `docs/design-system/screens/README.md`
+  - Đã làm (SPEC10W5): hai màn có trạng thái `view`, vi/en, sáng/tối, 360 px, chạm 44 px; bàn giao trong README (chưa
+    đưa lên canvas).
   - **Phụ thuộc**: không · **Mức**: vừa
 
 - [x] T007 Bảng và migration module `terminal`
@@ -175,7 +187,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `worker/internal/accounts/{accounts.go,accounts_test.go}`, `worker/cmd/hive-worker/{main.go,main_test.go}`
   - **Phụ thuộc**: T003, T004, T010 · **Mức**: nặng
 
-- [ ] T012 [US1] CLI `hive`: đăng nhập, chat/run, ls, kill
+- [x] T012 [US1] CLI `hive`: đăng nhập, chat/run, ls, kill
   - Một phần (SPEC10NEXT): `chat`, `run`, `ls [--json]`, `attach [--view]`, `kill`, `version`, phím Ctrl-] d/t, raw
     mode, SIGWINCH, mã thoát.
   - Đã làm (SPEC10W4): `login` (loopback PKCE `purpose: cli`, `--with-token` đọc stdin, `--no-browser`, `--hub`/
@@ -183,6 +195,9 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     không có keychain thì `hive.json` 0600 + cảnh báo), `logout`, `whoami`; `--task`/`--project` tra hub bằng token cá
     nhân rồi gửi id cho worker; `ls --all` (phiên đang chạy trên mọi máy, từ `remote.list`); `--no-record`.
     **Còn**: `__hook` (làm cùng T072), `--escape`.
+  - Đã làm (SPEC10W5): `--escape KEY` cho `chat`, `run`, `attach` (`ctrl-<phím>`, `^<phím>`, `none`; từ chối Esc/Tab/
+    Enter/Backspace vì agent cần; dòng hướng dẫn in theo phím đang dùng). `__hook` chuyển sang T072 (cần tín hiệu của
+    worker).
   - `cmd/hive`: `login` (loopback PKCE `purpose: cli`, `--with-token`), keychain (`dev.xdev.hive`/URL hub; không có thì
     file 0600 + cảnh báo), `logout`, `whoami`; `chat`/`run` (raw mode bằng `x/term`, SIGWINCH/console resize, phím tách
     và giành quyền, khôi phục terminal), `--task`/`--project` tra hub bằng token cá nhân; `ls`, `kill`, `version`;
@@ -216,7 +231,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/hub/src/modules/runs/retention.ts`, `apps/hub/src/{main.ts,app.ts,fleet.db.test.ts}`
   - **Phụ thuộc**: T002, T007 · **Mức**: nặng
 
-- [ ] T014 [P] [US1] Web: danh sách phiên và phát lại bản ghi
+- [x] T014 [P] [US1] Web: danh sách phiên và phát lại bản ghi
+  - Đã làm (SPEC10W5): `/remote` (máy của tôi với trạng thái từ xa, phiên đang chạy trước), `/remote/$id` phát lại qua
+    `remote.chunks` bằng `TerminalView` sẵn có (`live={false}`, chỉ đọc; phiên đang chạy hỏi lại mỗi 5 giây), mục
+    "Phiên tương tác" trên bảng việc (chỉ hiện khi có phiên), menu "Điều khiển từ xa". Thêm `pages/remote/session-row.tsx`
+    dùng chung. Không thêm gói npm. Playwright `remote.spec.ts`: danh sách, phát lại, 360 px sáng/tối, tiếng Anh.
   - `components/terminal-view.tsx` (xterm.js + fit, chỉ đọc, tải lười, tắt OSC 52, link cần xác nhận), `pages/remote/`
     `remote-page.tsx` (máy của tôi, phiên), `session-page.tsx` chế độ phát lại (đọc `chunks` theo trang), mục "Phiên
     tương tác" trên trang task; mục menu "Điều khiển từ xa".
@@ -473,7 +492,8 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 - [ ] T072 [US7] Worker: tín hiệu "agent cần bạn"
   - Claude tương tác: file settings tạm với hook `Notification` (+ `Stop`) gọi `hive __hook attention`, ghép với hook
     quản lý của tổ chức như `runner/hooks.go`; CLI khác: im 60 s sau output → `idle`; gửi `term_event`.
-  - **Scope**: `worker/internal/terminal/{attention.go,attention_test.go}`
+  - Lệnh `hive __hook` (chuyển từ T012): gửi tín hiệu tới worker qua socket nội bộ.
+  - **Scope**: `worker/internal/terminal/{attention.go,attention_test.go}`, `worker/cmd/hive/{main.go,hook.go,hook_test.go}`
   - **Phụ thuộc**: T050 (cùng làn) · **Mức**: vừa
 
 ---
