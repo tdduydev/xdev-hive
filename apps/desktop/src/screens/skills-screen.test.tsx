@@ -387,7 +387,11 @@ describe("SkillsScreen", () => {
     setLang("en");
     const calls = fakeTauri();
     renderSkills(null);
-    expect(await screen.findByText("Link your account to get skills from the hub.")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Connect to Hive to get skills from the hub. Skills installed on this machine still work.",
+      ),
+    ).toBeTruthy();
     expect(within(await rowOf("my-own")).getByText("Added by me")).toBeTruthy();
     expect(within(await rowOf("code-review")).getByText("This machine")).toBeTruthy();
     expect(calls.some((c) => c.command === "hub_tool")).toBe(false);
