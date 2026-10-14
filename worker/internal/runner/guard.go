@@ -172,10 +172,18 @@ type hookInput struct {
 	Cwd          string          `json:"cwd"`
 }
 
-// HookMain là `hive-worker hook pre-tool|post-tool`. Mọi lỗi đều cho tool chạy như thường (thoát 0, không in gì):
-// hook hỏng không được chặn việc của agent.
+// HookMain là `hive-worker hook pre-tool|post-tool [--local]`. Mọi lỗi đều cho tool chạy như thường (thoát 0, không in
+// gì): hook hỏng không được chặn việc của agent.
 func HookMain(args []string, stdin io.Reader, stdout io.Writer) int {
 	dir := os.Getenv(GuardDirEnv)
+	if len(args) == 2 && args[1] == "--local" {
+		// Run của worker dùng settings.json của gói đã bật tối ưu thì hook cục bộ cũng được gọi; guard của run đã lo
+		// phần đó, chạy thêm sẽ đếm và cắt hai lần.
+		if dir != "" {
+			return 0
+		}
+		return localHookMain(args[0], stdin, stdout)
+	}
 	if len(args) != 1 || dir == "" {
 		return 0
 	}
