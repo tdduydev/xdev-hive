@@ -22,33 +22,54 @@ export const loopbackPort = z.coerce.number().int().min(1024).max(65_535);
 export const DESKTOP_CONNECT_PREFIX = "hdc_";
 export const desktopConnectCode = z.string().startsWith(DESKTOP_CONNECT_PREFIX).max(200);
 
+/**
+ * `desktop`: app desktop, nhận mã đăng ký máy và token cá nhân. `cli`: `hive login` (specs/010 D12), chỉ nhận token
+ * cá nhân: CLI ghi phiên bằng danh tính máy của worker, token chỉ dùng tra task và xem phiên, nên không cần quyền đăng
+ * ký máy hay chọn đội.
+ */
+export const connectPurpose = z.enum(["desktop", "cli"]);
+export type ConnectPurpose = z.output<typeof connectPurpose>;
+
 export const desktopConnectOptions = z.object({
   /** Đội mà người dùng được đăng ký máy (quản trị đội hoặc vai trò có machines.register). */
   teams: z.array(z.object({ id, name: z.string() })),
 });
 export type DesktopConnectOptions = z.output<typeof desktopConnectOptions>;
 
-export const desktopConnectApproveInput = z.object({
-  teamId: id,
+const approveCommon = {
   machine: machineId,
   port: loopbackPort,
   state: connectState,
   challenge: pkceChallenge,
-});
+};
+
+export const desktopConnectApproveInput = z.union([
+  z.object({ purpose: z.literal("cli"), ...approveCommon }),
+  // Không có `purpose` là app desktop cũ.
+  z.object({ purpose: z.literal("desktop").default("desktop"), teamId: id, ...approveCommon }),
+]);
 export type DesktopConnectApproveInput = z.input<typeof desktopConnectApproveInput>;
 
 export const desktopConnectExchangeInput = z.object({ code: desktopConnectCode, verifier: pkceVerifier });
 
-export const desktopConnectExchangeOutput = z.object({
+const exchangeCommon = {
   hubUrl: z.string(),
   machine: machineId,
-  teamId: id,
-  /** Mã đăng ký máy (`hwr_…`) dùng một lần, app đưa cho `hive-worker register`. */
-  registrationToken: z.string(),
-  /** Token MCP cá nhân (`hive_pat_…`) app lưu vào keychain để gọi hub thay người dùng. */
+  /** Token MCP cá nhân (`hive_pat_…`) app hay CLI lưu vào keychain để gọi hub thay người dùng. */
   personalToken: z.string(),
   personalTokenExpiresAt: z.iso.datetime(),
-});
+};
+
+export const desktopConnectExchangeOutput = z.discriminatedUnion("purpose", [
+  z.object({
+    purpose: z.literal("desktop"),
+    ...exchangeCommon,
+    teamId: id,
+    /** Mã đăng ký máy (`hwr_…`) dùng một lần, app đưa cho `hive-worker register`. */
+    registrationToken: z.string(),
+  }),
+  z.object({ purpose: z.literal("cli"), ...exchangeCommon }),
+]);
 export type DesktopConnectExchangeOutput = z.output<typeof desktopConnectExchangeOutput>;
 
 export const desktopConnectContract = {

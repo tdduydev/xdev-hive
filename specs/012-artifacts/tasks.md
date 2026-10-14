@@ -169,7 +169,7 @@
     (chỉ chỗ gọi), `apps/hub/package.json`, `pnpm-lock.yaml`
   - **Phụ thuộc**: T004 (manifest), T010, T012 · **Mức**: nặng
 
-- [ ] T015 🎯 Link công khai trên hub
+- [x] T015 🎯 Link công khai trên hub
   - `public-links.ts`: route `publicLinks.create/list/revoke/orgList` (FR-140, FR-141, FR-147; quét bí mật lại; chính
     sách `publicLinks`; trần `HIVE_ARTIFACT_LINK_MAX_DAYS`), `GET /_artifact/s/:token` (plan.md D21: băm → hàm resolve →
     `withTenant` → `buildPublicPage` + vé `s:`; 404 đồng nhất), kiểm link ở route khung khi vé có `s`, cập nhật
@@ -214,14 +214,14 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `pnpm-lock.yaml`
   - **Phụ thuộc**: T001, T004, T005 · **Mức**: nặng
 
-- [ ] T021 🎯 `@xdev-hive/artifacts-ui` — phiên bản, so sánh, chia sẻ, sửa tay tối thiểu
+- [x] T021 🎯 `@xdev-hive/artifacts-ui` — phiên bản, so sánh, chia sẻ, sửa tay tối thiểu
   - `versions.tsx` (danh sách, đặt tên, khôi phục), `compare.tsx` (diff dòng bằng `line-diff`, cạnh nhau), `share-dialog.tsx`
     (phạm vi `private`/`project`, cảnh báo phiên bản cũ), `editor.tsx` tối thiểu (ô soạn chữ cho `markdown`/`code`/`html`/
     `mermaid`, xem trước qua `preview`, xung đột "Xem khác biệt rồi gộp", dòng bí mật được đánh dấu).
   - **Scope**: `packages/artifacts-ui/src/{versions.tsx,compare.tsx,share-dialog.tsx,editor.tsx}` + test
   - **Phụ thuộc**: T020 · **Mức**: vừa
 
-- [ ] T022 🎯 [P] `@xdev-hive/artifacts-ui` — thư viện và chi tiết
+- [x] T022 🎯 [P] `@xdev-hive/artifacts-ui` — thư viện và chi tiết
   - `library.tsx` (lọc phạm vi/loại/nguồn/dự án, tìm, con trỏ, thùng rác, dạng thẻ ở 360 px), `detail.tsx` (vùng xem + tab
     Phiên bản, Liên kết, Hoạt động).
   - **Scope**: `packages/artifacts-ui/src/{library.tsx,detail.tsx}` + test
