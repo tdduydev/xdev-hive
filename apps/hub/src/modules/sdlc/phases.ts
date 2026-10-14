@@ -11,6 +11,7 @@ import {
   type SdlcStep,
   sdlcItemRef,
 } from "@xdev-hive/contracts";
+import type { SdlcJobSpec } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject } from "../catalog/index.ts";
@@ -68,6 +69,23 @@ export interface SdlcStepStart {
   requestedBy: string | null;
 }
 
+/** Run `sdlc` mà `runs` tạo cho một bước (D5): prompt, seed và collect đã dựng xong ở `sdlc`. */
+export interface SdlcRunRequest {
+  itemId: string;
+  /** Dự án chính: worktree của run là repo này. */
+  projectId: string;
+  stepRowId: string;
+  title: string;
+  prompt: string;
+  job: SdlcJobSpec;
+  cli: NonNullable<SdlcStep["cli"]> | null;
+  model: string | null;
+  /** Chủ run theo `runner` của dự án: null là run của đội (máy dùng chung). */
+  ownerUserId: string | null;
+  requiredLabels: string[];
+  createdBy: string;
+}
+
 /** Điểm nối do `main.ts` cài: `sdlc` không import `runs` (runs import sdlc để gọi cổng chặn). */
 export interface SdlcDeps {
   jobs?: Jobs | undefined;
@@ -77,6 +95,8 @@ export interface SdlcDeps {
   publicUrl?: string | undefined;
   /** null: không tạo được run lúc này (máy, quota); bước giữ `queued` để người chạy lại. */
   startSdlcRun?: ((tx: Tx, input: SdlcStepStart) => Promise<{ runId: string } | null>) | undefined;
+  /** `runs.startSdlcRun`; `withStepRuns` (steps.ts) dựng `startSdlcRun` từ đây. */
+  createSdlcRun?: ((tx: Tx, request: SdlcRunRequest) => Promise<{ runId: string } | null>) | undefined;
 }
 
 export const phaseApplies = (phase: SdlcPhase, size: SdlcSize) => !phase.sizes.length || phase.sizes.includes(size);
