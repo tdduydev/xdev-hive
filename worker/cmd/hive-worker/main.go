@@ -29,6 +29,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/channel"
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
+	"github.com/tdduydev/xdev-hive/worker/internal/instancelock"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/service"
@@ -333,6 +334,11 @@ func run(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	lock, code := lockWorker()
+	if lock == nil {
+		return code
+	}
+	defer lock.Close()
 	path, err := pathOr(*configPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -381,7 +387,26 @@ func run(args []string) int {
 		}
 	}
 	// --stdin-control là app desktop chạy worker làm sidecar: app tự cập nhật cả gói, worker không tự thay mình.
-	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, projects.DefaultPath(path), *statusJSON, selfUpdates(*stdinControl), cfg.HubURL)
+	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, projects.DefaultPath(path), *statusJSON, selfUpdates(*stdinControl), cfg.HubURL, func() error {
+		// Bản mới trên Windows là tiến trình con: dọn socket cũ và nhả khoá trước khi nó khởi động.
+		stopLocal()
+		return lock.Close()
+	})
+}
+
+// Mã riêng để app desktop báo rõ xung đột và không tự chạy lại worker liên tục.
+const exitAlreadyRunning = 4
+
+func lockWorker() (*instancelock.Lock, int) {
+	lock, err := instancelock.Acquire()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		if errors.Is(err, instancelock.ErrAlreadyRunning) {
+			return nil, exitAlreadyRunning
+		}
+		return nil, 1
+	}
+	return lock, 0
 }
 
 // selfUpdates: worker tự cài bản mới khi hub bảo, trừ khi chạy làm sidecar của app desktop (--stdin-control): binary
@@ -411,6 +436,11 @@ func host(args []string) int {
 		fmt.Fprintln(os.Stderr, "capacity, pids-limit và image phải hợp lệ")
 		return 2
 	}
+	lock, code := lockWorker()
+	if lock == nil {
+		return code
+	}
+	defer lock.Close()
 	if err := checkHostRuntime(*allowRunc); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -448,7 +478,7 @@ func host(args []string) int {
 		}
 	}
 	sandbox := &runner.SandboxConfig{Image: *image, HostID: cfg.MachineID, AllowRunc: *allowRunc, CPUs: *cpus, Memory: *memory, PIDs: *pids, EgressSocket: *egressSocket, WorkerBinary: executable}
-	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, "", false, true, cfg.HubURL)
+	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, "", false, true, cfg.HubURL, lock.Close)
 }
 
 func sandboxInit(args []string) int {
@@ -568,7 +598,7 @@ func flagSet(fs *flag.FlagSet, name string) bool {
 }
 
 // projectsFile là projects.json (ADR 0020); runner host truyền rỗng vì run sandbox không dùng repo trên máy.
-func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, projectsFile string, statusJSON, selfUpdate bool, hubURL string) int {
+func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, projectsFile string, statusJSON, selfUpdate bool, hubURL string, beforeRestart func() error) int {
 	clis := detectCLIs()
 	if mode == "host" {
 		clis = knownCLIs
@@ -581,12 +611,12 @@ func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, 
 	var requested *channel.UpdateRequest
 	var upgrade *channel.UpgradeError
 	if errors.As(err, &requested) {
-		return updateAndRestart(ctx, requested.Version)
+		return updateAndRestart(ctx, requested.Version, beforeRestart)
 	}
 	if selfUpdate && errors.As(err, &upgrade) {
 		// Hub không còn nói chuyện được với bản này: lên bản mới nhất thay vì để dịch vụ khởi động lại mãi với bản cũ.
 		fmt.Fprintln(os.Stderr, err)
-		return updateAndRestart(ctx, "")
+		return updateAndRestart(ctx, "", beforeRestart)
 	}
 	// Mã thoát riêng khi hub từ chối máy, để trình quản lý dịch vụ không khởi động lại liên tục với token đã hỏng.
 	var rejected *channel.RejectedError
@@ -735,7 +765,7 @@ func applyUpdate(ctx context.Context, src update.Source, exe, current, target st
 
 // updateAndRestart chạy khi hub yêu cầu cập nhật và worker đã chờ run đang chạy xong: cài bản mới rồi chạy lại đúng lệnh
 // này bằng binary mới. Cập nhật lỗi thì vẫn chạy lại bản cũ, để máy không rời hub chỉ vì lỗi mạng lúc tải.
-func updateAndRestart(ctx context.Context, target string) int {
+func updateAndRestart(ctx context.Context, target string, beforeRestart func() error) int {
 	exe, err := update.Executable()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -754,6 +784,10 @@ func updateAndRestart(ctx context.Context, target string) int {
 	}
 	if ctx.Err() != nil {
 		return 0
+	}
+	if err := beforeRestart(); err != nil {
+		fmt.Fprintf(os.Stderr, "Không nhả được khoá worker để khởi động lại: %v\n", err)
+		return 1
 	}
 	if err := restartSelf(exe); err != nil {
 		fmt.Fprintln(os.Stderr, err)
