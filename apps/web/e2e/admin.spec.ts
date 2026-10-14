@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { fail, fakeHub, ok, type RpcHandler, USER } from "./fake-hub.ts";
 
@@ -95,6 +97,8 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
   }, ORG_B.id);
   const hub = await fakeHub(page, { signedIn: true, rpc: twoOrgs() });
   await page.goto("/admin/teams");
+
+  await page.getByRole("button", { name: "Mở rộng điều hướng", exact: true }).click();
 
   // Tổ chức B đã nhớ từ lần trước; ở B chỉ là thành viên, chỉ xem trong đội.
   await expect(switcher(page)).toContainText("Nội bộ");
@@ -858,7 +862,7 @@ test("cài đặt đăng nhập: tên miền đã có tổ chức khác khai th�
   await expect(page.getByLabel("Tên miền email")).toHaveAttribute("aria-invalid", "true");
 });
 
-test("lỗi khi đổi vai trò: hiện câu tiếng Việt của hub, ô chọn quay về vai trò cũ", async ({ page }) => {
+test("lỗi khi đổi vai trò: giữ hộp xác nhận và vai trò cũ trên dòng", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const hub = await fakeHub(page, {
     signedIn: true,
@@ -869,10 +873,16 @@ test("lỗi khi đổi vai trò: hiện câu tiếng Việt của hub, ô chọn
     },
   });
   await page.goto("/admin/members");
-  const role = page.getByLabel("Vai trò tổ chức của Lê Hà");
-  await role.selectOption({ label: "Quản trị" });
+  await page.getByRole("button", { name: "Thao tác: Lê Hà", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Đổi vai trò" }).click();
+  const dialog = page.getByRole("dialog", { name: "Đổi vai trò" });
+  await dialog.getByLabel("Vai trò", { exact: true }).selectOption("admin");
+  await expect(dialog).toContainText("Thành viên → Quản trị");
+  await dialog.getByRole("button", { name: "Xác nhận" }).click();
   await expect(page.getByRole("alert")).toHaveText("Tổ chức phải còn ít nhất một chủ sở hữu đang hoạt động.");
-  await expect(role).toHaveValue("member");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Huỷ", exact: true }).click();
+  await expect(page.getByRole("row", { name: /Lê Hà/ }).getByRole("cell").nth(2)).toHaveText("Thành viên");
   expect(hub.rpcCalls.find((c) => c.path === "orgMembers/setRole")).toMatchObject({
     method: "PATCH",
     org: ORG_A.id,
@@ -880,7 +890,7 @@ test("lỗi khi đổi vai trò: hiện câu tiếng Việt của hub, ô chọn
   });
 });
 
-test("thành viên: bấm dòng mở trang của người đó, tab Đội có URL, đổi vai trò ngay trên dòng không mở trang", async ({
+test("thành viên: bấm dòng mở trang của người đó, tab Đội có URL, đổi vai trò từ menu có xác nhận", async ({
   page,
 }) => {
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
@@ -889,7 +899,20 @@ test("thành viên: bấm dòng mở trang của người đó, tab Đội có U
     rpc: { ...twoOrgs(), "orgMembers/setRole": (input) => ok(input) },
   });
   await page.goto("/admin/members");
-  await page.getByLabel("Vai trò tổ chức của Lê Hà").selectOption({ label: "Quản trị" });
+  await expect(page.getByLabel("Vai trò tổ chức của Lê Hà")).toHaveCount(0);
+  await page.getByRole("button", { name: "Thao tác: Lê Hà", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Đổi vai trò" }).click();
+  const dialog = page.getByRole("dialog", { name: "Đổi vai trò" });
+  await dialog.getByLabel("Vai trò", { exact: true }).selectOption("admin");
+  await expect(dialog).toContainText("Lê Hà");
+  await expect(dialog).toContainText("Thành viên → Quản trị");
+  expect(hub.rpcCalls.filter((call) => call.path === "orgMembers/setRole")).toHaveLength(0);
+  await dialog.getByRole("button", { name: "Huỷ", exact: true }).click();
+  expect(hub.rpcCalls.filter((call) => call.path === "orgMembers/setRole")).toHaveLength(0);
+  await page.getByRole("button", { name: "Thao tác: Lê Hà", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Đổi vai trò" }).click();
+  await dialog.getByLabel("Vai trò", { exact: true }).selectOption("admin");
+  await dialog.getByRole("button", { name: "Xác nhận" }).click();
   await expect.poll(() => hub.rpcCalls.some((c) => c.path === "orgMembers/setRole")).toBe(true);
   await expect(page).toHaveURL("/admin/members");
 
@@ -997,9 +1020,10 @@ test("thành viên v2: tìm, đếm facet, phân trang, sắp xếp và ẩn c�
   await expect(page.getByRole("row")).toHaveCount(2);
   await expect(page.getByRole("row", { name: /Person 24/ })).toContainText("Đã khoá");
   await page.getByRole("button", { name: "Cột", exact: true }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Hoạt động gần nhất" })).not.toBeChecked();
   await page.getByRole("menuitemcheckbox", { name: "Hoạt động gần nhất" }).click();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("columnheader", { name: "Hoạt động gần nhất" })).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Hoạt động gần nhất" })).toBeVisible();
 });
 
 for (const mode of ["role", "team", "lock"] as const) {
@@ -1169,6 +1193,7 @@ test("cài đặt đăng nhập v2: lấy và chép TXT, lỗi DNS, xác minh r�
 
 for (const scheme of ["light", "dark"] as const) {
   test(`người và quyền v2: ảnh ${scheme}, song ngữ, bàn phím và 360px`, async ({ page }, testInfo) => {
+    test.slow();
     await page.emulateMedia({ colorScheme: scheme });
     await openPeople(page, {
       "orgMembers/list": () => ok(manyMembers()),
@@ -1317,6 +1342,14 @@ for (const lang of ["vi", "en"] as const) {
       }));
     await openPeople(page, { "orgMembers/list": () => ok(members) });
     await page.goto("/admin/members");
+    await page.getByRole("button", { name: lang === "vi" ? "Cột" : "Columns", exact: true }).click();
+    await page
+      .getByRole("menuitemcheckbox", { name: lang === "vi" ? "Đăng nhập bằng" : "Signs in with", exact: true })
+      .click();
+    await page
+      .getByRole("menuitemcheckbox", { name: lang === "vi" ? "Hoạt động gần nhất" : "Last active", exact: true })
+      .click();
+    await page.keyboard.press("Escape");
     const password = lang === "vi" ? "Mật khẩu" : "Password";
     const never = lang === "vi" ? "Chưa đăng nhập" : "Never signed in";
     const facetLabel = lang === "vi" ? "Đăng nhập" : "Sign-in";
@@ -1356,4 +1389,151 @@ for (const lang of ["vi", "en"] as const) {
     await page.getByRole("button", { name: lang === "vi" ? "Xoá hết bộ lọc" : "Clear all filters" }).click();
     await expect(page.getByRole("row")).toHaveCount(5);
   });
+}
+
+test("ADMINUI3: sidebar quản trị nhớ lựa chọn riêng và chịu được lưu trữ bị chặn", async ({ page }) => {
+  await openPeople(page);
+  await page.goto("/admin/members");
+  const rail = page.locator('[data-slot="sidebar"][data-state]');
+  await expect(rail).toHaveAttribute("data-state", "collapsed");
+  await expect(page.locator('[data-slot="sidebar-gap"]')).toHaveCSS("width", "56px");
+  const main = page.getByRole("navigation", { name: "Điều hướng chính" });
+  await expect(main.getByRole("link", { name: "Công việc", exact: true })).toHaveAttribute("href", "/tasks");
+  await main.getByRole("link", { name: "Kiến thức", exact: true }).hover();
+  await expect(page.locator('[data-slot="tooltip-content"]')).toHaveText("Kiến thức");
+  await expect(page.locator('[data-slot="tooltip-content"]')).toBeVisible();
+  await page.getByRole("button", { name: "Mở rộng điều hướng", exact: true }).click();
+  await expect(rail).toHaveAttribute("data-state", "expanded");
+  await page.reload();
+  await expect(rail).toHaveAttribute("data-state", "expanded");
+  await page.getByRole("button", { name: "Thu gọn điều hướng", exact: true }).click();
+  await main.getByRole("link", { name: "Tổng quan", exact: true }).click();
+  await expect(rail).toHaveAttribute("data-state", "expanded");
+  await main.getByRole("link", { name: "Quản trị", exact: true }).click();
+  await expect(rail).toHaveAttribute("data-state", "collapsed");
+  await page.addInitScript(() => {
+    const get = Storage.prototype.getItem;
+    const set = Storage.prototype.setItem;
+    Storage.prototype.getItem = function (key) {
+      if (key === "hive.nav.admin-expanded") throw new Error("Lưu trữ bị chặn");
+      return get.call(this, key);
+    };
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "hive.nav.admin-expanded") throw new Error("Lưu trữ bị chặn");
+      return set.call(this, key, value);
+    };
+  });
+  await page.reload();
+  await expect(rail).toHaveAttribute("data-state", "collapsed");
+  await page.getByRole("button", { name: "Mở rộng điều hướng", exact: true }).click();
+  await expect(rail).toHaveAttribute("data-state", "expanded");
+});
+
+for (const width of [1440, 1100, 360]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`ADMINUI3: bảng thành viên và thanh mục ${width} ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript((theme) => localStorage.setItem("hive.theme", theme), theme);
+      await openPeople(page, {
+        "orgMembers/list": () => ok(manyMembers()),
+        "projects/list": () => ok([PROJECT]),
+        "projects/get": () => ok(PROJECT),
+        "briefs/get": () => ok(null),
+        "machines/list": () => ok([]),
+        "projectMachines/list": () => ok([]),
+      });
+      async function shot(name: string) {
+        if (!process.env.HIVE_ADMINUI_SHOTS) return;
+        const dir = resolve("../../scratchpad/agents/adminui-shots/after3");
+        await mkdir(dir, { recursive: true });
+        await page.screenshot({
+          path: resolve(dir, `${name}-${width}-${theme}.png`),
+          fullPage: name !== "project-settings-budget",
+        });
+      }
+      await page.goto("/admin/members");
+      await expect(page.getByRole("row")).toHaveCount(11);
+      await expect(page.getByLabel("Vai trò tổ chức của Person 00")).toHaveCount(0);
+      const table = page.getByRole("table");
+      if (width >= 1100) {
+        await expect
+          .poll(() =>
+            table.evaluate((el) =>
+              el.parentElement ? el.parentElement.scrollWidth - el.parentElement.clientWidth : 0,
+            ),
+          )
+          .toBeLessThanOrEqual(1);
+        const person = page
+          .getByRole("row", { name: /Person 00/ })
+          .getByRole("cell")
+          .nth(1);
+        await expect.poll(() => person.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThanOrEqual(50);
+      }
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBeLessThanOrEqual(1);
+      await shot("members-list");
+      if (width === 1100) {
+        await page.getByRole("button", { name: "Mở rộng điều hướng", exact: true }).click();
+        await page.getByRole("button", { name: "Cột", exact: true }).click();
+        await page.getByRole("menuitemcheckbox", { name: "Đăng nhập bằng", exact: true }).click();
+        await page.keyboard.press("Escape");
+        await table.evaluate((el) => {
+          if (el.parentElement) el.parentElement.scrollLeft = 500;
+        });
+        await expect(page.getByRole("button", { name: "Thao tác: Person 00", exact: true })).toBeInViewport();
+        const actions = page
+          .getByRole("row", { name: /Person 00/ })
+          .getByRole("cell")
+          .nth(6);
+        await expect(actions).toHaveCSS("position", "sticky");
+        await shot("members-list-expanded");
+        await page.getByRole("button", { name: "Thu gọn điều hướng", exact: true }).click();
+        await page.getByRole("button", { name: "Cột", exact: true }).click();
+        await page.getByRole("menuitemcheckbox", { name: "Đăng nhập bằng", exact: true }).click();
+        await page.keyboard.press("Escape");
+        await table.evaluate((el) => {
+          if (el.parentElement) el.parentElement.scrollLeft = 0;
+        });
+      }
+      await page.getByRole("button", { name: "Thao tác: Person 00", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Đổi vai trò" }).click();
+      const dialog = page.getByRole("dialog", { name: "Đổi vai trò" });
+      await dialog.getByLabel("Vai trò", { exact: true }).selectOption("member");
+      await expect(dialog).toContainText("Quản trị → Thành viên");
+      await shot("member-role-confirm");
+      await dialog.getByRole("button", { name: "Huỷ", exact: true }).click();
+      await page.getByRole("button", { name: "Mở dòng Person 00", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Person 00", level: 1 })).toBeVisible();
+      await shot("member-detail");
+      await page.getByRole("button", { name: "Đổi vai trò", exact: true }).click();
+      await expect(dialog).toContainText("Person 00");
+      await dialog.getByRole("button", { name: "Huỷ", exact: true }).click();
+      await page.goto(`/projects/${PROJECT.key}/settings`);
+      const nav = page.getByRole("navigation", { name: "Các phần" });
+      await expect(nav).toBeVisible();
+      await expect(nav.getByRole("link", { name: "Merge", exact: true })).toHaveAttribute("aria-current", "location");
+      await expect
+        .poll(async () => {
+          const bar = await nav.boundingBox();
+          const section = await page.locator("#merge").boundingBox();
+          return bar && section ? section.y - bar.y - bar.height : -1;
+        })
+        .toBeGreaterThanOrEqual(0);
+      await shot("project-settings");
+      await nav.getByRole("link", { name: "Ngân sách", exact: true }).click();
+      await expect(nav.getByRole("link", { name: "Ngân sách", exact: true })).toHaveAttribute(
+        "aria-current",
+        "location",
+      );
+      await expect.poll(async () => (await nav.boundingBox())?.y).toBe(52);
+      await expect.poll(async () => (await page.locator("#budget").boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(100);
+      await shot("project-settings-budget");
+      await page.locator("#tokens").evaluate((el) => el.scrollIntoView());
+      await expect(nav.locator('[aria-current="location"]')).toHaveAttribute("href", "#tokens");
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth))
+        .toBeLessThanOrEqual(1);
+    });
+  }
 }

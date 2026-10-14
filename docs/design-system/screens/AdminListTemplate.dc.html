@@ -69,9 +69,9 @@ body{margin:0}
 .al-chip button{border:0;background:none;color:inherit;width:20px;height:20px;border-radius:999px}
 .al-tablebox{border:1px solid var(--border);border-radius:12px;background:var(--card);overflow:hidden;min-width:0}
 .al-scroll{overflow-x:auto}
-.al-table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
+.al-table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px;min-width:740px}
 .al-table th{height:40px;padding:0 12px;text-align:left;font-size:12px;font-weight:500;color:var(--muted-foreground);white-space:nowrap;border-bottom:1px solid var(--border);background:var(--card)}
-.al-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;background:var(--card)}
+.al-table td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle;background:var(--card)}
 .al-table tr:last-child td{border-bottom:0}.al-table tbody tr:hover td{background:color-mix(in oklab,var(--muted) 50%,var(--card))}
 .al-table.rows-link tbody tr{cursor:pointer}
 .al-table .num{text-align:right;font-variant-numeric:tabular-nums}
@@ -131,19 +131,29 @@ body{margin:0}
 @container (max-width:1023px){.al-admin{display:none}.al-mnav{display:flex}.al-settings{grid-template-columns:minmax(0,1fr);gap:16px}.al-toc{position:static;flex-direction:row;overflow-x:auto}.al-toc a{border:1px solid var(--border)}.al-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:767px){.al-mnav{padding:12px 16px 0}.al-header{padding:20px 16px 4px}.al-body{padding:16px}.al-tabs{padding:0 8px}.al-formrow{grid-template-columns:minmax(0,1fr)}.al-savebar{margin:0 -16px -16px;padding:12px 16px}.al-grid3{grid-template-columns:minmax(0,1fr)}}
 @container (max-width:639px){.al-nav{display:none}.al-filter .al-search{width:100%}.al-filter .al-right{margin-left:0}.al-grid2,.al-radio,.al-stats{grid-template-columns:minmax(0,1fr)}.al-table .pin-end{position:static;box-shadow:none}.al-actions{width:100%}}
+
+.al-side[data-expanded=false]{width:56px;padding:12px 8px}
+.al-side[data-expanded=false] :is(.al-org,.al-nsub,.al-user,.al-nl>span,.al-ngrp>span){display:none}
+.al-side[data-expanded=false] :is(.al-nl,.al-ngrp){justify-content:center;padding:0;height:36px}
+.al-side[data-expanded=false] .al-brand{overflow:hidden;padding:0;width:28px;margin:auto}
+.al-expand{margin-top:auto;flex:none}
+.al-person>span:last-child{display:flex;align-items:center;gap:8px;max-width:288px;white-space:nowrap}
+.al-person b{max-width:144px;overflow:hidden;text-overflow:ellipsis;flex:none}
+.al-person .al-sub{min-width:0;overflow:hidden;text-overflow:ellipsis}
 </style>
 </helmet>
 <div class="al" data-theme="{{theme}}" lang="{{lang}}" style="{{boardStyle}}">
 <sc-if value="{{showTools}}" hint-placeholder-val="{{true}}"><div class="al-tools" data-design-tools><label>{{t.stateLabel}} <select class="al-select" value="{{view}}" onChange="{{setView}}"><sc-for list="{{views}}" as="v"><option value="{{v.value}}">{{v.label}}</option></sc-for></select></label><button type="button" class="al-btn sm" onClick="{{toggleLang}}">VI / EN</button><button type="button" class="al-btn sm" onClick="{{toggleTheme}}">{{t.theme}}</button><button type="button" class="al-btn sm" onClick="{{toggleNarrow}}">360 px</button></div></sc-if>
 <div class="al-nav">
-<nav class="al-side" aria-label="{{fr.mainAria}}">
+<nav class="al-side" data-expanded="{{sidebarExpanded}}" aria-label="{{fr.mainAria}}">
   <div class="al-brand"><dc-import name="Logo" height="40" hint-size="91px,40px"></dc-import></div>
   <button type="button" class="al-org" aria-label="{{fr.switchOrg}}"><span class="al-org-mark" aria-hidden="true">A</span><span class="al-org-txt"><b>Acme Software</b><span>{{fr.admin}}</span></span></button>
   <ul class="al-tree">
-    <li><a class="al-nl" href="#"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7 8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM6.5 14v-4h3v4"/></svg><span>{{fr.home}}</span></a></li>
-    <sc-for list="{{workGroups}}" as="g" hint-placeholder-count="2"><li><div class="al-ngrp"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{g.icon}}"/></svg><span>{{g.label}}</span></div><ul class="al-nsub"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><li><a class="al-nl" href="#">{{it.label}}</a></li></sc-for></ul></li></sc-for>
-    <li><a class="al-nl" href="#" aria-current="true"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>{{fr.admin}}</span></a></li>
+    <li><a class="al-nl" href="#" title="{{fr.home}}" aria-label="{{fr.home}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7 8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM6.5 14v-4h3v4"/></svg><span>{{fr.home}}</span></a></li>
+    <sc-for list="{{workGroups}}" as="g" hint-placeholder-count="2"><li><a class="al-ngrp" href="#" title="{{g.label}}" aria-label="{{g.label}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{g.icon}}"/></svg><span>{{g.label}}</span></a><ul class="al-nsub"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><li><a class="al-nl" href="#">{{it.label}}</a></li></sc-for></ul></li></sc-for>
+    <li><a class="al-nl" href="#" aria-current="true" title="{{fr.admin}}" aria-label="{{fr.admin}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>{{fr.admin}}</span></a></li>
   </ul>
+  <button type="button" class="al-btn ghost al-expand" aria-label="{{sidebarToggleLabel}}" title="{{sidebarToggleLabel}}" onClick="{{toggleSidebar}}">⇔</button>
   <div class="al-user"><span aria-hidden="true">TL</span><span><b style="font-weight:500">Trần Lan</b><small>lan@acme.vn</small></span></div>
 </nav>
 <nav class="al-admin" aria-label="{{fr.adminAria}}">
@@ -172,12 +182,13 @@ body{margin:0}
       <sc-if value="{{filtering}}"><div class="al-chips" role="status"><span class="al-sub">{{t.filtering}}</span><span class="al-chip"><b>{{t.keyword}}:</b> {{query}}<button type="button" aria-label="{{t.clear}}" onClick="{{clearQuery}}">×</button></span><button type="button" class="al-btn ghost sm" onClick="{{clearQuery}}">{{t.clearAll}}</button><span class="al-sub" style="margin-left:auto">{{matches}}</span></div></sc-if>
       <sc-if value="{{hasSelection}}"><div class="al-bulk" role="toolbar" aria-label="{{t.bulk}}"><b>{{selectedLabel}}</b><span style="margin-left:auto;display:flex;gap:8px"><button type="button" class="al-btn sm">{{t.changeRole}}</button><button type="button" class="al-btn sm">{{t.addTeam}}</button><button type="button" class="al-btn sm">{{t.lock}}</button><button type="button" class="al-btn sm ghost" aria-label="{{t.clearSel}}" onClick="{{clearSel}}">×</button></span></div></sc-if>
       <div class="al-tablebox"><div class="al-scroll"><table class="al-table rows-link" style="min-width:1020px"><caption class="al-sr">{{t.title}}. {{t.rowNote}}</caption>
-        <thead><tr><th class="pin-start" style="width:40px"><input type="checkbox" aria-label="{{t.selectPage}}" onChange="{{toggleAll}}" checked="{{allSel}}"></th><th class="pin-start" style="left:40px">{{t.person}} ↑</th><th>{{t.role}}</th><th>{{t.team}}</th><th>{{t.status}}</th><th class="num">{{t.runs}}</th><th class="num">{{t.cost}}</th><th>{{t.lastActive}}</th><th class="pin-end" style="right:40px;box-shadow:none">{{t.actions}}</th><th class="pin-end" style="width:40px;padding:0"><span class="al-sr">{{t.open}}</span></th></tr></thead>
-        <tbody><sc-for list="{{rows}}" as="r" hint-placeholder-count="6"><tr><td class="pin-start"><input type="checkbox" aria-label="{{r.selectLabel}}" checked="{{r.sel}}" onChange="{{r.toggle}}"></td><td class="pin-start" style="left:40px"><div class="al-person"><span class="al-ava">{{r.ini}}</span><span style="min-width:0"><b style="font-weight:500">{{r.name}}</b><br><span class="al-sub">{{r.email}}</span></span></div></td><td>{{r.role}}</td><td>{{r.team}}</td><td><span class="{{r.pillClass}}">{{r.status}}</span></td><td class="num">{{r.runs}}</td><td class="num">{{r.cost}}</td><td title="{{r.seenAbs}}">{{r.seen}}</td><td class="pin-end" style="right:40px;box-shadow:none"><button type="button" class="al-btn ghost sm" aria-label="{{r.lockLabel}}">{{t.lock}}</button><button type="button" class="al-btn ghost sm" aria-label="{{r.moreLabel}}">⋯</button></td><td class="pin-end" style="padding:0 6px"><button type="button" class="al-btn ghost sm al-chev" aria-label="{{r.openLabel}}">›</button></td></tr></sc-for></tbody>
+        <thead><tr><th class="pin-start" style="width:40px"><input type="checkbox" aria-label="{{t.selectPage}}" onChange="{{toggleAll}}" checked="{{allSel}}"></th><th class="pin-start" style="left:40px">{{t.person}} ↑</th><th>{{t.role}}</th><th>{{t.team}}</th><th>{{t.status}}</th><th class="pin-end" style="right:40px;box-shadow:none">{{t.actions}}</th><th class="pin-end" style="width:40px;padding:0"><span class="al-sr">{{t.open}}</span></th></tr></thead>
+        <tbody><sc-for list="{{rows}}" as="r" hint-placeholder-count="6"><tr><td class="pin-start"><input type="checkbox" aria-label="{{r.selectLabel}}" checked="{{r.sel}}" onChange="{{r.toggle}}"></td><td class="pin-start" style="left:40px"><div class="al-person"><span class="al-ava">{{r.ini}}</span><span style="min-width:0"><b style="font-weight:500">{{r.name}}</b> <span class="al-sub">{{r.email}}</span></span></div></td><td><span class="al-pill off">{{r.role}}</span></td><td>{{r.team}}</td><td><span class="{{r.pillClass}}">{{r.status}}</span></td><td class="pin-end" style="right:40px;box-shadow:none"><button type="button" class="al-btn ghost sm" aria-label="{{r.moreLabel}}" onClick="{{r.more}}">⋯</button><sc-if value="{{r.menuOpen}}"><div role="menu"><button type="button" role="menuitem" class="al-btn ghost sm" onClick="{{r.changeRole}}">{{t.changeRole}}</button></div></sc-if></td><td class="pin-end" style="padding:0 6px"><button type="button" class="al-btn ghost sm al-chev" aria-label="{{r.openLabel}}">›</button></td></tr></sc-for></tbody>
       </table></div>
       <div class="al-foot"><span class="al-sub" aria-live="polite">{{range}}</span><div class="al-right"><label>{{t.perPage}} <select class="al-select" style="width:72px;height:28px"><option>20</option><option>50</option></select></label><span>{{t.page}}</span><button type="button" class="al-btn sm" aria-label="{{t.prev}}" disabled="true">‹</button><button type="button" class="al-btn sm" aria-label="{{t.next}}">›</button></div></div></div>
       <p class="al-sub">{{t.rowNote}}</p>
     </sc-if>
+    <sc-if value="{{roleTarget}}"><div role="dialog" aria-modal="true" aria-labelledby="role-confirm-title" class="al-card" style="padding:20px;display:grid;gap:12px"><h2 id="role-confirm-title">{{t.changeRole}}: {{roleName}}</h2><p>{{roleBefore}} → {{roleAfter}}</p><label>{{t.role}} <select class="al-select" onChange="{{pickRole}}"><sc-for list="{{roleOptions}}" as="r"><option value="{{r.value}}" selected="{{r.selected}}">{{r.label}}</option></sc-for></select></label><div class="al-actions"><button type="button" class="al-btn" onClick="{{cancelRole}}">{{roleCancelLabel}}</button><button type="button" class="al-btn primary" onClick="{{confirmRole}}">{{roleConfirmLabel}}</button></div></div></sc-if>
   </main>
 </div>
 </div>
@@ -204,6 +215,9 @@ const frameVals = (x, active) => {
   };
 };
 const commonVals = (self, x, lang, dark, narrow, view) => ({
+  sidebarExpanded: !!self.state.sidebarExpanded,
+  sidebarToggleLabel: x(self.state.sidebarExpanded ? ['Thu gọn điều hướng', 'Collapse navigation'] : ['Mở rộng điều hướng', 'Expand navigation']),
+  toggleSidebar: () => self.setState({ sidebarExpanded: !self.state.sidebarExpanded }),
   theme: dark ? 'dark' : 'light', lang, dark,
   boardStyle: narrow ? 'width:360px;min-height:1600px' : '',
   showTools: !self.props.embedded,
@@ -238,7 +252,7 @@ class Component extends DCLogic {
       bulk: x(['Thao tác hàng loạt', 'Bulk actions']), changeRole: x(['Đổi vai trò', 'Change role']), addTeam: x(['Thêm vào đội', 'Add to team']), lock: x(['Khoá', 'Lock']), clearSel: x(['Bỏ chọn', 'Clear selection']),
       selectPage: x(['Chọn cả trang', 'Select page']), person: x(['Người', 'Person']), role: x(['Vai trò', 'Role']), team: x(['Đội', 'Team']), status: x(['Trạng thái', 'Status']),
       runs: x(['Run 30 ngày', 'Runs (30 d)']), cost: x(['Chi phí', 'Cost']), lastActive: x(['Hoạt động gần nhất', 'Last active']), actions: x(['Thao tác', 'Actions']),
-      open: x(['Mở chi tiết', 'Open details']), rowNote: x(['Bấm vào một dòng để mở trang chi tiết (URL /admin/members/<id>), không mở panel bên cạnh. Nút › mở bằng bàn phím, nút ⋯ giữ thao tác nhanh.', 'Click a row to open its detail page (URL /admin/members/<id>); there is no side panel. The › button opens it from the keyboard and ⋯ keeps the quick actions.']), perPage: x(['Số dòng', 'Rows']), page: x(['Trang 1 / 1', 'Page 1 / 1']), prev: x(['Trang trước', 'Previous page']), next: x(['Trang sau', 'Next page']),
+      open: x(['Mở chi tiết', 'Open details']), rowNote: x(['Bấm vào một dòng để mở trang chi tiết (URL /admin/members/<id>), không mở panel bên cạnh. Nút › mở bằng bàn phím, nút ⋯ giữ thao tác nhanh. Vai trò chỉ hiện nhãn; đổi vai trò tại trang chi tiết hoặc ⋯ với xác nhận tên người và vai trò cũ → mới.', 'Click a row to open its detail page (URL /admin/members/<id>); there is no side panel. The › button opens it from the keyboard and ⋯ keeps the quick actions. Role badges open no inline select; detail or ⋯ role changes confirm the person and old → new role.']), perPage: x(['Số dòng', 'Rows']), page: x(['Trang 1 / 1', 'Page 1 / 1']), prev: x(['Trang trước', 'Previous page']), next: x(['Trang sau', 'Next page']),
       stateLabel: x(['Trạng thái xem', 'View state']), theme: x(['Sáng/tối', 'Light/dark']),
     };
     const roles = { owner: x(['Chủ sở hữu', 'Owner']), admin: x(['Quản trị', 'Admin']), member: x(['Thành viên', 'Member']) };
@@ -247,7 +261,7 @@ class Component extends DCLogic {
     const q = this.state.query.trim().toLowerCase();
     const list = this.people.filter((p) => !q || (p.name + ' ' + p.email).toLowerCase().includes(q));
     const rows = list.map((p) => ({
-      ...p, ini: p.name.split(' ').slice(-2).map((w) => w[0]).join(''), role: roles[p.role], status: p.blocked ? x(['Đã khoá', 'Locked']) : x(['Hoạt động', 'Active']),
+      ...p, menuOpen: this.state.menu === p.id, more: () => this.setState({ menu: this.state.menu === p.id ? null : p.id }), changeRole: () => this.setState({ menu: null, roleTarget: p.id, nextRole: p.role === 'member' ? 'admin' : 'member' }), ini: p.name.split(' ').slice(-2).map((w) => w[0]).join(''), role: roles[this.state.roles?.[p.id] ?? p.role], status: p.blocked ? x(['Đã khoá', 'Locked']) : x(['Hoạt động', 'Active']),
       pillClass: 'al-pill ' + (p.blocked ? 'bad' : 'ok'), runs: p.runs.toLocaleString(lang), cost: money(p.cost), seen: ago(p.mins), seenAbs: '2026-10-14 09:12',
       sel: !!this.state.sel[p.id], toggle: () => this.setState({ sel: { ...this.state.sel, [p.id]: !this.state.sel[p.id] } }),
       selectLabel: x(['Chọn ', 'Select ']) + p.name, lockLabel: x(['Khoá ', 'Lock ']) + p.name, moreLabel: x(['Thao tác khác cho ', 'More actions for ']) + p.name, openLabel: x(['Mở ', 'Open ']) + p.name,
@@ -256,9 +270,22 @@ class Component extends DCLogic {
     const tabs = [['active', ['Đang hoạt động', 'Active'], 8, ''], ['invites', ['Lời mời', 'Invitations'], view === 'empty' ? 0 : 3, ''], ['pending', ['Chờ duyệt', 'Pending approval'], 2, 'warn']].map(([k, l, n, tone]) => ({
       label: x(l), count: n, sel: this.state.tab === k ? 'true' : 'false', pick: () => this.setState({ tab: k }), countClass: 'al-count' + (tone && n ? ' ' + tone : ''),
     }));
+    const target = this.people.find((p) => p.id === this.state.roleTarget);
     return {
+      roleTarget: !!target,
+      roleName: target?.name,
+      roleBefore: target ? roles[this.state.roles?.[target.id] ?? target.role] : '',
+      roleAfter: roles[this.state.nextRole ?? 'member'],
+      roleOptions: Object.entries(roles).map(([value, label]) => ({ value, label, selected: value === this.state.nextRole })),
+      pickRole: (e) => this.setState({ nextRole: e.target.value }),
+      cancelRole: () => this.setState({ roleTarget: null }),
+      confirmRole: () => this.setState({ roles: { ...this.state.roles, [target.id]: this.state.nextRole }, roleTarget: null }),
+      roleConfirmLabel: x(['Xác nhận', 'Confirm']), roleCancelLabel: x(['Huỷ', 'Cancel']),
       ...frameVals(x, 'members'),
-      theme: dark ? 'dark' : 'light', lang, dark, t, tabs, rows,
+      sidebarExpanded: !!this.state.sidebarExpanded,
+  sidebarToggleLabel: x(this.state.sidebarExpanded ? ['Thu gọn điều hướng', 'Collapse navigation'] : ['Mở rộng điều hướng', 'Expand navigation']),
+  toggleSidebar: () => this.setState({ sidebarExpanded: !this.state.sidebarExpanded }),
+  theme: dark ? 'dark' : 'light', lang, dark, t, tabs, rows,
       boardStyle: narrow ? 'width:360px;min-height:1400px' : '',
       showTools: !this.props.embedded,
       views: [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Rỗng', 'Empty']], ['error', ['Lỗi', 'Error']]].map(([value, l]) => ({ value, label: x(l) })),

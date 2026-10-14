@@ -279,6 +279,7 @@ test("doc editor: open from Docs, see workflow, edit a block directly and insert
 test("doc editor: AI suggestion shows inline diff and accepting it updates the draft", async ({ page }) => {
   const hub = await setup(page);
   await page.goto(editorUrl);
+  await page.getByRole("tab", { name: "AI", exact: true }).click();
   const card = page.getByRole("group", { name: "Trợ lý AI đề xuất sửa" });
   await expect(card.locator("del")).toHaveText("phải nhỏ hơn");
   await expect(card.locator("ins").first()).toHaveText("không được vượt");
