@@ -35,7 +35,7 @@ function needKey(deps: ChatRouterDeps): MasterKey {
 export function chatRouter(deps: ChatRouterDeps) {
   const { authed, inOrg, orgMember } = orgMiddlewares(deps);
   const os = implement(contract.chat).$context<RequestContext>().use(authed);
-  const view = botView(deps.publicUrl);
+  const view = botView(deps.publicUrl, deps.telegramPollingBotIds);
 
   return {
     bots: {
@@ -62,7 +62,12 @@ export function chatRouter(deps: ChatRouterDeps) {
           );
           try {
             const url = webhookUrls(deps.publicUrl, bot)[0]?.url ?? null;
-            const probed = await probeBot(bot.config, bot.kind === "telegram" ? url : null, deps);
+            const probed = await probeBot(
+              bot.config,
+              bot.kind === "telegram" ? url : null,
+              deps,
+              deps.telegramPollingBotIds?.includes(bot.id),
+            );
             await withTenant(pool, { userId: user.id, orgId }, (tx) =>
               saveBotTarget(tx, user.id, bot.id, probed.target),
             );

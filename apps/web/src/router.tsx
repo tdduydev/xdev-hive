@@ -94,6 +94,10 @@ const RunPage = lazyRouteComponent(() => import("@/pages/run-page.tsx"), "RunPag
 const RunsPage = lazyRouteComponent(() => import("@/pages/runs-page.tsx"), "RunsPage");
 const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "ProjectSandboxPage");
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
+const SdlcBoardPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcBoardPage");
+const SdlcItemPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcItemPage");
+const SdlcNewPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcNewPage");
+const SdlcQuestionsPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcQuestionsPage");
 const ProjectTasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "ProjectTasksPage");
 const TasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "TasksPage");
 const TeamDetailPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamDetailPage");
@@ -370,6 +374,18 @@ const roleRoute = createRoute({
   component: RoleDetailPage,
 });
 
+/**
+ * AI SDLC (specs/011 T054). Đường dẫn tĩnh `new`, `questions` thắng đường dẫn có tham số cùng độ dài; key dự án luôn
+ * bắt đầu bằng chữ và số hạng mục là số nên hai loại không lẫn.
+ */
+const sdlcRoutes = [
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc", component: SdlcBoardPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/new", component: SdlcNewPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/questions", component: SdlcQuestionsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number", component: SdlcItemPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number/$tab", component: SdlcItemPage }),
+];
+
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
 const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
@@ -470,6 +486,7 @@ const routeTree = rootRoute.addChildren([
         costsRoute,
         roleRoute,
         ...v2Routes,
+        ...sdlcRoutes,
       ]),
     ]),
   ]),

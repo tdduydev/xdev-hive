@@ -12,5 +12,5 @@
 - [x] T008 Leader qua chat, giới hạn lượt, trả lời về chat
 - [x] T009 Webhook Telegram/Slack: chữ ký, giới hạn tốc độ, chặn nhóm
 - [x] T010 Web: trang cấu hình, liên kết, e2e
-- [ ] T011 Long polling Telegram (chưa làm)
-- [ ] T012 Decision checkpoint code review qua chat (cần head SHA, chưa làm)
+- [x] T011 Long polling Telegram — `HIVE_TELEGRAM_POLL_BOT_IDS`, khoá giữa tiến trình, con trỏ mã hoá, retry và huỷ khi dừng; test database
+- [x] T012 Decision checkpoint code review qua chat — nút gắn `headSha` + `gateRunId`, quyền/quorum/audit như web; test database

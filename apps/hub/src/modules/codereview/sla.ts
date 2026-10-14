@@ -64,10 +64,17 @@ export async function remindOverdueCodeReviews(deps: CodeReviewSlaDeps): Promise
             orgId,
             event: "code_review.overdue",
             title: `Quá hạn duyệt: PR #${review.prNumber} ${review.branch}`,
-            body: `Checkpoint “${gate?.name ?? run.gateId}” của quy trình ${review.workflowName} đã quá hạn (PR #${review.prNumber}). Quản trị đội có thể nhắc hoặc quyết thay.`,
+            body: `Checkpoint “${gate?.name ?? run.gateId}” của quy trình ${review.workflowName} đã quá hạn (PR #${review.prNumber}). Quản trị đội có thể nhắc hoặc quyết thay.\nCommit: ${review.headSha}\nHãy xem thay đổi trên web trước khi quyết định.`,
             eventKey: `code-review-overdue:${run.id}`,
             recipientIds: [...ids],
             link: codeReviewLink(deps.publicUrl, review.id),
+            actions:
+              gate?.kind === "human"
+                ? [
+                    { kind: "code_review.approve", reviewId: review.id, headSha: review.headSha, gateRunId: run.id },
+                    { kind: "code_review.changes", reviewId: review.id, headSha: review.headSha, gateRunId: run.id },
+                  ]
+                : [],
           },
           { jobs: deps.jobs },
         );

@@ -21,7 +21,7 @@ async function signIn(page: Page) {
 }
 
 /** App desktop giả: cổng tạm trên 127.0.0.1 nhận callback của trình duyệt, như browser_login.rs. */
-async function fakeApp() {
+async function fakeApp(extra: Record<string, string> = {}) {
   const received: URLSearchParams[] = [];
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -33,7 +33,7 @@ async function fakeApp() {
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const state = randomBytes(24).toString("base64url");
-  const query = new URLSearchParams({ port: String(port), state, challenge, machine: "e2e-macbook" });
+  const query = new URLSearchParams({ port: String(port), state, challenge, machine: "e2e-macbook", ...extra });
   return { received, verifier, state, path: `/desktop/connect?${query}`, close: () => server.close() };
 }
 
@@ -91,6 +91,30 @@ test("app desktop đăng nhập bằng trình duyệt: cho phép, đổi mã, đ
     expect(await whoami.text()).toContain(OWNER.email);
   } finally {
     app.close();
+  }
+});
+
+test("`hive login` (purpose=cli): không chọn đội, chỉ nhận token cá nhân", async ({ page, request }) => {
+  const cli = await fakeApp({ purpose: "cli" });
+  try {
+    await signIn(page);
+    await page.goto(cli.path);
+    await expect(page.getByRole("heading", { name: "Đăng nhập lệnh hive trên máy này?" })).toBeVisible();
+    await expect(page.getByLabel("Đội")).toHaveCount(0);
+    await page.getByRole("button", { name: "Cho phép" }).click();
+    await expect(page.getByText("Đã kết nối app xDev Hive.")).toBeVisible();
+
+    const code = (cli.received[0] as URLSearchParams).get("code") ?? "";
+    const res = await request.post(`${hub}/api/v1/desktop/connect/exchange`, {
+      data: { code, verifier: cli.verifier },
+    });
+    expect(res.ok(), await res.text()).toBe(true);
+    const out = (await res.json()) as Record<string, unknown>;
+    expect(out.purpose).toBe("cli");
+    expect(out.registrationToken).toBeUndefined();
+    expect(String(out.personalToken).startsWith("hive_pat_")).toBe(true);
+  } finally {
+    cli.close();
   }
 });
 

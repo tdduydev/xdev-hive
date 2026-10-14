@@ -386,6 +386,7 @@ function lex(markdown: string, generic: boolean): Doc {
   const doc: Doc = { root, items: [], texts: [], errors: [] };
   let node = root;
   let fence: string | null = null;
+  let comment = false;
   let genericCount = 0;
 
   for (let i = 0; i < lines.length; ) {
@@ -394,6 +395,14 @@ function lex(markdown: string, generic: boolean): Doc {
     if (fence !== null) {
       doc.texts.push({ line, text: raw, node, heading: false });
       if (raw.trim().startsWith(fence)) fence = null;
+      i++;
+      continue;
+    }
+    // Comment HTML là hướng dẫn cho người soạn (khuôn tasks.md của preset có ví dụ "T003 phụ thuộc T001"): giữ như chữ,
+    // không đọc task hay phụ thuộc trong đó.
+    if (comment || raw.trimStart().startsWith("<!--")) {
+      doc.texts.push({ line, text: raw, node, heading: false });
+      comment = comment ? !raw.includes("-->") : !raw.slice(raw.indexOf("<!--") + 4).includes("-->");
       i++;
       continue;
     }

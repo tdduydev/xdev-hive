@@ -29,8 +29,23 @@ export const notificationEvent = z.enum([
   // Artifact (specs/012): dung lượng tổ chức vượt 80%; link công khai bị quản trị thu hồi hay hết hiệu lực do sự kiện.
   "artifact.quota",
   "artifact.public_link.revoked",
+  // Phiên trên máy cá nhân (specs/010): chỉ tới hộp thư và thông báo đẩy của chủ máy, không qua kênh của tổ chức.
+  "terminal.remote_session",
+  "terminal.attention",
+  "terminal.exit",
 ]);
 export type NotificationEvent = z.output<typeof notificationEvent>;
+
+/** Sự kiện riêng của một người: nội dung (tên máy, thư mục, câu agent hỏi) không được gửi vào Telegram hay email chung. */
+export const PERSONAL_NOTIFICATION_EVENTS = [
+  "terminal.remote_session",
+  "terminal.attention",
+  "terminal.exit",
+] as const satisfies readonly NotificationEvent[];
+
+/** Sự kiện kênh của tổ chức chọn nhận được. */
+export const notificationChannelEvent = notificationEvent.exclude(PERSONAL_NOTIFICATION_EVENTS);
+export type NotificationChannelEvent = z.output<typeof notificationChannelEvent>;
 
 export const inboxCursor = z
   .string()
@@ -79,9 +94,9 @@ export type NotificationChannelKind = z.output<typeof notificationChannelKind>;
 
 const name = z.string().trim().min(1, "Tên không được để trống.").max(80, "Tên dài tối đa 80 ký tự.");
 const events = z
-  .array(notificationEvent)
+  .array(notificationChannelEvent)
   .min(1, "Chọn ít nhất một loại sự kiện.")
-  .max(notificationEvent.options.length)
+  .max(notificationChannelEvent.options.length)
   .transform((list) => [...new Set(list)]);
 
 export const telegramConfig = z.object({
@@ -147,7 +162,7 @@ export const notificationChannel = z.object({
   id,
   kind: notificationChannelKind,
   name: z.string(),
-  events: z.array(notificationEvent),
+  events: z.array(notificationChannelEvent),
   enabled: z.boolean(),
   target: z.string(),
   createdAt: z.iso.datetime(),

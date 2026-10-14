@@ -1,11 +1,13 @@
 /** Cấu hình bot sau khi giải mã. Telegram có thêm secret hub tự sinh để kiểm header webhook. */
 export type StoredBotConfig =
-  | { kind: "telegram"; botToken: string; webhookSecret: string }
+  | { kind: "telegram"; botToken: string; webhookSecret: string; nextUpdateId?: number }
   | { kind: "slack"; botToken: string; signingSecret: string };
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export interface ChatApiDeps {
+  /** ID bot nhận bằng long polling ở vai trò api; không đăng ký webhook cho các bot này. */
+  telegramPollingBotIds?: string[] | undefined;
   /** Test thay fetch giả. */
   fetch?: FetchLike | undefined;
   /** Địa chỉ API Telegram; test trỏ sang máy chủ giả. */
@@ -74,6 +76,7 @@ async function post(
   init: { headers?: Record<string, string>; body: string },
   config: StoredBotConfig,
   deps: ChatApiDeps,
+  request: { signal?: AbortSignal | undefined; timeoutMs?: number } = {},
 ): Promise<Response> {
   const doFetch = deps.fetch ?? fetch;
   try {
@@ -81,7 +84,9 @@ async function post(
       method: "POST",
       headers: { "content-type": "application/json", ...init.headers },
       body: init.body,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: request.signal
+        ? AbortSignal.any([request.signal, AbortSignal.timeout(request.timeoutMs ?? TIMEOUT_MS)])
+        : AbortSignal.timeout(request.timeoutMs ?? TIMEOUT_MS),
     });
   } catch (e) {
     const cause = (e as { cause?: { code?: string } }).cause?.code ?? (e instanceof Error ? e.name : "lỗi mạng");
@@ -97,9 +102,16 @@ export async function telegramCall<T = unknown>(
   method: string,
   body: Record<string, unknown>,
   deps: ChatApiDeps,
+  request: { signal?: AbortSignal | undefined; timeoutMs?: number } = {},
 ): Promise<T> {
   const api = trimSlash(deps.telegramApi ?? "https://api.telegram.org");
-  const res = await post(`${api}/bot${config.botToken}/${method}`, { body: JSON.stringify(body) }, config, deps);
+  const res = await post(
+    `${api}/bot${config.botToken}/${method}`,
+    { body: JSON.stringify(body) },
+    config,
+    deps,
+    request,
+  );
   const json = (await res.json().catch(() => null)) as {
     ok?: boolean;
     result?: T;
@@ -209,6 +221,7 @@ export async function probeBot(
   config: StoredBotConfig,
   webhookUrl: string | null,
   deps: ChatApiDeps,
+  polling = false,
 ): Promise<{ target: string; message: string }> {
   if (config.kind === "slack") {
     const who = await slackCall<{ team?: string; user?: string }>(config, "auth.test", {}, deps);
@@ -217,6 +230,10 @@ export async function probeBot(
   }
   const me = await telegramCall<{ username?: string }>(config, "getMe", {}, deps);
   const target = me.username ? `@${me.username}` : "Telegram bot";
+  if (polling) {
+    await telegramCall(config, "deleteWebhook", { drop_pending_updates: false }, deps);
+    return { target, message: `Token hợp lệ (${target}). Nhận tin bằng long polling, không cần webhook HTTPS.` };
+  }
   if (!webhookUrl?.startsWith("https://")) {
     return {
       target,

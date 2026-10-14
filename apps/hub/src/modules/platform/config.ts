@@ -29,6 +29,7 @@ export interface HubConfig {
   allowEmailSignUp?: boolean | undefined;
   /** SMTP nội bộ chỉ được phép khi người vận hành chủ động bật cờ. */
   notifyAllowPrivate?: boolean | undefined;
+  telegramPollingBotIds?: string[] | undefined;
   /** Mở /mcp cho agent trong run khi HIVE_PUBLIC_URL là http (mạng tin cậy). OAuth của người dùng vẫn chỉ chạy qua https. */
   mcpAllowHttp?: boolean | undefined;
   /** Bật Terminal Leader (HIVE_REMOTE_TERMINAL=1, specs/010): Claude CLI tương tác trên máy dùng chung qua /ws/terminal. */
@@ -64,6 +65,17 @@ function roles(env: Env): HubRole[] {
     .filter(Boolean);
   for (const r of list) if (!ROLES.includes(r as HubRole)) throw new Error(`HIVE_ROLES có vai trò lạ: ${r}`);
   return list as HubRole[];
+}
+
+function telegramPollingBotIds(env: Env): string[] {
+  const ids = (env.HIVE_TELEGRAM_POLL_BOT_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim().toLowerCase())
+    .filter(Boolean);
+  if (ids.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))) {
+    throw new Error("HIVE_TELEGRAM_POLL_BOT_IDS phải là danh sách UUID bot, cách nhau bằng dấu phẩy.");
+  }
+  return [...new Set(ids)];
 }
 
 function embeddings(env: Env): EmbeddingsConfig | undefined {
@@ -132,6 +144,7 @@ export function loadConfig(env: Env = process.env): HubConfig {
     authSecret,
     allowEmailSignUp: env.HIVE_ALLOW_EMAIL_SIGNUP === "1",
     notifyAllowPrivate: env.HIVE_NOTIFY_ALLOW_PRIVATE === "1",
+    telegramPollingBotIds: telegramPollingBotIds(env),
     mcpAllowHttp: env.HIVE_MCP_ALLOW_HTTP === "1",
     remoteTerminal: env.HIVE_REMOTE_TERMINAL === "1",
     github: oauthApp(env, "HIVE_GITHUB"),
