@@ -197,12 +197,13 @@ export function SkillLearningTab() {
   const fieldId = useId();
   const { api } = useOrg();
   const [status, setStatus] = useState<SkillProposalStatus | "all">("pending");
-  const [selectedId, setSelectedId] = useState<string>();
+  const [picked, setPicked] = useState<LearnedSkillProposal>();
   const stats = useQuery(api.skillLearning.stats.queryOptions({ input: { days: 30 } }));
   const list = useQuery(
     api.skillLearning.list.queryOptions({ input: { ...(status === "all" ? {} : { status }), limit: 100 } }),
   );
-  const selected = list.data?.find((row) => row.id === selectedId);
+  // Duyệt xong thì dòng rời bộ lọc "chờ duyệt"; giữ dòng đã chọn để kết quả quyết không biến mất cùng lúc tải lại.
+  const selected = list.data?.find((row) => row.id === picked?.id) ?? picked;
   const columns: Column<LearnedSkillProposal>[] = [
     {
       key: "name",
@@ -262,7 +263,7 @@ export function SkillLearningTab() {
           value={status}
           onChange={(event) => {
             setStatus(event.currentTarget.value as SkillProposalStatus | "all");
-            setSelectedId(undefined);
+            setPicked(undefined);
           }}
         >
           <option value="all">{t.all}</option>
@@ -282,8 +283,8 @@ export function SkillLearningTab() {
             placeholder={t.search}
             selectable={false}
             rowLabel={(row) => row.name}
-            activeId={selectedId ?? ""}
-            onRowClick={(row) => setSelectedId(row.id)}
+            activeId={picked?.id ?? ""}
+            onRowClick={setPicked}
             emptyContent={t.empty}
           />
           {selected ? <LearnedDetail key={selected.id} proposal={selected} /> : <DetailCard>{t.choose}</DetailCard>}
