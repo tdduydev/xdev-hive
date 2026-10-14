@@ -36,15 +36,7 @@ func newScriptRelease(t *testing.T) *scriptRelease {
 	}
 	der, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	r := &scriptRelease{files: map[string][]byte{}, key: key, keyPEM: strings.TrimSpace(string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})))}
-	asset := AssetName(runtime.GOOS, runtime.GOARCH)
-	if runtime.GOOS == "windows" {
-		r.files[asset] = zipped(t, "hive-worker.exe", string(testBinary(t)))
-	} else {
-		r.files[asset] = tarGz(t, "hive-worker", string(testBinary(t)))
-	}
-	sum := sha256.Sum256(r.files[asset])
-	r.files["checksums.txt"] = []byte(fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), asset))
-	r.resign(t)
+	r.setArchive(t, true)
 	r.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		name := filepath.Base(req.URL.Path)
 		dir := strings.TrimSuffix(req.URL.Path, "/"+name)
@@ -61,6 +53,28 @@ func newScriptRelease(t *testing.T) *scriptRelease {
 	}))
 	t.Cleanup(r.srv.Close)
 	return r
+}
+
+// setArchive dựng lại file nén của nền tảng đang chạy test, có hoặc không có hive (bản phát hành cũ không có), rồi ký lại.
+func (r *scriptRelease) setArchive(t *testing.T, withHive bool) {
+	t.Helper()
+	asset := AssetName(runtime.GOOS, runtime.GOARCH)
+	binary := string(testBinary(t))
+	var more []string
+	if withHive {
+		more = []string{"hive", binary}
+		if runtime.GOOS == "windows" {
+			more[0] = "hive.exe"
+		}
+	}
+	if runtime.GOOS == "windows" {
+		r.files[asset] = zipped(t, "hive-worker.exe", binary, more...)
+	} else {
+		r.files[asset] = tarGz(t, "hive-worker", binary, more...)
+	}
+	sum := sha256.Sum256(r.files[asset])
+	r.files["checksums.txt"] = []byte(fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), asset))
+	r.resign(t)
 }
 
 func (r *scriptRelease) resign(t *testing.T) {
@@ -111,6 +125,7 @@ func (r *scriptRelease) run(t *testing.T, args ...string) install {
 	}
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
+		"USERPROFILE="+home,
 		"HIVE_RELEASES_URL="+r.srv.URL+"/releases",
 		fakeVersionEnv+"=1.2.3",
 		fakeLogEnv+"="+res.log,
@@ -129,6 +144,13 @@ func (i install) binary() string {
 		return filepath.Join(i.dir, "hive-worker.exe")
 	}
 	return filepath.Join(i.dir, "hive-worker")
+}
+
+func (i install) hive() string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(i.dir, "hive.exe")
+	}
+	return filepath.Join(i.dir, "hive")
 }
 
 func (i install) calls(t *testing.T) string {
@@ -181,6 +203,29 @@ func TestInstallScriptRegistersAndInstallsService(t *testing.T) {
 	}
 	if strings.Contains(res.out, "hwr_bimat") {
 		t.Error("token đăng ký bị in ra")
+	}
+	if _, err := os.Stat(res.hive()); err != nil {
+		t.Errorf("thiếu lệnh hive: %v", err)
+	}
+	if !strings.Contains(res.out, "Đã cài hive 1.2.3") {
+		t.Errorf("thiếu thông báo cài hive:\n%s", res.out)
+	}
+}
+
+// Bản phát hành cũ không có hive trong gói: script vẫn cài worker và không báo lỗi.
+func TestInstallScriptOldArchiveWithoutHive(t *testing.T) {
+	skipWithoutInstallTools(t)
+	r := newScriptRelease(t)
+	r.setArchive(t, false)
+	res := r.run(t, flag("version"), "v1.2.3")
+	if res.err != nil {
+		t.Fatalf("%v\n%s", res.err, res.out)
+	}
+	if _, err := os.Stat(res.binary()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(res.hive()); !os.IsNotExist(err) {
+		t.Errorf("không có hive trong gói mà vẫn có %s", res.hive())
 	}
 }
 

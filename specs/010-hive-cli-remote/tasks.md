@@ -246,7 +246,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/web/e2e/{remote.spec.ts,fake-hub.ts}`
   - **Phụ thuộc**: T002, T006 · **Mức**: vừa
 
-- [ ] T015 [US1] Phát hành và đóng gói `hive`
+- [x] T015 [US1] Phát hành và đóng gói `hive`
   - `.goreleaser.yaml`: build thứ hai `hive` cùng archive và `checksums.txt`; `release.yml` kiểm `hive version`;
     `install.sh`/`install.ps1` cài cả hai; `internal/update` thay cả hai nguyên tử (thiếu `hive` trong gói cũ thì chỉ thay
     worker).
@@ -256,6 +256,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `worker/internal/update/{update.go,update_test.go,scripts_test.go}`,
     `apps/desktop/scripts/{build-sidecar.ts,verify-bundle.ts}`, `apps/desktop/src-tauri/{tauri.conf.json,src/lib.rs}`
   - **Phụ thuộc**: T012 · **Mức**: vừa
+  - Đã làm (SPEC10W6): goreleaser build `hive` cùng archive; `release.yml` kiểm `hive version`; install.sh/install.ps1
+    cài cả hai; `update.InstallAll` chạy thử `version` từng file, thay `hive` rồi worker, lỗi thì trả bản cũ (gói cũ
+    không có `hive` thì chỉ thay worker). Desktop: sidecar `binaries/hive`, `verify-bundle.ts` kiểm, `hive_cli.rs`
+    (`hive_cli_status`, `hive_cli_install`: symlink `~/.local/bin/hive`; Windows chép vào `%LOCALAPPDATA%\xdev-hive\bin`
+    và thêm PATH người dùng). Chưa thử install.ps1 trên PowerShell thật và nhánh Windows của `hive_cli.rs`.
 
 **Checkpoint**: `hive chat` chạy tại máy, phiên ghi lên hub, xem lại trên web; chưa có gì từ xa.
 

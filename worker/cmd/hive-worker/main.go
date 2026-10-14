@@ -765,11 +765,11 @@ func applyUpdate(ctx context.Context, src update.Source, exe, current, target st
 	} else if target == current {
 		return "", nil
 	}
-	binary, err := src.Download(ctx, target)
+	binaries, err := src.DownloadAll(ctx, target)
 	if err != nil {
 		return "", err
 	}
-	if err := update.Install(exe, binary, target); err != nil {
+	if err := update.InstallAll(exe, binaries, target); err != nil {
 		return "", err
 	}
 	return target, nil

@@ -141,7 +141,7 @@ jobs:
           req=$(codesign -d -r- "$app" 2>&1 | grep designated)
           echo "$req"
           case "$req" in *cdhash*) echo "::error::App chỉ ký ad-hoc (cdhash), chưa ký bằng chứng chỉ."; exit 1 ;; esac
-      - name: Kiểm gói (sidecar có, chạy được, đúng phiên bản)
+      - name: Kiểm gói (sidecar hive-worker và hive có, chạy được, đúng phiên bản)
         working-directory: apps/desktop
         run: pnpm bundle:verify
       - name: Gom file cài, đặt tên cố định

@@ -78,6 +78,8 @@ fn main() {
         "update_status",
         "check_updates_now",
         "relaunch_to_update",
+        "hive_cli_status",
+        "hive_cli_install",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");
