@@ -25,6 +25,7 @@ const TEAM_SYSTEM_ROLE: Record<TeamRole, SystemRoleId> = {
   admin: "team-admin",
   member: "team-member",
   viewer: "team-viewer",
+  ba: "team-ba",
 };
 
 /**

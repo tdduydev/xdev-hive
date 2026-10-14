@@ -3,10 +3,16 @@ import { defaultProjectSettings, type ProjectSettings, reviewWorkflow } from "@x
 import { describe, expect, it } from "vitest";
 import {
   buildPatch,
+  buildSectionPatch,
   codeWorkflowsForProject,
   fieldOfPath,
   formFromSettings,
+  SETTINGS_SECTION_IDS,
+  SETTINGS_SECTIONS,
+  type SettingsForm,
   saveErrors,
+  sectionOfField,
+  withSection,
 } from "@/lib/project-settings.ts";
 
 const base = (): ProjectSettings => defaultProjectSettings(1);
@@ -361,5 +367,42 @@ describe("saveErrors", () => {
   it("lỗi khác hiện chung", () => {
     const error = new ORPCError("FORBIDDEN", { defined: true, message: "Cần vai trò quản trị của đội trở lên." });
     expect(saveErrors(error)).toEqual({ errors: {}, message: "Cần vai trò quản trị của đội trở lên." });
+  });
+});
+
+describe("lưu từng mục", () => {
+  it("mỗi ô của form thuộc đúng một mục", () => {
+    const fields = SETTINGS_SECTION_IDS.flatMap((id) => [...SETTINGS_SECTIONS[id]]);
+    expect(new Set(fields).size).toBe(fields.length);
+    expect(new Set(fields)).toEqual(new Set(Object.keys(formFromSettings(base())) as (keyof SettingsForm)[]));
+  });
+
+  it("bản vá của một mục bỏ qua thay đổi chưa lưu ở mục khác", () => {
+    const form = { ...formFromSettings(base()), perRunUsd: "2", mergeQueue: true, planMode: true };
+    const budget = buildSectionPatch(form, base(), "budget");
+    expect(budget).toEqual({ ok: true, patch: { budget: { perRunUsd: 2, perTaskUsd: null, maxTurns: null } } });
+    // Hai mục cùng ghi vào features: mục Merge chỉ đổi mergeQueue, planMode giữ như đang lưu.
+    const merge = buildSectionPatch(form, base(), "merge");
+    expect(merge.ok && merge.patch?.features).toMatchObject({ mergeQueue: true, planMode: false });
+    expect(buildSectionPatch(form, base(), "model")).toEqual({ ok: true, patch: null });
+  });
+
+  it("lỗi ô chỉ chặn mục chứa ô đó", () => {
+    const form = { ...formFromSettings(base()), perRunUsd: "abc" };
+    expect(buildSectionPatch(form, base(), "budget").ok).toBe(false);
+    expect(buildSectionPatch(form, base(), "merge")).toEqual({ ok: true, patch: null });
+  });
+
+  it("tìm mục theo tên ô và tên lỗi", () => {
+    expect(sectionOfField("perRunUsd")).toBe("budget");
+    expect(sectionOfField("models.claude.code")).toBe("model");
+    expect(sectionOfField("tiers.light.maxTurns")).toBe("routing");
+    expect(sectionOfField("nope")).toBeUndefined();
+  });
+
+  it("withSection chỉ chép ô của mục", () => {
+    const saved = formFromSettings(base());
+    const draft = { ...saved, perRunUsd: "3", requiredApprovals: "2" };
+    expect(withSection(draft, saved, "budget")).toEqual({ ...saved, requiredApprovals: "2" });
   });
 });
