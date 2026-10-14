@@ -1,15 +1,15 @@
 // Đồng bộ bộ skill mặc định từ kho tdduydev/xdev-skills (thư mục library/).
 //
-//   node packages/skill-pack/scripts/sync.ts pull <xdev-skills>    chép library/ ở HEAD (cây phải sạch), ghi pack.json
-//   node packages/skill-pack/scripts/sync.ts check <xdev-skills>   so bản sao với library/ ở commit đã ghim
+//   node packages/skill-pack/scripts/sync.ts pull                  chép library/ của submodule, ghi pack.json
+//   node packages/skill-pack/scripts/sync.ts check                 so bản sao và commit với submodule
 //   node packages/skill-pack/scripts/sync.ts dev                   chép skill UI vào .claude/skills của repo này
 //
 // Một nguồn: xdev-skills giữ danh sách, giấy phép (sources.json) và nội dung; ở đây chỉ là bản sao ghim theo commit, để
-// hub chạy được không cần mạng và test chạy được trong CI.
+// hub, Docker và bản git archive chạy được khi không có submodule hay mạng.
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   PACK_DIR,
   type PackSkillMeta,
@@ -21,6 +21,7 @@ import {
 
 const SKILL_MAX_CHARS = 100_000;
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SOURCE_DIR = resolve(PACK_DIR, "../../xdev-skills");
 /** Skill UI repo dev dùng (CLAUDE.md, .claude/skills/agent-fleet/common.md). */
 const DEV_SKILLS = [
   "ui-ux-pro-max",
@@ -42,8 +43,31 @@ const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
 function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
+  throw new Error(message);
+}
+
+function sourceCommit(repoDir: string): string {
+  // Git tìm ngược lên repo cha khi submodule chưa init; không được nhận nhầm HEAD của Hive.
+  if (!existsSync(join(repoDir, ".git")))
+    fail("Chưa khởi tạo xdev-skills; chạy git submodule update --init xdev-skills tại gốc repo.");
+  if (git(repoDir, "status", "--porcelain", "--untracked-files=all"))
+    fail("xdev-skills còn thay đổi chưa commit; commit trước để ghim được.");
+  // status bỏ qua file ignored, nhưng cpSync vẫn chép chúng vào gói và làm sai nội dung của commit đã ghim.
+  if (
+    git(
+      repoDir,
+      "ls-files",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      "--",
+      "library",
+      "sources.json",
+      "NOTICE.md",
+    )
+  )
+    fail("Nguồn skill có file bị Git ignore; dọn các file đó trong library/ trước khi đồng bộ.");
+  return git(repoDir, "rev-parse", "HEAD");
 }
 
 function files(dir: string): string[] {
@@ -109,40 +133,38 @@ function buildManifest(
   return { source: { repo: "tdduydev/xdev-skills", commit, path: "library" }, skills };
 }
 
-function pull(repoDir: string) {
-  if (git(repoDir, "status", "--porcelain")) fail(`${repoDir} còn thay đổi chưa commit; commit trước để ghim được.`);
-  const commit = git(repoDir, "rev-parse", "HEAD");
+export function pull(repoDir = SOURCE_DIR, packDir = PACK_DIR) {
+  const commit = sourceCommit(repoDir);
   const sources = JSON.parse(readFileSync(join(repoDir, "sources.json"), "utf8")) as Sources;
   const library = join(repoDir, "library");
-  const previous = existsSync(join(PACK_DIR, "pack.json")) ? readManifest() : null;
+  const previous = existsSync(join(packDir, "pack.json")) ? readManifest(packDir) : null;
   const manifest = buildManifest(library, sources, commit, previous);
-  const dest = join(PACK_DIR, "skills");
+  const dest = join(packDir, "skills");
   rmSync(dest, { recursive: true, force: true });
   cpSync(library, dest, { recursive: true });
-  cpSync(join(repoDir, "NOTICE.md"), join(PACK_DIR, "NOTICE.md"));
-  writeFileSync(join(PACK_DIR, "pack.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  cpSync(join(repoDir, "NOTICE.md"), join(packDir, "NOTICE.md"));
+  writeFileSync(join(packDir, "pack.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`${manifest.skills.length} skill @ ${commit.slice(0, 12)}`);
 }
 
-function check(repoDir: string) {
-  const manifest = readManifest();
-  const tmp = mkdtempSync(join(tmpdir(), "skill-pack-"));
-  try {
-    const tarFile = join(tmp, "library.tar");
-    git(repoDir, "archive", "--format=tar", "-o", tarFile, manifest.source.commit, "library", "sources.json");
-    execFileSync("tar", ["-x", "-f", tarFile, "-C", tmp]);
-    rmSync(tarFile);
-    const sources = JSON.parse(readFileSync(join(tmp, "sources.json"), "utf8")) as Sources;
-    const expected = buildManifest(join(tmp, "library"), sources, manifest.source.commit, manifest);
-    if (JSON.stringify(expected) !== JSON.stringify(manifest))
-      fail(`pack.json khác library/ ở ${manifest.source.commit.slice(0, 12)}; chạy lại "pull".`);
-    for (const s of manifest.skills) {
-      if (treeHash(join(PACK_DIR, "skills", s.name)) !== s.hash) fail(`skills/${s.name} khác bản ở xdev-skills.`);
-    }
-    console.log(`khớp xdev-skills @ ${manifest.source.commit.slice(0, 12)}`);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
+export function check(repoDir = SOURCE_DIR, packDir = PACK_DIR) {
+  const commit = sourceCommit(repoDir);
+  const manifest = readManifest(packDir);
+  if (commit !== manifest.source.commit)
+    fail(`Commit submodule xdev-skills (${commit}) khác pack.json (${manifest.source.commit}); chạy lại "pull".`);
+  const sources = JSON.parse(readFileSync(join(repoDir, "sources.json"), "utf8")) as Sources;
+  const expected = buildManifest(join(repoDir, "library"), sources, commit, manifest);
+  if (JSON.stringify(expected) !== JSON.stringify(manifest))
+    fail(`pack.json khác library/ ở ${commit.slice(0, 12)}; chạy lại "pull".`);
+  const names = readdirSync(join(packDir, "skills")).sort();
+  if (JSON.stringify(names) !== JSON.stringify(manifest.skills.map((s) => s.name).sort()))
+    fail('Danh sách skills/ khác pack.json; chạy lại "pull".');
+  for (const s of manifest.skills) {
+    if (treeHash(join(packDir, "skills", s.name)) !== s.hash) fail(`skills/${s.name} khác bản ở xdev-skills.`);
   }
+  if (readFileSync(join(packDir, "NOTICE.md"), "utf8") !== readFileSync(join(repoDir, "NOTICE.md"), "utf8"))
+    fail('NOTICE.md khác bản ở xdev-skills; chạy lại "pull".');
+  console.log(`khớp xdev-skills @ ${commit.slice(0, 12)}`);
 }
 
 function dev() {
@@ -154,8 +176,16 @@ function dev() {
   console.log(`đã chép ${DEV_SKILLS.length} skill vào .claude/skills`);
 }
 
-const [cmd, dir] = process.argv.slice(2);
-if (cmd === "pull" && dir) pull(dir);
-else if (cmd === "check" && dir) check(dir);
-else if (cmd === "dev") dev();
-else fail("Dùng: sync.ts pull <xdev-skills> | check <xdev-skills> | dev");
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const [cmd, extra] = process.argv.slice(2);
+    if (extra) fail("Dùng: sync.ts pull | check | dev (nguồn cố định: xdev-skills/)");
+    if (cmd === "pull") pull();
+    else if (cmd === "check") check();
+    else if (cmd === "dev") dev();
+    else fail("Dùng: sync.ts pull | check | dev");
+  } catch (error) {
+    console.error(`Không đồng bộ được bộ skill: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
+}
