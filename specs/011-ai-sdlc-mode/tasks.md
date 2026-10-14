@@ -499,7 +499,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `apps/web/src/pages/sdlc/metrics-page.tsx`, `apps/desktop/src/screens/sdlc-metrics-screen.tsx`
   - **Phụ thuộc**: T031, T054, T055 · **Mức**: vừa
 
-- [ ] T083 [P] Preset và bộ đọc còn lại
+- [x] T083 [P] Preset và bộ đọc còn lại
   - `aidlc-feature`, `aidlc-enterprise`, `bmad-quick`, `bmad-method`, `kiro-requirements`, `kiro-design`, `kiro-bugfix`,
     `openspec` (+ bước `archive`); bộ đọc `kiro-tasks`, `openspec-tasks`, `bmad-stories`, `aidlc-units`; luật EARS.
   - **Scope**: `packages/contracts/src/sdlc-presets/{aidlc-feature,aidlc-enterprise,bmad-quick,bmad-method,kiro,openspec}.ts`,
