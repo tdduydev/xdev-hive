@@ -1,4 +1,10 @@
+import { execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { extname, join, resolve, sep } from "node:path";
 import type { Page, WebSocketRoute } from "@playwright/test";
+import { buildCsp, buildFrameDocument, type LibManifest } from "@xdev-hive/artifacts-runtime";
+import { LIB_DIST_DIR, readLibManifest } from "@xdev-hive/artifacts-runtime/node";
 import {
   type AuditExportInput,
   type CodeDryRunResult,
@@ -52,6 +58,8 @@ export async function fakeHub(
   page: Page,
   opts: {
     signedIn?: boolean;
+    /** Người đăng nhập; mặc định `USER`. */
+    user?: typeof USER;
     auth?: Record<string, (body: unknown, hub: FakeHub) => Reply>;
     rpc?: Record<string, RpcHandler>;
   } = {},
@@ -69,7 +77,7 @@ export async function fakeHub(
       hub.meMethods.push(request.method());
       return route.fulfill(
         hub.signedIn
-          ? ok(USER)
+          ? ok(opts.user ?? USER)
           : {
               status: 401,
               json: { json: { defined: true, code: "UNAUTHORIZED", status: 401, message: "Chưa đăng nhập." } },
@@ -944,4 +952,477 @@ export async function fakeTerminalSocket(
     });
   });
   return controller;
+}
+
+// ---- Artifact (specs/012) ---------------------------------------------------------------------------------------------
+
+export const ARTIFACT_ORG = { id: "0a0a0a0a-0000-4000-8000-0000000000a7", slug: "acme", name: "Acme" };
+export const ARTIFACT_PROJECT = { id: "9a9a9a9a-0000-4000-8000-0000000000a7", key: "PAY", name: "payment-api" };
+export const ARTIFACT_THREAD_ID = "4d4d4d4d-0000-4000-8000-0000000000a7";
+/** Đồng nghiệp cùng dự án: mở artifact được chia sẻ ở một ngữ cảnh trình duyệt khác. */
+export const COLLEAGUE = { id: "u2", name: "Lê Minh Anh", email: "anh@example.com", image: null };
+const ARTIFACT_RUN_ID = "7c7c7c7c-0000-4000-8000-0000000000a7";
+
+type ArtifactViewer = typeof USER | typeof COLLEAGUE;
+
+interface FakeArtifactVersion {
+  version: number;
+  content: string | null;
+  /** Bản ESM đã biên dịch của `react`, như hub lưu sau `compileReact`. */
+  compiled: string | null;
+  compileError: string | null;
+  name: string | null;
+  message: string | null;
+  origin: "leader" | "manual";
+  authorUser: { id: string; name: string } | null;
+  authorRunId: string | null;
+  restoredFrom: number | null;
+  createdAt: string;
+}
+
+export interface FakeArtifact {
+  id: string;
+  title: string;
+  type: "markdown" | "code" | "html" | "mermaid" | "react";
+  language: string | null;
+  scope: "private" | "project";
+  project: typeof ARTIFACT_PROJECT | null;
+  ownerId: string;
+  deletedAt: string | null;
+  createdAt: string;
+  versions: FakeArtifactVersion[];
+}
+
+type FakeChatMessage = {
+  id: string;
+  role: "user" | "leader" | "system";
+  content: string;
+  runId: string | null;
+  createdAt: string;
+  artifact: { id: string; version: number; title: string; type: FakeArtifact["type"]; deleted: boolean } | null;
+  pageErrors: { kind: "error" | "console" | "compile"; message: string }[] | null;
+};
+
+type FrameTicket =
+  | { kind: "version"; id: string; version: number; theme: "light" | "dark" }
+  | { kind: "preview"; type: FakeArtifact["type"]; content: string; theme: "light" | "dark" };
+
+const uuid = (prefix: string, n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const sha = (text: string | null) =>
+  createHash("sha256")
+    .update(text ?? "")
+    .digest("hex");
+const sizeOf = (text: string | null) => Buffer.byteLength(text ?? "");
+
+/**
+ * Hub giả của artifact: state dùng chung giữa nhiều trang (chủ và đồng nghiệp ở hai ngữ cảnh trình duyệt), quyền đọc theo
+ * phạm vi như hub (`private` chỉ chủ, `project` thành viên dự án), vé khung trỏ tới phiên bản để route `/_artifact/frame`
+ * dựng tài liệu bằng `buildFrameDocument` thật.
+ */
+export function artifactsFixture() {
+  let seq = 0;
+  const next = () => ++seq;
+  const now = () => new Date(Date.UTC(2026, 9, 14, 8, 0, seq)).toISOString();
+  const state = {
+    artifacts: [] as FakeArtifact[],
+    messages: [] as FakeChatMessage[],
+    tickets: new Map<string, FrameTicket>(),
+    /** Lời "Nhờ Leader sửa" hub đã nhận. */
+    fixRequests: [] as unknown[],
+    /** Tin người dùng gửi cho leader; test trả lời thay run `leader`. */
+    onSend: undefined as ((content: string) => void) | undefined,
+  };
+
+  const message = (fields: Partial<FakeChatMessage> & Pick<FakeChatMessage, "role" | "content">) => {
+    const m: FakeChatMessage = {
+      id: uuid("5e5e5e5e", next()),
+      runId: null,
+      createdAt: now(),
+      artifact: null,
+      pageErrors: null,
+      ...fields,
+    };
+    state.messages.push(m);
+    return m;
+  };
+
+  const canRead = (a: FakeArtifact, viewer: ArtifactViewer) => a.ownerId === viewer.id || a.scope === "project";
+  const access = (a: FakeArtifact, viewer: ArtifactViewer) => {
+    const owner = a.ownerId === viewer.id;
+    return { write: owner || a.scope === "project", manage: owner, owner };
+  };
+  const ownerOf = (a: FakeArtifact) => (a.ownerId === USER.id ? USER : COLLEAGUE);
+  const latestOf = (a: FakeArtifact) => a.versions[a.versions.length - 1] as FakeArtifactVersion;
+  const summary = (a: FakeArtifact) => ({
+    id: a.id,
+    title: a.title,
+    type: a.type,
+    language: a.language,
+    scope: a.scope,
+    teamId: null,
+    project: a.project,
+    originProjectId: ARTIFACT_PROJECT.id,
+    owner: { id: ownerOf(a).id, name: ownerOf(a).name },
+    origin: "leader",
+    latestVersion: latestOf(a).version,
+    sizeBytes: a.versions.reduce((n, v) => n + sizeOf(v.content) + sizeOf(v.compiled), 0),
+    duplicatedFrom: null,
+    deletedAt: a.deletedAt,
+    createdAt: a.createdAt,
+    updatedAt: latestOf(a).createdAt,
+  });
+  const meta = (v: FakeArtifactVersion) => ({
+    version: v.version,
+    sha256: sha(v.content),
+    sizeBytes: sizeOf(v.content),
+    authorUser: v.authorUser,
+    authorRunId: v.authorRunId,
+    origin: v.origin,
+    message: v.message,
+    name: v.name,
+    restoredFrom: v.restoredFrom,
+    hasCompileError: v.compileError !== null,
+    tombstonedAt: null,
+    createdAt: v.createdAt,
+  });
+  const writeResult = (a: FakeArtifact, v: FakeArtifactVersion) => ({
+    artifact: summary(a),
+    version: meta(v),
+    compileError: v.compileError,
+  });
+
+  /** Thêm phiên bản như `artifact_create`/`artifact_update` của run `leader`, kèm tin nhắn thẻ trong cuộc trò chuyện. */
+  function leaderSave(input: {
+    id?: string;
+    type?: FakeArtifact["type"];
+    title?: string;
+    content: string;
+    compiled?: string;
+    compileError?: string;
+  }): FakeArtifact {
+    let a = input.id ? state.artifacts.find((x) => x.id === input.id) : undefined;
+    if (!a) {
+      a = {
+        id: uuid("a1a1a1a1", next()),
+        title: input.title ?? "Artifact",
+        type: input.type ?? "markdown",
+        language: input.type === "code" ? "ts" : null,
+        scope: "private",
+        project: null,
+        ownerId: USER.id,
+        deletedAt: null,
+        createdAt: now(),
+        versions: [],
+      };
+      state.artifacts.push(a);
+    }
+    a.versions.push({
+      version: a.versions.length + 1,
+      content: input.content,
+      compiled: input.compiled ?? null,
+      compileError: input.compileError ?? null,
+      name: null,
+      message: null,
+      origin: "leader",
+      authorUser: null,
+      authorRunId: ARTIFACT_RUN_ID,
+      restoredFrom: null,
+      createdAt: now(),
+    });
+    const v = latestOf(a);
+    message({
+      role: "leader",
+      content: a.title,
+      runId: ARTIFACT_RUN_ID,
+      artifact: { id: a.id, version: v.version, title: a.title, type: a.type, deleted: false },
+    });
+    return a;
+  }
+
+  /** Bản mới do người dùng lưu (Sửa, Khôi phục). */
+  function userSave(a: FakeArtifact, viewer: ArtifactViewer, fields: Partial<FakeArtifactVersion>) {
+    const base = latestOf(a);
+    a.versions.push({
+      ...base,
+      version: base.version + 1,
+      name: null,
+      message: null,
+      origin: "manual",
+      authorUser: { id: viewer.id, name: viewer.name },
+      authorRunId: null,
+      restoredFrom: null,
+      createdAt: now(),
+      ...fields,
+    });
+    return latestOf(a);
+  }
+
+  const notFound = () => fail("NOT_FOUND", 404, "Không tìm thấy artifact.", { code: "ARTIFACT_NOT_FOUND" });
+  const ticketUrl = (ticket: FrameTicket) => {
+    const id = randomUUID();
+    state.tickets.set(id, ticket);
+    return { url: `/_artifact/frame/${id}`, expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() };
+  };
+
+  /** Thủ tục `artifacts.*` và Leader tối thiểu cho một người xem. */
+  function rpcFor(viewer: ArtifactViewer): Record<string, RpcHandler> {
+    const find = (id: unknown) => {
+      const a = state.artifacts.find((x) => x.id === id);
+      return a && canRead(a, viewer) ? a : undefined;
+    };
+    return {
+      "orgs/mine": () =>
+        ok({
+          orgs: [{ ...ARTIFACT_ORG, role: "member", emailDomain: null, createdAt: "2026-10-01T00:00:00.000Z" }],
+          canCreateOrg: false,
+        }),
+      "projects/list": () => ok([ARTIFACT_PROJECT]),
+      "leader/threads/list": () =>
+        ok([
+          {
+            id: ARTIFACT_THREAD_ID,
+            projectId: ARTIFACT_PROJECT.id,
+            title: "Luồng thanh toán",
+            createdAt: "2026-10-14T08:00:00.000Z",
+            updatedAt: state.messages.at(-1)?.createdAt ?? "2026-10-14T08:00:00.000Z",
+          },
+        ]),
+      "leader/threads/get": () =>
+        ok({
+          thread: {
+            id: ARTIFACT_THREAD_ID,
+            projectId: ARTIFACT_PROJECT.id,
+            title: "Luồng thanh toán",
+            createdAt: "2026-10-14T08:00:00.000Z",
+            updatedAt: state.messages.at(-1)?.createdAt ?? "2026-10-14T08:00:00.000Z",
+          },
+          // Thẻ của artifact người xem không đọc được thì như hub: `artifact` null.
+          messages: state.messages.map((m) => {
+            const a = m.artifact && state.artifacts.find((x) => x.id === m.artifact?.id);
+            if (!m.artifact) return m;
+            if (!a || !canRead(a, viewer)) return { ...m, artifact: null };
+            return { ...m, artifact: { ...m.artifact, deleted: a.deletedAt !== null } };
+          }),
+        }),
+      "leader/threads/send": (input) => {
+        const { content } = input as { content: string };
+        message({ role: "user", content });
+        state.onSend?.(content);
+        return ok({ id: state.messages.at(-1)?.id });
+      },
+      "leader/approvals/list": () => ok([]),
+      "terminal/list": () => ok([]),
+      "audit/list": () => ok({ items: [], nextCursor: null }),
+      "artifacts/settings": () =>
+        ok({
+          enabled: true,
+          types: ["markdown", "code", "html", "mermaid", "react"],
+          scopes: ["private", "project"],
+          maxVersionBytes: 1_048_576,
+          maxVersions: 200,
+          publicLinks: { enabled: true, maxDays: 30 },
+        }),
+      "artifacts/list": (input) => {
+        const q = input as { trash?: boolean; type?: string; query?: string; mine?: boolean };
+        const items = state.artifacts
+          .filter((a) => canRead(a, viewer))
+          .filter((a) => (q.trash ? a.deletedAt !== null && a.ownerId === viewer.id : a.deletedAt === null))
+          .filter((a) => !q.type || a.type === q.type)
+          .filter((a) => !q.mine || a.ownerId === viewer.id)
+          .filter((a) => !q.query || a.title.toLocaleLowerCase().includes(q.query.toLocaleLowerCase()))
+          .reverse();
+        return ok({ items: items.map(summary), nextCursor: null });
+      },
+      "artifacts/get": (input) => {
+        const { id, version } = input as { id: string; version?: number };
+        const a = find(id);
+        const v = a && (version === undefined ? latestOf(a) : a.versions.find((x) => x.version === Number(version)));
+        if (!a || !v) return notFound();
+        return ok({
+          artifact: summary(a),
+          version: { ...meta(v), content: v.content, compileError: v.compileError },
+          access: access(a, viewer),
+        });
+      },
+      "artifacts/versions/list": (input) => {
+        const a = find((input as { id: string }).id);
+        return a ? ok(a.versions.map(meta).reverse()) : notFound();
+      },
+      "artifacts/versions/rename": (input) => {
+        const { id, version, name } = input as { id: string; version: number; name: string | null };
+        const v = find(id)?.versions.find((x) => x.version === version);
+        if (!v) return notFound();
+        v.name = name;
+        return ok(meta(v));
+      },
+      "artifacts/versions/restore": (input) => {
+        const { id, version } = input as { id: string; version: number };
+        const a = find(id);
+        const from = a?.versions.find((x) => x.version === version);
+        if (!a || !from) return notFound();
+        const v = userSave(a, viewer, {
+          content: from.content,
+          compiled: from.compiled,
+          compileError: from.compileError,
+          restoredFrom: from.version,
+        });
+        return ok(writeResult(a, v));
+      },
+      "artifacts/update": (input) => {
+        const { id, content, baseVersion, message } = input as {
+          id: string;
+          content: string;
+          baseVersion?: number;
+          message?: string;
+        };
+        const a = find(id);
+        if (!a) return notFound();
+        const latest = latestOf(a);
+        if (baseVersion !== undefined && baseVersion !== latest.version)
+          return fail("CONFLICT", 409, "Artifact đã có bản mới hơn. Đọc lại rồi sửa.", {
+            code: "ARTIFACT_VERSION_CONFLICT",
+            latest: { version: latest.version, content: latest.content },
+          });
+        return ok(writeResult(a, userSave(a, viewer, { content, message: message ?? null })));
+      },
+      "artifacts/setScope": (input) => {
+        const { id, scope, projectKey } = input as { id: string; scope: "private" | "project"; projectKey?: string };
+        const a = find(id);
+        if (!a) return notFound();
+        a.scope = scope;
+        a.project = scope === "project" && projectKey === ARTIFACT_PROJECT.key ? ARTIFACT_PROJECT : null;
+        return ok(summary(a));
+      },
+      "artifacts/delete": (input) => {
+        const a = find((input as { id: string }).id);
+        if (!a) return notFound();
+        a.deletedAt = now();
+        return ok(summary(a));
+      },
+      "artifacts/restore": (input) => {
+        const a = find((input as { id: string }).id);
+        if (!a) return notFound();
+        a.deletedAt = null;
+        return ok(summary(a));
+      },
+      "artifacts/links/list": (input) =>
+        find((input as { id: string }).id)
+          ? ok([
+              {
+                targetKind: "chat_thread",
+                targetId: ARTIFACT_THREAD_ID,
+                title: "Luồng thanh toán",
+                createdByUserId: null,
+                createdByRunId: ARTIFACT_RUN_ID,
+                createdAt: "2026-10-14T08:00:00.000Z",
+              },
+            ])
+          : notFound(),
+      "artifacts/frameUrl": (input) => {
+        const { id, version, theme } = input as { id: string; version: number; theme?: "light" | "dark" };
+        const a = find(id);
+        if (!a?.versions.some((v) => v.version === Number(version))) return notFound();
+        return ok(ticketUrl({ kind: "version", id, version: Number(version), theme: theme ?? "light" }));
+      },
+      "artifacts/preview": (input) => {
+        const { type, content, theme } = input as { type: FakeArtifact["type"]; content: string; theme?: "light" };
+        return ok({ ...ticketUrl({ kind: "preview", type, content, theme: theme ?? "light" }), compileError: null });
+      },
+      "artifacts/askLeaderFix": (input) => {
+        const data = input as { id: string; errors: FakeChatMessage["pageErrors"]; note?: string; threadId?: string };
+        if (!find(data.id)) return notFound();
+        state.fixRequests.push(data);
+        const m = message({ role: "user", content: data.note ?? "Nhờ Leader sửa", pageErrors: data.errors });
+        state.onSend?.(m.content);
+        return ok({ threadId: ARTIFACT_THREAD_ID, messageId: m.id, runId: ARTIFACT_RUN_ID });
+      },
+    };
+  }
+
+  return { state, leaderSave, message, rpcFor };
+}
+
+export type ArtifactsFixture = ReturnType<typeof artifactsFixture>;
+
+let libManifest: LibManifest | undefined;
+
+/**
+ * Bộ thư viện của khung (`artifacts-runtime/dist/lib`). Job e2e của CI không build package, nên dựng ở đây khi thiếu
+ * (script tự bỏ qua khi đã dựng đúng phiên bản).
+ */
+function artifactLib(): LibManifest {
+  if (libManifest) return libManifest;
+  try {
+    libManifest = readLibManifest();
+  } catch {
+    execFileSync(process.execPath, [join(LIB_DIST_DIR, "..", "..", "scripts", "build-lib.ts")], { stdio: "ignore" });
+    libManifest = readLibManifest();
+  }
+  return libManifest;
+}
+
+const LIB_TYPES: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json",
+};
+
+/**
+ * `/_artifact/frame/<vé>` và `/_artifact/lib/*` như hub (T012): tài liệu dựng bằng `buildFrameDocument`, header CSP bằng
+ * `buildCsp`, thư viện từ `dist/lib` với CORS `*`. `frameRequests` ghi mọi yêu cầu do khung (không phải trang) gửi đi, để
+ * test khẳng định khung không gọi gì ngoài hai đường này (SC-001).
+ */
+export async function fakeArtifactFrames(page: Page, fixture: ArtifactsFixture) {
+  const manifest = artifactLib();
+  const frameRequests: string[] = [];
+  page.on("request", (request) => {
+    const frame = request.frame();
+    // Yêu cầu điều hướng của chính iframe (nạp tài liệu khung) có frame là khung đó; mọi thứ khác từ khung cũng vậy.
+    if (frame !== page.mainFrame() && !request.url().startsWith("data:")) frameRequests.push(request.url());
+  });
+  await page.route("**/_artifact/**", async (route) => {
+    const url = new URL(route.request().url());
+    const libBase = `${url.origin}/_artifact/lib/`;
+    const frameHeaders = {
+      "Cross-Origin-Resource-Policy": "same-site",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+    };
+    if (url.pathname.startsWith("/_artifact/lib/")) {
+      const file = resolve(LIB_DIST_DIR, `.${decodeURIComponent(url.pathname.slice("/_artifact/lib".length))}`);
+      if (!file.startsWith(`${LIB_DIST_DIR}${sep}`) || !existsSync(file)) return route.fulfill({ status: 404 });
+      return route.fulfill({
+        status: 200,
+        body: readFileSync(file),
+        headers: {
+          "Content-Type": LIB_TYPES[extname(file)] ?? "application/octet-stream",
+          "Access-Control-Allow-Origin": "*",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
+    const ticket = fixture.state.tickets.get(url.pathname.replace(/^\/_artifact\/frame\//, ""));
+    if (!ticket) return route.fulfill({ status: 403, body: "Vé khung không hợp lệ.", headers: frameHeaders });
+    let input: { type: FakeArtifact["type"]; content: string; compiled: string | null; compileError: string | null };
+    if (ticket.kind === "preview") {
+      input = { type: ticket.type, content: ticket.content, compiled: null, compileError: null };
+    } else {
+      const a = fixture.state.artifacts.find((x) => x.id === ticket.id);
+      const v = a?.versions.find((x) => x.version === ticket.version);
+      if (!a || !v || v.content === null) return route.fulfill({ status: 404, headers: frameHeaders });
+      if (a.deletedAt) return route.fulfill({ status: 410, headers: frameHeaders });
+      input = { type: a.type, content: v.content, compiled: v.compiled, compileError: v.compileError };
+    }
+    return route.fulfill({
+      status: 200,
+      body: buildFrameDocument({ ...input, theme: ticket.theme, manifest, libBase }),
+      headers: {
+        ...frameHeaders,
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": buildCsp({ libBase }),
+      },
+    });
+  });
+  return { frameRequests };
 }
