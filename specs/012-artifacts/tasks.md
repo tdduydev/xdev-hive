@@ -52,7 +52,7 @@
     `worker/internal/runner/secret_fixture_test.go`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T003 🎯 Bảng và migration
+- [x] T003 🎯 Bảng và migration
   - `artifacts/schema.ts` mới (`artifacts` có `duplicated_from_*`, `artifact_versions`, `artifact_links`,
     `artifact_previews`, `artifact_public_links`, enum; `orgScoped`); `leader/schema.ts` (`chat_messages.artifact_id`,
     `artifact_version`, `page_errors`).
