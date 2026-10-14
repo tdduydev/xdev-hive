@@ -6,6 +6,7 @@ import {
   BotIcon,
   BrainIcon,
   ChartColumnIcon,
+  CircleHelpIcon,
   ClipboardCheckIcon,
   FileTextIcon,
   FolderIcon,
@@ -25,6 +26,7 @@ import {
   ShieldCheckIcon,
   ShieldIcon,
   SparklesIcon,
+  SquareStackIcon,
   UserCogIcon,
   UsersIcon,
   WorkflowIcon,
@@ -47,7 +49,7 @@ export interface NavItem {
   /** Quyền của vai trò tự tạo làm mục `adminOnly` hiện ra với người không phải quản trị (vd. audit.read). */
   permission?: string;
   /** Số đếm hiện bên phải mục (vd. PR chờ tôi duyệt); sidebar tự lấy số theo khoá này. */
-  badge?: "codeReviews";
+  badge?: "codeReviews" | "sdlcQuestions";
 }
 
 export interface NavGroup {
@@ -89,6 +91,32 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: MessagesSquareIcon,
         to: "/leader",
         match: "/leader",
+      },
+    ],
+  },
+  {
+    id: "sdlc",
+    label: { vi: "AI SDLC", en: "AI SDLC" },
+    icon: SquareStackIcon,
+    items: [
+      {
+        id: "sdlc-items",
+        label: { vi: "Hạng mục", en: "Items" },
+        icon: SquareStackIcon,
+        to: route("/sdlc"),
+        match: "/sdlc",
+        adminOnly: true,
+        permission: "sdlc.read",
+      },
+      {
+        id: "sdlc-questions",
+        label: { vi: "Câu hỏi chờ tôi", en: "Questions for me" },
+        icon: CircleHelpIcon,
+        to: route("/sdlc/questions"),
+        match: "/sdlc/questions",
+        adminOnly: true,
+        permission: "sdlc.read",
+        badge: "sdlcQuestions",
       },
     ],
   },

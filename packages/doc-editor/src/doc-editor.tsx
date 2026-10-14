@@ -26,6 +26,8 @@ import { quoteFor, suggestionsByBlock, suggestionsFromEdit } from "./blocks.ts";
 import { setDocMarks } from "./editor-views.tsx";
 import { useDocEditorEnv, useText } from "./env.tsx";
 import { EditorSurface, EditorToolbar, Sep, Tb, useMarkdownEditor } from "./markdown-editor.tsx";
+import { parseSdlcDocKey, SdlcPanel } from "./sdlc-panel.tsx";
+import { sdlcPanelText } from "./text.ts";
 
 /** Lưu sau khi ngừng gõ chừng này; đủ ngắn để người khác thấy bản mới, đủ dài để không lưu mỗi phím. */
 const AUTOSAVE_MS = 1200;
@@ -79,7 +81,9 @@ function Editor({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [suggest, setSuggest] = useState(false);
-  const [tab, setTab] = useState<"comments" | "ai" | "history">("comments");
+  // Tài liệu của hạng mục AI SDLC mở ở khung "Hạng mục": người soạn cần giai đoạn, khuôn và câu đã trả lời trước tiên.
+  const sdlcDoc = !!env.sdlc && parseSdlcDocKey(docKey) !== null;
+  const [tab, setTab] = useState<"item" | "comments" | "ai" | "history">(sdlcDoc ? "item" : "comments");
   const [composer, setComposer] = useState<{ quote: string | null } | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
 
@@ -416,6 +420,7 @@ function Editor({
           <div role="tablist" className="flex gap-0.5 border-b border-border px-3">
             {(
               [
+                ...(sdlcDoc ? ([["item", sdlcPanelText[env.lang].tab]] as const) : []),
                 ["comments", t.tabComments(openThreads)],
                 ["ai", t.tabAi],
                 ["history", t.tabHistory],
@@ -438,6 +443,7 @@ function Editor({
               </button>
             ))}
           </div>
+          {tab === "item" && sdlcDoc && <SdlcPanel docKey={docKey} content={content} sdlc={env.sdlc} />}
           {tab === "comments" && (
             <CommentsPanel
               docKey={docKey}
