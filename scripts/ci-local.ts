@@ -46,6 +46,13 @@ function git(...a: string[]): string[] | null {
 }
 
 function changedFiles(): string[] | null {
+  // Khi đang merge, HEAD vẫn là nhánh cũ: so với base để không tính cả phần vừa nhận từ main.
+  if (git("rev-parse", "--verify", "MERGE_HEAD") !== null) {
+    const merged = git("diff", "--name-only", base);
+    if (merged === null) return null;
+    const untracked = git("ls-files", "--others", "--exclude-standard") ?? [];
+    return [...new Set([...merged, ...untracked])].sort();
+  }
   const committed = git("diff", "--name-only", `${base}...HEAD`);
   // Không có base (clone nông, chưa fetch): không biết phần nào đổi thì chạy hết.
   if (committed === null) return null;
