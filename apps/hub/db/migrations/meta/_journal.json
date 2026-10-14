@@ -498,6 +498,13 @@
       "when": 1791981243336,
       "tag": "0070_artifact_orgs",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1791985043464,
+      "tag": "0071_remote_terminal",
+      "breakpoints": true
     }
   ]
 }
