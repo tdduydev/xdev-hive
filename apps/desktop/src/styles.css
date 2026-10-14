@@ -11,6 +11,7 @@
 @source "../../../packages/ui/src";
 @source "../../../packages/doc-editor/src";
 @source "../../../packages/code-review/src";
+@source "../../../packages/sdlc-ui/src";
 
 /* Tối theo class `.dark` trên <html>, đặt trong main.tsx theo lựa chọn đã lưu hoặc theo hệ điều hành. */
 @custom-variant dark (&:is(.dark *));

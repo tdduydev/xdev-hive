@@ -35,8 +35,16 @@ export interface WorkflowDraft {
 }
 
 export const GATE_KINDS: readonly GateKind[] = ["ai", "human", "rule", "ext"];
-export const REVIEWER_ROLES: readonly ReviewerRole[] = ["org-admin", "team-admin", "team-member"];
-export const RULE_CHECKS: readonly RuleCheck[] = ["sections", "requirements", "no-secrets", "max-diff"];
+export const REVIEWER_ROLES: readonly ReviewerRole[] = ["org-admin", "team-admin", "team-member", "team-ba"];
+export const RULE_CHECKS: readonly RuleCheck[] = [
+  "sections",
+  "requirements",
+  "no-secrets",
+  "max-diff",
+  "no-open-questions",
+  "breakdown",
+  "coverage",
+];
 /**
  * Quy trình code liệt kê cả quy tắc của tài liệu ở cuối: chọn nhầm thì thấy lỗi "chỉ dùng cho tài liệu" ngay, thay vì
  * quy tắc biến mất không lời giải thích.
