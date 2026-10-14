@@ -202,7 +202,7 @@ describe("resolveItemProjects (items.create)", () => {
   });
 
   it("thiếu quyền ở một dự án thì từ chối cả yêu cầu", async () => {
-    expect(await errorCode(() => resolve("tmember", [p.b]))).toBe("SDLC_PROJECT_FORBIDDEN");
+    expect(await errorCode(() => resolve("tmember", [p.b]))).toBe("SDLC_FORBIDDEN");
   });
 
   it("dự án chưa bật AI SDLC hoặc đã lưu trữ thì không thêm được", async () => {
@@ -258,14 +258,14 @@ describe("items.projects.add", () => {
 
   it("chủ hạng mục cần sdlc.write ở đội của dự án mới", async () => {
     const item = await seedItem("both", p.a, []);
-    expect(await errorCode(() => add("both", item, p.c))).toBe("SDLC_PROJECT_FORBIDDEN");
+    expect(await errorCode(() => add("both", item, p.c))).toBe("SDLC_FORBIDDEN");
     await add("both", item, p.b);
     expect((await itemProjects(item)).map((r) => r.projectId)).toEqual([p.a, p.b]);
   });
 
   it("thành viên không phải chủ, không quản trị đội chủ trì thì không đổi được", async () => {
     const item = await seedItem("both", p.a, []);
-    expect(await errorCode(() => add("tmember", item, p.b))).toBe("SDLC_ITEM_MANAGE_REQUIRED");
+    expect(await errorCode(() => add("tmember", item, p.b))).toBe("SDLC_MANAGE_FORBIDDEN");
     // Người ngoài các đội tham gia: như không có hạng mục.
     expect(await errorCode(() => add("cadmin", item, p.c))).toBe("SDLC_ITEM_NOT_FOUND");
   });
@@ -348,7 +348,7 @@ describe("items.projects.remove", () => {
     expect(await errorCode(() => remove("both", item, p.a))).toBe("SDLC_HOME_PROJECT");
     expect(await errorCode(() => remove("both", item, p.c))).toBe("SDLC_ITEM_PROJECT_NOT_FOUND");
     // Quản trị đội chủ trì nhưng không có quyền ở đội của dự án bị bỏ.
-    expect(await errorCode(() => remove("tadmin", item, p.b))).toBe("SDLC_PROJECT_FORBIDDEN");
+    expect(await errorCode(() => remove("tadmin", item, p.b))).toBe("SDLC_FORBIDDEN");
   });
 
   it("thêm lại dự án đã bỏ thì dòng cũ hoạt động lại với cài đặt mới chụp", async () => {

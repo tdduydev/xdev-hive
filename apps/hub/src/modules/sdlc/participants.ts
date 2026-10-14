@@ -172,7 +172,7 @@ export async function addItemProject(
   });
   // Quản trị đội của dự án mới cần biết đội mình vừa có việc trong hạng mục của đội khác.
   const admins = (await teamMemberIds(tx, project.teamId, "admin")).filter((id) => id !== userId);
-  const recipientIds = await itemViewers(tx, item.id, admins);
+  const recipientIds = await itemViewers(tx, item, admins);
   if (recipientIds.length === 0) return;
   const home = await loadProject(tx, item.projectId);
   const ref = `${home?.key ?? ""}-${sdlcItemRef(item.number)}`;

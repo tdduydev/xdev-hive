@@ -13,7 +13,6 @@ import {
   itemViewers,
   projectItemsWhere,
   requireProjectWrite,
-  sdlcReaderFor,
   visibleItemsWhere,
 } from "./access.ts";
 import { insertItemProjects, resolveItemProjects } from "./participants.ts";
@@ -96,8 +95,8 @@ async function seedItem(creator: string, home: string, participants: string[]): 
 
 const visibleIds = (who: string) =>
   as(who, async (tx) => {
-    const reader = await sdlcReaderFor(tx, org.user(who));
-    const rows = await tx.select({ id: sdlcItems.id }).from(sdlcItems).where(visibleItemsWhere(reader));
+    const where = await visibleItemsWhere(tx, org.user(who));
+    const rows = await tx.select({ id: sdlcItems.id }).from(sdlcItems).where(where);
     return rows.map((r) => r.id).sort();
   });
 
@@ -197,23 +196,23 @@ describe("requireProjectWrite", () => {
       requireProjectWrite(tx, org.user("tmember"), [project.a, project.b], "sdlc.write"),
     ).catch((e: unknown) => e as { code: string; message: string });
     expect(error).toMatchObject({
-      code: "SDLC_PROJECT_FORBIDDEN",
+      code: "SDLC_FORBIDDEN",
       message: `Bạn không có quyền AI SDLC trên dự án ${key("b")}.`,
     });
   });
 
   it("theo vai trò đội: viewer chỉ đọc, BA/PO ghi nhưng không có sdlc.override, quản trị đội có", async () => {
-    expect(await errorCode(() => write("tviewer", [project.a]))).toBe("SDLC_PROJECT_FORBIDDEN");
+    expect(await errorCode(() => write("tviewer", [project.a]))).toBe("SDLC_FORBIDDEN");
     expect(await write("tviewer", [project.a], "sdlc.read")).toHaveLength(1);
     expect(await write("aba", [project.a])).toHaveLength(1);
-    expect(await errorCode(() => write("aba", [project.a], "sdlc.override"))).toBe("SDLC_PROJECT_FORBIDDEN");
-    expect(await errorCode(() => write("tmember", [project.a], "sdlc.override"))).toBe("SDLC_PROJECT_FORBIDDEN");
+    expect(await errorCode(() => write("aba", [project.a], "sdlc.override"))).toBe("SDLC_FORBIDDEN");
+    expect(await errorCode(() => write("tmember", [project.a], "sdlc.override"))).toBe("SDLC_FORBIDDEN");
     expect(await write("tadmin", [project.a], "sdlc.override")).toHaveLength(1);
   });
 
   it("vai trò tổ chức member không thay được vai trò ở đội", async () => {
     // Vai trò tổ chức `member` có sdlc.write để menu hiện; quyền thật phải ở đội của dự án.
-    expect(await errorCode(() => write("loner", [project.a]))).toBe("SDLC_PROJECT_FORBIDDEN");
+    expect(await errorCode(() => write("loner", [project.a]))).toBe("SDLC_FORBIDDEN");
   });
 
   it("vai trò tự tạo gắn cho đội cộng thêm quyền ở đội đó", async () => {
@@ -230,7 +229,7 @@ describe("requireProjectWrite", () => {
     ]);
     try {
       expect(await write("tmember", [project.a], "sdlc.override")).toHaveLength(1);
-      expect(await errorCode(() => write("tmember", [project.b], "sdlc.override"))).toBe("SDLC_PROJECT_FORBIDDEN");
+      expect(await errorCode(() => write("tmember", [project.b], "sdlc.override"))).toBe("SDLC_FORBIDDEN");
     } finally {
       await admin.query("delete from hive.team_custom_roles where role_id = $1", [role]);
       await admin.query("delete from hive.custom_roles where id = $1", [role]);
@@ -245,10 +244,10 @@ describe("requireProjectWrite", () => {
 describe("itemViewers", () => {
   it("lọc người nhận thông báo về người thấy hạng mục", async () => {
     const item = await seedItem("both", project.a, [project.b]);
-    const viewers = await as("admin", (tx) =>
+    const viewers = await as("admin", async (tx) =>
       itemViewers(
         tx,
-        item,
+        await itemForUser(tx, org.user("admin"), item),
         ["tmember", "bviewer", "cmember", "loner", "admin"].map((u) => org.user(u)),
       ),
     );
