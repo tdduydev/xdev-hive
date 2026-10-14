@@ -311,7 +311,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/terminal/{totp_enroll.go,totp_enroll_test.go}`
   - **Phụ thuộc**: T008, T020 · **Mức**: nặng
 
-- [ ] T026 [US2] CLI `hive remote totp …`
+- [x] T026 [US2] CLI `hive remote totp …`
+  - Đã làm (SPEC10W4): `remote_totp.go` (`status`, `enroll` in QR + khoá nhóm 4 ký tự, hỏi mã tới khi đúng, sai quá 5 lần
+    thì worker bỏ khoá chờ; hết stdin thì báo chưa lưu; hub `http://` cảnh báo trên stderr, hub HTTPS nhắc
+    `totp-on-https`; `confirm <mã>` cho app; `disable` hỏi xác nhận hoặc `--yes`; `unlock`; `--json` mọi lệnh).
+    `remote.totp.begin` trả thêm `hubUrl` để CLI và app cảnh báo HTTP.
   - `enroll` (in QR `otpauth://` và URI, hỏi nhập một mã để xác nhận, cảnh báo HTTP khi hub là `http://`), `status`,
     `disable` (hỏi xác nhận), `unlock`; có `--json` cho app.
   - **Scope**: `worker/cmd/hive/{remote_totp.go,remote_totp_test.go}`

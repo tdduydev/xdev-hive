@@ -60,7 +60,7 @@ func TestTOTPEnrollConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(begin.TOTP.URI, "otpauth://totp/Hive:mac-lan?") || len(begin.TOTP.Secret) != 32 ||
-		!begin.TOTP.ExpiresAt.Equal(now.Add(10*time.Minute)) {
+		!begin.TOTP.ExpiresAt.Equal(now.Add(10*time.Minute)) || begin.TOTP.HubURL != "https://hive.example.vn" {
 		t.Fatalf("begin = %+v", begin.TOTP)
 	}
 	if r.State().TOTP.Enabled {
