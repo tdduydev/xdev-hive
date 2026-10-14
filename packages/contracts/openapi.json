@@ -43527,6 +43527,14 @@
                       "maxLength": 500
                     },
                     "default": []
+                  },
+                  "source": {
+                    "enum": [
+                      "user",
+                      "machine"
+                    ],
+                    "type": "string",
+                    "default": "user"
                   }
                 },
                 "required": [

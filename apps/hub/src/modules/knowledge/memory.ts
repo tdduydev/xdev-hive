@@ -140,10 +140,29 @@ export async function writeMemory(
   else if (reader.kind === "run") scope = { teamId: reader.teamId, projectId: reader.projectId };
   else throw new ConflictError("SCOPE_REQUIRED", "Cần chọn phạm vi cho memory (tổ chức, đội hoặc dự án).");
   await authorize(tx, reader, scope, "write");
-  const status = principal.kind === "run" ? await agentWriteStatus(tx, principal.runId) : "approved";
-  const row = await insertMemory(tx, principal, scope, { ...data, status }, deps);
-  await audit(tx, principal, "memory.write", { type: "memory", id: row.id }, { kind: row.kind, status });
+  const status =
+    principal.kind === "run"
+      ? await agentWriteStatus(tx, principal.runId)
+      : data.source === "machine"
+        ? await machineWriteStatus(tx)
+        : "approved";
+  const { source, ...values } = data;
+  const row = await insertMemory(tx, principal, scope, { ...values, status }, deps);
+  await audit(tx, principal, "memory.write", { type: "memory", id: row.id }, { kind: row.kind, status, source });
   return memoryView(row);
+}
+
+/**
+ * Memory đẩy lên từ máy người dùng là chữ agent ghi cục bộ, nên theo cùng chính sách với memory agent: tổ chức tắt thì
+ * không nhận, còn lại luôn chờ người duyệt (kể cả khi chính sách cho agent tự duyệt, vì chưa ai đọc nội dung này).
+ * Không tính giới hạn mỗi run: không có run, và người dùng tự chọn từng file để gửi.
+ */
+async function machineWriteStatus(tx: Tx): Promise<Memory["status"]> {
+  const { agentMemory } = await loadPolicy(tx);
+  if (agentMemory.mode === "off") {
+    throw new ForbiddenError("AGENT_MEMORY_OFF", "Chính sách của tổ chức không cho agent ghi memory.");
+  }
+  return "pending";
 }
 
 /**
