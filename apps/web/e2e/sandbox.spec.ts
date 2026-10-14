@@ -145,14 +145,16 @@ test("cấu hình dự án: bật sandbox gửi đúng bản vá và có link t�
     "projects/updateSettings": (input) => ok({ ...PROJECT.settings, ...(input as { settings: object }).settings }),
   });
   await page.goto("/projects/PAY/settings");
-  await page.getByRole("switch", { name: "Sandbox" }).click();
-  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  const run = page.getByRole("group", { name: "Kế hoạch và sandbox" });
+  await run.getByRole("switch", { name: "Sandbox" }).click();
+  await run.getByRole("button", { name: "Lưu" }).click();
   await expect
     .poll(() => hub.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
     .toMatchObject({
       key: "PAY",
       settings: { features: { sandbox: true } },
     });
+  await expect(run.getByRole("status")).toContainText("Đã lưu");
   await page.getByRole("link", { name: "Allowlist mạng và image môi trường của dự án" }).click();
   await expect(page).toHaveURL("/projects/PAY/sandbox");
 });

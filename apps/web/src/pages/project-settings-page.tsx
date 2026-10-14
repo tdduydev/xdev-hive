@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Project, ProjectSettings } from "@xdev-hive/contracts";
+import type { Project, ProjectSettings, ProjectSettingsPatch } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
@@ -8,16 +8,17 @@ import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { LockIcon } from "lucide-react";
-import { type FormEvent, type ReactNode, useId, useMemo, useState } from "react";
+import { type ReactNode, useId, useMemo, useState } from "react";
 import {
   FormRow,
   RadioCards,
+  type SectionSave,
   SettingsLayout,
   SettingsNav,
   SettingsSection,
   SwitchRow,
 } from "@/components/page/settings.tsx";
-import { FORM_SCROLL_MARGIN, StickyFormFooter } from "@/components/page/sticky-form-footer.tsx";
+import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
 import { ProjectBriefCard } from "@/components/project-brief-card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
 import { SectionsSkeleton } from "@/components/ui/query-state.tsx";
@@ -26,18 +27,22 @@ import { cx } from "@/lib/cx.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import {
-  buildPatch,
+  buildSectionPatch,
   codeWorkflowsForProject,
   type FieldErrors,
   formFromSettings,
   type PermissionMode,
   REVIEW_CLIS,
   SETTINGS_CLIS,
+  SETTINGS_SECTION_IDS,
   type SettingsForm,
+  type SettingsSectionId,
   saveErrors,
+  sectionOfField,
   TASK_TIERS,
   type TaskTier,
   type TierForm,
+  withSection,
 } from "@/lib/project-settings.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
@@ -149,11 +154,8 @@ const text: Dict<{
   pFullHint: string;
   fullBanner: string;
   fullLocked: string;
-  unsavedChanges: string;
   savedBanner: string;
-  discard: string;
-  save: string;
-  saving: string;
+  invalid: string;
   cfTitle: string;
   cfDesc: string;
   cf1: string;
@@ -284,11 +286,8 @@ const text: Dict<{
       "Tắt sandbox và mọi bước hỏi duyệt của CLI. Chỉ dùng trong container dùng một lần hoặc máy riêng cho agent.",
     fullBanner: "Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.",
     fullLocked: "Chính sách agent của tổ chức không cho dự án bật toàn quyền; run chạy trong worktree.",
-    unsavedChanges: "Có thay đổi chưa lưu",
-    savedBanner: "Đã lưu cấu hình. Run giao sau đây dùng cấu hình mới.",
-    discard: "Bỏ thay đổi",
-    save: "Lưu cấu hình",
-    saving: "Đang lưu…",
+    savedBanner: "Đã lưu. Run giao sau đây dùng cấu hình mới.",
+    invalid: "Có ô chưa hợp lệ, xem chữ đỏ bên dưới từng ô.",
     cfTitle: "Cho agent toàn quyền?",
     cfDesc:
       "CLI sẽ chạy không sandbox và không hỏi duyệt (Claude: bypassPermissions, Codex: bỏ sandbox, Gemini: yolo, Antigravity: --dangerously-skip-permissions).",
@@ -425,11 +424,8 @@ const text: Dict<{
       "Turns off the CLI sandbox and every approval prompt. Only for throwaway containers or machines dedicated to agents.",
     fullBanner: "Runs in this project use the full rights of the account on the machine that picks them up.",
     fullLocked: "The organization's agent policy does not let projects enable full access; runs stay in the worktree.",
-    unsavedChanges: "Unsaved changes",
-    savedBanner: "Settings saved. Subsequent runs will use the new settings.",
-    discard: "Discard",
-    save: "Save settings",
-    saving: "Saving…",
+    savedBanner: "Saved. Subsequent runs will use the new settings.",
+    invalid: "Some fields are invalid; see the red text under each field.",
     cfTitle: "Give agents full access?",
     cfDesc:
       "The CLI runs without a sandbox or approval prompts (Claude: bypassPermissions, Codex: no sandbox, Gemini: yolo, Antigravity: --dangerously-skip-permissions).",
@@ -563,8 +559,8 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   const [saved, setSaved] = useState<ProjectSettings>(project.settings);
   const [form, setForm] = useState<SettingsForm>(() => formFromSettings(project.settings));
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [failure, setFailure] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  // Kết quả lưu gần nhất của từng mục: hiện ở chân mục đó, không ở chỗ chung.
+  const [results, setResults] = useState<Partial<Record<SettingsSectionId, { done?: true; failure?: string }>>>({});
   const [confirmFull, setConfirmFull] = useState(false);
   const effortId = useId();
   const ids = {
@@ -577,49 +573,72 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   };
 
   const save = useMutation({
-    mutationFn: (patch: NonNullable<Extract<ReturnType<typeof buildPatch>, { ok: true }>["patch"]>) =>
+    mutationFn: ({ patch }: { section: SettingsSectionId; patch: ProjectSettingsPatch }) =>
       api.projects.updateSettings.call({ key: project.key, settings: patch }),
-    onSuccess: async (next) => {
+    onSuccess: async (next, { section }) => {
       setSaved(next);
-      setForm(formFromSettings(next));
-      setDone(true);
+      // Chỉ mục vừa lưu lấy lại giá trị hub trả; mục khác giữ bản nháp đang sửa.
+      setForm((f) => withSection(f, formFromSettings(next), section));
+      setResults((r) => ({ ...r, [section]: { done: true } }));
       await queryClient.invalidateQueries({ queryKey: api.projects.key() });
     },
-    onError: (error) => {
+    onError: (error, { section }) => {
       const r = saveErrors(error);
-      setErrors(r.errors);
-      setFailure(r.message ?? null);
+      setErrors((e) => ({ ...clearSection(e, section), ...r.errors }));
+      setResults((all) => ({ ...all, [section]: { failure: r.message ?? t.invalid } }));
     },
   });
 
   const disabled = !canEdit || save.isPending;
+  const touch = (section: SettingsSectionId | undefined) => {
+    if (section && results[section]?.done) setResults((r) => ({ ...r, [section]: {} }));
+  };
   const set = <K extends keyof SettingsForm>(k: K, v: SettingsForm[K]) => {
-    setDone(false);
+    touch(sectionOfField(k));
     setForm((f) => ({ ...f, [k]: v }));
   };
   const setModel = (cli: (typeof SETTINGS_CLIS)[number], kind: "code" | "review", v: string) => {
-    setDone(false);
+    touch("model");
     setForm((f) => ({ ...f, models: { ...f.models, [cli]: { ...f.models[cli], [kind]: v } } }));
   };
   const setTier = <K extends keyof TierForm>(tier: TaskTier, k: K, v: TierForm[K]) => {
-    setDone(false);
+    touch("routing");
     setForm((f) => ({ ...f, tiers: { ...f.tiers, [tier]: { ...f.tiers[tier], [k]: v } } }));
   };
-  const built = buildPatch(form, saved);
-  const dirty = !built.ok || built.patch !== null;
+  const built = Object.fromEntries(
+    SETTINGS_SECTION_IDS.map((id) => [id, buildSectionPatch(form, saved, id)]),
+  ) as Record<SettingsSectionId, ReturnType<typeof buildSectionPatch>>;
+  const isDirty = (id: SettingsSectionId) => !built[id].ok || built[id].patch !== null;
+  const anyDirty = SETTINGS_SECTION_IDS.some(isDirty);
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setFailure(null);
-    setDone(false);
-    if (!built.ok) {
-      setErrors(built.errors);
-      setFailure(built.message ?? "Có ô chưa hợp lệ, xem chữ đỏ bên dưới từng ô.");
-      return;
-    }
-    setErrors({});
-    if (built.patch) save.mutate(built.patch);
-  }
+  /** Nút Lưu, Huỷ và trạng thái ở chân từng mục; người chỉ xem không có. */
+  const sectionSave = (section: SettingsSectionId): SectionSave | undefined => {
+    if (!canEdit) return undefined;
+    const result = built[section];
+    return {
+      dirty: isDirty(section),
+      saving: save.isPending && save.variables?.section === section,
+      disabled: save.isPending,
+      saved: results[section]?.done === true,
+      error: results[section]?.failure,
+      savedLabel: t.savedBanner,
+      onSave: () => {
+        if (!result.ok) {
+          setErrors((e) => ({ ...clearSection(e, section), ...result.errors }));
+          setResults((r) => ({ ...r, [section]: { failure: result.message ?? t.invalid } }));
+          return;
+        }
+        setErrors((e) => clearSection(e, section));
+        setResults((r) => ({ ...r, [section]: {} }));
+        if (result.patch) save.mutate({ section, patch: result.patch });
+      },
+      onDiscard: () => {
+        setForm((f) => withSection(f, formFromSettings(saved), section));
+        setErrors((e) => clearSection(e, section));
+        setResults((r) => ({ ...r, [section]: {} }));
+      },
+    };
+  };
 
   function choosePermission(mode: PermissionMode) {
     if (mode === "full" && form.runPermissions !== "full") setConfirmFull(true);
@@ -644,7 +663,8 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   const routingOff = disabled || !form.routing;
 
   return (
-    <form noValidate onSubmit={onSubmit} className={cx("grid gap-4", FORM_SCROLL_MARGIN)}>
+    <div className="grid gap-4">
+      <UnsavedChangesGuard when={anyDirty} />
       {!canEdit && (
         <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">
           {t.readOnlyBanner}
@@ -652,7 +672,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
       )}
 
       <SettingsLayout nav={<SettingsNav label={t.sectionsNav} items={nav} />}>
-        <SettingsSection id="merge" title={t.mergeTitle} description={t.mergeHint}>
+        <SettingsSection id="merge" save={sectionSave("merge")} title={t.mergeTitle} description={t.mergeHint}>
           <RadioCards
             name="mergeMode"
             label={t.modeLabel}
@@ -709,6 +729,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
 
         <SettingsSection
           id="review"
+          save={sectionSave("review")}
           title={t.reviewTitle}
           description={t.reviewHint}
           actions={
@@ -825,7 +846,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           </SwitchRow>
         </SettingsSection>
 
-        <SettingsSection id="run" title={t.runTitle} description={t.runHint}>
+        <SettingsSection id="run" save={sectionSave("run")} title={t.runTitle} description={t.runHint}>
           <SwitchRow
             label={t.planTitle}
             hint={t.planHint}
@@ -853,7 +874,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           />
         </SettingsSection>
 
-        <SettingsSection id="brief" title={t.briefTitle} description={t.briefHint}>
+        <SettingsSection id="brief" save={sectionSave("brief")} title={t.briefTitle} description={t.briefHint}>
           <ProjectBriefCard project={project} canWrite={canBrief} />
           <SwitchRow
             label={t.briefAuto}
@@ -884,7 +905,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           </div>
         </SettingsSection>
 
-        <SettingsSection id="budget" title={t.budgetTitle} description={t.budgetHint}>
+        <SettingsSection id="budget" save={sectionSave("budget")} title={t.budgetTitle} description={t.budgetHint}>
           <div className="grid gap-4 sm:grid-cols-3">
             <TextField
               label={t.perRun}
@@ -920,7 +941,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           </div>
         </SettingsSection>
 
-        <SettingsSection id="model" title={t.modelTitle} description={t.modelHint}>
+        <SettingsSection id="model" save={sectionSave("model")} title={t.modelTitle} description={t.modelHint}>
           {SETTINGS_CLIS.map((cli) => (
             <FormRow key={cli} label={CLI_LABEL[cli] ?? cli}>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -945,7 +966,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           ))}
         </SettingsSection>
 
-        <SettingsSection id="tokens" title={t.tokensTitle} description={t.tokensHint}>
+        <SettingsSection id="tokens" save={sectionSave("tokens")} title={t.tokensTitle} description={t.tokensHint}>
           <SwitchRow
             label={t.tokensOn}
             hint={t.tokensOnHint}
@@ -1029,7 +1050,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           />
         </SettingsSection>
 
-        <SettingsSection id="routing" title={t.routingTitle} description={t.routingHint}>
+        <SettingsSection id="routing" save={sectionSave("routing")} title={t.routingTitle} description={t.routingHint}>
           <SwitchRow
             label={t.routingOn}
             hint={t.routingOnHint}
@@ -1083,7 +1104,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           ))}
         </SettingsSection>
 
-        <SettingsSection id="perm" title={t.permTitle}>
+        <SettingsSection id="perm" save={sectionSave("perm")} title={t.permTitle}>
           <RadioCards
             name="runPermissions"
             label={t.permTitle}
@@ -1117,25 +1138,6 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
         </SettingsSection>
       </SettingsLayout>
 
-      {canEdit && (
-        <StickyFormFooter
-          dirty={dirty}
-          saving={save.isPending}
-          saved={done}
-          error={failure}
-          onDiscard={() => {
-            setForm(formFromSettings(saved));
-            setErrors({});
-            setFailure(null);
-          }}
-          saveLabel={t.save}
-          savingLabel={t.saving}
-          discardLabel={t.discard}
-          savedLabel={t.savedBanner}
-          dirtyLabel={t.unsavedChanges}
-        />
-      )}
-
       <Dialog open={confirmFull} onOpenChange={setConfirmFull}>
         <DialogContent>
           <DialogTitle>{t.cfTitle}</DialogTitle>
@@ -1162,6 +1164,11 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           </DialogActions>
         </DialogContent>
       </Dialog>
-    </form>
+    </div>
   );
+}
+
+/** Bỏ lỗi ô của một mục trước khi kiểm hay lưu lại mục đó. */
+function clearSection(errors: FieldErrors, section: SettingsSectionId): FieldErrors {
+  return Object.fromEntries(Object.entries(errors).filter(([field]) => sectionOfField(field) !== section));
 }
