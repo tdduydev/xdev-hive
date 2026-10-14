@@ -1,4 +1,5 @@
 import {
+  BlocksIcon,
   ChartLineIcon,
   ClipboardCheckIcon,
   FilePenLineIcon,
@@ -8,6 +9,7 @@ import {
   LibraryIcon,
   ListTodoIcon,
   type LucideIcon,
+  MessageCircleQuestionIcon,
   PlayIcon,
   ServerIcon,
   WrenchIcon,
@@ -23,6 +25,8 @@ import type { Dict } from "@/lib/i18n.ts";
 export type Profile = "dev" | "writer" | "lead";
 
 export type Permission =
+  | "sdlc.use"
+  | "sdlc.manage"
   | "docs.read"
   | "docs.write"
   | "docs.propose"
@@ -43,6 +47,7 @@ export type Permission =
  */
 const PERMISSIONS: Record<Profile, readonly Permission[]> = {
   dev: [
+    "sdlc.use",
     "docs.read",
     "docs.propose",
     "skills.read",
@@ -52,8 +57,10 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
     "runs.local",
     "work.mine",
   ],
-  writer: ["docs.read", "skills.read", "tokens.read"],
+  writer: ["sdlc.use", "docs.read", "skills.read", "tokens.read"],
   lead: [
+    "sdlc.use",
+    "sdlc.manage",
     "docs.read",
     "docs.write",
     "docs.propose",
@@ -68,6 +75,9 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
 };
 
 export type ScreenId =
+  | "sdlc"
+  | "sdlc-questions"
+  | "sdlc-progress"
   | "home"
   | "work"
   | "reviews"
@@ -96,7 +106,7 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  id: "work" | "docs" | "machine";
+  id: "work" | "docs" | "machine" | "sdlc";
   /** Tiêu đề nhỏ trên nhóm, ẩn khi menu chỉ còn icon. */
   label: Dict<string>;
   items: readonly NavItem[];
@@ -135,6 +145,36 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: ClipboardCheckIcon,
         design: "DocReview.dc.html",
         needs: "docs.read",
+        hub: true,
+      },
+    ],
+  },
+  {
+    id: "sdlc",
+    label: { vi: "AI SDLC", en: "AI SDLC" },
+    items: [
+      {
+        id: "sdlc",
+        label: { vi: "Hạng mục", en: "Items" },
+        icon: BlocksIcon,
+        design: "AppSdlcBoard.dc.html",
+        needs: "sdlc.use",
+        hub: true,
+      },
+      {
+        id: "sdlc-questions",
+        label: { vi: "Câu hỏi chờ tôi", en: "Questions for me" },
+        icon: MessageCircleQuestionIcon,
+        design: "AppSdlcQuestions.dc.html",
+        needs: "sdlc.use",
+        hub: true,
+      },
+      {
+        id: "sdlc-progress",
+        label: { vi: "Tiến độ", en: "Progress" },
+        icon: ChartLineIcon,
+        design: "AppSdlcBoard.dc.html",
+        needs: "sdlc.use",
         hub: true,
       },
     ],

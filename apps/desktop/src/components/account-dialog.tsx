@@ -28,7 +28,7 @@ const text: Dict<{
   unlink: string;
   role: string;
   orgRoles: Record<"owner" | "admin" | "member", string>;
-  teamRoles: Record<"admin" | "member" | "viewer", string>;
+  teamRoles: Record<"admin" | "member" | "viewer" | "ba", string>;
   noTeams: string;
   broken: string;
 }> = {
@@ -47,7 +47,7 @@ const text: Dict<{
     unlink: "Đăng xuất",
     role: "Vai trò",
     orgRoles: { owner: "Chủ sở hữu", admin: "Quản trị", member: "Thành viên" },
-    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem" },
+    teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
     noTeams: "Chưa ở đội nào.",
     broken: "Token đã lưu không dùng được nữa:",
   },
@@ -66,7 +66,7 @@ const text: Dict<{
     unlink: "Sign out",
     role: "Role",
     orgRoles: { owner: "Owner", admin: "Admin", member: "Member" },
-    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer" },
+    teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
     noTeams: "Not in any team yet.",
     broken: "The saved token no longer works:",
   },
