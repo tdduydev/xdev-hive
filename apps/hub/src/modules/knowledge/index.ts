@@ -25,6 +25,7 @@ export {
   draftForAgent,
   editorState,
   saveDraft,
+  submitDraft,
 } from "./editor.ts";
 export { createOpenAIEmbedder, type Embedder, EmbedderError } from "./embedder.ts";
 export { type ImportReport, importLegacy, type LegacyImportOptions } from "./legacy-import.ts";

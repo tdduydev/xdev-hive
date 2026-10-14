@@ -2,6 +2,7 @@
 import type { Tx } from "../platform/index.ts";
 
 export { canReadItem, requireProjectWrite, visibleItemsWhere } from "./access.ts";
+export { type CodeRunGate, codeRunGate } from "./gate.ts";
 export {
   allowedModes,
   type CreateItemOptions,
@@ -15,6 +16,7 @@ export {
   sdlcSettingsOf,
 } from "./items.ts";
 export { handleSdlcJob, registerSdlcWorker, type SdlcWorkerDeps, sdlcQueue } from "./jobs.ts";
+export { registerMcpTools } from "./mcp-tools.ts";
 export { listModes, type ResolvedMode, resolveMode } from "./modes.ts";
 export {
   advance,
@@ -24,21 +26,34 @@ export {
   type SdlcBaselineEvent,
   type SdlcDeps,
   type SdlcJob,
+  type SdlcRunRequest,
   type SdlcStepStart,
   type SdlcWorkflow,
   scheduleAdvance,
   workflowFor,
 } from "./phases.ts";
+export { specContextFor } from "./prompt.ts";
+export {
+  QUESTION_REMIND_MS,
+  questionRoutes,
+  registerQuestionReminders,
+  remindOpenQuestions,
+  sdlcQuestionsQueue,
+} from "./questions.ts";
 export { sdlcRouter } from "./router.ts";
+export { onSdlcRunFinished, queueAuthorFix, type SdlcRunOutcome, stepRoutes, withStepRuns } from "./steps.ts";
 
-export type CodeRunGate =
-  | { block: false; warn: string | null }
-  | { block: true; code: "SDLC_GATE_BLOCKED" | "TASK_DEPENDENCIES_OPEN"; message: string; missing: string[] };
+/** Run code của task vừa kết luận, cho truy vết và đợt kế (plan.md "Luồng" bước 7). */
+export interface SettledCodeRun {
+  id: string;
+  taskId: string | null;
+  projectId: string;
+  state: string;
+  prUrl: string | null;
+}
 
 /**
- * Cổng chặn run code (plan.md "Chặn ở engine", D10). Khung để `runs.queueRun` nối trước; T013 thay bằng `gate.ts`
- * (tài liệu bắt buộc theo dự án của task, phụ thuộc, ngoại lệ). Chưa có thân thì không chặn gì (SC-011).
+ * `runs` gọi trong transaction kết luận run code (D17). Khung để `runs` nối trước; T031 (`trace.ts`) làm thân: liên kết
+ * run, PR, test từ `task_update.evidence`, xét đợt kế. Chưa có thân thì không làm gì (SC-011).
  */
-export async function codeRunGate(_tx: Tx, _input: { taskId: string; kind: string }): Promise<CodeRunGate> {
-  return { block: false, warn: null };
-}
+export async function onCodeRunSettled(_tx: Tx, _run: SettledCodeRun): Promise<void> {}
