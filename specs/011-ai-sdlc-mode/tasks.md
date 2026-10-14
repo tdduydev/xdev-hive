@@ -331,13 +331,15 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - Đã làm: thêm `format.ts`, `parts.tsx`, `test-fixtures.tsx`. Contract chưa có route đọc issue nên màn tạo không xem
     trước tiêu đề/nhãn của issue; hub đọc issue khi gợi ý và khi tạo. App chủ còn phải thêm `@source` của package vào CSS.
 
-- [ ] T051 🎯 Package `@xdev-hive/sdlc-ui` — chi tiết hạng mục
+- [x] T051 🎯 Package `@xdev-hive/sdlc-ui` — chi tiết hạng mục
   - `item-detail.tsx` (tab Tổng quan, Dự án, Tài liệu, Contract, Câu hỏi, Task, Truy vết), `phase-stepper.tsx`,
     `sync-status.tsx` (theo repo), `override-dialog.tsx` (phạm vi task/dự án/hạng mục), `steps-panel.tsx` (bước agent,
     trạng thái máy), `projects-panel.tsx` (đội, thêm/bỏ dự án), `contracts-panel.tsx` (bên cung cấp → bên dùng, duyệt
     từng đội, Thêm contract), `auto-approval.tsx` (nhãn "Tự duyệt bởi AI", điểm/ngưỡng/lý do, hạn, Thu hồi kèm lý do).
   - **Scope**: `packages/sdlc-ui/src/{item-detail.tsx,phase-stepper.tsx,sync-status.tsx,override-dialog.tsx,steps-panel.tsx,projects-panel.tsx,contracts-panel.tsx,auto-approval.tsx}` + test
   - **Phụ thuộc**: T050 · **Mức**: vừa
+  - Đã làm: tab Task và Truy vết nhận nội dung qua `renderTasks`/`renderTrace` (T052 điền); mặc định là danh sách task
+    theo đợt. "Duyệt từng đội" của contract dẫn tới phiên duyệt (contract chưa trả checkpoint theo đội trong `sdlcArtifactView`).
 
 - [ ] T052 🎯 Package `@xdev-hive/sdlc-ui` — duyệt bản tách và truy vết
   - `breakdown-review.tsx` (gộp/tách, sửa phụ thuộc, chuyển mục task ↔ checklist, đổi dự án của task, độ phủ, lỗi đọc),

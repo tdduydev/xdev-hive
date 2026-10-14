@@ -9,6 +9,8 @@ import {
   projectSdlcSettings,
   SDLC_PHASE_KINDS,
   SDLC_PRESETS,
+  type SdlcAutoApproval,
+  type SdlcItemDetail,
   type SdlcItemSummary,
   type SdlcModeView,
   type SdlcPhaseKind,
@@ -136,6 +138,181 @@ export function question(n: number, over: Partial<SdlcQuestion> = {}): SdlcQuest
   };
 }
 
+const SPECKIT = modeView("speckit").definition;
+
+export function autoApproval(over: Partial<SdlcAutoApproval> = {}): SdlcAutoApproval {
+  return {
+    id: uuid(400),
+    itemId: uuid(112),
+    artifactId: uuid(212),
+    docKey: "project/payment-api/sdlc/012-hoan-tien-mot-phan/plan",
+    artifactName: "plan.md",
+    reviewId: uuid(500),
+    gateId: "lead",
+    gateName: "Tech lead duyệt",
+    version: 2,
+    score: 9.3,
+    threshold: 9,
+    reasons: [
+      { check: "score", passed: true, detail: "Điểm 9,3 ≥ ngưỡng 9" },
+      { check: "sensitive", passed: true, detail: "Không chạm đường dẫn nhạy cảm" },
+    ],
+    reviewer: { cli: "claude", model: "claude-opus-5-5" },
+    decidedAt: NOW,
+    revocableUntil: "2099-01-01T00:00:00.000Z",
+    revokedAt: null,
+    revokedBy: null,
+    revokeReason: null,
+    rereviewId: null,
+    canRevoke: true,
+    ...over,
+  };
+}
+
+/** Hạng mục 012 Spec Kit ở giai đoạn Plan, hai dự án, một contract, một task mỗi đợt. */
+export function itemDetail(over: Partial<SdlcItemDetail> = {}): SdlcItemDetail {
+  const base = summary(12, {
+    kind: "design",
+    projects: [
+      { id: PAYMENT.id, key: PAYMENT.key, name: PAYMENT.name, role: "home" },
+      { id: WEB.id, key: WEB.key, name: WEB.name, role: "participant" },
+    ],
+  });
+  const settings = PAYMENT.settings.sdlc ?? projectSdlcSettings.parse({ enabled: true });
+  const sync = (projectId: string, projectKey: string, state: "synced" | "failed") => ({
+    projectId,
+    projectKey,
+    kind: "source" as const,
+    repoPath: "specs/012-hoan-tien-mot-phan/spec.md",
+    state,
+    syncedVersion: state === "synced" ? 1 : null,
+    syncedCommit: null,
+    error: state === "failed" ? "Không có quyền ghi repo" : null,
+    attempts: 1,
+    syncedAt: state === "synced" ? NOW : null,
+    prUrl: null,
+  });
+  const artifact = (n: number, phaseId: string, artifactId: string, name: string) => ({
+    id: uuid(n),
+    phaseId,
+    artifactId,
+    name,
+    scope: "item" as const,
+    instance: "",
+    required: true,
+    docKey: `project/payment-api/sdlc/012-hoan-tien-mot-phan/${artifactId}`,
+    repoPath: `specs/012-hoan-tien-mot-phan/${name}`,
+    projectId: PAYMENT.id,
+    consumerProjectIds: [],
+    contractFormat: null,
+    baselineVersion: null,
+    approval: "none" as const,
+    reviewId: null,
+    hasDraft: false,
+    syncs: [],
+  });
+  const task = (n: number, wave: number, projectKey: string, projectId: string) => ({
+    taskId: uuid(600 + n),
+    key: `T-${40 + n}`,
+    title: `Task ${n}`,
+    status: "todo" as const,
+    projectId,
+    projectKey,
+    sliceKey: `T00${n}`,
+    wave,
+    requirementIds: ["FR-001"],
+    checklist: [{ id: "c1", text: "Viết test", done: true, requirementIds: [] }],
+    dependsOn: [],
+    blockedBy: [],
+    removed: false,
+    run: null,
+  });
+  return {
+    ...base,
+    idea: "Cho phép hoàn tiền một phần cho giao dịch thẻ.",
+    source: { kind: "manual", url: null, issueNumber: null, path: null },
+    mode: SPECKIT,
+    sizeSuggested: "L",
+    suggestion: null,
+    settings,
+    projectsDetail: [PAYMENT, WEB].map((p, i) => ({
+      id: p.id,
+      key: p.key,
+      name: p.name,
+      teamId: p.teamId,
+      teamName: i ? "Web" : "Backend",
+      role: i ? ("participant" as const) : ("home" as const),
+      enabled: true,
+      settings,
+      addedBy: "u1",
+      addedAt: NOW,
+    })),
+    phases: SPECKIT.phases.map((p, index) => ({
+      id: p.id,
+      index,
+      name: p.id === "specify" ? "Specify" : p.id === "plan" ? "Plan" : p.name,
+      kind: p.kind,
+      optional: p.optional,
+      status: index === 0 ? ("approved" as const) : index === 1 ? ("in_review" as const) : ("pending" as const),
+      note: null,
+      requiredApproved: index === 0 ? 1 : 0,
+      requiredTotal: p.artifacts.filter((a) => a.required && a.scope !== "contract").length,
+      startedAt: index <= 1 ? NOW : null,
+      approvedAt: index === 0 ? NOW : null,
+    })),
+    artifacts: [
+      {
+        ...artifact(211, "specify", "spec", "spec.md"),
+        baselineVersion: 1,
+        approval: "human",
+        syncs: [sync(PAYMENT.id, PAYMENT.key, "synced"), sync(WEB.id, WEB.key, "failed")],
+      },
+      { ...artifact(212, "plan", "plan", "plan.md"), baselineVersion: 2, approval: "auto" },
+      {
+        ...artifact(213, "plan", "contract", "refund-api.yaml"),
+        scope: "contract",
+        instance: "refund-api",
+        consumerProjectIds: [WEB.id],
+        contractFormat: "openapi",
+        reviewId: uuid(501),
+      },
+    ],
+    questions: [],
+    steps: [
+      {
+        id: uuid(700),
+        phaseId: "plan",
+        stepId: "draft-plan",
+        action: "draft",
+        round: 1,
+        status: "queued",
+        run: null,
+        waitingReason: "Không máy nào có nhãn sdlc",
+        instructions: null,
+        result: null,
+        error: null,
+        createdBy: "u1",
+        createdAt: NOW,
+        finishedAt: null,
+      },
+    ],
+    tasks: [
+      task(1, 0, PAYMENT.key, PAYMENT.id),
+      {
+        ...task(2, 1, WEB.key, WEB.id),
+        blockedBy: [{ taskId: uuid(601), key: "T-41", projectKey: PAYMENT.key, status: "todo" }],
+      },
+    ],
+    overrides: [],
+    autoApprovals: [autoApproval()],
+    warnings: [],
+    convergeRound: 0,
+    convergedAt: null,
+    can: { write: true, manage: true, override: true, runWaves: true, editProjects: true, changeMode: false },
+    ...over,
+  };
+}
+
 /** Client giả theo đúng đường dẫn của hợp đồng; test chỉ cần những thủ tục màn gọi. */
 export function fakeClient(
   data: {
@@ -143,8 +320,11 @@ export function fakeClient(
     projects?: Project[];
     modes?: SdlcModeView[];
     questions?: SdlcQuestion[];
+    item?: SdlcItemDetail;
   } = {},
 ) {
+  const item = data.item ?? itemDetail();
+  const returnsItem = () => vi.fn(async (_input: Record<string, unknown>) => item);
   const columns = data.columns ?? SDLC_PHASE_KINDS.map((kind) => ({ kind, items: [] }));
   return {
     projects: { list: vi.fn(async () => data.projects ?? [PAYMENT, WEB, RECONCILE]) },
@@ -164,11 +344,35 @@ export function fakeClient(
         alternatives: [],
       })),
       items: {
+        get: vi.fn(async (_input: { projectKey?: string; number?: number }) => item),
+        step: returnsItem(),
+        skipPhase: returnsItem(),
+        pause: returnsItem(),
+        resume: returnsItem(),
+        cancel: returnsItem(),
+        projects: { add: returnsItem(), remove: returnsItem() },
         create: vi.fn(async (input: { projectId: string; title: string }) => ({
           ...summary(15, { title: input.title }),
           source: { kind: "manual", url: null, issueNumber: null, path: null },
         })),
       },
+      waves: {
+        run: vi.fn(async (_input: { id: string }) => ({
+          started: [{ taskId: uuid(601), runId: uuid(801) }],
+          skipped: [{ taskId: uuid(602), key: "T-42", reason: "Chờ T-41 merge" }],
+        })),
+      },
+      overrides: {
+        create: vi.fn(async (input: { itemId: string; reason: string }) => ({ id: uuid(900), ...input })),
+        revoke: vi.fn(async (input: { id: string }) => input),
+      },
+      autoApprovals: {
+        revoke: vi.fn(async (input: { id: string; reason: string }) =>
+          autoApproval({ revokedAt: NOW, revokeReason: input.reason }),
+        ),
+      },
+      contracts: { create: vi.fn(async (input: Record<string, unknown>) => input) },
+      sync: vi.fn(async (_input: { id: string; projectId: string; action: string }) => []),
       questions: {
         list: vi.fn(async (input: { openOnly?: boolean; itemId?: string }) => ({
           items: (data.questions ?? []).filter(
