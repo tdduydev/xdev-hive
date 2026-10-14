@@ -76,6 +76,10 @@ func newTestApp(socket string, stdin io.Reader) *testApp {
 		getenv:  func(k string) string { return map[string]string{"TERM": "xterm-test"}[k] },
 		getwd:   os.Getwd,
 		socket:  func() (string, error) { return socket, nil },
+		// Cạnh socket giả (thư mục tạm của test) để không đụng hive.json và keychain thật.
+		keyring:   &memKeyring{},
+		cliConfig: func() (string, error) { return filepath.Join(filepath.Dir(socket), "hive.json"), nil },
+		openURL:   func(string) error { return errors.New("không có trình duyệt trong test") },
 	}
 	return &testApp{app: a, out: out, err: errb, con: con}
 }
@@ -89,17 +93,30 @@ func TestUsageAndUnsupported(t *testing.T) {
 	}{
 		{nil, exitUsage, "Cách dùng"},
 		{[]string{"lam-gi"}, exitUsage, `không có lệnh "lam-gi"`},
-		{[]string{"login"}, exitUsage, "chưa hỗ trợ"},
-		{[]string{"whoami"}, exitUsage, "chưa hỗ trợ"},
+		{[]string{"whoami"}, exitUsage, "Chưa đăng nhập hub"},
+		{[]string{"login", "--hub", "ftp://x"}, exitUsage, "không hợp lệ"},
 		{[]string{"__hook", "attention"}, exitUsage, "chưa hỗ trợ"},
-		{[]string{"chat", "--task", "PAY-12"}, exitUsage, "--task và --project chưa hỗ trợ"},
-		{[]string{"chat", "--project", "PAY"}, exitUsage, "chưa hỗ trợ"},
+		{[]string{"remote"}, exitUsage, "hive remote <lệnh>"},
+		{[]string{"remote", "lam-gi"}, exitUsage, `không có lệnh remote "lam-gi"`},
+		{[]string{"remote", "on"}, exitUsage, "--yes"},
+		{[]string{"remote", "status", "thua"}, exitUsage, "Thừa đối số"},
+		{[]string{"remote", "set", "idle-minutes"}, exitUsage, "Khoá: confirm-on-machine"},
+		{[]string{"remote", "set", "mau", "do"}, exitUsage, `Không có khoá "mau"`},
+		{[]string{"remote", "set", "idle-minutes", "nua-tieng"}, exitUsage, "cần một số nguyên"},
+		{[]string{"remote", "set", "confirm-on-machine", "co-le"}, exitUsage, "on hoặc off"},
+		{[]string{"remote", "totp", "lam-gi"}, exitUsage, `không có lệnh remote totp "lam-gi"`},
+		{[]string{"remote", "totp", "confirm"}, exitUsage, "Cần đúng một mã 6 số"},
+		{[]string{"remote", "totp", "disable"}, exitUsage, "--yes"},
+		{[]string{"remote", "totp", "enroll", "thua"}, exitUsage, "Thừa đối số"},
+		{[]string{"chat", "--task", "PAY-12"}, exitUsage, "Chưa đăng nhập hub"},
+		{[]string{"chat", "--project", "PAY", "--task", "PAY-1"}, exitUsage, "Chỉ dùng một"},
+		{[]string{"chat", "--task", "PAY-1", "--no-record"}, exitUsage, "bỏ --no-record"},
 		{[]string{"chat", "--cli", "bash"}, exitUsage, `CLI "bash" không hỗ trợ`},
 		{[]string{"chat", "thua"}, exitUsage, "Thừa đối số"},
 		{[]string{"chat", "--khong-co-co"}, exitUsage, "flag provided but not defined"},
 		{[]string{"run"}, exitUsage, "Thiếu lời nhắc"},
 		{[]string{"run", "  "}, exitUsage, "Thiếu lời nhắc"},
-		{[]string{"ls", "--all"}, exitUsage, "--all chưa hỗ trợ"},
+		{[]string{"ls", "--all"}, exitUsage, "Chưa đăng nhập hub"},
 		{[]string{"attach"}, exitUsage, "hive attach <id>"},
 		{[]string{"kill"}, exitUsage, "hive kill <id>"},
 	} {
@@ -134,7 +151,7 @@ func TestParseChat(t *testing.T) {
 		!slices.Equal(o.extra, []string{"--search"}) {
 		t.Fatalf("o = %+v", o)
 	}
-	if o, code := a.parseChat([]string{"--no-record", "--no-remote"}, false); code != exitOK || o.cli != "claude" {
+	if o, code := a.parseChat([]string{"--no-record", "--no-remote"}, false); code != exitOK || o.cli != "claude" || !o.noRecord {
 		t.Fatalf("mặc định: %+v %d", o, code)
 	}
 }
