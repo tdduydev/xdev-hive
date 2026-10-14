@@ -823,7 +823,12 @@ export function createRunsEngine(deps: RunsDeps) {
         (run.kind === "brief" || run.kind === "skill_proposal"
           ? (BRIEF_MODELS[cli] ?? null)
           : project.settings.models?.[cli as NonNullable<RunRow["cli"]>]?.[
-              run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
+              run.kind === "doccheck" || run.kind === "docassist"
+                ? "review"
+                : // Run sdlc soạn tài liệu như run plan; worker cũng chọn tài khoản vai trò plan cho nó.
+                  run.kind === "sdlc"
+                  ? "plan"
+                  : run.kind
             ]) ??
         null;
       // Định tuyến theo cấp độ task chỉ cho run code; run review, plan, brief giữ model theo loại run.
