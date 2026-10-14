@@ -23,6 +23,14 @@ const config = (page: Page) => page.getByRole("complementary", { name: "Cấu h�
 const gateCard = (page: Page, name: RegExp) =>
   page.getByRole("region", { name: "Các checkpoint" }).getByRole("button", { name });
 
+/** Mỗi mục của quy trình lưu riêng (admin-layout.md § Decisions 4): nút Lưu, trạng thái và lỗi nằm ở chân mục. */
+const section = (page: Page, name: string) => page.getByRole("group", { name, exact: true });
+const general = (page: Page) => section(page, "Thông tin chung");
+const pipeline = (page: Page) => section(page, "Giai đoạn và checkpoint");
+/** Quy trình mới chưa có trên hub: nút ở chân mục nào cũng tạo cả quy trình. */
+const createButton = (page: Page) => pipeline(page).getByRole("button", { name: "Tạo quy trình" });
+const saveButton = (page: Page, s = pipeline(page)) => s.getByRole("button", { name: "Lưu", exact: true });
+
 test("tạo quy trình từ khung Spec Kit, sửa checkpoint rồi áp dụng đúng dữ liệu", async ({ page }) => {
   const { state } = await setup(page);
   await page.goto("/knowledge/workflows");
@@ -84,9 +92,9 @@ test("tạo quy trình từ khung Spec Kit, sửa checkpoint rồi áp dụng đ
   await panel.getByRole("radio", { name: "Cổng CI" }).check();
   await panel.getByRole("button", { name: "Dời checkpoint lên" }).click();
 
-  await expect(page.getByText("Có thay đổi chưa áp dụng.")).toBeVisible();
-  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
-  await expect(page.getByText("Đã áp dụng quy trình.")).toBeVisible();
+  await expect(pipeline(page).getByText("Có thay đổi chưa lưu")).toBeVisible();
+  await createButton(page).click();
+  await expect(pipeline(page).getByRole("status")).toHaveText("Đã lưu");
 
   const saved = state.saved.at(-1);
   expect(saved).toMatchObject({
@@ -126,7 +134,7 @@ test("tạo quy trình từ khung Spec Kit, sửa checkpoint rồi áp dụng đ
   expect(trace).toMatchObject({ kind: "rule", rules: ["requirements", "no-secrets"] });
   // Quy trình mới có mã của hub và nằm trong danh sách chọn.
   await expect(page.getByRole("combobox", { name: "Quy trình" })).toHaveValue(/^3c3c3c3c-.*2$/);
-  await expect(page.getByText("Có thay đổi chưa áp dụng.")).toHaveCount(0);
+  await expect(page.getByText("Có thay đổi chưa lưu")).toHaveCount(0);
 });
 
 test("lỗi của quy trình hiện trước khi gửi; lỗi của hub hiện nguyên văn", async ({ page }) => {
@@ -135,27 +143,66 @@ test("lỗi của quy trình hiện trước khi gửi; lỗi của hub hiện n
   await gateCard(page, /Product owner duyệt/).click();
   await config(page).getByRole("button", { name: "Bỏ Vai trò: Quản trị đội" }).click();
   await expect(gateCard(page, /Product owner duyệt/)).toContainText("Chưa chọn người duyệt");
-  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
+  await saveButton(page).click();
   await expect(page.getByRole("alert")).toContainText("Checkpoint “Product owner duyệt” cần người duyệt.");
   expect(state.saved).toHaveLength(0);
 
   await config(page).getByRole("combobox", { name: "Thêm người duyệt" }).selectOption({ label: "Quản trị đội" });
   await expect(page.getByRole("alert")).toHaveCount(0);
   // Trở lại đúng bản đã lưu thì không còn gì để áp dụng.
-  await expect(page.getByRole("button", { name: "Áp dụng quy trình" })).toBeDisabled();
+  await expect(saveButton(page)).toBeDisabled();
   await config(page).getByRole("combobox", { name: "SLA" }).selectOption("8");
   state.saveConflict = "Tiền tố project/payment-api/prd đã thuộc quy trình “PRD v2” của đội.";
-  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
+  await saveButton(page).click();
   await expect(page.getByRole("alert")).toContainText("Tiền tố project/payment-api/prd đã thuộc quy trình “PRD v2”");
   expect(state.saved.at(-1)?.id).toBe(PRD_WORKFLOW_ID);
+  // Lỗi nằm ở chân mục đã lưu; mục khác không báo gì.
+  await expect(pipeline(page).getByRole("alert")).toBeVisible();
+  await expect(general(page).getByRole("alert")).toHaveCount(0);
+});
+
+test("lưu từng mục: bản vá chỉ gồm ô của mục đó, mục khác giữ thay đổi chưa lưu", async ({ page }) => {
+  const { state } = await setup(page);
+  await page.goto("/knowledge/workflows");
+  await page.getByRole("textbox", { name: "Tên quy trình" }).fill("PRD chuẩn v2");
+  await gateCard(page, /Product owner duyệt/).click();
+  await config(page).getByRole("combobox", { name: "SLA" }).selectOption("8");
+  await expect(general(page).getByText("Có thay đổi chưa lưu")).toBeVisible();
+  await expect(pipeline(page).getByText("Có thay đổi chưa lưu")).toBeVisible();
+
+  await saveButton(page).click();
+  await expect(pipeline(page).getByRole("status")).toHaveText("Đã lưu");
+  const sent = state.saved.at(-1);
+  // Tên đang sửa ở mục Thông tin chung không đi theo bản vá của mục Giai đoạn.
+  expect(sent?.name).toBe("PRD chuẩn");
+  expect(sent?.phases.flatMap((p) => p.gates).find((g) => g.name === "Product owner duyệt")?.slaHours).toBe(8);
+  await expect(page.getByRole("textbox", { name: "Tên quy trình" })).toHaveValue("PRD chuẩn v2");
+  await expect(general(page).getByText("Có thay đổi chưa lưu")).toBeVisible();
+
+  // Huỷ chỉ trả lại mục của nó.
+  await general(page).getByRole("button", { name: "Huỷ" }).click();
+  await expect(page.getByRole("textbox", { name: "Tên quy trình" })).toHaveValue("PRD chuẩn");
+  await expect(saveButton(page, general(page))).toBeDisabled();
+  expect(state.saved).toHaveLength(1);
+});
+
+test("rời trang khi còn mục chưa lưu thì hỏi lại", async ({ page }) => {
+  await setup(page);
+  await page.goto("/knowledge/workflows");
+  await page.getByRole("textbox", { name: "Tên quy trình" }).fill("PRD chuẩn v2");
+  await page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Tài liệu" }).click();
+  const dialog = page.getByRole("dialog", { name: "Rời trang khi còn thay đổi chưa lưu?" });
+  await dialog.getByRole("button", { name: "Ở lại" }).click();
+  await expect(page).toHaveURL(/\/knowledge\/workflows$/);
+  await expect(page.getByRole("textbox", { name: "Tên quy trình" })).toHaveValue("PRD chuẩn v2");
 });
 
 test("tắt rồi xoá quy trình", async ({ page }) => {
   const { state } = await setup(page);
   await page.goto("/knowledge/workflows");
   await page.getByRole("switch", { name: "Đang bật" }).click();
-  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
-  await expect(page.getByText("Đã áp dụng quy trình.")).toBeVisible();
+  await saveButton(page, general(page)).click();
+  await expect(general(page).getByRole("status")).toHaveText("Đã lưu");
   expect(state.saved.at(-1)?.enabled).toBe(false);
   await expect(page.getByRole("combobox", { name: "Quy trình" })).toContainText("PRD chuẩn (đang tắt)");
 
@@ -203,8 +250,9 @@ test("tạo quy trình Code từ khung mẫu: phạm vi, checkpoint và dữ li�
   await page.getByRole("textbox", { name: "Nhánh đích" }).fill("main, release/*");
   await page.getByRole("textbox", { name: "Loại task" }).fill("feature, bug");
   await page.getByRole("spinbutton", { name: "Số lượt agent sửa tối đa" }).fill("1");
-  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
-  await expect(page.getByText("Đã áp dụng quy trình.")).toBeVisible();
+  // Quy trình mới: nút ở chân mục nào cũng gửi cả bản nháp.
+  await section(page, "Khi đạt và khi trả lại").getByRole("button", { name: "Tạo quy trình" }).click();
+  await expect(section(page, "Khi đạt và khi trả lại").getByRole("status")).toHaveText("Đã lưu");
 
   const saved = state.saved.at(-1);
   expect(saved).toMatchObject({
@@ -250,7 +298,7 @@ test("quy tắc sai loại: Code không dùng quy tắc của tài liệu, hiệ
   const panel = config(page);
   await panel.getByRole("checkbox", { name: /Mỗi R-n có tiêu chí chấp nhận/ }).check();
   await expect(panel.getByRole("alert")).toContainText("Quy tắc này chỉ dùng cho tài liệu.");
-  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
+  await saveButton(page).click();
   await expect(page.getByRole("alert").first()).toBeVisible();
   expect(state.saved).toHaveLength(0);
 
@@ -291,22 +339,22 @@ test("tạo từ cấu hình dự án: bản nháp chưa lưu cho tới khi áp 
   await expect(dialog).toBeHidden();
   expect(code.calls.fromProject).toEqual(["reconcile"]);
   expect(state.saved).toHaveLength(0);
-  await expect(page.getByText("Có thay đổi chưa áp dụng.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Áp dụng quy trình" })).toBeEnabled();
-  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
-  await expect(page.getByText("Đã áp dụng quy trình.")).toBeVisible();
+  await expect(pipeline(page).getByText("Có thay đổi chưa lưu")).toBeVisible();
+  await expect(createButton(page)).toBeEnabled();
+  await createButton(page).click();
+  await expect(pipeline(page).getByRole("status")).toHaveText("Đã lưu");
   expect(state.saved.at(-1)).toMatchObject({ subject: "code", code: { projects: ["reconcile"] } });
 });
 
 test("?duan= dựng bản nháp từ đúng dự án nguồn, chưa lưu và xoá tham số khỏi URL", async ({ page }) => {
   const { state, code } = await setupCode(page);
   await page.goto("/knowledge/workflows?duan=reconcile");
-  await expect(page.getByText("Có thay đổi chưa áp dụng.")).toBeVisible();
+  await expect(pipeline(page).getByText("Có thay đổi chưa lưu")).toBeVisible();
   await expect(page).toHaveURL(/\/knowledge\/workflows$/);
   expect(code.calls.fromProject).toEqual(["reconcile"]);
   expect(state.saved).toHaveLength(0);
-  await page.getByRole("button", { name: "Áp dụng quy trình" }).click();
-  await expect(page.getByText("Đã áp dụng quy trình.")).toBeVisible();
+  await createButton(page).click();
+  await expect(pipeline(page).getByRole("status")).toHaveText("Đã lưu");
   expect(state.saved.at(-1)).toMatchObject({ subject: "code", code: { projects: ["reconcile"] } });
 });
 
@@ -337,7 +385,7 @@ test("người chỉ đọc xem quy trình Code nhưng không sửa được", a
   await page.goto("/knowledge/workflows");
   await filterButton(page, "Code (PR)").click();
   await expect(page.getByText("Bạn chỉ xem được quy trình duyệt.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Áp dụng quy trình" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Lưu", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Tạo từ cấu hình dự án" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Nhánh đích" })).toBeDisabled();
   // Chạy thử vẫn dùng được: không đổi gì trên hub.
@@ -356,8 +404,8 @@ test("quy trình Code ở 360 px không tràn ngang", async ({ page }) => {
 test("thành viên không có quyền chỉ xem quy trình", async ({ page }) => {
   await setup(page, "member");
   await page.goto("/knowledge/workflows");
-  await expect(page.getByRole("alert")).toContainText("Bạn chỉ xem được quy trình duyệt.");
-  await expect(page.getByRole("button", { name: "Áp dụng quy trình" })).toHaveCount(0);
+  await expect(page.getByRole("note")).toContainText("Bạn chỉ xem được quy trình duyệt.");
+  await expect(page.getByRole("button", { name: "Lưu", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Quy trình mới" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "+ Thêm checkpoint" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Xoá quy trình" })).toHaveCount(0);
@@ -374,7 +422,7 @@ test("thành viên không có quyền chỉ xem quy trình", async ({ page }) =>
 test("thành viên có quyền sửa quy trình duyệt qua vai trò tự tạo thì sửa được", async ({ page }) => {
   await setup(page, "member", ["docs.read", "workflows.write"]);
   await page.goto("/knowledge/workflows");
-  await expect(page.getByRole("button", { name: "Áp dụng quy trình" })).toBeVisible();
+  await expect(saveButton(page)).toBeVisible();
   await expect(page.getByText("Bạn chỉ xem được quy trình duyệt.")).toHaveCount(0);
 });
 
@@ -383,7 +431,8 @@ test("English: labels, kinds and the config panel follow the language", async ({
   await setup(page);
   await page.goto("/knowledge/workflows");
   await expect(page.getByRole("heading", { name: "Review workflows", level: 1 })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Publish workflow" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New workflow" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Phases and checkpoints" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Dry-run on a doc" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Phase 1 description" })).toHaveAttribute(
     "placeholder",
@@ -402,26 +451,40 @@ test("English: labels, kinds and the config panel follow the language", async ({
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-for (const scheme of ["light", "dark"] as const) {
-  test(`ảnh quy trình Code 1440×1000, ${scheme}`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.emulateMedia({ colorScheme: scheme });
-    await setupCode(page);
-    await page.goto("/knowledge/workflows");
-    await filterButton(page, "Code (PR)").click();
-    await gateCard(page, /AI tự kiểm/).click();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`workflows-code-${scheme}.png`), fullPage: true });
-  });
+/** Ảnh 1440/1100/360, sáng/tối (admin-layout.md § Responsive); tiếng Anh chụp thêm ở màn tài liệu. */
+for (const width of [1440, 1100, 360] as const) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`ảnh quy trình Code ${width}, ${scheme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.emulateMedia({ colorScheme: scheme });
+      await setupCode(page);
+      await page.goto("/knowledge/workflows");
+      await filterButton(page, "Code (PR)").click();
+      await gateCard(page, /AI tự kiểm/).click();
+      await expect(config(page).getByRole("textbox", { name: "Tên checkpoint" })).toHaveValue("Review AI");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`workflows-code-${width}-${scheme}.png`), fullPage: true });
+    });
 
-  test(`ảnh màn quy trình 1440×1000, ${scheme}`, async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.emulateMedia({ colorScheme: scheme });
+    test(`ảnh màn quy trình ${width}, ${scheme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.emulateMedia({ colorScheme: scheme });
+      await setup(page);
+      await page.goto("/knowledge/workflows");
+      await gateCard(page, /Product owner duyệt/).click();
+      await expect(config(page).getByRole("textbox", { name: "Tên checkpoint" })).toHaveValue("Product owner duyệt");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`workflows-${width}-${scheme}.png`), fullPage: true });
+    });
+  }
+
+  test(`ảnh màn quy trình tiếng Anh ${width}`, async ({ page }, testInfo) => {
+    await page.addInitScript(() => localStorage.setItem("hive.lang", "en"));
+    await page.setViewportSize({ width, height: 1000 });
     await setup(page);
     await page.goto("/knowledge/workflows");
-    await gateCard(page, /Product owner duyệt/).click();
-    await expect(config(page).getByRole("textbox", { name: "Tên checkpoint" })).toHaveValue("Product owner duyệt");
+    await expect(page.getByRole("heading", { name: "Review workflows", level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`workflows-${scheme}.png`), fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`workflows-en-${width}.png`), fullPage: true });
   });
 }

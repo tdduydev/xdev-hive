@@ -6,7 +6,10 @@ import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { ArrowDownIcon, ArrowUpIcon, Trash2Icon, XIcon } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import { useId, useState } from "react";
+import { RadioCards } from "@/components/page/settings.tsx";
+import { Checkbox } from "@/components/ui/checkbox.tsx";
+import { Field, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
 import { type Lang, useLang, useT } from "@/lib/i18n.ts";
 import {
   GATE_KINDS,
@@ -34,12 +37,6 @@ export const MODEL_SUGGESTIONS = [
   "gpt-5-codex",
   "gemini-2.5-pro",
 ];
-
-export const segButton = (on: boolean) =>
-  cn(
-    "h-6.5 cursor-pointer rounded-md border-0 px-2.5 text-sm disabled:cursor-not-allowed",
-    on ? "bg-card font-semibold text-foreground shadow-sm" : "bg-transparent text-muted-foreground",
-  );
 
 const splitBy = (raw: string, sep: string) =>
   raw
@@ -109,26 +106,6 @@ export function LinesInput({
   );
 }
 
-export function Field({
-  label,
-  htmlFor,
-  hint,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
-      <label htmlFor={htmlFor}>{label}</label>
-      {children}
-      {hint && <span className="text-xs font-normal text-muted-foreground">{hint}</span>}
-    </div>
-  );
-}
-
 /** Đầu khung cấu hình: mã, nút dời/xoá và tên checkpoint. */
 export function GateHeader({
   gate: g,
@@ -149,7 +126,7 @@ export function GateHeader({
 }) {
   const t = useT(text);
   return (
-    <div className="flex flex-col gap-1 border-b px-4 py-3.5">
+    <div className="flex flex-col gap-1 border-b pb-3.5 xl:pl-4">
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">{t.config}</span>
         <span className="font-mono text-xs text-muted-foreground" title={t.gateId}>
@@ -199,7 +176,7 @@ export function GateHeader({
   );
 }
 
-/** Chọn loại checkpoint: AI, người duyệt, quy tắc, cổng CI. */
+/** Chọn loại checkpoint: AI, người duyệt, quy tắc, cổng CI. Là ô của form chờ lưu nên dùng radio thật. */
 export function KindSwitch({
   kind,
   disabled,
@@ -213,34 +190,21 @@ export function KindSwitch({
   const lang = useLang();
   const ids = useId();
   return (
-    <fieldset className="m-0 border-0 p-0 text-sm font-medium">
-      <legend className="mb-1.5">{t.type}</legend>
-      <div className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.75">
-        {GATE_KINDS.map((k) => (
-          <label
-            key={k}
-            className={cn(
-              segButton(kind === k),
-              "px-2",
-              "relative inline-flex items-center has-focus-visible:ring-2 has-focus-visible:ring-ring/50",
-              disabled && "cursor-not-allowed",
-            )}
-          >
-            <input
-              type="radio"
-              name={`${ids}-kind`}
-              value={k}
-              // Ô radio trong suốt phủ cả nhãn: bấm đâu trên đoạn cũng chọn, vẫn là radio thật cho bàn phím.
-              className="absolute inset-0 m-0 cursor-pointer appearance-none rounded-md opacity-0 disabled:cursor-not-allowed"
-              checked={kind === k}
-              disabled={disabled}
-              onChange={() => onChange(k)}
-            />
-            {KIND_LABEL[lang][k]}
-          </label>
-        ))}
-      </div>
-    </fieldset>
+    <div className="grid gap-1.5">
+      {/* Nhóm radio đã mang tên này; chữ hiện ra chỉ để mắt thấy. */}
+      <span aria-hidden="true" className="text-sm font-medium">
+        {t.type}
+      </span>
+      <RadioCards
+        name={`${ids}-kind`}
+        label={t.type}
+        value={kind}
+        onChange={onChange}
+        disabled={disabled}
+        columns={2}
+        options={GATE_KINDS.map((k) => ({ value: k, title: KIND_LABEL[lang][k] }))}
+      />
+    </div>
   );
 }
 
@@ -261,7 +225,8 @@ export function RejectAndSla({
     g.slaHours !== null && !SLA_CHOICES.includes(g.slaHours) ? [...SLA_CHOICES, g.slaHours] : SLA_CHOICES;
   return (
     <div className="grid grid-cols-2 gap-2.5">
-      <Field label={t.onReject} htmlFor={`${ids}-reject`}>
+      <Field>
+        <FieldLabel htmlFor={`${ids}-reject`}>{t.onReject}</FieldLabel>
         <NativeSelect
           id={`${ids}-reject`}
           value={g.onReject}
@@ -275,7 +240,8 @@ export function RejectAndSla({
           ))}
         </NativeSelect>
       </Field>
-      <Field label={t.sla} htmlFor={`${ids}-sla`}>
+      <Field>
+        <FieldLabel htmlFor={`${ids}-sla`}>{t.sla}</FieldLabel>
         <NativeSelect
           id={`${ids}-sla`}
           value={sla}
@@ -381,7 +347,7 @@ export function GateConfig({
         onMove={onMove}
         onRemove={onRemove}
       />
-      <div className="flex flex-col gap-3.5 px-4 py-3.5">
+      <div className="flex flex-col gap-3.5 pt-3.5 xl:pl-4">
         <KindSwitch kind={g.kind} disabled={disabled} onChange={(k) => onChange((x) => withKind(x, k, lang))} />
 
         {g.kind === "human" && (
@@ -396,7 +362,8 @@ export function GateConfig({
 
         {g.kind === "ai" && g.ai && (
           <>
-            <Field label={t.aiModel} htmlFor={`${ids}-model`} hint={t.aiModelHint}>
+            <Field>
+              <FieldLabel htmlFor={`${ids}-model`}>{t.aiModel}</FieldLabel>
               <Input
                 id={`${ids}-model`}
                 list={`${ids}-models`}
@@ -418,8 +385,10 @@ export function GateConfig({
                   <option key={m} value={m} />
                 ))}
               </datalist>
+              <FieldHint>{t.aiModelHint}</FieldHint>
             </Field>
-            <Field label={t.aiChecks} htmlFor={`${ids}-checks`} hint={t.aiChecksHint}>
+            <Field>
+              <FieldLabel htmlFor={`${ids}-checks`}>{t.aiChecks}</FieldLabel>
               <LinesInput
                 id={`${ids}-checks`}
                 className="min-h-23 text-sm"
@@ -429,8 +398,10 @@ export function GateConfig({
                   onChange((x) => ({ ...x, ai: { ...x.ai, passScore: x.ai?.passScore ?? 7, checks } }))
                 }
               />
+              <FieldHint>{t.aiChecksHint}</FieldHint>
             </Field>
-            <Field label={t.passScore} htmlFor={`${ids}-score`}>
+            <Field>
+              <FieldLabel htmlFor={`${ids}-score`}>{t.passScore}</FieldLabel>
               <span className="flex items-center gap-2">
                 <Input
                   id={`${ids}-score`}
@@ -462,16 +433,15 @@ export function GateConfig({
             {RULE_CHECKS.map((r) => {
               const on = g.rules?.includes(r) ?? false;
               return (
-                <label key={r} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
+                <label key={r} htmlFor={`${ids}-rule-${r}`} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    id={`${ids}-rule-${r}`}
                     checked={on}
                     disabled={disabled}
-                    onChange={(e) =>
+                    onCheckedChange={(checked) =>
                       onChange((x) => ({
                         ...x,
-                        rules: e.target.checked
+                        rules: checked
                           ? RULE_CHECKS.filter((k) => k === r || x.rules?.includes(k))
                           : (x.rules ?? []).filter((k) => k !== r),
                       }))
@@ -482,7 +452,8 @@ export function GateConfig({
               );
             })}
             {g.rules?.includes("sections") && (
-              <Field label={t.sections} htmlFor={`${ids}-sections`} hint={t.sectionsHint}>
+              <Field>
+                <FieldLabel htmlFor={`${ids}-sections`}>{t.sections}</FieldLabel>
                 <LinesInput
                   id={`${ids}-sections`}
                   className="min-h-20 font-mono text-sm"
@@ -490,10 +461,12 @@ export function GateConfig({
                   disabled={disabled}
                   onChange={(sections) => set({ sections })}
                 />
+                <FieldHint>{t.sectionsHint}</FieldHint>
               </Field>
             )}
             {g.rules?.includes("max-diff") && (
-              <Field label={t.maxDiff} htmlFor={`${ids}-maxdiff`}>
+              <Field>
+                <FieldLabel htmlFor={`${ids}-maxdiff`}>{t.maxDiff}</FieldLabel>
                 <Input
                   id={`${ids}-maxdiff`}
                   type="number"
@@ -512,13 +485,15 @@ export function GateConfig({
         )}
 
         {g.kind === "ext" && (
-          <Field label={t.extCheck} htmlFor={`${ids}-ext`} hint={t.extHint}>
+          <Field>
+            <FieldLabel htmlFor={`${ids}-ext`}>{t.extCheck}</FieldLabel>
             <Input id={`${ids}-ext`} className="font-mono" value={t.extValue} disabled readOnly />
+            <FieldHint>{t.extHint}</FieldHint>
           </Field>
         )}
 
-        <fieldset className="m-0 flex flex-col gap-2.5 rounded-[10px] border border-dashed border-input px-3 pt-1.5 pb-2.5">
-          <legend className="px-1.5 text-sm font-medium">{t.when}</legend>
+        <fieldset className="m-0 flex flex-col gap-2.5 border-0 border-t border-border p-0 pt-3">
+          <legend className="float-left mb-1.5 w-full text-sm font-medium">{t.when}</legend>
           <span className="flex flex-wrap items-center gap-1.5 text-sm">
             {condChips.length === 0 && <span className="text-muted-foreground">{t.always}</span>}
             {condChips.map((chip) => (
@@ -547,7 +522,8 @@ export function GateConfig({
           </span>
           {condOpen && (
             <div className="grid gap-2.5">
-              <Field label={t.condTypeLabel} htmlFor={`${ids}-types`}>
+              <Field>
+                <FieldLabel htmlFor={`${ids}-types`}>{t.condTypeLabel}</FieldLabel>
                 <ListInput
                   id={`${ids}-types`}
                   placeholder={t.condTypePh}
@@ -556,7 +532,8 @@ export function GateConfig({
                   onChange={(docTypes) => setCond({ docTypes })}
                 />
               </Field>
-              <Field label={t.condKwLabel} htmlFor={`${ids}-kw`}>
+              <Field>
+                <FieldLabel htmlFor={`${ids}-kw`}>{t.condKwLabel}</FieldLabel>
                 <ListInput
                   id={`${ids}-kw`}
                   placeholder={t.condKwPh}
@@ -565,7 +542,8 @@ export function GateConfig({
                   onChange={(keywords) => setCond({ keywords })}
                 />
               </Field>
-              <Field label={t.condSizeLabel} htmlFor={`${ids}-size`}>
+              <Field>
+                <FieldLabel htmlFor={`${ids}-size`}>{t.condSizeLabel}</FieldLabel>
                 <Input
                   id={`${ids}-size`}
                   type="number"
@@ -581,13 +559,13 @@ export function GateConfig({
               </Field>
             </div>
           )}
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.75 size-4 accent-primary"
+          <label htmlFor={`${ids}-skip`} className="flex items-start gap-2 text-sm">
+            <Checkbox
+              id={`${ids}-skip`}
+              className="mt-0.5"
               checked={c.skipFormattingOnly}
               disabled={disabled}
-              onChange={(e) => setCond({ skipFormattingOnly: e.target.checked })}
+              onCheckedChange={(skipFormattingOnly) => setCond({ skipFormattingOnly })}
             />
             <span>
               {t.skipSmall}
@@ -597,7 +575,8 @@ export function GateConfig({
         </fieldset>
 
         <RejectAndSla gate={g} disabled={disabled} onChange={set} />
-        <Field label={t.after} htmlFor={`${ids}-pass`} hint={t.afterHint}>
+        <Field>
+          <FieldLabel htmlFor={`${ids}-pass`}>{t.after}</FieldLabel>
           <NativeSelect
             id={`${ids}-pass`}
             value={g.onPass}
@@ -608,9 +587,11 @@ export function GateConfig({
             <option value="task">{t.afterTask}</option>
             <option value="baseline">{t.afterBaseline}</option>
           </NativeSelect>
+          <FieldHint>{t.afterHint}</FieldHint>
         </Field>
         {g.onPass === "task" && (
-          <Field label={t.nextTask} htmlFor={`${ids}-task`} hint={t.nextTaskHint}>
+          <Field>
+            <FieldLabel htmlFor={`${ids}-task`}>{t.nextTask}</FieldLabel>
             <Input
               id={`${ids}-task`}
               maxLength={200}
@@ -619,6 +600,7 @@ export function GateConfig({
               disabled={disabled}
               onChange={(e) => set({ nextTaskTitle: e.target.value })}
             />
+            <FieldHint>{t.nextTaskHint}</FieldHint>
           </Field>
         )}
       </div>
@@ -733,7 +715,8 @@ export function Approvers({
         </div>
       </fieldset>
       <div className="flex flex-col gap-2">
-        <Field label={t.rule} htmlFor={`${ids}-rule`}>
+        <Field>
+          <FieldLabel htmlFor={`${ids}-rule`}>{t.rule}</FieldLabel>
           <NativeSelect
             id={`${ids}-rule`}
             value={mode}

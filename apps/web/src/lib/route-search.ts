@@ -128,3 +128,10 @@ export type MachineTab = "goi-agent" | "luot-chay";
 export function validateMachineSearch(search: Record<string, unknown>): { tab?: MachineTab } {
   return search.tab === "goi-agent" || search.tab === "luot-chay" ? { tab: search.tab } : {};
 }
+
+/** Tab của trang một vai trò (/admin/roles/$roleId); không có là Quyền. */
+export type RoleTab = "nguoi";
+
+export function validateRoleSearch(search: Record<string, unknown>): { tab?: RoleTab } {
+  return search.tab === "nguoi" ? { tab: search.tab } : {};
+}

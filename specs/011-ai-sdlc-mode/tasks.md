@@ -107,7 +107,7 @@
 
 ## Phase 2: Lõi hub — chế độ, hạng mục, giai đoạn, cổng (US8, US1, US3, US6) 🎯
 
-- [ ] T010 🎯 [P] Task có checklist và phụ thuộc
+- [x] T010 🎯 [P] Task có checklist và phụ thuộc
   - `tasks.ts`: ghi/đọc `checklist`; `setDependencies` (hai đầu cùng tổ chức, được khác dự án — D24; người gọi phải có
     quyền sửa task ở cả hai dự án; tác nhân hệ thống của `sdlc` bỏ qua kiểm quyền người; kiểm chu trình bằng DFS trong
     transaction, khoá advisory theo tổ chức), `blockedBy` trong get/list (kèm key dự án khi khác dự án); audit
@@ -118,14 +118,14 @@
   - **Scope**: `apps/hub/src/modules/tasks/{tasks.ts,router.ts,index.ts,dependencies.ts,dependencies.db.test.ts}`
   - **Phụ thuộc**: T004 · **Mức**: vừa
 
-- [ ] T011 🎯 [P] [US8] [US1] Chế độ và gợi ý cỡ
+- [x] T011 🎯 [P] [US8] [US1] Chế độ và gợi ý cỡ
   - `modes.ts`: preset + chế độ tự tạo trong phạm vi (đội > tổ chức), lưu (kiểm chính sách agent qua `governance`),
     xoá, chạy thử; `suggest.ts` thuần (nhãn issue, độ dài, từ khoá rủi ro của dự án → cỡ, chế độ cho phép phù hợp).
   - Test: `suggest.test.ts`; `modes.db.test.ts` (preset chỉ đọc, đường dẫn cấm, quyền `sdlc.modes.write`).
   - **Scope**: `apps/hub/src/modules/sdlc/{modes.ts,suggest.ts,suggest.test.ts,modes.db.test.ts}`
   - **Phụ thuộc**: T002, T004 · **Mức**: vừa
 
-- [ ] T012 🎯 [US1] [US3] Hạng mục và máy trạng thái giai đoạn
+- [x] T012 🎯 [US1] [US3] Hạng mục và máy trạng thái giai đoạn
   - `items.ts`: tạo (số `NNN`, slug, chụp chế độ và cài đặt, dòng `sdlc_item_projects` `home`, tài liệu hub theo khuôn,
     `sdlc_artifacts` + `sdlc_artifact_syncs` nguồn, `sdlc_item_phases`), từ issue (chống trùng, bình luận lên issue qua
     `scm`), tạm dừng/tiếp tục/huỷ, đổi chế độ khi chưa có baseline. Bản này chỉ dự án chính; T015 thêm dự án tham gia và
@@ -141,7 +141,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{items.ts,phases.ts,jobs.ts,access.ts,index.ts,router.ts,items.db.test.ts,phases.db.test.ts}`
   - **Phụ thuộc**: T004, T011 · **Mức**: nặng
 
-- [ ] T013 🎯 [US6] Cổng chặn run code và ngoại lệ
+- [x] T013 🎯 [US6] Cổng chặn run code và ngoại lệ
   - `gate.ts`: `codeRunGate(tx, {taskId, kind})` theo dự án của task (plan.md "Chặn ở engine"): dự án đã bỏ/tắt AI SDLC;
     phụ thuộc chưa `done` ở mọi dự án; tài liệu bắt buộc trước `implementation` có `scope` item, project của dự án đó,
     contract dự án đó cung cấp/dùng; `approval = revoked` coi như chưa có baseline; mức chặn chặt nhất của chế độ và cài
@@ -154,7 +154,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{gate.ts,overrides.ts,gate.test.ts,gate.db.test.ts}`
   - **Phụ thuộc**: T010, T015 · **Mức**: nặng
 
-- [ ] T014 🎯 [US3] Nối `knowledge` với hạng mục
+- [x] T014 🎯 [US3] Nối `knowledge` với hạng mục
   - `reviews.ts`: `ReviewDeps.workflowFor?(tx, docKey)` hỏi trước `matchWorkflow` (trong `startReview`, `previewSubmit`);
     `finish` gọi `deps.onBaseline?` trong transaction; hướng `agent` gọi `deps.queueAuthorFix?` khi có (thay task chung);
     `traceOf` dùng `deps.traceFor?` khi có.
@@ -171,7 +171,7 @@
   - **Scope**: `apps/hub/src/modules/knowledge/{reviews.ts,review-rules.ts,review-jobs.ts,editor.ts,access.ts,index.ts,review-rules.test.ts,reviews.db.test.ts,access.db.test.ts}`
   - **Phụ thuộc**: T001, T003 · **Mức**: nặng
 
-- [ ] T015 🎯 [US16] Hạng mục nhiều dự án: dự án tham gia, quyền, cổng theo đội
+- [x] T015 🎯 [US16] Hạng mục nhiều dự án: dự án tham gia, quyền, cổng theo đội
   - `participants.ts`: `items.create` nhận `participants` (≤ 7 + dự án chính; cùng tổ chức; đã bật AI SDLC; chụp cài đặt
     từng dự án); `items.projects.add|remove` (D19: bỏ chỉ khi chưa có task đã chạy, huỷ task `todo`); audit, thông báo
     `sdlc.project_added`.
@@ -209,7 +209,7 @@
     `apps/hub/src/modules/governance/{policies.ts,index.ts,policies.db.test.ts}`
   - **Phụ thuộc**: T013, T014 · **Mức**: nặng
 
-- [ ] T018 🎯 [P] [US7] Vai trò BA/PO ở hub
+- [x] T018 🎯 [P] [US7] Vai trò BA/PO ở hub
   - `tenancy`: thứ hạng `viewer < ba < member < admin` trong `checkTeamRole`; vai trò hệ thống `team-ba` trong danh sách
     vai trò và `effectivePermissions`; mời/đổi vai trò nhận `ba`; tài khoản app trả `ba`; `knowledge` nhận `team-ba` làm
     người duyệt (qua T014).

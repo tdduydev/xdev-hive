@@ -7,10 +7,11 @@ import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } 
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { TERMINAL_DEFAULT_FONT_SIZE, TERMINAL_FONT_SIZES } from "@xdev-hive/ui/terminal-theme";
-import { ChevronLeftIcon, ListChecksIcon } from "lucide-react";
+import { ChevronLeftIcon, KeyboardIcon, ListChecksIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { pendingCount, TerminalActivity, useTerminalActivity } from "@/components/terminal-activity.tsx";
-import { type ReplayStatus, TerminalView } from "@/components/terminal-view.tsx";
+import { TerminalKeys, useKeyPad } from "@/components/terminal-keys.tsx";
+import { type ReplayStatus, TerminalView, type TerminalViewHandle } from "@/components/terminal-view.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
@@ -52,6 +53,8 @@ const text: Dict<
     | "closing"
     | "keep"
     | "fontSize"
+    | "keyBar"
+    | "keyBarHint"
     | "terminal"
     | "machine"
     | "account"
@@ -88,6 +91,8 @@ const text: Dict<
     closing: "Đang đóng…",
     keep: "Giữ phiên",
     fontSize: "Cỡ chữ",
+    keyBar: "Thanh phím",
+    keyBarHint: "Esc, Tab, Ctrl, mũi tên và ô soạn dòng cho điện thoại",
     terminal: "Terminal Leader",
     machine: "Máy",
     account: "Gói",
@@ -123,6 +128,8 @@ const text: Dict<
     closing: "Closing…",
     keep: "Keep session",
     fontSize: "Font size",
+    keyBar: "Key bar",
+    keyBarHint: "Esc, Tab, Ctrl, arrows and a line composer for phones",
     terminal: "Leader terminal",
     machine: "Machine",
     account: "Account",
@@ -139,6 +146,9 @@ const text: Dict<
 };
 
 const FONT_KEY = "hive.terminal.fontSize";
+
+/** Thanh phím mở sẵn trên màn hẹp và màn cảm ứng (không có Esc, Tab, Ctrl); trên máy tính để người dùng tự bật. */
+const keysByDefault = () => matchMedia("(pointer: coarse), (max-width: 56.24rem)").matches;
 
 function readFontSize(): number {
   try {
@@ -194,12 +204,17 @@ function SessionView({ session }: { session: TerminalSession }) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [fontSize, setFontSize] = useState(readFontSize);
+  const [keysOpen, setKeysOpen] = useState(keysByDefault);
+  const view = useRef<TerminalViewHandle>(null);
+  const pad = useKeyPad();
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => void (messageTimer.current && clearTimeout(messageTimer.current)), []);
 
   const live = isLive(session);
   const ended = isEnded(session);
   const readOnly = ended || !(canInput ?? session.isOwner);
+  // Phím gửi cùng đường với chữ gõ trong xterm (khung `in` của WS), nên chỉ khi người dùng được gõ.
+  const canType = live && !readOnly;
   const bypass = session.mode === "bypass";
   const mode = MODE_VIEW[session.mode];
   const state = STATE_VIEW[session.state];
@@ -332,6 +347,18 @@ function SessionView({ session }: { session: TerminalSession }) {
           </Pill>
           <Pill tone={state.tone}>{state.label[lang]}</Pill>
           {!session.isOwner && <Pill tone="warn">{t.viewOnly}</Pill>}
+          {canType && (
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={keysOpen}
+              title={t.keyBarHint}
+              onClick={() => setKeysOpen((open) => !open)}
+            >
+              <KeyboardIcon aria-hidden="true" />
+              {t.keyBar}
+            </Button>
+          )}
           {session.visibility === "team" && <Pill>{t.team}</Pill>}
           <span className="min-w-0 break-words">
             {t.machine}: <strong className="font-medium text-foreground">{session.machineName}</strong>
@@ -381,20 +408,25 @@ function SessionView({ session }: { session: TerminalSession }) {
         {visibility.isError && <Alert variant="destructive">{apiErrorMessage(visibility.error)}</Alert>}
 
         <div className="grid min-w-0 gap-3 app:grid-cols-[minmax(0,1fr)_23rem]">
-          <div className="h-[60dvh] min-h-[20rem] min-w-0 app:h-[calc(100dvh-16rem)] app:min-h-[26rem]">
-            <TerminalView
-              sessionId={session.id}
-              cols={session.cols}
-              rows={session.rows}
-              live={live}
-              readOnly={readOnly}
-              fontSize={fontSize}
-              label={`${t.terminal} ${session.projectKey}`}
-              fetchTicket={() => api.terminal.ticket.call({ id: session.id })}
-              fetchChunks={(after) => api.terminal.chunks.call({ id: session.id, after, limit: 200 })}
-              confirmLink={(uri) => window.confirm(`${t.linkConfirm}${uri}`)}
-              handlers={{ ...handlers, onConnection }}
-            />
+          <div className="grid min-w-0 content-start gap-2">
+            <div className="h-[60dvh] min-h-[20rem] min-w-0 app:h-[calc(100dvh-16rem)] app:min-h-[26rem]">
+              <TerminalView
+                ref={view}
+                transformInput={pad.transform}
+                sessionId={session.id}
+                cols={session.cols}
+                rows={session.rows}
+                live={live}
+                readOnly={readOnly}
+                fontSize={fontSize}
+                label={`${t.terminal} ${session.projectKey}`}
+                fetchTicket={() => api.terminal.ticket.call({ id: session.id })}
+                fetchChunks={(after) => api.terminal.chunks.call({ id: session.id, after, limit: 200 })}
+                confirmLink={(uri) => window.confirm(`${t.linkConfirm}${uri}`)}
+                handlers={{ ...handlers, onConnection }}
+              />
+            </div>
+            {canType && keysOpen && <TerminalKeys pad={pad} send={(data) => view.current?.send(data)} />}
           </div>
           <div className="grid min-h-0 min-w-0 content-start gap-2">
             <Button
