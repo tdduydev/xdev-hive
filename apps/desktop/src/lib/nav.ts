@@ -121,7 +121,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         id: "work",
         label: { vi: "Việc của tôi", en: "My work" },
         icon: ListTodoIcon,
-        design: "AppNav.dc.html",
+        design: "AppWork.dc.html",
         needs: "work.mine",
       },
       {
@@ -144,7 +144,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         id: "knowledge",
         label: { vi: "Tra cứu tri thức", en: "Knowledge" },
         icon: LibraryIcon,
-        design: "AppNav.dc.html",
+        design: "AppKnowledge.dc.html",
         needs: "docs.read",
       },
       {
