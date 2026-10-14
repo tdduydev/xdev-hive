@@ -24,6 +24,8 @@ export type Principal = { kind: "user"; userId: string } | { kind: "run"; runId:
 export interface Scope {
   teamId: string | null;
   projectId: string | null;
+  /** `docAccessFor` đã cho riêng key này quyền đề xuất dù người gọi không thuộc đội; `manage` không bao giờ mở. */
+  proposeGranted?: boolean | undefined;
 }
 
 /** Phần dữ liệu tri thức người gọi được đọc, tính một lần cho mỗi thao tác. */
@@ -47,6 +49,29 @@ export async function readerFor(tx: Tx, principal: Principal): Promise<Reader> {
   const orgRole = await orgRoleOf(tx, principal.userId);
   if (!orgRole) throw new ForbiddenError("NOT_ORG_MEMBER", "Bạn không phải thành viên của tổ chức này.");
   return { kind: "user", principal, orgRole, teams: await teamRolesOf(tx, principal.userId) };
+}
+
+/**
+ * Quyền riêng theo key tài liệu, do module khác tiêm (AI SDLC: thành viên mọi đội tham gia hạng mục đọc và đề xuất
+ * tài liệu chung nằm ở dự án chính, specs/011 D22). Chỉ mở đọc và đề xuất; lưu thẳng và duyệt vẫn theo `authorize`.
+ */
+export interface DocAccessGrant {
+  read: boolean;
+  propose: boolean;
+}
+export type DocAccessFor = (tx: Tx, reader: Reader, key: string) => Promise<DocAccessGrant | null>;
+
+// Mọi đường vào tài liệu (router, MCP, worker) dựng deps riêng nên hook đặt ở đây để không đường nào bỏ sót; như
+// `provide*` của mcp/registry.ts, tiêm một lần lúc khởi động hub.
+let docAccessHook: DocAccessFor | undefined;
+export function provideDocAccess(hook: DocAccessFor | undefined): void {
+  docAccessHook = hook;
+}
+
+export async function docGrant(tx: Tx, reader: Reader, key: string): Promise<DocAccessGrant | null> {
+  const grant = (await docAccessHook?.(tx, reader, key)) ?? null;
+  // Đề xuất được thì đọc được: người đề xuất phải thấy bản mình sửa.
+  return grant && (grant.read || grant.propose) ? { read: true, propose: grant.propose } : null;
 }
 
 export function canRead(reader: Reader, scope: Scope): boolean {
@@ -144,6 +169,7 @@ export async function authorize(tx: Tx, reader: Reader, scope: Scope, action: Ac
     return;
   }
   const userId = reader.principal.userId;
+  if (action === "propose" && scope.proposeGranted) return;
   if (scope.teamId === null) {
     if (action === "propose") return;
     await requireOrgRole(tx, userId, "admin");
