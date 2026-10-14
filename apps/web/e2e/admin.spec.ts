@@ -485,12 +485,12 @@ test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệ
   const hub = await fakeHub(page, { signedIn: true, rpc: withInvites() });
   await page.goto("/admin/members");
 
-  await expect(page.getByRole("tab", { name: "Đang hoạt động · 2" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Đang hoạt động 2" })).toHaveAttribute("aria-selected", "true");
   // Người chờ duyệt không nằm trong danh sách chính.
   await expect(page.getByText("khoa.do@example.com")).toHaveCount(0);
   await expect(page.getByRole("row", { name: /Lê Hà/ })).toContainText("quản trị đội");
 
-  await page.getByRole("tab", { name: "Lời mời · 1" }).click();
+  await page.getByRole("tab", { name: "Lời mời 1" }).click();
   await expect(page).toHaveURL("/admin/members?xem=loi-moi");
   const vy = page.getByRole("row", { name: /vy\.ngo@example\.com/ });
   await expect(vy).toContainText("Chờ nhận");
@@ -504,20 +504,20 @@ test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệ
 
   await page.getByRole("button", { name: "Thu hồi lời mời cho vy.ngo@example.com" }).click();
   await expect(vy).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Lời mời · 0" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Lời mời 0" })).toBeVisible();
   expect(hub.rpcCalls.find((c) => c.path === "invitations/revoke")).toMatchObject({
     org: ORG_A.id,
     input: { invitationId: INVITES[0]?.id },
   });
 
-  await page.getByRole("tab", { name: "Chờ duyệt · 1" }).click();
+  await page.getByRole("tab", { name: "Chờ duyệt 1" }).click();
   await expect(page).toHaveURL("/admin/members?xem=cho-duyet");
   const khoa = page.getByRole("row", { name: /Đỗ Khoa/ });
   await expect(khoa).toContainText("Chờ duyệt");
   await page.getByRole("button", { name: "Duyệt Đỗ Khoa" }).click();
   await expect(khoa).toHaveCount(0);
-  await expect(page.getByRole("tab", { name: "Chờ duyệt · 0" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Đang hoạt động · 3" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Chờ duyệt 0" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Đang hoạt động 3" })).toBeVisible();
   expect(hub.rpcCalls.find((c) => c.path === "orgMembers/approve")).toMatchObject({
     method: "POST",
     org: ORG_A.id,
@@ -526,7 +526,7 @@ test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệ
 
   // Tải lại vẫn ở đúng tab.
   await page.reload();
-  await expect(page.getByRole("tab", { name: "Chờ duyệt · 0" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Chờ duyệt 0" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("Không có ai đang chờ duyệt.")).toBeVisible();
 });
 
@@ -535,7 +535,7 @@ test("từ chối người chờ duyệt: chuyển sang bị khoá trong danh s�
   const hub = await fakeHub(page, { signedIn: true, rpc: withInvites() });
   await page.goto("/admin/members?xem=cho-duyet");
   await page.getByRole("button", { name: "Từ chối Đỗ Khoa" }).click();
-  await expect(page.getByRole("tab", { name: "Chờ duyệt · 0" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Chờ duyệt 0" })).toBeVisible();
   expect(hub.rpcCalls.find((c) => c.path === "orgMembers/deny")?.input).toEqual({ userId: "u3" });
   await page.getByRole("tab", { name: /Đang hoạt động/ }).click();
   await expect(page.getByRole("row", { name: /Đỗ Khoa/ })).toContainText("Đã khoá");
@@ -616,7 +616,7 @@ test("thành viên thường: không thấy nút Mời người, tab Lời mời
   const hub = await fakeHub(page, { signedIn: true, rpc: withInvites() });
   await page.goto("/admin/members?xem=loi-moi");
 
-  await expect(page.getByRole("tab", { name: "Đang hoạt động · 2" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Đang hoạt động 2" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Mời người" })).toHaveCount(0);
   const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
