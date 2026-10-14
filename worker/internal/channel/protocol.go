@@ -131,6 +131,19 @@ type Welcome struct {
 	AccessTokenExp string `json:"accessTokenExp,omitempty"`
 	// Features là điều hub cho máy này (vd. "shared"); hub cũ không gửi.
 	Features []string `json:"features,omitempty"`
+	// Owner, Policy chỉ hub có điều khiển từ xa gửi (specs/010 D14); nil là hub cũ.
+	Owner  *WelcomeOwner  `json:"owner,omitempty"`
+	Policy *WelcomePolicy `json:"policy,omitempty"`
+}
+
+type WelcomeOwner struct {
+	UserID string `json:"userId"`
+	Shared bool   `json:"shared"`
+}
+
+// WelcomePolicy chỉ dùng để tắt: TOTPFallback false thì worker từ chối TOTP dù chủ máy đã bật.
+type WelcomePolicy struct {
+	TOTPFallback bool `json:"totpFallback"`
 }
 
 type UpgradeRequired struct {
@@ -279,6 +292,17 @@ type TermOpened struct {
 	SessionID    string  `json:"sessionId"`
 	AccountLabel *string `json:"accountLabel"`
 	Permissions  string  `json:"permissions"`
+	// Các trường dưới chỉ có ở phiên trên máy cá nhân; phiên Leader (term_open) bỏ trống để hub cũ vẫn nhận.
+	Origin    string `json:"origin,omitempty"`
+	RequestID string `json:"requestId,omitempty"`
+	CLI       string `json:"cli,omitempty"`
+	CwdLabel  string `json:"cwdLabel,omitempty"`
+	ProjectID string `json:"projectId,omitempty"`
+	TaskID    string `json:"taskId,omitempty"`
+	Cols      int    `json:"cols,omitempty"`
+	Rows      int    `json:"rows,omitempty"`
+	Record    *bool  `json:"record,omitempty"`
+	Remote    *bool  `json:"remote,omitempty"`
 }
 
 // TermOutput: Data là byte thô của PTY đã che bí mật; encoding/json mã hoá base64 như hợp đồng đòi.
@@ -300,6 +324,7 @@ type TermExit struct {
 	ExitCode  *int   `json:"exitCode"`
 	Reason    string `json:"reason"`
 	Message   string `json:"message,omitempty"`
+	By        string `json:"by,omitempty"`
 }
 
 // TermOpen mở phiên `claude` tương tác. MCPToken chỉ đi vào file --mcp-config 0600 và bị che khỏi output; không ghi log.
@@ -328,13 +353,17 @@ type TermOpen struct {
 	TokenSaving    json.RawMessage `json:"tokenSaving,omitempty"`
 }
 
-// TermInput là phím người mở gõ; Data base64 trong JSON.
+// TermInput là phím người mở gõ; Data base64 trong JSON. Phiên điều khiển từ xa thêm ConnID, Seq, MAC
+// (remoteauth.InputMACPayload); phiên Leader trên máy dùng chung không có.
 type TermInput struct {
 	Type      string `json:"type"`
 	V         int    `json:"v"`
 	ID        string `json:"id"`
 	SessionID string `json:"sessionId"`
 	Data      []byte `json:"data"`
+	ConnID    string `json:"connId,omitempty"`
+	Seq       *int64 `json:"seq,omitempty"`
+	MAC       string `json:"mac,omitempty"`
 }
 
 type TermResize struct {
@@ -344,6 +373,9 @@ type TermResize struct {
 	SessionID string `json:"sessionId"`
 	Cols      int    `json:"cols"`
 	Rows      int    `json:"rows"`
+	ConnID    string `json:"connId,omitempty"`
+	Seq       *int64 `json:"seq,omitempty"`
+	MAC       string `json:"mac,omitempty"`
 }
 
 type TermClose struct {
@@ -352,6 +384,200 @@ type TermClose struct {
 	ID        string `json:"id"`
 	SessionID string `json:"sessionId"`
 	Reason    string `json:"reason,omitempty"`
+	By        string `json:"by,omitempty"`
+}
+
+// ---- Điều khiển từ xa phiên trên máy cá nhân (specs/010 US2–US5) ----
+
+// RemoteAuth là bằng chứng của term_start/term_control; worker tự kiểm bằng remoteauth.VerifyAuth, hub chỉ chuyển.
+// Code (TOTP) không bao giờ được ghi log.
+type RemoteAuth struct {
+	Kind      string             `json:"kind"`
+	Assertion *WebauthnAssertion `json:"assertion,omitempty"`
+	Code      string             `json:"code,omitempty"`
+	EphPub    string             `json:"ephPub"`
+	TS        int64              `json:"ts"`
+	Nonce     string             `json:"nonce"`
+}
+
+// WebauthnAssertion giữ nguyên chuỗi base64url trình duyệt gửi để kiểm chữ ký trên đúng byte đó.
+type WebauthnAssertion struct {
+	CredentialID      string `json:"credentialId"`
+	AuthenticatorData string `json:"authenticatorData"`
+	ClientDataJSON    string `json:"clientDataJSON"`
+	Signature         string `json:"signature"`
+	UserHandle        string `json:"userHandle,omitempty"`
+}
+
+type TermStart struct {
+	Type        string     `json:"type"`
+	V           int        `json:"v"`
+	ID          string     `json:"id"`
+	RequestID   string     `json:"requestId"`
+	UserID      string     `json:"userId"`
+	DeviceID    string     `json:"deviceId"`
+	CLI         string     `json:"cli"`
+	AccountID   string     `json:"accountId,omitempty"`
+	RootID      string     `json:"rootId"`
+	Subdir      string     `json:"subdir,omitempty"`
+	Model       string     `json:"model,omitempty"`
+	Permissions string     `json:"permissions,omitempty"`
+	ProjectID   string     `json:"projectId,omitempty"`
+	TaskID      string     `json:"taskId,omitempty"`
+	Prompt      string     `json:"prompt,omitempty"`
+	Cols        int        `json:"cols"`
+	Rows        int        `json:"rows"`
+	Auth        RemoteAuth `json:"auth"`
+}
+
+type TermControl struct {
+	Type        string      `json:"type"`
+	V           int         `json:"v"`
+	ID          string      `json:"id"`
+	SessionID   string      `json:"sessionId"`
+	ConnID      string      `json:"connId"`
+	UserID      string      `json:"userId"`
+	DeviceID    string      `json:"deviceId"`
+	Auth        *RemoteAuth `json:"auth,omitempty"`
+	ResumeToken string      `json:"resumeToken,omitempty"`
+}
+
+type TermDetach struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	ConnID    string `json:"connId"`
+}
+
+type TermAck struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	Upto      int64  `json:"upto"`
+}
+
+// TermDisable chỉ tắt; không có gói bật vì bật chỉ làm được tại máy (FR-012).
+type TermDisable struct {
+	Type string `json:"type"`
+	V    int    `json:"v"`
+	ID   string `json:"id"`
+	By   string `json:"by"`
+}
+
+type TermPair struct {
+	Type         string `json:"type"`
+	V            int    `json:"v"`
+	ID           string `json:"id"`
+	PairID       string `json:"pairId"`
+	UserID       string `json:"userId"`
+	Label        string `json:"label"`
+	CredentialID string `json:"credentialId"`
+	SPKI         string `json:"spki"`
+	Tag          string `json:"tag"`
+}
+
+type TermDeviceRevoke struct {
+	Type     string `json:"type"`
+	V        int    `json:"v"`
+	ID       string `json:"id"`
+	DeviceID string `json:"deviceId"`
+	By       string `json:"by"`
+}
+
+type TermStateTOTP struct {
+	Enabled     bool   `json:"enabled"`
+	Locked      bool   `json:"locked"`
+	LockedUntil string `json:"lockedUntil,omitempty"`
+}
+
+type TermStateRoot struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+type TermStateAccount struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	CLI   string `json:"cli"`
+	State string `json:"state"`
+}
+
+type TermStateDevice struct {
+	ID     string `json:"id"`
+	Label  string `json:"label"`
+	UserID string `json:"userId"`
+	Synced bool   `json:"synced"`
+}
+
+type TermStateSession struct {
+	ID         string  `json:"id"`
+	Origin     string  `json:"origin"`
+	Controller *string `json:"controller"`
+}
+
+// TermState không có đường dẫn tuyệt đối của root hay khoá TOTP: hub chỉ cần nhãn để hiện trên điện thoại.
+type TermState struct {
+	Type             string             `json:"type"`
+	V                int                `json:"v"`
+	ID               string             `json:"id"`
+	Enabled          bool               `json:"enabled"`
+	TOTP             TermStateTOTP      `json:"totp"`
+	Roots            []TermStateRoot    `json:"roots"`
+	CLIs             []string           `json:"clis"`
+	Accounts         []TermStateAccount `json:"accounts"`
+	Devices          []TermStateDevice  `json:"devices"`
+	Sessions         []TermStateSession `json:"sessions"`
+	ConfirmOnMachine bool               `json:"confirmOnMachine"`
+}
+
+type TermDenied struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	RequestID string `json:"requestId"`
+	Code      string `json:"code"`
+	Reason    string `json:"reason"`
+}
+
+type TermEvent struct {
+	Type      string          `json:"type"`
+	V         int             `json:"v"`
+	ID        string          `json:"id"`
+	SessionID string          `json:"sessionId"`
+	Seq       int64           `json:"seq"`
+	Event     string          `json:"event"`
+	Data      json.RawMessage `json:"data,omitempty"`
+}
+
+type TermGranted struct {
+	Type         string `json:"type"`
+	V            int    `json:"v"`
+	ID           string `json:"id"`
+	SessionID    string `json:"sessionId"`
+	ConnID       string `json:"connId"`
+	WorkerEphPub string `json:"workerEphPub"`
+	ResumeToken  string `json:"resumeToken"`
+}
+
+type TermRevoked struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	ConnID    string `json:"connId"`
+	Reason    string `json:"reason"`
+}
+
+type TermPairResult struct {
+	Type     string `json:"type"`
+	V        int    `json:"v"`
+	ID       string `json:"id"`
+	PairID   string `json:"pairId"`
+	OK       bool   `json:"ok"`
+	DeviceID string `json:"deviceId,omitempty"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // newMessage trả con trỏ tới struct đúng loại gói, nil nếu loại lạ. Dùng khi giải mã gói theo `type`.
@@ -417,6 +643,32 @@ func newMessage(msgType string) any {
 		return &TermResize{}
 	case "term_close":
 		return &TermClose{}
+	case "term_start":
+		return &TermStart{}
+	case "term_control":
+		return &TermControl{}
+	case "term_detach":
+		return &TermDetach{}
+	case "term_ack":
+		return &TermAck{}
+	case "term_disable":
+		return &TermDisable{}
+	case "term_pair":
+		return &TermPair{}
+	case "term_device_revoke":
+		return &TermDeviceRevoke{}
+	case "term_state":
+		return &TermState{}
+	case "term_denied":
+		return &TermDenied{}
+	case "term_event":
+		return &TermEvent{}
+	case "term_granted":
+		return &TermGranted{}
+	case "term_revoked":
+		return &TermRevoked{}
+	case "term_pair_result":
+		return &TermPairResult{}
 	}
 	return nil
 }

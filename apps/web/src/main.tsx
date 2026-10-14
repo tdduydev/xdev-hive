@@ -3,6 +3,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { shouldRetry } from "@/lib/api-errors.ts";
+import { startPwa } from "@/lib/pwa.ts";
 import { watchSystemTheme } from "@/lib/theme.ts";
 import { createAppRouter } from "@/router.tsx";
 import "@/styles.css";
@@ -11,6 +12,7 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Thiếu #root trong index.html");
 
 watchSystemTheme();
+startPwa();
 
 /*
  * Dữ liệu vừa tải trong 10 giây thì chuyển trang qua lại không tải lại: trang chủ và bảng việc dùng chung tasks.list,
