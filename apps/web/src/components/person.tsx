@@ -54,7 +54,16 @@ const copyText: Dict<{ copy: string; copied: string; failed: string }> = {
 };
 
 /** These people screens need localized copy feedback while the existing shared CopyField remains unchanged. */
-export function PeopleCopyField({ value, copyLabel }: { value: string; copyLabel: string }) {
+export function PeopleCopyField({
+  value,
+  copyLabel,
+  id,
+}: {
+  value: string;
+  copyLabel: string;
+  /** Để `FormRow htmlFor` gắn nhãn thẳng vào ô thay vì một nhóm trùng tên. */
+  id?: string | undefined;
+}) {
   const t = useT(copyText);
   const input = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
@@ -78,6 +87,7 @@ export function PeopleCopyField({ value, copyLabel }: { value: string; copyLabel
       <div className="flex min-w-0 gap-2">
         <Input
           ref={input}
+          id={id}
           readOnly
           value={value}
           spellCheck={false}

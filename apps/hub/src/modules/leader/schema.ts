@@ -1,8 +1,9 @@
-import type { LeaderAction } from "@xdev-hive/contracts";
+import type { ArtifactPageError, LeaderAction } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
   foreignKey,
   index,
+  integer,
   jsonb,
   pgPolicy,
   pgRole,
@@ -52,6 +53,12 @@ export const chatMessages = hive
       content: text("content").notNull(),
       senderId: text("sender_id"),
       runId: uuid("run_id"),
+      // Thẻ artifact trong chat. Khoá ngoại tới artifacts (module khác) nằm trong migration viết tay với `on delete set
+      // null (artifact_id)`: set null cả khoá ghép sẽ làm org_id null và vỡ RLS.
+      artifactId: uuid("artifact_id"),
+      artifactVersion: integer("artifact_version"),
+      /** "Nhờ Leader sửa": lỗi chạy của trang, dữ liệu không tin cậy do trang viết. */
+      pageErrors: jsonb("page_errors").$type<ArtifactPageError[]>(),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },
     (t) => [
@@ -59,6 +66,8 @@ export const chatMessages = hive
         "cascade",
       ),
       index("chat_messages_thread_created").on(t.threadId, t.createdAt),
+      // Xoá hẳn artifact phải tìm các tin nhắn trỏ tới nó để đặt artifact_id = null.
+      index("chat_messages_artifact").on(t.artifactId).where(sql`artifact_id is not null`),
       scoped("chat_messages"),
     ],
   )
