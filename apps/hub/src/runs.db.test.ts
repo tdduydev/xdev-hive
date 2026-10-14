@@ -1299,6 +1299,12 @@ describe("chi phí và ngân sách", () => {
     userId = devUserId;
   });
 
+  // Run còn chờ từ kịch bản trước sẽ được giao cho máy mới (giao cũ trước) và nằm lại trong hộp thư của worker giả,
+  // làm các khẳng định "không có job_offer" hỏng tuỳ thời điểm; huỷ để mỗi kịch bản chỉ có run của nó.
+  beforeEach(async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+  });
+
   const cost = (v: Partial<CostEventData> = {}) => ({
     inputTokens: 0,
     outputTokens: 0,
