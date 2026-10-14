@@ -104,7 +104,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `docs/design-system/screens/{Remote.dc.html,AppRemote.dc.html}` (mới), `docs/design-system/screens/README.md`
   - **Phụ thuộc**: không · **Mức**: vừa
 
-- [ ] T007 Bảng và migration module `terminal`
+- [x] T007 Bảng và migration module `terminal`
+  - Đã làm (SPEC10W3): migration `0071_remote_terminal.sql`. `terminal_sessions` (đã có từ T103) thêm `origin`
+    (`hub|local|remote`), `task_id`, `cwd_label`, `remote`, `request_id`; `project_id`/`mode`/`model` thành nullable,
+    ràng buộc `terminal_sessions_hub_fields` giữ chúng bắt buộc với phiên Leader. `terminal_chunks` giữ khoá `(session,
+    seq)` của lát đầu (không `offset`). Bốn bảng mới ép RLS; `remote_devices` khoá `(machine_id, id)` vì id do worker sinh.
+    `hive.purge_terminal_chunks()` chạy cùng job `runs-log-retention`. Không có `ALTER TYPE` nên không thêm ca nâng cấp.
   - `terminal/schema.ts`: `terminal_sessions`, `terminal_chunks`, `terminal_events`, `remote_devices`,
     `push_subscriptions`, `machine_remote_state` đúng plan.md; `orgScoped`; chỉ số theo máy, chủ, task.
   - `db:generate` → `00NN_terminal.sql`; thêm tay `FORCE ROW LEVEL SECURITY` và `hive.purge_terminal_chunks()` (như
