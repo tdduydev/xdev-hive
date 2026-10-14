@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatTranscript } from "./prompt.ts";
+import { ARTIFACT_RULE, assembleLeaderPrompt, formatTranscript } from "./prompt.ts";
 
 describe("formatTranscript", () => {
   it("trả về chuỗi rỗng khi danh sách tin nhắn trống", () => {
@@ -37,5 +37,37 @@ describe("formatTranscript", () => {
     expect(transcript).not.toContain("Tin cũ 2");
     // Thứ tự thời gian: tin đầu đứng trước tin mới nhất
     expect(transcript.indexOf("Bối cảnh ban đầu rất quan trọng")).toBeLessThan(transcript.indexOf("Tin mới nhất"));
+  });
+});
+
+describe("artifact trong prompt", () => {
+  it("tin nhắn thẻ kèm id và phiên bản để Leader sửa đúng bản", () => {
+    const id = "6f1d2c0e-0000-4000-8000-000000000001";
+    const transcript = formatTranscript([
+      { role: "user", content: "Vẽ sơ đồ" },
+      { role: "leader", content: "Luồng đăng nhập", artifact: { id, version: 3 } },
+    ]);
+    expect(transcript).toBe(`user: Vẽ sơ đồ\n\nleader: Luồng đăng nhập [artifact ${id}, phiên bản 3]`);
+  });
+
+  it("phần đuôi của tin thẻ tính vào ngân sách ký tự", () => {
+    const card = { role: "leader", content: "Sơ đồ", artifact: { id: "a".repeat(36), version: 1 } };
+    const first = { role: "user", content: "Bối cảnh" };
+    const budget = first.content.length + first.role.length + 4 + card.content.length + card.role.length + 4;
+    expect(formatTranscript([first, { role: "user", content: "Tin cũ" }, card], budget)).not.toContain("[artifact");
+  });
+
+  it("hướng dẫn artifact nằm trong prompt: nội dung dài vào artifact, sửa thì artifact_update", () => {
+    const prompt = assembleLeaderPrompt({
+      transcript: "",
+      projectName: "Demo",
+      projectKey: "DEMO",
+      defaultBranch: null,
+      context: "",
+    });
+    expect(prompt).toContain(ARTIFACT_RULE);
+    expect(ARTIFACT_RULE).toContain("artifact_create");
+    expect(ARTIFACT_RULE).toContain("artifact_update");
+    expect(ARTIFACT_RULE).toContain("30 dòng");
   });
 });
