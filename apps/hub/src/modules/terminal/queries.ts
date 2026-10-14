@@ -193,6 +193,34 @@ export async function remoteMachines(tx: Tx, userId: string): Promise<RemoteMach
       where registered_by = ${userId} and not shared and kind = 'worker' and revoked_at is null
       order by name`,
   );
+  return machineViews(
+    tx,
+    userId,
+    rows.map((m) => ({
+      id: m.id,
+      name: m.name,
+      online: m.status === "online",
+      terminal: m.capabilities.includes(TERMINAL_CAPABILITY),
+    })),
+  );
+}
+
+/** Một máy đã qua kiểm quyền (`ownedMachine`), cùng dạng với `remoteMachines`. */
+export async function remoteMachine(
+  tx: Tx,
+  userId: string,
+  m: { id: string; name: string; online: boolean; terminal: boolean },
+): Promise<RemoteMachine> {
+  const [view] = await machineViews(tx, userId, [m]);
+  if (!view) throw new Error("Không dựng được trạng thái máy.");
+  return view;
+}
+
+async function machineViews(
+  tx: Tx,
+  userId: string,
+  rows: Array<{ id: string; name: string; online: boolean; terminal: boolean }>,
+): Promise<RemoteMachine[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((m) => m.id);
   // Một transaction là một kết nối: chạy lần lượt.
@@ -211,11 +239,15 @@ export async function remoteMachines(tx: Tx, userId: string): Promise<RemoteMach
     return {
       id: m.id,
       name: m.name,
-      online: m.status === "online",
-      terminal: m.capabilities.includes(TERMINAL_CAPABILITY),
+      online: m.online,
+      terminal: m.terminal,
       remote: state ? stateView(state) : null,
       totpAllowed: policy.remote.totpFallback,
-      sessions: sessions.filter((s) => s.machine_id === m.id && ACTIVE.includes(s.state)).map((s) => view(s, userId)),
+      // Quản trị đội tắt khẩn cấp máy của thành viên cũng không thấy phiên riêng tư của chủ máy.
+      sessions: sessions
+        .filter((s) => s.machine_id === m.id && ACTIVE.includes(s.state))
+        .filter((s) => s.owner_user_id === userId || s.visibility === "team")
+        .map((s) => view(s, userId)),
     };
   });
 }
