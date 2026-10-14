@@ -135,7 +135,15 @@ function HubSection({ projectKey, items }: { projectKey: string; items: LocalMem
   );
 }
 
-function SendRow({ item, projectKey, projectId }: { item: LocalMemoryItem; projectKey: string; projectId?: string }) {
+function SendRow({
+  item,
+  projectKey,
+  projectId,
+}: {
+  item: LocalMemoryItem;
+  projectKey: string;
+  projectId: string | undefined;
+}) {
   const t = useT(text);
   const qc = useQueryClient();
   const content = item.content.trim();
