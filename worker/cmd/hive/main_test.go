@@ -76,6 +76,10 @@ func newTestApp(socket string, stdin io.Reader) *testApp {
 		getenv:  func(k string) string { return map[string]string{"TERM": "xterm-test"}[k] },
 		getwd:   os.Getwd,
 		socket:  func() (string, error) { return socket, nil },
+		// Cạnh socket giả (thư mục tạm của test) để không đụng hive.json và keychain thật.
+		keyring:   &memKeyring{},
+		cliConfig: func() (string, error) { return filepath.Join(filepath.Dir(socket), "hive.json"), nil },
+		openURL:   func(string) error { return errors.New("không có trình duyệt trong test") },
 	}
 	return &testApp{app: a, out: out, err: errb, con: con}
 }
@@ -89,17 +93,18 @@ func TestUsageAndUnsupported(t *testing.T) {
 	}{
 		{nil, exitUsage, "Cách dùng"},
 		{[]string{"lam-gi"}, exitUsage, `không có lệnh "lam-gi"`},
-		{[]string{"login"}, exitUsage, "chưa hỗ trợ"},
-		{[]string{"whoami"}, exitUsage, "chưa hỗ trợ"},
+		{[]string{"whoami"}, exitUsage, "Chưa đăng nhập hub"},
+		{[]string{"login", "--hub", "ftp://x"}, exitUsage, "không hợp lệ"},
 		{[]string{"__hook", "attention"}, exitUsage, "chưa hỗ trợ"},
-		{[]string{"chat", "--task", "PAY-12"}, exitUsage, "--task và --project chưa hỗ trợ"},
-		{[]string{"chat", "--project", "PAY"}, exitUsage, "chưa hỗ trợ"},
+		{[]string{"chat", "--task", "PAY-12"}, exitUsage, "Chưa đăng nhập hub"},
+		{[]string{"chat", "--project", "PAY", "--task", "PAY-1"}, exitUsage, "Chỉ dùng một"},
+		{[]string{"chat", "--task", "PAY-1", "--no-record"}, exitUsage, "bỏ --no-record"},
 		{[]string{"chat", "--cli", "bash"}, exitUsage, `CLI "bash" không hỗ trợ`},
 		{[]string{"chat", "thua"}, exitUsage, "Thừa đối số"},
 		{[]string{"chat", "--khong-co-co"}, exitUsage, "flag provided but not defined"},
 		{[]string{"run"}, exitUsage, "Thiếu lời nhắc"},
 		{[]string{"run", "  "}, exitUsage, "Thiếu lời nhắc"},
-		{[]string{"ls", "--all"}, exitUsage, "--all chưa hỗ trợ"},
+		{[]string{"ls", "--all"}, exitUsage, "Chưa đăng nhập hub"},
 		{[]string{"attach"}, exitUsage, "hive attach <id>"},
 		{[]string{"kill"}, exitUsage, "hive kill <id>"},
 	} {
