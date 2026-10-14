@@ -77,6 +77,7 @@ import {
 import {
   chainVerifiers,
   createTerminalTokenVerifier,
+  remoteRouter,
   terminalRouter,
   terminalTokenKey,
 } from "./modules/terminal/index.ts";
@@ -232,7 +233,7 @@ export function createApp({
       pool,
       publicUrl,
       workerReleases: new WorkerReleaseCache(config.workerReleases),
-      issuePersonalToken: (tx, userId) => issueDesktopToken(tx, userId, registry),
+      issuePersonalToken: (tx, userId, purpose) => issueDesktopToken(tx, userId, registry, purpose),
     }),
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
@@ -272,6 +273,7 @@ export function createApp({
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
     terminal: terminalRouter({ auth, pool, terminal }),
+    remote: remoteRouter({ auth, pool }),
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
