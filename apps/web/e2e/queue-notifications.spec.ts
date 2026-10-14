@@ -221,16 +221,17 @@ test("queue loading, recoverable API errors and mutation conflicts", async ({ pa
   expect(hub.rpcCalls.filter((call) => call.path === "projects/removeMerge")).toHaveLength(1);
 });
 
-test("viewer sees queue without actions and organization member cannot load channel configuration", async ({
-  page,
-}) => {
+test("viewer sees queue without actions and organization member has no channel configuration", async ({ page }) => {
   const hub = await setup(page, {}, "member", "viewer");
   await page.goto("/projects/hive/merge-queue");
   await expect(page.getByText("CI không đạt.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Đưa .*PR/ })).toHaveCount(0);
   await page.goto("/notifications");
   await expect(page.getByRole("region", { name: "Hộp thư cá nhân" })).toContainText(inboxItem.title);
-  await expect(page.getByText(/Chỉ chủ sở hữu và quản trị tổ chức/)).toBeVisible();
+  // Kênh gửi đi là việc của quản trị: người thường không thấy tab, kể cả khi gõ ?tab=kenh.
+  await expect(page.getByRole("tab", { name: /Kênh gửi đi/ })).toHaveCount(0);
+  await page.goto("/notifications?tab=kenh");
+  await expect(page.getByRole("region", { name: "Hộp thư cá nhân" })).toContainText(inboxItem.title);
   expect(hub.rpcCalls.some((call) => call.path.startsWith("notificationChannels/"))).toBe(false);
 });
 
@@ -264,10 +265,12 @@ test("channel create, metadata edit, toggle, delivery failure and confirmed remo
     },
   });
   await page.goto("/notifications");
+  await page.getByRole("tab", { name: /Kênh gửi đi/ }).click();
+  await expect(page).toHaveURL("/notifications?tab=kenh");
   await expect(page.getByRole("heading", { name: "Chưa có kênh thông báo" })).toBeVisible();
   await page.getByRole("button", { name: "Thêm kênh" }).click();
   await page.getByLabel("Tên kênh", { exact: true }).fill(channel.name);
-  await page.getByLabel("Merge thất bại", { exact: true }).check();
+  await page.getByRole("checkbox", { name: "Merge thất bại", exact: true }).check();
   await page.getByLabel("Token bot Telegram", { exact: true }).fill("123456:abcdefghijklmnopqrstuvwxyz");
   await page.getByLabel("Chat ID", { exact: true }).fill("-1000123456");
   await page.getByRole("button", { name: "Lưu kênh" }).click();
@@ -279,18 +282,21 @@ test("channel create, metadata edit, toggle, delivery failure and confirmed remo
     events: ["merge.failed"],
     enabled: true,
   });
-  await page.getByRole("button", { name: `Sửa kênh ${channel.name}` }).click();
+  await page.getByRole("button", { name: `Thao tác với kênh ${channel.name}` }).click();
+  await page.getByRole("menuitem", { name: "Sửa kênh" }).click();
   await expect(page.getByLabel("Token bot Telegram", { exact: true })).toHaveCount(0);
   await page.getByLabel("Tên kênh", { exact: true }).fill("Nhóm trực");
   await page.getByRole("button", { name: "Lưu kênh" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const edit = hub.rpcCalls.find((call) => call.path === "notificationChannels/update");
   expect(edit?.input).not.toHaveProperty("config");
-  await page.getByRole("button", { name: "Tắt kênh Nhóm trực" }).click();
+  await page.getByRole("button", { name: "Thao tác với kênh Nhóm trực" }).click();
+  await page.getByRole("menuitem", { name: "Tắt kênh" }).click();
   await expect(page.getByText("Đã tắt", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Gửi thử qua Nhóm trực" }).click();
   await expect(page.getByRole("alert")).toContainText("Telegram từ chối token bot");
-  await page.getByRole("button", { name: "Xoá kênh Nhóm trực" }).click();
+  await page.getByRole("button", { name: "Thao tác với kênh Nhóm trực" }).click();
+  await page.getByRole("menuitem", { name: "Xoá kênh" }).click();
   expect(hub.rpcCalls.some((call) => call.path === "notificationChannels/remove")).toBe(false);
   await page.getByRole("dialog").getByRole("button", { name: "Xoá kênh", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Chưa có kênh thông báo" })).toBeVisible();
@@ -304,16 +310,16 @@ test("email configuration validates recipients before sending SMTP settings", as
     "notificationChannels/create": () =>
       ok({ ...channel, kind: "email", name: "Email vận hành", target: "ops@example.com" }),
   });
-  await page.goto("/notifications");
+  await page.goto("/notifications?tab=kenh");
   await page.getByRole("button", { name: "Thêm kênh" }).click();
   await page.getByLabel("Loại kênh", { exact: true }).selectOption("email");
   await page.getByLabel("Tên kênh", { exact: true }).fill("Email vận hành");
-  await page.getByLabel("Run thất bại", { exact: true }).check();
+  await page.getByRole("checkbox", { name: "Run thất bại", exact: true }).check();
   await page.getByLabel("Máy chủ SMTP", { exact: true }).fill("smtp.example.com");
   await page.getByLabel("Email gửi", { exact: true }).fill("hive@example.com");
   await page.getByLabel("Email nhận", { exact: true }).fill("invalid");
   await page.getByRole("button", { name: "Lưu kênh" }).click();
-  await expect(page.getByRole("region", { name: "Sửa kênh" }).getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Thêm kênh thông báo" }).getByRole("alert")).toBeVisible();
   expect(hub.rpcCalls.some((call) => call.path === "notificationChannels/create")).toBe(false);
   await page.getByLabel("Email nhận", { exact: true }).fill("ops@example.com, oncall@example.com");
   await page.getByRole("button", { name: "Lưu kênh" }).click();
@@ -329,7 +335,7 @@ test("channel list errors can be retried", async ({ page }) => {
     "notificationChannels/list": () =>
       broken ? fail("FORBIDDEN", 403, "Bạn không có quyền cấu hình kênh.") : ok([channel]),
   });
-  await page.goto("/notifications");
+  await page.goto("/notifications?tab=kenh");
   await expect(page.getByRole("alert")).toContainText("Bạn không có quyền cấu hình kênh.");
   broken = false;
   await page.getByRole("button", { name: "Tải lại" }).click();
@@ -358,7 +364,7 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.getByRole("dialog")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
     await page.getByRole("button", { name: "Huỷ", exact: true }).click();
-    await page.goto("/notifications");
+    await page.goto("/notifications?tab=kenh");
     await expect(page.getByText(/receiver/)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
     await page.getByRole("button", { name: "Thêm kênh" }).click();
@@ -382,10 +388,11 @@ for (const scheme of ["light", "dark"] as const) {
       path: testInfo.outputPath(`merge-queue-${scheme}.png`),
       fullPage: true,
     });
-    await page.goto("/notifications");
+    await page.goto("/notifications?tab=kenh");
     await expect(page.getByText(channel.name, { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: `Sửa kênh ${channel.name}` }).click();
-    await expect(page.getByRole("region", { name: "Sửa kênh" })).toBeVisible();
+    await page.getByRole("button", { name: `Thao tác với kênh ${channel.name}` }).click();
+    await page.getByRole("menuitem", { name: "Sửa kênh" }).click();
+    await expect(page.getByRole("dialog", { name: "Sửa kênh thông báo" })).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath(`notifications-${scheme}.png`),
       fullPage: true,
@@ -445,7 +452,7 @@ test("inbox paginates, filters and marks one or all read using the tenant API", 
   expect(
     hub.rpcCalls.find((call) => call.path === "inbox/list" && (call.input as { cursor?: string }).cursor)?.input,
   ).toEqual({ cursor, limit: 30, unreadOnly: false });
-  await page.getByLabel("Chỉ hiện chưa đọc").check();
+  await inbox.getByRole("button", { name: "Chưa đọc", exact: true }).click();
   await expect(inbox.getByRole("heading", { name: alreadyRead.title })).toHaveCount(0);
   await inbox.getByRole("button", { name: `Đánh dấu đã đọc: ${inboxItem.title}` }).click();
   await expect(inbox.getByRole("heading", { name: inboxItem.title })).toHaveCount(0);
@@ -455,7 +462,7 @@ test("inbox paginates, filters and marks one or all read using the tenant API", 
   await inbox.getByRole("button", { name: "Đánh dấu tất cả đã đọc" }).click();
   await expect(inbox.getByRole("heading", { name: "Không có thông báo chưa đọc" })).toBeVisible();
   await expect(inbox).toContainText("0 chưa đọc");
-  await page.getByLabel("Chỉ hiện chưa đọc").uncheck();
+  await inbox.getByRole("button", { name: "Tất cả", exact: true }).click();
   await expect(inbox.getByRole("heading", { name: inboxItem.title })).toBeVisible();
   await expect(inbox.getByRole("button", { name: /Đánh dấu đã đọc:/ })).toHaveCount(0);
   expect(hub.rpcCalls.filter((call) => call.path.startsWith("inbox/")).every((call) => call.org === orgId)).toBe(true);

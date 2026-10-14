@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import type { MergeQueueEntry, Project } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
-import { Button } from "@xdev-hive/ui/button";
+import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Table, Td, Th } from "@xdev-hive/ui/table";
-import { type FormEvent, useId, useState } from "react";
-import { Card } from "@/components/ui/card.tsx";
-import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { GitMergeIcon, SearchXIcon } from "lucide-react";
+import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { PageSection } from "@/components/page/page-section.tsx";
+import { EmptyState, LoadFailure, SectionsSkeleton, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatDay } from "@/lib/format.ts";
 import {
@@ -34,30 +35,86 @@ export function MergeQueuePage() {
   return <ProjectQueue key={`${org.id}:${key}`} projectKey={key} />;
 }
 
+const DESCRIPTION =
+  "Merge lần lượt từ trên xuống; mục đầu được cập nhật theo nhánh chính và chờ CI. Tự làm mới mỗi 10 giây.";
+
+/** Trang không có mục nav: tên trang làm tiêu đề, danh sách dự án và dự án cha là crumb có link. */
+function QueueHeader({
+  projectKey,
+  project,
+  meta,
+  children,
+}: {
+  projectKey: string;
+  project?: Project | undefined;
+  meta?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <PageHeader
+      title="Hàng merge"
+      description={DESCRIPTION}
+      meta={meta}
+      crumb={
+        <>
+          <Link to="/projects" className="hover:text-foreground hover:underline">
+            Dự án
+          </Link>
+          {" / "}
+          <Link
+            to="/projects/$key/settings"
+            params={{ key: projectKey }}
+            className="hover:text-foreground hover:underline"
+          >
+            {project?.name ?? projectKey}
+          </Link>
+        </>
+      }
+    >
+      {children}
+    </PageHeader>
+  );
+}
+
 function ProjectQueue({ projectKey }: { projectKey: string }) {
   const { api } = useOrg();
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
   const project = projects.data?.find((item) => item.key === projectKey);
+  if (project?.settings.features.mergeQueue) return <Queue project={project} />;
   return (
     <>
-      <PageHeader crumb={`Dự án / ${project?.name ?? projectKey}`} title={project?.key ?? projectKey} />
+      <QueueHeader projectKey={projectKey} project={project} />
       <PageBody>
         {projects.isPending ? (
-          <LoadingState label="Đang tải dự án…" />
+          <SectionsSkeleton sections={2} label="Đang tải dự án…" />
         ) : projects.isError ? (
           <LoadFailure error={projects.error} retry={projects.refetch} />
         ) : !project ? (
           <EmptyState
+            icon={SearchXIcon}
             title="Không tìm thấy dự án"
             description="Kiểm tra đường dẫn hoặc nhờ quản trị cấp quyền vào dự án."
-          />
-        ) : !project.settings.features.mergeQueue ? (
-          <EmptyState
-            title="Dự án chưa bật hàng merge"
-            description="Nhờ quản trị đội bật Hàng merge trong cấu hình tính năng của dự án. Khi bật, các PR sẽ được kiểm tra và merge lần lượt."
+            action={
+              <Link to="/projects" className={buttonVariants({ variant: "outline" })}>
+                Về danh sách dự án
+              </Link>
+            }
           />
         ) : (
-          <Queue project={project} />
+          <EmptyState
+            icon={GitMergeIcon}
+            title="Dự án chưa bật hàng merge"
+            description="Nhờ quản trị đội bật Hàng merge trong cấu hình tính năng của dự án. Khi bật, các PR sẽ được kiểm tra và merge lần lượt."
+            action={
+              <Link
+                to="/projects/$key/settings"
+                params={{ key: project.key }}
+                className={buttonVariants({ variant: "outline" })}
+              >
+                Mở cấu hình dự án
+              </Link>
+            }
+          />
         )}
       </PageBody>
     </>
@@ -102,81 +159,66 @@ function Queue({ project }: { project: Project }) {
   }
 
   const { active, finished } = splitMergeQueue(queue.data ?? []);
+  const merge = project.settings.merge;
+  const fact = (label: string, value: string) => (
+    <span key={label}>
+      {label}: <span className="font-medium text-foreground">{value}</span>
+    </span>
+  );
   return (
     <>
-      <nav aria-label="Mục của dự án" className="flex border-b border-border">
-        <span aria-current="page" className="border-b-2 border-primary px-3 py-2 font-semibold text-foreground">
-          Hàng merge
-        </span>
-      </nav>
-      <Card className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-4 py-3.5">
-        <dl className="flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-sm">
-          <div>
-            <dt className="inline text-muted-foreground">Chế độ </dt>
-            <dd className="inline font-medium text-foreground">
-              {project.settings.merge.mode === "auto" ? "Tự vào hàng khi run đạt" : "Cần người duyệt"}
-            </dd>
-          </div>
-          <div>
-            <dt className="inline text-muted-foreground">Cách merge </dt>
-            <dd className="inline font-medium text-foreground">
-              {{ squash: "Squash", merge: "Merge commit", rebase: "Rebase" }[project.settings.merge.method ?? "squash"]}
-            </dd>
-          </div>
-          <div>
-            <dt className="inline text-muted-foreground">CI </dt>
-            <dd className="inline font-medium text-foreground">
-              {project.settings.merge.requireCi ? "Bắt buộc xanh" : "Cho phép kho không có CI"}
-            </dd>
-          </div>
-          <div>
-            <dt className="inline text-muted-foreground">Người duyệt </dt>
-            <dd className="inline font-medium text-foreground">
-              {project.settings.merge.requiredApprovals}, theo bảo vệ nhánh trên{" "}
-              {project.repo.kind === "github" ? "GitHub" : "GitLab"}
-            </dd>
-          </div>
-        </dl>
+      <QueueHeader
+        projectKey={project.key}
+        project={project}
+        meta={[
+          fact("Chế độ", merge.mode === "auto" ? "Tự vào hàng khi run đạt" : "Cần người duyệt"),
+          fact("Cách merge", { squash: "Squash", merge: "Merge commit", rebase: "Rebase" }[merge.method ?? "squash"]),
+          fact("CI", merge.requireCi ? "Bắt buộc xanh" : "Cho phép kho không có CI"),
+          fact(
+            "Người duyệt",
+            `${merge.requiredApprovals}, theo bảo vệ nhánh trên ${project.repo.kind === "github" ? "GitHub" : "GitLab"}`,
+          ),
+        ]}
+      >
+        <Button variant="outline" onClick={() => queue.refetch()} disabled={queue.isFetching}>
+          Làm mới
+        </Button>
+      </QueueHeader>
+      <PageBody>
         {manage && (
           <EnqueueForm project={project} onDone={() => queryClient.invalidateQueries({ queryKey: query.queryKey })} />
         )}
-      </Card>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          Merge lần lượt từ trên xuống; mục đầu được cập nhật theo nhánh chính và chờ CI. Tự làm mới mỗi 10 giây.
-        </p>
-        <Button variant="outline" size="sm" onClick={() => queue.refetch()} disabled={queue.isFetching}>
-          Làm mới
-        </Button>
-      </div>
-      {notice && (
-        <p role="status" className="text-success">
-          {notice}
-        </p>
-      )}
-      {members.isError && !isOrgAdmin(org.role) && <LoadFailure error={members.error} retry={members.refetch} />}
-      {queue.isPending ? (
-        <LoadingState label="Đang tải hàng merge…" />
-      ) : queue.isError ? (
-        <LoadFailure error={queue.error} retry={queue.refetch} />
-      ) : (
-        <>
-          <QueueSection
-            title="Đang trong hàng"
-            entries={active}
-            manage={manage}
-            confirm={confirm}
-            empty="Chưa có PR nào trong hàng. Nhập số PR ở trên hoặc chờ run đạt theo cấu hình dự án."
-          />
-          <QueueSection
-            title="Đã xong gần đây"
-            entries={finished}
-            manage={manage}
-            confirm={confirm}
-            empty="Chưa có PR nào được xử lý. Các mục đã xong sẽ xuất hiện ở đây."
-          />
-        </>
-      )}
+        {notice && (
+          <p role="status" className="text-success">
+            {notice}
+          </p>
+        )}
+        {members.isError && !isOrgAdmin(org.role) && <LoadFailure error={members.error} retry={members.refetch} />}
+        {queue.isPending ? (
+          <TableSkeleton columns={4} label="Đang tải hàng merge…" />
+        ) : queue.isError ? (
+          <LoadFailure error={queue.error} retry={queue.refetch} />
+        ) : (
+          <>
+            <QueueSection
+              title="Đang trong hàng"
+              entries={active}
+              manage={manage}
+              confirm={confirm}
+              emptyTitle="Hàng đang trống"
+              empty="Chưa có PR nào trong hàng. Nhập số PR ở trên hoặc chờ run đạt theo cấu hình dự án."
+            />
+            <QueueSection
+              title="Đã xong gần đây"
+              entries={finished}
+              manage={manage}
+              confirm={confirm}
+              emptyTitle="Chưa có lịch sử"
+              empty="Chưa có PR nào được xử lý. Các mục đã xong sẽ xuất hiện ở đây."
+            />
+          </>
+        )}
+      </PageBody>
       <Dialog
         open={action !== null}
         onOpenChange={(open) => {
@@ -200,7 +242,7 @@ function Queue({ project }: { project: Project }) {
               Huỷ
             </Button>
             <Button
-              variant={action?.kind === "remove" ? "destructive" : "default"}
+              variant={action?.kind === "remove" ? "destructive-solid" : "default"}
               disabled={mutation.isPending}
               onClick={() => action && mutation.mutate(action)}
             >
@@ -218,134 +260,135 @@ function QueueSection({
   entries,
   manage,
   confirm,
+  emptyTitle,
   empty,
 }: {
   title: string;
   entries: MergeQueueEntry[];
   manage: boolean;
   confirm: (action: QueueAction) => void;
+  emptyTitle: string;
   empty: string;
 }) {
+  const ranked = entries.some((entry) => entry.position !== null);
   return (
-    <section aria-label={title} className="grid min-w-0 gap-3">
-      <h2 className="text-base font-semibold text-foreground">
-        {title} <span className="text-muted-foreground">({entries.length})</span>
-      </h2>
+    <PageSection title={title} description={`${entries.length} PR`}>
       {entries.length === 0 ? (
-        <Card className="p-4 text-muted-foreground">{empty}</Card>
+        <EmptyState compact icon={GitMergeIcon} title={emptyTitle} description={empty} />
       ) : (
-        <Card className="relative min-w-0 overflow-hidden">
-          <Table aria-label={title} className="min-w-215">
-            <thead className="bg-muted">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+          <Table aria-label={title} className="min-w-180">
+            <thead>
               <tr>
-                <Th>Vị trí</Th>
-                <Th>PR</Th>
-                <Th>Trạng thái</Th>
-                <Th>Ghi chú</Th>
-                <Th>Việc / Run</Th>
-                <Th>Thao tác</Th>
+                {ranked && <Th variant="plain">Vị trí</Th>}
+                <Th variant="plain">PR</Th>
+                <Th variant="plain">Trạng thái</Th>
+                <Th variant="plain">Ghi chú</Th>
+                {manage && (
+                  <Th
+                    variant="plain"
+                    className="text-right sm:sticky sm:right-0 sm:shadow-[inset_1px_0_0_var(--border)]"
+                  >
+                    Thao tác
+                  </Th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => {
-                const url = externalUrl(entry.prUrl);
-                return (
-                  <tr key={entry.id} className="hover:bg-muted">
-                    <Td className="font-heading text-xl font-semibold tabular-nums">{entry.position ?? "—"}</Td>
-                    <Td className="min-w-65 max-w-85">
-                      {url ? (
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono font-semibold text-primary underline underline-offset-2"
-                        >
-                          PR #{entry.prNumber}
-                          <span className="sr-only"> (mở tab mới)</span>
-                        </a>
-                      ) : (
-                        <b className="text-foreground">PR #{entry.prNumber}</b>
-                      )}
-                      <p className="break-all font-mono text-xs text-muted-foreground">
-                        {entry.branch ?? "Chưa có nhánh"} · {entry.headSha?.slice(0, 7) ?? "—"}
-                      </p>
-                    </Td>
-                    <Td className="whitespace-nowrap">
-                      <div className="grid justify-items-start gap-1.5">
-                        <Pill tone={MERGE_STATE_TONE[entry.state]}>
-                          <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
-                          {MERGE_STATE_LABEL[entry.state]}
-                        </Pill>
-                        <Pill tone={entry.ciState ? MERGE_CI_TONE[entry.ciState] : "neutral"}>
-                          {entry.ciState ? MERGE_CI_LABEL[entry.ciState] : "CI chưa kiểm tra"}
-                        </Pill>
-                        {url && (
-                          <a href={url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
-                            Xem CI trên PR<span className="sr-only"> (mở tab mới)</span>
-                          </a>
-                        )}
-                      </div>
-                    </Td>
-                    <Td className="min-w-40 max-w-65">
-                      {entry.note && (
-                        <p
-                          className={
-                            entry.state === "failed"
-                              ? "break-words text-destructive"
-                              : "break-words text-muted-foreground"
-                          }
-                        >
-                          {entry.note}
-                        </p>
-                      )}
-                      {entry.mergeSha && (
-                        <p className="text-xs text-muted-foreground">
-                          Commit merge: <code className="break-all text-foreground">{entry.mergeSha}</code>
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {entry.finishedAt
-                          ? `Hoàn tất ${formatDay(entry.finishedAt)}`
-                          : `Vào hàng ${formatDay(entry.createdAt)}`}
-                      </p>
-                    </Td>
-                    <Td className="max-w-50 break-all font-mono text-xs text-muted-foreground">
-                      {entry.taskId ?? entry.runId ?? "—"}
-                    </Td>
-                    <Td>
-                      {manage && (
-                        <div className="flex flex-wrap items-start gap-2">
-                          {canRemoveMerge(entry.state) && (
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => confirm({ kind: "remove", entry })}
-                              aria-label={`Đưa PR #${entry.prNumber} ra khỏi hàng`}
-                            >
-                              Bỏ khỏi hàng
-                            </Button>
-                          )}
-                          {canRetryMerge(entry.state) && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => confirm({ kind: "retry", entry })}
-                              aria-label={`Đưa lại PR #${entry.prNumber} vào hàng`}
-                            >
-                              {entry.state === "failed" ? "Thử lại" : "Đưa lại vào hàng"}
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </Td>
-                  </tr>
-                );
-              })}
+              {entries.map((entry) => (
+                <QueueRow key={entry.id} entry={entry} ranked={ranked} manage={manage} confirm={confirm} />
+              ))}
             </tbody>
           </Table>
-        </Card>
+        </div>
       )}
-    </section>
+    </PageSection>
+  );
+}
+
+function QueueRow({
+  entry,
+  ranked,
+  manage,
+  confirm,
+}: {
+  entry: MergeQueueEntry;
+  ranked: boolean;
+  manage: boolean;
+  confirm: (action: QueueAction) => void;
+}) {
+  const url = externalUrl(entry.prUrl);
+  const work = entry.taskId ?? entry.runId;
+  return (
+    <tr className="border-b border-border last:border-b-0">
+      {ranked && <Td className="w-16 tabular-nums">{entry.position ?? "—"}</Td>}
+      <Td className="min-w-52 max-w-80">
+        {url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono font-semibold text-primary underline underline-offset-2"
+          >
+            PR #{entry.prNumber}
+            <span className="sr-only"> (mở tab mới)</span>
+          </a>
+        ) : (
+          <b className="text-foreground">PR #{entry.prNumber}</b>
+        )}
+        <p className="break-all font-mono text-xs text-muted-foreground">
+          {entry.branch ?? "Chưa có nhánh"} · {entry.headSha?.slice(0, 7) ?? "—"}
+        </p>
+        {work && <p className="break-all font-mono text-xs text-muted-foreground">Việc / run: {work}</p>}
+      </Td>
+      <Td className="whitespace-nowrap">
+        <div className="grid justify-items-start gap-1.5">
+          <Pill tone={MERGE_STATE_TONE[entry.state]} dot>
+            {MERGE_STATE_LABEL[entry.state]}
+          </Pill>
+          <Pill tone={entry.ciState ? MERGE_CI_TONE[entry.ciState] : "neutral"}>
+            {entry.ciState ? MERGE_CI_LABEL[entry.ciState] : "CI chưa kiểm tra"}
+          </Pill>
+        </div>
+      </Td>
+      <Td className="min-w-40 max-w-65">
+        {entry.note && (
+          <p
+            className={entry.state === "failed" ? "break-words text-destructive" : "break-words text-muted-foreground"}
+          >
+            {entry.note}
+          </p>
+        )}
+        {entry.mergeSha && (
+          <p className="text-xs text-muted-foreground">
+            Commit merge: <code className="break-all text-foreground">{entry.mergeSha}</code>
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {entry.finishedAt ? `Hoàn tất ${formatDay(entry.finishedAt)}` : `Vào hàng ${formatDay(entry.createdAt)}`}
+        </p>
+      </Td>
+      {manage && (
+        // Ô ghim cần nền đặc, không thì chữ của cột cuộn bên dưới lộ ra ở màn rộng 640 px trở lên.
+        <Td className="bg-card text-right whitespace-nowrap sm:sticky sm:right-0 sm:shadow-[inset_1px_0_0_var(--border)]">
+          {canRemoveMerge(entry.state) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              onClick={() => confirm({ kind: "remove", entry })}
+            >
+              Đưa<span className="sr-only"> PR #{entry.prNumber}</span> ra khỏi hàng
+            </Button>
+          )}
+          {canRetryMerge(entry.state) && (
+            <Button variant="outline" size="sm" onClick={() => confirm({ kind: "retry", entry })}>
+              Đưa lại<span className="sr-only"> PR #{entry.prNumber}</span> vào hàng
+            </Button>
+          )}
+        </Td>
+      )}
+    </tr>
   );
 }
 
@@ -373,14 +416,16 @@ function EnqueueForm({ project, onDone }: { project: Project; onDone: () => Prom
   }
   return (
     <form noValidate onSubmit={submit} className="grid min-w-0 gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor={id} className="font-medium text-foreground">
-          Số PR
-        </label>
-        <div className="w-22 shrink-0">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="grid gap-1.5">
+          <label htmlFor={id} className="text-sm font-medium text-foreground">
+            Số PR
+          </label>
           <Input
             id={id}
             inputMode="numeric"
+            placeholder="Ví dụ 128"
+            className="w-32"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             disabled={enqueue.isPending}
