@@ -165,6 +165,17 @@ export const rtkUsage = z.object({
 export type RtkUsage = z.output<typeof rtkUsage>;
 
 /**
+ * Số liệu tiết kiệm token của worker trong lần thử: số file của context pack tiêm vào đầu run, số lệnh khảo sát bị hook
+ * ngân sách chặn trước lần sửa đầu, số ký tự output tool đã cắt khỏi ngữ cảnh. Luỹ kế như các trường cost.
+ */
+export const guardUsage = z.object({
+  contextPackFiles: z.number().int().min(0),
+  exploreBlocked: z.number().int().min(0),
+  truncatedChars: z.number().int().min(0),
+});
+export type GuardUsage = z.output<typeof guardUsage>;
+
+/**
  * `data` của sự kiện `cost`: usage luỹ kế của lần thử (không phải phần tăng thêm), gửi khi đổi, tối đa 5 giây một lần
  * và một lần cuối trước run_result. Trường CLI không báo là null.
  */
@@ -188,6 +199,8 @@ export const costEventData = z.object({
    * gặp loại sự kiện lạ). Chỉ gửi khi run đã dùng RTK.
    */
   rtk: rtkUsage.optional(),
+  /** Số của context pack, ngân sách khảo sát và cắt output; cùng lý do với `rtk`. Chỉ gửi khi run dùng chúng. */
+  guard: guardUsage.optional(),
 });
 export type CostEventData = z.output<typeof costEventData>;
 
