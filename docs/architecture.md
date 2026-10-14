@@ -75,7 +75,8 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `runs` | Máy trạng thái của run, lease, chính sách kết quả, review chéo, SSE | `runs`, `run_events`, `run_logs`, `run_leases` |
 | `fleet` | Máy, đăng ký, cổng WSS, phiên bản worker | `machines`, `machine_tokens`, `registration_tokens` |
 | `sandbox` | Image môi trường, allowlist mạng, cấu hình sandbox của tổ chức | `sandbox_org_settings`, `env_images`, `egress_allowlists` |
-| `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `proposals`, `legacy_*` |
+| `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, bộ skill mặc định của Hive (`packages/skill-pack`, bật/tắt theo tổ chức và dự án), đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `skill_pack_settings`, `proposals`, `legacy_*` |
+| `skilllearn` | Agent đề xuất skill sau việc khó (ADR 0025): chọn run đáng học, lô mỗi ngày mỗi dự án chạy run `skill_proposal` chỉ đọc, bỏ trùng, hạn mức theo ngày, duyệt thành PR vào kho skill hoặc skill của tổ chức, số liệu | `skill_learning_batches`, `skill_learning_marks`, `learned_skill_proposals` |
 | `leader` | Chat với leader agent, đề xuất hành động cần người duyệt | `chat_threads`, `chat_messages`, `approvals` |
 | `terminal` | Terminal Leader: phiên Claude CLI tương tác trên máy dùng chung, chuyển tiếp web ↔ worker qua `/ws/terminal`, bản ghi đã che bí mật (specs/010 lát đầu) | `terminal_sessions`, `terminal_chunks` |
 | `mcp` | Cổng MCP: xác thực token, giới hạn tool theo vai trò, ghi audit | — (dùng module khác) |
@@ -246,8 +247,12 @@ sequenceDiagram
   API-->>W: Màn tiến trình: dự án sẵn sàng
 ```
 
-**[Chưa làm]** trong luồng trên: nạp tài liệu và skill mặc định, đề nghị máy clone repo bằng token git ngắn hạn, tạo và giao task đầu tiên.
+**[Chưa làm]** trong luồng trên: nạp tài liệu mặc định, đề nghị máy clone repo bằng token git ngắn hạn, tạo và giao task đầu tiên.
 
+- Skill mặc định không cần nạp vào dự án: hub giữ bộ skill trong `packages/skill-pack` (bản ghim của `library/` trong
+  kho tdduydev/xdev-skills), mọi tổ chức thấy sẵn và bật/tắt theo tổ chức hoặc dự án (`skill_pack_settings`). Agent
+  đọc qua `skill_list`/`skill_get` (scope `hive`); với run code và review chạy Claude Code, worker lấy skill qua
+  `POST /api/v1/run/skills` (run token) và chép vào `.claude/skills/` của worktree, kèm `.gitignore` để không commit.
 - Saga chạy trên pg-boss (hàng `catalog-provision`). Các bước `check-access`, `create-repo` hoặc `link-repo`, `commit-template`, `protect-branch`, `add-webhook` ghi trạng thái vào `project_provision_steps`; bước lỗi dừng saga, báo thông báo và chạy lại được.
 - Template do hub giữ. Hub render file mẫu (AGENTS.md có project key, cấu hình MCP, skill) rồi commit bằng API. Cách này chạy được trên cả GitHub và GitLab gói Free. [20][21]
 - Không dùng Temporal: tự host cần nhiều service. Nếu saga phình ra nhiều loại, cân nhắc DBOS (thư viện chạy trên Postgres). [22]

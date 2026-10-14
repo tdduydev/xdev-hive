@@ -214,6 +214,28 @@ export const steerResultData = z.object({
 });
 export type SteerResultData = z.output<typeof steerResultData>;
 
+/**
+ * `POST /api/v1/run/skills` (Bearer run token): skill áp cho dự án của run, để worker chép vào `.claude/skills/` của
+ * worktree trước khi chạy Claude Code. Đi ngoài kênh WSS vì bộ skill nặng vài MB, không hợp với job_offer. `have` là
+ * hash worker đã có trong cache: hub bỏ `files` của những skill đó.
+ */
+export const runSkillsRequest = z.object({
+  have: z
+    .array(z.string().regex(/^[0-9a-f]{64}$/))
+    .max(500)
+    .default([]),
+});
+export const runSkill = z.object({
+  name: z.string(),
+  /** sha256 của nội dung skill; đổi nội dung thì đổi hash. */
+  hash: z.string(),
+  /** `hive` là bộ skill mặc định; còn lại là skill của tổ chức, đội, dự án trên hub. */
+  source: z.enum(["hive", "org", "team", "project"]),
+  files: z.array(z.object({ path: z.string(), text: z.string() })).optional(),
+});
+export const runSkillsResponse = z.object({ skills: z.array(runSkill) });
+export type RunSkillsResponse = z.output<typeof runSkillsResponse>;
+
 export const runEvent = z.object({
   ...envelope("run_event"),
   runId,

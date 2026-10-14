@@ -19,6 +19,7 @@ import {
   validateReviewsSearch,
   validateTasksSearch,
   validateTeamsSearch,
+  validateWorkflowsSearch,
 } from "@/lib/route-search.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
 
@@ -299,7 +300,12 @@ const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/skills", component: SkillsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory", component: MemoryPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/workflows", component: WorkflowsPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/workflows",
+    validateSearch: validateWorkflowsSearch,
+    component: WorkflowsPage,
+  }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/knowledge/reviews",

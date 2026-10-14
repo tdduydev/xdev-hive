@@ -8,6 +8,7 @@
 /* Component dùng chung (packages/ui) nằm ngoài src của app: chỉ cho Tailwind quét class trong đó. */
 @source "../../../packages/ui/src";
 @source "../../../packages/doc-editor/src";
+@source "../../../packages/code-review/src";
 
 /*
  * Design system v2: docs/design-system/xdev-hive/MASTER.md (UI UX Pro Max: Minimalism & Swiss, bảng màu công cụ dev,

@@ -413,7 +413,7 @@ export function HomeScreen() {
             {meta?.branch && <span className="font-mono"> · {meta.branch}</span>}
           </p>
         </div>
-        <Button render={<a href="#/docs" />} variant="default" size="sm">
+        <Button nativeButton={false} role="link" render={<a href="#/docs" />} variant="default" size="sm">
           {t.writeDocs}
         </Button>
       </header>
