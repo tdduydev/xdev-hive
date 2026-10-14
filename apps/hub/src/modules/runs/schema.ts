@@ -1,4 +1,4 @@
-import type { OutcomeCheck, RunExplore, RunResultView, RunRtk } from "@xdev-hive/contracts";
+import type { OutcomeCheck, RunExplore, RunResultView, RunRtk, RunTokenGuard } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -28,7 +28,16 @@ const orgScoped = (name: string) => pgPolicy(`${name}_rw`, { for: "all", to: hiv
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
-export const runKind = hive.enum("run_kind", ["code", "review", "plan", "leader", "doccheck", "docassist", "brief"]);
+export const runKind = hive.enum("run_kind", [
+  "code",
+  "review",
+  "plan",
+  "leader",
+  "doccheck",
+  "docassist",
+  "brief",
+  "skill_proposal",
+]);
 export const runState = hive.enum("run_state", [
   "queued",
   "planning",
@@ -118,6 +127,11 @@ export const runs = hive
        * thử mới ghi đè vì số luỹ kế là của một phiên agent.
        */
       rtk: jsonb("rtk").$type<RunRtk & { attempt: number }>(),
+      /**
+       * Context pack, lệnh khảo sát bị chặn và ký tự output đã cắt ở lần thử gần nhất (worker báo trong sự kiện cost).
+       * null khi run không dùng; lần thử mới ghi đè như rtk.
+       */
+      tokenGuard: jsonb("token_guard").$type<RunTokenGuard & { attempt: number }>(),
       /** Đề nghị job đang chờ máy trả lời; hết hạn thì hub đề nghị máy khác. */
       offerMachineId: uuid("offer_machine_id"),
       offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),

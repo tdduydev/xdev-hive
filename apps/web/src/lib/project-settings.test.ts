@@ -1,9 +1,51 @@
 import { ORPCError } from "@orpc/client";
-import { defaultProjectSettings, type ProjectSettings } from "@xdev-hive/contracts";
+import { defaultProjectSettings, type ProjectSettings, reviewWorkflow } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { buildPatch, fieldOfPath, formFromSettings, saveErrors } from "@/lib/project-settings.ts";
+import {
+  buildPatch,
+  codeWorkflowsForProject,
+  fieldOfPath,
+  formFromSettings,
+  saveErrors,
+} from "@/lib/project-settings.ts";
 
 const base = (): ProjectSettings => defaultProjectSettings(1);
+
+describe("quy trình code có thể áp dụng cho dự án", () => {
+  const teamId = "7e7e7e7e-0000-4000-8000-000000000001";
+  const workflow = reviewWorkflow.parse({
+    id: "7e7e7e7e-0000-4000-8000-000000000002",
+    name: "Review release",
+    preset: "code-basic",
+    subject: "code",
+    teamId,
+    docPrefixes: [],
+    code: { projects: ["pay"], baseBranches: ["release/*"] },
+    phases: [],
+    enabled: true,
+    updatedAt: "2026-10-13T00:00:00.000Z",
+    updatedBy: null,
+    inFlight: 0,
+  });
+  const code = workflow.code;
+  if (!code) throw new Error("Fixture phải có phạm vi code.");
+
+  it("giữ quy trình giới hạn nhánh và quy trình của đội hoặc tổ chức", () => {
+    const orgWorkflow = { ...workflow, teamId: null, code: { ...code, projects: [] } };
+    expect(codeWorkflowsForProject([workflow, orgWorkflow], { key: "pay", teamId })).toEqual([workflow, orgWorkflow]);
+  });
+
+  it("loại quy trình tắt, tài liệu, thiếu phạm vi, khác dự án hoặc khác đội", () => {
+    const candidates = [
+      { ...workflow, enabled: false },
+      { ...workflow, subject: "doc" as const },
+      { ...workflow, code: null },
+      { ...workflow, code: { ...code, projects: ["other"] } },
+      { ...workflow, teamId: "7e7e7e7e-0000-4000-8000-000000000003" },
+    ];
+    expect(codeWorkflowsForProject(candidates, { key: "pay", teamId })).toEqual([]);
+  });
+});
 
 describe("buildPatch: tiết kiệm token", () => {
   it("settings chưa có tokenSaving (hub cũ) hiện mặc định và không tạo bản vá", () => {
@@ -23,7 +65,7 @@ describe("buildPatch: tiết kiệm token", () => {
     expect(buildPatch(form, s)).toEqual({ ok: true, patch: null });
   });
 
-  it("chỉ gửi mục tokenSaving khi đổi, đủ bảy trường", () => {
+  it("chỉ gửi mục tokenSaving khi đổi, đủ mọi trường", () => {
     const s = base();
     const form = { ...formFromSettings(s), cacheTtl: "1h" as const, bashMaxChars: " 20000 " };
     expect(buildPatch(form, s)).toEqual({
@@ -39,9 +81,25 @@ describe("buildPatch: tiết kiệm token", () => {
           allowWeb: false,
           rtk: true,
           codegraph: true,
+          contextPack: true,
+          exploreBudget: 4,
+          toolOutputMaxChars: 12000,
         },
       },
     });
+  });
+
+  it("context pack, ngân sách khảo sát và cắt output: 0 là tắt, ô sai báo đúng ô", () => {
+    const s = base();
+    const off = { ...formFromSettings(s), contextPack: false, exploreBudget: "0", toolOutputMaxChars: "0" };
+    expect(buildPatch(off, s)).toMatchObject({
+      ok: true,
+      patch: { tokenSaving: { contextPack: false, exploreBudget: 0, toolOutputMaxChars: 0 } },
+    });
+    const empty = buildPatch({ ...formFromSettings(s), exploreBudget: "" }, s);
+    expect(empty).toMatchObject({ ok: false, errors: { exploreBudget: "Nhập một số." } });
+    const small = buildPatch({ ...formFromSettings(s), toolOutputMaxChars: "500" }, s);
+    expect(small).toMatchObject({ ok: false, errors: { toolOutputMaxChars: "Nhập 0 (tắt) hoặc từ 2.000 ký tự." } });
   });
 
   it("tắt RTK hoặc CodeGraph tạo bản vá và đọc lại đúng từ settings đã lưu", () => {

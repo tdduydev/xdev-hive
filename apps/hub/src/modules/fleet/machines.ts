@@ -29,6 +29,8 @@ export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
   capabilities: m.capabilities,
   accounts: m.accounts,
   accountsAt: m.accountsAt?.toISOString() ?? null,
+  boundProjects: m.boundProjects,
+  fullProjects: m.fullProjects,
 });
 
 /**
@@ -472,6 +474,34 @@ export async function machineQuotas(tx: Tx, userId: string) {
     .from(machines)
     .where(and(eq(machines.registeredBy, userId), eq(machines.kind, "worker"), isNull(machines.revokedAt)))
     .orderBy(desc(machines.lastSeenAt));
+}
+
+/**
+ * Máy dùng chung của đội cho terminal Leader (specs/010 lát đầu): máy worker chưa thu hồi, kèm trạng thái, capability,
+ * dự án đã gắn và tóm tắt gói. Máy cá nhân không có ở đây: chưa mở được từ xa khi chưa có passkey (FR-012).
+ */
+export async function sharedWorkerMachines(tx: Tx, teamId: string) {
+  return tx
+    .select({
+      id: machines.id,
+      teamId: machines.teamId,
+      name: machines.name,
+      capabilities: machines.capabilities,
+      boundProjects: machines.boundProjects,
+      fullProjects: machines.fullProjects,
+      accounts: machines.accounts,
+      online: sql<boolean>`${machines.status} = 'online' and ${machines.pausedAt} is null`,
+    })
+    .from(machines)
+    .where(
+      and(
+        eq(machines.teamId, teamId),
+        eq(machines.kind, "worker"),
+        eq(machines.shared, true),
+        isNull(machines.revokedAt),
+      ),
+    )
+    .orderBy(machines.name);
 }
 
 /** Máy trong tổ chức của context (kể cả offline), để kiểm máy người dùng chỉ định khi giao run. */

@@ -55,6 +55,18 @@ export {
   startReview,
 } from "./reviews.ts";
 export { type BriefPort, type DocAssistPort, knowledgeRouter } from "./router.ts";
+export { handleRunSkills } from "./run-skills.ts";
+export {
+  applyLearnedSkill,
+  assertCanManageScope,
+  currentSkillContent,
+  findSkillForProject,
+  hasSkillRepo,
+  type LearningCorpus,
+  openLearnedSkillPR,
+  skillLearningCorpus,
+} from "./skill-learning.ts";
+export { getPackSkill, listSkillPack, setSkillPack } from "./skill-pack.ts";
 export {
   handleSkillWebhook,
   registerSkillGitWorker,
@@ -64,4 +76,4 @@ export {
   skillGitQueue,
   syncSkillRepo,
 } from "./skill-repo.ts";
-export { getSkill, listSkills, saveSkill } from "./skills.ts";
+export { currentSkillVersion as skillVersionIn, getSkill, listSkills, saveSkill } from "./skills.ts";

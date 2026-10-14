@@ -425,7 +425,8 @@ describe("đường dẫn, slug, key tài liệu", () => {
 describe("vai trò và quyền (FR-061, D27)", () => {
   it("team-ba có đúng quyền soạn và duyệt tài liệu", () => {
     expect([...SYSTEM_ROLE_PERMISSIONS["team-ba"]].sort()).toEqual(
-      ["docs.read", "proposals.create", "runs.read", "sdlc.read", "sdlc.write", "tasks.read"].sort(),
+      // leader.terminal: BA/PO mở terminal Leader của dự án đội mình (FR-067).
+      ["docs.read", "leader.terminal", "proposals.create", "runs.read", "sdlc.read", "sdlc.write", "tasks.read"].sort(),
     );
     expect(teamRole.parse("ba")).toBe("ba");
   });

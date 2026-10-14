@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { reviewWorkflow } from "@xdev-hive/contracts";
 import { fail, fakeHub, ok, type RpcHandler } from "./fake-hub.ts";
 
 const NOW = "2026-10-11T07:10:00.000Z";
@@ -112,6 +113,64 @@ async function open(page: Page, role: "admin" | "member", rpc: Record<string, Rp
   await page.addInitScript(() => localStorage.setItem("hive.org", "0a0a0a0a-0000-4000-8000-00000000000a"));
   return fakeHub(page, { signedIn: true, rpc: { ...hub(role), ...rpc } });
 }
+
+test("cấu hình dự án: báo quy trình code giới hạn nhánh đang thay review chéo", async ({ page }) => {
+  const workflow = reviewWorkflow.parse({
+    id: "7e7e7e7e-0000-4000-8000-000000000002",
+    name: "Review release",
+    subject: "code",
+    preset: "code-basic",
+    teamId: TEAM_ID,
+    docPrefixes: [],
+    code: { projects: ["pay"], baseBranches: ["release/*"] },
+    phases: [],
+    enabled: true,
+    updatedAt: NOW,
+    updatedBy: null,
+    inFlight: 0,
+  });
+  const h = await open(page, "admin", {
+    "projects/list": () => ok([{ ...PROJECT, key: "pay" }]),
+    "reviewWorkflows/list": () => ok([workflow, { ...workflow, name: "Đã tắt", enabled: false }]),
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/projects/pay/settings");
+  const note = page.getByRole("link", {
+    name: "Quy trình Review release đang thay review chéo cho run khớp phạm vi.",
+  });
+  await expect(note).toBeVisible();
+  await expect(note).toHaveAttribute("href", "/knowledge/workflows");
+  await expect(page.getByText(/Bảo vệ nhánh: yêu cầu status xdev-hive\/review/)).toBeVisible();
+  await expect(page.getByText(/Quy trình Đã tắt đang thay/)).toHaveCount(0);
+  expect(h.rpcCalls.filter((c) => c.path === "projects/updateSettings")).toHaveLength(0);
+  await note.click();
+  await expect(page).toHaveURL(/\/knowledge\/workflows$/);
+});
+
+test("cấu hình dự án: nút tạo quy trình dẫn tới trang Quy trình duyệt với dự án nguồn", async ({ page }) => {
+  await open(page, "admin", {
+    "projects/list": () => ok([{ ...PROJECT, key: "pay" }]),
+    "reviewWorkflows/list": () => ok([]),
+  });
+  await page.goto("/projects/pay/settings");
+  const create = page.getByRole("link", { name: "Tạo quy trình từ cấu hình này" });
+  await expect(create).toHaveAttribute("href", "/knowledge/workflows?duan=pay");
+});
+
+test("cấu hình dự án: người chỉ đọc không thấy nút tạo quy trình", async ({ page }) => {
+  await open(page, "member", { "reviewWorkflows/list": () => ok([]) });
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByRole("heading", { name: "Review chéo", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tạo quy trình từ cấu hình này" })).toHaveCount(0);
+});
+
+test("cấu hình dự án: chưa có quy trình code thì không báo thay review chéo", async ({ page }) => {
+  await open(page, "admin", { "reviewWorkflows/list": () => ok([]) });
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByRole("heading", { name: "Review chéo", exact: true })).toBeVisible();
+  await expect(page.getByText(/đang thay review chéo/)).toHaveCount(0);
+  await expect(page.getByText(/Bảo vệ nhánh: yêu cầu status/)).toHaveCount(0);
+});
 
 test("danh sách dự án: hiện dự án và dẫn tới bảng việc của dự án", async ({ page }) => {
   await open(page, "member");
@@ -252,6 +311,66 @@ test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async
   await expect(page.getByText("Chính sách agent của tổ chức không cho dự án bật toàn quyền")).toBeVisible();
   await expect(page.getByLabel(/Toàn quyền/)).toBeDisabled();
   await expect(page.getByLabel(/Trong worktree/)).toBeEnabled();
+});
+
+test("cấu hình dự án: quản trị đội thấy máy đã gắn repo local và máy bật toàn quyền", async ({ page }) => {
+  const machine = (id: string, name: string, over: Record<string, unknown>) => ({
+    id,
+    teamId: TEAM_ID,
+    kind: "worker",
+    name,
+    os: "darwin",
+    version: "0.9.0",
+    clis: ["claude"],
+    capacity: 2,
+    status: "online",
+    lastSeenAt: NOW,
+    createdAt: NOW,
+    shared: true,
+    registeredBy: null,
+    ...over,
+  });
+  const h = await open(page, "admin", {
+    "machines/list": () =>
+      ok([
+        machine("3c3c3c3c-0000-4000-8000-000000000001", "mac-mini-lan", {
+          boundProjects: [PROJECT.id],
+          fullProjects: [PROJECT.id],
+        }),
+        machine("3c3c3c3c-0000-4000-8000-000000000002", "dev-ha", { boundProjects: [PROJECT.id], fullProjects: [] }),
+        machine("3c3c3c3c-0000-4000-8000-000000000003", "may-khac", { boundProjects: ["other"], fullProjects: [] }),
+        machine("3c3c3c3c-0000-4000-8000-000000000004", "da-thu-hoi", {
+          status: "revoked",
+          boundProjects: [PROJECT.id],
+        }),
+      ]),
+  });
+  await page.goto("/projects/PAY/settings");
+  const section = page.getByRole("group", { name: "Máy đã gắn dự án này" });
+  const rows = section.getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("mac-mini-lan");
+  await expect(rows.nth(0)).toContainText("Đã gắn repo local");
+  await expect(rows.nth(0)).toContainText("Toàn quyền");
+  await expect(rows.nth(1)).toContainText("dev-ha");
+  await expect(rows.nth(1)).not.toContainText("Toàn quyền");
+  await expect(section).not.toContainText("may-khac");
+  await expect(section).not.toContainText("da-thu-hoi");
+  expect(h.rpcCalls.find((c) => c.path === "machines/list")?.input).toEqual({ teamId: TEAM_ID });
+});
+
+test("cấu hình dự án: chưa máy nào gắn thì báo trống", async ({ page }) => {
+  await open(page, "admin", { "machines/list": () => ok([]) });
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByText("Chưa máy nào gắn dự án này với repo local.")).toBeVisible();
+});
+
+test("cấu hình dự án: thành viên thường không thấy mục máy và không gọi danh sách máy", async ({ page }) => {
+  const h = await open(page, "member");
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByRole("heading", { name: "Quyền CLI của run" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Máy đã gắn dự án này" })).toHaveCount(0);
+  expect(h.rpcCalls.filter((c) => c.path === "machines/list")).toHaveLength(0);
 });
 
 test("cấu hình dự án: thành viên thường chỉ xem", async ({ page }) => {

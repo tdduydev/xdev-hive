@@ -446,8 +446,36 @@
     {
       "idx": 63,
       "version": "7",
-      "when": 1791918573046,
-      "tag": "0063_chat_channels",
+      "when": 1791915907448,
+      "tag": "0063_skill_pack_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791919685620,
+      "tag": "0064_skill_learning",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1791948177083,
+      "tag": "0065_terminal_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791954452821,
+      "tag": "0066_runs_token_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791960059899,
+      "tag": "0067_chat_channels",
       "breakpoints": true
     }
   ]

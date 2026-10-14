@@ -28,4 +28,6 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0020](0020-local-project-folders-and-machine-full-permission.md) | Bind hub projects to local repositories, and grant full permission per project on the machine | Accepted |
 | [0021](0021-ai-sdlc-mode.md) | Run an AI SDLC mode as data-defined presets over existing review, task and run machinery | Accepted |
 | [0022](0022-project-brief-and-agent-memory.md) | Give every run a project brief, let agents propose memories, and measure exploration before the first edit | Proposed |
+| [0023](0023-artifacts.md) | Store versioned artifacts in the hub and run interactive ones in a sandboxed frame on a separate CSP | Accepted |
 | [0024](0024-chat-channels.md) | Reach Hive from Telegram and Slack through commands that skip the LLM, and send free text to Leader only | Proposed |
+| [0025](0025-agent-skill-learning.md) | Let agents propose skills after hard tasks, in cheap daily batches that a team admin approves | Proposed |

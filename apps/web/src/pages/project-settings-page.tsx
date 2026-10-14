@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Project, ProjectSettings } from "@xdev-hive/contracts";
+import type { Machine, Project, ProjectSettings } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
-import { Button } from "@xdev-hive/ui/button";
+import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { LockIcon } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
@@ -16,8 +17,10 @@ import { Switch } from "@/components/ui/switch.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
+import { usePermissions } from "@/lib/permissions.ts";
 import {
   buildPatch,
+  codeWorkflowsForProject,
   type FieldErrors,
   formFromSettings,
   type PermissionMode,
@@ -30,6 +33,7 @@ import {
   type TierForm,
 } from "@/lib/project-settings.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -60,6 +64,9 @@ const text: Dict<{
   queueHint: string;
   reviewTitle: string;
   reviewHint: string;
+  workflowReview: (name: string) => string;
+  workflowProtection: string;
+  workflowCreate: string;
   reviewOn: string;
   reviewAgent: string;
   minScore: string;
@@ -98,6 +105,12 @@ const text: Dict<{
   rtkHint: string;
   codegraph: string;
   codegraphHint: string;
+  contextPack: string;
+  contextPackHint: string;
+  exploreBudget: string;
+  exploreBudgetHint: string;
+  toolOutput: string;
+  toolOutputHint: string;
   bashChars: string;
   bashCharsHint: string;
   compactPct: string;
@@ -132,6 +145,15 @@ const text: Dict<{
   pFullHint: string;
   fullBanner: string;
   fullLocked: string;
+  machinesTitle: string;
+  machinesHint: string;
+  machinesLoading: string;
+  machinesFailed: (error: string) => string;
+  machinesEmpty: string;
+  machineBound: string;
+  machineFull: string;
+  machineFullIdle: string;
+  machineStatus: Record<Machine["status"], string>;
   unsavedChanges: (n: number) => string;
   savedBanner: string;
   discard: string;
@@ -180,6 +202,10 @@ const text: Dict<{
     queueHint: "PR vào hàng, hub cập nhật nhánh theo nhánh chính và merge lần lượt từng PR.",
     reviewTitle: "Review chéo",
     reviewHint: "Sau khi agent xong, một agent khác review thay đổi trước khi kết luận run.",
+    workflowReview: (name) => `Quy trình ${name} đang thay review chéo cho run khớp phạm vi.`,
+    workflowProtection:
+      "Bảo vệ nhánh: yêu cầu status xdev-hive/review và đặt số người approve về 0. Phê duyệt trên GitHub/GitLab không được tính vào checkpoint.",
+    workflowCreate: "Tạo quy trình từ cấu hình này",
     reviewOn: "Bật review chéo",
     reviewAgent: "Agent review",
     minScore: "Điểm tối thiểu",
@@ -221,6 +247,15 @@ const text: Dict<{
     rtkHint: "Chỉ áp khi máy chạy run có rtk, và chỉ với Claude Code.",
     codegraph: "Gắn CodeGraph cho agent",
     codegraphHint: "Chỉ áp khi máy chạy run có codegraph. Agent tìm symbol, caller qua codegraph_explore thay vì grep.",
+    contextPack: "Dựng context pack trước run",
+    contextPackHint:
+      "Worker chọn sẵn các file liên quan tới task (đường dẫn, symbol nhắc tới, file hay đổi cùng) và đưa vào đầu run, để agent khỏi dò repo.",
+    exploreBudget: "Ngân sách khảo sát",
+    exploreBudgetHint:
+      "Số lệnh dò cả repo (find, ls -R, grep -r…) agent được chạy trước lần sửa đầu; quá thì bị từ chối. 0 là tắt. Chỉ Claude Code.",
+    toolOutput: "Cắt output tool dài",
+    toolOutputHint:
+      "Output dài hơn bị cắt, giữ đầu, cuối và dòng lỗi; bản đầy đủ lưu ra file cho agent đọc theo đoạn. 0 là tắt. Chỉ Claude Code.",
     bashChars: "Output lệnh tối đa",
     bashCharsHint: "Ký tự giữ lại từ một lệnh Bash. Output dài bị đọc lại ở mọi lượt sau nên rất tốn.",
     compactPct: "Tự nén ngữ cảnh khi đầy",
@@ -260,6 +295,16 @@ const text: Dict<{
       "Tắt sandbox và mọi bước hỏi duyệt của CLI. Chỉ dùng trong container dùng một lần hoặc máy riêng cho agent.",
     fullBanner: "Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.",
     fullLocked: "Chính sách agent của tổ chức không cho dự án bật toàn quyền; run chạy trong worktree.",
+    machinesTitle: "Máy đã gắn dự án này",
+    machinesHint:
+      "Máy của đội đã gắn dự án với một repo local, và máy đã bật toàn quyền cho dự án (cài ở app desktop trên máy đó). Chỉ để xem.",
+    machinesLoading: "Đang tải danh sách máy…",
+    machinesFailed: (error) => `Không tải được danh sách máy: ${error}`,
+    machinesEmpty: "Chưa máy nào gắn dự án này với repo local.",
+    machineBound: "Đã gắn repo local",
+    machineFull: "Toàn quyền",
+    machineFullIdle: "Toàn quyền đang bị chính sách tổ chức chặn",
+    machineStatus: { online: "Sẵn sàng", offline: "Mất kết nối", paused: "Tạm dừng", revoked: "Đã thu hồi" },
     unsavedChanges: (n) => `Có ${n} thay đổi chưa lưu`,
     savedBanner: "Đã lưu cấu hình. Run giao sau đây dùng cấu hình mới.",
     discard: "Bỏ thay đổi",
@@ -311,6 +356,10 @@ const text: Dict<{
     queueHint: "PRs queue up; the hub rebases each on main and merges them one by one.",
     reviewTitle: "Cross-review",
     reviewHint: "After an agent finishes, another agent reviews the change before the run concludes.",
+    workflowReview: (name) => `Workflow ${name} replaces cross-review for runs matching its scope.`,
+    workflowProtection:
+      "Branch protection: require the xdev-hive/review status and set required approvals to 0. GitHub/GitLab approvals do not count towards checkpoints.",
+    workflowCreate: "Create a workflow from this configuration",
     reviewOn: "Enable cross-review",
     reviewAgent: "Reviewing agent",
     minScore: "Minimum score",
@@ -352,6 +401,15 @@ const text: Dict<{
     codegraph: "Attach CodeGraph to the agent",
     codegraphHint:
       "Applies only when the machine has codegraph. The agent finds symbols and callers through codegraph_explore instead of grep.",
+    contextPack: "Build a context pack before the run",
+    contextPackHint:
+      "The worker picks files related to the task (mentioned paths and symbols, files often changed together) and puts them at the start of the run, so the agent does not scan the repo.",
+    exploreBudget: "Exploration budget",
+    exploreBudgetHint:
+      "How many repo-wide scans (find, ls -R, grep -r…) the agent may run before its first edit; more are refused. 0 turns it off. Claude Code only.",
+    toolOutput: "Trim long tool output",
+    toolOutputHint:
+      "Longer output is trimmed to its start, end and error lines; the full text is saved to a file the agent can read in parts. 0 turns it off. Claude Code only.",
     bashChars: "Max command output",
     bashCharsHint:
       "Characters kept from one Bash command. Long output is re-read on every later turn, so it is costly.",
@@ -394,6 +452,16 @@ const text: Dict<{
       "Turns off the CLI sandbox and every approval prompt. Only for throwaway containers or machines dedicated to agents.",
     fullBanner: "Runs in this project use the full rights of the account on the machine that picks them up.",
     fullLocked: "The organization's agent policy does not let projects enable full access; runs stay in the worktree.",
+    machinesTitle: "Machines linked to this project",
+    machinesHint:
+      "Team machines that linked this project to a local repository, and machines that turned on full access for it (set in the desktop app on that machine). Read only.",
+    machinesLoading: "Loading machines…",
+    machinesFailed: (error) => `Could not load machines: ${error}`,
+    machinesEmpty: "No machine has linked this project to a local repository yet.",
+    machineBound: "Local repo linked",
+    machineFull: "Full access",
+    machineFullIdle: "Full access is blocked by the organization policy",
+    machineStatus: { online: "Ready", offline: "Offline", paused: "Paused", revoked: "Revoked" },
     unsavedChanges: (n) => `${n} unsaved changes`,
     savedBanner: "Settings saved. Subsequent runs will use the new settings.",
     discard: "Discard",
@@ -493,6 +561,55 @@ function Section({ id, title, hint, children }: { id?: string; title?: string; h
   );
 }
 
+/** Máy của đội đã gắn dự án với repo local hay bật toàn quyền cho dự án (ADR 0020); chỉ đọc. */
+function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked: boolean }) {
+  const { api } = useOrg();
+  const t = useT(text);
+  const machines = useQuery({
+    ...api.machines.list.queryOptions({ input: { teamId: project.teamId } }),
+    retry: false,
+  });
+  // Máy đã thu hồi không nhận run nữa, nên không đáng hiện ở đây.
+  const linked = (machines.data ?? []).filter(
+    (m) => m.status !== "revoked" && (m.boundProjects?.includes(project.id) || m.fullProjects?.includes(project.id)),
+  );
+  return (
+    <Section id="machines" title={t.machinesTitle} hint={t.machinesHint}>
+      {machines.isPending ? (
+        <p aria-busy="true" className="text-sm text-muted-foreground">
+          {t.machinesLoading}
+        </p>
+      ) : machines.isError ? (
+        <Alert variant="destructive">{t.machinesFailed(apiErrorMessage(machines.error))}</Alert>
+      ) : linked.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t.machinesEmpty}</p>
+      ) : (
+        <ul className="m-0 grid list-none gap-2 p-0">
+          {linked.map((m) => (
+            <li
+              key={m.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border px-3.5 py-2.5 text-sm"
+            >
+              <strong className="font-medium text-foreground">{m.name}</strong>
+              <span className="text-xs text-muted-foreground">{m.os}</span>
+              <Pill tone={m.status === "online" ? "ok" : m.status === "paused" ? "warn" : "neutral"}>
+                {t.machineStatus[m.status]}
+              </Pill>
+              <span className="flex-1" />
+              {m.boundProjects?.includes(project.id) && <Pill tone="sel">{t.machineBound}</Pill>}
+              {m.fullProjects?.includes(project.id) && (
+                <Pill tone={fullLocked ? "neutral" : "warn"} title={fullLocked ? t.machineFullIdle : undefined}>
+                  {t.machineFull}
+                </Pill>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
 function SwitchRow({
   label,
   hint,
@@ -565,8 +682,12 @@ function TextField({
 }
 
 function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canEdit: boolean; canBrief: boolean }) {
-  const { api } = useOrg();
+  const { org, api } = useOrg();
   const t = useT(text);
+  const workflows = useQuery({ ...api.reviewWorkflows.list.queryOptions(), retry: false });
+  const codeWorkflows = codeWorkflowsForProject(workflows.data ?? [], project);
+  const can = usePermissions();
+  const canCreateWorkflow = isOrgAdmin(org.role) || can("workflows.write");
   // Hub cũ chưa có chính sách thì coi như không khoá, như trước.
   const policy = useQuery({ ...api.policies.get.queryOptions(), retry: false });
   const fullLocked = policy.data?.allowFullPermission === false;
@@ -647,6 +768,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
     { href: "#model", label: t.modelTitle },
     { href: "#tokens", label: t.tokensTitle },
     { href: "#perm", label: t.permTitle },
+    ...(canEdit ? [{ href: "#machines", label: t.machinesTitle }] : []),
   ];
 
   return (
@@ -751,6 +873,31 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           </Section>
 
           <Section id="review" title={t.reviewTitle} hint={t.reviewHint}>
+            {codeWorkflows.length > 0 && (
+              <Alert>
+                <div className="grid gap-2 break-words">
+                  {codeWorkflows.map((workflow) => (
+                    <Link
+                      key={workflow.id}
+                      to="/knowledge/workflows"
+                      className="text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
+                    >
+                      {t.workflowReview(workflow.name)}
+                    </Link>
+                  ))}
+                  <p>{t.workflowProtection}</p>
+                </div>
+              </Alert>
+            )}
+            {canCreateWorkflow && (
+              <Link
+                to="/knowledge/workflows"
+                search={{ duan: project.key }}
+                className={cx(buttonVariants({ variant: "outline" }), "w-fit")}
+              >
+                {t.workflowCreate}
+              </Link>
+            )}
             <SwitchRow
               label={t.reviewOn}
               checked={form.crossReview}
@@ -980,7 +1127,34 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               onChange={(v) => set("codegraph", v)}
               disabled={disabled || !form.tokenSaving}
             />
+            <SwitchRow
+              label={t.contextPack}
+              hint={t.contextPackHint}
+              checked={form.contextPack}
+              onChange={(v) => set("contextPack", v)}
+              disabled={disabled || !form.tokenSaving}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label={t.exploreBudget}
+                hint={t.exploreBudgetHint}
+                error={errors.exploreBudget}
+                value={form.exploreBudget}
+                onChange={(v) => set("exploreBudget", v)}
+                disabled={disabled || !form.tokenSaving}
+                inputMode="numeric"
+                suffix="lệnh"
+              />
+              <TextField
+                label={t.toolOutput}
+                hint={t.toolOutputHint}
+                error={errors.toolOutputMaxChars}
+                value={form.toolOutputMaxChars}
+                onChange={(v) => set("toolOutputMaxChars", v)}
+                disabled={disabled || !form.tokenSaving}
+                inputMode="numeric"
+                suffix="ký tự"
+              />
               <TextField
                 label={t.bashChars}
                 hint={t.bashCharsHint}
@@ -1163,6 +1337,9 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             )}
             {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
           </Section>
+
+          {/* Hub chỉ cho quản trị đội xem danh sách máy, nên thành viên thường không có mục này. */}
+          {canEdit && <ProjectMachines project={project} fullLocked={fullLocked} />}
         </div>
       </div>
 

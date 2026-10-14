@@ -26,6 +26,9 @@ export const notificationEvent = z.enum([
   "sdlc.project_added",
   "sdlc.auto_approved",
   "sdlc.auto_revoked",
+  // Artifact (specs/012): dung lượng tổ chức vượt 80%; link công khai bị quản trị thu hồi hay hết hiệu lực do sự kiện.
+  "artifact.quota",
+  "artifact.public_link.revoked",
 ]);
 export type NotificationEvent = z.output<typeof notificationEvent>;
 

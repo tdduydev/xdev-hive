@@ -1,11 +1,21 @@
 import { z } from "zod";
+import { artifactPageErrors, artifactType } from "./artifacts.ts";
 import { id, orgRoute } from "./common.ts";
-import { projectSettingsPatch } from "./projects.ts";
+import { projectSettingsPatch, taskTier } from "./projects.ts";
 import { sdlcItemCreate } from "./sdlc.ts";
 import { cli } from "./worker-protocol.ts";
 
 export const leaderRole = z.enum(["user", "leader", "system"]);
 export const approvalStatus = z.enum(["pending", "approved", "rejected", "expired"]);
+
+/**
+ * Cấp độ Leader gắn cho task hay run nó đề xuất, kèm lý do ngắn. Hub chọn model/effort theo cấp (định tuyến của dự án);
+ * người duyệt sửa được cấp trước khi duyệt. Đề xuất cũ không có cấp: hub tự suy như run thường.
+ */
+const leveled = {
+  tier: taskTier.optional(),
+  tierReason: z.string().trim().max(500).optional(),
+};
 
 export const leaderAction = z.discriminatedUnion("type", [
   z.object({
@@ -13,8 +23,9 @@ export const leaderAction = z.discriminatedUnion("type", [
     projectId: id,
     title: z.string().trim().min(1).max(200),
     body: z.string().max(50_000).default(""),
+    ...leveled,
   }),
-  z.object({ type: z.literal("run.dispatch"), taskId: id, cli: cli.optional() }),
+  z.object({ type: z.literal("run.dispatch"), taskId: id, cli: cli.optional(), ...leveled }),
   z.object({ type: z.literal("run.cancel"), runId: id }),
   z.object({
     type: z.literal("project.settings"),
@@ -26,12 +37,42 @@ export const leaderAction = z.discriminatedUnion("type", [
 ]);
 export type LeaderAction = z.output<typeof leaderAction>;
 
+/**
+ * Ý nghĩa từng cấp độ để Leader chọn nhất quán (tool MCP `leader_tiers` trả bảng này cùng model/effort của dự án).
+ * Mặc định khớp `defaultRouting`: nhẹ sonnet + medium, vừa sonnet + high, nặng opus + high.
+ */
+export const LEADER_TIER_GUIDE = [
+  { tier: "light", label: "Nhẹ", meaning: "Tài liệu, đổi chữ, sửa cấu hình nhỏ, thêm hoặc sửa test nhỏ." },
+  { tier: "medium", label: "Vừa", meaning: "Một màn giao diện, CRUD kèm e2e, refactor gọn trong một module." },
+  {
+    tier: "heavy",
+    label: "Nặng",
+    meaning: "Nhiều module, giao thức, bảo mật, migration dữ liệu, hiệu năng, việc khó cần suy luận sâu.",
+  },
+] as const satisfies readonly { tier: z.output<typeof taskTier>; label: string; meaning: string }[];
+
+/** Thẻ artifact trong tin nhắn (specs/012 C12, D10). */
+export const chatArtifactRef = z.object({
+  id,
+  version: z.int().min(1),
+  title: z.string(),
+  type: artifactType,
+  /** Artifact đang trong thùng rác: thẻ hiện "Artifact đã bị xoá". Xoá hẳn thì `artifact` của tin nhắn thành null. */
+  deleted: z.boolean().default(false),
+});
+export type ChatArtifactRef = z.output<typeof chatArtifactRef>;
+
 export const chatMessage = z.object({
   id,
   role: leaderRole,
+  // Tin nhắn thẻ vẫn có `content` là tiêu đề artifact, để client chưa biết thẻ hiện được chữ.
   content: z.string(),
   runId: id.nullable(),
   createdAt: z.iso.datetime(),
+  // Có mặc định vì hub trước specs/012 không trả hai trường này.
+  artifact: chatArtifactRef.nullable().default(null),
+  /** Tin "Nhờ Leader sửa" (C18): lỗi của trang, dữ liệu không tin cậy do trang viết. */
+  pageErrors: artifactPageErrors.nullable().default(null),
 });
 export type ChatMessage = z.output<typeof chatMessage>;
 
@@ -73,10 +114,11 @@ export const leaderContract = {
   },
   approvals: {
     list: orgRoute("GET", "/v1/leader/approvals", "Đề xuất đang chờ duyệt", "leader")
-      .input(z.object({ status: approvalStatus.optional() }))
+      .input(z.object({ status: approvalStatus.optional(), threadId: id.optional() }))
       .output(z.array(approval)),
     approve: orgRoute("POST", "/v1/leader/approvals/{id}/approve", "Duyệt đề xuất của leader", "leader")
-      .input(z.object({ id }))
+      // `tier`: người duyệt đổi cấp độ Leader đã chọn (chỉ với task.create và run.dispatch).
+      .input(z.object({ id, tier: taskTier.optional() }))
       .output(z.object({ approval, result: z.record(z.string(), z.unknown()).nullable() })),
     reject: orgRoute("POST", "/v1/leader/approvals/{id}/reject", "Từ chối đề xuất của leader", "leader")
       .input(z.object({ id, reason: z.string().trim().min(1).max(2000) }))
