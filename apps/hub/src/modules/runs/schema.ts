@@ -28,7 +28,16 @@ const orgScoped = (name: string) => pgPolicy(`${name}_rw`, { for: "all", to: hiv
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
-export const runKind = hive.enum("run_kind", ["code", "review", "plan", "leader", "doccheck", "docassist", "brief"]);
+export const runKind = hive.enum("run_kind", [
+  "code",
+  "review",
+  "plan",
+  "leader",
+  "doccheck",
+  "docassist",
+  "brief",
+  "sdlc",
+]);
 export const runState = hive.enum("run_state", [
   "queued",
   "planning",
@@ -80,6 +89,8 @@ export const runs = hive
       model: text("model"),
       /** Cấp độ task do người đặt tay (light|medium|heavy); null là hub suy từ task (routing.ts). */
       tier: text("tier").$type<"light" | "medium" | "heavy">(),
+      /** Chỉ giao cho máy có đủ các nhãn này (specs/011 FR-040); chép từ cài đặt AI SDLC của dự án lúc tạo run. */
+      requiredLabels: text("required_labels").array().notNull().default(sql`'{}'::text[]`),
       branch: text("branch").notNull(),
       /** Chính sách kết quả chốt lúc giao, để cấu hình dự án đổi sau không đổi kết quả của run. */
       policySnapshot: jsonb("policy_snapshot").$type<OutcomeCheck[]>().notNull(),
