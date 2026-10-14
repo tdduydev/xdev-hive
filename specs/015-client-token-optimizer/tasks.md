@@ -199,7 +199,8 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - `apps/desktop/src/components/memory-compress-dialog.tsx` (mới) và test.
     - `apps/desktop/src/screens/memory-screen.tsx`: một nút mở dialog.
 
-- [ ] **T012 [P] [US6] [vừa] Đồng bộ memory với hub khi đã đăng nhập**
+- [x] **T012 [P] [US6] [vừa] Đồng bộ memory với hub khi đã đăng nhập**
+  - **Còn lại**: chèn `<MemoryHubSync projectKey items />` vào `memory-screen.tsx` chờ T009 merge. Hub cần thêm cờ `source: "machine"`.
   - **Goal**:
     - Kiểm `memoryContract.write` và `proposalsContract.create` trong `packages/contracts/src/knowledge.ts` xem có tạo
       được memory chờ duyệt từ máy không.
