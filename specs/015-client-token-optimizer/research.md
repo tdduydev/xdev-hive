@@ -207,3 +207,52 @@ Vấn đề:
 - Chia nguồn theo đường dẫn và `entrypoint` là heuristic: phiên "interactive" gồm cả terminal app và terminal ngoài.
 - Không so được trước/sau cho guard, context pack và cắt output, vì chưa có transcript nào sau #238.
 - Chưa đọc transcript Gemini, Antigravity, OpenCode.
+
+## 9. Dùng chung memory giữa các gói: liên kết hay cài đặt (T010, 2026-10-14)
+
+Câu hỏi: nếu `projects/<khoá>/memory` của mỗi gói là liên kết tới một thư mục chung, Claude Code có dùng được không?
+
+### Cách thử
+
+- Claude Code 2.1.299 thật (binary máy dev), chạy `claude -p` trong `HOME`, `CLAUDE_CONFIG_DIR` và dự án giả, không dùng
+  gói thật của người dùng.
+- Đăng nhập thật không dùng được trong thư mục giả, nên `ANTHROPIC_BASE_URL` trỏ về một máy chủ giả ở `127.0.0.1`. Máy chủ
+  này trả một lệnh `Write` vào thư mục memory. Phần CLI (đường dẫn memory, quyền ghi, đọc `MEMORY.md`) là code thật.
+- Mỗi trường hợp chạy ở chế độ quyền `default`, để thấy CLI có tự cho phép ghi vào thư mục memory hay không.
+
+### Kết quả
+
+| Trường hợp | Đọc `MEMORY.md` | Ghi file mới vào `memory/` | Liên kết bị thay |
+|---|---|---|---|
+| Đối chứng: `memory/` là thư mục thật | Có | **Tự cho phép** | – |
+| `memory/` là symlink tới thư mục chung | Có (nạp như `AutoMem`, đường dẫn dưới liên kết) | **Không**: "Claude requested permissions to write to …/memory/written.md, but you haven't granted it yet" | Không (liên kết còn nguyên sau khi khởi động và sau phiên) |
+| `autoMemoryDirectory` trong `<dự án>/.claude/settings.local.json` | Có | **Tự cho phép** | – |
+
+Giải thích **[Inference]**: CLI so đường dẫn thật của file với `projects/<khoá>/memory/`. Qua symlink, đường dẫn thật nằm ngoài
+thư mục đó nên việc ghi bị coi là ghi file thường và hỏi quyền. Phiên tương tác sẽ hỏi quyền ở mỗi lần agent lưu memory.
+
+Windows: chưa thử (không có máy Windows trong lần kiểm này). Junction cũng đổi đường dẫn thật, nên **[Inference]** gặp cùng vấn đề.
+
+Cài đặt `autoMemoryDirectory` có trong schema settings của 2.1.299: "Custom directory path for auto-memory storage",
+bỏ qua nếu nằm ở `projectSettings` (`.claude/settings.json` được commit), nhận `~/`. Đặt ở `settings.json` của gói thì áp cho
+mọi dự án của gói, nên không hợp với memory theo dự án. Đặt ở `.claude/settings.local.json` của dự án thì áp cho dự án đó
+với mọi gói.
+
+### Quyết định
+
+- `share` **không dùng liên kết** (và không đồng bộ hai chiều theo mtime). Nó dùng cách CLI hỗ trợ (spec US4, kịch bản 2):
+  - thư mục thật `~/.xdev-hive/memory/claude/projects/<khoá>/memory/`, bố cục như một thư mục cấu hình Claude để `Scan`
+    quét nó như gói `shared` mà không phải sửa `scan.go`;
+  - `autoMemoryDirectory` trỏ tới thư mục đó trong `<dự án>/.claude/settings.local.json`;
+  - thư mục `memory/` riêng của từng gói được sao lưu rồi xoá. `unshare` chép bản chung lại cho từng gói, gỡ cài đặt và cho
+    thư mục chung vào thùng rác.
+- Chỉ bật khi `claude --version` ≥ 2.1.299 (phiên bản duy nhất đã thử). Bản cũ hơn hoặc không đọc được: báo lỗi, không có
+  đường lùi.
+- Hệ quả:
+  - Cách này áp cho mọi gói Claude cùng lúc, kể cả gói thêm sau.
+  - Chỉ có hiệu lực khi chạy Claude trong thư mục dự án có file cài đặt. Worktree chưa có file này (file không vào git) thì
+    dùng memory riêng của gói.
+  - Hive tạo `settings.local.json` trong repo của người dùng, và thêm dòng vào `.git/info/exclude` nếu git chưa bỏ qua nó.
+    `unshare` dọn cả hai.
+  - Kiểm sau `share` trên `HOME` giả bằng `hive-worker` đã build và `claude` thật (máy chủ giả): phiên của `claude-2` đọc
+    được `MEMORY.md` chung và ghi `from-claude-2.md` vào thư mục chung mà không hỏi quyền.
