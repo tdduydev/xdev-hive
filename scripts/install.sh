@@ -72,7 +72,12 @@ else
 fi
 asset="hive-worker_${os}_${arch}.tar.gz"
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+# Chỉ xoá các file do script tạo để không cần xoá đệ quy trong môi trường hạn chế.
+cleanup() {
+	rm -f "$tmp/$asset" "$tmp/checksums.txt" "$tmp/checksums.txt.sig" "$tmp/release-signing.pem" "$tmp/hive-worker"
+	rmdir "$tmp"
+}
+trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 fetch() {
