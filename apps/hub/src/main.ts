@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
+import { artifactPurgeQueue, registerArtifactPurgeWorker } from "./modules/artifacts/index.ts";
 import { auditRetentionQueue, registerAuditRetentionWorker } from "./modules/audit/index.ts";
 import {
   mergeQueue,
@@ -134,6 +135,7 @@ jobs = config.jobsDatabaseUrl
         codeReviewQueue,
         codeReviewStatusQueue,
         codeReviewSlaQueue,
+        artifactPurgeQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
@@ -240,6 +242,7 @@ if (roles.includes("jobs") && jobs) {
     await registerRunLogRetentionWorker(jobs, pool);
     await registerInboxCleanupWorker(jobs, pool);
     await registerAuditRetentionWorker(jobs, { pool });
+    await registerArtifactPurgeWorker(jobs, { pool, publicUrl: config.publicUrl });
   }
 }
 

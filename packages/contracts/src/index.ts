@@ -23,7 +23,7 @@ import { skillLearningContract } from "./skill-learning.ts";
 import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
-import { terminalContract } from "./terminal.ts";
+import { remoteContract, terminalContract } from "./terminal.ts";
 import { reviewsContract, workflowsContract } from "./workflows.ts";
 
 export * from "./artifacts.ts";
@@ -149,6 +149,7 @@ export const contract = {
   desktopConnect: desktopConnectContract,
   sdlc: sdlcContract,
   terminal: terminalContract,
+  remote: remoteContract,
   artifacts: artifactsContract,
 };
 

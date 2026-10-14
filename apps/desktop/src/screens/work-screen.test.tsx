@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
@@ -124,7 +124,7 @@ describe("WorkScreen", () => {
 
     await userEvent.setup().click(startButton);
     expect(calls.find((c) => c.path === "runs/start")?.body).toEqual({ json: { taskId } });
-    expect(location.hash).toBe(`#/work/${runId}`);
+    await waitFor(() => expect(location.hash).toBe(`#/work/${runId}`));
   });
 
   it("lượt chạy đang chờ máy hiện lý do và log trực tiếp", async () => {

@@ -4,6 +4,7 @@ import {
   type AgentPolicy,
   type AgentPolicyInput,
   DEFAULT_AGENT_MEMORY_POLICY,
+  DEFAULT_AGENT_REMOTE_POLICY,
   DEFAULT_AGENT_SKILL_LEARNING_POLICY,
   type HookEvent,
   type InstructionTemplates,
@@ -431,6 +432,7 @@ const formOf = (p: AgentPolicy): Form => ({
   // Hub cũ chưa có mục này thì giữ mặc định của hợp đồng, như chính sách lưu trước ADR 0022.
   agentMemory: p.agentMemory ?? { ...DEFAULT_AGENT_MEMORY_POLICY },
   skillLearning: p.skillLearning ?? { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
+  remote: p.remote ?? { ...DEFAULT_AGENT_REMOTE_POLICY },
 });
 
 /** Ô của một mục lấy từ `from`, phần còn lại giữ của `base`. */
@@ -801,6 +803,7 @@ function PolicyEditor({
               })
             }
             disabled={disabled || (fullLocked && !form.allowFullPermission)}
+            tone="destructive"
           />
           <SwitchRow
             label={t.sandboxReq}

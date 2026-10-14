@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import {
   BIG_FILE_COUNT,
@@ -281,3 +283,24 @@ test("tiếng Anh: tab, bảng và khung quyết định đổi chữ theo ngôn
   await expect(page.getByRole("table", { name: "Code review queue" })).toBeVisible();
   await expect(page.getByRole("region", { name: "PR details" })).toBeVisible();
 });
+
+/** Ảnh tab Code ở 1440/360 px, sáng/tối; chỉ ghi file khi đặt HIVE_CODEREVIEW_SHOTS_DIR, CI không ghi. */
+for (const width of [1440, 360] as const) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`ảnh tab Code ${width}, ${scheme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.addInitScript((value) => localStorage.setItem("hive.theme", value), scheme);
+      await setup(page);
+      await page.goto(`/knowledge/reviews?tab=code&id=${REVIEW_PAY}`);
+      await expect(pane(page)).toContainText("Hoàn tiền một phần");
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true);
+      const dir = process.env.HIVE_CODEREVIEW_SHOTS_DIR;
+      if (!dir) return;
+      await mkdir(dir, { recursive: true });
+      await page.screenshot({ path: resolve(dir, `code-reviews-${width}-${scheme}.png`), fullPage: true });
+    });
+  }
+}

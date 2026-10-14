@@ -17,6 +17,8 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { LockIcon, PlusIcon, Trash2Icon, WorkflowIcon, XIcon } from "lucide-react";
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
+import { ChipInput } from "@/components/page/chip-input.tsx";
+import { DangerZone } from "@/components/page/danger-zone.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import {
   FormRow,
@@ -153,84 +155,6 @@ function gateCond(g: ReviewGate, subject: WorkflowSubject, lang: Lang, t: T): st
 
 const issueLine = (t: T, issues: WorkflowIssue[]) =>
   `${t.invalid} ${issues.map((i) => (i.where ? `${i.where}: ${i.message}` : i.message)).join(" · ")}`;
-
-/**
- * Chip có nút bỏ và ô thêm ở cuối (tiền tố tài liệu, tài liệu đầu ra). Enter thêm chip chứ không gửi form của mục
- * đang chứa nó.
- * TODO(admin-layout): chưa có ô nhiều giá trị dạng chip dùng chung; người duyệt và dự án của phạm vi cũng tự dựng.
- */
-function ChipList({
-  values,
-  onChange,
-  canWrite,
-  addLabel,
-  placeholder,
-  boxed = false,
-}: {
-  values: string[];
-  onChange: (v: string[]) => void;
-  canWrite: boolean;
-  addLabel: string;
-  placeholder: string;
-  /** Có viền như một ô nhập (trong form); không viền khi nằm trong cột giai đoạn. */
-  boxed?: boolean;
-}) {
-  const t = useT(text);
-  const [draft, setDraft] = useState("");
-  function add() {
-    const v = draft.trim();
-    if (v && !values.includes(v)) onChange([...values, v]);
-    setDraft("");
-  }
-  return (
-    <span
-      className={cn(
-        "flex min-w-0 flex-wrap items-center gap-1",
-        boxed && "min-h-8 rounded-lg border border-input p-1.5 dark:bg-input/30",
-      )}
-    >
-      {values.length === 0 && !canWrite && <span className="px-1 text-sm text-muted-foreground">—</span>}
-      {values.map((v) => (
-        <span
-          key={v}
-          className="inline-flex h-6 max-w-full items-center gap-1 rounded-full border border-border bg-card px-2 font-mono text-xs break-all"
-        >
-          {v}
-          {canWrite && (
-            <button
-              type="button"
-              aria-label={t.removeChip(v)}
-              className="cursor-pointer text-muted-foreground hover:text-foreground"
-              onClick={() => onChange(values.filter((x) => x !== v))}
-            >
-              <XIcon className="size-3" aria-hidden="true" />
-            </button>
-          )}
-        </span>
-      ))}
-      {canWrite && (
-        <input
-          aria-label={addLabel}
-          placeholder={`+ ${placeholder}`}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
-            e.preventDefault();
-            add();
-          }}
-          onBlur={() => {
-            if (draft.trim()) add();
-          }}
-          className={cn(
-            "h-6 min-w-0 rounded-full bg-transparent px-2 font-mono text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40",
-            boxed ? "flex-[1_1_10rem]" : "w-48 border border-dashed border-input focus-visible:border-ring",
-          )}
-        />
-      )}
-    </span>
-  );
-}
 
 /** Quy trình duyệt tài liệu (Workflows.dc.html): giai đoạn, checkpoint, cấu hình từng checkpoint, chạy thử. */
 export function WorkflowsPage() {
@@ -582,7 +506,7 @@ function WorkflowsScreen() {
               </FormRow>
               {!isCode && (
                 <FormRow label={t.prefixes} hint={t.prefixesHint}>
-                  <ChipList
+                  <ChipInput
                     boxed
                     values={draft.docPrefixes}
                     onChange={(docPrefixes) => update({ docPrefixes })}
@@ -773,7 +697,7 @@ function WorkflowsScreen() {
                       {draft.subject !== "code" && (
                         <div className="mt-0.5 flex flex-col gap-1 border-t border-dashed border-input pt-2 text-xs">
                           <span className="text-muted-foreground">{t.outputs}</span>
-                          <ChipList
+                          <ChipInput
                             values={p.outputs}
                             onChange={(outputs) =>
                               update({ phases: draft.phases.map((x, i) => (i === pi ? { ...x, outputs } : x)) })
@@ -845,7 +769,21 @@ function WorkflowsScreen() {
               </div>
             </SettingsSection>
 
-            {canWrite && base && <DangerZone name={base.name} onRemove={() => setRemoving(true)} />}
+            {canWrite && base && (
+              <DangerZone
+                title={t.danger}
+                description={
+                  <>
+                    <span className="font-medium text-foreground">{base.name}</span> · {t.dangerHint}
+                  </>
+                }
+              >
+                <Button variant="destructive" onClick={() => setRemoving(true)}>
+                  <Trash2Icon aria-hidden="true" />
+                  {t.remove}
+                </Button>
+              </DangerZone>
+            )}
           </SettingsLayout>
         )}
       </PageBody>
@@ -901,34 +839,6 @@ type GateConfigProps = React.ComponentProps<typeof GateConfig>;
 /** Khung cấu hình checkpoint theo loại quy trình: tài liệu và code dùng chung đầu khung, khác phần thân. */
 function GateConfigFor({ subject, ...props }: GateConfigProps & { subject: WorkflowSubject }) {
   return subject === "code" ? <CodeGateConfig {...props} /> : <GateConfig {...props} />;
-}
-
-/**
- * Vùng nguy hiểm cuối trang (admin-layout.md § Thanh tiêu đề): thao tác phá huỷ không nằm cạnh ô sửa thường ngày.
- * TODO(admin-layout): chưa có khối "Vùng nguy hiểm" dùng chung trong components/page.
- */
-function DangerZone({ name, onRemove }: { name: string; onRemove: () => void }) {
-  const t = useT(text);
-  const headingId = useId();
-  return (
-    <section
-      aria-labelledby={headingId}
-      className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl bg-card px-4 py-3.5 text-sm ring-1 ring-destructive/40 sm:px-5"
-    >
-      <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
-        <h2 id={headingId} className="text-base font-semibold text-foreground">
-          {t.danger}
-        </h2>
-        <p className="text-xs text-pretty text-muted-foreground">
-          <span className="font-medium text-foreground">{name}</span> · {t.dangerHint}
-        </p>
-      </div>
-      <Button variant="destructive" onClick={onRemove}>
-        <Trash2Icon aria-hidden="true" />
-        {t.remove}
-      </Button>
-    </section>
-  );
 }
 
 function DryRunDialog({ draft, onClose }: { draft: WorkflowDraft; onClose: () => void }) {
