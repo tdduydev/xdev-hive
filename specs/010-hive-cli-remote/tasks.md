@@ -177,8 +177,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 - [ ] T012 [US1] CLI `hive`: đăng nhập, chat/run, ls, kill
   - Một phần (SPEC10NEXT): `chat`, `run`, `ls [--json]`, `attach [--view]`, `kill`, `version`, phím Ctrl-] d/t, raw
-    mode, SIGWINCH, mã thoát. **Còn**: `login/logout/whoami` (cần `purpose: cli` của T002/T013), `--task/--project`,
-    `__hook`, `ls --all`, `--escape`, keychain.
+    mode, SIGWINCH, mã thoát.
+  - Đã làm (SPEC10W4): `login` (loopback PKCE `purpose: cli`, `--with-token` đọc stdin, `--no-browser`, `--hub`/
+    `HIVE_HUB_URL`/hub của worker), keychain `zalando/go-keyring` cùng mục với app desktop (`dev.xdev.hive`/URL hub;
+    không có keychain thì `hive.json` 0600 + cảnh báo), `logout`, `whoami`; `--task`/`--project` tra hub bằng token cá
+    nhân rồi gửi id cho worker; `ls --all` (phiên đang chạy trên mọi máy, từ `remote.list`); `--no-record`.
+    **Còn**: `__hook` (làm cùng T072), `--escape`.
   - `cmd/hive`: `login` (loopback PKCE `purpose: cli`, `--with-token`), keychain (`dev.xdev.hive`/URL hub; không có thì
     file 0600 + cảnh báo), `logout`, `whoami`; `chat`/`run` (raw mode bằng `x/term`, SIGWINCH/console resize, phím tách
     và giành quyền, khôi phục terminal), `--task`/`--project` tra hub bằng token cá nhân; `ls`, `kill`, `version`;

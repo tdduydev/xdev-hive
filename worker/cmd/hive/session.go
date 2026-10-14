@@ -23,6 +23,8 @@ type chatOptions struct {
 	extra   []string
 	// noRecord: phiên không ghi lên hub (máy dùng chung vốn đã không ghi).
 	noRecord bool
+	// task, project là key trên hub (PAY-12, PAY); tra bằng token của hive login.
+	task, project string
 }
 
 func newFlagSet(name string, w io.Writer) *flag.FlagSet {
@@ -62,8 +64,8 @@ func (a *app) parseChat(args []string, withPrompt bool) (chatOptions, int) {
 	fs.StringVar(&o.account, "account", "", "gói (id trong accounts.json); bỏ trống là gói rảnh")
 	fs.StringVar(&o.model, "model", "", "model của CLI")
 	fs.BoolVar(&o.force, "force", false, "dùng cả gói đang nghỉ")
-	task := fs.String("task", "", "task trên hub (chưa hỗ trợ)")
-	project := fs.String("project", "", "dự án trên hub (chưa hỗ trợ)")
+	fs.StringVar(&o.task, "task", "", "gắn phiên với task trên hub (vd. PAY-12; cần hive login)")
+	fs.StringVar(&o.project, "project", "", "gắn phiên với dự án trên hub (vd. PAY; cần hive login)")
 	fs.BoolVar(&o.noRecord, "no-record", false, "không ghi phiên lên hub")
 	// Phiên tại máy chưa mở được từ xa nên cờ này đã đúng mặc định; nhận để script viết theo plan chạy được.
 	fs.Bool("no-remote", false, "không cho điều khiển từ xa")
@@ -71,8 +73,8 @@ func (a *app) parseChat(args []string, withPrompt bool) (chatOptions, int) {
 	if err != nil {
 		return o, exitUsage
 	}
-	if *task != "" || *project != "" {
-		return o, a.errorf(exitUsage, "--task và --project chưa hỗ trợ: cần đăng nhập hub (hive login), chưa có trong bản này.")
+	if o.task != "" && o.project != "" {
+		return o, a.errorf(exitUsage, "Chỉ dùng một trong --task và --project: task đã thuộc một dự án.")
 	}
 	if !slices.Contains(clis, o.cli) {
 		return o, a.errorf(exitUsage, "CLI %q không hỗ trợ; dùng claude, codex hoặc gemini.", o.cli)
@@ -122,13 +124,18 @@ func (a *app) chat(args []string, withPrompt bool) int {
 	if !ok {
 		cols, rows = 80, 24
 	}
+	projectID, taskID, code := a.resolveLink(o)
+	if code != exitOK {
+		return code
+	}
 	c, _, code := a.connect()
 	if code != exitOK {
 		return code
 	}
 	defer c.Close()
 	req := map[string]any{"op": "session.create", "cli": o.cli, "cwd": cwd, "cols": cols, "rows": rows,
-		"args": cliArgs(o), "account": o.account, "force": o.force, "term": a.getenv("TERM"), "noRecord": o.noRecord}
+		"args": cliArgs(o), "account": o.account, "force": o.force, "term": a.getenv("TERM"), "noRecord": o.noRecord,
+		"projectId": projectID, "taskId": taskID}
 	var resp struct {
 		ID      string `json:"id"`
 		Account string `json:"account"`
@@ -142,6 +149,40 @@ func (a *app) chat(args []string, withPrompt bool) int {
 	}
 	fmt.Fprintf(a.stderr, "hive: phiên %s (%s%s). Ctrl-] d để tách, gắn lại bằng hive attach %s.\n", resp.ID, o.cli, account, resp.ID)
 	return a.interact(c, resp.ID, modeControl)
+}
+
+// resolveLink tra --task/--project trên hub trước khi mở phiên, để gõ sai key thì báo ngay thay vì ghi phiên không liên
+// kết. Hub vẫn tự bỏ liên kết khi task không thuộc đội của máy (FR-030).
+func (a *app) resolveLink(o chatOptions) (projectID, taskID string, code int) {
+	if o.task == "" && o.project == "" {
+		return "", "", exitOK
+	}
+	if o.noRecord {
+		return "", "", a.errorf(exitUsage, "--task và --project gắn bản ghi của phiên với hub; bỏ --no-record hoặc bỏ hai cờ đó.")
+	}
+	hub, code := a.hubFor()
+	if code != exitOK {
+		return "", "", code
+	}
+	if o.task != "" {
+		t, err := hub.task(o.task)
+		if err != nil {
+			return "", "", a.hubFail(err)
+		}
+		if t == nil {
+			return "", "", a.errorf(exitUsage, "Không tìm thấy task %s trên %s (hoặc bạn không xem được).", o.task, hub.base)
+		}
+		fmt.Fprintf(a.stderr, "hive: gắn phiên với task %s: %s\n", t.Key, t.Title)
+		return t.ProjectID, t.ID, exitOK
+	}
+	p, err := hub.project(o.project)
+	if err != nil {
+		return "", "", a.hubFail(err)
+	}
+	if p == nil {
+		return "", "", a.errorf(exitUsage, "Không tìm thấy dự án %s trên %s (hoặc bạn không xem được).", o.project, hub.base)
+	}
+	return p.ID, "", exitOK
 }
 
 func (a *app) attachCmd(args []string) int {
@@ -190,13 +231,13 @@ type sessionInfo struct {
 func (a *app) ls(args []string) int {
 	fs := newFlagSet("ls", a.stderr)
 	asJSON := fs.Bool("json", false, "in JSON")
-	all := fs.Bool("all", false, "cả phiên trên máy khác (chưa hỗ trợ)")
+	all := fs.Bool("all", false, "phiên đang chạy trên mọi máy của bạn (cần hive login)")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil || len(pos) > 0 {
 		return exitUsage
 	}
 	if *all {
-		return a.errorf(exitUsage, "--all chưa hỗ trợ: cần đăng nhập hub (hive login), chưa có trong bản này.")
+		return a.lsAll(*asJSON)
 	}
 	c, _, code := a.connect()
 	if code != exitOK {
@@ -235,6 +276,53 @@ func (a *app) ls(args []string) int {
 	}
 	_ = w.Flush()
 	return exitOK
+}
+
+// lsAll đọc từ hub nên thấy cả máy khác; mã phiên là mã trên hub (mở trên web), không gắn được bằng hive attach.
+func (a *app) lsAll(asJSON bool) int {
+	hub, code := a.hubFor()
+	if code != exitOK {
+		return code
+	}
+	raw, err := hub.remoteSessions()
+	if err != nil {
+		return a.hubFail(err)
+	}
+	if asJSON {
+		fmt.Fprintln(a.stdout, string(raw))
+		return exitOK
+	}
+	var list []remoteSession
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return a.errorf(exitFailed, "Hub trả danh sách phiên không đọc được: %v", err)
+	}
+	if len(list) == 0 {
+		fmt.Fprintln(a.stdout, "Không có phiên nào đang chạy trên các máy của bạn.")
+		return exitOK
+	}
+	w := tabwriter.NewWriter(a.stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tMÁY\tCLI\tĐIỀU KHIỂN\tTASK\tBẮT ĐẦU\tTHƯ MỤC")
+	for _, s := range list {
+		ctl := "không"
+		if s.Controller != nil {
+			ctl = map[string]string{"local": "tại máy", "remote": "từ xa"}[*s.Controller]
+		}
+		task := deref(s.TaskKey, deref(s.ProjectKey, "-"))
+		started := s.CreatedAt
+		if t, err := time.Parse(time.RFC3339, s.CreatedAt); err == nil {
+			started = t.Local().Format("15:04 02/01")
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", s.ID, s.MachineName, s.CLI, ctl, task, started, deref(s.CwdLabel, ""))
+	}
+	_ = w.Flush()
+	return exitOK
+}
+
+func deref(p *string, def string) string {
+	if p == nil || *p == "" {
+		return def
+	}
+	return *p
 }
 
 func (a *app) kill(args []string) int {
