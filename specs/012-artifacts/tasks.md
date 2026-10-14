@@ -104,7 +104,7 @@
 
 ## Phase 2: Lõi hub (US1, US2, US4, US5) 🎯
 
-- [ ] T010 🎯 Module `artifacts`: dịch vụ, quyền, giới hạn, router
+- [x] T010 🎯 Module `artifacts`: dịch vụ, quyền, giới hạn, router
   - `access.ts` (`readerFor`, `visibleArtifactsWhere`, `assertCan(action)` theo bảng quyền plan.md), `service.ts` (tạo,
     phiên bản mới với khoá lạc quan, đổi tên, phạm vi, chủ, nhân bản, xoá mềm, khôi phục, tombstone, liệt kê/tìm với con
     trỏ), `limits.ts` (trần env + chính sách tổ chức, khoá tư vấn theo tổ chức, giới hạn run), quét bí mật (chỉ chặn,
@@ -123,7 +123,7 @@
     + test tương ứng
   - **Phụ thuộc**: T001, T002, T003 · **Mức**: nặng
 
-- [ ] T011 🎯 Tool MCP `artifact_*`
+- [x] T011 🎯 Tool MCP `artifact_*`
   - `artifacts/mcp-tools.ts`: bốn tool (plan.md "MCP"), quyền run theo FR-032, liên kết tự động `run`/`task`/
     `chat_thread`/`terminal_session`, từ chối `doccheck`/`docassist`/`brief` (`ARTIFACT_RUN_KIND`), lỗi xung đột kèm bản
     mới nhất, `duplicateOf` (đọc được bản gốc → `private` của người mở cuộc trò chuyện), `compileError` trong kết quả.

@@ -294,6 +294,10 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "artifact_create",
+      "artifact_get",
+      "artifact_list",
+      "artifact_update",
       "brief_submit",
       "doc_assist_submit",
       "doc_check_submit",
