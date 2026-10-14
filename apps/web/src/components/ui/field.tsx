@@ -3,9 +3,12 @@ import { cx } from "@/lib/cx.ts";
 
 type WithClass<P> = Omit<P, "className"> & { className?: string };
 
-/** Nhóm nhãn + ô nhập + gợi ý + lỗi. Base UI tự nối `for`, `aria-describedby`, `aria-invalid`. */
+/**
+ * Nhóm nhãn + ô nhập + gợi ý + lỗi. Base UI tự nối `for`, `aria-describedby`, `aria-invalid`. `content-start` để ô
+ * đứng cạnh một ô có gợi ý dài không bị giãn dòng mà tụt ô nhập xuống.
+ */
 export function Field({ className, ...props }: WithClass<BaseField.Root.Props>) {
-  return <BaseField.Root className={cx("grid gap-1.5", className)} {...props} />;
+  return <BaseField.Root className={cx("grid content-start gap-1.5", className)} {...props} />;
 }
 
 export function FieldLabel({ className, ...props }: WithClass<BaseField.Label.Props>) {

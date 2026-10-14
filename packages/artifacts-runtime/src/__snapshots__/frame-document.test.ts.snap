@@ -1,0 +1,46 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildFrameDocument · snapshot theo loại > code 1`] = `"<!doctype html><html data-hive-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><style>html{color-scheme:light}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}pre{margin:0;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,monospace}</style></head><body><pre><code>const a = 1 &#60; 2;</code></pre></body></html>"`;
+
+exports[`buildFrameDocument · snapshot theo loại > html 1`] = `"<!doctype html><html data-hive-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><h1>Xin chào</h1>"`;
+
+exports[`buildFrameDocument · snapshot theo loại > markdown 1`] = `
+"<!doctype html><html data-hive-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><script type="importmap">{"imports":{"markdown-it":"https://hive.example.com/_artifact/lib/markdown-it@15.0.0/index.js"},"integrity":{"https://hive.example.com/_artifact/lib/markdown-it@15.0.0/index.js":"sha384-markdownAitA15A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}</script><style>html{color-scheme:light}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}.md{max-width:72ch;margin:0 auto;padding:1rem 1.25rem;overflow-wrap:anywhere}.md h1,.md h2,.md h3{line-height:1.25;margin:1.5em 0 .5em}.md h1{font-size:1.5rem}.md h2{font-size:1.25rem}.md h3{font-size:1.0625rem}.md p,.md ul,.md ol,.md blockquote,.md pre,.md table{margin:0 0 1em}.md code{font:.875em ui-monospace,monospace;background:rgba(127,127,127,.18);padding:.1em .3em;border-radius:4px}.md pre{overflow:auto;padding:.75rem 1rem;background:rgba(127,127,127,.14);border-radius:6px}.md pre code{background:none;padding:0}.md blockquote{margin-left:0;padding-left:1rem;border-left:3px solid rgba(127,127,127,.5)}.md table{border-collapse:collapse;display:block;overflow:auto}.md th,.md td{border:1px solid rgba(127,127,127,.5);padding:.35rem .6rem}.md img{max-width:100%}</style></head><body><article class="md" id="md"></article><script type="module">import MarkdownIt from "markdown-it";
+const md = new MarkdownIt({ html: false, linkify: false });
+const root = document.getElementById("md");
+root.innerHTML = md.render("# Tiêu đề\\n\\nchữ **đậm**");
+for (const a of Array.from(root.querySelectorAll("a"))) {
+  const span = document.createElement("span");
+  const href = a.getAttribute("href") || "";
+  span.textContent = a.textContent === href || !href ? a.textContent : a.textContent + " (" + href + ")";
+  a.replaceWith(span);
+}</script></body></html>"
+`;
+
+exports[`buildFrameDocument · snapshot theo loại > mermaid 1`] = `
+"<!doctype html><html data-hive-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><script type="importmap">{"imports":{"mermaid":"https://hive.example.com/_artifact/lib/mermaid@12.0.0/index.js"},"integrity":{"https://hive.example.com/_artifact/lib/mermaid@12.0.0/index.js":"sha384-mermaidA12A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}</script><style>html{color-scheme:dark}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}#out{padding:1rem;overflow:auto}#out svg{max-width:100%;height:auto}</style></head><body><div id="out"></div><script type="module">import mermaid from "mermaid";
+const out = document.getElementById("out");
+mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark", suppressErrorRendering: true });
+try {
+  const { svg } = await mermaid.render("hive-diagram", "graph TD; A--\\u003eB");
+  out.innerHTML = svg;
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  out.textContent = message;
+  console.error("Mermaid: " + message);
+}</script></body></html>"
+`;
+
+exports[`buildFrameDocument · snapshot theo loại > react 1`] = `
+"<!doctype html><html data-hive-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><script type="importmap">{"imports":{"react":"https://hive.example.com/_artifact/lib/react@19.0.0/index.js","react/jsx-runtime":"https://hive.example.com/_artifact/lib/react@19.0.0/jsx-runtime.js","react-dom":"https://hive.example.com/_artifact/lib/react-dom@19.0.0/index.js","react-dom/client":"https://hive.example.com/_artifact/lib/react-dom@19.0.0/client.js","recharts":"https://hive.example.com/_artifact/lib/recharts@3.0.0/index.js","lucide-react":"https://hive.example.com/_artifact/lib/lucide-react@1.0.0/index.js"},"integrity":{"https://hive.example.com/_artifact/lib/react@19.0.0/index.js":"sha384-reactA19A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/react@19.0.0/jsx-runtime.js":"sha384-reactA19A0A0AjsxAruntimeAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/react-dom@19.0.0/index.js":"sha384-reactAdomA19A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/react-dom@19.0.0/client.js":"sha384-reactAdomA19A0A0AclientAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/recharts@3.0.0/index.js":"sha384-rechartsA3A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/lucide-react@1.0.0/index.js":"sha384-lucideAreactA1A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}</script><script src="https://hive.example.com/_artifact/lib/@tailwindcss/browser@4.0.0/index.js" integrity="sha384-AtailwindcssAbrowserA4A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" crossorigin="anonymous"></script><style type="text/tailwindcss">@custom-variant dark (&:where([data-hive-theme=dark], [data-hive-theme=dark] *));</style><style>html{color-scheme:dark}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}</style></head><body><div id="root"></div><script type="module">import * as __hiveReact from "react";
+import { createRoot as __hiveCreateRoot } from "react-dom/client";
+import { useState } from "react";
+export default function App() { return useState(1)[0]; }
+;const __hiveComponent = App;
+
+__hiveCreateRoot(document.getElementById("root")).render(__hiveReact.createElement(__hiveComponent));</script></body></html>"
+`;
+
+exports[`buildFrameDocument · snapshot theo loại > react có lỗi biên dịch 1`] = `"<!doctype html><html data-hive-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><style>html{color-scheme:light}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}main{padding:1rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,monospace}</style></head><body><main role="alert"><h1 style="font-size:1.125rem">Lỗi biên dịch</h1><pre>Unexpected token (3:4)</pre></main><script>window.parent.postMessage({type:"error",kind:"compile",message:"Unexpected token (3:4)"},"*")</script></body></html>"`;
+
+exports[`buildFrameDocument · snapshot theo loại > svg 1`] = `"<!doctype html><html data-hive-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><style>html{color-scheme:light}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}svg{max-width:100%;height:auto}</style></head><body><svg width="10" height="10"><circle r="4"/></svg></body></html>"`;
