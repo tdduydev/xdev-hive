@@ -228,7 +228,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Phụ thuộc**: T020 (song song với T021: khác file; `index.ts` của package do T020 export sẵn tên, T021/T022 chỉ điền
     file) · **Mức**: vừa
 
-- [ ] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
+- [x] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
   - `public-link-dialog.tsx` (chỉ chủ: chọn phiên bản, hạn 1…`maxDays`, cảnh báo "Người ngoài tổ chức sẽ xem được bản
     này." / lỗi biên dịch, hiện link một lần + Sao chép, danh sách link: phiên bản, hạn, lượt xem, Thu hồi),
     `fix-request-dialog.tsx` (danh sách lỗi sửa/xoá được, lời nhắn, chọn đích "Cuộc trò chuyện này"/"Cuộc trò chuyện mới",
