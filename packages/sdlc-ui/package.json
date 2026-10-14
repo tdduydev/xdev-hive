@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./breakdown": "./src/breakdown-review.tsx"
   },
   "scripts": {
     "typecheck": "tsc -p .",
@@ -16,6 +17,7 @@
     "@tanstack/react-query": "^5.104.1",
     "@xdev-hive/contracts": "workspace:*",
     "@xdev-hive/ui": "workspace:*",
+    "@xyflow/react": "^12.12.0",
     "cn": "^0.4.0",
     "lucide-react": "^1.55.0"
   },

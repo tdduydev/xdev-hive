@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ItemDetail } from "./item-detail.tsx";
@@ -135,6 +135,16 @@ describe("ItemDetail", () => {
     expect(await screen.findByRole("heading", { name: "Đợt 2" })).toBeTruthy();
     expect(screen.getByText("Bị chặn bởi payment-api T-41")).toBeTruthy();
     expect(screen.getAllByText("Checklist 1/1")).toHaveLength(2);
+  });
+
+  it("tab Task chuyển sang bản tách, tab Truy vết hiện ma trận", async () => {
+    const client = open(fakeClient(), "tasks");
+    await user.click(await screen.findByRole("button", { name: "Bản tách" }));
+    expect(await screen.findByText("Chưa có task: FR-003")).toBeTruthy();
+    expect(client.sdlc.breakdown.get).toHaveBeenCalled();
+    cleanup();
+    open(client, "trace");
+    expect(await screen.findByText("Ma trận yêu cầu")).toBeTruthy();
   });
 
   it("người chỉ đọc không thấy thao tác", async () => {

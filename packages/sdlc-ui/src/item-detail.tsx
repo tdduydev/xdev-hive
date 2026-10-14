@@ -5,7 +5,7 @@ import { Button } from "@xdev-hive/ui/button";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { cn } from "cn";
-import { type ReactNode, useId, useState } from "react";
+import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 import { AutoApproval, AutoApprovalBadge } from "./auto-approval.tsx";
 import { ContractsPanel } from "./contracts-panel.tsx";
 import { type SdlcItemTab, useSdlcEnv, useText } from "./env.tsx";
@@ -17,6 +17,10 @@ import { ProjectsPanel } from "./projects-panel.tsx";
 import { Questions } from "./questions.tsx";
 import { StepsPanel } from "./steps-panel.tsx";
 import { SyncStatus } from "./sync-status.tsx";
+import { TraceMatrix } from "./trace-matrix.tsx";
+
+// Bản tách kéo theo `@xyflow/react`; chỉ nạp khi người xem mở nó.
+const BreakdownReview = lazy(() => import("./breakdown-review.tsx").then((m) => ({ default: m.BreakdownReview })));
 
 export const ITEM_TABS: readonly SdlcItemTab[] = [
   "overview",
@@ -34,16 +38,13 @@ export interface ItemDetailProps {
   /** Tab do app chủ giữ (đường dẫn web, hash app); bỏ trống thì màn tự giữ. */
   tab?: SdlcItemTab | undefined;
   onTabChange?: ((tab: SdlcItemTab) => void) | undefined;
-  /** Nội dung tab Task và Truy vết: bản tách và ma trận (T052) nằm ở file riêng để chi tiết không phải nạp `@xyflow`. */
-  renderTasks?: ((item: SdlcItemDetail) => ReactNode) | undefined;
-  renderTrace?: ((item: SdlcItemDetail) => ReactNode) | undefined;
 }
 
 /**
  * Chi tiết hạng mục (AppSdlcItem.dc.html): đầu trang có chế độ, cỡ, dự án chính, chủ và thao tác; thanh giai đoạn; bảy
  * tab. Mọi thao tác ghi đi qua hub, rồi làm mới cả nhóm `sdlc` vì bảng và câu hỏi cũng đổi theo.
  */
-export function ItemDetail({ projectKey, number, tab, onTabChange, renderTasks, renderTrace }: ItemDetailProps) {
+export function ItemDetail({ projectKey, number, tab, onTabChange }: ItemDetailProps) {
   const { api, link, errorMessage } = useSdlcEnv();
   const t = useText();
   const d = t.detail;
@@ -97,8 +98,8 @@ export function ItemDetail({ projectKey, number, tab, onTabChange, renderTasks, 
     docs: () => <Docs item={item} />,
     contracts: () => <ContractsPanel item={item} />,
     questions: () => <Questions itemId={item.id} embedded />,
-    tasks: () => (renderTasks ? renderTasks(item) : <TaskList item={item} />),
-    trace: () => (renderTrace ? renderTrace(item) : <EmptyState title={d.trEmptyTitle} text={d.trEmptyText} />),
+    tasks: () => <TasksTab item={item} />,
+    trace: () => <TraceMatrix item={item} />,
   };
 
   return (
@@ -478,6 +479,52 @@ function Docs({ item }: { item: SdlcItemDetail }) {
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/** Tab Task: task hub đã tạo, hoặc bản tách đang soạn (gộp/tách, phụ thuộc, độ phủ) trước khi có baseline. */
+function TasksTab({ item }: { item: SdlcItemDetail }) {
+  const t = useText();
+  const d = t.detail;
+  const [view, setView] = useState<"tasks" | "breakdown">(item.tasks.length ? "tasks" : "breakdown");
+  return (
+    <div className="flex flex-col gap-3">
+      <fieldset className="inline-flex self-start rounded-lg bg-muted p-0.5">
+        <legend className="sr-only">{d.tasksViewAria}</legend>
+        {(
+          [
+            ["tasks", d.tasksCreated],
+            ["breakdown", d.tasksBreakdown],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={view === key}
+            onClick={() => setView(key)}
+            className={cn(
+              "h-7 rounded-md px-3 text-sm",
+              view === key ? "bg-card font-semibold shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </fieldset>
+      {view === "tasks" ? (
+        <TaskList item={item} />
+      ) : (
+        <Suspense
+          fallback={
+            <p role="status" className="text-sm text-muted-foreground">
+              {t.breakdown.loading}
+            </p>
+          }
+        >
+          <BreakdownReview item={item} />
+        </Suspense>
+      )}
     </div>
   );
 }
