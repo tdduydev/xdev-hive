@@ -171,7 +171,7 @@
   - **Scope**: `apps/hub/src/modules/knowledge/{reviews.ts,review-rules.ts,review-jobs.ts,editor.ts,access.ts,index.ts,review-rules.test.ts,reviews.db.test.ts,access.db.test.ts}`
   - **Phụ thuộc**: T001, T003 · **Mức**: nặng
 
-- [ ] T015 🎯 [US16] Hạng mục nhiều dự án: dự án tham gia, quyền, cổng theo đội
+- [x] T015 🎯 [US16] Hạng mục nhiều dự án: dự án tham gia, quyền, cổng theo đội
   - `participants.ts`: `items.create` nhận `participants` (≤ 7 + dự án chính; cùng tổ chức; đã bật AI SDLC; chụp cài đặt
     từng dự án); `items.projects.add|remove` (D19: bỏ chỉ khi chưa có task đã chạy, huỷ task `todo`); audit, thông báo
     `sdlc.project_added`.

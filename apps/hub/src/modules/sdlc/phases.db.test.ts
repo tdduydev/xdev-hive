@@ -2,6 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   defaultProjectSettings,
   projectSdlcSettings,
+  type ReviewPhase,
+  reviewPhase,
   SDLC_PRESETS,
   type SdlcItemCreate,
   type SdlcMode,
@@ -18,6 +20,9 @@ import { saveMode } from "./modes.ts";
 import {
   advance,
   approvePhase,
+  expandPerProjectGates,
+  type ItemTeam,
+  itemTeams,
   onBaseline,
   type SdlcDeps,
   type SdlcStepStart,
@@ -301,5 +306,83 @@ describe("workflowFor", () => {
     expect(wf?.name).toBe("001 · Plan");
     expect(wf?.phases).toEqual(speckit.phases.find((p) => p.id === "plan")?.gate);
     expect(await as("tviewer", (tx) => workflowFor(tx, `project/${projectKey}/docs/khac`))).toBeNull();
+  });
+});
+
+describe("cổng theo đội (D21)", () => {
+  const web: string[] = [];
+
+  beforeAll(async () => {
+    // Hai dự án của đội crm (seedOrg) tham gia hạng mục ở dự án của đội thanh-toan.
+    for (const k of ["w", "wz"])
+      web.push(
+        (
+          await seedProject(admin, app, {
+            orgId: org.orgId,
+            teamId: org.otherTeamId,
+            systemId: org.otherSystemId,
+            adminUserId: org.user("admin"),
+            masterKey,
+            key: `${k}${tag}`,
+            settings: { ...defaultProjectSettings(), sdlc: projectSdlcSettings.parse({ enabled: true }) },
+          })
+        ).projectId,
+      );
+  });
+
+  const multi = () => create("admin", { modeRef: "speckit", participants: web });
+
+  it("itemTeams gộp dự án cùng đội, đội chủ trì trước", async () => {
+    const item = await multi();
+    const teams = await as("admin", (tx) => itemTeams(tx, item.id));
+    expect(teams.map((t) => [t.teamId, t.projects.map((x) => x.key)])).toEqual([
+      [org.teamId, [projectKey]],
+      [org.otherTeamId, [`w${tag}`, `wz${tag}`]],
+    ]);
+  });
+
+  it("workflowFor nhân checkpoint trong perProjectGates thành một checkpoint mỗi đội, roles tính trong đội đó", async () => {
+    const item = await multi();
+    const tasks = item.artifacts.find((a) => a.artifactId === "tasks")?.docKey ?? "";
+    const wf = await as("tviewer", (tx) => workflowFor(tx, tasks));
+    const gates = wf?.phases.flatMap((p) => p.gates) ?? [];
+    expect(gates.map((g) => g.id)).toEqual(["rules", "ai-tasks", "lead-thanh-toan", "lead-crm"]);
+    const crm = gates.find((g) => g.id === "lead-crm");
+    expect(crm?.name).toBe(`Tech lead duyệt bản tách · crm (w${tag}, wz${tag})`);
+    expect(crm?.reviewers).toMatchObject({ roles: ["team-admin"], quorum: 1, teamScope: org.otherTeamId });
+    expect(gates.find((g) => g.id === "lead-thanh-toan")?.reviewers?.teamScope).toBe(org.teamId);
+    // Checkpoint không nằm trong perProjectGates giữ nguyên; quy trình vẫn hợp lệ với schema của spec 004.
+    expect(gates.find((g) => g.id === "ai-tasks")?.reviewers).toBeUndefined();
+    for (const p of wf?.phases ?? []) expect(reviewPhase.safeParse(p).success).toBe(true);
+  });
+
+  it("dự án tham gia đã bỏ thì phiên mở sau không còn checkpoint của đội đó", async () => {
+    const item = await multi();
+    await admin.query("update hive.sdlc_item_projects set removed_at = now() where item_id = $1 and role <> 'home'", [
+      item.id,
+    ]);
+    const tasks = item.artifacts.find((a) => a.artifactId === "tasks")?.docKey ?? "";
+    const wf = await as("admin", (tx) => workflowFor(tx, tasks));
+    expect(wf?.phases).toEqual(speckit.phases.find((p) => p.id === "tasks")?.gate);
+  });
+
+  it("id checkpoint quá dài thì dùng số thứ tự đội", () => {
+    const phases: ReviewPhase[] = [
+      reviewPhase.parse({
+        name: "Duyệt",
+        gates: [{ id: "tech-lead", name: "Tech lead", kind: "human", reviewers: { roles: ["team-admin"] } }],
+      }),
+    ];
+    const teams: ItemTeam[] = [
+      { teamId: randomUUID(), slug: "a", name: "A", projects: [{ id: randomUUID(), key: "pa", name: "" }] },
+      {
+        teamId: randomUUID(),
+        slug: "doi-co-ten-rat-dai-vuot-gioi-han",
+        name: "Dài",
+        projects: [{ id: randomUUID(), key: "pb", name: "" }],
+      },
+    ];
+    const [phase] = expandPerProjectGates(phases, ["tech-lead"], teams);
+    expect(phase?.gates.map((g) => g.id)).toEqual(["tech-lead-a", "tech-lead-2"]);
   });
 });
