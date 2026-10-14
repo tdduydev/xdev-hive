@@ -268,6 +268,15 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "mcp.servers",
       },
       {
+        id: "sdlc-modes",
+        label: { vi: "Chế độ AI SDLC", en: "AI SDLC modes" },
+        icon: WorkflowIcon,
+        to: route("/admin/sdlc-modes"),
+        match: "/admin/sdlc-modes",
+        adminOnly: true,
+        permission: "sdlc.modes.write",
+      },
+      {
         id: "policies",
         label: { vi: "Chính sách agent", en: "Agent policies" },
         icon: ShieldCheckIcon,
