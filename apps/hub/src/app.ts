@@ -21,8 +21,10 @@ import {
   catalogRouter,
   findProject,
   findWebhookTarget,
+  loadProject,
   templateService,
 } from "./modules/catalog/index.ts";
+import { type CodeRunPort, codeReviewsRouter } from "./modules/codereview/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
@@ -43,10 +45,11 @@ import {
   type RunTokenVerifier,
 } from "./modules/mcp/index.ts";
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
-import type { HubConfig, Jobs, RequestContext, Tx } from "./modules/platform/index.ts";
+import { type HubConfig, type Jobs, NotFoundError, type RequestContext, type Tx } from "./modules/platform/index.ts";
 import {
   RunNotifier,
   type RunsEngine,
+  runForUser,
   runStreamHandler,
   registerMcpTools as runsMcpTools,
   runsRouter,
@@ -169,6 +172,32 @@ export function createApp({
       ),
     ),
   };
+  // Chạy thử quy trình code đọc run có sẵn; `codereview` không import `runs` nên cổng đọc cài vào ở đây. Không có lõi giao
+  // run thì không có `diffStats`, quy tắc cần số liệu sẽ chờ người xem như khi worker cũ không báo.
+  const codeRuns: CodeRunPort = {
+    async load(tx, userId, runId) {
+      const run = await runForUser(tx, userId, runId, "viewer");
+      const project = await loadProject(tx, run.projectId);
+      if (!project) throw new NotFoundError("RUN_NOT_FOUND", "Không tìm thấy run.");
+      const evidence = await runs?.runEvidence(tx, run.id);
+      const prNumber = run.prUrl?.match(/\/(?:pull|pull-requests|merge_requests)\/(\d+)/)?.[1];
+      return {
+        id: run.id,
+        kind: run.kind,
+        project: {
+          id: project.id,
+          key: project.key,
+          name: project.name,
+          teamId: project.teamId,
+          defaultBranch: project.defaultBranch ?? "main",
+        },
+        taskType: evidence?.taskType ?? null,
+        pr: run.prUrl && prNumber ? { number: Number(prNumber), url: run.prUrl } : null,
+        baseBranch: project.defaultBranch ?? "main",
+        stats: evidence?.stats ?? null,
+      };
+    },
+  };
   const router = {
     audit,
     system: systemRouter(config, desktopReleases),
@@ -198,6 +227,18 @@ export function createApp({
     }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),
+    ...codeReviewsRouter({
+      auth,
+      pool,
+      jobs,
+      publicUrl,
+      masterKey: config.masterKey,
+      providerFactory: providerFactory ?? defaultProviderFactory,
+      startReviewRuns: runs?.startReviewRuns,
+      queueFixRun: runs?.queueFixRun,
+      runEvidence: runs?.runEvidence,
+      runs: codeRuns,
+    }),
     costs: costsRouter({ auth, pool }),
     sandbox: sandboxRouter({ auth, pool }),
     leader: leaderRouter({ auth, pool, runs }),
