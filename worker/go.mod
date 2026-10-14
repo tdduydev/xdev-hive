@@ -3,6 +3,7 @@ module github.com/tdduydev/xdev-hive/worker
 go 1.27.2
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/oapi-codegen/runtime v1.2.0
