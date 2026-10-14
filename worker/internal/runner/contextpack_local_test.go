@@ -199,7 +199,7 @@ func TestLocalPromptNoCodeGraphWithoutIndex(t *testing.T) {
 func TestLocalPromptSlowCodeGraphTimesOut(t *testing.T) {
 	localPackEnv(t)
 	fakeCodeGraphSh(t)
-	t.Setenv("HIVE_FAKE_CG_SLEEP", "5")
+	t.Setenv("HIVE_FAKE_CG_SLEEP", "60")
 	repo := packRepo(t)
 	writeIn(t, filepath.Join(repo, codegraphDir), "codegraph.db", "db")
 	old := localPackTimeout
@@ -209,7 +209,8 @@ func TestLocalPromptSlowCodeGraphTimesOut(t *testing.T) {
 	if got := callLocalJSON(t, "prompt", "s1", promptInput(repo, "Sửa LoginHandler")); got != nil {
 		t.Fatalf("quá giờ vẫn có pack: %v", got)
 	}
-	if d := time.Since(start); d > 3*time.Second {
+	// Lệnh giả ngủ 60 giây: hook về trong nửa thời gian đó nghĩa là đã cắt theo localPackTimeout, dù máy tải nặng.
+	if d := time.Since(start); d > 30*time.Second {
 		t.Fatalf("hook chờ %s", d)
 	}
 }

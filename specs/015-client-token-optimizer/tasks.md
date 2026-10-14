@@ -174,7 +174,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - `apps/desktop/src/lib/optimizer.ts` (mới) và test
     - `apps/desktop/src/screens/tokens-screen.tsx`: chỉ chèn `<OptimizerPanel />`.
 
-- [ ] **T009 [US3] [US4] [vừa] Màn Memory** (sau T007; song song với T008)
+- [x] **T009 [US3] [US4] [vừa] Màn Memory** (sau T007; song song với T008)
   - **Goal**:
     - Cây CLI → dự án → gói → file, có token, ngày sửa, cờ.
     - Đầu màn có tổng token nạp mỗi phiên.

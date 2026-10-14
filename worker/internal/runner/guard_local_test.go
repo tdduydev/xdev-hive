@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -384,24 +385,35 @@ func TestLocalCleanupSkipsWhenLocked(t *testing.T) {
 	}
 }
 
-// Hook chạy ở mỗi lượt tool của người dùng nên phải nhanh: phần trong tiến trình dưới 50 ms cho output 30k.
+// Hook chạy ở mỗi lượt tool của người dùng nên chi phí phải tăng tuyến tính theo cỡ output. Không đặt ngưỡng ms tuyệt
+// đối vì runner CI dùng chung và -race làm chậm hàng chục lần; thay vào đó so hai cỡ đo xen kẽ trong cùng một lúc và
+// lấy lần nhanh nhất của mỗi cỡ để bỏ nhiễu. Chỉ phần giữa bị cắt (cỡ - ngưỡng) tốn công, nên cỡ lớn gấp 4 cho tỉ lệ tuyến tính ~5 và bậc hai ~22.
 func TestLocalPostToolIsFast(t *testing.T) {
 	if testing.Short() {
 		t.Skip("đo thời gian")
 	}
 	localHome(t)
 	proj := t.TempDir()
-	in := bigBash(proj, 30000)
-	in["session_id"] = "fast"
-	stdin := mustJSON(in)
-	callLocal(t, "post-tool", stdin)
-	const n = 10
-	start := time.Now()
-	for i := 0; i < n; i++ {
-		callLocal(t, "post-tool", stdin)
+	payload := func(n int) []byte {
+		in := bigBash(proj, n)
+		in["session_id"] = "fast"
+		return mustJSON(in)
 	}
-	if avg := time.Since(start) / n; avg > 50*time.Millisecond {
-		t.Fatalf("post-tool trung bình %v", avg)
+	small, big := payload(50000), payload(200000)
+	run := func(stdin []byte) time.Duration {
+		start := time.Now()
+		callLocal(t, "post-tool", stdin)
+		return time.Since(start)
+	}
+	run(small)
+	run(big)
+	minSmall, minBig := time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
+	for i := 0; i < 5; i++ {
+		minSmall = min(minSmall, run(small))
+		minBig = min(minBig, run(big))
+	}
+	if minBig > 20*minSmall {
+		t.Fatalf("post-tool không tuyến tính: 200k mất %v, 50k mất %v", minBig, minSmall)
 	}
 }
 

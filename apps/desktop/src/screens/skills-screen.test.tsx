@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, AccountContext } from "@/lib/account.ts";
@@ -382,7 +382,7 @@ describe("SkillsScreen", () => {
     renderSkills(null);
     expect(await screen.findByText("Không đọc được .claude/skills.")).toBeTruthy();
     expect(await screen.findByText("Không có skill nào khớp.")).toBeTruthy();
-    expect(screen.queryByText("Đang đọc…")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
   });
 
   it("chưa liên kết: chỉ hiện skill trên máy, nhắc liên kết, chữ tiếng Anh", async () => {
