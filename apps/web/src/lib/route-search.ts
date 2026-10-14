@@ -58,6 +58,19 @@ export function validateLeaderSearch(search: Record<string, unknown>): LeaderSea
   return typeof search.thread === "string" ? { thread: search.thread } : {};
 }
 
+export interface SdlcBoardSearch {
+  /** Mã dự án lọc sẵn khi mở bảng từ màn Chỉ số. */
+  project?: string | undefined;
+  /** Mã chế độ lọc sẵn. */
+  mode?: string | undefined;
+}
+
+/** Trả khoá rõ là undefined khi giá trị sai để ghi đè giá trị thô (router gộp thô với đã kiểm). */
+export function validateSdlcBoardSearch(search: Record<string, unknown>): SdlcBoardSearch {
+  const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
+  return { project: text(search.project), mode: text(search.mode) };
+}
+
 export interface TasksSearch {
   /** Nhóm lọc; không có là "Tất cả". */
   status?: BoardFilter;
