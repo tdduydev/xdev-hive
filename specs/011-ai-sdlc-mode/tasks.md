@@ -321,13 +321,15 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 6: Giao diện dùng chung, web, app (US7, US8) 🎯
 
-- [ ] T050 🎯 [P] Package `@xdev-hive/sdlc-ui` — khung, bảng, tạo hạng mục, câu hỏi
+- [x] T050 🎯 [P] Package `@xdev-hive/sdlc-ui` — khung, bảng, tạo hạng mục, câu hỏi
   - `env.tsx` (`SdlcEnv`: api, lang, link, can, errorMessage — như `DocEditorEnv`), `text.ts` (vi/en), `item-board.tsx`
     (chip dự án, lọc khớp dự án tham gia), `item-list.tsx`, `new-item.tsx` (gợi ý cỡ/chế độ, issue, `project-picker.tsx`:
     dự án chính + dự án tham gia, chỉ dự án có quyền, báo dự án chưa bật), `questions.tsx`; test component.
   - **Scope**: `packages/sdlc-ui/**` (package mới: `package.json`, `src/{index.ts,env.tsx,text.ts,item-board.tsx,item-list.tsx,new-item.tsx,project-picker.tsx,questions.tsx}`, test),
     `pnpm-workspace.yaml` nếu cần, `pnpm-lock.yaml`
   - **Phụ thuộc**: T001, T005 · **Mức**: vừa
+  - Đã làm: thêm `format.ts`, `parts.tsx`, `test-fixtures.tsx`. Contract chưa có route đọc issue nên màn tạo không xem
+    trước tiêu đề/nhãn của issue; hub đọc issue khi gợi ý và khi tạo. App chủ còn phải thêm `@source` của package vào CSS.
 
 - [ ] T051 🎯 Package `@xdev-hive/sdlc-ui` — chi tiết hạng mục
   - `item-detail.tsx` (tab Tổng quan, Dự án, Tài liệu, Contract, Câu hỏi, Task, Truy vết), `phase-stepper.tsx`,
