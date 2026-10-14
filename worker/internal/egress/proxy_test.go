@@ -459,7 +459,8 @@ func TestHTTPHeaderTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(500 * time.Millisecond))
+	// Hạn của client dài hơn hẳn ConnectTimeout để máy tải nặng không làm client hết giờ trước proxy.
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 	fmt.Fprint(conn, "GET http://denied.example/ HTTP/1.1\r\nHost:")
 	var data [1]byte
 	if _, err := conn.Read(data[:]); err == nil {

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, AccountContext } from "@/lib/account.ts";
@@ -124,9 +124,18 @@ describe("SetupScreen", () => {
     render(<SetupScreen />);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Thư mục dự án"), "/tmp/du-an");
-    await user.click(screen.getByRole("button", { name: "Kiểm tra" }));
+    // Nút Kiểm tra khoá trong lúc màn quét lần đầu; bấm lúc đó không làm gì.
+    const check = screen.getByRole("button", { name: "Kiểm tra" }) as HTMLButtonElement;
+    await waitFor(() => expect(check.disabled).toBe(false));
+    await user.click(check);
     await screen.findByRole("img", { name: /mục bắt buộc/ });
-    expect(calls.at(-1)).toEqual({ command: "scan_environment", args: { folder: "/tmp/du-an", project: null } });
+    // Lần quét lúc mở màn (chưa có thư mục) và lần quét sau Kiểm tra chạy độc lập, thứ tự kết thúc không cố định.
+    await waitFor(() =>
+      expect(calls.filter((c) => c.command === "scan_environment")).toContainEqual({
+        command: "scan_environment",
+        args: { folder: "/tmp/du-an", project: null },
+      }),
+    );
     expect(localStorage.getItem("hive.folder")).toBe("/tmp/du-an");
   });
 
@@ -163,6 +172,9 @@ describe("SetupScreen", () => {
     await user.click(screen.getByRole("button", { name: "Chạy" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Chạy" }));
     expect(calls.find((c) => c.command === "run_install")?.args).toEqual({ id: "gemini", folder: null, project: null });
+    // Cài xong màn quét lại, thư mục vẫn hỏng nên quét thêm phần chung của máy: chờ hết, nếu không lệnh quét trễ rơi
+    // vào cầu nối giả của test kế.
+    await waitFor(() => expect(calls.filter((c) => c.command === "scan_environment")).toHaveLength(4));
   });
 
   it("tiếng Anh", async () => {

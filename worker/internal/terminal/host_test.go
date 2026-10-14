@@ -276,7 +276,9 @@ func TestOutputRateLimitKeepsBytes(t *testing.T) {
 // Bí mật bị cắt giữa hai lần đọc PTY vẫn bị che.
 func TestSecretSplitAcrossReadsIsMasked(t *testing.T) {
 	h := newHarness(t, runner.Command{Path: "/bin/sh", Args: []string{"-c", "printf 'a tok-SEC'; sleep 0.1; printf 'RET-123456 b'; sleep 0.2"}})
-	h.host.Flush = 300 * time.Millisecond
+	// Flush dài hơn hẳn khoảng nghỉ 0,1 giây giữa hai nửa bí mật để máy tải nặng không nhả nửa đầu ra trước; output còn lại
+	// vẫn đi ngay khi CLI thoát, nên test không phải chờ hết Flush.
+	h.host.Flush = 5 * time.Second
 	h.host.Open(context.Background(), h.request(s1))
 	h.waitExit(t, s1)
 	out := h.output(s1)

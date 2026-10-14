@@ -269,7 +269,6 @@ export function SkillPackSection() {
           rows={rows}
           minWidth={620}
           placeholder={t.search}
-          selectable={false}
           facets={[
             { key: "group", label: t.group, value: groupOf },
             { key: "state", label: t.state, value: (row) => (row.enabled ? t.on : t.off) },
