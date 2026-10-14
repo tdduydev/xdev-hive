@@ -241,7 +241,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 4: Web (US1–US4, US7) 🎯
 
-- [ ] T030 🎯 Web: khung bên cạnh trong Leader, thư viện, chi tiết
+- [x] T030 🎯 Web: khung bên cạnh trong Leader, thư viện, chi tiết
   - `leader-page.tsx`: thẻ thay chữ khi `message.artifact`, lưới chat | vạch chia | khung (≥ 1024 px), `Sheet` (< 1024 px),
     nhớ độ rộng; trang `pages/artifacts/{library-page,detail-page}.tsx`; `router.tsx` (`/artifacts`, `/artifacts/:id`,
     `/artifacts/:id/v/:n`); `nav.ts` (mục Artifact); `ArtifactsEnv` của web (`onAskLeaderFix` mở `fix-request-dialog`,

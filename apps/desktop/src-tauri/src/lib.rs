@@ -10,6 +10,8 @@ mod files;
 mod git_groups;
 mod hub;
 mod local_projects;
+mod memory_store;
+mod optimizer;
 mod profiles;
 mod pty;
 mod register;
@@ -738,6 +740,14 @@ pub fn run() {
             profiles::cli_profile_discover_add,
             profiles::open_login_terminal,
             profiles::open_cli_terminal,
+            optimizer::optimizer_status,
+            optimizer::optimizer_enable,
+            optimizer::optimizer_disable,
+            optimizer::optimizer_restore,
+            optimizer::optimizer_report,
+            memory_store::memory_scan,
+            memory_store::memory_apply,
+            memory_store::memory_compress,
             local_projects::local_projects,
             local_projects::local_projects_import,
             local_projects::local_project_bind,
@@ -788,6 +798,7 @@ pub fn run() {
         })
         .setup(|app| {
             doctor::warm_user_path();
+            optimizer::link_on_start(app.handle());
             git_groups::start_auto_fetch(app.handle().clone());
             let tray = build_tray(app)?;
             app.manage(tray);

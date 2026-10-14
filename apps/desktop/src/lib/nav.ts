@@ -86,6 +86,7 @@ export type ScreenId =
   | "write"
   | "skills"
   | "tokens"
+  | "memory"
   | "setup"
   | "plans"
   | "projects"
@@ -261,6 +262,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         label: { vi: "Token và ngữ cảnh", en: "Tokens & context" },
         icon: ChartLineIcon,
         design: "AppTokens.dc.html",
+        needs: "tokens.read",
+      },
+      {
+        id: "memory",
+        label: { vi: "Memory", en: "Memory" },
+        icon: LibraryIcon,
+        design: "AppNav.dc.html",
         needs: "tokens.read",
       },
     ],

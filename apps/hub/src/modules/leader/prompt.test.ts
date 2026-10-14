@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARTIFACT_RULE, assembleLeaderPrompt, formatTranscript } from "./prompt.ts";
+import { ARTIFACT_RULE, assembleLeaderPrompt, formatTranscript, SDLC_RULE, TIER_RULE } from "./prompt.ts";
 
 describe("formatTranscript", () => {
   it("trả về chuỗi rỗng khi danh sách tin nhắn trống", () => {
@@ -57,7 +57,7 @@ describe("artifact trong prompt", () => {
     expect(formatTranscript([first, { role: "user", content: "Tin cũ" }, card], budget)).not.toContain("[artifact");
   });
 
-  it("hướng dẫn artifact nằm trong prompt: nội dung dài vào artifact, sửa thì artifact_update", () => {
+  it("prompt giữ hướng dẫn artifact cùng đề xuất AI SDLC và chọn cấp model", () => {
     const prompt = assembleLeaderPrompt({
       transcript: "",
       projectName: "Demo",
@@ -66,6 +66,9 @@ describe("artifact trong prompt", () => {
       context: "",
     });
     expect(prompt).toContain(ARTIFACT_RULE);
+    expect(prompt).toContain(SDLC_RULE);
+    expect(prompt.split(SDLC_RULE)).toHaveLength(2);
+    expect(prompt).toContain(TIER_RULE);
     expect(ARTIFACT_RULE).toContain("artifact_create");
     expect(ARTIFACT_RULE).toContain("artifact_update");
     expect(ARTIFACT_RULE).toContain("30 dòng");

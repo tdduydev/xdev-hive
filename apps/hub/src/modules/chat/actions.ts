@@ -1,4 +1,5 @@
 import type { ChatAction } from "@xdev-hive/contracts";
+import { decideCodeReview } from "../codereview/index.ts";
 import { decideReview } from "../knowledge/index.ts";
 import { approveApproval, rejectApproval } from "../leader/index.ts";
 import { ConflictError, type Tx } from "../platform/index.ts";
@@ -23,6 +24,28 @@ function needRuns(deps: ChatDeps) {
  */
 export async function performAction(deps: ChatDeps, tx: Tx, userId: string, action: ChatAction): Promise<ActionResult> {
   switch (action.kind) {
+    case "code_review.approve":
+    case "code_review.changes": {
+      if (!deps.codeReviews) throw new ConflictError("CODE_REVIEWS_DISABLED", "Hub chưa cấu hình duyệt code qua chat.");
+      await decideCodeReview(
+        tx,
+        userId,
+        {
+          id: action.reviewId,
+          headSha: action.headSha,
+          gateRunId: action.gateRunId,
+          decision: action.kind === "code_review.approve" ? "approve" : "changes",
+          ...(action.kind === "code_review.changes" ? { note: NO_REASON } : {}),
+        },
+        deps.codeReviews,
+      );
+      return {
+        text:
+          action.kind === "code_review.approve"
+            ? `Đã ghi nhận duyệt checkpoint code. Commit: ${action.headSha}`
+            : `Đã trả lại PR theo hướng của checkpoint. Commit: ${action.headSha}`,
+      };
+    }
     case "approval.approve": {
       const { afterCommit } = await approveApproval(deps.runs, tx, userId, action.approvalId);
       return { text: "Đã duyệt và thực hiện đề xuất.", after: afterCommit };

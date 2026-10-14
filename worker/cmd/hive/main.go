@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/localipc"
 	"github.com/tdduydev/xdev-hive/worker/internal/version"
@@ -34,31 +36,47 @@ type app struct {
 	getenv  func(string) string
 	getwd   func() (string, error)
 	socket  func() (string, error)
+	// keyring, cliConfig, http, openURL dùng cho lệnh cần hub (login, --task, ls --all).
+	keyring   secretStore
+	cliConfig func() (string, error)
+	http      *http.Client
+	openURL   func(string) error
+	loginWait time.Duration
 }
 
 func main() {
 	a := &app{
-		stdin:   os.Stdin,
-		stdout:  os.Stdout,
-		stderr:  os.Stderr,
-		console: stdConsole{},
-		signals: notifySignals,
-		getenv:  os.Getenv,
-		getwd:   os.Getwd,
-		socket:  localipc.DefaultPath,
+		stdin:     os.Stdin,
+		stdout:    os.Stdout,
+		stderr:    os.Stderr,
+		console:   stdConsole{},
+		signals:   notifySignals,
+		getenv:    os.Getenv,
+		getwd:     os.Getwd,
+		socket:    localipc.DefaultPath,
+		keyring:   osKeyring{},
+		cliConfig: defaultCLIConfigPath,
+		openURL:   openBrowser,
 	}
 	os.Exit(a.run(os.Args[1:]))
 }
 
 const usageText = `Cách dùng: hive <lệnh> [cờ]
 
-  chat [--cli claude|codex|gemini] [--account ID] [--model M] [--force] [-- đối số thêm cho CLI]
+  login [--hub URL] [--with-token] [--no-browser]
+                          đăng nhập hub (chỉ cần cho --task, --project, ls --all)
+  logout                  xoá token trên máy
+  whoami                  đang đăng nhập bằng ai, hub nào
+  chat [--cli claude|codex|gemini] [--account ID] [--model M] [--task KEY | --project KEY] [--no-record] [--force]
+       [-- đối số thêm cho CLI]
                           mở phiên agent tương tác trong thư mục hiện tại
   run "<lời nhắc>" [cờ như chat]
                           như chat, gửi lời nhắc làm câu đầu
-  ls [--json]             liệt kê phiên trên máy
+  ls [--json] [--all]     liệt kê phiên trên máy (--all: phiên đang chạy trên mọi máy của bạn, cần đăng nhập)
   attach <id> [--view]    gắn lại vào phiên (--view: chỉ xem)
   kill <id>               ngắt phiên
+  remote <lệnh>           điều khiển từ xa máy này: status, on, off, roots, devices, pair, set, watch
+                          (hive remote help để xem đủ)
   version                 phiên bản hive và hive-worker
 
 Trong phiên: Ctrl-] d để tách (phiên chạy tiếp), Ctrl-] t để giành quyền điều khiển, Ctrl-] Ctrl-] gửi Ctrl-].
@@ -90,8 +108,16 @@ func (a *app) run(args []string) int {
 	case "help", "-h", "--help":
 		fmt.Fprint(a.stdout, usageText)
 		return exitOK
-	case "login", "logout", "whoami", "remote", "__hook":
-		// Cần token cá nhân và handler phía hub (T002, T013); chưa làm thì báo rõ thay vì im lặng.
+	case "login":
+		return a.login(rest)
+	case "logout":
+		return a.logout(rest)
+	case "whoami":
+		return a.whoami(rest)
+	case "remote":
+		return a.remote(rest)
+	case "__hook":
+		// Cần hook của CLI (T072); chưa làm thì báo rõ thay vì im lặng.
 		return a.errorf(exitUsage, "Lệnh hive %s chưa hỗ trợ trong bản này.", cmd)
 	}
 	fmt.Fprintf(a.stderr, "hive: không có lệnh %q.\n", cmd)
