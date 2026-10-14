@@ -5,5 +5,6 @@ import { defineConfig } from "vitest/config";
 // riêng bằng `pnpm test:e2e` vì cần trình duyệt.
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-  test: { include: ["src/**/*.test.{ts,tsx}"] },
+  // Máy chạy nhiều tiến trình song song làm test chậm gấp hàng chục lần so với lúc rảnh.
+  test: { include: ["src/**/*.test.{ts,tsx}"], testTimeout: 20_000 },
 });

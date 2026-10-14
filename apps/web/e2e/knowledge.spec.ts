@@ -25,7 +25,7 @@ const skill = {
   updatedAt: at,
   updatedBy: author,
 };
-const commit = "fb33b3b474af0737c4974d50c82ce87dd3cd9b1c";
+const commit = "d246ca68816356dc3cea9737e7d41a82569582eb";
 const packSkill = (name: string, over: Record<string, unknown> = {}) => ({
   name,
   description: `Mô tả ${name}`,
@@ -252,7 +252,7 @@ test("skills: Hive default skills show label, license and source, and turn on pe
   await page.goto("/knowledge/skills");
   const pack = page.getByRole("region", { name: "Skill mặc định của Hive" });
   await expect(pack.getByRole("heading", { name: "Skill mặc định của Hive" })).toBeVisible();
-  await expect(pack.getByRole("link", { name: "tdduydev/xdev-skills@fb33b3b" })).toBeVisible();
+  await expect(pack.getByRole("link", { name: "tdduydev/xdev-skills@d246ca6" })).toBeVisible();
   const shadcn = pack.getByRole("row", { name: /shadcn/ });
   await expect(shadcn.getByText("Hive mặc định")).toBeVisible();
   await expect(shadcn.getByText("MIT")).toBeVisible();
@@ -281,7 +281,7 @@ test("skills: Hive default skills show label, license and source, and turn on pe
 
   // Chi tiết: giấy phép, bản gốc, SKILL.md; bỏ đặt riêng thì theo tổ chức.
   await pack.getByRole("button", { name: "Mở dòng web-design-guidelines" }).click();
-  await expect(pack.getByRole("link", { name: /vercel-labs\/agent-skills@fb33b3b/ })).toBeVisible();
+  await expect(pack.getByRole("link", { name: /vercel-labs\/agent-skills@d246ca6/ })).toBeVisible();
   await expect(pack.locator("article")).toContainText("Các bước của skill.");
   await pack.getByRole("button", { name: "Theo phạm vi rộng hơn" }).click();
   await expect(web.getByText("Theo mặc định của Hive")).toBeVisible();

@@ -360,6 +360,66 @@ test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async
   await expect(page.getByLabel(/Trong worktree/)).toBeEnabled();
 });
 
+test("cấu hình dự án: quản trị đội thấy máy đã gắn repo local và máy bật toàn quyền", async ({ page }) => {
+  const machine = (id: string, name: string, over: Record<string, unknown>) => ({
+    id,
+    teamId: TEAM_ID,
+    kind: "worker",
+    name,
+    os: "darwin",
+    version: "0.9.0",
+    clis: ["claude"],
+    capacity: 2,
+    status: "online",
+    lastSeenAt: NOW,
+    createdAt: NOW,
+    shared: true,
+    registeredBy: null,
+    ...over,
+  });
+  const h = await open(page, "admin", {
+    "machines/list": () =>
+      ok([
+        machine("3c3c3c3c-0000-4000-8000-000000000001", "mac-mini-lan", {
+          boundProjects: [PROJECT.id],
+          fullProjects: [PROJECT.id],
+        }),
+        machine("3c3c3c3c-0000-4000-8000-000000000002", "dev-ha", { boundProjects: [PROJECT.id], fullProjects: [] }),
+        machine("3c3c3c3c-0000-4000-8000-000000000003", "may-khac", { boundProjects: ["other"], fullProjects: [] }),
+        machine("3c3c3c3c-0000-4000-8000-000000000004", "da-thu-hoi", {
+          status: "revoked",
+          boundProjects: [PROJECT.id],
+        }),
+      ]),
+  });
+  await page.goto("/projects/PAY/settings");
+  const section = page.getByRole("group", { name: "Máy đã gắn dự án này" });
+  const rows = section.getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("mac-mini-lan");
+  await expect(rows.nth(0)).toContainText("Đã gắn repo local");
+  await expect(rows.nth(0)).toContainText("Toàn quyền");
+  await expect(rows.nth(1)).toContainText("dev-ha");
+  await expect(rows.nth(1)).not.toContainText("Toàn quyền");
+  await expect(section).not.toContainText("may-khac");
+  await expect(section).not.toContainText("da-thu-hoi");
+  expect(h.rpcCalls.find((c) => c.path === "machines/list")?.input).toEqual({ teamId: TEAM_ID });
+});
+
+test("cấu hình dự án: chưa máy nào gắn thì báo trống", async ({ page }) => {
+  await open(page, "admin", { "machines/list": () => ok([]) });
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByText("Chưa máy nào gắn dự án này với repo local.")).toBeVisible();
+});
+
+test("cấu hình dự án: thành viên thường không thấy mục máy và không gọi danh sách máy", async ({ page }) => {
+  const h = await open(page, "member");
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByRole("heading", { name: "Quyền CLI của run" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Máy đã gắn dự án này" })).toHaveCount(0);
+  expect(h.rpcCalls.filter((c) => c.path === "machines/list")).toHaveLength(0);
+});
+
 test("cấu hình dự án: thành viên thường chỉ xem", async ({ page }) => {
   await open(page, "member");
   await page.goto("/projects/PAY/settings");
