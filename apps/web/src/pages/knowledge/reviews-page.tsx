@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { ReviewStatus, ReviewSummary, SlaState } from "@xdev-hive/contracts";
 import {
@@ -108,6 +108,7 @@ export function ReviewsPage() {
 /** Hàng chờ duyệt tài liệu (DocReview.dc.html): bảng phiên duyệt, thay đổi so với bản đã duyệt, quyết định. */
 function DocReviews(): ReactNode {
   const { api } = useOrg();
+  const queryClient = useQueryClient();
   const t = useT(reviewText);
   const lang = useLang();
   const fmt = useReviewFormat(lang);
@@ -322,7 +323,10 @@ function DocReviews(): ReactNode {
             ),
           }}
           // Quyết định xong thì tài liệu rời hàng "chờ tôi"; ghim lựa chọn để người duyệt vẫn thấy kết quả.
-          onDecided={() => select(selectedId)}
+          onDecided={() => {
+            select(selectedId);
+            void queryClient.invalidateQueries({ queryKey: api.sdlc.key() });
+          }}
         />
       ) : (
         list.data && items.length > 0 && <p className="text-muted-foreground">{t.pick}</p>
