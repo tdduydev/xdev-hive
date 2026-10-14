@@ -484,6 +484,13 @@ var ErrNoAccount = errors.New("không dùng được gói đã chọn")
 // màn hình, còn run thì chờ được. Trả (nil, nil) khi id rỗng và CLI không có gói nào: chạy bằng
 // đăng nhập mặc định.
 func (p *Pool) AcquireInteractive(cli, id string) (*Lease, error) {
+	return p.AcquireInteractiveForce(cli, id, false)
+}
+
+// AcquireInteractiveForce như AcquireInteractive; force (`hive chat --force`) nhận cả gói đang nghỉ, vì giờ nghỉ chỉ là
+// worker đoán từ lần chạm giới hạn trước và người ngồi trước máy muốn tự thử. Tự chọn thì gói đang nghỉ chỉ dùng khi
+// không còn gói nào khác.
+func (p *Pool) AcquireInteractiveForce(cli, id string, force bool) (*Lease, error) {
 	if p == nil || !Supported(cli) {
 		if id != "" {
 			return nil, fmt.Errorf("%w: máy không có danh sách gói của %s", ErrNoAccount, cli)
@@ -512,7 +519,7 @@ func (p *Pool) AcquireInteractive(cli, id string) (*Lease, error) {
 			return "đang tắt"
 		case loggedIn != nil && !*loggedIn:
 			return "chưa đăng nhập"
-		case st.CoolUntil[a.ID].After(now):
+		case !force && st.CoolUntil[a.ID].After(now):
 			return "đang nghỉ tới " + st.CoolUntil[a.ID].Local().Format("15:04 02/01")
 		}
 		return ""
@@ -536,11 +543,17 @@ func (p *Pool) AcquireInteractive(cli, id string) (*Lease, error) {
 	}
 	hasAny := false
 	var why []string
-	var full *Account
+	var full, rested *Account
 	for _, a := range p.candidates(list, cli, st, now) {
 		hasAny = true
 		if reason := usable(a); reason != "" {
 			why = append(why, a.ID+" "+reason)
+			continue
+		}
+		if st.CoolUntil[a.ID].After(now) {
+			if rested == nil {
+				rested = &a
+			}
 			continue
 		}
 		// Gói còn chỗ trước, gói đang chạy đủ run chỉ khi không còn gói nào khác.
@@ -554,6 +567,9 @@ func (p *Pool) AcquireInteractive(cli, id string) (*Lease, error) {
 	}
 	if full != nil {
 		return take(*full), nil
+	}
+	if rested != nil {
+		return take(*rested), nil
 	}
 	for _, a := range list {
 		if a.CLI == cli && !a.Pending {
