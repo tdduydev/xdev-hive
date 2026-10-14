@@ -125,7 +125,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - `worker/cmd/hive-worker/main.go`: một `case "optimize"` và chuỗi cách dùng.
   - **Test**: chạy end-to-end trên `HOME` giả: bật → `status --json` → tắt.
 
-- [ ] **T010 [US3] [US4] [vừa] Thao tác memory và lệnh `hive-worker memory`** (sau T005; chạy song song với T004 nhưng
+- [x] **T010 [US3] [US4] [vừa] Thao tác memory và lệnh `hive-worker memory`** (sau T005; chạy song song với T004 nhưng
   sửa `main.go` sau T004)
   - **Goal**:
     - Lệnh `memory scan|edit|delete|restore|merge|share|unshare --json`.
@@ -215,7 +215,8 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - Nếu cần: `packages/contracts/src/knowledge.ts`, `packages/contracts/openapi.json`,
       `apps/hub/src/modules/knowledge/<file memory>.ts` và test.
 
-- [ ] **T013 [P] [US7] [nặng] Context pack cục bộ qua `UserPromptSubmit`** (sau T002)
+- [x] **T013 [P] [US7] [nặng] Context pack cục bộ qua `UserPromptSubmit`** (sau T002)
+  - **Còn lại**: ô chọn trong `optimizer-panel.tsx` chờ T008 merge (preset đã có `PresetOptions.ContextPack`).
   - **Goal**:
     - `hive-worker hook prompt --local`: chỉ ở prompt đầu tiên của phiên, gọi `buildContextPack` với thư mục `cwd` và
       prompt. Timeout 5 giây, ngân sách 14.000 ký tự. Trả `additionalContext`.
@@ -240,7 +241,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - Số ADR lấy kế tiếp trên `main` lúc commit.
   - **PHẠM VI**: `docs/adr/00NN-client-token-optimizer.md` (mới), `docs/token-optimizer.md` (mới)
 
-- [ ] **T015 [nhẹ] Gom script đo** (sau T006)
+- [x] **T015 [nhẹ] Gom script đo** (sau T006)
   - **Goal**: `scripts/token-audit.ts` gọi `hive-worker optimize report --json` khi có sidecar. Hoặc xoá script và
     cập nhật đường dẫn trong research.md.
   - **PHẠM VI**: `scripts/token-audit.ts`, `specs/015-client-token-optimizer/research.md` (một dòng đường dẫn)

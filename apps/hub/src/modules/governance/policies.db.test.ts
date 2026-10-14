@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { type AgentPolicyInput, DEFAULT_AGENT_POLICY } from "@xdev-hive/contracts";
+import { type AgentPolicyInput, DEFAULT_AGENT_POLICY, DEFAULT_ORG_SDLC_POLICY } from "@xdev-hive/contracts";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { errorCode, seedOrg } from "../../../test/org-fixture.ts";
@@ -8,7 +8,7 @@ import { syncInstructionTemplates, templateService, updateProjectSettings } from
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { purgeRunLogs } from "../runs/index.ts";
 import { createMemoryProvider, type MemoryProvider } from "../scm/index.ts";
-import { getAgentPolicy, loadPolicy, saveAgentPolicy } from "./policies.ts";
+import { getAgentPolicy, loadPolicy, saveAgentPolicy, sdlcPolicyOf } from "./policies.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -110,6 +110,35 @@ describe("lưu và đọc chính sách", () => {
     const other = await seedOrg(admin, `pol2-${tag}`);
     const seen = await withTenant(app, { userId: other.user("admin"), orgId: other.orgId }, (tx) => loadPolicy(tx));
     expect(seen.requireSandbox).toBe(false);
+  });
+});
+
+describe("chính sách AI SDLC", () => {
+  it("chưa lưu, hoặc dòng cũ không có mục sdlc, thì dùng mặc định (tự duyệt được phép)", async () => {
+    expect(await as("tmember", (tx) => sdlcPolicyOf(tx))).toEqual(DEFAULT_ORG_SDLC_POLICY);
+    await as("admin", (tx) => saveAgentPolicy(tx, org.user("admin"), policy()));
+    await admin.query("update hive.agent_policies set policy = policy - 'sdlc' where org_id = $1", [org.orgId]);
+    expect((await as("tmember", (tx) => sdlcPolicyOf(tx))).autoApprove.allowed).toBe(true);
+  });
+
+  it("mục đã lưu thắng mặc định; tắt tự duyệt có hiệu lực ngay và có audit", async () => {
+    const sdlc = { autoApprove: { ...DEFAULT_ORG_SDLC_POLICY.autoApprove, allowed: false, minScoreFloor: 9 } };
+    await as("admin", (tx) => saveAgentPolicy(tx, org.user("admin"), policy({ sdlc })));
+    const got = await as("tmember", (tx) => sdlcPolicyOf(tx));
+    expect(got.autoApprove).toMatchObject({ allowed: false, minScoreFloor: 9 });
+    const { rows } = await admin.query(
+      "select data from hive.audit_log where org_id = $1 and action = 'policies.update' order by created_at desc limit 1",
+      [org.orgId],
+    );
+    expect(rows[0].data.changed).toContain("sdlc");
+  });
+
+  it("RLS: tổ chức khác vẫn thấy mặc định", async () => {
+    const sdlc = { autoApprove: { ...DEFAULT_ORG_SDLC_POLICY.autoApprove, allowed: false } };
+    await as("admin", (tx) => saveAgentPolicy(tx, org.user("admin"), policy({ sdlc })));
+    const other = await seedOrg(admin, `pol3-${tag}`);
+    const seen = await withTenant(app, { userId: other.user("admin"), orgId: other.orgId }, (tx) => sdlcPolicyOf(tx));
+    expect(seen.autoApprove.allowed).toBe(true);
   });
 });
 
