@@ -72,6 +72,7 @@ import {
   registerSdlcScmHandlers,
   registerSdlcSync,
   registerSdlcWorker,
+  reviewSpecFor,
   type SdlcDeps,
   sdlcFleetRuns,
   sdlcPullQueue,
@@ -259,6 +260,7 @@ if (roles.includes("jobs") && jobs) {
       startReviewRuns: runs?.startReviewRuns,
       queueFixRun: runs?.queueFixRun,
       runEvidence: runs?.runEvidence,
+      specContextFor: reviewSpecFor,
     };
     await registerCodeReviewWorker(jobs, codeReviewDeps);
     await registerReviewStatusWorker(jobs, codeReviewDeps);
@@ -311,6 +313,7 @@ const telegramPolling =
           startReviewRuns: runs?.startReviewRuns,
           queueFixRun: runs?.queueFixRun,
           runEvidence: runs?.runEvidence,
+          specContextFor: reviewSpecFor,
         },
       })
     : undefined;

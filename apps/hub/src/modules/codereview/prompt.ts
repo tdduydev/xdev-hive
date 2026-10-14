@@ -45,6 +45,47 @@ export function reviewGuidance(ai: GateAi): string[] {
   return lines;
 }
 
+/** Requirement của task thuộc hạng mục AI SDLC; module `sdlc` cung cấp qua `AiGateDeps.specContextFor`. */
+export interface ReviewSpecContext {
+  /** Mã và tên hạng mục, ví dụ `012 · Xuất báo cáo`. */
+  item: string;
+  /** `text` rỗng khi không đọc được tài liệu nguồn requirement. */
+  requirements: { id: string; text: string; acceptance: string[] }[];
+  docs: { name: string; docKey: string; version: number }[];
+}
+
+/** Lời nhắc dài làm agent bỏ qua phần diff; hạng mục lớn thì reviewer mở tài liệu để đọc phần còn lại. */
+const MAX_REQUIREMENTS = 20;
+const MAX_ACCEPTANCE = 8;
+const MAX_REQUIREMENT_TEXT = 500;
+
+/**
+ * Ngữ cảnh spec trong lời nhắc review (T085): reviewer chấm thay đổi có đáp ứng requirement và tiêu chí của task hay
+ * không, thay vì chỉ đoán ý từ tiêu đề task.
+ */
+export function reviewSpecLines(spec: ReviewSpecContext): string[] {
+  const lines = [`Task thuộc hạng mục AI SDLC ${spec.item}.`];
+  const reqs = spec.requirements.slice(0, MAX_REQUIREMENTS);
+  if (reqs.length) {
+    lines.push(
+      "Thay đổi phải đáp ứng các requirement sau của task (dòng thụt vào là tiêu chí chấp nhận). Requirement chưa làm, làm sai hay thiếu tiêu chí là phát hiện, ghi mã requirement trong message:",
+    );
+    for (const r of reqs) {
+      const text = r.text.replace(/\s+/g, " ").trim();
+      lines.push(`- ${r.id}${text && text !== r.id ? `: ${clip(text, MAX_REQUIREMENT_TEXT)}` : ""}`);
+      for (const a of r.acceptance.slice(0, MAX_ACCEPTANCE))
+        lines.push(`  - ${clip(a.replace(/\s+/g, " ").trim(), MAX_REQUIREMENT_TEXT)}`);
+    }
+    if (spec.requirements.length > reqs.length)
+      lines.push(`- … và ${spec.requirements.length - reqs.length} requirement khác, xem trong tài liệu.`);
+  }
+  if (spec.docs.length) {
+    lines.push("Tài liệu đã duyệt của hạng mục (đọc bằng MCP doc_get theo key khi cần):");
+    for (const d of spec.docs) lines.push(`- ${d.name} v${d.version}: key \`${d.docKey}\``);
+  }
+  return lines;
+}
+
 // ---- Bình luận tổng hợp lên PR ---------------------------------------------------------------------------------------
 
 /** Như review chéo: PR dài vẫn đọc được, phần còn lại xem trên hub. */
