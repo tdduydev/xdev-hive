@@ -7,13 +7,19 @@ import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill, type PillProps } from "@xdev-hive/ui/pill";
-import { MailIcon, NetworkIcon } from "lucide-react";
+import { EllipsisIcon, MailIcon, NetworkIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 import { DataTable } from "@/components/data-table/data-table.tsx";
 import { Icon } from "@/components/icons.tsx";
 import { InviteForm } from "@/components/invite-form.tsx";
 import { PersonAvatar, Who } from "@/components/person.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
 import {
   EmptyState,
   LoadFailure,
@@ -316,7 +322,7 @@ export function MembersPage() {
                 onRowClick={(m) =>
                   void navigate({ to: "/admin/members/$userId", params: { userId: m.userId }, search: {} })
                 }
-                minWidth={980}
+                minWidth={740}
                 bulk={[
                   {
                     key: "role",
@@ -419,6 +425,7 @@ export function MembersPage() {
                   {
                     key: "login",
                     label: t.signsInWith,
+                    hidden: true,
                     value: (m) =>
                       (m.providers ?? [])
                         .map((provider) => providerLabel(signInMethod(provider), t.password))
@@ -428,6 +435,7 @@ export function MembersPage() {
                   {
                     key: "seen",
                     label: t.lastActive,
+                    hidden: true,
                     value: (m) => m.lastSeenAt,
                     sortable: true,
                     cell: (m) => <MemberActivity member={m} />,
@@ -435,6 +443,7 @@ export function MembersPage() {
                   {
                     key: "joined",
                     label: t.joined,
+                    hidden: true,
                     value: (m) => m.joinedAt,
                     sortable: true,
                     cell: (m) => formatDay(m.joinedAt),
@@ -588,7 +597,7 @@ export function MemberDetailPage() {
                   { term: t.email, detail: member.email },
                   {
                     term: t.organizationRole,
-                    detail: <MemberCell member={member} part="role" report={setFailure} />,
+                    detail: <MemberCell member={member} part="role-edit" report={setFailure} />,
                   },
                   { term: t.status, detail: blocked ? t.locked : t.activeStatus },
                   { term: t.team, detail: <MemberTeams teams={member.teams} /> },
@@ -1042,26 +1051,28 @@ function MemberCell({
   };
   const mutationKey = ["org-member", org.id, member.userId];
   const mutating = useIsMutating({ mutationKey }) > 0;
-  const setRole = useMutation({
-    mutationKey,
-    mutationFn: (role: OrgRole) => api.orgMembers.setRole.call({ userId: member.userId, role }),
-    ...handlers,
-  });
   const setStatus = useMutation({
     mutationKey,
     mutationFn: (status: "active" | "blocked") => api.orgMembers.setStatus.call({ userId: member.userId, status }),
     ...handlers,
   });
+  const [changingRole, setChangingRole] = useState(false);
   const self = member.userId === me.id;
   const blocked = member.status === "blocked";
-  const busy = mutating || setRole.isPending || setStatus.isPending;
-  // Hiện ngay vai trò vừa chọn trong lúc chờ hub; lỗi thì quay về vai trò cũ.
-  const role = setRole.isPending ? setRole.variables : member.role;
+  const busy = mutating || setStatus.isPending;
+  const roleDialog = (
+    <Dialog open={changingRole} onOpenChange={setChangingRole}>
+      <DialogContent>
+        {changingRole && <MemberBulkDialog members={[member]} mode="role" onDone={() => setChangingRole(false)} />}
+      </DialogContent>
+    </Dialog>
+  );
 
   if (part === "person")
     return (
       <Who
         person={member}
+        inline
         extra={
           <>
             {self && <small className="text-xs text-muted-foreground">{t.you}</small>}
@@ -1070,46 +1081,46 @@ function MemberCell({
         }
       />
     );
-  if (part === "role")
+  if (part === "role" || part === "role-edit")
     return (
-      <>
-        {canSetOrgRole(org.role, self) ? (
-          <NativeSelect
-            size="sm"
-            className="w-32.5"
-            aria-label={t.roleLabel(member.name)}
-            value={role}
-            disabled={busy}
-            onChange={(e) => {
-              const next = ORG_ROLES.find((r) => r === e.currentTarget.value);
-              if (next) setRole.mutate(next);
-            }}
-          >
-            {ORG_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {t.orgRoles[r]}
-              </option>
-            ))}
-          </NativeSelect>
-        ) : (
-          <Pill tone={member.role === "owner" ? "sel" : "neutral"}>{t.orgRoles[member.role]}</Pill>
+      <div className="flex flex-wrap items-center gap-2">
+        <Pill tone={member.role === "owner" ? "sel" : "neutral"}>{t.orgRoles[member.role]}</Pill>
+        {part === "role-edit" && canSetOrgRole(org.role, self) && (
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => setChangingRole(true)}>
+            {t.changeRole}
+          </Button>
         )}
-      </>
+        {roleDialog}
+      </div>
     );
   if (part === "actions")
     return (
       <>
-        {canSetStatus(org.role, member.role, self) && (
-          <Button
-            variant={blocked ? "outline" : "ghost"}
-            size="sm"
-            aria-label={t.lockLabel(member.name, blocked)}
-            disabled={busy}
-            onClick={() => setStatus.mutate(blocked ? "active" : "blocked")}
-          >
-            {blocked ? t.unlock : t.lock}
-          </Button>
+        {(canSetOrgRole(org.role, self) || canSetStatus(org.role, member.role, self)) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon-sm" aria-label={`${t.actions}: ${member.name}`} disabled={busy} />
+              }
+            >
+              <EllipsisIcon aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {canSetOrgRole(org.role, self) && (
+                <DropdownMenuItem onClick={() => setChangingRole(true)}>{t.changeRole}</DropdownMenuItem>
+              )}
+              {canSetStatus(org.role, member.role, self) && (
+                <DropdownMenuItem
+                  aria-label={t.lockLabel(member.name, blocked)}
+                  onClick={() => setStatus.mutate(blocked ? "active" : "blocked")}
+                >
+                  {blocked ? t.unlock : t.lock}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
+        {roleDialog}
       </>
     );
   return null;
@@ -1165,6 +1176,7 @@ function MemberBulkDialog({
   const queryClient = useQueryClient();
   const teams = useQuery(api.teams.list.queryOptions({ enabled: mode === "team" }));
   const [remaining, setRemaining] = useState(members);
+  const [selectedRole, setSelectedRole] = useState<OrgRole>(members[0]?.role ?? "member");
   const [failure, setFailure] = useState<string | null>(null);
   const update = useMutation({
     mutationFn: async ({ role, teamId }: { role: OrgRole; teamId: string }) => {
@@ -1207,13 +1219,27 @@ function MemberBulkDialog({
         {remaining.map((m) => (
           <li key={m.userId}>
             {m.name} · {m.email}
+            {mode === "role" && (
+              <span className="block font-medium text-foreground">
+                {labels.orgRoles[m.role]} → {labels.orgRoles[selectedRole]}
+              </span>
+            )}
           </li>
         ))}
       </ul>
       {mode === "role" && (
         <div className="grid gap-1.5">
           <label htmlFor={roleId}>{t.role}</label>
-          <NativeSelect id={roleId} name="role" defaultValue="member" disabled={update.isPending}>
+          <NativeSelect
+            id={roleId}
+            name="role"
+            value={selectedRole}
+            onChange={(event) => {
+              const next = ORG_ROLES.find((role) => role === event.currentTarget.value);
+              if (next) setSelectedRole(next);
+            }}
+            disabled={update.isPending}
+          >
             {ORG_ROLES.map((r) => (
               <option key={r} value={r}>
                 {labels.orgRoles[r]}
@@ -1246,7 +1272,14 @@ function MemberBulkDialog({
         <Button variant="outline" onClick={onDone} disabled={update.isPending}>
           {t.cancel}
         </Button>
-        <Button type="submit" disabled={update.isPending || (mode === "team" && !teams.data?.length)}>
+        <Button
+          type="submit"
+          disabled={
+            update.isPending ||
+            (mode === "team" && !teams.data?.length) ||
+            (mode === "role" && remaining.every((member) => member.role === selectedRole))
+          }
+        >
           {update.isPending ? t.busy : t.apply}
         </Button>
       </DialogActions>
