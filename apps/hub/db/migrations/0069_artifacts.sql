@@ -132,7 +132,8 @@ CREATE POLICY "artifact_versions_owner_select" ON "hive"."artifact_versions" AS 
 CREATE POLICY "artifact_versions_owner_update" ON "hive"."artifact_versions" AS PERMISSIVE FOR UPDATE TO "hive_owner" USING (org_id = hive.ctx_org()) WITH CHECK (org_id = hive.ctx_org());--> statement-breakpoint
 CREATE POLICY "artifacts_rw" ON "hive"."artifacts" AS PERMISSIVE FOR ALL TO "hive_app" USING (org_id = hive.ctx_org()) WITH CHECK (org_id = hive.ctx_org());--> statement-breakpoint
 CREATE POLICY "artifacts_owner_select" ON "hive"."artifacts" AS PERMISSIVE FOR SELECT TO "hive_owner" USING (true);--> statement-breakpoint
-CREATE POLICY "artifacts_owner_purge" ON "hive"."artifacts" AS PERMISSIVE FOR DELETE TO "hive_owner" USING (true);--> statement-breakpoint
+CREATE POLICY "artifacts_owner_purge" ON "hive"."artifacts" AS PERMISSIVE FOR DELETE TO "hive_owner" USING (true);
+--> statement-breakpoint
 -- Viết tay: khoá ngoại từ tin nhắn chat. `set null (artifact_id)` (Postgres 15+) chỉ xoá artifact_id; set null cả khoá
 -- ghép sẽ làm org_id null và vỡ RLS. Tin nhắn thẻ của artifact bị xoá hẳn thành tin nhắn thường.
 ALTER TABLE "hive"."chat_messages" ADD CONSTRAINT "chat_messages_artifact_id_org_id_artifacts_id_org_id_fk" FOREIGN KEY ("artifact_id","org_id") REFERENCES "hive"."artifacts"("id","org_id") ON DELETE set null ("artifact_id") ON UPDATE no action;--> statement-breakpoint

@@ -24,7 +24,13 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 ## Phase 1: Nền (chặn mọi story)
 
-- [ ] T001 Contract giao thức worker và xác thực từ xa
+- [x] T001 Contract giao thức worker và xác thực từ xa
+  - Đã làm (SPEC10NEXT): gói `term_*` mới nằm cạnh gói của lát đầu (T100): `term_input`/`term_resize` thêm `connId`,
+    `seq`, `mac` tuỳ chọn thay vì gói riêng; `term_output` giữ `{seq, data}` của lát đầu (không `offset, bytes`);
+    `term_opened` thêm `origin`, `requestId`, `cli`, `cwdLabel`, … tuỳ chọn. Tag ghép và HMAC gói nhập tính trên JSON chuẩn
+    hoá (`pairTagPayload`, `inputMacPayload`, có `pairId`/`sessionId`/`kind`) thay cho nối thẳng byte, để ranh giới
+    trường không mơ hồ. Vector sinh bằng WebCrypto (`pnpm --filter @xdev-hive/contracts vectors:terminal-auth`), chưa có
+    assertion từ virtual authenticator thật (để T022).
   - `worker-protocol.ts`: mọi gói `term_*` theo bảng ở plan.md; `welcome.features?`, `welcome.owner?`; enum
     `termEventKind`, `termDenyCode`; thêm vào `workerToHub`/`hubToWorker`. Không đổi `PROTOCOL_VERSION`.
   - `terminal-auth.ts`: `canonicalChallenge(input)` (khoá theo thứ tự, NFC), kiểu `RemoteAuth`, `pairTag` input,
@@ -62,6 +68,9 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Phụ thuộc**: không · **Mức**: nặng
 
 - [ ] T004 [P] Worker: socket nội bộ
+  - Một phần (SPEC10NEXT): Unix socket (`HIVE_SOCKET` ghi đè đường dẫn), kiểm UID bằng `SO_PEERCRED`/`LOCAL_PEERCRED`,
+    dọn socket cũ, bắt tay, khung nhị phân, test đủ ca. **Còn**: Windows named pipe + DACL + kiểm SID (hiện báo "chưa hỗ
+    trợ trên Windows").
   - `internal/localipc`: server/client; Unix socket 0600 trong thư mục 0700, kiểm UID bằng `SO_PEERCRED`
     (Linux) / `LOCAL_PEERCRED` (macOS); Windows named pipe với DACL chỉ SID hiện tại và kiểm SID client; bắt tay phiên
     bản; yêu cầu JSON một dòng; chuyển sang khung nhị phân `[loại u8][độ dài u32][dữ liệu]` sau `attach`.
@@ -69,7 +78,10 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/localipc/**`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T005 [P] Worker: `internal/remoteauth`
+- [x] T005 [P] Worker: `internal/remoteauth`
+  - Đã làm (SPEC10NEXT): `canonical.go` (NFC bằng `golang.org/x/text`, đã có trong go.sum), `webauthn.go`, `config.go`
+    (`Store`, ghi nguyên tử có fsync), `pairing.go`, `inputkey.go`, `verify.go` (`Verifier.VerifyAuth`), test đọc
+    `terminal-auth.json` (16 ca assertion, ghép, ECDH/HKDF/HMAC).
   - `remote.json` (đọc/ghi nguyên tử, 0600): `enabled`, `roots`, `devices`, `confirmOnMachine`, `idleMinutes`,
     `detachedHours`, `maxHours`, `allowFullAccess`, `ownerUserId`.
   - Kiểm assertion WebAuthn ES256 chỉ bằng thư viện chuẩn (SPKI, `authenticatorData`, `clientDataJSON`): `type`,
@@ -103,7 +115,10 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 ## Phase 2: User Story 1 — Phiên tương tác tại máy, ghi lên hub (P1) 🎯 MVP
 
-- [ ] T008 [US2] Worker: TOTP trong `remoteauth`
+- [x] T008 [US2] Worker: TOTP trong `remoteauth`
+  - Đã làm (SPEC10NEXT): `TOTPStore.Enable|Disable|Unlock|Verify|Status`, `TOTPURI`; đường TOTP không có thiết bị ghép
+    (trang HTTP không tạo được passkey) nên worker chỉ nhận `userId` = chủ máy (`Policy.OwnerUserID`); yêu cầu bị chính
+    sách chặn không tăng bộ đếm sai. Khoá nằm trong `totp.json` 0600, chưa dùng keychain.
   - `totp.go`: RFC 6238 (SHA-1, 6 số, 30 giây, ±1 bước) bằng thư viện chuẩn; `totp.json` (0600, nguyên tử) giữ `secret`,
     `lastStep`, `failures`, `lockedUntil`, `lockLevel`; ghi ra đĩa trước khi trả kết quả; `VerifyAuth` chung cho
     `kind: passkey|totp` (từ chối `TOTP_LOCKED`, `TOTP_INVALID`, `TOTP_REPLAY`); khoá 5 lần sai → 5 phút gấp đôi tối đa
@@ -115,6 +130,8 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Phụ thuộc**: T001, T005 (cùng làn) · **Mức**: nặng
 
 - [ ] T010 [US1] Worker: kiểu gói `term_*` và chuyển gói
+  - Một phần (SPEC10NEXT): kiểu Go mọi gói mới trong `protocol.go` + test fixture. **Còn**: `channel.go` đọc
+    `welcome.owner/policy`, chuyển gói H→W tới `terminal.Handler`.
   - `protocol.go`: kiểu Go cho mọi gói mới; test đọc fixture dùng chung.
   - `channel.go`: khai `terminal` trong `hello.capabilities`; đọc `welcome.features`/`owner`; chỉ gửi `term_*` khi hub
     khai; chuyển gói H→W `term_*` tới `terminal.Handler` (interface mới trong `internal/terminal/handler.go`); hàm gửi
@@ -125,6 +142,9 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
 - [ ] T011 [US1] Worker: session host
+  - Một phần (SPEC10NEXT): `terminal/local.go` (phiên tại máy qua socket, một người điều khiển + người xem, tách/gắn lại
+    phát đuôi 256 KiB, kill, che bí mật, tối đa 8 phiên), `runner/localenv.go`, `accounts.AcquireInteractiveForce`,
+    `cmd/hive-worker/local.go`. **Còn**: ghi lên hub (`term_opened/output/exit`, đệm `pending`, `term_ack`) chờ T013.
   - `internal/terminal`: `Host` tạo/gắn/liệt kê/ngắt phiên qua `localipc`; một người điều khiển (terminal tại máy hoặc
     kết nối từ xa); env theo danh sách cho phép như run (không `HIVE_*`, không token); che bí mật đã biết trong output;
     ghi: gom 8 ms/32 KiB → `term_output`, đệm đĩa `terminal/<id>/pending` (32 MB, quá thì `gap`), xoá khi `term_ack`;
@@ -138,6 +158,9 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Phụ thuộc**: T003, T004, T010 · **Mức**: nặng
 
 - [ ] T012 [US1] CLI `hive`: đăng nhập, chat/run, ls, kill
+  - Một phần (SPEC10NEXT): `chat`, `run`, `ls [--json]`, `attach [--view]`, `kill`, `version`, phím Ctrl-] d/t, raw
+    mode, SIGWINCH, mã thoát. **Còn**: `login/logout/whoami` (cần `purpose: cli` của T002/T013), `--task/--project`,
+    `__hook`, `ls --all`, `--escape`, keychain.
   - `cmd/hive`: `login` (loopback PKCE `purpose: cli`, `--with-token`), keychain (`dev.xdev.hive`/URL hub; không có thì
     file 0600 + cảnh báo), `logout`, `whoami`; `chat`/`run` (raw mode bằng `x/term`, SIGWINCH/console resize, phím tách
     và giành quyền, khôi phục terminal), `--task`/`--project` tra hub bằng token cá nhân; `ls`, `kill`, `version`;
@@ -368,6 +391,10 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://10.86.22
 ## Phase 8: User Story 7 — PWA và thông báo đẩy (P2)
 
 - [ ] T070 [US7] Web: PWA
+  - Một phần (SPEC10NEXT): vite-plugin-pwa `injectManifest`, `sw.ts` chỉ đệm vỏ, manifest `manifest.json`, icon, nút
+    cài + hướng dẫn iOS, thanh phím + ô soạn ở trang terminal Leader (phần của T032), e2e `pwa.spec.ts`,
+    `leader-terminal-mobile.spec.ts`. `start_url` đang là `/` (chưa có `/remote`). **Còn**: `push.ts`, `push`/
+    `notificationclick` (chờ T071).
   - `vite-plugin-pwa` (`injectManifest`), manifest, icon 192/512/maskable, `sw.ts` (chỉ đệm vỏ ứng dụng; `push`,
     `notificationclick`), nút cài và hướng dẫn iOS, bật/tắt thông báo (`lib/terminal/push.ts`).
   - Playwright: manifest hợp lệ, service worker đăng ký, push giả mở đúng URL.
