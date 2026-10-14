@@ -23,6 +23,10 @@ export interface MarkdownProps {
   links?: "open" | "text";
   /** Đoạn hoặc mục thoả điều kiện được tô vàng (khối "chưa có trong code" của màn Tài liệu). */
   isPlanned?: (text: string) => boolean;
+  /** Thay cách hiện ảnh web: artifact do agent viết chỉ tải ảnh khi người xem bấm (spec 012 D20). */
+  renderImage?: (image: { src: string; alt: string; title: string | null; key: string }) => ReactNode;
+  /** Thay cách hiện một khối code; trả `undefined` để dùng cách mặc định. */
+  renderCode?: (code: { text: string; language: string; key: string }) => ReactNode | undefined;
 }
 
 interface Ctx {
@@ -30,6 +34,8 @@ interface Ctx {
   isPlanned: ((text: string) => boolean) | undefined;
   lang: ProseLang;
   links: "open" | "text";
+  renderImage: MarkdownProps["renderImage"];
+  renderCode: MarkdownProps["renderCode"];
   next: () => string;
 }
 
@@ -69,6 +75,8 @@ function inline(tokens: Token[] | undefined, ctx: Ctx): ReactNode[] {
       case "image": {
         const image = token as Tokens.Image;
         // Chỉ ảnh web: đường dẫn file hay data: trong tài liệu do agent viết không đáng tin để tải.
+        if (SAFE_IMAGE.test(image.href) && ctx.renderImage)
+          return ctx.renderImage({ src: image.href, alt: image.text, title: image.title ?? null, key });
         return SAFE_IMAGE.test(image.href) ? (
           <img
             key={key}
@@ -166,6 +174,11 @@ function blocks(tokens: Token[], ctx: Ctx, tight = false): ReactNode[] {
       case "code": {
         const code = token as Tokens.Code;
         const language = (code.lang ?? "").trim().split(/\s/)[0]?.toLowerCase();
+        const custom = ctx.renderCode?.({ text: code.text, language: language ?? "", key });
+        if (custom !== undefined) {
+          out.push(custom);
+          break;
+        }
         out.push(
           language === "mermaid" ? (
             <MermaidDiagram key={key} code={code.text} lang={ctx.lang} />
@@ -243,9 +256,11 @@ export function Markdown({
   lineNumbers,
   links = "open",
   isPlanned,
+  renderImage,
+  renderCode,
 }: MarkdownProps) {
   let n = 0;
-  const ctx: Ctx = { lang, lineNumbers, links, isPlanned, next: () => `m${n++}` };
+  const ctx: Ctx = { lang, lineNumbers, links, isPlanned, renderImage, renderCode, next: () => `m${n++}` };
   return (
     <article className={cn("hive-prose", className)}>
       {blocks(marked.lexer(content.replace(/\r\n/g, "\n")), ctx)}

@@ -22,6 +22,8 @@ tauri-plugin-notification = "2.6"
 tauri-plugin-updater = "2.13"
 # Bộ chọn thư mục làm việc. Giữ 2.7.x: 2.8 mới phát hành chưa đủ hai tuần.
 tauri-plugin-dialog = "~2.7.3"
+# Bản thứ hai của app thoát ngay và đưa cửa sổ bản đang chạy lên trước. Giữ 2.5.1: các bản sau chưa đủ hai tuần.
+tauri-plugin-single-instance = "=2.5.1"
 url = "2"
 tokio = { version = "1", features = ["time"] }
 # Gọi MCP của hub bằng token cá nhân. Cùng bản với tauri-plugin-updater nên không dựng thêm; TLS do updater bật.

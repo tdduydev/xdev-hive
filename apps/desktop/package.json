@@ -11,6 +11,7 @@
     "dev:ui": "node scripts/build-frontend.ts --tokens-only && vite",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "test:slow": "HIVE_TEST_TAURI_DELAY_MS=300 vitest run",
     "sidecar:build": "node scripts/build-sidecar.ts",
     "prepare:app": "pnpm build && pnpm sidecar:build",
     "bundle:verify": "node scripts/verify-bundle.ts"

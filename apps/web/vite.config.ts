@@ -98,6 +98,7 @@ export default defineConfig({
       // Chỉ endpoint /mcp; /mcp/consent là trang của web.
       "^/mcp(\\?.*)?$": hub,
       "/.well-known": hub,
+      "/_artifact": hub,
       "/ws": { target: hub, ws: true },
     },
   },
