@@ -123,7 +123,7 @@
     + test tương ứng
   - **Phụ thuộc**: T001, T002, T003 · **Mức**: nặng
 
-- [ ] T011 🎯 Tool MCP `artifact_*`
+- [x] T011 🎯 Tool MCP `artifact_*`
   - `artifacts/mcp-tools.ts`: bốn tool (plan.md "MCP"), quyền run theo FR-032, liên kết tự động `run`/`task`/
     `chat_thread`/`terminal_session`, từ chối `doccheck`/`docassist`/`brief` (`ARTIFACT_RUN_KIND`), lỗi xung đột kèm bản
     mới nhất, `duplicateOf` (đọc được bản gốc → `private` của người mở cuộc trò chuyện), `compileError` trong kết quả.
@@ -149,7 +149,7 @@
     `apps/hub/.env.example`, `Dockerfile` (nếu cần)
   - **Phụ thuộc**: T004, T010 · **Mức**: nặng
 
-- [ ] T013 🎯 Leader: thẻ artifact trong chat
+- [x] T013 🎯 Leader: thẻ artifact trong chat
   - `leader` cung cấp `ThreadHost` (`assertRunThread` dùng lại kiểm của `leader_reply`; `postArtifactCard` thêm tin nhắn thẻ,
     cập nhật `updated_at`); router trả `chatMessage.artifact`; xoá cuộc trò chuyện xoá liên kết `chat_thread`.
   - `leader/prompt.ts`: đoạn hướng dẫn artifact (US5-7); `prompt.test.ts`.
@@ -159,7 +159,7 @@
     `apps/hub/src/leader.db.test.ts`
   - **Phụ thuộc**: T011 · **Mức**: vừa
 
-- [ ] T014 🎯 Biên dịch `react` trên hub
+- [x] T014 🎯 Biên dịch `react` trên hub
   - `compile.ts` `compileReact(source, manifest) → { compiled } | { compileError } | ImportNotAllowed` theo plan.md D8
     (`sucrase` JSX + TS, `es-module-lexer`, chỉ tên trong manifest, `import()` động bị từ chối, giới hạn 2 s); nối vào
     điểm gọi của T010 (lưu phiên bản) và T012 (`preview`); bật `react` trong `MVP_TYPES` mặc định nếu T001 chưa bật.
@@ -228,7 +228,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Phụ thuộc**: T020 (song song với T021: khác file; `index.ts` của package do T020 export sẵn tên, T021/T022 chỉ điền
     file) · **Mức**: vừa
 
-- [ ] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
+- [x] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
   - `public-link-dialog.tsx` (chỉ chủ: chọn phiên bản, hạn 1…`maxDays`, cảnh báo "Người ngoài tổ chức sẽ xem được bản
     này." / lỗi biên dịch, hiện link một lần + Sao chép, danh sách link: phiên bản, hạn, lượt xem, Thu hồi),
     `fix-request-dialog.tsx` (danh sách lỗi sửa/xoá được, lời nhắn, chọn đích "Cuộc trò chuyện này"/"Cuộc trò chuyện mới",

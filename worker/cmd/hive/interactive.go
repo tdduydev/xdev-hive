@@ -82,12 +82,22 @@ func (a *app) pump(c *localipc.Conn, id, mode string) (int, string) {
 	control.Store(mode == modeControl)
 	done := make(chan outcome, 3)
 	detached := outcome{exitOK, fmt.Sprintf("Đã tách khỏi phiên %s; phiên vẫn chạy. Gắn lại: hive attach %s", id, id)}
+	// Worker đóng kết nối ngay khi nhận lệnh tách, nên goroutine đọc có thể thấy lỗi trước khi goroutine gõ kịp báo
+	// "đã tách". Đặt cờ trước khi gửi lệnh để lỗi do chính ta gây ra không bị coi là mất kết nối.
+	var detaching atomic.Bool
+	detach := func() {
+		detaching.Store(true)
+		_ = c.WriteCtl(localipc.Ctl{Type: localipc.CtlDetach})
+		done <- detached
+	}
 
 	go func() {
 		for {
 			typ, data, err := c.ReadFrame()
 			if err != nil {
-				done <- outcome{exitFailed, "Mất kết nối tới hive-worker; phiên có thể vẫn chạy (hive ls)."}
+				if !detaching.Load() {
+					done <- outcome{exitFailed, "Mất kết nối tới hive-worker; phiên có thể vẫn chạy (hive ls)."}
+				}
 				return
 			}
 			switch typ {
@@ -128,8 +138,7 @@ func (a *app) pump(c *localipc.Conn, id, mode string) (int, string) {
 				for _, act := range acts {
 					switch act {
 					case actDetach:
-						_ = c.WriteCtl(localipc.Ctl{Type: localipc.CtlDetach})
-						done <- detached
+						detach()
 						return
 					case actTake:
 						_ = c.WriteCtl(localipc.Ctl{Type: localipc.CtlTake})
@@ -138,8 +147,7 @@ func (a *app) pump(c *localipc.Conn, id, mode string) (int, string) {
 			}
 			if err != nil {
 				// Hết stdin (đóng pipe, terminal mất): tách, phiên chạy tiếp.
-				_ = c.WriteCtl(localipc.Ctl{Type: localipc.CtlDetach})
-				done <- detached
+				detach()
 				return
 			}
 		}
