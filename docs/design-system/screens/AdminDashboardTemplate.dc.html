@@ -129,19 +129,26 @@ body{margin:0}
 @container (max-width:1023px){.al-admin{display:none}.al-mnav{display:flex}.al-settings{grid-template-columns:minmax(0,1fr);gap:16px}.al-toc{position:static;flex-direction:row;overflow-x:auto}.al-toc a{border:1px solid var(--border)}.al-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container (max-width:767px){.al-mnav{padding:12px 16px 0}.al-header{padding:20px 16px 4px}.al-body{padding:16px}.al-tabs{padding:0 8px}.al-formrow{grid-template-columns:minmax(0,1fr)}.al-savebar{margin:0 -16px -16px;padding:12px 16px}.al-grid3{grid-template-columns:minmax(0,1fr)}}
 @container (max-width:639px){.al-nav{display:none}.al-filter .al-search{width:100%}.al-filter .al-right{margin-left:0}.al-grid2,.al-radio,.al-stats{grid-template-columns:minmax(0,1fr)}.al-table .pin-end{position:static;box-shadow:none}.al-actions{width:100%}}
+
+.al-side[data-expanded=false]{width:56px;padding:12px 8px}
+.al-side[data-expanded=false] :is(.al-org,.al-nsub,.al-user,.al-nl>span,.al-ngrp>span){display:none}
+.al-side[data-expanded=false] :is(.al-nl,.al-ngrp){justify-content:center;padding:0;height:36px}
+.al-side[data-expanded=false] .al-brand{overflow:hidden;padding:0;width:28px;margin:auto}
+.al-expand{margin-top:auto;flex:none}
 </style>
 </helmet>
 <div class="al" data-theme="{{theme}}" lang="{{lang}}" style="{{boardStyle}}">
 <sc-if value="{{showTools}}" hint-placeholder-val="{{true}}"><div class="al-tools" data-design-tools><label>{{t.stateLabel}} <select class="al-select" value="{{view}}" onChange="{{setView}}"><sc-for list="{{views}}" as="v"><option value="{{v.value}}">{{v.label}}</option></sc-for></select></label><button type="button" class="al-btn sm" onClick="{{toggleLang}}">VI / EN</button><button type="button" class="al-btn sm" onClick="{{toggleTheme}}">{{t.theme}}</button><button type="button" class="al-btn sm" onClick="{{toggleNarrow}}">360 px</button></div></sc-if>
 <div class="al-nav">
-<nav class="al-side" aria-label="{{fr.mainAria}}">
+<nav class="al-side" data-expanded="{{sidebarExpanded}}" aria-label="{{fr.mainAria}}">
   <div class="al-brand"><dc-import name="Logo" height="40" hint-size="91px,40px"></dc-import></div>
   <button type="button" class="al-org" aria-label="{{fr.switchOrg}}"><span class="al-org-mark" aria-hidden="true">A</span><span class="al-org-txt"><b>Acme Software</b><span>{{fr.admin}}</span></span></button>
   <ul class="al-tree">
-    <li><a class="al-nl" href="#"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7 8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM6.5 14v-4h3v4"/></svg><span>{{fr.home}}</span></a></li>
-    <sc-for list="{{workGroups}}" as="g" hint-placeholder-count="2"><li><div class="al-ngrp"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{g.icon}}"/></svg><span>{{g.label}}</span></div><ul class="al-nsub"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><li><a class="al-nl" href="#">{{it.label}}</a></li></sc-for></ul></li></sc-for>
-    <li><a class="al-nl" href="#" aria-current="true"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>{{fr.admin}}</span></a></li>
+    <li><a class="al-nl" href="#" title="{{fr.home}}" aria-label="{{fr.home}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7 8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM6.5 14v-4h3v4"/></svg><span>{{fr.home}}</span></a></li>
+    <sc-for list="{{workGroups}}" as="g" hint-placeholder-count="2"><li><a class="al-ngrp" href="#" title="{{g.label}}" aria-label="{{g.label}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{g.icon}}"/></svg><span>{{g.label}}</span></a><ul class="al-nsub"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><li><a class="al-nl" href="#">{{it.label}}</a></li></sc-for></ul></li></sc-for>
+    <li><a class="al-nl" href="#" aria-current="true" title="{{fr.admin}}" aria-label="{{fr.admin}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>{{fr.admin}}</span></a></li>
   </ul>
+  <button type="button" class="al-btn ghost al-expand" aria-label="{{sidebarToggleLabel}}" title="{{sidebarToggleLabel}}" onClick="{{toggleSidebar}}">⇔</button>
   <div class="al-user"><span aria-hidden="true">TL</span><span><b style="font-weight:500">Trần Lan</b><small>lan@acme.vn</small></span></div>
 </nav>
 <nav class="al-admin" aria-label="{{fr.adminAria}}">
@@ -195,6 +202,9 @@ const frameVals = (x, active) => {
   };
 };
 const commonVals = (self, x, lang, dark, narrow, view) => ({
+  sidebarExpanded: !!self.state.sidebarExpanded,
+  sidebarToggleLabel: x(self.state.sidebarExpanded ? ['Thu gọn điều hướng', 'Collapse navigation'] : ['Mở rộng điều hướng', 'Expand navigation']),
+  toggleSidebar: () => self.setState({ sidebarExpanded: !self.state.sidebarExpanded }),
   theme: dark ? 'dark' : 'light', lang, dark,
   boardStyle: narrow ? 'width:360px;min-height:1600px' : '',
   showTools: !self.props.embedded,
