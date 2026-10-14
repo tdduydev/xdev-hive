@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { ArtifactCard } from "@xdev-hive/artifacts-ui";
 import type { ChatMessage, Project } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
-import { SearchIcon, SquarePenIcon } from "lucide-react";
+import { LayersIcon, SearchIcon, SquarePenIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 import { ApprovalCard } from "@/components/approval-card.tsx";
 import { OpenTerminalButton } from "@/components/open-terminal-dialog.tsx";
@@ -19,6 +20,8 @@ import { cx } from "@/lib/cx.ts";
 import { formatDayTime } from "@/lib/format.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { awaitingLeader } from "@/lib/leader.ts";
+import { ThreadArtifactLayout, type ThreadArtifacts, useThreadArtifacts } from "@/pages/artifacts/leader-panel.tsx";
+import { WebArtifacts } from "@/pages/artifacts/web-env.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -44,7 +47,8 @@ const text: Dict<
     | "composerLabel"
     | "composerPlaceholder"
     | "sending"
-    | "send",
+    | "send"
+    | "artifacts",
     string
   >
 > = {
@@ -70,6 +74,7 @@ const text: Dict<
     composerPlaceholder: "Hỏi về dự án, nhờ chia việc, hoặc nhờ giao việc cho agent",
     sending: "Đang gửi…",
     send: "Gửi",
+    artifacts: "Artifact của cuộc trò chuyện",
   },
   en: {
     search: "Search conversations",
@@ -93,6 +98,7 @@ const text: Dict<
     composerPlaceholder: "Ask about a project, split work, or have the leader assign tasks to agents",
     sending: "Sending…",
     send: "Send",
+    artifacts: "Conversation artifacts",
   },
 };
 
@@ -179,7 +185,9 @@ export function LeaderPage() {
           <TerminalSessions />
         </aside>
         {selected ? (
-          <Thread key={selected} threadId={selected} projects={projects.data} />
+          <WebArtifacts key={selected} threadId={selected}>
+            <Thread threadId={selected} projects={projects.data} />
+          </WebArtifacts>
         ) : (
           <EmptyState title={t.emptyTitle} description={t.emptyDescription} />
         )}
@@ -261,13 +269,17 @@ function Thread({ threadId, projects }: { threadId: string; projects: readonly P
   const [draft, setDraft] = useState("");
   const thread = useQuery({
     ...api.leader.threads.get.queryOptions({ input: { id: threadId } }),
-    // Leader trả lời bằng một run trên máy: hỏi lại hub định kỳ tới khi có tin trả lời.
-    refetchInterval: (q) => (awaitingLeader(q.state.data?.messages) ? 3000 : false),
+    // Leader trả lời bằng một run trên máy: hỏi lại hub định kỳ tới khi có tin trả lời. Thẻ artifact do run thêm giữa
+    // lượt chưa phải câu trả lời (chữ đến sau qua leader_reply) nên vẫn hỏi tiếp; 2 giây để thẻ mới hiện và khung mở
+    // trong 3 giây sau khi tool trả kết quả (SC-003).
+    refetchInterval: (q) =>
+      awaitingLeader(q.state.data?.messages) || q.state.data?.messages.at(-1)?.artifact ? 2000 : false,
   });
   const approvals = useQuery({
     ...api.leader.approvals.list.queryOptions({ input: { status: "pending", threadId } }),
     refetchInterval: 10_000,
   });
+  const artifacts = useThreadArtifacts(thread.data?.messages);
   const send = useMutation({
     mutationFn: (content: string) => api.leader.threads.send.call({ id: threadId, content }),
     onSuccess: async () => {
@@ -287,21 +299,29 @@ function Thread({ threadId, projects }: { threadId: string; projects: readonly P
     if (content && !waiting) send.mutate(content);
   }
 
-  return (
+  const chat = (
     <section
       aria-label={thread.data.thread.title}
       className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card"
     >
-      <header className="grid gap-1 border-b border-border px-4 py-3">
-        <h2 className="break-words text-base font-semibold text-foreground">{thread.data.thread.title}</h2>
-        <p className="text-xs text-muted-foreground">
-          {projects?.find((project) => project.id === thread.data.thread.projectId)?.key ?? t.wholeOrg} · {t.scope}
-        </p>
+      <header className="flex flex-wrap items-start gap-2 border-b border-border px-4 py-3">
+        <div className="grid min-w-0 flex-1 gap-1">
+          <h2 className="break-words text-base font-semibold text-foreground">{thread.data.thread.title}</h2>
+          <p className="text-xs text-muted-foreground">
+            {projects?.find((project) => project.id === thread.data.thread.projectId)?.key ?? t.wholeOrg} · {t.scope}
+          </p>
+        </div>
+        {artifacts.items.length > 0 && !artifacts.visible && (
+          <Button variant="outline" size="sm" onClick={() => artifacts.open()}>
+            <LayersIcon aria-hidden="true" />
+            {t.artifacts} ({new Set(artifacts.items.map((item) => item.id)).size})
+          </Button>
+        )}
       </header>
       <div className="grid min-w-0 flex-1 content-start gap-4 p-4">
         <ol aria-label={t.messages} className="grid gap-2.5">
           {thread.data.messages.map((m) => (
-            <Message key={m.id} message={m} />
+            <Message key={m.id} message={m} artifacts={artifacts} />
           ))}
         </ol>
         {waiting && (
@@ -341,10 +361,26 @@ function Thread({ threadId, projects }: { threadId: string; projects: readonly P
       </form>
     </section>
   );
+  return <ThreadArtifactLayout state={artifacts} chat={chat} />;
 }
 
-function Message({ message }: { message: ChatMessage }) {
+function Message({ message, artifacts }: { message: ChatMessage; artifacts: ThreadArtifacts }) {
   const t = useT(text);
+  const ref = message.artifact;
+  if (ref)
+    return (
+      // Thẻ thay chữ (D10): nội dung artifact chỉ mở trong khung, không đổ vào dòng chat.
+      <li className="grid max-w-full justify-self-start gap-1 sm:max-w-[80%] sm:min-w-80">
+        <span className="text-xs text-muted-foreground">Leader · {formatDayTime(message.createdAt)}</span>
+        <ArtifactCard
+          artifact={ref.deleted ? null : ref}
+          selected={
+            artifacts.visible && artifacts.selection?.id === ref.id && artifacts.selection.version === ref.version
+          }
+          onOpen={(open) => artifacts.open({ id: open.id, version: open.version })}
+        />
+      </li>
+    );
   return (
     <li
       className={cx(
