@@ -256,3 +256,45 @@ với mọi gói.
     `unshare` dọn cả hai.
   - Kiểm sau `share` trên `HOME` giả bằng `hive-worker` đã build và `claude` thật (máy chủ giả): phiên của `claude-2` đọc
     được `MEMORY.md` chung và ghi `from-claude-2.md` vào thư mục chung mà không hỏi quyền.
+
+## 10. Đo trước/sau (T016)
+
+### Cách đo
+
+- Mốc nền được lưu ngày 14/10/2026, trước khi bật `balanced` cho bốn gói Claude. Mỗi báo cáo tổng hợp dùng
+  `hive-worker optimize report --json --days 7 --profile claude-4` (lặp lại với `claude-5`, `claude-6`, `claude-7`).
+- Sau 7 ngày, đối chiếu báo cáo tự chạy ngày 21/10/2026 của cùng gói với mốc nền tương ứng. Chỉ ghi số tổng hợp; không
+  đưa nội dung prompt, output hay đường dẫn máy vào báo cáo này.
+- Token quy đổi theo công thức ở mục 2: input + 0,1 × cache đọc + 1,25 × cache ghi 5 phút + 2 × cache ghi 1 giờ +
+  5 × output. Cache hit là tỉ lệ input được phục vụ từ cache. Ngữ cảnh đỉnh và số phiên vượt ngưỡng được tính theo
+  từng phiên, với các ngưỡng >150k và >400k token.
+- Đọc cache write 1 giờ và 5 phút theo số token ghi của từng loại TTL trong báo cáo; đây là số liệu mô tả, không cộng
+  trực tiếp với nhau để suy ra tiết kiệm.
+
+### Mốc nền theo gói
+
+| Gói | Phiên | Lượt gọi | Token quy đổi | Cache hit | Phiên đỉnh >150k | Phiên đỉnh >400k | Cache write 1 giờ | Cache write 5 phút | Sau 7 ngày |
+|---|---:|---:|---:|---|---:|---:|---:|---:|---|
+| claude-4 | 188 | 8.161 | 186,3M | Không có trong bản trích xuất | 45 | 4 | 16,63M | 6,88M | đo 2026-10-21 |
+| claude-5 | 145 | 5.316 | 127,2M | Không có trong bản trích xuất | 32 | 2 | 13,94M | 1,43M | đo 2026-10-21 |
+| claude-6 | 201 | 18.679 | 700,1M | Không có trong bản trích xuất | 134 | 39 | 25,40M | 67,59M | đo 2026-10-21 |
+| claude-7* | 31 | 1.700 | 46,9M | Không có trong bản trích xuất | 18 | 2 | 5,00M | 0,22M | đo 2026-10-21 |
+
+Nguồn các số nền là báo cáo 7 ngày trước thời điểm bật `balanced`, gộp các nguồn `claude/headless`,
+`claude/hub-terminal`, `claude/interactive`, `claude/worker` và `claude/test` có trong bản trích xuất. Các cột số
+đếm và token là tổng của những dòng nguồn được cung cấp; cache write giữ nguyên đơn vị token. Tỉ lệ cache hit không
+có trong bản trích xuất nên không thể tính chính xác từ các trường còn lại. *Bản trích xuất claude-7 chỉ có dòng
+`claude/headless`; các số claude-7 chưa đại diện đầy đủ mọi nguồn. Không đưa nội dung prompt, output hay đường dẫn
+riêng tư vào bảng.
+
+### Ngưỡng đối chiếu
+
+- **SC-001**: sau 7 ngày mức `balanced`, trung vị ngữ cảnh đỉnh của phiên tương tác phải ≤200k token; số phiên có
+  đỉnh >400k phải giảm ít nhất 80% so với mốc nền.
+- **SC-002**: token quy đổi trung bình mỗi lượt API của phiên tương tác phải giảm ít nhất 25% so với mốc 7 ngày trước
+  khi bật. Mốc chung hiện có ở mục 2 là 1.460,7M / 32.110 ≈45,5k token/lượt; kết quả T016 cần so sánh cùng tập
+  bốn gói và cùng khoảng thời gian.
+- Mốc supplied cho `interactive` có 41 phiên >400k ở các dòng claude-4/5/6, trong khi SC-001 ghi 51 phiên; cần xác
+  minh phạm vi/tập nguồn trước khi kết luận phần trăm giảm. Bản trích xuất hiện cũng thiếu nguồn claude-7 và không
+  có số trung vị đỉnh theo phiên, nên chưa đủ để đánh giá đầy đủ SC-001/SC-002. Cột “Sau 7 ngày” ghi lịch đo
+  2026-10-21, chưa có kết quả; T016 chưa hoàn tất và không được đánh dấu xong.

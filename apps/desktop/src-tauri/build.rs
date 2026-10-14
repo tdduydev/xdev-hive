@@ -46,6 +46,7 @@ fn main() {
         "optimizer_report",
         "memory_scan",
         "memory_apply",
+        "memory_compress",
         "local_projects",
         "local_projects_import",
         "local_project_bind",

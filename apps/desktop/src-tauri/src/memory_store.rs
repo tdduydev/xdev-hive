@@ -112,6 +112,16 @@ fn apply_args(action: &MemoryAction, content_file: Option<&Path>) -> Result<Vec<
     Ok(args)
 }
 
+fn compress_args(profile: &str, project: &str, files: &[String]) -> Result<Vec<String>, String> {
+    let mut args = vec!["memory".into(), "compress".into(), "--json".into()];
+    args.push(text_arg("profile", profile)?);
+    args.push(text_arg("project", project)?);
+    for file in files {
+        args.push(text_arg("files", file)?);
+    }
+    Ok(args)
+}
+
 struct ContentFile(PathBuf);
 
 impl ContentFile {
@@ -162,6 +172,18 @@ pub async fn memory_apply(
         .transpose()?;
     let args = apply_args(&operation, temporary.as_ref().map(|file| file.0.as_path()))?;
     sidecar_json(&app, args, vec![]).await
+}
+
+/// Nhờ Claude đề xuất bản nén cho memory của một gói trong một dự án. Chỉ đề xuất, chưa ghi gì: áp dụng đi qua
+/// `memory_apply` sau khi người dùng xem diff.
+#[tauri::command]
+pub async fn memory_compress(
+    app: AppHandle,
+    profile: String,
+    project: String,
+    files: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    sidecar_json(&app, compress_args(&profile, &project, &files)?, vec![]).await
 }
 
 #[cfg(test)]
@@ -246,6 +268,30 @@ mod tests {
             apply_args(&operation(r#"{"action":"unshare","project":"p"}"#), None).unwrap(),
             ["memory", "unshare", "--json", "--project=p"]
         );
+    }
+
+    #[test]
+    fn compress_passes_profile_project_and_chosen_files() {
+        assert_eq!(
+            compress_args(
+                "claude-2",
+                "-Users-a-app",
+                &["/m/a.md".into(), "/m/b c.md".into()]
+            )
+            .unwrap(),
+            [
+                "memory",
+                "compress",
+                "--json",
+                "--profile=claude-2",
+                "--project=-Users-a-app",
+                "--files=/m/a.md",
+                "--files=/m/b c.md"
+            ]
+        );
+        assert_eq!(compress_args("claude-2", "p", &[]).unwrap().len(), 5);
+        assert!(compress_args("", "p", &[]).is_err());
+        assert!(compress_args("c", "p", &["bad\nfile".to_string()]).is_err());
     }
 
     #[test]
