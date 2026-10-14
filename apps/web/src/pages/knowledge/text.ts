@@ -18,11 +18,7 @@ export const knowledgeText: Dict<{
   proposalsNote: string;
   proposalsNotePh: string;
   proposalsReject: string;
-  knowledge: string;
   loading: string;
-  empty: string;
-  choose: string;
-  retry: string;
   scope: string;
   org: string;
   team: string;
@@ -64,9 +60,6 @@ export const knowledgeText: Dict<{
   copy: string;
   copied: string;
   copyFailed: string;
-  older: string;
-  newer: string;
-  pageNote: string;
   diff: string;
   noChanges: string;
   memoryDiscard: string;
@@ -74,8 +67,76 @@ export const knowledgeText: Dict<{
   pendingHint: string;
   memoryViews: string;
   byRun: string;
+  choose: string;
+  docsEmptyTitle: string;
+  docsEmptyBody: string;
+  skillsOrgTitle: string;
+  skillsOrgLead: string;
+  skillsEmptyTitle: string;
+  skillsEmptyBody: string;
+  memoryFilters: string;
+  includeOldSearch: string;
+  searching: string;
+  clearSearch: string;
+  noResults: string;
+  noResultsHint: string;
+  memoryEmptyTitle: string;
+  memoryEmptyBody: string;
+  noRows: string;
+  rows: (from: number, to: number) => string;
+  previousPage: string;
+  nextPage: string;
+  open: string;
+  openRow: string;
+  saving: string;
+  pendingEmptyHint: string;
+  discardTitle: string;
+  keep: string;
+  discardConfirm: string;
+  proposalsViews: string;
+  proposedAt: string;
+  proposalsNoPending: string;
+  proposalsNoPendingHint: string;
+  proposalsNone: string;
+  proposalsNoneHint: string;
+  proposalsReasonTitle: string;
+  skillMissing: string;
 }> = {
   vi: {
+    choose: "Chọn một dòng để xem nội dung.",
+    docsEmptyTitle: "Chưa có tài liệu nào",
+    docsEmptyBody: "Tài liệu hiện ở đây khi bản đầu tiên được duyệt. Bấm Tài liệu mới để bắt đầu viết.",
+    skillsOrgTitle: "Skill của tổ chức",
+    skillsOrgLead: "Skill của tổ chức, đội và dự án; agent nạp theo phạm vi của run.",
+    skillsEmptyTitle: "Chưa có skill của tổ chức",
+    skillsEmptyBody: "Skill trong kho Git hay do agent đề xuất và được duyệt sẽ hiện ở đây.",
+    memoryFilters: "Lọc memory",
+    includeOldSearch: "Tìm kiếm chỉ trả memory hiện hành.",
+    searching: "Đang tìm:",
+    clearSearch: "Xoá tìm kiếm",
+    noResults: "Không có memory nào khớp",
+    noResultsHint: "Thử từ khoá khác hoặc xoá tìm kiếm để xem cả danh sách.",
+    memoryEmptyTitle: "Chưa có memory nào",
+    memoryEmptyBody: "Memory đã duyệt hiện ở đây. Thêm memory đầu tiên hoặc chờ agent đề xuất.",
+    noRows: "Không có dòng nào",
+    rows: (from, to) => `Dòng ${from}–${to}`,
+    previousPage: "Trang trước",
+    nextPage: "Trang sau",
+    open: "Mở",
+    openRow: "Mở dòng",
+    saving: "Đang lưu…",
+    pendingEmptyHint: "Khi agent đề xuất một memory mới, nó chờ ở đây cho tới khi có người duyệt.",
+    discardTitle: "Bỏ memory này?",
+    keep: "Giữ lại",
+    discardConfirm: "Bỏ memory",
+    proposalsViews: "Trạng thái đề xuất",
+    proposedAt: "Đề xuất lúc",
+    proposalsNoPending: "Không có đề xuất nào đang chờ",
+    proposalsNoPendingHint: "Đề xuất sửa tài liệu hoặc skill của agent và thành viên sẽ hiện ở đây để duyệt.",
+    proposalsNone: "Chưa có đề xuất nào",
+    proposalsNoneHint: "Đề xuất đã được xử lý theo trạng thái này sẽ hiện ở đây.",
+    proposalsReasonTitle: "Lý do",
+    skillMissing: "Không tìm thấy skill gốc của đề xuất này.",
     docsTitle: "Tài liệu",
     docsLead: "Tài liệu markdown có phiên bản. Agent đọc qua MCP; người và agent đề xuất sửa.",
     docsSearch: "Tìm tiêu đề, key, người sửa…",
@@ -93,11 +154,7 @@ export const knowledgeText: Dict<{
     proposalsNote: "Ghi chú khi duyệt",
     proposalsNotePh: "Không bắt buộc",
     proposalsReject: "Từ chối",
-    knowledge: "Kiến thức",
     loading: "Đang tải…",
-    empty: "Chưa có dữ liệu.",
-    choose: "Chọn một dòng để xem nội dung.",
-    retry: "Thử lại",
     scope: "Phạm vi",
     org: "Tổ chức",
     team: "Đội",
@@ -139,9 +196,6 @@ export const knowledgeText: Dict<{
     copy: "Chép lệnh MCP",
     copied: "Đã chép",
     copyFailed: "Không chép được. Hãy chép lệnh bên dưới.",
-    older: "Trang dữ liệu sau",
-    newer: "Trang dữ liệu trước",
-    pageNote: "Số liệu trong trang đang tải",
     diff: "Thay đổi nội dung",
     noChanges: "Nội dung không đổi.",
     memoryDiscard: "Bỏ",
@@ -151,6 +205,40 @@ export const knowledgeText: Dict<{
     byRun: "Run",
   },
   en: {
+    choose: "Select a row to view its content.",
+    docsEmptyTitle: "No docs yet",
+    docsEmptyBody: "A doc shows up here once its first version is approved. Use New doc to start writing.",
+    skillsOrgTitle: "Organization skills",
+    skillsOrgLead: "Skills of the organization, teams and projects; agents load them by the run's scope.",
+    skillsEmptyTitle: "No organization skills yet",
+    skillsEmptyBody: "Skills in the Git repository, or proposed by agents and approved, show up here.",
+    memoryFilters: "Filter memories",
+    includeOldSearch: "Search only returns current memories.",
+    searching: "Searching:",
+    clearSearch: "Clear search",
+    noResults: "No memory matches",
+    noResultsHint: "Try another keyword, or clear the search to see the whole list.",
+    memoryEmptyTitle: "No memories yet",
+    memoryEmptyBody: "Approved memories show up here. Add the first one or wait for an agent to propose one.",
+    noRows: "No rows",
+    rows: (from, to) => `Rows ${from}–${to}`,
+    previousPage: "Previous page",
+    nextPage: "Next page",
+    open: "Open",
+    openRow: "Open row",
+    saving: "Saving…",
+    pendingEmptyHint: "When an agent proposes a new memory it waits here until someone approves it.",
+    discardTitle: "Discard this memory?",
+    keep: "Keep it",
+    discardConfirm: "Discard memory",
+    proposalsViews: "Proposal status",
+    proposedAt: "Proposed",
+    proposalsNoPending: "No proposals waiting",
+    proposalsNoPendingHint: "Edits to docs or skills proposed by agents and members show up here for review.",
+    proposalsNone: "No proposals yet",
+    proposalsNoneHint: "Proposals decided with this status show up here.",
+    proposalsReasonTitle: "Reason",
+    skillMissing: "The proposal's original skill was not found.",
     docsTitle: "Docs",
     docsLead: "Versioned markdown docs. Agents read them over MCP; people and agents propose edits.",
     docsSearch: "Search title, key, editor…",
@@ -168,11 +256,7 @@ export const knowledgeText: Dict<{
     proposalsNote: "Decision note",
     proposalsNotePh: "Optional",
     proposalsReject: "Reject",
-    knowledge: "Knowledge",
     loading: "Loading…",
-    empty: "No data yet.",
-    choose: "Select a row to view its content.",
-    retry: "Retry",
     scope: "Scope",
     org: "Organization",
     team: "Team",
@@ -214,9 +298,6 @@ export const knowledgeText: Dict<{
     copy: "Copy MCP call",
     copied: "Copied",
     copyFailed: "Could not copy. Copy the command below.",
-    older: "Next data page",
-    newer: "Previous data page",
-    pageNote: "Counts on the loaded page",
     diff: "Content changes",
     noChanges: "Content is unchanged.",
     memoryDiscard: "Discard",

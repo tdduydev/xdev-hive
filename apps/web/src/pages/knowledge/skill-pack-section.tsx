@@ -7,11 +7,14 @@ import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { PageSection } from "@/components/page/page-section.tsx";
+import { DescriptionList } from "@/components/ui/description-list.tsx";
+import { LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
-import { DetailCard, QueryState } from "@/pages/knowledge/common.tsx";
+import { DetailDialog, EmptyRows, QueryState } from "@/pages/knowledge/common.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 
 type Row = PackSkill & { id: string };
@@ -42,8 +45,11 @@ const text: Dict<{
   ownSkill: string;
   files: (n: number, kb: number) => string;
   reset: string;
-  choose: string;
   empty: string;
+  emptyHint: string;
+  description: string;
+  toggleColumn: string;
+  loading: string;
 }> = {
   vi: {
     aria: "Skill mặc định của Hive",
@@ -79,8 +85,11 @@ const text: Dict<{
     ownSkill: "Viết riêng cho Hive",
     files: (n, kb) => `${n} file · ${kb} KB`,
     reset: "Theo phạm vi rộng hơn",
-    choose: "Chọn một skill để xem SKILL.md, nguồn và giấy phép.",
-    empty: "Không có skill nào khớp.",
+    empty: "Chưa có skill mặc định nào",
+    emptyHint: "Bộ skill đóng gói sẵn trong Hive sẽ hiện ở đây.",
+    description: "Mô tả",
+    toggleColumn: "Bật",
+    loading: "Đang tải skill mặc định…",
   },
   en: {
     aria: "Hive default skills",
@@ -116,8 +125,11 @@ const text: Dict<{
     ownSkill: "Written for Hive",
     files: (n, kb) => `${n} files · ${kb} KB`,
     reset: "Follow the wider scope",
-    choose: "Pick a skill to see its SKILL.md, source and license.",
-    empty: "No skill matches.",
+    empty: "No default skills yet",
+    emptyHint: "Skills bundled with Hive will show up here.",
+    description: "Description",
+    toggleColumn: "On",
+    loading: "Loading default skills…",
   },
 };
 
@@ -149,22 +161,21 @@ export function SkillPackSection() {
       label: "Skill",
       value: (row) => row.name,
       sortable: true,
+      pin: "start",
       cell: (row) => (
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <strong className="font-mono">{row.name}</strong>
-            <Pill tone="sel">{t.badge}</Pill>
-          </div>
+        <div className="min-w-0 space-y-0.5">
+          <strong className="font-mono">{row.name}</strong>
           <p className="line-clamp-2 text-xs text-muted-foreground">{row.description}</p>
         </div>
       ),
     },
-    { key: "description", label: t.state, value: (row) => row.description, hidden: true },
+    { key: "description", label: t.description, value: (row) => row.description, hidden: true, hideable: false },
     { key: "group", label: t.group, value: groupOf, sortable: true },
     {
       key: "license",
       label: t.license,
       value: (row) => row.license,
+      hidden: true,
       cell: (row) => <span className="font-mono text-xs">{row.license}</span>,
     },
     {
@@ -172,8 +183,10 @@ export function SkillPackSection() {
       label: t.state,
       value: (row) => (row.enabled ? t.on : t.off),
       cell: (row) => (
-        <div className="space-y-1">
-          <Pill tone={row.enabled ? "ok" : "neutral"}>{row.enabled ? t.on : t.off}</Pill>
+        <div className="grid justify-items-start gap-1">
+          <Pill tone={row.enabled ? "ok" : "neutral"} dot>
+            {row.enabled ? t.on : t.off}
+          </Pill>
           <p className="text-xs text-muted-foreground">
             {row.shadowedBy ? t.shadowed(t.levels[row.shadowedBy] ?? row.shadowedBy) : origin(row)}
           </p>
@@ -182,8 +195,11 @@ export function SkillPackSection() {
     },
     {
       key: "toggle",
-      label: t.on,
+      label: t.toggleColumn,
       value: (row) => (row.enabled ? "1" : "0"),
+      align: "end",
+      pin: "end",
+      hideable: false,
       cell: (row) => (
         // Bấm công tắc không mở chi tiết của dòng.
         // biome-ignore lint/a11y/noStaticElementInteractions: chỉ chặn click lan lên dòng, công tắc tự xử lý bàn phím.
@@ -201,79 +217,80 @@ export function SkillPackSection() {
   ];
   const active = rows.find((r) => r.id === selected);
   return (
-    <DetailCard>
-      <section aria-label={t.aria} className="flex min-w-0 flex-col gap-3">
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <h2 className="font-heading text-lg font-semibold">{t.title}</h2>
-            <p className="max-w-3xl text-sm text-muted-foreground">{t.lead}</p>
-            {pack.data && (
-              <p className="text-xs text-muted-foreground">
-                {t.source}:{" "}
-                <a
-                  className="font-mono underline-offset-2 hover:underline"
-                  href={`https://github.com/${pack.data.source.repo}/tree/${pack.data.source.commit}/library`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {pack.data.source.repo}@{shortSha(pack.data.source.commit)}
-                </a>
-              </p>
-            )}
-          </div>
-          <label htmlFor={scopeId} className="flex items-center gap-2 text-sm">
-            {t.applyTo}
-            <NativeSelect
-              id={scopeId}
-              value={project}
-              onChange={(e) => {
-                setProject(e.target.value);
-                set.reset();
-              }}
-            >
-              <option value="">{t.wholeOrg}</option>
-              {projects.data?.map((p) => (
-                <option key={p.id} value={p.key}>
-                  {p.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-        </header>
-        {!canSet && <p className="text-xs text-muted-foreground">{t.onlyAdmin}</p>}
-        {set.error && <Alert variant="destructive">{apiErrorMessage(set.error)}</Alert>}
-        <QueryState query={pack} />
-        {pack.data && (
-          <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
-            <DataTable
-              columns={columns}
-              rows={rows}
-              placeholder={t.search}
-              selectable={false}
-              facets={[
-                { key: "group", label: t.group, value: groupOf },
-                { key: "state", label: t.state, value: (row) => (row.enabled ? t.on : t.off) },
-              ]}
-              rowLabel={(row) => row.name}
-              activeId={selected ?? ""}
-              onRowClick={(row) => setSelected(row.id)}
-              emptyContent={t.empty}
-            />
-            {active ? (
-              <PackSkillDetail
-                key={`${active.name}:${project}`}
-                skill={active}
-                project={project}
-                canReset={canSet && (project ? active.project !== null : active.org !== null)}
-                onReset={() => set.mutate({ name: active.name, enabled: null })}
-              />
-            ) : (
-              <DetailCard>{t.choose}</DetailCard>
-            )}
-          </div>
-        )}
-      </section>
-    </DetailCard>
+    <PageSection
+      title={t.title}
+      description={
+        <>
+          {t.lead}
+          {pack.data && (
+            <>
+              {" "}
+              {t.source}:{" "}
+              <a
+                className="font-mono underline-offset-2 hover:underline"
+                href={`https://github.com/${pack.data.source.repo}/tree/${pack.data.source.commit}/library`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {pack.data.source.repo}@{shortSha(pack.data.source.commit)}
+              </a>
+            </>
+          )}
+        </>
+      }
+      actions={
+        <label htmlFor={scopeId} className="flex items-center gap-2 text-sm whitespace-nowrap">
+          {t.applyTo}
+          <NativeSelect
+            id={scopeId}
+            value={project}
+            onChange={(e) => {
+              setProject(e.target.value);
+              set.reset();
+            }}
+          >
+            <option value="">{t.wholeOrg}</option>
+            {projects.data?.map((p) => (
+              <option key={p.id} value={p.key}>
+                {p.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+      }
+    >
+      {!canSet && <p className="text-xs text-muted-foreground">{t.onlyAdmin}</p>}
+      {set.error && <Alert variant="destructive">{apiErrorMessage(set.error)}</Alert>}
+      {pack.isPending && <TableSkeleton label={t.loading} columns={4} />}
+      {pack.isError && <LoadFailure error={pack.error} retry={pack.refetch} />}
+      {pack.data && (
+        <DataTable
+          columns={columns}
+          rows={rows}
+          minWidth={620}
+          placeholder={t.search}
+          selectable={false}
+          facets={[
+            { key: "group", label: t.group, value: groupOf },
+            { key: "state", label: t.state, value: (row) => (row.enabled ? t.on : t.off) },
+          ]}
+          rowLabel={(row) => row.name}
+          activeId={selected ?? ""}
+          onRowClick={(row) => setSelected(row.id)}
+          emptyContent={<EmptyRows title={t.empty} description={t.emptyHint} />}
+        />
+      )}
+      {active && (
+        <PackSkillDetail
+          key={`${active.name}:${project}`}
+          skill={active}
+          project={project}
+          canReset={canSet && (project ? active.project !== null : active.org !== null)}
+          onReset={() => set.mutate({ name: active.name, enabled: null })}
+          onClose={() => setSelected(undefined)}
+        />
+      )}
+    </PageSection>
   );
 }
 
@@ -282,11 +299,13 @@ function PackSkillDetail({
   project,
   canReset,
   onReset,
+  onClose,
 }: {
   skill: Row;
   project: string;
   canReset: boolean;
   onReset: () => void;
+  onClose: () => void;
 }) {
   const t = useT(text);
   const { api } = useOrg();
@@ -294,43 +313,53 @@ function PackSkillDetail({
     api.skills.packGet.queryOptions({ input: { name: skill.name, ...(project ? { project } : {}) } }),
   );
   return (
-    <DetailCard>
-      <div className="flex flex-wrap items-center gap-2">
-        <Pill tone="sel">{t.badge}</Pill>
-        <Pill tone={skill.enabled ? "ok" : "neutral"}>{skill.enabled ? t.on : t.off}</Pill>
-      </div>
-      <h3 className="break-all font-mono text-lg font-semibold">{skill.name}</h3>
-      <p className="text-muted-foreground">{skill.description}</p>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-        <dt className="text-muted-foreground">{t.license}</dt>
-        <dd className="font-mono">{skill.license}</dd>
-        <dt className="text-muted-foreground">{t.upstream}</dt>
-        <dd className="min-w-0 break-all">
-          {skill.upstream ? (
-            <a
-              className="font-mono underline-offset-2 hover:underline"
-              href={skill.upstream.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {skill.upstream.repo}@{shortSha(skill.upstream.commit)}
-            </a>
-          ) : (
-            t.ownSkill
-          )}
-        </dd>
-        <dt className="text-muted-foreground">SKILL.md</dt>
-        <dd className="font-mono text-xs">
-          v{skill.version} · {t.files(skill.files, Math.ceil(skill.bytes / 1024))}
-        </dd>
-      </dl>
-      {canReset && (
-        <Button variant="outline" size="sm" className="self-start" onClick={onReset}>
-          {t.reset}
-        </Button>
-      )}
+    <DetailDialog
+      title={skill.name}
+      onClose={onClose}
+      badges={
+        <>
+          <Pill tone="sel">{t.badge}</Pill>
+          <Pill tone={skill.enabled ? "ok" : "neutral"} dot>
+            {skill.enabled ? t.on : t.off}
+          </Pill>
+        </>
+      }
+      description={skill.description}
+      footer={
+        canReset && (
+          <Button variant="outline" size="sm" className="justify-self-start" onClick={onReset}>
+            {t.reset}
+          </Button>
+        )
+      }
+    >
+      <DescriptionList
+        items={[
+          { term: t.license, detail: skill.license, mono: true },
+          {
+            term: t.upstream,
+            detail: skill.upstream ? (
+              <a
+                className="font-mono underline-offset-2 hover:underline"
+                href={skill.upstream.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {skill.upstream.repo}@{shortSha(skill.upstream.commit)}
+              </a>
+            ) : (
+              t.ownSkill
+            ),
+          },
+          {
+            term: "SKILL.md",
+            detail: `v${skill.version} · ${t.files(skill.files, Math.ceil(skill.bytes / 1024))}`,
+            mono: true,
+          },
+        ]}
+      />
       <QueryState query={detail} />
       {detail.data && <Markdown content={detail.data.content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "")} />}
-    </DetailCard>
+    </DetailDialog>
   );
 }

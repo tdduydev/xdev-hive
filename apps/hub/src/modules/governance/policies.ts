@@ -3,7 +3,9 @@ import {
   type AgentPolicyInput,
   agentPolicyInput,
   DEFAULT_AGENT_POLICY,
+  DEFAULT_ORG_SDLC_POLICY,
   type JobPolicy,
+  type OrgSdlcPolicy,
   type ProjectBudget,
   type TemplateSyncResult,
 } from "@xdev-hive/contracts";
@@ -29,6 +31,11 @@ export async function loadPolicy(tx: Tx): Promise<Policy> {
   if (!row) return DEFAULT_AGENT_POLICY;
   const parsed = agentPolicyInput.safeParse(row.policy);
   return parsed.success ? parsed.data : DEFAULT_AGENT_POLICY;
+}
+
+/** Mục `sdlc` của chính sách: tổ chức chưa lưu mục này (lưu trước khi có AI SDLC) thì dùng mặc định, không phải "tắt". */
+export async function sdlcPolicyOf(tx: Tx): Promise<OrgSdlcPolicy> {
+  return (await loadPolicy(tx)).sdlc ?? DEFAULT_ORG_SDLC_POLICY;
 }
 
 export async function getAgentPolicy(tx: Tx): Promise<AgentPolicy> {

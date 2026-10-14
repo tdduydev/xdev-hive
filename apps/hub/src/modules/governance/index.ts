@@ -10,6 +10,7 @@ export {
   resolveModel,
   resolvePermission,
   saveAgentPolicy,
+  sdlcPolicyOf,
 } from "./policies.ts";
 export { policiesRouter, type TemplateService } from "./router.ts";
 export {

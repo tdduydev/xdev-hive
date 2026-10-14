@@ -114,7 +114,7 @@ describe("lỗi của quy trình", () => {
     draft.docPrefixes = ["Sai"];
     const issues = workflowIssues(draft, "en");
     expect(issues).toContainEqual({ gateId: "po", where: "", message: "Checkpoint “Duyệt spec” cần người duyệt." });
-    expect(issues.find((i) => i.where === "Applies to")?.message).toContain("Tiền tố có dạng");
+    expect(issues.find((i) => i.where === "Doc key prefixes")?.message).toContain("Tiền tố có dạng");
     expect(toInput(draft).phases[0]?.gates[0]?.reviewers?.roles).toEqual([]);
   });
 });
