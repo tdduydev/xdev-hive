@@ -24,6 +24,11 @@ const (
 	defaultAutocompactWindow = 200000
 	// Mặc định của Claude Code là 25000; đọc file lớn đi vào ngữ cảnh và bị đọc lại ở mọi lượt sau.
 	defaultFileReadMaxTokens = "15000"
+	// Mô tả tool MCP nằm trong prompt mỗi lượt.
+	mcpDescriptionLength = "512"
+	// exec của Codex trung bình ~3.700 token; trần 8000 chỉ cắt phần đuôi dài bất thường.
+	codexToolOutputLimit  = "8000"
+	codexAutoCompactLimit = "150000"
 	// claudeCodeTools là tool có sẵn cho run code. Giữ Skill (bộ skill mặc định của Hive), TodoWrite và Task (subagent đã
 	// bị ép model rẻ bằng CLAUDE_CODE_SUBAGENT_MODEL); bỏ phần còn lại (web, notebook...) cho prompt hệ thống gọn. MultiEdit
 	// không có trong claude 2.1.296 nên không khai; init của bản này cũng chưa liệt kê TodoWrite, nhưng --tools nhận tên.
@@ -142,16 +147,9 @@ func savingEnv(cfg TokenSavingConfig, job Job) map[string]string {
 		"CLAUDE_CODE_DISABLE_CFC_PROMPT":          "1",
 		"CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": defaultFileReadMaxTokens,
 	}
-	// Chỉ đặt khi phiên bản đủ: CLI cũ bỏ qua biến lạ nhưng khi đó FORCE không có tác dụng và mô tả MCP không bị cắt,
-	// nên đặt cũng vô ích; chặn ở đây để log của run không khai điều không đúng.
-	if claudeSupports(job.claudeVersion, "CLAUDE_CODE_SUBAGENT_MODEL_FORCE") {
-		// CLAUDE_CODE_SUBAGENT_MODEL chỉ là mặc định: agent Explore có sẵn vẫn chạy model chính nếu thiếu FORCE.
-		env["CLAUDE_CODE_SUBAGENT_MODEL_FORCE"] = "1"
-	}
-	if claudeSupports(job.claudeVersion, "CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH") {
-		// Mô tả tool MCP của hub nằm trong prompt mỗi lượt.
-		env["CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH"] = "512"
-	}
+	// CLAUDE_CODE_SUBAGENT_MODEL chỉ là mặc định: agent Explore có sẵn vẫn chạy model chính nếu thiếu FORCE.
+	setGated(env, job.claudeVersion, "CLAUDE_CODE_SUBAGENT_MODEL_FORCE", "1")
+	setGated(env, job.claudeVersion, "CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH", mcpDescriptionLength)
 	for k, v := range cfg.Env {
 		if v == "" {
 			delete(env, k)
@@ -160,6 +158,17 @@ func savingEnv(cfg TokenSavingConfig, job Job) map[string]string {
 		}
 	}
 	return env
+}
+
+// setGated đặt biến có phiên bản tối thiểu (claudeMinVersion); false khi bỏ. CLI cũ bỏ qua biến lạ nhưng khi đó FORCE
+// không có tác dụng và mô tả MCP không bị cắt, nên đặt cũng vô ích; chặn ở đây để log của run và màn tối ưu không khai
+// điều không đúng.
+func setGated(env map[string]string, version, key, value string) bool {
+	if !claudeSupports(version, key) {
+		return false
+	}
+	env[key] = value
+	return true
 }
 
 // savingArgs là cờ dòng lệnh của nhóm tiết kiệm token; nil khi nhóm không áp. Claude: cờ lọc theo phiên bản. Codex: các
@@ -192,8 +201,8 @@ func savingArgs(cfg TokenSavingConfig, job Job) []string {
 			"-c", `model_reasoning_summary="none"`,
 			"-c", `model_verbosity="low"`,
 			"-c", "hide_agent_reasoning=true",
-			"-c", "tool_output_token_limit=8000",
-			"-c", "model_auto_compact_token_limit=150000",
+			"-c", "tool_output_token_limit=" + codexToolOutputLimit,
+			"-c", "model_auto_compact_token_limit=" + codexAutoCompactLimit,
 			// Subagent của Codex làm việc đọc/tìm; effort thấp là đủ.
 			"-c", `agents.default_subagent_reasoning_effort="low"`,
 		}
