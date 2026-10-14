@@ -229,7 +229,7 @@ const openRow = async (p: P, number: number) =>
 const gateRuns = async (id: string) =>
   (
     await admin.query(
-      "select id, gate_index, gate_id, status, note, approvals, decided_by, run_ids from hive.code_review_gate_runs where review_id = $1 order by started_at",
+      "select id, gate_index, gate_id, status, note, approvals, decided_by, run_ids from hive.code_review_gate_runs where review_id = $1 order by started_at, gate_index",
       [id],
     )
   ).rows;
