@@ -1,39 +1,102 @@
+import { Tabs } from "@base-ui/react/tabs";
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { KnowledgeScope, Memory, MemoryKind, MemorySearchHit } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@xdev-hive/ui/dialog";
-import { Input } from "@xdev-hive/ui/input";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
+import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { Textarea } from "@xdev-hive/ui/textarea";
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
 import { useId, useState } from "react";
-import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
+import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
+import { Field, FieldLabel } from "@/components/ui/field.tsx";
+import { EmptyState, LoadFailure, SectionsSkeleton, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { useT } from "@/lib/i18n.ts";
 import { useKnowledgeAccess } from "@/lib/knowledge.ts";
 import { shortId } from "@/lib/run-view.ts";
 import {
   authorLabel,
-  DataPages,
-  DetailCard,
-  KnowledgeLayout,
-  QueryState,
+  DetailDialog,
+  EmptyRows,
+  PAGE_SIZE,
   ScopeBadge,
+  useTabParam,
+  When,
 } from "@/pages/knowledge/common.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
 
 const text = knowledgeText;
 const kinds: MemoryKind[] = ["decision", "convention", "gotcha", "note"];
+const TABS = ["cho-duyet"] as const;
+type Row = Memory | MemorySearchHit;
+
 export function MemoryPage() {
   const { org } = useOrg();
   return <MemoryScreen key={org.id} />;
 }
 function MemoryScreen() {
+  const t = useT(text);
+  const { api } = useOrg();
+  const access = useKnowledgeAccess();
+  const [tab, setTab] = useTabParam(TABS);
+  const [editing, setEditing] = useState<Memory | "new">();
+  const pendingList = useQuery(api.memory.list.queryOptions({ input: { status: "pending", limit: 200 } }));
+  return (
+    <>
+      <PageHeader title="Memory" description={t.memoryLead}>
+        {access.scopes.length > 0 && (
+          <Button onClick={() => setEditing("new")}>
+            <PlusIcon aria-hidden="true" />
+            {t.memoryAdd}
+          </Button>
+        )}
+      </PageHeader>
+      <Tabs.Root
+        value={tab ?? "da-duyet"}
+        onValueChange={(value) => setTab(value === "da-duyet" ? undefined : "cho-duyet")}
+      >
+        <PageTabList label={t.memoryViews}>
+          <PageTab value="da-duyet">{t.approved}</PageTab>
+          <PageTab value="cho-duyet" count={pendingList.data?.length} tone="warning">
+            {t.pending}
+          </PageTab>
+        </PageTabList>
+        <Tabs.Panel value="cho-duyet">
+          <PageBody>
+            <PendingMemories list={pendingList} />
+          </PageBody>
+        </Tabs.Panel>
+        <Tabs.Panel value="da-duyet">
+          <PageBody>
+            <ApprovedMemories onReplace={setEditing} />
+          </PageBody>
+        </Tabs.Panel>
+      </Tabs.Root>
+      {editing && (
+        <MemoryEditor
+          key={editing === "new" ? "new" : editing.id}
+          memory={editing === "new" ? undefined : editing}
+          onClose={() => setEditing(undefined)}
+          onSaved={() => setEditing(undefined)}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Một ô tìm duy nhất: gõ rồi Enter hay "Tìm" thì hub tìm theo từ và theo nghĩa trên toàn bộ memory; ô trống là danh sách
+ * phân trang. DataTable có ô lọc cục bộ riêng nên không dùng ở đây, để người dùng không phải đoán ô nào tìm gì.
+ */
+function ApprovedMemories({ onReplace }: { onReplace: (memory: Memory) => void }) {
   const t = useT(text);
   const fieldId = useId();
   const { api } = useOrg();
@@ -42,102 +105,50 @@ function MemoryScreen() {
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [includeOld, setIncludeOld] = useState(false);
+  const [kind, setKind] = useState<MemoryKind | "all">("all");
   const [selected, setSelected] = useState<Memory>();
-  const [editing, setEditing] = useState<Memory | "new">();
-  const list = useQuery(api.memory.list.queryOptions({ input: { limit: 50, offset, includeSuperseded: includeOld } }));
-  const results = useQuery({ ...api.memory.search.queryOptions({ input: { query, limit: 50 } }), enabled: !!query });
-  const pendingList = useQuery(api.memory.list.queryOptions({ input: { status: "pending", limit: 200 } }));
+  const list = useQuery(
+    api.memory.list.queryOptions({ input: { limit: PAGE_SIZE, offset, includeSuperseded: includeOld } }),
+  );
+  const results = useQuery({
+    ...api.memory.search.queryOptions({ input: { query, limit: PAGE_SIZE } }),
+    enabled: !!query,
+  });
   const active = query ? results : list;
-  const rows = active.data ?? [];
-  const columns: Column<Memory | MemorySearchHit>[] = [
-    {
-      key: "kind",
-      label: t.kind,
-      value: (row) => t[row.kind],
-      cell: (row) => (
-        <span
-          className={`rounded-full px-2 py-1 text-xs ${row.kind === "gotcha" ? "bg-warning-soft text-warning" : row.kind === "convention" ? "bg-success-soft text-success" : "bg-accent text-accent-foreground"}`}
-        >
-          {t[row.kind]}
-        </span>
-      ),
-    },
-    {
-      key: "content",
-      label: t.content,
-      value: (row) => row.content,
-      cell: (row) => <p className="max-w-md whitespace-pre-wrap break-words">{row.content}</p>,
-    },
-    {
-      key: "files",
-      label: "Files",
-      value: (row) => row.files.join(" "),
-      cell: (row) => <code className="text-xs">{row.files.join(", ") || "—"}</code>,
-    },
-    {
-      key: "scope",
-      label: t.scope,
-      value: (row) => t[row.scope.level],
-      cell: (row) => <ScopeBadge scope={row.scope} />,
-    },
-    { key: "author", label: t.author, value: (row) => authorLabel(row.author) },
-    { key: "status", label: t.status, value: (row) => (row.supersededBy ? t.superseded : t.current) },
-    {
-      key: "score",
-      label: t.score,
-      value: (row) => ("score" in row ? row.score : null),
-      sortable: true,
-      hidden: !query,
-    },
-    {
-      key: "matchedBy",
-      label: t.matchedBy,
-      value: (row) => ("matchedBy" in row ? row.matchedBy.map((mode) => t[mode]).join(", ") : null),
-      hidden: !query,
-    },
-    { key: "created", label: t.updated, value: (row) => row.createdAt, sortable: true },
-  ];
+  const rows: Row[] = (active.data ?? []).filter((row) => kind === "all" || row.kind === kind);
+  const searching = !!query;
+  const submit = (value: string) => {
+    setQuery(value.trim());
+    setSelected(undefined);
+  };
   return (
-    <KnowledgeLayout
-      title="Memory"
-      lead={t.memoryLead}
-      actions={access.scopes.length > 0 && <Button onClick={() => setEditing("new")}>{t.memoryAdd}</Button>}
-    >
-      <Tabs defaultValue="approved">
-        <TabsList variant="line" aria-label={t.memoryViews}>
-          <TabsTrigger value="approved">{t.approved}</TabsTrigger>
-          <TabsTrigger value="pending">
-            {t.pending}
-            <Pill small>{pendingList.data?.length ?? "—"}</Pill>
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="pending" className="space-y-3">
-          <PendingMemories list={pendingList} />
-        </TabsContent>
-        <TabsContent value="approved" className="space-y-4">
-          <form
-            className="flex flex-wrap gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setQuery(search.trim());
-              setSelected(undefined);
-            }}
+    <>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit(search);
+        }}
+      >
+        <FilterBar label={t.memoryFilters}>
+          <FilterSearch value={search} onChange={setSearch} placeholder={t.searchMemory} className="sm:w-80" />
+          <Button type="submit" variant="outline" size="sm">
+            {t.search}
+          </Button>
+          <SegmentedControl
+            label={t.kind}
+            value={kind}
+            onChange={setKind}
+            options={[{ value: "all", label: t.all }, ...kinds.map((value) => ({ value, label: t[value] }))]}
+          />
+          <label
+            htmlFor={`${fieldId}-old`}
+            className="flex items-center gap-2 text-sm whitespace-nowrap sm:ml-auto"
+            title={searching ? t.includeOldSearch : undefined}
           >
-            <Input
-              aria-label={t.searchMemory}
-              placeholder={t.searchMemory}
-              className="min-w-0 flex-1"
-              maxLength={500}
-              value={search}
-              onChange={(event) => setSearch(event.currentTarget.value)}
-            />
-            <Button type="submit">{t.search}</Button>
-          </form>
-          <label htmlFor={`${fieldId}-1`} className="flex items-center gap-2 text-sm">
             <Checkbox
-              id={`${fieldId}-1`}
+              id={`${fieldId}-old`}
               checked={includeOld}
-              disabled={!!query}
+              disabled={searching}
               onCheckedChange={(checked) => {
                 setIncludeOld(checked);
                 setOffset(0);
@@ -145,80 +156,191 @@ function MemoryScreen() {
             />
             {t.includeOld}
           </label>
-          <section aria-label={t.pageNote} className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {kinds.map((kind) => (
-              <DetailCard key={kind}>
-                <span className="text-muted-foreground">{t[kind]}</span>
-                <strong className="font-mono text-2xl">{rows.filter((row) => row.kind === kind).length}</strong>
-              </DetailCard>
-            ))}
-          </section>
-          <QueryState query={active} />
-          {active.data && (
-            <DataTable
-              key={query ? "search" : "list"}
-              columns={columns}
-              rows={rows}
-              selectable={false}
-              placeholder={t.content}
-              facets={[
-                { key: "kind", label: t.kind, value: (row) => t[row.kind] },
-                { key: "scope", label: t.scope, value: (row) => t[row.scope.level] },
-              ]}
-              onRowClick={setSelected}
-              rowLabel={(row) => row.content.slice(0, 60)}
-              activeId={selected?.id ?? ""}
-              emptyContent={t.empty}
-            />
-          )}
-          {!query && (
-            <DataPages
-              offset={offset}
-              count={rows.length}
-              onChange={(value) => {
-                setOffset(value);
-                setSelected(undefined);
+        </FilterBar>
+      </form>
+      {searching && (
+        <div role="status" className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">{t.searching}</span>
+          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-accent py-0.5 pr-1 pl-2.5 text-accent-foreground">
+            <span className="min-w-0 break-words">{query}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t.clearSearch}
+              onClick={() => {
+                setSearch("");
+                submit("");
               }}
-            />
-          )}
-          {selected && (
-            <DetailCard>
-              <ScopeBadge scope={selected.scope} />
-              <p className="whitespace-pre-wrap break-words">{selected.content}</p>
-              {selected.files.map((file) => (
-                <code key={file} className="break-all text-xs">
-                  {file}
-                </code>
-              ))}
-              {selected.supersededBy ? (
-                <p className="break-all text-muted-foreground">
-                  {t.superseded}: {selected.supersededBy}
-                </p>
-              ) : (
-                access.allowed(selected.scope, "write") && (
-                  <Button className="self-start" variant="outline" onClick={() => setEditing(selected)}>
-                    {t.replace}
-                  </Button>
-                )
-              )}
-            </DetailCard>
-          )}
-        </TabsContent>
-      </Tabs>
-      {editing && (
-        <MemoryEditor
-          key={editing === "new" ? "new" : editing.id}
-          memory={editing === "new" ? undefined : editing}
-          onClose={() => setEditing(undefined)}
-          onSaved={() => {
-            setEditing(undefined);
-            setSelected(undefined);
-          }}
-        />
+            >
+              <XIcon aria-hidden="true" />
+            </Button>
+          </span>
+        </div>
       )}
-    </KnowledgeLayout>
+      {active.isPending && <TableSkeleton label={t.loading} columns={5} />}
+      {active.isError && <LoadFailure error={active.error} retry={active.refetch} />}
+      {active.data && (
+        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+          <Table style={{ minWidth: searching ? 760 : 620 }}>
+            <TableHeader>
+              <TableRow>
+                <Th variant="plain">{t.content}</Th>
+                <Th variant="plain">{t.scope}</Th>
+                <Th variant="plain">{t.author}</Th>
+                {searching && (
+                  <>
+                    <Th variant="plain" className="text-right">
+                      {t.score}
+                    </Th>
+                    <Th variant="plain">{t.matchedBy}</Th>
+                  </>
+                )}
+                <Th variant="plain">{t.updated}</Th>
+                <Th variant="plain" className="w-10 min-w-10">
+                  <span className="sr-only">{t.open}</span>
+                </Th>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.id === selected?.id ? "selected" : undefined}
+                  className="cursor-pointer"
+                  onClick={(event) => {
+                    if (!(event.target as HTMLElement).closest("a,button")) setSelected(row);
+                  }}
+                >
+                  <Td className="max-w-md">
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                      <KindPill kind={row.kind} />
+                      {row.supersededBy && <Pill>{t.superseded}</Pill>}
+                    </div>
+                    <p className="line-clamp-3 break-words whitespace-pre-wrap">{row.content}</p>
+                  </Td>
+                  <Td>
+                    <ScopeBadge scope={row.scope} />
+                  </Td>
+                  <Td className="max-w-40 text-xs break-all text-muted-foreground">{authorLabel(row.author)}</Td>
+                  {searching && (
+                    <>
+                      <Td className="text-right tabular-nums">{"score" in row ? row.score.toFixed(2) : "—"}</Td>
+                      <Td className="text-xs text-muted-foreground">
+                        {"matchedBy" in row ? row.matchedBy.map((mode) => t[mode]).join(", ") : "—"}
+                      </Td>
+                    </>
+                  )}
+                  <Td className="text-xs whitespace-nowrap text-muted-foreground">
+                    <When iso={row.createdAt} />
+                  </Td>
+                  <Td className="w-10 px-1.5">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`${t.openRow} ${row.content.slice(0, 60)}`}
+                      onClick={() => setSelected(row)}
+                    >
+                      <ChevronRightIcon aria-hidden="true" />
+                    </Button>
+                  </Td>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          {rows.length === 0 && (
+            <div className="grid justify-items-center gap-3 px-4 py-10 text-center text-muted-foreground">
+              {searching || kind !== "all" ? (
+                <EmptyRows title={t.noResults} description={t.noResultsHint} />
+              ) : (
+                <EmptyRows title={t.memoryEmptyTitle} description={t.memoryEmptyBody} />
+              )}
+            </div>
+          )}
+          {!searching && (
+            <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
+              <span className="text-muted-foreground" aria-live="polite">
+                {active.data.length === 0 ? t.noRows : t.rows(offset + 1, offset + active.data.length)}
+              </span>
+              <div className="flex gap-1 sm:ml-auto">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={t.previousPage}
+                  disabled={offset === 0}
+                  onClick={() => {
+                    setOffset(Math.max(0, offset - PAGE_SIZE));
+                    setSelected(undefined);
+                  }}
+                >
+                  <ChevronLeftIcon aria-hidden="true" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={t.nextPage}
+                  disabled={active.data.length < PAGE_SIZE}
+                  onClick={() => {
+                    setOffset(offset + PAGE_SIZE);
+                    setSelected(undefined);
+                  }}
+                >
+                  <ChevronRightIcon aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {selected && (
+        <DetailDialog
+          title={t[selected.kind]}
+          mono={false}
+          onClose={() => setSelected(undefined)}
+          badges={<ScopeBadge scope={selected.scope} />}
+          description={`${authorLabel(selected.author)} · ${new Date(selected.createdAt).toLocaleDateString()}`}
+          footer={
+            !selected.supersededBy &&
+            access.allowed(selected.scope, "write") && (
+              <Button
+                className="justify-self-end"
+                variant="outline"
+                onClick={() => {
+                  onReplace(selected);
+                  setSelected(undefined);
+                }}
+              >
+                {t.replace}
+              </Button>
+            )
+          }
+        >
+          <p className="whitespace-pre-wrap break-words">{selected.content}</p>
+          {selected.files.length > 0 && (
+            <ul className="grid gap-1">
+              {selected.files.map((file) => (
+                <li key={file}>
+                  <code className="text-xs break-all">{file}</code>
+                </li>
+              ))}
+            </ul>
+          )}
+          {selected.supersededBy && (
+            <p className="break-all text-sm text-muted-foreground">
+              {t.superseded}: {selected.supersededBy}
+            </p>
+          )}
+        </DetailDialog>
+      )}
+    </>
   );
 }
+
+function KindPill({ kind }: { kind: MemoryKind }) {
+  const t = useT(text);
+  return <Pill tone={kind === "gotcha" ? "warn" : kind === "convention" ? "ok" : "sel"}>{t[kind]}</Pill>;
+}
+
 function PendingMemories({ list }: { list: UseQueryResult<Memory[]> }) {
   const t = useT(text);
   const { api } = useOrg();
@@ -226,29 +348,33 @@ function PendingMemories({ list }: { list: UseQueryResult<Memory[]> }) {
   const access = useKnowledgeAccess();
   const approve = useMutation(api.memory.approve.mutationOptions());
   const reject = useMutation(api.memory.reject.mutationOptions());
+  const [discarding, setDiscarding] = useState<Memory>();
   const busy = approve.isPending || reject.isPending;
   const decide = async (decision: "approve" | "reject", id: string) => {
     try {
       await (decision === "approve" ? approve : reject).mutateAsync({ id });
       await cache.invalidateQueries({ queryKey: api.memory.key() });
     } catch {
-      /* Lỗi hiện ngay dưới danh sách; hàng vẫn ở đó để thử lại. */
+      /* Lỗi hiện ngay trên danh sách; hàng vẫn ở đó để thử lại. */
+    } finally {
+      setDiscarding(undefined);
     }
   };
   return (
     <>
       <p className="text-sm text-muted-foreground">{t.pendingHint}</p>
-      <QueryState query={list} />
+      {list.isPending && <SectionsSkeleton sections={2} label={t.loading} />}
+      {list.isError && <LoadFailure error={list.error} retry={list.refetch} />}
       {(approve.error || reject.error) && (
         <Alert variant="destructive">{apiErrorMessage(approve.error ?? reject.error)}</Alert>
       )}
-      {list.data?.length === 0 && <p className="text-muted-foreground">{t.pendingEmpty}</p>}
-      <ul className="space-y-3">
-        {list.data?.map((memory) => (
-          <li key={memory.id}>
-            <DetailCard>
+      {list.data?.length === 0 && <EmptyState compact title={t.pendingEmpty} description={t.pendingEmptyHint} />}
+      {list.data && list.data.length > 0 && (
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+          {list.data.map((memory) => (
+            <li key={memory.id} className="grid gap-2 p-4">
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="rounded-full bg-accent px-2 py-1 text-accent-foreground">{t[memory.kind]}</span>
+                <KindPill kind={memory.kind} />
                 <ScopeBadge scope={memory.scope} />
                 {memory.author.runId ? (
                   <Link
@@ -261,6 +387,9 @@ function PendingMemories({ list }: { list: UseQueryResult<Memory[]> }) {
                 ) : (
                   <span className="text-muted-foreground">{authorLabel(memory.author)}</span>
                 )}
+                <span className="text-muted-foreground sm:ml-auto">
+                  <When iso={memory.createdAt} />
+                </span>
               </div>
               <p className="whitespace-pre-wrap break-words">{memory.content}</p>
               {memory.files.length > 0 && <code className="break-all text-xs">{memory.files.join(", ")}</code>}
@@ -269,15 +398,33 @@ function PendingMemories({ list }: { list: UseQueryResult<Memory[]> }) {
                   <Button size="sm" disabled={busy} onClick={() => decide("approve", memory.id)}>
                     {t.approve}
                   </Button>
-                  <Button size="sm" variant="outline" disabled={busy} onClick={() => decide("reject", memory.id)}>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => setDiscarding(memory)}>
                     {t.memoryDiscard}
                   </Button>
                 </div>
               )}
-            </DetailCard>
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Dialog open={!!discarding} onOpenChange={(open) => !open && !busy && setDiscarding(undefined)}>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>{t.discardTitle}</DialogTitle>
+          <DialogDescription className="line-clamp-4 whitespace-pre-wrap">{discarding?.content}</DialogDescription>
+          <DialogActions>
+            <Button variant="outline" disabled={busy} onClick={() => setDiscarding(undefined)}>
+              {t.keep}
+            </Button>
+            <Button
+              variant="destructive-solid"
+              disabled={busy}
+              onClick={() => discarding && decide("reject", discarding.id)}
+            >
+              {t.discardConfirm}
+            </Button>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -310,10 +457,10 @@ function MemoryEditor({
         if (!open && !pending) onClose();
       }}
     >
-      <DialogContent className="max-h-[90dvh] overflow-y-auto" showCloseButton={false}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain" showCloseButton={false}>
         <DialogTitle>{memory ? t.replace : t.memoryAdd}</DialogTitle>
         <form
-          className="space-y-3"
+          className="grid gap-3"
           onSubmit={async (event) => {
             event.preventDefault();
             const input = {
@@ -346,10 +493,9 @@ function MemoryEditor({
           }}
         >
           {!memory && (
-            <label htmlFor={`${fieldId}-2`} className="block space-y-1">
-              <span>{t.scope}</span>
+            <Field>
+              <FieldLabel htmlFor={`${fieldId}-2`}>{t.scope}</FieldLabel>
               <NativeSelect
-                aria-label={t.scope}
                 id={`${fieldId}-2`}
                 required
                 value={scopeValue}
@@ -361,12 +507,11 @@ function MemoryEditor({
                   </option>
                 ))}
               </NativeSelect>
-            </label>
+            </Field>
           )}
-          <label htmlFor={`${fieldId}-3`} className="block space-y-1">
-            <span>{t.kind}</span>
+          <Field>
+            <FieldLabel htmlFor={`${fieldId}-3`}>{t.kind}</FieldLabel>
             <NativeSelect
-              aria-label={t.kind}
               id={`${fieldId}-3`}
               value={kind}
               onChange={(event) => setKind(event.currentTarget.value as MemoryKind)}
@@ -377,9 +522,9 @@ function MemoryEditor({
                 </option>
               ))}
             </NativeSelect>
-          </label>
-          <label htmlFor={`${fieldId}-4`} className="block space-y-1">
-            <span>{t.content}</span>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${fieldId}-4`}>{t.content}</FieldLabel>
             <Textarea
               id={`${fieldId}-4`}
               required
@@ -388,27 +533,28 @@ function MemoryEditor({
               value={content}
               onChange={(event) => setContent(event.currentTarget.value)}
             />
-          </label>
-          <label htmlFor={`${fieldId}-5`} className="block space-y-1">
-            <span>{t.files}</span>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${fieldId}-5`}>{t.files}</FieldLabel>
             <Textarea
               id={`${fieldId}-5`}
               rows={3}
+              placeholder="src/money.ts"
               value={files}
               onChange={(event) => setFiles(event.currentTarget.value)}
             />
-          </label>
+          </Field>
           {(write.error || supersede.error) && (
             <Alert variant="destructive">{apiErrorMessage(write.error ?? supersede.error)}</Alert>
           )}
-          <div className="flex justify-end gap-2">
+          <DialogActions>
             <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
               {t.cancel}
             </Button>
             <Button type="submit" disabled={pending || !content.trim() || (!memory && !selectedScope)}>
-              {pending ? t.loading : t.save}
+              {pending ? t.saving : t.save}
             </Button>
-          </div>
+          </DialogActions>
         </form>
       </DialogContent>
     </Dialog>

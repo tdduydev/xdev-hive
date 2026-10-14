@@ -62,3 +62,36 @@ func TestAcquireInteractive(t *testing.T) {
 		t.Fatalf("pool nil có id: %v", err)
 	}
 }
+
+// `hive chat --force` (specs/010 D10): nhận gói đang nghỉ; tự chọn thì gói nghỉ chỉ khi không còn gói nào khác.
+func TestAcquireInteractiveForce(t *testing.T) {
+	p := pool(t, three)
+	fixed(p, t0)
+	if err := UpdateState(p.state, t0, func(s *State) { s.CoolUntil["claude-4"] = t0.Add(time.Hour) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.AcquireInteractiveForce("claude", "claude-4", false); !errors.Is(err, ErrNoAccount) {
+		t.Fatalf("không force: err = %v", err)
+	}
+	l, err := p.AcquireInteractiveForce("claude", "claude-4", true)
+	if err != nil || l.ID() != "claude-4" {
+		t.Fatalf("force claude-4: %v %v", l.ID(), err)
+	}
+	l.Release()
+	if l, err := p.AcquireInteractiveForce("claude", "", true); err != nil || l.ID() != "claude-3" {
+		t.Fatalf("tự chọn phải ưu tiên gói không nghỉ: %v %v", l.ID(), err)
+	}
+	if err := UpdateState(p.state, t0, func(s *State) { s.CoolUntil["claude-3"] = t0.Add(time.Hour) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.AcquireInteractiveForce("claude", "", false); !errors.Is(err, ErrBusy) {
+		t.Fatalf("mọi gói nghỉ, không force: err = %v", err)
+	}
+	if l, err := p.AcquireInteractiveForce("claude", "", true); err != nil || l == nil {
+		t.Fatalf("mọi gói nghỉ, force: %v %v", l, err)
+	}
+	// Gói tắt vẫn không nhận dù force.
+	if _, err := p.AcquireInteractiveForce("claude", "claude-5", true); !errors.Is(err, ErrNoAccount) {
+		t.Fatalf("gói tắt: err = %v", err)
+	}
+}
