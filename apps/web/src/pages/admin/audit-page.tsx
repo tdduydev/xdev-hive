@@ -11,9 +11,34 @@ import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { useId, useState } from "react";
-import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
+import {
+  BotIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  DownloadIcon,
+  type LucideIcon,
+  ServerIcon,
+  UserIcon,
+  XIcon,
+} from "lucide-react";
+import { type ReactNode, useId, useState } from "react";
+import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
+import { SegmentedControl } from "@/components/page/segmented-control.tsx";
+import { FormRow, SettingsSection } from "@/components/page/settings.tsx";
+import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
+import { LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
+import { formatClock, formatDay } from "@/lib/format.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
@@ -22,11 +47,14 @@ import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{
   title: string;
-  crumb: string;
   lead: (retentionDays: number | undefined) => string;
   range: string;
+  filters: string;
   search: string;
-  pageSearch: string;
+  anyOf: (label: string) => string;
+  optionOf: (label: string, value: string) => string;
+  filtering: string;
+  clearOne: (label: string) => string;
   actorType: string;
   actor: string;
   action: string;
@@ -37,7 +65,6 @@ const text: Dict<{
   target: string;
   ok: string;
   denied: string;
-  all: string;
   clear: string;
   user: string;
   run: string;
@@ -49,10 +76,11 @@ const text: Dict<{
   agent: string;
   other: string;
   loading: string;
-  retry: string;
   forbidden: string;
   previous: string;
   next: string;
+  export: string;
+  exporting: string;
   csv: string;
   json: string;
   exportLimit: string;
@@ -60,6 +88,7 @@ const text: Dict<{
   ranges: readonly string[];
   page: (n: number) => string;
   retention: string;
+  retentionTitle: string;
   days: (n: number) => string;
   save: string;
   saving: string;
@@ -69,11 +98,14 @@ const text: Dict<{
 }> = {
   vi: {
     title: "Nhật ký",
-    crumb: "Theo dõi",
     lead: (days) => `Mọi thao tác của người, agent và hub. Chỉ đọc${days ? `, giữ ${days} ngày` : ""}.`,
     range: "Khoảng thời gian",
+    filters: "Lọc nhật ký",
     search: "Tìm đối tượng, người làm, IP…",
-    pageSearch: "Tìm trong trang…",
+    anyOf: (label) => `${label}: tất cả`,
+    optionOf: (label, value) => `${label}: ${value}`,
+    filtering: "Đang lọc",
+    clearOne: (label) => `Bỏ lọc ${label}`,
     actorType: "Loại người làm",
     actor: "Người làm",
     action: "Hành động",
@@ -84,7 +116,6 @@ const text: Dict<{
     target: "Đối tượng",
     ok: "Thành công",
     denied: "Bị từ chối",
-    all: "Tất cả",
     clear: "Xoá hết bộ lọc",
     user: "Người",
     run: "Agent",
@@ -95,11 +126,12 @@ const text: Dict<{
     people: "Người và quyền",
     agent: "Quản trị agent",
     other: "Khác",
-    loading: "Đang tải…",
-    retry: "Thử lại",
+    loading: "Đang tải nhật ký…",
     forbidden: "Chỉ chủ sở hữu và quản trị tổ chức được xem nhật ký.",
     previous: "Trang trước của nhật ký",
     next: "Trang sau của nhật ký",
+    export: "Xuất",
+    exporting: "Đang xuất…",
     csv: "Xuất CSV",
     json: "Xuất JSON",
     exportLimit: "Xuất theo bộ lọc, tối đa 20.000 dòng. Tên file có “limit-20000” khi còn dữ liệu.",
@@ -107,6 +139,7 @@ const text: Dict<{
     ranges: ["24 giờ", "7 ngày", "30 ngày", "365 ngày"],
     page: (n) => `Trang nhật ký ${n}`,
     retention: "Thời hạn lưu",
+    retentionTitle: "Lưu giữ nhật ký",
     days: (n) => `${n} ngày`,
     save: "Lưu thời hạn",
     saving: "Đang lưu…",
@@ -116,11 +149,14 @@ const text: Dict<{
   },
   en: {
     title: "Audit log",
-    crumb: "Monitoring",
     lead: (days) => `Every action by people, agents and the hub. Read-only${days ? `, kept for ${days} days` : ""}.`,
     range: "Time range",
+    filters: "Filter audit log",
     search: "Search target, actor, IP…",
-    pageSearch: "Search this page…",
+    anyOf: (label) => `${label}: all`,
+    optionOf: (label, value) => `${label}: ${value}`,
+    filtering: "Filtering",
+    clearOne: (label) => `Clear ${label}`,
     actorType: "Actor type",
     actor: "Actor",
     action: "Action",
@@ -131,7 +167,6 @@ const text: Dict<{
     target: "Target",
     ok: "Success",
     denied: "Denied",
-    all: "All",
     clear: "Clear all filters",
     user: "Person",
     run: "Agent",
@@ -142,11 +177,12 @@ const text: Dict<{
     people: "People & access",
     agent: "Agent governance",
     other: "Other",
-    loading: "Loading…",
-    retry: "Retry",
+    loading: "Loading audit log…",
     forbidden: "Only organization owners and administrators can view the audit log.",
     previous: "Previous audit page",
     next: "Next audit page",
+    export: "Export",
+    exporting: "Exporting…",
     csv: "Export CSV",
     json: "Export JSON",
     exportLimit: "Export matching filters, up to 20,000 rows. Filenames include “limit-20000” when more data exists.",
@@ -154,6 +190,7 @@ const text: Dict<{
     ranges: ["24 h", "7 days", "30 days", "365 days"],
     page: (n) => `Audit page ${n}`,
     retention: "Retention",
+    retentionTitle: "Log retention",
     days: (n) => `${n} days`,
     save: "Save retention",
     saving: "Saving…",
@@ -168,23 +205,32 @@ export function AuditPage() {
   const { org } = useOrg();
   const t = useT(text);
   const can = usePermissions();
-  return (
-    <>
-      <PageHeader crumb={t.crumb} title={t.title} />
-      <PageBody>
-        {isOrgAdmin(org.role) || can("audit.read") ? <AuditViewer key={org.id} /> : <Alert>{t.forbidden}</Alert>}
-      </PageBody>
-    </>
-  );
+  if (!(isOrgAdmin(org.role) || can("audit.read")))
+    return (
+      <>
+        <PageHeader title={t.title} description={t.lead(undefined)} />
+        <PageBody>
+          <Alert>{t.forbidden}</Alert>
+        </PageBody>
+      </>
+    );
+  return <AuditViewer key={org.id} />;
 }
 
+type FilterKey = Exclude<keyof AuditFilters, "range">;
+type Range = AuditFilters["range"];
+const RANGES = [1, 7, 30, 365] as const satisfies readonly Range[];
+
+/**
+ * Hub lọc và phân trang (con trỏ), nên trang chỉ có một ô tìm và một bộ phân trang, đều của hub. Không dùng DataTable vì
+ * ô lọc cục bộ của nó chỉ lọc 20 dòng đang thấy, đứng cạnh ô tìm của hub thì người dùng không biết ô nào tìm gì.
+ */
 function AuditViewer() {
   const { api, org } = useOrg();
   const can = usePermissions();
-  const canExport = isOrgAdmin(org.role) || can("audit.export");
+  const admin = isOrgAdmin(org.role);
+  const canExport = admin || can("audit.export");
   const t = useT(text);
-  const lang = useLang();
-  const fieldId = useId();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<AuditFilters>({ range: 7 });
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
@@ -210,17 +256,25 @@ function AuditViewer() {
       },
     }),
   );
-  function update<K extends keyof AuditFilters>(key: K, value: AuditFilters[K]) {
+  function update<K extends keyof AuditFilters>(key: K, value: AuditFilters[K] | undefined) {
     setFilters((prev) => {
       const next = { ...prev };
       if (value === undefined || value === "") delete next[key];
-      else next[key] = value;
+      else next[key] = value as AuditFilters[K];
       return next;
     });
     setPage(0);
     setCursors([undefined]);
   }
-  const labels = { actorType: t.actorType, area: t.area, source: t.source, result: t.result };
+  const labels: Record<FilterKey, string> = {
+    q: t.search,
+    actorType: t.actorType,
+    area: t.area,
+    source: t.source,
+    result: t.result,
+    actorId: t.actor,
+    action: t.action,
+  };
   const options = {
     actorType: [
       ["user", t.user],
@@ -245,219 +299,256 @@ function AuditViewer() {
       ["denied", t.denied],
     ],
   } as const;
-  const columns: Column<AuditLogItem>[] = [
-    {
-      key: "time",
-      label: t.time,
-      value: (r) => r.createdAt,
-      cell: (r) => (
-        <time dateTime={r.createdAt} className="font-mono text-xs">
-          {new Date(r.createdAt).toLocaleString(lang === "vi" ? "vi-VN" : "en-US")}
-        </time>
-      ),
-    },
-    {
-      key: "actor",
-      label: t.actor,
-      value: (r) => r.actor,
-      cell: (r) => (
-        <div className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="grid size-7 shrink-0 place-items-center rounded-full bg-accent text-xs text-accent-foreground"
-          >
-            {r.actorType === "run" ? "AI" : r.actor.slice(0, 2)}
-          </span>
-          <div>
-            <div>{r.actor}</div>
-            <span className="text-xs text-muted-foreground">{t[r.actorType]}</span>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "action",
-      label: t.action,
-      value: (r) => r.action,
-      cell: (r) => <Pill tone={/cancel|role|sso|polic/.test(r.action) ? "warn" : "neutral"}>{r.action}</Pill>,
-    },
-    { key: "area", label: t.area, hidden: true, value: (r) => t[r.area] },
-    {
-      key: "target",
-      label: t.target,
-      value: (r) => [r.targetType, r.targetId].filter(Boolean).join(": "),
-      className: "max-w-80 whitespace-normal break-words",
-    },
-    {
-      key: "result",
-      label: t.result,
-      value: (r) => r.result,
-      cell: (r) => <Pill tone={r.result === "denied" ? "bad" : "ok"}>{r.result === "denied" ? t.denied : t.ok}</Pill>,
-    },
-    {
-      key: "source",
-      label: t.source,
-      value: (r) => [r.source, r.ip].filter(Boolean).join(" · "),
-      className: "font-mono text-xs",
-    },
-  ];
-  const activeFilters = Object.entries(filters)
-    .filter(([key]) => key !== "range")
+  const active = (Object.entries(filters) as [keyof AuditFilters, unknown][])
+    .filter((entry): entry is [FilterKey, string] => entry[0] !== "range")
     .map(([key, value]) => ({
       key,
-      label:
-        key === "q"
-          ? t.search
-          : key === "actorId"
-            ? t.actor
-            : key === "action"
-              ? t.action
-              : labels[key as keyof typeof labels],
-      values:
-        key in options
-          ? (options[key as keyof typeof options].find(([id]) => id === value)?.[1] ?? String(value))
-          : String(value),
-      clear: () => update(key as keyof AuditFilters, undefined),
+      label: labels[key],
+      value: key in options ? (options[key as keyof typeof options].find(([id]) => id === value)?.[1] ?? value) : value,
     }));
-  return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{t.lead(retention.data?.retentionDays)}</p>
-        <fieldset aria-label={t.range} className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
-          {([1, 7, 30, 365] as const).map((range, i) => (
+  const clearAll = () => {
+    setFilters((prev) => ({ range: prev.range }));
+    setPage(0);
+    setCursors([undefined]);
+  };
+  const busy = list.isFetching;
+
+  let table: ReactNode;
+  if (list.isPending) table = <TableSkeleton label={t.loading} rows={8} columns={6} />;
+  else if (list.isError) table = <LoadFailure error={list.error} retry={list.refetch} />;
+  else
+    table = (
+      <div aria-busy={busy} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+        <Table style={{ minWidth: 760 }}>
+          <caption className="sr-only">{t.title}</caption>
+          <TableHeader>
+            <TableRow>
+              <Th variant="plain">{t.time}</Th>
+              <Th variant="plain">{t.actor}</Th>
+              <Th variant="plain">{t.action}</Th>
+              <Th variant="plain">{t.target}</Th>
+              <Th variant="plain">{t.result}</Th>
+              <Th variant="plain">{t.source}</Th>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.data.items.map((row) => (
+              <TableRow key={row.id}>
+                <Td className="whitespace-nowrap tabular-nums">
+                  <AuditTime iso={row.createdAt} />
+                </Td>
+                <Td>
+                  <span className="flex max-w-56 min-w-0 items-center gap-1.5">
+                    <span className="truncate" title={row.actor}>
+                      {row.actor}
+                    </span>
+                    <ActorTypeIcon type={row.actorType} label={t[row.actorType]} />
+                  </span>
+                </Td>
+                <Td>
+                  <Pill tone={/cancel|role|sso|polic/.test(row.action) ? "warn" : "neutral"} className="font-mono">
+                    {row.action}
+                  </Pill>
+                </Td>
+                <Td className="max-w-72 min-w-36 text-xs break-words">
+                  {row.targetType || row.targetId ? (
+                    <>
+                      {row.targetType && <span className="text-muted-foreground">{row.targetType}: </span>}
+                      <span className="font-mono">{row.targetId}</span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </Td>
+                <Td>
+                  <Pill tone={row.result === "denied" ? "bad" : "ok"}>{row.result === "denied" ? t.denied : t.ok}</Pill>
+                </Td>
+                <Td className="whitespace-nowrap">
+                  <span className="text-xs">{SOURCE_LABEL[row.source]}</span>
+                  {row.ip && <span className="ml-1.5 font-mono text-xs text-muted-foreground">{row.ip}</span>}
+                </Td>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {list.data.items.length === 0 && (
+          <div className="grid justify-items-center gap-3 px-4 py-10 text-center text-muted-foreground">
+            <p>{t.empty}</p>
+            {active.length > 0 && (
+              <Button variant="outline" size="sm" onClick={clearAll}>
+                {t.clear}
+              </Button>
+            )}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
+          <span className="text-muted-foreground" aria-live="polite">
+            {t.page(page + 1)}
+          </span>
+          <div className="flex gap-1 sm:ml-auto">
             <Button
-              key={range}
-              size="sm"
-              variant={range === filters.range ? "secondary" : "ghost"}
-              aria-pressed={range === filters.range}
-              onClick={() => update("range", range)}
+              variant="outline"
+              size="icon-sm"
+              aria-label={t.previous}
+              disabled={!page || busy}
+              onClick={() => setPage(page - 1)}
             >
-              {t.ranges[i]}
-            </Button>
-          ))}
-        </fieldset>
-      </div>
-      {isOrgAdmin(org.role) && retention.data && <RetentionForm current={retention.data} />}
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label htmlFor={`${fieldId}-search`} className="grid gap-1 text-xs sm:col-span-2">
-          {t.search}
-          <Input
-            id={`${fieldId}-search`}
-            type="search"
-            maxLength={200}
-            value={filters.q ?? ""}
-            onChange={(e) => update("q", e.currentTarget.value)}
-          />
-        </label>
-        {(["actorType", "area", "source", "result"] as const).map((key) => (
-          <label key={key} htmlFor={`${fieldId}-${key}`} className="grid min-w-0 gap-1 text-xs">
-            {labels[key]}
-            <NativeSelect
-              id={`${fieldId}-${key}`}
-              aria-label={labels[key]}
-              value={filters[key] ?? ""}
-              onChange={(e) => update(key, e.currentTarget.value as AuditFilters[typeof key])}
-            >
-              <option value="">{t.all}</option>
-              {options[key].map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-        ))}
-        <label htmlFor={`${fieldId}-actor`} className="grid gap-1 text-xs">
-          {t.actor}
-          <Input
-            id={`${fieldId}-actor`}
-            maxLength={200}
-            value={filters.actorId ?? ""}
-            onChange={(e) => update("actorId", e.currentTarget.value)}
-          />
-        </label>
-        <label htmlFor={`${fieldId}-action`} className="grid gap-1 text-xs">
-          {t.action}
-          <Input
-            id={`${fieldId}-action`}
-            maxLength={200}
-            value={filters.action ?? ""}
-            onChange={(e) => update("action", e.currentTarget.value)}
-          />
-        </label>
-      </div>
-      {canExport && (
-        <fieldset className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            disabled={download.isPending}
-            onClick={() => download.mutate({ ...filters, format: "csv" })}
-          >
-            {t.csv}
-          </Button>
-          <Button
-            variant="outline"
-            disabled={download.isPending}
-            onClick={() => download.mutate({ ...filters, format: "json" })}
-          >
-            {t.json}
-          </Button>
-          <p className="text-xs text-muted-foreground">{t.exportLimit}</p>
-        </fieldset>
-      )}
-      {download.isError && <Alert variant="destructive">{apiErrorMessage(download.error)}</Alert>}
-      {list.isPending ? (
-        <p role="status" aria-busy="true">
-          {t.loading}
-        </p>
-      ) : list.isError ? (
-        <Alert variant="destructive">
-          {apiErrorMessage(list.error)}
-          <Button variant="outline" onClick={() => list.refetch()}>
-            {t.retry}
-          </Button>
-        </Alert>
-      ) : (
-        <div aria-busy={list.isFetching}>
-          <DataTable
-            key={JSON.stringify([filters, cursor, lang])}
-            columns={columns}
-            rows={list.data.items}
-            caption={t.title}
-            selectable={false}
-            pageSize={20}
-            placeholder={t.pageSearch}
-            activeFilters={activeFilters}
-            emptyContent={t.empty}
-          />
-          <fieldset className="mt-3 flex flex-wrap items-center gap-2" aria-label={t.title}>
-            <span className="mr-auto text-xs text-muted-foreground" aria-live="polite">
-              {t.page(page + 1)}
-            </span>
-            <Button variant="outline" disabled={!page || list.isFetching} onClick={() => setPage(page - 1)}>
-              {t.previous}
+              <ChevronLeftIcon aria-hidden="true" />
             </Button>
             <Button
               variant="outline"
-              disabled={!list.data.nextCursor || list.isFetching}
+              size="icon-sm"
+              aria-label={t.next}
+              disabled={!list.data.nextCursor || busy}
               onClick={() => {
                 setCursors((prev) => [...prev.slice(0, page + 1), list.data.nextCursor ?? undefined]);
                 setPage(page + 1);
               }}
             >
-              {t.next}
+              <ChevronRightIcon aria-hidden="true" />
             </Button>
-          </fieldset>
+          </div>
         </div>
-      )}
+      </div>
+    );
+
+  return (
+    <>
+      <PageHeader title={t.title} description={t.lead(retention.data?.retentionDays)}>
+        <SegmentedControl
+          label={t.range}
+          value={String(filters.range)}
+          onChange={(value) => update("range", Number(value) as Range)}
+          options={RANGES.map((range, i) => ({ value: String(range), label: t.ranges[i] ?? String(range) }))}
+        />
+      </PageHeader>
+      <PageBody>
+        <div className="grid min-w-0 gap-2.5">
+          <FilterBar
+            label={t.filters}
+            actions={
+              canExport && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button variant="outline" size="sm" disabled={download.isPending} />}>
+                    <DownloadIcon aria-hidden="true" />
+                    {download.isPending ? t.exporting : t.export}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel className="text-xs font-normal whitespace-normal text-muted-foreground">
+                        {t.exportLimit}
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => download.mutate({ ...filters, format: "csv" })}>
+                        {t.csv}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => download.mutate({ ...filters, format: "json" })}>
+                        {t.json}
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            }
+          >
+            <FilterSearch
+              placeholder={t.search}
+              value={filters.q ?? ""}
+              onChange={(value) => update("q", value.slice(0, 200))}
+            />
+            {(["actorType", "area", "source", "result"] as const).map((key) => (
+              <NativeSelect
+                key={key}
+                aria-label={labels[key]}
+                className={cx("w-[calc(50%-0.25rem)] sm:w-auto", filters[key] && "[&>select]:border-primary")}
+                value={filters[key] ?? ""}
+                onChange={(e) => update(key, (e.currentTarget.value || undefined) as AuditFilters[typeof key])}
+              >
+                {/* Nhãn lọc đứng trước giá trị để ô đã chọn vẫn tự nói nó lọc gì (ô không có nhãn rời). */}
+                <option value="">{t.anyOf(labels[key])}</option>
+                {options[key].map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {t.optionOf(labels[key], label)}
+                  </option>
+                ))}
+              </NativeSelect>
+            ))}
+            {(["actorId", "action"] as const).map((key) => (
+              <Input
+                key={key}
+                aria-label={labels[key]}
+                placeholder={`${labels[key]}…`}
+                maxLength={200}
+                spellCheck={false}
+                className="h-8 w-[calc(50%-0.25rem)] sm:w-36"
+                value={filters[key] ?? ""}
+                onChange={(e) => update(key, e.currentTarget.value)}
+              />
+            ))}
+          </FilterBar>
+          {active.length > 0 && (
+            <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
+              <span className="text-muted-foreground">{t.filtering}</span>
+              {active.map((filter) => (
+                <span
+                  key={filter.key}
+                  className="inline-flex max-w-full items-center gap-1 rounded-full bg-accent py-0.5 pr-1 pl-2.5 text-accent-foreground"
+                >
+                  <span className="min-w-0 break-words">
+                    <strong>{filter.label}:</strong> {filter.value}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={t.clearOne(filter.label)}
+                    onClick={() => update(filter.key, undefined)}
+                  >
+                    <XIcon aria-hidden="true" />
+                  </Button>
+                </span>
+              ))}
+              <Button variant="ghost" size="xs" onClick={clearAll}>
+                {t.clear}
+              </Button>
+            </div>
+          )}
+          {download.isError && <Alert variant="destructive">{apiErrorMessage(download.error)}</Alert>}
+          {table}
+        </div>
+        {admin && retention.data && <RetentionSection current={retention.data} />}
+      </PageBody>
     </>
+  );
+}
+
+const ACTOR_ICON: Record<AuditLogItem["actorType"], LucideIcon> = { user: UserIcon, run: BotIcon, system: ServerIcon };
+
+/** Loại người làm là biểu tượng có tên (title + chữ ẩn) để cột Người làm đủ hẹp cho bảng vừa màn 1100 px. */
+function ActorTypeIcon({ type, label }: { type: AuditLogItem["actorType"]; label: string }) {
+  const IconComponent = ACTOR_ICON[type];
+  return (
+    <span title={label} className="order-first shrink-0 self-center text-muted-foreground">
+      <IconComponent aria-hidden="true" className="size-3.5" />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+const SOURCE_LABEL: Record<AuditLogItem["source"], string> = { web: "Web", mcp: "MCP", hub: "Hub" };
+
+/** Nhật ký cần tới giây để đối chiếu; ngày giờ đầy đủ theo ngôn ngữ đang chọn nằm trong `title`. */
+function AuditTime({ iso }: { iso: string }) {
+  const lang = useLang();
+  return (
+    <time dateTime={iso} title={new Date(iso).toLocaleString(lang === "vi" ? "vi-VN" : "en-US")}>
+      {formatDay(iso)} <span className="text-muted-foreground">{formatClock(iso)}</span>
+    </time>
   );
 }
 
 const RETENTION_CHOICES = [90, 180, 365, 730, 1095, 1825, 3650];
 
 /** Chỉ chủ sở hữu và quản trị tổ chức đổi được (hub cũng chặn); hạ thời hạn thì báo trước dữ liệu sẽ mất. */
-function RetentionForm({ current }: { current: AuditRetention }) {
+function RetentionSection({ current }: { current: AuditRetention }) {
   const { api } = useOrg();
   const t = useT(text);
   const fieldId = useId();
@@ -467,60 +558,59 @@ function RetentionForm({ current }: { current: AuditRetention }) {
     api.audit.setRetention.mutationOptions({
       onSuccess: (next) => {
         queryClient.setQueryData(api.audit.retention.queryKey({ input: {} }), next);
+        setDraft(next.retentionDays);
         // Lần đổi vừa ghi một dòng audit.retention.update.
         void queryClient.invalidateQueries({ queryKey: api.audit.list.key() });
       },
     }),
   );
+  const dirty = draft !== current.retentionDays;
   // Hub nhận mọi số ngày trong khoảng cho phép; giá trị đặt qua API ngoài danh sách vẫn phải hiện đúng.
   const choices = [...new Set([...RETENTION_CHOICES, current.retentionDays])]
     .filter((n) => n >= AUDIT_RETENTION_MIN_DAYS && n <= AUDIT_RETENTION_MAX_DAYS)
     .sort((a, b) => a - b);
   return (
-    <form
-      className="grid gap-2 rounded-lg border border-border bg-card p-3 sm:flex sm:flex-wrap sm:items-end sm:gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        save.mutate({ retentionDays: draft });
-      }}
-    >
-      <label htmlFor={`${fieldId}-retention`} className="grid gap-1 text-xs sm:w-40">
-        {t.retention}
-        <NativeSelect
-          id={`${fieldId}-retention`}
-          aria-label={t.retention}
-          value={draft}
-          onChange={(e) => {
-            setDraft(Number(e.currentTarget.value));
+    <>
+      <UnsavedChangesGuard when={dirty} />
+      <SettingsSection
+        id="thoi-han-luu"
+        title={t.retentionTitle}
+        description={t.retentionHint}
+        save={{
+          dirty,
+          saving: save.isPending,
+          saved: save.isSuccess,
+          error: save.isError ? apiErrorMessage(save.error) : undefined,
+          onSave: () => save.mutate({ retentionDays: draft }),
+          onDiscard: () => {
             save.reset();
-          }}
-        >
-          {choices.map((n) => (
-            <option key={n} value={n}>
-              {t.days(n)}
-            </option>
-          ))}
-        </NativeSelect>
-      </label>
-      <Button type="submit" variant="outline" disabled={draft === current.retentionDays || save.isPending}>
-        {save.isPending ? t.saving : t.save}
-      </Button>
-      <p className="text-xs text-muted-foreground sm:min-w-60 sm:flex-1">{t.retentionHint}</p>
-      {draft < current.retentionDays && (
-        <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning sm:basis-full">
-          {t.shrinkWarning(draft)}
-        </p>
-      )}
-      {save.isSuccess && (
-        <p role="status" className="rounded-lg bg-success-soft px-3 py-2 text-xs text-success sm:basis-full">
-          {t.saved}
-        </p>
-      )}
-      {save.isError && (
-        <Alert variant="destructive" className="sm:basis-full">
-          {apiErrorMessage(save.error)}
-        </Alert>
-      )}
-    </form>
+            setDraft(current.retentionDays);
+          },
+          saveLabel: t.save,
+          savedLabel: t.saved,
+        }}
+      >
+        <FormRow label={t.retention} htmlFor={`${fieldId}-retention`}>
+          <NativeSelect
+            id={`${fieldId}-retention`}
+            className="w-full sm:w-48"
+            value={draft}
+            onChange={(e) => {
+              setDraft(Number(e.currentTarget.value));
+              save.reset();
+            }}
+          >
+            {choices.map((n) => (
+              <option key={n} value={n}>
+                {t.days(n)}
+              </option>
+            ))}
+          </NativeSelect>
+          {draft < current.retentionDays && (
+            <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">{t.shrinkWarning(draft)}</p>
+          )}
+        </FormRow>
+      </SettingsSection>
+    </>
   );
 }
