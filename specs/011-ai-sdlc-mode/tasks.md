@@ -452,7 +452,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 8: Nối hub
 
-- [ ] T070 🎯 Nối deps, router, job, handler
+- [x] T070 🎯 Nối deps, router, job, handler
   - `main.ts`: `SdlcDeps` (từ engine: `startSdlcRun`, `startRun`; từ catalog: `enqueueMerge`; `providerFactory`,
     `masterKey`, `jobs`), `ReviewDeps.workflowFor/onBaseline/queueAuthorFix/traceFor/autoDecide`, `KnowledgeDeps.docAccessFor`,
     `registerSdlcWorker`, cron câu hỏi và quét đồng bộ, `registerSdlcScmHandlers`, MCP tools của `sdlc`.
@@ -460,6 +460,9 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - `pnpm deps` không có vòng; test khói `app.test.ts`.
   - **Scope**: `apps/hub/src/{main.ts,app.ts,app.test.ts}`, `apps/hub/src/modules/sdlc/router.ts` (gộp các hàm đăng ký route)
   - **Phụ thuộc**: T013, T016, T017, T018, T021, T022, T031 (T040, T060 khi có) · **Mức**: vừa
+  - Đã làm: `sdlc/review-hooks.ts` (`ruleContext` cho luật câu hỏi mở/breakdown/coverage, `traceFor` theo bản tách),
+    `sdlc/fleet-runs.ts` cài qua `provideSdlcFleetRuns`; test `review-hooks.db.test.ts`, `fleet-runs.db.test.ts`.
+    Route `metrics` chờ T082.
 
 - [x] T071 [P] Leader: hành động `sdlc.item.create`
   - Thực thi khi người duyệt đề xuất; prompt leader biết đề xuất tạo hạng mục cho việc lớn.

@@ -2,7 +2,8 @@
 import type { Tx } from "../platform/index.ts";
 import { traceSettledRun } from "./trace.ts";
 
-export { canReadItem, requireProjectWrite, visibleItemsWhere } from "./access.ts";
+export { canReadItem, docAccessFor, requireProjectWrite, visibleItemsWhere } from "./access.ts";
+export { fleetRuns as sdlcFleetRuns } from "./fleet-runs.ts";
 export { type CodeRunGate, codeRunGate } from "./gate.ts";
 export { IMPORT_MAX_FILES, importItem, importRoute, importTitle, parseItemFolder } from "./import.ts";
 export {
@@ -43,6 +44,7 @@ export {
   remindOpenQuestions,
   sdlcQuestionsQueue,
 } from "./questions.ts";
+export { ruleContext, sdlcReviewHooks, traceFor } from "./review-hooks.ts";
 export { sdlcRouter } from "./router.ts";
 export { finishImplementation, onSdlcMerged, registerSdlcScmHandlers, type SdlcScmDeps, traceCi } from "./scm.ts";
 export { onSdlcRunFinished, queueAuthorFix, type SdlcRunOutcome, stepRoutes, withStepRuns } from "./steps.ts";

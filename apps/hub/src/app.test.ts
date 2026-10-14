@@ -122,6 +122,28 @@ describe("review code khi chưa đăng nhập", () => {
   });
 });
 
+describe("AI SDLC khi chưa đăng nhập", () => {
+  // Mỗi dòng một hàm đăng ký route của sdlc (router.ts gộp): 401 thay vì 404 chứng tỏ đã nối vào app.
+  it.each([
+    ["GET", "/api/v1/sdlc/modes"],
+    ["GET", "/api/v1/sdlc/items"],
+    ["POST", "/api/v1/sdlc/items/import"],
+    ["POST", "/api/v1/sdlc/items/step"],
+    ["POST", "/api/v1/sdlc/items/projects/add"],
+    ["POST", "/api/v1/sdlc/contracts/create"],
+    ["GET", "/api/v1/sdlc/auto-approvals"],
+    ["GET", "/api/v1/sdlc/questions/count"],
+    ["GET", "/api/v1/sdlc/breakdown"],
+    ["POST", "/api/v1/sdlc/waves/run"],
+    ["POST", "/api/v1/sdlc/overrides/create"],
+    ["GET", "/api/v1/sdlc/trace"],
+    ["POST", "/api/v1/sdlc/sync"],
+  ])("%s %s trả 401", async (method, path) => {
+    const res = await app.request(path, { method, ...(method === "POST" && { body: "{}" }) });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("API máy khi chưa có đăng nhập", () => {
   it("GET /api/v1/teams/{teamId}/machines trả 401", async () => {
     const res = await app.request("/api/v1/teams/00000000-0000-4000-8000-000000000000/machines");
