@@ -532,7 +532,7 @@ const termSessionId = z.uuid();
 const termRequestId = z.uuid();
 const termUserId = z.string().min(1).max(64);
 /** Id do worker sinh (thiết bị, root, mã ghép) hoặc hub sinh (kết nối WS): chữ base64url, không lộ thông tin máy. */
-const remoteId = z.string().regex(/^[A-Za-z0-9_-]{6,64}$/);
+export const remoteId = z.string().regex(/^[A-Za-z0-9_-]{6,64}$/);
 /** `local`: `hive chat` tại máy; `remote`: mở từ điện thoại; `hub`: phiên Leader do hub mở trên máy dùng chung. */
 export const termOrigin = z.enum(["local", "remote", "hub"]);
 export type TermOrigin = z.output<typeof termOrigin>;
