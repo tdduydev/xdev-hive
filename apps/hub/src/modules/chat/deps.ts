@@ -1,4 +1,5 @@
 import type pg from "pg";
+import type { DecideDeps } from "../codereview/index.ts";
 import type { Jobs, MasterKey } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
 import type { ChatApiDeps } from "./adapters.ts";
@@ -11,4 +12,5 @@ export interface ChatDeps extends ChatApiDeps {
   jobs?: Jobs | undefined;
   /** Địa chỉ web của hub, để nút "Mở trên web". */
   publicUrl: string;
+  codeReviews?: DecideDeps | undefined;
 }

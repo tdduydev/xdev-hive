@@ -9,10 +9,11 @@ import {
   SlaBadge,
   useReviewFormat,
 } from "@xdev-hive/doc-editor";
+import { AutoApproval, SdlcProvider } from "@xdev-hive/sdlc-ui";
 import { Button } from "@xdev-hive/ui/button";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { BotIcon } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import { lazy, type ReactNode, Suspense, useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
 import { FilterChips } from "@/components/ui/filter-chips.tsx";
@@ -21,10 +22,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.t
 import { awaitingCount, countLabel, useAwaitingCodeReviews } from "@/lib/code-reviews.ts";
 import { useWebDocEnv } from "@/lib/doc-editor-env.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { useWebSdlcEnv } from "@/lib/sdlc-env.tsx";
 import { useNow } from "@/lib/use-now.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 import { CodeReviewsTab } from "./code-reviews-tab.tsx";
+
+// Bản tách kéo theo `@xyflow/react`; chỉ tải khi phiên duyệt là tài liệu tách việc của AI SDLC.
+const BreakdownReview = lazy(() =>
+  import("@xdev-hive/sdlc-ui/breakdown").then((m) => ({ default: m.BreakdownReview })),
+);
 
 type Scope = "mine" | "all";
 const STATUSES: ReviewStatus[] = ["in_review", "changes_requested", "approved", "cancelled"];
@@ -105,6 +112,7 @@ function DocReviews(): ReactNode {
   const lang = useLang();
   const fmt = useReviewFormat(lang);
   const now = useNow(60_000);
+  const sdlcEnv = useWebSdlcEnv();
   const search = useSearch({ from: "/session/app/in-org/knowledge/reviews" });
   const navigate = useNavigate({ from: "/knowledge/reviews" });
   const [scope, setScope] = useState<Scope>("mine");
@@ -299,6 +307,20 @@ function DocReviews(): ReactNode {
           key={selectedId}
           id={selectedId}
           now={now}
+          sdlc={{
+            breakdown: (item) => (
+              <SdlcProvider env={sdlcEnv}>
+                <Suspense fallback={null}>
+                  <BreakdownReview item={item} />
+                </Suspense>
+              </SdlcProvider>
+            ),
+            revoke: (approval) => (
+              <SdlcProvider env={sdlcEnv}>
+                <AutoApproval approval={approval} />
+              </SdlcProvider>
+            ),
+          }}
           // Quyết định xong thì tài liệu rời hàng "chờ tôi"; ghim lựa chọn để người duyệt vẫn thấy kết quả.
           onDecided={() => select(selectedId)}
         />

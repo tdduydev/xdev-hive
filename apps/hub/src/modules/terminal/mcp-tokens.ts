@@ -27,7 +27,10 @@ export function createTerminalTokenVerifier(opts: {
       const claims = verifyTerminalToken(opts.key, opts.publicUrl, token, opts.now?.());
       if (!claims) return null;
       type Checked =
-        | { kind: "ok"; session: typeof terminalSessions.$inferSelect }
+        | {
+            kind: "ok";
+            session: typeof terminalSessions.$inferSelect & { mode: "propose" | "bypass"; projectId: string };
+          }
         | { kind: "lost"; id: string; machineId: string };
       const result = await withTenant(
         opts.pool,
@@ -39,11 +42,13 @@ export function createTerminalTokenVerifier(opts: {
             .where(
               and(eq(terminalSessions.id, claims.session_id), inArray(terminalSessions.state, ["opening", "running"])),
             );
-          if (!s || s.ownerUserId !== claims.user_id) return null;
+          // Token MCP chỉ cấp cho phiên Leader; phiên máy cá nhân không gọi tool hub.
+          if (!s || s.ownerUserId !== claims.user_id || s.origin !== "hub") return null;
           if (!(await canOpenTerminal(tx, s.ownerUserId, s.teamId))) {
             return (await closeForRoleLoss(tx, s.id)) ? { kind: "lost", id: s.id, machineId: s.machineId } : null;
           }
-          return { kind: "ok", session: s };
+          if (!s.mode || !s.projectId) return null;
+          return { kind: "ok", session: { ...s, mode: s.mode, projectId: s.projectId } };
         },
       );
       if (!result) return null;
