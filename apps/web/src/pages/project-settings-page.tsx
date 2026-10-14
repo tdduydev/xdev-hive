@@ -17,7 +17,7 @@ import {
   SettingsSection,
   SwitchRow,
 } from "@/components/page/settings.tsx";
-import { StickyFormFooter } from "@/components/page/sticky-form-footer.tsx";
+import { FORM_SCROLL_MARGIN, StickyFormFooter } from "@/components/page/sticky-form-footer.tsx";
 import { ProjectBriefCard } from "@/components/project-brief-card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
 import { SectionsSkeleton } from "@/components/ui/query-state.tsx";
@@ -644,7 +644,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   const routingOff = disabled || !form.routing;
 
   return (
-    <form noValidate onSubmit={onSubmit} className="grid gap-4">
+    <form noValidate onSubmit={onSubmit} className={cx("grid gap-4", FORM_SCROLL_MARGIN)}>
       {!canEdit && (
         <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">
           {t.readOnlyBanner}

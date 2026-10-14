@@ -270,6 +270,11 @@ export function activeNavItem(pathname: string): NavItem | undefined {
     .sort((a, b) => b.match.length - a.match.length)[0];
 }
 
+/** Nhóm chứa mục, để thanh trên ghi "tổ chức › nhóm › trang" như sidebar. Tổng quan không thuộc nhóm nào. */
+export function navGroupOf(item: NavItem | undefined): NavGroup | undefined {
+  return item ? NAV_GROUPS.find((g) => g.items.some((i) => i.id === item.id)) : undefined;
+}
+
 /**
  * Lọc mục theo quyền: mục `adminOnly` chỉ hiện với quản trị tổ chức, hoặc người có quyền `permission` qua vai trò tự
  * tạo. Nhóm rỗng bị bỏ.

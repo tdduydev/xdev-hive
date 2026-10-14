@@ -30,7 +30,7 @@ import {
 import { Kbd } from "@/components/ui/kbd.tsx";
 import { SidebarTrigger } from "@/components/ui/sidebar.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { activeNavItem, NAV_HOME, visibleGroups } from "@/lib/nav.ts";
+import { activeNavItem, NAV_HOME, navGroupOf, visibleGroups } from "@/lib/nav.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { readTheme, setTheme, type ThemeChoice } from "@/lib/theme.ts";
@@ -167,7 +167,10 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
   );
 }
 
-/** Thanh trên theo Topbar.dc.html: đường dẫn, tìm kiếm ⌘K, VI/EN, sáng/tối, thông báo. */
+/**
+ * Thanh trên theo Topbar.dc.html: đường dẫn (tổ chức › nhóm › trang, nhóm ẩn dưới 1024 px), tìm kiếm ⌘K, VI/EN,
+ * sáng/tối, thông báo.
+ */
 export function Topbar() {
   const t = useT(text);
   const lang = useLang();
@@ -175,6 +178,7 @@ export function Topbar() {
   const { pathname } = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const active = activeNavItem(pathname);
+  const group = navGroupOf(active);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -196,6 +200,12 @@ export function Topbar() {
             <>
               <BreadcrumbItem className="hidden truncate sm:inline-flex">{current.org.name}</BreadcrumbItem>
               <BreadcrumbSeparator className="hidden sm:inline-flex" />
+            </>
+          )}
+          {group && (
+            <>
+              <BreadcrumbItem className="hidden truncate lg:inline-flex">{group.label[lang]}</BreadcrumbItem>
+              <BreadcrumbSeparator className="hidden lg:inline-flex" />
             </>
           )}
           <BreadcrumbItem className="min-w-0">

@@ -28,7 +28,6 @@ const memberText: Dict<{
   active: string;
   invitations: string;
   pendingApproval: string;
-  peopleAccess: string;
   members: string;
   description: string;
   memberGroups: string;
@@ -89,7 +88,6 @@ const memberText: Dict<{
     active: "Đang hoạt động",
     invitations: "Lời mời",
     pendingApproval: "Chờ duyệt",
-    peopleAccess: "Người và quyền",
     members: "Thành viên",
     description: "Ai được vào tổ chức, vai trò của từng người và họ thuộc đội nào.",
     memberGroups: "Nhóm thành viên",
@@ -150,7 +148,6 @@ const memberText: Dict<{
     active: "Active",
     invitations: "Invitations",
     pendingApproval: "Pending approval",
-    peopleAccess: "People & access",
     members: "Members",
     description: "Who can access the organization, each person's role and the teams they belong to.",
     memberGroups: "Member groups",
@@ -233,7 +230,7 @@ export function MembersPage() {
 
   return (
     <>
-      <PageHeader crumb={t.peopleAccess} title={t.members} description={t.description}>
+      <PageHeader title={t.members} description={t.description}>
         {canInvite(org.role) && (
           <Button variant="default" onClick={() => setInviting(true)}>
             <Icon name="plus" />

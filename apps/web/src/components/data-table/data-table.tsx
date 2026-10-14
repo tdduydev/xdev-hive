@@ -39,7 +39,8 @@ export interface Column<Row> extends SearchColumn<Row> {
   align?: "start" | "end";
   /**
    * Ghim cột khi bảng cuộn ngang: `start` cho cột tên (chỉ cột hiện đầu tiên), `end` cho cột thao tác (chỉ cột cuối),
-   * để người dùng không mất ngữ cảnh của dòng khi kéo sang phải.
+   * để người dùng không mất ngữ cảnh của dòng khi kéo sang phải. Cột `end` chỉ ghim từ 640 px: ở 360 px ghim cả hai
+   * đầu thì không còn chỗ cho các cột giữa.
    */
   pin?: "start" | "end";
 }
@@ -74,6 +75,21 @@ export interface DataTableProps<Row extends { id: string }> {
   minWidth?: number;
   /** Nút của bảng đặt cạnh nút Cột, ví dụ Xuất CSV. */
   toolbar?: ReactNode;
+  /**
+   * Hub trả theo trang (offset, con trỏ): bảng hiện mọi dòng của trang đó và chân bảng dùng nút trang của hub thay cho
+   * phân trang cục bộ, để không có hai bộ phân trang chồng nhau.
+   */
+  serverPaging?: ServerPaging;
+}
+export interface ServerPaging {
+  /** Vị trí hiện tại, ví dụ "Trang 2 của nhật ký" hay "Dòng 51–100". */
+  label: string;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+  previousLabel?: string;
+  nextLabel?: string;
 }
 
 const text: Dict<{
@@ -166,6 +182,7 @@ export function DataTable<Row extends { id: string }>({
   emptyContent,
   minWidth = 1060,
   toolbar,
+  serverPaging,
 }: DataTableProps<Row>) {
   const t = useT(text);
   const sizeId = useId();
@@ -180,7 +197,8 @@ export function DataTable<Row extends { id: string }>({
   const [size, setSize] = useState(pageSize);
   const state = { query, filters };
   const filtered = filterRows(rows, columns, facets, state);
-  const result = paginateRows(sortRows(filtered, columns, sort), page, size);
+  const sorted = sortRows(filtered, columns, sort);
+  const result = paginateRows(sorted, serverPaging ? 0 : page, serverPaging ? Math.max(1, sorted.length) : size);
   const visible = columns.filter((column) => !hidden.has(column.key));
   const pinStart = visible[0]?.pin === "start" ? visible[0].key : undefined;
   const pinEnd = !onRowClick && visible.at(-1)?.pin === "end" ? visible.at(-1)?.key : undefined;
@@ -194,7 +212,7 @@ export function DataTable<Row extends { id: string }>({
         )
       : key === pinEnd
         ? cn(
-            "sticky right-0 z-10 bg-card shadow-[inset_1px_0_0_var(--border)]",
+            "right-0 z-10 bg-card sm:sticky sm:shadow-[inset_1px_0_0_var(--border)]",
             !head && "[tr:hover>&]:bg-(--pin-hover) [tr[data-state=selected]>&]:bg-muted",
           )
         : undefined;
@@ -511,53 +529,81 @@ export function DataTable<Row extends { id: string }>({
             )}
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
-          <span className="text-muted-foreground" aria-live="polite">
-            {t.range(result.from, result.to, result.total)}
-          </span>
-          <label htmlFor={sizeId} className="flex items-center gap-2 sm:ml-auto">
-            {t.perPage}
-            <NativeSelect
-              id={sizeId}
-              className="w-18"
-              size="sm"
-              value={size}
-              onChange={(event) => {
-                setSize(Number(event.currentTarget.value));
-                setPage(0);
-              }}
-            >
-              {[...new Set([10, 20, 50, 100, pageSize])]
-                .sort((a, b) => a - b)
-                .map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-            </NativeSelect>
-          </label>
-          <span>{t.page(result.page + 1, result.pages)}</span>
-          <div className="flex gap-1">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={t.previous}
-              disabled={result.page === 0}
-              onClick={() => setPage(result.page - 1)}
-            >
-              <ChevronLeft aria-hidden="true" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={t.next}
-              disabled={result.page === result.pages - 1}
-              onClick={() => setPage(result.page + 1)}
-            >
-              <ChevronRight aria-hidden="true" />
-            </Button>
+        {serverPaging ? (
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
+            <span className="text-muted-foreground" aria-live="polite">
+              {serverPaging.label}
+            </span>
+            <div className="flex gap-1 sm:ml-auto">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={serverPaging.previousLabel ?? t.previous}
+                disabled={!serverPaging.hasPrevious}
+                onClick={serverPaging.onPrevious}
+              >
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={serverPaging.nextLabel ?? t.next}
+                disabled={!serverPaging.hasNext}
+                onClick={serverPaging.onNext}
+              >
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
+            <span className="text-muted-foreground" aria-live="polite">
+              {t.range(result.from, result.to, result.total)}
+            </span>
+            <label htmlFor={sizeId} className="flex items-center gap-2 sm:ml-auto">
+              {t.perPage}
+              <NativeSelect
+                id={sizeId}
+                className="w-18"
+                size="sm"
+                value={size}
+                onChange={(event) => {
+                  setSize(Number(event.currentTarget.value));
+                  setPage(0);
+                }}
+              >
+                {[...new Set([10, 20, 50, 100, pageSize])]
+                  .sort((a, b) => a - b)
+                  .map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+              </NativeSelect>
+            </label>
+            <span>{t.page(result.page + 1, result.pages)}</span>
+            <div className="flex gap-1">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={t.previous}
+                disabled={result.page === 0}
+                onClick={() => setPage(result.page - 1)}
+              >
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={t.next}
+                disabled={result.page === result.pages - 1}
+                onClick={() => setPage(result.page + 1)}
+              >
+                <ChevronRight aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
