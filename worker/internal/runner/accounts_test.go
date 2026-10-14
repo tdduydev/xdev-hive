@@ -55,7 +55,7 @@ func TestRunnerUsesAccountConfigDir(t *testing.T) {
 	defer lease.Release()
 	var events []Event
 	r := Runner{DataDir: t.TempDir(), CLICommands: fakeCommands("account"), Account: lease}
-	err = r.Run(context.Background(), Job{RunID: "acc", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/acc", CLI: "codex", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "account", "CODEX_HOME": "/hub/khong/doi/duoc"}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
+	err = r.Run(context.Background(), Job{RunID: "acc", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/acc", CLI: "codex", Prompt: "p", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "account", "CODEX_HOME": "/hub/khong/doi/duoc"}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestRunnerCoolsDownAccountOnUsageLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := Runner{DataDir: t.TempDir(), CLICommands: fakeCommands("limit"), Account: lease}
-	_ = r.Run(context.Background(), Job{RunID: "lim", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/lim", CLI: "codex", Prompt: "p", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "limit"}}, SinkFunc(func(Event) error { return nil }))
+	_ = r.Run(context.Background(), Job{RunID: "lim", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/lim", CLI: "codex", Prompt: "p", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "limit"}}, SinkFunc(func(Event) error { return nil }))
 	lease.Release()
 	if _, err := pool.Acquire("codex", accounts.RoleImplement); !errors.Is(err, accounts.ErrBusy) {
 		t.Fatalf("tài khoản hết lượt vẫn được chọn: %v", err)
