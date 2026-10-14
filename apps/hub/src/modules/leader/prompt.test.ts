@@ -69,7 +69,7 @@ describe("artifact trong prompt", () => {
         artifact: { id: "a", version: 1, canWrite: true },
         pageErrors: Array.from({ length: 21 }, (_, i) => ({
           kind: "error" as const,
-          message: "x".repeat(2000) + `bỏ-${i}`,
+          message: `${"x".repeat(2000)}bỏ-${i}`,
         })),
       },
     ]);
