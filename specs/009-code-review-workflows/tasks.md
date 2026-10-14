@@ -184,7 +184,7 @@
 
 ## Phase 5: User Story 4 — Trả lại và vòng mới (P1)
 
-- [ ] T040 [US4] Hướng trả lại, run sửa, vòng
+- [x] T040 [US4] Hướng trả lại, run sửa, vòng
   - `routing.ts`: `agent` (chỉ dẫn ≤ 16 000 ký tự từ ghi chú, phát hiện chặn, đuôi lệnh lỗi; `queueFixRun`; đếm lượt;
     hết lượt/hết ngân sách → `author`), `author` (task `todo`, `code_review.returned`), `previous` (xoá phê duyệt
     checkpoint đó); `supersede` + vòng mới với bản chụp cũ, `resume_gate_index`, `dismissStaleApprovals`.
