@@ -29,6 +29,8 @@ export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
   capabilities: m.capabilities,
   accounts: m.accounts,
   accountsAt: m.accountsAt?.toISOString() ?? null,
+  boundProjects: m.boundProjects,
+  fullProjects: m.fullProjects,
 });
 
 /**
