@@ -261,15 +261,16 @@ type repoProbe struct {
 	run      func(...string) ([]byte, error)
 }
 
+// Ngân sách thời gian của git; biến để test không phụ thuộc tốc độ máy chạy CI.
+var (
+	gitTotalBudget = 800 * time.Millisecond
+	gitCallBudget  = 400 * time.Millisecond
+)
+
 func newRepoProbe(folder string) *repoProbe {
-	p := &repoProbe{folder: folder, tracked: make(map[string]bool), cache: make(map[string]bool), deadline: time.Now().Add(800 * time.Millisecond)}
+	p := &repoProbe{folder: folder, tracked: make(map[string]bool), cache: make(map[string]bool), deadline: time.Now().Add(gitTotalBudget)}
 	p.run = func(args ...string) ([]byte, error) {
-		timeout := min(400*time.Millisecond, time.Until(p.deadline))
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		defer cancel()
-		command := exec.CommandContext(ctx, "git", args...)
-		command.Dir = folder
-		return command.Output()
+		return runGit(folder, min(gitCallBudget, time.Until(p.deadline)), args...)
 	}
 	if out, err := p.run("ls-files", "-z", "--cached"); err == nil {
 		p.valid = true
@@ -280,6 +281,22 @@ func newRepoProbe(folder string) *repoProbe {
 		}
 	}
 	return p
+}
+
+// runGit trả lỗi context khi hết giờ. Windows kết thúc tiến trình bằng
+// TerminateProcess(1) nên ExitCode() của tiến trình bị giết cũng là 1, trùng mã
+// "không khớp" của git grep; nếu không tách ra, git chậm sẽ làm ký hiệu còn tồn tại
+// bị gắn cờ cũ.
+func runGit(folder string, timeout time.Duration, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, "git", args...)
+	command.Dir = folder
+	out, err := command.Output()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	return out, err
 }
 
 func (p *repoProbe) missing(ref reference) bool {
