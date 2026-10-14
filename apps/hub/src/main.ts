@@ -286,7 +286,11 @@ if (roles.includes("api")) {
       offlineNotifySec: config.machineOfflineNotifySec,
     });
     // Terminal Leader chạy cùng tiến trình với cổng worker: gói term_* chỉ đi được qua kết nối WSS tiến trình này giữ.
-    registerTerminalHandlers(withRemoteLive(pool, createTerminalHandlers(pool)));
+    registerTerminalHandlers(
+      withRemoteLive(pool, createTerminalHandlers(pool), console, {
+        publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+      }),
+    );
     attachTerminalGateway(server as Server, {
       pool,
       publicUrl: config.publicUrl,
