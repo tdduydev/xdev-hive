@@ -303,14 +303,17 @@ const FULL_ONLY_CLIS: readonly string[] = ["antigravity"];
  * Run không có task. Lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
  * trình duyệt), docassist (trợ lý của trình soạn tài liệu); riêng brief dựng lúc giao từ brief hiện tại (ADR 0022).
  */
-const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck", "docassist", "brief"];
+const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck", "docassist", "brief", "skill_proposal"];
 /** Run phải nộp kết quả qua tool MCP nên chỉ giao cho CLI gọi được tool khi chạy không tương tác. */
-const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck", "docassist", "brief"];
+const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck", "docassist", "brief", "skill_proposal"];
 /** Worker cũ không biết các kind này sẽ chạy chúng như run code (có quyền ghi): chỉ giao cho máy đã khai kind đó. */
-const CAPABILITY_KINDS: readonly RunRow["kind"][] = ["doccheck", "docassist", "brief"];
+const CAPABILITY_KINDS: readonly RunRow["kind"][] = ["doccheck", "docassist", "brief", "skill_proposal"];
 /** Run được ghi memory trong lúc chạy (tool memory_write mở cho các kind này, ADR 0022). */
 const MEMORY_WRITE_KINDS: readonly RunRow["kind"][] = ["code", "review"];
-/** Brief làm mới tự động dùng model rẻ: chỉ đọc và tóm tắt, không cần model mạnh nhất. */
+/**
+ * Brief làm mới tự động và run đề xuất skill (specs/014) dùng model rẻ: chỉ đọc và tóm tắt, không cần model mạnh
+ * nhất. Run đề xuất skill thêm effort medium (buildSpec).
+ */
 const BRIEF_MODELS: Partial<Record<string, string>> = { claude: "sonnet" };
 const promptEvent = (kind: RunRow["kind"]) => (kind === "leader" ? "leader_prompt" : `${kind}_prompt`);
 
@@ -476,6 +479,8 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
   if (run.kind === "brief") {
     return briefRunPrompt({ projectKey: project.key, baseBranch, current: ctx.brief });
   }
+  if (run.kind === "skill_proposal")
+    return ctx.leaderPrompt ?? "Hãy xem các run khó rồi gọi công cụ MCP skill_proposal_submit.";
   if (run.kind === "leader") return ctx.leaderPrompt ?? "Hãy trả lời người dùng qua công cụ MCP leader_reply.";
   if (run.kind === "doccheck") return ctx.leaderPrompt ?? "Hãy kiểm tài liệu rồi gọi công cụ MCP doc_check_submit.";
   if (run.kind === "docassist") return ctx.leaderPrompt ?? "Hãy đọc bản nháp bằng doc_draft_get rồi góp ý.";
@@ -531,10 +536,11 @@ function buildSpec(
 ): Record<string, unknown> {
   const taskPrompt = task ?? ({ id: "", key: "leader", title: "Trao đổi với leader", body: "" } as TaskRow);
   const own = promptOf(run, taskPrompt, project, ctx);
-  // Leader chỉ có leader_reply, leader_propose nên không nhắc memory_search; run brief tự đọc repo để viết brief.
+  // Leader chỉ có leader_reply, leader_propose nên không nhắc memory_search; run brief tự đọc repo để viết brief; run
+  // đề xuất skill đã có tóm tắt run và danh sách skill sẵn trong lời nhắc nên không cần khối brief (tiết kiệm token).
   const hint = ctx.codegraph ? `${CODEGRAPH_HINT}\n\n` : "";
   const prompt =
-    run.kind === "brief"
+    run.kind === "brief" || run.kind === "skill_proposal"
       ? `${hint}${own}`
       : `${briefBlock(ctx.brief, { memorySearch: run.kind !== "leader", memoryWrite: ctx.memoryWrite })}\n\n${hint}---\n\n${own}`;
   const { instructions, budget, sandbox, mcpServers } = ctx;
@@ -560,7 +566,9 @@ function buildSpec(
           ...(ctx.routing.advisor ? { advisor: ctx.routing.advisor } : {}),
           tier: ctx.routing.tier,
         }
-      : {}),
+      : run.kind === "skill_proposal"
+        ? { effort: "medium" }
+        : {}),
     runPermissions: ctx.runPermissions,
     fullAllowed: ctx.fullAllowed,
     // Bỏ khi không có gì để worker cũ (chưa biết trường này) và worker mới nhận cùng một spec như trước.
@@ -807,7 +815,7 @@ export function createRunsEngine(deps: RunsDeps) {
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
       const explicitModel =
         run.model ??
-        (run.kind === "brief"
+        (run.kind === "brief" || run.kind === "skill_proposal"
           ? (BRIEF_MODELS[cli] ?? null)
           : project.settings.models?.[cli as NonNullable<RunRow["cli"]>]?.[
               run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
@@ -1245,7 +1253,7 @@ export function createRunsEngine(deps: RunsDeps) {
       headSha: parsed.data.baseSha,
       behind: parsed.data.briefBehind,
     });
-    if (run.kind === "brief") return null;
+    if (run.kind === "brief" || run.kind === "skill_proposal") return null;
     const project = await loadProject(tx, run.projectId);
     if (!project) return null;
     const queued = await queueBriefIfStale(tx, project, { ownerUserId: run.ownerUserId, by: "drift" });
@@ -1328,6 +1336,7 @@ export function createRunsEngine(deps: RunsDeps) {
     else if (run.kind === "doccheck") await verifyDocCheck(orgId, runId);
     else if (run.kind === "docassist") await verifyDocAssist(orgId, runId);
     else if (run.kind === "brief") await verifyBrief(orgId, runId);
+    else if (run.kind === "skill_proposal") await verifySkillProposal(orgId, runId);
     else await verifyLeader(orgId, runId);
   }
 
@@ -1359,6 +1368,45 @@ export function createRunsEngine(deps: RunsDeps) {
             : exitOf(data) === 0
               ? "Agent không nộp brief (brief_submit)."
               : "Run viết brief lỗi hoặc hết thời gian.",
+        },
+      );
+    });
+  }
+
+  /**
+   * Run đề xuất skill: succeeded khi agent đã gọi skill_proposal_submit (kể cả mảng rỗng). Đề xuất không ghi ở đây:
+   * module skilllearn đọc sự kiện `skill_proposal_report` khi run đã kết thúc (nó phụ thuộc runs, không ngược lại).
+   */
+  async function verifySkillProposal(orgId: string, runId: string): Promise<void> {
+    await tenant(orgId, async (tx) => {
+      const run = await lockRun(tx, runId);
+      if (run?.kind !== "skill_proposal" || run.state !== "verifying") return;
+      const data = await resultOf(tx, run);
+      const [ev] = await tx
+        .select({ data: runEvents.data })
+        .from(runEvents)
+        .where(
+          and(
+            eq(runEvents.runId, run.id),
+            eq(runEvents.attempt, run.attempt),
+            eq(runEvents.type, "skill_proposal_report"),
+          ),
+        )
+        .orderBy(desc(runEvents.id))
+        .limit(1);
+      const ok = exitOf(data) === 0 && Boolean(ev);
+      const count = Array.isArray(ev?.data.proposals) ? ev.data.proposals.length : 0;
+      await transition(
+        tx,
+        run,
+        ok ? "succeeded" : "failed",
+        { finishedAt: new Date() },
+        {
+          message: ok
+            ? `Agent nộp ${count} đề xuất skill.`
+            : exitOf(data) === 0
+              ? "Agent không nộp đề xuất (skill_proposal_submit)."
+              : "Run đề xuất skill lỗi hoặc hết thời gian.",
         },
       );
     });
@@ -2635,6 +2683,61 @@ export function createRunsEngine(deps: RunsDeps) {
     return row;
   }
 
+  /**
+   * Run đề xuất skill của một lô (specs/014), module skilllearn gọi trong transaction của nó. Chỉ chạy trên máy dùng
+   * chung đã khai `skill_proposal`: không ai bấm nên không có máy cá nhân nào để dùng. Không có máy thì trả lý do để lô
+   * thử lại sau, thay vì xếp một run nằm chờ mãi.
+   */
+  async function createSkillProposalRun(
+    tx: Tx,
+    input: { projectId: string; batchId: string; prompt: string },
+  ): Promise<
+    { ok: true; runId: string; afterCommit: () => void } | { ok: false; reason: "project_not_ready" | "no_machine" }
+  > {
+    const project = await loadProject(tx, input.projectId);
+    if (!project || !projectReady(project)) return { ok: false, reason: "project_not_ready" };
+    const sandboxed = sandboxedRun(project, await loadPolicy(tx), "skill_proposal");
+    const online = await listOnlineMachines(tx, project.teamId, sandboxed ? "host" : "worker");
+    const owner = { ownerUserId: null };
+    if (!online.some((m) => m.capabilities.includes("skill_proposal") && usableBy(m, owner, sandboxed)))
+      return { ok: false, reason: "no_machine" };
+    const [row] = await tx
+      .insert(runs)
+      .values({
+        orgId: sql`hive.ctx_org()`,
+        teamId: project.teamId,
+        taskId: null,
+        projectId: project.id,
+        kind: "skill_proposal",
+        cli: null,
+        model: null,
+        branch: `skill-learning/${input.batchId}`,
+        policySnapshot: [],
+        // Chỉ đọc bản tóm tắt: không cần thời hạn một giờ của run code.
+        timeoutSec: 20 * 60,
+        createdBy: "system",
+        ownerUserId: null,
+      })
+      .returning();
+    if (!row) throw new Error("Không tạo được run đề xuất skill.");
+    await hubEvent(tx, row, "state", { from: null, to: "queued", by: "skill-learning" });
+    await hubEvent(tx, row, "skill_proposal_prompt", { batchId: input.batchId, prompt: input.prompt });
+    await notifyRun(tx, row.id);
+    await recordAudit(tx, {
+      action: "skill_learning.run.start",
+      actorUserId: null,
+      targetType: "run",
+      targetId: row.id,
+      data: { projectId: project.id, batchId: input.batchId },
+    });
+    const { orgId, id } = row;
+    return {
+      ok: true,
+      runId: id,
+      afterCommit: () => background(dispatch(orgId, id), "Không giao được run đề xuất skill"),
+    };
+  }
+
   async function activeBriefRun(tx: Tx, projectId: string): Promise<string | null> {
     const [active] = await tx
       .select({ id: runs.id })
@@ -2898,6 +3001,8 @@ export function createRunsEngine(deps: RunsDeps) {
     steerRun,
     cancelRun,
     cancelRunsOfTask,
+    /** Run đề xuất skill của lô hằng ngày; main.ts đưa vào module skilllearn (nó phụ thuộc runs, không ngược lại). */
+    skillLearning: { createRun: createSkillProposalRun },
     /**
      * Cổng cho `codereview` (CodeReviewDeps): main.ts cài vào worker của hàng đợi `codereview`, vì `codereview` không
      * import `runs`.
