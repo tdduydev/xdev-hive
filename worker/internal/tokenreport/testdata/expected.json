@@ -1,0 +1,401 @@
+{
+  "days": "all",
+  "bySource": {
+    "claude/worker": {
+      "sessions": 2,
+      "calls": 5,
+      "input": 24,
+      "output": 43,
+      "cacheRead": 4500,
+      "cacheWrite5m": 270,
+      "cacheWrite1h": 110,
+      "weighted": 1246.5,
+      "peakOver150k": 0,
+      "peakOver400k": 0,
+      "weightedOver400k": 0,
+      "compactions": 1,
+      "cacheHit": 0.918,
+      "rtkSessions": 1,
+      "guardSessions": 1,
+      "medianCalls": 4,
+      "medianFirstContext": 1310,
+      "medianPeakContext": 1354,
+      "weightedShare": {
+        "input": 0.019,
+        "cacheRead": 0.361,
+        "cacheWrite": 0.447,
+        "output": 0.172
+      }
+    },
+    "claude/hub-terminal": {
+      "sessions": 1,
+      "calls": 1,
+      "input": 1,
+      "output": 2,
+      "cacheRead": 300,
+      "cacheWrite5m": 0,
+      "cacheWrite1h": 0,
+      "weighted": 41,
+      "peakOver150k": 0,
+      "peakOver400k": 0,
+      "weightedOver400k": 0,
+      "compactions": 0,
+      "cacheHit": 0.997,
+      "rtkSessions": 0,
+      "guardSessions": 0,
+      "medianCalls": 1,
+      "medianFirstContext": 301,
+      "medianPeakContext": 301,
+      "weightedShare": {
+        "input": 0.024,
+        "cacheRead": 0.732,
+        "cacheWrite": 0,
+        "output": 0.244
+      }
+    },
+    "claude/headless": {
+      "sessions": 1,
+      "calls": 1,
+      "input": 7,
+      "output": 8,
+      "cacheRead": 200,
+      "cacheWrite5m": 30,
+      "cacheWrite1h": 0,
+      "weighted": 104.5,
+      "peakOver150k": 0,
+      "peakOver400k": 0,
+      "weightedOver400k": 0,
+      "compactions": 0,
+      "cacheHit": 0.844,
+      "rtkSessions": 0,
+      "guardSessions": 0,
+      "medianCalls": 1,
+      "medianFirstContext": 237,
+      "medianPeakContext": 237,
+      "weightedShare": {
+        "input": 0.067,
+        "cacheRead": 0.191,
+        "cacheWrite": 0.359,
+        "output": 0.383
+      }
+    },
+    "claude/interactive": {
+      "sessions": 2,
+      "calls": 4,
+      "input": 48,
+      "output": 69,
+      "cacheRead": 332000,
+      "cacheWrite5m": 500,
+      "cacheWrite1h": 1000,
+      "weighted": 36218,
+      "peakOver150k": 1,
+      "peakOver400k": 0,
+      "weightedOver400k": 0,
+      "compactions": 0,
+      "cacheHit": 0.995,
+      "rtkSessions": 1,
+      "guardSessions": 0,
+      "medianCalls": 2,
+      "medianFirstContext": 160510,
+      "medianPeakContext": 161010,
+      "weightedShare": {
+        "input": 0.001,
+        "cacheRead": 0.917,
+        "cacheWrite": 0.072,
+        "output": 0.01
+      }
+    },
+    "claude/test": {
+      "sessions": 1,
+      "calls": 1,
+      "input": 1,
+      "output": 1,
+      "cacheRead": 10,
+      "cacheWrite5m": 10,
+      "cacheWrite1h": 0,
+      "weighted": 19.5,
+      "peakOver150k": 0,
+      "peakOver400k": 0,
+      "weightedOver400k": 0,
+      "compactions": 0,
+      "cacheHit": 0.476,
+      "rtkSessions": 0,
+      "guardSessions": 0,
+      "medianCalls": 1,
+      "medianFirstContext": 21,
+      "medianPeakContext": 21,
+      "weightedShare": {
+        "input": 0.051,
+        "cacheRead": 0.051,
+        "cacheWrite": 0.641,
+        "output": 0.256
+      }
+    },
+    "codex/headless": {
+      "sessions": 1,
+      "calls": 1,
+      "input": 400,
+      "output": 20,
+      "cacheRead": 100,
+      "cacheWrite5m": 0,
+      "cacheWrite1h": 0,
+      "weighted": 510,
+      "peakOver150k": 0,
+      "peakOver400k": 0,
+      "weightedOver400k": 0,
+      "compactions": 0,
+      "cacheHit": 0.2,
+      "rtkSessions": 0,
+      "guardSessions": 0,
+      "medianCalls": 1,
+      "medianFirstContext": 500,
+      "medianPeakContext": 500,
+      "weightedShare": {
+        "input": 0.784,
+        "cacheRead": 0.02,
+        "cacheWrite": 0,
+        "output": 0.196
+      }
+    },
+    "codex/interactive": {
+      "sessions": 1,
+      "calls": 3,
+      "input": 1000,
+      "output": 160,
+      "cacheRead": 3000,
+      "cacheWrite5m": 20,
+      "cacheWrite1h": 0,
+      "weighted": 2125,
+      "peakOver150k": 0,
+      "peakOver400k": 0,
+      "weightedOver400k": 0,
+      "compactions": 0,
+      "cacheHit": 0.746,
+      "rtkSessions": 0,
+      "guardSessions": 0,
+      "medianCalls": 3,
+      "medianFirstContext": 1000,
+      "medianPeakContext": 1500,
+      "weightedShare": {
+        "input": 0.471,
+        "cacheRead": 0.141,
+        "cacheWrite": 0.012,
+        "output": 0.376
+      }
+    }
+  },
+  "interactiveHome": {
+    "plan": {
+      "sessions": 1,
+      "calls": 2,
+      "cacheRead": 11000,
+      "cacheWrite1h": 1000,
+      "weighted": 3373,
+      "peakOver150k": 0,
+      "rtkSessions": 0,
+      "medianPeakContext": 6020
+    },
+    "default": {
+      "sessions": 1,
+      "calls": 2,
+      "cacheRead": 321000,
+      "cacheWrite1h": 0,
+      "weighted": 32845,
+      "peakOver150k": 1,
+      "rtkSessions": 1,
+      "medianPeakContext": 161010
+    }
+  },
+  "tools": [
+    {
+      "name": "Bash",
+      "calls": 6,
+      "outputTokens": 1690,
+      "avgTokens": 282,
+      "carriedTokens": 1250,
+      "carriedShare": 0.962
+    },
+    {
+      "name": "Read",
+      "calls": 4,
+      "outputTokens": 85,
+      "avgTokens": 21,
+      "carriedTokens": 50,
+      "carriedShare": 0.038
+    },
+    {
+      "name": "Grep",
+      "calls": 1,
+      "outputTokens": 25,
+      "avgTokens": 25,
+      "carriedTokens": 0,
+      "carriedShare": 0
+    },
+    {
+      "name": "?",
+      "calls": 1,
+      "outputTokens": 3,
+      "avgTokens": 3,
+      "carriedTokens": 0,
+      "carriedShare": 0
+    },
+    {
+      "name": "Edit",
+      "calls": 1,
+      "outputTokens": 1,
+      "avgTokens": 1,
+      "carriedTokens": 0,
+      "carriedShare": 0
+    }
+  ],
+  "bash": [
+    {
+      "name": "rtk git",
+      "calls": 1,
+      "avgTokens": 1000,
+      "carriedTokens": 1000
+    },
+    {
+      "name": "go test",
+      "calls": 1,
+      "avgTokens": 100,
+      "carriedTokens": 200
+    },
+    {
+      "name": "ls",
+      "calls": 1,
+      "avgTokens": 50,
+      "carriedTokens": 50
+    },
+    {
+      "name": "pnpm test",
+      "calls": 1,
+      "avgTokens": 500,
+      "carriedTokens": 0
+    },
+    {
+      "name": "git status",
+      "calls": 1,
+      "avgTokens": 10,
+      "carriedTokens": 0
+    },
+    {
+      "name": "cargo test",
+      "calls": 1,
+      "avgTokens": 30,
+      "carriedTokens": 0
+    }
+  ],
+  "codexTools": [
+    {
+      "name": "shell",
+      "calls": 1,
+      "avgTokens": 75
+    },
+    {
+      "name": "apply_patch",
+      "calls": 1,
+      "avgTokens": 4
+    },
+    {
+      "name": "local_shell_call",
+      "calls": 1,
+      "avgTokens": 13
+    }
+  ],
+  "rereads": {
+    "reads": 4,
+    "rereads": 2,
+    "share": 0.5,
+    "rereadTokens": 35,
+    "sessionsWithReread": 2
+  },
+  "rtk": {
+    "worker": {
+      "withRTK": {
+        "sessions": 1,
+        "bashCalls": 3,
+        "avgBashTokens": 203,
+        "medianSessionWeighted": 1195
+      },
+      "withoutRTK": {
+        "sessions": 1,
+        "bashCalls": 0,
+        "avgBashTokens": 0,
+        "medianSessionWeighted": 52
+      }
+    },
+    "headless": {
+      "withRTK": {
+        "sessions": 0,
+        "bashCalls": 0,
+        "avgBashTokens": 0,
+        "medianSessionWeighted": 0
+      },
+      "withoutRTK": {
+        "sessions": 1,
+        "bashCalls": 1,
+        "avgBashTokens": 30,
+        "medianSessionWeighted": 105
+      }
+    },
+    "interactive": {
+      "withRTK": {
+        "sessions": 1,
+        "bashCalls": 1,
+        "avgBashTokens": 1000,
+        "medianSessionWeighted": 32845
+      },
+      "withoutRTK": {
+        "sessions": 1,
+        "bashCalls": 1,
+        "avgBashTokens": 50,
+        "medianSessionWeighted": 3373
+      }
+    }
+  },
+  "instructionsPerSession": {
+    "Project": {
+      "sessions": 2,
+      "medianTokens": 200,
+      "maxTokens": 200
+    },
+    "AutoMem": {
+      "sessions": 1,
+      "medianTokens": 30,
+      "maxTokens": 30
+    },
+    "User": {
+      "sessions": 1,
+      "medianTokens": 15,
+      "maxTokens": 15
+    }
+  },
+  "memoryInventory": {
+    "dirs": 2,
+    "projectsWithMemory": 1,
+    "files": 5,
+    "bytes": 241,
+    "indexBytes": 74,
+    "dead": 2,
+    "stale": 0,
+    "orphan": 1,
+    "duplicated": 2
+  },
+  "otherMemory": {
+    "codex": [
+      {
+        "account": "codex-1",
+        "agentsMd": 123,
+        "memoriesDb": 0
+      },
+      {
+        "account": "default",
+        "agentsMd": 0,
+        "memoriesDb": 456
+      }
+    ],
+    "geminiMd": 78
+  },
+  "versions": ["0.98.0", "0.99.0", "2.1.250", "2.1.296"]
+}
