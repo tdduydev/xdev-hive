@@ -3,6 +3,7 @@ import {
   type AgentPolicy,
   type AgentPolicyInput,
   DEFAULT_AGENT_MEMORY_POLICY,
+  DEFAULT_AGENT_SKILL_LEARNING_POLICY,
   type HookEvent,
   type InstructionTemplates,
   type PolicyHook,
@@ -87,6 +88,12 @@ const text: Dict<{
   memModeHint: Record<Form["agentMemory"]["mode"], string>;
   memMax: string;
   memMaxHint: string;
+  learnTitle: string;
+  learnHint: string;
+  learnEnabled: string;
+  learnEnabledHint: string;
+  learnMax: string;
+  learnMaxHint: string;
   hooksHint: string;
   managedOnly: string;
   managedOnlyHint: string;
@@ -171,6 +178,13 @@ const text: Dict<{
     },
     memMax: "Số memory tối đa mỗi run",
     memMaxHint: "Từ 1 đến 50. Hub từ chối ghi vượt số này.",
+    learnTitle: "Học skill từ việc khó",
+    learnHint:
+      "Mỗi ngày mỗi dự án một lô: agent đọc tóm tắt các run đáng học (thử lại ≥ 2 lần, chi phí vượt p90, hoặc được đánh dấu) rồi đề xuất skill. Chạy bằng model rẻ, chỉ đọc.",
+    learnEnabled: "Bật học skill",
+    learnEnabledHint: "Tắt thì không lô nào chạy và không tốn token. Đề xuất đã có vẫn duyệt được.",
+    learnMax: "Số đề xuất tối đa mỗi ngày",
+    learnMaxHint: "Từ 1 đến 50 cho cả tổ chức (UTC). Hết hạn mức thì ngày đó không chạy thêm lô.",
     hooksHint: "Lệnh chạy chắc chắn ở các mốc của CLI: trước khi gọi tool, sau khi sửa file, khi kết thúc.",
     managedOnly: "Chỉ chạy hook của tổ chức",
     managedOnlyHint: "Bỏ qua hook và cấu hình .claude/settings.json trong repo.",
@@ -262,6 +276,13 @@ const text: Dict<{
     },
     memMax: "Max memories per run",
     memMaxHint: "1 to 50. The hub rejects writes over this number.",
+    learnTitle: "Learning skills from hard tasks",
+    learnHint:
+      "One batch per project per day: an agent reads summaries of runs worth learning from (retried 2+ times, cost above p90, or marked) and proposes skills. Cheap model, read-only.",
+    learnEnabled: "Enable skill learning",
+    learnEnabledHint: "When off no batch runs and no tokens are spent. Existing proposals can still be decided.",
+    learnMax: "Max proposals per day",
+    learnMaxHint: "1 to 50 for the whole organization (UTC). Once used up no more batches run that day.",
     hooksHint: "Commands that always run at CLI events: before a tool call, after edits, at the end.",
     managedOnly: "Only run organization hooks",
     managedOnlyHint: "Ignore hooks and .claude/settings.json from repositories.",
@@ -329,6 +350,7 @@ const formOf = (p: AgentPolicy): Form => ({
   limits: p.limits,
   // Hub cũ chưa có mục này thì giữ mặc định của hợp đồng, như chính sách lưu trước ADR 0022.
   agentMemory: p.agentMemory ?? { ...DEFAULT_AGENT_MEMORY_POLICY },
+  skillLearning: p.skillLearning ?? { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
 });
 
 function PolicyCard({
@@ -713,6 +735,23 @@ export function PoliciesPage() {
               value={form.agentMemory.maxPerRun}
               onChange={(maxPerRun) => update({ agentMemory: { ...form.agentMemory, maxPerRun } })}
               disabled={disabled || form.agentMemory.mode === "off"}
+            />
+          </PolicyCard>
+
+          <PolicyCard title={t.learnTitle} hint={t.learnHint}>
+            <SwitchRow
+              label={t.learnEnabled}
+              hint={t.learnEnabledHint}
+              checked={form.skillLearning.enabled}
+              onChange={(enabled) => update({ skillLearning: { ...form.skillLearning, enabled } })}
+              disabled={disabled}
+            />
+            <MaxPerRunInput
+              label={t.learnMax}
+              hint={t.learnMaxHint}
+              value={form.skillLearning.maxPerDay}
+              onChange={(maxPerDay) => update({ skillLearning: { ...form.skillLearning, maxPerDay } })}
+              disabled={disabled || !form.skillLearning.enabled}
             />
           </PolicyCard>
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { id, orgRoute, queryFlag } from "./common.ts";
 import { outcomeCheck, routingEffort, taskTier } from "./projects.ts";
 import { RUN_STATES, RUN_STATUS_GROUP_NAMES } from "./run-states.ts";
-import { cli, exploreUsage, rtkUsage } from "./worker-protocol.ts";
+import { cli, exploreUsage, guardUsage, rtkUsage } from "./worker-protocol.ts";
 
 export { RUN_STATUS_GROUPS, TERMINAL_RUN_STATES } from "./run-states.ts";
 
@@ -11,9 +11,20 @@ export type RunState = z.output<typeof runState>;
 
 /**
  * `review`: review chéo; `plan`: lập kế hoạch; `leader`: trả lời chat và đề xuất hành động; `sdlc`: bước agent của
- * hạng mục AI SDLC (soạn tài liệu trong worktree tạm, không đẩy; specs/011 FR-010); `brief`: viết lại bản tóm tắt repo của dự án (ADR 0022).
+ * hạng mục AI SDLC (soạn tài liệu trong worktree tạm, không đẩy; specs/011 FR-010); `brief`: viết lại bản tóm tắt repo của dự án (ADR 0022);
+ * `skill_proposal`: đề xuất skill từ các run khó của dự án, chỉ đọc (specs/014).
  */
-export const runKind = z.enum(["code", "review", "plan", "leader", "doccheck", "docassist", "sdlc", "brief"]);
+export const runKind = z.enum([
+  "code",
+  "review",
+  "plan",
+  "leader",
+  "doccheck",
+  "docassist",
+  "sdlc",
+  "brief",
+  "skill_proposal",
+]);
 
 /** Kết quả một bước kiểm tra của chính sách kết quả ở bước verifying. */
 export const checkOutcome = z.object({
@@ -77,6 +88,10 @@ export type RunRouting = z.output<typeof runRouting>;
 export const runRtk = rtkUsage;
 export type RunRtk = z.output<typeof runRtk>;
 
+/** Context pack, lệnh khảo sát bị chặn và ký tự output đã cắt ở lần thử gần nhất; null khi run không dùng hay worker cũ. */
+export const runTokenGuard = guardUsage;
+export type RunTokenGuard = z.output<typeof runTokenGuard>;
+
 export const run = z.object({
   id,
   taskId: id.nullable(),
@@ -110,6 +125,7 @@ export const run = z.object({
   cost: runCost,
   explore: runExplore.nullable(),
   rtk: runRtk.nullable(),
+  tokenGuard: runTokenGuard.nullable().optional(),
   createdBy: z.string(),
   /** Chủ run: người giao run, và chỉ máy của họ hoặc máy dùng chung chạy được. null là run của đội (Leader, gate AI, webhook). */
   ownerUserId: z.string().nullable(),

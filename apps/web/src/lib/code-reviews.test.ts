@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { awaitingCount, countLabel, uniqueById } from "@/lib/code-reviews.ts";
 import { NAV_GROUPS } from "@/lib/nav.ts";
-import { validateReviewsSearch } from "@/lib/route-search.ts";
+import { validateReviewsSearch, validateWorkflowsSearch } from "@/lib/route-search.ts";
 
 const ID = "4d4d4d4d-0000-4000-8000-000000000001";
 
@@ -59,5 +59,18 @@ describe("NAV_GROUPS", () => {
   it("mục Chờ tôi duyệt mang badge PR chờ duyệt", () => {
     const reviews = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === "reviews");
     expect(reviews?.badge).toBe("codeReviews");
+  });
+});
+
+describe("validateWorkflowsSearch", () => {
+  it("giữ khoá dự án hợp lệ", () => {
+    expect(validateWorkflowsSearch({ duan: "payment-api" })).toEqual({ duan: "payment-api" });
+  });
+
+  it("bỏ giá trị không phải khoá dự án", () => {
+    expect(validateWorkflowsSearch({ duan: "../x" })).toEqual({});
+    expect(validateWorkflowsSearch({ duan: "A_B" })).toEqual({});
+    expect(validateWorkflowsSearch({ duan: 7 })).toEqual({});
+    expect(validateWorkflowsSearch({})).toEqual({});
   });
 });
