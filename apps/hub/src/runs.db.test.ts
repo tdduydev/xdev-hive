@@ -2531,8 +2531,9 @@ describe("quy trình review code (specs/009)", () => {
       changed_files: 2,
       gate_index: 1,
     });
+    // Các checkpoint mở trong cùng transaction có started_at bằng nhau, nên xếp theo vị trí trong quy trình.
     const { rows: gates } = await admin.query(
-      "select gate_id, status from hive.code_review_gate_runs where review_id = $1 order by started_at",
+      "select gate_id, status from hive.code_review_gate_runs where review_id = $1 order by gate_index, started_at",
       [review.id],
     );
     expect(gates).toEqual([
