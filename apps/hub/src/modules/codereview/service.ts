@@ -548,11 +548,15 @@ async function notifyReviewers(
       orgId: review.orgId,
       event: "code_review.awaiting",
       title: `PR chờ duyệt: #${review.prNumber} ${review.branch}`,
-      body: `Checkpoint “${gate.name}” của quy trình ${review.workflowName} chờ bạn duyệt PR #${review.prNumber} (${review.branch} → ${review.baseBranch}).`,
+      body: `Checkpoint “${gate.name}” của quy trình ${review.workflowName} chờ bạn duyệt PR #${review.prNumber} (${review.branch} → ${review.baseBranch}).\nCommit: ${review.headSha}\nHãy xem thay đổi trên web trước khi quyết định.`,
       // Theo lượt checkpoint: quay lại checkpoint này sau khi trả lại thì báo lần nữa.
       eventKey: `code_review:${gateRunId}`,
       recipientIds: ids,
       link: codeReviewLink(deps.publicUrl, review.id),
+      actions: [
+        { kind: "code_review.approve", reviewId: review.id, headSha: review.headSha, gateRunId },
+        { kind: "code_review.changes", reviewId: review.id, headSha: review.headSha, gateRunId },
+      ],
     },
     { jobs: deps.jobs },
   );
