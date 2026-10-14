@@ -386,7 +386,8 @@ fn open_hub(app: &AppHandle) {
                 eprintln!("{e}");
             }
         }
-        None => show_register(app),
+        // Chưa có hub để mở web: vào app, nơi người dùng kết nối Hive ở thẻ tài khoản.
+        None => show_app(app),
     }
 }
 
@@ -801,14 +802,13 @@ pub fn run() {
                             eprintln!("Không nhập được tài khoản CLI của app v1: {e}");
                         }
                         dispatch(&handle, Event::Start);
-                        show_app(&handle);
                     }
-                    Ok(_) => show_register(&handle),
-                    Err(e) => {
-                        eprintln!("Không đọc được cấu hình worker: {e}");
-                        show_register(&handle);
-                    }
+                    Ok(_) => {}
+                    Err(e) => eprintln!("Không đọc được cấu hình worker: {e}"),
                 }
+                // App là client, không bắt đăng nhập: chưa đăng ký máy vẫn vào thẳng giao diện chính, các mục trên máy
+                // dùng được ngay; kết nối Hive ở thẻ tài khoản khi người dùng cần.
+                show_app(&handle);
                 // Máy chưa đăng ký cũng kiểm (chỉ qua GitHub): app mới cài nhận được bản mới trước cả khi đăng ký.
                 updates::run_periodic(&handle).await;
             });
