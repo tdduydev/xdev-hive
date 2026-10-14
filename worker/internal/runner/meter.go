@@ -128,3 +128,19 @@ func (m *meter) exceeded() string {
 	defer m.mu.Unlock()
 	return m.reason
 }
+
+// stopper là parser đọc được việc CLI tự dừng vì chạm giới hạn (--max-turns, --max-budget-usd).
+type stopper interface{ StopSubtype() string }
+
+// stopSubtype trả loại giới hạn CLI tự dừng vì nó; rỗng khi parser không báo hay CLI chưa dừng vì giới hạn.
+func (m *meter) stopSubtype() string {
+	if m.parser == nil {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if s, ok := m.parser.(stopper); ok {
+		return s.StopSubtype()
+	}
+	return ""
+}

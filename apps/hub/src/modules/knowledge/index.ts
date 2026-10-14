@@ -53,6 +53,8 @@ export {
   startReview,
 } from "./reviews.ts";
 export { type BriefPort, type DocAssistPort, knowledgeRouter } from "./router.ts";
+export { handleRunSkills } from "./run-skills.ts";
+export { getPackSkill, listSkillPack, setSkillPack } from "./skill-pack.ts";
 export {
   handleSkillWebhook,
   registerSkillGitWorker,

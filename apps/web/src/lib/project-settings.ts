@@ -1,11 +1,15 @@
 import { ORPCError } from "@orpc/client";
 import {
   DEFAULT_BRIEF_SETTINGS,
+  defaultRouting,
   defaultTokenSaving,
   type OutcomeCheck,
   type ProjectSettings,
   type ProjectSettingsPatch,
   projectSettingsPatch,
+  type RoutingEffort,
+  TASK_TIERS,
+  type TaskTier,
   type TokenSaving,
 } from "@xdev-hive/contracts";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
@@ -17,6 +21,17 @@ export const REVIEW_CLIS = ["claude", "codex", "gemini"] as const;
 export type ReviewCli = (typeof REVIEW_CLIS)[number];
 export type MergeMode = ProjectSettings["merge"]["mode"];
 export type PermissionMode = "workspace" | "full";
+export type { TaskTier };
+export { TASK_TIERS };
+
+/** Ô của một cấp độ task trong mục định tuyến; ô số giữ dạng chuỗi như các ô khác. */
+export interface TierForm {
+  model: string;
+  effort: RoutingEffort;
+  maxTurns: string;
+  /** "" là tắt cố vấn. */
+  advisor: string;
+}
 
 type ReviewCheck = Extract<OutcomeCheck, { check: "review" }>;
 
@@ -56,6 +71,12 @@ export interface SettingsForm {
   autocompactPct: string;
   subagentModel: string;
   cacheTtl: TokenSaving["cacheTtl"];
+  autocompactWindow: string;
+  /** Cho agent dùng web; tắt thì cờ chặn WebFetch/WebSearch nằm trong lệnh của worker. */
+  allowWeb: boolean;
+  /** Định tuyến model/effort/số lượt theo cấp độ task cho run code. */
+  routing: boolean;
+  tiers: Record<TaskTier, TierForm>;
   rtk: boolean;
   codegraph: boolean;
 }
@@ -70,6 +91,13 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
   const model = (cli: SettingsCli) => ({ code: s.models?.[cli]?.code ?? "", review: s.models?.[cli]?.review ?? "" });
   // Hub cũ chưa gửi mục này: hiện mặc định, như hub mới điền cho dự án lưu từ trước.
   const saving = s.tokenSaving ?? defaultTokenSaving;
+  const routing = s.routing ?? defaultRouting;
+  const tier = (t: TaskTier): TierForm => ({
+    model: routing.tiers[t].model,
+    effort: routing.tiers[t].effort,
+    maxTurns: String(routing.tiers[t].maxTurns),
+    advisor: routing.tiers[t].advisor ?? "",
+  });
   return {
     mergeMode: s.merge.mode,
     requiredApprovals: String(s.merge.requiredApprovals),
@@ -103,6 +131,10 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     autocompactPct: String(saving.autocompactPct),
     subagentModel: saving.subagentModel,
     cacheTtl: saving.cacheTtl,
+    autocompactWindow: String(saving.autocompactWindow ?? defaultTokenSaving.autocompactWindow),
+    allowWeb: saving.allowWeb ?? defaultTokenSaving.allowWeb,
+    routing: routing.enabled,
+    tiers: { light: tier("light"), medium: tier("medium"), heavy: tier("heavy") },
     // Hub cũ chưa có hai mục này: hub mới đọc thiếu là bật.
     rtk: saving.rtk ?? defaultTokenSaving.rtk,
     codegraph: saving.codegraph ?? defaultTokenSaving.codegraph,
@@ -203,8 +235,24 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       autocompactPct: requiredNum(form.autocompactPct, "autocompactPct", errors),
       subagentModel: form.subagentModel.trim(),
       cacheTtl: form.cacheTtl,
+      autocompactWindow: requiredNum(form.autocompactWindow, "autocompactWindow", errors),
+      allowWeb: form.allowWeb,
       rtk: form.rtk,
       codegraph: form.codegraph,
+    },
+    routing: {
+      enabled: form.routing,
+      tiers: Object.fromEntries(
+        TASK_TIERS.map((t) => [
+          t,
+          {
+            model: form.tiers[t].model.trim(),
+            effort: form.tiers[t].effort,
+            maxTurns: requiredNum(form.tiers[t].maxTurns, `tiers.${t}.maxTurns`, errors),
+            advisor: form.tiers[t].advisor.trim() || null,
+          },
+        ]),
+      ) as Record<TaskTier, { model: string; effort: RoutingEffort; maxTurns: number; advisor: string | null }>,
     },
   };
 }
@@ -230,9 +278,18 @@ export function fieldOfPath(path: readonly PropertyKey[]): string | undefined {
     case "runPermissions":
       return "runPermissions";
     case "tokenSaving":
-      return key === "bashMaxChars" || key === "autocompactPct" || key === "subagentModel" || key === "cacheTtl"
+      return key === "bashMaxChars" ||
+        key === "autocompactPct" ||
+        key === "subagentModel" ||
+        key === "cacheTtl" ||
+        key === "autocompactWindow"
         ? key
         : undefined;
+    case "routing": {
+      // routing.tiers.<cấp>.<trường>
+      const [, , tier, field] = path.map(String);
+      return key === "tiers" && tier && field ? `tiers.${tier}.${field}` : undefined;
+    }
     case "outcome": {
       // outcome.default.<i>.<trường>[.when.<trường>]
       const rest = path.slice(3).map(String);

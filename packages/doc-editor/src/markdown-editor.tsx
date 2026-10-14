@@ -14,20 +14,10 @@ import { MarkdownCodec } from "./markdown.ts";
 import { SlashController as Slash, type SlashController, type SlashItem } from "./slash.ts";
 import { docEditorText } from "./text.ts";
 
-/** Kiểu chữ của nội dung soạn; Tailwind không có plugin typography nên viết theo thẻ con. */
+/** Kiểu chữ của nội dung soạn là `hive-prose` (packages/ui/src/prose.css, dùng chung với chế độ xem); ở đây chỉ phần riêng của ProseMirror. */
 const PROSE = [
-  "min-h-40 text-[15px] leading-[1.75] text-foreground outline-none",
-  "[&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight",
-  "[&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold",
-  "[&_h4]:mt-4 [&_h4]:font-semibold [&_p]:my-2",
-  "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li>p]:my-0.5",
-  "[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0.5 [&_li[data-checked]]:flex [&_li[data-checked]]:items-start [&_li[data-checked]]:gap-2.5",
-  "[&_li[data-checked]>label]:mt-1.5 [&_li[data-checked]>div]:flex-1 [&_li[data-checked=true]>div]:text-muted-foreground [&_input[type=checkbox]]:accent-primary",
-  "[&_blockquote]:my-3 [&_blockquote]:border-l-3 [&_blockquote]:border-border [&_blockquote]:pl-3.5 [&_blockquote]:text-muted-foreground",
-  "[&_aside_p]:my-1 [&_hr]:my-6 [&_hr]:border-border [&_a]:text-primary [&_a]:underline",
-  "[&_:not(pre)>code]:rounded [&_:not(pre)>code]:bg-muted [&_:not(pre)>code]:px-1 [&_:not(pre)>code]:font-mono [&_:not(pre)>code]:text-[0.9em]",
-  "[&_table]:my-3 [&_table]:w-full [&_table]:border-collapse [&_table]:text-sm [&_td]:border [&_td]:border-border [&_td]:px-2.5 [&_td]:py-1.5",
-  "[&_th]:border [&_th]:border-border [&_th]:bg-muted [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td>p]:my-0 [&_th>p]:my-0 [&_.selectedCell]:bg-accent/60",
+  "hive-prose min-h-40 outline-none",
+  "[&_aside_p]:my-1",
   "[&_p.is-empty]:before:pointer-events-none [&_p.is-empty]:before:float-left [&_p.is-empty]:before:h-0 [&_p.is-empty]:before:text-muted-foreground [&_p.is-empty]:before:content-[attr(data-placeholder)]",
   "[&_pre[data-raw-markdown]]:before:mb-1 [&_pre[data-raw-markdown]]:before:block [&_pre[data-raw-markdown]]:before:font-sans [&_pre[data-raw-markdown]]:before:text-xs [&_pre[data-raw-markdown]]:before:text-muted-foreground [&_pre[data-raw-markdown]]:before:content-['Markdown']",
   "[&_.ProseMirror-selectednode]:outline-2 [&_.ProseMirror-selectednode]:outline-ring",
@@ -556,7 +546,10 @@ export function EditorSurface({
   className?: string | undefined;
 }) {
   const env = useOptionalDocEditorEnv();
-  const view = useMemo(() => ({ t: h.t, env }), [h.t, env]);
+  const view = useMemo(
+    () => ({ t: h.t, env, lang: h.t === docEditorText.en ? ("en" as const) : ("vi" as const) }),
+    [h.t, env],
+  );
   return (
     <ViewContext.Provider value={view}>
       <EditorContent editor={h.editor} className={className} />

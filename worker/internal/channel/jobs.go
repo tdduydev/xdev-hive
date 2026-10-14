@@ -98,8 +98,10 @@ type jobs struct {
 	// updating: đang drain để cập nhật (lệnh `update` của hub) chứ không phải để tắt; update là phiên bản cần cài.
 	updating bool
 	update   string
-	done     chan struct{}
-	wg       sync.WaitGroup
+	// shared: hub báo máy dùng chung trong welcome của phiên hiện tại; chỉ khi đó mới nhận lệnh gói (accounts.go).
+	shared bool
+	done   chan struct{}
+	wg     sync.WaitGroup
 }
 
 func newJobs(ctx context.Context, cfg Config) *jobs {
@@ -159,9 +161,13 @@ func (j *jobs) attach(ctx context.Context, conn *websocket.Conn) error {
 
 func (j *jobs) detach(conn *websocket.Conn) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.conn == conn {
+	current := j.conn == conn
+	if current {
 		j.conn, j.connCtx = nil, nil
+	}
+	j.mu.Unlock()
+	if current {
+		j.cancelLogin()
 	}
 }
 
@@ -195,7 +201,11 @@ func (j *jobs) heartbeat() Heartbeat {
 		runs = append(runs, HeartbeatRun{RunID: a.runID, Attempt: a.attempt, LeaseID: a.leaseID})
 	}
 	j.mu.Unlock()
-	return Heartbeat{Type: "heartbeat", V: protocolVersion, ID: newID(), Load: len(runs), Runs: runs, LocalProjects: j.localProjects()}
+	hb := Heartbeat{Type: "heartbeat", V: protocolVersion, ID: newID(), Load: len(runs), Runs: runs, LocalProjects: j.localProjects()}
+	if list := j.accountSummaries(); list != nil {
+		hb.Accounts = &list
+	}
+	return hb
 }
 
 // projectList đọc projects.json mỗi lần cần, để thay đổi trong app có hiệu lực ngay không cần khởi động lại worker.
@@ -329,7 +339,7 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	if err == nil {
 		job.Steers = run.steers
-		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }, RemoveDir: j.removeDir}
+		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Account: run.account, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }, RemoveDir: j.removeDir, HTTP: j.cfg.HTTP}
 		err = r.Run(ctx, job, sink)
 	}
 	if err != nil {
