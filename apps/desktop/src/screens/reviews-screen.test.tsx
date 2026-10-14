@@ -287,6 +287,23 @@ describe("ReviewsScreen", () => {
     expect(calls.some((c) => c.path === "codeReviews/decide")).toBe(false);
   });
 
+  it("checkpoint tự động: không có khung quyết thay hay chạy lại, kể cả khi hub cho quyền", async () => {
+    location.hash = `#/reviews/code/${codeId}`;
+    fakeHub({
+      "codeReviews/get": codeDetail({
+        gate: { ...codeSummary.gate, id: "ai", name: "AI review", kind: "ai" },
+        canDecide: false,
+        canOverride: true,
+        canRecheck: true,
+      }),
+      "codeReviews/files": { headSha: head, files: [], truncated: false },
+    });
+    render(<ReviewsScreen />);
+    expect((await screen.findAllByText(/Hoàn tiền một phần/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Quyết thay checkpoint tự động")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Quyết thay/ })).toBeNull();
+  });
+
   it("PR có commit mới thì báo và chặn quyết định cho tới khi tải lại", async () => {
     location.hash = `#/reviews/code/${codeId}`;
     const newer = "b".repeat(40);

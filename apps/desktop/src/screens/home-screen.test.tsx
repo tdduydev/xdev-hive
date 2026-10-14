@@ -197,9 +197,7 @@ describe("HomeScreen", () => {
   it("chưa liên kết tài khoản: không gọi hub, nhắc liên kết", async () => {
     const calls = fakeTauri();
     renderHome(null);
-    expect(
-      (await screen.findAllByText("Liên kết tài khoản để xem tài liệu và skill của dự án.")).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Kết nối Hive để xem tài liệu và skill của dự án.")).length).toBeGreaterThan(0);
     expect(calls.some((c) => c.command === "hub_tool")).toBe(false);
   });
 

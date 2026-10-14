@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { type OrgFixture, pgCode, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
-import { plans } from "./schema.ts";
+import { plans, taskDependencies, tasks } from "./schema.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -13,8 +13,10 @@ const app = createPool(appUrl);
 const masterKey = parseMasterKey(randomBytes(32).toString("base64"));
 
 type Org = OrgFixture & { user: (n: string) => string };
-const seeded: Record<"a" | "b", { org: Org; taskId: string; runId: string; planRunId: string; planId: string }> =
-  {} as never;
+const seeded: Record<
+  "a" | "b",
+  { org: Org; taskId: string; nextTaskId: string; runId: string; planRunId: string; planId: string }
+> = {} as never;
 const content = { summary: "Kế hoạch", steps: [{ title: "Bước 1" }], files: [], risks: [], questions: [] };
 
 /** Seed task, run code, run plan và kế hoạch bằng superuser để test RLS đứng độc lập với lõi giao run. */
@@ -50,7 +52,17 @@ async function seed(name: "a" | "b") {
      values ($1, $2, $3, $4, $5, 1, $6) returning id`,
     [org.orgId, org.teamId, taskId, runId, planRunId, JSON.stringify(content)],
   );
-  seeded[name] = { org, taskId, runId, planRunId, planId };
+  const nextTaskId = await one(
+    `insert into hive.tasks (org_id, team_id, project_id, number, key, title, created_by)
+     values ($1, $2, $3, 2, 'k-2', 't2', 'u') returning id`,
+    [org.orgId, org.teamId, projectId],
+  );
+  await admin.query("insert into hive.task_dependencies (org_id, task_id, depends_on_id) values ($1, $2, $3)", [
+    org.orgId,
+    nextTaskId,
+    taskId,
+  ]);
+  seeded[name] = { org, taskId, nextTaskId, runId, planRunId, planId };
 }
 
 beforeAll(async () => {
@@ -140,5 +152,72 @@ describe("RLS bảng plans", () => {
     );
     expect(code).toBe("23505");
     expect(await inA((tx) => tx.execute(sql`truncate hive.plans`))).toBe("42501");
+  });
+});
+
+describe("RLS bảng task_dependencies", () => {
+  it("không có context thì 0 dòng; context tổ chức A chỉ thấy phụ thuộc của A", async () => {
+    await withTenant(app, {}, async (tx) => expect(await tx.select().from(taskDependencies)).toHaveLength(0));
+    await withTenant(app, { orgId: seeded.a.org.orgId }, async (tx) => {
+      const rows = await tx.select().from(taskDependencies);
+      expect(rows.map((r) => r.taskId)).toContain(seeded.a.nextTaskId);
+      expect(rows.every((r) => r.orgId === seeded.a.org.orgId)).toBe(true);
+    });
+  });
+
+  it("không ghi được phụ thuộc cho tổ chức khác; A không xoá được phụ thuộc của B", async () => {
+    const b = seeded.b;
+    expect(
+      await inA((tx) =>
+        tx.insert(taskDependencies).values({ orgId: b.org.orgId, taskId: b.taskId, dependsOnId: b.nextTaskId }),
+      ),
+    ).toBe("42501");
+    await withTenant(app, { orgId: seeded.a.org.orgId }, async (tx) => {
+      expect(
+        await tx.delete(taskDependencies).where(eq(taskDependencies.taskId, b.nextTaskId)).returning(),
+      ).toHaveLength(0);
+    });
+  });
+
+  it("hai đầu phải cùng tổ chức (khoá kép), không tự phụ thuộc chính mình", async () => {
+    const a = seeded.a;
+    const orgId = a.org.orgId;
+    expect(
+      await inA((tx) => tx.insert(taskDependencies).values({ orgId, taskId: a.taskId, dependsOnId: seeded.b.taskId })),
+    ).toBe("23503");
+    expect(
+      await inA((tx) => tx.insert(taskDependencies).values({ orgId, taskId: seeded.b.taskId, dependsOnId: a.taskId })),
+    ).toBe("23503");
+    expect(
+      await inA((tx) => tx.insert(taskDependencies).values({ orgId, taskId: a.taskId, dependsOnId: a.taskId })),
+    ).toBe("23514");
+    expect(
+      await inA((tx) => tx.insert(taskDependencies).values({ orgId, taskId: a.nextTaskId, dependsOnId: a.taskId })),
+    ).toBe("23505");
+  });
+
+  it("xoá task thì xoá phụ thuộc của nó; checklist mặc định rỗng", async () => {
+    const a = seeded.a;
+    const { rows } = await admin.query(
+      `insert into hive.tasks (org_id, team_id, project_id, number, key, title, created_by)
+       select org_id, team_id, project_id, 3, 'k-3', 't3', 'u' from hive.tasks where id = $1 returning id`,
+      [a.taskId],
+    );
+    const third = rows[0].id as string;
+    await withTenant(app, { orgId: a.org.orgId }, async (tx) => {
+      await tx.insert(taskDependencies).values({ orgId: a.org.orgId, taskId: third, dependsOnId: a.taskId });
+      const [task] = await tx.select().from(tasks).where(eq(tasks.id, third));
+      expect(task?.checklist).toEqual([]);
+    });
+    await admin.query("delete from hive.tasks where id = $1", [third]);
+    const left = await admin.query("select 1 from hive.task_dependencies where task_id = $1", [third]);
+    expect(left.rowCount).toBe(0);
+  });
+
+  it("bảng bật và ép RLS", async () => {
+    const { rows } = await admin.query(
+      "select relrowsecurity, relforcerowsecurity from pg_class where oid = 'hive.task_dependencies'::regclass",
+    );
+    expect(rows).toEqual([{ relrowsecurity: true, relforcerowsecurity: true }]);
   });
 });

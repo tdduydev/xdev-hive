@@ -6,14 +6,20 @@ export type OrgRole = (typeof orgRole.enumValues)[number];
 export type TeamRole = (typeof teamRole.enumValues)[number];
 
 const ORG_RANK: Record<OrgRole, number> = { member: 1, admin: 2, owner: 3 };
-const TEAM_RANK: Record<TeamRole, number> = { viewer: 1, member: 2, admin: 3 };
+// `ba` tạm ngang viewer: hub chưa lưu được vai trò này (storableTeamRole) tới khi T018 đặt thứ hạng thật.
+const TEAM_RANK: Record<TeamRole, number> = { viewer: 1, ba: 1, member: 2, admin: 3 };
 
 const ORG_LABEL: Record<OrgRole, string> = { owner: "chủ sở hữu", admin: "quản trị", member: "thành viên" };
-const TEAM_LABEL: Record<TeamRole, string> = { admin: "quản trị", member: "thành viên", viewer: "người xem" };
+const TEAM_LABEL: Record<TeamRole, string> = {
+  admin: "quản trị",
+  member: "thành viên",
+  viewer: "người xem",
+  ba: "BA/PO",
+};
 
 /**
- * Vai trò đội lưu được. Hợp đồng đã có BA/PO (`ba`, specs/011) nhưng enum `team_role` của database và thứ hạng vai trò
- * chưa có (T004, T018); tới lúc đó từ chối rõ ràng thay vì để database báo lỗi.
+ * Vai trò đội lưu được. Hợp đồng và enum `team_role` đã có BA/PO (`ba`, specs/011) nhưng thứ hạng và quyền của vai trò
+ * chưa có (T018); tới lúc đó từ chối rõ ràng thay vì cấp nhầm quyền.
  */
 export function storableTeamRole(role: TeamRole | "ba"): TeamRole {
   if (role === "ba") throw new BadRequestError("TEAM_ROLE_UNSUPPORTED", "Vai trò BA/PO chưa dùng được trên hub này.");
