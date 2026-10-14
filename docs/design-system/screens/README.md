@@ -53,10 +53,12 @@ từng trạng thái. Chưa chép lên canvas.
 
 | File | Mẫu | Trang làm chuẩn trong code |
 |---|---|---|
-| `AdminListTemplate.dc.html` | Danh sách: tab có số đếm, thanh lọc, bảng có cột số canh phải, cột ghim, chọn nhiều, phân trang | `/admin/members` |
-| `AdminDetailTemplate.dc.html` | Chi tiết: tiêu đề có meta, tab, khối thông tin, bảng liên quan, vùng nguy hiểm | — |
-| `AdminSettingsTemplate.dc.html` | Cài đặt nhiều mục: mục lục bám cuộn, mục dạng card, hàng nhãn–ô, công tắc, thẻ radio, thanh lưu dính | `/projects/$key/settings` |
+| `AdminListTemplate.dc.html` | Danh sách: tab có số đếm, thanh lọc, bảng có cột số canh phải, cột ghim, chọn nhiều, phân trang. Bấm cả dòng (hoặc nút ›) mở trang chi tiết, không có panel bên cạnh | `/admin/members` |
+| `AdminDetailTemplate.dc.html` | Chi tiết: liên kết "← danh sách", ô màu + tên + trạng thái, nút phụ + một nút chính + ⋯, một dòng meta; tab theo URL (`?tab=`: Tổng quan, Thành viên, Hệ thống), khối thông tin, bảng liên quan, vùng nguy hiểm | `/admin/teams/$teamId` |
+| `AdminSettingsTemplate.dc.html` | Cài đặt nhiều mục: mục lục bám cuộn, mục dạng card, hàng nhãn–ô, công tắc, thẻ radio. Mỗi mục có chân riêng (● Có thay đổi chưa lưu, ✓ Đã lưu, lỗi, Huỷ, Lưu), không có thanh lưu chung; có hộp thoại "Rời trang khi còn thay đổi chưa lưu?" minh hoạ | `/projects/$key/settings` |
 | `AdminDashboardTemplate.dc.html` | Số liệu: thẻ số liệu có xu hướng, biểu đồ có bảng thay thế, bảng theo dự án | — (Chi phí) |
+
+Cả bốn mẫu dùng khung quản trị (Quyết định 1): thanh bên chính chỉ còn Tổng quan, Công việc, Kiến thức và một mục "Quản trị" (icon bánh răng, được tô); bên phải nó là menu quản trị thứ hai rộng 208 px với liên kết "← Quản trị" và bốn nhóm (Người và quyền, Dự án và hạ tầng, Quản trị agent, Theo dõi), trang hiện tại được tô. Từ 360 px cả hai cột ẩn, thay bằng một hàng "← Quản trị" + ô chọn "Chọn trang quản trị" phía trên tiêu đề. Khung này vẽ thẳng trong mỗi mẫu (không dùng `Sidebar.dc.html`, vẫn là menu cũ cho các màn khác); đường dẫn trên `Topbar` là "Quản trị › trang".
 
 ## Màn web
 

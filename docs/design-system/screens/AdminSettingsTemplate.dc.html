@@ -19,7 +19,28 @@ body{margin:0}
 .al :is(button,input,select,textarea){font:inherit}.al button{cursor:pointer}.al button:disabled{opacity:.5;cursor:not-allowed}
 .al a{color:var(--primary);text-decoration:none}.al a:hover{text-decoration:underline;text-underline-offset:3px}
 .al-col{flex:999 1 560px;min-width:0;display:flex;flex-direction:column}
-.al-nav{flex:none}
+.al-nav{flex:none;display:flex}
+.al-side{width:240px;flex:none;padding:12px 10px;display:flex;flex-direction:column;gap:14px;background:var(--sidebar);color:var(--sidebar-foreground);border-right:1px solid var(--border)}
+.al-brand{display:flex;align-items:center;height:40px;padding:0 6px}
+.al-org{display:flex;align-items:center;gap:10px;padding:7px 8px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--foreground);text-align:left}
+.al-org-mark{width:26px;height:26px;border-radius:6px;background:var(--brand-navy);color:#B8F1FF;display:grid;place-items:center;font:600 12px var(--font-mono);flex:none}
+.al-org-txt{display:flex;flex-direction:column;line-height:1.3;min-width:0}.al-org-txt span{font-size:12px;color:var(--muted-foreground)}
+.al .al-tree,.al .al-nsub,.al .al-alist{display:flex;flex-direction:column;gap:2px}
+.al .al-nsub{margin:2px 0 4px 17px;padding-left:8px;border-left:1px solid var(--border);gap:1px}
+.al .al-nl{display:flex;align-items:center;gap:10px;height:32px;padding:0 8px 0 10px;border-radius:6px;color:var(--sidebar-foreground);font-size:14px;text-decoration:none}
+.al .al-nl:hover{background:var(--muted);text-decoration:none}
+.al .al-nsub .al-nl{height:30px;padding-left:12px;color:var(--muted-foreground);font-size:13.5px}
+.al .al-alist{gap:1px}.al .al-alist .al-nl{height:30px;font-size:13.5px}
+.al .al-nl[aria-current]{background:var(--accent);color:var(--accent-foreground);font-weight:600}
+.al-ngrp{display:flex;align-items:center;gap:10px;height:32px;padding:0 8px 0 10px}
+.al-user{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 6px 2px;border-top:1px solid var(--border)}
+.al-user>span:first-child{width:28px;height:28px;border-radius:999px;background:var(--accent);color:var(--accent-foreground);display:grid;place-items:center;font-size:12px;font-weight:600}
+.al-user>span:last-child{display:flex;flex-direction:column;line-height:1.3;min-width:0}.al-user small{font-size:12px;color:var(--muted-foreground)}
+.al-admin{width:208px;flex:none;padding:12px 10px;display:flex;flex-direction:column;gap:14px;background:var(--background);border-right:1px solid var(--border)}
+.al .al-back{display:flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:6px;color:var(--foreground);font-weight:500;text-decoration:none}
+.al .al-back:hover{background:var(--muted);text-decoration:none}
+.al-agrp{display:flex;flex-direction:column;gap:4px}.al-ah{padding:0 10px;font-size:12px;font-weight:500;color:var(--muted-foreground)}
+.al-mnav{display:none;align-items:center;gap:12px;padding:12px 24px 0}.al-mnav .al-select{flex:1}
 .al-header{padding:24px 24px 4px;display:flex;flex-wrap:wrap;align-items:flex-start;gap:12px 24px}
 .al-header>div:first-child{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:4px}
 .al-crumb{font-size:12px;color:var(--muted-foreground)}
@@ -85,8 +106,12 @@ body{margin:0}
 .al-toc{position:sticky;top:64px;display:flex;flex-direction:column;gap:2px}
 .al-toc a{display:block;padding:6px 10px;border-radius:6px;color:var(--muted-foreground);white-space:nowrap}
 .al-toc a[aria-current]{background:var(--accent);color:var(--accent-foreground);font-weight:500;box-shadow:inset 2px 0 0 var(--primary)}
-.al-savebar{position:sticky;bottom:0;margin:0 -24px -24px;padding:12px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;border-top:1px solid var(--border);background:color-mix(in oklab,var(--background) 85%,transparent);backdrop-filter:blur(8px)}
-.al-savebar .al-right{margin-left:auto;display:flex;gap:8px}
+.al-secfoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-height:52px;padding:10px 20px;border-top:1px solid var(--border);background:var(--muted);border-radius:0 0 12px 12px}
+.al-secfoot .al-right{margin-left:auto;display:flex;gap:8px}
+.al-status{display:flex;align-items:center;gap:6px;font-size:13px;min-width:0}.al-status.good{color:var(--success)}.al-status.bad{color:var(--destructive)}
+.al-leave{display:grid;gap:8px;max-width:32rem}
+.al-dlg{padding:20px;display:grid;gap:8px;box-shadow:0 0 0 1px var(--border),0 8px 24px rgb(0 0 0/.12)}
+.al-dlg-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:8px}
 .al-dot{width:8px;height:8px;border-radius:999px;background:var(--warning);display:inline-block}
 .al-note{padding:10px 14px;border-radius:8px;background:var(--muted);border:1px solid var(--border)}
 .al-alert{padding:12px 14px;border-radius:8px;background:var(--destructive-soft);color:var(--destructive);display:flex;flex-direction:column;gap:8px;align-items:flex-start}
@@ -105,16 +130,32 @@ body{margin:0}
 .al-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 12px;border-bottom:1px dashed var(--border);font-size:12px;width:100%}
 .al-tools select{height:26px;width:auto}
 .al-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-@container (max-width:1023px){.al-settings{grid-template-columns:minmax(0,1fr);gap:16px}.al-toc{position:static;flex-direction:row;overflow-x:auto}.al-toc a{border:1px solid var(--border)}.al-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@container (max-width:767px){.al-header{padding:20px 16px 4px}.al-body{padding:16px}.al-tabs{padding:0 8px}.al-formrow{grid-template-columns:minmax(0,1fr)}.al-savebar{margin:0 -16px -16px;padding:12px 16px}.al-grid3{grid-template-columns:minmax(0,1fr)}}
+@container (max-width:1023px){.al-admin{display:none}.al-mnav{display:flex}.al-settings{grid-template-columns:minmax(0,1fr);gap:16px}.al-toc{position:static;flex-direction:row;overflow-x:auto}.al-toc a{border:1px solid var(--border)}.al-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (max-width:767px){.al-mnav{padding:12px 16px 0}.al-header{padding:20px 16px 4px}.al-body{padding:16px}.al-tabs{padding:0 8px}.al-formrow{grid-template-columns:minmax(0,1fr)}.al-secfoot{padding:10px 16px}.al-grid3{grid-template-columns:minmax(0,1fr)}}
 @container (max-width:639px){.al-nav{display:none}.al-filter .al-search{width:100%}.al-filter .al-right{margin-left:0}.al-grid2,.al-radio,.al-stats{grid-template-columns:minmax(0,1fr)}.al-table .pin-end{position:static;box-shadow:none}.al-actions{width:100%}}
 </style>
 </helmet>
 <div class="al" data-theme="{{theme}}" lang="{{lang}}" style="{{boardStyle}}">
 <sc-if value="{{showTools}}" hint-placeholder-val="{{true}}"><div class="al-tools" data-design-tools><label>{{t.stateLabel}} <select class="al-select" value="{{view}}" onChange="{{setView}}"><sc-for list="{{views}}" as="v"><option value="{{v.value}}">{{v.label}}</option></sc-for></select></label><button type="button" class="al-btn sm" onClick="{{toggleLang}}">VI / EN</button><button type="button" class="al-btn sm" onClick="{{toggleTheme}}">{{t.theme}}</button><button type="button" class="al-btn sm" onClick="{{toggleNarrow}}">360 px</button></div></sc-if>
-<div class="al-nav"><dc-import name="Sidebar" active="projects" lang="{{lang}}" hint-size="240px,900px"></dc-import></div>
+<div class="al-nav">
+<nav class="al-side" aria-label="{{fr.mainAria}}">
+  <div class="al-brand"><dc-import name="Logo" height="40" hint-size="91px,40px"></dc-import></div>
+  <button type="button" class="al-org" aria-label="{{fr.switchOrg}}"><span class="al-org-mark" aria-hidden="true">A</span><span class="al-org-txt"><b>Acme Software</b><span>{{fr.admin}}</span></span></button>
+  <ul class="al-tree">
+    <li><a class="al-nl" href="#"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7 8 2.5 13.5 7v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1zM6.5 14v-4h3v4"/></svg><span>{{fr.home}}</span></a></li>
+    <sc-for list="{{workGroups}}" as="g" hint-placeholder-count="2"><li><div class="al-ngrp"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{g.icon}}"/></svg><span>{{g.label}}</span></div><ul class="al-nsub"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><li><a class="al-nl" href="#">{{it.label}}</a></li></sc-for></ul></li></sc-for>
+    <li><a class="al-nl" href="#" aria-current="true"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>{{fr.admin}}</span></a></li>
+  </ul>
+  <div class="al-user"><span aria-hidden="true">TL</span><span><b style="font-weight:500">Trần Lan</b><small>lan@acme.vn</small></span></div>
+</nav>
+<nav class="al-admin" aria-label="{{fr.adminAria}}">
+  <a class="al-back" href="#">← {{fr.admin}}</a>
+  <sc-for list="{{adminGroups}}" as="g" hint-placeholder-count="4"><div class="al-agrp"><p class="al-ah">{{g.label}}</p><ul class="al-alist"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><li><a class="al-nl" href="#" aria-current="{{it.cur}}">{{it.label}}</a></li></sc-for></ul></div></sc-for>
+</nav>
+</div>
 <div class="al-col">
-  <dc-import name="Topbar" crumb="{{t.projects}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+  <dc-import name="Topbar" crumb="{{fr.crumb}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+  <div class="al-mnav"><a href="#">← {{fr.admin}}</a><select class="al-select" aria-label="{{fr.pick}}"><sc-for list="{{adminGroups}}" as="g" hint-placeholder-count="4"><optgroup label="{{g.label}}"><sc-for list="{{g.items}}" as="it" hint-placeholder-count="3"><option value="{{it.id}}" selected="{{it.sel}}">{{it.label}}</option></sc-for></optgroup></sc-for></select></div>
   <header class="al-header" style="max-width:1120px">
     <div><p class="al-crumb"><a href="#">{{t.projects}}</a> / <a href="#">payment-api</a></p><h1>{{t.title}}</h1><p class="al-desc">{{t.desc}}</p></div>
   </header>
@@ -129,26 +170,51 @@ body{margin:0}
         <section id="merge" class="al-card" role="group" aria-labelledby="s-merge"><div class="al-card-h"><div><h2 id="s-merge">Merge</h2><p>{{t.mergeHint}}</p></div></div>
           <div class="al-rows">
             <div class="al-radio" role="radiogroup" aria-label="{{t.mode}}"><sc-for list="{{modes}}" as="m" hint-placeholder-count="2"><label data-on="{{m.on}}"><input type="radio" name="mode" checked="{{m.on}}" onChange="{{m.pick}}" disabled="{{readOnly}}"><span><b style="font-weight:500">{{m.title}}</b><br><span class="al-sub">{{m.hint}}</span></span></label></sc-for></div>
-            <div class="al-grid2"><label class="al-field"><b>{{t.reviewers}}</b><input class="al-input al-mono" inputmode="numeric" value="{{reviewers}}" onInput="{{setReviewers}}" disabled="{{readOnly}}" aria-invalid="{{badReviewers}}"><sc-if value="{{badReviewers}}"><span class="al-hint" style="color:var(--destructive)">{{t.reviewersErr}}</span></sc-if><sc-if value="{{goodReviewers}}"><span class="al-hint">{{t.reviewersHint}}</span></sc-if></label><label class="al-field"><b>{{t.method}}</b><select class="al-select" disabled="{{readOnly}}" onChange="{{touch}}"><option>{{t.squash}}</option><option>Merge commit</option><option>Rebase</option></select></label></div>
+            <div class="al-grid2"><label class="al-field"><b>{{t.reviewers}}</b><input class="al-input al-mono" inputmode="numeric" value="{{reviewers}}" onInput="{{setReviewers}}" disabled="{{readOnly}}" aria-invalid="{{badReviewers}}"><sc-if value="{{badReviewers}}"><span class="al-hint" style="color:var(--destructive)">{{t.reviewersErr}}</span></sc-if><sc-if value="{{goodReviewers}}"><span class="al-hint">{{t.reviewersHint}}</span></sc-if></label><label class="al-field"><b>{{t.method}}</b><select class="al-select" disabled="{{readOnly}}" onChange="{{touchMerge}}"><option>{{t.squash}}</option><option>Merge commit</option><option>Rebase</option></select></label></div>
             <div class="al-switchrow"><span class="al-label"><b>{{t.ci}}</b><span>{{t.ciHint}}</span></span><button type="button" role="switch" class="al-switch" aria-checked="{{ci}}" aria-label="{{t.ci}}" onClick="{{toggleCi}}" disabled="{{readOnly}}"></button></div>
             <div class="al-switchrow"><span class="al-label"><b>Merge queue</b><span>{{t.queueHint}}</span></span><button type="button" role="switch" class="al-switch" aria-checked="{{queue}}" aria-label="Merge queue" onClick="{{toggleQueue}}" disabled="{{readOnly}}"></button></div>
-          </div></section>
+          </div>
+          <sc-for list="{{footMerge}}" as="f"><footer class="al-secfoot"><span class="{{f.cls}}" role="{{f.role}}"><sc-if value="{{f.isDirty}}"><span class="al-dot" aria-hidden="true"></span></sc-if><sc-if value="{{f.isSaved}}"><span aria-hidden="true">✓</span></sc-if><sc-if value="{{f.isErr}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></sc-if>{{f.text}}</span><span class="al-right"><sc-if value="{{f.showCancel}}"><button type="button" class="al-btn" onClick="{{f.discard}}">{{t.cancel}}</button></sc-if><button type="button" class="al-btn primary" disabled="{{f.clean}}" onClick="{{f.save}}">{{t.save}}</button></span></footer></sc-for></section>
         <section id="budget" class="al-card" role="group" aria-labelledby="s-budget"><div class="al-card-h"><div><h2 id="s-budget">{{t.budget}}</h2><p>{{t.budgetHint}}</p></div></div>
-          <div class="al-rows"><div class="al-grid3"><sc-for list="{{budget}}" as="b" hint-placeholder-count="3"><label class="al-field"><b>{{b.label}}</b><span class="al-suffix"><input class="al-input al-mono" inputmode="decimal" placeholder="{{t.unlimited}}" value="{{b.value}}" onInput="{{touch}}" disabled="{{readOnly}}"><span>{{b.unit}}</span></span><span class="al-hint">{{b.hint}}</span></label></sc-for></div></div></section>
+          <div class="al-rows"><div class="al-grid3"><sc-for list="{{budget}}" as="b" hint-placeholder-count="3"><label class="al-field"><b>{{b.label}}</b><span class="al-suffix"><input class="al-input al-mono" inputmode="decimal" placeholder="{{t.unlimited}}" value="{{b.value}}" onInput="{{touchBudget}}" disabled="{{readOnly}}"><span>{{b.unit}}</span></span><span class="al-hint">{{b.hint}}</span></label></sc-for></div></div>
+          <sc-for list="{{footBudget}}" as="f"><footer class="al-secfoot"><span class="{{f.cls}}" role="{{f.role}}"><sc-if value="{{f.isDirty}}"><span class="al-dot" aria-hidden="true"></span></sc-if><sc-if value="{{f.isSaved}}"><span aria-hidden="true">✓</span></sc-if><sc-if value="{{f.isErr}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></sc-if>{{f.text}}</span><span class="al-right"><sc-if value="{{f.showCancel}}"><button type="button" class="al-btn" onClick="{{f.discard}}">{{t.cancel}}</button></sc-if><button type="button" class="al-btn primary" disabled="{{f.clean}}" onClick="{{f.save}}">{{t.save}}</button></span></footer></sc-for></section>
         <section id="model" class="al-card" role="group" aria-labelledby="s-model"><div class="al-card-h"><div><h2 id="s-model">Model</h2><p>{{t.modelHint}}</p></div></div>
-          <div class="al-rows"><sc-for list="{{models}}" as="m" hint-placeholder-count="3"><div class="al-formrow" role="group" aria-label="{{m.cli}}"><span class="al-label"><b>{{m.cli}}</b><span>{{m.hint}}</span></span><div class="al-grid2"><label class="al-field"><b>{{t.code}}</b><input class="al-input al-mono" placeholder="{{t.cliDefault}}" value="{{m.code}}" onInput="{{touch}}" disabled="{{readOnly}}"></label><label class="al-field"><b>Review</b><input class="al-input al-mono" placeholder="{{t.cliDefault}}" onInput="{{touch}}" disabled="{{readOnly}}"></label></div></div></sc-for></div></section>
+          <div class="al-rows"><sc-for list="{{models}}" as="m" hint-placeholder-count="3"><div class="al-formrow" role="group" aria-label="{{m.cli}}"><span class="al-label"><b>{{m.cli}}</b><span>{{m.hint}}</span></span><div class="al-grid2"><label class="al-field"><b>{{t.code}}</b><input class="al-input al-mono" placeholder="{{t.cliDefault}}" value="{{m.code}}" onInput="{{touchModel}}" disabled="{{readOnly}}"></label><label class="al-field"><b>Review</b><input class="al-input al-mono" placeholder="{{t.cliDefault}}" onInput="{{touchModel}}" disabled="{{readOnly}}"></label></div></div></sc-for></div>
+          <sc-for list="{{footModel}}" as="f"><footer class="al-secfoot"><span class="{{f.cls}}" role="{{f.role}}"><sc-if value="{{f.isDirty}}"><span class="al-dot" aria-hidden="true"></span></sc-if><sc-if value="{{f.isSaved}}"><span aria-hidden="true">✓</span></sc-if><sc-if value="{{f.isErr}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></sc-if>{{f.text}}</span><span class="al-right"><sc-if value="{{f.showCancel}}"><button type="button" class="al-btn" onClick="{{f.discard}}">{{t.cancel}}</button></sc-if><button type="button" class="al-btn primary" disabled="{{f.clean}}" onClick="{{f.save}}">{{t.save}}</button></span></footer></sc-for></section>
         <section id="perm" class="al-card" role="group" aria-labelledby="s-perm"><div class="al-card-h"><div><h2 id="s-perm">{{t.perm}}</h2><p>{{t.permHint}}</p></div></div>
           <div class="al-rows"><div class="al-radio" style="grid-template-columns:minmax(0,1fr)" role="radiogroup" aria-label="{{t.perm}}"><sc-for list="{{perms}}" as="p" hint-placeholder-count="2"><label data-on="{{p.on}}" data-danger="{{p.danger}}"><input type="radio" name="perm" checked="{{p.on}}" onChange="{{p.pick}}" disabled="{{readOnly}}"><span><b style="font-weight:500">{{p.title}}</b><br><span class="al-sub">{{p.hint}}</span></span></label></sc-for></div>
-          <sc-if value="{{confirmFull}}"><div role="alertdialog" aria-labelledby="cf" class="al-card" style="padding:16px;display:grid;gap:8px;box-shadow:0 0 0 1px var(--destructive)"><h2 id="cf">{{t.cfTitle}}</h2><p class="al-sub" style="font-size:14px">{{t.cfDesc}}</p><div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="al-btn" onClick="{{keep}}">{{t.cfKeep}}</button><button type="button" class="al-btn danger-solid" onClick="{{goFull}}">{{t.cfGo}}</button></div></div></sc-if></div></section>
+          <sc-if value="{{confirmFull}}"><div role="alertdialog" aria-labelledby="cf" class="al-card" style="padding:16px;display:grid;gap:8px;box-shadow:0 0 0 1px var(--destructive)"><h2 id="cf">{{t.cfTitle}}</h2><p class="al-sub" style="font-size:14px">{{t.cfDesc}}</p><div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="al-btn" onClick="{{keep}}">{{t.cfKeep}}</button><button type="button" class="al-btn danger-solid" onClick="{{goFull}}">{{t.cfGo}}</button></div></div></sc-if></div>
+          <sc-for list="{{footPerm}}" as="f"><footer class="al-secfoot"><span class="{{f.cls}}" role="{{f.role}}"><sc-if value="{{f.isDirty}}"><span class="al-dot" aria-hidden="true"></span></sc-if><sc-if value="{{f.isSaved}}"><span aria-hidden="true">✓</span></sc-if><sc-if value="{{f.isErr}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></sc-if>{{f.text}}</span><span class="al-right"><sc-if value="{{f.showCancel}}"><button type="button" class="al-btn" onClick="{{f.discard}}">{{t.cancel}}</button></sc-if><button type="button" class="al-btn primary" disabled="{{f.clean}}" onClick="{{f.save}}">{{t.save}}</button></span></footer></sc-for></section>
+        <sc-if value="{{showLeave}}"><aside class="al-leave" aria-label="{{t.leaveCap}}"><p class="al-sub">{{t.leaveCap}}</p>
+          <div role="group" aria-labelledby="lv" class="al-card al-dlg"><h2 id="lv">{{t.leaveTitle}}</h2><p class="al-sub" style="font-size:14px">{{leaveDesc}}</p><div class="al-dlg-btns"><button type="button" class="al-btn">{{t.stay}}</button><button type="button" class="al-btn danger-solid">{{t.leave}}</button></div></div></aside></sc-if>
       </div>
     </div>
-    <sc-if value="{{canSave}}"><div class="al-savebar"><span style="display:flex;align-items:center;gap:8px" class="{{statusClass}}" role="{{statusRole}}"><sc-if value="{{dirty}}"><span class="al-dot" aria-hidden="true"></span></sc-if>{{statusText}}</span><span class="al-right"><button type="button" class="al-btn" disabled="{{clean}}" onClick="{{discard}}">{{t.discard}}</button><button type="button" class="al-btn primary" disabled="{{clean}}" onClick="{{save}}">{{t.save}}</button></span></div></sc-if>
     </sc-if>
   </main>
 </div>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["normal","loading","empty","error"],"default":"normal"},"embedded":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+const frameVals = (x, active) => {
+  // Menu quản trị thứ hai (Quyết định 1): cùng nhóm và thứ tự với `area: "admin"` trong lib/nav.ts.
+  const adminTree = [
+    [['Người và quyền', 'People & access'], [['members', ['Thành viên', 'Members']], ['teams', ['Đội và hệ thống', 'Teams & systems']], ['roles', ['Vai trò và quyền', 'Roles & permissions']], ['signin', ['Đăng nhập', 'Sign-in']]]],
+    [['Dự án và hạ tầng', 'Projects & infra'], [['projects', ['Dự án', 'Projects']], ['machines', ['Máy', 'Machines']], ['sandbox', ['Sandbox', 'Sandbox']]]],
+    [['Quản trị agent', 'Agent governance'], [['mcp', ['MCP và công cụ', 'MCP & tools']], ['policies', ['Chính sách agent', 'Agent policies']]]],
+    [['Theo dõi', 'Monitoring'], [['costs', ['Chi phí và token', 'Costs & tokens']], ['notifications', ['Thông báo', 'Notifications']], ['audit', ['Nhật ký', 'Audit log']]]],
+  ];
+  const adminGroups = adminTree.map(([g, items]) => ({ label: x(g), items: items.map(([id, l]) => ({ id, label: x(l), cur: id === active ? 'page' : null, sel: id === active })) }));
+  const page = adminGroups.flatMap((g) => g.items).find((i) => i.sel);
+  const workGroups = [
+    { label: x(['Công việc', 'Work']), icon: 'M2.5 3.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1zM9.5 3.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z', items: [x(['Bảng việc', 'Board']), x(['Lượt chạy', 'Runs']), 'Leader'].map((label) => ({ label })) },
+    { label: x(['Kiến thức', 'Knowledge']), icon: 'M2.5 3h4a2 2 0 0 1 1.5.7A2 2 0 0 1 9.5 3h4v10h-4a1.5 1.5 0 0 0-1.5 1.5A1.5 1.5 0 0 0 6.5 13h-4zM8 3.7v10.8', items: [x(['Tài liệu', 'Docs']), 'Skills', 'Memory', x(['Đề xuất sửa', 'Proposals']), x(['Quy trình duyệt', 'Review workflows']), x(['Chờ tôi duyệt', 'Awaiting my review'])].map((label) => ({ label })) },
+  ];
+  const admin = x(['Quản trị', 'Admin']);
+  return {
+    adminGroups, workGroups,
+    fr: { home: x(['Tổng quan', 'Overview']), admin, crumb: admin + ' › ' + page.label, mainAria: x(['Điều hướng chính', 'Main navigation']), adminAria: x(['Menu quản trị', 'Admin menu']), pick: x(['Chọn trang quản trị', 'Choose an admin page']), switchOrg: x(['Đổi tổ chức', 'Switch organization']) },
+  };
+};
 const commonVals = (self, x, lang, dark, narrow, view) => ({
   theme: dark ? 'dark' : 'light', lang, dark,
   boardStyle: narrow ? 'width:360px;min-height:1600px' : '',
@@ -161,7 +227,7 @@ const commonVals = (self, x, lang, dark, narrow, view) => ({
 });
 const commonText = (x) => ({ stateLabel: x(['Trạng thái xem', 'View state']), theme: x(['Sáng/tối', 'Light/dark']), retry: x(['Tải lại', 'Retry']) });
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { lang: null, dark: null, narrow: null, view: null, dirty: false, saved: false, mode: 'review', perm: 'workspace', confirm: false, ci: true, queue: false, reviewers: '1', active: 'merge' }; }
+  constructor(props) { super(props); this.state = { lang: null, dark: null, narrow: null, view: null, dirty: { merge: true, budget: false, model: true, perm: false }, saved: { budget: true }, err: { model: true }, mode: 'auto', perm: 'workspace', confirm: false, ci: true, queue: false, reviewers: '1', active: 'merge' }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const dark = this.state.dark ?? !!this.props.dark;
@@ -183,30 +249,47 @@ class Component extends DCLogic {
       perm: x(['Quyền CLI của run', 'Run CLI permissions']), permHint: x(['Quyền của agent trên máy nhận việc.', 'What the agent may do on the machine running it.']),
       cfTitle: x(['Cho agent toàn quyền?', 'Give the agent full access?']), cfDesc: x(['CLI chạy không sandbox và không hỏi duyệt. Chỉ bật trong container dùng một lần hoặc máy riêng cho agent.', 'The CLI runs without sandbox or approvals. Only for throwaway containers or machines dedicated to agents.']),
       cfKeep: x(['Giữ trong worktree', 'Keep in worktree']), cfGo: x(['Bật toàn quyền', 'Enable full access']),
-      discard: x(['Bỏ thay đổi', 'Discard']), save: x(['Lưu cấu hình', 'Save settings']),
+      cancel: x(['Huỷ', 'Cancel']), save: x(['Lưu', 'Save']),
+      leaveCap: x(['Minh hoạ: hộp thoại khi rời trang còn mục chưa lưu (UnsavedChangesGuard). Đổi ?tab= hoặc #mục trong cùng trang thì không hỏi.', 'Illustration: dialog when leaving the page with unsaved sections (UnsavedChangesGuard). Changing ?tab= or #section on the same page does not ask.']),
+      leaveTitle: x(['Rời trang khi còn thay đổi chưa lưu?', 'Leave the page with unsaved changes?']), stay: x(['Ở lại', 'Stay']), leave: x(['Rời trang', 'Leave page']),
+      errSave: x(['Không lưu được mục Model: hub không phản hồi. Thử lại sau ít phút.', 'Could not save Model: the hub did not respond. Try again in a few minutes.']), errReviewers: x(['Số người duyệt phải từ 0 đến 6.', 'Reviewers must be a number from 0 to 6.']),
+      unsaved: x(['Có thay đổi chưa lưu', 'Unsaved changes']), saved: x(['Đã lưu', 'Saved']),
     };
-    const touch = () => this.setState({ dirty: true, saved: false });
+    // Mỗi mục có trạng thái lưu riêng (Quyết định 4): dirty, saved, err theo mã mục.
+    const ORIG = { merge: { mode: 'review', reviewers: '1', ci: true, queue: false }, perm: { perm: 'workspace', confirm: false } };
+    const edit = (sec, patch = {}) => this.setState({ ...patch, dirty: { ...s.dirty, [sec]: true }, saved: { ...s.saved, [sec]: false }, err: { ...s.err, [sec]: false } });
     const bad = !/^[0-6]$/.test(s.reviewers);
     const toc = [['merge', 'Merge'], ['budget', t.budget], ['model', 'Model'], ['perm', t.perm]].map(([id, label]) => ({ href: '#' + id, label, cur: s.active === id ? 'location' : null, pick: () => this.setState({ active: id }) }));
     const readOnly = view === 'empty';
-    let statusText = ''; let statusClass = 'al-sub'; let statusRole = null;
-    if (s.dirty && bad) { statusText = x(['Có ô chưa hợp lệ, xem chữ đỏ dưới từng ô.', 'Some fields are invalid; see the red text under each.']); statusClass = 'al-up-bad'; statusRole = 'alert'; }
-    else if (s.dirty) statusText = x(['Có thay đổi chưa lưu', 'Unsaved changes']);
-    else if (s.saved) { statusText = x(['Đã lưu cấu hình. Run giao sau đây dùng cấu hình mới.', 'Settings saved. Subsequent runs will use the new settings.']); statusClass = 'al-up-good'; statusRole = 'status'; }
+    const foot = (sec) => {
+      if (readOnly) return []; // chỉ đọc: không có chân mục
+      const d = !!s.dirty[sec];
+      const e = sec === 'merge' ? d && bad : !!s.err[sec];
+      const ok = !d && !!s.saved[sec];
+      const text = e ? (sec === 'merge' ? t.errReviewers : t.errSave) : d ? t.unsaved : ok ? t.saved : '';
+      return [{
+        text, isErr: e, isDirty: d && !e, isSaved: ok, showCancel: d, clean: !d,
+        cls: 'al-status' + (e ? ' bad' : ok ? ' good' : ''), role: e ? 'alert' : ok ? 'status' : null,
+        discard: () => this.setState({ ...(ORIG[sec] ?? {}), dirty: { ...s.dirty, [sec]: false }, err: { ...s.err, [sec]: false } }),
+        save: () => { if (sec === 'merge' && bad) return; this.setState({ dirty: { ...s.dirty, [sec]: false }, saved: { ...s.saved, [sec]: true }, err: { ...s.err, [sec]: false } }); },
+      }];
+    };
+    const names = { merge: 'Merge', budget: t.budget, model: 'Model', perm: t.perm };
+    const dirtyNames = Object.keys(names).filter((k) => s.dirty[k]).map((k) => names[k]);
     return {
-      ...commonVals(this, x, lang, dark, narrow, view), t, toc, readOnly, sk: [1, 2, 3],
+      ...commonVals(this, x, lang, dark, narrow, view), ...frameVals(x, 'projects'), t, toc, readOnly, sk: [1, 2, 3],
       views: [['normal', ['Sửa được', 'Editable']], ['empty', ['Chỉ đọc', 'Read-only']], ['loading', ['Đang tải', 'Loading']], ['error', ['Lỗi', 'Error']]].map(([value, l]) => ({ value, label: x(l) })),
-      showForm: view === 'normal' || view === 'empty', canSave: !readOnly,
-      modes: [['review', ['Cần người duyệt', 'Needs a reviewer'], ['Người duyệt PR rồi mới merge.', 'A person approves the PR before merge.']], ['auto', ['Tự merge khi đạt điều kiện', 'Auto-merge when checks pass'], ['Hub merge khi đạt chính sách kết quả và CI.', 'The hub merges once result policy and CI pass.']]].map(([v, ti, h]) => ({ title: x(ti), hint: x(h), on: s.mode === v, pick: () => this.setState({ mode: v, dirty: true, saved: false }) })),
-      reviewers: s.reviewers, setReviewers: (e) => this.setState({ reviewers: e.target.value, dirty: true, saved: false }), badReviewers: bad, goodReviewers: !bad,
-      ci: s.ci ? 'true' : 'false', queue: s.queue ? 'true' : 'false', toggleCi: () => this.setState({ ci: !s.ci, dirty: true, saved: false }), toggleQueue: () => this.setState({ queue: !s.queue, dirty: true, saved: false }),
+      showForm: view === 'normal' || view === 'empty',
+      footMerge: foot('merge'), footBudget: foot('budget'), footModel: foot('model'), footPerm: foot('perm'),
+      showLeave: !readOnly && dirtyNames.length > 0, leaveDesc: x(['Còn thay đổi chưa lưu ở: ', 'Unsaved changes in: ']) + dirtyNames.join(', ') + x(['. Rời đi thì mất các thay đổi này.', '. Leaving discards them.']),
+      modes: [['review', ['Cần người duyệt', 'Needs a reviewer'], ['Người duyệt PR rồi mới merge.', 'A person approves the PR before merge.']], ['auto', ['Tự merge khi đạt điều kiện', 'Auto-merge when checks pass'], ['Hub merge khi đạt chính sách kết quả và CI.', 'The hub merges once result policy and CI pass.']]].map(([v, ti, h]) => ({ title: x(ti), hint: x(h), on: s.mode === v, pick: () => edit('merge', { mode: v }) })),
+      reviewers: s.reviewers, setReviewers: (e) => edit('merge', { reviewers: e.target.value }), badReviewers: bad, goodReviewers: !bad,
+      ci: s.ci ? 'true' : 'false', queue: s.queue ? 'true' : 'false', toggleCi: () => edit('merge', { ci: !s.ci }), toggleQueue: () => edit('merge', { queue: !s.queue }),
       budget: [[x(['Mỗi run', 'Per run']), 'USD', '', '2'], [x(['Mỗi việc', 'Per task']), 'USD', x(['Cộng mọi run của việc.', 'Sum of all runs of the task.']), ''], [x(['Số lượt tối đa', 'Max turns']), '', x(['Lượt trao đổi của agent trong một run.', 'Agent turns within one run.']), '']].map(([label, unit, hint, value]) => ({ label, unit, hint, value })),
       models: [['Claude', 'sonnet'], ['Codex', ''], ['Gemini', '']].map(([cli, code]) => ({ cli, code, hint: cli === 'Claude' ? x(['Cũng dùng cho brief và plan.', 'Also used for briefs and plans.']) : '' })),
-      perms: [['workspace', ['Trong worktree (khuyên dùng)', 'In worktree (recommended)'], ['Agent sửa file và chạy build, test trong worktree của run.', 'The agent edits files and runs builds and tests inside the run worktree.'], false], ['full', ['Toàn quyền', 'Full access'], ['Tắt sandbox và mọi bước hỏi duyệt của CLI.', 'Turns off the CLI sandbox and every approval prompt.'], true]].map(([v, ti, h, danger]) => ({ title: x(ti), hint: x(h), danger, on: s.perm === v, pick: () => (v === 'full' ? this.setState({ confirm: true }) : this.setState({ perm: v, dirty: true, saved: false })) })),
-      confirmFull: s.confirm, keep: () => this.setState({ confirm: false }), goFull: () => this.setState({ confirm: false, perm: 'full', dirty: true, saved: false }),
-      touch, dirty: s.dirty, clean: !s.dirty, statusText, statusClass, statusRole,
-      discard: () => this.setState({ dirty: false, saved: false, reviewers: '1', mode: 'review', perm: 'workspace', ci: true, queue: false }),
-      save: () => { if (!bad) this.setState({ dirty: false, saved: true }); },
+      perms: [['workspace', ['Trong worktree (khuyên dùng)', 'In worktree (recommended)'], ['Agent sửa file và chạy build, test trong worktree của run.', 'The agent edits files and runs builds and tests inside the run worktree.'], false], ['full', ['Toàn quyền', 'Full access'], ['Tắt sandbox và mọi bước hỏi duyệt của CLI.', 'Turns off the CLI sandbox and every approval prompt.'], true]].map(([v, ti, h, danger]) => ({ title: x(ti), hint: x(h), danger, on: s.perm === v, pick: () => (v === 'full' ? this.setState({ confirm: true }) : edit('perm', { perm: v })) })),
+      confirmFull: s.confirm, keep: () => this.setState({ confirm: false }), goFull: () => edit('perm', { confirm: false, perm: 'full' }),
+      touchMerge: () => edit('merge'), touchBudget: () => edit('budget'), touchModel: () => edit('model'),
     };
   }
 }
