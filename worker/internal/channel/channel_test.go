@@ -353,19 +353,25 @@ func (f *fakeTerm) Disable(r terminal.DisableRequest)           { f.record("disa
 func (f *fakeTerm) Pair(r terminal.PairRequest)                 { f.record("pair", r) }
 func (f *fakeTerm) DeviceRevoke(r terminal.DeviceRevokeRequest) { f.record("deviceRevoke", r) }
 
-// termHub là hub giả: gửi welcome theo ý test rồi chuyển mọi gói worker gửi lên vào msgs.
+// termHub là hub giả: gửi welcome theo ý test rồi chuyển mọi gói worker gửi lên vào msgs. Chỉ phục vụ kết nối đầu:
+// worker nối lại sau khi test ngắt (có khi lúc test đã xong) thì bị đóng ngay, không gọi t.Fatal ngoài test.
 func termHub(t *testing.T, welcome map[string]any) (*httptest.Server, chan Hello, chan *websocket.Conn, chan map[string]any) {
 	hellos := make(chan Hello, 1)
 	conns := make(chan *websocket.Conn, 1)
 	msgs := make(chan map[string]any, 64)
+	welcome["type"], welcome["v"], welcome["id"], welcome["sessionId"], welcome["heartbeatSec"] = "welcome", 1, "w", "s", 3600
+	var served atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if served.Swap(true) {
+			http.Error(w, "đã có kết nối", http.StatusServiceUnavailable)
+			return
+		}
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			t.Error(err)
 			return
 		}
 		hellos <- receiveHello(t, conn)
-		welcome["type"], welcome["v"], welcome["id"], welcome["sessionId"], welcome["heartbeatSec"] = "welcome", 1, "w", "s", 3600
 		_ = conn.Write(r.Context(), websocket.MessageText, mustJSON(welcome))
 		conns <- conn
 		for {
