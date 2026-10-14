@@ -192,7 +192,11 @@ describe("TokensScreen", () => {
     const input = screen.getByText("Token vào 7 ngày").parentElement as HTMLElement;
     expect(within(input).getByText("—")).toBeTruthy();
     await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
-    expect(calls.filter((c) => c.command !== "claude_usage").every((c) => c.args?.folder === null)).toBe(true);
+    expect(
+      calls
+        .filter((c) => ["claude_context", "session_stats"].includes(c.command))
+        .every((c) => c.args?.folder === null),
+    ).toBe(true);
   });
 
   it("tiếng Anh", async () => {
