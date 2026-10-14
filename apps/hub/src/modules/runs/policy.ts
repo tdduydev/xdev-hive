@@ -1,5 +1,5 @@
 import { type CheckOutcome, matchGlob, type OutcomeCheck } from "@xdev-hive/contracts";
-import type { DiffStats } from "@xdev-hive/contracts/worker-protocol";
+import { checkCommandResult, type DiffStats } from "@xdev-hive/contracts/worker-protocol";
 
 // Chuyển sang contracts để `codereview` dùng mà không import `runs`; giữ tên cũ cho code đang gọi.
 export { matchGlob };
@@ -152,6 +152,28 @@ export function evaluatePolicy(policy: OutcomeCheck[], ev: Evidence): Evaluation
                 message: `Hub chưa hỗ trợ kiểm tra ${UNSUPPORTED.review}; cần người xem.`,
               },
       );
+    } else if (c.check === "command") {
+      const results = Array.isArray(report.commands)
+        ? report.commands.flatMap((value) => {
+            const parsed = checkCommandResult.safeParse(value);
+            return parsed.success && parsed.data.run === c.run.trim() ? [parsed.data] : [];
+          })
+        : [];
+      const passed = results.length ? results.every((result) => result.exit === 0) : null;
+      const failed = results.find((result) => result.exit !== 0);
+      checks.push({
+        check: c.check,
+        required: c.required,
+        passed,
+        message:
+          passed === null
+            ? `Hub chưa hỗ trợ kiểm tra ${UNSUPPORTED.command}; cần người xem.`
+            : passed
+              ? `Lệnh \`${c.run}\` đạt (mã thoát 0).`
+              : failed?.exit === null || failed?.exit === -1
+                ? `Lệnh \`${c.run}\` hết thời hạn hoặc không chạy được.`
+                : `Lệnh \`${c.run}\` không đạt (mã thoát ${failed?.exit}).`,
+      });
     } else if (c.check === "agentReport") {
       checks.push({
         check: c.check,
