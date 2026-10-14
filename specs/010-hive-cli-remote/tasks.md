@@ -46,7 +46,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     vector
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T002 Contract API `terminal.*` và đăng nhập CLI
+- [x] T002 Contract API `terminal.*` và đăng nhập CLI
+  - Đã làm (SPEC10W3): route phiên máy cá nhân nằm ở contract `remote` (`/v1/remote/…`), không gộp vào `terminal` của
+    phiên Leader để không nới quyền bên nào; khung WS `remoteClientFrame`/`remoteServerFrame`; `REMOTE_LIMITS`,
+    `remoteErrors`, `REMOTE_AUDIT_ACTIONS`. `desktop-connect`: `purpose: "desktop" | "cli"`, output là union theo
+    `purpose`. `notify`: ba sự kiện `terminal.*` chỉ cho hộp thư/đẩy của chủ máy (`notificationChannelEvent` loại chúng
+    khỏi kênh tổ chức). Chính sách: `remote.totpFallback` (mặc định bật; lưu chính sách từ client cũ giữ giá trị cũ).
   - `terminal.ts`: kiểu phiên, máy (trạng thái từ xa), thiết bị, route ở plan.md (`machines`, `list`, `get`, `chunks`,
     `ticket`, `start`, `close`, `setVisibility`, `disableRemote`, `pairOptions`, `pairComplete`, `devices`,
     `revokeDevice`, `pushKey`, `pushSubscribe`, `pushUnsubscribe`); khung WS trình duyệt (`resume`, `control`, `in`,
@@ -99,7 +104,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `docs/design-system/screens/{Remote.dc.html,AppRemote.dc.html}` (mới), `docs/design-system/screens/README.md`
   - **Phụ thuộc**: không · **Mức**: vừa
 
-- [ ] T007 Bảng và migration module `terminal`
+- [x] T007 Bảng và migration module `terminal`
+  - Đã làm (SPEC10W3): migration `0071_remote_terminal.sql`. `terminal_sessions` (đã có từ T103) thêm `origin`
+    (`hub|local|remote`), `task_id`, `cwd_label`, `remote`, `request_id`; `project_id`/`mode`/`model` thành nullable,
+    ràng buộc `terminal_sessions_hub_fields` giữ chúng bắt buộc với phiên Leader. `terminal_chunks` giữ khoá `(session,
+    seq)` của lát đầu (không `offset`). Bốn bảng mới ép RLS; `remote_devices` khoá `(machine_id, id)` vì id do worker sinh.
+    `hive.purge_terminal_chunks()` chạy cùng job `runs-log-retention`. Không có `ALTER TYPE` nên không thêm ca nâng cấp.
   - `terminal/schema.ts`: `terminal_sessions`, `terminal_chunks`, `terminal_events`, `remote_devices`,
     `push_subscriptions`, `machine_remote_state` đúng plan.md; `orgScoped`; chỉ số theo máy, chủ, task.
   - `db:generate` → `00NN_terminal.sql`; thêm tay `FORCE ROW LEVEL SECURITY` và `hive.purge_terminal_chunks()` (như
@@ -129,9 +139,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/remoteauth/{totp.go,totp_test.go,verify.go,verify_test.go}`
   - **Phụ thuộc**: T001, T005 (cùng làn) · **Mức**: nặng
 
-- [ ] T010 [US1] Worker: kiểu gói `term_*` và chuyển gói
-  - Một phần (SPEC10NEXT): kiểu Go mọi gói mới trong `protocol.go` + test fixture. **Còn**: `channel.go` đọc
-    `welcome.owner/policy`, chuyển gói H→W tới `terminal.Handler`.
+- [x] T010 [US1] Worker: kiểu gói `term_*` và chuyển gói
+  - Đã làm (SPEC10NEXT, SPEC10W3): kiểu Go mọi gói mới trong `protocol.go` + test fixture; `channel.go` khai `terminal`
+    khi có `Config.Terminal`, chuyển `welcome.features/owner/policy` và gói H→W (`term_input/resize` chỉ khi có
+    `connId`) tới `terminal.Handler`; `Sender` gắn với ctx của phiên, hub không khai `terminal` thì trả
+    `ErrHubNoTerminal` và không ghi gì. `cmd/hive-worker` chưa nối Handler (T011).
   - `protocol.go`: kiểu Go cho mọi gói mới; test đọc fixture dùng chung.
   - `channel.go`: khai `terminal` trong `hello.capabilities`; đọc `welcome.features`/`owner`; chỉ gửi `term_*` khi hub
     khai; chuyển gói H→W `term_*` tới `terminal.Handler` (interface mới trong `internal/terminal/handler.go`); hàm gửi
@@ -169,7 +181,16 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/cmd/hive/**`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: T002, T004, T011 · **Mức**: nặng
 
-- [ ] T013 [US1] Hub: module `terminal` lõi
+- [x] T013 [US1] Hub: module `terminal` lõi
+  - Đã làm (SPEC10W3): `record.ts` (worker mở phiên trước rồi báo `term_opened` có `origin`; hub chỉ ghi phiên của máy
+    cá nhân, chủ phiên là người đăng ký máy, tối đa `REMOTE_LIMITS.recordedSessionsPerMachine`; task/dự án đội khác bị bỏ
+    liên kết; `term_event` vào `terminal_events`; `term_ack` sau mỗi lần ghi, kể cả phiên hub không ghi, và không bao giờ
+    `term_close` phiên máy cá nhân), `queries.ts` + `remoteRouter` (`remote.machines|list|get|chunks|setVisibility`).
+    `fleet/gateway.ts`: hook `welcome` của module terminal → `features: ["terminal"]`, `owner`, `policy.totpFallback`
+    cho máy cá nhân có capability `terminal`; máy dùng chung chỉ nhận `owner.shared`. Máy mất kết nối không kết thúc phiên
+    máy cá nhân (worker gửi bù). `desktop-connect` `purpose: cli` + trang đồng ý trên web. Purge bản ghi cùng job
+    `runs-log-retention`. **Khác plan**: chưa gộp chunk 64 KiB/1 s ở hub (ghi từng gói; worker đã gộp 8 ms/32 KiB) — đo ở
+    T090 rồi mới làm nếu cần.
   - `gateway.ts` (handler `term_opened|output|event|exit|state`), `record.ts` (gộp 64 KiB/1 s, loại trùng offset, ack sau
     ghi, purge cùng cron `retention.ts`), `queries.ts`, `router.ts` (`machines`, `list`, `get`, `chunks`,
     `setVisibility`), `index.ts`; kiểm chủ máy, máy cá nhân, task thuộc dự án của đội máy (FR-030); audit `terminal.open`,

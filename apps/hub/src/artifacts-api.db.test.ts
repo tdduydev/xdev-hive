@@ -233,4 +233,44 @@ describe("khung cách ly qua app.ts", () => {
     expect(frame.status).toBe(200);
     expect(frame.headers.get("cache-control")).toBe("private, no-store");
   });
+
+  it("link công khai: tạo, mở không cần phiên (không ra SPA), liệt kê không có mã, thu hồi thì 404", async () => {
+    const created = await api("POST", "/artifacts", { type: "html", title: "Báo giá", content: "<b>công khai</b>" });
+    const id = (created.json.artifact as { id: string }).id;
+    const tooLong = await api("POST", `/artifacts/${id}/public-links`, { version: 1, expiresInDays: 31 });
+    expect(tooLong.status).toBe(400);
+    const made = await api("POST", `/artifacts/${id}/public-links`, { version: 1 });
+    expect(made.status).toBe(200);
+    const url = new URL(made.json.url as string);
+    expect(url.origin).toBe("http://localhost:3000");
+    const token = url.pathname.slice("/_artifact/s/".length);
+    const link = made.json.link as { id: string; expiresAt: string; createdAt: string };
+    expect((new Date(link.expiresAt).getTime() - new Date(link.createdAt).getTime()) / 86_400_000).toBeCloseTo(7, 3);
+
+    const pageRes = await httpApp.request(url.pathname);
+    expect(pageRes.status).toBe(200);
+    const html = await pageRes.text();
+    expect(html).not.toContain("<title>SPA</title>");
+    expect(html).not.toMatch(/<script/i);
+    const frame = /src="([^"]+)"/.exec(html)?.[1] ?? "";
+    expect((await httpApp.request(new URL(frame).pathname)).status).toBe(200);
+
+    const listed = await httpApp.request(`/api/v1/artifacts/${id}/public-links`, {
+      headers: { cookie, "x-hive-org": orgId },
+    });
+    expect(listed.status).toBe(200);
+    const listText = await listed.text();
+    expect(listText).toContain(link.id);
+    expect(listText).not.toContain(token);
+    const orgList = await api("GET", "/artifact-public-links?limit=10");
+    expect(orgList.status).toBe(200);
+    expect((orgList.json.items as { id: string }[]).map((l) => l.id)).toContain(link.id);
+
+    const revoked = await api("POST", `/artifact-public-links/${link.id}/revoke`, {});
+    expect(revoked.status).toBe(200);
+    expect(revoked.json).toMatchObject({ active: false, revokeReason: "manual" });
+    const gone = await httpApp.request(url.pathname, { headers: { cookie } });
+    expect(gone.status).toBe(404);
+    expect(await gone.text()).toContain("Liên kết không tồn tại hoặc đã hết hạn.");
+  });
 });
