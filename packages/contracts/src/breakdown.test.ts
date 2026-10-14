@@ -10,6 +10,7 @@ import {
   writeBreakdown,
 } from "./breakdown.ts";
 import { type BreakdownGranularity, type BreakdownParser, sdlcBreakdown } from "./sdlc.ts";
+import { SDLC_PRESETS } from "./sdlc-presets/index.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/breakdown/${name}`, import.meta.url), "utf8");
 const ctx: BreakdownContext = { homeProject: "payment-api", projects: ["web-shop", "mobile-app"] };
@@ -125,6 +126,43 @@ describe("parseBreakdown — speckit-tasks", () => {
     expect(errorsOf(sample, "item", "speckit-tasks")).toEqual([
       "Bản tách có 58 task, vượt giới hạn 30 của chế độ. Gộp theo phần (độ mịn heading).",
     ]);
+  });
+});
+
+describe("parseBreakdown — comment HTML", () => {
+  it("chữ trong comment không là task hay phụ thuộc", () => {
+    const md = [
+      "# Tasks",
+      "",
+      "<!--",
+      '  Phụ thuộc ghi ở mục Dependencies: "T003 phụ thuộc T001, T002".',
+      "  - [ ] T009 Ví dụ",
+      "-->",
+      "",
+      "## Phase 1: Nền",
+      "",
+      "- [ ] T001 Bảng <!-- ghi chú --> báo cáo",
+      "- [ ] T002 Hàm tổng hợp",
+      "",
+      "## Phase 2: Story",
+      "",
+      "- [ ] T003 Nút xuất (phụ thuộc T001)",
+    ].join("\n");
+    const b = parse(md, "speckit-tasks", "heading");
+    expect(b.tasks.map((t) => [t.sliceKey, t.dependsOn])).toEqual([
+      ["phase-1-nen", []],
+      ["phase-2-story", ["phase-1-nen"]],
+    ]);
+    expect(b.tasks.flatMap((t) => t.checklist.map((c) => c.id))).toEqual(["T001", "T002", "T003"]);
+  });
+
+  it("khuôn tasks.md của preset speckit đọc được với độ mịn của preset", () => {
+    const mode = SDLC_PRESETS.speckit;
+    const d = mode?.decomposition;
+    const template = mode?.phases.flatMap((p) => p.artifacts).find((a) => a.id === d?.artifact)?.template;
+    if (!d || !template) throw new Error("speckit đổi cấu trúc");
+    const r = parseBreakdown(template, d, { homeProject: "payment-api", projects: [] });
+    expect(r.errors).toEqual([]);
   });
 });
 
