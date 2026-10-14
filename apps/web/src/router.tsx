@@ -53,6 +53,7 @@ const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"
 const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
 const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
+const PublicLinksPage = lazyRouteComponent(() => import("@/pages/admin/public-links-page.tsx"), "PublicLinksPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
 const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
 const CostsPage = lazyRouteComponent(() => import("@/pages/costs-page.tsx"), "CostsPage");
@@ -425,6 +426,7 @@ const v2Routes = [
     component: McpPage,
   }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/policies", component: PoliciesPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/public-links", component: PublicLinksPage }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/admin/audit",
