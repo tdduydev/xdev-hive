@@ -75,6 +75,8 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
   ls [--json] [--all]     liệt kê phiên trên máy (--all: phiên đang chạy trên mọi máy của bạn, cần đăng nhập)
   attach <id> [--view]    gắn lại vào phiên (--view: chỉ xem)
   kill <id>               ngắt phiên
+  remote <lệnh>           điều khiển từ xa máy này: status, on, off, roots, devices, pair, set, watch
+                          (hive remote help để xem đủ)
   version                 phiên bản hive và hive-worker
 
 Trong phiên: Ctrl-] d để tách (phiên chạy tiếp), Ctrl-] t để giành quyền điều khiển, Ctrl-] Ctrl-] gửi Ctrl-].
@@ -112,8 +114,10 @@ func (a *app) run(args []string) int {
 		return a.logout(rest)
 	case "whoami":
 		return a.whoami(rest)
-	case "remote", "__hook":
-		// Cần phần điều khiển từ xa phía worker (T020, T024, T072); chưa làm thì báo rõ thay vì im lặng.
+	case "remote":
+		return a.remote(rest)
+	case "__hook":
+		// Cần hook của CLI (T072); chưa làm thì báo rõ thay vì im lặng.
 		return a.errorf(exitUsage, "Lệnh hive %s chưa hỗ trợ trong bản này.", cmd)
 	}
 	fmt.Fprintf(a.stderr, "hive: không có lệnh %q.\n", cmd)

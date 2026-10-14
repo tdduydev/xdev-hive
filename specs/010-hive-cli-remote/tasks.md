@@ -286,7 +286,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/web/e2e/{remote-pair.spec.ts,fake-hub.ts}`
   - **Phụ thuộc**: T014, T021 (hoặc hub giả), T006 · **Mức**: nặng
 
-- [ ] T024 [US2] CLI `hive remote …`
+- [x] T024 [US2] CLI `hive remote …`
+  - Đã làm (SPEC10W4): `remote.go` (`status|on|off|roots [add|rm]|devices [rm]|pair|set|watch`, mọi lệnh có `--json`;
+    `on` và `set allow-full-access on` hỏi tại terminal, không có terminal thì cần `--yes`; `roots add` nhận thư mục
+    tương đối theo nơi gõ; `pair` mở watch trước rồi tạo mã, in QR + link, hỏi Cho phép trên chính kết nối watch, stdin
+    đóng thì từ chối ngay; `pair --json` chỉ trả mã cho app; `watch --json` chuyển nguyên từng dòng hai chiều, `watch`
+    không cờ hỏi tại terminal). `qr.go` vẽ bằng nửa khối với `rsc.io/qr`, chữ trắng nền đen khi là terminal.
   - `on` (hỏi xác nhận), `off`, `status`, `roots add|rm`, `devices [rm]`, `pair` (in QR trong terminal, chờ và hỏi
     Cho phép), `set`, `watch --json` (cho app; trả lời hộp xác nhận qua stdin JSON).
   - **Scope**: `worker/cmd/hive/{remote.go,remote_test.go,qr.go}`, `worker/go.mod`, `worker/go.sum`
