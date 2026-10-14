@@ -25,6 +25,23 @@ const skill = {
   updatedAt: at,
   updatedBy: author,
 };
+const commit = "fb33b3b474af0737c4974d50c82ce87dd3cd9b1c";
+const packSkill = (name: string, over: Record<string, unknown> = {}) => ({
+  name,
+  description: `Mô tả ${name}`,
+  group: "ui",
+  license: "MIT",
+  upstream: { repo: "vercel-labs/agent-skills", commit, path: `skills/${name}`, url: `https://github.com/x/${name}` },
+  defaultOn: false,
+  org: null as boolean | null,
+  project: null as boolean | null,
+  enabled: false,
+  shadowedBy: null as string | null,
+  version: 1,
+  files: 3,
+  bytes: 4096,
+  ...over,
+});
 const memory = {
   id: "0a0a0a0a-0000-4000-8000-000000000006",
   kind: "decision",
@@ -61,6 +78,20 @@ async function setup(
 ) {
   let memories = [memory];
   let proposals = [proposal];
+  // Bộ skill mặc định giả: đặt riêng theo tổ chức ("") hoặc theo key dự án, như skill_pack_settings của hub.
+  const packBase = [
+    packSkill("web-design-guidelines", { defaultOn: true }),
+    packSkill("shadcn"),
+    packSkill("systematic-debugging", { group: "engineering", defaultOn: true, shadowedBy: "org" }),
+    packSkill("hive-run-etiquette", { group: "hive", defaultOn: true, upstream: null }),
+  ];
+  const overrides = new Map<string, boolean>();
+  const packView = (project: string) =>
+    packBase.map((s) => {
+      const org = overrides.get(`:${s.name}`) ?? null;
+      const own = project ? (overrides.get(`${project}:${s.name}`) ?? null) : null;
+      return { ...s, org, project: own, enabled: own ?? org ?? s.defaultOn };
+    });
   return fakeHub(page, {
     signedIn: true,
     rpc: {
@@ -122,6 +153,23 @@ async function setup(
         ),
       "skills/list": () => ok([skill]),
       "skills/get": () => ok({ ...skill, content: "# Review\n- Check permissions\n```ts\nconst safe = true;\n```" }),
+      "skills/pack": (input) =>
+        ok({
+          source: { repo: "tdduydev/xdev-skills", commit },
+          skills: packView((input as { project?: string }).project ?? ""),
+        }),
+      "skills/packGet": (input) => {
+        const { name, project } = input as { name: string; project?: string };
+        const s = packView(project ?? "").find((x) => x.name === name);
+        return ok({ ...s, content: `---\nname: ${name}\n---\n# ${name}\nCác bước của skill.`, paths: ["SKILL.md"] });
+      },
+      "skills/packSet": (input) => {
+        const { name, project, enabled } = input as { name: string; project?: string; enabled: boolean | null };
+        const key = `${project ?? ""}:${name}`;
+        if (enabled === null) overrides.delete(key);
+        else overrides.set(key, enabled);
+        return ok(packView(project ?? "").find((x) => x.name === name));
+      },
       "memory/list": (input) => {
         const { includeSuperseded, status } = input as { includeSuperseded?: boolean; status?: string };
         // Hub chỉ liệt kê memory đã duyệt khi không chọn trạng thái; ở đây chưa có memory chờ duyệt nào.
@@ -195,6 +243,65 @@ test("skills: read SKILL.md; no Git repository yet offers to connect one", async
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
   await expect(page.locator("article pre")).toContainText("const safe = true;");
   expect(hub.rpcCalls.filter((call) => call.path.includes("sync"))).toHaveLength(0);
+});
+
+test("skills: Hive default skills show label, license and source, and turn on per organization or project", async ({
+  page,
+}) => {
+  const hub = await setup(page);
+  await page.goto("/knowledge/skills");
+  const pack = page.getByRole("region", { name: "Skill mặc định của Hive" });
+  await expect(pack.getByRole("heading", { name: "Skill mặc định của Hive" })).toBeVisible();
+  await expect(pack.getByRole("link", { name: "tdduydev/xdev-skills@fb33b3b" })).toBeVisible();
+  const shadcn = pack.getByRole("row", { name: /shadcn/ });
+  await expect(shadcn.getByText("Hive mặc định")).toBeVisible();
+  await expect(shadcn.getByText("MIT")).toBeVisible();
+  await expect(shadcn.getByText("Đang tắt")).toBeVisible();
+  await expect(
+    pack.getByRole("row", { name: /systematic-debugging/ }).getByText("Đang dùng bản của tổ chức"),
+  ).toBeVisible();
+
+  await pack.getByRole("switch", { name: "Bật shadcn" }).click();
+  await expect(shadcn.getByText("Đang bật")).toBeVisible();
+  await expect(shadcn.getByText("Tổ chức đặt")).toBeVisible();
+  expect(hub.rpcCalls.find((c) => c.path === "skills/packSet")?.input).toEqual({ name: "shadcn", enabled: true });
+
+  // Đặt riêng cho dự án: tắt skill bật sẵn chỉ trong dự án Hive.
+  await pack.getByLabel("Áp cho").selectOption("hive");
+  const web = pack.getByRole("row", { name: /web-design-guidelines/ });
+  await expect(web.getByText("Theo mặc định của Hive")).toBeVisible();
+  await pack.getByRole("switch", { name: "Bật web-design-guidelines" }).click();
+  await expect(web.getByText("Dự án đặt")).toBeVisible();
+  await expect(web.getByText("Đang tắt")).toBeVisible();
+  expect(hub.rpcCalls.filter((c) => c.path === "skills/packSet").at(-1)?.input).toEqual({
+    name: "web-design-guidelines",
+    enabled: false,
+    project: "hive",
+  });
+
+  // Chi tiết: giấy phép, bản gốc, SKILL.md; bỏ đặt riêng thì theo tổ chức.
+  await pack.getByRole("button", { name: "Mở dòng web-design-guidelines" }).click();
+  await expect(pack.getByRole("link", { name: /vercel-labs\/agent-skills@fb33b3b/ })).toBeVisible();
+  await expect(pack.locator("article")).toContainText("Các bước của skill.");
+  await pack.getByRole("button", { name: "Theo phạm vi rộng hơn" }).click();
+  await expect(web.getByText("Theo mặc định của Hive")).toBeVisible();
+  expect(hub.rpcCalls.filter((c) => c.path === "skills/packSet").at(-1)?.input).toEqual({
+    name: "web-design-guidelines",
+    enabled: null,
+    project: "hive",
+  });
+  await pack.getByRole("button", { name: "Mở dòng hive-run-etiquette" }).click();
+  await expect(pack.getByText("Viết riêng cho Hive")).toBeVisible();
+});
+
+test("skills: members cannot change Hive default skills for the whole organization", async ({ page }) => {
+  await setup(page, { role: "member" });
+  await page.goto("/knowledge/skills");
+  const pack = page.getByRole("region", { name: "Skill mặc định của Hive" });
+  await expect(pack.getByRole("switch", { name: "Bật shadcn" })).toBeDisabled();
+  await expect(pack.getByText(/Chỉ quản trị tổ chức bật, tắt cho cả tổ chức/)).toBeVisible();
+  await pack.getByLabel("Áp cho").selectOption("hive");
+  await expect(pack.getByRole("switch", { name: "Bật shadcn" })).toBeEnabled();
 });
 
 test("skills: connected Git repository shows status, sync now and which skills are in Git", async ({ page }) => {
@@ -443,7 +550,8 @@ for (const route of ["docs", "skills", "memory", "proposals"]) {
       await page.addInitScript(() => localStorage.setItem("hive.lang", "en"));
       await setup(page);
       await page.goto(`/knowledge/${route}`);
-      await expect(page.getByRole("table")).toBeVisible();
+      // Trang Skills có thêm bảng skill mặc định của Hive bên dưới.
+      await expect(page.getByRole("table").first()).toBeVisible();
       await page
         .getByRole("button", { name: /Open row/ })
         .first()
@@ -457,7 +565,7 @@ for (const route of ["docs", "skills", "memory", "proposals"]) {
               ? "Short notes"
               : "team admins decide",
       );
-      if (route === "docs" || route === "skills") await expect(page.locator("article")).toBeVisible();
+      if (route === "docs" || route === "skills") await expect(page.locator("article").first()).toBeVisible();
       if (route === "proposals") await expect(page.getByRole("region", { name: "Content changes" })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`${route}-${scheme}.png`), fullPage: true });

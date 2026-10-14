@@ -17,6 +17,7 @@ import { runsContract } from "./runs.ts";
 import { sandboxContract } from "./sandbox.ts";
 import { scmContract } from "./scm.ts";
 import { sdlcContract } from "./sdlc.ts";
+import { skillLearningContract } from "./skill-learning.ts";
 import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
@@ -47,6 +48,7 @@ export * from "./sandbox.ts";
 export * from "./scm.ts";
 export * from "./sdlc.ts";
 export * from "./sdlc-presets/index.ts";
+export * from "./skill-learning.ts";
 export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
@@ -133,6 +135,7 @@ export const contract = {
   mcpAdmin: mcpAdminContract,
   roles: rolesContract,
   skillRepo: skillRepoContract,
+  skillLearning: skillLearningContract,
   policies: policiesContract,
   reviewWorkflows: workflowsContract,
   reviews: reviewsContract,

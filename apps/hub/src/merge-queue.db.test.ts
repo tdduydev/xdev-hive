@@ -16,6 +16,7 @@ import {
   removeMergeAs,
 } from "./modules/catalog/index.ts";
 import { mergeQueueEntries } from "./modules/catalog/schema.ts";
+import { reviewGate } from "./modules/codereview/index.ts";
 import { createChannel } from "./modules/notify/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "./modules/platform/index.ts";
 import { createRunsEngine } from "./modules/runs/index.ts";
@@ -427,6 +428,77 @@ describe("xử lý hàng", () => {
     );
     expect(await step(p)).toBe("idle");
     expect(await entry(p, n)).toMatchObject({ state: "queued" });
+  });
+});
+
+describe("phiên review code (SC-004)", () => {
+  const gated: MergeDeps = { ...deps, reviewGate };
+
+  async function review(p: P, prNumber: number, status: string, headSha?: string) {
+    const head = headSha ?? (await provider.getPR(p.ref, prNumber))?.headSha ?? "";
+    const { rows } = await admin.query(
+      `insert into hive.code_reviews (org_id, team_id, project_id, run_id, workflow_name, phases, options, pr_number, pr_url,
+         branch, base_branch, head_sha, status)
+       values ($1, $2, $3, $4, 'Quy trình thử', '[]', '{"merge":"project","maxAgentRevisions":2,"dismissStaleApprovals":false}',
+         $5, 'https://git.example.com/pr', 'ai/x', 'main', $6, $7) returning id`,
+      [p.orgId, org.teamId, p.projectId, randomUUID(), prNumber, head, status],
+    );
+    return rows[0].id as string;
+  }
+  const gatedStep = (p: P) => processMergeQueue(gated, { orgId: p.orgId, projectId: p.projectId });
+
+  it("phiên in_review hoặc changes_requested: mục ở waiting, không merge; approved thì merge", async () => {
+    const p = await newProject();
+    const n = await openPR(p, "ai/review-gate");
+    const id = await review(p, n, "in_review");
+    await enqueue(p, n);
+    const before = calls("mergePR").length;
+
+    expect(await gatedStep(p)).toBe("wait");
+    expect(await entry(p, n)).toMatchObject({ state: "waiting", note: "Chờ quy trình duyệt code" });
+    await admin.query("update hive.code_reviews set status = 'changes_requested' where id = $1", [id]);
+    expect(await gatedStep(p)).toBe("wait");
+    expect(calls("mergePR")).toHaveLength(before);
+
+    await admin.query("update hive.code_reviews set status = 'approved' where id = $1", [id]);
+    expect(await gatedStep(p)).toBe("next");
+    expect(await entry(p, n)).toMatchObject({ state: "merged" });
+    expect(calls("mergePR")).toHaveLength(before + 1);
+  });
+
+  it("phiên approved cho commit cũ vẫn chờ: không merge đầu PR chưa ai duyệt", async () => {
+    const p = await newProject();
+    const n = await openPR(p, "ai/review-stale");
+    await review(p, n, "approved", "0".repeat(40));
+    await enqueue(p, n);
+    const before = calls("mergePR").length;
+    expect(await gatedStep(p)).toBe("wait");
+    expect(await entry(p, n)).toMatchObject({ state: "waiting", note: "Chờ quy trình duyệt code" });
+    expect(calls("mergePR")).toHaveLength(before);
+  });
+
+  it("PR không có phiên, hoặc hàng không nhận reviewGate: chạy như trước (FR-030)", async () => {
+    const p = await newProject();
+    const a = await openPR(p, "ai/review-none-a");
+    const b = await openPR(p, "ai/review-none-b");
+    await review(p, b, "in_review");
+    await enqueue(p, a);
+    expect(await gatedStep(p)).toBe("next");
+    expect(await entry(p, a)).toMatchObject({ state: "merged" });
+    await enqueue(p, b);
+    // `step` dùng deps không có reviewGate: phiên chưa duyệt cũng không giữ mục.
+    expect(await step(p)).toBe("next");
+    expect(await entry(p, b)).toMatchObject({ state: "merged" });
+  });
+
+  it("PR đã merge ngoài Hive thì mục xong dù phiên chưa duyệt", async () => {
+    const p = await newProject();
+    const n = await openPR(p, "ai/review-outside");
+    await review(p, n, "in_review");
+    await enqueue(p, n);
+    await provider.mergePR(p.ref, n, { method: "squash", sha: (await provider.getPR(p.ref, n))?.headSha ?? "" });
+    expect(await gatedStep(p)).toBe("next");
+    expect(await entry(p, n)).toMatchObject({ state: "merged" });
   });
 });
 

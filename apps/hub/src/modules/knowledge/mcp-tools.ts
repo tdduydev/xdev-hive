@@ -4,6 +4,7 @@ import {
   memoryContent,
   memoryFiles,
   memoryKind,
+  type PackSkill,
   projectRef,
   SKILL_MAX_CHARS,
   type SkillSummary,
@@ -16,11 +17,13 @@ import type { McpPrincipal, McpToolRegistry } from "../mcp/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
 import { loadTask } from "../tasks/index.ts";
 import type { Principal } from "./access.ts";
+import { projectContext, readerFor } from "./access.ts";
 import { getDoc, listDocs } from "./docs.ts";
 import { addComment, createSuggestion, draftForAgent } from "./editor.ts";
 import { embedQuery, type KnowledgeDeps, searchMemory, writeMemory } from "./memory.ts";
 import { createProposal } from "./proposals.ts";
 import { proposeWithReview } from "./reviews.ts";
+import { activePackSkills, getPackSkill, packSkillFile } from "./skill-pack.ts";
 import { parseSkillFile } from "./skill-repo.ts";
 import { getSkill, listSkillsWithHidden } from "./skills.ts";
 
@@ -41,7 +44,7 @@ export const MCP_LIMITS = {
  * Đổi principal của cổng MCP về principal của knowledge. Run làm việc trong dự án của task của nó: lấy dự án từ task
  * trong cùng transaction, để run không tự khai dự án khác.
  */
-async function knowledgePrincipal(tx: Tx, p: McpPrincipal): Promise<Principal> {
+export async function knowledgePrincipal(tx: Tx, p: McpPrincipal): Promise<Principal> {
   if (p.kind === "user") return { kind: "user", userId: p.userId };
   if (!p.runId) throw new ForbiddenError("RUN_TOKEN_INVALID", "Run token thiếu run.");
   if (!p.taskId) {
@@ -392,8 +395,11 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
     }),
     readOnly: true,
     handler: async ({ project, limit, offset }, { tx, principal }) => {
-      const { skills, hidden } = await listSkillsWithHidden(tx, await knowledgePrincipal(tx, principal), { project });
-      const { items, truncated, nextOffset } = capped(skills, limit, offset);
+      const who = await knowledgePrincipal(tx, principal);
+      const { skills, hidden } = await listSkillsWithHidden(tx, who, { project });
+      const reader = await readerFor(tx, who);
+      // Skill mặc định của Hive đứng sau skill của tổ chức; bản bị skill cùng tên che vào `hidden` như skill thường.
+      const pack = await activePackSkills(tx, reader, await projectContext(tx, reader, project));
       const brief = (s: SkillSummary) => ({
         name: s.name,
         description: s.description,
@@ -403,9 +409,20 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
         ...(s.scope.teamId ? { teamId: s.scope.teamId } : {}),
         ...(s.repoPath ? { repoPath: s.repoPath } : {}),
       });
+      const hive = (s: PackSkill) => ({
+        name: s.name,
+        description: s.description,
+        scope: "hive" as const,
+        version: s.version,
+        license: s.license,
+        files: s.files,
+      });
+      const all = [...skills.map(brief), ...pack.active.map(hive)];
+      const shadowed = [...hidden.map(brief), ...pack.shadowed.map(hive)];
+      const { items, truncated, nextOffset } = capped(all, limit, offset);
       return {
-        skills: items.map(brief),
-        ...(hidden.length ? { hidden: hidden.map(brief) } : {}),
+        skills: items,
+        ...(shadowed.length ? { hidden: shadowed } : {}),
         truncated,
         nextOffset,
       };
@@ -419,11 +436,36 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
     input: z.object({
       name: skillName.describe("Tên skill, lấy từ skill_list."),
       project: PROJECT,
+      // tools/list đi vào mọi run (mcp-run.db.test.ts giữ dưới 5000 byte) nên mô tả thật ngắn; đường dẫn lạ thì
+      // packSkillFile báo không tìm thấy vì chỉ khớp đúng file trong gói.
+      file: z.string().optional().describe("File kèm của skill scope hive."),
       offset: OFFSET,
     }),
     readOnly: true,
-    handler: async ({ name, project, offset }, { tx, principal }) => {
-      const s = await getSkill(tx, await knowledgePrincipal(tx, principal), { name, project });
+    handler: async ({ name, project, file, offset }, { tx, principal }) => {
+      const who = await knowledgePrincipal(tx, principal);
+      const reader = await readerFor(tx, who);
+      const view = await projectContext(tx, reader, project);
+      const { active } = await activePackSkills(tx, reader, view);
+      const hive = active.find((s) => s.name === name);
+      if (hive) {
+        if (file && file !== "SKILL.md")
+          return { name, scope: "hive", file, ...page(packSkillFile(name, file), offset ?? 0) };
+        const s = await getPackSkill(tx, who, { name, project });
+        return {
+          name,
+          description: s.description,
+          scope: "hive",
+          version: s.version,
+          license: s.license,
+          // Danh sách file chỉ ở trang đầu: SKILL.md nhắc tới file nào thì đọc tiếp bằng `file`.
+          ...(offset ? {} : { files: s.paths }),
+          ...page(s.content, offset ?? 0),
+        };
+      }
+      if (file && file !== "SKILL.md")
+        throw new NotFoundError("SKILL_FILE_NOT_FOUND", "Skill này chỉ có SKILL.md trên hub.");
+      const s = await getSkill(tx, who, { name, project });
       return {
         name: s.name,
         description: s.description,

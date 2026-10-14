@@ -21,11 +21,29 @@ export function validateLoginSearch(search: Record<string, unknown>): LoginSearc
 
 export interface ReviewsSearch {
   id?: string;
+  /** Tab Code; không có là tab Tài liệu, nên URL cũ `?id=` vẫn mở đúng tài liệu. */
+  tab?: "code";
 }
 
-/** `?id=<phiên duyệt>` để thông báo và đề xuất dẫn thẳng tới một tài liệu trong hàng chờ. */
+/** `?id=<phiên duyệt>` để thông báo và đề xuất dẫn thẳng tới một phiên trong hàng chờ; `tab=code` cho phiên review PR. */
 export function validateReviewsSearch(search: Record<string, unknown>): ReviewsSearch {
-  return typeof search.id === "string" && /^[0-9a-f-]{36}$/i.test(search.id) ? { id: search.id } : {};
+  return {
+    ...(search.tab === "code" ? { tab: "code" as const } : {}),
+    ...(typeof search.id === "string" && /^[0-9a-f-]{36}$/i.test(search.id) ? { id: search.id } : {}),
+  };
+}
+
+export interface WorkflowsSearch {
+  /** Khoá dự án nguồn: trang tự dựng bản nháp quy trình code từ cấu hình dự án đó (chưa lưu). */
+  duan?: string;
+}
+
+export function validateWorkflowsSearch(search: Record<string, unknown>): WorkflowsSearch {
+  return typeof search.duan === "string" &&
+    /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(search.duan) &&
+    search.duan.length <= 40
+    ? { duan: search.duan }
+    : {};
 }
 
 export interface LeaderSearch {

@@ -88,9 +88,10 @@ describe("WriteScreen", () => {
     expect(paths).toContain("docs/list");
     await userEvent.setup().click(row);
     expect(location.hash).toBe(`#/write/${encodeURIComponent(key)}`);
+    // Trình soạn tải lười cả khối Tiptap; máy tải nặng thì quá 1 giây mặc định.
     expect(await screen.findByDisplayValue("Hoàn tiền một phần")).toBeTruthy();
     expect(paths).toContain("docEditor/state");
-  });
+  }, 15_000);
 
   it("key tài liệu mới sai dạng thì báo ngay, không mở trình soạn", async () => {
     fakeHub();

@@ -23,6 +23,7 @@
     "@orpc/tanstack-query": "^1.15.5",
     "@tanstack/react-query": "^5.104.1",
     "@tanstack/react-router": "^1.170.42",
+    "@xdev-hive/code-review": "workspace:*",
     "@xdev-hive/contracts": "workspace:*",
     "@xdev-hive/doc-editor": "workspace:*",
     "@xdev-hive/ui": "workspace:*",

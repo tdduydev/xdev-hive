@@ -486,7 +486,7 @@ không PWA: máy dùng chung không có chủ máy để giữ khoá, nên ranh 
 
 Bảng `terminal_sessions (org, team, project, machine, owner, mode, model, advisor, accountId/Label, permissions, threadId,
 planId, state, visibility, cols, rows, bytes, nextSeq, exitCode, endReason, …)` và `terminal_chunks (session, seq, data)`,
-RLS bật và ép (migration `0063_terminal_sessions.sql`). Route `terminal.options|open|list|get|close|setVisibility|ticket|chunks|activity`
+RLS bật và ép (migration `0065_terminal_sessions.sql`). Route `terminal.options|open|list|get|close|setVisibility|ticket|chunks|activity`
 (`packages/contracts/src/terminal.ts`), cờ `HIVE_REMOTE_TERMINAL=1`.
 
 ### Bảo mật của lát đầu
