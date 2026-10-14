@@ -3,7 +3,7 @@ import { ItemBoard, ItemDetail, NewItem, SdlcProvider } from "@xdev-hive/sdlc-ui
 import { useSyncExternalStore } from "react";
 import { queryClient } from "@/lib/hub-query.tsx";
 import { screenParam } from "@/lib/nav.ts";
-import { itemHash, sdlcTabOf, useDesktopSdlcEnv } from "@/lib/sdlc-env.tsx";
+import { boardFilterOf, itemHash, sdlcTabOf, useDesktopSdlcEnv } from "@/lib/sdlc-env.tsx";
 
 export function subscribeHash(listener: () => void) {
   window.addEventListener("hashchange", listener);
@@ -13,11 +13,14 @@ export function subscribeHash(listener: () => void) {
 export function SdlcScreen() {
   const param = useSyncExternalStore(subscribeHash, () => screenParam(location.hash));
   const [projectKey, number, tab] = param.split("/");
+  const filter = boardFilterOf(param);
   return (
     <QueryClientProvider client={queryClient}>
       <SdlcProvider env={useDesktopSdlcEnv()}>
         {!param ? (
           <ItemBoard />
+        ) : filter ? (
+          <ItemBoard key={param} initialProjectId={filter.projectId} initialModeRef={filter.modeRef} />
         ) : param === "new" ? (
           <NewItem
             onCreated={(item) => {
