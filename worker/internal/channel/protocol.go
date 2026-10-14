@@ -269,6 +269,91 @@ type AccountLoginEvent struct {
 	AccountID string `json:"accountId,omitempty"`
 }
 
+// ---- Terminal Leader (specs/010 lát đầu) ----
+
+// TermOpened: PTY đã chạy. AccountLabel nil khi chạy bằng đăng nhập mặc định của CLI.
+type TermOpened struct {
+	Type         string  `json:"type"`
+	V            int     `json:"v"`
+	ID           string  `json:"id"`
+	SessionID    string  `json:"sessionId"`
+	AccountLabel *string `json:"accountLabel"`
+	Permissions  string  `json:"permissions"`
+}
+
+// TermOutput: Data là byte thô của PTY đã che bí mật; encoding/json mã hoá base64 như hợp đồng đòi.
+type TermOutput struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	Seq       int64  `json:"seq"`
+	Data      []byte `json:"data"`
+}
+
+// TermExit: ExitCode nil khi CLI không tự thoát (đóng, không hoạt động, từ chối, lỗi); vẫn gửi `null`.
+type TermExit struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	ExitCode  *int   `json:"exitCode"`
+	Reason    string `json:"reason"`
+	Message   string `json:"message,omitempty"`
+}
+
+// TermOpen mở phiên `claude` tương tác. MCPToken chỉ đi vào file --mcp-config 0600 và bị che khỏi output; không ghi log.
+type TermOpen struct {
+	Type           string          `json:"type"`
+	V              int             `json:"v"`
+	ID             string          `json:"id"`
+	SessionID      string          `json:"sessionId"`
+	ProjectID      string          `json:"projectId"`
+	PlanID         string          `json:"planId,omitempty"`
+	Mode           string          `json:"mode"`
+	Cols           int             `json:"cols"`
+	Rows           int             `json:"rows"`
+	CLI            string          `json:"cli"`
+	RepoURL        string          `json:"repoUrl"`
+	BaseBranch     string          `json:"baseBranch"`
+	ProjectKey     string          `json:"projectKey"`
+	AccountID      string          `json:"accountId,omitempty"`
+	Model          string          `json:"model"`
+	Effort         string          `json:"effort,omitempty"`
+	Advisor        string          `json:"advisor,omitempty"`
+	RunPermissions string          `json:"runPermissions"`
+	FullAllowed    bool            `json:"fullAllowed"`
+	MCPToken       string          `json:"mcpToken"`
+	SystemPrompt   string          `json:"systemPrompt"`
+	TokenSaving    json.RawMessage `json:"tokenSaving,omitempty"`
+}
+
+// TermInput là phím người mở gõ; Data base64 trong JSON.
+type TermInput struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	Data      []byte `json:"data"`
+}
+
+type TermResize struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	Cols      int    `json:"cols"`
+	Rows      int    `json:"rows"`
+}
+
+type TermClose struct {
+	Type      string `json:"type"`
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	Reason    string `json:"reason,omitempty"`
+}
+
 // newMessage trả con trỏ tới struct đúng loại gói, nil nếu loại lạ. Dùng khi giải mã gói theo `type`.
 func newMessage(msgType string) any {
 	switch msgType {
@@ -318,6 +403,20 @@ func newMessage(msgType string) any {
 		return &AccountLoginCancel{}
 	case "account_login_event":
 		return &AccountLoginEvent{}
+	case "term_opened":
+		return &TermOpened{}
+	case "term_output":
+		return &TermOutput{}
+	case "term_exit":
+		return &TermExit{}
+	case "term_open":
+		return &TermOpen{}
+	case "term_input":
+		return &TermInput{}
+	case "term_resize":
+		return &TermResize{}
+	case "term_close":
+		return &TermClose{}
 	}
 	return nil
 }
