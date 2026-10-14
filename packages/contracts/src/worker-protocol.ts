@@ -164,6 +164,17 @@ export const rtkUsage = z.object({
 export type RtkUsage = z.output<typeof rtkUsage>;
 
 /**
+ * Số liệu tiết kiệm token của worker trong lần thử: số file của context pack tiêm vào đầu run, số lệnh khảo sát bị hook
+ * ngân sách chặn trước lần sửa đầu, số ký tự output tool đã cắt khỏi ngữ cảnh. Luỹ kế như các trường cost.
+ */
+export const guardUsage = z.object({
+  contextPackFiles: z.number().int().min(0),
+  exploreBlocked: z.number().int().min(0),
+  truncatedChars: z.number().int().min(0),
+});
+export type GuardUsage = z.output<typeof guardUsage>;
+
+/**
  * `data` của sự kiện `cost`: usage luỹ kế của lần thử (không phải phần tăng thêm), gửi khi đổi, tối đa 5 giây một lần
  * và một lần cuối trước run_result. Trường CLI không báo là null.
  */
@@ -187,6 +198,8 @@ export const costEventData = z.object({
    * gặp loại sự kiện lạ). Chỉ gửi khi run đã dùng RTK.
    */
   rtk: rtkUsage.optional(),
+  /** Số của context pack, ngân sách khảo sát và cắt output; cùng lý do với `rtk`. Chỉ gửi khi run dùng chúng. */
+  guard: guardUsage.optional(),
 });
 export type CostEventData = z.output<typeof costEventData>;
 
@@ -213,6 +226,28 @@ export const steerResultData = z.object({
   reason: z.string().max(500).optional(),
 });
 export type SteerResultData = z.output<typeof steerResultData>;
+
+/**
+ * `POST /api/v1/run/skills` (Bearer run token): skill áp cho dự án của run, để worker chép vào `.claude/skills/` của
+ * worktree trước khi chạy Claude Code. Đi ngoài kênh WSS vì bộ skill nặng vài MB, không hợp với job_offer. `have` là
+ * hash worker đã có trong cache: hub bỏ `files` của những skill đó.
+ */
+export const runSkillsRequest = z.object({
+  have: z
+    .array(z.string().regex(/^[0-9a-f]{64}$/))
+    .max(500)
+    .default([]),
+});
+export const runSkill = z.object({
+  name: z.string(),
+  /** sha256 của nội dung skill; đổi nội dung thì đổi hash. */
+  hash: z.string(),
+  /** `hive` là bộ skill mặc định; còn lại là skill của tổ chức, đội, dự án trên hub. */
+  source: z.enum(["hive", "org", "team", "project"]),
+  files: z.array(z.object({ path: z.string(), text: z.string() })).optional(),
+});
+export const runSkillsResponse = z.object({ skills: z.array(runSkill) });
+export type RunSkillsResponse = z.output<typeof runSkillsResponse>;
 
 export const runEvent = z.object({
   ...envelope("run_event"),
@@ -462,6 +497,129 @@ export const sdlcReportArtifacts = z
   .max(SDLC_ARTIFACT_LIMITS.files);
 export type SdlcReportArtifacts = z.output<typeof sdlcReportArtifacts>;
 
+// ---- Terminal Leader trên máy dùng chung (specs/010 lát đầu, ADR 0019) ----
+
+/** Capability worker khai trong hello khi giữ được phiên PTY tương tác. Hub chỉ gửi `term_*` cho máy có capability này. */
+export const TERMINAL_CAPABILITY = "terminal";
+
+/**
+ * Giới hạn chung của phiên terminal. `outputBytes`/`inputBytes` là byte trước base64. Worker gom output `flushMs` rồi
+ * gửi, tối đa `outputRateBytes` mỗi giây cho một phiên; quá thì chờ (CLI bị chặn ghi), không bỏ byte. Không có input và
+ * output trong `idleSec` thì worker đóng phiên.
+ */
+export const TERMINAL_LIMITS = {
+  outputBytes: 32_768,
+  inputBytes: 4096,
+  flushMs: 40,
+  outputRateBytes: 256 * 1024,
+  idleSec: 1800,
+  sessionsPerMachine: 4,
+} as const;
+
+/** Đề xuất (mặc định, LEAD-02: hành động thành đề xuất chờ duyệt) hay Bypass (gọi tool hub thẳng với quyền người mở). */
+export const terminalMode = z.enum(["propose", "bypass"]);
+export type TerminalMode = z.output<typeof terminalMode>;
+
+const termSessionId = z.uuid();
+export const terminalCols = z.number().int().min(20).max(500);
+export const terminalRows = z.number().int().min(5).max(200);
+/** Chuỗi base64 giải ra tối đa `bytes` byte (đếm theo byte thật, không theo độ dài chuỗi, vì 4/3 làm tròn lên). */
+export const base64Max = (bytes: number) =>
+  z
+    .base64()
+    .max(Math.ceil(bytes / 3) * 4)
+    .refine((s) => (s.length / 4) * 3 - (s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0) <= bytes, {
+      message: `Tối đa ${bytes} byte.`,
+    });
+
+/**
+ * Lý do phiên kết thúc: `exit` CLI tự thoát, `closed` hub/người dùng đóng, `idle` quá `idleSec` không hoạt động,
+ * `denied` worker từ chối mở (máy không dùng chung, quá số phiên, gói không dùng được), `error` lỗi khi chuẩn bị.
+ */
+export const termExitReason = z.enum(["exit", "closed", "idle", "denied", "error"]);
+export type TermExitReason = z.output<typeof termExitReason>;
+
+/** PTY đã chạy. `accountLabel` là nhãn gói (không có token hay email). */
+export const termOpened = z.object({
+  ...envelope("term_opened"),
+  sessionId: termSessionId,
+  accountLabel: z.string().max(80).nullable(),
+  /** Quyền thật worker áp sau khi xét công tắc toàn quyền của máy (ADR 0020); hub ghi lại để hiện cho người mở. */
+  permissions: z.enum(["workspace", "full"]),
+});
+
+/** Output của PTY, đã che bí mật worker biết (token MCP của phiên, token gói). `seq` tăng dần từ 0 trong một phiên. */
+export const termOutput = z.object({
+  ...envelope("term_output"),
+  sessionId: termSessionId,
+  seq,
+  data: base64Max(TERMINAL_LIMITS.outputBytes),
+});
+
+export const termExit = z.object({
+  ...envelope("term_exit"),
+  sessionId: termSessionId,
+  exitCode: z.number().int().nullable(),
+  reason: termExitReason,
+  /** Câu tiếng Việt cho người dùng (vd. lý do từ chối). */
+  message: z.string().max(500).optional(),
+});
+
+/**
+ * Mở phiên `claude` tương tác trong worktree tạm của dự án (tách HEAD trên nhánh mặc định, không đẩy). Hub chỉ gửi tới
+ * máy dùng chung có capability `terminal`; worker vẫn tự từ chối khi hub chưa báo máy dùng chung. `mcpToken` là token
+ * MCP có phạm vi của phiên, chỉ ghi vào file `--mcp-config` 0600 và bị che khỏi output.
+ */
+export const termOpen = z.object({
+  ...envelope("term_open"),
+  sessionId: termSessionId,
+  projectId: z.string().min(1).max(64),
+  planId: z.string().min(1).max(64).optional(),
+  mode: terminalMode,
+  cols: terminalCols,
+  rows: terminalRows,
+  cli: z.literal("claude"),
+  repoUrl: z.string().min(1).max(2000),
+  baseBranch: z.string().min(1).max(255),
+  projectKey: z.string().min(1).max(100),
+  /** Gói (tài khoản trong accounts.json) người mở chọn; bỏ trống thì worker tự chọn gói rảnh. */
+  accountId: z.string().min(1).max(64).optional(),
+  model: z.string().min(1).max(100),
+  effort: z.enum(["low", "medium", "high"]).optional(),
+  /** Model cố vấn (`--advisor`); worker bỏ khi CLI chưa hỗ trợ. */
+  advisor: z.string().min(1).max(100).optional(),
+  /** Quyền dự án xin; worker áp `projects.Effective` như run (toàn quyền chỉ khi máy bật cho dự án). */
+  runPermissions: z.enum(["workspace", "full"]),
+  /** Chính sách tổ chức cho toàn quyền (allowFullPermission). */
+  fullAllowed: z.boolean(),
+  mcpToken: z.string().min(1).max(4000),
+  /** Lời dặn thêm vào system prompt của Claude (`--append-system-prompt`): vai trò Leader, chế độ, cách đề xuất. */
+  systemPrompt: z.string().max(20_000),
+  /** Cài đặt "Tiết kiệm token" của dự án (như `jobOffer.spec.tokenSaving`); worker cũ bỏ qua. */
+  tokenSaving: z.record(z.string(), z.unknown()).optional(),
+});
+
+/** Phím người mở gõ trên web. Hub chỉ chuyển của chủ phiên, sau giới hạn tốc độ. */
+export const termInput = z.object({
+  ...envelope("term_input"),
+  sessionId: termSessionId,
+  data: base64Max(TERMINAL_LIMITS.inputBytes),
+});
+
+export const termResize = z.object({
+  ...envelope("term_resize"),
+  sessionId: termSessionId,
+  cols: terminalCols,
+  rows: terminalRows,
+});
+
+/** Đóng phiên: worker dừng cả nhóm tiến trình, xoá worktree tạm, trả `term_exit` lý do `closed`. */
+export const termClose = z.object({
+  ...envelope("term_close"),
+  sessionId: termSessionId,
+  reason: z.string().max(200).optional(),
+});
+
 export const workerToHub = z.discriminatedUnion("type", [
   hello,
   heartbeat,
@@ -471,6 +629,9 @@ export const workerToHub = z.discriminatedUnion("type", [
   logChunk,
   runResult,
   accountLoginEvent,
+  termOpened,
+  termOutput,
+  termExit,
 ]);
 export const hubToWorker = z.discriminatedUnion("type", [
   welcome,
@@ -488,6 +649,10 @@ export const hubToWorker = z.discriminatedUnion("type", [
   accountLoginStart,
   accountLoginInput,
   accountLoginCancel,
+  termOpen,
+  termInput,
+  termResize,
+  termClose,
 ]);
 export type WorkerToHub = z.output<typeof workerToHub>;
 export type HubToWorker = z.output<typeof hubToWorker>;

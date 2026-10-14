@@ -69,13 +69,17 @@ function TableCaption({ className, ...props }: React.ComponentProps<"caption">) 
   );
 }
 
-/** Hive: tiêu đề cột chữ hoa nhỏ, dùng trong bảng viết bằng thẻ <thead>/<tr> thường. */
-function Th({ className, ...props }: React.ComponentProps<"th">) {
+/**
+ * Hive: tiêu đề cột dùng trong bảng viết bằng thẻ <thead>/<tr> thường. `caps` (mặc định, app máy) là chữ hoa nhỏ;
+ * `plain` là chữ thường cỡ xs như DataTable, dùng cho trang quản trị web (docs/design-system/admin-layout.md).
+ */
+function Th({ className, variant = "caps", ...props }: React.ComponentProps<"th"> & { variant?: "caps" | "plain" }) {
   return (
     <th
       data-slot="table-head"
       className={cn(
-        "h-9 border-b border-border px-3 text-left align-middle text-2xs font-semibold tracking-caps whitespace-nowrap text-muted-foreground uppercase",
+        "border-b border-border px-3 text-left align-middle whitespace-nowrap text-muted-foreground",
+        variant === "caps" ? "h-9 text-2xs font-semibold tracking-caps uppercase" : "h-10 bg-card text-xs font-medium",
         className,
       )}
       {...props}

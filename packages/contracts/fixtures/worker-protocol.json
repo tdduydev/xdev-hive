@@ -136,6 +136,31 @@
       "kind": "done",
       "text": "",
       "accountId": "claude-2"
+    },
+    {
+      "type": "term_opened",
+      "v": 1,
+      "id": "m-term-opened",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "accountLabel": "Gói Max đội A",
+      "permissions": "workspace"
+    },
+    {
+      "type": "term_output",
+      "v": 1,
+      "id": "m-term-out",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "seq": 0,
+      "data": "G1szMm0+IBtbMG1YaW4gY2jDoG8NCg=="
+    },
+    {
+      "type": "term_exit",
+      "v": 1,
+      "id": "m-term-exit",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "exitCode": null,
+      "reason": "idle",
+      "message": "Phiên không hoạt động quá 30 phút nên đã đóng."
     }
   ],
   "hubToWorker": [
@@ -255,6 +280,53 @@
       "v": 1,
       "id": "h-login-cancel",
       "requestId": "login-1"
+    },
+    {
+      "type": "term_open",
+      "v": 1,
+      "id": "h-term-open",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "projectId": "0a0a0a0a-0000-4000-8000-000000000003",
+      "mode": "propose",
+      "cols": 120,
+      "rows": 32,
+      "cli": "claude",
+      "repoUrl": "https://github.com/acme/web.git",
+      "baseBranch": "main",
+      "projectKey": "WEB",
+      "accountId": "claude-2",
+      "model": "sonnet",
+      "effort": "high",
+      "advisor": "opus",
+      "runPermissions": "full",
+      "fullAllowed": true,
+      "mcpToken": "eyJhbGciOi.terminal.token",
+      "systemPrompt": "Bạn là Leader của dự án WEB.",
+      "tokenSaving": {
+        "enabled": true
+      }
+    },
+    {
+      "type": "term_input",
+      "v": 1,
+      "id": "h-term-in",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "data": "eGluIGNow6BvDQ=="
+    },
+    {
+      "type": "term_resize",
+      "v": 1,
+      "id": "h-term-resize",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "cols": 100,
+      "rows": 30
+    },
+    {
+      "type": "term_close",
+      "v": 1,
+      "id": "h-term-close",
+      "sessionId": "0a0a0a0a-0000-4000-8000-0000000000a1",
+      "reason": "Người mở đã đóng phiên."
     }
   ]
 }

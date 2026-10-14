@@ -1,9 +1,10 @@
 import { PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { AccountDialog } from "@/components/account-dialog.tsx";
+import { ConnectHive } from "@/components/connect-hive.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
 import { UpdateBanner } from "@/components/update-banner.tsx";
-import { AccountContext, profileOf, useAccount } from "@/lib/account.ts";
+import { AccountContext, ConnectContext, profileOf, useAccount } from "@/lib/account.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
 import { setNavCollapsed, useNavCollapsed } from "@/lib/nav-collapsed.ts";
@@ -23,27 +24,38 @@ function subscribe(listener: () => void) {
 }
 
 /**
- * Cửa sổ app cục bộ: AppNav bên trái, màn theo `#/<id>` bên phải. Hồ sơ menu tính từ vai trò của tài khoản đã liên kết
- * (token cá nhân trong keychain); chưa liên kết thì dev. Hồ sơ chỉ quyết định menu, hub kiểm từng thao tác.
+ * Cửa sổ app cục bộ: AppNav bên trái, màn theo `#/<id>` bên phải. App là client, không bắt đăng nhập: mở thẳng giao
+ * diện chính, màn tại máy dùng đủ; màn chỉ có dữ liệu trên hub thì mời kết nối Hive khi chưa liên kết tài khoản. Hồ sơ
+ * menu tính từ vai trò của tài khoản đã liên kết (token cá nhân trong keychain); chưa liên kết thì dev. Hồ sơ chỉ quyết
+ * định menu, hub kiểm từng thao tác.
  */
 export function AppShell({ profile: forced }: { profile?: Profile }) {
-  const { status, setStatus } = useAccount();
+  const { status, error, refresh, setStatus } = useAccount();
   const [accountOpen, setAccountOpen] = useState(false);
   const account = status?.account ?? null;
   const profile = forced ?? profileOf(account);
   const lang = useLang();
   const t = useT(text);
   const worker = useWorkerState();
+  // Máy vừa đăng ký ở cửa sổ khác (khay → Bật worker): hub của worker đổi thì đọc lại tài khoản, không bắt mở lại app.
+  const workerHub = worker?.hub ?? null;
+  useEffect(() => {
+    if (workerHub && status && status.hub !== workerHub) void refresh();
+  }, [workerHub, status, refresh]);
   const active = useSyncExternalStore(
     subscribe,
     () => screenFromHash(location.hash),
     () => "home" as const,
   );
   const item = NAV_ITEMS.find((i) => i.id === active) ?? NAV_ITEMS[0];
-  const Screen = SCREENS[active];
-  const bleed = !!Screen && FULL_BLEED.has(active);
+  // Đang đọc trạng thái tài khoản thì chưa vẽ màn hub, để không loé lời mời kết nối với người đã đăng nhập.
+  const checked = status !== null || error !== null;
+  const needsHub = !!item?.hub && !account;
+  const Screen = needsHub ? (checked ? ConnectHive : Pending) : SCREENS[active];
+  const bleed = !!Screen && !needsHub && FULL_BLEED.has(active);
   // Người dùng chưa chọn thì menu tự thu gọn ở màn cần chỗ; đã chọn thì giữ lựa chọn ở mọi màn.
   const collapsed = useNavCollapsed() ?? bleed;
+  const openAccount = () => setAccountOpen(true);
   return (
     <div className="flex h-svh flex-col">
       <UpdateBanner />
@@ -52,7 +64,8 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
           profile={profile}
           active={active}
           account={account}
-          onAccount={() => setAccountOpen(true)}
+          onAccount={openAccount}
+          connected={!!account}
           worker={worker}
           compact={collapsed}
         />
@@ -78,11 +91,17 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
           </header>
           <div className={bleed ? "flex min-h-0 flex-1" : "p-5"}>
             <AccountContext.Provider value={account}>
-              <Screen />
+              <ConnectContext.Provider value={openAccount}>
+                <Screen />
+              </ConnectContext.Provider>
             </AccountContext.Provider>
           </div>
         </main>
       </div>
     </div>
   );
+}
+
+function Pending() {
+  return null;
 }

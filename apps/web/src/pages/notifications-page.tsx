@@ -20,6 +20,7 @@ import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-sta
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { NOTIFICATION_EVENT_LABEL, NOTIFICATION_EVENTS, parseChannelForm } from "@/lib/notification-channels.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import { ChatSection } from "@/pages/chat-channels.tsx";
 import { Inbox } from "@/pages/notification-inbox.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -42,6 +43,7 @@ export function NotificationsPage() {
             </Card>
           )}
         </section>
+        <ChatSection key={`chat-${org.id}`} />
       </PageBody>
     </>
   );
