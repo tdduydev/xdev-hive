@@ -181,7 +181,16 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/cmd/hive/**`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: T002, T004, T011 · **Mức**: nặng
 
-- [ ] T013 [US1] Hub: module `terminal` lõi
+- [x] T013 [US1] Hub: module `terminal` lõi
+  - Đã làm (SPEC10W3): `record.ts` (worker mở phiên trước rồi báo `term_opened` có `origin`; hub chỉ ghi phiên của máy
+    cá nhân, chủ phiên là người đăng ký máy, tối đa `REMOTE_LIMITS.recordedSessionsPerMachine`; task/dự án đội khác bị bỏ
+    liên kết; `term_event` vào `terminal_events`; `term_ack` sau mỗi lần ghi, kể cả phiên hub không ghi, và không bao giờ
+    `term_close` phiên máy cá nhân), `queries.ts` + `remoteRouter` (`remote.machines|list|get|chunks|setVisibility`).
+    `fleet/gateway.ts`: hook `welcome` của module terminal → `features: ["terminal"]`, `owner`, `policy.totpFallback`
+    cho máy cá nhân có capability `terminal`; máy dùng chung chỉ nhận `owner.shared`. Máy mất kết nối không kết thúc phiên
+    máy cá nhân (worker gửi bù). `desktop-connect` `purpose: cli` + trang đồng ý trên web. Purge bản ghi cùng job
+    `runs-log-retention`. **Khác plan**: chưa gộp chunk 64 KiB/1 s ở hub (ghi từng gói; worker đã gộp 8 ms/32 KiB) — đo ở
+    T090 rồi mới làm nếu cần.
   - `gateway.ts` (handler `term_opened|output|event|exit|state`), `record.ts` (gộp 64 KiB/1 s, loại trùng offset, ack sau
     ghi, purge cùng cron `retention.ts`), `queries.ts`, `router.ts` (`machines`, `list`, `get`, `chunks`,
     `setVisibility`), `index.ts`; kiểm chủ máy, máy cá nhân, task thuộc dự án của đội máy (FR-030); audit `terminal.open`,
