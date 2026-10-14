@@ -30,6 +30,7 @@ type meter struct {
 	sentAt   time.Time
 	reason   string
 	rtk      *RTKUsage
+	guard    *GuardUsage
 }
 
 func newMeter(cli string, budget Budget, emit func(Usage) error, onExceed func(string)) *meter {
@@ -91,6 +92,7 @@ func (m *meter) flush(force bool) error {
 	m.sentAt = m.now()
 	u := m.parser.Usage()
 	u.RTK = m.rtk
+	u.Guard = m.guard
 	return m.emit(u)
 }
 
@@ -101,6 +103,17 @@ func (m *meter) setRTK(r *RTKUsage) {
 	}
 	m.mu.Lock()
 	m.rtk = r
+	m.dirty = true
+	m.mu.Unlock()
+}
+
+// setGuard gắn số của guard.go vào usage, gửi ở lần flush kế tiếp.
+func (m *meter) setGuard(g *GuardUsage) {
+	if m.parser == nil {
+		return
+	}
+	m.mu.Lock()
+	m.guard = g
 	m.dirty = true
 	m.mu.Unlock()
 }
