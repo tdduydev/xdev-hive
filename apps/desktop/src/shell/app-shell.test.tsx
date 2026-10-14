@@ -16,6 +16,7 @@ describe("menu theo hồ sơ", () => {
       "sdlc",
       "sdlc-questions",
       "sdlc-progress",
+      "sdlc-metrics",
       "knowledge",
       "write",
       "docs",
@@ -39,6 +40,7 @@ describe("menu theo hồ sơ", () => {
       "sdlc",
       "sdlc-questions",
       "sdlc-progress",
+      "sdlc-metrics",
       "knowledge",
       "write",
       "docs",
@@ -59,7 +61,7 @@ describe("menu theo hồ sơ", () => {
     const groups = navGroups("lead");
     expect(groups.map((g) => [g.label.vi, g.items.map((i) => i.label.vi)])).toEqual([
       ["Công việc", ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"]],
-      ["AI SDLC", ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ"]],
+      ["AI SDLC", ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ", "Chỉ số"]],
       ["Tài liệu", ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"]],
       [
         "Máy này",
@@ -83,7 +85,7 @@ describe("menu theo hồ sơ", () => {
     const groups = navGroups("writer");
     expect(groups.map((g) => [g.id, g.items.map((i) => i.id)])).toEqual([
       ["work", ["home", "reviews"]],
-      ["sdlc", ["sdlc", "sdlc-questions", "sdlc-progress"]],
+      ["sdlc", ["sdlc", "sdlc-questions", "sdlc-progress", "sdlc-metrics"]],
       ["docs", ["knowledge", "write", "docs"]],
       ["machine", ["skills", "tokens", "memory"]],
     ]);
@@ -162,7 +164,7 @@ describe("AppShell", () => {
       ),
     ).toEqual([
       ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"],
-      ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ"],
+      ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ", "Chỉ số"],
       ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"],
       [
         "Gói agent",
@@ -225,7 +227,17 @@ describe("chưa đăng nhập", () => {
   it("màn chỉ có dữ liệu trên hub mời kết nối Hive, nút mở hộp thoại tài khoản", async () => {
     render(<AppShell />);
     const user = userEvent.setup();
-    for (const id of ["work", "reviews", "sdlc", "sdlc-questions", "sdlc-progress", "knowledge", "write", "runs"]) {
+    for (const id of [
+      "work",
+      "reviews",
+      "sdlc",
+      "sdlc-questions",
+      "sdlc-progress",
+      "sdlc-metrics",
+      "knowledge",
+      "write",
+      "runs",
+    ]) {
       await open(id);
       expect(await screen.findByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeTruthy();
     }
@@ -255,6 +267,7 @@ describe("chưa đăng nhập", () => {
       "#/sdlc",
       "#/sdlc-questions",
       "#/sdlc-progress",
+      "#/sdlc-metrics",
       "#/knowledge",
       "#/write",
       "#/runs",

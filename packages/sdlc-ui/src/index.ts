@@ -1,6 +1,7 @@
 // Màn AI SDLC dùng chung cho web và app desktop (specs/011 plan.md D16). App chủ chỉ dựng route, menu và `SdlcEnv`.
 export { AutoApproval, AutoApprovalBadge, formatScore } from "./auto-approval.tsx";
 export { ContractsPanel } from "./contracts-panel.tsx";
+export { ConvergePanel, convergeSteps } from "./converge-panel.tsx";
 export {
   type Lang,
   type SdlcCan,
@@ -15,6 +16,7 @@ export { formatUsd, formatWhen } from "./format.ts";
 export { type BoardView, ItemBoard, type ItemBoardProps } from "./item-board.tsx";
 export { ITEM_TABS, ItemDetail, type ItemDetailProps, TaskList } from "./item-detail.tsx";
 export { ItemCard, ItemList, type ItemListProps, ProjectChips } from "./item-list.tsx";
+export { formatHours, Metrics } from "./metrics.tsx";
 export { allowedModes, NewItem, type NewItemProps } from "./new-item.tsx";
 export { OverrideDialog, type OverrideDialogProps } from "./override-dialog.tsx";
 export { EmptyState } from "./parts.tsx";
