@@ -18,6 +18,7 @@ import {
   validateMembersSearch,
   validateOnboardingSearch,
   validateReviewsSearch,
+  validateRoleSearch,
   validateTasksSearch,
   validateTeamSearch,
   validateTeamsSearch,
@@ -39,6 +40,7 @@ const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-pa
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
 const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
+const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
 const CostsPage = lazyRouteComponent(() => import("@/pages/costs-page.tsx"), "CostsPage");
 const DesktopConnectPage = lazyRouteComponent(() => import("@/pages/desktop-connect-page.tsx"), "DesktopConnectPage");
 const HomePage = lazyRouteComponent(() => import("@/pages/home-page.tsx"), "HomePage");
@@ -315,6 +317,14 @@ const machinesRoute = createRoute({
 const gitRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/git", component: GitConnectionsPage });
 const costsRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/costs", component: CostsPage });
 
+/** Trang một vai trò (ADMIN-G3): danh sách /admin/roles nằm trong v2Routes. */
+const roleRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/admin/roles/$roleId",
+  validateSearch: validateRoleSearch,
+  component: RoleDetailPage,
+});
+
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
 const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
@@ -371,6 +381,7 @@ const routeTree = rootRoute.addChildren([
         machinesRoute,
         gitRoute,
         costsRoute,
+        roleRoute,
         ...v2Routes,
       ]),
     ]),

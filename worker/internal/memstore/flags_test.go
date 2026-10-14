@@ -1,9 +1,11 @@
 package memstore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -71,6 +73,10 @@ func TestMarkdownLinksAndOrphans(t *testing.T) {
 
 func TestStaleReferencesAndThresholds(t *testing.T) {
 	home := fakeHome(t)
+	// Runner Windows chậm hoặc đang tải có thể làm git quá 800ms; ở đây chỉ kiểm logic.
+	totalBudget, callBudget := gitTotalBudget, gitCallBudget
+	gitTotalBudget, gitCallBudget = time.Minute, 30*time.Second
+	t.Cleanup(func() { gitTotalBudget, gitCallBudget = totalBudget, callBudget })
 	repo := filepath.Join(home, "repo")
 	writeFixture(t, filepath.Join(repo, "src", "current.go"), "package current\nfunc stillPresent() {}\n")
 	gitFixture(t, repo, "init", "-q")
@@ -133,6 +139,16 @@ func TestRepoGrepBudgetCacheAndFailure(t *testing.T) {
 	p.valid = false
 	if p.missing(reference{value: "src/gone.go", path: true}) {
 		t.Fatal("non-git folders must not mark repo references stale")
+	}
+}
+
+func TestRunGitTimeoutIsNotNoMatch(t *testing.T) {
+	folder := fakeHome(t)
+	gitFixture(t, folder, "init", "-q")
+	_, err := runGit(folder, 200*time.Millisecond, "-c", "alias.slow=!sleep 5", "slow")
+	var exit *exec.ExitError
+	if err == nil || errors.As(err, &exit) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timeout must not look like git grep exit 1, got %v", err)
 	}
 }
 

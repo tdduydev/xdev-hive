@@ -1,4 +1,14 @@
-import { type ChecklistItem, type ReviewGate, type ReviewPhase, reviewGate, type SlaState } from "@xdev-hive/contracts";
+import {
+  type BreakdownContext,
+  type ChecklistItem,
+  coverage,
+  parseBreakdown,
+  type ReviewGate,
+  type ReviewPhase,
+  reviewGate,
+  type SdlcDecomposition,
+  type SlaState,
+} from "@xdev-hive/contracts";
 
 /** Gate trải phẳng theo thứ tự chạy, kèm giai đoạn chứa nó. */
 export interface FlatGate {
@@ -54,10 +64,21 @@ export function formattingOnly(before: string, after: string): boolean {
   return before !== after && norm(before) === norm(after);
 }
 
+/** Cách đọc bản tách và requirement của hạng mục AI SDLC; chỉ `sdlc` biết, nên deps của `knowledge` đưa vào. */
+export interface BreakdownRuleInput {
+  decomposition: Pick<SdlcDecomposition, "parser" | "granularity" | "requirementId" | "maxTasks" | "maxChecklist">;
+  context: BreakdownContext;
+  /** Requirement đã đọc từ tài liệu yêu cầu, theo thứ tự xuất hiện. */
+  requirements: readonly string[];
+}
+
 export interface GateContext {
   docType: string;
   content: string;
   base: string;
+  /** Số câu hỏi mở của hạng mục (bảng của `sdlc`); không có khi tài liệu không thuộc hạng mục. */
+  openQuestions?: number | undefined;
+  breakdown?: BreakdownRuleInput | undefined;
 }
 
 /** Gate có chạy với đề xuất này không, kèm lý do để hiện ở bản chạy thử và ở phiên duyệt. */
@@ -84,18 +105,36 @@ export interface Requirement {
   acceptance: string[];
 }
 
-const REQ_LINE = /^\s*(?:[-*+]\s+|#{1,6}\s+|\d+[.)]\s+)?(?:\*\*)?\s*(R-\d+)\b\s*(?:\*\*)?\s*[:.)\-–—]?\s*(.*)$/;
+/** Mã requirement mặc định của tài liệu thường; chế độ AI SDLC đưa mẫu riêng (`FR-\d{3}` của Spec Kit…). */
+export const DEFAULT_REQUIREMENT_ID = "R-\\d+";
+
+// Tên nhóm để mẫu của người dùng có nhóm riêng vẫn không làm lệch số nhóm.
+const reqLine = (id: string) =>
+  new RegExp(
+    `^\\s*(?:[-*+]\\s+|#{1,6}\\s+|\\d+[.)]\\s+)?(?:\\*\\*)?\\s*(?<id>${id})\\b\\s*(?:\\*\\*)?\\s*[:.)\\-–—]?\\s*(?<text>.*)$`,
+  );
+const REQ_LINES = new Map<string, RegExp>([[DEFAULT_REQUIREMENT_ID, reqLine(DEFAULT_REQUIREMENT_ID)]]);
 const HEADING = /^\s*#{1,6}\s/;
 const ACCEPTANCE = /(tiêu chí|chấp nhận|acceptance|\bAC\b|^\s*[-*]?\s*(given|when|then|cho|khi|thì)\b)/i;
 
-/** Yêu cầu có mã R-n và các dòng tiêu chí chấp nhận nằm trong khối của nó (tới yêu cầu hay tiêu đề kế tiếp). */
-export function requirementsOf(content: string): Requirement[] {
+/**
+ * Yêu cầu có mã (mặc định R-n, hoặc mẫu `idPattern` của chế độ) và các dòng tiêu chí chấp nhận nằm trong khối của nó
+ * (tới yêu cầu hay tiêu đề kế tiếp).
+ */
+export function requirementsOf(content: string, idPattern?: string | RegExp): Requirement[] {
+  const source =
+    idPattern === undefined ? DEFAULT_REQUIREMENT_ID : typeof idPattern === "string" ? idPattern : idPattern.source;
+  let re = REQ_LINES.get(source);
+  if (!re) {
+    re = reqLine(source);
+    REQ_LINES.set(source, re);
+  }
   const out: Requirement[] = [];
   let cur: Requirement | null = null;
   for (const line of content.split("\n")) {
-    const m = REQ_LINE.exec(line);
-    if (m?.[1]) {
-      cur = { id: m[1], text: (m[2] ?? "").trim(), acceptance: [] };
+    const m = re.exec(line);
+    if (m?.groups?.id) {
+      cur = { id: m.groups.id, text: (m.groups.text ?? "").trim(), acceptance: [] };
       if (!out.some((r) => r.id === cur?.id)) out.push(cur);
       continue;
     }
@@ -117,6 +156,85 @@ const SECRETS: [RegExp, string][] = [
   [/\bsk-[A-Za-z0-9_-]{20,}\b/, "khoá API (sk-…)"],
   [/\b(hive_pat|hwm|hwr)_[A-Za-z0-9_-]{16,}\b/, "token xDev Hive"],
 ];
+
+const OPEN_MARKER = /\[NEEDS CLARIFICATION/gi;
+const NOT_IN_ITEM = "Tài liệu không thuộc hạng mục AI SDLC nên không kiểm được.";
+
+/** Dấu `[NEEDS CLARIFICATION` còn trong văn bản và câu hỏi mở đã ghi ở hạng mục (do người dùng trả lời trước khi duyệt). */
+function openQuestionChecks(ctx: GateContext): ChecklistItem[] {
+  const lines = ctx.content.split("\n").flatMap((l, i) => (l.match(OPEN_MARKER) ? [i + 1] : []));
+  const out: ChecklistItem[] = [
+    {
+      label: "Không còn dấu [NEEDS CLARIFICATION]",
+      passed: lines.length === 0,
+      note: lines.length ? `Còn ở dòng ${lines.slice(0, 8).join(", ")}${lines.length > 8 ? "…" : ""}.` : null,
+    },
+  ];
+  if (ctx.openQuestions !== undefined)
+    out.push({
+      label: "Không còn câu hỏi mở của hạng mục",
+      passed: ctx.openQuestions === 0,
+      note: ctx.openQuestions ? `Còn ${ctx.openQuestions} câu hỏi chưa trả lời.` : null,
+    });
+  return out;
+}
+
+/** Bộ đọc của contracts ném lỗi khi chưa cài (khung của spec 011 T003): báo là không đạt thay vì làm hỏng phiên duyệt. */
+function readBreakdown(ctx: GateContext) {
+  const b = ctx.breakdown;
+  if (!b) return null;
+  try {
+    return parseBreakdown(ctx.content, b.decomposition, b.context);
+  } catch (e) {
+    return {
+      ok: false as const,
+      breakdown: null,
+      errors: [{ line: 0, message: e instanceof Error ? e.message : String(e) }],
+    };
+  }
+}
+
+const errorNote = (errors: { message: string }[]) =>
+  `${errors
+    .slice(0, 5)
+    .map((e) => e.message)
+    .join(" ")}${errors.length > 5 ? ` (và ${errors.length - 5} lỗi khác)` : ""}`;
+
+/** Bản tách đọc được: task có phụ thuộc hợp lệ, không vượt giới hạn của chế độ. */
+function breakdownChecks(ctx: GateContext): ChecklistItem[] {
+  const res = readBreakdown(ctx);
+  if (!res) return [{ label: "Bản tách task đọc được", passed: false, note: NOT_IN_ITEM }];
+  if (!res.ok) return [{ label: "Bản tách task đọc được", passed: false, note: errorNote(res.errors) }];
+  return [
+    { label: "Bản tách task đọc được", passed: true, note: null },
+    {
+      label: "Có ít nhất một task",
+      passed: res.breakdown.tasks.length > 0,
+      note: res.breakdown.tasks.length ? null : "Chưa có task nào.",
+    },
+  ];
+}
+
+/** Mọi requirement của tài liệu yêu cầu có ít nhất một task chứa nó. */
+function coverageChecks(ctx: GateContext): ChecklistItem[] {
+  const label = "Mọi requirement đều có task";
+  const res = readBreakdown(ctx);
+  if (!res || !ctx.breakdown) return [{ label, passed: false, note: NOT_IN_ITEM }];
+  if (!res.ok)
+    return [{ label, passed: false, note: `Bản tách chưa đọc được nên chưa tính độ phủ: ${errorNote(res.errors)}` }];
+  if (!ctx.breakdown.requirements.length)
+    return [{ label, passed: false, note: "Không thấy requirement nào ở tài liệu yêu cầu." }];
+  const { missing } = coverage(ctx.breakdown.requirements, res.breakdown);
+  return [
+    {
+      label,
+      passed: missing.length === 0,
+      note: missing.length
+        ? `Chưa có task cho ${missing.slice(0, 10).join(", ")}${missing.length > 10 ? "…" : ""}.`
+        : null,
+    },
+  ];
+}
 
 /** Kết quả các quy tắc của gate `rule`. */
 export function ruleChecklist(gate: ReviewGate, ctx: GateContext): ChecklistItem[] {
@@ -141,6 +259,12 @@ export function ruleChecklist(gate: ReviewGate, ctx: GateContext): ChecklistItem
           passed: r.acceptance.length > 0,
           note: r.acceptance.length ? null : "Thêm tiêu chí chấp nhận cho yêu cầu này.",
         });
+    } else if (rule === "no-open-questions") {
+      out.push(...openQuestionChecks(ctx));
+    } else if (rule === "breakdown") {
+      out.push(...breakdownChecks(ctx));
+    } else if (rule === "coverage") {
+      out.push(...coverageChecks(ctx));
     } else if (rule === "no-secrets") {
       const found = SECRETS.filter(([re]) => re.test(ctx.content)).map(([, name]) => name);
       out.push({

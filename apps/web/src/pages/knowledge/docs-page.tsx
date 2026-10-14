@@ -8,8 +8,17 @@ import { Markdown } from "@xdev-hive/ui/markdown";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { type FormEvent, useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { useT } from "@/lib/i18n.ts";
-import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "@/pages/knowledge/common.tsx";
+import {
+  authorLabel,
+  DetailCard,
+  EmptyRows,
+  KnowledgeLayout,
+  QueryState,
+  ScopeBadge,
+  When,
+} from "@/pages/knowledge/common.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
@@ -29,6 +38,7 @@ function DocsScreen() {
       label: t.docsTitle,
       value: (row) => row.title,
       sortable: true,
+      pin: "start",
       cell: (row) => (
         <div>
           <strong>{row.title}</strong>
@@ -36,32 +46,47 @@ function DocsScreen() {
         </div>
       ),
     },
-    { key: "key", label: "Key", value: (row) => row.key, hidden: true },
+    { key: "key", label: "Key", value: (row) => row.key, hidden: true, hideable: false },
     {
       key: "scope",
       label: t.scope,
       value: (row) => t[row.scope.level],
       cell: (row) => <ScopeBadge scope={row.scope} />,
     },
-    { key: "version", label: t.version, value: (row) => row.version, sortable: true, cell: (row) => `v${row.version}` },
-    { key: "author", label: t.author, value: (row) => authorLabel(row.updatedBy) },
-    { key: "updated", label: t.updated, value: (row) => row.updatedAt, sortable: true },
+    {
+      key: "version",
+      label: t.version,
+      value: (row) => row.version,
+      sortable: true,
+      align: "end",
+      cell: (row) => `v${row.version}`,
+    },
+    { key: "author", label: t.author, value: (row) => authorLabel(row.updatedBy), hidden: true },
+    {
+      key: "updated",
+      label: t.updated,
+      value: (row) => row.updatedAt,
+      sortable: true,
+      cell: (row) => <When iso={row.updatedAt} />,
+    },
   ];
   return (
     <KnowledgeLayout title={t.docsTitle} lead={t.docsLead} actions={<NewDoc />}>
-      <QueryState query={list} />
+      {list.isPending && <TableSkeleton label={t.loading} columns={4} />}
+      {list.isError && <LoadFailure error={list.error} retry={list.refetch} />}
       {list.data && (
         <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
           <DataTable
             columns={columns}
             rows={list.data}
+            minWidth={560}
             selectable={false}
             placeholder={t.docsSearch}
             facets={[{ key: "scope", label: t.scope, value: (row) => t[row.scope.level] }]}
             activeId={selected?.id ?? ""}
             rowLabel={(row) => row.title}
             onRowClick={setSelected}
-            emptyContent={t.empty}
+            emptyContent={<EmptyRows title={t.docsEmptyTitle} description={t.docsEmptyBody} />}
           />
           {selected ? <DocDetail key={selected.key} doc={selected} /> : <DetailCard>{t.choose}</DetailCard>}
         </div>
@@ -181,7 +206,7 @@ function DocDetail({ doc }: { doc: DocSummary }) {
               <ol className="space-y-2 text-xs text-muted-foreground">
                 {history.data.map((item) => (
                   <li key={item.version}>
-                    v{item.version} · {authorLabel(item.author)} · {item.createdAt}
+                    v{item.version} · {authorLabel(item.author)} · <When iso={item.createdAt} />
                     <p>{item.message}</p>
                   </li>
                 ))}

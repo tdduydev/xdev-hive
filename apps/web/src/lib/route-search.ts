@@ -121,3 +121,10 @@ export function validateMembersSearch(search: Record<string, unknown>): MembersS
 export function validateMachinesSearch(search: Record<string, unknown>): { them?: true } {
   return search.them === true || search.them === 1 || search.them === "1" ? { them: true } : {};
 }
+
+/** Tab của trang một vai trò (/admin/roles/$roleId); không có là Quyền. */
+export type RoleTab = "nguoi";
+
+export function validateRoleSearch(search: Record<string, unknown>): { tab?: RoleTab } {
+  return search.tab === "nguoi" ? { tab: search.tab } : {};
+}
