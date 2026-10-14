@@ -205,6 +205,8 @@ export const codeReviewDecideInput = z
     /** Đầu PR người duyệt đã xem; khác đầu hiện tại thì hub từ chối (FR-021). */
     headSha: sha,
     decision: z.enum(["approve", "changes"]),
+    /** Nút chat gắn với lượt checkpoint đã thông báo, không quyết được lượt tiếp theo trên cùng SHA. */
+    gateRunId: id.optional(),
     note: z.string().trim().max(4000).optional(),
     /** Bỏ trống là hướng mặc định của checkpoint. */
     route: rejectRoute.optional(),

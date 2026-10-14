@@ -34,7 +34,9 @@ export interface TerminalDeps {
 }
 
 type SessionRow = typeof terminalSessions.$inferSelect;
-type Joined = SessionRow & { projectKey: string; projectName: string; machineName: string; ownerName: string | null };
+/** Phiên Leader: ràng buộc `terminal_sessions_hub_fields` bảo đảm có dự án, chế độ và model. */
+type LeaderRow = SessionRow & { projectId: string; mode: NonNullable<SessionRow["mode"]>; model: string };
+type Joined = LeaderRow & { projectKey: string; projectName: string; machineName: string; ownerName: string | null };
 
 const ACTIVE = ["opening", "running"] as const;
 
@@ -59,7 +61,7 @@ async function joined(tx: Tx, where: ReturnType<typeof sql>): Promise<Joined[]> 
       join hive.projects p on p.id = s.project_id
       join hive.machines m on m.id = s.machine_id
       left join auth."user" u on u.id = s.owner_user_id
-      where ${where}
+      where s.origin = 'hub' and (${where})
       order by s.created_at desc
       limit 100`,
   );
@@ -73,7 +75,7 @@ async function joined(tx: Tx, where: ReturnType<typeof sql>): Promise<Joined[]> 
   return full.map((s) => {
     const r = byId.get(s.id);
     return {
-      ...s,
+      ...(s as LeaderRow),
       projectKey: r?.project_key ?? "",
       projectName: r?.project_name ?? "",
       machineName: r?.machine_name ?? "",
@@ -332,7 +334,16 @@ export async function openSession(
     ownerName: user.name,
   });
   const session = sessionView(
-    { ...row, projectKey: project.key, projectName: project.name, machineName: machine.name, ownerName: user.name },
+    {
+      ...row,
+      projectId: project.id,
+      mode: input.mode,
+      model: input.model,
+      projectKey: project.key,
+      projectName: project.name,
+      machineName: machine.name,
+      ownerName: user.name,
+    },
     user.id,
   );
   return {
