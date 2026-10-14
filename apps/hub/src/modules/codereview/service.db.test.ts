@@ -368,11 +368,14 @@ describe("đi qua checkpoint", () => {
     const pr = await openPR(p, "ai/deny");
     const row = await sys((tx) => startCodeReview(tx, codeRun(p, pr), deps));
     await settle();
+    // Test không cài run sửa nên hướng `agent` về người giao việc (routing.db.test.ts kiểm run sửa).
     expect(await reviewRow(row?.id ?? "")).toMatchObject({
       status: "changes_requested",
-      route: "agent",
+      route: "author",
       gate_index: 0,
     });
+    const changes = (await audits(row?.id ?? "")).find((a) => a.action === "codereview.changes");
+    expect(changes?.data).toMatchObject({ gateId: "deny", requestedRoute: "agent", route: "author" });
     const [g] = await gateRuns(row?.id ?? "");
     expect(g).toMatchObject({ gate_id: "deny", status: "failed" });
     expect(g.note).toContain("src/pay.ts");
