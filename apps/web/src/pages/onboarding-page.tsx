@@ -330,7 +330,8 @@ function InviteStep({ teamId }: { teamId: string | undefined }) {
   const t = { ...useT(text), ...useT(stepText) };
   const { current } = useOrgs();
   const navigate = useNavigate();
-  const leave = () => navigate({ to: "/admin/teams", search: teamId ? { doi: teamId } : {} });
+  const leave = () =>
+    teamId ? navigate({ to: "/admin/teams/$teamId", params: { teamId } }) : navigate({ to: "/admin/teams" });
   if (!current)
     return (
       <p aria-busy="true" className="text-muted-foreground">
