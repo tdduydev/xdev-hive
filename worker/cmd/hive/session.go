@@ -21,6 +21,8 @@ type chatOptions struct {
 	force   bool
 	prompt  string
 	extra   []string
+	// noRecord: phiên không ghi lên hub (máy dùng chung vốn đã không ghi).
+	noRecord bool
 }
 
 func newFlagSet(name string, w io.Writer) *flag.FlagSet {
@@ -62,8 +64,8 @@ func (a *app) parseChat(args []string, withPrompt bool) (chatOptions, int) {
 	fs.BoolVar(&o.force, "force", false, "dùng cả gói đang nghỉ")
 	task := fs.String("task", "", "task trên hub (chưa hỗ trợ)")
 	project := fs.String("project", "", "dự án trên hub (chưa hỗ trợ)")
-	// Phiên tại máy chưa ghi lên hub và chưa mở từ xa, nên hai cờ này đã đúng mặc định; nhận để script viết theo plan chạy được.
-	fs.Bool("no-record", false, "không ghi phiên lên hub")
+	fs.BoolVar(&o.noRecord, "no-record", false, "không ghi phiên lên hub")
+	// Phiên tại máy chưa mở được từ xa nên cờ này đã đúng mặc định; nhận để script viết theo plan chạy được.
 	fs.Bool("no-remote", false, "không cho điều khiển từ xa")
 	pos, err := parseInterspersed(fs, args)
 	if err != nil {
@@ -126,7 +128,7 @@ func (a *app) chat(args []string, withPrompt bool) int {
 	}
 	defer c.Close()
 	req := map[string]any{"op": "session.create", "cli": o.cli, "cwd": cwd, "cols": cols, "rows": rows,
-		"args": cliArgs(o), "account": o.account, "force": o.force, "term": a.getenv("TERM")}
+		"args": cliArgs(o), "account": o.account, "force": o.force, "term": a.getenv("TERM"), "noRecord": o.noRecord}
 	var resp struct {
 		ID      string `json:"id"`
 		Account string `json:"account"`

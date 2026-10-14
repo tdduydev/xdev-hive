@@ -34,6 +34,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/service"
+	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
 	"github.com/tdduydev/xdev-hive/worker/internal/update"
 	"github.com/tdduydev/xdev-hive/worker/internal/version"
 )
@@ -387,7 +388,7 @@ func run(args []string) int {
 	pool := accounts.NewPool(accounts.DefaultPath(path))
 	go pool.Watch(ctx)
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
-	stopLocal := startLocalIPC(pool)
+	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "xdev-hive", "worker", "terminal"))
 	defer stopLocal()
 	slots := *capacity
 	if !flagSet(fs, "capacity") {
@@ -397,7 +398,7 @@ func run(args []string) int {
 		}
 	}
 	// --stdin-control là app desktop chạy worker làm sidecar: app tự cập nhật cả gói, worker không tự thay mình.
-	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, projects.DefaultPath(path), *statusJSON, selfUpdates(*stdinControl), cfg.HubURL, func() error {
+	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, term, projects.DefaultPath(path), *statusJSON, selfUpdates(*stdinControl), cfg.HubURL, func() error {
 		// Bản mới trên Windows là tiến trình con: dọn socket cũ và nhả khoá trước khi nó khởi động.
 		stopLocal()
 		return lock.Close()
@@ -488,7 +489,8 @@ func host(args []string) int {
 		}
 	}
 	sandbox := &runner.SandboxConfig{Image: *image, HostID: cfg.MachineID, AllowRunc: *allowRunc, CPUs: *cpus, Memory: *memory, PIDs: *pids, EgressSocket: *egressSocket, WorkerBinary: executable}
-	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, "", false, true, cfg.HubURL, lock.Close)
+	// Runner host không giữ phiên tại máy nên không ghi gì lên hub (D13).
+	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, nil, "", false, true, cfg.HubURL, lock.Close)
 }
 
 func sandboxInit(args []string) int {
@@ -608,12 +610,12 @@ func flagSet(fs *flag.FlagSet, name string) bool {
 }
 
 // projectsFile là projects.json (ADR 0020); runner host truyền rỗng vì run sandbox không dùng repo trên máy.
-func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, projectsFile string, statusJSON, selfUpdate bool, hubURL string, beforeRestart func() error) int {
+func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, term terminal.Handler, projectsFile string, statusJSON, selfUpdate bool, hubURL string, beforeRestart func() error) int {
 	clis := detectCLIs()
 	if mode == "host" {
 		clis = knownCLIs
 	}
-	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool, Projects: projectsFile}
+	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool, Projects: projectsFile, Terminal: term}
 	if statusJSON {
 		cc.OnStatus = statusPrinter(os.Stdout)
 	}

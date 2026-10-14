@@ -153,10 +153,16 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `worker/internal/terminal/handler.go`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T011 [US1] Worker: session host
+- [x] T011 [US1] Worker: session host
   - Một phần (SPEC10NEXT): `terminal/local.go` (phiên tại máy qua socket, một người điều khiển + người xem, tách/gắn lại
     phát đuôi 256 KiB, kill, che bí mật, tối đa 8 phiên), `runner/localenv.go`, `accounts.AcquireInteractiveForce`,
-    `cmd/hive-worker/local.go`. **Còn**: ghi lên hub (`term_opened/output/exit`, đệm `pending`, `term_ack`) chờ T013.
+    `cmd/hive-worker/local.go`.
+  - Đã làm (SPEC10W4): `terminal/record.go` — `Recorder` là Handler của kênh: gom 8 ms/32 KiB → `term_output`, đệm đĩa
+    `terminal/<id>.pending` (một file mỗi phiên, 32 MB, quá thì `gap`; dời phần đã ack khi phiên in liên tục), xoá khi
+    `term_ack`; `term_opened` (`origin: local`, nhãn thư mục hai cấp cuối, không đường dẫn tuyệt đối), `term_exit`,
+    `term_state` (danh sách phiên); mất hub thì gửi bù sau welcome; máy dùng chung hoặc hub không khai `terminal` thì bỏ
+    đệm và không ghi. Yêu cầu từ xa (start/control/pair) trả `REMOTE_DISABLED` tới khi có T020/T031/T050.
+    `hive chat --no-record` truyền tới worker; `session.list` có `hubId`.
   - `internal/terminal`: `Host` tạo/gắn/liệt kê/ngắt phiên qua `localipc`; một người điều khiển (terminal tại máy hoặc
     kết nối từ xa); env theo danh sách cho phép như run (không `HIVE_*`, không token); che bí mật đã biết trong output;
     ghi: gom 8 ms/32 KiB → `term_output`, đệm đĩa `terminal/<id>/pending` (32 MB, quá thì `gap`), xoá khi `term_ack`;

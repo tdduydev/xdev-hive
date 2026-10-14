@@ -134,7 +134,7 @@ func TestParseChat(t *testing.T) {
 		!slices.Equal(o.extra, []string{"--search"}) {
 		t.Fatalf("o = %+v", o)
 	}
-	if o, code := a.parseChat([]string{"--no-record", "--no-remote"}, false); code != exitOK || o.cli != "claude" {
+	if o, code := a.parseChat([]string{"--no-record", "--no-remote"}, false); code != exitOK || o.cli != "claude" || !o.noRecord {
 		t.Fatalf("mặc định: %+v %d", o, code)
 	}
 }
