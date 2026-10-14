@@ -106,6 +106,7 @@ function fakeApp(opts: {
       return view();
     },
     "plugin:dialog|open": () => opts.picked ?? null,
+    git_groups: () => ({ path: "/x/gitgroups.json", hosts: [], groups: [] }),
     hub_rpc: (a) => {
       const path =
         String(a?.path)
