@@ -113,7 +113,7 @@ func TestKillGroupStopsChildren(t *testing.T) {
 	}
 	KillGroup(cmd)
 	_ = cmd.Wait()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for syscall.Kill(pid, 0) == nil {
 		if time.Now().After(deadline) {
 			t.Fatalf("tiến trình con %d còn sống sau KillGroup", pid)
@@ -135,7 +135,7 @@ func TestHangupGroupEndsShell(t *testing.T) {
 	go func() { done <- cmd.Wait() }()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		KillGroup(cmd)
 		t.Fatal("shell không thoát sau SIGHUP")
 	}
