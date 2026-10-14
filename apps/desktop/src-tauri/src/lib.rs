@@ -8,6 +8,7 @@ mod cli;
 mod doctor;
 mod files;
 mod git_groups;
+mod hive_cli;
 mod hub;
 mod local_projects;
 mod memory_store;
@@ -778,7 +779,9 @@ pub fn run() {
             pty::pty_close,
             updates::update_status,
             updates::check_updates_now,
-            updates::relaunch_to_update
+            updates::relaunch_to_update,
+            hive_cli::hive_cli_status,
+            hive_cli::hive_cli_install
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.

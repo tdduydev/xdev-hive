@@ -1,5 +1,5 @@
 # Bản phát hành của hive-worker, chạy bởi .github/workflows/release.yml khi đẩy tag v*.
-# Tên file nén không có số phiên bản để link /releases/latest/download/<file> luôn trỏ tới bản mới nhất; install.sh,
+# Tên file nén (vẫn là hive-worker_*, chứa cả hive) không có số phiên bản để link /releases/latest/download/<file> luôn trỏ tới bản mới nhất; install.sh,
 # install.ps1 và worker/internal/update dựa vào tên này.
 version: 2
 project_name: hive-worker
@@ -16,15 +16,29 @@ builds:
       - -s -w -X github.com/tdduydev/xdev-hive/worker/internal/version.Version={{ .Version }}
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
+  # Lệnh `hive` (chat, điều khiển từ xa) đi chung file nén với worker để một lần tải, một chữ ký và một lần cập nhật
+  # luôn cho hai binary cùng phiên bản.
+  - id: hive
+    main: ./cmd/hive
+    binary: hive
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/tdduydev/xdev-hive/worker/internal/version.Version={{ .Version }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
 
 archives:
   - id: hive-worker
+    ids: [hive-worker, hive]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
-    # Chỉ có binary: install.sh giải nén đúng một file.
+    # Chỉ có hai binary: install.sh giải nén đúng hai file.
     files:
       - none*
 
