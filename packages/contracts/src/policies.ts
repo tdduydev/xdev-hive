@@ -124,6 +124,17 @@ export const agentMemoryPolicy = z.object({
 export type AgentMemoryPolicy = z.output<typeof agentMemoryPolicy>;
 export const DEFAULT_AGENT_MEMORY_POLICY: AgentMemoryPolicy = { mode: "propose", maxPerRun: 5 };
 
+/**
+ * Agent đề xuất skill sau việc khó (specs/014, ADR 0025). Mặc định tắt vì mỗi lô tốn token. `maxPerDay` chặn số đề xuất
+ * hub nhận trong một ngày (UTC) của cả tổ chức: hết hạn mức thì lô hôm đó không chạy, đề xuất nộp dư bị bỏ.
+ */
+export const agentSkillLearningPolicy = z.object({
+  enabled: z.boolean(),
+  maxPerDay: z.number().int().min(1).max(50),
+});
+export type AgentSkillLearningPolicy = z.output<typeof agentSkillLearningPolicy>;
+export const DEFAULT_AGENT_SKILL_LEARNING_POLICY: AgentSkillLearningPolicy = { enabled: false, maxPerDay: 5 };
+
 export const agentPolicyInput = z.object({
   allowedModels,
   /** Hub không để CLI tự chọn model: run không chỉ định model thì dùng model đầu trong danh sách của CLI đó. */
@@ -148,6 +159,8 @@ export const agentPolicyInput = z.object({
   sdlc: orgSdlcPolicy.optional(),
   /** Có mặc định vì chính sách đã lưu trước ADR 0022 không có mục này. */
   agentMemory: agentMemoryPolicy.default(() => ({ ...DEFAULT_AGENT_MEMORY_POLICY })),
+  /** Có mặc định vì chính sách đã lưu trước specs/014 không có mục này. */
+  skillLearning: agentSkillLearningPolicy.default(() => ({ ...DEFAULT_AGENT_SKILL_LEARNING_POLICY })),
 });
 export type AgentPolicyInput = z.input<typeof agentPolicyInput>;
 
@@ -183,6 +196,7 @@ export const DEFAULT_AGENT_POLICY: z.output<typeof agentPolicyInput> = {
   autoSyncTemplates: false,
   limits: { perRunUsd: null, dailyUsd: null, maxParallelPerMachine: null, runLogRetentionDays: 365 },
   agentMemory: { ...DEFAULT_AGENT_MEMORY_POLICY },
+  skillLearning: { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
 };
 
 /** Phần chính sách worker cần để chạy run: hook và việc bỏ cấu hình của repo. Ghi trong spec của job_offer. */

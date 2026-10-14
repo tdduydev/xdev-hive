@@ -53,6 +53,7 @@ import {
 } from "./modules/runs/index.ts";
 import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
+import { skillLearningRouter } from "./modules/skilllearn/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
 import {
@@ -196,6 +197,7 @@ export function createApp({
       docAssist: runs?.docAssist,
       briefs: runs?.briefs,
     }),
+    ...skillLearningRouter({ auth, pool, jobs }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),
     costs: costsRouter({ auth, pool }),
