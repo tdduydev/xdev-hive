@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  type ReviewGate,
   type ReviewPhase,
   type SdlcMode,
   type SdlcPhase,
@@ -8,8 +9,9 @@ import {
   type SdlcStep,
   sdlcItemRef,
 } from "@xdev-hive/contracts";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
+import { loadProject } from "../catalog/index.ts";
 import { getDoc } from "../knowledge/index.ts";
 import {
   BadRequestError,
@@ -20,7 +22,8 @@ import {
   type Tx,
 } from "../platform/index.ts";
 import type { ProviderFactory } from "../scm/index.ts";
-import { requireItemManage } from "./access.ts";
+import { teams } from "../tenancy/index.ts";
+import { activeItemProjects, requireItemManage } from "./access.ts";
 import { sdlcArtifactSyncs, sdlcArtifacts, sdlcItemPhases, sdlcItemProjects, sdlcItems, sdlcSteps } from "./schema.ts";
 
 /*
@@ -416,12 +419,120 @@ export interface SdlcWorkflow {
  */
 export async function workflowFor(tx: Tx, docKey: string): Promise<SdlcWorkflow | null> {
   const [row] = await tx
-    .select({ phaseId: sdlcArtifacts.phaseId, number: sdlcItems.number, mode: sdlcItems.mode })
+    .select({
+      itemId: sdlcItems.id,
+      phaseId: sdlcArtifacts.phaseId,
+      number: sdlcItems.number,
+      mode: sdlcItems.mode,
+    })
     .from(sdlcArtifacts)
     .innerJoin(sdlcItems, eq(sdlcItems.id, sdlcArtifacts.itemId))
     .where(eq(sdlcArtifacts.docKey, docKey));
   if (!row) return null;
   const phase = row.mode.phases.find((p) => p.id === row.phaseId);
   if (!phase) return null;
-  return { name: `${sdlcItemRef(row.number)} · ${phase.name}`, phases: phase.gate };
+  return {
+    name: `${sdlcItemRef(row.number)} · ${phase.name}`,
+    phases: await perTeamWorkflow(tx, row.itemId, phase.gate, phase.perProjectGates),
+  };
+}
+
+// ---- Cổng theo đội (D21) -----------------------------------------------------------------------------------------
+
+export interface ItemTeam {
+  teamId: string;
+  slug: string;
+  name: string;
+  /** Dự án của đội trong hạng mục, dự án chính trước. */
+  projects: { id: string; key: string; name: string }[];
+}
+
+/** Đội có dự án đang tham gia hạng mục, gộp dự án cùng đội; đội chủ trì đứng đầu. */
+export async function itemTeams(tx: Tx, itemId: string): Promise<ItemTeam[]> {
+  const rows = await activeItemProjects(tx, itemId);
+  if (rows.length === 0) return [];
+  const teamRows = await tx
+    .select({ id: teams.id, slug: teams.slug, name: teams.name })
+    .from(teams)
+    .where(
+      inArray(
+        teams.id,
+        rows.map((r) => r.teamId),
+      ),
+    );
+  const byId = new Map(teamRows.map((t) => [t.id, t]));
+  const out = new Map<string, ItemTeam>();
+  for (const r of rows) {
+    const team = byId.get(r.teamId);
+    if (!team) continue;
+    const project = await loadProject(tx, r.projectId);
+    const entry = out.get(team.id) ?? { teamId: team.id, slug: team.slug, name: team.name, projects: [] };
+    entry.projects.push({ id: r.projectId, key: project?.key ?? r.projectId, name: project?.name ?? "" });
+    out.set(team.id, entry);
+  }
+  // Dự án tạo cùng lúc có cùng added_at; xếp theo tên/key (dự án chính, đội chủ trì vẫn đứng đầu) để checkpoint không
+  // đổi thứ tự hay tên giữa hai lần mở phiên.
+  const byName = (x: string, y: string) => x.localeCompare(y, "vi");
+  const homeId = rows[0]?.projectId;
+  for (const t of out.values())
+    t.projects.sort((x, y) => Number(y.id === homeId) - Number(x.id === homeId) || byName(x.key, y.key));
+  const [home, ...rest] = [...out.values()];
+  return home ? [home, ...rest.sort((x, y) => byName(x.name, y.name))] : [];
+}
+
+const GATE_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+/** Id checkpoint `<gate>-<teamSlug>`; quá 40 ký tự hay trùng thì dùng số thứ tự đội để vẫn hợp lệ với `reviewGate`. */
+function teamGateId(gateId: string, team: ItemTeam, index: number, used: Set<string>): string {
+  const wanted = `${gateId}-${team.slug}`;
+  const id = GATE_ID.test(wanted) && !used.has(wanted) ? wanted : `${gateId.slice(0, 36)}-${index + 1}`;
+  used.add(id);
+  return id;
+}
+
+/**
+ * D21: mỗi checkpoint người có id trong `perProjectGates` nhân thành một checkpoint cho mỗi đội tham gia, `roles` tính
+ * trong đội đó qua `reviewers.teamScope`. Giai đoạn đạt khi mọi checkpoint đạt, như mọi cổng nhiều checkpoint của spec
+ * 004. Một đội thì giữ nguyên: đội của tài liệu đã là đội chủ trì.
+ */
+export function expandPerProjectGates(
+  phases: readonly ReviewPhase[],
+  perProjectGates: readonly string[],
+  itemTeamList: readonly ItemTeam[],
+): ReviewPhase[] {
+  if (perProjectGates.length === 0 || itemTeamList.length <= 1) return phases.map((p) => ({ ...p }));
+  const wanted = new Set(perProjectGates);
+  return phases.map((phase) => {
+    const used = new Set(phase.gates.map((g) => g.id));
+    const gates = phase.gates.flatMap((gate): ReviewGate[] => {
+      if (gate.kind !== "human" || !wanted.has(gate.id)) return [gate];
+      used.delete(gate.id);
+      return itemTeamList.map((team, i) => ({
+        ...gate,
+        id: teamGateId(gate.id, team, i, used),
+        name: clip(`${gate.name} · ${team.name} (${team.projects.map((p) => p.key).join(", ")})`, 120),
+        reviewers: {
+          users: gate.reviewers?.users ?? [],
+          roles: gate.reviewers?.roles ?? [],
+          teams: gate.reviewers?.teams ?? [],
+          quorum: gate.reviewers?.quorum ?? 1,
+          ...(gate.reviewers?.allowRequester === undefined ? {} : { allowRequester: gate.reviewers.allowRequester }),
+          teamScope: team.teamId,
+        },
+      }));
+    });
+    return { ...phase, gates };
+  });
+}
+
+/** Quy trình của phiên duyệt với cổng theo đội; danh sách đội chụp lúc gọi (lúc mở phiên). */
+export async function perTeamWorkflow(
+  tx: Tx,
+  itemId: string,
+  phases: readonly ReviewPhase[],
+  perProjectGates: readonly string[],
+): Promise<ReviewPhase[]> {
+  if (perProjectGates.length === 0) return phases.map((p) => ({ ...p }));
+  return expandPerProjectGates(phases, perProjectGates, await itemTeams(tx, itemId));
 }

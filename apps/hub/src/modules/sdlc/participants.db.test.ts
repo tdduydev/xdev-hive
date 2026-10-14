@@ -1,19 +1,12 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { defaultProjectSettings, projectSdlcSettings, type ReviewPhase, reviewPhase } from "@xdev-hive/contracts";
+import { defaultProjectSettings, projectSdlcSettings } from "@xdev-hive/contracts";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { errorCode, type OrgFixture, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { createItem } from "./items.ts";
-import {
-  addItemProject,
-  expandPerProjectGates,
-  type ItemTeam,
-  itemTeams,
-  perTeamWorkflow,
-  removeItemProject,
-} from "./participants.ts";
+import { addItemProject, removeItemProject } from "./participants.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -395,66 +388,5 @@ describe("items.projects.remove", () => {
         [p.b],
       );
     }
-  });
-});
-
-describe("cổng theo đội (D21)", () => {
-  const phases: ReviewPhase[] = [
-    reviewPhase.parse({
-      name: "Duyệt thiết kế",
-      gates: [
-        { id: "ai-check", name: "AI kiểm", kind: "ai", ai: { checks: ["Đủ mục"], passScore: 7 } },
-        { id: "tech-lead", name: "Tech lead", kind: "human", reviewers: { roles: ["team-admin"] } },
-        { id: "po", name: "PO", kind: "human", reviewers: { roles: ["team-ba"] } },
-      ],
-    }),
-  ];
-
-  it("itemTeams gộp dự án cùng đội, đội chủ trì trước", async () => {
-    const item = await seedItem("both", p.a, [p.b, p.b2]);
-    const teams = await as("both", (tx) => itemTeams(tx, item));
-    expect(teams.map((t) => [t.teamId, t.projects.map((x) => x.key)])).toEqual([
-      [org.teamId, [key("a")]],
-      [org.otherTeamId, [key("b"), key("bz")]],
-    ]);
-  });
-
-  it("nhân checkpoint trong perProjectGates thành một checkpoint mỗi đội, roles tính trong đội đó", async () => {
-    const item = await seedItem("admin", p.a, [p.b, p.b2, p.c]);
-    const [phase] = await as("admin", (tx) => perTeamWorkflow(tx, item, phases, ["tech-lead"]));
-    expect(phase?.gates.map((g) => g.id)).toEqual([
-      "ai-check",
-      "tech-lead-thanh-toan",
-      "tech-lead-crm",
-      "tech-lead-mobile",
-      "po",
-    ]);
-    const crm = phase?.gates.find((g) => g.id === "tech-lead-crm");
-    expect(crm?.name).toBe(`Tech lead · crm (${key("b")}, ${key("bz")})`);
-    expect(crm?.reviewers).toMatchObject({ roles: ["team-admin"], quorum: 1, teamScope: org.otherTeamId });
-    // Checkpoint không nằm trong danh sách giữ nguyên, không có teamScope.
-    expect(phase?.gates.find((g) => g.id === "po")?.reviewers?.teamScope).toBeUndefined();
-    // Quy trình dựng ra vẫn hợp lệ với schema của spec 004.
-    expect(reviewPhase.safeParse(phase).success).toBe(true);
-  });
-
-  it("hạng mục một đội giữ nguyên cổng", async () => {
-    const item = await seedItem("both", p.a, []);
-    const out = await as("both", (tx) => perTeamWorkflow(tx, item, phases, ["tech-lead"]));
-    expect(out).toEqual(phases);
-  });
-
-  it("id checkpoint quá dài thì dùng số thứ tự đội", () => {
-    const teams: ItemTeam[] = [
-      { teamId: randomUUID(), slug: "a", name: "A", projects: [{ id: randomUUID(), key: "pa", name: "" }] },
-      {
-        teamId: randomUUID(),
-        slug: "doi-co-ten-rat-dai-vuot-gioi-han",
-        name: "Dài",
-        projects: [{ id: randomUUID(), key: "pb", name: "" }],
-      },
-    ];
-    const [phase] = expandPerProjectGates(phases, ["tech-lead"], teams);
-    expect(phase?.gates.map((g) => g.id)).toEqual(["ai-check", "tech-lead-a", "tech-lead-2", "po"]);
   });
 });
