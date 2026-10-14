@@ -36,6 +36,10 @@ export function formatTranscript(messages: ThreadMessage[], budget = HISTORY_CHA
   return selected.map((m) => `${m.role}: ${m.content}`).join("\n\n");
 }
 
+/** Luật cấp độ dùng chung cho Leader chat và terminal Leader (FR-067): chọn model theo việc để không lãng phí. */
+export const TIER_RULE =
+  "Mỗi đề xuất task.create hoặc run.dispatch phải có `tier` (light|medium|heavy) và `tierReason` ngắn; gọi MCP `leader_tiers` để xem ý nghĩa từng cấp và model hub sẽ dùng. Gợi ý: tài liệu, đổi chữ, test nhỏ là light; một màn, CRUD, refactor gọn là medium; nhiều module, giao thức, bảo mật, migration, hiệu năng là heavy.";
+
 export function assembleLeaderPrompt(params: {
   transcript: string;
   projectName: string;
@@ -47,6 +51,7 @@ export function assembleLeaderPrompt(params: {
     "Bạn là leader agent của dự án. Chỉ đọc repository và bối cảnh được cung cấp.",
     "Trả lời người dùng bằng đúng một lần gọi MCP `leader_reply`.",
     "Mọi hành động phải được đề xuất bằng MCP `leader_propose`; không tự thực hiện thay đổi.",
+    TIER_RULE,
     `Dự án: ${params.projectName} (${params.projectKey}); nhánh chính: ${params.defaultBranch ?? "main"}.`,
     "Lịch sử cuộc trò chuyện (giữ tin đầu và các tin gần nhất trong ngân sách ký tự):",
     params.transcript,

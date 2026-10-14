@@ -24,7 +24,7 @@
       "y": 0,
       "w": 1440,
       "h": 1000,
-      "title": "Leader · /leader",
+      "title": "Leader · /leader, /leader/terminal/$id",
       "expand": "fill",
       "is_interactive": true
     },

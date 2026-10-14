@@ -20,6 +20,7 @@ export {
   type RunEvidence,
   startCodeReview,
 } from "./service.ts";
+export { type CodeReviewSlaDeps, codeReviewSlaQueue, registerCodeReviewSla } from "./sla.ts";
 export {
   deliverReviewStatus,
   prepareReviewStatus,

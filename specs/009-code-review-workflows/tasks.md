@@ -220,7 +220,7 @@
 
 ## Phase 8: Nối hub
 
-- [ ] T070 Nối deps, router, job, handler
+- [x] T070 Nối deps, router, job, handler
   - `main.ts`: tạo `CodeReviewDeps` (từ engine: `startReviewRuns`, `queueFixRun`), `registerCodeReviewWorker`, SLA cron,
     handler SCM của `codereview`, `MergeDeps.reviewGate`.
   - `app.ts`: `codeReviews: codeReviewRouter(...)`.
