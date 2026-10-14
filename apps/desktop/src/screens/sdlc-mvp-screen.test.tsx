@@ -4,6 +4,7 @@ import type { ReviewDetail, SdlcBreakdownView, SdlcItemTask } from "@xdev-hive/c
 import { useSyncExternalStore } from "react";
 import { expect, it } from "vitest";
 import { type Account, AccountContext } from "@/lib/account.ts";
+import { queryClient } from "@/lib/hub-query.tsx";
 import { setLang } from "@/lib/i18n.ts";
 import { ReviewsScreen } from "@/screens/reviews-screen.tsx";
 import { SdlcQuestionsScreen } from "@/screens/sdlc-questions-screen.tsx";
@@ -29,10 +30,11 @@ function Screens() {
 }
 
 // Hub giả thay đổi baseline và task; test đi qua màn thật và cầu hub_rpc của desktop.
-it("SC-009: BA/PO tạo, trả lời, duyệt ba tài liệu và bản tách, chạy đợt rồi mở PR", async () => {
+it("SC-009: BA/PO tạo và duyệt; thành viên chạy đợt rồi mở PR", async () => {
   setLang("vi");
   location.hash = "#/sdlc/new";
   const { rpc, state, calls } = installSdlcHub({ participants: [] });
+  state.item.can = { ...state.item.can, manage: false, override: false, runWaves: false };
   const specs = [
     ["specify", "spec"],
     ["plan", "plan"],
@@ -217,7 +219,7 @@ it("SC-009: BA/PO tạo, trả lời, duyệt ba tài liệu và bản tách, ch
     };
     return ok({ started: [{ taskId: uid(601), runId: uid(701) }], skipped: [] });
   };
-  render(
+  const { rerender } = render(
     <AccountContext.Provider value={ba}>
       <Screens />
     </AccountContext.Provider>,
@@ -252,6 +254,18 @@ it("SC-009: BA/PO tạo, trả lời, duyệt ba tài liệu và bản tách, ch
   }
   act(() => {
     location.hash = "#/sdlc/payment-api/13/tasks";
+  });
+  expect(await screen.findByText("API hoàn tiền", { exact: true })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Chạy đợt" })).toBeNull();
+  expect(calls.filter((c) => c.path === "sdlc/waves/run")).toHaveLength(0);
+  state.item.can = { ...state.item.can, runWaves: true };
+  rerender(
+    <AccountContext.Provider value={{ ...ba, teams: ba.teams.map((t) => ({ ...t, role: "member" })) }}>
+      <Screens />
+    </AccountContext.Provider>,
+  );
+  await act(async () => {
+    await queryClient.invalidateQueries();
   });
   await user.click(await screen.findByRole("button", { name: "Chạy đợt" }));
   const pr = await screen.findByRole("link", { name: "Mở PR" });

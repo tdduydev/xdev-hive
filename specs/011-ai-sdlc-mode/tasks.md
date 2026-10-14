@@ -392,7 +392,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `apps/desktop/package.json`
   - **Phụ thuộc**: T052, T053 · **Mức**: vừa
   - Đã làm: UI dùng chung qua cầu Rust, hash chi tiết/tab, quyền BA theo đội, khung bên và thẻ duyệt; thiếu kết nối
-    thì mời kết nối Hive. SC-009 có test qua các màn thật, SC-016 kiểm hạng mục ba dự án và thu hồi. Tiến độ dùng danh
+    thì mời kết nối Hive. SC-009 có test qua các màn thật (BA/PO duyệt, thành viên chạy đợt), SC-016 kiểm hạng mục ba dự án và thu hồi. Tiến độ dùng danh
     sách giai đoạn/độ phủ; số liệu tổng hợp chờ T082. Tailwind quét cả package `sdlc-ui` khi dựng app.
 
 ---
