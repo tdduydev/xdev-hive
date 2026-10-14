@@ -420,12 +420,15 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T001 · **Mức**: vừa
   - Đã làm cùng T063; kênh không có `client.go` nên phần nối nằm ở `worker/internal/channel/{accounts.go,accounts_test.go}`.
 
-- [ ] T062 [US15] Web: Đội máy AI SDLC và nhãn trên trang Máy
+- [x] T062 [US15] Web: Đội máy AI SDLC và nhãn trên trang Máy
   - `sdlc-ui` `fleet-table.tsx`; trang `/sdlc/fleet` (Thêm máy = mã đăng ký có nhãn, lệnh cài một dòng cho Linux/macOS/
     Windows); trang `/machines` thêm nhãn, "chỉ nhận run có nhãn", gói; Playwright `sdlc-fleet.spec.ts`.
   - **Scope**: `packages/sdlc-ui/src/fleet-table.tsx` + test, `apps/web/src/pages/sdlc/fleet-page.tsx`,
     `apps/web/src/pages/machines-page.tsx`, `apps/web/e2e/sdlc-fleet.spec.ts`
   - **Phụ thuộc**: T060, T054, T006 · **Mức**: vừa
+  - Đã làm: `/sdlc/fleet`, lọc đội, run/quota, bật/tắt gói theo quyền hub trả; thêm máy dùng chung có nhãn `sdlc`,
+    cờ chỉ nhận run có nhãn và lệnh cài cho ba hệ điều hành. Trang Máy sửa nhãn/cờ qua menu phụ. Vitest và Playwright
+    kiểm quyền chỉ đọc, tải lỗi/thử lại, thao tác ghi, 360 px sáng/tối.
 
 - [x] T063 [US15] Đăng nhập gói từ web (Claude Code, Codex) cho máy dùng chung không màn hình (FR-062)
   - Giao thức: `account_login_start|input|cancel` (hub → worker), `account_login_event { kind: url|code|prompt|done|error }`

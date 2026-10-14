@@ -6,6 +6,7 @@ import type { RunState } from "@xdev-hive/contracts/run-states";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { EllipsisIcon, MonitorIcon, NetworkIcon } from "lucide-react";
@@ -678,6 +679,7 @@ export function MachinesPage() {
     if (!open && them) void navigate({ to: "/machines", search: {}, replace: true });
   }
   const [revoking, setRevoking] = useState<Machine | null>(null);
+  const [labelling, setLabelling] = useState<Machine | null>(null);
   const selectedTeam = teams.data?.find((team) => team.id === teamId) ?? teams.data?.[0];
   const active = useTeamActiveRuns(selectedTeam?.id);
   const machines = useQuery({
@@ -833,6 +835,14 @@ export function MachinesPage() {
                       </Link>
                       <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <ScopePill machine={machine} owner={owner(machine)} small />
+                        {(machine.labels ?? []).map((label) => (
+                          <span key={label} className="rounded bg-muted px-1 font-mono">
+                            {label}
+                          </span>
+                        ))}
+                        {machine.labelsOnly && (
+                          <span>{lang === "vi" ? "Chỉ nhận run có nhãn" : "Labelled runs only"}</span>
+                        )}
                         <span className="whitespace-nowrap">
                           {osName(machine.os)}
                           {machine.kind === "host" && ` · ${t.kinds.host}`}
@@ -944,6 +954,7 @@ export function MachinesPage() {
                             machine={machine}
                             actions={actions}
                             onAccounts={teamAdmin ? () => void open(machine, "goi-agent") : undefined}
+                            onLabels={teamAdmin ? () => setLabelling(machine) : undefined}
                           />
                         )}
                       </span>
@@ -971,6 +982,14 @@ export function MachinesPage() {
       <Dialog open={adding && Boolean(selectedTeam)} onOpenChange={setAdding}>
         {adding && selectedTeam && <RegistrationDialog teamId={selectedTeam.id} onClose={() => setAdding(false)} />}
       </Dialog>
+      <Dialog
+        open={!!labelling}
+        onOpenChange={(open) => {
+          if (!open) setLabelling(null);
+        }}
+      >
+        {labelling && <MachineLabelsDialog machine={labelling} onClose={() => setLabelling(null)} />}
+      </Dialog>
       <RevokeDialog machine={revoking} actions={actions} onClose={() => setRevoking(null)} />
     </>
   );
@@ -981,10 +1000,12 @@ function RowMenu({
   machine,
   actions,
   onAccounts,
+  onLabels,
 }: {
   machine: Machine;
   actions: MachineActions;
   onAccounts: (() => void) | undefined;
+  onLabels: (() => void) | undefined;
 }) {
   const t = useT(text);
   return (
@@ -1000,6 +1021,11 @@ function RowMenu({
         >
           {machine.shared ? t.unshare : t.share}
         </DropdownMenuItem>
+        {onLabels && (
+          <DropdownMenuItem aria-label={`${t.infoLabels} · ${machine.name}`} onClick={onLabels}>
+            {t.infoLabels}
+          </DropdownMenuItem>
+        )}
         {/* Gói agent chỉ quản trị đội xem và điều khiển được (ADR 0017). */}
         {onAccounts && (
           <DropdownMenuItem aria-label={t.accountsLabel(machine.name)} onClick={onAccounts}>
@@ -1484,14 +1510,32 @@ function MachineRuns({ machineId }: { machineId: string }) {
   );
 }
 
-function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () => void }) {
+export function RegistrationDialog({
+  teamId,
+  onClose,
+  sdlc = false,
+}: {
+  teamId: string;
+  onClose: () => void;
+  sdlc?: boolean;
+}) {
   const t = useT(text);
   const lang = useLang();
   const { api } = useOrg();
   const [kind, setKind] = useState<Machine["kind"]>("worker");
+  const labelsId = useId();
+  const [labels, setLabels] = useState(sdlc ? "sdlc" : "");
+  const [labelsOnly, setLabelsOnly] = useState(sdlc);
   const registration = useMutation({
     gcTime: 0,
-    mutationFn: () => api.machines.createRegistration.call({ teamId, kind }),
+    mutationFn: () =>
+      api.machines.createRegistration.call({
+        teamId,
+        kind,
+        labels: labels.split(/[\s,]+/).filter(Boolean),
+        shared: sdlc,
+        labelsOnly,
+      }),
   });
   const [copied, setCopied] = useState(false);
   const [os, setOs] = useState<Os>("macOS");
@@ -1508,7 +1552,7 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
           os === "Windows"
             ? { title: t.stepWindows, value: data.installCommandWindows }
             : { title: t.stepTerminal, value: data.installCommand },
-          { title: t.stepRegister, value: data.command },
+          ...(sdlc && kind === "worker" ? [] : [{ title: t.stepRegister, value: data.command }]),
         ];
 
   async function copy(value: string) {
@@ -1543,6 +1587,25 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
                 ]}
               />
             </div>
+            <label htmlFor={labelsId} className="grid gap-1 text-sm">
+              {lang === "vi" ? "Nhãn máy" : "Machine labels"}
+              <Input
+                id={labelsId}
+                value={labels}
+                onChange={(e) => setLabels(e.target.value)}
+                disabled={registration.isPending}
+                placeholder="sdlc, docs"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={labelsOnly}
+                disabled={registration.isPending}
+                onChange={(e) => setLabelsOnly(e.target.checked)}
+              />
+              {lang === "vi" ? "Chỉ nhận run có nhãn" : "Labelled runs only"}
+            </label>
             {registration.isPending && <LoadingState label={t.creating} />}
             {registration.isError && <Alert variant="destructive">{apiErrorMessage(registration.error)}</Alert>}
           </>
@@ -1618,6 +1681,60 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
             {registration.isPending ? t.creating : t.createCode}
           </Button>
         )}
+      </DialogActions>
+    </DialogContent>
+  );
+}
+
+export function MachineLabelsDialog({ machine, onClose }: { machine: Machine; onClose: () => void }) {
+  const { api } = useOrg();
+  const lang = useLang();
+  const client = useQueryClient();
+  const labelsId = useId();
+  const [labels, setLabels] = useState((machine.labels ?? []).join(", "));
+  const [labelsOnly, setLabelsOnly] = useState(machine.labelsOnly ?? false);
+  const save = useMutation(
+    api.machines.setLabels.mutationOptions({
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: api.machines.key() });
+        onClose();
+      },
+    }),
+  );
+  return (
+    <DialogContent>
+      <DialogTitle>
+        {lang === "vi" ? "Nhãn máy" : "Machine labels"} · {machine.name}
+      </DialogTitle>
+      <DialogDescription>
+        {lang === "vi" ? "Nhãn áp dụng từ lần giao run tiếp theo." : "Labels apply to the next run assignment."}
+      </DialogDescription>
+      <label htmlFor={labelsId} className="grid gap-1 text-sm">
+        {lang === "vi" ? "Nhãn" : "Labels"}
+        <Input id={labelsId} value={labels} onChange={(e) => setLabels(e.target.value)} disabled={save.isPending} />
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={labelsOnly}
+          onChange={(e) => setLabelsOnly(e.target.checked)}
+          disabled={save.isPending}
+        />
+        {lang === "vi" ? "Chỉ nhận run có nhãn" : "Labelled runs only"}
+      </label>
+      {save.error && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
+      <DialogActions>
+        <Button variant="outline" disabled={save.isPending} onClick={onClose}>
+          {lang === "vi" ? "Huỷ" : "Cancel"}
+        </Button>
+        <Button
+          disabled={save.isPending}
+          onClick={() =>
+            save.mutate({ machineId: machine.id, labels: labels.split(/[\s,]+/).filter(Boolean), labelsOnly })
+          }
+        >
+          {lang === "vi" ? "Lưu nhãn" : "Save labels"}
+        </Button>
       </DialogActions>
     </DialogContent>
   );

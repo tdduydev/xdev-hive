@@ -109,6 +109,15 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: "sdlc.read",
       },
       {
+        id: "sdlc-fleet",
+        label: { vi: "Đội máy AI SDLC", en: "AI SDLC fleet" },
+        to: route("/sdlc/fleet"),
+        match: "/sdlc/fleet",
+        icon: MonitorIcon,
+        adminOnly: true,
+        permission: "machines.read",
+      },
+      {
         id: "sdlc-questions",
         label: { vi: "Câu hỏi chờ tôi", en: "Questions for me" },
         icon: CircleHelpIcon,
