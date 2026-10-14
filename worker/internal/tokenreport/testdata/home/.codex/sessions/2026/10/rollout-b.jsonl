@@ -1,0 +1,4 @@
+{"timestamp":"2026-10-11T12:00:00Z","type":"session_meta","payload":{"cwd":"/work/repo","originator":"codex_exec","cli_version":"0.98.0"}}
+{"timestamp":"2026-10-11T12:00:01Z","type":"response_item","payload":{"type":"local_shell_call","call_id":"d1"}}
+{"timestamp":"2026-10-11T12:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":500,"cached_input_tokens":100,"output_tokens":20,"reasoning_output_tokens":0},"last_token_usage":{"input_tokens":500}}}}
+{"timestamp":"2026-10-11T12:00:03Z","type":"response_item","payload":{"type":"function_call_output","call_id":"d1","output":"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"}}
