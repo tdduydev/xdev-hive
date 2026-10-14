@@ -378,7 +378,10 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - Đã làm: cài đặt dự án ở `pages/project-sdlc-settings.tsx`, hai mục lưu riêng nhưng mỗi lần gửi cả `settings.sdlc`;
     `/admin/policies` bỏ `sdlc` khỏi lần lưu mục khác để hub giữ bản đã lưu; BA/PO chọn được qua `lib/roles.ts`.
     SC-009 đã kiểm qua `sdlc-mvp.spec.ts`: tạo, trả lời, duyệt spec/plan/research và bản tách, chạy đợt, mở PR.
-    Quyết định duyệt làm mới cache AI SDLC. Chưa làm: hàng số liệu của mục AI SDLC trong chính sách (contract chưa có).
+    Quyết định duyệt làm mới cache AI SDLC. SPEC11W6UI thêm hàng số liệu cuối mục AI SDLC của chính sách
+    (`policies-sdlc-stats.tsx`, đọc `sdlc.metrics` 30 ngày): tỉ lệ tự duyệt và thu hồi cao nhất theo chế độ, số dự án bật
+    tự duyệt; hub lỗi hoặc không có quyền thì ẩn hàng. Hub chỉ trả tỉ lệ nên không có ô số cổng và điểm trung bình như
+    thiết kế.
 
 - [x] T055 🎯 Desktop: nhóm menu AI SDLC và màn
   - `nav.ts`: quyền `sdlc.use` (dev, writer, lead), `sdlc.manage` (lead), nhóm `sdlc` (Hạng mục, Câu hỏi chờ tôi, Tiến
