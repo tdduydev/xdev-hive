@@ -4,13 +4,19 @@ import { listOnlineMachines } from "../fleet/index.ts";
 import type { Tx } from "../platform/index.ts";
 import { runs } from "../runs/index.ts";
 import { listTasks } from "../tasks/index.ts";
+import { chatMessages } from "./schema.ts";
 
 export const HISTORY_CHAR_BUDGET = 24_000;
 
 export interface ThreadMessage {
   role: string;
   content: string;
+  /** Tin nhắn thẻ: `content` là tiêu đề artifact, nên Leader cần id để gọi `artifact_update` đúng bản. */
+  artifact?: { id: string; version: number } | null | undefined;
 }
+
+const textOf = (m: ThreadMessage) =>
+  m.artifact ? `${m.content} [artifact ${m.artifact.id}, phiên bản ${m.artifact.version}]` : m.content;
 
 /**
  * Lịch sử cuộc trò chuyện cắt theo ngân sách ký tự: luôn giữ tin đầu (đặt bối cảnh)
@@ -19,26 +25,50 @@ export interface ThreadMessage {
 export function formatTranscript(messages: ThreadMessage[], budget = HISTORY_CHAR_BUDGET): string {
   const [first, ...rest] = messages;
   if (!first) return "";
-  const firstCost = first.content.length + first.role.length + 4;
+  const firstCost = textOf(first).length + first.role.length + 4;
   let remaining = Math.max(0, budget - firstCost);
 
   const recent: ThreadMessage[] = [];
   for (let i = rest.length - 1; i >= 0; i--) {
     const msg = rest[i];
     if (!msg) continue;
-    const cost = msg.content.length + msg.role.length + 4;
+    const cost = textOf(msg).length + msg.role.length + 4;
     if (cost > remaining) break;
     recent.unshift(msg);
     remaining -= cost;
   }
 
   const selected = [first, ...recent];
-  return selected.map((m) => `${m.role}: ${m.content}`).join("\n\n");
+  return selected.map((m) => `${m.role}: ${textOf(m)}`).join("\n\n");
 }
 
 /** Luật cấp độ dùng chung cho Leader chat và terminal Leader (FR-067): chọn model theo việc để không lãng phí. */
 export const TIER_RULE =
   "Mỗi đề xuất task.create hoặc run.dispatch phải có `tier` (light|medium|heavy) và `tierReason` ngắn; gọi MCP `leader_tiers` để xem ý nghĩa từng cấp và model hub sẽ dùng. Gợi ý: tài liệu, đổi chữ, test nhỏ là light; một màn, CRUD, refactor gọn là medium; nhiều module, giao thức, bảo mật, migration, hiệu năng là heavy.";
+
+/** Lịch sử cuộc trò chuyện dạng chữ cho prompt, tin thẻ kèm id artifact để Leader sửa đúng bản. */
+export async function loadTranscript(tx: Tx, threadId: string): Promise<string> {
+  const history = await tx
+    .select({
+      role: chatMessages.role,
+      content: chatMessages.content,
+      artifactId: chatMessages.artifactId,
+      artifactVersion: chatMessages.artifactVersion,
+    })
+    .from(chatMessages)
+    .where(eq(chatMessages.threadId, threadId))
+    .orderBy(chatMessages.createdAt);
+  return formatTranscript(
+    history.map(({ artifactId, artifactVersion, ...m }) => ({
+      ...m,
+      artifact: artifactId && artifactVersion ? { id: artifactId, version: artifactVersion } : null,
+    })),
+  );
+}
+
+/** Hướng dẫn dùng artifact cho Leader (specs/012 US5-7): nội dung dài hay tương tác để ở artifact, không dán vào chữ. */
+export const ARTIFACT_RULE =
+  "Nội dung dài (hơn 30 dòng), sơ đồ, trang tương tác hay bảng thì tạo artifact bằng MCP `artifact_create` (kèm `threadId` của cuộc trò chuyện này) rồi nói ngắn trong `leader_reply` thay vì dán vào câu trả lời. Sửa artifact đã có (xem dòng `[artifact <id>, phiên bản N]` trong lịch sử, hoặc `artifact_list`) thì đọc bằng `artifact_get` rồi `artifact_update` với `baseVersion`; không tạo bản trùng.";
 
 export function assembleLeaderPrompt(params: {
   transcript: string;
@@ -52,6 +82,7 @@ export function assembleLeaderPrompt(params: {
     "Trả lời người dùng bằng đúng một lần gọi MCP `leader_reply`.",
     "Mọi hành động phải được đề xuất bằng MCP `leader_propose`; không tự thực hiện thay đổi.",
     TIER_RULE,
+    ARTIFACT_RULE,
     `Dự án: ${params.projectName} (${params.projectKey}); nhánh chính: ${params.defaultBranch ?? "main"}.`,
     "Lịch sử cuộc trò chuyện (giữ tin đầu và các tin gần nhất trong ngân sách ký tự):",
     params.transcript,

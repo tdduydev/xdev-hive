@@ -241,7 +241,7 @@
     (nút dẫn tới `/knowledge/workflows?duan=<key>`, trang dựng bản nháp bằng `codeReviews.workflowFromProject`)
   - **Phụ thuộc**: T013, T012 · **Mức**: nhẹ
 
-- [ ] T081 [US6] Kiểm hồi quy: chạy toàn bộ `pnpm check` và bộ DB test của run, review chéo, hàng merge không sửa test
+- [x] T081 [US6] Kiểm hồi quy: chạy toàn bộ `pnpm check` và bộ DB test của run, review chéo, hàng merge không sửa test
   cũ; ghi kết quả vào PR (SC-001).
   - **Scope**: không sửa file (chỉ báo cáo)
   - **Phụ thuộc**: T070 · **Mức**: nhẹ
@@ -276,7 +276,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{status.ts,status.db.test.ts}`, `apps/web/src/pages/project-settings-page.tsx`
   - **Phụ thuộc**: T003, T070, T080 · **Mức**: vừa
 
-- [ ] T102 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp ảnh màn mới (sáng, tối, 360 px).
+- [x] T102 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp ảnh màn mới (sáng, tối, 360 px).
   - **Scope**: `specs/009-code-review-workflows/*`, `apps/web/e2e/screenshots/**`
   - **Phụ thuộc**: T032, T033 · **Mức**: nhẹ
 
