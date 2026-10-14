@@ -584,3 +584,38 @@ func TestDecodeJobPassesTaskTextAndGuardSettings(t *testing.T) {
 		t.Fatalf("job = %+v, tokenSaving = %+v", job, ts)
 	}
 }
+
+// spec.sdlc đi qua job_offer: worker cũ bỏ qua trường này, nên hub thiếu nó thì job vẫn giải mã được (SDLC nil).
+func TestDecodeJobReadsSdlcSpec(t *testing.T) {
+	spec := `{"kind":"sdlc","repoUrl":"https://git.example/a.git","cli":"claude","sdlc":{"step":"spec","seed":[{"path":"docs/baseline.md","content":"nền"}],"collect":[{"artifactId":"a-1","path":"specs/011/spec.md"}]}}`
+	job, err := decodeJob(&JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(spec)}, Lease{RunToken: "t"}, "https://hub.example", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &runner.SdlcJob{Step: "spec", Seed: []runner.SdlcSeed{{Path: "docs/baseline.md", Content: "nền"}}, Collect: []runner.SdlcCollect{{ArtifactID: "a-1", Path: "specs/011/spec.md"}}}
+	if job.Kind != runner.KindSdlc || !reflect.DeepEqual(job.SDLC, want) {
+		t.Fatalf("job = %+v, SDLC = %+v", job, job.SDLC)
+	}
+	old := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"sdlc","repoUrl":"https://git.example/a.git","cli":"claude"}`)}
+	if job, err = decodeJob(old, Lease{RunToken: "t"}, "https://hub.example", "p"); err != nil || job.SDLC != nil {
+		t.Fatalf("SDLC = %+v, err = %v", job.SDLC, err)
+	}
+}
+
+// report.artifacts nằm trong report của run_result và vắng ở mọi run khác.
+func TestResultMessageCarriesSdlcArtifacts(t *testing.T) {
+	r := &runner.Result{Status: "succeeded", ChangedFiles: []string{}, Artifacts: []runner.SdlcArtifact{{ArtifactID: "a-1", Path: "spec.md", Content: "nội dung", SHA256: strings.Repeat("a", 64)}}}
+	var got struct {
+		Artifacts []map[string]any `json:"artifacts"`
+	}
+	msg := resultMessage("r", 1, 9, r)
+	if err := json.Unmarshal(msg.Report, &got); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Exit != 0 || len(got.Artifacts) != 1 || got.Artifacts[0]["artifactId"] != "a-1" || got.Artifacts[0]["path"] != "spec.md" || got.Artifacts[0]["content"] != "nội dung" || got.Artifacts[0]["sha256"] != strings.Repeat("a", 64) {
+		t.Fatalf("report = %s", msg.Report)
+	}
+	if plain := resultMessage("r", 1, 9, &runner.Result{Status: "succeeded"}); strings.Contains(string(plain.Report), "artifacts") {
+		t.Fatalf("report có artifacts dù không phải run sdlc: %s", plain.Report)
+	}
+}
