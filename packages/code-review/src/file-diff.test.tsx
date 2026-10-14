@@ -10,6 +10,9 @@ const t = codeReviewText.vi;
 const prUrl = "https://github.com/acme/pay/pull/128";
 const findings = collectFindings([aiGate]);
 
+// delay mặc định chờ một macrotask sau mỗi thao tác; máy tải cao thì mỗi lần chờ kéo dài và test chạm trần thời gian.
+const user = userEvent.setup({ delay: null });
+
 describe("FileDiff", () => {
   it("hiện thêm/xoá và gắn phát hiện AI ngay dưới dòng", () => {
     render(<FileDiff data={files()} findings={findings} prUrl={prUrl} t={t} />);

@@ -133,7 +133,7 @@
     `apps/hub/src/{runs.db.test.ts,review.db.test.ts}`
   - **Phụ thuộc**: T020 · **Mức**: nặng
 
-- [ ] T022 [US2] Checkpoint AI
+- [x] T022 [US2] Checkpoint AI
   - `ai.ts`: tạo một run review mỗi reviewer qua deps, lưu `run_ids`; `onReviewRunFinished` gom kết quả vào `details`,
     gộp theo `gates.ts`, kết luận khi đủ; run review lỗi/huỷ → checkpoint không đạt với lý do; đăng một bình luận tổng
     hợp lên PR (`commentOnIssue`).
@@ -148,7 +148,7 @@
 
 ## Phase 4: User Story 3 — "Chờ tôi duyệt" cho PR (P1)
 
-- [ ] T030 [US3] Đọc và quyết định (hub)
+- [x] T030 [US3] Đọc và quyết định (hub)
   - `queries.ts`: list (scope, status, dự án, SLA, con trỏ), count, get (`canDecide`, `canOverride`, `canEnqueue`),
     files (qua `prFiles`, đệm theo `head_sha` 10 phút).
   - `decide.ts`: approve (quorum), changes (gọi `routing` của T040 qua hàm nội bộ; trước T040 chỉ hướng `author`),
@@ -184,7 +184,7 @@
 
 ## Phase 5: User Story 4 — Trả lại và vòng mới (P1)
 
-- [ ] T040 [US4] Hướng trả lại, run sửa, vòng
+- [x] T040 [US4] Hướng trả lại, run sửa, vòng
   - `routing.ts`: `agent` (chỉ dẫn ≤ 16 000 ký tự từ ghi chú, phát hiện chặn, đuôi lệnh lỗi; `queueFixRun`; đếm lượt;
     hết lượt/hết ngân sách → `author`), `author` (task `todo`, `code_review.returned`), `previous` (xoá phê duyệt
     checkpoint đó); `supersede` + vòng mới với bản chụp cũ, `resume_gate_index`, `dismissStaleApprovals`.
@@ -220,7 +220,7 @@
 
 ## Phase 8: Nối hub
 
-- [ ] T070 Nối deps, router, job, handler
+- [x] T070 Nối deps, router, job, handler
   - `main.ts`: tạo `CodeReviewDeps` (từ engine: `startReviewRuns`, `queueFixRun`), `registerCodeReviewWorker`, SLA cron,
     handler SCM của `codereview`, `MergeDeps.reviewGate`.
   - `app.ts`: `codeReviews: codeReviewRouter(...)`.
@@ -232,11 +232,13 @@
 
 ## Phase 9: User Story 6 — Tương thích và chuyển đổi (P2)
 
-- [ ] T080 [US6] Cài đặt dự án báo quy trình đang thay review chéo
+- [x] T080 [US6] Cài đặt dự án báo quy trình đang thay review chéo
   - Ghi chú + link quy trình ở mục Review chéo; nút "Tạo quy trình từ cấu hình này" mở trang Quy trình duyệt với bản
     nháp.
   - **Scope**: `apps/web/src/pages/project-settings-page.tsx`, `apps/web/src/lib/{project-settings.ts,project-settings.test.ts}`,
-    `apps/web/e2e/projects-runs.spec.ts`
+    `apps/web/e2e/projects-runs.spec.ts`; mở rộng: `apps/web/src/pages/knowledge/workflows-page.tsx`,
+    `apps/web/src/{router.tsx,lib/route-search.ts,lib/code-reviews.test.ts}`, `apps/web/e2e/workflows.spec.ts`
+    (nút dẫn tới `/knowledge/workflows?duan=<key>`, trang dựng bản nháp bằng `codeReviews.workflowFromProject`)
   - **Phụ thuộc**: T013, T012 · **Mức**: nhẹ
 
 - [ ] T081 [US6] Kiểm hồi quy: chạy toàn bộ `pnpm check` và bộ DB test của run, review chéo, hàng merge không sửa test
@@ -255,7 +257,7 @@
   - **Scope**: `worker/internal/runner/{checks.go,checks_test.go,runner.go}`, `worker/internal/channel/jobs_test.go`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T091 Hub gửi lệnh và đánh giá `command`
+- [x] T091 Hub gửi lệnh và đánh giá `command`
   - `buildSpec` thêm `checks.commands` từ quy trình khớp (checkpoint `rule` có `command`) và từ `outcome.command`;
     `evaluatePolicy` đánh giá `command` từ `report.commands` (thiếu → như cũ "chưa hỗ trợ"); cập nhật RUN-07.
   - **Scope**: `apps/hub/src/modules/runs/{engine.ts,policy.ts,policy.test.ts}`, `apps/hub/src/runs.db.test.ts`
@@ -265,12 +267,12 @@
 
 ## Phase 11: Tài liệu và hoàn thiện
 
-- [ ] T100 [P] Cập nhật tài liệu kiến trúc: module `codereview` và luồng trong `docs/architecture.md`, `docs/add.md`,
+- [x] T100 [P] Cập nhật tài liệu kiến trúc: module `codereview` và luồng trong `docs/architecture.md`, `docs/add.md`,
   `docs/sdd.md`; trạng thái CR-xx, RUN-07 trong `docs/srs.md`; ghi chú ADR 0009 khi `command` chạy thật.
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md}`, `docs/adr/0009-configurable-outcome-policy.md`
   - **Phụ thuộc**: T070, T091 · **Mức**: nhẹ
 
-- [ ] T101 Commit status `xdev-hive/review` và gợi ý bảo vệ nhánh — **chỉ làm khi Q1 chốt theo đề xuất**.
+- [x] T101 Commit status `xdev-hive/review` và gợi ý bảo vệ nhánh — **chỉ làm khi Q1 chốt theo đề xuất**.
   - **Scope**: `apps/hub/src/modules/codereview/{status.ts,status.db.test.ts}`, `apps/web/src/pages/project-settings-page.tsx`
   - **Phụ thuộc**: T003, T070, T080 · **Mức**: vừa
 

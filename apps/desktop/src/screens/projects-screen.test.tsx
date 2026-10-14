@@ -17,7 +17,6 @@ const ACCOUNT: Account = {
 const at = "2026-10-13T00:00:00.000Z";
 const P1 = "0a0a0a0a-0000-4000-8000-000000000001";
 const P2 = "0a0a0a0a-0000-4000-8000-000000000002";
-const NEW = "0a0a0a0a-0000-4000-8000-000000000009";
 
 const project = (id: string, key: string, name: string, url: string) => ({
   id,
@@ -107,7 +106,6 @@ function fakeApp(opts: {
       return view();
     },
     "plugin:dialog|open": () => opts.picked ?? null,
-    open_hub_page: () => null,
     hub_rpc: (a) => {
       const path =
         String(a?.path)
@@ -178,7 +176,9 @@ describe("ProjectsScreen", () => {
     expect(within(await row("web-shop")).getByText("Remote không khớp")).toBeTruthy();
     const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
     expect(within(waiting).getByText("cu")).toBeTruthy();
-    expect(within(waiting).getByRole("button", { name: "Tạo dự án trên hub từ repo cu" })).toBeTruthy();
+    // Tạo dự án trên hub là việc quản trị, chỉ làm ở web: app không có nút tạo.
+    expect(within(waiting).queryByRole("button", { name: /Tạo dự án/ })).toBeNull();
+    expect(screen.getByText(/Dự án mới tạo trên web của Hive/)).toBeTruthy();
   });
 
   it("chọn thư mục gắn dự án và gửi URL repo để worker kiểm origin; thư mục mất hiện rõ", async () => {
@@ -243,84 +243,10 @@ describe("ProjectsScreen", () => {
     expect((web as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("tạo dự án từ repo: thiếu kết nối Git thì báo và dẫn tới trang Kết nối Git", async () => {
-    const calls = fakeApp({
-      hub: { "projects/list": [], "policies/get": policy(true), "systems/list": [], "scmConnections/list": [] },
-      local: [entry({ name: "cu", folder: "/w/cu", origin: "https://gitlab.example.com/acme/cu.git" })],
-    });
-    renderScreen();
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Tạo dự án trên hub từ repo cu" }));
-    expect(await screen.findByText(/chưa có kết nối Git cho gitlab.example.com/)).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Mở trang Kết nối Git" }));
-    expect(calls.find((c) => c.command === "open_hub_page")?.args).toEqual({ path: "/admin/git" });
-    expect((screen.getByRole("button", { name: "Tạo dự án" }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("tạo dự án từ repo bằng kết nối Git khớp máy chủ rồi gắn thư mục", async () => {
-    let created: Record<string, unknown> | null = null;
-    const calls = fakeApp({
-      hub: {
-        "projects/list": [],
-        "policies/get": policy(true),
-        "systems/list": [
-          {
-            id: "0a0a0a0a-0000-4000-8000-0000000000a1",
-            teamId: "t1",
-            slug: "core",
-            name: "Lõi",
-            description: null,
-            createdAt: at,
-          },
-        ],
-        "scmConnections/list": [
-          {
-            id: "0a0a0a0a-0000-4000-8000-0000000000c1",
-            kind: "github",
-            name: "GitHub",
-            baseUrl: null,
-            defaultOwner: "acme",
-            authMode: "app",
-            appId: null,
-            installationId: null,
-            createdAt: at,
-          },
-        ],
-        "projects/create": (input: Record<string, unknown>) => {
-          created = input;
-          return { dryRun: false, projectId: NEW, state: "provisioning", steps: [], warnings: [] };
-        },
-      },
-      local: [entry({ name: "Payment API", folder: "/w/pay", origin: "git@github.com:acme/payment-api.git" })],
-    });
-    renderScreen();
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Tạo dự án trên hub từ repo Payment API" }));
-    expect(((await screen.findByLabelText("Project key")) as HTMLInputElement).value).toBe("payment-api");
-    await user.click(screen.getByRole("button", { name: "Tạo dự án" }));
-    expect(await screen.findByText("Đã tạo dự án Payment API trên hub và gắn thư mục.")).toBeTruthy();
-    expect(created).toMatchObject({
-      systemId: "0a0a0a0a-0000-4000-8000-0000000000a1",
-      key: "payment-api",
-      name: "Payment API",
-      repo: {
-        mode: "existing",
-        connectionId: "0a0a0a0a-0000-4000-8000-0000000000c1",
-        url: "git@github.com:acme/payment-api.git",
-      },
-      dryRun: false,
-    });
-    expect(calls.find((c) => c.command === "local_project_bind")?.args).toMatchObject({
-      id: NEW,
-      folder: "/w/pay",
-      repoUrl: "git@github.com:acme/payment-api.git",
-    });
-  });
-
   it("chưa liên kết tài khoản thì không gọi hub, vẫn hiện repo trên máy", async () => {
     const calls = fakeApp({ hub: {}, local: [entry({ name: "cu", folder: "/w/cu" })] });
     renderScreen(null);
-    expect(await screen.findByText(/Liên kết tài khoản/)).toBeTruthy();
+    expect(await screen.findByText(/Kết nối Hive để xem và gắn dự án/)).toBeTruthy();
     expect(await screen.findByText("cu")).toBeTruthy();
     expect(calls.some((c) => c.command === "hub_rpc")).toBe(false);
   });

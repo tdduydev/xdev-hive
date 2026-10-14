@@ -1,6 +1,7 @@
 import { Button } from "@xdev-hive/ui/button";
 import { Pill } from "@xdev-hive/ui/pill";
 import { type ReactNode, useEffect, useState } from "react";
+import { ConnectHive } from "@/components/connect-hive.tsx";
 import { PickFolderButton } from "@/components/pick-folder-button.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import { folderName, useFolder } from "@/lib/folder.ts";
@@ -65,7 +66,7 @@ const text: Dict<{
     unmatched: (folder) => `thư mục ${folder} chưa khớp dự án nào trên hub (so remote origin với repo của dự án)`,
     noFolder: "Chưa chọn thư mục làm việc: số liệu dưới đây tính trên cả máy.",
     metaFailed: (folder) => `Không đọc được thư mục ${folder}.`,
-    noAccount: "Liên kết tài khoản để xem tài liệu và skill của dự án.",
+    noAccount: "Kết nối Hive để xem tài liệu và skill của dự án.",
     writeDocs: "Viết tài liệu",
     machine: "Máy sẵn sàng",
     toInstall: (n) => `${n} mục cần cài`,
@@ -119,7 +120,7 @@ const text: Dict<{
     unmatched: (folder) => `${folder} does not match a hub project (origin remote vs. project repo)`,
     noFolder: "No working folder yet: the figures below cover the whole machine.",
     metaFailed: (folder) => `Could not read the folder ${folder}.`,
-    noAccount: "Link your account to see the project's docs and skills.",
+    noAccount: "Connect to Hive to see the project's docs and skills.",
     writeDocs: "Write docs",
     machine: "Machine ready",
     toInstall: (n) => `${n} items to install`,
@@ -413,7 +414,7 @@ export function HomeScreen() {
             {meta?.branch && <span className="font-mono"> · {meta.branch}</span>}
           </p>
         </div>
-        <Button render={<a href="#/docs" />} variant="default" size="sm">
+        <Button nativeButton={false} role="link" render={<a href="#/docs" />} variant="default" size="sm">
           {t.writeDocs}
         </Button>
       </header>
@@ -502,9 +503,11 @@ export function HomeScreen() {
               </Button>
             )}
           </div>
-          {docs === null ? (
+          {!account ? (
+            <ConnectHive inline note={t.noAccount} />
+          ) : docs === null ? (
             <p className={cn("px-4 py-3 text-sm", hubError ? "text-destructive" : "text-muted-foreground")}>
-              {!account ? t.noAccount : (hubError ?? t.loading)}
+              {hubError ?? t.loading}
             </p>
           ) : docs.length === 0 ? (
             <p className="px-4 py-3 text-sm text-muted-foreground">{t.noDocs}</p>

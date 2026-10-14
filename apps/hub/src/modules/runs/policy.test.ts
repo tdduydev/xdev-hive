@@ -58,6 +58,65 @@ describe("evaluatePolicy", () => {
   });
 });
 
+describe("evaluatePolicy với lệnh kiểm", () => {
+  const command = { run: "pnpm test", exit: 0, durationMs: 1200, tail: "ok" };
+  const hard = policy({ check: "changes" }, { check: "command", run: "pnpm test" });
+  const soft = policy({ check: "changes" }, { check: "command", run: "pnpm test", required: false });
+  const evidence = (commands: unknown) => ({ ...ok, report: { ...ok.report, commands } });
+
+  it("khớp theo lệnh, không theo vị trí; mọi lệnh đạt thì succeeded", () => {
+    const r = evaluatePolicy(hard, evidence([{ ...command, run: "pnpm lint", exit: 1 }, command]));
+    expect(r).toMatchObject({ outcome: "succeeded", reasons: [] });
+    expect(r.checks[1]).toMatchObject({ passed: true, message: expect.stringContaining("mã thoát 0") });
+    expect(evaluatePolicy(policy({ check: "command", run: " pnpm test " }), evidence([command])).outcome).toBe(
+      "succeeded",
+    );
+  });
+
+  it.each([1, 2, -1, null])("mã thoát %s: bắt buộc → failed, mềm → needs_review", (exit) => {
+    const ev = evidence([{ ...command, exit }]);
+    expect(evaluatePolicy(hard, ev).outcome).toBe("failed");
+    expect(evaluatePolicy(soft, ev).outcome).toBe("needs_review");
+    expect(evaluatePolicy(hard, ev).checks[1]?.passed).toBe(false);
+  });
+
+  it.each([
+    undefined,
+    null,
+    {},
+    [],
+    [{ ...command, run: "pnpm lint" }],
+    [{ ...command, exit: "0" }],
+    [{ run: "pnpm test", exit: 0 }],
+  ])("thiếu hoặc sai bằng chứng %j → như worker cũ, chờ người xem", (commands) => {
+    const r = evaluatePolicy(hard, evidence(commands));
+    expect(r).toMatchObject({ outcome: "needs_review", awaitingReview: false });
+    expect(r.checks[1]).toMatchObject({ passed: null, message: expect.stringContaining("chưa hỗ trợ") });
+  });
+
+  it("nhiều lệnh được đánh giá riêng; một kết quả đạt không che lần chạy lỗi của cùng lệnh", () => {
+    const r = evaluatePolicy(
+      [...hard, ...policy({ check: "command", run: "pnpm lint" })],
+      evidence([command, { ...command, run: "pnpm lint", exit: 1 }]),
+    );
+    expect(r.outcome).toBe("failed");
+    expect(r.checks.map((c) => c.passed)).toEqual([true, true, false]);
+    expect(evaluatePolicy(hard, evidence([command, { ...command, exit: 1 }])).outcome).toBe("failed");
+  });
+
+  it("lệnh bắt buộc lỗi chặn review chéo; lệnh đạt cho phép chờ review", () => {
+    const p = [...hard, ...policy({ check: "review", by: "codex" })];
+    expect(evaluatePolicy(p, { ...evidence([{ ...command, exit: 1 }]), review: { status: "pending" } })).toMatchObject({
+      outcome: "failed",
+      awaitingReview: false,
+    });
+    expect(evaluatePolicy(p, { ...evidence([command]), review: { status: "pending" } })).toMatchObject({
+      outcome: "needs_review",
+      awaitingReview: true,
+    });
+  });
+});
+
 describe("evaluatePolicy với review chéo", () => {
   const hard = policy({ check: "changes" }, { check: "review", by: "codex", minScore: 7 });
   const soft = policy({ check: "changes" }, { check: "review", required: false, by: "codex", minScore: 7 });

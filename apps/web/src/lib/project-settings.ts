@@ -7,6 +7,7 @@ import {
   type ProjectSettings,
   type ProjectSettingsPatch,
   projectSettingsPatch,
+  type ReviewWorkflow,
   type RoutingEffort,
   TASK_TIERS,
   type TaskTier,
@@ -23,6 +24,21 @@ export type MergeMode = ProjectSettings["merge"]["mode"];
 export type PermissionMode = "workspace" | "full";
 export type { TaskTier };
 export { TASK_TIERS };
+
+export function codeWorkflowsForProject(
+  workflows: ReviewWorkflow[],
+  project: { key: string; teamId: string },
+): ReviewWorkflow[] {
+  // Nhánh, loại task và đường dẫn chỉ xác định được khi có run; đây là các quy trình có thể áp dụng cho dự án.
+  return workflows.filter(
+    (w) =>
+      w.enabled &&
+      w.subject === "code" &&
+      w.code !== null &&
+      (w.teamId === null || w.teamId === project.teamId) &&
+      (w.code.projects.length === 0 || w.code.projects.includes(project.key)),
+  );
+}
 
 /** Ô của một cấp độ task trong mục định tuyến; ô số giữ dạng chuỗi như các ô khác. */
 export interface TierForm {
@@ -79,9 +95,14 @@ export interface SettingsForm {
   tiers: Record<TaskTier, TierForm>;
   rtk: boolean;
   codegraph: boolean;
+  /** Context pack, ngân sách khảo sát và cắt output tool của worker; ô số "0" là tắt mục đó. */
+  contextPack: boolean;
+  exploreBudget: string;
+  toolOutputMaxChars: string;
 }
 
-const text = (n: number | undefined): string => (n === undefined ? "" : String(n));
+// null là "không giới hạn" trong bản vá; hub có thể trả lại nguyên như vậy.
+const text = (n: number | null | undefined): string => (n === undefined || n === null ? "" : String(n));
 
 /** Bước review chéo do màn này sửa: bước review đầu tiên trong chính sách mặc định của dự án. */
 const reviewIndex = (checks: OutcomeCheck[]): number => checks.findIndex((c) => c.check === "review");
@@ -138,6 +159,9 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     // Hub cũ chưa có hai mục này: hub mới đọc thiếu là bật.
     rtk: saving.rtk ?? defaultTokenSaving.rtk,
     codegraph: saving.codegraph ?? defaultTokenSaving.codegraph,
+    contextPack: saving.contextPack ?? defaultTokenSaving.contextPack,
+    exploreBudget: String(saving.exploreBudget ?? defaultTokenSaving.exploreBudget),
+    toolOutputMaxChars: String(saving.toolOutputMaxChars ?? defaultTokenSaving.toolOutputMaxChars),
   };
 }
 
@@ -239,6 +263,9 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       allowWeb: form.allowWeb,
       rtk: form.rtk,
       codegraph: form.codegraph,
+      contextPack: form.contextPack,
+      exploreBudget: requiredNum(form.exploreBudget, "exploreBudget", errors),
+      toolOutputMaxChars: requiredNum(form.toolOutputMaxChars, "toolOutputMaxChars", errors),
     },
     routing: {
       enabled: form.routing,
@@ -282,7 +309,9 @@ export function fieldOfPath(path: readonly PropertyKey[]): string | undefined {
         key === "autocompactPct" ||
         key === "subagentModel" ||
         key === "cacheTtl" ||
-        key === "autocompactWindow"
+        key === "autocompactWindow" ||
+        key === "exploreBudget" ||
+        key === "toolOutputMaxChars"
         ? key
         : undefined;
     case "routing": {
@@ -354,4 +383,58 @@ export function saveErrors(error: unknown): { errors: FieldErrors; message?: str
     if (Object.keys(errors).length > 0) return { errors };
   }
   return { errors: {}, message: apiErrorMessage(error) };
+}
+
+/**
+ * Ô của từng mục trên màn cấu hình (admin-layout.md § Decisions 4: lưu từng mục). Mỗi ô thuộc đúng một mục, để lưu
+ * một mục không gửi kèm thay đổi đang gõ dở ở mục khác.
+ */
+export const SETTINGS_SECTIONS = {
+  merge: ["mergeMode", "requiredApprovals", "mergeMethod", "requireCi", "mergeQueue"],
+  review: ["crossReview", "reviewBy", "reviewMinScore", "reviewRequired", "reviewMinLines", "reviewPaths"],
+  run: ["planMode", "sandbox"],
+  brief: ["briefAuto", "briefRefreshCommits", "briefRefreshDays"],
+  budget: ["perRunUsd", "perTaskUsd", "maxTurns"],
+  model: ["models"],
+  tokens: [
+    "tokenSaving",
+    "bashMaxChars",
+    "autocompactPct",
+    "subagentModel",
+    "cacheTtl",
+    "autocompactWindow",
+    "allowWeb",
+    "rtk",
+    "codegraph",
+    "contextPack",
+    "exploreBudget",
+    "toolOutputMaxChars",
+  ],
+  routing: ["routing", "tiers"],
+  perm: ["runPermissions"],
+} as const satisfies Record<string, readonly (keyof SettingsForm)[]>;
+
+export type SettingsSectionId = keyof typeof SETTINGS_SECTIONS;
+export const SETTINGS_SECTION_IDS = Object.keys(SETTINGS_SECTIONS) as SettingsSectionId[];
+
+/** Mục chứa một ô; nhận cả tên lỗi theo ô (`models.claude.code`, `tiers.light.model`). */
+export function sectionOfField(field: string): SettingsSectionId | undefined {
+  const key = field.split(".")[0];
+  return SETTINGS_SECTION_IDS.find((id) => (SETTINGS_SECTIONS[id] as readonly string[]).includes(key ?? ""));
+}
+
+/** `form` với các ô của `section` chép từ `from`; ô của mục khác giữ nguyên. */
+export function withSection(form: SettingsForm, from: SettingsForm, section: SettingsSectionId): SettingsForm {
+  const next = { ...form };
+  for (const key of SETTINGS_SECTIONS[section]) Object.assign(next, { [key]: from[key] });
+  return next;
+}
+
+/** Bản vá chỉ của một mục: ô của mục khác lấy lại từ settings đang lưu, nên thay đổi chưa lưu ở đó không bị gửi đi. */
+export function buildSectionPatch(
+  form: SettingsForm,
+  current: ProjectSettings,
+  section: SettingsSectionId,
+): BuildResult {
+  return buildPatch(withSection(formFromSettings(current), form, section), current);
 }

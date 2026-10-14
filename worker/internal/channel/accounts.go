@@ -20,6 +20,9 @@ func (c Config) capabilities() []string {
 	if c.Accounts != nil {
 		caps = append(caps, capAccountsRemote)
 	}
+	if c.terminalCapable() {
+		caps = append(caps, capTerminal)
+	}
 	return caps
 }
 

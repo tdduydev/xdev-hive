@@ -2,14 +2,32 @@ import { implement } from "@orpc/server";
 import { contract } from "@xdev-hive/contracts";
 import type { RequestContext } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import {
+  type DecideDeps,
+  decideCodeReview,
+  enqueueCodeReview,
+  overrideCodeReview,
+  recheckCodeReview,
+} from "./decide.ts";
 import { type CodeRunPort, dryRunCodeWorkflow, workflowFromProject } from "./dry-run.ts";
+import { codeReviewFiles, countAwaiting, createFilesCache, getCodeReview, listCodeReviews } from "./queries.ts";
 
 /** `runs` do module `runs` cài vào (nó import codereview nên không import ngược được). */
-export function codeReviewsRouter(deps: OrgDeps & { runs: CodeRunPort }) {
+export function codeReviewsRouter(deps: OrgDeps & DecideDeps & { runs: CodeRunPort }) {
   const { authed, inOrg } = orgMiddlewares(deps);
   const os = implement(contract.codeReviews).$context<RequestContext>().use(authed).use(inOrg);
+  // Một bộ đệm diff cho cả tiến trình hub (D10); test truyền bộ riêng qua deps.
+  const read = { ...deps, filesCache: deps.filesCache ?? createFilesCache() };
   return {
     codeReviews: {
+      list: os.list.handler(({ context: { tx, user }, input }) => listCodeReviews(tx, user.id, input)),
+      count: os.count.handler(({ context: { tx, user } }) => countAwaiting(tx, user.id)),
+      get: os.get.handler(({ context: { tx, user }, input }) => getCodeReview(tx, user.id, input.id, read)),
+      files: os.files.handler(({ context: { tx, user }, input }) => codeReviewFiles(tx, user.id, input.id, read)),
+      decide: os.decide.handler(({ context: { tx, user }, input }) => decideCodeReview(tx, user.id, input, read)),
+      override: os.override.handler(({ context: { tx, user }, input }) => overrideCodeReview(tx, user.id, input, read)),
+      enqueue: os.enqueue.handler(({ context: { tx, user }, input }) => enqueueCodeReview(tx, user.id, input.id, read)),
+      recheck: os.recheck.handler(({ context: { tx, user }, input }) => recheckCodeReview(tx, user.id, input.id, read)),
       dryRun: os.dryRun.handler(({ context: { tx, user }, input }) =>
         dryRunCodeWorkflow(tx, user.id, input, deps.runs),
       ),
