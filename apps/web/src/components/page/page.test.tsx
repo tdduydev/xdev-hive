@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { Tabs } from "@base-ui/react/tabs";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Th } from "@xdev-hive/ui/table";
 import { UsersIcon } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DataTable } from "@/components/data-table/data-table.tsx";
 import { FilterBar, FilterSearch } from "@/components/page/filter-bar.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
+import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import { FormRow, RadioCards, SettingsNav, SettingsSection, SwitchRow } from "@/components/page/settings.tsx";
 import { StatCard, StatGrid } from "@/components/page/stat-card.tsx";
 import { StickyFormFooter } from "@/components/page/sticky-form-footer.tsx";
@@ -214,7 +216,9 @@ describe("StickyFormFooter", () => {
 
   it("says there are unsaved changes, then errors, then saved", () => {
     const onDiscard = vi.fn();
-    const { rerender } = render(<StickyFormFooter dirty saving={false} onDiscard={onDiscard} saveLabel="Lưu cấu hình" />);
+    const { rerender } = render(
+      <StickyFormFooter dirty saving={false} onDiscard={onDiscard} saveLabel="Lưu cấu hình" />,
+    );
     expect(screen.getByText("Có thay đổi chưa lưu")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Huỷ thay đổi" }));
     expect(onDiscard).toHaveBeenCalled();
@@ -223,11 +227,26 @@ describe("StickyFormFooter", () => {
     rerender(<StickyFormFooter dirty saving={false} onDiscard={onDiscard} error="Hub từ chối." />);
     expect(screen.getByRole("alert").textContent).toBe("Hub từ chối.");
 
-    rerender(<StickyFormFooter dirty={false} saving={false} saved onDiscard={onDiscard} savedLabel="Đã lưu cấu hình." />);
+    rerender(
+      <StickyFormFooter dirty={false} saving={false} saved onDiscard={onDiscard} savedLabel="Đã lưu cấu hình." />,
+    );
     expect(screen.getByRole("status").textContent).toBe("Đã lưu cấu hình.");
 
     rerender(<StickyFormFooter dirty saving onDiscard={onDiscard} />);
     expect((screen.getByRole("button", { name: "Đang lưu…" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("asks before closing the tab only while there are unsaved changes", () => {
+    const unload = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const { rerender, unmount } = render(<StickyFormFooter dirty={false} saving={false} onDiscard={() => {}} />);
+    expect(unload()).toBe(false);
+    rerender(<StickyFormFooter dirty saving={false} onDiscard={() => {}} />);
+    expect(unload()).toBe(true);
+    unmount();
+    expect(unload()).toBe(false);
   });
 });
 
@@ -257,8 +276,72 @@ describe("DataTable layout options", () => {
     expect(select?.className).toContain("sticky");
     expect(name?.className).toContain("left-10");
     expect(cost?.className).toContain("text-right");
-    expect(actions?.className).toContain("right-0");
+    expect(actions?.className).toContain("sm:sticky");
     const cell = screen.getByText("12.4");
     expect(cell.className).toContain("tabular-nums");
+  });
+});
+
+describe("DataTable server paging", () => {
+  it("shows every row of the hub page and only the hub's page buttons", () => {
+    const onNext = vi.fn();
+    const rows = Array.from({ length: 30 }, (_, i) => ({ id: String(i), name: `Dòng ${i}` }));
+    render(
+      <DataTable
+        rows={rows}
+        columns={[{ key: "name", label: "Tên", value: (r) => r.name }]}
+        serverPaging={{
+          label: "Trang 2 của nhật ký",
+          hasPrevious: true,
+          hasNext: true,
+          onPrevious: () => {},
+          onNext,
+          nextLabel: "Trang sau của nhật ký",
+        }}
+      />,
+    );
+    expect(screen.getByText("Dòng 29")).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Số dòng" })).toBeNull();
+    expect(screen.getByText("Trang 2 của nhật ký")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Trang sau của nhật ký" }));
+    expect(onNext).toHaveBeenCalled();
+  });
+});
+
+describe("SegmentedControl", () => {
+  it("marks the chosen option with aria-pressed and reports a new choice", () => {
+    const onChange = vi.fn();
+    render(
+      <SegmentedControl
+        label="Khoảng thời gian"
+        value="7d"
+        onChange={onChange}
+        options={[
+          { value: "24h", label: "24 giờ" },
+          { value: "7d", label: "7 ngày" },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("group", { name: "Khoảng thời gian" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "7 ngày" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "24 giờ" }));
+    expect(onChange).toHaveBeenCalledWith("24h");
+  });
+});
+
+describe("Th", () => {
+  it("keeps caps for the desktop app and sentence case for admin pages", () => {
+    render(
+      <table>
+        <thead>
+          <tr>
+            <Th>Máy</Th>
+            <Th variant="plain">Chi phí</Th>
+          </tr>
+        </thead>
+      </table>,
+    );
+    expect(screen.getByText("Máy").className).toContain("uppercase");
+    expect(screen.getByText("Chi phí").className).not.toContain("uppercase");
   });
 });

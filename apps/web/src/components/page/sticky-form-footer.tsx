@@ -1,6 +1,6 @@
 import { Button } from "@xdev-hive/ui/button";
 import { CheckIcon, CircleAlertIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { type Dict, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{ save: string; saving: string; discard: string; unsaved: string; saved: string }> = {
@@ -17,7 +17,10 @@ const text: Dict<{ save: string; saving: string; discard: string; unsaved: strin
 /**
  * Thanh lưu dính đáy form (admin-layout.md § Form): luôn thấy nút Lưu khi form dài, nói rõ còn thay đổi chưa lưu, lỗi
  * khi lưu hay đã lưu xong. Đặt làm con cuối của `<form>` trong PageBody; lề âm kéo thanh ra sát hai mép nội dung.
+ * Form chứa thanh nên có `FORM_SCROLL_MARGIN` để ô đang focus không bị thanh che khi bấm Tab xuống cuối.
  */
+export const FORM_SCROLL_MARGIN = "[&_:is(input,select,textarea,button)]:scroll-mb-24";
+
 export function StickyFormFooter({
   dirty,
   saving,
@@ -42,6 +45,14 @@ export function StickyFormFooter({
   dirtyLabel?: string;
 }) {
   const t = useT(text);
+  // Đóng tab hay tải lại khi còn thay đổi chưa lưu thì trình duyệt hỏi lại; đổi trang trong app không chặn để khỏi
+  // kẹt người dùng, câu "Có thay đổi chưa lưu" đã nhắc ngay trên thanh.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   let status: ReactNode = null;
   if (error)
     status = (
