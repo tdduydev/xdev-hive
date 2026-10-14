@@ -12,6 +12,7 @@ import { type AiGateDeps, onReviewRunFinished as aiRunFinished, type FinishedRev
 import { evaluateRules, gateApplies, type RuleContext } from "./gates.ts";
 import { matchCodeWorkflow } from "./match.ts";
 import { onApproved } from "./merge.ts";
+import { keepApprovals, openNextRound, type QueueFixRunInput, type RoutingDeps, routeReturn } from "./routing.ts";
 import { codeReviewGateRuns, codeReviews } from "./schema.ts";
 
 export const CODE_REVIEW_QUEUE = "codereview";
@@ -65,16 +66,9 @@ export interface RunEvidence {
   hasAgentReport: boolean;
 }
 
-/** Run code sửa theo góp ý (D6); dùng ở hướng trả lại `agent`. */
-export interface QueueFixRunInput {
-  reviewId: string;
-  workflowId: string | null;
-  /** Run code của vòng bị trả lại: run sửa cùng task, nhánh, CLI, chủ. */
-  runId: string;
-  instructions: string;
-}
+export type { QueueFixRunInput };
 
-export interface CodeReviewDeps extends AiGateDeps {
+export interface CodeReviewDeps extends AiGateDeps, RoutingDeps {
   jobs?: Jobs | undefined;
   /** Địa chỉ web để link trong thông báo. */
   publicUrl?: string | undefined;
@@ -163,11 +157,22 @@ export async function startCodeReview(
   // verifyCode chạy lại sau lỗi tạm: cùng commit thì giữ phiên đang có.
   if (open?.headSha === run.headSha) return open;
   if (open) {
-    await tx
-      .update(codeReviews)
-      .set({ status: "superseded", updatedAt: sql`now()` })
-      .where(eq(codeReviews.id, open.id));
-    await auditReview(tx, "codereview.supersede", open, { runId: run.id, newHeadSha: run.headSha });
+    // Vòng sau theo bản chụp và vị trí dừng của vòng trước (routing.ts), không theo quy trình hiện tại.
+    const next = await openNextRound(
+      tx,
+      open,
+      {
+        runId: run.id,
+        headSha: run.headSha,
+        ownerUserId: run.ownerUserId,
+        stats: run.stats,
+        reasons: run.reasons,
+        source: "run",
+      },
+      deps,
+    );
+    await scheduleAdvance(tx, next, deps);
+    return next;
   }
 
   const [row] = await tx
@@ -178,19 +183,16 @@ export async function startCodeReview(
       projectId: run.projectId,
       taskId: run.taskId,
       runId: run.id,
-      workflowId: open ? open.workflowId : m.workflow.id,
-      workflowName: open ? open.workflowName : m.workflow.name,
-      phases: open ? open.phases : m.workflow.phases,
-      options: open ? open.options : codeOptions.parse(m.workflow.code),
+      workflowId: m.workflow.id,
+      workflowName: m.workflow.name,
+      phases: m.workflow.phases,
+      options: codeOptions.parse(m.workflow.code),
       prNumber: run.pr.number,
       prUrl: run.pr.url,
       branch: run.pr.branch,
       baseBranch: run.pr.baseBranch,
       headSha: run.headSha,
-      round: open ? open.round + 1 : 1,
-      previousId: open?.id ?? null,
-      requesterUserId: open ? (open.requesterUserId ?? run.ownerUserId) : run.ownerUserId,
-      agentRevisions: open?.agentRevisions ?? 0,
+      requesterUserId: run.ownerUserId,
       addedLines: run.stats?.addedLines ?? 0,
       deletedLines: run.stats?.deletedLines ?? 0,
       changedFiles: run.stats?.changedFiles.length ?? 0,
@@ -213,7 +215,7 @@ export async function startCodeReview(
  * Đi tiếp qua job: checkpoint quy tắc cần diff từ nhà cung cấp Git, không gọi mạng trong transaction của người gọi.
  * Không có hàng đợi (test, công cụ) thì chạy ngay, không có diff.
  */
-async function scheduleAdvance(tx: Tx, review: CodeReviewRow, deps: CodeReviewDeps): Promise<void> {
+export async function scheduleAdvance(tx: Tx, review: CodeReviewRow, deps: CodeReviewDeps): Promise<void> {
   if (deps.jobs)
     await deps.jobs.enqueue(
       CODE_REVIEW_QUEUE,
@@ -316,17 +318,31 @@ async function moveTo(tx: Tx, review: CodeReviewRow, index: number): Promise<Cod
   return row ?? review;
 }
 
-/**
- * Checkpoint tự động không đạt: phiên về `changes_requested` theo hướng mặc định của checkpoint (FR-023). Tạo run sửa,
- * báo người giao việc hay quay lại checkpoint trước thuộc `routing.ts` (T040).
- */
-async function returnReview(tx: Tx, review: CodeReviewRow, index: number, gate: ReviewGate): Promise<CodeReviewRow> {
-  const [row] = await tx
-    .update(codeReviews)
-    .set({ status: "changes_requested", route: gate.onReject, gateIndex: index, updatedAt: sql`now()` })
-    .where(eq(codeReviews.id, review.id))
-    .returning();
-  return row ?? review;
+/** Checkpoint tự động không đạt: trả lại theo hướng mặc định của checkpoint (FR-023), xem `routing.ts`. */
+async function returnReview(
+  tx: Tx,
+  review: CodeReviewRow,
+  index: number,
+  gate: ReviewGate,
+  gateRunId: string,
+  note: string | null,
+  deps: CodeReviewDeps,
+): Promise<CodeReviewRow> {
+  const routed = await routeReturn(
+    tx,
+    review,
+    {
+      gateIndex: index,
+      gate,
+      gateRunId,
+      route: gate.onReject,
+      note: note ?? `Checkpoint “${gate.name}” không đạt.`,
+      actorUserId: null,
+    },
+    deps,
+    async (tx2, row, at) => void (await scheduleAdvance(tx2, await moveTo(tx2, row, at), deps)),
+  );
+  return (await lockReview(tx, routed.review.id)) ?? routed.review;
 }
 
 /**
@@ -359,7 +375,7 @@ export async function advanceReview(
     }
     if (gate.kind === "rule") {
       const v = evaluateRules(gate, ctx);
-      await recordGate(tx, review, i, gate, { status: v.status, checklist: v.checklist, note: v.note });
+      const ruleRun = await recordGate(tx, review, i, gate, { status: v.status, checklist: v.checklist, note: v.note });
       await auditReview(tx, "codereview.gate", review, {
         gateId: gate.id,
         kind: gate.kind,
@@ -370,11 +386,15 @@ export async function advanceReview(
         i++;
         continue;
       }
-      if (v.status === "failed") return returnReview(tx, review, i, gate);
+      if (v.status === "failed") return returnReview(tx, review, i, gate, ruleRun.id, v.note, deps);
       // Thiếu bằng chứng: dừng ở đây chờ người quyết thay (FR-017, FR-022).
       return moveTo(tx, review, i);
     }
 
+    if (await keepApprovals(tx, review, i, gate)) {
+      i++;
+      continue;
+    }
     const due = gate.kind === "human" && gate.slaHours ? new Date(Date.now() + gate.slaHours * 3_600_000) : null;
     const gateRun = await recordGate(tx, review, i, gate, { status: "waiting", dueAt: due });
     const row = await moveTo(tx, review, i);
@@ -444,7 +464,7 @@ export async function completeAutoGate(
     passed: result.status === "passed",
     score: result.score ?? null,
   });
-  if (result.status === "failed") return returnReview(tx, review, review.gateIndex, gate);
+  if (result.status === "failed") return returnReview(tx, review, review.gateIndex, gate, run.id, result.note, deps);
   const next = await moveTo(tx, review, review.gateIndex + 1);
   await scheduleAdvance(tx, next, deps);
   return next;

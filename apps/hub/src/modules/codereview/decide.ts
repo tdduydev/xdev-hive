@@ -4,13 +4,13 @@ import {
   type CodeReviewOverrideInput,
   codeReviewDecideInput,
   codeReviewOverrideInput,
+  type RejectRoute,
   type ReviewGate,
 } from "@xdev-hive/contracts";
 import { eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { enqueueMerge } from "../catalog/index.ts";
 import { flatGates, requiredApprovals } from "../knowledge/index.ts";
-import { notify } from "../notify/index.ts";
 import { ConflictError, ForbiddenError, type Tx } from "../platform/index.ts";
 import { isGitProviderError } from "../scm/index.ts";
 import { allowWith, requireTeamRole } from "../tenancy/index.ts";
@@ -25,6 +25,7 @@ import {
   userReader,
   visibleReview,
 } from "./queries.ts";
+import { routeReturn } from "./routing.ts";
 import { codeReviewGateRuns, codeReviews } from "./schema.ts";
 import {
   advanceReview,
@@ -33,7 +34,6 @@ import {
   type CodeReviewGateRunRow,
   type CodeReviewJob,
   type CodeReviewRow,
-  codeReviewLink,
   currentGateRun,
 } from "./service.ts";
 
@@ -111,36 +111,26 @@ async function resumeAt(tx: Tx, review: CodeReviewRow, index: number, deps: Deci
 }
 
 /**
- * Trả lại PR (FR-023). Hướng `agent` (run sửa) và `previous` (về checkpoint người duyệt trước) thuộc `routing.ts` của
- * T040; tới lúc đó mọi hướng về người giao việc để phiên không dừng ở hướng chưa ai xử lý. Hướng xin và hướng thật
- * đều ghi vào audit ở người gọi.
+ * Trả lại PR (FR-023) theo hướng xin, mặc định là hướng của checkpoint. `routing.ts` tạo run sửa, về người giao việc
+ * hoặc về checkpoint trước, và ghi audit cả hướng xin lẫn hướng thật.
  */
-async function sendBack(
+function sendBack(
   tx: Tx,
   review: CodeReviewRow,
+  index: number,
   gate: ReviewGate,
   gateRunId: string,
   note: string,
+  route: RejectRoute,
+  actorUserId: string,
   deps: DecideDeps,
-): Promise<void> {
-  await tx
-    .update(codeReviews)
-    .set({ status: "changes_requested", route: "author", updatedAt: sql`now()` })
-    .where(eq(codeReviews.id, review.id));
-  if (!review.requesterUserId) return;
-  await notify(
+) {
+  return routeReturn(
     tx,
-    {
-      orgId: review.orgId,
-      event: "code_review.returned",
-      title: `PR #${review.prNumber} bị trả lại`,
-      body: `Checkpoint “${gate.name}” của quy trình ${review.workflowName} trả lại PR #${review.prNumber} (${review.branch}).\n\nGóp ý:\n${note}`,
-      // Theo lượt checkpoint: trả lại lần nữa sau vòng mới thì báo lần nữa.
-      eventKey: `code_review_returned:${gateRunId}`,
-      recipientIds: [review.requesterUserId],
-      link: codeReviewLink(deps.publicUrl, review.id),
-    },
-    { jobs: deps.jobs },
+    review,
+    { gateIndex: index, gate, gateRunId, route, note, actorUserId },
+    deps,
+    (tx2, row, at) => resumeAt(tx2, row, at, deps),
   );
 }
 
@@ -196,12 +186,7 @@ export async function decideCodeReview(
       .update(codeReviewGateRuns)
       .set({ status: "failed", decidedBy: userId, note, finishedAt: sql`now()` })
       .where(eq(codeReviewGateRuns.id, run.id));
-    await auditReview(tx, "codereview.changes", review, userId, {
-      gateId: gate.id,
-      requestedRoute: input.route ?? gate.onReject,
-      route: "author",
-    });
-    await sendBack(tx, review, gate, run.id, note, deps);
+    await sendBack(tx, review, review.gateIndex, gate, run.id, note, input.route ?? gate.onReject, userId, deps);
   }
   return fresh(tx, reader, review.id, deps);
 }
@@ -255,7 +240,7 @@ export async function overrideCodeReview(
     note: input.note,
   });
   if (input.passed) await resumeAt(tx, review, review.gateIndex + 1, deps);
-  else await sendBack(tx, review, gate, run.id, input.note, deps);
+  else await sendBack(tx, review, review.gateIndex, gate, run.id, input.note, gate.onReject, userId, deps);
   return fresh(tx, reader, review.id, deps);
 }
 

@@ -133,7 +133,7 @@
     `apps/hub/src/{runs.db.test.ts,review.db.test.ts}`
   - **Phụ thuộc**: T020 · **Mức**: nặng
 
-- [ ] T022 [US2] Checkpoint AI
+- [x] T022 [US2] Checkpoint AI
   - `ai.ts`: tạo một run review mỗi reviewer qua deps, lưu `run_ids`; `onReviewRunFinished` gom kết quả vào `details`,
     gộp theo `gates.ts`, kết luận khi đủ; run review lỗi/huỷ → checkpoint không đạt với lý do; đăng một bình luận tổng
     hợp lên PR (`commentOnIssue`).
@@ -184,7 +184,7 @@
 
 ## Phase 5: User Story 4 — Trả lại và vòng mới (P1)
 
-- [ ] T040 [US4] Hướng trả lại, run sửa, vòng
+- [x] T040 [US4] Hướng trả lại, run sửa, vòng
   - `routing.ts`: `agent` (chỉ dẫn ≤ 16 000 ký tự từ ghi chú, phát hiện chặn, đuôi lệnh lỗi; `queueFixRun`; đếm lượt;
     hết lượt/hết ngân sách → `author`), `author` (task `todo`, `code_review.returned`), `previous` (xoá phê duyệt
     checkpoint đó); `supersede` + vòng mới với bản chụp cũ, `resume_gate_index`, `dismissStaleApprovals`.
