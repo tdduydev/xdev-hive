@@ -1,4 +1,4 @@
-import { type Project, parseRepoUrl, type ScmConnection } from "@xdev-hive/contracts";
+import { type Project, parseRepoUrl } from "@xdev-hive/contracts";
 import { invoke } from "@/lib/tauri.ts";
 
 /**
@@ -101,41 +101,4 @@ export function matchLegacy(
     if (named.length === 1) claim(l, named[0]);
   }
   return out;
-}
-
-/** Máy chủ của URL repo (github.com, gitlab.example.com); null khi không đọc được. */
-export function repoHost(url: string | null | undefined): string | null {
-  const key = repoKey(url);
-  return key ? (key.split("/")[0] ?? null) : null;
-}
-
-/** Kết nối Git của tổ chức dùng được cho repo ở máy chủ này: GitHub không ghi baseUrl là github.com. */
-export function connectionFor(connections: ScmConnection[], host: string | null): ScmConnection | undefined {
-  if (!host) return undefined;
-  return connections.find((c) => {
-    if (c.baseUrl) {
-      try {
-        return new URL(c.baseUrl).hostname.toLowerCase() === host;
-      } catch {
-        return false;
-      }
-    }
-    return c.kind === "github" ? host === "github.com" : host === "gitlab.com";
-  });
-}
-
-/** Project key gợi ý từ tên repo, theo luật của hub (chữ thường, số, gạch ngang, bắt đầu bằng chữ, 2–40 ký tự). */
-export function suggestKey(name: string): string {
-  const key = name
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^[^a-z]+/, "")
-    .replace(/-+$/, "")
-    .slice(0, 40)
-    .replace(/-+$/, "");
-  return key.length >= 2 ? key : `${key || "p"}x`.slice(0, 2);
 }

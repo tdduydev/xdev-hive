@@ -11,7 +11,7 @@ export {
 // Cổng MCP: kiểm run token và tool task_get, task_update cho agent trong run.
 export { registerMcpTools } from "./mcp.ts";
 export { evaluatePolicy, matchGlob } from "./policy.ts";
-export { eventsAfter, getRun, latestRuns, listRuns, logsAfter } from "./queries.ts";
+export { eventsAfter, getRun, latestRuns, listRuns, logsAfter, searchRuns } from "./queries.ts";
 export { purgeRunLogs, registerRunLogRetentionWorker, runLogRetentionQueue } from "./retention.ts";
 export { type RunsRouterDeps, runsRouter } from "./router.ts";
 export { createMcpRunTokens } from "./run-tokens.ts";
