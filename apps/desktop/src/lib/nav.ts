@@ -1,5 +1,6 @@
 import {
   BlocksIcon,
+  ChartColumnIcon,
   ChartLineIcon,
   ClipboardCheckIcon,
   FilePenLineIcon,
@@ -79,6 +80,7 @@ export type ScreenId =
   | "sdlc"
   | "sdlc-questions"
   | "sdlc-progress"
+  | "sdlc-metrics"
   | "home"
   | "work"
   | "reviews"
@@ -177,6 +179,14 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         label: { vi: "Tiến độ", en: "Progress" },
         icon: ChartLineIcon,
         design: "AppSdlcBoard.dc.html",
+        needs: "sdlc.use",
+        hub: true,
+      },
+      {
+        id: "sdlc-metrics",
+        label: { vi: "Chỉ số", en: "Metrics" },
+        icon: ChartColumnIcon,
+        design: "AppSdlcMetrics.dc.html",
         needs: "sdlc.use",
         hub: true,
       },
