@@ -94,7 +94,7 @@ func (r *Remote) HandlePair(req PairRequest) PairResult {
 	if label == "" {
 		label = "Thiết bị"
 	}
-	allow, answered := r.ask(req.PairID, label, req.UserID)
+	allow, answered := r.ask(req.PairID, watchEvent{Event: eventPairRequest, PairID: req.PairID, Label: label, UserID: req.UserID})
 	if !answered {
 		return deny(pairTimeout)
 	}
@@ -138,23 +138,24 @@ func (r *Remote) HandlePair(req PairRequest) PairResult {
 	return res
 }
 
-// ask phát yêu cầu xác nhận cho mọi người đang watch và chờ remote.pair.decide.
-func (r *Remote) ask(pairID, label, userID string) (allow, answered bool) {
+// ask phát yêu cầu xác nhận (ghép hay mở phiên, khoá theo pairId/requestId) cho mọi người đang watch và chờ
+// remote.pair.decide hoặc remote.start.decide.
+func (r *Remote) ask(id string, ev watchEvent) (allow, answered bool) {
 	wait := r.ConfirmWait
 	if wait <= 0 {
 		wait = DefaultConfirmWait
 	}
-	d := &decision{ch: make(chan bool, 1),
-		ev: watchEvent{Event: "pair_request", PairID: pairID, Label: label, UserID: userID, ExpiresAt: r.now().Add(wait).UTC()}}
+	ev.ExpiresAt = r.now().Add(wait).UTC()
+	d := &decision{ch: make(chan bool, 1), ev: ev}
 	r.mu.Lock()
 	if r.decisions == nil {
 		r.decisions = map[string]*decision{}
 	}
-	r.decisions[pairID] = d
+	r.decisions[id] = d
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
-		delete(r.decisions, pairID)
+		delete(r.decisions, id)
 		r.mu.Unlock()
 	}()
 	r.broadcast(d.ev)
@@ -166,12 +167,14 @@ func (r *Remote) ask(pairID, label, userID string) (allow, answered bool) {
 	}
 }
 
-func (r *Remote) decide(pairID string, allow bool) bool {
+func (r *Remote) decide(id, event string, allow bool) bool {
 	r.mu.Lock()
-	d, ok := r.decisions[pairID]
+	d, ok := r.decisions[id]
+	// Kiểm loại để remote.pair.decide không trả lời được yêu cầu mở phiên và ngược lại.
+	ok = ok && d.ev.Event == event
 	if ok {
 		// Câu trả lời đầu tiên thắng: hai cửa sổ watch cùng bấm thì cái sau không đổi được kết quả.
-		delete(r.decisions, pairID)
+		delete(r.decisions, id)
 	}
 	r.mu.Unlock()
 	if ok {
@@ -180,7 +183,7 @@ func (r *Remote) decide(pairID string, allow bool) bool {
 	return ok
 }
 
-// decision là một yêu cầu ghép đang chờ người ở máy; ev để phát lại cho watch mở sau.
+// decision là một yêu cầu ghép hay mở phiên đang chờ người ở máy; ev để phát lại cho watch mở sau.
 type decision struct {
 	ch chan bool
 	ev watchEvent
