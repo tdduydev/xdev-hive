@@ -31,6 +31,7 @@ import {
   runPhases,
   runStateTone,
   shortId,
+  tokenGuardSummary,
 } from "@/lib/run-view.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { type StreamStatus, useRunStream } from "@/lib/use-run-stream.ts";
@@ -352,6 +353,7 @@ function DetailsCard({ run, now }: { run: Run; now: number }) {
 
 function CostCard({ run, capUsd }: { run: Run; capUsd: number | undefined }) {
   const percent = budgetPercent(run.cost.costUsd, capUsd);
+  const guard = tokenGuardSummary(run.tokenGuard);
   return (
     <SectionCard
       title="Token và chi phí"
@@ -392,6 +394,7 @@ function CostCard({ run, capUsd }: { run: Run; capUsd: number | undefined }) {
           RTK tiết kiệm ~{formatInt(run.rtk.savedTokens)} token ({formatInt(run.rtk.commands)} lệnh)
         </p>
       )}
+      {guard && <p className="text-xs text-muted-foreground">{guard}</p>}
     </SectionCard>
   );
 }
