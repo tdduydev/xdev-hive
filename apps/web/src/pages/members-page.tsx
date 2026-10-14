@@ -1,34 +1,42 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { type UseQueryResult, useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { Invitation, InvitationStatus, OrgMember, OrgRole, TeamRole } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill, type PillProps } from "@xdev-hive/ui/pill";
+import { MailIcon, NetworkIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 import { DataTable } from "@/components/data-table/data-table.tsx";
 import { Icon } from "@/components/icons.tsx";
 import { InviteForm } from "@/components/invite-form.tsx";
-import { Who } from "@/components/person.tsx";
-import { Card } from "@/components/ui/card.tsx";
+import { PersonAvatar, Who } from "@/components/person.tsx";
+import { DescriptionList } from "@/components/ui/description-list.tsx";
+import {
+  EmptyState,
+  LoadFailure,
+  LoadingState,
+  SectionsSkeleton,
+  TableSkeleton,
+} from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatDay } from "@/lib/format.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { canInvite, canRevoke } from "@/lib/invites.ts";
 import { canSetOrgRole, canSetStatus, isOrgAdmin, ORG_ROLES } from "@/lib/roles.ts";
-import type { MembersTab } from "@/lib/route-search.ts";
+import type { MembersTab, MemberTab } from "@/lib/route-search.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
-import { PageBody, PageHeader } from "@/shell/page-header.tsx";
+import { DetailHeader, PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
 
 const memberText: Dict<{
   active: string;
   invitations: string;
   pendingApproval: string;
-  peopleAccess: string;
   members: string;
+  description: string;
   memberGroups: string;
   searchNameOrEmail: string;
   role: string;
@@ -79,6 +87,16 @@ const memberText: Dict<{
   roleLabel: (name: string) => string;
   lockLabel: (name: string, blocked: boolean) => string;
   acceptedOn: (day: string) => string;
+  memberTabs: string;
+  overview: string;
+  email: string;
+  teamsOfMember: string;
+  notInAnyTeam: string;
+  notInAnyTeamHint: string;
+  notFound: string;
+  backToList: string;
+  joinedOn: (day: string) => string;
+  teamCount: (n: number) => string;
   orgRoles: Record<"owner" | "admin" | "member", string>;
   teamRoles: Record<TeamRole, string>;
   invitationStatus: Record<"pending" | "accepted" | "expired", string>;
@@ -87,8 +105,8 @@ const memberText: Dict<{
     active: "Đang hoạt động",
     invitations: "Lời mời",
     pendingApproval: "Chờ duyệt",
-    peopleAccess: "Người và quyền",
     members: "Thành viên",
+    description: "Ai được vào tổ chức, vai trò của từng người và họ thuộc đội nào.",
     memberGroups: "Nhóm thành viên",
     searchNameOrEmail: "Tìm tên, email…",
     role: "Vai trò",
@@ -139,6 +157,16 @@ const memberText: Dict<{
     roleLabel: (name) => `Vai trò tổ chức của ${name}`,
     lockLabel: (name, blocked) => `${blocked ? "Mở khoá" : "Khoá"} ${name}`,
     acceptedOn: (day) => `Nhận ${day}`,
+    memberTabs: "Thông tin thành viên",
+    overview: "Tổng quan",
+    email: "Email",
+    teamsOfMember: "Đội tham gia",
+    notInAnyTeam: "Chưa thuộc đội nào",
+    notInAnyTeamHint: "Thêm người này vào một đội để họ thấy dự án và hệ thống của đội.",
+    notFound: "Không tìm thấy thành viên này. Có thể họ đã rời tổ chức.",
+    backToList: "Về danh sách thành viên",
+    joinedOn: (day) => `Tham gia ${day}`,
+    teamCount: (n) => `${n} đội`,
     orgRoles: { owner: "Chủ sở hữu", admin: "Quản trị", member: "Thành viên" },
     teamRoles: { admin: "Quản trị đội", member: "Thành viên", viewer: "Chỉ xem", ba: "BA/PO" },
     invitationStatus: { pending: "Chờ nhận", accepted: "Đã nhận", expired: "Hết hạn" },
@@ -147,8 +175,8 @@ const memberText: Dict<{
     active: "Active",
     invitations: "Invitations",
     pendingApproval: "Pending approval",
-    peopleAccess: "People & access",
     members: "Members",
+    description: "Who can access the organization, each person's role and the teams they belong to.",
     memberGroups: "Member groups",
     searchNameOrEmail: "Search name or email…",
     role: "Role",
@@ -199,23 +227,21 @@ const memberText: Dict<{
     roleLabel: (name) => `Organization role of ${name}`,
     lockLabel: (name, blocked) => `${blocked ? "Unlock" : "Lock"} ${name}`,
     acceptedOn: (day) => `Accepted ${day}`,
+    memberTabs: "Member details",
+    overview: "Overview",
+    email: "Email",
+    teamsOfMember: "Teams",
+    notInAnyTeam: "Not in any team",
+    notInAnyTeamHint: "Add this person to a team so they can see the team's projects and systems.",
+    notFound: "This member was not found. They may have left the organization.",
+    backToList: "Back to members",
+    joinedOn: (day) => `Joined ${day}`,
+    teamCount: (n) => `${n} ${n === 1 ? "team" : "teams"}`,
     orgRoles: { owner: "Owner", admin: "Admin", member: "Member" },
     teamRoles: { admin: "Team admin", member: "Member", viewer: "Viewer", ba: "BA/PO" },
     invitationStatus: { pending: "Pending", accepted: "Accepted", expired: "Expired" },
   },
 };
-
-const tab =
-  "flex cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground data-active:border-primary data-active:text-foreground data-disabled:cursor-not-allowed data-disabled:opacity-60";
-
-function Loading() {
-  const t = useT(memberText);
-  return (
-    <p aria-busy="true" className="text-muted-foreground">
-      {t.loading}
-    </p>
-  );
-}
 
 /**
  * Màn 4 của mockup. Người bị khoá vẫn nằm trong danh sách chính, có nhãn "Đã khoá", để mở khoá ngay tại chỗ. Tab Lời
@@ -241,7 +267,7 @@ export function MembersPage() {
 
   return (
     <>
-      <PageHeader crumb={t.peopleAccess} title={t.members}>
+      <PageHeader title={t.members} description={t.description}>
         {canInvite(org.role) && (
           <Button variant="default" onClick={() => setInviting(true)}>
             <Icon name="plus" />
@@ -259,37 +285,38 @@ export function MembersPage() {
           })
         }
       >
-        <Tabs.List aria-label={t.memberGroups} className="flex flex-wrap gap-0.5 border-b border-border px-3 sm:px-6">
-          <Tabs.Tab value="dang-hoat-dong" className={tab}>
+        <PageTabList label={t.memberGroups}>
+          <PageTab value="dang-hoat-dong" count={members.data ? activeCount : undefined}>
             {t.active}
-            {members.data ? ` · ${activeCount}` : ""}
-          </Tabs.Tab>
+          </PageTab>
           {admin && (
             <>
-              <Tabs.Tab value="loi-moi" className={tab}>
+              <PageTab value="loi-moi" count={openInvites}>
                 {t.invitations}
-                {openInvites !== undefined ? ` · ${openInvites}` : ""}
-              </Tabs.Tab>
-              <Tabs.Tab value="cho-duyet" className={tab}>
+              </PageTab>
+              <PageTab value="cho-duyet" count={members.data ? pending.length : undefined} tone="warning">
                 {t.pendingApproval}
-                {members.data ? ` · ${pending.length}` : ""}
-              </Tabs.Tab>
+              </PageTab>
             </>
           )}
-        </Tabs.List>
+        </PageTabList>
         <Tabs.Panel value="dang-hoat-dong">
           <PageBody>
             {failure && <Alert variant="destructive">{failure}</Alert>}
             {members.isPending ? (
-              <Loading />
+              <TableSkeleton label={t.loading} columns={6} />
             ) : members.isError ? (
-              <Alert variant="destructive">{apiErrorMessage(members.error)}</Alert>
+              <LoadFailure error={members.error} retry={members.refetch} />
             ) : (
               <DataTable
                 rows={listed.map((m) => ({ ...m, id: m.userId }))}
                 rowLabel={(m) => m.name}
                 placeholder={t.searchNameOrEmail}
                 selectable={admin}
+                onRowClick={(m) =>
+                  void navigate({ to: "/admin/members/$userId", params: { userId: m.userId }, search: {} })
+                }
+                minWidth={980}
                 bulk={[
                   {
                     key: "role",
@@ -358,6 +385,7 @@ export function MembersPage() {
                     value: (m) => `${m.name} ${m.email}`,
                     sortable: true,
                     hideable: false,
+                    pin: "start",
                     cell: (m) => <MemberCell member={m} part="person" report={setFailure} />,
                   },
                   {
@@ -416,6 +444,8 @@ export function MembersPage() {
                     label: t.actions,
                     value: () => null,
                     hideable: false,
+                    align: "end",
+                    pin: "end",
                     cell: (m) => <MemberCell member={m} part="actions" report={setFailure} />,
                   },
                 ]}
@@ -463,6 +493,159 @@ export function MembersPage() {
   );
 }
 
+/**
+ * /admin/members/$userId: trang của một thành viên (admin-layout.md § Decisions 2–3). Đọc từ danh sách thành viên đã
+ * có (hub không có API một người), nên vào thẳng link vẫn chỉ tốn một lần tải danh sách.
+ */
+export function MemberDetailPage() {
+  const me = useMe();
+  const t = useT(memberText);
+  const { org, api } = useOrg();
+  const navigate = useNavigate();
+  const { userId } = useParams({ from: "/session/app/in-org/admin/members/$userId" });
+  const { tab = "tong-quan" } = useSearch({ from: "/session/app/in-org/admin/members/$userId" });
+  const members = useQuery(api.orgMembers.list.queryOptions());
+  const [failure, setFailure] = useState<string | null>(null);
+  const [addingTeam, setAddingTeam] = useState(false);
+  const member = members.data?.find((m) => m.userId === userId);
+
+  if (members.isPending || members.isError || !member)
+    return (
+      <>
+        <PageHeader title={t.members} width="wide" />
+        <PageBody width="wide">
+          {members.isPending ? (
+            <SectionsSkeleton label={t.loading} />
+          ) : members.isError ? (
+            <LoadFailure error={members.error} retry={members.refetch} />
+          ) : (
+            <>
+              <Alert variant="destructive">{t.notFound}</Alert>
+              <Link to="/admin/members" className="w-fit text-primary hover:text-primary/90">
+                {t.backToList}
+              </Link>
+            </>
+          )}
+        </PageBody>
+      </>
+    );
+
+  const blocked = member.status === "blocked";
+  const canAddToTeam = isOrgAdmin(org.role) && member.status === "active";
+  const addToTeam = () => setAddingTeam(true);
+  return (
+    <>
+      <DetailHeader
+        back={{ to: "/admin/members", label: t.members }}
+        title={member.name}
+        leading={<PersonAvatar person={member} />}
+        status={
+          <>
+            <Pill tone={blocked ? "bad" : "ok"}>{blocked ? t.locked : t.activeStatus}</Pill>
+            {member.userId === me.id && <small className="text-xs text-muted-foreground">{t.you}</small>}
+          </>
+        }
+        meta={
+          <>
+            <span className="break-all">{member.email}</span>
+            <span>{t.orgRoles[member.role]}</span>
+            <span>{t.joinedOn(formatDay(member.joinedAt))}</span>
+            <MemberActivity member={member} />
+          </>
+        }
+      >
+        <MemberCell member={member} part="actions" report={setFailure} />
+        {canAddToTeam && (
+          <Button variant="default" onClick={addToTeam}>
+            <Icon name="plus" />
+            {t.addToTeam}
+          </Button>
+        )}
+      </DetailHeader>
+      <Tabs.Root
+        value={tab}
+        onValueChange={(value: MemberTab | "tong-quan") =>
+          navigate({
+            to: "/admin/members/$userId",
+            params: { userId },
+            search: value === "tong-quan" ? {} : { tab: value },
+            replace: true,
+          })
+        }
+      >
+        <PageTabList label={t.memberTabs}>
+          <PageTab value="tong-quan">{t.overview}</PageTab>
+          <PageTab value="doi" count={member.teams.length}>
+            {t.teamsOfMember}
+          </PageTab>
+        </PageTabList>
+        <PageBody width="wide">
+          {failure && <Alert variant="destructive">{failure}</Alert>}
+          <Tabs.Panel value="tong-quan" className="grid min-w-0">
+            <div className="max-w-2xl rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+              <DescriptionList
+                items={[
+                  { term: t.email, detail: member.email },
+                  {
+                    term: t.organizationRole,
+                    detail: <MemberCell member={member} part="role" report={setFailure} />,
+                  },
+                  { term: t.status, detail: blocked ? t.locked : t.activeStatus },
+                  { term: t.team, detail: <MemberTeams teams={member.teams} /> },
+                  { term: t.signsInWith, detail: <MemberSignIns member={member} /> },
+                  { term: t.lastActive, detail: <MemberActivity member={member} /> },
+                  { term: t.joined, detail: formatDay(member.joinedAt) },
+                ]}
+              />
+            </div>
+          </Tabs.Panel>
+          <Tabs.Panel value="doi" className="grid min-w-0">
+            {member.teams.length === 0 ? (
+              <EmptyState
+                icon={NetworkIcon}
+                title={t.notInAnyTeam}
+                description={t.notInAnyTeamHint}
+                action={
+                  canAddToTeam && (
+                    <Button variant="outline" onClick={addToTeam}>
+                      {t.addToTeam}
+                    </Button>
+                  )
+                }
+              />
+            ) : (
+              <ul
+                aria-label={t.teamCount(member.teams.length)}
+                className="max-w-2xl divide-y divide-border rounded-xl bg-card ring-1 ring-foreground/10"
+              >
+                {member.teams.map((team) => (
+                  <li key={team.teamId} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <Link
+                      to="/admin/teams/$teamId"
+                      params={{ teamId: team.teamId }}
+                      className="min-w-0 truncate font-medium text-foreground hover:underline"
+                    >
+                      {team.name}
+                    </Link>
+                    <Pill className="ml-auto shrink-0" tone={team.role === "admin" ? "sel" : "neutral"}>
+                      {t.teamRoles[team.role]}
+                    </Pill>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Tabs.Panel>
+        </PageBody>
+      </Tabs.Root>
+      <Dialog open={addingTeam} onOpenChange={setAddingTeam}>
+        <DialogContent>
+          {addingTeam && <MemberBulkDialog members={[member]} mode="team" onDone={() => setAddingTeam(false)} />}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function InvitationsTab({
   invitations,
   onInvite,
@@ -473,18 +656,21 @@ function InvitationsTab({
   const t = useT(memberText);
   const [failure, setFailure] = useState<string | null>(null);
   const [selected, setSelected] = useState<Invitation[] | null>(null);
-  if (invitations.isPending) return <Loading />;
-  if (invitations.isError) return <Alert variant="destructive">{apiErrorMessage(invitations.error)}</Alert>;
+  if (invitations.isPending) return <TableSkeleton label={t.loading} columns={5} />;
+  if (invitations.isError) return <LoadFailure error={invitations.error} retry={invitations.refetch} />;
   if (invitations.data.length === 0)
     return (
-      <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-        <h2 className="text-base font-semibold text-foreground">{t.noInvitationsYet}</h2>
-        <p className="max-w-md text-muted-foreground">{t.invitationHint}</p>
-        <Button variant="default" className="mt-2" onClick={onInvite}>
-          <Icon name="plus" />
-          {t.invitePeople}
-        </Button>
-      </Card>
+      <EmptyState
+        icon={MailIcon}
+        title={t.noInvitationsYet}
+        description={t.invitationHint}
+        action={
+          <Button variant="default" onClick={onInvite}>
+            <Icon name="plus" />
+            {t.invitePeople}
+          </Button>
+        }
+      />
     );
   return (
     <>
@@ -493,6 +679,7 @@ function InvitationsTab({
         rows={invitations.data}
         rowLabel={(inv) => inv.email}
         placeholder={t.searchEmail}
+        minWidth={860}
         bulk={[
           {
             key: "revoke",
@@ -573,6 +760,8 @@ function InvitationsTab({
             label: t.actions,
             value: () => null,
             hideable: false,
+            align: "end",
+            pin: "end",
             cell: (inv) => <InvitationCell invitation={inv} part="actions" report={setFailure} />,
           },
         ]}
@@ -660,16 +849,17 @@ function PendingTab({ members, pending }: { members: UseQueryResult<OrgMember[]>
   const t = useT(memberText);
   const [failure, setFailure] = useState<string | null>(null);
   const [bulk, setBulk] = useState<{ mode: MemberBulkMode; members: OrgMember[] } | null>(null);
-  if (members.isPending) return <Loading />;
-  if (members.isError) return <Alert variant="destructive">{apiErrorMessage(members.error)}</Alert>;
+  if (members.isPending) return <TableSkeleton label={t.loading} columns={3} />;
+  if (members.isError) return <LoadFailure error={members.error} retry={members.refetch} />;
   return (
     <>
-      <p className="text-muted-foreground">{t.pendingHint}</p>
+      <p className="text-sm text-muted-foreground">{t.pendingHint}</p>
       {failure && <Alert variant="destructive">{failure}</Alert>}
       <DataTable
         rows={pending.map((m) => ({ ...m, id: m.userId }))}
         rowLabel={(m) => m.name}
         placeholder={t.searchNameOrEmail}
+        minWidth={560}
         bulk={[
           { key: "approve", label: t.approve, onClick: (members) => setBulk({ mode: "approve", members }) },
           { key: "deny", label: t.deny, onClick: (members) => setBulk({ mode: "deny", members }) },
@@ -695,6 +885,7 @@ function PendingTab({ members, pending }: { members: UseQueryResult<OrgMember[]>
             label: t.actions,
             value: () => null,
             hideable: false,
+            align: "end",
             cell: (m) => <PendingCell member={m} part="actions" report={setFailure} />,
           },
         ]}
@@ -1033,7 +1224,7 @@ function MemberBulkDialog({
       )}
       {mode === "team" &&
         (teams.isPending ? (
-          <Loading />
+          <LoadingState />
         ) : teams.isError ? (
           <Alert variant="destructive">{apiErrorMessage(teams.error)}</Alert>
         ) : !teams.data.length ? (

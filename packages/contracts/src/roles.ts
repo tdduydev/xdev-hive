@@ -19,7 +19,8 @@ export const PERMISSION_TREE: readonly PermissionNode[] = [
     branch("tasks", [leaf("tasks.read"), leaf("tasks.create"), leaf("tasks.assign"), leaf("tasks.delete")]),
     branch("runs", [leaf("runs.read"), leaf("runs.retry"), leaf("runs.cancel")]),
     branch("plans", [leaf("plans.read"), leaf("plans.decide")]),
-    branch("leader", [leaf("leader.chat"), leaf("leader.approve")]),
+    // Mở terminal Leader trên máy dùng chung (specs/010, specs/011 FR-067): agent chạy lệnh trên máy nên là quyền nguy hiểm.
+    branch("leader", [leaf("leader.chat"), leaf("leader.approve"), leaf("leader.terminal", true)]),
     // Quyết thay checkpoint tự động của phiên review code (cho đạt dù máy chưa kiểm xong hoặc không đạt).
     branch("reviews", [leaf("reviews.override", true)]),
     // AI SDLC (specs/011): `sdlc.override` cho run code chạy dù tài liệu bắt buộc chưa duyệt, nên là quyền nguy hiểm.
@@ -105,12 +106,21 @@ const TEAM_ADMIN_EXTRA = new Set([
   "reviews.override",
   "sdlc.override",
   "sdlc.modes.write",
+  "leader.terminal",
 ]);
 /**
  * BA/PO (specs/011 FR-061): soạn, đề xuất và duyệt tài liệu AI SDLC; không tạo task, không chạy run, không quản trị máy.
  * Liệt kê đủ thay vì lọc theo `.read` để quyền đọc mới thêm sau không tự rơi vào vai trò này.
  */
-const TEAM_BA = new Set(["sdlc.read", "sdlc.write", "docs.read", "proposals.create", "tasks.read", "runs.read"]);
+const TEAM_BA = new Set([
+  "sdlc.read",
+  "sdlc.write",
+  "docs.read",
+  "proposals.create",
+  "tasks.read",
+  "runs.read",
+  "leader.terminal",
+]);
 
 export const systemRoleId = z.enum(["owner", "admin", "member", "team-admin", "team-member", "team-viewer", "team-ba"]);
 export type SystemRoleId = z.infer<typeof systemRoleId>;

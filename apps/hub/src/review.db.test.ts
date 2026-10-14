@@ -798,7 +798,13 @@ describe("quy trình review code thay review chéo (specs/009, D3)", () => {
     expect((await runRow(runId)).result).toEqual(done.result);
     // Phiên đăng bình luận tổng hợp (T022); run review của quy trình không tự đăng từng bình luận.
     expect([...provider.repos.values()][0]?.comments.length ?? 0).toBe(commentsBefore);
-    expect((await codeReviewOf(runId)).status).toBe("in_review");
+    // Reviewer không nộp là lỗi của reviewer đó: checkpoint AI không đạt và phiên bị trả lại (T022).
+    const [gate] = (
+      await admin.query("select status, note from hive.code_review_gate_runs where review_id = $1", [review.id])
+    ).rows;
+    expect(gate.status).toBe("failed");
+    expect(gate.note).toMatch(/^Run review của (claude|codex) không có kết quả/);
+    expect((await codeReviewOf(runId)).status).toBe("changes_requested");
   });
 
   it("quy trình của dự án khác: review chéo như cũ", async () => {
