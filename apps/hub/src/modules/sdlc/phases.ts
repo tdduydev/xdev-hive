@@ -38,6 +38,7 @@ import {
   sdlcItems,
   sdlcSteps,
 } from "./schema.ts";
+import { queueSync } from "./sync.ts";
 
 /*
  * Máy trạng thái giai đoạn của hạng mục (plan.md "Luồng"). Giai đoạn đạt khi mọi tài liệu bắt buộc của nó có baseline;
@@ -352,7 +353,7 @@ export async function onBaseline(tx: Tx, event: SdlcBaselineEvent, deps: SdlcDep
     .set({ baselineVersion: event.version, baselineHash: hash, approval })
     .where(eq(sdlcArtifacts.id, artifact.id));
   // Duyệt lại không tạo phiên bản mới nên repo không có gì để ghi.
-  if (!event.reaffirm) await markSyncPending(tx, artifact.id);
+  if (!event.reaffirm) await markSyncPending(tx, item, artifact.id, deps);
   // Bản tách đọc từ chính baseline này (T030); lỗi đọc thì rollback cả baseline để không có baseline mà thiếu task.
   if (!event.reaffirm) await onBreakdownBaseline(tx, item, artifact, event.version);
   // Lần tự duyệt ghi lúc checkpoint đạt, chưa biết phiên bản; thu hồi cần phiên bản để biết baseline nào bị bác.
@@ -389,8 +390,8 @@ export async function onBaseline(tx: Tx, event: SdlcBaselineEvent, deps: SdlcDep
     await scheduleAdvance(tx, item, deps);
 }
 
-/** Repo nào để `off` thì tài liệu chỉ ở hub; còn lại chờ job đồng bộ (T040) ghi vào repo. */
-async function markSyncPending(tx: Tx, artifactId: string): Promise<void> {
+/** Repo nào để `off` thì tài liệu chỉ ở hub; còn lại chờ job đồng bộ (sync.ts) ghi vào repo. */
+async function markSyncPending(tx: Tx, item: SdlcItemRow, artifactId: string, deps: SdlcDeps): Promise<void> {
   const syncs = await tx
     .select({ projectId: sdlcArtifactSyncs.projectId, settings: sdlcItemProjects.settings })
     .from(sdlcArtifactSyncs)
@@ -409,6 +410,7 @@ async function markSyncPending(tx: Tx, artifactId: string): Promise<void> {
       .update(sdlcArtifactSyncs)
       .set({ syncState: "pending", syncError: null, syncAttempts: 0 })
       .where(and(eq(sdlcArtifactSyncs.artifactId, artifactId), eq(sdlcArtifactSyncs.projectId, s.projectId)));
+    await queueSync(tx, deps.jobs, { orgId: item.orgId, itemId: item.id, projectId: s.projectId });
   }
 }
 

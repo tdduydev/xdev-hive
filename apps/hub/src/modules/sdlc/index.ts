@@ -3,6 +3,7 @@ import type { Tx } from "../platform/index.ts";
 
 export { canReadItem, requireProjectWrite, visibleItemsWhere } from "./access.ts";
 export { type CodeRunGate, codeRunGate } from "./gate.ts";
+export { IMPORT_MAX_FILES, importItem, importRoute, importTitle, parseItemFolder } from "./import.ts";
 export {
   allowedModes,
   type CreateItemOptions,
@@ -42,6 +43,21 @@ export {
 } from "./questions.ts";
 export { sdlcRouter } from "./router.ts";
 export { onSdlcRunFinished, queueAuthorFix, type SdlcRunOutcome, stepRoutes, withStepRuns } from "./steps.ts";
+export {
+  handleSdlcPullJob,
+  onSdlcPush,
+  pullProject,
+  registerSdlcSync,
+  requestSync,
+  type SdlcPullJob,
+  type SdlcSyncJob,
+  type SyncDeps,
+  scanProjects,
+  sdlcPullQueue,
+  sdlcSyncQueue,
+  syncItemProject,
+  syncRoute,
+} from "./sync.ts";
 
 /** Run code của task vừa kết luận, cho truy vết và đợt kế (plan.md "Luồng" bước 7). */
 export interface SettledCodeRun {
