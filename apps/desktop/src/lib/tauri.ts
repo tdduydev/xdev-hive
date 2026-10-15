@@ -46,6 +46,32 @@ export const registerWorker = (hub: string, token: string) => invoke<string>("re
 /** Mở trình duyệt để đăng nhập trên hub; xong thì máy đã đăng ký và tài khoản đã liên kết. Trả tên máy. */
 export const browserLogin = (hub: string) => invoke<string>("browser_login", { hub });
 
+/** Kiểm địa chỉ hub bằng /api/v1/health trước khi dùng; lỗi là câu hướng dẫn (chứng chỉ, sai giao thức, không tới được). */
+export const hubCheck = (hub: string) => invoke<string>("hub_check", { hub });
+
+/** Kiểu khớp với `HubChange` trong src-tauri/src/lib.rs. */
+export interface HubChange {
+  hub: string;
+  changed: boolean;
+  needsRegister: boolean;
+}
+
+/** Chuyển máy đã đăng ký sang địa chỉ hub mới khi hub đó nhận đăng ký cũ; không nhận thì báo `needsRegister`. */
+export const hubChange = (hub: string) => invoke<HubChange>("hub_change", { hub });
+
+/** Hai địa chỉ là một hub, so như Rust: bỏ khoảng trắng, `/` cuối, chữ hoa ở giao thức và tên máy, cổng mặc định. */
+export function sameHub(a: string, b: string): boolean {
+  const norm = (raw: string) => {
+    try {
+      const url = new URL(raw.trim());
+      return url.origin + url.pathname.replace(/\/+$/, "");
+    } catch {
+      return raw.trim();
+    }
+  };
+  return norm(a) === norm(b);
+}
+
 /** Xin quyền thông báo một lần để báo mất kết nối với hub. Từ chối hay lỗi thì bỏ qua: app vẫn chạy được. */
 export async function askNotificationPermission(): Promise<void> {
   try {

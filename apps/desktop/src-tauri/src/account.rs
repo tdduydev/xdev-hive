@@ -87,7 +87,7 @@ async fn whoami(hub: &str, token: &str) -> Result<Account, HubError> {
     parse_whoami(&v).ok_or_else(|| HubError::Message("Hub không trả thông tin tài khoản.".into()))
 }
 
-async fn status_for(hub: Option<String>) -> AccountStatus {
+pub(crate) async fn status_for(hub: Option<String>) -> AccountStatus {
     let Some(hub) = hub else {
         return AccountStatus::default();
     };
@@ -140,6 +140,21 @@ pub(crate) async fn save_checked(app: &AppHandle, hub: &str, token: &str) -> Res
     entry(hub)?
         .set_password(token)
         .map_err(|e| format!("Không lưu được token vào keychain: {e}"))
+}
+
+/// Hub đổi địa chỉ: token cá nhân trong keychain lưu theo địa chỉ cũ. Hub mới vẫn nhận token đó (cùng hub, chỉ đổi
+/// http sang https hay bỏ cổng) thì chuyển sang địa chỉ mới để người dùng khỏi đăng nhập lại; không nhận thì để người
+/// dùng đăng nhập lại. Mục cũ luôn bị gỡ: worker không còn ở hub cũ, giữ lại chỉ là token thừa trong keychain.
+pub(crate) async fn carry_over(app: &AppHandle, old_hub: &str, new_hub: &str) -> bool {
+    let Some(token) = stored_token(old_hub) else {
+        return false;
+    };
+    crate::artifacts::forget(app, old_hub, &token);
+    let moved = stored_token(new_hub).is_none() && save_checked(app, new_hub, &token).await.is_ok();
+    if let Ok(e) = entry(old_hub) {
+        let _ = e.delete_credential();
+    }
+    moved
 }
 
 /// Sự kiện báo cửa sổ app đọc lại tài khoản: đăng xuất từ khay không đi qua giao diện.

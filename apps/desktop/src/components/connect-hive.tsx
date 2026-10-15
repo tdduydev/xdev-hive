@@ -18,6 +18,18 @@ const text: Dict<{ title: string; lead: string; local: string; connect: string }
   },
 };
 
+/** Chỉ nút mở hộp thoại Tài khoản, cho chỗ chật (đầu màn, cột bên) đã có câu nhắc riêng. */
+export function ConnectHiveButton({ className }: { className?: string }) {
+  const t = useT(text);
+  const connect = useConnect();
+  if (!connect) return null;
+  return (
+    <Button size="sm" variant="outline" className={className} onClick={connect}>
+      {t.connect}
+    </Button>
+  );
+}
+
 /**
  * Chỗ của màn cần hub khi chưa đăng nhập: lời mời kết nối thay vì lỗi gọi hub hay màn trắng. `inline` là một dòng trong
  * màn có cả phần tại máy (Dự án, Tổng quan…), để phần tại máy vẫn hiện đủ.
