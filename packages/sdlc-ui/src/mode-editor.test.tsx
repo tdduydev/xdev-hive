@@ -58,7 +58,8 @@ describe("cấu hình chế độ", () => {
     expect(screen.getByText(/Giai đoạn yêu cầu của chế độ nặng luôn cần người duyệt/)).toBeTruthy();
     expect(save).not.toHaveBeenCalled();
   });
-  it("đường dẫn cấm không được lưu, chạy thử trả đường dẫn", async () => {
+  // Hai kịch bản gõ phím dài nhất: trên CI chạy song song nhiều gói có lúc vượt 20 giây.
+  it("đường dẫn cấm không được lưu, chạy thử trả đường dẫn", { timeout: 60_000 }, async () => {
     const { save, dryRun } = open("speckit");
     const user = userEvent.setup();
     const path = screen.getAllByLabelText("Đường dẫn repo")[0];
@@ -78,7 +79,7 @@ describe("cấu hình chế độ", () => {
     open("small", false);
     expect(screen.getByRole("button", { name: "Lưu chế độ" }).hasAttribute("disabled")).toBe(true);
   });
-  it("gõ nhiều mục bắt buộc giữ được dòng mới và lưu đủ danh sách", async () => {
+  it("gõ nhiều mục bắt buộc giữ được dòng mới và lưu đủ danh sách", { timeout: 60_000 }, async () => {
     const { save } = open("speckit");
     const user = userEvent.setup();
     const sections = screen.getAllByLabelText("Mục bắt buộc (mỗi dòng)")[0];
