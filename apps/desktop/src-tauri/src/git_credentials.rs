@@ -317,7 +317,7 @@ mod tests {
                     }));
                     write!(socket, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
                 });
-                let result = account(&crate::tls::client(), &endpoint, kind, "fake-token").await;
+                let result = account(&crate::tls::client().expect("tls client"), &endpoint, kind, "fake-token").await;
                 thread.join().unwrap();
                 if status.starts_with("200") {
                     assert_eq!(result.unwrap(), "duy");
