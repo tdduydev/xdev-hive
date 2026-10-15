@@ -338,7 +338,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
   - **Kiểm**: hub test (gom 3 lần lưu thành 1 commit; PR cuốn chiếu nhận commit thứ hai; nhánh bảo vệ; repo đổi trước
     khi đẩy thì không ghi đè), typecheck.
 
-- [ ] **T014 [P] [US3] [nặng] · 3 ngày — Repo → hub: so sánh, đổi tên, áp, hợp, xung đột**
+- [x] **T014 [P] [US3] [nặng] · 3 ngày — Repo → hub: so sánh, đổi tên, áp, hợp, xung đột**
   - **Phụ thuộc**: T006, T008, T011.
   - **Goal**: US3, FR-017…FR-023, plan.md mục 6. Edge case: đổi tên/di chuyển, nhánh mặc định đổi, webhook về trước
     phản hồi commit, repo đổi tên, quyền mất.
