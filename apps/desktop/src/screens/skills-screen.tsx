@@ -4,6 +4,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ConnectHiveButton } from "@/components/connect-hive.tsx";
 import { PickFolderButton } from "@/components/pick-folder-button.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import { useFolder } from "@/lib/folder.ts";
@@ -670,6 +671,7 @@ export function SkillsScreen() {
         <div className="flex min-w-72 flex-1 flex-col gap-1">
           <p className="text-sm text-muted-foreground">{t.lead}</p>
           {sub && <p className={cn("text-sm", hubError ? "text-destructive" : "text-muted-foreground")}>{sub}</p>}
+          {!account && <ConnectHiveButton className="self-start" />}
           {account && !hubError && target === "project" && !folder && <PickFolderButton />}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">

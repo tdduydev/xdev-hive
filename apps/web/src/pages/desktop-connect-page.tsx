@@ -20,6 +20,7 @@ const text: Dict<{
   body: (machine: string) => string;
   bullets: [string, string];
   cli: { title: string; body: (machine: string) => string; bullets: [string, string]; bad: string; done: string };
+  signIn: { title: string; body: (machine: string) => string; bullets: [string, string] };
   org: string;
   team: string;
   noTeam: string;
@@ -49,6 +50,14 @@ const text: Dict<{
       bad: "Liên kết đăng nhập không hợp lệ. Chạy lại `hive login` trong terminal.",
       done: "Đã cho phép. Quay lại terminal để hoàn tất.",
     },
+    signIn: {
+      title: "Đăng nhập app xDev Hive trên máy này?",
+      body: (machine) => `App desktop trên máy ${machine} sẽ đăng nhập bằng tài khoản của bạn.`,
+      bullets: [
+        "Máy đã đăng ký vào đội nên không đăng ký lại; worker vẫn chạy như cũ.",
+        "App gọi hub thay bạn bằng token cá nhân (hạn 90 ngày, thu hồi được ở MCP và công cụ → Token MCP).",
+      ],
+    },
     org: "Tổ chức",
     team: "Đội",
     noTeam: "Bạn chưa là quản trị đội nào trong tổ chức này nên chưa đăng ký máy được. Nhờ quản trị đội cấp quyền.",
@@ -77,6 +86,14 @@ const text: Dict<{
       bad: "This sign-in link is not valid. Run `hive login` again in your terminal.",
       done: "Allowed. Go back to your terminal to finish.",
     },
+    signIn: {
+      title: "Sign in the xDev Hive app on this machine?",
+      body: (machine) => `The desktop app on ${machine} will be signed in as you.`,
+      bullets: [
+        "The machine is already registered to a team, so it is not registered again; the worker keeps running.",
+        "The app calls the hub as you with a personal token (90 days, revocable under MCP & tools → MCP tokens).",
+      ],
+    },
     org: "Organization",
     team: "Team",
     noTeam: "You are not a team admin in this organization, so you cannot register machines yet. Ask a team admin.",
@@ -90,10 +107,15 @@ const text: Dict<{
   },
 };
 
-/** Chữ theo client đang đăng nhập; đọc thẳng query để cả báo lỗi liên kết hỏng cũng đúng client. */
+/**
+ * Chữ theo client đang đăng nhập; đọc thẳng query để cả báo lỗi liên kết hỏng cũng đúng client. App desktop đã đăng
+ * ký máy cũng xin token theo kiểu `cli` (không đăng ký lại) nhưng gửi `client=desktop` để người dùng quay về app.
+ */
 function useText() {
   const all = useT(text);
-  return new URLSearchParams(window.location.search).get("purpose") === "cli" ? { ...all, ...all.cli } : all;
+  const q = new URLSearchParams(window.location.search);
+  if (q.get("purpose") !== "cli") return all;
+  return q.get("client") === "desktop" ? { ...all, ...all.signIn } : { ...all, ...all.cli };
 }
 
 /** Tham số app gửi kèm; sai bất cứ cái nào thì không cho phép, vì chuyển về địa chỉ khác là lộ mã. */
