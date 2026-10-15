@@ -175,7 +175,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 2: lõi extension và CLI (sau Đợt 1)
 
-- [ ] **T005 [US5] [nặng] · 2 ngày — `hive mcp` (proxy stdio ↔ streamable HTTP)**
+- [x] **T005 [US5] [nặng] · 2 ngày — `hive mcp` (proxy stdio ↔ streamable HTTP)**
   - **Phụ thuộc**: T004 (token, `main.go`).
   - **Goal**: plan.md mục 6 và FR-015. Xử lý phản hồi JSON và SSE, `Mcp-Session-Id` nếu hub trả, huỷ khi stdin đóng.
     Token hết hạn: lỗi JSON-RPC có lời nhắn "Chạy hive login".
