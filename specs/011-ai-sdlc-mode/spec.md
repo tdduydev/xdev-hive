@@ -4,13 +4,15 @@
 
 **Created**: 2026-10-13
 
-**Status**: Draft (product owner đã chốt mọi câu hỏi ngày 2026-10-13, xem [Clarifications](#clarifications))
+**Status**: Implemented (T001–T091 xong; product owner đã chốt mọi câu hỏi ngày 2026-10-13, xem
+[Clarifications](#clarifications); cách clone ở T086 chờ chủ dự án xác nhận)
 
 **Input**: Yêu cầu của product owner (nguyên văn): "hệ thống này sẽ có chế độ AI SDLC, nghiên cứu xem"; "app client chỉ có
 nhiệm vụ kiểm tra thôi, làm tài liệu thôi, còn AI SDLC phải chạy tất cả trên app ấy"; "có cách nào cho AI SDLC chạy full
 trên web không, và các máy dưới chỉ cài worker chuyên cho AI SDLC".
 
-**Requirements added**: SDLC-01 … SDLC-20 trong [docs/srs.md](../../docs/srs.md#320-ai-sdlc-mode-sdlc).
+**Requirements added**: SDLC-01 … SDLC-22 trong [docs/srs.md](../../docs/srs.md#320-ai-sdlc-mode-sdlc) (SDLC-22 thực hiện ở
+specs/010).
 **Decision record**: [ADR 0021](../../docs/adr/0021-ai-sdlc-mode.md).
 
 ## Bối cảnh
@@ -117,6 +119,11 @@ Product owner chốt các câu hỏi mở của bản nháp đầu (Q1–Q3) và
 - **Câu hỏi thêm 5 (ngân sách)** → Giữ theo plan: dùng ngân sách task và chi phí ngày hiện có, không thêm ngân sách riêng.
 - **Câu hỏi thêm 8 (khuôn, prompt)** → Giữ theo plan: Hive tự viết lại khuôn và prompt theo tinh thần từng phương pháp,
   không chép nguyên văn.
+
+### Session 2026-10-15
+
+- **Q (T086): Run soạn clone repo tham gia bằng thông tin Git nào?** → Đề xuất đã làm: bằng thông tin Git của chính máy
+  worker; hub không gửi token; chỉ gửi repo mà kết nối Git của hub đọc được. **Chờ chủ dự án xác nhận.**
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -227,7 +234,7 @@ agent và người đọc ngay trong repo. Dev sửa `spec.md` trong một PR r�
 **Why this priority**: Quyết định "cả hai, đồng bộ" của PO. Agent đọc file trong repo; người duyệt dùng editor hub.
 
 **Independent Test**: Provider `memory`. Duyệt `spec.md` → có commit trên nhánh đồng bộ chứa đúng nội dung baseline,
-`sdlc_artifacts.synced_version = baseline_version`. Giả webhook `push` vào nhánh mặc định với `spec.md` sửa một dòng →
+`sdlc_artifact_syncs.synced_version = sdlc_artifacts.baseline_version`. Giả webhook `push` vào nhánh mặc định với `spec.md` sửa một dòng →
 đề xuất mới trên hub, lý do "Sửa trong repo: <sha ngắn>", phiên duyệt mở; push lại với nội dung giống baseline → không có
 đề xuất.
 
@@ -602,7 +609,8 @@ contract đó; hạng mục khác không có contract thì chặn chỉ xét tà
    ("Dự án web-shop đã tắt AI SDLC."), các dự án khác chạy tiếp; dự án chính tắt thì cả hạng mục `paused`.
 7. **Given** run soạn tài liệu chung, **When** dispatch, **Then** run chạy trên máy của đội chủ trì, trong worktree của repo
    dự án chính; seed file có bản tóm tắt cấu trúc và README của từng repo tham gia và các contract hiện có, để agent biết
-   repo khác mà không cần checkout (checkout nhiều repo để sau MVP).
+   repo khác mà không cần checkout; worker khai `sdlc-multirepo` nhận thêm bản clone nông, chỉ đọc của từng repo tham gia
+   trong `.hive/repos/<key>/` (T086).
 
 ---
 
@@ -649,7 +657,7 @@ hồi tự duyệt": cổng mở lại, run code mới của hạng mục bị c
 lạm dụng.
 
 **Independent Test**: Chế độ có `autoApprove` ở giai đoạn Tasks, ngưỡng 9; dự án bật tự duyệt. (a) AI chấm 9.3, không từ
-khoá → cổng người `approved` với tác nhân `ai-auto`, audit `sdlc.auto_approve` có điểm, ngưỡng, lý do, CLI/model review;
+khoá → cổng người `approved` với tác nhân `system:ai-auto`, audit `sdlc.auto_approve` có điểm, ngưỡng, lý do, CLI/model review;
 thông báo `sdlc.auto_approved`. (b) AI chấm 8.7 → chờ người như thường. (c) `tasks.md` có chữ "thanh toán" → chờ người,
 phiên ghi "Không tự duyệt: từ khoá nhạy cảm 'thanh toán'". (d) Giai đoạn Specify của `speckit` (chế độ nặng) → luôn chờ
 người. (e) Chính sách tổ chức tắt tự duyệt → (a) chờ người. (f) Thu hồi trong 24 giờ → phiên duyệt mới chỉ có cổng người,
@@ -918,16 +926,20 @@ Hạng mục nhiều dự án (US16, US17)
 - **FR-055 (SDLC-18)**: Chặn cứng, ngoại lệ, đợt MUST tính theo dự án của task: tài liệu xét = tài liệu chung + tài liệu
   riêng của dự án + contract dự án cung cấp hoặc dùng; mức chặn = chặt nhất của chế độ và cài đặt dự án; ngoại lệ có phạm
   vi task, dự án trong hạng mục, hoặc cả hạng mục; mức song song, nhãn máy, nơi chạy theo dự án.
-- **FR-062 (SDLC-19)**: Hạng mục nhiều dự án MUST có contract liên repo: tài liệu riêng với tên, định dạng, một dự án cung
+- **FR-068 (SDLC-19)**: Hạng mục nhiều dự án MUST có contract liên repo: tài liệu riêng với tên, định dạng, một dự án cung
   cấp, ≥ 1 dự án dùng; tạo bởi người hoặc agent (`sdlc_report contracts`) trong giai đoạn chế độ khai; cổng = cổng của giai
   đoạn + một checkpoint người cho đội của mỗi bên; là tài liệu bắt buộc trước `implementation` của mọi bên.
-- **FR-063 (SDLC-19)**: Contract MUST được ghi vào repo bên cung cấp và bản sao chỉ đọc vào repo mỗi bên dùng; sửa bản sao
+- **FR-069 (SDLC-19)**: Contract MUST được ghi vào repo bên cung cấp và bản sao chỉ đọc vào repo mỗi bên dùng; sửa bản sao
   trong repo thành đề xuất cho contract; run của task bên dùng nhận contract đã duyệt qua seed file.
 - **FR-064 (SDLC-09, SDLC-18)**: Truy vết, độ phủ, bảng và chỉ số MUST lọc và tính theo từng dự án và tổng.
 - **FR-065 (SDLC-05, SDLC-18)**: Đồng bộ repo MUST chạy theo từng (hạng mục, dự án) với cài đặt đồng bộ của dự án đó; repo
   không phải dự án chính nhận file mục lục trỏ về tài liệu chung; lỗi ở một repo không chặn repo khác.
 - **FR-066 (SDLC-18)**: Run soạn của tài liệu chung MUST chạy trên máy của đội chủ trì với repo dự án chính; seed file MUST
-  có bản tóm tắt repo tham gia (cây thư mục cấp đầu, README, contract hiện có) do hub đọc qua `GitProvider`.
+  có bản tóm tắt repo tham gia (cây thư mục 2 cấp, README, manifest gói, contract hiện có) do hub đọc qua `GitProvider`.
+  Với worker khai `sdlc-multirepo`, hub gửi thêm `spec.sdlc.repos` (≤ 7) cho repo mà kết nối Git của hub đọc được; worker
+  clone nông (depth 1), chỉ đọc vào `.hive/repos/<key>/` bằng thông tin Git của chính máy (hub không gửi token), giới hạn
+  200 MB mỗi repo, 500 MB tổng, 5 phút mỗi repo; repo không lấy được thì ghi lý do vào `.hive/repos/STATUS.md` và vẫn dùng
+  tóm tắt.
 
 Tự duyệt (US18)
 
@@ -976,6 +988,8 @@ Vai trò BA/PO (US7)
   mục gói trên máy dùng chung (root, chủ tài khoản dịch vụ) dùng được gói, như đăng nhập tại máy.
 
 Leader trong terminal (spec 010 lát máy dùng chung)
+
+> Thực hiện ở specs/010 (T100–T107); tasks.md của spec này không có task cho FR-067.
 
 - **FR-067 (SDLC-22)**: Leader của AI SDLC MUST chạy được thành phiên Claude CLI tương tác trên máy dùng chung của đội, web
   hiện bằng xterm.js qua `/ws/terminal` (specs/010 T100–T107): quản trị đội và BA/PO (quyền `leader.terminal`) mở phiên
@@ -1050,10 +1064,12 @@ Leader trong terminal (spec 010 lát máy dùng chung)
 ## Out of Scope
 
 - Hạng mục trải nhiều tổ chức; đổi dự án chính của hạng mục; hạng mục quá 8 dự án.
-- Run agent soạn checkout cùng lúc nhiều repo (bản này dùng bản tóm tắt repo trong seed file; để sau MVP, task T086).
+- Run agent soạn ghi hoặc đẩy vào repo tham gia (T086 chỉ clone nông, chỉ đọc vào `.hive/repos/<key>/`; máy không clone
+  được thì dùng bản tóm tắt).
 - Tự duyệt cho review code của PR (spec 009 quyết riêng); tự duyệt contract liên repo.
 - Agent chạy trong app desktop cho AI SDLC (app chỉ duyệt và soạn; trợ lý soạn `docassist` của spec 005 vẫn giữ).
-- Đăng nhập gói CLI từ web (OAuth của CLI cần trình duyệt trên máy chạy); chỉ bật/tắt gói đã có.
+- Đăng nhập gói CLI từ web trên Windows cũ không có ConPTY (trước 10 1809, worker báo đăng nhập tại máy) và trên máy không
+  khai `accounts-remote`; xem FR-062.
 - Chạy worker như Windows Service thật (hiện là `schtasks /SC ONLOGON`, cần phiên đăng nhập); ghi rủi ro, để spec sau.
 - Giai đoạn vận hành thật (deploy, provisioning, observability) của AI-DLC Operation: chỉ tài liệu (runbook, release
   notes), không chạy deploy.

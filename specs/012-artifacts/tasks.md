@@ -317,10 +317,14 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Phụ thuộc**: MVP (Recharts đã có trong bộ đóng gói từ T004) · **Mức**: vừa
 
 - [ ] T062 [US3] Ảnh và PDF: `BlobStore`, tải lên, trình xem
-  - `blob-store.ts` (giao diện + bản PostgreSQL `bytea` chia đoạn 512 KiB), bảng `artifact_blobs`, `artifact_blob_chunks`
-    (migration số kế tiếp), route tải lên (multipart, kiểm magic bytes, ≤ `maxBlobBytes`), `/_artifact/blob/:ticket`, pdf.js
+  - Dùng chung `apps/hub/src/modules/platform/blob-store.ts` (giao diện + bản PostgreSQL `bytea` chia đoạn 512 KiB),
+    bảng `blobs`, `blob_chunks` với spec 018 (ADR 0028, rủi ro R4). Task làm trước tạo bản chung; task sau dùng lại,
+    không tạo `artifacts/blob-store.ts` hay bảng `artifact_blobs` riêng. Schema/migration chung do spec 018 T005
+    phụ trách; bản BlobStore do T007 phụ trách, cần phối hợp nếu T062 làm trước.
+  - Route tải lên (multipart, kiểm magic bytes, ≤ `maxBlobBytes`), `/_artifact/blob/:ticket`, pdf.js
     trong bộ đóng gói, `viewer/{image,pdf}.tsx`; bộ đệm app cho blob.
-  - **Scope**: `apps/hub/src/modules/artifacts/{blob-store.ts,schema.ts}`, migration mới, `frame-routes.ts`,
+  - **Scope**: tích hợp qua `apps/hub/src/modules/platform/index.ts`, `apps/hub/src/modules/artifacts/{schema.ts,frame-routes.ts}`
+    (migration số kế tiếp nếu cần thay đổi riêng cho artifact),
     `packages/artifacts-runtime/**`, `packages/artifacts-ui/src/viewer/{image,pdf}.tsx`, `apps/desktop/src-tauri/src/artifacts.rs`
   - **Phụ thuộc**: MVP · **Mức**: nặng
 
