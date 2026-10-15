@@ -11,8 +11,8 @@ export {
   docSyncQueues,
   queuePull,
   queuePush,
-  registerDocSync,
 } from "./jobs.ts";
 export { docsyncRouter } from "./router.ts";
 export type { DocSyncDeps } from "./routes/deps.ts";
 export { handleDocsWebhook } from "./webhook.ts";
+export { registerDocSync } from "./workers.ts";
