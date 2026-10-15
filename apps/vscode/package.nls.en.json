@@ -85,5 +85,6 @@
   "walkthrough.mcp.title": "Enable Hive MCP",
   "walkthrough.mcp.description": "Let agents in the editor use Hive memory and docs.\n[Add to Claude Code](command:xdevHive.mcp.addClaudeCode)",
   "walkthrough.worker.title": "Install the worker",
-  "walkthrough.worker.description": "Download the hive CLI and worker so the hub can assign work to this machine.\n[Install hive CLI and worker](command:xdevHive.worker.install)"
+  "walkthrough.worker.description": "Download the hive CLI and worker so the hub can assign work to this machine.\n[Install hive CLI and worker](command:xdevHive.worker.install)",
+  "command.review.submitComment": "Submit comment"
 }

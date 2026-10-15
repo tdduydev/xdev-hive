@@ -116,13 +116,15 @@ func tokenTool(ts *TokenSavingJob, pick func(TokenSavingJob) *bool) bool {
 	return on == nil || *on
 }
 
-// MachineCapabilities là Capabilities cộng công cụ máy có ("codegraph", "rtk"), để hub chỉ nhắc agent dùng
+// MachineCapabilities là Capabilities cộng việc và công cụ máy có ("sdlc-multirepo", "codegraph", "rtk"), để hub chỉ nhắc agent dùng
 // codegraph_explore khi máy gắn được nó. Runner host (sandbox) không khai: CLI chạy trong container không có chúng.
 func MachineCapabilities(sandbox bool) []string {
 	out := append([]string(nil), Capabilities...)
 	if sandbox {
 		return out
 	}
+	// Runner host không giữ thông tin đăng nhập Git của đội nên không hứa clone được repo tham gia.
+	out = append(out, CapSdlcMultiRepo)
 	if cfg, err := ToolConfigFromEnv(CodeGraphEnv); err == nil {
 		if path, err := resolveTool(cfg, "codegraph"); err == nil && path != "" {
 			out = append(out, "codegraph")
