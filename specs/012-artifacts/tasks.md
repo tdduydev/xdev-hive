@@ -291,7 +291,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 6: Nối hub và tài liệu 🎯
 
-- [ ] T050 🎯 Nối và tài liệu
+- [x] T050 🎯 Nối và tài liệu
   - `main.ts`: đăng ký module, tool, job purge, `provideThreadHost` của leader; khả năng hub `artifacts: true` trong
     `system` (cho app); rollout bước 1 (tool tắt mặc định tới khi bật trên máy chủ 34).
   - Tài liệu: `docs/architecture.md` (module `artifacts`, khung cách ly cùng host, trang link công khai), `docs/add.md`,

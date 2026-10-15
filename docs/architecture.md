@@ -82,6 +82,7 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, bộ skill mặc định của Hive (`packages/skill-pack`, bật/tắt theo tổ chức và dự án), đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `skill_pack_settings`, `proposals`, `legacy_*` |
 | `skilllearn` | Agent đề xuất skill sau việc khó (ADR 0025): chọn run đáng học, lô mỗi ngày mỗi dự án chạy run `skill_proposal` chỉ đọc, bỏ trùng, hạn mức theo ngày, duyệt thành PR vào kho skill hoặc skill của tổ chức, số liệu | `skill_learning_batches`, `skill_learning_marks`, `learned_skill_proposals` |
 | `leader` | Chat với leader agent, đề xuất hành động cần người duyệt | `chat_threads`, `chat_messages`, `approvals` |
+| `artifacts` | Artifact (specs/012, ADR 0023): sản phẩm có phiên bản của agent và người (markdown, code, html, mermaid, react), phạm vi, link công khai, biên dịch `react` ở hub, khung cách ly và job dọn thùng rác. MVP chưa có `svg`, `json`, `csv`, ảnh, PDF, phạm vi `team`/`org` và Terminal Leader | `artifacts`, `artifact_versions`, `artifact_links`, `artifact_previews`, `artifact_public_links` |
 | `terminal` | Terminal Leader: phiên Claude CLI tương tác trên máy dùng chung, chuyển tiếp web ↔ worker qua `/ws/terminal`, bản ghi đã che bí mật (specs/010 lát đầu) | `terminal_sessions`, `terminal_chunks` |
 | `mcp` | Cổng MCP: xác thực token, giới hạn tool theo vai trò, ghi audit | — (dùng module khác) |
 | `notify` | Telegram, email, hộp thư trong app | `notification_channels`, `notifications`, `inbox_items` |
@@ -313,6 +314,14 @@ sequenceDiagram
   - Đoạn log mới nằm trong `run_logs` (Postgres) để web xem trực tiếp.
   - **[Chưa làm]** Khi run kết thúc, job gộp log thành một file nén, đẩy lên kho blob, rồi xoá các đoạn trong Postgres. GitLab làm theo cách này. [24]
 - Web nhận log trực tiếp qua SSE theo `runId`. Con trỏ `<eventId>.<logId>` là `Last-Event-ID`, nên nối lại không mất đoạn nào.
+
+### 9.1 Artifact và khung cách ly
+
+- Nội dung artifact là dữ liệu không tin cậy. Nội dung chạy được (`html`, `react`, `mermaid`) chỉ chạy trong `<iframe sandbox="allow-scripts">` (không `allow-same-origin`), nạp từ `/_artifact/frame/{vé}` **cùng host** với hub (PO chốt, ADR 0023). Vé HMAC có hạn 5 phút, cho đúng một phiên bản; route khung bỏ qua cookie phiên và trả CSP chặn mạng, form, khung lồng và mọi nguồn ngoài host ngoài script/style nội tuyến.
+- Thư viện cho trang là file tĩnh dựng sẵn ở `/_artifact/lib/` (`@xdev-hive/artifacts-runtime`, `scripts/build-lib.ts`), cache `immutable`; app desktop đóng gói sẵn và phục vụ qua `hive-artifact://`.
+- Trang link công khai `GET /_artifact/s/{mã}` do hub tự viết HTML (không script), chỉ chữ tiêu đề là của artifact và được escape. Hub lưu băm SHA-256 của mã; mọi lỗi (hết hạn, thu hồi, chính sách tắt) trả cùng trang 404. Giới hạn 60 lượt/phút mỗi IP; IP lấy từ `X-Forwarded-For` chỉ khi kết nối đến từ `HIVE_TRUSTED_PROXIES`. Caddy che mã trong log (`deploy/caddy/Caddyfile`).
+- `react` được hub biên dịch khi lưu hoặc xem trước (giới hạn 1 MiB, 2 giây, chạy ngoài transaction, trong worker thread); import ngoài thư viện đóng gói bị từ chối. Lỗi chạy hoặc biên dịch gửi được cho Leader qua "Nhờ Leader sửa" (`<page-errors>` đánh dấu là dữ liệu không tin cậy).
+- Tool MCP `artifact_create/update/get/list` đăng ký ở `app.ts`; job `artifact-purge` (chạy mỗi giờ, phút 23) xoá artifact trong thùng rác quá 30 ngày, bản xem trước hết hạn và link hết hạn quá 90 ngày, đăng ký ở `main.ts`. `GET /api/v1/health` trả `artifacts: true` để app desktop biết hub có artifact.
 
 ## 10. Vận hành
 

@@ -16,6 +16,7 @@ describe("hub", () => {
     expect(body).toMatchObject({ status: "ok", version: "1.2.3" });
     // Worker chỉ khai CLI có trong danh sách này (hub cũ không trả thì chỉ claude, codex, gemini).
     expect(body.clis).toEqual(["claude", "codex", "gemini", "antigravity"]);
+    expect(body.artifacts).toBe(true);
     expect(Number.isNaN(Date.parse(body.time))).toBe(false);
   });
 
