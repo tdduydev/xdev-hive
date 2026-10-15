@@ -43,6 +43,8 @@ type SdlcJob struct {
 	Step    string        `json:"step"`
 	Seed    []SdlcSeed    `json:"seed"`
 	Collect []SdlcCollect `json:"collect"`
+	// Repos chỉ có khi máy khai CapSdlcMultiRepo và hạng mục có dự án tham gia đọc được (T086).
+	Repos []SdlcRepo `json:"repos,omitempty"`
 }
 
 // SdlcArtifact là một phần tử của report.artifacts. SHA256 tính trên đúng chuỗi Content gửi đi (UTF-8) để hub kiểm lại.

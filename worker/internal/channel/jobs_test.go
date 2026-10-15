@@ -596,6 +596,11 @@ func TestDecodeJobReadsSdlcSpec(t *testing.T) {
 	if job.Kind != runner.KindSdlc || !reflect.DeepEqual(job.SDLC, want) {
 		t.Fatalf("job = %+v, SDLC = %+v", job, job.SDLC)
 	}
+	// Repo tham gia (T086) đi cùng spec.sdlc tới runner.
+	multi := `{"kind":"sdlc","repoUrl":"https://git.example/a.git","cli":"claude","sdlc":{"step":"spec","seed":[],"collect":[],"repos":[{"projectKey":"billing","cloneUrl":"https://git.example/b.git","branch":"main","dir":".hive/repos/billing"}]}}`
+	if job, err = decodeJob(&JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(multi)}, Lease{RunToken: "t"}, "https://hub.example", "p"); err != nil || job.SDLC == nil || !reflect.DeepEqual(job.SDLC.Repos, []runner.SdlcRepo{{ProjectKey: "billing", CloneURL: "https://git.example/b.git", Branch: "main", Dir: ".hive/repos/billing"}}) {
+		t.Fatalf("SDLC = %+v, err = %v", job.SDLC, err)
+	}
 	old := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"sdlc","repoUrl":"https://git.example/a.git","cli":"claude"}`)}
 	if job, err = decodeJob(old, Lease{RunToken: "t"}, "https://hub.example", "p"); err != nil || job.SDLC != nil {
 		t.Fatalf("SDLC = %+v, err = %v", job.SDLC, err)

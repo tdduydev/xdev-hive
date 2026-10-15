@@ -71,7 +71,7 @@ Every table in schema `hive` carries `org_id`, has row-level security enabled an
 | tenancy | `teams`, `team_members` | Team `role` (`admin`, `member`, `viewer`) |
 | tenancy | `systems` | Groups projects inside a team |
 | tenancy | `invitations` | `token_hash`, `org_role`, optional `team_id` and `team_role`, `expires_at`, `accepted_at` |
-| fleet | `machines` | `kind` (`worker`, `host`), `os`, `version`, `clis`, `capacity`, `status` (`online`, `offline`, `revoked`), `paused_at`, `last_seen_at`; `public_key` is reserved and unused |
+| fleet | `machines` | `kind` (`worker`, `host`), `os`, `version`, `clis`, `capabilities`, `labels`, `labels_only`, `capacity`, `status` (`online`, `offline`, `revoked`), `paused_at`, `last_seen_at`; `public_key` is reserved and unused |
 | fleet | `machine_tokens`, `registration_tokens` | `token_hash` only; registration tokens have `kind`, `expires_at`, `used_at` |
 | catalog | `projects` | `key`, repository fields, `state` (`provisioning`, `active`, `failed`, `archived`), `settings` (jsonb, schema `projectSettings` in contracts), `webhook_secret_enc` |
 | catalog | `project_provision_steps` | `position`, `kind`, `state` (`pending`, `running`, `done`, `failed`, `skipped`), `attempts`, `error` |
@@ -99,6 +99,15 @@ Every table in schema `hive` carries `org_id`, has row-level security enabled an
 | knowledge | `doc_drafts`, `doc_suggestions`, `doc_threads`, `doc_comments`, `doc_snapshots`, `doc_presence` | Document editor, keyed by doc key: one shared draft per doc (optimistic `revision`), inline suggestions (`pending`, `accepted`, `rejected`), comment threads anchored to a quote, named snapshots (a submitted snapshot links to its proposal), presence seen in the last minute |
 | governance | `agent_policies` | One per organization: `policy` (jsonb, schema `agentPolicyInput` in contracts), `template_sync`; runs keep the applied policy in `runs.agent_policy_snapshot` |
 | notify | `notification_channels`, `notifications`, `inbox_items` | Channels hold `config_enc`; notifications have `status` (`queued`, `sent`, `failed`) and `attempts` |
+| tasks | `task_dependencies` | `task_id`, `depends_on_id` (no self-reference) |
+| sdlc | `sdlc_modes` | Custom modes per organization (`team_id` null) or team: `slug`, `base_preset`, `definition` (jsonb, schema `sdlcMode`), `version`; presets live in `packages/contracts/src/sdlc-presets` |
+| sdlc | `sdlc_items` | `number` per project, `mode_ref` and `mode` snapshot, `status` (`active`, `paused`, `done`, `cancelled`), `size` (`S`–`XL`), optional source issue |
+| sdlc | `sdlc_item_projects` | `role` (`home`, `participant`), `team_id`, `removed_at`; team-scoped access joins this table |
+| sdlc | `sdlc_item_phases`, `sdlc_steps` | Phase state per item; agent steps with `run_id` (one step per run) |
+| sdlc | `sdlc_artifacts`, `sdlc_artifact_syncs` | `scope` (`item`, `project`, `contract`), `doc_key`, `repo_path`, consumer projects; repository sync attempts |
+| sdlc | `sdlc_questions` | Questions from `sdlc_ask`, answers, reminders |
+| sdlc | `sdlc_item_tasks`, `sdlc_trace_links` | Breakdown slices mapped to tasks; links from requirements to `task`, `run`, `pr`, `commit`, `test`, `ci`, `finding` |
+| sdlc | `sdlc_overrides`, `sdlc_auto_approvals` | Gate overrides with a reason; AI auto-approvals with score and revoke deadline |
 | audit | `audit_log` | `actor_user_id`, `action`, `target_type`, `target_id`, `data`; append-only for `hive_app`; expired rows removed only by `hive.purge_expired_audit_log()` |
 | audit | `audit_settings` | One per organization: `retention_days` (90–3650, default 365 when absent); no DELETE for `hive_app` |
 
@@ -159,6 +168,14 @@ WebSocket `/ws/worker`, authenticated with `Authorization: Bearer <machine token
 | H → W | `update` | Finish current runs, then self-update (optional `version`) |
 | H → W | `upgrade_required`, `drain`, `approval_result` | Defined but not sent by the hub |
 
+`job_offer.spec.sdlc` exists only for runs of kind `sdlc`: `step`, `seed` (at most 100 files written into the temporary
+worktree before the CLI starts), `collect` (files read back after the CLI exits and returned in `report.artifacts` with
+their SHA-256; at most 20 files, 200,000 characters each, 2,000,000 bytes in total) and optional `repos`. The hub sends `sdlc`
+runs only to workers that declare the `sdlc` capability, and `repos` only to workers that declare `sdlc-multirepo`:
+up to 7 entries `{projectKey, cloneUrl, branch, dir}` with `dir = .hive/repos/<projectKey>`. The worker clones them
+shallow with its own Git credentials, removes `.git`, makes them read-only and writes `.hive/repos/STATUS.md`
+(200 MB per repository, 500 MB in total, 5 minutes per clone; a repository it cannot fetch is skipped, not fatal).
+
 Close codes: 4400 bad message, 4401 revoked, 4403 machine mismatch, 4408 hello timeout, 4426 protocol unsupported.
 Workers stop instead of reconnecting on 4401, 4403 and 4426. Compatibility rule: new fields are optional and new
 message types are ignored by older peers.
@@ -172,6 +189,7 @@ message types are ignored by older peers.
 | runs | `task_get`, `task_update`, `plan_submit` (plan runs), `review_submit` (review runs), `doc_check_submit` (doccheck runs), `doc_assist_submit` (docassist runs), `run_list` (users: recent runs, filter by machine) |
 | knowledge | `memory_search`, `memory_write`, `doc_list`, `doc_get`, `doc_propose`, `doc_draft_get`, `doc_suggest`, `doc_comment` (document editor drafts; users and docassist runs), `skill_list`, `skill_get`, `skill_propose` |
 | leader | `leader_reply`, `leader_propose` (leader runs) |
+| sdlc | `sdlc_context` (the item of the run: idea, projects, phases, documents, contracts, questions), `sdlc_ask` (`sdlc` runs, at most 5 questions per round), `sdlc_report` (`sdlc` runs: structured step results such as `size`, `findings`, `lessons`) |
 
 Read-only run kinds receive no write tools (`task_update`, `memory_write`, `doc_propose`, `skill_propose`).
 
@@ -230,6 +248,7 @@ calls `pg_notify('hive_runs', runId)` in the same transaction.
 |---|---|---|
 | Task | `todo` → `queued` → `running` → `review` → `done`; `awaiting_plan`; `cancelled` | Dispatch, run progress, PR merged (done) or closed (back to `todo`) |
 | Machine | `online`, `offline`, `revoked`; paused is `paused_at` set on top of the status | WebSocket connect and close, admin actions |
+| AI SDLC item | `active`, `paused`, `done`, `cancelled`; each phase moves through its steps and gate | Step runs finish, gates approved or auto-approved, overrides, closing after release notes and retrospective |
 | Merge queue entry | `queued` → `updating` → `waiting` → `merging` → `merged`; `failed`; `removed` | `catalog-merge` job per project |
 | Provisioning step | `pending` → `running` → `done` / `failed` / `skipped` | `catalog-provision` saga; failed steps can be retried |
 | Plan | `awaiting` → `approved` / `rejected`; `superseded` by a new revision | Member decision |
@@ -244,6 +263,11 @@ hub process, online, not paused, of the right kind (runner hosts for sandbox pro
 have the run's CLI and have free capacity (capacity minus held leases). Machines that rejected the run are skipped. An
 offer that is not accepted within 30 seconds expires and the run is offered elsewhere; with no candidate the run stays
 queued until a machine connects or frees capacity.
+
+Runs of kind `sdlc` also need the `sdlc` capability. Runs that require labels (the `sdlc` runs of a project and the code
+runs of its AI SDLC item tasks, from `settings.sdlc.labels`) go only to machines that carry every required label. A
+machine with `labels_only` takes no run that requires no label (`labelsMatch` in `runs/engine.ts`). Labels match
+`^[a-z0-9][a-z0-9-]{0,31}$`, at most 10 per machine; they come from the registration token and can be changed later.
 
 ### 6.2 Leases and timers
 
@@ -329,6 +353,10 @@ move the running binary to `.old` first); re-execute with the same arguments.
 | Notification delivery | Up to 5 attempts for temporary errors | `notify` |
 | Password | At least 10 characters | `identity/auth.ts` |
 | Hub `api` processes | Exactly one | `main.ts` |
+| AI SDLC `seed` / `collect` | 100 seed files; 20 collected files, 200,000 characters each, 2,000,000 bytes in total | `SDLC_ARTIFACT_LIMITS` in contracts, `worker/internal/runner/sdlc.go` |
+| AI SDLC participant checkouts | 7 repositories per run; 200 MB each, 500 MB in total, 5 minutes per clone | `SDLC_MAX_REPOS` in contracts, `worker/internal/runner/sdlc_repos.go` |
+| AI SDLC questions | At most 5 per `sdlc_ask` round (the step may set fewer) | `sdlc/questions.ts` |
+| Machine labels | 10 per machine, 32 characters; 5 required labels per project | contracts |
 
 ## 8. Design rationale and traceability
 
