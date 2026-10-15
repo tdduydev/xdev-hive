@@ -122,7 +122,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `apps/desktop/src-tauri/src/worker.rs` (một tham số)
   - **Test**: Go test gọi `worker.status` qua socket tạm; Windows `go vet`.
 
-- [ ] **T008 [P] [US3] [nặng] · 3,5 ngày — Hub: bình luận theo dòng cho review code**
+- [x] **T008 [P] [US3] [nặng] · 3,5 ngày — Hub: bình luận theo dòng cho review code**
   - **Goal**: theo plan.md mục 4 và FR-018:
     - bảng `code_review_comments` (có `deleted_at`, `origin`, `external_author`), RLS bật và ép;
     - service, router `codeReviews.comments.{list, add, reply, edit, delete, resolve, reopen}`. Sửa và xoá chỉ cho tác
