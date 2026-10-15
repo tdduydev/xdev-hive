@@ -257,7 +257,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 3: tính năng (song song, sau Đợt 2)
 
-- [ ] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
+- [x] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
   - **Phụ thuộc**: T010, T011.
   - **Goal**: US2-1…4, 6, 7. Log run vào Output qua SSE. Chưa cấu hình hub thì view hiện "Chưa cấu hình hub xDev Hive"
     (Edge Cases).
@@ -293,7 +293,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     (+ test)
   - **Test**: panel có `enableCommandUris: false`; thông điệp lạ bị bỏ; xoá bộ đệm khi đăng xuất.
 
-- [ ] **T018 [P] [US3] [nặng] · 3 ngày — Review bằng Comments API và diff**
+- [x] **T018 [P] [US3] [nặng] · 3 ngày — Review bằng Comments API và diff**
   - **Phụ thuộc**: T008, T010, T013.
   - **Goal**: plan.md mục 4 (extension), US3 toàn bộ. Fallback webview `CodeReviewPane` khi không có repo. Sửa, xoá
     bình luận của mình. Bình luận từ PR hiện tác giả "login · GitHub"; trạng thái đồng bộ qua `Comment.label`,
@@ -303,7 +303,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: 4 luồng từ dữ liệu mẫu; `add` gửi đúng `side`, `headSha`; `decide` khi `headSha` đổi hiện đúng thông báo;
     không đổi working tree (repo tạm, so `git status`).
 
-- [ ] **T019 [P] [US4] [nặng] · 3 ngày — Chat participant `@hive`**
+- [x] **T019 [P] [US4] [nặng] · 3 ngày — Chat participant `@hive`**
   - **Phụ thuộc**: T010, T011, T007 (context pack).
   - **Goal**: plan.md mục 5. Bốn lệnh, nút hành động, che bí mật bằng `secret-scan` của contracts, rơi về khi không có
     model.
@@ -317,7 +317,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     `apps/vscode/src/webview-host/allowlist/chat.ts` (+ test)
   - **Test**: gửi, hỏi lại, hiện đề xuất với nút Duyệt/Từ chối; form Giao việc gọi `tasks.create`.
 
-- [ ] **T021 [P] [US5] [nặng] · 2,5 ngày — MCP provider và ghi cấu hình cho Claude Code, Cursor, Windsurf**
+- [x] **T021 [P] [US5] [nặng] · 2,5 ngày — MCP provider và ghi cấu hình cho Claude Code, Cursor, Windsurf**
   - **Phụ thuộc**: T005, T011, kết quả Cursor của T002.
   - **Goal**: plan.md mục 6, FR-013…FR-017.
   - **PHẠM VI**: `apps/vscode/src/mcp/**` (+ test)

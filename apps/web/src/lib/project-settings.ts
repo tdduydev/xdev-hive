@@ -4,8 +4,10 @@ import {
   defaultRouting,
   defaultTokenSaving,
   type OutcomeCheck,
+  type ProjectDocsSettings,
   type ProjectSettings,
   type ProjectSettingsPatch,
+  projectDocsSettings,
   projectSettingsPatch,
   type ReviewWorkflow,
   type RoutingEffort,
@@ -14,6 +16,31 @@ import {
   type TokenSaving,
 } from "@xdev-hive/contracts";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+
+export type DocsSettingsForm = Omit<ProjectDocsSettings, "include" | "exclude"> & {
+  include: string;
+  exclude: string;
+};
+
+export function docsFormFromSettings(settings?: ProjectDocsSettings): DocsSettingsForm {
+  const value = settings ?? projectDocsSettings.parse({});
+  return { ...value, include: value.include.join("\n"), exclude: value.exclude.join("\n") };
+}
+
+export function parseDocsForm(form: DocsSettingsForm) {
+  const patterns = (value: string) =>
+    value
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  return projectDocsSettings.safeParse({
+    ...form,
+    root: form.root.trim(),
+    assetsDir: form.assetsDir.trim(),
+    include: patterns(form.include),
+    exclude: patterns(form.exclude),
+  });
+}
 
 export const SETTINGS_CLIS = ["claude", "codex", "gemini", "antigravity"] as const;
 export type SettingsCli = (typeof SETTINGS_CLIS)[number];
