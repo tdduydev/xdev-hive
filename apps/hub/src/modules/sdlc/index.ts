@@ -19,6 +19,7 @@ export {
   sdlcSettingsOf,
 } from "./items.ts";
 export { handleSdlcJob, registerSdlcWorker, type SdlcWorkerDeps, sdlcQueue } from "./jobs.ts";
+export { sdlcManagedPaths } from "./managed-paths.ts";
 export { registerMcpTools } from "./mcp-tools.ts";
 export { listModes, type ResolvedMode, resolveMode } from "./modes.ts";
 export {
