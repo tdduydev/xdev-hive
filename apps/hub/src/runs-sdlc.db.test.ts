@@ -352,6 +352,73 @@ describe("run sdlc của bước agent", () => {
   });
 });
 
+describe("hạng mục nhiều dự án: checkout repo tham gia (T086)", () => {
+  it("máy không khai sdlc-multirepo chỉ nhận tóm tắt repo; máy có thì nhận repos và prompt chỉ chỗ checkout", async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+    const otherKey = `sb-${tag}`;
+    const other = await seedProject(admin, pool, {
+      orgId: org.orgId,
+      teamId: org.teamId,
+      systemId: org.systemId,
+      adminUserId: org.user("admin"),
+      masterKey,
+      key: otherKey,
+      settings: { ...defaultProjectSettings(), sdlc: projectSdlcSettings.parse({ enabled: true }) },
+    });
+    provider.seedRepo({ owner: other.owner, name: other.repo }, { files: { "README.md": "# Billing\n" } });
+    const newMultiItem = async (title: string) => {
+      const detail = await as("tmember", (tx) =>
+        createItem(
+          tx,
+          org.user("tmember"),
+          {
+            projectId,
+            participants: [other.projectId],
+            title,
+            idea: "Hoàn tiền cần cả dịch vụ thanh toán và dịch vụ hoá đơn.",
+            modeRef: "speckit",
+            size: "M",
+          },
+          engine.sdlcDeps,
+        ),
+      );
+      const { rows } = await admin.query("select run_id from hive.sdlc_steps where item_id = $1", [detail.id]);
+      return rows[0]?.run_id as string;
+    };
+    const digestPath = `.hive/sdlc/projects/${otherKey}.md`;
+    type Job = { seed: { path: string }[]; repos?: { projectKey: string; cloneUrl: string; dir: string }[] };
+
+    const runA = await newMultiItem("Hoàn tiền nhiều dịch vụ");
+    const plain = await FakeWorker.connect(await seedMachine(`mr-old-${tag}`, { labels: ["sdlc"] }), ["sdlc"]);
+    const offerA = await plain.next("job_offer", (o) => o.runId === runA);
+    const jobA = offerA.spec.sdlc as Job;
+    expect(jobA.repos).toBeUndefined();
+    expect(jobA.seed.map((s) => s.path)).toContain(digestPath);
+    expect(String(offerA.spec.prompt)).not.toContain(".hive/repos/");
+    await plain.close();
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+
+    const runB = await newMultiItem("Hoàn tiền nhiều dịch vụ, lượt hai");
+    const multi = await FakeWorker.connect(await seedMachine(`mr-new-${tag}`, { labels: ["sdlc"] }), [
+      "sdlc",
+      "sdlc-multirepo",
+    ]);
+    const offerB = await multi.next("job_offer", (o) => o.runId === runB);
+    const jobB = offerB.spec.sdlc as Job;
+    expect(jobB.repos).toEqual([
+      {
+        projectKey: otherKey,
+        cloneUrl: `https://gitlab.com/${other.owner}/${other.repo}.git`,
+        branch: "main",
+        dir: `.hive/repos/${otherKey}`,
+      },
+    ]);
+    // Tóm tắt vẫn seed: repo nào máy không clone được thì agent đọc tóm tắt.
+    expect(jobB.seed.map((s) => s.path)).toContain(digestPath);
+    expect(String(offerB.spec.prompt)).toContain(".hive/repos/STATUS.md");
+  });
+});
+
 describe("nhãn máy cho run code (SC-010)", () => {
   it("máy chỉ nhận run có nhãn không lấy run code thường", async () => {
     await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);

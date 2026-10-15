@@ -53,6 +53,7 @@ describe("liên kết tài khoản", () => {
   it("chưa liên kết: dán token, app gửi đúng token rồi hiện tên và vai trò", async () => {
     const calls = fakeTauri({
       account_status: () => unlinked,
+      hub_check: (args) => args?.hub,
       account_link: () => linked(ACCOUNT),
     });
     render(<AppShell />);
@@ -64,7 +65,7 @@ describe("liên kết tài khoản", () => {
     await user.type(await within(dialog).findByLabelText("Token MCP cá nhân"), "hive_pat_abc");
     await user.click(within(dialog).getByRole("button", { name: "Đăng nhập" }));
     expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
-    // Cùng địa chỉ thì không kiểm lại hub, không đổi gì ở worker.
+    // Chỉ kiểm TLS trước khi gửi token; cùng địa chỉ thì không đổi worker.
     expect(calls.some((c) => c.command === "hub_change")).toBe(false);
     expect(calls.find((c) => c.command === "account_link")?.args).toEqual({ token: "hive_pat_abc" });
     expect(screen.getByText("Dev · Thanh toán")).toBeTruthy();
@@ -73,6 +74,7 @@ describe("liên kết tài khoản", () => {
   it("hub từ chối token: hiện câu lỗi của app, không đóng hộp thoại", async () => {
     fakeTauri({
       account_status: () => unlinked,
+      hub_check: (args) => args?.hub,
       account_link: () => Promise.reject("Token không còn dùng được (sai, hết hạn hoặc đã thu hồi)."),
     });
     render(<AppShell />);

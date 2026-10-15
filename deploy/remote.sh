@@ -105,6 +105,23 @@ compose() { BUILDX_BUILDER=default HIVE_VERSION="${commit}" $docker compose -p "
 echo "Dựng và chạy hub (project ${project}) ở commit ${commit}…"
 compose up -d --build
 
+# src được đổi cả thư mục, nên mount file lẫn mount thư mục đều có thể giữ inode cũ.
+# Đọc bản container đang thấy để sửa được cả các máy đã deploy nhưng chưa nạp Caddyfile mới.
+caddy_id=$(compose ps -q caddy)
+check_ca=0
+case ",${COMPOSE_PROFILES:-$(get COMPOSE_PROFILES)}," in *,https,*) check_ca=1 ;; esac
+if [ -n "$caddy_id" ]; then
+  check_ca=1
+  mounted_hash=$(compose exec -T caddy sha256sum /etc/caddy/Caddyfile) || fail "Không đọc được Caddyfile trong container."
+  mounted_hash=${mounted_hash%% *}
+  next_hash=$(openssl dgst -sha256 < deploy/caddy/Caddyfile)
+  next_hash=${next_hash##* }
+  if [ "$mounted_hash" != "$next_hash" ]; then
+    echo "Caddyfile đã đổi; tạo lại container Caddy để gắn file mới…"
+    compose up -d --no-deps --force-recreate caddy
+  fi
+fi
+
 # Healthcheck của container gọi /api/v1/health; không cần curl trên máy chủ.
 i=0
 while :; do
@@ -120,5 +137,10 @@ while :; do
   sleep 5
 done
 compose exec -T hub node -e "fetch('http://127.0.0.1:3000/api/v1/health').then((r) => r.text()).then(console.log)"
+if [ "$check_ca" -eq 1 ]; then
+  if ! compose exec -T hub node --input-type=module - "$(get HIVE_PUBLIC_URL)" < deploy/check-ca.mjs; then
+    echo "CẢNH BÁO: /ca.crt chưa trả về chứng chỉ PEM hợp lệ. Kiểm tra cấu hình Caddy và log: docker compose -p $project --env-file $env -f $dir/src/deploy/compose.yaml logs --tail 80 caddy" >&2
+  fi
+fi
 echo "Hub đang chạy ở commit ${commit}. Địa chỉ: $(get HIVE_PUBLIC_URL)"
 REMOTE

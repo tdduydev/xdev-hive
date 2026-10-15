@@ -131,3 +131,13 @@ export interface WorkspaceMeta {
   remote: string | null;
 }
 export const workspaceMeta = (folder: string) => invoke<WorkspaceMeta>("workspace_meta", { folder });
+
+export interface HubCA {
+  hub: string;
+  name: string;
+  fingerprint: string;
+  previousFingerprint: string | null;
+}
+export const hubCAInspect = (hub: string) => invoke<HubCA>("hub_ca_inspect", { hub });
+export const hubCATrust = (hub: string, fingerprint: string) => invoke<void>("hub_ca_trust", { hub, fingerprint });
+export const hubCAForget = () => invoke<void>("hub_ca_forget");
