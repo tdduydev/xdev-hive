@@ -29,8 +29,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { ConnectHiveButton } from "@/components/connect-hive.tsx";
 import { AiAccountsDialog } from "@/components/ai-accounts-dialog.tsx";
+import { ConnectHiveButton } from "@/components/connect-hive.tsx";
 import { Markdown, SuggestionView } from "@/components/doc-view.tsx";
 import { FolderForm } from "@/components/folder-form.tsx";
 import { LocalFileView } from "@/components/local-file.tsx";

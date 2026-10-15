@@ -119,7 +119,8 @@ export function AccountDialog({
             {t.broken} {status.error}
           </p>
         )}
-        {status && <ConnectForm current={status.hub} linked={!!account} onDone={done} />}
+        {/* Chưa đọc được trạng thái (lỗi, ngoài Tauri) vẫn cho nhập địa chỉ để có lối kết nối. */}
+        <ConnectForm current={status?.hub ?? null} linked={!!account} onDone={done} />
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
