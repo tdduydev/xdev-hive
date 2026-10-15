@@ -109,7 +109,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `worker/cmd/hive/main.go` (một dòng `case "auth"`)
   - **Test**: keyring giả (`keyring.MockInit()`), token không xuất hiện trong stderr, mã thoát 3 khi chưa có token.
 
-- [ ] **T006 [P] [US7] [vừa] · 1 ngày — Op socket `worker.status` và cờ `--owner`**
+- [x] **T006 [P] [US7] [vừa] · 1 ngày — Op socket `worker.status` và cờ `--owner`**
   - **Goal**:
     - `hive-worker run --owner desktop|vscode|cli` (mặc định `cli`).
     - Op NDJSON `worker.status` → `{state, hubConnected, registered, machineId, version, runs, owner}`. Không cần bắt tay

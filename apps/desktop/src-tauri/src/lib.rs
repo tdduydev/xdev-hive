@@ -287,7 +287,14 @@ fn notify(app: &AppHandle, body: &str) {
 
 /// Tham số chạy worker làm sidecar. `--stdin-control` cũng tắt tự cập nhật của worker: app cập nhật cả gói (kèm
 /// sidecar) qua updater, worker không được tự thay binary nằm trong gói đã ký.
-const SIDECAR_RUN_ARGS: [&str; 3] = ["run", "--status-json", "--stdin-control"];
+/// `--owner desktop` để extension VS Code đọc `worker.status` biết worker này của app, không tự chạy worker thứ hai.
+const SIDECAR_RUN_ARGS: [&str; 5] = [
+    "run",
+    "--status-json",
+    "--stdin-control",
+    "--owner",
+    "desktop",
+];
 
 /// PATH của shell đăng nhập cho worker: app mở từ Finder chỉ có /usr/bin:/bin…, nên worker không thấy claude/codex cài
 /// qua nvm, Homebrew hay ~/.local/bin, báo "Chưa có CLI trên máy" và không chạy được run.
@@ -1055,6 +1062,11 @@ mod tests {
         assert_eq!(super::SIDECAR_RUN_ARGS[0], "run");
         assert!(super::SIDECAR_RUN_ARGS.contains(&"--stdin-control"));
         assert!(super::SIDECAR_RUN_ARGS.contains(&"--status-json"));
+        let owner = super::SIDECAR_RUN_ARGS
+            .iter()
+            .position(|a| *a == "--owner")
+            .unwrap();
+        assert_eq!(super::SIDECAR_RUN_ARGS[owner + 1], "desktop");
     }
 
     use super::safe_hub_path;
