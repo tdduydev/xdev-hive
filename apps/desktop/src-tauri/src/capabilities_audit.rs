@@ -76,9 +76,7 @@ fn every_capability_file_is_audited() {
 fn hub_web_window_has_no_permission() {
     for cap in capabilities() {
         assert!(
-            !cap.windows
-                .iter()
-                .any(|w| w == super::MAIN || w.contains('*')),
+            !cap.windows.iter().any(|w| w == "main" || w.contains('*')),
             "capability {} cấp quyền cho cửa sổ web của hub hoặc dùng *: {:?}",
             cap.identifier,
             cap.windows
@@ -150,6 +148,9 @@ fn register_window_only_registers() {
                 "register_worker",
                 "browser_login",
                 "hub_check",
+                "hub_ca_inspect",
+                "hub_ca_trust",
+                "hub_ca_forget",
                 "set_lang"
             ]
             .map(String::from)
@@ -195,4 +196,13 @@ fn remote_control_commands_belong_to_the_local_app_window_only() {
             assert!(remote.is_empty(), "{} có {remote:?}", cap.identifier);
         }
     }
+}
+
+#[test]
+fn app_webviews_only_load_local_content() {
+    assert!(!include_str!("lib.rs").contains("WebviewUrl::External"));
+    let config: serde_json::Value =
+        serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    let csp = config["app"]["security"]["csp"].as_str().unwrap();
+    assert!(csp.contains("connect-src ipc: http://ipc.localhost;"));
 }
