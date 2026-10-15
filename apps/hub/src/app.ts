@@ -35,6 +35,7 @@ import {
 import { type ChatApiDeps, chatRouter, handleSlackWebhook, handleTelegramWebhook } from "./modules/chat/index.ts";
 import { type CodeRunPort, codeReviewsRouter } from "./modules/codereview/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
+import { docsyncRouter, handleAssetDownload, handleAssetUpload, handleDocsWebhook } from "./modules/docsync/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
@@ -270,6 +271,7 @@ export function createApp({
       docAssist: runs?.docAssist,
       briefs: runs?.briefs,
     }),
+    ...docsyncRouter({ auth, pool, jobs, masterKey: config.masterKey, publicUrl }),
     ...skillLearningRouter({ auth, pool, jobs }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),
@@ -321,6 +323,13 @@ export function createApp({
     jobs,
     resolveTarget: pool ? (id: string) => findWebhookTarget(pool, config.masterKey, id) : undefined,
   };
+  const docSyncDeps = { pool, jobs, masterKey: config.masterKey, providerFactory, publicUrl };
+  app.post("/hooks/docs/:homeId", (c) => handleDocsWebhook(docSyncDeps, c.req.param("homeId"), c.req.raw));
+  app.post("/api/v1/docs/assets", (c) => handleAssetUpload(docSyncDeps, c.req.raw));
+  app.get("/api/v1/docs/assets", (c) => handleAssetDownload(docSyncDeps, c.req.raw));
+  app.get("/api/v1/docs/assets/:id", (c, next) =>
+    c.req.param("id") === "list" ? next() : handleAssetDownload(docSyncDeps, c.req.raw, c.req.param("id")),
+  );
   app.post("/hooks/git/:projectId", (c) => handleGitWebhook(hooks, c.req.param("projectId"), c.req.raw));
   // Kho skill Git của tổ chức (ADR 0014); đường riêng vì /hooks/git/{projectId} coi mọi đoạn là id dự án.
   if (pool)
