@@ -5,6 +5,7 @@ import { defaultProviderFactory } from "../scm/index.ts";
 import { allowWith, type OrgDeps, orgMiddlewares, requireOrgRole } from "../tenancy/index.ts";
 import type { Principal } from "./access.ts";
 import { briefView, getBrief, saveBrief } from "./brief.ts";
+import { searchDocs } from "./doc-search.ts";
 import { archiveDoc, DocSecretError, docHistory, getDoc, listDocs, restoreDoc, saveDoc } from "./docs.ts";
 import {
   addComment,
@@ -108,6 +109,7 @@ export function knowledgeRouter(
   const memory = implement(contract.memory).$context<RequestContext>().use(authed);
   const briefs = implement(contract.briefs).$context<RequestContext>().use(authed);
   const docs = implement(contract.docs).$context<RequestContext>().use(authed).use(inOrg);
+  const docSearch = implement(contract.docs).$context<RequestContext>().use(authed);
   const skills = implement(contract.skills).$context<RequestContext>().use(authed).use(inOrg);
   const proposals = implement(contract.proposals).$context<RequestContext>().use(authed).use(inOrg);
   const workflows = implement(contract.reviewWorkflows).$context<RequestContext>().use(authed).use(inOrg);
@@ -244,6 +246,13 @@ export function knowledgeRouter(
         return { ok: true as const };
       }),
       restore: docs.restore.handler(({ context: { tx, user }, input }) => restoreDoc(tx, asUser(user), input)),
+      // Như memory.search: embedding câu tìm tính ngoài transaction.
+      search: docSearch.search.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
+        const queryEmbedding = await embedQuery(deps.embedder, input.query);
+        return withTenant(pool, { userId: user.id, orgId }, (tx) =>
+          searchDocs(tx, asUser(user), input, { embedder: deps.embedder, queryEmbedding }),
+        );
+      }),
     },
     skills: {
       list: skills.list.handler(({ context: { tx, user }, input }) => listSkills(tx, asUser(user), input)),
