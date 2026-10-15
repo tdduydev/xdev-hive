@@ -59,6 +59,13 @@ services:
       HIVE_WORKER_RELEASES: ${HIVE_WORKER_RELEASES:-}
       # Trống: app desktop nhận bản mới từ latest.json của bản phát hành mới nhất trên GitHub. "off" để tắt.
       HIVE_DESKTOP_RELEASES: ${HIVE_DESKTOP_RELEASES:-}
+      # Trần artifact và link công khai; trống thì hub dùng mặc định (xem docs/self-hosting.md).
+      HIVE_ARTIFACT_MAX_VERSION_BYTES: ${HIVE_ARTIFACT_MAX_VERSION_BYTES:-}
+      HIVE_ARTIFACT_MAX_BLOB_BYTES: ${HIVE_ARTIFACT_MAX_BLOB_BYTES:-}
+      HIVE_ARTIFACT_ORG_QUOTA_BYTES: ${HIVE_ARTIFACT_ORG_QUOTA_BYTES:-}
+      HIVE_ARTIFACT_LINK_MAX_DAYS: ${HIVE_ARTIFACT_LINK_MAX_DAYS:-}
+      # Mạng của proxy đứng trước hub (vd. Caddy): chỉ từ đây hub mới tin X-Forwarded-For để giới hạn tốc độ theo IP.
+      HIVE_TRUSTED_PROXIES: ${HIVE_TRUSTED_PROXIES:-}
     ports:
       # Mặc định chỉ máy chủ gọi được (đứng sau Caddy). Máy chủ LAN không dùng HTTPS: HIVE_BIND=0.0.0.0.
       - "${HIVE_BIND:-127.0.0.1}:${HIVE_PORT:-3000}:3000"
