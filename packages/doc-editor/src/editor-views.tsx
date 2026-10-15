@@ -10,18 +10,31 @@ import { CopyButton } from "@xdev-hive/ui/code-block";
 import { languageLabel } from "@xdev-hive/ui/highlight";
 import { MermaidDiagram } from "@xdev-hive/ui/mermaid-diagram";
 import { cn } from "cn";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { codeHighlight } from "./code-highlight.ts";
-import type { DocEditorEnv, Lang } from "./env.tsx";
-import { DocEmbed, docExtensions, type MarkdownCodec } from "./markdown.ts";
-import { cleanPastedHtml, looksLikeMarkdown } from "./paste.ts";
+import type { DocEditorEnv, DocLinkTarget, Lang } from "./env.tsx";
+import { DocEmbed, docExtensions, Image, type MarkdownCodec } from "./markdown.ts";
+import {
+  cleanPastedHtml,
+  isRelativeHref,
+  isSafeImageUrl,
+  looksLikeMarkdown,
+  pastedFiles,
+  transferFiles,
+} from "./paste.ts";
 import { type SlashController, slashCommand } from "./slash.ts";
 import type { docEditorText } from "./text.ts";
 
 export type EditorText = (typeof docEditorText)["vi"];
 
 /** Node view vẽ trong cây React của EditorContent nên đọc chữ và env qua context thay vì qua props của node. */
-export const ViewContext = createContext<{ t: EditorText; env: DocEditorEnv | null; lang: Lang } | null>(null);
+export const ViewContext = createContext<{
+  t: EditorText;
+  env: DocEditorEnv | null;
+  lang: Lang;
+  /** Tài liệu đang soạn: gốc để phân giải link tương đối; file trên máy không có nên không phân giải. */
+  docKey: string | undefined;
+} | null>(null);
 
 function useView() {
   const v = useContext(ViewContext);
@@ -94,6 +107,70 @@ function DocEmbedView({ node, updateAttributes, editor, selected }: ReactNodeVie
       {env &&
         valid &&
         env.link({ to: { kind: "doc", key }, className: "text-xs text-primary underline", children: t.openEmbed })}
+    </NodeViewWrapper>
+  );
+}
+
+export type LinkTargetState = { status: "loading" } | { status: "none" } | { status: "ready"; target: DocLinkTarget };
+
+/** Phân giải một địa chỉ tương đối qua app chủ; `null` khi không phải địa chỉ tương đối hoặc app chủ không hỗ trợ. */
+export function useLinkTarget(env: DocEditorEnv | null, docKey: string | undefined, href: string) {
+  const canResolve = !!env?.resolveLink && !!docKey && isRelativeHref(href);
+  const [state, setState] = useState<{ href: string; value: LinkTargetState } | null>(null);
+  useEffect(() => {
+    if (!canResolve || !env?.resolveLink || !docKey) return;
+    let live = true;
+    Promise.resolve()
+      .then(() => env.resolveLink?.(docKey, href))
+      .then((target) => live && setState({ href, value: target ? { status: "ready", target } : { status: "none" } }))
+      .catch(() => live && setState({ href, value: { status: "none" } }));
+    return () => {
+      live = false;
+    };
+  }, [canResolve, env, docKey, href]);
+  if (!canResolve) return null;
+  return state?.href === href ? state.value : ({ status: "loading" } as const);
+}
+
+function ImageView({ node, selected }: ReactNodeViewProps) {
+  const { t, env, docKey } = useView();
+  const src = String(node.attrs.src ?? "");
+  const alt = String(node.attrs.alt ?? "");
+  const [broken, setBroken] = useState<string | null>(null);
+  const resolved = useLinkTarget(env, docKey, src);
+  const url = isRelativeHref(src)
+    ? resolved?.status === "ready" && resolved.target.kind !== "doc"
+      ? resolved.target.url
+      : null
+    : src;
+  const usable = url && isSafeImageUrl(url) && broken !== url ? url : null;
+  return (
+    <NodeViewWrapper
+      as="span"
+      data-drag-handle=""
+      className={cn("inline-block max-w-full align-bottom", selected && "rounded-md ring-2 ring-ring")}
+    >
+      {usable ? (
+        <img
+          src={usable}
+          alt={alt}
+          title={node.attrs.title ?? undefined}
+          loading="lazy"
+          onError={() => setBroken(usable)}
+          className="max-h-120 max-w-full rounded-md"
+        />
+      ) : (
+        <span
+          role="img"
+          aria-label={alt || src}
+          title={src}
+          className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1 text-xs text-muted-foreground"
+        >
+          <span aria-hidden="true">🖼</span>
+          <span className="truncate">{alt || src}</span>
+          {resolved?.status !== "loading" && <span className="shrink-0">· {t.imageMissing}</span>}
+        </span>
+      )}
     </NodeViewWrapper>
   );
 }
@@ -188,6 +265,10 @@ export function editorExtensions(opts: {
   codec: () => MarkdownCodec;
   text: () => EditorText;
   onLinkKey: () => void;
+  /** Có file dán hoặc thả vào (`pos`: vị trí thả, `null` khi dán); trả true nếu đã nhận để trình soạn bỏ xử lý mặc định. */
+  onFiles: (files: File[], pos: number | null) => boolean;
+  /** Bấm vào link tương đối: trình soạn không tự điều hướng mà để app chủ phân giải. */
+  onOpenLink: (href: string) => void;
 }): AnyExtension[] {
   return [
     ...docExtensions({
@@ -196,6 +277,7 @@ export function editorExtensions(opts: {
         addProseMirrorPlugins: () => [codeHighlight()],
       }),
       docEmbed: DocEmbed.extend({ addNodeView: () => ReactNodeViewRenderer(DocEmbedView) }),
+      image: Image.extend({ addNodeView: () => ReactNodeViewRenderer(ImageView) }),
     }),
     Placeholder.configure({
       placeholder: ({ editor, node }) =>
@@ -213,11 +295,29 @@ export function editorExtensions(opts: {
               transformPastedHTML: cleanPastedHtml,
               handlePaste: (_view, event) => {
                 const data = event.clipboardData;
+                const files = pastedFiles(data);
+                if (files.length && opts.onFiles(files, null)) return true;
                 if (!data || data.getData("text/html")) return false;
                 const text = data.getData("text/plain");
                 if (!text || !looksLikeMarkdown(text) || editor.isActive("codeBlock") || editor.isActive("rawMarkdown"))
                   return false;
                 return editor.commands.insertContent(opts.codec().fragment(text));
+              },
+              handleDrop: (view, event) => {
+                const files = transferFiles(event.dataTransfer);
+                if (!files.length) return false;
+                const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? null;
+                if (!opts.onFiles(files, pos)) return false;
+                event.preventDefault();
+                return true;
+              },
+              handleClick: (_view, _pos, event) => {
+                const href = (event.target as HTMLElement | null)?.closest?.("a")?.getAttribute("href") ?? "";
+                if (!isRelativeHref(href)) return false;
+                // Trình duyệt sẽ điều hướng khỏi app tới đường dẫn tương đối của trang hiện tại.
+                event.preventDefault();
+                opts.onOpenLink(href);
+                return false;
               },
             },
           }),
