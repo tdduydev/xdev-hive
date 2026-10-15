@@ -67,6 +67,7 @@ func gitgroupsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	id := fs.String("id", "", "id kết nối hay nhóm")
 	hostID := fs.String("host", "", "id kết nối")
 	kind := fs.String("kind", "", "gitlab hoặc github")
+	authMode := fs.String("auth-mode", "token", "token hoặc git")
 	rawURL := fs.String("url", "", "địa chỉ máy chủ")
 	name := fs.String("name", "", "tên gợi nhớ")
 	search := fs.String("search", "", "chữ cần tìm")
@@ -113,6 +114,10 @@ func gitgroupsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		if err != nil {
 			return fail(err)
 		}
+		if *authMode != "token" && *authMode != "git" {
+			return fail(errors.New("cách đăng nhập không hợp lệ"))
+		}
+		h.AuthMode = *authMode
 		token := strings.TrimSpace(os.Getenv(gitgroups.TokenEnv))
 		_ = os.Unsetenv(gitgroups.TokenEnv)
 		if token == "" {
@@ -279,7 +284,7 @@ func gitgroupsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 			return fail(errors.New("kết nối của nhóm đã bị xoá"))
 		}
 		s := gitgroups.Sync{
-			Git:         gitgroups.Git{Askpass: self, Kind: h.Kind, Token: tokens[h.ID]},
+			Git:         gitgroups.Git{Askpass: self, Kind: h.Kind, Token: tokens[h.ID], UseGitCredentials: h.AuthMode == "git"},
 			Group:       *g,
 			Projects:    projects.DefaultPath(cfgPath),
 			Concurrency: *concurrency,
@@ -401,7 +406,7 @@ func gitgroupsAutoFetch(ctx context.Context, file, cfgPath, self string, tokens 
 		if h == nil {
 			continue
 		}
-		s := gitgroups.Sync{Git: gitgroups.Git{Askpass: self, Kind: h.Kind, Token: tokens[h.ID]}, Group: g, Projects: projects.DefaultPath(cfgPath)}
+		s := gitgroups.Sync{Git: gitgroups.Git{Askpass: self, Kind: h.Kind, Token: tokens[h.ID], UseGitCredentials: h.AuthMode == "git"}, Group: g, Projects: projects.DefaultPath(cfgPath)}
 		if err := s.Run(ctx, gitgroups.ActionFetch, func(gitgroups.Event) {}); err != nil {
 			fmt.Fprintf(stderr, "nhóm %s: %v\n", g.Path, err)
 		}

@@ -83,6 +83,11 @@ func runSync(t *testing.T, s Sync, ctx context.Context, action string) (map[stri
 }
 
 func TestSyncEndToEndWithBareRepos(t *testing.T) {
+	t.Run("token", func(t *testing.T) { syncEndToEnd(t, false) })
+	t.Run("git", func(t *testing.T) { syncEndToEnd(t, true) })
+}
+
+func syncEndToEnd(t *testing.T, native bool) {
 	isolateGit(t)
 	base := t.TempDir()
 	apiBare, apiWork := remote(t, base, "api")
@@ -100,7 +105,7 @@ func TestSyncEndToEndWithBareRepos(t *testing.T) {
 			{Path: "acme/old", Name: "old", DefaultBranch: "main", HTTPURL: oldBare, Archived: true},
 		},
 	}
-	s := Sync{Git: Git{}, Group: g, Projects: projectsFile, Concurrency: 2}
+	s := Sync{Git: Git{UseGitCredentials: native}, Group: g, Projects: projectsFile, Concurrency: 2}
 	ctx := context.Background()
 
 	got, _ := runSync(t, s, ctx, ActionStatus)
