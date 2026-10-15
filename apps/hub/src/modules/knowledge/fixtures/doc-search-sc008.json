@@ -1,0 +1,257 @@
+{
+  "description": "Bộ 50 câu hỏi mẫu cho SC-008 (spec 018): đoạn đúng phải nằm trong top 5 ở ít nhất 80% câu khi đã cấu hình embedding. Câu hỏi cố ý diễn đạt khác chữ trong tài liệu.",
+  "docs": [
+    {
+      "key": "org/huong-dan/trien-khai",
+      "title": "Triển khai",
+      "content": "# Triển khai\n\n## Quy trình phát hành\nBản mới được phát hành bằng cách merge nhánh main vào nhánh release qua pull request. Workflow CI tự build image, gắn thẻ phiên bản và đẩy lên registry.\n\n## Máy chủ production\nHub chạy trên hai máy ảo sau bộ cân bằng tải. Mỗi lần cập nhật, máy được thay lần lượt để không gián đoạn dịch vụ.\n\n## Quay lui\nNếu bản mới lỗi, chạy lại workflow với thẻ phiên bản trước. Migration database chỉ thêm cột nên bản cũ vẫn chạy được trên schema mới.\n"
+    },
+    {
+      "key": "org/huong-dan/co-so-du-lieu",
+      "title": "Cơ sở dữ liệu",
+      "content": "# Cơ sở dữ liệu\n\n## Sao lưu\nPostgres được sao lưu toàn bộ mỗi đêm lúc 2 giờ và giữ WAL liên tục để khôi phục tới từng phút. Bản sao lưu giữ 30 ngày.\n\n## Phân quyền theo dòng\nMọi bảng của tổ chức bật row level security. Ứng dụng kết nối bằng role hive_app và đặt tổ chức hiện tại trong biến phiên.\n\n## Đổi schema\nSửa file schema.ts, sinh migration bằng drizzle rồi commit file SQL. Không sửa migration đã phát hành.\n"
+    },
+    {
+      "key": "org/huong-dan/kiem-thu",
+      "title": "Kiểm thử",
+      "content": "# Kiểm thử\n\n## Test đơn vị\nVitest chạy các file .test.ts, không cần database. Hàm thuần nên có test đơn vị riêng.\n\n## Test có database\nFile .db.test.ts dùng testcontainers dựng Postgres thật. Trên macOS với Colima cần đặt DOCKER_HOST trỏ tới socket của Colima.\n\n## Test giao diện\nPlaywright chạy kịch bản end-to-end trên trình duyệt Chromium với dữ liệu mẫu.\n"
+    },
+    {
+      "key": "org/bao-mat/bi-mat",
+      "title": "Quản lý bí mật",
+      "content": "# Quản lý bí mật\n\n## Không commit khoá\nToken, mật khẩu và khoá API không bao giờ được đưa vào repo. Hook pre-commit quét chuỗi giống khoá và chặn commit.\n\n## Lưu trữ khoá\nKhoá của hub được mã hoá bằng master key đặt qua biến môi trường. Đổi master key cần chạy lệnh mã hoá lại.\n\n## Khi lộ khoá\nThu hồi khoá ngay tại nhà cung cấp, tạo khoá mới, rồi ghi sự cố vào sổ an ninh.\n"
+    },
+    {
+      "key": "org/bao-mat/dang-nhap",
+      "title": "Đăng nhập",
+      "content": "# Đăng nhập\n\n## SSO\nNgười dùng đăng nhập bằng tài khoản Microsoft của công ty qua OpenID Connect. Hub không lưu mật khẩu.\n\n## Phiên làm việc\nPhiên hết hạn sau 12 giờ không hoạt động. Đăng xuất trên một máy không ảnh hưởng máy khác.\n\n## Khoá tài khoản\nQuản trị viên tổ chức có thể vô hiệu hoá thành viên; mọi phiên của người đó bị huỷ ngay.\n"
+    },
+    {
+      "key": "org/van-hanh/giam-sat",
+      "title": "Giám sát",
+      "content": "# Giám sát\n\n## Chỉ số\nHub xuất chỉ số Prometheus: số request, độ trễ, số job đang chờ trong hàng đợi.\n\n## Cảnh báo\nĐộ trễ p95 vượt 2 giây trong 5 phút thì gửi cảnh báo vào kênh trực. Hàng đợi tồn quá 1000 job cũng cảnh báo.\n\n## Nhật ký\nLog viết dạng JSON ra stdout, gom về Loki và giữ 14 ngày.\n"
+    },
+    {
+      "key": "org/van-hanh/su-co",
+      "title": "Xử lý sự cố",
+      "content": "# Xử lý sự cố\n\n## Người trực\nMỗi tuần một kỹ sư trực, nhận cuộc gọi khi có cảnh báo mức cao ngoài giờ hành chính.\n\n## Các bước\nXác nhận phạm vi ảnh hưởng, thông báo trên kênh sự cố, khắc phục tạm thời trước rồi tìm nguyên nhân gốc.\n\n## Báo cáo sau sự cố\nTrong 3 ngày viết báo cáo không đổ lỗi, ghi dòng thời gian và việc cần làm để không tái diễn.\n"
+    },
+    {
+      "key": "org/quy-trinh/review",
+      "title": "Review code",
+      "content": "# Review code\n\n## Yêu cầu\nMỗi pull request cần ít nhất một người duyệt và CI xanh trước khi merge.\n\n## Kích thước\nPull request nên dưới 400 dòng thay đổi. Việc lớn thì chia thành nhiều phần nhỏ có thể merge độc lập.\n\n## Phản hồi\nNgười duyệt trả lời trong một ngày làm việc. Góp ý ghi rõ là bắt buộc hay chỉ là gợi ý.\n"
+    },
+    {
+      "key": "org/quy-trinh/nghi-phep",
+      "title": "Nghỉ phép",
+      "content": "# Nghỉ phép\n\n## Số ngày\nNhân viên có 12 ngày phép năm, cộng thêm một ngày cho mỗi 5 năm làm việc.\n\n## Đăng ký\nĐăng ký trên hệ thống nhân sự trước ít nhất 3 ngày và báo trưởng nhóm.\n\n## Phép chưa dùng\nPhép chưa dùng được chuyển sang quý đầu năm sau, quá hạn thì mất.\n"
+    },
+    {
+      "key": "org/kien-truc/worker",
+      "title": "Worker",
+      "content": "# Worker\n\n## Vai trò\nWorker viết bằng Go chạy trên máy của lập trình viên, nhận run từ hub qua WebSocket và gọi agent tại máy.\n\n## Kết nối lại\nMất mạng thì worker thử kết nối lại với thời gian chờ tăng dần, tối đa 30 giây.\n\n## Cập nhật\nWorker tự kiểm tra phiên bản mới khi khởi động và tải bản cập nhật từ trang phát hành.\n"
+    }
+  ],
+  "questions": [
+    {
+      "query": "Làm sao đưa phiên bản mới lên môi trường thật?",
+      "expect": "org/huong-dan/trien-khai"
+    },
+    {
+      "query": "Bản cập nhật lỗi thì quay về bản cũ thế nào?",
+      "expect": "org/huong-dan/trien-khai"
+    },
+    {
+      "query": "Hub đặt trên bao nhiêu máy?",
+      "expect": "org/huong-dan/trien-khai"
+    },
+    {
+      "query": "Cập nhật có làm dịch vụ bị ngắt không?",
+      "expect": "org/huong-dan/trien-khai"
+    },
+    {
+      "query": "Image docker được build ở đâu?",
+      "expect": "org/huong-dan/trien-khai"
+    },
+    {
+      "query": "Dữ liệu được backup lúc nào?",
+      "expect": "org/huong-dan/co-so-du-lieu"
+    },
+    {
+      "query": "Khôi phục database về thời điểm cụ thể được không?",
+      "expect": "org/huong-dan/co-so-du-lieu"
+    },
+    {
+      "query": "Làm sao tách dữ liệu giữa các công ty?",
+      "expect": "org/huong-dan/co-so-du-lieu"
+    },
+    {
+      "query": "Thêm cột mới vào bảng thì làm gì?",
+      "expect": "org/huong-dan/co-so-du-lieu"
+    },
+    {
+      "query": "Bản backup được giữ bao lâu?",
+      "expect": "org/huong-dan/co-so-du-lieu"
+    },
+    {
+      "query": "Chạy test cần Postgres trên Mac thế nào?",
+      "expect": "org/huong-dan/kiem-thu"
+    },
+    {
+      "query": "Unit test dùng công cụ gì?",
+      "expect": "org/huong-dan/kiem-thu"
+    },
+    {
+      "query": "Kiểm thử giao diện bằng gì?",
+      "expect": "org/huong-dan/kiem-thu"
+    },
+    {
+      "query": "Test nào không cần cơ sở dữ liệu?",
+      "expect": "org/huong-dan/kiem-thu"
+    },
+    {
+      "query": "Colima báo lỗi socket khi chạy test",
+      "expect": "org/huong-dan/kiem-thu"
+    },
+    {
+      "query": "Lỡ đẩy password lên git thì sao?",
+      "expect": "org/bao-mat/bi-mat"
+    },
+    {
+      "query": "Có chặn đưa API key vào mã nguồn không?",
+      "expect": "org/bao-mat/bi-mat"
+    },
+    {
+      "query": "Master key dùng để làm gì?",
+      "expect": "org/bao-mat/bi-mat"
+    },
+    {
+      "query": "Bị lộ token phải làm gì đầu tiên?",
+      "expect": "org/bao-mat/bi-mat"
+    },
+    {
+      "query": "Đổi khoá mã hoá của hub thế nào?",
+      "expect": "org/bao-mat/bi-mat"
+    },
+    {
+      "query": "Đăng nhập bằng tài khoản công ty được không?",
+      "expect": "org/bao-mat/dang-nhap"
+    },
+    {
+      "query": "Bao lâu thì phải đăng nhập lại?",
+      "expect": "org/bao-mat/dang-nhap"
+    },
+    {
+      "query": "Hub có lưu mật khẩu người dùng không?",
+      "expect": "org/bao-mat/dang-nhap"
+    },
+    {
+      "query": "Nhân viên nghỉ việc thì chặn truy cập thế nào?",
+      "expect": "org/bao-mat/dang-nhap"
+    },
+    {
+      "query": "Đăng xuất máy này có đá máy kia ra không?",
+      "expect": "org/bao-mat/dang-nhap"
+    },
+    {
+      "query": "Hệ thống đo độ trễ ở đâu?",
+      "expect": "org/van-hanh/giam-sat"
+    },
+    {
+      "query": "Khi nào thì có cảnh báo?",
+      "expect": "org/van-hanh/giam-sat"
+    },
+    {
+      "query": "Log được lưu bao nhiêu ngày?",
+      "expect": "org/van-hanh/giam-sat"
+    },
+    {
+      "query": "Hàng đợi bị dồn thì ai biết?",
+      "expect": "org/van-hanh/giam-sat"
+    },
+    {
+      "query": "Metrics xuất theo định dạng nào?",
+      "expect": "org/van-hanh/giam-sat"
+    },
+    {
+      "query": "Ai nhận cuộc gọi lúc nửa đêm?",
+      "expect": "org/van-hanh/su-co"
+    },
+    {
+      "query": "Khi hệ thống sập cần làm những bước nào?",
+      "expect": "org/van-hanh/su-co"
+    },
+    {
+      "query": "Viết postmortem trong bao lâu?",
+      "expect": "org/van-hanh/su-co"
+    },
+    {
+      "query": "Báo cáo sự cố có nêu tên người gây lỗi không?",
+      "expect": "org/van-hanh/su-co"
+    },
+    {
+      "query": "Thông báo sự cố ở kênh nào?",
+      "expect": "org/van-hanh/su-co"
+    },
+    {
+      "query": "Cần bao nhiêu người approve PR?",
+      "expect": "org/quy-trinh/review"
+    },
+    {
+      "query": "PR to quá thì nên làm gì?",
+      "expect": "org/quy-trinh/review"
+    },
+    {
+      "query": "Bao lâu thì phải trả lời review?",
+      "expect": "org/quy-trinh/review"
+    },
+    {
+      "query": "Merge khi CI đỏ được không?",
+      "expect": "org/quy-trinh/review"
+    },
+    {
+      "query": "Góp ý review nên viết thế nào?",
+      "expect": "org/quy-trinh/review"
+    },
+    {
+      "query": "Một năm được nghỉ mấy ngày?",
+      "expect": "org/quy-trinh/nghi-phep"
+    },
+    {
+      "query": "Xin nghỉ phải báo trước bao lâu?",
+      "expect": "org/quy-trinh/nghi-phep"
+    },
+    {
+      "query": "Ngày phép thừa có được để sang năm sau không?",
+      "expect": "org/quy-trinh/nghi-phep"
+    },
+    {
+      "query": "Làm lâu năm có thêm phép không?",
+      "expect": "org/quy-trinh/nghi-phep"
+    },
+    {
+      "query": "Đăng ký nghỉ ở đâu?",
+      "expect": "org/quy-trinh/nghi-phep"
+    },
+    {
+      "query": "Agent chạy ở máy nào?",
+      "expect": "org/kien-truc/worker"
+    },
+    {
+      "query": "Worker mất kết nối thì xử lý ra sao?",
+      "expect": "org/kien-truc/worker"
+    },
+    {
+      "query": "Worker viết bằng ngôn ngữ gì?",
+      "expect": "org/kien-truc/worker"
+    },
+    {
+      "query": "Làm sao cập nhật worker lên bản mới?",
+      "expect": "org/kien-truc/worker"
+    },
+    {
+      "query": "Hub gửi việc cho worker qua giao thức nào?",
+      "expect": "org/kien-truc/worker"
+    }
+  ]
+}
