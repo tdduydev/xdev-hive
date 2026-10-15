@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryProvider } from "../scm/index.ts";
-import { buildStepPrompt, type StepPromptInput } from "./prompt.ts";
+import { buildStepPrompt, type StepPromptInput, sdlcJobForMachine } from "./prompt.ts";
 import { DIGEST_MAX_CHARS, repoDigest, treeOf } from "./repo-digest.ts";
 
 const input = (over: Partial<StepPromptInput> = {}): StepPromptInput => ({
@@ -131,5 +131,34 @@ describe("tóm tắt repo tham gia", () => {
     expect(await repoDigest({ provider: counting, repo, projectKey: "web", branch: "main" })).toBe(digest);
     expect(reads).toBe(0);
     expect(await repoDigest({ provider: scm, repo, projectKey: "web", branch: "khong-co" })).toBeNull();
+  });
+});
+
+describe("sdlcJobForMachine (T086)", () => {
+  const repo = {
+    projectKey: "billing",
+    cloneUrl: "https://gitlab.com/x/billing.git",
+    branch: "main",
+    dir: ".hive/repos/billing",
+  };
+  const job = { step: "draft-spec", seed: [], collect: [], repos: [repo] };
+
+  it("bỏ repos với máy không khai sdlc-multirepo, prompt giữ nguyên", () => {
+    const out = sdlcJobForMachine(job, "Soạn spec.", ["sdlc"]);
+    expect(out.job).toEqual({ step: "draft-spec", seed: [], collect: [] });
+    expect(out.prompt).toBe("Soạn spec.");
+  });
+
+  it("máy có capability giữ repos và prompt chỉ chỗ checkout, STATUS.md", () => {
+    const out = sdlcJobForMachine(job, "Soạn spec.", ["sdlc", "sdlc-multirepo"]);
+    expect(out.job.repos).toEqual([repo]);
+    expect(out.prompt).toMatch(/^Soạn spec\.\n\n/);
+    expect(out.prompt).toContain("`.hive/repos/<mã dự án>/` (billing)");
+    expect(out.prompt).toContain(".hive/repos/STATUS.md");
+  });
+
+  it("không có repos thì không thêm gì", () => {
+    const out = sdlcJobForMachine({ step: "s", seed: [], collect: [] }, null, ["sdlc-multirepo"]);
+    expect(out).toEqual({ job: { step: "s", seed: [], collect: [] }, prompt: null });
   });
 });

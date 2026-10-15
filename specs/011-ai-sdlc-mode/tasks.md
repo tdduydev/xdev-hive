@@ -558,7 +558,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     đã duyệt), `codereview/prompt.ts` `reviewSpecLines`; cài ở main.ts và app.ts. Engine chuyển `specContext` cùng
     `guidance` (trước đây bị bỏ, reviewer không thấy ngưỡng của checkpoint) qua sự kiện `review_prompt` vào `reviewPrompt`.
 
-- [ ] T086 [US16] Run soạn checkout nhiều repo
+- [x] T086 [US16] Run soạn checkout nhiều repo
   - Hub: `spec.sdlc.repos?: [{ projectKey, cloneUrl, branch, dir }]` cho run `sdlc` của hạng mục nhiều dự án (chỉ repo
     mà máy của đội chủ trì được phép đọc theo kết nối Git của dự án đó; không được thì giữ tóm tắt repo như MVP).
   - Worker: checkout nông (depth 1), chỉ đọc, vào `.hive/repos/<key>/` trong worktree tạm; không đẩy; dọn cùng worktree;
@@ -567,6 +567,15 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `worker/internal/runner/{sdlc_repos.go,sdlc_repos_test.go}`, `apps/hub/src/modules/sdlc/{prompt.ts,steps.ts}`,
     `apps/hub/src/modules/runs/engine.ts` (phần `spec.sdlc`)
   - **Phụ thuộc**: T020, T022, T070 · **Mức**: nặng
+  - Đã làm (SPEC11FIN): hợp đồng `sdlcJobSpec.repos` (tối đa 7, `dir` phải là `.hive/repos/<key>`, URL https/http/ssh),
+    hằng `SDLC_MULTIREPO_CAPABILITY`, `SDLC_REPOS_DIR`. `planStep` thêm repo cho dự án tham gia mà hub đọc được qua kết
+    nối Git của dự án đó (có tóm tắt), tóm tắt vẫn luôn seed. Lúc giao offer, engine (`sdlcJobForMachine`) bỏ `repos` với
+    máy không khai `sdlc-multirepo`; máy có thì prompt chỉ chỗ checkout và `.hive/repos/STATUS.md`. Worker
+    (`sdlc_repos.go`): clone `--depth 1 --single-branch --no-tags`, không hỏi mật khẩu, bỏ `.git` (không còn gì để đẩy),
+    khoá ghi, giới hạn 200 MB mỗi repo, 500 MB tổng, 5 phút mỗi repo; repo không lấy được thì ghi lý do vào STATUS.md và
+    run vẫn chạy; checkout trước seed; dọn trước worktree. Runner host (sandbox) không khai capability.
+  - Giới hạn: máy clone bằng thông tin Git của chính máy (hub không gửi token), nên "được phép đọc" là kết nối của hub đọc
+    được và máy có quyền clone; máy không có quyền thì rơi về tóm tắt. Chờ chủ dự án xác nhận cách này.
 
 ---
 
