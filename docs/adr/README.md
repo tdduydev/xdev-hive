@@ -31,3 +31,4 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0023](0023-artifacts.md) | Store versioned artifacts in the hub and run interactive ones in a sandboxed frame on a separate CSP | Accepted |
 | [0024](0024-chat-channels.md) | Reach Hive from Telegram and Slack through commands that skip the LLM, and send free text to Leader only | Proposed |
 | [0025](0025-agent-skill-learning.md) | Let agents propose skills after hard tasks, in cheap daily batches that a team admin approves | Proposed |
+| [0027](0027-vscode-extension.md) | Extension VS Code | Accepted |

@@ -42,7 +42,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 0: quyết định và kiểm khả năng (song song)
 
-- [ ] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0027 và mục SRS cho extension VS Code**
+- [x] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0027 và mục SRS cho extension VS Code**
   - **Goal**:
     - Viết ADR 0027 "Extension VS Code": các quyết định ở research.md mục 5, quyết định đã chốt Q1–Q9 (Q1 công khai
       ngay, Q5 đồng bộ bình luận với PR), đường dẫn tới spec 017.
@@ -145,7 +145,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: DB test cho thêm, trả lời, sửa, xoá mềm, xử lý, `outdated` theo `headSha`; RLS chặn tổ chức khác; người
     không xem được review không bình luận được; người khác tác giả không sửa, xoá được.
 
-- [ ] **T009 [P] [US7] [vừa] · 0,5 ngày — `optimizer.Link` tạo cả `~/.xdev-hive/bin/hive`**
+- [x] **T009 [P] [US7] [vừa] · 0,5 ngày — `optimizer.Link` tạo cả `~/.xdev-hive/bin/hive`**
   - **Goal**: `Link` nhận thêm đường dẫn `hive` (cùng thư mục với `hive-worker` trong bundle desktop) và tạo liên kết thứ
     hai. Thiếu file nguồn thì bỏ qua, không lỗi.
   - **PHẠM VI**:
@@ -175,7 +175,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 2: lõi extension và CLI (sau Đợt 1)
 
-- [ ] **T005 [US5] [nặng] · 2 ngày — `hive mcp` (proxy stdio ↔ streamable HTTP)**
+- [x] **T005 [US5] [nặng] · 2 ngày — `hive mcp` (proxy stdio ↔ streamable HTTP)**
   - **Phụ thuộc**: T004 (token, `main.go`).
   - **Goal**: plan.md mục 6 và FR-015. Xử lý phản hồi JSON và SSE, `Mcp-Session-Id` nếu hub trả, huỷ khi stdin đóng.
     Token hết hạn: lỗi JSON-RPC có lời nhắn "Chạy hive login".
