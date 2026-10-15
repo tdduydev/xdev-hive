@@ -1,9 +1,10 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import type { CodeReviewCommentThread } from "@xdev-hive/contracts";
+import { describe, expect, it, vi } from "vitest";
 import { FileDiff } from "./file-diff.tsx";
 import { collectFindings } from "./findings.ts";
-import { aiGate, file, files } from "./test-fixtures.ts";
+import { aiGate, file, files, HEAD } from "./test-fixtures.ts";
 import { codeReviewText } from "./text.ts";
 
 const t = codeReviewText.vi;
@@ -69,5 +70,92 @@ describe("FileDiff", () => {
   it("PR không file nào", () => {
     render(<FileDiff data={files({ files: [] })} findings={[]} prUrl={prUrl} t={t} />);
     expect(screen.getByText("PR không có file nào đổi.")).toBeTruthy();
+  });
+});
+
+const humanThread = (over: Partial<CodeReviewCommentThread> = {}): CodeReviewCommentThread => ({
+  id: "thread",
+  path: "src/refund.ts",
+  line: 11,
+  side: "new",
+  headSha: HEAD,
+  outdated: false,
+  resolved: false,
+  resolvedAt: null,
+  resolvedBy: null,
+  comments: [],
+  ...over,
+});
+
+describe("FileDiff comments", () => {
+  it("thêm ở dòng xoá và dòng mới gửi đúng phía, đường dẫn và SHA", async () => {
+    const onAddComment = vi.fn();
+    render(<FileDiff data={files()} findings={[]} prUrl={prUrl} t={t} threads={[]} onAddComment={onAddComment} />);
+    for (const side of ["old", "new"] as const) {
+      await user.click(screen.getByRole("button", { name: t.commentAt(side, 11) }));
+      await user.type(screen.getByRole("textbox"), "Thêm test");
+      await user.click(screen.getByRole("button", { name: t.addComment }));
+      expect(onAddComment).toHaveBeenLastCalledWith(
+        { path: "src/refund.ts", line: 11, side, headSha: HEAD },
+        "Thêm test",
+      );
+    }
+  });
+
+  it("luồng đúng phía gắn dòng; luồng cũ và ngoài hunk vẫn hiện ngoài patch", () => {
+    render(
+      <FileDiff
+        data={files()}
+        findings={[]}
+        prUrl={prUrl}
+        t={t}
+        threads={[
+          humanThread(),
+          humanThread({ id: "old", side: "old", outdated: true }),
+          humanThread({ id: "outside", line: 999 }),
+        ]}
+      />,
+    );
+    const patch = screen.getByRole("region", { name: t.patchOf("src/refund.ts") });
+    expect(within(patch).getByRole("region", { name: /11 \(mới\)/ })).toBeTruthy();
+    expect(within(patch).queryByRole("region", { name: /11 \(cũ\)/ })).toBeNull();
+    expect(screen.getByText(t.outdatedThread)).toBeTruthy();
+    expect(screen.getByRole("region", { name: /999/ })).toBeTruthy();
+  });
+
+  it("không gắn bình luận từ commit cũ vào dòng trùng số của commit mới", () => {
+    render(
+      <FileDiff
+        data={files({ headSha: "b".repeat(40) })}
+        findings={[]}
+        prUrl={prUrl}
+        t={t}
+        threads={[humanThread()]}
+      />,
+    );
+    expect(screen.getByText(t.outdatedThread)).toBeTruthy();
+    expect(
+      within(screen.getByRole("region", { name: t.patchOf("src/refund.ts") })).queryByText(t.outdatedThread),
+    ).toBeNull();
+  });
+
+  it("luồng không mất khi file nhị phân hoặc file không còn trong PR", async () => {
+    const view = render(
+      <FileDiff
+        data={files()}
+        findings={[]}
+        prUrl={prUrl}
+        t={t}
+        threads={[
+          humanThread({ path: "src/big.ts" }),
+          humanThread({ id: "gone", path: "src/deleted.ts", outdated: true }),
+        ]}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /src\/big.ts/ }));
+    expect(screen.getByRole("region", { name: /src\/big.ts:11/ })).toBeTruthy();
+    expect(screen.getByRole("region", { name: /src\/deleted.ts:11/ })).toBeTruthy();
+    view.rerender(<FileDiff data={files({ files: [] })} findings={[]} prUrl={prUrl} t={t} threads={[humanThread()]} />);
+    expect(screen.getByRole("region", { name: /src\/refund.ts:11/ })).toBeTruthy();
   });
 });
