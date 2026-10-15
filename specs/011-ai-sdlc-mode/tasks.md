@@ -593,12 +593,23 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 10: Tài liệu và hoàn thiện
 
-- [ ] T090 [P] Cập nhật tài liệu: module `sdlc` và luồng trong `docs/architecture.md`, `docs/add.md`, `docs/sdd.md`; trạng
+- [x] T090 [P] Cập nhật tài liệu: module `sdlc` và luồng trong `docs/architecture.md`, `docs/add.md`, `docs/sdd.md`; trạng
   thái SDLC-xx trong `docs/srs.md`; mục "Máy worker AI SDLC" trong `docs/self-hosting.md` (cài, linger, nhãn, gói);
   `docs/run-permissions.md` (run `sdlc` quyền `workspace`, không đẩy); hạng mục nhiều dự án, tự duyệt và vai trò BA/PO
   trong tài liệu người dùng.
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md,self-hosting.md,run-permissions.md}`
   - **Phụ thuộc**: T070 · **Mức**: nhẹ
+  - Đã làm (SPEC11FIN):
+    - `architecture.md`: dòng module `sdlc` (12 bảng), `task_dependencies` của `tasks`, nhãn máy của `fleet`, ER, mục
+      4.4 luồng AI SDLC; mục 4.2 bỏ "[Chưa làm] nhãn máy" và mô tả ghép theo nhãn, `labels_only`.
+    - `add.md`: module, runtime view 6.6 "An AI SDLC item", dòng rủi ro AI SDLC.
+    - `sdd.md`: bảng `sdlc_*`, `task_dependencies`, cột máy; `spec.sdlc` (`seed`, `collect`, `repos`, capability `sdlc`,
+      `sdlc-multirepo`); tool MCP `sdlc_*`; ghép theo nhãn; vòng đời hạng mục; giới hạn.
+    - `srs.md`: SDLC-01..20 có trạng thái và test bằng chứng (SDLC-11, 12, 19 là Partial); thêm tiền tố `desktop:`,
+      `contracts:`, `sdlc-ui:`, `artifacts-ui:` vào chú thích.
+    - `self-hosting.md`: mục "AI SDLC worker machines" (thêm máy từ trang Đội máy, linger, gói agent, nhãn, cài đặt dự
+      án), hạng mục nhiều dự án, tự duyệt AI, vai trò BA/PO.
+    - `run-permissions.md`: run `sdlc` luôn `workspace`, không commit/đẩy, checkout repo tham gia chỉ đọc.
 
 - [ ] T091 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp ảnh màn mới (sáng, tối, 360 px).
   - **Scope**: `specs/011-ai-sdlc-mode/*`, `apps/web/e2e/screenshots/**`
