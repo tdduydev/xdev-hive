@@ -1,4 +1,5 @@
-import { ChevronsUpDownIcon, ChevronUpIcon, CloudOffIcon, UserRoundIcon } from "lucide-react";
+import { Menu } from "@base-ui/react/menu";
+import { ChevronsUpDownIcon, ChevronUpIcon, CloudOffIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LogoIcon, Wordmark } from "@/components/logo.tsx";
 import { type Account, initials } from "@/lib/account.ts";
@@ -23,6 +24,9 @@ const text: Dict<{
   build: string;
   devBuild: string;
   details: string;
+  accountMenu: string;
+  accountItem: string;
+  signOut: string;
 }> = {
   vi: {
     aria: "Điều hướng app",
@@ -37,6 +41,9 @@ const text: Dict<{
     build: "Bản đang chạy",
     devBuild: "bản dựng tại máy",
     details: "Worker và phiên bản",
+    accountMenu: "Tài khoản Hive",
+    accountItem: "Tài khoản và vai trò",
+    signOut: "Đăng xuất khỏi Hive",
   },
   en: {
     aria: "App navigation",
@@ -51,6 +58,9 @@ const text: Dict<{
     build: "Running build",
     devBuild: "local build",
     details: "Worker and version",
+    accountMenu: "Hive account",
+    accountItem: "Account and roles",
+    signOut: "Sign out of Hive",
   },
 };
 
@@ -120,6 +130,7 @@ export function AppNav({
   active,
   account,
   onAccount,
+  onSignOut,
   worker,
   compact = false,
   connected = true,
@@ -129,6 +140,8 @@ export function AppNav({
   active: ScreenId;
   account?: Account | null;
   onAccount?: () => void;
+  /** Đã đăng nhập: thẻ người dùng mở menu có "Đăng xuất khỏi Hive" thay vì mở thẳng hộp thoại tài khoản. */
+  onSignOut?: (() => void) | undefined;
   worker?: WorkerView | null;
   /** Luôn chỉ còn icon (màn cần chỗ như Tài liệu từ code), không chỉ khi cửa sổ hẹp. */
   compact?: boolean;
@@ -297,29 +310,85 @@ export function AppNav({
           <BuildLine />
         </>
       )}
-      <button
-        type="button"
-        onClick={onAccount}
-        title={account ? `${account.name} · ${roleLine}` : t.notLinked}
-        // Vùng menu đã chiếm hết chỗ còn lại nên khối chân tự nằm ở đáy.
-        className="mt-1 flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left compact:justify-center compact:px-0"
-      >
-        {account ? (
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
-            {initials(account.name || account.email)}
-          </span>
-        ) : (
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <UserRoundIcon aria-hidden="true" className="size-4" />
-          </span>
-        )}
-        <span className="flex min-w-0 flex-1 flex-col leading-tight compact:sr-only">
-          <span className={cn("truncate text-sm", account ? "font-medium" : "text-muted-foreground")}>
-            {account ? account.name || account.email : t.notLinked}
-          </span>
-          <span className="truncate text-xs text-muted-foreground">{account ? roleLine : t.signIn}</span>
-        </span>
-      </button>
+      <AccountFooter account={account ?? null} roleLine={roleLine} onAccount={onAccount} onSignOut={onSignOut} />
     </nav>
+  );
+}
+
+const MENU_ITEM =
+  "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
+
+/**
+ * Người đang dùng ở đáy menu. Đăng xuất nằm ngay ở đây, không chỉ trong hộp thoại tài khoản: người dùng tìm nút đăng
+ * xuất ở thẻ người dùng như mọi app khác. Chưa có token thì không có gì để đăng xuất, bấm là mở thẳng hộp thoại.
+ */
+function AccountFooter({
+  account,
+  roleLine,
+  onAccount,
+  onSignOut,
+}: {
+  account: Account | null;
+  roleLine: string;
+  onAccount?: (() => void) | undefined;
+  onSignOut?: (() => void) | undefined;
+}) {
+  const t = useT(text);
+  const body = (
+    <>
+      {account ? (
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
+          {initials(account.name || account.email)}
+        </span>
+      ) : (
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <UserRoundIcon aria-hidden="true" className="size-4" />
+        </span>
+      )}
+      <span className="flex min-w-0 flex-1 flex-col leading-tight compact:sr-only">
+        <span className={cn("truncate text-sm", account ? "font-medium" : "text-muted-foreground")}>
+          {account ? account.name || account.email : t.notLinked}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">{account ? roleLine : t.signIn}</span>
+      </span>
+    </>
+  );
+  const title = account ? `${account.name} · ${roleLine}` : t.notLinked;
+  // Vùng menu đã chiếm hết chỗ còn lại nên khối chân tự nằm ở đáy.
+  const className =
+    "mt-1 flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left compact:justify-center compact:px-0";
+  if (!onSignOut) {
+    return (
+      <button type="button" onClick={onAccount} title={title} className={className}>
+        {body}
+      </button>
+    );
+  }
+  return (
+    <Menu.Root>
+      <Menu.Trigger title={title} className={className}>
+        {body}
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="top" align="start" sideOffset={6} className="isolate z-50 outline-none">
+          <Menu.Popup
+            aria-label={t.accountMenu}
+            className="min-w-52 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none"
+          >
+            <Menu.Item className={MENU_ITEM} onClick={onAccount}>
+              <UserRoundIcon aria-hidden="true" className="size-4" />
+              {t.accountItem}
+            </Menu.Item>
+            <Menu.Item
+              className={cn(MENU_ITEM, "text-destructive data-highlighted:text-destructive")}
+              onClick={onSignOut}
+            >
+              <LogOutIcon aria-hidden="true" className="size-4" />
+              {t.signOut}
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 }
