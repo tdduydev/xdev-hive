@@ -45,6 +45,7 @@ fn main() {
         "adopt_claude_desktop",
         "dismiss_claude_desktop_mismatch",
         "forget_claude_desktop",
+        "sign_out_claude_desktop",
         "migrate_claude_desktop_profiles",
         "claude_desktop_switch_progress",
         "cancel_claude_desktop_switch",

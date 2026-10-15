@@ -940,6 +940,7 @@ pub fn run() {
             claude_desktop::adopt_claude_desktop,
             claude_desktop::dismiss_claude_desktop_mismatch,
             claude_desktop::forget_claude_desktop,
+            claude_desktop::sign_out_claude_desktop,
             claude_desktop::migrate_claude_desktop_profiles,
             claude_desktop::claude_desktop_switch_progress,
             claude_desktop::cancel_claude_desktop_switch,
