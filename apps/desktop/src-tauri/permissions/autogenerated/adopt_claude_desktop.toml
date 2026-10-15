@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-adopt-claude-desktop"
+description = "Enables the adopt_claude_desktop command without any pre-configured scope."
+commands.allow = ["adopt_claude_desktop"]
+
+[[permission]]
+identifier = "deny-adopt-claude-desktop"
+description = "Denies the adopt_claude_desktop command without any pre-configured scope."
+commands.deny = ["adopt_claude_desktop"]
