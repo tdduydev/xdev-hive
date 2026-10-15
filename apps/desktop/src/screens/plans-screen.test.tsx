@@ -242,40 +242,50 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(within(row("claude-3")).getByRole("button", { name: "Bật gói Gói cũ" })).toBeTruthy();
   });
 
-  it("chỉ thẻ gói Claude có dòng Claude Desktop, theo hồ sơ Rust trả về", async () => {
+  it("chỉ thẻ gói Claude có dòng Claude Desktop; gói đang dùng có nhãn, bản sao lưu hiện ở khung chung", async () => {
     const profile = (id: string, label: string) => ({
       id,
       label,
       email: null,
-      dir: `/u/.xdev-hive/claude-desktop/${id}`,
-      used: id === "claude-1",
-      bytes: 2048,
-      cacheBytes: 1024,
-      pid: id === "claude-1" ? 501 : null,
+      saved: id === "claude-1",
+      active: id === "claude-1",
+      accountKnown: true,
     });
     const desktop = {
       supported: true,
       app: "/Applications/Claude.app",
-      root: "/u/.xdev-hive/claude-desktop",
       note: null,
+      running: 501,
+      backup: "/u/.xdev-hive/claude-desktop/backup-20261015-010203",
+      legacy: [],
       profiles: [profile("claude-1", "Duy Max"), profile("claude-2", "Gói phụ")],
+      signedIn: { account: "uuid-1", email: null, plan: "claude-1" },
+      mismatch: null,
     };
     fakeTauri(seed(), undefined, desktop);
     render(<PlansScreen />);
     await waitFor(() => expect(row("claude-1").querySelector("[data-claude-desktop]")).not.toBeNull());
-    expect(within(row("claude-1")).getByText("Đang mở")).toBeTruthy();
-    expect(within(row("claude-1")).getByRole("button", { name: "Claude Desktop" })).toBeTruthy();
-    expect(within(row("claude-2")).getByRole("button", { name: "Đăng nhập Claude Desktop cho gói này" })).toBeTruthy();
+    expect(within(row("claude-1")).getByText("Đang dùng")).toBeTruthy();
+    expect(within(row("claude-1")).queryByRole("button", { name: "Chuyển Claude Desktop sang gói này" })).toBeNull();
+    expect(within(row("claude-2")).getByRole("button", { name: "Chuyển Claude Desktop sang gói này" })).toBeTruthy();
     expect(row("codex-1").querySelector("[data-claude-desktop]")).toBeNull();
+    const panel = screen.getByRole("region", { name: "Claude Desktop" });
+    expect(within(panel).getByText(desktop.backup)).toBeTruthy();
+    expect(within(panel).getByText(/Claude Desktop đang đăng nhập uuid-1/).textContent).toContain("của Duy Max");
+    expect(within(panel).getByRole("button", { name: "Khôi phục như ban đầu" })).toBeTruthy();
   });
 
   it("ngoài macOS không có dòng Claude Desktop", async () => {
     fakeTauri(seed(), undefined, {
       supported: false,
       app: null,
-      root: "",
       note: "Chưa hỗ trợ",
+      running: null,
+      backup: null,
+      legacy: [],
       profiles: [],
+      signedIn: null,
+      mismatch: null,
     });
     render(<PlansScreen />);
     await screen.findByText("Duy Max");
@@ -283,6 +293,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       await vi.advanceTimersByTimeAsync(10);
     });
     expect(document.querySelector("[data-claude-desktop]")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Claude Desktop" })).toBeNull();
   });
 
   it("nhóm theo CLI: tiêu đề, số gói, nút Thêm gói của từng CLI và ô tổng từng CLI", async () => {
@@ -446,6 +457,60 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(sent(calls, "cli_profile_set")).toEqual([{ id: "codex-1", enabled: false }]);
     expect(await within(block("codex")).findByRole("button", { name: "1 gói đang tắt" })).toBeTruthy();
     expect(within(block("claude")).getByRole("button", { name: "1 gói đang tắt" })).toBeTruthy();
+  });
+
+  it("Đọc lại quota thay số của đúng từng gói, báo đang đọc rồi báo xong", async () => {
+    fakeTauri();
+    const invoke = window.__TAURI__?.core.invoke;
+    let finish: () => void = () => {};
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+          if (command !== "cli_profile_usage") return invoke?.<T>(command, args) as Promise<T>;
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+          const usage = (session: number, week: number) => ({
+            session: { percent: session, resetsAt: at(60) },
+            week: { percent: week, resetsAt: at(2 * 1440) },
+            checkedAt: at(0),
+            reason: null,
+          });
+          const fresh: Record<string, Plan["usage"]> = { "claude-1": usage(0, 82), "claude-2": usage(47, 8) };
+          return {
+            path: "/x/accounts.json",
+            accounts: seed().map((p) => (fresh[p.id] ? { ...p, usage: fresh[p.id] } : p)),
+          } as T;
+        },
+      },
+    };
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    await user().click(screen.getByRole("button", { name: "Đọc lại quota" }));
+    expect(screen.getByRole("button", { name: "Đang đọc quota…" }).getAttribute("aria-busy")).toBe("true");
+    act(() => finish());
+    expect((await screen.findByRole("status")).textContent).toBe("Đã đọc lại quota của 5 gói.");
+    const meter = (id: string, name: string) =>
+      within(row(id)).getByRole("meter", { name }).getAttribute("aria-valuenow");
+    expect([meter("claude-1", "Phiên 5 giờ: Duy Max"), meter("claude-1", "Tuần: Duy Max")]).toEqual(["0", "82"]);
+    expect([meter("claude-2", "Phiên 5 giờ: Gói phụ"), meter("claude-2", "Tuần: Gói phụ")]).toEqual(["47", "8"]);
+    expect(screen.getByRole("button", { name: "Đọc lại quota" }).getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("hai gói cùng một tài khoản thì mỗi thẻ ghi gói trùng với nó", async () => {
+    const list = seed();
+    list.push({ ...base, id: "claude-4", label: "Gói trùng", cli: "claude", email: "DUY@example.com ", state: "ready" });
+    // Cùng email nhưng khác CLI thì không phải cùng tài khoản.
+    list.push({ ...base, id: "codex-5", label: "Codex Duy", cli: "codex", email: "duy@example.com", state: "ready" });
+    fakeTauri(list);
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    expect(within(row("claude-1")).getByRole("note").textContent).toBe(
+      "Gói này trùng tài khoản với claude-4: các gói dùng chung một quota.",
+    );
+    expect(within(row("claude-4")).getByRole("note").textContent).toContain("trùng tài khoản với claude-1");
+    expect(within(row("codex-5")).queryByRole("note")).toBeNull();
+    expect(within(row("claude-2")).queryByRole("note")).toBeNull();
   });
 
   it("Đang nghỉ tới {giờ} và Dùng tiếp gọi accounts resume", async () => {

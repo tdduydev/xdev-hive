@@ -4,6 +4,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 )
 
 // loginEnv là biến đăng nhập của từng CLI. Máy không có gói trong accounts.json thì CLI đăng nhập mặc định bằng các biến
@@ -17,7 +19,8 @@ var loginEnv = map[string][]string{
 // LocalEnv là môi trường của phiên tương tác do `hive` mở tại máy (specs/010 T011): như phiên terminal Leader, bỏ
 // HIVE_* và biến có dạng token/mật khẩu của worker (machine token không được lọt vào shell agent điều khiển), giữ biến
 // đăng nhập của cli khi không có gói (account rỗng), rồi đặt env của gói và over. Secrets là giá trị phải che khỏi output.
-func LocalEnv(cli string, account, over map[string]string) (env []string, secrets []string) {
+func LocalEnv(cli string, lease *accounts.Lease, over map[string]string) (env []string, secrets []string) {
+	account := lease.Env()
 	keep := []string(nil)
 	if len(account) == 0 {
 		keep = loginEnv[cli]
@@ -45,5 +48,5 @@ func LocalEnv(cli string, account, over map[string]string) (env []string, secret
 			secrets = append(secrets, v)
 		}
 	}
-	return mergeEnv(base, merged), secrets
+	return mergeEnv(lease.Base(base), merged), secrets
 }
