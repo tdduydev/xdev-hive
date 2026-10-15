@@ -37,7 +37,7 @@ export {
   scheduleAdvance,
   workflowFor,
 } from "./phases.ts";
-export { type ReviewSpec, reviewSpecFor, specContextFor } from "./prompt.ts";
+export { type ReviewSpec, reviewSpecFor, sdlcJobForMachine, specContextFor } from "./prompt.ts";
 export {
   QUESTION_REMIND_MS,
   questionRoutes,
