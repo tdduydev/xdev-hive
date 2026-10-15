@@ -297,7 +297,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: `vscode.lm` giả; `/giao` không gọi `tasks.create` trước khi bấm; diff gửi model không có chuỗi bí mật mẫu;
     không có `vscode.chat` thì không đăng ký và không lỗi.
 
-- [ ] **T020 [P] [US4] [vừa] · 1,5 ngày — Webview chat dự phòng (Leader + Giao việc)**
+- [x] **T020 [P] [US4] [vừa] · 1,5 ngày — Webview chat dự phòng (Leader + Giao việc)**
   - **Phụ thuộc**: T013.
   - **PHẠM VI**: `apps/vscode/src/chat/fallback/**`, `apps/vscode/webview/screens/chat.tsx`,
     `apps/vscode/src/webview-host/allowlist/chat.ts` (+ test)
