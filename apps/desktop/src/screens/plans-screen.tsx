@@ -38,7 +38,7 @@ import {
   useId,
   useState,
 } from "react";
-import { ClaudeDesktopRow, useClaudeDesktop } from "@/components/claude-desktop.tsx";
+import { ClaudeDesktopPanel, ClaudeDesktopRow, useClaudeDesktop } from "@/components/claude-desktop.tsx";
 import { shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import {
@@ -866,6 +866,8 @@ export function PlansScreen() {
           </Button>
         </section>
       )}
+
+      {desktop.view && <ClaudeDesktopPanel view={desktop.view} onChanged={() => void desktop.reload()} />}
 
       <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
         {checked && <span className="text-xs text-muted-foreground">{t.updatedAt(clock(checked, now, lang))}</span>}
