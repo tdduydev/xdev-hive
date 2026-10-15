@@ -12,18 +12,33 @@ pub fn ensure() {
 
 /// Client HTTP cho mọi lời gọi hub của app. Dùng chung một client để giữ kết nối keep-alive: mỗi màn gọi hub nhiều
 /// lần, client mới mỗi lần thì lần nào cũng bắt tay TCP và TLS lại từ đầu.
-pub fn client() -> reqwest::Client {
-    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    CLIENT
-        .get_or_init(|| {
-            ensure();
-            reqwest::Client::builder()
-                // Hub không tới được thì báo sớm, không đợi hết thời hạn của cả lời gọi.
-                .connect_timeout(std::time::Duration::from_secs(10))
-                .build()
-                .unwrap_or_default()
-        })
-        .clone()
+pub fn client() -> Result<reqwest::Client, String> {
+    use std::sync::Mutex;
+    static CLIENT: Mutex<Option<(Option<Vec<u8>>, reqwest::Client)>> = Mutex::new(None);
+    let pem = crate::hub_ca::read_ca(&crate::hub_ca::ca_path()?)?;
+    let mut cached = CLIENT.lock().map_err(|_| "Không đọc được bộ đệm TLS.")?;
+    if let Some((saved, client)) = cached.as_ref()
+        && *saved == pem
+    {
+        return Ok(client.clone());
+    }
+    let client = with_ca(pem.as_deref())?;
+    *cached = Some((pem, client.clone()));
+    Ok(client)
+}
+
+pub fn with_ca(pem: Option<&[u8]>) -> Result<reqwest::Client, String> {
+    ensure();
+    let mut builder =
+        reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(10));
+    if let Some(pem) = pem {
+        let cert = crate::hub_ca::parse_ca(pem)?;
+        builder = builder.tls_certs_merge([reqwest::Certificate::from_der(&cert)
+            .map_err(|e| format!("Chứng chỉ CA không hợp lệ: {e}"))?]);
+    }
+    builder
+        .build()
+        .map_err(|e| format!("Không tạo được kết nối TLS: {e}"))
 }
 
 #[cfg(test)]
@@ -31,7 +46,7 @@ mod tests {
     #[test]
     fn builds_a_client_without_the_updater_having_run() {
         // Trước đây panic: "No rustls crypto provider is configured".
-        let _ = super::client();
+        let _ = super::client().unwrap();
         assert!(rustls::crypto::CryptoProvider::get_default().is_some());
     }
 
@@ -70,6 +85,7 @@ mod tests {
         tauri::async_runtime::block_on(async {
             for _ in 0..10 {
                 let body = super::client()
+                    .unwrap()
                     .get(&url)
                     .send()
                     .await

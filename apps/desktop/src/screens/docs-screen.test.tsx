@@ -346,7 +346,8 @@ describe("DocsScreen", () => {
     saveFolder(FOLDER);
   });
 
-  it("chạy Claude Code, hiện luồng, nhận đề xuất rồi gửi lên hub", async () => {
+  // Kịch bản dài nhất của màn: trên CI chạy song song nhiều gói có lúc vượt 20 giây.
+  it("chạy Claude Code, hiện luồng, nhận đề xuất rồi gửi lên hub", { timeout: 60_000 }, async () => {
     const { calls, push } = fakeTauri();
     const user = userEvent.setup();
     renderDocs();
