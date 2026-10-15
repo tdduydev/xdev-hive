@@ -114,6 +114,8 @@ func (a *app) run(args []string) int {
 		return a.login(rest)
 	case "auth":
 		return a.auth(rest)
+	case "mcp":
+		return a.mcp(rest)
 	case "logout":
 		return a.logout(rest)
 	case "whoami":
