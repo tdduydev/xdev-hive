@@ -97,7 +97,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: `redact.test.ts` (che `hive_pat_`, `hwm_`, `hwr_`), `exec.test.ts` (không qua shell), activate với mock
     không lỗi; `vsce package` chạy ra VSIX.
 
-- [ ] **T004 [P] [US1] [nặng] · 2 ngày — `hive auth` (cầu nối keychain)**
+- [x] **T004 [P] [US1] [nặng] · 2 ngày — `hive auth` (cầu nối keychain)**
   - **Goal**:
     - `hive auth token|store|logout|status --json` như plan.md mục 1. `store` đọc token từ stdin.
     - Dùng chung code keychain và `hive.json` của `login.go` (tách hàm, không chép).
@@ -108,6 +108,11 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `worker/cmd/hive/login.go` (tách hàm keychain dùng chung)
     - `worker/cmd/hive/main.go` (một dòng `case "auth"`)
   - **Test**: keyring giả (`keyring.MockInit()`), token không xuất hiện trong stderr, mã thoát 3 khi chưa có token.
+  - **Bàn giao**: JSON luôn được trả về (cờ `--json` được nhận); `status` chỉ trả `{hubUrl, authenticated, orgId?, source?}`,
+    không gọi hub nên không khẳng định token còn hạn. `store` và `logout` trả cùng metadata, không trả token.
+    Chưa chạy kiểm chéo keychain Rust↔Go thật trên macOS/Windows: phiên làm việc chỉ được ghi trong worktree,
+    không được thay đổi keychain hệ điều hành; không có Windows runtime. Cần kiểm chéo trước phát hành;
+    nếu không tương thích thì thêm task desktop chuyển sang `hive auth`.
 
 - [ ] **T006 [P] [US7] [vừa] · 1 ngày — Op socket `worker.status` và cờ `--owner`**
   - **Goal**:
