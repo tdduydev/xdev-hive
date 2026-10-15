@@ -12,7 +12,14 @@ import { flatGates } from "../knowledge/index.ts";
 import type { MasterKey, Tx } from "../platform/index.ts";
 import { loadConnection, type ProviderFactory } from "../scm/index.ts";
 import { aggregateAi } from "./gates.ts";
-import { aiGateComment, reviewFocus, reviewGuidance, reviewRubric } from "./prompt.ts";
+import {
+  aiGateComment,
+  type ReviewSpecContext,
+  reviewFocus,
+  reviewGuidance,
+  reviewRubric,
+  reviewSpecLines,
+} from "./prompt.ts";
 import { codeReviewGateRuns, codeReviews } from "./schema.ts";
 
 type ReviewRow = typeof codeReviews.$inferSelect;
@@ -40,6 +47,8 @@ export interface StartReviewRunsInput {
   focusPaths: string[];
   /** Quy tắc chấm của checkpoint (ngưỡng, mức chặn) để thêm vào lời nhắc, mỗi phần tử một dòng. */
   guidance: string[];
+  /** Requirement và tiêu chí của task thuộc hạng mục AI SDLC (`reviewSpecLines`); rỗng với task thường. */
+  specContext: string[];
 }
 
 export interface StartedReviewRun {
@@ -76,6 +85,8 @@ export interface AiGateDeps {
   masterKey?: MasterKey | undefined;
   publicUrl?: string | undefined;
   logger?: Pick<Console, "warn"> | undefined;
+  /** Ngữ cảnh spec của task (module `sdlc`, cài qua main.ts); thiếu thì lời nhắc review như trước. */
+  specContextFor?: ((tx: Tx, taskId: string) => Promise<ReviewSpecContext | null>) | undefined;
 }
 
 /** Kết luận của checkpoint AI; `service.ts` ghi kết quả và đi tiếp hoặc trả lại. */
@@ -118,6 +129,7 @@ export async function startAiGate(
     cli: r.cli,
     model: r.model ?? null,
   }));
+  const spec = review.taskId && deps.specContextFor ? await deps.specContextFor(tx, review.taskId) : null;
   const started = await deps.startReviewRuns(tx, {
     reviewId: review.id,
     workflowId: review.workflowId,
@@ -135,6 +147,7 @@ export async function startAiGate(
     blockOn: ai.blockOn ?? null,
     focusPaths: reviewFocus(gate),
     guidance: reviewGuidance(ai),
+    specContext: spec ? reviewSpecLines(spec) : [],
   });
   const details: AiReviewerResult[] = started.map((s) => ({
     cli: s.cli,
