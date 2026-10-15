@@ -23,6 +23,8 @@ export interface AccountStatus {
 export const accountStatus = () => invoke<AccountStatus>("account_status");
 export const linkAccount = (token: string) => invoke<AccountStatus>("account_link", { token });
 export const unlinkAccount = () => invoke<AccountStatus>("account_unlink");
+/** Máy đã đăng ký đăng nhập lại bằng trình duyệt, như `hive login`: không đăng ký lại máy. */
+export const accountBrowserLogin = () => invoke<AccountStatus>("account_browser_login");
 
 /**
  * Hồ sơ menu từ vai trò thật (specs/008-desktop-v2): lead = owner/admin tổ chức hoặc admin một đội; writer = chỉ là
