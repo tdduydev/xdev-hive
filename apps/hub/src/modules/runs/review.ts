@@ -51,12 +51,18 @@ export function reviewPrompt(opts: {
   rubric?: string[] | undefined;
   /** Đường dẫn trọng tâm của checkpoint; rỗng là cả diff. */
   focusPaths?: string[] | undefined;
+  /** Ngưỡng và mức chặn của checkpoint; đứng sau quy tắc chung để thay câu "7 trở lên là đủ". */
+  guidance?: string[] | undefined;
+  /** Requirement và tiêu chí của task thuộc hạng mục AI SDLC. */
+  specContext?: string[] | undefined;
 }): string {
   const rubric = opts.rubric ?? [];
   const focus = opts.focusPaths ?? [];
+  const spec = opts.specContext ?? [];
   return [
     `Bạn là reviewer cho task ${opts.taskKey}: ${opts.title}.`,
     ...(opts.body ? ["", "Mô tả task:", opts.body, ""] : []),
+    ...(spec.length ? [...(opts.body ? [] : [""]), ...spec, ""] : []),
     `Worktree đang ở nhánh ${opts.branch} do một agent khác viết${opts.prUrl ? ` (PR: ${opts.prUrl})` : ""}.`,
     // Run review chạy chỉ đọc (Claude ở chế độ plan không chạy được lệnh): worker ghi sẵn diff vào file này.
     `Đọc diff so với nhánh chính trong file \`.hive-review.diff\` ở gốc worktree (worker đã tạo sẵn). Không có file đó thì dùng \`git diff origin/${opts.baseBranch}...HEAD\`.`,
@@ -71,6 +77,7 @@ export function reviewPrompt(opts: {
     "Quy tắc:",
     "- Không sửa code, không commit, không push. Việc của bạn chỉ là đánh giá.",
     "- Chấm điểm 0–10: đúng yêu cầu của task, đúng logic, có test, an toàn, dễ đọc. 7 trở lên là đủ để merge.",
+    ...(opts.guidance ?? []),
     "- Trước khi kết thúc, gọi tool MCP `review_submit` của xdev-hive đúng một lần với score, summary và findings",
     "  (mỗi phát hiện có file, line nếu có, severity là critical, major, minor hoặc info, và message).",
     ...(rubric.length
