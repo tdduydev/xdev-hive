@@ -1,8 +1,10 @@
 import type { ComponentType } from "react";
 import type { ScreenId } from "@/lib/nav.ts";
+import { ArtifactsScreen } from "@/screens/artifacts-screen.tsx";
 import { DocsScreen } from "@/screens/docs-screen.tsx";
 import { HomeScreen } from "@/screens/home-screen.tsx";
 import { KnowledgeScreen } from "@/screens/knowledge-screen.tsx";
+import { LeaderScreen } from "@/screens/leader-screen.tsx";
 import { MemoryScreen } from "@/screens/memory-screen.tsx";
 import { PlansScreen } from "@/screens/plans-screen.tsx";
 import { ProjectsScreen } from "@/screens/projects-screen.tsx";
@@ -24,9 +26,11 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   "sdlc-questions": SdlcQuestionsScreen,
   "sdlc-progress": SdlcProgressScreen,
   "sdlc-metrics": SdlcMetricsScreen,
+  artifacts: ArtifactsScreen,
   docs: DocsScreen,
   home: HomeScreen,
   knowledge: KnowledgeScreen,
+  leader: LeaderScreen,
   memory: MemoryScreen,
   plans: PlansScreen,
   projects: ProjectsScreen,
@@ -44,4 +48,4 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
  * Màn tự chia cả vùng nội dung thành cột (Tài liệu: thư mục, trình soạn, chat): khung không thêm lề, không cuộn chung,
  * và AppNav thu về cột icon như bản `compact` của thiết kế để còn chỗ cho trình soạn.
  */
-export const FULL_BLEED: ReadonlySet<ScreenId> = new Set<ScreenId>(["docs", "write"]);
+export const FULL_BLEED: ReadonlySet<ScreenId> = new Set<ScreenId>(["docs", "write", "leader"]);
