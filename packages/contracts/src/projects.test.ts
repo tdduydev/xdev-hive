@@ -144,3 +144,46 @@ describe("định tuyến model theo cấp độ task", () => {
     expect(projectSettingsPatch.safeParse({ routing: { tier: {} } }).success).toBe(false);
   });
 });
+
+describe("cài đặt kho tài liệu", () => {
+  it("settings cũ chưa có docs vẫn parse với đầy đủ mặc định", () => {
+    const { docs: _, ...old } = defaultProjectSettings();
+    expect(projectSettings.parse(old).docs).toEqual({
+      enabled: false,
+      root: "docs/",
+      repoSync: "pr",
+      assetsDir: "assets",
+      repoChangesNeedReview: false,
+      include: ["docs/**", "doc/**", "specs/**", "adr/**", "**/adr/**", "**/README.md", "*.md"],
+      exclude: [
+        "node_modules/**",
+        "vendor/**",
+        ".git/**",
+        ".github/**",
+        ".claude/**",
+        ".hive/**",
+        "**/CHANGELOG.md",
+        "**/LICENSE*",
+      ],
+    });
+    expect(projectSettings.parse({ ...old, docs: {} }).docs).toEqual(defaultProjectSettings().docs);
+    expect(projectSettings.parse({ ...old, docs: { enabled: true } }).docs.root).toBe("docs/");
+  });
+
+  it("mặc định danh sách độc lập giữa các lần parse", () => {
+    const a = defaultProjectSettings();
+    a.docs.include.push("custom/**");
+    expect(defaultProjectSettings().docs.include).not.toContain("custom/**");
+  });
+
+  it("bản vá không điền trường vắng, giữ giá trị false và danh sách rỗng", () => {
+    expect(projectSettingsPatch.parse({ docs: { enabled: false, include: [] } }).docs).toEqual({
+      enabled: false,
+      include: [],
+    });
+    expect(projectSettingsPatch.safeParse({ docs: { assetDir: "assets" } }).success).toBe(false);
+    for (const docs of [{ root: "../docs" }, { assetsDir: "/tmp" }, { repoSync: "auto" }, { enabled: "true" }]) {
+      expect(projectSettingsPatch.safeParse({ docs }).success).toBe(false);
+    }
+  });
+});

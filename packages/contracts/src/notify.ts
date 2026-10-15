@@ -26,6 +26,12 @@ export const notificationEvent = z.enum([
   "sdlc.project_added",
   "sdlc.auto_approved",
   "sdlc.auto_revoked",
+  "docsync.sync_failed",
+  "docsync.conflict",
+  "docsync.paused",
+  "docsync.import_done",
+  "docsync.deleted_in_repo",
+  "docsync.extract_review",
   // Artifact (specs/012): dung lượng tổ chức vượt 80%; link công khai bị quản trị thu hồi hay hết hiệu lực do sự kiện.
   "artifact.quota",
   "artifact.public_link.revoked",
