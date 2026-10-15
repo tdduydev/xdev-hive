@@ -96,7 +96,7 @@ const text: Dict<{
     confirmSwitch: "Khởi động lại và chuyển",
     forceTitle: "Claude Desktop chưa thoát",
     forceBody:
-      "Claude Desktop không tự thoát sau 20 giây (có thể đang hỏi lại hay đang bận). Chưa có gì bị đổi. Buộc thoát có thể mất việc chưa lưu trong Claude Desktop.",
+      "Claude Desktop không tự thoát sau 20 giây (có thể đang hỏi lại, đang bận, hay chỉ thu xuống khay hệ thống). Chưa có gì bị đổi. Buộc thoát có thể mất việc chưa lưu trong Claude Desktop.",
     force: "Buộc thoát và chuyển",
     cancel: "Huỷ",
     switched: (plan) => `Đã chuyển Claude Desktop sang ${plan}.`,
@@ -157,7 +157,7 @@ const text: Dict<{
     confirmSwitch: "Restart and switch",
     forceTitle: "Claude Desktop did not quit",
     forceBody:
-      "Claude Desktop did not quit within 20 seconds (it may be asking something or busy). Nothing was changed. Forcing it to quit may lose unsaved work in Claude Desktop.",
+      "Claude Desktop did not quit within 20 seconds (it may be asking something, busy, or only minimized to the system tray). Nothing was changed. Forcing it to quit may lose unsaved work in Claude Desktop.",
     force: "Force quit and switch",
     cancel: "Cancel",
     switched: (plan) => `Claude Desktop is now on ${plan}.`,
