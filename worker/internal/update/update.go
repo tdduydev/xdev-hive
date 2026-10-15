@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -355,6 +356,7 @@ func Install(exe string, binary []byte, version string) error {
 // (install.sh và install.ps1 cài chung một thư mục); gói không có `hive` thì chỉ thay worker và để nguyên `hive` cũ.
 func InstallAll(exe string, b Binaries, version string) error {
 	dir := filepath.Dir(exe)
+	cleanOld(exe)
 	worker, err := stage(dir, ".hive-worker-*.new", b.Worker, version, false)
 	if err != nil {
 		return err
@@ -460,13 +462,20 @@ func restore(exe string, data []byte) error {
 }
 
 // replace thay exe bằng file mới. Unix đổi tên đè lên được cả khi exe đang chạy. Windows không ghi đè được file đang
-// chạy nhưng đổi tên được, nên dời exe sang .old trước.
+// chạy nhưng đổi tên được, nên dời exe sang .old trước; .old của lần trước còn bị khoá (bản cũ đang chạy) thì dời sang
+// tên khác và dọn ở lần cập nhật sau.
 func replace(src, exe string) error {
 	if runtime.GOOS != "windows" {
 		return os.Rename(src, exe)
 	}
+	if _, err := os.Lstat(exe); errors.Is(err, fs.ErrNotExist) {
+		// Máy cài trước khi có hive: chưa có file đích để dời.
+		return os.Rename(src, exe)
+	}
 	old := exe + ".old"
-	_ = os.Remove(old)
+	if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		old = fmt.Sprintf("%s.%d.old", exe, time.Now().UnixNano())
+	}
 	if err := os.Rename(exe, old); err != nil {
 		return err
 	}
@@ -475,4 +484,17 @@ func replace(src, exe string) error {
 		return err
 	}
 	return nil
+}
+
+// cleanOld xoá các file .old do replace để lại trên Windows. Bản cũ còn chạy thì xoá không được, để lần sau.
+func cleanOld(exe string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	for _, base := range []string{exe, filepath.Join(filepath.Dir(exe), "hive"+filepath.Ext(exe))} {
+		matches, _ := filepath.Glob(base + "*.old")
+		for _, m := range matches {
+			_ = os.Remove(m)
+		}
+	}
 }

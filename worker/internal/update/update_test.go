@@ -388,6 +388,35 @@ func TestInstallAllCreatesHiveNextToWorker(t *testing.T) {
 	}
 }
 
+// Cập nhật hai lần liền: file .old của lần trước (Windows) không làm lần sau hỏng.
+func TestInstallAllTwiceSucceeds(t *testing.T) {
+	t.Setenv(fakeVersionEnv, "1.2.3")
+	dir := t.TempDir()
+	exe, hive := exeName(dir, "hive-worker"), exeName(dir, "hive")
+	for _, f := range []string{exe, hive} {
+		if err := os.WriteFile(f, []byte("bản cũ"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	binary := testBinary(t)
+	for range 2 {
+		if err := InstallAll(exe, Binaries{Worker: binary, Hive: binary}, "1.2.3"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{exe, hive} {
+		if got, _ := os.ReadFile(f); !bytes.Equal(got, binary) {
+			t.Errorf("%s chưa được thay bằng bản mới", f)
+		}
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".new") {
+			t.Errorf("còn file tạm %s", e.Name())
+		}
+	}
+}
+
 // Gói cũ không có hive: chỉ thay worker, hive đang có giữ nguyên.
 func TestInstallAllWithoutHiveKeepsExistingHive(t *testing.T) {
 	t.Setenv(fakeVersionEnv, "1.2.3")
