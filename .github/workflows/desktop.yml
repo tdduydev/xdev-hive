@@ -16,9 +16,9 @@ on:
         required: false
         default: ""
   workflow_dispatch:
-  # Đổi chính workflow này thì đóng gói thử ngay trên PR, không đợi merge.
+  # Đổi chính workflow này (hay action dùng chung) thì đóng gói thử ngay trên PR, không đợi merge.
   pull_request:
-    paths: [.github/workflows/desktop.yml]
+    paths: [.github/workflows/desktop.yml, .github/actions/**]
   push:
     branches: [main]
     paths:
@@ -28,6 +28,12 @@ on:
       - docs/design-system/assets/logos/**
       - pnpm-lock.yaml
       - .github/workflows/desktop.yml
+      - .github/actions/**
+
+# PR mới huỷ lượt đóng gói cũ của PR đó (macOS và Windows tốn runner); main và release không bị huỷ giữa chừng.
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: write
@@ -56,20 +62,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev file
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-js
         with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile --filter @xdev-hive/desktop...
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: worker/go.mod
-          cache-dependency-path: worker/go.sum
+          filter: "@xdev-hive/desktop..."
+      - uses: ./.github/actions/setup-go
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+          shared-key: bundle
+          # Chỉ main lưu (bản dựng release của release.yml và PR chỉ đọc) để không vượt hạn mức 10 GB của repo.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Phiên bản
         run: |
           version="${{ inputs.version }}"

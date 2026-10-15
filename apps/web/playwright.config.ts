@@ -26,7 +26,8 @@ export default defineConfig({
   ...(workers === undefined ? {} : { workers }),
   timeout: process.env.CI ? 60_000 : 30_000,
   forbidOnly: !!process.env.CI,
-  reporter: process.env.CI ? "github" : "list",
+  // CI chia test thành nhiều shard: mỗi shard ghi báo cáo blob để job báo cáo gộp lại thành một báo cáo HTML.
+  reporter: process.env.CI ? [["github"], ["blob"]] : "list",
   use: { baseURL: `http://localhost:${port}`, locale: "vi-VN", trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
