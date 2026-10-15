@@ -1,8 +1,17 @@
 import { type SdlcStep, sdlcItemRef } from "@xdev-hive/contracts";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { loadProject } from "../catalog/index.ts";
+import { requirementsOf } from "../knowledge/index.ts";
 import type { Tx } from "../platform/index.ts";
+import { requirementSources } from "./breakdown.ts";
 import { sdlcArtifacts, sdlcItemProjects, sdlcItems, sdlcItemTasks } from "./schema.ts";
+
+/** Hình dạng `codereview` cần (`ReviewSpecContext`); khai lại ở đây vì sdlc không import codereview. */
+export interface ReviewSpec {
+  item: string;
+  requirements: { id: string; text: string; acceptance: string[] }[];
+  docs: { name: string; docKey: string; version: number }[];
+}
 
 /*
  * Prompt của bước agent (D6): `step.prompt` của chế độ là Markdown có biến; hub điền biến bằng ngữ cảnh của hạng mục rồi
@@ -154,11 +163,8 @@ export function buildStepPrompt(input: StepPromptInput): string {
   return `${head}\n\n${body}${missing}\n\n${rulesBlock(input)}`;
 }
 
-/**
- * Ngữ cảnh spec cho prompt của run code task hạng mục (plan.md "Luồng" bước 6): tài liệu đã duyệt mà task phải theo,
- * requirement của task, contract dự án của task cung cấp hay dùng. Task không thuộc hạng mục: null, prompt như cũ.
- */
-export async function specContextFor(tx: Tx, taskId: string): Promise<string | null> {
+/** Hạng mục, requirement và tài liệu đã duyệt mà task phải theo; dùng chung cho run code và run review của task. */
+async function taskSpec(tx: Tx, taskId: string) {
   const [link] = await tx
     .select({
       itemId: sdlcItemTasks.itemId,
@@ -181,28 +187,70 @@ export async function specContextFor(tx: Tx, taskId: string): Promise<string | n
     .from(sdlcArtifacts)
     .where(and(eq(sdlcArtifacts.itemId, item.id), inArray(sdlcArtifacts.approval, ["human", "auto", "reaffirmed"])));
   const names = new Map(item.mode.phases.flatMap((p) => p.artifacts.map((a) => [`${p.id}/${a.id}`, a.name])));
-  const docs = artifacts.filter(
-    (a) =>
-      a.baselineVersion !== null &&
-      (a.scope === "item" ||
-        (a.scope === "project" && a.projectId === link.projectId) ||
-        (a.scope === "contract" && (a.projectId === link.projectId || a.consumerProjectIds.includes(link.projectId)))),
-  );
+  const docs = artifacts
+    .filter(
+      (a) =>
+        a.baselineVersion !== null &&
+        (a.scope === "item" ||
+          (a.scope === "project" && a.projectId === link.projectId) ||
+          (a.scope === "contract" &&
+            (a.projectId === link.projectId || a.consumerProjectIds.includes(link.projectId)))),
+    )
+    .map((a) => ({
+      name:
+        a.scope === "contract" ? `contract ${a.instance}` : (names.get(`${a.phaseId}/${a.artifactId}`) ?? a.artifactId),
+      docKey: a.docKey,
+      version: a.baselineVersion ?? 0,
+      repo: keys.get(a.projectId) ?? "",
+      repoPath: a.repoPath,
+    }));
+  return { item, requirementIds: link.requirementIds, docs };
+}
+
+/**
+ * Ngữ cảnh spec cho prompt của run code task hạng mục (plan.md "Luồng" bước 6): tài liệu đã duyệt mà task phải theo,
+ * requirement của task, contract dự án của task cung cấp hay dùng. Task không thuộc hạng mục: null, prompt như cũ.
+ */
+export async function specContextFor(tx: Tx, taskId: string): Promise<string | null> {
+  const spec = await taskSpec(tx, taskId);
+  if (!spec) return null;
+  const { item, requirementIds, docs } = spec;
   const lines = [
     `Task thuộc hạng mục AI SDLC ${sdlcItemRef(item.number)} · ${item.title}. Làm đúng tài liệu đã duyệt dưới đây; chỗ tài liệu sai hay thiếu thì ghi vào báo cáo task_update, không tự đổi phạm vi.`,
   ];
-  if (link.requirementIds.length) lines.push(`Requirement của task: ${link.requirementIds.join(", ")}.`);
+  if (requirementIds.length) lines.push(`Requirement của task: ${requirementIds.join(", ")}.`);
   if (docs.length) {
     lines.push("Tài liệu (đọc bằng MCP doc_get theo key, hoặc file trong repo của dự án giữ tài liệu):");
-    for (const a of docs) {
-      const name =
-        a.scope === "contract" ? `contract ${a.instance}` : (names.get(`${a.phaseId}/${a.artifactId}`) ?? a.artifactId);
-      const repo = keys.get(a.projectId) ?? "";
-      lines.push(`- ${name} v${a.baselineVersion}: key \`${a.docKey}\`, repo ${repo} \`${a.repoPath}\``);
-    }
+    for (const d of docs)
+      lines.push(`- ${d.name} v${d.version}: key \`${d.docKey}\`, repo ${d.repo} \`${d.repoPath}\``);
   }
   lines.push(
     "Báo kết quả bằng task_update kèm `checklist` (mục đã xong) và `evidence` (requirement đã làm, test đã chạy) để hub truy vết.",
   );
   return lines.join("\n");
+}
+
+/**
+ * Ngữ cảnh spec cho checkpoint AI của review code (T085): reviewer chấm thay đổi theo câu chữ và tiêu chí của requirement
+ * task nhận, không chỉ theo tiêu đề task. Câu chữ lấy từ bản baseline của tài liệu nguồn requirement.
+ */
+export async function reviewSpecFor(tx: Tx, taskId: string): Promise<ReviewSpec | null> {
+  const spec = await taskSpec(tx, taskId);
+  if (!spec) return null;
+  const { item, requirementIds, docs } = spec;
+  const d = item.mode.decomposition;
+  const parsed =
+    d && requirementIds.length
+      ? (await requirementSources(tx, { kind: "user", userId: item.ownerUserId }, item, d)).flatMap((content) =>
+          requirementsOf(content, d.requirementId),
+        )
+      : [];
+  return {
+    item: `${sdlcItemRef(item.number)} · ${item.title}`,
+    requirements: requirementIds.map((id) => {
+      const r = parsed.find((x) => x.id === id);
+      return { id, text: r?.text ?? "", acceptance: r?.acceptance ?? [] };
+    }),
+    docs: docs.map(({ name, docKey, version }) => ({ name, docKey, version })),
+  };
 }
