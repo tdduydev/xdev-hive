@@ -390,6 +390,7 @@
         },
         {
           "id": "xdev-hive.artifacts",
+          "type": "webview",
           "name": "%view.artifacts.name%"
         },
         {
