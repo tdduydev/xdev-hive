@@ -228,7 +228,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 2: lõi hub (song song, sau Đợt 1)
 
-- [ ] **T007 [P] [US5] [vừa] · 1,5 ngày — BlobStore trong `platform`**
+- [x] **T007 [P] [US5] [vừa] · 1,5 ngày — BlobStore trong `platform`**
   - **Phụ thuộc**: T005.
   - **Goal**: FR-028, FR-031 (hạn mức), plan.md mục 1, 8.
     - `blob-store.ts`: giao diện `BlobStore` + bản PostgreSQL (đoạn 512 KiB, stream, dedupe sha256 theo tổ chức).
@@ -241,7 +241,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/platform/{config.ts,config.test.ts,index.ts}`
   - **Kiểm**: hub test (`platform`), typecheck, `pnpm deps`.
 
-- [ ] **T008 [P] [US2] [nặng] · 2 ngày — `knowledge`: hook lưu, lưu từ đồng bộ, lưu trữ, chặn bí mật khi lưu**
+- [x] **T008 [P] [US2] [nặng] · 2 ngày — `knowledge`: hook lưu, lưu từ đồng bộ, lưu trữ, chặn bí mật khi lưu**
   - **Phụ thuộc**: T003, T005.
   - **Goal**: FR-012, FR-024 (lưu trữ), plan.md mục 5, 11.
     - `provideDocSaved(hook)`; `applyDocSave` gọi hook trong transaction với `{orgId, docId, key, version, source}`.
@@ -257,7 +257,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/knowledge/{knowledge.db.test.ts,editor.db.test.ts}`, `docs-sync-hook.db.test.ts` (mới)
   - **Kiểm**: hub test `knowledge` (mọi test cũ vẫn qua), typecheck, `pnpm deps`.
 
-- [ ] **T011 [P] [US4] [vừa] · 2 ngày — Nhà tài liệu: cấu hình, kiểm quyền, repo tổ chức, webhook**
+- [x] **T011 [P] [US4] [vừa] · 2 ngày — Nhà tài liệu: cấu hình, kiểm quyền, repo tổ chức, webhook**
   - **Phụ thuộc**: T004, T005, T006.
   - **Goal**: FR-001…FR-005, FR-017 (route nhà tổ chức), US4, US8 (phần hub trừ "Đồng bộ ngay").
     - `homes.ts`: đọc `settings.docs`, tạo/cập nhật `doc_homes`; `configureOrg` (chọn hoặc `createRepo` + `README.md`
@@ -272,7 +272,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/sdlc/{managed-paths.ts,index.ts}` (`managed-paths.ts` mới) + test
   - **Kiểm**: hub test, typecheck, `pnpm deps`.
 
-- [ ] **T019 [P] [US3] [vừa] · 1,5 ngày — `conflict-view` dùng chung**
+- [x] **T019 [P] [US3] [vừa] · 1,5 ngày — `conflict-view` dùng chung**
   - **Phụ thuộc**: T018.
   - **Goal**: FR-020, FR-041. Ba bản (gốc chung, hub, repo), tô khối xung đột từ `mergeBlocks`, chọn "Giữ bản hub",
     "Giữ bản repo", "Sửa tay" (mở editor với bản hợp có đánh dấu). Ba cột trên màn rộng, tab trên 360 px.
@@ -280,7 +280,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `packages/doc-editor/src/conflict-view.tsx` (mới) + test, `packages/doc-editor/src/index.ts`
   - **Kiểm**: doc-editor typecheck, test.
 
-- [ ] **T021 [P] [US1] [vừa] · 2 ngày — Web: màn nhập từ repo**
+- [x] **T021 [P] [US1] [vừa] · 2 ngày — Web: màn nhập từ repo**
   - **Phụ thuộc**: T020.
   - **Goal**: US1, FR-006, FR-007, FR-010, FR-041. Quét, cây chọn theo thư mục (chọn cả thư mục), sửa mẫu lấy/bỏ,
     cảnh báo theo loại, tiến độ (poll `docImports.get`), báo cáo, "Không phải bí mật, vẫn nhập" (hộp xác nhận nói rõ
@@ -351,7 +351,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/pull.ts` + `pull.db.test.ts` (mới)
   - **Kiểm**: hub test (mọi Acceptance Scenario của US3, đổi tên qua API và qua hash, nhánh mặc định đổi), typecheck.
 
-- [ ] **T015 [P] [US3] [vừa] · 1,5 ngày — Giải quyết xung đột**
+- [x] **T015 [P] [US3] [vừa] · 1,5 ngày — Giải quyết xung đột**
   - **Phụ thuộc**: T005, T008.
   - **Goal**: FR-020, FR-021 (chọn lưu trữ hoặc ghi lại), plan.md mục 7. `docConflicts.list/get/resolve`; tài liệu
     `deleted_in_repo`: "Lưu trữ tài liệu" hoặc "Ghi lại vào repo". Cần `manage`, `scanSecrets` với bản sửa tay, audit,

@@ -1,6 +1,15 @@
 // Trình soạn tài liệu dùng chung cho web quản trị và app desktop (ADR 0017, spec 008 FR-027).
 export * from "./blocks.ts";
 export {
+  CONFLICT_MARK,
+  type ConflictResolution,
+  type ConflictRow,
+  ConflictView,
+  conflictRows,
+  hasConflictMarks,
+  markedMerge,
+} from "./conflict-view.tsx";
+export {
   type DocEditorEnv,
   type DocEditorLink,
   DocEditorProvider,

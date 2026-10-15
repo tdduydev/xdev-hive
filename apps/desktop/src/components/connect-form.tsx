@@ -9,6 +9,10 @@ import { type Dict, useT } from "@/lib/i18n.ts";
 import {
   browserLogin,
   errorText,
+  type HubCA,
+  hubCAForget,
+  hubCAInspect,
+  hubCATrust,
   hubChange,
   hubCheck,
   parseRegistration,
@@ -46,6 +50,16 @@ const text: Dict<{
   confirmBody: (hub: string) => string;
   confirmYes: string;
   cancel: string;
+  caCheck: string;
+  caValid: string;
+  caTitle: string;
+  caHint: string;
+  caChanged: string;
+  caPrevious: string;
+  caTrust: string;
+  caForget: string;
+  caTrusted: string;
+  caForgotten: string;
 }> = {
   vi: {
     hub: "Địa chỉ Hive",
@@ -79,6 +93,17 @@ const text: Dict<{
       `${hub} không nhận đăng ký cũ của máy này (hub khác, hoặc máy đã bị gỡ). Đăng ký lại thì worker nhận việc từ hub mới. Gói agent, dự án, tài khoản CLI và tài liệu trên máy giữ nguyên.`,
     confirmYes: "Đăng ký lại và đăng nhập",
     cancel: "Huỷ",
+    caCheck: "Kiểm chứng chỉ hub",
+    caValid: "Đã xác thực kết nối với hub.",
+    caTitle: "Tin cậy CA riêng của hub?",
+    caHint:
+      "Đối chiếu tên và SHA-256 bên dưới với quản trị hub qua kênh tin cậy trước khi đồng ý. CA được dùng trong app, worker và hive CLI trên máy này.",
+    caChanged: "CA khác chứng chỉ đã tin trước đây. Chỉ thay thế khi quản trị hub xác nhận đổi CA.",
+    caPrevious: "SHA-256 đã tin trước đây",
+    caTrust: "Đã đối chiếu, tin cậy CA này",
+    caForget: "Quên chứng chỉ đã tin",
+    caTrusted: "Đã tin CA. Bấm đăng nhập hoặc đổi địa chỉ để tiếp tục.",
+    caForgotten: "Đã quên CA. Kết nối mới sẽ kiểm lại chứng chỉ. Khởi động lại worker nếu đang kết nối.",
   },
   en: {
     hub: "Hive address",
@@ -113,6 +138,19 @@ const text: Dict<{
       `${hub} does not accept this machine's registration (a different hub, or the machine was removed). Registering again makes the worker take runs from the new hub. Agent plans, projects, CLI accounts and docs on this machine stay as they are.`,
     confirmYes: "Register again and sign in",
     cancel: "Cancel",
+    caCheck: "Check hub certificate",
+    caValid: "Connection to the hub verified.",
+    caTitle: "Trust this hub's private CA?",
+    caHint:
+      "Compare this name and SHA-256 with your hub administrator through a trusted channel before accepting. This CA is shared by the app, worker and hive CLI on this machine.",
+    caChanged:
+      "This CA differs from the previously trusted certificate. Replace it only after your administrator confirms the change.",
+    caPrevious: "Previously trusted SHA-256",
+    caTrust: "I verified the fingerprint, trust this CA",
+    caForget: "Forget trusted certificate",
+    caTrusted: "CA trusted. Press sign in or change address to continue.",
+    caForgotten:
+      "CA forgotten. New connections will verify the certificate again. Restart the worker if it is connected.",
   },
 };
 
@@ -120,7 +158,7 @@ type Status =
   | { kind: "empty" | "parsed" | "busy" | "checking" | "browser" | "linking" | "done" | "signedIn" }
   | { kind: "moved"; hub: string }
   | { kind: "confirm"; hub: string }
-  | { kind: "error"; message: string };
+  | { kind: "error" | "notice"; message: string };
 
 /**
  * Kết nối với Hive: dùng ở cửa sổ đăng ký và hộp thoại Tài khoản, để người chưa kết nối hay vừa đăng xuất không phải
@@ -148,6 +186,7 @@ export function ConnectForm({
   const [pat, setPat] = useState("");
   const [command, setCommand] = useState("");
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [ca, setCA] = useState<HubCA | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "empty" });
 
   // Hub đang lưu đổi (đổi địa chỉ xong, đăng ký ở cửa sổ khác) thì ô địa chỉ theo.
@@ -157,8 +196,51 @@ export function ConnectForm({
   const moving = !!current && !!target && !sameHub(target, current);
   const registered = !!current;
 
-  function fail(error: unknown) {
-    setStatus({ kind: "error", message: errorText(error) });
+  async function fail(error: unknown) {
+    const message = errorText(error);
+    setStatus({ kind: "error", message: message.replace(/^HIVE_CA_UNTRUSTED: /, "") });
+    if (message.startsWith("HIVE_CA_UNTRUSTED: ")) {
+      setStatus({ kind: "checking" });
+      try {
+        setCA(await hubCAInspect(target));
+        setStatus({ kind: "error", message: message.replace(/^HIVE_CA_UNTRUSTED: /, "") });
+      } catch (error) {
+        setStatus({ kind: "error", message: `${message.replace(/^HIVE_CA_UNTRUSTED: /, "")} ${errorText(error)}` });
+      }
+    }
+  }
+
+  async function trustCA() {
+    if (!ca) return;
+    setStatus({ kind: "checking" });
+    try {
+      await hubCATrust(ca.hub, ca.fingerprint);
+      setCA(null);
+      setStatus({ kind: "notice", message: t.caTrusted });
+    } catch (error) {
+      await fail(error);
+    }
+  }
+
+  async function checkCA() {
+    setStatus({ kind: "checking" });
+    try {
+      await hubCheck(target);
+      setStatus({ kind: "notice", message: t.caValid });
+    } catch (error) {
+      await fail(error);
+    }
+  }
+
+  async function forgetCA() {
+    setStatus({ kind: "checking" });
+    try {
+      await hubCAForget();
+      setCA(null);
+      setStatus({ kind: "notice", message: t.caForgotten });
+    } catch (error) {
+      await fail(error);
+    }
   }
 
   async function fill() {
@@ -242,7 +324,8 @@ export function ConnectForm({
     event.preventDefault();
     setStatus({ kind: "checking" });
     try {
-      if (moving && !(await moveTo(await hubCheck(target)))) return;
+      const checked = await hubCheck(target);
+      if (moving && !(await moveTo(checked))) return;
       setStatus({ kind: "linking" });
       const signed = await linkAccount(pat);
       setPat("");
@@ -273,7 +356,7 @@ export function ConnectForm({
   const busy = ["busy", "checking", "browser", "linking"].includes(status.kind);
   const confirming = status.kind === "confirm";
   const message =
-    status.kind === "error"
+    status.kind === "error" || status.kind === "notice"
       ? status.message
       : status.kind === "parsed"
         ? t.parsed
@@ -359,14 +442,44 @@ export function ConnectForm({
           placeholder="https://hive.cong-ty.vn"
           className="font-mono text-sm md:text-sm"
           value={hub}
-          disabled={confirming}
+          disabled={confirming || busy || !!ca}
           onChange={(e) => {
             setHub(e.target.value);
             if (status.kind !== "empty" && !busy) setStatus({ kind: "empty" });
           }}
         />
       </div>
-      {confirming ? (
+      {ca ? (
+        <section aria-label={t.caTitle} className="flex flex-col gap-2 rounded-lg border border-warning p-3 text-sm">
+          <strong>{t.caTitle}</strong>
+          <p>{t.caHint}</p>
+          <p className="break-all font-mono">{ca.hub}</p>
+          <p className="break-all">{ca.name}</p>
+          <p className="break-all font-mono">SHA-256: {ca.fingerprint}</p>
+          {ca.previousFingerprint && ca.previousFingerprint !== ca.fingerprint && (
+            <>
+              <strong>{t.caChanged}</strong>
+              <p className="break-all font-mono">
+                {t.caPrevious}: {ca.previousFingerprint}
+              </p>
+            </>
+          )}
+          <Button type="button" disabled={busy} onClick={trustCA}>
+            {t.caTrust}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              setCA(null);
+              setStatus({ kind: "empty" });
+            }}
+          >
+            {t.cancel}
+          </Button>
+        </section>
+      ) : confirming ? (
         <div className="flex flex-col gap-2 rounded-lg border border-warning bg-warning-soft p-3 text-sm">
           <strong>{t.confirmTitle}</strong>
           <p>{t.confirmBody(status.hub)}</p>
@@ -417,7 +530,15 @@ export function ConnectForm({
           )}
         </>
       )}
-      {(!registered || confirming) && registerToken}
+      {!ca && (!registered || confirming) && registerToken}
+      {!ca && linked && target.startsWith("https://") && (
+        <Button type="button" variant="outline" disabled={busy || !target} onClick={checkCA}>
+          {t.caCheck}
+        </Button>
+      )}
+      <Button type="button" variant="outline" disabled={busy} onClick={forgetCA}>
+        {t.caForget}
+      </Button>
       <p
         role="status"
         aria-live="polite"

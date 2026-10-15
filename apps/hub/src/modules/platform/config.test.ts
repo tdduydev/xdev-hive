@@ -1,6 +1,32 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "./config.ts";
+import { loadConfig, loadDocStorageLimits } from "./config.ts";
+
+describe("loadConfig: hạn mức kho tài liệu", () => {
+  it("mặc định 50 MiB/file, 2 GiB/nhập, 5 GiB/tổ chức", () => {
+    expect(loadConfig({}).docStorage).toEqual({
+      assetMaxBytes: 50 * 1024 ** 2,
+      importMaxBytes: 2 * 1024 ** 3,
+      orgStorageBytes: 5 * 1024 ** 3,
+    });
+  });
+  it("đọc riêng từng hạn mức", () => {
+    expect(
+      loadDocStorageLimits({
+        HIVE_DOC_ASSET_MAX_BYTES: "1024",
+        HIVE_DOC_IMPORT_MAX_BYTES: "2048",
+        HIVE_DOC_ORG_STORAGE_BYTES: "4096",
+      }),
+    ).toEqual({ assetMaxBytes: 1024, importMaxBytes: 2048, orgStorageBytes: 4096 });
+  });
+  it.each(["HIVE_DOC_ASSET_MAX_BYTES", "HIVE_DOC_IMPORT_MAX_BYTES", "HIVE_DOC_ORG_STORAGE_BYTES"])(
+    "từ chối %s sai",
+    (name) => {
+      for (const value of ["", "abc", "0", "-1", "1.5", "Infinity", "9007199254740992"])
+        expect(() => loadConfig({ [name]: value })).toThrow(name);
+    },
+  );
+});
 
 describe("loadConfig", () => {
   it("mặc định cổng 3000", () => expect(loadConfig({}).port).toBe(3000));

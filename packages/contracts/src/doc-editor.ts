@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { id, orgRoute } from "./common.ts";
-import { DOC_MAX_CHARS, docKey, scopeView } from "./knowledge.ts";
+import { DOC_MAX_CHARS, docKey, docSecretErrors, scopeView } from "./knowledge.ts";
 import { gateKind, reviewStatus } from "./workflows.ts";
 
 /**
@@ -221,6 +221,8 @@ export const submitInput = z.object({
   note: z.string().trim().max(2000, "Ghi chú dài tối đa 2000 ký tự.").optional(),
   /** Gửi đúng bản mình đang thấy: lệch revision thì CONFLICT `DRAFT_CHANGED`. */
   revision,
+  /** Người có quyền quản trị xác nhận chuỗi bị nghi không phải bí mật, sau khi nhận `DOC_SECRET_FOUND`. */
+  acknowledgeSecrets: z.boolean().optional(),
 });
 export type SubmitInput = z.input<typeof submitInput>;
 
@@ -285,6 +287,7 @@ export const docEditorContract = {
     .input(docEditorKey)
     .output(submitPreview),
   submit: orgRoute("POST", "/v1/doc-editor/submit", "Chụp bản nháp và gửi vào quy trình duyệt", "knowledge")
+    .errors(docSecretErrors)
     .input(submitInput)
     .output(submitResult),
   suggestions: {
