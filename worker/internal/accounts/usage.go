@@ -107,13 +107,20 @@ var (
 		cmd := exec.CommandContext(ctx, name, args...)
 		// Ngoài mọi repo: lệnh đọc quota không được nạp cấu hình của một dự án.
 		cmd.Dir = os.TempDir()
-		cmd.Env = os.Environ()
-		for k, v := range env {
-			cmd.Env = append(cmd.Env, k+"="+v)
-		}
+		cmd.Env = usageEnv(os.Environ(), env)
 		return cmd.Output()
 	}
 )
+
+// usageEnv là môi trường của lệnh đọc quota: env của gói đặt trên env kế thừa đã bỏ biến chọn đăng nhập (xem
+// loginVars), nên gói đăng nhập mặc định đọc đúng đăng nhập mặc định.
+func usageEnv(base []string, env map[string]string) []string {
+	out := WithoutLogin(base, "")
+	for k, v := range env {
+		out = append(out, k+"="+v)
+	}
+	return out
+}
 
 // claudeUsageArgs: /usage của Claude Code trả lời tại máy, không tốn lượt của gói. Chỉ cấu hình của người dùng, không
 // MCP, để lệnh đọc không khởi động gì khác.
