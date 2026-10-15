@@ -53,7 +53,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `docs/srs.md` (chỉ thêm mục 3.22)
   - **Kiểm**: `pnpm biome check .`.
 
-- [ ] **T002 [P] [—] [vừa] · 1,5 ngày — Spike: Cursor, Windsurf, Remote, CSP webview**
+- [x] **T002 [P] [—] [vừa] · 1,5 ngày — Spike: Cursor, Windsurf, Remote, CSP webview**
   - **Goal**: kiểm từng dòng **[Chưa kiểm]** ở research.md mục 2–3 và plan.md bằng extension thử (không commit
     extension thử, chỉ commit kết quả):
     - engine version của Cursor, Windsurf bản mới nhất; `createChatParticipant` có hiện không; `selectChatModels` trả gì;
@@ -77,7 +77,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 1: nền (song song, sau T002 với phần phụ thuộc kết quả spike)
 
-- [ ] **T003 [P] [—] [vừa] · 1,5 ngày — Khung `apps/vscode` và manifest đủ**
+- [x] **T003 [P] [—] [vừa] · 1,5 ngày — Khung `apps/vscode` và manifest đủ**
   - **Goal**:
     - Gói `@xdev-hive/vscode`: `package.json` (manifest đủ theo plan.md: `publisher: "xdev"` (hoặc tên T036 báo),
       `engines.vscode ^1.101.0`, `extensionKind`, `capabilities.untrustedWorkspaces`, `activationEvents`,
