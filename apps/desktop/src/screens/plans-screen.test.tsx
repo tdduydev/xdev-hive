@@ -261,6 +261,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       profiles: [profile("claude-1", "Duy Max"), profile("claude-2", "Gói phụ")],
       signedIn: { account: "uuid-1", email: null, plan: "claude-1" },
       mismatch: null,
+      switching: null,
     };
     fakeTauri(seed(), undefined, desktop);
     render(<PlansScreen />);
@@ -286,6 +287,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       profiles: [],
       signedIn: null,
       mismatch: null,
+      switching: null,
     });
     render(<PlansScreen />);
     await screen.findByText("Duy Max");

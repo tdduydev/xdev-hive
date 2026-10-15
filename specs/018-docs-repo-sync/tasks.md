@@ -59,7 +59,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `specs/012-artifacts/tasks.md` (chỉ ghi chú của T062)
   - **Kiểm**: `pnpm biome check --write .`.
 
-- [ ] **T002 [P] [—] [vừa] · 1,5 ngày — Spike: API provider, LFS, thư viện trích**
+- [x] **T002 [P] [—] [vừa] · 1,5 ngày — Spike: API provider, LFS, thư viện trích**
   - **Goal**: kiểm từng dòng **[Chưa kiểm]** ở research.md mục 2, 3.5, 3.6 và plan.md mục 5, 13. Dùng script tạm ngoài
     repo, chỉ commit kết quả:
     - GitHub: Contents API với file > 1 MB; `trees` `truncated`; tarball; compare (phân trang, `previous_filename`);
@@ -98,7 +98,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
   - **Kiểm**: contracts test, `pnpm openapi`, typecheck hub và web vẫn qua (route mới chưa có handler thì hub dùng
     `NOT_IMPLEMENTED` ở T005; ghi bàn giao nếu typecheck hub hỏng tới khi T005 xong).
 
-- [ ] **T004 [P] [—] [vừa] · 1,5 ngày — Phần thuần: key ↔ đường dẫn, nội dung**
+- [x] **T004 [P] [—] [vừa] · 1,5 ngày — Phần thuần: key ↔ đường dẫn, nội dung**
   - **Goal**: plan.md mục 3, research.md mục 2.3, 3.2, 3.6. Hàm thuần, không đụng DB:
     - `paths.ts`: `keyFromPath`, `pathFromKey`, `uniqueKey`, `isHardExcluded`, `matchesHome` (dùng `matchGlob` của
       contracts), `overlaps`, `resolveRelative(docPath, href)`;
