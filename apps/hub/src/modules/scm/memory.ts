@@ -31,6 +31,8 @@ export interface MemoryRepo {
   /** Nội dung file theo nhánh. */
   branches: Map<string, Map<string, string>>;
   commits: Array<{ branch: string; message: string; sha: string; paths: string[]; snapshot: Map<string, string> }>;
+  /** Ảnh chụp nhánh chính lúc tạo repo, khóa theo sha `<nhánh>@init`; không phải commit nên không nằm trong `commits`. */
+  initial: Map<string, Map<string, string>>;
   protection: Map<string, BranchRules>;
   hooks: Map<string, WebhookInput>;
   pulls: MemoryPull[];
@@ -110,15 +112,8 @@ export function createMemoryProvider(
         webUrl: `https://${host}/${ref.owner}/${ref.name}`,
       },
       branches: new Map([[defaultBranch, new Map([["README.md", `# ${ref.name}\n`]])]]),
-      commits: [
-        {
-          branch: defaultBranch,
-          message: "",
-          sha: `${defaultBranch}@init`,
-          paths: [],
-          snapshot: new Map([["README.md", `# ${ref.name}\n`]]),
-        },
-      ],
+      commits: [],
+      initial: new Map([[`${defaultBranch}@init`, new Map([["README.md", `# ${ref.name}\n`]])]]),
       protection: new Map(),
       hooks: new Map(),
       pulls: [],
@@ -154,6 +149,8 @@ export function createMemoryProvider(
   const filesAt = (repo: MemoryRepo, sha: string): Map<string, string> => {
     const commit = repo.commits.find((item) => item.sha === sha);
     if (commit) return new Map(commit.snapshot);
+    const initial = repo.initial.get(sha);
+    if (initial) return new Map(initial);
     for (const branch of repo.branches.keys())
       if (headOf(repo, branch) === sha) return repo.branches.get(branch) as Map<string, string>;
     throw new GitProviderError("not_found", `${host}: không có commit ${sha}`);
@@ -218,8 +215,7 @@ export function createMemoryProvider(
       };
       const files = repo.branches.get(repo.info.defaultBranch);
       for (const [p, c] of Object.entries(opts.files ?? {})) files?.set(p, c);
-      const init = repo.commits.find((commit) => commit.sha === `${repo.info.defaultBranch}@init`);
-      if (init && files) init.snapshot = new Map(files);
+      if (files) repo.initial.set(`${repo.info.defaultBranch}@init`, new Map(files));
       return repo;
     },
     setPull(ref, number, patch) {
