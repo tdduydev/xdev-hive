@@ -37,7 +37,9 @@ import {
   createOpenAIEmbedder,
   embedQueue,
   provideDocAccess,
+  provideDocIndexJobs,
   provideReviewHooks,
+  registerDocIndexWorker,
   registerEmbedWorker,
   registerReviewWorker,
   registerSkillGitWorker,
@@ -204,6 +206,7 @@ const sdlcDeps: SdlcDeps = runs?.sdlcDeps ?? {
 };
 provideReviewHooks(sdlcReviewHooks(sdlcDeps));
 provideDocAccess(docAccessFor);
+provideDocIndexJobs(jobs);
 provideSdlcFleetRuns(sdlcFleetRuns);
 
 // Thông báo và câu trả lời của leader đi tới chat qua hai hook mà notify và leader để ngỏ (không import chat được vì vòng
@@ -308,6 +311,7 @@ if (roles.includes("jobs") && jobs) {
 
 const embedder = config.embeddings ? createOpenAIEmbedder(config.embeddings) : undefined;
 if (roles.includes("jobs") && jobs && pool && embedder) await registerEmbedWorker(jobs, { pool, embedder });
+if (roles.includes("jobs") && jobs && pool) await registerDocIndexWorker(jobs, { pool, embedder });
 
 const telegramPolling =
   roles.includes("api") && pool && config.masterKey
