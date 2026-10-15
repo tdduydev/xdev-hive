@@ -81,12 +81,12 @@ describe("khung API docsync", () => {
     expect(response?.status).toBe(401);
   });
 
-  it("webhook không có database thì 503; file trả 501, không nhận thành công giả", async () => {
+  it("webhook không có database thì 503; file không có phiên đăng nhập thì 401", async () => {
     const request = new Request("http://localhost/");
     expect((await handleDocsWebhook({}, randomUUID(), request)).status).toBe(503);
-    for (const response of [handleAssetUpload({}, request), handleAssetDownload({}, request)]) {
-      expect(response.status).toBe(501);
-      expect(await response.json()).toMatchObject({ code: "NOT_IMPLEMENTED" });
+    for (const response of await Promise.all([handleAssetUpload({}, request), handleAssetDownload({}, request)])) {
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({ code: "UNAUTHORIZED" });
     }
   });
 });
