@@ -1,5 +1,5 @@
 {
-  "id": "31e78005-0026-44dd-ae16-83797742dfb6",
+  "id": "3dcbcc92-e5a4-4737-aa90-502440457b3a",
   "prevId": "86dc2877-9c92-4a0e-b34d-a45fb47d141d",
   "version": "7",
   "dialect": "postgresql",
@@ -2514,242 +2514,6 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
-    "hive.code_review_comment_links": {
-      "name": "code_review_comment_links",
-      "schema": "hive",
-      "columns": {
-        "comment_id": {
-          "name": "comment_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "pr_number": {
-          "name": "pr_number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_comment_id": {
-          "name": "provider_comment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_thread_id": {
-          "name": "provider_thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_url": {
-          "name": "provider_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mode": {
-          "name": "mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'inline'"
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "body_hash": {
-          "name": "body_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_updated_at": {
-          "name": "provider_updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_resolved": {
-          "name": "provider_resolved",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "provider_deleted": {
-          "name": "provider_deleted",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "next_attempt_at": {
-          "name": "next_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "write_started_at": {
-          "name": "write_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "code_review_comment_links_provider_id": {
-          "name": "code_review_comment_links_provider_id",
-          "columns": [
-            {
-              "expression": "connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_comment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "code_review_comment_links_pending": {
-          "name": "code_review_comment_links_pending",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "next_attempt_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "code_review_comment_links_connection_write": {
-          "name": "code_review_comment_links_connection_write",
-          "columns": [
-            {
-              "expression": "connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "write_started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "code_review_comment_links_org_id_comment_id_code_review_comments_org_id_id_fk": {
-          "name": "code_review_comment_links_org_id_comment_id_code_review_comments_org_id_id_fk",
-          "tableFrom": "code_review_comment_links",
-          "tableTo": "code_review_comments",
-          "schemaTo": "hive",
-          "columnsFrom": ["org_id", "comment_id"],
-          "columnsTo": ["org_id", "id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {
-        "code_review_comment_links_rw": {
-          "name": "code_review_comment_links_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {
-        "code_review_comment_links_state": {
-          "name": "code_review_comment_links_state",
-          "value": "\"hive\".\"code_review_comment_links\".\"state\" in ('pending', 'synced', 'fallback', 'failed', 'disabled')"
-        },
-        "code_review_comment_links_mode": {
-          "name": "code_review_comment_links_mode",
-          "value": "\"hive\".\"code_review_comment_links\".\"mode\" in ('inline', 'fallback')"
-        },
-        "code_review_comment_links_provider": {
-          "name": "code_review_comment_links_provider",
-          "value": "\"hive\".\"code_review_comment_links\".\"provider\" in ('github', 'gitlab')"
-        }
-      },
-      "isRLSEnabled": true
-    },
     "hive.code_review_comments": {
       "name": "code_review_comments",
       "schema": "hive",
@@ -2861,27 +2625,6 @@
         }
       },
       "indexes": {
-        "code_review_comments_org_id": {
-          "name": "code_review_comments_org_id",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "code_review_comments_org_review_id": {
           "name": "code_review_comments_org_review_id",
           "columns": [
@@ -3530,13 +3273,6 @@
           "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
-        },
-        "code_reviews_owner_select": {
-          "name": "code_reviews_owner_select",
-          "as": "PERMISSIVE",
-          "for": "SELECT",
-          "to": ["hive_owner"],
-          "using": "true"
         }
       },
       "checkConstraints": {
@@ -4313,6 +4049,13 @@
           "for": "SELECT",
           "to": ["hive_app"],
           "using": "id = hive.ctx_webhook_doc_home()"
+        },
+        "doc_homes_owner_select": {
+          "name": "doc_homes_owner_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["hive_owner"],
+          "using": "true"
         }
       },
       "checkConstraints": {

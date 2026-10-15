@@ -323,7 +323,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/{scan.ts,import.ts,adopt.ts,routes/imports.ts}` (mới) + `import.db.test.ts`
   - **Kiểm**: hub test (gồm 2.000 file với provider `memory`, ngắt giữa chừng rồi chạy tiếp, không trùng), typecheck.
 
-- [ ] **T013 [P] [US2] [nặng] · 3 ngày — Hub → repo: gom lô, commit/PR, thử lại**
+- [x] **T013 [P] [US2] [nặng] · 3 ngày — Hub → repo: gom lô, commit/PR, thử lại**
   - **Phụ thuộc**: T006, T007, T008, T011.
   - **Goal**: US2, FR-012…FR-016, FR-024 (di chuyển, lưu trữ), FR-027, plan.md mục 5.
     - `push.ts`: đăng ký `provideDocSaved`; job `docsync-push` gom 60 s, trần 10 phút; lập lô; kiểm hash đầu nhánh
@@ -338,7 +338,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
   - **Kiểm**: hub test (gom 3 lần lưu thành 1 commit; PR cuốn chiếu nhận commit thứ hai; nhánh bảo vệ; repo đổi trước
     khi đẩy thì không ghi đè), typecheck.
 
-- [ ] **T014 [P] [US3] [nặng] · 3 ngày — Repo → hub: so sánh, đổi tên, áp, hợp, xung đột**
+- [x] **T014 [P] [US3] [nặng] · 3 ngày — Repo → hub: so sánh, đổi tên, áp, hợp, xung đột**
   - **Phụ thuộc**: T006, T008, T011.
   - **Goal**: US3, FR-017…FR-023, plan.md mục 6. Edge case: đổi tên/di chuyển, nhánh mặc định đổi, webhook về trước
     phản hồi commit, repo đổi tên, quyền mất.
@@ -360,7 +360,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/{conflicts.ts,routes/conflicts.ts}` (mới) + `conflicts.db.test.ts` (mới)
   - **Kiểm**: hub test (test chèn xung đột trực tiếp vào bảng, không chờ T014), typecheck.
 
-- [ ] **T016 [P] [US5] [nặng] · 2,5 ngày — Đính kèm: tải lên, tải xuống, phân giải link, LFS**
+- [x] **T016 [P] [US5] [nặng] · 2,5 ngày — Đính kèm: tải lên, tải xuống, phân giải link, LFS**
   - **Phụ thuộc**: T006, T007, T011.
   - **Goal**: US5, FR-025, FR-029…FR-032, FR-039 (`doc_asset_get` phần file gốc), plan.md mục 8. Edge case: file lớn,
     link ra ngoài thư mục nhà, link gãy.
@@ -403,7 +403,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/web/e2e/docsync-docs.spec.ts` (mới), `apps/web/e2e/docsync-docs-fixture.ts`
   - **Kiểm**: web typecheck, test, Playwright file của task.
 
-- [ ] **T023 [P] [US3] [vừa] · 2 ngày — Web: trang xung đột và bản trích chờ duyệt**
+- [x] **T023 [P] [US3] [vừa] · 2 ngày — Web: trang xung đột và bản trích chờ duyệt**
   - **Phụ thuộc**: T019, T020.
   - **Goal**: FR-041, US3 scenario 3, US6 scenario 2.
     - `doc-conflict-page.tsx`: dùng `ConflictView`, gọi `docConflicts.resolve`, xử lý `VERSION_CONFLICT`.
