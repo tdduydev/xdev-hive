@@ -778,7 +778,7 @@ export function PlansScreen() {
   const perCli = cliSummary(all, now);
   const twins = sameAccount(all);
 
-  // Chỉ macOS (Rust báo supported); gói Claude mới thêm chưa có trong lần đọc trước thì chờ lượt đọc kế tiếp.
+  // Chỉ macOS và Windows (Rust báo supported); gói Claude mới thêm chưa có trong lần đọc trước thì chờ lượt đọc kế tiếp.
   const desktopRow = (p: Plan) => {
     const view = desktop.view;
     const profile = view?.supported ? view.profiles.find((d) => d.id === p.id) : undefined;

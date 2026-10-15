@@ -37,9 +37,9 @@ export interface Mismatch {
 }
 
 export interface DesktopProfiles {
-  /** false ngoài macOS: chưa hỗ trợ, màn không hiện gì. */
+  /** false ngoài macOS và Windows: chưa hỗ trợ, màn không hiện gì. */
   supported: boolean;
-  /** Claude.app tìm thấy; null khi chưa cài. */
+  /** Claude Desktop tìm thấy (Claude.app, claude.exe hay gói Microsoft Store); null khi chưa cài. */
   app: string | null;
   /** Vì sao chưa chuyển được (chưa cài); null khi chuyển được. */
   note: string | null;

@@ -375,3 +375,32 @@ jobs:
         working-directory: apps/desktop/src-tauri
       - run: cargo test --locked
         working-directory: apps/desktop/src-tauri
+
+  desktop-windows:
+    # Chuyển Claude Desktop có nhánh riêng cho Windows (đường dẫn, khoá file, đổi tên đè): chạy test của nó trên Windows thật.
+    name: Desktop Tauri Windows (claude_desktop)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @xdev-hive/desktop...
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: worker/go.mod
+          cache: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Dựng giao diện app và sidecar hive-worker
+        run: node apps/desktop/scripts/build-frontend.ts && node apps/desktop/scripts/build-sidecar.ts
+      - run: cargo test --locked --lib claude_desktop
+        working-directory: apps/desktop/src-tauri
