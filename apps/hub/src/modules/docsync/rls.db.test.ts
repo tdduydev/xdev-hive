@@ -1,0 +1,385 @@
+import { createHash, randomUUID } from "node:crypto";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { sql } from "drizzle-orm";
+import pg from "pg";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { pgCode, seedOrg } from "../../../test/org-fixture.ts";
+import { bootstrapRoles, createJobs, createPool, runMigrations, type Tx, withTenant } from "../platform/index.ts";
+import { DOCSYNC_PUSH_QUEUE, docSyncQueues, queuePull, queuePush } from "./jobs.ts";
+
+const db = inject("db");
+const admin = new pg.Pool({ connectionString: db.adminUrl });
+const app = createPool(db.appUrl);
+const owner = createPool(db.ownerUrl);
+const tableNames = [
+  "doc_homes",
+  "doc_repo_files",
+  "doc_sync_batches",
+  "doc_conflicts",
+  "doc_imports",
+  "doc_import_files",
+  "doc_assets",
+  "doc_extracts",
+  "doc_chunks",
+  "blobs",
+  "blob_chunks",
+] as const;
+type Table = (typeof tableNames)[number];
+type Row = Record<string, string | number | boolean | Buffer | null>;
+type Seed = { orgId: string; userId: string; connectionId: string; docId: string; rows: Record<Table, Row> };
+const seeds: Record<"a" | "b", Seed> = {} as never;
+const sha256 = (content: string) => createHash("sha256").update(content).digest("hex");
+const tableSql = (name: Table) => sql`${sql.identifier("hive")}.${sql.identifier(name)}`;
+
+async function insert(tx: Tx, table: Table, values: Row) {
+  return tx.execute(
+    sql`insert into ${tableSql(table)} (${sql.join(
+      Object.keys(values).map((key) => sql.identifier(key)),
+      sql`, `,
+    )}) values (${sql.join(
+      Object.values(values).map((value) => sql`${value}`),
+      sql`, `,
+    )})`,
+  );
+}
+const asA = <T>(run: (tx: Tx) => Promise<T>) => withTenant(app, { orgId: seeds.a.orgId, userId: seeds.a.userId }, run);
+
+async function seed(name: string): Promise<Seed> {
+  const org = await seedOrg(admin, `docsync-${name}-${randomUUID().slice(0, 8)}`);
+  const orgId = org.orgId;
+  const userId = org.user("owner");
+  const connectionId = randomUUID();
+  const docId = randomUUID();
+  await admin.query(
+    "insert into hive.scm_connections (id, org_id, kind, name, secret_enc, created_by) values ($1, $2, 'github', 'docs', 'fixture', $3)",
+    [connectionId, orgId, userId],
+  );
+  await admin.query(
+    "insert into hive.docs (id, org_id, key, title, current_version, updated_by_user_id) values ($1, $2, 'org/guide', 'Hướng dẫn', 1, $3)",
+    [docId, orgId, userId],
+  );
+  const home = randomUUID(),
+    blob = randomUUID(),
+    asset = randomUUID(),
+    extract = randomUUID(),
+    importing = randomUUID();
+  const row = (values: Row): Row => ({ id: randomUUID(), org_id: orgId, ...values });
+  const rows: Record<Table, Row> = {
+    doc_homes: row({
+      id: home,
+      scope: "org",
+      connection_id: connectionId,
+      owner: "org",
+      name: "docs",
+      branch: "main",
+      configured_by: userId,
+    }),
+    doc_repo_files: row({ home_id: home, doc_id: docId, repo_path: "docs/guide.md" }),
+    doc_sync_batches: row({ home_id: home, mode: "pr", branch: "hive/docs-sync" }),
+    doc_conflicts: row({
+      home_id: home,
+      doc_id: docId,
+      base_version: 1,
+      hub_version: 2,
+      repo_commit: "abc",
+      repo_content: "Bản repo",
+    }),
+    doc_imports: row({ id: importing, home_id: home, started_by: userId }),
+    blobs: row({ id: blob, sha256: sha256("ảnh"), size: 3, media_type: "image/png", chunk_count: 1 }),
+    blob_chunks: { org_id: orgId, blob_id: blob, ord: 0, data: Buffer.from([1, 2, 3]) },
+    doc_assets: row({
+      id: asset,
+      home_id: home,
+      repo_path: "docs/assets/a.png",
+      blob_id: blob,
+      media_type: "image/png",
+      size: 3,
+      sha256: sha256("ảnh"),
+      owner_doc_id: docId,
+    }),
+    doc_extracts: row({ id: extract, asset_id: asset, source_sha256: sha256("ảnh"), content: "Tài liệu tiếng Việt" }),
+    doc_import_files: row({
+      import_id: importing,
+      repo_path: "docs/guide.md",
+      kind: "markdown",
+      doc_id: docId,
+      asset_id: asset,
+    }),
+    doc_chunks: row({ doc_id: docId, version: 1, ord: 0, content: "Hướng dẫn cài đặt" }),
+  };
+  await withTenant(app, { orgId, userId }, async (tx) => {
+    for (const table of [
+      "doc_homes",
+      "doc_repo_files",
+      "doc_sync_batches",
+      "doc_conflicts",
+      "doc_imports",
+      "blobs",
+      "blob_chunks",
+      "doc_assets",
+      "doc_extracts",
+      "doc_import_files",
+      "doc_chunks",
+    ] as const)
+      await insert(tx, table, rows[table]);
+  });
+  return { orgId, userId, connectionId, docId, rows };
+}
+
+beforeAll(async () => {
+  seeds.a = await seed("a");
+  seeds.b = await seed("b");
+});
+afterAll(async () => {
+  await Promise.all([admin.end(), app.end(), owner.end()]);
+});
+
+describe("RLS các bảng nền docsync", () => {
+  it("bật và ép RLS, policy có USING/WITH CHECK, hive_app không có TRUNCATE", async () => {
+    const { rows } = await admin.query(
+      "select relname, relrowsecurity, relforcerowsecurity, has_table_privilege('hive_app', oid, 'TRUNCATE') as truncate from pg_class where oid = any($1::regclass[])",
+      [tableNames.map((name) => `hive.${name}`)],
+    );
+    expect(rows).toHaveLength(tableNames.length);
+    for (const row of rows)
+      expect(row).toMatchObject({ relrowsecurity: true, relforcerowsecurity: true, truncate: false });
+    const policies = await admin.query(
+      "select tablename, policyname, roles::text[] as roles, qual, with_check from pg_policies where schemaname = 'hive' and tablename = any($1)",
+      [tableNames],
+    );
+    // doc_homes có thêm policy SELECT cho webhook (tra nhà theo id khi chưa biết tổ chức).
+    expect(policies.rows).toHaveLength(tableNames.length + 1);
+    for (const policy of policies.rows.filter((row) => row.policyname !== "doc_homes_webhook")) {
+      expect(policy.policyname).toBe(`${policy.tablename}_rw`);
+      expect(policy.roles).toEqual(["hive_app"]);
+      expect(policy.qual).toContain("ctx_org()");
+      expect(policy.with_check).toContain("ctx_org()");
+    }
+  });
+
+  it("không tenant: hive_app và chủ bảng đều không thấy dữ liệu", async () => {
+    for (const pool of [app, owner])
+      await withTenant(pool, {}, async (tx) => {
+        for (const table of tableNames)
+          expect((await tx.execute(sql`select * from ${tableSql(table)}`)).rows).toEqual([]);
+      });
+  });
+
+  for (const table of tableNames) {
+    it(`${table}: đọc đúng tenant, chặn INSERT/UPDATE chéo và không sửa/xoá dòng tenant khác`, async () => {
+      await asA(async (tx) => {
+        expect((await tx.execute(sql`select current_user as role`)).rows[0]).toEqual({ role: "hive_app" });
+        const rows = (await tx.execute(sql`select * from ${tableSql(table)}`)).rows;
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.org_id).toBe(seeds.a.orgId);
+        expect(
+          (
+            await tx.execute(
+              sql`update ${tableSql(table)} set org_id = ${seeds.b.orgId} where org_id = ${seeds.b.orgId} returning *`,
+            )
+          ).rows,
+        ).toEqual([]);
+        expect(
+          (await tx.execute(sql`delete from ${tableSql(table)} where org_id = ${seeds.b.orgId} returning *`)).rows,
+        ).toEqual([]);
+      });
+      expect(
+        await pgCode(() => asA((tx) => insert(tx, table, { ...seeds.a.rows[table], org_id: seeds.b.orgId }))),
+      ).toBe("42501");
+      expect(
+        await pgCode(() => asA((tx) => tx.execute(sql`update ${tableSql(table)} set org_id = ${seeds.b.orgId}`))),
+      ).toBe("42501");
+    });
+  }
+
+  it("khóa ngoại kép chặn tham chiếu sang tenant khác", async () => {
+    const cases: Array<[Table, Row]> = [
+      ["doc_homes", { connection_id: seeds.b.connectionId }],
+      ["doc_repo_files", { home_id: String(seeds.b.rows.doc_homes.id), repo_path: "other.md", doc_id: randomUUID() }],
+      ["doc_sync_batches", { home_id: String(seeds.b.rows.doc_homes.id) }],
+      ["doc_conflicts", { doc_id: seeds.b.docId }],
+      ["doc_imports", { home_id: String(seeds.b.rows.doc_homes.id) }],
+      ["doc_import_files", { import_id: String(seeds.b.rows.doc_imports.id), repo_path: "other.md" }],
+      ["doc_assets", { blob_id: String(seeds.b.rows.blobs.id), repo_path: "other.png" }],
+      ["doc_extracts", { asset_id: String(seeds.b.rows.doc_assets.id) }],
+      ["doc_chunks", { doc_id: seeds.b.docId }],
+      ["blob_chunks", { blob_id: String(seeds.b.rows.blobs.id), ord: 1 }],
+    ];
+    for (const [table, changes] of cases) {
+      const row = { ...seeds.a.rows[table], ...changes };
+      if ("id" in row) row.id = randomUUID();
+      // Tránh đụng unique trước khi Postgres kiểm khóa ngoại.
+      if (table === "doc_homes") {
+        row.scope = "project";
+        row.project_id = randomUUID();
+      }
+      if (table === "doc_conflicts") row.state = "resolved";
+      if (table === "doc_chunks") row.ord = 9;
+      expect(await pgCode(() => asA((tx) => insert(tx, table, row))), table).toBe("23503");
+    }
+  });
+
+  it("chỉ một nhà tổ chức, file theo đường dẫn, blob theo hash và xung đột mở", async () => {
+    for (const table of ["doc_homes", "doc_repo_files", "doc_import_files", "blobs", "doc_conflicts"] as const) {
+      expect(
+        await pgCode(() => asA((tx) => insert(tx, table, { ...seeds.a.rows[table], id: randomUUID() }))),
+        table,
+      ).toBe("23505");
+    }
+    await asA((tx) =>
+      insert(tx, "doc_conflicts", {
+        ...seeds.a.rows.doc_conflicts,
+        id: randomUUID(),
+        state: "resolved",
+        resolution: "repo",
+      }),
+    );
+    await asA((tx) =>
+      insert(tx, "doc_extracts", { ...seeds.a.rows.doc_extracts, id: randomUUID(), state: "approved" }),
+    );
+    expect(
+      await pgCode(() =>
+        asA((tx) => insert(tx, "doc_extracts", { ...seeds.a.rows.doc_extracts, id: randomUUID(), state: "approved" })),
+      ),
+    ).toBe("23505");
+  });
+
+  it("doc_chunks có đúng một nguồn, tsvector GIN; bytea giữ nguyên dữ liệu", async () => {
+    const chunk = seeds.a.rows.doc_chunks;
+    for (const changes of [{ doc_id: null }, { extract_id: String(seeds.a.rows.doc_extracts.id) }]) {
+      expect(
+        await pgCode(() => asA((tx) => insert(tx, "doc_chunks", { ...chunk, id: randomUUID(), ord: 10, ...changes }))),
+      ).toBe("23514");
+    }
+    await asA(async (tx) => {
+      const rows = await tx.execute(
+        sql`select content from hive.doc_chunks where search @@ plainto_tsquery('simple', 'Hướng dẫn')`,
+      );
+      expect(rows.rows).toHaveLength(1);
+      expect((await tx.execute(sql`select data from hive.blob_chunks`)).rows[0]?.data).toEqual(Buffer.from([1, 2, 3]));
+    });
+    const index = await admin.query(
+      "select indexdef from pg_indexes where schemaname = 'hive' and indexname = 'doc_chunks_search'",
+    );
+    expect(index.rows[0].indexdef).toContain("USING gin (search)");
+  });
+
+  it("pg-boss thật gom từng nhà, chờ đủ hạn và rollback cùng dữ liệu", async () => {
+    const jobs = createJobs({ connectionString: db.jobsUrl, queues: docSyncQueues, maintenance: false });
+    await jobs.start();
+    try {
+      const data = { orgId: seeds.a.orgId, homeId: String(seeds.a.rows.doc_homes.id) };
+      const first = await asA((tx) => queuePush(jobs, data, { tx }));
+      expect(first).toBeTypeOf("string");
+      expect(await asA((tx) => queuePush(jobs, data, { tx }))).toBeNull();
+      expect(await queuePull(jobs, data)).toBeTypeOf("string");
+      expect(await queuePush(jobs, { ...data, homeId: String(String(seeds.b.rows.doc_homes.id)) })).toBeTypeOf(
+        "string",
+      );
+      const pending = await admin.query(
+        "select data, singleton_key, extract(epoch from (start_after - created_on)) as delay from pgboss.job where id = $1",
+        [first],
+      );
+      expect(pending.rows[0]).toMatchObject({ data, singleton_key: data.homeId });
+      expect(Number(pending.rows[0].delay)).toBeGreaterThan(58);
+      const rolledBack = randomUUID();
+      await expect(
+        asA(async (tx) => {
+          await queuePush(jobs, { ...data, homeId: rolledBack }, { tx });
+          throw new Error("rollback");
+        }),
+      ).rejects.toThrow("rollback");
+      expect(
+        (
+          await admin.query("select id from pgboss.job where name = $1 and singleton_key = $2", [
+            DOCSYNC_PUSH_QUEUE,
+            rolledBack,
+          ])
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      await jobs.stop();
+    }
+  });
+});
+
+it("nâng từ 0072: điền hash mọi tenant, giữ LF/CRLF/BOM, hỗ trợ không pgvector rồi bật sau", async () => {
+  const name = `docsync_up_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  const onDb = (url: string) => {
+    const parsed = new URL(url);
+    parsed.pathname = `/${name}`;
+    return parsed.toString();
+  };
+  await admin.query(`create database ${name}`);
+  const old = new pg.Pool({ connectionString: onDb(db.adminUrl) });
+  const upgradedOwner = new pg.Pool({ connectionString: onDb(db.ownerUrl) });
+  const migrations = fileURLToPath(new URL("../../../db/migrations", import.meta.url));
+  const cache = fileURLToPath(new URL("../../../node_modules/.cache", import.meta.url));
+  mkdirSync(cache, { recursive: true });
+  const prefix = mkdtempSync(join(cache, "docsync-upgrade-"));
+  try {
+    const password = (url: string) => decodeURIComponent(new URL(url).password);
+    await bootstrapRoles(
+      onDb(db.adminUrl),
+      { owner: password(db.ownerUrl), app: password(db.appUrl), auth: password(db.authUrl) },
+      { pgvector: false },
+    );
+    cpSync(migrations, prefix, { recursive: true });
+    const journal = JSON.parse(readFileSync(join(prefix, "meta/_journal.json"), "utf8"));
+    journal.entries = journal.entries.filter((entry: { tag: string }) => Number(entry.tag.slice(0, 4)) <= 72);
+    expect(journal.entries.at(-1).tag).toMatch(/^0072_/);
+    writeFileSync(join(prefix, "meta/_journal.json"), JSON.stringify(journal));
+    await runMigrations(onDb(db.ownerUrl), prefix);
+    const contents = ["# Tài liệu\n", "# Tài liệu\r\n", "\uFEFF# Tài liệu\r\n"];
+    for (const [i, content] of contents.entries()) {
+      const org = await seedOrg(old, `old-${i}-${randomUUID().slice(0, 6)}`);
+      const doc = (
+        await old.query(
+          "insert into hive.docs (org_id, key, title, current_version, updated_by_user_id) values ($1, 'org/old', 'Cũ', 1, $2) returning id",
+          [org.orgId, org.user("owner")],
+        )
+      ).rows[0].id;
+      await old.query(
+        "insert into hive.doc_versions (org_id, doc_id, version, title, content, author_user_id) values ($1, $2, 1, 'Cũ', $3, $4)",
+        [org.orgId, doc, content, org.user("owner")],
+      );
+    }
+    await runMigrations(onDb(db.ownerUrl));
+    const versions = (
+      await old.query("select content, content_hash, source, repo_commit, secret_flag from hive.doc_versions")
+    ).rows;
+    expect(versions).toHaveLength(contents.length);
+    for (const row of versions)
+      expect(row).toMatchObject({
+        content_hash: sha256(row.content),
+        source: "hub",
+        repo_commit: null,
+        secret_flag: false,
+      });
+    expect(
+      (await old.query("select relforcerowsecurity from pg_class where oid = 'hive.doc_versions'::regclass")).rows[0]
+        .relforcerowsecurity,
+    ).toBe(true);
+    expect((await upgradedOwner.query("select hive.enable_doc_vectors() as enabled")).rows[0].enabled).toBe(false);
+    await old.query("create extension if not exists vector");
+    for (let i = 0; i < 2; i++)
+      expect((await upgradedOwner.query("select hive.enable_doc_vectors() as enabled")).rows[0].enabled).toBe(true);
+    expect(
+      (await old.query("select has_function_privilege('hive_app', 'hive.enable_doc_vectors()', 'EXECUTE') as allowed"))
+        .rows[0].allowed,
+    ).toBe(false);
+    expect(
+      (
+        await old.query(
+          "select 1 from information_schema.columns where table_schema = 'hive' and table_name = 'doc_chunks' and column_name = 'embedding'",
+        )
+      ).rows,
+    ).toHaveLength(1);
+  } finally {
+    rmSync(prefix, { recursive: true, force: true });
+    await Promise.all([old.end(), upgradedOwner.end()]);
+    await admin.query(`drop database ${name}`);
+  }
+}, 240_000);

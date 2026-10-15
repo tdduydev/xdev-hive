@@ -23,6 +23,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
+	"github.com/tdduydev/xdev-hive/worker/internal/hubtls"
 )
 
 // Đăng nhập hub cho `hive` (specs/010 D12): luồng loopback PKCE của app desktop với `purpose: cli` (hub chỉ cấp token
@@ -158,7 +159,7 @@ func (a *app) httpClient() *http.Client {
 	if a.http != nil {
 		return a.http
 	}
-	return &http.Client{Timeout: hubTimeout}
+	return hubtls.NewClient(hubTimeout)
 }
 
 // hubFail đổi lỗi gọi hub ra mã thoát; token hết hiệu lực là thiếu điều kiện (đăng nhập lại), không phải lỗi phiên.
