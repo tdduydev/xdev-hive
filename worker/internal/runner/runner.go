@@ -427,6 +427,13 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		}
 	}
 	if job.Kind == KindSdlc && job.SDLC != nil {
+		// Dọn trước đường dọn worktree ở trên (defer chạy ngược): bản checkout đã khoá ghi, đường chung không xoá được.
+		defer func() { _ = removeSdlcRepos(work) }()
+		// Trước seed để seed không ghi được vào bản checkout chỉ đọc của repo khác.
+		if _, err := checkoutSdlcRepos(ctx, work, job.SDLC.Repos); err != nil {
+			result = &Result{Status: "failed", Error: err.Error()}
+			return err
+		}
 		// Sau setup để script cài đặt của dự án không xoá mất file vừa ghi; trước CLI để agent thấy chúng ngay.
 		if err := writeSdlcSeed(work, job.SDLC.Seed); err != nil {
 			result = &Result{Status: "failed", Error: err.Error()}

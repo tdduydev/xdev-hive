@@ -7,6 +7,7 @@ export interface OAuthAppConfig {
 }
 
 export interface HubConfig {
+  docStorage?: DocStorageLimits | undefined;
   port: number;
   version: string;
   /** Giờ dựng image (file BUILD_TIME ở gốc repo do Dockerfile ghi); null khi chạy từ mã nguồn. */
@@ -57,6 +58,25 @@ export type HubRole = "api" | "jobs";
 const ROLES: readonly HubRole[] = ["api", "jobs"];
 
 type Env = Record<string, string | undefined>;
+
+export interface DocStorageLimits {
+  assetMaxBytes: number;
+  importMaxBytes: number;
+  orgStorageBytes: number;
+}
+
+export function loadDocStorageLimits(env: Env = process.env): DocStorageLimits {
+  const bytes = (name: string, fallback: number) => {
+    const value = env[name] === undefined ? fallback : Number(env[name]);
+    if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} phải là số nguyên byte dương an toàn.`);
+    return value;
+  };
+  return {
+    assetMaxBytes: bytes("HIVE_DOC_ASSET_MAX_BYTES", 50 * 1024 ** 2),
+    importMaxBytes: bytes("HIVE_DOC_IMPORT_MAX_BYTES", 2 * 1024 ** 3),
+    orgStorageBytes: bytes("HIVE_DOC_ORG_STORAGE_BYTES", 5 * 1024 ** 3),
+  };
+}
 
 function roles(env: Env): HubRole[] {
   const list = (env.HIVE_ROLES ?? "api,jobs")
@@ -128,6 +148,7 @@ export function loadConfig(env: Env = process.env): HubConfig {
   const gitlab = oauthApp(env, "HIVE_GITLAB");
   return {
     port,
+    docStorage: loadDocStorageLimits(env),
     version: env.HIVE_VERSION ?? "0.0.0-dev",
     builtAt: env.HIVE_BUILT_AT ?? buildTime(),
     publicUrl: env.HIVE_PUBLIC_URL ?? `http://localhost:${port}`,
