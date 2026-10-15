@@ -103,6 +103,7 @@ export const docs = hive
       ...scopeColumns(),
       key: text("key").notNull(),
       title: text("title").notNull(),
+      archivedAt: timestamp("archived_at", { withTimezone: true }),
       currentVersion: integer("current_version").notNull(),
       ...updatedByColumns(),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -130,6 +131,10 @@ export const docVersions = hive
       version: integer("version").notNull(),
       title: text("title").notNull(),
       content: text("content").notNull(),
+      contentHash: text("content_hash"),
+      source: text("source").notNull().default("hub"),
+      repoCommit: text("repo_commit"),
+      secretFlag: boolean("secret_flag").notNull().default(false),
       message: text("message"),
       proposalId: uuid("proposal_id"),
       ...authorColumns(),
@@ -139,6 +144,7 @@ export const docVersions = hive
       unique("doc_versions_doc_version").on(t.docId, t.version),
       foreignKey({ columns: [t.docId, t.orgId], foreignColumns: [docs.id, docs.orgId] }).onDelete("cascade"),
       authorCheck("doc_versions_author", "author"),
+      check("doc_versions_source", sql`source in ('hub', 'repo', 'import', 'merge')`),
       index("doc_versions_org").on(t.orgId),
       orgScoped("doc_versions"),
     ],
@@ -637,6 +643,37 @@ export const projectBriefs = hive
       check("project_briefs_source", sql`source in ('agent', 'user')`),
       authorCheck("project_briefs_updated_by", "updated_by"),
       orgScoped("project_briefs"),
+    ],
+  )
+  .enableRLS();
+
+// embedding được thêm bởi enable_doc_vectors để database không có pgvector vẫn tìm theo từ được.
+export const docChunks = hive
+  .table(
+    "doc_chunks",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      docId: uuid("doc_id"),
+      extractId: uuid("extract_id"),
+      version: integer("version").notNull(),
+      ord: integer("ord").notNull(),
+      headingPath: text("heading_path").array().notNull().default(sql`'{}'::text[]`),
+      content: text("content").notNull(),
+      embeddingModel: text("embedding_model"),
+      search: tsvector("search").generatedAlwaysAs(sql`to_tsvector('simple'::regconfig, content)`),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      check("doc_chunks_parent", sql`(doc_id is null) <> (extract_id is null)`),
+      check("doc_chunks_position", sql`version > 0 and ord >= 0`),
+      foreignKey({ columns: [t.docId, t.orgId], foreignColumns: [docs.id, docs.orgId] }).onDelete("cascade"),
+      unique("doc_chunks_doc_version_ord").on(t.docId, t.version, t.ord),
+      unique("doc_chunks_extract_version_ord").on(t.extractId, t.version, t.ord),
+      index("doc_chunks_org").on(t.orgId),
+      index("doc_chunks_search").using("gin", t.search),
+      orgScoped("doc_chunks"),
     ],
   )
   .enableRLS();

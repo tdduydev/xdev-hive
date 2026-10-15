@@ -257,7 +257,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 3: tính năng (song song, sau Đợt 2)
 
-- [ ] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
+- [x] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
   - **Phụ thuộc**: T010, T011.
   - **Goal**: US2-1…4, 6, 7. Log run vào Output qua SSE. Chưa cấu hình hub thì view hiện "Chưa cấu hình hub xDev Hive"
     (Edge Cases).
