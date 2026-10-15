@@ -36,6 +36,7 @@ import {
   versionConflict,
   visibleWhere,
 } from "./access.ts";
+import { queueDocIndex } from "./doc-search.ts";
 import { docs, docVersions } from "./schema.ts";
 
 type DocRow = typeof docs.$inferSelect;
@@ -109,6 +110,8 @@ export function provideDocSaved(hook: DocSavedHook | undefined): void {
 }
 
 async function docChanged(tx: Tx, row: DocRow, source: DocSource, change: DocSavedEvent["change"]): Promise<void> {
+  // Chỉ mục tìm kiếm là việc của chính knowledge nên không đi qua hook một chỗ của docsync.
+  await queueDocIndex(tx, { orgId: row.orgId, docId: row.id });
   await docSavedHook?.(tx, {
     orgId: row.orgId,
     docId: row.id,
