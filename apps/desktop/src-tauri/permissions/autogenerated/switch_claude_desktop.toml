@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-switch-claude-desktop"
+description = "Enables the switch_claude_desktop command without any pre-configured scope."
+commands.allow = ["switch_claude_desktop"]
+
+[[permission]]
+identifier = "deny-switch-claude-desktop"
+description = "Denies the switch_claude_desktop command without any pre-configured scope."
+commands.deny = ["switch_claude_desktop"]
