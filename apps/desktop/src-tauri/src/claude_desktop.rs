@@ -1,6 +1,8 @@
-//! Chuyển Claude Desktop (Claude.app) giữa các gói Claude của máy. Mọi gói dùng chung MỘT hồ sơ thật
-//! `~/Library/Application Support/Claude`: chuyển gói chỉ đổi phần xác thực tài khoản, còn MCP, sessions, dự án, cấu
-//! hình trên máy giữ nguyên. Mỗi gói chỉ lưu "bộ xác thực" của nó ở `~/.xdev-hive/claude-desktop/<id>/auth`.
+//! Chuyển Claude Desktop giữa các gói Claude của máy (macOS và Windows). Mọi gói dùng chung MỘT hồ sơ thật
+//! (`~/Library/Application Support/Claude`, Windows `%APPDATA%\Claude`): chuyển gói chỉ đổi phần xác thực tài khoản, còn
+//! MCP, sessions, dự án, cấu hình trên máy giữ nguyên. Mỗi gói chỉ lưu "bộ xác thực" của nó ở
+//! `~/.xdev-hive/claude-desktop/<id>/auth`. Phần chung (bảng file, sao lưu, lưu/nạp bộ xác thực) ở đây; tìm app, dò
+//! tiến trình, thoát và mở lại ở `mac.rs`, `win.rs`.
 //!
 //! Tập file xác thực đã thử trên Claude.app 2.37337.1 (macOS), bằng bản chép của hồ sơ thật mở với `--user-data-dir`:
 //! - Bỏ `Cookies` (+ `Cookies-journal`) và ba khoá `oauth:tokenCache`, `oauth:tokenCacheV2`, `lastKnownAccountUuid` của
@@ -17,10 +19,18 @@
 //! Chỉ ghi vào hồ sơ thật khi Claude.app đã thoát (app giữ Cookies và config.json đang mở, lúc thoát còn ghi lại). Lần
 //! đầu chuyển, cả hồ sơ thật (trừ cache) được sao lưu sang `backup-<ngày>`; ngoài tập xác thực không file nào của hồ sơ
 //! thật bị ghi hay xoá.
+//!
+//! Windows [giả định từ cách Electron/Chromium lưu, chưa thử trên máy thật]: cookie nằm ở `Network\Cookies` (Chromium
+//! dời vào đó khi chạy dịch vụ mạng trong sandbox; bản cũ để ở gốc hồ sơ). Cookie và token `safeStorage` mã hoá bằng khoá
+//! AES trong `Local State` (`os_crypt.encrypted_key`, bọc DPAPI theo người dùng Windows), không dùng Credential Manager.
+//! Cùng người dùng, cùng hồ sơ nên bộ của gói này chép sang vẫn giải mã được, với điều kiện `Local State` giữ nguyên: nó
+//! thuộc phần dùng chung, không bao giờ bị ghi.
+
+mod mac;
+mod win;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -30,6 +40,99 @@ use tauri::AppHandle;
 
 use crate::profiles::home_dir;
 use crate::sidecar_json;
+
+/// Hệ điều hành có Claude Desktop mà tính năng hỗ trợ. Mọi nhánh đều biên dịch trên mọi máy để test được cả hai bố cục.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Os {
+    Mac,
+    Windows,
+}
+
+const CURRENT: Option<Os> = if cfg!(target_os = "macos") {
+    Some(Os::Mac)
+} else if cfg!(windows) {
+    Some(Os::Windows)
+} else {
+    None
+};
+
+pub(crate) const SUPPORTED: bool = CURRENT.is_some();
+
+/// Bản Claude Desktop đã cài.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum App {
+    /// Claude.app.
+    Mac(PathBuf),
+    /// Windows, bản tải từ claude.ai kiểu cũ: `claude.exe` của Squirrel.
+    Squirrel(PathBuf),
+    /// Windows, gói MSIX: họ gói và thư mục dữ liệu `%LOCALAPPDATA%\Packages\<họ gói>`.
+    Msix { family: String, data: PathBuf },
+}
+
+impl App {
+    fn shown(&self) -> String {
+        match self {
+            App::Mac(p) | App::Squirrel(p) => p.display().to_string(),
+            App::Msix { family, .. } => format!("shell:AppsFolder\\{family}"),
+        }
+    }
+}
+
+impl Os {
+    fn find_app(self, home: &Path) -> Option<App> {
+        match self {
+            Os::Mac => mac::find_app(home),
+            Os::Windows => win::find_app(&win::Dirs::from_env(home)),
+        }
+    }
+
+    /// Tiến trình Claude Desktop đang chạy; hồ sơ riêng kiểu cũ chỉ có trên macOS.
+    fn running(self, home: &Path) -> Running {
+        match self {
+            Os::Mac => mac::running(home),
+            Os::Windows => Running {
+                real: win::running(),
+                legacy: HashMap::new(),
+            },
+        }
+    }
+
+    /// Thoát êm Claude Desktop; `force` (người dùng đã đồng ý) thì buộc thoát khi quá hạn. Trả false khi app vẫn chạy.
+    fn quit(self, home: &Path, force: bool) -> Result<bool, String> {
+        match self {
+            Os::Mac => mac::quit(home, force),
+            Os::Windows => win::quit(force),
+        }
+    }
+
+    fn launch(self, app: &App) -> Result<(), String> {
+        match app {
+            App::Mac(bundle) => mac::launch(bundle),
+            _ => win::launch(app),
+        }
+    }
+
+    fn not_installed(self) -> &'static str {
+        match self {
+            Os::Mac => mac::NOT_INSTALLED,
+            Os::Windows => win::NOT_INSTALLED,
+        }
+    }
+}
+
+/// Báo trên khay khi Claude Desktop không chịu thoát (khay không hỏi được "buộc thoát?").
+pub(crate) fn still_running_text(en: bool) -> &'static str {
+    match (CURRENT, en) {
+        (Some(Os::Windows), true) => {
+            "Claude Desktop did not quit. Quit it (right-click the Claude icon in the system tray → Quit) and try again."
+        }
+        (Some(Os::Windows), false) => {
+            "Claude Desktop chưa thoát. Thoát nó (chuột phải biểu tượng Claude ở khay hệ thống → Quit) rồi thử lại."
+        }
+        (_, true) => "Claude Desktop did not quit. Quit it (Cmd+Q) and try again.",
+        (_, false) => "Claude Desktop chưa thoát. Thoát nó (Cmd+Q) rồi thử lại.",
+    }
+}
 
 /// Thư mục Chromium tự dựng lại khi thiếu, và `claude-code` (bản Claude Code app tự tải, vài trăm MB, thiếu thì app tải
 /// lại): không chép vào bản sao lưu.
@@ -46,8 +149,17 @@ const SKIP_IN_BACKUP: [&str; 10] = [
     "claude-code",
 ];
 
-/// File SQLite giữ phiên claude.ai. Journal đi cùng: journal cũ nằm lại cạnh Cookies của tài khoản khác sẽ làm hỏng nó.
-const AUTH_FILES: [&str; 2] = ["Cookies", "Cookies-journal"];
+/// File SQLite giữ phiên claude.ai, đường dẫn tương đối trong hồ sơ. Journal đi cùng: journal cũ nằm lại cạnh Cookies của
+/// tài khoản khác sẽ làm hỏng nó.
+const MAC_AUTH_FILES: &[&str] = &["Cookies", "Cookies-journal"];
+/// Windows: Chromium để cookie ở `Network\`; hồ sơ chưa dời (bản Electron cũ) còn ở gốc. Lấy cả hai: file nào có thì
+/// lưu, bộ không có thì gỡ khỏi hồ sơ, nên hồ sơ luôn khớp đúng bộ đã lưu.
+const WIN_AUTH_FILES: &[&str] = &[
+    "Network/Cookies",
+    "Network/Cookies-journal",
+    "Cookies",
+    "Cookies-journal",
+];
 /// Khoá của `config.json` giữ token OAuth của app và tài khoản đang đăng nhập; các khoá khác dùng chung.
 const AUTH_KEYS: [&str; 3] = [
     "oauth:tokenCache",
@@ -60,13 +172,10 @@ const PREFS_KEY: &str = "preferences";
 /// `preferences` của gói trong bộ xác thực (hồ sơ thật giữ nó trong `claude_desktop_config.json`).
 const BUNDLE_PREFS: &str = "preferences.json";
 
-const BUNDLE_ID: &str = "com.anthropic.claudefordesktop";
 /// Thoát êm có thể chậm khi app còn đang ghi; quá hạn thì hỏi người dùng có buộc thoát không.
 const QUIT_WAIT: Duration = Duration::from_secs(20);
 
-const UNSUPPORTED: &str =
-    "Chưa hỗ trợ chuyển tài khoản Claude Desktop trên hệ điều hành này (mới có cho macOS).";
-const NOT_INSTALLED: &str = "Chưa thấy Claude Desktop trong /Applications hay ~/Applications. Cài Claude Desktop rồi thử lại.";
+const UNSUPPORTED: &str = "Chưa hỗ trợ chuyển tài khoản Claude Desktop trên hệ điều hành này (mới có cho macOS và Windows).";
 
 /// Một lần chuyển một lúc: hai lần chuyển chồng nhau sẽ cùng ghi hồ sơ thật.
 static SWITCHING: Mutex<()> = Mutex::new(());
@@ -75,11 +184,10 @@ pub(crate) fn profiles_root(home: &Path) -> PathBuf {
     home.join(".xdev-hive").join("claude-desktop")
 }
 
-/// Hồ sơ của chính Claude Desktop, dùng chung cho mọi gói.
-fn real_profile(home: &Path) -> PathBuf {
-    home.join("Library")
-        .join("Application Support")
-        .join("Claude")
+/// Đường dẫn tương đối dạng `Network/Cookies` trong `dir`, tách theo từng phần để đúng dấu phân cách của Windows.
+fn at(dir: &Path, rel: &str) -> PathBuf {
+    rel.split('/')
+        .fold(dir.to_path_buf(), |p, part| p.join(part))
 }
 
 /// Id gói đi vào đường dẫn: chỉ nhận dạng id worker tạo (`claude-2`), để `..` hay `/` không đưa ra ngoài thư mục của
@@ -94,18 +202,52 @@ fn valid_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
 }
 
-/// Đường dẫn của Hive và hồ sơ thật; test dựng bằng thư mục nhà giả.
+/// Đường dẫn của Hive, hồ sơ thật và bảng file xác thực theo hệ điều hành; test dựng bằng thư mục nhà giả.
 struct Paths {
+    os: Os,
     real: PathBuf,
     root: PathBuf,
 }
 
 impl Paths {
-    fn new(home: &Path) -> Self {
+    fn mac(home: &Path) -> Self {
         Self {
-            real: real_profile(home),
+            os: Os::Mac,
+            real: mac::profile(home),
             root: profiles_root(home),
         }
+    }
+
+    fn windows(home: &Path, dirs: &win::Dirs) -> Self {
+        Self {
+            os: Os::Windows,
+            real: win::profile(dirs),
+            root: profiles_root(home),
+        }
+    }
+
+    /// Bố cục của máy này. Hệ điều hành chưa hỗ trợ vẫn cần danh sách gói cho màn hình (không ghi gì), nên lấy bố cục
+    /// macOS.
+    fn current(home: &Path) -> Self {
+        match CURRENT {
+            Some(Os::Windows) => Self::windows(home, &win::Dirs::from_env(home)),
+            _ => Self::mac(home),
+        }
+    }
+
+    fn auth_files(&self) -> &'static [&'static str] {
+        match self.os {
+            Os::Mac => MAC_AUTH_FILES,
+            Os::Windows => WIN_AUTH_FILES,
+        }
+    }
+
+    /// Hồ sơ hay bộ xác thực có cookie đăng nhập (journal không tính).
+    fn has_login(&self, dir: &Path) -> bool {
+        self.auth_files()
+            .iter()
+            .filter(|f| !f.ends_with("-journal"))
+            .any(|f| is_real_file(&at(dir, f)))
     }
 
     fn bundle(&self, id: &str) -> Result<PathBuf, String> {
@@ -158,9 +300,25 @@ fn create_private_dir(dir: &Path) -> std::io::Result<()> {
         .create(dir)
 }
 
+/// Windows: thư mục trong hồ sơ người dùng đã chỉ người dùng (và SYSTEM, Administrators) đọc được, thư mục con kế thừa.
 #[cfg(not(unix))]
 fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)
+}
+
+/// Windows khoá file đang mở: app vừa thoát, trình quét virus hay Windows Search có thể còn giữ Cookies thêm một lúc.
+/// Lỗi ACCESS_DENIED (5), SHARING_VIOLATION (32), LOCK_VIOLATION (33) thì chờ rồi thử lại; hệ khác không khoá kiểu này.
+fn retry_locked<T>(mut op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    const TRIES: u32 = 20;
+    for _ in 1..TRIES {
+        match op() {
+            Err(e) if cfg!(windows) && matches!(e.raw_os_error(), Some(5 | 32 | 33)) => {
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            r => return r,
+        }
+    }
+    op()
 }
 
 #[cfg(unix)]
@@ -181,6 +339,7 @@ fn tmp_of(path: &Path) -> PathBuf {
 }
 
 /// Ghi qua file tạm cùng thư mục rồi đổi tên: app đọc file sau đó thấy bản cũ hoặc bản mới, không thấy bản ghi dở.
+/// `rename` của Rust trên Windows thay file đích trong một bước (MoveFileEx/REPLACE_EXISTING), như ReplaceFileW.
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let tmp = tmp_of(path);
@@ -189,15 +348,22 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     f.sync_all()?;
     drop(f);
     make_private(&tmp)?;
-    std::fs::rename(&tmp, path)
+    retry_locked(|| std::fs::rename(&tmp, path))
 }
 
 fn copy_atomic(from: &Path, to: &Path) -> std::io::Result<()> {
     let tmp = tmp_of(to);
-    std::fs::copy(from, &tmp)?;
-    std::fs::File::open(&tmp)?.sync_all()?;
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    retry_locked(|| std::fs::copy(from, &tmp))?;
+    // Mở để ghi: Windows chỉ cho FlushFileBuffers trên handle có quyền ghi.
+    std::fs::File::options()
+        .write(true)
+        .open(&tmp)?
+        .sync_all()?;
     make_private(&tmp)?;
-    std::fs::rename(&tmp, to)
+    retry_locked(|| std::fs::rename(&tmp, to))
 }
 
 fn is_real_file(path: &Path) -> bool {
@@ -257,7 +423,7 @@ fn remove_entry(path: &Path) -> std::io::Result<()> {
 }
 
 /// Lưu bộ xác thực của hồ sơ `from` vào `dest`: dựng ở thư mục tạm rồi đổi tên, nên `dest` luôn là một bộ đủ.
-fn save_auth(from: &Path, dest: &Path) -> Result<(), String> {
+fn save_auth(from: &Path, dest: &Path, files: &[&str]) -> Result<(), String> {
     let auth = read_auth(from)?;
     let parent = dest.parent().ok_or("Đường dẫn bộ xác thực không hợp lệ.")?;
     create_private_dir(parent).map_err(|e| e.to_string())?;
@@ -265,10 +431,14 @@ fn save_auth(from: &Path, dest: &Path) -> Result<(), String> {
     remove_entry(&tmp).map_err(|e| e.to_string())?;
     let built = (|| -> std::io::Result<()> {
         create_private_dir(&tmp)?;
-        for name in AUTH_FILES {
-            if is_real_file(&from.join(name)) {
-                std::fs::copy(from.join(name), tmp.join(name))?;
-                make_private(&tmp.join(name))?;
+        for name in files {
+            let (src, dst) = (at(from, name), at(&tmp, name));
+            if is_real_file(&src) {
+                if let Some(parent) = dst.parent() {
+                    create_private_dir(parent)?;
+                }
+                retry_locked(|| std::fs::copy(&src, &dst))?;
+                make_private(&dst)?;
             }
         }
         write_atomic(&tmp.join(CONFIG), &serde_json::to_vec_pretty(&auth.config)?)?;
@@ -287,9 +457,9 @@ fn save_auth(from: &Path, dest: &Path) -> Result<(), String> {
     let swapped = (|| -> std::io::Result<()> {
         remove_entry(&old)?;
         if std::fs::symlink_metadata(dest).is_ok() {
-            std::fs::rename(dest, &old)?;
+            retry_locked(|| std::fs::rename(dest, &old))?;
         }
-        std::fs::rename(&tmp, dest)?;
+        retry_locked(|| std::fs::rename(&tmp, dest))?;
         remove_entry(&old)
     })();
     swapped.map_err(|e| format!("Không lưu được bộ đăng nhập: {e}"))
@@ -297,7 +467,7 @@ fn save_auth(from: &Path, dest: &Path) -> Result<(), String> {
 
 /// Đưa bộ xác thực `from` vào hồ sơ thật. File xác thực không có trong bộ thì bị gỡ khỏi hồ sơ (gói chưa đăng nhập mở
 /// ở màn đăng nhập); `preferences` không có trong bộ thì để nguyên. Đọc và kiểm hết trước khi ghi file đầu tiên.
-fn load_auth(from: &Path, real: &Path) -> Result<(), String> {
+fn load_auth(from: &Path, real: &Path, files: &[&str]) -> Result<(), String> {
     let auth = if from.exists() {
         read_auth(from)?
     } else {
@@ -321,12 +491,12 @@ fn load_auth(from: &Path, real: &Path) -> Result<(), String> {
         None => None,
     };
     let written = (|| -> std::io::Result<()> {
-        for name in AUTH_FILES {
-            let src = auth.dir.join(name);
+        for name in files {
+            let (src, dst) = (at(&auth.dir, name), at(real, name));
             if is_real_file(&src) {
-                copy_atomic(&src, &real.join(name))?;
-            } else if std::fs::symlink_metadata(real.join(name)).is_ok() {
-                std::fs::remove_file(real.join(name))?;
+                copy_atomic(&src, &dst)?;
+            } else if std::fs::symlink_metadata(&dst).is_ok() {
+                retry_locked(|| std::fs::remove_file(&dst))?;
             }
         }
         write_atomic(&real.join(CONFIG), &serde_json::to_vec_pretty(&config)?)?;
@@ -408,7 +578,7 @@ fn ensure_backup(paths: &Paths, state: &mut State, now: SystemTime) -> Result<()
 }
 
 /// Đổi tài khoản của hồ sơ thật sang gói `target` (None: về đăng nhập lúc chưa dùng tính năng này, lấy từ bản sao
-/// lưu). Claude.app phải đã thoát.
+/// lưu). Claude Desktop phải đã thoát.
 fn swap_auth(
     paths: &Paths,
     state: &mut State,
@@ -427,20 +597,17 @@ fn swap_auth(
     ensure_backup(paths, state, now)?;
     std::fs::create_dir_all(&paths.real)
         .map_err(|e| format!("Không tạo được hồ sơ Claude Desktop: {e}"))?;
-    save_auth(&paths.real, &paths.previous())?;
+    let files = paths.auth_files();
+    save_auth(&paths.real, &paths.previous(), files)?;
     if let Some(active) = &state.active {
-        save_auth(&paths.real, &paths.bundle(active)?)?;
+        save_auth(&paths.real, &paths.bundle(active)?, files)?;
     }
-    if let Err(e) = load_auth(&source, &paths.real) {
-        let _ = load_auth(&paths.previous(), &paths.real);
+    if let Err(e) = load_auth(&source, &paths.real, files) {
+        let _ = load_auth(&paths.previous(), &paths.real, files);
         return Err(e);
     }
     state.active = target.map(str::to_string);
     write_state(paths, state)
-}
-
-fn has_login(bundle: &Path) -> bool {
-    is_real_file(&bundle.join("Cookies"))
 }
 
 /// Thư mục gói còn dạng hồ sơ riêng `--user-data-dir` của bản trước: có file Chromium nằm thẳng trong đó.
@@ -477,8 +644,8 @@ fn migrate_legacy(paths: &Paths, id: &str) -> Result<(), String> {
     if real.starts_with(&original) || original.starts_with(&real) {
         return Err("Thư mục trỏ vào hồ sơ thật của Claude Desktop; không đụng tới.".into());
     }
-    if has_login(dir) && !has_login(&bundle) {
-        save_auth(dir, &bundle)?;
+    if paths.has_login(dir) && !paths.has_login(&bundle) {
+        save_auth(dir, &bundle, paths.auth_files())?;
     }
     for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -491,78 +658,19 @@ fn migrate_legacy(paths: &Paths, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Nơi thường cài Claude.app; bản cài cho riêng người dùng nằm trong ~/Applications.
-fn app_candidates(home: &Path) -> Vec<PathBuf> {
-    vec![
-        PathBuf::from("/Applications/Claude.app"),
-        home.join("Applications").join("Claude.app"),
-    ]
-}
-
-fn app_binary(bundle: &Path) -> PathBuf {
-    bundle.join("Contents").join("MacOS").join("Claude")
-}
-
-fn find_app_in(candidates: &[PathBuf]) -> Option<PathBuf> {
-    candidates.iter().find(|b| app_binary(b).is_file()).cloned()
-}
-
-fn find_app(home: &Path) -> Option<PathBuf> {
-    find_app_in(&app_candidates(home))
-}
-
-/// Tiến trình chính của Claude.app từ `ps -axo pid=,command=`, chia theo hồ sơ: dùng hồ sơ thật (không có
-/// `--user-data-dir`) hay hồ sơ riêng kiểu cũ của Hive (id gói). Tiến trình phụ của Electron (`--type=renderer`…) bỏ qua.
+/// Tiến trình chính của Claude Desktop, chia theo hồ sơ: hồ sơ thật, hay hồ sơ riêng kiểu cũ của Hive (id gói, chỉ có
+/// trên macOS).
 #[derive(Default, Debug, PartialEq, Eq)]
 struct Running {
     real: Vec<u32>,
     legacy: HashMap<String, u32>,
 }
 
-fn running_in(ps: &str, root: &Path) -> Running {
-    let marker = format!("--user-data-dir={}/", root.display());
-    let mut out = Running::default();
-    for line in ps.lines() {
-        let line = line.trim_start();
-        let Some((pid, command)) = line.split_once(char::is_whitespace) else {
-            continue;
-        };
-        let Ok(pid) = pid.parse::<u32>() else {
-            continue;
-        };
-        let main = command.ends_with("Claude.app/Contents/MacOS/Claude")
-            || command.contains("Claude.app/Contents/MacOS/Claude ");
-        if !main || command.contains("--type=") {
-            continue;
-        }
-        if !command.contains("--user-data-dir=") {
-            out.real.push(pid);
-            continue;
-        }
-        let Some(start) = command.find(&marker) else {
-            continue;
-        };
-        let rest = &command[start + marker.len()..];
-        let id = rest.split(char::is_whitespace).next().unwrap_or("");
-        let id = id.trim_end_matches('/');
-        if valid_id(id) {
-            out.legacy.entry(id.to_string()).or_insert(pid);
-        }
-    }
-    out
-}
-
-fn running(home: &Path) -> Running {
-    let Ok(out) = Command::new("ps").args(["-axo", "pid=,command="]).output() else {
-        return Running::default();
-    };
-    running_in(&String::from_utf8_lossy(&out.stdout), &profiles_root(home))
-}
-
-fn wait_gone(home: &Path, within: Duration) -> bool {
+/// Dò `pids` tới khi rỗng hay quá hạn.
+fn wait_gone(mut pids: impl FnMut() -> Vec<u32>, within: Duration) -> bool {
     let until = Instant::now() + within;
     loop {
-        if running(home).real.is_empty() {
+        if pids().is_empty() {
             return true;
         }
         if Instant::now() >= until {
@@ -570,59 +678,6 @@ fn wait_gone(home: &Path, within: Duration) -> bool {
         }
         std::thread::sleep(Duration::from_millis(500));
     }
-}
-
-/// Thoát Claude Desktop bằng lệnh Quit của AppleScript như Cmd+Q, để app tự lưu và đóng file. `force` (người dùng đã
-/// đồng ý) thì quá hạn sẽ gửi SIGTERM rồi SIGKILL. Trả false khi app vẫn chạy.
-fn quit_app(home: &Path, force: bool) -> Result<bool, String> {
-    let now = running(home);
-    if let Some(id) = now.legacy.keys().next() {
-        return Err(format!(
-            "Claude Desktop đang mở bằng hồ sơ riêng (bản cũ) của gói {id}. Thoát cửa sổ đó (Cmd+Q) rồi thử lại."
-        ));
-    }
-    if now.real.is_empty() {
-        return Ok(true);
-    }
-    // osascript chờ app trả lời; app hỏi lại trước khi thoát thì lệnh treo, nên không chờ nó mà dò tiến trình.
-    let mut script = Command::new("osascript")
-        .args([
-            "-e",
-            &format!("tell application id \"{BUNDLE_ID}\" to quit"),
-        ])
-        .spawn()
-        .map_err(|e| format!("Không gửi được lệnh thoát cho Claude Desktop: {e}"))?;
-    let gone = wait_gone(home, QUIT_WAIT);
-    if script.try_wait().ok().flatten().is_none() {
-        let _ = script.kill();
-    }
-    let _ = script.wait();
-    if gone || !force {
-        return Ok(gone);
-    }
-    for signal in ["-TERM", "-KILL"] {
-        for pid in running(home).real {
-            let _ = Command::new("kill")
-                .args([signal, &pid.to_string()])
-                .status();
-        }
-        if wait_gone(home, Duration::from_secs(5)) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-fn launch(bundle: &Path) -> Result<(), String> {
-    let status = Command::new("open")
-        .arg("-a")
-        .arg(bundle)
-        .status()
-        .map_err(|e| format!("Không mở được Claude Desktop: {e}"))?;
-    if !status.success() {
-        return Err("Không mở được Claude Desktop.".into());
-    }
-    Ok(())
 }
 
 /// Phần của một gói mà màn này cần, đọc từ `accounts --json`.
@@ -657,7 +712,7 @@ pub(crate) struct ProfileView {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProfilesView {
     supported: bool,
-    /// Claude.app tìm thấy; None khi chưa cài.
+    /// Claude Desktop tìm thấy (Claude.app, claude.exe hay gói Microsoft Store); None khi chưa cài.
     pub(crate) app: Option<String>,
     /// Vì sao chưa chuyển được (chưa hỗ trợ, chưa cài); None khi chuyển được.
     note: Option<String>,
@@ -673,7 +728,7 @@ pub(crate) struct ProfilesView {
 fn view(
     paths: &Paths,
     plans: &[Plan],
-    app: Option<&Path>,
+    app: Option<&App>,
     supported: bool,
     pid: Option<u32>,
 ) -> ProfilesView {
@@ -689,20 +744,20 @@ fn view(
                 p.label.clone()
             },
             email: p.email.clone().filter(|e| !e.is_empty()),
-            saved: paths.bundle(&p.id).is_ok_and(|b| has_login(&b)),
+            saved: paths.bundle(&p.id).is_ok_and(|b| paths.has_login(&b)),
             active: state.active.as_deref() == Some(p.id.as_str()),
         })
         .collect();
     let note = if !supported {
         Some(UNSUPPORTED.to_string())
     } else if app.is_none() {
-        Some(NOT_INSTALLED.to_string())
+        Some(paths.os.not_installed().to_string())
     } else {
         None
     };
     ProfilesView {
         supported,
-        app: app.map(|a| a.display().to_string()),
+        app: app.map(App::shown),
         note,
         running: pid,
         backup: state
@@ -731,20 +786,9 @@ pub(crate) async fn load(app: &AppHandle) -> Result<ProfilesView, String> {
     let plans = claude_plans(app).await?;
     let home = need_home()?;
     let v = tauri::async_runtime::spawn_blocking(move || {
-        let supported = cfg!(target_os = "macos");
-        let bundle = if supported { find_app(&home) } else { None };
-        let pid = if supported {
-            running(&home).real.first().copied()
-        } else {
-            None
-        };
-        view(
-            &Paths::new(&home),
-            &plans,
-            bundle.as_deref(),
-            supported,
-            pid,
-        )
+        let app = CURRENT.and_then(|os| os.find_app(&home));
+        let pid = CURRENT.and_then(|os| os.running(&home).real.first().copied());
+        view(&Paths::current(&home), &plans, app.as_ref(), SUPPORTED, pid)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -780,16 +824,17 @@ fn switch_blocking(home: &Path, target: Option<&str>, force: bool) -> Result<Swi
     let _guard = SWITCHING
         .try_lock()
         .map_err(|_| "Đang chuyển Claude Desktop; chờ lần chuyển trước xong.".to_string())?;
-    let bundle = find_app(home).ok_or(NOT_INSTALLED)?;
-    let paths = Paths::new(home);
+    let os = CURRENT.ok_or(UNSUPPORTED)?;
+    let app = os.find_app(home).ok_or(os.not_installed())?;
+    let paths = Paths::current(home);
     let mut state = read_state(&paths);
     let needs_login = match target {
-        Some(id) => !has_login(&paths.bundle(id)?),
+        Some(id) => !paths.has_login(&paths.bundle(id)?),
         None => false,
     };
     if target.is_some() && state.active.as_deref() == target {
-        if running(home).real.is_empty() {
-            launch(&bundle)?;
+        if os.running(home).real.is_empty() {
+            os.launch(&app)?;
         }
         return Ok(Switched {
             status: SwitchStatus::Already,
@@ -805,7 +850,7 @@ fn switch_blocking(home: &Path, target: Option<&str>, force: bool) -> Result<Swi
     {
         return Err("Chưa có bản sao lưu ban đầu để khôi phục.".into());
     }
-    if !quit_app(home, force)? {
+    if !os.quit(home, force)? {
         return Ok(Switched {
             status: SwitchStatus::StillRunning,
             needs_login,
@@ -813,7 +858,7 @@ fn switch_blocking(home: &Path, target: Option<&str>, force: bool) -> Result<Swi
     }
     // Đổi hỏng thì hồ sơ đã về đăng nhập cũ (swap_auth tự lấy lại): vẫn mở lại app như trước khi bấm.
     let swapped = swap_auth(&paths, &mut state, target, SystemTime::now());
-    launch(&bundle)?;
+    os.launch(&app)?;
     swapped?;
     Ok(Switched {
         status: SwitchStatus::Switched,
@@ -823,7 +868,7 @@ fn switch_blocking(home: &Path, target: Option<&str>, force: bool) -> Result<Swi
 
 /// Chuyển Claude Desktop sang một gói Claude. Cửa sổ chỉ gửi id gói; đường dẫn do Rust dựng.
 pub(crate) async fn switch(app: &AppHandle, id: &str, force: bool) -> Result<Switched, String> {
-    if !cfg!(target_os = "macos") {
+    if !SUPPORTED {
         return Err(UNSUPPORTED.into());
     }
     let id = id.trim().to_string();
@@ -852,7 +897,7 @@ pub async fn switch_claude_desktop(
 /// Về đăng nhập trước khi dùng tính năng này (lấy từ bản sao lưu ban đầu). Đăng nhập hiện tại lưu vào gói đang dùng.
 #[tauri::command]
 pub async fn restore_claude_desktop(app: AppHandle, force: bool) -> Result<Switched, String> {
-    if !cfg!(target_os = "macos") {
+    if !SUPPORTED {
         return Err(UNSUPPORTED.into());
     }
     let home = need_home()?;
@@ -872,7 +917,7 @@ pub async fn adopt_claude_desktop(
 ) -> Result<ProfilesView, String> {
     let home = need_home()?;
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let paths = Paths::new(&home);
+        let paths = Paths::current(&home);
         let id = profile_id.trim();
         paths.bundle(id)?;
         let mut state = read_state(&paths);
@@ -895,7 +940,7 @@ pub async fn forget_claude_desktop(
 ) -> Result<ProfilesView, String> {
     let home = need_home()?;
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let paths = Paths::new(&home);
+        let paths = Paths::current(&home);
         let id = profile_id.trim();
         let bundle = paths.bundle(id)?;
         if read_state(&paths).active.as_deref() == Some(id) {
@@ -913,8 +958,10 @@ pub async fn forget_claude_desktop(
 pub async fn migrate_claude_desktop_profiles(app: AppHandle) -> Result<ProfilesView, String> {
     let home = need_home()?;
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let paths = Paths::new(&home);
-        let open = running(&home).legacy;
+        let paths = Paths::current(&home);
+        let open = CURRENT
+            .map(|os| os.running(&home).legacy)
+            .unwrap_or_default();
         for id in legacy_profiles(&paths.root) {
             if open.contains_key(&id) {
                 return Err(format!(
@@ -948,7 +995,7 @@ pub(crate) fn tray_label(p: &ProfileView, en: bool) -> String {
 mod tests {
     use super::*;
 
-    fn temp_home(name: &str) -> PathBuf {
+    pub(super) fn temp_home(name: &str) -> PathBuf {
         let dir =
             std::env::temp_dir().join(format!("hive-claude-desktop-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -956,7 +1003,7 @@ mod tests {
         dir
     }
 
-    fn put(path: &Path, body: &str) {
+    pub(super) fn put(path: &Path, body: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, body).unwrap();
     }
@@ -969,10 +1016,27 @@ mod tests {
         serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
     }
 
+    /// Bố cục macOS và Windows, mỗi bố cục một thư mục nhà giả: phần chung chạy cho cả hai trên mọi máy.
+    fn layouts(name: &str) -> Vec<(PathBuf, Paths)> {
+        let mac = temp_home(&format!("{name}-mac"));
+        let win = temp_home(&format!("{name}-win"));
+        let dirs = win::Dirs {
+            roaming: win.join("AppData").join("Roaming"),
+            local: win.join("AppData").join("Local"),
+        };
+        let paths = Paths::windows(&win, &dirs);
+        vec![(mac.clone(), Paths::mac(&mac)), (win, paths)]
+    }
+
+    /// File cookie chính của bố cục (`Cookies`, Windows `Network\Cookies`).
+    fn cookies(paths: &Paths, dir: &Path) -> PathBuf {
+        at(dir, paths.auth_files()[0])
+    }
+
     /// Hồ sơ giả đủ file xác thực và file dùng chung, đăng nhập tài khoản `who`.
-    fn fake_profile(dir: &Path, who: &str) {
-        put(&dir.join("Cookies"), &format!("cookies-{who}"));
-        put(&dir.join("Cookies-journal"), "");
+    fn fake_profile(paths: &Paths, dir: &Path, who: &str) {
+        put(&cookies(paths, dir), &format!("cookies-{who}"));
+        put(&at(dir, paths.auth_files()[1]), "");
         put(
             &dir.join(CONFIG),
             &serde_json::json!({
@@ -993,29 +1057,35 @@ mod tests {
             })
             .to_string(),
         );
-        put(
-            &dir.join("claude-code-sessions/uuid-a/org/s.json"),
-            "session A",
-        );
-        put(&dir.join("local-agent-mode-sessions/x.json"), "agent");
-        put(&dir.join("Local Storage/leveldb/000005.ldb"), "ls");
-        put(&dir.join("IndexedDB/https_claude.ai_0/a.log"), "idb");
+        for (f, body) in SHARED {
+            put(&at(dir, f), body);
+        }
         put(&dir.join("Cache/Cache_Data/big"), "cache");
         put(&dir.join("claude-code/2.1/claude"), "binary");
     }
 
+    /// File dùng chung của hồ sơ giả. `Local State` giữ khoá mã hoá cookie trên Windows: đổi nó là mọi bộ đã lưu hết
+    /// giải mã được.
+    const SHARED: [(&str, &str); 7] = [
+        ("claude-code-sessions/uuid-a/org/s.json", "session A"),
+        ("local-agent-mode-sessions/x.json", "agent"),
+        ("Local Storage/leveldb/000005.ldb", "ls"),
+        ("IndexedDB/https_claude.ai_0/a.log", "idb"),
+        (
+            "Local State",
+            r#"{"os_crypt":{"encrypted_key":"RFBBUEk="}}"#,
+        ),
+        ("Network/TransportSecurity", "hsts"),
+        ("Network/Network Persistent State", "net"),
+    ];
+
     /// Mọi file dùng chung của hồ sơ, để so trước và sau khi chuyển.
     fn shared(dir: &Path) -> Vec<(String, String)> {
         let mut out = vec![];
-        for f in [
-            "claude-code-sessions/uuid-a/org/s.json",
-            "local-agent-mode-sessions/x.json",
-            "Local Storage/leveldb/000005.ldb",
-            "IndexedDB/https_claude.ai_0/a.log",
-            "Cache/Cache_Data/big",
-        ] {
-            out.push((f.to_string(), read(&dir.join(f))));
+        for (f, _) in SHARED {
+            out.push((f.to_string(), read(&at(dir, f))));
         }
+        out.push(("Cache".into(), read(&dir.join("Cache/Cache_Data/big"))));
         let mut config = json(&dir.join(CONFIG));
         for k in AUTH_KEYS {
             config.as_object_mut().unwrap().remove(k);
@@ -1027,10 +1097,10 @@ mod tests {
         out
     }
 
-    fn account(dir: &Path) -> (String, Value, Value) {
+    fn account(paths: &Paths, dir: &Path) -> (String, Value, Value) {
         let c = json(&dir.join(CONFIG));
         (
-            read(&dir.join("Cookies")),
+            read(&cookies(paths, dir)),
             c["oauth:tokenCacheV2"].clone(),
             json(&dir.join(DESKTOP_CONFIG))["preferences"]["sidebarMode"].clone(),
         )
@@ -1038,9 +1108,13 @@ mod tests {
 
     fn no_temp_files(dir: &Path) {
         for entry in std::fs::read_dir(dir).unwrap() {
-            let name = entry.unwrap().file_name().into_string().unwrap();
+            let entry = entry.unwrap();
+            let name = entry.file_name().into_string().unwrap();
             assert!(!name.ends_with(".hive-tmp"), "{name}");
             assert!(!name.ends_with(".old"), "{name}");
+            if entry.file_type().unwrap().is_dir() {
+                no_temp_files(&entry.path());
+            }
         }
     }
 
@@ -1048,7 +1122,7 @@ mod tests {
 
     #[test]
     fn ids_stay_under_hive_and_skip_reserved_names() {
-        let paths = Paths::new(Path::new("/Users/a"));
+        let paths = Paths::mac(Path::new("/Users/a"));
         assert_eq!(
             paths.bundle("claude-2").unwrap(),
             Path::new("/Users/a/.xdev-hive/claude-desktop/claude-2/auth")
@@ -1081,179 +1155,246 @@ mod tests {
     }
 
     #[test]
-    fn switching_a_b_a_swaps_only_the_login() {
-        let home = temp_home("switch");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
-        let before = shared(&paths.real);
-        // Gói B đã đăng nhập từ trước: bộ của B lấy từ một hồ sơ khác.
-        let other = home.join("other");
-        fake_profile(&other, "b");
-        save_auth(&other, &paths.bundle("claude-2").unwrap()).unwrap();
+    fn profile_and_auth_files_follow_the_os() {
+        let (mac, win) = (Path::new("/Users/a"), Path::new("C:/Users/a"));
+        assert_eq!(
+            Paths::mac(mac).real,
+            mac.join("Library/Application Support/Claude")
+        );
+        let dirs = win::Dirs {
+            roaming: win.join("AppData").join("Roaming"),
+            local: win.join("AppData").join("Local"),
+        };
+        let paths = Paths::windows(win, &dirs);
+        assert_eq!(paths.real, dirs.roaming.join("Claude"));
+        assert_eq!(paths.root, win.join(".xdev-hive").join("claude-desktop"));
+        assert_eq!(
+            cookies(&paths, &paths.real),
+            dirs.roaming.join("Claude").join("Network").join("Cookies")
+        );
+        assert!(!paths.auth_files().iter().any(|f| f.contains("Local State")));
+    }
 
+    #[test]
+    fn switching_a_b_a_swaps_only_the_login() {
+        for (home, paths) in layouts("switch") {
+            fake_profile(&paths, &paths.real, "a");
+            let before = shared(&paths.real);
+            // Gói B đã đăng nhập từ trước: bộ của B lấy từ một hồ sơ khác.
+            let other = home.join("other");
+            fake_profile(&paths, &other, "b");
+            save_auth(
+                &other,
+                &paths.bundle("claude-2").unwrap(),
+                paths.auth_files(),
+            )
+            .unwrap();
+
+            let mut state = State {
+                active: Some("claude-1".into()),
+                backup: None,
+            };
+            swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap();
+            assert_eq!(state.active.as_deref(), Some("claude-2"));
+            assert_eq!(
+                account(&paths, &paths.real),
+                ("cookies-b".into(), "v10b-b".into(), "mode-b".into())
+            );
+            assert_eq!(
+                json(&paths.real.join(CONFIG))["lastKnownAccountUuid"],
+                "uuid-b"
+            );
+            assert_eq!(shared(&paths.real), before, "file dùng chung giữ nguyên");
+            // Đăng nhập của A đã lưu vào gói A.
+            let a = paths.bundle("claude-1").unwrap();
+            assert_eq!(read(&cookies(&paths, &a)), "cookies-a");
+            assert_eq!(json(&a.join(CONFIG))["oauth:tokenCache"], "v10-a");
+            assert_eq!(json(&a.join(BUNDLE_PREFS))["sidebarMode"], "mode-a");
+            assert!(
+                json(&a.join(CONFIG)).get("locale").is_none(),
+                "bộ chỉ có khoá xác thực"
+            );
+            assert!(!a.join("Local State").exists(), "bộ không mang khoá chung");
+
+            swap_auth(&paths, &mut state, Some("claude-1"), UNIX_EPOCH + T0).unwrap();
+            assert_eq!(
+                account(&paths, &paths.real),
+                ("cookies-a".into(), "v10b-a".into(), "mode-a".into())
+            );
+            assert_eq!(shared(&paths.real), before);
+            assert_eq!(read_state(&paths), state);
+            no_temp_files(&paths.real);
+            no_temp_files(&paths.root.join("claude-1"));
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn plan_without_login_opens_signed_out_and_keeps_everything_else() {
+        for (home, paths) in layouts("signin") {
+            fake_profile(&paths, &paths.real, "a");
+            let before = shared(&paths.real);
+            let mut state = State::default();
+            swap_auth(&paths, &mut state, Some("claude-3"), UNIX_EPOCH + T0).unwrap();
+            for f in paths.auth_files() {
+                assert!(!at(&paths.real, f).exists(), "{f}");
+            }
+            let config = json(&paths.real.join(CONFIG));
+            for k in AUTH_KEYS {
+                assert!(config.get(k).is_none(), "{k}");
+            }
+            // preferences để nguyên cho app tự xử lý lúc đăng nhập.
+            assert_eq!(
+                json(&paths.real.join(DESKTOP_CONFIG))["preferences"]["sidebarMode"],
+                "mode-a"
+            );
+            assert_eq!(shared(&paths.real), before);
+            assert_eq!(state.active.as_deref(), Some("claude-3"));
+
+            // Người dùng đăng nhập trong app; lần chuyển sau lưu đăng nhập đó cho claude-3.
+            put(&cookies(&paths, &paths.real), "cookies-c");
+            swap_auth(&paths, &mut state, Some("claude-4"), UNIX_EPOCH + T0).unwrap();
+            let c = paths.bundle("claude-3").unwrap();
+            assert!(paths.has_login(&c));
+            assert_eq!(read(&cookies(&paths, &c)), "cookies-c");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    /// Hồ sơ Windows chưa dời cookie vào `Network\` (Electron cũ) vẫn lưu và nạp đúng; cookie cũ ở gốc của tài khoản
+    /// trước không nằm lại cạnh cookie mới.
+    #[test]
+    fn windows_profile_with_cookies_at_the_root_still_switches() {
+        let (home, paths) = layouts("winroot").pop().unwrap();
+        fake_profile(&paths, &paths.real, "a");
+        std::fs::remove_dir_all(paths.real.join("Network")).unwrap();
+        put(&paths.real.join("Cookies"), "cookies-a-old");
+        put(&paths.real.join("Local State"), "key");
+        let other = home.join("other");
+        fake_profile(&paths, &other, "b");
+        save_auth(
+            &other,
+            &paths.bundle("claude-2").unwrap(),
+            paths.auth_files(),
+        )
+        .unwrap();
         let mut state = State {
             active: Some("claude-1".into()),
             backup: None,
         };
         swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap();
-        assert_eq!(state.active.as_deref(), Some("claude-2"));
-        assert_eq!(
-            account(&paths.real),
-            ("cookies-b".into(), "v10b-b".into(), "mode-b".into())
-        );
-        assert_eq!(
-            json(&paths.real.join(CONFIG))["lastKnownAccountUuid"],
-            "uuid-b"
-        );
-        assert_eq!(shared(&paths.real), before, "file dùng chung giữ nguyên");
-        // Đăng nhập của A đã lưu vào gói A.
+        assert_eq!(read(&cookies(&paths, &paths.real)), "cookies-b");
+        assert!(!paths.real.join("Cookies").exists());
+        assert_eq!(read(&paths.real.join("Local State")), "key");
         let a = paths.bundle("claude-1").unwrap();
-        assert_eq!(read(&a.join("Cookies")), "cookies-a");
-        assert_eq!(json(&a.join(CONFIG))["oauth:tokenCache"], "v10-a");
-        assert_eq!(json(&a.join(BUNDLE_PREFS))["sidebarMode"], "mode-a");
-        assert!(
-            json(&a.join(CONFIG)).get("locale").is_none(),
-            "bộ chỉ có khoá xác thực"
-        );
+        assert_eq!(read(&a.join("Cookies")), "cookies-a-old");
+        assert!(paths.has_login(&a));
 
         swap_auth(&paths, &mut state, Some("claude-1"), UNIX_EPOCH + T0).unwrap();
-        assert_eq!(
-            account(&paths.real),
-            ("cookies-a".into(), "v10b-a".into(), "mode-a".into())
-        );
-        assert_eq!(shared(&paths.real), before);
-        assert_eq!(read_state(&paths), state);
-        no_temp_files(&paths.real);
-        no_temp_files(&paths.root.join("claude-1"));
-        std::fs::remove_dir_all(&home).unwrap();
-    }
-
-    #[test]
-    fn plan_without_login_opens_signed_out_and_keeps_everything_else() {
-        let home = temp_home("signin");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
-        let before = shared(&paths.real);
-        let mut state = State::default();
-        swap_auth(&paths, &mut state, Some("claude-3"), UNIX_EPOCH + T0).unwrap();
-        assert!(!paths.real.join("Cookies").exists());
-        assert!(!paths.real.join("Cookies-journal").exists());
-        let config = json(&paths.real.join(CONFIG));
-        for k in AUTH_KEYS {
-            assert!(config.get(k).is_none(), "{k}");
-        }
-        // preferences để nguyên cho app tự xử lý lúc đăng nhập.
-        assert_eq!(
-            json(&paths.real.join(DESKTOP_CONFIG))["preferences"]["sidebarMode"],
-            "mode-a"
-        );
-        assert_eq!(shared(&paths.real), before);
-        assert_eq!(state.active.as_deref(), Some("claude-3"));
-
-        // Người dùng đăng nhập trong app; lần chuyển sau lưu đăng nhập đó cho claude-3.
-        put(&paths.real.join("Cookies"), "cookies-c");
-        swap_auth(&paths, &mut state, Some("claude-4"), UNIX_EPOCH + T0).unwrap();
-        assert!(has_login(&paths.bundle("claude-3").unwrap()));
-        assert_eq!(
-            read(&paths.bundle("claude-3").unwrap().join("Cookies")),
-            "cookies-c"
-        );
+        assert_eq!(read(&paths.real.join("Cookies")), "cookies-a-old");
+        assert!(!cookies(&paths, &paths.real).exists());
         std::fs::remove_dir_all(&home).unwrap();
     }
 
     #[test]
     fn first_switch_backs_up_the_whole_profile_once_and_restore_brings_the_login_back() {
-        let home = temp_home("backup");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
-        let mut state = State::default();
-        swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap();
-        let name = state.backup.clone().unwrap();
-        assert_eq!(name, "backup-20261014-132200");
-        let backup = paths.root.join(&name);
-        assert_eq!(read(&backup.join("Cookies")), "cookies-a");
-        assert_eq!(
-            read(&backup.join("claude-code-sessions/uuid-a/org/s.json")),
-            "session A"
-        );
-        assert!(!backup.join("Cache").exists(), "không chép cache");
-        assert!(!backup.join("claude-code").exists());
+        for (home, paths) in layouts("backup") {
+            fake_profile(&paths, &paths.real, "a");
+            let mut state = State::default();
+            swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap();
+            let name = state.backup.clone().unwrap();
+            assert_eq!(name, "backup-20261014-132200");
+            let backup = paths.root.join(&name);
+            assert_eq!(read(&cookies(&paths, &backup)), "cookies-a");
+            assert_eq!(
+                read(&backup.join("claude-code-sessions/uuid-a/org/s.json")),
+                "session A"
+            );
+            assert!(backup.join("Local State").exists());
+            assert!(!backup.join("Cache").exists(), "không chép cache");
+            assert!(!backup.join("claude-code").exists());
 
-        // Lần sau không sao lưu lại, dù giờ khác.
-        swap_auth(
-            &paths,
-            &mut state,
-            Some("claude-3"),
-            UNIX_EPOCH + T0 + Duration::from_secs(3600),
-        )
-        .unwrap();
-        assert_eq!(state.backup.as_deref(), Some(name.as_str()));
-        assert_eq!(
-            std::fs::read_dir(&paths.root)
-                .unwrap()
-                .filter(|e| e
-                    .as_ref()
+            // Lần sau không sao lưu lại, dù giờ khác.
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-3"),
+                UNIX_EPOCH + T0 + Duration::from_secs(3600),
+            )
+            .unwrap();
+            assert_eq!(state.backup.as_deref(), Some(name.as_str()));
+            assert_eq!(
+                std::fs::read_dir(&paths.root)
                     .unwrap()
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with("backup-"))
-                .count(),
-            1
-        );
+                    .filter(|e| e
+                        .as_ref()
+                        .unwrap()
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("backup-"))
+                    .count(),
+                1
+            );
 
-        // Khôi phục: về tài khoản ban đầu, không gói nào đang dùng; đăng nhập (trống) của claude-3 vẫn được lưu.
-        put(&paths.real.join("Cookies"), "cookies-c");
-        put(
-            &paths.real.join("claude-code-sessions/uuid-c/new.json"),
-            "new",
-        );
-        swap_auth(&paths, &mut state, None, UNIX_EPOCH + T0).unwrap();
-        assert_eq!(state.active, None);
-        assert_eq!(account(&paths.real).0, "cookies-a");
-        assert_eq!(json(&paths.real.join(CONFIG))["oauth:tokenCache"], "v10-a");
-        assert_eq!(
-            read(&paths.real.join("claude-code-sessions/uuid-c/new.json")),
-            "new",
-            "khôi phục chỉ đổi đăng nhập, không xoá dữ liệu mới"
-        );
-        assert_eq!(
-            read(&paths.bundle("claude-3").unwrap().join("Cookies")),
-            "cookies-c"
-        );
-        std::fs::remove_dir_all(&home).unwrap();
+            // Khôi phục: về tài khoản ban đầu, không gói nào đang dùng; đăng nhập (trống) của claude-3 vẫn được lưu.
+            put(&cookies(&paths, &paths.real), "cookies-c");
+            put(
+                &paths.real.join("claude-code-sessions/uuid-c/new.json"),
+                "new",
+            );
+            swap_auth(&paths, &mut state, None, UNIX_EPOCH + T0).unwrap();
+            assert_eq!(state.active, None);
+            assert_eq!(account(&paths, &paths.real).0, "cookies-a");
+            assert_eq!(json(&paths.real.join(CONFIG))["oauth:tokenCache"], "v10-a");
+            assert_eq!(
+                read(&paths.real.join("claude-code-sessions/uuid-c/new.json")),
+                "new",
+                "khôi phục chỉ đổi đăng nhập, không xoá dữ liệu mới"
+            );
+            assert_eq!(
+                read(&cookies(&paths, &paths.bundle("claude-3").unwrap())),
+                "cookies-c"
+            );
+            std::fs::remove_dir_all(&home).unwrap();
+        }
     }
 
     #[test]
     fn broken_config_aborts_before_touching_the_profile() {
-        let home = temp_home("broken");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
-        let other = home.join("other");
-        fake_profile(&other, "b");
-        save_auth(&other, &paths.bundle("claude-2").unwrap()).unwrap();
-        put(&paths.real.join(DESKTOP_CONFIG), "{không phải json");
-        let mut state = State {
-            active: Some("claude-1".into()),
-            backup: None,
-        };
-        let err = swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap_err();
-        assert!(err.contains("không phải JSON"), "{err}");
-        assert_eq!(read(&paths.real.join("Cookies")), "cookies-a");
-        assert_eq!(read(&paths.real.join(DESKTOP_CONFIG)), "{không phải json");
-        assert_eq!(state.active.as_deref(), Some("claude-1"));
-        no_temp_files(&paths.real);
-        std::fs::remove_dir_all(&home).unwrap();
+        for (home, paths) in layouts("broken") {
+            fake_profile(&paths, &paths.real, "a");
+            let other = home.join("other");
+            fake_profile(&paths, &other, "b");
+            save_auth(
+                &other,
+                &paths.bundle("claude-2").unwrap(),
+                paths.auth_files(),
+            )
+            .unwrap();
+            put(&paths.real.join(DESKTOP_CONFIG), "{không phải json");
+            let mut state = State {
+                active: Some("claude-1".into()),
+                backup: None,
+            };
+            let err = swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap_err();
+            assert!(err.contains("không phải JSON"), "{err}");
+            assert_eq!(read(&cookies(&paths, &paths.real)), "cookies-a");
+            assert_eq!(read(&paths.real.join(DESKTOP_CONFIG)), "{không phải json");
+            assert_eq!(state.active.as_deref(), Some("claude-1"));
+            no_temp_files(&paths.real);
+            std::fs::remove_dir_all(&home).unwrap();
+        }
     }
 
     #[test]
     fn restore_without_backup_is_refused() {
-        let home = temp_home("nobackup");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
-        let mut state = State::default();
-        assert!(swap_auth(&paths, &mut state, None, UNIX_EPOCH + T0).is_err());
-        assert_eq!(read(&paths.real.join("Cookies")), "cookies-a");
-        std::fs::remove_dir_all(&home).unwrap();
+        for (home, paths) in layouts("nobackup") {
+            fake_profile(&paths, &paths.real, "a");
+            let mut state = State::default();
+            assert!(swap_auth(&paths, &mut state, None, UNIX_EPOCH + T0).is_err());
+            assert_eq!(read(&cookies(&paths, &paths.real)), "cookies-a");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
     }
 
     #[cfg(unix)]
@@ -1261,10 +1402,10 @@ mod tests {
     fn saved_logins_are_private() {
         use std::os::unix::fs::PermissionsExt;
         let home = temp_home("perm");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
+        let paths = Paths::mac(&home);
+        fake_profile(&paths, &paths.real, "a");
         let bundle = paths.bundle("claude-1").unwrap();
-        save_auth(&paths.real, &bundle).unwrap();
+        save_auth(&paths.real, &bundle, paths.auth_files()).unwrap();
         let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&bundle), 0o700);
         assert_eq!(mode(bundle.parent().unwrap()), 0o700);
@@ -1273,7 +1414,7 @@ mod tests {
         }
         // Lưu lại đè bộ cũ, không để thư mục tạm.
         put(&paths.real.join("Cookies"), "cookies-a2");
-        save_auth(&paths.real, &bundle).unwrap();
+        save_auth(&paths.real, &bundle, paths.auth_files()).unwrap();
         assert_eq!(read(&bundle.join("Cookies")), "cookies-a2");
         no_temp_files(bundle.parent().unwrap());
         std::fs::remove_dir_all(&home).unwrap();
@@ -1282,11 +1423,11 @@ mod tests {
     #[test]
     fn legacy_profile_becomes_a_login_bundle() {
         let home = temp_home("legacy");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
+        let paths = Paths::mac(&home);
+        fake_profile(&paths, &paths.real, "a");
         let real_before = shared(&paths.real);
         let old = paths.root.join("claude-2");
-        fake_profile(&old, "b");
+        fake_profile(&paths, &old, "b");
         std::fs::create_dir_all(paths.root.join("claude-5").join("auth")).unwrap();
         assert_eq!(legacy_profiles(&paths.root), vec!["claude-2".to_string()]);
         migrate_legacy(&paths, "claude-2").unwrap();
@@ -1310,58 +1451,14 @@ mod tests {
     #[test]
     fn legacy_migration_never_touches_the_real_profile_through_a_symlink() {
         let home = temp_home("legacylink");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
+        let paths = Paths::mac(&home);
+        fake_profile(&paths, &paths.real, "a");
         std::fs::create_dir_all(&paths.root).unwrap();
         std::os::unix::fs::symlink(&paths.real, paths.root.join("claude-1")).unwrap();
         assert!(migrate_legacy(&paths, "claude-1").is_err());
         assert_eq!(read(&paths.real.join("Cookies")), "cookies-a");
         assert!(paths.real.join("Local Storage/leveldb/000005.ldb").exists());
         std::fs::remove_dir_all(&home).unwrap();
-    }
-
-    #[test]
-    fn finds_app_in_applications_or_home() {
-        let home = temp_home("find");
-        let user_app = home.join("Applications").join("Claude.app");
-        let missing = home.join("nowhere").join("Claude.app");
-        assert_eq!(find_app_in(&[missing.clone(), user_app.clone()]), None);
-        put(&app_binary(&user_app), "x");
-        assert_eq!(
-            find_app_in(&[missing, user_app.clone()]),
-            Some(user_app.clone())
-        );
-        assert_eq!(
-            app_candidates(&home),
-            vec![PathBuf::from("/Applications/Claude.app"), user_app]
-        );
-        std::fs::remove_dir_all(&home).unwrap();
-    }
-
-    #[test]
-    fn running_splits_real_and_legacy_main_processes() {
-        let root = Path::new("/Users/a/.xdev-hive/claude-desktop");
-        let ps = "\
-  412 /Applications/Claude.app/Contents/MacOS/Claude
-  413 /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer) --type=renderer
-  500 /Applications/Claude.app/Contents/MacOS/Claude --user-data-dir=/Users/a/.xdev-hive/claude-desktop/claude-2
-  501 /Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer) --type=renderer --user-data-dir=/Users/a/.xdev-hive/claude-desktop/claude-2
-  600 /Users/a/Applications/Claude.app/Contents/MacOS/Claude --user-data-dir=/Users/a/.xdev-hive/claude-desktop/claude-3 --foo
-  700 /Applications/Claude.app/Contents/MacOS/Claude --user-data-dir=/tmp/other
-  800 /usr/bin/vim /Users/a/.xdev-hive/claude-desktop/claude-4/x --user-data-dir=/Users/a/.xdev-hive/claude-desktop/claude-4
-  900 /usr/local/bin/claude --print
-  bad line
-";
-        assert_eq!(
-            running_in(ps, root),
-            Running {
-                real: vec![412],
-                legacy: HashMap::from([
-                    ("claude-2".to_string(), 500),
-                    ("claude-3".to_string(), 600)
-                ]),
-            }
-        );
     }
 
     fn plan(id: &str, cli: &str, label: &str, email: Option<&str>) -> Plan {
@@ -1376,9 +1473,14 @@ mod tests {
     #[test]
     fn view_lists_claude_plans_with_saved_and_active() {
         let home = temp_home("view");
-        let paths = Paths::new(&home);
-        fake_profile(&paths.real, "a");
-        save_auth(&paths.real, &paths.bundle("claude-1").unwrap()).unwrap();
+        let paths = Paths::mac(&home);
+        fake_profile(&paths, &paths.real, "a");
+        save_auth(
+            &paths.real,
+            &paths.bundle("claude-1").unwrap(),
+            paths.auth_files(),
+        )
+        .unwrap();
         write_state(
             &paths,
             &State {
@@ -1392,8 +1494,9 @@ mod tests {
             plan("codex-1", "codex", "Codex", None),
             plan("claude-2", "claude", "", Some("")),
         ];
-        let app = PathBuf::from("/Applications/Claude.app");
+        let app = App::Mac(PathBuf::from("/Applications/Claude.app"));
         let v = view(&paths, &plans, Some(&app), true, Some(42));
+        assert_eq!(v.app.as_deref(), Some("/Applications/Claude.app"));
         assert_eq!(v.note, None);
         assert_eq!(v.running, Some(42));
         assert_eq!(v.backup, None, "bản sao lưu đã mất thì không báo có");
@@ -1410,7 +1513,7 @@ mod tests {
         assert_eq!(v.profiles[1].email, None);
         assert_eq!(
             view(&paths, &plans, None, true, None).note.as_deref(),
-            Some(NOT_INSTALLED)
+            Some(mac::NOT_INSTALLED)
         );
         assert_eq!(
             view(&paths, &plans, None, false, None).note.as_deref(),

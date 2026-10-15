@@ -81,7 +81,7 @@ struct Tray {
     update_check: MenuItem<Wry>,
     /// Chỉ nằm trong menu khi có bản đã tải xong.
     update_restart: MenuItem<Wry>,
-    /// "Chuyển Claude Desktop sang…": mỗi gói Claude một mục. Chỉ có trên macOS (claude_desktop.rs).
+    /// "Chuyển Claude Desktop sang…": mỗi gói Claude một mục. Chỉ có trên macOS và Windows (claude_desktop.rs).
     claude: Option<Submenu<Wry>>,
     menu: Menu<Wry>,
     restart_shown: Mutex<bool>,
@@ -697,11 +697,8 @@ fn switch_claude_from_tray(app: &AppHandle, plan: String) {
         // Khay không hỏi được "buộc thoát?": app không chịu thoát thì báo, người dùng tự thoát hoặc dùng cửa sổ Hive.
         let text = match claude_desktop::switch(&app, &plan, false).await {
             Ok(s) => match s.status {
-                claude_desktop::SwitchStatus::StillRunning if en => {
-                    "Claude Desktop did not quit. Quit it (Cmd+Q) and try again.".to_string()
-                }
                 claude_desktop::SwitchStatus::StillRunning => {
-                    "Claude Desktop chưa thoát. Thoát nó (Cmd+Q) rồi thử lại.".to_string()
+                    claude_desktop::still_running_text(en).to_string()
                 }
                 claude_desktop::SwitchStatus::Already if en => {
                     format!("Claude Desktop is already on {plan}.")
@@ -765,7 +762,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     )?;
     // Nằm trước "Thoát" để vị trí của mục "Mở lại để cập nhật" (RESTART_ITEM_AT) không đổi. Danh sách gói đổ vào sau,
     // khi worker trả danh sách (set_claude_tray).
-    let claude = if cfg!(target_os = "macos") {
+    let claude = if claude_desktop::SUPPORTED {
         let sub = Submenu::with_items(
             app,
             claude_menu_text(false),
@@ -1019,7 +1016,7 @@ pub fn run() {
                     Err(e) => eprintln!("Không đọc được cấu hình worker: {e}"),
                 }
                 // Tính năng tại máy: không cần đăng ký với hub, chỉ cần danh sách gói của worker.
-                if cfg!(target_os = "macos")
+                if claude_desktop::SUPPORTED
                     && let Err(e) = claude_desktop::load(&handle).await
                 {
                     eprintln!("Không đọc được gói Claude cho khay: {e}");
