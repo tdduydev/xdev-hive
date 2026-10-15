@@ -79,7 +79,7 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
 
 ## Phát hành
 
-Tag `v*` đóng gói app cho macOS arm64, Windows x64, Linux amd64 và gắn vào GitHub Release cùng worker; mỗi lần đổi
+Tag `v*` (tự tạo mỗi lần nhánh `release` được cập nhật, xem `docs/releasing.md`) đóng gói app cho macOS arm64, Windows x64, Linux amd64 và gắn vào GitHub Release cùng worker; mỗi lần đổi
 app trên `main` có bản thử ở mục Artifacts của workflow `Desktop`. Chi tiết, tên file và ký mã: `docs/releasing.md`.
 
 **Phát hành bằng nút trên GitHub:** Actions → Release → Run workflow (chọn nhánh `main`), nhập `version` dạng `x.y.z`

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dismiss-claude-desktop-mismatch"
+description = "Enables the dismiss_claude_desktop_mismatch command without any pre-configured scope."
+commands.allow = ["dismiss_claude_desktop_mismatch"]
+
+[[permission]]
+identifier = "deny-dismiss-claude-desktop-mismatch"
+description = "Denies the dismiss_claude_desktop_mismatch command without any pre-configured scope."
+commands.deny = ["dismiss_claude_desktop_mismatch"]

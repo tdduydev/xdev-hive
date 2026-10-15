@@ -32,6 +32,14 @@ module.exports = {
       from: { path: "^packages/" },
       to: { path: "^apps/" },
     },
+    {
+      name: "vscode-host-va-webview-khong-import-nhau",
+      comment:
+        "Extension host (apps/vscode/src) và webview (apps/vscode/webview) chỉ chung nhau qua apps/vscode/shared.",
+      severity: "error",
+      from: { path: "^apps/vscode/(src|webview)/" },
+      to: { path: "^apps/vscode/(src|webview)/", pathNot: "^apps/vscode/$1/" },
+    },
     { name: "khong-vong-tron", severity: "error", from: {}, to: { circular: true } },
   ],
   options: {
