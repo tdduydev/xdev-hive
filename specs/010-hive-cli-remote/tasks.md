@@ -46,7 +46,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     vector
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T002 Contract API `terminal.*` và đăng nhập CLI
+- [x] T002 Contract API `terminal.*` và đăng nhập CLI
+  - Đã làm (SPEC10W3): route phiên máy cá nhân nằm ở contract `remote` (`/v1/remote/…`), không gộp vào `terminal` của
+    phiên Leader để không nới quyền bên nào; khung WS `remoteClientFrame`/`remoteServerFrame`; `REMOTE_LIMITS`,
+    `remoteErrors`, `REMOTE_AUDIT_ACTIONS`. `desktop-connect`: `purpose: "desktop" | "cli"`, output là union theo
+    `purpose`. `notify`: ba sự kiện `terminal.*` chỉ cho hộp thư/đẩy của chủ máy (`notificationChannelEvent` loại chúng
+    khỏi kênh tổ chức). Chính sách: `remote.totpFallback` (mặc định bật; lưu chính sách từ client cũ giữ giá trị cũ).
   - `terminal.ts`: kiểu phiên, máy (trạng thái từ xa), thiết bị, route ở plan.md (`machines`, `list`, `get`, `chunks`,
     `ticket`, `start`, `close`, `setVisibility`, `disableRemote`, `pairOptions`, `pairComplete`, `devices`,
     `revokeDevice`, `pushKey`, `pushSubscribe`, `pushUnsubscribe`); khung WS trình duyệt (`resume`, `control`, `in`,
@@ -60,17 +65,27 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `packages/contracts/openapi.json`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T003 [P] Worker: gói PTY
+- [x] T003 [P] Worker: gói PTY
+  - Đã làm (SPEC10W5): ConPTY gọi thẳng `x/sys/windows` (không thêm `go-pty`: `creack/pty` đã chạy Unix từ T101).
+    `Start` trả `pty.Terminal` (`Read`, `Write`, `Close`, `Resize`) trên mọi hệ điều hành; Windows: `CreateProcess` với
+    pseudo console, stdio không kế thừa từ worker, job `KILL_ON_JOB_CLOSE` cho `KillGroup` cả cây, `HangupGroup` đóng
+    console (CTRL_CLOSE_EVENT), tiến trình thoát thì đóng console để `Read` nhận EOF; `Supported` dò
+    `CreatePseudoConsole`. Test Windows dùng chính file test làm CLI giả: echo, resize, mã thoát, 10 MB output, kill
+    cây, hangup. Bên gọi (`accounts`, `terminal`) đổi sang `Terminal.Resize`.
   - `internal/pty`: bọc `aymanbagabas/go-pty` (Unix + ConPTY): `Start(cmd, env, dir, cols, rows)`, `Resize`, `Read`,
     `Write`, `Signal(hup|int|kill)`, `Wait`; nhóm tiến trình để kill cả cây.
   - Test với CLI giả (Go test binary): echo, output 10 MB, resize, thoát mã khác 0, kill cây; CI Windows chạy test ConPTY.
   - **Scope**: `worker/internal/pty/**`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T004 [P] Worker: socket nội bộ
+- [x] T004 [P] Worker: socket nội bộ
   - Một phần (SPEC10NEXT): Unix socket (`HIVE_SOCKET` ghi đè đường dẫn), kiểm UID bằng `SO_PEERCRED`/`LOCAL_PEERCRED`,
-    dọn socket cũ, bắt tay, khung nhị phân, test đủ ca. **Còn**: Windows named pipe + DACL + kiểm SID (hiện báo "chưa hỗ
-    trợ trên Windows").
+    dọn socket cũ, bắt tay, khung nhị phân, test đủ ca.
+  - Đã làm (SPEC10W5): Windows named pipe `\\.\pipe\xdev-hive-<SID>` qua `go-winio` (đường dẫn file như `HIVE_SOCKET`
+    được băm ra tên pipe), DACL được bảo vệ chỉ SID hiện tại, tạo lần đầu bằng `FILE_CREATE` nên pipe đã có thì
+    `ErrInUse`; server kiểm SID client (`GetNamedPipeClientProcessId`), client kiểm SID tiến trình giữ pipe
+    (`GetNamedPipeServerProcessId`) để chặn người khác giữ trước tên pipe. Test chung chạy cả Unix lẫn Windows
+    (`server_test.go`), riêng Windows: tên pipe, SDDL, pipe đang dùng, mở lại sau khi đóng. Bỏ `ErrUnsupported`.
   - `internal/localipc`: server/client; Unix socket 0600 trong thư mục 0700, kiểm UID bằng `SO_PEERCRED`
     (Linux) / `LOCAL_PEERCRED` (macOS); Windows named pipe với DACL chỉ SID hiện tại và kiểm SID client; bắt tay phiên
     bản; yêu cầu JSON một dòng; chuyển sang khung nhị phân `[loại u8][độ dài u32][dữ liệu]` sau `attach`.
@@ -93,13 +108,20 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/remoteauth/**`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T006 [P] Thiết kế UI bằng skill `ui-ux-pro-max`, theo design system và shadcn/ui: web điện thoại (danh sách máy và
+- [x] T006 [P] Thiết kế UI bằng skill `ui-ux-pro-max`, theo design system và shadcn/ui: web điện thoại (danh sách máy và
   phiên, terminal với thanh phím và ô soạn, mở phiên mới, ghép, thiết bị, hướng dẫn cài PWA) và màn app desktop Điều khiển
   từ xa (công tắc, thư mục, thiết bị + QR, phiên, hộp xác nhận); 360 px, sáng/tối.
   - **Scope**: `docs/design-system/screens/{Remote.dc.html,AppRemote.dc.html}` (mới), `docs/design-system/screens/README.md`
+  - Đã làm (SPEC10W5): hai màn có trạng thái `view`, vi/en, sáng/tối, 360 px, chạm 44 px; bàn giao trong README (chưa
+    đưa lên canvas).
   - **Phụ thuộc**: không · **Mức**: vừa
 
-- [ ] T007 Bảng và migration module `terminal`
+- [x] T007 Bảng và migration module `terminal`
+  - Đã làm (SPEC10W3): migration `0071_remote_terminal.sql`. `terminal_sessions` (đã có từ T103) thêm `origin`
+    (`hub|local|remote`), `task_id`, `cwd_label`, `remote`, `request_id`; `project_id`/`mode`/`model` thành nullable,
+    ràng buộc `terminal_sessions_hub_fields` giữ chúng bắt buộc với phiên Leader. `terminal_chunks` giữ khoá `(session,
+    seq)` của lát đầu (không `offset`). Bốn bảng mới ép RLS; `remote_devices` khoá `(machine_id, id)` vì id do worker sinh.
+    `hive.purge_terminal_chunks()` chạy cùng job `runs-log-retention`. Không có `ALTER TYPE` nên không thêm ca nâng cấp.
   - `terminal/schema.ts`: `terminal_sessions`, `terminal_chunks`, `terminal_events`, `remote_devices`,
     `push_subscriptions`, `machine_remote_state` đúng plan.md; `orgScoped`; chỉ số theo máy, chủ, task.
   - `db:generate` → `00NN_terminal.sql`; thêm tay `FORCE ROW LEVEL SECURITY` và `hive.purge_terminal_chunks()` (như
@@ -129,9 +151,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/remoteauth/{totp.go,totp_test.go,verify.go,verify_test.go}`
   - **Phụ thuộc**: T001, T005 (cùng làn) · **Mức**: nặng
 
-- [ ] T010 [US1] Worker: kiểu gói `term_*` và chuyển gói
-  - Một phần (SPEC10NEXT): kiểu Go mọi gói mới trong `protocol.go` + test fixture. **Còn**: `channel.go` đọc
-    `welcome.owner/policy`, chuyển gói H→W tới `terminal.Handler`.
+- [x] T010 [US1] Worker: kiểu gói `term_*` và chuyển gói
+  - Đã làm (SPEC10NEXT, SPEC10W3): kiểu Go mọi gói mới trong `protocol.go` + test fixture; `channel.go` khai `terminal`
+    khi có `Config.Terminal`, chuyển `welcome.features/owner/policy` và gói H→W (`term_input/resize` chỉ khi có
+    `connId`) tới `terminal.Handler`; `Sender` gắn với ctx của phiên, hub không khai `terminal` thì trả
+    `ErrHubNoTerminal` và không ghi gì. `cmd/hive-worker` chưa nối Handler (T011).
   - `protocol.go`: kiểu Go cho mọi gói mới; test đọc fixture dùng chung.
   - `channel.go`: khai `terminal` trong `hello.capabilities`; đọc `welcome.features`/`owner`; chỉ gửi `term_*` khi hub
     khai; chuyển gói H→W `term_*` tới `terminal.Handler` (interface mới trong `internal/terminal/handler.go`); hàm gửi
@@ -141,10 +165,16 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `worker/internal/terminal/handler.go`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T011 [US1] Worker: session host
+- [x] T011 [US1] Worker: session host
   - Một phần (SPEC10NEXT): `terminal/local.go` (phiên tại máy qua socket, một người điều khiển + người xem, tách/gắn lại
     phát đuôi 256 KiB, kill, che bí mật, tối đa 8 phiên), `runner/localenv.go`, `accounts.AcquireInteractiveForce`,
-    `cmd/hive-worker/local.go`. **Còn**: ghi lên hub (`term_opened/output/exit`, đệm `pending`, `term_ack`) chờ T013.
+    `cmd/hive-worker/local.go`.
+  - Đã làm (SPEC10W4): `terminal/record.go` — `Recorder` là Handler của kênh: gom 8 ms/32 KiB → `term_output`, đệm đĩa
+    `terminal/<id>.pending` (một file mỗi phiên, 32 MB, quá thì `gap`; dời phần đã ack khi phiên in liên tục), xoá khi
+    `term_ack`; `term_opened` (`origin: local`, nhãn thư mục hai cấp cuối, không đường dẫn tuyệt đối), `term_exit`,
+    `term_state` (danh sách phiên); mất hub thì gửi bù sau welcome; máy dùng chung hoặc hub không khai `terminal` thì bỏ
+    đệm và không ghi. Yêu cầu từ xa (start/control/pair) trả `REMOTE_DISABLED` tới khi có T020/T031/T050.
+    `hive chat --no-record` truyền tới worker; `session.list` có `hubId`.
   - `internal/terminal`: `Host` tạo/gắn/liệt kê/ngắt phiên qua `localipc`; một người điều khiển (terminal tại máy hoặc
     kết nối từ xa); env theo danh sách cho phép như run (không `HIVE_*`, không token); che bí mật đã biết trong output;
     ghi: gom 8 ms/32 KiB → `term_output`, đệm đĩa `terminal/<id>/pending` (32 MB, quá thì `gap`), xoá khi `term_ack`;
@@ -157,10 +187,17 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `worker/internal/accounts/{accounts.go,accounts_test.go}`, `worker/cmd/hive-worker/{main.go,main_test.go}`
   - **Phụ thuộc**: T003, T004, T010 · **Mức**: nặng
 
-- [ ] T012 [US1] CLI `hive`: đăng nhập, chat/run, ls, kill
+- [x] T012 [US1] CLI `hive`: đăng nhập, chat/run, ls, kill
   - Một phần (SPEC10NEXT): `chat`, `run`, `ls [--json]`, `attach [--view]`, `kill`, `version`, phím Ctrl-] d/t, raw
-    mode, SIGWINCH, mã thoát. **Còn**: `login/logout/whoami` (cần `purpose: cli` của T002/T013), `--task/--project`,
-    `__hook`, `ls --all`, `--escape`, keychain.
+    mode, SIGWINCH, mã thoát.
+  - Đã làm (SPEC10W4): `login` (loopback PKCE `purpose: cli`, `--with-token` đọc stdin, `--no-browser`, `--hub`/
+    `HIVE_HUB_URL`/hub của worker), keychain `zalando/go-keyring` cùng mục với app desktop (`dev.xdev.hive`/URL hub;
+    không có keychain thì `hive.json` 0600 + cảnh báo), `logout`, `whoami`; `--task`/`--project` tra hub bằng token cá
+    nhân rồi gửi id cho worker; `ls --all` (phiên đang chạy trên mọi máy, từ `remote.list`); `--no-record`.
+    **Còn**: `__hook` (làm cùng T072), `--escape`.
+  - Đã làm (SPEC10W5): `--escape KEY` cho `chat`, `run`, `attach` (`ctrl-<phím>`, `^<phím>`, `none`; từ chối Esc/Tab/
+    Enter/Backspace vì agent cần; dòng hướng dẫn in theo phím đang dùng). `__hook` chuyển sang T072 (cần tín hiệu của
+    worker).
   - `cmd/hive`: `login` (loopback PKCE `purpose: cli`, `--with-token`), keychain (`dev.xdev.hive`/URL hub; không có thì
     file 0600 + cảnh báo), `logout`, `whoami`; `chat`/`run` (raw mode bằng `x/term`, SIGWINCH/console resize, phím tách
     và giành quyền, khôi phục terminal), `--task`/`--project` tra hub bằng token cá nhân; `ls`, `kill`, `version`;
@@ -169,7 +206,16 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/cmd/hive/**`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: T002, T004, T011 · **Mức**: nặng
 
-- [ ] T013 [US1] Hub: module `terminal` lõi
+- [x] T013 [US1] Hub: module `terminal` lõi
+  - Đã làm (SPEC10W3): `record.ts` (worker mở phiên trước rồi báo `term_opened` có `origin`; hub chỉ ghi phiên của máy
+    cá nhân, chủ phiên là người đăng ký máy, tối đa `REMOTE_LIMITS.recordedSessionsPerMachine`; task/dự án đội khác bị bỏ
+    liên kết; `term_event` vào `terminal_events`; `term_ack` sau mỗi lần ghi, kể cả phiên hub không ghi, và không bao giờ
+    `term_close` phiên máy cá nhân), `queries.ts` + `remoteRouter` (`remote.machines|list|get|chunks|setVisibility`).
+    `fleet/gateway.ts`: hook `welcome` của module terminal → `features: ["terminal"]`, `owner`, `policy.totpFallback`
+    cho máy cá nhân có capability `terminal`; máy dùng chung chỉ nhận `owner.shared`. Máy mất kết nối không kết thúc phiên
+    máy cá nhân (worker gửi bù). `desktop-connect` `purpose: cli` + trang đồng ý trên web. Purge bản ghi cùng job
+    `runs-log-retention`. **Khác plan**: chưa gộp chunk 64 KiB/1 s ở hub (ghi từng gói; worker đã gộp 8 ms/32 KiB) — đo ở
+    T090 rồi mới làm nếu cần.
   - `gateway.ts` (handler `term_opened|output|event|exit|state`), `record.ts` (gộp 64 KiB/1 s, loại trùng offset, ack sau
     ghi, purge cùng cron `retention.ts`), `queries.ts`, `router.ts` (`machines`, `list`, `get`, `chunks`,
     `setVisibility`), `index.ts`; kiểm chủ máy, máy cá nhân, task thuộc dự án của đội máy (FR-030); audit `terminal.open`,
@@ -185,7 +231,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/hub/src/modules/runs/retention.ts`, `apps/hub/src/{main.ts,app.ts,fleet.db.test.ts}`
   - **Phụ thuộc**: T002, T007 · **Mức**: nặng
 
-- [ ] T014 [P] [US1] Web: danh sách phiên và phát lại bản ghi
+- [x] T014 [P] [US1] Web: danh sách phiên và phát lại bản ghi
+  - Đã làm (SPEC10W5): `/remote` (máy của tôi với trạng thái từ xa, phiên đang chạy trước), `/remote/$id` phát lại qua
+    `remote.chunks` bằng `TerminalView` sẵn có (`live={false}`, chỉ đọc; phiên đang chạy hỏi lại mỗi 5 giây), mục
+    "Phiên tương tác" trên bảng việc (chỉ hiện khi có phiên), menu "Điều khiển từ xa". Thêm `pages/remote/session-row.tsx`
+    dùng chung. Không thêm gói npm. Playwright `remote.spec.ts`: danh sách, phát lại, 360 px sáng/tối, tiếng Anh.
   - `components/terminal-view.tsx` (xterm.js + fit, chỉ đọc, tải lười, tắt OSC 52, link cần xác nhận), `pages/remote/`
     `remote-page.tsx` (máy của tôi, phiên), `session-page.tsx` chế độ phát lại (đọc `chunks` theo trang), mục "Phiên
     tương tác" trên trang task; mục menu "Điều khiển từ xa".
@@ -213,7 +263,16 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 ## Phase 3: User Story 2 — Bật từ xa và ghép điện thoại (P1) 🎯 MVP
 
-- [ ] T020 [US2] Worker: bật/tắt, thư mục, ghép, thiết bị
+- [x] T020 [US2] Worker: bật/tắt, thư mục, ghép, thiết bị
+  - Đã làm (SPEC10W4): `terminal.Remote` (`remote.go`: `remote.status|enable|disable|roots.add|roots.remove|
+    devices.remove|settings`; root phải là thư mục tuyệt đối có thật, lưu dạng đã giải symlink, trùng/cả ổ đĩa bị từ
+    chối, tối đa 32; `term_state` chỉ có nhãn), `pairing.go` (`remote.pair.begin` trả `pairId`, bí mật và URL QR
+    `…/remote/pair?m=<tên máy>&p=<pairId>#s=<bí mật>` — `m` là tên máy trong hello, web (T022) tra ra id; term_pair kiểm
+    tag, chủ máy theo welcome, hỏi qua `watch`, chờ 50 s, `remote.pair.decide`; ghép lại cùng passkey thay bản cũ),
+    `watch.go` (trạng thái rồi sự kiện `state|pair_request|pair_done`, nhận `remote.pair.decide` trên cùng kết nối, phát
+    lại yêu cầu đang chờ), `audit.go` (`remote-audit.log` cạnh worker.json, 0600, xoay 10 MB × 5). `Recorder` chuyển
+    `term_pair|term_disable|term_device_revoke` cho `Remote`, gửi `term_state` mỗi khi đổi. welcome máy dùng chung → tắt;
+    đổi chủ → xoá thiết bị. Runner host không mở socket nội bộ nên không có đường bật. Kết thúc phiên từ xa khi tắt để T040.
   - Thao tác socket nội bộ `remote.*`, `watch`; `term_state` sau `welcome` và khi đổi; nhận `term_pair` (kiểm tag, hỏi
     xác nhận qua `watch`, lưu, `term_pair_result`), `term_disable`, `term_device_revoke`; từ chối bật ở chế độ `host` và
     máy dùng chung; `owner` trong `welcome` khác `ownerUserId` → xoá thiết bị; `remote-audit.log` (JSON dòng, xoay 10 MB ×
@@ -222,7 +281,13 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/terminal/{remote.go,pairing.go,audit.go,watch.go,remote_test.go,pairing_test.go}`
   - **Phụ thuộc**: T005, T011 · **Mức**: nặng
 
-- [ ] T021 [US2] Hub: ghép, thiết bị, trạng thái từ xa
+- [x] T021 [US2] Hub: ghép, thiết bị, trạng thái từ xa
+  - Đã làm (SPEC10W4): `state.ts` (`term_state` → `machine_remote_state` + `remote_devices`, audit nguồn máy cho bật/tắt,
+    thư mục, thiết bị máy thôi báo; phiên hub còn "đang chạy" mà máy không còn giữ thì kết thúc), `pairing.ts`
+    (`pairOptions` rp = host `HIVE_PUBLIC_URL`; `pairComplete` không giữ transaction trong lúc chờ máy, mã ghép đang chờ
+    thì không nhận lần hai), `devices.ts` (`devices`, `revokeDevice` cần máy online vì quyền nằm ở máy, `disableRemote`
+    cho chủ máy hoặc quản trị đội). Cờ `HIVE_REMOTE_TERMINAL` chỉ chặn ghép; gỡ và tắt khẩn cấp luôn chạy.
+    `excludeCredentials` để trống vì hub không giữ id passkey. `fleet/gateway.ts` chuyển `term_state`/`term_pair_result`.
   - `pairing.ts` (`pairOptions`: tuỳ chọn WebAuthn, `pairComplete`: kiểm chủ máy/máy cá nhân/online → `term_pair`, chờ
     `term_pair_result`), `devices.ts` (`devices`, `revokeDevice` → `term_device_revoke`), `machine_remote_state` từ
     `term_state`, `disableRemote`; audit `terminal.pair|pair_denied|device_revoke|remote_enable|remote_disable|root_*`.
@@ -240,13 +305,22 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/web/e2e/{remote-pair.spec.ts,fake-hub.ts}`
   - **Phụ thuộc**: T014, T021 (hoặc hub giả), T006 · **Mức**: nặng
 
-- [ ] T024 [US2] CLI `hive remote …`
+- [x] T024 [US2] CLI `hive remote …`
+  - Đã làm (SPEC10W4): `remote.go` (`status|on|off|roots [add|rm]|devices [rm]|pair|set|watch`, mọi lệnh có `--json`;
+    `on` và `set allow-full-access on` hỏi tại terminal, không có terminal thì cần `--yes`; `roots add` nhận thư mục
+    tương đối theo nơi gõ; `pair` mở watch trước rồi tạo mã, in QR + link, hỏi Cho phép trên chính kết nối watch, stdin
+    đóng thì từ chối ngay; `pair --json` chỉ trả mã cho app; `watch --json` chuyển nguyên từng dòng hai chiều, `watch`
+    không cờ hỏi tại terminal). `qr.go` vẽ bằng nửa khối với `rsc.io/qr`, chữ trắng nền đen khi là terminal.
   - `on` (hỏi xác nhận), `off`, `status`, `roots add|rm`, `devices [rm]`, `pair` (in QR trong terminal, chờ và hỏi
     Cho phép), `set`, `watch --json` (cho app; trả lời hộp xác nhận qua stdin JSON).
   - **Scope**: `worker/cmd/hive/{remote.go,remote_test.go,qr.go}`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: T012, T020 · **Mức**: vừa
 
-- [ ] T025 [US2] Worker: tạo và quản lý khoá TOTP
+- [x] T025 [US2] Worker: tạo và quản lý khoá TOTP
+  - Đã làm (SPEC10W4): `totp_enroll.go` (`remote.totp.begin` trả `uri`, `secret` base32, `expiresAt`; khoá chờ chỉ giữ
+    trong bộ nhớ, `begin` lại thay khoá chờ cũ; `confirm` sai 5 lần thì bỏ khoá chờ; lưu bằng `TOTPStore.Enable` nên mã
+    xác nhận không dùng lại được; `disable`/`unlock` tại máy; audit không có khoá hay mã). Chế độ `host` không mở socket
+    nội bộ nên không có đường vào; máy dùng chung bị từ chối.
   - Thao tác socket nội bộ `remote.totp.begin|confirm|disable|unlock` (T020 đã có khung `remote.*`): sinh khoá, URI
     `otpauth://`, chỉ lưu sau khi `confirm` bằng mã đúng, hết hạn 10 phút; tắt/đổi khoá tại máy; `term_state.totp`; từ chối
     khi chế độ `host` hoặc máy dùng chung; ghi `remote-audit.log` (`totp_enroll|totp_disable|totp_unlock`), không ghi khoá
@@ -256,7 +330,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/terminal/{totp_enroll.go,totp_enroll_test.go}`
   - **Phụ thuộc**: T008, T020 · **Mức**: nặng
 
-- [ ] T026 [US2] CLI `hive remote totp …`
+- [x] T026 [US2] CLI `hive remote totp …`
+  - Đã làm (SPEC10W4): `remote_totp.go` (`status`, `enroll` in QR + khoá nhóm 4 ký tự, hỏi mã tới khi đúng, sai quá 5 lần
+    thì worker bỏ khoá chờ; hết stdin thì báo chưa lưu; hub `http://` cảnh báo trên stderr, hub HTTPS nhắc
+    `totp-on-https`; `confirm <mã>` cho app; `disable` hỏi xác nhận hoặc `--yes`; `unlock`; `--json` mọi lệnh).
+    `remote.totp.begin` trả thêm `hubUrl` để CLI và app cảnh báo HTTP.
   - `enroll` (in QR `otpauth://` và URI, hỏi nhập một mã để xác nhận, cảnh báo HTTP khi hub là `http://`), `status`,
     `disable` (hỏi xác nhận), `unlock`; có `--json` cho app.
   - **Scope**: `worker/cmd/hive/{remote_totp.go,remote_totp_test.go}`
@@ -414,7 +492,8 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 - [ ] T072 [US7] Worker: tín hiệu "agent cần bạn"
   - Claude tương tác: file settings tạm với hook `Notification` (+ `Stop`) gọi `hive __hook attention`, ghép với hook
     quản lý của tổ chức như `runner/hooks.go`; CLI khác: im 60 s sau output → `idle`; gửi `term_event`.
-  - **Scope**: `worker/internal/terminal/{attention.go,attention_test.go}`
+  - Lệnh `hive __hook` (chuyển từ T012): gửi tín hiệu tới worker qua socket nội bộ.
+  - **Scope**: `worker/internal/terminal/{attention.go,attention_test.go}`, `worker/cmd/hive/{main.go,hook.go,hook_test.go}`
   - **Phụ thuộc**: T050 (cùng làn) · **Mức**: vừa
 
 ---

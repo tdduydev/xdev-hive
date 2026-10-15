@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import {
   type ReviewGate,
   type ReviewPhase,
+  reviewGate,
+  reviewPhase,
   type SdlcMode,
   type SdlcPhase,
   type SdlcPhaseStatus,
@@ -9,6 +11,7 @@ import {
   type SdlcStep,
   sdlcItemRef,
 } from "@xdev-hive/contracts";
+import type { SdlcJobSpec } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject } from "../catalog/index.ts";
@@ -24,7 +27,18 @@ import {
 import type { ProviderFactory } from "../scm/index.ts";
 import { teams } from "../tenancy/index.ts";
 import { activeItemProjects, requireItemManage } from "./access.ts";
-import { sdlcArtifactSyncs, sdlcArtifacts, sdlcItemPhases, sdlcItemProjects, sdlcItems, sdlcSteps } from "./schema.ts";
+import { onBreakdownBaseline } from "./breakdown.ts";
+import { contractCheckpointTeams } from "./contracts.ts";
+import {
+  sdlcArtifactSyncs,
+  sdlcArtifacts,
+  sdlcAutoApprovals,
+  sdlcItemPhases,
+  sdlcItemProjects,
+  sdlcItems,
+  sdlcSteps,
+} from "./schema.ts";
+import { queueSync } from "./sync.ts";
 
 /*
  * Máy trạng thái giai đoạn của hạng mục (plan.md "Luồng"). Giai đoạn đạt khi mọi tài liệu bắt buộc của nó có baseline;
@@ -41,7 +55,9 @@ export const SDLC_SYSTEM_ACTOR = "system:sdlc";
 
 export type SdlcJob =
   | { kind: "advance"; orgId: string; itemId: string }
-  | { kind: "issue-comment"; orgId: string; itemId: string };
+  | { kind: "issue-comment"; orgId: string; itemId: string }
+  /** Đọc CI của commit merge cho truy vết (scm.ts); `poll` đếm số lần đã hỏi khi CI còn chạy. */
+  | { kind: "trace-ci"; orgId: string; itemId: string; taskId: string; sha: string; poll: number };
 
 /** Một bước agent cần run `sdlc`; T022 dựng prompt, seed, collect rồi gọi `runs.startSdlcRun`. */
 export interface SdlcStepStart {
@@ -56,6 +72,23 @@ export interface SdlcStepStart {
   requestedBy: string | null;
 }
 
+/** Run `sdlc` mà `runs` tạo cho một bước (D5): prompt, seed và collect đã dựng xong ở `sdlc`. */
+export interface SdlcRunRequest {
+  itemId: string;
+  /** Dự án chính: worktree của run là repo này. */
+  projectId: string;
+  stepRowId: string;
+  title: string;
+  prompt: string;
+  job: SdlcJobSpec;
+  cli: NonNullable<SdlcStep["cli"]> | null;
+  model: string | null;
+  /** Chủ run theo `runner` của dự án: null là run của đội (máy dùng chung). */
+  ownerUserId: string | null;
+  requiredLabels: string[];
+  createdBy: string;
+}
+
 /** Điểm nối do `main.ts` cài: `sdlc` không import `runs` (runs import sdlc để gọi cổng chặn). */
 export interface SdlcDeps {
   jobs?: Jobs | undefined;
@@ -65,6 +98,25 @@ export interface SdlcDeps {
   publicUrl?: string | undefined;
   /** null: không tạo được run lúc này (máy, quota); bước giữ `queued` để người chạy lại. */
   startSdlcRun?: ((tx: Tx, input: SdlcStepStart) => Promise<{ runId: string } | null>) | undefined;
+  /** `runs.startSdlcRun`; `withStepRuns` (steps.ts) dựng `startSdlcRun` từ đây. */
+  createSdlcRun?: ((tx: Tx, request: SdlcRunRequest) => Promise<{ runId: string } | null>) | undefined;
+  /**
+   * Run code cho task của đợt (`runs.queueRun`, qua cổng chặn D10). Lỗi nghiệp vụ ném như khi người giao tay; đợt ghi lại
+   * thành lý do bỏ qua. `afterCommit` đẩy run tới máy, gọi sau khi transaction commit.
+   */
+  startTaskRun?:
+    | ((tx: Tx, request: SdlcTaskRunRequest) => Promise<{ runId: string; afterCommit: () => void }>)
+    | undefined;
+}
+
+export interface SdlcTaskRunRequest {
+  taskId: string;
+  /** Theo `runner` của dự án của task: null là run của đội. */
+  ownerUserId: string | null;
+  requiredLabels: string[];
+  createdBy: string;
+  /** null: hub tự chạy đợt. */
+  actorUserId: string | null;
 }
 
 export const phaseApplies = (phase: SdlcPhase, size: SdlcSize) => !phase.sizes.length || phase.sizes.includes(size);
@@ -101,10 +153,17 @@ async function phaseRows(tx: Tx, itemId: string): Promise<PhaseRow[]> {
 
 /**
  * Giai đoạn có tài liệu bắt buộc thì đạt khi mọi tài liệu đó có baseline chưa bị thu hồi; tài liệu tuỳ chọn không chặn.
- * Không có tài liệu bắt buộc thì đạt khi các bước tự chạy đã xong. Triển khai không bao giờ tự đạt ở đây.
+ * Không có tài liệu bắt buộc thì đạt khi các bước tự chạy đã xong. Triển khai không bao giờ tự đạt ở đây. Giai đoạn
+ * trước còn tài liệu đang duyệt lại sau thu hồi tự duyệt thì chưa đạt (D26): bản này dựa trên tài liệu có thể đổi.
  */
 async function phaseReady(tx: Tx, item: SdlcItemRow, phase: SdlcPhase): Promise<boolean> {
   if (phase.kind === "implementation") return false;
+  const index = item.mode.phases.findIndex((p) => p.id === phase.id);
+  const revoked = await tx
+    .select({ phaseId: sdlcArtifacts.phaseId })
+    .from(sdlcArtifacts)
+    .where(and(eq(sdlcArtifacts.itemId, item.id), eq(sdlcArtifacts.approval, "revoked")));
+  if (revoked.some((r) => item.mode.phases.findIndex((p) => p.id === r.phaseId) < index)) return false;
   const required = await tx
     .select({ version: sdlcArtifacts.baselineVersion, approval: sdlcArtifacts.approval })
     .from(sdlcArtifacts)
@@ -313,7 +372,15 @@ export async function onBaseline(tx: Tx, event: SdlcBaselineEvent, deps: SdlcDep
     .set({ baselineVersion: event.version, baselineHash: hash, approval })
     .where(eq(sdlcArtifacts.id, artifact.id));
   // Duyệt lại không tạo phiên bản mới nên repo không có gì để ghi.
-  if (!event.reaffirm) await markSyncPending(tx, artifact.id);
+  if (!event.reaffirm) await markSyncPending(tx, item, artifact.id, deps);
+  // Bản tách đọc từ chính baseline này (T030); lỗi đọc thì rollback cả baseline để không có baseline mà thiếu task.
+  if (!event.reaffirm) await onBreakdownBaseline(tx, item, artifact, event.version);
+  // Lần tự duyệt ghi lúc checkpoint đạt, chưa biết phiên bản; thu hồi cần phiên bản để biết baseline nào bị bác.
+  if (event.autoApproved && !event.reaffirm)
+    await tx
+      .update(sdlcAutoApprovals)
+      .set({ version: event.version })
+      .where(and(eq(sdlcAutoApprovals.reviewId, event.reviewId), eq(sdlcAutoApprovals.artifactId, artifact.id)));
   await recordAudit(tx, {
     action: "sdlc.artifact.baseline",
     targetType: "sdlc_item",
@@ -336,12 +403,14 @@ export async function onBaseline(tx: Tx, event: SdlcBaselineEvent, deps: SdlcDep
   if (!phase || !row || row.status === "approved" || row.status === "skipped") return;
   if (!(await phaseReady(tx, item, phase))) return;
   await markApproved(tx, row, null);
-  // Giai đoạn sau đạt sớm (tài liệu soạn trước) thì chờ tới lượt; `advance` sẽ đi qua nó.
-  if (item.status === "active" && row.phaseIndex === item.phaseIndex) await scheduleAdvance(tx, item, deps);
+  // Giai đoạn sau đạt sớm (tài liệu soạn trước) thì chờ tới lượt; `advance` sẽ đi qua nó. Duyệt lại sau thu hồi thì
+  // giai đoạn đang chạy (thường đã ở sau) có thể vừa hết bị giữ, nên đi tiếp dù không phải giai đoạn hiện tại.
+  if (item.status === "active" && (row.phaseIndex === item.phaseIndex || event.reaffirm))
+    await scheduleAdvance(tx, item, deps);
 }
 
-/** Repo nào để `off` thì tài liệu chỉ ở hub; còn lại chờ job đồng bộ (T040) ghi vào repo. */
-async function markSyncPending(tx: Tx, artifactId: string): Promise<void> {
+/** Repo nào để `off` thì tài liệu chỉ ở hub; còn lại chờ job đồng bộ (sync.ts) ghi vào repo. */
+async function markSyncPending(tx: Tx, item: SdlcItemRow, artifactId: string, deps: SdlcDeps): Promise<void> {
   const syncs = await tx
     .select({ projectId: sdlcArtifactSyncs.projectId, settings: sdlcItemProjects.settings })
     .from(sdlcArtifactSyncs)
@@ -360,6 +429,7 @@ async function markSyncPending(tx: Tx, artifactId: string): Promise<void> {
       .update(sdlcArtifactSyncs)
       .set({ syncState: "pending", syncError: null, syncAttempts: 0 })
       .where(and(eq(sdlcArtifactSyncs.artifactId, artifactId), eq(sdlcArtifactSyncs.projectId, s.projectId)));
+    await queueSync(tx, deps.jobs, { orgId: item.orgId, itemId: item.id, projectId: s.projectId });
   }
 }
 
@@ -424,6 +494,10 @@ export async function workflowFor(tx: Tx, docKey: string): Promise<SdlcWorkflow 
       phaseId: sdlcArtifacts.phaseId,
       number: sdlcItems.number,
       mode: sdlcItems.mode,
+      scope: sdlcArtifacts.scope,
+      instance: sdlcArtifacts.instance,
+      providerProjectId: sdlcArtifacts.projectId,
+      consumerProjectIds: sdlcArtifacts.consumerProjectIds,
     })
     .from(sdlcArtifacts)
     .innerJoin(sdlcItems, eq(sdlcItems.id, sdlcArtifacts.itemId))
@@ -431,6 +505,11 @@ export async function workflowFor(tx: Tx, docKey: string): Promise<SdlcWorkflow 
   if (!row) return null;
   const phase = row.mode.phases.find((p) => p.id === row.phaseId);
   if (!phase) return null;
+  if (row.scope === "contract")
+    return {
+      name: `${sdlcItemRef(row.number)} · ${phase.name} · contract ${row.instance}`,
+      phases: contractPhases(phase.gate, contractParties(await itemTeams(tx, row.itemId), row)),
+    };
   return {
     name: `${sdlcItemRef(row.number)} · ${phase.name}`,
     phases: await perTeamWorkflow(tx, row.itemId, phase.gate, phase.perProjectGates),
@@ -502,13 +581,21 @@ export function expandPerProjectGates(
   itemTeamList: readonly ItemTeam[],
 ): ReviewPhase[] {
   if (perProjectGates.length === 0 || itemTeamList.length <= 1) return phases.map((p) => ({ ...p }));
-  const wanted = new Set(perProjectGates);
+  return scopeGatesToTeams(phases, (g) => perProjectGates.includes(g.id), itemTeamList);
+}
+
+/** Nhân mỗi checkpoint người được chọn thành một checkpoint cho mỗi đội trong `teamList`, kể cả khi chỉ có một đội. */
+export function scopeGatesToTeams(
+  phases: readonly ReviewPhase[],
+  pick: (gate: ReviewGate) => boolean,
+  teamList: readonly ItemTeam[],
+): ReviewPhase[] {
   return phases.map((phase) => {
     const used = new Set(phase.gates.map((g) => g.id));
     const gates = phase.gates.flatMap((gate): ReviewGate[] => {
-      if (gate.kind !== "human" || !wanted.has(gate.id)) return [gate];
+      if (gate.kind !== "human" || !pick(gate)) return [gate];
       used.delete(gate.id);
-      return itemTeamList.map((team, i) => ({
+      return teamList.map((team, i) => ({
         ...gate,
         id: teamGateId(gate.id, team, i, used),
         name: clip(`${gate.name} · ${team.name} (${team.projects.map((p) => p.key).join(", ")})`, 120),
@@ -535,4 +622,46 @@ export async function perTeamWorkflow(
 ): Promise<ReviewPhase[]> {
   if (perProjectGates.length === 0) return phases.map((p) => ({ ...p }));
   return expandPerProjectGates(phases, perProjectGates, await itemTeams(tx, itemId));
+}
+
+// ---- Cổng của contract (D23) ---------------------------------------------------------------------------------------
+
+/** Đội của các bên contract, bên cung cấp trước; mỗi đội chỉ giữ dự án là một bên để tên checkpoint nói đúng bên nào. */
+export function contractParties(
+  teamList: readonly ItemTeam[],
+  contract: { providerProjectId: string; consumerProjectIds: readonly string[] },
+): ItemTeam[] {
+  const participants = teamList.flatMap((t) =>
+    t.projects.map((p) => ({ projectId: p.id, key: p.key, teamId: t.teamId })),
+  );
+  const parties = new Set([contract.providerProjectId, ...contract.consumerProjectIds]);
+  return contractCheckpointTeams(
+    { providerProjectId: contract.providerProjectId, consumerProjectIds: [...contract.consumerProjectIds] },
+    participants,
+  ).flatMap((teamId) => {
+    const team = teamList.find((t) => t.teamId === teamId);
+    return team ? [{ ...team, projects: team.projects.filter((p) => parties.has(p.id)) }] : [];
+  });
+}
+
+const CONTRACT_GATE = reviewGate.parse({
+  id: "contract",
+  name: "Các bên đồng ý contract",
+  kind: "human",
+  reviewers: { roles: ["team-admin"] },
+});
+
+/**
+ * Cổng giai đoạn cộng một checkpoint người cho mỗi đội là một bên (D23). Bỏ checkpoint quy tắc của giai đoạn: chúng kiểm
+ * mục bắt buộc của tài liệu Markdown trong giai đoạn, còn contract là file OpenAPI/proto… nên sẽ luôn trượt. Giai đoạn
+ * không có checkpoint người thì thêm một, vì contract không bao giờ được qua mà thiếu người của các đội.
+ */
+export function contractPhases(gate: readonly ReviewPhase[], parties: readonly ItemTeam[]): ReviewPhase[] {
+  const kept = gate
+    .map((p) => ({ ...p, gates: p.gates.filter((g) => g.kind !== "rule") }))
+    .filter((p) => p.gates.length > 0);
+  const phases = kept.some((p) => p.gates.some((g) => g.kind === "human"))
+    ? kept
+    : [...kept, reviewPhase.parse({ name: "Duyệt contract", gates: [CONTRACT_GATE] })];
+  return parties.length > 0 ? scopeGatesToTeams(phases, () => true, parties) : phases;
 }

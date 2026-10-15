@@ -11,15 +11,24 @@ import { meQuery } from "@/lib/me.ts";
 import { orgsMineQuery } from "@/lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "@/lib/redirect.ts";
 import {
+  validateAuditSearch,
   validateLeaderSearch,
   validateLoginSearch,
   validateMachineSearch,
   validateMachinesSearch,
+  validateMcpSearch,
   validateMemberSearch,
   validateMembersSearch,
+  validateMemorySearch,
+  validateNotificationsSearch,
   validateOnboardingSearch,
+  validateProposalSearch,
+  validateProposalsSearch,
   validateReviewsSearch,
   validateRoleSearch,
+  validateSdlcBoardSearch,
+  validateSkillSearch,
+  validateSkillsSearch,
   validateTasksSearch,
   validateTeamSearch,
   validateTeamsSearch,
@@ -36,10 +45,17 @@ import { SessionLayout } from "@/shell/session-layout.tsx";
  * Mỗi trang là một chunk riêng, tải khi vào route (hoặc khi rê chuột lên link, nhờ defaultPreload). Bundle đầu chỉ còn
  * router, khung app và thư viện dùng chung, nên trang đầu tiên hiện nhanh hơn.
  */
+const ArtifactDetailPage = lazyRouteComponent(() => import("@/pages/artifacts/detail-page.tsx"), "ArtifactDetailPage");
+const ArtifactLibraryPage = lazyRouteComponent(
+  () => import("@/pages/artifacts/library-page.tsx"),
+  "ArtifactLibraryPage",
+);
 const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"), "AuditPage");
 const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
 const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
+const RemotePage = lazyRouteComponent(() => import("@/pages/remote/remote-page.tsx"), "RemotePage");
+const RemoteSessionPage = lazyRouteComponent(() => import("@/pages/remote/session-page.tsx"), "RemoteSessionPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
 const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
 const CostsPage = lazyRouteComponent(() => import("@/pages/costs-page.tsx"), "CostsPage");
@@ -48,9 +64,15 @@ const HomePage = lazyRouteComponent(() => import("@/pages/home-page.tsx"), "Home
 const InvitePage = lazyRouteComponent(() => import("@/pages/invite-page.tsx"), "InvitePage");
 const DocEditorPage = lazyRouteComponent(() => import("@/pages/knowledge/doc-editor-page.tsx"), "DocEditorPage");
 const DocsPage = lazyRouteComponent(() => import("@/pages/knowledge/docs-page.tsx"), "DocsPage");
+const MemoryDetailPage = lazyRouteComponent(() => import("@/pages/knowledge/memory-page.tsx"), "MemoryDetailPage");
 const MemoryPage = lazyRouteComponent(() => import("@/pages/knowledge/memory-page.tsx"), "MemoryPage");
+const ProposalDetailPage = lazyRouteComponent(
+  () => import("@/pages/knowledge/proposals-page.tsx"),
+  "ProposalDetailPage",
+);
 const ProposalsPage = lazyRouteComponent(() => import("@/pages/knowledge/proposals-page.tsx"), "ProposalsPage");
 const ReviewsPage = lazyRouteComponent(() => import("@/pages/knowledge/reviews-page.tsx"), "ReviewsPage");
+const SkillDetailPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillDetailPage");
 const SkillsPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillsPage");
 const WorkflowsPage = lazyRouteComponent(() => import("@/pages/knowledge/workflows-page.tsx"), "WorkflowsPage");
 const LeaderPage = lazyRouteComponent(() => import("@/pages/leader-page.tsx"), "LeaderPage");
@@ -75,6 +97,13 @@ const RunPage = lazyRouteComponent(() => import("@/pages/run-page.tsx"), "RunPag
 const RunsPage = lazyRouteComponent(() => import("@/pages/runs-page.tsx"), "RunsPage");
 const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "ProjectSandboxPage");
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
+const SdlcMetricsPage = lazyRouteComponent(() => import("@/pages/sdlc/metrics-page.tsx"), "SdlcMetricsPage");
+const SdlcModesPage = lazyRouteComponent(() => import("@/pages/admin/sdlc-modes-page.tsx"), "SdlcModesPage");
+const SdlcFleetPage = lazyRouteComponent(() => import("@/pages/sdlc/fleet-page.tsx"), "SdlcFleetPage");
+const SdlcBoardPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcBoardPage");
+const SdlcItemPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcItemPage");
+const SdlcNewPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcNewPage");
+const SdlcQuestionsPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcQuestionsPage");
 const ProjectTasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "ProjectTasksPage");
 const TasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "TasksPage");
 const TeamDetailPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamDetailPage");
@@ -248,6 +277,35 @@ const leaderTerminalRoute = createRoute({
   component: LeaderTerminalPage,
 });
 
+/** Điều khiển từ xa (specs/010): danh sách phiên và phát lại; xterm.js nặng nên trang phiên là chunk riêng. */
+const remoteRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/remote",
+  component: RemotePage,
+});
+const remoteSessionRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/remote/$id",
+  component: RemoteSessionPage,
+});
+
+/** Artifact (specs/012): thư viện, chi tiết; `/v/$n` là đường dẫn phiên bản mà agent dán vào chữ trả lời. */
+const artifactsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts",
+  component: ArtifactLibraryPage,
+});
+const artifactRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts/$id",
+  component: ArtifactDetailPage,
+});
+const artifactVersionRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/artifacts/$id/v/$n",
+  component: ArtifactDetailPage,
+});
+
 const runsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/runs",
@@ -308,6 +366,7 @@ const mergeQueueRoute = createRoute({
 const notificationsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/notifications",
+  validateSearch: validateNotificationsSearch,
   component: NotificationsPage,
 });
 const machinesRoute = createRoute({
@@ -333,13 +392,61 @@ const roleRoute = createRoute({
   component: RoleDetailPage,
 });
 
+/**
+ * AI SDLC (specs/011 T054). Đường dẫn tĩnh `new`, `questions`, `metrics` thắng đường dẫn có tham số cùng độ dài; key dự án luôn
+ * bắt đầu bằng chữ và số hạng mục là số nên hai loại không lẫn.
+ */
+const sdlcRoutes = [
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/sdlc-modes", component: SdlcModesPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/fleet", component: SdlcFleetPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/sdlc",
+    validateSearch: validateSdlcBoardSearch,
+    component: SdlcBoardPage,
+  }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/new", component: SdlcNewPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/questions", component: SdlcQuestionsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/metrics", component: SdlcMetricsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number", component: SdlcItemPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number/$tab", component: SdlcItemPage }),
+];
+
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
 const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/$key/edit", component: DocEditorPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/skills", component: SkillsPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory", component: MemoryPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/skills",
+    validateSearch: validateSkillsSearch,
+    component: SkillsPage,
+  }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/skills/$skillId",
+    validateSearch: validateSkillSearch,
+    component: SkillDetailPage,
+  }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/memory",
+    validateSearch: validateMemorySearch,
+    component: MemoryPage,
+  }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory/$memoryId", component: MemoryDetailPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/proposals",
+    validateSearch: validateProposalsSearch,
+    component: ProposalsPage,
+  }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/proposals/$proposalId",
+    validateSearch: validateProposalSearch,
+    component: ProposalDetailPage,
+  }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/knowledge/workflows",
@@ -353,9 +460,19 @@ const v2Routes = [
     component: ReviewsPage,
   }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/roles", component: RolesPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/mcp", component: McpPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/admin/mcp",
+    validateSearch: validateMcpSearch,
+    component: McpPage,
+  }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/policies", component: PoliciesPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/audit", component: AuditPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/admin/audit",
+    validateSearch: validateAuditSearch,
+    component: AuditPage,
+  }),
 ];
 
 const routeTree = rootRoute.addChildren([
@@ -378,6 +495,11 @@ const routeTree = rootRoute.addChildren([
         runsRoute,
         leaderRoute,
         leaderTerminalRoute,
+        remoteRoute,
+        remoteSessionRoute,
+        artifactsRoute,
+        artifactRoute,
+        artifactVersionRoute,
         runRoute,
         teamsRoute,
         teamRoute,
@@ -392,6 +514,7 @@ const routeTree = rootRoute.addChildren([
         costsRoute,
         roleRoute,
         ...v2Routes,
+        ...sdlcRoutes,
       ]),
     ]),
   ]),

@@ -9,17 +9,23 @@ import {
 } from "@xdev-hive/code-review";
 import type { CodeReviewDetail, CodeReviewSummary } from "@xdev-hive/contracts";
 import { DocEditorProvider, ReviewPane, SlaBadge, useReviewFormat } from "@xdev-hive/doc-editor";
+import { AutoApproval, SdlcProvider } from "@xdev-hive/sdlc-ui";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { cn } from "cn";
 import { ArrowLeftIcon } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from "react";
 import { api, queryClient, useDesktopDocEnv } from "@/lib/hub-query.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { screenParam } from "@/lib/nav.ts";
+import { useDesktopSdlcEnv } from "@/lib/sdlc-env.tsx";
 import { errorText, invoke } from "@/lib/tauri.ts";
+
+const BreakdownReview = lazy(() =>
+  import("@xdev-hive/sdlc-ui/breakdown").then((m) => ({ default: m.BreakdownReview })),
+);
 
 const text: Dict<{
   lead: string;
@@ -249,6 +255,7 @@ function ReviewQueue({ now }: { now: number }) {
 }
 
 function ReviewDetail({ id, now }: { id: string; now: number }) {
+  const sdlcEnv = useDesktopSdlcEnv();
   const t = useT(text);
   return (
     <div className="flex w-full flex-col gap-4">
@@ -259,7 +266,25 @@ function ReviewDetail({ id, now }: { id: string; now: number }) {
         </Button>
       </div>
       {/* ReviewPane tự làm mới hàng chờ sau khi quyết; khung vẫn mở để người duyệt thấy kết quả. */}
-      <ReviewPane id={id} now={now} onDecided={() => undefined} />
+      <ReviewPane
+        id={id}
+        now={now}
+        onDecided={() => void queryClient.invalidateQueries({ queryKey: api.sdlc.key() })}
+        sdlc={{
+          breakdown: (item) => (
+            <SdlcProvider env={sdlcEnv}>
+              <Suspense fallback={null}>
+                <BreakdownReview item={item} />
+              </Suspense>
+            </SdlcProvider>
+          ),
+          revoke: (approval) => (
+            <SdlcProvider env={sdlcEnv}>
+              <AutoApproval approval={approval} />
+            </SdlcProvider>
+          ),
+        }}
+      />
     </div>
   );
 }

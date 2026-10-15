@@ -123,7 +123,7 @@
     + test tương ứng
   - **Phụ thuộc**: T001, T002, T003 · **Mức**: nặng
 
-- [ ] T011 🎯 Tool MCP `artifact_*`
+- [x] T011 🎯 Tool MCP `artifact_*`
   - `artifacts/mcp-tools.ts`: bốn tool (plan.md "MCP"), quyền run theo FR-032, liên kết tự động `run`/`task`/
     `chat_thread`/`terminal_session`, từ chối `doccheck`/`docassist`/`brief` (`ARTIFACT_RUN_KIND`), lỗi xung đột kèm bản
     mới nhất, `duplicateOf` (đọc được bản gốc → `private` của người mở cuộc trò chuyện), `compileError` trong kết quả.
@@ -149,7 +149,7 @@
     `apps/hub/.env.example`, `Dockerfile` (nếu cần)
   - **Phụ thuộc**: T004, T010 · **Mức**: nặng
 
-- [ ] T013 🎯 Leader: thẻ artifact trong chat
+- [x] T013 🎯 Leader: thẻ artifact trong chat
   - `leader` cung cấp `ThreadHost` (`assertRunThread` dùng lại kiểm của `leader_reply`; `postArtifactCard` thêm tin nhắn thẻ,
     cập nhật `updated_at`); router trả `chatMessage.artifact`; xoá cuộc trò chuyện xoá liên kết `chat_thread`.
   - `leader/prompt.ts`: đoạn hướng dẫn artifact (US5-7); `prompt.test.ts`.
@@ -159,7 +159,7 @@
     `apps/hub/src/leader.db.test.ts`
   - **Phụ thuộc**: T011 · **Mức**: vừa
 
-- [ ] T014 🎯 Biên dịch `react` trên hub
+- [x] T014 🎯 Biên dịch `react` trên hub
   - `compile.ts` `compileReact(source, manifest) → { compiled } | { compileError } | ImportNotAllowed` theo plan.md D8
     (`sucrase` JSX + TS, `es-module-lexer`, chỉ tên trong manifest, `import()` động bị từ chối, giới hạn 2 s); nối vào
     điểm gọi của T010 (lưu phiên bản) và T012 (`preview`); bật `react` trong `MVP_TYPES` mặc định nếu T001 chưa bật.
@@ -169,7 +169,7 @@
     (chỉ chỗ gọi), `apps/hub/package.json`, `pnpm-lock.yaml`
   - **Phụ thuộc**: T004 (manifest), T010, T012 · **Mức**: nặng
 
-- [ ] T015 🎯 Link công khai trên hub
+- [x] T015 🎯 Link công khai trên hub
   - `public-links.ts`: route `publicLinks.create/list/revoke/orgList` (FR-140, FR-141, FR-147; quét bí mật lại; chính
     sách `publicLinks`; trần `HIVE_ARTIFACT_LINK_MAX_DAYS`), `GET /_artifact/s/:token` (plan.md D21: băm → hàm resolve →
     `withTenant` → `buildPublicPage` + vé `s:`; 404 đồng nhất), kiểm link ở route khung khi vé có `s`, cập nhật
@@ -181,7 +181,7 @@
     (nhánh vé `s:`, route `/s/`), `apps/hub/src/modules/artifacts/router.ts` (gắn route `publicLinks.*`), `apps/hub/.env.example`
   - **Phụ thuộc**: T010, T012 · **Mức**: nặng
 
-- [ ] T016 🎯 "Nhờ Leader sửa" trên hub
+- [x] T016 🎯 "Nhờ Leader sửa" trên hub
   - `artifacts/fix-request.ts`: route `askLeaderFix` (FR-151); `leader` cung cấp `ThreadHost.postFixRequest` (kiểm/tạo
     cuộc trò chuyện của người gọi, tin nhắn người dùng có `artifact_*` và `page_errors`, khởi động run `leader` như
     `threads.send`); router leader trả `pageErrors`; `leader/prompt.ts` dựng khối `<page-errors>` (FR-152) và quyền
@@ -200,7 +200,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 3: Package giao diện dùng chung (US1–US4, US7) 🎯
 
-- [ ] T020 🎯 `@xdev-hive/artifacts-ui` — khung, thẻ, trình xem, khung cách ly
+- [x] T020 🎯 `@xdev-hive/artifacts-ui` — khung, thẻ, trình xem, khung cách ly
   - `env.tsx` (`ArtifactsEnv`), `text.ts` (vi/en), `card.tsx`, `panel.tsx` (tab, thanh công cụ, tự mở artifact mới trừ khi
     đang sửa, trạng thái: tải, lỗi, bản mới hơn, offline, đã xoá), `sandbox-frame.tsx` (plan.md D16, nút Dừng trang, nhãn
     "Nội dung do agent tạo", gom ≤ 20 tin `error`/`console`), `viewer/{markdown,code,html,mermaid,react}.tsx` (markdown qua
@@ -214,21 +214,21 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `pnpm-lock.yaml`
   - **Phụ thuộc**: T001, T004, T005 · **Mức**: nặng
 
-- [ ] T021 🎯 `@xdev-hive/artifacts-ui` — phiên bản, so sánh, chia sẻ, sửa tay tối thiểu
+- [x] T021 🎯 `@xdev-hive/artifacts-ui` — phiên bản, so sánh, chia sẻ, sửa tay tối thiểu
   - `versions.tsx` (danh sách, đặt tên, khôi phục), `compare.tsx` (diff dòng bằng `line-diff`, cạnh nhau), `share-dialog.tsx`
     (phạm vi `private`/`project`, cảnh báo phiên bản cũ), `editor.tsx` tối thiểu (ô soạn chữ cho `markdown`/`code`/`html`/
     `mermaid`, xem trước qua `preview`, xung đột "Xem khác biệt rồi gộp", dòng bí mật được đánh dấu).
   - **Scope**: `packages/artifacts-ui/src/{versions.tsx,compare.tsx,share-dialog.tsx,editor.tsx}` + test
   - **Phụ thuộc**: T020 · **Mức**: vừa
 
-- [ ] T022 🎯 [P] `@xdev-hive/artifacts-ui` — thư viện và chi tiết
+- [x] T022 🎯 [P] `@xdev-hive/artifacts-ui` — thư viện và chi tiết
   - `library.tsx` (lọc phạm vi/loại/nguồn/dự án, tìm, con trỏ, thùng rác, dạng thẻ ở 360 px), `detail.tsx` (vùng xem + tab
     Phiên bản, Liên kết, Hoạt động).
   - **Scope**: `packages/artifacts-ui/src/{library.tsx,detail.tsx}` + test
   - **Phụ thuộc**: T020 (song song với T021: khác file; `index.ts` của package do T020 export sẵn tên, T021/T022 chỉ điền
     file) · **Mức**: vừa
 
-- [ ] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
+- [x] T023 🎯 [P] `@xdev-hive/artifacts-ui` — link công khai và "Nhờ Leader sửa"
   - `public-link-dialog.tsx` (chỉ chủ: chọn phiên bản, hạn 1…`maxDays`, cảnh báo "Người ngoài tổ chức sẽ xem được bản
     này." / lỗi biên dịch, hiện link một lần + Sao chép, danh sách link: phiên bản, hạn, lượt xem, Thu hồi),
     `fix-request-dialog.tsx` (danh sách lỗi sửa/xoá được, lời nhắn, chọn đích "Cuộc trò chuyện này"/"Cuộc trò chuyện mới",
@@ -241,7 +241,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 4: Web (US1–US4, US7) 🎯
 
-- [ ] T030 🎯 Web: khung bên cạnh trong Leader, thư viện, chi tiết
+- [x] T030 🎯 Web: khung bên cạnh trong Leader, thư viện, chi tiết
   - `leader-page.tsx`: thẻ thay chữ khi `message.artifact`, lưới chat | vạch chia | khung (≥ 1024 px), `Sheet` (< 1024 px),
     nhớ độ rộng; trang `pages/artifacts/{library-page,detail-page}.tsx`; `router.tsx` (`/artifacts`, `/artifacts/:id`,
     `/artifacts/:id/v/:n`); `nav.ts` (mục Artifact); `ArtifactsEnv` của web (`onAskLeaderFix` mở `fix-request-dialog`,

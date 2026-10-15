@@ -4,7 +4,9 @@ import { desc, eq } from "drizzle-orm";
 import type { RequestContext } from "../platform/index.ts";
 import { ConflictError, NotFoundError, withTenant } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
+import type { SdlcDeps } from "../sdlc/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { cardFacts, cardOf } from "./cards.ts";
 import { chatMessages, chatThreads } from "./schema.ts";
 import {
   approveApproval,
@@ -19,6 +21,8 @@ import {
 export interface LeaderRouterDeps extends OrgDeps {
   runs?: RunsEngine | undefined;
   approvalTtlSec?: number | undefined;
+  /** Để hạng mục AI SDLC do Leader đề xuất bắt đầu giai đoạn đầu ngay khi được duyệt. */
+  sdlc?: SdlcDeps | undefined;
 }
 
 export function leaderRouter(deps: LeaderRouterDeps) {
@@ -34,7 +38,7 @@ export function leaderRouter(deps: LeaderRouterDeps) {
         .handler(async ({ context: { tx } }) =>
           (await tx.select().from(chatThreads).orderBy(desc(chatThreads.updatedAt))).map(threadView),
         ),
-      get: os.threads.get.use(inOrg).handler(async ({ context: { tx }, input }) => {
+      get: os.threads.get.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
         const [row] = await tx.select().from(chatThreads).where(eq(chatThreads.id, input.id));
         if (!row) throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
         const messages = await tx
@@ -42,7 +46,11 @@ export function leaderRouter(deps: LeaderRouterDeps) {
           .from(chatMessages)
           .where(eq(chatMessages.threadId, row.id))
           .orderBy(chatMessages.createdAt);
-        return { thread: threadView(row), messages: messages.map(messageView) };
+        const facts = await cardFacts(tx, user.id, messages);
+        return {
+          thread: threadView(row),
+          messages: messages.map((m) => ({ ...messageView(m, cardOf(m, facts)), pageErrors: m.pageErrors })),
+        };
       }),
       send: os.threads.send.use(inOrg).handler(async ({ context: { pool, user, orgId }, input }) => {
         const runsEngine = deps.runs;
@@ -64,7 +72,7 @@ export function leaderRouter(deps: LeaderRouterDeps) {
         .handler(({ context: { tx }, input }) => listApprovals(tx, input.status, input.threadId)),
       approve: os.approvals.approve.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
         const { response, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, (tx) =>
-          approveApproval(deps.runs, tx, user.id, input.id, input.tier),
+          approveApproval(deps.runs, tx, user.id, input.id, input.tier, deps.sdlc),
         );
         afterCommit?.();
         return response;

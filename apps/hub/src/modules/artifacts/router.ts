@@ -9,11 +9,14 @@ import {
   NotFoundError,
   type RequestContext,
   type Tx,
+  withTenant,
 } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares, type SessionUser } from "../tenancy/index.ts";
 import type { ArtifactErrorDetail } from "./access.ts";
 import { readerFor } from "./access.ts";
+import { askLeaderFix } from "./fix-request.ts";
 import { createPreview, frameDocument, frameUrl, libManifestLoader } from "./frame-routes.ts";
+import { createPublicLink, listPublicLinks, orgListPublicLinks, revokePublicLink } from "./public-links.ts";
 import {
   addLink,
   createArtifact,
@@ -81,22 +84,25 @@ const stampOrg = os.$context<{ orgId: string }>().middleware(async ({ context, n
 });
 
 /**
- * Route `artifacts.*`. `publicLinks.*` ở T015, `askLeaderFix` ở T016, `toDoc`/`toRepo` sau MVP: chưa đăng ký thì oRPC
+ * Route `artifacts.*`. `toDoc`/`toRepo` sau MVP: chưa đăng ký thì oRPC
  * trả 404 cho route đó.
  */
 export function artifactsRouter(deps: ArtifactsRouterDeps) {
-  const { authed, inOrg } = orgMiddlewares(deps);
-  const o = implement(contract.artifacts)
-    .$context<RequestContext>()
-    .use(authed)
-    .use(artifactErrors)
-    .use(inOrg)
-    .use(stampOrg);
+  const { authed, inOrg, orgMember } = orgMiddlewares(deps);
+  const base = implement(contract.artifacts).$context<RequestContext>().use(authed).use(artifactErrors);
+  const o = base.use(inOrg).use(stampOrg);
   const write = { jobs: deps.jobs, publicUrl: deps.publicUrl };
   const as = (tx: Tx, user: SessionUser) => readerFor(tx, { kind: "user", userId: user.id });
   const frame = { frameKey: deps.frameKey, publicUrl: deps.publicUrl ?? "http://localhost:3000" };
   const manifest = libManifestLoader();
   return {
+    askLeaderFix: base.askLeaderFix.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
+      const { response, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, async (tx) =>
+        askLeaderFix(tx, await as(tx, user), input),
+      );
+      afterCommit?.();
+      return response;
+    }),
     settings: o.settings.handler(({ context: { tx } }) => getSettings(tx)),
     list: o.list.handler(async ({ context: { tx, user }, input }) => listArtifacts(tx, await as(tx, user), input)),
     get: o.get.handler(async ({ context: { tx, user }, input }) => getArtifact(tx, await as(tx, user), input)),
@@ -151,5 +157,19 @@ export function artifactsRouter(deps: ArtifactsRouterDeps) {
       frameDocument(tx, await as(tx, user), input, manifest),
     ),
     usage: o.usage.handler(({ context: { tx, user } }) => usage(tx, user.id)),
+    publicLinks: {
+      create: o.publicLinks.create.handler(async ({ context: { tx, user }, input }) =>
+        createPublicLink(tx, await as(tx, user), input, frame),
+      ),
+      list: o.publicLinks.list.handler(async ({ context: { tx, user }, input }) =>
+        listPublicLinks(tx, await as(tx, user), input),
+      ),
+      revoke: o.publicLinks.revoke.handler(async ({ context: { tx, user }, input }) =>
+        revokePublicLink(tx, await as(tx, user), input, write),
+      ),
+      orgList: o.publicLinks.orgList.handler(({ context: { tx, user }, input }) =>
+        orgListPublicLinks(tx, user.id, input),
+      ),
+    },
   };
 }

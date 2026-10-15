@@ -280,3 +280,23 @@ Thiết kế theo [spec đã chốt](../../../specs/012-artifacts/spec.md#clarif
 
 Phần sau MVP (T006) có làn riêng: soạn tay đầy đủ, Terminal Leader, chính sách artifact tổng thể, dung lượng,
 liên kết task/run/dự án/hạng mục và chuyển thành tài liệu/lưu repo không được thêm vào các màn MVP này.
+
+## Bàn giao: Điều khiển từ xa (spec 010, T006)
+
+Thiết kế tương tác với dữ liệu mẫu, thiết kế trong repo, chưa đưa lên canvas hay sửa `canvas.json`. Bàn giao cho T014
+(danh sách phiên, phát lại), T022 (terminal sống), T032 (mở phiên mới, ghép, thiết bị) và T052 (app desktop).
+
+| File | Màn / nơi dùng | Trạng thái (`view`) |
+|---|---|---|
+| `Remote.dc.html` | Web điện thoại `/remote`: máy của tôi kèm trạng thái từ xa, phiên ghi, terminal có thanh phím và ô soạn dòng, bottom sheet Mở phiên mới, ghép thiết bị, thiết bị đã ghép, hướng dẫn cài PWA | `list`, `terminal`, `sheet`, `pair`, `devices`, `pwa`, `empty`, `loading`, `error`, `offline`, `http` |
+| `AppRemote.dc.html` | App desktop, màn "Điều khiển từ xa": công tắc, thư mục được phép, thiết bị kèm QR ghép và Cho phép/Từ chối tại máy, phiên kèm Ngắt/Ngắt tất cả, hộp xác nhận, mã Authenticator, cảnh báo HTTP | `on`, `off`, `pairing`, `confirm`, `confirmAll`, `totp`, `http`, `loading`, `error` |
+
+- Mặc định `Remote` ở 360 px (`narrow=true`); mọi nút chạm cao tối thiểu 44 px, thanh phím cuộn ngang trong khung của
+  nó nên trang không cuộn ngang. Cả hai màn có `lang=vi/en`, `dark`, `embedded` như các màn khác.
+- Nút Bật từ xa, Thêm thiết bị và Thêm thư mục chỉ có ở `AppRemote`. Web điện thoại chỉ tắt, gỡ thiết bị, ngắt phiên
+  (FR-012): `Remote` không có công tắc bật.
+- Máy offline hoặc chưa có thư mục được phép thì nút Mở phiên mới tắt và có chú thích lý do ngay dưới nút.
+- Trên HTTP, cả hai màn hiện cảnh báo "nội dung phiên và phím gõ không được mã hoá"; mục PWA nói rõ cần HTTPS.
+- Terminal trong artboard chỉ minh hoạ. Bản thật dùng `TerminalView` (xterm.js) với `terminalTheme`, tắt OSC 52 và hỏi
+  xác nhận trước khi mở link.
+- "Ngắt tất cả" và "Ngắt" luôn qua hộp xác nhận (`alertdialog`), nút huỷ là "Giữ lại".

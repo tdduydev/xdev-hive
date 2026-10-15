@@ -1,6 +1,6 @@
 import type { AiReviewerResult, ReviewGate } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { aiGateComment, reviewFocus, reviewGuidance, reviewRubric } from "./prompt.ts";
+import { aiGateComment, reviewFocus, reviewGuidance, reviewRubric, reviewSpecLines } from "./prompt.ts";
 
 type GateAi = NonNullable<ReviewGate["ai"]>;
 const ai = (extra: Partial<GateAi> = {}): GateAi => ({ checks: ["Đúng yêu cầu"], passScore: 8, ...extra }) as GateAi;
@@ -120,5 +120,34 @@ describe("aiGateComment", () => {
     expect(body).toContain("… và 10 phát hiện khác");
     expect(body).toContain("| codex (a\\|b) |");
     expect(body).not.toContain("Mở phiên");
+  });
+});
+
+describe("reviewSpecLines", () => {
+  it("requirement kèm tiêu chí, gộp khoảng trắng; câu chữ trống thì chỉ còn mã; liệt kê tài liệu đã duyệt", () => {
+    const lines = reviewSpecLines({
+      item: "012 · Xuất báo cáo",
+      requirements: [
+        { id: "FR-001", text: "**FR-001**:  Hệ thống MUST\n xuất CSV.", acceptance: ["Tiêu chí: có cột ngày"] },
+        { id: "FR-002", text: "", acceptance: [] },
+      ],
+      docs: [{ name: "spec.md", docKey: "project/api/specs/012/spec.md", version: 3 }],
+    });
+    expect(lines).toEqual([
+      "Task thuộc hạng mục AI SDLC 012 · Xuất báo cáo.",
+      expect.stringContaining("ghi mã requirement"),
+      "- FR-001: **FR-001**: Hệ thống MUST xuất CSV.",
+      "  - Tiêu chí: có cột ngày",
+      "- FR-002",
+      expect.stringContaining("doc_get"),
+      "- spec.md v3: key `project/api/specs/012/spec.md`",
+    ]);
+  });
+
+  it("cắt danh sách requirement dài và báo phần còn lại", () => {
+    const requirements = Array.from({ length: 25 }, (_, i) => ({ id: `FR-${i}`, text: "x", acceptance: [] }));
+    const lines = reviewSpecLines({ item: "001 · A", requirements, docs: [] });
+    expect(lines.filter((l) => l.startsWith("- FR-"))).toHaveLength(20);
+    expect(lines.at(-1)).toBe("- … và 5 requirement khác, xem trong tài liệu.");
   });
 });

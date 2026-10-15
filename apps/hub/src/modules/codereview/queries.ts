@@ -232,7 +232,7 @@ async function gateRunsOf(tx: Tx, reviewIds: string[]): Promise<Map<string, Code
     .select()
     .from(codeReviewGateRuns)
     .where(inArray(codeReviewGateRuns.reviewId, reviewIds))
-    .orderBy(asc(codeReviewGateRuns.startedAt));
+    .orderBy(asc(codeReviewGateRuns.startedAt), asc(codeReviewGateRuns.gateIndex));
   for (const r of rows) out.set(r.reviewId, [...(out.get(r.reviewId) ?? []), r]);
   return out;
 }

@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-13
 
-**Status**: Draft
+**Status**: Implemented
 
 **Input**: Yêu cầu của product owner (nguyên văn): "trên web phải có phần auto review code theo workflow nữa nhé".
 

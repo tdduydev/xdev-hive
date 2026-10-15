@@ -4,9 +4,14 @@ import {
   type AgentPolicy,
   type AgentPolicyInput,
   DEFAULT_AGENT_MEMORY_POLICY,
+  DEFAULT_AGENT_REMOTE_POLICY,
   DEFAULT_AGENT_SKILL_LEARNING_POLICY,
+  DEFAULT_ORG_SDLC_POLICY,
+  DEFAULT_SDLC_DENY_KEYWORDS,
+  DEFAULT_SDLC_DENY_PATHS,
   type HookEvent,
   type InstructionTemplates,
+  type OrgSdlcPolicy,
   type PolicyHook,
   type TemplatePreview,
 } from "@xdev-hive/contracts";
@@ -24,8 +29,9 @@ import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
-import { PlusIcon, XIcon } from "lucide-react";
+import { LockIcon, PlusIcon, XIcon } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
+import { ChipInput } from "@/components/page/chip-input.tsx";
 import {
   FormRow,
   RadioCards,
@@ -43,12 +49,15 @@ import { cx } from "@/lib/cx.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import { SdlcPolicyStats } from "@/pages/admin/policies-sdlc-stats.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 type Cli = keyof AgentPolicyInput["allowedModels"];
 type TemplateKey = keyof InstructionTemplates;
-type Form = Omit<AgentPolicy, "updatedAt" | "updatedBy" | "templateSync" | "defaultTemplates">;
+type Form = Omit<AgentPolicy, "updatedAt" | "updatedBy" | "templateSync" | "defaultTemplates" | "sdlc"> & {
+  sdlc: OrgSdlcPolicy;
+};
 
 const CLIS: { id: Cli; name: string }[] = [
   { id: "claude", name: "Claude Code" },
@@ -75,6 +84,7 @@ const SECTIONS = {
   hooks: ["hooks", "managedHooksOnly"],
   templates: ["templates", "autoSyncTemplates"],
   limits: ["limits"],
+  sdlc: ["sdlc"],
 } as const satisfies Record<string, readonly (keyof Form)[]>;
 type SectionId = keyof typeof SECTIONS;
 const SECTION_IDS = Object.keys(SECTIONS) as SectionId[];
@@ -130,6 +140,25 @@ const text: Dict<{
   learnMax: string;
   learnMaxHint: string;
   outOfRange: string;
+  sdlcHint: string;
+  sdlcAllow: string;
+  sdlcAllowHint: string;
+  sdlcOnBadge: string;
+  sdlcOffBadge: string;
+  sdlcOffNote: string;
+  sdlcOffNoteHint: string;
+  sdlcFloor: string;
+  sdlcFloorHint: string;
+  sdlcFloorRange: string;
+  sdlcAlways: string;
+  sdlcAlwaysHint: string;
+  sdlcAlwaysList: string[];
+  sdlcKeywords: string;
+  sdlcKeywordsHint: string;
+  sdlcPaths: string;
+  sdlcPathsHint: string;
+  sdlcAdd: string;
+  sdlcReset: string;
   hooksHint: string;
   managedOnly: string;
   managedOnlyHint: string;
@@ -239,6 +268,30 @@ const text: Dict<{
     learnMax: "Số đề xuất tối đa mỗi ngày",
     learnMaxHint: "Từ 1 đến 50 cho cả tổ chức (UTC). Hết hạn mức thì ngày đó không chạy thêm lô.",
     outOfRange: "Nhập số nguyên từ 1 đến 50. Ô giữ số hợp lệ gần nhất cho tới khi sửa xong.",
+    sdlcHint:
+      'Tự duyệt AI ở giai đoạn rủi ro thấp ("Continue automatically" của AI-DLC). Chế độ nói giai đoạn nào được tự duyệt; dự án chỉ siết thêm được so với chế độ và mục này.',
+    sdlcAllow: "Cho phép tự duyệt",
+    sdlcAllowHint: "Tắt thì hub không tự duyệt cổng nào của tổ chức. Tự duyệt đã ghi vẫn thu hồi được tới hết hạn.",
+    sdlcOnBadge: "Đang cho phép",
+    sdlcOffBadge: "Đã tắt",
+    sdlcOffNote: "Đã tắt tự duyệt cho toàn tổ chức.",
+    sdlcOffNoteHint: "Dự án đang bật tự duyệt sẽ chờ người duyệt từ cổng kế tiếp.",
+    sdlcFloor: "Sàn ngưỡng điểm",
+    sdlcFloorHint: "Ngưỡng hiệu lực là mức cao nhất trong chế độ, dự án và sàn này. Thang 0 đến 10.",
+    sdlcFloorRange: "Nhập số từ 0 đến 10. Ô giữ số hợp lệ gần nhất cho tới khi sửa xong.",
+    sdlcAlways: "Luôn cần người duyệt",
+    sdlcAlwaysHint: "Cố định, không tắt được ở bất kỳ lớp nào.",
+    sdlcAlwaysList: [
+      "Giai đoạn Yêu cầu của chế độ nặng (cỡ L, XL) hoặc hạng mục cỡ L, XL",
+      "Thay đổi chạm từ khoá hoặc đường dẫn nhạy cảm",
+      "Contract liên repo",
+    ],
+    sdlcKeywords: "Từ khoá nhạy cảm",
+    sdlcKeywordsHint: "Không phân biệt hoa thường và dấu. So với phần thay đổi của tài liệu.",
+    sdlcPaths: "Đường dẫn nhạy cảm",
+    sdlcPathsHint: "Mẫu glob, so với mọi đường dẫn file nêu trong tài liệu và danh sách file của task.",
+    sdlcAdd: "Thêm",
+    sdlcReset: "Đặt lại danh sách mặc định",
     hooksHint: "Lệnh chạy chắc chắn ở các mốc của CLI: trước khi gọi tool, sau khi sửa file, khi kết thúc.",
     managedOnly: "Chỉ chạy hook của tổ chức",
     managedOnlyHint: "Bỏ qua hook và cấu hình .claude/settings.json trong repo.",
@@ -356,6 +409,31 @@ const text: Dict<{
     learnMax: "Max proposals per day",
     learnMaxHint: "1 to 50 for the whole organization (UTC). Once used up no more batches run that day.",
     outOfRange: "Enter a whole number from 1 to 50. The last valid number is kept until then.",
+    sdlcHint:
+      'AI auto-approval for low-risk phases (AI-DLC "Continue automatically"). The mode says which phases qualify; projects may only tighten the mode and this section.',
+    sdlcAllow: "Allow auto-approval",
+    sdlcAllowHint:
+      "When off, the hub auto-approves no gate in the organization. Existing auto-approvals can still be revoked until they expire.",
+    sdlcOnBadge: "Allowed",
+    sdlcOffBadge: "Turned off",
+    sdlcOffNote: "Auto-approval is off for the whole organization.",
+    sdlcOffNoteHint: "Projects with auto-approval on will wait for a person from the next gate.",
+    sdlcFloor: "Score floor",
+    sdlcFloorHint: "The effective threshold is the highest of mode, project and this floor. Scale of 0 to 10.",
+    sdlcFloorRange: "Enter a number from 0 to 10. The last valid number is kept until then.",
+    sdlcAlways: "Always needs a person",
+    sdlcAlwaysHint: "Fixed; no layer can turn these off.",
+    sdlcAlwaysList: [
+      "Requirements phase of a heavy mode (size L, XL) or an L, XL item",
+      "Changes that touch a sensitive keyword or path",
+      "Cross-repository contracts",
+    ],
+    sdlcKeywords: "Sensitive keywords",
+    sdlcKeywordsHint: "Case and accent insensitive. Matched against what the document changes.",
+    sdlcPaths: "Sensitive paths",
+    sdlcPathsHint: "Glob patterns, matched against every file path named in the document and the task file list.",
+    sdlcAdd: "Add",
+    sdlcReset: "Reset to default lists",
     hooksHint: "Commands that always run at CLI events: before a tool call, after edits, at the end.",
     managedOnly: "Only run organization hooks",
     managedOnlyHint: "Ignore hooks and .claude/settings.json from repositories.",
@@ -431,6 +509,8 @@ const formOf = (p: AgentPolicy): Form => ({
   // Hub cũ chưa có mục này thì giữ mặc định của hợp đồng, như chính sách lưu trước ADR 0022.
   agentMemory: p.agentMemory ?? { ...DEFAULT_AGENT_MEMORY_POLICY },
   skillLearning: p.skillLearning ?? { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
+  remote: p.remote ?? { ...DEFAULT_AGENT_REMOTE_POLICY },
+  sdlc: p.sdlc ?? DEFAULT_ORG_SDLC_POLICY,
 });
 
 /** Ô của một mục lấy từ `from`, phần còn lại giữ của `base`. */
@@ -540,8 +620,53 @@ function MaxPerRunInput({
   );
 }
 
+/** Số thập phân 0..10; gõ dở hoặc ngoài khoảng thì giữ giá trị hợp lệ cuối, như ô số run mỗi máy. */
+function FloorInput({
+  label,
+  hint,
+  error,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  hint: string;
+  error: string;
+  value: number;
+  onChange: (v: number) => void;
+  disabled: boolean;
+}) {
+  const id = useId();
+  const [raw, setRaw] = useState(String(value));
+  useEffect(() => setRaw(String(value)), [value]);
+  const n = Number(raw.trim().replace(",", "."));
+  const valid = raw.trim() !== "" && Number.isFinite(n) && n >= 0 && n <= 10;
+  return (
+    <Field invalid={!valid}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          inputMode="decimal"
+          className="w-24 font-mono tabular-nums"
+          value={raw}
+          disabled={disabled}
+          aria-invalid={!valid}
+          onChange={(e) => {
+            setRaw(e.target.value);
+            const next = Number(e.target.value.trim().replace(",", "."));
+            if (e.target.value.trim() !== "" && Number.isFinite(next) && next >= 0 && next <= 10) onChange(next);
+          }}
+        />
+        <span className="font-mono text-sm text-muted-foreground">/ 10</span>
+      </div>
+      {valid ? <FieldHint>{hint}</FieldHint> : <FieldError>{error}</FieldError>}
+    </Field>
+  );
+}
+
 /**
- * /admin/policies: chính sách agent của tổ chức (admin-layout.md § Settings forms). Bảy mục, mỗi mục lưu riêng; thanh
+ * /admin/policies: chính sách agent của tổ chức (admin-layout.md § Settings forms). Tám mục, mỗi mục lưu riêng; thanh
  * mục dính trên form để nhảy nhanh; rời trang khi còn mục chưa lưu thì hỏi lại.
  */
 export function PoliciesPage() {
@@ -601,7 +726,11 @@ function PolicyEditor({
   const ids = { defaultPerm: useId(), memMode: useId(), retention: useId() };
 
   const save = useMutation({
-    mutationFn: ({ section }: { section: SectionId }) => api.policies.update.call(withSection(saved, form, section)),
+    mutationFn: ({ section }: { section: SectionId }) => {
+      // Mục khác không gửi `sdlc`: hub giữ bản đã lưu, nên lưu mục khác không ghi đè thay đổi AI SDLC của người khác.
+      const { sdlc, ...rest } = withSection(saved, form, section);
+      return api.policies.update.call(section === "sdlc" ? { ...rest, sdlc } : rest);
+    },
     onSuccess: (next, { section }) => {
       queryClient.setQueryData(api.policies.get.queryKey(), next);
       // Chỉ mục vừa lưu lấy lại giá trị hub trả; mục khác giữ bản nháp đang sửa.
@@ -675,6 +804,7 @@ function PolicyEditor({
       { id: "hooks", label: "Hooks" },
       { id: "templates", label: t.instr },
       { id: "limits", label: t.limits },
+      { id: "sdlc", label: "AI SDLC" },
     ],
     [t],
   );
@@ -801,6 +931,7 @@ function PolicyEditor({
               })
             }
             disabled={disabled || (fullLocked && !form.allowFullPermission)}
+            tone="destructive"
           />
           <SwitchRow
             label={t.sandboxReq}
@@ -1061,6 +1192,111 @@ function PolicyEditor({
               </NativeSelect>
             </Field>
           </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="sdlc"
+          title="AI SDLC"
+          description={t.sdlcHint}
+          save={sectionSave("sdlc")}
+          actions={
+            <Pill tone={form.sdlc.autoApprove.allowed ? "ok" : "warn"}>
+              {form.sdlc.autoApprove.allowed ? t.sdlcOnBadge : t.sdlcOffBadge}
+            </Pill>
+          }
+        >
+          <SwitchRow
+            label={t.sdlcAllow}
+            hint={t.sdlcAllowHint}
+            checked={form.sdlc.autoApprove.allowed}
+            disabled={disabled}
+            onChange={(allowed) => update("sdlc", { sdlc: { autoApprove: { ...form.sdlc.autoApprove, allowed } } })}
+          />
+          {!form.sdlc.autoApprove.allowed && (
+            <div role="status" className="rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
+              {t.sdlcOffNote}
+              <p className="text-xs">{t.sdlcOffNoteHint}</p>
+            </div>
+          )}
+          <div key={`sdlc-${epoch.sdlc ?? 0}`} className="grid items-start gap-5 md:grid-cols-2">
+            <div className="grid gap-3.5">
+              <FloorInput
+                label={t.sdlcFloor}
+                hint={t.sdlcFloorHint}
+                error={t.sdlcFloorRange}
+                value={form.sdlc.autoApprove.minScoreFloor}
+                disabled={disabled}
+                onChange={(minScoreFloor) =>
+                  update("sdlc", { sdlc: { autoApprove: { ...form.sdlc.autoApprove, minScoreFloor } } })
+                }
+              />
+              <div className="grid gap-1.5 rounded-lg bg-muted px-3.5 py-2.5 text-sm">
+                <strong className="flex items-center gap-1.5 font-semibold">
+                  <LockIcon aria-hidden="true" className="size-3.5" />
+                  {t.sdlcAlways}
+                </strong>
+                <ul className="m-0 grid list-disc gap-0.5 pl-5">
+                  {t.sdlcAlwaysList.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+                <span className="text-xs text-muted-foreground">{t.sdlcAlwaysHint}</span>
+              </div>
+            </div>
+            <div className="grid gap-3.5">
+              <Field>
+                <FieldLabel>{t.sdlcKeywords}</FieldLabel>
+                <FieldHint>{t.sdlcKeywordsHint}</FieldHint>
+                <ChipInput
+                  boxed
+                  values={form.sdlc.autoApprove.denyKeywords}
+                  onChange={(denyKeywords) =>
+                    update("sdlc", { sdlc: { autoApprove: { ...form.sdlc.autoApprove, denyKeywords } } })
+                  }
+                  canWrite={!disabled}
+                  addLabel={`${t.sdlcAdd} ${t.sdlcKeywords.toLowerCase()}`}
+                  placeholder={t.sdlcAdd}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>{t.sdlcPaths}</FieldLabel>
+                <FieldHint>{t.sdlcPathsHint}</FieldHint>
+                <ChipInput
+                  boxed
+                  values={form.sdlc.autoApprove.denyPaths}
+                  onChange={(denyPaths) =>
+                    update("sdlc", { sdlc: { autoApprove: { ...form.sdlc.autoApprove, denyPaths } } })
+                  }
+                  canWrite={!disabled}
+                  addLabel={`${t.sdlcAdd} ${t.sdlcPaths.toLowerCase()}`}
+                  placeholder={t.sdlcAdd}
+                />
+              </Field>
+              {canWrite && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="justify-self-start"
+                  disabled={disabled}
+                  onClick={() =>
+                    update("sdlc", {
+                      sdlc: {
+                        autoApprove: {
+                          ...form.sdlc.autoApprove,
+                          denyKeywords: [...DEFAULT_SDLC_DENY_KEYWORDS],
+                          denyPaths: [...DEFAULT_SDLC_DENY_PATHS],
+                        },
+                      },
+                    })
+                  }
+                >
+                  {t.sdlcReset}
+                </Button>
+              )}
+            </div>
+          </div>
+          <SdlcPolicyStats />
         </SettingsSection>
       </SettingsLayout>
 

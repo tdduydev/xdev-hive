@@ -357,13 +357,88 @@ func TestLocalSlowClientDropped(t *testing.T) {
 	s.mu.Lock()
 	s.clients[cl] = struct{}{}
 	s.mu.Unlock()
+	// Gửi từng dòng và chờ tiếng vọng rồi mới gửi tiếp: gửi liền thì hai dòng có thể về chung một lần đọc PTY, thành một
+	// khung và hàng một chỗ không bao giờ đầy.
 	tc.send(t, "a\n")
+	tc.waitOut(t, "got:a")
 	tc.send(t, "b\n")
 	tc.waitOut(t, "got:b")
-	s.mu.Lock()
-	_, still := s.clients[cl]
-	s.mu.Unlock()
-	if still || !cl.closed {
-		t.Fatal("client chậm phải bị tách")
+	eventually(t, "client chậm bị tách", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		_, still := s.clients[cl]
+		return !still && cl.closed
+	})
+}
+
+// Phiên tại máy được ghi lên hub (đã che bí mật) và kết thúc kèm mã thoát; --no-record thì không ghi.
+func TestLocalRecordsToHub(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-bimat-khong-lo")
+	rec := &Recorder{Dir: filepath.Join(shortDir(t), "terminal")}
+	t.Cleanup(rec.Close)
+	link := newFakeLink()
+	rec.OnWelcome(personal(), link)
+	path := startLocal(t, &Local{Recorder: rec})
+
+	quiet, _ := gate(t, path, createReq(t, map[string]any{"noRecord": true}))
+	quiet.waitOut(t, "READY")
+	tc, _ := gate(t, path, createReq(t, map[string]any{"projectId": "p1", "taskId": "t1"}))
+	tc.waitOut(t, "READY")
+
+	var list struct {
+		Sessions []SessionInfo `json:"sessions"`
+	}
+	if err := dial(t, path).Call(map[string]string{"op": "session.list"}, &list); err != nil {
+		t.Fatal(err)
+	}
+	var hubID string
+	recorded := 0
+	for _, s := range list.Sessions {
+		if s.HubID != "" {
+			hubID = s.HubID
+			recorded++
+		}
+	}
+	if recorded != 1 {
+		t.Fatalf("chỉ phiên không có --no-record được ghi: %+v", list.Sessions)
+	}
+
+	tc.send(t, "xin chao\n")
+	tc.waitOut(t, "got:xin chao")
+	tc.send(t, "quit\n")
+	tc.waitCtl(t, localipc.CtlExit)
+	eventually(t, "term_exit", func() bool {
+		n := 0
+		link.snapshot(func(f *fakeLink) { n = len(f.exits) })
+		return n == 1
+	})
+	out := link.joined(hubID)
+	if !strings.Contains(out, "got:xin chao") || !strings.Contains(out, "tok=***") || strings.Contains(out, "bimat") {
+		t.Fatalf("bản ghi = %q", out)
+	}
+	link.snapshot(func(f *fakeLink) {
+		if len(f.opened) != 1 || f.opened[0].ProjectID != "p1" || f.opened[0].TaskID != "t1" || f.opened[0].Cols != 100 {
+			t.Fatalf("opened = %+v", f.opened)
+		}
+		if e := f.exits[0]; e.SessionID != hubID || e.Reason != ReasonExit || e.ExitCode == nil || *e.ExitCode != 7 {
+			t.Fatalf("exit = %+v", e)
+		}
+	})
+}
+
+// remote.* qua socket nội bộ thật tới Remote; máy không có Remote thì báo chưa hỗ trợ.
+func TestLocalRoutesRemoteOps(t *testing.T) {
+	path := startLocal(t, &Local{Remote: newRemote(t)})
+	var out struct {
+		Status RemoteStatus `json:"status"`
+	}
+	if err := dial(t, path).Call(map[string]string{"op": "remote.enable"}, &out); err != nil || !out.Status.Enabled {
+		t.Fatalf("remote.enable = %+v %v", out, err)
+	}
+	bare := startLocal(t, &Local{})
+	err := dial(t, bare).Call(map[string]string{"op": "remote.status"}, nil)
+	var re *localipc.RemoteError
+	if !errors.As(err, &re) || re.Code != localipc.CodeUnsupported {
+		t.Fatalf("không có Remote: %v", err)
 	}
 }

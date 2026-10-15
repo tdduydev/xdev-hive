@@ -271,7 +271,7 @@ export async function markOnline(
   pool: pg.Pool,
   m: AuthedMachine,
   info?: Partial<MachineInfo & MachineProjects> & { accounts?: WorkerAccountSummary[] | undefined },
-): Promise<{ shared: boolean } | null> {
+): Promise<{ shared: boolean; registeredBy: string | null; capabilities: string[] } | null> {
   const { accounts, ...rest } = info ?? {};
   const rows = await withTenant(pool, { orgId: m.orgId }, (tx) =>
     tx
@@ -285,7 +285,7 @@ export async function markOnline(
         offlineNotifiedAt: null,
       })
       .where(and(eq(machines.id, m.id), isNull(machines.revokedAt)))
-      .returning({ shared: machines.shared }),
+      .returning({ shared: machines.shared, registeredBy: machines.registeredBy, capabilities: machines.capabilities }),
   );
   return rows[0] ?? null;
 }
@@ -404,6 +404,9 @@ export async function listOnlineMachines(
       capabilities: string[];
       shared: boolean;
       registeredBy: string | null;
+      /** Nhãn do quản trị đặt (specs/011 D13); hub lọc run có `required_labels`, không qua giao thức worker. */
+      labels: string[];
+      labelsOnly: boolean;
     } & MachineProjects
   >
 > {
@@ -416,6 +419,8 @@ export async function listOnlineMachines(
       capabilities: machines.capabilities,
       shared: machines.shared,
       registeredBy: machines.registeredBy,
+      labels: machines.labels,
+      labelsOnly: machines.labelsOnly,
       boundProjects: machines.boundProjects,
       fullProjects: machines.fullProjects,
     })

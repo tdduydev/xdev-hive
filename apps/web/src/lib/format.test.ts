@@ -16,6 +16,10 @@ describe("formatDay", () => {
   it("giờ và ngày của mốc bắt đầu", () =>
     // Ghép giờ theo máy người xem nên chỉ kiểm dạng.
     expect(formatDayTime("2026-10-11T07:02:00.000Z")).toMatch(/^\d{2}:\d{2}, \d{2}\/10$/));
+  it("bản EN viết tên tháng, không dùng ngày/tháng", () => {
+    expect(formatDay("2026-10-11T12:00:00.000Z", "en")).toBe("Oct 11, 2026");
+    expect(formatDayTime("2026-10-11T07:02:00.000Z", "en")).toMatch(/^\d{2}:\d{2}, Oct 1[01]$/);
+  });
 });
 
 describe("số và tiền", () => {
@@ -54,4 +58,11 @@ describe("formatAgo", () => {
     ["2026-10-10T08:00:00.000Z", "hôm qua"],
     ["2026-10-01T12:00:00.000Z", "01/10/2026"],
   ])("%s → %s", (iso, text) => expect(formatAgo(iso, now)).toBe(text));
+  it.each([
+    ["2026-10-11T11:59:30.000Z", "just now"],
+    ["2026-10-11T11:48:00.000Z", "12 minutes ago"],
+    ["2026-10-11T09:00:00.000Z", "3 hours ago"],
+    ["2026-10-10T08:00:00.000Z", "yesterday"],
+    ["2026-10-01T12:00:00.000Z", "Oct 1, 2026"],
+  ])("EN: %s → %s", (iso, text) => expect(formatAgo(iso, now, "en")).toBe(text));
 });

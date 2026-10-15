@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -277,5 +278,74 @@ func TestMemoryUsage(t *testing.T) {
 		if code, _, errOut := runMemory(t, env, "", args...); code != 2 || !strings.Contains(errOut, "Cách dùng") {
 			t.Errorf("%v: code %d stderr %q", args, code, errOut)
 		}
+	}
+}
+
+// fakeClaudeCommand giả `claude`: ghi CLAUDE_CONFIG_DIR rồi trả một đề xuất nén. Chỉ chạy trên Unix.
+func fakeClaudeCommand(t *testing.T, answer string) (envFile string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("script sh giả chỉ chạy trên Unix")
+	}
+	dir := t.TempDir()
+	reply, _ := json.Marshal(map[string]any{"result": answer, "usage": map[string]int{"input_tokens": 40, "output_tokens": 10}})
+	writeTestFile(t, filepath.Join(dir, "reply.json"), string(reply))
+	envFile = filepath.Join(dir, "env.txt")
+	script := filepath.Join(dir, "claude")
+	writeTestFile(t, script, "#!/bin/sh\ncat > /dev/null\necho \"$CLAUDE_CONFIG_DIR\" > '"+envFile+"'\ncat '"+filepath.Join(dir, "reply.json")+"'\n")
+	if err := os.Chmod(script, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := memoryClaudeCommand
+	memoryClaudeCommand = func() (string, []string, error) { return script, nil, nil }
+	t.Cleanup(func() { memoryClaudeCommand = old })
+	return envFile
+}
+
+func TestMemoryCompressProposesForOneProfileAndWritesNothing(t *testing.T) {
+	env := fakeMemoryEnv(t)
+	file := filepath.Join(env.memDir("claude-2"), "only-claude-2.md")
+	envFile := fakeClaudeCommand(t, `{"files":[{"path":`+string(mustJSON(file))+`,"content":"gọn hơn\nmột dòng mới\n"}]}`)
+	before := scanView(t, env)
+
+	code, out, errOut := runMemory(t, env, "", "compress", "--profile", "claude-2", "--project", env.key)
+	if code != 0 {
+		t.Fatalf("compress: %d %s", code, errOut)
+	}
+	var res memstore.Compression
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("JSON: %v\n%s", err, out)
+	}
+	if len(res.Files) != 1 || res.TokensUsed != 50 || res.Files[0].Path != file || len(res.Files[0].NewLines) != 2 {
+		t.Fatalf("result = %+v", res)
+	}
+	want := filepath.Join(env.home, ".xdev-hive", "accounts", "claude-2")
+	if got, _ := os.ReadFile(envFile); strings.TrimSpace(string(got)) != want {
+		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", got, want)
+	}
+	if got, _ := os.ReadFile(file); string(got) != "riêng claude-2\n" {
+		t.Fatalf("file changed: %q", got)
+	}
+	if after := scanView(t, env); len(after.Entries) != len(before.Entries) {
+		t.Fatal("compress left a backup entry")
+	}
+}
+
+func TestMemoryCompressRejectsFilesOutsideTheChosenProfile(t *testing.T) {
+	env := fakeMemoryEnv(t)
+	fakeClaudeCommand(t, `{"files":[]}`)
+	other := filepath.Join(env.memDir("claude-1"), "only-claude-1.md")
+	outside := filepath.Join(env.home, "secret.txt")
+	writeTestFile(t, outside, "bí mật")
+	for _, f := range []string{other, outside, "relative.md"} {
+		if code, _, errOut := runMemory(t, env, "", "compress", "--profile", "claude-2", "--project", env.key, "--files", f); code == 0 || !strings.Contains(errOut, "không phải file memory") {
+			t.Errorf("%s: code = %d, stderr = %q", f, code, errOut)
+		}
+	}
+	if code, _, _ := runMemory(t, env, "", "compress", "--project", env.key); code != 2 {
+		t.Errorf("missing --profile: code = %d", code)
+	}
+	if code, _, errOut := runMemory(t, env, "", "compress", "--profile", "claude-9", "--project", env.key); code == 0 || !strings.Contains(errOut, "không có file memory") {
+		t.Errorf("unknown profile: code = %d, stderr = %q", code, errOut)
 	}
 }

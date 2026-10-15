@@ -164,7 +164,7 @@ const reviewRow = async (id: string) =>
 const gateRuns = async (id: string) =>
   (
     await admin.query(
-      "select gate_index, gate_id, status, note, approvals, decided_by, overridden, run_ids from hive.code_review_gate_runs where review_id = $1 order by started_at",
+      "select gate_index, gate_id, status, note, approvals, decided_by, overridden, run_ids from hive.code_review_gate_runs where review_id = $1 order by started_at, gate_index",
       [id],
     )
   ).rows;

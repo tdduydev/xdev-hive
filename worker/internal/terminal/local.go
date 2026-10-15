@@ -48,14 +48,16 @@ var LocalCLIs = []string{"claude", "codex", "gemini"}
 // PTY). Phiên sống tới khi CLI thoát hoặc bị ngắt, không theo client: client đóng chỉ là tách, như tmux. Một client
 // điều khiển, các client khác chỉ xem.
 //
-// Chưa ghi lên hub: term_opened/term_output/term_exit của phiên tại máy chờ handler phía hub (T013). Khi làm, máy dùng
-// chung và runner host vẫn phải chỉ chạy tại máy, không ghi (D13).
+// Phiên được ghi lên hub qua Recorder (nil là không ghi, như runner host); Recorder tự thôi ghi trên máy dùng chung (D13).
 type Local struct {
 	// Accounts chọn gói cho phiên; nil là đăng nhập mặc định của CLI.
 	Accounts *accounts.Pool
 	// Commands ghi đè lệnh của CLI (HIVE_WORKER_CLI_OVERRIDES, test); đối số của client nối sau Args.
 	Commands map[string]runner.Command
 	Logger   *slog.Logger
+	Recorder *Recorder
+	// Remote nhận remote.* và watch của socket nội bộ; nil là máy không có điều khiển từ xa.
+	Remote *Remote
 
 	MaxSessions int
 	TailBytes   int
@@ -76,8 +78,9 @@ type localSession struct {
 	account   string
 	started   time.Time
 	cmd       *exec.Cmd
-	f         *os.File
+	f         pty.Terminal
 	lease     *accounts.Lease
+	rec       *RecordedSession
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -114,6 +117,8 @@ type SessionInfo struct {
 	PID        int       `json:"pid"`
 	Controlled bool      `json:"controlled"`
 	Viewers    int       `json:"viewers"`
+	// HubID là mã phiên trên hub khi phiên được ghi (để mở trang phiên trên web); rỗng là không ghi.
+	HubID string `json:"hubId,omitempty"`
 }
 
 // CreateParams là session.create.
@@ -127,6 +132,11 @@ type CreateParams struct {
 	Force   bool     `json:"force,omitempty"`
 	// Term là $TERM của terminal người dùng, để CLI vẽ đúng loại terminal đang gắn.
 	Term string `json:"term,omitempty"`
+	// NoRecord là `hive chat --no-record`: không ghi phiên lên hub.
+	NoRecord bool `json:"noRecord,omitempty"`
+	// ProjectID, TaskID do `hive` tra trên hub; hub tự bỏ liên kết khi không thuộc đội của máy (FR-030).
+	ProjectID string `json:"projectId,omitempty"`
+	TaskID    string `json:"taskId,omitempty"`
 }
 
 // AttachParams là session.attach; Mode rỗng là control.
@@ -148,7 +158,7 @@ func (l *Local) log() *slog.Logger {
 }
 
 // Handle là localipc.Handler cho các op session.*.
-func (l *Local) Handle(_ context.Context, c *localipc.Conn, req localipc.Request) error {
+func (l *Local) Handle(ctx context.Context, c *localipc.Conn, req localipc.Request) error {
 	switch req.Op {
 	case "session.create":
 		var p CreateParams
@@ -189,6 +199,9 @@ func (l *Local) Handle(_ context.Context, c *localipc.Conn, req localipc.Request
 		s.stop(ReasonKilled, "Phiên đã bị ngắt bằng hive kill.")
 		return c.OK(map[string]any{"id": s.id})
 	}
+	if l.Remote != nil && (req.Op == "watch" || strings.HasPrefix(req.Op, "remote.")) {
+		return l.Remote.Handle(ctx, c, req)
+	}
 	return c.Fail(localipc.CodeUnsupported, "hive-worker chưa nhận thao tác "+clip(req.Op, 40)+".")
 }
 
@@ -206,7 +219,7 @@ func (l *Local) List() []SessionInfo {
 	for _, s := range list {
 		s.mu.Lock()
 		info := SessionInfo{ID: s.id, CLI: s.cli, Cwd: s.cwd, Account: s.account, Started: s.started, Controlled: s.ctl != nil,
-			Viewers: len(s.clients)}
+			Viewers: len(s.clients), HubID: s.rec.ID()}
 		s.mu.Unlock()
 		if info.Controlled {
 			info.Viewers--
@@ -365,6 +378,10 @@ func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*
 		cmd: cmd, f: f, lease: lease, stopCh: make(chan struct{}), done: make(chan struct{}),
 		clients: map[*localClient]struct{}{},
 	}
+	if !p.NoRecord {
+		s.rec = l.Recorder.Open(RecordOpen{CLI: p.CLI, Cwd: p.Cwd, AccountLabel: lease.Label(), ProjectID: p.ProjectID,
+			TaskID: p.TaskID, Cols: cols, Rows: rows})
+	}
 	l.mu.Lock()
 	l.sessions[id] = s
 	closing := l.closing
@@ -429,6 +446,7 @@ func (l *Local) run(s *localSession, secrets []string) {
 		}
 	}
 	s.finish(ctl)
+	s.rec.Close(ctl.Code, ctl.Reason, ctl.Message)
 	l.mu.Lock()
 	if l.sessions[s.id] == s {
 		delete(l.sessions, s.id)
@@ -489,6 +507,7 @@ func (s *localSession) emit(b []byte, limit int) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.rec.Write(b)
 	s.tail = append(s.tail, b...)
 	// Cắt khi gấp đôi giới hạn để không chép đuôi mỗi lần đọc.
 	if len(s.tail) > 2*limit {
@@ -611,7 +630,7 @@ func (l *Local) handleFrame(s *localSession, cl *localClient, typ byte, data []b
 	case localipc.FrameResize:
 		var sz localipc.Size
 		if json.Unmarshal(data, &sz) == nil && sz.Cols > 0 && sz.Rows > 0 && s.controlledBy(cl) {
-			if err := pty.Resize(s.f, min(sz.Cols, maxSize), min(sz.Rows, maxSize)); err != nil {
+			if err := s.f.Resize(min(sz.Cols, maxSize), min(sz.Rows, maxSize)); err != nil {
 				l.log().Debug("Không đổi được cỡ PTY", "session", s.id, "error", err)
 			}
 		}

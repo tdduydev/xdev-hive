@@ -28,15 +28,23 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/channel"
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
+	"github.com/tdduydev/xdev-hive/worker/internal/gitgroups"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
+	"github.com/tdduydev/xdev-hive/worker/internal/instancelock"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/service"
+	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
 	"github.com/tdduydev/xdev-hive/worker/internal/update"
 	"github.com/tdduydev/xdev-hive/worker/internal/version"
 )
 
 func main() {
+	// Git gọi lại chính hive-worker làm GIT_ASKPASS khi clone, fetch theo nhóm Git (gitgroups); câu hỏi của git là đối số
+	// tự do nên phải xét trước khi đọc lệnh.
+	if os.Getenv(gitgroups.AskpassEnv) == "1" {
+		os.Exit(gitgroups.Askpass(os.Args[1:], os.Stdout))
+	}
 	if len(os.Args) < 2 {
 		usage()
 		os.Exit(2)
@@ -67,6 +75,8 @@ func main() {
 		os.Exit(optimizeCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "projects":
 		os.Exit(projectsCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "gitgroups":
+		os.Exit(gitgroupsCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "memory":
 		os.Exit(memoryCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "service":
@@ -80,7 +90,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -335,6 +345,11 @@ func run(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	lock, code := lockWorker()
+	if lock == nil {
+		return code
+	}
+	defer lock.Close()
 	path, err := pathOr(*configPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -373,7 +388,7 @@ func run(args []string) int {
 	pool := accounts.NewPool(accounts.DefaultPath(path))
 	go pool.Watch(ctx)
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
-	stopLocal := startLocalIPC(pool)
+	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "xdev-hive", "worker", "terminal"), newRemote(cfg, path, detectCLIs()))
 	defer stopLocal()
 	slots := *capacity
 	if !flagSet(fs, "capacity") {
@@ -383,7 +398,26 @@ func run(args []string) int {
 		}
 	}
 	// --stdin-control là app desktop chạy worker làm sidecar: app tự cập nhật cả gói, worker không tự thay mình.
-	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, projects.DefaultPath(path), *statusJSON, selfUpdates(*stdinControl), cfg.HubURL)
+	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, term, projects.DefaultPath(path), *statusJSON, selfUpdates(*stdinControl), cfg.HubURL, func() error {
+		// Bản mới trên Windows là tiến trình con: dọn socket cũ và nhả khoá trước khi nó khởi động.
+		stopLocal()
+		return lock.Close()
+	})
+}
+
+// Mã riêng để app desktop báo rõ xung đột và không tự chạy lại worker liên tục.
+const exitAlreadyRunning = 4
+
+func lockWorker() (*instancelock.Lock, int) {
+	lock, err := instancelock.Acquire()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		if errors.Is(err, instancelock.ErrAlreadyRunning) {
+			return nil, exitAlreadyRunning
+		}
+		return nil, 1
+	}
+	return lock, 0
 }
 
 // selfUpdates: worker tự cài bản mới khi hub bảo, trừ khi chạy làm sidecar của app desktop (--stdin-control): binary
@@ -413,6 +447,11 @@ func host(args []string) int {
 		fmt.Fprintln(os.Stderr, "capacity, pids-limit và image phải hợp lệ")
 		return 2
 	}
+	lock, code := lockWorker()
+	if lock == nil {
+		return code
+	}
+	defer lock.Close()
 	if err := checkHostRuntime(*allowRunc); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -450,7 +489,8 @@ func host(args []string) int {
 		}
 	}
 	sandbox := &runner.SandboxConfig{Image: *image, HostID: cfg.MachineID, AllowRunc: *allowRunc, CPUs: *cpus, Memory: *memory, PIDs: *pids, EgressSocket: *egressSocket, WorkerBinary: executable}
-	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, "", false, true, cfg.HubURL)
+	// Runner host không giữ phiên tại máy nên không ghi gì lên hub (D13).
+	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, nil, "", false, true, cfg.HubURL, lock.Close)
 }
 
 func sandboxInit(args []string) int {
@@ -570,12 +610,12 @@ func flagSet(fs *flag.FlagSet, name string) bool {
 }
 
 // projectsFile là projects.json (ADR 0020); runner host truyền rỗng vì run sandbox không dùng repo trên máy.
-func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, projectsFile string, statusJSON, selfUpdate bool, hubURL string) int {
+func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, term terminal.Handler, projectsFile string, statusJSON, selfUpdate bool, hubURL string, beforeRestart func() error) int {
 	clis := detectCLIs()
 	if mode == "host" {
 		clis = knownCLIs
 	}
-	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool, Projects: projectsFile}
+	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool, Projects: projectsFile, Terminal: term}
 	if statusJSON {
 		cc.OnStatus = statusPrinter(os.Stdout)
 	}
@@ -583,12 +623,12 @@ func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, 
 	var requested *channel.UpdateRequest
 	var upgrade *channel.UpgradeError
 	if errors.As(err, &requested) {
-		return updateAndRestart(ctx, requested.Version)
+		return updateAndRestart(ctx, requested.Version, beforeRestart)
 	}
 	if selfUpdate && errors.As(err, &upgrade) {
 		// Hub không còn nói chuyện được với bản này: lên bản mới nhất thay vì để dịch vụ khởi động lại mãi với bản cũ.
 		fmt.Fprintln(os.Stderr, err)
-		return updateAndRestart(ctx, "")
+		return updateAndRestart(ctx, "", beforeRestart)
 	}
 	// Mã thoát riêng khi hub từ chối máy, để trình quản lý dịch vụ không khởi động lại liên tục với token đã hỏng.
 	var rejected *channel.RejectedError
@@ -737,7 +777,7 @@ func applyUpdate(ctx context.Context, src update.Source, exe, current, target st
 
 // updateAndRestart chạy khi hub yêu cầu cập nhật và worker đã chờ run đang chạy xong: cài bản mới rồi chạy lại đúng lệnh
 // này bằng binary mới. Cập nhật lỗi thì vẫn chạy lại bản cũ, để máy không rời hub chỉ vì lỗi mạng lúc tải.
-func updateAndRestart(ctx context.Context, target string) int {
+func updateAndRestart(ctx context.Context, target string, beforeRestart func() error) int {
 	exe, err := update.Executable()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -756,6 +796,10 @@ func updateAndRestart(ctx context.Context, target string) int {
 	}
 	if ctx.Err() != nil {
 		return 0
+	}
+	if err := beforeRestart(); err != nil {
+		fmt.Fprintf(os.Stderr, "Không nhả được khoá worker để khởi động lại: %v\n", err)
+		return 1
 	}
 	if err := restartSelf(exe); err != nil {
 		fmt.Fprintln(os.Stderr, err)

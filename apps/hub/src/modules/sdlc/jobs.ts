@@ -6,6 +6,7 @@ import { type Jobs, type Tx, withTenant } from "../platform/index.ts";
 import { loadConnection } from "../scm/index.ts";
 import { advance, SDLC_QUEUE, type SdlcDeps, type SdlcJob } from "./phases.ts";
 import { sdlcItems } from "./schema.ts";
+import { traceCi } from "./scm.ts";
 
 export const sdlcQueue = {
   name: SDLC_QUEUE,
@@ -52,6 +53,7 @@ async function commentOnIssue(deps: SdlcWorkerDeps, job: Extract<SdlcJob, { kind
 /** Xử lý một job của queue `sdlc`; tách ra để test gọi thẳng không cần pg-boss. */
 export async function handleSdlcJob(deps: SdlcWorkerDeps, job: SdlcJob): Promise<void> {
   if (job.kind === "issue-comment") return commentOnIssue(deps, job);
+  if (job.kind === "trace-ci") return traceCi(deps, job);
   await withTenant(deps.pool, { orgId: job.orgId }, (tx) => advance(tx, job.itemId, deps));
 }
 

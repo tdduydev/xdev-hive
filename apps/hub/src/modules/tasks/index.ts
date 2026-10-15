@@ -36,5 +36,6 @@ export {
   taskSummaries,
   toTask,
   updateChecklist,
+  updateSystemTask,
   updateTask,
 } from "./tasks.ts";
