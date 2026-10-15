@@ -7,6 +7,14 @@ import { codeReviewsContract } from "./code-reviews.ts";
 import { costsContract } from "./cost.ts";
 import { desktopConnectContract } from "./desktop-connect.ts";
 import { docEditorContract } from "./doc-editor.ts";
+import {
+  docAssetsContract,
+  docConflictsContract,
+  docExtractsContract,
+  docHomesContract,
+  docImportsContract,
+  docTreeContract,
+} from "./doc-sync.ts";
 import { fleetContract } from "./fleet.ts";
 import { briefContract, docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
 import { leaderContract } from "./leader.ts";
@@ -33,6 +41,7 @@ export * from "./code-reviews.ts";
 export * from "./cost.ts";
 export * from "./desktop-connect.ts";
 export * from "./doc-editor.ts";
+export * from "./doc-sync.ts";
 export * from "./doc-text.ts";
 export * from "./egress.ts";
 export * from "./glob.ts";
@@ -130,6 +139,12 @@ export const contract = {
   projects: projectsContract,
   memory: memoryContract,
   docs: docsContract,
+  docHomes: docHomesContract,
+  docImports: docImportsContract,
+  docConflicts: docConflictsContract,
+  docAssets: docAssetsContract,
+  docExtracts: docExtractsContract,
+  docTree: docTreeContract,
   briefs: briefContract,
   skills: skillsContract,
   proposals: proposalsContract,

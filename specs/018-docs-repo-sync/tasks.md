@@ -73,7 +73,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `specs/018-docs-repo-sync/research.md` (thêm mục 6 "Kết quả spike", sửa nhãn)
   - **Kiểm**: mỗi dòng có kết quả "có / không / chưa rõ" kèm provider, bản và ngày thử. Không ghi token hay URL có token.
 
-- [ ] **T003 [P] [—] [nặng] · 1,5 ngày — Hợp đồng API**
+- [x] **T003 [P] [—] [nặng] · 1,5 ngày — Hợp đồng API**
   - **Goal**: plan.md mục 1–13, theo constitution I.
     - `doc-sync.ts` mới:
       - `docHomesContract`: `get`, `configureProject`, `configureOrg` (có `create`), `remove`, `pause`, `resume`,
