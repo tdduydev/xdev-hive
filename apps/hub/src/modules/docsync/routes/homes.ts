@@ -1,5 +1,7 @@
+import { adopt, adoptPreview } from "../adopt.ts";
 import { changeHomeState, configureOrgHome, configureProjectHome, getHome, homeView, removeHome } from "../homes.ts";
-import { type DocSyncRouteDeps, docSyncApi, notImplemented } from "./common.ts";
+import { type DocSyncRouteDeps, docSyncApi } from "./common.ts";
+import { requireJobs } from "./imports.ts";
 
 export function homesRoutes(deps: DocSyncRouteDeps) {
   const api = docSyncApi(deps).docHomes;
@@ -60,7 +62,11 @@ export function homesRoutes(deps: DocSyncRouteDeps) {
         deps,
       ),
     ),
-    adoptPreview: api.adoptPreview.handler(notImplemented),
-    adopt: api.adopt.handler(notImplemented),
+    adoptPreview: api.adoptPreview.handler(({ context, input }) =>
+      adoptPreview(context.tx, deps, { orgId: context.orgId, userId: context.user.id }, input),
+    ),
+    adopt: api.adopt.handler(({ context, input }) =>
+      adopt(context.tx, requireJobs(deps), { orgId: context.orgId, userId: context.user.id }, input),
+    ),
   };
 }

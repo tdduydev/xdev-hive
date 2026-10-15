@@ -23,6 +23,7 @@ import {
   addGitHost,
   cancelSync,
   candidateRepos,
+  discoverGitHosts,
   filterError,
   type GitGroup,
   type GitGroups,
@@ -32,6 +33,7 @@ import {
   groupStatus,
   openFolder,
   openFolderTerminal,
+  probeGitHost,
   type RepoState,
   type RepoStatus,
   refreshGitGroup,
@@ -66,6 +68,12 @@ type T = {
   urlHint: (kind: GitKind) => string;
   name: string;
   token: string;
+  authMode: string;
+  gitLogin: string;
+  gitLoginHint: string;
+  gitAccount: (name: string) => string;
+  checkingGit: string;
+  discovered: string;
   tokenHint: (kind: GitKind) => string;
   fromOrg: string;
   fromOrgNone: string;
@@ -118,7 +126,7 @@ const text: Dict<T> = {
     addHost: "Thêm kết nối",
     addGroup: "Thêm nhóm",
     loading: "Đang đọc…",
-    noHosts: "Chưa có kết nối Git. Thêm kết nối GitLab hay GitHub bằng personal access token để theo dõi group.",
+    noHosts: "Chưa có kết nối Git. Dùng đăng nhập Git trên máy hoặc personal access token để theo dõi group.",
     noGroups: "Chưa theo dõi group nào.",
     hosts: "Kết nối",
     removeHost: (n) => `Xoá kết nối ${n}`,
@@ -127,6 +135,13 @@ const text: Dict<T> = {
     urlHint: (k) =>
       k === "gitlab" ? "Để trống là gitlab.com. GitLab tự host: https://git.congty.vn" : "Để trống là github.com.",
     name: "Tên gợi nhớ",
+    authMode: "Cách đăng nhập",
+    gitLogin: "Dùng đăng nhập Git có sẵn trên máy",
+    gitLoginHint:
+      "Đọc lại credential helper mỗi lần gọi API; Hive không lưu mật khẩu hay token này. HTTPS dùng Git và helper của máy.",
+    gitAccount: (name) => `Tài khoản Git: ${name}`,
+    checkingGit: "Đang kiểm tra đăng nhập Git…",
+    discovered: "Thêm bằng đăng nhập Git trên máy",
     token: "Personal access token",
     tokenHint: (k) =>
       k === "gitlab"
@@ -135,9 +150,9 @@ const text: Dict<T> = {
     fromOrg: "Dùng thông tin kết nối của tổ chức",
     fromOrgNone: "Không dùng",
     fromOrgNote:
-      "Chỉ điền sẵn loại, máy chủ và group. Token vẫn là token cá nhân của bạn: hub không gửi token của tổ chức xuống máy.",
+      "Chỉ điền sẵn loại, máy chủ và group. Đăng nhập dùng thông tin cá nhân trên máy: hub không gửi token của tổ chức xuống máy.",
     hostTitle: "Thêm kết nối Git",
-    hostLead: "App kiểm token với máy chủ trước khi lưu.",
+    hostLead: "App kiểm tra tài khoản với API máy chủ trước khi lưu.",
     save: "Lưu",
     cancel: "Huỷ",
     groupTitle: "Theo dõi group",
@@ -197,7 +212,7 @@ const text: Dict<T> = {
     addHost: "Add connection",
     addGroup: "Add group",
     loading: "Loading…",
-    noHosts: "No Git connection yet. Add a GitLab or GitHub connection with a personal access token to track groups.",
+    noHosts: "No Git connection yet. Use your Git sign-in or a personal access token to track groups.",
     noGroups: "No tracked groups yet.",
     hosts: "Connections",
     removeHost: (n) => `Remove connection ${n}`,
@@ -208,6 +223,13 @@ const text: Dict<T> = {
         ? "Leave empty for gitlab.com. Self-hosted GitLab: https://git.company.com"
         : "Leave empty for github.com.",
     name: "Display name",
+    authMode: "Sign-in method",
+    gitLogin: "Use this machine's existing Git sign-in",
+    gitLoginHint:
+      "Reads the credential helper for each API call; Hive does not store this password or token. HTTPS uses your Git and helper.",
+    gitAccount: (name) => `Git account: ${name}`,
+    checkingGit: "Checking Git sign-in…",
+    discovered: "Add using this machine's Git sign-in",
     token: "Personal access token",
     tokenHint: (k) =>
       k === "gitlab"
@@ -216,9 +238,9 @@ const text: Dict<T> = {
     fromOrg: "Use an organization connection",
     fromOrgNone: "None",
     fromOrgNote:
-      "Only fills in kind, server and group. The token is still your own: the hub never sends organization tokens to machines.",
+      "Only fills in kind, server and group. Sign-in uses your personal credentials: the hub never sends organization tokens to machines.",
     hostTitle: "Add Git connection",
-    hostLead: "The app checks the token with the server before saving.",
+    hostLead: "The app checks your account with the server API before saving.",
     save: "Save",
     cancel: "Cancel",
     groupTitle: "Track a group",
@@ -733,8 +755,53 @@ function HostDialog({
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [choice, setChoice] = useState<"git" | "token" | null>(null);
+  const [probeTarget, setProbeTarget] = useState({ kind, url });
+  useEffect(() => {
+    const timer = setTimeout(() => setProbeTarget({ kind, url }), 400);
+    return () => clearTimeout(timer);
+  }, [kind, url]);
+  const probe = useQuery({
+    queryKey: ["git-host-probe", probeTarget.kind, probeTarget.url],
+    queryFn: () => probeGitHost(probeTarget.kind, probeTarget.url),
+    enabled: open,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const detected = probeTarget.kind === kind && probeTarget.url === url && probe.data;
+  const authMode = choice ?? (detected ? "git" : "token");
+  const discovered = useQuery({
+    queryKey: ["git-host-discover"],
+    queryFn: discoverGitHosts,
+    enabled: open,
+    retry: false,
+  });
+
+  function address(nextKind: GitKind, nextUrl: string) {
+    setKind(nextKind);
+    setUrl(nextUrl);
+    setChoice(null);
+    setToken("");
+    setError(null);
+  }
+
+  async function quickAdd(candidate: { kind: GitKind; url: string }) {
+    setSaving(true);
+    address(candidate.kind, candidate.url);
+    setChoice("git");
+    try {
+      const next = await addGitHost(candidate.kind, candidate.url, "", "", "git");
+      reset();
+      onSaved(next);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function reset() {
+    setChoice(null);
     setUrl("");
     setName("");
     setToken("");
@@ -749,7 +816,7 @@ function HostDialog({
   async function save() {
     setSaving(true);
     try {
-      const next = await addGitHost(kind, url, name, token);
+      const next = await addGitHost(kind, url, name, authMode === "git" ? "" : token, authMode);
       reset();
       onSaved(next);
     } catch (e) {
@@ -775,6 +842,22 @@ function HostDialog({
             void save();
           }}
         >
+          {discovered.data && discovered.data.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">{t.discovered}</span>
+              {discovered.data.map((candidate) => (
+                <Button
+                  key={candidate.url}
+                  type="button"
+                  variant="outline"
+                  disabled={saving}
+                  onClick={() => void quickAdd(candidate)}
+                >
+                  {candidate.url}
+                </Button>
+              ))}
+            </div>
+          )}
           {org.data && org.data.length > 0 && (
             <div className="flex flex-col gap-1">
               <Label htmlFor={`${id}-org`}>{t.fromOrg}</Label>
@@ -784,8 +867,7 @@ function HostDialog({
                 onChange={(e) => {
                   const c = org.data.find((x) => x.id === e.target.value);
                   if (!c) return;
-                  setKind(c.kind);
-                  setUrl(webUrl(c));
+                  address(c.kind, webUrl(c));
                   setName(c.name);
                 }}
               >
@@ -801,7 +883,7 @@ function HostDialog({
           )}
           <div className="flex flex-col gap-1">
             <Label htmlFor={`${id}-kind`}>{t.kind}</Label>
-            <NativeSelect id={`${id}-kind`} value={kind} onChange={(e) => setKind(e.target.value as GitKind)}>
+            <NativeSelect id={`${id}-kind`} value={kind} onChange={(e) => address(e.target.value as GitKind, url)}>
               <option value="gitlab">GitLab</option>
               <option value="github">GitHub</option>
             </NativeSelect>
@@ -812,7 +894,7 @@ function HostDialog({
               id={`${id}-url`}
               value={url}
               placeholder={kind === "gitlab" ? "https://gitlab.com" : "https://github.com"}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => address(kind, e.target.value)}
             />
             <span className="text-xs text-muted-foreground">{t.urlHint(kind)}</span>
           </div>
@@ -821,22 +903,46 @@ function HostDialog({
             <Input id={`${id}-name`} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor={`${id}-token`}>{t.token}</Label>
-            <Input
-              id={`${id}-token`}
-              type="password"
-              autoComplete="off"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-            />
-            <span className="text-xs text-muted-foreground">{t.tokenHint(kind)}</span>
+            <Label htmlFor={`${id}-auth`}>{t.authMode}</Label>
+            <NativeSelect
+              id={`${id}-auth`}
+              value={authMode}
+              disabled={saving}
+              onChange={(e) => {
+                setChoice(e.target.value as "git" | "token");
+                setToken("");
+              }}
+            >
+              <option value="git">{t.gitLogin}</option>
+              <option value="token">{t.token}</option>
+            </NativeSelect>
+            {probe.isFetching && <span role="status">{t.checkingGit}</span>}
+            {detected && <span role="status">{t.gitAccount(detected.username)}</span>}
+            {authMode === "git" && <span className="text-xs text-muted-foreground">{t.gitLoginHint}</span>}
+            {(authMode === "git" || errorText(probe.error).includes("API")) &&
+              probe.isError &&
+              probeTarget.kind === kind &&
+              probeTarget.url === url && <Alert variant="destructive">{errorText(probe.error)}</Alert>}
           </div>
+          {authMode === "token" && (
+            <div className="flex flex-col gap-1">
+              <Label htmlFor={`${id}-token`}>{t.token}</Label>
+              <Input
+                id={`${id}-token`}
+                type="password"
+                autoComplete="off"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+              />
+              <span className="text-xs text-muted-foreground">{t.tokenHint(kind)}</span>
+            </div>
+          )}
           {error && <Alert variant="destructive">{error}</Alert>}
           <DialogActions>
             <Button type="button" variant="outline" disabled={saving} onClick={close}>
               {t.cancel}
             </Button>
-            <Button type="submit" disabled={saving || !token.trim()}>
+            <Button type="submit" disabled={saving || (authMode === "token" && !token.trim())}>
               {t.save}
             </Button>
           </DialogActions>

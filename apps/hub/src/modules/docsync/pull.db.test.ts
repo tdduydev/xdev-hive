@@ -17,8 +17,8 @@ import {
 } from "../scm/index.ts";
 import { contentHash } from "./content.ts";
 import { configureOrgHome, configureProjectHome, type HomeRow } from "./homes.ts";
-import { DOCSYNC_PULL_QUEUE, DOCSYNC_PUSH_QUEUE } from "./jobs.ts";
 import { onDocsPush, pullHome, scanHomes } from "./pull.ts";
+import { DOCSYNC_PULL_QUEUE, DOCSYNC_PUSH_QUEUE } from "./queues.ts";
 import { docConflicts, docHomes, docRepoFiles } from "./schema.ts";
 
 const db = inject("db");
