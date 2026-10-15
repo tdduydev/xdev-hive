@@ -1,4 +1,4 @@
-export { handleAssetDownload, handleAssetUpload } from "./assets.ts";
+export { findDocAsset, handleAssetDownload, handleAssetUpload, listBrokenLinks } from "./assets.ts";
 export {
   BLOB_GC_QUEUE,
   DOC_INDEX_QUEUE,
