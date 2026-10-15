@@ -407,10 +407,45 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
         ...repo,
         commit_sha: parent,
       });
+      if (input.expectedHead && input.expectedHead !== parent)
+        throw new GitProviderError("conflict", "GitHub: nhánh đã thay đổi");
+      const moved = input.files.filter(
+        (f): f is Extract<CommitFilesInput["files"][number], { previousPath: string }> => "previousPath" in f,
+      );
+      const sourceTree = moved.length
+        ? await request<{ tree: { path: string; sha: string }[] }>("GET /repos/{owner}/{repo}/git/trees/{tree_sha}", {
+            ...repo,
+            tree_sha: base.tree.sha,
+            recursive: "1",
+          })
+        : { tree: [] };
+      const treeEntries = await Promise.all(
+        input.files.map(async (f) => {
+          if ("delete" in f) return { path: f.path, mode: "100644", type: "blob", sha: null };
+          if ("previousPath" in f) {
+            const source = sourceTree.tree.find((entry) => entry.path === f.previousPath);
+            if (!source) throw new GitProviderError("not_found", `GitHub: không có file ${f.previousPath}`);
+            return [
+              { path: f.previousPath, mode: "100644", type: "blob", sha: null },
+              { path: f.path, mode: "100644", type: "blob", sha: source.sha },
+            ];
+          }
+          const content = "bytes" in f ? Buffer.from(f.bytes).toString("base64") : f.content;
+          if ("bytes" in f) {
+            const blob = await request<{ sha: string }>("POST /repos/{owner}/{repo}/git/blobs", {
+              ...repo,
+              content,
+              encoding: "base64",
+            });
+            return { path: f.path, mode: "100644", type: "blob", sha: blob.sha };
+          }
+          return { path: f.path, mode: "100644", type: "blob", content };
+        }),
+      ).then((entries) => entries.flat());
       const tree = await request<{ sha: string }>("POST /repos/{owner}/{repo}/git/trees", {
         ...repo,
         base_tree: base.tree.sha,
-        tree: input.files.map((f) => ({ path: f.path, mode: "100644", type: "blob", content: f.content })),
+        tree: treeEntries,
       });
       const commit = await request<{ sha: string }>("POST /repos/{owner}/{repo}/git/commits", {
         ...repo,
@@ -811,13 +846,31 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
     branchHead: (ref: RepoRef, branch: string) => headSha(ref, branch),
 
     async listFiles(ref: RepoRef, sha: string) {
-      const tree = await request<{ tree: { path: string; type: string }[]; truncated: boolean }>(
+      const tree = await request<{ tree: { path: string; type: string; sha: string }[]; truncated: boolean }>(
         "GET /repos/{owner}/{repo}/git/trees/{tree_sha}",
         { owner: ref.owner, repo: ref.name, tree_sha: sha, recursive: "1" },
       );
-      // Cây quá lớn thì GitHub cắt bớt: báo lỗi thay vì đồng bộ thiếu rồi xoá nhầm skill.
-      if (tree.truncated) throw new GitProviderError("invalid", "GitHub: cây repo quá lớn, không đọc hết một lần được");
-      return tree.tree.filter((e) => e.type === "blob").map((e) => e.path);
+      if (!tree.truncated) return tree.tree.filter((e) => e.type === "blob").map((e) => e.path);
+      const paths: string[] = [];
+      const visit = async (treeSha: string, prefix = ""): Promise<void> => {
+        const nested = await request<{ tree: { path: string; type: string; sha: string }[]; truncated: boolean }>(
+          "GET /repos/{owner}/{repo}/git/trees/{tree_sha}",
+          { owner: ref.owner, repo: ref.name, tree_sha: treeSha },
+        );
+        for (const entry of nested.tree) {
+          const path = prefix ? `${prefix}/${entry.path}` : entry.path;
+          if (entry.type === "blob") paths.push(path);
+          else if (entry.type === "tree") await visit(entry.sha, path);
+        }
+        if (nested.truncated) throw new GitProviderError("invalid", "GitHub: cây con quá lớn, không thể đọc an toàn");
+      };
+      const commit = await request<{ tree: { sha: string } }>("GET /repos/{owner}/{repo}/git/commits/{commit_sha}", {
+        owner: ref.owner,
+        repo: ref.name,
+        commit_sha: sha,
+      });
+      await visit(commit.tree.sha);
+      return paths;
     },
 
     async readFile(ref: RepoRef, path: string, sha: string) {
@@ -829,8 +882,106 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
           ref: sha,
         }),
       );
+      if (file?.encoding === "none" || (file?.content === "" && file?.encoding !== "base64")) {
+        const result = await request<{ tree: { sha: string } }>("GET /repos/{owner}/{repo}/git/commits/{commit_sha}", {
+          owner: ref.owner,
+          repo: ref.name,
+          commit_sha: sha,
+        });
+        const tree = await request<{ tree: { path: string; sha: string }[] }>(
+          "GET /repos/{owner}/{repo}/git/trees/{tree_sha}",
+          { owner: ref.owner, repo: ref.name, tree_sha: result.tree.sha, recursive: "1" },
+        );
+        const blob = tree.tree.find((entry) => entry.path === path);
+        if (!blob) return null;
+        const content = await request<{ content: string; encoding: string }>(
+          "GET /repos/{owner}/{repo}/git/blobs/{file_sha}",
+          { owner: ref.owner, repo: ref.name, file_sha: blob.sha },
+        );
+        return Buffer.from(content.content, content.encoding === "base64" ? "base64" : "utf8").toString("utf8");
+      }
       if (!file?.content) return file ? "" : null;
       return file.encoding === "base64" ? Buffer.from(file.content, "base64").toString("utf8") : file.content;
+    },
+
+    async readBlob(ref, blob) {
+      const data = await request<{ content: string; encoding: string }>(
+        "GET /repos/{owner}/{repo}/git/blobs/{file_sha}",
+        { owner: ref.owner, repo: ref.name, file_sha: blob },
+      );
+      return new Uint8Array(Buffer.from(data.content, data.encoding === "base64" ? "base64" : "utf8"));
+    },
+    async compare(ref, from, to) {
+      const data = await request<{
+        files?: { filename: string; previous_filename?: string; status: string; sha: string }[];
+      }>("GET /repos/{owner}/{repo}/compare/{basehead}", {
+        owner: ref.owner,
+        repo: ref.name,
+        basehead: `${from}...${to}`,
+        per_page: 100,
+      });
+      const files = (data.files ?? []).map((f) => ({
+        path: f.filename,
+        ...(f.previous_filename ? { previousPath: f.previous_filename } : {}),
+        status: (f.status === "renamed"
+          ? "renamed"
+          : f.status === "removed"
+            ? "removed"
+            : f.status === "added"
+              ? "added"
+              : "modified") as "added" | "removed" | "modified" | "renamed",
+        sha: f.sha,
+      }));
+      return { files, incomplete: files.length >= 300 };
+    },
+    async archive(ref, sha, path) {
+      const o = await octokit();
+      const credentials = (await o.auth()) as { token?: string };
+      if (!credentials.token)
+        throw new GitProviderError("invalid", "GitHub: không lấy được thông tin xác thực archive");
+      const base = opts.baseUrl ? new URL(opts.baseUrl) : new URL("https://api.github.com");
+      const endpoint = new URL(
+        `repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.name)}/tarball/${encodeURIComponent(sha)}`,
+        `${base.href.replace(/\/?$/, "/")}`,
+      );
+      let response: Response;
+      try {
+        response = await (opts.fetch ?? fetch)(endpoint, {
+          headers: { authorization: `Bearer ${credentials.token}`, accept: "application/vnd.github+json" },
+        });
+      } catch (error) {
+        throw networkError("github", error);
+      }
+      if (!response.ok)
+        throw errorFromResponse("github", response.status, response.headers, await response.text().catch(() => ""));
+      if (!response.body) throw new GitProviderError("invalid", "GitHub: archive không có nội dung");
+      // GitHub archive API only returns the full repo; callers filter paths while unpacking.
+      void path;
+      return response.body;
+    },
+    async lfsBatch(ref, operation, objects) {
+      const o = await octokit();
+      const credentials = (await o.auth()) as { token?: string };
+      if (!credentials.token) throw new GitProviderError("invalid", "GitHub: không lấy được thông tin xác thực LFS");
+      const base = opts.baseUrl ? new URL(opts.baseUrl).origin : "https://github.com";
+      const url = `${base}/${ref.owner}/${ref.name}.git/info/lfs/objects/batch`;
+      let response: Response;
+      try {
+        response = await (opts.fetch ?? fetch)(url, {
+          method: "POST",
+          headers: {
+            authorization: `Basic ${Buffer.from(`x-access-token:${credentials.token}`).toString("base64")}`,
+            "content-type": "application/vnd.git-lfs+json",
+            accept: "application/vnd.git-lfs+json",
+          },
+          body: JSON.stringify({ operation, transfers: ["basic"], objects }),
+        });
+      } catch (error) {
+        throw networkError("github", error);
+      }
+      if (!response.ok)
+        throw errorFromResponse("github", response.status, response.headers, await response.text().catch(() => ""));
+      return response.json();
     },
 
     async prFiles(ref: RepoRef, number: number) {

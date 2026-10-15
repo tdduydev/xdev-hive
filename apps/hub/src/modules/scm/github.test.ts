@@ -646,7 +646,7 @@ describe("GitHub lỗi HTTP", () => {
 });
 
 describe("GitHub đọc cây và file (kho skill)", () => {
-  it("liệt kê file của commit, bỏ thư mục; cây bị cắt thì báo lỗi", async () => {
+  it("liệt kê file của commit, bỏ thư mục; cây bị cắt thì duyệt từng cây con", async () => {
     const { gh, pool } = setup();
     pool.intercept({ path: "/repos/acme/web/git/trees/abc?recursive=1", method: "GET" }).reply(
       200,
@@ -663,7 +663,16 @@ describe("GitHub đọc cây và file (kho skill)", () => {
     pool
       .intercept({ path: "/repos/acme/web/git/trees/big?recursive=1", method: "GET" })
       .reply(200, { truncated: true, tree: [] }, JSON_HEADERS);
-    await expect(gh.listFiles(ref, "big")).rejects.toBeInstanceOf(GitProviderError);
+    pool
+      .intercept({ path: "/repos/acme/web/git/commits/big", method: "GET" })
+      .reply(200, { tree: { sha: "tree-big" } }, JSON_HEADERS);
+    pool
+      .intercept({ path: "/repos/acme/web/git/trees/tree-big", method: "GET" })
+      .reply(200, { truncated: false, tree: [{ path: "nested", type: "tree", sha: "tree-nested" }] }, JSON_HEADERS);
+    pool
+      .intercept({ path: "/repos/acme/web/git/trees/tree-nested", method: "GET" })
+      .reply(200, { truncated: false, tree: [{ path: "a.md", type: "blob", sha: "blob-a" }] }, JSON_HEADERS);
+    await expect(gh.listFiles(ref, "big")).resolves.toEqual(["nested/a.md"]);
   });
 
   it("đọc file base64 theo commit; không có file thì null", async () => {
