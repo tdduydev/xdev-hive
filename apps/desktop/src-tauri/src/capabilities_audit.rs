@@ -149,6 +149,7 @@ fn register_window_only_registers() {
                 "parse_registration",
                 "register_worker",
                 "browser_login",
+                "hub_check",
                 "set_lang"
             ]
             .map(String::from)

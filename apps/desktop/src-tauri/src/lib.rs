@@ -12,6 +12,7 @@ mod files;
 mod git_groups;
 mod hive_cli;
 mod hub;
+mod hub_switch;
 mod local_projects;
 mod memory_store;
 mod optimizer;
@@ -489,6 +490,9 @@ struct WorkerConfig {
     hub_url: Option<String>,
     #[serde(default)]
     machine_id: Option<String>,
+    /// Worker cũ không trả; khi đó app không tự đổi địa chỉ hub được.
+    #[serde(default)]
+    config_path: Option<String>,
 }
 
 async fn sidecar_json<T: serde::de::DeserializeOwned>(
@@ -575,6 +579,11 @@ async fn register_and_start(app: &AppHandle, args: RegisterArgs) -> Result<Strin
     if let Ok(mut slot) = app.state::<State>().machine.lock() {
         *slot = reg.machine_id.clone();
     }
+    // Đăng ký lại (đổi hub) khi worker đang chạy: tiến trình cũ vẫn giữ token và hub cũ trong bộ nhớ, phải khởi động
+    // lại mới đọc cấu hình mới.
+    if worker_running(app) {
+        stop_worker_and_wait(app).await;
+    }
     dispatch(app, Event::Start);
     if let Some(window) = app.get_webview_window(REGISTER) {
         let _ = window.hide();
@@ -585,15 +594,30 @@ async fn register_and_start(app: &AppHandle, args: RegisterArgs) -> Result<Strin
     Ok(reg.machine_id.unwrap_or_default())
 }
 
-/// Đăng nhập bằng trình duyệt (browser_login.rs): một lần đăng nhập trên web, app tự đăng ký máy và liên kết tài
-/// khoản, không phải dán mã đăng ký hay token cá nhân.
-#[tauri::command]
-async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
-    let hub = register::normalize_hub(&hub)?;
-    let machine = browser_login::machine_from_hostname(&browser_login::hostname());
+fn worker_running(app: &AppHandle) -> bool {
+    app.state::<State>()
+        .child
+        .lock()
+        .map(|c| c.is_some())
+        .unwrap_or(false)
+}
+
+/// Mở trang đồng ý của hub trong trình duyệt và chờ đổi mã (browser_login.rs).
+async fn browser_exchange(
+    app: &AppHandle,
+    hub: &str,
+    purpose: browser_login::Purpose,
+) -> Result<browser_login::Exchange, String> {
+    let machine = app
+        .state::<State>()
+        .machine
+        .lock()
+        .ok()
+        .and_then(|m| m.clone())
+        .unwrap_or_else(|| browser_login::machine_from_hostname(&browser_login::hostname()));
     let pkce = browser_login::new_pkce()?;
     let (listener, port) = browser_login::listen()?;
-    let url = browser_login::connect_url(&hub, port, &pkce, &machine)?;
+    let url = browser_login::connect_url(hub, port, &pkce, &machine, purpose)?;
     #[allow(deprecated)]
     app.shell()
         .open(url, None)
@@ -604,14 +628,115 @@ async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
     })
     .await
     .map_err(|e| e.to_string())??;
-    let ex = browser_login::exchange(&hub, &code, &pkce.verifier).await?;
-    let args = register::validate(&hub, &ex.registration_token, Some(&ex.machine))?;
+    browser_login::exchange(hub, &code, &pkce.verifier).await
+}
+
+/// Đăng nhập bằng trình duyệt (browser_login.rs): một lần đăng nhập trên web, app tự đăng ký máy và liên kết tài
+/// khoản, không phải dán mã đăng ký hay token cá nhân.
+#[tauri::command]
+async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
+    let hub = register::normalize_hub(&hub)?;
+    let ex = browser_exchange(&app, &hub, browser_login::Purpose::Register).await?;
+    let token = ex
+        .registration_token
+        .as_deref()
+        .ok_or("Hub không trả mã đăng ký máy. Thử lại.")?;
+    let args = register::validate(&hub, token, Some(&ex.machine))?;
     let machine_id = register_and_start(&app, args).await?;
     // Máy đã đăng ký và worker đã chạy; token cá nhân lỗi thì người dùng vẫn liên kết tay được ở màn Tài khoản.
     if let Err(e) = account::save_checked(&app, &hub, &ex.personal_token).await {
         eprintln!("Không liên kết được tài khoản sau khi đăng nhập: {e}");
     }
     Ok(machine_id)
+}
+
+/// Máy đã đăng ký đăng nhập lại bằng trình duyệt, như `hive login`: chỉ lấy token cá nhân, không đăng ký lại máy, không
+/// phải chọn đội. Đăng xuất rồi đăng nhập lại không còn phải tạo token MCP ở web rồi dán vào.
+#[tauri::command]
+async fn account_browser_login(app: AppHandle) -> Result<account::AccountStatus, String> {
+    let hub = hub_of(&app).ok_or("Máy chưa đăng ký với hub nào. Đăng ký máy trước.")?;
+    let ex = browser_exchange(&app, &hub, browser_login::Purpose::SignIn).await?;
+    account::save_checked(&app, &hub, &ex.personal_token).await?;
+    let _ = app.emit(account::CHANGED_EVENT, ());
+    Ok(account::status_for(Some(hub)).await)
+}
+
+/// Kiểm địa chỉ hub người dùng nhập (hub_switch.rs). Trả địa chỉ đã chuẩn hoá để giao diện dùng tiếp.
+#[tauri::command]
+async fn hub_check(hub: String) -> Result<String, String> {
+    hub_switch::check(&hub).await
+}
+
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct HubChange {
+    hub: String,
+    /// Đã ghi địa chỉ mới vào cấu hình worker.
+    changed: bool,
+    /// Hub mới không nhận đăng ký cũ của máy (hoặc máy chưa đăng ký): phải đăng ký lại. Giao diện hỏi trước.
+    needs_register: bool,
+}
+
+/// Chuyển máy đã đăng ký sang địa chỉ hub mới mà không đăng ký lại: hub mới nhận token máy cũ (cùng hub, đổi http sang
+/// https hay bỏ cổng) thì chỉ sửa `hubUrl` trong cấu hình worker và chuyển token cá nhân sang. Gói agent, dự án, tài
+/// khoản CLI trên máy không đụng tới.
+#[tauri::command]
+async fn hub_change(app: AppHandle, hub: String) -> Result<HubChange, String> {
+    let hub = hub_switch::check(&hub).await?;
+    let config: WorkerConfig =
+        sidecar_json(&app, vec!["config".into(), "--json".into()], vec![]).await?;
+    let Some(current) = config.hub_url.filter(|_| config.registered) else {
+        return Ok(HubChange {
+            hub,
+            changed: false,
+            needs_register: true,
+        });
+    };
+    if hub_switch::same_hub(&current, &hub) {
+        return Ok(HubChange {
+            hub: current,
+            changed: false,
+            needs_register: false,
+        });
+    }
+    let path = std::path::PathBuf::from(
+        config
+            .config_path
+            .ok_or("Worker này không cho biết file cấu hình. Cập nhật app rồi thử lại.")?,
+    );
+    let token = hub_switch::machine_token(&path)?;
+    if !hub_switch::machine_token_accepted(&hub, &token).await? {
+        return Ok(HubChange {
+            hub,
+            changed: false,
+            needs_register: true,
+        });
+    }
+    let wanted = app
+        .state::<State>()
+        .worker
+        .lock()
+        .map(|w| w.wanted())
+        .unwrap_or(false);
+    if worker_running(&app) {
+        stop_worker_and_wait(&app).await;
+    }
+    hub_switch::set_worker_hub(&path, &hub)?;
+    if let Ok(mut slot) = app.state::<State>().hub.lock() {
+        *slot = Some(hub.clone());
+    }
+    account::carry_over(&app, &current, &hub).await;
+    if wanted {
+        dispatch(&app, Event::Start);
+    } else {
+        refresh_tray(&app);
+    }
+    let _ = app.emit(account::CHANGED_EVENT, ());
+    Ok(HubChange {
+        hub,
+        changed: true,
+        needs_register: false,
+    })
 }
 
 /// Mở một trang của hub (vd. `/runs/<id>`) trong cửa sổ web của hub. Chỉ nhận đường dẫn tương đối gồm ký tự an toàn,
@@ -900,6 +1025,9 @@ pub fn run() {
             parse_registration,
             register_worker,
             browser_login,
+            account_browser_login,
+            hub_check,
+            hub_change,
             hub::hub_rpc,
             doctor::scan_environment,
             doctor::run_install,
@@ -1044,6 +1172,7 @@ pub fn run() {
                         registered: true,
                         hub_url: Some(hub),
                         machine_id,
+                        ..
                     }) => {
                         if let Ok(mut slot) = handle.state::<State>().hub.lock() {
                             *slot = Some(hub.clone());
