@@ -73,6 +73,7 @@ describe("đầu vào phiên review code", () => {
   it("gắn vào hợp đồng chung", () => {
     expect(contract.codeReviews).toBe(codeReviewsContract);
     expect(Object.keys(codeReviewsContract).sort()).toEqual([
+      "comments",
       "count",
       "decide",
       "dryRun",
@@ -168,5 +169,47 @@ describe("outcomeToCodeWorkflow", () => {
     const w = outcomeToCodeWorkflow(defaultProjectSettings(0), "web");
     expect(w.phases).toHaveLength(1);
     expect(w.phases[0]?.gates[0]?.rules).toEqual(["no-secrets"]);
+  });
+});
+
+describe("hợp đồng bình luận theo dòng", () => {
+  const add = codeReviewsContract.comments.add["~orpc"].inputSchema;
+  it("nhận vị trí ở hai phía diff và chuẩn hoá nội dung", () => {
+    for (const side of ["old", "new"]) {
+      expect(add?.parse({ reviewId: id, path: "src/a.ts", line: 1, side, headSha, body: " Góp ý " }).body).toBe(
+        "Góp ý",
+      );
+    }
+  });
+  it("chặn nội dung rỗng, quá dài, vị trí và đường dẫn không hợp lệ", () => {
+    const valid = { reviewId: id, path: "src/a.ts", line: 1, side: "new", headSha, body: "Góp ý" };
+    for (const patch of [
+      { body: "  " },
+      { body: "x".repeat(20001) },
+      { line: 0 },
+      { line: 1.5 },
+      { line: 2147483648 },
+      { side: "left" },
+      { headSha: "main" },
+      { path: "../a" },
+      { path: "/a" },
+      { path: "C:/a" },
+      { path: "src/../a" },
+      { path: "src\\a" },
+      { path: "a\0b" },
+    ])
+      expect(add?.safeParse({ ...valid, ...patch }).success).toBe(false);
+    expect(add?.safeParse({ ...valid, body: "x".repeat(20000) }).success).toBe(true);
+  });
+  it("sửa và trả lời có cùng giới hạn nội dung", () => {
+    for (const [route, key] of [
+      [codeReviewsContract.comments.reply, "threadId"],
+      [codeReviewsContract.comments.edit, "commentId"],
+    ] as const) {
+      const schema = route["~orpc"].inputSchema;
+      expect(schema?.safeParse({ [key]: id, body: " " }).success).toBe(false);
+      expect(schema?.safeParse({ [key]: id, body: "x".repeat(20001) }).success).toBe(false);
+      expect(schema?.safeParse({ [key]: id, body: "Góp ý" }).success).toBe(true);
+    }
   });
 });

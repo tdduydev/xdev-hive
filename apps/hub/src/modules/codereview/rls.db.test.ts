@@ -4,14 +4,14 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { type OrgFixture, pgCode, seedOrg } from "../../../test/org-fixture.ts";
 import { createPool, withTenant } from "../platform/index.ts";
-import { codeReviewGateRuns, codeReviews } from "./schema.ts";
+import { codeReviewComments, codeReviewGateRuns, codeReviews } from "./schema.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
 const app = createPool(appUrl);
 
 type Org = OrgFixture & { user: (n: string) => string };
-const seeded: Record<"a" | "b", { org: Org; reviewId: string; gateRunId: string }> = {} as never;
+const seeded: Record<"a" | "b", { org: Org; reviewId: string; gateRunId: string; commentId: string }> = {} as never;
 
 const review = (orgId: string, teamId: string, over: Partial<typeof codeReviews.$inferInsert> = {}) => ({
   orgId,
@@ -41,7 +41,13 @@ async function seed(name: "a" | "b") {
     "insert into hive.code_review_gate_runs (org_id, review_id, gate_index, gate_id, head_sha) values ($1, $2, 0, 'g', 'sha') returning id",
     [org.orgId, rows[0].id],
   );
-  seeded[name] = { org, reviewId: rows[0].id, gateRunId: gate.rows[0].id };
+  const commentId = randomUUID();
+  await admin.query(
+    `insert into hive.code_review_comments (id, org_id, review_id, thread_id, path, line, side, head_sha, body)
+     values ($1, $2, $3, $1, 'a.ts', 1, 'new', 'sha', 'Góp ý')`,
+    [commentId, org.orgId, rows[0].id],
+  );
+  seeded[name] = { org, reviewId: rows[0].id, gateRunId: gate.rows[0].id, commentId };
 }
 
 beforeAll(async () => {
@@ -58,6 +64,7 @@ describe("RLS bảng review code", () => {
     await withTenant(app, {}, async (tx) => {
       expect(await tx.select().from(codeReviews)).toHaveLength(0);
       expect(await tx.select().from(codeReviewGateRuns)).toHaveLength(0);
+      expect(await tx.select().from(codeReviewComments)).toHaveLength(0);
     });
   });
 
@@ -65,6 +72,9 @@ describe("RLS bảng review code", () => {
     await withTenant(app, { orgId: seeded.a.org.orgId }, async (tx) => {
       const reviews = await tx.select().from(codeReviews);
       const gates = await tx.select().from(codeReviewGateRuns);
+      const comments = await tx.select().from(codeReviewComments);
+      expect(comments.length).toBeGreaterThan(0);
+      expect(comments.every((r) => r.orgId === seeded.a.org.orgId)).toBe(true);
       expect(reviews.length).toBeGreaterThan(0);
       expect(gates.length).toBeGreaterThan(0);
       expect(reviews.every((r) => r.orgId === seeded.a.org.orgId)).toBe(true);
@@ -106,12 +116,52 @@ describe("RLS bảng review code", () => {
     });
   });
 
-  it("cả hai bảng bật và ép RLS", async () => {
+  it("bình luận chặn ghi chéo tổ chức và liên kết chéo review, luồng", async () => {
+    const a = seeded.a;
+    const b = seeded.b;
+    const inA = (fn: Parameters<typeof withTenant>[2]) => pgCode(() => withTenant(app, { orgId: a.org.orgId }, fn));
+    const value = {
+      id: randomUUID(),
+      orgId: b.org.orgId,
+      reviewId: b.reviewId,
+      threadId: b.commentId,
+      path: "a",
+      line: 1,
+      side: "new" as const,
+      headSha: "sha",
+      body: "Góp ý",
+    };
+    expect(await inA((tx) => tx.insert(codeReviewComments).values(value))).toBe("42501");
+    expect(
+      await inA((tx) =>
+        tx.update(codeReviewComments).set({ orgId: b.org.orgId }).where(eq(codeReviewComments.id, a.commentId)),
+      ),
+    ).toBe("42501");
+    expect(await inA((tx) => tx.insert(codeReviewComments).values({ ...value, orgId: a.org.orgId }))).toBe("23503");
+    expect(
+      await inA((tx) => tx.insert(codeReviewComments).values({ ...value, orgId: a.org.orgId, reviewId: a.reviewId })),
+    ).toBe("23503");
+    await withTenant(app, { orgId: a.org.orgId }, async (tx) => {
+      expect(
+        await tx
+          .update(codeReviewComments)
+          .set({ body: "Sửa trái phép" })
+          .where(eq(codeReviewComments.id, b.commentId))
+          .returning(),
+      ).toHaveLength(0);
+      expect(await tx.delete(codeReviewComments).where(eq(codeReviewComments.id, b.commentId))).toHaveProperty(
+        "rowCount",
+        0,
+      );
+    });
+  });
+
+  it("cả ba bảng bật và ép RLS", async () => {
     const { rows } = await admin.query(
       `select relname, relrowsecurity, relforcerowsecurity from pg_class
-       where oid in ('hive.code_reviews'::regclass, 'hive.code_review_gate_runs'::regclass)`,
+       where oid in ('hive.code_reviews'::regclass, 'hive.code_review_gate_runs'::regclass, 'hive.code_review_comments'::regclass)`,
     );
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     for (const r of rows) expect([r.relname, r.relrowsecurity, r.relforcerowsecurity]).toEqual([r.relname, true, true]);
   });
 
