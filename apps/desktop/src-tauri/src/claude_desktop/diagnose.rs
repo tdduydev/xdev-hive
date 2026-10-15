@@ -233,13 +233,17 @@ fn report_in(home: &Path, os: Option<Os>, dirs: &win::Dirs) -> String {
     match os {
         Os::Windows => match win::processes() {
             None => {
-                let _ = writeln!(out, "  không dò được (PowerShell không trả lời)");
+                let _ = writeln!(
+                    out,
+                    "  không dò được (Windows không cho liệt kê tiến trình)"
+                );
             }
             Some(procs) if procs.is_empty() => {
                 let _ = writeln!(out, "  không có claude.exe nào");
             }
             Some(procs) => {
-                for p in procs {
+                let mains = win::mains(&procs);
+                for p in &procs {
                     let _ = writeln!(
                         out,
                         "  {} {} [{}] {}",
@@ -249,7 +253,11 @@ fn report_in(home: &Path, os: Option<Os>, dirs: &win::Dirs) -> String {
                         } else {
                             "khác (Claude Code CLI?)"
                         },
-                        p.kind.as_deref().unwrap_or("chính"),
+                        if mains.contains(&p.pid) {
+                            "chính"
+                        } else {
+                            "phụ"
+                        },
                         p.exe
                     );
                 }

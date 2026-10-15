@@ -272,6 +272,31 @@ describe("dòng Claude Desktop của gói", { timeout: 20_000 }, () => {
     expect((screen.getByRole("button", { name: SWITCH }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("hỏi tiến độ không trả lời: bộ đếm vẫn chạy, không hỏi chồng lên nhau", async () => {
+    let asked = 0;
+    let answer = true;
+    fakeTauri({
+      switch_claude_desktop: () => new Promise(() => {}),
+      claude_desktop_switch_progress: () => {
+        asked += 1;
+        return answer ? progress({ elapsed: 8 }) : new Promise(() => {});
+      },
+    });
+    const p = profile();
+    render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p], { running: null })} onChanged={() => {}} />);
+    await user().click(screen.getByRole("button", { name: SWITCH }));
+    const line = () => document.querySelector("[data-switch-progress]") as HTMLElement;
+    await tick();
+    expect(line().textContent).toContain("8 giây");
+    answer = false;
+    const before = asked;
+    await tick();
+    await tick();
+    await tick();
+    expect(line().textContent).toMatch(/1[01] giây/);
+    expect(asked).toBe(before + 1);
+  });
+
   it("lần chuyển chạy từ chỗ khác: dòng của gói đích hiện tiến độ, các dòng khác tắt nút", async () => {
     let now: SwitchProgress | null = progress({ step: "launching", cancellable: false });
     fakeTauri({ claude_desktop_switch_progress: () => now });
