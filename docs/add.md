@@ -124,6 +124,7 @@ flowchart LR
 | `codereview` | Agent PR review instances, rule/AI/CI/human gates, revision rounds, SLA and merge gate | `code_reviews`, `code_review_gate_runs` |
 | `knowledge` | Memory (full-text and vector), documents, skills, proposals, legacy import | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `proposals`, `legacy_*` |
 | `leader` | Leader chat and proposals that need human approval | `chat_threads`, `chat_messages`, `approvals` |
+| `artifacts` | Versioned artifacts (markdown, code, html, mermaid, react), scopes, public links, hub-side React compile, sandboxed-frame routes, trash purge job | `artifacts`, `artifact_versions`, `artifact_links`, `artifact_previews`, `artifact_public_links` |
 | `sandbox` | Egress allowlists, environment images, organization sandbox settings | `sandbox_org_settings`, `egress_allowlists`, `env_images` |
 | `cost` | Token and cost aggregation (cost columns live on `runs`) | — |
 | `notify` | Notification channels (Telegram, e-mail) and the in-app inbox | `notification_channels`, `notifications`, `inbox_items` |
@@ -441,7 +442,8 @@ original notes:
 | Machine key pairs and short-lived access tokens | Not implemented (`welcome.accessTokenExp` is unused) |
 | Secret masking in logs, setup-phase secrets | Not implemented |
 | Environment images | Only verified and executed; no image build, cache or warm pool |
-| Log archival, artifacts, blob storage | Not implemented; logs stay in PostgreSQL |
+| Log archival, blob storage | Not implemented; logs stay in PostgreSQL |
+| Artifacts beyond the MVP (spec 012) | Types `svg`, `json`, `csv`, `image`, `pdf`, scopes `team`/`org`, Terminal Leader panel, links to tasks/runs/SDLC items, documents and repository export, policy and storage screens, full manual editor are not implemented (tasks T061–T068) |
 | Runner host as a service | `service install` covers `run` only; `host` is started by hand or by the operator's own unit |
 | Metrics and tracing | Not implemented |
 | Desktop auto-update | Plugin installed, but no public key or endpoint configured |

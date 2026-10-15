@@ -311,6 +311,14 @@ export const NAV_GROUPS: NavGroup[] = [
         adminOnly: true,
         permission: "policies.write",
       },
+      {
+        id: "public-links",
+        label: { vi: "Link công khai", en: "Public links" },
+        icon: LayersIcon,
+        to: route("/admin/public-links"),
+        match: "/admin/public-links",
+        adminOnly: true,
+      },
     ],
   },
   {
