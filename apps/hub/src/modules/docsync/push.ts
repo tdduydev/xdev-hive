@@ -361,7 +361,10 @@ async function planPush(tx: Tx, deps: PushDeps, job: DocSyncPushJob): Promise<Pu
     }
     // FR-016: không đẩy phiên bản bị chặn vì bí mật.
     if (v.secret_flag) {
-      await settle(tx, row, { state: "blocked_secret", error: "Phiên bản mới nhất có dấu hiệu bí mật, chưa đẩy lên repo." });
+      await settle(tx, row, {
+        state: "blocked_secret",
+        error: "Phiên bản mới nhất có dấu hiệu bí mật, chưa đẩy lên repo.",
+      });
       continue;
     }
     // Phiên bản nguồn `repo` đã nằm trong repo; luồng kéo ghi hash cho nó.
@@ -384,8 +387,7 @@ async function planPush(tx: Tx, deps: PushDeps, job: DocSyncPushJob): Promise<Pu
     .orderBy(docAssets.repoPath)
     .limit(MAX_FILES);
   const assets: PlannedAsset[] = [];
-  for (const row of assetRows)
-    if (row.blobId) assets.push({ row, bytes: await readBlob(tx, home.orgId, row.blobId) });
+  for (const row of assetRows) if (row.blobId) assets.push({ row, bytes: await readBlob(tx, home.orgId, row.blobId) });
 
   if (!docs.length && !assets.length) {
     await tx.update(docHomes).set({ firstQueuedAt: null }).where(eq(docHomes.id, home.id));
@@ -497,9 +499,7 @@ async function pushPlan(deps: PushDeps, plan: PushPlan): Promise<PushResult> {
   if (!head) throw new Error(`Không tìm thấy nhánh ${home.branch} trong repo.`);
   const tree = new Set(await provider.listFiles(ref, head));
   // Một lời gọi compare cho cả lô: file không đổi kể từ commit đã biết thì dùng hash đã lưu, khỏi đọc từng file.
-  const changed = home.lastCommit
-    ? await provider.compare(ref, home.lastCommit, head).catch(() => null)
-    : null;
+  const changed = home.lastCommit ? await provider.compare(ref, home.lastCommit, head).catch(() => null) : null;
   const touched =
     changed && !changed.incomplete
       ? new Set(changed.files.flatMap((f) => (f.previousPath ? [f.path, f.previousPath] : [f.path])))
@@ -523,7 +523,9 @@ async function pushPlan(deps: PushDeps, plan: PushPlan): Promise<PushResult> {
     else skipped.push(d);
   }
   const lfsRules: LfsRule[] = [
-    ...(tree.has(".gitattributes") ? parseGitattributes((await provider.readFile(ref, ".gitattributes", head)) ?? "") : []),
+    ...(tree.has(".gitattributes")
+      ? parseGitattributes((await provider.readFile(ref, ".gitattributes", head)) ?? "")
+      : []),
     ...parseGitattributes(home.lfsPatterns.map((p) => `${p} filter=lfs`).join("\n")),
   ];
   const assets: PushResult["assets"] = [];
@@ -670,7 +672,8 @@ async function recordSuccess(tx: Tx, deps: PushDeps, plan: PushPlan, out: PushRe
       },
       { jobs: deps.jobs },
     );
-  if (out.skipped.length || out.skippedAssets.length) await enqueuePull(tx, deps.jobs, { orgId: home.orgId, homeId: home.id });
+  if (out.skipped.length || out.skippedAssets.length)
+    await enqueuePull(tx, deps.jobs, { orgId: home.orgId, homeId: home.id });
   const [left] = await tx
     .select({ id: docRepoFiles.id })
     .from(docRepoFiles)
@@ -721,10 +724,7 @@ async function recordFailure(tx: Tx, deps: PushDeps, plan: PushPlan, error: unkn
       .update(docRepoFiles)
       .set({ state: "failed", error: message, updatedAt: new Date() })
       .where(and(inArray(docRepoFiles.id, ids), inArray(docRepoFiles.state, ["pending", "failed"])));
-  await tx
-    .update(docHomes)
-    .set({ error: message, updatedAt: new Date() })
-    .where(eq(docHomes.id, plan.home.id));
+  await tx.update(docHomes).set({ error: message, updatedAt: new Date() }).where(eq(docHomes.id, plan.home.id));
   if (delay !== null) await enqueuePush(tx, deps.jobs, { orgId: plan.home.orgId, homeId: plan.home.id }, delay);
   await recordAudit(tx, {
     action: "doc.sync.push_fail",

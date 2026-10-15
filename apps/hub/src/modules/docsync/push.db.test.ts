@@ -6,12 +6,7 @@ import { seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
 import { archiveDoc, provideDocSaved, saveDoc } from "../knowledge/index.ts";
 import { createPool, type Jobs, parseMasterKey, withTenant } from "../platform/index.ts";
-import {
-  createMemoryProvider,
-  GitProviderError,
-  type PullRequestEvent,
-  type ScmEventContext,
-} from "../scm/index.ts";
+import { createMemoryProvider, GitProviderError, type PullRequestEvent, type ScmEventContext } from "../scm/index.ts";
 import { contentHash } from "./content.ts";
 import { configureProjectHome, type HomeRow, homeById } from "./homes.ts";
 import {
@@ -84,7 +79,13 @@ const syncCommits = (which: keyof typeof keys, branch = "main") =>
 
 beforeAll(async () => {
   org = await seedOrg(admin, `dp-${tag}`);
-  const base = { orgId: org.orgId, teamId: org.teamId, systemId: org.systemId, adminUserId: org.user("admin"), masterKey };
+  const base = {
+    orgId: org.orgId,
+    teamId: org.teamId,
+    systemId: org.systemId,
+    adminUserId: org.user("admin"),
+    masterKey,
+  };
   projects.direct = await seedProject(admin, pool, { ...base, key: keys.direct });
   const withQueue = defaultProjectSettings();
   projects.pr = await seedProject(admin, pool, {
@@ -286,9 +287,10 @@ describe("đẩy thẳng vào nhánh mặc định", () => {
     const { rows: home } = await admin.query("select error from hive.doc_homes where id = $1", [homes.direct?.id]);
     expect(home[0].error).toContain("Nhánh được bảo vệ");
     expect(queued.some((j) => j.queue === "docsync-push")).toBe(false);
-    const { rows: notes } = await admin.query("select title, user_id from hive.inbox_items where org_id = $1 and event = 'docsync.sync_failed'", [
-      org.orgId,
-    ]);
+    const { rows: notes } = await admin.query(
+      "select title, user_id from hive.inbox_items where org_id = $1 and event = 'docsync.sync_failed'",
+      [org.orgId],
+    );
     expect(notes).toContainEqual({
       title: `Chưa đồng bộ được tài liệu vào repo ${ref("direct").owner}/${ref("direct").name}`,
       user_id: org.user("tadmin"),
@@ -334,7 +336,11 @@ describe("chế độ PR cuốn chiếu", () => {
     const commits = syncCommits("pr", branch());
     expect(commits).toHaveLength(1);
     expect(repo("pr").pulls).toMatchObject([{ number: 1, head: branch(), base: "main", state: "open" }]);
-    expect(repo("pr").statuses.get(commits[0]?.sha ?? "")?.get(DOCS_STATUS_CONTEXT)).toMatchObject({
+    expect(
+      repo("pr")
+        .statuses.get(commits[0]?.sha ?? "")
+        ?.get(DOCS_STATUS_CONTEXT),
+    ).toMatchObject({
       state: "success",
     });
     const { rows } = await admin.query(
