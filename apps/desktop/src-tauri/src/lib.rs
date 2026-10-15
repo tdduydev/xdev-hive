@@ -5,6 +5,7 @@ mod artifacts;
 mod browser_login;
 #[cfg(test)]
 mod capabilities_audit;
+mod claude_desktop;
 mod cli;
 mod doctor;
 mod files;
@@ -32,7 +33,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
@@ -80,6 +81,8 @@ struct Tray {
     update_check: MenuItem<Wry>,
     /// Chỉ nằm trong menu khi có bản đã tải xong.
     update_restart: MenuItem<Wry>,
+    /// "Mở Claude Desktop bằng…": mỗi gói Claude một mục. Chỉ có trên macOS (claude_desktop.rs).
+    claude: Option<Submenu<Wry>>,
     menu: Menu<Wry>,
     restart_shown: Mutex<bool>,
     /// Ảnh gốc của biểu tượng khay (RGBA) để vẽ chấm trạng thái lên.
@@ -151,6 +154,9 @@ fn refresh_tray(app: &AppHandle) {
             "Mở app trên máy"
         });
         let _ = tray.quit.set_text(if en { "Quit" } else { "Thoát" });
+        if let Some(claude) = &tray.claude {
+            let _ = claude.set_text(claude_menu_text(en));
+        }
         let _ = tray.remote_off.set_text(if en {
             "Turn off remote control now"
         } else {
@@ -631,6 +637,74 @@ fn this_machine(app: AppHandle) -> Option<String> {
         .and_then(|m| m.clone())
 }
 
+/// Tiền tố id mục khay mở Claude Desktop của một gói; phần sau là id gói.
+const CLAUDE_ITEM: &str = "claude-desktop:";
+
+fn claude_menu_text(en: bool) -> &'static str {
+    if en {
+        "Open Claude Desktop as…"
+    } else {
+        "Mở Claude Desktop bằng…"
+    }
+}
+
+/// Đổ lại danh sách gói Claude vào mục "Mở Claude Desktop bằng…" của khay.
+pub(crate) fn set_claude_tray(app: &AppHandle, view: &claude_desktop::ProfilesView) {
+    let Some(tray) = app.try_state::<Tray>() else {
+        return;
+    };
+    let Some(sub) = &tray.claude else {
+        return;
+    };
+    let en = lang_of(app) == "en";
+    if let Ok(items) = sub.items() {
+        for item in items {
+            let _ = sub.remove(&item);
+        }
+    }
+    if view.profiles.is_empty() {
+        let empty = if en {
+            "No Claude plan yet"
+        } else {
+            "Chưa có gói Claude"
+        };
+        if let Ok(item) = MenuItem::new(app, empty, false, None::<&str>) {
+            let _ = sub.append(&item);
+        }
+        return;
+    }
+    for p in &view.profiles {
+        let text = claude_desktop::tray_label(p, en);
+        let id = format!("{CLAUDE_ITEM}{}", p.id);
+        if let Ok(item) = MenuItem::with_id(app, id, text, view.app.is_some(), None::<&str>) {
+            let _ = sub.append(&item);
+        }
+    }
+}
+
+fn open_claude_from_tray(app: &AppHandle, plan: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let en = lang_of(&app) == "en";
+        match claude_desktop::open(&app, &plan).await {
+            Ok(opened) if opened.already => notify(
+                &app,
+                &if en {
+                    format!("Claude Desktop for {plan} is already open.")
+                } else {
+                    format!("Claude Desktop của gói {plan} đang mở.")
+                },
+            ),
+            Ok(_) => {
+                // App cần vài giây mới có tiến trình để khay ghi "đang mở".
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                let _ = claude_desktop::load(&app).await;
+            }
+            Err(e) => notify(&app, &e),
+        }
+    });
+}
+
 fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     let status = MenuItem::with_id(app, "status", "Worker: đã tắt", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Mở xDev Hive", true, None::<&str>)?;
@@ -668,6 +742,26 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
             &quit_item,
         ],
     )?;
+    // Nằm trước "Thoát" để vị trí của mục "Mở lại để cập nhật" (RESTART_ITEM_AT) không đổi. Danh sách gói đổ vào sau,
+    // khi worker trả danh sách (set_claude_tray).
+    let claude = if cfg!(target_os = "macos") {
+        let sub = Submenu::with_items(
+            app,
+            claude_menu_text(false),
+            true,
+            &[&MenuItem::new(
+                app,
+                "Chưa có gói Claude",
+                false,
+                None::<&str>,
+            )?],
+        )?;
+        let at = menu.items()?.len() - 1;
+        menu.insert_items(&[&sub, &PredefinedMenuItem::separator(app)?], at)?;
+        Some(sub)
+    } else {
+        None
+    };
     let mut tray = TrayIconBuilder::with_id(TRAY)
         .tooltip("xDev Hive")
         .menu(&menu)
@@ -696,7 +790,11 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
             });
         }
         "quit" => quit(app),
-        _ => {}
+        id => {
+            if let Some(plan) = id.strip_prefix(CLAUDE_ITEM) {
+                open_claude_from_tray(app, plan.to_string());
+            }
+        }
     })
     .build(app)?;
     Ok(Tray {
@@ -708,6 +806,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         quit: quit_item,
         update_check,
         update_restart,
+        claude,
         menu,
         restart_shown: Mutex::new(false),
         icon: base,
@@ -771,6 +870,10 @@ pub fn run() {
             profiles::cli_profile_discover_add,
             profiles::open_login_terminal,
             profiles::open_cli_terminal,
+            claude_desktop::claude_desktop_profiles,
+            claude_desktop::open_claude_desktop,
+            claude_desktop::reset_claude_desktop_profile,
+            claude_desktop::claude_desktop_cleanup_cache,
             optimizer::optimizer_status,
             optimizer::optimizer_enable,
             optimizer::optimizer_disable,
@@ -810,10 +913,6 @@ pub fn run() {
             updates::update_status,
             updates::check_updates_now,
             updates::relaunch_to_update,
-            artifacts::artifact_cache_put,
-            artifacts::artifact_cache_get,
-            artifacts::artifact_cache_list,
-            artifacts::artifact_cache_clear,
             hive_cli::hive_cli_status,
             hive_cli::hive_cli_install,
             remote::remote_status,
@@ -830,7 +929,11 @@ pub fn run() {
             remote::remote_totp_disable,
             remote::remote_totp_unlock,
             remote::remote_sessions,
-            remote::remote_session_kill
+            remote::remote_session_kill,
+            artifacts::artifact_cache_put,
+            artifacts::artifact_cache_get,
+            artifacts::artifact_cache_list,
+            artifacts::artifact_cache_clear
         ])
         .register_asynchronous_uri_scheme_protocol(artifacts::SCHEME, artifacts::protocol)
         .on_window_event(|window, event| {
@@ -891,6 +994,12 @@ pub fn run() {
                     }
                     Ok(_) => {}
                     Err(e) => eprintln!("Không đọc được cấu hình worker: {e}"),
+                }
+                // Tính năng tại máy: không cần đăng ký với hub, chỉ cần danh sách gói của worker.
+                if cfg!(target_os = "macos")
+                    && let Err(e) = claude_desktop::load(&handle).await
+                {
+                    eprintln!("Không đọc được gói Claude cho khay: {e}");
                 }
                 // App là client, không bắt đăng nhập: chưa đăng ký máy vẫn vào thẳng giao diện chính, các mục trên máy
                 // dùng được ngay; kết nối Hive ở thẻ tài khoản khi người dùng cần.
