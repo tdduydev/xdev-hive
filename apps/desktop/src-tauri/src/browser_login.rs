@@ -77,15 +77,37 @@ pub fn hostname() -> String {
         .unwrap_or_default()
 }
 
-pub fn connect_url(hub: &str, port: u16, pkce: &Pkce, machine: &str) -> Result<String, String> {
+/// Việc của lần đăng nhập (contracts/desktop-connect.ts `connectPurpose`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Purpose {
+    /// Đăng ký máy vào đội và lấy token cá nhân.
+    Register,
+    /// Máy đã đăng ký: chỉ lấy token cá nhân, như `hive login`. Không phải chọn đội và không đăng ký lại máy.
+    SignIn,
+}
+
+pub fn connect_url(
+    hub: &str,
+    port: u16,
+    pkce: &Pkce,
+    machine: &str,
+    purpose: Purpose,
+) -> Result<String, String> {
     let mut url = url::Url::parse(hub)
         .and_then(|u| u.join("/desktop/connect"))
         .map_err(|e| format!("Địa chỉ hub không hợp lệ: {e}"))?;
-    url.query_pairs_mut()
-        .append_pair("port", &port.to_string())
+    let mut q = url.query_pairs_mut();
+    q.append_pair("port", &port.to_string())
         .append_pair("state", &pkce.state)
         .append_pair("challenge", &pkce.challenge)
         .append_pair("machine", machine);
+    // Đăng ký không gửi `purpose` để hub cũ (trước `hive login`) vẫn nhận. `client` cho trang đồng ý nói "quay lại
+    // app" thay vì "quay lại terminal".
+    if purpose == Purpose::SignIn {
+        q.append_pair("purpose", "cli")
+            .append_pair("client", "desktop");
+    }
+    drop(q);
     Ok(url.into())
 }
 
@@ -205,7 +227,9 @@ pub fn wait_for_code(listener: TcpListener, state: &str) -> Result<String, Strin
 #[serde(rename_all = "camelCase")]
 pub struct Exchange {
     pub machine: String,
-    pub registration_token: String,
+    /// Chỉ có khi đăng ký máy; đăng nhập (`purpose=cli`) chỉ trả token cá nhân.
+    #[serde(default)]
+    pub registration_token: Option<String>,
     pub personal_token: String,
 }
 
@@ -273,9 +297,22 @@ mod tests {
             challenge: "c".repeat(43),
             state: "s".repeat(32),
         };
-        let url = connect_url("http://10.0.0.1:3000", 51234, &p, "mac-ha").unwrap();
+        let url = connect_url(
+            "http://10.0.0.1:3000",
+            51234,
+            &p,
+            "mac-ha",
+            Purpose::Register,
+        )
+        .unwrap();
         assert!(url.starts_with("http://10.0.0.1:3000/desktop/connect?port=51234&state="));
         assert!(url.ends_with("&machine=mac-ha"));
+        let url =
+            connect_url("https://10.86.224.34", 51234, &p, "mac-ha", Purpose::SignIn).unwrap();
+        assert!(
+            url.ends_with("&machine=mac-ha&purpose=cli&client=desktop"),
+            "{url}"
+        );
     }
 
     #[test]
@@ -373,7 +410,14 @@ mod tests {
     fn full_flow_against_a_fake_hub() {
         let pkce = new_pkce().unwrap();
         let (listener, port) = listen().unwrap();
-        let url = connect_url("http://hub.test", port, &pkce, "mac-test").unwrap();
+        let url = connect_url(
+            "http://hub.test",
+            port,
+            &pkce,
+            "mac-test",
+            Purpose::Register,
+        )
+        .unwrap();
         assert!(url.contains(&format!("challenge={}", pkce.challenge)));
         let state = pkce.state.clone();
         let browser = std::thread::spawn(move || {
@@ -404,7 +448,7 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(ex.machine, "mac-test");
-        assert_eq!(ex.registration_token, "hwr_x");
+        assert_eq!(ex.registration_token.as_deref(), Some("hwr_x"));
         assert_eq!(ex.personal_token, "hive_pat_y");
         assert_eq!(hub.join().unwrap()["code"], "hdc_from_hub");
 
