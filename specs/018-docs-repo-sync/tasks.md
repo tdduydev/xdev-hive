@@ -116,7 +116,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/fixtures/roundtrip/**` (mới)
   - **Kiểm**: hub test (các file test mới), typecheck.
 
-- [ ] **T010 [P] [—] [vừa] · 1,5 ngày — Thiết kế màn**
+- [x] **T010 [P] [—] [vừa] · 1,5 ngày — Thiết kế màn**
   - **Goal**: plan.md mục 12, constitution "User interface". Dùng skill `ui-ux-pro-max`, design system v2, shadcn/ui.
     Mỗi màn có trạng thái rỗng, đang tải, lỗi; 360 px; sáng/tối; chữ tiếng Việt:
     - cài đặt dự án tab "Tài liệu"; thẻ "Kho tài liệu tổ chức";
