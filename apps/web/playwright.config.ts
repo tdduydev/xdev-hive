@@ -34,7 +34,7 @@ export default defineConfig({
     command: `pnpm exec vite${preview ? " preview" : ""} --port ${port} --strictPort`,
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI && !portEnv && !preview,
-    // Test không cần hub thật: /rpc và /api/auth bị thay bằng page.route (e2e/fake-hub.ts). Proxy trỏ vào cổng
+    // Test không cần hub thật: /rpc, /api/auth và health bị thay bằng page.route (e2e/fake-hub.ts). Proxy trỏ vào cổng
     // không có gì để lời gọi nào lọt qua mock sẽ hỏng ngay thay vì chạm hub dev đang chạy.
     env: { HIVE_HUB_URL: "http://127.0.0.1:9" },
   },
