@@ -37,7 +37,8 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/hive-worker"
+      "binaries/hive-worker",
+      "binaries/hive"
     ],
     "resources": {
       "../../../packages/artifacts-runtime/dist/lib/": "artifacts-lib/"
