@@ -184,7 +184,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `worker/cmd/hive/main.go` (một dòng `case "mcp"`)
   - **Test**: hub giả `httptest` trả JSON và SSE; token không lọt ra stderr; `X-Hive-Project` gửi đúng.
 
-- [ ] **T007 [US6] [vừa] · 1 ngày — `hive-worker context-pack`**
+- [x] **T007 [US6] [vừa] · 1 ngày — `hive-worker context-pack`**
   - **Phụ thuộc**: T006 (`main.go`).
   - **Goal**: `hive-worker context-pack --json --cwd <dir> --query <câu> [--budget N]` bọc `buildContextPack` bản tại máy,
     in `{markdown, files[], tokens}`. Không gọi hub.
