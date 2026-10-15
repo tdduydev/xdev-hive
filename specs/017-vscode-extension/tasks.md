@@ -374,7 +374,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - dấu ẩn giả từ tác giả khác tài khoản kết nối bị bỏ qua;
     - RLS chặn tổ chức khác trên bảng link.
 
-- [ ] **T037 [P] [—] [nhẹ] · 1 ngày — Gói đăng Marketplace: README, CHANGELOG, icon, giấy phép, quyền riêng tư, walkthrough**
+- [x] **T037 [P] [—] [nhẹ] · 1 ngày — Gói đăng Marketplace: README, CHANGELOG, icon, giấy phép, quyền riêng tư, walkthrough**
   - **Phụ thuộc**: T003.
   - **Goal**: plan.md mục 11 "Gói đăng", FR-049…FR-052:
     - `README.md` cho trang Marketplace: tính năng, bảng "cần hub" / "chạy tại máy", đăng nhập, MCP cho từng công cụ,
