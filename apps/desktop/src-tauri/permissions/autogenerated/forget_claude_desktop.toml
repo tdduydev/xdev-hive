@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-forget-claude-desktop"
+description = "Enables the forget_claude_desktop command without any pre-configured scope."
+commands.allow = ["forget_claude_desktop"]
+
+[[permission]]
+identifier = "deny-forget-claude-desktop"
+description = "Denies the forget_claude_desktop command without any pre-configured scope."
+commands.deny = ["forget_claude_desktop"]

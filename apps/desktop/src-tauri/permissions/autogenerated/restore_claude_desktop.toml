@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-claude-desktop"
+description = "Enables the restore_claude_desktop command without any pre-configured scope."
+commands.allow = ["restore_claude_desktop"]
+
+[[permission]]
+identifier = "deny-restore-claude-desktop"
+description = "Denies the restore_claude_desktop command without any pre-configured scope."
+commands.deny = ["restore_claude_desktop"]

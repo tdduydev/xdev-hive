@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -370,5 +371,18 @@ func TestUsageAtResetsModelsAndGroups(t *testing.T) {
 	}
 	if u.Models[0].Percent != 60 || u.Groups[0].Session.Percent != 50 {
 		t.Fatal("at không được sửa bản gốc")
+	}
+}
+
+// App mở từ phiên Claude Code của claude-3 thì worker mang CLAUDE_CONFIG_DIR của claude-3: lệnh đọc quota của gói đăng
+// nhập mặc định (claude-1) phải bỏ biến đó, nếu không claude-1 hiện y số của claude-3.
+func TestUsageEnvDropsInheritedLogin(t *testing.T) {
+	base := []string{"PATH=/bin", "CLAUDE_CONFIG_DIR=/acc/claude-3", "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-khac", "CODEX_HOME=/acc/codex-3"}
+	if got := usageEnv(base, nil); !slices.Equal(got, []string{"PATH=/bin"}) {
+		t.Fatalf("đăng nhập mặc định = %v", got)
+	}
+	got := usageEnv(base, map[string]string{"CLAUDE_CONFIG_DIR": "/acc/claude-4"})
+	if !slices.Equal(got, []string{"PATH=/bin", "CLAUDE_CONFIG_DIR=/acc/claude-4"}) {
+		t.Fatalf("gói có thư mục = %v", got)
 	}
 }
