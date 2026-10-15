@@ -241,7 +241,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: HTML có nonce mới mỗi lần, CSP đúng FR-022; thủ tục ngoài allowlist bị từ chối; HTML không chứa
     `hive_pat_`.
 
-- [ ] **T014 [P] [US3] [vừa] · 2 ngày — Luồng bình luận trong `@xdev-hive/code-review`, web và desktop**
+- [x] **T014 [P] [US3] [vừa] · 2 ngày — Luồng bình luận trong `@xdev-hive/code-review`, web và desktop**
   - **Phụ thuộc**: T008.
   - **Goal**: plan.md mục 4 (web và desktop). `FileDiff` nhận `threads`, `onAddComment`, `onReply`, `onResolve`; có
     nhãn "Đã cũ". Web và desktop nối `codeReviews.comments.*`, hỏi lại 30 giây khi phiên đang mở.
