@@ -388,7 +388,8 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     control_take|control_revoke|deny|input_rejected`. `fleet/gateway.ts` thêm `onRemote` tách riêng. Test
     `ws.db.test.ts` (vé dùng lại, Origin sai, người xem gửi phím, nối lại không mất byte, client chậm nhận `sync`, hub
     khởi động lại đọc DB) và `live.test.ts`. Còn: hub khởi động lại mất quyền đang cấp (phải xác thực lại); nhiều tiến
-    trình hub thì mỗi tiến trình chỉ thấy máy nối vào nó; `controller` trong `remote.get|list` vẫn `null`.
+    trình hub thì mỗi tiến trình chỉ thấy máy nối vào nó; `controller` trong `remote.get|list` vẫn `null`. Ý đầu và ý
+    cuối đã vá ở T041.
   - `ws.ts` (vé một lần 60 s qua route `ticket`, `Origin` bằng `HIVE_PUBLIC_URL`, mã đóng 4401/4403/4404/4429),
     `live.ts` (vòng đệm 512 KiB, người xem, chuyển `control`/`in`/`resize` tới worker chỉ cho kết nối của chủ máy, chuyển
     `term_granted`/`term_revoked`, nối lại theo offset, 512 KiB/s mỗi người xem, 2 MiB/s mỗi máy, đồng bộ lại khi đệm
@@ -418,7 +419,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `control_revoke`, `control_denied`, `input_rejected`. Test `control_test.go` (Unix, CLI giả sh) theo TOTP vector cố định.
   - **Phụ thuộc**: T020 (cùng làn), T005 · **Mức**: nặng
 
-- [ ] T032 [US3] Web: màn terminal điều khiển trên điện thoại
+- [x] T032 [US3] Web: màn terminal điều khiển trên điện thoại
   - `lib/terminal/ws-client.ts` (vé, `resume`, hàng đợi nhập, `visibilitychange`), `input-mac.ts` (ECDH, HKDF, HMAC bằng
     WebCrypto; khoá không xuất được, chỉ trong bộ nhớ), `keys.ts` (thanh phím, Ctrl giữ), ô soạn dòng (IME tiếng Việt),
     nút Điều khiển → passkey; cỡ chữ; tối thiểu 40 cột ở 360 px.
@@ -427,6 +428,15 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `apps/web/src/lib/terminal/{ws-client.ts,ws-client.test.ts,input-mac.ts,input-mac.test.ts,keys.ts}`,
     `apps/web/src/components/{terminal-view.tsx,terminal-keys.tsx}`, `apps/web/src/pages/remote/session-page.tsx`,
     `apps/web/e2e/{remote-control.spec.ts,fake-hub.ts}`
+  - Đã làm (SPEC10W7): `RemoteSocket` (ws-client.ts) dựng trên vé `remote.ticket`, `resume {after}`, backoff 1–10 s,
+    `visibilitychange`; vé 400/403/404/409 là lỗi cuối, 503 thì nối lại. Xin quyền: `newControlAttempt` (khoá tạm ECDH
+    không xuất được) → passkey của thiết bị đã ghép (`hive.remote.devices`) → `control {auth}`; `granted` thì suy khoá
+    HMAC, `InputSigner` ký `in`/`resize` với `seq` từ 1, giữ khoá và `seq` khi nối lại bằng `resumeToken` (không hỏi
+    passkey). Gói ký cho `connId` cũ bị bỏ; nhập lúc đang nối lại xếp hàng tối đa 64, lúc mất kết nối thì bỏ. Người xem
+    giữ cỡ PTY và cuộn ngang; người điều khiển fit theo màn và gửi `resize` đã ký; cỡ chữ mặc định 12 px ở màn hẹp
+    (≥ 40 cột ở 360 px). `TerminalView` nhận `connect`/`fit`. `TOTP_DEVICE_ID` chuyển sang contracts để web dùng chung.
+    Thiết bị chưa ghép thì chỉ đường tới trang ghép, không hỏi passkey. Fake hub có `fakeRemoteSocket` kiểm chữ ký
+    passkey và HMAC thật. Chưa làm: nhánh TOTP ở web (T052).
   - **Phụ thuộc**: T022 (cùng làn, `webauthn.ts`), T030 · **Mức**: nặng
 
 ---
@@ -450,13 +460,26 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/internal/terminal/{limits.go,limits_test.go,remote.go,host.go}`
   - **Phụ thuộc**: T031 · **Mức**: vừa
 
-- [ ] T041 [US5] Hub: ngắt, audit đủ, thông báo trong app
+- [x] T041 [US5] Hub: ngắt, audit đủ, thông báo trong app
+  - Đã làm (SPEC10W7): `close.ts`. Route `remote.close` cho chủ phiên và quản trị đội của máy (người khác nhận
+    `SESSION_NOT_FOUND`, phiên đã xong `SESSION_ENDED`, máy offline `MACHINE_OFFLINE`), gửi `term_close {by}` và audit
+    `terminal.close` (`ownerUserId` khi người ngắt không phải chủ); worker báo `term_exit` thì ghi `terminal.exit`.
+    `closeMachineViewers`: tắt từ xa trên web (`disableRemote`, không chờ máy báo lại) hoặc tại máy (`term_state`
+    `enabled` từ bật sang tắt) thì bỏ mọi quyền hub nhớ, gửi `revoked disabled` cho kết nối đang gõ và đóng mọi người
+    xem 4403. Máy đã báo tắt thì vé mới không xin quyền gõ (`REMOTE_NOT_ENABLED`). Cấp quyền gõ tạo mục hộp thư
+    `terminal.remote_session` cho chủ máy (nhãn thiết bị, link `/remote/<id>`). Audit `terminal.resize` khi cỡ đổi
+    thật. Vá chỗ hở T030: `controller` trong `remote.get|list` lấy từ `term_event controller` và `term_state`; `control`
+    bằng TOTP không cần `deviceId` (hub điền `TOTP_DEVICE_ID = "totp-code"`, worker bỏ qua khi kiểm TOTP); khung `resume`
+    thêm `deviceId` tuỳ chọn, hub không còn nhớ token (khởi động lại) thì vẫn chuyển `term_control` cho worker kiểm
+    (không gửi `deviceId` thì dùng mã TOTP), nên quyền đã cấp qua được hub khởi động lại mà không cần lưu DB. Test
+    `audit.db.test.ts` (đủ audit SC-006, hộp thư, ngắt theo vai trò, tắt trên web và tại máy đóng người xem < 2 s,
+    `controller`, nối lại sau khi mất bảng quyền).
   - Route `close`, `disableRemote` tới mọi người xem; tắt từ xa → đóng WS của máy trong ≤ 2 s; hộp thư trong app có mục
     "Phiên … đang được điều khiển từ xa" (OPS-02); test đủ audit (SC-006).
   - **Scope**: `apps/hub/src/modules/terminal/{close.ts,router.ts,audit.db.test.ts}`
   - **Phụ thuộc**: T030 · **Mức**: vừa
 
-- [ ] T027 [US2] [US3] Hub: đường lui TOTP và chính sách
+- [x] T027 [US2] [US3] Hub: đường lui TOTP và chính sách
   - Chấp nhận `auth.kind = "totp"` ở `control` (và `start` khi T051 xong) chỉ khi chính sách tổ chức `totpFallback` bật
     (`TOTP_NOT_ALLOWED` nếu tắt), chuyển tiếp mã tới worker không đọc, không lưu mã; `welcome.policy` gửi khi nối và khi
     đổi chính sách; hiện `totp` của máy trong `machines`; audit `terminal.totp_ok|totp_fail|totp_locked|totp_enroll|
@@ -464,6 +487,12 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - Test DB: chính sách tắt chặn, mã không bao giờ vào DB hay log, người khác chủ máy, audit đủ (SC-013), `welcome`
     cũ không có `policy` vẫn chạy.
   - **Scope**: `apps/hub/src/modules/terminal/{totp.ts,router.ts,index.ts,gateway.ts,totp.db.test.ts}`
+  - Đã làm (SPEC10W7): `ws.ts` đọc chính sách mỗi lần `control` TOTP, tắt thì trả `TOTP_NOT_ALLOWED` (audit
+    `terminal.deny`) và không chuyển mã tới máy; quyền đã cấp bằng mã thì `resume` cũng bị từ chối (`Grant.totp`).
+    `welcome.policy` khi nối đã có từ T021; đổi chính sách thì `policiesRouter` gọi `remotePolicyHook` (app.ts truyền
+    vào để tránh vòng governance ↔ terminal) sau khi commit, máy cá nhân có `terminal` bị đóng 1012 để nối lại nhận
+    bản mới. Audit: `totp_ok`/`totp_fail` theo `term_granted`/từ chối của lần `control` dùng mã (`pendingTotp`),
+    `totp_enroll`/`totp_disable`/`totp_locked` theo `term_state` (`source: machine`). `term_start` bằng TOTP để T051.
   - **Phụ thuộc**: T030, T041 (cùng làn), T008 · **Mức**: nặng
 
 **Checkpoint MVP**: US1 + US2 + US3 + US5 chạy sau cờ `HIVE_REMOTE_TERMINAL=1`; T091 (test tấn công, gồm ca TOTP) phải xanh
@@ -473,12 +502,20 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ## Phase 6: User Story 4 — Mở phiên mới từ điện thoại (P2)
 
-- [ ] T050 [US4] Worker: `term_start`
+- [x] T050 [US4] Worker: `term_start`
   - Kiểm assertion; `rootId` + `subdir` (giải symlink, `ROOT_ESCAPE`, `ROOT_MISSING`); CLI có trên máy; tài khoản; model
     và mức quyền theo chính sách do hub gửi, không toàn quyền trừ khi `allowFullAccess` tại máy; "Hỏi trên máy" qua
     `watch` (60 s); `term_opened`/`term_denied`.
   - **Scope**: `worker/internal/terminal/{start.go,start_test.go}`
   - **Phụ thuộc**: T040 (cùng làn) · **Mức**: nặng
+  - Đã làm (SPEC10W7): `start.go` kiểm chữ ký (`Action: "start"`) trước mọi điều kiện của máy, rồi CLI (`LocalCLIs` và
+    `Remote.CLIs`), root + subdir (`..`, đường tuyệt đối, symlink ra ngoài → `ROOT_ESCAPE`), model (regex, lạ thì bỏ),
+    mức quyền (`full` hạ về `workspace` khi chưa `allowFullAccess`). Đối số CLI do máy dựng; lời nhắc sau `--` (gemini
+    `--prompt-interactive=`), file `.cmd`/`.bat` trên Windows thì gõ lời nhắc vào PTY. "Hỏi tại máy" dùng chung
+    `ask`/`decide` với ghép (`start_request`/`start_done`, `remote.start.decide {requestId, allow}`). `term_opened` có
+    `requestId`, `origin: remote`, `cwdLabel`, `permissions`; audit `start`/`start_denied`. Test thêm
+    `start_unit_test.go` (chạy cả Windows). Chưa có: `term_opened` chưa cấp quyền điều khiển, điện thoại gửi `control`
+    sau khi mở (T051/T052 chốt).
 
 - [ ] T051 [US4] Hub: route `start`
   - Kiểm chủ máy, máy online có `terminal` và bật từ xa; gắn chính sách agent của tổ chức (model, mức quyền) vào

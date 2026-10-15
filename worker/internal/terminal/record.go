@@ -43,10 +43,14 @@ type RecordOpen struct {
 	CLI, Cwd, AccountLabel string
 	ProjectID, TaskID      string
 	Cols, Rows             int
+	// Phiên mở từ xa (term_start): Origin OriginRemote, RequestID để hub ghép với yêu cầu, Permissions là quyền thật
+	// đã áp, CwdLabel là nhãn root + thư mục con (không lộ đường dẫn tuyệt đối). Rỗng là phiên `hive chat` tại máy.
+	Origin, RequestID     string
+	Permissions, CwdLabel string
 }
 
-// Recorder là Handler của kênh cho phiên trên máy cá nhân. Ghép, tắt và gỡ thiết bị chuyển cho Remote; cấp quyền gõ
-// chuyển cho Controller; mở phiên từ xa chưa có nên bị từ chối như máy chưa bật từ xa (T050 thay phần này).
+// Recorder là Handler của kênh cho phiên trên máy cá nhân. Ghép, tắt và gỡ thiết bị chuyển cho Remote; cấp quyền gõ và
+// mở phiên từ xa chuyển cho Controller.
 type Recorder struct {
 	// Dir chứa đệm `<phiên>.pending`; file còn lại từ lần chạy trước bị xoá vì PTY của chúng đã mất.
 	Dir        string
@@ -179,12 +183,21 @@ func (r *Recorder) Open(o RecordOpen) *RecordedSession {
 		return nil
 	}
 	label := clip(o.AccountLabel, maxLabel)
-	yes, no := true, false
+	yes, remote := true, o.Origin == OriginRemote
 	s := &RecordedSession{r: r, id: id, file: f, sent: -1, gapFrom: -1, opened: Opened{
-		SessionID: id, Origin: "local", AccountLabel: &label, Permissions: "workspace", CLI: o.CLI, CwdLabel: cwdLabel(o.Cwd),
-		ProjectID: refID(o.ProjectID), TaskID: refID(o.TaskID), Cols: clamp(o.Cols, minCols, maxCols),
-		Rows: clamp(o.Rows, minRows, maxRows), Record: &yes, Remote: &no,
+		SessionID: id, Origin: OriginLocal, RequestID: o.RequestID, AccountLabel: &label, Permissions: "workspace", CLI: o.CLI,
+		CwdLabel: cwdLabel(o.Cwd), ProjectID: refID(o.ProjectID), TaskID: refID(o.TaskID), Cols: clamp(o.Cols, minCols, maxCols),
+		Rows: clamp(o.Rows, minRows, maxRows), Record: &yes, Remote: &remote,
 	}}
+	if remote {
+		s.opened.Origin = OriginRemote
+	}
+	if o.Permissions == PermFull {
+		s.opened.Permissions = PermFull
+	}
+	if o.CwdLabel != "" {
+		s.opened.CwdLabel = clip(o.CwdLabel, maxCwdLabel)
+	}
 	r.sessions = append(r.sessions, s)
 	r.dirty = true
 	r.signal()
@@ -577,9 +590,13 @@ func (r *Recorder) compactLocked(s *RecordedSession) {
 	s.size -= head
 }
 
-// Điều khiển từ xa chưa bật trên máy này: trả lời như máy đang tắt từ xa để hub báo đúng lý do (FR-012).
-
+// Start: máy chưa có Controller (runner host, chưa bật điều khiển từ xa) trả lời như máy đang tắt từ xa để hub báo đúng
+// lý do (FR-012).
 func (r *Recorder) Start(req StartRequest) {
+	if r.Controller != nil {
+		r.Controller.Start(req)
+		return
+	}
 	r.reply(func(l Sender) error {
 		return l.Denied(Denied{RequestID: req.RequestID, Code: "REMOTE_DISABLED", Reason: remoteDisabledText})
 	})

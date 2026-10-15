@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, type KeyObject, randomUUID, verify } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import type { Page, Request, WebSocketRoute } from "@playwright/test";
@@ -28,6 +28,15 @@ import {
   WORKFLOW_PRESETS,
   type WorkflowInput,
 } from "@xdev-hive/contracts";
+import {
+  challengeBytes,
+  deriveInputKey,
+  fromBase64url,
+  inputMac,
+  inputMacPayload,
+  PASSKEY_KEY_INFO,
+  toBase64url,
+} from "@xdev-hive/contracts/terminal-auth";
 
 export const USER = { id: "u1", name: "Trần Đức Duy", email: "duy@example.com", image: null };
 
@@ -1052,6 +1061,9 @@ export function remoteFixture(
     pairOptionsCalls: [] as { machineId: string; pairId: string }[],
     pairCalls: [] as Record<string, unknown>[],
     revokeCalls: [] as { machineId: string; deviceId: string }[],
+    ticketCalls: 0,
+    /** Giả mất mạng: xin vé trả 503 (lỗi tạm) nên trang cứ nối lại theo backoff. */
+    offline: false,
   };
   const chunks = (opts.chunks ?? []).map((text, seq) => ({ seq, data: b64(text) }));
   const machine = (id: string, name: string, over: Record<string, unknown> = {}) => ({
@@ -1135,6 +1147,17 @@ export function remoteFixture(
       const { machineId: _, ...row } = device;
       return ok(row);
     },
+    "remote/ticket": (input: unknown) => {
+      state.ticketCalls += 1;
+      if (state.offline) return fail("SERVICE_UNAVAILABLE", 503, "Hub tạm thời không phản hồi.");
+      const found = state.sessions.find((s) => s.id === (input as { id: string }).id);
+      if (!found) return fail("SESSION_NOT_FOUND", 404, "Không tìm thấy phiên.");
+      return ok({
+        ticket: `r.ticket-${state.ticketCalls}`,
+        expiresAt: "2026-10-15T01:01:00.000Z",
+        canControl: found.isOwner === true,
+      });
+    },
     "remote/devices": (input: unknown) => {
       const { machineId } = input as { machineId: string };
       return ok(state.devices.filter((d) => d.machineId === machineId).map(({ machineId: _, ...row }) => row));
@@ -1148,6 +1171,153 @@ export function remoteFixture(
     },
   };
   return { state, rpc };
+}
+
+/**
+ * Hub và worker giả cho WebSocket của phiên trên máy cá nhân (`remoteClientFrame`). Kiểm như worker thật: chữ ký passkey
+ * trên đúng challenge (`connId` của kết nối, `deviceId`, người dùng), suy khoá ECDH + HKDF, rồi HMAC và `seq` tăng của
+ * từng gói `in`/`resize`. Gói sai thì thu quyền (`input_rejected`) như `remoteauth`. Nối lại bằng `resumeToken` giữ khoá
+ * và `seq`. Output đánh số theo phiên và phát lại sau `resume.after`.
+ */
+export async function fakeRemoteSocket(
+  page: Page,
+  fixture: ReturnType<typeof remoteFixture>,
+  opts: { sessionId: string; deviceId: string; passkey: KeyObject },
+) {
+  type Frame = Record<string, unknown> & { t: string };
+  const worker = (await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, [
+    "deriveBits",
+  ])) as CryptoKeyPair;
+  const workerEphPub = toBase64url(new Uint8Array(await crypto.subtle.exportKey("raw", worker.publicKey)));
+  const RESUME_TOKEN = "cmVzdW1lLXRva2VuLTE";
+  const session = () => fixture.state.sessions.find((s) => s.id === opts.sessionId) ?? {};
+  const sockets: { connId: string; received: Frame[]; ws: WebSocketRoute }[] = [];
+  const state = {
+    outputs: [] as string[],
+    inputs: [] as string[],
+    resizes: [] as { cols: number; rows: number }[],
+    grant: null as { key: CryptoKey; last: number; connId: string } | null,
+    rejected: [] as string[],
+    controls: 0,
+    resumes: [] as Frame[],
+  };
+  const send = (frame: unknown) => sockets.at(-1)?.ws.send(JSON.stringify(frame));
+  const controller = {
+    state,
+    sockets,
+    out(text: string) {
+      state.outputs.push(text);
+      send({ t: "out", seq: state.outputs.length - 1, data: b64(text) });
+    },
+    drop(code = 1006) {
+      sockets.at(-1)?.ws.close({ code, reason: "test" });
+    },
+    /** Terminal tại máy (hoặc thiết bị khác) giành quyền. */
+    takeOver() {
+      state.grant = null;
+      send({ t: "revoked", reason: "taken" });
+    },
+  };
+
+  async function handle(socket: (typeof sockets)[number], frame: Frame): Promise<void> {
+    const { ws, connId } = socket;
+    if (frame.t === "ping") ws.send(JSON.stringify({ t: "pong" }));
+    if (frame.t === "resume") {
+      state.resumes.push(frame);
+      const after = Number(frame.after);
+      state.outputs.forEach((text, seq) => {
+        if (seq > after) ws.send(JSON.stringify({ t: "out", seq, data: b64(text) }));
+      });
+      if (frame.resumeToken !== undefined) {
+        if (state.grant && frame.resumeToken === RESUME_TOKEN && frame.deviceId === opts.deviceId) {
+          state.grant.connId = connId;
+          ws.send(JSON.stringify({ t: "granted", workerEphPub, resumeToken: RESUME_TOKEN }));
+        } else {
+          ws.send(JSON.stringify({ t: "denied", code: "AUTH_STALE", message: "Phiên xác thực đã hết hạn." }));
+        }
+      }
+    }
+    if (frame.t === "control") {
+      state.controls += 1;
+      const auth = frame.auth as {
+        kind: string;
+        ephPub: string;
+        ts: number;
+        nonce: string;
+        assertion: { authenticatorData: string; clientDataJSON: string; signature: string };
+      };
+      const challenge = await challengeBytes({
+        machineId: String(session().machineId),
+        action: "control",
+        params: { userId: USER.id, deviceId: opts.deviceId, sessionId: opts.sessionId, connId },
+        ephPub: auth.ephPub,
+        ts: auth.ts,
+        nonce: auth.nonce,
+      });
+      const clientData = JSON.parse(Buffer.from(fromBase64url(auth.assertion.clientDataJSON)).toString("utf8")) as {
+        challenge: string;
+      };
+      const signed = Buffer.concat([
+        fromBase64url(auth.assertion.authenticatorData),
+        createHash("sha256").update(fromBase64url(auth.assertion.clientDataJSON)).digest(),
+      ]);
+      const valid =
+        frame.deviceId === opts.deviceId &&
+        clientData.challenge === toBase64url(challenge) &&
+        verify("sha256", signed, opts.passkey, fromBase64url(auth.assertion.signature));
+      if (!valid) {
+        ws.send(JSON.stringify({ t: "denied", code: "ASSERTION_INVALID", message: "Chữ ký passkey không hợp lệ." }));
+        return;
+      }
+      const key = await deriveInputKey(worker.privateKey, auth.ephPub, challenge, PASSKEY_KEY_INFO);
+      state.grant = { key, last: 0, connId };
+      ws.send(JSON.stringify({ t: "granted", workerEphPub, resumeToken: RESUME_TOKEN }));
+    }
+    if (frame.t === "release") state.grant = null;
+    if (frame.t === "in" || frame.t === "resize") {
+      const grant = state.grant;
+      // Hub chỉ chuyển gói của kết nối đang giữ quyền.
+      if (!grant || grant.connId !== connId) {
+        ws.send(JSON.stringify({ t: "error", code: "TERMINAL_READ_ONLY", message: "Bạn chỉ xem phiên này." }));
+        return;
+      }
+      const seq = Number(frame.seq);
+      const base = { sessionId: opts.sessionId, connId, seq };
+      const payload =
+        frame.t === "in"
+          ? inputMacPayload({ ...base, kind: "in", data: String(frame.data) })
+          : inputMacPayload({ ...base, kind: "resize", cols: Number(frame.cols), rows: Number(frame.rows) });
+      if (seq <= grant.last || (await inputMac(grant.key, payload)) !== frame.mac) {
+        state.rejected.push(frame.t);
+        state.grant = null;
+        ws.send(JSON.stringify({ t: "revoked", reason: "input_rejected" }));
+        return;
+      }
+      grant.last = seq;
+      if (frame.t === "resize") state.resizes.push({ cols: Number(frame.cols), rows: Number(frame.rows) });
+      else {
+        const text = fromB64(String(frame.data));
+        state.inputs.push(text);
+        // CLI giả: in lại chữ gõ được (bỏ ký tự điều khiển) để test thấy trên xterm.
+        const printable = [...text].filter((char) => char >= " ").join("");
+        if (printable) controller.out(printable);
+      }
+    }
+  }
+
+  await page.routeWebSocket(/\/ws\/terminal/, (ws) => {
+    const socket = { connId: `conn-${String(sockets.length + 1).padStart(4, "0")}`, received: [] as Frame[], ws };
+    sockets.push(socket);
+    ws.send(JSON.stringify({ t: "hello", session: session(), connId: socket.connId, canControl: true }));
+    // Xử lý tuần tự như hub: WebCrypto bất đồng bộ không được làm đảo thứ tự gói.
+    let queue = Promise.resolve();
+    ws.onMessage((raw) => {
+      const frame = JSON.parse(String(raw)) as Frame;
+      socket.received.push(frame);
+      queue = queue.then(() => handle(socket, frame));
+    });
+  });
+  return controller;
 }
 
 export interface RemoteDeviceRow {

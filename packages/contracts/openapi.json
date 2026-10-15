@@ -100799,7 +100799,8 @@
                                         "agent-report",
                                         "no-open-questions",
                                         "breakdown",
-                                        "coverage"
+                                        "coverage",
+                                        "ears"
                                       ],
                                       "type": "string"
                                     }
@@ -101703,7 +101704,8 @@
                                     "agent-report",
                                     "no-open-questions",
                                     "breakdown",
-                                    "coverage"
+                                    "coverage",
+                                    "ears"
                                   ],
                                   "type": "string"
                                 }
@@ -102237,7 +102239,8 @@
                                       "agent-report",
                                       "no-open-questions",
                                       "breakdown",
-                                      "coverage"
+                                      "coverage",
+                                      "ears"
                                     ],
                                     "type": "string"
                                   }
@@ -103524,7 +103527,8 @@
                                         "agent-report",
                                         "no-open-questions",
                                         "breakdown",
-                                        "coverage"
+                                        "coverage",
+                                        "ears"
                                       ],
                                       "type": "string"
                                     }
@@ -105423,7 +105427,8 @@
                                   "agent-report",
                                   "no-open-questions",
                                   "breakdown",
-                                  "coverage"
+                                  "coverage",
+                                  "ears"
                                 ],
                                 "type": "string"
                               }
@@ -106641,7 +106646,8 @@
                                   "agent-report",
                                   "no-open-questions",
                                   "breakdown",
-                                  "coverage"
+                                  "coverage",
+                                  "ears"
                                 ],
                                 "type": "string"
                               }
@@ -109251,7 +109257,8 @@
                                   "agent-report",
                                   "no-open-questions",
                                   "breakdown",
-                                  "coverage"
+                                  "coverage",
+                                  "ears"
                                 ],
                                 "type": "string"
                               }
@@ -111282,7 +111289,8 @@
                                   "agent-report",
                                   "no-open-questions",
                                   "breakdown",
-                                  "coverage"
+                                  "coverage",
+                                  "ears"
                                 ],
                                 "type": "string"
                               }
@@ -112859,7 +112867,8 @@
                                   "agent-report",
                                   "no-open-questions",
                                   "breakdown",
-                                  "coverage"
+                                  "coverage",
+                                  "ears"
                                 ],
                                 "type": "string"
                               }
@@ -114421,7 +114430,8 @@
                                   "agent-report",
                                   "no-open-questions",
                                   "breakdown",
-                                  "coverage"
+                                  "coverage",
+                                  "ears"
                                 ],
                                 "type": "string"
                               }
@@ -115983,7 +115993,8 @@
                                   "agent-report",
                                   "no-open-questions",
                                   "breakdown",
-                                  "coverage"
+                                  "coverage",
+                                  "ears"
                                 ],
                                 "type": "string"
                               }
@@ -116909,7 +116920,8 @@
                                         "agent-report",
                                         "no-open-questions",
                                         "breakdown",
-                                        "coverage"
+                                        "coverage",
+                                        "ears"
                                       ],
                                       "type": "string"
                                     }
@@ -117996,7 +118008,8 @@
                                       "agent-report",
                                       "no-open-questions",
                                       "breakdown",
-                                      "coverage"
+                                      "coverage",
+                                      "ears"
                                     ],
                                     "type": "string"
                                   }
@@ -129065,7 +129078,8 @@
                                                   "agent-report",
                                                   "no-open-questions",
                                                   "breakdown",
-                                                  "coverage"
+                                                  "coverage",
+                                                  "ears"
                                                 ],
                                                 "type": "string"
                                               }
@@ -130267,7 +130281,8 @@
                                               "agent-report",
                                               "no-open-questions",
                                               "breakdown",
-                                              "coverage"
+                                              "coverage",
+                                              "ears"
                                             ],
                                             "type": "string"
                                           }
@@ -131112,7 +131127,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -132657,7 +132673,8 @@
                                               "agent-report",
                                               "no-open-questions",
                                               "breakdown",
-                                              "coverage"
+                                              "coverage",
+                                              "ears"
                                             ],
                                             "type": "string"
                                           }
@@ -134789,7 +134806,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -137926,7 +137944,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -141792,7 +141811,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -144920,7 +144940,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -148045,7 +148066,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -151159,7 +151181,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -154273,7 +154296,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -157392,7 +157416,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -160512,7 +160537,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -163631,7 +163657,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }
@@ -166750,7 +166777,8 @@
                                                 "agent-report",
                                                 "no-open-questions",
                                                 "breakdown",
-                                                "coverage"
+                                                "coverage",
+                                                "ears"
                                               ],
                                               "type": "string"
                                             }

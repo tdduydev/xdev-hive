@@ -392,9 +392,18 @@ describe("quyền gõ do worker cấp", () => {
       userId: org.user("tmember"),
     });
 
+    // Token hub không biết vẫn tới worker (hub có thể vừa khởi động lại); worker là bên từ chối.
     const d = await browser(await ticketFor("tmember", sessionId));
-    await d.hello();
+    const hd = await d.hello();
     d.send({ t: "resume", after: -1, resumeToken: tok("khong-co") });
+    expect(await worker.forConn("term_control", hd.connId)).toMatchObject({ resumeToken: tok("khong-co") });
+    worker.send({
+      type: "term_event",
+      sessionId,
+      seq: 0,
+      event: "controller",
+      data: { connId: hd.connId, denied: "AUTH_STALE" },
+    });
     expect(await d.inbox.until((f) => f.t === "denied")).toMatchObject({ code: "AUTH_STALE" });
   });
 
