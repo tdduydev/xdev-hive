@@ -218,6 +218,7 @@ describe("advance và onBaseline", () => {
       ["tasks", "drafting"],
       ["implement", "pending"],
       ["converge", "pending"],
+      ["release", "pending"],
     ]);
     expect(now.phases[0]?.approvedAt).toBeTruthy();
     expect(now.artifacts.find((a) => a.artifactId === "notes")?.baselineVersion).toBeNull();

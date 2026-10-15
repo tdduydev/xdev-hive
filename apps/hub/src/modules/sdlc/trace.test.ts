@@ -107,6 +107,25 @@ describe("buildTrace (SC-006)", () => {
     expect(web.total).toEqual({ requirements: 5, planned: 40, done: 20, verified: 20 });
   });
 
+  it("converge nhiều dự án: cùng vòng lấy mức xấu nhất; lọc theo dự án chỉ xét phát hiện của dự án đó", () => {
+    const multi = {
+      ...input,
+      links: [
+        ...input.links.filter((l) => l.kind !== "finding"),
+        {
+          ...link("FR-005", "finding", "c1-pw", null, { status: "missing", evidence: "web", round: 1 }),
+          projectId: "pw",
+        },
+        { ...link("FR-005", "finding", "c1-pa", null, { status: "met", evidence: "api", round: 1 }), projectId: "pa" },
+      ],
+    };
+    expect(buildTrace(multi).rows[4]).toMatchObject({ verified: false });
+    expect(buildTrace(multi).rows[4]?.findings.at(-1)?.status).toBe("missing");
+    const api = buildTrace({ ...multi, projectId: "pa" });
+    expect(api.rows[4]?.findings.map((f) => f.status)).toEqual(["met"]);
+    expect(api.rows[4]?.verified).toBe(true);
+  });
+
   it("requirement chỉ có trong task vẫn thành dòng; không có requirement thì độ phủ 0", () => {
     const t = buildTrace({ ...input, requirements: [], links: [] });
     expect(t.rows.map((r) => r.requirementId)).toEqual(["FR-001", "FR-002", "FR-005", "FR-003"]);
