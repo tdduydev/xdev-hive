@@ -1,5 +1,5 @@
 {
-  "id": "cf2422a9-a7fd-4311-a070-65f78a7bf7dd",
+  "id": "a1d46939-9c07-420f-95c9-3952eb5c9efc",
   "prevId": "7ee6be3f-9518-4a98-8eca-5faa29a3df2a",
   "version": "7",
   "dialect": "postgresql",
@@ -2514,242 +2514,6 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
-    "hive.code_review_comment_links": {
-      "name": "code_review_comment_links",
-      "schema": "hive",
-      "columns": {
-        "comment_id": {
-          "name": "comment_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "pr_number": {
-          "name": "pr_number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider_comment_id": {
-          "name": "provider_comment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_thread_id": {
-          "name": "provider_thread_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_url": {
-          "name": "provider_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mode": {
-          "name": "mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'inline'"
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "body_hash": {
-          "name": "body_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_updated_at": {
-          "name": "provider_updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_resolved": {
-          "name": "provider_resolved",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "provider_deleted": {
-          "name": "provider_deleted",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "next_attempt_at": {
-          "name": "next_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "write_started_at": {
-          "name": "write_started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "code_review_comment_links_provider_id": {
-          "name": "code_review_comment_links_provider_id",
-          "columns": [
-            {
-              "expression": "connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider_comment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "code_review_comment_links_pending": {
-          "name": "code_review_comment_links_pending",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "next_attempt_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "code_review_comment_links_connection_write": {
-          "name": "code_review_comment_links_connection_write",
-          "columns": [
-            {
-              "expression": "connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "write_started_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "code_review_comment_links_org_id_comment_id_code_review_comments_org_id_id_fk": {
-          "name": "code_review_comment_links_org_id_comment_id_code_review_comments_org_id_id_fk",
-          "tableFrom": "code_review_comment_links",
-          "tableTo": "code_review_comments",
-          "schemaTo": "hive",
-          "columnsFrom": ["org_id", "comment_id"],
-          "columnsTo": ["org_id", "id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {
-        "code_review_comment_links_rw": {
-          "name": "code_review_comment_links_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {
-        "code_review_comment_links_state": {
-          "name": "code_review_comment_links_state",
-          "value": "\"hive\".\"code_review_comment_links\".\"state\" in ('pending', 'synced', 'fallback', 'failed', 'disabled')"
-        },
-        "code_review_comment_links_mode": {
-          "name": "code_review_comment_links_mode",
-          "value": "\"hive\".\"code_review_comment_links\".\"mode\" in ('inline', 'fallback')"
-        },
-        "code_review_comment_links_provider": {
-          "name": "code_review_comment_links_provider",
-          "value": "\"hive\".\"code_review_comment_links\".\"provider\" in ('github', 'gitlab')"
-        }
-      },
-      "isRLSEnabled": true
-    },
     "hive.code_review_comments": {
       "name": "code_review_comments",
       "schema": "hive",
@@ -2861,27 +2625,6 @@
         }
       },
       "indexes": {
-        "code_review_comments_org_id": {
-          "name": "code_review_comments_org_id",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "code_review_comments_org_review_id": {
           "name": "code_review_comments_org_review_id",
           "columns": [
@@ -3530,19 +3273,1525 @@
           "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
-        },
-        "code_reviews_owner_select": {
-          "name": "code_reviews_owner_select",
-          "as": "PERMISSIVE",
-          "for": "SELECT",
-          "to": ["hive_owner"],
-          "using": "true"
         }
       },
       "checkConstraints": {
         "code_reviews_status": {
           "name": "code_reviews_status",
           "value": "status in ('in_review', 'changes_requested', 'approved', 'merged', 'cancelled', 'superseded')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.doc_assets": {
+      "name": "doc_assets",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "home_id": {
+          "name": "home_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repo_path": {
+          "name": "repo_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blob_id": {
+          "name": "blob_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size": {
+          "name": "size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lfs": {
+          "name": "lfs",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'available'"
+        },
+        "owner_doc_id": {
+          "name": "owner_doc_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_assets_blob": {
+          "name": "doc_assets_blob",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "blob_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doc_assets_home_id_org_id_doc_homes_id_org_id_fk": {
+          "name": "doc_assets_home_id_org_id_doc_homes_id_org_id_fk",
+          "tableFrom": "doc_assets",
+          "tableTo": "doc_homes",
+          "schemaTo": "hive",
+          "columnsFrom": ["home_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "doc_assets_id_org": {
+          "name": "doc_assets_id_org",
+          "nullsNotDistinct": false,
+          "columns": ["id", "org_id"]
+        },
+        "doc_assets_home_path": {
+          "name": "doc_assets_home_path",
+          "nullsNotDistinct": false,
+          "columns": ["home_id", "repo_path"]
+        }
+      },
+      "policies": {
+        "doc_assets_rw": {
+          "name": "doc_assets_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_assets_state": {
+          "name": "doc_assets_state",
+          "value": "state in ('available', 'missing_lfs', 'too_large', 'pending_push')"
+        },
+        "doc_assets_size": {
+          "name": "doc_assets_size",
+          "value": "size >= 0"
+        },
+        "doc_assets_blob": {
+          "name": "doc_assets_blob",
+          "value": "state not in ('available', 'pending_push') or blob_id is not null"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.doc_conflicts": {
+      "name": "doc_conflicts",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "home_id": {
+          "name": "home_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "doc_id": {
+          "name": "doc_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_version": {
+          "name": "base_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hub_version": {
+          "name": "hub_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repo_commit": {
+          "name": "repo_commit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repo_content": {
+          "name": "repo_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "resolution": {
+          "name": "resolution",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_version": {
+          "name": "resolved_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_conflicts_open": {
+          "name": "doc_conflicts_open",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "state = 'open'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doc_conflicts_org_state": {
+          "name": "doc_conflicts_org_state",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doc_conflicts_home_id_org_id_doc_homes_id_org_id_fk": {
+          "name": "doc_conflicts_home_id_org_id_doc_homes_id_org_id_fk",
+          "tableFrom": "doc_conflicts",
+          "tableTo": "doc_homes",
+          "schemaTo": "hive",
+          "columnsFrom": ["home_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "doc_conflicts_rw": {
+          "name": "doc_conflicts_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_conflicts_state": {
+          "name": "doc_conflicts_state",
+          "value": "state in ('open', 'resolved')"
+        },
+        "doc_conflicts_resolution": {
+          "name": "doc_conflicts_resolution",
+          "value": "resolution is null or resolution in ('hub', 'repo', 'manual')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.doc_extracts": {
+      "name": "doc_extracts",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_sha256": {
+          "name": "source_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "secret_flag": {
+          "name": "secret_flag",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "warnings": {
+          "name": "warnings",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_extracts_approved": {
+          "name": "doc_extracts_approved",
+          "columns": [
+            {
+              "expression": "asset_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "state = 'approved'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doc_extracts_org_state": {
+          "name": "doc_extracts_org_state",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doc_extracts_asset_id_org_id_doc_assets_id_org_id_fk": {
+          "name": "doc_extracts_asset_id_org_id_doc_assets_id_org_id_fk",
+          "tableFrom": "doc_extracts",
+          "tableTo": "doc_assets",
+          "schemaTo": "hive",
+          "columnsFrom": ["asset_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "doc_extracts_id_org": {
+          "name": "doc_extracts_id_org",
+          "nullsNotDistinct": false,
+          "columns": ["id", "org_id"]
+        }
+      },
+      "policies": {
+        "doc_extracts_rw": {
+          "name": "doc_extracts_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_extracts_state": {
+          "name": "doc_extracts_state",
+          "value": "state in ('pending', 'review', 'approved', 'rejected', 'failed')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.doc_homes": {
+      "name": "doc_homes",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "branch": {
+          "name": "branch",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root": {
+          "name": "root",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'docs/'"
+        },
+        "assets_dir": {
+          "name": "assets_dir",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'assets'"
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pr'"
+        },
+        "include": {
+          "name": "include",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "exclude": {
+          "name": "exclude",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "repo_changes_need_review": {
+          "name": "repo_changes_need_review",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "last_commit": {
+          "name": "last_commit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "status_reason": {
+          "name": "status_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "webhook_secret_enc": {
+          "name": "webhook_secret_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "webhook_id": {
+          "name": "webhook_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pr_number": {
+          "name": "pr_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pr_url": {
+          "name": "pr_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lfs_patterns": {
+          "name": "lfs_patterns",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "configured_by": {
+          "name": "configured_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_queued_at": {
+          "name": "first_queued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_saved_at": {
+          "name": "last_saved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_homes_project": {
+          "name": "doc_homes_project",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "scope = 'project'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doc_homes_org": {
+          "name": "doc_homes_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "scope = 'org'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doc_homes_connection": {
+          "name": "doc_homes_connection",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "connection_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "doc_homes_id_org": {
+          "name": "doc_homes_id_org",
+          "nullsNotDistinct": false,
+          "columns": ["id", "org_id"]
+        }
+      },
+      "policies": {
+        "doc_homes_rw": {
+          "name": "doc_homes_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_homes_scope": {
+          "name": "doc_homes_scope",
+          "value": "(scope = 'project' and project_id is not null) or (scope = 'org' and project_id is null)"
+        },
+        "doc_homes_mode": {
+          "name": "doc_homes_mode",
+          "value": "mode in ('pr', 'direct', 'off')"
+        },
+        "doc_homes_status": {
+          "name": "doc_homes_status",
+          "value": "status in ('active', 'paused', 'error')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.doc_import_files": {
+      "name": "doc_import_files",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "import_id": {
+          "name": "import_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repo_path": {
+          "name": "repo_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "blob_sha": {
+          "name": "blob_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "existing_key": {
+          "name": "existing_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "secret_scan": {
+          "name": "secret_scan",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "findings": {
+          "name": "findings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size": {
+          "name": "size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "warnings": {
+          "name": "warnings",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "doc_id": {
+          "name": "doc_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "asset_id": {
+          "name": "asset_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirmed_by": {
+          "name": "confirmed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_import_files_resume": {
+          "name": "doc_import_files_resume",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "import_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doc_import_files_import_id_org_id_doc_imports_id_org_id_fk": {
+          "name": "doc_import_files_import_id_org_id_doc_imports_id_org_id_fk",
+          "tableFrom": "doc_import_files",
+          "tableTo": "doc_imports",
+          "schemaTo": "hive",
+          "columnsFrom": ["import_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "doc_import_files_asset_id_org_id_doc_assets_id_org_id_fk": {
+          "name": "doc_import_files_asset_id_org_id_doc_assets_id_org_id_fk",
+          "tableFrom": "doc_import_files",
+          "tableTo": "doc_assets",
+          "schemaTo": "hive",
+          "columnsFrom": ["asset_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "doc_import_files_import_path": {
+          "name": "doc_import_files_import_path",
+          "nullsNotDistinct": false,
+          "columns": ["import_id", "repo_path"]
+        }
+      },
+      "policies": {
+        "doc_import_files_rw": {
+          "name": "doc_import_files_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_import_files_secret_scan": {
+          "name": "doc_import_files_secret_scan",
+          "value": "secret_scan in ('pending', 'clean', 'found')"
+        },
+        "doc_import_files_kind": {
+          "name": "doc_import_files_kind",
+          "value": "kind in ('markdown', 'image', 'office', 'other')"
+        },
+        "doc_import_files_state": {
+          "name": "doc_import_files_state",
+          "value": "state in ('pending', 'done', 'skipped', 'blocked_secret', 'failed')"
+        },
+        "doc_import_files_size": {
+          "name": "doc_import_files_size",
+          "value": "size >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.doc_imports": {
+      "name": "doc_imports",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "home_id": {
+          "name": "home_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commit_sha": {
+          "name": "commit_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "include": {
+          "name": "include",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "exclude": {
+          "name": "exclude",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "preview": {
+          "name": "preview",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "selected": {
+          "name": "selected",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'scanning'"
+        },
+        "progress": {
+          "name": "progress",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"done\":0,\"total\":0,\"cursor\":null}'::jsonb"
+        },
+        "report": {
+          "name": "report",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_by": {
+          "name": "started_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_imports_home": {
+          "name": "doc_imports_home",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "home_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doc_imports_home_id_org_id_doc_homes_id_org_id_fk": {
+          "name": "doc_imports_home_id_org_id_doc_homes_id_org_id_fk",
+          "tableFrom": "doc_imports",
+          "tableTo": "doc_homes",
+          "schemaTo": "hive",
+          "columnsFrom": ["home_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "doc_imports_id_org": {
+          "name": "doc_imports_id_org",
+          "nullsNotDistinct": false,
+          "columns": ["id", "org_id"]
+        }
+      },
+      "policies": {
+        "doc_imports_rw": {
+          "name": "doc_imports_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_imports_state": {
+          "name": "doc_imports_state",
+          "value": "state in ('scanning', 'ready', 'importing', 'done', 'failed', 'cancelled')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.doc_repo_files": {
+      "name": "doc_repo_files",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "doc_id": {
+          "name": "doc_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "home_id": {
+          "name": "home_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repo_path": {
+          "name": "repo_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "synced_version": {
+          "name": "synced_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "synced_commit": {
+          "name": "synced_commit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "synced_hash": {
+          "name": "synced_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "repo_hash": {
+          "name": "repo_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "eol": {
+          "name": "eol",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'lf'"
+        },
+        "bom": {
+          "name": "bom",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_repo_files_pending": {
+          "name": "doc_repo_files_pending",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "home_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doc_repo_files_home_id_org_id_doc_homes_id_org_id_fk": {
+          "name": "doc_repo_files_home_id_org_id_doc_homes_id_org_id_fk",
+          "tableFrom": "doc_repo_files",
+          "tableTo": "doc_homes",
+          "schemaTo": "hive",
+          "columnsFrom": ["home_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "doc_repo_files_home_path": {
+          "name": "doc_repo_files_home_path",
+          "nullsNotDistinct": false,
+          "columns": ["home_id", "repo_path"]
+        },
+        "doc_repo_files_doc": {
+          "name": "doc_repo_files_doc",
+          "nullsNotDistinct": false,
+          "columns": ["doc_id"]
+        }
+      },
+      "policies": {
+        "doc_repo_files_rw": {
+          "name": "doc_repo_files_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_repo_files_state": {
+          "name": "doc_repo_files_state",
+          "value": "state in ('synced', 'pending', 'conflict', 'failed', 'deleted_in_repo', 'blocked_secret', 'excluded')"
+        },
+        "doc_repo_files_eol": {
+          "name": "doc_repo_files_eol",
+          "value": "eol in ('lf', 'crlf')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.doc_sync_batches": {
+      "name": "doc_sync_batches",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "home_id": {
+          "name": "home_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "branch": {
+          "name": "branch",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "doc_versions": {
+          "name": "doc_versions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "asset_ids": {
+          "name": "asset_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "commit_sha": {
+          "name": "commit_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pr_number": {
+          "name": "pr_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_at": {
+          "name": "next_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_sync_batches_home_state": {
+          "name": "doc_sync_batches_home_state",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "home_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doc_sync_batches_home_id_org_id_doc_homes_id_org_id_fk": {
+          "name": "doc_sync_batches_home_id_org_id_doc_homes_id_org_id_fk",
+          "tableFrom": "doc_sync_batches",
+          "tableTo": "doc_homes",
+          "schemaTo": "hive",
+          "columnsFrom": ["home_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "doc_sync_batches_rw": {
+          "name": "doc_sync_batches_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_sync_batches_mode": {
+          "name": "doc_sync_batches_mode",
+          "value": "mode in ('pr', 'direct')"
+        },
+        "doc_sync_batches_state": {
+          "name": "doc_sync_batches_state",
+          "value": "state in ('queued', 'pushing', 'done', 'failed')"
+        },
+        "doc_sync_batches_attempts": {
+          "name": "doc_sync_batches_attempts",
+          "value": "attempts >= 0"
         }
       },
       "isRLSEnabled": true
@@ -5793,6 +7042,170 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "hive.doc_chunks": {
+      "name": "doc_chunks",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "doc_id": {
+          "name": "doc_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "extract_id": {
+          "name": "extract_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ord": {
+          "name": "ord",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "heading_path": {
+          "name": "heading_path",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_model": {
+          "name": "embedding_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "search": {
+          "name": "search",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "to_tsvector('simple'::regconfig, content)",
+            "type": "stored"
+          }
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "doc_chunks_org": {
+          "name": "doc_chunks_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "doc_chunks_search": {
+          "name": "doc_chunks_search",
+          "columns": [
+            {
+              "expression": "search",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "doc_chunks_doc_id_org_id_docs_id_org_id_fk": {
+          "name": "doc_chunks_doc_id_org_id_docs_id_org_id_fk",
+          "tableFrom": "doc_chunks",
+          "tableTo": "docs",
+          "schemaTo": "hive",
+          "columnsFrom": ["doc_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "doc_chunks_doc_version_ord": {
+          "name": "doc_chunks_doc_version_ord",
+          "nullsNotDistinct": false,
+          "columns": ["doc_id", "version", "ord"]
+        },
+        "doc_chunks_extract_version_ord": {
+          "name": "doc_chunks_extract_version_ord",
+          "nullsNotDistinct": false,
+          "columns": ["extract_id", "version", "ord"]
+        }
+      },
+      "policies": {
+        "doc_chunks_rw": {
+          "name": "doc_chunks_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "doc_chunks_parent": {
+          "name": "doc_chunks_parent",
+          "value": "(doc_id is null) <> (extract_id is null)"
+        },
+        "doc_chunks_position": {
+          "name": "doc_chunks_position",
+          "value": "version > 0 and ord >= 0"
+        }
+      },
+      "isRLSEnabled": true
+    },
     "hive.doc_comments": {
       "name": "doc_comments",
       "schema": "hive",
@@ -6535,6 +7948,32 @@
           "primaryKey": false,
           "notNull": true
         },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'hub'"
+        },
+        "repo_commit": {
+          "name": "repo_commit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "secret_flag": {
+          "name": "secret_flag",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "message": {
           "name": "message",
           "type": "text",
@@ -6618,6 +8057,10 @@
         "doc_versions_author": {
           "name": "doc_versions_author",
           "value": "(author_user_id is null) <> (author_run_id is null)"
+        },
+        "doc_versions_source": {
+          "name": "doc_versions_source",
+          "value": "source in ('hub', 'repo', 'import', 'merge')"
         }
       },
       "isRLSEnabled": true
@@ -6662,6 +8105,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "current_version": {
           "name": "current_version",
@@ -9588,6 +11037,175 @@
         }
       },
       "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "hive.blob_chunks": {
+      "name": "blob_chunks",
+      "schema": "hive",
+      "columns": {
+        "blob_id": {
+          "name": "blob_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ord": {
+          "name": "ord",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "blob_chunks_org": {
+          "name": "blob_chunks_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "blob_chunks_blob_id_org_id_blobs_id_org_id_fk": {
+          "name": "blob_chunks_blob_id_org_id_blobs_id_org_id_fk",
+          "tableFrom": "blob_chunks",
+          "tableTo": "blobs",
+          "schemaTo": "hive",
+          "columnsFrom": ["blob_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "blob_chunks_blob_id_ord_pk": {
+          "name": "blob_chunks_blob_id_ord_pk",
+          "columns": ["blob_id", "ord"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {
+        "blob_chunks_rw": {
+          "name": "blob_chunks_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "blob_chunks_size": {
+          "name": "blob_chunks_size",
+          "value": "ord >= 0 and octet_length(data) <= 524288"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "hive.blobs": {
+      "name": "blobs",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size": {
+          "name": "size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chunk_count": {
+          "name": "chunk_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "blobs_org_sha256": {
+          "name": "blobs_org_sha256",
+          "nullsNotDistinct": false,
+          "columns": ["org_id", "sha256"]
+        },
+        "blobs_id_org": {
+          "name": "blobs_id_org",
+          "nullsNotDistinct": false,
+          "columns": ["id", "org_id"]
+        }
+      },
+      "policies": {
+        "blobs_rw": {
+          "name": "blobs_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {
+        "blobs_size": {
+          "name": "blobs_size",
+          "value": "size >= 0 and chunk_count >= 0"
+        },
+        "blobs_sha256": {
+          "name": "blobs_sha256",
+          "value": "sha256 ~ '^[a-f0-9]{64}$'"
+        }
+      },
       "isRLSEnabled": true
     },
     "hive.run_events": {

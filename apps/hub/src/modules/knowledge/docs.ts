@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   type Doc,
   type DocGetInput,
@@ -9,9 +10,14 @@ import {
   docKey,
   docListInput,
   docSaveInput,
+  SECRET_KIND_LABELS,
+  type SecretFinding,
+  scanSecrets,
 } from "@xdev-hive/contracts";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
-import { NotFoundError, type Tx } from "../platform/index.ts";
+import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
+import { auditByData } from "../audit/index.ts";
+import { BadRequestError, ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
 import {
   audit,
   authorColumns,
@@ -30,6 +36,7 @@ import {
   versionConflict,
   visibleWhere,
 } from "./access.ts";
+import { queueDocIndex } from "./doc-search.ts";
 import { docs, docVersions } from "./schema.ts";
 
 type DocRow = typeof docs.$inferSelect;
@@ -78,17 +85,123 @@ export async function currentDocVersion(tx: Tx, key: string): Promise<number> {
   return (await loadDoc(tx, key))?.currentVersion ?? 0;
 }
 
+/** Nguồn của phiên bản: `repo` đã có sẵn trong repo nên đồng bộ không đẩy lại; `import` và `merge` do docsync tạo. */
+export type DocSource = "hub" | "repo" | "import" | "merge";
+
+/** Người lưu của phiên bản do đồng bộ tạo; như `AI_AUTO_ACTOR`, không phải người dùng thật nên không mang quyền gì. */
+export const DOC_SYNC_ACTOR = "system:docsync";
+
+export interface DocSavedEvent {
+  orgId: string;
+  docId: string;
+  key: string;
+  version: number;
+  source: DocSource;
+  /** Lưu trữ và khôi phục không tạo phiên bản mới nhưng repo vẫn phải xoá hoặc ghi lại file. */
+  change: "save" | "archive" | "restore";
+}
+export type DocSavedHook = (tx: Tx, event: DocSavedEvent) => Promise<void>;
+
+// docsync phụ thuộc knowledge nên không import ngược được; hook tiêm một lần lúc khởi động như provideDocAccess. Gọi
+// trong transaction lưu để job đẩy chỉ được xếp khi phiên bản thật sự được ghi.
+let docSavedHook: DocSavedHook | undefined;
+export function provideDocSaved(hook: DocSavedHook | undefined): void {
+  docSavedHook = hook;
+}
+
+async function docChanged(tx: Tx, row: DocRow, source: DocSource, change: DocSavedEvent["change"]): Promise<void> {
+  // Chỉ mục tìm kiếm là việc của chính knowledge nên không đi qua hook một chỗ của docsync.
+  await queueDocIndex(tx, { orgId: row.orgId, docId: row.id });
+  await docSavedHook?.(tx, {
+    orgId: row.orgId,
+    docId: row.id,
+    key: row.key,
+    version: row.currentVersion,
+    source,
+    change,
+  });
+}
+
+/** Cùng cách tính với migration điền `content_hash` cho dòng cũ: sha256 của chuỗi UTF-8 nguyên văn. */
+export const docContentHash = (content: string): string => createHash("sha256").update(content).digest("hex");
+
+// ---- Bí mật --------------------------------------------------------------------------------------------------------
+
+const SECRET_ACK = "doc.secrets.acknowledge";
+
+/** Mang dòng và loại để router trả kèm lỗi; không bao giờ mang chuỗi bí mật. */
+export class DocSecretError extends BadRequestError {
+  readonly findings: SecretFinding[];
+
+  constructor(findings: SecretFinding[]) {
+    const where = findings
+      .slice(0, 10)
+      .map((f) => `dòng ${f.line} (${SECRET_KIND_LABELS[f.kind]})`)
+      .join(", ");
+    super("DOC_SECRET_FOUND", `Có chuỗi giống bí mật ở ${where}. Xoá hoặc xác nhận không phải bí mật trước khi lưu.`);
+    this.findings = findings;
+  }
+}
+
+/**
+ * Nội dung này của tài liệu đã được người có quyền xác nhận không phải bí mật chưa. Xác nhận gắn với hash nội dung,
+ * nên bước chốt của quy trình duyệt (chạy sau, có khi trong job) nhận ra bản đã xác nhận lúc gửi duyệt mà không cần
+ * thêm cột; sửa nội dung thì phải xác nhận lại.
+ */
+export async function secretsAcknowledged(tx: Tx, key: string, content: string): Promise<boolean> {
+  const rows = await auditByData(tx, {
+    actionLike: SECRET_ACK,
+    key: "contentHash",
+    value: docContentHash(content),
+    limit: 20,
+  });
+  return rows.some((r) => r.data.key === key);
+}
+
+/**
+ * Chặn lưu nội dung giống bí mật (spec 018, mục Bí mật). `acknowledge` chỉ người có `manage` dùng được; xác nhận ghi
+ * audit kèm loại và dòng, không kèm chuỗi.
+ */
+export async function assertDocSecrets(
+  tx: Tx,
+  principal: Principal,
+  target: { reader: Reader; scope: Scope; key: string; content: string },
+  acknowledge: boolean | undefined,
+): Promise<void> {
+  const findings = scanSecrets(target.content);
+  if (findings.length === 0) return;
+  if (!acknowledge) throw new DocSecretError(findings);
+  await authorize(tx, target.reader, target.scope, "manage");
+  await audit(
+    tx,
+    principal,
+    SECRET_ACK,
+    { type: "doc_key", id: target.key },
+    { key: target.key, contentHash: docContentHash(target.content), findings },
+  );
+}
+
+// ---- Lưu -----------------------------------------------------------------------------------------------------------
+
 export interface DocWrite {
   key: string;
   title?: string | undefined;
   content: string;
   baseVersion: number;
   message?: string | undefined;
+  source?: DocSource | undefined;
+  repoCommit?: string | null | undefined;
+  /** Đồng bộ đã có xác nhận riêng (từng file khi nhập) nên bỏ qua bước tra audit xác nhận. */
+  secretsAcknowledged?: boolean | undefined;
 }
 
 /**
  * Lưu một phiên bản với khoá lạc quan: chỉ ghi khi phiên bản hiện tại đúng bằng baseVersion, nên hai người sửa từ
  * cùng một bản thì người lưu sau nhận CONFLICT thay vì ghi đè. Không kiểm quyền: saveDoc và duyệt đề xuất tự kiểm.
+ *
+ * Nội dung có dấu hiệu bí mật chưa được xác nhận thì phiên bản mang `secret_flag`: agent không đọc được, đồng bộ không
+ * đẩy, không gửi embedding. Đường lưu của người (saveDoc, gửi duyệt) đã chặn trước; cờ là lưới cuối cho các đường còn
+ * lại (duyệt tay đề xuất, kéo từ repo).
  */
 export async function applyDocSave(
   tx: Tx,
@@ -98,7 +211,12 @@ export async function applyDocSave(
   proposalId: string | null = null,
 ): Promise<Doc> {
   const author = authorColumns(principal);
+  const source = input.source ?? "hub";
   const now = new Date();
+  const secretFlag =
+    !input.secretsAcknowledged &&
+    scanSecrets(input.content).length > 0 &&
+    !(await secretsAcknowledged(tx, input.key, input.content));
   let row: DocRow | undefined;
   if (input.baseVersion === 0) {
     // DO NOTHING thay vì bắt lỗi trùng khoá: lỗi trùng làm hỏng transaction, mà người gọi cần đọc phiên bản hiện tại
@@ -137,11 +255,24 @@ export async function applyDocSave(
     version: row.currentVersion,
     title: row.title,
     content: input.content,
+    contentHash: docContentHash(input.content),
+    source,
+    repoCommit: input.repoCommit ?? null,
+    secretFlag,
     message: input.message ?? null,
     proposalId,
     ...author,
   });
+  await docChanged(tx, row, source, "save");
   return { ...summary(row), content: input.content };
+}
+
+const archivedError = () =>
+  new ConflictError("DOC_ARCHIVED", "Tài liệu đã được lưu trữ. Khôi phục tài liệu trước khi sửa.");
+
+/** Người sửa trên hub không được ghi vào tài liệu đã lưu trữ: bản lưu sẽ không lên repo mà cũng không ai thấy. */
+export async function assertNotArchived(tx: Tx, key: string): Promise<void> {
+  if ((await loadDoc(tx, key))?.archivedAt) throw archivedError();
 }
 
 /** Lưu tài liệu trực tiếp (quản trị đội của phạm vi). Phạm vi suy ra từ key. */
@@ -150,22 +281,115 @@ export async function saveDoc(tx: Tx, principal: Principal, input: DocSaveInput)
   const reader = await readerFor(tx, principal);
   const scope = await docScope(tx, reader, data.key);
   await authorize(tx, reader, scope, "manage");
+  await assertNotArchived(tx, data.key);
+  await assertDocSecrets(
+    tx,
+    principal,
+    { reader, scope, key: data.key, content: data.content },
+    data.acknowledgeSecrets,
+  );
   const doc = await applyDocSave(tx, principal, scope, data);
   await audit(tx, principal, "doc.save", { type: "doc", id: doc.id }, { key: doc.key, version: doc.version });
   return doc;
 }
 
-/** Đọc tài liệu theo key, mặc định phiên bản mới nhất. Hàm public cho MCP. */
+export interface SyncDocWrite {
+  key: string;
+  title?: string | undefined;
+  content: string;
+  /** 0 là tạo mới. Lệch phiên bản hiện tại thì CONFLICT như saveDoc; docsync tự xử lý xung đột. */
+  baseVersion: number;
+  /** Phạm vi cho tài liệu mới, docsync suy từ nhà; tài liệu đã có giữ phạm vi đã lưu. */
+  scope: Scope;
+  source: Exclude<DocSource, "hub">;
+  repoCommit?: string | null | undefined;
+  /** Tác giả của commit trong repo; người lưu là hệ thống nên chỉ ghi lại ở đây. */
+  message?: string | undefined;
+  secretsAcknowledged?: boolean | undefined;
+}
+
+/**
+ * Lưu phiên bản từ đồng bộ repo (kéo, nhập, hợp tự động): không qua duyệt, không kiểm quyền, người lưu là hệ thống.
+ * Không nhận principal để không cấp quyền gì cho run hay người gọi. Bí mật không chặn để hub không lệch repo; phiên
+ * bản mang `secret_flag` và người gọi đánh dấu file `blocked_secret`.
+ */
+export async function saveDocFromSync(tx: Tx, input: SyncDocWrite): Promise<Doc & { secretFlag: boolean }> {
+  const key = docKey.parse(input.key);
+  const existing = await loadDoc(tx, key);
+  const scope: Scope = existing
+    ? { teamId: existing.teamId, projectId: existing.projectId }
+    : { teamId: input.scope.teamId, projectId: input.scope.projectId };
+  const doc = await applyDocSave(tx, { kind: "user", userId: DOC_SYNC_ACTOR }, scope, { ...input, key });
+  const [v] = await tx
+    .select({ secretFlag: docVersions.secretFlag })
+    .from(docVersions)
+    .where(and(eq(docVersions.docId, doc.id), eq(docVersions.version, doc.version)));
+  return { ...doc, secretFlag: v?.secretFlag ?? false };
+}
+
+// ---- Lưu trữ -------------------------------------------------------------------------------------------------------
+
+const archiveInput = z.object({ key: docKey, baseVersion: z.number().int().min(1) });
+export type DocArchiveInput = z.input<typeof archiveInput>;
+
+/** Tài liệu người gọi quản trị được, đúng phiên bản đã thấy, để không lưu trữ nhầm bản người khác vừa sửa. */
+async function managed(tx: Tx, principal: Principal, input: DocArchiveInput): Promise<DocRow> {
+  const data = archiveInput.parse(input);
+  const reader = await readerFor(tx, principal);
+  const d = await readable(tx, reader, data.key);
+  await authorize(tx, reader, d, "manage");
+  if (d.currentVersion !== data.baseVersion) throw versionConflict("Tài liệu", d.currentVersion, data.baseVersion);
+  return d;
+}
+
+/** Lưu trữ (FR-024): ẩn khỏi danh sách, tìm kiếm và MCP, lịch sử giữ nguyên; lô đồng bộ kế tiếp xoá file trong repo. */
+export async function archiveDoc(tx: Tx, principal: Principal, input: DocArchiveInput): Promise<void> {
+  const d = await managed(tx, principal, input);
+  if (d.archivedAt) return;
+  const [row] = await tx.update(docs).set({ archivedAt: new Date() }).where(eq(docs.id, d.id)).returning();
+  await audit(tx, principal, "doc.archive", { type: "doc", id: d.id }, { key: d.key, version: d.currentVersion });
+  if (row) await docChanged(tx, row, "hub", "archive");
+}
+
+/** Khôi phục tài liệu đã lưu trữ; lô đồng bộ kế tiếp ghi lại file vào repo. */
+export async function restoreDoc(tx: Tx, principal: Principal, input: DocArchiveInput): Promise<Doc> {
+  const d = await managed(tx, principal, input);
+  if (d.archivedAt) {
+    const [row] = await tx.update(docs).set({ archivedAt: null }).where(eq(docs.id, d.id)).returning();
+    await audit(tx, principal, "doc.restore", { type: "doc", id: d.id }, { key: d.key, version: d.currentVersion });
+    if (row) await docChanged(tx, row, "hub", "restore");
+  }
+  return getDoc(tx, principal, { key: d.key });
+}
+
+// ---- Đọc -----------------------------------------------------------------------------------------------------------
+
+/**
+ * Phiên bản có dấu hiệu bí mật chưa xác nhận không đưa cho agent (FR-038): agent có thể chép nó vào log, commit hay
+ * prompt của nhà cung cấp khác.
+ */
+const flaggedCurrent = sql`exists (select 1 from ${docVersions} v where v.doc_id = ${docs.id} and v.version = ${docs.currentVersion} and v.secret_flag)`;
+
+/**
+ * Đọc tài liệu theo key, mặc định phiên bản mới nhất. Hàm public cho MCP. Tài liệu đã lưu trữ chỉ đọc được khi chỉ
+ * rõ phiên bản (xem lịch sử), và agent không đọc được.
+ */
 export async function getDoc(tx: Tx, principal: Principal, input: DocGetInput): Promise<Doc> {
   const data = docGetInput.parse(input);
   const reader = await readerFor(tx, principal);
   const d = await readable(tx, reader, data.key);
+  if (d.archivedAt && (data.version === undefined || reader.kind === "run")) throw notFound();
   const version = data.version ?? d.currentVersion;
   const [v] = await tx
     .select()
     .from(docVersions)
     .where(and(eq(docVersions.docId, d.id), eq(docVersions.version, version)));
   if (!v) throw new NotFoundError("DOC_VERSION_NOT_FOUND", `Tài liệu không có phiên bản ${version}.`);
+  if (v.secretFlag && reader.kind === "run")
+    throw new NotFoundError(
+      "DOC_SECRET_FLAGGED",
+      "Tài liệu có dấu hiệu bí mật, đang chờ người xác nhận hoặc sửa nên agent chưa đọc được.",
+    );
   return {
     ...summary(d),
     title: v.title,
@@ -182,10 +406,18 @@ export async function listDocs(tx: Tx, principal: Principal, input: DocListInput
   const project = await projectContext(tx, reader, data.project);
   // Thoát ký tự đại diện của LIKE để tiền tố là chữ thường, không phải mẫu.
   const prefix = data.prefix?.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const archived = data.archived === true && reader.kind === "user";
   const rows = await tx
     .select()
     .from(docs)
-    .where(and(visibleWhere(reader, docs, project), prefix ? sql`${docs.key} like ${`${prefix}%`}` : undefined))
+    .where(
+      and(
+        visibleWhere(reader, docs, project),
+        prefix ? sql`${docs.key} like ${`${prefix}%`}` : undefined,
+        archived ? isNotNull(docs.archivedAt) : isNull(docs.archivedAt),
+        reader.kind === "run" ? sql`not ${flaggedCurrent}` : undefined,
+      ),
+    )
     .orderBy(asc(docs.key));
   return rows.map(summary);
 }

@@ -29,6 +29,32 @@ func gitgroupsJSON(t *testing.T, stdin string, args ...string) (gitgroupsView, s
 	return v, out.String(), errOut.String(), code
 }
 
+func TestGitgroupsNativeHostModePersistsWithoutSecret(t *testing.T) {
+	for _, kind := range []string{gitgroups.KindGitLab, gitgroups.KindGitHub} {
+		t.Run(kind, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Authorization") != "Bearer rotating-secret" {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				_, _ = w.Write([]byte(`{"username":"test","login":"test"}`))
+			}))
+			defer srv.Close()
+			cfg := filepath.Join(t.TempDir(), "worker.json")
+			t.Setenv(gitgroups.TokenEnv, "rotating-secret")
+			view, out, stderr, code := gitgroupsJSON(t, "", "host-add", "--config", cfg, "--kind", kind,
+				"--url", srv.URL, "--auth-mode", "git", "--json")
+			if code != 0 || view.Host == nil || view.Host.AuthMode != "git" || view.Host.Username != "test" {
+				t.Fatalf("host-add: %d %s %+v", code, stderr, view.Host)
+			}
+			data, err := os.ReadFile(gitgroups.DefaultPath(cfg))
+			if err != nil || strings.Contains(string(data)+out+stderr, "rotating-secret") {
+				t.Fatal("credential was persisted or returned to the UI")
+			}
+		})
+	}
+}
+
 func TestGitgroupsCommand(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

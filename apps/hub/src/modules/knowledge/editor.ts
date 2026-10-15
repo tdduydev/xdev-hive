@@ -42,7 +42,7 @@ import {
   type Scope,
   scopeView,
 } from "./access.ts";
-import { docScope } from "./docs.ts";
+import { assertDocSecrets, assertNotArchived, docScope } from "./docs.ts";
 import { diffCounts, docTypeOf, flatGates, gateApplies } from "./review-rules.ts";
 import { DERIVED_WORKFLOW_ID, proposeWithReview, type ReviewDeps, resolveWorkflow } from "./reviews.ts";
 import {
@@ -795,6 +795,14 @@ export async function submitDraft(
       "REVIEW_IN_PROGRESS",
       `Bản v${last.snapshot.number} còn đang duyệt; chờ kết quả rồi gửi tiếp.`,
     );
+  await assertNotArchived(tx, input.key);
+  // Chặn trước khi tạo đề xuất: quy trình không có bước duyệt sẽ lưu ngay trong proposeWithReview.
+  await assertDocSecrets(
+    tx,
+    principal,
+    { reader: ctx.reader, scope: ctx.scope, key: input.key, content },
+    input.acknowledgeSecrets,
+  );
   const proposal = await proposeWithReview(
     tx,
     principal,
