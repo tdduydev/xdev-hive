@@ -30,6 +30,14 @@ HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com dep
 - If the SSH user is not in the `docker` group, set `HIVE_REMOTE_DOCKER="sudo docker"`.
 - The hub always builds with Docker's default builder, so a CI runner on the same machine cannot break a deploy by
   removing its own buildx builder.
+- With the `https` profile enabled, the script compares SHA-256 hashes of the Caddyfile visible inside the running
+  container and the deployed file. If they differ, it recreates only Caddy to refresh its single-file bind mount;
+  this briefly interrupts HTTPS. An unchanged Caddyfile does not trigger a restart. A directory mount alone would
+  not fix this because deployment replaces the entire `src` directory.
+- After the hub is healthy, HTTPS deployments check that `/ca.crt` returns HTTP 200 and a valid PEM certificate,
+  retrying up to three times. A failure prints a warning with the Caddy log command without failing the hub deploy.
+  This endpoint check accepts an untrusted TLS certificate without installing it. Public-CA deployments without a
+  local CA file can also produce this warning.
 
 Health check: `GET /api/v1/health` returns the running commit.
 
