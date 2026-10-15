@@ -23,6 +23,7 @@ import {
   registerReviewStatusWorker,
   reviewGate,
 } from "./modules/codereview/index.ts";
+import { docSyncQueues, registerDocSync } from "./modules/docsync/index.ts";
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
@@ -134,6 +135,7 @@ jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
       queues: [
+        ...docSyncQueues,
         provisionQueue,
         mergeQueue,
         runsTimerQueue,
@@ -279,6 +281,7 @@ if (roles.includes("jobs") && jobs) {
     await registerInboxCleanupWorker(jobs, pool);
     await registerAuditRetentionWorker(jobs, { pool });
     await registerArtifactPurgeWorker(jobs, { pool, publicUrl: config.publicUrl });
+    await registerDocSync(jobs, { pool, masterKey: config.masterKey, jobs });
     await registerSdlcWorker(jobs, { ...sdlcDeps, pool });
     await registerQuestionReminders(jobs, { pool, publicUrl: sdlcDeps.publicUrl });
     // `sdlc` không import `catalog` hàng merge trực tiếp: PR ghi tài liệu vào repo đi chung hàng merge với PR của run.

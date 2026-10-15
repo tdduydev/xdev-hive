@@ -43,6 +43,40 @@ Health check: `GET /api/v1/health` returns the running commit.
   OAuth discovery and user login stay HTTPS-only. Run tokens travel in clear text, so only enable this when the network
   between the server and the worker machines is trusted. The hub logs a warning at start-up.
 
+### CA riêng của hub nội bộ
+
+Caddy phục vụ chứng chỉ CA công khai tại `https://<hub>/ca.crt`, đọc từ
+`/data/caddy/pki/authorities/local/root.crt`. Route này không phục vụ khoá riêng. Với hub dùng
+`tls internal`, quản trị viên lấy SHA-256 từ bản CA trên máy chủ bằng
+`openssl x509 -in /data/caddy/pki/authorities/local/root.crt -noout -subject -fingerprint -sha256`
+và gửi tên cùng vân tay qua kênh đáng tin cậy cho người dùng đối chiếu.
+
+Khi kiểm địa chỉ HTTPS gặp CA chưa tin, app desktop hiện tên và SHA-256 của CA. Bước đầu chỉ
+bắt tay TLS để xem chứng chỉ; app tải `/ca.crt` qua kết nối ghim đúng chứng chỉ vừa thấy, rồi
+kiểm tra CA xác thực được chuỗi, tên máy và hạn dùng của hub trước khi cho phép xác nhận.
+Chỉ đồng ý sau khi đối chiếu với quản trị viên. CA đổi thì app hiện cả vân tay cũ và mới;
+không tự thay CA đã tin. Không suy ra vân tay đầy đủ từ một vân tay bị cắt ngắn.
+
+App lưu CA đã đồng ý tại `~/.xdev-hive/hub-ca.pem` (Unix: quyền `0600`), cộng với kho CA hệ
+thống. Worker và `hive` CLI đọc cùng file cho HTTP và WSS. Có thể đặt `HIVE_CA_FILE` tới một
+file CA đã kiểm tra (app cũng hỗ trợ biến này). Trên Windows, thư mục nhà là `%USERPROFILE%`.
+Không cần cài CA vào hệ điều hành để app, worker hay CLI gọi hub. Sau khi xác nhận, bấm lại
+đăng nhập/đổi địa chỉ. Nút **Quên chứng chỉ đã tin** xoá file CA; các kết nối mới không còn
+sử dụng CA đó. Khởi động lại worker để đóng kết nối WSS đang mở. Chỉ lưu một CA riêng tại
+một thời điểm; thay CA cũng thay CA mà worker và CLI dùng ở lần kết nối tiếp theo.
+
+Các trang web đầy đủ và luồng đăng nhập bằng trình duyệt mở trình duyệt hệ thống, có kho chứng chỉ riêng.
+Có thể dán mã đăng ký hoặc token cá nhân để kết nối app mà không cài CA vào hệ điều hành. Để
+trình duyệt cũng tin hub, hoặc nếu không muốn dùng xác nhận trong app, xin CA và đối chiếu
+SHA-256 rồi cài vào hệ điều hành:
+
+- **macOS:** mở bằng Keychain Access, thêm vào System, chọn Always Trust.
+- **Windows:** Install Certificate → Local Machine → Trusted Root Certification Authorities.
+- **iOS:** cài hồ sơ ở Cài đặt → Cài đặt chung → VPN và quản lý thiết bị; sau đó bật CA ở
+  Cài đặt chung → Giới thiệu → Cài đặt tin cậy chứng chỉ.
+- **Android:** Cài đặt → Bảo mật → Mã hoá và thông tin xác thực → Cài chứng chỉ CA
+  (tên mục có thể khác theo hãng).
+
 ### Running Compose by hand
 
 Copy `deploy/.env.example` to `deploy/.env`, set passwords, secrets and `HIVE_ORG_CREATORS`, then:
