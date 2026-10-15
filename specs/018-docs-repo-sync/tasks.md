@@ -116,7 +116,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/fixtures/roundtrip/**` (mới)
   - **Kiểm**: hub test (các file test mới), typecheck.
 
-- [ ] **T010 [P] [—] [vừa] · 1,5 ngày — Thiết kế màn**
+- [x] **T010 [P] [—] [vừa] · 1,5 ngày — Thiết kế màn**
   - **Goal**: plan.md mục 12, constitution "User interface". Dùng skill `ui-ux-pro-max`, design system v2, shadcn/ui.
     Mỗi màn có trạng thái rỗng, đang tải, lỗi; 360 px; sáng/tối; chữ tiếng Việt:
     - cài đặt dự án tab "Tài liệu"; thẻ "Kho tài liệu tổ chức";
@@ -193,7 +193,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/scm/{types.ts,github.ts,gitlab.ts,memory.ts,lfs.ts,index.ts}` + test tương ứng
   - **Kiểm**: hub test phần `scm` (test cũ của SDLC sync và kho skill vẫn qua), typecheck.
 
-- [ ] **T018 [P] [US5] [vừa] · 2 ngày — Editor: ảnh, tải lên, link tương đối, nhãn đồng bộ**
+- [x] **T018 [P] [US5] [vừa] · 2 ngày — Editor: ảnh, tải lên, link tương đối, nhãn đồng bộ**
   - **Phụ thuộc**: T003, T010.
   - **Goal**: FR-025, FR-030, FR-042, plan.md mục 8.
     - `DocEditorEnv` thêm `resolveLink(docKey, href)` và `uploadAsset(docKey, file)` (tuỳ chọn; không có thì nút tải

@@ -53,3 +53,40 @@ export function cleanPastedHtml(html: string): string {
   }
   return doc.body.innerHTML;
 }
+
+/** Địa chỉ không có scheme, không bắt đầu bằng `/`, `//` hay `#`: nằm trong repo cạnh tài liệu, hub mới phân giải được. */
+export const isRelativeHref = (href: string) => !!href && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(href);
+
+/** Địa chỉ ảnh trình duyệt được phép tải: http(s) hoặc đường dẫn cùng gốc; chặn `javascript:` và `data:` trong `src` của ảnh. */
+export const isSafeImageUrl = (url: string) => /^(https?:\/\/|\/(?!\/))/i.test(url);
+
+/** File trong sự kiện dán hoặc thả. Dán ảnh chụp màn hình hay ảnh sao chép có `items`; thả file có `files`. */
+export function transferFiles(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  const files = Array.from(data.files ?? []);
+  if (files.length) return files;
+  return Array.from(data.items ?? [])
+    .filter((i) => i.kind === "file")
+    .flatMap((i) => i.getAsFile() ?? []);
+}
+
+/**
+ * Dán chỉ lấy file khi clipboard không có chữ: bảng tính hay Word sao chép ra cả ảnh lẫn chữ, và người dùng muốn chữ.
+ * Ảnh chụp màn hình và "Sao chép ảnh" của trình duyệt không kèm chữ thuần.
+ */
+export const pastedFiles = (data: DataTransfer | null): File[] =>
+  data?.getData("text/plain") ? [] : transferFiles(data);
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** Ảnh dán không có tên thật (clipboard đặt "image.png"): đặt `image-<yyyymmdd-hhmmss>.<đuôi>` như hub (plan.md mục 8). */
+export function nameClipboardImage(file: File, now = new Date()): File {
+  if (!/^image\.\w+$/i.test(file.name) && file.name) return file;
+  const ext = file.type.split("/")[1]?.replace("jpeg", "jpg").replace(/\+.*/, "") || "png";
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return new File([file], `image-${stamp}.${ext}`, { type: file.type });
+}
+
+/** Đường dẫn hub trả về đưa vào `](…)`: chỉ mã hoá ký tự làm Markdown đọc sai, giữ nguyên chữ có dấu cho dễ đọc. */
+export const markdownPath = (path: string) =>
+  path.replace(/[\s()<>]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
