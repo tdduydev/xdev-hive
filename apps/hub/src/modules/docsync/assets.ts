@@ -19,7 +19,7 @@ import { type GitProvider, listConnections } from "../scm/index.ts";
 import { ORG_HEADER, requireOrgRole, requireTeamRole } from "../tenancy/index.ts";
 import { isLfsPath, parseGitattributes } from "./content.ts";
 import { type HomeRow, homeProvider } from "./homes.ts";
-import { queuePush } from "./jobs.ts";
+import { queuePush } from "./queues.ts";
 import { keyFromPath, matchesHome, type PathHome, pathFromKey, resolveRelative } from "./paths.ts";
 import type { DocSyncDeps } from "./routes/deps.ts";
 import { docAssets, docHomes, docRepoFiles } from "./schema.ts";
