@@ -140,7 +140,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 1: nền (song song, sau Đợt 0)
 
-- [ ] **T005 [P] [—] [nặng] · 2 ngày — Bảng, RLS, migration, phụ thuộc, khung module `docsync`**
+- [x] **T005 [P] [—] [nặng] · 2 ngày — Bảng, RLS, migration, phụ thuộc, khung module `docsync`**
   - **Phụ thuộc**: T003.
   - **Goal**: plan.md mục 1, 13.
     - `knowledge/schema.ts`: `docs.archived_at`; `doc_versions.{content_hash,source,repo_commit,secret_flag}`;
