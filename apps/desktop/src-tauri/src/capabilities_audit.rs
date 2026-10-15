@@ -173,3 +173,25 @@ fn no_shell_or_filesystem_plugin_permission() {
         }
     }
 }
+
+#[test]
+fn remote_control_commands_belong_to_the_local_app_window_only() {
+    // Ghép thiết bị và bật điều khiển từ xa là quyết định của người ngồi tại máy (FR-012): cửa sổ nào ngoài cửa sổ app
+    // cục bộ mà gọi được `remote_*` là mở đường cho trang từ xa tự ghép thiết bị của kẻ tấn công.
+    for cap in capabilities() {
+        let remote: Vec<String> = cap
+            .permissions
+            .iter()
+            .filter_map(app_command)
+            .filter(|c| c.starts_with("remote_"))
+            .collect();
+        if cap.windows == [super::APP] {
+            assert!(
+                remote.iter().any(|c| c == "remote_pair_decide"),
+                "cửa sổ app phải trả lời được yêu cầu ghép"
+            );
+        } else {
+            assert!(remote.is_empty(), "{} có {remote:?}", cap.identifier);
+        }
+    }
+}
