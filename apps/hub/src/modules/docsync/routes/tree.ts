@@ -7,7 +7,15 @@ import { BadRequestError, ConflictError, NotFoundError, type Tx } from "../../pl
 import { requireOrgRole } from "../../tenancy/index.ts";
 import { type HomeRow, homeById } from "../homes.ts";
 import { keyFromPath, matchesHome } from "../paths.ts";
-import { MOVE_ACTION, moveOrigin, pathHomeOf, projectKeyOf, queueHomePush, REQUEUE_STATES, uuidArray } from "../push.ts";
+import {
+  MOVE_ACTION,
+  moveOrigin,
+  pathHomeOf,
+  projectKeyOf,
+  queueHomePush,
+  REQUEUE_STATES,
+  uuidArray,
+} from "../push.ts";
 import { docAssets, docHomes, docRepoFiles } from "../schema.ts";
 import { type DocSyncRouteDeps, docSyncApi } from "./common.ts";
 import { requireHomeManage, requireHomeRead } from "./sync.ts";
@@ -108,7 +116,8 @@ async function readableHomes(
   return homes;
 }
 
-const encodeCursor = (homeId: string, path: string) => Buffer.from(JSON.stringify([homeId, path])).toString("base64url");
+const encodeCursor = (homeId: string, path: string) =>
+  Buffer.from(JSON.stringify([homeId, path])).toString("base64url");
 
 function decodeCursor(cursor: string): [string, string] {
   try {
