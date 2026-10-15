@@ -53,7 +53,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `docs/srs.md` (chỉ thêm mục 3.22)
   - **Kiểm**: `pnpm biome check .`.
 
-- [ ] **T002 [P] [—] [vừa] · 1,5 ngày — Spike: Cursor, Windsurf, Remote, CSP webview**
+- [x] **T002 [P] [—] [vừa] · 1,5 ngày — Spike: Cursor, Windsurf, Remote, CSP webview**
   - **Goal**: kiểm từng dòng **[Chưa kiểm]** ở research.md mục 2–3 và plan.md bằng extension thử (không commit
     extension thử, chỉ commit kết quả):
     - engine version của Cursor, Windsurf bản mới nhất; `createChatParticipant` có hiện không; `selectChatModels` trả gì;
