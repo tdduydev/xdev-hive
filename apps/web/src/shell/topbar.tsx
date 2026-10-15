@@ -36,6 +36,7 @@ import { isOrgAdmin } from "@/lib/roles.ts";
 import { readTheme, setTheme, type ThemeChoice } from "@/lib/theme.ts";
 import { cn } from "@/lib/utils.ts";
 import { type CurrentOrg, useOrgs } from "@/shell/org-context.ts";
+import { UserMenu } from "@/shell/user-menu.tsx";
 
 const text: Dict<{
   crumb: string;
@@ -169,7 +170,7 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
 
 /**
  * Thanh trên theo Topbar.dc.html: đường dẫn (tổ chức › nhóm › trang, nhóm ẩn dưới 1024 px), tìm kiếm ⌘K, VI/EN,
- * sáng/tối, thông báo. Trang quản trị ghi "Quản trị" thay cho nhóm: nhóm con đã hiện ở menu Quản trị bên trái.
+ * sáng/tối, thông báo, menu người dùng (đăng xuất). Trang quản trị ghi "Quản trị" thay cho nhóm: nhóm con đã hiện ở menu Quản trị bên trái.
  */
 export function Topbar() {
   const t = useT(text);
@@ -228,6 +229,7 @@ export function Topbar() {
       <LangToggle />
       <ThemeMenu />
       {current && <InboxBell current={current} />}
+      <UserMenu />
       {current && <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />}
     </div>
   );

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { queryClient } from "@/lib/hub-query.tsx";
 import type { Profile } from "@/lib/nav.ts";
 import { errorText, invoke } from "@/lib/tauri.ts";
 
@@ -56,6 +57,27 @@ export function useAccount() {
   }, []);
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+  // Đăng xuất từ khay không đi qua cửa sổ này: Rust báo để menu và các màn hub không còn coi là đã đăng nhập.
+  useEffect(() => {
+    const tauri = window.__TAURI__;
+    if (!tauri?.event) return;
+    let stop: (() => void) | null = null;
+    let gone = false;
+    void tauri.event
+      .listen("account-changed", () => {
+        queryClient.clear();
+        void refresh();
+      })
+      .then((un) => {
+        if (gone) un();
+        else stop = un;
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+      stop?.();
+    };
   }, [refresh]);
   return { status, error, refresh, setStatus };
 }

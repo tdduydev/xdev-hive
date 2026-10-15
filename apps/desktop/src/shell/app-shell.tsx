@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { AccountDialog } from "@/components/account-dialog.tsx";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
+import { SignOutDialog } from "@/components/sign-out-dialog.tsx";
 import { UpdateBanner } from "@/components/update-banner.tsx";
 import { AccountContext, ConnectContext, profileOf, useAccount } from "@/lib/account.ts";
 import { useArtifactsCapability } from "@/lib/artifacts-env.tsx";
@@ -33,6 +34,7 @@ function subscribe(listener: () => void) {
 export function AppShell({ profile: forced }: { profile?: Profile }) {
   const { status, error, refresh, setStatus } = useAccount();
   const [accountOpen, setAccountOpen] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
   const account = status?.account ?? null;
   const profile = forced ?? profileOf(account);
   const lang = useLang();
@@ -58,6 +60,10 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
   // Người dùng chưa chọn thì menu tự thu gọn ở màn cần chỗ; đã chọn thì giữ lựa chọn ở mọi màn.
   const collapsed = useNavCollapsed() ?? bleed;
   const openAccount = () => setAccountOpen(true);
+  const askSignOut = () => {
+    setAccountOpen(false);
+    setSignOutOpen(true);
+  };
   return (
     <div className="flex h-svh flex-col">
       <UpdateBanner />
@@ -67,12 +73,20 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
           active={active}
           account={account}
           onAccount={openAccount}
+          onSignOut={account ? askSignOut : undefined}
           connected={!!account}
           worker={worker}
           compact={collapsed}
           features={artifacts === undefined ? {} : { artifacts }}
         />
-        <AccountDialog open={accountOpen} status={status} onOpenChange={setAccountOpen} onChanged={setStatus} />
+        <AccountDialog
+          open={accountOpen}
+          status={status}
+          onOpenChange={setAccountOpen}
+          onChanged={setStatus}
+          onSignOut={askSignOut}
+        />
+        <SignOutDialog open={signOutOpen} onOpenChange={setSignOutOpen} onSignedOut={setStatus} />
         <main className={cn("flex min-w-0 flex-1 flex-col", bleed ? "overflow-hidden" : "overflow-auto")}>
           <header className="flex h-13 items-center gap-3 border-b px-5">
             <button
