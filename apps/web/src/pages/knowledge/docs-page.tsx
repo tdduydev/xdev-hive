@@ -1,24 +1,26 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { type DocSummary, docKey } from "@xdev-hive/contracts";
-import { docEditorText } from "@xdev-hive/doc-editor";
+import { type DocSummary, type DocTreeItem, docKey, docRepoPath, docSyncState } from "@xdev-hive/contracts";
+import { docEditorText, syncStateLabel } from "@xdev-hive/doc-editor";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Markdown } from "@xdev-hive/ui/markdown";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { type FormEvent, useId, useState } from "react";
-import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
+import { EmptyState, LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { useT } from "@/lib/i18n.ts";
+import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge, When } from "@/pages/knowledge/common.tsx";
 import {
-  authorLabel,
-  DetailCard,
-  EmptyRows,
-  KnowledgeLayout,
-  QueryState,
-  ScopeBadge,
-  When,
-} from "@/pages/knowledge/common.tsx";
+  badgeState,
+  DocSyncDetails,
+  DocTree,
+  useDocManage,
+  useDocTree,
+  withUnhomedDocs,
+} from "@/pages/knowledge/doc-tree.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
@@ -29,67 +31,168 @@ export function DocsPage() {
 }
 function DocsScreen() {
   const t = useT(text);
-  const { api } = useOrg();
-  const list = useQuery(api.docs.list.queryOptions({ input: {} }));
-  const [selected, setSelected] = useState<DocSummary>();
-  const columns: Column<DocSummary>[] = [
-    {
-      key: "title",
-      label: t.docsTitle,
-      value: (row) => row.title,
-      sortable: true,
-      pin: "start",
-      cell: (row) => (
-        <div>
-          <strong>{row.title}</strong>
-          <p className="font-mono text-xs text-muted-foreground">{row.key}</p>
-        </div>
-      ),
-    },
-    { key: "key", label: "Key", value: (row) => row.key, hidden: true, hideable: false },
-    {
-      key: "scope",
-      label: t.scope,
-      value: (row) => t[row.scope.level],
-      cell: (row) => <ScopeBadge scope={row.scope} />,
-    },
-    {
-      key: "version",
-      label: t.version,
-      value: (row) => row.version,
-      sortable: true,
-      align: "end",
-      cell: (row) => `v${row.version}`,
-    },
-    { key: "author", label: t.author, value: (row) => authorLabel(row.updatedBy), hidden: true },
-    {
-      key: "updated",
-      label: t.updated,
-      value: (row) => row.updatedAt,
-      sortable: true,
-      cell: (row) => <When iso={row.updatedAt} />,
-    },
-  ];
+  const { api, org } = useOrg();
+  const fieldId = useId();
+  const [archived, setArchived] = useState(false);
+  const list = useQuery(api.docs.list.queryOptions({ input: { archived } }));
+  const tree = useDocTree();
+  const [selectedKey, setSelectedKey] = useState<string>();
+  const [state, setState] = useState("");
+  const [query, setQuery] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const search = useQuery({ ...api.docs.search.queryOptions({ input: { query: searchText } }), enabled: !!searchText });
+  const selected = list.data?.find((doc) => doc.key === selectedKey);
+  const items = archived ? withUnhomedDocs([], list.data ?? []) : withUnhomedDocs(tree.data ?? [], list.data ?? []);
+  const visible = state ? items.filter((item) => badgeState(item) === state) : items;
   return (
     <KnowledgeLayout title={t.docsTitle} lead={t.docsLead} actions={<NewDoc />}>
-      {list.isPending && <TableSkeleton label={t.loading} columns={4} />}
-      {list.isError && <LoadFailure error={list.error} retry={list.refetch} />}
-      {list.data && (
-        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
-          <DataTable
-            columns={columns}
-            rows={list.data}
-            minWidth={560}
-            placeholder={t.docsSearch}
-            facets={[{ key: "scope", label: t.scope, value: (row) => t[row.scope.level] }]}
-            activeId={selected?.id ?? ""}
-            rowLabel={(row) => row.title}
-            onRowClick={setSelected}
-            emptyContent={<EmptyRows title={t.docsEmptyTitle} description={t.docsEmptyBody} />}
+      <form
+        className="flex min-w-0 flex-wrap items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setSearchText(query.trim());
+        }}
+      >
+        <label htmlFor={`${fieldId}-search`} className="min-w-0 flex-1 space-y-1 text-sm">
+          Tìm theo nghĩa
+          <Input
+            id={`${fieldId}-search`}
+            aria-label="Tìm theo nghĩa"
+            maxLength={2000}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (!e.target.value.trim()) setSearchText("");
+            }}
+            placeholder="Nhập câu hỏi về tài liệu…"
           />
-          {selected ? <DocDetail key={selected.key} doc={selected} /> : <DetailCard>{t.choose}</DetailCard>}
-        </div>
+        </label>
+        <Button type="submit" disabled={!query.trim() || search.isFetching}>
+          Tìm tài liệu
+        </Button>
+        {searchText && (
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setSearchText("");
+            }}
+          >
+            Xoá tìm kiếm
+          </Button>
+        )}
+      </form>
+      {searchText && (
+        <section aria-label="Kết quả tìm tài liệu" className="space-y-3 rounded-lg border border-border p-3">
+          {search.isFetching && <p role="status">Đang tìm tài liệu…</p>}
+          {search.isError && <LoadFailure error={search.error} retry={search.refetch} />}
+          {search.data && (
+            <>
+              <p role="status">
+                {search.data.mode === "keyword" ? "Đang tìm theo từ" : "Kết quả theo từ và theo nghĩa"}
+              </p>
+              {!search.data.hits.length && <p>Không tìm thấy tài liệu phù hợp.</p>}
+              {search.data.hits.map((hit) => (
+                <article
+                  key={JSON.stringify([hit.key, hit.headingPath, hit.snippet])}
+                  className="min-w-0 space-y-1 border-t border-border pt-2"
+                >
+                  {hit.extractId ? (
+                    <Link
+                      to="/knowledge/docs/extracts"
+                      hash={hit.extractId}
+                      className="break-words text-primary underline"
+                    >
+                      {hit.title} · Bản trích
+                    </Link>
+                  ) : (
+                    <Link
+                      to="/knowledge/docs/$key/edit"
+                      params={{ key: hit.key }}
+                      className="break-words text-primary underline"
+                    >
+                      {hit.title}
+                    </Link>
+                  )}
+                  <p className="break-all text-xs text-muted-foreground">
+                    {hit.repoPath ?? hit.key} · {hit.headingPath.join(" › ")}
+                  </p>
+                  <p className="whitespace-pre-wrap break-words text-sm">{hit.snippet}</p>
+                </article>
+              ))}
+            </>
+          )}
+        </section>
       )}
+      <div className="flex flex-wrap gap-3">
+        <label htmlFor={`${fieldId}-state`} className="space-y-1 text-sm">
+          Trạng thái đồng bộ
+          <NativeSelect
+            id={`${fieldId}-state`}
+            aria-label="Trạng thái đồng bộ"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+          >
+            <option value="">Tất cả trạng thái</option>
+            {[...docSyncState.options, "no_home" as const].map((value) => (
+              <option key={value} value={value}>
+                {syncStateLabel(value, "vi")}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+        <label htmlFor={`${fieldId}-list`} className="space-y-1 text-sm">
+          Danh sách
+          <NativeSelect
+            id={`${fieldId}-list`}
+            aria-label="Danh sách tài liệu"
+            value={archived ? "archived" : "active"}
+            onChange={(e) => {
+              setArchived(e.target.value === "archived");
+              setSelectedKey(undefined);
+              setState("");
+            }}
+          >
+            <option value="active">Đang dùng</option>
+            <option value="archived">Đã lưu trữ</option>
+          </NativeSelect>
+        </label>
+      </div>
+      {(list.isPending || (!archived && tree.isPending)) && <TableSkeleton label={t.loading} columns={4} />}
+      {list.isError && <LoadFailure error={list.error} retry={list.refetch} />}
+      {!archived && tree.isError && <LoadFailure error={tree.error} retry={tree.refetch} />}
+      {list.data &&
+        (archived || tree.data) &&
+        (!items.length ? (
+          <EmptyState
+            title={archived ? "Chưa có tài liệu lưu trữ" : t.docsEmptyTitle}
+            description={archived ? "Tài liệu được lưu trữ sẽ hiện ở đây để khôi phục." : t.docsEmptyBody}
+          />
+        ) : (
+          <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
+            <DocTree
+              archived={archived}
+              items={visible}
+              selectedKey={selectedKey}
+              onSelect={(item) => {
+                if (item.key) setSelectedKey(item.key);
+                else if (item.assetId)
+                  window.open(`/api/v1/docs/assets/${item.assetId}?org=${org.id}`, "_blank", "noopener,noreferrer");
+              }}
+            />
+            {selected ? (
+              <DocDetail
+                key={`${selected.key}:${archived}`}
+                doc={selected}
+                item={items.find((item) => item.key === selected.key)}
+                archived={archived}
+              />
+            ) : (
+              <DetailCard>{t.choose}</DetailCard>
+            )}
+          </div>
+        ))}
     </KnowledgeLayout>
   );
 }
@@ -110,11 +213,11 @@ function NewDoc() {
   if (!open) return <Button onClick={() => setOpen(true)}>{t.newDoc}</Button>;
   return (
     <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2">
-      <label htmlFor={fieldId} className="flex flex-col gap-1 text-sm">
+      <label htmlFor={fieldId} className="flex min-w-0 flex-col gap-1 text-sm">
         <span>{t.newDocKey}</span>
         <Input
           id={fieldId}
-          className="w-80 font-mono"
+          className="w-full max-w-80 font-mono sm:w-80"
           placeholder="project/payment-api/prd-refund"
           value={key}
           aria-invalid={!!error}
@@ -136,7 +239,8 @@ function NewDoc() {
   );
 }
 
-function DocDetail({ doc }: { doc: DocSummary }) {
+function DocDetail({ doc, item, archived }: { doc: DocSummary; item?: DocTreeItem | undefined; archived: boolean }) {
+  const canManage = useDocManage(doc.scope);
   const te = useT(docEditorText);
   const fieldId = useId();
   const t = useT(text);
@@ -146,7 +250,10 @@ function DocDetail({ doc }: { doc: DocSummary }) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   const detail = useQuery(api.docs.get.queryOptions({ input: { key: doc.key, version } }));
-  const history = useQuery({ ...api.docs.history.queryOptions({ input: { key: doc.key } }), enabled: historyOpen });
+  const history = useQuery({
+    ...api.docs.history.queryOptions({ input: { key: doc.key } }),
+    enabled: historyOpen || archived,
+  });
   const command = `doc_get(${JSON.stringify(doc.key)})`;
   return (
     <DetailCard>
@@ -154,14 +261,18 @@ function DocDetail({ doc }: { doc: DocSummary }) {
         <code className="break-all text-xs text-muted-foreground">{doc.key}</code>
         <ScopeBadge scope={doc.scope} />
       </div>
+      {!archived && <DocSyncDetails item={item} canManage={canManage} />}
+      {canManage && <DocActions doc={doc} item={item} archived={archived} />}
       <h2 className="text-lg font-semibold">{detail.data?.title ?? doc.title}</h2>
       <p className="text-xs text-muted-foreground">
         v{version} · {authorLabel(detail.data?.updatedBy ?? doc.updatedBy)}
       </p>
       <div className="flex flex-wrap gap-2">
-        <Link to="/knowledge/docs/$key/edit" params={{ key: doc.key }} className={buttonVariants({ size: "sm" })}>
-          {te.edit}
-        </Link>
+        {!archived && (
+          <Link to="/knowledge/docs/$key/edit" params={{ key: doc.key }} className={buttonVariants({ size: "sm" })}>
+            {te.edit}
+          </Link>
+        )}
         <Button variant="outline" size="sm" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen}>
           {t.history}
         </Button>
@@ -220,5 +331,102 @@ function DocDetail({ doc }: { doc: DocSummary }) {
         {t.docsMcpNote} <code className="break-all">{command}</code>
       </p>
     </DetailCard>
+  );
+}
+
+function DocActions({ doc, item, archived }: { doc: DocSummary; item?: DocTreeItem | undefined; archived: boolean }) {
+  const { api } = useOrg();
+  const cache = useQueryClient();
+  const fieldId = useId();
+  const [action, setAction] = useState<"move" | "archive" | "restore" | null>(null);
+  const [path, setPath] = useState(item?.path ?? "");
+  const parsed = docRepoPath.safeParse(path);
+  const change = useMutation({
+    mutationFn: async () => {
+      if (action === "move") return api.docTree.move.call({ key: doc.key, repoPath: path, baseVersion: doc.version });
+      if (action === "restore") return api.docs.restore.call({ key: doc.key, baseVersion: doc.version });
+      return api.docs.archive.call({ key: doc.key, baseVersion: doc.version });
+    },
+    onSuccess: async () => {
+      setAction(null);
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: api.docs.key() }),
+        cache.invalidateQueries({ queryKey: api.docTree.key() }),
+      ]);
+    },
+  });
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {!archived && item?.homeId && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              change.reset();
+              setPath(item.path ?? "");
+              setAction("move");
+            }}
+          >
+            Di chuyển
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            change.reset();
+            setAction(archived ? "restore" : "archive");
+          }}
+        >
+          {archived ? "Khôi phục" : "Lưu trữ"}
+        </Button>
+      </div>
+      <Dialog
+        open={!!action}
+        onOpenChange={(open) => {
+          if (!open && !change.isPending) setAction(null);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>
+            {action === "move"
+              ? "Di chuyển tài liệu"
+              : action === "restore"
+                ? "Khôi phục tài liệu"
+                : "Lưu trữ tài liệu"}
+          </DialogTitle>
+          <DialogDescription>
+            {action === "move"
+              ? "Đổi đường dẫn trong repo, giữ nguyên key và lịch sử tài liệu."
+              : action === "restore"
+                ? "Tài liệu sẽ trở lại danh sách đang dùng và được đồng bộ vào repo."
+                : "Tài liệu vẫn giữ lịch sử trên hub. File trong repo sẽ được xoá khi đồng bộ."}
+          </DialogDescription>
+          {action === "move" && (
+            <label htmlFor={fieldId} className="space-y-1 text-sm">
+              Đường dẫn mới
+              <Input id={fieldId} aria-label="Đường dẫn mới" value={path} onChange={(e) => setPath(e.target.value)} />
+              <span className="text-xs text-muted-foreground">Ví dụ: docs/huong-dan/cai-dat.md</span>
+            </label>
+          )}
+          {change.isError && <Alert variant="destructive">{apiErrorMessage(change.error)}</Alert>}
+          <DialogActions>
+            <Button variant="outline" disabled={change.isPending} onClick={() => setAction(null)}>
+              Huỷ
+            </Button>
+            <Button
+              disabled={
+                change.isPending ||
+                (action === "move" && (!parsed.success || path.endsWith("/") || path === item?.path))
+              }
+              onClick={() => change.mutate()}
+            >
+              Xác nhận
+            </Button>
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
