@@ -267,7 +267,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 5: App desktop (US6) 🎯
 
-- [ ] T040 🎯 Desktop Rust: bộ đệm, giao thức `hive-artifact://`, CSP
+- [x] T040 🎯 Desktop Rust: bộ đệm, giao thức `hive-artifact://`, CSP
   - `artifacts.rs`: lệnh IPC `artifact_cache_put/get/list/clear` (LRU 200 MiB theo hồ sơ + tổ chức), giao thức
     `hive-artifact` (`frame/<id>/<version>` từ bộ đệm kể cả bản biên dịch `react`, `lib/*` từ resource kèm
     `Access-Control-Allow-Origin: *`, CSP như hub); xoá bộ đệm khi đăng xuất/đổi tổ
