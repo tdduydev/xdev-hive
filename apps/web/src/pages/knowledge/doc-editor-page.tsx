@@ -1,15 +1,214 @@
+import { ORPCError } from "@orpc/client";
+import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { DocEditor, DocEditorProvider } from "@xdev-hive/doc-editor";
+import {
+  type DocResolvedLink,
+  docAssetUploadOutput,
+  docSecretErrorData,
+  SECRET_KIND_LABELS,
+  type SubmitInput,
+} from "@xdev-hive/contracts";
+import { DocEditor, type DocEditorEnv, DocEditorProvider, type DocLinkTarget } from "@xdev-hive/doc-editor";
+import { Alert } from "@xdev-hive/ui/alert";
+import { Button } from "@xdev-hive/ui/button";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LoadFailure } from "@/components/ui/query-state.tsx";
 import { useWebDocEnv } from "@/lib/doc-editor-env.tsx";
+import { DocSyncDetails, useDocManage, useDocTree } from "@/pages/knowledge/doc-tree.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 
-/** Màn soạn tài liệu của web: giao diện ở packages/doc-editor (dùng chung với app desktop), web chỉ nối router và API. */
+// Các ảnh cùng lượt render dùng chung một request; nội dung Markdown vẫn giữ đường dẫn repo.
+export function createAssetResolver(
+  resolve: (input: { docKey: string; hrefs: string[] }) => Promise<DocResolvedLink[]>,
+) {
+  const cache = new Map<string, Promise<DocLinkTarget | null>>();
+  let pending: Array<{
+    key: string;
+    href: string;
+    done: (value: DocLinkTarget | null) => void;
+    fail: (error: unknown) => void;
+  }> = [];
+  const resolveLink = (key: string, href: string): Promise<DocLinkTarget | null> => {
+    const id = JSON.stringify([key, href]);
+    const found = cache.get(id);
+    if (found) return found;
+    const result = new Promise<DocLinkTarget | null>((done, fail) => {
+      pending.push({ key, href, done, fail });
+      if (pending.length !== 1) return;
+      queueMicrotask(() => {
+        const batch = pending;
+        pending = [];
+        const groups = Map.groupBy(batch, (item) => item.key);
+        for (const [docKey, group] of groups) {
+          // Hợp đồng giới hạn 1.000 link trong mỗi request.
+          for (let start = 0; start < group.length; start += 1000) {
+            const part = group.slice(start, start + 1000);
+            void resolve({ docKey, hrefs: part.map((item) => item.href) })
+              .then((links) => {
+                for (const item of part) {
+                  const link = links.find((link) => link.href === item.href);
+                  item.done(!link || link.kind === "missing" ? null : link);
+                }
+              })
+              .catch((error: unknown) => {
+                for (const item of part) {
+                  cache.delete(JSON.stringify([item.key, item.href]));
+                  item.fail(error);
+                }
+              });
+          }
+        }
+      });
+    });
+    cache.set(id, result);
+    return result;
+  };
+  return { resolveLink, clear: () => cache.clear() };
+}
+
 export function DocEditorPage() {
   const { key } = useParams({ from: "/session/app/in-org/knowledge/docs/$key/edit" });
   const { org } = useOrg();
+  return <WebDocEditor key={`${org.id}:${key}`} docKey={key} />;
+}
+
+type PendingSecret = {
+  findings: { line: number; kind: keyof typeof SECRET_KIND_LABELS }[];
+  accept: () => void;
+  cancel: () => void;
+};
+
+function WebDocEditor({ docKey }: { docKey: string }) {
+  const base = useWebDocEnv();
+  const { api, org } = useOrg();
+  const tree = useDocTree();
+  const state = useQuery(api.docEditor.state.queryOptions({ input: { key: docKey } }));
+  const canManage = useDocManage(state.data?.draft.scope);
+  const [secret, setSecret] = useState<PendingSecret | null>(null);
+  const pending = useRef<PendingSecret | null>(null);
+  useEffect(() => () => pending.current?.cancel(), []);
+  const assets = useMemo(() => createAssetResolver((input) => api.docAssets.resolve.call(input)), [api]);
+  const env: DocEditorEnv = {
+    ...base,
+    api: useMemo(() => {
+      // Bọc lời gửi để xác nhận đúng bản nháp vừa bị chặn, giữ chu trình lưu của editor dùng chung.
+      const submit = new Proxy(api.docEditor.submit, {
+        get(target, property) {
+          if (property !== "call") return Reflect.get(target, property);
+          return async (input: SubmitInput) => {
+            try {
+              return await api.docEditor.submit.call(input);
+            } catch (error) {
+              const data = error instanceof ORPCError ? docSecretErrorData.safeParse(error.data) : null;
+              if (!data?.success) throw error;
+              return new Promise<Awaited<ReturnType<typeof api.docEditor.submit.call>>>((resolve, reject) => {
+                const clear = () => {
+                  pending.current = null;
+                  setSecret(null);
+                };
+                const request: PendingSecret = {
+                  findings: data.data.findings,
+                  accept: () => {
+                    clear();
+                    void api.docEditor.submit.call({ ...input, acknowledgeSecrets: true }).then(resolve, reject);
+                  },
+                  cancel: () => {
+                    clear();
+                    reject(error);
+                  },
+                };
+                pending.current = request;
+                setSecret(request);
+              });
+            }
+          };
+        },
+      });
+      const editor = new Proxy(api.docEditor, {
+        get(target, property) {
+          return property === "submit" ? submit : Reflect.get(target, property);
+        },
+      });
+      return new Proxy(api, {
+        get(target, property) {
+          return property === "docEditor" ? editor : Reflect.get(target, property);
+        },
+      });
+    }, [api]),
+    resolveLink: assets.resolveLink,
+    uploadAsset: async (key, file) => {
+      const body = new FormData();
+      body.set("docKey", key);
+      body.set("file", file);
+      const response = await fetch("/api/v1/docs/assets", {
+        method: "POST",
+        headers: { "x-hive-org": org.id },
+        credentials: "same-origin",
+        body,
+      }).catch(() => {
+        throw new Error("Không tải được file lên. Kiểm tra kết nối rồi thử lại.");
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          typeof payload === "object" && payload && "message" in payload && typeof payload.message === "string"
+            ? payload.message
+            : "Không tải được file lên. Hãy thử lại.";
+        throw new ORPCError("BAD_REQUEST", { defined: true, message });
+      }
+      const parsed = docAssetUploadOutput.safeParse(payload);
+      if (!parsed.success) throw new Error("Phản hồi tải file không hợp lệ.");
+      assets.clear();
+      return parsed.data;
+    },
+    errorMessage: (error) => {
+      const data = error instanceof ORPCError ? docSecretErrorData.safeParse(error.data) : null;
+      return data?.success
+        ? `Có dấu hiệu bí mật: ${data.data.findings.map((f) => `${SECRET_KIND_LABELS[f.kind]}, dòng ${f.line}`).join("; ")}.`
+        : base.errorMessage(error);
+    },
+  };
   return (
-    <DocEditorProvider env={useWebDocEnv()}>
-      <DocEditor key={`${org.id}:${key}`} docKey={key} />
-    </DocEditorProvider>
+    <>
+      <div className="min-w-0 border-b border-border px-4 py-2">
+        {tree.isError ? (
+          <LoadFailure error={tree.error} retry={tree.refetch} />
+        ) : tree.isPending ? (
+          <p role="status">Đang tải trạng thái đồng bộ…</p>
+        ) : (
+          <DocSyncDetails item={tree.data.find((item) => item.key === docKey)} canManage={canManage} />
+        )}
+      </div>
+      <DocEditorProvider env={env}>
+        <DocEditor docKey={docKey} />
+      </DocEditorProvider>
+      <Dialog
+        open={!!secret}
+        onOpenChange={(open) => {
+          if (!open) secret?.cancel();
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Phát hiện dấu hiệu bí mật</DialogTitle>
+          <DialogDescription>Kiểm tra loại và dòng trước khi gửi. Xác nhận sẽ được ghi vào nhật ký.</DialogDescription>
+          <Alert variant="destructive">
+            <ul>
+              {secret?.findings.map((finding) => (
+                <li key={`${finding.line}:${finding.kind}`}>
+                  {SECRET_KIND_LABELS[finding.kind]} · dòng {finding.line}
+                </li>
+              ))}
+            </ul>
+          </Alert>
+          <DialogActions>
+            <Button variant="outline" onClick={() => secret?.cancel()}>
+              Quay lại sửa
+            </Button>
+            {canManage && <Button onClick={() => secret?.accept()}>Vẫn lưu</Button>}
+          </DialogActions>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
