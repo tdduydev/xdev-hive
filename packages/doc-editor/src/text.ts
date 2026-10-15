@@ -60,6 +60,18 @@ export const docEditorText: Dict<{
   embedKey: string;
   embedBad: string;
   openEmbed: string;
+  insertImage: string;
+  attachFile: string;
+  uploading: (n: number) => string;
+  uploadFailed: (name: string, reason: string) => string;
+  dismiss: string;
+  imageMissing: string;
+  imageAlt: string;
+  linkResolving: string;
+  linkNone: string;
+  openLinkedDoc: (key: string) => string;
+  openLinkedAsset: string;
+  openLinkedExternal: string;
   linkUrl: string;
   linkApply: string;
   unlink: string;
@@ -208,6 +220,18 @@ export const docEditorText: Dict<{
     embedKey: "Key tài liệu nhúng",
     embedBad: "Key dạng project/<dự án>/<tên>, chữ thường, số và . _ - /",
     openEmbed: "Mở",
+    insertImage: "Chèn ảnh",
+    attachFile: "Đính kèm file",
+    uploading: (n) => (n > 1 ? `Đang tải lên ${n} file…` : "Đang tải lên…"),
+    uploadFailed: (name, reason) => `Không tải lên được ${name}: ${reason}`,
+    dismiss: "Đóng thông báo",
+    imageMissing: "Chưa hiện được ảnh",
+    imageAlt: "Mô tả ảnh",
+    linkResolving: "Đang tìm liên kết…",
+    linkNone: "Không tìm thấy đích của liên kết này",
+    openLinkedDoc: (key) => `Mở tài liệu ${key}`,
+    openLinkedAsset: "Mở file đính kèm",
+    openLinkedExternal: "Mở trên repo",
     linkUrl: "Địa chỉ liên kết",
     linkApply: "Gắn",
     unlink: "Bỏ liên kết",
@@ -371,6 +395,18 @@ export const docEditorText: Dict<{
     embedKey: "Embedded doc key",
     embedBad: "Keys look like project/<project>/<name>: lowercase letters, digits and . _ - /",
     openEmbed: "Open",
+    insertImage: "Insert image",
+    attachFile: "Attach file",
+    uploading: (n) => (n > 1 ? `Uploading ${n} files…` : "Uploading…"),
+    uploadFailed: (name, reason) => `Could not upload ${name}: ${reason}`,
+    dismiss: "Dismiss message",
+    imageMissing: "Image cannot be shown",
+    imageAlt: "Image description",
+    linkResolving: "Resolving link…",
+    linkNone: "This link has no target",
+    openLinkedDoc: (key) => `Open document ${key}`,
+    openLinkedAsset: "Open attachment",
+    openLinkedExternal: "Open in repository",
     linkUrl: "Link address",
     linkApply: "Apply",
     unlink: "Remove link",

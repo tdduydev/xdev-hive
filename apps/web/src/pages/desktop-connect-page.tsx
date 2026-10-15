@@ -6,6 +6,7 @@ import { Button } from "@xdev-hive/ui/button";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { useId, useState } from "react";
 import { Brand } from "@/components/icons.tsx";
+import { OnboardingSignOut } from "@/components/outside/onboarding-sign-out.tsx";
 import { OutsideLayout } from "@/components/outside/outside-layout.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
@@ -127,7 +128,7 @@ export function DesktopConnectPage() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const org = orgs.find((o) => o.id === orgId) ?? pickOrg(orgs, orgStore.get());
   return (
-    <OutsideLayout>
+    <OutsideLayout header={<OnboardingSignOut />}>
       <Card className="grid w-full max-w-110 gap-5 p-6 shadow-lg sm:p-8">
         <div className="flex items-center gap-3">
           <span aria-hidden="true" className="grid size-11 place-items-center rounded-lg border border-border text-xl">

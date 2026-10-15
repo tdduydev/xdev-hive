@@ -1,0 +1,1611 @@
+{
+  "description": "200 distinct real Markdown revisions from docs/ and specs/; originals first, then Git history. Secret-scanned before copying.",
+  "files": [
+    {
+      "file": "001.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/add.md",
+      "sha256": "4539c94ba66b9404fdc715a72b8ac1ff2951e19a2c556be59fb74a14920716eb",
+      "codecSha256": "4539c94ba66b9404fdc715a72b8ac1ff2951e19a2c556be59fb74a14920716eb",
+      "codecExact": true
+    },
+    {
+      "file": "002.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0000-record-architecture-decisions.md",
+      "sha256": "152c947ba4e86289fba4520026ca042bd13bd8f219f79c94997f23a4726c4036",
+      "codecSha256": "152c947ba4e86289fba4520026ca042bd13bd8f219f79c94997f23a4726c4036",
+      "codecExact": true
+    },
+    {
+      "file": "003.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0001-modular-monolith-hub.md",
+      "sha256": "88392ed3fb52ce5d36db3accb479e211ad2be53af82ce07969c3ac84fa7f6e1e",
+      "codecSha256": "88392ed3fb52ce5d36db3accb479e211ad2be53af82ce07969c3ac84fa7f6e1e",
+      "codecExact": true
+    },
+    {
+      "file": "004.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0002-typescript-hub-go-worker.md",
+      "sha256": "90c72e48eeb1cb4590a23288ac1f1bdfb7b89b57d79e811fdaacb95deba0ae5b",
+      "codecSha256": "90c72e48eeb1cb4590a23288ac1f1bdfb7b89b57d79e811fdaacb95deba0ae5b",
+      "codecExact": true
+    },
+    {
+      "file": "005.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0003-postgresql-only-state.md",
+      "sha256": "9e36ce8b2a947bc654fccd3d38de240f3a3e6658107d6a33bc32656a00e878ee",
+      "codecSha256": "9e36ce8b2a947bc654fccd3d38de240f3a3e6658107d6a33bc32656a00e878ee",
+      "codecExact": true
+    },
+    {
+      "file": "006.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0004-row-level-security-tenancy.md",
+      "sha256": "1f36b18c0bde45b04d434d8dbd52c51fc2fadcc4cda40520c094abf8795175ae",
+      "codecSha256": "1f36b18c0bde45b04d434d8dbd52c51fc2fadcc4cda40520c094abf8795175ae",
+      "codecExact": true
+    },
+    {
+      "file": "007.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0005-contract-first-api.md",
+      "sha256": "b34ed28d7174af0a0d327bfc82f0fe3bbc995630c3063d528d3b3d6b65280fb7",
+      "codecSha256": "b34ed28d7174af0a0d327bfc82f0fe3bbc995630c3063d528d3b3d6b65280fb7",
+      "codecExact": true
+    },
+    {
+      "file": "008.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0006-outbound-worker-protocol.md",
+      "sha256": "4e5c82466c1ad87d201f3eaa7c92059ff0d916821d68cfd29f0427d716c3e8af",
+      "codecSha256": "4e5c82466c1ad87d201f3eaa7c92059ff0d916821d68cfd29f0427d716c3e8af",
+      "codecExact": true
+    },
+    {
+      "file": "009.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0007-sandbox-gvisor-egress-proxy.md",
+      "sha256": "80d7f1ddf22d5036c4aa4822c0e643362900d6593d292b9400b0da39bff9f69f",
+      "codecSha256": "80d7f1ddf22d5036c4aa4822c0e643362900d6593d292b9400b0da39bff9f69f",
+      "codecExact": true
+    },
+    {
+      "file": "010.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0008-better-auth-invite-only.md",
+      "sha256": "3d81102be9e3a7d4a5cd32e9e34688195601f78001b280665d2831e82a43a3c4",
+      "codecSha256": "3d81102be9e3a7d4a5cd32e9e34688195601f78001b280665d2831e82a43a3c4",
+      "codecExact": true
+    },
+    {
+      "file": "011.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0009-configurable-outcome-policy.md",
+      "sha256": "cf82e277d4be2df1d61e5e7e9a4386cecd51bd12b16bb9eca2db84ad90166c0b",
+      "codecSha256": "cf82e277d4be2df1d61e5e7e9a4386cecd51bd12b16bb9eca2db84ad90166c0b",
+      "codecExact": true
+    },
+    {
+      "file": "012.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0010-tenancy-hierarchy.md",
+      "sha256": "e9c4f53353aec51328e83fc280c778357a62a9def5ddb307e03b1310af357350",
+      "codecSha256": "e9c4f53353aec51328e83fc280c778357a62a9def5ddb307e03b1310af357350",
+      "codecExact": true
+    },
+    {
+      "file": "013.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0011-signed-worker-releases-and-own-updater.md",
+      "sha256": "43d100a671bf70afbfcfa10eb27395e62d7eebff7ec6eeb255de39d2734864a0",
+      "codecSha256": "43d100a671bf70afbfcfa10eb27395e62d7eebff7ec6eeb255de39d2734864a0",
+      "codecExact": true
+    },
+    {
+      "file": "014.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0012-spec-driven-development.md",
+      "sha256": "1ea64402787ba4b18b9da6d0326cbcd3e8bed2e2b072817fda63e9783d670897",
+      "codecSha256": "1ea64402787ba4b18b9da6d0326cbcd3e8bed2e2b072817fda63e9783d670897",
+      "codecExact": true
+    },
+    {
+      "file": "015.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0013-ui-shadcn-base-ui.md",
+      "sha256": "c3868b8e3d496c984010bc0b8a8f51a5ed65964d4c44417ae5ec3d0633e8447c",
+      "codecSha256": "c3868b8e3d496c984010bc0b8a8f51a5ed65964d4c44417ae5ec3d0633e8447c",
+      "codecExact": true
+    },
+    {
+      "file": "016.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0014-store-skills-in-git.md",
+      "sha256": "4ba86978b595e63b050bbfe0d6900b14a0cc5df25a6fd059aca2a9a698ec610c",
+      "codecSha256": "4ba86978b595e63b050bbfe0d6900b14a0cc5df25a6fd059aca2a9a698ec610c",
+      "codecExact": true
+    },
+    {
+      "file": "017.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0015-doc-editor-collaborative-engine.md",
+      "sha256": "b913b6bd4a4c3fc3225450925e3d9b8e7fd3a4760478e8e9545f2ccb11b928af",
+      "codecSha256": "b913b6bd4a4c3fc3225450925e3d9b8e7fd3a4760478e8e9545f2ccb11b928af",
+      "codecExact": true
+    },
+    {
+      "file": "018.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0016-desktop-local-ui.md",
+      "sha256": "604f0b2fe5ee2b3e674917546fda51d6dc64dbc8ee0d238d50c551f1ce698afd",
+      "codecSha256": "10250889c0cd86405393aeec07e997eda265d285d810e04858fb16933efad3cd",
+      "codecExact": false
+    },
+    {
+      "file": "019.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0017-admin-web-client-app-and-machine-ownership.md",
+      "sha256": "412d91f1491d377b51b0f3cd16ec52077224b88fb0b99abc58e541f8fc0b90fc",
+      "codecSha256": "412d91f1491d377b51b0f3cd16ec52077224b88fb0b99abc58e541f8fc0b90fc",
+      "codecExact": true
+    },
+    {
+      "file": "020.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0018-code-review-workflows.md",
+      "sha256": "52bd04a059eb8e011164427fc95f1252e55e0567b0ea470bf2cefa609eb91e45",
+      "codecSha256": "52bd04a059eb8e011164427fc95f1252e55e0567b0ea470bf2cefa609eb91e45",
+      "codecExact": true
+    },
+    {
+      "file": "021.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0019-hive-cli-and-remote-sessions.md",
+      "sha256": "eaaaeceb610aa1d60b7c836546677ca1544bfe30f0befa5e88b035c64f403ae7",
+      "codecSha256": "eaaaeceb610aa1d60b7c836546677ca1544bfe30f0befa5e88b035c64f403ae7",
+      "codecExact": true
+    },
+    {
+      "file": "022.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0020-local-project-folders-and-machine-full-permission.md",
+      "sha256": "f4cad03a6499c92d1f471f2caf86ae84f6e9de9e12c43d1d5727b80701948eb7",
+      "codecSha256": "f4cad03a6499c92d1f471f2caf86ae84f6e9de9e12c43d1d5727b80701948eb7",
+      "codecExact": true
+    },
+    {
+      "file": "023.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0021-ai-sdlc-mode.md",
+      "sha256": "1b1c33ceb843a16b33f890985ef65aa06772d9ea10f06ca36f23ebb615c703fb",
+      "codecSha256": "1b1c33ceb843a16b33f890985ef65aa06772d9ea10f06ca36f23ebb615c703fb",
+      "codecExact": true
+    },
+    {
+      "file": "024.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0022-project-brief-and-agent-memory.md",
+      "sha256": "fdc39d954f3b58aa02792a767b4c0247c1affe7f5a4eb6c719d1efdd506384a6",
+      "codecSha256": "fdc39d954f3b58aa02792a767b4c0247c1affe7f5a4eb6c719d1efdd506384a6",
+      "codecExact": true
+    },
+    {
+      "file": "025.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0023-artifacts.md",
+      "sha256": "f56e6d9020963315bea40feb7559b646819a4d1e2794a55e786a7a743ad9a42a",
+      "codecSha256": "f56e6d9020963315bea40feb7559b646819a4d1e2794a55e786a7a743ad9a42a",
+      "codecExact": true
+    },
+    {
+      "file": "026.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0024-chat-channels.md",
+      "sha256": "8580843a8bdbf62b52c3e2d5cea7ade64ed33d4cdf620e68dabfa5f11862ce48",
+      "codecSha256": "8580843a8bdbf62b52c3e2d5cea7ade64ed33d4cdf620e68dabfa5f11862ce48",
+      "codecExact": true
+    },
+    {
+      "file": "027.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0025-agent-skill-learning.md",
+      "sha256": "af31bdf67ffb86f287b0d76d46b7609f1d420773410da3469c569b75345f7f5f",
+      "codecSha256": "af31bdf67ffb86f287b0d76d46b7609f1d420773410da3469c569b75345f7f5f",
+      "codecExact": true
+    },
+    {
+      "file": "028.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/0026-client-token-optimizer.md",
+      "sha256": "3612314783f42fd1283e4b452325f4239f5a713bbc5ba23333047f7187181f6c",
+      "codecSha256": "3612314783f42fd1283e4b452325f4239f5a713bbc5ba23333047f7187181f6c",
+      "codecExact": true
+    },
+    {
+      "file": "029.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/README.md",
+      "sha256": "f407e44835429ff5f84e477e726fe7558a9e734f490e5a1f07b95856fbfbc2c6",
+      "codecSha256": "f407e44835429ff5f84e477e726fe7558a9e734f490e5a1f07b95856fbfbc2c6",
+      "codecExact": true
+    },
+    {
+      "file": "030.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/adr/template.md",
+      "sha256": "3a573c3bc0d19c95ba4d4ff115ebe46efb5c0883908978d0e176ab4016fecb1a",
+      "codecSha256": "3a573c3bc0d19c95ba4d4ff115ebe46efb5c0883908978d0e176ab4016fecb1a",
+      "codecExact": true
+    },
+    {
+      "file": "031.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/agents/prompt-chia-viec.md",
+      "sha256": "b6ee3c70a9833f69fe4c4b9b077a668b2f25a04acd8efc07983cf9e6aa863da3",
+      "codecSha256": "b6ee3c70a9833f69fe4c4b9b077a668b2f25a04acd8efc07983cf9e6aa863da3",
+      "codecExact": true
+    },
+    {
+      "file": "032.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/architecture.md",
+      "sha256": "501971741e5832913809bdb73343b08ef952134174dec661d05338542da2eaf1",
+      "codecSha256": "501971741e5832913809bdb73343b08ef952134174dec661d05338542da2eaf1",
+      "codecExact": true
+    },
+    {
+      "file": "033.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/ci.md",
+      "sha256": "525dcdea5e06d69aaae7f986d9c31835f5581982441849a1f90fd36a322f6154",
+      "codecSha256": "525dcdea5e06d69aaae7f986d9c31835f5581982441849a1f90fd36a322f6154",
+      "codecExact": true
+    },
+    {
+      "file": "034.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/decisions.md",
+      "sha256": "4790d41c348847ade4591a33e73e014353a25f16295fb98b945f69cd4678ce27",
+      "codecSha256": "4790d41c348847ade4591a33e73e014353a25f16295fb98b945f69cd4678ce27",
+      "codecExact": true
+    },
+    {
+      "file": "035.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/design-system/README.md",
+      "sha256": "a6c6224431e8612495023354d10a71d35ca8013872a8e6eca11898ce3ee0f01c",
+      "codecSha256": "a6c6224431e8612495023354d10a71d35ca8013872a8e6eca11898ce3ee0f01c",
+      "codecExact": true
+    },
+    {
+      "file": "036.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/design-system/SOURCE.md",
+      "sha256": "d7c1c7ddfcdd471cd5a52d42ce10d3fe7b82118677c35c0e2145c5694e85bf3a",
+      "codecSha256": "d7c1c7ddfcdd471cd5a52d42ce10d3fe7b82118677c35c0e2145c5694e85bf3a",
+      "codecExact": true
+    },
+    {
+      "file": "037.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/design-system/admin-layout.md",
+      "sha256": "093fe6c7f1fb60fc210128703ca5deba4be0ae141c350ab3d579795046536e35",
+      "codecSha256": "093fe6c7f1fb60fc210128703ca5deba4be0ae141c350ab3d579795046536e35",
+      "codecExact": true
+    },
+    {
+      "file": "038.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/design-system/assets/logos/README.md",
+      "sha256": "04c14cf1a16c9d112bfbe1c420bf90eaafbd6b1a388f6cd58c1e6f723280ad17",
+      "codecSha256": "04c14cf1a16c9d112bfbe1c420bf90eaafbd6b1a388f6cd58c1e6f723280ad17",
+      "codecExact": true
+    },
+    {
+      "file": "039.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/design-system/prose-and-terminal.md",
+      "sha256": "d8f6c9517375cb02e3a83b573215daaa4b601bd724f0620b3c445eaa6db291a4",
+      "codecSha256": "d8f6c9517375cb02e3a83b573215daaa4b601bd724f0620b3c445eaa6db291a4",
+      "codecExact": true
+    },
+    {
+      "file": "040.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/design-system/screens/README.md",
+      "sha256": "3e9e93f2b34d527296225d21f96100f902b869c5f6b14bea030aa6c11d645c9f",
+      "codecSha256": "1cf3988b26953eee904fed650d1693b3e09267671f9577b3be7c5b2ff0e3a01e",
+      "codecExact": false
+    },
+    {
+      "file": "041.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/design-system/screens/v1/README.md",
+      "sha256": "9f9345c569e43abd124fadc8d6b8bc9355de8ef1c9fc9052448137697f0c0a7a",
+      "codecSha256": "a279994a2342198ee29fd74e2a610f907b31a120f7c694133db0213407f1add3",
+      "codecExact": false
+    },
+    {
+      "file": "042.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/design-system/xdev-hive/MASTER.md",
+      "sha256": "d9a632020021b10bda38712a7aaeec686fffc2cac2d2417f7e2def9b36dc424f",
+      "codecSha256": "579ec2146f0273c513ce03242b03228fcc45b779921b09008f60aaef361edf1b",
+      "codecExact": false
+    },
+    {
+      "file": "043.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/feature-checklist.md",
+      "sha256": "15a97244d589d4c77735d94db43c7f26e33e99e203d0458c765d2ad999a33c02",
+      "codecSha256": "15a97244d589d4c77735d94db43c7f26e33e99e203d0458c765d2ad999a33c02",
+      "codecExact": true
+    },
+    {
+      "file": "044.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/goal-v2.md",
+      "sha256": "93387297a8b7d7c7c90fb609f585c4729f146640b0016ac76267360ed0aebbf0",
+      "codecSha256": "93387297a8b7d7c7c90fb609f585c4729f146640b0016ac76267360ed0aebbf0",
+      "codecExact": true
+    },
+    {
+      "file": "045.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/history/phan-tich-2026-10/README.md",
+      "sha256": "73fb9d342aa2750771cc5031760ae94b194777a6abba4ba1446001bf08af947f",
+      "codecSha256": "73fb9d342aa2750771cc5031760ae94b194777a6abba4ba1446001bf08af947f",
+      "codecExact": true
+    },
+    {
+      "file": "046.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/releasing.md",
+      "sha256": "79b4b29f63b17819f5d79ac22fda3a559e2eafdcdcd26813c1a8216ef7820d12",
+      "codecSha256": "79b4b29f63b17819f5d79ac22fda3a559e2eafdcdcd26813c1a8216ef7820d12",
+      "codecExact": true
+    },
+    {
+      "file": "047.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/run-permissions.md",
+      "sha256": "ac374d86b54ad2531eb5c7f030323656e975ad042012d4bc739ed4b94c0949cc",
+      "codecSha256": "ac374d86b54ad2531eb5c7f030323656e975ad042012d4bc739ed4b94c0949cc",
+      "codecExact": true
+    },
+    {
+      "file": "048.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/sdd.md",
+      "sha256": "9e5d0f689d1a057141a8e06e24a4a5c1ff471b1b371cb5c074bf5162081f20d4",
+      "codecSha256": "9e5d0f689d1a057141a8e06e24a4a5c1ff471b1b371cb5c074bf5162081f20d4",
+      "codecExact": true
+    },
+    {
+      "file": "049.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/self-hosting.md",
+      "sha256": "26c278dc81adb35f76cf89e966d2b6e5dc26c586778375f583bf140e57407a12",
+      "codecSha256": "26c278dc81adb35f76cf89e966d2b6e5dc26c586778375f583bf140e57407a12",
+      "codecExact": true
+    },
+    {
+      "file": "050.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/srs.md",
+      "sha256": "b59a7f31457cdc016ce6da561a8afe951e51f045f5eed7937457c31cd61e5443",
+      "codecSha256": "4e4858a045d6cfd32846f070b65dffc67c99dd7c428fea3bd8588014f9e5cdfd",
+      "codecExact": false
+    },
+    {
+      "file": "051.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "docs/token-optimizer.md",
+      "sha256": "ca24bb9307a0df20c22ec28c3370b119164ec07ae0279ded16ec293f75bf1828",
+      "codecSha256": "ca24bb9307a0df20c22ec28c3370b119164ec07ae0279ded16ec293f75bf1828",
+      "codecExact": true
+    },
+    {
+      "file": "052.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/001-custom-roles/plan.md",
+      "sha256": "457024d6b7c3cd53b12f887a4b2dcf3a12e6277438b53227ec69ef2dad7d9cae",
+      "codecSha256": "457024d6b7c3cd53b12f887a4b2dcf3a12e6277438b53227ec69ef2dad7d9cae",
+      "codecExact": true
+    },
+    {
+      "file": "053.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/001-custom-roles/spec.md",
+      "sha256": "a35129a17c6e217e80da49eb9bec6fdf0f6e3e64d9f0eb48ead4cdeb3a67dc42",
+      "codecSha256": "a35129a17c6e217e80da49eb9bec6fdf0f6e3e64d9f0eb48ead4cdeb3a67dc42",
+      "codecExact": true
+    },
+    {
+      "file": "054.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/002-agent-policies/plan.md",
+      "sha256": "250760a0ed6db1b8c1ff59bcbec764d3d6071b104b486155e5dfda02c0c125c0",
+      "codecSha256": "250760a0ed6db1b8c1ff59bcbec764d3d6071b104b486155e5dfda02c0c125c0",
+      "codecExact": true
+    },
+    {
+      "file": "055.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/002-agent-policies/spec.md",
+      "sha256": "cc552809d0779d1ace3425aade3affdeb383bb44d8b9af87a4c86418a318ff4e",
+      "codecSha256": "cc552809d0779d1ace3425aade3affdeb383bb44d8b9af87a4c86418a318ff4e",
+      "codecExact": true
+    },
+    {
+      "file": "056.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/003-mcp-tools-admin/plan.md",
+      "sha256": "c1b5d6b3392899f3abb91cbde2445163bb30b5ff6aaff11ad02c1429530fd2d2",
+      "codecSha256": "c1b5d6b3392899f3abb91cbde2445163bb30b5ff6aaff11ad02c1429530fd2d2",
+      "codecExact": true
+    },
+    {
+      "file": "057.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/003-mcp-tools-admin/spec.md",
+      "sha256": "dfdc5025322f2b4d4557efb22ea54053bc0ac1c813bc7c97bbd8c28511b9a484",
+      "codecSha256": "dfdc5025322f2b4d4557efb22ea54053bc0ac1c813bc7c97bbd8c28511b9a484",
+      "codecExact": true
+    },
+    {
+      "file": "058.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/004-review-workflows/plan.md",
+      "sha256": "d2481173b93e08c3fc2b790c8e1835f7af4b37e9f03764520394904a6d610ad9",
+      "codecSha256": "d2481173b93e08c3fc2b790c8e1835f7af4b37e9f03764520394904a6d610ad9",
+      "codecExact": true
+    },
+    {
+      "file": "059.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/004-review-workflows/spec.md",
+      "sha256": "ffc926ef4536c1e0eeead0b03b36ceeb5aeaf2d78e4e417c83ec4bb2024c3124",
+      "codecSha256": "ffc926ef4536c1e0eeead0b03b36ceeb5aeaf2d78e4e417c83ec4bb2024c3124",
+      "codecExact": true
+    },
+    {
+      "file": "060.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/005-doc-editor/plan.md",
+      "sha256": "ce6cb5672ada678a6790788ce01984a39f1c090e2502e8aa9e3cfd0f8dbd6690",
+      "codecSha256": "ce6cb5672ada678a6790788ce01984a39f1c090e2502e8aa9e3cfd0f8dbd6690",
+      "codecExact": true
+    },
+    {
+      "file": "061.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/005-doc-editor/spec.md",
+      "sha256": "9d70a140224a63a4037abf10f2a6d5cd3f9153605c83ca42b085be396ab27156",
+      "codecSha256": "9d70a140224a63a4037abf10f2a6d5cd3f9153605c83ca42b085be396ab27156",
+      "codecExact": true
+    },
+    {
+      "file": "062.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/006-skills-repo-sync/plan.md",
+      "sha256": "99dcbe34ecaa63e924fe0d22a9fc4d75c26369956bb0aa4c3ca8d9bacd3d80bd",
+      "codecSha256": "99dcbe34ecaa63e924fe0d22a9fc4d75c26369956bb0aa4c3ca8d9bacd3d80bd",
+      "codecExact": true
+    },
+    {
+      "file": "063.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/006-skills-repo-sync/spec.md",
+      "sha256": "b6603cd6e6b620b6d26999935e23a69cb58439afc700524e35092a8e0451c8c6",
+      "codecSha256": "b6603cd6e6b620b6d26999935e23a69cb58439afc700524e35092a8e0451c8c6",
+      "codecExact": true
+    },
+    {
+      "file": "064.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/007-audit-log-viewer/plan.md",
+      "sha256": "b29d579b6e32ac87a1638048a7b2ca7f344e42fb0df73004e90687ae0eb2ef3e",
+      "codecSha256": "b29d579b6e32ac87a1638048a7b2ca7f344e42fb0df73004e90687ae0eb2ef3e",
+      "codecExact": true
+    },
+    {
+      "file": "065.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/007-audit-log-viewer/spec.md",
+      "sha256": "25de2b03fd300e68c9055454f0d8ceeac0e7c722824842365432a3c69bbcdeb7",
+      "codecSha256": "25de2b03fd300e68c9055454f0d8ceeac0e7c722824842365432a3c69bbcdeb7",
+      "codecExact": true
+    },
+    {
+      "file": "066.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/008-desktop-v2/plan.md",
+      "sha256": "71f0a3ec49e1aa7cf52162c1eddbed5b60674a30cf56f8c8793df6c0a82d1ffd",
+      "codecSha256": "6800ebf6504b5fe67f1d12c6574b7a2a5867c441863e599587135903ec2e4296",
+      "codecExact": false
+    },
+    {
+      "file": "067.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/008-desktop-v2/spec.md",
+      "sha256": "17bd2e6ec703fcff6bb60109b2618beff485bbceccd9397069dceec33c0f1d3c",
+      "codecSha256": "a5024870d4a2dc4d3851799fb734e80269795d2a6a6d2e707fda00c6687b85ad",
+      "codecExact": false
+    },
+    {
+      "file": "068.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/008-desktop-v2/tasks.md",
+      "sha256": "3ac55621be6d5623f55b810c9cceded839dfcac9e84f7d0d6826e0d67a87509e",
+      "codecSha256": "3ac55621be6d5623f55b810c9cceded839dfcac9e84f7d0d6826e0d67a87509e",
+      "codecExact": true
+    },
+    {
+      "file": "069.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/009-code-review-workflows/plan.md",
+      "sha256": "ccae8bd56d8696fadb2001424b4766f0c1225aa8aebdf1ebb73c289edae3be6a",
+      "codecSha256": "ccae8bd56d8696fadb2001424b4766f0c1225aa8aebdf1ebb73c289edae3be6a",
+      "codecExact": true
+    },
+    {
+      "file": "070.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/009-code-review-workflows/spec.md",
+      "sha256": "82ebe482019188d4dacc1c628c51dbbeee6c23d74d70429ed02dc983f765e857",
+      "codecSha256": "82ebe482019188d4dacc1c628c51dbbeee6c23d74d70429ed02dc983f765e857",
+      "codecExact": true
+    },
+    {
+      "file": "071.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/009-code-review-workflows/tasks.md",
+      "sha256": "d6b333aa87b4c0d594709dfe82bee5ac6934ede4c4368bfefb61278854b9959f",
+      "codecSha256": "d6b333aa87b4c0d594709dfe82bee5ac6934ede4c4368bfefb61278854b9959f",
+      "codecExact": true
+    },
+    {
+      "file": "072.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/010-hive-cli-remote/spec.md",
+      "sha256": "0e630fc82d68840f397da65c0318a026c58cf2701141b99e9585ce884346f7df",
+      "codecSha256": "0e630fc82d68840f397da65c0318a026c58cf2701141b99e9585ce884346f7df",
+      "codecExact": true
+    },
+    {
+      "file": "073.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "191fde8b7d4e724ea55de4bba14782817ae03b7d8780d3a36b347faeffdfaaf7",
+      "codecSha256": "191fde8b7d4e724ea55de4bba14782817ae03b7d8780d3a36b347faeffdfaaf7",
+      "codecExact": true
+    },
+    {
+      "file": "074.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/011-ai-sdlc-mode/plan.md",
+      "sha256": "b66399310fd4b9bea896684af1e6526b59806fa83065bc47a8cae6675d6dbe14",
+      "codecSha256": "b66399310fd4b9bea896684af1e6526b59806fa83065bc47a8cae6675d6dbe14",
+      "codecExact": true
+    },
+    {
+      "file": "075.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/011-ai-sdlc-mode/spec.md",
+      "sha256": "22cc0e76bec00dc46b042220afcf5b16b5edb0c05aea7943524874f2d84c5f64",
+      "codecSha256": "22cc0e76bec00dc46b042220afcf5b16b5edb0c05aea7943524874f2d84c5f64",
+      "codecExact": true
+    },
+    {
+      "file": "076.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "faf1c060bed1c1fc9c3d6b415f04e20c39119e6a4120fa649cf671032e6426e8",
+      "codecSha256": "faf1c060bed1c1fc9c3d6b415f04e20c39119e6a4120fa649cf671032e6426e8",
+      "codecExact": true
+    },
+    {
+      "file": "077.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/011-ai-sdlc-mode/ui-validation.md",
+      "sha256": "ec2de8d2dc61769163e6538fc713bb0816b403795badc3c2678192ccf168ba6e",
+      "codecSha256": "ec2de8d2dc61769163e6538fc713bb0816b403795badc3c2678192ccf168ba6e",
+      "codecExact": true
+    },
+    {
+      "file": "078.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/012-artifacts/plan.md",
+      "sha256": "32d008e439e1964dfbb85834cfe6817803644a036ea86d9a5af0c23941649449",
+      "codecSha256": "32d008e439e1964dfbb85834cfe6817803644a036ea86d9a5af0c23941649449",
+      "codecExact": true
+    },
+    {
+      "file": "079.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/012-artifacts/spec.md",
+      "sha256": "4310d4cb0a50818d5aca27dea52882ba5ce6661df039e9233c5959effb376b50",
+      "codecSha256": "4310d4cb0a50818d5aca27dea52882ba5ce6661df039e9233c5959effb376b50",
+      "codecExact": true
+    },
+    {
+      "file": "080.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "307944120225d2e6964e0683055f33cc88cd8b8827eed115c5f01419c4187517",
+      "codecSha256": "307944120225d2e6964e0683055f33cc88cd8b8827eed115c5f01419c4187517",
+      "codecExact": true
+    },
+    {
+      "file": "081.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/013-chat-channels/plan.md",
+      "sha256": "f397f11996ff513ef8b0bb3ee12b2d2f6ee5a2b366f95754eba5af663418f1d8",
+      "codecSha256": "f397f11996ff513ef8b0bb3ee12b2d2f6ee5a2b366f95754eba5af663418f1d8",
+      "codecExact": true
+    },
+    {
+      "file": "082.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/013-chat-channels/spec.md",
+      "sha256": "ed46c0cec4c91d21236779fa50c9194f833a394bc1e1e104c7fd80b26afefc47",
+      "codecSha256": "ed46c0cec4c91d21236779fa50c9194f833a394bc1e1e104c7fd80b26afefc47",
+      "codecExact": true
+    },
+    {
+      "file": "083.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/013-chat-channels/tasks.md",
+      "sha256": "030d1ec57d70885409eb6e8a876d65453631603bf3dec8c203a8f5be4c0ce084",
+      "codecSha256": "030d1ec57d70885409eb6e8a876d65453631603bf3dec8c203a8f5be4c0ce084",
+      "codecExact": true
+    },
+    {
+      "file": "084.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/014-skill-learning/plan.md",
+      "sha256": "9ad51da834be098f50125027a30c358c0b6cdf2d2910bbac430bc04bbbc87a1e",
+      "codecSha256": "9ad51da834be098f50125027a30c358c0b6cdf2d2910bbac430bc04bbbc87a1e",
+      "codecExact": true
+    },
+    {
+      "file": "085.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/014-skill-learning/spec.md",
+      "sha256": "b42ed1362ae172d38cb3b882d31dd710b277f09f4cd9746e3fb6bab0808c4ad2",
+      "codecSha256": "b42ed1362ae172d38cb3b882d31dd710b277f09f4cd9746e3fb6bab0808c4ad2",
+      "codecExact": true
+    },
+    {
+      "file": "086.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/015-client-token-optimizer/plan.md",
+      "sha256": "51bbd3f5123b3732b4d123e043a261508515ff7a031270f1a3ac43090384aa81",
+      "codecSha256": "51bbd3f5123b3732b4d123e043a261508515ff7a031270f1a3ac43090384aa81",
+      "codecExact": true
+    },
+    {
+      "file": "087.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/015-client-token-optimizer/research.md",
+      "sha256": "e67db2fef5d64b7ca109dcbe8b0f214a462532170cc08ce8179b7a49440a28c3",
+      "codecSha256": "e67db2fef5d64b7ca109dcbe8b0f214a462532170cc08ce8179b7a49440a28c3",
+      "codecExact": true
+    },
+    {
+      "file": "088.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/015-client-token-optimizer/spec.md",
+      "sha256": "824994663f3828701be68a2640bf481e7909d61f00183772e122ea8175b3e4e3",
+      "codecSha256": "824994663f3828701be68a2640bf481e7909d61f00183772e122ea8175b3e4e3",
+      "codecExact": true
+    },
+    {
+      "file": "089.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "5530b000182e4245e9723ec6c006575198b2fad8b36b6a3d15e0cf70751633cb",
+      "codecSha256": "5530b000182e4245e9723ec6c006575198b2fad8b36b6a3d15e0cf70751633cb",
+      "codecExact": true
+    },
+    {
+      "file": "090.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/016-desktop-git-groups/spec.md",
+      "sha256": "4cd10de15ae57312d822ac5298735c15521747b6b7cbd50280eb243621e81735",
+      "codecSha256": "4cd10de15ae57312d822ac5298735c15521747b6b7cbd50280eb243621e81735",
+      "codecExact": true
+    },
+    {
+      "file": "091.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/017-vscode-extension/plan.md",
+      "sha256": "9559133acd26d3a4491b5137d1ca765538092329f5ddf6302c1d0964ecc989e1",
+      "codecSha256": "9559133acd26d3a4491b5137d1ca765538092329f5ddf6302c1d0964ecc989e1",
+      "codecExact": true
+    },
+    {
+      "file": "092.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/017-vscode-extension/research.md",
+      "sha256": "a433f3af483914bc9cdb299f96066fb61925a13d493b493c3227f6d302ab6710",
+      "codecSha256": "a433f3af483914bc9cdb299f96066fb61925a13d493b493c3227f6d302ab6710",
+      "codecExact": true
+    },
+    {
+      "file": "093.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/017-vscode-extension/spec.md",
+      "sha256": "b0fe20f7fd85879807472794f752879b6b993c2a611f43fa02e18500ca1256b2",
+      "codecSha256": "b0fe20f7fd85879807472794f752879b6b993c2a611f43fa02e18500ca1256b2",
+      "codecExact": true
+    },
+    {
+      "file": "094.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/017-vscode-extension/tasks.md",
+      "sha256": "ac5f3b0b079387954da349a3e2797b7920d39cd160f9fe8832855c164cdf4a97",
+      "codecSha256": "ac5f3b0b079387954da349a3e2797b7920d39cd160f9fe8832855c164cdf4a97",
+      "codecExact": true
+    },
+    {
+      "file": "095.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/018-docs-repo-sync/plan.md",
+      "sha256": "06732839514dead3a878fec87ff3e3af0c31b8969a7b7838e525f3043a5f3dbc",
+      "codecSha256": "c41f91c27b591737159f0aea5f281e970f570a0779b15c424f529d3982f09c60",
+      "codecExact": false
+    },
+    {
+      "file": "096.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/018-docs-repo-sync/research.md",
+      "sha256": "0d25d0d359b39d44d598b9d0b1b321c5ce9574f1aef242d776ee795b6d5a9742",
+      "codecSha256": "0d25d0d359b39d44d598b9d0b1b321c5ce9574f1aef242d776ee795b6d5a9742",
+      "codecExact": true
+    },
+    {
+      "file": "097.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/018-docs-repo-sync/spec.md",
+      "sha256": "6552595bc5a06e6baa160879daa12ffd482f5c7798f1d64d955ada6f6667fee1",
+      "codecSha256": "6552595bc5a06e6baa160879daa12ffd482f5c7798f1d64d955ada6f6667fee1",
+      "codecExact": true
+    },
+    {
+      "file": "098.md",
+      "commit": "c90560568bb78477510719739ddd632d2466f3bc",
+      "path": "specs/018-docs-repo-sync/tasks.md",
+      "sha256": "8083755b7b0f6502492165fdb59d12810a244b8ebfcc57499967a4e677d15bfd",
+      "codecSha256": "8083755b7b0f6502492165fdb59d12810a244b8ebfcc57499967a4e677d15bfd",
+      "codecExact": true
+    },
+    {
+      "file": "099.md",
+      "commit": "0ba68748d54fe5d95df31924b40fa49f62b361a1",
+      "path": "specs/017-vscode-extension/tasks.md",
+      "sha256": "9d30420a18a5c34edbb0cd5fcafb6cea67e0f95f42f645f0084013c15bb3c925",
+      "codecSha256": "9d30420a18a5c34edbb0cd5fcafb6cea67e0f95f42f645f0084013c15bb3c925",
+      "codecExact": true
+    },
+    {
+      "file": "100.md",
+      "commit": "98114deb8c4200e03a8889144d694b3735a72448",
+      "path": "specs/017-vscode-extension/tasks.md",
+      "sha256": "76c65cf28f219251492014bf88ec926e6f5f083069ac83f9237d1828adb29a3f",
+      "codecSha256": "76c65cf28f219251492014bf88ec926e6f5f083069ac83f9237d1828adb29a3f",
+      "codecExact": true
+    },
+    {
+      "file": "101.md",
+      "commit": "bad041679d55e39cc00bd90f0469a1eaa04156b1",
+      "path": "specs/017-vscode-extension/tasks.md",
+      "sha256": "090e373b98214a1b8441a332545af7d8e474ca8fd2c56e4e787e0947ffc8379e",
+      "codecSha256": "090e373b98214a1b8441a332545af7d8e474ca8fd2c56e4e787e0947ffc8379e",
+      "codecExact": true
+    },
+    {
+      "file": "102.md",
+      "commit": "dc4ba38cb9c6a0bb555cdceeeaf837802c1115c6",
+      "path": "specs/017-vscode-extension/tasks.md",
+      "sha256": "3aef1f93a113f0726bbad8910e42313fea397cec9d960a40db8f1e931433ad11",
+      "codecSha256": "3aef1f93a113f0726bbad8910e42313fea397cec9d960a40db8f1e931433ad11",
+      "codecExact": true
+    },
+    {
+      "file": "103.md",
+      "commit": "da715633020a007510896386ed4213bd5bc87ad1",
+      "path": "specs/017-vscode-extension/tasks.md",
+      "sha256": "835e2da8a27a711c714c0be0ae54971c2c9fd60e375a72af2d6268fd91950f26",
+      "codecSha256": "835e2da8a27a711c714c0be0ae54971c2c9fd60e375a72af2d6268fd91950f26",
+      "codecExact": true
+    },
+    {
+      "file": "104.md",
+      "commit": "8eb20dd0aeadef3bca1b7847b855176e44bddac0",
+      "path": "specs/017-vscode-extension/research.md",
+      "sha256": "307b96f561da2e98c531b6ce34359728369921262c2b79d4d6d28007e27a80d0",
+      "codecSha256": "307b96f561da2e98c531b6ce34359728369921262c2b79d4d6d28007e27a80d0",
+      "codecExact": true
+    },
+    {
+      "file": "105.md",
+      "commit": "8eb20dd0aeadef3bca1b7847b855176e44bddac0",
+      "path": "specs/017-vscode-extension/tasks.md",
+      "sha256": "45c4b6210b27d02d845389f6b29c198157fae241f3dad4e1a6218bd63bdfce59",
+      "codecSha256": "45c4b6210b27d02d845389f6b29c198157fae241f3dad4e1a6218bd63bdfce59",
+      "codecExact": true
+    },
+    {
+      "file": "106.md",
+      "commit": "38926801dfd3d2ad2d38e9edde01e325ca7c5f26",
+      "path": "specs/017-vscode-extension/plan.md",
+      "sha256": "844063704d74aa93db75fe89bfb6dcea5bfff229e013bc53d4863923b1f5e5d7",
+      "codecSha256": "844063704d74aa93db75fe89bfb6dcea5bfff229e013bc53d4863923b1f5e5d7",
+      "codecExact": true
+    },
+    {
+      "file": "107.md",
+      "commit": "38926801dfd3d2ad2d38e9edde01e325ca7c5f26",
+      "path": "specs/017-vscode-extension/research.md",
+      "sha256": "92c98c14a8e437793ce4446fcb612d4f723b7b79d12c1b0782a329fb368e5263",
+      "codecSha256": "92c98c14a8e437793ce4446fcb612d4f723b7b79d12c1b0782a329fb368e5263",
+      "codecExact": true
+    },
+    {
+      "file": "108.md",
+      "commit": "38926801dfd3d2ad2d38e9edde01e325ca7c5f26",
+      "path": "specs/017-vscode-extension/spec.md",
+      "sha256": "b6cacf520dd6e306e19c7644cccfcbd5a5fe0f8535b803993a0c44a76197130e",
+      "codecSha256": "b6cacf520dd6e306e19c7644cccfcbd5a5fe0f8535b803993a0c44a76197130e",
+      "codecExact": true
+    },
+    {
+      "file": "109.md",
+      "commit": "38926801dfd3d2ad2d38e9edde01e325ca7c5f26",
+      "path": "specs/017-vscode-extension/tasks.md",
+      "sha256": "f8d69b1c0d606ca4970589e5a38439a783049db5016985efdc25fd48560bc7c5",
+      "codecSha256": "f8d69b1c0d606ca4970589e5a38439a783049db5016985efdc25fd48560bc7c5",
+      "codecExact": true
+    },
+    {
+      "file": "110.md",
+      "commit": "c4d4e73a0797005116bd9035a34f264928f1a668",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "630ab494fe5bc8f07d6fbe515aaa494a6d6d223644056ef38955800bebf1ad3a",
+      "codecSha256": "630ab494fe5bc8f07d6fbe515aaa494a6d6d223644056ef38955800bebf1ad3a",
+      "codecExact": true
+    },
+    {
+      "file": "111.md",
+      "commit": "ac34d0dc7a5fdb983bea6642f42254bb940a60e4",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "dfac56e01a947aa58ccf86b363fb5b2a3716edd8e72cb7cf6629accd72e71fc4",
+      "codecSha256": "dfac56e01a947aa58ccf86b363fb5b2a3716edd8e72cb7cf6629accd72e71fc4",
+      "codecExact": true
+    },
+    {
+      "file": "112.md",
+      "commit": "1b062d65efd1383b10f8cecd49557ccee5097397",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "88f034e8b53c089a9fc854f88cd9502384eb2d73a4a72b32cd439a22e847b4f0",
+      "codecSha256": "88f034e8b53c089a9fc854f88cd9502384eb2d73a4a72b32cd439a22e847b4f0",
+      "codecExact": true
+    },
+    {
+      "file": "113.md",
+      "commit": "b3ce219610c918b9375432ed5109d9e1493516d3",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "b9c56c46eaeef29cd1c39fb9a7f0fd2af41fa8a9a24e3de12915cfd7668f3408",
+      "codecSha256": "b9c56c46eaeef29cd1c39fb9a7f0fd2af41fa8a9a24e3de12915cfd7668f3408",
+      "codecExact": true
+    },
+    {
+      "file": "114.md",
+      "commit": "f63961dd01bf0f244b6fabf174bfa7ae0db8ab67",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "121a8452dce4a7d85eb71dc68057aaf01562bedbbc86ff321d71e67ab23fe485",
+      "codecSha256": "121a8452dce4a7d85eb71dc68057aaf01562bedbbc86ff321d71e67ab23fe485",
+      "codecExact": true
+    },
+    {
+      "file": "115.md",
+      "commit": "8be2b6cfd33d29ee7a0f78dfdecd00826c117e9b",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "f56577f1ab949e603bd8879b6617d9eac06611682ef0bb6aa0cadeea972feb13",
+      "codecSha256": "f56577f1ab949e603bd8879b6617d9eac06611682ef0bb6aa0cadeea972feb13",
+      "codecExact": true
+    },
+    {
+      "file": "116.md",
+      "commit": "bb9b2488a562c175667280e1fa9a00b12f4daa80",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "8c076ee627c93e08dc18336ae086789a504cc4455da0ebca1ecdd1c534deddf7",
+      "codecSha256": "8c076ee627c93e08dc18336ae086789a504cc4455da0ebca1ecdd1c534deddf7",
+      "codecExact": true
+    },
+    {
+      "file": "117.md",
+      "commit": "4638ee595d6371630110062960e3d92f390f816a",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "bb52135429b84da1af5ba66cceb805c0cfb52fd8b56a993fe9f38d37b41bb10d",
+      "codecSha256": "bb52135429b84da1af5ba66cceb805c0cfb52fd8b56a993fe9f38d37b41bb10d",
+      "codecExact": true
+    },
+    {
+      "file": "118.md",
+      "commit": "2d53c56ecae3efef0555b57d3db7258d388420dd",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "910a971ec1efc0e898d686d4b2f098f96617388a02d67f135e56c2b0f19fa899",
+      "codecSha256": "910a971ec1efc0e898d686d4b2f098f96617388a02d67f135e56c2b0f19fa899",
+      "codecExact": true
+    },
+    {
+      "file": "119.md",
+      "commit": "461bae7ded385b1c81adcd96d31267e983f89ee9",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "8ae28d7e8d809f0552e18c55322436c15c5a9a12e2186d59e7fb3db9f9683c15",
+      "codecSha256": "8ae28d7e8d809f0552e18c55322436c15c5a9a12e2186d59e7fb3db9f9683c15",
+      "codecExact": true
+    },
+    {
+      "file": "120.md",
+      "commit": "f7ff515695afd6b23981c1be2d211c61a4357ee0",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "25d5b891337ff979b481ad823d6000484fa6b0dce48791a7d8e9659860e66f76",
+      "codecSha256": "25d5b891337ff979b481ad823d6000484fa6b0dce48791a7d8e9659860e66f76",
+      "codecExact": true
+    },
+    {
+      "file": "121.md",
+      "commit": "d716d6dac78812fa46ce27cdc05dd2e769440d7f",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "7de696aaa68537173e2e349c8ff7f53393499eacf4a9c63aadc205e91b6fc5bf",
+      "codecSha256": "7de696aaa68537173e2e349c8ff7f53393499eacf4a9c63aadc205e91b6fc5bf",
+      "codecExact": true
+    },
+    {
+      "file": "122.md",
+      "commit": "8db3806a796c0ecdf60ea20ca5f127db268caa0c",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "497e56611f55f0b0fd5e5731efede35604fdd01d80b1875537cc6ba389c7c695",
+      "codecSha256": "497e56611f55f0b0fd5e5731efede35604fdd01d80b1875537cc6ba389c7c695",
+      "codecExact": true
+    },
+    {
+      "file": "123.md",
+      "commit": "5a86934cff1367a63270be54e34767ec96e468a3",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "694b7f4997cbe7ce53320d55067680f665133751d74b626dfa5b5a1d1410c682",
+      "codecSha256": "694b7f4997cbe7ce53320d55067680f665133751d74b626dfa5b5a1d1410c682",
+      "codecExact": true
+    },
+    {
+      "file": "124.md",
+      "commit": "7bdf081153ad5862c525f0b297316e1d15c31b5f",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "ad6c87e7b247f2fc33d6d3aeba0cac9d93a1dbed531008809e24b398d9c31793",
+      "codecSha256": "ad6c87e7b247f2fc33d6d3aeba0cac9d93a1dbed531008809e24b398d9c31793",
+      "codecExact": true
+    },
+    {
+      "file": "125.md",
+      "commit": "d447f70a72917fbe00e27a440eeb73d441447e6a",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "237ab1873e04dc2de732007db2194bdf75634482a3f103c7189596f4beafb012",
+      "codecSha256": "237ab1873e04dc2de732007db2194bdf75634482a3f103c7189596f4beafb012",
+      "codecExact": true
+    },
+    {
+      "file": "126.md",
+      "commit": "c7ca26dc61ba0c6bc5183eeec38e97cd21fd4e92",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "32b8cedb5cae897ce12b85b359a5fbbd7982204cda2bd350602d07688ac9e991",
+      "codecSha256": "32b8cedb5cae897ce12b85b359a5fbbd7982204cda2bd350602d07688ac9e991",
+      "codecExact": true
+    },
+    {
+      "file": "127.md",
+      "commit": "956f11ed5261a18cb5d50abe61d424092c409bdb",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "81aca99064048e995880ed5b57dea521f7b5c53f0c05bf898d62d8767500bcd1",
+      "codecSha256": "81aca99064048e995880ed5b57dea521f7b5c53f0c05bf898d62d8767500bcd1",
+      "codecExact": true
+    },
+    {
+      "file": "128.md",
+      "commit": "85a806c873101b47b362107f5c1d9b62be469f02",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "8e09b3450300131df5aa316962f0d3d4bed99b1c8112f6c87891e9f39ebdbfba",
+      "codecSha256": "8e09b3450300131df5aa316962f0d3d4bed99b1c8112f6c87891e9f39ebdbfba",
+      "codecExact": true
+    },
+    {
+      "file": "129.md",
+      "commit": "93c8935bfb4bb42ed00db7fa7043a2f7d4c27332",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "ed650bf8336ef2a39a997637ac2cee88356a7b82f77bc270cefddd1098ea1100",
+      "codecSha256": "ed650bf8336ef2a39a997637ac2cee88356a7b82f77bc270cefddd1098ea1100",
+      "codecExact": true
+    },
+    {
+      "file": "130.md",
+      "commit": "449280aec60f4e68c6ae37ec58803d8a09d5fef3",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "fe698ac30d90b9e4c874557cf757badae23cc09921efca7ec499ad5a04ef3eeb",
+      "codecSha256": "fe698ac30d90b9e4c874557cf757badae23cc09921efca7ec499ad5a04ef3eeb",
+      "codecExact": true
+    },
+    {
+      "file": "131.md",
+      "commit": "449280aec60f4e68c6ae37ec58803d8a09d5fef3",
+      "path": "specs/011-ai-sdlc-mode/ui-validation.md",
+      "sha256": "4d958f943c0ff2ea2f6b2d401f042f610a1dd4f8cea15f187a0c3aff25729db3",
+      "codecSha256": "4d958f943c0ff2ea2f6b2d401f042f610a1dd4f8cea15f187a0c3aff25729db3",
+      "codecExact": true
+    },
+    {
+      "file": "132.md",
+      "commit": "2f9ef97e55cb318ac844811f84952d284f836121",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "e889dfb7390d72d005d875ad802092928b4dba6fedda09b3a1a6ea2ff5e35851",
+      "codecSha256": "e889dfb7390d72d005d875ad802092928b4dba6fedda09b3a1a6ea2ff5e35851",
+      "codecExact": true
+    },
+    {
+      "file": "133.md",
+      "commit": "adb68cba465f0eba1d07844f9539539a2c7a02a1",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "ba46920c363e4005699685e81e1b8378cf3678c3d7d2cb56d85cce0ce089eefa",
+      "codecSha256": "ba46920c363e4005699685e81e1b8378cf3678c3d7d2cb56d85cce0ce089eefa",
+      "codecExact": true
+    },
+    {
+      "file": "134.md",
+      "commit": "3de9507127def6de418183dec0b0cc956322bc0d",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "7d0ebbbb36de84013a8f2452a96925865752966cd6e25c009af69f1efccbdb03",
+      "codecSha256": "7d0ebbbb36de84013a8f2452a96925865752966cd6e25c009af69f1efccbdb03",
+      "codecExact": true
+    },
+    {
+      "file": "135.md",
+      "commit": "31e9847564575041e7ea70527ffe1834cdc45f3e",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "0081967e63a6793cfa8cea139236f9c42bef5f004f634c39e472fe62b4b57f23",
+      "codecSha256": "0081967e63a6793cfa8cea139236f9c42bef5f004f634c39e472fe62b4b57f23",
+      "codecExact": true
+    },
+    {
+      "file": "136.md",
+      "commit": "df02e109b48c9b0b061ece612dcbe012b4b660ca",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "a5f5a54882164c434bd58afce452ddd6405667ce1d5c0b5cee48649a886d5767",
+      "codecSha256": "a5f5a54882164c434bd58afce452ddd6405667ce1d5c0b5cee48649a886d5767",
+      "codecExact": true
+    },
+    {
+      "file": "137.md",
+      "commit": "0a5fe940b8ee34a233b7b9219550d961d205f5ff",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "612fde210bffa1e689c0a014f68ac71c0ff916951180491c6c95fe57bb5c16fe",
+      "codecSha256": "612fde210bffa1e689c0a014f68ac71c0ff916951180491c6c95fe57bb5c16fe",
+      "codecExact": true
+    },
+    {
+      "file": "138.md",
+      "commit": "e0858037d8015307d3a0dfb602de25c1aff32c2a",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "294d1248bfc87cdbe5cd8758149bf15bf7376e014e8227bd3caf3cd9bb788032",
+      "codecSha256": "294d1248bfc87cdbe5cd8758149bf15bf7376e014e8227bd3caf3cd9bb788032",
+      "codecExact": true
+    },
+    {
+      "file": "139.md",
+      "commit": "651bb6da07f1858032a7e2942a5ee4620d1ce2eb",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "80e09dbe85f8db1280e04b11ea96ce9c89329a6827b4d6af76bb09cf5107a832",
+      "codecSha256": "80e09dbe85f8db1280e04b11ea96ce9c89329a6827b4d6af76bb09cf5107a832",
+      "codecExact": true
+    },
+    {
+      "file": "140.md",
+      "commit": "651bb6da07f1858032a7e2942a5ee4620d1ce2eb",
+      "path": "specs/011-ai-sdlc-mode/ui-validation.md",
+      "sha256": "125e31386f370627509f7e0003729559fc03350497db8fb1c2ca5c2528d998da",
+      "codecSha256": "125e31386f370627509f7e0003729559fc03350497db8fb1c2ca5c2528d998da",
+      "codecExact": true
+    },
+    {
+      "file": "141.md",
+      "commit": "9eab7c2013b33ffc4cf93dfc4b889bb94be196c6",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "2408b072dac6b75a0d712d8061a0a04ab33a334f8fc59f0554a6ff5362e82159",
+      "codecSha256": "2408b072dac6b75a0d712d8061a0a04ab33a334f8fc59f0554a6ff5362e82159",
+      "codecExact": true
+    },
+    {
+      "file": "142.md",
+      "commit": "9eab7c2013b33ffc4cf93dfc4b889bb94be196c6",
+      "path": "specs/011-ai-sdlc-mode/ui-validation.md",
+      "sha256": "859cb855ed9a4ce9d4416ee33a481d02ab6d74d22767146792d6039cddbf9750",
+      "codecSha256": "859cb855ed9a4ce9d4416ee33a481d02ab6d74d22767146792d6039cddbf9750",
+      "codecExact": true
+    },
+    {
+      "file": "143.md",
+      "commit": "fb6f64c19cc25315b68c147948abf4df1028a831",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "b4f61b849b489e162757f34eece2c8c70f3a332824ce95d34c321c9a50d68f1f",
+      "codecSha256": "b4f61b849b489e162757f34eece2c8c70f3a332824ce95d34c321c9a50d68f1f",
+      "codecExact": true
+    },
+    {
+      "file": "144.md",
+      "commit": "2a0bf667493c8a9f1a9503e187436579a546d9fc",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "47d27b3aae54868e08f701f84ea5da4c217aae53a5e6af3e48b828468e579504",
+      "codecSha256": "47d27b3aae54868e08f701f84ea5da4c217aae53a5e6af3e48b828468e579504",
+      "codecExact": true
+    },
+    {
+      "file": "145.md",
+      "commit": "980076b80378512bef9327e6e5e5f12b30eeccc0",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "e3885aadfbbaa655f5da9a4c4fc4eec826c57e5fc9bd94ccd5dbb1220ff652c5",
+      "codecSha256": "e3885aadfbbaa655f5da9a4c4fc4eec826c57e5fc9bd94ccd5dbb1220ff652c5",
+      "codecExact": true
+    },
+    {
+      "file": "146.md",
+      "commit": "8ddd877f3d2fcd8a0ec7168e9237f11dc39e39c7",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "1394915689ca393e68caea4263d2834bbe6e1e66587c4f2cee2a69283a91e4a4",
+      "codecSha256": "1394915689ca393e68caea4263d2834bbe6e1e66587c4f2cee2a69283a91e4a4",
+      "codecExact": true
+    },
+    {
+      "file": "147.md",
+      "commit": "86e9b374b43a38d2a1e915145e57a27e73fdd660",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "85eb66857ba160daa661e2a8022f949fbfdc5ab4f85da5f3ab2de7918c971049",
+      "codecSha256": "85eb66857ba160daa661e2a8022f949fbfdc5ab4f85da5f3ab2de7918c971049",
+      "codecExact": true
+    },
+    {
+      "file": "148.md",
+      "commit": "8b563eb482d5a9d68bd2bcc0dd6bd28bb66844de",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "756cec41a152ea1b84fd6cfb5c249b144e8e7daaf134127a24f6ccdcbe3acec5",
+      "codecSha256": "756cec41a152ea1b84fd6cfb5c249b144e8e7daaf134127a24f6ccdcbe3acec5",
+      "codecExact": true
+    },
+    {
+      "file": "149.md",
+      "commit": "e7e48b639cc30198b0729f299b869485d6d938bc",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "bed393f5ba27a8807421d13dfebb6826a1c92e49b6e3976a927ba0574d9f7ea6",
+      "codecSha256": "bed393f5ba27a8807421d13dfebb6826a1c92e49b6e3976a927ba0574d9f7ea6",
+      "codecExact": true
+    },
+    {
+      "file": "150.md",
+      "commit": "cc93f43ca906c34da07b0207a144dafa9279e125",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "42ed336cfc925d7aab7ced21b37de851003481eba22de36915bacf6db12c1be9",
+      "codecSha256": "42ed336cfc925d7aab7ced21b37de851003481eba22de36915bacf6db12c1be9",
+      "codecExact": true
+    },
+    {
+      "file": "151.md",
+      "commit": "6dce0251330223e8ffb1bc751786abd224eac0bb",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "dc6a0c19aed6304d813cc4a6ce736748c3c8018f62397d6ae7fda6951a50849b",
+      "codecSha256": "dc6a0c19aed6304d813cc4a6ce736748c3c8018f62397d6ae7fda6951a50849b",
+      "codecExact": true
+    },
+    {
+      "file": "152.md",
+      "commit": "200708b23855124045291d43760c5ddcf8cf1ff2",
+      "path": "specs/015-client-token-optimizer/research.md",
+      "sha256": "165af3ad05d8771bed191a6ec3e7a053b3a519b14679fc06a8593d8a58ca666e",
+      "codecSha256": "165af3ad05d8771bed191a6ec3e7a053b3a519b14679fc06a8593d8a58ca666e",
+      "codecExact": true
+    },
+    {
+      "file": "153.md",
+      "commit": "14b8aa55ce80d3514d963b6c535b57ac4d31a160",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "ca8d1416c7175a0fe65d175eb8655e467124d4a95fdfe1fba207d9082dc6e183",
+      "codecSha256": "ca8d1416c7175a0fe65d175eb8655e467124d4a95fdfe1fba207d9082dc6e183",
+      "codecExact": true
+    },
+    {
+      "file": "154.md",
+      "commit": "41d4ca92462b55803d7be30c9a59aae291e809c8",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "cabaab0e77f5df913bd5726680d656b5600e9690fada228950da1bc8e1e9cd23",
+      "codecSha256": "cabaab0e77f5df913bd5726680d656b5600e9690fada228950da1bc8e1e9cd23",
+      "codecExact": true
+    },
+    {
+      "file": "155.md",
+      "commit": "bffaadc409536ffcaed62fe35f45b3fbac2a9eed",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "bbbf00039fdac4ea5d1b40a3fb776df55a55f47031217775cf027d001f02fafb",
+      "codecSha256": "bbbf00039fdac4ea5d1b40a3fb776df55a55f47031217775cf027d001f02fafb",
+      "codecExact": true
+    },
+    {
+      "file": "156.md",
+      "commit": "2f3328aa9c5bb58f30a61960f61b7b4b348b4920",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "8f9046391a0f5e021c2647663cc0caa83bb5cc82c471e86d9f6632a7e55dcabc",
+      "codecSha256": "8f9046391a0f5e021c2647663cc0caa83bb5cc82c471e86d9f6632a7e55dcabc",
+      "codecExact": true
+    },
+    {
+      "file": "157.md",
+      "commit": "40d0abb9f3d5e0ff2c19b393973186973331aae6",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "a5ecd1cd0f7618ee96c884ae732f3265dbe34656601d80071c4f2a04de0848cd",
+      "codecSha256": "a5ecd1cd0f7618ee96c884ae732f3265dbe34656601d80071c4f2a04de0848cd",
+      "codecExact": true
+    },
+    {
+      "file": "158.md",
+      "commit": "8da33ff005a689b282cd785765520b133576324f",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "81f33be97b17a45ec86f9fe1531238a5e2396f1a2dbca3d71430d8f31505b7d7",
+      "codecSha256": "81f33be97b17a45ec86f9fe1531238a5e2396f1a2dbca3d71430d8f31505b7d7",
+      "codecExact": true
+    },
+    {
+      "file": "159.md",
+      "commit": "a143dd24c3259c080aa2b8ea8ae88902a14c4be1",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "1f1cf83cce13a0ba0558f8526147b940f2d27b239a82d99f511f5bf98888053b",
+      "codecSha256": "1f1cf83cce13a0ba0558f8526147b940f2d27b239a82d99f511f5bf98888053b",
+      "codecExact": true
+    },
+    {
+      "file": "160.md",
+      "commit": "957e43933d3585f7596d9b8f3b60ba29717ecaee",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "c5979ac39add50b31de0568a925189a254d53d5a4e44c81e31fc66fd47b389b8",
+      "codecSha256": "c5979ac39add50b31de0568a925189a254d53d5a4e44c81e31fc66fd47b389b8",
+      "codecExact": true
+    },
+    {
+      "file": "161.md",
+      "commit": "89a1e3175b8f583b2ca93042eff1fa27df0c75a5",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "97b50f8f1b543b109b1d560cb4060cef6362a63e6b495b0e16d56393c9d885c7",
+      "codecSha256": "97b50f8f1b543b109b1d560cb4060cef6362a63e6b495b0e16d56393c9d885c7",
+      "codecExact": true
+    },
+    {
+      "file": "162.md",
+      "commit": "da9dc3a9b20cf3339a90fae6dd61df2f32a339a9",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "347edf2fc98990256b84434fa9c1349315c5cd336b9ae052dc7ee88256e783ee",
+      "codecSha256": "347edf2fc98990256b84434fa9c1349315c5cd336b9ae052dc7ee88256e783ee",
+      "codecExact": true
+    },
+    {
+      "file": "163.md",
+      "commit": "388e44e45e216c0bf545cd7af473f6f165a2fb10",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "98db8c0b91f8350306c0b03f550a68760350213ae4bdc7255306cf387b92b250",
+      "codecSha256": "98db8c0b91f8350306c0b03f550a68760350213ae4bdc7255306cf387b92b250",
+      "codecExact": true
+    },
+    {
+      "file": "164.md",
+      "commit": "85ad37edfe0cd71987cdc92a5656d8b7e2421cea",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "774bfcfb089102876de0b09f781ee10fabd4e4cb92ade274b83d52dcd96d8555",
+      "codecSha256": "774bfcfb089102876de0b09f781ee10fabd4e4cb92ade274b83d52dcd96d8555",
+      "codecExact": true
+    },
+    {
+      "file": "165.md",
+      "commit": "a23f0995cb5d9cce36537a1389351466c22812a6",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "f4d612b6e2a708c78fefebd870abd9bb18d274c0496d789a8e7f5691be8b887f",
+      "codecSha256": "f4d612b6e2a708c78fefebd870abd9bb18d274c0496d789a8e7f5691be8b887f",
+      "codecExact": true
+    },
+    {
+      "file": "166.md",
+      "commit": "b169f0dcba637380312ec29e1e56a4401b836eb4",
+      "path": "specs/011-ai-sdlc-mode/tasks.md",
+      "sha256": "ffc8d635a779f575306394777223bf0a65aa940d3c7f06728eebde6218fcfb1b",
+      "codecSha256": "ffc8d635a779f575306394777223bf0a65aa940d3c7f06728eebde6218fcfb1b",
+      "codecExact": true
+    },
+    {
+      "file": "167.md",
+      "commit": "afd952751568e122537ff2276be12ff5015ca230",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "9cfbc35220ffd9dd847e60b22211b64e8579e17a695db5b2b6930cd466873d1d",
+      "codecSha256": "9cfbc35220ffd9dd847e60b22211b64e8579e17a695db5b2b6930cd466873d1d",
+      "codecExact": true
+    },
+    {
+      "file": "168.md",
+      "commit": "f66b6306f2406056bd3ed94115ece589188498a5",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "f4a33812d91483f855610f690b2cc06e99fb12f4875acae7bab8dd227dc9ff52",
+      "codecSha256": "f4a33812d91483f855610f690b2cc06e99fb12f4875acae7bab8dd227dc9ff52",
+      "codecExact": true
+    },
+    {
+      "file": "169.md",
+      "commit": "3fc026923fa9effe22f21d20499ae268b95809c4",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "0c09ffeef9779f5732e9532b6aec982a344a4fcd6ac2ea0bf0679483f7fcbf37",
+      "codecSha256": "0c09ffeef9779f5732e9532b6aec982a344a4fcd6ac2ea0bf0679483f7fcbf37",
+      "codecExact": true
+    },
+    {
+      "file": "170.md",
+      "commit": "e73cdaa43b2ed9bc524054b4367fefbc687856c6",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "0d8691c79e783c2c4b5a0795623b7c9a1384ccdc062f33c51859255e7acfb749",
+      "codecSha256": "0d8691c79e783c2c4b5a0795623b7c9a1384ccdc062f33c51859255e7acfb749",
+      "codecExact": true
+    },
+    {
+      "file": "171.md",
+      "commit": "6b4375819de8dc538bb18ce1d0d9f172ea8497dc",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "bab36f2d6a8f0ea18557f021391fe701eca66603464b885d7534850855b85139",
+      "codecSha256": "bab36f2d6a8f0ea18557f021391fe701eca66603464b885d7534850855b85139",
+      "codecExact": true
+    },
+    {
+      "file": "172.md",
+      "commit": "18ff77efdb8cad2deeefbaebbb7fcaea43f1a77b",
+      "path": "specs/010-hive-cli-remote/tasks.md",
+      "sha256": "7df3614d34e37564f9e6da6e9080eadb11c014d5f43f525282701221b7f129df",
+      "codecSha256": "7df3614d34e37564f9e6da6e9080eadb11c014d5f43f525282701221b7f129df",
+      "codecExact": true
+    },
+    {
+      "file": "173.md",
+      "commit": "c058bde42d66f92c5c750c17e0b9255c41fcfa04",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "88937739ac21cef92055dc692d584e56ad902df49da862ac91d741540ebfa0d2",
+      "codecSha256": "88937739ac21cef92055dc692d584e56ad902df49da862ac91d741540ebfa0d2",
+      "codecExact": true
+    },
+    {
+      "file": "174.md",
+      "commit": "4240690e7190ab840f498700839862dc44ed0bc3",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "3a0cf3626072ac91cab6117934366a3ce10e3f9181c569bd72b3ff0d4f847bd0",
+      "codecSha256": "3a0cf3626072ac91cab6117934366a3ce10e3f9181c569bd72b3ff0d4f847bd0",
+      "codecExact": true
+    },
+    {
+      "file": "175.md",
+      "commit": "ccba018f21e0db3ef7d63e7960f84026078a2ffa",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "d7e7f7d398defa8b9785c28824c5c4480ec4549ae562017da2293546e4006ce1",
+      "codecSha256": "d7e7f7d398defa8b9785c28824c5c4480ec4549ae562017da2293546e4006ce1",
+      "codecExact": true
+    },
+    {
+      "file": "176.md",
+      "commit": "34133d4bb6bf68a403015e6fbf22fca8deb06391",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "0ba95f353121146213990a292ca2f43d0c0bf56b623601509628be5a9acdf823",
+      "codecSha256": "0ba95f353121146213990a292ca2f43d0c0bf56b623601509628be5a9acdf823",
+      "codecExact": true
+    },
+    {
+      "file": "177.md",
+      "commit": "50938e21a28f51c6961e35a9a1abc48527462c49",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "0820c32180359fe24f21335fef409131ae71b01600af92cbea399599b50fedab",
+      "codecSha256": "0820c32180359fe24f21335fef409131ae71b01600af92cbea399599b50fedab",
+      "codecExact": true
+    },
+    {
+      "file": "178.md",
+      "commit": "0081fb19cdedddca631afb9fd97237dd9fe14d57",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "c0b7fdc666205011639c7b35a9f7f025aefd70453afd3e6cc15f2045876bca4e",
+      "codecSha256": "c0b7fdc666205011639c7b35a9f7f025aefd70453afd3e6cc15f2045876bca4e",
+      "codecExact": true
+    },
+    {
+      "file": "179.md",
+      "commit": "5c0855f576f078e4ab8f3353278a3f7f395dfb30",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "29d9af7217d98a34561f072640d1c4d5de89472468d57d846d9e0a4693803087",
+      "codecSha256": "29d9af7217d98a34561f072640d1c4d5de89472468d57d846d9e0a4693803087",
+      "codecExact": true
+    },
+    {
+      "file": "180.md",
+      "commit": "508aaef3d31df2211c9753ebbec60900d69eb318",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "a7788878a36f1c4fc6311ce59c56880b2c101f7a79f4f3eb01a1fffd56c5517b",
+      "codecSha256": "a7788878a36f1c4fc6311ce59c56880b2c101f7a79f4f3eb01a1fffd56c5517b",
+      "codecExact": true
+    },
+    {
+      "file": "181.md",
+      "commit": "17a5ffc51e0bd2f3281ed1b51f604af51f1011b1",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "399cf77147058fa5bb65896712dedf7804a7b2bdd5e7967f3ea4c818a196384e",
+      "codecSha256": "399cf77147058fa5bb65896712dedf7804a7b2bdd5e7967f3ea4c818a196384e",
+      "codecExact": true
+    },
+    {
+      "file": "182.md",
+      "commit": "fcaa3767e1320b1547ea0d9c61d17a2d3d322276",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "876d1ca8a7adda02cf2fa3c437d2b672a52ec67941fbcb46a2f96f35aad7b287",
+      "codecSha256": "876d1ca8a7adda02cf2fa3c437d2b672a52ec67941fbcb46a2f96f35aad7b287",
+      "codecExact": true
+    },
+    {
+      "file": "183.md",
+      "commit": "aaaa3ea1204ece58bf41279782e3f495d1ad46c1",
+      "path": "specs/012-artifacts/tasks.md",
+      "sha256": "05422eb9ff70069e2062328bb27a7dbb1c3faf3d6815d77146663ed9f90652cf",
+      "codecSha256": "05422eb9ff70069e2062328bb27a7dbb1c3faf3d6815d77146663ed9f90652cf",
+      "codecExact": true
+    },
+    {
+      "file": "184.md",
+      "commit": "4dcf0a3b011434fdf55e7fc6e4b10c138fb03b64",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "58347b8db66ddbb04201331f94683dd4c7a9dc60565b683ab7d64cefd75cc74b",
+      "codecSha256": "58347b8db66ddbb04201331f94683dd4c7a9dc60565b683ab7d64cefd75cc74b",
+      "codecExact": true
+    },
+    {
+      "file": "185.md",
+      "commit": "8c918c27626520df34540a79ec2d3bb4a8b61464",
+      "path": "specs/016-desktop-git-groups/spec.md",
+      "sha256": "7e7b5617735bf3336bb466af336e8b2807e892e169610e604d4ea12355ae3999",
+      "codecSha256": "7e7b5617735bf3336bb466af336e8b2807e892e169610e604d4ea12355ae3999",
+      "codecExact": true
+    },
+    {
+      "file": "186.md",
+      "commit": "07156b0cb755e37a6bacfabc1fa2afd8426b5fef",
+      "path": "specs/016-desktop-git-groups/spec.md",
+      "sha256": "e4ab7fc4a256ffffd7fd8e6aa040a8073b6e770ea64428f80be39c6cb3985183",
+      "codecSha256": "e4ab7fc4a256ffffd7fd8e6aa040a8073b6e770ea64428f80be39c6cb3985183",
+      "codecExact": true
+    },
+    {
+      "file": "187.md",
+      "commit": "290f46e083689b33e18e28c75522ec30c570f159",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "9de1b5a149debdecddb2f52f63d1b41df47d5cfcc4f1b8b203babc63fc4c5e8f",
+      "codecSha256": "9de1b5a149debdecddb2f52f63d1b41df47d5cfcc4f1b8b203babc63fc4c5e8f",
+      "codecExact": true
+    },
+    {
+      "file": "188.md",
+      "commit": "cbdafaaf6d827b83c6855094b421a5cdfb11111f",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "7db29cc89e63250a4b0015be0d99792fecc144eeeacb8e7385239224b18fdc37",
+      "codecSha256": "7db29cc89e63250a4b0015be0d99792fecc144eeeacb8e7385239224b18fdc37",
+      "codecExact": true
+    },
+    {
+      "file": "189.md",
+      "commit": "1c618610eacd9c7bc2ef998fa49aba795f2be240",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "e29bfcb494db26cef48c393a616328ac8c93bde1409b43ff98ec3192916ae4ff",
+      "codecSha256": "e29bfcb494db26cef48c393a616328ac8c93bde1409b43ff98ec3192916ae4ff",
+      "codecExact": true
+    },
+    {
+      "file": "190.md",
+      "commit": "f33ea71812394e553661274761f0838ee3565d2d",
+      "path": "specs/015-client-token-optimizer/research.md",
+      "sha256": "eb8a8c970d4b86d87ece9bbb4da1f1206cd2d5aba619edb9ad572920e572cb0e",
+      "codecSha256": "eb8a8c970d4b86d87ece9bbb4da1f1206cd2d5aba619edb9ad572920e572cb0e",
+      "codecExact": true
+    },
+    {
+      "file": "191.md",
+      "commit": "f33ea71812394e553661274761f0838ee3565d2d",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "f04199af6be2450b6c7dc6b76989181d175ba40f5b23e04f7a4c916644c23a06",
+      "codecSha256": "f04199af6be2450b6c7dc6b76989181d175ba40f5b23e04f7a4c916644c23a06",
+      "codecExact": true
+    },
+    {
+      "file": "192.md",
+      "commit": "ae5dac1556bb54f1aee69d96fede3b4da3475ebf",
+      "path": "specs/015-client-token-optimizer/research.md",
+      "sha256": "03bfc724771bf01893026cddfec5e982d448d43ffdb75bcfdd047c50e7bb91a1",
+      "codecSha256": "03bfc724771bf01893026cddfec5e982d448d43ffdb75bcfdd047c50e7bb91a1",
+      "codecExact": true
+    },
+    {
+      "file": "193.md",
+      "commit": "ae5dac1556bb54f1aee69d96fede3b4da3475ebf",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "75ba84075a6daf365ca33385fc476527dc8bb9a1e83b17b1760f44132600afcd",
+      "codecSha256": "75ba84075a6daf365ca33385fc476527dc8bb9a1e83b17b1760f44132600afcd",
+      "codecExact": true
+    },
+    {
+      "file": "194.md",
+      "commit": "32c76d2973b01c4e393f762a109a377cdbc0c271",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "065e3775b8d39d2944faa2e64989ecc8743dc8789d23e01ce4d6daa2b1e416bc",
+      "codecSha256": "065e3775b8d39d2944faa2e64989ecc8743dc8789d23e01ce4d6daa2b1e416bc",
+      "codecExact": true
+    },
+    {
+      "file": "195.md",
+      "commit": "b515f3e49fd945ff1da4b73a5dbcc9ad2236ec22",
+      "path": "docs/design-system/admin-layout.md",
+      "sha256": "cee7a1d5560252b7b0ba0d1ad3687aa73738bd20881a42ffa80463e0aafd8e02",
+      "codecSha256": "cee7a1d5560252b7b0ba0d1ad3687aa73738bd20881a42ffa80463e0aafd8e02",
+      "codecExact": true
+    },
+    {
+      "file": "196.md",
+      "commit": "286e744a4dd0b08086529bb54166300a41cb4762",
+      "path": "docs/design-system/admin-layout.md",
+      "sha256": "3ad94c24e469799990167b97421c4b1a7e8cc58c1202a1fe5ba0e9c4fa2d812e",
+      "codecSha256": "3ad94c24e469799990167b97421c4b1a7e8cc58c1202a1fe5ba0e9c4fa2d812e",
+      "codecExact": true
+    },
+    {
+      "file": "197.md",
+      "commit": "38fe7e78c5133c811a2a3dbca4ee13e741d06bf5",
+      "path": "specs/015-client-token-optimizer/research.md",
+      "sha256": "bb638ab1ae62a8c64b4053c36876f8aa6cc4e1c9b601fa030d3d3442621d188d",
+      "codecSha256": "bb638ab1ae62a8c64b4053c36876f8aa6cc4e1c9b601fa030d3d3442621d188d",
+      "codecExact": true
+    },
+    {
+      "file": "198.md",
+      "commit": "38fe7e78c5133c811a2a3dbca4ee13e741d06bf5",
+      "path": "specs/015-client-token-optimizer/tasks.md",
+      "sha256": "746148df618221eee7dafd1dd5d0f46d128e8c56b9f4ccc1d9f682cb95f126d6",
+      "codecSha256": "746148df618221eee7dafd1dd5d0f46d128e8c56b9f4ccc1d9f682cb95f126d6",
+      "codecExact": true
+    },
+    {
+      "file": "199.md",
+      "commit": "d7f445bb5589b63ed13cf73ac3053df5cf648f9b",
+      "path": "docs/design-system/admin-layout.md",
+      "sha256": "73db31807c5ca895fc6a4ab03ffeeaca2f0af9f251f78c72771dbb7a07abc7b2",
+      "codecSha256": "73db31807c5ca895fc6a4ab03ffeeaca2f0af9f251f78c72771dbb7a07abc7b2",
+      "codecExact": true
+    },
+    {
+      "file": "200.md",
+      "commit": "d7f445bb5589b63ed13cf73ac3053df5cf648f9b",
+      "path": "docs/design-system/screens/README.md",
+      "sha256": "7ac7ef7c03336ff4c82589b4ab38a5dfb4d753570fd0e3b803c82ead0feefa49",
+      "codecSha256": "5a27c5330f9c30cb180f862832bac6b77e16cab032b40c5f97f0990f1bb64fcc",
+      "codecExact": false
+    }
+  ],
+  "codecAudit": {
+    "exact": 191,
+    "total": 200,
+    "normalized": 200,
+    "limitation": "MarkdownCodec.serialize calls joinBlocks, normalizing block separators, trailing whitespace and final newline. T004 records this existing behavior; editor changes belong to T018."
+  }
+}
