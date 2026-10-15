@@ -57,6 +57,10 @@ fn main() {
         "update_status",
         "check_updates_now",
         "relaunch_to_update",
+        "artifact_cache_put",
+        "artifact_cache_get",
+        "artifact_cache_list",
+        "artifact_cache_clear",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");
