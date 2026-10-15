@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, queryClient } from "@/lib/hub-query.tsx";
 import { setLang } from "@/lib/i18n.ts";
 import { ReviewsScreen } from "@/screens/reviews-screen.tsx";
@@ -320,4 +320,110 @@ describe("ReviewsScreen", () => {
     expect((screen.getByRole("button", { name: "Duyệt" }) as HTMLButtonElement).disabled).toBe(true);
     view.unmount();
   });
+});
+
+it("bình luận PR qua Rust: tải, thêm, trả lời, sửa/xoá và đóng/mở luồng", async () => {
+  location.hash = `#/reviews/code/${codeId}`;
+  const comment = {
+    id: "comment-1",
+    threadId: "thread-1",
+    authorId: "u1",
+    authorName: "Duy",
+    body: "Cần kiểm biên",
+    origin: "hive",
+    externalAuthor: null,
+    createdAt: at,
+    editedAt: null,
+    deletedAt: null as string | null,
+  };
+  const thread = {
+    id: "thread-1",
+    path: "src/a.ts",
+    line: 1,
+    side: "new",
+    headSha: head,
+    outdated: false,
+    resolved: false,
+    resolvedAt: null,
+    resolvedBy: null,
+    comments: [comment],
+  };
+  const interval = vi.spyOn(globalThis, "setInterval");
+  const calls = fakeHub({
+    "me/get": { id: "u1", name: "Duy", email: "duy@example.com", image: null },
+    "codeReviews/get": codeDetail(),
+    "codeReviews/files": {
+      headSha: head,
+      truncated: false,
+      files: [
+        {
+          path: "src/a.ts",
+          previousPath: null,
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          patch: "@@ -1 +1 @@\n-old\n+new",
+          truncated: false,
+        },
+      ],
+    },
+    "codeReviews/comments/list": () => ({ threads: [thread] }),
+    "codeReviews/comments/add": thread,
+    "codeReviews/comments/reply": comment,
+    "codeReviews/comments/edit": comment,
+    "codeReviews/comments/delete": () => {
+      comment.deletedAt = at;
+      return { ok: true };
+    },
+    "codeReviews/comments/resolve": () => {
+      thread.resolved = true;
+      return thread;
+    },
+    "codeReviews/comments/reopen": () => {
+      thread.resolved = false;
+      return thread;
+    },
+  });
+  render(<ReviewsScreen />);
+  const user = userEvent.setup({ delay: null });
+  expect(await screen.findByText("Cần kiểm biên")).toBeTruthy();
+  expect(calls.find((call) => call.path === "codeReviews/comments/list")?.query).toContain(codeId);
+  expect(interval.mock.calls.some((call) => call[1] === 30_000)).toBe(true);
+  interval.mockRestore();
+  await user.click(screen.getByRole("button", { name: "Bình luận dòng 1 (cũ)" }));
+  const boxes = screen.getAllByRole("textbox");
+  await user.type(boxes[0]!, "Thêm ở dòng cũ");
+  await user.click(screen.getByRole("button", { name: "Thêm bình luận" }));
+  await waitFor(() =>
+    expect(calls.find((call) => call.path.endsWith("comments/add"))?.body).toEqual({
+      json: {
+        reviewId: codeId,
+        path: "src/a.ts",
+        line: 1,
+        side: "old",
+        headSha: head,
+        body: "Thêm ở dòng cũ",
+      },
+    }),
+  );
+  await user.type(screen.getByLabelText("Nội dung bình luận"), "Đã thêm test");
+  await user.click(screen.getByRole("button", { name: "Trả lời" }));
+  await user.click(screen.getByRole("button", { name: "Sửa bình luận" }));
+  await user.clear(screen.getAllByRole("textbox")[0]!);
+  await user.type(screen.getAllByRole("textbox")[0]!, "Đã sửa");
+  await user.click(screen.getByRole("button", { name: "Lưu bình luận" }));
+  await user.click(screen.getByRole("button", { name: "Đánh dấu đã xử lý" }));
+  await user.click(await screen.findByRole("button", { name: "Mở lại luồng" }));
+  await user.click(screen.getByRole("button", { name: "Xoá bình luận" }));
+  expect(await screen.findByText("Bình luận đã bị xoá")).toBeTruthy();
+  for (const [kind, input] of [
+    ["reply", { threadId: thread.id, body: "Đã thêm test" }],
+    ["edit", { commentId: comment.id, body: "Đã sửa" }],
+    ["delete", { commentId: comment.id }],
+    ["resolve", { threadId: thread.id }],
+    ["reopen", { threadId: thread.id }],
+  ] as const) {
+    expect(calls.find((call) => call.path === `codeReviews/comments/${kind}`)?.body).toEqual({ json: input });
+  }
+  expect(calls.filter((call) => call.path === "codeReviews/comments/list").length).toBeGreaterThanOrEqual(7);
 });
