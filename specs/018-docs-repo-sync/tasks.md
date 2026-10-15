@@ -241,7 +241,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/platform/{config.ts,config.test.ts,index.ts}`
   - **Kiểm**: hub test (`platform`), typecheck, `pnpm deps`.
 
-- [ ] **T008 [P] [US2] [nặng] · 2 ngày — `knowledge`: hook lưu, lưu từ đồng bộ, lưu trữ, chặn bí mật khi lưu**
+- [x] **T008 [P] [US2] [nặng] · 2 ngày — `knowledge`: hook lưu, lưu từ đồng bộ, lưu trữ, chặn bí mật khi lưu**
   - **Phụ thuộc**: T003, T005.
   - **Goal**: FR-012, FR-024 (lưu trữ), plan.md mục 5, 11.
     - `provideDocSaved(hook)`; `applyDocSave` gọi hook trong transaction với `{orgId, docId, key, version, source}`.
