@@ -143,7 +143,7 @@ describe("dòng Claude Desktop của gói", { timeout: 20_000 }, () => {
     render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p])} onChanged={() => {}} />);
     expect(screen.getByText("Đang dùng")).toBeTruthy();
     expect(screen.queryByRole("button", { name: SWITCH })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Quên đăng nhập đã lưu" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Quên đăng nhập" })).toBeNull();
     // Claude Desktop đang chạy thì không cần nút mở.
     expect(screen.queryByRole("button", { name: "Mở Claude Desktop" })).toBeNull();
   });
@@ -189,12 +189,50 @@ describe("dòng Claude Desktop của gói", { timeout: 20_000 }, () => {
     });
     const p = profile();
     render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p])} onChanged={() => {}} />);
-    await user().click(screen.getByRole("button", { name: "Quên đăng nhập đã lưu" }));
+    await user().click(screen.getByRole("button", { name: "Quên đăng nhập" }));
     const dialog = await screen.findByRole("dialog");
     expect(named(calls, "forget_claude_desktop")).toEqual([]);
-    await user().click(within(dialog).getByRole("button", { name: "Quên đăng nhập đã lưu" }));
+    await user().click(within(dialog).getByRole("button", { name: "Quên đăng nhập" }));
     expect(named(calls, "forget_claude_desktop")).toEqual([{ profileId: "claude-2" }]);
     expect((await screen.findByRole("status")).textContent).toContain("chuyển sang gói khác trước");
+  });
+
+  it("gói đang dùng: đăng xuất Claude Desktop phải xác nhận, app không thoát thì hỏi buộc thoát", async () => {
+    let n = 0;
+    const calls = fakeTauri({
+      sign_out_claude_desktop: () =>
+        n++ === 0 ? switched({ status: "stillRunning", needsLogin: true }) : switched({ needsLogin: true }),
+    });
+    const onChanged = vi.fn();
+    const p = profile({ active: true });
+    render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p])} onChanged={onChanged} />);
+    expect(screen.queryByRole("button", { name: "Quên đăng nhập" })).toBeNull();
+    await user().click(screen.getByRole("button", { name: "Đăng xuất Claude Desktop" }));
+    const dialog = await screen.findByRole("dialog", { name: "Đăng xuất Claude Desktop?" });
+    expect(dialog.textContent).toContain("mở lại ở màn đăng nhập");
+    expect(dialog.textContent).toContain("gói khác không bị đụng tới");
+    expect(named(calls, "sign_out_claude_desktop")).toEqual([]);
+    await user().click(within(dialog).getByRole("button", { name: "Đăng xuất" }));
+    const force = await screen.findByRole("dialog", { name: "Claude Desktop chưa thoát" });
+    await user().click(within(force).getByRole("button", { name: "Buộc thoát và đăng xuất" }));
+    expect(named(calls, "sign_out_claude_desktop")).toEqual([
+      { profileId: "claude-2", force: false },
+      { profileId: "claude-2", force: true },
+    ]);
+    expect((await screen.findByRole("status")).textContent).toContain("Đã đăng xuất Claude Desktop khỏi Gói phụ");
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("huỷ hộp xác nhận thì không đăng xuất; gói đang dùng chưa đăng nhập thì không có nút", async () => {
+    const calls = fakeTauri({});
+    const p = profile({ active: true });
+    const { rerender } = render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p])} onChanged={() => {}} />);
+    await user().click(screen.getByRole("button", { name: "Đăng xuất Claude Desktop" }));
+    await user().click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Huỷ" }));
+    expect(named(calls, "sign_out_claude_desktop")).toEqual([]);
+    const out = profile({ active: true, saved: false });
+    rerender(<ClaudeDesktopRow plan="Gói phụ" profile={out} view={views([out])} onChanged={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Đăng xuất Claude Desktop" })).toBeNull();
   });
 
   it("đang chuyển: hiện từng bước và phần trăm sao lưu; Huỷ thì trả lại đăng nhập cũ", async () => {

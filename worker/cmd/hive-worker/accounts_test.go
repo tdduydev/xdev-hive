@@ -204,3 +204,60 @@ func TestAccountsCommandDiscover(t *testing.T) {
 		t.Fatalf("không có đăng nhập: %d %q", code, errOut)
 	}
 }
+
+// Đăng xuất một gói Codex: PATH rỗng nên không chạy codex thật mà xoá auth.json; danh sách trả về cho app thấy loggedIn false.
+func TestAccountsCommandLogout(t *testing.T) {
+	home, config := fakeAccountsHome(t)
+	t.Setenv("PATH", t.TempDir())
+	dir := filepath.Join(home, ".xdev-hive", "accounts", "codex-1")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	auth := filepath.Join(dir, "auth.json")
+	if err := os.WriteFile(auth, []byte(`{"OPENAI_API_KEY":"sk-bimat"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	accountsFile := filepath.Join(filepath.Dir(config), "accounts.json")
+	body := `{"accounts":[{"id":"codex-1","label":"Codex","cli":"codex","configDir":"~/.xdev-hive/accounts/codex-1","enabled":true},{"id":"antigravity-1","label":"Agy","cli":"antigravity","enabled":true}]}`
+	if err := os.WriteFile(accountsFile, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	type view struct {
+		Accounts []struct {
+			ID       string `json:"id"`
+			LoggedIn *bool  `json:"loggedIn"`
+		} `json:"accounts"`
+	}
+	read := func(out string) view {
+		var v view
+		if err := json.Unmarshal([]byte(out), &v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	code, out, _ := runAccounts(t, config, "list", "--json")
+	if v := read(out); code != 0 || v.Accounts[0].LoggedIn == nil || !*v.Accounts[0].LoggedIn {
+		t.Fatalf("trước đăng xuất phải đã đăng nhập: %d %s", code, out)
+	}
+
+	code, out, errOut := runAccounts(t, config, "logout", "--id", "codex-1", "--json")
+	if code != 0 {
+		t.Fatalf("logout mã %d: %s", code, errOut)
+	}
+	if v := read(out); len(v.Accounts) != 2 || v.Accounts[0].LoggedIn == nil || *v.Accounts[0].LoggedIn {
+		t.Fatalf("sau đăng xuất loggedIn phải false: %s", out)
+	}
+	if _, err := os.Stat(auth); !os.IsNotExist(err) {
+		t.Fatalf("auth.json còn: %v", err)
+	}
+
+	if code, _, errOut = runAccounts(t, config, "logout"); code != 2 || !strings.Contains(errOut, "logout --id ID") {
+		t.Fatalf("thiếu --id: %d %q", code, errOut)
+	}
+	if code, _, errOut = runAccounts(t, config, "logout", "--id", "khong-co"); code != 1 || !strings.Contains(errOut, `không có tài khoản "khong-co"`) {
+		t.Fatalf("id lạ: %d %q", code, errOut)
+	}
+	if code, _, errOut = runAccounts(t, config, "logout", "--id", "antigravity-1"); code != 1 || !strings.Contains(errOut, "Chưa hỗ trợ đăng xuất cho CLI này.") {
+		t.Fatalf("CLI chưa hỗ trợ: %d %q", code, errOut)
+	}
+}

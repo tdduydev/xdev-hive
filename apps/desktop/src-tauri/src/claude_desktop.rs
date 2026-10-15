@@ -859,6 +859,64 @@ fn swap_auth(
     write_state(paths, state)
 }
 
+const NOT_ACTIVE: &str =
+    "Gói này không phải gói đang dùng Claude Desktop; dùng Quên đăng nhập cho gói không dùng.";
+
+/// Đăng xuất Claude Desktop khỏi gói đang dùng `id`: xoá bộ xác thực đã lưu của gói và phần xác thực trong hồ sơ thật
+/// (Cookies, token, `lastKnownAccountUuid`), giữ mọi thứ khác. Claude Desktop phải đã thoát. Hồ sơ đang đăng nhập tài
+/// khoản của gói khác thì lưu cho gói đó trước. Huỷ được tới lúc xoá bộ của gói; ghi hồ sơ hỏng thì lấy lại đăng nhập cũ.
+fn sign_out_auth(
+    paths: &Paths,
+    state: &mut State,
+    id: &str,
+    owners: &[Owner],
+    now: SystemTime,
+    ctl: &Ctl,
+) -> Result<(), String> {
+    let bundle = paths.bundle(id)?;
+    if state.active.as_deref() != Some(id) {
+        return Err(NOT_ACTIVE.into());
+    }
+    ensure_backup(paths, state, now, ctl)?;
+    ctl.check()?;
+    ctl.step(Step::Swapping);
+    std::fs::create_dir_all(&paths.real)
+        .map_err(|e| format!("Không tạo được hồ sơ Claude Desktop: {e}"))?;
+    let files = paths.auth_files();
+    save_auth(&paths.real, &paths.previous(), files)?;
+    let account = account_of(paths, &paths.real);
+    if let Some(other) = login_home(owners, account.as_deref(), Some(id)).filter(|o| o != id) {
+        save_auth(&paths.real, &paths.bundle(&other)?, files)?;
+    }
+    ctl.check()?;
+    remove_entry(&bundle).map_err(|e| format!("Không xoá được đăng nhập đã lưu: {e}"))?;
+    // Bộ vừa xoá không còn nên nạp nó là gỡ phần xác thực khỏi hồ sơ.
+    if let Err(e) = load_auth(&bundle, &paths.real, files) {
+        let _ = load_auth(&paths.previous(), &paths.real, files);
+        return Err(e);
+    }
+    // `.previous` giữ đúng đăng nhập vừa bỏ: để lại thì `reconcile` dựng lại bộ của gói từ nó.
+    let _ = remove_entry(&paths.previous());
+    state.mismatch = None;
+    write_state(paths, state)
+}
+
+/// Quên đăng nhập đã lưu của gói không dùng `id`.
+fn forget_bundle(paths: &Paths, id: &str) -> Result<(), String> {
+    let bundle = paths.bundle(id)?;
+    if read_state(paths).active.as_deref() == Some(id) {
+        return Err("Gói này đang dùng Claude Desktop; dùng Đăng xuất Claude Desktop.".into());
+    }
+    let account = account_of(paths, &bundle);
+    remove_entry(&bundle).map_err(|e| format!("Không xoá được đăng nhập đã lưu: {e}"))?;
+    // Đăng nhập trước lần chuyển gần nhất là của gói này thì `reconcile` sẽ dựng lại bộ vừa quên từ `.previous`.
+    if account.is_some() && account_of(paths, &paths.previous()) == account {
+        remove_entry(&paths.previous())
+            .map_err(|e| format!("Không xoá được đăng nhập đã lưu: {e}"))?;
+    }
+    Ok(())
+}
+
 /// Thư mục gói còn dạng hồ sơ riêng `--user-data-dir` của bản trước: có file Chromium nằm thẳng trong đó.
 fn legacy_profiles(root: &Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(root) else {
@@ -1223,6 +1281,50 @@ fn switch_blocking(
     })
 }
 
+/// Đăng xuất Claude Desktop khỏi gói đang dùng: thoát app, gỡ đăng nhập, mở lại ở màn đăng nhập. Như lần chuyển, mọi
+/// bước có hạn, Huỷ được, và đã thoát app thì luôn mở lại.
+fn sign_out_blocking(
+    home: &Path,
+    id: &str,
+    owners: &[Owner],
+    force: bool,
+    ctl: &Ctl,
+) -> Result<Switched, String> {
+    let _guard = job::lock(&SWITCHING);
+    let os = CURRENT.ok_or(UNSUPPORTED)?;
+    let app = os.find_app(home).ok_or(os.not_installed())?;
+    let paths = Paths::current(home);
+    let mut state = read_state(&paths);
+    // Kiểm trước khi thoát app, như lần chuyển.
+    if state.active.as_deref() != Some(id) {
+        return Err(NOT_ACTIVE.into());
+    }
+    ctl.check()?;
+    match os.quit(home, force, ctl) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(Switched {
+                status: SwitchStatus::StillRunning,
+                needs_login: true,
+            });
+        }
+        Err(e) => {
+            if os.running(home).real.is_empty() {
+                let _ = os.launch(&app);
+            }
+            return Err(e);
+        }
+    }
+    let done = sign_out_auth(&paths, &mut state, id, owners, SystemTime::now(), ctl);
+    ctl.step(Step::Launching);
+    os.launch(&app)?;
+    done?;
+    Ok(Switched {
+        status: SwitchStatus::Switched,
+        needs_login: true,
+    })
+}
+
 /// Chạy một lần chuyển trên luồng chặn, giữ chỗ "đang chuyển" tới khi xong. Lỗi được ghi lại cho chẩn đoán.
 async fn run_switch(
     busy: job::Busy,
@@ -1231,9 +1333,20 @@ async fn run_switch(
     owners: Vec<Owner>,
     force: bool,
 ) -> Result<Switched, String> {
+    run_job(busy, move |ctl| {
+        switch_blocking(&home, target.as_deref(), &owners, force, ctl)
+    })
+    .await
+}
+
+/// Chạy `work` (chuyển, khôi phục, đăng xuất) trên luồng chặn, giữ chỗ "đang chuyển" tới khi xong.
+async fn run_job(
+    busy: job::Busy,
+    work: impl FnOnce(&Ctl) -> Result<Switched, String> + Send + 'static,
+) -> Result<Switched, String> {
     let done = tauri::async_runtime::spawn_blocking(move || {
         let _busy = busy;
-        switch_blocking(&home, target.as_deref(), &owners, force, &Ctl::job())
+        work(&Ctl::job())
     })
     .await
     .map_err(|e| format!("Lần chuyển Claude Desktop dừng giữa chừng: {e}"))
@@ -1283,6 +1396,33 @@ pub async fn restore_claude_desktop(app: AppHandle, force: bool) -> Result<Switc
     // Không đọc được danh sách gói thì vẫn khôi phục được: đăng nhập hiện tại lưu vào gói đang dùng như trước.
     let owners = owners(&home, &claude_plans(&app).await.unwrap_or_default());
     let done = run_switch(busy, home, None, owners, force).await;
+    let _ = load(&app).await;
+    done
+}
+
+/// Đăng xuất Claude Desktop khỏi gói đang dùng; app mở lại ở màn đăng nhập. Gói vẫn là gói đang dùng, nên lần đăng nhập
+/// sau được lưu cho gói.
+#[tauri::command]
+pub async fn sign_out_claude_desktop(
+    app: AppHandle,
+    profile_id: String,
+    force: bool,
+) -> Result<Switched, String> {
+    if !SUPPORTED {
+        return Err(UNSUPPORTED.into());
+    }
+    let id = profile_id.trim().to_string();
+    let busy = job::begin(Some(&id))?;
+    let plans = claude_plans(&app).await?;
+    if !plans.iter().any(|p| p.id == id && p.cli == "claude") {
+        return Err(format!("Không có gói Claude {id}."));
+    }
+    let home = need_home()?;
+    let owners = owners(&home, &plans);
+    let done = run_job(busy, move |ctl| {
+        sign_out_blocking(&home, &id, &owners, force, ctl)
+    })
+    .await;
     let _ = load(&app).await;
     done
 }
@@ -1360,13 +1500,7 @@ pub async fn forget_claude_desktop(
 ) -> Result<ProfilesView, String> {
     let home = need_home()?;
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let paths = Paths::current(&home);
-        let id = profile_id.trim();
-        let bundle = paths.bundle(id)?;
-        if read_state(&paths).active.as_deref() == Some(id) {
-            return Err("Gói này đang dùng Claude Desktop; chuyển sang gói khác trước.".into());
-        }
-        remove_entry(&bundle).map_err(|e| format!("Không xoá được đăng nhập đã lưu: {e}"))
+        forget_bundle(&Paths::current(&home), profile_id.trim())
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -2471,6 +2605,160 @@ mod tests {
                     plan: None,
                 })
             );
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    fn sign_out(
+        paths: &Paths,
+        state: &mut State,
+        id: &str,
+        owners: &[Owner],
+    ) -> Result<(), String> {
+        sign_out_auth(paths, state, id, owners, UNIX_EPOCH + T0, &Ctl::idle())
+    }
+
+    #[test]
+    fn signing_out_removes_only_the_login_of_the_plan_in_use() {
+        for (home, paths) in layouts("signout") {
+            fake_profile(&paths, &paths.real, "a");
+            let before = shared(&paths.real);
+            let other = home.join("other");
+            fake_profile(&paths, &other, "b");
+            let (c1, c2) = (
+                paths.bundle("claude-1").unwrap(),
+                paths.bundle("claude-2").unwrap(),
+            );
+            save_auth(&paths.real, &c1, paths.auth_files()).unwrap();
+            save_auth(&other, &c2, paths.auth_files()).unwrap();
+            let mut state = State {
+                active: Some("claude-1".into()),
+                ..State::default()
+            };
+
+            sign_out(&paths, &mut state, "claude-1", &abc()).unwrap();
+            for f in paths.auth_files() {
+                assert!(!at(&paths.real, f).exists(), "{f}");
+            }
+            let config = json(&paths.real.join(CONFIG));
+            for k in AUTH_KEYS {
+                assert!(config.get(k).is_none(), "{k}");
+            }
+            assert_eq!(shared(&paths.real), before, "mọi thứ khác giữ nguyên");
+            assert_eq!(account_of(&paths, &paths.real), None);
+            assert!(!c1.exists(), "bộ đã lưu của gói bị xoá");
+            assert_eq!(
+                read(&cookies(&paths, &c2)),
+                "cookies-b",
+                "gói khác không bị đụng"
+            );
+            assert_eq!(read_state(&paths).active.as_deref(), Some("claude-1"));
+            assert!(state.backup.is_some(), "sao lưu trước lần ghi đầu");
+
+            // Đăng nhập cũ không quay lại qua `.previous`.
+            assert!(reconcile(&paths, &abc(), false).unwrap());
+            assert!(!c1.exists());
+            // Lần đăng nhập sau trong app được lưu cho gói đang dùng.
+            sign_in(&paths, &paths.real, "a");
+            reconcile(&paths, &abc(), false).unwrap();
+            assert_eq!(read(&cookies(&paths, &c1)), "cookies-a");
+            no_temp_files(&paths.root);
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn signing_out_keeps_another_plans_login_and_refuses_plans_not_in_use() {
+        for (home, paths) in layouts("signout-other") {
+            // Hồ sơ đang đăng nhập tài khoản của claude-2 dù gói đang dùng là claude-1.
+            fake_profile(&paths, &paths.real, "b");
+            let mut state = State {
+                active: Some("claude-1".into()),
+                ..State::default()
+            };
+            assert_eq!(
+                sign_out(&paths, &mut state, "claude-2", &abc()).unwrap_err(),
+                NOT_ACTIVE
+            );
+            assert_eq!(account(&paths, &paths.real).0, "cookies-b", "chưa đổi gì");
+
+            sign_out(&paths, &mut state, "claude-1", &abc()).unwrap();
+            assert_eq!(account_of(&paths, &paths.real), None);
+            let c2 = paths.bundle("claude-2").unwrap();
+            assert_eq!(read(&cookies(&paths, &c2)), "cookies-b");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn cancelled_sign_out_keeps_the_login() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for (home, paths) in layouts("signout-cancel") {
+            fake_profile(&paths, &paths.real, "a");
+            let c1 = paths.bundle("claude-1").unwrap();
+            save_auth(&paths.real, &c1, paths.auth_files()).unwrap();
+            let cancel = AtomicBool::new(false);
+            let report = |s: Step, _: Option<u8>| {
+                if s == Step::Swapping {
+                    cancel.store(true, Ordering::SeqCst);
+                }
+            };
+            let mut state = State {
+                active: Some("claude-1".into()),
+                ..State::default()
+            };
+            let err = sign_out_auth(
+                &paths,
+                &mut state,
+                "claude-1",
+                &abc(),
+                UNIX_EPOCH + T0,
+                &Ctl::new(&cancel, &report),
+            )
+            .unwrap_err();
+            assert_eq!(err, job::CANCELLED);
+            assert_eq!(account(&paths, &paths.real).0, "cookies-a");
+            assert_eq!(read(&cookies(&paths, &c1)), "cookies-a");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn forgotten_login_does_not_come_back_from_previous() {
+        for (home, paths) in layouts("forget") {
+            fake_profile(&paths, &paths.real, "a");
+            let other = home.join("other");
+            fake_profile(&paths, &other, "b");
+            save_auth(
+                &other,
+                &paths.bundle("claude-2").unwrap(),
+                paths.auth_files(),
+            )
+            .unwrap();
+            let mut state = State {
+                active: Some("claude-1".into()),
+                ..State::default()
+            };
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-2"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            let c1 = paths.bundle("claude-1").unwrap();
+            assert!(paths.has_login(&c1));
+            assert!(
+                forget_bundle(&paths, "claude-2").is_err(),
+                "gói đang dùng thì đăng xuất"
+            );
+
+            forget_bundle(&paths, "claude-1").unwrap();
+            assert!(!c1.exists());
+            reconcile(&paths, &abc(), false).unwrap();
+            assert!(!c1.exists(), "`.previous` không dựng lại bộ vừa quên");
+            assert_eq!(account(&paths, &paths.real).0, "cookies-b");
             std::fs::remove_dir_all(&home).unwrap();
         }
     }

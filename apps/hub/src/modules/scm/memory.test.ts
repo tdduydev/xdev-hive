@@ -4,6 +4,37 @@ import { createMemoryProvider } from "./memory.ts";
 const ref = { owner: "xdev-team", name: "web" };
 
 describe("memory provider: prFiles và setCommitStatus", () => {
+  it("đọc blob, so sánh commit, tải archive và nhận yêu cầu LFS", async () => {
+    const scm = createMemoryProvider();
+    scm.seedRepo(ref, { files: { "a.txt": "cũ" } });
+    const before = await scm.branchHead(ref, "main");
+    const { sha } = await scm.commitFiles(ref, {
+      branch: "main",
+      message: "update",
+      files: [{ path: "a.txt", content: "mới" }],
+    });
+    expect(new TextDecoder().decode(await scm.readBlob(ref, "mới"))).toBe("mới");
+    expect(await scm.compare(ref, before!, sha)).toMatchObject({
+      files: [{ path: "a.txt", status: "modified" }],
+      incomplete: false,
+    });
+    expect(await new Response(await scm.archive(ref, sha)).text()).toContain("mới");
+    expect(await scm.lfsBatch(ref, "upload", [{ oid: "sha256:abc", size: 3 }])).toMatchObject({
+      objects: [{ oid: "sha256:abc" }],
+    });
+  });
+
+  it("mô phỏng cây bị cắt, compare chưa đầy đủ và nhánh bị bảo vệ", async () => {
+    const scm = createMemoryProvider();
+    scm.seedRepo(ref, { files: { "a.txt": "a", "b.txt": "b" }, truncated: true, incomplete: true });
+    const head = await scm.branchHead(ref, "main");
+    expect(await scm.listFiles(ref, head!)).toHaveLength(1);
+    expect((await scm.compare(ref, head!, head!)).incomplete).toBe(true);
+    await scm.protectBranch(ref, "main", { requirePullRequest: true, requiredApprovals: 1, allowForcePush: false });
+    await expect(
+      scm.commitFiles(ref, { branch: "main", message: "x", files: [{ path: "c.txt", content: "c" }] }),
+    ).rejects.toMatchObject({ code: "forbidden", status: 403 });
+  });
   it("giữ luồng bình luận theo dòng và hỗ trợ sửa, xoá, resolve", async () => {
     const scm = createMemoryProvider();
     scm.seedRepo(ref);
