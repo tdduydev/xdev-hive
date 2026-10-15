@@ -30,6 +30,8 @@ import type {
   RepoInfo,
   RepoRef,
   RepoVisibility,
+  ReviewComment,
+  ReviewCommentInput,
   ScmUser,
   WebhookInput,
 } from "./types.ts";
@@ -432,6 +434,165 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
         { body },
       );
       return { id: String(note.id) };
+    },
+
+    async listReviewComments(ref: RepoRef, number: number): Promise<ReviewComment[]> {
+      const discussions = await rest<
+        Array<{
+          id: string;
+          notes: Array<{
+            id: number;
+            body: string;
+            author?: { username?: string };
+            web_url?: string;
+            updated_at?: string;
+            position?: { new_path?: string; new_line?: number; old_path?: string; old_line?: number };
+            resolved?: boolean;
+          }>;
+        }>
+      >("GET", `${mrPath(ref, number)}/discussions?per_page=100`);
+      return discussions.flatMap((d) =>
+        d.notes.map((n) => ({
+          id: String(n.id),
+          threadId: d.id,
+          path: n.position?.new_path ?? n.position?.old_path ?? "",
+          line: n.position?.new_line ?? n.position?.old_line ?? 1,
+          side: n.position?.new_line ? "RIGHT" : "LEFT",
+          commitSha: "",
+          body: n.body,
+          author: n.author?.username ?? null,
+          url: n.web_url ?? null,
+          updatedAt: n.updated_at ?? new Date(0).toISOString(),
+          resolved: n.resolved ?? false,
+          inReplyToId: n.id === d.notes[0]?.id ? null : String(d.notes[0]?.id ?? ""),
+        })),
+      );
+    },
+    async createReviewComment(ref: RepoRef, number: number, input: ReviewCommentInput): Promise<ReviewComment> {
+      try {
+        const versions = await rest<
+          Array<{ head_commit_sha: string; base_commit_sha: string; start_commit_sha: string }>
+        >("GET", `${mrPath(ref, number)}/versions?per_page=100`);
+        const version = versions.find((v) => v.head_commit_sha === input.commitSha);
+        if (!version)
+          throw new GitProviderError("position_invalid", "GitLab: không tìm thấy phiên bản diff của commit PR", {
+            status: 400,
+          });
+        const d = await rest<{
+          id: string;
+          notes: Array<{
+            id: number;
+            body: string;
+            author?: { username?: string };
+            web_url?: string;
+            updated_at?: string;
+          }>;
+        }>("POST", `${mrPath(ref, number)}/discussions`, {
+          body: input.body,
+          position: {
+            position_type: "text",
+            base_sha: version.base_commit_sha,
+            start_sha: version.start_commit_sha,
+            head_sha: version.head_commit_sha,
+            old_path: input.path,
+            new_path: input.path,
+            ...(input.side === "LEFT" ? { old_line: input.line } : { new_line: input.line }),
+          },
+        });
+        const n = d.notes[0];
+        if (!n) throw new GitProviderError("invalid", "GitLab không trả bình luận vừa tạo");
+        return {
+          id: String(n.id),
+          threadId: d.id,
+          path: input.path,
+          line: input.line,
+          side: input.side,
+          commitSha: input.commitSha,
+          body: n.body,
+          author: n.author?.username ?? null,
+          url: n.web_url ?? null,
+          updatedAt: n.updated_at ?? new Date().toISOString(),
+          resolved: false,
+          inReplyToId: null,
+        };
+      } catch (e) {
+        if (isGitProviderError(e, "invalid") && e.status === 400)
+          throw new GitProviderError("position_invalid", "GitLab: vị trí bình luận không thuộc diff của PR", {
+            status: 400,
+            cause: e,
+          });
+        throw e;
+      }
+    },
+    async replyReviewComment(ref: RepoRef, number: number, threadId: string, body: string): Promise<ReviewComment> {
+      const n = await rest<{ id: number; body: string; author?: { username?: string }; updated_at?: string }>(
+        "POST",
+        `${mrPath(ref, number)}/discussions/${encodeURIComponent(threadId)}/notes`,
+        { body },
+      );
+      return {
+        id: String(n.id),
+        threadId,
+        path: "",
+        line: 1,
+        side: "RIGHT",
+        commitSha: "",
+        body: n.body,
+        author: n.author?.username ?? null,
+        url: null,
+        updatedAt: n.updated_at ?? new Date().toISOString(),
+        resolved: false,
+        inReplyToId: threadId,
+      };
+    },
+    async editReviewComment(ref: RepoRef, number: number, commentId: string, body: string): Promise<ReviewComment> {
+      const discussions = await rest<
+        Array<{
+          id: string;
+          notes: Array<{
+            id: number;
+            body: string;
+            author?: { username?: string };
+            updated_at?: string;
+            position?: { new_path?: string; new_line?: number; old_line?: number };
+            resolved?: boolean;
+          }>;
+        }>
+      >("GET", `${mrPath(ref, number)}/discussions?per_page=100`);
+      const found = discussions.find((d) => d.notes.some((n) => String(n.id) === commentId));
+      if (!found) throw new GitProviderError("not_found", "GitLab: không tìm thấy bình luận");
+      const n = await rest<{ id: number; body: string; author?: { username?: string }; updated_at?: string }>(
+        "PUT",
+        `${mrPath(ref, number)}/discussions/${encodeURIComponent(found.id)}/notes/${commentId}`,
+        { body },
+      );
+      const previous = found.notes.find((item) => String(item.id) === commentId)!;
+      return {
+        id: String(n.id),
+        threadId: found.id,
+        path: previous.position?.new_path ?? "",
+        line: previous.position?.new_line ?? previous.position?.old_line ?? 1,
+        side: previous.position?.new_line ? "RIGHT" : "LEFT",
+        commitSha: "",
+        body: n.body,
+        author: n.author?.username ?? null,
+        url: null,
+        updatedAt: n.updated_at ?? new Date().toISOString(),
+        resolved: previous.resolved ?? false,
+        inReplyToId: null,
+      };
+    },
+    async deleteReviewComment(ref: RepoRef, number: number, commentId: string) {
+      const discussions = await rest<Array<{ id: string; notes: Array<{ id: number }> }>>(
+        "GET",
+        `${mrPath(ref, number)}/discussions?per_page=100`,
+      );
+      const found = discussions.find((d) => d.notes.some((n) => String(n.id) === commentId));
+      if (!found) throw new GitProviderError("not_found", "GitLab: không tìm thấy bình luận");
+      await rest("DELETE", `${mrPath(ref, number)}/discussions/${encodeURIComponent(found.id)}/notes/${commentId}`);
+    },
+    async setReviewThreadResolved(ref: RepoRef, number: number, threadId: string, resolved: boolean) {
+      await rest("PUT", `${mrPath(ref, number)}/discussions/${encodeURIComponent(threadId)}?resolved=${resolved}`);
     },
 
     async canPush(ref: RepoRef, user: ScmUser) {

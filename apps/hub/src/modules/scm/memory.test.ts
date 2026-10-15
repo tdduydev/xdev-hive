@@ -4,6 +4,29 @@ import { createMemoryProvider } from "./memory.ts";
 const ref = { owner: "xdev-team", name: "web" };
 
 describe("memory provider: prFiles và setCommitStatus", () => {
+  it("giữ luồng bình luận theo dòng và hỗ trợ sửa, xoá, resolve", async () => {
+    const scm = createMemoryProvider();
+    scm.seedRepo(ref);
+    const pr = await scm.openPR(ref, { head: "feature", base: "main", title: "T", body: "" });
+    const created = await scm.createReviewComment(ref, pr.number, {
+      path: "src/a.ts",
+      line: 4,
+      side: "RIGHT",
+      commitSha: "sha1",
+      body: "Cần sửa",
+    });
+    const reply = await scm.replyReviewComment(ref, pr.number, created.threadId, "Đã sửa");
+    expect(reply.inReplyToId).toBe(created.id);
+    await scm.editReviewComment(ref, pr.number, reply.id, "Đã sửa xong");
+    await scm.setReviewThreadResolved(ref, pr.number, created.threadId, true);
+    expect(await scm.listReviewComments(ref, pr.number)).toMatchObject([
+      { id: created.id, resolved: true },
+      { id: reply.id, body: "Đã sửa xong", resolved: true },
+    ]);
+    await scm.deleteReviewComment(ref, pr.number, reply.id);
+    expect(await scm.listReviewComments(ref, pr.number)).toHaveLength(1);
+  });
+
   it("suy file đổi từ nhánh head và base, hoặc dùng danh sách đặt tay", async () => {
     const scm = createMemoryProvider();
     scm.seedRepo(ref, { files: { "a.txt": "một\nhai\n", "gone.txt": "bye\n" } });
