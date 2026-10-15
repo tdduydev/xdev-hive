@@ -19,6 +19,7 @@ import {
 
 const hive = pgSchema("hive");
 const hiveApp = pgRole("hive_app").existing();
+const hiveOwner = pgRole("hive_owner").existing();
 const inOrg = sql`org_id = hive.ctx_org()`;
 const orgScoped = (name: string) => pgPolicy(`${name}_rw`, { for: "all", to: hiveApp, using: inOrg, withCheck: inOrg });
 const identity = () => ({ id: uuid("id").primaryKey().defaultRandom(), orgId: uuid("org_id").notNull() });
@@ -74,6 +75,8 @@ export const docHomes = hive
       orgScoped("doc_homes"),
       // Webhook đến không có phiên nên chưa biết tổ chức; xem ctx_webhook_doc_home trong migration.
       pgPolicy("doc_homes_webhook", { for: "select", to: hiveApp, using: sql`id = hive.ctx_webhook_doc_home()` }),
+      // hive.docsync_active_orgs (SECURITY DEFINER, chạy bằng hive_owner) tìm tổ chức có nhà cần kéo theo cron.
+      pgPolicy("doc_homes_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();
