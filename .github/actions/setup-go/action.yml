@@ -1,0 +1,39 @@
+name: Cài Go kèm cache
+description: >
+  Go theo worker/go.mod; cache module và build theo hệ điều hành + go.sum. Chỉ nhánh main lưu cache, PR chỉ đọc.
+  Dùng thay `cache:` của actions/setup-go vì nó lưu cả trên PR.
+
+inputs:
+  profile:
+    description: "Loại việc (build hoặc test): job chỉ dựng không nhồi cache của job chạy test"
+    required: false
+    default: build
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: worker/go.mod
+        cache: false
+    - id: paths
+      shell: bash
+      run: |
+        echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+        echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v4
+      if: github.ref == 'refs/heads/main'
+      with:
+        path: |
+          ${{ steps.paths.outputs.build }}
+          ${{ steps.paths.outputs.mod }}
+        key: go-${{ runner.os }}-${{ inputs.profile }}-${{ hashFiles('worker/go.mod', 'worker/go.sum') }}
+        restore-keys: go-${{ runner.os }}-${{ inputs.profile }}-
+    - uses: actions/cache/restore@v4
+      if: github.ref != 'refs/heads/main'
+      with:
+        path: |
+          ${{ steps.paths.outputs.build }}
+          ${{ steps.paths.outputs.mod }}
+        key: go-${{ runner.os }}-${{ inputs.profile }}-${{ hashFiles('worker/go.mod', 'worker/go.sum') }}
+        restore-keys: go-${{ runner.os }}-${{ inputs.profile }}-

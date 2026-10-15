@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-migrate-claude-desktop-profiles"
+description = "Enables the migrate_claude_desktop_profiles command without any pre-configured scope."
+commands.allow = ["migrate_claude_desktop_profiles"]
+
+[[permission]]
+identifier = "deny-migrate-claude-desktop-profiles"
+description = "Denies the migrate_claude_desktop_profiles command without any pre-configured scope."
+commands.deny = ["migrate_claude_desktop_profiles"]

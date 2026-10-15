@@ -219,7 +219,7 @@ func (r Runner) PrepareInteractive(ctx context.Context, spec InteractiveSpec) (_
 		cmd = exec.Command("claude", interactiveArgs(job, savingCfg, mcpFile, spec, perm)...)
 	}
 	cmd.Dir = work
-	cmd.Env = mergeEnv(interactiveBaseEnv(keepLogin), env)
+	cmd.Env = mergeEnv(r.Account.Base(interactiveBaseEnv(keepLogin)), env)
 	return &Interactive{Dir: work, Cmd: cmd, Secrets: secrets, Permissions: perm, Cleanup: cleanup}, nil
 }
 

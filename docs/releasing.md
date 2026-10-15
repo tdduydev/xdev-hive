@@ -1,23 +1,61 @@
 # Phát hành worker và app desktop
 
-Bản phát hành của `hive-worker` dựng bằng goreleaser (`worker/.goreleaser.yaml`) khi đẩy tag `v*` lên GitHub
-(`.github/workflows/release.yml`).
+Bản phát hành của `hive-worker` dựng bằng goreleaser (`worker/.goreleaser.yaml`) khi một tag `v*` được tạo trên GitHub
+(`.github/workflows/release.yml`). Có ba cách tạo tag, cùng một chuỗi job phía sau.
 
-## Các bước
+## Cách thường dùng: nhánh `release`
+
+Mỗi lần nhánh `release` được cập nhật, workflow tự tính phiên bản, tạo tag trên commit đó, dựng và công bố.
 
 1. `main` xanh CI, đã có mọi thay đổi cần phát hành.
-2. Cách nhanh: Actions → Release → Run workflow trên `main`, nhập `version` (x.y.z) và `notes` (tuỳ chọn); workflow tự tạo
-   tag `v<version>` rồi chạy các bước dưới. Hoặc tạo tag theo semver rồi đẩy lên:
+2. Đưa `main` vào `release`: mở PR `main` → `release` rồi merge, hoặc fast-forward:
 
    ```sh
-   git tag -a v0.2.0 -m "hive-worker 0.2.0" && git push origin v0.2.0
+   git fetch origin && git push origin origin/main:refs/heads/release
    ```
 
-3. Workflow chạy test worker, kiểm khoá ký khớp khoá công khai trong repo, dựng 6 bản (linux, darwin, windows ×
+3. Phiên bản do `scripts/release/version.sh` tính từ file `VERSION` ở gốc repo và các tag `vX.Y.Z` đã có:
+   - `VERSION` lớn hơn tag mới nhất: dùng đúng `VERSION`. Muốn tăng minor/major thì sửa `VERSION` (vd. `0.3.0`) trong
+     PR trước khi merge vào `release`.
+   - `VERSION` bằng hoặc nhỏ hơn tag mới nhất: lấy tag mới nhất rồi tăng patch. Phát hành patch không cần sửa gì.
+4. Commit đã có tag `v*` thì lượt chạy bỏ qua (đẩy lại cùng commit không phát hành hai lần). Mỗi lúc chỉ một lượt phát
+   hành chạy; GitHub giữ tối đa một lượt chờ, nên đẩy nhiều lần liên tiếp thì lượt chờ cũ bị thay bằng lượt mới nhất (đã
+   gồm commit cũ).
+
+Hai cách còn lại giữ nguyên:
+
+- Actions → Release → Run workflow trên `main`, nhập `version` (x.y.z) và `notes` (tuỳ chọn): workflow tạo tag
+  `v<version>` trên commit của `main`.
+- Tạo tag theo semver rồi đẩy lên:
+
+  ```sh
+  git tag -a v0.2.0 -m "hive-worker 0.2.0" && git push origin v0.2.0
+  ```
+
+## Ghi chú phát hành (tiếng Anh)
+
+Ghi chú hiện ở trang release và trong app khi báo có bản mới (trường `notes` của `latest.json`). Nguồn, cái nào có trước
+dùng cái đó (`scripts/release/notes.sh`):
+
+1. Ô `notes` của nút Run workflow.
+2. Mục `## v<x.y.z>` trong `RELEASE_NOTES.md` ở gốc repo (viết tay, tuỳ chọn). Mục chỉ cần có trước khi merge vào
+   `release`; đầu mục có thể ghi thêm ngày, vd. `## v0.3.0 - 2026-10-15`.
+3. Tự sinh từ tiêu đề các PR đã merge giữa tag trước và tag mới, nhóm theo tiền tố conventional commit: `feat` vào
+   Features, `fix` vào Fixes, còn lại vào Other. Bỏ `chore`, merge nhánh và PR chuyển nhánh (tiêu đề bắt đầu bằng
+   Release, Merge, Sync). Vì vậy tiêu đề PR và commit viết tiếng Anh, dạng `feat(scope): …`.
+
+Thân trang release gồm ghi chú, dòng Full Changelog so với tag liền trước và mục Contributors.
+
+Kiểm tại máy: `scripts/release/test.sh` (dựng repo git giả để thử tính phiên bản và sinh ghi chú; CI cũng chạy), và
+`scripts/release/notes.sh v0.2.13 v0.2.12` để xem ghi chú của một bản đã có.
+
+## Các bước sau khi có tag
+
+1. Workflow chạy test worker, kiểm khoá ký khớp khoá công khai trong repo, dựng 6 bản (linux, darwin, windows ×
    amd64, arm64) thành bản nháp, kiểm chữ ký và số phiên bản trong binary, tạo chứng thực nguồn gốc.
-4. Job `desktop` (`.github/workflows/desktop.yml`) đóng gói app desktop cho macOS arm64, Windows x64, Linux amd64 với
+2. Job `desktop` (`.github/workflows/desktop.yml`) đóng gói app desktop cho macOS arm64, Windows x64, Linux amd64 với
    cùng phiên bản (sidecar `hive-worker` bên trong mang đúng số đó) rồi gắn vào bản nháp.
-5. Job `publish` chỉ công bố khi cả worker lẫn app đã đủ trong bản nháp. Bản nháp không bao giờ hiện ở
+3. Job `publish` chỉ công bố khi cả worker lẫn app đã đủ trong bản nháp. Bản nháp không bao giờ hiện ở
    `/releases/latest`, nên lỗi giữa chừng không làm máy nào cài nhầm. App lỗi đóng gói thì cả bản phát hành dừng lại.
 
 Tên file nén không có số phiên bản (`hive-worker_linux_amd64.tar.gz`) để link `/releases/latest/download/...` luôn trỏ
