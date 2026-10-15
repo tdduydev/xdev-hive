@@ -323,7 +323,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/{scan.ts,import.ts,adopt.ts,routes/imports.ts}` (mới) + `import.db.test.ts`
   - **Kiểm**: hub test (gồm 2.000 file với provider `memory`, ngắt giữa chừng rồi chạy tiếp, không trùng), typecheck.
 
-- [ ] **T013 [P] [US2] [nặng] · 3 ngày — Hub → repo: gom lô, commit/PR, thử lại**
+- [x] **T013 [P] [US2] [nặng] · 3 ngày — Hub → repo: gom lô, commit/PR, thử lại**
   - **Phụ thuộc**: T006, T007, T008, T011.
   - **Goal**: US2, FR-012…FR-016, FR-024 (di chuyển, lưu trữ), FR-027, plan.md mục 5.
     - `push.ts`: đăng ký `provideDocSaved`; job `docsync-push` gom 60 s, trần 10 phút; lập lô; kiểm hash đầu nhánh
