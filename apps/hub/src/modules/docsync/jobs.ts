@@ -1,5 +1,4 @@
 import type { EnqueueOptions, JobQueue, Jobs } from "../platform/index.ts";
-import { registerAssets } from "./assets.ts";
 import { registerConflicts } from "./conflicts.ts";
 import { registerExtracts } from "./extracts.ts";
 import { registerImport } from "./import.ts";
@@ -52,6 +51,5 @@ export async function registerDocSync(jobs: Jobs, deps: DocSyncDeps): Promise<vo
   await registerPull(jobs, deps);
   await registerImport(jobs, deps);
   await registerConflicts(jobs, deps);
-  await registerAssets(jobs, deps);
   await registerExtracts(jobs, deps);
 }
