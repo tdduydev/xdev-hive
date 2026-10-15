@@ -292,7 +292,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 3: đồng bộ (song song, sau Đợt 2)
 
-- [ ] **T009 [P] [US7] [nặng] · 2 ngày — Chỉ mục đoạn và tìm theo nghĩa**
+- [x] **T009 [P] [US7] [nặng] · 2 ngày — Chỉ mục đoạn và tìm theo nghĩa**
   - **Phụ thuộc**: T008.
   - **Goal**: FR-036…FR-038, US7, plan.md mục 10.
     - `doc-search.ts`: chia đoạn theo tiêu đề; job `knowledge-doc-index` (đăng ký qua hook lưu nội bộ của
