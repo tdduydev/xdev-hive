@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/hubtls"
 )
 
 // LegacyCLIs là CLI mọi hub đều nhận. Hub chưa trả `clis` trong health kiểm hello và đăng ký máy bằng enum chỉ có
@@ -28,7 +30,7 @@ type HealthClient struct {
 }
 
 func New(baseURL string) *HealthClient {
-	return NewWithHTTP(baseURL, &http.Client{Timeout: 10 * time.Second})
+	return NewWithHTTP(baseURL, hubtls.NewClient(10*time.Second))
 }
 
 // NewWithHTTP dùng http.Client của người gọi (vd. kênh WSS dùng chung client với cấu hình TLS riêng).
