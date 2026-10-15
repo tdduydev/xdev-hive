@@ -14,6 +14,7 @@ import {
   type ReviewWorkflow,
   reviewDecideInput,
   reviewListInput,
+  scanSecrets,
   type WorkflowInput,
   type WorkflowSubject,
   workflowInput,
@@ -44,7 +45,7 @@ import {
   versionConflict,
   visibleWhere,
 } from "./access.ts";
-import { applyDocSave } from "./docs.ts";
+import { applyDocSave, DocSecretError, secretsAcknowledged } from "./docs.ts";
 import { createProposal } from "./proposals.ts";
 import {
   type BreakdownRuleInput,
@@ -836,6 +837,11 @@ async function finish(
     if (current?.version !== p.baseVersion) throw versionConflict("Tài liệu", current?.version ?? 0, p.baseVersion);
     version = current.version;
   } else {
+    // Bước chốt không có người gửi kèm xác nhận; nội dung chưa được xác nhận lúc gửi duyệt (đề xuất của agent, hoặc
+    // gửi từ trước khi có kiểm tra) thì trả về người viết thay vì lưu bản mà agent và repo không dùng được.
+    const findings = scanSecrets(p.content);
+    if (findings.length > 0 && !(await secretsAcknowledged(tx, p.target, p.content)))
+      return requestChanges(tx, inst, "author", new DocSecretError(findings).message, decider, deps);
     const doc = await applyDocSave(
       tx,
       principal,
