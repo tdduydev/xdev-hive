@@ -284,7 +284,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - Test webview nằm ở `src/views/sdlc-webview.test.ts` (dựng bundle bằng esbuild rồi chạy trong jsdom) vì vitest của
       `apps/vscode` chỉ nhận `src/**/*.test.ts`.
 
-- [ ] **T017 [P] [US8] [nặng] · 2,5 ngày — View Artifact và panel artifact cách ly**
+- [x] **T017 [P] [US8] [nặng] · 2,5 ngày — View Artifact và panel artifact cách ly**
   - **Phụ thuộc**: T013.
   - **Goal**: plan.md mục 8. Thư viện artifact tải về `globalStorage` có kiểm sha256; CSP ADR 0023; chỉ nhận thông điệp
     của `@xdev-hive/artifacts-runtime`; bộ đệm LRU 200 MiB.
