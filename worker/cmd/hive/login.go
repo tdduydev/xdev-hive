@@ -115,10 +115,31 @@ func (a *app) credentials() (hub, token string, err error) {
 	if err != nil || c.HubURL == "" {
 		return "", "", err
 	}
-	if t, kerr := a.keyring.Get(keyringService, c.HubURL); kerr == nil && t != "" {
-		return c.HubURL, t, nil
+	hub, err = normalizeHub(c.HubURL)
+	if err != nil {
+		return "", "", errors.New("địa chỉ hub trong cấu hình không hợp lệ")
 	}
-	return c.HubURL, c.Token, nil
+	token, _, err = a.readToken(hub)
+	return hub, token, err
+}
+
+func (a *app) readToken(hub string) (token, source string, err error) {
+	if t, kerr := a.keyring.Get(keyringService, hub); kerr == nil && t != "" {
+		return t, "keychain", nil
+	} else if kerr != nil && !errors.Is(kerr, keyring.ErrNotFound) {
+		err = errors.New("không đọc được keychain")
+	}
+	c, _, cerr := a.loadCLIConfig()
+	if cerr != nil {
+		return "", "", errors.New("không đọc được cấu hình đăng nhập")
+	}
+	if c.HubURL != "" {
+		storedHub, nerr := normalizeHub(c.HubURL)
+		if nerr == nil && storedHub == hub && c.Token != "" {
+			return c.Token, "file", nil
+		}
+	}
+	return "", "", err
 }
 
 // hubFor dựng client cho lệnh cần đăng nhập; chưa đăng nhập thì đã in lỗi và trả mã thoát.
@@ -220,39 +241,74 @@ func (a *app) login(args []string) int {
 }
 
 func (a *app) storeToken(hub, token string) int {
-	_, path, err := a.loadCLIConfig()
-	if err != nil && path == "" {
+	source, err := a.saveToken(hub, token)
+	if err != nil {
 		return a.errorf(exitFailed, "%v", err)
 	}
-	cfg := cliConfig{HubURL: hub}
-	if kerr := a.keyring.Set(keyringService, hub, token); kerr != nil {
-		cfg.Token = token
-		fmt.Fprintf(a.stderr, "hive: Không dùng được keychain (%v); token lưu trong %s, chỉ tài khoản của bạn đọc được.\n", kerr, path)
-	}
-	if err := saveCLIConfig(path, cfg); err != nil {
-		return a.errorf(exitFailed, "Không ghi được %s: %v", path, err)
+	if source == "file" {
+		fmt.Fprintln(a.stderr, "hive: Không dùng được keychain; token lưu trong file cấu hình, chỉ tài khoản của bạn đọc được.")
 	}
 	return exitOK
+}
+
+func (a *app) saveToken(hub, token string) (string, error) {
+	_, path, err := a.loadCLIConfig()
+	if err != nil && path == "" {
+		return "", errors.New("không tìm được cấu hình đăng nhập")
+	}
+	cfg := cliConfig{HubURL: hub}
+	source := "keychain"
+	if kerr := a.keyring.Set(keyringService, hub, token); kerr != nil {
+		// Token cũ còn đọc được sẽ che token mới trong file vì thứ tự ưu tiên keychain.
+		if previous, err := a.keyring.Get(keyringService, hub); err == nil && previous != "" {
+			if previous != token {
+				return "", errors.New("không cập nhật được token trong keychain")
+			}
+		} else {
+			cfg.Token = token
+			source = "file"
+		}
+	}
+	if err := saveCLIConfig(path, cfg); err != nil {
+		return "", errors.New("không ghi được cấu hình đăng nhập")
+	}
+	return source, nil
+}
+
+func (a *app) deleteToken(hub string) error {
+	c, path, err := a.loadCLIConfig()
+	if err != nil {
+		return errors.New("không đọc được cấu hình đăng nhập")
+	}
+	var keyringErr error
+	if err := a.keyring.Delete(keyringService, hub); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		keyringErr = errors.New("không xoá được token trong keychain")
+	}
+	storedHub, _ := normalizeHub(c.HubURL)
+	if storedHub == hub {
+		// Giữ hub để lần đăng nhập sau khỏi nhập lại; không đụng token của hub khác.
+		c.Token = ""
+		if err := saveCLIConfig(path, c); err != nil {
+			return errors.New("không ghi được cấu hình đăng nhập")
+		}
+	}
+	return keyringErr
 }
 
 func (a *app) logout(args []string) int {
 	if len(args) > 0 {
 		return a.errorf(exitUsage, "Cách dùng: hive logout.")
 	}
-	c, path, err := a.loadCLIConfig()
-	if err != nil && path == "" {
+	c, _, err := a.loadCLIConfig()
+	if err != nil {
 		return a.errorf(exitFailed, "%v", err)
 	}
 	if c.HubURL == "" {
 		fmt.Fprintln(a.stdout, "Chưa đăng nhập hub nào.")
 		return exitOK
 	}
-	if err := a.keyring.Delete(keyringService, c.HubURL); err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		fmt.Fprintf(a.stderr, "hive: Không xoá được token trong keychain: %v\n", err)
-	}
-	// Giữ địa chỉ hub để lần login sau khỏi gõ lại; chỉ bỏ token.
-	if err := saveCLIConfig(path, cliConfig{HubURL: c.HubURL}); err != nil {
-		return a.errorf(exitFailed, "Không ghi được %s: %v", path, err)
+	if err := a.deleteToken(c.HubURL); err != nil {
+		return a.errorf(exitFailed, "%v", err)
 	}
 	// Token cá nhân không tự thu hồi được chính nó trên hub (chặn ở hub), nên chỉ xoá trên máy.
 	fmt.Fprintf(a.stdout, "Đã đăng xuất %s trên máy này (cả app xDev Hive dùng chung token). Thu hồi token trên web nếu bị lộ.\n", c.HubURL)

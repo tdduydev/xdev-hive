@@ -38,7 +38,7 @@ import {
   useId,
   useState,
 } from "react";
-import { ClaudeDesktopRow, useClaudeDesktop } from "@/components/claude-desktop.tsx";
+import { ClaudeDesktopPanel, ClaudeDesktopRow, useClaudeDesktop } from "@/components/claude-desktop.tsx";
 import { shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import {
@@ -77,6 +77,7 @@ import {
   removePlan,
   resumePlan,
   type Spread,
+  sameAccount,
   setPlanEnabled,
   updatePlan,
 } from "@/lib/plans.ts";
@@ -112,6 +113,7 @@ const text: Dict<{
   updatedAt: (time: string) => string;
   readAll: string;
   readingAll: string;
+  readDone: (n: number) => string;
   readAllHint: string;
   offGroup: (n: number) => string;
   states: Record<PlanState, string>;
@@ -153,6 +155,7 @@ const text: Dict<{
   resumeHint: string;
   resumed: (id: string) => string;
   resumedUntil: (time: string) => string;
+  sameAccount: (ids: string) => string;
   loginOpened: (id: string) => string;
   loginWaiting: string;
   signedIn: (id: string, email: string) => string;
@@ -233,6 +236,7 @@ const text: Dict<{
     updatedAt: (time) => `cập nhật lúc ${time}`,
     readAll: "Đọc lại quota",
     readingAll: "Đang đọc quota…",
+    readDone: (n) => `Đã đọc lại quota của ${n} gói.`,
     readAllHint: "Kiểm lại đăng nhập và mức dùng của mọi gói đang bật",
     offGroup: (n) => `${n} gói đang tắt`,
     states: {
@@ -284,6 +288,7 @@ const text: Dict<{
     resumeHint: "Bỏ giờ nghỉ và tạm bỏ ngưỡng dừng tới lần reset kế tiếp để worker giao run ngay",
     resumed: (id) => `${id} dùng tiếp: worker giao run cho gói ngay khi có việc.`,
     resumedUntil: (time) => `Dùng tiếp, bỏ ngưỡng tới ${time}`,
+    sameAccount: (ids) => `Gói này trùng tài khoản với ${ids}: các gói dùng chung một quota.`,
     loginOpened: (id) => `Đã mở Terminal để đăng nhập ${id}. Đăng nhập xong quay lại app: app tự kiểm lại.`,
     loginWaiting: "Đang chờ đăng nhập xong trong Terminal và trình duyệt; app tự kiểm lại mỗi vài giây.",
     signedIn: (id, email) => `${id} đã đăng nhập${email ? ` ${email}` : ""}.`,
@@ -401,6 +406,7 @@ const text: Dict<{
     updatedAt: (time) => `updated at ${time}`,
     readAll: "Read quota again",
     readingAll: "Reading quota…",
+    readDone: (n) => `Read the quota of ${n} ${n === 1 ? "plan" : "plans"} again.`,
     readAllHint: "Check sign-in and usage of every enabled plan again",
     offGroup: (n) => `${n} plans off`,
     states: {
@@ -453,6 +459,7 @@ const text: Dict<{
     resumeHint: "Drop the rest and the stop thresholds until the next reset so the worker gives runs right away",
     resumed: (id) => `${id} is back in use: the worker gives it runs as soon as there is work.`,
     resumedUntil: (time) => `In use again, thresholds off until ${time}`,
+    sameAccount: (ids) => `This plan uses the same account as ${ids}: they share one quota.`,
     loginOpened: (id) =>
       `Opened a terminal to sign in ${id}. Come back to the app when done: it checks again by itself.`,
     loginWaiting: "Waiting for the sign-in in the terminal and browser; the app checks again every few seconds.",
@@ -751,9 +758,12 @@ export function PlansScreen() {
 
   async function readAll() {
     setReading(true);
+    setNotice(null);
     try {
-      setList((await readUsage()).accounts);
+      const { accounts } = await readUsage();
+      setList(accounts);
       setError(null);
+      setNotice({ tone: "ok", text: t.readDone(accounts.length) });
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -766,8 +776,9 @@ export function PlansScreen() {
   const checked = lastChecked(all);
   const blocks = cliBlocks(all, now);
   const perCli = cliSummary(all, now);
+  const twins = sameAccount(all);
 
-  // Chỉ macOS (Rust báo supported); gói Claude mới thêm chưa có trong lần đọc trước thì chờ lượt đọc kế tiếp.
+  // Chỉ macOS và Windows (Rust báo supported); gói Claude mới thêm chưa có trong lần đọc trước thì chờ lượt đọc kế tiếp.
   const desktopRow = (p: Plan) => {
     const view = desktop.view;
     const profile = view?.supported ? view.profiles.find((d) => d.id === p.id) : undefined;
@@ -785,6 +796,7 @@ export function PlansScreen() {
       folder={folder}
       busy={busy === p.id || reading}
       waiting={p.id in waiting}
+      twins={twins[p.id]}
       onToggle={() => void act(p.id, () => setPlanEnabled(p.id, !p.enabled))}
       onEdit={() => setEditing(p)}
       onRelogin={() => void relogin(p)}
@@ -866,6 +878,8 @@ export function PlansScreen() {
           </Button>
         </section>
       )}
+
+      {desktop.view && <ClaudeDesktopPanel view={desktop.view} onChanged={() => void desktop.reload()} />}
 
       <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
         {checked && <span className="text-xs text-muted-foreground">{t.updatedAt(clock(checked, now, lang))}</span>}
@@ -1061,6 +1075,7 @@ function PlanCard({
   folder,
   busy,
   waiting,
+  twins,
   onToggle,
   onEdit,
   onRelogin,
@@ -1077,6 +1092,8 @@ function PlanCard({
   folder: string;
   busy: boolean;
   waiting: boolean;
+  /** Gói khác cùng tài khoản (sameAccount). */
+  twins?: string[] | undefined;
   onToggle: () => void;
   onEdit: () => void;
   onRelogin: () => void;
@@ -1100,7 +1117,13 @@ function PlanCard({
   const groups = p.usage?.groups ?? [];
   const resumable = cooling || state === "overLimit";
   const notes =
-    resumable || future(p.resumeUntil, now) || !p.supported || state === "noCli" || state === "signedOut" || waiting;
+    resumable ||
+    future(p.resumeUntil, now) ||
+    !p.supported ||
+    state === "noCli" ||
+    state === "signedOut" ||
+    waiting ||
+    !!twins?.length;
   return (
     <li
       data-plan={p.id}
@@ -1191,6 +1214,11 @@ function PlanCard({
             <span className="text-destructive">{t.signedOut}</span>
           ) : null}
           {waiting && state === "signedOut" && <span>{t.loginWaiting}</span>}
+          {twins && twins.length > 0 && (
+            <span role="note" className="text-warning">
+              {t.sameAccount(twins.join(", "))}
+            </span>
+          )}
           {resumable && (
             <span className="flex flex-wrap items-center gap-2">
               {cooling && p.coolUntil ? (

@@ -1,3 +1,19 @@
+{
+	# Truy cập bằng địa chỉ IP thì trình duyệt không gửi SNI; không có default_sni Caddy không biết đưa chứng chỉ nào và bắt tay TLS thất bại.
+	default_sni {$HIVE_DEFAULT_SNI:localhost}
+}
+
 {$HIVE_PUBLIC_URL} {
+  # Mã link công khai nằm trong đường dẫn /_artifact/s/<mã>; ai đọc được log là mở được link, nên che mã trước khi ghi.
+  log {
+    output stdout
+    format filter {
+      wrap json
+      fields {
+        request>uri regexp (/_artifact/s/)[^/?#]+ ${1}[đã che]
+        request>headers>Referer regexp (/_artifact/s/)[^/?#]+ ${1}[đã che]
+      }
+    }
+  }
   reverse_proxy hub:3000
 }
