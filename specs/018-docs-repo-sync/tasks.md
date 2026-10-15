@@ -272,7 +272,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/sdlc/{managed-paths.ts,index.ts}` (`managed-paths.ts` mới) + test
   - **Kiểm**: hub test, typecheck, `pnpm deps`.
 
-- [ ] **T019 [P] [US3] [vừa] · 1,5 ngày — `conflict-view` dùng chung**
+- [x] **T019 [P] [US3] [vừa] · 1,5 ngày — `conflict-view` dùng chung**
   - **Phụ thuộc**: T018.
   - **Goal**: FR-020, FR-041. Ba bản (gốc chung, hub, repo), tô khối xung đột từ `mergeBlocks`, chọn "Giữ bản hub",
     "Giữ bản repo", "Sửa tay" (mở editor với bản hợp có đánh dấu). Ba cột trên màn rộng, tab trên 360 px.
