@@ -7,11 +7,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
-import { Input } from "@xdev-hive/ui/input";
-import { Label } from "@xdev-hive/ui/label";
-import { type FormEvent, useId, useState } from "react";
+import { useState } from "react";
 import { ConnectForm } from "@/components/connect-form.tsx";
-import { type AccountStatus, accountStatus, linkAccount } from "@/lib/account.ts";
+import { type AccountStatus, accountStatus } from "@/lib/account.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
 
@@ -19,10 +17,6 @@ const text: Dict<{
   title: string;
   lead: string;
   local: string;
-  token: string;
-  howTo: string;
-  link: string;
-  linking: string;
   close: string;
   linkedAs: (name: string, org: string) => string;
   unlink: string;
@@ -37,11 +31,6 @@ const text: Dict<{
     lead: "Đăng nhập Hive để dùng việc, duyệt, tài liệu và skill của đội bạn.",
     local:
       "Không đăng nhập vẫn dùng được các mục trên máy: gói agent, dự án, môi trường, skills, token và tài liệu từ code.",
-    token: "Token MCP cá nhân",
-    howTo:
-      "Tạo ở web: MCP và công cụ → Token MCP → Tạo token. Token lưu trong keychain của máy, không ghi ra file và không gửi đi đâu ngoài hub.",
-    link: "Đăng nhập",
-    linking: "Đang kiểm token…",
     close: "Đóng",
     linkedAs: (name, org) => `Đang dùng tài khoản ${name} ở ${org}.`,
     unlink: "Đăng xuất",
@@ -56,11 +45,6 @@ const text: Dict<{
     lead: "Sign in to Hive to use your team's work, reviews, docs and skills.",
     local:
       "Everything on this machine works without signing in: agent plans, projects, environment, skills, tokens and docs from code.",
-    token: "Personal MCP token",
-    howTo:
-      "Create one on the web: MCP & tools → MCP tokens → Create token. The token stays in this machine's keychain, never in a file, and goes nowhere but the hub.",
-    link: "Sign in",
-    linking: "Checking the token…",
     close: "Close",
     linkedAs: (name, org) => `Using ${name}'s account in ${org}.`,
     unlink: "Sign out",
@@ -73,9 +57,9 @@ const text: Dict<{
 };
 
 /**
- * Đăng nhập Hive, tuỳ chọn (DESK-09): máy chưa đăng ký thì kết nối máy ngay tại đây (đăng nhập bằng trình duyệt cũng
- * liên kết luôn tài khoản), đã đăng ký thì liên kết bằng token MCP cá nhân. Đăng xuất (SignOutDialog) chỉ gỡ token cá
- * nhân; máy vẫn đăng ký và worker vẫn nhận việc.
+ * Đăng nhập Hive, tuỳ chọn (DESK-09). Luôn có ô địa chỉ hub (ConnectForm): máy chưa đăng ký thì kết nối máy ngay tại
+ * đây, đã đăng ký thì đăng nhập lại bằng trình duyệt hay token MCP cá nhân, và đổi được địa chỉ khi hub dời chỗ. Đăng
+ * xuất (SignOutDialog) chỉ gỡ token cá nhân; máy vẫn đăng ký và worker vẫn nhận việc.
  */
 export function AccountDialog({
   open,
@@ -92,24 +76,15 @@ export function AccountDialog({
   onSignOut: () => void;
 }) {
   const t = useT(text);
-  const id = useId();
-  const [token, setToken] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const account = status?.account ?? null;
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
+  function done(next?: AccountStatus) {
     setError(null);
-    try {
-      onChanged(await linkAccount(token));
-      setToken("");
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
+    if (next) return onChanged(next);
+    void accountStatus()
+      .then(onChanged)
+      .catch((e: unknown) => setError(errorText(e)));
   }
 
   return (
@@ -120,15 +95,7 @@ export function AccountDialog({
           <DialogDescription>{t.lead}</DialogDescription>
         </DialogHeader>
         {!account && <p className="text-xs text-muted-foreground">{t.local}</p>}
-        {!status?.hub ? (
-          <ConnectForm
-            onDone={() =>
-              void accountStatus()
-                .then(onChanged)
-                .catch((e: unknown) => setError(errorText(e)))
-            }
-          />
-        ) : account ? (
+        {account && (
           <div className="flex flex-col gap-2 text-sm">
             <p>{t.linkedAs(account.name || account.email, account.orgName)}</p>
             <p className="text-muted-foreground">
@@ -146,27 +113,14 @@ export function AccountDialog({
               </ul>
             )}
           </div>
-        ) : (
-          <form id={`${id}-form`} onSubmit={submit} className="flex flex-col gap-2">
-            {status.linked && status.error && (
-              <p role="alert" className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
-                {t.broken} {status.error}
-              </p>
-            )}
-            <Label htmlFor={`${id}-token`}>{t.token}</Label>
-            <Input
-              id={`${id}-token`}
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="hive_pat_…"
-              className="font-mono text-sm md:text-sm"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">{t.howTo}</p>
-          </form>
         )}
+        {!account && status?.linked && status.error && (
+          <p role="alert" className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
+            {t.broken} {status.error}
+          </p>
+        )}
+        {/* Chưa đọc được trạng thái (lỗi, ngoài Tauri) vẫn cho nhập địa chỉ để có lối kết nối. */}
+        <ConnectForm current={status?.hub ?? null} linked={!!account} onDone={done} />
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -177,13 +131,8 @@ export function AccountDialog({
             {t.close}
           </Button>
           {status?.hub && (account || status.linked) && (
-            <Button variant="outline" disabled={busy} onClick={onSignOut}>
+            <Button variant="outline" onClick={onSignOut}>
               {t.unlink}
-            </Button>
-          )}
-          {status?.hub && !account && (
-            <Button type="submit" form={`${id}-form`} disabled={busy || !token.trim()}>
-              {busy ? t.linking : t.link}
             </Button>
           )}
         </DialogActions>

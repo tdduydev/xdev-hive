@@ -44,7 +44,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 0: quyết định, hợp đồng, phần thuần (song song)
 
-- [ ] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0028, SRS 3.23, ghi chú cho spec 012**
+- [x] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0028, SRS 3.23, ghi chú cho spec 012**
   - **Goal**:
     - Viết ADR 0028 "Docs repo sync" (tiếng Anh, theo `docs/adr/template.md`): research.md mục 5 quyết định 1, 3, 5;
       các phương án ở plan.md "Phương án đã cân nhắc"; đường sang S3.
@@ -140,7 +140,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 1: nền (song song, sau Đợt 0)
 
-- [ ] **T005 [P] [—] [nặng] · 2 ngày — Bảng, RLS, migration, phụ thuộc, khung module `docsync`**
+- [x] **T005 [P] [—] [nặng] · 2 ngày — Bảng, RLS, migration, phụ thuộc, khung module `docsync`**
   - **Phụ thuộc**: T003.
   - **Goal**: plan.md mục 1, 13.
     - `knowledge/schema.ts`: `docs.archived_at`; `doc_versions.{content_hash,source,repo_commit,secret_flag}`;
