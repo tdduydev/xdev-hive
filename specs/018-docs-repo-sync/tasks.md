@@ -44,7 +44,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 0: quyết định, hợp đồng, phần thuần (song song)
 
-- [ ] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0028, SRS 3.23, ghi chú cho spec 012**
+- [x] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0028, SRS 3.23, ghi chú cho spec 012**
   - **Goal**:
     - Viết ADR 0028 "Docs repo sync" (tiếng Anh, theo `docs/adr/template.md`): research.md mục 5 quyết định 1, 3, 5;
       các phương án ở plan.md "Phương án đã cân nhắc"; đường sang S3.
@@ -241,7 +241,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/platform/{config.ts,config.test.ts,index.ts}`
   - **Kiểm**: hub test (`platform`), typecheck, `pnpm deps`.
 
-- [ ] **T008 [P] [US2] [nặng] · 2 ngày — `knowledge`: hook lưu, lưu từ đồng bộ, lưu trữ, chặn bí mật khi lưu**
+- [x] **T008 [P] [US2] [nặng] · 2 ngày — `knowledge`: hook lưu, lưu từ đồng bộ, lưu trữ, chặn bí mật khi lưu**
   - **Phụ thuộc**: T003, T005.
   - **Goal**: FR-012, FR-024 (lưu trữ), plan.md mục 5, 11.
     - `provideDocSaved(hook)`; `applyDocSave` gọi hook trong transaction với `{orgId, docId, key, version, source}`.

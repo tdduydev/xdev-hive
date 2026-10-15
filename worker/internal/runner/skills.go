@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/hubtls"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -50,7 +52,7 @@ func installSkills(ctx context.Context, client *http.Client, cacheDir string, j 
 		return nil, nil
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Minute}
+		client = hubtls.NewClient(2 * time.Minute)
 	}
 	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 		return nil, err
