@@ -2,6 +2,10 @@ import { implement } from "@orpc/server";
 import { contract } from "@xdev-hive/contracts";
 import type { RequestContext } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { autoApprovalRoutes } from "./autoapprove.ts";
+import { breakdownRoutes } from "./breakdown.ts";
+import { contractRoutes } from "./contracts.ts";
+import { importRoute } from "./import.ts";
 import {
   cancelItem,
   changeItemMode,
@@ -15,11 +19,18 @@ import {
   suggestItem,
 } from "./items.ts";
 import { dryRunMode, listModes, removeMode, saveMode } from "./modes.ts";
+import { overrideRoutes } from "./overrides.ts";
+import { participantRoutes } from "./participants.ts";
 import { type SdlcDeps, skipPhase } from "./phases.ts";
+import { questionRoutes } from "./questions.ts";
+import { stepRoutes } from "./steps.ts";
+import { syncRoute } from "./sync.ts";
+import { traceRoute } from "./trace.ts";
+import { waveRoutes } from "./waves.ts";
 
 /**
- * Route `sdlc.*` lõi: chế độ, gợi ý, hạng mục, bảng. Route của task sau (câu hỏi, bản tách, ngoại lệ…) nằm trong hàm
- * đăng ký riêng ở file của task đó; T070 gộp vào đây.
+ * Route `sdlc.*`. Route lõi (chế độ, gợi ý, hạng mục, bảng) viết ở đây; phần còn lại nằm trong hàm đăng ký ở file của
+ * nghiệp vụ đó để mỗi file tự giữ middleware và deps của mình. `metrics` chưa có (T082).
  */
 export function sdlcRouter(deps: OrgDeps & SdlcDeps) {
   const { authed, inOrg } = orgMiddlewares(deps);
@@ -46,7 +57,18 @@ export function sdlcRouter(deps: OrgDeps & SdlcDeps) {
         await skipPhase(tx, user.id, input, deps);
         return itemDetail(tx, user.id, input.id);
       }),
+      import: importRoute(deps),
+      ...stepRoutes(deps),
+      projects: participantRoutes(deps),
     },
     board: os.board.handler(({ context: { tx, user }, input }) => itemBoard(tx, user.id, input)),
+    contracts: contractRoutes(deps),
+    autoApprovals: autoApprovalRoutes(deps),
+    ...questionRoutes(deps),
+    breakdown: breakdownRoutes(deps),
+    waves: waveRoutes(deps),
+    ...overrideRoutes(deps),
+    trace: traceRoute(deps),
+    sync: syncRoute(deps),
   };
 }
