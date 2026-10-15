@@ -287,7 +287,14 @@ fn notify(app: &AppHandle, body: &str) {
 
 /// Tham số chạy worker làm sidecar. `--stdin-control` cũng tắt tự cập nhật của worker: app cập nhật cả gói (kèm
 /// sidecar) qua updater, worker không được tự thay binary nằm trong gói đã ký.
-const SIDECAR_RUN_ARGS: [&str; 3] = ["run", "--status-json", "--stdin-control"];
+/// `--owner desktop` để extension VS Code đọc `worker.status` biết worker này của app, không tự chạy worker thứ hai.
+const SIDECAR_RUN_ARGS: [&str; 5] = [
+    "run",
+    "--status-json",
+    "--stdin-control",
+    "--owner",
+    "desktop",
+];
 
 /// PATH của shell đăng nhập cho worker: app mở từ Finder chỉ có /usr/bin:/bin…, nên worker không thấy claude/codex cài
 /// qua nvm, Homebrew hay ~/.local/bin, báo "Chưa có CLI trên máy" và không chạy được run.
@@ -892,6 +899,7 @@ pub fn run() {
             claude_desktop::switch_claude_desktop,
             claude_desktop::restore_claude_desktop,
             claude_desktop::adopt_claude_desktop,
+            claude_desktop::dismiss_claude_desktop_mismatch,
             claude_desktop::forget_claude_desktop,
             claude_desktop::migrate_claude_desktop_profiles,
             optimizer::optimizer_status,
@@ -1027,6 +1035,9 @@ pub fn run() {
                 // Máy chưa đăng ký cũng kiểm (chỉ qua GitHub): app mới cài nhận được bản mới trước cả khi đăng ký.
                 updates::run_periodic(&handle).await;
             });
+            if claude_desktop::SUPPORTED {
+                tauri::async_runtime::spawn(claude_desktop::watch(app.handle().clone()));
+            }
             let ticker = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -1075,6 +1086,11 @@ mod tests {
         assert_eq!(super::SIDECAR_RUN_ARGS[0], "run");
         assert!(super::SIDECAR_RUN_ARGS.contains(&"--stdin-control"));
         assert!(super::SIDECAR_RUN_ARGS.contains(&"--status-json"));
+        let owner = super::SIDECAR_RUN_ARGS
+            .iter()
+            .position(|a| *a == "--owner")
+            .unwrap();
+        assert_eq!(super::SIDECAR_RUN_ARGS[owner + 1], "desktop");
     }
 
     use super::safe_hub_path;

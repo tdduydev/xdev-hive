@@ -20,6 +20,11 @@
 //! đầu chuyển, cả hồ sơ thật (trừ cache) được sao lưu sang `backup-<ngày>`; ngoài tập xác thực không file nào của hồ sơ
 //! thật bị ghi hay xoá.
 //!
+//! Đăng nhập trong hồ sơ thuộc gói nào thì so `lastKnownAccountUuid` với `oauthAccount.accountUuid` trong `.claude.json`
+//! của từng gói (cùng một tài khoản claude.ai): người dùng không phải tự nói "app đang đăng nhập gói này", và đăng nhập
+//! tài khoản lạ không bị lưu nhầm vào gói khác. Hồ sơ thật chỉ được đọc (app có thể đang chạy) để lưu đăng nhập vào gói
+//! ngay khi người dùng vừa đăng nhập hay app vừa làm mới token, không đợi tới lần chuyển sau.
+//!
 //! Windows [giả định từ cách Electron/Chromium lưu, chưa thử trên máy thật]: cookie nằm ở `Network\Cookies` (Chromium
 //! dời vào đó khi chạy dịch vụ mạng trong sandbox; bản cũ để ở gốc hồ sơ). Cookie và token `safeStorage` mã hoá bằng khoá
 //! AES trong `Local State` (`os_crypt.encrypted_key`, bọc DPAPI theo người dùng Windows), không dùng Credential Manager.
@@ -174,6 +179,10 @@ const BUNDLE_PREFS: &str = "preferences.json";
 
 /// Thoát êm có thể chậm khi app còn đang ghi; quá hạn thì hỏi người dùng có buộc thoát không.
 const QUIT_WAIT: Duration = Duration::from_secs(20);
+/// Nhịp xem hồ sơ thật có đổi không (chỉ stat vài file), và nhịp đối chiếu đủ dù không đổi (gói mới, gói vừa đăng nhập
+/// Claude Code nên mới biết tài khoản).
+const WATCH_EVERY: Duration = Duration::from_secs(15);
+const WATCH_FULL: Duration = Duration::from_secs(300);
 
 const UNSUPPORTED: &str = "Chưa hỗ trợ chuyển tài khoản Claude Desktop trên hệ điều hành này (mới có cho macOS và Windows).";
 
@@ -268,13 +277,27 @@ impl Paths {
 }
 
 /// Gói đang dùng Claude Desktop và bản sao lưu lần đầu.
-#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Eq, Clone)]
 struct State {
     #[serde(default)]
     active: Option<String>,
     /// Tên thư mục sao lưu trong thư mục của Hive.
     #[serde(default)]
     backup: Option<String>,
+    /// Lần đăng nhập gần nhất không phải tài khoản của gói đang chờ; giữ tới khi người dùng đóng thông báo hay chuyển gói.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mismatch: Option<Mismatch>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Mismatch {
+    /// Email (hay uuid rút gọn) của tài khoản Claude Desktop đang đăng nhập.
+    account: String,
+    /// Gói lẽ ra đang đăng nhập.
+    expected: String,
+    /// Gói có tài khoản đó, đã nhận đăng nhập; None khi tài khoản không thuộc gói nào nên không lưu.
+    adopted: Option<String>,
 }
 
 fn read_state(paths: &Paths) -> State {
@@ -424,6 +447,16 @@ fn remove_entry(path: &Path) -> std::io::Result<()> {
 
 /// Lưu bộ xác thực của hồ sơ `from` vào `dest`: dựng ở thư mục tạm rồi đổi tên, nên `dest` luôn là một bộ đủ.
 fn save_auth(from: &Path, dest: &Path, files: &[&str]) -> Result<(), String> {
+    save_auth_if(from, dest, files, || true).map(|_| ())
+}
+
+/// Như `save_auth`, nhưng bỏ bản vừa dựng (trả false, `dest` giữ nguyên) khi `still` báo hồ sơ đã đổi trong lúc chép.
+fn save_auth_if(
+    from: &Path,
+    dest: &Path,
+    files: &[&str],
+    still: impl Fn() -> bool,
+) -> Result<bool, String> {
     let auth = read_auth(from)?;
     let parent = dest.parent().ok_or("Đường dẫn bộ xác thực không hợp lệ.")?;
     create_private_dir(parent).map_err(|e| e.to_string())?;
@@ -451,6 +484,10 @@ fn save_auth(from: &Path, dest: &Path, files: &[&str]) -> Result<(), String> {
         let _ = remove_entry(&tmp);
         return Err(format!("Không lưu được bộ đăng nhập: {e}"));
     }
+    if !still() {
+        let _ = remove_entry(&tmp);
+        return Ok(false);
+    }
     let mut old = dest.as_os_str().to_os_string();
     old.push(".old");
     let old = PathBuf::from(old);
@@ -462,7 +499,9 @@ fn save_auth(from: &Path, dest: &Path, files: &[&str]) -> Result<(), String> {
         retry_locked(|| std::fs::rename(&tmp, dest))?;
         remove_entry(&old)
     })();
-    swapped.map_err(|e| format!("Không lưu được bộ đăng nhập: {e}"))
+    swapped
+        .map(|_| true)
+        .map_err(|e| format!("Không lưu được bộ đăng nhập: {e}"))
 }
 
 /// Đưa bộ xác thực `from` vào hồ sơ thật. File xác thực không có trong bộ thì bị gỡ khỏi hồ sơ (gói chưa đăng nhập mở
@@ -506,6 +545,212 @@ fn load_auth(from: &Path, real: &Path, files: &[&str]) -> Result<(), String> {
         Ok(())
     })();
     written.map_err(|e| format!("Không ghi được đăng nhập vào hồ sơ Claude Desktop: {e}"))
+}
+
+/// Tài khoản claude.ai đang đăng nhập trong hồ sơ hay bộ xác thực `dir`. `lastKnownAccountUuid` có thể còn lại sau khi
+/// đăng xuất, nên phải còn token hay Cookies mới tính là đang đăng nhập.
+fn account_of(paths: &Paths, dir: &Path) -> Option<String> {
+    let config = read_object(&dir.join(CONFIG)).ok()?;
+    let token = ["oauth:tokenCache", "oauth:tokenCacheV2"]
+        .iter()
+        .any(|k| config.get(*k).is_some_and(|v| !v.is_null()));
+    if !token && !paths.has_login(dir) {
+        return None;
+    }
+    config
+        .get("lastKnownAccountUuid")?
+        .as_str()
+        .filter(|u| !u.is_empty())
+        .map(str::to_string)
+}
+
+/// Một gói Claude và tài khoản claude.ai của nó (Claude Code và Claude Desktop cùng uuid).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Owner {
+    id: String,
+    /// None khi gói chưa đăng nhập Claude Code hay đăng nhập bằng token (không có `oauthAccount`): khi đó tin gói đang
+    /// dùng như trước.
+    uuid: Option<String>,
+    email: Option<String>,
+}
+
+/// `.claude.json` của gói: thư mục cấu hình rỗng là đăng nhập mặc định `~/.claude.json`.
+fn plan_json(home: &Path, config_dir: Option<&str>) -> PathBuf {
+    let dir = match config_dir.map(str::trim).filter(|d| !d.is_empty()) {
+        None => return home.join(".claude.json"),
+        Some("~") => home.to_path_buf(),
+        Some(d) => d
+            .strip_prefix("~/")
+            .or_else(|| d.strip_prefix("~\\"))
+            .map_or_else(|| PathBuf::from(d), |rest| home.join(rest)),
+    };
+    dir.join(".claude.json")
+}
+
+/// `oauthAccount.accountUuid`; file có thể vài MB (lịch sử dự án) nên chỉ giải mã đúng trường cần.
+fn plan_account(path: &Path) -> Option<String> {
+    #[derive(Deserialize)]
+    struct File {
+        #[serde(rename = "oauthAccount")]
+        oauth_account: Option<Account>,
+    }
+    #[derive(Deserialize)]
+    struct Account {
+        #[serde(rename = "accountUuid")]
+        account_uuid: Option<String>,
+    }
+    let file: File = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+    file.oauth_account?.account_uuid.filter(|u| !u.is_empty())
+}
+
+fn owners(home: &Path, plans: &[Plan]) -> Vec<Owner> {
+    plans
+        .iter()
+        .filter(|p| p.cli == "claude" && valid_id(&p.id))
+        .map(|p| Owner {
+            id: p.id.clone(),
+            uuid: plan_account(&plan_json(home, p.config_dir.as_deref())),
+            email: p.email.clone().filter(|e| !e.is_empty()),
+        })
+        .collect()
+}
+
+/// Gói của tài khoản `uuid`; hai gói cùng một tài khoản thì ưu tiên gói đang dùng.
+fn owner_of<'a>(owners: &'a [Owner], uuid: &str, active: Option<&str>) -> Option<&'a Owner> {
+    let same = || owners.iter().filter(|o| o.uuid.as_deref() == Some(uuid));
+    same()
+        .find(|o| Some(o.id.as_str()) == active)
+        .or_else(|| same().next())
+}
+
+/// Gói nhận đăng nhập `account` của hồ sơ: gói cùng tài khoản; không gói nào khớp thì gói đang dùng, trừ khi biết chắc
+/// gói đó là tài khoản khác (để đăng nhập lạ không đè lên đăng nhập đã lưu của gói). None khi hồ sơ chưa đăng nhập.
+fn login_home(owners: &[Owner], account: Option<&str>, active: Option<&str>) -> Option<String> {
+    let uuid = account?;
+    if let Some(o) = owner_of(owners, uuid, active) {
+        return Some(o.id.clone());
+    }
+    let active = active?;
+    match owners.iter().find(|o| o.id == active) {
+        Some(Owner { uuid: Some(_), .. }) => None,
+        _ => Some(active.to_string()),
+    }
+}
+
+fn short_uuid(uuid: &str) -> String {
+    match uuid.get(..8) {
+        Some(head) if uuid.len() > 8 => format!("{head}…"),
+        _ => uuid.to_string(),
+    }
+}
+
+/// Kích thước và giờ sửa của các file xác thực: so trước và sau khi chép để biết app có ghi xen vào không, và để trình
+/// theo dõi biết hồ sơ vừa đổi mà không phải đọc nội dung.
+type Stamp = Vec<Option<(u64, SystemTime)>>;
+
+fn stamp(paths: &Paths, dir: &Path) -> Stamp {
+    [CONFIG, DESKTOP_CONFIG]
+        .iter()
+        .chain(paths.auth_files())
+        .map(|f| {
+            std::fs::metadata(at(dir, f))
+                .ok()
+                .map(|m| (m.len(), m.modified().unwrap_or(UNIX_EPOCH)))
+        })
+        .collect()
+}
+
+fn same_auth(paths: &Paths, a: &Path, b: &Path) -> Result<bool, String> {
+    let (x, y) = (read_auth(a)?, read_auth(b)?);
+    let cookies = |d: &Path| {
+        paths
+            .auth_files()
+            .iter()
+            .filter(|f| !f.ends_with("-journal"))
+            .map(|f| std::fs::read(at(d, f)).ok())
+            .collect::<Vec<_>>()
+    };
+    Ok(x.config == y.config && x.prefs == y.prefs && cookies(a) == cookies(b))
+}
+
+/// Lưu đăng nhập của hồ sơ thật vào bộ của gói khi khác bộ đã lưu (vừa đăng nhập, app vừa làm mới token: token cũ đã
+/// bị xoay vòng, nạp lại sẽ bắt đăng nhập). App đang chạy (`live`) thì chỉ nhận bản chép khi không có giao dịch SQLite dở
+/// và không file nào đổi trong lúc chép; false là chưa lưu, lần sau thử lại.
+fn refresh_bundle(paths: &Paths, bundle: &Path, live: bool) -> Result<bool, String> {
+    let (real, files) = (&paths.real, paths.auth_files());
+    if same_auth(paths, real, bundle)? {
+        return Ok(true);
+    }
+    if !live {
+        return save_auth(real, bundle, files).map(|_| true);
+    }
+    let before = stamp(paths, real);
+    // Stamp xếp CONFIG, DESKTOP_CONFIG rồi tới bảng file xác thực.
+    let hot = files
+        .iter()
+        .zip(&before[2..])
+        .any(|(f, s)| f.ends_with("-journal") && s.is_some_and(|(len, _)| len > 0));
+    if hot {
+        return Ok(false);
+    }
+    save_auth_if(real, bundle, files, || stamp(paths, real) == before)
+}
+
+/// Gắn đăng nhập trên máy vào đúng gói, không ghi gì vào hồ sơ thật:
+/// - hồ sơ thật đăng nhập tài khoản của gói nào thì gói đó là gói đang dùng, và bộ của gói được cập nhật;
+/// - đăng nhập không phải của gói đang chờ thì ghi lại để báo người dùng;
+/// - đăng nhập trước lần chuyển gần nhất (`.previous`) khớp một gói chưa có bộ thì thành bộ của gói đó (máy đã chuyển
+///   trước khi có tự gắn: đăng nhập ban đầu chỉ nằm ở `.previous`).
+///
+/// Trả false khi có bản chép phải bỏ vì app đang ghi.
+fn reconcile(paths: &Paths, owners: &[Owner], live: bool) -> Result<bool, String> {
+    let mut state = read_state(paths);
+    let before = state.clone();
+    let mut settled = true;
+    if let Some(uuid) = account_of(paths, &paths.real) {
+        let expected = state.active.clone();
+        let owner = owner_of(owners, &uuid, expected.as_deref());
+        match (owner, expected.as_deref()) {
+            (Some(o), Some(e)) if o.id != e && owners.iter().any(|x| x.id == e) => {
+                state.mismatch = Some(Mismatch {
+                    account: o.email.clone().unwrap_or_else(|| short_uuid(&uuid)),
+                    expected: e.to_string(),
+                    adopted: Some(o.id.clone()),
+                });
+            }
+            (Some(o), _) => {
+                if state.mismatch.as_ref().is_some_and(|m| m.expected == o.id) {
+                    state.mismatch = None;
+                }
+            }
+            (None, Some(e)) if login_home(owners, Some(&uuid), Some(e)).is_none() => {
+                state.mismatch = Some(Mismatch {
+                    account: short_uuid(&uuid),
+                    expected: e.to_string(),
+                    adopted: None,
+                });
+            }
+            (None, _) => {}
+        }
+        if let Some(o) = owner {
+            state.active = Some(o.id.clone());
+        }
+        if let Some(id) = login_home(owners, Some(&uuid), state.active.as_deref()) {
+            settled &= refresh_bundle(paths, &paths.bundle(&id)?, live)?;
+        }
+    }
+    if let Some(uuid) = account_of(paths, &paths.previous())
+        && let Some(o) = owner_of(owners, &uuid, None)
+    {
+        let bundle = paths.bundle(&o.id)?;
+        if !paths.has_login(&bundle) {
+            save_auth(&paths.previous(), &bundle, paths.auth_files())?;
+        }
+    }
+    if state != before {
+        write_state(paths, &state)?;
+    }
+    Ok(settled)
 }
 
 /// Chép cả cây, symlink giữ nguyên là symlink (không đi theo ra ngoài hồ sơ), bỏ cache ở cấp đầu.
@@ -578,11 +823,13 @@ fn ensure_backup(paths: &Paths, state: &mut State, now: SystemTime) -> Result<()
 }
 
 /// Đổi tài khoản của hồ sơ thật sang gói `target` (None: về đăng nhập lúc chưa dùng tính năng này, lấy từ bản sao
-/// lưu). Claude Desktop phải đã thoát.
+/// lưu). Claude Desktop phải đã thoát. Đăng nhập hiện tại lưu vào gói có tài khoản đó (`owners`), không mặc nhiên vào
+/// gói đang dùng.
 fn swap_auth(
     paths: &Paths,
     state: &mut State,
     target: Option<&str>,
+    owners: &[Owner],
     now: SystemTime,
 ) -> Result<(), String> {
     let source = match target {
@@ -599,14 +846,16 @@ fn swap_auth(
         .map_err(|e| format!("Không tạo được hồ sơ Claude Desktop: {e}"))?;
     let files = paths.auth_files();
     save_auth(&paths.real, &paths.previous(), files)?;
-    if let Some(active) = &state.active {
-        save_auth(&paths.real, &paths.bundle(active)?, files)?;
+    let account = account_of(paths, &paths.real);
+    if let Some(id) = login_home(owners, account.as_deref(), state.active.as_deref()) {
+        save_auth(&paths.real, &paths.bundle(&id)?, files)?;
     }
     if let Err(e) = load_auth(&source, &paths.real, files) {
         let _ = load_auth(&paths.previous(), &paths.real, files);
         return Err(e);
     }
     state.active = target.map(str::to_string);
+    state.mismatch = None;
     write_state(paths, state)
 }
 
@@ -689,6 +938,9 @@ struct Plan {
     label: String,
     #[serde(default)]
     email: Option<String>,
+    /// Thư mục cấu hình Claude Code của gói (dạng `~/…`); thiếu là đăng nhập mặc định.
+    #[serde(default, rename = "configDir")]
+    config_dir: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -706,6 +958,20 @@ pub(crate) struct ProfileView {
     saved: bool,
     /// Gói Claude Desktop đang dùng.
     pub(crate) active: bool,
+    /// Biết tài khoản claude.ai của gói (từ `.claude.json`) nên Hive tự gắn đăng nhập; chưa biết thì người dùng tự
+    /// ghi nhận được.
+    account_known: bool,
+}
+
+/// Tài khoản Claude Desktop đang đăng nhập.
+#[derive(Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SignedIn {
+    /// uuid rút gọn, để nhận ra khi không có email.
+    account: String,
+    email: Option<String>,
+    /// Gói có tài khoản này; None khi không gói nào khớp.
+    plan: Option<String>,
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
@@ -723,11 +989,18 @@ pub(crate) struct ProfilesView {
     /// Gói còn hồ sơ riêng kiểu cũ (`--user-data-dir`) cần đổi sang bộ xác thực.
     legacy: Vec<String>,
     pub(crate) profiles: Vec<ProfileView>,
+    /// None khi Claude Desktop chưa đăng nhập (màn đăng nhập) hay chưa cài.
+    signed_in: Option<SignedIn>,
+    mismatch: Option<Mismatch>,
+    /// false: có đăng nhập chưa lưu được vì app đang ghi hồ sơ; trình theo dõi thử lại sớm.
+    #[serde(skip)]
+    settled: bool,
 }
 
 fn view(
     paths: &Paths,
     plans: &[Plan],
+    owners: &[Owner],
     app: Option<&App>,
     supported: bool,
     pid: Option<u32>,
@@ -746,8 +1019,17 @@ fn view(
             email: p.email.clone().filter(|e| !e.is_empty()),
             saved: paths.bundle(&p.id).is_ok_and(|b| paths.has_login(&b)),
             active: state.active.as_deref() == Some(p.id.as_str()),
+            account_known: owners.iter().any(|o| o.id == p.id && o.uuid.is_some()),
         })
         .collect();
+    let signed_in = account_of(paths, &paths.real).map(|uuid| {
+        let owner = owner_of(owners, &uuid, state.active.as_deref());
+        SignedIn {
+            account: short_uuid(&uuid),
+            email: owner.and_then(|o| o.email.clone()),
+            plan: owner.map(|o| o.id.clone()),
+        }
+    });
     let note = if !supported {
         Some(UNSUPPORTED.to_string())
     } else if app.is_none() {
@@ -767,6 +1049,9 @@ fn view(
             .map(|b| b.display().to_string()),
         legacy: legacy_profiles(&paths.root),
         profiles,
+        signed_in,
+        mismatch: state.mismatch,
+        settled: true,
     }
 }
 
@@ -780,15 +1065,30 @@ async fn claude_plans(app: &AppHandle) -> Result<Vec<Plan>, String> {
     Ok(accounts)
 }
 
-/// Gói Claude của máy, gói Claude Desktop đang dùng và bản sao lưu. Cũng làm mới mục "Chuyển Claude Desktop sang…" của
-/// khay, để khay theo kịp khi người dùng thêm hay xoá gói.
+/// Gói Claude của máy, gói Claude Desktop đang dùng và bản sao lưu; trước đó gắn đăng nhập trên máy vào đúng gói
+/// (`reconcile`). Cũng làm mới mục "Chuyển Claude Desktop sang…" của khay, để khay theo kịp khi người dùng thêm hay xoá
+/// gói.
 pub(crate) async fn load(app: &AppHandle) -> Result<ProfilesView, String> {
     let plans = claude_plans(app).await?;
     let home = need_home()?;
     let v = tauri::async_runtime::spawn_blocking(move || {
-        let app = CURRENT.and_then(|os| os.find_app(&home));
+        let found = CURRENT.and_then(|os| os.find_app(&home));
         let pid = CURRENT.and_then(|os| os.running(&home).real.first().copied());
-        view(&Paths::current(&home), &plans, app.as_ref(), SUPPORTED, pid)
+        let paths = Paths::current(&home);
+        let owners = owners(&home, &plans);
+        // Đang chuyển thì để lần sau: lần chuyển tự lưu đăng nhập và đang ghi hồ sơ thật.
+        let settled = !SUPPORTED
+            || match SWITCHING.try_lock() {
+                Ok(_guard) => reconcile(&paths, &owners, pid.is_some()).unwrap_or_else(|e| {
+                    eprintln!("Không gắn được đăng nhập Claude Desktop vào gói: {e}");
+                    true
+                }),
+                Err(_) => false,
+            };
+        ProfilesView {
+            settled,
+            ..view(&paths, &plans, &owners, found.as_ref(), SUPPORTED, pid)
+        }
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -799,6 +1099,32 @@ pub(crate) async fn load(app: &AppHandle) -> Result<ProfilesView, String> {
 #[tauri::command]
 pub async fn claude_desktop_profiles(app: AppHandle) -> Result<ProfilesView, String> {
     load(&app).await
+}
+
+/// Theo dõi hồ sơ Claude Desktop để lưu đăng nhập vào gói ngay khi người dùng vừa đăng nhập hay app vừa làm mới token,
+/// kể cả khi màn gói không mở. Mỗi nhịp chỉ stat vài file; đọc danh sách gói (gọi worker) khi hồ sơ đổi hay đã lâu.
+pub(crate) async fn watch(app: AppHandle) {
+    let Some(home) = home_dir() else {
+        return;
+    };
+    let paths = Paths::current(&home);
+    let mut seen: Option<Stamp> = None;
+    let mut last = Instant::now();
+    loop {
+        tokio::time::sleep(WATCH_EVERY).await;
+        if !paths.real.is_dir() {
+            continue;
+        }
+        let now = stamp(&paths, &paths.real);
+        if seen.as_ref() == Some(&now) && last.elapsed() < WATCH_FULL {
+            continue;
+        }
+        last = Instant::now();
+        seen = match load(&app).await {
+            Ok(v) if !v.settled => None,
+            _ => Some(now),
+        };
+    }
 }
 
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Copy)]
@@ -820,7 +1146,12 @@ pub(crate) struct Switched {
 }
 
 /// Chuyển Claude Desktop sang gói `target` (None: khôi phục đăng nhập ban đầu): thoát app, đổi bộ xác thực, mở lại.
-fn switch_blocking(home: &Path, target: Option<&str>, force: bool) -> Result<Switched, String> {
+fn switch_blocking(
+    home: &Path,
+    target: Option<&str>,
+    owners: &[Owner],
+    force: bool,
+) -> Result<Switched, String> {
     let _guard = SWITCHING
         .try_lock()
         .map_err(|_| "Đang chuyển Claude Desktop; chờ lần chuyển trước xong.".to_string())?;
@@ -832,7 +1163,11 @@ fn switch_blocking(home: &Path, target: Option<&str>, force: bool) -> Result<Swi
         Some(id) => !paths.has_login(&paths.bundle(id)?),
         None => false,
     };
-    if target.is_some() && state.active.as_deref() == target {
+    // Gói "đang dùng" mà app lại đăng nhập tài khoản khác: chuyển thật để nạp lại đăng nhập của gói.
+    let account = account_of(&paths, &paths.real);
+    let foreign = account.is_some()
+        && login_home(owners, account.as_deref(), target) != target.map(str::to_string);
+    if target.is_some() && state.active.as_deref() == target && !foreign {
         if os.running(home).real.is_empty() {
             os.launch(&app)?;
         }
@@ -857,7 +1192,7 @@ fn switch_blocking(home: &Path, target: Option<&str>, force: bool) -> Result<Swi
         });
     }
     // Đổi hỏng thì hồ sơ đã về đăng nhập cũ (swap_auth tự lấy lại): vẫn mở lại app như trước khi bấm.
-    let swapped = swap_auth(&paths, &mut state, target, SystemTime::now());
+    let swapped = swap_auth(&paths, &mut state, target, owners, SystemTime::now());
     os.launch(&app)?;
     swapped?;
     Ok(Switched {
@@ -877,10 +1212,12 @@ pub(crate) async fn switch(app: &AppHandle, id: &str, force: bool) -> Result<Swi
         return Err(format!("Không có gói Claude {id}."));
     }
     let home = need_home()?;
-    let done =
-        tauri::async_runtime::spawn_blocking(move || switch_blocking(&home, Some(&id), force))
-            .await
-            .map_err(|e| e.to_string())??;
+    let owners = owners(&home, &plans);
+    let done = tauri::async_runtime::spawn_blocking(move || {
+        switch_blocking(&home, Some(&id), &owners, force)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     let _ = load(app).await;
     Ok(done)
 }
@@ -901,15 +1238,36 @@ pub async fn restore_claude_desktop(app: AppHandle, force: bool) -> Result<Switc
         return Err(UNSUPPORTED.into());
     }
     let home = need_home()?;
-    let done = tauri::async_runtime::spawn_blocking(move || switch_blocking(&home, None, force))
-        .await
-        .map_err(|e| e.to_string())??;
+    // Không đọc được danh sách gói thì vẫn khôi phục được: đăng nhập hiện tại lưu vào gói đang dùng như trước.
+    let owners = owners(&home, &claude_plans(&app).await.unwrap_or_default());
+    let done =
+        tauri::async_runtime::spawn_blocking(move || switch_blocking(&home, None, &owners, force))
+            .await
+            .map_err(|e| e.to_string())??;
     let _ = load(&app).await;
     Ok(done)
 }
 
-/// Ghi nhận Claude Desktop đang đăng nhập đúng gói này (lúc mới dùng tính năng), để lần chuyển sau lưu đăng nhập hiện
-/// tại vào gói thay vì bắt đăng nhập lại. Không ghi gì vào hồ sơ thật.
+/// Đóng thông báo "đăng nhập không phải tài khoản của gói".
+#[tauri::command]
+pub async fn dismiss_claude_desktop_mismatch(app: AppHandle) -> Result<ProfilesView, String> {
+    let home = need_home()?;
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let paths = Paths::current(&home);
+        let mut state = read_state(&paths);
+        if state.mismatch.take().is_some() {
+            write_state(&paths, &state)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    load(&app).await
+}
+
+/// Phương án dự phòng cho gói chưa biết tài khoản claude.ai (Claude Code đăng nhập bằng token, không có
+/// `oauthAccount`): người dùng ghi nhận Claude Desktop đang đăng nhập đúng gói này, Hive lưu đăng nhập đó cho gói. Không
+/// ghi gì vào hồ sơ thật.
 #[tauri::command]
 pub async fn adopt_claude_desktop(
     app: AppHandle,
@@ -1079,6 +1437,16 @@ mod tests {
         ("Network/Network Persistent State", "net"),
     ];
 
+    /// Người dùng đăng nhập tài khoản `who` trong app: Cookies và token mới, khoá khác của config.json giữ nguyên.
+    fn sign_in(paths: &Paths, dir: &Path, who: &str) {
+        put(&cookies(paths, dir), &format!("cookies-{who}"));
+        let mut config = read_object(&dir.join(CONFIG)).unwrap();
+        config.insert("oauth:tokenCache".into(), format!("v10-{who}").into());
+        config.insert("oauth:tokenCacheV2".into(), format!("v10b-{who}").into());
+        config.insert("lastKnownAccountUuid".into(), format!("uuid-{who}").into());
+        put(&dir.join(CONFIG), &Value::Object(config).to_string());
+    }
+
     /// Mọi file dùng chung của hồ sơ, để so trước và sau khi chuyển.
     fn shared(dir: &Path) -> Vec<(String, String)> {
         let mut out = vec![];
@@ -1193,8 +1561,9 @@ mod tests {
             let mut state = State {
                 active: Some("claude-1".into()),
                 backup: None,
+                mismatch: None,
             };
-            swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap();
+            swap_auth(&paths, &mut state, Some("claude-2"), &[], UNIX_EPOCH + T0).unwrap();
             assert_eq!(state.active.as_deref(), Some("claude-2"));
             assert_eq!(
                 account(&paths, &paths.real),
@@ -1216,7 +1585,7 @@ mod tests {
             );
             assert!(!a.join("Local State").exists(), "bộ không mang khoá chung");
 
-            swap_auth(&paths, &mut state, Some("claude-1"), UNIX_EPOCH + T0).unwrap();
+            swap_auth(&paths, &mut state, Some("claude-1"), &[], UNIX_EPOCH + T0).unwrap();
             assert_eq!(
                 account(&paths, &paths.real),
                 ("cookies-a".into(), "v10b-a".into(), "mode-a".into())
@@ -1235,7 +1604,7 @@ mod tests {
             fake_profile(&paths, &paths.real, "a");
             let before = shared(&paths.real);
             let mut state = State::default();
-            swap_auth(&paths, &mut state, Some("claude-3"), UNIX_EPOCH + T0).unwrap();
+            swap_auth(&paths, &mut state, Some("claude-3"), &[], UNIX_EPOCH + T0).unwrap();
             for f in paths.auth_files() {
                 assert!(!at(&paths.real, f).exists(), "{f}");
             }
@@ -1252,8 +1621,8 @@ mod tests {
             assert_eq!(state.active.as_deref(), Some("claude-3"));
 
             // Người dùng đăng nhập trong app; lần chuyển sau lưu đăng nhập đó cho claude-3.
-            put(&cookies(&paths, &paths.real), "cookies-c");
-            swap_auth(&paths, &mut state, Some("claude-4"), UNIX_EPOCH + T0).unwrap();
+            sign_in(&paths, &paths.real, "c");
+            swap_auth(&paths, &mut state, Some("claude-4"), &[], UNIX_EPOCH + T0).unwrap();
             let c = paths.bundle("claude-3").unwrap();
             assert!(paths.has_login(&c));
             assert_eq!(read(&cookies(&paths, &c)), "cookies-c");
@@ -1281,8 +1650,9 @@ mod tests {
         let mut state = State {
             active: Some("claude-1".into()),
             backup: None,
+            mismatch: None,
         };
-        swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap();
+        swap_auth(&paths, &mut state, Some("claude-2"), &[], UNIX_EPOCH + T0).unwrap();
         assert_eq!(read(&cookies(&paths, &paths.real)), "cookies-b");
         assert!(!paths.real.join("Cookies").exists());
         assert_eq!(read(&paths.real.join("Local State")), "key");
@@ -1290,7 +1660,7 @@ mod tests {
         assert_eq!(read(&a.join("Cookies")), "cookies-a-old");
         assert!(paths.has_login(&a));
 
-        swap_auth(&paths, &mut state, Some("claude-1"), UNIX_EPOCH + T0).unwrap();
+        swap_auth(&paths, &mut state, Some("claude-1"), &[], UNIX_EPOCH + T0).unwrap();
         assert_eq!(read(&paths.real.join("Cookies")), "cookies-a-old");
         assert!(!cookies(&paths, &paths.real).exists());
         std::fs::remove_dir_all(&home).unwrap();
@@ -1301,7 +1671,7 @@ mod tests {
         for (home, paths) in layouts("backup") {
             fake_profile(&paths, &paths.real, "a");
             let mut state = State::default();
-            swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap();
+            swap_auth(&paths, &mut state, Some("claude-2"), &[], UNIX_EPOCH + T0).unwrap();
             let name = state.backup.clone().unwrap();
             assert_eq!(name, "backup-20261014-132200");
             let backup = paths.root.join(&name);
@@ -1319,6 +1689,7 @@ mod tests {
                 &paths,
                 &mut state,
                 Some("claude-3"),
+                &[],
                 UNIX_EPOCH + T0 + Duration::from_secs(3600),
             )
             .unwrap();
@@ -1337,12 +1708,12 @@ mod tests {
             );
 
             // Khôi phục: về tài khoản ban đầu, không gói nào đang dùng; đăng nhập (trống) của claude-3 vẫn được lưu.
-            put(&cookies(&paths, &paths.real), "cookies-c");
+            sign_in(&paths, &paths.real, "c");
             put(
                 &paths.real.join("claude-code-sessions/uuid-c/new.json"),
                 "new",
             );
-            swap_auth(&paths, &mut state, None, UNIX_EPOCH + T0).unwrap();
+            swap_auth(&paths, &mut state, None, &[], UNIX_EPOCH + T0).unwrap();
             assert_eq!(state.active, None);
             assert_eq!(account(&paths, &paths.real).0, "cookies-a");
             assert_eq!(json(&paths.real.join(CONFIG))["oauth:tokenCache"], "v10-a");
@@ -1375,8 +1746,10 @@ mod tests {
             let mut state = State {
                 active: Some("claude-1".into()),
                 backup: None,
+                mismatch: None,
             };
-            let err = swap_auth(&paths, &mut state, Some("claude-2"), UNIX_EPOCH + T0).unwrap_err();
+            let err =
+                swap_auth(&paths, &mut state, Some("claude-2"), &[], UNIX_EPOCH + T0).unwrap_err();
             assert!(err.contains("không phải JSON"), "{err}");
             assert_eq!(read(&cookies(&paths, &paths.real)), "cookies-a");
             assert_eq!(read(&paths.real.join(DESKTOP_CONFIG)), "{không phải json");
@@ -1391,7 +1764,7 @@ mod tests {
         for (home, paths) in layouts("nobackup") {
             fake_profile(&paths, &paths.real, "a");
             let mut state = State::default();
-            assert!(swap_auth(&paths, &mut state, None, UNIX_EPOCH + T0).is_err());
+            assert!(swap_auth(&paths, &mut state, None, &[], UNIX_EPOCH + T0).is_err());
             assert_eq!(read(&cookies(&paths, &paths.real)), "cookies-a");
             std::fs::remove_dir_all(&home).unwrap();
         }
@@ -1467,6 +1840,7 @@ mod tests {
             cli: cli.into(),
             label: label.into(),
             email: email.map(Into::into),
+            config_dir: None,
         }
     }
 
@@ -1486,6 +1860,7 @@ mod tests {
             &State {
                 active: Some("claude-2".into()),
                 backup: Some("backup-gone".into()),
+                mismatch: None,
             },
         )
         .unwrap();
@@ -1495,7 +1870,7 @@ mod tests {
             plan("claude-2", "claude", "", Some("")),
         ];
         let app = App::Mac(PathBuf::from("/Applications/Claude.app"));
-        let v = view(&paths, &plans, Some(&app), true, Some(42));
+        let v = view(&paths, &plans, &[], Some(&app), true, Some(42));
         assert_eq!(v.app.as_deref(), Some("/Applications/Claude.app"));
         assert_eq!(v.note, None);
         assert_eq!(v.running, Some(42));
@@ -1512,14 +1887,477 @@ mod tests {
         );
         assert_eq!(v.profiles[1].email, None);
         assert_eq!(
-            view(&paths, &plans, None, true, None).note.as_deref(),
+            view(&paths, &plans, &[], None, true, None).note.as_deref(),
             Some(mac::NOT_INSTALLED)
         );
         assert_eq!(
-            view(&paths, &plans, None, false, None).note.as_deref(),
+            view(&paths, &plans, &[], None, false, None).note.as_deref(),
             Some(UNSUPPORTED)
         );
         std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    fn owner(id: &str, who: Option<&str>) -> Owner {
+        Owner {
+            id: id.into(),
+            uuid: who.map(|w| format!("uuid-{w}")),
+            email: who.map(|w| format!("{w}@fpt.com")),
+        }
+    }
+
+    /// claude-1 là tài khoản a, claude-2 là b, claude-3 là c.
+    fn abc() -> Vec<Owner> {
+        vec![
+            owner("claude-1", Some("a")),
+            owner("claude-2", Some("b")),
+            owner("claude-3", Some("c")),
+        ]
+    }
+
+    #[test]
+    fn plan_account_comes_from_its_claude_json() {
+        let home = temp_home("owners");
+        assert_eq!(plan_json(&home, None), home.join(".claude.json"));
+        assert_eq!(plan_json(&home, Some("")), home.join(".claude.json"));
+        assert_eq!(
+            plan_json(&home, Some("~/.xdev-hive/accounts/claude-2")),
+            home.join(".xdev-hive/accounts/claude-2/.claude.json")
+        );
+        assert_eq!(
+            plan_json(&home, Some("/opt/c3")),
+            Path::new("/opt/c3/.claude.json")
+        );
+        put(
+            &home.join(".claude.json"),
+            r#"{"projects":{"/x":{}},"oauthAccount":{"accountUuid":"uuid-a","emailAddress":"a@fpt.com"}}"#,
+        );
+        put(
+            &home.join(".xdev-hive/accounts/claude-2/.claude.json"),
+            r#"{"oauthAccount":null}"#,
+        );
+        let mut c2 = plan("claude-2", "claude", "", Some("b@fpt.com"));
+        c2.config_dir = Some("~/.xdev-hive/accounts/claude-2".into());
+        let plans = [
+            plan("claude-1", "claude", "", Some("a@fpt.com")),
+            c2,
+            plan("codex-1", "codex", "", None),
+        ];
+        assert_eq!(
+            owners(&home, &plans),
+            vec![
+                owner("claude-1", Some("a")),
+                Owner {
+                    id: "claude-2".into(),
+                    uuid: None,
+                    email: Some("b@fpt.com".into())
+                },
+            ]
+        );
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
+    fn signed_out_profile_has_no_account_even_with_last_known_uuid() {
+        for (home, paths) in layouts("signedout") {
+            let dir = home.join("p");
+            put(
+                &dir.join(CONFIG),
+                r#"{"lastKnownAccountUuid":"uuid-a","locale":"vi-VN"}"#,
+            );
+            assert_eq!(account_of(&paths, &dir), None);
+            sign_in(&paths, &dir, "a");
+            assert_eq!(account_of(&paths, &dir).as_deref(), Some("uuid-a"));
+            assert_eq!(short_uuid("296f5a0d-1111-2222"), "296f5a0d…");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn signed_in_profile_is_adopted_by_the_plan_with_the_same_account() {
+        for (home, paths) in layouts("adopt") {
+            fake_profile(&paths, &paths.real, "b");
+            let before = shared(&paths.real);
+            assert!(reconcile(&paths, &abc(), true).unwrap());
+            let state = read_state(&paths);
+            assert_eq!(state.active.as_deref(), Some("claude-2"));
+            assert_eq!(state.mismatch, None);
+            let b = paths.bundle("claude-2").unwrap();
+            assert_eq!(read(&cookies(&paths, &b)), "cookies-b");
+            assert_eq!(json(&b.join(CONFIG))["oauth:tokenCacheV2"], "v10b-b");
+            assert!(!paths.bundle("claude-1").unwrap().exists());
+            // Chỉ đọc hồ sơ thật.
+            assert_eq!(shared(&paths.real), before);
+            assert_eq!(account(&paths, &paths.real).0, "cookies-b");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn previous_login_becomes_the_bundle_of_its_plan() {
+        // Máy đã chuyển sang claude-3 trước khi có tự gắn: đăng nhập ban đầu (claude-1) chỉ nằm ở .previous.
+        for (home, paths) in layouts("previous") {
+            fake_profile(&paths, &paths.real, "a");
+            let mut state = State::default();
+            swap_auth(&paths, &mut state, Some("claude-3"), &[], UNIX_EPOCH + T0).unwrap();
+            assert!(!paths.bundle("claude-1").unwrap().exists());
+            assert_eq!(account_of(&paths, &paths.real), None);
+
+            assert!(reconcile(&paths, &abc(), false).unwrap());
+            let c1 = paths.bundle("claude-1").unwrap();
+            assert_eq!(read(&cookies(&paths, &c1)), "cookies-a");
+            assert_eq!(json(&c1.join(CONFIG))["lastKnownAccountUuid"], "uuid-a");
+            assert_eq!(json(&c1.join(BUNDLE_PREFS))["sidebarMode"], "mode-a");
+            let state = read_state(&paths);
+            assert_eq!(
+                state.active.as_deref(),
+                Some("claude-3"),
+                "vẫn chờ đăng nhập claude-3"
+            );
+            assert_eq!(state.mismatch, None);
+
+            // Bộ đã có thì .previous không đè lên.
+            put(&cookies(&paths, &c1), "cookies-a-newer");
+            reconcile(&paths, &abc(), false).unwrap();
+            assert_eq!(read(&cookies(&paths, &c1)), "cookies-a-newer");
+
+            // Chuyển về claude-1: đăng nhập lại có sẵn, không bắt đăng nhập.
+            let mut state = read_state(&paths);
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-1"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            assert_eq!(account(&paths, &paths.real).0, "cookies-a-newer");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn login_after_switching_to_a_new_plan_is_saved_right_away() {
+        for (home, paths) in layouts("login") {
+            fake_profile(&paths, &paths.real, "a");
+            let mut state = State::default();
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-3"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            // App ở màn đăng nhập: chưa có gì để lưu.
+            assert!(reconcile(&paths, &abc(), true).unwrap());
+            assert!(!paths.has_login(&paths.bundle("claude-3").unwrap()));
+
+            sign_in(&paths, &paths.real, "c");
+            assert!(reconcile(&paths, &abc(), true).unwrap());
+            let c3 = paths.bundle("claude-3").unwrap();
+            assert_eq!(read(&cookies(&paths, &c3)), "cookies-c");
+            assert_eq!(json(&c3.join(CONFIG))["oauth:tokenCache"], "v10-c");
+            assert_eq!(read_state(&paths).active.as_deref(), Some("claude-3"));
+            assert_eq!(read_state(&paths).mismatch, None);
+            no_temp_files(paths.bundle("claude-3").unwrap().parent().unwrap());
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn login_with_another_plans_account_goes_to_that_plan_and_is_reported() {
+        for (home, paths) in layouts("wrongplan") {
+            fake_profile(&paths, &paths.real, "b");
+            let mut state = State::default();
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-3"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            sign_in(&paths, &paths.real, "a");
+            reconcile(&paths, &abc(), true).unwrap();
+            let state = read_state(&paths);
+            assert_eq!(
+                state.mismatch,
+                Some(Mismatch {
+                    account: "a@fpt.com".into(),
+                    expected: "claude-3".into(),
+                    adopted: Some("claude-1".into()),
+                })
+            );
+            assert_eq!(state.active.as_deref(), Some("claude-1"));
+            assert_eq!(
+                read(&cookies(&paths, &paths.bundle("claude-1").unwrap())),
+                "cookies-a"
+            );
+            assert!(!paths.bundle("claude-3").unwrap().exists());
+            // Thông báo giữ qua các lần đối chiếu sau, hết khi chuyển gói.
+            reconcile(&paths, &abc(), true).unwrap();
+            assert!(read_state(&paths).mismatch.is_some());
+            let mut state = read_state(&paths);
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-3"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            assert_eq!(read_state(&paths).mismatch, None);
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn login_with_an_unknown_account_is_never_saved_into_the_waiting_plan() {
+        for (home, paths) in layouts("stranger") {
+            fake_profile(&paths, &paths.real, "b");
+            let mut state = State::default();
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-3"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            sign_in(&paths, &paths.real, "z");
+            reconcile(&paths, &abc(), true).unwrap();
+            let state = read_state(&paths);
+            assert_eq!(state.active.as_deref(), Some("claude-3"));
+            assert_eq!(
+                state.mismatch,
+                Some(Mismatch {
+                    account: "uuid-z".into(),
+                    expected: "claude-3".into(),
+                    adopted: None,
+                })
+            );
+            assert!(!paths.bundle("claude-3").unwrap().exists());
+            // Chuyển đi cũng không lưu tài khoản lạ vào claude-3 (chỉ còn ở .previous).
+            let mut state = read_state(&paths);
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-2"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            assert!(!paths.bundle("claude-3").unwrap().exists());
+            assert_eq!(read(&cookies(&paths, &paths.previous())), "cookies-z");
+            assert_eq!(account(&paths, &paths.real).0, "cookies-b");
+
+            // Đăng xuất rồi đăng nhập đúng tài khoản thì hết thông báo.
+            let mut state = read_state(&paths);
+            state.active = Some("claude-3".into());
+            state.mismatch = Some(Mismatch {
+                account: "uuid-z".into(),
+                expected: "claude-3".into(),
+                adopted: None,
+            });
+            write_state(&paths, &state).unwrap();
+            sign_in(&paths, &paths.real, "c");
+            reconcile(&paths, &abc(), true).unwrap();
+            assert_eq!(read_state(&paths).mismatch, None);
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn plan_with_unknown_account_still_trusts_the_active_plan() {
+        for (home, paths) in layouts("unknown") {
+            fake_profile(&paths, &paths.real, "x");
+            let owners = vec![owner("claude-1", Some("a")), owner("claude-4", None)];
+            write_state(
+                &paths,
+                &State {
+                    active: Some("claude-4".into()),
+                    ..State::default()
+                },
+            )
+            .unwrap();
+            reconcile(&paths, &owners, true).unwrap();
+            assert_eq!(
+                read(&cookies(&paths, &paths.bundle("claude-4").unwrap())),
+                "cookies-x"
+            );
+            assert_eq!(read_state(&paths).mismatch, None);
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn token_refreshed_by_the_app_updates_the_plan_bundle() {
+        for (home, paths) in layouts("rotate") {
+            fake_profile(&paths, &paths.real, "a");
+            let other = home.join("other");
+            fake_profile(&paths, &other, "b");
+            save_auth(
+                &other,
+                &paths.bundle("claude-2").unwrap(),
+                paths.auth_files(),
+            )
+            .unwrap();
+            let mut state = State::default();
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-2"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            let b = paths.bundle("claude-2").unwrap();
+            // Vừa nạp: bộ và hồ sơ như nhau, không ghi lại.
+            let mtime = std::fs::metadata(b.join(CONFIG))
+                .unwrap()
+                .modified()
+                .unwrap();
+            assert!(reconcile(&paths, &abc(), true).unwrap());
+            assert_eq!(
+                std::fs::metadata(b.join(CONFIG))
+                    .unwrap()
+                    .modified()
+                    .unwrap(),
+                mtime
+            );
+
+            // App làm mới token và cookie sau khi mở lại.
+            let mut config = read_object(&paths.real.join(CONFIG)).unwrap();
+            config.insert("oauth:tokenCacheV2".into(), "v10b-b-rotated".into());
+            put(&paths.real.join(CONFIG), &Value::Object(config).to_string());
+            put(&cookies(&paths, &paths.real), "cookies-b-rotated");
+            assert!(reconcile(&paths, &abc(), true).unwrap());
+            assert_eq!(
+                json(&b.join(CONFIG))["oauth:tokenCacheV2"],
+                "v10b-b-rotated"
+            );
+            assert_eq!(read(&cookies(&paths, &b)), "cookies-b-rotated");
+
+            // Chuyển đi rồi về: nạp token mới, không phải token đã bị xoay vòng.
+            let mut state = read_state(&paths);
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-1"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-2"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            assert_eq!(
+                json(&paths.real.join(CONFIG))["oauth:tokenCacheV2"],
+                "v10b-b-rotated"
+            );
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn live_copy_waits_while_the_cookie_database_is_mid_transaction() {
+        for (home, paths) in layouts("live") {
+            fake_profile(&paths, &paths.real, "a");
+            put(&at(&paths.real, paths.auth_files()[1]), "hot");
+            let bundle = paths.bundle("claude-1").unwrap();
+            assert!(!refresh_bundle(&paths, &bundle, true).unwrap());
+            assert!(!bundle.exists());
+            assert!(!reconcile(&paths, &abc(), true).unwrap());
+            // App đã thoát thì không có ai ghi xen: chép luôn.
+            assert!(refresh_bundle(&paths, &bundle, false).unwrap());
+            assert_eq!(read(&cookies(&paths, &bundle)), "cookies-a");
+            // Hồ sơ đổi giữa lúc chép: bỏ bản chép, bộ cũ giữ nguyên.
+            put(&at(&paths.real, paths.auth_files()[1]), "");
+            put(&cookies(&paths, &paths.real), "cookies-a2");
+            assert!(!save_auth_if(&paths.real, &bundle, paths.auth_files(), || false).unwrap());
+            assert_eq!(read(&cookies(&paths, &bundle)), "cookies-a");
+            no_temp_files(bundle.parent().unwrap());
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn switching_saves_the_current_login_into_its_own_plan() {
+        for (home, paths) in layouts("ownplan") {
+            fake_profile(&paths, &paths.real, "a");
+            // Trạng thái cũ ghi nhầm claude-3 đang dùng trong khi app đăng nhập tài khoản của claude-1.
+            let mut state = State {
+                active: Some("claude-3".into()),
+                ..State::default()
+            };
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-2"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            assert_eq!(
+                read(&cookies(&paths, &paths.bundle("claude-1").unwrap())),
+                "cookies-a"
+            );
+            assert!(!paths.bundle("claude-3").unwrap().exists());
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn view_shows_the_signed_in_account_and_its_plan() {
+        for (home, paths) in layouts("signedin") {
+            fake_profile(&paths, &paths.real, "b");
+            let plans = [
+                plan("claude-1", "claude", "Max", Some("a@fpt.com")),
+                plan("claude-2", "claude", "Pro", Some("b@fpt.com")),
+                plan("claude-4", "claude", "Token", None),
+            ];
+            let owners = vec![
+                owner("claude-1", Some("a")),
+                owner("claude-2", Some("b")),
+                owner("claude-4", None),
+            ];
+            reconcile(&paths, &owners, false).unwrap();
+            let v = view(&paths, &plans, &owners, None, true, None);
+            assert_eq!(
+                v.signed_in,
+                Some(SignedIn {
+                    account: "uuid-b".into(),
+                    email: Some("b@fpt.com".into()),
+                    plan: Some("claude-2".into()),
+                })
+            );
+            assert_eq!(
+                v.profiles
+                    .iter()
+                    .map(|p| (p.id.as_str(), p.saved, p.active, p.account_known))
+                    .collect::<Vec<_>>(),
+                vec![
+                    ("claude-1", false, false, true),
+                    ("claude-2", true, true, true),
+                    ("claude-4", false, false, false),
+                ]
+            );
+            sign_in(&paths, &paths.real, "z");
+            assert_eq!(
+                view(&paths, &plans, &owners, None, true, None).signed_in,
+                Some(SignedIn {
+                    account: "uuid-z".into(),
+                    email: None,
+                    plan: None,
+                })
+            );
+            std::fs::remove_dir_all(&home).unwrap();
+        }
     }
 
     #[test]
@@ -1530,6 +2368,7 @@ mod tests {
             email: Some("duy@fpt.com".into()),
             saved: true,
             active: false,
+            account_known: true,
         };
         assert_eq!(tray_label(&p, false), "Duy Max (duy@fpt.com)");
         p.active = true;
