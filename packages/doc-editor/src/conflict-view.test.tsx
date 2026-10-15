@@ -77,7 +77,7 @@ describe("conflictRows", () => {
   it("bản hợp có đánh dấu giữ cả hai bên giữa các dòng đánh dấu", () => {
     const merged = markedMerge(conflictRows(base, hub, repo));
     expect(merged).toBe(
-      [
+      `${[
         "# Tiêu đề",
         "Mở đầu.",
         CONFLICT_MARK.hub,
@@ -87,7 +87,7 @@ describe("conflictRows", () => {
         CONFLICT_MARK.repo,
         "Bước hai.",
         "Kết luận hub.",
-      ].join("\n\n") + "\n",
+      ].join("\n\n")}\n`,
     );
     expect(hasConflictMarks(merged)).toBe(true);
     expect(hasConflictMarks("Dòng === bình thường\n\n=======\n")).toBe(false);
