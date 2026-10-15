@@ -2,6 +2,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@xdev-hive/ui/
 import type { ComponentType } from "react";
 import { createRoot } from "react-dom/client";
 import { bridge } from "@/bridge.ts";
+import { ArtifactsScreen } from "@/screens/artifacts.tsx";
 import { ReviewScreen } from "@/screens/review.tsx";
 import { SdlcScreen } from "@/screens/sdlc.tsx";
 import { syncTheme } from "@/theme.ts";
@@ -10,7 +11,11 @@ import type { Screen } from "../shared/index.ts";
 type HostScreen = Exclude<Screen, "artifact-frame">;
 
 // Mỗi màn nối component tại đây; khung artifact tương tác dùng entry và CSP riêng.
-const screens: Partial<Record<HostScreen, ComponentType>> = { review: ReviewScreen, sdlc: SdlcScreen };
+const screens: Partial<Record<HostScreen, ComponentType>> = {
+  artifacts: ArtifactsScreen,
+  review: ReviewScreen,
+  sdlc: SdlcScreen,
+};
 
 function ScreenRouter({ screen, title, empty }: { screen: string; title: string; empty: string }) {
   const Component = Object.hasOwn(screens, screen) ? screens[screen as HostScreen] : undefined;

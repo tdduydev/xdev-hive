@@ -28,7 +28,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
 
 ## Đợt 1: nền Go (song song)
 
-- [ ] **T001 [P] [US1] [nặng] Tách preset dùng chung cho run và phiên tương tác**
+- [x] **T001 [P] [US1] [nặng] Tách preset dùng chung cho run và phiên tương tác**
   - **Goal**:
     - Xuất `InteractivePreset(cli, version, level string) Preset` với `Preset{Env map[string]string; Codex
       map[string]string; Hooks []string; Skipped []SkipReason}`, theo bảng preset trong plan.md.
@@ -45,7 +45,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - Preset từng mức, từng phiên bản: 2.1.250 bỏ `SUBAGENT_MODEL_FORCE` và hook exec; 2.1.296 có đủ.
     - Không có `DISABLE_AUTO_MEMORY` trong preset tương tác.
 
-- [ ] **T002 [P] [US1] [nặng] Hook cục bộ `hive-worker hook pre-tool|post-tool --local`**
+- [x] **T002 [P] [US1] [nặng] Hook cục bộ `hive-worker hook pre-tool|post-tool --local`**
   - **Goal**:
     - `HookMain` nhận `--local`: khi không có `HIVE_RUN_GUARD_DIR`, lấy `session_id` từ stdin và dùng
       `~/.xdev-hive/optimizer/sessions/<id>/`.
@@ -68,7 +68,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - Benchmark < 50 ms.
     - Chạy trên Windows: không dùng shell.
 
-- [ ] **T003 [P] [US1] [nặng] Gói `optimizer`: cài và gỡ cấu hình an toàn**
+- [x] **T003 [P] [US1] [nặng] Gói `optimizer`: cài và gỡ cấu hình an toàn**
   - **Goal**: package `worker/internal/optimizer`:
     - `Enable(profile, level)`, `Disable(profile)`, `Status()`, `Restore(profile, backup)`.
     - Claude `settings.json`: JSON giữ thứ tự khoá, thêm `env` và `hooks`.
@@ -86,7 +86,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - Hook của người dùng còn nguyên.
     - Gói mặc định `~/.claude` chỉ bật khi chỉ định rõ.
 
-- [ ] **T005 [P] [US3] [vừa] Gói `memstore`: quét và gắn cờ**
+- [x] **T005 [P] [US3] [vừa] Gói `memstore`: quét và gắn cờ**
   - **Goal**:
     - `Scan(roots, projects) Inventory` cho Claude, Codex, Gemini theo plan.md.
     - Token ước tính: ký tự / 4, tiếng Việt có dấu ký tự / 3.
@@ -100,7 +100,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - Fixture 3 gói, cùng dự án, có file trùng, link chết, file mồ côi → số cờ đúng.
     - 100 file < 1 giây.
 
-- [ ] **T006 [P] [US2] [vừa] Gói `tokenreport`: báo cáo token bản Go**
+- [x] **T006 [P] [US2] [vừa] Gói `tokenreport`: báo cáo token bản Go**
   - **Goal**:
     - Port `scripts/token-audit.ts`: cùng chia nguồn, cùng công thức quy đổi, cùng các trường JSON.
     - Thêm lọc theo gói, mốc trước/sau (tham số), đọc `ledger.jsonl`, đọc `rtk gain --format json` nếu có.
