@@ -34,7 +34,24 @@ export interface CommitFilesInput {
   /** Nhánh chưa có thì tạo từ nhánh này (đưa file mẫu vào repo có sẵn qua PR). */
   fromBranch?: string;
   message: string;
-  files: Array<{ path: string; content: string }>;
+  expectedHead?: string;
+  files: Array<
+    | { path: string; content: string }
+    | { path: string; bytes: Uint8Array }
+    | { path: string; delete: true }
+    | { path: string; previousPath: string }
+  >;
+}
+
+export interface CommitChange {
+  path: string;
+  previousPath?: string;
+  status: "added" | "modified" | "removed" | "renamed";
+  sha: string | null;
+}
+export interface LfsObject {
+  oid: string;
+  size: number;
 }
 
 export interface BranchRules {
@@ -206,6 +223,10 @@ export interface GitProvider {
   listFiles(ref: RepoRef, sha: string): Promise<string[]>;
   /** Nội dung UTF-8 của file ở commit `sha`; null khi không có file. */
   readFile(ref: RepoRef, path: string, sha: string): Promise<string | null>;
+  readBlob(ref: RepoRef, blob: string): Promise<Uint8Array>;
+  compare(ref: RepoRef, from: string, to: string): Promise<{ files: CommitChange[]; incomplete: boolean }>;
+  archive(ref: RepoRef, sha: string, path?: string): Promise<ReadableStream<Uint8Array>>;
+  lfsBatch(ref: RepoRef, operation: "upload" | "download", objects: LfsObject[]): Promise<unknown>;
   /**
    * File đổi của PR, theo thứ tự nhà cung cấp trả, tối đa 3 000 file (giới hạn của GitHub; GitLab cắt theo cùng mức).
    * PR không có thì null.

@@ -1,7 +1,7 @@
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Pill } from "@xdev-hive/ui/pill";
-import { AppWindowIcon } from "lucide-react";
+import { AppWindowIcon, LogOutIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   adoptClaudeDesktop,
@@ -17,6 +17,7 @@ import {
   type Switched,
   type SwitchProgress,
   type SwitchStep,
+  signOutClaudeDesktop,
   switchClaudeDesktop,
   switchProgress,
 } from "@/lib/claude-desktop.ts";
@@ -41,8 +42,16 @@ const text: Dict<{
   adopt: string;
   adoptTitle: string;
   forget: string;
+  forgetHint: string;
   forgetTitle: string;
   forgetBody: (plan: string) => string;
+  signOut: string;
+  signOutHint: string;
+  signOutTitle: string;
+  signOutBody: (plan: string) => string;
+  signOutConfirm: string;
+  signOutForce: string;
+  signedOut: (plan: string) => string;
   confirmTitle: string;
   confirmBody: (plan: string) => string;
   confirmLogin: string;
@@ -100,10 +109,21 @@ const text: Dict<{
     adopt: "Claude Desktop đang đăng nhập gói này",
     adoptTitle:
       "Hive không đọc được tài khoản Claude của gói này nên không tự nhận ra. Bấm nếu Claude Desktop đang đăng nhập đúng tài khoản của gói: Hive lưu đăng nhập đó cho gói",
-    forget: "Quên đăng nhập đã lưu",
+    forget: "Quên đăng nhập",
+    forgetHint:
+      "Xoá đăng nhập Claude Desktop đã lưu của gói này. Gói không đang dùng nên Claude Desktop đang mở không bị đụng tới",
     forgetTitle: "Quên đăng nhập Claude Desktop của gói?",
     forgetBody: (plan) =>
       `Đăng nhập Claude Desktop đã lưu của ${plan} bị xoá; lần sau chuyển sang gói này phải đăng nhập lại. Sessions và dữ liệu trên máy không bị đụng tới.`,
+    signOut: "Đăng xuất Claude Desktop",
+    signOutHint: "Claude Desktop thoát, bỏ đăng nhập của gói này rồi mở lại ở màn đăng nhập",
+    signOutTitle: "Đăng xuất Claude Desktop?",
+    signOutBody: (plan) =>
+      `Claude Desktop sẽ thoát, đăng nhập của ${plan} (trong Claude Desktop và bản Hive đã lưu) bị xoá, rồi Claude Desktop mở lại ở màn đăng nhập. Việc đang chạy trong Claude Desktop sẽ dừng. Bộ nhớ, sessions, MCP và cấu hình trên máy giữ nguyên; gói khác không bị đụng tới.`,
+    signOutConfirm: "Đăng xuất",
+    signOutForce: "Buộc thoát và đăng xuất",
+    signedOut: (plan) =>
+      `Đã đăng xuất Claude Desktop khỏi ${plan}. Đăng nhập lại trong Claude Desktop khi cần; Hive tự lưu cho gói này.`,
     confirmTitle: "Khởi động lại Claude Desktop?",
     confirmBody: (plan) =>
       `Claude Desktop sẽ thoát rồi mở lại bằng tài khoản của ${plan}. Việc đang chạy trong Claude Desktop sẽ dừng. Bộ nhớ, sessions, MCP và cấu hình trên máy giữ nguyên; đăng nhập hiện tại được lưu cho gói đang dùng.`,
@@ -178,10 +198,21 @@ const text: Dict<{
     adopt: "Claude Desktop is on this plan",
     adoptTitle:
       "Hive cannot read this plan's Claude account, so it cannot tell on its own. Click if Claude Desktop is signed in with this plan's account: Hive saves that sign-in for the plan",
-    forget: "Forget saved sign-in",
+    forget: "Forget sign-in",
+    forgetHint:
+      "Delete this plan's saved Claude Desktop sign-in. The plan is not in use, so the running Claude Desktop is not touched",
     forgetTitle: "Forget this plan's Claude Desktop sign-in?",
     forgetBody: (plan) =>
       `The saved Claude Desktop sign-in of ${plan} is deleted; switching to it later asks you to sign in again. Sessions and local data are not touched.`,
+    signOut: "Sign out of Claude Desktop",
+    signOutHint: "Claude Desktop quits, drops this plan's sign-in and reopens at the sign-in screen",
+    signOutTitle: "Sign out of Claude Desktop?",
+    signOutBody: (plan) =>
+      `Claude Desktop quits, ${plan}'s sign-in (in Claude Desktop and the copy Hive saved) is deleted, then Claude Desktop reopens at the sign-in screen. Work running in Claude Desktop stops. Memory, sessions, MCP and local settings stay as they are; other plans are not touched.`,
+    signOutConfirm: "Sign out",
+    signOutForce: "Force quit and sign out",
+    signedOut: (plan) =>
+      `Signed Claude Desktop out of ${plan}. Sign in again in Claude Desktop when needed; Hive saves it for this plan.`,
     confirmTitle: "Restart Claude Desktop?",
     confirmBody: (plan) =>
       `Claude Desktop quits and reopens with ${plan}'s account. Work running in Claude Desktop stops. Memory, sessions, MCP and local settings stay as they are; the current sign-in is saved for the plan in use.`,
@@ -449,7 +480,10 @@ function useRestart(
   };
 }
 
-/** Dòng Claude Desktop trên thẻ một gói Claude: đang dùng, chuyển sang, ghi nhận đăng nhập hiện tại, quên đăng nhập. */
+/**
+ * Dòng Claude Desktop trên thẻ một gói Claude: đang dùng, chuyển sang, ghi nhận đăng nhập hiện tại, đăng xuất (gói đang
+ * dùng) hay quên đăng nhập đã lưu (gói không dùng).
+ */
 export function ClaudeDesktopRow({
   plan,
   profile,
@@ -475,14 +509,24 @@ export function ClaudeDesktopRow({
     },
     (e) => setNotice({ tone: "bad", text: errorText(e) }),
   );
+  const signOut = useRestart(
+    (force) => signOutClaudeDesktop(profile.id, force),
+    () => {
+      setNotice({ tone: "ok", text: t.signedOut(plan) });
+      onChanged();
+    },
+    (e) => setNotice({ tone: "bad", text: errorText(e) }),
+  );
 
   const canSwitch = !!view.app;
   const running = view.running !== null;
   const noneActive = !view.profiles.some((p) => p.active);
   // Một lần chuyển chạy ở chỗ khác (dòng khác, khay) thì Rust cũng từ chối; tắt nút cho khỏi bấm vào lỗi.
-  const working = busy || restart.busy || !!view.switching;
-  // Lần chuyển sang gói này: bấm ở đây, hay bắt đầu trước khi cửa sổ mở lại.
-  const switchingHere = restart.busy || view.switching?.target === profile.id;
+  const working = busy || restart.busy || signOut.busy || !!view.switching;
+  // Lần chuyển (hay đăng xuất) của gói này: bấm ở đây, hay bắt đầu trước khi cửa sổ mở lại.
+  const switchingHere = restart.busy || signOut.busy || view.switching?.target === profile.id;
+  // Có gì để đăng xuất: Claude Desktop đang đăng nhập, hay Hive còn giữ bản đã lưu của gói.
+  const canSignOut = profile.active && canSwitch && (!!view.signedIn || profile.saved);
   // Gói biết tài khoản thì Hive tự gắn đăng nhập; nút ghi nhận tay chỉ còn cho gói không đọc được tài khoản, khi Claude
   // Desktop đang đăng nhập một tài khoản chưa gói nào nhận.
   const canAdopt =
@@ -538,8 +582,20 @@ export function ClaudeDesktopRow({
             {t.adopt}
           </Button>
         )}
+        {canSignOut && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={working}
+            title={t.signOutHint}
+            onClick={() => signOut.start(true)}
+          >
+            <LogOutIcon aria-hidden="true" />
+            {t.signOut}
+          </Button>
+        )}
         {profile.saved && !profile.active && (
-          <Button size="sm" variant="ghost" disabled={working} onClick={() => setForgetting(true)}>
+          <Button size="sm" variant="ghost" disabled={working} title={t.forgetHint} onClick={() => setForgetting(true)}>
             {t.forget}
           </Button>
         )}
@@ -553,7 +609,7 @@ export function ClaudeDesktopRow({
       {switchingHere && (
         <SwitchProgressLine
           initial={view.switching?.target === profile.id ? view.switching : null}
-          onGone={restart.busy ? undefined : onChanged}
+          onGone={restart.busy || signOut.busy ? undefined : onChanged}
         />
       )}
       <NoticeLine notice={notice} />
@@ -574,6 +630,24 @@ export function ClaudeDesktopRow({
         destructive
         onCancel={restart.cancel}
         onConfirm={restart.force}
+      />
+      <Confirm
+        open={signOut.asking === "confirm"}
+        title={t.signOutTitle}
+        body={t.signOutBody(plan)}
+        action={t.signOutConfirm}
+        destructive
+        onCancel={signOut.cancel}
+        onConfirm={signOut.confirm}
+      />
+      <Confirm
+        open={signOut.asking === "force"}
+        title={t.forceTitle}
+        body={t.forceBody}
+        action={t.signOutForce}
+        destructive
+        onCancel={signOut.cancel}
+        onConfirm={signOut.force}
       />
       <Confirm
         open={forgetting}

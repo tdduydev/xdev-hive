@@ -89,6 +89,9 @@ export const restoreClaudeDesktop = (force = false) => invoke<Switched>("restore
 export const adoptClaudeDesktop = (profileId: string) => invoke<DesktopProfiles>("adopt_claude_desktop", { profileId });
 export const forgetClaudeDesktop = (profileId: string) =>
   invoke<DesktopProfiles>("forget_claude_desktop", { profileId });
+/** Đăng xuất Claude Desktop khỏi gói đang dùng: thoát app, bỏ đăng nhập của gói, mở lại ở màn đăng nhập. */
+export const signOutClaudeDesktop = (profileId: string, force = false) =>
+  invoke<Switched>("sign_out_claude_desktop", { profileId, force });
 export const dismissClaudeDesktopMismatch = () => invoke<DesktopProfiles>("dismiss_claude_desktop_mismatch");
 export const migrateClaudeDesktopProfiles = () => invoke<DesktopProfiles>("migrate_claude_desktop_profiles");
 /** Lần chuyển chạy nền nên cửa sổ hỏi tiến độ riêng; null khi đã xong. */
