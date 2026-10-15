@@ -257,7 +257,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 3: tính năng (song song, sau Đợt 2)
 
-- [ ] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
+- [x] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
   - **Phụ thuộc**: T010, T011.
   - **Goal**: US2-1…4, 6, 7. Log run vào Output qua SSE. Chưa cấu hình hub thì view hiện "Chưa cấu hình hub xDev Hive"
     (Edge Cases).
@@ -279,7 +279,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     (+ test)
   - **Test**: panel có `enableCommandUris: false`; thông điệp lạ bị bỏ; xoá bộ đệm khi đăng xuất.
 
-- [ ] **T018 [P] [US3] [nặng] · 3 ngày — Review bằng Comments API và diff**
+- [x] **T018 [P] [US3] [nặng] · 3 ngày — Review bằng Comments API và diff**
   - **Phụ thuộc**: T008, T010, T013.
   - **Goal**: plan.md mục 4 (extension), US3 toàn bộ. Fallback webview `CodeReviewPane` khi không có repo. Sửa, xoá
     bình luận của mình. Bình luận từ PR hiện tác giả "login · GitHub"; trạng thái đồng bộ qua `Comment.label`,

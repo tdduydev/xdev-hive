@@ -30,6 +30,7 @@ import {
   useState,
 } from "react";
 import { AiAccountsDialog } from "@/components/ai-accounts-dialog.tsx";
+import { ConnectHiveButton } from "@/components/connect-hive.tsx";
 import { Markdown, SuggestionView } from "@/components/doc-view.tsx";
 import { FolderForm } from "@/components/folder-form.tsx";
 import { LocalFileView } from "@/components/local-file.tsx";
@@ -1344,7 +1345,10 @@ export function DocsScreen() {
             </form>
           )}
           {!account ? (
-            <p className="px-1.5 py-1 text-xs text-muted-foreground">{t.noAccountDocs}</p>
+            <div className="flex flex-col items-start gap-1.5 px-1.5 py-1">
+              <p className="text-xs text-muted-foreground">{t.noAccountDocs}</p>
+              <ConnectHiveButton />
+            </div>
           ) : hubError ? (
             <p className="px-1.5 py-1 text-xs text-destructive">{hubError}</p>
           ) : docs === null ? (
