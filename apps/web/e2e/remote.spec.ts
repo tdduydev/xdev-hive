@@ -1,6 +1,8 @@
+import { generateKeyPairSync } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 import {
   fakeHub,
+  fakeRemoteSocket,
   ok,
   REMOTE_SESSION_COLLEAGUE,
   REMOTE_SESSION_ENDED,
@@ -27,6 +29,14 @@ async function setup(
   );
   return fakeHub(page, { signedIn: true, rpc: { ...fixture.rpc, ...extra } });
 }
+
+/** WebSocket của phiên đang chạy; các test ở đây không xin quyền gõ nên passkey chỉ là khoá bất kỳ. */
+const liveSocket = (page: Page, fixture: Fixture) =>
+  fakeRemoteSocket(page, fixture, {
+    sessionId: REMOTE_SESSION_LIVE,
+    deviceId: "dev-phone-01",
+    passkey: generateKeyPairSync("ec", { namedCurve: "prime256v1" }).publicKey,
+  });
 
 const xterm = (page: Page) => page.locator(".xterm-rows");
 const noHorizontalScroll = async (page: Page, width: number) => {
@@ -97,19 +107,19 @@ test("phát lại: tải bản ghi theo từng trang từ đầu, không cần W
   expect(sockets).toBe(0);
 });
 
-test("phiên đang chạy: hiện bản ghi tới lúc này, báo chưa xem trực tiếp, không nối WebSocket", async ({ page }) => {
-  let sockets = 0;
-  // Vite mở WebSocket HMR của riêng nó; chỉ đếm kết nối terminal.
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/ws/terminal")) sockets += 1;
-  });
-  await setup(page, remoteFixture({ chunks: ["đang làm dở\r\n"] }));
+test("phiên đang chạy: xem trực tiếp qua WebSocket thay vì tải bản ghi", async ({ page }) => {
+  const fixture = remoteFixture({ chunks: ["bản ghi cũ\r\n"] });
+  await setup(page, fixture);
+  const socket = await liveSocket(page, fixture);
   await page.goto(`/remote/${REMOTE_SESSION_LIVE}`);
+  await expect.poll(() => socket.sockets.length).toBe(1);
+  socket.out("đang làm dở\r\n");
 
   await expect(xterm(page)).toContainText("đang làm dở");
   await expect(page.getByRole("status").filter({ hasText: "Đang chạy" })).toBeVisible();
-  await expect(page.getByText("Phiên đang chạy. Bên dưới là bản ghi tới lúc này")).toBeVisible();
-  expect(sockets).toBe(0);
+  await expect(page.getByRole("button", { name: "Điều khiển", exact: true })).toBeVisible();
+  expect(socket.sockets[0]?.received[0]).toEqual({ t: "resume", after: -1 });
+  expect(fixture.state.chunkCalls).toEqual([]);
 });
 
 test("phiên của đồng nghiệp: chỉ xem, hiện người mở", async ({ page }) => {
@@ -129,12 +139,16 @@ test("không tìm thấy phiên: hiện lỗi của hub và nút tải lại", a
 });
 
 test("tiếng Anh: danh sách và trang phiên đổi chữ", async ({ page }) => {
-  await setup(page, remoteFixture({ chunks: ["hello\r\n"] }), { lang: "en" });
+  const fixture = remoteFixture();
+  await setup(page, fixture, { lang: "en" });
+  const socket = await liveSocket(page, fixture);
   await page.goto("/remote");
   await expect(page.getByRole("heading", { name: "Remote control", level: 1 })).toBeVisible();
   await expect(page.getByText("Remote off")).toBeVisible();
   await page.getByRole("link").filter({ hasText: "PAY-12" }).click();
-  await expect(page.getByText("The session is running.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Take control" })).toBeVisible();
+  await expect(page.getByText("Watching live.")).toBeVisible();
+  socket.out("hello\r\n");
   await expect(xterm(page)).toContainText("hello");
 });
 
@@ -167,9 +181,10 @@ test.describe("360 px", () => {
 });
 
 test("bảng việc: mục Phiên tương tác liệt kê phiên gắn việc và dẫn tới trang phiên", async ({ page }) => {
+  const fixture = remoteFixture();
   await setup(
     page,
-    remoteFixture({ chunks: ["từ bảng việc\r\n"] }),
+    fixture,
     {},
     {
       "projects/list": () => ok([]),
@@ -177,11 +192,14 @@ test("bảng việc: mục Phiên tương tác liệt kê phiên gắn việc v�
       "runs/latest": () => ok([]),
     },
   );
+  const socket = await liveSocket(page, fixture);
   await page.goto("/tasks");
   const section = page.getByRole("region", { name: "Phiên tương tác" });
   await expect(section.getByRole("link")).toHaveCount(1);
   await expect(section).toContainText("PAY-12");
   await section.getByRole("link").click();
   await expect(page).toHaveURL(new RegExp(`/remote/${REMOTE_SESSION_LIVE}$`));
+  await expect.poll(() => socket.sockets.length).toBe(1);
+  socket.out("từ bảng việc\r\n");
   await expect(xterm(page)).toContainText("từ bảng việc");
 });

@@ -12,7 +12,7 @@ export {
   saveAgentPolicy,
   sdlcPolicyOf,
 } from "./policies.ts";
-export { policiesRouter, type TemplateService } from "./router.ts";
+export { policiesRouter, type RemotePolicyHook, type TemplateService } from "./router.ts";
 export {
   DEFAULT_TEMPLATES,
   fillTemplate,

@@ -85,6 +85,7 @@ import {
 import {
   chainVerifiers,
   createTerminalTokenVerifier,
+  remotePolicyHook,
   remoteRouter,
   terminalRouter,
   terminalTokenKey,
@@ -291,7 +292,12 @@ export function createApp({
     sdlc: sdlcRouter({ auth, pool, ...sdlcDeps }),
     mcpAdmin: mcpAdminRouter({ auth: baseAuth, pool, registry }),
     roles: rolesRouter({ auth, pool }),
-    policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
+    policies: policiesRouter({
+      auth,
+      pool,
+      templates: templateService({ publicUrl, jobs }),
+      remote: remotePolicyHook,
+    }),
     terminal: terminalRouter({ auth, pool, terminal }),
     remote: remoteRouter({ auth, pool, remote: { enabled: terminal.enabled, publicUrl } }),
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
