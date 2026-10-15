@@ -105,21 +105,24 @@ describe("HTML và CSP", () => {
 });
 
 describe("cầu nối host", () => {
-  it.each(["review", "sdlc", "artifacts", "chat", "doc-review"] as const)("%s mặc định từ chối RPC", async (screen) => {
-    const view = mockWebview();
-    const rpc = vi.fn(async () => rpcReply);
-    disposables.push(attachBridge(view.webview, screen, { rpc }));
-    await view.dispatch({
-      type: "rpc",
-      id: "one",
-      path: "/rpc/codeReviews/get",
-      method: "POST",
-      body: "{}",
-      screen: "review",
-    });
-    expect(rpc).not.toHaveBeenCalled();
-    expect(view.post).toHaveBeenCalledWith(expect.objectContaining({ id: "one", status: 403 }));
-  });
+  it.each(["review", "sdlc", "artifacts", "chat", "doc-review"] as const)(
+    "%s từ chối RPC ngoài danh sách cho phép",
+    async (screen) => {
+      const view = mockWebview();
+      const rpc = vi.fn(async () => rpcReply);
+      disposables.push(attachBridge(view.webview, screen, { rpc }));
+      await view.dispatch({
+        type: "rpc",
+        id: "one",
+        path: "/rpc/unknownProcedure",
+        method: "POST",
+        body: "{}",
+        screen: "review",
+      });
+      expect(rpc).not.toHaveBeenCalled();
+      expect(view.post).toHaveBeenCalledWith(expect.objectContaining({ id: "one", status: 403 }));
+    },
+  );
 
   it("thủ tục được phép giữ query/body, bỏ header và URL do webview gửi", async () => {
     const view = mockWebview();
