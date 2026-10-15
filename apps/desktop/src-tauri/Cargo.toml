@@ -40,6 +40,16 @@ base64 = "0.22"
 # Terminal nhúng của màn Tài liệu từ code: PTY chạy được trên macOS, Windows (ConPTY) và Linux. 0.9.0 phát hành 02/2025.
 portable-pty = "0.9.0"
 
+[target.'cfg(windows)'.dependencies]
+# Dò, đóng và buộc tắt Claude Desktop bằng Win32 thay vì PowerShell/taskkill (có lúc treo). Cùng bản đã có trong cây
+# phụ thuộc.
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
 [target.'cfg(unix)'.dependencies]
 # Huỷ agent CLI của màn Tài liệu: gửi tín hiệu cho cả nhóm tiến trình. Cùng bản đã có trong cây phụ thuộc.
 libc = "0.2"
