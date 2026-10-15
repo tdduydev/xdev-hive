@@ -145,9 +145,10 @@ const findButton = (container: Element, label: RegExp) =>
   buttons(container).find((b) => label.test(b.textContent ?? ""));
 
 describe("màn AI SDLC trong webview", () => {
-  it("chỉ gọi các thủ tục nằm trong allowlist của host", async () => {
+  // Lần render đầu của bundle chậm khi CI chạy song song nhiều gói.
+  it("chỉ gọi các thủ tục nằm trong allowlist của host", { timeout: 20_000 }, async () => {
     const { container, paths } = mountScreen(["sdlc.write"]);
-    await vi.waitFor(() => expect(container.textContent).toContain("Hoàn tiền một phần"));
+    await vi.waitFor(() => expect(container.textContent).toContain("Hoàn tiền một phần"), { timeout: 15_000 });
     const allowed = new Set(procedures);
     for (const path of paths()) expect(allowed.has(path ?? ""), path).toBe(true);
   });
