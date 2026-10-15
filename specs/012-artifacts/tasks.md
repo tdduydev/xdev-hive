@@ -277,7 +277,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `apps/desktop/src-tauri/Cargo.toml` (nếu cần), `apps/desktop/src/lib/artifact-cache.ts` + test
   - **Phụ thuộc**: T004, T012 · **Mức**: nặng
 
-- [ ] T041 🎯 Desktop: màn Leader tối thiểu và màn Artifact
+- [x] T041 🎯 Desktop: màn Leader tối thiểu và màn Artifact
   - `screens/leader-screen.tsx` (C13, plan.md D18: cuộc trò chuyện, tin nhắn, gửi, thẻ đề xuất duyệt/từ chối, thẻ artifact,
     khung bên cạnh, "Nhờ Leader sửa"), `screens/artifacts-screen.tsx` (thư viện + chi tiết từ package, tạo/thu hồi link
     công khai; mở link bằng trình duyệt hệ thống), `ArtifactsEnv` của app (offline từ bộ đệm; offline thì tắt "Nhờ Leader

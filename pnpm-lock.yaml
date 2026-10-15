@@ -220,6 +220,9 @@ importers:
       '@xdev-hive/artifacts-runtime':
         specifier: workspace:*
         version: link:../../packages/artifacts-runtime
+      '@xdev-hive/artifacts-ui':
+        specifier: workspace:*
+        version: link:../../packages/artifacts-ui
       '@xdev-hive/code-review':
         specifier: workspace:*
         version: link:../../packages/code-review

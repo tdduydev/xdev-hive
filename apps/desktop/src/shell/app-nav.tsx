@@ -5,7 +5,7 @@ import { type Account, initials } from "@/lib/account.ts";
 import { formatBuiltAt, useBuildInfo } from "@/lib/build-info.ts";
 import { folderName, pickFolder, shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { navGroups, type Profile, type ScreenId } from "@/lib/nav.ts";
+import { type HubFeatures, navGroups, type Profile, type ScreenId } from "@/lib/nav.ts";
 import type { WorkerView } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
 import { WORKER_DOT, workerSentence } from "@/lib/worker.ts";
@@ -123,6 +123,7 @@ export function AppNav({
   worker,
   compact = false,
   connected = true,
+  features = {},
 }: {
   profile: Profile;
   active: ScreenId;
@@ -133,6 +134,8 @@ export function AppNav({
   compact?: boolean;
   /** Đã đăng nhập Hive; chưa thì mục cần hub mờ đi kèm nhãn. */
   connected?: boolean;
+  /** Tính năng hub đã dò được; mục của tính năng hub không có thì ẩn. */
+  features?: HubFeatures;
 }) {
   const t = useT(text);
   const lang = useLang();
@@ -189,7 +192,7 @@ export function AppNav({
           onScroll={edges.measure}
           className="flex h-full flex-col gap-1 overflow-y-auto overscroll-contain"
         >
-          {navGroups(profile).map((group, index) => (
+          {navGroups(profile, undefined, features).map((group, index) => (
             // Tên nhóm nằm ở aria-label để trình đọc màn hình vẫn nghe được khi menu thu gọn mất tiêu đề.
             // biome-ignore lint/a11y/useSemanticElements: nhóm liên kết điều hướng, không phải ô nhập của form như fieldset
             <div

@@ -15,3 +15,26 @@ describe("AI SDLC trong menu app", () => {
     expect(screenFromHash("#/sdlc-questions")).toBe("sdlc-questions");
   });
 });
+
+describe("Leader và Artifact trong menu app", () => {
+  const ids = (profile: Parameters<typeof navGroups>[0], features?: Parameters<typeof navGroups>[2]) =>
+    navGroups(profile, undefined, features).flatMap((g) => g.items.map((i) => i.id));
+
+  it("Artifact cho dev, writer, lead; Leader chỉ dev và lead", () => {
+    expect(ids("dev")).toEqual(expect.arrayContaining(["leader", "artifacts"]));
+    expect(ids("lead")).toEqual(expect.arrayContaining(["leader", "artifacts"]));
+    expect(ids("writer")).toContain("artifacts");
+    expect(ids("writer")).not.toContain("leader");
+  });
+
+  it("hub không có artifacts thì ẩn mục Artifact, giữ Leader", () => {
+    expect(ids("dev", { artifacts: false })).not.toContain("artifacts");
+    expect(ids("dev", { artifacts: false })).toContain("leader");
+    expect(ids("dev", { artifacts: true })).toContain("artifacts");
+  });
+
+  it("hash chi tiết vẫn chọn đúng màn", () => {
+    expect(screenFromHash("#/artifacts/abc/2")).toBe("artifacts");
+    expect(screenFromHash("#/leader/abc")).toBe("leader");
+  });
+});
