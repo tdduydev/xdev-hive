@@ -1,8 +1,7 @@
 // Dựng hai đích bằng esbuild: extension host (node, cjs) và webview (trình duyệt, esm) + CSS bằng Tailwind CLI.
 // `--production` nén và bỏ sourcemap; `--watch` dựng lại khi sửa.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { type BuildOptions, build, context } from "esbuild";
 
@@ -51,7 +50,10 @@ if (existsSync(at("webview/main.tsx"))) {
 
 function tailwind(): void {
   if (!existsSync(at("webview/styles.css"))) return;
-  const cli = createRequire(import.meta.url).resolve("@tailwindcss/cli/dist/index.mjs");
+  // CLI chỉ export package.json; lấy bin từ manifest để không phụ thuộc đường dẫn nội bộ.
+  const manifestUrl = new URL(import.meta.resolve("@tailwindcss/cli/package.json"));
+  const manifest = JSON.parse(readFileSync(manifestUrl, "utf8")) as { bin: { tailwindcss: string } };
+  const cli = fileURLToPath(new URL(manifest.bin.tailwindcss, manifestUrl));
   mkdirSync(at("dist/webview"), { recursive: true });
   execFileSync(
     process.execPath,
