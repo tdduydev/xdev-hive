@@ -7,7 +7,9 @@ export type GitProviderErrorCode =
   | "conflict"
   | "rate_limited"
   | "unavailable"
-  | "invalid";
+  | "invalid"
+  | "position_invalid"
+  | "unsupported";
 
 export class GitProviderError extends Error {
   override readonly name = "GitProviderError";
@@ -78,6 +80,8 @@ const messages: Record<GitProviderErrorCode, string> = {
   rate_limited: "vượt giới hạn số lần gọi, thử lại sau",
   unavailable: "dịch vụ tạm thời không phản hồi",
   invalid: "yêu cầu không hợp lệ",
+  position_invalid: "dòng không thuộc phần thay đổi của PR",
+  unsupported: "thao tác không được hỗ trợ",
 };
 
 /** Đổi phản hồi HTTP lỗi thành GitProviderError, dùng chung cho GitHub và GitLab. */

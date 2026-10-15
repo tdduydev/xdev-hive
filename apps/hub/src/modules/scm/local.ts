@@ -319,6 +319,25 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
       return { id };
     },
 
+    async listReviewComments() {
+      throw new GitProviderError("unsupported", "SCM local: không hỗ trợ bình luận review");
+    },
+    async createReviewComment() {
+      throw new GitProviderError("unsupported", "SCM local: không hỗ trợ bình luận review");
+    },
+    async replyReviewComment() {
+      throw new GitProviderError("unsupported", "SCM local: không hỗ trợ bình luận review");
+    },
+    async editReviewComment() {
+      throw new GitProviderError("unsupported", "SCM local: không hỗ trợ bình luận review");
+    },
+    async deleteReviewComment() {
+      throw new GitProviderError("unsupported", "SCM local: không hỗ trợ bình luận review");
+    },
+    async setReviewThreadResolved() {
+      throw new GitProviderError("unsupported", "SCM local: không hỗ trợ bình luận review");
+    },
+
     async canPush() {
       // Chế độ thử chỉ có người chạy script.
       return true;
