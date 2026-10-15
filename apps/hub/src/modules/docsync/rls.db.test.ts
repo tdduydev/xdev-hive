@@ -149,8 +149,9 @@ describe("RLS các bảng nền docsync", () => {
       "select tablename, policyname, roles::text[] as roles, qual, with_check from pg_policies where schemaname = 'hive' and tablename = any($1)",
       [tableNames],
     );
-    expect(policies.rows).toHaveLength(tableNames.length);
-    for (const policy of policies.rows) {
+    // doc_homes có thêm policy SELECT cho webhook (tra nhà theo id khi chưa biết tổ chức).
+    expect(policies.rows).toHaveLength(tableNames.length + 1);
+    for (const policy of policies.rows.filter((row) => row.policyname !== "doc_homes_webhook")) {
       expect(policy.policyname).toBe(`${policy.tablename}_rw`);
       expect(policy.roles).toEqual(["hive_app"]);
       expect(policy.qual).toContain("ctx_org()");
