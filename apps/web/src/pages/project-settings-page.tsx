@@ -47,6 +47,7 @@ import {
 import { teamRoleLookup } from "@/lib/projects.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
+import { ProjectDocsSettings } from "@/pages/project-docs-settings.tsx";
 import { ProjectSdlcSections } from "@/pages/project-sdlc-settings.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -713,6 +714,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
       { id: "tokens", label: t.tokensTitle },
       { id: "routing", label: t.routingTitle },
       { id: "perm", label: t.permTitle },
+      { id: "docs", label: "Tài liệu" },
       { id: "sdlc", label: "AI SDLC" },
       { id: "sdlc-auto", label: t.sdlcAutoTitle },
       ...(canEdit ? [{ id: "machines", label: t.machinesTitle }] : []),
@@ -1224,6 +1226,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
           {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
         </SettingsSection>
 
+        <ProjectDocsSettings project={project} canEdit={canEdit} />
         <ProjectSdlcSections project={project} canEdit={canEdit} orgPolicy={policy.data?.sdlc} />
 
         {/* Hub chỉ cho quản trị đội xem danh sách máy, nên thành viên thường không có mục này. */}

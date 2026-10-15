@@ -3,13 +3,14 @@ import type { ComponentType } from "react";
 import { createRoot } from "react-dom/client";
 import { bridge } from "@/bridge.ts";
 import { ArtifactsScreen } from "@/screens/artifacts.tsx";
+import { ReviewScreen } from "@/screens/review.tsx";
 import { syncTheme } from "@/theme.ts";
 import type { Screen } from "../shared/index.ts";
 
 type HostScreen = Exclude<Screen, "artifact-frame">;
 
 // Mỗi màn nối component tại đây; khung artifact tương tác dùng entry và CSP riêng.
-const screens: Partial<Record<HostScreen, ComponentType>> = { artifacts: ArtifactsScreen };
+const screens: Partial<Record<HostScreen, ComponentType>> = { artifacts: ArtifactsScreen, review: ReviewScreen };
 
 function ScreenRouter({ screen, title, empty }: { screen: string; title: string; empty: string }) {
   const Component = Object.hasOwn(screens, screen) ? screens[screen as HostScreen] : undefined;
