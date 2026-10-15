@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DesktopProfiles } from "@/lib/claude-desktop.ts";
 import { saveFolder } from "@/lib/folder.ts";
 import { setLang } from "@/lib/i18n.ts";
 import {
@@ -65,8 +66,11 @@ function seed(): Plan[] {
 
 type Call = { command: string; args?: Record<string, unknown> };
 
-/** `found` undefined: worker cũ không có lệnh `accounts discover` (lệnh lỗi như sidecar thật). */
-function fakeTauri(list = seed(), found?: FoundLogin[]) {
+/**
+ * `found` undefined: worker cũ không có lệnh `accounts discover` (lệnh lỗi như sidecar thật). `desktop` undefined: lệnh
+ * Claude Desktop lỗi như ngoài macOS, màn không hiện dòng Claude Desktop.
+ */
+function fakeTauri(list = seed(), found?: FoundLogin[], desktop?: DesktopProfiles) {
   const calls: Call[] = [];
   const reply = () => ({ path: "/x/accounts.json", accounts: list });
   const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -112,6 +116,7 @@ function fakeTauri(list = seed(), found?: FoundLogin[]) {
     },
     open_login_terminal: () => null,
     open_cli_terminal: () => null,
+    ...(desktop && { claude_desktop_profiles: () => desktop }),
     ...(found && {
       cli_profile_discover: () => ({ found }),
       cli_profile_discover_add: ({ cli, configDir }: Record<string, unknown>) => {
@@ -235,6 +240,49 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     await user().click(within(block("claude")).getByRole("button", { name: "1 gói đang tắt" }));
     expect(within(row("claude-3")).getByText("Tắt")).toBeTruthy();
     expect(within(row("claude-3")).getByRole("button", { name: "Bật gói Gói cũ" })).toBeTruthy();
+  });
+
+  it("chỉ thẻ gói Claude có dòng Claude Desktop, theo hồ sơ Rust trả về", async () => {
+    const profile = (id: string, label: string) => ({
+      id,
+      label,
+      email: null,
+      dir: `/u/.xdev-hive/claude-desktop/${id}`,
+      used: id === "claude-1",
+      bytes: 2048,
+      cacheBytes: 1024,
+      pid: id === "claude-1" ? 501 : null,
+    });
+    const desktop = {
+      supported: true,
+      app: "/Applications/Claude.app",
+      root: "/u/.xdev-hive/claude-desktop",
+      note: null,
+      profiles: [profile("claude-1", "Duy Max"), profile("claude-2", "Gói phụ")],
+    };
+    fakeTauri(seed(), undefined, desktop);
+    render(<PlansScreen />);
+    await waitFor(() => expect(row("claude-1").querySelector("[data-claude-desktop]")).not.toBeNull());
+    expect(within(row("claude-1")).getByText("Đang mở")).toBeTruthy();
+    expect(within(row("claude-1")).getByRole("button", { name: "Claude Desktop" })).toBeTruthy();
+    expect(within(row("claude-2")).getByRole("button", { name: "Đăng nhập Claude Desktop cho gói này" })).toBeTruthy();
+    expect(row("codex-1").querySelector("[data-claude-desktop]")).toBeNull();
+  });
+
+  it("ngoài macOS không có dòng Claude Desktop", async () => {
+    fakeTauri(seed(), undefined, {
+      supported: false,
+      app: null,
+      root: "",
+      note: "Chưa hỗ trợ",
+      profiles: [],
+    });
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(document.querySelector("[data-claude-desktop]")).toBeNull();
   });
 
   it("nhóm theo CLI: tiêu đề, số gói, nút Thêm gói của từng CLI và ô tổng từng CLI", async () => {
