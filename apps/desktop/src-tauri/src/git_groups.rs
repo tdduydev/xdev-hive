@@ -563,6 +563,11 @@ pub fn start_auto_fetch(app: AppHandle) {
     });
 }
 
+// git giả của test là script sh.
+#[cfg(all(test, unix))]
+#[path = "git_groups_e2e.rs"]
+mod e2e;
+
 #[cfg(test)]
 mod tests {
     use super::*;
