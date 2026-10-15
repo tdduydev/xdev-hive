@@ -69,6 +69,8 @@ fn main() {
         "local_project_set_full",
         "git_groups",
         "git_host_add",
+        "git_host_probe",
+        "git_host_discover",
         "git_host_remove",
         "git_group_suggest",
         "git_group_add",

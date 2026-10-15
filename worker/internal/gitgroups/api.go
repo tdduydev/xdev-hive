@@ -27,7 +27,10 @@ func (c Client) http() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		// PRIVATE-TOKEN không được Go tự bảo vệ khi redirect sang máy chủ khác.
+		return http.ErrUseLastResponse
+	}}
 }
 
 // apiBase: GitLab là <url>/api/v4; GitHub.com là api.github.com, GitHub Enterprise là <url>/api/v3.
@@ -61,7 +64,7 @@ func (c Client) get(ctx context.Context, raw string, v any) (string, error) {
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	}
 	if c.Token != "" {
-		if c.Host.Kind == KindGitHub {
+		if c.Host.Kind == KindGitHub || c.Host.AuthMode == "git" {
 			req.Header.Set("Authorization", "Bearer "+c.Token)
 		} else {
 			req.Header.Set("PRIVATE-TOKEN", c.Token)

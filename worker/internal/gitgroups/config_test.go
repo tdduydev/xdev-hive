@@ -90,8 +90,8 @@ func TestConfigHostsAndGroups(t *testing.T) {
 	var hostID string
 	err := Modify(file, func(c *Config) error {
 		h := c.AddHost(Host{Kind: KindGitLab, URL: "https://gitlab.com", Name: "a", Username: "ha"})
-		again := c.AddHost(Host{Kind: KindGitLab, URL: "https://GITLAB.com", Name: "b", Username: "ha"})
-		if again.ID != h.ID || len(c.Hosts) != 1 || c.Hosts[0].Name != "b" {
+		again := c.AddHost(Host{Kind: KindGitLab, URL: "https://GITLAB.com", Name: "b", Username: "ha", AuthMode: "git"})
+		if again.ID != h.ID || len(c.Hosts) != 1 || c.Hosts[0].Name != "b" || again.AuthMode != "git" {
 			t.Fatalf("thêm trùng = %+v", c.Hosts)
 		}
 		hostID = h.ID

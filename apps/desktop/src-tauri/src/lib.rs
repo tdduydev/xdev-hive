@@ -9,6 +9,7 @@ mod claude_desktop;
 mod cli;
 mod doctor;
 mod files;
+mod git_credentials;
 mod git_groups;
 mod hive_cli;
 mod hub;
@@ -1089,6 +1090,8 @@ pub fn run() {
             local_projects::local_project_set_full,
             git_groups::git_groups,
             git_groups::git_host_add,
+            git_groups::git_host_probe,
+            git_groups::git_host_discover,
             git_groups::git_host_remove,
             git_groups::git_group_suggest,
             git_groups::git_group_add,
