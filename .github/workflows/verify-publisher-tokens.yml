@@ -1,0 +1,25 @@
+name: Verify publisher tokens
+# Kiểm tạm thời token đăng extension (VSCE_PAT, OVSX_PAT) mà không in giá trị. Xoá sau khi kiểm xong.
+on:
+  push:
+    branches: [ci/verify-publisher-tokens]
+permissions: {}
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: VS Code Marketplace (publisher xdev)
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then echo "VSCE_PAT rỗng"; exit 1; fi
+          echo "VSCE_PAT dài ${#VSCE_PAT} ký tự"
+          npx --yes @vscode/vsce@3 verify-pat xdev
+      - name: Open VSX (namespace xdev)
+        if: always()
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then echo "OVSX_PAT rỗng"; exit 1; fi
+          echo "OVSX_PAT dài ${#OVSX_PAT} ký tự"
+          npx --yes ovsx@0 verify-pat xdev || echo "::warning::namespace xdev chưa có hoặc token chưa đủ quyền"
