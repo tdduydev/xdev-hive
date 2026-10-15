@@ -391,7 +391,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/index.ts` (một dòng export MCP tool)
   - **Kiểm**: hub test (zip bomb bị dừng, PDF có mật khẩu báo lỗi, tiến trình hub không chết), typecheck.
 
-- [ ] **T022 [P] [US7] [vừa] · 2 ngày — Web: cây tài liệu, nhãn đồng bộ, tìm theo nghĩa, editor có ảnh**
+- [x] **T022 [P] [US7] [vừa] · 2 ngày — Web: cây tài liệu, nhãn đồng bộ, tìm theo nghĩa, editor có ảnh**
   - **Phụ thuộc**: T018, T020 (API từ T009, T013, T016 dùng qua fixture).
   - **Goal**: FR-040, FR-042, US7 (giao diện), US2 scenario 6 (nút "Thử lại").
     - `docs-page.tsx`: cây theo đường dẫn repo (`docTree.list`), nhãn `SyncBadge`, lọc theo trạng thái, link PR/commit,
