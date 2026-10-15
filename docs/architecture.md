@@ -82,6 +82,7 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `sandbox` | Image môi trường, allowlist mạng, cấu hình sandbox của tổ chức | `sandbox_org_settings`, `env_images`, `egress_allowlists` |
 | `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, bộ skill mặc định của Hive (`packages/skill-pack`, bật/tắt theo tổ chức và dự án), đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `skill_pack_settings`, `proposals`, `legacy_*` |
 | `skilllearn` | Agent đề xuất skill sau việc khó (ADR 0025): chọn run đáng học, lô mỗi ngày mỗi dự án chạy run `skill_proposal` chỉ đọc, bỏ trùng, hạn mức theo ngày, duyệt thành PR vào kho skill hoặc skill của tổ chức, số liệu | `skill_learning_batches`, `skill_learning_marks`, `learned_skill_proposals` |
+| `docsync` | Nhà tài liệu trên GitHub/GitLab, nhập và đồng bộ hai chiều, xung đột, ảnh/đính kèm và bản trích có duyệt; nhận sự kiện lưu từ `knowledge` qua hook | `doc_homes`, `doc_repo_files`, `doc_imports`, `doc_import_files`, `doc_sync_batches`, `doc_conflicts`, `doc_assets`, `doc_extracts` |
 | `leader` | Chat với leader agent, đề xuất hành động cần người duyệt | `chat_threads`, `chat_messages`, `approvals` |
 | `artifacts` | Artifact (specs/012, ADR 0023): sản phẩm có phiên bản của agent và người (markdown, code, html, mermaid, react), phạm vi, link công khai, biên dịch `react` ở hub, khung cách ly và job dọn thùng rác. MVP chưa có `svg`, `json`, `csv`, ảnh, PDF, phạm vi `team`/`org` và Terminal Leader | `artifacts`, `artifact_versions`, `artifact_links`, `artifact_previews`, `artifact_public_links` |
 | `terminal` | Terminal Leader: phiên Claude CLI tương tác trên máy dùng chung, chuyển tiếp web ↔ worker qua `/ws/terminal`, bản ghi đã che bí mật (specs/010 lát đầu) | `terminal_sessions`, `terminal_chunks` |
@@ -90,7 +91,7 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `cost` | Tổng hợp token, chi phí theo run, đội, dự án, người, CLI. Chỉ theo dõi; cột chi phí nằm trên `runs` | — |
 | `audit` | Nhật ký append-only mọi thao tác ghi và mọi lời gọi MCP | `audit_log` |
 | `system` | Health, phiên bản, manifest cập nhật app desktop | — |
-| `platform` | Lõi dùng chung: `db` + transaction có tenant, cấu hình, mã hoá secret, migration, pg-boss | `migrations` |
+| `platform` | Lõi dùng chung: `db` + transaction có tenant, cấu hình, mã hoá secret, migration, pg-boss, BlobStore | `migrations`, `blobs`, `blob_chunks` |
 
 Giao tiếp giữa module:
 - **Đồng bộ:** gọi hàm public trong cùng transaction khi cần nhất quán (ví dụ tạo task kèm audit).
@@ -142,6 +143,25 @@ Quy tắc chung:
 - Test bắt buộc: truy vấn không có tenant context trả về 0 dòng ở mọi bảng tenant.
 - Dự án thuộc một hệ thống, hệ thống thuộc một đội. **[Chưa làm]** cấp quyền thêm cho một dự án qua `role_bindings` (người hoặc đội khác).
 - `audit_log` là append-only: role `hive_app` không có UPDATE, DELETE, TRUNCATE.
+
+### Tài liệu đồng bộ và kho file
+
+`knowledge` giữ nội dung markdown, phiên bản và quyền truy cập; `docsync` quản lý nhà (repo + nhánh + thư mục),
+đường dẫn và trạng thái đồng bộ. Hook lưu tài liệu xếp job đẩy theo nhà, gom 60 giây và tối đa 10 phút; webhook
+`/hooks/docs/:homeId` và lịch kéo 15 phút nhận thay đổi từ repo. Repo đổi riêng thì cập nhật hub; hai bên đổi thì hợp
+ba bản theo khối, không hợp được thì chờ người giải quyết. Chế độ `pr` dùng PR cuốn chiếu, `direct` commit thẳng.
+File gốc được lưu cạnh tài liệu trong repo; chỉ dùng Git LFS khi `.gitattributes` đã có quy tắc khớp. Bản trích
+markdown chỉ ở hub và phải được duyệt. Chi tiết: [ADR 0028](adr/0028-docs-repo-sync.md).
+
+BlobStore chung ở `platform/blob-store.ts` cung cấp `put/get/stat` dạng stream; PostgreSQL lưu metadata trong
+`blobs` và bytea theo đoạn 512 KiB trong `blob_chunks`, khử trùng theo SHA-256 trong từng tổ chức. Mọi thao tác qua
+transaction `withTenant()` bằng `hive_app`; hai bảng bật và ép RLS. Stream phải được đọc hết trước khi transaction
+đóng. Job `platform-blob-gc` dọn blob không còn tham chiếu sau thời gian giữ 24 giờ. Kho file nằm trong bản sao lưu
+PostgreSQL hiện tại; chuyển sang S3 có thể thực hiện sau qua giao diện BlobStore.
+
+Giới hạn cấu hình bằng byte nguyên dương: `HIVE_DOC_ASSET_MAX_BYTES` mặc định 52428800 (50 MiB),
+`HIVE_DOC_ORG_STORAGE_BYTES` mặc định 5368709120 (5 GiB), `HIVE_DOC_IMPORT_MAX_BYTES` mặc định 2147483648 (2 GiB).
+Hai file `.env.example` và `deploy/compose.yaml` khai báo cùng mặc định này.
 
 ## 4. Run
 
