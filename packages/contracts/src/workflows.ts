@@ -23,7 +23,8 @@ export const reviewerRole = z.enum(["org-admin", "team-admin", "team-member", "t
 export type ReviewerRole = z.output<typeof reviewerRole>;
 /**
  * Quy tắc theo loại: `sections`, `requirements` chỉ cho tài liệu; `command`… chỉ cho code; hai cái giữa dùng chung.
- * `no-open-questions`, `breakdown`, `coverage` là của tài liệu hạng mục AI SDLC (specs/011 FR-017).
+ * `no-open-questions`, `breakdown`, `coverage` là của tài liệu hạng mục AI SDLC (specs/011 FR-017); `ears` kiểm tiêu chí
+ * chấp nhận viết theo mẫu EARS của Kiro ("WHEN … THE SYSTEM SHALL …").
  */
 export const DOC_RULE_CHECKS = [
   "sections",
@@ -33,6 +34,7 @@ export const DOC_RULE_CHECKS = [
   "no-open-questions",
   "breakdown",
   "coverage",
+  "ears",
 ] as const;
 export const CODE_RULE_CHECKS = [
   "command",
@@ -54,6 +56,7 @@ export const ruleCheck = z.enum([
   "no-open-questions",
   "breakdown",
   "coverage",
+  "ears",
 ]);
 export type RuleCheck = z.output<typeof ruleCheck>;
 export const rejectRoute = z.enum(["author", "agent", "previous"]);

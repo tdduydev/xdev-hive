@@ -481,7 +481,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 9: Sau MVP
 
-- [ ] T080 [US10] Converge
+- [x] T080 [US10] Converge
   - Bước `converge` (prompt, `sdlc_report findings`), liên kết `finding`, vòng tối đa, phát hiện → bước `draft` của tài liệu
     tách việc; hai hướng cho `contradicts`; UI tab Hội tụ trong `item-detail`. Hạng mục nhiều dự án: một run `converge`
     mỗi dự án (repo của dự án, máy của đội đó), gộp phát hiện; phát hiện gắn `project_id`.
@@ -493,14 +493,28 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     yêu cầu đạt; "Sửa code: thêm task" mở tài liệu tách task hoặc tab Task, "Sửa tài liệu" mở tài liệu nguồn yêu cầu),
     tab Hội tụ chỉ hiện khi chế độ có bước `converge`, đường dẫn tab ở web và app, vitest và `e2e/sdlc-converge.spec.ts`.
     UI đọc `step.result.findings` theo `sdlcFinding`; còn hub `converge.ts`, liên kết `finding`, gộp phát hiện theo dự án.
+  - SPEC11W6HUB làm hub `converge.ts`: mỗi lần chạy là một vòng (`converge_round`), một run mỗi dự án đang tham gia (repo
+    và nhãn máy của dự án đó, chung số vòng); `sdlc_report findings` lưu mảng phát hiện gắn `projectId`; run không báo phát
+    hiện thì lỗi. Đủ run của vòng mới kết luận: ghi liên kết `finding` (gắn `project_id`), không còn thiếu → `converged_at`,
+    báo chủ, giai đoạn đạt; còn thiếu và còn vòng → giao lại bước `draft` của giai đoạn tách việc kèm danh sách phát hiện và
+    hai hướng cho `contradicts`; hết vòng → dừng, ghi chú giai đoạn, báo chủ, chặn vòng mới (`SDLC_CONVERGE_ROUNDS`).
+    Vòng 1 tự chạy khi vào giai đoạn converge (`auto`). Độ phủ lọc theo dự án chỉ xét phát hiện của dự án đó. Chưa có sự
+    kiện thông báo riêng cho "hết vòng" (dùng chung `sdlc.converged`); một vòng có run lỗi vẫn tính là đã dùng.
 
-- [ ] T081 [US11] Release notes và retro
+- [x] T081 [US11] Release notes và retro
   - Bước `release-notes`, `retro`; đề xuất cho constitution; đóng hạng mục, bình luận issue.
   - **Scope**: `apps/hub/src/modules/sdlc/{release.ts,release.db.test.ts}`, `packages/contracts/src/sdlc-presets/*.ts`
     (thêm giai đoạn release)
   - **Phụ thuộc**: T080 · **Mức**: vừa
+  - SPEC11W6HUB: speckit thêm giai đoạn `release` (tuỳ chọn) sau converge, hai bước tự chạy lần lượt `release-notes` rồi
+    `retro`, hai tài liệu bắt buộc, cổng PO duyệt; hạng mục chỉ đóng khi cả hai có baseline. Bước `release-notes`/`retro`
+    nhận seed `.hive/sdlc/release.md` (PR đã merge kèm requirement, độ phủ, chỉ số theo giai đoạn) và biến prompt
+    `{release}`. Retro báo bài học bằng `sdlc_report` loại `lessons`; hub tạo đề xuất thường cho
+    `project/<dự án chính>/constitution` (chưa có tài liệu thì base 0), chỉ nhận key của dự án trong hạng mục. Đóng hạng
+    mục có issue nguồn thì job `issue-comment` (`event: "done"`) bình luận tóm tắt và link release notes. Task không gắn
+    requirement không có dòng PR; AI-DLC/BMAD giữ giai đoạn release cũ (không bắt buộc, tự qua).
 
-- [ ] T082 [US12] Chỉ số và bảng tiến độ đầy đủ
+- [x] T082 [US12] Chỉ số và bảng tiến độ đầy đủ
   - `metrics.ts` (lead time theo giai đoạn p50/p90, chờ cổng, trả lại, câu hỏi, độ phủ, converge, vòng review code, chi phí
     qua `cost`, tỉ lệ tự duyệt và thu hồi theo chế độ/dự án/người tạo; lọc theo dự án gồm dự án tham gia), route; `sdlc-ui` `metrics.tsx`; màn app `sdlc-metrics`, web `/sdlc/metrics`. SC-007 với 500 hạng mục.
   - **Scope**: `apps/hub/src/modules/sdlc/{metrics.ts,metrics.test.ts,metrics.db.test.ts}`, `packages/sdlc-ui/src/metrics.tsx`,
@@ -508,13 +522,16 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T031, T054, T055 · **Mức**: vừa
   - SPEC11W5UI đã làm phần UI theo hợp đồng `sdlc.metrics`: `metrics.tsx` (khoảng 7/30/90 ngày, lọc dự án và chế độ, lead
     time p50/p90 có nút thắt, bảy thẻ chỉ số, bảng tự duyệt), web `/sdlc/metrics` + menu "Chỉ số", màn app
-    `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`. Còn hub `metrics.ts` và route; chưa đo SC-007.
+    `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`.
+  - SPEC11W6HUB làm hub `metrics.ts` và route `sdlc.metrics`: hạng mục tạo trong [from, to) mà người gọi đọc được; chờ cổng
+    chỉ tính cổng người không tự duyệt; chi phí chỉ tính hạng mục của đội người gọi quản trị hoặc có `costs.read`. Hợp đồng
+    chưa có chiều "người tạo" cho tỉ lệ tự duyệt; chưa đo SC-007 với 500 hạng mục.
   - SPEC11W6UI (US12 AS3): màn Chỉ số có liên kết "Mở bảng hạng mục với bộ lọc này" mang dự án và chế độ sang bảng (web
     `/sdlc?project=…&mode=…`, app `#/sdlc/loc?project=…&mode=…`). `sdlc.items.list` chưa lọc theo thời gian nên bảng
     không giới hạn theo khoảng ngày và màn nói rõ điều đó; muốn đúng "hạng mục góp vào số liệu" cần thêm lọc ngày vào
     hợp đồng.
 
-- [ ] T083 [P] Preset và bộ đọc còn lại
+- [x] T083 [P] Preset và bộ đọc còn lại
   - `aidlc-feature`, `aidlc-enterprise`, `bmad-quick`, `bmad-method`, `kiro-requirements`, `kiro-design`, `kiro-bugfix`,
     `openspec` (+ bước `archive`); bộ đọc `kiro-tasks`, `openspec-tasks`, `bmad-stories`, `aidlc-units`; luật EARS.
   - **Scope**: `packages/contracts/src/sdlc-presets/{aidlc-feature,aidlc-enterprise,bmad-quick,bmad-method,kiro,openspec}.ts`,

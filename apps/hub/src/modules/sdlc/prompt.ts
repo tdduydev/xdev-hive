@@ -43,6 +43,8 @@ export interface PromptProject {
   role: "home" | "participant";
   /** File tóm tắt repo đã seed; null khi không đọc được repo. */
   digestPath: string | null;
+  /** Repo của worktree; bỏ trống là dự án chính (converge chạy trên repo của từng dự án). */
+  worktree?: boolean | undefined;
 }
 
 export interface PromptContract {
@@ -63,6 +65,8 @@ export interface StepPromptInput {
   feedback: string | null;
   projects: PromptProject[];
   contracts: PromptContract[];
+  /** File dữ liệu phát hành hub đã seed (bước `release-notes`, `retro`); null ở bước khác. */
+  release?: string | null | undefined;
 }
 
 const CONSTITUTION =
@@ -115,13 +119,18 @@ function projectsBlock(projects: PromptProject[]): string {
   const others = projects.filter((p) => p.role === "participant");
   const home = projects.find((p) => p.role === "home");
   if (!others.length) return `Hạng mục chỉ thuộc dự án ${home?.key ?? "chính"}.`;
+  const repo = projects.find((p) => p.worktree) ?? home;
   return [
-    `Dự án chính: ${home?.key ?? "?"} (repo của worktree này). Dự án tham gia:`,
-    ...others.map((p) =>
-      p.digestPath
-        ? `- ${p.key}: tóm tắt repo ở \`${p.digestPath}\``
-        : `- ${p.key}: hub chưa đọc được repo; hỏi bằng sdlc_ask nếu cần biết cấu trúc`,
-    ),
+    repo && repo !== home
+      ? `Dự án chính: ${home?.key ?? "?"}. Repo của worktree này: ${repo.key} (dự án tham gia). Dự án khác:`
+      : `Dự án chính: ${home?.key ?? "?"} (repo của worktree này). Dự án tham gia:`,
+    ...projects
+      .filter((p) => p !== repo)
+      .map((p) =>
+        p.digestPath
+          ? `- ${p.key}: tóm tắt repo ở \`${p.digestPath}\``
+          : `- ${p.key}: hub chưa đọc được repo; hỏi bằng sdlc_ask nếu cần biết cấu trúc`,
+      ),
   ].join("\n");
 }
 
@@ -152,6 +161,9 @@ export function buildStepPrompt(input: StepPromptInput): string {
     feedback: feedbackBlock(input.feedback),
     constitution: CONSTITUTION,
     projects: projectsBlock(input.projects),
+    release: input.release
+      ? `Dữ liệu phát hành của hub (PR đã merge, độ phủ requirement, chỉ số theo giai đoạn): \`${input.release}\`.`
+      : "Hub không có dữ liệu phát hành cho bước này.",
     NNN: ref,
     slug: input.item.slug,
     date: input.item.createdAt.toISOString().slice(0, 10),
@@ -159,7 +171,11 @@ export function buildStepPrompt(input: StepPromptInput): string {
   const body = input.step.prompt.replace(/\{([A-Za-z]+)\}/g, (all, name: string) => vars[name] ?? all);
   const head = `Hạng mục ${ref} · ${input.item.title} (cỡ ${input.item.size}) · giai đoạn ${input.phaseName} · bước ${input.step.action}.`;
   // Chế độ tự tạo có thể bỏ biến {artifacts}: không có danh sách file thì agent không biết ghi vào đâu.
-  const missing = body.includes(vars.artifacts ?? "") ? "" : `\n\n${vars.artifacts}`;
+  // Preset viết trước khi có {release} (Operation của AI-DLC, retro của BMAD) vẫn phải chỉ cho agent file dữ liệu phát hành.
+  const missing = [vars.artifacts, input.release ? vars.release : undefined]
+    .filter((v): v is string => Boolean(v) && !body.includes(v as string))
+    .map((v) => `\n\n${v}`)
+    .join("");
   return `${head}\n\n${body}${missing}\n\n${rulesBlock(input)}`;
 }
 
