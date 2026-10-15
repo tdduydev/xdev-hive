@@ -14,12 +14,12 @@ export type SessionItem = {
   id: string;
   cli: string;
   cwd: string;
-  started?: string;
+  started?: string | undefined;
   controlled: boolean;
   viewers: number;
 };
 
-export type LaunchSpec = { name: string; shellPath: string; shellArgs: string[]; cwd?: string };
+export type LaunchSpec = { name: string; shellPath: string; shellArgs: string[]; cwd?: string | undefined };
 
 // Mã phiên đi thẳng vào argv của `hive attach`; chỉ nhận ký tự an toàn để mã lạ không thành cờ.
 const SESSION_ID = /^[A-Za-z0-9][\w.-]*$/;

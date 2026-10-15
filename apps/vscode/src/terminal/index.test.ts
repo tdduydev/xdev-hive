@@ -10,17 +10,23 @@ vi.mock("vscode", async (original) => {
     TerminalProfile: class {},
     window: {
       ...base.window,
-      registerTerminalProfileProvider: (id: string) => (registered.profiles.push(id), disposable),
+      registerTerminalProfileProvider: (id: string) => {
+        registered.profiles.push(id);
+        return disposable;
+      },
     },
     commands: {
       ...base.commands,
-      registerCommand: (id: string) => (registered.commands.push(id), disposable),
+      registerCommand: (id: string) => {
+        registered.commands.push(id);
+        return disposable;
+      },
     },
   };
 });
 
-import { createContext } from "../../test/vscode-mock.ts";
 import { register } from "@/terminal/index.ts";
+import { createContext } from "../../test/vscode-mock.ts";
 
 it("đăng ký hai profile và hai lệnh khớp manifest", () => {
   const ctx = createContext();

@@ -4,11 +4,19 @@ import { type LaunchSpec, TerminalProfiles } from "@/terminal/profiles.ts";
 import { findBinary } from "@/worker/bin.ts";
 import { ipc, workerAllowed } from "@/worker/index.ts";
 
+// Chỉ đặt `cwd` khi có: workspace ảo hoặc không mở thư mục thì để VS Code tự chọn.
+function options(spec: LaunchSpec) {
+  return {
+    name: spec.name,
+    shellPath: spec.shellPath,
+    shellArgs: spec.shellArgs,
+    ...(spec.cwd ? { cwd: spec.cwd } : {}),
+  };
+}
+
 function open(spec: LaunchSpec | undefined): void {
   if (!spec) return;
-  vscode.window
-    .createTerminal({ name: spec.name, shellPath: spec.shellPath, shellArgs: spec.shellArgs, cwd: spec.cwd })
-    .show();
+  vscode.window.createTerminal(options(spec)).show();
 }
 
 export function register(ctx: vscode.ExtensionContext): void {
@@ -21,14 +29,7 @@ export function register(ctx: vscode.ExtensionContext): void {
   const provider = (build: () => Promise<LaunchSpec | undefined>): vscode.TerminalProfileProvider => ({
     provideTerminalProfile: async () => {
       const spec = await build();
-      return spec
-        ? new vscode.TerminalProfile({
-            name: spec.name,
-            shellPath: spec.shellPath,
-            shellArgs: spec.shellArgs,
-            cwd: spec.cwd,
-          })
-        : undefined;
+      return spec ? new vscode.TerminalProfile(options(spec)) : undefined;
     },
   });
   ctx.subscriptions.push(
