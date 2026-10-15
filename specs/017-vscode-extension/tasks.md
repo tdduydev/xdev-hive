@@ -289,7 +289,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: 4 luồng từ dữ liệu mẫu; `add` gửi đúng `side`, `headSha`; `decide` khi `headSha` đổi hiện đúng thông báo;
     không đổi working tree (repo tạm, so `git status`).
 
-- [ ] **T019 [P] [US4] [nặng] · 3 ngày — Chat participant `@hive`**
+- [x] **T019 [P] [US4] [nặng] · 3 ngày — Chat participant `@hive`**
   - **Phụ thuộc**: T010, T011, T007 (context pack).
   - **Goal**: plan.md mục 5. Bốn lệnh, nút hành động, che bí mật bằng `secret-scan` của contracts, rơi về khi không có
     model.
