@@ -16,6 +16,7 @@ export function systemRouter(
       time: new Date().toISOString(),
       builtAt: config.builtAt ?? null,
       clis: [...cli.options],
+      artifacts: true as const,
     })),
     desktopUpdate: os.desktopUpdate.handler(async ({ input }) => {
       const result = await findDesktopUpdate(desktopReleases, input.os, input.arch, input.currentVersion);
