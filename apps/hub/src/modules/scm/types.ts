@@ -54,7 +54,30 @@ export interface PullRequestInput {
 }
 
 /** Tên theo GitHub. `issue_comment` ở GitLab là note events, gồm cả bình luận trên merge request. */
-export type WebhookEvent = "push" | "pull_request" | "issues" | "issue_comment";
+export type WebhookEvent = "push" | "pull_request" | "issues" | "issue_comment" | "pull_request_review_comment";
+
+export interface ReviewComment {
+  id: string;
+  threadId: string;
+  path: string;
+  line: number;
+  side: "LEFT" | "RIGHT";
+  commitSha: string;
+  body: string;
+  author: string | null;
+  url: string | null;
+  updatedAt: string;
+  resolved: boolean;
+  inReplyToId: string | null;
+}
+
+export interface ReviewCommentInput {
+  path: string;
+  line: number;
+  side: "LEFT" | "RIGHT";
+  commitSha: string;
+  body: string;
+}
 
 export interface WebhookInput {
   url: string;
@@ -149,6 +172,12 @@ export interface GitProvider {
    * GitLab thì merge request có API note riêng.
    */
   commentOnIssue(ref: RepoRef, number: number, body: string, opts?: CommentOptions): Promise<{ id: string }>;
+  listReviewComments(ref: RepoRef, number: number): Promise<ReviewComment[]>;
+  createReviewComment(ref: RepoRef, number: number, input: ReviewCommentInput): Promise<ReviewComment>;
+  replyReviewComment(ref: RepoRef, number: number, threadId: string, body: string): Promise<ReviewComment>;
+  editReviewComment(ref: RepoRef, number: number, commentId: string, body: string): Promise<ReviewComment>;
+  deleteReviewComment(ref: RepoRef, number: number, commentId: string): Promise<void>;
+  setReviewThreadResolved(ref: RepoRef, number: number, threadId: string, resolved: boolean): Promise<void>;
   /**
    * Người này push được vào repo không: GitHub quyền write trở lên, GitLab Developer trở lên. Không phải thành viên
    * hoặc thiếu login/id thì false; lỗi mạng, hết hạn mức thì ném lỗi để người gọi thử lại.
