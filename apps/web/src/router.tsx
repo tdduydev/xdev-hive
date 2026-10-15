@@ -67,6 +67,9 @@ const DesktopConnectPage = lazyRouteComponent(() => import("@/pages/desktop-conn
 const HomePage = lazyRouteComponent(() => import("@/pages/home-page.tsx"), "HomePage");
 const InvitePage = lazyRouteComponent(() => import("@/pages/invite-page.tsx"), "InvitePage");
 const DocEditorPage = lazyRouteComponent(() => import("@/pages/knowledge/doc-editor-page.tsx"), "DocEditorPage");
+const DocImportPage = lazyRouteComponent(() => import("@/pages/knowledge/doc-import-page.tsx"), "DocImportPage");
+const DocConflictPage = lazyRouteComponent(() => import("@/pages/knowledge/doc-conflict-page.tsx"), "DocConflictPage");
+const DocExtractsPage = lazyRouteComponent(() => import("@/pages/knowledge/doc-extracts-page.tsx"), "DocExtractsPage");
 const DocsPage = lazyRouteComponent(() => import("@/pages/knowledge/docs-page.tsx"), "DocsPage");
 const MemoryDetailPage = lazyRouteComponent(() => import("@/pages/knowledge/memory-page.tsx"), "MemoryDetailPage");
 const MemoryPage = lazyRouteComponent(() => import("@/pages/knowledge/memory-page.tsx"), "MemoryPage");
@@ -438,6 +441,10 @@ const sdlcRoutes = [
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
 const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/import", component: DocImportPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/conflicts/$id", component: DocConflictPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/extracts", component: DocExtractsPage }),
+
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/$key/edit", component: DocEditorPage }),
   createRoute({
     getParentRoute: () => inOrgRoute,
