@@ -928,6 +928,7 @@ pub fn run() {
             profiles::cli_profile_add,
             profiles::cli_profile_update,
             profiles::cli_profile_remove,
+            profiles::cli_profile_logout,
             profiles::cli_profile_usage,
             profiles::cli_profile_resume,
             profiles::cli_profile_discover,

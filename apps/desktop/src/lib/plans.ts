@@ -113,6 +113,8 @@ export const addPlan = (p: NewPlan) =>
   });
 export const updatePlan = (id: string, patch: PlanPatch) => invoke<Plans>("cli_profile_update", { id, patch });
 export const removePlan = (id: string) => invoke<Plans>("cli_profile_remove", { id });
+/** Đăng xuất CLI của gói (Claude Code hoặc Codex); gói còn trong danh sách, hiện "chưa đăng nhập". */
+export const logoutPlan = (id: string) => invoke<Plans>("cli_profile_logout", { id });
 export const readUsage = (id?: string) => invoke<Plans>("cli_profile_usage", { id: id ?? null });
 export const resumePlan = (id: string) => invoke<Plans>("cli_profile_resume", { id });
 export const openLoginTerminal = (command: string, env: Record<string, string>) =>

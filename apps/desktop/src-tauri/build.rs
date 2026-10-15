@@ -33,6 +33,7 @@ fn main() {
         "cli_profile_add",
         "cli_profile_update",
         "cli_profile_remove",
+        "cli_profile_logout",
         "cli_profile_usage",
         "cli_profile_resume",
         "cli_profile_discover",
