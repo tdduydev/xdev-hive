@@ -37,6 +37,12 @@ import {
   PASSKEY_KEY_INFO,
   toBase64url,
 } from "@xdev-hive/contracts/terminal-auth";
+import { docsyncDocsFixture } from "./docsync-docs-fixture.ts";
+import { docsyncImportFixture } from "./docsync-import-fixture.ts";
+import { docsyncReviewFixture } from "./docsync-review-fixture.ts";
+import { docsyncSettingsDefaults } from "./docsync-settings-fixture.ts";
+
+export { docsyncSettingsFixture } from "./docsync-settings-fixture.ts";
 
 export const USER = { id: "u1", name: "Trần Đức Duy", email: "duy@example.com", image: null };
 
@@ -88,6 +94,10 @@ export async function fakeHub(
   const hub: FakeHub = { signedIn: opts.signedIn ?? false, authCalls: [], meMethods: [], rpcCalls: [] };
   const rpc: Record<string, RpcHandler> = {
     "orgs/mine": () => ok({ orgs: [], canCreateOrg: false }),
+    ...docsyncSettingsDefaults(),
+    ...docsyncImportFixture(),
+    ...docsyncDocsFixture(),
+    ...docsyncReviewFixture(),
     ...opts.rpc,
   };
   // BuildInfo thử lại khi thiếu phiên bản; giữ trạng thái đó mà không để request chạm proxy tới hub không chạy.
