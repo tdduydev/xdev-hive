@@ -193,7 +193,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `worker/cmd/hive-worker/main.go` (một dòng `case`)
   - **Test**: repo tạm có vài file, kết quả có đúng file liên quan, chạy được không có mạng.
 
-- [ ] **T010 [P] [US2] [nặng] · 2 ngày — Client hub, SSE, hỏi lại định kỳ, fake hub**
+- [x] **T010 [P] [US2] [nặng] · 2 ngày — Client hub, SSE, hỏi lại định kỳ, fake hub**
   - **Phụ thuộc**: T003.
   - **Goal**: plan.md mục 2. `hub/client.ts`, `sse.ts` (`Last-Event-ID`), `poll.ts` (focus, backoff), `errors.ts` (lỗi
     tiếng Việt), `project.ts` (dự án của workspace từ `hive-worker projects --json` hoặc `.mcp.json`).
