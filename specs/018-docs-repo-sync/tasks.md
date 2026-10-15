@@ -207,7 +207,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `packages/doc-editor/src/sync-badge.tsx` (mới) + test
   - **Kiểm**: doc-editor typecheck, test (round-trip markdown có ảnh không đổi byte).
 
-- [ ] **T020 [P] [US4] [vừa] · 2 ngày — Web: cài đặt "Tài liệu" của dự án, thẻ repo tài liệu tổ chức, khung route**
+- [x] **T020 [P] [US4] [vừa] · 2 ngày — Web: cài đặt "Tài liệu" của dự án, thẻ repo tài liệu tổ chức, khung route**
   - **Phụ thuộc**: T003, T010.
   - **Goal**: FR-002…FR-005, US4, US8 (phần giao diện).
     - Tab "Tài liệu" trong cài đặt dự án: bật, thư mục, chế độ, mẫu lấy/bỏ, `repoChangesNeedReview`, cảnh báo phạm vi
