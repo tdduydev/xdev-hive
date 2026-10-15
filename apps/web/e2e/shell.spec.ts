@@ -3,7 +3,9 @@ import { fakeHub, ok, USER } from "./fake-hub.ts";
 
 test("đã đăng nhập: mở /login thì vào /, thấy khung app như mockup", async ({ page }) => {
   await fakeHub(page, { signedIn: true });
+  const health = page.waitForResponse("**/api/v1/health");
   await page.goto("/login");
+  expect((await health).status()).toBe(503);
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: `Chào ${USER.name}` })).toBeVisible();
   await expect(page.getByText("Chưa thuộc tổ chức nào")).toBeVisible();

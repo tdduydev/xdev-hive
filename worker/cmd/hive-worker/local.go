@@ -5,9 +5,11 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
+	"github.com/tdduydev/xdev-hive/worker/internal/channel"
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
 	"github.com/tdduydev/xdev-hive/worker/internal/localipc"
 	"github.com/tdduydev/xdev-hive/worker/internal/remoteauth"
@@ -19,10 +21,73 @@ import (
 // localStopWait là thời gian chờ các phiên `hive chat` dừng hẳn khi worker tắt.
 const localStopWait = 10 * time.Second
 
+// Người đang giữ worker, để cửa sổ VS Code biết worker ở máy là của app desktop, của cửa sổ khác hay chạy tay
+// (specs/017 mục 7). Giá trị lạ bị từ chối ngay ở cờ --owner thay vì lọt ra client.
+const (
+	ownerDesktop = "desktop"
+	ownerVSCode  = "vscode"
+	ownerCLI     = "cli"
+)
+
+func validOwner(s string) bool { return s == ownerDesktop || s == ownerVSCode || s == ownerCLI }
+
+// workerStatus là nguồn của op `worker.status` (specs/017 T006): trạng thái kênh tới hub do channel báo qua OnStatus,
+// còn lại là thông tin cố định lúc worker khởi động.
+type workerStatus struct {
+	owner      string
+	machineID  string
+	registered bool
+	// activeDir chứa marker của run đang chạy (channel ghi lúc bắt đầu, xoá lúc xong); đếm marker để khỏi mở kênh
+	// nội bộ giữa channel và socket chỉ để lấy một con số.
+	activeDir string
+
+	mu    sync.Mutex
+	state string
+}
+
+func newWorkerStatus(cfg config.Config, owner, dataDir string) *workerStatus {
+	return &workerStatus{
+		owner:      owner,
+		machineID:  cfg.MachineID,
+		registered: cfg.MachineID != "" && cfg.MachineToken != "",
+		activeDir:  filepath.Join(dataDir, "xdev-hive", "worker", "active"),
+		state:      "starting",
+	}
+}
+
+// observe trả callback OnStatus ghi lại trạng thái rồi chuyển tiếp cho next (có thể nil, ví dụ không có --status-json).
+func (w *workerStatus) observe(next func(channel.Status)) func(channel.Status) {
+	return func(s channel.Status) {
+		w.mu.Lock()
+		w.state = s.State
+		w.mu.Unlock()
+		if next != nil {
+			next(s)
+		}
+	}
+}
+
+func (w *workerStatus) reply(c *localipc.Conn) error {
+	w.mu.Lock()
+	state := w.state
+	w.mu.Unlock()
+	markers, _ := filepath.Glob(filepath.Join(w.activeDir, "*.json"))
+	return c.OK(map[string]any{
+		"state":        state,
+		"hubConnected": state == "online",
+		"registered":   w.registered,
+		"machineId":    w.machineID,
+		"version":      version.Version,
+		"runs":         len(markers),
+		"owner":        w.owner,
+	})
+}
+
 // startLocalIPC mở socket nội bộ cho `hive` (specs/010 T004, T011), trả hàm đóng và Handler ghi phiên lên hub (đệm
 // trong recordDir). Không mở được (worker khác đang nghe) thì chỉ ghi log và Handler nil: run từ
-// hub vẫn chạy, worker không khai `terminal` với hub vì không có phiên nào để ghi.
-func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remote) (func(), terminal.Handler) {
+// hub vẫn chạy, worker không khai `terminal` với hub vì không có phiên nào để ghi. status nil thì socket không nhận
+// op worker.status.
+func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remote, status *workerStatus) (func(), terminal.Handler) {
 	path, err := localipc.DefaultPath()
 	if err != nil {
 		slog.Warn("Không xác định được đường dẫn socket nội bộ", "error", err)
@@ -44,12 +109,21 @@ func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remot
 			Verifier: &remoteauth.Verifier{Devices: remote.Store, TOTP: remote.TOTP}}
 		recorder.Controller, local.Controller, remote.Controller = ctl, ctl, ctl
 	}
+	handle := local.Handle
+	if status != nil {
+		handle = func(ctx context.Context, c *localipc.Conn, req localipc.Request) error {
+			if req.Op == "worker.status" {
+				return status.reply(c)
+			}
+			return local.Handle(ctx, c, req)
+		}
+	}
 	// Server không theo ctx của worker: lúc tắt phải báo các client đang gắn rằng phiên đã đóng trước khi ngắt kết nối.
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		srv := &localipc.Server{Worker: version.Version, Handler: local.Handle, Logger: slog.Default()}
+		srv := &localipc.Server{Worker: version.Version, Handler: handle, Logger: slog.Default()}
 		if err := srv.Serve(ctx, ln); err != nil {
 			slog.Warn("Socket nội bộ dừng", "error", err)
 		}

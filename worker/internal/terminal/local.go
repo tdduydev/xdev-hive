@@ -400,7 +400,7 @@ func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*
 		lease.Release()
 		return nil, err
 	}
-	env, secrets := runner.LocalEnv(p.CLI, lease.Env(), map[string]string{"TERM": term})
+	env, secrets := runner.LocalEnv(p.CLI, lease, map[string]string{"TERM": term})
 	cmd.Env = env
 	cmd.Dir = p.Cwd
 	f, err := pty.Start(cmd, cols, rows)

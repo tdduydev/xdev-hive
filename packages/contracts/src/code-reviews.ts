@@ -258,7 +258,87 @@ export const codeDryRunResult = z.object({
 });
 export type CodeDryRunResult = z.output<typeof codeDryRunResult>;
 
+const commentBody = z.string().trim().min(1, "Nhập nội dung bình luận.").max(20000, "Bình luận tối đa 20.000 ký tự.");
+const commentPath = z
+  .string()
+  .min(1, "Nhập đường dẫn file.")
+  .max(4096, "Đường dẫn file tối đa 4.096 ký tự.")
+  .refine(
+    (path) =>
+      !path.startsWith("/") &&
+      !path.includes("\\") &&
+      !path.includes("\0") &&
+      !/^[a-z]:/i.test(path) &&
+      !path.split("/").some((part) => part === ".." || part === "." || !part),
+    "Đường dẫn file không hợp lệ.",
+  );
+export const codeReviewCommentAddInput = z.object({
+  reviewId: id,
+  path: commentPath,
+  line: z
+    .number()
+    .int("Số dòng phải là số nguyên.")
+    .positive("Số dòng phải lớn hơn 0.")
+    .max(2147483647, "Số dòng quá lớn."),
+  side: z.enum(["old", "new"], { error: "Phía diff phải là old hoặc new." }),
+  headSha: sha,
+  body: commentBody,
+});
+export const codeReviewCommentReplyInput = z.object({ threadId: id, body: commentBody });
+export const codeReviewCommentEditInput = z.object({ commentId: id, body: commentBody });
+export const codeReviewComment = z.object({
+  id,
+  threadId: id,
+  authorId: z.string().nullable(),
+  authorName: z.string().nullable(),
+  body: z.string(),
+  origin: z.enum(["hive", "github", "gitlab"]),
+  externalAuthor: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  editedAt: z.string().datetime().nullable(),
+  deletedAt: z.string().datetime().nullable(),
+  syncState: z.enum(["pending", "synced", "fallback", "failed", "disabled"]).nullable().optional(),
+  providerUrl: z.string().url().nullable().optional(),
+});
+export const codeReviewCommentThread = z.object({
+  id,
+  path: z.string(),
+  line: z.number().int().positive(),
+  side: z.enum(["old", "new"]),
+  headSha: sha,
+  outdated: z.boolean(),
+  resolved: z.boolean(),
+  resolvedAt: z.string().datetime().nullable(),
+  resolvedBy: z.string().nullable(),
+  comments: z.array(codeReviewComment),
+});
+export type CodeReviewComment = z.output<typeof codeReviewComment>;
+export type CodeReviewCommentThread = z.output<typeof codeReviewCommentThread>;
+
 export const codeReviewsContract = {
+  comments: {
+    list: orgRoute("GET", "/v1/code-reviews/comments", "Luồng bình luận review code", "code-reviews")
+      .input(z.object({ reviewId: id }))
+      .output(z.object({ threads: z.array(codeReviewCommentThread) })),
+    add: orgRoute("POST", "/v1/code-reviews/comments", "Thêm bình luận theo dòng", "code-reviews")
+      .input(codeReviewCommentAddInput)
+      .output(codeReviewCommentThread),
+    reply: orgRoute("POST", "/v1/code-reviews/comments/reply", "Trả lời luồng bình luận", "code-reviews")
+      .input(codeReviewCommentReplyInput)
+      .output(codeReviewComment),
+    edit: orgRoute("POST", "/v1/code-reviews/comments/edit", "Sửa bình luận của tôi", "code-reviews")
+      .input(codeReviewCommentEditInput)
+      .output(codeReviewComment),
+    delete: orgRoute("POST", "/v1/code-reviews/comments/delete", "Xoá bình luận của tôi", "code-reviews")
+      .input(z.object({ commentId: id }))
+      .output(z.object({ ok: z.boolean() })),
+    resolve: orgRoute("POST", "/v1/code-reviews/comments/resolve", "Đánh dấu luồng đã xử lý", "code-reviews")
+      .input(z.object({ threadId: id }))
+      .output(codeReviewCommentThread),
+    reopen: orgRoute("POST", "/v1/code-reviews/comments/reopen", "Mở lại luồng bình luận", "code-reviews")
+      .input(z.object({ threadId: id }))
+      .output(codeReviewCommentThread),
+  },
   list: orgRoute("GET", "/v1/code-reviews", "Phiên review code", "code-reviews")
     .input(codeReviewListInput)
     .output(z.object({ items: z.array(codeReviewSummary), nextCursor: z.string().nullable() })),

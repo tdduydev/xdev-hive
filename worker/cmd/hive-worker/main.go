@@ -341,8 +341,13 @@ func run(args []string) int {
 	hub := fs.String("hub", envOr("HIVE_HUB_URL", ""), "địa chỉ hub (mặc định lấy từ file cấu hình)")
 	capacity := fs.Int("capacity", 1, "số run chạy cùng lúc")
 	statusJSON := fs.Bool("status-json", false, "in trạng thái kết nối ra stdout, mỗi dòng một JSON (cho app desktop); log vẫn ra stderr")
+	owner := fs.String("owner", ownerCLI, "ai chạy worker này: desktop, vscode hoặc cli (hiện ở op worker.status của socket nội bộ)")
 	stdinControl := fs.Bool("stdin-control", false, `dừng khi đọc dòng "stop" hoặc hết stdin (app desktop chạy worker làm sidecar)`)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if !validOwner(*owner) {
+		fmt.Fprintf(os.Stderr, "--owner phải là %s, %s hoặc %s.\n", ownerDesktop, ownerVSCode, ownerCLI)
 		return 2
 	}
 	lock, code := lockWorker()
@@ -388,7 +393,8 @@ func run(args []string) int {
 	pool := accounts.NewPool(accounts.DefaultPath(path))
 	go pool.Watch(ctx)
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
-	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "xdev-hive", "worker", "terminal"), newRemote(cfg, path, detectCLIs()))
+	status := newWorkerStatus(cfg, *owner, dataDir)
+	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "xdev-hive", "worker", "terminal"), newRemote(cfg, path, detectCLIs()), status)
 	defer stopLocal()
 	slots := *capacity
 	if !flagSet(fs, "capacity") {
@@ -398,7 +404,11 @@ func run(args []string) int {
 		}
 	}
 	// --stdin-control là app desktop chạy worker làm sidecar: app tự cập nhật cả gói, worker không tự thay mình.
-	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, term, projects.DefaultPath(path), *statusJSON, selfUpdates(*stdinControl), cfg.HubURL, func() error {
+	var printStatus func(channel.Status)
+	if *statusJSON {
+		printStatus = statusPrinter(os.Stdout)
+	}
+	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, term, projects.DefaultPath(path), status.observe(printStatus), selfUpdates(*stdinControl), cfg.HubURL, func() error {
 		// Bản mới trên Windows là tiến trình con: dọn socket cũ và nhả khoá trước khi nó khởi động.
 		stopLocal()
 		return lock.Close()
@@ -490,7 +500,7 @@ func host(args []string) int {
 	}
 	sandbox := &runner.SandboxConfig{Image: *image, HostID: cfg.MachineID, AllowRunc: *allowRunc, CPUs: *cpus, Memory: *memory, PIDs: *pids, EgressSocket: *egressSocket, WorkerBinary: executable}
 	// Runner host không giữ phiên tại máy nên không ghi gì lên hub (D13).
-	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, nil, "", false, true, cfg.HubURL, lock.Close)
+	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, nil, nil, "", nil, true, cfg.HubURL, lock.Close)
 }
 
 func sandboxInit(args []string) int {
@@ -610,15 +620,13 @@ func flagSet(fs *flag.FlagSet, name string) bool {
 }
 
 // projectsFile là projects.json (ADR 0020); runner host truyền rỗng vì run sandbox không dùng repo trên máy.
-func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, term terminal.Handler, projectsFile string, statusJSON, selfUpdate bool, hubURL string, beforeRestart func() error) int {
+func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, pool *accounts.Pool, term terminal.Handler, projectsFile string, onStatus func(channel.Status), selfUpdate bool, hubURL string, beforeRestart func() error) int {
 	clis := detectCLIs()
 	if mode == "host" {
 		clis = knownCLIs
 	}
 	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool, Projects: projectsFile, Terminal: term}
-	if statusJSON {
-		cc.OnStatus = statusPrinter(os.Stdout)
-	}
+	cc.OnStatus = onStatus
 	err := cc.Run(ctx)
 	var requested *channel.UpdateRequest
 	var upgrade *channel.UpgradeError
