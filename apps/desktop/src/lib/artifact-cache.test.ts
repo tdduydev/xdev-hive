@@ -5,10 +5,10 @@ import {
   APP_FRAME_CSP,
   type CachedSummary,
   cacheClear,
+  cachedFrameUrl,
   cacheGet,
   cacheList,
   cachePut,
-  cachedFrameUrl,
   latestPerArtifact,
 } from "@/lib/artifact-cache.ts";
 
