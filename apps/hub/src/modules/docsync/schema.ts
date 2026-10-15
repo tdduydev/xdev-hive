@@ -72,6 +72,8 @@ export const docHomes = hive
       check("doc_homes_status", sql`status in ('active', 'paused', 'error')`),
       index("doc_homes_connection").on(t.orgId, t.connectionId),
       orgScoped("doc_homes"),
+      // Webhook đến không có phiên nên chưa biết tổ chức; xem ctx_webhook_doc_home trong migration.
+      pgPolicy("doc_homes_webhook", { for: "select", to: hiveApp, using: sql`id = hive.ctx_webhook_doc_home()` }),
     ],
   )
   .enableRLS();
