@@ -205,7 +205,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
       `runStreamHandler`]**
   - **Test**: 401 gọi `auth.invalidate` một lần; poll dừng khi mất focus; SSE nối lại không mất sự kiện.
 
-- [ ] **T011 [P] [US1] [nặng] · 2,5 ngày — Authentication Provider `xdev-hive`**
+- [x] **T011 [P] [US1] [nặng] · 2,5 ngày — Authentication Provider `xdev-hive`**
   - **Phụ thuộc**: T003, T004 (giao diện JSON của `hive auth`).
   - **Goal**: plan.md mục 1, FR-003…FR-005. PKCE, loopback, `asExternalUri`, `store.ts` hai tầng, `hub-url.ts`, gỡ phiên
     khi 401, hỏi khi đăng xuất. Lấy tên và vai trò sau đăng nhập. Chưa có hub URL (người dùng tải từ Marketplace) thì
