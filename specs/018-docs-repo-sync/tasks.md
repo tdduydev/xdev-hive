@@ -360,7 +360,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/{conflicts.ts,routes/conflicts.ts}` (mới) + `conflicts.db.test.ts` (mới)
   - **Kiểm**: hub test (test chèn xung đột trực tiếp vào bảng, không chờ T014), typecheck.
 
-- [ ] **T016 [P] [US5] [nặng] · 2,5 ngày — Đính kèm: tải lên, tải xuống, phân giải link, LFS**
+- [x] **T016 [P] [US5] [nặng] · 2,5 ngày — Đính kèm: tải lên, tải xuống, phân giải link, LFS**
   - **Phụ thuộc**: T006, T007, T011.
   - **Goal**: US5, FR-025, FR-029…FR-032, FR-039 (`doc_asset_get` phần file gốc), plan.md mục 8. Edge case: file lớn,
     link ra ngoài thư mục nhà, link gãy.
