@@ -126,13 +126,17 @@ pub async fn account_link(app: AppHandle, token: String) -> Result<AccountStatus
     if !looks_like_pat(&token) {
         return Err("Đây không phải token MCP cá nhân (bắt đầu bằng hive_pat_).".into());
     }
-    save_checked(&hub, &token).await?;
+    save_checked(&app, &hub, &token).await?;
     Ok(status_for(Some(hub)).await)
 }
 
 /// Kiểm token với hub rồi lưu vào keychain; đăng nhập bằng trình duyệt cũng đi qua đây.
-pub(crate) async fn save_checked(hub: &str, token: &str) -> Result<(), String> {
+pub(crate) async fn save_checked(app: &AppHandle, hub: &str, token: &str) -> Result<(), String> {
     whoami(hub, token).await.map_err(|e| e.text())?;
+    // Token mới có thể là người khác hay tổ chức khác: bản artifact đã đệm của token cũ không còn là của họ.
+    if let Some(old) = stored_token(hub).filter(|old| old != token) {
+        crate::artifacts::forget(app, hub, &old);
+    }
     entry(hub)?
         .set_password(token)
         .map_err(|e| format!("Không lưu được token vào keychain: {e}"))
@@ -141,6 +145,10 @@ pub(crate) async fn save_checked(hub: &str, token: &str) -> Result<(), String> {
 #[tauri::command]
 pub async fn account_unlink(app: AppHandle) -> Result<AccountStatus, String> {
     if let Some(hub) = crate::hub_of(&app) {
+        // Đăng xuất bỏ luôn bản đọc offline (FR-091).
+        if let Some(old) = stored_token(&hub) {
+            crate::artifacts::forget(&app, &hub, &old);
+        }
         if let Ok(e) = entry(&hub) {
             // Chưa có token thì coi như đã gỡ.
             let _ = e.delete_credential();

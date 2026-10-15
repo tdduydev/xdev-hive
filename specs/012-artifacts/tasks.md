@@ -253,7 +253,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `apps/web/src/lib/nav.ts`, `apps/web/e2e/{fake-hub.ts,artifacts.spec.ts,artifact-sandbox.spec.ts}`, `apps/web/package.json`
   - **Phụ thuộc**: T012, T013, T021, T022, T023 · **Mức**: nặng
 
-- [ ] T031 🎯 Web: màn quản trị Link công khai, e2e link công khai và "Nhờ Leader sửa"
+- [x] T031 🎯 Web: màn quản trị Link công khai, e2e link công khai và "Nhờ Leader sửa"
   - `pages/admin/public-links-page.tsx` (bật/tắt `publicLinks`, `maxDays`, bảng link của tổ chức từ `public-links-table`,
     Thu hồi); `router.tsx`, `nav.ts` (mục trong Quản trị).
   - `e2e/fake-hub.ts`: route `publicLinks.*`, `askLeaderFix`, `/_artifact/s/*` (dùng `buildPublicPage` thật).
@@ -267,7 +267,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 5: App desktop (US6) 🎯
 
-- [ ] T040 🎯 Desktop Rust: bộ đệm, giao thức `hive-artifact://`, CSP
+- [x] T040 🎯 Desktop Rust: bộ đệm, giao thức `hive-artifact://`, CSP
   - `artifacts.rs`: lệnh IPC `artifact_cache_put/get/list/clear` (LRU 200 MiB theo hồ sơ + tổ chức), giao thức
     `hive-artifact` (`frame/<id>/<version>` từ bộ đệm kể cả bản biên dịch `react`, `lib/*` từ resource kèm
     `Access-Control-Allow-Origin: *`, CSP như hub); xoá bộ đệm khi đăng xuất/đổi tổ
@@ -277,7 +277,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `apps/desktop/src-tauri/Cargo.toml` (nếu cần), `apps/desktop/src/lib/artifact-cache.ts` + test
   - **Phụ thuộc**: T004, T012 · **Mức**: nặng
 
-- [ ] T041 🎯 Desktop: màn Leader tối thiểu và màn Artifact
+- [x] T041 🎯 Desktop: màn Leader tối thiểu và màn Artifact
   - `screens/leader-screen.tsx` (C13, plan.md D18: cuộc trò chuyện, tin nhắn, gửi, thẻ đề xuất duyệt/từ chối, thẻ artifact,
     khung bên cạnh, "Nhờ Leader sửa"), `screens/artifacts-screen.tsx` (thư viện + chi tiết từ package, tạo/thu hồi link
     công khai; mở link bằng trình duyệt hệ thống), `ArtifactsEnv` của app (offline từ bộ đệm; offline thì tắt "Nhờ Leader
@@ -291,7 +291,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 
 ## Phase 6: Nối hub và tài liệu 🎯
 
-- [ ] T050 🎯 Nối và tài liệu
+- [x] T050 🎯 Nối và tài liệu
   - `main.ts`: đăng ký module, tool, job purge, `provideThreadHost` của leader; khả năng hub `artifacts: true` trong
     `system` (cho app); rollout bước 1 (tool tắt mặc định tới khi bật trên máy chủ 34).
   - Tài liệu: `docs/architecture.md` (module `artifacts`, khung cách ly cùng host, trang link công khai), `docs/add.md`,

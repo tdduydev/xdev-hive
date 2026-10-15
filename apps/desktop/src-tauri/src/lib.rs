@@ -1,6 +1,7 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, cửa sổ web trỏ tới hub của máy, cửa sổ đăng ký cục bộ.
 
 mod account;
+mod artifacts;
 mod browser_login;
 #[cfg(test)]
 mod capabilities_audit;
@@ -593,7 +594,7 @@ async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
     let args = register::validate(&hub, &ex.registration_token, Some(&ex.machine))?;
     let machine_id = register_and_start(&app, args).await?;
     // Máy đã đăng ký và worker đã chạy; token cá nhân lỗi thì người dùng vẫn liên kết tay được ở màn Tài khoản.
-    if let Err(e) = account::save_checked(&hub, &ex.personal_token).await {
+    if let Err(e) = account::save_checked(&app, &hub, &ex.personal_token).await {
         eprintln!("Không liên kết được tài khoản sau khi đăng nhập: {e}");
     }
     Ok(machine_id)
@@ -928,8 +929,13 @@ pub fn run() {
             remote::remote_totp_disable,
             remote::remote_totp_unlock,
             remote::remote_sessions,
-            remote::remote_session_kill
+            remote::remote_session_kill,
+            artifacts::artifact_cache_put,
+            artifacts::artifact_cache_get,
+            artifacts::artifact_cache_list,
+            artifacts::artifact_cache_clear
         ])
+        .register_asynchronous_uri_scheme_protocol(artifacts::SCHEME, artifacts::protocol)
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.
             if let WindowEvent::CloseRequested { api, .. } = event {

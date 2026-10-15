@@ -7,10 +7,12 @@ import {
   FileTextIcon,
   FolderGitIcon,
   HouseIcon,
+  LayersIcon,
   LibraryIcon,
   ListTodoIcon,
   type LucideIcon,
   MessageCircleQuestionIcon,
+  MessagesSquareIcon,
   PlayIcon,
   ServerIcon,
   SmartphoneIcon,
@@ -38,7 +40,9 @@ export type Permission =
   | "tokens.read"
   | "env.manage"
   | "runs.local"
-  | "work.mine";
+  | "work.mine"
+  | "artifacts.use"
+  | "leader.use";
 
 /*
  * Theo AppNav.dc.html, trừ writer: thiết kế cho writer `docs.write`, nhưng người xem đội chỉ đọc trong hub, nên
@@ -58,8 +62,10 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
     "env.manage",
     "runs.local",
     "work.mine",
+    "artifacts.use",
+    "leader.use",
   ],
-  writer: ["sdlc.use", "docs.read", "skills.read", "tokens.read"],
+  writer: ["sdlc.use", "docs.read", "skills.read", "tokens.read", "artifacts.use"],
   lead: [
     "sdlc.use",
     "sdlc.manage",
@@ -73,6 +79,8 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
     "env.manage",
     "runs.local",
     "work.mine",
+    "artifacts.use",
+    "leader.use",
   ],
 };
 
@@ -83,6 +91,8 @@ export type ScreenId =
   | "sdlc-metrics"
   | "home"
   | "work"
+  | "leader"
+  | "artifacts"
   | "reviews"
   | "knowledge"
   | "docs"
@@ -108,7 +118,12 @@ export interface NavItem {
   writes?: Permission;
   /** Màn chỉ có dữ liệu trên hub: chưa đăng nhập thì hiện lời mời kết nối Hive thay cho màn. */
   hub?: true;
+  /** Tính năng hub có thể chưa có (hub cũ): hub báo không có thì ẩn mục, chưa biết thì vẫn hiện. */
+  feature?: keyof HubFeatures;
 }
+
+/** `false` là hub đã trả lời mà không có tính năng; thiếu khoá là chưa biết (chưa kết nối hay chưa dò xong). */
+export type HubFeatures = { artifacts?: boolean };
 
 export interface NavGroup {
   id: "work" | "docs" | "machine" | "sdlc";
@@ -151,6 +166,24 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         design: "DocReview.dc.html",
         needs: "docs.read",
         hub: true,
+      },
+      {
+        // Trò chuyện với Leader: duyệt đề xuất, mở artifact Leader tạo (spec 012 US6).
+        id: "leader",
+        label: { vi: "Leader", en: "Leader" },
+        icon: MessagesSquareIcon,
+        design: "AppLeader.dc.html",
+        needs: "leader.use",
+        hub: true,
+      },
+      {
+        id: "artifacts",
+        label: { vi: "Artifact", en: "Artifacts" },
+        icon: LayersIcon,
+        design: "AppArtifacts.dc.html",
+        needs: "artifacts.use",
+        hub: true,
+        feature: "artifacts",
       },
     ],
   },
@@ -305,20 +338,21 @@ export type VisibleNavItem = NavItem & { readOnly: boolean };
 export function navGroups(
   profile: Profile,
   groups: readonly NavGroup[] = NAV_GROUPS,
+  features: HubFeatures = {},
 ): (Omit<NavGroup, "items"> & { items: VisibleNavItem[] })[] {
   return groups
     .map((group) => ({
       ...group,
       items: group.items
-        .filter((item) => can(profile, item.needs))
+        .filter((item) => can(profile, item.needs) && !(item.feature && features[item.feature] === false))
         .map((item) => ({ ...item, readOnly: item.writes !== undefined && !can(profile, item.writes) })),
     }))
     .filter((group) => group.items.length > 0);
 }
 
 /** Mục người dùng được thấy, theo thứ tự trên menu. */
-export function navItems(profile: Profile): VisibleNavItem[] {
-  return navGroups(profile).flatMap((group) => group.items);
+export function navItems(profile: Profile, features: HubFeatures = {}): VisibleNavItem[] {
+  return navGroups(profile, NAV_GROUPS, features).flatMap((group) => group.items);
 }
 
 /** Màn theo `#/<id>` (phần sau `/` tiếp theo là tham số của màn, vd. `#/write/<key>`); mặc định Tổng quan. */

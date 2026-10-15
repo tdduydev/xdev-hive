@@ -173,6 +173,36 @@ On the runner host (Linux):
 
 `pnpm e2e:sandbox` exercises the full sandbox path and exits with code 77 (skipped) when Docker or `runsc` is missing.
 
+## Artifacts
+
+Artifacts (versioned pages and files that agents and people create, see [ADR 0023](adr/0023-artifacts.md)) need no extra
+service: content lives in PostgreSQL, so the database backup covers it. Set these in `.env` only to change the defaults;
+`deploy/compose.yaml` passes them to the hub, and an empty value means the default.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HIVE_ARTIFACT_MAX_VERSION_BYTES` | `1048576` (1 MiB) | Largest text version. Organization policy can only lower it |
+| `HIVE_ARTIFACT_MAX_BLOB_BYTES` | `20971520` (20 MiB) | Largest image or PDF (not used until blob types ship) |
+| `HIVE_ARTIFACT_ORG_QUOTA_BYTES` | `2147483648` (2 GiB) | Storage per organization, trash included |
+| `HIVE_ARTIFACT_LINK_MAX_DAYS` | `30` | Longest life of a public link; organization policy can only lower it |
+| `HIVE_TRUSTED_PROXIES` | empty | Comma-separated IPs or CIDRs of the reverse proxy in front of the hub, for example the Docker network of Caddy |
+
+- **Rate limits on public links.** The hub limits `/_artifact/s/*` to 60 requests a minute per IP. It reads the client
+  IP from `X-Forwarded-For` only when the connection comes from `HIVE_TRUSTED_PROXIES`. Behind Caddy, set it to the
+  Compose network (`docker network inspect` shows the subnet); left empty, every viewer shares the proxy's IP and one
+  noisy visitor can lock out the others.
+- **Public link tokens in logs.** A public link carries its secret in the path (`/_artifact/s/<token>`), so anyone who
+  can read an access log can open the link until it expires. The bundled `deploy/caddy/Caddyfile` masks the token in
+  `request>uri` and `Referer`. If you put another proxy in front, mask the same path there and keep the log files
+  readable by the administrators only.
+- **Same host.** Interactive content is served from `/_artifact/frame/` on the hub's own host, inside a sandboxed
+  `iframe` with a restrictive CSP. Do not route `/_artifact/` to another origin or strip the hub's `Content-Security-Policy`
+  header in the proxy.
+- **Rolling out on an existing server.** The MCP tools `artifact_create`, `artifact_update`, `artifact_get` and
+  `artifact_list` are on by default for every organization once the hub is updated. To keep agents from creating
+  artifacts that nobody can see yet, an administrator can switch them off first in *Admin → MCP* (MCP-04) and turn them
+  on after the web screens are deployed.
+
 ## Backup and restore
 
 With the layout created by `deploy/remote.sh` (`<dir>/.env`, `<dir>/src`), on the server:
