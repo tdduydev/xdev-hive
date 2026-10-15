@@ -264,11 +264,25 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **PHẠM VI**: `apps/vscode/src/views/{mine,approvals,runs,merge-queue,badge}.ts` (+ test)
   - **Test**: fake hub; badge đúng tổng; chưa đăng nhập và chưa có hub URL đều không gọi mạng.
 
-- [ ] **T016 [P] [US2] [vừa] · 1,5 ngày — View AI SDLC (webview `sdlc-ui`)**
+- [x] **T016 [P] [US2] [vừa] · 1,5 ngày — View AI SDLC (webview `sdlc-ui`)**
   - **Phụ thuộc**: T013.
   - **PHẠM VI**: `apps/vscode/src/views/sdlc.ts`, `apps/vscode/webview/screens/sdlc.tsx`,
     `apps/vscode/src/webview-host/allowlist/sdlc.ts` (+ test)
   - **Test**: `SdlcEnv.link` mở đúng màn; quyền ẩn nút theo `can`.
+  - **Bàn giao**:
+    - Webview không tự gửi thông điệp tuỳ ý (`acquireVsCodeApi` chỉ gọi một lần trong `WebviewBridge`), nên hai kênh với
+      host đi qua RPC giả `/rpc/host/sdlcInit` (lấy route chờ) và `/rpc/host/sdlcOpen` (mở trang hub). Host chặn chúng
+      ở `rpc` truyền cho `attachBridge`, không chuyển tiếp tới hub. Liên kết `doc/review/task/run/projectSettings`
+      do host dựng URL từ trường đã kiểm rồi mở bằng trình duyệt.
+    - `can` lấy từ `roles.mine` theo tổ chức như web (`sdlc.write`, `sdlc.override`, `sdlc.modes.write`); chưa biết
+      quyền thì chỉ đọc. Allowlist không có `modes.save/remove/dryRun`, `metrics`, `import`, `changeMode`.
+    - **Còn việc cho T026**: thêm lệnh `xdevHive.sdlc.open` vào manifest (host đã đăng ký, nhận `SdlcRoute` tuỳ chọn);
+      T015 muốn mở câu hỏi chờ duyệt thì gọi lệnh này với `{ kind: "questions" }`.
+    - **Rủi ro**: màn duyệt phân rã nạp lười CSS của `@xyflow/react` thành chunk `breakdown-review-*.css`, nhưng
+      `renderHtml` (T013) chỉ nối `main.css` nên đồ thị có thể thiếu style trong VS Code. Cần T013 hoặc T026 nối thêm
+      CSS đó. Chưa kiểm trong VS Code thật.
+    - Test webview nằm ở `src/views/sdlc-webview.test.ts` (dựng bundle bằng esbuild rồi chạy trong jsdom) vì vitest của
+      `apps/vscode` chỉ nhận `src/**/*.test.ts`.
 
 - [x] **T017 [P] [US8] [nặng] · 2,5 ngày — View Artifact và panel artifact cách ly**
   - **Phụ thuộc**: T013.
@@ -310,17 +324,17 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: `HOME` tạm; ghi giữ nguyên khoá khác; gỡ trả về đúng từng byte; file không chứa `hive_pat_`;
     `resolveMcpServerDefinition` gắn token mới nhất.
 
-- [ ] **T022 [P] [US9] [vừa] · 1 ngày — Terminal profile Hive Leader và gắn phiên**
+- [x] **T022 [P] [US9] [vừa] · 1 ngày — Terminal profile Hive Leader và gắn phiên**
   - **Phụ thuộc**: T012 (`ipc.ts`, `bin.ts`).
   - **PHẠM VI**: `apps/vscode/src/terminal/**` (+ test)
   - **Test**: không có `hive` thì báo đúng chữ; chọn "Chỉ xem" thêm `--view`.
 
-- [ ] **T023 [P] [US10] [vừa] · 1,5 ngày — CodeLens và Hover**
+- [x] **T023 [P] [US10] [vừa] · 1,5 ngày — CodeLens và Hover**
   - **Phụ thuộc**: T003; phần trạng thái hub dùng T010.
   - **PHẠM VI**: `apps/vscode/src/codelens/**` (+ test)
   - **Test**: `tasks.md` 300 dòng dựng lens ≤ 50 ms; Restricted Mode không có lens "Giao agent"; hover PHẠM VI đúng task.
 
-- [ ] **T024 [P] [US6] [vừa] · 1,5 ngày — View Máy này: tối ưu token, memory, context pack**
+- [x] **T024 [P] [US6] [vừa] · 1,5 ngày — View Máy này: tối ưu token, memory, context pack**
   - **Phụ thuộc**: T007, T012.
   - **PHẠM VI**: `apps/vscode/src/local/**`, `apps/vscode/src/views/machine.ts` (+ test)
   - **Test**: chặn `globalThis.fetch`, mọi lệnh vẫn chạy với `hive-worker` giả.
