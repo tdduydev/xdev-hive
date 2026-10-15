@@ -5,9 +5,10 @@ import {
   ClaudeDesktopPanel,
   ClaudeDesktopRow,
   DESKTOP_POLL_MS,
+  PROGRESS_POLL_MS,
   useClaudeDesktop,
 } from "@/components/claude-desktop.tsx";
-import type { DesktopProfile, DesktopProfiles, Switched } from "@/lib/claude-desktop.ts";
+import type { DesktopProfile, DesktopProfiles, Switched, SwitchProgress } from "@/lib/claude-desktop.ts";
 import { setLang } from "@/lib/i18n.ts";
 
 function profile(over: Partial<DesktopProfile> = {}): DesktopProfile {
@@ -33,6 +34,7 @@ function views(profiles: DesktopProfile[], over: Partial<DesktopProfiles> = {}):
     profiles,
     signedIn: null,
     mismatch: null,
+    switching: null,
     ...over,
   };
 }
@@ -58,6 +60,20 @@ const user = () => userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 const named = (calls: Call[], command: string) => calls.filter((c) => c.command === command).map((c) => c.args);
 const switched = (over: Partial<Switched> = {}): Switched => ({ status: "switched", needsLogin: false, ...over });
 const SWITCH = "Chuyển Claude Desktop sang gói này";
+const progress = (over: Partial<SwitchProgress> = {}): SwitchProgress => ({
+  step: "quitting",
+  target: "claude-2",
+  percent: null,
+  elapsed: 3,
+  cancelling: false,
+  cancellable: true,
+  ...over,
+});
+const tick = () =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(PROGRESS_POLL_MS);
+  });
+const CANCELLED = "Đã huỷ chuyển Claude Desktop; đăng nhập giữ như trước.";
 
 beforeEach(() => {
   setLang("vi");
@@ -181,6 +197,71 @@ describe("dòng Claude Desktop của gói", { timeout: 20_000 }, () => {
     expect((await screen.findByRole("status")).textContent).toContain("chuyển sang gói khác trước");
   });
 
+  it("đang chuyển: hiện từng bước và phần trăm sao lưu; Huỷ thì trả lại đăng nhập cũ", async () => {
+    let now: SwitchProgress | null = progress();
+    let finish: (e: string) => void = () => {};
+    const calls = fakeTauri({
+      switch_claude_desktop: () =>
+        new Promise((_, reject) => {
+          finish = reject;
+        }),
+      claude_desktop_switch_progress: () => now,
+      cancel_claude_desktop_switch: () => {
+        now = now && { ...now, cancelling: true };
+        return true;
+      },
+    });
+    const p = profile();
+    render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p], { running: null })} onChanged={() => {}} />);
+    await user().click(screen.getByRole("button", { name: SWITCH }));
+    const line = () => document.querySelector("[data-switch-progress]") as HTMLElement;
+    expect(line().textContent).toContain("Đang chuẩn bị chuyển Claude Desktop");
+    expect((screen.getByRole("button", { name: SWITCH }) as HTMLButtonElement).disabled).toBe(true);
+    await tick();
+    expect(line().textContent).toContain("Đang chờ Claude Desktop thoát");
+    expect(line().textContent).toContain("3 giây");
+    now = progress({ step: "backingUp", percent: 42, elapsed: 30 });
+    await tick();
+    expect(line().textContent).toContain("Đang sao lưu hồ sơ Claude Desktop (lần đầu) 42%");
+    expect(screen.getByRole("progressbar").getAttribute("value")).toBe("42");
+    await user().click(within(line()).getByRole("button", { name: "Huỷ" }));
+    expect(named(calls, "cancel_claude_desktop_switch")).toEqual([undefined]);
+    await waitFor(() => expect(line().textContent).toContain("Đang huỷ"));
+    expect((within(line()).getByRole("button", { name: "Huỷ" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => finish(CANCELLED));
+    expect((await screen.findByRole("status")).textContent).toBe(CANCELLED);
+    expect(document.querySelector("[data-switch-progress]")).toBeNull();
+    expect((screen.getByRole("button", { name: SWITCH }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("lần chuyển chạy từ chỗ khác: dòng của gói đích hiện tiến độ, các dòng khác tắt nút", async () => {
+    let now: SwitchProgress | null = progress({ step: "launching", cancellable: false });
+    fakeTauri({ claude_desktop_switch_progress: () => now });
+    const onChanged = vi.fn();
+    const target = profile();
+    const other = profile({ id: "claude-3", label: "Gói ba" });
+    const view = views([target, other], { switching: now });
+    render(
+      <>
+        <ClaudeDesktopRow plan="Gói phụ" profile={target} view={view} onChanged={onChanged} />
+        <ClaudeDesktopRow plan="Gói ba" profile={other} view={view} onChanged={onChanged} />
+      </>,
+    );
+    const lines = document.querySelectorAll("[data-switch-progress]");
+    expect(lines.length).toBe(1);
+    expect(lines[0]?.closest("[data-claude-desktop]")?.getAttribute("data-claude-desktop")).toBe("claude-2");
+    expect(lines[0]?.textContent).toContain("Đang mở lại Claude Desktop");
+    // Đang mở lại app: đã đổi xong, không còn gì để huỷ.
+    expect((within(lines[0] as HTMLElement).getByRole("button", { name: "Huỷ" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    for (const b of screen.getAllByRole("button", { name: SWITCH }))
+      expect((b as HTMLButtonElement).disabled).toBe(true);
+    now = null;
+    await tick();
+    expect(onChanged).toHaveBeenCalled();
+  });
+
   it("chưa cài Claude Desktop: nút tắt và ghi lý do", () => {
     fakeTauri({});
     const p = profile({ saved: false });
@@ -192,10 +273,54 @@ describe("dòng Claude Desktop của gói", { timeout: 20_000 }, () => {
 });
 
 describe("khung Claude Desktop chung", { timeout: 20_000 }, () => {
-  it("không có bản sao lưu hay hồ sơ cũ thì không hiện", () => {
+  it("chưa có gì: chỉ có nút chép chẩn đoán; chưa hỗ trợ thì không hiện", () => {
     fakeTauri({});
-    const { container } = render(<ClaudeDesktopPanel view={views([])} onChanged={() => {}} />);
+    const { container, rerender } = render(<ClaudeDesktopPanel view={views([])} onChanged={() => {}} />);
+    expect(container.textContent).toBe("Chép thông tin chẩn đoán");
+    rerender(<ClaudeDesktopPanel view={views([], { supported: false })} onChanged={() => {}} />);
     expect(container.textContent).toBe("");
+  });
+
+  it("chép thông tin chẩn đoán vào clipboard; lỗi thì báo", async () => {
+    const report = "xDev Hive 0.2.17 · windows x86_64\nHồ sơ đang chọn: C:\\Users\\a\\AppData\\Local\\Packages";
+    const calls = fakeTauri({ claude_desktop_diagnose: () => report });
+    const u = user();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    render(<ClaudeDesktopPanel view={views([])} onChanged={() => {}} />);
+    await u.click(screen.getByRole("button", { name: "Chép thông tin chẩn đoán" }));
+    expect((await screen.findByRole("status")).textContent).toContain("Đã chép thông tin chẩn đoán");
+    expect(named(calls, "claude_desktop_diagnose")).toEqual([undefined]);
+    expect(writeText).toHaveBeenCalledWith(report);
+    writeText.mockRejectedValueOnce(new Error("denied"));
+    await u.click(screen.getByRole("button", { name: "Chép thông tin chẩn đoán" }));
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe("Không chép được thông tin chẩn đoán vào clipboard."),
+    );
+    writeText.mockRestore();
+  });
+
+  it("đang khôi phục: khung chung hiện tiến độ và Huỷ", async () => {
+    const backup = "/Users/a/.xdev-hive/claude-desktop/backup-20261015-010203";
+    let finish: (s: Switched) => void = () => {};
+    const calls = fakeTauri({
+      restore_claude_desktop: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      claude_desktop_switch_progress: () => progress({ step: "swapping", target: null }),
+      cancel_claude_desktop_switch: () => true,
+    });
+    render(<ClaudeDesktopPanel view={views([], { backup, running: null })} onChanged={() => {}} />);
+    await user().click(screen.getByRole("button", { name: "Khôi phục như ban đầu" }));
+    await user().click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Khôi phục" }));
+    await tick();
+    const line = document.querySelector("[data-switch-progress]") as HTMLElement;
+    expect(line.textContent).toContain("Đang đổi đăng nhập");
+    expect((screen.getByRole("button", { name: "Khôi phục như ban đầu" }) as HTMLButtonElement).disabled).toBe(true);
+    await user().click(within(line).getByRole("button", { name: "Huỷ" }));
+    expect(named(calls, "cancel_claude_desktop_switch")).toEqual([undefined]);
+    await act(async () => finish(switched()));
+    expect(document.querySelector("[data-switch-progress]")).toBeNull();
   });
 
   it("hiện tài khoản Claude Desktop đang đăng nhập và gói của nó", () => {
