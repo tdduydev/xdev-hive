@@ -43,6 +43,7 @@ fn main() {
         "switch_claude_desktop",
         "restore_claude_desktop",
         "adopt_claude_desktop",
+        "dismiss_claude_desktop_mismatch",
         "forget_claude_desktop",
         "migrate_claude_desktop_profiles",
         "optimizer_status",

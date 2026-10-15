@@ -17,6 +17,7 @@ function profile(over: Partial<DesktopProfile> = {}): DesktopProfile {
     email: "phu@example.com",
     saved: true,
     active: false,
+    accountKnown: true,
     ...over,
   };
 }
@@ -30,6 +31,8 @@ function views(profiles: DesktopProfile[], over: Partial<DesktopProfiles> = {}):
     backup: null,
     legacy: [],
     profiles,
+    signedIn: null,
+    mismatch: null,
     ...over,
   };
 }
@@ -89,7 +92,7 @@ describe("dòng Claude Desktop của gói", { timeout: 20_000 }, () => {
     render(
       <ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([other, p], { running: null })} onChanged={() => {}} />,
     );
-    expect(screen.getByText(/Chưa lưu đăng nhập Claude Desktop/)).toBeTruthy();
+    expect(screen.getByText(/cần đăng nhập 1 lần/)).toBeTruthy();
     // Đã có gói đang dùng: không còn nút ghi nhận đăng nhập hiện tại.
     expect(screen.queryByRole("button", { name: "Claude Desktop đang đăng nhập gói này" })).toBeNull();
     await user().click(screen.getByRole("button", { name: SWITCH }));
@@ -129,11 +132,33 @@ describe("dòng Claude Desktop của gói", { timeout: 20_000 }, () => {
     expect(screen.queryByRole("button", { name: "Mở Claude Desktop" })).toBeNull();
   });
 
-  it("chưa có gói đang dùng: ghi nhận đăng nhập hiện tại cho gói", async () => {
+  it("gói đang dùng chưa lưu đăng nhập: chờ đăng nhập, Hive tự lưu", () => {
+    fakeTauri({});
+    const p = profile({ saved: false, active: true });
+    render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p])} onChanged={() => {}} />);
+    expect(screen.getByText(/Claude Desktop chưa đăng nhập: đăng nhập bằng tài khoản của gói này/)).toBeTruthy();
+    expect(screen.queryByText(/cần đăng nhập 1 lần/)).toBeNull();
+  });
+
+  it("gói biết tài khoản: đăng nhập tự gắn, không có nút ghi nhận tay", () => {
+    fakeTauri({});
+    const p = profile({ saved: false });
+    const signedIn = { account: "296f5a0d-aaaa", email: null, plan: null };
+    render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p], { signedIn })} onChanged={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Claude Desktop đang đăng nhập gói này" })).toBeNull();
+  });
+
+  it("gói không biết tài khoản: ghi nhận tay đăng nhập chưa gói nào nhận", async () => {
     const calls = fakeTauri({ adopt_claude_desktop: () => views([]) });
     const onChanged = vi.fn();
-    const p = profile({ saved: false });
-    render(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p])} onChanged={onChanged} />);
+    const p = profile({ saved: false, accountKnown: false });
+    const signedIn = { account: "296f5a0d-aaaa", email: null, plan: null };
+    const { rerender } = render(
+      <ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p])} onChanged={onChanged} />,
+    );
+    // Claude Desktop chưa đăng nhập thì không có gì để ghi nhận.
+    expect(screen.queryByRole("button", { name: "Claude Desktop đang đăng nhập gói này" })).toBeNull();
+    rerender(<ClaudeDesktopRow plan="Gói phụ" profile={p} view={views([p], { signedIn })} onChanged={onChanged} />);
     await user().click(screen.getByRole("button", { name: "Claude Desktop đang đăng nhập gói này" }));
     expect(named(calls, "adopt_claude_desktop")).toEqual([{ profileId: "claude-2" }]);
     expect((await screen.findByRole("status")).textContent).toContain("Gói phụ");
@@ -171,6 +196,60 @@ describe("khung Claude Desktop chung", { timeout: 20_000 }, () => {
     fakeTauri({});
     const { container } = render(<ClaudeDesktopPanel view={views([])} onChanged={() => {}} />);
     expect(container.textContent).toBe("");
+  });
+
+  it("hiện tài khoản Claude Desktop đang đăng nhập và gói của nó", () => {
+    fakeTauri({});
+    const p = profile();
+    const { rerender } = render(
+      <ClaudeDesktopPanel
+        view={views([p], { signedIn: { account: "uuid-b", email: "phu@example.com", plan: "claude-2" } })}
+        onChanged={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Claude Desktop đang đăng nhập phu@example.com/).textContent).toContain("của Gói phụ");
+    rerender(
+      <ClaudeDesktopPanel
+        view={views([p], { signedIn: { account: "296f5a0d-1111-2222", email: null, plan: null } })}
+        onChanged={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Claude Desktop đang đăng nhập 296f5a0d…/).textContent).toContain("không thuộc gói nào");
+  });
+
+  it("đăng nhập nhầm tài khoản: báo gói nào đã nhận, đóng thông báo", async () => {
+    const calls = fakeTauri({ dismiss_claude_desktop_mismatch: () => views([]) });
+    const onChanged = vi.fn();
+    const main = profile({ id: "claude-1", label: "Gói chính", active: true });
+    const third = profile({ id: "claude-3", label: "Gói ba", saved: false });
+    render(
+      <ClaudeDesktopPanel
+        view={views([main, third], {
+          mismatch: { account: "chinh@example.com", expected: "claude-3", adopted: "claude-1" },
+        })}
+        onChanged={onChanged}
+      />,
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Bạn vừa đăng nhập tài khoản chinh@example.com, không phải của Gói ba.");
+    expect(alert.textContent).toContain("Hive đã lưu đăng nhập này cho Gói chính");
+    await user().click(within(alert).getByRole("button", { name: "Đã hiểu" }));
+    expect(named(calls, "dismiss_claude_desktop_mismatch")).toEqual([undefined]);
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("đăng nhập tài khoản lạ: chưa lưu cho gói nào", () => {
+    fakeTauri({});
+    const third = profile({ id: "claude-3", label: "Gói ba", saved: false, active: true });
+    render(
+      <ClaudeDesktopPanel
+        view={views([third], { mismatch: { account: "296f5a0d…", expected: "claude-3", adopted: null } })}
+        onChanged={() => {}}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "chưa được lưu cho gói nào. Đăng xuất trong Claude Desktop rồi đăng nhập tài khoản của Gói ba.",
+    );
   });
 
   it("khôi phục như ban đầu luôn hỏi trước; mở thư mục sao lưu", async () => {

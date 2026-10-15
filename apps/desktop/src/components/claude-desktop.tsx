@@ -8,6 +8,7 @@ import {
   type DesktopProfile,
   type DesktopProfiles,
   desktopProfiles,
+  dismissClaudeDesktopMismatch,
   forgetClaudeDesktop,
   migrateClaudeDesktopProfiles,
   restoreClaudeDesktop,
@@ -29,6 +30,7 @@ const text: Dict<{
   inUse: string;
   inUseTitle: string;
   notSaved: string;
+  waitingLogin: string;
   adopt: string;
   adoptTitle: string;
   forget: string;
@@ -61,6 +63,13 @@ const text: Dict<{
   migrateTitle: string;
   migrateBody: (ids: string) => string;
   migrated: string;
+  signedIn: (account: string) => string;
+  signedInPlan: (plan: string) => string;
+  signedInNoPlan: string;
+  mismatch: (account: string, expected: string) => string;
+  mismatchAdopted: (plan: string) => string;
+  mismatchNotSaved: (expected: string) => string;
+  dismiss: string;
 }> = {
   vi: {
     switch: "Chuyển Claude Desktop sang gói này",
@@ -68,10 +77,13 @@ const text: Dict<{
     open: "Mở Claude Desktop",
     inUse: "Đang dùng",
     inUseTitle: "Claude Desktop đang đăng nhập bằng tài khoản của gói này",
-    notSaved: "Chưa lưu đăng nhập Claude Desktop: lần đầu chuyển sang sẽ phải đăng nhập.",
+    notSaved:
+      "Chưa lưu đăng nhập Claude Desktop, cần đăng nhập 1 lần: lần đầu chuyển sang, đăng nhập bằng tài khoản của gói này; Hive tự lưu để lần sau không hỏi lại.",
+    waitingLogin:
+      "Claude Desktop chưa đăng nhập: đăng nhập bằng tài khoản của gói này, Hive tự lưu ngay khi bạn đăng nhập xong.",
     adopt: "Claude Desktop đang đăng nhập gói này",
     adoptTitle:
-      "Bấm nếu Claude Desktop hiện đang đăng nhập đúng tài khoản của gói này: lần chuyển sau Hive lưu đăng nhập đó cho gói, không phải đăng nhập lại",
+      "Hive không đọc được tài khoản Claude của gói này nên không tự nhận ra. Bấm nếu Claude Desktop đang đăng nhập đúng tài khoản của gói: Hive lưu đăng nhập đó cho gói",
     forget: "Quên đăng nhập đã lưu",
     forgetTitle: "Quên đăng nhập Claude Desktop của gói?",
     forgetBody: (plan) =>
@@ -80,7 +92,7 @@ const text: Dict<{
     confirmBody: (plan) =>
       `Claude Desktop sẽ thoát rồi mở lại bằng tài khoản của ${plan}. Việc đang chạy trong Claude Desktop sẽ dừng. Bộ nhớ, sessions, MCP và cấu hình trên máy giữ nguyên; đăng nhập hiện tại được lưu cho gói đang dùng.`,
     confirmLogin:
-      "Gói này chưa lưu đăng nhập: Claude Desktop mở ở màn đăng nhập, bạn đăng nhập bằng tài khoản của gói. Lần chuyển sau Hive tự lưu đăng nhập đó.",
+      "Gói này chưa lưu đăng nhập: Claude Desktop mở ở màn đăng nhập, bạn đăng nhập bằng tài khoản của gói. Hive tự lưu ngay khi bạn đăng nhập xong.",
     confirmSwitch: "Khởi động lại và chuyển",
     forceTitle: "Claude Desktop chưa thoát",
     forceBody:
@@ -89,7 +101,7 @@ const text: Dict<{
     cancel: "Huỷ",
     switched: (plan) => `Đã chuyển Claude Desktop sang ${plan}.`,
     switchedLogin: (plan) =>
-      `Đã chuyển Claude Desktop sang ${plan}: đăng nhập bằng tài khoản Claude của gói này. Lần chuyển sau Hive tự lưu đăng nhập đó.`,
+      `Đã chuyển Claude Desktop sang ${plan}: đăng nhập bằng tài khoản Claude của gói này. Hive tự lưu ngay khi bạn đăng nhập xong.`,
     already: (plan) => `Claude Desktop đang dùng ${plan}.`,
     adopted: (plan) => `Đã ghi nhận Claude Desktop đang dùng ${plan}.`,
     forgotten: (plan) => `Đã quên đăng nhập Claude Desktop của ${plan}.`,
@@ -110,6 +122,14 @@ const text: Dict<{
     migrateBody: (ids) =>
       `Hồ sơ riêng của ${ids}: giữ lại đăng nhập để chuyển gói không phải đăng nhập lại, xoá phần còn lại (lịch sử chat trên máy, cache) của các hồ sơ riêng đó. Claude Desktop thường của bạn không bị đụng tới.`,
     migrated: "Đã đổi hồ sơ riêng kiểu cũ sang đăng nhập đã lưu.",
+    signedIn: (account) => `Claude Desktop đang đăng nhập ${account}`,
+    signedInPlan: (plan) => `của ${plan}`,
+    signedInNoPlan: "không thuộc gói nào trên máy",
+    mismatch: (account, expected) => `Bạn vừa đăng nhập tài khoản ${account}, không phải của ${expected}.`,
+    mismatchAdopted: (plan) => `Hive đã lưu đăng nhập này cho ${plan}, gói của tài khoản đó.`,
+    mismatchNotSaved: (expected) =>
+      `Đăng nhập này chưa được lưu cho gói nào. Đăng xuất trong Claude Desktop rồi đăng nhập tài khoản của ${expected}.`,
+    dismiss: "Đã hiểu",
   },
   en: {
     switch: "Switch Claude Desktop to this plan",
@@ -118,10 +138,13 @@ const text: Dict<{
     open: "Open Claude Desktop",
     inUse: "In use",
     inUseTitle: "Claude Desktop is signed in with this plan's account",
-    notSaved: "No saved Claude Desktop sign-in: the first switch asks you to sign in.",
+    notSaved:
+      "No saved Claude Desktop sign-in, sign in once: on the first switch, sign in with this plan's account; Hive saves it so you are not asked again.",
+    waitingLogin:
+      "Claude Desktop is signed out: sign in with this plan's account, Hive saves it as soon as you are done.",
     adopt: "Claude Desktop is on this plan",
     adoptTitle:
-      "Click if Claude Desktop is currently signed in with this plan's account: the next switch saves that sign-in for the plan, no need to sign in again",
+      "Hive cannot read this plan's Claude account, so it cannot tell on its own. Click if Claude Desktop is signed in with this plan's account: Hive saves that sign-in for the plan",
     forget: "Forget saved sign-in",
     forgetTitle: "Forget this plan's Claude Desktop sign-in?",
     forgetBody: (plan) =>
@@ -130,7 +153,7 @@ const text: Dict<{
     confirmBody: (plan) =>
       `Claude Desktop quits and reopens with ${plan}'s account. Work running in Claude Desktop stops. Memory, sessions, MCP and local settings stay as they are; the current sign-in is saved for the plan in use.`,
     confirmLogin:
-      "This plan has no saved sign-in: Claude Desktop opens at the sign-in screen, sign in with the plan's account. The next switch saves that sign-in.",
+      "This plan has no saved sign-in: Claude Desktop opens at the sign-in screen, sign in with the plan's account. Hive saves it as soon as you are done.",
     confirmSwitch: "Restart and switch",
     forceTitle: "Claude Desktop did not quit",
     forceBody:
@@ -139,7 +162,7 @@ const text: Dict<{
     cancel: "Cancel",
     switched: (plan) => `Claude Desktop is now on ${plan}.`,
     switchedLogin: (plan) =>
-      `Claude Desktop is now on ${plan}: sign in with this plan's Claude account. The next switch saves that sign-in.`,
+      `Claude Desktop is now on ${plan}: sign in with this plan's Claude account. Hive saves it as soon as you are done.`,
     already: (plan) => `Claude Desktop is already on ${plan}.`,
     adopted: (plan) => `Noted that Claude Desktop is on ${plan}.`,
     forgotten: (plan) => `Forgot ${plan}'s Claude Desktop sign-in.`,
@@ -160,6 +183,14 @@ const text: Dict<{
     migrateBody: (ids) =>
       `Separate profiles of ${ids}: the sign-in is kept so switching needs no new sign-in, the rest (local chat history, cache) of those profiles is deleted. Your regular Claude Desktop is not touched.`,
     migrated: "Converted the old separate profiles into saved sign-ins.",
+    signedIn: (account) => `Claude Desktop is signed in as ${account}`,
+    signedInPlan: (plan) => `of ${plan}`,
+    signedInNoPlan: "not of any plan on this machine",
+    mismatch: (account, expected) => `You just signed in as ${account}, which is not ${expected}'s account.`,
+    mismatchAdopted: (plan) => `Hive saved this sign-in for ${plan}, the plan of that account.`,
+    mismatchNotSaved: (expected) =>
+      `This sign-in is not saved for any plan. Sign out in Claude Desktop, then sign in with ${expected}'s account.`,
+    dismiss: "Got it",
   },
 };
 
@@ -185,6 +216,16 @@ export function useClaudeDesktop(): { view: DesktopProfiles | null; reload: () =
 }
 
 type Notice = { tone: "ok" | "info" | "bad"; text: string };
+
+/** Uuid dài vô nghĩa với người dùng; đủ 8 ký tự đầu để đối chiếu. */
+function shortUuid(uuid: string): string {
+  return uuid.length > 8 ? `${uuid.slice(0, 8)}…` : uuid;
+}
+
+/** Tên gói để hiện; gói không còn trong danh sách thì hiện id. */
+function planName(view: DesktopProfiles, id: string): string {
+  return view.profiles.find((p) => p.id === id)?.label || id;
+}
 
 function NoticeLine({ notice }: { notice: Notice | null }) {
   if (!notice) return null;
@@ -308,6 +349,10 @@ export function ClaudeDesktopRow({
   const running = view.running !== null;
   const noneActive = !view.profiles.some((p) => p.active);
   const working = busy || restart.busy;
+  // Gói biết tài khoản thì Hive tự gắn đăng nhập; nút ghi nhận tay chỉ còn cho gói không đọc được tài khoản, khi Claude
+  // Desktop đang đăng nhập một tài khoản chưa gói nào nhận.
+  const canAdopt =
+    noneActive && !profile.accountKnown && !profile.saved && canSwitch && !!view.signedIn && !view.signedIn.plan;
 
   async function run(job: () => Promise<unknown>, ok: string) {
     setBusy(true);
@@ -348,7 +393,7 @@ export function ClaudeDesktopRow({
             {t.switch}
           </Button>
         )}
-        {noneActive && !profile.saved && canSwitch && (
+        {canAdopt && (
           <Button
             size="sm"
             variant="ghost"
@@ -365,8 +410,10 @@ export function ClaudeDesktopRow({
           </Button>
         )}
       </div>
-      {!profile.saved && !profile.active && canSwitch && (
-        <span className="text-xs text-muted-foreground">{t.notSaved}</span>
+      {!profile.saved && canSwitch && (
+        <span className="text-xs text-muted-foreground">
+          {profile.active && !view.signedIn ? t.waitingLogin : t.notSaved}
+        </span>
       )}
       {!canSwitch && view.note && <span className="text-xs text-muted-foreground">{view.note}</span>}
       <NoticeLine notice={notice} />
@@ -405,8 +452,8 @@ export function ClaudeDesktopRow({
 }
 
 /**
- * Phần chung của Claude Desktop trên màn gói: hồ sơ riêng kiểu cũ cần đổi, bản sao lưu ban đầu và nút khôi phục. Không
- * hiện gì khi chưa có hai thứ đó.
+ * Phần chung của Claude Desktop trên màn gói: tài khoản đang đăng nhập, thông báo đăng nhập nhầm tài khoản, hồ sơ riêng
+ * kiểu cũ cần đổi, bản sao lưu ban đầu và nút khôi phục. Không hiện gì khi chưa có những thứ đó.
  */
 export function ClaudeDesktopPanel({ view, onChanged }: { view: DesktopProfiles; onChanged: () => void }) {
   const t = useT(text);
@@ -421,8 +468,20 @@ export function ClaudeDesktopPanel({ view, onChanged }: { view: DesktopProfiles;
     },
     (e) => setNotice({ tone: "bad", text: errorText(e) }),
   );
-  const { backup, legacy } = view;
-  if (!view.supported || (!backup && legacy.length === 0)) return null;
+  const { backup, legacy, signedIn, mismatch } = view;
+  if (!view.supported || (!backup && legacy.length === 0 && !signedIn && !mismatch)) return null;
+
+  async function dismiss() {
+    setBusy(true);
+    try {
+      await dismissClaudeDesktopMismatch();
+      onChanged();
+    } catch (e) {
+      setNotice({ tone: "bad", text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function migrate() {
     setMigrating(false);
@@ -440,6 +499,30 @@ export function ClaudeDesktopPanel({ view, onChanged }: { view: DesktopProfiles;
 
   return (
     <section aria-label="Claude Desktop" className="flex flex-col gap-2 rounded-xl border px-4 py-2.5 text-sm">
+      {signedIn && (
+        <div data-signed-in className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <AppWindowIcon aria-hidden="true" className="size-4 shrink-0" />
+          <span className="min-w-56 flex-1">
+            {t.signedIn(signedIn.email ?? shortUuid(signedIn.account))}{" "}
+            <span className="text-muted-foreground">
+              {signedIn.plan ? t.signedInPlan(planName(view, signedIn.plan)) : t.signedInNoPlan}
+            </span>
+          </span>
+        </div>
+      )}
+      {mismatch && (
+        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-warning-soft px-2 py-1">
+          <span className="min-w-56 flex-1">
+            {t.mismatch(mismatch.account, planName(view, mismatch.expected))}{" "}
+            {mismatch.adopted
+              ? t.mismatchAdopted(planName(view, mismatch.adopted))
+              : t.mismatchNotSaved(planName(view, mismatch.expected))}
+          </span>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void dismiss()}>
+            {t.dismiss}
+          </Button>
+        </div>
+      )}
       {legacy.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <AppWindowIcon aria-hidden="true" className="size-4 shrink-0" />

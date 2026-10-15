@@ -895,6 +895,7 @@ pub fn run() {
             claude_desktop::switch_claude_desktop,
             claude_desktop::restore_claude_desktop,
             claude_desktop::adopt_claude_desktop,
+            claude_desktop::dismiss_claude_desktop_mismatch,
             claude_desktop::forget_claude_desktop,
             claude_desktop::migrate_claude_desktop_profiles,
             optimizer::optimizer_status,
@@ -1030,6 +1031,9 @@ pub fn run() {
                 // Máy chưa đăng ký cũng kiểm (chỉ qua GitHub): app mới cài nhận được bản mới trước cả khi đăng ký.
                 updates::run_periodic(&handle).await;
             });
+            if cfg!(target_os = "macos") {
+                tauri::async_runtime::spawn(claude_desktop::watch(app.handle().clone()));
+            }
             let ticker = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
