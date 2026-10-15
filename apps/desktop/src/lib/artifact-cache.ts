@@ -60,12 +60,7 @@ export function frameBase(userAgent: string = navigator.userAgent): string {
 }
 
 /** Địa chỉ khung của một phiên bản đã đệm, cho `<iframe src>`. */
-export function cachedFrameUrl(
-  id: string,
-  version: number,
-  theme: ArtifactTheme,
-  userAgent?: string,
-): string {
+export function cachedFrameUrl(id: string, version: number, theme: ArtifactTheme, userAgent?: string): string {
   return `${frameBase(userAgent)}frame/${encodeURIComponent(id)}/${version}?theme=${theme}`;
 }
 
