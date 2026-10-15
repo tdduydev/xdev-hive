@@ -16,7 +16,7 @@ import {
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject } from "../catalog/index.ts";
-import { editorState, getDoc, type Principal, saveDraft } from "../knowledge/index.ts";
+import { editorState, getDoc, type Principal, type RuleContextExtras, saveDraft } from "../knowledge/index.ts";
 import { BadRequestError, ForbiddenError, NotFoundError, type RequestContext, type Tx } from "../platform/index.ts";
 import {
   createSystemTask,
@@ -45,7 +45,7 @@ interface ProjectRef {
   role: "home" | "participant";
 }
 
-async function itemProjectRefs(tx: Tx, itemId: string): Promise<ProjectRef[]> {
+export async function itemProjectRefs(tx: Tx, itemId: string): Promise<ProjectRef[]> {
   const out: ProjectRef[] = [];
   for (const m of await activeItemProjects(tx, itemId)) {
     const project = await loadProject(tx, m.projectId);
@@ -310,10 +310,45 @@ export async function onBreakdownBaseline(
   return applyBreakdown(tx, item, content, version);
 }
 
+/**
+ * Dữ liệu cho luật `breakdown`, `coverage` khi duyệt tài liệu tách việc. Requirement đọc bằng quyền chủ hạng mục như
+ * `onBreakdownBaseline`: người duyệt có thể không đọc được tài liệu ở dự án chính.
+ */
+export async function breakdownRuleInput(
+  tx: Tx,
+  item: SdlcItemRow,
+  artifact: { phaseId: string; artifactId: string },
+): Promise<RuleContextExtras["breakdown"]> {
+  const d = item.mode.decomposition;
+  if (!d || d.phase !== artifact.phaseId || d.artifact !== artifact.artifactId) return undefined;
+  const projects = await itemProjectRefs(tx, item.id);
+  return {
+    decomposition: d,
+    context: {
+      homeProject: projects.find((p) => p.role === "home")?.key ?? "",
+      projects: projects.map((p) => p.key),
+    },
+    requirements: await requirementsOf(tx, { kind: "user", userId: item.ownerUserId }, item, d),
+  };
+}
+
 // ---- Xem, lưu ------------------------------------------------------------------------------------------------------
 
 /** Requirement của tài liệu nguồn (spec…) theo baseline, hoặc bản nháp nếu chưa có baseline, để tính độ phủ. */
 async function requirementsOf(tx: Tx, principal: Principal, item: SdlcItemRow, d: SdlcDecomposition) {
+  const out = (await requirementSources(tx, principal, item, d)).flatMap(
+    (content) => findRequirements(content, d.requirementId) ?? [],
+  );
+  return [...new Set(out)];
+}
+
+/** Nội dung baseline của các tài liệu nguồn requirement; truy vết (trace.ts) lấy thêm câu chữ của requirement. */
+export async function requirementSources(
+  tx: Tx,
+  principal: Principal,
+  item: SdlcItemRow,
+  d: SdlcDecomposition,
+): Promise<string[]> {
   const out: string[] = [];
   for (const source of d.requirementSource) {
     const [row] = await tx
@@ -328,13 +363,12 @@ async function requirementsOf(tx: Tx, principal: Principal, item: SdlcItemRow, d
       );
     if (!row?.version) continue;
     try {
-      const doc = await getDoc(tx, principal, { key: row.docKey, version: row.version });
-      out.push(...(findRequirements(doc.content, d.requirementId) ?? []));
+      out.push((await getDoc(tx, principal, { key: row.docKey, version: row.version })).content);
     } catch {
       // Không đọc được tài liệu nguồn thì độ phủ thiếu phần đó; không làm hỏng màn bản tách.
     }
   }
-  return [...new Set(out)];
+  return out;
 }
 
 async function breakdownView(

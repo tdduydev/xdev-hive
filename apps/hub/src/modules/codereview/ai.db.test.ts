@@ -37,6 +37,7 @@ const jobs: Jobs = {
   work: async () => {},
 };
 const reviewRuns: StartReviewRunsInput[] = [];
+const specCalls: string[] = [];
 /** CLI không có máy dùng chung nào: run review của nó `waiting_machine` (ADR 0017). */
 const noMachine = new Set<string>();
 const warnings: string[] = [];
@@ -48,6 +49,14 @@ const deps: CodeReviewWorkerDeps = {
   publicUrl: "https://hive.example.com/",
   logger: { warn: (m: string) => void warnings.push(m) },
   runEvidence: async () => null,
+  specContextFor: async (_tx, taskId) => {
+    specCalls.push(taskId);
+    return {
+      item: "007 · Thanh toán",
+      requirements: [{ id: "FR-001", text: "Hệ thống MUST hoàn tiền.", acceptance: ["Tiêu chí: hoàn trong 7 ngày"] }],
+      docs: [],
+    };
+  },
   startReviewRuns: async (_tx, input) => {
     reviewRuns.push(input);
     return input.reviewers.map((r) => ({
@@ -81,7 +90,7 @@ const HUMAN: Gate = {
 let seq = 0;
 
 /** Dự án có quy trình [AI, người duyệt], một PR do run code mở; trả phiên và lượt checkpoint AI đang chờ. */
-async function openAiReview(ai: GateAi) {
+async function openAiReview(ai: GateAi, withTask = false) {
   seq += 1;
   const key = `ai${seq}-${tag}`;
   const p = await seedProject(admin, app, {
@@ -94,6 +103,15 @@ async function openAiReview(ai: GateAi) {
   });
   const ref = { owner: p.owner, name: p.repo };
   provider.seedRepo(ref);
+  const taskId = withTask
+    ? ((
+        await admin.query(
+          `insert into hive.tasks (org_id, team_id, project_id, number, key, title, created_by)
+           values ($1, $2, $3, 1, $4, 'Hoàn tiền', 'seed') returning id`,
+          [org.orgId, org.teamId, p.projectId, `${key}-1`],
+        )
+      ).rows[0].id as string)
+    : null;
   const w = workflowInput.parse({
     name: `Code ${key}`,
     preset: "custom",
@@ -125,7 +143,7 @@ async function openAiReview(ai: GateAi) {
         id: randomUUID(),
         teamId: org.teamId,
         projectId: p.projectId,
-        taskId: null,
+        taskId,
         ownerUserId: org.user("tadmin"),
         taskType: "feature",
         headSha,
@@ -177,6 +195,7 @@ beforeAll(async () => {
 beforeEach(() => {
   queued.splice(0);
   reviewRuns.splice(0);
+  specCalls.splice(0);
   noMachine.clear();
   warnings.splice(0);
 });
@@ -192,6 +211,18 @@ describe("checkpoint AI", () => {
     await openAiReview({ checks: ["Có test", " có  test", "An toàn"], passScore: 8, reviewers: TWO, blockOn: "major" });
     expect(reviewRuns[0]?.rubric).toEqual(["Có test", "An toàn"]);
     expect(reviewRuns[0]?.guidance.join("\n")).toMatch(/8\/10[\s\S]*critical hoặc major/);
+  });
+
+  it("task thuộc hạng mục AI SDLC: gửi requirement và tiêu chí; review không có task thì không hỏi sdlc", async () => {
+    await openAiReview({ checks: ["Có test"], passScore: 8, reviewers: TWO });
+    expect(specCalls).toEqual([]);
+    expect(reviewRuns[0]?.specContext).toEqual([]);
+
+    await openAiReview({ checks: ["Có test"], passScore: 8, reviewers: TWO }, true);
+    expect(specCalls).toHaveLength(1);
+    expect(reviewRuns[1]?.specContext.join("\n")).toMatch(
+      /007 · Thanh toán[\s\S]*FR-001: Hệ thống MUST hoàn tiền[\s\S]*7 ngày/,
+    );
   });
 
   it("aggregate all: một reviewer chấm dưới ngưỡng thì không đạt và phiên bị trả lại", async () => {

@@ -70,6 +70,7 @@ import {
 } from "./modules/runs/index.ts";
 import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
+import { reviewSpecFor, type SdlcDeps, registerMcpTools as sdlcMcpTools, sdlcRouter } from "./modules/sdlc/index.ts";
 import { skillLearningRouter } from "./modules/skilllearn/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
@@ -150,6 +151,7 @@ export function createApp({
   provideThreadHost(createThreadHost(runs));
   provideLinkTarget("chat_thread", createThreadLinkTarget());
   artifactsMcpTools(registry, { pool, jobs, publicUrl });
+  sdlcMcpTools(registry);
   const terminal = {
     enabled: config.remoteTerminal ?? false,
     publicUrl,
@@ -165,6 +167,13 @@ export function createApp({
     providerFactory: providerFactory ?? defaultProviderFactory,
   };
   const frameKey = config.masterKey ? frameTicketKey(config.masterKey) : undefined;
+  // Cổng tạo run bước và run đợt chỉ có khi có lõi giao run; thiếu thì hạng mục vẫn đi qua cổng duyệt.
+  const sdlcDeps: SdlcDeps = runs?.sdlcDeps ?? {
+    jobs,
+    publicUrl,
+    masterKey: config.masterKey,
+    providerFactory: shared.providerFactory,
+  };
   const auditMiddleware = orgMiddlewares({ auth, pool });
   const auditBase = implement(contract.audit)
     .$context<RequestContext>()
@@ -274,11 +283,13 @@ export function createApp({
       startReviewRuns: runs?.startReviewRuns,
       queueFixRun: runs?.queueFixRun,
       runEvidence: runs?.runEvidence,
+      specContextFor: reviewSpecFor,
       runs: codeRuns,
     }),
     costs: costsRouter({ auth, pool }),
     sandbox: sandboxRouter({ auth, pool }),
-    leader: leaderRouter({ auth, pool, runs }),
+    leader: leaderRouter({ auth, pool, runs, sdlc: sdlcDeps }),
+    sdlc: sdlcRouter({ auth, pool, ...sdlcDeps }),
     mcpAdmin: mcpAdminRouter({ auth: baseAuth, pool, registry }),
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({
@@ -337,6 +348,7 @@ export function createApp({
         startReviewRuns: runs?.startReviewRuns,
         queueFixRun: runs?.queueFixRun,
         runEvidence: runs?.runEvidence,
+        specContextFor: reviewSpecFor,
       },
     };
     app.post("/hooks/chat/telegram/:botId", (c) => handleTelegramWebhook(chat, c.req.param("botId"), c.req.raw));
