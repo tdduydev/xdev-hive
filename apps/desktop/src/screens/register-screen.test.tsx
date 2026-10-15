@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ConnectForm } from "@/components/connect-form.tsx";
 import { setLang } from "@/lib/i18n.ts";
 import { RegisterScreen } from "@/screens/register-screen.tsx";
 
@@ -171,4 +172,93 @@ describe("RegisterScreen", () => {
     await user.click(screen.getByRole("button", { name: "Đăng ký và bật worker" }));
     expect(await screen.findByText("Chỉ chạy được trong app xDev Hive.")).toBeTruthy();
   });
+});
+
+describe("CA riêng của hub", () => {
+  beforeEach(() => setLang("vi"));
+  const ca = {
+    hub: "https://hub.test",
+    name: "CN=Caddy Local Authority - Test Root",
+    fingerprint: "CD:97:76:49",
+    previousFingerprint: "AA:BB:CC:DD",
+  };
+
+  it("chỉ tin sau khi đối chiếu; hiển thị cả vân tay cũ và mới, chưa đăng nhập", async () => {
+    const calls = fakeTauri({
+      ...notification,
+      hub_check: () => {
+        throw "HIVE_CA_UNTRUSTED: Chưa tin chứng chỉ. Có thể cài CA trên macOS, Windows, iOS, Android.";
+      },
+      hub_ca_inspect: () => ca,
+      hub_ca_trust: () => undefined,
+    });
+    render(<RegisterScreen />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Địa chỉ Hive"), ca.hub);
+    await user.click(screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    expect(await screen.findByText(ca.name)).toBeTruthy();
+    expect(screen.getByText(`SHA-256: ${ca.fingerprint}`)).toBeTruthy();
+    expect(screen.getByText(`SHA-256 đã tin trước đây: ${ca.previousFingerprint}`)).toBeTruthy();
+    expect(calls.some((c) => c.command === "hub_ca_trust" || c.command === "browser_login")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Đã đối chiếu, tin cậy CA này" }));
+    expect(await screen.findByText("Đã tin CA. Bấm đăng nhập hoặc đổi địa chỉ để tiếp tục.")).toBeTruthy();
+    expect(calls.find((c) => c.command === "hub_ca_trust")?.args).toEqual({ hub: ca.hub, fingerprint: ca.fingerprint });
+    expect(calls.some((c) => c.command === "browser_login")).toBe(false);
+  });
+
+  it("huỷ xác nhận và quên CA không gửi token hay đăng nhập", async () => {
+    const calls = fakeTauri({
+      ...notification,
+      hub_check: () => {
+        throw "HIVE_CA_UNTRUSTED: Chưa tin chứng chỉ.";
+      },
+      hub_ca_inspect: () => ca,
+      hub_ca_forget: () => undefined,
+    });
+    render(<RegisterScreen />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Địa chỉ Hive"), ca.hub);
+    await user.click(screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    await screen.findByText(ca.name);
+    await user.click(screen.getByRole("button", { name: "Huỷ" }));
+    expect(screen.queryByText(ca.name)).toBeNull();
+    expect(calls.some((c) => c.command === "hub_ca_trust")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Quên chứng chỉ đã tin" }));
+    expect(calls.some((c) => c.command === "hub_ca_forget")).toBe(true);
+    expect(calls.some((c) => ["browser_login", "register_worker", "account_link"].includes(c.command))).toBe(false);
+  });
+
+  it("không dò CA khi chứng chỉ sai tên hoặc mạng lỗi", async () => {
+    const calls = fakeTauri({
+      ...notification,
+      hub_check: () => {
+        throw "Chứng chỉ HTTPS không dành cho địa chỉ này.";
+      },
+    });
+    render(<RegisterScreen />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Địa chỉ Hive"), ca.hub);
+    await user.click(screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    expect(await screen.findByText("Chứng chỉ HTTPS không dành cho địa chỉ này.")).toBeTruthy();
+    expect(calls.some((c) => c.command === "hub_ca_inspect")).toBe(false);
+  });
+});
+
+it("đã đăng nhập vẫn kiểm được CA ở địa chỉ hub đang dùng", async () => {
+  setLang("vi");
+  fakeTauri({
+    hub_check: () => {
+      throw "HIVE_CA_UNTRUSTED: Chưa tin chứng chỉ.";
+    },
+    hub_ca_inspect: () => ({
+      hub: "https://hub.test",
+      name: "CN=CA mới",
+      fingerprint: "AA:BB",
+      previousFingerprint: "CC:DD",
+    }),
+  });
+  render(<ConnectForm current="https://hub.test" linked />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Kiểm chứng chỉ hub" }));
+  expect(await screen.findByText("CN=CA mới")).toBeTruthy();
 });

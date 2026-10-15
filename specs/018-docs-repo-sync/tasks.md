@@ -140,7 +140,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 1: nền (song song, sau Đợt 0)
 
-- [ ] **T005 [P] [—] [nặng] · 2 ngày — Bảng, RLS, migration, phụ thuộc, khung module `docsync`**
+- [x] **T005 [P] [—] [nặng] · 2 ngày — Bảng, RLS, migration, phụ thuộc, khung module `docsync`**
   - **Phụ thuộc**: T003.
   - **Goal**: plan.md mục 1, 13.
     - `knowledge/schema.ts`: `docs.archived_at`; `doc_versions.{content_hash,source,repo_commit,secret_flag}`;
@@ -207,7 +207,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `packages/doc-editor/src/sync-badge.tsx` (mới) + test
   - **Kiểm**: doc-editor typecheck, test (round-trip markdown có ảnh không đổi byte).
 
-- [ ] **T020 [P] [US4] [vừa] · 2 ngày — Web: cài đặt "Tài liệu" của dự án, thẻ repo tài liệu tổ chức, khung route**
+- [x] **T020 [P] [US4] [vừa] · 2 ngày — Web: cài đặt "Tài liệu" của dự án, thẻ repo tài liệu tổ chức, khung route**
   - **Phụ thuộc**: T003, T010.
   - **Goal**: FR-002…FR-005, US4, US8 (phần giao diện).
     - Tab "Tài liệu" trong cài đặt dự án: bật, thư mục, chế độ, mẫu lấy/bỏ, `repoChangesNeedReview`, cảnh báo phạm vi
@@ -241,7 +241,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/platform/{config.ts,config.test.ts,index.ts}`
   - **Kiểm**: hub test (`platform`), typecheck, `pnpm deps`.
 
-- [ ] **T008 [P] [US2] [nặng] · 2 ngày — `knowledge`: hook lưu, lưu từ đồng bộ, lưu trữ, chặn bí mật khi lưu**
+- [x] **T008 [P] [US2] [nặng] · 2 ngày — `knowledge`: hook lưu, lưu từ đồng bộ, lưu trữ, chặn bí mật khi lưu**
   - **Phụ thuộc**: T003, T005.
   - **Goal**: FR-012, FR-024 (lưu trữ), plan.md mục 5, 11.
     - `provideDocSaved(hook)`; `applyDocSave` gọi hook trong transaction với `{orgId, docId, key, version, source}`.
