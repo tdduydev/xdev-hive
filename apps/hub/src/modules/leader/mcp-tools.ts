@@ -1,13 +1,79 @@
 import { leaderAction } from "@xdev-hive/contracts";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { artifactError, type ThreadHost } from "../artifacts/index.ts";
 import { recordAudit } from "../audit/index.ts";
+import { loadProject } from "../catalog/index.ts";
 import type { McpToolRegistry } from "../mcp/index.ts";
-import { BadRequestError, ForbiddenError, NotFoundError } from "../platform/index.ts";
-import { type RunsEngine, runEvents, runs } from "../runs/index.ts";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
+import { type RunsEngine, runEvents } from "../runs/index.ts";
+import { teamRoleOf } from "../tenancy/index.ts";
 import { describeAction, emitLeaderActivity, executeLeaderAction, tierChoice, tierTable } from "./actions.ts";
 import { emitLeaderEvent } from "./observer.ts";
+import { assembleLeaderPrompt, loadTranscript, projectContext } from "./prompt.ts";
 import { approvals, chatMessages, chatThreads } from "./schema.ts";
+import { createThread } from "./service.ts";
+import { loadRunThread } from "./thread-host.ts";
+
+export async function postFixRequest(
+  runsEngine: RunsEngine | undefined,
+  tx: Tx,
+  input: Parameters<ThreadHost["postFixRequest"]>[1],
+) {
+  let thread: typeof chatThreads.$inferSelect;
+  if (input.threadId) {
+    const [existing] = await tx.select().from(chatThreads).where(eq(chatThreads.id, input.threadId));
+    if (!existing || existing.createdBy !== input.userId) throw artifactError("ARTIFACT_LINK_FORBIDDEN");
+    thread = existing;
+  } else {
+    const suggested = input.projectId ? await loadProject(tx, input.projectId) : null;
+    const role = suggested ? await teamRoleOf(tx, input.userId, suggested.teamId) : null;
+    thread = await createThread(tx, input.userId, {
+      projectId: role ? suggested?.id : null,
+      title: `Nhờ Leader sửa: ${input.title}`,
+    });
+  }
+  const project = thread.projectId ? await loadProject(tx, thread.projectId) : null;
+  const role = project ? await teamRoleOf(tx, input.userId, project.teamId) : null;
+  // Leader chỉ nhận run của thành viên đội; vẫn giữ yêu cầu để người xem chọn dự án họ dùng được sau đó.
+  const canStart = project && (role === "member" || role === "admin");
+  if (canStart && !runsEngine) throw new ConflictError("RUNS_DISABLED", "Hub chưa cấu hình giao leader run.");
+  const [message] = await tx
+    .insert(chatMessages)
+    .values({
+      orgId: thread.orgId,
+      threadId: thread.id,
+      role: "user",
+      senderId: input.userId,
+      content: input.note || "Nhờ Leader sửa lỗi của artifact này.",
+      artifactId: input.artifactId,
+      artifactVersion: input.version,
+      pageErrors: input.errors,
+    })
+    .returning();
+  if (!message) throw new Error("Không lưu được yêu cầu sửa artifact.");
+  await tx.update(chatThreads).set({ updatedAt: sql`now()` }).where(eq(chatThreads.id, thread.id));
+  let runId: string | null = null;
+  let afterCommit: (() => void) | undefined;
+  if (canStart && runsEngine) {
+    const transcript = await loadTranscript(tx, thread.id);
+    const context = await projectContext(tx, input.userId, project.id, project.teamId);
+    const started = await runsEngine.startLeaderRun(tx, input.userId, {
+      threadId: thread.id,
+      projectId: project.id,
+      prompt: assembleLeaderPrompt({
+        transcript,
+        context,
+        projectName: project.name,
+        projectKey: project.key,
+        defaultBranch: project.defaultBranch,
+      }),
+    });
+    runId = started.runId;
+    afterCommit = started.afterCommit;
+  }
+  return { threadId: thread.id, messageId: message.id, runId, afterCommit };
+}
 
 const requireLeaderRun = (principal: { kind: string; runKind?: string | undefined; runId?: string | undefined }) => {
   if (principal.kind !== "run" || principal.runKind !== "leader" || !principal.runId) {
@@ -30,14 +96,7 @@ export function registerMcpTools(
     readOnly: true,
     handler: async ({ threadId, content }, { tx, principal }) => {
       const runId = requireLeaderRun(principal);
-      const [run] = await tx
-        .select({ kind: runs.kind, projectId: runs.projectId, orgId: runs.orgId, attempt: runs.attempt })
-        .from(runs)
-        .where(eq(runs.id, runId));
-      const [thread] = await tx.select().from(chatThreads).where(eq(chatThreads.id, threadId));
-      if (run?.kind !== "leader" || !thread || (thread.projectId && thread.projectId !== run.projectId)) {
-        throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện của leader run.");
-      }
+      const { run, thread } = await loadRunThread(tx, runId, threadId);
       await tx.insert(chatMessages).values({ orgId: thread.orgId, threadId, role: "leader", content, runId });
       await tx
         .insert(runEvents)
@@ -61,14 +120,7 @@ export function registerMcpTools(
     readOnly: true,
     handler: async ({ threadId, action, rationale }, { tx, principal }) => {
       const runId = requireLeaderRun(principal);
-      const [run] = await tx
-        .select({ kind: runs.kind, projectId: runs.projectId })
-        .from(runs)
-        .where(eq(runs.id, runId));
-      const [thread] = await tx.select().from(chatThreads).where(eq(chatThreads.id, threadId));
-      if (run?.kind !== "leader" || !thread || (thread.projectId && thread.projectId !== run.projectId)) {
-        throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện của leader run.");
-      }
+      const { thread } = await loadRunThread(tx, runId, threadId);
       const checked = leaderAction.safeParse(action);
       if (!checked.success) throw new BadRequestError("LEADER_ACTION_INVALID", "Đề xuất hành động không hợp lệ.");
       const [approval] = await tx

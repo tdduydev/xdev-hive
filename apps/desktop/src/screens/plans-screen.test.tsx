@@ -389,6 +389,10 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     const u = user();
     await u.click(screen.getByRole("button", { name: "Đọc lại quota" }));
     expect(sent(calls, "cli_profile_usage")).toEqual([{ id: null }]);
+    // Đang đọc quota thì nút ⋯ của mọi dòng bị khoá (disabled), click lúc đó không mở menu; chờ đọc xong.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Đọc lại quota" }).getAttribute("aria-busy")).toBe("false"),
+    );
     await u.click(screen.getByRole("button", { name: "Thao tác cho Codex chính" }));
     await u.click(await screen.findByRole("menuitem", { name: "Tắt" }));
     expect(sent(calls, "cli_profile_set")).toEqual([{ id: "codex-1", enabled: false }]);
@@ -445,14 +449,17 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(sent(fake.calls, "cli_profile_add")).toEqual([
       { cli: "claude", label: "Gói công ty", how: "sso", email: "duy@fpt.com" },
     ]);
-    expect(sent(fake.calls, "open_login_terminal")).toEqual([
-      {
-        command: "claude auth login --sso --email duy@fpt.com",
-        env: { CLAUDE_CONFIG_DIR: "~/.xdev-hive/accounts/claude-9" },
-      },
-    ]);
+    // Terminal chỉ mở sau khi cli_profile_add trả về lệnh đăng nhập.
+    await waitFor(() =>
+      expect(sent(fake.calls, "open_login_terminal")).toEqual([
+        {
+          command: "claude auth login --sso --email duy@fpt.com",
+          env: { CLAUDE_CONFIG_DIR: "~/.xdev-hive/accounts/claude-9" },
+        },
+      ]),
+    );
     expect((await screen.findByRole("status")).textContent).toContain("Đã mở Terminal để đăng nhập claude-9");
-    expect(await within(row("claude-9")).findByText(/Đang chờ đăng nhập xong/)).toBeTruthy();
+    await waitFor(() => expect(within(row("claude-9")).getByText(/Đang chờ đăng nhập xong/)).toBeTruthy());
 
     const reads = () => sent(fake.calls, "cli_profiles").length;
     const before = reads();
@@ -460,7 +467,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(reads()).toBe(before + 1);
     fake.signIn("claude-9");
     await act(() => vi.advanceTimersByTimeAsync(LOGIN_POLL_MS));
-    expect(screen.getByRole("status").textContent).toBe("claude-9 đã đăng nhập moi@fpt.com.");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("claude-9 đã đăng nhập moi@fpt.com."));
     const after = reads();
     await act(() => vi.advanceTimersByTimeAsync(LOGIN_POLL_MS * 3));
     expect(reads()).toBe(after);
@@ -542,14 +549,17 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       await u.click(boxes[1] as HTMLInputElement);
       await u.click(within(dialog).getByRole("button", { name: "Thêm 2 gói" }));
 
-      expect(sent(calls, "cli_profile_discover_add")).toEqual([
-        { cli: "claude", configDir: "~/.xdev-hive/accounts/claude-8", label: null },
-        { cli: "codex", configDir: null, label: null },
-      ]);
+      // Hai đăng nhập được thêm lần lượt, cái sau chỉ gửi khi cái trước xong.
+      await waitFor(() =>
+        expect(sent(calls, "cli_profile_discover_add")).toEqual([
+          { cli: "claude", configDir: "~/.xdev-hive/accounts/claude-8", label: null },
+          { cli: "codex", configDir: null, label: null },
+        ]),
+      );
       expect((await screen.findByRole("status")).textContent).toBe("Đã thêm 2 gói từ đăng nhập có sẵn trên máy.");
-      expect(screen.queryByRole("dialog")).toBeNull();
-      expect(row("claude-8")).toBeTruthy();
-      expect(row("codex-3")).toBeTruthy();
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(row("claude-8")).toBeTruthy());
+      await waitFor(() => expect(row("codex-3")).toBeTruthy());
       // Thêm xong thì tìm lại: không còn gì thì băng biến mất.
       await waitFor(() => expect(screen.queryByRole("region", { name: /Tìm thấy/ })).toBeNull());
     });

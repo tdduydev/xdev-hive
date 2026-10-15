@@ -3,11 +3,9 @@ package localipc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -22,16 +20,7 @@ type PeerChecker interface {
 // SameUser chỉ nhận kết nối của cùng người dùng hệ điều hành với worker.
 type SameUser struct{}
 
-func (SameUser) CheckPeer(c net.Conn) error {
-	uid, err := peerUID(c)
-	if err != nil {
-		return fmt.Errorf("không đọc được người gọi: %w", err)
-	}
-	if want := os.Getuid(); uid != want {
-		return fmt.Errorf("người gọi có uid %d, worker chạy bằng uid %d", uid, want)
-	}
-	return nil
-}
+func (SameUser) CheckPeer(c net.Conn) error { return checkSameUser(c) }
 
 // Handler xử lý một yêu cầu (sau bắt tay). Trả lỗi là đóng kết nối: dùng khi kết nối đã chuyển sang khung nhị phân
 // (gắn vào phiên) hoặc client làm hỏng giao thức. Handler tự trả lời bằng c.OK/c.Fail.

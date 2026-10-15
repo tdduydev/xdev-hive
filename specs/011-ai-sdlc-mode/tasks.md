@@ -185,7 +185,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{participants.ts,access.ts,phases.ts,participants.db.test.ts,access.db.test.ts,phases.db.test.ts}`
   - **Phụ thuộc**: T012, T014 · **Mức**: nặng
 
-- [ ] T016 🎯 [US17] Contract liên repo
+- [x] T016 🎯 [US17] Contract liên repo
   - `contracts.ts` (D23): `contracts.create|update` (bên cung cấp, bên dùng thuộc hạng mục; `requireProjectWrite` mọi
     bên), tạo `sdlc_artifacts` `scope = contract` + tài liệu hub + `sdlc_artifact_syncs` (nguồn ở bên cung cấp, bản sao
     ở bên dùng); nhận `sdlc_report contracts` từ T022 (hàm `contractsFromReport`); `workflowFor` thêm checkpoint cho đội
@@ -195,7 +195,7 @@
   - **Scope**: `apps/hub/src/modules/sdlc/{contracts.ts,contracts.db.test.ts}`
   - **Phụ thuộc**: T015 · **Mức**: vừa
 
-- [ ] T017 🎯 [US18] Tự duyệt AI và thu hồi
+- [x] T017 🎯 [US18] Tự duyệt AI và thu hồi
   - `autoapprove.ts` (D25, D26): `autoDecide` — thuần (`decide(input) → {approve, reasons}` theo bảng điều kiện của
     plan.md "Tự duyệt") + đọc DB (chính sách tổ chức qua `governance`, cài đặt dự án, điểm checkpoint `ai`, run tác giả
     bản nháp); ghi `sdlc_auto_approvals`, audit `sdlc.auto_approve`, thông báo `sdlc.auto_approved`;
@@ -225,7 +225,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 3: Agent soạn và hỏi lại (US2) 🎯
 
-- [ ] T020 🎯 [P] Worker chạy run `sdlc`
+- [x] T020 🎯 [P] Worker chạy run `sdlc`
   - `runner`: kind `sdlc` dùng worktree tạm từ nhánh mặc định (như `doccheck`, kể cả dự án có thư mục trên máy theo ADR
     0020), không `readOnlyKind`, quyền `workspace`; ghi `spec.sdlc.seed` (kiểm đường dẫn nằm trong worktree, không theo
     symlink ra ngoài); sau khi CLI thoát đọc `collect`, sha256, giới hạn (20 file, 200 000 ký tự/file, 2 MB tổng), trả
@@ -235,7 +235,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `worker/internal/channel/jobs_test.go`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T021 🎯 [US2] [US14] `runs`: loại `sdlc`, cổng, nhãn
+- [x] T021 🎯 [US2] [US14] `runs`: loại `sdlc`, cổng, nhãn
   - `engine.ts`: `CAPABILITY_KINDS` + `sdlc`; `startSdlcRun(tx, input)` (dự án = dự án chính; chủ theo `runner`,
     `required_labels`, `spec.sdlc.seed/collect`, prompt do `sdlc` truyền vào); run code của task hạng mục lấy nơi chạy,
     nhãn từ cài đặt dự án của task (do `sdlc` truyền qua `startRun`); `verify` → `verifySdlc` gọi `sdlc.onSdlcRunFinished`;
@@ -248,7 +248,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/runs/{engine.ts,mcp.ts,index.ts}`, `apps/hub/src/{runs.db.test.ts,runs-sdlc.db.test.ts}`
   - **Phụ thuộc**: T013 · **Mức**: nặng
 
-- [ ] T022 🎯 [US2] Bước agent, prompt, câu hỏi, MCP
+- [x] T022 🎯 [US2] Bước agent, prompt, câu hỏi, MCP
   - `steps.ts`: tạo bước (qua deps `startSdlcRun`), `onSdlcRunFinished` (artifacts → `doc_drafts` qua `knowledge`,
     `size`/`findings` → `result`, `autoSubmit`, lỗi → bước `failed`), giới hạn lượt agent sửa.
   - `prompt.ts`: dựng prompt theo bước (biến `{idea}`, `{artifacts}`, `{answers}`, `{feedback}`, `{constitution}`,
@@ -272,7 +272,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 4: Tách task, chạy đợt, truy vết cơ bản (US5, US6, US9) 🎯
 
-- [ ] T030 🎯 [US5] Baseline tài liệu tách việc → task hub
+- [x] T030 🎯 [US5] Baseline tài liệu tách việc → task hub
   - `breakdown.ts` (hub): `applyBaseline` (tạo task **trong dự án của task** với `checklist`, `dependsOn` (kể cả liên dự
     án, gọi `setTaskDependencies` bằng tác nhân hệ thống), `source = sdlc`, `sdlc_item_tasks.project_id`, liên kết truy vết
     `task`; so bản trước theo khoá lát: tạo, cập nhật task `todo`, huỷ task bỏ còn `todo`, cảnh báo task bỏ đã chạy; đổi
@@ -283,7 +283,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/sdlc/{breakdown.ts,breakdown.db.test.ts}`
   - **Phụ thuộc**: T010, T015, T003 · **Mức**: nặng
 
-- [ ] T031 🎯 [US6] [US9] Chạy đợt và truy vết cơ bản
+- [x] T031 🎯 [US6] [US9] Chạy đợt và truy vết cơ bản
   - `waves.ts`: task sẵn sàng (phụ thuộc ở mọi dự án `done`), `maxParallel` **theo dự án**, chạy qua deps `startRun`
     (chủ, `requiredLabels` theo cài đặt dự án của task), chỉ task của dự án người bấm có quyền; tự chạy khi task `done`;
     tạm dừng.
@@ -303,7 +303,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 5: Đồng bộ hub ↔ repo (US4, US17) — Q1 đã chốt
 
-- [ ] T040 [US4] [US17] Đồng bộ tài liệu với repo của từng dự án
+- [x] T040 [US4] [US17] Đồng bộ tài liệu với repo của từng dự án
   - `sync.ts`: job `sdlc-sync(itemId, projectId)` (một job mỗi repo; gộp file của repo; `pr` mặc định: nhánh
     `hive/sdlc/<ref>-<slug>`, PR, commit status `xdev-hive/sdlc` = success, `enqueueMerge` với `runId` null qua deps,
     không review code; `direct`; `off`; trailer `Hive-Sdlc-Item` + `Co-authored-by`; thử lại; `sdlc.sync_failed` cho quản
@@ -321,39 +321,49 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 6: Giao diện dùng chung, web, app (US7, US8) 🎯
 
-- [ ] T050 🎯 [P] Package `@xdev-hive/sdlc-ui` — khung, bảng, tạo hạng mục, câu hỏi
+- [x] T050 🎯 [P] Package `@xdev-hive/sdlc-ui` — khung, bảng, tạo hạng mục, câu hỏi
   - `env.tsx` (`SdlcEnv`: api, lang, link, can, errorMessage — như `DocEditorEnv`), `text.ts` (vi/en), `item-board.tsx`
     (chip dự án, lọc khớp dự án tham gia), `item-list.tsx`, `new-item.tsx` (gợi ý cỡ/chế độ, issue, `project-picker.tsx`:
     dự án chính + dự án tham gia, chỉ dự án có quyền, báo dự án chưa bật), `questions.tsx`; test component.
   - **Scope**: `packages/sdlc-ui/**` (package mới: `package.json`, `src/{index.ts,env.tsx,text.ts,item-board.tsx,item-list.tsx,new-item.tsx,project-picker.tsx,questions.tsx}`, test),
     `pnpm-workspace.yaml` nếu cần, `pnpm-lock.yaml`
   - **Phụ thuộc**: T001, T005 · **Mức**: vừa
+  - Đã làm: thêm `format.ts`, `parts.tsx`, `test-fixtures.tsx`. Contract chưa có route đọc issue nên màn tạo không xem
+    trước tiêu đề/nhãn của issue; hub đọc issue khi gợi ý và khi tạo. App chủ còn phải thêm `@source` của package vào CSS.
 
-- [ ] T051 🎯 Package `@xdev-hive/sdlc-ui` — chi tiết hạng mục
+- [x] T051 🎯 Package `@xdev-hive/sdlc-ui` — chi tiết hạng mục
   - `item-detail.tsx` (tab Tổng quan, Dự án, Tài liệu, Contract, Câu hỏi, Task, Truy vết), `phase-stepper.tsx`,
     `sync-status.tsx` (theo repo), `override-dialog.tsx` (phạm vi task/dự án/hạng mục), `steps-panel.tsx` (bước agent,
     trạng thái máy), `projects-panel.tsx` (đội, thêm/bỏ dự án), `contracts-panel.tsx` (bên cung cấp → bên dùng, duyệt
     từng đội, Thêm contract), `auto-approval.tsx` (nhãn "Tự duyệt bởi AI", điểm/ngưỡng/lý do, hạn, Thu hồi kèm lý do).
   - **Scope**: `packages/sdlc-ui/src/{item-detail.tsx,phase-stepper.tsx,sync-status.tsx,override-dialog.tsx,steps-panel.tsx,projects-panel.tsx,contracts-panel.tsx,auto-approval.tsx}` + test
   - **Phụ thuộc**: T050 · **Mức**: vừa
+  - Đã làm: tab Task và Truy vết nhận nội dung qua `renderTasks`/`renderTrace` (T052 điền); mặc định là danh sách task
+    theo đợt. "Duyệt từng đội" của contract dẫn tới phiên duyệt (contract chưa trả checkpoint theo đội trong `sdlcArtifactView`).
 
-- [ ] T052 🎯 Package `@xdev-hive/sdlc-ui` — duyệt bản tách và truy vết
+- [x] T052 🎯 Package `@xdev-hive/sdlc-ui` — duyệt bản tách và truy vết
   - `breakdown-review.tsx` (gộp/tách, sửa phụ thuộc, chuyển mục task ↔ checklist, đổi dự án của task, độ phủ, lỗi đọc),
     `dependency-graph.tsx` (`@xyflow/react`, làn theo dự án, cạnh liên dự án tô riêng, có dạng danh sách cho 360 px),
     `trace-matrix.tsx` (cột dự án, độ phủ tổng và theo dự án, CSV).
   - **Scope**: `packages/sdlc-ui/src/{breakdown-review.tsx,dependency-graph.tsx,trace-matrix.tsx}` + test,
     `packages/sdlc-ui/package.json` (thêm `@xyflow/react`), `pnpm-lock.yaml`
   - **Phụ thuộc**: T051, T003 · **Mức**: vừa
+  - Đã làm: thao tác sửa thuần ở `breakdown-edit.ts` (tính lại đợt, từ chối chu trình); tab Task có nút chuyển "Task đã
+    tạo" ↔ "Bản tách" (nạp lười), tab Truy vết là `TraceMatrix`. Bản tách xuất ở `@xdev-hive/sdlc-ui/breakdown` để màn
+    khác (ReviewPane) không kéo `@xyflow` qua `index.ts`; app chủ cần nạp CSS qua Vite như mọi import CSS.
 
-- [ ] T053 [P] `doc-editor`: khung bên "Hạng mục" và thẻ trong ReviewPane
+- [x] T053 [P] `doc-editor`: khung bên "Hạng mục" và thẻ trong ReviewPane
   - Khung bên khi key thuộc `project/<k>/sdlc/…`: giai đoạn, khuôn, mục bắt buộc, câu hỏi đã trả lời, "Nhờ agent soạn
     lại" (gọi `sdlc.items.step` qua `DocEditorEnv` mở rộng tuỳ chọn); ReviewPane thêm thẻ "Câu hỏi đã trả lời", "Bản tách
     task" (nhận component qua props, không import `sdlc-ui`); checkpoint theo đội hiện tên đội và dự án; checkpoint có
     `auto` hiện "Tự duyệt bởi AI · điểm/ngưỡng" và slot nút Thu hồi (qua props); sự kiện "Không tự duyệt: …".
   - **Scope**: `packages/doc-editor/src/{env.tsx,doc-editor.tsx,review-pane.tsx,sdlc-panel.tsx,text.ts}` + test
   - **Phụ thuộc**: T001, T005 · **Mức**: vừa
+  - Đã làm: khung bên bật khi app chủ truyền `env.sdlc.itemLink`; ReviewPane nhận `sdlc={{ breakdown, revoke }}`. Tên
+    đội và dự án của checkpoint theo đội lấy từ tên cổng hub đặt (`phases.ts`), contract không có trường đội riêng. Sự
+    kiện "Không tự duyệt" đọc từ ghi chú cổng có tiền tố đó.
 
-- [ ] T054 🎯 Web: luồng AI SDLC và cấu hình dự án
+- [x] T054 🎯 Web: luồng AI SDLC và cấu hình dự án
   - Route `/sdlc`, `/sdlc/new`, `/sdlc/questions`, `/sdlc/$project/$number` (+ tab), `lib/sdlc-env.tsx`, menu
     (`lib/nav.ts`), mục AI SDLC trong cài đặt dự án (gồm Tự duyệt: bật, ngưỡng, giai đoạn, hạn thu hồi, từ khoá/đường dẫn
     nhạy cảm), mục AI SDLC trong `/admin/policies` (cho phép tự duyệt, sàn ngưỡng, danh sách nhạy cảm của tổ chức), thẻ bản
@@ -365,8 +375,15 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `apps/web/src/pages/knowledge/reviews-page.tsx`, `apps/web/src/lib/{nav.ts,sdlc-env.tsx,project-settings.ts}`,
     `apps/web/e2e/{sdlc.spec.ts,sdlc-multi.spec.ts,fake-hub.ts,sdlc-fixture.ts}`, `apps/web/package.json`
   - **Phụ thuộc**: T052, T053 · **Mức**: vừa
+  - Đã làm: cài đặt dự án ở `pages/project-sdlc-settings.tsx`, hai mục lưu riêng nhưng mỗi lần gửi cả `settings.sdlc`;
+    `/admin/policies` bỏ `sdlc` khỏi lần lưu mục khác để hub giữ bản đã lưu; BA/PO chọn được qua `lib/roles.ts`.
+    SC-009 đã kiểm qua `sdlc-mvp.spec.ts`: tạo, trả lời, duyệt spec/plan/research và bản tách, chạy đợt, mở PR.
+    Quyết định duyệt làm mới cache AI SDLC. SPEC11W6UI thêm hàng số liệu cuối mục AI SDLC của chính sách
+    (`policies-sdlc-stats.tsx`, đọc `sdlc.metrics` 30 ngày): tỉ lệ tự duyệt và thu hồi cao nhất theo chế độ, số dự án bật
+    tự duyệt; hub lỗi hoặc không có quyền thì ẩn hàng. Hub chỉ trả tỉ lệ nên không có ô số cổng và điểm trung bình như
+    thiết kế.
 
-- [ ] T055 🎯 Desktop: nhóm menu AI SDLC và màn
+- [x] T055 🎯 Desktop: nhóm menu AI SDLC và màn
   - `nav.ts`: quyền `sdlc.use` (dev, writer, lead), `sdlc.manage` (lead), nhóm `sdlc` (Hạng mục, Câu hỏi chờ tôi, Tiến
     độ); `account.ts` `profileOf()`: mọi đội là `viewer` hoặc `ba` → `writer` (D27); màn `sdlc-screen.tsx` (bảng + chi tiết + tạo + bản tách + truy vết theo
     hash `#/sdlc/<project>/<NNN>/<tab>`), `sdlc-questions-screen.tsx`; `write-screen.tsx` truyền env mở rộng cho khung bên;
@@ -377,6 +394,9 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `apps/desktop/src/screens/{index.ts,sdlc-screen.tsx,sdlc-questions-screen.tsx,write-screen.tsx,reviews-screen.tsx}` + test,
     `apps/desktop/package.json`
   - **Phụ thuộc**: T052, T053 · **Mức**: vừa
+  - Đã làm: UI dùng chung qua cầu Rust, hash chi tiết/tab, quyền BA theo đội, khung bên và thẻ duyệt; thiếu kết nối
+    thì mời kết nối Hive. SC-009 có test qua các màn thật (BA/PO duyệt, thành viên chạy đợt), SC-016 kiểm hạng mục ba dự án và thu hồi. Tiến độ dùng danh
+    sách giai đoạn/độ phủ; số liệu tổng hợp chờ T082. Tailwind quét cả package `sdlc-ui` khi dựng app.
 
 ---
 
@@ -403,12 +423,15 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T001 · **Mức**: vừa
   - Đã làm cùng T063; kênh không có `client.go` nên phần nối nằm ở `worker/internal/channel/{accounts.go,accounts_test.go}`.
 
-- [ ] T062 [US15] Web: Đội máy AI SDLC và nhãn trên trang Máy
+- [x] T062 [US15] Web: Đội máy AI SDLC và nhãn trên trang Máy
   - `sdlc-ui` `fleet-table.tsx`; trang `/sdlc/fleet` (Thêm máy = mã đăng ký có nhãn, lệnh cài một dòng cho Linux/macOS/
     Windows); trang `/machines` thêm nhãn, "chỉ nhận run có nhãn", gói; Playwright `sdlc-fleet.spec.ts`.
   - **Scope**: `packages/sdlc-ui/src/fleet-table.tsx` + test, `apps/web/src/pages/sdlc/fleet-page.tsx`,
     `apps/web/src/pages/machines-page.tsx`, `apps/web/e2e/sdlc-fleet.spec.ts`
   - **Phụ thuộc**: T060, T054, T006 · **Mức**: vừa
+  - Đã làm: `/sdlc/fleet`, lọc đội, run/quota, bật/tắt gói theo quyền hub trả; thêm máy dùng chung có nhãn `sdlc`,
+    cờ chỉ nhận run có nhãn và lệnh cài cho ba hệ điều hành. Trang Máy sửa nhãn/cờ qua menu phụ. Vitest và Playwright
+    kiểm quyền chỉ đọc, tải lỗi/thử lại, thao tác ghi, 360 px sáng/tối.
 
 - [x] T063 [US15] Đăng nhập gói từ web (Claude Code, Codex) cho máy dùng chung không màn hình (FR-062)
   - Giao thức: `account_login_start|input|cancel` (hub → worker), `account_login_event { kind: url|code|prompt|done|error }`
@@ -432,7 +455,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 8: Nối hub
 
-- [ ] T070 🎯 Nối deps, router, job, handler
+- [x] T070 🎯 Nối deps, router, job, handler
   - `main.ts`: `SdlcDeps` (từ engine: `startSdlcRun`, `startRun`; từ catalog: `enqueueMerge`; `providerFactory`,
     `masterKey`, `jobs`), `ReviewDeps.workflowFor/onBaseline/queueAuthorFix/traceFor/autoDecide`, `KnowledgeDeps.docAccessFor`,
     `registerSdlcWorker`, cron câu hỏi và quét đồng bộ, `registerSdlcScmHandlers`, MCP tools của `sdlc`.
@@ -440,8 +463,11 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - `pnpm deps` không có vòng; test khói `app.test.ts`.
   - **Scope**: `apps/hub/src/{main.ts,app.ts,app.test.ts}`, `apps/hub/src/modules/sdlc/router.ts` (gộp các hàm đăng ký route)
   - **Phụ thuộc**: T013, T016, T017, T018, T021, T022, T031 (T040, T060 khi có) · **Mức**: vừa
+  - Đã làm: `sdlc/review-hooks.ts` (`ruleContext` cho luật câu hỏi mở/breakdown/coverage, `traceFor` theo bản tách),
+    `sdlc/fleet-runs.ts` cài qua `provideSdlcFleetRuns`; test `review-hooks.db.test.ts`, `fleet-runs.db.test.ts`.
+    Route `metrics` chờ T082.
 
-- [ ] T071 [P] Leader: hành động `sdlc.item.create`
+- [x] T071 [P] Leader: hành động `sdlc.item.create`
   - Thực thi khi người duyệt đề xuất; prompt leader biết đề xuất tạo hạng mục cho việc lớn.
   - **Scope**: `apps/hub/src/modules/leader/{router.ts,prompt.ts,leader-sdlc.db.test.ts}`
   - **Phụ thuộc**: T012 · **Mức**: nhẹ
@@ -462,6 +488,11 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/sdlc/{converge.ts,converge.db.test.ts}`,
     `packages/contracts/src/sdlc-presets/speckit.ts`, `packages/sdlc-ui/src/converge-panel.tsx`
   - **Phụ thuộc**: T031, T051 · **Mức**: nặng
+  - SPEC11W5UI đã làm phần UI theo hợp đồng hiện có: `converge-panel.tsx` (trạng thái "Chưa hội tụ (vòng r/max)", "Đã
+    hội tụ", hết vòng thì báo đã dừng và không cho chạy thêm; chọn vòng; phát hiện xếp mâu thuẫn → thiếu → một phần, ẩn
+    yêu cầu đạt; "Sửa code: thêm task" mở tài liệu tách task hoặc tab Task, "Sửa tài liệu" mở tài liệu nguồn yêu cầu),
+    tab Hội tụ chỉ hiện khi chế độ có bước `converge`, đường dẫn tab ở web và app, vitest và `e2e/sdlc-converge.spec.ts`.
+    UI đọc `step.result.findings` theo `sdlcFinding`; còn hub `converge.ts`, liên kết `finding`, gộp phát hiện theo dự án.
 
 - [ ] T081 [US11] Release notes và retro
   - Bước `release-notes`, `retro`; đề xuất cho constitution; đóng hạng mục, bình luận issue.
@@ -475,6 +506,13 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/sdlc/{metrics.ts,metrics.test.ts,metrics.db.test.ts}`, `packages/sdlc-ui/src/metrics.tsx`,
     `apps/web/src/pages/sdlc/metrics-page.tsx`, `apps/desktop/src/screens/sdlc-metrics-screen.tsx`
   - **Phụ thuộc**: T031, T054, T055 · **Mức**: vừa
+  - SPEC11W5UI đã làm phần UI theo hợp đồng `sdlc.metrics`: `metrics.tsx` (khoảng 7/30/90 ngày, lọc dự án và chế độ, lead
+    time p50/p90 có nút thắt, bảy thẻ chỉ số, bảng tự duyệt), web `/sdlc/metrics` + menu "Chỉ số", màn app
+    `sdlc-metrics`, test vitest và `e2e/sdlc-metrics.spec.ts`. Còn hub `metrics.ts` và route; chưa đo SC-007.
+  - SPEC11W6UI (US12 AS3): màn Chỉ số có liên kết "Mở bảng hạng mục với bộ lọc này" mang dự án và chế độ sang bảng (web
+    `/sdlc?project=…&mode=…`, app `#/sdlc/loc?project=…&mode=…`). `sdlc.items.list` chưa lọc theo thời gian nên bảng
+    không giới hạn theo khoảng ngày và màn nói rõ điều đó; muốn đúng "hạng mục góp vào số liệu" cần thêm lọc ngày vào
+    hợp đồng.
 
 - [ ] T083 [P] Preset và bộ đọc còn lại
   - `aidlc-feature`, `aidlc-enterprise`, `bmad-quick`, `bmad-method`, `kiro-requirements`, `kiro-design`, `kiro-bugfix`,
@@ -483,18 +521,25 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `packages/contracts/src/{breakdown-parsers/*.ts,breakdown-parsers.test.ts}`
   - **Phụ thuộc**: T002, T003 · **Mức**: vừa
 
-- [ ] T084 [P] Trang cấu hình chế độ (web)
+- [x] T084 [P] Trang cấu hình chế độ (web)
   - `sdlc-ui` `mode-editor.tsx` (giai đoạn, tài liệu có phạm vi item/project/contract, cổng dùng lại trình sửa checkpoint
     của trang Quy trình duyệt, cổng theo dự án, tự duyệt mỗi giai đoạn với lỗi FR-056 hiện tại chỗ, bước, chạy thử); trang
     `/admin/sdlc-modes`; Playwright `sdlc-modes.spec.ts`.
   - **Scope**: `packages/sdlc-ui/src/mode-editor.tsx` + test, `apps/web/src/pages/admin/sdlc-modes-page.tsx`,
     `apps/web/e2e/sdlc-modes.spec.ts`
   - **Phụ thuộc**: T011, T054, T006 · **Mức**: vừa
+  - Đã làm: `/admin/sdlc-modes`, sao chép preset, lưu/xoá chế độ đội/tổ chức, chạy thử; sửa giai đoạn, tài liệu/phạm vi,
+    cổng theo dự án, tự duyệt, bước agent và nguồn tách task. Dùng lại `GateConfig`, bổ sung BA/PO và ba luật AI SDLC
+    vào danh sách chọn. Lỗi FR-056 hiện ngay giai đoạn; giữ dấu phân cách khi nhập danh sách, sinh mã tài liệu duy nhất
+    trong cả chế độ. Vitest và Playwright kiểm lưu/xoá/chạy thử, chỉ đọc, FR-056, 360 px sáng/tối.
 
-- [ ] T085 Ngữ cảnh spec cho review code (spec 009)
+- [x] T085 Ngữ cảnh spec cho review code (spec 009)
   - `codereview` nhận deps `specContextFor` cho checkpoint AI; prompt review có requirement và tiêu chí của task.
   - **Scope**: `apps/hub/src/modules/codereview/{ai.ts,prompt.ts}`, `apps/hub/src/main.ts`
   - **Phụ thuộc**: T031, spec 009 T022 · **Mức**: vừa
+  - Đã làm: `sdlc.reviewSpecFor` (requirement của task, câu chữ và tiêu chí từ bản baseline của tài liệu nguồn, tài liệu
+    đã duyệt), `codereview/prompt.ts` `reviewSpecLines`; cài ở main.ts và app.ts. Engine chuyển `specContext` cùng
+    `guidance` (trước đây bị bỏ, reviewer không thấy ngưỡng của checkpoint) qua sự kiện `review_prompt` vào `reviewPrompt`.
 
 - [ ] T086 [US16] Run soạn checkout nhiều repo
   - Hub: `spec.sdlc.repos?: [{ projectKey, cloneUrl, branch, dir }]` cho run `sdlc` của hạng mục nhiều dự án (chỉ repo
@@ -520,6 +565,11 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 - [ ] T091 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp ảnh màn mới (sáng, tối, 360 px).
   - **Scope**: `specs/011-ai-sdlc-mode/*`, `apps/web/e2e/screenshots/**`
   - **Phụ thuộc**: T054, T055 · **Mức**: nhẹ
+  - SPEC11UI2 đã đối chiếu phần UI và lưu 11 ảnh tại `apps/web/e2e/screenshots/spec11ui2/`; kết quả và giới hạn ở
+    `ui-validation.md`. Chưa chạy phân tích toàn bộ đặc tả; giữ mở cho đợt tích hợp hub/worker.
+  - SPEC11W5UI thêm 4 ảnh 360 px sáng/tối (Chỉ số, Hội tụ) tại `apps/web/e2e/screenshots/spec11w5ui/`.
+  - SPEC11W6UI thêm 4 ảnh 360 px sáng/tối (Chỉ số có liên kết sang bảng, hàng số liệu trong chính sách) tại
+    `apps/web/e2e/screenshots/spec11w6ui/`.
 
 ---
 

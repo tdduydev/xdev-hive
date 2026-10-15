@@ -1,5 +1,9 @@
-import type { NotificationChannelKind, NotificationEvent } from "@xdev-hive/contracts";
-import { notificationChannelCreateInput, notificationChannelUpdateInput } from "@xdev-hive/contracts";
+import type { NotificationChannelEvent, NotificationChannelKind, NotificationEvent } from "@xdev-hive/contracts";
+import {
+  notificationChannelCreateInput,
+  notificationChannelEvent,
+  notificationChannelUpdateInput,
+} from "@xdev-hive/contracts";
 
 export const NOTIFICATION_EVENT_LABEL: Record<NotificationEvent, string> = {
   "run.failed": "Run thất bại",
@@ -26,9 +30,13 @@ export const NOTIFICATION_EVENT_LABEL: Record<NotificationEvent, string> = {
   "sdlc.auto_revoked": "Thu hồi tự duyệt",
   "artifact.quota": "Dung lượng artifact sắp hết",
   "artifact.public_link.revoked": "Link công khai bị thu hồi",
+  "terminal.remote_session": "Phiên điều khiển từ xa",
+  "terminal.attention": "Agent cần bạn",
+  "terminal.exit": "Phiên terminal kết thúc",
 };
 
-export const NOTIFICATION_EVENTS = Object.keys(NOTIFICATION_EVENT_LABEL) as NotificationEvent[];
+/** Sự kiện kênh của tổ chức chọn được; sự kiện riêng của phiên terminal chỉ vào hộp thư của chủ máy. */
+export const NOTIFICATION_EVENTS: NotificationChannelEvent[] = notificationChannelEvent.options;
 
 /** Khi sửa metadata, bỏ hẳn config để hub giữ nguyên secret đã lưu. Thay config đòi nhập lại toàn bộ. */
 export function parseChannelForm(form: FormData, kind: NotificationChannelKind, id?: string) {

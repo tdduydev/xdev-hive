@@ -34,6 +34,7 @@ import {
   readerUserId,
   visibleArtifactsWhere,
 } from "./access.ts";
+import { allowedReactImports, compileReact, reactLibManifest } from "./compile.ts";
 import { linkTargetOf } from "./hooks.ts";
 import { artifactPolicyOf, settingsView } from "./limits.ts";
 import { artifactLinks, artifactPublicLinks, artifacts, artifactVersions } from "./schema.ts";
@@ -65,12 +66,23 @@ const TEAM_RANK = { viewer: 1, ba: 2, member: 3, admin: 4 } as const;
 // ---- Biên dịch `react` ---------------------------------------------------------------------------------------------
 
 /**
- * Điểm gọi biên dịch `react` (plan.md D8), chạy trước khi giữ khoá dung lượng. Thân ở T014 (`compile.ts`); tới khi đó
- * hub chưa dựng được trang `react` nên lưu loại này bị từ chối thay vì lưu bản không mở được.
+ * Điểm gọi biên dịch `react` (plan.md D8), chạy trước khi giữ khoá dung lượng. Lỗi cú pháp lưu cùng phiên bản; import
+ * ngoài bộ đóng gói thì không lưu và trả tên module để agent sửa ngay trong lời gọi đó.
  */
-export async function compileFor(type: ArtifactType, _content: string): Promise<Compiled> {
+export async function compileFor(type: ArtifactType, content: string): Promise<Compiled> {
   if (type !== "react") return { compiled: null, compileError: null };
-  throw artifactError("ARTIFACT_TYPE_DISABLED", "Hub chưa bật biên dịch artifact react.");
+  const manifest = reactLibManifest();
+  const result = await compileReact(content, manifest);
+  if ("importNotAllowed" in result) {
+    throw artifactError(
+      "ARTIFACT_IMPORT_NOT_ALLOWED",
+      `Import không có trong bộ thư viện đóng gói của hub: ${result.importNotAllowed.join(", ")}. Chỉ dùng được: ${[
+        ...allowedReactImports(manifest),
+      ].join(", ")}.`,
+      { imports: result.importNotAllowed },
+    );
+  }
+  return result;
 }
 
 // ---- Dạng trả về ---------------------------------------------------------------------------------------------------

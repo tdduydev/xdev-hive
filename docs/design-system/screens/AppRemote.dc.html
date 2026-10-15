@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AppRemote · xDev Hive</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet><style>
+body{margin:0}.ap-board{container-type:inline-size;background:var(--background);color:var(--foreground);font:14px/1.5 var(--font-sans);min-width:0;color-scheme:light}.ap-board[data-theme=dark]{color-scheme:dark}
+.ap-board *{box-sizing:border-box}.ap-board :is(h1,h2,h3,p){margin:0}.ap-board :is(h1,h2,h3){font-family:var(--font-heading);text-wrap:balance}.ap-board h1{font-size:1.25rem}.ap-board h2{font-size:1rem}.ap-board h3{font-size:.875rem}
+.ap-board :is(button,input,select,a):focus-visible{outline:2px solid var(--ring);outline-offset:2px}.ap-board :is(button,input,select){font:inherit}.ap-board a{color:var(--primary);text-underline-offset:3px}
+.ap-board button{cursor:pointer}.ap-board button:disabled{opacity:.5;cursor:not-allowed}.ap-board :is(input,select){width:100%;min-width:0;background:var(--background);color:var(--foreground);border:1px solid var(--input);border-radius:var(--radius);padding:.5rem .75rem}
+.ap-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:36px;padding:.375rem .75rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);color:var(--foreground);font-weight:500}.ap-btn:hover:not(:disabled){background:var(--muted)}.ap-btn.primary{background:var(--primary);color:var(--primary-foreground);border-color:transparent}.ap-btn.danger{color:var(--destructive);border-color:var(--destructive)}.ap-btn.solid{background:var(--destructive);color:var(--destructive-foreground,#fff);border-color:transparent}
+.ap-stack{display:flex;flex-direction:column;gap:1rem;min-width:0}.ap-row{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .75rem;min-width:0}.ap-spread{justify-content:space-between}.ap-grow{flex:1;min-width:0}.ap-muted{color:var(--muted-foreground)}.ap-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}.ap-small{font-size:.75rem}
+.ap-card{border:1px solid var(--border);border-radius:calc(var(--radius)*1.5);padding:1rem;background:var(--card);min-width:0}.ap-card :is(p,h2,h3){overflow-wrap:anywhere}
+.ap-pill{display:inline-flex;align-items:center;gap:.375rem;background:var(--muted);color:var(--muted-foreground);padding:.125rem .5rem;border-radius:999px;font-size:.75rem;white-space:nowrap}.ap-pill.ok{background:var(--success-soft);color:var(--success)}.ap-pill.warn{background:var(--warning-soft);color:var(--warning)}.ap-pill::before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:currentColor}
+.ap-alert{padding:.75rem 1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--muted);overflow-wrap:anywhere}.ap-alert.warning{background:var(--warning-soft);color:var(--warning)}.ap-alert.error{background:var(--destructive-soft);color:var(--destructive)}.ap-alert.success{background:var(--success-soft);color:var(--success)}
+.ap-design{padding:.5rem 1rem;border-bottom:1px dashed var(--border);font-size:.75rem}.ap-design select{width:auto;max-width:100%;padding:.25rem}
+.ap-toolbar{padding:.75rem 1rem;border-bottom:1px solid var(--border);background:var(--card)}.ap-main{padding:1.5rem;max-width:1000px;margin:auto;width:100%}
+/* Công tắc là role=switch trên button để đọc được bằng bàn phím và trình đọc màn hình. */
+.ap-switch{position:relative;flex:none;width:2.75rem;height:1.5rem;padding:0;border:1px solid var(--border);border-radius:999px;background:var(--muted)}.ap-switch::after{content:"";position:absolute;top:2px;left:2px;width:1.125rem;height:1.125rem;border-radius:50%;background:var(--card);border:1px solid var(--border)}.ap-switch[aria-checked=true]{background:var(--primary)}.ap-switch[aria-checked=true]::after{left:calc(100% - 1.125rem - 2px)}
+.ap-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.5rem}.ap-item{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .75rem;padding:.625rem .75rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--background)}
+.ap-qr{width:11rem;height:11rem;border:1px solid var(--border);border-radius:var(--radius);background:repeating-conic-gradient(var(--foreground) 0 25%,var(--card) 0 50%) 0 0/1.375rem 1.375rem}
+.ap-field{display:flex;flex-direction:column;gap:.375rem;font-weight:500;min-width:0}
+.ap-overlay{position:fixed;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:1rem;background:var(--backdrop)}.ap-dialog{width:min(28rem,100%);background:var(--card);border:1px solid var(--border);border-radius:calc(var(--radius)*1.5);padding:1.25rem;display:flex;flex-direction:column;gap:1rem}
+.ap-skeleton{height:3rem;background:var(--muted);border-radius:var(--radius)}.ap-skip{position:absolute;left:-999px}.ap-skip:focus{left:.5rem;top:.5rem;background:var(--card);padding:.5rem;z-index:6}
+@container (max-width:640px){.ap-main{padding:1rem}.ap-btn{min-height:44px}}
+</style></helmet>
+<div class="ap-board" data-theme="{{theme}}" lang="{{lang}}" style="{{boardStyle}}">
+<a class="ap-skip" href="#ap-main">{{t.skip}}</a>
+<sc-if value="{{showTools}}" hint-placeholder-val="{{true}}"><section class="ap-design ap-row" aria-label="{{t.states}}" data-design-tools>
+<label class="ap-row">{{t.states}}<select name="design-state" value="{{view}}" onChange="{{setView}}"><sc-for list="{{modes}}" as="mode"><option value="{{mode.value}}">{{mode.label}}</option></sc-for></select></label>
+<button type="button" class="ap-btn" onClick="{{toVi}}" aria-label="Tiếng Việt">VI</button><button type="button" class="ap-btn" onClick="{{toEn}}" aria-label="English">EN</button><button type="button" class="ap-btn" onClick="{{toggleTheme}}">{{t.theme}}</button><button type="button" class="ap-btn" onClick="{{toggleSize}}">{{t.size}}</button>
+</section></sc-if>
+
+<header class="ap-toolbar ap-row ap-spread"><h1>{{t.title}}</h1><span class="{{statePill}}" role="status">{{stateLabel}}</span></header>
+<main id="ap-main" class="ap-main ap-stack">
+<sc-if value="{{showHttp}}"><p role="alert" class="ap-alert warning">{{t.http}}</p></sc-if>
+<sc-if value="{{hasMessage}}"><p role="status" class="ap-alert success">{{message}}</p></sc-if>
+<sc-if value="{{isLoading}}"><div class="ap-stack" aria-busy="true"><div class="ap-skeleton"></div><div class="ap-skeleton"></div><div class="ap-skeleton"></div></div></sc-if>
+<sc-if value="{{isError}}"><div class="ap-alert error ap-row ap-spread" role="alert"><span>{{t.loadFailed}}</span><button type="button" class="ap-btn" onClick="{{retry}}">{{t.retry}}</button></div></sc-if>
+<sc-if value="{{showBody}}">
+
+<section class="ap-card ap-row ap-spread" aria-labelledby="ap-switch"><div class="ap-grow"><h2 id="ap-switch">{{t.allow}}</h2><p class="ap-muted">{{t.allowHint}}</p></div><button type="button" role="switch" class="ap-switch" aria-checked="{{enabled}}" aria-labelledby="ap-switch" onClick="{{toggle}}"></button></section>
+
+<sc-if value="{{enabled}}">
+<section class="ap-card ap-stack" aria-labelledby="ap-roots"><div class="ap-row ap-spread"><h2 id="ap-roots">{{t.roots}}</h2><button type="button" class="ap-btn" onClick="{{addRoot}}">{{t.addRoot}}</button></div>
+<p class="ap-muted">{{t.rootsHint}}</p>
+<sc-if value="{{noRoots}}"><p class="ap-alert">{{t.noRoots}}</p></sc-if>
+<ul class="ap-list"><sc-for list="{{roots}}" as="r"><li class="ap-item"><span class="ap-mono ap-grow">{{r}}</span><button type="button" class="ap-btn" onClick="{{removeRoot}}">{{t.remove}}</button></li></sc-for></ul></section>
+
+<section class="ap-card ap-stack" aria-labelledby="ap-devices"><div class="ap-row ap-spread"><h2 id="ap-devices">{{t.devices}}</h2><button type="button" class="ap-btn primary" disabled="{{pairing}}" onClick="{{pair}}">{{t.pair}}</button></div>
+<sc-if value="{{pairing}}"><div class="ap-row" aria-live="polite"><div class="ap-qr" role="img" aria-label="{{t.qrLabel}}"></div><div class="ap-stack ap-grow"><p>{{t.qrHint}}</p><p class="ap-muted ap-small">{{t.qrExpire}}</p><p class="ap-mono ap-small">hive remote pair</p><div class="ap-alert">{{t.confirmAsk}} <strong>iPhone của An</strong></div><div class="ap-row"><button type="button" class="ap-btn primary" onClick="{{allowPair}}">{{t.allowBtn}}</button><button type="button" class="ap-btn" onClick="{{denyPair}}">{{t.denyBtn}}</button></div></div></div></sc-if>
+<ul class="ap-list"><sc-for list="{{devices}}" as="d"><li class="ap-item"><span class="ap-grow"><strong>{{d.name}}</strong><br><span class="ap-muted ap-small">{{d.meta}}</span></span><button type="button" class="ap-btn danger" onClick="{{revokeDevice}}">{{t.revoke}}</button></li></sc-for></ul></section>
+
+<section class="ap-card ap-stack" aria-labelledby="ap-sessions"><div class="ap-row ap-spread"><h2 id="ap-sessions">{{t.sessions}}</h2><button type="button" class="ap-btn danger" disabled="{{noSessions}}" onClick="{{askAll}}">{{t.endAll}}</button></div>
+<sc-if value="{{noSessions}}"><p class="ap-muted">{{t.noSessions}}</p></sc-if>
+<ul class="ap-list"><sc-for list="{{sessions}}" as="s"><li class="ap-item"><span class="ap-grow"><strong>{{s.title}}</strong><br><span class="ap-muted ap-small">{{s.meta}}</span></span><span class="ap-pill ok">{{s.who}}</span><button type="button" class="ap-btn danger" onClick="{{askOne}}">{{t.end}}</button></li></sc-for></ul></section>
+
+<section class="ap-card ap-stack" aria-labelledby="ap-totp"><div class="ap-row ap-spread"><h2 id="ap-totp">{{t.totp}}</h2><span class="{{totpPill}}">{{totpLabel}}</span></div>
+<p class="ap-muted">{{t.totpHint}}</p>
+<sc-if value="{{totpOff}}"><p class="ap-alert warning">{{t.totpWarn}}</p><div class="ap-row"><button type="button" class="ap-btn" onClick="{{enrollTotp}}">{{t.totpOn}}</button></div></sc-if>
+<sc-if value="{{totpEnrolling}}"><div class="ap-row"><div class="ap-qr" role="img" aria-label="otpauth QR"></div><label class="ap-field ap-grow">{{t.totpCode}}<input name="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"><span class="ap-muted ap-small">{{t.totpCodeHint}}</span></label></div><div class="ap-row"><button type="button" class="ap-btn primary" onClick="{{confirmTotp}}">{{t.totpConfirm}}</button><button type="button" class="ap-btn" onClick="{{cancelTotp}}">{{t.cancel}}</button></div></sc-if>
+<sc-if value="{{totpOn}}"><div class="ap-row"><button type="button" class="ap-btn danger" onClick="{{disableTotp}}">{{t.totpOff}}</button></div></sc-if></section>
+</sc-if>
+<sc-if value="{{notEnabled}}"><p class="ap-muted">{{t.offHint}}</p></sc-if>
+</sc-if>
+</main>
+
+<sc-if value="{{confirmOpen}}"><div class="ap-overlay"><div class="ap-dialog" role="alertdialog" aria-modal="true" aria-labelledby="ap-cd-title" aria-describedby="ap-cd-body"><h2 id="ap-cd-title">{{confirmTitle}}</h2><p id="ap-cd-body" class="ap-muted">{{confirmBody}}</p><div class="ap-row"><button type="button" class="ap-btn" onClick="{{closeConfirm}}">{{t.keep}}</button><button type="button" class="ap-btn solid" onClick="{{doConfirm}}">{{confirmAction}}</button></div></div></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["on","off","pairing","confirm","confirmAll","totp","http","loading","error"],"default":"on"},"embedded":{"editor":"boolean","default":false},"$preview":{"width":1100,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = {}; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const narrow = this.state.narrow ?? !!this.props.narrow;
+    const view = this.state.view ?? this.props.view ?? 'on';
+    const x = (p) => p[lang === 'en' ? 1 : 0];
+    const T = {
+      states:['Trạng thái thiết kế','Design state'],theme:['Đổi sáng/tối','Toggle theme'],size:['Đổi cỡ 360 px','Toggle 360 px'],skip:['Đến nội dung chính','Skip to content'],
+      title:['Điều khiển từ xa','Remote control'],http:['Hub chạy HTTP: nội dung phiên và phím gõ không được mã hoá trên đường truyền. Chỉ dùng trong mạng nội bộ.','Hub runs on HTTP: session content and keystrokes are not encrypted in transit. Use only on an internal network.'],
+      loadFailed:['Không tải được trạng thái điều khiển từ xa.','Could not load the remote control state.'],retry:['Tải lại','Retry'],
+      allow:['Cho điều khiển từ xa','Allow remote control'],allowHint:['Mặc định tắt. Chỉ bật được tại máy này; hub và điện thoại không bật hộ được.','Off by default. Can only be switched on at this machine; neither the hub nor the phone can do it.'],
+      offHint:['Đang tắt: điện thoại không mở hay xem trực tiếp được phiên nào. Phiên đang chạy vẫn được ghi.','Off: no phone can open or watch a session live. Running sessions are still recorded.'],
+      roots:['Thư mục được phép','Allowed folders'],addRoot:['Thêm thư mục','Add folder'],remove:['Gỡ','Remove'],rootsHint:['Điện thoại chỉ mở phiên trong các thư mục này (và thư mục con). Đường dẫn trỏ ra ngoài bị từ chối.','Phones can only open sessions inside these folders (and subfolders). Paths that escape are rejected.'],noRoots:['Chưa có thư mục nào: điện thoại chưa mở được phiên mới.','No folder yet: phones cannot open new sessions.'],
+      devices:['Thiết bị đã ghép','Paired devices'],pair:['Ghép điện thoại','Pair phone'],qrLabel:['Mã QR ghép thiết bị','Pairing QR code'],qrHint:['Quét mã bằng điện thoại đã đăng nhập hub, rồi xác thực Face ID / vân tay.','Scan with a phone signed in to the hub, then confirm with Face ID / fingerprint.'],qrExpire:['Mã hết hạn sau 10 phút và chỉ dùng một lần.','The code expires after 10 minutes and works once.'],
+      confirmAsk:['Điện thoại xin ghép:','A phone asks to pair:'],allowBtn:['Cho phép','Allow'],denyBtn:['Từ chối','Deny'],revoke:['Gỡ thiết bị','Remove device'],
+      sessions:['Phiên đang chạy','Running sessions'],noSessions:['Không có phiên nào đang chạy.','No running sessions.'],end:['Ngắt','End'],endAll:['Ngắt tất cả','End all'],keep:['Giữ lại','Keep'],cancel:['Huỷ','Cancel'],
+      totp:['Mã Authenticator (đường lui cho hub HTTP)','Authenticator code (fallback for HTTP hubs)'],totpHint:['Dùng khi hub không có HTTPS nên không tạo được passkey. Khoá nằm ở máy này, không gửi lên hub.','For hubs without HTTPS where passkeys are unavailable. The key stays on this machine and is never sent to the hub.'],
+      totpWarn:['Trên HTTP, nội dung phiên và phím gõ đi qua mạng không mã hoá. Chỉ bật trong mạng nội bộ tin cậy.','Over HTTP, session content and keystrokes travel unencrypted. Only enable on a trusted internal network.'],totpOn:['Bật mã Authenticator','Enable Authenticator code'],totpCode:['Nhập mã 6 số hiện trong app Authenticator','Enter the 6-digit code from your Authenticator app'],totpCodeHint:['Chỉ khi mã đúng thì khoá mới được lưu.','The key is saved only when the code is correct.'],totpConfirm:['Xác nhận và bật','Confirm and enable'],totpOff:['Tắt mã Authenticator','Disable Authenticator code'],
+      enabledLabel:['Đang bật','On'],disabledLabel:['Đang tắt','Off'],totpEnabled:['Đã bật','Enabled'],totpDisabled:['Chưa bật','Not enabled'],
+      confirmOne:['Ngắt phiên này?','End this session?'],confirmOneBody:['Claude trong phiên bị dừng ngay (trong 10 giây). Bản ghi vẫn xem lại được.','Claude in the session is stopped within 10 seconds. The recording stays viewable.'],confirmAllT:['Ngắt tất cả phiên?','End all sessions?'],confirmAllBody:['Mọi phiên đang chạy trên máy này bị dừng, kể cả phiên bạn đang gõ tại máy. Việc này được ghi nhật ký.','Every running session on this machine is stopped, including the one you are typing in here. This is audit-logged.'],
+      endedOne:['Đã ngắt phiên (mẫu).','Session ended (sample).'],endedAll:['Đã ngắt tất cả phiên (mẫu).','All sessions ended (sample).']
+    };
+    const t = Object.fromEntries(Object.entries(T).map(([k, v]) => [k, x(v)]));
+    const enabledState = this.state.enabled ?? (view !== 'off');
+    const enrolling = this.state.enrolling ?? (view === 'totp');
+    const totpEnabled = this.state.totpEnabled ?? false;
+    const pairing = this.state.pairing ?? (view === 'pairing');
+    const sessionsLeft = this.state.sessionsLeft ?? 2;
+    const confirm = this.state.confirm ?? (view === 'confirm' ? 'one' : view === 'confirmAll' ? 'all' : null);
+    const roots = (this.state.roots ?? ['~/code', '~/work']);
+    const body = !['loading', 'error'].includes(view);
+    const sessions = [{title:'PAY-42 · payment-api',meta:'claude · ~/code/payment-api · 12 phút',who:lang==='en'?'From phone':'Từ điện thoại'},{title:'web-admin',meta:'codex · ~/code/web-admin · 3 phút',who:lang==='en'?'At machine':'Tại máy'}].slice(0, sessionsLeft);
+    const note = (m) => this.setState({ message: m, confirm: null });
+    return {
+      t,lang,dark,narrow,view,theme:dark?'dark':'light',showTools:!this.props.embedded,
+      boardStyle:'width:'+(narrow?'360px':'100%')+';max-width:100%;min-height:'+(this.props.embedded?'0':'900px')+';',
+      modes:[['on',['Đang bật','On']],['off',['Đang tắt','Off']],['pairing',['Ghép (QR)','Pairing (QR)']],['confirm',['Hộp xác nhận ngắt','End confirm']],['confirmAll',['Xác nhận ngắt tất cả','End-all confirm']],['totp',['Bật TOTP','Enable TOTP']],['http',['Hub HTTP','HTTP hub']],['loading',['Đang tải…','Loading…']],['error',['Lỗi tải','Load error']]].map(([v,l])=>({value:v,label:x(l)})),
+      setView:e=>this.setState({view:e.target.value,message:'',enabled:undefined,enrolling:undefined,pairing:undefined,confirm:undefined,sessionsLeft:undefined,totpEnabled:undefined}),
+      toVi:()=>this.setState({lang:'vi'}),toEn:()=>this.setState({lang:'en'}),toggleTheme:()=>this.setState({dark:!dark}),toggleSize:()=>this.setState({narrow:!narrow}),
+      statePill:enabledState?'ap-pill ok':'ap-pill',stateLabel:enabledState?t.enabledLabel:t.disabledLabel,
+      showHttp:view==='http'||view==='totp',showBody:body,isLoading:view==='loading',isError:view==='error',retry:()=>this.setState({view:'on'}),
+      enabled:enabledState,notEnabled:!enabledState,toggle:()=>this.setState({enabled:!enabledState,view:'on'}),
+      roots,noRoots:roots.length===0,addRoot:()=>this.setState({roots:[...roots,'~/projects']}),removeRoot:()=>this.setState({roots:roots.slice(0,-1)}),
+      devices:[{name:'iPhone của An',meta:lang==='en'?'Paired 12/10 · last used today':'Ghép 12/10 · dùng hôm nay'}],revokeDevice:()=>this.setState({message:lang==='en'?'Device removed (sample).':'Đã gỡ thiết bị (mẫu).'}),
+      pairing,pair:()=>this.setState({pairing:true}),allowPair:()=>this.setState({pairing:false,message:lang==='en'?'Paired “iPhone của An” (sample).':'Đã ghép “iPhone của An” (mẫu).'}),denyPair:()=>this.setState({pairing:false}),
+      sessions,noSessions:sessions.length===0,askOne:()=>this.setState({confirm:'one'}),askAll:()=>this.setState({confirm:'all'}),
+      confirmOpen:confirm!==null,confirmTitle:confirm==='all'?t.confirmAllT:t.confirmOne,confirmBody:confirm==='all'?t.confirmAllBody:t.confirmOneBody,confirmAction:confirm==='all'?t.endAll:t.end,
+      closeConfirm:()=>this.setState({confirm:null,view:'on'}),doConfirm:()=>{ if (confirm==='all') { this.setState({sessionsLeft:0,view:'on'}); note(t.endedAll); } else { this.setState({sessionsLeft:Math.max(0,sessionsLeft-1),view:'on'}); note(t.endedOne); } },
+      totpOff:!totpEnabled&&!enrolling,totpEnrolling:enrolling,totpOn:totpEnabled,totpPill:totpEnabled?'ap-pill ok':'ap-pill warn',totpLabel:totpEnabled?t.totpEnabled:t.totpDisabled,
+      enrollTotp:()=>this.setState({enrolling:true}),cancelTotp:()=>this.setState({enrolling:false}),confirmTotp:()=>this.setState({enrolling:false,totpEnabled:true}),disableTotp:()=>this.setState({totpEnabled:false}),
+      message:this.state.message||'',hasMessage:!!this.state.message
+    };
+  }
+}
+</script>
+</body>
+</html>

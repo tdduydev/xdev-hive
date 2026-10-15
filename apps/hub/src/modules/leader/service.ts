@@ -1,20 +1,22 @@
-import { type LeaderAction, leaderAction } from "@xdev-hive/contracts";
+import { type ChatArtifactRef, type LeaderAction, leaderAction } from "@xdev-hive/contracts";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject } from "../catalog/index.ts";
 import type { Tx } from "../platform/index.ts";
 import { ConflictError, NotFoundError } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
+import type { SdlcDeps } from "../sdlc/index.ts";
 import { emitLeaderActivity, executeLeaderAction, tierChoice } from "./actions.ts";
-import { assembleLeaderPrompt, formatTranscript, projectContext } from "./prompt.ts";
+import { assembleLeaderPrompt, loadTranscript, projectContext } from "./prompt.ts";
 import { approvals, chatMessages, chatThreads } from "./schema.ts";
 
-export const messageView = (row: typeof chatMessages.$inferSelect) => ({
+export const messageView = (row: typeof chatMessages.$inferSelect, artifact: ChatArtifactRef | null = null) => ({
   id: row.id,
   role: row.role,
   content: row.content,
   runId: row.runId,
   createdAt: row.createdAt.toISOString(),
+  artifact,
 });
 export const threadView = (row: typeof chatThreads.$inferSelect) => ({
   id: row.id,
@@ -85,12 +87,7 @@ export async function sendLeaderMessage(
     .returning();
   await tx.update(chatThreads).set({ updatedAt: new Date() }).where(eq(chatThreads.id, thread.id));
   if (!message) throw new Error("Không lưu được tin nhắn.");
-  const history = await tx
-    .select({ role: chatMessages.role, content: chatMessages.content })
-    .from(chatMessages)
-    .where(eq(chatMessages.threadId, thread.id))
-    .orderBy(chatMessages.createdAt);
-  const transcript = formatTranscript(history);
+  const transcript = await loadTranscript(tx, thread.id);
   const context = await projectContext(tx, userId, project.id, project.teamId);
   const prompt = assembleLeaderPrompt({
     transcript,
@@ -130,6 +127,7 @@ export async function approveApproval(
   userId: string,
   id: string,
   tier?: "light" | "medium" | "heavy",
+  sdlc: SdlcDeps = {},
 ) {
   await expireApprovals(tx);
   const [row] = await tx.select().from(approvals).where(eq(approvals.id, id)).for("update");
@@ -139,7 +137,7 @@ export async function approveApproval(
   const action =
     tier && (proposed.type === "task.create" || proposed.type === "run.dispatch") ? { ...proposed, tier } : proposed;
   const choice = await tierChoice(tx, action);
-  const { result, afterCommit: afterCommitAction } = await executeLeaderAction(tx, userId, action, runsEngine);
+  const { result, afterCommit: afterCommitAction } = await executeLeaderAction(tx, userId, action, runsEngine, sdlc);
   const [updated] = await tx
     .update(approvals)
     .set({ status: "approved", decidedBy: userId, action })

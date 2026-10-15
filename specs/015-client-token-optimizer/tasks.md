@@ -149,7 +149,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
 
 ## Đợt 3: desktop (sau DESKCLIENT merge)
 
-- [ ] **T007 [P] [US1] [US2] [US3] [vừa] Lệnh Tauri gọi sidecar** (sau T004, T010)
+- [x] **T007 [P] [US1] [US2] [US3] [vừa] Lệnh Tauri gọi sidecar** (sau T004, T010)
   - **Goal**:
     - `optimizer_status`, `optimizer_enable`, `optimizer_disable`, `optimizer_restore`, `optimizer_report`,
       `memory_scan`, `memory_apply`: chạy sidecar với `--json`, như `profiles.rs`.
@@ -162,7 +162,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - `apps/desktop/src-tauri/capabilities/default.json` nếu cần.
   - **Test**: Rust unit test parse JSON của sidecar, dùng chuỗi mẫu.
 
-- [ ] **T008 [US1] [US2] [vừa] Khối "Tối ưu" trong màn Token** (sau T007)
+- [x] **T008 [US1] [US2] [vừa] Khối "Tối ưu" trong màn Token** (sau T007)
   - **Goal**:
     - Bảng gói: CLI, phiên bản, mức, trạng thái, nút Bật/Tắt/Khôi phục, lý do bỏ khoá.
     - Bảng trước/sau theo nguồn phiên: token quy đổi mỗi lượt, ngữ cảnh đỉnh, phiên > 400k, cache hit, ký tự đã cắt,
@@ -174,7 +174,7 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
     - `apps/desktop/src/lib/optimizer.ts` (mới) và test
     - `apps/desktop/src/screens/tokens-screen.tsx`: chỉ chèn `<OptimizerPanel />`.
 
-- [ ] **T009 [US3] [US4] [vừa] Màn Memory** (sau T007; song song với T008)
+- [x] **T009 [US3] [US4] [vừa] Màn Memory** (sau T007; song song với T008)
   - **Goal**:
     - Cây CLI → dự án → gói → file, có token, ngày sửa, cờ.
     - Đầu màn có tổng token nạp mỗi phiên.
@@ -187,7 +187,9 @@ description: "Task list: quản lý memory và bộ tối ưu token trong app cl
 
 ## Đợt 4: mở rộng (P3)
 
-- [ ] **T011 [US5] [vừa] AI nén memory có duyệt** (sau T010, T009)
+- [x] **T011 [US5] [vừa] AI nén memory có duyệt** (sau T010, T009)
+  - **Còn lại**: chèn nút mở `<MemoryCompressDialog open onOpenChange profile project files onApplied />` vào `memory-screen.tsx`
+    chờ T009 merge. Lệnh Tauri `memory_compress` đã thêm cùng T011.
   - **Goal**:
     - `hive-worker memory compress --profile ID --project KEY [--files …] --json`: chạy `claude -p --restricted
       --strict-mcp-config --tools Read,Glob,Grep` (như docs agent) và trả đề xuất `{files:[{path,content}], tokensUsed}`.

@@ -236,6 +236,22 @@ export async function saveDraft(tx: Tx, principal: Principal, raw: DraftSaveInpu
   return draftView(tx, input.key, { ...ctx, draft: row }, true);
 }
 
+/**
+ * Bản nháp do run AI SDLC soạn (specs/011 FR-014): hub chép file agent trả về vào bản nháp dưới tên run. Không có tool
+ * MCP nào gọi tới đây (agent chỉ đề xuất qua `doc_suggest`); module `sdlc` gọi sau khi đã đối chiếu run với bước của
+ * hạng mục. Run chỉ thấy tài liệu thuộc dự án của nó (`docScope`).
+ */
+export async function saveRunDraft(
+  tx: Tx,
+  principal: Principal & { kind: "run" },
+  raw: DraftSaveInput,
+): Promise<DocDraft> {
+  const input = draftSaveInput.parse(raw);
+  const ctx = await docContext(tx, principal, input.key, true);
+  const row = await writeDraft(tx, principal, input.key, ctx, input);
+  return draftView(tx, input.key, { ...ctx, draft: row }, false);
+}
+
 /** Gộp bản đã duyệt mới nhất vào bản nháp theo khối; chỗ hai bên cùng sửa thì giữ bản nháp và đếm xung đột. */
 export async function rebaseDraft(
   tx: Tx,

@@ -9,7 +9,14 @@ import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import type pg from "pg";
-import { artifactsRouter, frameRoutes, frameTicketKey } from "./modules/artifacts/index.ts";
+import {
+  registerMcpTools as artifactsMcpTools,
+  artifactsRouter,
+  frameRoutes,
+  frameTicketKey,
+  provideLinkTarget,
+  provideThreadHost,
+} from "./modules/artifacts/index.ts";
 import {
   exportAudit,
   getAuditRetention,
@@ -38,7 +45,12 @@ import {
   registerMcpTools as knowledgeMcpTools,
   knowledgeRouter,
 } from "./modules/knowledge/index.ts";
-import { registerMcpTools as leaderMcpTools, leaderRouter } from "./modules/leader/index.ts";
+import {
+  createThreadHost,
+  createThreadLinkTarget,
+  registerMcpTools as leaderMcpTools,
+  leaderRouter,
+} from "./modules/leader/index.ts";
 import {
   createMcpEndpoint,
   issueDesktopToken,
@@ -58,6 +70,7 @@ import {
 } from "./modules/runs/index.ts";
 import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
+import { reviewSpecFor, type SdlcDeps, registerMcpTools as sdlcMcpTools, sdlcRouter } from "./modules/sdlc/index.ts";
 import { skillLearningRouter } from "./modules/skilllearn/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
@@ -72,6 +85,7 @@ import {
 import {
   chainVerifiers,
   createTerminalTokenVerifier,
+  remoteRouter,
   terminalRouter,
   terminalTokenKey,
 } from "./modules/terminal/index.ts";
@@ -133,6 +147,10 @@ export function createApp({
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
   leaderMcpTools(registry, { runs });
+  provideThreadHost(createThreadHost(runs));
+  provideLinkTarget("chat_thread", createThreadLinkTarget());
+  artifactsMcpTools(registry, { pool, jobs, publicUrl });
+  sdlcMcpTools(registry);
   const terminal = {
     enabled: config.remoteTerminal ?? false,
     publicUrl,
@@ -148,6 +166,13 @@ export function createApp({
     providerFactory: providerFactory ?? defaultProviderFactory,
   };
   const frameKey = config.masterKey ? frameTicketKey(config.masterKey) : undefined;
+  // Cổng tạo run bước và run đợt chỉ có khi có lõi giao run; thiếu thì hạng mục vẫn đi qua cổng duyệt.
+  const sdlcDeps: SdlcDeps = runs?.sdlcDeps ?? {
+    jobs,
+    publicUrl,
+    masterKey: config.masterKey,
+    providerFactory: shared.providerFactory,
+  };
   const auditMiddleware = orgMiddlewares({ auth, pool });
   const auditBase = implement(contract.audit)
     .$context<RequestContext>()
@@ -226,12 +251,12 @@ export function createApp({
       pool,
       publicUrl,
       workerReleases: new WorkerReleaseCache(config.workerReleases),
-      issuePersonalToken: (tx, userId) => issueDesktopToken(tx, userId, registry),
+      issuePersonalToken: (tx, userId, purpose) => issueDesktopToken(tx, userId, registry, purpose),
     }),
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),
-    chat: chatRouter({ ...shared, ...chatApis, publicUrl }),
+    chat: chatRouter({ ...shared, ...chatApis, publicUrl, telegramPollingBotIds: config.telegramPollingBotIds }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({
       auth,
@@ -257,15 +282,18 @@ export function createApp({
       startReviewRuns: runs?.startReviewRuns,
       queueFixRun: runs?.queueFixRun,
       runEvidence: runs?.runEvidence,
+      specContextFor: reviewSpecFor,
       runs: codeRuns,
     }),
     costs: costsRouter({ auth, pool }),
     sandbox: sandboxRouter({ auth, pool }),
-    leader: leaderRouter({ auth, pool, runs }),
+    leader: leaderRouter({ auth, pool, runs, sdlc: sdlcDeps }),
+    sdlc: sdlcRouter({ auth, pool, ...sdlcDeps }),
     mcpAdmin: mcpAdminRouter({ auth: baseAuth, pool, registry }),
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
     terminal: terminalRouter({ auth, pool, terminal }),
+    remote: remoteRouter({ auth, pool, remote: { enabled: terminal.enabled, publicUrl } }),
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
@@ -299,7 +327,24 @@ export function createApp({
     );
   // Telegram và Slack gọi vào đây không có phiên người dùng; mỗi route tự kiểm secret/chữ ký của bot theo id trong URL.
   if (pool) {
-    const chat = { pool, masterKey: config.masterKey, runs, jobs, publicUrl, ...chatApis };
+    const chat = {
+      pool,
+      masterKey: config.masterKey,
+      runs,
+      jobs,
+      publicUrl,
+      ...chatApis,
+      telegramPollingBotIds: config.telegramPollingBotIds,
+      codeReviews: {
+        ...shared,
+        jobs,
+        publicUrl,
+        startReviewRuns: runs?.startReviewRuns,
+        queueFixRun: runs?.queueFixRun,
+        runEvidence: runs?.runEvidence,
+        specContextFor: reviewSpecFor,
+      },
+    };
     app.post("/hooks/chat/telegram/:botId", (c) => handleTelegramWebhook(chat, c.req.param("botId"), c.req.raw));
     for (const route of ["events", "commands", "interact"] as const) {
       app.post(`/hooks/chat/slack/:botId/${route}`, (c) =>

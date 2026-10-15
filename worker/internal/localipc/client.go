@@ -12,7 +12,7 @@ type Hello struct {
 const DialTimeout = 5 * time.Second
 
 // Dial nối worker ở path và bắt tay; client là tên và phiên bản người gọi ("hive/0.3.0"). Lỗi: ErrNotRunning,
-// ErrDenied, *VersionError, ErrUnsupported (Windows) hoặc lỗi mạng khác.
+// ErrDenied, *VersionError hoặc lỗi mạng khác.
 func Dial(path, client string) (*Conn, Hello, error) { return dial(path, client, Version) }
 
 func dial(path, client string, v int) (*Conn, Hello, error) {

@@ -23,14 +23,19 @@ export class NotFoundError extends Error {
   }
 }
 
-/** Trùng định danh hoặc trạng thái không cho phép thao tác (vd. hạ chủ sở hữu cuối cùng). Đổi thành CONFLICT. */
+/**
+ * Trùng định danh hoặc trạng thái không cho phép thao tác (vd. hạ chủ sở hữu cuối cùng). Đổi thành CONFLICT. `data`
+ * đi kèm `code` trong lỗi oRPC khi client cần biết chi tiết để hiện (vd. tài liệu còn thiếu của cổng AI SDLC).
+ */
 export class ConflictError extends Error {
   override readonly name = "ConflictError";
   readonly code: string;
+  readonly data: Record<string, unknown> | undefined;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, data?: Record<string, unknown>) {
     super(message);
     this.code = code;
+    this.data = data;
   }
 }
 

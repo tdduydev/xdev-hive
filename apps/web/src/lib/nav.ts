@@ -6,6 +6,8 @@ import {
   BotIcon,
   BrainIcon,
   ChartColumnIcon,
+  ChartLineIcon,
+  CircleHelpIcon,
   ClipboardCheckIcon,
   FileTextIcon,
   FolderIcon,
@@ -14,6 +16,7 @@ import {
   HouseIcon,
   KanbanSquareIcon,
   KeyRoundIcon,
+  LayersIcon,
   type LucideIcon,
   MessagesSquareIcon,
   MonitorIcon,
@@ -24,7 +27,9 @@ import {
   SettingsIcon,
   ShieldCheckIcon,
   ShieldIcon,
+  SmartphoneIcon,
   SparklesIcon,
+  SquareStackIcon,
   UserCogIcon,
   UsersIcon,
   WorkflowIcon,
@@ -47,7 +52,7 @@ export interface NavItem {
   /** Quyền của vai trò tự tạo làm mục `adminOnly` hiện ra với người không phải quản trị (vd. audit.read). */
   permission?: string;
   /** Số đếm hiện bên phải mục (vd. PR chờ tôi duyệt); sidebar tự lấy số theo khoá này. */
-  badge?: "codeReviews";
+  badge?: "codeReviews" | "sdlcQuestions";
 }
 
 export interface NavGroup {
@@ -89,6 +94,64 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: MessagesSquareIcon,
         to: "/leader",
         match: "/leader",
+      },
+      {
+        id: "remote",
+        label: { vi: "Điều khiển từ xa", en: "Remote control" },
+        icon: SmartphoneIcon,
+        to: "/remote",
+        match: "/remote",
+      },
+      {
+        id: "artifacts",
+        label: { vi: "Artifact", en: "Artifacts" },
+        icon: LayersIcon,
+        to: "/artifacts",
+        match: "/artifacts",
+      },
+    ],
+  },
+  {
+    id: "sdlc",
+    label: { vi: "AI SDLC", en: "AI SDLC" },
+    icon: SquareStackIcon,
+    items: [
+      {
+        id: "sdlc-items",
+        label: { vi: "Hạng mục", en: "Items" },
+        icon: SquareStackIcon,
+        to: route("/sdlc"),
+        match: "/sdlc",
+        adminOnly: true,
+        permission: "sdlc.read",
+      },
+      {
+        id: "sdlc-fleet",
+        label: { vi: "Đội máy AI SDLC", en: "AI SDLC fleet" },
+        to: route("/sdlc/fleet"),
+        match: "/sdlc/fleet",
+        icon: MonitorIcon,
+        adminOnly: true,
+        permission: "machines.read",
+      },
+      {
+        id: "sdlc-questions",
+        label: { vi: "Câu hỏi chờ tôi", en: "Questions for me" },
+        icon: CircleHelpIcon,
+        to: route("/sdlc/questions"),
+        match: "/sdlc/questions",
+        adminOnly: true,
+        permission: "sdlc.read",
+        badge: "sdlcQuestions",
+      },
+      {
+        id: "sdlc-metrics",
+        label: { vi: "Chỉ số", en: "Metrics" },
+        icon: ChartLineIcon,
+        to: route("/sdlc/metrics"),
+        match: "/sdlc/metrics",
+        adminOnly: true,
+        permission: "sdlc.read",
       },
     ],
   },
@@ -229,6 +292,15 @@ export const NAV_GROUPS: NavGroup[] = [
         match: "/admin/mcp",
         adminOnly: true,
         permission: "mcp.servers",
+      },
+      {
+        id: "sdlc-modes",
+        label: { vi: "Chế độ AI SDLC", en: "AI SDLC modes" },
+        icon: WorkflowIcon,
+        to: route("/admin/sdlc-modes"),
+        match: "/admin/sdlc-modes",
+        adminOnly: true,
+        permission: "sdlc.modes.write",
       },
       {
         id: "policies",

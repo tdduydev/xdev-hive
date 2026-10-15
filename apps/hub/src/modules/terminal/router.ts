@@ -3,6 +3,15 @@ import { contract } from "@xdev-hive/contracts";
 import type { RequestContext } from "../platform/index.ts";
 import { withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { disableRemote, listDevices, revokeDevice } from "./devices.ts";
+import { pairComplete, pairOptions, type RemoteDeps } from "./pairing.ts";
+import {
+  getRemoteSession,
+  listRemoteSessions,
+  remoteMachines,
+  remoteSessionChunks,
+  setRemoteVisibility,
+} from "./queries.ts";
 import {
   closeSession,
   getSession,
@@ -54,5 +63,43 @@ export function terminalRouter(deps: TerminalRouterDeps) {
     activity: os.activity
       .use(inOrg)
       .handler(({ context: { tx, user }, input }) => sessionActivity(tx, user.id, input.id)),
+  };
+}
+
+export interface RemoteRouterDeps extends OrgDeps {
+  remote: RemoteDeps;
+}
+
+/**
+ * Phiên trên máy cá nhân (specs/010 US1, US2). Vé xem trực tiếp, mở phiên và đẩy thông báo thêm ở T030, T051, T071.
+ * Ghi phiên luôn bật: `HIVE_REMOTE_TERMINAL` chỉ chặn phần từ xa.
+ */
+export function remoteRouter(deps: RemoteRouterDeps) {
+  const { authed, inOrg, orgMember } = orgMiddlewares(deps);
+  const os = implement(contract.remote).$context<RequestContext>().use(authed);
+  return {
+    machines: os.machines.use(inOrg).handler(({ context: { tx, user } }) => remoteMachines(tx, user.id)),
+    list: os.list.use(inOrg).handler(({ context: { tx, user }, input }) => listRemoteSessions(tx, user.id, input)),
+    get: os.get.use(inOrg).handler(({ context: { tx, user }, input }) => getRemoteSession(tx, user.id, input.id)),
+    chunks: os.chunks.use(inOrg).handler(({ context: { tx, user }, input }) => remoteSessionChunks(tx, user.id, input)),
+    setVisibility: os.setVisibility
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => setRemoteVisibility(tx, user.id, input.id, input.visibility)),
+    disableRemote: os.disableRemote
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => disableRemote(tx, user.id, input.machineId)),
+    pairOptions: os.pairOptions
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => pairOptions(tx, user, input, deps.remote)),
+    // orgMember: chờ chủ máy bấm Cho phép tới cả phút, không giữ transaction trong lúc đó.
+    pairComplete: os.pairComplete
+      .use(orgMember)
+      .handler(({ context: { pool, user, orgId }, input }) => pairComplete(pool, orgId, user, input, deps.remote)),
+    devices: os.devices
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => listDevices(tx, user.id, input.machineId)),
+    revokeDevice: os.revokeDevice
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => revokeDevice(tx, user.id, input.machineId, input.deviceId)),
   };
 }

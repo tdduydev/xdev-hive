@@ -6,12 +6,14 @@ import type { RunState } from "@xdev-hive/contracts/run-states";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { EllipsisIcon, MonitorIcon, NetworkIcon } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { DataTable } from "@/components/data-table/data-table.tsx";
 import { Icon } from "@/components/icons.tsx";
+import { DangerZone } from "@/components/page/danger-zone.tsx";
 import { FilterBar } from "@/components/page/filter-bar.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
@@ -34,7 +36,7 @@ import {
 } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatAgo, formatDay, formatDayTime } from "@/lib/format.ts";
-import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { hasSharedMachine, shareCandidate } from "@/lib/onboarding.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
 import type { MachineTab } from "@/lib/route-search.ts";
@@ -483,18 +485,6 @@ const osName = (os: string) => OS_NAME[os] ?? os;
 const UNKNOWN_TEAM = "00000000-0000-4000-8000-000000000000";
 const RUNS_PAGE = 20;
 
-/** "12 phút trước" theo ngôn ngữ giao diện; `formatAgo` chỉ có tiếng Việt. */
-function ago(iso: string, now: number, lang: Lang): string {
-  if (lang === "vi") return formatAgo(iso, now);
-  const sec = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000));
-  if (Number.isNaN(sec)) return "—";
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  if (sec < 60) return "just now";
-  if (sec < 3600) return rtf.format(-Math.floor(sec / 60), "minute");
-  if (sec < 24 * 3600) return rtf.format(-Math.floor(sec / 3600), "hour");
-  return rtf.format(-Math.floor(sec / (24 * 3600)), "day");
-}
-
 function outdated(machine: Machine, latest: WorkerRelease | null): boolean {
   return latest !== null && newerVersion(latest.version, machine.version);
 }
@@ -689,6 +679,7 @@ export function MachinesPage() {
     if (!open && them) void navigate({ to: "/machines", search: {}, replace: true });
   }
   const [revoking, setRevoking] = useState<Machine | null>(null);
+  const [labelling, setLabelling] = useState<Machine | null>(null);
   const selectedTeam = teams.data?.find((team) => team.id === teamId) ?? teams.data?.[0];
   const active = useTeamActiveRuns(selectedTeam?.id);
   const machines = useQuery({
@@ -812,7 +803,6 @@ export function MachinesPage() {
               rows={list}
               rowLabel={(machine) => machine.name}
               placeholder={t.search}
-              selectable={false}
               onRowClick={(machine) => void open(machine)}
               minWidth={760}
               facets={[
@@ -845,6 +835,14 @@ export function MachinesPage() {
                       </Link>
                       <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <ScopePill machine={machine} owner={owner(machine)} small />
+                        {(machine.labels ?? []).map((label) => (
+                          <span key={label} className="rounded bg-muted px-1 font-mono">
+                            {label}
+                          </span>
+                        ))}
+                        {machine.labelsOnly && (
+                          <span>{lang === "vi" ? "Chỉ nhận run có nhãn" : "Labelled runs only"}</span>
+                        )}
                         <span className="whitespace-nowrap">
                           {osName(machine.os)}
                           {machine.kind === "host" && ` · ${t.kinds.host}`}
@@ -865,7 +863,7 @@ export function MachinesPage() {
                         className="text-xs whitespace-nowrap text-muted-foreground"
                         title={machine.lastSeenAt ? formatDayTime(machine.lastSeenAt) : undefined}
                       >
-                        {machine.lastSeenAt ? t.seen(ago(machine.lastSeenAt, now, lang)) : t.never}
+                        {machine.lastSeenAt ? t.seen(formatAgo(machine.lastSeenAt, now, lang)) : t.never}
                       </span>
                     </span>
                   ),
@@ -956,6 +954,7 @@ export function MachinesPage() {
                             machine={machine}
                             actions={actions}
                             onAccounts={teamAdmin ? () => void open(machine, "goi-agent") : undefined}
+                            onLabels={teamAdmin ? () => setLabelling(machine) : undefined}
                           />
                         )}
                       </span>
@@ -983,6 +982,14 @@ export function MachinesPage() {
       <Dialog open={adding && Boolean(selectedTeam)} onOpenChange={setAdding}>
         {adding && selectedTeam && <RegistrationDialog teamId={selectedTeam.id} onClose={() => setAdding(false)} />}
       </Dialog>
+      <Dialog
+        open={!!labelling}
+        onOpenChange={(open) => {
+          if (!open) setLabelling(null);
+        }}
+      >
+        {labelling && <MachineLabelsDialog machine={labelling} onClose={() => setLabelling(null)} />}
+      </Dialog>
       <RevokeDialog machine={revoking} actions={actions} onClose={() => setRevoking(null)} />
     </>
   );
@@ -993,10 +1000,12 @@ function RowMenu({
   machine,
   actions,
   onAccounts,
+  onLabels,
 }: {
   machine: Machine;
   actions: MachineActions;
   onAccounts: (() => void) | undefined;
+  onLabels: (() => void) | undefined;
 }) {
   const t = useT(text);
   return (
@@ -1012,6 +1021,11 @@ function RowMenu({
         >
           {machine.shared ? t.unshare : t.share}
         </DropdownMenuItem>
+        {onLabels && (
+          <DropdownMenuItem aria-label={`${t.infoLabels} · ${machine.name}`} onClick={onLabels}>
+            {t.infoLabels}
+          </DropdownMenuItem>
+        )}
         {/* Gói agent chỉ quản trị đội xem và điều khiển được (ADR 0017). */}
         {onAccounts && (
           <DropdownMenuItem aria-label={t.accountsLabel(machine.name)} onClick={onAccounts}>
@@ -1176,7 +1190,7 @@ export function MachineDetailPage() {
             <span>{osName(machine.os)}</span>
             {machine.version && <span className="font-mono">{t.workerVersion(machine.version)}</span>}
             <span title={machine.lastSeenAt ? formatDayTime(machine.lastSeenAt) : undefined}>
-              {machine.lastSeenAt ? t.seen(ago(machine.lastSeenAt, now, lang)) : t.never}
+              {machine.lastSeenAt ? t.seen(formatAgo(machine.lastSeenAt, now, lang)) : t.never}
             </span>
             <ScopePill machine={machine} owner={owner(machine)} small />
           </>
@@ -1306,7 +1320,6 @@ function MachineOverview({
   // Trang đầu của tab Lượt chạy, cùng khoá truy vấn: run đang giữ chỗ luôn nằm trong các run mới nhất.
   const runs = useMachineRuns(machine.id, undefined);
   const running = runs.data?.items.filter(isActiveRun) ?? [];
-  const headingId = useId();
   return (
     <>
       {machine.status === "offline" && <Alert variant="destructive">{t.offline(machine.name)}</Alert>}
@@ -1348,7 +1361,7 @@ function MachineOverview({
                 {
                   term: t.infoLastSeen,
                   detail: machine.lastSeenAt ? (
-                    <span title={formatDayTime(machine.lastSeenAt)}>{ago(machine.lastSeenAt, now, lang)}</span>
+                    <span title={formatDayTime(machine.lastSeenAt)}>{formatAgo(machine.lastSeenAt, now, lang)}</span>
                   ) : (
                     t.never
                   ),
@@ -1395,24 +1408,11 @@ function MachineOverview({
         </PageSection>
       </div>
       {machine.status !== "revoked" && (
-        <section
-          aria-labelledby={headingId}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-4 ring-1 ring-destructive/60"
-        >
-          <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
-            <h2 id={headingId} className="text-base font-semibold text-foreground">
-              {t.danger}
-            </h2>
-            <p className="text-sm text-muted-foreground">{t.dangerLead}</p>
-          </div>
-          <Button
-            variant="outline"
-            className="border-destructive text-destructive hover:text-destructive"
-            onClick={onRevoke}
-          >
+        <DangerZone title={t.danger} description={t.dangerLead}>
+          <Button variant="destructive" onClick={onRevoke}>
             {t.revokeMachine}
           </Button>
-        </section>
+        </DangerZone>
       )}
     </>
   );
@@ -1436,7 +1436,6 @@ function MachineRuns({ machineId }: { machineId: string }) {
       rows={runs.data.items}
       rowLabel={(row) => `${shortId(row.id)} ${row.taskKey}`}
       placeholder={t.searchRuns}
-      selectable={false}
       minWidth={680}
       onRowClick={(row) => void navigate({ to: "/runs/$id", params: { id: row.id } })}
       serverPaging={{
@@ -1511,14 +1510,32 @@ function MachineRuns({ machineId }: { machineId: string }) {
   );
 }
 
-function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () => void }) {
+export function RegistrationDialog({
+  teamId,
+  onClose,
+  sdlc = false,
+}: {
+  teamId: string;
+  onClose: () => void;
+  sdlc?: boolean;
+}) {
   const t = useT(text);
   const lang = useLang();
   const { api } = useOrg();
   const [kind, setKind] = useState<Machine["kind"]>("worker");
+  const labelsId = useId();
+  const [labels, setLabels] = useState(sdlc ? "sdlc" : "");
+  const [labelsOnly, setLabelsOnly] = useState(sdlc);
   const registration = useMutation({
     gcTime: 0,
-    mutationFn: () => api.machines.createRegistration.call({ teamId, kind }),
+    mutationFn: () =>
+      api.machines.createRegistration.call({
+        teamId,
+        kind,
+        labels: labels.split(/[\s,]+/).filter(Boolean),
+        shared: sdlc,
+        labelsOnly,
+      }),
   });
   const [copied, setCopied] = useState(false);
   const [os, setOs] = useState<Os>("macOS");
@@ -1535,7 +1552,7 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
           os === "Windows"
             ? { title: t.stepWindows, value: data.installCommandWindows }
             : { title: t.stepTerminal, value: data.installCommand },
-          { title: t.stepRegister, value: data.command },
+          ...(sdlc && kind === "worker" ? [] : [{ title: t.stepRegister, value: data.command }]),
         ];
 
   async function copy(value: string) {
@@ -1570,6 +1587,25 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
                 ]}
               />
             </div>
+            <label htmlFor={labelsId} className="grid gap-1 text-sm">
+              {lang === "vi" ? "Nhãn máy" : "Machine labels"}
+              <Input
+                id={labelsId}
+                value={labels}
+                onChange={(e) => setLabels(e.target.value)}
+                disabled={registration.isPending}
+                placeholder="sdlc, docs"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={labelsOnly}
+                disabled={registration.isPending}
+                onChange={(e) => setLabelsOnly(e.target.checked)}
+              />
+              {lang === "vi" ? "Chỉ nhận run có nhãn" : "Labelled runs only"}
+            </label>
             {registration.isPending && <LoadingState label={t.creating} />}
             {registration.isError && <Alert variant="destructive">{apiErrorMessage(registration.error)}</Alert>}
           </>
@@ -1645,6 +1681,60 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
             {registration.isPending ? t.creating : t.createCode}
           </Button>
         )}
+      </DialogActions>
+    </DialogContent>
+  );
+}
+
+export function MachineLabelsDialog({ machine, onClose }: { machine: Machine; onClose: () => void }) {
+  const { api } = useOrg();
+  const lang = useLang();
+  const client = useQueryClient();
+  const labelsId = useId();
+  const [labels, setLabels] = useState((machine.labels ?? []).join(", "));
+  const [labelsOnly, setLabelsOnly] = useState(machine.labelsOnly ?? false);
+  const save = useMutation(
+    api.machines.setLabels.mutationOptions({
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: api.machines.key() });
+        onClose();
+      },
+    }),
+  );
+  return (
+    <DialogContent>
+      <DialogTitle>
+        {lang === "vi" ? "Nhãn máy" : "Machine labels"} · {machine.name}
+      </DialogTitle>
+      <DialogDescription>
+        {lang === "vi" ? "Nhãn áp dụng từ lần giao run tiếp theo." : "Labels apply to the next run assignment."}
+      </DialogDescription>
+      <label htmlFor={labelsId} className="grid gap-1 text-sm">
+        {lang === "vi" ? "Nhãn" : "Labels"}
+        <Input id={labelsId} value={labels} onChange={(e) => setLabels(e.target.value)} disabled={save.isPending} />
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={labelsOnly}
+          onChange={(e) => setLabelsOnly(e.target.checked)}
+          disabled={save.isPending}
+        />
+        {lang === "vi" ? "Chỉ nhận run có nhãn" : "Labelled runs only"}
+      </label>
+      {save.error && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
+      <DialogActions>
+        <Button variant="outline" disabled={save.isPending} onClick={onClose}>
+          {lang === "vi" ? "Huỷ" : "Cancel"}
+        </Button>
+        <Button
+          disabled={save.isPending}
+          onClick={() =>
+            save.mutate({ machineId: machine.id, labels: labels.split(/[\s,]+/).filter(Boolean), labelsOnly })
+          }
+        >
+          {lang === "vi" ? "Lưu nhãn" : "Save labels"}
+        </Button>
       </DialogActions>
     </DialogContent>
   );
