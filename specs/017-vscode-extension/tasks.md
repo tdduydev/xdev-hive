@@ -332,6 +332,10 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: Duyệt/Trả lại gọi `reviews.decide`; nút "Sửa trên web" mở URL hub.
 
 - [ ] **T034 [P] [US11] [nặng] · 3,5 ngày — Hub: đồng bộ hai chiều bình luận review với PR**
+  - Đang làm (VSC-T034): đã có bảng/RLS, đẩy ra, nhận về dùng chung với đối chiếu, retrySync và test DB.
+    Chưa đánh dấu xong: T033 trên `origin/main` và `origin/ai/VSC-T033` chưa có sự kiện webhook review,
+    quyền ghi PR riêng hoặc danh tính tài khoản kết nối. Cần các phần này để nối `registerCodeReviewScm`,
+    xác thực dấu ẩn khi API chưa trả lời và kiểm quyền PR chính xác. API hiện cũng chưa hỗ trợ sửa/xoá bình luận fallback.
   - **Phụ thuộc**: T008 (bảng và hợp đồng bình luận), T033 (API provider, webhook).
   - **Goal**: plan.md mục 4b phần "codereview (T034)", FR-040…FR-046, US11:
     - bảng `code_review_comment_links`, RLS bật và ép;
