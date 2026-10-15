@@ -55,14 +55,11 @@ const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"
 const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
 const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
 const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
-<<<<<<< HEAD
 const RemotePage = lazyRouteComponent(() => import("@/pages/remote/remote-page.tsx"), "RemotePage");
 const RemoteSessionPage = lazyRouteComponent(() => import("@/pages/remote/session-page.tsx"), "RemoteSessionPage");
 const RemotePairPage = lazyRouteComponent(() => import("@/pages/remote/pair-page.tsx"), "RemotePairPage");
 const RemoteDevicesPage = lazyRouteComponent(() => import("@/pages/remote/devices-page.tsx"), "RemoteDevicesPage");
-=======
 const PublicLinksPage = lazyRouteComponent(() => import("@/pages/admin/public-links-page.tsx"), "PublicLinksPage");
->>>>>>> ai/ART-T031
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
 const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
 const CostsPage = lazyRouteComponent(() => import("@/pages/costs-page.tsx"), "CostsPage");
