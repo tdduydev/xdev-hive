@@ -18,6 +18,7 @@ import {
   resumeItem,
   suggestItem,
 } from "./items.ts";
+import { metricsRoute } from "./metrics.ts";
 import { dryRunMode, listModes, removeMode, saveMode } from "./modes.ts";
 import { overrideRoutes } from "./overrides.ts";
 import { participantRoutes } from "./participants.ts";
@@ -30,7 +31,7 @@ import { waveRoutes } from "./waves.ts";
 
 /**
  * Route `sdlc.*`. Route lõi (chế độ, gợi ý, hạng mục, bảng) viết ở đây; phần còn lại nằm trong hàm đăng ký ở file của
- * nghiệp vụ đó để mỗi file tự giữ middleware và deps của mình. `metrics` chưa có (T082).
+ * nghiệp vụ đó để mỗi file tự giữ middleware và deps của mình.
  */
 export function sdlcRouter(deps: OrgDeps & SdlcDeps) {
   const { authed, inOrg } = orgMiddlewares(deps);
@@ -69,6 +70,7 @@ export function sdlcRouter(deps: OrgDeps & SdlcDeps) {
     waves: waveRoutes(deps),
     ...overrideRoutes(deps),
     trace: traceRoute(deps),
+    metrics: metricsRoute(deps),
     sync: syncRoute(deps),
   };
 }

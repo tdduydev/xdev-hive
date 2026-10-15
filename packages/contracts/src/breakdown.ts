@@ -1,5 +1,24 @@
 import type { z } from "zod";
-import type { BreakdownError, BreakdownParser, breakdownTask, SdlcDecomposition, sdlcBreakdown } from "./sdlc.ts";
+import { DIALECTS, restoreBreakdown, restoreErrors } from "./breakdown-parsers/dialects.ts";
+import {
+  demote,
+  FENCE,
+  indent,
+  indentOf,
+  markdownLines,
+  normalizeBlock,
+  oneLine,
+  PROJECT_LINE,
+  splitBody,
+} from "./breakdown-parsers/text.ts";
+import {
+  BREAKDOWN_GRANULARITIES,
+  type BreakdownError,
+  type BreakdownParser,
+  type breakdownTask,
+  type SdlcDecomposition,
+  type sdlcBreakdown,
+} from "./sdlc.ts";
 
 /**
  * Bộ đọc/ghi tài liệu tách việc (specs/011 D8, D24): thuần, dùng ở hub (luật `breakdown`, `coverage`, áp baseline) và
@@ -11,7 +30,8 @@ import type { BreakdownError, BreakdownParser, breakdownTask, SdlcDecomposition,
  * - phụ thuộc: `**Phụ thuộc**: T001, T002 · …` (hive), `(depends on T001)` / `(phụ thuộc T001)` (Spec Kit), hoặc dòng
  *   `**Phụ thuộc**: …` ngay dưới tiêu đề phần (cả phần chờ);
  * - dự án: thẻ `[@key]` trên dòng task hoặc dòng `Dự án: key` dưới tiêu đề phần (áp cho cả phần con).
- * Hai định dạng chỉ khác nhau ở cách bộ ghi viết phụ thuộc.
+ * Hai định dạng chỉ khác nhau ở cách bộ ghi viết phụ thuộc. Kiro, OpenSpec, BMAD, AI-DLC dịch sang khung này trước khi
+ * đọc (breakdown-parsers/dialects.ts).
  */
 export type BreakdownTask = z.output<typeof breakdownTask>;
 export type Breakdown = z.output<typeof sdlcBreakdown>;
@@ -49,7 +69,6 @@ const LIMIT = {
   tasks: 100,
 } as const;
 
-const SUPPORTED: readonly BreakdownParser[] = ["hive-tasks", "speckit-tasks"];
 const SINGLE_KEY = "single";
 const ROOT_TITLE = "Chung";
 
@@ -59,12 +78,7 @@ const CHECK_LINE = /^( ?)[-*+][ \t]+\[([ xX])\][ \t]+(.*)$/;
 const SUB_CHECK = /^[-*+][ \t]+\[[ xX]\][ \t]+(.*)$/;
 const BULLET = /^(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
 const HEADING = /^(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/;
-const FENCE = /^[ \t]*(`{3,}|~{3,})/;
 const EXPLICIT_KEY = /[ \t]*\{#([A-Za-z0-9][\w.-]*)\}[ \t]*$/;
-// Chi tiết của từng mục checklist nằm trong body dưới dòng này để bộ ghi đặt lại đúng dưới mục.
-const DETAIL_MARK = /^#### (T\d{3,4}|\d+)$/;
-const PROJECT_LINE =
-  /^[ \t]*(?:[-*][ \t]+)?(?:\*\*|__)?(?:dự án|project)(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?[ \t]*`?(?:\[?@)?([A-Za-z0-9][\w.-]*)\]?`?[ \t]*(?:\*\*|__)?[ \t]*\.?[ \t]*$/iu;
 const PROJECT_TAG = /\[@([A-Za-z0-9][\w.-]*)\]/g;
 const DEP_LABEL =
   /(?:\*\*|__)?(?<![\p{L}\p{N}])(?:phụ thuộc|depends on|dependencies)(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?([^·]*?)[ \t]*(?:·[ \t]*|$)/iu;
@@ -137,18 +151,43 @@ export function parseBreakdown(
   context: BreakdownContext,
 ): BreakdownResult {
   const { parser, granularity } = decomposition;
-  if (!SUPPORTED.includes(parser)) return fail([{ line: 0, message: `Bộ đọc “${parser}” chưa có.` }]);
+  if (!BREAKDOWN_GRANULARITIES[parser].includes(granularity)) {
+    return fail([{ line: 0, message: `Bộ đọc “${parser}” không tách theo độ mịn “${granularity}”.` }]);
+  }
+  const dialect = DIALECTS[parser];
+  if (!dialect || granularity === "single") return read(markdown, decomposition, context, HIVE_READ);
+  const t = dialect.translate(markdownLines(markdown));
+  // Story/Unit dịch từ tiêu đề: dòng chữ ngay dưới là mô tả, không phải phần tiếp của tiêu đề.
+  const result = read(t.text, decomposition, context, { mergeTitle: false, example: dialect.example });
+  return result.ok
+    ? { ...result, breakdown: restoreBreakdown(result.breakdown, t) }
+    : fail(restoreErrors(result.errors, t, dialect));
+}
+
+interface ReadOptions {
+  mergeTitle: boolean;
+  example: string;
+}
+const HIVE_READ: ReadOptions = { mergeTitle: true, example: "- [ ] T001 Mô tả" };
+
+function read(
+  markdown: string,
+  decomposition: Decomposition,
+  context: BreakdownContext,
+  options: ReadOptions,
+): BreakdownResult {
+  const { parser, granularity } = decomposition;
   const requirementsOf = requirementScanner(decomposition.requirementId);
   if (!requirementsOf) return fail([{ line: 0, message: "Mẫu mã requirement không phải regex hợp lệ." }]);
 
   // Chế độ một task nhận cả checklist thường khi tài liệu không có mã T### (bugfix, small).
   const generic = granularity === "single" && !/^ ?[-*+][ \t]+\[[ xX]\][ \t]+T\d{3,4}(?![\w-])/m.test(markdown);
-  const doc = lex(markdown, generic);
+  const doc = lex(markdown, generic, options.mergeTitle);
   const errors = doc.errors;
   const err = (line: number, message: string) => errors.push({ line, message: `Dòng ${line}: ${message}` });
 
   if (doc.items.length === 0 && granularity !== "single") {
-    errors.push({ line: 0, message: "Không tìm thấy dòng task nào (dạng “- [ ] T001 Mô tả”)." });
+    errors.push({ line: 0, message: `Không tìm thấy dòng task nào (dạng “${options.example}”).` });
     return fail(errors);
   }
 
@@ -376,12 +415,8 @@ function checklistOf(items: readonly Item[], requirementsOf: (texts: readonly st
 
 // ---- Lexer ------------------------------------------------------------------------------------------------------
 
-function lex(markdown: string, generic: boolean): Doc {
-  const lines = markdown
-    .replace(/\r\n?/g, "\n")
-    .normalize("NFC")
-    .split("\n")
-    .map((l) => l.replace(/^[ \t]+/, (ws) => ws.replace(/\t/g, "    ")));
+function lex(markdown: string, generic: boolean, mergeTitle: boolean): Doc {
+  const lines = markdownLines(markdown);
   const root: Node = { level: 0, title: "", key: null, line: 0, parent: null, project: null, deps: [] };
   const doc: Doc = { root, items: [], texts: [], errors: [] };
   let node = root;
@@ -439,7 +474,7 @@ function lex(markdown: string, generic: boolean): Doc {
       const indent = (task?.[1] ?? check?.[1] ?? "").length;
       const id = task ? (task[3] ?? "") : String(++genericCount);
       const rest = task ? (task[4] ?? "") : (check?.[3] ?? "");
-      i = readItem(doc, lines, i, indent, id, rest, node);
+      i = readItem(doc, lines, i, { indent, id, rest, node, mergeTitle });
       continue;
     }
     const project = PROJECT_LINE.exec(raw);
@@ -473,10 +508,7 @@ function readItem(
   doc: Doc,
   lines: readonly string[],
   start: number,
-  indent: number,
-  id: string,
-  rest: string,
-  node: Node,
+  { indent, id, rest, node, mergeTitle }: { indent: number; id: string; rest: string; node: Node; mergeTitle: boolean },
 ): number {
   const line = start + 1;
   const base = indent + 2;
@@ -497,7 +529,7 @@ function readItem(
     if (indentOf(l) < base) break;
     const text = l.slice(base);
     // Dòng thụt vào ngay sau dòng task mà không phải gạch đầu dòng là phần mô tả bị xuống dòng.
-    if (raw.length === 0 && !BULLET.test(text)) title += ` ${text.trim()}`;
+    if (mergeTitle && raw.length === 0 && !BULLET.test(text)) title += ` ${text.trim()}`;
     else raw.push({ text, line: j + 1 });
     j++;
   }
@@ -598,13 +630,18 @@ function refsOf(clause: string, line: number, owner: string | null): Ref[] {
  * dưới một tiêu đề; dự án ghi bằng thẻ).
  */
 export function writeBreakdown(breakdown: Breakdown, parser: BreakdownParser, homeProject?: string): string {
-  if (!SUPPORTED.includes(parser)) throw new Error(`Bộ ghi “${parser}” chưa có.`);
+  if (!BREAKDOWN_GRANULARITIES[parser].includes(breakdown.granularity)) {
+    throw new Error(`Bộ ghi “${parser}” không ghi độ mịn “${breakdown.granularity}”.`);
+  }
   const showProject = (key: string) => homeProject === undefined || key !== homeProject;
   const ids = new TaskIds(breakdown.tasks);
+  const dialect = DIALECTS[parser];
   const out =
-    breakdown.granularity === "item"
-      ? writeItems(breakdown.tasks, parser, ids, showProject)
-      : writeSections(breakdown, ids, showProject);
+    dialect && breakdown.granularity !== "single"
+      ? dialect.write(breakdown, showProject)
+      : breakdown.granularity === "item"
+        ? writeItems(breakdown.tasks, parser, ids, showProject)
+        : writeSections(breakdown, ids, showProject);
   return `${out
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
@@ -681,25 +718,6 @@ function writeSections(breakdown: Breakdown, ids: TaskIds, showProject: (key: st
     out.push("");
   }
   return out;
-}
-
-function splitBody(body: string): { preamble: string[]; blocks: Map<string, string[]> } {
-  const lines = body === "" ? [] : body.split("\n");
-  const preamble: string[] = [];
-  const blocks = new Map<string, string[]>();
-  let current: string[] | null = null;
-  for (const l of lines) {
-    const m = DETAIL_MARK.exec(l);
-    if (m) {
-      current = [];
-      blocks.set(m[1] ?? "", current);
-    } else (current ?? preamble).push(l);
-  }
-  for (const [id, block] of blocks) {
-    const text = normalizeBlock(block);
-    blocks.set(id, text === "" ? [] : text.split("\n"));
-  }
-  return { preamble, blocks };
 }
 
 /** Mã T### tiếp theo chưa dùng trong bản tách. */
@@ -785,11 +803,13 @@ export function findRequirements(markdown: string, pattern: string): string[] | 
 
 function requirementScanner(pattern: string): ((texts: readonly string[]) => string[]) | null {
   let re: RegExp;
+  // `_` chỉ là một phần của tên khi dính chữ/số (`x_FR-001`); `_1.1_` là chữ nghiêng của Markdown (Kiro ghi
+  // `_Requirements: 1.1_`).
   try {
-    re = new RegExp(`(?<![\\p{L}\\p{N}_])(?:${pattern})(?![\\p{L}\\p{N}_])`, "gu");
+    re = new RegExp(`(?<![\\p{L}\\p{N}]|[\\p{L}\\p{N}]_)(?:${pattern})(?![\\p{L}\\p{N}]|_[\\p{L}\\p{N}])`, "gu");
   } catch {
     try {
-      re = new RegExp(`(?<![A-Za-z0-9_])(?:${pattern})(?![A-Za-z0-9_])`, "g");
+      re = new RegExp(`(?<![A-Za-z0-9]|[A-Za-z0-9]_)(?:${pattern})(?![A-Za-z0-9]|_[A-Za-z0-9])`, "g");
     } catch {
       return null;
     }
@@ -843,41 +863,6 @@ function slug(text: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80)
     .replace(/-+$/, "");
-}
-
-/** Gộp dòng trống liền nhau, bỏ dòng trống và `---` ở hai đầu: body đọc lại sau khi ghi không đổi. */
-function normalizeBlock(lines: readonly string[]): string {
-  const out: string[] = [];
-  for (const l of lines.map((x) => x.trimEnd())) {
-    if (l === "" && (out.length === 0 || out[out.length - 1] === "")) continue;
-    out.push(l);
-  }
-  const rule = (l: string | undefined) => l === "" || (l !== undefined && /^(?:-{3,}|\*{3,}|_{3,})$/.test(l));
-  while (out.length > 0 && rule(out[0])) out.shift();
-  while (out.length > 0 && rule(out[out.length - 1])) out.pop();
-  return out.join("\n");
-}
-
-/** Tiêu đề trong body phải sâu hơn tiêu đề phần (`##`), nếu không bộ đọc coi nó là phần mới. */
-function demote(lines: readonly string[]): string[] {
-  let fence = false;
-  return lines.map((l) => {
-    if (FENCE.test(l)) fence = !fence;
-    const h = fence ? null : /^(#{1,2})([ \t].*)$/.exec(l);
-    return h ? `###${h[2]}` : l;
-  });
-}
-
-function indent(lines: readonly string[]): string[] {
-  return lines.map((l) => (l === "" ? "" : `  ${l}`));
-}
-
-function oneLine(text: string): string {
-  return text.replace(/\s*\n\s*/g, " ").trim();
-}
-
-function indentOf(line: string): number {
-  return /^ */.exec(line)?.[0].length ?? 0;
 }
 
 function emptyBullet(text: string): boolean {
