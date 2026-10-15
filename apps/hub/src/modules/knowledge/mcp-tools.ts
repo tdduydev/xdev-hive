@@ -9,6 +9,7 @@ import {
   SKILL_MAX_CHARS,
   type SkillSummary,
   SUGGESTION_MAX_CHARS,
+  scopeLevel,
   skillName,
 } from "@xdev-hive/contracts";
 import { z } from "zod";
@@ -18,6 +19,7 @@ import { BadRequestError, ForbiddenError, NotFoundError, type Tx } from "../plat
 import { loadTask } from "../tasks/index.ts";
 import type { Principal } from "./access.ts";
 import { projectContext, readerFor } from "./access.ts";
+import { searchDocs } from "./doc-search.ts";
 import { getDoc, listDocs } from "./docs.ts";
 import { addComment, createSuggestion, draftForAgent } from "./editor.ts";
 import { embedQuery, type KnowledgeDeps, searchMemory, writeMemory } from "./memory.ts";
@@ -215,6 +217,34 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
         nextOffset,
       };
     },
+  });
+
+  registry.register({
+    name: "doc_search",
+    title: "Tìm tài liệu",
+    description: "Tìm đoạn tài liệu theo từ khoá và theo nghĩa.",
+    input: z.object({
+      query: z.string().trim().min(1).max(2000).describe("Câu hoặc từ khoá cần tìm."),
+      scope: scopeLevel.optional(),
+      project: PROJECT,
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MCP_LIMITS.searchMax)
+        .optional()
+        .describe(`Số kết quả, mặc định ${MCP_LIMITS.searchDefault}.`),
+    }),
+    readOnly: true,
+    // Gọi API embeddings trước, ngoài transaction, như memory_search.
+    prepare: ({ query }) => embedQuery(deps.embedder, query),
+    handler: async ({ query, scope, project, limit }, { tx, principal }, queryEmbedding) =>
+      searchDocs(
+        tx,
+        await knowledgePrincipal(tx, principal),
+        { query, scope, project, limit: limit ?? MCP_LIMITS.searchDefault },
+        { embedder: deps.embedder, queryEmbedding },
+      ),
   });
 
   registry.register({
