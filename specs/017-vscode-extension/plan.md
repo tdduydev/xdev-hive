@@ -2,7 +2,12 @@
 
 **Branch**: `017-vscode-extension` · **Date**: 2026-10-15 · **Spec**: [spec.md](spec.md) · **Research**: [research.md](research.md)
 
-Mọi lựa chọn ghi **[Giả định]** đi theo khuyến nghị ở câu hỏi Q1–Q9 của spec, chờ chủ dự án xác nhận.
+Chủ dự án chốt Q1–Q9 ngày 2026-10-15 (spec mục "Câu hỏi đã chốt"):
+- Q1: phát hành công khai trên Marketplace và Open VSX ngay từ bản đầu. Không có kênh VSIX nội bộ;
+- Q5: bình luận review đồng bộ hai chiều với PR GitHub/GitLab;
+- các câu khác giữ khuyến nghị.
+
+Những chỗ còn ghi **[Giả định]** là chi tiết thiết kế agent tự chọn, chưa có ý kiến của chủ dự án.
 
 ## Tóm tắt
 
@@ -12,7 +17,9 @@ Thêm `apps/vscode`, một extension VS Code viết bằng TypeScript và build 
 - binary Go `hive`, `hive-worker` cho keychain, MCP stdio, worker và context pack.
 
 Phần mới ở chỗ khác:
-- **hub**: bình luận theo dòng cho review code (bảng, API, RLS); route phát VSIX nội bộ;
+- **hub**: bình luận theo dòng cho review code (bảng, API, RLS); đồng bộ hai chiều bình luận với PR GitHub/GitLab qua
+  module `scm` (API bình luận PR, webhook mới, job đẩy và kéo);
+- **phát hành**: publisher `xdev`, CI đăng Marketplace và Open VSX, README, giấy phép, chính sách quyền riêng tư;
 - **worker (Go)**: `hive auth`, `hive mcp`, op socket `worker.status`, `hive-worker context-pack`, liên kết `hive` vào
   `~/.xdev-hive/bin`;
 - **package `code-review`**: hiện luồng bình luận trên web và desktop.
@@ -36,12 +43,12 @@ Phần mới ở chỗ khác:
 
 | Quy tắc | Cách tuân |
 |---|---|
-| Module hub chỉ import qua `index.ts` | Bình luận review nằm trong module `codereview` (T008). Không có import chéo mới |
-| Bảng mới bật và ép RLS | `code_review_comments` có policy theo `org_id`. `rls.db.test.ts` phủ bảng mới |
-| Đổi contracts thì chạy `pnpm openapi` | T008, T027 commit `openapi.json` |
+| Module hub chỉ import qua `index.ts` | Bình luận review nằm trong module `codereview` (T008). Đồng bộ PR (T034) gọi `scm` qua `scm/index.ts`, như `codereview/scm.ts` đang làm |
+| Bảng mới bật và ép RLS | `code_review_comments`, `code_review_comment_links` có policy theo `org_id`. `rls.db.test.ts` phủ bảng mới |
+| Đổi contracts thì chạy `pnpm openapi` | T008, T034 commit `openapi.json` |
 | Import ghi đuôi `.ts` (hub); web/desktop dùng alias | `apps/vscode` dùng alias `@/…` cho `src` (esbuild `alias`, tsconfig `paths`), không `../` |
 | Chữ giao diện tiếng Việt | Từ điển `src/lib/i18n.ts`; `package.nls.json` tiếng Việt |
-| Không commit secret | `VSCE_PAT`, `OVSX_PAT` chỉ ở GitHub secret. Khoá công khai ECDSA được phép commit |
+| Không commit secret | `VSCE_PAT`, `OVSX_PAT` chỉ ở secret của GitHub environment `vscode-publish`. Khoá công khai ECDSA được phép commit |
 | ADR cho quyết định lớn | T001 viết ADR 0027 "Extension VS Code" |
 
 ## Kiến trúc
@@ -94,7 +101,8 @@ apps/vscode/
 ├── vitest.config.ts
 ├── scripts/build.ts          # esbuild extension + webview, Tailwind CLI, chép thư viện artifact
 ├── .vscodeignore
-├── README.md · CHANGELOG.md · media/icon.png · media/hive.svg
+├── README.md · CHANGELOG.md · LICENSE · PRIVACY.md · media/icon.png · media/hive.svg
+├── walkthrough/              # Markdown các bước "Bắt đầu với xDev Hive" (FR-051)
 ├── src/
 │   ├── extension.ts          # activate(): nối các phần; mỗi phần một dòng đăng ký
 │   ├── lib/                  # log.ts (che token), i18n.ts, config.ts, redact.ts, exec.ts (chạy binary, không shell)
@@ -109,8 +117,7 @@ apps/vscode/
 │   ├── mcp/                  # provider.ts, writers/{claude,cursor,windsurf}.ts, state.ts
 │   ├── terminal/             # profiles.ts
 │   ├── codelens/             # tasks-md.ts, symbols.ts, hover.ts, scope-index.ts
-│   ├── local/                # optimize.ts, memory.ts, context-pack.ts
-│   └── update/               # internal-channel.ts (chỉ khi cài từ kênh nội bộ)
+│   └── local/                # optimize.ts, memory.ts, context-pack.ts
 ├── webview/
 │   ├── main.tsx              # router theo `screen` trong state ban đầu
 │   ├── bridge.ts             # fetch giả → postMessage; clipboard, download, openExternal
@@ -198,7 +205,10 @@ code_review_comments(
   thread_id uuid not null,            -- = id của bình luận đầu luồng
   path text not null, line int not null, side text check (side in ('old','new')),
   head_sha text not null, body text not null check (length(body) <= 20000),
-  author_id uuid not null, created_at timestamptz, edited_at timestamptz,
+  author_id uuid,                     -- null khi bình luận đến từ nhà cung cấp
+  origin text not null default 'hive' check (origin in ('hive','github','gitlab')),
+  external_author text,               -- login phía nhà cung cấp khi origin <> 'hive'
+  created_at timestamptz, edited_at timestamptz, deleted_at timestamptz,
   resolved_at timestamptz, resolved_by uuid
 )
 -- RLS: enable + force; policy org_id = current_setting('hive.org_id')::uuid
@@ -211,10 +221,17 @@ Hợp đồng `codeReviews.comments`:
 | `list` | `{reviewId}` | `{threads: [{id, path, line, side, headSha, outdated, resolved, comments[]}]}`. `outdated` = `headSha` khác head hiện tại **và** dòng nằm trong phần đổi giữa hai SHA **[Giả định: bản đầu chỉ so SHA]** |
 | `add` | `{reviewId, path, line, side, headSha, body}` | luồng mới |
 | `reply` | `{threadId, body}` | bình luận |
+| `edit` | `{commentId, body}` | bình luận |
+| `delete` | `{commentId}` | `{ok}` (xoá mềm) |
 | `resolve` / `reopen` | `{threadId}` | luồng |
+| `retrySync` | `{commentId}` | bình luận (T034; chỉ tác giả, chỉ khi `syncState = failed`) |
 
-Quyền: ai xem được review thì bình luận được. Sửa và xoá chỉ cho tác giả (để sau, không có trong bản đầu). Audit:
-`code_review.comment.add|reply|resolve|reopen`. Hộp thư: người giao việc và reviewer khác nhận "Có bình luận mới".
+Mỗi bình luận trong `list` có `origin`, `externalAuthor`, `syncState`, `providerUrl`. T008 khai báo các trường đồng bộ
+dạng tuỳ chọn và trả `null`; T034 điền giá trị.
+
+Quyền: ai xem được review thì bình luận được. Sửa và xoá chỉ cho tác giả, và chỉ với bình luận `origin = 'hive'`. Audit:
+`code_review.comment.add|reply|edit|delete|resolve|reopen`. Hộp thư: người giao việc và reviewer khác nhận "Có bình luận
+mới".
 
 **Extension (T018)**:
 - `git.ts`: tìm repo khớp `repoUrl` của dự án trong workspace (`vscode.git` extension API nếu có, không thì
@@ -227,7 +244,80 @@ Quyền: ai xem được review thì bình luận được. Sửa và xoá chỉ
 - Nút Duyệt/Trả lại ở `editor/title` khi tài liệu là `hive-review:`, và ở tree Chờ duyệt.
 
 **Web và desktop (T014)**: `FileDiff` nhận thêm `threads?`, `onAddComment?`, `onReply?`, `onResolve?`. Không truyền gì
-thì giữ hành vi cũ. Web `code-reviews-tab.tsx` và desktop `reviews-screen.tsx` nối API.
+thì giữ hành vi cũ. Web `code-reviews-tab.tsx` và desktop `reviews-screen.tsx` nối API. `CommentThread` hiện nhãn nguồn
+("GitHub", "GitLab"), trạng thái đồng bộ và nút "Thử lại" khi các trường đó có giá trị (FR-045). T018 hiện cùng thông tin
+trong VS Code bằng `Comment.label` và `contextValue`.
+
+### 4b. Đồng bộ bình luận với PR GitHub/GitLab (US11, FR-038…FR-046)
+
+```mermaid
+sequenceDiagram
+  participant U as Người dùng (VS Code/web)
+  participant H as Hub codereview
+  participant Q as pg-boss codereview.comment-sync
+  participant S as scm GitProvider
+  participant G as GitHub/GitLab
+  U->>H: comments.add
+  H->>H: lưu bình luận + link state=pending
+  H->>Q: enqueue {prKey}
+  Q->>S: createReviewComment(body + dấu ẩn)
+  S->>G: POST
+  G-->>H: webhook pull_request_review_comment (có thể tới trước)
+  H->>H: thấy dấu ẩn / provider id đã liên kết → bỏ qua
+  S-->>Q: {id, threadId, url}
+  Q->>H: link state=synced
+  G-->>H: webhook bình luận của người ngoài Hive
+  H->>H: tạo bình luận origin=github, link state=synced (không enqueue đẩy ra)
+```
+
+**scm (T033)**: thêm vào `GitProvider` (`types.ts`):
+
+| Thao tác | GitHub | GitLab |
+|---|---|---|
+| `listReviewComments(ref, pr)` | REST `GET /pulls/{n}/comments` (phân trang) + GraphQL `reviewThreads` (id luồng, `isResolved`) | `GET /merge_requests/{iid}/discussions` |
+| `createReviewComment(ref, pr, {path, line, side, commitSha, body})` | `POST /pulls/{n}/comments` (`side: LEFT\|RIGHT`, `commit_id`) | `POST .../discussions` với `position` (`diff_refs` từ `GET .../versions` khớp `head_sha`) |
+| `replyReviewComment(ref, pr, threadId, body)` | `POST /pulls/{n}/comments/{id}/replies` | `POST .../discussions/{id}/notes` |
+| `editReviewComment` / `deleteReviewComment` | `PATCH` / `DELETE /pulls/comments/{id}` | `PUT` / `DELETE .../discussions/{d}/notes/{id}` |
+| `setReviewThreadResolved(ref, pr, threadId, resolved)` | GraphQL `resolveReviewThread` / `unresolveReviewThread` | `PUT .../discussions/{id}?resolved=` |
+
+- Lỗi 422 "line not part of the diff" (GitHub) và 400 vị trí sai (GitLab) thành mã lỗi mới `position_invalid` của
+  `GitProviderError`, để T034 rơi về bình luận chung (`commentOnIssue` có sẵn).
+- `MemoryProvider` giữ bình luận trong bộ nhớ và cho test bắn sự kiện webhook tương ứng. `local` ném `unsupported`.
+- `WebhookEvent` thêm `pull_request_review_comment`. Parser trong `events.ts`:
+  - GitHub `pull_request_review_comment` (`created|edited|deleted`), `pull_request_review_thread`
+    (`resolved|unresolved`);
+  - GitLab `note` có `noteable_type = MergeRequest` và `position`; sửa hoặc xoá note đến qua cùng loại sự kiện
+    **[Chưa kiểm: GitLab có gửi webhook khi xoá note không; không có thì job đối chiếu bù]**.
+- `checkAccess` báo thiếu quyền ghi PR (`pull_requests: write` với GitHub App; `repo` hoặc fine-grained Pull requests
+  với PAT; scope `api` với GitLab).
+- Job chạy một lần `scm.webhooks.refresh`: gọi `addWebhook` cho mọi kết nối đang có webhook, để thêm sự kiện mới. Gọi
+  lại nhiều lần không sao vì `addWebhook` cập nhật webhook cùng URL.
+
+**codereview (T034)**:
+- Bảng `code_review_comment_links` (spec, Key Entities). Khoá duy nhất `(connection_id, provider_comment_id)` và
+  `(comment_id)`.
+- Đẩy ra (`comment-sync.ts`):
+  - `add`, `reply`, `edit`, `delete`, `resolve`, `reopen` ở hub ghi link `pending` trong cùng giao dịch, rồi enqueue job
+    theo khoá PR (`singletonKey` của pg-boss) để gom các thay đổi của một PR;
+  - job đọc các link `pending` theo thứ tự tạo. Trả lời chỉ đẩy khi bình luận đầu luồng đã `synced`;
+  - thân đẩy ra = `**<tên>** (qua xDev Hive):\n\n<body>\n\n<!-- xdev-hive:c=<commentId> -->`.
+- Nhận về (`comment-sync-in.ts`, đăng ký trong `registerCodeReviewScm`):
+  - tìm link theo `provider_comment_id`. Không có thì đọc dấu ẩn trong thân. Có dấu ẩn của bình luận Hive thì chỉ điền
+    id vào link, không tạo bình luận mới;
+  - không có cả hai: tạo bình luận `origin = github|gitlab` vào phiên review đang mở của PR (theo `project` + số PR). Trả
+    lời gắn vào luồng theo `provider_thread_id`;
+  - so `body_hash` và `provider_updated_at` trước khi ghi, để webhook giao lại không đổi gì.
+- Đối chiếu (`comment-sync-reconcile`): mỗi 10 phút, với phiên review đang mở và đồng bộ bật, gọi
+  `listReviewComments` và chạy cùng đường nhận về. Bình luận có link `inline` nhưng không còn trên PR thì xoá mềm (link `fallback` không nằm trong danh sách
+  này nên bỏ qua).
+- Giới hạn tốc độ: đếm lời gọi ghi theo `connection_id` trong cửa sổ 60 giây (bảng đếm hoặc `pg-boss` `throttle`
+  **[Giả định: chọn cách ở T034]**). `rate_limited` thì `startAfter = now + retryAfterMs`. Lỗi khác thử lại tối đa 5 lần với backoff,
+  rồi `failed`.
+- Cài đặt: `features.prCommentSync` trong `ProjectSettings` (`packages/contracts/src/projects.ts`). Bật khi chưa từng đặt
+  và kết nối đủ quyền.
+
+**Web (T035)**: trang cài đặt dự án có công tắc "Đồng bộ bình luận review với GitHub/GitLab", hiện quyền còn thiếu của
+kết nối và số bình luận đang lỗi đồng bộ.
 
 ### 5. Chat participant (US4, FR-008…FR-012)
 
@@ -344,15 +434,30 @@ minh.
 |---|---|---|
 | VS Code Marketplace (`xdev.xdev-hive`) | VS Code, Insiders | Editor tự cập nhật |
 | Open VSX (`xdev/xdev-hive`) | Cursor, Windsurf, VSCodium | Editor tự cập nhật **[Chưa kiểm với từng editor]** |
-| Nội bộ (hub) | Mọi editor, khi chưa đăng công khai (Q1) | `update/internal-channel.ts`: mỗi 24 giờ gọi `GET /api/v1/vscode/updates/latest`, tải VSIX, kiểm sha256 và ECDSA, hỏi người dùng, rồi `workbench.extensions.installExtension` với URI file **[Chưa kiểm: lệnh nhận URI file VSIX ở 1.101]** |
+| GitHub Release | Cài tay bằng file VSIX khi máy không vào được hai chợ trên | Không tự cập nhật |
 
-- Extension biết mình cài từ kênh nào bằng cờ build `HIVE_CHANNEL` (esbuild `define`): bản Marketplace/Open VSX không có
-  mã cập nhật nội bộ.
-- `.github/workflows/vscode.yml`:
-  - PR đổi `apps/vscode/**`, `packages/**`: lint, typecheck, test, test tích hợp (xvfb), `vsce package`;
-  - tag `vscode-v*`: build hai kênh, ký bản nội bộ (secret ECDSA như release worker), `vsce publish` / `ovsx publish` nếu
-    có `VSCE_PAT`/`OVSX_PAT`, đính VSIX vào Release.
-- Hub (T027): bảng hoặc thư mục phát hành như desktop updates. Hub đọc manifest đã ký và phát `latest`.
+Không có kênh nội bộ do hub phát (Q1). Extension không có mã tải hay cài VSIX.
+
+**Chuẩn bị (T036, việc của chủ dự án, không giao agent)**:
+- tạo publisher `xdev` trên VS Code Marketplace (Azure DevOps). Tên đã có người giữ thì báo lại để chọn tên khác trước
+  khi T003 ghi manifest;
+- ký Eclipse Publisher Agreement và tạo namespace `xdev` trên Open VSX (`ovsx create-namespace xdev`);
+- tạo `VSCE_PAT` (scope Marketplace "Manage", tổ chức "All accessible organizations", hạn ≤ 90 ngày) và `OVSX_PAT`;
+- tạo GitHub environment `vscode-publish`: người duyệt bắt buộc, chỉ cho tag `vscode-v*`, lưu hai PAT làm secret của
+  environment. Không ghi PAT ở đâu khác.
+
+**Gói đăng (T037)**: README (bảng tính năng "cần hub" / "chạy tại máy", ảnh màn, đăng nhập, MCP, Remote, quyền riêng
+tư), CHANGELOG, `LICENSE` (FR-052), `PRIVACY.md` (FR-050), icon 128×128, walkthrough (FR-051). Manifest: `publisher`,
+`license`, `homepage`, `bugs`, `categories` (`AI`, `Chat`, `SCM Providers`, `Other`), `keywords`, `galleryBanner`,
+`pricing: "Free"`. Repo đang private nên không có trường `repository`; `vsce` cần cờ `--allow-missing-repository`
+**[Chưa kiểm với vsce 4.0]**.
+
+**`.github/workflows/vscode.yml` (T029)**:
+- PR đổi `apps/vscode/**`, `packages/**`: lint, typecheck, test, test tích hợp (xvfb), `vsce package`, rồi kiểm VSIX:
+  `vsce ls` không có `*.map`, `test/`, `.env*`; `unzip -p` toàn bộ không khớp `hive_pat_`; kích thước ≤ 8 MB;
+- tag `vscode-v*` (job dùng environment `vscode-publish`): kiểm bản trong tag khớp `package.json`, build, `vsce publish
+  --packagePath`, `ovsx publish --packagePath` cùng một file VSIX, đính VSIX vào Release. Thiếu secret thì job lỗi;
+- bản thử trước (pre-release) dùng `vsce publish --pre-release` với tag `vscode-v*-pre` **[Giả định]**.
 
 ### 12. Bảo mật
 
@@ -365,6 +470,11 @@ minh.
 | Binary tải về bị tráo | ECDSA + sha256; chỉ tải từ hub đã cấu hình hoặc GitHub Release của repo |
 | Model gửi dữ liệu ra ngoài | Chỉ gửi khi người dùng gõ lệnh; che bí mật; bỏ file loại trừ |
 | Telemetry | Không có |
+| PAT đăng Marketplace/Open VSX bị lộ, kẻ xấu đẩy bản độc hại | PAT chỉ trong environment `vscode-publish` có người duyệt; hạn ≤ 90 ngày; job publish chỉ chạy trên tag |
+| Mạo danh tên trên Open VSX | Giữ namespace `xdev` ngay ở Đợt 0 (T036) |
+| Người ngoài viết bình luận trên PR có mã độc (Markdown, HTML) | Hub lưu nguyên văn. Web và desktop hiện bằng renderer Markdown chặn HTML thô **[Chưa kiểm renderer của `code-review`; T014 kiểm]**. VS Code hiện `MarkdownString` với `isTrusted = false`, `supportHtml = false` |
+| Giả dấu ẩn `<!-- xdev-hive:c=<id> -->` để ghép bình luận vào luồng người khác | Dấu ẩn chỉ dùng để nhận bình luận do chính kết nối đăng: tác giả phía nhà cung cấp phải là tài khoản của kết nối, và `id` phải là bình luận đang `pending` của cùng PR |
+| Webhook giả | Kiểm chữ ký webhook như hiện có (`scm/verify.ts`) |
 
 ## Phương án đã cân nhắc
 
@@ -376,8 +486,13 @@ minh.
 | MCP cho công cụ ngoài | stdio `hive mcp` | HTTP + header trong file | Không có token chữ thường |
 | Diff review | `git show` tại máy + `vscode.diff` | Dựng file từ patch của hub | Có điều hướng code, xem cả file |
 | Một hay nhiều VSIX | Một VSIX chung | VSIX theo nền tảng có binary | Q3 |
+| Kênh phát hành | Marketplace + Open VSX từ bản đầu | Kênh VSIX nội bộ do hub phát | Q1 |
+| Đồng bộ PR: tác giả trên PR | Tài khoản của kết nối Git, ghi tên người Hive trong thân | OAuth từng người với GitHub/GitLab | Không phải lưu token nhà cung cấp của từng người; làm được với kết nối hiện có |
+| Đồng bộ PR: nhận thay đổi | Webhook + job đối chiếu 10 phút | Chỉ hỏi lại định kỳ | Webhook đã có ở `scm`; đối chiếu bù webhook mất |
+| Đồng bộ PR: chống lặp | Bảng liên kết + dấu ẩn trong thân | Chỉ so nội dung | Webhook có thể về trước phản hồi API; so nội dung không phân biệt được hai bình luận giống nhau |
 
 ## Ước lượng tổng
 
-Khoảng **54,5 ngày-agent** cho 32 task (xem tasks.md). Với 5–6 agent chạy song song theo đợt, ước **15 ngày lịch** cho
-P1 + P2 **[Suy luận, dựa theo tốc độ các spec 012, 015]**.
+Khoảng **60,5 ngày-agent** cho 34 task giao agent, cộng T036 do chủ dự án làm (xem tasks.md; T027, T028 đã bỏ theo
+Q1). Với 5–6 agent chạy song song theo đợt, ước **17–18 ngày lịch** cho P1 + P2 **[Suy luận, dựa theo tốc độ các spec
+012, 015]**.
