@@ -1,5 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import type { RemoteMachine } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
+import { Button } from "@xdev-hive/ui/button";
 import { Pill } from "@xdev-hive/ui/pill";
 import { SmartphoneIcon } from "lucide-react";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
@@ -17,7 +20,18 @@ import { RemoteSessionRow } from "./session-row.tsx";
 
 const text: Dict<
   Record<
-    "title" | "description" | "machines" | "sessions" | "live" | "ended" | "emptyTitle" | "emptyBody" | "noMachines",
+    | "title"
+    | "description"
+    | "machines"
+    | "sessions"
+    | "live"
+    | "ended"
+    | "emptyTitle"
+    | "emptyBody"
+    | "noMachines"
+    | "devices"
+    | "machineDevices"
+    | "http",
     string
   >
 > = {
@@ -32,6 +46,9 @@ const text: Dict<
     emptyTitle: "Chưa có phiên nào",
     emptyBody: "Chạy `hive` trên máy của bạn để mở phiên. Phiên xuất hiện ở đây và xem lại được bằng bản ghi.",
     noMachines: "Chưa có máy cá nhân nào. Cài và chạy hive-worker trên máy để máy hiện ở đây.",
+    devices: "Thiết bị đã ghép",
+    machineDevices: "Thiết bị",
+    http: "Hub chạy HTTP: nội dung phiên và phím gõ không được mã hoá trên đường truyền. Chỉ dùng trong mạng nội bộ.",
   },
   en: {
     title: "Remote control",
@@ -44,6 +61,9 @@ const text: Dict<
     emptyTitle: "No sessions yet",
     emptyBody: "Run `hive` on your machine to open one. Sessions show up here and can be replayed from the recording.",
     noMachines: "No personal machines yet. Install and run hive-worker on a machine to see it here.",
+    devices: "Paired devices",
+    machineDevices: "Devices",
+    http: "The hub runs on HTTP: session output and keystrokes are not encrypted in transit. Use it only on an internal network.",
   },
 };
 
@@ -82,8 +102,14 @@ const KIND: Record<MachineRemoteKind, { label: Dict<string>; hint: Dict<string> 
   },
 };
 
+const ROOTS: Dict<(n: number) => string> = {
+  vi: (n) => (n === 0 ? "Chưa cho phép thư mục nào" : `${n} thư mục được phép`),
+  en: (n) => (n === 0 ? "No folders allowed yet" : `${n} ${n === 1 ? "folder" : "folders"} allowed`),
+};
+
 function MachineCard({ machine }: { machine: RemoteMachine }) {
   const lang = useLang();
+  const t = useT(text);
   const kind = machineRemoteKind(machine);
   const view = KIND[kind];
   const running = machine.sessions.filter(isLive).length;
@@ -97,13 +123,24 @@ function MachineCard({ machine }: { machine: RemoteMachine }) {
         {running > 0 && <Pill tone="ok">{`${running} ${lang === "en" ? "running" : "đang chạy"}`}</Pill>}
       </div>
       {view.hint[lang] && <p className="text-xs text-muted-foreground">{view.hint[lang]}</p>}
+      {kind === "on" && machine.remote && (
+        <p className="text-xs text-muted-foreground">{ROOTS[lang](machine.remote.roots.length)}</p>
+      )}
+      <Link
+        to="/remote/devices"
+        search={{ machine: machine.id }}
+        aria-label={`${t.machineDevices}: ${machine.name}`}
+        className="inline-flex min-h-11 items-center justify-self-start text-primary hover:text-primary/90"
+      >
+        {t.machineDevices}
+      </Link>
     </li>
   );
 }
 
 /**
- * Trang Điều khiển từ xa (spec 010): máy cá nhân với trạng thái từ xa, và danh sách phiên (đang chạy trước). Trang này
- * chỉ xem và phát lại; bật từ xa, ghép thiết bị, thêm thư mục làm tại máy (FR-012), nên không có nút nào ở đây.
+ * Trang Điều khiển từ xa (spec 010): máy cá nhân với trạng thái từ xa, và danh sách phiên (đang chạy trước). Bật từ xa,
+ * bắt đầu ghép thiết bị, thêm thư mục làm tại máy (FR-012); ở đây chỉ xem, phát lại và gỡ thiết bị đã ghép.
  */
 export function RemotePage() {
   const t = useT(text);
@@ -119,8 +156,20 @@ export function RemotePage() {
 
   return (
     <>
-      <PageHeader title={t.title} description={t.description} />
+      <PageHeader title={t.title} description={t.description}>
+        <Button
+          variant="outline"
+          className="h-11"
+          nativeButton={false}
+          role="link"
+          render={<Link to="/remote/devices" search={{}} />}
+        >
+          {t.devices}
+        </Button>
+      </PageHeader>
       <PageBody>
+        {/* localhost cũng là secure context, nên cảnh báo chỉ hiện khi hub thật sự chạy HTTP. */}
+        {!window.isSecureContext && <Alert>{t.http}</Alert>}
         <section aria-labelledby="remote-machines" className="grid min-w-0 content-start gap-2">
           <h2 id="remote-machines" className="font-heading text-lg font-semibold">
             {t.machines}

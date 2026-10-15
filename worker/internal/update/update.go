@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -164,37 +165,49 @@ func (s Source) Latest(ctx context.Context) (string, error) {
 	return v, nil
 }
 
+// Binaries là các binary trong một file nén phát hành. Hive rỗng khi bản phát hành chưa có lệnh `hive` (bản cũ).
+type Binaries struct {
+	Worker []byte
+	Hive   []byte
+}
+
 // Download tải binary worker của một phiên bản cho nền tảng của Source, sau khi kiểm chữ ký checksums.txt và sha256
-// của file nén.
+// của file nén. Cần cả `hive` thì dùng DownloadAll.
 func (s Source) Download(ctx context.Context, version string) ([]byte, error) {
+	b, err := s.DownloadAll(ctx, version)
+	return b.Worker, err
+}
+
+// DownloadAll như Download nhưng trả cả `hive` khi file nén có.
+func (s Source) DownloadAll(ctx context.Context, version string) (Binaries, error) {
 	if !ValidVersion(version) {
-		return nil, fmt.Errorf("phiên bản không hợp lệ: %q", version)
+		return Binaries{}, fmt.Errorf("phiên bản không hợp lệ: %q", version)
 	}
 	base := strings.TrimRight(s.Releases, "/") + "/download/v" + version + "/"
 	sums, err := s.get(ctx, base+"checksums.txt", maxSmall)
 	if err != nil {
-		return nil, fmt.Errorf("tải checksums.txt: %w", err)
+		return Binaries{}, fmt.Errorf("tải checksums.txt: %w", err)
 	}
 	sig, err := s.get(ctx, base+"checksums.txt.sig", maxSmall)
 	if err != nil {
-		return nil, fmt.Errorf("tải checksums.txt.sig: %w", err)
+		return Binaries{}, fmt.Errorf("tải checksums.txt.sig: %w", err)
 	}
 	digest := sha256.Sum256(sums)
 	if s.PublicKey == nil || !ecdsa.VerifyASN1(s.PublicKey, digest[:], sig) {
-		return nil, errors.New("chữ ký của checksums.txt không hợp lệ; không cài bản này")
+		return Binaries{}, errors.New("chữ ký của checksums.txt không hợp lệ; không cài bản này")
 	}
 	asset := AssetName(s.GOOS, s.GOARCH)
 	want, ok := lookupChecksum(sums, asset)
 	if !ok {
-		return nil, fmt.Errorf("bản %s không có file cho %s/%s", version, s.GOOS, s.GOARCH)
+		return Binaries{}, fmt.Errorf("bản %s không có file cho %s/%s", version, s.GOOS, s.GOARCH)
 	}
 	archive, err := s.get(ctx, base+asset, maxArchive)
 	if err != nil {
-		return nil, fmt.Errorf("tải %s: %w", asset, err)
+		return Binaries{}, fmt.Errorf("tải %s: %w", asset, err)
 	}
 	got := sha256.Sum256(archive)
 	if hex.EncodeToString(got[:]) != want {
-		return nil, fmt.Errorf("sha256 của %s không khớp checksums.txt", asset)
+		return Binaries{}, fmt.Errorf("sha256 của %s không khớp checksums.txt", asset)
 	}
 	return extract(asset, archive)
 }
@@ -237,42 +250,72 @@ func lookupChecksum(sums []byte, name string) (string, bool) {
 	return "", false
 }
 
-func extract(asset string, archive []byte) ([]byte, error) {
+// extract lấy hive-worker và (nếu có) hive ra khỏi file nén. Thiếu hive không phải lỗi: bản phát hành trước khi có
+// lệnh `hive` chỉ chứa worker.
+func extract(asset string, archive []byte) (Binaries, error) {
+	var out Binaries
+	suffix := ""
 	if strings.HasSuffix(asset, ".zip") {
+		suffix = ".exe"
+	}
+	assign := func(name string, r io.Reader) error {
+		switch name {
+		case "hive-worker" + suffix:
+			data, err := readLimited(r)
+			out.Worker = data
+			return err
+		case "hive" + suffix:
+			data, err := readLimited(r)
+			out.Hive = data
+			return err
+		}
+		return nil
+	}
+	if suffix != "" {
 		zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 		if err != nil {
-			return nil, err
+			return Binaries{}, err
 		}
 		for _, f := range zr.File {
-			if path.Base(f.Name) != "hive-worker.exe" {
+			if f.FileInfo().IsDir() {
 				continue
 			}
 			rc, err := f.Open()
 			if err != nil {
-				return nil, err
+				return Binaries{}, err
 			}
-			defer rc.Close()
-			return readLimited(rc)
+			err = assign(path.Base(f.Name), rc)
+			rc.Close()
+			if err != nil {
+				return Binaries{}, err
+			}
 		}
-		return nil, fmt.Errorf("%s không có hive-worker.exe", asset)
-	}
-	gz, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return nil, err
-	}
-	tr := tar.NewReader(gz)
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("%s không có hive-worker", asset)
-		}
+	} else {
+		gz, err := gzip.NewReader(bytes.NewReader(archive))
 		if err != nil {
-			return nil, err
+			return Binaries{}, err
 		}
-		if h.Typeflag == tar.TypeReg && path.Base(h.Name) == "hive-worker" {
-			return readLimited(tr)
+		tr := tar.NewReader(gz)
+		for {
+			h, err := tr.Next()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				return Binaries{}, err
+			}
+			if h.Typeflag != tar.TypeReg {
+				continue
+			}
+			if err := assign(path.Base(h.Name), tr); err != nil {
+				return Binaries{}, err
+			}
 		}
 	}
+	if out.Worker == nil {
+		return Binaries{}, fmt.Errorf("%s không có hive-worker%s", asset, suffix)
+	}
+	return out, nil
 }
 
 func readLimited(r io.Reader) ([]byte, error) {
@@ -303,22 +346,109 @@ func Executable() (string, error) {
 	return exe, nil
 }
 
-// Install ghi binary mới cạnh exe, chạy thử `version` để chắc nó chạy được trên máy này và đúng phiên bản, rồi mới
-// thay exe.
+// Install thay riêng worker. Gói có cả `hive` thì dùng InstallAll.
 func Install(exe string, binary []byte, version string) error {
+	return InstallAll(exe, Binaries{Worker: binary}, version)
+}
+
+// InstallAll ghi binary mới cạnh exe, chạy thử `version` của từng file để chắc chúng chạy được trên máy này và đúng
+// phiên bản, rồi mới thay. Hỏng bước nào trước khi thay thì không file nào bị đổi. `hive` nằm cùng thư mục với worker
+// (install.sh và install.ps1 cài chung một thư mục); gói không có `hive` thì chỉ thay worker và để nguyên `hive` cũ.
+func InstallAll(exe string, b Binaries, version string) error {
 	dir := filepath.Dir(exe)
-	pattern := ".hive-worker-*.new"
+	cleanOld(exe)
+	worker, err := stage(dir, ".hive-worker-*.new", b.Worker, version, false)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(worker)
+	var hiveNew, hiveExe string
+	if b.Hive != nil {
+		hiveNew, err = stage(dir, ".hive-*.new", b.Hive, version, true)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(hiveNew)
+		hiveExe = filepath.Join(dir, "hive"+filepath.Ext(exe))
+	}
+	if hiveExe == "" {
+		return replace(worker, exe)
+	}
+	// Thay `hive` trước: nếu thay worker lỗi thì trả `hive` về bản cũ, để hai binary luôn cùng một bản (hive và worker
+	// nói chuyện qua giao thức cục bộ có phiên bản, lệch bản thì hive báo lỗi).
+	previous, readErr := os.ReadFile(hiveExe)
+	if err := replace(hiveNew, hiveExe); err != nil {
+		return err
+	}
+	if err := replace(worker, exe); err != nil {
+		if readErr == nil {
+			_ = restore(hiveExe, previous)
+		} else {
+			_ = os.Remove(hiveExe)
+		}
+		return err
+	}
+	return nil
+}
+
+// stage ghi binary ra file tạm cạnh đích rồi chạy thử `version`. hive in "hive <phiên bản>" ở dòng đầu và thoát khác
+// 0 khi worker chưa chạy, nên với hive chỉ đọc dòng đầu.
+func stage(dir, pattern string, binary []byte, version string, isHive bool) (string, error) {
 	if runtime.GOOS == "windows" {
 		// Windows chỉ chạy được file có đuôi .exe.
 		pattern += ".exe"
 	}
 	tmp, err := os.CreateTemp(dir, pattern)
 	if err != nil {
-		return fmt.Errorf("không ghi được vào %s (cài lại bằng install.sh hoặc chạy với quyền ghi thư mục này): %w", dir, err)
+		return "", fmt.Errorf("không ghi được vào %s (cài lại bằng install.sh hoặc chạy với quyền ghi thư mục này): %w", dir, err)
+	}
+	name := tmp.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			os.Remove(name)
+		}
+	}()
+	if _, err := tmp.Write(binary); err != nil {
+		tmp.Close()
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(name, 0o755); err != nil {
+		return "", err
+	}
+	out, err := exec.Command(name, "version").Output()
+	if err != nil && !(isHive && len(out) > 0) {
+		return "", fmt.Errorf("bản mới không chạy được trên máy này: %w", err)
+	}
+	if got := reportedVersion(string(out)); got != version {
+		return "", fmt.Errorf("bản tải về báo phiên bản %q, cần %q", got, version)
+	}
+	ok = true
+	return name, nil
+}
+
+// reportedVersion lấy phiên bản từ dòng đầu của `version`: "1.2.3" (hive-worker) hoặc "hive 1.2.3" (hive).
+func reportedVersion(out string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[len(fields)-1]
+}
+
+// restore ghi lại nội dung cũ của một file đã bị thay.
+func restore(exe string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(exe), ".hive-restore-*")
+	if err != nil {
+		return err
 	}
 	name := tmp.Name()
 	defer os.Remove(name)
-	if _, err := tmp.Write(binary); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -328,24 +458,24 @@ func Install(exe string, binary []byte, version string) error {
 	if err := os.Chmod(name, 0o755); err != nil {
 		return err
 	}
-	out, err := exec.Command(name, "version").Output()
-	if err != nil {
-		return fmt.Errorf("bản mới không chạy được trên máy này: %w", err)
-	}
-	if got := strings.TrimSpace(string(out)); got != version {
-		return fmt.Errorf("bản tải về báo phiên bản %q, cần %q", got, version)
-	}
 	return replace(name, exe)
 }
 
 // replace thay exe bằng file mới. Unix đổi tên đè lên được cả khi exe đang chạy. Windows không ghi đè được file đang
-// chạy nhưng đổi tên được, nên dời exe sang .old trước.
+// chạy nhưng đổi tên được, nên dời exe sang .old trước; .old của lần trước còn bị khoá (bản cũ đang chạy) thì dời sang
+// tên khác và dọn ở lần cập nhật sau.
 func replace(src, exe string) error {
 	if runtime.GOOS != "windows" {
 		return os.Rename(src, exe)
 	}
+	if _, err := os.Lstat(exe); errors.Is(err, fs.ErrNotExist) {
+		// Máy cài trước khi có hive: chưa có file đích để dời.
+		return os.Rename(src, exe)
+	}
 	old := exe + ".old"
-	_ = os.Remove(old)
+	if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		old = fmt.Sprintf("%s.%d.old", exe, time.Now().UnixNano())
+	}
 	if err := os.Rename(exe, old); err != nil {
 		return err
 	}
@@ -354,4 +484,17 @@ func replace(src, exe string) error {
 		return err
 	}
 	return nil
+}
+
+// cleanOld xoá các file .old do replace để lại trên Windows. Bản cũ còn chạy thì xoá không được, để lần sau.
+func cleanOld(exe string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	for _, base := range []string{exe, filepath.Join(filepath.Dir(exe), "hive"+filepath.Ext(exe))} {
+		matches, _ := filepath.Glob(base + "*.old")
+		for _, m := range matches {
+			_ = os.Remove(m)
+		}
+	}
 }

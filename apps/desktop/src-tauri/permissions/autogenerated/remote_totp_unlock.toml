@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-remote-totp-unlock"
+description = "Enables the remote_totp_unlock command without any pre-configured scope."
+commands.allow = ["remote_totp_unlock"]
+
+[[permission]]
+identifier = "deny-remote-totp-unlock"
+description = "Denies the remote_totp_unlock command without any pre-configured scope."
+commands.deny = ["remote_totp_unlock"]

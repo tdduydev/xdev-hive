@@ -34,8 +34,8 @@ export type TerminalMessage = Extract<
   { type: "term_opened" | "term_output" | "term_exit" | "term_event" | "term_state" | "term_pair_result" }
 >;
 /**
- * Gói điều khiển từ xa phiên trên máy cá nhân (specs/010 US3–US5) mà hub chưa xử lý (T030, T051). Worker chỉ gửi khi hub
- * khai `terminal`; tới đây thì bỏ qua thay vì đóng kết nối làm hỏng run đang chạy.
+ * Gói điều khiển từ xa phiên trên máy cá nhân (specs/010 US3–US5). Module terminal không đăng ký `onRemote` thì bỏ qua
+ * thay vì đóng kết nối làm hỏng run đang chạy.
  */
 type RemoteTerminalMessage = Extract<WorkerToHub, { type: "term_denied" | "term_granted" | "term_revoked" }>;
 export type RunMessage = Exclude<
@@ -55,9 +55,15 @@ export interface TerminalHandlers {
   onDisconnected?: (machine: AuthedMachine) => Promise<void>;
 }
 
-let terminalHandlers: TerminalHandlers = {};
+/** Tách khỏi `TerminalHandlers` để `Required<TerminalHandlers>` của phần ghi phiên không phải có phần điều khiển từ xa. */
+interface RemoteHandlers {
+  /** Worker cấp, thu hay từ chối quyền gõ của một kết nối WS trình duyệt. */
+  onRemote?: (machine: AuthedMachine, msg: RemoteTerminalMessage) => Promise<void>;
+}
 
-export function registerTerminalHandlers(handlers: TerminalHandlers): () => void {
+let terminalHandlers: TerminalHandlers & RemoteHandlers = {};
+
+export function registerTerminalHandlers(handlers: TerminalHandlers & RemoteHandlers): () => void {
   terminalHandlers = handlers;
   return () => {
     if (terminalHandlers === handlers) terminalHandlers = {};
@@ -207,6 +213,7 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         case "term_denied":
         case "term_granted":
         case "term_revoked":
+          if (terminalHandlers.onRemote) return terminalHandlers.onRemote(machine, msg);
           log.warn(`Máy ${machine.id} gửi ${msg.type} khi hub chưa bật điều khiển từ xa; bỏ qua`);
           return;
         case "heartbeat": {

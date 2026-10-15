@@ -994,10 +994,17 @@ export function remoteSession(over: Record<string, unknown> = {}): Record<string
 /**
  * Phiên tương tác và máy cá nhân (route `remote.*`). Mặc định có một phiên đang chạy gắn việc PAY-12, một phiên đã
  * kết thúc có bản ghi và một phiên của đồng nghiệp (chỉ xem). `pageSize` ép `remote.chunks` trả từng trang nhỏ để thử
- * phát lại theo trang.
+ * phát lại theo trang. `pairError` cho `remote.pairComplete` trả lỗi của hub (mã hết hạn, máy của người khác).
  */
 export function remoteFixture(
-  opts: { chunks?: string[]; pageSize?: number; sessions?: Record<string, unknown>[] } = {},
+  opts: {
+    chunks?: string[];
+    pageSize?: number;
+    sessions?: Record<string, unknown>[];
+    devices?: RemoteDeviceRow[];
+    pairError?: Reply;
+    revokeError?: Reply;
+  } = {},
 ) {
   const state = {
     sessions: opts.sessions ?? [
@@ -1026,6 +1033,13 @@ export function remoteFixture(
       }),
     ],
     chunkCalls: [] as { id: string; after: number; limit: number }[],
+    devices: opts.devices ?? [
+      remoteDevice({ id: "dev-ipad-01", machineId: TERMINAL_MACHINE, label: "iPad của Duy", synced: true }),
+      remoteDevice({ id: "dev-pixel-01", machineId: TERMINAL_OFFLINE_MACHINE, label: "Pixel 9", lastUsedAt: null }),
+    ],
+    pairOptionsCalls: [] as { machineId: string; pairId: string }[],
+    pairCalls: [] as Record<string, unknown>[],
+    revokeCalls: [] as { machineId: string; deviceId: string }[],
   };
   const chunks = (opts.chunks ?? []).map((text, seq) => ({ seq, data: b64(text) }));
   const machine = (id: string, name: string, over: Record<string, unknown> = {}) => ({
@@ -1075,8 +1089,75 @@ export function remoteFixture(
       const size = opts.pageSize ?? call.limit;
       return ok({ chunks: rest.slice(0, size), more: rest.length > size });
     },
+    "remote/pairOptions": (input: unknown) => {
+      const call = input as { machineId: string; pairId: string };
+      state.pairOptionsCalls.push(call);
+      return ok({
+        machineName: "sdlc-box-01",
+        userId: USER.id,
+        publicKey: {
+          // Trang e2e chạy ở localhost nên rp.id phải là localhost thì trình duyệt mới tạo passkey.
+          rp: { id: "localhost", name: "xDev Hive" },
+          user: { id: Buffer.from(USER.id).toString("base64url"), name: USER.email, displayName: USER.name },
+          challenge: Buffer.alloc(32, 7).toString("base64url"),
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+          timeout: 60_000,
+          authenticatorSelection: { userVerification: "required", residentKey: "preferred" },
+          attestation: "none",
+          excludeCredentials: [],
+        },
+      });
+    },
+    "remote/pairComplete": (input: unknown) => {
+      const call = input as { machineId: string; label: string; synced?: boolean };
+      state.pairCalls.push(call as Record<string, unknown>);
+      if (opts.pairError) return opts.pairError;
+      const device = remoteDevice({
+        id: `dev-new-${state.pairCalls.length}`,
+        machineId: call.machineId,
+        label: call.label,
+        synced: call.synced ?? false,
+        lastUsedAt: null,
+      });
+      state.devices.push(device);
+      const { machineId: _, ...row } = device;
+      return ok(row);
+    },
+    "remote/devices": (input: unknown) => {
+      const { machineId } = input as { machineId: string };
+      return ok(state.devices.filter((d) => d.machineId === machineId).map(({ machineId: _, ...row }) => row));
+    },
+    "remote/revokeDevice": (input: unknown) => {
+      const call = input as { machineId: string; deviceId: string };
+      state.revokeCalls.push(call);
+      if (opts.revokeError) return opts.revokeError;
+      state.devices = state.devices.filter((d) => d.id !== call.deviceId);
+      return ok(call);
+    },
   };
   return { state, rpc };
+}
+
+export interface RemoteDeviceRow {
+  id: string;
+  machineId: string;
+  label: string;
+  userId: string;
+  synced: boolean;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+}
+
+/** Thiết bị đã ghép; `machineId` chỉ để fixture lọc theo máy, hub không trả trường này. */
+export function remoteDevice(over: Partial<RemoteDeviceRow> & Pick<RemoteDeviceRow, "id" | "machineId">) {
+  return {
+    label: "iPhone",
+    userId: USER.id,
+    synced: false,
+    createdAt: "2026-10-01T02:00:00.000Z",
+    lastUsedAt: "2026-10-14T09:00:00.000Z",
+    ...over,
+  };
 }
 
 // ---- Artifact (specs/012) ---------------------------------------------------------------------------------------------

@@ -82,6 +82,23 @@ fn main() {
         "update_status",
         "check_updates_now",
         "relaunch_to_update",
+        "hive_cli_status",
+        "hive_cli_install",
+        "remote_status",
+        "remote_enable",
+        "remote_disable",
+        "remote_root_add",
+        "remote_root_remove",
+        "remote_device_remove",
+        "remote_pair",
+        "remote_set",
+        "remote_pair_decide",
+        "remote_totp_enroll",
+        "remote_totp_confirm",
+        "remote_totp_disable",
+        "remote_totp_unlock",
+        "remote_sessions",
+        "remote_session_kill",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");

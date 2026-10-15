@@ -51,6 +51,8 @@ type Handler interface {
 	Disable(DisableRequest)
 	Pair(PairRequest)
 	DeviceRevoke(DeviceRevokeRequest)
+	// CloseSession là term_close cho phiên trên máy cá nhân; phiên không thuộc Handler thì bỏ qua.
+	CloseSession(CloseRequest)
 }
 
 // Sender là đường gửi gói term_* về hub cho Handler. Hub không khai "terminal" thì mọi hàm trả ErrHubNoTerminal và
