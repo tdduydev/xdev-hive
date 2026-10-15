@@ -4,16 +4,10 @@ import { contract } from "@xdev-hive/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Jobs, Tx } from "../platform/index.ts";
 import { handleAssetDownload, handleAssetUpload } from "./assets.ts";
-import {
-  DOCSYNC_PULL_QUEUE,
-  DOCSYNC_PUSH_QUEUE,
-  docSyncQueues,
-  queuePull,
-  queuePush,
-  registerDocSync,
-} from "./jobs.ts";
+import { DOCSYNC_PULL_QUEUE, DOCSYNC_PUSH_QUEUE, docSyncQueues, queuePull, queuePush } from "./jobs.ts";
 import { docsyncRouter } from "./router.ts";
 import { handleDocsWebhook } from "./webhook.ts";
+import { registerDocSync } from "./workers.ts";
 
 const fakeJobs = () => ({ enqueue: vi.fn().mockResolvedValue("job-1"), work: vi.fn(), schedule: vi.fn() });
 afterEach(() => vi.useRealTimers());
@@ -81,12 +75,12 @@ describe("khung API docsync", () => {
     expect(response?.status).toBe(401);
   });
 
-  it("webhook không có database thì 503; file trả 501, không nhận thành công giả", async () => {
+  it("webhook không có database thì 503; file không có phiên đăng nhập thì 401", async () => {
     const request = new Request("http://localhost/");
     expect((await handleDocsWebhook({}, randomUUID(), request)).status).toBe(503);
-    for (const response of [handleAssetUpload({}, request), handleAssetDownload({}, request)]) {
-      expect(response.status).toBe(501);
-      expect(await response.json()).toMatchObject({ code: "NOT_IMPLEMENTED" });
+    for (const response of await Promise.all([handleAssetUpload({}, request), handleAssetDownload({}, request)])) {
+      expect(response.status).toBe(401);
+      expect(await response.json()).toMatchObject({ code: "UNAUTHORIZED" });
     }
   });
 });

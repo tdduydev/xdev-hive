@@ -323,7 +323,7 @@ export function createApp({
     jobs,
     resolveTarget: pool ? (id: string) => findWebhookTarget(pool, config.masterKey, id) : undefined,
   };
-  const docSyncDeps = { pool, jobs, masterKey: config.masterKey, providerFactory, publicUrl };
+  const docSyncDeps = { pool, jobs, masterKey: config.masterKey, providerFactory, publicUrl, auth };
   app.post("/hooks/docs/:homeId", (c) => handleDocsWebhook(docSyncDeps, c.req.param("homeId"), c.req.raw));
   app.post("/api/v1/docs/assets", (c) => handleAssetUpload(docSyncDeps, c.req.raw));
   app.get("/api/v1/docs/assets", (c) => handleAssetDownload(docSyncDeps, c.req.raw));
