@@ -75,6 +75,24 @@ describe("Metrics", () => {
     await waitFor(() => expect(lastInput(client)).toMatchObject({ projectId: PAYMENT.id, modeRef: "bugfix" }));
   });
 
+  it("liên kết sang bảng hạng mục mang theo dự án và chế độ đang lọc", async () => {
+    open();
+    await screen.findByText("Lead time theo giai đoạn");
+    const href = () => screen.getByRole("link", { name: "Mở bảng hạng mục với bộ lọc này" }).getAttribute("href");
+    expect(JSON.parse(decodeURIComponent(href()?.slice(1) ?? ""))).toEqual({ kind: "board" });
+    expect(screen.getByText(/không lọc theo khoảng thời gian/)).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText("Dự án"), PAYMENT.id);
+    await user.selectOptions(screen.getByLabelText("Chế độ"), "bugfix");
+    await waitFor(() =>
+      expect(JSON.parse(decodeURIComponent(href()?.slice(1) ?? ""))).toEqual({
+        kind: "board",
+        projectId: PAYMENT.id,
+        modeRef: "bugfix",
+      }),
+    );
+  });
+
   it("chưa có hạng mục: trạng thái rỗng mời thử 90 ngày", async () => {
     const client = open(fakeClient({ metrics: metricsView({ items: 0 }) }));
     expect(await screen.findByText("Chưa đủ dữ liệu để tính chỉ số.")).toBeTruthy();

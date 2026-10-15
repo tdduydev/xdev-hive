@@ -33,7 +33,7 @@ function SdlcAnchor({ to, className, children }: { to: SdlcLink; className?: str
   switch (to.kind) {
     case "board":
       return (
-        <Link to="/sdlc" className={className}>
+        <Link to="/sdlc" search={{ project: to.projectId, mode: to.modeRef }} className={className}>
           {children}
         </Link>
       );
