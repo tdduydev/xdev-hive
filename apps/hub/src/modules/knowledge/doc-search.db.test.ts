@@ -56,8 +56,8 @@ function fakeEmbedder(model = "gia-lap-v1"): Embedder & { calls: number; seen: s
   };
 }
 
-function fakeJobs(): Jobs & { sent: Array<{ data: DocIndexJob; inTx: boolean; singletonKey?: string }> } {
-  const sent: Array<{ data: DocIndexJob; inTx: boolean; singletonKey?: string }> = [];
+function fakeJobs(): Jobs & { sent: Array<{ data: DocIndexJob; inTx: boolean; singletonKey?: string | undefined }> } {
+  const sent: Array<{ data: DocIndexJob; inTx: boolean; singletonKey?: string | undefined }> = [];
   return {
     sent,
     start: async () => {},
@@ -114,7 +114,13 @@ async function drain(env: Env, jobs: ReturnType<typeof fakeJobs>, embedder?: Emb
   }
 }
 
-const search = (env: Env, who: string | Principal, query: string, extra: Record<string, unknown> = {}, embedder?: Embedder) =>
+const search = (
+  env: Env,
+  who: string | Principal,
+  query: string,
+  extra: Record<string, unknown> = {},
+  embedder?: Embedder,
+) =>
   as(env, typeof who === "string" ? who : null, (tx) =>
     searchDocs(tx, typeof who === "string" ? user(env, who) : who, { query, ...extra }, { embedder }),
   );
@@ -126,7 +132,13 @@ async function chunkRows(env: Env, docId: string) {
     "select version, ord, heading_path, content, embedding_model from hive.doc_chunks where doc_id = $1 order by version, ord",
     [docId],
   );
-  return rows as Array<{ version: number; ord: number; heading_path: string[]; content: string; embedding_model: string | null }>;
+  return rows as Array<{
+    version: number;
+    ord: number;
+    heading_path: string[];
+    content: string;
+    embedding_model: string | null;
+  }>;
 }
 
 /** Bản trích đã duyệt của một ảnh đính kèm tài liệu; bảng của docsync nên chèn thẳng bằng admin. */
@@ -175,12 +187,31 @@ describe("không có pgvector: chỉ tìm theo từ", () => {
   });
 
   it("lưu xếp job trong transaction; chạy job thì chia đoạn theo tiêu đề và tìm được", async () => {
-    const doc = await save(env, "tadmin", "team/thanh-toan/doi-soat", "# Đối soát\n\nĐối soát giao dịch cuối ngày.\n\n## Lỗi lệch\n\nGhi nhận chênh lệch.");
-    expect(jobs.sent).toEqual([{ data: { orgId: env.org.orgId, docId: doc.id }, inTx: true, singletonKey: `doc:${doc.id}` }]);
+    const doc = await save(
+      env,
+      "tadmin",
+      "team/thanh-toan/doi-soat",
+      "# Đối soát\n\nĐối soát giao dịch cuối ngày.\n\n## Lỗi lệch\n\nGhi nhận chênh lệch.",
+    );
+    expect(jobs.sent).toEqual([
+      { data: { orgId: env.org.orgId, docId: doc.id }, inTx: true, singletonKey: `doc:${doc.id}` },
+    ]);
     await drain(env, jobs);
     expect(await chunkRows(env, doc.id)).toEqual([
-      { version: 1, ord: 0, heading_path: ["Đối soát"], content: "# Đối soát\n\nĐối soát giao dịch cuối ngày.", embedding_model: null },
-      { version: 1, ord: 1, heading_path: ["Đối soát", "Lỗi lệch"], content: "## Lỗi lệch\n\nGhi nhận chênh lệch.", embedding_model: null },
+      {
+        version: 1,
+        ord: 0,
+        heading_path: ["Đối soát"],
+        content: "# Đối soát\n\nĐối soát giao dịch cuối ngày.",
+        embedding_model: null,
+      },
+      {
+        version: 1,
+        ord: 1,
+        heading_path: ["Đối soát", "Lỗi lệch"],
+        content: "## Lỗi lệch\n\nGhi nhận chênh lệch.",
+        embedding_model: null,
+      },
     ]);
     const embedder = fakeEmbedder();
     const out = await search(env, "tmember", "chênh lệch", {}, embedder);
@@ -229,7 +260,10 @@ describe("không có pgvector: chỉ tìm theo từ", () => {
 
     const all = ["org/so-tay/phan-quyen", "team/thanh-toan/phan-quyen", `project/${env.projectKey}/phan-quyen`];
     expect(keys(await search(env, "tmember", "phân quyền")).sort()).toEqual([...all].sort());
-    expect(keys(await search(env, "oadmin", "phân quyền")).sort()).toEqual(["org/so-tay/phan-quyen", "team/crm/phan-quyen"]);
+    expect(keys(await search(env, "oadmin", "phân quyền")).sort()).toEqual([
+      "org/so-tay/phan-quyen",
+      "team/crm/phan-quyen",
+    ]);
     expect(keys(await search(env, "loner", "phân quyền"))).toEqual(["org/so-tay/phan-quyen"]);
     expect(keys(await search(env, run(env), "phân quyền")).sort()).toEqual([...all].sort());
 
@@ -264,7 +298,11 @@ describe("không có pgvector: chỉ tìm theo từ", () => {
     expect(jobs.sent.map((j) => j.data)).toContainEqual({ orgId: env.org.orgId, extractId: extract });
     await drain(env, jobs);
     expect((await search(env, "tmember", "ngân hàng")).hits).toEqual([
-      expect.objectContaining({ key: "team/thanh-toan/kien-truc", extractId: extract, repoPath: "docs/assets/so-do.png" }),
+      expect.objectContaining({
+        key: "team/thanh-toan/kien-truc",
+        extractId: extract,
+        repoPath: "docs/assets/so-do.png",
+      }),
     ]);
     expect(keys(await search(env, "oadmin", "ngân hàng"))).toEqual([]);
 
@@ -295,9 +333,10 @@ describe("không có pgvector: chỉ tìm theo từ", () => {
   });
 
   it("bộ câu hỏi SC-008 chỉ tìm theo từ (số đo tham khảo)", async () => {
-    const fixture = JSON.parse(
-      readFileSync(new URL("./fixtures/doc-search-sc008.json", import.meta.url), "utf8"),
-    ) as { docs: Array<{ key: string; title: string; content: string }>; questions: Array<{ query: string; expect: string }> };
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/doc-search-sc008.json", import.meta.url), "utf8")) as {
+      docs: Array<{ key: string; title: string; content: string }>;
+      questions: Array<{ query: string; expect: string }>;
+    };
     for (const d of fixture.docs)
       await as(env, "admin", (tx) =>
         saveDoc(tx, user(env, "admin"), { key: `${d.key}-sc008`, title: d.title, content: d.content, baseVersion: 0 }),
@@ -356,7 +395,12 @@ describe.runIf(available)("có pgvector: kết hợp full-text và vector", () =
         source: "import",
       }),
     );
-    const confidential = await save(env, "tadmin", "team/thanh-toan/mat", "---\nconfidential: true\n---\nKế hoạch triển khai nội bộ.");
+    const confidential = await save(
+      env,
+      "tadmin",
+      "team/thanh-toan/mat",
+      "---\nconfidential: true\n---\nKế hoạch triển khai nội bộ.",
+    );
     await drain(env, jobs, embedder);
     expect(embedder.seen.join("\n")).not.toMatch(/AKIA|nội bộ/);
     for (const id of [secret.id, confidential.id])

@@ -84,7 +84,12 @@ describe("chunkMarkdown", () => {
       expect(c.content.length).toBeLessThanOrEqual(CHUNK_CHARS);
       expect(c.headingPath).toEqual(["Dài"]);
     }
-    expect(chunks.map((c) => c.content).join("").replaceAll(/\s/g, "")).toContain(longLine);
+    expect(
+      chunks
+        .map((c) => c.content)
+        .join("")
+        .replaceAll(/\s/g, ""),
+    ).toContain(longLine);
   });
 
   it("CRLF như LF", () => {
