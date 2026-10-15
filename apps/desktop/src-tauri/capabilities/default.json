@@ -9,6 +9,9 @@
     "allow-register-worker",
     "allow-browser-login",
     "allow-hub-check",
+    "allow-hub-ca-inspect",
+    "allow-hub-ca-trust",
+    "allow-hub-ca-forget",
     "allow-set-lang",
     "notification:allow-is-permission-granted",
     "notification:allow-request-permission"

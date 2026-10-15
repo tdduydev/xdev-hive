@@ -1,4 +1,4 @@
-//! App desktop: khay hệ thống, worker Go chạy làm sidecar, cửa sổ web trỏ tới hub của máy, cửa sổ đăng ký cục bộ.
+//! App desktop: khay hệ thống, worker Go chạy làm sidecar, giao diện cục bộ gọi hub qua Rust.
 
 mod account;
 mod artifacts;
@@ -13,6 +13,7 @@ mod git_credentials;
 mod git_groups;
 mod hive_cli;
 mod hub;
+mod hub_ca;
 mod hub_switch;
 mod local_projects;
 mod memory_store;
@@ -48,7 +49,6 @@ use register::RegisterArgs;
 use worker::{Action, Event, Worker};
 
 const SIDECAR: &str = "hive-worker";
-const MAIN: &str = "main";
 const REGISTER: &str = "register";
 /// Cửa sổ app cục bộ (AppNav và các màn trên máy). Chỉ nạp file trong dist của app, không nạp trang từ xa.
 const APP: &str = "app";
@@ -382,22 +382,12 @@ fn stop_worker(app: &AppHandle) {
     });
 }
 
-fn show_main(app: &AppHandle, hub: &str) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(MAIN) {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-        return Ok(());
-    }
-    let url = url::Url::parse(hub).map_err(|e| format!("Địa chỉ hub không hợp lệ: {e}"))?;
-    // Web của hub là trang từ xa: không có capability nào cấp cho cửa sổ này, nên nó không gọi được lệnh của app.
-    WebviewWindowBuilder::new(app, MAIN, WebviewUrl::External(url))
-        .title("xDev Hive")
-        .inner_size(1280.0, 820.0)
-        .min_inner_size(900.0, 600.0)
-        .build()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+fn open_hub_url(app: &AppHandle, url: &str) -> Result<(), String> {
+    // Webview có kho CA riêng: trang web đầy đủ mở ở trình duyệt hệ thống, dữ liệu trong app đi qua Rust.
+    #[allow(deprecated)]
+    app.shell()
+        .open(url, None)
+        .map_err(|e| format!("Không mở được trình duyệt: {e}"))
 }
 
 fn show_app(app: &AppHandle) {
@@ -427,7 +417,7 @@ fn show_register(app: &AppHandle) {
 fn open_hub(app: &AppHandle) {
     match hub_of(app) {
         Some(hub) => {
-            if let Err(e) = show_main(app, &hub) {
+            if let Err(e) = open_hub_url(app, &hub) {
                 eprintln!("{e}");
             }
         }
@@ -668,6 +658,21 @@ async fn hub_check(hub: String) -> Result<String, String> {
     hub_switch::check(&hub).await
 }
 
+#[tauri::command]
+async fn hub_ca_inspect(hub: String) -> Result<hub_ca::Candidate, String> {
+    hub_ca::discover(&hub).await
+}
+
+#[tauri::command]
+async fn hub_ca_trust(hub: String, fingerprint: String) -> Result<(), String> {
+    hub_ca::trust(&hub, &fingerprint).await
+}
+
+#[tauri::command]
+fn hub_ca_forget() -> Result<(), String> {
+    hub_ca::forget()
+}
+
 #[derive(serde::Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct HubChange {
@@ -740,8 +745,7 @@ async fn hub_change(app: AppHandle, hub: String) -> Result<HubChange, String> {
     })
 }
 
-/// Mở một trang của hub (vd. `/runs/<id>`) trong cửa sổ web của hub. Chỉ nhận đường dẫn tương đối gồm ký tự an toàn,
-/// để giao diện không dẫn cửa sổ đó sang trang ngoài hub.
+/// Mở một trang của hub trong trình duyệt hệ thống. Chỉ nhận đường dẫn tương đối an toàn để không mở URL tuỳ ý.
 #[tauri::command]
 fn open_hub_page(app: AppHandle, path: String) -> Result<(), String> {
     let hub = hub_of(&app).ok_or("Máy chưa đăng ký với hub nào.")?;
@@ -751,11 +755,7 @@ fn open_hub_page(app: AppHandle, path: String) -> Result<(), String> {
     let url = url::Url::parse(&hub)
         .and_then(|u| u.join(&path))
         .map_err(|e| e.to_string())?;
-    show_main(&app, &hub)?;
-    if let Some(window) = app.get_webview_window(MAIN) {
-        window.navigate(url).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    open_hub_url(&app, url.as_str())
 }
 
 fn safe_hub_path(path: &str) -> bool {
@@ -1028,6 +1028,9 @@ pub fn run() {
             browser_login,
             account_browser_login,
             hub_check,
+            hub_ca_inspect,
+            hub_ca_trust,
+            hub_ca_forget,
             hub_change,
             hub::hub_rpc,
             doctor::scan_environment,

@@ -21,6 +21,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
+	"github.com/tdduydev/xdev-hive/worker/internal/hubtls"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
@@ -366,7 +367,7 @@ func (c Config) healthHTTP() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-	return &http.Client{Timeout: 10 * time.Second}
+	return hubtls.NewClient(10 * time.Second)
 }
 
 func (c Config) connect(ctx context.Context, jobs *jobs) error {
@@ -378,7 +379,7 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 	if c.Token != "" {
 		header.Set("Authorization", "Bearer "+c.Token)
 	}
-	conn, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPClient: c.HTTP, HTTPHeader: header})
+	conn, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPClient: c.healthHTTP(), HTTPHeader: header})
 	if err != nil {
 		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 			return &RejectedError{Code: resp.StatusCode, Reason: "machine token không hợp lệ hoặc đã bị thu hồi; chạy lại `hive-worker register`"}
