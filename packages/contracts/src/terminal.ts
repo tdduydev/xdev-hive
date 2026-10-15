@@ -541,8 +541,17 @@ const inputSeq = z.number().int().min(0);
  * của chủ máy đã được cấp quyền, worker kiểm lại và bỏ gói sai (FR-017).
  */
 export const remoteClientFrame = z.discriminatedUnion("t", [
-  /** Nối lại: hub gửi output sau `after`; có `resumeToken` còn hạn thì worker cấp lại quyền với khoá cũ. */
-  z.object({ t: z.literal("resume"), after: z.number().int().min(-1), resumeToken: z.base64url().max(64).optional() }),
+  /**
+   * Nối lại: hub gửi output sau `after`; có `resumeToken` còn hạn thì worker cấp lại quyền với khoá cũ. `deviceId` là
+   * passkey của lần cấp (cấp bằng TOTP thì bỏ trống), hub dùng khi vừa khởi động lại và không còn nhớ token; worker vẫn
+   * so token với đúng người và thiết bị của lần cấp.
+   */
+  z.object({
+    t: z.literal("resume"),
+    after: z.number().int().min(-1),
+    resumeToken: z.base64url().max(64).optional(),
+    deviceId: remoteId.optional(),
+  }),
   /** Xin quyền gõ. Challenge ký gồm `connId` hub gửi trong `hello` nên assertion không dùng được cho kết nối khác. */
   z.object({ t: z.literal("control"), deviceId: remoteId.optional(), auth: remoteAuth }),
   z.object({ t: z.literal("release") }),
