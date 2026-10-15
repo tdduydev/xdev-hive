@@ -218,15 +218,18 @@ async function audited(targetId: string, action: string) {
   return (await actions(targetId)).filter((a) => a.action === action);
 }
 
-/** Mọi bảng của schema hive (kể cả bảng thêm sau này) dò theo chuỗi; admin bỏ qua RLS. */
+/**
+ * Mọi bảng của schema hive (kể cả bảng thêm sau này) dò theo chuỗi; admin bỏ qua RLS. Mã 6 số chỉ tính khi đứng riêng:
+ * nếu dò chuỗi con thì phần micro giây của timestamp hay id ngẫu nhiên đôi khi trùng mã và làm test chập chờn.
+ */
 async function tablesContaining(needle: string): Promise<string[]> {
   const { rows } = await admin.query<{ table_name: string }>(
     "select table_name from information_schema.tables where table_schema = 'hive' and table_type = 'BASE TABLE'",
   );
   const hits: string[] = [];
   for (const { table_name } of rows) {
-    const { rowCount } = await admin.query(`select 1 from hive."${table_name}" t where t::text like $1 limit 1`, [
-      `%${needle}%`,
+    const { rowCount } = await admin.query(`select 1 from hive."${table_name}" t where t::text ~ $1 limit 1`, [
+      `(^|[^0-9a-zA-Z.])${needle}($|[^0-9a-zA-Z])`,
     ]);
     if (rowCount) hits.push(table_name);
   }
