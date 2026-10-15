@@ -37,6 +37,7 @@ vi.mock("vscode", async (original) => {
 const vscode = await import("vscode");
 const mock = await import("../../test/vscode-mock.ts");
 const { register } = await import("@/views/index.ts");
+const createContext = () => ({ ...mock.createContext(), globalStorageUri: vscode.Uri.file(process.cwd()) });
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const TOKEN = `hive_pat_${ORG}_secret`;
@@ -158,11 +159,16 @@ describe("views", () => {
     const server = await hub.listen();
     mock.settings.set("xdevHive.hubUrl", server.url);
     vi.mocked(vscode.authentication.getSession).mockResolvedValue(session as never);
-    const ctx = mock.createContext();
+    const ctx = createContext();
     register(ctx as never);
     await vi.waitFor(() => expect(views.get("xdev-hive.approvals")?.badge).toBeDefined(), { timeout: 5000 });
     expect(views.get("xdev-hive.approvals")?.badge).toEqual({ value: 6, tooltip: "6 mục đang chờ bạn" });
     expect(views.get("xdev-hive.mine")?.message).toBeUndefined();
+    expect(vscode.window.registerWebviewViewProvider).toHaveBeenCalledWith(
+      "xdev-hive.artifacts",
+      expect.objectContaining({ resolveWebviewView: expect.any(Function) }),
+    );
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith("xdevHive.artifact.open", expect.any(Function));
     expect(vscode.window.registerWebviewViewProvider).toHaveBeenCalledWith(
       "xdev-hive.sdlc",
       expect.objectContaining({ resolveWebviewView: expect.any(Function) }),
@@ -175,7 +181,7 @@ describe("views", () => {
   it("chưa có hub URL thì hiện 'Chưa cấu hình hub xDev Hive' và không gọi mạng", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as never;
-    const ctx = mock.createContext();
+    const ctx = createContext();
     register(ctx as never);
     // Đợi theo kết quả chứ không theo giờ: CI chạy song song nhiều gói nên 50ms không đủ.
     await vi.waitFor(() => {
@@ -192,7 +198,7 @@ describe("views", () => {
     globalThis.fetch = fetchSpy as never;
     mock.settings.set("xdevHive.hubUrl", "https://hive.test");
     vi.mocked(vscode.authentication.getSession).mockResolvedValue(undefined as never);
-    const ctx = mock.createContext();
+    const ctx = createContext();
     register(ctx as never);
     await flush();
     expect(vscode.authentication.getSession).toHaveBeenCalledWith("xdev-hive", [], { silent: true });
@@ -206,7 +212,7 @@ describe("views", () => {
     globalThis.fetch = fetchSpy as never;
     mock.settings.set("xdevHive.hubUrl", "https://hive.test");
     focus.focused = false;
-    const ctx = mock.createContext();
+    const ctx = createContext();
     register(ctx as never);
     await flush();
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -233,7 +239,7 @@ describe("views", () => {
       registered.set(name, fn);
       return new mock.Disposable(() => {});
     }) as never);
-    const ctx = mock.createContext();
+    const ctx = createContext();
     register(ctx as never);
     await vi.waitFor(() => expect(runsTree()?.getChildren()).toHaveLength(1), { timeout: 5000 });
     const [node] = (runsTree()?.getChildren() ?? []) as unknown[];

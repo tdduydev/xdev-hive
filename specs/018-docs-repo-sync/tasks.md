@@ -292,7 +292,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 3: đồng bộ (song song, sau Đợt 2)
 
-- [ ] **T009 [P] [US7] [nặng] · 2 ngày — Chỉ mục đoạn và tìm theo nghĩa**
+- [x] **T009 [P] [US7] [nặng] · 2 ngày — Chỉ mục đoạn và tìm theo nghĩa**
   - **Phụ thuộc**: T008.
   - **Goal**: FR-036…FR-038, US7, plan.md mục 10.
     - `doc-search.ts`: chia đoạn theo tiêu đề; job `knowledge-doc-index` (đăng ký qua hook lưu nội bộ của
@@ -308,7 +308,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
   - **Kiểm**: hub test, typecheck. Bộ 50 câu hỏi mẫu cho SC-008 trong fixture (đo khi có embedding; không có thì ghi
     bàn giao).
 
-- [ ] **T012 [P] [US1] [nặng] · 3 ngày — Quét và nhập**
+- [x] **T012 [P] [US1] [nặng] · 3 ngày — Quét và nhập**
   - **Phụ thuộc**: T004, T006, T007, T008, T011.
   - **Goal**: US1, FR-006…FR-011, plan.md mục 4. Edge case: hàng nghìn file, trùng key, front-matter, file lớn, LFS,
     không phải UTF-8, bí mật.
