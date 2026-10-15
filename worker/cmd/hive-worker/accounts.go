@@ -34,7 +34,7 @@ type discoverView struct {
 	Found []accounts.Found `json:"found"`
 }
 
-const accountsUsage = "Cách dùng: hive-worker accounts [import-legacy [--force] | set --id ID --enabled BOOL | add --cli claude|codex --label TÊN [--how plan|sso|console|browser|device] [--email E] | update --id ID [--label TÊN] [--priority N] [--max-concurrent N] [--cooldown-minutes N] [--stop-at-session N] [--stop-at-week N] [--timeout-minutes N] [--roles plan,implement,review] | remove --id ID | usage [--id ID] | resume --id ID | discover [--add THƯ_MỤC|default:claude|codex|antigravity [--label TÊN]]] [--json]"
+const accountsUsage = "Cách dùng: hive-worker accounts [import-legacy [--force] | set --id ID --enabled BOOL | add --cli claude|codex --label TÊN [--how plan|sso|console|browser|device] [--email E] | update --id ID [--label TÊN] [--priority N] [--max-concurrent N] [--cooldown-minutes N] [--stop-at-session N] [--stop-at-week N] [--timeout-minutes N] [--roles plan,implement,review] | remove --id ID | usage [--id ID] | resume --id ID | logout --id ID | discover [--add THƯ_MỤC|default:claude|codex|antigravity [--label TÊN]]] [--json]"
 
 // Test thay giờ và thư mục nhà.
 var (
@@ -85,6 +85,8 @@ func accountsCommand(args []string, stdout, stderr io.Writer) int {
 	file := accounts.DefaultPath(path)
 	home, _ := accountsHome()
 	view := accountsView{Path: file}
+	// notice là dòng báo kết quả cho người gõ lệnh tay; dạng --json chỉ có danh sách mới.
+	notice := ""
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -208,6 +210,14 @@ func accountsCommand(args []string, stdout, stderr io.Writer) int {
 		if err := accounts.Resume(file, *id, accountsNow()); err != nil {
 			return fail(err)
 		}
+	case "logout":
+		if !needID() {
+			return 2
+		}
+		if err := accounts.Logout(file, home, *id); err != nil {
+			return fail(err)
+		}
+		notice = fmt.Sprintf("Đã đăng xuất tài khoản %s.", *id)
 	default:
 		fmt.Fprintln(stderr, accountsUsage)
 		return 2
@@ -224,6 +234,9 @@ func accountsCommand(args []string, stdout, stderr io.Writer) int {
 	if *asJSON {
 		_ = json.NewEncoder(stdout).Encode(view)
 		return 0
+	}
+	if notice != "" {
+		fmt.Fprintln(stdout, notice)
 	}
 	if view.Imported > 0 {
 		fmt.Fprintf(stdout, "Đã nhập %d tài khoản từ app v1 vào %s.\n", view.Imported, file)

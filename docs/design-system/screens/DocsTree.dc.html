@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tài liệu · xDev Hive</title>
+    <link rel="stylesheet" href="./ds/xdev-hive/tokens.css">
+    <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--foreground);
+      font: 14px / 1.5 var(--font-sans);
+    }
+    x-dc {
+      display: block;
+      container-type: inline-size;
+    }
+    .board {
+      container-type: inline-size;
+      width: 100%;
+      min-height: 100vh;
+    }
+    .board.narrow {
+      max-width: 360px;
+      margin: auto;
+      border-inline: 1px solid var(--border);
+    }
+    h1,
+    h2,
+    h3,
+    p,
+    ul {
+      margin: 0;
+    }
+    h1 {
+      font: 600 24px / 1.35 var(--font-heading);
+      letter-spacing: -0.03em;
+    }
+    h2 {
+      font-size: 16px;
+    }
+    h3 {
+      font-size: 14px;
+    }
+    a {
+      color: var(--primary);
+      text-underline-offset: 3px;
+    }
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+    button,
+    summary,
+    select {
+      cursor: pointer;
+    }
+    :is(button, a, input, select, textarea, summary):focus-visible {
+      outline: 2px solid var(--ring);
+      outline-offset: 3px;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--input);
+      background: var(--background);
+      color: var(--foreground);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      min-height: 36px;
+    }
+    input[type="checkbox"],
+    input[type="radio"] {
+      accent-color: var(--primary);
+      flex: none;
+      width: 18px;
+      height: 18px;
+      margin: 0;
+    }
+    textarea {
+      resize: vertical;
+    }
+    fieldset {
+      border: 0;
+      padding: 0;
+      margin: 0;
+      min-width: 0;
+    }
+    legend {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .spread {
+      justify-content: space-between;
+    }
+    .muted {
+      color: var(--muted-foreground);
+    }
+    .mono,
+    code,
+    pre {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .small {
+      font-size: 12px;
+    }
+    .tools {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      border-bottom: 1px dashed var(--input);
+      background: var(--muted);
+    }
+    .tools label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tools select {
+      width: auto;
+      max-width: 240px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 36px;
+      max-width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 7px 12px;
+      background: var(--card);
+      color: var(--foreground);
+      font-weight: 500;
+      text-decoration: none;
+      text-align: center;
+    }
+    .btn:hover {
+      background: var(--muted);
+    }
+    .btn.primary {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      border-color: var(--primary);
+    }
+    .btn.danger {
+      color: var(--destructive);
+    }
+    .shell {
+      display: flex;
+      min-height: 900px;
+    }
+    .nav {
+      width: 224px;
+      flex: none;
+      padding: 20px 12px;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .nav .brand {
+      height: 34px;
+      margin-bottom: 24px;
+    }
+    .brand-dark {
+      display: none;
+    }
+    html[data-theme="dark"] .brand-light {
+      display: none;
+    }
+    html[data-theme="dark"] .brand-dark {
+      display: block;
+    }
+    .nav a {
+      color: var(--sidebar-foreground);
+      padding: 9px 12px;
+      border-radius: var(--radius);
+      text-decoration: none;
+    }
+    .nav a[aria-current] {
+      background: var(--accent);
+      color: var(--accent-foreground);
+      font-weight: 600;
+    }
+    .nav .note {
+      margin-top: auto;
+      padding: 12px;
+    }
+    .work {
+      flex: 1;
+      min-width: 0;
+    }
+    .crumb {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+    }
+    main {
+      max-width: 1200px;
+      margin: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      min-width: 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-weight: 500;
+      min-width: 0;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+    }
+    .alert {
+      background: var(--accent);
+      color: var(--accent-foreground);
+      padding: 12px 14px;
+      border-radius: var(--radius);
+      border: 1px solid currentColor;
+      overflow-wrap: anywhere;
+    }
+    .warning {
+      color: var(--warning);
+      background: var(--warning-soft);
+    }
+    .error {
+      color: var(--destructive);
+      background: var(--destructive-soft);
+    }
+    .success {
+      color: var(--success);
+      background: var(--success-soft);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--muted);
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+    .badge.warning,
+    .badge.error,
+    .badge.success {
+      border-color: currentColor;
+    }
+    .badge.warning {
+      background: var(--warning-soft);
+      color: var(--warning);
+    }
+    .badge.error {
+      background: var(--destructive-soft);
+      color: var(--destructive);
+    }
+    .badge.success {
+      background: var(--success-soft);
+      color: var(--success);
+    }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .tabs a[aria-current] {
+      color: var(--primary);
+      font-weight: 600;
+    }
+    .stat {
+      font: 600 25px var(--font-mono);
+    }
+    .divider {
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+    .tree {
+      list-style: none;
+      padding: 0;
+    }
+    .tree li {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      min-width: 0;
+    }
+    .tree .row > a {
+      flex: 1;
+      min-width: 120px;
+    }
+    .tree details > ul {
+      padding-left: 20px;
+    }
+    .tree summary {
+      padding: 8px 0;
+      font-family: var(--font-mono);
+    }
+    .tree .file {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+    }
+    .tree .file label {
+      flex: 1;
+      min-width: 140px;
+    }
+    .tree .badge {
+      margin-left: auto;
+    }
+    pre {
+      white-space: pre-wrap;
+      line-height: 1.8;
+      background: var(--muted);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin: 0;
+    }
+    .diff {
+      display: block;
+      background: var(--warning-soft);
+      color: var(--warning);
+      border-left: 3px solid currentColor;
+      padding-left: 8px;
+    }
+    .empty {
+      text-align: center;
+      padding: 48px 20px;
+      align-items: center;
+    }
+    .skeleton {
+      height: 16px;
+      border-radius: var(--radius);
+      background: var(--muted);
+      width: 80%;
+    }
+    .skeleton.short {
+      width: 50%;
+    }
+    .skeleton.area {
+      height: 180px;
+      width: 100%;
+    }
+    progress {
+      width: 100%;
+      height: 12px;
+      accent-color: var(--primary);
+    }
+    .reading {
+      font-size: 15px;
+      line-height: 1.8;
+    }
+    .drop {
+      border: 1px dashed var(--input);
+      padding: 24px;
+      border-radius: var(--radius);
+      text-align: center;
+      background: var(--muted);
+    }
+    .illustration {
+      width: 100%;
+      max-height: 190px;
+      color: var(--primary);
+      background: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .conflict-tabs {
+      display: none;
+    }
+    .compare article {
+      min-width: 0;
+    }
+    .compare h2 {
+      margin-bottom: 12px;
+    }
+    .skip {
+      position: absolute;
+      left: 12px;
+      top: -100px;
+      background: var(--card);
+      padding: 12px;
+      z-index: 5;
+    }
+    .skip:focus {
+      top: 12px;
+    }
+    dialog {
+      background: var(--card);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      max-width: 560px;
+      width: calc(100% - 32px);
+      padding: 24px;
+      max-height: 90vh;
+      overflow: auto;
+      box-shadow: var(--shadow-lg);
+    }
+    dialog::backdrop {
+      background: var(--backdrop);
+    }
+    [hidden] {
+      display: none !important;
+    }
+    .toast:empty {
+      display: none;
+    }
+    .toast {
+      position: sticky;
+      bottom: 12px;
+      z-index: 2;
+    }
+    .compact-only {
+      display: none;
+    }
+
+    @container (max-width: 899px) {
+      .nav {
+        display: none;
+      }
+      .grid,
+      .grid.three {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      main {
+        padding: 16px;
+        gap: 16px;
+      }
+      .crumb {
+        padding: 12px 16px;
+      }
+      .tools {
+        padding: 12px;
+      }
+      .tools label {
+        flex-wrap: wrap;
+      }
+      .tools select {
+        max-width: 210px;
+      }
+      .btn {
+        min-height: 44px;
+      }
+      h1 {
+        font-size: 21px;
+      }
+      .card {
+        padding: 16px;
+      }
+      .conflict-tabs {
+        display: flex;
+      }
+      .compare article:not(.selected) {
+        display: none;
+      }
+      .compact-only {
+        display: inline-flex;
+      }
+      .brand {
+        max-width: 150px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        scroll-behavior: auto;
+      }
+    }
+    </style>
+  </head>
+  <body>
+    <x-dc
+      ><div class="board">
+        <a class="skip" href="#main"><span data-en="Skip to content">Đến nội dung chính</span></a>
+        <section class="tools" aria-label="Trạng thái thiết kế" data-en-aria-label="Design states">
+          <label for="design-view"><span data-en="Preview state">Trạng thái xem</span></label
+          ><select id="design-view">
+            <option value="ready">Bình thường</option>
+            <option value="loading">Đang tải</option>
+            <option value="empty">Rỗng</option>
+            <option value="error">Lỗi</option>
+            <option value="results">Kết quả tìm theo nghĩa</option>
+            <option value="keyword">Tìm theo từ</option>
+          </select><button type="button" class="btn" id="theme-toggle" aria-pressed="false">
+            <span data-en="Light / dark">Sáng / tối</span>
+          </button><button type="button" class="btn" id="size-toggle">
+            <span data-en="360 px frame">Khung 360 px</span>
+          </button><span class="small muted"
+            ><span data-en="Interactive prototype · sample data">Bản mẫu tương tác · dữ liệu minh hoạ</span></span
+          >
+        </section>
+        <div class="shell">
+          <nav class="nav" aria-label="Điều hướng chính">
+            <img
+              class="brand brand-light"
+              src="../assets/logos/xdev-hive-light.svg"
+              alt="xDev Hive"
+              width="148"
+              height="34"
+            ><img
+              class="brand brand-dark"
+              src="../assets/logos/xdev-hive-dark.svg"
+              alt="xDev Hive"
+              width="148"
+              height="34"
+            ><a href="DocsTree.dc.html" aria-current="page">Tài liệu</a><a href="DocImport.dc.html">Nhập từ repo</a
+            ><a href="DocExtracts.dc.html">Bản trích chờ duyệt</a><a href="DocsSettings.dc.html">Cài đặt dự án</a
+            ><a href="OrgDocsRepo.dc.html">Kho tài liệu tổ chức</a>
+            <p class="note muted small">
+              <span data-en="Acme organization · Platform team">Tổ chức Acme · Đội Nền tảng</span>
+            </p>
+          </nav>
+          <div class="work">
+            <div class="crumb muted"><span data-en="Knowledge">Kiến thức</span> / Tài liệu</div>
+            <main id="main" tabindex="-1">
+              <header>
+                <p class="muted small mono">payment-api · main</p>
+                <h1>Tài liệu</h1>
+                <p class="muted">Soạn trên hub, theo dõi bản lưu trong repo và tìm đúng đoạn cần đọc.</p>
+              </header>
+              <section class="card stack" data-base-state="loading" aria-busy="true">
+                <p role="status"><span data-en="Loading documents…">Đang tải dữ liệu tài liệu…</span></p>
+                <div class="skeleton"></div>
+                <div class="skeleton short"></div>
+                <div class="skeleton area"></div>
+              </section>
+              <section class="card stack empty" data-base-state="empty">
+                <h2>Chưa có tài liệu trong phạm vi này</h2>
+                <p class="muted">
+                  <span data-en="Connect a repository or import documents to get started."
+                    >Kết nối repo hoặc nhập tài liệu để bắt đầu.</span
+                  >
+                </p>
+                <a class="btn primary" href="DocImport.dc.html"
+                  ><span data-en="Import from repository">Nhập từ repo</span></a
+                >
+              </section>
+              <section class="card stack" data-base-state="error" role="alert">
+                <h2><span data-en="Could not load data">Không tải được dữ liệu</span></h2>
+                <p>
+                  <span data-en="Check your hub connection and repository access, then retry."
+                    >Kiểm tra kết nối hub và quyền truy cập repo, rồi thử lại.</span
+                  >
+                </p>
+                <button type="button" class="btn" data-go="ready"><span data-en="Retry">Thử lại</span></button>
+              </section>
+              <div class="stack" data-normal>
+                <div class="row">
+                  <a class="btn primary" href="DocEditorAssets.dc.html">Tạo tài liệu</a
+                  ><a class="btn" href="DocImport.dc.html">Nhập từ repo</a
+                  ><a class="btn" href="DocExtracts.dc.html">Bản trích chờ duyệt</a>
+                </div>
+                <section class="card stack">
+                  <h2>Duyệt tài liệu</h2>
+                  <div class="grid">
+                    <label class="field" for="doc-search"
+                      >Tìm theo nghĩa hoặc từ khoá<input
+                        type="search"
+                        id="doc-search"
+                        placeholder="Hỏi về tài liệu…"
+                        data-en-placeholder="Ask about documents…"
+                      ></label
+                    ><label class="field"
+                      >Trạng thái đồng bộ<select
+                        id="status-filter"
+                        aria-label="Trạng thái đồng bộ"
+                        data-en-aria-label="Sync status"
+                      >
+                        <option value="all" data-en="All">Tất cả</option>
+                        <option value="synced" data-en="Synced">Đã đồng bộ</option>
+                        <option value="pending" data-en="Pending sync">Chờ đồng bộ</option>
+                        <option value="pr" data-en="PR #128 open">PR #128 đang mở</option>
+                        <option value="conflict" data-en="Conflict">Xung đột</option>
+                        <option value="failed" data-en="Sync failed">Lỗi đồng bộ</option>
+                        <option value="deleted" data-en="Deleted in repository">Đã xoá trên repo</option>
+                        <option value="unhomed" data-en="No home">Chưa có nhà</option>
+                      </select></label
+                    >
+                  </div>
+                  <label class="field"
+                    >Chế độ tìm kiếm<select
+                      id="search-mode"
+                      aria-label="Chế độ tìm kiếm"
+                      data-en-aria-label="Search mode"
+                    >
+                      <option value="hybrid" data-en="Semantic and keyword">Theo nghĩa và theo từ</option>
+                      <option value="keyword" data-en="Keyword only · embeddings not configured">
+                        Chỉ theo từ · chưa cấu hình embedding
+                      </option>
+                    </select></label
+                  >
+                  <p id="keyword-help" class="alert" hidden>Đang tìm theo từ. Chưa cấu hình tìm theo nghĩa.</p>
+                  <ul class="tree">
+                    <li>
+                      <details open>
+                        <summary>payment-api / docs/ · 6 tài liệu</summary>
+                        <ul class="tree">
+                          <li data-doc-row data-status="synced">
+                            <div class="row spread">
+                              <a href="DocEditorAssets.dc.html">Hướng dẫn cài đặt</a
+                              ><span class="badge success">Đã đồng bộ</span>
+                            </div>
+                            <p class="muted mono">docs/cai-dat.md</p>
+                          </li>
+                          <li data-doc-row data-status="pending">
+                            <div class="row spread">
+                              <a href="DocEditorAssets.dc.html">Quy trình phát hành</a
+                              ><span class="badge ">Chờ đồng bộ</span>
+                            </div>
+                            <p class="muted mono">docs/phat-hanh.md</p>
+                          </li>
+                          <li data-doc-row data-status="pr">
+                            <div class="row spread">
+                              <a href="DocEditorAssets.dc.html">Kiến trúc dịch vụ</a
+                              ><span class="badge warning">PR #128 đang mở</span>
+                            </div>
+                            <p class="muted mono">docs/kien-truc.md</p>
+                          </li>
+                          <li data-doc-row data-status="conflict">
+                            <div class="row spread">
+                              <a href="DocConflict.dc.html">Hướng dẫn triển khai</a
+                              ><span class="badge warning">Xung đột</span>
+                            </div>
+                            <p class="muted mono">docs/trien-khai.md</p>
+                          </li>
+                          <li data-doc-row data-status="failed">
+                            <div class="row spread">
+                              <a href="DocEditorAssets.dc.html">Hướng dẫn vận hành</a
+                              ><span class="badge error">Lỗi đồng bộ</span>
+                            </div>
+                            <p class="muted mono">docs/van-hanh.md</p>
+                          </li>
+                          <li data-doc-row data-status="deleted">
+                            <div class="row spread">
+                              <a href="DocEditorAssets.dc.html">Tài liệu cũ</a
+                              ><span class="badge error">Đã xoá trên repo</span>
+                            </div>
+                            <p class="muted mono">docs/tai-lieu-cu.md</p>
+                            <div class="row">
+                              <button
+                                type="button"
+                                class="btn"
+                                data-notice="Mẫu thiết kế: đã yêu cầu lưu trữ tài liệu."
+                                data-notice-en="Prototype: document archive requested."
+                              >
+                                Lưu trữ tài liệu
+                              </button><button
+                                type="button"
+                                class="btn"
+                                data-notice="Mẫu thiết kế: đã xếp ghi lại tài liệu vào repo."
+                                data-notice-en="Prototype: document queued for restoration to the repository."
+                              >
+                                Ghi lại vào repo
+                              </button>
+                            </div>
+                          </li>
+                        </ul>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary>Chưa có nhà · 1 tài liệu</summary>
+                        <ul class="tree">
+                          <li data-doc-row data-status="unhomed">
+                            <div class="row spread">
+                              <a href="DocEditorAssets.dc.html">Ghi chú trên hub</a
+                              ><span class="badge ">Chưa có nhà</span>
+                            </div>
+                            <p class="muted mono">—</p>
+                          </li>
+                        </ul>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary>org/ · 42 tài liệu</summary>
+                        <p>Quy trình và quy ước chung.</p>
+                      </details>
+                    </li>
+                    <li>
+                      <details>
+                        <summary>teams/platform/ · 16 tài liệu</summary>
+                        <p>Tài liệu đội Nền tảng.</p>
+                      </details>
+                    </li>
+                  </ul>
+                  <p id="no-results" role="status" hidden>Không có tài liệu khớp. Thử từ khoá khác hoặc bỏ bộ lọc.</p>
+                </section>
+                <section class="stack" data-only="results keyword">
+                  <section class="card stack">
+                    <h2>Đoạn tìm thấy</h2>
+                    <a href="DocEditorAssets.dc.html"><strong>Hướng dẫn triển khai</strong></a>
+                    <p class="muted">Vận hành › Triển khai › Sao lưu</p>
+                    <p>Trước khi triển khai lên máy chủ, tạo bản sao lưu và kiểm tra khôi phục…</p>
+                    <a
+                      class="mono"
+                      href="https://github.com/example/payment-api/blob/main/docs/trien-khai.md"
+                      target="_blank"
+                      rel="noreferrer"
+                      >docs/trien-khai.md ↗</a
+                    >
+                    <p class="muted small">
+                      Chỉ hiển thị tài liệu bạn được đọc. Nhãn bí mật và confidential không gửi đi tìm theo nghĩa.
+                    </p>
+                  </section>
+                </section>
+                <section class="stack" data-only="keyword">
+                  <p class="alert warning">Đang tìm theo từ. Quản trị hub chưa cấu hình tìm theo nghĩa.</p>
+                </section>
+              </div>
+              <p id="feedback" class="alert success toast" role="status" aria-live="polite"></p>
+            </main>
+          </div>
+        </div>
+      </div></x-dc
+    >
+    <!-- Vanilla DOM keeps these review prototypes runnable without the canvas support runtime. -->
+    <script type="module" data-dc-script>
+    const board = document.querySelector(".board");
+    const params = new URLSearchParams(location.search);
+    const viewControl = document.querySelector("#design-view");
+    let english = false;
+    function say(message) {
+      document.querySelector("#feedback").textContent = message;
+    }
+    function setView(value) {
+      viewControl.value = value;
+      if (!viewControl.value) viewControl.value = "ready";
+      const view = viewControl.value;
+      document.querySelectorAll("[data-normal]").forEach((el) => {
+        el.hidden = ["loading", "empty", "error"].includes(view);
+      });
+      document.querySelectorAll("[data-only]").forEach((el) => {
+        el.hidden = !el.dataset.only.split(" ").includes(view);
+      });
+      document.querySelectorAll("[data-base-state]").forEach((el) => {
+        el.hidden = el.dataset.baseState !== view;
+      });
+      document.querySelectorAll("[data-manage]").forEach((el) => {
+        el.disabled = view === "readonly" || view === "offline";
+      });
+      document.querySelectorAll("[data-normal] form :is(input,select,textarea,button)").forEach((el) => {
+        el.disabled = view === "readonly";
+      });
+      document.querySelectorAll("[name=merge-choice]").forEach((el) => {
+        el.disabled = ["readonly", "stale"].includes(view);
+      });
+      const resolve = document.querySelector("#resolve-conflict");
+      if (resolve)
+        resolve.disabled =
+          ["readonly", "stale"].includes(view) || !document.querySelector("[name=merge-choice]:checked");
+      const mergeResult = document.querySelector("#merge-result");
+      if (mergeResult)
+        mergeResult.readOnly =
+          ["readonly", "stale"].includes(view) || !document.querySelector("[name=merge-choice][value=manual]:checked");
+      document.querySelectorAll("#desktop-save, #doc-search, #status-filter, #search-mode").forEach((el) => {
+        el.disabled = view === "offline";
+      });
+      const desktopText = document.querySelector("#desktop-content");
+      if (desktopText) desktopText.readOnly = ["readonly", "offline"].includes(view);
+      document.querySelectorAll("[data-go=paused]").forEach((el) => {
+        el.hidden = view === "paused";
+      });
+      document.querySelectorAll("[data-go=ready]").forEach((el) => {
+        if (el.textContent.trim() === "Bật lại") el.hidden = view !== "paused";
+      });
+      const homeStatus = document.querySelector("[data-home-status]");
+      if (homeStatus) {
+        homeStatus.textContent = view === "paused" ? "Ⅱ Tạm dừng" : "✓ Đang hoạt động";
+        homeStatus.classList.toggle("success", view !== "paused");
+        homeStatus.classList.toggle("warning", view === "paused");
+      }
+      say("");
+    }
+    viewControl.addEventListener("change", () => setView(viewControl.value));
+    document.querySelectorAll("[data-go]").forEach((el) => el.addEventListener("click", () => setView(el.dataset.go)));
+    document.querySelector("#theme-toggle").addEventListener("click", () => {
+      const dark = document.documentElement.dataset.theme !== "dark";
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+      document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      document.querySelector("#theme-toggle").setAttribute("aria-pressed", String(dark));
+    });
+    document.querySelector("#size-toggle").addEventListener("click", () => board.classList.toggle("narrow"));
+    document.querySelectorAll("form").forEach((form) =>
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        say(english ? "Prototype: changes saved locally for preview." : "Mẫu thiết kế: đã lưu thay đổi để xem trước.");
+      }),
+    );
+    document
+      .querySelectorAll("[data-notice]")
+      .forEach((el) =>
+        el.addEventListener("click", () =>
+          say(english && el.dataset.noticeEn ? el.dataset.noticeEn : el.dataset.notice),
+        ),
+      );
+    document
+      .querySelectorAll("[data-open]")
+      .forEach((el) => el.addEventListener("click", () => document.querySelector("#" + el.dataset.open).showModal()));
+    document
+      .querySelectorAll("[data-close]")
+      .forEach((el) => el.addEventListener("click", () => el.closest("dialog").close()));
+    document.querySelectorAll("[data-confirm]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const dialog = el.closest("dialog");
+        dialog.close();
+        if (["branch-dialog", "extract-secret-dialog"].includes(dialog.id)) setView("ready");
+        say(el.dataset.confirm);
+      }),
+    );
+    document.querySelectorAll("[data-tab]").forEach((el) =>
+      el.addEventListener("change", () => {
+        document
+          .querySelectorAll("[data-pane]")
+          .forEach((pane) => pane.classList.toggle("selected", pane.dataset.pane === el.value));
+      }),
+    );
+    const choice = document.querySelector("#repo-choice");
+    choice?.addEventListener("change", () =>
+      document.querySelectorAll("[data-choice]").forEach((el) => {
+        el.hidden = el.dataset.choice !== choice.value;
+      }),
+    );
+    const search = document.querySelector("#doc-search");
+    function filterDocs() {
+      const query = (search?.value || "").trim().toLocaleLowerCase("vi");
+      const status = document.querySelector("#status-filter")?.value || "all";
+      let found = 0;
+      document.querySelectorAll("[data-doc-row]").forEach((el) => {
+        el.hidden = !(
+          el.textContent.toLocaleLowerCase("vi").includes(query) &&
+          (status === "all" || status === el.dataset.status)
+        );
+        if (!el.hidden) found++;
+      });
+      const none = document.querySelector("#no-results");
+      if (none) none.hidden = found > 0;
+    }
+    search?.addEventListener("input", filterDocs);
+    document.querySelector("#status-filter")?.addEventListener("change", filterDocs);
+    document.querySelector("#search-mode")?.addEventListener("change", (event) => {
+      document.querySelector("#keyword-help").hidden = event.target.value !== "keyword";
+    });
+    const selectFiles = document.querySelector("#select-files");
+    function updateSelection() {
+      const count = document.querySelectorAll("[data-import-file]:checked").length;
+      const total = document.querySelector("#selected-count");
+      if (total) total.textContent = String(count);
+      const start = document.querySelector("#start-import");
+      if (start) start.disabled = count === 0;
+    }
+    selectFiles?.addEventListener("change", () => {
+      document.querySelectorAll("[data-import-file]:not(:disabled)").forEach((el) => {
+        el.checked = selectFiles.checked;
+      });
+      updateSelection();
+    });
+    document.querySelectorAll("[data-import-file]").forEach((el) => el.addEventListener("change", updateSelection));
+    const secretAck = document.querySelector("#secret-ack");
+    secretAck?.addEventListener("change", () => {
+      document.querySelector("#confirm-secret").disabled = !secretAck.checked;
+    });
+    document.querySelector("#confirm-secret")?.addEventListener("click", () => {
+      setView("report");
+      say("Mẫu thiết kế: đã xác nhận riêng file này; khi triển khai sẽ ghi nhật ký kiểm toán.");
+    });
+    const result = document.querySelector("#merge-result");
+    document.querySelectorAll("[name=merge-choice]").forEach((el) =>
+      el.addEventListener("change", () => {
+        result.readOnly = el.value !== "manual";
+        result.value = el.value === "repo" ? "# Triển khai\nGiữ 5 bản sao lưu." : "# Triển khai\nGiữ 7 bản sao lưu.";
+        document.querySelector("#resolve-conflict").disabled = false;
+        if (el.value === "manual") result.focus();
+      }),
+    );
+    document.querySelector("#resolve-conflict")?.addEventListener("click", () => {
+      if (!result.value.trim()) {
+        result.focus();
+        say("Nhập nội dung kết quả trước khi lưu.");
+        return;
+      }
+      setView("resolved");
+    });
+    document
+      .querySelector("#desktop-save")
+      ?.addEventListener("click", () =>
+        say(
+          english ? "Prototype: saved to hub; pending synchronization." : "Mẫu thiết kế: đã lưu trên hub; chờ đồng bộ.",
+        ),
+      );
+    const upload = document.querySelector("#asset-file");
+    upload?.addEventListener("change", () => {
+      const file = upload.files[0];
+      if (!file) return;
+      if (file.size > 50 * 1024 * 1024) {
+        upload.closest("dialog").close();
+        setView("too-large");
+        return;
+      }
+      upload.closest("dialog").close();
+      setView("uploading");
+      say("Mẫu thiết kế: đã chọn " + file.name + ". Chọn trạng thái “Tải lên xong” để xem kết quả.");
+    });
+    document.querySelector("#lang-toggle")?.addEventListener("click", () => {
+      english = !english;
+      document.documentElement.lang = english ? "en" : "vi";
+      document.querySelectorAll("[data-en-aria-label]").forEach((el) => {
+        el.dataset.viAriaLabel ??= el.getAttribute("aria-label");
+        el.setAttribute("aria-label", english ? el.dataset.enAriaLabel : el.dataset.viAriaLabel);
+      });
+      document.querySelectorAll("[data-en]").forEach((el) => {
+        el.dataset.vi ??= el.textContent;
+        el.textContent = english ? el.dataset.en : el.dataset.vi;
+      });
+      document.querySelectorAll("[data-en-placeholder]").forEach((el) => {
+        el.dataset.viPlaceholder ??= el.placeholder;
+        el.placeholder = english ? el.dataset.enPlaceholder : el.dataset.viPlaceholder;
+      });
+      say("");
+    });
+    document.documentElement.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
+    document.documentElement.style.colorScheme = document.documentElement.dataset.theme;
+    document.querySelector("#theme-toggle").setAttribute("aria-pressed", String(params.get("theme") === "dark"));
+    if (params.get("narrow") === "1") board.classList.add("narrow");
+    setView(params.get("view") || "ready");
+    </script>
+  </body>
+</html>

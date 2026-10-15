@@ -58,6 +58,7 @@ import {
   LOGIN_WAYS,
   type LoginWay,
   lastChecked,
+  logoutPlan,
   type ModelLimit,
   machineSummary,
   meterTone,
@@ -166,6 +167,12 @@ const text: Dict<{
   keep: string;
   removing: string;
   removed: (id: string) => string;
+  logout: string;
+  logoutTitle: string;
+  confirmLogout: (id: string, cli: string) => string;
+  logoutDefault: string;
+  loggingOut: string;
+  loggedOut: (id: string) => string;
   cancel: string;
   foundTitle: (n: number) => string;
   foundSub: string;
@@ -300,6 +307,13 @@ const text: Dict<{
     keep: "Giữ lại",
     removing: "Đang xoá…",
     removed: (id) => `Đã xoá gói ${id}. Thư mục đăng nhập của CLI vẫn còn trên máy.`,
+    logout: "Đăng xuất",
+    logoutTitle: "Đăng xuất gói",
+    confirmLogout: (id, cli) =>
+      `Đăng xuất ${cli} của gói ${id}? Chỉ đăng nhập trong thư mục của gói này bị xoá, gói khác giữ nguyên. Gói vẫn còn trong danh sách nhưng worker bỏ qua tới khi đăng nhập lại.`,
+    logoutDefault: "Gói này dùng thư mục mặc định của CLI: chạy CLI ngoài Hive trên máy này cũng phải đăng nhập lại.",
+    loggingOut: "Đang đăng xuất…",
+    loggedOut: (id) => `Đã đăng xuất ${id}. Mở menu ⋯ của gói, chọn Đăng nhập lại khi cần dùng.`,
     cancel: "Huỷ",
     foundTitle: (n) => `Tìm thấy ${n} đăng nhập chưa thêm`,
     foundSub: "trên máy này, ngoài danh sách gói.",
@@ -473,6 +487,14 @@ const text: Dict<{
     keep: "Keep",
     removing: "Removing…",
     removed: (id) => `Removed plan ${id}. The CLI's sign-in folder stays on this machine.`,
+    logout: "Sign out",
+    logoutTitle: "Sign out plan",
+    confirmLogout: (id, cli) =>
+      `Sign ${cli} out of plan ${id}? Only the sign-in in this plan's folder is removed; other plans are untouched. The plan stays in the list but the worker skips it until you sign in again.`,
+    logoutDefault:
+      "This plan uses the CLI's default folder: running the CLI outside Hive on this machine needs a new sign-in too.",
+    loggingOut: "Signing out…",
+    loggedOut: (id) => `Signed ${id} out. Open the plan's ⋯ menu and pick Sign in again when you need it.`,
     cancel: "Cancel",
     foundTitle: (n) => `Found ${n} sign-in${n === 1 ? "" : "s"} not added yet`,
     foundSub: "on this machine, outside the plan list.",
@@ -634,6 +656,7 @@ export function PlansScreen() {
   const [adding, setAdding] = useState<{ cli: AddDialogCli | null } | null>(null);
   const [editing, setEditing] = useState<Plan | null>(null);
   const [removing, setRemoving] = useState<Plan | null>(null);
+  const [loggingOut, setLoggingOut] = useState<Plan | null>(null);
   const [bypassing, setBypassing] = useState<Plan | null>(null);
   const [found, setFound] = useState<FoundLogin[]>([]);
   const [foundOpen, setFoundOpen] = useState(false);
@@ -803,6 +826,7 @@ export function PlansScreen() {
       onOpenCli={() => void openCli(p)}
       onOpenCliBypass={() => setBypassing(p)}
       onRemove={() => setRemoving(p)}
+      onLogout={() => setLoggingOut(p)}
       onResume={() => void act(p.id, () => resumePlan(p.id), t.resumed(p.id))}
       desktop={desktopRow(p)}
     />
@@ -1031,6 +1055,17 @@ export function PlansScreen() {
           void discover();
         }}
       />
+      <LogoutPlanDialog
+        plan={loggingOut}
+        t={t}
+        onClose={() => setLoggingOut(null)}
+        onLoggedOut={(id, accounts) => {
+          setList(accounts);
+          setLoggingOut(null);
+          setWaiting(({ [id]: _, ...rest }) => rest);
+          setNotice({ tone: "ok", text: t.loggedOut(id) });
+        }}
+      />
     </div>
   );
 }
@@ -1082,6 +1117,7 @@ function PlanCard({
   onOpenCli,
   onOpenCliBypass,
   onRemove,
+  onLogout,
   onResume,
   desktop,
 }: {
@@ -1100,6 +1136,7 @@ function PlanCard({
   onOpenCli: () => void;
   onOpenCliBypass: () => void;
   onRemove: () => void;
+  onLogout: () => void;
   onResume: () => void;
   /** Dòng Claude Desktop của gói Claude (components/claude-desktop.tsx). */
   desktop?: ReactNode;
@@ -1159,6 +1196,7 @@ function PlanCard({
           enabled={p.enabled}
           supported={p.supported}
           canRelogin={!!relogin}
+          canLogout={!!relogin && p.loggedIn !== false}
           canResume={resumable}
           folder={folder}
           onToggle={onToggle}
@@ -1168,6 +1206,7 @@ function PlanCard({
           onOpenCliBypass={onOpenCliBypass}
           canBypass={BYPASS_FLAG[p.cli] !== undefined}
           onRemove={onRemove}
+          onLogout={onLogout}
           onResume={onResume}
         />
       </div>
@@ -1440,6 +1479,7 @@ function RowMenu({
   enabled,
   supported,
   canRelogin,
+  canLogout,
   canResume,
   folder,
   onToggle,
@@ -1449,6 +1489,7 @@ function RowMenu({
   onOpenCliBypass,
   canBypass,
   onRemove,
+  onLogout,
   onResume,
 }: {
   label: string;
@@ -1457,6 +1498,8 @@ function RowMenu({
   enabled: boolean;
   supported: boolean;
   canRelogin: boolean;
+  /** Chỉ Claude Code và Codex, và chỉ khi CLI chưa báo là đã đăng xuất. */
+  canLogout: boolean;
   canResume: boolean;
   folder: string;
   onToggle: () => void;
@@ -1466,6 +1509,7 @@ function RowMenu({
   onOpenCliBypass: () => void;
   canBypass: boolean;
   onRemove: () => void;
+  onLogout: () => void;
   onResume: () => void;
 }) {
   return (
@@ -1507,6 +1551,11 @@ function RowMenu({
                 onClick={onOpenCliBypass}
               >
                 {t.openCliBypass}
+              </Menu.Item>
+            )}
+            {canLogout && (
+              <Menu.Item className={MENU_ITEM} onClick={onLogout}>
+                {t.logout}
               </Menu.Item>
             )}
             <Menu.Item
@@ -1997,6 +2046,59 @@ function RemovePlanDialog({
           </Button>
           <Button variant="destructive-solid" disabled={busy} onClick={() => void confirm()}>
             {busy ? t.removing : t.remove}
+          </Button>
+        </DialogActions>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Hỏi lại trước khi đăng xuất: đăng nhập lại cần người dùng gõ trong Terminal, worker bỏ qua gói tới lúc đó. */
+function LogoutPlanDialog({
+  plan,
+  t,
+  onClose,
+  onLoggedOut,
+}: {
+  plan: Plan | null;
+  t: T;
+  onClose: () => void;
+  onLoggedOut: (id: string, accounts: Plan[]) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mở hộp thoại cho gói khác thì bỏ lỗi của lần trước.
+  useEffect(() => setError(null), [plan]);
+
+  async function confirm() {
+    if (!plan) return;
+    setBusy(true);
+    try {
+      onLoggedOut(plan.id, (await logoutPlan(plan.id)).accounts);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={plan !== null} onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent showCloseButton={false}>
+        <DialogTitle>{t.logoutTitle}</DialogTitle>
+        <DialogDescription>{plan ? t.confirmLogout(plan.id, cliName(plan.cli)) : ""}</DialogDescription>
+        {plan && !plan.configDir && <p className="text-sm text-warning">{t.logoutDefault}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <DialogActions>
+          <Button variant="outline" disabled={busy} onClick={onClose}>
+            {t.cancel}
+          </Button>
+          <Button variant="destructive-solid" disabled={busy} onClick={() => void confirm()}>
+            {busy ? t.loggingOut : t.logout}
           </Button>
         </DialogActions>
       </DialogContent>

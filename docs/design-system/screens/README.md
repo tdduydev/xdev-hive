@@ -300,3 +300,175 @@ Thiết kế tương tác với dữ liệu mẫu, thiết kế trong repo, chư
 - Terminal trong artboard chỉ minh hoạ. Bản thật dùng `TerminalView` (xterm.js) với `terminalTheme`, tắt OSC 52 và hỏi
   xác nhận trước khi mở link.
 - "Ngắt tất cả" và "Ngắt" luôn qua hộp xác nhận (`alertdialog`), nút huỷ là "Giữ lại".
+
+
+## Đồng bộ tài liệu với repo (spec 018, T010)
+
+Tám bản mẫu dưới đây là nguồn bàn giao cho T018, T020–T023 và phần desktop. Q1–Q12 được coi là đã chốt
+ngày 15/10/2026 theo chỉ dẫn chủ dự án. Không đổi spec hay phần triển khai sản phẩm trong T010.
+
+| File | Màn / route dự kiến | Biến thể riêng |
+|---|---|---|
+| [DocsSettings.dc.html](DocsSettings.dc.html) | Cài đặt dự án → Tài liệu; `/projects/$key/settings` | Mặc định PR, nhánh đổi, mất quyền, nhánh bảo vệ, thư mục chồng, chỉ đọc; xem trước đưa tài liệu hub vào PR riêng |
+| [OrgDocsRepo.dc.html](OrgDocsRepo.dc.html) | Thẻ Kho tài liệu tổ chức cạnh kho skill | Chọn / tạo repo riêng tư, mặc định commit thẳng, `org/`, `teams/<slug>/`, tạm dừng, chồng kho skill, đội không tồn tại |
+| [DocImport.dc.html](DocImport.dc.html) | `/knowledge/docs/import` | Quét, cây chọn, cảnh báo, tiến độ, huỷ, báo cáo, hết hạn mức API, xác nhận bí mật từng file |
+| [DocsTree.dc.html](DocsTree.dc.html) | `/knowledge/docs` | Cây theo repo, đủ bảy nhãn đồng bộ, bộ lọc, tìm theo nghĩa, tìm theo từ, không có kết quả, file đã xoá trên repo |
+| [DocConflict.dc.html](DocConflict.dc.html) | `/knowledge/docs/conflicts/$id` | Ba cột ở 1280 px; ba lựa chọn đổi bản ở 360 px; giữ hub / repo / sửa tay, phiên bản đã đổi, chỉ đọc, đã giải quyết |
+| [DocExtracts.dc.html](DocExtracts.dc.html) | `/knowledge/docs/extracts` | File gốc + bản trích sửa được, duyệt / từ chối, chặn bí mật, PDF không có chữ, giữ bản đã duyệt cũ khi trích lại |
+| [DocEditorAssets.dc.html](DocEditorAssets.dc.html) | `/knowledge/docs/$key/edit` | Ảnh minh hoạ, markdown tương đối, chọn file, tiến độ, quá lớn, kho đầy, link gãy, thiếu đối tượng LFS |
+| [AppWriteSync.dc.html](AppWriteSync.dc.html) | Desktop `#/write` — Soạn tài liệu | Cây, nhãn, tìm kiếm, mất kết nối, chỉ đọc, chuyển VI/EN; mở màn xung đột dùng chung |
+
+**Cách xem.** Khác các màn canvas cũ, tám file T010 mở trực tiếp được trong trình duyệt, không cần `support.js`
+hay mạng ngoài. Chạy từ gốc worktree:
+
+```sh
+python3 -m http.server 48110 --bind 127.0.0.1
+```
+
+Mở `http://127.0.0.1:48110/docs/design-system/screens/DocsSettings.dc.html`. Mỗi file có thanh **Trạng thái xem**,
+nút **Sáng / tối**, **Khung 360 px**; desktop có thêm **VI / EN**. Có thể mở thẳng bằng
+`?theme=dark&view=loading&narrow=1`. Các giá trị `view` nằm trong ô chọn của từng màn. Mọi màn có
+bình thường, đang tải, rỗng, lỗi và nút thử lại; nhấn Tab có viền focus, Escape đóng dialog,
+phím mũi tên chuyển ba bản so sánh trên điện thoại. Đã xem ảnh chụp của cả tám màn ở 360/1280 px, sáng/tối.
+
+**Handoff.** Dùng token v2 từ `ds/xdev-hive/tokens.css` và các quyết định đã sinh bằng UI UX Pro Max trong
+[MASTER.md](../xdev-hive/MASTER.md). Phiên này không có skill `ui-ux-pro-max`; không sinh lại design system.
+Khi triển khai, thay phần HTML minh hoạ bằng component shadcn/ui (Base UI) sẵn có: `Card`, `Button`, `Input`,
+`Textarea`, `Select`, `Checkbox`, `RadioGroup`, `Badge`, `Alert`, `Progress`, `Dialog` và `Tabs` cho ba bản so sánh.
+Các file tự chứa CSS/script vì phạm vi T010 không cho thêm runtime dùng chung; chưa nhập lại hay kiểm trên canvas.
+Font dùng tên trong token và fallback hệ thống khi xem độc lập, không tải Google Fonts.
+
+Các mẫu không gọi API, không lưu thật, không kiểm quyền phía máy chủ. Nút ghi chỉ thay trạng thái hoặc báo
+**Mẫu thiết kế**; tìm kiếm trong bản mẫu lọc dữ liệu minh hoạ tại máy, kết quả tìm theo nghĩa là fixture.
+Link Git dùng namespace `example`, cần thay bằng URL provider trả về khi triển khai. Ảnh trong editor là sơ đồ SVG
+minh hoạ cho ảnh repo; nút chọn file chỉ trình diễn tiến độ, kéo thả/dán thuộc T018.
+Desktop dùng cặp câu vi/en trong `data-en` và các thuộc tính tương ứng để bàn giao cho từ điển app.
+
+Các hành vi cần giữ khi triển khai:
+
+- Dự án mặc định PR; tổ chức mặc định commit thẳng; tắt đồng bộ vẫn giữ nội dung trên hub.
+- Cấu hình cảnh báo phạm vi đọc; chặn thư mục chồng SDLC/kho skill. Tài liệu chưa có nhà cần xem trước và PR riêng.
+- Nhãn PR đang mở khác nhãn đã đồng bộ. Nhánh đổi cần xác nhận và so lại toàn bộ; mất quyền vẫn cho lưu trên hub.
+- File nghi có bí mật chỉ hiện loại và dòng, xác nhận riêng từng file bởi quản trị, có audit và hướng dẫn thu hồi.
+- Bản trích chỉ ở hub; chỉ bản đã duyệt vào tìm kiếm/MCP. Bản cũ vẫn dùng tới khi bản mới được duyệt.
+- Tải lên theo hạn mức hiện tại; LFS chỉ dùng khi repo đã có quy tắc khớp. Giữ đường dẫn markdown tương đối.
+- Chỉ người quản lý được lưu cấu hình, duyệt hoặc giải quyết xung đột; trạng thái chỉ đọc vẫn đọc được.
+
+**Kiểm tự động của bản mẫu.** Sau `pnpm install --frozen-lockfile`, giữ HTTP server ở terminal khác rồi chạy từ gốc
+worktree đoạn dưới. Dùng Chromium đã cài của Playwright. Không cần hub, Postgres hay provider thật; kiểm toàn bộ
+260 tổ hợp màn × kích thước × theme × trạng thái và các luồng tương tác chính. Không thay thế test ứng dụng
+của T018/T020–T023.
+
+```sh
+node --input-type=module <<'JS'
+import { createRequire } from 'node:module';
+import assert from 'node:assert/strict';
+const require = createRequire(`${process.cwd()}/apps/web/package.json`);
+const { chromium, expect } = require('@playwright/test');
+const browser=await chromium.launch();
+const page=await browser.newPage({viewport:{width:360,height:1000}});
+const errors=[];
+page.on('pageerror',e=>errors.push(String(e)));
+page.on('response',r=>{ if(r.status()>=400) errors.push(`${r.status()} ${r.url()}`); });
+const base='http://127.0.0.1:48110/docs/design-system/screens/';
+const open=name=>page.goto(base+name+'.dc.html');
+const view=value=>page.getByLabel('Trạng thái xem',{exact:true}).selectOption(value);
+const click=name=>page.getByRole('button',{name,exact:true}).click();
+const screens=['DocsSettings','OrgDocsRepo','DocImport','DocsTree','DocConflict','DocExtracts','DocEditorAssets','AppWriteSync'];
+let combinations=0;
+for (const name of screens) {
+  for (const width of [360,1280]) {
+    await page.setViewportSize({width,height:1000});
+    for (const theme of ['light','dark']) {
+      await page.goto(`${base}${name}.dc.html?theme=${theme}`);
+      const states=await page.locator('#design-view option').evaluateAll(els=>els.map(el=>el.value));
+      for (const state of states) {
+        await view(state);
+        const bounds=await page.evaluate(()=>({viewport:document.documentElement.clientWidth,content:document.documentElement.scrollWidth}));
+        assert(bounds.content<=bounds.viewport,`${name}/${width}/${theme}/${state}: tràn ngang`);
+        await expect(page.getByRole('heading',{level:1})).toBeVisible();
+        combinations++;
+      }
+      if (width===1280) {
+        await view('ready');
+        await click('Khung 360 px');
+        const frame=await page.locator('.board').evaluate(el=>({width:el.clientWidth,content:el.scrollWidth}));
+        assert(frame.width<=360 && frame.content<=frame.width,'Khung 360 px bị tràn');
+        await expect(page.locator('.nav')).toBeHidden();
+        await click('Khung 360 px');
+      }
+    }
+  }
+}
+assert.equal(combinations,260);
+await page.setViewportSize({width:360,height:1000});
+await open('DocsSettings');
+await click('Đưa tài liệu hub vào repo');
+await expect(page.getByRole('dialog')).toBeVisible();
+await page.keyboard.press('Escape');
+await expect(page.getByRole('dialog')).toBeHidden();
+await click('Tạm dừng');
+await expect(page.getByRole('button',{name:'Tạm dừng',exact:true})).toBeHidden();
+await click('Dùng nhánh mới');
+await click('Xác nhận nhánh mới');
+await expect(page.locator('[data-home-status]')).toHaveText('✓ Đang hoạt động');
+await view('readonly');
+await expect(page.getByRole('button',{name:'Lưu cấu hình'})).toBeDisabled();
+await open('OrgDocsRepo');
+await page.getByLabel('Cách chọn repo').selectOption('new');
+await expect(page.getByLabel('Tên repo riêng tư')).toBeVisible();
+await open('DocImport');
+await page.getByLabel('Chọn mọi file hợp lệ').uncheck();
+await expect(page.getByRole('button',{name:'Nhập file đã chọn'})).toBeDisabled();
+await page.getByLabel('Chọn mọi file hợp lệ').check();
+await click('Nhập file đã chọn');
+await expect(page.getByRole('progressbar')).toBeVisible();
+await click('Xem báo cáo');
+await click('Xem file bị chặn');
+await expect(page.getByRole('button',{name:'Không phải bí mật, vẫn nhập'})).toBeDisabled();
+await page.getByLabel('Tôi có quyền quản trị và đã kiểm tra riêng file này.').check();
+await click('Không phải bí mật, vẫn nhập');
+await expect(page.getByRole('heading',{name:'4. Báo cáo nhập'})).toBeVisible();
+await open('DocsTree');
+await page.getByLabel('Trạng thái đồng bộ',{exact:true}).selectOption('conflict');
+assert.equal(await page.locator('[data-doc-row]:visible').count(),1);
+await page.getByLabel('Tìm theo nghĩa hoặc từ khoá').fill('zzzz');
+await expect(page.locator('#no-results')).toBeVisible();
+await page.getByLabel('Chế độ tìm kiếm').selectOption('keyword');
+await expect(page.locator('#keyword-help')).toBeVisible();
+await open('DocConflict');
+await expect(page.locator('[data-pane]:visible')).toHaveCount(1);
+await page.getByRole('radio',{name:'Gốc chung',exact:true}).focus();
+await page.keyboard.press('ArrowRight');
+await expect(page.locator('[data-pane=hub]')).toBeVisible();
+await page.getByRole('radio',{name:'Sửa tay',exact:true}).check();
+await page.getByLabel('Nội dung kết quả').fill('# Bản hợp\nGiữ 6 bản sao lưu.');
+await click('Lưu cách giải quyết');
+await expect(page.getByRole('heading',{name:'✓ Đã giải quyết xung đột'})).toBeVisible();
+await view('stale');
+await expect(page.getByRole('button',{name:'Lưu cách giải quyết'})).toBeDisabled();
+await open('DocExtracts');
+await view('secret');
+await expect(page.getByRole('button',{name:'Duyệt bản trích'})).toBeDisabled();
+await click('Xác nhận không phải bí mật');
+await click('Không phải bí mật');
+await click('Duyệt bản trích');
+await expect(page.getByText('✓ Đã duyệt. Bản mới được đưa vào tìm kiếm và cho agent đọc.')).toBeVisible();
+await open('DocEditorAssets');
+await click('Chèn ảnh');
+await page.getByLabel('Chọn ảnh hoặc file').setInputFiles({name:'diagram.png',mimeType:'image/png',buffer:Buffer.from('prototype')});
+await expect(page.getByRole('dialog')).toBeHidden();
+await expect(page.getByRole('progressbar')).toBeVisible();
+await open('AppWriteSync');
+await click('VI / EN');
+await expect(page.getByRole('heading',{name:'Write documents',exact:true})).toBeVisible();
+await page.getByLabel('Preview state',{exact:true}).selectOption('offline');
+await expect(page.getByRole('button',{name:'Save to hub'})).toBeDisabled();
+await page.getByLabel('Preview state',{exact:true}).selectOption('ready');
+await click('Save to hub');
+await expect(page.locator('#feedback')).toHaveText('Prototype: saved to hub; pending synchronization.');
+assert.deepEqual(errors,[]);
+console.log(`PASS: ${combinations} tổ hợp; 8 luồng, bàn phím, quyền, tìm kiếm, tải lên, VI/EN; không có lỗi trình duyệt.`);
+await browser.close();
+JS
+```
