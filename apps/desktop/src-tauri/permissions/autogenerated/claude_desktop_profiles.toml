@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-desktop-profiles"
+description = "Enables the claude_desktop_profiles command without any pre-configured scope."
+commands.allow = ["claude_desktop_profiles"]
+
+[[permission]]
+identifier = "deny-claude-desktop-profiles"
+description = "Denies the claude_desktop_profiles command without any pre-configured scope."
+commands.deny = ["claude_desktop_profiles"]
