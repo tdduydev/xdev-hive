@@ -195,6 +195,64 @@ sha256sum --check --ignore-missing checksums.txt
 gh attestation verify hive-worker_linux_amd64.tar.gz --repo tdduydev/xdev-hive
 ```
 
+## AI SDLC worker machines
+
+The AI SDLC mode ([specs/011](../specs/011-ai-sdlc-mode/spec.md), ADR 0021) writes specs, plans and task breakdowns with
+agent runs of kind `sdlc`, then turns approved tasks into ordinary code runs. A team usually keeps a few always-on
+machines for this work, separate from developers' laptops.
+
+1. **Add the machine.** On AI SDLC → Fleet (`/sdlc/fleet`), press **Add machine**. The dialog creates a registration
+   token that is shared (no owner), carries the label `sdlc` and turns on **Labelled runs only**, then shows the install
+   command from [Connecting machines](#connecting-machines). Run it on the machine. The hub only offers `sdlc` runs to
+   workers that declare the `sdlc` capability, so update old workers first.
+2. **Keep it running.** Headless Linux machines need lingering so the systemd user service survives logout; the install
+   script prints the exact `sudo loginctl enable-linger <user>` command when lingering is off. On Windows the
+   Task Scheduler task starts at logon, so keep a user logged in.
+3. **Log in the CLIs and add accounts.** The worker drives CLIs that are already logged in. A team administrator can add
+   accounts of a shared machine and log them in from **Agent accounts** on the Machines page; the login runs on the
+   machine and the hub stores no token. On the machine itself use `hive-worker accounts add` and
+   `hive-worker accounts update --stop-at-session N --stop-at-week N` to stop using an account before its 5-hour session
+   or weekly quota runs out.
+4. **Labels.** A machine has up to 10 labels (`[a-z0-9-]`, 32 characters). A run that requires labels only goes to a
+   machine that has all of them. A machine with **Labelled runs only** never takes runs that require no label, so normal
+   task runs do not fill its slots. Change labels on the Machines page; they apply from the next assignment.
+5. **Turn on AI SDLC for a project** in Project → Settings → AI SDLC. Fields of `settings.sdlc`:
+   - `defaultMode` and `modes`: the preset (Spec Kit, AI-DLC, BMAD) or custom mode items start with.
+   - `runner`: `team` (shared machines, the default) or `requester` (the machine of the person who started the step).
+   - `labels`: labels required by the project's `sdlc` runs and by code runs of item tasks, e.g. `sdlc`.
+   - `repoSync`: `pr` (default), `direct` or `off` for writing approved documents into the repository.
+   - `maxParallel` (1–10, default 2) and `autoRunWaves` for running task waves.
+   - `autoApprove`: off by default. It can only make the mode's auto-approval stricter (higher minimum score, fewer
+     phases, longer revoke window, extra denied paths and keywords).
+
+### Items that span several projects
+
+An item can list participant projects. Every `sdlc` run gets a short summary of each participant repository under
+`.hive/sdlc/projects/<key>.md`. Machines that also declare `sdlc-multirepo` (developer machines and shared machines, not
+runner hosts) additionally receive a read-only, shallow checkout of up to seven participant repositories in
+`.hive/repos/<key>/`, without `.git`. The worker clones with the machine's own Git credentials: the hub sends no token.
+Give the machine read access to the participant repositories (SSH key or credential helper) or those repositories fall
+back to the summary; `.hive/repos/STATUS.md` tells the agent which ones are missing and why. Limits and permissions are in
+[run-permissions.md](run-permissions.md#run-ai-sdlc-sdlc).
+
+### AI auto-approval
+
+Off by default. The hub approves a human checkpoint of an item's document on the reviewer's behalf only when the mode
+allows it for that phase, the project turned it on, the organization agent policy allows it, and the AI checkpoint of
+the same review scored at least the threshold with no major finding. Contracts, the requirements of heavy modes or
+items, and documents that touch a denied path or keyword are never auto-approved. Every auto-approval is audited and
+notified; eligible reviewers can revoke it within the revoke window (24 hours by default), which reopens the human
+checkpoints and blocks new code runs that depend on the document until a person approves it.
+
+### Roles
+
+The team role **BA/PO** (`ba`) ranks between viewer and member. It reads and writes AI SDLC items, proposes document
+changes and can be picked as a document reviewer, but cannot run agents or manage machines. In the desktop app a user
+whose only roles are viewer or BA/PO gets the `writer` profile, which has the AI SDLC menu.
+
+An item that spans projects of several teams is visible to members of any participant team. Each team can only run and
+read run logs of its own projects' tasks, and a task breakdown that touches several teams needs a reviewer from each.
+
 ## Sandboxed runs (optional)
 
 Projects with the `sandbox` feature run on a **runner host** instead of developer machines. Each run gets a single-use

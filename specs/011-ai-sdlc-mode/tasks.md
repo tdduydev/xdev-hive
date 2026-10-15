@@ -14,7 +14,7 @@
   đã merge.
 - `packages/contracts/openapi.json` và `packages/contracts/src/index.ts` chỉ T001 sửa. Task khác cần đổi contract thì báo
   người điều phối thêm vào T001 hoặc mở task contract mới, không tự sửa.
-- Migration chỉ T004 sinh (số `0058`). Task khác cần đổi bảng thì làm sau T004 và sinh migration số kế tiếp.
+- Migration chỉ T004 sinh (thành `0068` vì main đã có tới 0067 lúc sinh). Task khác cần đổi bảng thì làm sau T004 và sinh migration số kế tiếp.
 - **MVP** (đánh dấu 🎯): preset `bugfix`, `small`, `aidlc-express`, `speckit`; chặn cứng; tách task; truy vết cơ bản
   (requirement → task → run → PR → merge); luồng đủ trên web và app; hạng mục nhiều dự án ở mức tối thiểu; tự duyệt AI
   và thu hồi; vai trò BA/PO (chi tiết ở "Implementation Strategy").
@@ -74,17 +74,17 @@
   - **Scope**: `packages/contracts/src/{breakdown.ts,breakdown.test.ts}`, `packages/contracts/src/fixtures/breakdown/**`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [x] T004 🎯 Bảng và migration 0058
+- [x] T004 🎯 Bảng và migration 0068
   - `sdlc/schema.ts` mới (12 bảng như plan.md, gồm `sdlc_item_projects`, `sdlc_artifact_syncs`, `sdlc_auto_approvals`;
     `orgScoped`, policy `hive_owner` select); `tasks/schema.ts` (`checklist`, `task_dependencies`); `runs/schema.ts`
     (`required_labels`, enum `sdlc`); `fleet/schema.ts` (`labels`, `labels_only`, `accounts`, `accounts_at`;
     `registration_tokens` + nhãn, cờ); `tenancy/schema.ts` (`team_role` + `ba`).
-  - `pnpm --filter @xdev-hive/hub db:generate` → `0058_ai_sdlc.sql`; thêm tay `FORCE ROW LEVEL SECURITY`, hàm
+  - `pnpm --filter @xdev-hive/hub db:generate` → `0068_ai_sdlc.sql`; thêm tay `FORCE ROW LEVEL SECURITY`, hàm
     `hive.sdlc_active_orgs()`.
-  - `sdlc/rls.db.test.ts`; `tasks` RLS cho `task_dependencies`; ca nâng cấp từ 0057 trong `migrations-upgrade.db.test.ts`.
+  - `sdlc/rls.db.test.ts`; `tasks` RLS cho `task_dependencies`; ca nâng cấp từ 0067 trong `migrations-upgrade.db.test.ts`.
   - **Scope**: `apps/hub/src/modules/sdlc/{schema.ts,rls.db.test.ts}`, `apps/hub/src/modules/tasks/schema.ts`,
     `apps/hub/src/modules/runs/schema.ts`, `apps/hub/src/modules/fleet/schema.ts`,
-    `apps/hub/src/modules/tenancy/schema.ts`, `apps/hub/db/migrations/0058_*.sql`,
+    `apps/hub/src/modules/tenancy/schema.ts`, `apps/hub/db/migrations/0068_*.sql`,
     `apps/hub/db/migrations/meta/*`, `apps/hub/src/migrations-upgrade.db.test.ts`, `apps/hub/src/modules/tasks/rls.db.test.ts`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
@@ -396,7 +396,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T052, T053 · **Mức**: vừa
   - Đã làm: UI dùng chung qua cầu Rust, hash chi tiết/tab, quyền BA theo đội, khung bên và thẻ duyệt; thiếu kết nối
     thì mời kết nối Hive. SC-009 có test qua các màn thật (BA/PO duyệt, thành viên chạy đợt), SC-016 kiểm hạng mục ba dự án và thu hồi. Tiến độ dùng danh
-    sách giai đoạn/độ phủ; số liệu tổng hợp chờ T082. Tailwind quét cả package `sdlc-ui` khi dựng app.
+    sách giai đoạn/độ phủ; số liệu tổng hợp ở màn `sdlc-metrics` (T082). Tailwind quét cả package `sdlc-ui` khi dựng app.
 
 ---
 
@@ -409,9 +409,10 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `sdlc` và run task hạng mục đang chạy) vì `sdlc` không import `fleet`.
   - Test DB: mã đăng ký mang nhãn; nhãn sai định dạng; máy cá nhân không có `account_set`; heartbeat thiếu `accounts` giữ
     giá trị cũ.
-  - **Scope**: `apps/hub/src/modules/fleet/{machines.ts,registration.ts,gateway.ts,router.ts,index.ts,fleet-sdlc.db.test.ts}`
+  - **Scope**: `apps/hub/src/modules/fleet/{machines.ts,registration.ts,gateway.ts,router.ts,index.ts,sdlc-fleet.ts}`,
+    `apps/hub/src/fleet-accounts.db.test.ts`
   - **Phụ thuộc**: T004 · **Mức**: vừa
-  - Đã làm cùng T063: migration `0060_machine_labels_accounts.sql`, `fleet/sdlc-fleet.ts` (`machines.sdlc`, run lấy qua
+  - Đã làm cùng T063: migration `0062_machine_labels_accounts.sql`, `fleet/sdlc-fleet.ts` (`machines.sdlc`, run lấy qua
     `provideSdlcFleetRuns` cho T070 nối), test ở `apps/hub/src/fleet-accounts.db.test.ts`.
 
 - [x] T061 [P] [US13] [US15] Worker: tóm tắt gói, `account_set`, nhắc linger
@@ -419,7 +420,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     `shared`); capability `accounts-remote`; `install.sh` nhắc `loginctl enable-linger` trên Linux.
   - `gofmt -l .`, `go vet ./...`, `go test ./...`.
   - **Scope**: `worker/internal/accounts/{summary.go,summary_test.go,remote.go,remote_test.go}`,
-    `worker/internal/channel/{protocol.go,client.go,client_test.go}`, `scripts/install.sh`
+    `worker/internal/channel/{protocol.go,accounts.go,accounts_test.go}`, `scripts/install.sh`
   - **Phụ thuộc**: T001 · **Mức**: vừa
   - Đã làm cùng T063; kênh không có `client.go` nên phần nối nằm ở `worker/internal/channel/{accounts.go,accounts_test.go}`.
 
@@ -465,17 +466,29 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Phụ thuộc**: T013, T016, T017, T018, T021, T022, T031 (T040, T060 khi có) · **Mức**: vừa
   - Đã làm: `sdlc/review-hooks.ts` (`ruleContext` cho luật câu hỏi mở/breakdown/coverage, `traceFor` theo bản tách),
     `sdlc/fleet-runs.ts` cài qua `provideSdlcFleetRuns`; test `review-hooks.db.test.ts`, `fleet-runs.db.test.ts`.
-    Route `metrics` chờ T082.
+    Route `metrics` gộp ở T082.
 
 - [x] T071 [P] Leader: hành động `sdlc.item.create`
   - Thực thi khi người duyệt đề xuất; prompt leader biết đề xuất tạo hạng mục cho việc lớn.
   - **Scope**: `apps/hub/src/modules/leader/{router.ts,prompt.ts,leader-sdlc.db.test.ts}`
   - **Phụ thuộc**: T012 · **Mức**: nhẹ
 
-- [ ] T072 🎯 Kiểm hồi quy: `pnpm check`, bộ DB test của task, run, review tài liệu, hàng merge không sửa test cũ (SC-011);
+- [x] T072 🎯 Kiểm hồi quy: `pnpm check`, bộ DB test của task, run, review tài liệu, hàng merge không sửa test cũ (SC-011);
   ghi kết quả vào PR.
   - **Scope**: không sửa file (chỉ báo cáo)
   - **Phụ thuộc**: T070 · **Mức**: nhẹ
+  - Đã chạy (SPEC11FIN, 15/10/2026, trên commit T086): theo quy tắc kiểm của người dùng (14/10/2026) không chạy đủ
+    `pnpm check`/`pnpm ci:local`, chỉ phần liên quan; chưa có PR nên kết quả ghi ở đây.
+    - Một lượt hub (Postgres testcontainers): `src/modules/{tasks,knowledge,codereview}/`, `runs`, `runs-board`,
+      `runs-search`, `runs-sdlc`, `merge-queue`, `review`, `knowledge`, `plan`, `mcp-run`, `leader`, `tenancy`,
+      `migrations-upgrade`, `modules/sdlc/rls` (`*.db.test.ts`): 39 file, 541 đạt, 7 bỏ qua, 4 hỏng ở `runs.db.test.ts` (3)
+      và `leader.db.test.ts` (1), mỗi test 5,5–7 giây. Chạy lại riêng hai file đó: 86/86 đạt. Nhiều khả năng do máy tải
+      nặng khi chạy chung 39 file, chưa xác minh nguyên nhân.
+    - `src/modules/sdlc/` + `runs-sdlc.db.test.ts`: 29 file, 287 đạt; `src/modules/{runs,fleet}/`: 10 file, 114 đạt;
+      contracts: 22 file, 475 đạt; typecheck contracts và hub, `pnpm deps`, biome: sạch (chỉ cảnh báo có sẵn).
+    - SC-011: các commit của spec 011 chạm test cũ (2d53c56e, 7d0815ee, 10729fa3, d935d944) chỉ xoá dòng import và mở
+      rộng fixture `tasks/rls.db.test.ts` cho bảng mới; không đổi assertion nào của test task, run, review tài liệu, hàng
+      merge.
 
 ---
 
@@ -516,7 +529,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 - [x] T082 [US12] Chỉ số và bảng tiến độ đầy đủ
   - `metrics.ts` (lead time theo giai đoạn p50/p90, chờ cổng, trả lại, câu hỏi, độ phủ, converge, vòng review code, chi phí
-    qua `cost`, tỉ lệ tự duyệt và thu hồi theo chế độ/dự án/người tạo; lọc theo dự án gồm dự án tham gia), route; `sdlc-ui` `metrics.tsx`; màn app `sdlc-metrics`, web `/sdlc/metrics`. SC-007 với 500 hạng mục.
+    qua `cost`, tỉ lệ tự duyệt và thu hồi theo chế độ/dự án/người tạo (chiều người tạo chưa làm); lọc theo dự án gồm dự án tham gia), route; `sdlc-ui` `metrics.tsx`; màn app `sdlc-metrics`, web `/sdlc/metrics`. SC-007 với 500 hạng mục.
   - **Scope**: `apps/hub/src/modules/sdlc/{metrics.ts,metrics.test.ts,metrics.db.test.ts}`, `packages/sdlc-ui/src/metrics.tsx`,
     `apps/web/src/pages/sdlc/metrics-page.tsx`, `apps/desktop/src/screens/sdlc-metrics-screen.tsx`
   - **Phụ thuộc**: T031, T054, T055 · **Mức**: vừa
@@ -558,35 +571,87 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     đã duyệt), `codereview/prompt.ts` `reviewSpecLines`; cài ở main.ts và app.ts. Engine chuyển `specContext` cùng
     `guidance` (trước đây bị bỏ, reviewer không thấy ngưỡng của checkpoint) qua sự kiện `review_prompt` vào `reviewPrompt`.
 
-- [ ] T086 [US16] Run soạn checkout nhiều repo
+- [x] T086 [US16] Run soạn checkout nhiều repo
   - Hub: `spec.sdlc.repos?: [{ projectKey, cloneUrl, branch, dir }]` cho run `sdlc` của hạng mục nhiều dự án (chỉ repo
-    mà máy của đội chủ trì được phép đọc theo kết nối Git của dự án đó; không được thì giữ tóm tắt repo như MVP).
+    mà kết nối Git của hub đọc được; máy clone bằng thông tin Git của chính máy, không có quyền thì giữ tóm tắt repo như
+    MVP).
   - Worker: checkout nông (depth 1), chỉ đọc, vào `.hive/repos/<key>/` trong worktree tạm; không đẩy; dọn cùng worktree;
     giới hạn kích thước; capability `sdlc-multirepo`.
   - Test: Go (checkout, chỉ đọc, dọn, giới hạn), hub DB (máy không có capability → dùng tóm tắt).
   - **Scope**: `worker/internal/runner/{sdlc_repos.go,sdlc_repos_test.go}`, `apps/hub/src/modules/sdlc/{prompt.ts,steps.ts}`,
     `apps/hub/src/modules/runs/engine.ts` (phần `spec.sdlc`)
   - **Phụ thuộc**: T020, T022, T070 · **Mức**: nặng
+  - Đã làm (SPEC11FIN): hợp đồng `sdlcJobSpec.repos` (tối đa 7, `dir` phải là `.hive/repos/<key>`, URL https/http/ssh),
+    hằng `SDLC_MULTIREPO_CAPABILITY`, `SDLC_REPOS_DIR`. `planStep` thêm repo cho dự án tham gia mà hub đọc được qua kết
+    nối Git của dự án đó (có tóm tắt), tóm tắt vẫn luôn seed. Lúc giao offer, engine (`sdlcJobForMachine`) bỏ `repos` với
+    máy không khai `sdlc-multirepo`; máy có thì prompt chỉ chỗ checkout và `.hive/repos/STATUS.md`. Worker
+    (`sdlc_repos.go`): clone `--depth 1 --single-branch --no-tags`, không hỏi mật khẩu, bỏ `.git` (không còn gì để đẩy),
+    khoá ghi, giới hạn 200 MB mỗi repo, 500 MB tổng, 5 phút mỗi repo; repo không lấy được thì ghi lý do vào STATUS.md và
+    run vẫn chạy; checkout trước seed; dọn trước worktree. Runner host (sandbox) không khai capability.
+  - Giới hạn: máy clone bằng thông tin Git của chính máy (hub không gửi token), nên "được phép đọc" là kết nối của hub đọc
+    được và máy có quyền clone; máy không có quyền thì rơi về tóm tắt. Chờ chủ dự án xác nhận cách này.
 
 ---
 
 ## Phase 10: Tài liệu và hoàn thiện
 
-- [ ] T090 [P] Cập nhật tài liệu: module `sdlc` và luồng trong `docs/architecture.md`, `docs/add.md`, `docs/sdd.md`; trạng
+- [x] T090 [P] Cập nhật tài liệu: module `sdlc` và luồng trong `docs/architecture.md`, `docs/add.md`, `docs/sdd.md`; trạng
   thái SDLC-xx trong `docs/srs.md`; mục "Máy worker AI SDLC" trong `docs/self-hosting.md` (cài, linger, nhãn, gói);
   `docs/run-permissions.md` (run `sdlc` quyền `workspace`, không đẩy); hạng mục nhiều dự án, tự duyệt và vai trò BA/PO
   trong tài liệu người dùng.
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md,self-hosting.md,run-permissions.md}`
   - **Phụ thuộc**: T070 · **Mức**: nhẹ
+  - Đã làm (SPEC11FIN):
+    - `architecture.md`: dòng module `sdlc` (12 bảng), `task_dependencies` của `tasks`, nhãn máy của `fleet`, ER, mục
+      4.4 luồng AI SDLC; mục 4.2 bỏ "[Chưa làm] nhãn máy" và mô tả ghép theo nhãn, `labels_only`.
+    - `add.md`: module, runtime view 6.6 "An AI SDLC item", dòng rủi ro AI SDLC.
+    - `sdd.md`: bảng `sdlc_*`, `task_dependencies`, cột máy; `spec.sdlc` (`seed`, `collect`, `repos`, capability `sdlc`,
+      `sdlc-multirepo`); tool MCP `sdlc_*`; ghép theo nhãn; vòng đời hạng mục; giới hạn.
+    - `srs.md`: SDLC-01..21 có trạng thái và test bằng chứng (SDLC-11, 12, 19 là Partial); thêm tiền tố `desktop:`,
+      `contracts:`, `sdlc-ui:`, `artifacts-ui:` vào chú thích.
+    - `self-hosting.md`: mục "AI SDLC worker machines" (thêm máy từ trang Đội máy, linger, gói agent, nhãn, cài đặt dự
+      án), hạng mục nhiều dự án, tự duyệt AI, vai trò BA/PO.
+    - `run-permissions.md`: run `sdlc` luôn `workspace`, không commit/đẩy, checkout repo tham gia chỉ đọc.
 
-- [ ] T091 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp ảnh màn mới (sáng, tối, 360 px).
+- [x] T091 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp ảnh màn mới (sáng, tối, 360 px).
   - **Scope**: `specs/011-ai-sdlc-mode/*`, `apps/web/e2e/screenshots/**`
   - **Phụ thuộc**: T054, T055 · **Mức**: nhẹ
   - SPEC11UI2 đã đối chiếu phần UI và lưu 11 ảnh tại `apps/web/e2e/screenshots/spec11ui2/`; kết quả và giới hạn ở
-    `ui-validation.md`. Chưa chạy phân tích toàn bộ đặc tả; giữ mở cho đợt tích hợp hub/worker.
+    `ui-validation.md`.
   - SPEC11W5UI thêm 4 ảnh 360 px sáng/tối (Chỉ số, Hội tụ) tại `apps/web/e2e/screenshots/spec11w5ui/`.
   - SPEC11W6UI thêm 4 ảnh 360 px sáng/tối (Chỉ số có liên kết sang bảng, hàng số liệu trong chính sách) tại
     `apps/web/e2e/screenshots/spec11w6ui/`.
+  - Đã chạy `/speckit-analyze` (SPEC11FIN, 15/10/2026), 30 phát hiện; đã sửa:
+    - spec:
+      - trùng mã FR-062: contract liên repo đổi thành FR-068, FR-069;
+      - mục ngoài phạm vi về checkout nhiều repo và đăng nhập gói từ web;
+      - FR-066 và US16 AS7 theo T086;
+      - ghi chú FR-067 thực hiện ở specs/010;
+      - Status, SDLC-01…22, `system:ai-auto`, `sdlc_artifact_syncs`;
+      - câu hỏi T086 trong Clarifications.
+    - plan:
+      - số migration 0068, ca nâng cấp từ 0067;
+      - tên màn desktop thật;
+      - `spec.sdlc.repos` và Worker impact (T063, T086);
+      - `sdlc_report lessons`;
+      - khoá advisory theo tổ chức;
+      - dòng mối đe doạ cho clone bằng thông tin Git của máy;
+      - dòng Complexity Tracking cho đặc tả tiếng Việt.
+    - tasks:
+      - số migration, Scope sai của T060 và T061, `0062_machine_labels_accounts.sql`;
+      - ghi chú cũ "chờ T082";
+      - mô tả T086.
+  - Ảnh mới: 6 ảnh 360 px sáng/tối tại `apps/web/e2e/screenshots/spec11fin/` (tab Dự án của hạng mục ba dự án, thẻ Tự duyệt
+    bởi AI, cài đặt dự án với Tự duyệt AI bật; trang không tràn ngang).
+  - Còn mở, ngoài Scope của T091:
+    - Chờ chủ dự án xác nhận:
+      - cách clone của T086;
+      - đặc tả tiếng Việt lệch nguyên tắc VI của constitution.
+    - `docs/srs.md` chưa có dòng SDLC-22.
+    - `docs/add.md` mục 8 chưa có hành vi bảo mật của AI SDLC và đăng nhập gói từ web (nguyên tắc V).
+    - `packages/contracts/fixtures/worker-protocol.json` chưa có ví dụ `spec.sdlc`/`repos` (nguyên tắc I).
+    - SC-007 (500 hạng mục) chưa đo.
+    - Chỉ số tự duyệt theo người tạo chưa làm.
 
 ---
 
@@ -678,12 +743,12 @@ T005, T006 (không phụ thuộc)
     hub với cổng mỗi đội và chặn bên dùng (T016); tóm tắt repo tham gia cho agent soạn (T022); truy vết và độ phủ theo
     dự án (T031); UI chọn dự án, tab Dự án, Contract, làn dự án (T050–T052).
   - Sau MVP: ghi tài liệu, bản sao contract và README mục lục vào nhiều repo (T040 — cả đồng bộ một repo cũng sau MVP như
-    bản trước); run soạn checkout nhiều repo (T086); converge theo dự án (T080); chỉ số theo dự án ngoài độ phủ (T082).
+    bản trước); run soạn checkout nhiều repo (đã làm, T086); converge theo dự án (T080); chỉ số theo dự án ngoài độ phủ (T082).
   - Lý do: phần trong MVP là phần làm đổi mô hình dữ liệu và quyền — để sau thì phải chuyển dữ liệu và sửa mọi route.
     Phần để sau chỉ thêm job/worker trên mô hình đã có; trước khi có, agent đọc tài liệu và contract qua seed file.
 - **Tự duyệt trong MVP**: T017 (hub), hiển thị và thu hồi (T051, T053, T054, T055), cấu hình dự án và tổ chức (T054);
   preset mang mặc định (T002). Trình sửa chế độ (T084) để sau: trước đó chỉ preset và chế độ nhân bản qua API.
 - **Tăng dần**: T040 (đồng bộ nhiều repo) → T060–T062 (máy AI SDLC) → T083 (preset còn lại) → T084 (cấu hình chế độ) →
-  T080–T082 (converge, release, chỉ số) → T086 (checkout nhiều repo) → T085 (sau spec 009).
+  T080–T082 (converge, release, chỉ số) → T086 (checkout nhiều repo, đã làm) → T085 (sau spec 009).
 - Mỗi PR chỉ đổi hành vi khi dự án bật `settings.sdlc.enabled` (hoặc khi máy/run có nhãn), nên merge từng phần không ảnh
   hưởng dự án đang chạy.

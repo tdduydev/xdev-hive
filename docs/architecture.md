@@ -74,10 +74,11 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `tenancy` | Tổ chức, thành viên, đội, hệ thống, lời mời, cấp quyền | `orgs`, `org_members`, `teams`, `team_members`, `systems`, `invitations` |
 | `catalog` | Dự án, file mẫu cho agent, saga tạo dự án, cấu hình dự án (jsonb `settings` trên `projects`), merge queue | `projects`, `project_provision_steps`, `merge_queue_entries` |
 | `scm` | GitHub App, GitLab, kết nối Git của tổ chức, webhook vào, mở PR/MR | `scm_connections`, `webhook_deliveries` |
-| `tasks` | Task, plan mode, nhận việc từ issue | `tasks`, `plans` |
+| `tasks` | Task, plan mode, nhận việc từ issue, phụ thuộc giữa task (run task chờ task trước xong) | `tasks`, `plans`, `task_dependencies` |
 | `runs` | Máy trạng thái của run, lease, chính sách kết quả, review chéo, SSE | `runs`, `run_events`, `run_logs`, `run_leases` |
 | `codereview` | Phiên review PR do run code mở: checkpoint quy tắc, AI, CI, người duyệt; trả lại, vòng sửa, SLA và cổng hàng merge. | `code_reviews`, `code_review_gate_runs` |
-| `fleet` | Máy, đăng ký, cổng WSS, phiên bản worker | `machines`, `machine_tokens`, `registration_tokens` |
+| `fleet` | Máy, đăng ký, cổng WSS, phiên bản worker, nhãn máy (`labels`, `labels_only`), gói agent của máy dùng chung | `machines`, `machine_tokens`, `registration_tokens` |
+| `sdlc` | Chế độ AI SDLC (specs/011, ADR 0021): chế độ và preset, hạng mục qua các giai đoạn, bước soạn tài liệu bằng run `sdlc`, câu hỏi, đồng bộ tài liệu vào repo, tách task theo đợt, cổng chặn run code, truy vết, hội tụ, release notes, tự duyệt, hạng mục nhiều dự án, chỉ số | `sdlc_modes`, `sdlc_items`, `sdlc_item_projects`, `sdlc_item_phases`, `sdlc_artifacts`, `sdlc_artifact_syncs`, `sdlc_questions`, `sdlc_steps`, `sdlc_item_tasks`, `sdlc_trace_links`, `sdlc_overrides`, `sdlc_auto_approvals` |
 | `sandbox` | Image môi trường, allowlist mạng, cấu hình sandbox của tổ chức | `sandbox_org_settings`, `env_images`, `egress_allowlists` |
 | `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, bộ skill mặc định của Hive (`packages/skill-pack`, bật/tắt theo tổ chức và dự án), đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `skill_pack_settings`, `proposals`, `legacy_*` |
 | `skilllearn` | Agent đề xuất skill sau việc khó (ADR 0025): chọn run đáng học, lô mỗi ngày mỗi dự án chạy run `skill_proposal` chỉ đọc, bỏ trùng, hạn mức theo ngày, duyệt thành PR vào kho skill hoặc skill của tổ chức, số liệu | `skill_learning_batches`, `skill_learning_marks`, `learned_skill_proposals` |
@@ -122,6 +123,16 @@ erDiagram
   PROJECTS ||--o{ DOCS : "tài liệu"
   TEAMS ||--o{ SKILLS : "skill"
   PROJECTS ||--o{ EGRESS_ALLOWLISTS : "mạng"
+  SDLC_MODES |o--o{ SDLC_ITEMS : "chụp chế độ"
+  SDLC_ITEMS ||--o{ SDLC_ITEM_PROJECTS : "dự án chính, tham gia"
+  PROJECTS ||--o{ SDLC_ITEM_PROJECTS : "tham gia"
+  SDLC_ITEMS ||--o{ SDLC_ITEM_PHASES : "giai đoạn"
+  SDLC_ITEMS ||--o{ SDLC_ARTIFACTS : "tài liệu"
+  SDLC_ITEMS ||--o{ SDLC_STEPS : "bước"
+  SDLC_STEPS ||--o| RUNS : "run sdlc"
+  SDLC_ITEMS ||--o{ SDLC_ITEM_TASKS : "tách task"
+  SDLC_ITEM_TASKS }o--|| TASKS : "là"
+  TASKS ||--o{ TASK_DEPENDENCIES : "phụ thuộc"
 ```
 
 Quy tắc chung:
@@ -177,7 +188,8 @@ kết quả vẫn là cổng vào; xem mục 4.3.
 
 ### 4.2 Giao job và lease
 
-- Run `queued` được ghép với máy theo: đội sở hữu, CLI có sẵn, chỗ trống, loại máy (dự án bật sandbox chỉ giao cho runner host). **[Chưa làm]** nhãn máy; ưu tiên máy dev rảnh rồi mới tới container.
+- Run `queued` được ghép với máy theo: đội sở hữu, CLI có sẵn, chỗ trống, loại máy (dự án bật sandbox chỉ giao cho runner host), capability của worker (run `sdlc` cần `sdlc`) và nhãn máy. **[Chưa làm]** ưu tiên máy dev rảnh rồi mới tới container.
+- Nhãn máy (tối đa 10, `^[a-z0-9][a-z0-9-]{0,31}$`) đặt lúc tạo token đăng ký hoặc sửa trên trang Máy. Run đòi nhãn (run `sdlc` và run code của task hạng mục, theo `settings.sdlc.labels` của dự án) chỉ giao cho máy có đủ các nhãn đó. Máy bật `labels_only` không nhận run không đòi nhãn, để máy dành cho AI SDLC không bị run thường chiếm chỗ.
 - Lease lưu trong `run_leases`, có hạn (mặc định 90 giây) và được gia hạn bằng heartbeat. Máy mất kết nối thì lease hết hạn, run sang `lost`. Chỉ một tiến trình `api` giao job, vì đề nghị đi qua socket mà tiến trình đó giữ; **[Chưa làm]** chuyển tiếp qua NOTIFY để chạy nhiều tiến trình `api`. [9][10]
 - Job đẩy qua WSS. **[Chưa làm]** long-poll `POST /v1/worker/claim` (khoảng 50 giây) khi WSS không qua được proxy công ty, giống GitHub runner. [11][12]
 
@@ -210,6 +222,37 @@ Luồng thực tế trên hub:
 `queueFixRun`, `runEvidence`, đăng ký worker `codereview` (CI hỏi lại mỗi 2 phút, tối đa 60 lần),
 cron `codereview-sla` mỗi 10 phút và handler SCM. `catalog` nhận `reviewGate` qua deps để tránh vòng import.
 Mọi dữ liệu phiên đi qua `withTenant()`, hai bảng bật và ép RLS.
+
+### 4.4 Chế độ AI SDLC
+
+[Spec 011](../specs/011-ai-sdlc-mode/spec.md) và [ADR 0021](adr/0021-ai-sdlc-mode.md). Module `sdlc` đưa một yêu cầu
+lớn (hạng mục) qua các giai đoạn của một chế độ (preset Spec Kit, AI-DLC, BMAD, Kiro, OpenSpec hoặc chế độ tự tạo),
+từ đặc tả tới task code, rồi hội tụ và release notes.
+
+1. **Tạo hạng mục** từ web, app, issue hay đề xuất của Leader (`sdlc.item.create`). Hạng mục chụp chế độ (`mode` jsonb)
+   lúc tạo, có một dự án chính và có thể có dự án tham gia (`sdlc_item_projects`).
+2. **Bước soạn tài liệu** tạo run `sdlc` trên dự án chính: worktree tạm, quyền `workspace`, không commit, không đẩy
+   ([run-permissions.md](run-permissions.md#run-ai-sdlc-sdlc)). Hub gửi `spec.sdlc` gồm `seed` (baseline, bản nháp, tóm
+   tắt dự án tham gia) và `collect` (file cần thu về). Agent gọi MCP `sdlc_context`, `sdlc_ask`, `sdlc_report`; câu hỏi
+   không giữ run: run kết thúc, người trả lời đủ thì hub chạy lượt soạn mới kèm câu trả lời. Tài liệu về hub qua `report.artifacts` và thành phiên bản của tài liệu `knowledge`
+   (`sdlc_artifacts.doc_key`), với phạm vi hạng mục, dự án hoặc contract.
+3. **Cổng giai đoạn** dùng phiên duyệt tài liệu của `knowledge` (hook `provideReviewHooks`); hạng mục nhiều đội cần
+   người duyệt mỗi đội. Tự duyệt AI chỉ khi chế độ và dự án cho phép, điểm đủ ngưỡng, không chạm đường dẫn hay từ khoá
+   cấm, và thu hồi được trong hạn (`sdlc_auto_approvals`).
+4. **Đồng bộ repo**: baseline đã duyệt được ghi vào repo theo `settings.sdlc.repoSync` (`pr` đi chung hàng merge với PR
+   của run, `direct` hay `off`); `sdlc_artifact_syncs` lưu trạng thái.
+5. **Tách task**: bộ đọc theo định dạng của chế độ biến tài liệu tách việc thành task thường (`sdlc_item_tasks`) có
+   phụ thuộc (`task_dependencies`), chạy theo đợt (`maxParallel`, `autoRunWaves`).
+6. **Cổng chặn run code**: engine gọi `codeRunGate` trước khi giao run code của task thuộc hạng mục; thiếu tài liệu
+   bắt buộc đã duyệt (kể cả contract mà dự án đó dùng) thì `SDLC_GATE_BLOCKED`, trừ khi có ghi đè có lý do
+   (`sdlc_overrides`). Review code nhận requirement và tiêu chí của task qua `specContextFor`.
+7. **Truy vết và hội tụ**: `sdlc_trace_links` nối requirement với task, run, PR, commit, test, CI và phát hiện; bước `converge` chạy một run mỗi dự án, gộp
+   phát hiện, còn thiếu thì giao lại bước tách việc tới hết số vòng.
+
+Ranh giới: `runs` import `sdlc/index.ts` (cổng, tạo run bước, sự kiện run xong); `sdlc` không import `runs` mà nhận cổng
+tạo run qua `SdlcDeps` do `main.ts` tiêm. `fleet` nhận danh sách run AI SDLC qua `provideSdlcFleetRuns` cho trang Đội máy.
+Mười hai bảng `sdlc_*` bật và ép RLS theo tổ chức; quyền theo đội (D22) lọc bằng join `sdlc_item_projects.team_id`, nên
+hạng mục nhiều dự án hiện với thành viên của mọi đội tham gia.
 
 Worker đã hỗ trợ `spec.checks.commands`, chạy lệnh trong worktree run code sau agent, trước khi đẩy và trả
 `report.commands` (mã thoát, thời gian, đuôi output đã che bí mật). Hub gom lệnh từ quy trình khớp lúc giao job

@@ -1,4 +1,5 @@
 import { type SdlcStep, sdlcItemRef } from "@xdev-hive/contracts";
+import { SDLC_MULTIREPO_CAPABILITY, SDLC_REPOS_DIR, type SdlcJobSpec } from "@xdev-hive/contracts/worker-protocol";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { loadProject } from "../catalog/index.ts";
 import { requirementsOf } from "../knowledge/index.ts";
@@ -132,6 +133,27 @@ function projectsBlock(projects: PromptProject[]): string {
           : `- ${p.key}: hub chưa đọc được repo; hỏi bằng sdlc_ask nếu cần biết cấu trúc`,
       ),
   ].join("\n");
+}
+
+/**
+ * Spec `sdlc` cho máy nhận offer (T086). `planStep` chưa biết máy nào nhận nên luôn kèm `repos`: máy không khai
+ * `sdlc-multirepo` (worker cũ, runner host) bỏ trường này và đọc tóm tắt đã seed; máy có thì prompt chỉ chỗ checkout.
+ */
+export function sdlcJobForMachine(
+  job: SdlcJobSpec,
+  prompt: string | null,
+  capabilities: readonly string[],
+): { job: SdlcJobSpec; prompt: string | null } {
+  const { repos, ...rest } = job;
+  if (!repos?.length) return { job: rest, prompt };
+  if (!capabilities.includes(SDLC_MULTIREPO_CAPABILITY)) return { job: rest, prompt };
+  const note = [
+    `Bản checkout chỉ đọc của repo dự án tham gia nằm trong \`${SDLC_REPOS_DIR}/<mã dự án>/\` (${repos
+      .map((r) => r.projectKey)
+      .join(", ")}): đọc code thật ở đó, không sửa, không commit, không đẩy.`,
+    `Repo nào máy không clone được thì \`${SDLC_REPOS_DIR}/STATUS.md\` ghi lý do; khi đó dùng tóm tắt repo ở trên.`,
+  ].join("\n");
+  return { job: { ...rest, repos }, prompt: prompt ? `${prompt}\n\n${note}` : note };
 }
 
 function rulesBlock(input: StepPromptInput): string {
