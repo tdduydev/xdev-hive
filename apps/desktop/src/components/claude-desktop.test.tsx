@@ -144,7 +144,9 @@ describe("dòng Claude Desktop của gói", { timeout: 20_000 }, () => {
 
 function Probe() {
   const { view } = useClaudeDesktop();
-  return <span data-testid="probe">{view ? view.profiles.map((p) => `${p.id}:${p.pid ?? "-"}`).join(",") : "none"}</span>;
+  return (
+    <span data-testid="probe">{view ? view.profiles.map((p) => `${p.id}:${p.pid ?? "-"}`).join(",") : "none"}</span>
+  );
 }
 
 describe("useClaudeDesktop", () => {
