@@ -114,7 +114,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     không được thay đổi keychain hệ điều hành; không có Windows runtime. Cần kiểm chéo trước phát hành;
     nếu không tương thích thì thêm task desktop chuyển sang `hive auth`.
 
-- [ ] **T006 [P] [US7] [vừa] · 1 ngày — Op socket `worker.status` và cờ `--owner`**
+- [x] **T006 [P] [US7] [vừa] · 1 ngày — Op socket `worker.status` và cờ `--owner`**
   - **Goal**:
     - `hive-worker run --owner desktop|vscode|cli` (mặc định `cli`).
     - Op NDJSON `worker.status` → `{state, hubConnected, registered, machineId, version, runs, owner}`. Không cần bắt tay
