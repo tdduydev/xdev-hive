@@ -5,8 +5,10 @@ import {
   buildPatch,
   buildSectionPatch,
   codeWorkflowsForProject,
+  docsFormFromSettings,
   fieldOfPath,
   formFromSettings,
+  parseDocsForm,
   SETTINGS_SECTION_IDS,
   SETTINGS_SECTIONS,
   type SettingsForm,
@@ -404,5 +406,50 @@ describe("lưu từng mục", () => {
     const saved = formFromSettings(base());
     const draft = { ...saved, perRunUsd: "3", requiredApprovals: "2" };
     expect(withSection(draft, saved, "budget")).toEqual({ ...saved, requiredApprovals: "2" });
+  });
+});
+
+describe("cấu hình nhà tài liệu", () => {
+  it("điền mặc định cho dự án cũ và giữ mẫu mặc định khi chưa sửa", () => {
+    const form = docsFormFromSettings();
+    expect(form).toMatchObject({
+      enabled: false,
+      root: "docs/",
+      repoSync: "pr",
+      assetsDir: "assets",
+      repoChangesNeedReview: false,
+    });
+    expect(parseDocsForm(form)).toEqual({ success: true, data: base().docs });
+  });
+  it("giữ đường dẫn Unicode, tách mẫu theo dòng và giữ mẫu loại trừ", () => {
+    const form = {
+      ...docsFormFromSettings(),
+      enabled: true,
+      root: " Tài liệu/ ",
+      include: " docs/** \n\n specs/**\n",
+      exclude: " node_modules/**\n.hive/** ",
+      repoChangesNeedReview: true,
+    };
+    expect(parseDocsForm(form)).toMatchObject({
+      success: true,
+      data: {
+        root: "Tài liệu/",
+        include: ["docs/**", "specs/**"],
+        exclude: ["node_modules/**", ".hive/**"],
+        repoChangesNeedReview: true,
+      },
+    });
+  });
+  it.each(["../docs", "/docs", "docs/../private", "docs//private", "docs\\private", "docs/./private"])(
+    "chặn đường dẫn thoát repo: %s",
+    (root) => {
+      expect(parseDocsForm({ ...docsFormFromSettings(), root }).success).toBe(false);
+    },
+  );
+  it("chặn thư mục ảnh thoát repo và quá 100 mẫu", () => {
+    expect(parseDocsForm({ ...docsFormFromSettings(), assetsDir: "../assets" }).success).toBe(false);
+    expect(parseDocsForm({ ...docsFormFromSettings(), include: Array(101).fill("docs/**").join("\n") }).success).toBe(
+      false,
+    );
   });
 });
