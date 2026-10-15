@@ -42,7 +42,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 0: quyết định và kiểm khả năng (song song)
 
-- [ ] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0027 và mục SRS cho extension VS Code**
+- [x] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0027 và mục SRS cho extension VS Code**
   - **Goal**:
     - Viết ADR 0027 "Extension VS Code": các quyết định ở research.md mục 5, quyết định đã chốt Q1–Q9 (Q1 công khai
       ngay, Q5 đồng bộ bình luận với PR), đường dẫn tới spec 017.
