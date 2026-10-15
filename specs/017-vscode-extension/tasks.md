@@ -215,7 +215,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: `state` sai bị từ chối; quá 5 phút huỷ; không có `hive` thì dùng `SecretStorage`; token không vào log
     (kiểm Output giả).
 
-- [ ] **T012 [P] [US7] [nặng] · 2,5 ngày — Worker: tìm, tải, kiểm chữ ký, giám sát**
+- [x] **T012 [P] [US7] [nặng] · 2,5 ngày — Worker: tìm, tải, kiểm chữ ký, giám sát**
   - **Phụ thuộc**: T003, T006.
   - **Goal**: plan.md mục 7. `bin.ts` (thứ tự tìm, bản tối thiểu, tải như `worker/internal/update`, ECDSA + sha256),
     `ipc.ts` (NDJSON socket/pipe, `hello`, `worker.status`, `session.list`), `supervisor.ts` (máy trạng thái, mã 4,
