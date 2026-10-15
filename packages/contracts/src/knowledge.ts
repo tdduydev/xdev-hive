@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id, orgRoute, queryFlag } from "./common.ts";
+import { secretFinding } from "./secret-scan.ts";
 
 // Tri thức dùng chung cho agent (docs/architecture.md mục 2, module knowledge): memory, tài liệu, skill, đề xuất sửa.
 
@@ -140,6 +141,7 @@ export const docSaveInput = z.object({
   /** Phiên bản mình đã đọc trước khi sửa; 0 là tạo mới. Lệch với phiên bản hiện tại thì CONFLICT, không ghi đè. */
   baseVersion: version,
   message: changeNote.optional(),
+  acknowledgeSecrets: z.boolean().optional(),
 });
 export type DocSaveInput = z.input<typeof docSaveInput>;
 
@@ -162,8 +164,45 @@ export type DocGetInput = z.input<typeof docGetInput>;
 export const docListInput = z.object({
   project: projectRef.optional(),
   prefix: z.string().max(200).optional(),
+  /** Bỏ trống hoặc false chỉ lấy tài liệu đang dùng; true chỉ lấy tài liệu đã lưu trữ. */
+  archived: queryFlag.optional(),
 });
 export type DocListInput = z.input<typeof docListInput>;
+
+export const docSecretErrorData = z.object({
+  code: z.literal("DOC_SECRET_FOUND"),
+  findings: z.array(secretFinding).min(1),
+});
+export const docSecretErrors = {
+  DOC_SECRET_FOUND: {
+    status: 400,
+    message: "Có chuỗi giống bí mật trong tài liệu. Xoá hoặc xác nhận trước khi lưu.",
+    data: docSecretErrorData,
+  },
+};
+export const docSearchInput = z.object({
+  query: z.string().trim().min(1).max(2000),
+  scope: scopeLevel.optional(),
+  project: projectRef.optional(),
+  limit: queryInt(1, 20).default(10),
+});
+export const docSearchHit = z.object({
+  key: docKey,
+  title: z.string(),
+  headingPath: z.array(z.string()),
+  snippet: z.string(),
+  repoPath: z.string().nullable(),
+  extractId: id.nullable(),
+});
+export const docSearchOutput = z.object({
+  mode: z.enum(["keyword", "hybrid"]),
+  hits: z.array(docSearchHit),
+});
+export type DocSearchInput = z.input<typeof docSearchInput>;
+export type DocSearchHit = z.output<typeof docSearchHit>;
+export type DocSearchOutput = z.output<typeof docSearchOutput>;
+export const docSearchMcpInput = docSearchInput;
+export const docAssetGetInput = z.object({ docKey, path: z.string().min(1).max(1000) });
 
 export const docVersion = z.object({
   version: z.number().int(),
@@ -418,6 +457,15 @@ export const memoryContract = {
 };
 
 export const docsContract = {
+  search: orgRoute("GET", "/v1/docs/search", "Tìm tài liệu và bản trích theo từ và theo nghĩa", "knowledge")
+    .input(docSearchInput)
+    .output(docSearchOutput),
+  archive: orgRoute("POST", "/v1/docs/archive", "Lưu trữ tài liệu và xoá file khỏi repo (quản trị)", "knowledge")
+    .input(z.object({ key: docKey, baseVersion: version.min(1) }))
+    .output(z.object({ ok: z.literal(true) })),
+  restore: orgRoute("POST", "/v1/docs/restore", "Khôi phục tài liệu đã lưu trữ (quản trị)", "knowledge")
+    .input(z.object({ key: docKey, baseVersion: version.min(1) }))
+    .output(doc),
   list: orgRoute("GET", "/v1/docs", "Tài liệu mình thấy được", "knowledge")
     .input(docListInput)
     .output(z.array(docSummary)),
@@ -425,6 +473,7 @@ export const docsContract = {
     .input(docGetInput)
     .output(doc),
   save: orgRoute("POST", "/v1/docs", "Lưu phiên bản mới của tài liệu (quản trị đội)", "knowledge")
+    .errors(docSecretErrors)
     .input(docSaveInput)
     .output(doc),
   history: orgRoute("GET", "/v1/docs/history", "Các phiên bản của tài liệu, mới nhất trước", "knowledge")

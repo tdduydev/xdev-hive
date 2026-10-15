@@ -342,6 +342,50 @@ export const DEFAULT_BRIEF_SETTINGS: BriefSettings = { auto: true, refreshCommit
 export const mergeMethod = z.enum(["merge", "squash", "rebase"]);
 export type MergeMethod = z.output<typeof mergeMethod>;
 
+/** Đường dẫn Git giữ nguyên Unicode nhưng không được thoát khỏi repo. */
+export const docRepoPath = z
+  .string()
+  .min(1)
+  .max(1000)
+  .refine(
+    (value) =>
+      !value.startsWith("/") &&
+      !/[\\:]/.test(value) &&
+      !/\p{Cc}/u.test(value) &&
+      value
+        .replace(/\/$/, "")
+        .split("/")
+        .every((part) => part !== "" && part !== "." && part !== ".."),
+    "Đường dẫn phải tương đối trong repo, không chứa đoạn rỗng, dấu chấm hoặc hai dấu chấm.",
+  );
+export const DOC_DEFAULT_INCLUDE = ["docs/**", "doc/**", "specs/**", "adr/**", "**/adr/**", "**/README.md", "*.md"];
+export const DOC_DEFAULT_EXCLUDE = [
+  "node_modules/**",
+  "vendor/**",
+  ".git/**",
+  ".github/**",
+  ".claude/**",
+  ".hive/**",
+  "**/CHANGELOG.md",
+  "**/LICENSE*",
+];
+export const projectDocsSettings = z.object({
+  enabled: z.boolean().default(false),
+  root: docRepoPath.default("docs/"),
+  repoSync: z.enum(["pr", "direct", "off"]).default("pr"),
+  include: z
+    .array(pathGlob)
+    .max(100)
+    .default(() => [...DOC_DEFAULT_INCLUDE]),
+  exclude: z
+    .array(pathGlob)
+    .max(100)
+    .default(() => [...DOC_DEFAULT_EXCLUDE]),
+  assetsDir: docRepoPath.default("assets"),
+  repoChangesNeedReview: z.boolean().default(false),
+});
+export type ProjectDocsSettings = z.output<typeof projectDocsSettings>;
+
 export const projectSettings = z.object({
   /** `full` bỏ kiểm soát của CLI; chỉ nên dùng trong container của M6. */
   runPermissions: z.object({ mode: runPermissionMode }).optional(),
@@ -421,6 +465,7 @@ export const projectSettings = z.object({
   budget: projectBudget.optional(),
   /** AI SDLC (specs/011); không có là chưa bật, dự án giữ nguyên hành vi cũ (FR-049). */
   sdlc: projectSdlcSettings.optional(),
+  docs: projectDocsSettings.prefault({}),
   /** Có mặc định vì settings đã lưu trước ADR 0022 không có mục này. */
   brief: briefSettings.default(() => ({ ...DEFAULT_BRIEF_SETTINGS })),
 });
@@ -505,6 +550,17 @@ export const projectSettingsPatch = z
       .optional(),
     /** Thay cả mục AI SDLC (mục có nhiều danh sách lồng nhau, vá từng trường dễ sai hơn gửi lại cả mục). */
     sdlc: projectSdlcSettings.strict().optional(),
+    docs: z
+      .strictObject({
+        enabled: projectDocsSettings.shape.enabled.unwrap().optional(),
+        root: projectDocsSettings.shape.root.unwrap().optional(),
+        repoSync: projectDocsSettings.shape.repoSync.unwrap().optional(),
+        include: projectDocsSettings.shape.include.unwrap().optional(),
+        exclude: projectDocsSettings.shape.exclude.unwrap().optional(),
+        assetsDir: projectDocsSettings.shape.assetsDir.unwrap().optional(),
+        repoChangesNeedReview: projectDocsSettings.shape.repoChangesNeedReview.unwrap().optional(),
+      })
+      .optional(),
     brief: briefSettings.partial().strict().optional(),
   })
   .refine((p) => Object.keys(p).length > 0, "Bản vá settings không có trường nào để đổi.");
@@ -531,6 +587,7 @@ export function defaultProjectSettings(requiredApprovals = 1): ProjectSettings {
     issueIntake: { ...defaultIssueIntake },
     tokenSaving: { ...defaultTokenSaving },
     routing: structuredClone(defaultRouting),
+    docs: projectDocsSettings.parse({}),
     brief: { ...DEFAULT_BRIEF_SETTINGS },
   };
 }
