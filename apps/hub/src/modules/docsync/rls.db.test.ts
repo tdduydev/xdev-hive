@@ -149,9 +149,16 @@ describe("RLS các bảng nền docsync", () => {
       "select tablename, policyname, roles::text[] as roles, qual, with_check from pg_policies where schemaname = 'hive' and tablename = any($1)",
       [tableNames],
     );
-    // doc_homes có thêm policy SELECT cho webhook (tra nhà theo id khi chưa biết tổ chức).
-    expect(policies.rows).toHaveLength(tableNames.length + 1);
-    for (const policy of policies.rows.filter((row) => row.policyname !== "doc_homes_webhook")) {
+    // doc_homes có thêm policy SELECT cho webhook (tra nhà theo id khi chưa biết tổ chức) và cho hive_owner
+    // (hive.docsync_active_orgs chạy SECURITY DEFINER để cron kéo repo tìm tổ chức).
+    expect(policies.rows).toHaveLength(tableNames.length + 2);
+    expect(policies.rows.find((row) => row.policyname === "doc_homes_owner_select")).toMatchObject({
+      roles: ["hive_owner"],
+      qual: "true",
+      with_check: null,
+    });
+    const extra = new Set(["doc_homes_webhook", "doc_homes_owner_select"]);
+    for (const policy of policies.rows.filter((row) => !extra.has(row.policyname))) {
       expect(policy.policyname).toBe(`${policy.tablename}_rw`);
       expect(policy.roles).toEqual(["hive_app"]);
       expect(policy.qual).toContain("ctx_org()");
@@ -162,9 +169,31 @@ describe("RLS các bảng nền docsync", () => {
   it("không tenant: hive_app và chủ bảng đều không thấy dữ liệu", async () => {
     for (const pool of [app, owner])
       await withTenant(pool, {}, async (tx) => {
-        for (const table of tableNames)
+        for (const table of tableNames) {
+          // Chủ bảng chỉ đọc được doc_homes, cho hàm SECURITY DEFINER docsync_active_orgs.
+          if (pool === owner && table === "doc_homes") continue;
           expect((await tx.execute(sql`select * from ${tableSql(table)}`)).rows).toEqual([]);
+        }
       });
+  });
+
+  it("hive.docsync_active_orgs chỉ trả tổ chức có nhà đang chạy, chủ bảng không sửa được doc_homes", async () => {
+    const active = () =>
+      withTenant(app, {}, async (tx) =>
+        (await tx.execute<{ org_id: string }>(sql`select org_id from hive.docsync_active_orgs()`)).rows.map(
+          (r) => r.org_id,
+        ),
+      );
+    expect(await active()).toEqual(expect.arrayContaining([seeds.a.orgId, seeds.b.orgId]));
+    await admin.query("update hive.doc_homes set status = 'paused' where org_id = $1", [seeds.b.orgId]);
+    try {
+      expect(await active()).not.toContain(seeds.b.orgId);
+    } finally {
+      await admin.query("update hive.doc_homes set status = 'active' where org_id = $1", [seeds.b.orgId]);
+    }
+    await withTenant(owner, {}, async (tx) =>
+      expect((await tx.execute(sql`update hive.doc_homes set mode = 'off' returning id`)).rows).toEqual([]),
+    );
   });
 
   for (const table of tableNames) {
