@@ -228,7 +228,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 2: lõi hub (song song, sau Đợt 1)
 
-- [ ] **T007 [P] [US5] [vừa] · 1,5 ngày — BlobStore trong `platform`**
+- [x] **T007 [P] [US5] [vừa] · 1,5 ngày — BlobStore trong `platform`**
   - **Phụ thuộc**: T005.
   - **Goal**: FR-028, FR-031 (hạn mức), plan.md mục 1, 8.
     - `blob-store.ts`: giao diện `BlobStore` + bản PostgreSQL (đoạn 512 KiB, stream, dedupe sha256 theo tổ chức).
