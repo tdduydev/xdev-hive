@@ -53,10 +53,10 @@ pub fn explain(hub: &str, detail: &str, timeout: bool) -> String {
             );
         }
         return format!(
-            "Máy này chưa tin chứng chỉ HTTPS của {host}. Hub dùng chứng chỉ nội bộ (vd. Caddy local CA) thì xin quản \
+            "Máy này chưa tin chứng chỉ HTTPS của {host}. Có thể xem và xác nhận CA ngay trong app. Nếu muốn cài vào hệ điều hành, xin quản \
              trị hub file chứng chỉ gốc (root.crt) rồi cài vào máy: macOS mở file bằng Keychain Access, thêm vào \
              System và chọn Always Trust; Windows mở file → Install Certificate → Local Machine → Trusted Root \
-             Certification Authorities. Cài xong thử lại."
+             Certification Authorities; iOS cài hồ sơ chứng chỉ trong Cài đặt → Cài đặt chung → VPN và quản lý thiết bị, rồi bật tin cậy ở Giới thiệu → Cài đặt tin cậy chứng chỉ; Android vào Cài đặt → Bảo mật → Mã hoá và thông tin xác thực → Cài chứng chỉ CA. Cài xong thử lại."
         );
     }
     // rustls gặp câu trả lời HTTP thường thay cho bắt tay TLS: hub chỉ chạy http.
@@ -106,12 +106,25 @@ fn base_of(final_url: &url::Url) -> Option<String> {
 /// Kiểm địa chỉ hub bằng `/api/v1/health`. Trả địa chỉ đã chuẩn hoá (theo chuyển hướng nếu có).
 pub async fn check(raw: &str) -> Result<String, String> {
     let hub = crate::register::normalize_hub(raw)?;
-    let response = crate::tls::client()
+    let response = crate::tls::client()?
         .get(format!("{hub}{HEALTH}"))
         .timeout(TIMEOUT)
         .send()
         .await
-        .map_err(|e| explain(&hub, &chain(&e), e.is_timeout()))?;
+        .map_err(|e| {
+            let detail = chain(&e);
+            let message = explain(&hub, &detail, e.is_timeout());
+            let lower = detail.to_ascii_lowercase();
+            if lower.contains("unknownissuer")
+                || lower.contains("unknown issuer")
+                || lower.contains("self signed")
+                || lower.contains("untrustedroot")
+            {
+                format!("HIVE_CA_UNTRUSTED: {message}")
+            } else {
+                message
+            }
+        })?;
     let status = response.status();
     let base = base_of(response.url()).unwrap_or_else(|| hub.clone());
     let body = response.text().await.unwrap_or_default();
@@ -157,7 +170,7 @@ pub fn same_hub(a: &str, b: &str) -> bool {
 /// Nâng cấp được thì đóng ngay; hub chỉ ghi nhận máy khi nhận gói hello, nên lần thử không làm máy hiện online hay
 /// đá kết nối đang có.
 pub async fn machine_token_accepted(hub: &str, token: &str) -> Result<bool, String> {
-    let response = crate::tls::client()
+    let response = crate::tls::client()?
         .get(format!("{}{WORKER_WS}", hub.trim_end_matches('/')))
         .timeout(TIMEOUT)
         .header("connection", "Upgrade")

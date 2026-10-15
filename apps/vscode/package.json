@@ -297,6 +297,10 @@
         "command": "xdevHive.codelens.assignSymbol",
         "title": "%command.codelens.assignSymbol.title%",
         "category": "xDev Hive"
+      },
+      {
+        "command": "xdevHive.review.submitComment",
+        "title": "%command.review.submitComment%"
       }
     ],
     "configuration": {
@@ -390,6 +394,7 @@
         },
         {
           "id": "xdev-hive.artifacts",
+          "type": "webview",
           "name": "%view.artifacts.name%"
         },
         {
@@ -609,6 +614,10 @@
         {
           "command": "xdevHive.terminal.attach",
           "when": "xdevHive.hasBinary"
+        },
+        {
+          "command": "xdevHive.review.submitComment",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -779,6 +788,13 @@
           "command": "xdevHive.review.requestChanges",
           "when": "resourceScheme == hive-review && xdevHive.review.canDecide",
           "group": "navigation@2"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "xdevHive.review.submitComment",
+          "when": "commentController == xdev-hive.review",
+          "group": "inline"
         }
       ]
     },

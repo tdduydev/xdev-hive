@@ -306,6 +306,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
       "doc_get",
       "doc_list",
       "doc_propose",
+      "doc_search",
       "doc_suggest",
       "hive_whoami",
       "mcp_server_list",

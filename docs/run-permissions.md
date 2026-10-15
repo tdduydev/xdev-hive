@@ -26,6 +26,30 @@ Gemini dùng [Policy Engine](https://geminicli.com/docs/reference/policy-engine/
 Các file cấu hình tạm được dọn khi lệnh hoàn tất hoặc bị huỷ.
 `CLICommands` và `HIVE_WORKER_CLI_OVERRIDES` tiếp tục thay toàn bộ lệnh, không bị thêm cờ quyền.
 
+## Run AI SDLC (`sdlc`)
+
+Run soạn tài liệu của chế độ AI SDLC ([specs/011](../specs/011-ai-sdlc-mode/spec.md), ADR 0021) luôn chạy `workspace`,
+kể cả khi dự án đặt `full` hay máy bật toàn quyền cho dự án: hub gửi cứng `runPermissions: "workspace"` cho kind này.
+
+- Worktree tạm từ nhánh chính, như run kiểm tài liệu. Agent ghi được file trong worktree để soạn tài liệu.
+- Worker ghi sẵn các file `seed` (baseline, bản nháp, tóm tắt dự án tham gia) rồi đọc lại các file `collect` sau khi CLI
+  thoát. Tài liệu về hub qua `report.artifacts`, không qua git.
+- Không commit, không đẩy, không chạy hook Stop của tổ chức. Agent lỡ commit trong worktree tạm thì commit đó cũng bị xoá
+  cùng worktree. Hub mới là bên ghi tài liệu vào repo (PR hoặc đẩy thẳng theo `sdlc.repoSync`) sau khi duyệt.
+- Đường dẫn `seed` và `collect` được kiểm cả ở hub và worker; worker từ chối symlink trỏ ra ngoài worktree.
+
+Hạng mục nhiều dự án: máy khai capability `sdlc-multirepo` nhận thêm `repos`. Worker clone nông (depth 1) từng repo vào
+`.hive/repos/<mã dự án>/`, xoá `.git` và khoá ghi bản checkout, rồi ghi `.hive/repos/STATUS.md`.
+
+- Clone bằng đăng nhập Git sẵn có của máy; hub không gửi token. Máy không có quyền đọc repo nào thì repo đó chỉ có tóm
+  tắt. Chờ chủ dự án xác nhận cách này.
+- Hub chỉ gửi URL `https`, `http`, `ssh` của kết nối Git dự án; worker từ chối `file://` và `ext::`.
+- Giới hạn: 7 repo mỗi run (hub), 200 MB mỗi repo, 500 MB tổng, 5 phút mỗi lần clone. Repo vượt giới hạn bị bỏ và ghi
+  lý do vào `STATUS.md`, run vẫn chạy.
+- Runner host (sandbox) không khai `sdlc-multirepo` vì không giữ đăng nhập Git của đội.
+- Bit chỉ đọc không cản được tiến trình chạy bằng root hay đổi lại quyền file. Đây là rào để agent không sửa nhầm,
+  không phải ranh giới bảo mật; cách ly thật thuộc container M6.
+
 ## Thử thật ngày 11/10/2026, macOS
 
 Thử trước khi sửa code, trong bare repo và linked worktree nằm trong worktree của task.

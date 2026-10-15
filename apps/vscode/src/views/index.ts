@@ -1,4 +1,10 @@
 import type * as vscode from "vscode";
+import { register as registerArtifacts } from "@/views/artifacts.ts";
+import { register as registerBadge } from "@/views/badge.ts";
+import { register as registerSdlc } from "@/views/sdlc.ts";
 
-// Task của phần này điền thân hàm; extension.ts đã gọi sẵn.
-export function register(_ctx: vscode.ExtensionContext): void {}
+export function register(ctx: vscode.ExtensionContext): void {
+  registerBadge(ctx);
+  registerArtifacts(ctx);
+  registerSdlc(ctx);
+}

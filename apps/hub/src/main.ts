@@ -23,6 +23,7 @@ import {
   registerReviewStatusWorker,
   reviewGate,
 } from "./modules/codereview/index.ts";
+import { docSyncQueues, registerDocSync } from "./modules/docsync/index.ts";
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
@@ -36,7 +37,9 @@ import {
   createOpenAIEmbedder,
   embedQueue,
   provideDocAccess,
+  provideDocIndexJobs,
   provideReviewHooks,
+  registerDocIndexWorker,
   registerEmbedWorker,
   registerReviewWorker,
   registerSkillGitWorker,
@@ -51,7 +54,14 @@ import {
   registerInboxCleanupWorker,
   registerNotifyWorker,
 } from "./modules/notify/index.ts";
-import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
+import {
+  blobRefsIn,
+  createJobs,
+  createPool,
+  loadConfig,
+  provideBlobRefs,
+  registerBlobGc,
+} from "./modules/platform/index.ts";
 import {
   createRunsEngine,
   registerRunLogRetentionWorker,
@@ -134,6 +144,7 @@ jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
       queues: [
+        ...docSyncQueues,
         provisionQueue,
         mergeQueue,
         runsTimerQueue,
@@ -195,6 +206,7 @@ const sdlcDeps: SdlcDeps = runs?.sdlcDeps ?? {
 };
 provideReviewHooks(sdlcReviewHooks(sdlcDeps));
 provideDocAccess(docAccessFor);
+provideDocIndexJobs(jobs);
 provideSdlcFleetRuns(sdlcFleetRuns);
 
 // Thông báo và câu trả lời của leader đi tới chat qua hai hook mà notify và leader để ngỏ (không import chat được vì vòng
@@ -279,6 +291,10 @@ if (roles.includes("jobs") && jobs) {
     await registerInboxCleanupWorker(jobs, pool);
     await registerAuditRetentionWorker(jobs, { pool });
     await registerArtifactPurgeWorker(jobs, { pool, publicUrl: config.publicUrl });
+    await registerDocSync(jobs, { pool, masterKey: config.masterKey, jobs });
+    provideBlobRefs("docsync", blobRefsIn("doc_assets"));
+    provideBlobRefs("artifacts", blobRefsIn("artifact_versions"));
+    await registerBlobGc(jobs, { pool });
     await registerSdlcWorker(jobs, { ...sdlcDeps, pool });
     await registerQuestionReminders(jobs, { pool, publicUrl: sdlcDeps.publicUrl });
     // `sdlc` không import `catalog` hàng merge trực tiếp: PR ghi tài liệu vào repo đi chung hàng merge với PR của run.
@@ -295,6 +311,7 @@ if (roles.includes("jobs") && jobs) {
 
 const embedder = config.embeddings ? createOpenAIEmbedder(config.embeddings) : undefined;
 if (roles.includes("jobs") && jobs && pool && embedder) await registerEmbedWorker(jobs, { pool, embedder });
+if (roles.includes("jobs") && jobs && pool) await registerDocIndexWorker(jobs, { pool, embedder });
 
 const telegramPolling =
   roles.includes("api") && pool && config.masterKey

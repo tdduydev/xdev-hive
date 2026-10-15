@@ -479,6 +479,22 @@ const worktreePath = z
     "Đường dẫn phải nằm trong repo.",
   );
 
+/** Capability của worker checkout được repo tham gia vào `SDLC_REPOS_DIR` (specs/011 T086). */
+export const SDLC_MULTIREPO_CAPABILITY = "sdlc-multirepo";
+/** Thư mục chứa bản checkout chỉ đọc của repo tham gia trong worktree tạm; worker ghi `STATUS.md` ở đây. */
+export const SDLC_REPOS_DIR = ".hive/repos";
+/** Trần số repo tham gia mỗi run: hạng mục nhiều dự án hơn thế thì các repo sau chỉ có tóm tắt. */
+export const SDLC_MAX_REPOS = 7;
+
+export const sdlcJobRepo = z
+  .object({
+    projectKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/),
+    cloneUrl: z.url({ protocol: /^(https?|ssh)$/ }),
+    branch: z.string().min(1).max(200),
+    dir: worktreePath,
+  })
+  .refine((r) => r.dir === `${SDLC_REPOS_DIR}/${r.projectKey}`, "Thư mục phải là .hive/repos/<mã dự án>.");
+
 /**
  * `jobOffer.spec.sdlc` của run `sdlc`: worker ghi `seed` (baseline và bản nháp của hub chưa có trong repo) vào worktree
  * tạm trước khi chạy CLI, rồi đọc các file `collect` sau khi CLI thoát. Không commit, không đẩy.
@@ -489,6 +505,11 @@ export const sdlcJobSpec = z.object({
   collect: z
     .array(z.object({ artifactId: z.string().min(1).max(120), path: worktreePath }))
     .max(SDLC_ARTIFACT_LIMITS.files),
+  /**
+   * Repo của dự án tham gia (hạng mục nhiều dự án, T086): worker khai `sdlc-multirepo` clone nông, chỉ đọc vào `dir`.
+   * Hub bỏ trường này khi máy không khai capability; tóm tắt repo trong `seed` vẫn luôn có.
+   */
+  repos: z.array(sdlcJobRepo).max(SDLC_MAX_REPOS).optional(),
 });
 export type SdlcJobSpec = z.output<typeof sdlcJobSpec>;
 

@@ -104,6 +104,22 @@ func TestUserReportsBadToken(t *testing.T) {
 	}
 }
 
+func TestNativeCredentialIsNotSentThroughAPIRedirect(t *testing.T) {
+	var received bool
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		received = true
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer source.Close()
+	_, err := (Client{Host: Host{Kind: KindGitLab, URL: source.URL, AuthMode: "git"}, Token: "fake-secret"}).User(context.Background())
+	if err == nil || received {
+		t.Fatal("API redirect was followed with a credential")
+	}
+}
+
 func TestSuggestGitLabGroups(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("search") != "pay" || r.URL.Query().Get("min_access_level") != "10" {

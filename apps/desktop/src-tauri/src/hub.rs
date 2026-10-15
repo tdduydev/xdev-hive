@@ -64,6 +64,7 @@ pub async fn call_tool(hub: &str, token: &str, tool: &str, args: Value) -> Resul
     let url = format!("{}/mcp", hub.trim_end_matches('/'));
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": tool, "arguments": args } });
     let response = crate::tls::client()
+        .map_err(HubError::Message)?
         .post(&url)
         .timeout(TIMEOUT)
         .header("authorization", format!("Bearer {token}"))
@@ -185,7 +186,7 @@ pub async fn hub_rpc(
         .ok_or("Chưa liên kết tài khoản. Đăng nhập bằng trình duyệt hoặc dán token cá nhân ở mục Tài khoản.")?;
     let org = org_of_pat(&token).ok_or("Token đã lưu không đúng dạng; liên kết lại tài khoản.")?;
     let url = format!("{}{}", hub.trim_end_matches('/'), path);
-    let client = crate::tls::client();
+    let client = crate::tls::client()?;
     let mut request = if method == "GET" {
         client.get(&url)
     } else {
