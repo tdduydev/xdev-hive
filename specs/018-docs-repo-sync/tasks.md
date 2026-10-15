@@ -280,7 +280,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `packages/doc-editor/src/conflict-view.tsx` (mới) + test, `packages/doc-editor/src/index.ts`
   - **Kiểm**: doc-editor typecheck, test.
 
-- [ ] **T021 [P] [US1] [vừa] · 2 ngày — Web: màn nhập từ repo**
+- [x] **T021 [P] [US1] [vừa] · 2 ngày — Web: màn nhập từ repo**
   - **Phụ thuộc**: T020.
   - **Goal**: US1, FR-006, FR-007, FR-010, FR-041. Quét, cây chọn theo thư mục (chọn cả thư mục), sửa mẫu lấy/bỏ,
     cảnh báo theo loại, tiến độ (poll `docImports.get`), báo cáo, "Không phải bí mật, vẫn nhập" (hộp xác nhận nói rõ
