@@ -283,7 +283,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/sdlc/{breakdown.ts,breakdown.db.test.ts}`
   - **Phụ thuộc**: T010, T015, T003 · **Mức**: nặng
 
-- [ ] T031 🎯 [US6] [US9] Chạy đợt và truy vết cơ bản
+- [x] T031 🎯 [US6] [US9] Chạy đợt và truy vết cơ bản
   - `waves.ts`: task sẵn sàng (phụ thuộc ở mọi dự án `done`), `maxParallel` **theo dự án**, chạy qua deps `startRun`
     (chủ, `requiredLabels` theo cài đặt dự án của task), chỉ task của dự án người bấm có quyền; tự chạy khi task `done`;
     tạm dừng.
@@ -455,7 +455,7 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
 
 ## Phase 8: Nối hub
 
-- [ ] T070 🎯 Nối deps, router, job, handler
+- [x] T070 🎯 Nối deps, router, job, handler
   - `main.ts`: `SdlcDeps` (từ engine: `startSdlcRun`, `startRun`; từ catalog: `enqueueMerge`; `providerFactory`,
     `masterKey`, `jobs`), `ReviewDeps.workflowFor/onBaseline/queueAuthorFix/traceFor/autoDecide`, `KnowledgeDeps.docAccessFor`,
     `registerSdlcWorker`, cron câu hỏi và quét đồng bộ, `registerSdlcScmHandlers`, MCP tools của `sdlc`.
@@ -463,6 +463,9 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - `pnpm deps` không có vòng; test khói `app.test.ts`.
   - **Scope**: `apps/hub/src/{main.ts,app.ts,app.test.ts}`, `apps/hub/src/modules/sdlc/router.ts` (gộp các hàm đăng ký route)
   - **Phụ thuộc**: T013, T016, T017, T018, T021, T022, T031 (T040, T060 khi có) · **Mức**: vừa
+  - Đã làm: `sdlc/review-hooks.ts` (`ruleContext` cho luật câu hỏi mở/breakdown/coverage, `traceFor` theo bản tách),
+    `sdlc/fleet-runs.ts` cài qua `provideSdlcFleetRuns`; test `review-hooks.db.test.ts`, `fleet-runs.db.test.ts`.
+    Route `metrics` chờ T082.
 
 - [x] T071 [P] Leader: hành động `sdlc.item.create`
   - Thực thi khi người duyệt đề xuất; prompt leader biết đề xuất tạo hạng mục cho việc lớn.
@@ -530,10 +533,13 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
     vào danh sách chọn. Lỗi FR-056 hiện ngay giai đoạn; giữ dấu phân cách khi nhập danh sách, sinh mã tài liệu duy nhất
     trong cả chế độ. Vitest và Playwright kiểm lưu/xoá/chạy thử, chỉ đọc, FR-056, 360 px sáng/tối.
 
-- [ ] T085 Ngữ cảnh spec cho review code (spec 009)
+- [x] T085 Ngữ cảnh spec cho review code (spec 009)
   - `codereview` nhận deps `specContextFor` cho checkpoint AI; prompt review có requirement và tiêu chí của task.
   - **Scope**: `apps/hub/src/modules/codereview/{ai.ts,prompt.ts}`, `apps/hub/src/main.ts`
   - **Phụ thuộc**: T031, spec 009 T022 · **Mức**: vừa
+  - Đã làm: `sdlc.reviewSpecFor` (requirement của task, câu chữ và tiêu chí từ bản baseline của tài liệu nguồn, tài liệu
+    đã duyệt), `codereview/prompt.ts` `reviewSpecLines`; cài ở main.ts và app.ts. Engine chuyển `specContext` cùng
+    `guidance` (trước đây bị bỏ, reviewer không thấy ngưỡng của checkpoint) qua sự kiện `review_prompt` vào `reviewPrompt`.
 
 - [ ] T086 [US16] Run soạn checkout nhiều repo
   - Hub: `spec.sdlc.repos?: [{ projectKey, cloneUrl, branch, dir }]` cho run `sdlc` của hạng mục nhiều dự án (chỉ repo
