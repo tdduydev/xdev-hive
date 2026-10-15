@@ -242,39 +242,43 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(within(row("claude-3")).getByRole("button", { name: "Bật gói Gói cũ" })).toBeTruthy();
   });
 
-  it("chỉ thẻ gói Claude có dòng Claude Desktop, theo hồ sơ Rust trả về", async () => {
+  it("chỉ thẻ gói Claude có dòng Claude Desktop; gói đang dùng có nhãn, bản sao lưu hiện ở khung chung", async () => {
     const profile = (id: string, label: string) => ({
       id,
       label,
       email: null,
-      dir: `/u/.xdev-hive/claude-desktop/${id}`,
-      used: id === "claude-1",
-      bytes: 2048,
-      cacheBytes: 1024,
-      pid: id === "claude-1" ? 501 : null,
+      saved: id === "claude-1",
+      active: id === "claude-1",
     });
     const desktop = {
       supported: true,
       app: "/Applications/Claude.app",
-      root: "/u/.xdev-hive/claude-desktop",
       note: null,
+      running: 501,
+      backup: "/u/.xdev-hive/claude-desktop/backup-20261015-010203",
+      legacy: [],
       profiles: [profile("claude-1", "Duy Max"), profile("claude-2", "Gói phụ")],
     };
     fakeTauri(seed(), undefined, desktop);
     render(<PlansScreen />);
     await waitFor(() => expect(row("claude-1").querySelector("[data-claude-desktop]")).not.toBeNull());
-    expect(within(row("claude-1")).getByText("Đang mở")).toBeTruthy();
-    expect(within(row("claude-1")).getByRole("button", { name: "Claude Desktop" })).toBeTruthy();
-    expect(within(row("claude-2")).getByRole("button", { name: "Đăng nhập Claude Desktop cho gói này" })).toBeTruthy();
+    expect(within(row("claude-1")).getByText("Đang dùng")).toBeTruthy();
+    expect(within(row("claude-1")).queryByRole("button", { name: "Chuyển Claude Desktop sang gói này" })).toBeNull();
+    expect(within(row("claude-2")).getByRole("button", { name: "Chuyển Claude Desktop sang gói này" })).toBeTruthy();
     expect(row("codex-1").querySelector("[data-claude-desktop]")).toBeNull();
+    const panel = screen.getByRole("region", { name: "Claude Desktop" });
+    expect(within(panel).getByText(desktop.backup)).toBeTruthy();
+    expect(within(panel).getByRole("button", { name: "Khôi phục như ban đầu" })).toBeTruthy();
   });
 
   it("ngoài macOS không có dòng Claude Desktop", async () => {
     fakeTauri(seed(), undefined, {
       supported: false,
       app: null,
-      root: "",
       note: "Chưa hỗ trợ",
+      running: null,
+      backup: null,
+      legacy: [],
       profiles: [],
     });
     render(<PlansScreen />);
@@ -283,6 +287,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       await vi.advanceTimersByTimeAsync(10);
     });
     expect(document.querySelector("[data-claude-desktop]")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Claude Desktop" })).toBeNull();
   });
 
   it("nhóm theo CLI: tiêu đề, số gói, nút Thêm gói của từng CLI và ô tổng từng CLI", async () => {
