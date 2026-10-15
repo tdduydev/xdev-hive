@@ -8,9 +8,10 @@ import { cn } from "cn";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { type BlockTemplate, blockTemplate } from "./blocks.ts";
-import { type EditorText, editorExtensions, ViewContext } from "./editor-views.tsx";
+import { type EditorText, editorExtensions, useLinkTarget, ViewContext } from "./editor-views.tsx";
 import { type Lang, useOptionalDocEditorEnv } from "./env.tsx";
 import { MarkdownCodec } from "./markdown.ts";
+import { markdownPath, nameClipboardImage } from "./paste.ts";
 import { SlashController as Slash, type SlashController, type SlashItem } from "./slash.ts";
 import { docEditorText } from "./text.ts";
 
@@ -101,7 +102,43 @@ export type MarkdownEditorHandle = {
   currentBlock: () => string;
   /** Chữ thường đang chọn. */
   selectedText: () => string;
+  /** Tài liệu đang soạn (gốc phân giải link tương đối); file trên máy không có. */
+  docKey: string | undefined;
+  /** Tải file lên và chèn vào tài liệu; `null` khi app chủ không cung cấp `uploadAsset` hoặc đang chỉ đọc. */
+  upload: ((files: File[]) => void) | null;
+  /** Số file đang tải lên và lỗi của lần tải gần nhất (người dùng đóng thì xoá). */
+  uploads: number;
+  uploadError: string | null;
+  dismissUploadError: () => void;
+  /** Link tương đối vừa bấm, chờ app chủ phân giải để mở. */
+  openLink: string | null;
+  setOpenLink: (href: string | null) => void;
 };
+
+/** Đoạn văn chứa ảnh, hoặc link tới file đính kèm; mỗi file một đoạn để Markdown xuất ra mỗi file một dòng. */
+function assetParagraph(file: File, relativePath: string): JSONContent {
+  const href = markdownPath(relativePath);
+  if (file.type.startsWith("image/"))
+    return {
+      type: "paragraph",
+      content: [{ type: "image", attrs: { src: href, alt: file.name.replace(/\.[^.]+$/, "") } }],
+    };
+  return {
+    type: "paragraph",
+    content: [{ type: "text", text: file.name, marks: [{ type: "link", attrs: { href } }] }],
+  };
+}
+
+/** Chèn tại `pos` (vị trí thả) hoặc con trỏ; con trỏ trong bảng thì chèn sau bảng vì ô GFM chỉ chứa chữ một dòng. */
+function insertAssets(editor: Editor, content: JSONContent[], pos: number | null) {
+  // Tài liệu có thể đã đổi trong lúc tải lên.
+  if (pos !== null)
+    return editor.chain().focus().insertContentAt(Math.min(pos, editor.state.doc.content.size), content).run();
+  const after = afterTable(editor);
+  return after !== null
+    ? editor.chain().focus().insertContentAt(after, content).run()
+    : editor.chain().focus().insertContent(content).run();
+}
 
 /**
  * Trình soạn Tiptap trên chữ Markdown: `value` vào, `onChange` ra Markdown. Đổi `value` từ ngoài (người khác lưu, nhận
@@ -116,6 +153,7 @@ export function useMarkdownEditor({
   label,
   slashKinds = DOC_SLASH,
   onAi,
+  docKey,
 }: {
   value: string;
   onChange?: ((markdown: string) => void) | undefined;
@@ -124,6 +162,7 @@ export function useMarkdownEditor({
   label: string;
   slashKinds?: BlockTemplate[] | undefined;
   onAi?: (() => void) | undefined;
+  docKey?: string | undefined;
 }): MarkdownEditorHandle {
   const t = docEditorText[lang];
   const tRef = useRef(t);
@@ -133,6 +172,15 @@ export function useMarkdownEditor({
   const codec = useMemo(() => new MarkdownCodec(), []);
   const slash = useMemo(() => new Slash(), []);
   const [linkOpen, setLinkOpen] = useState(false);
+  const env = useOptionalDocEditorEnv();
+  const envRef = useRef(env);
+  envRef.current = env;
+  const docKeyRef = useRef(docKey);
+  docKeyRef.current = docKey;
+  const editorRef = useRef<Editor | null>(null);
+  const [uploads, setUploads] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [openLink, setOpenLink] = useState<string | null>(null);
   // `value`: giá trị app chủ đang giữ; `initial`, `baseline`: chữ lúc nạp và bản xuất ngay sau khi nạp.
   const sync = useRef({ value, initial: value, baseline: "" });
   const first = useRef<ReturnType<MarkdownCodec["parse"]> | null>(null);
@@ -158,6 +206,30 @@ export function useMarkdownEditor({
     onChangeRef.current?.(out);
   };
 
+  const uploadFiles = async (files: File[], pos: number | null) => {
+    const e = envRef.current;
+    const key = docKeyRef.current;
+    if (!e?.uploadAsset || !key) return;
+    setUploadError(null);
+    setUploads((n) => n + files.length);
+    const content: JSONContent[] = [];
+    for (const original of files) {
+      const file = original.type.startsWith("image/") ? nameClipboardImage(original) : original;
+      try {
+        const { relativePath } = await e.uploadAsset(key, file);
+        content.push(assetParagraph(file, relativePath));
+      } catch (error) {
+        setUploadError(tRef.current.uploadFailed(file.name, e.errorMessage(error)));
+      } finally {
+        setUploads((n) => n - 1);
+      }
+    }
+    const editor = editorRef.current;
+    if (content.length && editor && !editor.isDestroyed) insertAssets(editor, content, pos);
+  };
+  const uploadRef = useRef(uploadFiles);
+  uploadRef.current = uploadFiles;
+
   const extensions = useMemo(
     () =>
       editorExtensions({
@@ -165,6 +237,14 @@ export function useMarkdownEditor({
         codec: () => codec,
         text: () => tRef.current,
         onLinkKey: () => setLinkOpen(true),
+        onFiles: (files, pos) => {
+          if (!envRef.current?.uploadAsset || !docKeyRef.current || !editorRef.current?.isEditable) return false;
+          void uploadRef.current(files, pos);
+          return true;
+        },
+        onOpenLink: (href) => {
+          if (envRef.current?.resolveLink && docKeyRef.current) setOpenLink(href);
+        },
       }),
     [codec, slash],
   );
@@ -184,6 +264,8 @@ export function useMarkdownEditor({
     },
     [],
   );
+
+  editorRef.current = editor;
 
   useEffect(() => {
     // Đang ghép chữ (IME) thì chưa nạp lại: lần vẽ sau khi ghép xong sẽ nạp.
@@ -217,6 +299,13 @@ export function useMarkdownEditor({
     t,
     linkOpen,
     setLinkOpen,
+    docKey,
+    upload: env?.uploadAsset && docKey && editable ? (files) => void uploadFiles(files, null) : null,
+    uploads,
+    uploadError,
+    dismissUploadError: () => setUploadError(null),
+    openLink,
+    setOpenLink,
     currentBlock: () => {
       if (!editor) return "";
       return codec.blocks(editor.state.doc)[editor.state.selection.$from.index(0)] ?? "";
@@ -315,7 +404,7 @@ function LinkInput({ h }: { h: MarkdownEditorHandle }) {
     const url = href.trim();
     const c = editor.chain().focus().extendMarkRange("link");
     if (!url) c.unsetLink().run();
-    else c.setLink({ href: /^([a-z][a-z0-9+.-]*:|\/|#)/i.test(url) ? url : `https://${url}` }).run();
+    else c.setLink({ href: /^([a-z][a-z0-9+.-]*:|\/|#|\.{1,2}\/)/i.test(url) ? url : `https://${url}` }).run();
     h.setLinkOpen(false);
   };
   return (
@@ -371,6 +460,8 @@ export function EditorToolbar({
   const { editor, t } = h;
   const s = useToolState(editor);
   const off = !editor || !s?.editable;
+  const imageInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const icon: Partial<Record<BlockTemplate, ReactNode>> = {
     bullet: "•≡",
     ordered: "1≡",
@@ -436,6 +527,33 @@ export function EditorToolbar({
             {icon[k] ?? t.insert[k]}
           </Tb>
         ))}
+        {h.upload && (
+          <>
+            <Sep />
+            <Tb label={t.insertImage} disabled={off} onClick={() => imageInput.current?.click()}>
+              🖼
+            </Tb>
+            <Tb label={t.attachFile} disabled={off} onClick={() => fileInput.current?.click()}>
+              📎
+            </Tb>
+            {([imageInput, fileInput] as const).map((ref, i) => (
+              <input
+                key={i === 0 ? "image" : "file"}
+                ref={ref}
+                type="file"
+                hidden
+                multiple
+                data-testid={i === 0 ? "insert-image-input" : "attach-file-input"}
+                accept={i === 0 ? "image/*" : undefined}
+                onChange={(e) => {
+                  const files = Array.from(e.currentTarget.files ?? []);
+                  e.currentTarget.value = "";
+                  if (files.length) h.upload?.(files);
+                }}
+              />
+            ))}
+          </>
+        )}
         {s?.table && !off && (
           <>
             <Sep />
@@ -457,6 +575,27 @@ export function EditorToolbar({
         {children}
       </div>
       {h.linkOpen && !off && <LinkInput h={h} />}
+      {(h.uploads > 0 || h.uploadError) && (
+        <div
+          role={h.uploadError ? "alert" : "status"}
+          className={cn(
+            "flex items-center gap-2 border-b border-border px-5 py-1.5 text-sm",
+            h.uploadError ? "bg-destructive-soft text-destructive" : "bg-background text-muted-foreground",
+          )}
+        >
+          <span className="min-w-0 flex-1">{h.uploadError ?? t.uploading(h.uploads)}</span>
+          {h.uploadError && (
+            <button
+              type="button"
+              aria-label={t.dismiss}
+              className="h-6 cursor-pointer rounded-md border-0 bg-transparent px-1.5 hover:bg-muted"
+              onClick={h.dismissUploadError}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -535,6 +674,46 @@ function SlashMenu({ slash, t }: { slash: SlashController; t: EditorText }) {
   );
 }
 
+/** Đích của link tương đối vừa bấm; app chủ quyết định mở trang nào (`env.link`), file đính kèm và link ngoài mở tab mới. */
+function LinkTargetBar({ h }: { h: MarkdownEditorHandle }) {
+  const env = useOptionalDocEditorEnv();
+  const href = h.openLink ?? "";
+  const state = useLinkTarget(env, h.docKey, href);
+  if (h.openLink === null || !env) return null;
+  const { t } = h;
+  const target = state?.status === "ready" ? state.target : null;
+  const anchor = "text-primary underline";
+  return (
+    <div
+      role="status"
+      className="sticky bottom-3 z-3 mt-3 flex w-fit max-w-full items-center gap-3 rounded-lg border border-border bg-popover px-3 py-1.5 text-sm shadow-lg"
+    >
+      <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={href}>
+        {href}
+      </span>
+      {!state || state.status === "loading" ? (
+        <span className="text-muted-foreground">{t.linkResolving}</span>
+      ) : !target ? (
+        <span className="text-muted-foreground">{t.linkNone}</span>
+      ) : target.kind === "doc" ? (
+        env.link({ to: { kind: "doc", key: target.key }, className: anchor, children: t.openLinkedDoc(target.key) })
+      ) : (
+        <a href={target.url} target="_blank" rel="noopener noreferrer" className={anchor}>
+          {target.kind === "asset" ? t.openLinkedAsset : t.openLinkedExternal}
+        </a>
+      )}
+      <button
+        type="button"
+        aria-label={t.dismiss}
+        className="h-6 cursor-pointer rounded-md border-0 bg-transparent px-1.5 hover:bg-muted"
+        onClick={() => h.setOpenLink(null)}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 /** Vùng soạn: nội dung, menu định dạng khi chọn chữ, menu `/`. */
 export function EditorSurface({
   h,
@@ -547,12 +726,13 @@ export function EditorSurface({
 }) {
   const env = useOptionalDocEditorEnv();
   const view = useMemo(
-    () => ({ t: h.t, env, lang: h.t === docEditorText.en ? ("en" as const) : ("vi" as const) }),
-    [h.t, env],
+    () => ({ t: h.t, env, lang: h.t === docEditorText.en ? ("en" as const) : ("vi" as const), docKey: h.docKey }),
+    [h.t, env, h.docKey],
   );
   return (
     <ViewContext.Provider value={view}>
       <EditorContent editor={h.editor} className={className} />
+      <LinkTargetBar h={h} />
       <FormatBubble h={h} onComment={onComment} />
       <SlashMenu slash={h.slash} t={h.t} />
     </ViewContext.Provider>
