@@ -68,6 +68,37 @@ func TestRunnerUsesAccountConfigDir(t *testing.T) {
 	}
 }
 
+// Worker chạy từ shell của một gói khác (CODEX_HOME của gói đó): run trên gói đăng nhập mặc định không được dùng tài
+// khoản của gói kia.
+func TestRunnerDefaultAccountDropsInheritedLogin(t *testing.T) {
+	remote, base := makeRemote(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte(`{"tokens":{"id_token":"h.e30.s"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexLogin(t))
+	pool := accounts.NewPool(writeAccounts(t, `{"accounts":[{"id":"codex-1","cli":"codex","enabled":true,"maxConcurrent":1}]}`))
+	lease, err := pool.Acquire("codex", accounts.RoleImplement)
+	if err != nil || lease == nil {
+		t.Fatalf("acquire = %v, %v", lease, err)
+	}
+	defer lease.Release()
+	var events []Event
+	r := Runner{DataDir: t.TempDir(), CLICommands: fakeCommands("account"), Account: lease}
+	err = r.Run(context.Background(), Job{RunID: "def", Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/def", CLI: "codex", Prompt: "p", Timeout: 30 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": "account"}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if log := logText(events); !strings.Contains(log, "CODEX_HOME=\n") {
+		t.Fatalf("CLI vẫn nhận CODEX_HOME kế thừa: %q", log)
+	}
+}
+
 // CLI báo hết lượt dùng và run hỏng: tài khoản nghỉ, lần chọn sau không còn tài khoản rảnh.
 func TestRunnerCoolsDownAccountOnUsageLimit(t *testing.T) {
 	remote, base := makeRemote(t)
