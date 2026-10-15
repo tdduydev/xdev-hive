@@ -145,7 +145,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: DB test cho thêm, trả lời, sửa, xoá mềm, xử lý, `outdated` theo `headSha`; RLS chặn tổ chức khác; người
     không xem được review không bình luận được; người khác tác giả không sửa, xoá được.
 
-- [ ] **T009 [P] [US7] [vừa] · 0,5 ngày — `optimizer.Link` tạo cả `~/.xdev-hive/bin/hive`**
+- [x] **T009 [P] [US7] [vừa] · 0,5 ngày — `optimizer.Link` tạo cả `~/.xdev-hive/bin/hive`**
   - **Goal**: `Link` nhận thêm đường dẫn `hive` (cùng thư mục với `hive-worker` trong bundle desktop) và tạo liên kết thứ
     hai. Thiếu file nguồn thì bỏ qua, không lỗi.
   - **PHẠM VI**:
