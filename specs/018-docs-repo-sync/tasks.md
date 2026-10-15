@@ -44,7 +44,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 0: quyết định, hợp đồng, phần thuần (song song)
 
-- [ ] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0028, SRS 3.23, ghi chú cho spec 012**
+- [x] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0028, SRS 3.23, ghi chú cho spec 012**
   - **Goal**:
     - Viết ADR 0028 "Docs repo sync" (tiếng Anh, theo `docs/adr/template.md`): research.md mục 5 quyết định 1, 3, 5;
       các phương án ở plan.md "Phương án đã cân nhắc"; đường sang S3.
@@ -351,7 +351,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/pull.ts` + `pull.db.test.ts` (mới)
   - **Kiểm**: hub test (mọi Acceptance Scenario của US3, đổi tên qua API và qua hash, nhánh mặc định đổi), typecheck.
 
-- [ ] **T015 [P] [US3] [vừa] · 1,5 ngày — Giải quyết xung đột**
+- [x] **T015 [P] [US3] [vừa] · 1,5 ngày — Giải quyết xung đột**
   - **Phụ thuộc**: T005, T008.
   - **Goal**: FR-020, FR-021 (chọn lưu trữ hoặc ghi lại), plan.md mục 7. `docConflicts.list/get/resolve`; tài liệu
     `deleted_in_repo`: "Lưu trữ tài liệu" hoặc "Ghi lại vào repo". Cần `manage`, `scanSecrets` với bản sửa tay, audit,
