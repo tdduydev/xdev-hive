@@ -61,7 +61,7 @@ function source(archive: Buffer, badSignature = false, badChecksum = false) {
     if (path.endsWith("latest")) return new Response(JSON.stringify({ tag_name: "v0.2.16" }));
     if (path.endsWith(".sig")) return new Response(badSignature ? Buffer.alloc(64) : signature);
     if (path.endsWith(".txt")) return new Response(sums);
-    return new Response(archive);
+    return new Response(new Uint8Array(archive));
   });
   return {
     fetcher: fetcher as unknown as typeof fetch,
