@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/optimizer"
 )
 
 const userClaudeSettings = `{
@@ -448,6 +451,68 @@ func TestOptimizeLink(t *testing.T) {
 	}
 	if _, err := os.Stat(out.Path); err != nil {
 		t.Fatalf("liên kết không dùng được: %v", err)
+	}
+}
+
+func TestOptimizeLinkBundle(t *testing.T) {
+	for _, action := range []string{"link", "enable"} {
+		for _, withHive := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/hive=%t", action, withHive), func(t *testing.T) {
+				e := fakeOptimizeEnv(t, "2.1.296")
+				name := "hive"
+				if runtime.GOOS == "windows" {
+					name += ".exe"
+				}
+				worker := e.write(t, "bundle/hive-worker", "worker")
+				if withHive {
+					e.write(t, filepath.Join("bundle", name), "hive")
+				}
+				old := optimizeExecutable
+				optimizeExecutable = func() (string, error) { return worker, nil }
+				t.Cleanup(func() { optimizeExecutable = old })
+				args := []string{action, "--json"}
+				if action == "enable" {
+					e.write(t, ".xdev-hive/accounts/claude-2/settings.json", "{}")
+					e.accounts(t, `{"id":"claude-2","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-2"}`)
+					args = append(args, "--profile", "claude-2")
+				}
+				for range 2 {
+					e.ok(t, args...)
+				}
+				o := optimizer.New(e.home)
+				if got := readFile(t, o.LinkPath()); got != "worker" {
+					t.Fatalf("worker: %q", got)
+				}
+				dest := filepath.Join(filepath.Dir(o.LinkPath()), name)
+				if withHive {
+					if got := readFile(t, dest); got != "hive" {
+						t.Fatalf("hive: %q", got)
+					}
+				} else if _, err := os.Lstat(dest); !os.IsNotExist(err) {
+					t.Fatalf("bundle không có hive: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestOptimizeLinkFromSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink cần quyền riêng trên Windows")
+	}
+	e := fakeOptimizeEnv(t, "")
+	worker := e.write(t, "bundle/hive-worker", "worker")
+	e.write(t, "bundle/hive", "hive")
+	o := optimizer.New(e.home)
+	if _, err := o.Link(worker, ""); err != nil {
+		t.Fatal(err)
+	}
+	old := optimizeExecutable
+	optimizeExecutable = func() (string, error) { return o.LinkPath(), nil }
+	t.Cleanup(func() { optimizeExecutable = old })
+	e.ok(t, "link", "--json")
+	if got := readFile(t, filepath.Join(filepath.Dir(o.LinkPath()), "hive")); got != "hive" {
+		t.Fatalf("không tìm được hive trong bundle thật: %q", got)
 	}
 }
 
