@@ -13,6 +13,7 @@ import { LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { useT } from "@/lib/i18n.ts";
 import type { SkillTab } from "@/lib/route-search.ts";
 import { authorLabel, DetailFallback, EmptyRows, QueryState, ScopeBadge, When } from "@/pages/knowledge/common.tsx";
+import { OrgDocsRepoCard } from "@/pages/knowledge/org-docs-repo-card.tsx";
 import { SkillLearningTab, usePendingLearned } from "@/pages/knowledge/skill-learning-tab.tsx";
 import { SkillPackSection } from "@/pages/knowledge/skill-pack-section.tsx";
 import { SkillRepoCard } from "@/pages/knowledge/skill-repo-card.tsx";
@@ -97,6 +98,7 @@ function SkillsScreen() {
         <Tabs.Panel value="skills">
           <PageBody>
             <SkillRepoCard />
+            <OrgDocsRepoCard />
             <PageSection title={t.skillsOrgTitle} description={t.skillsOrgLead}>
               {list.isPending && <TableSkeleton label={t.loading} columns={5} />}
               {list.isError && <LoadFailure error={list.error} retry={list.refetch} />}

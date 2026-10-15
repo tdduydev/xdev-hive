@@ -15,5 +15,12 @@
       }
     }
   }
-  reverse_proxy hub:3000
+  handle /ca.crt {
+    root * /data/caddy/pki/authorities/local
+    rewrite * /root.crt
+    file_server
+  }
+  handle {
+    reverse_proxy hub:3000
+  }
 }

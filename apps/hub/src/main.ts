@@ -23,6 +23,7 @@ import {
   registerReviewStatusWorker,
   reviewGate,
 } from "./modules/codereview/index.ts";
+import { docSyncQueues, registerDocSync } from "./modules/docsync/index.ts";
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
@@ -51,7 +52,14 @@ import {
   registerInboxCleanupWorker,
   registerNotifyWorker,
 } from "./modules/notify/index.ts";
-import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
+import {
+  blobRefsIn,
+  createJobs,
+  createPool,
+  loadConfig,
+  provideBlobRefs,
+  registerBlobGc,
+} from "./modules/platform/index.ts";
 import {
   createRunsEngine,
   registerRunLogRetentionWorker,
@@ -134,6 +142,7 @@ jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
       queues: [
+        ...docSyncQueues,
         provisionQueue,
         mergeQueue,
         runsTimerQueue,
@@ -279,6 +288,10 @@ if (roles.includes("jobs") && jobs) {
     await registerInboxCleanupWorker(jobs, pool);
     await registerAuditRetentionWorker(jobs, { pool });
     await registerArtifactPurgeWorker(jobs, { pool, publicUrl: config.publicUrl });
+    await registerDocSync(jobs, { pool, masterKey: config.masterKey, jobs });
+    provideBlobRefs("docsync", blobRefsIn("doc_assets"));
+    provideBlobRefs("artifacts", blobRefsIn("artifact_versions"));
+    await registerBlobGc(jobs, { pool });
     await registerSdlcWorker(jobs, { ...sdlcDeps, pool });
     await registerQuestionReminders(jobs, { pool, publicUrl: sdlcDeps.publicUrl });
     // `sdlc` không import `catalog` hàng merge trực tiếp: PR ghi tài liệu vào repo đi chung hàng merge với PR của run.
