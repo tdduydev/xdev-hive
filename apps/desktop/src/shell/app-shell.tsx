@@ -5,6 +5,7 @@ import { ConnectHive } from "@/components/connect-hive.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
 import { UpdateBanner } from "@/components/update-banner.tsx";
 import { AccountContext, ConnectContext, profileOf, useAccount } from "@/lib/account.ts";
+import { useArtifactsCapability } from "@/lib/artifacts-env.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
 import { setNavCollapsed, useNavCollapsed } from "@/lib/nav-collapsed.ts";
@@ -37,6 +38,7 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
   const lang = useLang();
   const t = useT(text);
   const worker = useWorkerState();
+  const artifacts = useArtifactsCapability(!!account);
   // Máy vừa đăng ký ở cửa sổ khác (khay → Bật worker): hub của worker đổi thì đọc lại tài khoản, không bắt mở lại app.
   const workerHub = worker?.hub ?? null;
   useEffect(() => {
@@ -68,6 +70,7 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
           connected={!!account}
           worker={worker}
           compact={collapsed}
+          features={artifacts === undefined ? {} : { artifacts }}
         />
         <AccountDialog open={accountOpen} status={status} onOpenChange={setAccountOpen} onChanged={setStatus} />
         <main className={cn("flex min-w-0 flex-1 flex-col", bleed ? "overflow-hidden" : "overflow-auto")}>

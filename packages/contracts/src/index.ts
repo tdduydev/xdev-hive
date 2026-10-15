@@ -73,6 +73,8 @@ export const healthOutput = z.object({
   builtAt: z.iso.datetime().nullable().optional(),
   /** CLI hub giao run được; worker chỉ khai những CLI này trong hello và khi đăng ký. Hub cũ không trả. */
   clis: z.array(z.string()).optional(),
+  /** Hub có artifact (specs/012); app desktop ẩn mục Artifact khi thiếu, vì hub cũ không trả. */
+  artifacts: z.boolean().optional(),
 });
 export const desktopUpdateOutput = z.object({
   version: z.string(),

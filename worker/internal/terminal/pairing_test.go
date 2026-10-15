@@ -223,7 +223,7 @@ func TestOwnerChangeRemovesDevices(t *testing.T) {
 			defer r.mu.Unlock()
 			return len(r.decisions) == 1
 		})
-		r.decide(info.PairID, true)
+		r.decide(info.PairID, eventPairRequest, true)
 	}()
 	if res := r.HandlePair(phonePair(t, info, "u1", "cred-1")); !res.OK {
 		t.Fatalf("ghép = %+v", res)

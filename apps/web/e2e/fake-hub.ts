@@ -1,14 +1,26 @@
 import { execFileSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, type KeyObject, randomUUID, verify } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import type { Page, Request, WebSocketRoute } from "@playwright/test";
-import { buildCsp, buildFrameDocument, type LibManifest } from "@xdev-hive/artifacts-runtime";
+import {
+  buildCsp,
+  buildFrameDocument,
+  buildPublicPage,
+  type LibManifest,
+  publicPageHeaders,
+} from "@xdev-hive/artifacts-runtime";
 import { LIB_DIST_DIR, readLibManifest } from "@xdev-hive/artifacts-runtime/node";
 import {
+  type AgentPolicyInput,
+  type ArtifactPublicLink,
   type AuditExportInput,
+  agentPolicyInput,
   type CodeDryRunResult,
+  DEFAULT_AGENT_POLICY,
+  DEFAULT_ORG_ARTIFACT_POLICY,
   defaultProjectSettings,
+  orgArtifactPolicy,
   outcomeToCodeWorkflow,
   type ReviewWorkflow,
   reviewPhase,
@@ -16,6 +28,15 @@ import {
   WORKFLOW_PRESETS,
   type WorkflowInput,
 } from "@xdev-hive/contracts";
+import {
+  challengeBytes,
+  deriveInputKey,
+  fromBase64url,
+  inputMac,
+  inputMacPayload,
+  PASSKEY_KEY_INFO,
+  toBase64url,
+} from "@xdev-hive/contracts/terminal-auth";
 
 export const USER = { id: "u1", name: "Trần Đức Duy", email: "duy@example.com", image: null };
 
@@ -1040,6 +1061,9 @@ export function remoteFixture(
     pairOptionsCalls: [] as { machineId: string; pairId: string }[],
     pairCalls: [] as Record<string, unknown>[],
     revokeCalls: [] as { machineId: string; deviceId: string }[],
+    ticketCalls: 0,
+    /** Giả mất mạng: xin vé trả 503 (lỗi tạm) nên trang cứ nối lại theo backoff. */
+    offline: false,
   };
   const chunks = (opts.chunks ?? []).map((text, seq) => ({ seq, data: b64(text) }));
   const machine = (id: string, name: string, over: Record<string, unknown> = {}) => ({
@@ -1123,6 +1147,17 @@ export function remoteFixture(
       const { machineId: _, ...row } = device;
       return ok(row);
     },
+    "remote/ticket": (input: unknown) => {
+      state.ticketCalls += 1;
+      if (state.offline) return fail("SERVICE_UNAVAILABLE", 503, "Hub tạm thời không phản hồi.");
+      const found = state.sessions.find((s) => s.id === (input as { id: string }).id);
+      if (!found) return fail("SESSION_NOT_FOUND", 404, "Không tìm thấy phiên.");
+      return ok({
+        ticket: `r.ticket-${state.ticketCalls}`,
+        expiresAt: "2026-10-15T01:01:00.000Z",
+        canControl: found.isOwner === true,
+      });
+    },
     "remote/devices": (input: unknown) => {
       const { machineId } = input as { machineId: string };
       return ok(state.devices.filter((d) => d.machineId === machineId).map(({ machineId: _, ...row }) => row));
@@ -1136,6 +1171,153 @@ export function remoteFixture(
     },
   };
   return { state, rpc };
+}
+
+/**
+ * Hub và worker giả cho WebSocket của phiên trên máy cá nhân (`remoteClientFrame`). Kiểm như worker thật: chữ ký passkey
+ * trên đúng challenge (`connId` của kết nối, `deviceId`, người dùng), suy khoá ECDH + HKDF, rồi HMAC và `seq` tăng của
+ * từng gói `in`/`resize`. Gói sai thì thu quyền (`input_rejected`) như `remoteauth`. Nối lại bằng `resumeToken` giữ khoá
+ * và `seq`. Output đánh số theo phiên và phát lại sau `resume.after`.
+ */
+export async function fakeRemoteSocket(
+  page: Page,
+  fixture: ReturnType<typeof remoteFixture>,
+  opts: { sessionId: string; deviceId: string; passkey: KeyObject },
+) {
+  type Frame = Record<string, unknown> & { t: string };
+  const worker = (await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, [
+    "deriveBits",
+  ])) as CryptoKeyPair;
+  const workerEphPub = toBase64url(new Uint8Array(await crypto.subtle.exportKey("raw", worker.publicKey)));
+  const RESUME_TOKEN = "cmVzdW1lLXRva2VuLTE";
+  const session = () => fixture.state.sessions.find((s) => s.id === opts.sessionId) ?? {};
+  const sockets: { connId: string; received: Frame[]; ws: WebSocketRoute }[] = [];
+  const state = {
+    outputs: [] as string[],
+    inputs: [] as string[],
+    resizes: [] as { cols: number; rows: number }[],
+    grant: null as { key: CryptoKey; last: number; connId: string } | null,
+    rejected: [] as string[],
+    controls: 0,
+    resumes: [] as Frame[],
+  };
+  const send = (frame: unknown) => sockets.at(-1)?.ws.send(JSON.stringify(frame));
+  const controller = {
+    state,
+    sockets,
+    out(text: string) {
+      state.outputs.push(text);
+      send({ t: "out", seq: state.outputs.length - 1, data: b64(text) });
+    },
+    drop(code = 1006) {
+      sockets.at(-1)?.ws.close({ code, reason: "test" });
+    },
+    /** Terminal tại máy (hoặc thiết bị khác) giành quyền. */
+    takeOver() {
+      state.grant = null;
+      send({ t: "revoked", reason: "taken" });
+    },
+  };
+
+  async function handle(socket: (typeof sockets)[number], frame: Frame): Promise<void> {
+    const { ws, connId } = socket;
+    if (frame.t === "ping") ws.send(JSON.stringify({ t: "pong" }));
+    if (frame.t === "resume") {
+      state.resumes.push(frame);
+      const after = Number(frame.after);
+      state.outputs.forEach((text, seq) => {
+        if (seq > after) ws.send(JSON.stringify({ t: "out", seq, data: b64(text) }));
+      });
+      if (frame.resumeToken !== undefined) {
+        if (state.grant && frame.resumeToken === RESUME_TOKEN && frame.deviceId === opts.deviceId) {
+          state.grant.connId = connId;
+          ws.send(JSON.stringify({ t: "granted", workerEphPub, resumeToken: RESUME_TOKEN }));
+        } else {
+          ws.send(JSON.stringify({ t: "denied", code: "AUTH_STALE", message: "Phiên xác thực đã hết hạn." }));
+        }
+      }
+    }
+    if (frame.t === "control") {
+      state.controls += 1;
+      const auth = frame.auth as {
+        kind: string;
+        ephPub: string;
+        ts: number;
+        nonce: string;
+        assertion: { authenticatorData: string; clientDataJSON: string; signature: string };
+      };
+      const challenge = await challengeBytes({
+        machineId: String(session().machineId),
+        action: "control",
+        params: { userId: USER.id, deviceId: opts.deviceId, sessionId: opts.sessionId, connId },
+        ephPub: auth.ephPub,
+        ts: auth.ts,
+        nonce: auth.nonce,
+      });
+      const clientData = JSON.parse(Buffer.from(fromBase64url(auth.assertion.clientDataJSON)).toString("utf8")) as {
+        challenge: string;
+      };
+      const signed = Buffer.concat([
+        fromBase64url(auth.assertion.authenticatorData),
+        createHash("sha256").update(fromBase64url(auth.assertion.clientDataJSON)).digest(),
+      ]);
+      const valid =
+        frame.deviceId === opts.deviceId &&
+        clientData.challenge === toBase64url(challenge) &&
+        verify("sha256", signed, opts.passkey, fromBase64url(auth.assertion.signature));
+      if (!valid) {
+        ws.send(JSON.stringify({ t: "denied", code: "ASSERTION_INVALID", message: "Chữ ký passkey không hợp lệ." }));
+        return;
+      }
+      const key = await deriveInputKey(worker.privateKey, auth.ephPub, challenge, PASSKEY_KEY_INFO);
+      state.grant = { key, last: 0, connId };
+      ws.send(JSON.stringify({ t: "granted", workerEphPub, resumeToken: RESUME_TOKEN }));
+    }
+    if (frame.t === "release") state.grant = null;
+    if (frame.t === "in" || frame.t === "resize") {
+      const grant = state.grant;
+      // Hub chỉ chuyển gói của kết nối đang giữ quyền.
+      if (!grant || grant.connId !== connId) {
+        ws.send(JSON.stringify({ t: "error", code: "TERMINAL_READ_ONLY", message: "Bạn chỉ xem phiên này." }));
+        return;
+      }
+      const seq = Number(frame.seq);
+      const base = { sessionId: opts.sessionId, connId, seq };
+      const payload =
+        frame.t === "in"
+          ? inputMacPayload({ ...base, kind: "in", data: String(frame.data) })
+          : inputMacPayload({ ...base, kind: "resize", cols: Number(frame.cols), rows: Number(frame.rows) });
+      if (seq <= grant.last || (await inputMac(grant.key, payload)) !== frame.mac) {
+        state.rejected.push(frame.t);
+        state.grant = null;
+        ws.send(JSON.stringify({ t: "revoked", reason: "input_rejected" }));
+        return;
+      }
+      grant.last = seq;
+      if (frame.t === "resize") state.resizes.push({ cols: Number(frame.cols), rows: Number(frame.rows) });
+      else {
+        const text = fromB64(String(frame.data));
+        state.inputs.push(text);
+        // CLI giả: in lại chữ gõ được (bỏ ký tự điều khiển) để test thấy trên xterm.
+        const printable = [...text].filter((char) => char >= " ").join("");
+        if (printable) controller.out(printable);
+      }
+    }
+  }
+
+  await page.routeWebSocket(/\/ws\/terminal/, (ws) => {
+    const socket = { connId: `conn-${String(sockets.length + 1).padStart(4, "0")}`, received: [] as Frame[], ws };
+    sockets.push(socket);
+    ws.send(JSON.stringify({ t: "hello", session: session(), connId: socket.connId, canControl: true }));
+    // Xử lý tuần tự như hub: WebCrypto bất đồng bộ không được làm đảo thứ tự gói.
+    let queue = Promise.resolve();
+    ws.onMessage((raw) => {
+      const frame = JSON.parse(String(raw)) as Frame;
+      socket.received.push(frame);
+      queue = queue.then(() => handle(socket, frame));
+    });
+  });
+  return controller;
 }
 
 export interface RemoteDeviceRow {
@@ -1210,7 +1392,7 @@ type FakeChatMessage = {
 };
 
 type FrameTicket =
-  | { kind: "version"; id: string; version: number; theme: "light" | "dark" }
+  | { kind: "version"; id: string; version: number; theme: "light" | "dark"; publicLinkId?: string }
   | { kind: "preview"; type: FakeArtifact["type"]; content: string; theme: "light" | "dark" };
 
 const uuid = (prefix: string, n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -1233,6 +1415,19 @@ export function artifactsFixture() {
     artifacts: [] as FakeArtifact[],
     messages: [] as FakeChatMessage[],
     tickets: new Map<string, FrameTicket>(),
+    publicLinks: [] as (ArtifactPublicLink & { tokenSha256: string })[],
+    policy: {
+      ...structuredClone(DEFAULT_AGENT_POLICY),
+      artifacts: structuredClone(DEFAULT_ORG_ARTIFACT_POLICY),
+      updatedAt: "2026-10-14T08:00:00.000Z",
+      updatedBy: USER.id,
+      templateSync: null,
+      defaultTemplates: { agents: "", claude: "", mcp: "" },
+    },
+    publicRequests: [] as number[],
+    publicLinkRequests: new Map<string, number[]>(),
+    // Các test T030 dùng một cuộc trò chuyện; T031 đặt id khác để thử đích mới của người xem.
+    fixThreadId: ARTIFACT_THREAD_ID,
     /** Lời "Nhờ Leader sửa" hub đã nhận. */
     fixRequests: [] as unknown[],
     /** Tin người dùng gửi cho leader; test trả lời thay run `leader`. */
@@ -1371,7 +1566,7 @@ export function artifactsFixture() {
   };
 
   /** Thủ tục `artifacts.*` và Leader tối thiểu cho một người xem. */
-  function rpcFor(viewer: ArtifactViewer): Record<string, RpcHandler> {
+  function rpcFor(viewer: ArtifactViewer, role: "member" | "admin" | "owner" = "member"): Record<string, RpcHandler> {
     const find = (id: unknown) => {
       const a = state.artifacts.find((x) => x.id === id);
       return a && canRead(a, viewer) ? a : undefined;
@@ -1379,14 +1574,29 @@ export function artifactsFixture() {
     return {
       "orgs/mine": () =>
         ok({
-          orgs: [{ ...ARTIFACT_ORG, role: "member", emailDomain: null, createdAt: "2026-10-01T00:00:00.000Z" }],
+          orgs: [{ ...ARTIFACT_ORG, role, emailDomain: null, createdAt: "2026-10-01T00:00:00.000Z" }],
           canCreateOrg: false,
         }),
       "projects/list": () => ok([ARTIFACT_PROJECT]),
+      "roles/mine": () => ok({ permissions: [...SYSTEM_ROLE_PERMISSIONS[role]] }),
+      "inbox/unreadCount": () => ok({ count: 0 }),
+      "policies/get": () => ok(state.policy),
+      "policies/update": (input) => {
+        if (role === "member") return fail("FORBIDDEN", 403, "Bạn không có quyền sửa chính sách.");
+        state.policy = {
+          ...state.policy,
+          ...agentPolicyInput.parse(input),
+          artifacts: (input as AgentPolicyInput).artifacts
+            ? orgArtifactPolicy.parse((input as AgentPolicyInput).artifacts)
+            : state.policy.artifacts,
+          updatedAt: new Date().toISOString(),
+        };
+        return ok(state.policy);
+      },
       "leader/threads/list": () =>
         ok([
           {
-            id: ARTIFACT_THREAD_ID,
+            id: state.fixThreadId,
             projectId: ARTIFACT_PROJECT.id,
             title: "Luồng thanh toán",
             createdAt: "2026-10-14T08:00:00.000Z",
@@ -1396,7 +1606,7 @@ export function artifactsFixture() {
       "leader/threads/get": () =>
         ok({
           thread: {
-            id: ARTIFACT_THREAD_ID,
+            id: state.fixThreadId,
             projectId: ARTIFACT_PROJECT.id,
             title: "Luồng thanh toán",
             createdAt: "2026-10-14T08:00:00.000Z",
@@ -1426,7 +1636,7 @@ export function artifactsFixture() {
           scopes: ["private", "project"],
           maxVersionBytes: 1_048_576,
           maxVersions: 200,
-          publicLinks: { enabled: true, maxDays: 30 },
+          publicLinks: state.policy.artifacts.publicLinks,
         }),
       "artifacts/list": (input) => {
         const q = input as { trash?: boolean; type?: string; query?: string; mine?: boolean };
@@ -1535,12 +1745,82 @@ export function artifactsFixture() {
         return ok({ ...ticketUrl({ kind: "preview", type, content, theme: theme ?? "light" }), compileError: null });
       },
       "artifacts/askLeaderFix": (input) => {
-        const data = input as { id: string; errors: FakeChatMessage["pageErrors"]; note?: string; threadId?: string };
-        if (!find(data.id)) return notFound();
+        const data = input as {
+          id: string;
+          version: number;
+          errors: FakeChatMessage["pageErrors"];
+          note?: string;
+          threadId?: string;
+        };
+        const a = find(data.id);
+        if (!a) return notFound();
         state.fixRequests.push(data);
-        const m = message({ role: "user", content: data.note ?? "Nhờ Leader sửa", pageErrors: data.errors });
+        const m = message({
+          role: "user",
+          content: data.note ?? "Nhờ Leader sửa",
+          pageErrors: data.errors,
+          artifact: { id: a.id, version: data.version, title: a.title, type: a.type, deleted: false },
+        });
         state.onSend?.(m.content);
-        return ok({ threadId: ARTIFACT_THREAD_ID, messageId: m.id, runId: ARTIFACT_RUN_ID });
+        return ok({ threadId: data.threadId ?? state.fixThreadId, messageId: m.id, runId: ARTIFACT_RUN_ID });
+      },
+      "artifacts/publicLinks/create": (input) => {
+        const data = input as { id: string; version: number; expiresInDays: number };
+        const a = find(data.id);
+        if (!a) return notFound();
+        if (a.ownerId !== viewer.id) return fail("FORBIDDEN", 403, "Chỉ chủ artifact được tạo link công khai.");
+        if (!state.policy.artifacts.publicLinks.enabled) return fail("FORBIDDEN", 403, "Link công khai đang tắt.");
+        if (data.expiresInDays < 1 || data.expiresInDays > state.policy.artifacts.publicLinks.maxDays)
+          return fail("BAD_REQUEST", 400, "Hạn link vượt chính sách của tổ chức.");
+        const token = `${randomUUID()}${randomUUID()}`.replaceAll("-", "");
+        const link = {
+          id: uuid("abababab", next()),
+          artifactId: a.id,
+          version: data.version,
+          createdBy: viewer.id,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + data.expiresInDays * 86_400_000).toISOString(),
+          revokedAt: null,
+          revokedBy: null,
+          revokeReason: null,
+          viewCount: 0,
+          lastViewedAt: null,
+          active: true,
+        };
+        state.publicLinks.push({ ...link, tokenSha256: sha(token) });
+        return ok({ link, url: `/_artifact/s/${token}` });
+      },
+      "artifacts/publicLinks/list": (input) => {
+        const a = state.artifacts.find((x) => x.id === (input as { id: string }).id);
+        if (!a || (a.ownerId !== viewer.id && role === "member")) return notFound();
+        return ok(state.publicLinks.filter((l) => l.artifactId === a.id).map(({ tokenSha256: _, ...l }) => l));
+      },
+      "artifacts/publicLinks/revoke": (input) => {
+        const link = state.publicLinks.find((l) => l.id === (input as { linkId: string }).linkId);
+        const a = state.artifacts.find((x) => x.id === link?.artifactId);
+        if (!link || !a || (a.ownerId !== viewer.id && role === "member")) return notFound();
+        link.active = false;
+        link.revokedAt = new Date().toISOString();
+        link.revokedBy = viewer.id;
+        link.revokeReason = "manual";
+        const { tokenSha256: _, ...result } = link;
+        return ok(result);
+      },
+      "artifacts/publicLinks/orgList": (input) => {
+        if (role === "member") return fail("FORBIDDEN", 403, "Chỉ quản trị tổ chức được xem danh sách link.");
+        const { cursor, limit = 50 } = input as { cursor?: string; limit?: number };
+        const active = state.publicLinks.filter((l) => l.active && Date.parse(l.expiresAt) > Date.now()).reverse();
+        const offset = Number(cursor ?? 0);
+        const items = active.slice(offset, offset + limit).map(({ tokenSha256: _, ...l }) => {
+          const a = state.artifacts.find((x) => x.id === l.artifactId) as FakeArtifact;
+          return {
+            ...l,
+            artifactTitle: a.title,
+            artifactType: a.type,
+            owner: { id: a.ownerId, name: ownerOf(a).name },
+          };
+        });
+        return ok({ items, nextCursor: offset + limit < active.length ? String(offset + limit) : null });
       },
     };
   }
@@ -1593,6 +1873,77 @@ export async function fakeArtifactFrames(page: Page, fixture: ArtifactsFixture) 
   await page.route("**/_artifact/**", async (route) => {
     const url = new URL(route.request().url());
     const libBase = `${url.origin}/_artifact/lib/`;
+    const publicMissing = () =>
+      route.fulfill({
+        status: 404,
+        body: '<!doctype html><html lang="vi"><body>Liên kết không tồn tại hoặc đã hết hạn.</body></html>',
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Content-Security-Policy": "default-src 'none'",
+        },
+      });
+    const publicActive = (link: ArtifactPublicLink | undefined) => {
+      const a = fixture.state.artifacts.find((x) => x.id === link?.artifactId);
+      return (
+        link?.active &&
+        Date.parse(link.expiresAt) > Date.now() &&
+        a &&
+        !a.deletedAt &&
+        a.ownerId === link.createdBy &&
+        a.versions.some((v) => v.version === link.version && v.content !== null) &&
+        fixture.state.policy.artifacts.enabled &&
+        fixture.state.policy.artifacts.publicLinks.enabled
+      );
+    };
+    const limited = (linkId?: string) => {
+      const cutoff = Date.now() - 60_000;
+      fixture.state.publicRequests = fixture.state.publicRequests.filter((at) => at > cutoff);
+      const perLink = linkId ? (fixture.state.publicLinkRequests.get(linkId) ?? []).filter((at) => at > cutoff) : [];
+      if (fixture.state.publicRequests.length >= 60 || perLink.length >= 600) return true;
+      fixture.state.publicRequests.push(Date.now());
+      if (linkId) {
+        perLink.push(Date.now());
+        fixture.state.publicLinkRequests.set(linkId, perLink);
+      }
+      return false;
+    };
+    const tooMany = () =>
+      route.fulfill({
+        status: 429,
+        body: "Quá nhiều yêu cầu. Thử lại sau.",
+        headers: { "Retry-After": "60", "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+      });
+    if (url.pathname.startsWith("/_artifact/s/")) {
+      const link = fixture.state.publicLinks.find(
+        (l) => l.tokenSha256 === sha(url.pathname.slice("/_artifact/s/".length)),
+      );
+      if (limited(link?.id)) return tooMany();
+      if (!link || !publicActive(link)) return publicMissing();
+      const a = fixture.state.artifacts.find((x) => x.id === link.artifactId) as FakeArtifact;
+      const ticket = randomUUID();
+      fixture.state.tickets.set(ticket, {
+        kind: "version",
+        id: a.id,
+        version: link.version,
+        theme: "light",
+        publicLinkId: link.id,
+      });
+      const frameUrl = `${url.origin}/_artifact/frame/${ticket}`;
+      link.viewCount++;
+      link.lastViewedAt = new Date().toISOString();
+      return route.fulfill({
+        status: 200,
+        body: buildPublicPage({
+          title: a.title,
+          type: a.type,
+          version: link.version,
+          expiresAt: link.expiresAt,
+          frameUrl,
+        }),
+        headers: { ...publicPageHeaders({ frameUrl }), "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
     const frameHeaders = {
       "Cross-Origin-Resource-Policy": "same-site",
       "X-Content-Type-Options": "nosniff",
@@ -1613,6 +1964,10 @@ export async function fakeArtifactFrames(page: Page, fixture: ArtifactsFixture) 
     }
     const ticket = fixture.state.tickets.get(url.pathname.replace(/^\/_artifact\/frame\//, ""));
     if (!ticket) return route.fulfill({ status: 403, body: "Vé khung không hợp lệ.", headers: frameHeaders });
+    if (ticket.kind === "version" && ticket.publicLinkId) {
+      if (limited(ticket.publicLinkId)) return tooMany();
+      if (!publicActive(fixture.state.publicLinks.find((l) => l.id === ticket.publicLinkId))) return publicMissing();
+    }
     let input: { type: FakeArtifact["type"]; content: string; compiled: string | null; compileError: string | null };
     if (ticket.kind === "preview") {
       input = { type: ticket.type, content: ticket.content, compiled: null, compileError: null };

@@ -61,7 +61,7 @@ export async function saveAgentPolicy(
   tx: Tx,
   userId: string,
   input: AgentPolicyInput,
-): Promise<{ policy: AgentPolicy; templatesChanged: boolean }> {
+): Promise<{ policy: AgentPolicy; templatesChanged: boolean; remoteChanged: boolean }> {
   await allowWith(tx, userId, "policies.write", () => requireOrgRole(tx, userId, "admin"));
   const before = await loadPolicy(tx);
   // Client chưa biết mục `remote` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt.
@@ -105,6 +105,7 @@ export async function saveAgentPolicy(
       defaultTemplates: DEFAULT_TEMPLATES,
     },
     templatesChanged: changed.includes("templates"),
+    remoteChanged: changed.includes("remote"),
   };
 }
 

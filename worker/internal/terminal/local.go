@@ -154,8 +154,13 @@ type CreateParams struct {
 	// ProjectID, TaskID do `hive` tra trên hub; hub tự bỏ liên kết khi không thuộc đội của máy (FR-030).
 	ProjectID string `json:"projectId,omitempty"`
 	TaskID    string `json:"taskId,omitempty"`
-	// origin không đọc từ JSON: client qua socket nội bộ không được tự nhận phiên là mở từ xa.
-	origin string
+	// origin không đọc từ JSON: client qua socket nội bộ không được tự nhận phiên là mở từ xa. Các trường dưới chỉ do
+	// term_start đặt (start.go).
+	origin                string
+	requestID             string
+	permissions, cwdLabel string
+	// typed là lời nhắc gõ vào PTY thay vì truyền làm đối số (xem startArgs).
+	typed string
 }
 
 // AttachParams là session.attach; Mode rỗng là control.
@@ -356,6 +361,18 @@ func (l *Local) release(id string) {
 	l.mu.Unlock()
 }
 
+// cliPath là file sẽ chạy cho cli: lệnh ghi đè hoặc theo PATH của hive-worker.
+func (l *Local) cliPath(cli string) (string, error) {
+	if c, ok := l.Commands[cli]; ok {
+		return c.Path, nil
+	}
+	path, err := exec.LookPath(runner.Binary(cli))
+	if err != nil {
+		return "", fmt.Errorf("Không tìm thấy lệnh %s trên máy (theo PATH của hive-worker).", runner.Binary(cli))
+	}
+	return path, nil
+}
+
 func (l *Local) command(cli string, args []string) (*exec.Cmd, error) {
 	if c, ok := l.Commands[cli]; ok {
 		base := make([]string, 0, len(c.Args)+len(args))
@@ -366,9 +383,9 @@ func (l *Local) command(cli string, args []string) (*exec.Cmd, error) {
 		}
 		return exec.Command(c.Path, append(base, args...)...), nil
 	}
-	path, err := exec.LookPath(runner.Binary(cli))
+	path, err := l.cliPath(cli)
 	if err != nil {
-		return nil, fmt.Errorf("Không tìm thấy lệnh %s trên máy (theo PATH của hive-worker).", runner.Binary(cli))
+		return nil, err
 	}
 	return exec.Command(path, args...), nil
 }
@@ -391,6 +408,10 @@ func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*
 		lease.Release()
 		return nil, fmt.Errorf("Không chạy được %s: %w", p.CLI, err)
 	}
+	if p.typed != "" {
+		// PTY giữ phần đã ghi trong hàng đợi nhập tới khi CLI đọc, nên ghi ngay lúc này không mất chữ.
+		_, _ = f.Write([]byte(p.typed))
+	}
 	origin := p.origin
 	if origin == "" {
 		origin = OriginLocal
@@ -403,7 +424,8 @@ func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*
 	}
 	if !p.NoRecord {
 		s.rec = l.Recorder.Open(RecordOpen{CLI: p.CLI, Cwd: p.Cwd, AccountLabel: lease.Label(), ProjectID: p.ProjectID,
-			TaskID: p.TaskID, Cols: cols, Rows: rows})
+			TaskID: p.TaskID, Cols: cols, Rows: rows, Origin: p.origin, RequestID: p.requestID, Permissions: p.permissions,
+			CwdLabel: p.cwdLabel})
 	}
 	l.mu.Lock()
 	l.sessions[id] = s

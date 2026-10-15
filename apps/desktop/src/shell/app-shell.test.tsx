@@ -13,6 +13,8 @@ describe("menu theo hồ sơ", () => {
       "home",
       "work",
       "reviews",
+      "leader",
+      "artifacts",
       "sdlc",
       "sdlc-questions",
       "sdlc-progress",
@@ -37,6 +39,7 @@ describe("menu theo hồ sơ", () => {
     expect(items.map((i) => i.id)).toEqual([
       "home",
       "reviews",
+      "artifacts",
       "sdlc",
       "sdlc-questions",
       "sdlc-progress",
@@ -53,14 +56,14 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(18);
+    expect(items).toHaveLength(20);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 
   it("chia ba nhóm Công việc, Tài liệu, Máy này; mục docs mang nhãn Tài liệu từ code", () => {
     const groups = navGroups("lead");
     expect(groups.map((g) => [g.label.vi, g.items.map((i) => i.label.vi)])).toEqual([
-      ["Công việc", ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"]],
+      ["Công việc", ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt", "Leader", "Artifact"]],
       ["AI SDLC", ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ", "Chỉ số"]],
       ["Tài liệu", ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"]],
       [
@@ -84,7 +87,7 @@ describe("menu theo hồ sơ", () => {
   it("writer vẫn thấy cả ba nhóm, chỉ bớt mục trong nhóm", () => {
     const groups = navGroups("writer");
     expect(groups.map((g) => [g.id, g.items.map((i) => i.id)])).toEqual([
-      ["work", ["home", "reviews"]],
+      ["work", ["home", "reviews", "artifacts"]],
       ["sdlc", ["sdlc", "sdlc-questions", "sdlc-progress", "sdlc-metrics"]],
       ["docs", ["knowledge", "write", "docs"]],
       ["machine", ["skills", "tokens", "memory"]],
@@ -163,7 +166,7 @@ describe("AppShell", () => {
           .map((a) => a.textContent),
       ),
     ).toEqual([
-      ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"],
+      ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt", "Leader", "Artifact"],
       ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ", "Chỉ số"],
       ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"],
       [
@@ -264,6 +267,8 @@ describe("chưa đăng nhập", () => {
     expect(offline).toEqual([
       "#/work",
       "#/reviews",
+      "#/leader",
+      "#/artifacts",
       "#/sdlc",
       "#/sdlc-questions",
       "#/sdlc-progress",
