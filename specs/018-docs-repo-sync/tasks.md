@@ -403,7 +403,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/web/e2e/docsync-docs.spec.ts` (mới), `apps/web/e2e/docsync-docs-fixture.ts`
   - **Kiểm**: web typecheck, test, Playwright file của task.
 
-- [ ] **T023 [P] [US3] [vừa] · 2 ngày — Web: trang xung đột và bản trích chờ duyệt**
+- [x] **T023 [P] [US3] [vừa] · 2 ngày — Web: trang xung đột và bản trích chờ duyệt**
   - **Phụ thuộc**: T019, T020.
   - **Goal**: FR-041, US3 scenario 3, US6 scenario 2.
     - `doc-conflict-page.tsx`: dùng `ConflictView`, gọi `docConflicts.resolve`, xử lý `VERSION_CONFLICT`.
