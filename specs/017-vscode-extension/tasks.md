@@ -257,18 +257,32 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 ## Đợt 3: tính năng (song song, sau Đợt 2)
 
-- [ ] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
+- [x] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
   - **Phụ thuộc**: T010, T011.
   - **Goal**: US2-1…4, 6, 7. Log run vào Output qua SSE. Chưa cấu hình hub thì view hiện "Chưa cấu hình hub xDev Hive"
     (Edge Cases).
   - **PHẠM VI**: `apps/vscode/src/views/{mine,approvals,runs,merge-queue,badge}.ts` (+ test)
   - **Test**: fake hub; badge đúng tổng; chưa đăng nhập và chưa có hub URL đều không gọi mạng.
 
-- [ ] **T016 [P] [US2] [vừa] · 1,5 ngày — View AI SDLC (webview `sdlc-ui`)**
+- [x] **T016 [P] [US2] [vừa] · 1,5 ngày — View AI SDLC (webview `sdlc-ui`)**
   - **Phụ thuộc**: T013.
   - **PHẠM VI**: `apps/vscode/src/views/sdlc.ts`, `apps/vscode/webview/screens/sdlc.tsx`,
     `apps/vscode/src/webview-host/allowlist/sdlc.ts` (+ test)
   - **Test**: `SdlcEnv.link` mở đúng màn; quyền ẩn nút theo `can`.
+  - **Bàn giao**:
+    - Webview không tự gửi thông điệp tuỳ ý (`acquireVsCodeApi` chỉ gọi một lần trong `WebviewBridge`), nên hai kênh với
+      host đi qua RPC giả `/rpc/host/sdlcInit` (lấy route chờ) và `/rpc/host/sdlcOpen` (mở trang hub). Host chặn chúng
+      ở `rpc` truyền cho `attachBridge`, không chuyển tiếp tới hub. Liên kết `doc/review/task/run/projectSettings`
+      do host dựng URL từ trường đã kiểm rồi mở bằng trình duyệt.
+    - `can` lấy từ `roles.mine` theo tổ chức như web (`sdlc.write`, `sdlc.override`, `sdlc.modes.write`); chưa biết
+      quyền thì chỉ đọc. Allowlist không có `modes.save/remove/dryRun`, `metrics`, `import`, `changeMode`.
+    - **Còn việc cho T026**: thêm lệnh `xdevHive.sdlc.open` vào manifest (host đã đăng ký, nhận `SdlcRoute` tuỳ chọn);
+      T015 muốn mở câu hỏi chờ duyệt thì gọi lệnh này với `{ kind: "questions" }`.
+    - **Rủi ro**: màn duyệt phân rã nạp lười CSS của `@xyflow/react` thành chunk `breakdown-review-*.css`, nhưng
+      `renderHtml` (T013) chỉ nối `main.css` nên đồ thị có thể thiếu style trong VS Code. Cần T013 hoặc T026 nối thêm
+      CSS đó. Chưa kiểm trong VS Code thật.
+    - Test webview nằm ở `src/views/sdlc-webview.test.ts` (dựng bundle bằng esbuild rồi chạy trong jsdom) vì vitest của
+      `apps/vscode` chỉ nhận `src/**/*.test.ts`.
 
 - [ ] **T017 [P] [US8] [nặng] · 2,5 ngày — View Artifact và panel artifact cách ly**
   - **Phụ thuộc**: T013.
@@ -279,7 +293,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     (+ test)
   - **Test**: panel có `enableCommandUris: false`; thông điệp lạ bị bỏ; xoá bộ đệm khi đăng xuất.
 
-- [ ] **T018 [P] [US3] [nặng] · 3 ngày — Review bằng Comments API và diff**
+- [x] **T018 [P] [US3] [nặng] · 3 ngày — Review bằng Comments API và diff**
   - **Phụ thuộc**: T008, T010, T013.
   - **Goal**: plan.md mục 4 (extension), US3 toàn bộ. Fallback webview `CodeReviewPane` khi không có repo. Sửa, xoá
     bình luận của mình. Bình luận từ PR hiện tác giả "login · GitHub"; trạng thái đồng bộ qua `Comment.label`,
@@ -289,7 +303,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: 4 luồng từ dữ liệu mẫu; `add` gửi đúng `side`, `headSha`; `decide` khi `headSha` đổi hiện đúng thông báo;
     không đổi working tree (repo tạm, so `git status`).
 
-- [ ] **T019 [P] [US4] [nặng] · 3 ngày — Chat participant `@hive`**
+- [x] **T019 [P] [US4] [nặng] · 3 ngày — Chat participant `@hive`**
   - **Phụ thuộc**: T010, T011, T007 (context pack).
   - **Goal**: plan.md mục 5. Bốn lệnh, nút hành động, che bí mật bằng `secret-scan` của contracts, rơi về khi không có
     model.
@@ -303,14 +317,14 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     `apps/vscode/src/webview-host/allowlist/chat.ts` (+ test)
   - **Test**: gửi, hỏi lại, hiện đề xuất với nút Duyệt/Từ chối; form Giao việc gọi `tasks.create`.
 
-- [ ] **T021 [P] [US5] [nặng] · 2,5 ngày — MCP provider và ghi cấu hình cho Claude Code, Cursor, Windsurf**
+- [x] **T021 [P] [US5] [nặng] · 2,5 ngày — MCP provider và ghi cấu hình cho Claude Code, Cursor, Windsurf**
   - **Phụ thuộc**: T005, T011, kết quả Cursor của T002.
   - **Goal**: plan.md mục 6, FR-013…FR-017.
   - **PHẠM VI**: `apps/vscode/src/mcp/**` (+ test)
   - **Test**: `HOME` tạm; ghi giữ nguyên khoá khác; gỡ trả về đúng từng byte; file không chứa `hive_pat_`;
     `resolveMcpServerDefinition` gắn token mới nhất.
 
-- [ ] **T022 [P] [US9] [vừa] · 1 ngày — Terminal profile Hive Leader và gắn phiên**
+- [x] **T022 [P] [US9] [vừa] · 1 ngày — Terminal profile Hive Leader và gắn phiên**
   - **Phụ thuộc**: T012 (`ipc.ts`, `bin.ts`).
   - **PHẠM VI**: `apps/vscode/src/terminal/**` (+ test)
   - **Test**: không có `hive` thì báo đúng chữ; chọn "Chỉ xem" thêm `--view`.
