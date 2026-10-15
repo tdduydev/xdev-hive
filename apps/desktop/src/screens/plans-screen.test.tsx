@@ -448,6 +448,60 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(within(block("claude")).getByRole("button", { name: "1 gói đang tắt" })).toBeTruthy();
   });
 
+  it("Đọc lại quota thay số của đúng từng gói, báo đang đọc rồi báo xong", async () => {
+    fakeTauri();
+    const invoke = window.__TAURI__?.core.invoke;
+    let finish: () => void = () => {};
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+          if (command !== "cli_profile_usage") return invoke?.<T>(command, args) as Promise<T>;
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+          const usage = (session: number, week: number) => ({
+            session: { percent: session, resetsAt: at(60) },
+            week: { percent: week, resetsAt: at(2 * 1440) },
+            checkedAt: at(0),
+            reason: null,
+          });
+          const fresh: Record<string, Plan["usage"]> = { "claude-1": usage(0, 82), "claude-2": usage(47, 8) };
+          return {
+            path: "/x/accounts.json",
+            accounts: seed().map((p) => (fresh[p.id] ? { ...p, usage: fresh[p.id] } : p)),
+          } as T;
+        },
+      },
+    };
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    await user().click(screen.getByRole("button", { name: "Đọc lại quota" }));
+    expect(screen.getByRole("button", { name: "Đang đọc quota…" }).getAttribute("aria-busy")).toBe("true");
+    act(() => finish());
+    expect((await screen.findByRole("status")).textContent).toBe("Đã đọc lại quota của 5 gói.");
+    const meter = (id: string, name: string) =>
+      within(row(id)).getByRole("meter", { name }).getAttribute("aria-valuenow");
+    expect([meter("claude-1", "Phiên 5 giờ: Duy Max"), meter("claude-1", "Tuần: Duy Max")]).toEqual(["0", "82"]);
+    expect([meter("claude-2", "Phiên 5 giờ: Gói phụ"), meter("claude-2", "Tuần: Gói phụ")]).toEqual(["47", "8"]);
+    expect(screen.getByRole("button", { name: "Đọc lại quota" }).getAttribute("aria-busy")).toBe("false");
+  });
+
+  it("hai gói cùng một tài khoản thì mỗi thẻ ghi gói trùng với nó", async () => {
+    const list = seed();
+    list.push({ ...base, id: "claude-4", label: "Gói trùng", cli: "claude", email: "DUY@example.com ", state: "ready" });
+    // Cùng email nhưng khác CLI thì không phải cùng tài khoản.
+    list.push({ ...base, id: "codex-5", label: "Codex Duy", cli: "codex", email: "duy@example.com", state: "ready" });
+    fakeTauri(list);
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    expect(within(row("claude-1")).getByRole("note").textContent).toBe(
+      "Gói này trùng tài khoản với claude-4: các gói dùng chung một quota.",
+    );
+    expect(within(row("claude-4")).getByRole("note").textContent).toContain("trùng tài khoản với claude-1");
+    expect(within(row("codex-5")).queryByRole("note")).toBeNull();
+    expect(within(row("claude-2")).queryByRole("note")).toBeNull();
+  });
+
   it("Đang nghỉ tới {giờ} và Dùng tiếp gọi accounts resume", async () => {
     const { calls } = fakeTauri();
     render(<PlansScreen />);
