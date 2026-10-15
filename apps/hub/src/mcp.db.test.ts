@@ -299,6 +299,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
       "artifact_list",
       "artifact_update",
       "brief_submit",
+      "doc_asset_get",
       "doc_assist_submit",
       "doc_check_submit",
       "doc_comment",
