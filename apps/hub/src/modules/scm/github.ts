@@ -19,6 +19,8 @@ import type {
   RepoInfo,
   RepoRef,
   RepoVisibility,
+  ReviewComment,
+  ReviewCommentInput,
   ScmUser,
   WebhookInput,
 } from "./types.ts";
@@ -496,6 +498,175 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
         body,
       });
       return { id: String(c.id) };
+    },
+
+    async listReviewComments(ref: RepoRef, number: number): Promise<ReviewComment[]> {
+      const out: ReviewComment[] = [];
+      for (let page = 1; ; page++) {
+        const comments = await request<
+          Array<{
+            id: number;
+            node_id?: string;
+            in_reply_to_id?: number;
+            path: string;
+            line: number | null;
+            original_line?: number;
+            side: "LEFT" | "RIGHT";
+            commit_id: string;
+            body: string;
+            user?: { login?: string };
+            html_url: string;
+            updated_at: string;
+          }>
+        >("GET /repos/{owner}/{repo}/pulls/{pull_number}/comments", {
+          owner: ref.owner,
+          repo: ref.name,
+          pull_number: number,
+          per_page: 100,
+          page,
+        });
+        out.push(
+          ...comments.map((c) => ({
+            id: String(c.id),
+            threadId: c.in_reply_to_id ? String(c.in_reply_to_id) : (c.node_id ?? String(c.id)),
+            path: c.path,
+            line: c.line ?? c.original_line ?? 1,
+            side: c.side,
+            commitSha: c.commit_id,
+            body: c.body,
+            author: c.user?.login ?? null,
+            url: c.html_url,
+            updatedAt: c.updated_at,
+            resolved: false,
+            inReplyToId: c.in_reply_to_id ? String(c.in_reply_to_id) : null,
+          })),
+        );
+        if (comments.length < 100) break;
+      }
+      return out;
+    },
+    async createReviewComment(ref: RepoRef, number: number, input: ReviewCommentInput): Promise<ReviewComment> {
+      try {
+        const c = await request<{
+          id: number;
+          node_id?: string;
+          path: string;
+          line: number | null;
+          side: "LEFT" | "RIGHT";
+          commit_id: string;
+          body: string;
+          user?: { login?: string };
+          html_url: string;
+          updated_at: string;
+        }>("POST /repos/{owner}/{repo}/pulls/{pull_number}/comments", {
+          owner: ref.owner,
+          repo: ref.name,
+          pull_number: number,
+          ...input,
+          commit_id: input.commitSha,
+        });
+        return {
+          id: String(c.id),
+          threadId: c.node_id ?? String(c.id),
+          path: c.path,
+          line: c.line ?? input.line,
+          side: c.side,
+          commitSha: c.commit_id,
+          body: c.body,
+          author: c.user?.login ?? null,
+          url: c.html_url,
+          updatedAt: c.updated_at,
+          resolved: false,
+          inReplyToId: null,
+        };
+      } catch (e) {
+        if (isGitProviderError(e, "invalid") && e.status === 422)
+          throw new GitProviderError("position_invalid", "GitHub: dòng không thuộc phần thay đổi của PR", {
+            status: 422,
+            cause: e,
+          });
+        throw e;
+      }
+    },
+    async replyReviewComment(ref: RepoRef, number: number, threadId: string, body: string): Promise<ReviewComment> {
+      const c = await request<{
+        id: number;
+        path: string;
+        line: number | null;
+        side: "LEFT" | "RIGHT";
+        commit_id: string;
+        body: string;
+        user?: { login?: string };
+        html_url: string;
+        updated_at: string;
+      }>("POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies", {
+        owner: ref.owner,
+        repo: ref.name,
+        pull_number: number,
+        comment_id: Number(threadId),
+        body,
+      });
+      return {
+        id: String(c.id),
+        threadId,
+        path: c.path,
+        line: c.line ?? 1,
+        side: c.side,
+        commitSha: c.commit_id,
+        body: c.body,
+        author: c.user?.login ?? null,
+        url: c.html_url,
+        updatedAt: c.updated_at,
+        resolved: false,
+        inReplyToId: threadId,
+      };
+    },
+    async editReviewComment(ref: RepoRef, _number: number, commentId: string, body: string): Promise<ReviewComment> {
+      const c = await request<{
+        id: number;
+        node_id?: string;
+        path: string;
+        line: number | null;
+        side: "LEFT" | "RIGHT";
+        commit_id: string;
+        body: string;
+        user?: { login?: string };
+        html_url: string;
+        updated_at: string;
+      }>("PATCH /repos/{owner}/{repo}/pulls/comments/{comment_id}", {
+        owner: ref.owner,
+        repo: ref.name,
+        comment_id: Number(commentId),
+        body,
+      });
+      return {
+        id: String(c.id),
+        threadId: c.node_id ?? String(c.id),
+        path: c.path,
+        line: c.line ?? 1,
+        side: c.side,
+        commitSha: c.commit_id,
+        body: c.body,
+        author: c.user?.login ?? null,
+        url: c.html_url,
+        updatedAt: c.updated_at,
+        resolved: false,
+        inReplyToId: null,
+      };
+    },
+    async deleteReviewComment(ref: RepoRef, _number: number, commentId: string) {
+      await request("DELETE /repos/{owner}/{repo}/pulls/comments/{comment_id}", {
+        owner: ref.owner,
+        repo: ref.name,
+        comment_id: Number(commentId),
+      });
+    },
+    async setReviewThreadResolved(_ref: RepoRef, _number: number, threadId: string, resolved: boolean) {
+      const field = resolved ? "resolveReviewThread" : "unresolveReviewThread";
+      await request("POST /graphql", {
+        query: `mutation($threadId: ID!) { ${field}(input: {threadId: $threadId}) { thread { isResolved } } }`,
+        threadId,
+      });
     },
 
     async canPush(ref: RepoRef, user: ScmUser) {

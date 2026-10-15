@@ -16,6 +16,8 @@ import type {
   PullRequestState,
   RepoInfo,
   RepoRef,
+  ReviewComment,
+  ReviewCommentInput,
   ScmUser,
   WebhookInput,
 } from "./types.ts";
@@ -86,6 +88,7 @@ export function createMemoryProvider(
   const failures = new Map<Method, GitProviderError>();
   const calls: MemoryProvider["calls"] = [];
   let seq = 0;
+  const reviewComments = new Map<string, ReviewComment[]>();
   const host = kind === "github" ? "github.com" : "gitlab.com";
 
   const makeRepo = (ref: RepoRef, defaultBranch: string, description: string): MemoryRepo => {
@@ -305,6 +308,70 @@ export function createMemoryProvider(
       repo.comments.push({ id, number, body, pullRequest: opts?.pullRequest ?? false });
       return { id };
     }),
+
+    listReviewComments: track("listReviewComments", (ref: RepoRef, number: number) =>
+      (reviewComments.get(`${key(ref)}#${number}`) ?? []).map((comment) => ({ ...comment })),
+    ),
+    createReviewComment: track("createReviewComment", (ref: RepoRef, number: number, input: ReviewCommentInput) => {
+      need(ref);
+      seq += 1;
+      const id = String(seq);
+      const comment: ReviewComment = {
+        ...input,
+        id,
+        threadId: id,
+        author: "hive",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        resolved: false,
+        inReplyToId: null,
+      };
+      const list = reviewComments.get(`${key(ref)}#${number}`) ?? [];
+      list.push(comment);
+      reviewComments.set(`${key(ref)}#${number}`, list);
+      return comment;
+    }),
+    replyReviewComment: track("replyReviewComment", (ref: RepoRef, number: number, threadId: string, body: string) => {
+      need(ref);
+      const list = reviewComments.get(`${key(ref)}#${number}`) ?? [];
+      const parent = list.find((comment) => comment.id === threadId || comment.threadId === threadId);
+      if (!parent) throw new GitProviderError("not_found", `${host}: không tìm thấy luồng ${threadId}`);
+      seq += 1;
+      const comment: ReviewComment = {
+        ...parent,
+        id: String(seq),
+        body,
+        updatedAt: new Date().toISOString(),
+        inReplyToId: parent.id,
+      };
+      list.push(comment);
+      return comment;
+    }),
+    editReviewComment: track("editReviewComment", (ref: RepoRef, number: number, commentId: string, body: string) => {
+      need(ref);
+      const comment = (reviewComments.get(`${key(ref)}#${number}`) ?? []).find((item) => item.id === commentId);
+      if (!comment) throw new GitProviderError("not_found", `${host}: không tìm thấy bình luận ${commentId}`);
+      comment.body = body;
+      comment.updatedAt = new Date().toISOString();
+      return { ...comment };
+    }),
+    deleteReviewComment: track("deleteReviewComment", (ref: RepoRef, number: number, commentId: string) => {
+      need(ref);
+      const list = reviewComments.get(`${key(ref)}#${number}`) ?? [];
+      const index = list.findIndex((item) => item.id === commentId);
+      if (index < 0) throw new GitProviderError("not_found", `${host}: không tìm thấy bình luận ${commentId}`);
+      list.splice(index, 1);
+    }),
+    setReviewThreadResolved: track(
+      "setReviewThreadResolved",
+      (ref: RepoRef, number: number, threadId: string, resolved: boolean) => {
+        need(ref);
+        const list = reviewComments.get(`${key(ref)}#${number}`) ?? [];
+        const found = list.filter((item) => item.threadId === threadId);
+        if (!found.length) throw new GitProviderError("not_found", `${host}: không tìm thấy luồng ${threadId}`);
+        for (const comment of found) comment.resolved = resolved;
+      },
+    ),
 
     canPush: track("canPush", (ref: RepoRef, user: ScmUser) => {
       need(ref);

@@ -72,6 +72,8 @@ export type {
   RepoInfo,
   RepoRef,
   RepoVisibility,
+  ReviewComment,
+  ReviewCommentInput,
   ScmUser,
   WebhookEvent,
   WebhookInput,
