@@ -334,7 +334,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **PHẠM VI**: `apps/vscode/src/codelens/**` (+ test)
   - **Test**: `tasks.md` 300 dòng dựng lens ≤ 50 ms; Restricted Mode không có lens "Giao agent"; hover PHẠM VI đúng task.
 
-- [ ] **T024 [P] [US6] [vừa] · 1,5 ngày — View Máy này: tối ưu token, memory, context pack**
+- [x] **T024 [P] [US6] [vừa] · 1,5 ngày — View Máy này: tối ưu token, memory, context pack**
   - **Phụ thuộc**: T007, T012.
   - **PHẠM VI**: `apps/vscode/src/local/**`, `apps/vscode/src/views/machine.ts` (+ test)
   - **Test**: chặn `globalThis.fetch`, mọi lệnh vẫn chạy với `hive-worker` giả.
