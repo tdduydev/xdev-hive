@@ -1,0 +1,38 @@
+name: Cài pnpm, Node và phụ thuộc
+description: >
+  pnpm + Node theo .nvmrc, kho pnpm lấy từ cache rồi pnpm install. Chỉ nhánh main lưu cache; PR và nhánh khác chỉ đọc,
+  để PR không làm đầy hạn mức 10 GB của repo.
+
+inputs:
+  filter:
+    description: Bộ lọc pnpm (vd. "@xdev-hive/desktop..."); để trống thì cài cả workspace
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+    # setup-node `cache: pnpm` lưu cache ở mọi nhánh kể cả PR nên không dùng ở đây.
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+    - id: store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v4
+      if: github.ref == 'refs/heads/main'
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-${{ runner.os }}-
+    - uses: actions/cache/restore@v4
+      if: github.ref != 'refs/heads/main'
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-${{ runner.os }}-
+    - shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}
+      run: pnpm install --frozen-lockfile ${FILTER:+--filter "$FILTER"}

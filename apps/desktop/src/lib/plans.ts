@@ -242,6 +242,22 @@ export function cliSummary(list: Plan[], now = Date.now()) {
   });
 }
 
+/**
+ * Gói trùng tài khoản: cùng CLI, cùng email đăng nhập. Hai gói như vậy dùng chung một quota nên hiện số giống hệt; màn
+ * phải nói rõ thay vì để người dùng nghĩ là đọc nhầm. Trả về id → các gói trùng với nó.
+ */
+export function sameAccount(list: Plan[]): Record<string, string[]> {
+  const key = (p: Plan) => (p.loggedIn !== false && p.email?.trim() ? `${p.cli}\n${p.email.trim().toLowerCase()}` : "");
+  const out: Record<string, string[]> = {};
+  for (const p of list) {
+    const k = key(p);
+    if (!k) continue;
+    const twins = list.filter((o) => o.id !== p.id && key(o) === k).map((o) => o.id);
+    if (twins.length > 0) out[p.id] = twins;
+  }
+  return out;
+}
+
 /** Lần đọc quota mới nhất của các gói đang bật. */
 export function lastChecked(list: Plan[]): string | null {
   return (
