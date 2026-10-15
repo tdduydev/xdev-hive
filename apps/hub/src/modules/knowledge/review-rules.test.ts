@@ -201,4 +201,30 @@ describe("quy tắc của tài liệu hạng mục AI SDLC", () => {
     const unreadable = ruleChecklist(g, sdlcCtx("# Tasks\n", { breakdown: breakdownInput(["FR-001"]) }));
     expect(unreadable[0]?.note).toContain("chưa đọc được");
   });
+
+  it("ears: tiêu chí chấp nhận theo mẫu WHEN … SHALL, câu thường thì báo dòng", () => {
+    const g = gate({ rules: ["ears"] });
+    const md = [
+      "# Requirements",
+      "### Requirement 1",
+      "**User Story:** As a khách, I want hoàn tiền",
+      "#### Acceptance Criteria",
+      "1. WHEN khách gửi yêu cầu THEN THE SYSTEM SHALL tạo phiếu hoàn",
+      "2. **1.2** IF số tiền vượt hạn mức THEN hệ thống PHẢI chờ duyệt",
+      "- KHI phiếu được duyệt, HỆ THỐNG PHẢI gửi thông báo",
+      "#### Ghi chú",
+      "- hệ thống nên gửi email khi xong",
+    ].join("\n");
+    expect(ruleChecklist(g, sdlcCtx(md))).toEqual([
+      { label: "Tiêu chí chấp nhận viết theo EARS", passed: true, note: null },
+    ]);
+    const bad = ruleChecklist(
+      g,
+      sdlcCtx(`${md}\n#### Tiêu chí chấp nhận\n- hệ thống phải gửi email\n- THE SYSTEM hiển thị số dư`),
+    );
+    expect(bad[0]).toMatchObject({ passed: false, note: expect.stringContaining("Dòng 11, 12") });
+    expect(ruleChecklist(g, sdlcCtx("# Requirements\n- WHEN a THE SYSTEM SHALL b\n"))[0]?.note).toContain(
+      "Không thấy tiêu chí",
+    );
+  });
 });

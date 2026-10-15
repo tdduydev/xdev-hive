@@ -1,6 +1,12 @@
 import type { SdlcMode } from "../sdlc.ts";
+import { aidlcEnterprise } from "./aidlc-enterprise.ts";
 import { aidlcExpress } from "./aidlc-express.ts";
+import { aidlcFeature } from "./aidlc-feature.ts";
+import { bmadMethod } from "./bmad-method.ts";
+import { bmadQuick } from "./bmad-quick.ts";
 import { bugfix } from "./bugfix.ts";
+import { kiroBugfix, kiroDesign, kiroRequirements } from "./kiro.ts";
+import { openspec } from "./openspec.ts";
 import { small } from "./small.ts";
 import { speckit } from "./speckit.ts";
 
@@ -21,15 +27,20 @@ export const SDLC_PRESET_IDS = [
 ] as const;
 export type SdlcPresetId = (typeof SDLC_PRESET_IDS)[number];
 
-/**
- * Preset theo id, đã qua `sdlcMode.parse` (mỗi file preset parse lúc nạp nên preset sai làm hỏng test ngay). MVP có
- * `bugfix`, `small`, `aidlc-express`, `speckit` (T002); phần còn lại ở T083, nên kiểu là Partial.
- */
-export const SDLC_PRESETS: Readonly<Partial<Record<SdlcPresetId, SdlcMode>>> = {
+/** Preset theo id, đã qua `sdlcMode.parse` (mỗi file preset parse lúc nạp nên preset sai làm hỏng test ngay). */
+export const SDLC_PRESETS: Readonly<Record<SdlcPresetId, SdlcMode>> = {
   bugfix,
   small,
   "aidlc-express": aidlcExpress,
+  "aidlc-feature": aidlcFeature,
+  "aidlc-enterprise": aidlcEnterprise,
   speckit,
+  "bmad-quick": bmadQuick,
+  "bmad-method": bmadMethod,
+  "kiro-requirements": kiroRequirements,
+  "kiro-design": kiroDesign,
+  "kiro-bugfix": kiroBugfix,
+  openspec,
 };
 
 export const isSdlcPresetId = (ref: string): ref is SdlcPresetId =>

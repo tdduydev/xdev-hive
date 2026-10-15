@@ -179,6 +179,8 @@ describe("missingArtifacts", () => {
       "plan.md (Plan)",
       "notes.md (Plan)",
       "tasks.md (Tasks)",
+      "release-notes.md (Release)",
+      "retro.md (Release)",
     ]);
   });
 
