@@ -33,6 +33,7 @@ import {
 import { loadConnection } from "../scm/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import { activeItemProjects, itemForUser, itemViewers, requireProjectWrite } from "./access.ts";
+import { assertCanConverge, findingsOf, SDLC_CONVERGE_ACTOR, settleConverge, startConverge } from "./converge.ts";
 import { itemDetail } from "./items.ts";
 import {
   lockItem,
@@ -52,6 +53,7 @@ import {
   type PromptProject,
   SEED_DIR,
 } from "./prompt.ts";
+import { RELEASE_ACTIONS, releaseBrief } from "./release.ts";
 import { repoDigest } from "./repo-digest.ts";
 import { sdlcArtifacts, sdlcItemPhases, sdlcQuestions, sdlcSteps } from "./schema.ts";
 
@@ -82,9 +84,12 @@ export function withStepRuns(deps: SdlcDeps): SdlcDeps {
   return out;
 }
 
-/** Đường dẫn trong worktree (repo dự án chính); tài liệu của repo khác nằm dưới thư mục seed của hub. */
-function worktreePathOf(item: SdlcItemRow, a: ArtifactRow, keys: ReadonlyMap<string, string>): string {
-  return a.projectId === item.projectId
+/**
+ * Đường dẫn trong worktree (repo của run, thường là dự án chính; converge chạy trên repo từng dự án); tài liệu của repo
+ * khác nằm dưới thư mục seed của hub.
+ */
+function worktreePathOf(repoProjectId: string, a: ArtifactRow, keys: ReadonlyMap<string, string>): string {
+  return a.projectId === repoProjectId
     ? a.repoPath
     : `${SEED_DIR}/${keys.get(a.projectId) ?? a.projectId}/${a.repoPath}`;
 }
@@ -137,10 +142,14 @@ export interface StepPlan {
 /** Prompt, seed và collect của một bước; tách khỏi `startStep` để test và trang "xem trước" dùng lại. */
 export async function planStep(
   tx: Tx,
-  input: Pick<SdlcStepStart, "item" | "phase" | "step" | "instructions">,
+  input: Pick<SdlcStepStart, "item" | "phase" | "step" | "instructions"> & {
+    /** Repo của run; bỏ trống là dự án chính. */
+    projectId?: string | undefined;
+  },
   deps: SdlcDeps,
 ): Promise<StepPlan> {
   const { item, phase, step } = input;
+  const repo = input.projectId ?? item.projectId;
   const members = await activeItemProjects(tx, item.id);
   const projects: ProjectRow[] = [];
   for (const m of members) {
@@ -173,12 +182,12 @@ export async function planStep(
   const outputs: PromptOutput[] = [];
   const collect: SdlcJobSpec["collect"] = [];
   for (const a of outputRows) {
-    const path = worktreePathOf(item, a, keys);
+    const path = worktreePathOf(repo, a, keys);
     outputs.push({
       name: nameOf(a),
       path,
       sections: defOf(a)?.sections ?? [],
-      projectKey: a.projectId === item.projectId ? null : (keys.get(a.projectId) ?? null),
+      projectKey: a.projectId === repo ? null : (keys.get(a.projectId) ?? null),
     });
     collect.push({ artifactId: a.id, path });
     // Bản nháp hiện có (khuôn lúc tạo, hoặc bản người đã sửa) để agent sửa tiếp thay vì viết lại từ đầu.
@@ -196,7 +205,7 @@ export async function planStep(
   for (const a of contextRows) {
     const found = await contentOf(tx, item, a, "baseline");
     if (!found?.content.trim()) continue;
-    const path = worktreePathOf(item, a, keys);
+    const path = worktreePathOf(repo, a, keys);
     addSeed(path, found.content);
     context.push({ name: nameOf(a), path, state: found.state, version: found.version });
   }
@@ -205,7 +214,7 @@ export async function planStep(
   for (const a of artifacts.filter((r) => r.scope === "contract")) {
     const approved = a.baselineVersion !== null && a.approval !== "revoked" && a.approval !== "none";
     const found = await contentOf(tx, item, a, approved ? "baseline" : "draft");
-    const path = worktreePathOf(item, a, keys);
+    const path = worktreePathOf(repo, a, keys);
     if (found?.content.trim()) addSeed(path, found.content);
     contracts.push({
       name: a.instance,
@@ -216,18 +225,25 @@ export async function planStep(
     });
   }
 
-  const participants = projects.filter((p) => p.id !== item.projectId);
-  const digests = await digestsOf(tx, participants, deps);
+  const elsewhere = projects.filter((p) => p.id !== repo);
+  const digests = await digestsOf(tx, elsewhere, deps);
   const promptProjects: PromptProject[] = [];
   for (const p of projects) {
-    if (p.id === item.projectId) {
-      promptProjects.push({ key: p.key, role: "home", digestPath: null });
+    const role = p.id === item.projectId ? "home" : "participant";
+    if (p.id === repo) {
+      promptProjects.push({ key: p.key, role, digestPath: null, worktree: true });
       continue;
     }
     const digest = digests.get(p.id);
     const path = digest ? `${SEED_DIR}/projects/${p.key}.md` : null;
     if (path && digest) addSeed(path, digest);
-    promptProjects.push({ key: p.key, role: "participant", digestPath: path });
+    promptProjects.push({ key: p.key, role, digestPath: path });
+  }
+
+  let release: string | null = null;
+  if (RELEASE_ACTIONS.includes(step.action)) {
+    release = `${SEED_DIR}/release.md`;
+    addSeed(release, await releaseBrief(tx, item));
   }
 
   const answered = await tx
@@ -248,6 +264,7 @@ export async function planStep(
     feedback: input.instructions,
     projects: promptProjects,
     contracts,
+    release,
   });
   return { prompt, job: { step: step.id, seed, collect } };
 }
@@ -258,15 +275,29 @@ export async function planStep(
  */
 export async function startStep(tx: Tx, input: SdlcStepStart, deps: SdlcDeps): Promise<{ runId: string } | null> {
   if (!deps.createSdlcRun) return null;
+  if (input.step.action === "converge")
+    return startConverge(tx, input, (t, i, projectId) => startProjectRun(t, i, projectId, deps));
+  return startProjectRun(tx, input, input.item.projectId, deps);
+}
+
+/** Run trên repo của `projectId`, chủ và nhãn máy theo cài đặt của dự án đó trong hạng mục. */
+async function startProjectRun(
+  tx: Tx,
+  input: SdlcStepStart,
+  projectId: string,
+  deps: SdlcDeps,
+): Promise<{ runId: string } | null> {
+  if (!deps.createSdlcRun) return null;
   const { item, phase, step } = input;
-  const plan = await planStep(tx, input, deps);
-  const [home] = (await activeItemProjects(tx, item.id)).filter((m) => m.projectId === item.projectId);
-  const settings = home?.settings ?? item.settings;
+  const plan = await planStep(tx, { ...input, projectId }, deps);
+  const [member] = (await activeItemProjects(tx, item.id)).filter((m) => m.projectId === projectId);
+  const settings = member?.settings ?? item.settings;
+  const suffix = projectId === item.projectId ? "" : ` · ${(await loadProject(tx, projectId))?.key ?? ""}`;
   const started = await deps.createSdlcRun(tx, {
     itemId: item.id,
-    projectId: item.projectId,
+    projectId,
     stepRowId: input.stepRowId,
-    title: `${sdlcItemRef(item.number)} ${item.title} · ${phase.name} · ${step.id}`.slice(0, 200),
+    title: `${sdlcItemRef(item.number)} ${item.title} · ${phase.name} · ${step.id}${suffix}`.slice(0, 200),
     prompt: plan.prompt,
     job: plan.job,
     cli: step.cli ?? null,
@@ -379,6 +410,7 @@ export async function runStep(
   if (!phase || !step) throw new NotFoundError("SDLC_STEP_NOT_FOUND", "Giai đoạn hoặc bước không có trong chế độ.");
   if (index !== item.phaseIndex)
     throw new ConflictError("SDLC_PHASE_NOT_CURRENT", "Chỉ chạy được bước của giai đoạn đang làm.");
+  if (step.action === "converge") assertCanConverge(item);
   if ((await activeStep(tx, item.id, phase.id)).length)
     throw new ConflictError("SDLC_STEP_RUNNING", "Giai đoạn đang có bước agent chạy; chờ xong hoặc huỷ run đó.");
   await queueStep(
@@ -487,11 +519,17 @@ export async function onSdlcRunFinished(
   if (!row || (row.status !== "running" && row.status !== "queued")) return null;
   const item = await lockItem(tx, row.itemId);
   if (!item) return null;
-  if (!outcome.ok)
-    return failStep(tx, item, row, outcome.error ?? "Run soạn tài liệu lỗi hoặc hết thời gian.", outcome.cancelled);
+  const fail = async (error: string, cancelled = false) => {
+    const failed = await failStep(tx, item, row, error, cancelled);
+    if (row.action === "converge") await afterConverge(tx, item, { ...row, status: "failed" }, deps);
+    return failed;
+  };
+  if (!outcome.ok) return fail(outcome.error ?? "Run soạn tài liệu lỗi hoặc hết thời gian.", outcome.cancelled);
   const phase = item.mode.phases.find((p) => p.id === row.phaseId);
   const step = phase?.steps.find((s) => s.id === row.stepId);
-  if (!phase || !step) return failStep(tx, item, row, "Chế độ của hạng mục không còn bước này.");
+  if (!phase || !step) return fail("Chế độ của hạng mục không còn bước này.");
+  if (step.action === "converge" && !findingsOf(row.result))
+    return fail("Agent không báo kết quả converge (sdlc_report loại findings); xem log của run rồi chạy vòng mới.");
 
   const rows = await tx.select().from(sdlcArtifacts).where(eq(sdlcArtifacts.itemId, item.id));
   const saved: { artifactId: string; docKey: string; revision: number; sha256: string }[] = [];
@@ -512,7 +550,7 @@ export async function onSdlcRunFinished(
     .from(sdlcQuestions)
     .where(and(eq(sdlcQuestions.runId, outcome.runId), eq(sdlcQuestions.status, "open")));
   if (writesFiles(step.action) && !saved.length && !open.length)
-    return failStep(tx, item, row, "Agent không ghi tài liệu nào và không hỏi lại; xem log của run rồi chạy lại bước.");
+    return fail("Agent không ghi tài liệu nào và không hỏi lại; xem log của run rồi chạy lại bước.");
 
   const result = { ...(row.result ?? {}), artifacts: saved, ...(skipped.length ? { skipped } : {}) };
   await tx
@@ -552,9 +590,32 @@ export async function onSdlcRunFinished(
       questions: open.length,
     },
   });
+  if (step.action === "converge")
+    message = await afterConverge(tx, item, { ...row, status: "succeeded", result }, deps);
   // Bước không ghi tài liệu (cỡ, đọc chéo) có thể làm giai đoạn đạt; bước kế tự chạy cũng đi qua đây.
   if (item.status === "active" && !open.length) await scheduleAdvance(tx, item, deps);
   return { succeeded: true, message, itemId: item.id };
+}
+
+/**
+ * Chốt vòng converge khi run cuối của vòng kết luận; còn yêu cầu chưa đạt thì giao bước soạn tài liệu tách việc với phát
+ * hiện làm chỉ dẫn. Bước đó đang chạy thì không giao chồng, người chạy lại sau.
+ */
+async function afterConverge(tx: Tx, item: SdlcItemRow, row: StepRow, deps: SdlcDeps): Promise<string> {
+  const settled = await settleConverge(tx, item, row, deps);
+  const follow = settled.followUp;
+  if (!follow || item.status !== "active") return settled.message;
+  if ((await activeStep(tx, item.id, follow.phase.id)).length)
+    return `${settled.message} Bước soạn tài liệu tách việc đang chạy nên chưa giao thêm.`;
+  await queueStep(
+    tx,
+    item,
+    follow.phase,
+    follow.step,
+    { createdBy: SDLC_CONVERGE_ACTOR, requestedBy: null, instructions: follow.instructions },
+    deps,
+  );
+  return `${settled.message} Đã giao agent bổ sung task.`;
 }
 
 /**

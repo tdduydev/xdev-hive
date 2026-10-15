@@ -44,6 +44,7 @@ export const RULE_CHECKS: readonly RuleCheck[] = [
   "no-open-questions",
   "breakdown",
   "coverage",
+  "ears",
 ];
 /**
  * Quy trình code liệt kê cả quy tắc của tài liệu ở cuối: chọn nhầm thì thấy lỗi "chỉ dùng cho tài liệu" ngay, thay vì
@@ -59,7 +60,7 @@ export const CODE_RULE_ORDER: readonly RuleCheck[] = [
   "sections",
   "requirements",
 ];
-export const DOC_ONLY_RULES: readonly RuleCheck[] = ["sections", "requirements"];
+export const DOC_ONLY_RULES: readonly RuleCheck[] = ["sections", "requirements", "ears"];
 export const PRESETS: readonly WorkflowPreset[] = ["aidlc", "speckit", "bmad", "custom"];
 export const CODE_PRESETS: readonly WorkflowPreset[] = ["code-basic", "code-strict", "code-fast", "custom"];
 export const presetsOf = (subject: WorkflowSubject) => (subject === "code" ? CODE_PRESETS : PRESETS);

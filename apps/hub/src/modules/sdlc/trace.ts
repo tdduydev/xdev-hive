@@ -11,7 +11,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { RequestContext, Tx } from "../platform/index.ts";
 import { loadTask } from "../tasks/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
-import { itemForUser } from "./access.ts";
+import { itemForUser, type SdlcItemRow } from "./access.ts";
 import { itemProjectRefs, requirementSources } from "./breakdown.ts";
 import { sdlcItemTasks, sdlcTraceLinks } from "./schema.ts";
 
@@ -143,6 +143,7 @@ export interface TraceLinkRow {
   ref: string;
   taskId: string | null;
   runId: string | null;
+  projectId?: string | null;
   data: Record<string, unknown>;
 }
 
@@ -159,7 +160,8 @@ export interface TraceInput {
 }
 
 const percent = (n: number, of: number) => (of ? Math.round((n / of) * 1000) / 10 : 0);
-const FINDING_STATUSES = new Set(["met", "partial", "missing", "contradicts"]);
+const FINDING_RANK = { met: 0, partial: 1, missing: 2, contradicts: 3 } as const;
+const FINDING_STATUSES = new Set(Object.keys(FINDING_RANK));
 
 /**
  * Ma trận truy vết và độ phủ ba mức (SC-006), hàm thuần. `planned`: có task; `done`: mọi task chứa requirement `done`;
@@ -205,14 +207,22 @@ export function buildTrace(input: TraceInput): Omit<SdlcTrace, "csv"> {
           ci: ci === "success" || ci === "failure" || ci === "pending" ? ci : "none",
         };
       });
+    // Converge chạy một run mỗi dự án: lọc theo dự án thì chỉ xét phát hiện của dự án đó; cùng vòng thì mức xấu nhất
+    // đứng cuối để kết luận của yêu cầu là mức đã gộp.
     const findings = input.links
-      .filter((l) => l.requirementId === r.id && l.kind === "finding" && FINDING_STATUSES.has(String(l.data.status)))
+      .filter(
+        (l) =>
+          l.requirementId === r.id &&
+          l.kind === "finding" &&
+          FINDING_STATUSES.has(String(l.data.status)) &&
+          (!input.projectId || !l.projectId || l.projectId === input.projectId),
+      )
       .map((l) => ({
         status: l.data.status as SdlcTraceRow["findings"][number]["status"],
         evidence: typeof l.data.evidence === "string" ? l.data.evidence : "",
         round: typeof l.data.round === "number" ? l.data.round : 0,
       }))
-      .sort((a, b) => a.round - b.round);
+      .sort((a, b) => a.round - b.round || FINDING_RANK[a.status] - FINDING_RANK[b.status]);
     return { requirementId: r.id, text: r.text, findings, cells, ...levels(cells, findings.at(-1)?.status) };
   });
 
@@ -319,6 +329,20 @@ export async function getTrace(
   input: { id: string; projectId?: string | undefined; format?: "json" | "csv" | undefined },
 ): Promise<SdlcTrace> {
   const item = await itemForUser(tx, userId, input.id);
+  const { titles: _, ...trace } = await itemTrace(tx, userId, item, input.projectId);
+  return { ...trace, csv: input.format === "csv" ? traceCsv(trace) : null };
+}
+
+/**
+ * Ma trận của hạng mục đã đọc được; câu chữ requirement đọc bằng quyền `userId` (release notes, retro dùng quyền chủ hạng
+ * mục). Kèm tiêu đề task để bản phát hành ghi được tên việc.
+ */
+export async function itemTrace(
+  tx: Tx,
+  userId: string,
+  item: SdlcItemRow,
+  projectId?: string | undefined,
+): Promise<Omit<SdlcTrace, "csv"> & { titles: Map<string, string> }> {
   const d = item.mode.decomposition;
   const requirements = d
     ? requirementTexts(await requirementSources(tx, { kind: "user", userId }, item, d), d.requirementId)
@@ -331,9 +355,11 @@ export async function getTrace(
     .where(and(eq(sdlcItemTasks.itemId, item.id), eq(sdlcItemTasks.removed, false)))
     .orderBy(asc(sdlcItemTasks.wave), asc(sdlcItemTasks.sliceKey));
   const tasks: TraceTaskInput[] = [];
+  const titles = new Map<string, string>();
   for (const l of itemTasks) {
     const task = await loadTask(tx, l.taskId);
     if (!task || task.status === "cancelled") continue;
+    titles.set(task.id, task.title);
     tasks.push({
       taskId: task.id,
       key: task.key,
@@ -355,8 +381,7 @@ export async function getTrace(
         )
         .orderBy(asc(sdlcTraceLinks.createdAt), asc(sdlcTraceLinks.id))
     : [];
-  const trace = buildTrace({ itemId: item.id, requirements, tasks, links, projects, projectId: input.projectId });
-  return { ...trace, csv: input.format === "csv" ? traceCsv(trace) : null };
+  return { ...buildTrace({ itemId: item.id, requirements, tasks, links, projects, projectId }), titles };
 }
 
 export function traceRoute(deps: OrgDeps) {
