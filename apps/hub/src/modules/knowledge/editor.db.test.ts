@@ -5,7 +5,7 @@ import { errorCode, type OrgFixture, seedOrg } from "../../../test/org-fixture.t
 import { seedProject } from "../../../test/project-fixture.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import type { Principal } from "./access.ts";
-import { getDoc, saveDoc } from "./docs.ts";
+import { archiveDoc, getDoc, saveDoc } from "./docs.ts";
 import {
   addComment,
   createSnapshot,
@@ -232,6 +232,14 @@ describe("bản chụp và gửi duyệt", () => {
     const { conflicts, draft } = await as("tmember", (tx) => rebaseDraft(tx, user("tmember"), { key, revision: 1 }));
     expect(conflicts).toBe(0);
     expect(draft).toMatchObject({ baseVersion: 2, latestVersion: 2 });
+  });
+
+  it("tài liệu đã lưu trữ không gửi duyệt được", async () => {
+    await as("tmember", (tx) => saveDraft(tx, user("tmember"), { key, content: V1.replace("2%", "1%"), revision: 0 }));
+    await as("tadmin", (tx) => archiveDoc(tx, user("tadmin"), { key, baseVersion: 1 }));
+    expect(
+      await errorCode(() => as("tmember", (tx) => submitDraft(tx, user("tmember"), { key, revision: 1 }, deps))),
+    ).toBe("DOC_ARCHIVED");
   });
 
   it("có quy trình: phiên duyệt bắt đầu ngay và trình soạn hiện tiến độ từng checkpoint", async () => {
