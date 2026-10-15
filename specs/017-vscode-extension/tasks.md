@@ -114,7 +114,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     không được thay đổi keychain hệ điều hành; không có Windows runtime. Cần kiểm chéo trước phát hành;
     nếu không tương thích thì thêm task desktop chuyển sang `hive auth`.
 
-- [ ] **T006 [P] [US7] [vừa] · 1 ngày — Op socket `worker.status` và cờ `--owner`**
+- [x] **T006 [P] [US7] [vừa] · 1 ngày — Op socket `worker.status` và cờ `--owner`**
   - **Goal**:
     - `hive-worker run --owner desktop|vscode|cli` (mặc định `cli`).
     - Op NDJSON `worker.status` → `{state, hubConnected, registered, machineId, version, runs, owner}`. Không cần bắt tay
@@ -127,7 +127,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `apps/desktop/src-tauri/src/worker.rs` (một tham số)
   - **Test**: Go test gọi `worker.status` qua socket tạm; Windows `go vet`.
 
-- [ ] **T008 [P] [US3] [nặng] · 3,5 ngày — Hub: bình luận theo dòng cho review code**
+- [x] **T008 [P] [US3] [nặng] · 3,5 ngày — Hub: bình luận theo dòng cho review code**
   - **Goal**: theo plan.md mục 4 và FR-018:
     - bảng `code_review_comments` (có `deleted_at`, `origin`, `external_author`), RLS bật và ép;
     - service, router `codeReviews.comments.{list, add, reply, edit, delete, resolve, reopen}`. Sửa và xoá chỉ cho tác
