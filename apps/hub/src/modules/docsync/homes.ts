@@ -21,8 +21,8 @@ import {
 import { defaultProviderFactory, type GitProvider, isGitProviderError, loadConnection } from "../scm/index.ts";
 import { sdlcManagedPaths } from "../sdlc/index.ts";
 import { allowWith, requireOrgRole, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
-import { queuePull, queuePush } from "./jobs.ts";
 import { overlaps } from "./paths.ts";
+import { queuePull, queuePush } from "./queues.ts";
 import type { DocSyncDeps } from "./routes/deps.ts";
 import { docHomes, docRepoFiles, docSyncBatches } from "./schema.ts";
 
@@ -63,7 +63,7 @@ async function projectAccess(tx: Tx, userId: string, ref: string, manage: boolea
   return project;
 }
 
-async function requireHomeManage(tx: Tx, userId: string, row: HomeRow) {
+export async function requireHomeManage(tx: Tx, userId: string, row: HomeRow) {
   if (row.projectId) return projectAccess(tx, userId, row.projectId, true);
   await requireOrgRole(tx, userId, "admin");
   return null;

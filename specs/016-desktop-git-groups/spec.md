@@ -38,6 +38,20 @@ gọi API kiểm token (`/api/v4/user`, `/user`) rồi mới lưu.
    để điền sẵn loại, URL và tên. Token vẫn là token cá nhân: hub không gửi secret của tổ chức xuống máy.
 4. **Given** kết nối còn nhóm dùng, **When** xoá, **Then** từ chối và nêu tên nhóm.
 
+### Bổ sung US1 — đăng nhập Git có sẵn (2026-10-15)
+
+- Form có lựa chọn **Dùng đăng nhập Git có sẵn trên máy**, mặc định khi helper trả credential và API xác nhận được tài khoản.
+  Hiện tên tài khoản từ `/api/v4/user` (GitLab), `/user` (GitHub.com), `/api/v3/user` (GitHub Enterprise).
+- Dùng `git credential fill` với `protocol=https`, `host` (kèm port nếu có), tắt hỏi tương tác và giới hạn 15 giây.
+  Hỗ trợ helper do Git cấu hình, gồm osxkeychain, glab, gh, GCM; API dùng Bearer cho cả PAT và OAuth.
+- File cấu hình chỉ lưu `authMode=git`, thông tin máy chủ và tài khoản. Không sao chép credential vào keychain Hive.
+  Mỗi thao tác API đọc lại helper để nhận token mới; clone/fetch/pull (kể cả tự fetch) dùng helper trực tiếp của Git.
+- API từ chối đăng nhập thì báo khả năng mật khẩu thường, token hết hạn hoặc thiếu quyền; gợi ý PAT với `read_api` +
+  `read_repository` cho GitLab. Lỗi helper và nội dung phản hồi API không được đưa secret ra UI/log.
+- Gợi ý thêm một chạm từ host trong tên khoá `git config --get-regexp credential` và remote dự án trên máy.
+  Host `github.com` nhận diện GitHub; host khác mặc định GitLab, có thể chọn lại loại trong form khi là GitHub Enterprise.
+- Token nhập tay và kết nối cũ không có `authMode` tiếp tục dùng keychain và askpass như trước.
+
 ### US2 - Thêm nhóm theo dõi (P1)
 
 Người dùng chọn kết nối, gõ đường dẫn group (có gợi ý từ API: group mình là thành viên, org của mình), chọn thư mục gốc
@@ -73,7 +87,7 @@ Thao tác: **Clone thiếu**, **Fetch**, **Pull tất cả**, mở thư mục, m
    tạo merge commit.
 2. Chạy song song tối đa 4 repo, hiện tiến độ từng repo và tổng; nút **Huỷ** dừng git đang chạy và không bắt đầu repo mới.
 3. Clone xong thì repo vào `projects.json` (mục chưa gắn dự án), nên hiện trong danh sách Dự án trên máy.
-4. Credential: HTTPS dùng `GIT_ASKPASS` trỏ chính `hive-worker` (đọc token từ biến môi trường của tiến trình con),
+4. Credential với token nhập tay: HTTPS dùng `GIT_ASKPASS` trỏ chính `hive-worker` (đọc token từ biến môi trường của tiến trình con),
    `credential.helper` để rỗng để không đọc, không ghi credential của máy; URL clone không chứa token. SSH dùng khoá của
    máy.
 
