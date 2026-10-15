@@ -113,6 +113,7 @@ import {
   type SdlcDeps,
   type SdlcRunRequest,
   type SdlcTaskRunRequest,
+  sdlcJobForMachine,
   specContextFor,
   withStepRuns,
 } from "../sdlc/index.ts";
@@ -864,6 +865,8 @@ export function createRunsEngine(deps: RunsDeps) {
             .limit(1)
         : [];
       const sdlcJob = run.kind === "sdlc" ? sdlcJobSpec.safeParse(leaderContext?.prompt.sdlc) : null;
+      const storedPrompt = typeof leaderContext?.prompt.prompt === "string" ? leaderContext.prompt.prompt : null;
+      const sdlcOffer = sdlcJob?.success ? sdlcJobForMachine(sdlcJob.data, storedPrompt, machine.capabilities) : null;
       const sdlcContext = run.kind === "code" && task ? await specContextFor(tx, task.id) : null;
       const expiresAt = new Date(Date.now() + offerTtlSec * 1000);
       await tx
@@ -1014,14 +1017,14 @@ export function createRunsEngine(deps: RunsDeps) {
             approvedPlan,
             rejectedPlan: latest?.status === "rejected" ? latest : null,
             sandbox,
-            leaderPrompt: typeof leaderContext?.prompt.prompt === "string" ? leaderContext.prompt.prompt : null,
+            leaderPrompt: sdlcOffer ? sdlcOffer.prompt : storedPrompt,
             mcpServers,
             brief,
             memoryWrite:
               MEMORY_WRITE_KINDS.includes(run.kind) && policy.agentMemory.mode !== "off" ? policy.agentMemory : null,
             codegraph: codegraphAvailable(machine, project, sandboxed),
-            sdlc: sdlcJob?.success
-              ? { job: sdlcJob.data, title: String(leaderContext?.prompt.title ?? "Bước AI SDLC") }
+            sdlc: sdlcOffer
+              ? { job: sdlcOffer.job, title: String(leaderContext?.prompt.title ?? "Bước AI SDLC") }
               : null,
             sdlcContext,
           }),
