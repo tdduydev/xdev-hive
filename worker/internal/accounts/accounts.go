@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -144,6 +145,31 @@ type file struct {
 
 // envVar là biến môi trường chọn thư mục cấu hình của CLI.
 var envVar = map[string]string{"claude": "CLAUDE_CONFIG_DIR", "codex": "CODEX_HOME"}
+
+// loginVars là biến chọn đăng nhập của CLI. Worker (và app mở nó) có thể được chạy từ shell của một gói khác, vd phiên
+// Claude Code có CLAUDE_CONFIG_DIR của gói đó: kế thừa nguyên thì gói đăng nhập mặc định đọc quota và chạy run bằng tài
+// khoản của gói kia. Phải bỏ các biến này trước khi đặt Env của gói.
+var loginVars = map[string][]string{"claude": {"CLAUDE_CONFIG_DIR", tokenEnv}, "codex": {"CODEX_HOME"}}
+
+// WithoutLogin là env bỏ các biến chọn đăng nhập của cli; cli rỗng thì bỏ của mọi CLI.
+func WithoutLogin(env []string, cli string) []string {
+	var names []string
+	if cli == "" {
+		for _, v := range loginVars {
+			names = append(names, v...)
+		}
+	} else {
+		names = loginVars[cli]
+	}
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if !slices.Contains(names, name) {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
 
 // Supported cho biết worker đọc được quota của CLI này và chọn tài khoản theo ngưỡng dừng. Antigravity không có biến
 // chọn thư mục cấu hình nên chỉ có đăng nhập mặc định, nhưng ngưỡng vẫn giữ run lại khi gói gần hết.
@@ -281,6 +307,15 @@ func (l *Lease) Env() map[string]string {
 		}
 	}
 	return env
+}
+
+// Base là env kế thừa đã bỏ biến chọn đăng nhập của CLI, để đặt Env lên trên. Không có tài khoản (nil) thì giữ nguyên:
+// máy không dùng accounts.json đăng nhập bằng chính các biến đó.
+func (l *Lease) Base(env []string) []string {
+	if l == nil {
+		return env
+	}
+	return WithoutLogin(env, l.account.CLI)
 }
 
 // Timeout là thời gian tối đa của một run trên tài khoản; 0 khi không có tài khoản.

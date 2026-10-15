@@ -520,7 +520,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	process.Env = mergeEnv(os.Environ(), mergeMap(job.savingEnv, job.Env))
 	if r.Sandbox == nil {
 		// Đặt sau job.Env để spec của hub không đổi được thư mục đăng nhập của máy.
-		process.Env = mergeEnv(process.Env, r.Account.Env())
+		process.Env = mergeEnv(r.Account.Base(process.Env), r.Account.Env())
 	}
 	if r.Sandbox != nil {
 		process, err = r.sandboxCommand(job, work, cmd.Cmd.Args)
