@@ -249,6 +249,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       email: null,
       saved: id === "claude-1",
       active: id === "claude-1",
+      accountKnown: true,
     });
     const desktop = {
       supported: true,
@@ -258,6 +259,8 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       backup: "/u/.xdev-hive/claude-desktop/backup-20261015-010203",
       legacy: [],
       profiles: [profile("claude-1", "Duy Max"), profile("claude-2", "Gói phụ")],
+      signedIn: { account: "uuid-1", email: null, plan: "claude-1" },
+      mismatch: null,
     };
     fakeTauri(seed(), undefined, desktop);
     render(<PlansScreen />);
@@ -268,6 +271,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(row("codex-1").querySelector("[data-claude-desktop]")).toBeNull();
     const panel = screen.getByRole("region", { name: "Claude Desktop" });
     expect(within(panel).getByText(desktop.backup)).toBeTruthy();
+    expect(within(panel).getByText(/Claude Desktop đang đăng nhập uuid-1/).textContent).toContain("của Duy Max");
     expect(within(panel).getByRole("button", { name: "Khôi phục như ban đầu" })).toBeTruthy();
   });
 
@@ -280,6 +284,8 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       backup: null,
       legacy: [],
       profiles: [],
+      signedIn: null,
+      mismatch: null,
     });
     render(<PlansScreen />);
     await screen.findByText("Duy Max");

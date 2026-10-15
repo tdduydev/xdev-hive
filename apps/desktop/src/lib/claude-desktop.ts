@@ -13,6 +13,27 @@ export interface DesktopProfile {
   saved: boolean;
   /** Gói Claude Desktop đang dùng. */
   active: boolean;
+  /** Đọc được tài khoản Claude của gói (`.claude.json`) nên đăng nhập tự gắn vào gói; false thì cần ghi nhận tay. */
+  accountKnown: boolean;
+}
+
+/** Tài khoản Claude Desktop đang đăng nhập. */
+export interface SignedIn {
+  /** Account uuid. */
+  account: string;
+  email: string | null;
+  /** Gói có cùng tài khoản; null khi không gói nào khớp. */
+  plan: string | null;
+}
+
+/** Vừa đăng nhập tài khoản không phải của gói đang chờ. */
+export interface Mismatch {
+  /** Email, hay uuid khi không gói nào biết tài khoản này. */
+  account: string;
+  /** Gói đang chờ đăng nhập. */
+  expected: string;
+  /** Gói đã nhận đăng nhập này; null khi chưa lưu vào đâu. */
+  adopted: string | null;
 }
 
 export interface DesktopProfiles {
@@ -29,6 +50,9 @@ export interface DesktopProfiles {
   /** Gói còn hồ sơ riêng kiểu cũ (mỗi gói một Claude Desktop) cần đổi sang cách mới. */
   legacy: string[];
   profiles: DesktopProfile[];
+  /** null khi Claude Desktop chưa đăng nhập. */
+  signedIn: SignedIn | null;
+  mismatch: Mismatch | null;
 }
 
 export interface Switched {
@@ -46,4 +70,5 @@ export const restoreClaudeDesktop = (force = false) => invoke<Switched>("restore
 export const adoptClaudeDesktop = (profileId: string) => invoke<DesktopProfiles>("adopt_claude_desktop", { profileId });
 export const forgetClaudeDesktop = (profileId: string) =>
   invoke<DesktopProfiles>("forget_claude_desktop", { profileId });
+export const dismissClaudeDesktopMismatch = () => invoke<DesktopProfiles>("dismiss_claude_desktop_mismatch");
 export const migrateClaudeDesktopProfiles = () => invoke<DesktopProfiles>("migrate_claude_desktop_profiles");
