@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-remote-disable"
+description = "Enables the remote_disable command without any pre-configured scope."
+commands.allow = ["remote_disable"]
+
+[[permission]]
+identifier = "deny-remote-disable"
+description = "Denies the remote_disable command without any pre-configured scope."
+commands.deny = ["remote_disable"]
