@@ -7,9 +7,9 @@ import {
   type PackSkill,
   projectRef,
   SKILL_MAX_CHARS,
-  scopeLevel,
   type SkillSummary,
   SUGGESTION_MAX_CHARS,
+  scopeLevel,
   skillName,
 } from "@xdev-hive/contracts";
 import { z } from "zod";
@@ -222,10 +222,10 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   registry.register({
     name: "doc_search",
     title: "Tìm tài liệu",
-    description: "Tìm đoạn tài liệu liên quan theo từ khoá và theo nghĩa, trong phạm vi run được đọc.",
+    description: "Tìm đoạn tài liệu theo từ khoá và theo nghĩa.",
     input: z.object({
       query: z.string().trim().min(1).max(2000).describe("Câu hoặc từ khoá cần tìm."),
-      scope: scopeLevel.optional().describe("Chỉ tìm tài liệu cấp org, team hoặc project."),
+      scope: scopeLevel.optional(),
       project: PROJECT,
       limit: z
         .number()

@@ -149,7 +149,12 @@ export function snippetOf(content: string, query: string, max = SNIPPET_CHARS): 
   const text = content.normalize("NFC").replace(/\s+/g, " ").trim();
   if (text.length <= max) return text;
   const lower = text.toLowerCase();
-  const words = (query.normalize("NFC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((w) => w.length > 1);
+  const words = (
+    query
+      .normalize("NFC")
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu) ?? []
+  ).filter((w) => w.length > 1);
   const hits = words.map((w) => lower.indexOf(w)).filter((i) => i >= 0);
   const at = hits.length ? Math.min(...hits) : 0;
   let start = Math.max(0, Math.min(at - Math.floor(max / 4), text.length - max));
@@ -325,7 +330,7 @@ async function prepareExtract(tx: Tx, extractId: string, model: string | null): 
     left join hive.docs d on d.id = a.owner_doc_id
     where e.id = ${extractId}`);
   const e = rows[0];
-  if (!e || e.state !== "approved") {
+  if (e?.state !== "approved") {
     await tx.delete(docChunks).where(eq(docChunks.extractId, extractId));
     return [];
   }
@@ -418,7 +423,8 @@ export async function runDocIndex(
   signal?: AbortSignal,
   jobs: Jobs | undefined = indexJobs,
 ): Promise<DocIndexOutcome> {
-  if ("docId" in job) return { indexed: 1, embedded: await indexOne(deps, job.orgId, { docId: job.docId }, signal), more: false };
+  if ("docId" in job)
+    return { indexed: 1, embedded: await indexOne(deps, job.orgId, { docId: job.docId }, signal), more: false };
   if ("extractId" in job)
     return { indexed: 1, embedded: await indexOne(deps, job.orgId, { extractId: job.extractId }, signal), more: false };
   const todo = await withTenant(deps.pool, { orgId: job.orgId }, async (tx) => {

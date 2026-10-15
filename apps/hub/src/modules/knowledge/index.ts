@@ -19,6 +19,14 @@ export {
   submitBrief,
 } from "./brief.ts";
 export {
+  DOC_INDEX_QUEUE,
+  type DocIndexJob,
+  indexExtract,
+  provideDocIndexJobs,
+  registerDocIndexWorker,
+  searchDocs,
+} from "./doc-search.ts";
+export {
   archiveDoc,
   DOC_SYNC_ACTOR,
   type DocSavedEvent,
@@ -34,14 +42,6 @@ export {
   saveDoc,
   saveDocFromSync,
 } from "./docs.ts";
-export {
-  DOC_INDEX_QUEUE,
-  type DocIndexJob,
-  indexExtract,
-  provideDocIndexJobs,
-  registerDocIndexWorker,
-  searchDocs,
-} from "./doc-search.ts";
 export {
   assistOutput,
   assistScope,
