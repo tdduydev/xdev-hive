@@ -51,6 +51,9 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "artifacts": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
