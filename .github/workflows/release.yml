@@ -1,26 +1,30 @@
 name: Release
 
-# Hai cách phát hành, cùng một chuỗi job:
+# Ba cách phát hành, cùng một chuỗi job:
+# - Cập nhật nhánh `release` (merge hoặc fast-forward từ main): job `prepare` tự tính phiên bản (file VERSION, không thì
+#   tăng patch của tag mới nhất) rồi tạo tag `v<phiên bản>` trên commit đó. Commit đã có tag thì bỏ qua.
 # - Đẩy tag `v*` bằng tay (cách cũ): chạy ngay trên tag đó, giữ nguyên hành vi trước đây.
 # - Nút Actions → Release → Run workflow: nhập phiên bản (x.y.z) và ghi chú tuỳ chọn; job `prepare` tạo tag
 #   `v<phiên bản>` trên commit của main rồi các job sau chạy trên tag đó.
+# Ghi chú phát hành viết bằng tiếng Anh: scripts/release/notes.sh chọn nguồn (ô nhập > RELEASE_NOTES.md > tự sinh từ PR).
 on:
   push:
+    branches: [release]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: Phiên bản x.y.z, không có chữ v (vd. 0.3.0). Tag v<phiên bản> chưa được tồn tại.
+        description: Version x.y.z without the leading v (e.g. 0.3.0). The tag v<version> must not exist yet.
         type: string
         required: true
       notes:
-        description: Ghi chú phát hành (markdown, tuỳ chọn). Hiện ở trang release và trong app khi có bản mới.
+        description: Release notes in English (markdown, optional). Shown on the release page and in the app when an update is available. Empty means RELEASE_NOTES.md or notes generated from merged PRs.
         type: string
         required: false
         default: ""
 
 # Tên lượt chạy mang tag: job `prepare` dựa vào đó để nhận ra lượt chạy bằng nút đang tạo cùng tag.
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('Release v{0}', inputs.version) || github.ref_name }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Release v{0}', inputs.version) || github.ref_type == 'branch' && format('Release from {0}', github.ref_name) || github.ref_name }}
 
 permissions:
   contents: write
@@ -30,8 +34,11 @@ permissions:
   id-token: write
   attestations: write
 
+# Một lượt phát hành mỗi lúc cho mọi cách kích hoạt: hai lượt song song sẽ tranh nhau tag, `latest` và danh sách tag để
+# tính phiên bản. GitHub chỉ giữ một lượt chờ; lượt chờ cũ hơn bị thay bằng lượt mới (với nhánh release thì lượt mới
+# đã gồm commit của lượt cũ). Không huỷ lượt đang chạy để bản nháp không bị bỏ dở.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -55,8 +62,25 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = "workflow_dispatch" ]; then
-            semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [ "$EVENT" = "push" ] && [ "$GITHUB_REF_TYPE" = "branch" ]; then
+            # Tag có thể vừa được lượt khác tạo trên máy chủ: lấy lại trước khi tính.
+            git fetch --tags --force origin
+            existing="$(git tag --points-at "$GITHUB_SHA" --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+            if [ -n "$existing" ]; then
+              echo "::notice::Commit này đã có tag $existing: bỏ qua, không phát hành lại."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "tag=$existing" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            tag="v$(scripts/release/version.sh VERSION)"
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "::error::Tag $tag đã tồn tại trên commit khác. Tăng số trong file VERSION hoặc chạy lại."
+              exit 1
+            fi
+            # Như nhánh dưới: tag do GITHUB_TOKEN tạo không kích hoạt lượt chạy `on: push: tags`, nên không bị chạy đôi.
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$GITHUB_SHA" >/dev/null
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
             [[ "$INPUT_VERSION" =~ $semver ]] || { echo "::error::Phiên bản phải có dạng x.y.z (vd. 0.3.0), không có chữ v."; exit 1; }
             [ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ] || { echo "::error::Chỉ phát hành từ nhánh $DEFAULT_BRANCH, đang chọn $GITHUB_REF_NAME."; exit 1; }
             tag="v$INPUT_VERSION"
@@ -173,6 +197,23 @@ jobs:
       # Chỉ có khi chạy bằng nút; đi qua biến môi trường để markdown của người nhập không bị shell diễn giải.
       RELEASE_NOTES: ${{ inputs.notes }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+          fetch-depth: 0
+      - name: Release notes (English)
+        # Cùng một nội dung cho trang release và cho `notes` trong latest.json (app hiện khi báo có bản mới). Tag cũ chưa có
+        # script thì để trống: thân bài giữ bản nháp do goreleaser sinh.
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.md"
+          : > "$notes"
+          if [ -x scripts/release/notes.sh ]; then
+            scripts/release/notes.sh "$TAG" "$PREVIOUS" > "$notes"
+          else
+            echo "::notice::Tag $TAG chưa có scripts/release/notes.sh: giữ ghi chú của goreleaser."
+          fi
+          cat "$notes"
       - name: Manifest cập nhật cho app desktop (latest.json)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -185,9 +226,10 @@ jobs:
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.sig' --dir "$dir" || true
           if ! ls "$dir"/*.sig >/dev/null 2>&1; then echo "::notice::Không có chữ ký cập nhật: bỏ qua latest.json."; exit 0; fi
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
-          python3 - "$dir" "$base" "${TAG#v}" > "$RUNNER_TEMP/latest.json" <<'PY'
+          python3 - "$dir" "$base" "${TAG#v}" "$RUNNER_TEMP/notes.md" > "$RUNNER_TEMP/latest.json" <<'PY'
           import json, os, sys, datetime
-          d, base, version = sys.argv[1:4]
+          d, base, version, notes_path = sys.argv[1:5]
+          notes = open(notes_path, encoding="utf-8").read().strip()
           files = {
               "darwin-aarch64": "xdev-hive-desktop_macos_arm64.app.tar.gz",
               "linux-x86_64": "xdev-hive-desktop_linux_amd64.AppImage",
@@ -199,23 +241,24 @@ jobs:
               if os.path.exists(sig):
                   platforms[key] = {"signature": open(sig).read().strip(), "url": f"{base}/{name}"}
           now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-          print(json.dumps({"version": version, "notes": os.environ.get("RELEASE_NOTES", ""), "pub_date": now, "platforms": platforms}, indent=2))
+          print(json.dumps({"version": version, "notes": notes, "pub_date": now, "platforms": platforms}, indent=2))
           PY
           cat "$RUNNER_TEMP/latest.json"
           gh release upload "$TAG" "$RUNNER_TEMP/latest.json" --repo "$GITHUB_REPOSITORY" --clobber
       - name: Công bố bản phát hành
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Tag đẩy tay giữ nguyên nội dung bản nháp (goreleaser sinh changelog). Chạy bằng nút thì thân bài là ghi chú
-        # người nhập + Full Changelog + Contributors.
+        # Thân bài là ghi chú tiếng Anh + Full Changelog + Contributors, cho cả ba cách phát hành. Không có ghi chú (tag cũ
+        # chưa có script) thì giữ nguyên bản nháp do goreleaser sinh.
         run: |
           set -euo pipefail
-          if [ -n "${RELEASE_NOTES:-}" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+          if [ -s "$RUNNER_TEMP/notes.md" ]; then
             body="$RUNNER_TEMP/body.md"
             {
-              if [ -n "${RELEASE_NOTES:-}" ]; then printf '%s\n\n' "$RELEASE_NOTES"; fi
+              cat "$RUNNER_TEMP/notes.md"
+              printf '\n'
               if [ -n "$PREVIOUS" ]; then printf '**Full Changelog**: https://github.com/%s/compare/%s...%s\n\n' "$GITHUB_REPOSITORY" "$PREVIOUS" "$TAG"; fi
-              printf '## Contributors\n\n- @tdduydev (Trần Đức Duy)\n- Claude Opus 5.5 (Anthropic): đồng tác giả\n'
+              printf '## Contributors\n\n- @tdduydev (Trần Đức Duy)\n- Claude Opus 5.5 (Anthropic): co-author\n'
             } > "$body"
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$body"
           fi
