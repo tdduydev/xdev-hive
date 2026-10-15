@@ -62,7 +62,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile --filter @xdev-hive/desktop...
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v5
         with:
           go-version-file: worker/go.mod
           cache-dependency-path: worker/go.sum
