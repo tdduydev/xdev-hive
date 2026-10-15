@@ -1,11 +1,12 @@
-import { implement } from "@orpc/server";
+import { implement, ORPCError } from "@orpc/server";
 import { type AssistStartInput, type AssistTarget, contract, type DocAssist } from "@xdev-hive/contracts";
 import { ConflictError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
 import { defaultProviderFactory } from "../scm/index.ts";
 import { allowWith, type OrgDeps, orgMiddlewares, requireOrgRole } from "../tenancy/index.ts";
 import type { Principal } from "./access.ts";
 import { briefView, getBrief, saveBrief } from "./brief.ts";
-import { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
+import { searchDocs } from "./doc-search.ts";
+import { archiveDoc, DocSecretError, docHistory, getDoc, listDocs, restoreDoc, saveDoc } from "./docs.ts";
 import {
   addComment,
   createSnapshot,
@@ -56,6 +57,25 @@ import { getSkill, listSkills, saveSkill } from "./skills.ts";
 
 const asUser = (user: { id: string }): Principal => ({ kind: "user", userId: user.id });
 
+/**
+ * `mapDomainErrors` chỉ giữ `code`; lỗi bí mật cần thêm dòng và loại để giao diện chỉ chỗ và hỏi xác nhận, nên đổi
+ * ngay tại handler sang lỗi đã khai báo trong hợp đồng.
+ */
+async function secretAware<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof DocSecretError)
+      throw new ORPCError("DOC_SECRET_FOUND", {
+        status: 400,
+        message: e.message,
+        data: { code: "DOC_SECRET_FOUND", findings: e.findings },
+        cause: e,
+      });
+    throw e;
+  }
+}
+
 /** Trợ lý AI của trình soạn tài liệu, do module runs cài vào (knowledge không import runs). */
 export interface DocAssistPort {
   targets(tx: Tx, userId: string): Promise<AssistTarget[]>;
@@ -89,6 +109,7 @@ export function knowledgeRouter(
   const memory = implement(contract.memory).$context<RequestContext>().use(authed);
   const briefs = implement(contract.briefs).$context<RequestContext>().use(authed);
   const docs = implement(contract.docs).$context<RequestContext>().use(authed).use(inOrg);
+  const docSearch = implement(contract.docs).$context<RequestContext>().use(authed);
   const skills = implement(contract.skills).$context<RequestContext>().use(authed).use(inOrg);
   const proposals = implement(contract.proposals).$context<RequestContext>().use(authed).use(inOrg);
   const workflows = implement(contract.reviewWorkflows).$context<RequestContext>().use(authed).use(inOrg);
@@ -138,7 +159,9 @@ export function knowledgeRouter(
         .handler(({ context: { tx, user }, input }) => previewSubmit(tx, asUser(user), input)),
       submit: editor.submit
         .use(inOrg)
-        .handler(({ context: { tx, user }, input }) => submitDraft(tx, asUser(user), input, reviewDeps)),
+        .handler(({ context: { tx, user }, input }) =>
+          secretAware(() => submitDraft(tx, asUser(user), input, reviewDeps)),
+        ),
       suggestions: {
         list: editor.suggestions.list
           .use(inOrg)
@@ -214,8 +237,22 @@ export function knowledgeRouter(
     docs: {
       list: docs.list.handler(({ context: { tx, user }, input }) => listDocs(tx, asUser(user), input)),
       get: docs.get.handler(({ context: { tx, user }, input }) => getDoc(tx, asUser(user), input)),
-      save: docs.save.handler(({ context: { tx, user }, input }) => saveDoc(tx, asUser(user), input)),
+      save: docs.save.handler(({ context: { tx, user }, input }) =>
+        secretAware(() => saveDoc(tx, asUser(user), input)),
+      ),
       history: docs.history.handler(({ context: { tx, user }, input }) => docHistory(tx, asUser(user), input)),
+      archive: docs.archive.handler(async ({ context: { tx, user }, input }) => {
+        await archiveDoc(tx, asUser(user), input);
+        return { ok: true as const };
+      }),
+      restore: docs.restore.handler(({ context: { tx, user }, input }) => restoreDoc(tx, asUser(user), input)),
+      // Như memory.search: embedding câu tìm tính ngoài transaction.
+      search: docSearch.search.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
+        const queryEmbedding = await embedQuery(deps.embedder, input.query);
+        return withTenant(pool, { userId: user.id, orgId }, (tx) =>
+          searchDocs(tx, asUser(user), input, { embedder: deps.embedder, queryEmbedding }),
+        );
+      }),
     },
     skills: {
       list: skills.list.handler(({ context: { tx, user }, input }) => listSkills(tx, asUser(user), input)),
