@@ -19,6 +19,11 @@ export const INPUT_MAC_BYTES = 16;
 /** `info` của HKDF khi xác thực bằng passkey. TOTP dùng `TOTP_KEY_INFO_PREFIX + mã` (plan.md D15). */
 export const PASSKEY_KEY_INFO = "hive-term-input/v1";
 export const TOTP_KEY_INFO_PREFIX = "hive-totp";
+/**
+ * `term_control` bắt buộc `deviceId` nhưng mã TOTP không gắn với thiết bị nào: hub điền mã cố định này khi khung
+ * `control` không có `deviceId`. Trình duyệt cần cùng giá trị vì challenge (salt của HKDF) chứa `params.deviceId`.
+ */
+export const TOTP_DEVICE_ID = "totp-code";
 
 /** TOTP theo RFC 6238 đúng như app Authenticator mặc định: HMAC-SHA1, 6 số, bước 30 giây, cho lệch ±1 bước. */
 export const TOTP = {

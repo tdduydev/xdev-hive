@@ -546,3 +546,8 @@ Product owner chốt ngày 2026-10-13.
   không thì Accept edits trong worktree tạm của phiên; không đẩy. **Máy cá nhân vẫn chưa mở được từ xa**: hub và worker
   đều từ chối `term_open` cho máy không dùng chung tới khi có passkey của US2–US4. Xem plan.md mục "Lát đầu" và tasks
   T100–T107.
+- **Q5, giới hạn 2 giờ và 12 giờ của FR-023 (chờ chủ dự án xác nhận)**: FR-023 viết chung "phiên không có client";
+  bản hiện tại (T040) chỉ áp hai giới hạn cho phiên **mở từ xa** (`origin = remote`), theo kịch bản US5-4. Phiên mở tại
+  máy (`hive chat`) tách ra như tmux không tự ngắt, vì người dùng chủ ý để chạy lâu tại máy và không có ai ở xa đang dùng.
+  Người xem trên hub không được tính là client vì worker không biết họ. Nếu chủ dự án muốn áp cho cả phiên tại máy thì
+  chỉ cần đổi điều kiện trong `worker/internal/terminal/limits.go`.

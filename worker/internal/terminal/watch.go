@@ -11,19 +11,30 @@ import (
 )
 
 // watch là luồng sự kiện cho app desktop và `hive remote watch --json` (specs/010 T020): trả trạng thái hiện tại, rồi mỗi
-// dòng một sự kiện (`state`, `pair_request`, `pair_done`). Cùng kết nối nhận tiếp yêu cầu (vd. remote.pair.decide) để app
-// trả lời hộp xác nhận mà không cần mở kết nối thứ hai; dòng trả lời có "ok", dòng sự kiện có "event".
+// dòng một sự kiện (`state`, `pair_request`, `pair_done`, `start_request`, `start_done`). Cùng kết nối nhận tiếp yêu cầu
+// (vd. remote.pair.decide) để app trả lời hộp xác nhận mà không cần mở kết nối thứ hai; dòng trả lời có "ok", dòng sự
+// kiện có "event".
+
+// Yêu cầu chờ chủ máy bấm Cho phép; trả lời bằng remote.pair.decide {pairId} hay remote.start.decide {requestId}.
+const (
+	eventPairRequest  = "pair_request"
+	eventStartRequest = "start_request"
+)
 
 type watchEvent struct {
 	Event     string        `json:"event"`
 	State     *RemoteStatus `json:"state,omitempty"`
 	PairID    string        `json:"pairId,omitempty"`
-	Label     string        `json:"label,omitempty"`
-	UserID    string        `json:"userId,omitempty"`
-	ExpiresAt time.Time     `json:"expiresAt,omitzero"`
-	OK        bool          `json:"ok,omitempty"`
-	DeviceID  string        `json:"deviceId,omitempty"`
-	Reason    string        `json:"reason,omitempty"`
+	RequestID string        `json:"requestId,omitempty"`
+	// CLI, Cwd: phiên sắp mở (CLI, nhãn thư mục) để chủ máy biết mình đang cho phép gì.
+	CLI       string    `json:"cli,omitempty"`
+	Cwd       string    `json:"cwd,omitempty"`
+	Label     string    `json:"label,omitempty"`
+	UserID    string    `json:"userId,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt,omitzero"`
+	OK        bool      `json:"ok,omitempty"`
+	DeviceID  string    `json:"deviceId,omitempty"`
+	Reason    string    `json:"reason,omitempty"`
 }
 
 // watchQueue: sự kiện chờ ghi mỗi người xem; đầy là client đọc không kịp, cắt kết nối để không chặn người khác.
