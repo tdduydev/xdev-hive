@@ -3,6 +3,7 @@ import { contract } from "@xdev-hive/contracts";
 import type { RequestContext } from "../platform/index.ts";
 import { withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { closeRemoteSession } from "./close.ts";
 import { disableRemote, listDevices, revokeDevice } from "./devices.ts";
 import { pairComplete, pairOptions, type RemoteDeps } from "./pairing.ts";
 import {
@@ -72,7 +73,7 @@ export interface RemoteRouterDeps extends OrgDeps {
 }
 
 /**
- * Phiên trên máy cá nhân (specs/010 US1, US2). Mở phiên và đẩy thông báo thêm ở T051, T071.
+ * Phiên trên máy cá nhân (specs/010 US1, US2, US5). Mở phiên và đẩy thông báo thêm ở T051, T071.
  * Ghi phiên luôn bật: `HIVE_REMOTE_TERMINAL` chỉ chặn phần từ xa.
  */
 export function remoteRouter(deps: RemoteRouterDeps) {
@@ -86,6 +87,7 @@ export function remoteRouter(deps: RemoteRouterDeps) {
     ticket: os.ticket
       .use(inOrg)
       .handler(({ context: { tx, user, orgId }, input }) => remoteTicket(tx, user.id, orgId, input.id, deps.remote)),
+    close: os.close.use(inOrg).handler(({ context: { tx, user }, input }) => closeRemoteSession(tx, user.id, input.id)),
     setVisibility: os.setVisibility
       .use(inOrg)
       .handler(({ context: { tx, user }, input }) => setRemoteVisibility(tx, user.id, input.id, input.visibility)),

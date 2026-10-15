@@ -16,6 +16,21 @@ export interface TerminalViewHandle {
   focus: () => void;
 }
 
+/** Kết nối trực tiếp của view: mặc định `TerminalSocket` (Leader); trang điều khiển từ xa truyền `RemoteSocket`. */
+export interface LiveSocket {
+  start: () => void;
+  close: () => void;
+  sendInput: (data: string) => void;
+  resize: (cols: number, rows: number) => void;
+}
+
+/** Chỗ kết nối đổ output vào terminal. `onReset`: hub báo thiếu đoạn, xoá màn hình rồi nhận lại từ mốc mới. */
+export interface LiveSink {
+  afterSeq: number;
+  onOutput: (bytes: Uint8Array, seq: number) => void;
+  onReset: () => void;
+}
+
 export interface TerminalViewProps {
   ref?: Ref<TerminalViewHandle>;
   /** Biến đổi chữ gõ trên bàn phím của xterm trước khi gửi (Ctrl/Alt đang giữ ở thanh phím). */
@@ -35,6 +50,13 @@ export interface TerminalViewProps {
   /** Hỏi người dùng trước khi mở link trong output (output là chữ của CLI, không tin được). */
   confirmLink: (uri: string) => boolean;
   handlers: Omit<TerminalHandlers, "onOutput"> & { onReplay: (status: ReplayStatus) => void };
+  /**
+   * Bỏ trống: fit theo khung (phát lại phiên đã đóng thì giữ cỡ của phiên). `false`: giữ đúng `cols`×`rows` của PTY, khung
+   * cuộn ngang; `true`: fit theo khung và báo cỡ mới cho socket.
+   */
+  fit?: boolean;
+  /** Thay `TerminalSocket`: khi có thì `fetchTicket` và các handler của socket không dùng tới. */
+  connect?: (sink: LiveSink) => LiveSocket;
 }
 
 const isDark = () => document.documentElement.classList.contains("dark");
@@ -48,7 +70,7 @@ const themeNow = () => terminalTheme(isDark() ? "dark" : "light", document.docum
 export function TerminalView(props: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
-  const socketRef = useRef<TerminalSocket | null>(null);
+  const socketRef = useRef<LiveSocket | null>(null);
   const lastSeqRef = useRef(-1);
   /** Đang phát lại bản ghi ở cỡ cố định của phiên: không fit theo khung. */
   const fixedRef = useRef(false);
@@ -152,27 +174,52 @@ export function TerminalView(props: TerminalViewProps) {
     }
   }, [props.fontSize]);
 
+  // Người chỉ xem phiên trên máy cá nhân không đổi được cỡ PTY: fit theo màn điện thoại thì output của TUI vỡ dòng.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term || props.fit === undefined) return;
+    fixedRef.current = !props.fit;
+    if (props.fit) {
+      try {
+        fitRef.current?.fit();
+      } catch {
+        /* Như trên. */
+      }
+    } else {
+      const size = clampSize(props.cols, props.rows);
+      term.resize(size.cols, size.rows);
+    }
+  }, [props.fit, props.cols, props.rows]);
+
   // 2. Kết nối trực tiếp khi phiên còn chạy.
   // biome-ignore lint/correctness/useExhaustiveDependencies: đọc props qua `latest`; chỉ nối lại khi đổi phiên hoặc phiên thôi chạy.
   useEffect(() => {
     const term = termRef.current;
     if (!term || !props.live) return;
     const handlers = latest.current.handlers;
-    const socket = new TerminalSocket({
-      fetchTicket: () => latest.current.fetchTicket(),
-      afterSeq: lastSeqRef.current,
-      handlers: {
-        onConnection: (connection: Connection) => handlers.onConnection(connection),
-        onHello: (session, canInput) => handlers.onHello(session, canInput),
-        onState: (session) => handlers.onState(session),
-        onActivity: () => handlers.onActivity(),
-        onError: (code, message) => handlers.onError(code, message),
-        onOutput: (bytes, seq) => {
-          lastSeqRef.current = seq;
-          term.write(bytes);
-        },
-      },
-    });
+    const onOutput = (bytes: Uint8Array, seq: number) => {
+      lastSeqRef.current = seq;
+      term.write(bytes);
+    };
+    const connect = latest.current.connect;
+    const socket: LiveSocket = connect
+      ? connect({
+          afterSeq: lastSeqRef.current,
+          onOutput,
+          onReset: () => term.reset(),
+        })
+      : new TerminalSocket({
+          fetchTicket: () => latest.current.fetchTicket(),
+          afterSeq: lastSeqRef.current,
+          handlers: {
+            onConnection: (connection: Connection) => handlers.onConnection(connection),
+            onHello: (session, canInput) => handlers.onHello(session, canInput),
+            onState: (session) => handlers.onState(session),
+            onActivity: () => handlers.onActivity(),
+            onError: (code, message) => handlers.onError(code, message),
+            onOutput,
+          },
+        });
     socketRef.current = socket;
     socket.start();
     socket.resize(term.cols, term.rows);

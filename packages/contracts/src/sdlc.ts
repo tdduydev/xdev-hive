@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id, orgRoute, queryFlag } from "./common.ts";
+import { DOC_MAX_CHARS, docKey } from "./knowledge.ts";
 import { projectKey, projectSdlcSettings, sdlcBlocking } from "./projects.ts";
 import { runState } from "./runs.ts";
 import { taskChecklistItem, taskStatus } from "./tasks.ts";
@@ -51,6 +52,18 @@ export type BreakdownParser = z.output<typeof breakdownParser>;
 /** `item`: mỗi dòng task là một task hub; `heading`: mỗi phần là một task, dòng task thành checklist; `single`: một task. */
 export const breakdownGranularity = z.enum(["item", "heading", "single"]);
 export type BreakdownGranularity = z.output<typeof breakdownGranularity>;
+/**
+ * Độ mịn mỗi bộ đọc hiểu được. Kiro, BMAD, AI-DLC không chia phần nên không có `heading`; OpenSpec nhóm mục theo phần
+ * đánh số nên chỉ tách theo phần. `single` đọc nguyên văn nên bộ đọc nào cũng dùng được.
+ */
+export const BREAKDOWN_GRANULARITIES: Readonly<Record<BreakdownParser, readonly BreakdownGranularity[]>> = {
+  "hive-tasks": ["item", "heading", "single"],
+  "speckit-tasks": ["item", "heading", "single"],
+  "kiro-tasks": ["item", "single"],
+  "openspec-tasks": ["heading", "single"],
+  "bmad-stories": ["item", "single"],
+  "aidlc-units": ["item", "single"],
+};
 
 export const sdlcArtifactScope = z.enum(["item", "project", "contract"]);
 export type SdlcArtifactScope = z.output<typeof sdlcArtifactScope>;
@@ -219,7 +232,7 @@ export const sdlcStep = z.object({
   model: z.string().trim().min(1).max(80).optional(),
   /** "speckit-specify": prompt gọi skill này nếu repo có. */
   skill: z.string().trim().min(1).max(80).optional(),
-  /** Markdown có biến {idea} {artifacts} {answers} {feedback} {constitution} {projects}. */
+  /** Markdown có biến {idea} {artifacts} {answers} {feedback} {constitution} {projects} {release}. */
   prompt: z.string().min(1).max(20_000),
   maxQuestions: z.number().int().min(0).max(5).default(5),
   autoSubmit: z.boolean().default(false),
@@ -370,6 +383,8 @@ export function checkSdlcMode(m: z.output<typeof sdlcModeShape>, ctx: z.Refineme
           "requirementSource",
           i,
         ]);
+    if (!BREAKDOWN_GRANULARITIES[d.parser].includes(d.granularity))
+      issue(`Bộ đọc “${d.parser}” không tách theo độ mịn “${d.granularity}”.`, ["decomposition", "granularity"]);
     try {
       new RegExp(d.requirementId);
     } catch {
@@ -1221,6 +1236,18 @@ export const sdlcReportInput = z.discriminatedUnion("kind", [
     }),
   }),
   z.object({ kind: z.literal("summary"), data: z.object({ summary: z.string().max(20_000) }) }),
+  /**
+   * Bài học của retro (FR-036): toàn bộ nội dung mới của constitution/steering; hub tạo đề xuất thường. Bỏ `key` là
+   * `project/<dự án chính>/constitution`.
+   */
+  z.object({
+    kind: z.literal("lessons"),
+    data: z.object({
+      key: docKey.optional(),
+      content: z.string().min(1).max(DOC_MAX_CHARS),
+      reason: z.string().trim().min(1).max(2000),
+    }),
+  }),
   z.object({
     kind: z.literal("contracts"),
     data: z.object({
