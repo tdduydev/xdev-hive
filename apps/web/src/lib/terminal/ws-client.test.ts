@@ -88,9 +88,13 @@ const hello = (connId: string) => ({ t: "hello", session, connId, canControl: tr
 const out = (seq: number, text: string) => ({ t: "out", seq, data: bytesToBase64(new TextEncoder().encode(text)) });
 const text = (data: unknown) => new TextDecoder().decode(Uint8Array.from(atob(String(data)), (c) => c.charCodeAt(0)));
 
-/** WebCrypto chạy ngoài vòng sự kiện JS: chờ tới khi điều kiện đúng thay vì đoán số lượt microtask. */
-async function until(check: () => boolean): Promise<void> {
-  for (let i = 0; i < 200 && !check(); i++) await new Promise((r) => setImmediate(r));
+/**
+ * WebCrypto chạy ở threadpool của Node, ngoài vòng sự kiện JS. Chờ theo thời gian thật chứ không đếm lượt vòng lặp:
+ * máy CI tải nặng có thể chưa xong việc sau hàng trăm lượt `setImmediate` (chỉ mất vài micro giây).
+ */
+async function until(check: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!check() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 2));
   expect(check()).toBe(true);
 }
 
