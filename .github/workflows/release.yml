@@ -132,6 +132,16 @@ jobs:
           want="${TAG#v}"
           got="$(worker/dist/hive-worker_linux_amd64_v1/hive-worker version)"
           test "$got" = "$want" || { echo "::error::Binary báo phiên bản $got, tag là $TAG"; exit 1; }
+          # `hive version` in "hive <phiên bản>" ở dòng đầu rồi thoát khác 0 khi worker chưa chạy: chỉ đọc dòng đầu.
+          got="$(worker/dist/hive_linux_amd64_v1/hive version 2>/dev/null | head -n1 | awk '{print $2}' || true)"
+          test "$got" = "$want" || { echo "::error::hive báo phiên bản $got, tag là $TAG"; exit 1; }
+          # Cả hai binary phải nằm trong file nén của mọi nền tảng, không thì bản cập nhật tự động bỏ sót hive.
+          for archive in worker/dist/*.tar.gz; do
+            tar -tzf "$archive" | grep -qx hive || { echo "::error::$archive thiếu hive"; exit 1; }
+          done
+          for archive in worker/dist/*.zip; do
+            unzip -Z1 "$archive" | grep -qx hive.exe || { echo "::error::$archive thiếu hive.exe"; exit 1; }
+          done
       - name: Xoá khoá ký
         if: always()
         run: rm -f "$RUNNER_TEMP/worker-signing.key"

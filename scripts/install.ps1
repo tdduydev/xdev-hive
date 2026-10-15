@@ -1,4 +1,4 @@
-﻿# Cài hoặc nâng cấp hive-worker trên Windows từ bản phát hành của xDev Hive. Chạy được trên Windows PowerShell 5.1.
+﻿# Cài hoặc nâng cấp hive-worker và lệnh hive trên Windows từ bản phát hành của xDev Hive. Chạy được trên Windows PowerShell 5.1.
 #
 #   irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1 -OutFile "$env:TEMP\hive-install.ps1"
 #   powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\hive-install.ps1" -Hub URL -Token MÃ
@@ -6,7 +6,7 @@
 # Chạy từ file (không qua iex): PowerShell 5.1 chỉ đọc đúng UTF-8 khi file có BOM, nên file này lưu kèm BOM. Chỉ dùng
 # lớp .NET thay cho Get-FileHash, Expand-Archive vì hai lệnh đó không nạp được khi powershell.exe được gọi từ pwsh 7.
 #
-# Có -Token: cài binary, đăng ký máy với hub rồi cài tác vụ chạy nền khi đăng nhập. Không có -Token: chỉ thay binary
+# Có -Token: cài hai binary, đăng ký máy với hub rồi cài tác vụ chạy nền khi đăng nhập. Không có -Token: chỉ thay hai binary
 # bằng bản mới và khởi động lại tác vụ nếu đang chạy, nên chạy lại đúng lệnh này là cách nâng cấp.
 # HIVE_RELEASES_URL thay trang phát hành bằng bản sao nội bộ có cùng cấu trúc thư mục.
 param(
@@ -110,25 +110,43 @@ try {
   New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   $bin = Join-Path $Dir "hive-worker.exe"
   $new = Join-Path $Dir ".hive-worker.new.exe"
+  $hiveBin = Join-Path $Dir "hive.exe"
+  $hiveNew = Join-Path $Dir ".hive.new.exe"
+  # Bản phát hành cũ (trước khi có lệnh hive) không có hive.exe trong gói: chỉ cài worker.
+  $hasHive = Test-Path (Join-Path $tmp "x\hive.exe")
+  # Cả hai file tạm được chạy thử trước khi đổi tên, để lỗi ở file nào cũng không làm hai binary lệch phiên bản.
+  function Remove-Staged { Remove-Item -Force -ErrorAction SilentlyContinue $new, $hiveNew }
   Copy-Item -Force (Join-Path $tmp "x\hive-worker.exe") $new
   $installed = (& $new version | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0) { Remove-Item -Force $new; throw "Bản vừa tải không chạy được trên máy này." }
+  if ($LASTEXITCODE -ne 0) { Remove-Staged; throw "Bản vừa tải không chạy được trên máy này." }
+  if ($hasHive) {
+    Copy-Item -Force (Join-Path $tmp "x\hive.exe") $hiveNew
+    # hive in "hive <phiên bản>" ở dòng đầu rồi thoát khác 0 khi worker chưa chạy, nên chỉ đọc dòng đầu.
+    $hiveOut = @(& $hiveNew version 2>$null)
+    $hiveInstalled = if ($hiveOut.Count -gt 0) { ([string]$hiveOut[0]).Trim() -split "\s+" | Select-Object -Last 1 } else { "" }
+    if (-not $hiveInstalled) { Remove-Staged; throw "Lệnh hive vừa tải không chạy được trên máy này." }
+    if ($hiveInstalled -ne $installed) { Remove-Staged; throw "hive báo phiên bản $hiveInstalled, worker báo $installed." }
+  }
   if ($Version -ne "latest" -and $installed -ne $Version) {
-    Remove-Item -Force $new
+    Remove-Staged
     throw "Bản vừa tải báo phiên bản $installed, cần $Version."
   }
   # Windows không ghi đè được file đang chạy nhưng đổi tên được: dời bản cũ sang .old rồi đặt bản mới vào.
-  if (Test-Path $bin) {
-    Remove-Item -Force -ErrorAction SilentlyContinue "$bin.old"
-    Move-Item -Force $bin "$bin.old"
+  foreach ($pair in @(@($hiveNew, $hiveBin, $hasHive), @($new, $bin, $true))) {
+    if (-not $pair[2]) { continue }
+    if (Test-Path $pair[1]) {
+      Remove-Item -Force -ErrorAction SilentlyContinue "$($pair[1]).old"
+      Move-Item -Force $pair[1] "$($pair[1]).old"
+    }
+    Move-Item -Force $pair[0] $pair[1]
   }
-  Move-Item -Force $new $bin
   Write-Host "Đã cài hive-worker $installed vào $bin"
+  if ($hasHive) { Write-Host "Đã cài hive $installed vào $hiveBin" }
 
   $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
   if (-not $NoPathUpdate -and -not (($userPath -split ";") -contains $Dir)) {
     [Environment]::SetEnvironmentVariable("Path", (@($userPath, $Dir) | Where-Object { $_ }) -join ";", "User")
-    Write-Host "Đã thêm $Dir vào PATH của người dùng; mở cửa sổ mới để gõ được hive-worker."
+    Write-Host "Đã thêm $Dir vào PATH của người dùng; mở cửa sổ mới để gõ được hive-worker và hive."
   }
 
   if ($Token) {

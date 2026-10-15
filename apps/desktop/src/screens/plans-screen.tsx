@@ -38,6 +38,7 @@ import {
   useId,
   useState,
 } from "react";
+import { ClaudeDesktopRow, useClaudeDesktop } from "@/components/claude-desktop.tsx";
 import { shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import {
@@ -631,6 +632,7 @@ export function PlansScreen() {
   const [foundOpen, setFoundOpen] = useState(false);
   const [foundHidden, setFoundHidden] = useState(false);
   const [folder] = useFolder();
+  const desktop = useClaudeDesktop();
   // Gói vừa mở đăng nhập từ đây, theo id: lúc bắt đầu chờ.
   const [waiting, setWaiting] = useState<Record<string, number>>({});
 
@@ -765,6 +767,14 @@ export function PlansScreen() {
   const blocks = cliBlocks(all, now);
   const perCli = cliSummary(all, now);
 
+  // Chỉ macOS (Rust báo supported); gói Claude mới thêm chưa có trong lần đọc trước thì chờ lượt đọc kế tiếp.
+  const desktopRow = (p: Plan) => {
+    const view = desktop.view;
+    const profile = view?.supported ? view.profiles.find((d) => d.id === p.id) : undefined;
+    if (!view || !profile) return null;
+    return <ClaudeDesktopRow plan={name(p)} profile={profile} view={view} onChanged={() => void desktop.reload()} />;
+  };
+
   const card = (p: Plan) => (
     <PlanCard
       key={p.id}
@@ -782,6 +792,7 @@ export function PlansScreen() {
       onOpenCliBypass={() => setBypassing(p)}
       onRemove={() => setRemoving(p)}
       onResume={() => void act(p.id, () => resumePlan(p.id), t.resumed(p.id))}
+      desktop={desktopRow(p)}
     />
   );
 
@@ -1057,6 +1068,7 @@ function PlanCard({
   onOpenCliBypass,
   onRemove,
   onResume,
+  desktop,
 }: {
   plan: Plan;
   t: T;
@@ -1072,6 +1084,8 @@ function PlanCard({
   onOpenCliBypass: () => void;
   onRemove: () => void;
   onResume: () => void;
+  /** Dòng Claude Desktop của gói Claude (components/claude-desktop.tsx). */
+  desktop?: ReactNode;
 }) {
   const state = planState(p, now);
   const StateIcon = STATE_ICON[state];
@@ -1229,6 +1243,7 @@ function PlanCard({
           </Button>
         )}
       </div>
+      {desktop}
     </li>
   );
 }

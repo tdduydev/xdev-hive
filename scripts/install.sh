@@ -1,9 +1,9 @@
 #!/bin/sh
-# Cài hoặc nâng cấp hive-worker (Linux, macOS) từ bản phát hành của xDev Hive.
+# Cài hoặc nâng cấp hive-worker và lệnh hive (Linux, macOS) từ bản phát hành của xDev Hive.
 #
 #   curl -fsSL https://github.com/tdduydev/xdev-hive/releases/latest/download/install.sh | sh -s -- --hub URL --token MÃ
 #
-# Có --token: cài binary, đăng ký máy với hub rồi cài dịch vụ chạy nền. Không có --token: chỉ thay binary bằng bản mới
+# Có --token: cài hai binary, đăng ký máy với hub rồi cài dịch vụ chạy nền. Không có --token: chỉ thay hai binary bằng bản mới
 # và khởi động lại dịch vụ nếu đang chạy, nên chạy lại đúng lệnh này là cách nâng cấp.
 #
 # Tham số: --hub URL, --token MÃ, --machine TÊN, --capacity N, --version X.Y.Z (mặc định bản mới nhất),
@@ -74,7 +74,7 @@ asset="hive-worker_${os}_${arch}.tar.gz"
 tmp=$(mktemp -d)
 cleanup() {
 	# Chỉ xoá file do script tạo để không xoá nhầm nội dung khác trong thư mục tạm.
-	rm -f "$tmp/checksums.txt" "$tmp/checksums.txt.sig" "$tmp/$asset" "$tmp/release-signing.pem" "$tmp/hive-worker"
+	rm -f "$tmp/checksums.txt" "$tmp/checksums.txt.sig" "$tmp/$asset" "$tmp/release-signing.pem" "$tmp/hive-worker" "$tmp/hive"
 	rmdir "$tmp"
 }
 trap cleanup EXIT
@@ -107,32 +107,67 @@ fi
 
 # -m: không đặt lại giờ sửa file, để máy chủ lệch đồng hồ không in cảnh báo "time stamp in the future".
 tar -xzmf "$tmp/$asset" -C "$tmp" hive-worker
+# Bản phát hành cũ (trước khi có lệnh hive) không có file hive trong gói: chỉ cài worker.
+has_hive=0
+if tar -tzf "$tmp/$asset" | grep -qx hive; then
+	tar -xzmf "$tmp/$asset" -C "$tmp" hive
+	has_hive=1
+fi
 mkdir -p "$dir"
 bin="$dir/hive-worker"
-# Chép ra file tạm cùng thư mục rồi đổi tên đè: worker cũ đang chạy vẫn giữ file cũ, không bị ghi đè giữa chừng.
+hive_bin="$dir/hive"
+# Chép ra file tạm cùng thư mục rồi đổi tên đè: worker cũ đang chạy vẫn giữ file cũ, không bị ghi đè giữa chừng. Cả hai
+# file tạm được chạy thử trước khi đổi tên, để lỗi ở file nào cũng không làm hai binary lệch phiên bản.
+cleanup_new() { rm -f "$dir/.hive-worker.new" "$dir/.hive.new"; }
 cp "$tmp/hive-worker" "$dir/.hive-worker.new"
 chmod 755 "$dir/.hive-worker.new"
 installed=$("$dir/.hive-worker.new" version) || {
-	rm -f "$dir/.hive-worker.new"
+	cleanup_new
 	die "bản vừa tải không chạy được trên máy này"
 }
+if [ "$has_hive" = 1 ]; then
+	cp "$tmp/hive" "$dir/.hive.new"
+	chmod 755 "$dir/.hive.new"
+	# hive in "hive <phiên bản>" ở dòng đầu rồi thoát khác 0 khi worker chưa chạy, nên chỉ đọc dòng đầu.
+	hive_installed=$("$dir/.hive.new" version 2>/dev/null | awk 'NR == 1 { print $NF }' || true)
+	[ -n "$hive_installed" ] || {
+		cleanup_new
+		die "lệnh hive vừa tải không chạy được trên máy này"
+	}
+	if [ "$hive_installed" != "$installed" ]; then
+		cleanup_new
+		die "hive báo phiên bản $hive_installed, worker báo $installed"
+	fi
+fi
 if [ "$version" != latest ] && [ "$installed" != "$version" ]; then
-	rm -f "$dir/.hive-worker.new"
+	cleanup_new
 	die "bản vừa tải báo phiên bản $installed, cần $version"
+fi
+if [ "$has_hive" = 1 ]; then
+	mv -f "$dir/.hive.new" "$hive_bin"
 fi
 mv -f "$dir/.hive-worker.new" "$bin"
 printf 'Đã cài hive-worker %s vào %s\n' "$installed" "$bin"
+if [ "$has_hive" = 1 ]; then
+	printf 'Đã cài hive %s vào %s\n' "$installed" "$hive_bin"
+fi
 
 case ":$PATH:" in
 *":$dir:"*) ;;
 *)
 	# shellcheck disable=SC2016 # $PATH để nguyên cho người dùng chép vào shell của họ.
-	printf 'Thêm %s vào PATH để gõ được hive-worker:\n  export PATH="%s:$PATH"\n' "$dir" "$dir"
+	printf 'Thêm %s vào PATH để gõ được hive-worker và hive:\n  export PATH="%s:$PATH"\n' "$dir" "$dir"
 	;;
 esac
 found=$(command -v hive-worker 2>/dev/null || true)
 if [ -n "$found" ] && [ "$found" != "$bin" ]; then
 	printf 'Lưu ý: PATH đang trỏ tới bản khác ở %s (có thể cài từ go install); xoá bản đó để dùng bản vừa cài.\n' "$found"
+fi
+if [ "$has_hive" = 1 ]; then
+	found=$(command -v hive 2>/dev/null || true)
+	if [ -n "$found" ] && [ "$found" != "$hive_bin" ]; then
+		printf 'Lưu ý: lệnh hive trên PATH trỏ tới %s, không phải bản vừa cài.\n' "$found"
+	fi
 fi
 
 if [ -n "$token" ]; then
