@@ -18,7 +18,30 @@ export {
   recordBriefDrift,
   submitBrief,
 } from "./brief.ts";
-export { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
+export {
+  DOC_INDEX_QUEUE,
+  type DocIndexJob,
+  indexExtract,
+  provideDocIndexJobs,
+  registerDocIndexWorker,
+  searchDocs,
+} from "./doc-search.ts";
+export {
+  archiveDoc,
+  DOC_SYNC_ACTOR,
+  type DocSavedEvent,
+  type DocSavedHook,
+  type DocSource,
+  docContentHash,
+  docHistory,
+  getDoc,
+  listDocs,
+  provideDocSaved,
+  restoreDoc,
+  type SyncDocWrite,
+  saveDoc,
+  saveDocFromSync,
+} from "./docs.ts";
 export {
   assistOutput,
   assistScope,

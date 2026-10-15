@@ -2,7 +2,7 @@
 // gốc trên máy, theo đường dẫn của repo trên máy chủ (specs/016-desktop-git-groups).
 //
 // Cấu hình nằm ở gitgroups.json cạnh worker.json, do app desktop ghi qua `hive-worker gitgroups`. File không bao giờ
-// chứa token: app giữ token trong keychain và chỉ đưa cho sidecar qua biến môi trường của lần chạy đó.
+// chứa token: app chỉ đưa credential cho API qua môi trường của lần chạy đó; Git dùng helper của máy hoặc askpass.
 package gitgroups
 
 import (
@@ -29,7 +29,7 @@ const (
 	ProtocolSSH   = "ssh"
 )
 
-// Host là một máy chủ Git người dùng kết nối bằng token cá nhân.
+// Host chỉ lưu cách xác thực để token của helper được đọc lại sau mỗi lần xoay vòng.
 type Host struct {
 	ID   string `json:"id"`
 	Kind string `json:"kind"`
@@ -38,6 +38,8 @@ type Host struct {
 	Name string `json:"name"`
 	// Username là tài khoản của token, đọc từ API lúc thêm; chỉ để hiển thị.
 	Username string `json:"username,omitempty"`
+	// AuthMode rỗng giữ tương thích với kết nối token đã lưu trước đây.
+	AuthMode string `json:"authMode,omitempty"`
 }
 
 // Repo là một repo của group như API trả về lần đọc gần nhất.
@@ -249,6 +251,7 @@ func (c *Config) AddHost(h Host) Host {
 	for i, cur := range c.Hosts {
 		if cur.Kind == h.Kind && strings.EqualFold(cur.URL, h.URL) && strings.EqualFold(cur.Username, h.Username) {
 			c.Hosts[i].Name = h.Name
+			c.Hosts[i].AuthMode = h.AuthMode
 			return c.Hosts[i]
 		}
 	}

@@ -176,12 +176,23 @@ fn view(app: &AppHandle) -> UpdateView {
 /// Hỏi lần lượt từng địa chỉ; địa chỉ đầu tiên có bản mới thắng. Không dùng danh sách địa chỉ của updater vì nó dừng
 /// ngay khi một địa chỉ đáp "không có bản mới" (hub 204), không bao giờ hỏi tới GitHub.
 async fn find(app: &AppHandle, urls: Vec<url::Url>) -> Result<Option<Update>, String> {
+    let pem = crate::hub_ca::read_ca(&crate::hub_ca::ca_path()?)?;
+    let roots = pem
+        .as_deref()
+        .map(crate::hub_ca::parse_ca)
+        .transpose()?
+        .map(|der| reqwest::Certificate::from_der(&der).map_err(|e| e.to_string()))
+        .transpose()?
+        .into_iter()
+        .collect::<Vec<_>>();
     let mut answered = false;
     let mut last_error = None;
     for url in urls {
         let host = url.host_str().unwrap_or_default().to_string();
+        let roots = roots.clone();
         let updater = match app
             .updater_builder()
+            .configure_client(move |client| client.tls_certs_merge(roots.clone()))
             .timeout(MANIFEST_TIMEOUT)
             .endpoints(vec![url])
             .and_then(|b| b.build())

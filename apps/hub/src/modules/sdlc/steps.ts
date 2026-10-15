@@ -7,7 +7,14 @@ import {
   type SdlcStepAction,
   sdlcItemRef,
 } from "@xdev-hive/contracts";
-import { SDLC_ARTIFACT_LIMITS, type SdlcJobSpec, type SdlcReportArtifacts } from "@xdev-hive/contracts/worker-protocol";
+import {
+  SDLC_ARTIFACT_LIMITS,
+  SDLC_MAX_REPOS,
+  SDLC_REPOS_DIR,
+  type SdlcJobSpec,
+  type SdlcReportArtifacts,
+  sdlcJobRepo,
+} from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject, type ProjectRow } from "../catalog/index.ts";
@@ -228,6 +235,7 @@ export async function planStep(
   const elsewhere = projects.filter((p) => p.id !== repo);
   const digests = await digestsOf(tx, elsewhere, deps);
   const promptProjects: PromptProject[] = [];
+  const repos: NonNullable<SdlcJobSpec["repos"]> = [];
   for (const p of projects) {
     const role = p.id === item.projectId ? "home" : "participant";
     if (p.id === repo) {
@@ -238,6 +246,16 @@ export async function planStep(
     const path = digest ? `${SEED_DIR}/projects/${p.key}.md` : null;
     if (path && digest) addSeed(path, digest);
     promptProjects.push({ key: p.key, role, digestPath: path });
+    // T086: chỉ repo hub đọc được qua kết nối Git của dự án đó (có tóm tắt); máy có `sdlc-multirepo` mới nhận
+    // (engine bỏ trường này với máy khác), tóm tắt vẫn seed để máy không clone được vẫn có cái để đọc.
+    // Kiểm từng repo: một URL lạ làm hỏng cả spec lúc engine đọc lại, run mất seed và collect.
+    const entry = sdlcJobRepo.safeParse({
+      projectKey: p.key,
+      cloneUrl: p.repoHttpUrl,
+      branch: p.defaultBranch ?? "main",
+      dir: `${SDLC_REPOS_DIR}/${p.key}`,
+    });
+    if (digest && entry.success && repos.length < SDLC_MAX_REPOS) repos.push(entry.data);
   }
 
   let release: string | null = null;
@@ -266,7 +284,7 @@ export async function planStep(
     contracts,
     release,
   });
-  return { prompt, job: { step: step.id, seed, collect } };
+  return { prompt, job: { step: step.id, seed, collect, ...(repos.length ? { repos } : {}) } };
 }
 
 /**

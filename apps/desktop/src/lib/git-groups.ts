@@ -2,8 +2,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import { invoke } from "@/lib/tauri.ts";
 
 /**
- * Nhóm Git theo dõi (specs/016-desktop-git-groups): kết nối GitLab/GitHub bằng token cá nhân và các group clone về máy,
- * đọc và ghi qua `hive-worker gitgroups` (gitgroups.json cạnh worker.json). Token nằm trong keychain; giao diện chỉ gửi
+ * Nhóm Git theo dõi (specs/016-desktop-git-groups): kết nối GitLab/GitHub bằng đăng nhập Git hoặc token cá nhân và các group clone về máy,
+ * đọc và ghi qua `hive-worker gitgroups` (gitgroups.json cạnh worker.json). Token nhập tay nằm trong keychain; giao diện chỉ gửi
  * token một lần lúc thêm kết nối và không bao giờ nhận lại.
  */
 export type GitKind = "gitlab" | "github";
@@ -14,6 +14,7 @@ export interface GitHost {
   url: string;
   name: string;
   username?: string | undefined;
+  authMode?: "git" | "token" | undefined;
 }
 
 export interface GitRepo {
@@ -90,8 +91,16 @@ export interface GroupPatch {
 }
 
 export const gitGroups = () => invoke<GitGroups>("git_groups");
-export const addGitHost = (kind: GitKind, url: string, name: string, token: string) =>
-  invoke<GitGroups>("git_host_add", { kind, url, name, token });
+export const addGitHost = (
+  kind: GitKind,
+  url: string,
+  name: string,
+  token: string,
+  authMode: "git" | "token" = "token",
+) => invoke<GitGroups>("git_host_add", { kind, url, name, token, authMode });
+export const probeGitHost = (kind: GitKind, url: string) =>
+  invoke<{ username: string }>("git_host_probe", { kind, url });
+export const discoverGitHosts = () => invoke<{ kind: GitKind; url: string }[]>("git_host_discover");
 export const removeGitHost = (id: string) => invoke<GitGroups>("git_host_remove", { id });
 export const suggestGroups = (host: string, search: string) => invoke<GitGroups>("git_group_suggest", { host, search });
 export const addGitGroup = (g: {
