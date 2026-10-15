@@ -59,6 +59,7 @@ const RemotePage = lazyRouteComponent(() => import("@/pages/remote/remote-page.t
 const RemoteSessionPage = lazyRouteComponent(() => import("@/pages/remote/session-page.tsx"), "RemoteSessionPage");
 const RemotePairPage = lazyRouteComponent(() => import("@/pages/remote/pair-page.tsx"), "RemotePairPage");
 const RemoteDevicesPage = lazyRouteComponent(() => import("@/pages/remote/devices-page.tsx"), "RemoteDevicesPage");
+const PublicLinksPage = lazyRouteComponent(() => import("@/pages/admin/public-links-page.tsx"), "PublicLinksPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
 const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
 const CostsPage = lazyRouteComponent(() => import("@/pages/costs-page.tsx"), "CostsPage");
@@ -489,6 +490,7 @@ const v2Routes = [
     component: McpPage,
   }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/policies", component: PoliciesPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/public-links", component: PublicLinksPage }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/admin/audit",

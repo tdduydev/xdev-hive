@@ -3,12 +3,24 @@ import { createHash, type KeyObject, randomUUID, verify } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import type { Page, Request, WebSocketRoute } from "@playwright/test";
-import { buildCsp, buildFrameDocument, type LibManifest } from "@xdev-hive/artifacts-runtime";
+import {
+  buildCsp,
+  buildFrameDocument,
+  buildPublicPage,
+  type LibManifest,
+  publicPageHeaders,
+} from "@xdev-hive/artifacts-runtime";
 import { LIB_DIST_DIR, readLibManifest } from "@xdev-hive/artifacts-runtime/node";
 import {
+  type AgentPolicyInput,
+  type ArtifactPublicLink,
   type AuditExportInput,
+  agentPolicyInput,
   type CodeDryRunResult,
+  DEFAULT_AGENT_POLICY,
+  DEFAULT_ORG_ARTIFACT_POLICY,
   defaultProjectSettings,
+  orgArtifactPolicy,
   outcomeToCodeWorkflow,
   type ReviewWorkflow,
   reviewPhase,
@@ -1380,7 +1392,7 @@ type FakeChatMessage = {
 };
 
 type FrameTicket =
-  | { kind: "version"; id: string; version: number; theme: "light" | "dark" }
+  | { kind: "version"; id: string; version: number; theme: "light" | "dark"; publicLinkId?: string }
   | { kind: "preview"; type: FakeArtifact["type"]; content: string; theme: "light" | "dark" };
 
 const uuid = (prefix: string, n: number) => `${prefix}-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -1403,6 +1415,19 @@ export function artifactsFixture() {
     artifacts: [] as FakeArtifact[],
     messages: [] as FakeChatMessage[],
     tickets: new Map<string, FrameTicket>(),
+    publicLinks: [] as (ArtifactPublicLink & { tokenSha256: string })[],
+    policy: {
+      ...structuredClone(DEFAULT_AGENT_POLICY),
+      artifacts: structuredClone(DEFAULT_ORG_ARTIFACT_POLICY),
+      updatedAt: "2026-10-14T08:00:00.000Z",
+      updatedBy: USER.id,
+      templateSync: null,
+      defaultTemplates: { agents: "", claude: "", mcp: "" },
+    },
+    publicRequests: [] as number[],
+    publicLinkRequests: new Map<string, number[]>(),
+    // Các test T030 dùng một cuộc trò chuyện; T031 đặt id khác để thử đích mới của người xem.
+    fixThreadId: ARTIFACT_THREAD_ID,
     /** Lời "Nhờ Leader sửa" hub đã nhận. */
     fixRequests: [] as unknown[],
     /** Tin người dùng gửi cho leader; test trả lời thay run `leader`. */
@@ -1541,7 +1566,7 @@ export function artifactsFixture() {
   };
 
   /** Thủ tục `artifacts.*` và Leader tối thiểu cho một người xem. */
-  function rpcFor(viewer: ArtifactViewer): Record<string, RpcHandler> {
+  function rpcFor(viewer: ArtifactViewer, role: "member" | "admin" | "owner" = "member"): Record<string, RpcHandler> {
     const find = (id: unknown) => {
       const a = state.artifacts.find((x) => x.id === id);
       return a && canRead(a, viewer) ? a : undefined;
@@ -1549,14 +1574,29 @@ export function artifactsFixture() {
     return {
       "orgs/mine": () =>
         ok({
-          orgs: [{ ...ARTIFACT_ORG, role: "member", emailDomain: null, createdAt: "2026-10-01T00:00:00.000Z" }],
+          orgs: [{ ...ARTIFACT_ORG, role, emailDomain: null, createdAt: "2026-10-01T00:00:00.000Z" }],
           canCreateOrg: false,
         }),
       "projects/list": () => ok([ARTIFACT_PROJECT]),
+      "roles/mine": () => ok({ permissions: [...SYSTEM_ROLE_PERMISSIONS[role]] }),
+      "inbox/unreadCount": () => ok({ count: 0 }),
+      "policies/get": () => ok(state.policy),
+      "policies/update": (input) => {
+        if (role === "member") return fail("FORBIDDEN", 403, "Bạn không có quyền sửa chính sách.");
+        state.policy = {
+          ...state.policy,
+          ...agentPolicyInput.parse(input),
+          artifacts: (input as AgentPolicyInput).artifacts
+            ? orgArtifactPolicy.parse((input as AgentPolicyInput).artifacts)
+            : state.policy.artifacts,
+          updatedAt: new Date().toISOString(),
+        };
+        return ok(state.policy);
+      },
       "leader/threads/list": () =>
         ok([
           {
-            id: ARTIFACT_THREAD_ID,
+            id: state.fixThreadId,
             projectId: ARTIFACT_PROJECT.id,
             title: "Luồng thanh toán",
             createdAt: "2026-10-14T08:00:00.000Z",
@@ -1566,7 +1606,7 @@ export function artifactsFixture() {
       "leader/threads/get": () =>
         ok({
           thread: {
-            id: ARTIFACT_THREAD_ID,
+            id: state.fixThreadId,
             projectId: ARTIFACT_PROJECT.id,
             title: "Luồng thanh toán",
             createdAt: "2026-10-14T08:00:00.000Z",
@@ -1596,7 +1636,7 @@ export function artifactsFixture() {
           scopes: ["private", "project"],
           maxVersionBytes: 1_048_576,
           maxVersions: 200,
-          publicLinks: { enabled: true, maxDays: 30 },
+          publicLinks: state.policy.artifacts.publicLinks,
         }),
       "artifacts/list": (input) => {
         const q = input as { trash?: boolean; type?: string; query?: string; mine?: boolean };
@@ -1705,12 +1745,82 @@ export function artifactsFixture() {
         return ok({ ...ticketUrl({ kind: "preview", type, content, theme: theme ?? "light" }), compileError: null });
       },
       "artifacts/askLeaderFix": (input) => {
-        const data = input as { id: string; errors: FakeChatMessage["pageErrors"]; note?: string; threadId?: string };
-        if (!find(data.id)) return notFound();
+        const data = input as {
+          id: string;
+          version: number;
+          errors: FakeChatMessage["pageErrors"];
+          note?: string;
+          threadId?: string;
+        };
+        const a = find(data.id);
+        if (!a) return notFound();
         state.fixRequests.push(data);
-        const m = message({ role: "user", content: data.note ?? "Nhờ Leader sửa", pageErrors: data.errors });
+        const m = message({
+          role: "user",
+          content: data.note ?? "Nhờ Leader sửa",
+          pageErrors: data.errors,
+          artifact: { id: a.id, version: data.version, title: a.title, type: a.type, deleted: false },
+        });
         state.onSend?.(m.content);
-        return ok({ threadId: ARTIFACT_THREAD_ID, messageId: m.id, runId: ARTIFACT_RUN_ID });
+        return ok({ threadId: data.threadId ?? state.fixThreadId, messageId: m.id, runId: ARTIFACT_RUN_ID });
+      },
+      "artifacts/publicLinks/create": (input) => {
+        const data = input as { id: string; version: number; expiresInDays: number };
+        const a = find(data.id);
+        if (!a) return notFound();
+        if (a.ownerId !== viewer.id) return fail("FORBIDDEN", 403, "Chỉ chủ artifact được tạo link công khai.");
+        if (!state.policy.artifacts.publicLinks.enabled) return fail("FORBIDDEN", 403, "Link công khai đang tắt.");
+        if (data.expiresInDays < 1 || data.expiresInDays > state.policy.artifacts.publicLinks.maxDays)
+          return fail("BAD_REQUEST", 400, "Hạn link vượt chính sách của tổ chức.");
+        const token = `${randomUUID()}${randomUUID()}`.replaceAll("-", "");
+        const link = {
+          id: uuid("abababab", next()),
+          artifactId: a.id,
+          version: data.version,
+          createdBy: viewer.id,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + data.expiresInDays * 86_400_000).toISOString(),
+          revokedAt: null,
+          revokedBy: null,
+          revokeReason: null,
+          viewCount: 0,
+          lastViewedAt: null,
+          active: true,
+        };
+        state.publicLinks.push({ ...link, tokenSha256: sha(token) });
+        return ok({ link, url: `/_artifact/s/${token}` });
+      },
+      "artifacts/publicLinks/list": (input) => {
+        const a = state.artifacts.find((x) => x.id === (input as { id: string }).id);
+        if (!a || (a.ownerId !== viewer.id && role === "member")) return notFound();
+        return ok(state.publicLinks.filter((l) => l.artifactId === a.id).map(({ tokenSha256: _, ...l }) => l));
+      },
+      "artifacts/publicLinks/revoke": (input) => {
+        const link = state.publicLinks.find((l) => l.id === (input as { linkId: string }).linkId);
+        const a = state.artifacts.find((x) => x.id === link?.artifactId);
+        if (!link || !a || (a.ownerId !== viewer.id && role === "member")) return notFound();
+        link.active = false;
+        link.revokedAt = new Date().toISOString();
+        link.revokedBy = viewer.id;
+        link.revokeReason = "manual";
+        const { tokenSha256: _, ...result } = link;
+        return ok(result);
+      },
+      "artifacts/publicLinks/orgList": (input) => {
+        if (role === "member") return fail("FORBIDDEN", 403, "Chỉ quản trị tổ chức được xem danh sách link.");
+        const { cursor, limit = 50 } = input as { cursor?: string; limit?: number };
+        const active = state.publicLinks.filter((l) => l.active && Date.parse(l.expiresAt) > Date.now()).reverse();
+        const offset = Number(cursor ?? 0);
+        const items = active.slice(offset, offset + limit).map(({ tokenSha256: _, ...l }) => {
+          const a = state.artifacts.find((x) => x.id === l.artifactId) as FakeArtifact;
+          return {
+            ...l,
+            artifactTitle: a.title,
+            artifactType: a.type,
+            owner: { id: a.ownerId, name: ownerOf(a).name },
+          };
+        });
+        return ok({ items, nextCursor: offset + limit < active.length ? String(offset + limit) : null });
       },
     };
   }
@@ -1763,6 +1873,77 @@ export async function fakeArtifactFrames(page: Page, fixture: ArtifactsFixture) 
   await page.route("**/_artifact/**", async (route) => {
     const url = new URL(route.request().url());
     const libBase = `${url.origin}/_artifact/lib/`;
+    const publicMissing = () =>
+      route.fulfill({
+        status: 404,
+        body: '<!doctype html><html lang="vi"><body>Liên kết không tồn tại hoặc đã hết hạn.</body></html>',
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Content-Security-Policy": "default-src 'none'",
+        },
+      });
+    const publicActive = (link: ArtifactPublicLink | undefined) => {
+      const a = fixture.state.artifacts.find((x) => x.id === link?.artifactId);
+      return (
+        link?.active &&
+        Date.parse(link.expiresAt) > Date.now() &&
+        a &&
+        !a.deletedAt &&
+        a.ownerId === link.createdBy &&
+        a.versions.some((v) => v.version === link.version && v.content !== null) &&
+        fixture.state.policy.artifacts.enabled &&
+        fixture.state.policy.artifacts.publicLinks.enabled
+      );
+    };
+    const limited = (linkId?: string) => {
+      const cutoff = Date.now() - 60_000;
+      fixture.state.publicRequests = fixture.state.publicRequests.filter((at) => at > cutoff);
+      const perLink = linkId ? (fixture.state.publicLinkRequests.get(linkId) ?? []).filter((at) => at > cutoff) : [];
+      if (fixture.state.publicRequests.length >= 60 || perLink.length >= 600) return true;
+      fixture.state.publicRequests.push(Date.now());
+      if (linkId) {
+        perLink.push(Date.now());
+        fixture.state.publicLinkRequests.set(linkId, perLink);
+      }
+      return false;
+    };
+    const tooMany = () =>
+      route.fulfill({
+        status: 429,
+        body: "Quá nhiều yêu cầu. Thử lại sau.",
+        headers: { "Retry-After": "60", "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+      });
+    if (url.pathname.startsWith("/_artifact/s/")) {
+      const link = fixture.state.publicLinks.find(
+        (l) => l.tokenSha256 === sha(url.pathname.slice("/_artifact/s/".length)),
+      );
+      if (limited(link?.id)) return tooMany();
+      if (!link || !publicActive(link)) return publicMissing();
+      const a = fixture.state.artifacts.find((x) => x.id === link.artifactId) as FakeArtifact;
+      const ticket = randomUUID();
+      fixture.state.tickets.set(ticket, {
+        kind: "version",
+        id: a.id,
+        version: link.version,
+        theme: "light",
+        publicLinkId: link.id,
+      });
+      const frameUrl = `${url.origin}/_artifact/frame/${ticket}`;
+      link.viewCount++;
+      link.lastViewedAt = new Date().toISOString();
+      return route.fulfill({
+        status: 200,
+        body: buildPublicPage({
+          title: a.title,
+          type: a.type,
+          version: link.version,
+          expiresAt: link.expiresAt,
+          frameUrl,
+        }),
+        headers: { ...publicPageHeaders({ frameUrl }), "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
     const frameHeaders = {
       "Cross-Origin-Resource-Policy": "same-site",
       "X-Content-Type-Options": "nosniff",
@@ -1783,6 +1964,10 @@ export async function fakeArtifactFrames(page: Page, fixture: ArtifactsFixture) 
     }
     const ticket = fixture.state.tickets.get(url.pathname.replace(/^\/_artifact\/frame\//, ""));
     if (!ticket) return route.fulfill({ status: 403, body: "Vé khung không hợp lệ.", headers: frameHeaders });
+    if (ticket.kind === "version" && ticket.publicLinkId) {
+      if (limited(ticket.publicLinkId)) return tooMany();
+      if (!publicActive(fixture.state.publicLinks.find((l) => l.id === ticket.publicLinkId))) return publicMissing();
+    }
     let input: { type: FakeArtifact["type"]; content: string; compiled: string | null; compileError: string | null };
     if (ticket.kind === "preview") {
       input = { type: ticket.type, content: ticket.content, compiled: null, compileError: null };
