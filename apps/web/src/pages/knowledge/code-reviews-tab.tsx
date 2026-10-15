@@ -4,6 +4,7 @@ import {
   type CodeReviewLinkRenderer,
   CodeReviewPane,
   type CodeReviewText,
+  type CommentAnchor,
   codeReviewText,
   type DecisionSubmit,
   formatScore,
@@ -22,7 +23,15 @@ import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { CODE_STATUSES, codeReviewCountKey, uniqueById } from "@/lib/code-reviews.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { useNow } from "@/lib/use-now.ts";
+import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
+
+type CommentAction =
+  | { kind: "add"; anchor: CommentAnchor; body: string }
+  | { kind: "reply"; threadId: string; body: string }
+  | { kind: "edit"; commentId: string; body: string }
+  | { kind: "delete"; commentId: string }
+  | { kind: "resolve"; threadId: string; resolved: boolean };
 
 type Scope = "mine" | "all";
 
@@ -368,9 +377,44 @@ function CodeReviewDetailPane({
   const { api } = useOrg();
   const t = useT(text);
   const queryClient = useQueryClient();
+  const me = useMe();
   const detailKey = api.codeReviews.get.queryKey({ input: { id } });
   const detail = useQuery(api.codeReviews.get.queryOptions({ input: { id } }));
   const files = useQuery(api.codeReviews.files.queryOptions({ input: { id } }));
+  const comments = useQuery({
+    ...api.codeReviews.comments.list.queryOptions({ input: { reviewId: id } }),
+    refetchInterval: 30_000,
+  });
+  const comment = useMutation({
+    mutationFn: async (action: CommentAction) => {
+      const apiComments = api.codeReviews.comments;
+      switch (action.kind) {
+        case "add":
+          return apiComments.add.call({ reviewId: id, ...action.anchor, body: action.body });
+        case "reply":
+          return apiComments.reply.call({ threadId: action.threadId, body: action.body });
+        case "edit":
+          return apiComments.edit.call({ commentId: action.commentId, body: action.body });
+        case "delete":
+          return apiComments.delete.call({ commentId: action.commentId });
+        case "resolve":
+          return action.resolved
+            ? apiComments.resolve.call({ threadId: action.threadId })
+            : apiComments.reopen.call({ threadId: action.threadId });
+      }
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: api.codeReviews.comments.list.queryKey({ input: { reviewId: id } }) }),
+  });
+  const commentProps = {
+    threads: comments.data?.threads,
+    currentUserId: me.id,
+    onAddComment: (anchor: CommentAnchor, body: string) => comment.mutateAsync({ kind: "add", anchor, body }),
+    onReply: (threadId: string, body: string) => comment.mutateAsync({ kind: "reply", threadId, body }),
+    onEdit: (commentId: string, body: string) => comment.mutateAsync({ kind: "edit", commentId, body }),
+    onDelete: (commentId: string) => comment.mutateAsync({ kind: "delete", commentId }),
+    onResolve: (threadId: string, resolved: boolean) => comment.mutateAsync({ kind: "resolve", threadId, resolved }),
+  };
 
   const reload = () => {
     void detail.refetch();
@@ -413,30 +457,35 @@ function CodeReviewDetailPane({
 
   const failed = decide.error ?? override.error ?? recheck.error ?? enqueue.error;
   return (
-    <CodeReviewPane
-      detail={detail.data}
-      files={
-        files.isPending
-          ? { status: "loading" }
-          : files.isError
-            ? {
-                status: "error",
-                message: `${t.filesFailed} ${apiErrorMessage(files.error)}`,
-                retry: () => files.refetch(),
-              }
-            : { status: "ready", data: files.data }
-      }
-      latestHeadSha={files.data?.headSha ?? null}
-      now={now}
-      t={pt}
-      pending={decide.isPending || override.isPending || recheck.isPending || enqueue.isPending}
-      error={failed ? apiErrorMessage(failed) : null}
-      link={link}
-      onDecide={(input) => decide.mutate(input)}
-      onOverride={(input) => override.mutate(input)}
-      onRecheck={() => recheck.mutate()}
-      onEnqueue={() => enqueue.mutate()}
-      onReload={reload}
-    />
+    <>
+      {comments.isPending && <p role="status">{pt.loadingComments}</p>}
+      {comments.isError && <LoadFailure error={comments.error} retry={() => comments.refetch()} />}
+      <CodeReviewPane
+        comments={commentProps}
+        detail={detail.data}
+        files={
+          files.isPending
+            ? { status: "loading" }
+            : files.isError
+              ? {
+                  status: "error",
+                  message: `${t.filesFailed} ${apiErrorMessage(files.error)}`,
+                  retry: () => files.refetch(),
+                }
+              : { status: "ready", data: files.data }
+        }
+        latestHeadSha={files.data?.headSha ?? null}
+        now={now}
+        t={pt}
+        pending={decide.isPending || override.isPending || recheck.isPending || enqueue.isPending}
+        error={failed ? apiErrorMessage(failed) : null}
+        link={link}
+        onDecide={(input) => decide.mutate(input)}
+        onOverride={(input) => override.mutate(input)}
+        onRecheck={() => recheck.mutate()}
+        onEnqueue={() => enqueue.mutate()}
+        onReload={reload}
+      />
+    </>
   );
 }

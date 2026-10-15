@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
+use super::job::{Ctl, Step, output_within};
 use super::{App, QUIT_WAIT, Running, profiles_root, valid_id, wait_gone};
 
 const BUNDLE_ID: &str = "com.anthropic.claudefordesktop";
@@ -72,17 +73,22 @@ fn running_in(ps: &str, root: &Path) -> Running {
     out
 }
 
-pub(super) fn running(home: &Path) -> Running {
-    let Ok(out) = Command::new("ps").args(["-axo", "pid=,command="]).output() else {
-        return Running::default();
-    };
-    running_in(&String::from_utf8_lossy(&out.stdout), &profiles_root(home))
+/// None khi không dò được (ps lỗi hay quá hạn).
+pub(super) fn running(home: &Path) -> Option<Running> {
+    let out = output_within(
+        Command::new("ps").args(["-axo", "pid=,command="]),
+        Duration::from_secs(5),
+    )?;
+    out.status
+        .success()
+        .then(|| running_in(&String::from_utf8_lossy(&out.stdout), &profiles_root(home)))
 }
 
 /// Thoát Claude Desktop bằng lệnh Quit của AppleScript như Cmd+Q, để app tự lưu và đóng file. `force` (người dùng đã
 /// đồng ý) thì quá hạn sẽ gửi SIGTERM rồi SIGKILL. Trả false khi app vẫn chạy.
-pub(super) fn quit(home: &Path, force: bool) -> Result<bool, String> {
-    let now = running(home);
+pub(super) fn quit(home: &Path, force: bool, ctl: &Ctl) -> Result<bool, String> {
+    let now = running(home)
+        .ok_or("Không dò được Claude Desktop có đang chạy không. Thoát nó (Cmd+Q) rồi thử lại.")?;
     if let Some(id) = now.legacy.keys().next() {
         return Err(format!(
             "Claude Desktop đang mở bằng hồ sơ riêng (bản cũ) của gói {id}. Thoát cửa sổ đó (Cmd+Q) rồi thử lại."
@@ -91,7 +97,8 @@ pub(super) fn quit(home: &Path, force: bool) -> Result<bool, String> {
     if now.real.is_empty() {
         return Ok(true);
     }
-    let gone_within = |d| wait_gone(|| running(home).real, d);
+    ctl.step(Step::Quitting);
+    let gone_within = |d| wait_gone(|| running(home).map(|r| r.real), d, ctl);
     // osascript chờ app trả lời; app hỏi lại trước khi thoát thì lệnh treo, nên không chờ nó mà dò tiến trình.
     let mut script = Command::new("osascript")
         .args([
@@ -105,16 +112,18 @@ pub(super) fn quit(home: &Path, force: bool) -> Result<bool, String> {
         let _ = script.kill();
     }
     let _ = script.wait();
+    let gone = gone?;
     if gone || !force {
         return Ok(gone);
     }
+    ctl.step(Step::ForceQuitting);
     for signal in ["-TERM", "-KILL"] {
-        for pid in running(home).real {
+        for pid in running(home).map(|r| r.real).unwrap_or(now.real.clone()) {
             let _ = Command::new("kill")
                 .args([signal, &pid.to_string()])
                 .status();
         }
-        if gone_within(Duration::from_secs(5)) {
+        if gone_within(Duration::from_secs(5))? {
             return Ok(true);
         }
     }
@@ -122,12 +131,12 @@ pub(super) fn quit(home: &Path, force: bool) -> Result<bool, String> {
 }
 
 pub(super) fn launch(bundle: &Path) -> Result<(), String> {
-    let status = Command::new("open")
-        .arg("-a")
-        .arg(bundle)
-        .status()
-        .map_err(|e| format!("Không mở được Claude Desktop: {e}"))?;
-    if !status.success() {
+    let out = output_within(
+        Command::new("open").arg("-a").arg(bundle),
+        Duration::from_secs(30),
+    )
+    .ok_or("Không mở được Claude Desktop (lệnh open không trả lời).")?;
+    if !out.status.success() {
         return Err("Không mở được Claude Desktop.".into());
     }
     Ok(())
