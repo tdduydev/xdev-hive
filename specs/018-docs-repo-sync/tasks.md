@@ -257,7 +257,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/knowledge/{knowledge.db.test.ts,editor.db.test.ts}`, `docs-sync-hook.db.test.ts` (mới)
   - **Kiểm**: hub test `knowledge` (mọi test cũ vẫn qua), typecheck, `pnpm deps`.
 
-- [ ] **T011 [P] [US4] [vừa] · 2 ngày — Nhà tài liệu: cấu hình, kiểm quyền, repo tổ chức, webhook**
+- [x] **T011 [P] [US4] [vừa] · 2 ngày — Nhà tài liệu: cấu hình, kiểm quyền, repo tổ chức, webhook**
   - **Phụ thuộc**: T004, T005, T006.
   - **Goal**: FR-001…FR-005, FR-017 (route nhà tổ chức), US4, US8 (phần hub trừ "Đồng bộ ngay").
     - `homes.ts`: đọc `settings.docs`, tạo/cập nhật `doc_homes`; `configureOrg` (chọn hoặc `createRepo` + `README.md`
