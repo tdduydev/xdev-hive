@@ -58,16 +58,22 @@ type Local struct {
 	Recorder *Recorder
 	// Remote nhận remote.* và watch của socket nội bộ; nil là máy không có điều khiển từ xa.
 	Remote *Remote
+	// Controller giữ quyền gõ từ xa; Local báo nó khi người ở máy giành lại hay phiên kết thúc.
+	Controller *Controller
 
 	MaxSessions int
 	TailBytes   int
 	Flush       time.Duration
 	KillGrace   time.Duration
+	// RemoteKillGrace là thời gian chờ sau SIGHUP với phiên mở từ xa; LimitTick là nhịp kiểm giới hạn thời gian.
+	RemoteKillGrace time.Duration
+	LimitTick       time.Duration
 
-	mu       sync.Mutex
-	sessions map[string]*localSession
-	closing  bool
-	wg       sync.WaitGroup
+	mu         sync.Mutex
+	sessions   map[string]*localSession
+	closing    bool
+	wg         sync.WaitGroup
+	limitsOnce sync.Once
 }
 
 type localSession struct {
@@ -77,10 +83,12 @@ type localSession struct {
 	accountID string
 	account   string
 	started   time.Time
-	cmd       *exec.Cmd
-	f         pty.Terminal
-	lease     *accounts.Lease
-	rec       *RecordedSession
+	// origin: OriginLocal (`hive chat`) hay OriginRemote (term_start); không đổi sau khi mở nên đọc không cần khoá.
+	origin string
+	cmd    *exec.Cmd
+	f      pty.Terminal
+	lease  *accounts.Lease
+	rec    *RecordedSession
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -89,11 +97,17 @@ type localSession struct {
 	mu      sync.Mutex
 	reason  string
 	message string
+	// by là người ngắt theo term_exit.by (userId hoặc "machine"); rỗng là CLI tự thoát.
+	by string
+	// active là lần cuối có output hay client rời đi, để tính "không client, không output" (FR-023).
+	active  time.Time
 	tail    []byte
 	clients map[*localClient]struct{}
 	ctl     *localClient
-	ended   bool
-	exit    localipc.Ctl
+	// remote là quyền gõ từ xa đang giữ phiên; ctl và remote không cùng khác nil.
+	remote *grant
+	ended  bool
+	exit   localipc.Ctl
 }
 
 type localFrame struct {
@@ -119,6 +133,9 @@ type SessionInfo struct {
 	Viewers    int       `json:"viewers"`
 	// HubID là mã phiên trên hub khi phiên được ghi (để mở trang phiên trên web); rỗng là không ghi.
 	HubID string `json:"hubId,omitempty"`
+	// Origin, Controller để app tô dấu trên khay khi có phiên mở hay đang gõ từ xa.
+	Origin     string `json:"origin"`
+	Controller string `json:"controller,omitempty"`
 }
 
 // CreateParams là session.create.
@@ -137,6 +154,8 @@ type CreateParams struct {
 	// ProjectID, TaskID do `hive` tra trên hub; hub tự bỏ liên kết khi không thuộc đội của máy (FR-030).
 	ProjectID string `json:"projectId,omitempty"`
 	TaskID    string `json:"taskId,omitempty"`
+	// origin không đọc từ JSON: client qua socket nội bộ không được tự nhận phiên là mở từ xa.
+	origin string
 }
 
 // AttachParams là session.attach; Mode rỗng là control.
@@ -196,7 +215,7 @@ func (l *Local) Handle(ctx context.Context, c *localipc.Conn, req localipc.Reque
 		if s == nil {
 			return c.Fail(code, msg)
 		}
-		s.stop(ReasonKilled, "Phiên đã bị ngắt bằng hive kill.")
+		l.kill(s, ReasonKilled, "Phiên đã bị ngắt bằng hive kill.", byMachine)
 		return c.OK(map[string]any{"id": s.id})
 	}
 	if l.Remote != nil && (req.Op == "watch" || strings.HasPrefix(req.Op, "remote.")) {
@@ -207,19 +226,18 @@ func (l *Local) Handle(ctx context.Context, c *localipc.Conn, req localipc.Reque
 
 // List là các phiên đang chạy, cũ trước.
 func (l *Local) List() []SessionInfo {
-	l.mu.Lock()
-	list := make([]*localSession, 0, len(l.sessions))
-	for _, s := range l.sessions {
-		if s != nil {
-			list = append(list, s)
-		}
-	}
-	l.mu.Unlock()
+	list := l.list()
 	out := make([]SessionInfo, 0, len(list))
 	for _, s := range list {
 		s.mu.Lock()
 		info := SessionInfo{ID: s.id, CLI: s.cli, Cwd: s.cwd, Account: s.account, Started: s.started, Controlled: s.ctl != nil,
-			Viewers: len(s.clients), HubID: s.rec.ID()}
+			Viewers: len(s.clients), HubID: s.rec.ID(), Origin: s.origin}
+		switch {
+		case s.remote != nil:
+			info.Controller = ControllerRemote
+		case s.ctl != nil:
+			info.Controller = ControllerLocal
+		}
 		s.mu.Unlock()
 		if info.Controlled {
 			info.Viewers--
@@ -373,9 +391,14 @@ func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*
 		lease.Release()
 		return nil, fmt.Errorf("Không chạy được %s: %w", p.CLI, err)
 	}
+	origin := p.origin
+	if origin == "" {
+		origin = OriginLocal
+	}
+	now := time.Now()
 	s := &localSession{
-		id: id, cli: p.CLI, cwd: p.Cwd, accountID: lease.ID(), account: clip(lease.Label(), maxLabel), started: time.Now(),
-		cmd: cmd, f: f, lease: lease, stopCh: make(chan struct{}), done: make(chan struct{}),
+		id: id, cli: p.CLI, cwd: p.Cwd, accountID: lease.ID(), account: clip(lease.Label(), maxLabel), started: now,
+		origin: origin, active: now, cmd: cmd, f: f, lease: lease, stopCh: make(chan struct{}), done: make(chan struct{}),
 		clients: map[*localClient]struct{}{},
 	}
 	if !p.NoRecord {
@@ -390,16 +413,20 @@ func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*
 	if closing {
 		s.stop(ReasonClosed, "hive-worker đang tắt.")
 	}
-	l.log().Info("Đã mở phiên tại máy", "session", id, "cli", p.CLI, "account", lease.ID(), "cwd", p.Cwd)
+	l.log().Info("Đã mở phiên tại máy", "session", id, "cli", p.CLI, "account", lease.ID(), "cwd", p.Cwd, "origin", origin)
+	l.limitsOnce.Do(func() { go l.watchLimits() })
 	go l.run(s, secrets)
 	return s, nil
 }
 
 // stop đặt lý do (lý do đầu tiên thắng) rồi báo vòng chạy dừng CLI.
-func (s *localSession) stop(reason, message string) {
+func (s *localSession) stop(reason, message string) { s.stopBy(reason, message, "") }
+
+// stopBy như stop, kèm người ngắt theo dạng của audit ("machine", "hub:<userId>").
+func (s *localSession) stopBy(reason, message, by string) {
 	s.mu.Lock()
 	if s.reason == "" {
-		s.reason, s.message = reason, message
+		s.reason, s.message, s.by = reason, message, by
 	}
 	s.mu.Unlock()
 	s.stopOnce.Do(func() { close(s.stopCh) })
@@ -419,7 +446,7 @@ func (l *Local) run(s *localSession, secrets []string) {
 		pty.HangupGroup(s.cmd)
 		select {
 		case <-exited:
-		case <-time.After(orDefault(l.KillGrace, DefaultKillGrace)):
+		case <-time.After(l.killGrace(s)):
 		}
 	}
 	// Tiến trình con chạy nền của agent giữ PTY mở; dừng cả nhóm để output kết thúc.
@@ -439,6 +466,7 @@ func (l *Local) run(s *localSession, secrets []string) {
 	}
 	s.mu.Lock()
 	ctl := localipc.Ctl{Type: localipc.CtlExit, Reason: s.reason, Message: s.message}
+	by := s.by
 	s.mu.Unlock()
 	if ctl.Reason == ReasonExit {
 		if c := s.cmd.ProcessState.ExitCode(); c >= 0 {
@@ -446,7 +474,9 @@ func (l *Local) run(s *localSession, secrets []string) {
 		}
 	}
 	s.finish(ctl)
-	s.rec.Close(ctl.Code, ctl.Reason, ctl.Message)
+	l.Controller.sessionClosed(s.rec.ID())
+	s.rec.CloseBy(ctl.Code, ctl.Reason, ctl.Message, exitBy(by))
+	l.ended(s, ctl, by)
 	l.mu.Lock()
 	if l.sessions[s.id] == s {
 		delete(l.sessions, s.id)
@@ -507,6 +537,7 @@ func (s *localSession) emit(b []byte, limit int) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.active = time.Now()
 	s.rec.Write(b)
 	s.tail = append(s.tail, b...)
 	// Cắt khi gấp đôi giới hạn để không chép đuôi mỗi lần đọc.
@@ -537,8 +568,10 @@ func (s *localSession) dropLocked(cl *localClient) {
 	cl.closed = true
 	close(cl.queue)
 	delete(s.clients, cl)
+	s.active = time.Now()
 	if s.ctl == cl {
 		s.ctl = nil
+		s.rec.SetController("")
 	}
 }
 
@@ -666,22 +699,82 @@ func (s *localSession) takeLocked(cl *localClient) {
 	if old := s.ctl; old != nil {
 		s.enqueue(old, ctlFrame(localipc.Ctl{Type: localipc.CtlTaken, Message: "Terminal khác đã giành quyền điều khiển; bạn đang xem."}))
 	}
+	if g := s.remote; g != nil {
+		s.remote = nil
+		// Thu quyền phải báo hub và ghi audit; không làm trong khoá phiên (s.mu đứng trước khoá của Controller).
+		go g.c.localTook(g)
+	}
 	s.ctl = cl
+	s.rec.SetController(ControllerLocal)
 	s.enqueue(cl, ctlFrame(localipc.Ctl{Type: localipc.CtlControl}))
+}
+
+// byHubID tìm phiên theo mã trên hub (term_control mang mã này, không phải mã ngắn của hive ls).
+func (l *Local) byHubID(id string) *localSession {
+	if l == nil || id == "" {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, s := range l.sessions {
+		if s != nil && s.rec.ID() == id {
+			return s
+		}
+	}
+	return nil
+}
+
+// giveRemote trao quyền gõ cho g; terminal đang điều khiển chỉ còn xem kèm dòng báo ai đang gõ (US3 kịch bản 2).
+func (s *localSession) giveRemote(g *grant) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ended {
+		return false
+	}
+	if old := s.ctl; old != nil {
+		s.enqueue(old, ctlFrame(localipc.Ctl{Type: localipc.CtlTaken, Message: "Đang điều khiển từ xa bởi " + g.label + "."}))
+		s.ctl = nil
+	}
+	s.remote = g
+	s.rec.SetController(ControllerRemote)
+	return true
+}
+
+// releaseRemote bỏ quyền của g nếu g còn giữ; không trả quyền cho terminal nào, người ở máy tự giành khi cần.
+func (s *localSession) releaseRemote(g *grant) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.remote == g {
+		s.remote = nil
+		s.active = time.Now()
+		s.rec.SetController("")
+	}
+}
+
+func (s *localSession) remoteWrite(g *grant, data []byte) {
+	s.mu.Lock()
+	ok := s.remote == g && !s.ended
+	s.mu.Unlock()
+	if ok {
+		_, _ = s.f.Write(data)
+	}
+}
+
+func (s *localSession) remoteResize(g *grant, cols, rows int) {
+	s.mu.Lock()
+	ok := s.remote == g && !s.ended
+	s.mu.Unlock()
+	if ok && cols > 0 && rows > 0 {
+		_ = s.f.Resize(min(cols, maxSize), min(rows, maxSize))
+	}
 }
 
 // CloseAll ngắt mọi phiên (worker tắt) và từ chối phiên mới.
 func (l *Local) CloseAll(message string) {
 	l.mu.Lock()
 	l.closing = true
-	list := make([]*localSession, 0, len(l.sessions))
-	for _, s := range l.sessions {
-		if s != nil {
-			list = append(list, s)
-		}
-	}
 	l.mu.Unlock()
-	for _, s := range list {
+	for _, s := range l.list() {
 		s.stop(ReasonClosed, message)
 	}
 }
