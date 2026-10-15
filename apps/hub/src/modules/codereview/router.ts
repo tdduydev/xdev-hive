@@ -3,6 +3,14 @@ import { contract } from "@xdev-hive/contracts";
 import type { RequestContext } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import {
+  addReviewComment,
+  deleteReviewComment,
+  editReviewComment,
+  listReviewComments,
+  replyReviewComment,
+  resolveReviewComment,
+} from "./comments.ts";
+import {
   type DecideDeps,
   decideCodeReview,
   enqueueCodeReview,
@@ -20,6 +28,25 @@ export function codeReviewsRouter(deps: OrgDeps & DecideDeps & { runs: CodeRunPo
   const read = { ...deps, filesCache: deps.filesCache ?? createFilesCache() };
   return {
     codeReviews: {
+      comments: {
+        list: os.comments.list.handler(({ context: { tx, user }, input }) =>
+          listReviewComments(tx, user.id, input.reviewId),
+        ),
+        add: os.comments.add.handler(({ context: { tx, user }, input }) => addReviewComment(tx, user.id, input, deps)),
+        reply: os.comments.reply.handler(({ context: { tx, user }, input }) =>
+          replyReviewComment(tx, user.id, input, deps),
+        ),
+        edit: os.comments.edit.handler(({ context: { tx, user }, input }) => editReviewComment(tx, user.id, input)),
+        delete: os.comments.delete.handler(({ context: { tx, user }, input }) =>
+          deleteReviewComment(tx, user.id, input.commentId),
+        ),
+        resolve: os.comments.resolve.handler(({ context: { tx, user }, input }) =>
+          resolveReviewComment(tx, user.id, input.threadId, true),
+        ),
+        reopen: os.comments.reopen.handler(({ context: { tx, user }, input }) =>
+          resolveReviewComment(tx, user.id, input.threadId, false),
+        ),
+      },
       list: os.list.handler(({ context: { tx, user }, input }) => listCodeReviews(tx, user.id, input)),
       count: os.count.handler(({ context: { tx, user } }) => countAwaiting(tx, user.id)),
       get: os.get.handler(({ context: { tx, user }, input }) => getCodeReview(tx, user.id, input.id, read)),
