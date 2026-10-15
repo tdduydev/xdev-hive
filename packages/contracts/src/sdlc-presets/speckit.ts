@@ -218,10 +218,81 @@ Nếu repo có skill \`speckit-converge\` thì dùng nó; không thì làm theo 
 Tài liệu của hạng mục:
 {artifacts}
 
+Dự án:
+{projects}
+
 Cách làm:
-1. Với mỗi \`FR-nnn\`, tìm code và test thực hiện nó rồi kết luận: met (đạt), partial (một phần), missing (chưa có), diverged (làm khác spec).
-2. Mỗi kết luận kèm bằng chứng: file và dòng, tên test. Không có bằng chứng thì là missing, không đoán.
-3. Báo bằng \`sdlc_report\` loại \`findings\`; chỉ liệt kê phần chưa đạt đủ để hub đề xuất task bổ sung.`;
+1. Hạng mục nhiều dự án có một run converge cho mỗi repo. Chỉ kết luận yêu cầu có task thuộc repo này (thẻ dự án trong
+   \`tasks.md\`, task không có thẻ là của dự án chính); bỏ qua yêu cầu chỉ thuộc dự án khác.
+2. Với mỗi \`FR-nnn\` đó, tìm code và test thực hiện nó rồi kết luận: met (đạt), partial (một phần), missing (chưa có),
+   contradicts (code làm khác spec).
+3. Mỗi kết luận kèm bằng chứng: file và dòng, tên test. Không có bằng chứng thì là missing, không đoán.
+4. Với partial, missing, contradicts, ghi \`suggestedTask\`: task bổ sung ngắn gọn để làm cho đạt. Với contradicts, nói rõ
+   code hay tài liệu có vẻ sai để người duyệt chọn sửa code hay sửa tài liệu.
+5. Báo một lần bằng \`sdlc_report\` loại \`findings\`, liệt kê mọi yêu cầu đã xét kể cả met; hub dùng met để đánh dấu đã kiểm.
+   Mọi yêu cầu đạt thì hạng mục hội tụ.`;
+
+const RELEASE_NOTES_TEMPLATE = `# Release notes: tên hạng mục
+
+## User Story 1 - tên story
+
+- Thay đổi người dùng thấy được (PR, FR-nnn)
+
+## Chưa làm, để sau
+
+- …
+`;
+
+const RETRO_TEMPLATE = `# Retro: tên hạng mục
+
+## Chỉ số
+
+| Giai đoạn | Thời gian | Câu hỏi | Ghi chú |
+|---|---|---|---|
+
+## Điều làm tốt
+
+- …
+
+## Điều cần đổi
+
+- …
+
+## Bài học đưa vào constitution
+
+- …
+`;
+
+const RELEASE_NOTES_PROMPT = `Bạn soạn release notes cho hạng mục đã hội tụ, theo cách làm của Spec Kit.
+
+Tài liệu của hạng mục:
+{artifacts}
+
+{release}
+
+Cách làm:
+1. Mỗi PR đã merge là một dòng: thay đổi người dùng thấy được, link PR, yêu cầu \`FR-nnn\` liên quan. Không có PR nào thì
+   ghi rõ là chưa phát hành gì.
+2. Nhóm các dòng theo user story của spec (dựa vào yêu cầu của từng task trong \`tasks.md\`).
+3. Yêu cầu chưa kiểm hoặc task chưa merge ghi vào mục "Chưa làm, để sau", không viết như đã xong.
+4. Chỉ ghi file tài liệu. Không sửa code, không commit.`;
+
+const RETRO_PROMPT = `Bạn chủ trì retro của hạng mục sau khi phát hành, theo cách làm của Spec Kit.
+
+Tài liệu của hạng mục:
+{artifacts}
+
+{release}
+
+{constitution}
+
+Cách làm:
+1. Chép bảng chỉ số theo giai đoạn của hub vào mục Chỉ số; thêm ghi chú chỗ chậm hoặc bị trả lại nhiều.
+2. Ghi điều làm tốt và điều cần đổi; mỗi ý có bằng chứng (PR, câu hỏi, vòng converge).
+3. Bài học đáng giữ cho lần sau thì đề xuất sửa constitution: đọc \`.specify/memory/constitution.md\` (có thể chưa có), viết
+   toàn bộ nội dung mới rồi gọi \`sdlc_report\` loại \`lessons\` với {content, reason}. Hub tạo đề xuất cho
+   \`project/<dự án chính>/constitution\` để người duyệt như tài liệu thường. Không có bài học mới thì không gọi.
+4. Chỉ ghi file tài liệu. Không sửa code, không commit, không tự sửa constitution trong repo.`;
 
 export const speckit = sdlcMode.parse({
   id: "speckit",
@@ -429,10 +500,53 @@ export const speckit = sdlcMode.parse({
           id: "converge-spec",
           action: "converge",
           artifacts: ["spec", "plan", "tasks"],
-          auto: false,
+          // Mọi task xong thì giai đoạn này bắt đầu và chạy vòng 1 ngay (US10); vòng sau do người bấm.
+          auto: true,
           maxQuestions: 0,
           skill: "speckit-converge",
           prompt: CONVERGE_PROMPT,
+        },
+      ],
+    },
+    {
+      id: "release",
+      name: "Release",
+      kind: "release",
+      optional: true,
+      artifacts: [
+        {
+          id: "release-notes",
+          name: "release-notes.md",
+          path: "specs/{NNN}-{slug}/release-notes.md",
+          template: RELEASE_NOTES_TEMPLATE,
+        },
+        { id: "retro", name: "retro.md", path: "specs/{NNN}-{slug}/retro.md", template: RETRO_TEMPLATE },
+      ],
+      // Hai bước tự chạy lần lượt khi hội tụ xong; retro đọc release notes vừa soạn. Cả hai tài liệu bắt buộc nên hạng mục
+      // chỉ đóng khi đã duyệt release notes và retro (US11).
+      steps: [
+        {
+          id: "release-notes",
+          action: "release-notes",
+          artifacts: ["release-notes"],
+          maxQuestions: 0,
+          prompt: RELEASE_NOTES_PROMPT,
+        },
+        { id: "retro", action: "retro", artifacts: ["retro"], maxQuestions: 0, prompt: RETRO_PROMPT },
+      ],
+      gate: [
+        {
+          name: "Duyệt phát hành",
+          outputs: ["release-notes.md", "retro.md"],
+          gates: [
+            {
+              id: "po",
+              name: "PO duyệt release notes và retro",
+              kind: "human",
+              reviewers: { users: [], roles: ["team-ba", "team-admin"], quorum: 1 },
+              slaHours: 48,
+            },
+          ],
         },
       ],
     },

@@ -141,6 +141,7 @@ describe("tạo hạng mục", () => {
       ["tasks", "pending"],
       ["implement", "pending"],
       ["converge", "pending"],
+      ["release", "pending"],
     ]);
 
     // Contract chưa có bản nào lúc tạo; tài liệu tuỳ chọn vẫn có dòng nhưng không bắt buộc.
@@ -158,7 +159,9 @@ describe("tạo hạng mục", () => {
     expect(first.artifacts.map((a) => a.artifactId).sort()).toEqual([
       "data-model",
       "plan",
+      "release-notes",
       "research",
+      "retro",
       "spec",
       "tasks",
     ]);

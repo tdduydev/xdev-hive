@@ -9,4 +9,5 @@ export { type RemoteRouterDeps, remoteRouter, type TerminalRouterDeps, terminalR
 export { terminalChunks, terminalSessions } from "./schema.ts";
 export type { TerminalDeps } from "./service.ts";
 export { signTerminalToken, terminalTokenKey, verifyTerminalToken } from "./token.ts";
+export { remotePolicyHook } from "./totp.ts";
 export { attachTerminalGateway, originAllowed, type TerminalGatewayOptions, withRemoteLive } from "./ws.ts";

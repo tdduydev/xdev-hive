@@ -236,6 +236,48 @@ function coverageChecks(ctx: GateContext): ChecklistItem[] {
   ];
 }
 
+const CRITERIA_HEADING = /acceptance criteria|tiêu chí chấp nhận/i;
+const LIST_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/;
+// Mẫu EARS (Kiro): điều kiện WHEN/WHILE/WHERE/IF tuỳ chọn rồi "… SHALL …"; bản tiếng Việt KHI/NẾU/TRONG KHI … PHẢI.
+// Từ khoá viết hoa mới tính, để câu văn thường có chữ "when", "phải" không lọt qua.
+const EARS_START = /^(?:WHEN|WHILE|WHERE|IF|THE|KHI|NẾU|TRONG KHI|Ở NƠI|HỆ THỐNG)(?![\p{L}\p{N}])/u;
+const EARS_RESPONSE = /(?<![\p{L}\p{N}])(?:SHALL|PHẢI)(?![\p{L}\p{N}])/u;
+
+/** Mỗi tiêu chí trong mục Acceptance Criteria (Tiêu chí chấp nhận) viết theo EARS. */
+function earsChecks(ctx: GateContext): ChecklistItem[] {
+  const label = "Tiêu chí chấp nhận viết theo EARS";
+  const bad: number[] = [];
+  let criteria = 0;
+  let inside = false;
+  for (const [i, line] of ctx.content.split("\n").entries()) {
+    if (HEADING.test(line)) {
+      inside = CRITERIA_HEADING.test(line);
+      continue;
+    }
+    const item = inside ? LIST_ITEM.exec(line) : null;
+    if (!item) continue;
+    criteria++;
+    // Bỏ mã tiêu chí đứng đầu (`**1.1**`, `1.1:`) trước khi xét từ khoá mở đầu.
+    const text = (item[1] ?? "")
+      .replace(/^(?:\*\*)?[\w.-]*\d(?:\*\*)?\s*[:.)\-–—]?\s*/u, "")
+      .replace(/^\*\*|\*\*/g, "");
+    if (!EARS_START.test(text) || !EARS_RESPONSE.test(text)) bad.push(i + 1);
+  }
+  if (criteria === 0)
+    return [
+      { label, passed: false, note: "Không thấy tiêu chí nào trong mục Acceptance Criteria (Tiêu chí chấp nhận)." },
+    ];
+  return [
+    {
+      label,
+      passed: bad.length === 0,
+      note: bad.length
+        ? `Dòng ${bad.slice(0, 8).join(", ")}${bad.length > 8 ? "…" : ""} chưa theo mẫu “WHEN … THE SYSTEM SHALL …”.`
+        : null,
+    },
+  ];
+}
+
 /** Kết quả các quy tắc của gate `rule`. */
 export function ruleChecklist(gate: ReviewGate, ctx: GateContext): ChecklistItem[] {
   const out: ChecklistItem[] = [];
@@ -265,6 +307,8 @@ export function ruleChecklist(gate: ReviewGate, ctx: GateContext): ChecklistItem
       out.push(...breakdownChecks(ctx));
     } else if (rule === "coverage") {
       out.push(...coverageChecks(ctx));
+    } else if (rule === "ears") {
+      out.push(...earsChecks(ctx));
     } else if (rule === "no-secrets") {
       const found = SECRETS.filter(([re]) => re.test(ctx.content)).map(([, name]) => name);
       out.push({
