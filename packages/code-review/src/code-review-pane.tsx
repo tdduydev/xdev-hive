@@ -5,7 +5,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { type ReactNode, useMemo } from "react";
 import { AiResults } from "./ai-results.tsx";
 import { DecisionForm, type DecisionSubmit, OverrideForm, StaleNotice } from "./decision-form.tsx";
-import { FileDiff } from "./file-diff.tsx";
+import { FileDiff, type FileDiffComments } from "./file-diff.tsx";
 import { collectFindings } from "./findings.ts";
 import { formatSla, shortSha } from "./format.ts";
 import { GateStepper } from "./gate-stepper.tsx";
@@ -69,7 +69,9 @@ export function CodeReviewPane({
   onEnqueue,
   onRecheck,
   onReload,
+  comments,
 }: {
+  comments?: FileDiffComments;
   detail: CodeReviewDetail;
   files: FilesState;
   latestHeadSha?: string | null;
@@ -166,7 +168,14 @@ export function CodeReviewPane({
           )}
           {files.status === "ready" && (
             // `key` theo headSha: sang vòng mới thì chọn lại file đầu thay vì giữ file của vòng cũ.
-            <FileDiff key={files.data.headSha} data={files.data} findings={findings} prUrl={detail.pr.url} t={t} />
+            <FileDiff
+              key={files.data.headSha}
+              data={files.data}
+              findings={findings}
+              prUrl={detail.pr.url}
+              t={t}
+              {...comments}
+            />
           )}
         </Card>
 
