@@ -472,10 +472,22 @@ duyệt, chặn run code theo dự án — chưa cần worker mới.
   - **Scope**: `apps/hub/src/modules/leader/{router.ts,prompt.ts,leader-sdlc.db.test.ts}`
   - **Phụ thuộc**: T012 · **Mức**: nhẹ
 
-- [ ] T072 🎯 Kiểm hồi quy: `pnpm check`, bộ DB test của task, run, review tài liệu, hàng merge không sửa test cũ (SC-011);
+- [x] T072 🎯 Kiểm hồi quy: `pnpm check`, bộ DB test của task, run, review tài liệu, hàng merge không sửa test cũ (SC-011);
   ghi kết quả vào PR.
   - **Scope**: không sửa file (chỉ báo cáo)
   - **Phụ thuộc**: T070 · **Mức**: nhẹ
+  - Đã chạy (SPEC11FIN, 15/10/2026, trên commit T086): theo quy tắc kiểm của người dùng (14/10/2026) không chạy đủ
+    `pnpm check`/`pnpm ci:local`, chỉ phần liên quan; chưa có PR nên kết quả ghi ở đây.
+    - Một lượt hub (Postgres testcontainers): `src/modules/{tasks,knowledge,codereview}/`, `runs`, `runs-board`,
+      `runs-search`, `runs-sdlc`, `merge-queue`, `review`, `knowledge`, `plan`, `mcp-run`, `leader`, `tenancy`,
+      `migrations-upgrade`, `modules/sdlc/rls` (`*.db.test.ts`): 39 file, 541 đạt, 7 bỏ qua, 4 hỏng ở `runs.db.test.ts` (3)
+      và `leader.db.test.ts` (1), mỗi test 5,5–7 giây. Chạy lại riêng hai file đó: 86/86 đạt. Nhiều khả năng do máy tải
+      nặng khi chạy chung 39 file, chưa xác minh nguyên nhân.
+    - `src/modules/sdlc/` + `runs-sdlc.db.test.ts`: 29 file, 287 đạt; `src/modules/{runs,fleet}/`: 10 file, 114 đạt;
+      contracts: 22 file, 475 đạt; typecheck contracts và hub, `pnpm deps`, biome: sạch (chỉ cảnh báo có sẵn).
+    - SC-011: các commit của spec 011 chạm test cũ (2d53c56e, 7d0815ee, 10729fa3, d935d944) chỉ xoá dòng import và mở
+      rộng fixture `tasks/rls.db.test.ts` cho bảng mới; không đổi assertion nào của test task, run, review tài liệu, hàng
+      merge.
 
 ---
 
