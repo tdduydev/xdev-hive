@@ -1427,15 +1427,16 @@ pub async fn sign_out_claude_desktop(
     done
 }
 
-/// Tiến độ lần chuyển đang chạy; None khi không có.
+/// Tiến độ lần chuyển đang chạy; None khi không có. `async` để không chạy trên luồng chính (lệnh đồng bộ của Tauri chạy
+/// ở đó): luồng chính bận thì cửa sổ vẫn hỏi được tiến độ và bấm được Huỷ.
 #[tauri::command]
-pub fn claude_desktop_switch_progress() -> Option<job::Progress> {
+pub async fn claude_desktop_switch_progress() -> Option<job::Progress> {
     job::progress()
 }
 
 /// Bấm Huỷ: lần chuyển dừng ở bước kế tiếp và lấy lại đăng nhập cũ. false khi không còn gì để huỷ.
 #[tauri::command]
-pub fn cancel_claude_desktop_switch() -> bool {
+pub async fn cancel_claude_desktop_switch() -> bool {
     job::cancel()
 }
 
