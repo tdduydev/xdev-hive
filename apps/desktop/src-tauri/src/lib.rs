@@ -81,7 +81,7 @@ struct Tray {
     update_check: MenuItem<Wry>,
     /// Chỉ nằm trong menu khi có bản đã tải xong.
     update_restart: MenuItem<Wry>,
-    /// "Mở Claude Desktop bằng…": mỗi gói Claude một mục. Chỉ có trên macOS (claude_desktop.rs).
+    /// "Chuyển Claude Desktop sang…": mỗi gói Claude một mục. Chỉ có trên macOS (claude_desktop.rs).
     claude: Option<Submenu<Wry>>,
     menu: Menu<Wry>,
     restart_shown: Mutex<bool>,
@@ -644,18 +644,18 @@ fn this_machine(app: AppHandle) -> Option<String> {
         .and_then(|m| m.clone())
 }
 
-/// Tiền tố id mục khay mở Claude Desktop của một gói; phần sau là id gói.
+/// Tiền tố id mục khay chuyển Claude Desktop sang một gói; phần sau là id gói.
 const CLAUDE_ITEM: &str = "claude-desktop:";
 
 fn claude_menu_text(en: bool) -> &'static str {
     if en {
-        "Open Claude Desktop as…"
+        "Switch Claude Desktop to…"
     } else {
-        "Mở Claude Desktop bằng…"
+        "Chuyển Claude Desktop sang…"
     }
 }
 
-/// Đổ lại danh sách gói Claude vào mục "Mở Claude Desktop bằng…" của khay.
+/// Đổ lại danh sách gói Claude vào mục "Chuyển Claude Desktop sang…" của khay.
 pub(crate) fn set_claude_tray(app: &AppHandle, view: &claude_desktop::ProfilesView) {
     let Some(tray) = app.try_state::<Tray>() else {
         return;
@@ -689,26 +689,47 @@ pub(crate) fn set_claude_tray(app: &AppHandle, view: &claude_desktop::ProfilesVi
     }
 }
 
-fn open_claude_from_tray(app: &AppHandle, plan: String) {
+fn switch_claude_from_tray(app: &AppHandle, plan: String) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let en = lang_of(&app) == "en";
-        match claude_desktop::open(&app, &plan).await {
-            Ok(opened) if opened.already => notify(
-                &app,
-                &if en {
-                    format!("Claude Desktop for {plan} is already open.")
-                } else {
-                    format!("Claude Desktop của gói {plan} đang mở.")
-                },
-            ),
-            Ok(_) => {
-                // App cần vài giây mới có tiến trình để khay ghi "đang mở".
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                let _ = claude_desktop::load(&app).await;
-            }
-            Err(e) => notify(&app, &e),
-        }
+        notify(
+            &app,
+            if en {
+                "Restarting Claude Desktop…"
+            } else {
+                "Đang khởi động lại Claude Desktop…"
+            },
+        );
+        // Khay không hỏi được "buộc thoát?": app không chịu thoát thì báo, người dùng tự thoát hoặc dùng cửa sổ Hive.
+        let text = match claude_desktop::switch(&app, &plan, false).await {
+            Ok(s) => match s.status {
+                claude_desktop::SwitchStatus::StillRunning if en => {
+                    "Claude Desktop did not quit. Quit it (Cmd+Q) and try again.".to_string()
+                }
+                claude_desktop::SwitchStatus::StillRunning => {
+                    "Claude Desktop chưa thoát. Thoát nó (Cmd+Q) rồi thử lại.".to_string()
+                }
+                claude_desktop::SwitchStatus::Already if en => {
+                    format!("Claude Desktop is already on {plan}.")
+                }
+                claude_desktop::SwitchStatus::Already => {
+                    format!("Claude Desktop đang dùng gói {plan}.")
+                }
+                _ if s.needs_login && en => {
+                    format!("Claude Desktop is now on {plan}: sign in with this plan's account.")
+                }
+                _ if s.needs_login => {
+                    format!(
+                        "Đã chuyển Claude Desktop sang {plan}: đăng nhập bằng tài khoản của gói này."
+                    )
+                }
+                _ if en => format!("Claude Desktop is now on {plan}."),
+                _ => format!("Đã chuyển Claude Desktop sang {plan}."),
+            },
+            Err(e) => e,
+        };
+        notify(&app, &text);
     });
 }
 
@@ -799,7 +820,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         "quit" => quit(app),
         id => {
             if let Some(plan) = id.strip_prefix(CLAUDE_ITEM) {
-                open_claude_from_tray(app, plan.to_string());
+                switch_claude_from_tray(app, plan.to_string());
             }
         }
     })
@@ -878,9 +899,12 @@ pub fn run() {
             profiles::open_login_terminal,
             profiles::open_cli_terminal,
             claude_desktop::claude_desktop_profiles,
-            claude_desktop::open_claude_desktop,
-            claude_desktop::reset_claude_desktop_profile,
-            claude_desktop::claude_desktop_cleanup_cache,
+            claude_desktop::switch_claude_desktop,
+            claude_desktop::restore_claude_desktop,
+            claude_desktop::adopt_claude_desktop,
+            claude_desktop::dismiss_claude_desktop_mismatch,
+            claude_desktop::forget_claude_desktop,
+            claude_desktop::migrate_claude_desktop_profiles,
             optimizer::optimizer_status,
             optimizer::optimizer_enable,
             optimizer::optimizer_disable,
@@ -1014,6 +1038,9 @@ pub fn run() {
                 // Máy chưa đăng ký cũng kiểm (chỉ qua GitHub): app mới cài nhận được bản mới trước cả khi đăng ký.
                 updates::run_periodic(&handle).await;
             });
+            if cfg!(target_os = "macos") {
+                tauri::async_runtime::spawn(claude_desktop::watch(app.handle().clone()));
+            }
             let ticker = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {

@@ -17,7 +17,7 @@ Bản mới nhất trên npm là **1.140.0** (sửa ngày 2026-10-01).
 | `lm.registerMcpServerDefinitionProvider`, `McpStdioServerDefinition`, `McpHttpServerDefinition` | **1.101.0** (1.100.0 chưa có) | grep `function registerMcpServerDefinitionProvider` |
 | `lm.registerLanguageModelChatProvider` | **1.104.0** (1.103.0 chưa có) | grep, không dùng trong spec này |
 | `ChatRequest.model` (model người dùng chọn trong khung chat) | có ở 1.140.0 | đọc `interface ChatRequest` |
-| `authentication.registerAuthenticationProvider`, `comments.createCommentController`, `window.registerTerminalProfileProvider`, `window.registerWebviewViewProvider`, `languages.registerCodeLensProvider`, `window.registerUriHandler`, `env.asExternalUri`, `env.isTelemetryEnabled`, `env.remoteName`, `ExtensionKind` | có ở 1.140.0; có từ lâu trước 1.90 **[Chưa kiểm từng bản]** | grep `index.d.ts` 1.140.0 |
+| `authentication.registerAuthenticationProvider`, `comments.createCommentController`, `window.registerTerminalProfileProvider`, `window.registerWebviewViewProvider`, `languages.registerCodeLensProvider`, `window.registerUriHandler`, `env.asExternalUri`, `env.isTelemetryEnabled`, `env.remoteName`, `ExtensionKind` | có ở 1.140.0; có từ lâu trước 1.90 **[Chưa kiểm từng bản]**. Chạy thật: đủ ở 1.101.0 và 1.142.0 (mục 6, S1) | grep `index.d.ts` 1.140.0 |
 
 Chi tiết đọc từ `index.d.ts` 1.140.0:
 
@@ -41,11 +41,11 @@ nếu bản đó thấp hơn 1.101 thì extension không cài được trên edi
 
 | Điều | Hiện biết | Nhãn |
 |---|---|---|
-| Cursor, Windsurf, VSCodium cài extension từ Open VSX, không từ VS Code Marketplace | Điều khoản Marketplace chỉ cho sản phẩm Microsoft dùng | [Chưa kiểm lại ngày 2026-10-15] |
-| Cursor/Windsurf không có khung Chat của VS Code: `chat.createChatParticipant` có thể có nhưng không hiện ở đâu; `lm.selectChatModels` có thể trả mảng rỗng | Kinh nghiệm cộng đồng; API của bản fork không công bố đầy đủ | [Chưa kiểm] |
-| Cursor có API riêng để extension đăng ký MCP server (`vscode.cursor.mcp.registerServer`) | Nhớ từ tài liệu Cursor 2025 | [Chưa kiểm] |
-| Cursor đọc MCP từ `~/.cursor/mcp.json` và `.cursor/mcp.json`; Windsurf từ `~/.codeium/windsurf/mcp_config.json` | Tài liệu của hai editor | [Chưa kiểm lại] |
-| `env.uriScheme` trả `vscode`, `vscode-insiders`, `cursor`, `windsurf`… nên URI callback đăng nhập khác nhau theo editor | API `env.uriScheme` | [Suy luận] về giá trị cụ thể |
+| Cursor, Windsurf, VSCodium cài extension từ Open VSX, không từ VS Code Marketplace | Điều khoản Marketplace chỉ cho sản phẩm Microsoft dùng. **Đã kiểm 2026-10-15 (S13)**: Cursor 3.24.18 và Windsurf 3.10.67 không gọi thẳng `open-vsx.org`; mỗi bản có chợ riêng (`marketplace.cursorapi.com`, `marketplace.windsurf.com`) phản chiếu Open VSX. Extension chỉ có trên Open VSX vẫn tìm được ở cả hai chợ | **[Đã kiểm, S13]** (VSCodium: chưa kiểm) |
+| Cursor/Windsurf không có khung Chat của VS Code: `chat.createChatParticipant` có thể có nhưng không hiện ở đâu; `lm.selectChatModels` có thể trả mảng rỗng | `createChatParticipant` là hàm và tạo được participant trên cả Cursor lẫn Windsurf. `selectChatModels()` trả mảng rỗng trên cả hai (và cả trên VS Code không có Copilot). Có hiện ở khung chat hay không: **chưa rõ** (S2, S3) | **[Đã kiểm một phần, S2, S3]** |
+| Cursor có API riêng để extension đăng ký MCP server (`vscode.cursor.mcp.registerServer`) | **Có** ở Cursor 3.24.18, gọi được từ VSIX cài thường (S5) | **[Đã kiểm, S5]** |
+| Cursor đọc MCP từ `~/.cursor/mcp.json` và `.cursor/mcp.json`; Windsurf từ `~/.codeium/windsurf/mcp_config.json` | Đọc mã hai bản ngày 2026-10-15: đúng cả hai đường dẫn (S6). Windsurf nay hiện tên **Devin** | **[Đã kiểm bằng đọc mã, S6, S7]** |
+| `env.uriScheme` trả `vscode`, `vscode-insiders`, `cursor`, `windsurf`… nên URI callback đăng nhập khác nhau theo editor | API `env.uriScheme`. Đã chạy: `vscode`, `cursor`, **`devin`** (không phải `windsurf`) (S7) | **[Đã kiểm, S7]**; `vscode-insiders` vẫn [Suy luận] |
 
 Hệ quả cho thiết kế: **mọi tính năng phải dò khả năng lúc chạy** (feature detection), không dò theo tên editor:
 - có `vscode.chat?.createChatParticipant` **và** khung chat hiện được → dùng `@hive`;
@@ -53,19 +53,18 @@ Hệ quả cho thiết kế: **mọi tính năng phải dò khả năng lúc ch�
 - có `vscode.lm.registerMcpServerDefinitionProvider` → đăng ký bằng API; không có → ghi file cấu hình MCP của editor sau
   khi người dùng đồng ý.
 
-Task T002 (spike) kiểm lại các dòng [Chưa kiểm] ở bảng trên trên Cursor và Windsurf bản mới nhất trước khi làm phần
-fallback.
+Task T002 (spike) đã kiểm lại các dòng trên Cursor và Windsurf bản mới nhất: xem mục 6.
 
 ## 3. Đóng gói và phát hành
 
 | Điều | Hiện biết | Nhãn |
 |---|---|---|
 | `@vscode/vsce` bản mới nhất 4.0.0; `ovsx` 1.2.0 | `npm view` ngày 2026-10-15 | kiểm |
-| `vsce package --target <nền tảng>` tạo VSIX theo nền tảng (darwin-arm64, linux-x64, win32-x64…) | Tài liệu vsce | [Chưa kiểm lại với 4.0] |
-| VS Code Marketplace ký mọi extension khi đăng và VS Code kiểm chữ ký khi cài | Tài liệu Marketplace | [Chưa kiểm lại] |
-| Open VSX có ký extension | | [Chưa kiểm] |
-| VS Code tự cập nhật extension cài từ Marketplace; VSIX cài tay không tự cập nhật | Hành vi VS Code | [Chưa kiểm lại] |
-| Remote (SSH/WSL/Dev Container): extension `extensionKind: ["workspace"]` chạy ở máy có mã nguồn; `SecretStorage` lưu ở phía máy giao diện | Tài liệu Remote Development | [Chưa kiểm lại] |
+| `vsce package --target <nền tảng>` tạo VSIX theo nền tảng (darwin-arm64, linux-x64, win32-x64…) | Tài liệu vsce. Đã chạy vsce 4.0.0: `--target` ra đúng `TargetPlatform` (S15) | **[Đã kiểm, S15]** |
+| VS Code Marketplace ký mọi extension khi đăng và VS Code kiểm chữ ký khi cài | Tài liệu Marketplace. VSIX không ký cài được bằng lệnh `installExtension` (S12, S14); Marketplace ký khi đăng: chưa kiểm vì không đăng thử | **[Chưa rõ, S14]** |
+| Open VSX có ký extension | API Open VSX trả `files.signature` (`.sigzip`) cho extension mẫu (S14) | **[Đã kiểm, S14]** |
+| VS Code tự cập nhật extension cài từ Marketplace; VSIX cài tay không tự cập nhật | Hành vi VS Code. Đọc mã 1.141.0: `extensions.autoUpdate` mặc định `on` (S17). VSIX cài tay có tự cập nhật không: chưa kiểm | **[Đã kiểm một phần, S17]** |
+| Remote (SSH/WSL/Dev Container): extension `extensionKind: ["workspace"]` chạy ở máy có mã nguồn; `SecretStorage` lưu ở phía máy giao diện | Tài liệu Remote Development. Không có SSH/WSL/Dev Container ở máy kiểm (S8) | **[Chưa rõ, S8]** |
 
 ## 4. Hiện trạng trong repo (đọc code ngày 2026-10-15)
 
@@ -160,3 +159,64 @@ phải viết lại client GitHub/GitLab.
 | Binary tải khi cần, kiểm chữ ký | VSIX nhỏ, dùng chung `~/.xdev-hive/bin` với desktop | Gói sẵn theo nền tảng (Q3) |
 | Đăng Marketplace và Open VSX từ bản đầu (Q1, chủ dự án chốt 2026-10-15) | Cursor, Windsurf, VSCodium chỉ cài từ Open VSX (mục 2); editor tự cập nhật | Kênh VSIX nội bộ do hub phát (T027, T028 bỏ) |
 | Bình luận review đồng bộ hai chiều với PR qua kết nối Git của dự án (Q5, chốt 2026-10-15) | Dùng lại `GitProvider`, webhook, lỗi hạn mức có sẵn (mục 4.5) | Chỉ lưu ở hub; đăng bằng OAuth riêng của từng người |
+
+## 6. Kết quả spike (T002, ngày 2026-10-15)
+
+### 6.1 Cách kiểm
+
+- Máy: macOS 27.0.1, arm64. Mọi lần chạy ở máy này; **không có** kết quả Windows, Linux, SSH, WSL, Dev Container.
+- Editor đã chạy thật bằng `@vscode/test-electron` 3.1.0, nạp một extension thử ở `--extensionDevelopmentPath`:
+
+| Editor | Bản | `vscode.version` | `env.appName` | `env.uriScheme` |
+|---|---|---|---|---|
+| VS Code | 1.101.0 (bản `engines` tối thiểu) | 1.101.0 | Visual Studio Code | `vscode` |
+| VS Code | 1.142.0 (stable) | 1.142.0 | Visual Studio Code | `vscode` |
+| Cursor | 3.24.18 (tải từ cursor.com ngày 2026-10-15) | 1.128.0 | Cursor | `cursor` |
+| Windsurf, nay là **Devin** | 3.10.67 (tải từ API cập nhật của Windsurf ngày 2026-10-15) | 1.126.0 | Devin | `devin` |
+
+- Extension thử, bộ chạy và gói VSIX thử nằm ở thư mục tạm ngoài repo, **không commit**. Webview thử gói bằng esbuild 0.28.2
+  (ESM, tách chunk, `minify`) với đúng bản repo đang dùng: `shiki` 4.5.0, `mermaid` 12.0.0. Webview gửi kết quả và các
+  sự kiện `securitypolicyviolation` về extension host bằng `postMessage`.
+- Nhãn kết quả: **có**, **không**, **chưa rõ**. Mỗi dòng ghi rõ cách kiểm: *chạy* (chạy thật trong editor), *đọc mã*
+  (đọc mã nguồn đã đóng gói của editor, không chạy), *API* (gọi dịch vụ công khai).
+
+### 6.2 Bảng kết quả
+
+| # | Điều cần kiểm | Kết quả | Editor, bản, cách kiểm |
+|---|---|---|---|
+| S1 | Bản engine của Cursor, Windsurf ≥ 1.101 | **có**. Cursor 1.128.0, Windsurf (Devin) 1.126.0. Hai bản đều có đủ `chat.createChatParticipant`, `lm.selectChatModels`, `lm.registerTool`, `lm.registerMcpServerDefinitionProvider`, `McpStdioServerDefinition`, `McpHttpServerDefinition`, `authentication.registerAuthenticationProvider`, `comments.createCommentController`, `window.registerUriHandler`, `window.registerTerminalProfileProvider`, `env.asExternalUri` (kiểu `function`). `engines.vscode ^1.101.0` cài được trên cả hai | Cursor 3.24.18, Devin 3.10.67, 2026-10-15, *chạy* |
+| S2 | `createChatParticipant` có hiện không | **chưa rõ**. Hàm có và tạo được participant (không lỗi) ở cả 4 editor. Gửi `@spike hello` qua `workbench.action.chat.open` thì handler **không được gọi** ở Cursor, Devin, và cả VS Code 1.101.0 chưa đăng nhập Copilot, nên chưa chứng minh được khung chat nhận participant của extension ngoài. Số lệnh `workbench.action.chat.*`: VS Code 1.101.0 có 193, Devin 323, Cursor chỉ 2 (`open`, `testOpenWithPrompt`). **[Suy luận]** khung chat của VS Code ở Cursor đã bị thay bằng khung riêng. Hệ quả: `typeof createChatParticipant === "function"` luôn đúng, **không đủ** để quyết định bật `@hive` | 4 editor, 2026-10-15, *chạy* (số lệnh), *chạy* (handler) |
+| S3 | `selectChatModels` trả gì | **mảng rỗng** (độ dài 0) ở cả 4. VS Code chưa đăng nhập Copilot nên rỗng là bình thường; với Copilot đã đăng nhập: chưa kiểm (không có tài khoản). Cursor, Devin: rỗng khi chưa có extension cung cấp model | 4 editor, 2026-10-15, *chạy* |
+| S4 | `lm.registerMcpServerDefinitionProvider` | **có**, đăng ký và huỷ không lỗi ở cả 4 (cần khai `contributes.mcpServerDefinitionProviders`). Cursor, Devin có hiện server đó trong giao diện MCP của chính họ hay không: **chưa rõ** (không nhìn giao diện) | 4 editor, 2026-10-15, *chạy* |
+| S5 | API MCP riêng của Cursor | **có**: `vscode.cursor.mcp.registerServer(config)` và `unregisterServer(name)`. Dạng `{ name, server: { url, headers? } }` hoặc `{ name, server: { command, args, env } }` (stdio cần đủ ba khoá, thiếu thì ném lỗi, theo mã `$registerMCPServer`). Gọi được cả từ extension phát triển lẫn **VSIX cài thường**. `vscode.cursor` là `undefined` ở VS Code và Devin. API này không có trong `vscode.d.ts` công khai nên có thể đổi không báo trước. Server hiện ở giao diện MCP của Cursor hay không: chưa rõ | Cursor 3.24.18, 2026-10-15, *chạy* + *đọc mã* |
+| S6 | Đường dẫn cấu hình MCP | **có, đúng như plan**. Cursor: `~/.cursor/mcp.json` (người dùng; mã dùng `userHome({preferLocal:false})` nên ở Remote là thư mục nhà của máy remote) và `<dự án>/.cursor/mcp.json`. Windsurf/Devin: `~/.codeium/windsurf/mcp_config.json` (bản Insiders `windsurf-insiders`, Next `windsurf-next`, Airgap `windsurf-airgap`). Devin có thêm lệnh `devin.openDevinForTerminalMcpConfigFile`, đường dẫn file đó **chưa rõ** | Cursor 3.24.18, Devin 3.10.67, 2026-10-15, *đọc mã* |
+| S7 | Tên và scheme của editor | `appName`: Visual Studio Code / Cursor / **Devin**. `uriScheme`: `vscode` / `cursor` / **`devin`**. Windsurf đã đổi tên thành Devin (`product.json`: `applicationName devin-desktop`, `dataFolderName .devin`) nhưng thư mục cấu hình vẫn `~/.codeium/windsurf` và bundle id vẫn `com.exafunction.windsurf`. Dò theo tên `windsurf` sẽ **trượt**; URI callback đăng nhập phải lấy từ `env.uriScheme` | 4 editor, 2026-10-15, *chạy* + *đọc mã* |
+| S8 | `env.asExternalUri` với loopback trên SSH, WSL | **chưa rõ**. Máy kiểm không có SSH server, WSL hay Dev Container và không bật sshd. Ở máy cục bộ (`remoteName` là `null`) cả 4 editor trả nguyên `http://127.0.0.1:43211/callback`. Hub chuyển hướng về đúng cổng ở máy giao diện hay không, và `SecretStorage`, `extensionKind` ở Remote: chưa kiểm. Cần một máy có SSH hoặc WSL để kiểm sau (xem 6.4) | VS Code 1.101.0, 1.142.0, Cursor, Devin, 2026-10-15, *chạy* (chỉ cục bộ) |
+| S9 | `shiki`, Mermaid dưới CSP FR-022 | **có, không cần nới CSP** với cách repo đang dùng. Dưới CSP đúng nguyên văn FR-022: `shiki` 4.5.0 với `createJavaScriptRegexEngine` (như `artifacts-ui`) tô được TypeScript; Mermaid 12.0.0 với `securityLevel: "strict"` vẽ được flowchart và sequence (nạp chunk bằng `import()` từ `cspSource`), báo lỗi cú pháp đúng, không có sự kiện `securitypolicyviolation` nào. `style-src 'unsafe-inline'` đủ cho thẻ `<style>` của Mermaid. Kết quả giống nhau ở cả 4 editor. `shiki` bản **Oniguruma WASM** (`shiki/engine/oniguruma`) **vỡ** dưới FR-022 (`WebAssembly.instantiate(): … 'unsafe-eval' is not an allowed source`); thêm `'wasm-unsafe-eval'` vào `script-src` thì chạy ở cả 4. Kết luận: giữ engine JS, không thêm `'wasm-unsafe-eval'`. Gói webview thử (Mermaid, `shiki` một ngôn ngữ) khoảng 6,2 MB trong 116 file, đa số là chunk nạp khi cần | VS Code 1.101.0, 1.142.0, Cursor, Devin, 2026-10-15, *chạy* |
+| S9b | API trình duyệt trong webview (R7) | Dưới FR-022, ở cả 4: `sessionStorage`, `localStorage`, `URL.createObjectURL` + bấm `<a download>`, `navigator.clipboard.writeText` đều **không lỗi**; `isSecureContext` là `true`, origin `vscode-webview://…`; `fetch` tới hub bị chặn (đúng ý `connect-src 'none'`). FR-021 vẫn chuyển clipboard và tải file qua extension host như đã định (hành vi có thể khác ở bản web) | cùng trên, *chạy* |
+| S10 | `iframe` http trong webview (mixed content) | **không tái hiện lỗi** ở bản desktop. Khi CSP cho phép (`frame-src http: https:`), `iframe` tới `http://127.0.0.1`, `http://localhost` và `http://<IP LAN>` (HTTP thường) đều tải được ở cả 4 editor. Dưới FR-022 (`frame-src 'none'`) `iframe` bị chặn bằng sự kiện `securitypolicyviolation` (đúng ý). Bản web (vscode.dev, Codespaces, `serve-web`) chạy https: **chưa rõ**. Quyết định "không nhúng `iframe` hub" giữ nguyên | cùng trên, *chạy* |
+| S11 | `vscode.changes` có ở 1.101 không | **có**. Lệnh có trong `getCommands` và mở được trình xem nhiều file ("… (1 file)") ở VS Code 1.101.0, 1.142.0, Cursor 1.128.0, Devin 1.126.0; `vscode.diff` cũng chạy. Lưu ý Cursor: khi cửa sổ **không mở thư mục** cả hai lệnh ném `TypeError: Cannot read properties of undefined (reading 'activeEditor')`; mở thư mục thì chạy. Đường lui cho T018: bọc `try/catch`, lỗi thì mở từng file bằng `vscode.diff` | 4 editor, 2026-10-15, *chạy* |
+| S12 | `workbench.extensions.installExtension` nhận URI file VSIX | **có**. `executeCommand("workbench.extensions.installExtension", Uri.file(<vsix>))` cài được VSIX **không ký** và extension xuất hiện trong `extensions.getExtension` ở VS Code 1.101.0, 1.142.0, Cursor, Devin. Cursor: extension cài kiểu này kích hoạt được và gọi được `vscode.cursor.mcp.registerServer`. Lưu ý: kế hoạch đăng công khai (Q1) nên extension không cần mã cài VSIX; dòng này chỉ để biết khả năng | 4 editor, 2026-10-15, *chạy* |
+| S13 | Cursor, Windsurf cài từ đâu | Cursor: `marketplace.cursorapi.com` (đường `open-vsx-mirror`); Windsurf/Devin: `marketplace.windsurf.com` (đường `open-vsx.org`). Cả hai trả đúng bản mới nhất của extension chỉ có ở Open VSX (`muhammad-sammy.csharp` 2.160.9, trùng Open VSX ngày 2026-10-09). **Chưa kiểm**: độ trễ phản chiếu một extension mới đăng, và có cập nhật tự động không. VSCodium: chưa kiểm | API + *đọc mã* `product.json`, 2026-10-15 |
+| S14 | Chữ ký | Open VSX: **có** (`files.signature`, tệp `.sigzip`) với extension mẫu `redhat.java`. VS Code Marketplace ký khi đăng: **chưa rõ** (không đăng thử). VSIX tự đóng, không ký, cài được qua S12 | API Open VSX, 2026-10-15 |
+| S15 | `vsce` 4.0.0 | `package --target darwin-arm64 \| linux-x64 \| win32-x64 \| alpine-x64` đều ra VSIX có `TargetPlatform` đúng. Thiếu `repository`: **cảnh báo** "Use --allow-missing-repository to bypass", không dừng khi chạy không tương tác. **README có ảnh/liên kết tương đối mà không có `repository` thì vsce báo LỖI và thoát mã 1**, kể cả khi `git remote` là GitHub (vsce chỉ đọc `package.json`). Cách qua: dùng URL tuyệt đối trong README, hoặc `--no-rewrite-relative-links`, hoặc `--baseContentUrl`/`--baseImagesUrl`. Repo đang private nên ảnh README không thể trỏ vào repo. Thiếu `LICENSE` cũng cảnh báo. `activationEvents: ["*"]` cần `--allow-star-activation` theo `--help` (chưa chạy riêng) | vsce 4.0.0, 2026-10-15, *chạy* |
+| S16 | macOS gỡ quarantine khi tải binary bằng Node | **không cần**. File ghi bằng `fetch` + `writeFileSync` của Node chỉ có thuộc tính `com.apple.provenance`, **không** có `com.apple.quarantine`; binary Go (chữ ký ad hoc của linker) sau `chmod 0755` chạy được. `Info.plist` của VS Code, Cursor, Devin không đặt `LSFileQuarantineEnabled`. Chạy từ Node ở terminal, chưa chạy từ extension host | macOS 27.0.1 arm64, Node 26.10.0, 2026-10-15, *chạy* + *đọc mã* |
+| S17 | Tự cập nhật | VS Code 1.141.0: `extensions.autoUpdate` mặc định `on` (*đọc mã*). Open VSX → Cursor, Windsurf có tự cập nhật không, và VSIX cài tay có được chợ cập nhật không: **chưa rõ** | VS Code 1.141.0, 2026-10-15, *đọc mã* |
+| S18 | Publisher `xdev` còn trống không (cho T036) | **VS Code Marketplace: ĐÃ CÓ NGƯỜI GIỮ**. `marketplace.visualstudio.com/publishers/xdev` trả 200; publisher `xdev` (đã xác minh) có extension `xdev.xdev`. **Open VSX: namespace `xdev` chưa có** (API trả 404). Tên `xdev-hive`, `xdevhive`, `xdev-ai`, `xdevdev` đều 404 ở cả hai nơi, nhưng 404 chưa chứng minh tên còn đăng ký được trên Azure DevOps. Cần chốt lại tên publisher (T036) trước khi T003 ghi `publisher` | API công khai, 2026-10-15 |
+
+### 6.3 Hệ quả cho các task sau
+
+- **T003**: `publisher` không thể là `xdev` trên Marketplace (S18); chờ chủ dự án chốt tên (T036). Manifest không dùng `activationEvents: ["*"]` (S15).
+- **T011 (đăng nhập), T021 (MCP)**: nhận diện editor bằng `env.uriScheme` và khả năng chạy, không bằng chữ `windsurf` (S7). Cursor có API MCP riêng, ưu tiên thử `cursor.mcp.registerServer` rồi mới ghi `~/.cursor/mcp.json` (S5, S6). Ghi file cho Windsurf theo S6.
+- **T019 (`@hive`), T020 (chat dự phòng)**: dò `typeof createChatParticipant` không đủ (S2); cần tín hiệu khác (ví dụ có extension Copilot Chat, hoặc `selectChatModels()` không rỗng, hoặc `uriScheme` thuộc nhóm fork) và luôn có webview chat dự phòng.
+- **T018 (review)**: `vscode.changes` dùng được từ 1.101 (S11); bọc lỗi cửa sổ không có thư mục ở Cursor.
+- **T029, T037 (phát hành, gói đăng)**: README không dùng ảnh hoặc liên kết tương đối (hoặc `--no-rewrite-relative-links`), thêm `--allow-missing-repository` khi repo còn private (S15).
+- **Webview dùng chung (T013 và sau)**: giữ CSP FR-022, không thêm `'wasm-unsafe-eval'`, giữ engine JS của `shiki` (S9).
+- **Cần sửa plan.md khi tới lượt** (T002 không được sửa plan.md): mục 1 dòng "[Chưa kiểm, T002 kiểm trên SSH và WSL]" vẫn còn mở (S8); mục 11 "Open VSX … Cursor, Windsurf" nên ghi rõ hai bản dùng chợ phản chiếu (S13).
+
+### 6.4 Việc còn mở sau spike
+
+- S8 (loopback qua SSH, WSL, Dev Container; `SecretStorage`, `extensionKind` ở Remote): cần máy có SSH hoặc WSL. Cách kiểm đề xuất: chạy lại cùng extension thử, gọi `env.asExternalUri` rồi mở hub thật hoặc một máy chủ giả trên `127.0.0.1` để xem VS Code có chuyển tiếp cổng không.
+- S2, S4, S5: xem bằng mắt giao diện Cursor và Windsurf (participant có hiện, server MCP đăng ký bằng API có hiện).
+- S10 bản web, S13 độ trễ phản chiếu Open VSX, S14 chữ ký Marketplace, S17: chỉ kiểm được khi có bản đăng thật.
+- Các dòng **[Chưa kiểm]** khác (khoá keyring Rust và Go đọc chéo, GitLab gửi webhook khi xoá note, vai trò tối thiểu GitLab, renderer Markdown của `code-review`) không nằm trong phạm vi kiểm bằng extension thử; để T004, T033, T034 và T014.

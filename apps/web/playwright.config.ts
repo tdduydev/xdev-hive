@@ -26,7 +26,8 @@ export default defineConfig({
   ...(workers === undefined ? {} : { workers }),
   timeout: process.env.CI ? 60_000 : 30_000,
   forbidOnly: !!process.env.CI,
-  reporter: process.env.CI ? "github" : "list",
+  // CI chia test thành nhiều shard: mỗi shard ghi báo cáo blob để job báo cáo gộp lại thành một báo cáo HTML.
+  reporter: process.env.CI ? [["github"], ["blob"]] : "list",
   use: { baseURL: `http://localhost:${port}`, locale: "vi-VN", trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
@@ -34,7 +35,7 @@ export default defineConfig({
     command: `pnpm exec vite${preview ? " preview" : ""} --port ${port} --strictPort`,
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI && !portEnv && !preview,
-    // Test không cần hub thật: /rpc và /api/auth bị thay bằng page.route (e2e/fake-hub.ts). Proxy trỏ vào cổng
+    // Test không cần hub thật: /rpc, /api/auth và health bị thay bằng page.route (e2e/fake-hub.ts). Proxy trỏ vào cổng
     // không có gì để lời gọi nào lọt qua mock sẽ hỏng ngay thay vì chạm hub dev đang chạy.
     env: { HIVE_HUB_URL: "http://127.0.0.1:9" },
   },
