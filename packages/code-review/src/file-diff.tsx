@@ -1,12 +1,20 @@
-import type { CodeReviewFiles, PrFile } from "@xdev-hive/contracts";
+import type { CodeReviewCommentThread, CodeReviewFiles, PrFile } from "@xdev-hive/contracts";
+import { Button } from "@xdev-hive/ui/button";
 import { Pill } from "@xdev-hive/ui/pill";
 import { cn } from "cn";
 import { useMemo, useState } from "react";
+import { CommentComposer, CommentThread, type CommentThreadActions } from "./comment-thread.tsx";
 import { SeverityPill } from "./finding-badge.tsx";
 import { anchorFindings, type DiffFinding } from "./findings.ts";
 import { providerName } from "./format.ts";
 import { MAX_PATCH_LINES, type PatchLine, parsePatch, patchLineCount } from "./patch.ts";
 import type { CodeReviewText } from "./text.ts";
+
+export type CommentAnchor = { path: string; line: number; side: "old" | "new"; headSha: string };
+export interface FileDiffComments extends CommentThreadActions {
+  threads?: CodeReviewCommentThread[] | undefined;
+  onAddComment?: ((anchor: CommentAnchor, body: string) => void | Promise<unknown>) | undefined;
+}
 
 const LINE_STYLE = {
   add: "bg-success-soft",
@@ -59,12 +67,18 @@ function PatchView({
   findings,
   prUrl,
   t,
-}: {
+  headSha,
+  threads,
+  onAddComment,
+  ...actions
+}: FileDiffComments & {
+  headSha: string;
   file: PrFile;
   findings: DiffFinding[];
   prUrl: string;
   t: CodeReviewText;
 }) {
+  const [adding, setAdding] = useState<{ line: number; side: "old" | "new" }>();
   const tooBig = file.patch !== null && patchLineCount(file.patch) > MAX_PATCH_LINES;
   const lines = useMemo<PatchLine[]>(
     () => (file.patch === null || file.truncated || tooBig ? [] : parsePatch(file.patch)),
@@ -72,11 +86,29 @@ function PatchView({
   );
   const anchored = useMemo(() => anchorFindings(lines, findings), [lines, findings]);
 
-  if (file.truncated || tooBig) return <Fallback title={t.bigTitle} text={t.bigText} prUrl={prUrl} t={t} />;
-  if (file.patch === null) return <Fallback title={t.bigTitle} text={t.binaryText} prUrl={prUrl} t={t} />;
+  const threadIndexes = new Map<string, number>();
+  for (const thread of threads ?? []) {
+    if (thread.outdated) continue;
+    const index = lines.findIndex(
+      (line) => line.kind !== "hunk" && (thread.side === "old" ? line.oldNo : line.newNo) === thread.line,
+    );
+    if (index >= 0) threadIndexes.set(thread.id, index);
+  }
+  const showThread = (thread: CodeReviewCommentThread) => (
+    <CommentThread key={thread.id} thread={thread} t={t} {...actions} />
+  );
+  const looseThreads = threads?.filter((thread) => !threadIndexes.has(thread.id)).map(showThread);
+  if (file.truncated || tooBig || file.patch === null)
+    return (
+      <>
+        <Fallback title={t.bigTitle} text={file.truncated || tooBig ? t.bigText : t.binaryText} prUrl={prUrl} t={t} />
+        {looseThreads}
+      </>
+    );
 
   return (
     <>
+      {looseThreads}
       {anchored.loose.length > 0 && (
         <div className="border-b border-border py-2">
           <div className="px-3 text-xs font-medium text-muted-foreground">{t.fileFindings}</div>
@@ -106,12 +138,46 @@ function PatchView({
                 <span className="w-12 shrink-0 select-none pr-2 text-right text-muted-foreground">
                   {l.newNo ?? l.oldNo}
                 </span>
+                {onAddComment &&
+                  (["old", "new"] as const).map((side) => {
+                    const line = side === "old" ? l.oldNo : l.newNo;
+                    return line === null ? null : (
+                      <Button
+                        key={side}
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t.commentAt(side, line)}
+                        title={t.commentAt(side, line)}
+                        className="h-5 px-1"
+                        onClick={() => setAdding({ side, line })}
+                      >
+                        +
+                      </Button>
+                    );
+                  })}
                 <span className="px-1 whitespace-pre">
                   <span className="sr-only">{l.kind === "add" ? "+" : l.kind === "del" ? "−" : ""}</span>
                   <span aria-hidden="true">{SIGN[l.kind]}</span> {l.text}
                 </span>
               </div>
             )}
+            {threads?.filter((thread) => threadIndexes.get(thread.id) === i).map(showThread)}
+            {adding &&
+              l.kind !== "hunk" &&
+              (adding.side === "old" ? l.oldNo : l.newNo) === adding.line &&
+              onAddComment && (
+                <div className="p-3 font-sans">
+                  <CommentComposer
+                    key={`${adding.side}:${adding.line}`}
+                    t={t}
+                    onCancel={() => setAdding(undefined)}
+                    submit={async (body) => {
+                      await onAddComment({ path: file.path, headSha, ...adding }, body);
+                      setAdding(undefined);
+                    }}
+                  />
+                </div>
+              )}
             {anchored.byIndex.get(i)?.map((f, j) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: phát hiện không có id riêng
               <FindingNote key={j} f={f} t={t} />
@@ -132,7 +198,9 @@ export function FileDiff({
   findings,
   prUrl,
   t,
-}: {
+  threads,
+  ...actions
+}: FileDiffComments & {
   data: CodeReviewFiles;
   findings: DiffFinding[];
   prUrl: string;
@@ -146,7 +214,20 @@ export function FileDiff({
     return map;
   }, [findings]);
 
-  if (!file) return <p className="px-4 py-6 text-muted-foreground">{t.noFiles}</p>;
+  const currentThreads = threads?.map((thread) => ({
+    ...thread,
+    outdated: thread.outdated || thread.headSha !== data.headSha,
+  }));
+  const missingThreads = currentThreads?.filter((thread) => !data.files.some((entry) => entry.path === thread.path));
+  if (!file)
+    return (
+      <>
+        <p className="px-4 py-6 text-muted-foreground">{t.noFiles}</p>
+        {missingThreads?.map((thread) => (
+          <CommentThread key={thread.id} thread={thread} t={t} {...actions} />
+        ))}
+      </>
+    );
   return (
     <div className="flex flex-wrap items-stretch">
       {data.truncated && (
@@ -191,7 +272,19 @@ export function FileDiff({
           <Pill small>{t.fileStatus[file.status]}</Pill>
           {file.previousPath && <span className="text-muted-foreground">{t.renamedFrom(file.previousPath)}</span>}
         </div>
-        <PatchView key={file.path} file={file} findings={byFile.get(file.path) ?? []} prUrl={prUrl} t={t} />
+        <PatchView
+          key={file.path}
+          file={file}
+          findings={byFile.get(file.path) ?? []}
+          prUrl={prUrl}
+          t={t}
+          headSha={data.headSha}
+          threads={currentThreads?.filter((thread) => thread.path === file.path)}
+          {...actions}
+        />
+        {missingThreads?.map((thread) => (
+          <CommentThread key={thread.id} thread={thread} t={t} {...actions} />
+        ))}
       </div>
     </div>
   );

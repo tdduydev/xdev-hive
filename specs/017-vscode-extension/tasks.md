@@ -145,7 +145,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: DB test cho thêm, trả lời, sửa, xoá mềm, xử lý, `outdated` theo `headSha`; RLS chặn tổ chức khác; người
     không xem được review không bình luận được; người khác tác giả không sửa, xoá được.
 
-- [ ] **T009 [P] [US7] [vừa] · 0,5 ngày — `optimizer.Link` tạo cả `~/.xdev-hive/bin/hive`**
+- [x] **T009 [P] [US7] [vừa] · 0,5 ngày — `optimizer.Link` tạo cả `~/.xdev-hive/bin/hive`**
   - **Goal**: `Link` nhận thêm đường dẫn `hive` (cùng thư mục với `hive-worker` trong bundle desktop) và tạo liên kết thứ
     hai. Thiếu file nguồn thì bỏ qua, không lỗi.
   - **PHẠM VI**:
@@ -193,7 +193,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `worker/cmd/hive-worker/main.go` (một dòng `case`)
   - **Test**: repo tạm có vài file, kết quả có đúng file liên quan, chạy được không có mạng.
 
-- [ ] **T010 [P] [US2] [nặng] · 2 ngày — Client hub, SSE, hỏi lại định kỳ, fake hub**
+- [x] **T010 [P] [US2] [nặng] · 2 ngày — Client hub, SSE, hỏi lại định kỳ, fake hub**
   - **Phụ thuộc**: T003.
   - **Goal**: plan.md mục 2. `hub/client.ts`, `sse.ts` (`Last-Event-ID`), `poll.ts` (focus, backoff), `errors.ts` (lỗi
     tiếng Việt), `project.ts` (dự án của workspace từ `hive-worker projects --json` hoặc `.mcp.json`).
@@ -205,7 +205,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
       `runStreamHandler`]**
   - **Test**: 401 gọi `auth.invalidate` một lần; poll dừng khi mất focus; SSE nối lại không mất sự kiện.
 
-- [ ] **T011 [P] [US1] [nặng] · 2,5 ngày — Authentication Provider `xdev-hive`**
+- [x] **T011 [P] [US1] [nặng] · 2,5 ngày — Authentication Provider `xdev-hive`**
   - **Phụ thuộc**: T003, T004 (giao diện JSON của `hive auth`).
   - **Goal**: plan.md mục 1, FR-003…FR-005. PKCE, loopback, `asExternalUri`, `store.ts` hai tầng, `hub-url.ts`, gỡ phiên
     khi 401, hỏi khi đăng xuất. Lấy tên và vai trò sau đăng nhập. Chưa có hub URL (người dùng tải từ Marketplace) thì
@@ -215,7 +215,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: `state` sai bị từ chối; quá 5 phút huỷ; không có `hive` thì dùng `SecretStorage`; token không vào log
     (kiểm Output giả).
 
-- [ ] **T012 [P] [US7] [nặng] · 2,5 ngày — Worker: tìm, tải, kiểm chữ ký, giám sát**
+- [x] **T012 [P] [US7] [nặng] · 2,5 ngày — Worker: tìm, tải, kiểm chữ ký, giám sát**
   - **Phụ thuộc**: T003, T006.
   - **Goal**: plan.md mục 7. `bin.ts` (thứ tự tìm, bản tối thiểu, tải như `worker/internal/update`, ECDSA + sha256),
     `ipc.ts` (NDJSON socket/pipe, `hello`, `worker.status`, `session.list`), `supervisor.ts` (máy trạng thái, mã 4,
@@ -241,7 +241,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: HTML có nonce mới mỗi lần, CSP đúng FR-022; thủ tục ngoài allowlist bị từ chối; HTML không chứa
     `hive_pat_`.
 
-- [ ] **T014 [P] [US3] [vừa] · 2 ngày — Luồng bình luận trong `@xdev-hive/code-review`, web và desktop**
+- [x] **T014 [P] [US3] [vừa] · 2 ngày — Luồng bình luận trong `@xdev-hive/code-review`, web và desktop**
   - **Phụ thuộc**: T008.
   - **Goal**: plan.md mục 4 (web và desktop). `FileDiff` nhận `threads`, `onAddComment`, `onReply`, `onResolve`; có
     nhãn "Đã cũ". Web và desktop nối `codeReviews.comments.*`, hỏi lại 30 giây khi phiên đang mở.

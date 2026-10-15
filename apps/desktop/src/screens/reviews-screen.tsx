@@ -2,6 +2,7 @@ import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tan
 import {
   type CodeReviewLinkRenderer,
   CodeReviewPane,
+  type CommentAnchor,
   codeReviewText,
   type DecisionSubmit,
   formatSla,
@@ -91,6 +92,13 @@ const text: Dict<{
     retry: "Retry",
   },
 };
+
+type CommentAction =
+  | { kind: "add"; anchor: CommentAnchor; body: string }
+  | { kind: "reply"; threadId: string; body: string }
+  | { kind: "edit"; commentId: string; body: string }
+  | { kind: "delete"; commentId: string }
+  | { kind: "resolve"; threadId: string; resolved: boolean };
 
 type Route = { tab: "docs" | "code"; id?: string | undefined };
 
@@ -394,9 +402,44 @@ function CodeDetail({ id, now }: { id: string; now: number }) {
   const client = useQueryClient();
   const query = useQuery({
     ...api.codeReviews.get.queryOptions({ input: { id } }),
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
   });
+  const me = useQuery(api.me.get.queryOptions());
   const files = useQuery(api.codeReviews.files.queryOptions({ input: { id } }));
+  const comments = useQuery({
+    ...api.codeReviews.comments.list.queryOptions({ input: { reviewId: id } }),
+    refetchInterval: 30_000,
+  });
+  const comment = useMutation({
+    mutationFn: async (action: CommentAction) => {
+      const apiComments = api.codeReviews.comments;
+      switch (action.kind) {
+        case "add":
+          return apiComments.add.call({ reviewId: id, ...action.anchor, body: action.body });
+        case "reply":
+          return apiComments.reply.call({ threadId: action.threadId, body: action.body });
+        case "edit":
+          return apiComments.edit.call({ commentId: action.commentId, body: action.body });
+        case "delete":
+          return apiComments.delete.call({ commentId: action.commentId });
+        case "resolve":
+          return action.resolved
+            ? apiComments.resolve.call({ threadId: action.threadId })
+            : apiComments.reopen.call({ threadId: action.threadId });
+      }
+    },
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: api.codeReviews.comments.list.queryKey({ input: { reviewId: id } }) }),
+  });
+  const commentProps = {
+    threads: comments.data?.threads,
+    currentUserId: me.data?.id,
+    onAddComment: (anchor: CommentAnchor, body: string) => comment.mutateAsync({ kind: "add", anchor, body }),
+    onReply: (threadId: string, body: string) => comment.mutateAsync({ kind: "reply", threadId, body }),
+    onEdit: (commentId: string, body: string) => comment.mutateAsync({ kind: "edit", commentId, body }),
+    onDelete: (commentId: string) => comment.mutateAsync({ kind: "delete", commentId }),
+    onResolve: (threadId: string, resolved: boolean) => comment.mutateAsync({ kind: "resolve", threadId, resolved }),
+  };
 
   // Quyết định gắn với đầu PR người duyệt đã xem. Bản mới từ lần làm mới nền chỉ báo "PR có commit mới" chứ không
   // thay khung đang xem, nếu không người duyệt sẽ duyệt một diff họ chưa đọc.
@@ -432,6 +475,15 @@ function CodeDetail({ id, now }: { id: string; now: number }) {
           {t.back}
         </Button>
       </div>
+      {comments.isPending && <p role="status">{c.loadingComments}</p>}
+      {comments.isError && (
+        <Alert variant="destructive">
+          {errorText(comments.error)}
+          <Button size="sm" variant="outline" onClick={() => void comments.refetch()}>
+            {c.retry}
+          </Button>
+        </Alert>
+      )}
       {query.error && !viewed ? (
         <Alert variant="destructive" className="flex flex-wrap items-center justify-between gap-2">
           {t.loadFailed} {errorText(query.error)}
@@ -443,6 +495,7 @@ function CodeDetail({ id, now }: { id: string; now: number }) {
         <p className="text-sm text-muted-foreground">{t.loading}</p>
       ) : (
         <CodeReviewPane
+          comments={commentProps}
           detail={viewed}
           files={
             files.data
