@@ -3,16 +3,39 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, release]
 
+# PR mới huỷ lượt cũ của chính PR đó; main và release chạy đủ từng commit, không bị lượt sau cắt ngang.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  # Mỗi job nặng dưới đây chạy khi đầu ra tương ứng khác 'false': job này hỏng hay không đọc được diff thì chạy hết (xem
+  # scripts/ci/changes.sh). Job bị bỏ báo "Skipped", GitHub tính là đạt nên check bắt buộc không kẹt.
+  changes:
+    name: Phạm vi thay đổi
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.scope.outputs.web }}
+      image: ${{ steps.scope.outputs.image }}
+      smoke: ${{ steps.scope.outputs.smoke }}
+      sandbox: ${{ steps.scope.outputs.sandbox }}
+      desktop: ${{ steps.scope.outputs.desktop }}
+      worker: ${{ steps.scope.outputs.worker }}
+      worker_native: ${{ steps.scope.outputs.worker_native }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Commit merge của PR có hai cha: đủ để so với đầu nhánh đích.
+          fetch-depth: 2
+      - id: scope
+        run: scripts/ci/changes.sh
+
   typescript:
     name: TypeScript (lint, typecheck, ranh giới, test, build)
     runs-on: ubuntu-latest
@@ -24,12 +47,24 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-js
+      # Cache của turbo: PR lấy kết quả của main cho gói không đổi; main (và release) chạy lại thật mọi task rồi ghi cache
+      # mới, nên test trên nhánh chính không bao giờ là kết quả cũ phát lại.
+      - name: Turbo chạy lại mọi task (không phải PR)
+        if: github.event_name != 'pull_request'
+        run: echo "TURBO_FORCE=true" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        if: github.ref == 'refs/heads/main'
         with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - uses: actions/cache/restore@v4
+        if: github.ref != 'refs/heads/main'
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
       - name: Bộ skill khớp submodule
         run: node packages/skill-pack/scripts/sync.ts check
       # Test có database dùng ảnh pgvector: tải trước qua bản sao, Testcontainers thấy ảnh có sẵn thì không tải lại.
@@ -43,60 +78,138 @@ jobs:
       - name: openapi.json khớp hợp đồng
         run: pnpm openapi && git diff --exit-code packages/contracts/openapi.json
 
-  web-e2e:
+  # Playwright chia 4 shard chạy song song; `web-e2e` ở dưới giữ tên check bắt buộc cũ và chỉ xanh khi cả 4 shard xanh.
+  web-e2e-shard:
     # Giao diện được làm lại theo thiết kế v2 bởi nhiều agent cùng lúc: chặn merge khi luồng người dùng vỡ.
-    name: Web E2E (Playwright)
+    name: Web E2E shard ${{ matrix.shard }}/4
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.web != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Trình duyệt Chromium
-        working-directory: apps/web
-        run: ../../scripts/ci/retry.sh 3 pnpm exec playwright install --with-deps chromium
-      - name: Playwright
-        working-directory: apps/web
-        run: pnpm exec playwright test
-      - name: Lưu trace khi hỏng
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-results
-          path: apps/web/test-results
-          retention-days: 7
-
-  worker:
-    name: Worker Go (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        # Worker chạy trên máy dev của cả ba hệ điều hành, nên test đủ ba.
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-js
+      - name: Phiên bản Playwright
+        id: pw
+        working-directory: apps/web
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      # Chromium theo phiên bản Playwright. Chỉ shard 1 trên main lưu (4 shard cùng lưu một khoá chỉ tốn công).
+      - uses: actions/cache@v4
+        id: browsers-main
+        if: github.ref == 'refs/heads/main' && matrix.shard == 1
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - uses: actions/cache/restore@v4
+        id: browsers-read
+        if: github.ref != 'refs/heads/main' || matrix.shard != 1
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Trình duyệt Chromium
+        working-directory: apps/web
+        env:
+          CACHE_HIT: ${{ steps.browsers-main.outputs.cache-hit || steps.browsers-read.outputs.cache-hit }}
+        # Trúng cache thì đã có trình duyệt, chỉ còn thư viện hệ thống (nằm ngoài ~/.cache nên không cache được).
+        run: |
+          if [ "$CACHE_HIT" = "true" ]; then
+            ../../scripts/ci/retry.sh 3 pnpm exec playwright install-deps chromium
+          else
+            ../../scripts/ci/retry.sh 3 pnpm exec playwright install --with-deps chromium
+          fi
+      - name: Playwright
+        working-directory: apps/web
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
+      # Chỉ khi hỏng: job báo cáo gộp các blob này thành một báo cáo HTML (có trace).
+      - name: Lưu báo cáo blob khi hỏng
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-blob-${{ matrix.shard }}
+          path: apps/web/blob-report
+          retention-days: 1
+          if-no-files-found: ignore
+
+  web-e2e-report:
+    name: Web E2E (báo cáo gộp)
+    needs: web-e2e-shard
+    if: ${{ !cancelled() && needs.web-e2e-shard.result == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-js
+        with:
+          filter: "@xdev-hive/web..."
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: playwright-blob-*
+          path: apps/web/all-blob-reports
+          merge-multiple: true
+      - name: Gộp báo cáo
+        working-directory: apps/web
+        run: pnpm exec playwright merge-reports --reporter html ./all-blob-reports
+      - uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+
+  # Tên check bắt buộc của nhánh main. Luôn chạy để luôn báo kết quả: đạt khi 4 shard đạt, hoặc khi PR không chạm phần
+  # web nên shard được bỏ có chủ ý. Shard bị bỏ mà không có lý do đó (vd. job `changes` hỏng) là lỗi.
+  web-e2e:
+    name: Web E2E (Playwright)
+    needs: [changes, web-e2e-shard]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          SHARDS: ${{ needs.web-e2e-shard.result }}
+          SCOPE: ${{ needs.changes.outputs.web }}
+        run: |
+          if [ "$SHARDS" = "success" ]; then
+            echo "Cả 4 shard Playwright đạt."
+          elif [ "$SHARDS" = "skipped" ] && [ "$SCOPE" = "false" ]; then
+            echo "::notice::PR không chạm web, hub hay cấu hình e2e: bỏ Playwright có chủ ý."
+          else
+            echo "::error::Playwright chưa đạt (kết quả shard: $SHARDS, phạm vi: ${SCOPE:-không rõ})."
+            exit 1
+          fi
+
+  # Ba job riêng (không dùng matrix) để tên check giữ nguyên "Worker Go (<hệ điều hành>)" cả khi job bị bỏ: job matrix bị
+  # bỏ báo bằng tên chưa thay biến nên check bắt buộc cùng tên sẽ treo mãi. macOS và Windows chỉ chạy khi worker/ hay script
+  # cài đổi (runner của hai hệ này ít và chậm); Linux còn chạy khi script phát hành, script CI hay workflow này đổi.
+  # Worker chạy trên máy dev của cả ba hệ điều hành, nên test đủ ba.
+  worker-linux:
+    name: Worker Go (ubuntu-latest)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.worker != 'false' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
       run:
         working-directory: worker
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: worker/go.mod
-          cache: false
+          profile: test
       - name: gofmt
-        if: runner.os == 'Linux'
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       # Script cài chạy thật trong test của internal/update (install.ps1 trên Windows); shellcheck bắt thêm lỗi POSIX sh.
       - name: shellcheck install.sh
-        if: runner.os == 'Linux'
         run: shellcheck -s sh ../scripts/install.sh
+      - name: Script phát hành và script CI (shellcheck, test tính phiên bản, ghi chú, phạm vi thay đổi)
+        run: |
+          shellcheck -s bash ../scripts/release/*.sh ../scripts/ci/changes.sh ../scripts/ci/test-changes.sh
+          ../scripts/release/test.sh
+          ../scripts/ci/test-changes.sh
       - name: goreleaser check
-        if: runner.os == 'Linux'
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -107,23 +220,53 @@ jobs:
       - run: go test ./...
       - run: go build -o bin/ ./cmd/hive-worker
 
+  worker-macos:
+    name: Worker Go (macos-latest)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.worker_native != 'false' }}
+    runs-on: macos-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-go
+        with:
+          profile: test
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go build -o bin/ ./cmd/hive-worker
+
+  worker-windows:
+    name: Worker Go (windows-latest)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.worker_native != 'false' }}
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-go
+        with:
+          profile: test
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go build -o bin/ ./cmd/hive-worker
+
   e2e:
     name: E2E smoke (Git cục bộ, CLI giả)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.smoke != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
       # Script build worker Go rồi chạy thật trên runner.
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: worker/go.mod
-          cache: false
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-go
+      - uses: ./.github/actions/setup-js
       - name: Ảnh Postgres cho test
         run: echo "HIVE_TEST_POSTGRES_IMAGE=$(scripts/ci/pull-image.sh pgvector/pgvector:0.8.7-pg18-trixie)" >> "$GITHUB_ENV"
       # Chế độ mặc định: Postgres qua Testcontainers (Docker có sẵn trên runner), không ra mạng ngoài.
@@ -133,20 +276,14 @@ jobs:
 
   sandbox-e2e:
     name: E2E sandbox (gVisor)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.sandbox != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: worker/go.mod
-          cache: false
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-js
+      - uses: ./.github/actions/setup-go
       # Runner của GitHub không có gVisor: cài từ kho apt chính thức rồi đăng ký runtime runsc cho Docker.
       - name: Cài gVisor (runsc)
         # Kho apt và khoá của gVisor ở ngoài GitHub, đôi khi lỗi mạng một lần: thử lại thay vì đỏ cả job.
@@ -179,6 +316,8 @@ jobs:
 
   image:
     name: Docker image (build only)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.image != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -194,9 +333,14 @@ jobs:
           push: false
           tags: xdev-hive:ci
           build-args: NODE_IMAGE=${{ steps.node.outputs.image }}
+          # Lớp build lưu ở cache GitHub; chỉ main ghi (PR chỉ đọc) để PR không làm đầy hạn mức cache của repo.
+          cache-from: type=gha,scope=image
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=image' || '' }}
 
   desktop:
     name: Desktop Tauri (cargo check, test)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.desktop != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -213,12 +357,40 @@ jobs:
             echo "::error::Runner thiếu gói:$missing. Cài một lần trên máy runner: sudo apt-get install -y$missing"
             exit 1
           fi
+      # Giao diện app dựng bằng Vite (ADR 0016) nên cần node_modules của apps/desktop.
+      - uses: ./.github/actions/setup-js
+        with:
+          filter: "@xdev-hive/desktop..."
+      - uses: ./.github/actions/setup-go
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          shared-key: ci-desktop
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # tauri-build đòi có sẵn sidecar (externalBin) và thư mục frontend lúc biên dịch.
+      - name: Dựng giao diện app và sidecar hive-worker
+        run: node apps/desktop/scripts/build-frontend.ts && node apps/desktop/scripts/build-sidecar.ts
+      - run: cargo check --locked
+        working-directory: apps/desktop/src-tauri
+      - run: cargo test --locked
+        working-directory: apps/desktop/src-tauri
+
+  desktop-windows:
+    # Chuyển Claude Desktop có nhánh riêng cho Windows (đường dẫn, khoá file, đổi tên đè): chạy test của nó trên Windows thật.
+    name: Desktop Tauri Windows (claude_desktop)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      # Giao diện app dựng bằng Vite (ADR 0016) nên cần node_modules của apps/desktop.
       - run: pnpm install --frozen-lockfile --filter @xdev-hive/desktop...
       - uses: actions/setup-go@v5
         with:
@@ -228,10 +400,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
-      # tauri-build đòi có sẵn sidecar (externalBin) và thư mục frontend lúc biên dịch.
       - name: Dựng giao diện app và sidecar hive-worker
         run: node apps/desktop/scripts/build-frontend.ts && node apps/desktop/scripts/build-sidecar.ts
-      - run: cargo check --locked
-        working-directory: apps/desktop/src-tauri
-      - run: cargo test --locked
+      - run: cargo test --locked --lib claude_desktop
         working-directory: apps/desktop/src-tauri

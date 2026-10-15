@@ -83,6 +83,9 @@ add HIVE_PORT 3000
 add HIVE_COMPOSE_PROJECT xdev-hive
 [ -n "$public" ] && put HIVE_PUBLIC_URL "$public"
 [ -n "$bind" ] && put HIVE_BIND "$bind"
+# Hub đặt sau Caddy bằng địa chỉ IP (https://<ip>): Caddy tự cấp chứng chỉ từ CA nội bộ và cần default_sni = IP đó.
+host=$(printf '%s' "$(get HIVE_PUBLIC_URL)" | sed -nE 's#^https://([^/:]+).*#\1#p')
+case "$host" in *[!0-9.]*|"") ;; *) put HIVE_DEFAULT_SNI "$host"; put COMPOSE_PROFILES https ;; esac
 [ -n "$pg_image" ] && put HIVE_POSTGRES_IMAGE "$pg_image"
 [ -n "$node_image" ] && put HIVE_NODE_IMAGE "$node_image"
 [ -n "$creators" ] && put HIVE_ORG_CREATORS "$creators"

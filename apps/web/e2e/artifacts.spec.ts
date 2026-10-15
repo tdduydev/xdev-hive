@@ -92,7 +92,7 @@ test("artifact: Leader tạo bốn loại → khung tự mở; sửa, so sánh, 
   await panel.getByRole("textbox", { name: "Nội dung" }).fill(`${MARKDOWN}3. Gửi email xác nhận\n`);
   await panel.getByRole("button", { name: "Lưu", exact: true }).click();
   await expect(panel.getByText("Gửi email xác nhận")).toBeVisible();
-  await expect(panel.getByLabel("Phiên bản")).toHaveValue("2");
+  await expect(panel.getByLabel("Phiên bản", { exact: true })).toHaveValue("2");
   expect(hub.rpcCalls.find((c) => c.path === "artifacts/update")?.input).toMatchObject({ id: md.id, baseVersion: 1 });
 
   // Toàn màn → trang chi tiết của phiên bản; so sánh v1 với v2 rồi khôi phục v1 thành v3.

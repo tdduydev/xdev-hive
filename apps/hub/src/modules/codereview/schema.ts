@@ -82,6 +82,7 @@ export const codeReviews = hive
         .where(sql`status in ('in_review', 'changes_requested', 'approved')`),
       index("code_reviews_org_status").on(t.orgId, t.status, t.updatedAt.desc()),
       index("code_reviews_run").on(t.runId),
+      uniqueIndex("code_reviews_org_id").on(t.orgId, t.id),
       orgScoped("code_reviews"),
     ],
   )
@@ -126,6 +127,47 @@ export const codeReviewGateRuns = hive
       orgScoped("code_review_gate_runs"),
       // hive.code_review_overdue_orgs (SECURITY DEFINER, chạy bằng hive_owner) tìm tổ chức có checkpoint quá hạn.
       pgPolicy("code_review_gate_runs_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
+    ],
+  )
+  .enableRLS();
+
+export const codeReviewComments = hive
+  .table(
+    "code_review_comments",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      reviewId: uuid("review_id").notNull(),
+      threadId: uuid("thread_id").notNull(),
+      path: text("path").notNull(),
+      line: integer("line").notNull(),
+      side: text("side").$type<"old" | "new">().notNull(),
+      headSha: text("head_sha").notNull(),
+      body: text("body").notNull(),
+      // Danh tính Better Auth là text, không phải UUID.
+      authorId: text("author_id"),
+      origin: text("origin").$type<"hive" | "github" | "gitlab">().notNull().default("hive"),
+      externalAuthor: text("external_author"),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      editedAt: timestamp("edited_at", { withTimezone: true }),
+      deletedAt: timestamp("deleted_at", { withTimezone: true }),
+      resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+      resolvedBy: text("resolved_by"),
+    },
+    (t) => [
+      check("code_review_comments_side", sql`${t.side} in ('old', 'new')`),
+      check("code_review_comments_origin", sql`${t.origin} in ('hive', 'github', 'gitlab')`),
+      check("code_review_comments_line", sql`${t.line} > 0`),
+      check("code_review_comments_body", sql`length(${t.body}) <= 20000`),
+      uniqueIndex("code_review_comments_org_review_id").on(t.orgId, t.reviewId, t.id),
+      // Khoá ghép chặn liên kết sang review hay luồng của tổ chức khác kể cả khi ghi SQL trực tiếp.
+      foreignKey({ columns: [t.orgId, t.reviewId], foreignColumns: [codeReviews.orgId, codeReviews.id] }).onDelete(
+        "cascade",
+      ),
+      foreignKey({ columns: [t.orgId, t.reviewId, t.threadId], foreignColumns: [t.orgId, t.reviewId, t.id] }),
+      index("code_review_comments_review").on(t.reviewId, t.createdAt, t.id),
+      index("code_review_comments_thread").on(t.threadId),
+      orgScoped("code_review_comments"),
     ],
   )
   .enableRLS();
