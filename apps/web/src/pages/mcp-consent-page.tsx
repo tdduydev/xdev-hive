@@ -2,6 +2,7 @@ import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { useState } from "react";
 import { Brand } from "@/components/icons.tsx";
+import { OnboardingSignOut } from "@/components/outside/onboarding-sign-out.tsx";
 import { OutsideLayout } from "@/components/outside/outside-layout.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { authClient, oauthContinuation } from "@/lib/auth-client.ts";
@@ -89,7 +90,7 @@ export function McpConsentPage() {
   }
 
   return (
-    <OutsideLayout>
+    <OutsideLayout header={<OnboardingSignOut />}>
       <Card className="grid w-full max-w-105 gap-5 p-6 sm:p-8 shadow-lg">
         <div className="flex items-center gap-3">
           <span

@@ -7,7 +7,7 @@
 use crate::hub::{HubError, call_tool};
 use serde::Serialize;
 use serde_json::{Value, json};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 const SERVICE: &str = "dev.xdev.hive";
 
@@ -142,18 +142,51 @@ pub(crate) async fn save_checked(app: &AppHandle, hub: &str, token: &str) -> Res
         .map_err(|e| format!("Không lưu được token vào keychain: {e}"))
 }
 
+/// Sự kiện báo cửa sổ app đọc lại tài khoản: đăng xuất từ khay không đi qua giao diện.
+pub const CHANGED_EVENT: &str = "account-changed";
+
+/// Đăng xuất người dùng khỏi Hive trên máy này: gỡ token cá nhân khỏi keychain. Không gỡ đăng ký máy: worker giữ token
+/// máy riêng (`hwm_…`) và vẫn nhận việc. Mọi lệnh cần hub đọc token ở keychain mỗi lần gọi, nên gỡ token là đủ dừng
+/// chúng. Trả về false khi máy chưa có token để gỡ.
+pub(crate) fn sign_out(app: &AppHandle) -> bool {
+    let Some(hub) = crate::hub_of(app) else {
+        return false;
+    };
+    let old = stored_token(&hub);
+    // Đăng xuất bỏ luôn bản đọc offline (FR-091).
+    if let Some(old) = &old {
+        crate::artifacts::forget(app, &hub, old);
+    }
+    if let Ok(e) = entry(&hub) {
+        // Chưa có token thì coi như đã gỡ.
+        let _ = e.delete_credential();
+    }
+    let _ = app.emit(CHANGED_EVENT, ());
+    old.is_some()
+}
+
+/// Câu hỏi xác nhận trước khi đăng xuất, cùng nội dung với hộp xác nhận trong cửa sổ app.
+pub fn sign_out_prompt(en: bool) -> (&'static str, &'static str, &'static str, &'static str) {
+    if en {
+        (
+            "Sign out of Hive?",
+            "Your personal token is removed from this machine's keychain and offline docs are cleared. The machine stays registered: the worker keeps taking runs, and agent plans, projects and tools on this machine keep working.",
+            "Sign out",
+            "Cancel",
+        )
+    } else {
+        (
+            "Đăng xuất khỏi Hive?",
+            "Token cá nhân bị gỡ khỏi keychain của máy và bản đọc offline bị xoá. Máy vẫn đăng ký với hub: worker vẫn nhận việc, gói agent, dự án và công cụ trên máy vẫn dùng được.",
+            "Đăng xuất",
+            "Huỷ",
+        )
+    }
+}
+
 #[tauri::command]
 pub async fn account_unlink(app: AppHandle) -> Result<AccountStatus, String> {
-    if let Some(hub) = crate::hub_of(&app) {
-        // Đăng xuất bỏ luôn bản đọc offline (FR-091).
-        if let Some(old) = stored_token(&hub) {
-            crate::artifacts::forget(&app, &hub, &old);
-        }
-        if let Ok(e) = entry(&hub) {
-            // Chưa có token thì coi như đã gỡ.
-            let _ = e.delete_credential();
-        }
-    }
+    sign_out(&app);
     Ok(status_for(crate::hub_of(&app)).await)
 }
 

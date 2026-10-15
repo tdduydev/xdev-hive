@@ -78,6 +78,8 @@ struct Tray {
     open: MenuItem<Wry>,
     open_app: MenuItem<Wry>,
     quit: MenuItem<Wry>,
+    /// "Đăng xuất khỏi Hive": gỡ token cá nhân, không gỡ đăng ký máy (account::sign_out).
+    sign_out: MenuItem<Wry>,
     update_check: MenuItem<Wry>,
     /// Chỉ nằm trong menu khi có bản đã tải xong.
     update_restart: MenuItem<Wry>,
@@ -154,6 +156,11 @@ fn refresh_tray(app: &AppHandle) {
             "Mở app trên máy"
         });
         let _ = tray.quit.set_text(if en { "Quit" } else { "Thoát" });
+        let _ = tray.sign_out.set_text(if en {
+            "Sign out of Hive"
+        } else {
+            "Đăng xuất khỏi Hive"
+        });
         if let Some(claude) = &tray.claude {
             let _ = claude.set_text(claude_menu_text(en));
         }
@@ -730,6 +737,34 @@ fn switch_claude_from_tray(app: &AppHandle, plan: String) {
     });
 }
 
+/// Khay không có cửa sổ để hỏi lại, nên hỏi bằng hộp thoại của hệ điều hành: đăng xuất nhầm thì mất token, phải tạo lại.
+fn sign_out_from_tray(app: &AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let en = lang_of(app) == "en";
+    let (title, body, ok, cancel) = account::sign_out_prompt(en);
+    let app = app.clone();
+    app.dialog()
+        .message(body)
+        .title(title)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(ok.into(), cancel.into()))
+        .show({
+            let app = app.clone();
+            move |confirmed| {
+                if !confirmed {
+                    return;
+                }
+                let text = match (account::sign_out(&app), en) {
+                    (true, false) => "Đã đăng xuất khỏi Hive. Worker vẫn chạy với đăng ký của máy.",
+                    (true, true) => "Signed out of Hive. The worker keeps running with this machine's registration.",
+                    (false, false) => "Máy này chưa đăng nhập tài khoản Hive.",
+                    (false, true) => "This machine isn't signed in to a Hive account.",
+                };
+                notify(&app, text);
+            }
+        });
+}
+
 fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     let status = MenuItem::with_id(app, "status", "Worker: đã tắt", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Mở xDev Hive", true, None::<&str>)?;
@@ -751,6 +786,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         false,
         None::<&str>,
     )?;
+    let sign_out = MenuItem::with_id(app, "sign_out", "Đăng xuất khỏi Hive", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -764,11 +800,12 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
             &PredefinedMenuItem::separator(app)?,
             &update_check,
             &PredefinedMenuItem::separator(app)?,
+            &sign_out,
             &quit_item,
         ],
     )?;
-    // Nằm trước "Thoát" để vị trí của mục "Mở lại để cập nhật" (RESTART_ITEM_AT) không đổi. Danh sách gói đổ vào sau,
-    // khi worker trả danh sách (set_claude_tray).
+    // Nằm trước "Đăng xuất khỏi Hive" để vị trí của mục "Mở lại để cập nhật" (RESTART_ITEM_AT) không đổi. Danh sách gói
+    // đổ vào sau, khi worker trả danh sách (set_claude_tray).
     let claude = if claude_desktop::SUPPORTED {
         let sub = Submenu::with_items(
             app,
@@ -781,7 +818,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
                 None::<&str>,
             )?],
         )?;
-        let at = menu.items()?.len() - 1;
+        let at = menu.items()?.len() - 2;
         menu.insert_items(&[&sub, &PredefinedMenuItem::separator(app)?], at)?;
         Some(sub)
     } else {
@@ -814,6 +851,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
                 }
             });
         }
+        "sign_out" => sign_out_from_tray(app),
         "quit" => quit(app),
         id => {
             if let Some(plan) = id.strip_prefix(CLAUDE_ITEM) {
@@ -829,6 +867,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         open,
         open_app,
         quit: quit_item,
+        sign_out,
         update_check,
         update_restart,
         claude,
@@ -889,6 +928,7 @@ pub fn run() {
             profiles::cli_profile_add,
             profiles::cli_profile_update,
             profiles::cli_profile_remove,
+            profiles::cli_profile_logout,
             profiles::cli_profile_usage,
             profiles::cli_profile_resume,
             profiles::cli_profile_discover,
@@ -901,6 +941,7 @@ pub fn run() {
             claude_desktop::adopt_claude_desktop,
             claude_desktop::dismiss_claude_desktop_mismatch,
             claude_desktop::forget_claude_desktop,
+            claude_desktop::sign_out_claude_desktop,
             claude_desktop::migrate_claude_desktop_profiles,
             claude_desktop::claude_desktop_switch_progress,
             claude_desktop::cancel_claude_desktop_switch,

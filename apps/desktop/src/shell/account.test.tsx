@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, type AccountStatus, initials, profileOf } from "@/lib/account.ts";
@@ -105,7 +105,11 @@ describe("liên kết tài khoản", () => {
     const dialog = await screen.findByRole("dialog");
     expect((await within(dialog).findByRole("alert")).textContent).toContain("Token không còn dùng được.");
     await user.click(within(dialog).getByRole("button", { name: "Đăng xuất" }));
-    expect(calls.some((c) => c.command === "account_unlink")).toBe(true);
+    // Gỡ token là việc không làm lại được: luôn hỏi lại trước.
+    expect(calls.some((c) => c.command === "account_unlink")).toBe(false);
+    const confirm = await screen.findByRole("dialog", { name: "Đăng xuất khỏi Hive?" });
+    await user.click(within(confirm).getByRole("button", { name: "Đăng xuất" }));
+    await waitFor(() => expect(calls.some((c) => c.command === "account_unlink")).toBe(true));
   });
 
   it("máy chưa đăng ký: kết nối Hive ngay trong hộp thoại, xong thì đọc lại tài khoản", async () => {
@@ -131,17 +135,62 @@ describe("liên kết tài khoản", () => {
     expect(screen.getByText("Dev · Thanh toán")).toBeTruthy();
   });
 
-  it("đăng xuất: về trạng thái chưa đăng nhập, mục trên máy vẫn dùng được", async () => {
-    fakeTauri({ account_status: () => linked(ACCOUNT), account_unlink: () => unlinked });
+  it("đăng xuất từ thẻ người dùng: hỏi lại, nói rõ máy vẫn đăng ký, xong thì về chưa đăng nhập", async () => {
+    const calls = fakeTauri({ account_status: () => linked(ACCOUNT), account_unlink: () => unlinked });
     render(<AppShell />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Phạm Hà/ }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Đăng xuất" }));
-    await user.click(within(dialog).getByRole("button", { name: "Đóng" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Đăng xuất khỏi Hive" }));
+    const confirm = await screen.findByRole("dialog", { name: "Đăng xuất khỏi Hive?" });
+    expect(confirm.textContent).toContain("Máy vẫn đăng ký với hub: worker vẫn nhận việc");
+    await user.click(within(confirm).getByRole("button", { name: "Đăng xuất" }));
     expect(await screen.findByRole("button", { name: /Chưa đăng nhập/ })).toBeTruthy();
+    expect(calls.filter((c) => c.command === "account_unlink")).toHaveLength(1);
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
     expect(within(nav).getByRole("link", { name: "Gói agent" }).hasAttribute("data-offline")).toBe(false);
     expect(within(nav).getByRole("link", { name: "Việc của tôi" }).hasAttribute("data-offline")).toBe(true);
+  });
+
+  it("huỷ ở hộp hỏi lại thì không gỡ token", async () => {
+    const calls = fakeTauri({ account_status: () => linked(ACCOUNT), account_unlink: () => unlinked });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Phạm Hà/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Đăng xuất khỏi Hive" }));
+    const confirm = await screen.findByRole("dialog", { name: "Đăng xuất khỏi Hive?" });
+    await user.click(within(confirm).getByRole("button", { name: "Huỷ" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.some((c) => c.command === "account_unlink")).toBe(false);
+    expect(screen.getByRole("button", { name: /Phạm Hà/ })).toBeTruthy();
+  });
+
+  it("thẻ người dùng mở được hộp thoại tài khoản từ menu", async () => {
+    fakeTauri({ account_status: () => linked(ACCOUNT) });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Phạm Hà/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Tài khoản và vai trò" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tài khoản" });
+    expect(within(dialog).getByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
+  });
+
+  it("đăng xuất từ khay: app nghe sự kiện và đọc lại tài khoản", async () => {
+    let status = linked(ACCOUNT);
+    let emit: (() => void) | null = null;
+    fakeTauri({ account_status: () => status });
+    Object.assign(window.__TAURI__ ?? {}, {
+      event: {
+        listen: async <T,>(event: string, handler: (e: { payload: T }) => void) => {
+          if (event === "account-changed") emit = () => handler({ payload: undefined as T });
+          return () => {};
+        },
+      },
+    });
+    render(<AppShell />);
+    expect(await screen.findByRole("button", { name: /Phạm Hà/ })).toBeTruthy();
+    status = unlinked;
+    await waitFor(() => expect(emit).not.toBeNull());
+    act(() => emit?.());
+    expect(await screen.findByRole("button", { name: /Chưa đăng nhập/ })).toBeTruthy();
   });
 });

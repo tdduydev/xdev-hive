@@ -11,7 +11,7 @@ import { Input } from "@xdev-hive/ui/input";
 import { Label } from "@xdev-hive/ui/label";
 import { type FormEvent, useId, useState } from "react";
 import { ConnectForm } from "@/components/connect-form.tsx";
-import { type AccountStatus, accountStatus, linkAccount, unlinkAccount } from "@/lib/account.ts";
+import { type AccountStatus, accountStatus, linkAccount } from "@/lib/account.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
 
@@ -74,19 +74,22 @@ const text: Dict<{
 
 /**
  * Đăng nhập Hive, tuỳ chọn (DESK-09): máy chưa đăng ký thì kết nối máy ngay tại đây (đăng nhập bằng trình duyệt cũng
- * liên kết luôn tài khoản), đã đăng ký thì liên kết bằng token MCP cá nhân. Đăng xuất chỉ gỡ token cá nhân; máy vẫn đăng
- * ký và worker vẫn nhận việc.
+ * liên kết luôn tài khoản), đã đăng ký thì liên kết bằng token MCP cá nhân. Đăng xuất (SignOutDialog) chỉ gỡ token cá
+ * nhân; máy vẫn đăng ký và worker vẫn nhận việc.
  */
 export function AccountDialog({
   open,
   status,
   onOpenChange,
   onChanged,
+  onSignOut,
 }: {
   open: boolean;
   status: AccountStatus | null;
   onOpenChange: (open: boolean) => void;
   onChanged: (status: AccountStatus) => void;
+  /** Mở hộp hỏi lại đăng xuất (AppShell): đăng xuất ở đây hay ở thẻ người dùng đều qua cùng một bước xác nhận. */
+  onSignOut: () => void;
 }) {
   const t = useT(text);
   const id = useId();
@@ -102,17 +105,6 @@ export function AccountDialog({
     try {
       onChanged(await linkAccount(token));
       setToken("");
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function unlink() {
-    setBusy(true);
-    try {
-      onChanged(await unlinkAccount());
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -185,7 +177,7 @@ export function AccountDialog({
             {t.close}
           </Button>
           {status?.hub && (account || status.linked) && (
-            <Button variant="outline" disabled={busy} onClick={unlink}>
+            <Button variant="outline" disabled={busy} onClick={onSignOut}>
               {t.unlink}
             </Button>
           )}
