@@ -1,11 +1,4 @@
 import type { EnqueueOptions, JobQueue, Jobs } from "../platform/index.ts";
-import { registerAssets } from "./assets.ts";
-import { registerConflicts } from "./conflicts.ts";
-import { registerExtracts } from "./extracts.ts";
-import { registerImport } from "./import.ts";
-import { registerPull } from "./pull.ts";
-import { registerPush } from "./push.ts";
-import type { DocSyncDeps } from "./routes/deps.ts";
 
 export const DOCSYNC_SCAN_IMPORT_QUEUE = "docsync-scan-import";
 export const DOCSYNC_IMPORT_QUEUE = "docsync-import";
@@ -45,13 +38,4 @@ export function queuePull(jobs: Jobs, data: DocSyncHomeJob, options: Pick<Enqueu
     singletonKey: data.homeId,
     startAfter: new Date(Date.now() + 30_000),
   });
-}
-
-export async function registerDocSync(jobs: Jobs, deps: DocSyncDeps): Promise<void> {
-  await registerPush(jobs, deps);
-  await registerPull(jobs, deps);
-  await registerImport(jobs, deps);
-  await registerConflicts(jobs, deps);
-  await registerAssets(jobs, deps);
-  await registerExtracts(jobs, deps);
 }
