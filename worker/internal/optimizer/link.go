@@ -10,9 +10,32 @@ import (
 	"time"
 )
 
-// Link đặt hive-worker ở LinkPath trỏ tới src (rỗng là binary đang chạy). Unix dùng symlink; Windows dùng bản sao vì
-// tạo symlink cần quyền quản trị hoặc Developer Mode. Trả đường dẫn đã đặt.
-func (o *Optimizer) Link(src string) (string, error) {
+// Link dùng symlink trên Unix và bản sao trên Windows vì symlink cần quyền quản trị hoặc Developer Mode.
+// hiveSrc có thể rỗng hoặc chưa tồn tại để bundle cũ vẫn đặt được hive-worker.
+func (o *Optimizer) Link(src, hiveSrc string) (string, error) {
+	dest, err := linkBinary(src, o.LinkPath())
+	if err != nil {
+		return "", err
+	}
+	if hiveSrc == "" {
+		return dest, nil
+	}
+	if _, err := os.Stat(hiveSrc); os.IsNotExist(err) {
+		return dest, nil
+	} else if err != nil {
+		return "", err
+	}
+	name := "hive"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if _, err := linkBinary(hiveSrc, filepath.Join(filepath.Dir(dest), name)); err != nil {
+		return "", fmt.Errorf("không đặt được liên kết hive: %w", err)
+	}
+	return dest, nil
+}
+
+func linkBinary(src, dest string) (string, error) {
 	if src == "" {
 		exe, err := os.Executable()
 		if err != nil {
@@ -27,7 +50,6 @@ func (o *Optimizer) Link(src string) (string, error) {
 	if real, err := filepath.EvalSymlinks(src); err == nil {
 		src = real
 	}
-	dest := o.LinkPath()
 	// Lệnh link chạy từ chính liên kết thì src đã là đích: tạo lại sẽ thành liên kết vòng.
 	if samePath(src, dest) {
 		return dest, nil
