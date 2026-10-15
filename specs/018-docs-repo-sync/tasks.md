@@ -375,7 +375,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 4: trích nội dung và giao diện (song song, sau Đợt 3)
 
-- [ ] **T017 [P] [US6] [nặng] · 3 ngày — Trích nội dung và duyệt bản trích**
+- [x] **T017 [P] [US6] [nặng] · 3 ngày — Trích nội dung và duyệt bản trích**
   - **Phụ thuộc**: T007, T009, T012 (nguồn job trích).
   - **Goal**: US6, FR-033…FR-035, FR-039, plan.md mục 9, research.md mục 3.5.
     - `extract/worker.ts` chạy trong `worker_threads` (bộ nhớ 512 MB, 60 giây); `docx.ts` (mammoth + turndown),

@@ -35,7 +35,13 @@ import {
 import { type ChatApiDeps, chatRouter, handleSlackWebhook, handleTelegramWebhook } from "./modules/chat/index.ts";
 import { type CodeRunPort, codeReviewsRouter } from "./modules/codereview/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
-import { docsyncRouter, handleAssetDownload, handleAssetUpload, handleDocsWebhook } from "./modules/docsync/index.ts";
+import {
+  registerMcpTools as docsyncMcpTools,
+  docsyncRouter,
+  handleAssetDownload,
+  handleAssetUpload,
+  handleDocsWebhook,
+} from "./modules/docsync/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
@@ -153,6 +159,7 @@ export function createApp({
   provideLinkTarget("chat_thread", createThreadLinkTarget());
   artifactsMcpTools(registry, { pool, jobs, publicUrl });
   sdlcMcpTools(registry);
+  docsyncMcpTools(registry);
   const terminal = {
     enabled: config.remoteTerminal ?? false,
     publicUrl,
