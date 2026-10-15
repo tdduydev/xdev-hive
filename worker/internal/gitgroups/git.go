@@ -14,9 +14,10 @@ import (
 // Git chạy git của máy cho một kết nối. Token chỉ đi qua askpass, không nằm trong URL, tham số hay cấu hình repo.
 type Git struct {
 	// Askpass là đường dẫn chính hive-worker; rỗng thì git không hỏi được mật khẩu (repo công khai, SSH).
-	Askpass string
-	Kind    string
-	Token   string
+	Askpass           string
+	Kind              string
+	Token             string
+	UseGitCredentials bool
 }
 
 // secretEnv là biến môi trường không được lọt sang git và các tiến trình con của nó.
@@ -33,6 +34,9 @@ func (g Git) env(host string) []string {
 				skip = true
 			}
 		}
+		if g.UseGitCredentials && (strings.EqualFold(name, "GIT_ASKPASS") || strings.EqualFold(name, "SSH_ASKPASS")) {
+			skip = true
+		}
 		if !skip {
 			out = append(out, kv)
 		}
@@ -40,7 +44,7 @@ func (g Git) env(host string) []string {
 	// Không có terminal nào để hỏi: thiếu quyền thì git báo lỗi ngay thay vì treo chờ nhập.
 	// GIT_OPTIONAL_LOCKS=0: đọc trạng thái không giữ khoá index, khỏi tranh với IDE đang mở repo.
 	out = append(out, "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "LC_ALL=C", "GIT_OPTIONAL_LOCKS=0")
-	if g.Askpass != "" && g.Token != "" && host != "" {
+	if !g.UseGitCredentials && g.Askpass != "" && g.Token != "" && host != "" {
 		out = append(out,
 			"GIT_ASKPASS="+g.Askpass,
 			AskpassEnv+"=1",
@@ -64,6 +68,9 @@ func (e *GitError) Error() string { return e.Msg }
 func (g Git) run(ctx context.Context, dir, host string, args ...string) (string, error) {
 	// credential.helper rỗng: không đọc credential đã lưu của người dùng và không ghi token của app vào đó.
 	full := append([]string{"-c", "credential.helper=", "-c", "core.askPass="}, args...)
+	if g.UseGitCredentials {
+		full = append([]string{"-c", "core.askPass="}, args...)
+	}
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
 	cmd.Env = g.env(host)
@@ -82,6 +89,10 @@ func (g Git) run(ctx context.Context, dir, host string, args ...string) (string,
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) {
 			return "", &GitError{Msg: "không chạy được git của máy: " + err.Error()}
+		}
+		// Helper có thể tự ghi secret vào stderr; không chuyển đầu ra đó tới UI hay log.
+		if g.UseGitCredentials {
+			return "", &GitError{Msg: "Git của máy không hoàn tất thao tác; kiểm tra đăng nhập Git và quyền truy cập repo."}
 		}
 		return stdout.String(), &GitError{Msg: lastLine(g.redact(stderr.String()), "git "+args[0]+" lỗi")}
 	}

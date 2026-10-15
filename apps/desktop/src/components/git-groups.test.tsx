@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GitGroupsSection } from "@/components/git-groups.tsx";
@@ -50,7 +50,14 @@ interface Call {
 let seq = 0;
 
 /** Tauri giả: sidecar gitgroups giữ cấu hình trong bộ nhớ; `emit` phát sự kiện như Rust. */
-function fakeApp(opts: { hosts?: GitHost[]; groups?: GitGroup[]; hub?: Record<string, unknown> }) {
+function fakeApp(opts: {
+  hosts?: GitHost[];
+  groups?: GitGroup[];
+  hub?: Record<string, unknown>;
+  gitUser?: string;
+  gitFailure?: string;
+  discovered?: { kind: "gitlab" | "github"; url: string }[];
+}) {
   const calls: Call[] = [];
   const job = `git-${++seq}`;
   let hosts = [...(opts.hosts ?? [])];
@@ -58,14 +65,22 @@ function fakeApp(opts: { hosts?: GitHost[]; groups?: GitGroup[]; hub?: Record<st
   const view = (extra: Partial<GitGroups> = {}): GitGroups => ({ path: "/x/gitgroups.json", hosts, groups, ...extra });
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     git_groups: () => view(),
+    git_host_probe: (a) => {
+      if (opts.gitFailure) throw opts.gitFailure;
+      if (!opts.gitUser || (a?.url && a.url !== "https://git.test"))
+        throw "Không tìm thấy đăng nhập Git cho máy chủ này.";
+      return { username: opts.gitUser };
+    },
+    git_host_discover: () => opts.discovered ?? [],
     git_host_add: (a) => {
-      if (a?.token !== "glpat-ok") throw "Token không dùng được với https://gitlab.com (401)";
+      if (a?.authMode !== "git" && a?.token !== "glpat-ok") throw "Token không dùng được với https://gitlab.com (401)";
       const h: GitHost = {
         id: "bbbbbbbbbbbb",
         kind: a.kind as "gitlab",
         url: String(a.url) || "https://gitlab.com",
         name: String(a.name) || "gitlab.com",
-        username: "ha",
+        username: opts.gitUser ?? "ha",
+        authMode: a.authMode as "git" | "token",
       };
       hosts = [...hosts, h];
       return view({ host: h });
@@ -159,8 +174,85 @@ describe("GitGroupsSection", () => {
     expect(await screen.findByText("gitlab.com")).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     const add = calls.filter((c) => c.command === "git_host_add");
-    expect(add.at(-1)?.args).toEqual({ kind: "gitlab", url: "", name: "", token: "glpat-ok" });
+    expect(add.at(-1)?.args).toEqual({ kind: "gitlab", url: "", name: "", token: "glpat-ok", authMode: "token" });
     expect(calls.some((c) => c.command === "hub_rpc")).toBe(false);
+  });
+
+  it("mặc định dùng đăng nhập Git đã kiểm tra, hiển thị tài khoản và không gửi token", async () => {
+    const { calls } = fakeApp({ gitUser: "duy" });
+    renderSection();
+    await userEvent.click(await screen.findByRole("button", { name: "Thêm kết nối" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("Tài khoản Git: duy")).toBeTruthy();
+    expect(within(dialog).getByLabelText<HTMLSelectElement>("Cách đăng nhập").value).toBe("git");
+    expect(within(dialog).queryByLabelText("Personal access token")).toBeNull();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.find((c) => c.command === "git_host_add")?.args).toEqual({
+      kind: "gitlab",
+      url: "",
+      name: "",
+      token: "",
+      authMode: "git",
+    });
+  });
+
+  it("cho phép chuyển sang PAT và không dùng tài khoản dò của máy chủ cũ", async () => {
+    fakeApp({ gitUser: "duy" });
+    renderSection();
+    await userEvent.click(await screen.findByRole("button", { name: "Thêm kết nối" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Tài khoản Git: duy");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Cách đăng nhập"), "token");
+    expect(within(dialog).getByLabelText("Personal access token")).toBeTruthy();
+    await userEvent.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "https://other.test");
+    expect(within(dialog).queryByText("Tài khoản Git: duy")).toBeNull();
+    await userEvent.selectOptions(within(dialog).getByLabelText("Cách đăng nhập"), "git");
+    expect(await within(dialog).findByText(/Không tìm thấy đăng nhập Git/)).toBeTruthy();
+  });
+
+  it("thêm kết nối một chạm từ host được phát hiện trên máy", async () => {
+    const { calls } = fakeApp({ gitUser: "duy", discovered: [{ kind: "gitlab", url: "https://git.test" }] });
+    renderSection();
+    await userEvent.click(await screen.findByRole("button", { name: "Thêm kết nối" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(await within(dialog).findByRole("button", { name: "https://git.test" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.find((c) => c.command === "git_host_add")?.args).toEqual({
+      kind: "gitlab",
+      url: "https://git.test",
+      name: "",
+      token: "",
+      authMode: "git",
+    });
+  });
+
+  it("hiện lý do API từ chối mật khẩu thường và gợi ý quyền PAT", async () => {
+    fakeApp({ gitFailure: "Đăng nhập Git không được API chấp nhận. Hãy tạo PAT có read_api và read_repository." });
+    renderSection();
+    await userEvent.click(await screen.findByRole("button", { name: "Thêm kết nối" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText(/API chấp nhận.*read_api/)).toBeTruthy();
+    expect(within(dialog).getByLabelText("Personal access token")).toBeTruthy();
+  });
+
+  it("dò và thêm đăng nhập Git cho GitHub", async () => {
+    const { calls } = fakeApp({ gitUser: "duy" });
+    renderSection();
+    await userEvent.click(await screen.findByRole("button", { name: "Thêm kết nối" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Loại"), "github");
+    await waitFor(() =>
+      expect(calls.some((c) => c.command === "git_host_probe" && c.args?.kind === "github")).toBe(true),
+    );
+    await within(dialog).findByText("Tài khoản Git: duy");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.find((c) => c.command === "git_host_add")?.args).toMatchObject({
+      kind: "github",
+      token: "",
+      authMode: "git",
+    });
   });
 
   it("đã đăng nhập: điền sẵn từ kết nối Git của tổ chức", async () => {
