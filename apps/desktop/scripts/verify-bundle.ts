@@ -1,4 +1,4 @@
-// Kiểm gói app sau `tauri build` (spec 008 T025): sidecar hive-worker có trong gói, chạy được, đúng phiên bản; trên
+// Kiểm gói app sau `tauri build` (spec 008 T025): sidecar hive-worker và hive có trong gói, chạy được, đúng phiên bản; trên
 // macOS phiên bản của app khớp. Dùng: node scripts/verify-bundle.ts [đường dẫn .app hoặc thư mục target/release]
 // [--version X.Y.Z]. Không đối số thì tìm trong src-tauri/target/release.
 import { execFileSync } from "node:child_process";
@@ -31,17 +31,36 @@ function binDir(): string {
 }
 
 const dir = binDir();
-const sidecar = join(dir, `hive-worker${exe}`);
-if (!existsSync(sidecar)) fail(`thiếu sidecar ${sidecar}`);
-try {
-  accessSync(sidecar, constants.X_OK);
-} catch {
-  fail(`sidecar không chạy được: ${sidecar}`);
+
+/** Kiểm một sidecar có trong gói, chạy được và trả về dòng đầu của `version`. */
+function check(name: string): { path: string; version: string } {
+  const path = join(dir, `${name}${exe}`);
+  if (!existsSync(path)) fail(`thiếu sidecar ${path}`);
+  try {
+    accessSync(path, constants.X_OK);
+  } catch {
+    fail(`sidecar không chạy được: ${path}`);
+  }
+  // `hive version` in "hive <phiên bản>" ở dòng đầu rồi thoát khác 0 khi worker chưa chạy: lấy stdout cả khi đó.
+  let out: string;
+  try {
+    out = execFileSync(path, ["version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (error) {
+    const stdout = (error as { stdout?: string }).stdout;
+    if (name !== "hive" || !stdout) fail(`${name} version thất bại: ${(error as Error).message}`);
+    out = stdout;
+  }
+  const version = (out.trim().split("\n")[0] ?? "").trim().split(/\s+/).pop() ?? "";
+  return { path, version };
 }
-const workerVersion = execFileSync(sidecar, ["version"], { encoding: "utf8" }).trim();
+
+const worker = check("hive-worker");
+const hive = check("hive");
+const workerVersion = worker.version;
 // Bản thử dựng từ main (0.0.0) giữ worker 0.0.0-dev; bản phát hành thì worker cùng số với app.
-if (expected && expected !== "0.0.0" && workerVersion !== expected) {
-  fail(`sidecar báo phiên bản ${workerVersion}, cần ${expected}`);
+if (expected && expected !== "0.0.0") {
+  if (workerVersion !== expected) fail(`sidecar báo phiên bản ${workerVersion}, cần ${expected}`);
+  if (hive.version !== expected) fail(`hive báo phiên bản ${hive.version}, cần ${expected}`);
 }
 if (dir.endsWith(join("Contents", "MacOS"))) {
   const plist = join(dir, "..", "Info.plist");
@@ -51,4 +70,5 @@ if (dir.endsWith(join("Contents", "MacOS"))) {
   if (expected && appVersion !== expected) fail(`app báo phiên bản ${appVersion}, cần ${expected}`);
   console.log(`App ${appVersion}`);
 }
-console.log(`Sidecar ${workerVersion}: ${sidecar}`);
+console.log(`Sidecar ${workerVersion}: ${worker.path}`);
+console.log(`hive ${hive.version}: ${hive.path}`);

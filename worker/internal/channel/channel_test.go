@@ -352,6 +352,7 @@ func (f *fakeTerm) Resize(r terminal.ResizeRequest)             { f.record("resi
 func (f *fakeTerm) Disable(r terminal.DisableRequest)           { f.record("disable", r) }
 func (f *fakeTerm) Pair(r terminal.PairRequest)                 { f.record("pair", r) }
 func (f *fakeTerm) DeviceRevoke(r terminal.DeviceRevokeRequest) { f.record("deviceRevoke", r) }
+func (f *fakeTerm) CloseSession(r terminal.CloseRequest)        { f.record("closeSession", r) }
 
 // termHub là hub giả: gửi welcome theo ý test rồi chuyển mọi gói worker gửi lên vào msgs. Chỉ phục vụ kết nối đầu:
 // worker nối lại sau khi test ngắt (có khi lúc test đã xong) thì bị đóng ngay, không gọi t.Fatal ngoài test.

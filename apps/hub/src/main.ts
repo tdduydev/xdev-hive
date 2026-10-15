@@ -83,7 +83,7 @@ import {
 } from "./modules/sdlc/index.ts";
 import { registerSkillLearningWorker, skillLearningPrQueue, skillLearningQueue } from "./modules/skilllearn/index.ts";
 import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./modules/tenancy/index.ts";
-import { attachTerminalGateway, createTerminalHandlers } from "./modules/terminal/index.ts";
+import { attachTerminalGateway, createTerminalHandlers, withRemoteLive } from "./modules/terminal/index.ts";
 
 const config = loadConfig();
 const roles = config.roles ?? ["api", "jobs"];
@@ -334,8 +334,12 @@ if (roles.includes("api")) {
       offlineNotifySec: config.machineOfflineNotifySec,
     });
     // Terminal Leader chạy cùng tiến trình với cổng worker: gói term_* chỉ đi được qua kết nối WSS tiến trình này giữ.
-    registerTerminalHandlers(createTerminalHandlers(pool));
-    attachTerminalGateway(server as Server, { pool, publicUrl: config.publicUrl });
+    registerTerminalHandlers(withRemoteLive(pool, createTerminalHandlers(pool)));
+    attachTerminalGateway(server as Server, {
+      pool,
+      publicUrl: config.publicUrl,
+      remoteEnabled: config.remoteTerminal ?? false,
+    });
   }
 }
 

@@ -39,6 +39,11 @@ func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remot
 	}
 	recorder := &terminal.Recorder{Dir: recordDir, Logger: slog.Default(), Remote: remote}
 	local := &terminal.Local{Accounts: pool, Commands: commands, Logger: slog.Default(), Recorder: recorder, Remote: remote}
+	if remote != nil {
+		ctl := &terminal.Controller{Local: local, Remote: remote, Recorder: recorder, Logger: slog.Default(),
+			Verifier: &remoteauth.Verifier{Devices: remote.Store, TOTP: remote.TOTP}}
+		recorder.Controller, local.Controller, remote.Controller = ctl, ctl, ctl
+	}
 	// Server không theo ctx của worker: lúc tắt phải báo các client đang gắn rằng phiên đã đóng trước khi ngắt kết nối.
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
