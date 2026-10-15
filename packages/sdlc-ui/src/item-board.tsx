@@ -17,6 +17,8 @@ export type BoardView = "board" | "list";
 export interface ItemBoardProps {
   /** Lọc dự án lúc mở (đi từ trang dự án). */
   initialProjectId?: string | undefined;
+  /** Lọc chế độ lúc mở (đi từ màn Chỉ số). */
+  initialModeRef?: string | undefined;
   initialView?: BoardView | undefined;
 }
 
@@ -26,13 +28,13 @@ const personKey = (item: SdlcItemSummary) => item.owner.userId;
  * Bảng hạng mục (AppSdlcBoard.dc.html): bảy cột theo loại giai đoạn chuẩn, lọc dự án khớp cả dự án tham gia (hub lọc),
  * lọc chế độ (hub lọc) và người (lọc tại chỗ vì hub không có tham số này).
  */
-export function ItemBoard({ initialProjectId, initialView = "board" }: ItemBoardProps) {
+export function ItemBoard({ initialProjectId, initialModeRef, initialView = "board" }: ItemBoardProps) {
   const { api, can, link, errorMessage } = useSdlcEnv();
   const t = useText();
   const ids = useId();
   const [view, setView] = useState<BoardView>(initialView);
   const [projectId, setProjectId] = useState(initialProjectId ?? "");
-  const [modeRef, setModeRef] = useState("");
+  const [modeRef, setModeRef] = useState(initialModeRef ?? "");
   const [person, setPerson] = useState("");
   const [collapsed, setCollapsed] = useState<Partial<Record<SdlcPhaseKind, boolean>>>({});
 

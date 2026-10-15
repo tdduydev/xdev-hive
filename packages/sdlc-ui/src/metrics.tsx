@@ -140,7 +140,7 @@ function LeadTime({ data }: { data: SdlcMetrics }) {
  * trả lại, câu hỏi, độ phủ, vòng converge, vòng review, chi phí agent và tự duyệt. Hub tính sẵn; màn chỉ lọc và vẽ.
  */
 export function Metrics() {
-  const { api, lang, errorMessage } = useSdlcEnv();
+  const { api, lang, errorMessage, link } = useSdlcEnv();
   const t = useText();
   const m = t.metrics;
   const ids = useId();
@@ -217,7 +217,18 @@ export function Metrics() {
     ] as const;
     body = (
       <>
-        <p className="text-sm text-muted-foreground">{m.items(d.items)}</p>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p className="text-sm text-muted-foreground">{m.items(d.items)}</p>
+          {/* Contract chưa cho lọc danh sách hạng mục theo thời gian, nên chỉ mang dự án và chế độ sang bảng và nói rõ. */}
+          <p className="flex flex-col items-end gap-0.5 text-right max-sm:items-start max-sm:text-left">
+            {link({
+              to: { kind: "board", ...(projectId ? { projectId } : {}), ...(modeRef ? { modeRef } : {}) },
+              className: "text-sm font-medium text-primary hover:text-primary/90",
+              children: m.openBoard,
+            })}
+            <span className="text-xs text-muted-foreground">{m.openBoardNote}</span>
+          </p>
+        </div>
         <LeadTime data={d} />
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {cards.map(([label, value, help]) => (

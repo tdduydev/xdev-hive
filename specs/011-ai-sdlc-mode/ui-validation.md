@@ -40,8 +40,8 @@ cấu hình chế độ đều có sáng/tối ở 360 px; thêm ảnh cài đ�
 
 ## Phần còn chờ
 
-- T054: hàng số liệu trong chính sách tổ chức chưa có contract; không tạo số liệu giả.
-- T082: chỉ số tổng hợp chưa có API; mục Tiến độ desktop dùng danh sách giai đoạn/độ phủ hiện có.
+- T082: hub chưa có `metrics.ts`; UI Chỉ số và hàng số liệu chính sách (SPEC11W5UI, SPEC11W6UI) chỉ kiểm với hub giả.
+  Mục Tiến độ desktop dùng danh sách giai đoạn/độ phủ hiện có.
 - T091: đã đối chiếu phần UI và lưu ảnh. Chưa chạy `/speckit-analyze` toàn bộ đặc tả; giữ task mở để đợt tích hợp
   kiểm tiếp cả phần hub/worker và những mâu thuẫn ngoài phạm vi UI.
 - Quyền trên web vẫn theo tổ chức như phiên bản trước; hub phải kiểm lại theo đội/dự án. Kiểm UI không thay cho
@@ -89,3 +89,24 @@ Kiểm:
 
 Giới hạn: hub chưa có `metrics.ts` và `converge.ts`, nên UI chỉ kiểm với hub giả theo hợp đồng. Hình dạng
 `step.result.findings` là giả định theo `sdlc_report` loại `findings`; cần kiểm lại khi hub ghi kết quả bước.
+
+## SPEC11W6UI: Số liệu tự duyệt trong chính sách và mở bảng từ Chỉ số
+
+| Yêu cầu | Bằng chứng |
+|---|---|
+| T054 (hàng số liệu Policies.dc.html) | `/admin/policies` mục AI SDLC: tỉ lệ tự duyệt và thu hồi cao nhất theo chế độ trong 30 ngày, số dự án bật tự duyệt trên số dự án bật AI SDLC, liên kết tới `/sdlc/metrics`. Hub từ chối hoặc lỗi `sdlc.metrics` thì ẩn hàng, form vẫn dùng được. Hợp đồng chỉ trả tỉ lệ, nên không có ô số cổng hay điểm trung bình như bản thiết kế. |
+| US12 AS3, T082 (phần UI) | Màn Chỉ số có "Mở bảng hạng mục với bộ lọc này", mang dự án và chế độ sang bảng: web `/sdlc?project=…&mode=…`, app `#/sdlc/loc?project=…&mode=…`. Bảng không lọc theo khoảng ngày vì `sdlc.items.list` chưa có lọc ngày; màn nói rõ điều này. |
+| SC-012 | 4 ảnh 360 px sáng/tối trong [screenshots/spec11w6ui](../../apps/web/e2e/screenshots/spec11w6ui): Chỉ số có liên kết mới, mục AI SDLC của chính sách có hàng số liệu. Không tràn ngang. |
+
+Kiểm:
+
+- `pnpm biome check --write .`: thành công; 18 cảnh báo và 2 thông tin có sẵn.
+- `pnpm --filter @xdev-hive/sdlc-ui typecheck`, `… web typecheck`, `… desktop typecheck` (chạy lần lượt): thành công.
+- `pnpm deps`: không có vi phạm (1.474 module, 6.431 phụ thuộc).
+- Vitest: sdlc-ui 12 file / 72 test, web 36 file / 591 test, desktop 31 file / 243 test, đều qua.
+- `HIVE_WEB_E2E_PORT=4392 HIVE_WEB_E2E_WORKERS=2 pnpm --filter @xdev-hive/web exec playwright test e2e/sdlc.spec.ts
+  e2e/sdlc-mvp.spec.ts e2e/sdlc-multi.spec.ts e2e/sdlc-metrics.spec.ts e2e/sdlc-converge.spec.ts e2e/policies.spec.ts`:
+  41 bài qua.
+
+Giới hạn: số liệu chỉ kiểm với hub giả theo hợp đồng `sdlc.metrics`. Muốn liên kết từ Chỉ số mở đúng các hạng mục góp vào
+số liệu thì cần thêm lọc ngày vào `sdlc.items.list`.

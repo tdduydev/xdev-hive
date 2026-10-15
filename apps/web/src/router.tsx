@@ -26,6 +26,7 @@ import {
   validateProposalsSearch,
   validateReviewsSearch,
   validateRoleSearch,
+  validateSdlcBoardSearch,
   validateSkillSearch,
   validateSkillsSearch,
   validateTasksSearch,
@@ -398,7 +399,12 @@ const roleRoute = createRoute({
 const sdlcRoutes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/sdlc-modes", component: SdlcModesPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/fleet", component: SdlcFleetPage }),
-  createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc", component: SdlcBoardPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/sdlc",
+    validateSearch: validateSdlcBoardSearch,
+    component: SdlcBoardPage,
+  }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/new", component: SdlcNewPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/questions", component: SdlcQuestionsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/metrics", component: SdlcMetricsPage }),
