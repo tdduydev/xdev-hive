@@ -173,7 +173,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/package.json`, `pnpm-lock.yaml`
   - **Kiểm**: hub typecheck, `rls.db.test.ts`, test upgrade migration từ `0072`, `pnpm deps`.
 
-- [ ] **T006 [P] [—] [nặng] · 3 ngày — Mở rộng `GitProvider` và Git LFS**
+- [x] **T006 [P] [—] [nặng] · 3 ngày — Mở rộng `GitProvider` và Git LFS**
   - **Phụ thuộc**: T002 (dùng kết quả spike; chưa có thì làm theo research.md và ghi chỗ chưa chắc).
   - **Goal**: research.md mục 2, plan.md mục 8.
     - `types.ts`:
