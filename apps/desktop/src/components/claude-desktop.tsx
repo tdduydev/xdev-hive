@@ -112,7 +112,7 @@ const text: Dict<{
     confirmSwitch: "Khởi động lại và chuyển",
     forceTitle: "Claude Desktop chưa thoát",
     forceBody:
-      "Claude Desktop không tự thoát sau 20 giây (có thể đang hỏi lại, đang bận, hay chỉ thu xuống khay hệ thống). Chưa có gì bị đổi. Buộc thoát có thể mất việc chưa lưu trong Claude Desktop.",
+      "Claude Desktop chưa tự thoát (có thể đang hỏi lại, đang bận, hay chỉ thu xuống khay hệ thống). Chưa có gì bị đổi. Buộc thoát có thể mất việc chưa lưu trong Claude Desktop.",
     force: "Buộc thoát và chuyển",
     cancel: "Huỷ",
     switched: (plan) => `Đã chuyển Claude Desktop sang ${plan}.`,
@@ -190,7 +190,7 @@ const text: Dict<{
     confirmSwitch: "Restart and switch",
     forceTitle: "Claude Desktop did not quit",
     forceBody:
-      "Claude Desktop did not quit within 20 seconds (it may be asking something, busy, or only minimized to the system tray). Nothing was changed. Forcing it to quit may lose unsaved work in Claude Desktop.",
+      "Claude Desktop has not quit (it may be asking something, busy, or only minimized to the system tray). Nothing was changed. Forcing it to quit may lose unsaved work in Claude Desktop.",
     force: "Force quit and switch",
     cancel: "Cancel",
     switched: (plan) => `Claude Desktop is now on ${plan}.`,
@@ -308,18 +308,31 @@ function SwitchProgressLine({
   const t = useT(text);
   const [progress, setProgress] = useState(initial);
   const [cancelling, setCancelling] = useState(false);
+  // Giây đếm thêm tại chỗ từ lần đọc tiến độ gần nhất: lần hỏi chậm hay không trả lời thì bộ đếm vẫn chạy (0.2.17 đứng
+  // ở "8 giây" khiến người dùng tưởng app treo hẳn).
+  const [since, setSince] = useState(() => Date.now());
+  const [now, setNow] = useState(since);
   const gone = useRef(onGone);
   gone.current = onGone;
   useEffect(() => {
     let alive = true;
+    let asking = false;
     const h = setInterval(() => {
+      setNow(Date.now());
+      if (asking) return;
+      asking = true;
       void switchProgress()
         .then((p) => {
           if (!alive) return;
           setProgress(p);
+          setSince(Date.now());
+          setNow(Date.now());
           if (!p) gone.current?.();
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          asking = false;
+        });
     }, PROGRESS_POLL_MS);
     return () => {
       alive = false;
@@ -334,7 +347,12 @@ function SwitchProgressLine({
       <span className="min-w-48 flex-1">
         {stopping ? t.cancelling : t.steps[step]}
         {progress?.percent != null && ` ${progress.percent}%`}
-        {progress && <span className="text-muted-foreground"> · {t.elapsed(progress.elapsed)}</span>}
+        {progress && (
+          <span className="text-muted-foreground">
+            {" "}
+            · {t.elapsed(progress.elapsed + Math.max(0, Math.floor((now - since) / 1000)))}
+          </span>
+        )}
       </span>
       {progress?.percent != null && (
         <progress className="h-1.5 w-24" max={100} value={progress.percent} aria-label={t.steps[step]} />
