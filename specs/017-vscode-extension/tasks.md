@@ -270,7 +270,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     `apps/vscode/src/webview-host/allowlist/sdlc.ts` (+ test)
   - **Test**: `SdlcEnv.link` mở đúng màn; quyền ẩn nút theo `can`.
 
-- [ ] **T017 [P] [US8] [nặng] · 2,5 ngày — View Artifact và panel artifact cách ly**
+- [x] **T017 [P] [US8] [nặng] · 2,5 ngày — View Artifact và panel artifact cách ly**
   - **Phụ thuộc**: T013.
   - **Goal**: plan.md mục 8. Thư viện artifact tải về `globalStorage` có kiểm sha256; CSP ADR 0023; chỉ nhận thông điệp
     của `@xdev-hive/artifacts-runtime`; bộ đệm LRU 200 MiB.
