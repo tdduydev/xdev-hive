@@ -31,12 +31,15 @@
 //! Cùng người dùng, cùng hồ sơ nên bộ của gói này chép sang vẫn giải mã được, với điều kiện `Local State` giữ nguyên: nó
 //! thuộc phần dùng chung, không bao giờ bị ghi.
 
+mod backup;
+mod diagnose;
+mod job;
 mod mac;
 mod win;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, TryLockError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -45,6 +48,7 @@ use tauri::AppHandle;
 
 use crate::profiles::home_dir;
 use crate::sidecar_json;
+use job::{Ctl, Step};
 
 /// Hệ điều hành có Claude Desktop mà tính năng hỗ trợ. Mọi nhánh đều biên dịch trên mọi máy để test được cả hai bố cục.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -94,19 +98,19 @@ impl Os {
     /// Tiến trình Claude Desktop đang chạy; hồ sơ riêng kiểu cũ chỉ có trên macOS.
     fn running(self, home: &Path) -> Running {
         match self {
-            Os::Mac => mac::running(home),
+            Os::Mac => mac::running(home).unwrap_or_default(),
             Os::Windows => Running {
-                real: win::running(),
+                real: win::running().unwrap_or_default(),
                 legacy: HashMap::new(),
             },
         }
     }
 
     /// Thoát êm Claude Desktop; `force` (người dùng đã đồng ý) thì buộc thoát khi quá hạn. Trả false khi app vẫn chạy.
-    fn quit(self, home: &Path, force: bool) -> Result<bool, String> {
+    fn quit(self, home: &Path, force: bool, ctl: &Ctl) -> Result<bool, String> {
         match self {
-            Os::Mac => mac::quit(home, force),
-            Os::Windows => win::quit(force),
+            Os::Mac => mac::quit(home, force, ctl),
+            Os::Windows => win::quit(force, ctl),
         }
     }
 
@@ -138,21 +142,6 @@ pub(crate) fn still_running_text(en: bool) -> &'static str {
         (_, false) => "Claude Desktop chưa thoát. Thoát nó (Cmd+Q) rồi thử lại.",
     }
 }
-
-/// Thư mục Chromium tự dựng lại khi thiếu, và `claude-code` (bản Claude Code app tự tải, vài trăm MB, thiếu thì app tải
-/// lại): không chép vào bản sao lưu.
-const SKIP_IN_BACKUP: [&str; 10] = [
-    "Cache",
-    "Code Cache",
-    "GPUCache",
-    "DawnGraphiteCache",
-    "DawnWebGPUCache",
-    "GraphiteDawnCache",
-    "GPUPersistentCache",
-    "ShaderCache",
-    "GrShaderCache",
-    "claude-code",
-];
 
 /// File SQLite giữ phiên claude.ai, đường dẫn tương đối trong hồ sơ. Journal đi cùng: journal cũ nằm lại cạnh Cookies của
 /// tài khoản khác sẽ làm hỏng nó.
@@ -186,8 +175,19 @@ const WATCH_FULL: Duration = Duration::from_secs(300);
 
 const UNSUPPORTED: &str = "Chưa hỗ trợ chuyển tài khoản Claude Desktop trên hệ điều hành này (mới có cho macOS và Windows).";
 
-/// Một lần chuyển một lúc: hai lần chuyển chồng nhau sẽ cùng ghi hồ sơ thật.
+/// Một lần ghi hồ sơ thật một lúc (lần chuyển, đối chiếu đăng nhập). Lần chuyển panic giữa chừng làm khoá bị đầu độc:
+/// vẫn dùng tiếp, vì bản 0.2.16 coi khoá đầu độc là "đang chuyển" mãi tới khi thoát Hive. Việc "đang có lần chuyển" và
+/// Huỷ nằm ở `job`.
 static SWITCHING: Mutex<()> = Mutex::new(());
+
+/// Khoá ghi hồ sơ nếu đang rảnh.
+fn try_switching() -> Option<MutexGuard<'static, ()>> {
+    match SWITCHING.try_lock() {
+        Ok(g) => Some(g),
+        Err(TryLockError::Poisoned(p)) => Some(p.into_inner()),
+        Err(TryLockError::WouldBlock) => None,
+    }
+}
 
 pub(crate) fn profiles_root(home: &Path) -> PathBuf {
     home.join(".xdev-hive").join("claude-desktop")
@@ -753,31 +753,13 @@ fn reconcile(paths: &Paths, owners: &[Owner], live: bool) -> Result<bool, String
     Ok(settled)
 }
 
-/// Chép cả cây, symlink giữ nguyên là symlink (không đi theo ra ngoài hồ sơ), bỏ cache ở cấp đầu.
-fn copy_tree(from: &Path, to: &Path, top: bool) -> std::io::Result<()> {
-    create_private_dir(to)?;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if top && SKIP_IN_BACKUP.iter().any(|s| name == *s) {
-            continue;
-        }
-        let meta = std::fs::symlink_metadata(entry.path())?;
-        let dest = to.join(&name);
-        if meta.file_type().is_symlink() {
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(std::fs::read_link(entry.path())?, &dest)?;
-        } else if meta.is_dir() {
-            copy_tree(&entry.path(), &dest, false)?;
-        } else if meta.is_file() {
-            std::fs::copy(entry.path(), &dest)?;
-        }
-    }
-    Ok(())
-}
-
 /// `backup-20261015-132200` theo giờ UTC: tên sắp đúng thứ tự thời gian và không trùng khi sao lưu lại cùng ngày.
 fn backup_name(now: SystemTime) -> String {
+    format!("backup-{}", utc_stamp(now))
+}
+
+/// `20261015-132200`, giờ UTC.
+fn utc_stamp(now: SystemTime) -> String {
     let secs = now.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
     let (days, rest) = ((secs / 86_400) as i64, secs % 86_400);
     // Đổi số ngày từ 1970 ra ngày tháng năm (thuật toán civil_from_days của Howard Hinnant).
@@ -791,7 +773,7 @@ fn backup_name(now: SystemTime) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
     format!(
-        "backup-{y:04}{m:02}{d:02}-{:02}{:02}{:02}",
+        "{y:04}{m:02}{d:02}-{:02}{:02}{:02}",
         rest / 3600,
         rest % 3600 / 60,
         rest % 60
@@ -799,7 +781,12 @@ fn backup_name(now: SystemTime) -> String {
 }
 
 /// Sao lưu cả hồ sơ thật (trừ cache) một lần, trước lần ghi đầu tiên vào hồ sơ.
-fn ensure_backup(paths: &Paths, state: &mut State, now: SystemTime) -> Result<(), String> {
+fn ensure_backup(
+    paths: &Paths,
+    state: &mut State,
+    now: SystemTime,
+    ctl: &Ctl,
+) -> Result<(), String> {
     if state
         .backup
         .as_ref()
@@ -814,9 +801,18 @@ fn ensure_backup(paths: &Paths, state: &mut State, now: SystemTime) -> Result<()
     let dest = paths.root.join(&name);
     let tmp = tmp_of(&dest);
     remove_entry(&tmp).map_err(|e| e.to_string())?;
-    if let Err(e) = copy_tree(&paths.real, &tmp, true).and_then(|_| std::fs::rename(&tmp, &dest)) {
+    ctl.step(Step::BackingUp);
+    let copied = backup::copy(&paths.real, &tmp, paths.auth_files(), ctl).and_then(|_| {
+        retry_locked(|| std::fs::rename(&tmp, &dest))
+            .map_err(|e| format!("Không sao lưu được hồ sơ Claude Desktop: {e}"))
+    });
+    if let Err(e) = copied {
         let _ = remove_entry(&tmp);
-        return Err(format!("Không sao lưu được hồ sơ Claude Desktop: {e}"));
+        return Err(if backup::cancelled(&e) || e.starts_with("Sao lưu") {
+            e
+        } else {
+            format!("Không sao lưu được hồ sơ Claude Desktop: {e}")
+        });
     }
     state.backup = Some(name);
     write_state(paths, state)
@@ -824,13 +820,14 @@ fn ensure_backup(paths: &Paths, state: &mut State, now: SystemTime) -> Result<()
 
 /// Đổi tài khoản của hồ sơ thật sang gói `target` (None: về đăng nhập lúc chưa dùng tính năng này, lấy từ bản sao
 /// lưu). Claude Desktop phải đã thoát. Đăng nhập hiện tại lưu vào gói có tài khoản đó (`owners`), không mặc nhiên vào
-/// gói đang dùng.
+/// gói đang dùng. Huỷ được tới khi ghi xong trạng thái; huỷ sau khi đã nạp đăng nhập mới thì lấy lại đăng nhập cũ.
 fn swap_auth(
     paths: &Paths,
     state: &mut State,
     target: Option<&str>,
     owners: &[Owner],
     now: SystemTime,
+    ctl: &Ctl,
 ) -> Result<(), String> {
     let source = match target {
         Some(id) => paths.bundle(id)?,
@@ -841,7 +838,9 @@ fn swap_auth(
                 .ok_or("Chưa có bản sao lưu ban đầu để khôi phục.")?,
         ),
     };
-    ensure_backup(paths, state, now)?;
+    ensure_backup(paths, state, now, ctl)?;
+    ctl.check()?;
+    ctl.step(Step::Swapping);
     std::fs::create_dir_all(&paths.real)
         .map_err(|e| format!("Không tạo được hồ sơ Claude Desktop: {e}"))?;
     let files = paths.auth_files();
@@ -850,13 +849,72 @@ fn swap_auth(
     if let Some(id) = login_home(owners, account.as_deref(), state.active.as_deref()) {
         save_auth(&paths.real, &paths.bundle(&id)?, files)?;
     }
-    if let Err(e) = load_auth(&source, &paths.real, files) {
+    ctl.check()?;
+    if let Err(e) = load_auth(&source, &paths.real, files).and_then(|_| ctl.check()) {
         let _ = load_auth(&paths.previous(), &paths.real, files);
         return Err(e);
     }
     state.active = target.map(str::to_string);
     state.mismatch = None;
     write_state(paths, state)
+}
+
+const NOT_ACTIVE: &str =
+    "Gói này không phải gói đang dùng Claude Desktop; dùng Quên đăng nhập cho gói không dùng.";
+
+/// Đăng xuất Claude Desktop khỏi gói đang dùng `id`: xoá bộ xác thực đã lưu của gói và phần xác thực trong hồ sơ thật
+/// (Cookies, token, `lastKnownAccountUuid`), giữ mọi thứ khác. Claude Desktop phải đã thoát. Hồ sơ đang đăng nhập tài
+/// khoản của gói khác thì lưu cho gói đó trước. Huỷ được tới lúc xoá bộ của gói; ghi hồ sơ hỏng thì lấy lại đăng nhập cũ.
+fn sign_out_auth(
+    paths: &Paths,
+    state: &mut State,
+    id: &str,
+    owners: &[Owner],
+    now: SystemTime,
+    ctl: &Ctl,
+) -> Result<(), String> {
+    let bundle = paths.bundle(id)?;
+    if state.active.as_deref() != Some(id) {
+        return Err(NOT_ACTIVE.into());
+    }
+    ensure_backup(paths, state, now, ctl)?;
+    ctl.check()?;
+    ctl.step(Step::Swapping);
+    std::fs::create_dir_all(&paths.real)
+        .map_err(|e| format!("Không tạo được hồ sơ Claude Desktop: {e}"))?;
+    let files = paths.auth_files();
+    save_auth(&paths.real, &paths.previous(), files)?;
+    let account = account_of(paths, &paths.real);
+    if let Some(other) = login_home(owners, account.as_deref(), Some(id)).filter(|o| o != id) {
+        save_auth(&paths.real, &paths.bundle(&other)?, files)?;
+    }
+    ctl.check()?;
+    remove_entry(&bundle).map_err(|e| format!("Không xoá được đăng nhập đã lưu: {e}"))?;
+    // Bộ vừa xoá không còn nên nạp nó là gỡ phần xác thực khỏi hồ sơ.
+    if let Err(e) = load_auth(&bundle, &paths.real, files) {
+        let _ = load_auth(&paths.previous(), &paths.real, files);
+        return Err(e);
+    }
+    // `.previous` giữ đúng đăng nhập vừa bỏ: để lại thì `reconcile` dựng lại bộ của gói từ nó.
+    let _ = remove_entry(&paths.previous());
+    state.mismatch = None;
+    write_state(paths, state)
+}
+
+/// Quên đăng nhập đã lưu của gói không dùng `id`.
+fn forget_bundle(paths: &Paths, id: &str) -> Result<(), String> {
+    let bundle = paths.bundle(id)?;
+    if read_state(paths).active.as_deref() == Some(id) {
+        return Err("Gói này đang dùng Claude Desktop; dùng Đăng xuất Claude Desktop.".into());
+    }
+    let account = account_of(paths, &bundle);
+    remove_entry(&bundle).map_err(|e| format!("Không xoá được đăng nhập đã lưu: {e}"))?;
+    // Đăng nhập trước lần chuyển gần nhất là của gói này thì `reconcile` sẽ dựng lại bộ vừa quên từ `.previous`.
+    if account.is_some() && account_of(paths, &paths.previous()) == account {
+        remove_entry(&paths.previous())
+            .map_err(|e| format!("Không xoá được đăng nhập đã lưu: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Thư mục gói còn dạng hồ sơ riêng `--user-data-dir` của bản trước: có file Chromium nằm thẳng trong đó.
@@ -915,17 +973,22 @@ struct Running {
     legacy: HashMap<String, u32>,
 }
 
-/// Dò `pids` tới khi rỗng hay quá hạn.
-fn wait_gone(mut pids: impl FnMut() -> Vec<u32>, within: Duration) -> bool {
+/// Dò `pids` tới khi rỗng hay quá hạn; dò lỗi (None) không tính là đã thoát. Bấm Huỷ thì dừng ngay.
+fn wait_gone(
+    mut pids: impl FnMut() -> Option<Vec<u32>>,
+    within: Duration,
+    ctl: &Ctl,
+) -> Result<bool, String> {
     let until = Instant::now() + within;
     loop {
-        if pids().is_empty() {
-            return true;
+        if pids().is_some_and(|p| p.is_empty()) {
+            return Ok(true);
         }
-        if Instant::now() >= until {
-            return false;
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Ok(false);
         }
-        std::thread::sleep(Duration::from_millis(500));
+        ctl.sleep(left.min(Duration::from_millis(500)))?;
     }
 }
 
@@ -992,6 +1055,8 @@ pub(crate) struct ProfilesView {
     /// None khi Claude Desktop chưa đăng nhập (màn đăng nhập) hay chưa cài.
     signed_in: Option<SignedIn>,
     mismatch: Option<Mismatch>,
+    /// Lần chuyển đang chạy (cả từ khay), để cửa sổ mở sau vẫn thấy tiến độ và nút Huỷ.
+    switching: Option<job::Progress>,
     /// false: có đăng nhập chưa lưu được vì app đang ghi hồ sơ; trình theo dõi thử lại sớm.
     #[serde(skip)]
     settled: bool,
@@ -1051,6 +1116,7 @@ fn view(
         profiles,
         signed_in,
         mismatch: state.mismatch,
+        switching: job::progress(),
         settled: true,
     }
 }
@@ -1078,12 +1144,12 @@ pub(crate) async fn load(app: &AppHandle) -> Result<ProfilesView, String> {
         let owners = owners(&home, &plans);
         // Đang chuyển thì để lần sau: lần chuyển tự lưu đăng nhập và đang ghi hồ sơ thật.
         let settled = !SUPPORTED
-            || match SWITCHING.try_lock() {
-                Ok(_guard) => reconcile(&paths, &owners, pid.is_some()).unwrap_or_else(|e| {
+            || match try_switching() {
+                Some(_guard) => reconcile(&paths, &owners, pid.is_some()).unwrap_or_else(|e| {
                     eprintln!("Không gắn được đăng nhập Claude Desktop vào gói: {e}");
                     true
                 }),
-                Err(_) => false,
+                None => false,
             };
         ProfilesView {
             settled,
@@ -1146,15 +1212,16 @@ pub(crate) struct Switched {
 }
 
 /// Chuyển Claude Desktop sang gói `target` (None: khôi phục đăng nhập ban đầu): thoát app, đổi bộ xác thực, mở lại.
+/// Mọi bước có hạn và hỏi `ctl` để Huỷ được; đã thoát app thì luôn mở lại, kể cả khi lỗi hay huỷ.
 fn switch_blocking(
     home: &Path,
     target: Option<&str>,
     owners: &[Owner],
     force: bool,
+    ctl: &Ctl,
 ) -> Result<Switched, String> {
-    let _guard = SWITCHING
-        .try_lock()
-        .map_err(|_| "Đang chuyển Claude Desktop; chờ lần chuyển trước xong.".to_string())?;
+    // Chờ lượt đối chiếu đăng nhập của trình theo dõi (chỉ chép vài file) thay vì báo bận.
+    let _guard = job::lock(&SWITCHING);
     let os = CURRENT.ok_or(UNSUPPORTED)?;
     let app = os.find_app(home).ok_or(os.not_installed())?;
     let paths = Paths::current(home);
@@ -1169,6 +1236,7 @@ fn switch_blocking(
         && login_home(owners, account.as_deref(), target) != target.map(str::to_string);
     if target.is_some() && state.active.as_deref() == target && !foreign {
         if os.running(home).real.is_empty() {
+            ctl.step(Step::Launching);
             os.launch(&app)?;
         }
         return Ok(Switched {
@@ -1185,14 +1253,26 @@ fn switch_blocking(
     {
         return Err("Chưa có bản sao lưu ban đầu để khôi phục.".into());
     }
-    if !os.quit(home, force)? {
-        return Ok(Switched {
-            status: SwitchStatus::StillRunning,
-            needs_login,
-        });
+    ctl.check()?;
+    match os.quit(home, force, ctl) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(Switched {
+                status: SwitchStatus::StillRunning,
+                needs_login,
+            });
+        }
+        // Huỷ hay lỗi giữa lúc thoát: app có thể đã tắt một phần; tắt hẳn rồi thì mở lại như trước khi bấm.
+        Err(e) => {
+            if os.running(home).real.is_empty() {
+                let _ = os.launch(&app);
+            }
+            return Err(e);
+        }
     }
-    // Đổi hỏng thì hồ sơ đã về đăng nhập cũ (swap_auth tự lấy lại): vẫn mở lại app như trước khi bấm.
-    let swapped = swap_auth(&paths, &mut state, target, owners, SystemTime::now());
+    // Đổi hỏng hay bị huỷ thì hồ sơ đã về đăng nhập cũ (swap_auth tự lấy lại): vẫn mở lại app như trước khi bấm.
+    let swapped = swap_auth(&paths, &mut state, target, owners, SystemTime::now(), ctl);
+    ctl.step(Step::Launching);
     os.launch(&app)?;
     swapped?;
     Ok(Switched {
@@ -1201,25 +1281,99 @@ fn switch_blocking(
     })
 }
 
+/// Đăng xuất Claude Desktop khỏi gói đang dùng: thoát app, gỡ đăng nhập, mở lại ở màn đăng nhập. Như lần chuyển, mọi
+/// bước có hạn, Huỷ được, và đã thoát app thì luôn mở lại.
+fn sign_out_blocking(
+    home: &Path,
+    id: &str,
+    owners: &[Owner],
+    force: bool,
+    ctl: &Ctl,
+) -> Result<Switched, String> {
+    let _guard = job::lock(&SWITCHING);
+    let os = CURRENT.ok_or(UNSUPPORTED)?;
+    let app = os.find_app(home).ok_or(os.not_installed())?;
+    let paths = Paths::current(home);
+    let mut state = read_state(&paths);
+    // Kiểm trước khi thoát app, như lần chuyển.
+    if state.active.as_deref() != Some(id) {
+        return Err(NOT_ACTIVE.into());
+    }
+    ctl.check()?;
+    match os.quit(home, force, ctl) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(Switched {
+                status: SwitchStatus::StillRunning,
+                needs_login: true,
+            });
+        }
+        Err(e) => {
+            if os.running(home).real.is_empty() {
+                let _ = os.launch(&app);
+            }
+            return Err(e);
+        }
+    }
+    let done = sign_out_auth(&paths, &mut state, id, owners, SystemTime::now(), ctl);
+    ctl.step(Step::Launching);
+    os.launch(&app)?;
+    done?;
+    Ok(Switched {
+        status: SwitchStatus::Switched,
+        needs_login: true,
+    })
+}
+
+/// Chạy một lần chuyển trên luồng chặn, giữ chỗ "đang chuyển" tới khi xong. Lỗi được ghi lại cho chẩn đoán.
+async fn run_switch(
+    busy: job::Busy,
+    home: PathBuf,
+    target: Option<String>,
+    owners: Vec<Owner>,
+    force: bool,
+) -> Result<Switched, String> {
+    run_job(busy, move |ctl| {
+        switch_blocking(&home, target.as_deref(), &owners, force, ctl)
+    })
+    .await
+}
+
+/// Chạy `work` (chuyển, khôi phục, đăng xuất) trên luồng chặn, giữ chỗ "đang chuyển" tới khi xong.
+async fn run_job(
+    busy: job::Busy,
+    work: impl FnOnce(&Ctl) -> Result<Switched, String> + Send + 'static,
+) -> Result<Switched, String> {
+    let done = tauri::async_runtime::spawn_blocking(move || {
+        let _busy = busy;
+        work(&Ctl::job())
+    })
+    .await
+    .map_err(|e| format!("Lần chuyển Claude Desktop dừng giữa chừng: {e}"))
+    .and_then(|r| r);
+    if let Err(e) = &done {
+        job::record_error(e);
+    }
+    done
+}
+
 /// Chuyển Claude Desktop sang một gói Claude. Cửa sổ chỉ gửi id gói; đường dẫn do Rust dựng.
 pub(crate) async fn switch(app: &AppHandle, id: &str, force: bool) -> Result<Switched, String> {
     if !SUPPORTED {
         return Err(UNSUPPORTED.into());
     }
     let id = id.trim().to_string();
+    // Giữ chỗ trước khi hỏi worker: bấm lần hai trong lúc đó cũng thấy "đang chuyển".
+    let busy = job::begin(Some(&id))?;
     let plans = claude_plans(app).await?;
     if !plans.iter().any(|p| p.id == id && p.cli == "claude") {
         return Err(format!("Không có gói Claude {id}."));
     }
     let home = need_home()?;
     let owners = owners(&home, &plans);
-    let done = tauri::async_runtime::spawn_blocking(move || {
-        switch_blocking(&home, Some(&id), &owners, force)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    let done = run_switch(busy, home, Some(id), owners, force).await;
     let _ = load(app).await;
-    Ok(done)
+    done
 }
 
 #[tauri::command]
@@ -1237,15 +1391,62 @@ pub async fn restore_claude_desktop(app: AppHandle, force: bool) -> Result<Switc
     if !SUPPORTED {
         return Err(UNSUPPORTED.into());
     }
+    let busy = job::begin(None)?;
     let home = need_home()?;
     // Không đọc được danh sách gói thì vẫn khôi phục được: đăng nhập hiện tại lưu vào gói đang dùng như trước.
     let owners = owners(&home, &claude_plans(&app).await.unwrap_or_default());
-    let done =
-        tauri::async_runtime::spawn_blocking(move || switch_blocking(&home, None, &owners, force))
-            .await
-            .map_err(|e| e.to_string())??;
+    let done = run_switch(busy, home, None, owners, force).await;
     let _ = load(&app).await;
-    Ok(done)
+    done
+}
+
+/// Đăng xuất Claude Desktop khỏi gói đang dùng; app mở lại ở màn đăng nhập. Gói vẫn là gói đang dùng, nên lần đăng nhập
+/// sau được lưu cho gói.
+#[tauri::command]
+pub async fn sign_out_claude_desktop(
+    app: AppHandle,
+    profile_id: String,
+    force: bool,
+) -> Result<Switched, String> {
+    if !SUPPORTED {
+        return Err(UNSUPPORTED.into());
+    }
+    let id = profile_id.trim().to_string();
+    let busy = job::begin(Some(&id))?;
+    let plans = claude_plans(&app).await?;
+    if !plans.iter().any(|p| p.id == id && p.cli == "claude") {
+        return Err(format!("Không có gói Claude {id}."));
+    }
+    let home = need_home()?;
+    let owners = owners(&home, &plans);
+    let done = run_job(busy, move |ctl| {
+        sign_out_blocking(&home, &id, &owners, force, ctl)
+    })
+    .await;
+    let _ = load(&app).await;
+    done
+}
+
+/// Tiến độ lần chuyển đang chạy; None khi không có.
+#[tauri::command]
+pub fn claude_desktop_switch_progress() -> Option<job::Progress> {
+    job::progress()
+}
+
+/// Bấm Huỷ: lần chuyển dừng ở bước kế tiếp và lấy lại đăng nhập cũ. false khi không còn gì để huỷ.
+#[tauri::command]
+pub fn cancel_claude_desktop_switch() -> bool {
+    job::cancel()
+}
+
+/// Thông tin chẩn đoán dạng chữ để người dùng chép gửi hỗ trợ: đường dẫn, cỡ, tiến trình, lỗi gần nhất. Không đọc nội
+/// dung file đăng nhập hay token.
+#[tauri::command]
+pub async fn claude_desktop_diagnose() -> Result<String, String> {
+    let home = need_home()?;
+    tauri::async_runtime::spawn_blocking(move || diagnose::report(&home))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Đóng thông báo "đăng nhập không phải tài khoản của gói".
@@ -1298,13 +1499,7 @@ pub async fn forget_claude_desktop(
 ) -> Result<ProfilesView, String> {
     let home = need_home()?;
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let paths = Paths::current(&home);
-        let id = profile_id.trim();
-        let bundle = paths.bundle(id)?;
-        if read_state(&paths).active.as_deref() == Some(id) {
-            return Err("Gói này đang dùng Claude Desktop; chuyển sang gói khác trước.".into());
-        }
-        remove_entry(&bundle).map_err(|e| format!("Không xoá được đăng nhập đã lưu: {e}"))
+        forget_bundle(&Paths::current(&home), profile_id.trim())
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -1352,6 +1547,16 @@ pub(crate) fn tray_label(p: &ProfileView, en: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn swap_auth(
+        paths: &Paths,
+        state: &mut State,
+        target: Option<&str>,
+        owners: &[Owner],
+        now: SystemTime,
+    ) -> Result<(), String> {
+        super::swap_auth(paths, state, target, owners, now, &Ctl::idle())
+    }
 
     pub(super) fn temp_home(name: &str) -> PathBuf {
         let dir =
@@ -1727,6 +1932,49 @@ mod tests {
                 "cookies-c"
             );
             std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    /// Huỷ giữa lúc sao lưu hay lúc đổi đăng nhập: hồ sơ giữ đăng nhập cũ, không còn bản sao lưu dở, trạng thái không đổi.
+    #[test]
+    fn cancel_midway_keeps_the_previous_login() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for at_step in [Step::BackingUp, Step::Swapping] {
+            for (home, paths) in layouts("cancel") {
+                fake_profile(&paths, &paths.real, "a");
+                put(
+                    &cookies(&paths, &paths.bundle("claude-2").unwrap()),
+                    "cookies-b",
+                );
+                let cancel = AtomicBool::new(false);
+                let report = |s: Step, _: Option<u8>| {
+                    if s == at_step {
+                        cancel.store(true, Ordering::SeqCst);
+                    }
+                };
+                let mut state = State::default();
+                let err = super::swap_auth(
+                    &paths,
+                    &mut state,
+                    Some("claude-2"),
+                    &[],
+                    UNIX_EPOCH + T0,
+                    &Ctl::new(&cancel, &report),
+                )
+                .unwrap_err();
+                assert_eq!(err, job::CANCELLED);
+                assert_eq!(account(&paths, &paths.real).0, "cookies-a");
+                assert_eq!(read_state(&paths).active, None);
+                if at_step == Step::BackingUp {
+                    assert_eq!(state.backup, None);
+                    assert!(!paths.root.join("backup-20261014-132200").exists());
+                }
+                no_temp_files(&paths.root);
+                // Lần sau chạy bình thường.
+                swap_auth(&paths, &mut state, Some("claude-2"), &[], UNIX_EPOCH + T0).unwrap();
+                assert_eq!(account(&paths, &paths.real).0, "cookies-b");
+                std::fs::remove_dir_all(&home).unwrap();
+            }
         }
     }
 
@@ -2356,6 +2604,160 @@ mod tests {
                     plan: None,
                 })
             );
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    fn sign_out(
+        paths: &Paths,
+        state: &mut State,
+        id: &str,
+        owners: &[Owner],
+    ) -> Result<(), String> {
+        sign_out_auth(paths, state, id, owners, UNIX_EPOCH + T0, &Ctl::idle())
+    }
+
+    #[test]
+    fn signing_out_removes_only_the_login_of_the_plan_in_use() {
+        for (home, paths) in layouts("signout") {
+            fake_profile(&paths, &paths.real, "a");
+            let before = shared(&paths.real);
+            let other = home.join("other");
+            fake_profile(&paths, &other, "b");
+            let (c1, c2) = (
+                paths.bundle("claude-1").unwrap(),
+                paths.bundle("claude-2").unwrap(),
+            );
+            save_auth(&paths.real, &c1, paths.auth_files()).unwrap();
+            save_auth(&other, &c2, paths.auth_files()).unwrap();
+            let mut state = State {
+                active: Some("claude-1".into()),
+                ..State::default()
+            };
+
+            sign_out(&paths, &mut state, "claude-1", &abc()).unwrap();
+            for f in paths.auth_files() {
+                assert!(!at(&paths.real, f).exists(), "{f}");
+            }
+            let config = json(&paths.real.join(CONFIG));
+            for k in AUTH_KEYS {
+                assert!(config.get(k).is_none(), "{k}");
+            }
+            assert_eq!(shared(&paths.real), before, "mọi thứ khác giữ nguyên");
+            assert_eq!(account_of(&paths, &paths.real), None);
+            assert!(!c1.exists(), "bộ đã lưu của gói bị xoá");
+            assert_eq!(
+                read(&cookies(&paths, &c2)),
+                "cookies-b",
+                "gói khác không bị đụng"
+            );
+            assert_eq!(read_state(&paths).active.as_deref(), Some("claude-1"));
+            assert!(state.backup.is_some(), "sao lưu trước lần ghi đầu");
+
+            // Đăng nhập cũ không quay lại qua `.previous`.
+            assert!(reconcile(&paths, &abc(), false).unwrap());
+            assert!(!c1.exists());
+            // Lần đăng nhập sau trong app được lưu cho gói đang dùng.
+            sign_in(&paths, &paths.real, "a");
+            reconcile(&paths, &abc(), false).unwrap();
+            assert_eq!(read(&cookies(&paths, &c1)), "cookies-a");
+            no_temp_files(&paths.root);
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn signing_out_keeps_another_plans_login_and_refuses_plans_not_in_use() {
+        for (home, paths) in layouts("signout-other") {
+            // Hồ sơ đang đăng nhập tài khoản của claude-2 dù gói đang dùng là claude-1.
+            fake_profile(&paths, &paths.real, "b");
+            let mut state = State {
+                active: Some("claude-1".into()),
+                ..State::default()
+            };
+            assert_eq!(
+                sign_out(&paths, &mut state, "claude-2", &abc()).unwrap_err(),
+                NOT_ACTIVE
+            );
+            assert_eq!(account(&paths, &paths.real).0, "cookies-b", "chưa đổi gì");
+
+            sign_out(&paths, &mut state, "claude-1", &abc()).unwrap();
+            assert_eq!(account_of(&paths, &paths.real), None);
+            let c2 = paths.bundle("claude-2").unwrap();
+            assert_eq!(read(&cookies(&paths, &c2)), "cookies-b");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn cancelled_sign_out_keeps_the_login() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        for (home, paths) in layouts("signout-cancel") {
+            fake_profile(&paths, &paths.real, "a");
+            let c1 = paths.bundle("claude-1").unwrap();
+            save_auth(&paths.real, &c1, paths.auth_files()).unwrap();
+            let cancel = AtomicBool::new(false);
+            let report = |s: Step, _: Option<u8>| {
+                if s == Step::Swapping {
+                    cancel.store(true, Ordering::SeqCst);
+                }
+            };
+            let mut state = State {
+                active: Some("claude-1".into()),
+                ..State::default()
+            };
+            let err = sign_out_auth(
+                &paths,
+                &mut state,
+                "claude-1",
+                &abc(),
+                UNIX_EPOCH + T0,
+                &Ctl::new(&cancel, &report),
+            )
+            .unwrap_err();
+            assert_eq!(err, job::CANCELLED);
+            assert_eq!(account(&paths, &paths.real).0, "cookies-a");
+            assert_eq!(read(&cookies(&paths, &c1)), "cookies-a");
+            std::fs::remove_dir_all(&home).unwrap();
+        }
+    }
+
+    #[test]
+    fn forgotten_login_does_not_come_back_from_previous() {
+        for (home, paths) in layouts("forget") {
+            fake_profile(&paths, &paths.real, "a");
+            let other = home.join("other");
+            fake_profile(&paths, &other, "b");
+            save_auth(
+                &other,
+                &paths.bundle("claude-2").unwrap(),
+                paths.auth_files(),
+            )
+            .unwrap();
+            let mut state = State {
+                active: Some("claude-1".into()),
+                ..State::default()
+            };
+            swap_auth(
+                &paths,
+                &mut state,
+                Some("claude-2"),
+                &abc(),
+                UNIX_EPOCH + T0,
+            )
+            .unwrap();
+            let c1 = paths.bundle("claude-1").unwrap();
+            assert!(paths.has_login(&c1));
+            assert!(
+                forget_bundle(&paths, "claude-2").is_err(),
+                "gói đang dùng thì đăng xuất"
+            );
+
+            forget_bundle(&paths, "claude-1").unwrap();
+            assert!(!c1.exists());
+            reconcile(&paths, &abc(), false).unwrap();
+            assert!(!c1.exists(), "`.previous` không dựng lại bộ vừa quên");
+            assert_eq!(account(&paths, &paths.real).0, "cookies-b");
             std::fs::remove_dir_all(&home).unwrap();
         }
     }

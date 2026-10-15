@@ -1,19 +1,25 @@
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Pill } from "@xdev-hive/ui/pill";
-import { AppWindowIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { AppWindowIcon, LogOutIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   adoptClaudeDesktop,
+  cancelSwitch,
   type DesktopProfile,
   type DesktopProfiles,
   desktopProfiles,
+  diagnoseClaudeDesktop,
   dismissClaudeDesktopMismatch,
   forgetClaudeDesktop,
   migrateClaudeDesktopProfiles,
   restoreClaudeDesktop,
   type Switched,
+  type SwitchProgress,
+  type SwitchStep,
+  signOutClaudeDesktop,
   switchClaudeDesktop,
+  switchProgress,
 } from "@/lib/claude-desktop.ts";
 import { openFolder } from "@/lib/git-groups.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
@@ -22,6 +28,8 @@ import { cn } from "@/lib/utils.ts";
 
 /** Đọc lại để thấy Claude Desktop vừa mở hay vừa tắt; rẻ: chỉ đọc danh sách gói và trạng thái. */
 export const DESKTOP_POLL_MS = 10_000;
+/** Lúc đang chuyển: đủ dày để thấy phần trăm sao lưu chạy, chỉ đọc một biến trong bộ nhớ. */
+export const PROGRESS_POLL_MS = 1_000;
 
 const text: Dict<{
   switch: string;
@@ -34,8 +42,16 @@ const text: Dict<{
   adopt: string;
   adoptTitle: string;
   forget: string;
+  forgetHint: string;
   forgetTitle: string;
   forgetBody: (plan: string) => string;
+  signOut: string;
+  signOutHint: string;
+  signOutTitle: string;
+  signOutBody: (plan: string) => string;
+  signOutConfirm: string;
+  signOutForce: string;
+  signedOut: (plan: string) => string;
   confirmTitle: string;
   confirmBody: (plan: string) => string;
   confirmLogin: string;
@@ -70,6 +86,15 @@ const text: Dict<{
   mismatchAdopted: (plan: string) => string;
   mismatchNotSaved: (expected: string) => string;
   dismiss: string;
+  steps: Record<SwitchStep, string>;
+  elapsed: (s: number) => string;
+  cancelling: string;
+  cancelSwitch: string;
+  cancelSwitchTitle: string;
+  diagnose: string;
+  diagnoseTitle: string;
+  diagnosed: string;
+  diagnoseFailed: string;
 }> = {
   vi: {
     switch: "Chuyển Claude Desktop sang gói này",
@@ -84,10 +109,21 @@ const text: Dict<{
     adopt: "Claude Desktop đang đăng nhập gói này",
     adoptTitle:
       "Hive không đọc được tài khoản Claude của gói này nên không tự nhận ra. Bấm nếu Claude Desktop đang đăng nhập đúng tài khoản của gói: Hive lưu đăng nhập đó cho gói",
-    forget: "Quên đăng nhập đã lưu",
+    forget: "Quên đăng nhập",
+    forgetHint:
+      "Xoá đăng nhập Claude Desktop đã lưu của gói này. Gói không đang dùng nên Claude Desktop đang mở không bị đụng tới",
     forgetTitle: "Quên đăng nhập Claude Desktop của gói?",
     forgetBody: (plan) =>
       `Đăng nhập Claude Desktop đã lưu của ${plan} bị xoá; lần sau chuyển sang gói này phải đăng nhập lại. Sessions và dữ liệu trên máy không bị đụng tới.`,
+    signOut: "Đăng xuất Claude Desktop",
+    signOutHint: "Claude Desktop thoát, bỏ đăng nhập của gói này rồi mở lại ở màn đăng nhập",
+    signOutTitle: "Đăng xuất Claude Desktop?",
+    signOutBody: (plan) =>
+      `Claude Desktop sẽ thoát, đăng nhập của ${plan} (trong Claude Desktop và bản Hive đã lưu) bị xoá, rồi Claude Desktop mở lại ở màn đăng nhập. Việc đang chạy trong Claude Desktop sẽ dừng. Bộ nhớ, sessions, MCP và cấu hình trên máy giữ nguyên; gói khác không bị đụng tới.`,
+    signOutConfirm: "Đăng xuất",
+    signOutForce: "Buộc thoát và đăng xuất",
+    signedOut: (plan) =>
+      `Đã đăng xuất Claude Desktop khỏi ${plan}. Đăng nhập lại trong Claude Desktop khi cần; Hive tự lưu cho gói này.`,
     confirmTitle: "Khởi động lại Claude Desktop?",
     confirmBody: (plan) =>
       `Claude Desktop sẽ thoát rồi mở lại bằng tài khoản của ${plan}. Việc đang chạy trong Claude Desktop sẽ dừng. Bộ nhớ, sessions, MCP và cấu hình trên máy giữ nguyên; đăng nhập hiện tại được lưu cho gói đang dùng.`,
@@ -130,6 +166,23 @@ const text: Dict<{
     mismatchNotSaved: (expected) =>
       `Đăng nhập này chưa được lưu cho gói nào. Đăng xuất trong Claude Desktop rồi đăng nhập tài khoản của ${expected}.`,
     dismiss: "Đã hiểu",
+    steps: {
+      preparing: "Đang chuẩn bị chuyển Claude Desktop",
+      quitting: "Đang chờ Claude Desktop thoát",
+      forceQuitting: "Đang buộc Claude Desktop thoát",
+      backingUp: "Đang sao lưu hồ sơ Claude Desktop (lần đầu)",
+      swapping: "Đang đổi đăng nhập",
+      launching: "Đang mở lại Claude Desktop",
+    },
+    elapsed: (s) => `${s} giây`,
+    cancelling: "Đang huỷ, trả lại đăng nhập cũ…",
+    cancelSwitch: "Huỷ",
+    cancelSwitchTitle: "Dừng lần chuyển này; Claude Desktop giữ đăng nhập như trước",
+    diagnose: "Chép thông tin chẩn đoán",
+    diagnoseTitle:
+      "Chép đường dẫn, cỡ hồ sơ và tiến trình Claude Desktop để gửi người hỗ trợ; không có token hay nội dung đăng nhập",
+    diagnosed: "Đã chép thông tin chẩn đoán; dán vào tin nhắn gửi người hỗ trợ.",
+    diagnoseFailed: "Không chép được thông tin chẩn đoán vào clipboard.",
   },
   en: {
     switch: "Switch Claude Desktop to this plan",
@@ -145,10 +198,21 @@ const text: Dict<{
     adopt: "Claude Desktop is on this plan",
     adoptTitle:
       "Hive cannot read this plan's Claude account, so it cannot tell on its own. Click if Claude Desktop is signed in with this plan's account: Hive saves that sign-in for the plan",
-    forget: "Forget saved sign-in",
+    forget: "Forget sign-in",
+    forgetHint:
+      "Delete this plan's saved Claude Desktop sign-in. The plan is not in use, so the running Claude Desktop is not touched",
     forgetTitle: "Forget this plan's Claude Desktop sign-in?",
     forgetBody: (plan) =>
       `The saved Claude Desktop sign-in of ${plan} is deleted; switching to it later asks you to sign in again. Sessions and local data are not touched.`,
+    signOut: "Sign out of Claude Desktop",
+    signOutHint: "Claude Desktop quits, drops this plan's sign-in and reopens at the sign-in screen",
+    signOutTitle: "Sign out of Claude Desktop?",
+    signOutBody: (plan) =>
+      `Claude Desktop quits, ${plan}'s sign-in (in Claude Desktop and the copy Hive saved) is deleted, then Claude Desktop reopens at the sign-in screen. Work running in Claude Desktop stops. Memory, sessions, MCP and local settings stay as they are; other plans are not touched.`,
+    signOutConfirm: "Sign out",
+    signOutForce: "Force quit and sign out",
+    signedOut: (plan) =>
+      `Signed Claude Desktop out of ${plan}. Sign in again in Claude Desktop when needed; Hive saves it for this plan.`,
     confirmTitle: "Restart Claude Desktop?",
     confirmBody: (plan) =>
       `Claude Desktop quits and reopens with ${plan}'s account. Work running in Claude Desktop stops. Memory, sessions, MCP and local settings stay as they are; the current sign-in is saved for the plan in use.`,
@@ -191,6 +255,23 @@ const text: Dict<{
     mismatchNotSaved: (expected) =>
       `This sign-in is not saved for any plan. Sign out in Claude Desktop, then sign in with ${expected}'s account.`,
     dismiss: "Got it",
+    steps: {
+      preparing: "Preparing to switch Claude Desktop",
+      quitting: "Waiting for Claude Desktop to quit",
+      forceQuitting: "Forcing Claude Desktop to quit",
+      backingUp: "Backing up the Claude Desktop profile (first time)",
+      swapping: "Swapping the sign-in",
+      launching: "Reopening Claude Desktop",
+    },
+    elapsed: (s) => `${s}s`,
+    cancelling: "Cancelling, putting the previous sign-in back…",
+    cancelSwitch: "Cancel",
+    cancelSwitchTitle: "Stop this switch; Claude Desktop keeps its previous sign-in",
+    diagnose: "Copy diagnostics",
+    diagnoseTitle:
+      "Copy the Claude Desktop paths, profile sizes and processes to send to support; no tokens or sign-in contents",
+    diagnosed: "Copied the diagnostics; paste them into your message to support.",
+    diagnoseFailed: "Could not copy the diagnostics to the clipboard.",
   },
 };
 
@@ -241,6 +322,69 @@ function NoticeLine({ notice }: { notice: Notice | null }) {
     >
       {notice.text}
     </p>
+  );
+}
+
+/**
+ * Tiến độ của lần chuyển đang chạy và nút Huỷ. Lần chuyển chạy nền bên Rust nên hỏi tiến độ riêng thay vì chờ lệnh
+ * chuyển trả về: bản 0.2.16 chỉ chờ, và một bước treo trên Windows làm nút quay mãi không biết đang làm gì.
+ */
+function SwitchProgressLine({
+  initial,
+  onGone,
+}: {
+  initial: SwitchProgress | null;
+  onGone?: (() => void) | undefined;
+}) {
+  const t = useT(text);
+  const [progress, setProgress] = useState(initial);
+  const [cancelling, setCancelling] = useState(false);
+  const gone = useRef(onGone);
+  gone.current = onGone;
+  useEffect(() => {
+    let alive = true;
+    const h = setInterval(() => {
+      void switchProgress()
+        .then((p) => {
+          if (!alive) return;
+          setProgress(p);
+          if (!p) gone.current?.();
+        })
+        .catch(() => {});
+    }, PROGRESS_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(h);
+    };
+  }, []);
+
+  const step = progress?.step ?? "preparing";
+  const stopping = cancelling || !!progress?.cancelling;
+  return (
+    <div data-switch-progress aria-live="polite" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      <span className="min-w-48 flex-1">
+        {stopping ? t.cancelling : t.steps[step]}
+        {progress?.percent != null && ` ${progress.percent}%`}
+        {progress && <span className="text-muted-foreground"> · {t.elapsed(progress.elapsed)}</span>}
+      </span>
+      {progress?.percent != null && (
+        <progress className="h-1.5 w-24" max={100} value={progress.percent} aria-label={t.steps[step]} />
+      )}
+      <Button
+        size="sm"
+        variant="ghost"
+        title={t.cancelSwitchTitle}
+        disabled={stopping || progress?.cancellable === false}
+        onClick={() =>
+          void cancelSwitch().then(
+            (ok) => ok && setCancelling(true),
+            () => {},
+          )
+        }
+      >
+        {t.cancelSwitch}
+      </Button>
+    </div>
   );
 }
 
@@ -318,7 +462,10 @@ function useRestart(
   };
 }
 
-/** Dòng Claude Desktop trên thẻ một gói Claude: đang dùng, chuyển sang, ghi nhận đăng nhập hiện tại, quên đăng nhập. */
+/**
+ * Dòng Claude Desktop trên thẻ một gói Claude: đang dùng, chuyển sang, ghi nhận đăng nhập hiện tại, đăng xuất (gói đang
+ * dùng) hay quên đăng nhập đã lưu (gói không dùng).
+ */
 export function ClaudeDesktopRow({
   plan,
   profile,
@@ -344,11 +491,24 @@ export function ClaudeDesktopRow({
     },
     (e) => setNotice({ tone: "bad", text: errorText(e) }),
   );
+  const signOut = useRestart(
+    (force) => signOutClaudeDesktop(profile.id, force),
+    () => {
+      setNotice({ tone: "ok", text: t.signedOut(plan) });
+      onChanged();
+    },
+    (e) => setNotice({ tone: "bad", text: errorText(e) }),
+  );
 
   const canSwitch = !!view.app;
   const running = view.running !== null;
   const noneActive = !view.profiles.some((p) => p.active);
-  const working = busy || restart.busy;
+  // Một lần chuyển chạy ở chỗ khác (dòng khác, khay) thì Rust cũng từ chối; tắt nút cho khỏi bấm vào lỗi.
+  const working = busy || restart.busy || signOut.busy || !!view.switching;
+  // Lần chuyển (hay đăng xuất) của gói này: bấm ở đây, hay bắt đầu trước khi cửa sổ mở lại.
+  const switchingHere = restart.busy || signOut.busy || view.switching?.target === profile.id;
+  // Có gì để đăng xuất: Claude Desktop đang đăng nhập, hay Hive còn giữ bản đã lưu của gói.
+  const canSignOut = profile.active && canSwitch && (!!view.signedIn || profile.saved);
   // Gói biết tài khoản thì Hive tự gắn đăng nhập; nút ghi nhận tay chỉ còn cho gói không đọc được tài khoản, khi Claude
   // Desktop đang đăng nhập một tài khoản chưa gói nào nhận.
   const canAdopt =
@@ -404,8 +564,20 @@ export function ClaudeDesktopRow({
             {t.adopt}
           </Button>
         )}
+        {canSignOut && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={working}
+            title={t.signOutHint}
+            onClick={() => signOut.start(true)}
+          >
+            <LogOutIcon aria-hidden="true" />
+            {t.signOut}
+          </Button>
+        )}
         {profile.saved && !profile.active && (
-          <Button size="sm" variant="ghost" disabled={working} onClick={() => setForgetting(true)}>
+          <Button size="sm" variant="ghost" disabled={working} title={t.forgetHint} onClick={() => setForgetting(true)}>
             {t.forget}
           </Button>
         )}
@@ -416,6 +588,12 @@ export function ClaudeDesktopRow({
         </span>
       )}
       {!canSwitch && view.note && <span className="text-xs text-muted-foreground">{view.note}</span>}
+      {switchingHere && (
+        <SwitchProgressLine
+          initial={view.switching?.target === profile.id ? view.switching : null}
+          onGone={restart.busy || signOut.busy ? undefined : onChanged}
+        />
+      )}
       <NoticeLine notice={notice} />
       <Confirm
         open={restart.asking === "confirm"}
@@ -436,6 +614,24 @@ export function ClaudeDesktopRow({
         onConfirm={restart.force}
       />
       <Confirm
+        open={signOut.asking === "confirm"}
+        title={t.signOutTitle}
+        body={t.signOutBody(plan)}
+        action={t.signOutConfirm}
+        destructive
+        onCancel={signOut.cancel}
+        onConfirm={signOut.confirm}
+      />
+      <Confirm
+        open={signOut.asking === "force"}
+        title={t.forceTitle}
+        body={t.forceBody}
+        action={t.signOutForce}
+        destructive
+        onCancel={signOut.cancel}
+        onConfirm={signOut.force}
+      />
+      <Confirm
         open={forgetting}
         title={t.forgetTitle}
         body={t.forgetBody(plan)}
@@ -453,7 +649,8 @@ export function ClaudeDesktopRow({
 
 /**
  * Phần chung của Claude Desktop trên màn gói: tài khoản đang đăng nhập, thông báo đăng nhập nhầm tài khoản, hồ sơ riêng
- * kiểu cũ cần đổi, bản sao lưu ban đầu và nút khôi phục. Không hiện gì khi chưa có những thứ đó.
+ * kiểu cũ cần đổi, bản sao lưu ban đầu và nút khôi phục, tiến độ khôi phục, và nút chép thông tin chẩn đoán (luôn có:
+ * chuyển hỏng trên máy người dùng thì đây là thứ người hỗ trợ cần đầu tiên).
  */
 export function ClaudeDesktopPanel({ view, onChanged }: { view: DesktopProfiles; onChanged: () => void }) {
   const t = useT(text);
@@ -468,8 +665,27 @@ export function ClaudeDesktopPanel({ view, onChanged }: { view: DesktopProfiles;
     },
     (e) => setNotice({ tone: "bad", text: errorText(e) }),
   );
-  const { backup, legacy, signedIn, mismatch } = view;
-  if (!view.supported || (!backup && legacy.length === 0 && !signedIn && !mismatch)) return null;
+  const { backup, legacy, signedIn, mismatch, switching } = view;
+  if (!view.supported) return null;
+  // Khôi phục, hay lần chuyển sang gói đã bị xoá khỏi danh sách: không dòng gói nào hiện tiến độ của nó.
+  const switchingHere = restart.busy || (!!switching && !view.profiles.some((p) => p.id === switching.target));
+
+  async function diagnose() {
+    setBusy(true);
+    try {
+      const report = await diagnoseClaudeDesktop();
+      try {
+        await navigator.clipboard.writeText(report);
+        setNotice({ tone: "ok", text: t.diagnosed });
+      } catch {
+        setNotice({ tone: "bad", text: t.diagnoseFailed });
+      }
+    } catch (e) {
+      setNotice({ tone: "bad", text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function dismiss() {
     setBusy(true);
@@ -551,13 +767,21 @@ export function ClaudeDesktopPanel({ view, onChanged }: { view: DesktopProfiles;
           <Button
             size="sm"
             variant="outline"
-            disabled={busy || restart.busy || !view.app}
+            disabled={busy || restart.busy || !!switching || !view.app}
             onClick={() => restart.start(true)}
           >
             {t.restore}
           </Button>
         </div>
       )}
+      {switchingHere && (
+        <SwitchProgressLine initial={restart.busy ? null : switching} onGone={restart.busy ? undefined : onChanged} />
+      )}
+      <div className="flex justify-end">
+        <Button size="sm" variant="ghost" disabled={busy} title={t.diagnoseTitle} onClick={() => void diagnose()}>
+          {t.diagnose}
+        </Button>
+      </div>
       <NoticeLine notice={notice} />
       <Confirm
         open={migrating}

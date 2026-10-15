@@ -196,6 +196,7 @@ function Editor({
     lang: env.lang,
     label: t.editorLabel,
     onAi: () => openAi(),
+    docKey,
   });
   const { editor } = h;
 

@@ -9,7 +9,15 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { GitProviderError } from "./errors.ts";
 import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
-import type { GitProvider, GitProviderKind, PullRequestFile, PullRequestState, RepoInfo, RepoRef } from "./types.ts";
+import type {
+  CommitFilesInput,
+  GitProvider,
+  GitProviderKind,
+  PullRequestFile,
+  PullRequestState,
+  RepoInfo,
+  RepoRef,
+} from "./types.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -128,7 +136,11 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
     return join(opts.root, ...parts, `${last}.git`);
   };
 
-  const git = async (dir: string, args: string[], extra: { env?: Record<string, string>; stdin?: string } = {}) => {
+  const git = async (
+    dir: string,
+    args: string[],
+    extra: { env?: Record<string, string>; stdin?: string | Buffer } = {},
+  ) => {
     const pending = execFileAsync("git", args, { cwd: dir, env: { ...process.env, ...GIT_ENV, ...extra.env } });
     if (extra.stdin !== undefined) pending.child.stdin?.end(extra.stdin);
     const { stdout } = await pending;
@@ -177,14 +189,28 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
     branch: string,
     { parent, current }: { parent: string | null; current: string | null },
     message: string,
-    files: Array<{ path: string; content: string }>,
+    files: CommitFilesInput["files"],
   ) => {
     // Index riêng cho mỗi commit, để hai bước saga chạy song song không ghi đè index của nhau.
     const env = { GIT_INDEX_FILE: join(dir, `hive-index-${process.pid}-${Date.now()}-${Math.random()}`) };
     try {
       await git(dir, parent ? ["read-tree", parent] : ["read-tree", "--empty"], { env });
       for (const f of files) {
-        const blob = await git(dir, ["hash-object", "-w", "--stdin"], { stdin: f.content });
+        if ("delete" in f) {
+          await git(dir, ["update-index", "--force-remove", "--", f.path], { env });
+          continue;
+        }
+        if ("previousPath" in f) {
+          const entry = await git(dir, ["ls-files", "--stage", "--", f.previousPath], { env });
+          const blobId = entry.split(" ")[1];
+          if (!blobId) throw new GitProviderError("not_found", `local: không có file ${f.previousPath}`);
+          await git(dir, ["update-index", "--force-remove", "--", f.previousPath], { env });
+          await git(dir, ["update-index", "--add", "--cacheinfo", `100644,${blobId},${f.path}`], { env });
+          continue;
+        }
+        const blob = await git(dir, ["hash-object", "-w", "--stdin"], {
+          stdin: "bytes" in f ? Buffer.from(f.bytes) : f.content,
+        });
         await git(dir, ["update-index", "--add", "--cacheinfo", `100644,${blob},${f.path}`], { env });
       }
       const tree = await git(dir, ["write-tree"], { env });
@@ -419,6 +445,58 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
     async readFile(ref, path, sha) {
       const dir = await need(ref);
       return git(dir, ["cat-file", "blob", `${sha}:${path}`]).catch(() => null);
+    },
+
+    async readBlob(ref, blob) {
+      const dir = await need(ref);
+      const { stdout } = await execFileAsync("git", ["cat-file", "blob", blob], {
+        cwd: dir,
+        encoding: "buffer",
+        maxBuffer: 100 * 1024 * 1024,
+      });
+      return new Uint8Array(stdout as unknown as Buffer);
+    },
+    async compare(ref, from, to) {
+      const dir = await need(ref);
+      const output = await git(dir, ["-c", "core.quotepath=false", "diff", "--name-status", "-M", from, to]);
+      const files = output
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [statusCode, first, second] = line.split("\t");
+          const status = statusCode?.startsWith("R")
+            ? ("renamed" as const)
+            : statusCode === "A"
+              ? ("added" as const)
+              : statusCode === "D"
+                ? ("removed" as const)
+                : ("modified" as const);
+          return {
+            path: status === "renamed" ? second! : first!,
+            ...(status === "renamed" ? { previousPath: first! } : {}),
+            status,
+            sha: null,
+          };
+        });
+      return { files, incomplete: false };
+    },
+    async archive(ref, sha, path) {
+      const dir = await need(ref);
+      const { stdout } = await execFileAsync("git", ["archive", "--format=tar", sha, ...(path ? [path] : [])], {
+        cwd: dir,
+        encoding: "buffer",
+        maxBuffer: 500 * 1024 * 1024,
+      });
+      const bytes = new Uint8Array(stdout as unknown as Buffer);
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      });
+    },
+    async lfsBatch() {
+      throw new GitProviderError("invalid", "local: Git LFS chưa được hỗ trợ");
     },
 
     async prFiles(ref, number) {

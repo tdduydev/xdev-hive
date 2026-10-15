@@ -251,6 +251,13 @@ pub async fn cli_profile_remove(app: AppHandle, id: String) -> Result<serde_json
     sidecar_json(&app, id_command("remove", &id)?, vec![]).await
 }
 
+/// Đăng xuất CLI của gói: worker xoá đăng nhập trong thư mục của đúng gói đó (keychain theo CLAUDE_CONFIG_DIR, hoặc
+/// `codex logout` với CODEX_HOME), gói còn trong danh sách để đăng nhập lại.
+#[tauri::command]
+pub async fn cli_profile_logout(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
+    sidecar_json(&app, id_command("logout", &id)?, vec![]).await
+}
+
 /// Đọc lại quota ngay (một gói hoặc mọi gói đang bật) thay vì chờ lượt đọc 10 phút của worker.
 #[tauri::command]
 pub async fn cli_profile_usage(
@@ -820,6 +827,10 @@ mod tests {
         assert_eq!(
             usage_args(Some("claude-1")).unwrap(),
             ["accounts", "usage", "--id=claude-1", "--json"]
+        );
+        assert_eq!(
+            id_command("logout", " claude-2 ").unwrap(),
+            ["accounts", "logout", "--id=claude-2", "--json"]
         );
         assert!(id_command("resume", "").is_err());
     }

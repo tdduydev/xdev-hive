@@ -93,6 +93,14 @@ function fakeTauri(list = seed(), found?: FoundLogin[], desktop?: DesktopProfile
       list = list.filter((p) => p.id !== id);
       return reply();
     },
+    cli_profile_logout: ({ id }) => {
+      list = list.map((p) => {
+        if (p.id !== id) return p;
+        const { usage: _, ...rest } = p;
+        return { ...rest, loggedIn: false, state: "signedOut" };
+      });
+      return reply();
+    },
     cli_profile_update: ({ id, patch }) => {
       list = list.map((p) => (p.id === id ? { ...p, ...(patch as Partial<Plan>) } : p));
       return reply();
@@ -261,6 +269,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       profiles: [profile("claude-1", "Duy Max"), profile("claude-2", "Gói phụ")],
       signedIn: { account: "uuid-1", email: null, plan: "claude-1" },
       mismatch: null,
+      switching: null,
     };
     fakeTauri(seed(), undefined, desktop);
     render(<PlansScreen />);
@@ -286,6 +295,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
       profiles: [],
       signedIn: null,
       mismatch: null,
+      switching: null,
     });
     render(<PlansScreen />);
     await screen.findByText("Duy Max");
@@ -924,6 +934,46 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(sent(calls, "cli_profile_remove")).toEqual([{ id: "codex-1" }]);
     expect(await screen.findByText(/Đã xoá gói codex-1/)).toBeTruthy();
     expect(row("codex-1")).toBeNull();
+  });
+
+  it("Đăng xuất hỏi xác nhận rồi gọi accounts logout; gói còn đó, hiện chưa đăng nhập và nút Đăng nhập", async () => {
+    const { calls } = fakeTauri();
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    const u = user();
+    const openLogout = async (plan: string) => {
+      await u.click(screen.getByRole("button", { name: `Thao tác cho ${plan}` }));
+      await u.click(await screen.findByRole("menuitem", { name: "Đăng xuất" }));
+      return screen.findByRole("dialog", { name: "Đăng xuất gói" });
+    };
+    let dialog = await openLogout("Gói phụ");
+    expect(
+      within(dialog).getByText(/Đăng xuất Claude Code của gói claude-2\? Chỉ đăng nhập trong thư mục/),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/thư mục mặc định/)).toBeNull();
+    await u.click(within(dialog).getByRole("button", { name: "Huỷ" }));
+    expect(sent(calls, "cli_profile_logout")).toEqual([]);
+
+    dialog = await openLogout("Gói phụ");
+    await u.click(within(dialog).getByRole("button", { name: "Đăng xuất" }));
+    expect(sent(calls, "cli_profile_logout")).toEqual([{ id: "claude-2" }]);
+    expect(await screen.findByText(/Đã đăng xuất claude-2/)).toBeTruthy();
+    expect(row("claude-2").dataset.state).toBe("signedOut");
+    expect(within(row("claude-2")).getByRole("button", { name: "Đăng nhập" })).toBeTruthy();
+
+    // Gói dùng thư mục mặc định: đăng xuất cũng đụng CLI chạy ngoài Hive, nên hộp thoại nói rõ.
+    dialog = await openLogout("Codex chính");
+    expect(within(dialog).getByText(/thư mục mặc định/)).toBeTruthy();
+  });
+
+  it("Đăng xuất không có ở gói đã đăng xuất", async () => {
+    fakeTauri();
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    const u = user();
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Codex mới" }));
+    await screen.findByRole("menuitem", { name: "Đăng nhập lại" });
+    expect(screen.queryByRole("menuitem", { name: "Đăng xuất" })).toBeNull();
   });
 
   it("lỗi của worker hiện bằng tiếng Việt", async () => {

@@ -364,6 +364,8 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
 
     async commitFiles(ref: RepoRef, input: CommitFilesInput) {
       const id = projectPath(ref);
+      if (input.expectedHead && (await this.branchHead(ref, input.branch)) !== input.expectedHead)
+        throw new GitProviderError("conflict", "GitLab: nhánh đã thay đổi");
       const branchExists = (await orNull(() => gl.branches.show(id, input.branch) as Promise<unknown>)) !== null;
       if (!branchExists && !input.fromBranch) {
         throw new GitProviderError("not_found", `GitLab: không có nhánh ${input.branch}`);
@@ -371,11 +373,17 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
       const source = branchExists ? input.branch : (input.fromBranch as string);
       // Commits API bắt chọn đúng create hoặc update cho từng file, nên phải biết file đã có chưa.
       const exists = await Promise.all(input.files.map((f) => fileExists(ref, f.path, source)));
-      const actions = input.files.map((f, i) => ({
-        action: exists[i] ? ("update" as const) : ("create" as const),
-        filePath: f.path,
-        content: f.content,
-      }));
+      const actions = input.files.map((f, i) => {
+        if ("delete" in f) return { action: "delete" as const, filePath: f.path };
+        if ("previousPath" in f) return { action: "move" as const, filePath: f.path, previousPath: f.previousPath };
+        const binary = "bytes" in f;
+        return {
+          action: exists[i] ? ("update" as const) : ("create" as const),
+          filePath: f.path,
+          content: binary ? Buffer.from(f.bytes).toString("base64") : f.content,
+          ...(binary ? { encoding: "base64" as const } : {}),
+        };
+      });
       const commit = (await gl.commits.create(
         id,
         input.branch,
@@ -727,6 +735,66 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
       if (body === null) return null;
       // File .json được parseBody đọc thành object; trả lại đúng nội dung chữ.
       return typeof body === "string" ? body : JSON.stringify(body);
+    },
+
+    async readBlob(ref, sha) {
+      const p = `projects/${encodeURIComponent(projectPath(ref))}/repository/blobs/${encodeURIComponent(sha)}/raw`;
+      const response = await send("GET", new URL(p, apiBase), { headers: { "private-token": opts.token } });
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    async compare(ref, from, to) {
+      const result = await rest<{
+        diffs: {
+          new_path: string;
+          old_path: string;
+          new_file: boolean;
+          deleted_file: boolean;
+          renamed_file: boolean;
+          new_blob_id?: string;
+        }[];
+        compare_timeout?: boolean;
+        overflow?: boolean;
+      }>(
+        "GET",
+        `projects/${encodeURIComponent(projectPath(ref))}/repository/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      );
+      return {
+        files: (result.diffs ?? []).map((f) => ({
+          path: f.new_path,
+          ...(f.renamed_file ? { previousPath: f.old_path } : {}),
+          status: f.renamed_file
+            ? ("renamed" as const)
+            : f.new_file
+              ? ("added" as const)
+              : f.deleted_file
+                ? ("removed" as const)
+                : ("modified" as const),
+          sha: f.new_blob_id ?? null,
+        })),
+        incomplete: Boolean(result.compare_timeout || result.overflow),
+      };
+    },
+    async archive(ref, sha, path) {
+      const query = new URLSearchParams({ sha, ...(path ? { path } : {}) });
+      const response = await send(
+        "GET",
+        new URL(`projects/${encodeURIComponent(projectPath(ref))}/repository/archive.tar.gz?${query}`, apiBase),
+        { headers: { "private-token": opts.token } },
+      );
+      if (!response.body) throw new GitProviderError("invalid", "GitLab: archive không có nội dung");
+      return response.body as ReadableStream<Uint8Array>;
+    },
+    async lfsBatch(ref, operation, objects) {
+      const url = `${host}/${projectPath(ref)}.git/info/lfs/objects/batch`;
+      const response = await send("POST", new URL(url), {
+        headers: {
+          "private-token": opts.token,
+          "content-type": "application/vnd.git-lfs+json",
+          accept: "application/vnd.git-lfs+json",
+        },
+        body: JSON.stringify({ operation, transfers: ["basic"], objects }),
+      });
+      return response.json();
     },
 
     async prFiles(ref: RepoRef, number: number) {

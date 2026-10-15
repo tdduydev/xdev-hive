@@ -79,6 +79,8 @@ func main() {
 		os.Exit(gitgroupsCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "memory":
 		os.Exit(memoryCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "context-pack":
+		os.Exit(contextPackCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "service":
 		os.Exit(serviceCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "update":

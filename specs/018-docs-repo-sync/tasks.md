@@ -59,7 +59,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `specs/012-artifacts/tasks.md` (chỉ ghi chú của T062)
   - **Kiểm**: `pnpm biome check --write .`.
 
-- [ ] **T002 [P] [—] [vừa] · 1,5 ngày — Spike: API provider, LFS, thư viện trích**
+- [x] **T002 [P] [—] [vừa] · 1,5 ngày — Spike: API provider, LFS, thư viện trích**
   - **Goal**: kiểm từng dòng **[Chưa kiểm]** ở research.md mục 2, 3.5, 3.6 và plan.md mục 5, 13. Dùng script tạm ngoài
     repo, chỉ commit kết quả:
     - GitHub: Contents API với file > 1 MB; `trees` `truncated`; tarball; compare (phân trang, `previous_filename`);
@@ -98,7 +98,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
   - **Kiểm**: contracts test, `pnpm openapi`, typecheck hub và web vẫn qua (route mới chưa có handler thì hub dùng
     `NOT_IMPLEMENTED` ở T005; ghi bàn giao nếu typecheck hub hỏng tới khi T005 xong).
 
-- [ ] **T004 [P] [—] [vừa] · 1,5 ngày — Phần thuần: key ↔ đường dẫn, nội dung**
+- [x] **T004 [P] [—] [vừa] · 1,5 ngày — Phần thuần: key ↔ đường dẫn, nội dung**
   - **Goal**: plan.md mục 3, research.md mục 2.3, 3.2, 3.6. Hàm thuần, không đụng DB:
     - `paths.ts`: `keyFromPath`, `pathFromKey`, `uniqueKey`, `isHardExcluded`, `matchesHome` (dùng `matchGlob` của
       contracts), `overlaps`, `resolveRelative(docPath, href)`;
@@ -116,7 +116,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/docsync/fixtures/roundtrip/**` (mới)
   - **Kiểm**: hub test (các file test mới), typecheck.
 
-- [ ] **T010 [P] [—] [vừa] · 1,5 ngày — Thiết kế màn**
+- [x] **T010 [P] [—] [vừa] · 1,5 ngày — Thiết kế màn**
   - **Goal**: plan.md mục 12, constitution "User interface". Dùng skill `ui-ux-pro-max`, design system v2, shadcn/ui.
     Mỗi màn có trạng thái rỗng, đang tải, lỗi; 360 px; sáng/tối; chữ tiếng Việt:
     - cài đặt dự án tab "Tài liệu"; thẻ "Kho tài liệu tổ chức";
@@ -173,7 +173,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/package.json`, `pnpm-lock.yaml`
   - **Kiểm**: hub typecheck, `rls.db.test.ts`, test upgrade migration từ `0072`, `pnpm deps`.
 
-- [ ] **T006 [P] [—] [nặng] · 3 ngày — Mở rộng `GitProvider` và Git LFS**
+- [x] **T006 [P] [—] [nặng] · 3 ngày — Mở rộng `GitProvider` và Git LFS**
   - **Phụ thuộc**: T002 (dùng kết quả spike; chưa có thì làm theo research.md và ghi chỗ chưa chắc).
   - **Goal**: research.md mục 2, plan.md mục 8.
     - `types.ts`:
@@ -193,7 +193,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/scm/{types.ts,github.ts,gitlab.ts,memory.ts,lfs.ts,index.ts}` + test tương ứng
   - **Kiểm**: hub test phần `scm` (test cũ của SDLC sync và kho skill vẫn qua), typecheck.
 
-- [ ] **T018 [P] [US5] [vừa] · 2 ngày — Editor: ảnh, tải lên, link tương đối, nhãn đồng bộ**
+- [x] **T018 [P] [US5] [vừa] · 2 ngày — Editor: ảnh, tải lên, link tương đối, nhãn đồng bộ**
   - **Phụ thuộc**: T003, T010.
   - **Goal**: FR-025, FR-030, FR-042, plan.md mục 8.
     - `DocEditorEnv` thêm `resolveLink(docKey, href)` và `uploadAsset(docKey, file)` (tuỳ chọn; không có thì nút tải

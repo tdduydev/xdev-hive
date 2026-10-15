@@ -259,4 +259,50 @@ describe("cú pháp riêng của Hive", () => {
     expect(node.childCount).toBe(1);
     expect(codec.serialize(node)).toBe("");
   });
+  describe("ảnh và link tương đối", () => {
+    const IMAGES = [
+      "![Sơ đồ](assets/so-do.png)",
+      "![](../assets/a.png)",
+      '![Logo](https://acme.vn/logo.png "Logo Acme")',
+      "Ảnh ![nhỏ](a.png) giữa chữ và [tài liệu khác](./khac.md#muc).",
+      "![Tên có khoảng trắng](<assets/ảnh chụp.png>)",
+      "[Báo cáo](files/bao-cao.pdf)",
+    ];
+
+    it("ảnh là node `image` chứ không phải khối Markdown thô", () => {
+      const { json } = load(IMAGES[0] as string);
+      expect(json.content?.[0]).toEqual({
+        type: "paragraph",
+        content: [{ type: "image", attrs: { src: "assets/so-do.png", alt: "Sơ đồ", title: null } }],
+      });
+    });
+
+    it.each(IMAGES)("nạp rồi lưu không đổi byte: %s", (md) => {
+      const doc = `${md}\n`;
+      const { codec, node, json } = load(doc);
+      expect(JSON.stringify(json)).not.toContain("rawMarkdown");
+      expect(codec.serialize(node)).toBe(doc);
+    });
+
+    it.each(IMAGES)("khối bị viết lại vẫn cho cùng nghĩa: %s", (md) => {
+      expect(meaning(rewrite(md))).toBe(meaning(md));
+    });
+
+    it("tài liệu nhiều khối: sửa chữ một khối không làm đổi byte của khối ảnh", () => {
+      const md = "# Tiêu đề\n\n![Sơ đồ](assets/so-do.png)\n\nĐoạn   cuối.\n";
+      const { codec, node } = load(md);
+      expect(codec.serialize(node)).toBe(md);
+    });
+
+    it("ảnh dạng tham chiếu hoặc HTML vẫn giữ nguyên văn", () => {
+      const md = '![alt][ref]\n\n[ref]: a.png\n\n<img src="a.png" width="40">\n';
+      const { codec, node } = load(md);
+      expect(codec.serialize(node)).toBe(md);
+    });
+
+    it("alt có ngoặc vuông được thoát khi xuất", () => {
+      const out = rewrite("![a \\[1\\]](a.png)");
+      expect(out).toBe("![a \\[1\\]](a.png)\n");
+    });
+  });
 });

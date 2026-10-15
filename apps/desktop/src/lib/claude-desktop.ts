@@ -36,6 +36,23 @@ export interface Mismatch {
   adopted: string | null;
 }
 
+/** Bước của lần chuyển đang chạy (src-tauri/src/claude_desktop/job.rs). */
+export type SwitchStep = "preparing" | "quitting" | "forceQuitting" | "backingUp" | "swapping" | "launching";
+
+export interface SwitchProgress {
+  step: SwitchStep;
+  /** Gói đang chuyển sang; null khi khôi phục bản ban đầu. */
+  target: string | null;
+  /** Phần trăm của bước sao lưu. */
+  percent: number | null;
+  /** Giây từ lúc bắt đầu. */
+  elapsed: number;
+  /** Đã bấm Huỷ, đang dừng. */
+  cancelling: boolean;
+  /** false khi đang mở lại app: đã đổi xong, không còn gì để huỷ. */
+  cancellable: boolean;
+}
+
 export interface DesktopProfiles {
   /** false ngoài macOS và Windows: chưa hỗ trợ, màn không hiện gì. */
   supported: boolean;
@@ -53,6 +70,8 @@ export interface DesktopProfiles {
   /** null khi Claude Desktop chưa đăng nhập. */
   signedIn: SignedIn | null;
   mismatch: Mismatch | null;
+  /** Lần chuyển đang chạy (từ cửa sổ hay khay); null khi không có. */
+  switching: SwitchProgress | null;
 }
 
 export interface Switched {
@@ -70,5 +89,14 @@ export const restoreClaudeDesktop = (force = false) => invoke<Switched>("restore
 export const adoptClaudeDesktop = (profileId: string) => invoke<DesktopProfiles>("adopt_claude_desktop", { profileId });
 export const forgetClaudeDesktop = (profileId: string) =>
   invoke<DesktopProfiles>("forget_claude_desktop", { profileId });
+/** Đăng xuất Claude Desktop khỏi gói đang dùng: thoát app, bỏ đăng nhập của gói, mở lại ở màn đăng nhập. */
+export const signOutClaudeDesktop = (profileId: string, force = false) =>
+  invoke<Switched>("sign_out_claude_desktop", { profileId, force });
 export const dismissClaudeDesktopMismatch = () => invoke<DesktopProfiles>("dismiss_claude_desktop_mismatch");
 export const migrateClaudeDesktopProfiles = () => invoke<DesktopProfiles>("migrate_claude_desktop_profiles");
+/** Lần chuyển chạy nền nên cửa sổ hỏi tiến độ riêng; null khi đã xong. */
+export const switchProgress = () => invoke<SwitchProgress | null>("claude_desktop_switch_progress");
+/** false khi không còn gì để huỷ (đã xong hay đang mở lại app). */
+export const cancelSwitch = () => invoke<boolean>("cancel_claude_desktop_switch");
+/** Đường dẫn, cỡ và tiến trình để gửi người hỗ trợ; không có token. */
+export const diagnoseClaudeDesktop = () => invoke<string>("claude_desktop_diagnose");
