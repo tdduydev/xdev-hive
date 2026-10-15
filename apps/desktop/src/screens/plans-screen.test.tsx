@@ -68,7 +68,7 @@ type Call = { command: string; args?: Record<string, unknown> };
 
 /**
  * `found` undefined: worker cũ không có lệnh `accounts discover` (lệnh lỗi như sidecar thật). `desktop` undefined: lệnh
- * Claude Desktop lỗi như ngoài macOS, màn không hiện dòng Claude Desktop.
+ * Claude Desktop lỗi như ngoài macOS và Windows, màn không hiện dòng Claude Desktop.
  */
 function fakeTauri(list = seed(), found?: FoundLogin[], desktop?: DesktopProfiles) {
   const calls: Call[] = [];
@@ -271,7 +271,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(within(panel).getByRole("button", { name: "Khôi phục như ban đầu" })).toBeTruthy();
   });
 
-  it("ngoài macOS không có dòng Claude Desktop", async () => {
+  it("ngoài macOS và Windows không có dòng Claude Desktop", async () => {
     fakeTauri(seed(), undefined, {
       supported: false,
       app: null,
