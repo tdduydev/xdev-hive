@@ -45,8 +45,8 @@ type RecordOpen struct {
 	Cols, Rows             int
 }
 
-// Recorder là Handler của kênh cho phiên trên máy cá nhân. Ghép, tắt và gỡ thiết bị chuyển cho Remote; mở phiên và
-// cấp quyền từ xa chưa có nên bị từ chối như máy chưa bật từ xa (T031, T050 thay phần này).
+// Recorder là Handler của kênh cho phiên trên máy cá nhân. Ghép, tắt và gỡ thiết bị chuyển cho Remote; cấp quyền gõ
+// chuyển cho Controller; mở phiên từ xa chưa có nên bị từ chối như máy chưa bật từ xa (T050 thay phần này).
 type Recorder struct {
 	// Dir chứa đệm `<phiên>.pending`; file còn lại từ lần chạy trước bị xoá vì PTY của chúng đã mất.
 	Dir        string
@@ -59,6 +59,8 @@ type Recorder struct {
 	BaseState func() State
 	// Remote nhận term_pair, term_disable, term_device_revoke; nil là máy không có điều khiển từ xa.
 	Remote *Remote
+	// Controller nhận term_control, term_detach, term_input, term_resize; nil là từ chối như máy chưa bật từ xa.
+	Controller *Controller
 
 	once     sync.Once
 	wake     chan struct{}
@@ -88,6 +90,7 @@ type RecordedSession struct {
 
 	// sent: seq lớn nhất đã gửi trên kết nối hiện tại; nối lại thì về -1 để gửi bù mọi thứ chưa ack.
 	sent       int64
+	controller string
 	openedSent bool
 	exit       *Exit
 	exitSent   bool
@@ -196,6 +199,32 @@ func (s *RecordedSession) ID() string {
 	return s.id
 }
 
+// Seq là seq của khối output kế tiếp: sự kiện mang seq này để trang phát lại đặt nó đúng chỗ trong output.
+func (s *RecordedSession) Seq() int64 {
+	if s == nil {
+		return 0
+	}
+	s.r.mu.Lock()
+	defer s.r.mu.Unlock()
+	return s.nextSeq
+}
+
+// SetController đổi người điều khiển trong term_state: ControllerLocal, ControllerRemote, rỗng là không ai.
+func (s *RecordedSession) SetController(who string) {
+	if s == nil {
+		return
+	}
+	r := s.r
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if s.controller == who {
+		return
+	}
+	s.controller = who
+	r.dirty = true
+	r.signal()
+}
+
 // Write nhận output đã che bí mật. Không chặn: chỉ chép vào bộ nhớ, ghi đĩa và gửi do vòng gửi làm.
 func (s *RecordedSession) Write(b []byte) {
 	if s == nil || len(b) == 0 {
@@ -219,6 +248,11 @@ func (s *RecordedSession) Write(b []byte) {
 
 // Close báo phiên đã kết thúc; reason là lý do của phiên tại máy, đổi sang lý do của hợp đồng.
 func (s *RecordedSession) Close(code *int, reason, message string) {
+	s.CloseBy(code, reason, message, "")
+}
+
+// CloseBy như Close, kèm người ngắt (userId của hub hoặc "machine"); rỗng là "machine".
+func (s *RecordedSession) CloseBy(code *int, reason, message, by string) {
 	if s == nil {
 		return
 	}
@@ -228,8 +262,11 @@ func (s *RecordedSession) Close(code *int, reason, message string) {
 	if s.exit != nil {
 		return
 	}
-	e := Exit{SessionID: s.id, ExitCode: code, Reason: ReasonExit, Message: clip(message, 500), By: "machine"}
-	if reason != ReasonExit {
+	if by == "" {
+		by = byMachine
+	}
+	e := Exit{SessionID: s.id, ExitCode: code, Reason: reason, Message: clip(message, 500), By: clip(by, 64)}
+	if reason != ReasonExit && reason != ReasonIdle {
 		e.Reason = ReasonClosed
 	}
 	s.exit = &e
@@ -427,7 +464,12 @@ func (r *Recorder) stateLocked() State {
 	for _, s := range r.sessions {
 		// Phiên đã báo kết thúc thì không còn trên máy, để hub kết thúc nếu chưa nhận term_exit.
 		if !s.dropped && s.exit == nil {
-			st.Sessions = append(st.Sessions, StateSession{ID: s.id, Origin: s.opened.Origin})
+			ss := StateSession{ID: s.id, Origin: s.opened.Origin}
+			if s.controller != "" {
+				who := s.controller
+				ss.Controller = &who
+			}
+			st.Sessions = append(st.Sessions, ss)
 		}
 	}
 	return st
@@ -440,6 +482,7 @@ func (r *Recorder) OnWelcome(info WelcomeInfo, send Sender) {
 		r.Remote.OnChange(r.StateChanged)
 		r.Remote.OnWelcome(info)
 	}
+	r.Controller.onWelcome(info)
 	r.mu.Lock()
 	r.off = !info.Terminal || (info.Owner != nil && info.Owner.Shared)
 	if r.off {
@@ -469,6 +512,17 @@ func (r *Recorder) OnDisconnect() {
 	r.mu.Lock()
 	r.link = nil
 	r.mu.Unlock()
+	r.Controller.onDisconnect()
+}
+
+// sender là kết nối hub hiện tại; nil khi mất hub hay hub không nhận phiên.
+func (r *Recorder) sender() Sender {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.link
 }
 
 // Ack xoá đệm tới Upto; hết đệm thì cắt file về 0 để file không lớn dần theo đời phiên.
@@ -532,6 +586,10 @@ func (r *Recorder) Start(req StartRequest) {
 }
 
 func (r *Recorder) Control(req ControlRequest) {
+	if r.Controller != nil {
+		r.Controller.Control(req)
+		return
+	}
 	r.reply(func(l Sender) error {
 		return l.Revoked(Revoked{SessionID: req.SessionID, ConnID: req.ConnID, Reason: "disabled"})
 	})
@@ -567,9 +625,23 @@ func (r *Recorder) DeviceRevoke(req DeviceRevokeRequest) {
 	}
 }
 
-func (r *Recorder) Detach(DetachRequest) {}
-func (r *Recorder) Input(InputRequest)   {}
-func (r *Recorder) Resize(ResizeRequest) {}
+func (r *Recorder) Detach(req DetachRequest) {
+	if r.Controller != nil {
+		r.Controller.Detach(req)
+	}
+}
+
+func (r *Recorder) Input(req InputRequest) {
+	if r.Controller != nil {
+		r.Controller.Input(req)
+	}
+}
+
+func (r *Recorder) Resize(req ResizeRequest) {
+	if r.Controller != nil {
+		r.Controller.Resize(req)
+	}
+}
 
 const remoteDisabledText = "Máy chưa bật điều khiển từ xa. Chủ máy bật tại máy (app hoặc `hive remote on`)."
 

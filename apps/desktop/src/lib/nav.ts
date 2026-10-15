@@ -15,6 +15,7 @@ import {
   MessagesSquareIcon,
   PlayIcon,
   ServerIcon,
+  SmartphoneIcon,
   WrenchIcon,
   ZapIcon,
 } from "lucide-react";
@@ -102,7 +103,8 @@ export type ScreenId =
   | "setup"
   | "plans"
   | "projects"
-  | "runs";
+  | "runs"
+  | "remote";
 
 export interface NavItem {
   id: ScreenId;
@@ -284,6 +286,14 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         design: "AppNav.dc.html",
         needs: "runs.local",
         hub: true,
+      },
+      {
+        // Cho điện thoại mở và xem phiên terminal của máy này (specs/010-hive-cli-remote). Bật hay tắt chỉ làm được tại máy.
+        id: "remote",
+        label: { vi: "Điều khiển từ xa", en: "Remote control" },
+        icon: SmartphoneIcon,
+        design: "AppRemote.dc.html",
+        needs: "runs.local",
       },
       {
         id: "setup",
