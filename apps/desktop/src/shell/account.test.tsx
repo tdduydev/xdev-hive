@@ -59,9 +59,13 @@ describe("liên kết tài khoản", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
     const dialog = await screen.findByRole("dialog");
+    expect((within(dialog).getByLabelText("Địa chỉ Hive") as HTMLInputElement).value).toBe(HUB);
+    await user.click(within(dialog).getByText("Hoặc dùng token MCP cá nhân"));
     await user.type(await within(dialog).findByLabelText("Token MCP cá nhân"), "hive_pat_abc");
     await user.click(within(dialog).getByRole("button", { name: "Đăng nhập" }));
     expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
+    // Cùng địa chỉ thì không kiểm lại hub, không đổi gì ở worker.
+    expect(calls.some((c) => c.command === "hub_change")).toBe(false);
     expect(calls.find((c) => c.command === "account_link")?.args).toEqual({ token: "hive_pat_abc" });
     expect(screen.getByText("Dev · Thanh toán")).toBeTruthy();
   });
@@ -75,9 +79,11 @@ describe("liên kết tài khoản", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
     const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByText("Hoặc dùng token MCP cá nhân"));
     await user.type(await within(dialog).findByLabelText("Token MCP cá nhân"), "hive_pat_bad");
     await user.click(within(dialog).getByRole("button", { name: "Đăng nhập" }));
-    expect((await within(dialog).findByRole("alert")).textContent).toContain("Token không còn dùng được");
+    expect(await within(dialog).findByText(/Token không còn dùng được/)).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
   it("writer không thấy Môi trường và Lượt chạy; lead thấy đủ", async () => {
@@ -116,6 +122,7 @@ describe("liên kết tài khoản", () => {
     let status: AccountStatus = { hub: null, linked: false, account: null, error: null };
     const calls = fakeTauri({
       account_status: () => status,
+      hub_check: (args) => args?.hub,
       browser_login: () => {
         status = linked(ACCOUNT);
         return "may-ha";
@@ -126,7 +133,7 @@ describe("liên kết tài khoản", () => {
     await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
     const dialog = await screen.findByRole("dialog");
     // Chưa có hub thì chưa có chỗ dán token cá nhân: kết nối máy trước.
-    const hub = await within(dialog).findByLabelText("Địa chỉ hub công khai");
+    const hub = await within(dialog).findByLabelText("Địa chỉ Hive");
     expect(within(dialog).queryByLabelText("Token MCP cá nhân")).toBeNull();
     await user.type(hub, HUB);
     await user.click(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
@@ -192,5 +199,211 @@ describe("liên kết tài khoản", () => {
     await waitFor(() => expect(emit).not.toBeNull());
     act(() => emit?.());
     expect(await screen.findByRole("button", { name: /Chưa đăng nhập/ })).toBeTruthy();
+  });
+});
+
+describe("đăng nhập lại và đổi địa chỉ hub", () => {
+  beforeEach(() => setLang("vi"));
+  const NEW = "https://10.86.224.34";
+  const OLD = "http://10.86.224.34:7780";
+  const at = (hub: string, account: Account | null): AccountStatus => ({
+    hub,
+    linked: !!account,
+    account,
+    error: null,
+  });
+
+  async function signOutThenOpen(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole("button", { name: /Phạm Hà/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Đăng xuất khỏi Hive" }));
+    const confirm = await screen.findByRole("dialog", { name: "Đăng xuất khỏi Hive?" });
+    await user.click(within(confirm).getByRole("button", { name: "Đăng xuất" }));
+    await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
+    return screen.findByRole("dialog", { name: "Tài khoản" });
+  }
+
+  it("đăng xuất rồi đăng nhập lại bằng trình duyệt ở cùng hub: không đăng ký lại máy", async () => {
+    let status = at(OLD, ACCOUNT);
+    const calls = fakeTauri({
+      account_status: () => status,
+      account_unlink: () => {
+        status = at(OLD, null);
+        return status;
+      },
+      hub_check: (args) => args?.hub,
+      account_browser_login: () => {
+        status = at(OLD, ACCOUNT);
+        return status;
+      },
+    });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    const dialog = await signOutThenOpen(user);
+    // Ô địa chỉ vẫn có và điền sẵn hub đang lưu, kể cả khi máy đã đăng ký.
+    expect((within(dialog).getByLabelText("Địa chỉ Hive") as HTMLInputElement).value).toBe(OLD);
+    await user.click(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
+    const commands = calls.map((c) => c.command);
+    expect(commands).toContain("account_browser_login");
+    expect(commands).not.toContain("browser_login");
+    expect(commands).not.toContain("hub_change");
+  });
+
+  it("đăng nhập → đăng xuất → đổi địa chỉ → đăng nhập bằng trình duyệt ở hub mới", async () => {
+    let status = at(OLD, ACCOUNT);
+    const calls = fakeTauri({
+      account_status: () => status,
+      account_unlink: () => {
+        status = at(OLD, null);
+        return status;
+      },
+      hub_check: (args) => String(args?.hub).replace(/\/$/, ""),
+      hub_change: (args) => {
+        status = at(String(args?.hub), null);
+        return { hub: args?.hub, changed: true, needsRegister: false };
+      },
+      account_browser_login: () => {
+        status = at(NEW, ACCOUNT);
+        return status;
+      },
+    });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    const dialog = await signOutThenOpen(user);
+    const field = within(dialog).getByLabelText("Địa chỉ Hive");
+    await user.clear(field);
+    await user.type(field, `${NEW}/`);
+    await user.click(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
+    const steps = ["hub_check", "hub_change", "account_browser_login", "browser_login"];
+    const order = calls.map((c) => c.command).filter((c) => steps.includes(c));
+    expect(order).toEqual(["hub_check", "hub_change", "account_browser_login"]);
+    expect(calls.find((c) => c.command === "hub_check")?.args).toEqual({ hub: `${NEW}/` });
+    expect(calls.find((c) => c.command === "hub_change")?.args).toEqual({ hub: NEW });
+    expect((within(dialog).getByLabelText("Địa chỉ Hive") as HTMLInputElement).value).toBe(NEW);
+  });
+
+  it("hub mới không nhận đăng ký cũ: hỏi trước, đồng ý thì đăng ký lại bằng trình duyệt", async () => {
+    let status = at(OLD, null);
+    const calls = fakeTauri({
+      account_status: () => status,
+      hub_check: (args) => args?.hub,
+      hub_change: (args) => ({ hub: args?.hub, changed: false, needsRegister: true }),
+      browser_login: () => {
+        status = at(NEW, ACCOUNT);
+        return "mac-ha";
+      },
+    });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
+    const dialog = await screen.findByRole("dialog");
+    const field = within(dialog).getByLabelText("Địa chỉ Hive");
+    await user.clear(field);
+    await user.type(field, NEW);
+    await user.click(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    expect(await within(dialog).findByText("Đăng ký lại máy với hub mới?")).toBeTruthy();
+    expect(within(dialog).getByText(/Gói agent, dự án, tài khoản CLI và tài liệu trên máy giữ nguyên/)).toBeTruthy();
+    // Chưa đồng ý thì chưa đăng ký lại.
+    expect(calls.some((c) => c.command === "browser_login")).toBe(false);
+    await user.click(within(dialog).getByRole("button", { name: "Đăng ký lại và đăng nhập" }));
+    expect(await within(dialog).findByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
+    expect(calls.find((c) => c.command === "browser_login")?.args).toEqual({ hub: NEW });
+  });
+
+  it("huỷ ở bước hỏi đăng ký lại thì không đăng ký", async () => {
+    const calls = fakeTauri({
+      account_status: () => at(OLD, null),
+      hub_check: (args) => args?.hub,
+      hub_change: (args) => ({ hub: args?.hub, changed: false, needsRegister: true }),
+    });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
+    const dialog = await screen.findByRole("dialog");
+    const field = within(dialog).getByLabelText("Địa chỉ Hive");
+    await user.clear(field);
+    await user.type(field, NEW);
+    await user.click(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    await user.click(await within(dialog).findByRole("button", { name: "Huỷ" }));
+    expect(within(dialog).queryByText("Đăng ký lại máy với hub mới?")).toBeNull();
+    expect(calls.some((c) => c.command === "browser_login" || c.command === "register_worker")).toBe(false);
+  });
+
+  it("chứng chỉ hub chưa được tin: hiện hướng dẫn cài chứng chỉ, không đổi gì", async () => {
+    const calls = fakeTauri({
+      account_status: () => at(OLD, null),
+      hub_check: () =>
+        Promise.reject(
+          "Máy này chưa tin chứng chỉ HTTPS của 10.86.224.34. Hub dùng chứng chỉ nội bộ (vd. Caddy local CA) thì xin quản trị hub file chứng chỉ gốc (root.crt) rồi cài vào máy: macOS mở file bằng Keychain Access, thêm vào System và chọn Always Trust.",
+        ),
+    });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Chưa đăng nhập/ }));
+    const dialog = await screen.findByRole("dialog");
+    const field = within(dialog).getByLabelText("Địa chỉ Hive");
+    await user.clear(field);
+    await user.type(field, NEW);
+    await user.click(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    const error = await within(dialog).findByText(/chưa tin chứng chỉ HTTPS/);
+    expect(error.textContent).toContain("root.crt");
+    expect(error.textContent).toContain("Always Trust");
+    const commands = calls.map((c) => c.command);
+    expect(commands).not.toContain("hub_change");
+    expect(commands).not.toContain("account_browser_login");
+    // Sửa địa chỉ thì lỗi cũ biến mất, thử lại được.
+    await user.type(field, "x");
+    expect(within(dialog).queryByText(/chưa tin chứng chỉ HTTPS/)).toBeNull();
+  });
+
+  it("đã đăng nhập: đổi địa chỉ hub mà không phải đăng nhập lại", async () => {
+    let status = at(OLD, ACCOUNT);
+    const calls = fakeTauri({
+      account_status: () => status,
+      hub_check: (args) => args?.hub,
+      hub_change: (args) => {
+        status = at(String(args?.hub), ACCOUNT);
+        return { hub: args?.hub, changed: true, needsRegister: false };
+      },
+    });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Phạm Hà/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Tài khoản và vai trò" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tài khoản" });
+    const change = within(dialog).getByRole("button", { name: "Đổi địa chỉ" }) as HTMLButtonElement;
+    expect(change.disabled).toBe(true);
+    const field = within(dialog).getByLabelText("Địa chỉ Hive");
+    await user.clear(field);
+    await user.type(field, NEW);
+    await user.click(change);
+    expect(await within(dialog).findByText(`Đã chuyển máy sang ${NEW}. Worker đang kết nối lại.`)).toBeTruthy();
+    expect(calls.some((c) => c.command.includes("login"))).toBe(false);
+    expect(within(dialog).getByText("Đang dùng tài khoản Phạm Hà ở Acme.")).toBeTruthy();
+  });
+
+  it("sau đăng xuất, màn cần hub mời Kết nối Hive và mở đúng hộp thoại có ô địa chỉ", async () => {
+    let status = at(OLD, ACCOUNT);
+    fakeTauri({
+      account_status: () => status,
+      account_unlink: () => {
+        status = at(OLD, null);
+        return status;
+      },
+    });
+    render(<AppShell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /Phạm Hà/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Đăng xuất khỏi Hive" }));
+    const confirm = await screen.findByRole("dialog", { name: "Đăng xuất khỏi Hive?" });
+    await user.click(within(confirm).getByRole("button", { name: "Đăng xuất" }));
+    await screen.findByRole("button", { name: /Chưa đăng nhập/ });
+    const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
+    await user.click(within(nav).getByRole("link", { name: "Việc của tôi" }));
+    await user.click(await screen.findByRole("button", { name: "Kết nối Hive" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tài khoản" });
+    expect((within(dialog).getByLabelText("Địa chỉ Hive") as HTMLInputElement).value).toBe(OLD);
+    expect(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" })).toBeTruthy();
   });
 });
