@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-desktop-diagnose"
+description = "Enables the claude_desktop_diagnose command without any pre-configured scope."
+commands.allow = ["claude_desktop_diagnose"]
+
+[[permission]]
+identifier = "deny-claude-desktop-diagnose"
+description = "Denies the claude_desktop_diagnose command without any pre-configured scope."
+commands.deny = ["claude_desktop_diagnose"]
