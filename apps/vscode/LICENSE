@@ -1,0 +1,32 @@
+xDev Hive VS Code Extension — Proprietary License Draft
+BẢN DỰ THẢO — CHỜ CHỦ DỰ ÁN DUYỆT TRƯỚC KHI PHÁT HÀNH
+DRAFT — OWNER APPROVAL REQUIRED BEFORE PUBLICATION
+
+Copyright (c) 2026 xDev Hive contributors. All rights reserved.
+
+This draft covers only the xDev Hive VS Code extension and its original
+documentation and artwork. It does not replace licenses for the Hive hub,
+worker, CLI or third-party components. Those components retain their own
+licenses and notices.
+
+Subject to approval of this text by the project owner, you are granted a
+non-exclusive, royalty-free permission to install and use the extension to
+connect to an xDev Hive hub you are authorized to access. This permission
+does not include access to a hub, an AI subscription or third-party services.
+
+No permission is granted under this license to redistribute, sublicense,
+sell or publish modified copies of the extension, or to use its branding
+to represent an unofficial build as an official xDev Hive release. Source
+code is not offered under an open-source license by this document.
+Rights granted by applicable law or third-party licenses remain unaffected.
+
+THE EXTENSION IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE
+AND NON-INFRINGEMENT. TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE
+COPYRIGHT HOLDERS SHALL NOT BE LIABLE FOR CLAIMS OR DAMAGES ARISING FROM
+THE EXTENSION OR ITS USE.
+
+Tóm tắt tiếng Việt: dự kiến cho phép cài và sử dụng miễn phí extension với
+hub xDev Hive mà bạn có quyền truy cập; không cấp quyền phân phối lại hoặc
+mở mã nguồn. Các thành phần khác giữ giấy phép riêng. Đây là dự thảo để
+chủ dự án duyệt, không phải xác nhận đã đủ điều kiện phát hành.
