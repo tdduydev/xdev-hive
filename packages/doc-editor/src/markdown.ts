@@ -110,8 +110,41 @@ export const DocEmbed = Node.create({
   renderMarkdown: (node) => `![[${node.attrs?.key ?? ""}]]`,
 });
 
+/** Địa chỉ ảnh trong `![](…)`: có khoảng trắng hoặc ngoặc thì bọc `<…>` để Markdown đọc lại đúng một địa chỉ. */
+const imageDest = (src: string) => (/[\s()]/.test(src) ? `<${src.replace(/[<>]/g, encodeURIComponent)}>` : src);
+
 /**
- * Khối Markdown trình soạn không dựng lại y nguyên được (HTML, ảnh, front matter, chú thích…): hiện và sửa dạng chữ gốc
+ * Ảnh `![alt](src "title")`. Địa chỉ giữ nguyên chữ trong tài liệu (thường là đường dẫn tương đối trong repo);
+ * trình soạn tự phân giải lúc hiển thị (editor-views.tsx), không bao giờ ghi địa chỉ đã phân giải ngược vào tài liệu.
+ */
+export const Image = Node.create({
+  name: "image",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  draggable: true,
+  addAttributes: () => ({
+    src: { default: "" },
+    alt: { default: "" },
+    title: { default: null },
+  }),
+  // Ảnh `data:` dán từ trang web có thể nặng vài MB: để lên đường tải file thay vì nhét vào Markdown.
+  parseHTML: () => [{ tag: 'img[src]:not([src^="data:"])' }],
+  renderHTML: ({ HTMLAttributes }) => ["img", mergeAttributes(HTMLAttributes, { class: "inline max-w-full" })],
+  markdownTokenName: "image",
+  parseMarkdown: (token, h) =>
+    h.createNode("image", { src: token.href ?? "", alt: token.text ?? "", title: token.title ?? null }),
+  renderMarkdown: (node) => {
+    const { src, alt, title } = node.attrs ?? {};
+    const label = String(alt ?? "").replace(/[[\]]/g, "\\$&");
+    const tail = title ? ` "${String(title).replace(/"/g, '\\"')}"` : "";
+    return `![${label}](${imageDest(String(src ?? ""))}${tail})`;
+  },
+});
+
+/**
+ * Khối Markdown trình soạn không dựng lại y nguyên được (HTML, front matter, chú thích…): hiện và sửa dạng chữ gốc
  * để nạp rồi lưu không làm mất nội dung.
  */
 export const RawMarkdown = Node.create({
@@ -144,8 +177,10 @@ export const RawMarkdown = Node.create({
   },
 });
 
-/** Các extension tạo schema; trình soạn thay codeBlock và docEmbed bằng bản có giao diện (cùng tên, cùng schema). */
-export function docExtensions(views: { codeBlock?: AnyExtension; docEmbed?: AnyExtension } = {}): AnyExtension[] {
+/** Các extension tạo schema; trình soạn thay codeBlock, docEmbed và image bằng bản có giao diện (cùng tên, cùng schema). */
+export function docExtensions(
+  views: { codeBlock?: AnyExtension; docEmbed?: AnyExtension; image?: AnyExtension } = {},
+): AnyExtension[] {
   return [
     StarterKit.configure({
       codeBlock: false,
@@ -160,6 +195,7 @@ export function docExtensions(views: { codeBlock?: AnyExtension; docEmbed?: AnyE
     Requirement,
     Callout,
     views.docEmbed ?? DocEmbed,
+    views.image ?? Image,
     RawMarkdown,
   ];
 }
@@ -247,7 +283,7 @@ export class MarkdownCodec {
   private parseBlock(block: string): JSONContent[] {
     let nodes: JSONContent[];
     try {
-      nodes = (this.manager.parse(block).content ?? []).map(enhance);
+      nodes = (this.manager.parse(block).content ?? []).map(enhance).map(inParagraph);
     } catch {
       return [raw(block)];
     }
@@ -323,10 +359,17 @@ const firstText = (node: JSONContent | undefined) => {
   return t?.type === "text" && !t.marks?.length ? t : null;
 };
 
+const TEXT_HOSTS = new Set(["paragraph", "heading"]);
+
+/** @tiptap/markdown bỏ đoạn văn bọc quanh ảnh đứng một mình; ảnh của ta là node trong dòng nên phải bọc lại. */
+const inParagraph = (node: JSONContent): JSONContent =>
+  node.type === "image" ? { type: "paragraph", content: [node] } : node;
+
 /** Nhận ra cú pháp riêng của Hive trong cây @tiptap/markdown dựng: ghi chú nổi, nhúng tài liệu, mã yêu cầu. */
 function enhance(node: JSONContent): JSONContent {
   const content = node.content?.map(enhance);
   const out: JSONContent = content ? { ...node, content } : { ...node };
+  if (out.content && !TEXT_HOSTS.has(out.type ?? "")) out.content = out.content.map(inParagraph);
   if (out.type === "paragraph" && out.content?.length === 1) {
     const t = firstText(out);
     const key = t && EMBED_LINE.exec(t.text?.trim() ?? "")?.[1];
