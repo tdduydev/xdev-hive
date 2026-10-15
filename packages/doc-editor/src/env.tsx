@@ -24,7 +24,24 @@ export interface DocEditorEnv {
    * chưa có màn AI SDLC không phải xử lý liên kết tới hạng mục; bỏ trống thì tài liệu mở như mọi tài liệu khác.
    */
   sdlc?: DocEditorSdlc;
+  /**
+   * Phân giải link và ảnh tương đối của tài liệu `docKey` (FR-025). App chủ nên gom cả tài liệu vào một lời gọi hub
+   * (`docAssets.resolve`) rồi trả từ bộ nhớ đệm; trình soạn gọi cho từng link/ảnh. Bỏ trống thì ảnh tương đối hiện
+   * chỗ giữ chỗ và bấm link tương đối không mở gì.
+   */
+  resolveLink?: (docKey: string, href: string) => DocLinkTarget | null | Promise<DocLinkTarget | null>;
+  /**
+   * Tải file lên kho file của tài liệu (FR-030). Trả đường dẫn tương đối so với tài liệu để chèn vào Markdown. Bỏ trống
+   * thì nút "Chèn ảnh", "Đính kèm file", dán và kéo thả file đều tắt.
+   */
+  uploadAsset?: (docKey: string, file: File) => Promise<{ relativePath: string }>;
 }
+
+/** Đích của một link tương đối: tài liệu hub, file trong kho file, hoặc link ngoài (file trên GitHub/GitLab). */
+export type DocLinkTarget =
+  | { kind: "doc"; key: string }
+  | { kind: "asset"; url: string }
+  | { kind: "external"; url: string };
 
 export interface DocEditorSdlc {
   /** Mở hạng mục (`tab` như `SdlcItemTab` của `@xdev-hive/sdlc-ui`). */

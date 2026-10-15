@@ -193,7 +193,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/src/modules/scm/{types.ts,github.ts,gitlab.ts,memory.ts,lfs.ts,index.ts}` + test tương ứng
   - **Kiểm**: hub test phần `scm` (test cũ của SDLC sync và kho skill vẫn qua), typecheck.
 
-- [ ] **T018 [P] [US5] [vừa] · 2 ngày — Editor: ảnh, tải lên, link tương đối, nhãn đồng bộ**
+- [x] **T018 [P] [US5] [vừa] · 2 ngày — Editor: ảnh, tải lên, link tương đối, nhãn đồng bộ**
   - **Phụ thuộc**: T003, T010.
   - **Goal**: FR-025, FR-030, FR-042, plan.md mục 8.
     - `DocEditorEnv` thêm `resolveLink(docKey, href)` và `uploadAsset(docKey, file)` (tuỳ chọn; không có thì nút tải
