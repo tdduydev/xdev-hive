@@ -1,8 +1,8 @@
-//! Nhóm Git theo dõi của màn Dự án trên máy (specs/016-desktop-git-groups): kết nối GitLab/GitHub bằng token cá nhân,
+//! Nhóm Git theo dõi của màn Dự án trên máy (specs/016-desktop-git-groups): kết nối GitLab/GitHub bằng token hoặc helper,
 //! clone, fetch, pull mọi repo của một group qua `hive-worker gitgroups`. Chạy được khi chưa đăng nhập Hive.
 //!
-//! Token nằm trong keychain của hệ điều hành theo id kết nối, không ghi ra file, không về giao diện. App chỉ đưa token cho
-//! sidecar qua biến môi trường của đúng lần chạy cần nó; sidecar đưa tiếp cho git qua askpass.
+//! Token nhập tay nằm trong keychain theo id kết nối. Đăng nhập Git có sẵn chỉ đọc helper khi gọi API, không lưu lại;
+//! clone/fetch/pull để Git dùng helper của máy. Secret không về giao diện, file hay tham số dòng lệnh.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -178,18 +178,65 @@ fn entry(host_id: &str) -> Result<keyring::Entry, String> {
         .map_err(|e| format!("Không mở được keychain của máy: {e}"))
 }
 
-/// Biến HIVE_GIT_TOKENS cho các kết nối cần dùng. Kết nối chưa có token (group công khai) thì bỏ qua.
-fn tokens_env(host_ids: &[&str]) -> Vec<(&'static str, String)> {
+/// Chỉ gọi helper cho API. Clone/fetch/pull dùng helper trực tiếp trong Git của máy.
+async fn tokens_env(
+    app: &AppHandle,
+    host_ids: &[&str],
+    api: bool,
+) -> Result<Vec<(&'static str, String)>, String> {
+    let view: Value = sidecar_json(app, base(""), vec![]).await?;
     let mut tokens = serde_json::Map::new();
     for id in host_ids {
-        if let Some(t) = entry(id).ok().and_then(|e| e.get_password().ok()) {
+        let host = view["hosts"]
+            .as_array()
+            .and_then(|hosts| hosts.iter().find(|h| h["id"].as_str() == Some(id)));
+        let token = if let Some(h) = host.filter(|h| h["authMode"] == "git") {
+            if api {
+                Some(
+                    crate::git_credentials::credential(
+                        h["kind"].as_str().unwrap_or(""),
+                        h["url"].as_str().unwrap_or(""),
+                    )
+                    .await?,
+                )
+            } else {
+                None
+            }
+        } else {
+            entry(id).ok().and_then(|e| e.get_password().ok())
+        };
+        if let Some(t) = token {
             tokens.insert((*id).to_string(), Value::String(t));
         }
     }
-    if tokens.is_empty() {
-        return vec![];
-    }
-    vec![(TOKENS_ENV, Value::Object(tokens).to_string())]
+    Ok(if tokens.is_empty() {
+        vec![]
+    } else {
+        vec![(TOKENS_ENV, Value::Object(tokens).to_string())]
+    })
+}
+
+#[tauri::command]
+pub async fn git_host_probe(kind: String, url: String) -> Result<Value, String> {
+    let username = crate::git_credentials::probe(&kind, &url).await?;
+    Ok(serde_json::json!({ "username": username }))
+}
+
+#[tauri::command]
+pub async fn git_host_discover(app: AppHandle) -> Result<Value, String> {
+    let projects: Value = sidecar_json(&app, vec!["projects".into(), "--json".into()], vec![])
+        .await
+        .unwrap_or(Value::Null);
+    let remotes: Vec<String> = projects["projects"]
+        .as_array()
+        .map(|ps| {
+            ps.iter()
+                .filter_map(|p| p["origin"].as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let items = crate::git_credentials::discover(&remotes).await?;
+    serde_json::to_value(items).map_err(|_| "Không đọc được gợi ý kết nối Git.".into())
 }
 
 /// Kết nối, nhóm và danh sách repo đã lưu; không gọi mạng.
@@ -198,7 +245,7 @@ pub async fn git_groups(app: AppHandle) -> Result<Value, String> {
     sidecar_json(&app, base(""), vec![]).await
 }
 
-/// Thêm kết nối: worker kiểm token với API của máy chủ rồi ghi cấu hình (không có token); app cất token vào keychain.
+/// Chỉ token nhập tay mới lưu keychain; đăng nhập Git luôn đọc lại từ helper khi cần API.
 #[tauri::command]
 pub async fn git_host_add(
     app: AppHandle,
@@ -206,10 +253,24 @@ pub async fn git_host_add(
     url: String,
     name: String,
     token: String,
+    auth_mode: Option<String>,
 ) -> Result<Value, String> {
-    let args = host_add_args(&kind, &url, &name)?;
-    let token = check_token(&token)?;
+    let mut args = host_add_args(&kind, &url, &name)?;
+    let mode = auth_mode.as_deref().unwrap_or("token");
+    let token = match mode {
+        "git" => {
+            crate::git_credentials::verified_credential(&kind, &url)
+                .await?
+                .0
+        }
+        "token" => check_token(&token)?,
+        _ => return Err("Cách đăng nhập không hợp lệ.".into()),
+    };
+    args.push(arg("auth-mode", mode));
     let view: Value = sidecar_json(&app, args, vec![(TOKEN_ENV, token.clone())]).await?;
+    if mode == "git" {
+        return Ok(view);
+    }
     let id = view["host"]["id"]
         .as_str()
         .ok_or("Worker không trả id kết nối.")?
@@ -251,7 +312,7 @@ pub async fn git_group_suggest(
     let mut args = base("suggest");
     args.push(id_arg("host", &host)?);
     args.push(text_arg("search", &search, "Chữ tìm", 200)?);
-    sidecar_json(&app, args, tokens_env(&[host.trim()])).await
+    sidecar_json(&app, args, tokens_env(&app, &[host.trim()], true).await?).await
 }
 
 #[tauri::command]
@@ -265,7 +326,7 @@ pub async fn git_group_add(
     include_archived: bool,
 ) -> Result<Value, String> {
     let args = group_add_args(&host, &path, &root, &protocol, &filter, include_archived)?;
-    sidecar_json(&app, args, tokens_env(&[host.trim()])).await
+    sidecar_json(&app, args, tokens_env(&app, &[host.trim()], true).await?).await
 }
 
 #[tauri::command]
@@ -282,7 +343,7 @@ pub async fn git_group_update(
 pub async fn git_group_refresh(app: AppHandle, id: String, host: String) -> Result<Value, String> {
     let mut args = base("group-refresh");
     args.push(id_arg("id", &id)?);
-    sidecar_json(&app, args, tokens_env(&[host.trim()])).await
+    sidecar_json(&app, args, tokens_env(&app, &[host.trim()], true).await?).await
 }
 
 /// Bỏ theo dõi; thư mục đã clone giữ nguyên.
@@ -339,7 +400,7 @@ pub async fn git_group_sync(
         .args(args)
         .env(key, path);
     if action != "status" {
-        for (k, v) in tokens_env(&[host.trim()]) {
+        for (k, v) in tokens_env(&app, &[host.trim()], false).await? {
             cmd = cmd.env(k, v);
         }
     }
@@ -491,8 +552,10 @@ pub fn start_auto_fetch(app: AppHandle) {
                 continue;
             }
             let ids: Vec<&str> = hosts.iter().map(String::as_str).collect();
-            if let Err(e) = sidecar_json::<Value>(&app, base("auto-fetch"), tokens_env(&ids)).await
-            {
+            let Ok(env) = tokens_env(&app, &ids, false).await else {
+                continue;
+            };
+            if let Err(e) = sidecar_json::<Value>(&app, base("auto-fetch"), env).await {
                 eprintln!("[gitgroups] tự fetch lỗi: {e}");
             }
             let _ = app.emit_to(crate::APP, CHANGED, ());
