@@ -264,11 +264,25 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **PHẠM VI**: `apps/vscode/src/views/{mine,approvals,runs,merge-queue,badge}.ts` (+ test)
   - **Test**: fake hub; badge đúng tổng; chưa đăng nhập và chưa có hub URL đều không gọi mạng.
 
-- [ ] **T016 [P] [US2] [vừa] · 1,5 ngày — View AI SDLC (webview `sdlc-ui`)**
+- [x] **T016 [P] [US2] [vừa] · 1,5 ngày — View AI SDLC (webview `sdlc-ui`)**
   - **Phụ thuộc**: T013.
   - **PHẠM VI**: `apps/vscode/src/views/sdlc.ts`, `apps/vscode/webview/screens/sdlc.tsx`,
     `apps/vscode/src/webview-host/allowlist/sdlc.ts` (+ test)
   - **Test**: `SdlcEnv.link` mở đúng màn; quyền ẩn nút theo `can`.
+  - **Bàn giao**:
+    - Webview không tự gửi thông điệp tuỳ ý (`acquireVsCodeApi` chỉ gọi một lần trong `WebviewBridge`), nên hai kênh với
+      host đi qua RPC giả `/rpc/host/sdlcInit` (lấy route chờ) và `/rpc/host/sdlcOpen` (mở trang hub). Host chặn chúng
+      ở `rpc` truyền cho `attachBridge`, không chuyển tiếp tới hub. Liên kết `doc/review/task/run/projectSettings`
+      do host dựng URL từ trường đã kiểm rồi mở bằng trình duyệt.
+    - `can` lấy từ `roles.mine` theo tổ chức như web (`sdlc.write`, `sdlc.override`, `sdlc.modes.write`); chưa biết
+      quyền thì chỉ đọc. Allowlist không có `modes.save/remove/dryRun`, `metrics`, `import`, `changeMode`.
+    - **Còn việc cho T026**: thêm lệnh `xdevHive.sdlc.open` vào manifest (host đã đăng ký, nhận `SdlcRoute` tuỳ chọn);
+      T015 muốn mở câu hỏi chờ duyệt thì gọi lệnh này với `{ kind: "questions" }`.
+    - **Rủi ro**: màn duyệt phân rã nạp lười CSS của `@xyflow/react` thành chunk `breakdown-review-*.css`, nhưng
+      `renderHtml` (T013) chỉ nối `main.css` nên đồ thị có thể thiếu style trong VS Code. Cần T013 hoặc T026 nối thêm
+      CSS đó. Chưa kiểm trong VS Code thật.
+    - Test webview nằm ở `src/views/sdlc-webview.test.ts` (dựng bundle bằng esbuild rồi chạy trong jsdom) vì vitest của
+      `apps/vscode` chỉ nhận `src/**/*.test.ts`.
 
 - [ ] **T017 [P] [US8] [nặng] · 2,5 ngày — View Artifact và panel artifact cách ly**
   - **Phụ thuộc**: T013.

@@ -16,6 +16,7 @@ vi.mock("vscode", async (original) => {
       ...base.window,
       state: focus,
       onDidChangeWindowState: vi.fn(() => new base.Disposable(() => {})),
+      registerWebviewViewProvider: vi.fn(() => new base.Disposable(() => {})),
       createOutputChannel: vi.fn(() => ({
         appendLine: (line: string) => base.outputLines.push(line),
         show: vi.fn(),
@@ -162,6 +163,11 @@ describe("views", () => {
     await vi.waitFor(() => expect(views.get("xdev-hive.approvals")?.badge).toBeDefined(), { timeout: 5000 });
     expect(views.get("xdev-hive.approvals")?.badge).toEqual({ value: 6, tooltip: "6 mục đang chờ bạn" });
     expect(views.get("xdev-hive.mine")?.message).toBeUndefined();
+    expect(vscode.window.registerWebviewViewProvider).toHaveBeenCalledWith(
+      "xdev-hive.sdlc",
+      expect.objectContaining({ resolveWebviewView: expect.any(Function) }),
+    );
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith("xdevHive.sdlc.open", expect.any(Function));
     for (const item of ctx.subscriptions) item.dispose();
     await server.close();
   });
