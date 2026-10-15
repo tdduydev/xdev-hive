@@ -132,6 +132,20 @@ generic password cùng service/account **[Suy luận]**; trên Linux, thuộc t�
 | esbuild đã có trong repo (`packages/artifacts-runtime`, 0.28.2) | `packages/artifacts-runtime/package.json` |
 | ADR mới nhất 0026, migration mới nhất `0072_third_wasp.sql`, SRS tới mục 3.21 (ART) | `docs/adr`, `apps/hub/db/migrations`, `docs/srs.md` |
 
+### 4.5 Kết nối Git và SCM (cho Q5, đọc code ngày 2026-10-15)
+
+| Điều | Nguồn |
+|---|---|
+| `GitProvider` có `checkAccess(owner)`, `commentOnIssue(ref, number, body, opts?)`, webhook. **Chưa có** API bình luận theo dòng trên PR, sửa, xoá, trả lời hay resolve luồng | `apps/hub/src/modules/scm/types.ts:139,151` |
+| `WebhookEvent = "push" \| "pull_request" \| "issues" \| "issue_comment"`. GitLab bật `noteEvents` | `scm/types.ts:57`, `scm/gitlab.ts` |
+| `GitProviderError` mã `rate_limited`, `retryAfterMs` lấy từ `Retry-After` hoặc lúc hạn mức đặt lại; `retryable` đúng với `rate_limited`, `unavailable` | `scm/errors.ts:8,17,33,61` |
+| Kiểm chữ ký webhook ở `verify.ts`; test dùng `mock-http.ts`, `fixtures/`, `MemoryProvider` (`memory.ts`) | `apps/hub/src/modules/scm` |
+| Code review nhận sự kiện scm qua `registerCodeReviewScm` | `apps/hub/src/modules/codereview/scm.ts:38` |
+| Cờ tính năng dự án ở `projectSettings.features`, mặc định tắt | `packages/contracts/src/projects.ts:399,530` |
+
+Hệ quả: đồng bộ hai chiều (US11) cần thêm thao tác provider (T033) và phần đồng bộ trong `codereview` (T034); không
+phải viết lại client GitHub/GitLab.
+
 ## 5. Quyết định rút ra
 
 | Quyết định | Lý do | Phương án bỏ |
@@ -144,3 +158,5 @@ generic password cùng service/account **[Suy luận]**; trên Linux, thuộc t�
 | Artifact trong webview riêng, tài liệu từ `artifacts.frameDocument` | Không phụ thuộc HTTP/HTTPS của hub | `iframe` tới hub: có thể bị chặn mixed content **[Suy luận]** |
 | Trạng thái worker qua op `worker.status` của socket | Socket đã có, đã kiểm UID | Đọc file pid hoặc thử lấy khoá: không biết ai giữ |
 | Binary tải khi cần, kiểm chữ ký | VSIX nhỏ, dùng chung `~/.xdev-hive/bin` với desktop | Gói sẵn theo nền tảng (Q3) |
+| Đăng Marketplace và Open VSX từ bản đầu (Q1, chủ dự án chốt 2026-10-15) | Cursor, Windsurf, VSCodium chỉ cài từ Open VSX (mục 2); editor tự cập nhật | Kênh VSIX nội bộ do hub phát (T027, T028 bỏ) |
+| Bình luận review đồng bộ hai chiều với PR qua kết nối Git của dự án (Q5, chốt 2026-10-15) | Dùng lại `GitProvider`, webhook, lỗi hạn mức có sẵn (mục 4.5) | Chỉ lưu ở hub; đăng bằng OAuth riêng của từng người |

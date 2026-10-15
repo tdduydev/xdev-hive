@@ -33,15 +33,20 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - Extension: `pnpm --filter @xdev-hive/vscode typecheck`, `test`, `build`.
   - Hub: `pnpm --filter @xdev-hive/hub test` (test DB cần Docker, xem AGENTS.md).
   - Mọi task: `pnpm biome check --write .`, `pnpm deps`.
-- **Migration**: chỉ sinh ở bước cuối của task hub (T008, T030), sau khi rebase lên `main` mới nhất.
+- **Migration**: chỉ sinh ở bước cuối của task hub (T008, T030, T034), sau khi rebase lên `main` mới nhất.
 - **Ghi chú chung**: task sửa `apps/desktop` (T006, T009, T014) chờ các nhánh desktop đang mở (DESKCLIENT, spec 015) merge.
+- **Quyết định 2026-10-15**: chủ dự án chốt Q1–Q9.
+  - Q1 công khai ngay: bỏ T027, T028 (giữ ID, không đánh số lại); thêm T036, T037; sửa T029.
+  - Q5 đồng bộ PR hai chiều: thêm T033, T034, T035; T008, T014, T018, T032 thêm phần liên quan.
+- **Task của người**: T036 do chủ dự án làm (tài khoản, PAT). Không giao agent, không có tier.
 
 ## Đợt 0: quyết định và kiểm khả năng (song song)
 
 - [ ] **T001 [P] [—] [nhẹ] · 0,5 ngày — ADR 0027 và mục SRS cho extension VS Code**
   - **Goal**:
-    - Viết ADR 0027 "Extension VS Code": các quyết định ở research.md mục 5, câu hỏi Q1–Q9, đường dẫn tới spec 017.
-    - Thêm SRS mục 3.22 `VSC-01…VSC-12`, ánh xạ FR của spec.
+    - Viết ADR 0027 "Extension VS Code": các quyết định ở research.md mục 5, quyết định đã chốt Q1–Q9 (Q1 công khai
+      ngay, Q5 đồng bộ bình luận với PR), đường dẫn tới spec 017.
+    - Thêm SRS mục 3.22 `VSC-01…VSC-15`, ánh xạ FR của spec (gồm FR-038…FR-052).
   - **PHẠM VI**:
     - `docs/adr/0027-vscode-extension.md` (mới)
     - `docs/adr/README.md` (một dòng mục lục)
@@ -60,13 +65,25 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `specs/017-vscode-extension/research.md` (thêm mục 6 "Kết quả spike", sửa nhãn)
   - **Kiểm**: mỗi dòng có kết quả "có / không / chưa rõ" kèm editor, bản và ngày thử.
 
+- [ ] **T036 [—] [người: chủ dự án] · 0,5 ngày người — Publisher Marketplace, namespace Open VSX, PAT trong secret CI**
+  - **Goal**: plan.md mục 11 "Chuẩn bị", FR-047, FR-048.
+    - Kiểm tên `xdev` còn trống trên Marketplace và Open VSX. Đã có người giữ thì chọn tên khác và báo trước khi T003
+      ghi `publisher`.
+    - Tạo publisher `xdev` (Azure DevOps) và namespace `xdev` (Open VSX, sau khi ký Eclipse Publisher Agreement).
+    - Tạo `VSCE_PAT` (chỉ scope Marketplace "Manage", hạn ≤ 90 ngày) và `OVSX_PAT`.
+    - Tạo GitHub environment `vscode-publish`: người duyệt bắt buộc, chỉ tag `vscode-v*`, lưu hai PAT làm secret.
+  - **PHẠM VI**: không sửa file trong repo. Không gửi PAT qua chat, issue hay commit.
+  - **Xong khi**: ghi vào PR của T029 tên publisher, tên environment, ngày hết hạn PAT (không ghi giá trị PAT).
+
 ## Đợt 1: nền (song song, sau T002 với phần phụ thuộc kết quả spike)
 
 - [ ] **T003 [P] [—] [vừa] · 1,5 ngày — Khung `apps/vscode` và manifest đủ**
   - **Goal**:
-    - Gói `@xdev-hive/vscode`: `package.json` (manifest đủ theo plan.md: `engines.vscode ^1.101.0`, `extensionKind`,
-      `capabilities.untrustedWorkspaces`, `activationEvents`, `contributes.{commands, configuration, viewsContainers,
-      views, menus, chatParticipants, mcpServerDefinitionProviders, terminal.profiles, authentication}`).
+    - Gói `@xdev-hive/vscode`: `package.json` (manifest đủ theo plan.md: `publisher: "xdev"` (hoặc tên T036 báo),
+      `engines.vscode ^1.101.0`, `extensionKind`, `capabilities.untrustedWorkspaces`, `activationEvents`,
+      `contributes.{commands, configuration, viewsContainers, views, viewsWelcome, menus, chatParticipants,
+      mcpServerDefinitionProviders, terminal.profiles, authentication, walkthroughs}`). Trường gallery (`license`,
+      `homepage`, `categories`…) để T037 điền qua ghi chú bàn giao.
     - `scripts/build.ts` (esbuild hai đích, Tailwind CLI), `tsconfig.json` (alias `@/`), `vitest.config.ts`,
       `test/vscode-mock.ts`.
     - `src/extension.ts` và `src/<phần>/index.ts` rỗng cho mọi phần trong plan.md; `src/lib/{log,i18n,config,redact,
@@ -105,10 +122,12 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `apps/desktop/src-tauri/src/worker.rs` (một tham số)
   - **Test**: Go test gọi `worker.status` qua socket tạm; Windows `go vet`.
 
-- [ ] **T008 [P] [US3] [nặng] · 3 ngày — Hub: bình luận theo dòng cho review code**
+- [ ] **T008 [P] [US3] [nặng] · 3,5 ngày — Hub: bình luận theo dòng cho review code**
   - **Goal**: theo plan.md mục 4 và FR-018:
-    - bảng `code_review_comments`, RLS bật và ép;
-    - service, router `codeReviews.comments.{list, add, reply, resolve, reopen}`;
+    - bảng `code_review_comments` (có `deleted_at`, `origin`, `external_author`), RLS bật và ép;
+    - service, router `codeReviews.comments.{list, add, reply, edit, delete, resolve, reopen}`. Sửa và xoá chỉ cho tác
+      giả, chỉ bình luận `origin = 'hive'`;
+    - trường đồng bộ trong hợp đồng (`syncState`, `providerUrl`) dạng tuỳ chọn, trả `null`. T034 điền giá trị;
     - audit; thông báo hộp thư cho người giao việc và reviewer;
     - hợp đồng trong `packages/contracts/src/code-reviews.ts`, `pnpm openapi`;
     - migration sinh ở bước cuối.
@@ -118,8 +137,8 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `packages/contracts/src/code-reviews.ts`, `packages/contracts/src/code-reviews.test.ts`
     - `packages/contracts/openapi.json`
     - `apps/hub/db/migrations/<số kế tiếp>_*.sql` và `meta/**`
-  - **Test**: DB test cho thêm, trả lời, xử lý, `outdated` theo `headSha`; RLS chặn tổ chức khác; người không xem được
-    review không bình luận được.
+  - **Test**: DB test cho thêm, trả lời, sửa, xoá mềm, xử lý, `outdated` theo `headSha`; RLS chặn tổ chức khác; người
+    không xem được review không bình luận được; người khác tác giả không sửa, xoá được.
 
 - [ ] **T009 [P] [US7] [vừa] · 0,5 ngày — `optimizer.Link` tạo cả `~/.xdev-hive/bin/hive`**
   - **Goal**: `Link` nhận thêm đường dẫn `hive` (cùng thư mục với `hive-worker` trong bundle desktop) và tạo liên kết thứ
@@ -128,6 +147,26 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     - `worker/internal/optimizer/link.go`, `worker/internal/optimizer/link_test.go`
     - `worker/cmd/hive-worker/optimize.go`, `worker/cmd/hive-worker/optimize_test.go`
   - **Phụ thuộc**: không chung file với T006 (T006 chỉ sửa `main.go`, `local.go`).
+
+- [ ] **T033 [P] [US11] [nặng] · 2,5 ngày — scm: API bình luận PR theo dòng và webhook bình luận**
+  - **Goal**: plan.md mục 4b phần "scm (T033)", FR-038, FR-039, FR-043 (phần `checkAccess`):
+    - `GitProvider` thêm `listReviewComments`, `createReviewComment`, `replyReviewComment`, `editReviewComment`,
+      `deleteReviewComment`, `setReviewThreadResolved`, cho GitHub (REST + GraphQL), GitLab (discussions, `diff_refs`
+      theo phiên bản MR), `MemoryProvider`; `local` ném `unsupported`;
+    - mã lỗi mới `position_invalid` trong `GitProviderError` (GitHub 422, GitLab 400 vị trí sai);
+    - `WebhookEvent` thêm `pull_request_review_comment`; parser cho GitHub `pull_request_review_comment`,
+      `pull_request_review_thread` và GitLab `note` có `position`;
+    - `checkAccess` báo thiếu quyền ghi PR;
+    - job chạy một lần `scm.webhooks.refresh` cập nhật sự kiện cho webhook của kết nối sẵn có.
+  - **PHẠM VI**:
+    - `apps/hub/src/modules/scm/{types.ts, errors.ts, github.ts, gitlab.ts, memory.ts, local.ts, events.ts,
+      webhooks.ts, index.ts}` và test cạnh từng file (`*.test.ts`)
+    - `apps/hub/src/modules/scm/review-comments.test.ts` (mới, test chung cho ba provider qua `mock-http.ts`)
+    - `apps/hub/src/modules/scm/fixtures/{github,gitlab}/**` (payload webhook và phản hồi API mẫu)
+  - **Phụ thuộc**: không. Không chung file với T008 (T008 chỉ sửa `codereview`, contracts).
+  - **Test**: fixture GitHub/GitLab giả cho từng thao tác; 422 thành `position_invalid`; 403 hết hạn mức thành
+    `rate_limited` có `retryAfterMs`; parser webhook trả đúng `{provider, prNumber, commentId, threadId, path, line, side,
+    commitSha, body, author, updatedAt, action}`.
 
 ## Đợt 2: lõi extension và CLI (sau Đợt 1)
 
@@ -164,7 +203,8 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 - [ ] **T011 [P] [US1] [nặng] · 2,5 ngày — Authentication Provider `xdev-hive`**
   - **Phụ thuộc**: T003, T004 (giao diện JSON của `hive auth`).
   - **Goal**: plan.md mục 1, FR-003…FR-005. PKCE, loopback, `asExternalUri`, `store.ts` hai tầng, `hub-url.ts`, gỡ phiên
-    khi 401, hỏi khi đăng xuất. Lấy tên và vai trò sau đăng nhập.
+    khi 401, hỏi khi đăng xuất. Lấy tên và vai trò sau đăng nhập. Chưa có hub URL (người dùng tải từ Marketplace) thì
+    trạng thái "chưa cấu hình hub", lệnh "Nhập URL hub" kiểm `GET /api/v1/health` trước khi lưu (FR-051).
   - **PHẠM VI**:
     - `apps/vscode/src/auth/**`
   - **Test**: `state` sai bị từ chối; quá 5 phút huỷ; không có `hive` thì dùng `SecretStorage`; token không vào log
@@ -200,6 +240,9 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Phụ thuộc**: T008.
   - **Goal**: plan.md mục 4 (web và desktop). `FileDiff` nhận `threads`, `onAddComment`, `onReply`, `onResolve`; có
     nhãn "Đã cũ". Web và desktop nối `codeReviews.comments.*`, hỏi lại 30 giây khi phiên đang mở.
+    - Sửa, xoá bình luận của mình; "Bình luận đã bị xoá" giữ chỗ trong luồng.
+    - Khi trường có giá trị: nhãn nguồn "GitHub"/"GitLab" kèm login, nhãn "Chờ đồng bộ"/"Lỗi đồng bộ", link "Xem trên
+      PR", nút "Thử lại" (gọi `retrySync`, có sau T034; trước đó ẩn). Kiểm renderer Markdown chặn HTML thô.
   - **PHẠM VI**:
     - `packages/code-review/src/{file-diff.tsx, file-diff.test.tsx, comment-thread.tsx, comment-thread.test.tsx,
       index.ts, text.ts}`
@@ -211,9 +254,10 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 - [ ] **T015 [P] [US2] [vừa] · 2 ngày — Tree: Việc của tôi, Chờ duyệt, Lượt chạy, Hàng merge, badge**
   - **Phụ thuộc**: T010, T011.
-  - **Goal**: US2-1…4, 6, 7. Log run vào Output qua SSE.
+  - **Goal**: US2-1…4, 6, 7. Log run vào Output qua SSE. Chưa cấu hình hub thì view hiện "Chưa cấu hình hub xDev Hive"
+    (Edge Cases).
   - **PHẠM VI**: `apps/vscode/src/views/{mine,approvals,runs,merge-queue,badge}.ts` (+ test)
-  - **Test**: fake hub; badge đúng tổng; chưa đăng nhập không gọi mạng.
+  - **Test**: fake hub; badge đúng tổng; chưa đăng nhập và chưa có hub URL đều không gọi mạng.
 
 - [ ] **T016 [P] [US2] [vừa] · 1,5 ngày — View AI SDLC (webview `sdlc-ui`)**
   - **Phụ thuộc**: T013.
@@ -232,7 +276,9 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
 
 - [ ] **T018 [P] [US3] [nặng] · 3 ngày — Review bằng Comments API và diff**
   - **Phụ thuộc**: T008, T010, T013.
-  - **Goal**: plan.md mục 4 (extension), US3 toàn bộ. Fallback webview `CodeReviewPane` khi không có repo.
+  - **Goal**: plan.md mục 4 (extension), US3 toàn bộ. Fallback webview `CodeReviewPane` khi không có repo. Sửa, xoá
+    bình luận của mình. Bình luận từ PR hiện tác giả "login · GitHub"; trạng thái đồng bộ qua `Comment.label`,
+    `contextValue`; thân hiện bằng `MarkdownString` `isTrusted = false`, `supportHtml = false`.
   - **PHẠM VI**: `apps/vscode/src/review/**`, `apps/vscode/webview/screens/review.tsx`,
     `apps/vscode/src/webview-host/allowlist/review.ts` (+ test)
   - **Test**: 4 luồng từ dữ liệu mẫu; `add` gửi đúng `side`, `headSha`; `decide` khi `headSha` đổi hiện đúng thông báo;
@@ -280,41 +326,96 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     `apps/vscode/src/webview-host/allowlist/doc-review.ts` (+ test)
   - **Test**: Duyệt/Trả lại gọi `reviews.decide`; nút "Sửa trên web" mở URL hub.
 
+- [ ] **T034 [P] [US11] [nặng] · 3,5 ngày — Hub: đồng bộ hai chiều bình luận review với PR**
+  - **Phụ thuộc**: T008 (bảng và hợp đồng bình luận), T033 (API provider, webhook).
+  - **Goal**: plan.md mục 4b phần "codereview (T034)", FR-040…FR-046, US11:
+    - bảng `code_review_comment_links`, RLS bật và ép;
+    - đẩy ra theo job pg-boss `codereview.comment-sync` gom theo PR, dấu ẩn trong thân, rơi về bình luận chung khi
+      `position_invalid`;
+    - nhận về qua `registerCodeReviewScm`: tạo, sửa, xoá, trả lời, resolve; bỏ qua sự kiện đã có (so `body_hash`,
+      `provider_updated_at`); không bao giờ đẩy ngược bình luận `origin <> 'hive'`;
+    - job đối chiếu 10 phút cho phiên đang mở;
+    - giới hạn ghi theo kết nối, hoãn theo `retryAfterMs`, thử lại tối đa 5 lần rồi `failed`;
+    - kiểm quyền ghi PR của kết nối; thiếu thì `disabled` kèm lý do;
+    - `features.prCommentSync` trong `ProjectSettings`; `codeReviews.comments.retrySync`; điền `syncState`,
+      `providerUrl`, `origin`, `externalAuthor` trong `list`;
+    - audit `code_review.comment.sync_out|sync_in|sync_failed`; hộp thư báo bình luận từ PR như bình luận Hive;
+    - migration sinh ở bước cuối.
+  - **PHẠM VI**:
+    - `apps/hub/src/modules/codereview/{comment-sync.ts, comment-sync-in.ts, comment-sync.db.test.ts,
+      comment-sync-in.db.test.ts, scm.ts, jobs.ts, schema.ts, comments.ts, router.ts, index.ts, rls.db.test.ts}`
+    - `packages/contracts/src/{code-reviews.ts, code-reviews.test.ts, projects.ts}`, `packages/contracts/openapi.json`
+    - `apps/hub/db/migrations/<số kế tiếp>_*.sql` và `meta/**`
+  - **Test** (GitHub, GitLab giả bằng `MemoryProvider` và fixture của T033, DB thật):
+    - thêm, trả lời, sửa, xoá, resolve ở hub sang provider đúng tham số;
+    - webhook về trước phản hồi API: một bình luận mỗi bên (SC-010); webhook giao lại 100 lần không đổi gì;
+    - bình luận của người ngoài trên PR tạo luồng đúng dòng; trả lời vào đúng luồng;
+    - hai bên cùng sửa: bản sau thắng; xoá thắng sửa;
+    - `rate_limited` hoãn tới `retryAfterMs`; kết nối thiếu quyền thì `disabled`, không gọi provider;
+    - dấu ẩn giả từ tác giả khác tài khoản kết nối bị bỏ qua;
+    - RLS chặn tổ chức khác trên bảng link.
+
+- [ ] **T037 [P] [—] [nhẹ] · 1 ngày — Gói đăng Marketplace: README, CHANGELOG, icon, giấy phép, quyền riêng tư, walkthrough**
+  - **Phụ thuộc**: T003.
+  - **Goal**: plan.md mục 11 "Gói đăng", FR-049…FR-052:
+    - `README.md` cho trang Marketplace: tính năng, bảng "cần hub" / "chạy tại máy", đăng nhập, MCP cho từng công cụ,
+      Remote, quyền riêng tư, link hướng dẫn. Viết tiếng Việt, có mục tiếng Anh ngắn;
+    - `CHANGELOG.md` bản đầu; `LICENSE` (giấy phép riêng theo FR-052, đánh dấu chờ chủ dự án duyệt); `PRIVACY.md` (vi,
+      en) theo FR-050;
+    - icon 128×128 từ biểu tượng trong `docs/design-system` (PNG nền đặc, không trong suốt hoàn toàn);
+    - walkthrough "Bắt đầu với xDev Hive" (4 bước FR-051) bằng Markdown;
+    - ghi chú bàn giao cho T026: khoá manifest `license`, `homepage`, `bugs`, `categories`, `keywords`,
+      `galleryBanner`, `pricing`, `contributes.walkthroughs`.
+  - **PHẠM VI**: `apps/vscode/{README.md, CHANGELOG.md, LICENSE, PRIVACY.md}`, `apps/vscode/media/**`,
+    `apps/vscode/walkthrough/**`
+  - **Kiểm**: `pnpm biome check .`; README không có link tới repo private; mọi ảnh trong README dùng URL `https`
+    (Marketplace chặn ảnh SVG và `http`).
+
 ## Đợt 4: ghép, phát hành, tài liệu
 
 - [ ] **T026 [US1–US10] [vừa] · 2 ngày — Ghép, Workspace Trust, test tích hợp**
-  - **Phụ thuộc**: T015…T025.
+  - **Phụ thuộc**: T015…T025, T037.
   - **Goal**:
-    - gộp ghi chú bàn giao về manifest, `extension.ts`, `package.nls*.json`;
+    - gộp ghi chú bàn giao về manifest, `extension.ts`, `package.nls*.json`, kể cả khoá gói đăng và
+      `contributes.walkthroughs` của T037;
+    - kiểm mọi lệnh cần hub hiện "Chưa cấu hình hub" khi chưa có URL (FR-051);
     - kiểm Restricted Mode tắt đúng phần (Edge Cases);
     - test tích hợp `@vscode/test-electron`: activate ≤ 300 ms, đăng nhập với fake hub, mở view, review, khoá worker
       (SC-005, SC-007).
   - **PHẠM VI**: `apps/vscode/package.json`, `apps/vscode/package.nls*.json`, `apps/vscode/src/extension.ts`,
     `apps/vscode/test/integration/**`
 
-- [ ] **T027 [P] [—] [vừa] · 1,5 ngày — Hub: phát VSIX kênh nội bộ**
-  - **Phụ thuộc**: không (chạy cùng Đợt 3 được).
-  - **Goal**: `GET /api/v1/vscode/updates/latest` → `{version, url, sha256, signature}`, theo mẫu route
-    `/api/v1/desktop/updates` trong `app.ts`. Nguồn là manifest đã ký trong GitHub Release (giống desktop).
-  - **PHẠM VI**: `apps/hub/src/vscode-updates.ts`, `apps/hub/src/vscode-updates.test.ts` (mới), `apps/hub/src/app.ts`
-    (một dòng gắn route)
-  - **Test**: không có bản mới trả `204`; manifest sai chữ ký trả `502` và ghi log.
+- ~~**T027 — Hub: phát VSIX kênh nội bộ**~~ **Bỏ** (Q1, 2026-10-15: không có kênh nội bộ).
 
-- [ ] **T028 [US1] [vừa] · 1,5 ngày — Bộ cập nhật kênh nội bộ trong extension**
-  - **Phụ thuộc**: T026, T027.
-  - **PHẠM VI**: `apps/vscode/src/update/**` (+ test)
-  - **Test**: chữ ký sai không cài; build `HIVE_CHANNEL=marketplace` không có mã cập nhật (kiểm bundle).
+- ~~**T028 — Bộ cập nhật kênh nội bộ trong extension**~~ **Bỏ** (Q1, 2026-10-15).
 
-- [ ] **T029 [P] [—] [vừa] · 1,5 ngày — CI và đăng Marketplace, Open VSX**
-  - **Phụ thuộc**: T026.
-  - **Goal**: `.github/workflows/vscode.yml` theo plan.md mục 11; README, CHANGELOG, icon, `.vscodeignore`; tài liệu
-    phát hành. Nếu T012 báo gói phát hành thiếu `hive` thì thêm vào `release.yml`.
-  - **PHẠM VI**: `.github/workflows/vscode.yml` (mới), `.github/workflows/release.yml` (chỉ khi cần), `apps/vscode/
-    {README.md, CHANGELOG.md, .vscodeignore, media/**}`, `docs/releasing.md` (thêm mục VS Code)
-  - **Kiểm**: chạy workflow trên nhánh (không có tag) ra VSIX ≤ 8 MB (SC-006).
+- [ ] **T029 [P] [—] [vừa] · 1,5 ngày — CI và đăng công khai Marketplace, Open VSX**
+  - **Phụ thuộc**: T026, T036 (publisher, environment, PAT), T037 (gói đăng).
+  - **Goal**: `.github/workflows/vscode.yml` theo plan.md mục 11 và FR-031, FR-048, FR-049:
+    - PR: lint, typecheck, test, test tích hợp, `vsce package`, kiểm nội dung VSIX (không `*.map`, `test/`, `.env*`,
+      không chuỗi `hive_pat_`, ≤ 8 MB);
+    - tag `vscode-v*`: job dùng environment `vscode-publish`, kiểm bản trong tag khớp `package.json`, đăng cùng một
+      file VSIX lên Marketplace và Open VSX, đính VSIX vào Release. Thiếu secret thì job lỗi;
+    - `.vscodeignore`;
+    - `docs/releasing.md` mục VS Code: cách gắn tag, người duyệt, lịch xoay vòng PAT, cách gỡ một bản lỗi
+      (`vsce unpublish` một bản, phát bản vá).
+    - Nếu T012 báo gói phát hành thiếu `hive` thì thêm vào `release.yml`.
+  - **PHẠM VI**: `.github/workflows/vscode.yml` (mới), `.github/workflows/release.yml` (chỉ khi cần),
+    `apps/vscode/.vscodeignore`, `docs/releasing.md` (thêm mục VS Code)
+  - **Kiểm**: chạy workflow trên nhánh (không có tag) ra VSIX ≤ 8 MB (SC-006); job publish không chạy khi không có tag.
+    Bản đầu đăng thật do người điều phối gắn tag sau khi T032 xanh (SC-011).
+
+- [ ] **T035 [US11] [vừa] · 1 ngày — Web: cài đặt đồng bộ bình luận PR của dự án**
+  - **Phụ thuộc**: T034.
+  - **Goal**: plan.md mục 4b phần "Web (T035)". Công tắc "Đồng bộ bình luận review với GitHub/GitLab" ở trang cài đặt
+    dự án; hiện quyền ghi PR còn thiếu của kết nối (từ `checkAccess`); số bình luận lỗi đồng bộ, link tới review.
+  - **PHẠM VI**: `apps/web/src/pages/project-settings-page.tsx` và test cạnh file; Playwright spec của trang cài đặt
+    dự án (sửa spec có sẵn, không tạo file e2e chung mới)
+  - **Test**: công tắc gọi cập nhật `features.prCommentSync`; kết nối thiếu quyền thì công tắc tắt và có lời giải thích;
+    dự án dùng provider `local` không hiện công tắc.
 
 - [ ] **T030 [P] [US1] [vừa] · 1,5 ngày (P3) — Nhãn token riêng `xdev-hive-vscode` (Q9)**
-  - **Phụ thuộc**: chủ dự án chọn Q9 = "cần".
+  - **Phụ thuộc**: Q9 đã chốt để sau bản đầu; làm khi chủ dự án xếp lịch P3.
   - **Goal**: `purpose = 'ide'` trong hợp đồng `desktop-connect`, ràng buộc bảng `desktop_connect_codes`, clientId
     `xdev-hive-vscode`, trang quản lý token hiện nhãn "VS Code". Extension gửi `purpose=ide` nếu hub hỗ trợ.
   - **PHẠM VI**: `packages/contracts/src/desktop-connect.ts`, `packages/contracts/openapi.json`,
@@ -326,9 +427,11 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **PHẠM VI**: `docs/vscode-extension.md` (mới), `docs/README` hoặc mục lục nếu có (một dòng)
   - **Goal**: cài, đăng nhập, MCP cho từng công cụ, Remote, gỡ cấu hình, câu hỏi thường gặp.
 
-- [ ] **T032 [—] [vừa] · 1 ngày — Kiểm thử chấp nhận trên editor thật**
-  - **Phụ thuộc**: T026, T029.
-  - **Goal**: chạy US1–US10 trên VS Code ổn định, Cursor, Windsurf, Remote SSH, WSL; SC-001…SC-008. Ghi kết quả.
+- [ ] **T032 [—] [vừa] · 1,5 ngày — Kiểm thử chấp nhận trên editor thật**
+  - **Phụ thuộc**: T026, T029, T034, T035.
+  - **Goal**: chạy US1–US11 trên VS Code ổn định, Cursor, Windsurf, Remote SSH, WSL; SC-001…SC-011. Ghi kết quả.
+    - US11 với repo GitHub thử và project GitLab thử của tổ chức (không dùng repo khách hàng).
+    - Cài từ VSIX bản thử trước khi gắn tag đăng thật; kiểm trang Marketplace bằng chế độ xem trước của `vsce`.
   - **PHẠM VI**: `specs/017-vscode-extension/research.md` (mục 7 "Kiểm thử chấp nhận")
 
 ## Đồ thị phụ thuộc
@@ -340,19 +443,24 @@ flowchart LR
   T003 --> T010 & T011 & T012 & T013 & T023
   T004 --> T005 & T011
   T006 --> T007 & T012
-  T008 --> T014 & T018
+  T008 --> T014 & T018 & T034
   T009
+  T033 --> T034
   T005 --> T021
   T007 --> T019 & T024
   T010 --> T015 & T018 & T019
   T011 --> T015 & T019 & T021
   T012 --> T022 & T024
   T013 --> T016 & T017 & T018 & T020 & T025
-  T015 & T016 & T017 & T018 & T019 & T020 & T021 & T022 & T023 & T024 & T025 --> T026
-  T026 --> T028 & T029 & T031
-  T027 --> T028
-  T029 --> T032
+  T003 --> T037
+  T015 & T016 & T017 & T018 & T019 & T020 & T021 & T022 & T023 & T024 & T025 & T037 --> T026
+  T026 --> T029 & T031
+  T036 & T037 --> T029
+  T034 --> T035
+  T029 & T034 & T035 --> T032
 ```
+
+T036 là việc của chủ dự án (tạo publisher, environment, PAT), không giao agent. T027, T028 đã bỏ.
 
 ## Đợt chạy song song
 
@@ -360,20 +468,21 @@ Tối đa khoảng 6 agent build cùng lúc trên Mac mini (CLAUDE.md).
 
 | Đợt | Task | Số agent | Tier | Ước lịch |
 |---|---|---|---|---|
-| 0 | T001, T002 | 2 | nhẹ, vừa | 1,5 ngày |
-| 1 | T003, T004, T006, T008, T009 | 5 | vừa, nặng, vừa, nặng, vừa | 3 ngày (T008 dài nhất) |
+| 0 | T001, T002 (+ T036 chủ dự án làm song song) | 2 | nhẹ, vừa | 1,5 ngày |
+| 1 | T003, T004, T006, T008, T009, T033 | 6 | vừa, nặng, vừa, nặng, vừa, nặng | 3,5 ngày (T008 dài nhất) |
 | 2 | T005, T007, T010, T011, T012, T013, T014 | 6 cùng lúc (T007 sau T006, T005 sau T004 đều xong ở Đợt 1) | nặng ×4, vừa ×3 | 2,5 ngày |
-| 3 | T015…T025, T027 | 6 cùng lúc, hai lượt | nặng ×4, vừa ×8 | 4 ngày |
-| 4 | T026 → T028, T029, T031 → T032 | 1–3 | vừa, nhẹ | 4 ngày |
+| 3 | T015…T025, T034, T037 | 6 cùng lúc, 2–3 lượt | nặng ×5, vừa ×7, nhẹ ×1 | 5 ngày |
+| 4 | T026 → T029, T031; T035 (ngay sau T034) → T032 | 1–3 | vừa, nhẹ | 5 ngày |
 
-Tổng ước: **54,5 ngày-agent**, khoảng **15 ngày lịch** với 5–6 agent **[Suy luận]**. Phần P1 (US1–US5) xong sau Đợt 3
-lượt đầu nếu xếp T015, T018, T019, T021 trước.
+Tổng ước: **60,5 ngày-agent** cho 34 task giao agent (gồm T030 P3 1,5 ngày, làm sau bản đầu), cộng T036 cho chủ dự án; khoảng
+**17–18 ngày lịch** với 5–6 agent **[Suy luận]**. Phần P1 (US1–US5) xong sau Đợt 3 lượt đầu nếu xếp T015, T018, T019,
+T021 trước. T034 dài nhất Đợt 3 nên bắt đầu ở lượt đầu.
 
 ## Theo user story
 
 | Story | Task |
 |---|---|
-| US1 Đăng nhập | T004, T011, T026, T028, T030 |
+| US1 Đăng nhập | T004, T011, T026, T030 |
 | US2 View | T010, T013, T015, T016, T025 |
 | US3 Review | T008, T014, T018 |
 | US4 Chat | T019, T020 |
@@ -383,4 +492,5 @@ lượt đầu nếu xếp T015, T018, T019, T021 trước.
 | US8 Artifact | T017 |
 | US9 Terminal | T022 |
 | US10 CodeLens/Hover | T023 |
-| Chung | T001, T002, T003, T026, T027, T029, T031, T032 |
+| US11 Đồng bộ PR | T033, T034, T035 |
+| Chung | T001, T002, T003, T026, T029, T031, T032, T036, T037 |
