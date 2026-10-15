@@ -116,13 +116,14 @@ flowchart LR
 | `platform` | Configuration, database pools, `withTenant`, migrations, pg-boss, envelope encryption | `hive.migrations` |
 | `identity` | Better Auth: e-mail and password, GitHub and GitLab, per-organization OIDC SSO, JWT, MCP OAuth | `auth.user`, `auth.session`, `auth.account`, `auth.ssoProvider`, `auth.oauth*` |
 | `tenancy` | Organizations, members, teams, systems, invitations, permissions | `orgs`, `org_members`, `teams`, `team_members`, `systems`, `invitations` |
-| `fleet` | Machine registration, machine tokens, WebSocket gateway, worker release lookup | `machines`, `machine_tokens`, `registration_tokens` |
+| `fleet` | Machine registration, machine tokens, WebSocket gateway, worker release lookup, machine labels (`labels`, `labels_only`), agent accounts of shared machines | `machines`, `machine_tokens`, `registration_tokens` |
 | `catalog` | Projects, provisioning saga, agent file templates, merge queue | `projects`, `project_provision_steps`, `merge_queue_entries` |
 | `scm` | GitHub and GitLab clients, organization Git connections, webhooks | `scm_connections`, `webhook_deliveries` |
-| `tasks` | Tasks and plan-mode plans | `tasks`, `plans` |
+| `tasks` | Tasks, plan-mode plans, task dependencies | `tasks`, `plans`, `task_dependencies` |
 | `runs` | Dispatch, offers, leases, run events and logs, outcome policy, review, SSE | `runs`, `run_events`, `run_logs`, `run_leases` |
 | `codereview` | Agent PR review instances, rule/AI/CI/human gates, revision rounds, SLA and merge gate | `code_reviews`, `code_review_gate_runs` |
 | `knowledge` | Memory (full-text and vector), documents, skills, proposals, legacy import | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `proposals`, `legacy_*` |
+| `sdlc` | AI SDLC mode (specs/011, ADR 0021): modes and presets, items through phases, `sdlc` document runs, questions, repository sync, task breakdown in waves, gate on code runs, traceability, converge, release notes, AI auto-approval, multi-project items, metrics | `sdlc_modes`, `sdlc_items`, `sdlc_item_projects`, `sdlc_item_phases`, `sdlc_artifacts`, `sdlc_artifact_syncs`, `sdlc_questions`, `sdlc_steps`, `sdlc_item_tasks`, `sdlc_trace_links`, `sdlc_overrides`, `sdlc_auto_approvals` |
 | `leader` | Leader chat and proposals that need human approval | `chat_threads`, `chat_messages`, `approvals` |
 | `artifacts` | Versioned artifacts (markdown, code, html, mermaid, react), scopes, public links, hub-side React compile, sandboxed-frame routes, trash purge job | `artifacts`, `artifact_versions`, `artifact_links`, `artifact_previews`, `artifact_public_links` |
 | `sandbox` | Egress allowlists, environment images, organization sandbox settings | `sandbox_org_settings`, `egress_allowlists`, `env_images` |
@@ -304,7 +305,32 @@ A leader thread runs a read-only `leader` run on a worker. The leader can only p
 `run.dispatch`, `run.cancel`, `project.settings`); each proposal is stored in `approvals` and executed by the hub only
 after a person with the required rights approves it. Rejections need a reason.
 
-### 6.6 Updating a worker
+### 6.6 An AI SDLC item
+
+Specs/011 and ADR 0021; the Vietnamese overview is in [architecture.md §4.4](architecture.md#44-chế-độ-ai-sdlc).
+
+1. A person with `sdlc.write` (member or the BA/PO role), an issue or an approved Leader proposal (`sdlc.item.create`)
+   creates an item. The item snapshots its mode (preset or custom), has one home project and optional participant
+   projects, possibly owned by other teams.
+2. Each phase runs agent steps as runs of kind `sdlc` on the home project: a temporary worktree from the default branch,
+   `workspace` permission, no commit and no push. `spec.sdlc` carries `seed` files (baselines, drafts, a summary of each
+   participant repository) and `collect` paths. Workers that declare `sdlc-multirepo` also receive `repos` and get a
+   read-only shallow checkout of participant repositories under `.hive/repos/`, cloned with the machine's own Git
+   credentials. Runs that require labels (`settings.sdlc.labels`) go only to machines with all of them.
+3. The agent calls the MCP tools `sdlc_context`, `sdlc_ask` (the run still finishes; once
+   the questions are answered the hub starts a new drafting round with the answers) and `sdlc_report`.
+   Collected files return in `report.artifacts` and become document versions.
+4. A phase gate is a document review session. Multi-team items need a reviewer from each team. AI auto-approval applies
+   only when both mode and project allow it, the score passes the threshold, no denied path or keyword is touched, and
+   a person can revoke it within the revoke window.
+5. Approved baselines are written to the repository (`repoSync`: a PR through the merge queue, a direct push or off).
+6. The breakdown document becomes ordinary tasks with dependencies, run in waves. Before a code run of an item task the
+   engine calls `codeRunGate`; missing approved documents, including contracts the project consumes, block the run
+   with `SDLC_GATE_BLOCKED` unless someone records an override with a reason.
+7. Converge runs one `sdlc` run per participating project, merges findings and sends gaps back to the breakdown step
+   until the round limit; release notes and a retrospective close the item (Spec Kit preset).
+
+### 6.7 Updating a worker
 
 1. The hub asks the GitHub releases API for the latest worker version at most once an hour and the Machines page marks
    machines that run an older version.
@@ -448,6 +474,7 @@ original notes:
 | Metrics and tracing | Not implemented |
 | Desktop auto-update | Plugin installed, but no public key or endpoint configured |
 | Hub image and desktop releases | Only the worker has a release pipeline |
+| AI SDLC (spec 011) | Participant checkouts use the machine's own Git credentials, not a hub token (awaiting the project owner's confirmation). The metrics screen has no per-creator auto-approval rate, the item list is not filtered by date, and SC-007 (500 items) is not measured. Only the Spec Kit preset requires release notes and a retrospective |
 
 ## 12. Glossary
 

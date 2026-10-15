@@ -169,6 +169,11 @@ describe("views", () => {
       expect.objectContaining({ resolveWebviewView: expect.any(Function) }),
     );
     expect(vscode.commands.registerCommand).toHaveBeenCalledWith("xdevHive.artifact.open", expect.any(Function));
+    expect(vscode.window.registerWebviewViewProvider).toHaveBeenCalledWith(
+      "xdev-hive.sdlc",
+      expect.objectContaining({ resolveWebviewView: expect.any(Function) }),
+    );
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith("xdevHive.sdlc.open", expect.any(Function));
     for (const item of ctx.subscriptions) item.dispose();
     await server.close();
   });
@@ -178,9 +183,11 @@ describe("views", () => {
     globalThis.fetch = fetchSpy as never;
     const ctx = createContext();
     register(ctx as never);
-    await flush();
-    for (const key of ["mine", "approvals", "runs", "mergeQueue"])
-      expect(views.get(`xdev-hive.${key}`)?.message).toBe("Chưa cấu hình hub xDev Hive");
+    // Đợi theo kết quả chứ không theo giờ: CI chạy song song nhiều gói nên 50ms không đủ.
+    await vi.waitFor(() => {
+      for (const key of ["mine", "approvals", "runs", "mergeQueue"])
+        expect(views.get(`xdev-hive.${key}`)?.message).toBe("Chưa cấu hình hub xDev Hive");
+    });
     expect(vscode.authentication.getSession).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     for (const item of ctx.subscriptions) item.dispose();
