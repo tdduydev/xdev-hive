@@ -50,6 +50,7 @@ export {
   scmEventQueue,
   scmEvents,
 } from "./handlers.ts";
+export { type LfsAction, lfsDownload, lfsUpload } from "./lfs.ts";
 export { createMemoryProvider, type MemoryProvider, type MemoryPull, type MemoryRepo } from "./memory.ts";
 export { checkConnection, type ScmDeps, scmRouter } from "./router.ts";
 export type {
@@ -57,6 +58,7 @@ export type {
   BranchRules,
   ChecksState,
   CommentOptions,
+  CommitChange,
   CommitFilesInput,
   CommitStatusInput,
   CommitStatusState,
@@ -64,6 +66,7 @@ export type {
   FetchLike,
   GitProvider,
   GitProviderKind,
+  LfsObject,
   MergeMethod,
   PullRequestFile,
   PullRequestFileStatus,

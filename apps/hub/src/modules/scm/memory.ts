@@ -27,9 +27,10 @@ type Method = Exclude<keyof GitProvider, "kind">;
 
 export interface MemoryRepo {
   info: RepoInfo;
+  modes?: { truncated?: boolean; incomplete?: boolean };
   /** Nội dung file theo nhánh. */
   branches: Map<string, Map<string, string>>;
-  commits: Array<{ branch: string; message: string; sha: string; paths: string[] }>;
+  commits: Array<{ branch: string; message: string; sha: string; paths: string[]; snapshot: Map<string, string> }>;
   protection: Map<string, BranchRules>;
   hooks: Map<string, WebhookInput>;
   pulls: MemoryPull[];
@@ -66,7 +67,10 @@ export interface MemoryProvider extends GitProvider {
   /** Mọi lời gọi `method` ném lỗi này cho tới khi gọi lại với null. */
   fail(method: Method, error: GitProviderError | null): void;
   /** Thêm repo có sẵn (không do hub tạo). */
-  seedRepo(ref: RepoRef, opts?: { defaultBranch?: string; files?: Record<string, string> }): MemoryRepo;
+  seedRepo(
+    ref: RepoRef,
+    opts?: { defaultBranch?: string; files?: Record<string, string>; truncated?: boolean; incomplete?: boolean },
+  ): MemoryRepo;
   /** Đổi trạng thái PR (merge tay, đóng, nhánh chính tiến...) như người dùng làm trên GitHub/GitLab. */
   setPull(ref: RepoRef, number: number, patch: Partial<Omit<MemoryPull, "number">>): MemoryPull;
   setChecks(ref: RepoRef, sha: string, state: ChecksState): void;
@@ -106,7 +110,15 @@ export function createMemoryProvider(
         webUrl: `https://${host}/${ref.owner}/${ref.name}`,
       },
       branches: new Map([[defaultBranch, new Map([["README.md", `# ${ref.name}\n`]])]]),
-      commits: [],
+      commits: [
+        {
+          branch: defaultBranch,
+          message: "",
+          sha: `${defaultBranch}@init`,
+          paths: [],
+          snapshot: new Map([["README.md", `# ${ref.name}\n`]]),
+        },
+      ],
       protection: new Map(),
       hooks: new Map(),
       pulls: [],
@@ -140,6 +152,8 @@ export function createMemoryProvider(
     return repo.commits.filter((c) => c.branch === branch).at(-1)?.sha ?? `${branch}@init`;
   };
   const filesAt = (repo: MemoryRepo, sha: string): Map<string, string> => {
+    const commit = repo.commits.find((item) => item.sha === sha);
+    if (commit) return new Map(commit.snapshot);
     for (const branch of repo.branches.keys())
       if (headOf(repo, branch) === sha) return repo.branches.get(branch) as Map<string, string>;
     throw new GitProviderError("not_found", `${host}: không có commit ${sha}`);
@@ -198,8 +212,14 @@ export function createMemoryProvider(
     },
     seedRepo(ref, opts = {}) {
       const repo = makeRepo(ref, opts.defaultBranch ?? "main", "");
+      repo.modes = {
+        ...(opts.truncated !== undefined ? { truncated: opts.truncated } : {}),
+        ...(opts.incomplete !== undefined ? { incomplete: opts.incomplete } : {}),
+      };
       const files = repo.branches.get(repo.info.defaultBranch);
       for (const [p, c] of Object.entries(opts.files ?? {})) files?.set(p, c);
+      const init = repo.commits.find((commit) => commit.sha === `${repo.info.defaultBranch}@init`);
+      if (init && files) init.snapshot = new Map(files);
       return repo;
     },
     setPull(ref, number, patch) {
@@ -226,6 +246,11 @@ export function createMemoryProvider(
 
     commitFiles: track("commitFiles", (ref: RepoRef, input: CommitFilesInput) => {
       const repo = need(ref);
+      const currentHead = headOf(repo, input.branch);
+      if (input.expectedHead && input.expectedHead !== currentHead)
+        throw new GitProviderError("conflict", `${host}: nhánh đã thay đổi`);
+      if (repo.protection.get(input.branch)?.requirePullRequest)
+        throw new GitProviderError("forbidden", `${host}: nhánh được bảo vệ`, { status: 403 });
       let files = repo.branches.get(input.branch);
       if (!files) {
         const from = input.fromBranch && repo.branches.get(input.fromBranch);
@@ -234,9 +259,24 @@ export function createMemoryProvider(
         files = new Map(from);
         repo.branches.set(input.branch, files);
       }
-      for (const f of input.files) files.set(f.path, f.content);
+      files = new Map(files);
+      repo.branches.set(input.branch, files);
+      for (const f of input.files) {
+        if ("delete" in f) files.delete(f.path);
+        else if ("previousPath" in f) {
+          const content = files.get(f.previousPath);
+          files.delete(f.previousPath);
+          if (content !== undefined) files.set(f.path, content);
+        } else files.set(f.path, "bytes" in f ? new TextDecoder().decode(f.bytes) : f.content);
+      }
       const sha = nextSha();
-      repo.commits.push({ branch: input.branch, message: input.message, sha, paths: input.files.map((f) => f.path) });
+      repo.commits.push({
+        branch: input.branch,
+        message: input.message,
+        sha,
+        paths: input.files.map((f) => f.path),
+        snapshot: new Map(files),
+      });
       return { sha };
     }),
 
@@ -399,9 +439,60 @@ export function createMemoryProvider(
     // Repo giả chỉ giữ nội dung mới nhất của mỗi nhánh: sha đọc được là commit cuối của nhánh đó.
     branchHead: track("branchHead", (ref: RepoRef, branch: string) => headOf(need(ref), branch)),
 
-    listFiles: track("listFiles", (ref: RepoRef, sha: string) => [...filesAt(need(ref), sha).keys()].sort()),
+    listFiles: track("listFiles", (ref: RepoRef, sha: string) => {
+      const paths = [...filesAt(need(ref), sha).keys()].sort();
+      return need(ref).modes?.truncated ? paths.slice(0, Math.max(1, Math.floor(paths.length / 2))) : paths;
+    }),
 
     readFile: track("readFile", (ref: RepoRef, path: string, sha: string) => filesAt(need(ref), sha).get(path) ?? null),
+    readBlob: track("readBlob", (ref: RepoRef, blob: string) => {
+      const file = [...need(ref).branches.values()]
+        .flatMap((files) => [...files.values()])
+        .find((content) => content === blob);
+      if (file === undefined) throw new GitProviderError("not_found", `${host}: không có blob ${blob}`);
+      return new TextEncoder().encode(file);
+    }),
+    compare: track("compare", (ref: RepoRef, from: string, to: string) => {
+      const repo = need(ref);
+      const fromFiles = filesAt(repo, from);
+      const toFiles = filesAt(repo, to);
+      const files = [...new Set([...fromFiles.keys(), ...toFiles.keys()])].flatMap((path) => {
+        const oldValue = fromFiles.get(path),
+          newValue = toFiles.get(path);
+        if (oldValue === newValue) return [];
+        return [
+          {
+            path,
+            status:
+              newValue === undefined
+                ? ("removed" as const)
+                : oldValue === undefined
+                  ? ("added" as const)
+                  : ("modified" as const),
+            sha: newValue ?? null,
+          },
+        ];
+      });
+      return { files, incomplete: Boolean(repo.modes?.incomplete) };
+    }),
+    archive: track("archive", async (ref: RepoRef, sha: string, path?: string) => {
+      const entries = [...filesAt(need(ref), sha)].filter(
+        ([name]) => !path || name.startsWith(`${path}/`) || name === path,
+      );
+      const bytes = new TextEncoder().encode(JSON.stringify(Object.fromEntries(entries)));
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      });
+    }),
+    lfsBatch: track(
+      "lfsBatch",
+      (_ref: RepoRef, _operation: "upload" | "download", objects: { oid: string; size: number }[]) => ({
+        objects: objects.map((object) => ({ ...object, actions: {} })),
+      }),
+    ),
 
     prFiles: track("prFiles", (ref: RepoRef, number: number): PullRequestFile[] | null => {
       const repo = need(ref);
