@@ -85,5 +85,6 @@
   "walkthrough.mcp.title": "Bật Hive MCP",
   "walkthrough.mcp.description": "Cho agent trong editor dùng memory và tài liệu của Hive.\n[Thêm cho Claude Code](command:xdevHive.mcp.addClaudeCode)",
   "walkthrough.worker.title": "Cài worker",
-  "walkthrough.worker.description": "Tải hive CLI và worker để hub giao việc cho máy này.\n[Cài hive CLI và worker](command:xdevHive.worker.install)"
+  "walkthrough.worker.description": "Tải hive CLI và worker để hub giao việc cho máy này.\n[Cài hive CLI và worker](command:xdevHive.worker.install)",
+  "command.review.submitComment": "Gửi bình luận"
 }
