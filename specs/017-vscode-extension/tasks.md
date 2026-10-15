@@ -324,7 +324,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
   - **Test**: `HOME` tạm; ghi giữ nguyên khoá khác; gỡ trả về đúng từng byte; file không chứa `hive_pat_`;
     `resolveMcpServerDefinition` gắn token mới nhất.
 
-- [ ] **T022 [P] [US9] [vừa] · 1 ngày — Terminal profile Hive Leader và gắn phiên**
+- [x] **T022 [P] [US9] [vừa] · 1 ngày — Terminal profile Hive Leader và gắn phiên**
   - **Phụ thuộc**: T012 (`ipc.ts`, `bin.ts`).
   - **PHẠM VI**: `apps/vscode/src/terminal/**` (+ test)
   - **Test**: không có `hive` thì báo đúng chữ; chọn "Chỉ xem" thêm `--view`.
