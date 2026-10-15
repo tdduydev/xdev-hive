@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 )
@@ -30,6 +31,9 @@ const (
 
 // DefaultConcurrency: bốn repo một lúc đủ nhanh mà không bị máy chủ giới hạn lượt hay làm nghẽn mạng.
 const DefaultConcurrency = 4
+
+// authStopped là lý do bỏ qua repo sau khi máy chủ đã từ chối đăng nhập ở một repo khác của cùng lượt.
+const authStopped = "không chạy vì máy chủ đã từ chối đăng nhập ở repo khác; sửa đăng nhập rồi chạy lại"
 
 // Event là một dòng tiến độ gửi cho app: "start" (tổng số repo), "repo" (xong một repo), "done" (hết).
 type Event struct {
@@ -87,6 +91,7 @@ func (s Sync) Run(ctx context.Context, action string, emit func(Event)) error {
 		emit(Event{Type: "repo", Action: action, Total: total, Done: done, Path: path, Result: result, Message: msg, Status: st})
 	}
 	jobs := make(chan Repo)
+	var authDenied atomic.Bool
 	var wg sync.WaitGroup
 	for range n {
 		wg.Go(func() {
@@ -96,7 +101,7 @@ func (s Sync) Run(ctx context.Context, action string, emit func(Event)) error {
 					report(r.Path, nil, ResultCancelled, "đã huỷ")
 					continue
 				}
-				st, result, msg := s.one(ctx, action, r)
+				st, result, msg := s.one(ctx, action, r, &authDenied)
 				report(r.Path, &st, result, msg)
 			}
 		})
@@ -110,7 +115,7 @@ func (s Sync) Run(ctx context.Context, action string, emit func(Event)) error {
 	return nil
 }
 
-func (s Sync) one(ctx context.Context, action string, r Repo) (RepoStatus, string, string) {
+func (s Sync) one(ctx context.Context, action string, r Repo, authDenied *atomic.Bool) (RepoStatus, string, string) {
 	st := Inspect(ctx, s.Git, s.Group, r)
 	if ctx.Err() != nil {
 		return st, ResultCancelled, "đã huỷ"
@@ -122,7 +127,10 @@ func (s Sync) one(ctx context.Context, action string, r Repo) (RepoStatus, strin
 		if st.State != StateMissing {
 			return st, ResultUnchanged, ""
 		}
-		return s.clone(ctx, r, st)
+		if authDenied.Load() {
+			return st, ResultSkipped, authStopped
+		}
+		return s.clone(ctx, r, st, authDenied)
 	}
 	switch st.State {
 	case StateMissing:
@@ -130,9 +138,12 @@ func (s Sync) one(ctx context.Context, action string, r Repo) (RepoStatus, strin
 	case StateError:
 		return st, ResultSkipped, st.Reason
 	}
+	if authDenied.Load() {
+		return st, ResultSkipped, authStopped
+	}
 	url := CloneURL(s.Group, r)
 	if _, err := s.Git.run(ctx, st.Dir, hostOf(url), "fetch", "--prune", "--quiet", "origin"); err != nil {
-		return s.failed(ctx, st, err)
+		return s.failed(ctx, st, err, authDenied)
 	}
 	st = Inspect(ctx, s.Git, s.Group, r)
 	if action == ActionFetch {
@@ -150,12 +161,12 @@ func (s Sync) one(ctx context.Context, action string, r Repo) (RepoStatus, strin
 	_, err := s.Git.run(ctx, st.Dir, "", "merge", "--ff-only", "--quiet", "@{u}")
 	after := Inspect(context.WithoutCancel(ctx), s.Git, s.Group, r)
 	if err != nil {
-		return s.failed(ctx, after, err)
+		return s.failed(ctx, after, err, authDenied)
 	}
 	return after, ResultDone, ""
 }
 
-func (s Sync) clone(ctx context.Context, r Repo, st RepoStatus) (RepoStatus, string, string) {
+func (s Sync) clone(ctx context.Context, r Repo, st RepoStatus, authDenied *atomic.Bool) (RepoStatus, string, string) {
 	url := CloneURL(s.Group, r)
 	if url == "" {
 		return st, ResultFailed, "máy chủ không trả URL clone"
@@ -169,7 +180,7 @@ func (s Sync) clone(ctx context.Context, r Repo, st RepoStatus) (RepoStatus, str
 		// Thư mục chưa có trước lượt clone này (StateMissing). Git tự dọn khi nhận Interrupt, nhưng trên Windows git bị
 		// giết thẳng nên còn lại clone dở; để lại thì lần sau thành "không phải repo" và chặn clone lại.
 		_ = os.RemoveAll(st.Dir)
-		return s.failed(ctx, st, err)
+		return s.failed(ctx, st, err, authDenied)
 	}
 	if s.Projects != "" {
 		if _, err := projects.AddFolder(s.Projects, st.Dir, r.Name); err != nil {
@@ -180,9 +191,12 @@ func (s Sync) clone(ctx context.Context, r Repo, st RepoStatus) (RepoStatus, str
 	return Inspect(ctx, s.Git, s.Group, r), ResultDone, ""
 }
 
-func (s Sync) failed(ctx context.Context, st RepoStatus, err error) (RepoStatus, string, string) {
+func (s Sync) failed(ctx context.Context, st RepoStatus, err error, authDenied *atomic.Bool) (RepoStatus, string, string) {
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 		return st, ResultCancelled, "đã huỷ"
+	}
+	if ge := (*GitError)(nil); errors.As(err, &ge) && ge.Auth {
+		authDenied.Store(true)
 	}
 	return st, ResultFailed, err.Error()
 }
