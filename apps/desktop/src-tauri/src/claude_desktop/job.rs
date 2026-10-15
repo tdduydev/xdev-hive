@@ -300,6 +300,10 @@ mod tests {
             again.contains("Đang chuyển Claude Desktop (đang chuẩn bị"),
             "{again}"
         );
+        // Giây tính lúc hỏi, không lúc đổi bước: bước chờ thoát không báo gì vẫn thấy thời gian tăng.
+        assert_eq!(p.elapsed, 0);
+        std::thread::sleep(Duration::from_millis(1100));
+        assert_eq!(progress().unwrap().elapsed, 1);
         Ctl::job().percent(Step::BackingUp, 40);
         assert_eq!(progress().unwrap().percent, Some(40));
         assert!(cancel());
