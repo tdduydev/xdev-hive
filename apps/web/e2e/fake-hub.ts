@@ -90,6 +90,10 @@ export async function fakeHub(
     "orgs/mine": () => ok({ orgs: [], canCreateOrg: false }),
     ...opts.rpc,
   };
+  // BuildInfo thử lại khi thiếu phiên bản; giữ trạng thái đó mà không để request chạm proxy tới hub không chạy.
+  await page.route("**/api/v1/health", (route) =>
+    route.fulfill({ status: 503, json: { message: "Hub giả không cung cấp thông tin phiên bản." } }),
+  );
   await page.route("**/rpc/**", (route) => {
     const request = route.request();
     const url = new URL(request.url());

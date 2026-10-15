@@ -1,3 +1,5 @@
 # Kết quả Playwright
 test-results/
 playwright-report/
+blob-report/
+all-blob-reports/
