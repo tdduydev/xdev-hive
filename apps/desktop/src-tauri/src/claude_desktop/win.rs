@@ -1,6 +1,6 @@
 //! Phần riêng Windows của việc chuyển Claude Desktop: tìm bản cài (Squirrel hay MSIX), tìm hồ sơ thật, dò tiến trình,
-//! thoát êm bằng `taskkill` (WM_CLOSE) và mở lại. Mọi lệnh ngoài đều có hạn chờ: PowerShell/WMI có lúc không trả lời,
-//! bản 0.2.16 chờ chúng mãi nên lần chuyển treo và giữ khoá tới khi thoát Hive.
+//! thoát êm bằng WM_CLOSE và mở lại. Dò và đóng tiến trình gọi thẳng Win32 (không qua PowerShell/WMI hay `taskkill`:
+//! có lúc không trả lời, bản 0.2.16 treo vì chúng và bản 0.2.17 đứng ở bước chờ thoát); lệnh ngoài còn lại có hạn chờ.
 //!
 //! Hai cách cài:
 //! - Bản tải từ claude.ai kiểu cũ (Squirrel): `%LOCALAPPDATA%\AnthropicClaude\claude.exe`, hồ sơ `%APPDATA%\Claude`.
@@ -8,7 +8,8 @@
 //!   chuyển hướng phần app ghi vào `%APPDATA%` sang `<họ gói>\LocalCache\Roaming`, trừ khi gói tắt việc đó; app ngoài
 //!   gói (như Hive) thấy đường dẫn thật, nên phải tự chọn đúng thư mục.
 //!
-//! Mã chỉ dùng std và lệnh có sẵn của Windows, biên dịch trên mọi hệ điều hành để test và clippy trên macOS kiểm được.
+//! Phần Win32 nằm trong `sys`, chỉ biên dịch trên Windows; phần còn lại biên dịch trên mọi hệ điều hành để test và
+//! clippy trên macOS kiểm được.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -17,7 +18,7 @@ use std::time::{Duration, SystemTime};
 use base64::Engine;
 
 use super::job::{Ctl, Step, output_within};
-use super::{App, QUIT_WAIT, wait_gone};
+use super::{App, wait_gone};
 
 pub(super) const NOT_INSTALLED: &str = "Chưa thấy Claude Desktop (bản cài từ claude.ai hay Microsoft Store). Cài Claude Desktop rồi thử lại.";
 
@@ -149,14 +150,15 @@ fn is_desktop_exe(path: &str) -> bool {
         })
 }
 
-/// Một tiến trình `claude.exe`. Không giữ dòng lệnh: chẩn đoán chỉ cần loại tiến trình phụ, và dòng lệnh có thể chứa
-/// đường dẫn hay tham số riêng của người dùng.
+/// Một tiến trình `claude.exe`. Không giữ dòng lệnh: đọc dòng lệnh của tiến trình khác phải qua WMI (chậm, có lúc
+/// treo) hay đọc bộ nhớ của nó, và dòng lệnh có thể chứa đường dẫn hay tham số riêng của người dùng. Tiến trình phụ
+/// của Electron nhận ra bằng tiến trình cha.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub(super) struct Proc {
     pub(super) pid: u32,
+    pub(super) parent: u32,
+    /// Rỗng khi không hỏi được đường dẫn (tiến trình vừa thoát, hay chạy quyền cao hơn).
     pub(super) exe: String,
-    /// `--type=` của tiến trình phụ Electron (`renderer`, `crashpad-handler`…); None là tiến trình chính.
-    pub(super) kind: Option<String>,
 }
 
 impl Proc {
@@ -165,46 +167,34 @@ impl Proc {
     }
 }
 
-/// Tiến trình từ dòng `pid<TAB>đường dẫn exe<TAB>dòng lệnh`.
-fn procs_in(text: &str) -> Vec<Proc> {
-    let mut out: Vec<Proc> = text
-        .lines()
-        .filter_map(|line| {
-            let mut parts = line.trim_end_matches('\r').splitn(3, '\t');
-            let pid = parts.next()?.trim().parse::<u32>().ok()?;
-            let exe = parts.next()?.to_string();
-            let command = parts.next().unwrap_or("");
-            let kind = command.split_once("--type=").map(|(_, rest)| {
-                rest.split(|c: char| c.is_whitespace() || c == '"')
-                    .next()
-                    .unwrap_or("")
-                    .to_string()
-            });
-            Some(Proc { pid, exe, kind })
-        })
-        .collect();
-    out.sort_by_key(|p| p.pid);
-    out.dedup_by_key(|p| p.pid);
-    out
-}
-
-/// Tiến trình chính của Claude Desktop (bỏ tiến trình phụ của Electron).
-fn mains(procs: &[Proc]) -> Vec<u32> {
-    procs
+/// Tiến trình chính của Claude Desktop: cha không phải tiến trình Claude Desktop (renderer, gpu, crashpad là con của
+/// nó). Windows có thể dùng lại PID của cha đã thoát, nên không tìm được tiến trình chính nào thì lấy PID nhỏ nhất
+/// thay vì coi là app đã tắt.
+pub(super) fn mains(procs: &[Proc]) -> Vec<u32> {
+    let desktop = desktop_pids(procs);
+    let found: Vec<u32> = procs
         .iter()
-        .filter(|p| p.desktop() && p.kind.is_none())
+        .filter(|p| p.desktop() && !desktop.contains(&p.parent))
         .map(|p| p.pid)
-        .collect()
+        .collect();
+    if found.is_empty() {
+        desktop.into_iter().min().into_iter().collect()
+    } else {
+        found
+    }
 }
 
 /// Mọi tiến trình chạy từ thư mục cài của Claude Desktop, kể cả tiến trình phụ: chỉ khi không còn cái nào mới coi là
 /// đã thoát, vì tiến trình phụ còn sống có thể còn giữ Cookies.
 fn desktop_pids(procs: &[Proc]) -> Vec<u32> {
-    procs
+    let mut pids: Vec<u32> = procs
         .iter()
         .filter(|p| p.desktop())
         .map(|p| p.pid)
-        .collect()
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
 }
 
 /// Lệnh console chạy từ app GUI: không mở cửa sổ đen.
@@ -239,42 +229,176 @@ fn powershell(script: &str, within: Duration) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// `tasklist` nhanh hơn PowerShell nhiều: không có `claude.exe` nào thì khỏi hỏi đường dẫn. Màn gói đọc lại mỗi 10 giây.
-fn any_claude_exe() -> bool {
-    let Some(out) = output_within(
-        hidden(Command::new("tasklist").args([
-            "/FI",
-            "IMAGENAME eq claude.exe",
-            "/FO",
-            "CSV",
-            "/NH",
-        ])),
-        Duration::from_secs(5),
-    ) else {
-        // Không chạy được tasklist thì để PowerShell quyết định.
-        return true;
-    };
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .any(|l| l.to_ascii_lowercase().starts_with("\"claude.exe\""))
+/// Dò và ra lệnh cho tiến trình; test thay bằng bản giả để không đụng PID có thật trên máy.
+pub(super) trait System {
+    /// Mọi tiến trình `claude.exe` (Claude Desktop và Claude Code CLI); None khi không dò được.
+    fn processes(&self) -> Option<Vec<Proc>>;
+    /// Gửi WM_CLOSE (như bấm nút đóng) cho cửa sổ đang hiện của `pids`, không chờ; trả số cửa sổ đã gửi.
+    fn close_windows(&self, pids: &[u32]) -> usize;
+    /// Buộc tắt `pid` nếu nó vẫn là Claude Desktop (PID có thể đã thuộc tiến trình khác).
+    fn terminate(&self, pid: u32) -> bool;
 }
 
-/// WMI có lúc treo hay bị tắt: giới hạn thời gian của nó, lỗi thì lấy `Get-Process` (có đường dẫn exe, không có dòng
-/// lệnh nên mọi tiến trình coi là tiến trình chính).
-const LIST_SCRIPT: &str = "\
-try {
-  Get-CimInstance Win32_Process -Filter \"Name='claude.exe'\" -OperationTimeoutSec 8 -ErrorAction Stop |
-    ForEach-Object { \"$($_.ProcessId)`t$($_.ExecutablePath)`t$($_.CommandLine)\" }
-} catch {
-  Get-Process -Name claude -ErrorAction SilentlyContinue | ForEach-Object { \"$($_.Id)`t$($_.Path)`t\" }
-}";
+/// Win32 gọi thẳng: bản 0.2.17 dò qua PowerShell/WMI và đóng qua `taskkill`, PowerShell khởi động chậm hay treo (Defender,
+/// WMI) làm mỗi lần dò mất hàng chục giây và lần chuyển đứng ở bước chờ thoát.
+struct Win32;
+
+#[cfg(windows)]
+impl System for Win32 {
+    fn processes(&self) -> Option<Vec<Proc>> {
+        sys::processes()
+    }
+
+    fn close_windows(&self, pids: &[u32]) -> usize {
+        sys::close_windows(pids)
+    }
+
+    fn terminate(&self, pid: u32) -> bool {
+        sys::terminate(pid, is_desktop_exe)
+    }
+}
+
+/// Không phải Windows thì không có gì để dò (chẩn đoán trong test dựng hồ sơ Windows trên macOS).
+#[cfg(not(windows))]
+impl System for Win32 {
+    fn processes(&self) -> Option<Vec<Proc>> {
+        None
+    }
+
+    fn close_windows(&self, _: &[u32]) -> usize {
+        0
+    }
+
+    fn terminate(&self, _: u32) -> bool {
+        false
+    }
+}
+
+#[cfg(windows)]
+mod sys {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HWND, INVALID_HANDLE_VALUE, LPARAM};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        QueryFullProcessImageNameW, TerminateProcess,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
+    };
+    use windows_sys::core::BOOL;
+
+    use super::Proc;
+
+    struct Handle(HANDLE);
+
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            // SAFETY: handle mở bằng OpenProcess hay CreateToolhelp32Snapshot, đóng đúng một lần.
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    fn open(pid: u32, access: u32) -> Option<Handle> {
+        // SAFETY: chỉ truyền số; handle null khi lỗi.
+        let h = unsafe { OpenProcess(access, 0, pid) };
+        (!h.is_null()).then_some(Handle(h))
+    }
+
+    fn image(h: &Handle) -> Option<String> {
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        // SAFETY: `len` là cỡ của `buf`; hàm ghi tối đa chừng đó ký tự và trả độ dài thật vào `len`.
+        let ok = unsafe {
+            QueryFullProcessImageNameW(h.0, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len)
+        };
+        (ok != 0).then(|| String::from_utf16_lossy(&buf[..len as usize]))
+    }
+
+    fn name(entry: &PROCESSENTRY32W) -> String {
+        let file = &entry.szExeFile;
+        let end = file.iter().position(|&c| c == 0).unwrap_or(file.len());
+        String::from_utf16_lossy(&file[..end])
+    }
+
+    pub(super) fn processes() -> Option<Vec<Proc>> {
+        // SAFETY: chụp danh sách tiến trình, không chặn; INVALID_HANDLE_VALUE khi lỗi.
+        let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snap == INVALID_HANDLE_VALUE {
+            return None;
+        }
+        let snap = Handle(snap);
+        // SAFETY: PROCESSENTRY32W chỉ gồm số và mảng số, toàn 0 là hợp lệ.
+        let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+        entry.dwSize = size_of::<PROCESSENTRY32W>() as u32;
+        // SAFETY: `entry` có `dwSize` đúng như hàm đòi.
+        if unsafe { Process32FirstW(snap.0, &mut entry) } == 0 {
+            return None;
+        }
+        let mut out = vec![];
+        loop {
+            if name(&entry).eq_ignore_ascii_case("claude.exe") {
+                let exe = open(entry.th32ProcessID, PROCESS_QUERY_LIMITED_INFORMATION)
+                    .and_then(|h| image(&h))
+                    .unwrap_or_default();
+                out.push(Proc {
+                    pid: entry.th32ProcessID,
+                    parent: entry.th32ParentProcessID,
+                    exe,
+                });
+            }
+            // SAFETY: như Process32FirstW.
+            if unsafe { Process32NextW(snap.0, &mut entry) } == 0 {
+                return Some(out);
+            }
+        }
+    }
+
+    struct Close<'a> {
+        pids: &'a [u32],
+        sent: usize,
+    }
+
+    unsafe extern "system" fn close_one(hwnd: HWND, data: LPARAM) -> BOOL {
+        // SAFETY: `data` là `&mut Close` truyền vào EnumWindows dưới đây, sống suốt lần duyệt.
+        let close = unsafe { &mut *(data as *mut Close) };
+        let mut pid = 0;
+        // SAFETY: `hwnd` do EnumWindows đưa. PostMessage không chờ cửa sổ xử lý, app treo cũng không làm Hive treo.
+        unsafe {
+            GetWindowThreadProcessId(hwnd, &mut pid);
+            if close.pids.contains(&pid)
+                && IsWindowVisible(hwnd) != 0
+                && PostMessageW(hwnd, WM_CLOSE, 0, 0) != 0
+            {
+                close.sent += 1;
+            }
+        }
+        1
+    }
+
+    /// Chỉ cửa sổ đang hiện: cửa sổ ẩn của Chromium (khay, nhận thông báo hệ thống) nhận WM_CLOSE thì tự huỷ mà app vẫn
+    /// chạy, có khi mất cả biểu tượng ở khay để người dùng tự thoát.
+    pub(super) fn close_windows(pids: &[u32]) -> usize {
+        let mut close = Close { pids, sent: 0 };
+        // SAFETY: `close_one` chỉ dùng `close` trong lúc EnumWindows chạy.
+        unsafe { EnumWindows(Some(close_one), &mut close as *mut Close as LPARAM) };
+        close.sent
+    }
+
+    pub(super) fn terminate(pid: u32, owns: fn(&str) -> bool) -> bool {
+        let Some(h) = open(pid, PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION) else {
+            return false;
+        };
+        // SAFETY: handle vừa mở, có quyền PROCESS_TERMINATE; chỉ tắt khi đường dẫn vẫn là của app cần tắt.
+        image(&h).is_some_and(|exe| owns(&exe)) && unsafe { TerminateProcess(h.0, 1) } != 0
+    }
+}
 
 /// Mọi tiến trình `claude.exe` (Claude Desktop và Claude Code CLI); None khi không dò được.
 pub(super) fn processes() -> Option<Vec<Proc>> {
-    if !any_claude_exe() {
-        return Some(vec![]);
-    }
-    powershell(LIST_SCRIPT, Duration::from_secs(15)).map(|out| procs_in(&out))
+    Win32.processes()
 }
 
 /// Tiến trình chính của Claude Desktop; None khi không dò được.
@@ -282,86 +406,70 @@ pub(super) fn running() -> Option<Vec<u32>> {
     processes().map(|p| mains(&p))
 }
 
-fn taskkill(args: &[&str]) {
-    let _ = output_within(
-        hidden(Command::new("taskkill").args(args)),
-        Duration::from_secs(10),
-    );
-}
-
 /// Thời gian chờ từng bước thoát; test dùng bản ngắn.
 pub(super) struct Waits {
-    /// Sau WM_CLOSE cho cửa sổ của tiến trình chính.
+    /// Sau WM_CLOSE: Claude Desktop thường chỉ thu xuống khay khi đóng cửa sổ, nên không chờ lâu rồi hỏi người dùng.
     pub(super) close: Duration,
-    /// Sau WM_CLOSE cho cả cây tiến trình (`/T`, chưa `/F`).
-    pub(super) tree: Duration,
-    /// Sau `/F /T` (người dùng đã đồng ý).
+    /// Không có cửa sổ nào để đóng (app đang ở khay): xin thoát êm không được, chỉ chờ người dùng đang tự thoát.
+    pub(super) hidden: Duration,
+    /// Sau khi buộc tắt (người dùng đã đồng ý).
     pub(super) kill: Duration,
 }
 
 const WAITS: Waits = Waits {
-    close: Duration::from_secs(8),
-    tree: QUIT_WAIT.saturating_sub(Duration::from_secs(8)),
+    close: Duration::from_secs(10),
+    hidden: Duration::from_secs(3),
     kill: Duration::from_secs(10),
 };
 
-/// Thoát Claude Desktop theo từng bậc, bậc nào cũng có hạn:
-/// 1. `taskkill /PID` (không `/F`) gửi WM_CLOSE cho cửa sổ của tiến trình chính, như bấm nút đóng.
-/// 2. Claude Desktop thường chỉ thu xuống khay khi đóng cửa sổ: gửi tiếp WM_CLOSE cho cả cây (`/T`, vẫn không `/F`).
-/// 3. Còn chạy mà chưa có `force` thì trả false để giao diện hỏi người dùng có buộc thoát không.
-/// 4. `force` (người dùng đã đồng ý): `/F /T` từng tiến trình của Claude Desktop.
+const NOT_LISTED: &str = "Không dò được Claude Desktop có đang chạy không. Thoát Claude Desktop từ khay hệ thống rồi thử lại.";
+
+/// Thoát Claude Desktop, bậc nào cũng có hạn:
+/// 1. WM_CLOSE cho cửa sổ đang hiện của mọi tiến trình Claude Desktop, như bấm nút đóng. Người dùng tự thoát từ khay
+///    trong lúc chờ thì nhận ra ở lần dò kế (nửa giây).
+/// 2. Còn chạy mà chưa có `force` thì trả false để giao diện hỏi người dùng có buộc thoát không.
+/// 3. `force` (người dùng đã đồng ý): vẫn xin thoát êm trước nhưng chờ ngắn, rồi buộc tắt tiến trình chính trước, tiến
+///    trình phụ sau.
 ///
 /// Chỉ coi là đã thoát khi không còn tiến trình nào chạy từ thư mục cài; không dò được thì chưa coi là thoát. Luôn
-/// nhắm theo PID, không dùng `/IM claude.exe`: tên đó trùng Claude Code CLI mà worker đang chạy.
+/// nhắm theo PID và đường dẫn, không theo tên `claude.exe`: tên đó trùng Claude Code CLI mà worker đang chạy.
 pub(super) fn quit(force: bool, ctl: &Ctl) -> Result<bool, String> {
-    quit_with(&processes, &taskkill, force, ctl, &WAITS)
+    quit_with(&Win32, force, ctl, &WAITS)
 }
 
-/// `quit` với cách dò và cách gọi `taskkill` truyền vào, để test không gửi lệnh cho PID có thật trên máy.
 pub(super) fn quit_with(
-    list: &dyn Fn() -> Option<Vec<Proc>>,
-    taskkill: &dyn Fn(&[&str]),
+    sys: &dyn System,
     force: bool,
     ctl: &Ctl,
     waits: &Waits,
 ) -> Result<bool, String> {
-    let now = list().ok_or(
-        "Không dò được Claude Desktop có đang chạy không (PowerShell không trả lời). Thoát Claude Desktop từ khay hệ thống rồi thử lại.",
-    )?;
-    if desktop_pids(&now).is_empty() {
+    let now = sys.processes().ok_or(NOT_LISTED)?;
+    let pids = desktop_pids(&now);
+    if pids.is_empty() {
         return Ok(true);
     }
     ctl.step(Step::Quitting);
-    let gone = |d| wait_gone(|| list().map(|p| desktop_pids(&p)), d, ctl);
-    // Đã đồng ý buộc thoát thì vẫn xin thoát êm trước, nhưng không chờ lâu.
-    let soft = |d: Duration| {
-        if force {
-            d.min(Duration::from_secs(3))
-        } else {
-            d
-        }
+    let gone = |d| wait_gone(|| sys.processes().map(|p| desktop_pids(&p)), d, ctl);
+    let soft = if sys.close_windows(&pids) == 0 {
+        waits.hidden
+    } else {
+        waits.close
     };
-    for pid in mains(&now) {
-        taskkill(&["/PID", &pid.to_string()]);
-    }
-    if gone(soft(waits.close))? {
-        return Ok(true);
-    }
-    for pid in mains(&now) {
-        taskkill(&["/T", "/PID", &pid.to_string()]);
-    }
-    if gone(soft(waits.tree))? {
+    let soft = if force { soft.min(waits.hidden) } else { soft };
+    if gone(soft)? {
         return Ok(true);
     }
     if !force {
         return Ok(false);
     }
     ctl.step(Step::ForceQuitting);
-    let left = list()
-        .map(|p| desktop_pids(&p))
-        .unwrap_or_else(|| desktop_pids(&now));
-    for pid in left {
-        taskkill(&["/F", "/T", "/PID", &pid.to_string()]);
+    let left = sys.processes().unwrap_or(now);
+    let first = mains(&left);
+    for pid in first
+        .iter()
+        .chain(desktop_pids(&left).iter().filter(|p| !first.contains(p)))
+    {
+        sys.terminate(*pid);
     }
     gone(waits.kill)
 }
@@ -404,6 +512,10 @@ pub(super) fn launch(app: &App) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::time::Instant;
+
     use super::super::tests::{put, temp_home};
     use super::*;
 
@@ -466,35 +578,47 @@ mod tests {
         std::fs::remove_dir_all(&home).unwrap();
     }
 
+    const SQUIRREL: &str =
+        "C:\\Users\\Duy\\AppData\\Local\\AnthropicClaude\\app-0.14.10\\claude.exe";
+    const MSIX: &str =
+        "C:\\Program Files\\WindowsApps\\Claude_1.0.3218.0_x64__pzs8sxrjxfjjc\\app\\claude.exe";
+    const CLI: &str = "C:\\Users\\Duy\\.local\\bin\\claude.exe";
+
+    fn proc(pid: u32, parent: u32, exe: &str) -> Proc {
+        Proc {
+            pid,
+            parent,
+            exe: exe.into(),
+        }
+    }
+
     #[test]
     fn desktop_processes_are_told_apart_from_the_claude_code_cli() {
-        let text = "\
-4100\tC:\\Users\\Duy\\AppData\\Local\\AnthropicClaude\\app-0.14.10\\claude.exe\t\"C:\\Users\\Duy\\AppData\\Local\\AnthropicClaude\\app-0.14.10\\claude.exe\"\r
-4101\tC:\\Users\\Duy\\AppData\\Local\\AnthropicClaude\\app-0.14.10\\claude.exe\t\"…\\claude.exe\" --type=renderer --lang=vi\r
-4200\tC:\\Program Files\\WindowsApps\\Claude_1.0.3218.0_x64__pzs8sxrjxfjjc\\app\\claude.exe\t\"C:\\Program Files\\WindowsApps\\Claude_1.0.3218.0_x64__pzs8sxrjxfjjc\\app\\claude.exe\"
-4201\tC:\\Program Files\\WindowsApps\\Claude_1.0.3218.0_x64__pzs8sxrjxfjjc\\app\\claude.exe\tclaude.exe --type=crashpad-handler
-5000\tC:\\Users\\Duy\\.local\\bin\\claude.exe\tclaude --print
-5001\tC:\\Users\\Duy\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Anthropic.ClaudeCode_x\\claude.exe\tclaude
-5002\tC:\\Program Files\\WindowsApps\\Microsoft.Foo_1_x64__abc\\claude.exe\t
-6000\t\t
-bad line
-";
-        let procs = procs_in(text);
+        let procs = [
+            proc(4100, 900, SQUIRREL),
+            proc(4101, 4100, SQUIRREL),
+            proc(4200, 900, MSIX),
+            proc(4201, 4200, MSIX),
+            // Claude Code CLI do Claude Desktop chạy (MCP, agent) vẫn không phải Claude Desktop.
+            proc(5000, 4100, CLI),
+            proc(
+                5001,
+                900,
+                "C:\\Users\\Duy\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Anthropic.ClaudeCode_x\\claude.exe",
+            ),
+            proc(
+                5002,
+                900,
+                "C:\\Program Files\\WindowsApps\\Microsoft.Foo_1_x64__abc\\claude.exe",
+            ),
+            proc(6000, 900, ""),
+        ];
         assert_eq!(mains(&procs), vec![4100, 4200]);
         assert_eq!(desktop_pids(&procs), vec![4100, 4101, 4200, 4201]);
-        let kinds: Vec<_> = procs.iter().map(|p| p.kind.as_deref()).collect();
+        // Cha đã thoát và PID của nó được dùng lại cho tiến trình phụ: vẫn có một tiến trình chính.
         assert_eq!(
-            kinds,
-            [
-                None,
-                Some("renderer"),
-                None,
-                Some("crashpad-handler"),
-                None,
-                None,
-                None,
-                None
-            ]
+            mains(&[proc(7, 8, SQUIRREL), proc(8, 7, SQUIRREL)]),
+            vec![7]
         );
         assert!(is_desktop_exe(
             "C:/Users/Duy/AppData/Local/AnthropicClaude/claude.exe"
@@ -551,114 +675,252 @@ bad line
         std::fs::remove_dir_all(&home).unwrap();
     }
 
-    fn proc(pid: u32, kind: Option<&str>) -> Proc {
-        Proc {
-            pid,
-            exe: "C:\\Users\\Duy\\AppData\\Local\\AnthropicClaude\\app-1\\claude.exe".into(),
-            kind: kind.map(str::to_string),
+    /// Claude Desktop giả: dò chậm hay lỗi theo kịch bản, cửa sổ nhận WM_CLOSE mà có thoát hay không, tự thoát sau vài
+    /// lần dò (người dùng bấm Quit ở khay), không chịu chết khi bị buộc tắt.
+    #[derive(Default)]
+    struct Fake {
+        procs: Mutex<Vec<Proc>>,
+        /// Số cửa sổ đang hiện; 0 là app nằm ở khay.
+        windows: usize,
+        /// WM_CLOSE làm app thoát thật.
+        closes: bool,
+        /// Còn chạy thêm chừng này lần dò rồi tự thoát.
+        quits_after: Option<u32>,
+        /// Lần dò thứ mấy (từ 0) trả None.
+        fails_at: Vec<u32>,
+        unkillable: bool,
+        list_delay: Duration,
+        polls: AtomicU32,
+        sent: Mutex<Vec<String>>,
+    }
+
+    impl Fake {
+        fn running(windows: usize) -> Self {
+            Self {
+                procs: Mutex::new(vec![
+                    proc(4100, 900, SQUIRREL),
+                    proc(4101, 4100, SQUIRREL),
+                    proc(5000, 4100, CLI),
+                ]),
+                windows,
+                ..Self::default()
+            }
+        }
+
+        fn sent(&self) -> Vec<String> {
+            self.sent.lock().unwrap().clone()
+        }
+    }
+
+    impl System for Fake {
+        fn processes(&self) -> Option<Vec<Proc>> {
+            std::thread::sleep(self.list_delay);
+            let n = self.polls.fetch_add(1, Ordering::SeqCst);
+            if self.fails_at.contains(&n) {
+                return None;
+            }
+            if self.quits_after.is_some_and(|q| n >= q) {
+                self.procs.lock().unwrap().retain(|p| !p.desktop());
+            }
+            Some(self.procs.lock().unwrap().clone())
+        }
+
+        fn close_windows(&self, pids: &[u32]) -> usize {
+            self.sent.lock().unwrap().push(format!("close {pids:?}"));
+            if self.closes {
+                self.procs.lock().unwrap().retain(|p| !p.desktop());
+            }
+            self.windows
+        }
+
+        fn terminate(&self, pid: u32) -> bool {
+            self.sent.lock().unwrap().push(format!("kill {pid}"));
+            if !self.unkillable {
+                self.procs.lock().unwrap().retain(|p| p.pid != pid);
+            }
+            !self.unkillable
         }
     }
 
     const SHORT: Waits = Waits {
-        close: Duration::from_millis(200),
-        tree: Duration::from_millis(200),
-        kill: Duration::from_millis(200),
+        close: Duration::from_millis(600),
+        hidden: Duration::from_millis(200),
+        kill: Duration::from_millis(300),
     };
 
-    /// App thu xuống khay, không bao giờ thoát: mỗi bậc chờ có hạn, chưa đồng ý buộc thoát thì báo vẫn chạy, Huỷ thì dừng
-    /// ngay; không dò được tiến trình thì báo lỗi chứ không coi là đã thoát.
+    /// App thu xuống khay, không bao giờ thoát: chờ có hạn rồi báo vẫn chạy để giao diện hỏi; không bao giờ đụng Claude
+    /// Code CLI. Đồng ý buộc thoát thì tắt tiến trình chính trước.
     #[test]
-    fn app_that_never_quits_is_bounded_and_cancellable() {
-        let stuck = || Some(vec![proc(4100, None), proc(4101, Some("renderer"))]);
-        let sent = std::sync::Mutex::new(Vec::<String>::new());
-        let record = |args: &[&str]| sent.lock().unwrap().push(args.join(" "));
-        let started = std::time::Instant::now();
-        assert_eq!(
-            quit_with(&stuck, &record, false, &Ctl::idle(), &SHORT),
-            Ok(false)
+    fn app_that_never_quits_is_asked_about_within_the_close_wait() {
+        let fake = Fake::running(1);
+        let started = Instant::now();
+        assert_eq!(quit_with(&fake, false, &Ctl::idle(), &SHORT), Ok(false));
+        let took = started.elapsed();
+        assert!(
+            took >= SHORT.close && took < Duration::from_secs(5),
+            "{took:?}"
         );
-        assert_eq!(*sent.lock().unwrap(), ["/PID 4100", "/T /PID 4100"]);
-        sent.lock().unwrap().clear();
-        assert_eq!(
-            quit_with(&stuck, &record, true, &Ctl::idle(), &SHORT),
-            Ok(false)
-        );
-        assert_eq!(
-            *sent.lock().unwrap(),
-            [
-                "/PID 4100",
-                "/T /PID 4100",
-                "/F /T /PID 4100",
-                "/F /T /PID 4101"
-            ]
-        );
-        assert!(started.elapsed() < Duration::from_secs(30));
+        assert_eq!(fake.sent(), ["close [4100, 4101]"]);
 
-        let unknown = || None;
-        assert!(quit_with(&unknown, &record, true, &Ctl::idle(), &SHORT).is_err());
-        let flaky = std::sync::atomic::AtomicU32::new(0);
-        let gone_after_unknown = || match flaky.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
-            0 => Some(vec![proc(4100, None)]),
-            1 => None,
-            _ => Some(vec![]),
+        let fake = Fake::running(1);
+        let started = Instant::now();
+        assert_eq!(quit_with(&fake, true, &Ctl::idle(), &SHORT), Ok(true));
+        assert!(
+            started.elapsed() < SHORT.close,
+            "đã đồng ý thì không chờ đủ lâu như lần đầu"
+        );
+        assert_eq!(
+            fake.sent(),
+            ["close [4100, 4101]", "kill 4100", "kill 4101"]
+        );
+        assert_eq!(fake.procs.lock().unwrap().clone(), [proc(5000, 4100, CLI)]);
+
+        let stubborn = Fake {
+            unkillable: true,
+            ..Fake::running(1)
+        };
+        assert_eq!(quit_with(&stubborn, true, &Ctl::idle(), &SHORT), Ok(false));
+    }
+
+    /// App đang ở khay (không cửa sổ nào để đóng): xin thoát êm không được, hỏi người dùng sau `hidden` chứ không chờ đủ
+    /// `close`.
+    #[test]
+    fn app_in_the_tray_is_asked_about_sooner() {
+        let fake = Fake::running(0);
+        let started = Instant::now();
+        assert_eq!(quit_with(&fake, false, &Ctl::idle(), &SHORT), Ok(false));
+        let took = started.elapsed();
+        assert!(took >= SHORT.hidden && took < SHORT.close, "{took:?}");
+    }
+
+    /// Người dùng tự thoát Claude Desktop (khay → Quit) trong lúc chờ, hay WM_CLOSE làm app thoát: đi tiếp ngay ở lần dò
+    /// kế, không chờ hết hạn.
+    #[test]
+    fn quitting_by_hand_is_noticed_at_the_next_poll() {
+        let long = Waits {
+            close: Duration::from_secs(60),
+            hidden: Duration::from_secs(60),
+            kill: Duration::from_secs(60),
+        };
+        let fake = Fake {
+            quits_after: Some(2),
+            ..Fake::running(1)
+        };
+        let started = Instant::now();
+        assert_eq!(quit_with(&fake, false, &Ctl::idle(), &long), Ok(true));
+        assert!(started.elapsed() < Duration::from_secs(3));
+
+        let fake = Fake {
+            closes: true,
+            ..Fake::running(1)
+        };
+        let started = Instant::now();
+        assert_eq!(quit_with(&fake, false, &Ctl::idle(), &long), Ok(true));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(fake.sent(), ["close [4100, 4101]"]);
+
+        let none = Fake {
+            procs: Mutex::new(vec![proc(5000, 900, CLI)]),
+            ..Fake::default()
+        };
+        assert_eq!(quit_with(&none, false, &Ctl::idle(), &long), Ok(true));
+        assert_eq!(
+            none.sent(),
+            Vec::<String>::new(),
+            "chỉ có Claude Code CLI: không đóng gì"
+        );
+    }
+
+    /// Dò lỗi không tính là đã thoát; dò chậm vẫn xong trong hạn; Huỷ thì dừng ngay.
+    #[test]
+    fn failed_or_slow_listing_is_bounded_and_cancellable() {
+        let fake = Fake {
+            fails_at: vec![0],
+            ..Fake::running(1)
         };
         assert_eq!(
-            quit_with(&gone_after_unknown, &record, false, &Ctl::idle(), &SHORT),
+            quit_with(&fake, true, &Ctl::idle(), &SHORT),
+            Err(NOT_LISTED.to_string())
+        );
+        let flaky = Fake {
+            fails_at: vec![1],
+            quits_after: Some(2),
+            ..Fake::running(1)
+        };
+        assert_eq!(
+            quit_with(&flaky, false, &Ctl::idle(), &SHORT),
             Ok(true),
             "lần dò lỗi không tính là đã thoát, lần sau mới tính"
         );
-        assert!(flaky.load(std::sync::atomic::Ordering::SeqCst) >= 3);
+        assert!(flaky.polls.load(Ordering::SeqCst) >= 3);
+        let all_fail = Fake {
+            fails_at: (1..1000).collect(),
+            ..Fake::running(1)
+        };
+        assert_eq!(quit_with(&all_fail, false, &Ctl::idle(), &SHORT), Ok(false));
 
-        let cancel = std::sync::atomic::AtomicBool::new(false);
-        let steps = std::sync::Mutex::new(vec![]);
+        let slow = Fake {
+            list_delay: Duration::from_millis(150),
+            ..Fake::running(1)
+        };
+        let started = Instant::now();
+        assert_eq!(quit_with(&slow, false, &Ctl::idle(), &SHORT), Ok(false));
+        assert!(started.elapsed() < Duration::from_secs(3));
+
+        let cancel = AtomicBool::new(false);
+        let steps = Mutex::new(vec![]);
         let report = |s: Step, _: Option<u8>| {
             steps.lock().unwrap().push(s);
-            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+            cancel.store(true, Ordering::SeqCst);
         };
         let ctl = Ctl::new(&cancel, &report);
         let long = Waits {
             close: Duration::from_secs(60),
-            tree: Duration::from_secs(60),
+            hidden: Duration::from_secs(60),
             kill: Duration::from_secs(60),
         };
-        let started = std::time::Instant::now();
+        let started = Instant::now();
         assert_eq!(
-            quit_with(&stuck, &record, true, &ctl, &long),
+            quit_with(&Fake::running(1), true, &ctl, &long),
             Err(super::super::job::CANCELLED.to_string())
         );
-        assert!(started.elapsed() < Duration::from_secs(10));
+        assert!(started.elapsed() < Duration::from_secs(5));
         assert_eq!(*steps.lock().unwrap(), vec![Step::Quitting]);
     }
 
-    /// Trên Windows thật: tiến trình console không có cửa sổ thì `taskkill` không `/F` không đóng được (như app nằm ở
-    /// khay). Không đồng ý thì nó còn sống; đồng ý thì `/F /T` đóng nó trong hạn.
+    /// Trên Windows thật: dò bằng Win32 trả về ngay và thấy tiến trình con vừa chạy; buộc tắt chỉ tắt tiến trình có
+    /// đường dẫn được nhận, PID của tiến trình khác thì để yên.
     #[cfg(windows)]
     #[test]
-    fn stuck_process_is_only_killed_with_consent() {
-        let child = std::sync::Mutex::new(
-            hidden(Command::new("ping").args(["-n", "600", "127.0.0.1"]))
-                .stdout(std::process::Stdio::null())
-                .spawn()
-                .unwrap(),
+    fn win32_lists_fast_and_terminates_only_owned_processes() {
+        let started = Instant::now();
+        let listed = Win32.processes().expect("Toolhelp phải dò được");
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(
+            listed
+                .iter()
+                .all(|p| p.exe.to_ascii_lowercase().ends_with("claude.exe") || p.exe.is_empty())
         );
-        let pid = child.lock().unwrap().id();
-        let list = || {
-            let alive = child.lock().unwrap().try_wait().unwrap().is_none();
-            Some(if alive { vec![proc(pid, None)] } else { vec![] })
-        };
-        assert_eq!(
-            quit_with(&list, &taskkill, false, &Ctl::idle(), &SHORT),
-            Ok(false)
+
+        let mut child = hidden(Command::new("ping").args(["-n", "600", "127.0.0.1"]))
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        assert_eq!(sys::close_windows(&[pid]), 0, "ping không có cửa sổ");
+        assert!(
+            !sys::terminate(pid, is_desktop_exe),
+            "không phải Claude Desktop"
         );
-        assert!(child.lock().unwrap().try_wait().unwrap().is_none());
-        let waits = Waits {
-            kill: Duration::from_secs(10),
-            ..SHORT
-        };
-        assert_eq!(
-            quit_with(&list, &taskkill, true, &Ctl::idle(), &waits),
-            Ok(true)
-        );
+        assert!(child.try_wait().unwrap().is_none());
+        assert!(sys::terminate(pid, |exe| exe
+            .to_ascii_lowercase()
+            .ends_with("ping.exe")));
+        let until = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            assert!(Instant::now() < until, "ping chưa bị tắt");
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     #[test]
