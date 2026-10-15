@@ -23,6 +23,7 @@ describe("menu theo hồ sơ", () => {
       "plans",
       "projects",
       "runs",
+      "remote",
       "setup",
       "skills",
       "tokens",
@@ -52,7 +53,7 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(17);
+    expect(items).toHaveLength(18);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 
@@ -64,7 +65,16 @@ describe("menu theo hồ sơ", () => {
       ["Tài liệu", ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"]],
       [
         "Máy này",
-        ["Gói agent", "Dự án trên máy", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh", "Memory"],
+        [
+          "Gói agent",
+          "Dự án trên máy",
+          "Lượt chạy trên máy",
+          "Điều khiển từ xa",
+          "Môi trường",
+          "Skills",
+          "Token và ngữ cảnh",
+          "Memory",
+        ],
       ],
     ]);
     expect(groups.map((g) => g.label.en)).toEqual(["Work", "AI SDLC", "Docs", "This machine"]);
@@ -156,7 +166,16 @@ describe("AppShell", () => {
       ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt"],
       ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ", "Chỉ số"],
       ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"],
-      ["Gói agent", "Dự án trên máy", "Lượt chạy trên máy", "Môi trường", "Skills", "Token và ngữ cảnh", "Memory"],
+      [
+        "Gói agent",
+        "Dự án trên máy",
+        "Lượt chạy trên máy",
+        "Điều khiển từ xa",
+        "Môi trường",
+        "Skills",
+        "Token và ngữ cảnh",
+        "Memory",
+      ],
     ]);
     for (const title of ["Công việc", "AI SDLC", "Tài liệu", "Máy này"])
       expect(within(nav).getByText(title)).toBeTruthy();

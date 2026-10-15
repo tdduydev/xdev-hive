@@ -24,6 +24,7 @@ import {
   type TerminalDeps,
   terminalOptions,
 } from "./service.ts";
+import { remoteTicket } from "./ws.ts";
 
 export interface TerminalRouterDeps extends OrgDeps {
   terminal: TerminalDeps;
@@ -71,7 +72,7 @@ export interface RemoteRouterDeps extends OrgDeps {
 }
 
 /**
- * Phiên trên máy cá nhân (specs/010 US1, US2). Vé xem trực tiếp, mở phiên và đẩy thông báo thêm ở T030, T051, T071.
+ * Phiên trên máy cá nhân (specs/010 US1, US2). Mở phiên và đẩy thông báo thêm ở T051, T071.
  * Ghi phiên luôn bật: `HIVE_REMOTE_TERMINAL` chỉ chặn phần từ xa.
  */
 export function remoteRouter(deps: RemoteRouterDeps) {
@@ -82,6 +83,9 @@ export function remoteRouter(deps: RemoteRouterDeps) {
     list: os.list.use(inOrg).handler(({ context: { tx, user }, input }) => listRemoteSessions(tx, user.id, input)),
     get: os.get.use(inOrg).handler(({ context: { tx, user }, input }) => getRemoteSession(tx, user.id, input.id)),
     chunks: os.chunks.use(inOrg).handler(({ context: { tx, user }, input }) => remoteSessionChunks(tx, user.id, input)),
+    ticket: os.ticket
+      .use(inOrg)
+      .handler(({ context: { tx, user, orgId }, input }) => remoteTicket(tx, user.id, orgId, input.id, deps.remote)),
     setVisibility: os.setVisibility
       .use(inOrg)
       .handler(({ context: { tx, user }, input }) => setRemoteVisibility(tx, user.id, input.id, input.visibility)),

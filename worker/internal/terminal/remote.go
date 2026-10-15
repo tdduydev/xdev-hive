@@ -47,6 +47,8 @@ type Remote struct {
 	ConfirmWait time.Duration
 	Logger      *slog.Logger
 	Now         func() time.Time
+	// Controller thu quyền điều khiển khi tắt từ xa hay gỡ thiết bị; nil là chưa cấp quyền từ xa.
+	Controller *Controller
 
 	mu        sync.Mutex
 	owner     *WelcomeOwner
@@ -243,7 +245,18 @@ func (r *Remote) OnWelcome(info WelcomeInfo) {
 	for _, a := range actions {
 		a()
 	}
+	if owner.Shared {
+		r.Controller.RevokeAll(RevokeDisabled)
+		r.Controller.endRemote("hub")
+	}
 	r.changed()
+}
+
+// welcomeOwner là chủ máy theo welcome gần nhất; nil là hub chưa gửi.
+func (r *Remote) welcomeOwner() *WelcomeOwner {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.owner
 }
 
 // errNoChange: fn của Store.Update trả lỗi này để khỏi ghi lại file khi không đổi gì.
@@ -278,6 +291,8 @@ func (r *Remote) disable(by string) bool {
 		return false
 	}
 	r.audit("remote_disable", by, nil)
+	r.Controller.RevokeAll(RevokeDisabled)
+	r.Controller.endRemote(by)
 	r.changed()
 	return true
 }
@@ -300,6 +315,7 @@ func (r *Remote) removeDevice(id, by string) bool {
 		return false
 	}
 	r.audit("device_revoke", by, map[string]any{"deviceId": id, "label": label})
+	r.Controller.RevokeDevice(id)
 	r.changed()
 	return true
 }

@@ -290,7 +290,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
     await client?.close();
   });
 
-  it("tools/list có các tool của tenancy, runs và knowledge, tool nào cũng nhận tham số org", async () => {
+  it("tools/list có các tool của tenancy, runs, knowledge và sdlc, tool nào cũng nhận tham số org", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
@@ -404,6 +404,16 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
     expect(rows[0]?.data).toMatchObject({ via: "user", clientId: CLIENT_ID });
     // Không ghi gì vào tổ chức của Bob.
     expect(rows.some((r) => r.org_id === ids.orgC)).toBe(false);
+  });
+
+  it.each([
+    { name: "sdlc_context", input: {} },
+    { name: "sdlc_ask", input: { questions: [{ text: "Dùng phương án nào?" }] } },
+    { name: "sdlc_report", input: { kind: "summary", data: { summary: "Đã hoàn tất." } } },
+  ])("OAuth không được gọi tool $name dành cho run SDLC", async ({ name, input }) => {
+    const result = text(await client.callTool({ name, arguments: { org: SLUG.a, ...input } }));
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("Chỉ agent đang chạy trong run (HIVE_RUN_TOKEN) mới gọi được tool này.");
   });
 
   it("người chưa đăng nhập trên trình duyệt; người chỉ có một tổ chức không cần truyền org", async () => {

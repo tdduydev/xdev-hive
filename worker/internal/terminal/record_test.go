@@ -21,6 +21,8 @@ type fakeLink struct {
 	states  []State
 	denied  []Denied
 	pairs   []PairResult
+	granted []Granted
+	revoked []Revoked
 }
 
 type recOut struct {
@@ -54,8 +56,8 @@ func (f *fakeLink) Exit(e Exit) error { return f.do(func() { f.exits = append(f.
 func (f *fakeLink) Event(e SessionEvent) error {
 	return f.do(func() { f.events = append(f.events, e) })
 }
-func (f *fakeLink) Granted(Granted) error { return nil }
-func (f *fakeLink) Revoked(Revoked) error { return nil }
+func (f *fakeLink) Granted(g Granted) error { return f.do(func() { f.granted = append(f.granted, g) }) }
+func (f *fakeLink) Revoked(r Revoked) error { return f.do(func() { f.revoked = append(f.revoked, r) }) }
 func (f *fakeLink) PairResult(p PairResult) error {
 	return f.do(func() { f.pairs = append(f.pairs, p) })
 }

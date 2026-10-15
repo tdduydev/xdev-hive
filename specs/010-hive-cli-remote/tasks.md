@@ -246,7 +246,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/web/e2e/{remote.spec.ts,fake-hub.ts}`
   - **Phụ thuộc**: T002, T006 · **Mức**: vừa
 
-- [ ] T015 [US1] Phát hành và đóng gói `hive`
+- [x] T015 [US1] Phát hành và đóng gói `hive`
   - `.goreleaser.yaml`: build thứ hai `hive` cùng archive và `checksums.txt`; `release.yml` kiểm `hive version`;
     `install.sh`/`install.ps1` cài cả hai; `internal/update` thay cả hai nguyên tử (thiếu `hive` trong gói cũ thì chỉ thay
     worker).
@@ -256,6 +256,11 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `worker/internal/update/{update.go,update_test.go,scripts_test.go}`,
     `apps/desktop/scripts/{build-sidecar.ts,verify-bundle.ts}`, `apps/desktop/src-tauri/{tauri.conf.json,src/lib.rs}`
   - **Phụ thuộc**: T012 · **Mức**: vừa
+  - Đã làm (SPEC10W6): goreleaser build `hive` cùng archive; `release.yml` kiểm `hive version`; install.sh/install.ps1
+    cài cả hai; `update.InstallAll` chạy thử `version` từng file, thay `hive` rồi worker, lỗi thì trả bản cũ (gói cũ
+    không có `hive` thì chỉ thay worker). Desktop: sidecar `binaries/hive`, `verify-bundle.ts` kiểm, `hive_cli.rs`
+    (`hive_cli_status`, `hive_cli_install`: symlink `~/.local/bin/hive`; Windows chép vào `%LOCALAPPDATA%\xdev-hive\bin`
+    và thêm PATH người dùng). Chưa thử install.ps1 trên PowerShell thật và nhánh Windows của `hive_cli.rs`.
 
 **Checkpoint**: `hive chat` chạy tại máy, phiên ghi lên hub, xem lại trên web; chưa có gì từ xa.
 
@@ -295,7 +300,15 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `apps/hub/src/modules/terminal/{pairing.ts,devices.ts,state.ts,router.ts,index.ts,pairing.db.test.ts}`
   - **Phụ thuộc**: T013 · **Mức**: nặng
 
-- [ ] T022 [US2] Web: ghép và thiết bị
+- [x] T022 [US2] Web: ghép và thiết bị
+  - Đã làm (SPEC10W6): `webauthn.ts` (đọc bí mật `#s=` rồi xoá khỏi URL bằng `history.replaceState`, chưa đăng nhập thì
+    `stashPairSecret` cất vào sessionStorage để `?redirect=` không mang bí mật; `createPasskey` bắt UV và đọc
+    `getPublicKey()`, `pairProof` tính tag HMAC, `getAssertion` dùng challenge chuẩn hoá từ contracts; nhớ thiết bị đã
+    ghép trong localStorage). `pair-page.tsx` (`/remote/pair?m=&p=#s=`: không phải secure context thì báo "Cần hub chạy
+    HTTPS", máy không thuộc mình thì báo trước khi gọi ghép, hiện câu lỗi của hub, cho thử lại), `devices-page.tsx`
+    (`/remote/devices`: theo máy, gỡ có hộp xác nhận, máy offline không gỡ được), `remote-page.tsx` thêm trạng thái từ
+    xa của máy và cảnh báo HTTP. Playwright với virtual authenticator: ghép thành công, mã hết hạn, máy người khác (web và
+    hub), HTTP, thiếu bí mật, chưa đăng nhập, gỡ thiết bị, tiếng Anh, 360 px sáng/tối. Chưa thử trên điện thoại thật.
   - `lib/terminal/webauthn.ts` (tạo passkey UV bắt buộc, `getPublicKey()`, đọc bí mật từ fragment rồi xoá khỏi URL, tính
     tag; lấy assertion với challenge chuẩn hoá từ contracts), `pair-page.tsx`, `devices-page.tsx`; trang báo "Cần hub chạy
     HTTPS" khi không phải secure context; trạng thái từ xa của máy trên `remote-page.tsx`.
@@ -340,7 +353,7 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/cmd/hive/{remote_totp.go,remote_totp_test.go}`
   - **Phụ thuộc**: T024 (cùng làn), T025 · **Mức**: vừa
 
-- [ ] T023 [US2] [US5] Desktop: màn Điều khiển từ xa
+- [x] T023 [US2] [US5] Desktop: màn Điều khiển từ xa
   - `remote.rs`: sidecar `hive remote watch --json`, lệnh `remote_*` gọi `hive remote … --json`; cửa sổ xác nhận ghép và
     "Hỏi trên máy"; thông báo hệ điều hành; khay "Tắt điều khiển từ xa ngay" và chấm khi có người điều khiển từ xa.
   - `remote-screen.tsx`: công tắc (xác nhận lần hai), thư mục (chọn bằng hộp thoại thư mục), thiết bị + QR, tuỳ chọn,
@@ -351,6 +364,10 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/desktop/src/shell/*` (mục AppNav), `apps/desktop/src-tauri/src/{remote.rs,tray_icon.rs,lib.rs}`,
     `apps/desktop/src-tauri/capabilities/*.json`, `apps/desktop/src-tauri/src/capabilities_audit.rs`
   - **Phụ thuộc**: T015 (cùng `lib.rs`, `tauri.conf.json`), T024, T026 · **Mức**: vừa
+  - Đã làm (SPEC10W6): `remote.rs` (sidecar `hive remote watch --json`, 15 lệnh `remote_*`, cửa sổ xác nhận ghép,
+    thông báo hệ điều hành, khay "Tắt điều khiển từ xa ngay", chấm xanh dương góc trên phải khi `hive ls --json` có
+    phiên `origin`/`controller` = `remote`); `lib/remote.ts`, `remote-screen.tsx` (vi/en) + mục AppNav;
+    `capabilities_audit.rs` chặn `remote_*` ngoài cửa sổ app. Chưa thử cửa sổ Tauri và khay thật.
 
 **Checkpoint**: chủ máy bật từ xa và ghép được điện thoại; chưa điều khiển được.
 
@@ -358,7 +375,20 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 ## Phase 4: User Story 3 — Xem và điều khiển từ điện thoại (P1) 🎯 MVP
 
-- [ ] T030 [US3] Hub: `/ws/terminal`
+- [x] T030 [US3] Hub: `/ws/terminal`
+  - Đã làm (SPEC10W6): `ticket.ts` (vé dùng một lần 60 s; vé từ xa có tiền tố `r.`, vé Leader và vé từ xa không thay
+    nhau; vé bị đốt ngay lần dùng đầu, kể cả khi Origin sai sau đó), `remote.ticket` trong `router.ts`. `ws.ts`: Origin
+    phải khớp `HIVE_PUBLIC_URL` hoặc Host (403); vé từ xa đã dùng/hết hạn đóng 4401, phiên không thấy 4404, quá người
+    xem hoặc bỏ khung 4429, người xem gửi `control`/`in`/`resize` bị đóng 4403. `live.ts`: vòng đệm 512 KiB mỗi phiên,
+    nối lại theo offset (vòng đệm trước, thiếu thì đọc DB từng trang 200), 512 KiB/s mỗi người xem và 2 MiB/s mỗi máy,
+    chậm hay tồn quá 1 MiB thì `sync` + đuôi 128 KiB, ping 20 s. `withRemoteLive` chuyển `term_granted`/`term_revoked`
+    đúng `connId`, `term_event controller` có `denied` thành `{t:"denied"}` cho riêng kết nối đó (worker từ chối qua
+    sự kiện này vì `term_denied` cần `requestId` uuid), `term_detach` khi đóng WS hay `release`, nối lại bằng
+    `resumeToken` (sai thì `AUTH_STALE`), `term_exit` → `{t:"state"}`; audit `terminal.attach|detach|control_grant|
+    control_take|control_revoke|deny|input_rejected`. `fleet/gateway.ts` thêm `onRemote` tách riêng. Test
+    `ws.db.test.ts` (vé dùng lại, Origin sai, người xem gửi phím, nối lại không mất byte, client chậm nhận `sync`, hub
+    khởi động lại đọc DB) và `live.test.ts`. Còn: hub khởi động lại mất quyền đang cấp (phải xác thực lại); nhiều tiến
+    trình hub thì mỗi tiến trình chỉ thấy máy nối vào nó; `controller` trong `remote.get|list` vẫn `null`.
   - `ws.ts` (vé một lần 60 s qua route `ticket`, `Origin` bằng `HIVE_PUBLIC_URL`, mã đóng 4401/4403/4404/4429),
     `live.ts` (vòng đệm 512 KiB, người xem, chuyển `control`/`in`/`resize` tới worker chỉ cho kết nối của chủ máy, chuyển
     `term_granted`/`term_revoked`, nối lại theo offset, 512 KiB/s mỗi người xem, 2 MiB/s mỗi máy, đồng bộ lại khi đệm
@@ -369,12 +399,23 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `apps/hub/src/main.ts`
   - **Phụ thuộc**: T021 (cùng làn) · **Mức**: nặng
 
-- [ ] T031 [US3] Worker: cấp quyền điều khiển
+- [x] T031 [US3] Worker: cấp quyền điều khiển
   - `term_control`: kiểm assertion (T005), ECDH, cấp quyền (thu của người cũ), resize theo người điều khiển; `term_input`
     và `term_resize` kiểm `seq` + HMAC (3 lỗi → thu quyền, `input_rejected`); `resumeToken` 2 phút; hết 15 phút không gõ
     → thu; terminal tại máy giành lại; dòng báo trên terminal tại máy.
   - Test: đủ ca của US3 kịch bản 2–6 với vector cố định.
   - **Scope**: `worker/internal/terminal/{control.go,control_test.go,session.go}`
+  - Đã làm (SPEC10W6): `Controller` (control.go) nhận term_control/detach/input/resize qua `Recorder`; phiên tra theo mã
+    hub (`Local.byHubID`, không có session.go riêng). `machineId` của challenge là tên máy trong hello. Từ chối quyền
+    không dùng `term_denied` (cần `requestId`) mà gửi `term_event` `controller` `{connId, denied, reason}`; cấp quyền
+    gửi `term_granted` rồi `controller {connId, controller: "remote", label}`; thu quyền gửi `term_revoked` rồi
+    `controller {connId, controller: "local"|null, reason}`. Gói sai gửi `input_rejected {connId, count}`, đủ 3 (cộng
+    dồn, gói đúng không xoá) thì thu `input_rejected`. `term_detach` hay mất hub giữ quyền 2 phút cho `resumeToken`
+    (cùng userId, deviceId; khoá và seq cũ); quá hạn `expired`, nối lại báo `AUTH_STALE`. Terminal tại máy nhận
+    `taken` "Đang điều khiển từ xa bởi <nhãn thiết bị>."; `Ctrl-] t` hay `hive attach` thu quyền từ xa (`taken`).
+    Tắt từ xa, máy thành dùng chung → `disabled`; gỡ thiết bị → `device_revoked`; phiên kết thúc → `closed`.
+    `term_state.sessions[].controller` theo người điều khiển. Audit tại máy: `control_grant`, `control_resume`,
+    `control_revoke`, `control_denied`, `input_rejected`. Test `control_test.go` (Unix, CLI giả sh) theo TOTP vector cố định.
   - **Phụ thuộc**: T020 (cùng làn), T005 · **Mức**: nặng
 
 - [ ] T032 [US3] Web: màn terminal điều khiển trên điện thoại
@@ -392,7 +433,18 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 
 ## Phase 5: User Story 5 — Ngắt, giới hạn, audit (P1) 🎯 MVP
 
-- [ ] T040 [US5] Worker: tắt khẩn cấp và giới hạn thời gian
+- [x] T040 [US5] Worker: tắt khẩn cấp và giới hạn thời gian
+  - Đã làm (SPEC10W6): `limits.go`. Phiên tại máy có `origin` (`local` | `remote`; `CreateParams.origin` không đọc từ
+    JSON nên client socket nội bộ không tự nhận là phiên từ xa, T050 đặt khi mở). Tắt từ xa (máy, `term_disable`, máy
+    thành dùng chung) → `RevokeAll(disabled)` rồi `endRemote`: SIGHUP, chờ `RemoteKillGrace` 10 s, kill cả nhóm; phiên
+    `hive chat` giữ nguyên. `term_close` kênh chuyển cho cả Host và `Handler.CloseSession` (mới); phiên trên máy cá nhân
+    bị ngắt với `term_exit {reason: closed, by: userId}`. Mỗi phút kiểm phiên mở từ xa: không client (terminal tại máy
+    hay quyền gõ từ xa) và không output quá `detachedHours` (2 giờ) → `term_exit idle`; chạy quá `maxHours` (12 giờ) →
+    `closed`; giới hạn đọc lại `remote.json` mỗi lần. Audit mới: `session_close` (hive kill, term_close, tắt từ xa),
+    `session_limit`, `session_end` (phiên có ghi lên hub hoặc mở từ xa). `hive ls --json` thêm `origin`, `controller`
+    cho dấu trên khay của app. Chọn theo kịch bản US5-4: giới hạn 2 giờ chỉ áp cho phiên mở từ xa, phiên `hive chat`
+    tách ra như tmux không tự ngắt (FR-023 viết chung, cần chủ dự án xác nhận). Người xem trên hub không được tính là
+    client vì worker không biết họ; đóng người xem khi tắt là việc của hub (T041) theo `term_state`.
   - Tắt từ xa: thu quyền, đóng người xem từ xa, kết thúc phiên mở từ xa (SIGHUP, 10 s, kill), giữ phiên tại máy, trong
     ≤ 2 s; `term_close`; phiên không client + không output 2 giờ; phiên từ xa quá 12 giờ; ghi `remote-audit.log` đủ mục.
   - **Scope**: `worker/internal/terminal/{limits.go,limits_test.go,remote.go,host.go}`

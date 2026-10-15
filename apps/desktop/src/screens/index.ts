@@ -6,6 +6,7 @@ import { KnowledgeScreen } from "@/screens/knowledge-screen.tsx";
 import { MemoryScreen } from "@/screens/memory-screen.tsx";
 import { PlansScreen } from "@/screens/plans-screen.tsx";
 import { ProjectsScreen } from "@/screens/projects-screen.tsx";
+import { RemoteScreen } from "@/screens/remote-screen.tsx";
 import { ReviewsScreen } from "@/screens/reviews-screen.tsx";
 import { RunsScreen } from "@/screens/runs-screen.tsx";
 import { SdlcMetricsScreen } from "@/screens/sdlc-metrics-screen.tsx";
@@ -29,6 +30,7 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   memory: MemoryScreen,
   plans: PlansScreen,
   projects: ProjectsScreen,
+  remote: RemoteScreen,
   reviews: ReviewsScreen,
   runs: RunsScreen,
   setup: SetupScreen,
