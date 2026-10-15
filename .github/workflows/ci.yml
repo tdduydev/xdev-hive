@@ -95,6 +95,11 @@ jobs:
       - name: shellcheck install.sh
         if: runner.os == 'Linux'
         run: shellcheck -s sh ../scripts/install.sh
+      - name: Script phát hành (shellcheck, test tính phiên bản và ghi chú)
+        if: runner.os == 'Linux'
+        run: |
+          shellcheck -s bash ../scripts/release/*.sh
+          ../scripts/release/test.sh
       - name: goreleaser check
         if: runner.os == 'Linux'
         uses: goreleaser/goreleaser-action@v7
