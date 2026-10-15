@@ -98,7 +98,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
   - **Kiểm**: contracts test, `pnpm openapi`, typecheck hub và web vẫn qua (route mới chưa có handler thì hub dùng
     `NOT_IMPLEMENTED` ở T005; ghi bàn giao nếu typecheck hub hỏng tới khi T005 xong).
 
-- [ ] **T004 [P] [—] [vừa] · 1,5 ngày — Phần thuần: key ↔ đường dẫn, nội dung**
+- [x] **T004 [P] [—] [vừa] · 1,5 ngày — Phần thuần: key ↔ đường dẫn, nội dung**
   - **Goal**: plan.md mục 3, research.md mục 2.3, 3.2, 3.6. Hàm thuần, không đụng DB:
     - `paths.ts`: `keyFromPath`, `pathFromKey`, `uniqueKey`, `isHardExcluded`, `matchesHome` (dùng `matchGlob` của
       contracts), `overlaps`, `resolveRelative(docPath, href)`;
