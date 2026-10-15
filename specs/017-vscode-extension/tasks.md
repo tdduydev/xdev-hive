@@ -303,7 +303,7 @@ description: "Task list: extension VS Code tích hợp sâu (mức 2)"
     `apps/vscode/src/webview-host/allowlist/chat.ts` (+ test)
   - **Test**: gửi, hỏi lại, hiện đề xuất với nút Duyệt/Từ chối; form Giao việc gọi `tasks.create`.
 
-- [ ] **T021 [P] [US5] [nặng] · 2,5 ngày — MCP provider và ghi cấu hình cho Claude Code, Cursor, Windsurf**
+- [x] **T021 [P] [US5] [nặng] · 2,5 ngày — MCP provider và ghi cấu hình cho Claude Code, Cursor, Windsurf**
   - **Phụ thuộc**: T005, T011, kết quả Cursor của T002.
   - **Goal**: plan.md mục 6, FR-013…FR-017.
   - **PHẠM VI**: `apps/vscode/src/mcp/**` (+ test)
