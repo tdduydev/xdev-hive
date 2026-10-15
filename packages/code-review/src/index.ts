@@ -6,8 +6,9 @@ export {
   CodeReviewPane,
   type FilesState,
 } from "./code-review-pane.tsx";
+export { CommentThread, type CommentThreadActions } from "./comment-thread.tsx";
 export { DecisionForm, type DecisionSubmit, OverrideForm } from "./decision-form.tsx";
-export { FileDiff } from "./file-diff.tsx";
+export { type CommentAnchor, FileDiff, type FileDiffComments } from "./file-diff.tsx";
 export { anchorFindings, collectFindings, type DiffFinding } from "./findings.ts";
 export { formatScore, formatSla, shortSha } from "./format.ts";
 export { GateStepper, stepOf } from "./gate-stepper.tsx";

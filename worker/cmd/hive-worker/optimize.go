@@ -27,6 +27,7 @@ const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --prof
 // Test thay thư mục nhà, giờ, phiên bản CLI và RTK để không đụng máy thật.
 var (
 	optimizeHome          = os.UserHomeDir
+	optimizeExecutable    = os.Executable
 	optimizeNow           = time.Now
 	optimizeClaudeVersion = runner.DetectClaudeVersion
 	optimizeFindRTK       = func() string { p, _ := exec.LookPath("rtk"); return p }
@@ -139,7 +140,7 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 		}
 		if len(preset.Hooks) > 0 {
 			// Hook gọi hive-worker qua đường dẫn ổn định, nên liên kết phải có trước khi cấu hình trỏ tới nó.
-			if _, err := o.Link(""); err != nil {
+			if _, err := optimizeLink(o); err != nil {
 				return fail(fmt.Errorf("không đặt được liên kết hive-worker: %w", err))
 			}
 		}
@@ -170,7 +171,7 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 	case "link":
-		path, err := o.Link("")
+		path, err := optimizeLink(o)
 		if err != nil {
 			return fail(fmt.Errorf("không đặt được liên kết hive-worker: %w", err))
 		}
@@ -196,6 +197,22 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	printOptimize(stdout, view)
 	return 0
+}
+
+func optimizeLink(o *optimizer.Optimizer) (string, error) {
+	src, err := optimizeExecutable()
+	if err != nil {
+		return "", err
+	}
+	// Khi gọi qua liên kết ổn định, hive vẫn phải lấy từ bundle thật cạnh worker.
+	if real, err := filepath.EvalSymlinks(src); err == nil {
+		src = real
+	}
+	name := "hive"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return o.Link(src, filepath.Join(filepath.Dir(src), name))
 }
 
 func printJSON(stdout, stderr io.Writer, v any) int {

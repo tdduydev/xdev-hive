@@ -25,6 +25,52 @@ const (
 // không có pack. Biến để test rút ngắn.
 var localPackTimeout = 5 * time.Second
 
+type LocalContextPack struct {
+	Markdown string   `json:"markdown"`
+	Files    []string `json:"files"`
+	Tokens   int      `json:"tokens"`
+}
+
+// BuildLocalContextPack cho CLI dùng cùng bộ xếp hạng tại máy mà không cần phiên hook hay kết nối hub.
+// budget tính bằng token ước tính (3,5 byte/token như contextPackMaxChars); 0 dùng giới hạn sẵn có của runner.
+func BuildLocalContextPack(ctx context.Context, cwd, query string, budget int) (LocalContextPack, error) {
+	result := LocalContextPack{Files: []string{}}
+	if budget < 0 {
+		return result, errors.New("ngân sách token phải lớn hơn 0")
+	}
+	out, err := gitOutput(ctx, cwd, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return result, errors.New("không tìm được gốc kho Git tại --cwd")
+	}
+	root := filepath.Clean(strings.TrimSpace(out))
+	var commands []string
+	if !fileExists(filepath.Join(root, "CLAUDE.md")) && !fileExists(filepath.Join(root, ".claude", "CLAUDE.md")) {
+		commands = buildCommands(root)
+	}
+	pack, err := buildContextPack(ctx, root, query, localCodeGraph(ctx, root), commands)
+	if ctx.Err() != nil {
+		return result, errors.New("đã hết thời gian hoặc huỷ dựng context pack")
+	}
+	if err != nil {
+		return result, errors.New("không đọc được các file trong kho Git")
+	}
+	maxChars := contextPackMaxChars
+	if budget > 0 && budget < contextPackMaxChars*2/7 {
+		maxChars = budget * 7 / 2
+	}
+	markdown, kept := renderPack(pack.Files, commands, maxChars)
+	// renderPack giữ ít nhất một file cho hook; CLI trả pack rỗng nếu file đó vẫn vượt ngân sách đã yêu cầu.
+	if len(markdown) > maxChars {
+		return result, nil
+	}
+	result.Markdown = markdown
+	result.Tokens = (len(markdown)*2 + 6) / 7
+	for _, file := range pack.Files[:kept] {
+		result.Files = append(result.Files, file.Path)
+	}
+	return result, nil
+}
+
 // localPrompt trả additionalContext cho prompt đầu tiên của phiên, nil với mọi prompt sau hay khi không dựng được pack.
 func localPrompt(dir string, in localHookInput) any {
 	prompt := strings.TrimSpace(in.Prompt)
