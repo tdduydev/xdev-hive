@@ -6,6 +6,7 @@ import type { RunState } from "@xdev-hive/contracts/run-states";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { HexAvatar, machineHex } from "@xdev-hive/ui/hex-avatar";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
@@ -825,24 +826,29 @@ export function MachinesPage() {
                   hideable: false,
                   pin: "start",
                   cell: (machine) => (
-                    <span className="grid min-w-0 justify-items-start gap-1">
-                      <Link
-                        to="/machines/$machineId"
-                        params={{ machineId: machine.id }}
-                        className="font-mono text-sm font-medium whitespace-nowrap text-foreground hover:underline"
-                      >
-                        {machine.name}
-                      </Link>
-                      <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                        <ScopePill machine={machine} owner={owner(machine)} small />
-                        {(machine.labels ?? []).map((label) => (
-                          <span key={label} className="rounded bg-muted px-1 font-mono">
-                            {label}
-                          </span>
-                        ))}
-                        {machine.labelsOnly && (
-                          <span>{lang === "vi" ? "Chỉ nhận run có nhãn" : "Labelled runs only"}</span>
-                        )}
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <HexAvatar aria-hidden="true" tone={machineHex(machine).tone}>
+                        {machineHex(machine).mark}
+                      </HexAvatar>
+                      <span className="grid min-w-0 justify-items-start gap-1">
+                        <Link
+                          to="/machines/$machineId"
+                          params={{ machineId: machine.id }}
+                          className="font-mono text-sm font-medium whitespace-nowrap text-foreground hover:underline"
+                        >
+                          {machine.name}
+                        </Link>
+                        <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          <ScopePill machine={machine} owner={owner(machine)} small />
+                          {(machine.labels ?? []).map((label) => (
+                            <span key={label} className="rounded bg-muted px-1 font-mono">
+                              {label}
+                            </span>
+                          ))}
+                          {machine.labelsOnly && (
+                            <span>{lang === "vi" ? "Chỉ nhận run có nhãn" : "Labelled runs only"}</span>
+                          )}
+                        </span>
                         <span className="whitespace-nowrap">
                           {osName(machine.os)}
                           {machine.kind === "host" && ` · ${t.kinds.host}`}
@@ -1180,9 +1186,9 @@ export function MachineDetailPage() {
         back={{ to: "/machines", label: t.back }}
         title={machine.name}
         leading={
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent text-accent-foreground">
-            <MonitorIcon aria-hidden="true" className="size-5" />
-          </span>
+          <HexAvatar aria-hidden="true" size="lg" tone={machineHex(machine).tone}>
+            {machineHex(machine).mark}
+          </HexAvatar>
         }
         status={<MachineStatus status={machine.status} busy={Boolean(runs.data?.items.some(isActiveRun))} />}
         meta={
