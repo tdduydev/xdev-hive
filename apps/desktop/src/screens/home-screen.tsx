@@ -755,7 +755,7 @@ function RemoteCard() {
   useEffect(() => {
     remoteStatus().then(setStatus, (e) => setError(errorText(e)));
     remoteSessions().then(
-      (list) => setViewers(list.reduce((n, s) => n + s.viewers, 0)),
+      (list) => setViewers((list ?? []).reduce((n, s) => n + s.viewers, 0)),
       () => {},
     );
     const offs = [
