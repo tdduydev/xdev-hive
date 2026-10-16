@@ -14,8 +14,9 @@ import { flatGates } from "../knowledge/index.ts";
 import { notify } from "../notify/index.ts";
 import { ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
 import { notificationRecipients, teamMemberIds } from "../tenancy/index.ts";
+import { queueCommentSync } from "./comment-sync.ts";
 import { userReader, visibleReview } from "./queries.ts";
-import { codeReviewComments } from "./schema.ts";
+import { codeReviewCommentLinks, codeReviewComments } from "./schema.ts";
 import { type CodeReviewDeps, type CodeReviewRow, codeReviewLink } from "./service.ts";
 
 type CommentDeps = Pick<CodeReviewDeps, "publicUrl" | "jobs">;
@@ -47,7 +48,27 @@ async function presentMany(tx: Tx, rows: CommentRow[]): Promise<CodeReviewCommen
     ? await tx.select({ id: authUser.id, name: authUser.name }).from(authUser).where(inArray(authUser.id, ids))
     : [];
   const names = new Map(authors.map((author) => [author.id, author.name]));
-  return rows.map((row) => presentRow(row, row.authorId ? (names.get(row.authorId) ?? null) : null));
+  const links = rows.length
+    ? await tx
+        .select()
+        .from(codeReviewCommentLinks)
+        .where(
+          inArray(
+            codeReviewCommentLinks.commentId,
+            rows.map((row) => row.id),
+          ),
+        )
+    : [];
+  const byComment = new Map(links.map((link) => [link.commentId, link]));
+  return rows.map((row) => {
+    const link = byComment.get(row.id);
+    return {
+      ...presentRow(row, row.authorId ? (names.get(row.authorId) ?? null) : null),
+      syncState: link?.state ?? null,
+      providerUrl: link?.providerUrl ?? null,
+      syncError: link?.lastError ?? null,
+    };
+  });
 }
 
 async function present(tx: Tx, row: CommentRow): Promise<CodeReviewComment> {
@@ -105,7 +126,7 @@ async function audit(tx: Tx, userId: string, action: string, row: CommentRow) {
   });
 }
 
-async function notifyComment(tx: Tx, userId: string, review: CodeReviewRow, row: CommentRow, deps: CommentDeps) {
+export async function notifyComment(tx: Tx, userId: string, review: CodeReviewRow, row: CommentRow, deps: CommentDeps) {
   const recipients = new Set<string>();
   if (review.requesterUserId) recipients.add(review.requesterUserId);
   for (const { gate } of flatGates(review.phases)) {
@@ -174,6 +195,7 @@ export async function addReviewComment(
   if (!row) throw missing();
   await audit(tx, userId, "add", row);
   await notifyComment(tx, userId, review, row, deps);
+  await queueCommentSync(tx, review, row, deps);
   return thread(tx, review, row);
 }
 
@@ -202,12 +224,18 @@ export async function replyReviewComment(
   if (!row) throw missing();
   await audit(tx, userId, "reply", row);
   await notifyComment(tx, userId, review, row, deps);
+  await queueCommentSync(tx, review, row, deps);
   return present(tx, row);
 }
 
-export async function editReviewComment(tx: Tx, userId: string, input: { commentId: string; body: string }) {
+export async function editReviewComment(
+  tx: Tx,
+  userId: string,
+  input: { commentId: string; body: string },
+  deps: CommentDeps = {},
+) {
   const value = codeReviewCommentEditInput.parse(input);
-  const { row } = await load(tx, userId, value.commentId);
+  const { review, row } = await load(tx, userId, value.commentId);
   requireAuthor(row, userId);
   if (row.deletedAt) throw missing();
   const [updated] = await tx
@@ -217,6 +245,7 @@ export async function editReviewComment(tx: Tx, userId: string, input: { comment
     .returning();
   if (!updated) throw missing();
   await audit(tx, userId, "edit", updated);
+  await queueCommentSync(tx, review, updated, deps);
   return present(tx, updated);
 }
 
@@ -228,8 +257,8 @@ function requireAuthor(row: CommentRow, userId: string) {
     );
 }
 
-export async function deleteReviewComment(tx: Tx, userId: string, commentId: string) {
-  const { row } = await load(tx, userId, commentId);
+export async function deleteReviewComment(tx: Tx, userId: string, commentId: string, deps: CommentDeps = {}) {
+  const { review, row } = await load(tx, userId, commentId);
   requireAuthor(row, userId);
   if (!row.deletedAt) {
     await tx
@@ -237,11 +266,18 @@ export async function deleteReviewComment(tx: Tx, userId: string, commentId: str
       .set({ deletedAt: new Date(), body: "" })
       .where(eq(codeReviewComments.id, row.id));
     await audit(tx, userId, "delete", row);
+    await queueCommentSync(tx, review, row, deps);
   }
   return { ok: true };
 }
 
-export async function resolveReviewComment(tx: Tx, userId: string, threadId: string, resolved: boolean) {
+export async function resolveReviewComment(
+  tx: Tx,
+  userId: string,
+  threadId: string,
+  resolved: boolean,
+  deps: CommentDeps = {},
+) {
   const { review, row } = await load(tx, userId, threadId, true);
   if (Boolean(row.resolvedAt) === resolved) return thread(tx, review, row);
   const [updated] = await tx
@@ -251,5 +287,16 @@ export async function resolveReviewComment(tx: Tx, userId: string, threadId: str
     .returning();
   if (!updated) throw missing();
   await audit(tx, userId, resolved ? "resolve" : "reopen", updated);
+  await queueCommentSync(tx, review, updated, deps);
   return thread(tx, review, updated);
+}
+
+export async function retryReviewCommentSync(tx: Tx, userId: string, commentId: string, deps: CommentDeps = {}) {
+  const { review, row } = await load(tx, userId, commentId);
+  requireAuthor(row, userId);
+  const [link] = await tx.select().from(codeReviewCommentLinks).where(eq(codeReviewCommentLinks.commentId, row.id));
+  if (link?.state !== "failed")
+    throw new ForbiddenError("CODE_REVIEW_COMMENT_SYNC_NOT_FAILED", "Chỉ thử lại khi đồng bộ bình luận bị lỗi.");
+  await queueCommentSync(tx, review, row, deps);
+  return present(tx, row);
 }

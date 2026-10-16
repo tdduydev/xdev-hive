@@ -73,6 +73,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm deps
+      # `pnpm test` chỉ cho turbo chạy 3 gói cùng lúc: mỗi vitest đã mở số worker gần bằng số CPU, để mặc định (10 gói)
+      # thì runner 4 vCPU quá tải và test jsdom gõ phím bằng userEvent vượt timeout dù chạy riêng chỉ vài giây.
       - run: pnpm test
       - run: pnpm build
       - name: openapi.json khớp hợp đồng
