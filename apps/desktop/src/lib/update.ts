@@ -12,6 +12,8 @@ export interface UpdateStatus {
 }
 
 export const updateStatus = () => invoke<UpdateStatus>("update_status");
+/** Kiểm ngay trên máy chủ phát hành; có bản mới thì Rust tải về và báo "update-ready". */
+export const checkUpdatesNow = () => invoke<UpdateStatus>("check_updates_now");
 /** Dừng worker êm, cài bản đã tải rồi mở lại app. Thành công thì cửa sổ đóng nên lời hứa này không trả về. */
 export const relaunchToUpdate = () => invoke<void>("relaunch_to_update");
 

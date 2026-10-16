@@ -7,13 +7,13 @@ const text: Dict<{ title: string; lead: string; local: string; connect: string }
   vi: {
     title: "Kết nối Hive để dùng mục này",
     lead: "Mục này lấy dữ liệu của đội bạn trên hub Hive.",
-    local: "Các mục trong nhóm Máy này vẫn dùng được khi chưa kết nối.",
+    local: "Các mục trên máy (gói agent, dự án, môi trường, skills, token) vẫn dùng được khi chưa kết nối.",
     connect: "Kết nối Hive",
   },
   en: {
     title: "Connect to Hive to use this",
     lead: "This section reads your team's data on the Hive hub.",
-    local: "Everything under This machine works without connecting.",
+    local: "Everything on this machine (agent plans, projects, environment, skills, tokens) works without connecting.",
     connect: "Connect to Hive",
   },
 };

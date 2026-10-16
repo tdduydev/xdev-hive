@@ -13,6 +13,7 @@ import { Label } from "@xdev-hive/ui/label";
 import { Pill } from "@xdev-hive/ui/pill";
 import { FolderPlusIcon, QrCodeIcon, TriangleAlertIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Toggle } from "@/components/toggle.tsx";
 import { pickFolder, shortPath } from "@/lib/folder.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import {
@@ -49,7 +50,6 @@ import {
   type TotpEnroll,
 } from "@/lib/remote.ts";
 import { errorText, workerState } from "@/lib/tauri.ts";
-import { cn } from "@/lib/utils.ts";
 
 const vi = {
   http: "Hub chạy HTTP: nội dung phiên và phím gõ không được mã hoá trên đường truyền. Chỉ dùng trong mạng nội bộ.",
@@ -272,43 +272,6 @@ function Card({ title, aside, children }: { title: string; aside?: ReactNode; ch
       </div>
       {children}
     </section>
-  );
-}
-
-function Toggle({
-  on,
-  label,
-  onChange,
-  disabled,
-  danger,
-}: {
-  on: boolean;
-  label: string;
-  onChange: (next: boolean) => void;
-  disabled?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!on)}
-      className={cn(
-        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        on ? (danger ? "bg-destructive" : "bg-primary") : "bg-input",
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "block size-4 rounded-full bg-background shadow-sm transition-transform",
-          on ? "translate-x-4" : "translate-x-0.5",
-        )}
-      />
-    </button>
   );
 }
 
