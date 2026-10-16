@@ -491,12 +491,13 @@ func (a *app) exchange(hub, code, verifier string) (string, error) {
 	return out.PersonalToken, nil
 }
 
+// Không qua procattr: lệnh mở trình duyệt không có cửa sổ console, còn HideWindow có thể làm trình duyệt mở ẩn.
 func openBrowser(link string) error {
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", link).Start()
+		return exec.Command("open", link).Start() // procattr:allow
 	case "windows":
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", link).Start()
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", link).Start() // procattr:allow
 	}
-	return exec.Command("xdg-open", link).Start()
+	return exec.Command("xdg-open", link).Start() // procattr:allow
 }

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 const (
@@ -290,7 +292,7 @@ func newRepoProbe(folder string) *repoProbe {
 func runGit(folder string, timeout time.Duration, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, "git", args...)
+	command := procattr.CommandContext(ctx, "git", args...)
 	command.Dir = folder
 	out, err := command.Output()
 	if ctxErr := ctx.Err(); ctxErr != nil {

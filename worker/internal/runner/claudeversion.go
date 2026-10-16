@@ -2,12 +2,13 @@ package runner
 
 import (
 	"context"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // claudeMinVersion là phiên bản Claude Code tối thiểu cho từng cờ/biến môi trường worker thêm vào lệnh. Không có trong
@@ -90,7 +91,7 @@ func detectClaudeVersion(ctx context.Context) string {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "claude", "--version").Output()
+	out, err := procattr.CommandContext(ctx, "claude", "--version").Output()
 	if err != nil {
 		return ""
 	}
