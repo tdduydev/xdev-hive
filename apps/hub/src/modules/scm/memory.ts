@@ -441,6 +441,10 @@ export function createMemoryProvider(
     }),
 
     readFile: track("readFile", (ref: RepoRef, path: string, sha: string) => filesAt(need(ref), sha).get(path) ?? null),
+    readFileBytes: track("readFileBytes", (ref: RepoRef, path: string, sha: string) => {
+      const file = filesAt(need(ref), sha).get(path);
+      return file === undefined ? null : new TextEncoder().encode(file);
+    }),
     readBlob: track("readBlob", (ref: RepoRef, blob: string) => {
       const file = [...need(ref).branches.values()]
         .flatMap((files) => [...files.values()])
