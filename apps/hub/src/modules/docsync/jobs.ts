@@ -1,2 +1,2 @@
-// Hằng và hàm xếp hàng tách khỏi worker để tránh vòng import khi đăng ký handler.
+// Hằng và hàm xếp hàng nằm ở queues.ts để file nghiệp vụ dùng được mà không vòng lại qua phần đăng ký worker.
 export * from "./queues.ts";
