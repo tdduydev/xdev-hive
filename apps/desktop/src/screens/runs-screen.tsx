@@ -6,40 +6,13 @@ import { RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
-import { hubTool } from "@/lib/hub.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { duration, type MachineRun, machineRuns, thisMachine } from "@/lib/machine-runs.ts";
 import { ACTIVE, RUN_STATE_TEXT, stateTone } from "@/lib/run-state.ts";
 import { errorText, invoke } from "@/lib/tauri.ts";
 import { formatTokens } from "@/lib/usage.ts";
 import { cn } from "@/lib/utils.ts";
 import { useWorkerState, WORKER_DOT, workerSentence } from "@/lib/worker.ts";
-
-/** Một run trong kết quả tool run_list của hub. */
-export interface MachineRun {
-  id: string;
-  kind: "code" | "review" | "plan" | "leader" | "doccheck";
-  state: string;
-  taskKey: string;
-  title: string;
-  projectId: string;
-  project: { key: string; name: string } | null;
-  cli: string | null;
-  model: string | null;
-  machine: string | null;
-  costUsd: number | null;
-  tokensIn: number;
-  prUrl: string | null;
-  createdAt: string;
-  startedAt: string | null;
-  finishedAt: string | null;
-}
-
-/** Thời lượng của run: đang chạy thì tính tới giờ. */
-export function duration(run: Pick<MachineRun, "startedAt" | "finishedAt">, now = Date.now()): number | null {
-  if (!run.startedAt) return null;
-  const end = run.finishedAt ? Date.parse(run.finishedAt) : now;
-  return Math.max(0, Math.round((end - Date.parse(run.startedAt)) / 1000));
-}
 
 const text: Dict<{
   lead: string;
@@ -137,7 +110,7 @@ export function RunsScreen() {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    invoke<string | null>("this_machine").then(
+    thisMachine().then(
       (m) => setMachine(m),
       () => setMachine(null),
     );
@@ -147,8 +120,7 @@ export function RunsScreen() {
     if (!machine || !account) return;
     setLoading(true);
     try {
-      const list = await hubTool<{ runs: MachineRun[] }>("run_list", { machine, limit: 50 });
-      setRuns(list.runs);
+      setRuns(await machineRuns(machine));
       setError(null);
     } catch (e) {
       setError(errorText(e));

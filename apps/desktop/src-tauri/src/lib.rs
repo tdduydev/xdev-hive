@@ -18,11 +18,13 @@ mod hub_switch;
 mod local_projects;
 mod memory_store;
 mod no_window;
+mod notices;
 mod optimizer;
 mod profiles;
 mod pty;
 mod register;
 mod remote;
+mod settings;
 mod setup_extra;
 mod skills;
 mod tls;
@@ -105,6 +107,8 @@ struct WorkerView {
     detail: Option<String>,
     wanted: bool,
     hub: Option<String>,
+    /// Giây Unix lúc bắt đầu mất kết nối với hub; None khi không đang chờ nối.
+    offline_since: Option<u64>,
 }
 
 fn lang_of(app: &AppHandle) -> String {
@@ -131,6 +135,7 @@ fn worker_view(app: &AppHandle) -> Option<WorkerView> {
         detail: w.detail().map(str::to_string),
         wanted: w.wanted(),
         hub: hub_of(app),
+        offline_since: w.offline_since(),
     })
 }
 
@@ -272,6 +277,11 @@ fn perform(app: &AppHandle, action: Action) {
         }
         Action::Stop => stop_worker(app),
         Action::Notify(body) => notify(app, &body),
+        Action::NotifyOffline(body) => {
+            if settings::get(app).notify_offline {
+                notify(app, &body);
+            }
+        }
         Action::AskRegister => show_register(app),
         Action::RetryIn(secs) => {
             let app = app.clone();
@@ -434,7 +444,12 @@ fn toggle(app: &AppHandle) {
         .lock()
         .map(|w| w.wanted())
         .unwrap_or(false);
-    if wanted {
+    set_wanted(app, !wanted);
+}
+
+/// Bật hay tắt worker. Máy chưa đăng ký thì chưa có hub để nối: mở cửa sổ đăng ký thay vì bật.
+fn set_wanted(app: &AppHandle, on: bool) {
+    if !on {
         dispatch(app, Event::Stop);
     } else if hub_of(app).is_some() {
         dispatch(app, Event::Start);
@@ -527,7 +542,15 @@ fn worker_state(app: AppHandle) -> Option<WorkerView> {
     worker_view(&app)
 }
 
-/// Giao diện đổi ngôn ngữ thì khay đổi theo.
+/// Bật hay tắt worker từ màn Máy này, như mục Tắt/Bật worker của khay. Trả trạng thái ngay sau khi đổi; các bước
+/// sau (đang nối, đang nhận việc) đến qua sự kiện "worker-state".
+#[tauri::command]
+fn set_worker(app: AppHandle, on: bool) -> Option<WorkerView> {
+    set_wanted(&app, on);
+    worker_view(&app)
+}
+
+/// Giao diện đổi ngôn ngữ thì khay và nút trên thông báo đổi theo.
 #[tauri::command]
 fn set_lang(app: AppHandle, lang: String) {
     if let Ok(mut l) = app.state::<State>().lang.lock() {
@@ -537,6 +560,7 @@ fn set_lang(app: AppHandle, lang: String) {
             "vi".into()
         };
     }
+    notices::register_actions(&app, lang == "en");
     refresh_tray(&app);
 }
 
@@ -1023,6 +1047,8 @@ pub fn run() {
         .manage(pty::Ptys::default())
         .manage(remote::Remote::default())
         .manage(git_groups::Jobs::default())
+        .manage(settings::Store::default())
+        .manage(notices::Notices::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
             register_worker,
@@ -1040,7 +1066,11 @@ pub fn run() {
             usage::claude_usage,
             usage::session_stats,
             worker_state,
+            set_worker,
             set_lang,
+            settings::app_settings,
+            settings::set_app_setting,
+            notices::show_notification,
             account::account_status,
             account::account_link,
             account::account_unlink,
@@ -1144,10 +1174,15 @@ pub fn run() {
         ])
         .register_asynchronous_uri_scheme_protocol(artifacts::SCHEME, artifacts::protocol)
         .on_window_event(|window, event| {
-            // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.
+            // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền. Người dùng tắt "Đóng cửa sổ chỉ ẩn xuống khay" ở màn Cài
+            // đặt thì đóng cửa sổ app là thoát hẳn, worker dừng êm trước như khi chọn Thoát ở khay.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                if window.label() == APP && !settings::get(window.app_handle()).hide_on_close {
+                    quit(window.app_handle());
+                    return;
+                }
                 // Terminal nhúng gắn với cửa sổ đang mở: ẩn cửa sổ thì không để CLI chạy tiếp không ai thấy.
                 if window.label() == APP {
                     window.app_handle().state::<pty::Ptys>().close_all();
@@ -1166,6 +1201,8 @@ pub fn run() {
             remote::start(app.handle());
             let tray = build_tray(app)?;
             app.manage(tray);
+            notices::register_actions(app.handle(), false);
+            notices::listen(app.handle());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match sidecar_json::<WorkerConfig>(
@@ -1198,7 +1235,9 @@ pub fn run() {
                         {
                             eprintln!("Không nhập được tài khoản CLI của app v1: {e}");
                         }
-                        dispatch(&handle, Event::Start);
+                        if settings::get(&handle).start_worker {
+                            dispatch(&handle, Event::Start);
+                        }
                     }
                     Ok(_) => {}
                     Err(e) => eprintln!("Không đọc được cấu hình worker: {e}"),

@@ -2,6 +2,8 @@
  * Bộ đệm artifact để đọc offline (specs/012-artifacts T040, FR-091). Rust giữ bộ đệm theo hub và tổ chức của token
  * đang liên kết (src-tauri/src/artifacts.rs); giao diện không truyền phạm vi nên không đọc được bản của tổ chức khác.
  * Khung cách ly nạp tài liệu đã đệm qua giao thức `hive-artifact`, không cần hub.
+ * Màn Artifact đã chuyển sang web nên app chưa gọi các hàm này; file vẫn giữ vì test của Rust (artifacts.rs) so CSP với
+ * APP_FRAME_CSP ở đây, cho tới khi gỡ cả bộ đệm và giao thức `hive-artifact` khỏi Rust.
  */
 import type { ArtifactDetail, ArtifactSummary, ArtifactTheme } from "@xdev-hive/contracts";
 import { invoke } from "@/lib/tauri.ts";
