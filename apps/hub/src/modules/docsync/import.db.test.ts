@@ -5,7 +5,7 @@ import { Header } from "tar";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
-import { saveDocFromSync } from "../knowledge/index.ts";
+import { provideDocSaved, saveDocFromSync } from "../knowledge/index.ts";
 import { createPool, ForbiddenError, type Jobs, parseMasterKey, withTenant } from "../platform/index.ts";
 import { createMemoryProvider, type GitProvider, GitProviderError } from "../scm/index.ts";
 import { adopt, adoptPreview } from "./adopt.ts";
@@ -20,6 +20,7 @@ import {
   startImport,
 } from "./import.ts";
 import { DOCSYNC_EXTRACT_QUEUE, DOCSYNC_IMPORT_QUEUE, DOCSYNC_PUSH_QUEUE, DOCSYNC_SCAN_IMPORT_QUEUE } from "./jobs.ts";
+import { docSavedHandler } from "./push.ts";
 import { readRepoFiles, runScan, W } from "./scan.ts";
 
 const { adminUrl, appUrl } = inject("db");
@@ -375,6 +376,57 @@ describe("nhập file thường", () => {
     expect(queued[0]).toMatchObject({ queue: DOCSYNC_SCAN_IMPORT_QUEUE, data: job(main(), imp.id) });
     expect(queued[0]?.opts.startAfter?.getTime()).toBeGreaterThanOrEqual(before + 120_000);
     expect((await as("tadmin", (tx) => getImport(tx, actor("tadmin"), imp.id))).state).toBe("scanning");
+  });
+});
+
+// Hub thật luôn đăng ký hook lưu của docsync (registerPush); các test trên không đăng ký nên không thấy lỗi này.
+describe("nhập khi hook lưu của docsync đang bật", () => {
+  const k = `ih${tag}`;
+  const repo = {
+    "README.md": "# Tài liệu dự án\n",
+    "specs/001-menu/spec.md": "# Đặc tả\n",
+    ".specify/memory/constitution.md": "# Nguyên tắc\n",
+  };
+
+  beforeAll(async () => {
+    projects[k] = await seedProject(admin, pool, {
+      orgId: org.orgId,
+      teamId: org.teamId,
+      systemId: org.systemId,
+      adminUserId: org.user("admin"),
+      masterKey,
+      key: k,
+    });
+    mem.seedRepo(refOf(k));
+    await mem.commitFiles(refOf(k), {
+      branch: "main",
+      message: "seed",
+      files: Object.entries(repo).map(([path, content]) => ({ path, content })),
+    });
+    const include = ["README.md", "specs/**", ".specify/memory/**"];
+    const home = await as("tadmin", (tx) =>
+      configureProjectHome(tx, deps, actor("tadmin"), { project: k, settings: { ...settings, include } }),
+    );
+    homes[k] = home.id;
+    provideDocSaved(docSavedHandler(jobs));
+  });
+
+  afterAll(() => provideDocSaved(undefined));
+
+  it("giữ đường dẫn gốc trong repo và không xếp lô đẩy lại file vừa nhập", async () => {
+    const imp = await scan(k);
+    queued.length = 0;
+    await as("tadmin", (tx) => startImport(tx, jobs, actor("tadmin"), { importId: imp.id, paths: Object.keys(repo) }));
+    await runImport(deps, job(k, imp.id));
+    const after = await files(imp.id);
+    for (const path of Object.keys(repo))
+      expect(after.get(path)).toMatchObject({ state: "done", docId: expect.any(String) });
+    const { rows } = await admin.query<{ repo_path: string }>(
+      "select repo_path from hive.doc_repo_files where home_id = $1",
+      [homes[k]],
+    );
+    expect(rows.map((r) => r.repo_path).sort()).toEqual(Object.keys(repo).sort());
+    expect(queued.some((q) => q.queue === DOCSYNC_PUSH_QUEUE)).toBe(false);
   });
 });
 

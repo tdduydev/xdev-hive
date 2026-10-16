@@ -904,6 +904,24 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
       return file.encoding === "base64" ? Buffer.from(file.content, "base64").toString("utf8") : file.content;
     },
 
+    async readFileBytes(ref, path, sha) {
+      // contents chỉ nhúng nội dung tới 1 MB; đi qua blob theo sha để file lớn cũng đủ byte.
+      const file = await orNull(() =>
+        request<{ type?: string; sha?: string }>("GET /repos/{owner}/{repo}/contents/{+path}", {
+          owner: ref.owner,
+          repo: ref.name,
+          path: segments(path),
+          ref: sha,
+        }),
+      );
+      if (file?.type !== "file" || !file.sha) return null;
+      const data = await request<{ content: string; encoding: string }>(
+        "GET /repos/{owner}/{repo}/git/blobs/{file_sha}",
+        { owner: ref.owner, repo: ref.name, file_sha: file.sha },
+      );
+      return new Uint8Array(Buffer.from(data.content, data.encoding === "base64" ? "base64" : "utf8"));
+    },
+
     async readBlob(ref, blob) {
       const data = await request<{ content: string; encoding: string }>(
         "GET /repos/{owner}/{repo}/git/blobs/{file_sha}",

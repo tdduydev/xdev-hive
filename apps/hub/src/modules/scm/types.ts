@@ -223,6 +223,8 @@ export interface GitProvider {
   listFiles(ref: RepoRef, sha: string): Promise<string[]>;
   /** Nội dung UTF-8 của file ở commit `sha`; null khi không có file. */
   readFile(ref: RepoRef, path: string, sha: string): Promise<string | null>;
+  /** Nguyên byte của file ở commit `sha` (ảnh, PDF…), không giải mã chữ; null khi không có file. */
+  readFileBytes(ref: RepoRef, path: string, sha: string): Promise<Uint8Array | null>;
   readBlob(ref: RepoRef, blob: string): Promise<Uint8Array>;
   compare(ref: RepoRef, from: string, to: string): Promise<{ files: CommitChange[]; incomplete: boolean }>;
   archive(ref: RepoRef, sha: string, path?: string): Promise<ReadableStream<Uint8Array>>;

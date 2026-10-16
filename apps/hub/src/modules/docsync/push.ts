@@ -172,10 +172,11 @@ export async function queueHomePush(tx: Tx, jobs: Jobs | undefined, home: Home):
 
 /**
  * Chạy trong transaction lưu của knowledge (FR-012): rollback thì không có job. Phiên bản nguồn `repo` đã nằm trong
- * repo nên không đẩy lại.
+ * repo nên không đẩy lại. Bản `import` cũng lấy từ repo, và bước nhập tự gắn đúng đường dẫn gốc ngay sau khi lưu;
+ * hook mà gắn trước thì tài liệu bị gắn vào `<root>/<key>.md` và bước nhập đụng ràng buộc một tài liệu một file.
  */
 export async function onDocSaved(tx: Tx, event: DocSavedEvent, jobs: Jobs | undefined): Promise<void> {
-  if (event.change === "save" && event.source === "repo") return;
+  if (event.change === "save" && (event.source === "repo" || event.source === "import")) return;
   const [row] = await tx.select().from(docRepoFiles).where(eq(docRepoFiles.docId, event.docId));
   let home: Home | undefined;
   if (row) {
