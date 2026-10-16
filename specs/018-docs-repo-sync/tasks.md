@@ -434,7 +434,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `docs/architecture.md`, `docs/add.md`
   - **Kiểm**: `pnpm biome check --write .`.
 
-- [ ] **T026 [—] [nặng] · 2 ngày — Test tích hợp và hiệu năng**
+- [x] **T026 [—] [nặng] · 2 ngày — Test tích hợp và hiệu năng**
   - **Phụ thuộc**: T012, T013, T014, T015, T016.
   - **Goal**: SC-001, SC-002, SC-003, SC-004, SC-006, SC-007, SC-009 với provider `memory` (có độ trễ giả):
     - vòng hub → repo → webhook → hub không sinh phiên bản lặp;
@@ -454,6 +454,19 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `apps/hub/scripts/docsync-smoke.ts` (mới; đọc token từ biến môi trường, không ghi ra log)
     - `specs/018-docs-repo-sync/research.md` (thêm mục 7 "Kết quả smoke")
   - **Kiểm**: mọi bước có kết quả; lỗi tìm ra thành task mới.
+
+- [ ] **T029 [—] [vừa] · 0,5 ngày — Nhập markdown khi hook đẩy đang bật**
+  - **Phụ thuộc**: T012, T013. Tìm ra ở T026.
+  - **Lỗi**: tiến trình worker gọi `registerPush` nên `onDocSaved` luôn bật. Hook chỉ bỏ qua nguồn `repo`, nên
+    `importMarkdown` → `saveDocFromSync({ source: "import" })` đã chèn dòng `doc_repo_files` chờ đẩy. Lệnh chèn của
+    nhập sau đó gặp `onConflictDoNothing`, không có dòng trả về, và file mới bị báo lỗi "Đường dẫn hoặc tài liệu đã
+    gắn với file khác trong repo.". Gắn vào tài liệu có sẵn (chọn "repo") có lẽ cũng bị **[Suy luận]**.
+    `import.db.test.ts` không đăng ký hook nên không thấy.
+  - **Goal**: hook không tạo dòng chờ đẩy cho bản lưu từ nhập (bỏ qua `source === "import"`, hoặc nhập dùng dòng hook
+    đã tạo). Bỏ `it.fails` cuối `sync.db.test.ts` và `importWithoutHook`.
+  - **PHẠM VI**:
+    - `apps/hub/src/modules/docsync/{push.ts,import.ts}`, `apps/hub/src/modules/docsync/sync.db.test.ts`
+  - **Kiểm**: hub test docsync.
 
 ## Đồ thị phụ thuộc
 
@@ -476,6 +489,7 @@ flowchart LR
   T007 & T013 & T014 --> T025
   T012 & T013 & T014 & T015 & T016 --> T026
   T026 & T028 --> T027
+  T012 & T013 --> T029
   T001
 ```
 
