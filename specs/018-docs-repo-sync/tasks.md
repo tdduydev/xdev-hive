@@ -424,7 +424,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 5: kiểm tổng, tài liệu
 
-- [ ] **T025 [P] [—] [nhẹ] · 0,5 ngày — Biến môi trường và tài liệu kỹ thuật**
+- [x] **T025 [P] [—] [nhẹ] · 0,5 ngày — Biến môi trường và tài liệu kỹ thuật**
   - **Phụ thuộc**: T007, T013, T014.
   - **Goal**: ba biến môi trường mới (plan.md mục 13) vào `deploy/.env.example`, `apps/hub/.env.example`, `deploy/compose.yaml`
     nếu cần; `docs/architecture.md` thêm `docsync` và BlobStore; `docs/add.md` mục 8 thêm quét bí mật khi lưu, tải

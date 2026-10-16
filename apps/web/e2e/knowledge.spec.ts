@@ -605,8 +605,9 @@ for (const route of ["docs", "skills", "memory", "proposals"] as const) {
       await page.addInitScript(() => localStorage.setItem("hive.lang", "en"));
       await setup(page);
       await page.goto(`/knowledge/${route}`);
-      // Trang Skills có thêm bảng skill mặc định của Hive bên dưới.
-      await expect(page.getByRole("table").first()).toBeVisible();
+      // Tài liệu là cây theo repo, không phải bảng. Trang Skills có thêm bảng skill mặc định của Hive bên dưới.
+      if (route === "docs") await expect(page.getByRole("list", { name: "Cây tài liệu theo repo" })).toBeVisible();
+      else await expect(page.getByRole("table").first()).toBeVisible();
       await expect(page.locator("main").last()).toContainText(
         route === "docs"
           ? "Versioned markdown docs"
@@ -617,7 +618,7 @@ for (const route of ["docs", "skills", "memory", "proposals"] as const) {
               : "team admins decide",
       );
       await page
-        .getByRole("button", { name: /Open row/ })
+        .getByRole("button", { name: /Open row|Mở dòng/ })
         .first()
         .click();
       // Đề xuất, skill và memory mở trang riêng (Decision 2); tài liệu mở khối chi tiết cạnh danh sách.

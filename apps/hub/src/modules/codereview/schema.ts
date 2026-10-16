@@ -84,6 +84,7 @@ export const codeReviews = hive
       index("code_reviews_run").on(t.runId),
       uniqueIndex("code_reviews_org_id").on(t.orgId, t.id),
       orgScoped("code_reviews"),
+      pgPolicy("code_reviews_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();
@@ -159,6 +160,7 @@ export const codeReviewComments = hive
       check("code_review_comments_origin", sql`${t.origin} in ('hive', 'github', 'gitlab')`),
       check("code_review_comments_line", sql`${t.line} > 0`),
       check("code_review_comments_body", sql`length(${t.body}) <= 20000`),
+      uniqueIndex("code_review_comments_org_id").on(t.orgId, t.id),
       uniqueIndex("code_review_comments_org_review_id").on(t.orgId, t.reviewId, t.id),
       // Khoá ghép chặn liên kết sang review hay luồng của tổ chức khác kể cả khi ghi SQL trực tiếp.
       foreignKey({ columns: [t.orgId, t.reviewId], foreignColumns: [codeReviews.orgId, codeReviews.id] }).onDelete(
@@ -168,6 +170,53 @@ export const codeReviewComments = hive
       index("code_review_comments_review").on(t.reviewId, t.createdAt, t.id),
       index("code_review_comments_thread").on(t.threadId),
       orgScoped("code_review_comments"),
+    ],
+  )
+  .enableRLS();
+
+export const codeReviewCommentLinks = hive
+  .table(
+    "code_review_comment_links",
+    {
+      commentId: uuid("comment_id").primaryKey(),
+      orgId: uuid("org_id").notNull(),
+      connectionId: uuid("connection_id").notNull(),
+      provider: text("provider").$type<"github" | "gitlab">().notNull(),
+      prNumber: integer("pr_number").notNull(),
+      providerCommentId: text("provider_comment_id"),
+      providerThreadId: text("provider_thread_id"),
+      providerUrl: text("provider_url"),
+      mode: text("mode").$type<"inline" | "fallback">().notNull().default("inline"),
+      state: text("state")
+        .$type<"pending" | "synced" | "fallback" | "failed" | "disabled">()
+        .notNull()
+        .default("pending"),
+      bodyHash: text("body_hash"),
+      providerUpdatedAt: timestamp("provider_updated_at", { withTimezone: true }),
+      providerResolved: boolean("provider_resolved").notNull().default(false),
+      providerDeleted: boolean("provider_deleted").notNull().default(false),
+      attempts: integer("attempts").notNull().default(0),
+      lastError: text("last_error"),
+      nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+      // Giãn mỗi lần ghi hai giây để giữ hạn mức chung qua nhiều tiến trình.
+      writeStartedAt: timestamp("write_started_at", { withTimezone: true }),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      foreignKey({
+        columns: [t.orgId, t.commentId],
+        foreignColumns: [codeReviewComments.orgId, codeReviewComments.id],
+      }).onDelete("cascade"),
+      uniqueIndex("code_review_comment_links_provider_id").on(t.connectionId, t.providerCommentId),
+      index("code_review_comment_links_pending").on(t.orgId, t.state, t.nextAttemptAt),
+      index("code_review_comment_links_connection_write").on(t.connectionId, t.writeStartedAt),
+      check(
+        "code_review_comment_links_state",
+        sql`${t.state} in ('pending', 'synced', 'fallback', 'failed', 'disabled')`,
+      ),
+      check("code_review_comment_links_mode", sql`${t.mode} in ('inline', 'fallback')`),
+      check("code_review_comment_links_provider", sql`${t.provider} in ('github', 'gitlab')`),
+      orgScoped("code_review_comment_links"),
     ],
   )
   .enableRLS();
