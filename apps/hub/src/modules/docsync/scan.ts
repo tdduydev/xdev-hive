@@ -189,19 +189,37 @@ export async function* readRepoFiles(
   opts: ReadOptions,
 ): AsyncGenerator<RepoEntry> {
   if (!wanted.size) return;
-  if (!opts.archive) {
+  let archive: ReadableStream<Uint8Array> | null = null;
+  if (opts.archive) {
+    try {
+      archive = await provider.archive(ref, sha);
+    } catch (error) {
+      // GitLab tự host có thể từ chối tải archive (gặp 406 Not Acceptable) trong khi API đọc file vẫn chạy.
+      if (!isGitProviderError(error, "invalid")) throw error;
+    }
+  }
+  if (!archive) {
     let selected = 0;
     for (const path of [...wanted].sort()) {
-      const text = await provider.readFile(ref, path, sha);
-      if (text === null) continue;
-      const bytes = new TextEncoder().encode(text);
+      let bytes: Uint8Array;
+      let lossy = false;
+      if (kindOf(path) === "markdown") {
+        const text = await provider.readFile(ref, path, sha);
+        if (text === null) continue;
+        bytes = new TextEncoder().encode(text);
+        lossy = text.includes("�");
+      } else {
+        const raw = await provider.readFileBytes(ref, path, sha);
+        if (raw === null) continue;
+        bytes = raw;
+      }
       selected += bytes.length;
       if (selected > opts.maxBytes) throw archiveTooLarge();
-      yield entryOf(path, bytes, opts.keep(path, bytes.length), text.includes("�"));
+      yield entryOf(path, bytes, opts.keep(path, bytes.length), lossy);
     }
     return;
   }
-  const reader = (await provider.archive(ref, sha)).getReader();
+  const reader = archive.getReader();
   try {
     const first = await reader.read();
     if (first.done) return;
