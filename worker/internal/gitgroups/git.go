@@ -59,6 +59,28 @@ func (g Git) env(host string) []string {
 // GitError là lỗi của một lệnh git, kèm dòng cuối stderr đã bỏ token.
 type GitError struct {
 	Msg string
+	// Auth: máy chủ từ chối đăng nhập. Lần thử sai liên tiếp làm GitLab khoá IP cho Git qua HTTPS (mặc định 10 lần
+	// trong một phút, khoá một giờ), nên thao tác hàng loạt dừng gọi máy chủ khi gặp lỗi này.
+	Auth bool
+}
+
+// authFailures là dấu hiệu trong stderr của git khi máy chủ không nhận đăng nhập hoặc git không có gì để gửi.
+var authFailures = []string{
+	"authentication failed",
+	"http basic: access denied",
+	"could not read username",
+	"could not read password",
+	"invalid username or password",
+}
+
+func authFailed(stderr string) bool {
+	s := strings.ToLower(stderr)
+	for _, m := range authFailures {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *GitError) Error() string { return e.Msg }
@@ -90,11 +112,15 @@ func (g Git) run(ctx context.Context, dir, host string, args ...string) (string,
 		if !errors.As(err, &exit) {
 			return "", &GitError{Msg: "không chạy được git của máy: " + err.Error()}
 		}
+		auth := authFailed(stderr.String())
 		// Helper có thể tự ghi secret vào stderr; không chuyển đầu ra đó tới UI hay log.
 		if g.UseGitCredentials {
+			if auth {
+				return "", &GitError{Auth: true, Msg: "Máy chủ từ chối đăng nhập Git của máy; kiểm tra credential helper, hạn và quyền đọc repo của token."}
+			}
 			return "", &GitError{Msg: "Git của máy không hoàn tất thao tác; kiểm tra đăng nhập Git và quyền truy cập repo."}
 		}
-		return stdout.String(), &GitError{Msg: lastLine(g.redact(stderr.String()), "git "+args[0]+" lỗi")}
+		return stdout.String(), &GitError{Auth: auth, Msg: lastLine(g.redact(stderr.String()), "git "+args[0]+" lỗi")}
 	}
 	return stdout.String(), nil
 }

@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import { createRoot } from "react-dom/client";
 import { bridge } from "@/bridge.ts";
 import { ArtifactsScreen } from "@/screens/artifacts.tsx";
+import { ChatScreen } from "@/screens/chat.tsx";
 import { ReviewScreen } from "@/screens/review.tsx";
 import { SdlcScreen } from "@/screens/sdlc.tsx";
 import { syncTheme } from "@/theme.ts";
@@ -13,6 +14,7 @@ type HostScreen = Exclude<Screen, "artifact-frame">;
 // Mỗi màn nối component tại đây; khung artifact tương tác dùng entry và CSP riêng.
 const screens: Partial<Record<HostScreen, ComponentType>> = {
   artifacts: ArtifactsScreen,
+  chat: ChatScreen,
   review: ReviewScreen,
   sdlc: SdlcScreen,
 };
