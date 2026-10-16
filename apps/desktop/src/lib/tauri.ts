@@ -95,9 +95,13 @@ export interface WorkerView {
   detail: string | null;
   wanted: boolean;
   hub: string | null;
+  /** Giây Unix lúc bắt đầu mất kết nối với hub; null hay thiếu khi không đang chờ nối. */
+  offlineSince?: number | null;
 }
 
 export const workerState = () => invoke<WorkerView | null>("worker_state");
+/** Bật hay tắt worker như mục của khay; máy chưa đăng ký thì Rust mở cửa sổ đăng ký thay vì bật. */
+export const setWorker = (on: boolean) => invoke<WorkerView | null>("set_worker", { on });
 
 /** Nghe một sự kiện của Rust; ngoài Tauri thì không làm gì. Trả hàm huỷ nghe. */
 export function onTauriEvent<T>(event: string, handler: (payload: T) => void): () => void {

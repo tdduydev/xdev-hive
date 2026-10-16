@@ -49,6 +49,8 @@ pub enum Action {
     /// Dừng êm: gửi "stop" qua stdin, quá hạn thì giết.
     Stop,
     Notify(String),
+    /// Báo mất kết nối quá 1 phút; tách riêng vì người dùng tắt được loại báo này ở màn Cài đặt.
+    NotifyOffline(String),
     /// Gửi Event::Retry sau chừng này giây.
     RetryIn(u64),
     /// Mở cửa sổ đăng ký: token của máy không còn dùng được.
@@ -131,6 +133,15 @@ impl Worker {
             Status::Disconnected { .. } => "Worker: mất kết nối, đang thử lại".into(),
             Status::Stopping => "Worker: đang dừng".into(),
             Status::Failed(_) => "Worker: lỗi".into(),
+        }
+    }
+
+    /// Lúc bắt đầu mất kết nối (hoặc bắt đầu nối mà chưa được), giây Unix; None khi không đang chờ nối. Màn Máy này
+    /// dùng để chỉ báo khi đã mất quá 1 phút, cùng ngưỡng với thông báo.
+    pub fn offline_since(&self) -> Option<u64> {
+        match self.status {
+            Status::Connecting { since } | Status::Disconnected { since, .. } => Some(since),
+            _ => None,
         }
     }
 
@@ -258,7 +269,7 @@ impl Worker {
             return vec![];
         }
         self.notified = true;
-        vec![Action::Notify(
+        vec![Action::NotifyOffline(
             "Worker mất kết nối với hub hơn 1 phút. Máy này tạm không nhận việc.".into(),
         )]
     }
@@ -318,15 +329,17 @@ mod tests {
         assert_eq!(w.handle(Event::Tick, 159), vec![]);
         assert!(matches!(
             w.handle(Event::Tick, 160).as_slice(),
-            [Action::Notify(_)]
+            [Action::NotifyOffline(_)]
         ));
         assert_eq!(w.handle(Event::Tick, 200), vec![], "chỉ báo một lần");
         // Nối lại rồi mất lần nữa thì được báo lại.
         w.handle(line(r#"{"status":"online"}"#), 210);
+        assert_eq!(w.offline_since(), None);
         w.handle(line(r#"{"status":"disconnected"}"#), 220);
+        assert_eq!(w.offline_since(), Some(220));
         assert!(matches!(
             w.handle(Event::Tick, 281).as_slice(),
-            [Action::Notify(_)]
+            [Action::NotifyOffline(_)]
         ));
     }
 
@@ -345,7 +358,7 @@ mod tests {
         );
         assert!(matches!(
             w.handle(Event::Tick, 70).as_slice(),
-            [Action::Notify(_)]
+            [Action::NotifyOffline(_)]
         ));
     }
 

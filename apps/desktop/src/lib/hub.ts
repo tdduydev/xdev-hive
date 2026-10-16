@@ -3,6 +3,9 @@ import { invoke, workspaceMeta } from "@/lib/tauri.ts";
 /** Gọi tool đọc của hub bằng tài khoản đã liên kết (lệnh hub_tool, Rust chỉ cho tool đọc). */
 export const hubTool = <T>(name: string, args: Record<string, unknown> = {}) => invoke<T>("hub_tool", { name, args });
 
+/** Mở một trang của hub trong trình duyệt hệ thống; Rust chỉ nhận đường dẫn tương đối trên hub máy đã đăng ký. */
+export const openHubPage = (path: string) => invoke<void>("open_hub_page", { path });
+
 export interface HubProject {
   key: string;
   name: string;
