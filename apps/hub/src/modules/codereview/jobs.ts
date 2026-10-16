@@ -4,6 +4,8 @@ import { loadProject } from "../catalog/index.ts";
 import { flatGates } from "../knowledge/index.ts";
 import { type Jobs, type Tx, withTenant } from "../platform/index.ts";
 import { type GitProvider, loadConnection, type ProviderFactory, type RepoRef } from "../scm/index.ts";
+import { registerCommentSyncWorker } from "./comment-sync.ts";
+import { registerCommentReconcileWorker } from "./comment-sync-in.ts";
 import { ciVerdict } from "./gates.ts";
 import { codeReviews } from "./schema.ts";
 import {
@@ -126,6 +128,8 @@ export function handleCodeReviewJob(deps: CodeReviewWorkerDeps, job: CodeReviewJ
 
 export async function registerCodeReviewWorker(jobs: Jobs, deps: CodeReviewWorkerDeps): Promise<void> {
   const full = { ...deps, jobs };
+  await registerCommentSyncWorker(jobs, full);
+  await registerCommentReconcileWorker(jobs, full);
   await jobs.work<CodeReviewJob>(CODE_REVIEW_QUEUE, ({ data, retryCount }) =>
     handleCodeReviewJob(full, data, retryCount),
   );
