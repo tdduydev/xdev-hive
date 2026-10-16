@@ -1,0 +1,20 @@
+#!/bin/zsh
+# Bản chặn cho agent Codex (Codex không có danh sách lệnh cấm như Claude): từ chối `git push`, còn lại chuyển cho git thật.
+args=("$@")
+i=1
+while [ $i -le ${#args[@]} ]; do
+  case ${args[$i]} in
+    -C|-c|--git-dir|--work-tree|--namespace|--exec-path) i=$((i+2)); continue;;
+    -*) i=$((i+1)); continue;;
+    push)
+      # Test (e2e smoke, runner) đẩy vào repo tạm ngoài thư mục làm việc: cho qua. Chỉ chặn repo dự án thật.
+      top=$("${REAL_GIT:-/usr/bin/git}" "${args[@]:0:$((i-1))}" rev-parse --show-toplevel 2>/dev/null)
+      case "$top" in
+        "") echo "git push bị chặn: agent chỉ commit tại máy." >&2; exit 126;;
+        "${FLEET_REPO:-/nonexistent}"|"${FLEET_REPO:-/nonexistent}"/*|"${FLEET_WT:-/nonexistent}"/*) echo "git push bị chặn: agent chỉ commit tại máy." >&2; exit 126;;
+      esac
+      break;;
+    *) break;;
+  esac
+done
+exec "${REAL_GIT:-/usr/bin/git}" "$@"
