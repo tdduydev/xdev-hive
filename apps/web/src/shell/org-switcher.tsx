@@ -1,5 +1,7 @@
 import { Menu } from "@base-ui/react/menu";
 import { Link } from "@tanstack/react-router";
+import { HexAvatar } from "@xdev-hive/ui/hex-avatar";
+import { ChevronsUpDownIcon } from "lucide-react";
 import { Icon } from "@/components/icons.tsx";
 import { cx } from "@/lib/cx.ts";
 
@@ -23,29 +25,28 @@ const orgInitial = (name: string) => (Array.from(name.trim())[0] ?? "?").toUpper
 const menuItem =
   "flex cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-1.75 text-sm outline-none data-highlighted:bg-muted";
 
-/** Ô chọn tổ chức ở đầu sidebar. Chọn tổ chức khác thì mọi lời gọi API sau đó gửi header của tổ chức đó. */
+/**
+ * Ô chọn tổ chức ở đầu sidebar, trên một ô navy sáng hơn nền. Chọn tổ chức khác thì mọi lời gọi API sau đó gửi header
+ * của tổ chức đó.
+ */
 export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: OrgSwitcherProps) {
   const current = orgs.find((o) => o.id === currentId) ?? orgs[0];
   return (
     <Menu.Root>
-      <Menu.Trigger className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-sidebar-border p-2 text-left hover:bg-sidebar-accent data-popup-open:bg-sidebar-accent group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:p-0.5">
-        <span
-          className={cx(
-            "grid size-7 shrink-0 place-items-center rounded-md text-sm font-semibold text-primary-foreground",
-            current ? "bg-primary" : "bg-muted",
-          )}
-        >
+      <Menu.Trigger className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg bg-sidebar-accent p-2 text-left hover:bg-sidebar-border data-popup-open:bg-sidebar-border group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0.5">
+        <HexAvatar aria-hidden="true" size="sm" tone={current ? "sky" : "muted"}>
           {current ? orgInitial(current.name) : "?"}
-        </span>
-        <span className="min-w-0 group-data-[collapsible=icon]:hidden">
-          <b className="block truncate text-sm leading-tight font-semibold text-foreground">
+        </HexAvatar>
+        <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+          <b className="block truncate text-sm leading-tight font-semibold text-sidebar-accent-foreground">
             {current?.name ?? "Chưa có tổ chức"}
           </b>
           {/* `small` để inline trong khối cỡ chữ thân như mockup, nên dòng cao theo cỡ 14px. */}
           <span className="block truncate">
-            <small className="text-xs text-muted-foreground">{current?.role ?? "Chờ lời mời"}</small>
+            <small className="text-xs text-sidebar-foreground">{current?.role ?? "Chờ lời mời"}</small>
           </span>
         </span>
+        <ChevronsUpDownIcon aria-hidden="true" className="size-4 shrink-0 group-data-[collapsible=icon]:hidden" />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner sideOffset={4} align="start" className="z-50">
@@ -60,9 +61,9 @@ export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: Or
                     value={org.id}
                     className={cx(menuItem, "data-checked:font-medium data-checked:text-accent-foreground")}
                   >
-                    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">
+                    <HexAvatar aria-hidden="true" size="sm" tone="accent">
                       {orgInitial(org.name)}
-                    </span>
+                    </HexAvatar>
                     <span className="min-w-0">
                       <span className="block truncate">{org.name}</span>
                       <small className="block truncate text-xs font-normal text-muted-foreground">{org.role}</small>

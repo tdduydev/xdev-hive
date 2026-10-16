@@ -65,6 +65,10 @@ const text: Dict<{
 
 const OPEN_KEY = "hive.nav.open";
 
+/** Số đếm trên sidebar navy: xanh của chữ X với chữ tối, nổi hơn cả mục đang mở. */
+const COUNT =
+  "ml-auto shrink-0 rounded-full bg-sidebar-primary px-1.75 text-xs font-semibold text-sidebar-primary-foreground tabular-nums";
+
 /** Nhóm người dùng đã tự mở hoặc đóng, nhớ qua lần tải lại. */
 function readOpen(): Record<string, boolean> {
   try {
@@ -92,7 +96,7 @@ function CodeReviewsBadge() {
   const awaiting = useAwaitingCodeReviews();
   if (awaiting === 0) return null;
   return (
-    <span className="ml-auto shrink-0 rounded-md bg-accent px-1.5 text-xs font-medium text-accent-foreground tabular-nums">
+    <span className={COUNT}>
       <span className="sr-only">{t.awaitingPrs(awaiting)}</span>
       <span aria-hidden="true">{countLabel(awaiting)}</span>
     </span>
@@ -113,7 +117,7 @@ function SdlcQuestionsBadge() {
   const open = count.data?.open ?? 0;
   if (open === 0) return null;
   return (
-    <span className="ml-auto shrink-0 rounded-md bg-accent px-1.5 text-xs font-medium text-accent-foreground tabular-nums">
+    <span className={COUNT}>
       <span className="sr-only">{t.openQuestions(open)}</span>
       <span aria-hidden="true">{countLabel(open)}</span>
     </span>
@@ -159,15 +163,16 @@ function Group({
           <SidebarMenuButton
             tooltip={group.label[lang]}
             isActive={hasActive && !open}
-            className={hasActive ? "group/collapsible font-semibold" : "group/collapsible"}
+            className="group/collapsible mt-2 h-7 text-2xs font-semibold tracking-caps text-sidebar-foreground/80 uppercase group-data-[collapsible=icon]:mt-0"
           />
         }
       >
-        <IconComponent aria-hidden="true" />
+        {/* Nhãn nhóm viết hoa không cần icon; thu gọn còn icon (Ctrl/Cmd+B) thì icon thay chỗ nhãn. */}
+        <IconComponent aria-hidden="true" className="hidden group-data-[collapsible=icon]:block" />
         <span>{group.label[lang]}</span>
         <ChevronRightIcon
           aria-hidden="true"
-          className="ml-auto text-muted-foreground transition-transform duration-200 group-data-[panel-open]/collapsible:rotate-90"
+          className="ml-auto transition-transform duration-200 group-data-[panel-open]/collapsible:rotate-90"
         />
       </CollapsibleTrigger>
       <CollapsibleContent keepMounted>
@@ -195,10 +200,10 @@ function Group({
 }
 
 /**
- * Thanh bên theo Sidebar.dc.html: logo, ô chọn tổ chức, mục Tổng quan, nhóm Công việc và Kiến thức thu gọn được, mục
- * Quản trị, người đang đăng nhập. Các nhóm quản trị nằm trong menu thứ hai (shell/admin-nav.tsx), sidebar chỉ giữ một
- * mục dẫn vào đó. Nhóm chứa màn đang mở tự mở; nhóm người dùng tự mở hay đóng thì nhớ. Chưa thuộc tổ chức nào thì mở
- * hết để thấy có gì.
+ * Thanh bên theo Sidebar.dc.html, nền navy ở cả hai theme (Navy Hive): logo, ô chọn tổ chức, mục Tổng quan, nhóm
+ * Công việc và Kiến thức thu gọn được, mục Quản trị, người đang đăng nhập. Các nhóm quản trị nằm trong menu thứ hai
+ * (shell/admin-nav.tsx), sidebar chỉ giữ một mục dẫn vào đó. Nhóm chứa màn đang mở tự mở; nhóm người dùng tự mở hay
+ * đóng thì nhớ. Chưa thuộc tổ chức nào thì mở hết để thấy có gì.
  */
 export function AppSidebar() {
   const { orgs, current, canCreateOrg } = useOrgs();
@@ -228,11 +233,12 @@ export function AppSidebar() {
   const isOpen = (g: NavGroup) => !hasOrg || (userOpen[g.id] ?? g.items.some((i) => i.id === active?.id));
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" className="border-sidebar-border">
       <SidebarHeader className="gap-3">
         <div title="xDev Hive" className="flex items-center gap-2.5 px-1.5 py-1 group-data-[collapsible=icon]:px-0">
-          <img src="/xdev-hive-icon.svg" alt="" className="size-7 shrink-0" />
-          <span className="truncate font-heading text-base font-semibold text-foreground group-data-[collapsible=icon]:hidden">
+          {/* Bản logo trên nền navy: ô lục giác sáng hơn nền một bậc để vẫn thấy hình ô tổ ong. */}
+          <img src="/xdev-hive-mark-navy.svg" alt="" className="size-7 shrink-0" />
+          <span className="truncate font-heading text-base font-semibold text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden">
             xDev Hive
           </span>
         </div>
