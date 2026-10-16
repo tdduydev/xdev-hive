@@ -375,7 +375,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 4: trích nội dung và giao diện (song song, sau Đợt 3)
 
-- [ ] **T017 [P] [US6] [nặng] · 3 ngày — Trích nội dung và duyệt bản trích**
+- [x] **T017 [P] [US6] [nặng] · 3 ngày — Trích nội dung và duyệt bản trích**
   - **Phụ thuộc**: T007, T009, T012 (nguồn job trích).
   - **Goal**: US6, FR-033…FR-035, FR-039, plan.md mục 9, research.md mục 3.5.
     - `extract/worker.ts` chạy trong `worker_threads` (bộ nhớ 512 MB, 60 giây); `docx.ts` (mammoth + turndown),
@@ -424,7 +424,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
 
 ## Đợt 5: kiểm tổng, tài liệu
 
-- [ ] **T025 [P] [—] [nhẹ] · 0,5 ngày — Biến môi trường và tài liệu kỹ thuật**
+- [x] **T025 [P] [—] [nhẹ] · 0,5 ngày — Biến môi trường và tài liệu kỹ thuật**
   - **Phụ thuộc**: T007, T013, T014.
   - **Goal**: ba biến môi trường mới (plan.md mục 13) vào `deploy/.env.example`, `apps/hub/.env.example`, `deploy/compose.yaml`
     nếu cần; `docs/architecture.md` thêm `docsync` và BlobStore; `docs/add.md` mục 8 thêm quét bí mật khi lưu, tải

@@ -446,6 +446,7 @@ export const projectSettings = z.object({
     mergeQueue: z.boolean(),
     leaderChat: z.boolean(),
     sandbox: z.boolean(),
+    prCommentSync: z.boolean().default(true),
   }),
   /**
    * Giao việc từ issue GitHub/GitLab: issue gắn `label` thành task, bình luận nhắc `@mention` gửi tới bot. Có mặc
@@ -512,7 +513,7 @@ export const projectSettingsPatch = z
         byType: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/), outcomeChecksPatch.nullable()).optional(),
       })
       .optional(),
-    features: features.partial().strict().optional(),
+    features: features.partial().extend({ prCommentSync: z.boolean().optional() }).strict().optional(),
     /** Đổi quyền CLI của run; `null` về mặc định (workspace). */
     runPermissions: z.strictObject({ mode: runPermissionMode }).nullable().optional(),
     /** Vá model theo từng CLI và loại run; `null` ở một ô là để CLI tự chọn. */
@@ -583,7 +584,14 @@ export function defaultProjectSettings(requiredApprovals = 1): ProjectSettings {
         ],
       },
     },
-    features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
+    features: {
+      planMode: false,
+      crossReview: false,
+      mergeQueue: false,
+      leaderChat: false,
+      sandbox: false,
+      prCommentSync: true,
+    },
     issueIntake: { ...defaultIssueIntake },
     tokenSaving: { ...defaultTokenSaving },
     routing: structuredClone(defaultRouting),

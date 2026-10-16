@@ -170,6 +170,7 @@ describe("run token ở /mcp", () => {
         "doc_get",
         "doc_list",
         "doc_search",
+        "doc_asset_get",
         "skill_get",
         "skill_list",
       ].sort(),
@@ -179,7 +180,8 @@ describe("run token ở /mcp", () => {
     // thêm memory_write (ADR 0022, ~400 byte) để ghi điều học được thay vì run sau phải khảo sát lại.
     // Bốn tool artifact_* (specs/012 T011) thêm khoảng 5,6 KB (lược đồ của create và list là phần lớn); trước đó run code
     // chỉ dưới 5000 byte, tức dưới 0,45 bản đo 11 383 byte. doc_search (specs/018 T009, FR-037) thêm khoảng 0,8 KB.
-    expect(bytes).toBeLessThan(12_000);
+    // doc_asset_get (specs/018 T017, FR-039) đưa tổng lên 12 452 byte.
+    expect(bytes).toBeLessThan(13_000);
     expect(listed.tools.every((tool) => !("org" in (tool.inputSchema.properties ?? {})))).toBe(true);
   });
 
