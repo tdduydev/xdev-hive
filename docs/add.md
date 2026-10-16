@@ -414,6 +414,11 @@ App or token) for pull requests, webhooks and merges.
 secrets with AES-256-GCM, one data key per record. Losing the key loses those secrets, so backups include it.
 `HIVE_AUTH_SECRET` signs sessions and derives the run token key.
 
+Document saves run the shared `scanSecrets` check before accepting content. A finding returns `DOC_SECRET_FOUND`
+with the secret kind and line number, without the value. A user with document management permission can acknowledge
+an apparent false positive; the audit record ties that acknowledgement to the content hash. Import and repo pull also
+scan content; unacknowledged findings block onward sync, agent access and embedding.
+
 ### 8.4 Contracts and code generation
 
 `packages/contracts` holds every API contract and the worker protocol as zod schemas. `pnpm openapi` writes
@@ -431,6 +436,25 @@ transaction, so a job exists exactly when its change commits.
 
 Run logs are stored as `bytea` chunks in `run_logs`. The hub logs to standard output; there is no metrics or tracing
 export. `GET /api/v1/health` reports status and the deployed commit.
+
+### 8.7 Document attachments and extraction
+
+`docsync` serves attachments through authenticated routes and checks the owning document's read permission. File type
+inspection uses magic bytes rather than trusting the filename. SVG, HTML and other active XML types are served as
+attachments (`Content-Disposition: attachment`), with `X-Content-Type-Options: nosniff` and a restrictive CSP, so they
+are downloaded rather than rendered as hub pages.
+
+Office and PDF extraction runs in a fresh `node:worker_threads` worker for each file, with a 512 MB old-generation
+heap limit and a 60-second timeout. The worker is terminated on completion, error or timeout; separate archive limits
+bound decompressed bytes because Buffer allocations are outside the V8 heap limit. The extraction queue allows two
+workers per jobs process. These workers run inside the hub process deployment, independently of the Go agent worker.
+Extracted markdown stays on the hub and requires approval before it is indexed for search or exposed to agents; the
+original attachment remains in the repo and BlobStore.
+
+The shared PostgreSQL BlobStore (`platform/blob-store.ts`) stores 512 KiB chunks with tenant RLS and per-organization
+SHA-256 deduplication. Storage is included in PostgreSQL backups. `HIVE_DOC_ASSET_MAX_BYTES`,
+`HIVE_DOC_ORG_STORAGE_BYTES` and `HIVE_DOC_IMPORT_MAX_BYTES` set positive integer byte limits, defaulting to 50 MiB,
+5 GiB and 2 GiB respectively; deployment examples forward all three to the hub.
 
 ## 9. Architecture decisions
 
