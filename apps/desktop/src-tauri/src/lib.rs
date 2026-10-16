@@ -1,7 +1,6 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, giao diện cục bộ gọi hub qua Rust.
 
 mod account;
-mod artifacts;
 mod browser_login;
 #[cfg(test)]
 mod capabilities_audit;
@@ -660,7 +659,7 @@ async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
     let args = register::validate(&hub, token, Some(&ex.machine))?;
     let machine_id = register_and_start(&app, args).await?;
     // Máy đã đăng ký và worker đã chạy; token cá nhân lỗi thì người dùng vẫn liên kết tay được ở màn Tài khoản.
-    if let Err(e) = account::save_checked(&app, &hub, &ex.personal_token).await {
+    if let Err(e) = account::save_checked(&hub, &ex.personal_token).await {
         eprintln!("Không liên kết được tài khoản sau khi đăng nhập: {e}");
     }
     Ok(machine_id)
@@ -672,7 +671,7 @@ async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
 async fn account_browser_login(app: AppHandle) -> Result<account::AccountStatus, String> {
     let hub = hub_of(&app).ok_or("Máy chưa đăng ký với hub nào. Đăng ký máy trước.")?;
     let ex = browser_exchange(&app, &hub, browser_login::Purpose::SignIn).await?;
-    account::save_checked(&app, &hub, &ex.personal_token).await?;
+    account::save_checked(&hub, &ex.personal_token).await?;
     let _ = app.emit(account::CHANGED_EVENT, ());
     Ok(account::status_for(Some(hub)).await)
 }
@@ -756,7 +755,7 @@ async fn hub_change(app: AppHandle, hub: String) -> Result<HubChange, String> {
     if let Ok(mut slot) = app.state::<State>().hub.lock() {
         *slot = Some(hub.clone());
     }
-    account::carry_over(&app, &current, &hub).await;
+    account::carry_over(&current, &hub).await;
     if wanted {
         dispatch(&app, Event::Start);
     } else {
@@ -1029,6 +1028,16 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     })
 }
 
+/// Bản cũ đệm artifact đã mở vào `<app_data>/artifacts` và chỉ dọn khi đăng xuất. Màn Artifact đã chuyển sang web nên
+/// không còn gì đọc hay dọn thư mục đó: xoá đi để tài liệu của tổ chức không nằm lại trên máy sau khi đăng xuất.
+fn remove_old_artifact_cache(app_data: &std::path::Path) {
+    match std::fs::remove_dir_all(app_data.join("artifacts")) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => eprintln!("Không xoá được bộ đệm artifact cũ: {e}"),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tls::ensure();
@@ -1166,13 +1175,8 @@ pub fn run() {
             remote::remote_totp_disable,
             remote::remote_totp_unlock,
             remote::remote_sessions,
-            remote::remote_session_kill,
-            artifacts::artifact_cache_put,
-            artifacts::artifact_cache_get,
-            artifacts::artifact_cache_list,
-            artifacts::artifact_cache_clear
+            remote::remote_session_kill
         ])
-        .register_asynchronous_uri_scheme_protocol(artifacts::SCHEME, artifacts::protocol)
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền. Người dùng tắt "Đóng cửa sổ chỉ ẩn xuống khay" ở màn Cài
             // đặt thì đóng cửa sổ app là thoát hẳn, worker dừng êm trước như khi chọn Thoát ở khay.
@@ -1196,6 +1200,10 @@ pub fn run() {
         })
         .setup(|app| {
             doctor::warm_user_path();
+            if let Ok(dir) = app.path().app_data_dir() {
+                // Bộ đệm có thể tới 200 MiB: không giữ khởi động chờ xoá.
+                tauri::async_runtime::spawn_blocking(move || remove_old_artifact_cache(&dir));
+            }
             optimizer::link_on_start(app.handle());
             git_groups::start_auto_fetch(app.handle().clone());
             remote::start(app.handle());
@@ -1322,5 +1330,20 @@ mod tests {
         assert!(!safe_hub_path("https://evil.example"));
         assert!(!safe_hub_path("/a b"));
         assert!(!safe_hub_path("/x#<script>"));
+    }
+
+    #[test]
+    fn removes_only_the_old_artifact_cache() {
+        let dir = std::env::temp_dir().join(format!("hive-app-data-{}", std::process::id()));
+        let cached = dir.join("artifacts").join("a1b2").join("org").join("id");
+        std::fs::create_dir_all(&cached).unwrap();
+        std::fs::write(cached.join("1.json"), "{}").unwrap();
+        std::fs::write(dir.join("installed-skills.json"), "{}").unwrap();
+        super::remove_old_artifact_cache(&dir);
+        assert!(!dir.join("artifacts").exists());
+        assert!(dir.join("installed-skills.json").is_file());
+        // Lần mở app sau không còn thư mục để xoá: không lỗi.
+        super::remove_old_artifact_cache(&dir);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

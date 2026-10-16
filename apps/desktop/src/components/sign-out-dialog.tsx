@@ -17,7 +17,7 @@ import { errorText } from "@/lib/tauri.ts";
 const text: Dict<{ title: string; body: string; local: string; confirm: string; busy: string; cancel: string }> = {
   vi: {
     title: "Đăng xuất khỏi Hive?",
-    body: "Token cá nhân bị gỡ khỏi keychain của máy và bản đọc offline bị xoá.",
+    body: "Token cá nhân bị gỡ khỏi keychain của máy.",
     local:
       "Máy vẫn đăng ký với hub: worker vẫn nhận việc, gói agent, dự án và công cụ trên máy vẫn dùng được. Muốn đăng nhập lại thì dán token mới hoặc đăng nhập bằng trình duyệt.",
     confirm: "Đăng xuất",
@@ -26,7 +26,7 @@ const text: Dict<{ title: string; body: string; local: string; confirm: string; 
   },
   en: {
     title: "Sign out of Hive?",
-    body: "Your personal token is removed from this machine's keychain and offline docs are cleared.",
+    body: "Your personal token is removed from this machine's keychain.",
     local:
       "The machine stays registered: the worker keeps taking runs, and agent plans, projects and tools on this machine keep working. Paste a new token or sign in with the browser to come back.",
     confirm: "Sign out",
