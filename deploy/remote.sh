@@ -14,6 +14,10 @@
 #   HIVE_REMOTE_DOCKER (vd. "sudo docker" khi user không thuộc nhóm docker)
 #   HIVE_ORG_CREATORS     email người quản trị hub, cách nhau bằng dấu phẩy. Hub chỉ nhận người được mời, nên lần đầu
 #                         phải có ít nhất một email ở đây để có người vào tạo tổ chức và gửi lời mời.
+#   HIVE_TLS              cách Caddy lấy chứng chỉ khi HIVE_PUBLIC_URL là https://<tên miền> (lưu vào .env):
+#                         dns-cloudflare (mặc định) lấy Let's Encrypt qua DNS-01 cho tên miền trỏ về IP nội bộ, cần
+#                         CF_API_TOKEN trong <dir>/.env trên máy chủ (tự đặt, xem docs/self-hosting.md);
+#                         auto để Caddy tự lấy qua HTTP khi máy chủ public ra Internet. https://<IP> luôn dùng CA nội bộ.
 set -eu
 
 target=${1:?Cách dùng: deploy/remote.sh <user@máy-chủ> [git-ref]}
@@ -33,19 +37,20 @@ git archive --format=tar "$sha" | gzip -c |
 
 args="$(q "$dir") $(q "$short") $(q "${HIVE_COMPOSE_PROJECT:-}") $(q "${HIVE_PUBLIC_URL:-}") $(q "${HIVE_BIND:-}")"
 args="$args $(q "${HIVE_POSTGRES_IMAGE:-}") $(q "${HIVE_NODE_IMAGE:-}") $(q "${HIVE_REMOTE_DOCKER:-docker}")"
-args="$args $(q "${HIVE_ORG_CREATORS:-}")"
+args="$args $(q "${HIVE_ORG_CREATORS:-}") $(q "${HIVE_TLS:-}")"
 
 # Phần chạy trên máy chủ đọc từ stdin.
 # shellcheck disable=SC2029 # args được quote ở trên, cố ý bung ở máy dev.
 ssh "$target" "sh -s -- $args" <<'REMOTE'
 set -eu
-dir=$1 commit=$2 project=$3 public=$4 bind=$5 pg_image=$6 node_image=$7 docker=$8 creators=$9
+dir=$1 commit=$2 project=$3 public=$4 bind=$5 pg_image=$6 node_image=$7 docker=$8 creators=$9 tls=${10:-}
 
 fail() { echo "$*" >&2; exit 2; }
 command -v openssl >/dev/null 2>&1 || fail "Máy chủ chưa có openssl (cần để sinh secret)."
 $docker version >/dev/null 2>&1 || fail "Không gọi được '$docker' (chưa cài, hoặc user không thuộc nhóm docker: đặt HIVE_REMOTE_DOCKER=\"sudo docker\")."
 $docker compose version >/dev/null 2>&1 || fail "Máy chủ chưa có docker compose v2."
 [ -d "$dir/src.new" ] || fail "Không thấy mã nguồn vừa gửi ở $dir/src.new."
+case "$tls" in ''|auto|dns-cloudflare) ;; *) fail "HIVE_TLS chỉ nhận auto hoặc dns-cloudflare." ;; esac
 
 env=$dir/.env
 umask 077
@@ -85,12 +90,38 @@ add HIVE_COMPOSE_PROJECT xdev-hive
 [ -n "$bind" ] && put HIVE_BIND "$bind"
 # Hub đặt sau Caddy bằng địa chỉ IP (https://<ip>): Caddy tự cấp chứng chỉ từ CA nội bộ và cần default_sni = IP đó.
 host=$(printf '%s' "$(get HIVE_PUBLIC_URL)" | sed -nE 's#^https://([^/:]+).*#\1#p')
-case "$host" in *[!0-9.]*|"") ;; *) put HIVE_DEFAULT_SNI "$host"; put COMPOSE_PROFILES https ;; esac
+case "$host" in
+  "")
+    [ -z "$tls" ] || fail "HIVE_TLS chỉ dùng khi HIVE_PUBLIC_URL là https."
+    has HIVE_TLS && put HIVE_TLS auto
+    ;;
+  *[!0-9.]*)
+    [ -n "$tls" ] && put HIVE_TLS "$tls"
+    # Tên miền của hub nội bộ không nhận được thử thách HTTP của Let's Encrypt; máy chủ public đặt HIVE_TLS=auto.
+    add HIVE_TLS dns-cloudflare
+    [ "$(get HIVE_TLS)" = auto ] || put COMPOSE_PROFILES https
+    ;;
+  *)
+    [ "$tls" != dns-cloudflare ] || fail "HIVE_TLS=dns-cloudflare cần HIVE_PUBLIC_URL là tên miền; địa chỉ IP dùng CA nội bộ."
+    has HIVE_TLS && put HIVE_TLS auto
+    put HIVE_DEFAULT_SNI "$host"
+    put COMPOSE_PROFILES https
+    ;;
+esac
 [ -n "$pg_image" ] && put HIVE_POSTGRES_IMAGE "$pg_image"
 [ -n "$node_image" ] && put HIVE_NODE_IMAGE "$node_image"
 [ -n "$creators" ] && put HIVE_ORG_CREATORS "$creators"
 [ -n "$(get HIVE_ORG_CREATORS)" ] || echo "Chưa đặt HIVE_ORG_CREATORS: hub chỉ nhận người được mời nên chưa ai vào được. Chạy lại với HIVE_ORG_CREATORS=<email quản trị>." >&2
 project=$(get HIVE_COMPOSE_PROJECT)
+# Token chỉ do người quản trị đặt thẳng vào .env trên máy chủ: qua tham số thì lọt vào lịch sử shell và ps.
+# Kiểm dạng trước khi Caddy chạy vì module cloudflare in nguyên token sai dạng vào log. Không bao giờ in token.
+if [ "$(get HIVE_TLS)" = dns-cloudflare ]; then
+  cf_token=$(get CF_API_TOKEN)
+  [ -n "$cf_token" ] || fail "HIVE_TLS=dns-cloudflare cần CF_API_TOKEN trong $env trên máy chủ (token Cloudflare chỉ có quyền Zone > Zone > Read và Zone > DNS > Edit, giới hạn ở zone của tên miền). Script không nhận token qua dòng lệnh: tự thêm dòng CF_API_TOKEN=<token> vào file đó (giữ quyền 600) theo docs/self-hosting.md, rồi chạy lại."
+  # Cùng quy tắc với caddy-dns/cloudflare; grep của BSD không nhận số lặp trên 255 nên trần độ dài kiểm riêng.
+  { [ "${#cf_token}" -le 261 ] && printf '%s\n' "$cf_token" | grep -Eqx '[A-Za-z0-9_-]{35,50}|cf(ut|at)_[A-Za-z0-9_-]{32,}'; } ||
+    fail "CF_API_TOKEN trong $env không đúng dạng token Cloudflare (thừa nháy, dấu cách hay ký tự xuống dòng CRLF?). Sửa lại dòng đó trên máy chủ rồi chạy lại."
+fi
 
 # Thay mã cũ bằng mã mới; giữ bản trước ở src.old để xem lại khi cần.
 rm -rf "$dir/src.old"
@@ -138,8 +169,13 @@ while :; do
 done
 compose exec -T hub node -e "fetch('http://127.0.0.1:3000/api/v1/health').then((r) => r.text()).then(console.log)"
 if [ "$check_ca" -eq 1 ]; then
+  # IP: kiểm /ca.crt của CA nội bộ. Tên miền: kiểm chứng chỉ bằng CA hệ thống, chờ tới 2 phút cho Let's Encrypt.
+  case "$host" in
+    *[!0-9.]*) problem="chứng chỉ của $(get HIVE_PUBLIC_URL) chưa được CA hệ thống tin (tên miền chưa trỏ đúng, CF_API_TOKEN thiếu quyền, hoặc chứng chỉ chưa cấp xong)" ;;
+    *) problem="/ca.crt chưa trả về chứng chỉ PEM hợp lệ" ;;
+  esac
   if ! compose exec -T hub node --input-type=module - "$(get HIVE_PUBLIC_URL)" < deploy/check-ca.mjs; then
-    echo "CẢNH BÁO: /ca.crt chưa trả về chứng chỉ PEM hợp lệ. Kiểm tra cấu hình Caddy và log: docker compose -p $project --env-file $env -f $dir/src/deploy/compose.yaml logs --tail 80 caddy" >&2
+    echo "CẢNH BÁO: $problem. Kiểm tra cấu hình Caddy và log: docker compose -p $project --env-file $env -f $dir/src/deploy/compose.yaml logs --tail 80 caddy" >&2
   fi
 fi
 echo "Hub đang chạy ở commit ${commit}. Địa chỉ: $(get HIVE_PUBLIC_URL)"

@@ -3,24 +3,56 @@
 	default_sni {$HIVE_DEFAULT_SNI:localhost}
 }
 
-{$HIVE_PUBLIC_URL} {
-  # Mã link công khai nằm trong đường dẫn /_artifact/s/<mã>; ai đọc được log là mở được link, nên che mã trước khi ghi.
-  log {
-    output stdout
-    format filter {
-      wrap json
-      fields {
-        request>uri regexp (/_artifact/s/)[^/?#]+ ${1}[đã che]
-        request>headers>Referer regexp (/_artifact/s/)[^/?#]+ ${1}[đã che]
-      }
-    }
-  }
-  handle /ca.crt {
-    root * /data/caddy/pki/authorities/local
-    rewrite * /root.crt
-    file_server
-  }
-  handle {
-    reverse_proxy hub:3000
-  }
+(hive) {
+	# Mã link công khai nằm trong đường dẫn /_artifact/s/<mã>; ai đọc được log là mở được link, nên che mã trước khi ghi.
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp (/_artifact/s/)[^/?#]+ "${1}[đã che]"
+				request>headers>Referer regexp (/_artifact/s/)[^/?#]+ "${1}[đã che]"
+			}
+		}
+	}
+	handle /ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		file_server
+	}
+	handle {
+		reverse_proxy hub:3000
+	}
 }
+
+# HIVE_TLS chọn cặp snippet tls_* và extra_* bên dưới. Snippet không được import thì Caddy không nạp module của nó,
+# nên image caddy gốc vẫn chạy được file này ở chế độ auto.
+
+# auto: Caddy tự chọn, IP dùng CA nội bộ (tls internal), tên miền công khai lấy chứng chỉ ACME qua HTTP.
+(tls_auto) {
+}
+(extra_auto) {
+}
+
+# dns-cloudflare: tên miền trỏ về IP nội bộ, Let's Encrypt không gọi vào được máy nên xác minh bằng bản ghi TXT.
+# Resolver công khai vì DNS nội bộ có thể không thấy bản ghi TXT vừa tạo trên Cloudflare.
+(tls_dns-cloudflare) {
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+		resolvers 1.1.1.1 1.0.0.1
+	}
+}
+# Giữ địa chỉ IP cũ (CA nội bộ, /ca.crt) để máy chưa đổi sang tên miền vẫn vào được trong lúc chuyển.
+(extra_dns-cloudflare) {
+	https://{$HIVE_DEFAULT_SNI:localhost} {
+		tls internal
+		import hive
+	}
+}
+
+{$HIVE_PUBLIC_URL} {
+	import tls_{$HIVE_TLS:auto}
+	import hive
+}
+
+import extra_{$HIVE_TLS:auto}
