@@ -35,9 +35,9 @@ adapt auto auto https://hive.example.com localhost >/dev/null || fail 'Caddyfile
 
 json=$(adapt dns-cloudflare dns-cloudflare https://hive.example.test 192.0.2.34) ||
   fail 'Caddyfile dns-cloudflare không hợp lệ.'
-# Tên miền lấy Let's Encrypt qua DNS-01 với resolver công khai; IP cũ vẫn có CA nội bộ trong lúc chuyển.
-printf '%s' "$json" | grep -q '"subjects":\["hive.example.test"\],"issuers":\[{"challenges":{"dns":{"provider":{"api_token":"{env.CF_API_TOKEN}","name":"cloudflare"},"resolvers":\["1.1.1.1"' ||
-  fail 'Tên miền chưa dùng DNS-01 Cloudflare với resolver công khai.'
+# Tên miền lấy Let's Encrypt qua DNS-01, không tự hỏi DNS ra ngoài (mạng nội bộ hay chặn); IP cũ vẫn có CA nội bộ.
+printf '%s' "$json" | grep -q '"subjects":\["hive.example.test"\],"issuers":\[{"challenges":{"dns":{"propagation_delay":60000000000,"propagation_timeout":-1,"provider":{"api_token":"{env.CF_API_TOKEN}","name":"cloudflare"}}' ||
+  fail 'Tên miền chưa dùng DNS-01 Cloudflare với bước chờ cố định.'
 printf '%s' "$json" | grep -q '"subjects":\["192.0.2.34"\],"issuers":\[{"module":"internal"}\]' ||
   fail 'Thiếu site IP dùng CA nội bộ.'
 printf '%s' "$json" | grep -q '"host":\["192.0.2.34"\]' || fail 'Thiếu route cho site IP.'
