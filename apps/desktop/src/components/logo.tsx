@@ -1,6 +1,6 @@
 import dark from "@design/assets/logos/xdev-hive-dark.svg";
-import icon from "@design/assets/logos/xdev-hive-icon.svg";
 import light from "@design/assets/logos/xdev-hive-light.svg";
+import mark from "@design/assets/logos/xdev-hive-mark-navy.svg";
 import { cn } from "@/lib/utils.ts";
 
 /** Logo chữ theo sáng/tối (Logo.dc.html). Lấy file từ docs/design-system để app và web cùng một nguồn. */
@@ -13,7 +13,10 @@ export function Wordmark({ className }: { className?: string }) {
   );
 }
 
-/** Biểu tượng X trên ô lục giác navy, dùng khi AppNav thu gọn. */
+/**
+ * Biểu tượng X trên ô lục giác cho nền navy của AppNav: ô lục giác sáng hơn nền một bậc để vẫn thấy hình ô tổ ong. Tên
+ * app luôn nằm cạnh (chữ hoặc sr-only) nên ảnh không đọc tên lần nữa.
+ */
 export function LogoIcon({ className }: { className?: string }) {
-  return <img src={icon} alt="xDev Hive" className={cn("size-8", className)} />;
+  return <img src={mark} alt="" className={cn("size-8", className)} />;
 }
