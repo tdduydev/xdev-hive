@@ -4,7 +4,7 @@ import { Markdown } from "@xdev-hive/ui/markdown";
 import { useState } from "react";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
-import { relaunchToUpdate, useReadyUpdate } from "@/lib/update.ts";
+import { type ReadyUpdate, relaunchToUpdate, useReadyUpdate } from "@/lib/update.ts";
 
 const text: Dict<{
   ready: (version: string) => string;
@@ -35,19 +35,10 @@ const text: Dict<{
   },
 };
 
-/**
- * Dòng báo ở đầu cửa sổ khi Rust đã tải xong bản mới (sự kiện "update-ready"). Chưa tự mở lại: máy có thể đang có run
- * chạy, nên việc cài do người dùng chọn. "Ẩn tạm" chỉ ẩn bản này trong phiên; mở app lần sau dòng báo hiện lại.
- */
-export function UpdateBanner() {
-  const t = useT(text);
-  const ready = useReadyUpdate();
-  const [hidden, setHidden] = useState<string | null>(null);
-  const [notesOpen, setNotesOpen] = useState(false);
+/** Mở lại để cài bản đã tải: lỗi (hết dung lượng, đang thoát) thì báo và cho bấm lại. */
+export function useRestart() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!ready || hidden === ready.version) return null;
-
   async function restart() {
     setBusy(true);
     setError(null);
@@ -58,6 +49,50 @@ export function UpdateBanner() {
       setBusy(false);
     }
   }
+  return { busy, error, restart };
+}
+
+/** Ghi chú phát hành của bản đã tải, viết bằng Markdown. */
+export function UpdateNotes({
+  ready,
+  open,
+  onOpenChange,
+}: {
+  ready: ReadyUpdate;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useT(text);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t.title(ready.version)}</DialogTitle>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-auto text-sm">
+          <Markdown content={ready.notes ?? ""} />
+        </div>
+        <DialogActions>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t.close}
+          </Button>
+        </DialogActions>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Dòng báo ở đầu cửa sổ khi Rust đã tải xong bản mới (sự kiện "update-ready"). Chưa tự mở lại: máy có thể đang có run
+ * chạy, nên việc cài do người dùng chọn. "Ẩn tạm" chỉ ẩn bản này trong phiên; mở app lần sau dòng báo hiện lại.
+ */
+export function UpdateBanner() {
+  const t = useT(text);
+  const ready = useReadyUpdate();
+  const [hidden, setHidden] = useState<string | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const { busy, error, restart } = useRestart();
+  if (!ready || hidden === ready.version) return null;
 
   return (
     <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-success-soft px-5 py-2">
@@ -72,29 +107,13 @@ export function UpdateBanner() {
           {t.notes}
         </Button>
       )}
-      <Button size="sm" disabled={busy} onClick={restart}>
+      <Button size="sm" disabled={busy} onClick={() => void restart()}>
         {busy ? t.restarting : t.restart}
       </Button>
       <Button variant="outline" size="sm" disabled={busy} onClick={() => setHidden(ready.version)}>
         {t.hide}
       </Button>
-      {ready.notes && (
-        <Dialog open={notesOpen} onOpenChange={setNotesOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t.title(ready.version)}</DialogTitle>
-            </DialogHeader>
-            <div className="max-h-[60vh] overflow-auto text-sm">
-              <Markdown content={ready.notes} />
-            </div>
-            <DialogActions>
-              <Button variant="outline" onClick={() => setNotesOpen(false)}>
-                {t.close}
-              </Button>
-            </DialogActions>
-          </DialogContent>
-        </Dialog>
-      )}
+      {ready.notes && <UpdateNotes ready={ready} open={notesOpen} onOpenChange={setNotesOpen} />}
     </div>
   );
 }

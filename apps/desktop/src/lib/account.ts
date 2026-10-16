@@ -94,3 +94,7 @@ export const useLinkedAccount = () => useContext(AccountContext);
  */
 export const ConnectContext = createContext<(() => void) | null>(null);
 export const useConnect = () => useContext(ConnectContext);
+
+/** Mở hộp hỏi lại đăng xuất (AppShell cấp) từ màn Cài đặt; null khi chưa đăng nhập hoặc màn chạy ngoài AppShell. */
+export const SignOutContext = createContext<(() => void) | null>(null);
+export const useSignOut = () => useContext(SignOutContext);

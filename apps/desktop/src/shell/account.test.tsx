@@ -94,12 +94,15 @@ describe("liên kết tài khoản", () => {
     });
     const { unmount } = render(<AppShell />);
     expect(await screen.findByText("Viết tài liệu · Thanh toán")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Môi trường" })).toBeNull();
+    const menu = () => screen.getByRole("navigation", { name: "Điều hướng app" });
+    expect(within(menu()).queryByRole("link", { name: "Môi trường" })).toBeNull();
+    expect(within(menu()).queryByRole("link", { name: "Lượt chạy" })).toBeNull();
     unmount();
     fakeTauri({ account_status: () => linked({ ...ACCOUNT, orgRole: "owner" }) });
     render(<AppShell />);
     expect(await screen.findByText("Trưởng nhóm · Thanh toán")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Lượt chạy trên máy" })).toBeTruthy();
+    expect(within(menu()).getByRole("link", { name: "Lượt chạy" })).toBeTruthy();
+    expect(within(menu()).getByRole("link", { name: "Môi trường" })).toBeTruthy();
   });
 
   it("token đã lưu hỏng: báo trong hộp thoại và cho gỡ", async () => {
@@ -157,7 +160,7 @@ describe("liên kết tài khoản", () => {
     expect(calls.filter((c) => c.command === "account_unlink")).toHaveLength(1);
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
     expect(within(nav).getByRole("link", { name: "Gói agent" }).hasAttribute("data-offline")).toBe(false);
-    expect(within(nav).getByRole("link", { name: "Việc của tôi" }).hasAttribute("data-offline")).toBe(true);
+    expect(within(nav).getByRole("link", { name: "Lượt chạy" }).hasAttribute("data-offline")).toBe(true);
   });
 
   it("huỷ ở hộp hỏi lại thì không gỡ token", async () => {
@@ -402,7 +405,7 @@ describe("đăng nhập lại và đổi địa chỉ hub", () => {
     await user.click(within(confirm).getByRole("button", { name: "Đăng xuất" }));
     await screen.findByRole("button", { name: /Chưa đăng nhập/ });
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
-    await user.click(within(nav).getByRole("link", { name: "Việc của tôi" }));
+    await user.click(within(nav).getByRole("link", { name: "Lượt chạy" }));
     await user.click(await screen.findByRole("button", { name: "Kết nối Hive" }));
     const dialog = await screen.findByRole("dialog", { name: "Tài khoản" });
     expect((within(dialog).getByLabelText("Địa chỉ Hive") as HTMLInputElement).value).toBe(OLD);
