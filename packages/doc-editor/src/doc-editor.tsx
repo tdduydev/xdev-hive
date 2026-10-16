@@ -16,6 +16,7 @@ import {
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { HexAvatar } from "@xdev-hive/ui/hex-avatar";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
@@ -606,14 +607,16 @@ function SuggestionCard({
         )}
       </p>
       <div className="flex flex-wrap items-center gap-2.5">
-        <span
-          className={cn(
-            "inline-flex size-5.5 items-center justify-center rounded-full font-mono text-xs font-semibold",
-            s.author.runId ? "bg-brand-navy text-[#B8F1FF]" : "bg-muted",
-          )}
-        >
-          {s.author.runId ? "AI" : initialsOf(s.author.name)}
-        </span>
+        {/* Agent viết thì ô lục giác, người viết thì avatar tròn: nhìn là biết gợi ý của ai. */}
+        {s.author.runId ? (
+          <HexAvatar size="sm" className="font-mono">
+            AI
+          </HexAvatar>
+        ) : (
+          <span className="inline-flex size-5.5 items-center justify-center rounded-full bg-muted font-mono text-xs font-semibold">
+            {initialsOf(s.author.name)}
+          </span>
+        )}
         <span className="min-w-[200px] flex-1">
           <strong className="font-semibold">{t.suggestedBy(s.author.name)}</strong>
           {s.reason && <span className="text-muted-foreground"> — {s.reason}</span>}
@@ -749,14 +752,15 @@ function ThreadCard({ thread, onChange }: { thread: DocThread; onChange: () => u
       </p>
       {thread.comments.map((c) => (
         <div key={c.id} className="flex gap-2">
-          <span
-            className={cn(
-              "inline-flex size-6 flex-none items-center justify-center rounded-full text-xs font-semibold",
-              c.author.runId ? "bg-brand-navy font-mono text-[#B8F1FF]" : "bg-[#DCFCE7] text-[#166534]",
-            )}
-          >
-            {c.author.runId ? "AI" : initialsOf(c.author.name)}
-          </span>
+          {c.author.runId ? (
+            <HexAvatar size="sm" className="flex-none font-mono">
+              AI
+            </HexAvatar>
+          ) : (
+            <span className="inline-flex size-6 flex-none items-center justify-center rounded-full bg-[#DCFCE7] text-xs font-semibold text-[#166534]">
+              {initialsOf(c.author.name)}
+            </span>
+          )}
           <div className="min-w-0 text-sm">
             <strong className="font-semibold">{c.author.name}</strong>{" "}
             <span className="text-xs text-muted-foreground">{new Date(c.createdAt).toLocaleString()}</span>

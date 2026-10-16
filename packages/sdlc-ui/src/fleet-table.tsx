@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SdlcFleetMachine } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
+import { HexAvatar, machineHex } from "@xdev-hive/ui/hex-avatar";
 import { useSdlcEnv } from "./env.tsx";
 import { formatWhen } from "./format.ts";
 
@@ -66,8 +67,13 @@ export function FleetTable({ machines }: { machines: SdlcFleetMachine[] }) {
           aria-label={m.name}
           className="flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 text-sm"
         >
-          <header className="flex flex-wrap justify-between gap-2">
-            <strong className="break-all font-mono">{m.name}</strong>
+          <header className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-2.5">
+              <HexAvatar aria-hidden="true" tone={machineHex(m).tone}>
+                {machineHex(m).mark}
+              </HexAvatar>
+              <strong className="break-all font-mono">{m.name}</strong>
+            </span>
             <span>
               {t[m.status]} · {m.slotsUsed}/{m.capacity}
             </span>

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/xdev-hive-icon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-    <meta name="theme-color" content="#f8fafc" />
+    <meta name="theme-color" content="#f5f7fb" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Hive" />
@@ -18,7 +18,7 @@
           const dark = theme === "dark" || (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
           document.documentElement.classList.toggle("dark", dark);
           // Cùng màu với THEME_COLOR trong src/lib/theme.ts.
-          if (dark) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#0f172a");
+          if (dark) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#0a1322");
         } catch {}
       })();
     </script>
