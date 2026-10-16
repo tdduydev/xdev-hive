@@ -108,6 +108,7 @@ type T = {
   results: Record<SyncResult, string>;
   openDir: (path: string) => string;
   openTerm: (path: string) => string;
+  cloneTo: (dir: string) => string;
   autoFetch: string;
   autoFetchOff: string;
   autoFetchEvery: (n: number) => string;
@@ -196,6 +197,7 @@ const text: Dict<T> = {
     },
     openDir: (p) => `Mở thư mục ${p}`,
     openTerm: (p) => `Mở terminal tại ${p}`,
+    cloneTo: (d) => `sẽ clone vào ${d}`,
     autoFetch: "Tự fetch",
     autoFetchOff: "Tắt",
     autoFetchEvery: (n) => (n >= 60 ? `Mỗi ${n / 60} giờ` : `Mỗi ${n} phút`),
@@ -278,6 +280,7 @@ const text: Dict<T> = {
     results: { done: "Ran", unchanged: "Unchanged", skipped: "Skipped", failed: "Failed", cancelled: "Cancelled" },
     openDir: (p) => `Open folder ${p}`,
     openTerm: (p) => `Open a terminal in ${p}`,
+    cloneTo: (d) => `will clone into ${d}`,
     autoFetch: "Auto fetch",
     autoFetchOff: "Off",
     autoFetchEvery: (n) => (n >= 60 ? `Every ${n / 60} h` : `Every ${n} min`),
@@ -585,19 +588,23 @@ function GroupCard({
             const s = live[r.path];
             const result = job?.results[r.path];
             const detail = [
+              result?.message !== s?.reason ? result?.message : null,
               s?.reason,
+              // Nói rõ chỗ Hive tìm repo, để người đã clone tay thấy ngay vì sao repo vẫn "chưa clone".
+              s?.state === "missing" && s.dir ? t.cloneTo(s.dir) : null,
               s?.branch && s.state !== "missing" ? t.branch(s.branch) : null,
               s?.ahead ? t.ahead(s.ahead) : null,
               s?.behind ? t.behind(s.behind) : null,
-            ].filter(Boolean);
+            ]
+              .filter(Boolean)
+              .join(" · ");
             return (
               <li key={r.path} className="flex flex-wrap items-center gap-2 px-4 py-2">
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-mono text-xs">{r.path}</span>
-                  {(detail.length > 0 || result?.message) && (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {result?.message && result.message !== s?.reason ? `${result.message} · ` : ""}
-                      {detail.join(" · ")}
+                  {detail && (
+                    <span className="truncate text-xs text-muted-foreground" title={detail}>
+                      {detail}
                     </span>
                   )}
                 </span>
