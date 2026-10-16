@@ -8,22 +8,22 @@
 :root {
   /* Cú pháp trên nền code `--code-bg` (sáng): mọi cặp đạt tương phản 4.5:1 (packages/ui/src/prose.test.ts kiểm lại). */
   --code-bg: var(--muted);
-  --code-fg: #0f172a;
+  --code-fg: #0f1b31;
   --syn-comment: #546378;
   --syn-keyword: #b4236b;
   --syn-string: #0b7a4b;
-  --syn-number: #b45309;
-  --syn-title: #1d4ed8;
+  --syn-number: #b05108;
+  --syn-title: #1c58ff;
   --syn-type: #0f766e;
   --syn-attr: #7c3aed;
   --syn-meta: #475569;
-  --syn-addition: #15803d;
+  --syn-addition: #157e3c;
   --syn-deletion: #b91c1c;
 }
 
 .dark {
   --code-bg: var(--background);
-  --code-fg: #e2e8f0;
+  --code-fg: #e8ecf8;
   --syn-comment: #8393ab;
   --syn-keyword: #f472b6;
   --syn-string: #6ee7a8;

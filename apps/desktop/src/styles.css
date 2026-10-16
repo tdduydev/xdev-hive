@@ -1,7 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/ibm-plex-sans";
+/* Be Vietnam Pro không có bản variable: nạp đúng các độ đậm app dùng. Mỗi file có đủ tập chữ Việt (unicode-range). */
+@import "@fontsource/be-vietnam-pro/400.css";
+@import "@fontsource/be-vietnam-pro/400-italic.css";
+@import "@fontsource/be-vietnam-pro/500.css";
+@import "@fontsource/be-vietnam-pro/600.css";
+@import "@fontsource/be-vietnam-pro/700.css";
 @import "@fontsource-variable/jetbrains-mono";
 /* Màu và bo góc sinh từ docs/design-system/tokens.json (scripts/build-frontend.ts), cùng nguồn với web. */
 @import "./generated/tokens.css";
@@ -27,21 +32,12 @@
   }
 }
 
-/* Biến shadcn cần mà tokens.json không có: suy ra từ token chung như web (apps/web/src/styles.css). */
-:root {
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--accent);
-  --sidebar-accent-foreground: var(--accent-foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
-}
-
 /* Thang chữ như web: chữ nhỏ nhất 13px vì dấu tiếng Việt chồng hai tầng (ể, ặ) ở 12px khó đọc. */
 @theme {
   --text-2xs: 12px;
   --text-xs: 13px;
   --text-xs--line-height: 1.45;
+  --tracking-caps: 0.06em; /* nhãn nhóm viết hoa của AppNav */
 }
 
 @theme inline {
@@ -79,11 +75,13 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-icon: var(--sidebar-active-icon);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-heading: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, Menlo, monospace;
 
   --radius-sm: calc(var(--radius) * 0.6);
@@ -91,6 +89,30 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+/*
+ * AppNav navy ở cả hai theme. Trong menu, token chung trỏ sang token sidebar để nút, avatar, viền và chữ phụ đọc được
+ * trên nền navy; xanh lá, cam, đỏ của theme sáng dưới 3:1 trên navy nên dùng sidebar-success… Giống hệt khối của web
+ * (apps/web/src/styles.css).
+ */
+[data-sidebar="sidebar"] {
+  color-scheme: dark;
+  --foreground: var(--sidebar-accent-foreground);
+  --muted-foreground: var(--sidebar-foreground);
+  --background: var(--sidebar);
+  --card: var(--sidebar-accent);
+  --muted: var(--sidebar-accent);
+  --secondary: var(--sidebar-accent);
+  --secondary-foreground: var(--sidebar-accent-foreground);
+  --accent: var(--sidebar-active);
+  --accent-foreground: var(--sidebar-accent-foreground);
+  --border: var(--sidebar-border);
+  --input: var(--sidebar-border);
+  --ring: var(--sidebar-ring);
+  --success: var(--sidebar-success);
+  --warning: var(--sidebar-warning);
+  --destructive: var(--sidebar-destructive);
 }
 
 @layer base {
