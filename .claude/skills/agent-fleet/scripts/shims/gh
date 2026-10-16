@@ -1,0 +1,3 @@
+#!/bin/zsh
+echo "gh bị chặn: agent không mở PR hay gọi GitHub." >&2
+exit 126
