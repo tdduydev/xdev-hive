@@ -737,6 +737,13 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
       return typeof body === "string" ? body : JSON.stringify(body);
     },
 
+    async readFileBytes(ref, path, sha) {
+      const p = `projects/${encodeURIComponent(projectPath(ref))}/repository/files/${encodeURIComponent(path)}/raw`;
+      const url = new URL(`${p}?ref=${encodeURIComponent(sha)}`, apiBase);
+      const response = await orNull(() => send("GET", url, { headers: { "private-token": opts.token } }));
+      return response && new Uint8Array(await response.arrayBuffer());
+    },
+
     async readBlob(ref, sha) {
       const p = `projects/${encodeURIComponent(projectPath(ref))}/repository/blobs/${encodeURIComponent(sha)}/raw`;
       const response = await send("GET", new URL(p, apiBase), { headers: { "private-token": opts.token } });

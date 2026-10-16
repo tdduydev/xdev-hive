@@ -455,7 +455,7 @@ description: "Task list: tài liệu trên hub, nhập từ repo, đồng bộ h
     - `specs/018-docs-repo-sync/research.md` (thêm mục 7 "Kết quả smoke")
   - **Kiểm**: mọi bước có kết quả; lỗi tìm ra thành task mới.
 
-- [ ] **T029 [—] [vừa] · 0,5 ngày — Nhập markdown khi hook đẩy đang bật**
+- [x] **T029 [—] [vừa] · 0,5 ngày — Nhập markdown khi hook đẩy đang bật**
   - **Phụ thuộc**: T012, T013. Tìm ra ở T026.
   - **Lỗi**: tiến trình worker gọi `registerPush` nên `onDocSaved` luôn bật. Hook chỉ bỏ qua nguồn `repo`, nên
     `importMarkdown` → `saveDocFromSync({ source: "import" })` đã chèn dòng `doc_repo_files` chờ đẩy. Lệnh chèn của
