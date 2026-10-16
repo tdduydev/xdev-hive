@@ -299,6 +299,7 @@ export const codeReviewComment = z.object({
   deletedAt: z.string().datetime().nullable(),
   syncState: z.enum(["pending", "synced", "fallback", "failed", "disabled"]).nullable().optional(),
   providerUrl: z.string().url().nullable().optional(),
+  syncError: z.string().nullable().optional(),
 });
 export const codeReviewCommentThread = z.object({
   id,
@@ -317,6 +318,9 @@ export type CodeReviewCommentThread = z.output<typeof codeReviewCommentThread>;
 
 export const codeReviewsContract = {
   comments: {
+    retrySync: orgRoute("POST", "/v1/code-reviews/comments/retry-sync", "Thử lại đồng bộ bình luận", "code-reviews")
+      .input(z.object({ commentId: id }))
+      .output(codeReviewComment),
     list: orgRoute("GET", "/v1/code-reviews/comments", "Luồng bình luận review code", "code-reviews")
       .input(z.object({ reviewId: id }))
       .output(z.object({ threads: z.array(codeReviewCommentThread) })),

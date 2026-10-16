@@ -4,7 +4,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { type OrgFixture, pgCode, seedOrg } from "../../../test/org-fixture.ts";
 import { createPool, withTenant } from "../platform/index.ts";
-import { codeReviewComments, codeReviewGateRuns, codeReviews } from "./schema.ts";
+import { codeReviewCommentLinks, codeReviewComments, codeReviewGateRuns, codeReviews } from "./schema.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -47,6 +47,10 @@ async function seed(name: "a" | "b") {
      values ($1, $2, $3, $1, 'a.ts', 1, 'new', 'sha', 'Góp ý')`,
     [commentId, org.orgId, rows[0].id],
   );
+  await admin.query(
+    `insert into hive.code_review_comment_links (org_id, comment_id, connection_id, provider, pr_number) values ($1, $2, $3, 'github', 1)`,
+    [org.orgId, commentId, randomUUID()],
+  );
   seeded[name] = { org, reviewId: rows[0].id, gateRunId: gate.rows[0].id, commentId };
 }
 
@@ -65,6 +69,7 @@ describe("RLS bảng review code", () => {
       expect(await tx.select().from(codeReviews)).toHaveLength(0);
       expect(await tx.select().from(codeReviewGateRuns)).toHaveLength(0);
       expect(await tx.select().from(codeReviewComments)).toHaveLength(0);
+      expect(await tx.select().from(codeReviewCommentLinks)).toHaveLength(0);
     });
   });
 
@@ -73,6 +78,9 @@ describe("RLS bảng review code", () => {
       const reviews = await tx.select().from(codeReviews);
       const gates = await tx.select().from(codeReviewGateRuns);
       const comments = await tx.select().from(codeReviewComments);
+      const links = await tx.select().from(codeReviewCommentLinks);
+      expect(links.length).toBeGreaterThan(0);
+      expect(links.every((row) => row.orgId === seeded.a.org.orgId)).toBe(true);
       expect(comments.length).toBeGreaterThan(0);
       expect(comments.every((r) => r.orgId === seeded.a.org.orgId)).toBe(true);
       expect(reviews.length).toBeGreaterThan(0);
@@ -131,6 +139,30 @@ describe("RLS bảng review code", () => {
       headSha: "sha",
       body: "Góp ý",
     };
+    expect(
+      await inA((tx) =>
+        tx.insert(codeReviewCommentLinks).values({
+          orgId: b.org.orgId,
+          commentId: randomUUID(),
+          connectionId: randomUUID(),
+          provider: "github",
+          prNumber: 1,
+        }),
+      ),
+    ).toBe("42501");
+    expect(
+      await inA((tx) =>
+        tx
+          .update(codeReviewCommentLinks)
+          .set({ orgId: b.org.orgId })
+          .where(eq(codeReviewCommentLinks.commentId, a.commentId)),
+      ),
+    ).toBe("42501");
+    await withTenant(app, { orgId: a.org.orgId }, async (tx) => {
+      expect(
+        await tx.delete(codeReviewCommentLinks).where(eq(codeReviewCommentLinks.commentId, b.commentId)).returning(),
+      ).toHaveLength(0);
+    });
     expect(await inA((tx) => tx.insert(codeReviewComments).values(value))).toBe("42501");
     expect(
       await inA((tx) =>
@@ -156,12 +188,12 @@ describe("RLS bảng review code", () => {
     });
   });
 
-  it("cả ba bảng bật và ép RLS", async () => {
+  it("cả bốn bảng bật và ép RLS", async () => {
     const { rows } = await admin.query(
       `select relname, relrowsecurity, relforcerowsecurity from pg_class
-       where oid in ('hive.code_reviews'::regclass, 'hive.code_review_gate_runs'::regclass, 'hive.code_review_comments'::regclass)`,
+       where oid in ('hive.code_reviews'::regclass, 'hive.code_review_gate_runs'::regclass, 'hive.code_review_comments'::regclass, 'hive.code_review_comment_links'::regclass)`,
     );
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     for (const r of rows) expect([r.relname, r.relrowsecurity, r.relforcerowsecurity]).toEqual([r.relname, true, true]);
   });
 
