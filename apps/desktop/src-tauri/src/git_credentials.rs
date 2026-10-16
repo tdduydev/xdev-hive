@@ -9,6 +9,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use url::Url;
 
+use crate::no_window::NoWindow;
+
 const TIMEOUT: Duration = Duration::from_secs(15);
 
 pub fn server(kind: &str, raw: &str) -> Result<Url, String> {
@@ -49,9 +51,8 @@ fn command(program: &str) -> Command {
         .env_remove("SSH_ASKPASS")
         .stderr(Stdio::null())
         .stdout(Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(windows)]
-    cmd.creation_flags(0x0800_0000);
+        .kill_on_drop(true)
+        .no_window();
     cmd
 }
 

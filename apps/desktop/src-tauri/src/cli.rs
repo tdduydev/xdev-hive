@@ -16,6 +16,7 @@
 //! tiến trình và không vướng giới hạn độ dài dòng lệnh của Windows.
 
 use crate::doctor::{extract_version, run_with_timeout, user_path};
+use crate::no_window::NoWindow;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -780,12 +781,7 @@ fn command(
         // Nhóm tiến trình riêng để huỷ giết được cả tiến trình con của CLI.
         cmd.process_group(0);
     }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // App GUI: không bật cửa sổ console cho CLI.
-        cmd.creation_flags(0x0800_0000);
-    }
+    cmd.no_window();
     cmd
 }
 
@@ -1003,11 +999,6 @@ fn cli_output(program: &str, args: &[&str]) -> Option<(Option<i32>, String)> {
         .envs(child_env(std::env::vars_os(), user_path()));
     if let Some(home) = std::env::var_os("HOME") {
         cmd.current_dir(home);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
     }
     let out = run_with_timeout(cmd, Duration::from_secs(15))?;
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();

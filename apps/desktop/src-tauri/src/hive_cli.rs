@@ -147,8 +147,7 @@ fn install_at(dir: &Path, source: &Path) -> Result<(), String> {
 
 #[cfg(windows)]
 fn install_at(dir: &Path, source: &Path) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    use crate::no_window::NoWindow;
 
     let target = dir.join(EXE);
     std::fs::create_dir_all(dir)
@@ -169,7 +168,7 @@ fn install_at(dir: &Path, source: &Path) -> Result<(), String> {
     let status = std::process::Command::new("powershell.exe")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .env("HIVE_BIN_DIR", dir)
-        .creation_flags(CREATE_NO_WINDOW)
+        .no_window()
         .status()
         .map_err(|e| {
             format!(

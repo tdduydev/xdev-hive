@@ -19,6 +19,7 @@ use base64::Engine;
 
 use super::job::{Ctl, Step, output_within};
 use super::{App, wait_gone};
+use crate::no_window::NoWindow;
 
 pub(super) const NOT_INSTALLED: &str = "Chưa thấy Claude Desktop (bản cài từ claude.ai hay Microsoft Store). Cài Claude Desktop rồi thử lại.";
 
@@ -197,16 +198,6 @@ fn desktop_pids(procs: &[Proc]) -> Vec<u32> {
     pids
 }
 
-/// Lệnh console chạy từ app GUI: không mở cửa sổ đen.
-fn hidden(cmd: &mut Command) -> &mut Command {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
-    }
-    cmd
-}
-
 /// Chạy script PowerShell, trả stdout; quá `within` là None. Script truyền qua `-EncodedCommand` (UTF-16LE base64) để
 /// khỏi lo cách Windows tách dấu nháy; stdout đặt UTF-8 để đường dẫn có chữ Việt không bị đổi mã.
 fn powershell(script: &str, within: Duration) -> Option<String> {
@@ -214,14 +205,14 @@ fn powershell(script: &str, within: Duration) -> Option<String> {
     let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
     let out = output_within(
-        hidden(Command::new("powershell.exe").args([
+        Command::new("powershell.exe").args([
             "-NoProfile",
             "-NonInteractive",
             "-ExecutionPolicy",
             "Bypass",
             "-EncodedCommand",
             &encoded,
-        ])),
+        ]),
         within,
     )?;
     out.status
@@ -500,9 +491,10 @@ fn app_user_model_id(family: &str) -> String {
 /// xét lỗi lúc chạy lệnh.
 pub(super) fn launch(app: &App) -> Result<(), String> {
     let spawned = match app {
-        App::Squirrel(exe) => Command::new(exe).spawn().map(|_| ()),
+        App::Squirrel(exe) => Command::new(exe).no_window().spawn().map(|_| ()),
         App::Msix { family, .. } => Command::new("explorer.exe")
             .arg(format!("shell:AppsFolder\\{}", app_user_model_id(family)))
+            .no_window()
             .spawn()
             .map(|_| ()),
         App::Mac(_) => return Err("Không phải bản Claude Desktop cho Windows.".into()),
@@ -902,7 +894,9 @@ mod tests {
                 .all(|p| p.exe.to_ascii_lowercase().ends_with("claude.exe") || p.exe.is_empty())
         );
 
-        let mut child = hidden(Command::new("ping").args(["-n", "600", "127.0.0.1"]))
+        let mut child = Command::new("ping")
+            .args(["-n", "600", "127.0.0.1"])
+            .no_window()
             .stdout(std::process::Stdio::null())
             .spawn()
             .unwrap();

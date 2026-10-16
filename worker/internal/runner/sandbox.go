@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // SandboxConfig selects the one-shot container runtime used by runner hosts.
@@ -93,7 +95,7 @@ func (r Runner) sandboxCommand(job Job, work string, command []string) (*exec.Cm
 	}
 	env := sandboxCLIEnv(job)
 	args := SandboxRunArgs(s, job.RunID, work, job.repoCache, job.EnvironmentImage, command, env, uid, gid)
-	cmd := exec.Command(s.DockerPath, args...)
+	cmd := procattr.Command(s.DockerPath, args...)
 	cmd.Dir = work
 	cmd.Env = mergeEnv(os.Environ(), sandboxEnv(env, s))
 	cmd.Stdout = os.Stdout
@@ -108,7 +110,7 @@ func (r Runner) runSandboxSetup(ctx context.Context, job Job, work string) error
 		return err
 	}
 	args := SandboxRunArgs(s, job.RunID, work, job.repoCache, job.EnvironmentImage, []string{"sh", "-lc", job.SetupScript}, mergeMap(job.Env, job.SetupEnv), uid, gid)
-	cmd := exec.CommandContext(ctx, s.DockerPath, args...)
+	cmd := procattr.CommandContext(ctx, s.DockerPath, args...)
 	cmd.Env = mergeEnv(os.Environ(), sandboxEnv(mergeMap(job.Env, job.SetupEnv), s))
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -154,7 +156,7 @@ func (r Runner) removeSandbox(ctx context.Context, runID string) {
 	s := r.Sandbox.normalized()
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, s.DockerPath, "rm", "--force", sandboxName(runID))
+	cmd := procattr.CommandContext(ctx, s.DockerPath, "rm", "--force", sandboxName(runID))
 	_ = cmd.Run()
 }
 
@@ -165,7 +167,7 @@ func ReapSandboxOrphans(ctx context.Context, s SandboxConfig) error {
 	if s.HostID != "" {
 		filter = "label=hive.host=" + s.HostID
 	}
-	cmd := exec.CommandContext(ctx, s.DockerPath, "ps", "--all", "--quiet", "--filter", filter)
+	cmd := procattr.CommandContext(ctx, s.DockerPath, "ps", "--all", "--quiet", "--filter", filter)
 	out, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("liệt kê container cũ: %w", err)
@@ -175,7 +177,7 @@ func ReapSandboxOrphans(ctx context.Context, s SandboxConfig) error {
 		return nil
 	}
 	args := append([]string{"rm", "--force"}, ids...)
-	if err := exec.CommandContext(ctx, s.DockerPath, args...).Run(); err != nil {
+	if err := procattr.CommandContext(ctx, s.DockerPath, args...).Run(); err != nil {
 		return fmt.Errorf("dọn container cũ: %w", err)
 	}
 	return nil

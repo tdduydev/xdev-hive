@@ -11,6 +11,8 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::time::{Duration, Instant};
 
+use crate::no_window::NoWindow;
+
 /// Bằng hạn của mã đổi trên hub: quá lâu thì mã cũng đã hết hạn.
 const WAIT: Duration = Duration::from_secs(5 * 60);
 
@@ -71,6 +73,7 @@ pub fn hostname() -> String {
         return name;
     }
     std::process::Command::new("hostname")
+        .no_window()
         .output()
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())

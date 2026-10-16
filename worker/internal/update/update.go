@@ -24,7 +24,6 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -32,6 +31,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 //go:embed release-signing.pem
@@ -419,7 +420,7 @@ func stage(dir, pattern string, binary []byte, version string, isHive bool) (str
 	if err := os.Chmod(name, 0o755); err != nil {
 		return "", err
 	}
-	out, err := exec.Command(name, "version").Output()
+	out, err := procattr.Command(name, "version").Output()
 	if err != nil && !(isHive && len(out) > 0) {
 		return "", fmt.Errorf("bản mới không chạy được trên máy này: %w", err)
 	}

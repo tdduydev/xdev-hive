@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
@@ -918,7 +919,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				}
 				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", allowed)
 			}
-			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }, input: InputStreamJSON, notice: routeNotice}, nil
+			return &cliExecCmd{Cmd: procattr.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }, input: InputStreamJSON, notice: routeNotice}, nil
 		case "codex":
 			url := mcpURL(j.Env)
 			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
@@ -949,7 +950,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				}
 			}
 			args = append(args, j.Prompt)
-			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
+			return &cliExecCmd{Cmd: procattr.Command("codex", args...)}, nil
 		case "gemini":
 			args := []string{"-p", j.Prompt}
 			if _, err := writeGeminiSettings(j); err != nil {
@@ -966,11 +967,11 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			args = append(args, "--skip-trust")
 			// Run plan và leader không nhận policy cho phép shell hay chế độ yolo, vì chúng ghi đè chế độ plan chỉ đọc.
 			if readOnlyKind(j.Kind) {
-				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+				return &cliExecCmd{Cmd: procattr.Command("gemini", args...)}, nil
 			}
 			if j.RunPermissions == "full" {
 				args = append(args, "--approval-mode", "yolo")
-				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+				return &cliExecCmd{Cmd: procattr.Command("gemini", args...)}, nil
 			}
 			policy, err := os.CreateTemp("", "xdev-hive-policy-*.toml")
 			if r.Sandbox != nil {
@@ -989,7 +990,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if r.Sandbox != nil {
 				args[len(args)-1] = "/workspace/" + filepath.Base(policy.Name())
 			}
-			return &cliExecCmd{Cmd: exec.Command("gemini", args...), cleanup: func() { _ = os.Remove(policy.Name()) }}, nil
+			return &cliExecCmd{Cmd: procattr.Command("gemini", args...), cleanup: func() { _ = os.Remove(policy.Name()) }}, nil
 		case "antigravity":
 			config, err := writeAntigravityMCPConfig(j)
 			if err != nil {
@@ -1024,7 +1025,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				}
 				args = append(args, "--dangerously-skip-permissions")
 			}
-			return &cliExecCmd{Cmd: exec.Command(Binary(j.CLI), args...), notice: notice}, nil
+			return &cliExecCmd{Cmd: procattr.Command(Binary(j.CLI), args...), notice: notice}, nil
 		default:
 			return nil, fmt.Errorf("runner: CLI không hợp lệ: %s", j.CLI)
 		}
@@ -1034,7 +1035,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			configured.Args[i] = strings.ReplaceAll(configured.Args[i], "{{prompt}}", j.Prompt)
 		}
 	}
-	return &cliExecCmd{Cmd: exec.Command(configured.Path, configured.Args...), input: configured.Input}, nil
+	return &cliExecCmd{Cmd: procattr.Command(configured.Path, configured.Args...), input: configured.Input}, nil
 }
 
 func claudeMCPConfig(env map[string]string) (string, error) {
@@ -1099,14 +1100,14 @@ func safeName(s string) string {
 	return b.String()
 }
 func git(ctx context.Context, dir string, args ...string) error {
-	c := exec.CommandContext(ctx, "git", args...)
+	c := procattr.CommandContext(ctx, "git", args...)
 	c.Dir = dir
 	c.Stdout = io.Discard
 	c.Stderr = os.Stderr
 	return c.Run()
 }
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {
-	c := exec.CommandContext(ctx, "git", args...)
+	c := procattr.CommandContext(ctx, "git", args...)
 	c.Dir = dir
 	b, e := c.Output()
 	return string(b), e
@@ -1136,9 +1137,9 @@ func mergeEnv(base []string, over map[string]string) []string {
 func runSetup(ctx context.Context, dir, script string, env map[string]string) error {
 	var c *exec.Cmd
 	if runtime.GOOS == "windows" {
-		c = exec.CommandContext(ctx, "cmd.exe", "/C", script)
+		c = procattr.CommandContext(ctx, "cmd.exe", "/C", script)
 	} else {
-		c = exec.CommandContext(ctx, "sh", "-c", script)
+		c = procattr.CommandContext(ctx, "sh", "-c", script)
 	}
 	c.Dir = dir
 	c.Env = mergeEnv(os.Environ(), env)

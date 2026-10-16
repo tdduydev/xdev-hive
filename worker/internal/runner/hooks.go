@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // Hook là hook bắt buộc của tổ chức (Chính sách agent trên hub, specs/002-agent-policies).
@@ -98,13 +100,13 @@ func (r Runner) runStopHooks(ctx context.Context, job Job, work string, stdout, 
 				return err
 			}
 			args := SandboxRunArgs(s, job.RunID+"-hook", work, job.repoCache, job.EnvironmentImage, []string{"sh", "-lc", h.Command}, env, uid, gid)
-			cmd = exec.CommandContext(hctx, s.DockerPath, args...)
+			cmd = procattr.CommandContext(hctx, s.DockerPath, args...)
 			cmd.Env = mergeEnv(os.Environ(), sandboxEnv(env, s))
 		} else {
 			if runtime.GOOS == "windows" {
-				cmd = exec.CommandContext(hctx, "cmd.exe", "/C", h.Command)
+				cmd = procattr.CommandContext(hctx, "cmd.exe", "/C", h.Command)
 			} else {
-				cmd = exec.CommandContext(hctx, "sh", "-c", h.Command)
+				cmd = procattr.CommandContext(hctx, "sh", "-c", h.Command)
 			}
 			cmd.Dir = work
 			cmd.Env = mergeEnv(os.Environ(), env)

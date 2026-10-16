@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 
+use crate::no_window::NoWindow;
 use crate::sidecar_json;
 
 const SERVICE: &str = "dev.xdev.hive.git";
@@ -486,6 +487,7 @@ pub async fn open_folder(folder: String) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     let mut cmd = std::process::Command::new("xdg-open");
     cmd.arg(&dir)
+        .no_window()
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("Không mở được thư mục: {e}"))
@@ -505,13 +507,12 @@ pub async fn open_folder_terminal(folder: String) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
         // `start /D` đặt thư mục cho cửa sổ cmd mới; thư mục là một đối số, không ghép vào chuỗi lệnh.
         std::process::Command::new("cmd")
             .args(["/C", "start", "", "/D"])
             .arg(&dir)
             .arg("cmd")
-            .creation_flags(0x0800_0000)
+            .no_window()
             .spawn()
             .map(|_| ())
             .map_err(|e| format!("Không mở được cửa sổ lệnh: {e}"))

@@ -20,6 +20,7 @@ import (
 
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/localipc"
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/pty"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
@@ -381,13 +382,13 @@ func (l *Local) command(cli string, args []string) (*exec.Cmd, error) {
 				base = append(base, a)
 			}
 		}
-		return exec.Command(c.Path, append(base, args...)...), nil
+		return procattr.Command(c.Path, append(base, args...)...), nil
 	}
 	path, err := l.cliPath(cli)
 	if err != nil {
 		return nil, err
 	}
-	return exec.Command(path, args...), nil
+	return procattr.Command(path, args...), nil
 }
 
 func (l *Local) start(id string, p CreateParams, cols, rows int, term string) (*localSession, error) {
