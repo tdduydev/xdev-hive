@@ -17,6 +17,7 @@ mod hub_ca;
 mod hub_switch;
 mod local_projects;
 mod memory_store;
+mod no_window;
 mod optimizer;
 mod profiles;
 mod pty;
