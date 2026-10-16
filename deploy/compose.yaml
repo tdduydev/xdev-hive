@@ -79,7 +79,13 @@ services:
       timeout: 3s
       retries: 12
   caddy:
-    image: ${HIVE_CADDY_IMAGE:-caddy:2.11.7}
+    # auto: image caddy gốc. dns-cloudflare: thêm module DNS để lấy chứng chỉ Let's Encrypt cho tên miền trỏ về IP nội bộ.
+    build:
+      context: ./caddy
+      target: ${HIVE_TLS:-auto}
+      args:
+        CADDY_IMAGE: ${HIVE_CADDY_IMAGE:-caddy:2.11.7}
+        CADDY_BUILDER_IMAGE: ${HIVE_CADDY_BUILDER_IMAGE:-caddy:2.11.7-builder}
     profiles: [https]
     restart: unless-stopped
     depends_on:
@@ -91,6 +97,9 @@ services:
     environment:
       HIVE_PUBLIC_URL: ${HIVE_PUBLIC_URL:?Set HIVE_PUBLIC_URL}
       HIVE_DEFAULT_SNI: ${HIVE_DEFAULT_SNI:-localhost}
+      HIVE_TLS: ${HIVE_TLS:-auto}
+      # Chỉ chế độ dns-cloudflare đọc; token nằm trong .env của máy chủ, không có trong Caddyfile hay image.
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

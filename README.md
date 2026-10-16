@@ -183,8 +183,12 @@ The hub ships as a Docker Compose stack (hub and PostgreSQL, with an optional Ca
 development machine with SSH access to a server:
 
 ```sh
-HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com deploy/remote.sh user@server
+HIVE_PUBLIC_URL=https://hive.example.com HIVE_TLS=auto HIVE_ORG_CREATORS=admin@example.com deploy/remote.sh user@server
 ```
+
+`HIVE_TLS=auto` suits a server reachable from the Internet. For a domain that points at a private IP, Caddy gets a
+Let's Encrypt certificate over DNS-01 with a Cloudflare token kept in the server's `.env`; an IP address uses Caddy's
+internal CA. See [docs/self-hosting.md](docs/self-hosting.md).
 
 Secrets are generated on the server and never printed. Then create a one-time token in the web app (Machines → Add
 machine) and install the worker on each machine. The script downloads the prebuilt binary, checks the release signature

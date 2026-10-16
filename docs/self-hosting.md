@@ -7,7 +7,11 @@ and optional sandboxed runs.
 
 - A Linux server with Docker and Docker Compose v2.
 - SSH access from a development machine that has a checkout of this repository.
-- For HTTPS: a DNS name pointing at the server (the Compose stack includes an optional Caddy profile).
+- For HTTPS (the Compose stack includes an optional Caddy profile), one of:
+  - a public DNS name pointing at the server (Caddy gets a certificate over HTTP);
+  - an internal DNS name in a Cloudflare zone that points at a private IP (Let's Encrypt over DNS-01, see
+    [Internal domain with a Let's Encrypt certificate](#internal-domain-with-a-lets-encrypt-certificate));
+  - only an IP address (Caddy's internal CA; users trust it once, see [CA riêng của hub nội bộ](#ca-riêng-của-hub-nội-bộ)).
 
 ## Deploy with `deploy/remote.sh`
 
@@ -24,7 +28,10 @@ HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com dep
   `<dir>/.env` (mode 600). They are never printed and never copied back. **Back up `HIVE_MASTER_KEY`**: losing it
   means losing every stored secret (Git tokens, notification channels).
 - Later runs keep existing secrets and only add variables that are missing. `HIVE_PUBLIC_URL`, `HIVE_BIND`,
-  `HIVE_POSTGRES_IMAGE` and `HIVE_NODE_IMAGE` follow the command line.
+  `HIVE_TLS`, `HIVE_POSTGRES_IMAGE` and `HIVE_NODE_IMAGE` follow the command line.
+- `HIVE_PUBLIC_URL=https://<IP>` turns on the `https` profile with Caddy's internal CA. `https://<domain name>` turns on
+  the `https` profile with `HIVE_TLS=dns-cloudflare` (Let's Encrypt over DNS-01) unless you pass `HIVE_TLS=auto`; with
+  `auto`, Caddy gets a certificate over HTTP and the script leaves `COMPOSE_PROFILES` as it is.
 - If the server already runs another Compose project named `xdev-hive`, set `HIVE_COMPOSE_PROJECT` to a different name
   on the first run; otherwise Compose treats the other stack's containers as its own. The name is saved in `<dir>/.env`.
 - If the SSH user is not in the `docker` group, set `HIVE_REMOTE_DOCKER="sudo docker"`.
@@ -34,22 +41,74 @@ HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com dep
   container and the deployed file. If they differ, it recreates only Caddy to refresh its single-file bind mount;
   this briefly interrupts HTTPS. An unchanged Caddyfile does not trigger a restart. A directory mount alone would
   not fix this because deployment replaces the entire `src` directory.
-- After the hub is healthy, HTTPS deployments check that `/ca.crt` returns HTTP 200 and a valid PEM certificate,
-  retrying up to three times. A failure prints a warning with the Caddy log command without failing the hub deploy.
-  This endpoint check accepts an untrusted TLS certificate without installing it. Public-CA deployments without a
-  local CA file can also produce this warning.
+- After the hub is healthy, HTTPS deployments check the certificate from inside the hub container. A failure prints a
+  warning with the Caddy log command without failing the hub deploy.
+  - IP address: `/ca.crt` must return HTTP 200 and a valid PEM certificate, retrying up to three times. This check
+    accepts the untrusted internal CA without installing it.
+  - Domain name: `/api/v1/health` must answer over TLS verified with the system CA store (no `/ca.crt` needed),
+    retrying for up to two minutes while Let's Encrypt issues the certificate.
 
 Health check: `GET /api/v1/health` returns the running commit.
 
 ### HTTPS, LAN servers and MCP over HTTP
 
-- With a public DNS name, keep the default `HIVE_BIND` and add the Compose profile `https` (Caddy).
+- With a public DNS name, keep the default `HIVE_BIND`, deploy with `HIVE_TLS=auto` and add the Compose profile
+  `https` (Caddy). For a DNS name that points at a private IP, see the next section.
 - On a LAN without HTTPS, set `HIVE_BIND=0.0.0.0`. The MCP endpoint `/mcp` then switches off automatically because
   `HIVE_PUBLIC_URL` is not HTTPS.
 - To let agents in runs keep calling MCP tools over plain HTTP on a network you trust, set `HIVE_MCP_ALLOW_HTTP=1`
   (off by default). `/mcp` then accepts **only run tokens**: OAuth tokens and requests without a run token get 401, and
   OAuth discovery and user login stay HTTPS-only. Run tokens travel in clear text, so only enable this when the network
   between the server and the worker machines is trusted. The hub logs a warning at start-up.
+
+### Internal domain with a Let's Encrypt certificate
+
+A hub reachable only on the LAN can still have a certificate that every browser, app and worker trusts: point a name in
+a Cloudflare zone at the private IP and let Caddy prove ownership with a DNS TXT record (ACME DNS-01). Let's Encrypt
+never connects to the server; the server only needs outbound HTTPS to Let's Encrypt and the Cloudflare API. Example:
+`hive.example.com` (zone `example.com`) → `192.0.2.10`. The name is published in Certificate Transparency logs and anyone
+can resolve it to the private IP; the hub itself stays unreachable from the Internet.
+
+1. **DNS record.** In the Cloudflare dashboard, zone `example.com` → DNS → Records → Add record: type `A`, name `hive`,
+   IPv4 `192.0.2.10`, proxy status **DNS only** (grey cloud). A proxied record cannot work because Cloudflare cannot
+   reach a private IP. Some routers and resolvers drop public answers that point at private IPs (DNS rebinding
+   protection); if clients cannot resolve the name, allow the domain there or add the same record to the internal DNS.
+2. **API token with the smallest scope.** My Profile → API Tokens → Create Token → Create Custom Token:
+   - Permissions: `Zone` · `Zone` · `Read` and `Zone` · `DNS` · `Edit` (the module looks up the zone, then writes TXT
+     records);
+   - Zone Resources: `Include` · `Specific zone` · `example.com`;
+   - optionally Client IP Address Filtering with the server's outbound IP, and an expiry date you will track.
+
+   The token is shown once. Do not paste it into chat, tickets or a command line.
+3. **Store the token on the server only**, in `<dir>/.env` (default `/opt/xdev-hive/.env`, mode 600). `remote.sh` never
+   takes the token as an argument, so it does not end up in shell history or in `ps`. From the development machine,
+   this prompts without echo and appends the line on the server:
+
+   ```sh
+   ssh -t user@server 'umask 077; mkdir -p /opt/xdev-hive; printf "CF_API_TOKEN: "; stty -echo; IFS= read -r t;
+     stty echo; echo; printf "CF_API_TOKEN=%s\n" "$t" >>/opt/xdev-hive/.env; chmod 600 /opt/xdev-hive/.env'
+   ```
+
+   Or edit the file with an editor on the server and add `CF_API_TOKEN=<token>` without quotes. The deploy stops with
+   an error, without printing the value, when the token is missing or malformed (the Cloudflare module would otherwise
+   log a malformed token verbatim). To rotate the token, replace the line and deploy again.
+4. **Deploy:**
+
+   ```sh
+   HIVE_PUBLIC_URL=https://hive.example.com deploy/remote.sh user@server
+   ```
+
+   The script saves `HIVE_TLS=dns-cloudflare` and `COMPOSE_PROFILES=https`. Compose builds the Caddy image from
+   `deploy/caddy/Dockerfile` (Caddy 2.11.7 with `github.com/caddy-dns/cloudflare`, both pinned), so the first deploy
+   needs a few minutes and outbound access to Docker Hub and the Go module proxy. Caddy resolves the TXT record with
+   public resolvers (`1.1.1.1`, `1.0.0.1`) because the internal DNS may not see it. The check after deploy waits up to
+   two minutes for the certificate; logs: `docker compose … logs caddy`.
+
+**Moving from `https://<IP>`.** If the hub ran on `https://192.0.2.10` before, `HIVE_DEFAULT_SNI=192.0.2.10` stays in
+`.env` and Caddy keeps serving the IP with the internal CA (and `/ca.crt`) next to the domain, so machines that still use
+the IP keep working while you switch them over. Sign-in links and OAuth redirects use `HIVE_PUBLIC_URL`, so browsers
+should move to the domain first. When nothing uses the IP any more, remove `HIVE_DEFAULT_SNI` from `.env` and deploy
+again. To go back to the IP, deploy with `HIVE_PUBLIC_URL=https://192.0.2.10`; the script resets `HIVE_TLS=auto`.
 
 ### CA riêng của hub nội bộ
 
@@ -92,6 +151,9 @@ Copy `deploy/.env.example` to `deploy/.env`, set passwords, secrets and `HIVE_OR
 ```sh
 docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build
 ```
+
+Add `COMPOSE_PROFILES=https` to the env file for Caddy. For an internal domain, also set `HIVE_TLS=dns-cloudflare` and
+`CF_API_TOKEN` there (see the section above).
 
 The hub bootstraps its database roles (including `hive_jobs` for the job queue), runs migrations and starts the API.
 
