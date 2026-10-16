@@ -54,8 +54,8 @@ test("đăng xuất thì về trang đăng nhập", async ({ page }) => {
 
 // Giá trị theo docs/design-system/tokens.json: background, card, primary, primary-foreground.
 for (const [scheme, canvas, surface, accent, onAccent] of [
-  ["light", "rgb(248, 250, 252)", "rgb(255, 255, 255)", "rgb(29, 78, 216)", "rgb(255, 255, 255)"],
-  ["dark", "rgb(15, 23, 42)", "rgb(27, 35, 54)", "rgb(96, 165, 250)", "rgb(15, 23, 42)"],
+  ["light", "rgb(245, 247, 251)", "rgb(255, 255, 255)", "rgb(28, 88, 255)", "rgb(255, 255, 255)"],
+  ["dark", "rgb(10, 19, 34)", "rgb(17, 30, 54)", "rgb(63, 169, 255)", "rgb(10, 19, 34)"],
 ] as const) {
   test(`màu theo chế độ ${scheme} của hệ điều hành, đúng token mockup`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });

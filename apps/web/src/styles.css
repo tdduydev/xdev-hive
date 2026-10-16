@@ -1,7 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/ibm-plex-sans";
+/* Be Vietnam Pro không có bản variable: nạp đúng các độ đậm app dùng. Mỗi file có đủ tập chữ Việt (unicode-range). */
+@import "@fontsource/be-vietnam-pro/400.css";
+@import "@fontsource/be-vietnam-pro/400-italic.css";
+@import "@fontsource/be-vietnam-pro/500.css";
+@import "@fontsource/be-vietnam-pro/600.css";
+@import "@fontsource/be-vietnam-pro/700.css";
 @import "@fontsource-variable/jetbrains-mono";
 /* Kiểu chữ tài liệu (Markdown, khối code, Mermaid) dùng chung với trình soạn: một nguồn trong packages/ui. */
 @import "../../../packages/ui/src/prose.css";
@@ -13,11 +18,12 @@
 @source "../../../packages/sdlc-ui/src";
 
 /*
- * Design system v2: docs/design-system/xdev-hive/MASTER.md (UI UX Pro Max: Minimalism & Swiss, bảng màu công cụ dev,
- * màu chính là xanh thương hiệu). Giá trị màu lấy từ docs/design-system/tokens.json; src/lib/contrast.test.ts đọc lại
- * cả hai file để giá trị không lệch và các cặp chữ/nền vẫn đạt WCAG AA.
- * Tên biến theo shadcn/ui để component thêm qua shadcn MCP dùng được ngay; success, warning, *-soft và brand-* là phần
- * thêm của Hive. Font tự host (fontsource) để hub trong mạng nội bộ không phụ thuộc Google Fonts.
+ * Design system v3 "Navy Hive": docs/design-system/xdev-hive/MASTER.md. Màu lấy từ logo: navy của ô lục giác cho
+ * sidebar, xanh của chữ X cho hành động, xám pha navy cho bề mặt. Giá trị màu lấy từ docs/design-system/tokens.json;
+ * src/lib/contrast.test.ts đọc lại cả hai file để giá trị không lệch và các cặp chữ/nền vẫn đạt WCAG AA.
+ * Tên biến theo shadcn/ui để component thêm qua shadcn MCP dùng được ngay; success, warning, *-soft, brand-* và
+ * sidebar-active*, sidebar-success… là phần thêm của Hive. Font tự host (fontsource) để hub trong mạng nội bộ không phụ
+ * thuộc Google Fonts.
  */
 
 /* Tối theo class `.dark` trên <html>; index.html đặt class theo lựa chọn đã lưu hoặc theo hệ điều hành. */
@@ -29,39 +35,44 @@
   --brand-deep: #004cff;
   --brand-navy: #142745;
   --brand-letter: #344568;
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f5f7fb;
+  --foreground: #0f1b31;
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #0f1b31;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #1d4ed8;
+  --popover-foreground: #0f1b31;
+  --primary: #1c58ff;
   --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f1f5f9;
-  --muted-foreground: #475569;
-  --accent: #e5edff;
-  --accent-foreground: #1e3a8a;
+  --secondary: #eef2f8;
+  --secondary-foreground: #0f1b31;
+  --muted: #eef2f8;
+  --muted-foreground: #55627a;
+  --accent: #e6eeff;
+  --accent-foreground: #1c3fb0;
   --destructive: #c81e1e;
-  --destructive-soft: #fef2f2;
-  --success: #15803d;
-  --success-soft: #f0fdf4;
+  --destructive-soft: #fdecec;
+  --success: #16803d;
+  --success-soft: #e8f7ee;
   --warning: #b45309;
-  --warning-soft: #fffbeb;
-  --border: #e2e8f0;
-  --input: #8492a6;
-  --ring: #2563eb;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #0f172a;
+  --warning-soft: #fff4db;
+  --border: #e2e7f0;
+  --input: #8490a6;
+  --ring: #1c58ff;
+  --sidebar: #142745;
+  --sidebar-foreground: #a9b8d4;
+  --sidebar-accent: #1b3358;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-active: #1c3e66;
+  --sidebar-active-icon: #7fd0ff;
+  --sidebar-primary: #3fa9ff;
+  --sidebar-primary-foreground: #0a1322;
+  --sidebar-border: #22406e;
+  --sidebar-ring: #7fd0ff;
+  --sidebar-success: #4ade80;
+  --sidebar-warning: #fbbf24;
+  --sidebar-destructive: #f87171;
   --radius: 0.5rem;
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--accent);
-  --sidebar-accent-foreground: var(--accent-foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
-  --chart-1: #2563eb;
+  --chart-1: #1c58ff;
   --chart-2: #16a34a;
   --chart-3: #d97706;
   --chart-4: #9333ea;
@@ -73,32 +84,38 @@
   --brand-blue: #3fa9ff;
   --brand-deep: #1c58ff;
   --brand-letter: #e8ecf8;
-  --background: #0f172a;
-  --foreground: #f8fafc;
-  --card: #1b2336;
-  --card-foreground: #f8fafc;
-  --popover: #1b2336;
-  --popover-foreground: #f8fafc;
-  --primary: #60a5fa;
-  --primary-foreground: #0f172a;
-  --secondary: #272f42;
-  --secondary-foreground: #f8fafc;
-  --muted: #272f42;
-  --muted-foreground: #94a3b8;
-  --accent: #1e3a5f;
-  --accent-foreground: #dbeafe;
+  --background: #0a1322;
+  --foreground: #e8ecf8;
+  --card: #111e36;
+  --card-foreground: #e8ecf8;
+  --popover: #111e36;
+  --popover-foreground: #e8ecf8;
+  --primary: #3fa9ff;
+  --primary-foreground: #0a1322;
+  --secondary: #17253f;
+  --secondary-foreground: #e8ecf8;
+  --muted: #17253f;
+  --muted-foreground: #8fa3c7;
+  --accent: #16305a;
+  --accent-foreground: #b8f1ff;
   --destructive: #f87171;
   --destructive-soft: #3a1d24;
   --success: #4ade80;
-  --success-soft: #16321f;
+  --success-soft: #12321f;
   --warning: #fbbf24;
-  --warning-soft: #33290f;
-  --border: #334155;
-  --input: #64748b;
-  --ring: #93c5fd;
-  --sidebar: #111a2e;
-  --sidebar-foreground: #f8fafc;
-  --chart-1: #60a5fa;
+  --warning-soft: #3a2e10;
+  --border: #1f2f4d;
+  --input: #536990;
+  --ring: #b8f1ff;
+  --sidebar: #0f1b31;
+  --sidebar-foreground: #8fa3c7;
+  --sidebar-accent: #16274a;
+  --sidebar-accent-foreground: #f1f5ff;
+  --sidebar-active: #173252;
+  --sidebar-active-icon: #b8f1ff;
+  --sidebar-border: #1f2f4d;
+  --sidebar-ring: #b8f1ff;
+  --chart-1: #3fa9ff;
   --chart-2: #4ade80;
   --chart-3: #fbbf24;
   --chart-4: #c084fc;
@@ -140,6 +157,8 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-icon: var(--sidebar-active-icon);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-chart-1: var(--chart-1);
@@ -148,8 +167,8 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  --font-sans: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-heading: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, Menlo, monospace;
 
   --radius-sm: calc(var(--radius) * 0.6);
@@ -179,6 +198,31 @@
   [data-slot="table"] > tbody > tr {
     @apply transition-colors hover:bg-muted/40;
   }
+}
+
+/*
+ * Sidebar navy ở cả hai theme. Trong sidebar, token chung trỏ sang token sidebar để nút ghost, avatar, viền và chữ phụ
+ * của component dùng chung đọc được trên nền navy mà không cần biến thể riêng. Xanh lá, cam, đỏ của theme sáng dưới
+ * 3:1 trên navy nên trong sidebar dùng sidebar-success… (bản của theme tối). Desktop có khối giống hệt
+ * (apps/desktop/src/styles.css).
+ */
+[data-sidebar="sidebar"] {
+  color-scheme: dark;
+  --foreground: var(--sidebar-accent-foreground);
+  --muted-foreground: var(--sidebar-foreground);
+  --background: var(--sidebar);
+  --card: var(--sidebar-accent);
+  --muted: var(--sidebar-accent);
+  --secondary: var(--sidebar-accent);
+  --secondary-foreground: var(--sidebar-accent-foreground);
+  --accent: var(--sidebar-active);
+  --accent-foreground: var(--sidebar-accent-foreground);
+  --border: var(--sidebar-border);
+  --input: var(--sidebar-border);
+  --ring: var(--sidebar-ring);
+  --success: var(--sidebar-success);
+  --warning: var(--sidebar-warning);
+  --destructive: var(--sidebar-destructive);
 }
 
 @layer base {
