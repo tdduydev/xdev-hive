@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { decryptSecret, withTenant } from "../platform/index.ts";
 import { verifyGitHubSignature, verifyGitLabToken } from "../scm/index.ts";
 import { homeSecretContext } from "./homes.ts";
-import { queuePull } from "./jobs.ts";
+import { queuePull } from "./queues.ts";
 import type { DocSyncDeps } from "./routes/deps.ts";
 import { docHomes } from "./schema.ts";
 
