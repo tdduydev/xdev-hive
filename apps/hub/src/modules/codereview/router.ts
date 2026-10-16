@@ -9,6 +9,7 @@ import {
   listReviewComments,
   replyReviewComment,
   resolveReviewComment,
+  retryReviewCommentSync,
 } from "./comments.ts";
 import {
   type DecideDeps,
@@ -29,6 +30,9 @@ export function codeReviewsRouter(deps: OrgDeps & DecideDeps & { runs: CodeRunPo
   return {
     codeReviews: {
       comments: {
+        retrySync: os.comments.retrySync.handler(({ context: { tx, user }, input }) =>
+          retryReviewCommentSync(tx, user.id, input.commentId, deps),
+        ),
         list: os.comments.list.handler(({ context: { tx, user }, input }) =>
           listReviewComments(tx, user.id, input.reviewId),
         ),
@@ -36,15 +40,17 @@ export function codeReviewsRouter(deps: OrgDeps & DecideDeps & { runs: CodeRunPo
         reply: os.comments.reply.handler(({ context: { tx, user }, input }) =>
           replyReviewComment(tx, user.id, input, deps),
         ),
-        edit: os.comments.edit.handler(({ context: { tx, user }, input }) => editReviewComment(tx, user.id, input)),
+        edit: os.comments.edit.handler(({ context: { tx, user }, input }) =>
+          editReviewComment(tx, user.id, input, deps),
+        ),
         delete: os.comments.delete.handler(({ context: { tx, user }, input }) =>
-          deleteReviewComment(tx, user.id, input.commentId),
+          deleteReviewComment(tx, user.id, input.commentId, deps),
         ),
         resolve: os.comments.resolve.handler(({ context: { tx, user }, input }) =>
-          resolveReviewComment(tx, user.id, input.threadId, true),
+          resolveReviewComment(tx, user.id, input.threadId, true, deps),
         ),
         reopen: os.comments.reopen.handler(({ context: { tx, user }, input }) =>
-          resolveReviewComment(tx, user.id, input.threadId, false),
+          resolveReviewComment(tx, user.id, input.threadId, false, deps),
         ),
       },
       list: os.list.handler(({ context: { tx, user }, input }) => listCodeReviews(tx, user.id, input)),
