@@ -1,13 +1,21 @@
 import { Menu } from "@base-ui/react/menu";
-import { ChevronsUpDownIcon, ChevronUpIcon, CloudOffIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
+import {
+  ChevronsUpDownIcon,
+  ChevronUpIcon,
+  CloudOffIcon,
+  ExternalLinkIcon,
+  LogOutIcon,
+  UserRoundIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LogoIcon } from "@/components/logo.tsx";
 import { type Account, initials } from "@/lib/account.ts";
 import { formatBuiltAt, useBuildInfo } from "@/lib/build-info.ts";
 import { folderName, pickFolder, shortPath, useFolder } from "@/lib/folder.ts";
+import { openHubPage } from "@/lib/hub.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { type HubFeatures, navGroups, type Profile, type ScreenId } from "@/lib/nav.ts";
-import type { WorkerView } from "@/lib/tauri.ts";
+import { navGroups, type Profile, type ScreenId, SETTINGS_ITEM, type VisibleNavItem } from "@/lib/nav.ts";
+import { errorText, type WorkerView } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
 import { WORKER_DOT, workerSentence } from "@/lib/worker.ts";
 
@@ -27,6 +35,8 @@ const text: Dict<{
   accountMenu: string;
   accountItem: string;
   signOut: string;
+  web: string;
+  webTitle: string;
 }> = {
   vi: {
     aria: "Điều hướng app",
@@ -44,6 +54,8 @@ const text: Dict<{
     accountMenu: "Tài khoản Hive",
     accountItem: "Tài khoản và vai trò",
     signOut: "Đăng xuất khỏi Hive",
+    web: "Mở hub trên web",
+    webTitle: "Việc của đội (bảng việc, duyệt, Leader, AI SDLC, tài liệu) mở trên web của hub",
   },
   en: {
     aria: "App navigation",
@@ -61,6 +73,8 @@ const text: Dict<{
     accountMenu: "Hive account",
     accountItem: "Account and roles",
     signOut: "Sign out of Hive",
+    web: "Open the hub on the web",
+    webTitle: "Team work (board, reviews, Leader, AI SDLC, docs) opens on the hub's web",
   },
 };
 
@@ -119,9 +133,52 @@ function BuildLine() {
   );
 }
 
+const NAV_LINK = cn(
+  // 13px như AppNav.dc.html: Be Vietnam Pro rộng hơn IBM Plex, menu 220px cần chỗ cho tên mục dài.
+  "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-xs no-underline",
+  "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
+);
+const NAV_IDLE = "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+
+/** Một mục của menu: link tới `#/<màn>`, mờ kèm biểu tượng khi màn cần hub mà chưa đăng nhập. */
+function NavLink({ item, active, connected }: { item: VisibleNavItem; active: ScreenId; connected: boolean }) {
+  const t = useT(text);
+  const lang = useLang();
+  const current = item.id === active;
+  const offline = !connected && !!item.hub;
+  return (
+    <a
+      href={`#/${item.id}`}
+      aria-current={current ? "page" : undefined}
+      title={offline ? `${item.label[lang]} · ${t.needsHubTitle}` : item.label[lang]}
+      data-offline={offline || undefined}
+      className={cn(
+        NAV_LINK,
+        // Một màu chữ cho mỗi trạng thái: hai class màu chữ cùng lúc thì thứ tự trong CSS quyết định.
+        current
+          ? "bg-sidebar-active font-medium text-sidebar-accent-foreground [&>svg]:text-sidebar-active-icon"
+          : cn(
+              "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              offline ? "text-sidebar-foreground/80" : "text-sidebar-foreground",
+            ),
+      )}
+    >
+      <item.icon aria-hidden="true" className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate compact:sr-only">{item.label[lang]}</span>
+      {offline ? (
+        // Biểu tượng chứ không phải chữ, để tên mục cho trình đọc màn hình vẫn đúng tên màn.
+        <CloudOffIcon aria-hidden="true" className="size-3.5 text-muted-foreground compact:hidden" />
+      ) : (
+        item.readOnly && <span className="shrink-0 text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>
+      )}
+    </a>
+  );
+}
+
 /**
  * Thanh điều hướng của app (AppNav.dc.html), nền navy ở cả hai theme (Navy Hive; token chung trỏ sang token sidebar
- * nhờ `data-sidebar`, xem styles.css): logo, thư mục làm việc, mục theo quyền chia nhóm, worker, người đang dùng. Cửa sổ
+ * nhờ `data-sidebar`, xem styles.css): logo, thư mục làm việc, mục theo quyền chia nhóm, rồi ở chân menu "Mở hub trên
+ * web" và Cài đặt, worker, người đang dùng. Cửa sổ
  * hẹp hơn 760px, hoặc màn cần chỗ (`compact`), thì chỉ còn icon như bản `compact` của thiết kế (biến thể `compact:`
  * trong styles.css); tiêu đề nhóm thành vạch ngăn.
  * Thư mục làm việc, trạng thái worker và người dùng chưa có nguồn dữ liệu (specs/008-desktop-v2 T004, T008, T023):
@@ -138,7 +195,6 @@ export function AppNav({
   worker,
   compact = false,
   connected = true,
-  features = {},
 }: {
   profile: Profile;
   active: ScreenId;
@@ -151,24 +207,29 @@ export function AppNav({
   compact?: boolean;
   /** Đã đăng nhập Hive; chưa thì mục cần hub mờ đi kèm nhãn. */
   connected?: boolean;
-  /** Tính năng hub đã dò được; mục của tính năng hub không có thì ẩn. */
-  features?: HubFeatures;
 }) {
   const t = useT(text);
   const lang = useLang();
   const [folder, setFolder] = useFolder();
   const short = useShortWindow();
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [webError, setWebError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const edges = useScrollEdges(listRef);
   // Cửa sổ thấp mới gộp khối chân; thu gọn icon thì khối chân vốn chỉ còn một chấm và một avatar.
   const foldFooter = short && !compact;
-  // Mục đang chọn có thể nằm dưới nếp cuộn (mở app ở màn cuối nhóm "Máy này"): cuộn vào tầm nhìn.
+  // Mục đang chọn có thể nằm dưới nếp cuộn (mở app ở màn cuối nhóm "Dự án"): cuộn vào tầm nhìn.
   // biome-ignore lint/correctness/useExhaustiveDependencies: chạy lại khi đổi màn hoặc đổi chiều cao còn lại của menu
   useEffect(() => {
     listRef.current?.querySelector("[aria-current=page]")?.scrollIntoView?.({ block: "nearest" });
   }, [active, foldFooter]);
   const roleLine = account ? `${t.profiles[profile]} · ${account.teams[0]?.name ?? account.orgName}` : "";
+  // Máy chưa đăng ký thì chưa có hub để mở: mở hộp thoại kết nối Hive thay vì báo lỗi.
+  const openWeb = () => {
+    setWebError(null);
+    if (!worker?.hub) return onAccount?.();
+    openHubPage("/").catch((e: unknown) => setWebError(errorText(e)));
+  };
   return (
     <nav
       aria-label={t.aria}
@@ -214,7 +275,7 @@ export function AppNav({
           onScroll={edges.measure}
           className="flex h-full flex-col gap-1 overflow-y-auto overscroll-contain"
         >
-          {navGroups(profile, undefined, features).map((group, index) => (
+          {navGroups(profile).map((group, index) => (
             // Tên nhóm nằm ở aria-label để trình đọc màn hình vẫn nghe được khi menu thu gọn mất tiêu đề.
             // biome-ignore lint/a11y/useSemanticElements: nhóm liên kết điều hướng, không phải ô nhập của form như fieldset
             <div
@@ -223,7 +284,7 @@ export function AppNav({
               aria-label={group.label[lang]}
               className={cn("flex flex-col gap-1", index > 0 && "compact:mt-1 compact:border-t compact:pt-2")}
             >
-              {!compact && (
+              {!compact && !group.untitled && (
                 <div
                   aria-hidden="true"
                   className={cn(
@@ -234,42 +295,9 @@ export function AppNav({
                   {group.label[lang]}
                 </div>
               )}
-              {group.items.map((item) => {
-                const current = item.id === active;
-                const offline = !connected && !!item.hub;
-                return (
-                  <a
-                    key={item.id}
-                    href={`#/${item.id}`}
-                    aria-current={current ? "page" : undefined}
-                    title={offline ? `${item.label[lang]} · ${t.needsHubTitle}` : item.label[lang]}
-                    data-offline={offline || undefined}
-                    className={cn(
-                      // 13px như AppNav.dc.html: Be Vietnam Pro rộng hơn IBM Plex, menu 220px cần chỗ cho tên mục dài.
-                      "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-xs no-underline",
-                      "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
-                      // Một màu chữ cho mỗi trạng thái: hai class màu chữ cùng lúc thì thứ tự trong CSS quyết định.
-                      current
-                        ? "bg-sidebar-active font-medium text-sidebar-accent-foreground [&>svg]:text-sidebar-active-icon"
-                        : cn(
-                            "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                            offline ? "text-sidebar-foreground/80" : "text-sidebar-foreground",
-                          ),
-                    )}
-                  >
-                    <item.icon aria-hidden="true" className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate compact:sr-only">{item.label[lang]}</span>
-                    {offline ? (
-                      // Biểu tượng chứ không phải chữ, để tên mục cho trình đọc màn hình vẫn đúng tên màn.
-                      <CloudOffIcon aria-hidden="true" className="size-3.5 text-muted-foreground compact:hidden" />
-                    ) : (
-                      item.readOnly && (
-                        <span className="shrink-0 text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>
-                      )
-                    )}
-                  </a>
-                );
-              })}
+              {group.items.map((item) => (
+                <NavLink key={item.id} item={item} active={active} connected={connected} />
+              ))}
             </div>
           ))}
         </div>
@@ -290,8 +318,26 @@ export function AppNav({
           )}
         />
       </div>
+      {/* Chân menu: việc của đội mở trên web, và Cài đặt của app. */}
+      <div className="mt-1 flex flex-col gap-1 border-t border-sidebar-border pt-2 compact:pt-2">
+        <button
+          type="button"
+          onClick={openWeb}
+          title={webError ?? t.webTitle}
+          className={cn(NAV_LINK, NAV_IDLE, "cursor-pointer border-0 bg-transparent text-left")}
+        >
+          <ExternalLinkIcon aria-hidden="true" className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate compact:sr-only">{t.web}</span>
+        </button>
+        {webError && (
+          <p role="alert" className="px-2.5 text-xs text-destructive compact:hidden">
+            {webError}
+          </p>
+        )}
+        <NavLink item={{ ...SETTINGS_ITEM, readOnly: false }} active={active} connected={connected} />
+      </div>
       {/* Khối chân: worker, bản đang chạy, tài khoản dưới một vạch ngăn như AppNav.dc.html. */}
-      <div className="mt-1 flex flex-col gap-1.5 border-t border-sidebar-border pt-2.5 compact:pt-2">
+      <div className="flex flex-col gap-1.5 border-t border-sidebar-border pt-2.5 compact:pt-2">
         {foldFooter && (
           <button
             type="button"

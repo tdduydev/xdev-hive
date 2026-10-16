@@ -220,21 +220,12 @@ importers:
       '@xdev-hive/artifacts-runtime':
         specifier: workspace:*
         version: link:../../packages/artifacts-runtime
-      '@xdev-hive/artifacts-ui':
-        specifier: workspace:*
-        version: link:../../packages/artifacts-ui
-      '@xdev-hive/code-review':
-        specifier: workspace:*
-        version: link:../../packages/code-review
       '@xdev-hive/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@xdev-hive/doc-editor':
         specifier: workspace:*
         version: link:../../packages/doc-editor
-      '@xdev-hive/sdlc-ui':
-        specifier: workspace:*
-        version: link:../../packages/sdlc-ui
       '@xdev-hive/ui':
         specifier: workspace:*
         version: link:../../packages/ui
