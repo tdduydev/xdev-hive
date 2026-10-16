@@ -447,6 +447,20 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
       return git(dir, ["cat-file", "blob", `${sha}:${path}`]).catch(() => null);
     },
 
+    async readFileBytes(ref, path, sha) {
+      const dir = await need(ref);
+      try {
+        const { stdout } = await execFileAsync("git", ["cat-file", "blob", `${sha}:${path}`], {
+          cwd: dir,
+          encoding: "buffer",
+          maxBuffer: 100 * 1024 * 1024,
+        });
+        return new Uint8Array(stdout as unknown as Buffer);
+      } catch {
+        return null;
+      }
+    },
+
     async readBlob(ref, blob) {
       const dir = await need(ref);
       const { stdout } = await execFileAsync("git", ["cat-file", "blob", blob], {
