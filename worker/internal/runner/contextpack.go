@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // Context pack: worker dựng sẵn danh sách file liên quan tới task trước khi chạy CLI. Số đo trên máy dev: 73% chi phí
@@ -320,7 +321,7 @@ func scoreCodeGraph(ctx context.Context, s *packScorer, work, bin string, t pack
 		terms = terms[:4]
 	}
 	for _, term := range terms {
-		cmd := exec.CommandContext(ctx, bin, "query", term, "--limit", "10", "--json")
+		cmd := procattr.CommandContext(ctx, bin, "query", term, "--limit", "10", "--json")
 		cmd.Dir = work
 		cmd.Env = mergeEnv(os.Environ(), codegraphEnv)
 		out, err := cmd.Output()

@@ -520,12 +520,11 @@ fn open_terminal(job: &Launch) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
+        use crate::no_window::NoWindow;
         let script = write_script(&cmd_script(job), "cmd")?;
         let mut cmd = Command::new("cmd");
-        cmd.args(["/C", "start", ""]).arg(&script);
         // Cửa sổ của `start` hiện; cmd đứng giữa thì không.
-        cmd.creation_flags(0x0800_0000);
+        cmd.args(["/C", "start", ""]).arg(&script).no_window();
         let status = cmd
             .status()
             .map_err(|e| format!("Không mở được cửa sổ lệnh: {e}"))?;

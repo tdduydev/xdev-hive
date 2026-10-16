@@ -17,13 +17,15 @@ import (
 	"time"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // Test thay hệ điều hành và lệnh ngoài (security, codex) để không chạm keychain hay CLI thật.
 var (
 	logoutGOOS = runtime.GOOS
 	runLogout  = func(ctx context.Context, name string, args, env []string) ([]byte, error) {
-		cmd := exec.CommandContext(ctx, name, args...)
+		cmd := procattr.CommandContext(ctx, name, args...)
 		// Ngoài mọi repo, không stdin: lệnh đăng xuất không được nạp cấu hình dự án hay chờ người gõ.
 		cmd.Dir = os.TempDir()
 		cmd.Env = env

@@ -7,10 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // maxCompressChars chặn gói quá lớn: prompt nén mà tốn hơn số token tiết kiệm được thì vô nghĩa.
@@ -94,7 +95,7 @@ func Compress(ctx context.Context, opts CompressOptions) (Compression, error) {
 	defer cancel()
 	args := append(append([]string{}, opts.Args...), "-p", "--output-format", "json", "--restricted", "--strict-mcp-config",
 		"--tools", "Read,Glob,Grep", "--permission-prompts", "none")
-	cmd := exec.CommandContext(ctx, opts.Command, args...)
+	cmd := procattr.CommandContext(ctx, opts.Command, args...)
 	cmd.Dir = work
 	cmd.Env = append(os.Environ(), opts.Env...)
 	cmd.Stdin = strings.NewReader(compressPrompt(names))

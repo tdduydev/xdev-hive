@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 )
 
@@ -209,14 +210,14 @@ func (r Runner) PrepareInteractive(ctx context.Context, spec InteractiveSpec) (_
 		for i, a := range configured.Args {
 			args[i] = strings.ReplaceAll(a, "{{prompt}}", "")
 		}
-		cmd = exec.Command(configured.Path, args...)
+		cmd = procattr.Command(configured.Path, args...)
 	} else {
 		var err error
 		mcpFile, err = claudeMCPConfigAt("", map[string]string{"HIVE_HUB_URL": spec.HubURL, "HIVE_RUN_TOKEN": spec.MCPToken}, nil)
 		if err != nil {
 			return nil, err
 		}
-		cmd = exec.Command("claude", interactiveArgs(job, savingCfg, mcpFile, spec, perm)...)
+		cmd = procattr.Command("claude", interactiveArgs(job, savingCfg, mcpFile, spec, perm)...)
 	}
 	cmd.Dir = work
 	cmd.Env = mergeEnv(r.Account.Base(interactiveBaseEnv(keepLogin)), env)

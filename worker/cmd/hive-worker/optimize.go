@@ -18,6 +18,7 @@ import (
 
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/optimizer"
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/tokenreport"
 )
@@ -300,7 +301,7 @@ func optimizeAddRTK(p *optimizer.Preset) error {
 func optimizeProbeRTK(path string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "hook", "claude")
+	cmd := procattr.CommandContext(ctx, path, "hook", "claude")
 	cmd.Stdin = strings.NewReader(rtkProbeInput)
 	cmd.Env = append(os.Environ(), "RTK_TELEMETRY_DISABLED=1", "RTK_SUPPRESS_HOOK_WARNING=1")
 	out, err := cmd.Output()

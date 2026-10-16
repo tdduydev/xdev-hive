@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // Biến môi trường cấu hình công cụ tiết kiệm token của máy: trống là tự tìm trên PATH, "off" tắt, một đường dẫn tới
@@ -168,7 +170,7 @@ const rtkProbeInput = `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_
 func probeRTKHook(ctx context.Context, path string) error {
 	ctx, cancel := context.WithTimeout(ctx, rtkTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "hook", "claude")
+	cmd := procattr.CommandContext(ctx, path, "hook", "claude")
 	cmd.Stdin = strings.NewReader(rtkProbeInput)
 	cmd.Env = mergeEnv(os.Environ(), rtkBaseEnv)
 	out, err := cmd.Output()
@@ -260,7 +262,7 @@ func (rr *rtkRun) usage(ctx context.Context) (*RTKUsage, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, rtkTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, rr.path, "gain", "--format", "json")
+	cmd := procattr.CommandContext(ctx, rr.path, "gain", "--format", "json")
 	cmd.Env = mergeEnv(os.Environ(), rr.env)
 	out, err := cmd.Output()
 	if err != nil {
@@ -370,7 +372,7 @@ func (r Runner) syncCodeGraph(ctx context.Context, job Job, path, work string) (
 	}
 	cctx, cancel := context.WithTimeout(ctx, codegraphTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, path, args...)
+	cmd := procattr.CommandContext(cctx, path, args...)
 	cmd.Dir = work
 	cmd.Env = mergeEnv(os.Environ(), codegraphEnv)
 	out, err := cmd.CombinedOutput()

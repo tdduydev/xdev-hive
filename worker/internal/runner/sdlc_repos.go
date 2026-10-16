@@ -8,12 +8,13 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // CapSdlcMultiRepo: worker checkout được các repo tham gia của hạng mục nhiều dự án cho run sdlc (specs/011 T086). Hub
@@ -146,7 +147,7 @@ func cloneSdlcRepo(ctx context.Context, dest string, r SdlcRepo, budget int64) (
 	defer cancel()
 	// core.symlinks=false: symlink trong repo tham gia thành file thường, không trỏ ra file khác của máy. Không đệ quy
 	// submodule, không tải LFS: agent chỉ cần đọc code và tài liệu.
-	c := exec.CommandContext(cctx, "git", "-c", "core.symlinks=false", "-c", "advice.detachedHead=false",
+	c := procattr.CommandContext(cctx, "git", "-c", "core.symlinks=false", "-c", "advice.detachedHead=false",
 		"clone", "--depth", "1", "--single-branch", "--no-tags", "--branch", r.Branch, "--", r.CloneURL, dest)
 	// Máy thiếu quyền thì git hỏi mật khẩu và treo run; tắt mọi lời hỏi để lỗi trả về ngay.
 	c.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "GIT_LFS_SKIP_SMUDGE=1")

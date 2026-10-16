@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // CheckCommand là một lệnh kiểm của quy tắc `command` (spec 009, FR-017): hub gửi trong spec.checks.commands, worker
@@ -230,15 +232,15 @@ func (r Runner) runCheck(ctx context.Context, job Job, work, name string, c Chec
 			return failedCheck(c, err, exact)
 		}
 		args := SandboxRunArgs(s, name, work, job.repoCache, job.EnvironmentImage, []string{"sh", "-lc", c.Run}, env, uid, gid)
-		cmd = exec.CommandContext(cctx, s.DockerPath, args...)
+		cmd = procattr.CommandContext(cctx, s.DockerPath, args...)
 		cmd.Env = mergeEnv(os.Environ(), sandboxEnv(env, s))
 		// Hết giờ chỉ giết client docker; container có thể còn chạy.
 		defer r.removeSandbox(context.Background(), name)
 	} else {
 		if runtime.GOOS == "windows" {
-			cmd = exec.CommandContext(cctx, "cmd.exe", "/C", c.Run)
+			cmd = procattr.CommandContext(cctx, "cmd.exe", "/C", c.Run)
 		} else {
-			cmd = exec.CommandContext(cctx, "sh", "-c", c.Run)
+			cmd = procattr.CommandContext(cctx, "sh", "-c", c.Run)
 		}
 		cmd.Dir = work
 		// Không mergeEnv với os.Environ: đó là chỗ allowlist có tác dụng.

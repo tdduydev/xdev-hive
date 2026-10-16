@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // Git chạy git của máy cho một kết nối. Token chỉ đi qua askpass, không nằm trong URL, tham số hay cấu hình repo.
@@ -93,7 +95,7 @@ func (g Git) run(ctx context.Context, dir, host string, args ...string) (string,
 	if g.UseGitCredentials {
 		full = append([]string{"-c", "core.askPass="}, args...)
 	}
-	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd := procattr.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
 	cmd.Env = g.env(host)
 	if runtime.GOOS != "windows" {

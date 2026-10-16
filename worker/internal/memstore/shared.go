@@ -8,11 +8,12 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // Dùng chung memory (spec 015 US4). Kết quả thử trên claude 2.1.299 (research.md mục 9):
@@ -571,7 +572,7 @@ func delKV(items []kv, key string) []kv {
 // vào commit. Trả dòng đã thêm; warn không rỗng khi không làm được (không phải repo git thì không cảnh báo).
 func gitExclude(project, rel string) (added, warn string) {
 	git := func(args ...string) ([]byte, error) {
-		return exec.Command("git", append([]string{"-C", project}, args...)...).Output()
+		return procattr.Command("git", append([]string{"-C", project}, args...)...).Output()
 	}
 	if out, err := git("rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(string(out)) != "true" {
 		return "", ""
@@ -597,7 +598,7 @@ func gitExclude(project, rel string) (added, warn string) {
 }
 
 func removeGitExclude(project, line string) string {
-	out, err := exec.Command("git", "-C", project, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude").Output()
+	out, err := procattr.Command("git", "-C", project, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude").Output()
 	if err != nil {
 		return ""
 	}

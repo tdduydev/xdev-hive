@@ -16,6 +16,8 @@ import (
 	"time"
 	// Giờ reset của Claude ghi theo múi giờ IANA (Asia/Saigon); Windows không có cơ sở dữ liệu múi giờ của hệ thống.
 	_ "time/tzdata"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // Limit là một thanh quota của gói: phần trăm đã dùng và lúc reset (nil khi CLI không báo hoặc không đọc được).
@@ -104,7 +106,7 @@ func (u Usage) at(now time.Time) Usage {
 var (
 	lookPath = exec.LookPath
 	runCLI   = func(ctx context.Context, name string, args []string, env map[string]string) ([]byte, error) {
-		cmd := exec.CommandContext(ctx, name, args...)
+		cmd := procattr.CommandContext(ctx, name, args...)
 		// Ngoài mọi repo: lệnh đọc quota không được nạp cấu hình của một dự án.
 		cmd.Dir = os.TempDir()
 		cmd.Env = usageEnv(os.Environ(), env)

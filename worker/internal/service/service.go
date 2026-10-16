@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 const ID = "dev.xdev-hive.worker"
@@ -128,7 +129,7 @@ func (m Manager) command(name string, args ...string) error {
 	if m.Run != nil {
 		return m.Run(name, args...)
 	}
-	return exec.Command(name, args...).Run()
+	return procattr.Command(name, args...).Run()
 }
 func (m Manager) Install(plan Plan, dryRun bool, out io.Writer) error {
 	if dryRun {
