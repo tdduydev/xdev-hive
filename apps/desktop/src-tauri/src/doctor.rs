@@ -4,6 +4,7 @@
 //! giao diện, để một lỗi chèn script ở cửa sổ cũng không chạy được lệnh tuỳ ý. Lệnh cần quyền quản trị hoặc cần shell
 //! (nvm, &&) chỉ để chép.
 
+use crate::no_window::NoWindow;
 use crate::setup_extra::{
     HubFacts, SETUP_SCRIPT, claude_config_file, claude_mcp_names, codex_home, codex_mcp_names,
     hub_facts, in_path, mark_setup_ran, mcp_add_argv, setup_ran, setup_tools,
@@ -314,7 +315,8 @@ pub(crate) struct Output {
 
 /// Chạy lệnh không qua shell, đóng stdin, quá hạn thì giết. Trả None khi không chạy được hoặc quá hạn.
 pub(crate) fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<Output> {
-    cmd.stdin(Stdio::null())
+    cmd.no_window()
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = cmd.spawn().ok()?;

@@ -11,6 +11,8 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
 
+use crate::no_window::NoWindow;
+
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum Step {
@@ -224,6 +226,7 @@ impl Ctl<'static> {
 /// tiến trình con của lệnh có thể còn giữ pipe.
 pub(super) fn output_within(cmd: &mut Command, within: Duration) -> Option<Output> {
     let mut child = cmd
+        .no_window()
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
