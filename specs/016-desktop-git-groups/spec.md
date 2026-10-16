@@ -21,7 +21,7 @@
 |---|---|
 | Kết nối Git tại máy | Một máy chủ GitLab (gitlab.com hoặc tự host) hay GitHub (github.com hoặc Enterprise) kèm personal access token của người dùng. |
 | Nhóm theo dõi | Một group GitLab (gồm subgroup) hoặc một org/tài khoản GitHub, một thư mục gốc, cách clone (HTTPS hay SSH) và bộ lọc. |
-| Đường dẫn repo | `<gốc>/<đường dẫn đầy đủ của repo>`, vd `<gốc>/acme/payments/api`. |
+| Đường dẫn repo | `<gốc>/<đường dẫn đầy đủ của repo>`, vd `<gốc>/acme/payments/api`. Nếu người dùng đã clone tay với gốc nằm trong group (vd gốc là thư mục của chính group: `<gốc>/payments/api`), worker dò cách xếp đó từ repo đã clone có đúng origin, dùng repo có sẵn và clone repo thiếu theo cùng cách. |
 
 ## User Scenarios & Testing
 
@@ -72,7 +72,7 @@ Trạng thái mỗi repo, đọc bằng `git status --porcelain=v2 --branch` (kh
 
 | Trạng thái | Điều kiện |
 |---|---|
-| Chưa clone | Thư mục chưa có |
+| Chưa clone | Thư mục chưa có, và không có bản clone đúng origin ở cách xếp khác dưới gốc. Giao diện hiện thư mục sẽ clone vào |
 | Sạch | Đúng nhánh mặc định, không thay đổi, không ahead/behind |
 | Có thay đổi | Có file đã theo dõi bị sửa, đã stage hoặc xung đột. File chưa theo dõi không tính: `pull --ff-only` tự dừng an toàn nếu sẽ ghi đè |
 | Ahead | Có commit chưa đẩy |

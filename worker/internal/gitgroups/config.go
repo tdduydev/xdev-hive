@@ -71,6 +71,9 @@ type Group struct {
 	LastAutoFetchAt  string   `json:"lastAutoFetchAt,omitempty"`
 	ListedAt         string   `json:"listedAt,omitempty"`
 	Repos            []Repo   `json:"repos"`
+	// RootLevel là số đoạn đầu của đường dẫn group mà thư mục gốc đã ứng với (xem repoDir). Không lưu: Sync dò lại mỗi
+	// lượt từ repo người dùng đã clone, để repo clone thêm nằm cạnh repo có sẵn.
+	RootLevel int `json:"-"`
 }
 
 // Config là nội dung gitgroups.json.

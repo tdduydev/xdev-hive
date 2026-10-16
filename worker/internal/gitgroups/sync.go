@@ -70,6 +70,7 @@ func (s Sync) Run(ctx context.Context, action string, emit func(Event)) error {
 	if err != nil {
 		return err
 	}
+	s.Group.RootLevel = rootLevel(ctx, s.Git, s.Group)
 	n := s.Concurrency
 	if n <= 0 {
 		n = DefaultConcurrency

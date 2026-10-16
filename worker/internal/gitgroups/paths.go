@@ -65,3 +65,24 @@ func RepoDir(root, repoPath string) (string, error) {
 	}
 	return dir, nil
 }
+
+// levels là số cách xếp repo dưới thư mục gốc: gốc ứng với 0, 1, … tới hết các đoạn của đường dẫn group.
+func levels(g Group) int {
+	if g.Path == "" {
+		return 1
+	}
+	return strings.Count(g.Path, "/") + 2
+}
+
+// repoDir là thư mục của repo khi thư mục gốc ứng với level đoạn đầu của đường dẫn group: level 0 là <gốc>/acme/pay/api
+// (gốc chứa cả group, như spec), level bằng số đoạn của group là <gốc>/pay/api (gốc là thư mục của chính group, cách
+// người dùng hay xếp khi đã clone tay trước khi theo dõi). Repo không nằm dưới group thì theo đường dẫn đầy đủ.
+func repoDir(g Group, repoPath string, level int) (string, error) {
+	group := strings.Split(g.Path, "/")
+	segs := strings.Split(repoPath, "/")
+	if g.Path != "" && level > 0 && level <= len(group) && len(segs) > len(group) &&
+		strings.EqualFold(strings.Join(segs[:len(group)], "/"), g.Path) {
+		repoPath = strings.Join(segs[level:], "/")
+	}
+	return RepoDir(g.Root, repoPath)
+}

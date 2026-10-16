@@ -342,6 +342,26 @@ describe("GitGroupsSection", () => {
     expect(onCloned).not.toHaveBeenCalled();
   });
 
+  it("repo chưa clone hiện thư mục sẽ clone vào; lý do bỏ qua không kèm dấu · thừa", async () => {
+    const { emit } = fakeApp({ hosts: [HOST], groups: [GROUP] });
+    renderSection();
+    const card = await screen.findByRole("article", { name: "acme" });
+    expect(await within(card).findByText("sẽ clone vào /Users/ha/Code/acme/docs")).toBeTruthy();
+    await userEvent.click(within(card).getByRole("button", { name: "Fetch" }));
+    emit({ type: "start", action: "fetch", total: 3 });
+    emit({
+      type: "repo",
+      action: "fetch",
+      total: 3,
+      done: 1,
+      path: "acme/docs",
+      result: "skipped",
+      message: "chưa clone",
+      status: { path: "acme/docs", state: "missing" },
+    });
+    expect(within(card).getByText("chưa clone")).toBeTruthy();
+  });
+
   it("clone xong thì danh sách Dự án trên máy đọc lại; sự kiện đến trước id vẫn được tính", async () => {
     const { emit } = fakeApp({ hosts: [HOST], groups: [GROUP] });
     const onCloned = renderSection();

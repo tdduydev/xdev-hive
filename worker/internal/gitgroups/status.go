@@ -93,16 +93,56 @@ func classify(p porcelain, defaultBranch string) (state, reason string) {
 	return StateClean, ""
 }
 
+func origin(ctx context.Context, git Git, dir string) string {
+	out, _ := git.run(ctx, dir, "", "config", "--get", "remote.origin.url")
+	return strings.TrimSpace(out)
+}
+
+func sameRepo(o string, r Repo) bool {
+	return projects.SameRepo(o, r.HTTPURL) || projects.SameRepo(o, r.SSHURL)
+}
+
+// findClone tìm bản clone đúng origin của repo ở mọi cách xếp dưới thư mục gốc, ưu tiên đường dẫn đầy đủ.
+func findClone(ctx context.Context, git Git, g Group, r Repo) (string, int, bool) {
+	for level := range levels(g) {
+		dir, err := repoDir(g, r.Path, level)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil && sameRepo(origin(ctx, git, dir), r) {
+			return dir, level, true
+		}
+	}
+	return "", 0, false
+}
+
+// rootLevel lấy cách xếp của repo đầu tiên đã clone; chưa clone repo nào thì theo spec: <gốc>/<đường dẫn đầy đủ>.
+func rootLevel(ctx context.Context, git Git, g Group) int {
+	for _, r := range g.Repos {
+		if _, level, ok := findClone(ctx, git, g, r); ok {
+			return level
+		}
+	}
+	return 0
+}
+
 // Inspect đọc trạng thái một repo của nhóm. Không gọi mạng: ahead/behind so với lần fetch gần nhất.
 func Inspect(ctx context.Context, git Git, g Group, r Repo) RepoStatus {
 	s := RepoStatus{Path: r.Path}
-	dir, err := RepoDir(g.Root, r.Path)
+	dir, err := repoDir(g, r.Path, g.RootLevel)
 	if err != nil {
 		s.State, s.Reason = StateError, err.Error()
 		return s
 	}
-	s.Dir = dir
 	info, err := os.Stat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		// Người dùng clone tay ở cách xếp khác của nhóm: dùng bản đó, không clone thêm bản thứ hai.
+		if found, _, ok := findClone(ctx, git, g, r); ok {
+			dir = found
+			info, err = os.Stat(dir)
+		}
+	}
+	s.Dir = dir
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		s.State = StateMissing
@@ -118,12 +158,10 @@ func Inspect(ctx context.Context, git Git, g Group, r Repo) RepoStatus {
 		s.State, s.Reason = StateError, "thư mục đã có mà không phải repo git"
 		return s
 	}
-	origin, _ := git.run(ctx, dir, "", "config", "--get", "remote.origin.url")
-	origin = strings.TrimSpace(origin)
-	if !projects.SameRepo(origin, r.HTTPURL) && !projects.SameRepo(origin, r.SSHURL) {
-		s.State, s.Reason = StateError, fmt.Sprintf("remote origin (%s) là repo khác", projects.Redact(origin))
-		if origin == "" {
-			s.Reason = "repo không có remote origin"
+	if o := origin(ctx, git, dir); !sameRepo(o, r) {
+		s.State, s.Reason = StateError, fmt.Sprintf("thư mục đã có repo khác: origin là %s, không phải %s", projects.Redact(o), r.Path)
+		if o == "" {
+			s.Reason = "thư mục đã có repo git nhưng không có remote origin"
 		}
 		return s
 	}
