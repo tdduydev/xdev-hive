@@ -175,16 +175,6 @@ async function scanAndStart(paths: string[]) {
   return job;
 }
 
-/** Tắt hook đẩy trong lúc nhập, tránh lỗi T029 (test `it.fails` cuối file) để các SC khác vẫn kiểm được. */
-async function importWithoutHook(job: { orgId: string; homeId: string; importId: string }) {
-  provideDocSaved(undefined);
-  try {
-    await runImport(deps, job);
-  } finally {
-    provideDocSaved(docSavedHandler(jobs));
-  }
-}
-
 async function chunkModels(key: string) {
   const { rows } = await admin.query(
     "select distinct c.embedding_model from hive.doc_chunks c join hive.docs d on d.id = c.doc_id where d.key = $1",
@@ -431,7 +421,7 @@ describe("bí mật không vào repo hay embedding khi chưa xác nhận (SC-007
       ],
     });
     const job = await scanAndStart(["docs/ke-hoach.md", "docs/img/so-do.gif", "docs/khoa.md"]);
-    await importWithoutHook(job);
+    await runImport(deps, job);
     const report = await as("tadmin", (tx) => getImport(tx, actor("tadmin"), job.importId));
     expect(report.report).toMatchObject({ blockedSecret: 1, failed: 0 });
     expect(await versionCount(`project/${projectKey}/khoa`)).toBe(0);
@@ -448,7 +438,7 @@ describe("bí mật không vào repo hay embedding khi chưa xác nhận (SC-007
       [org.orgId],
     );
     expect(audit.rowCount).toBe(1);
-    await importWithoutHook(job);
+    await runImport(deps, job);
     expect(await versionCount(`project/${projectKey}/khoa`)).toBe(1);
   });
 });
@@ -507,11 +497,9 @@ describe("người không có quyền không thấy gì (SC-009)", () => {
   });
 });
 
-describe("lỗi đã biết", () => {
-  // T029: onDocSaved chỉ bỏ qua nguồn `repo`, nên khi hook đẩy đang bật (registerPush, cùng tiến trình worker với
-  // job nhập) nó tạo dòng doc_repo_files trước, và importMarkdown đánh file "đã gắn với file khác". Sửa xong thì đổi
-  // `it.fails` thành `it` và bỏ importWithoutHook.
-  it.fails("nhập markdown mới khi hook đẩy đang bật", async () => {
+describe("nhập khi hook đẩy đang bật (T029)", () => {
+  // Tiến trình worker gọi registerPush nên hook luôn bật lúc nhập; trước đây nó gắn tài liệu trước bước nhập.
+  it("nhập markdown mới khi hook đẩy đang bật", async () => {
     const path = `docs/moi-${tag}.md`;
     await mem.commitFiles(projectRef(), { branch: "main", message: "thêm", files: [{ path, content: "# Mới\n" }] });
     const job = await scanAndStart([path]);
