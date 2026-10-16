@@ -1,5 +1,6 @@
 // Quy trình review code của PR do run mở (specs/009-code-review-workflows). Module khác chỉ import file này.
 export type { FinishedReviewRun, StartedReviewRun, StartReviewRunsInput } from "./ai.ts";
+export { commentReconcileQueue, commentSyncQueue } from "./comment-sync.ts";
 export { type DecideDeps, decideCodeReview } from "./decide.ts";
 export type { CodeRunInfo, CodeRunPort } from "./dry-run.ts";
 export { type CodeReviewWorkerDeps, registerCodeReviewWorker } from "./jobs.ts";

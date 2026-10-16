@@ -148,6 +148,7 @@ const RUN_TOOLS = new Set([
   "doc_get",
   "doc_list",
   "doc_search",
+  "doc_asset_get",
   "skill_get",
   "skill_list",
   // Ghi artifact là ghi dữ liệu hub, không ghi repo nên run chỉ đọc repo (plan, review) vẫn dùng được; các loại run có

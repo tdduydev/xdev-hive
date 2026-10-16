@@ -605,7 +605,6 @@ for (const route of ["docs", "skills", "memory", "proposals"] as const) {
       await page.addInitScript(() => localStorage.setItem("hive.lang", "en"));
       await setup(page);
       await page.goto(`/knowledge/${route}`);
-      // Tài liệu hiện thành cây theo repo (danh sách), các trang còn lại vẫn là bảng.
       // Trang Skills có thêm bảng skill mặc định của Hive bên dưới.
       if (route === "docs") await expect(page.getByRole("list", { name: "Cây tài liệu theo repo" })).toBeVisible();
       else await expect(page.getByRole("table").first()).toBeVisible();

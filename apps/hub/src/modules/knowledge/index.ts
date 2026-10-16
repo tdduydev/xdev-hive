@@ -53,7 +53,7 @@ export {
 } from "./editor.ts";
 export { createOpenAIEmbedder, type Embedder, EmbedderError } from "./embedder.ts";
 export { type ImportReport, importLegacy, type LegacyImportOptions } from "./legacy-import.ts";
-export { MCP_LIMITS, registerMcpTools } from "./mcp-tools.ts";
+export { knowledgePrincipal, MCP_LIMITS, registerMcpTools } from "./mcp-tools.ts";
 export {
   approveMemory,
   EMBED_QUEUE,
