@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Biểu tượng xDev Hive trên nền navy</title>
+  <defs>
+    <radialGradient id="x-on-navy" gradientUnits="userSpaceOnUse" cx="512" cy="512" r="344">
+      <stop offset="0" stop-color="#B8F1FF"/>
+      <stop offset="0.55" stop-color="#3FA9FF"/>
+      <stop offset="1" stop-color="#1C58FF"/>
+    </radialGradient>
+  </defs>
+  <path fill="#22406E" d="M64 512 288 124H736L960 512 736 900H288Z"/>
+  <path fill="url(#x-on-navy)" d="M284 264H380Q398 264 410 280L496 390Q512 410 528 390L614 280Q626 264 644 264H740C770 264 786 298 766 324L626 500Q616 512 626 524L766 700C786 726 770 760 740 760H644Q626 760 614 744L528 634Q512 614 496 634L410 744Q398 760 380 760H284C254 760 238 726 258 700L398 524Q408 512 398 500L258 324C238 298 254 264 284 264Z"/>
+</svg>

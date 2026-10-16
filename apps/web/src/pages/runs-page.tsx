@@ -5,6 +5,7 @@ import { RUN_STATUS_GROUPS, type RunState } from "@xdev-hive/contracts/run-state
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { agentHex, HexAvatar } from "@xdev-hive/ui/hex-avatar";
 import { Pill } from "@xdev-hive/ui/pill";
 import { useState } from "react";
 import { type ActiveFilter, type Column, DataTable } from "@/components/data-table/data-table.tsx";
@@ -261,6 +262,17 @@ export function RunsPage() {
       label: "Agent",
       value: (row) => (row.cli ? (CLI_LABEL[row.cli] ?? row.cli) : t.anyCli),
       sortable: true,
+      cell: (row) =>
+        row.cli ? (
+          <span className="flex items-center gap-2 whitespace-nowrap">
+            <HexAvatar aria-hidden="true" size="sm" tone={agentHex(row.cli).tone}>
+              {agentHex(row.cli).mark}
+            </HexAvatar>
+            <span>{CLI_LABEL[row.cli] ?? row.cli}</span>
+          </span>
+        ) : (
+          t.anyCli
+        ),
     },
     {
       key: "machine",

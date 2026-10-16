@@ -31,10 +31,27 @@ function ratio(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
-// [chữ hoặc viền, nền, tỉ lệ tối thiểu]: chữ 4.5 (WCAG AA), viền điều khiển và vòng focus 3 (WCAG 1.4.11).
+/** "tên/80" là token ở độ mờ 80% trên nền `bg`, đúng màu trình duyệt vẽ cho class như `text-sidebar-foreground/80`. */
+function shown(spec: string, bg: string, theme: Theme): string {
+  const [name = spec, percent] = spec.split("/");
+  const fg = token(name, theme);
+  if (!percent) return fg;
+  const alpha = Number(percent) / 100;
+  const channel = (hex: string, i: number) => Number.parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  const back = token(bg, theme);
+  return `#${[0, 1, 2]
+    .map((i) =>
+      Math.round(alpha * channel(fg, i) + (1 - alpha) * channel(back, i))
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
+// [chữ hoặc viền, nền, tỉ lệ tối thiểu]: chữ 4.5 (WCAG AA), viền điều khiển, vòng focus và icon 3 (WCAG 1.4.11).
 const pairs: [string, string, number][] = [
-  ...["background", "card", "muted", "sidebar"].map((bg): [string, string, number] => ["foreground", bg, 4.5]),
-  ...["background", "card", "muted", "sidebar"].map((bg): [string, string, number] => ["muted-foreground", bg, 4.5]),
+  ...["background", "card", "muted"].map((bg): [string, string, number] => ["foreground", bg, 4.5]),
+  ...["background", "card", "muted"].map((bg): [string, string, number] => ["muted-foreground", bg, 4.5]),
   ...["background", "card"].map((bg): [string, string, number] => ["primary", bg, 4.5]),
   ...["background", "card"].map((bg): [string, string, number] => ["input", bg, 3]),
   ...["background", "card"].map((bg): [string, string, number] => ["ring", bg, 3]),
@@ -47,11 +64,28 @@ const pairs: [string, string, number][] = [
   ["success", "success-soft", 4.5],
   ["warning", "card", 4.5],
   ["warning", "warning-soft", 4.5],
+  // Sidebar navy ở cả hai theme: chữ thường, nhãn nhóm (80%), mục rê chuột, mục đang mở, số đếm, focus.
+  ["sidebar-foreground", "sidebar", 4.5],
+  ["sidebar-foreground/80", "sidebar", 4.5],
+  ["sidebar-foreground", "sidebar-accent", 4.5],
+  ["sidebar-accent-foreground", "sidebar", 4.5],
+  ["sidebar-accent-foreground", "sidebar-accent", 4.5],
+  ["sidebar-accent-foreground", "sidebar-active", 4.5],
+  ["sidebar-active-icon", "sidebar-active", 3],
+  ["sidebar-primary-foreground", "sidebar-primary", 4.5],
+  ["sidebar-ring", "sidebar", 3],
+  // Trạng thái trong sidebar (chấm worker, lỗi đăng xuất) và chữ trên ô lục giác navy của agent, máy.
+  ...["sidebar-success", "sidebar-warning", "sidebar-destructive"].map((fg): [string, string, number] => [
+    fg,
+    "sidebar",
+    4.5,
+  ]),
+  ["sidebar-active-icon", "sidebar-accent", 4.5],
 ];
 
 describe.each(themes)("WCAG contrast ratios for theme %s", (theme) => {
   it.each(pairs)("%s on %s meets %s:1", (fg, bg, min) => {
-    expect(ratio(token(fg, theme), token(bg, theme))).toBeGreaterThanOrEqual(min);
+    expect(ratio(shown(fg, bg, theme), token(bg, theme))).toBeGreaterThanOrEqual(min);
   });
 });
 

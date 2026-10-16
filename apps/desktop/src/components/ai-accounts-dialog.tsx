@@ -1,5 +1,6 @@
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@xdev-hive/ui/dialog";
+import { HexAvatar, type HexAvatarTone } from "@xdev-hive/ui/hex-avatar";
 import { Pill } from "@xdev-hive/ui/pill";
 import { useCallback, useEffect, useState } from "react";
 import { type CliAccount, cliAccounts, type Engine } from "@/lib/agent.ts";
@@ -79,9 +80,9 @@ const text: Dict<{
   },
 };
 
-const LOOK: Record<Engine, { name: string; mark: string; logo: string; login: string }> = {
-  claude: { name: "Claude", mark: "C", logo: "bg-[#F5E6DD] text-[#B4532A]", login: "claude auth login" },
-  codex: { name: "ChatGPT (Codex)", mark: "O", logo: "bg-[#E5E7EB] text-[#111827]", login: "codex login" },
+const LOOK: Record<Engine, { name: string; mark: string; tone: HexAvatarTone; login: string }> = {
+  claude: { name: "Claude", mark: "C", tone: "navy", login: "claude auth login" },
+  codex: { name: "ChatGPT (Codex)", mark: "O", tone: "success", login: "codex login" },
 };
 
 interface Quota {
@@ -202,15 +203,9 @@ export function AiAccountsDialog({
               )}
             >
               <div className="flex items-center gap-2.5">
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "inline-flex size-8.5 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-semibold",
-                    look.logo,
-                  )}
-                >
+                <HexAvatar aria-hidden="true" tone={look.tone} className="font-mono">
                   {look.mark}
-                </span>
+                </HexAvatar>
                 <span className="flex min-w-0 flex-1 flex-col leading-snug">
                   <span className="flex items-center gap-1.5">
                     <strong className="font-semibold">{look.name}</strong>

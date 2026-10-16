@@ -1,20 +1,34 @@
 # Design System Master File
 
 > **xDev Hive decisions (override the generated rules below).** Generated with the `ui-ux-pro-max` skill on
-> 2026-10-12 (`--design-system --density 8 --motion 3 --variance 3`), then adapted:
+> 2026-10-12 (`--design-system --density 8 --motion 3 --variance 3`), then adapted. Version 3 "Navy Hive"
+> (2026-10-16) replaces the generated palette with the logo's colours; the reference mockups (92 screens, web and
+> desktop, light and dark) are the private Claude artifact "Giao diện xDev Hive · Navy Hive".
 >
+> - **Direction:** a calm, dense operations tool in the spirit of Linear and Raycast. The navy of the logo's hexagon
+>   (`#142745`) colours the sidebar in both themes; the blue of the logo's X is the action colour; every other
+>   surface is a navy-tinted neutral. The X gradient stays on the logo and brand art only.
 > - **Tokens:** the source of truth is [../tokens.json](../tokens.json) and `apps/web/src/styles.css` (shadcn/ui
->   variable names). `apps/web/src/lib/contrast.test.ts` keeps both in sync and checks WCAG AA pairs.
-> - **Primary colour:** the brand blue (`#1D4ED8` light, `#60A5FA` dark), not slate, so actions and links match the
->   logo. The generated "run green" becomes the `success` token for succeeded runs and online machines.
+>   variable names); the desktop app generates its CSS from tokens.json (`apps/desktop/scripts/build-frontend.ts`).
+>   `apps/web/src/lib/contrast.test.ts` keeps both in sync and checks WCAG AA pairs, including the sidebar ones.
+>   Three draft values were adjusted to pass AA: `input` `#8490A6` light / `#536990` dark (3:1 against the
+>   background) and `success-soft` `#E8F7EE` light (4.5:1 under `success` text).
+> - **Primary colour:** the X blue (`#1C58FF` light, `#3FA9FF` dark with dark text), so actions and links match the
+>   logo. The generated "run green" stays the `success` token for succeeded runs and online machines.
+> - **Sidebar:** navy in both themes (`sidebar`, `sidebar-accent` hover and chips, `sidebar-active` for the open item,
+>   `sidebar-primary` count badges, `sidebar-ring` focus). Inside `data-sidebar="sidebar"` the shared tokens point at
+>   the sidebar ones, and status colours use the dark-theme values, which keep 3:1 or more on navy.
 > - **Themes:** light and dark are both first-class; the default follows the operating system and the user can pin
->   one (sidebar toggle, `localStorage` key `hive.theme`). The dark palette is the generated developer-tool palette.
-> - **Typography:** IBM Plex Sans for text, JetBrains Mono for headings, code, IDs and figures; self-hosted with
->   fontsource (Vietnamese subset included), no Google Fonts request.
+>   one (`localStorage` key `hive.theme`).
+> - **Typography:** Be Vietnam Pro for all UI text and headings (drawn for Vietnamese; static weights 400, 500, 600,
+>   700 and 400 italic), JetBrains Mono for code, IDs and SHAs; self-hosted with fontsource (Vietnamese
+>   subset included), no Google Fonts request.
+> - **Avatars:** hexagons (`HexAvatar`, `packages/ui`) for agents and machines, round avatars for people.
 > - **Components:** shadcn/ui `base-nova` on Base UI primitives, added through the shadcn MCP server; their specs
 >   replace the generic component specs in this file.
 > - **Motion:** state transitions only (150 to 250 ms, `prefers-reduced-motion` respected). The scroll-reveal motion
 >   and the "FAQ/Documentation landing" page pattern below are for marketing pages and do not apply to the app.
+> - The generated palette, fonts and "Light mode default" anti-pattern below are superseded by the above.
 
 
 > **LOGIC:** When building a specific page, first check `design-system/pages/[page-name].md`.

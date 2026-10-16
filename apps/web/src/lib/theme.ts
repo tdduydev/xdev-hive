@@ -4,7 +4,7 @@ export type ThemeChoice = "system" | "light" | "dark";
 const KEY = "hive.theme";
 
 /** Màu nền trang (--background trong styles.css) cho thanh trạng thái của trình duyệt và PWA; index.html dùng lại bảng này. */
-export const THEME_COLOR = { light: "#f8fafc", dark: "#0f172a" } as const;
+export const THEME_COLOR = { light: "#f5f7fb", dark: "#0a1322" } as const;
 const darkQuery = "(prefers-color-scheme: dark)";
 
 export function readTheme(): ThemeChoice {
