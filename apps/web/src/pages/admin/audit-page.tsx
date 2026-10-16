@@ -359,7 +359,8 @@ function AuditViewer() {
                     {row.action}
                   </Pill>
                 </Td>
-                <Td className="max-w-72 min-w-36 text-xs break-words">
+                {/* Cột duy nhất được xuống dòng: tối thiểu 128px để bảng vẫn vừa 1100px với Be Vietnam Pro (rộng hơn IBM Plex). */}
+                <Td className="max-w-72 min-w-32 text-xs break-words">
                   {row.targetType || row.targetId ? (
                     <>
                       {row.targetType && <span className="text-muted-foreground">{row.targetType}: </span>}
