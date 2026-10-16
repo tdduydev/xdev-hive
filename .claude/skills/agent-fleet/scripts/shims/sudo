@@ -1,0 +1,3 @@
+#!/bin/zsh
+echo "sudo bị chặn." >&2
+exit 126

@@ -1,0 +1,18 @@
+#!/bin/zsh
+# Chặn xoá đệ quy kèm ép buộc (-rf, -fr, -Rf, -r -f, --recursive --force) như bản Claude; rm thường vẫn cho.
+letters=""
+long_r=0
+long_f=0
+for a in "$@"; do
+  case $a in
+    --recursive) long_r=1;;
+    --force) long_f=1;;
+    --) break;;
+    -[!-]*) letters+=${a#-};;
+  esac
+done
+if [[ $letters == *[rR]* || $long_r = 1 ]] && [[ $letters == *f* || $long_f = 1 ]]; then
+  echo "xoá đệ quy kèm -f bị chặn: xoá từng file cụ thể." >&2
+  exit 126
+fi
+exec /bin/rm "$@"
