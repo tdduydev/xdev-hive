@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/pty"
 )
 
@@ -401,7 +402,7 @@ func (l *Login) cliFlow(ctx context.Context, s *loginSession, cli, how, dir stri
 		return err
 	}
 	env := map[string]string{envVar[cli]: dir}
-	cmd := exec.Command(bin, loginArgs(cli, how)...)
+	cmd := procattr.Command(bin, loginArgs(cli, how)...)
 	// Ngoài mọi repo: lệnh đăng nhập không được nạp cấu hình của một dự án.
 	cmd.Dir = os.TempDir()
 	cmd.Env = loginEnv(env)
@@ -484,7 +485,7 @@ func (l *Login) verify(ctx context.Context, cli, bin, dir string, env map[string
 	}
 	vctx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(vctx, bin, "auth", "status")
+	cmd := procattr.CommandContext(vctx, bin, "auth", "status")
 	cmd.Dir = os.TempDir()
 	cmd.Env = loginEnv(env)
 	err := cmd.Run()

@@ -31,6 +31,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/gitgroups"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
 	"github.com/tdduydev/xdev-hive/worker/internal/instancelock"
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/service"
@@ -537,7 +538,7 @@ func sandboxInit(args []string) int {
 			go proxyUnix(client, *socket)
 		}
 	}()
-	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	cmd := procattr.CommandContext(ctx, command[0], command[1:]...)
 	cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError
@@ -569,7 +570,7 @@ func checkHostRuntime(allowRunc bool) error {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return fmt.Errorf("không tìm thấy Docker: %w", err)
 	}
-	cmd := exec.Command("docker", "info", "--format", "{{json .Runtimes}}")
+	cmd := procattr.Command("docker", "info", "--format", "{{json .Runtimes}}")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("Docker không sẵn sàng: %w", err)

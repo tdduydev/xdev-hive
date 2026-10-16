@@ -6,10 +6,11 @@ import (
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // Các run cùng repo dùng chung một repo cache bare. Hai lệnh git ghi vào cache cùng lúc (fetch cùng ref, worktree add
@@ -94,7 +95,7 @@ func gitWrite(ctx context.Context, cache, dir string, args ...string) error {
 func gitRetryLocked(ctx context.Context, dir string, args ...string) error {
 	for attempt := 1; ; attempt++ {
 		var stderr bytes.Buffer
-		c := exec.CommandContext(ctx, "git", args...)
+		c := procattr.CommandContext(ctx, "git", args...)
 		c.Dir = dir
 		c.Stdout = io.Discard
 		c.Stderr = io.MultiWriter(os.Stderr, &stderr)

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os/exec"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 // RTKFunc trả JSON của `rtk gain --format json`. Tách ra để test không gọi RTK thật.
@@ -18,7 +20,7 @@ func execRTK(ctx context.Context) ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	return exec.CommandContext(ctx, path, "gain", "--format", "json").Output()
+	return procattr.CommandContext(ctx, path, "gain", "--format", "json").Output()
 }
 
 // rtkGain trả nil khi không có RTK hoặc output không phải JSON: báo cáo vẫn ra, chỉ thiếu mục này.

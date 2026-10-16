@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 )
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
@@ -105,7 +106,7 @@ func writeJSON(path string, v any) error {
 
 // git chạy lệnh đọc trong dir, trả stdout đã cắt khoảng trắng.
 func git(dir string, args ...string) (string, error) {
-	c := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	c := procattr.Command("git", append([]string{"-C", dir}, args...)...)
 	b, err := c.Output()
 	return strings.TrimSpace(string(b)), err
 }
