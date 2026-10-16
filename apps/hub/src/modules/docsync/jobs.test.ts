@@ -4,10 +4,16 @@ import { contract } from "@xdev-hive/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Jobs, Tx } from "../platform/index.ts";
 import { handleAssetDownload, handleAssetUpload } from "./assets.ts";
-import { DOCSYNC_PULL_QUEUE, DOCSYNC_PUSH_QUEUE, docSyncQueues, queuePull, queuePush } from "./jobs.ts";
+import {
+  DOCSYNC_PULL_QUEUE,
+  DOCSYNC_PUSH_QUEUE,
+  docSyncQueues,
+  queuePull,
+  queuePush,
+  registerDocSync,
+} from "./jobs.ts";
 import { docsyncRouter } from "./router.ts";
 import { handleDocsWebhook } from "./webhook.ts";
-import { registerDocSync } from "./workers.ts";
 
 const fakeJobs = () => ({ enqueue: vi.fn().mockResolvedValue("job-1"), work: vi.fn(), schedule: vi.fn() });
 afterEach(() => vi.useRealTimers());
