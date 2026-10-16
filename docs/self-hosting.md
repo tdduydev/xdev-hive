@@ -100,8 +100,9 @@ can resolve it to the private IP; the hub itself stays unreachable from the Inte
 
    The script saves `HIVE_TLS=dns-cloudflare` and `COMPOSE_PROFILES=https`. Compose builds the Caddy image from
    `deploy/caddy/Dockerfile` (Caddy 2.11.7 with `github.com/caddy-dns/cloudflare`, both pinned), so the first deploy
-   needs a few minutes and outbound access to Docker Hub and the Go module proxy. Caddy resolves the TXT record with
-   public resolvers (`1.1.1.1`, `1.0.0.1`) because the internal DNS may not see it. The check after deploy waits up to
+   needs a few minutes and outbound access to Docker Hub and the Go module proxy. Caddy does not query DNS itself to
+   wait for the TXT record (internal networks often block outbound DNS); it waits a fixed
+   `HIVE_DNS_PROPAGATION_DELAY` (default `60s`) and lets Let's Encrypt check the record. The check after deploy waits up to
    two minutes for the certificate; logs: `docker compose … logs caddy`.
 
 **Moving from `https://<IP>`.** If the hub ran on `https://192.0.2.10` before, `HIVE_DEFAULT_SNI=192.0.2.10` stays in

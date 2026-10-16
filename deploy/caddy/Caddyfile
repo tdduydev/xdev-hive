@@ -35,11 +35,13 @@
 }
 
 # dns-cloudflare: tên miền trỏ về IP nội bộ, Let's Encrypt không gọi vào được máy nên xác minh bằng bản ghi TXT.
-# Resolver công khai vì DNS nội bộ có thể không thấy bản ghi TXT vừa tạo trên Cloudflare.
+# Mạng nội bộ hay chặn DNS ra ngoài (chỉ cho hỏi resolver nội bộ), nên bước Caddy tự hỏi máy chủ DNS của Cloudflare
+# để chờ TXT lan ra sẽ treo mãi; tắt bước đó và chờ cố định — Let's Encrypt tự kiểm TXT từ Internet.
 (tls_dns-cloudflare) {
 	tls {
 		dns cloudflare {env.CF_API_TOKEN}
-		resolvers 1.1.1.1 1.0.0.1
+		propagation_delay {$HIVE_DNS_PROPAGATION_DELAY:60s}
+		propagation_timeout -1
 	}
 }
 # Giữ địa chỉ IP cũ (CA nội bộ, /ca.crt) để máy chưa đổi sang tên miền vẫn vào được trong lúc chuyển.
