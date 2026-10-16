@@ -1,7 +1,10 @@
 #!/bin/zsh
 # In quota của mọi tài khoản Claude và Antigravity: tên|phiên%|reset phiên|tuần%|reset tuần
-cd "${TMPDIR:-/tmp}"
-for a in ${=AGENT_ALL_ACCOUNTS:-$(ls $HOME/.xdev-hive/accounts | grep "^claude-")}; do (
+# AGENT_ALL_ACCOUNTS="claude-4 claude-5" chọn tài khoản; không đặt thì lấy mọi thư mục claude-N trong ~/.xdev-hive/accounts.
+source ${0:A:h}/env.sh
+cd "$FLEET_DIR"
+accounts=(${=AGENT_ALL_ACCOUNTS:-$(ls -1 $HOME/.xdev-hive/accounts 2>/dev/null | grep -E '^claude-[0-9]+$')})
+for a in $accounts; do (
   CLAUDE_CONFIG_DIR=$HOME/.xdev-hive/accounts/$a claude -p /usage --output-format json --setting-sources user --strict-mcp-config --mcp-config '{"mcpServers":{}}' < /dev/null 2>/dev/null | python3 -c "
 import json,sys,re
 try: t=json.load(sys.stdin).get('result') or ''
