@@ -2,120 +2,8 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
-import { NAV_GROUPS, navGroups, navItems, screenFromHash, screenParam } from "@/lib/nav.ts";
 import { windowKind } from "@/lib/tauri.ts";
 import { AppShell } from "@/shell/app-shell.tsx";
-
-describe("menu theo hồ sơ", () => {
-  it("dev: không có quyền viết tài liệu nên Tài liệu từ code chỉ đọc", () => {
-    const items = navItems("dev");
-    expect(items.map((i) => i.id)).toEqual([
-      "home",
-      "work",
-      "reviews",
-      "leader",
-      "artifacts",
-      "sdlc",
-      "sdlc-questions",
-      "sdlc-progress",
-      "sdlc-metrics",
-      "knowledge",
-      "write",
-      "docs",
-      "plans",
-      "projects",
-      "runs",
-      "remote",
-      "setup",
-      "skills",
-      "tokens",
-      "memory",
-    ]);
-    expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
-  });
-
-  it("writer: không thấy Việc của tôi, Môi trường và Lượt chạy; người xem đội chỉ đọc tài liệu", () => {
-    const items = navItems("writer");
-    expect(items.map((i) => i.id)).toEqual([
-      "home",
-      "reviews",
-      "artifacts",
-      "sdlc",
-      "sdlc-questions",
-      "sdlc-progress",
-      "sdlc-metrics",
-      "knowledge",
-      "write",
-      "docs",
-      "skills",
-      "tokens",
-      "memory",
-    ]);
-    expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
-  });
-
-  it("lead: thấy hết, Tài liệu từ code sửa được", () => {
-    const items = navItems("lead");
-    expect(items).toHaveLength(20);
-    expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
-  });
-
-  it("chia ba nhóm Công việc, Tài liệu, Máy này; mục docs mang nhãn Tài liệu từ code", () => {
-    const groups = navGroups("lead");
-    expect(groups.map((g) => [g.label.vi, g.items.map((i) => i.label.vi)])).toEqual([
-      ["Công việc", ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt", "Leader", "Artifact"]],
-      ["AI SDLC", ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ", "Chỉ số"]],
-      ["Tài liệu", ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"]],
-      [
-        "Máy này",
-        [
-          "Gói agent",
-          "Dự án trên máy",
-          "Lượt chạy trên máy",
-          "Điều khiển từ xa",
-          "Môi trường",
-          "Skills",
-          "Token và ngữ cảnh",
-          "Memory",
-        ],
-      ],
-    ]);
-    expect(groups.map((g) => g.label.en)).toEqual(["Work", "AI SDLC", "Docs", "This machine"]);
-    expect(groups[2]?.items.find((i) => i.id === "docs")?.label.en).toBe("Docs from code");
-  });
-
-  it("writer vẫn thấy cả ba nhóm, chỉ bớt mục trong nhóm", () => {
-    const groups = navGroups("writer");
-    expect(groups.map((g) => [g.id, g.items.map((i) => i.id)])).toEqual([
-      ["work", ["home", "reviews", "artifacts"]],
-      ["sdlc", ["sdlc", "sdlc-questions", "sdlc-progress", "sdlc-metrics"]],
-      ["docs", ["knowledge", "write", "docs"]],
-      ["machine", ["skills", "tokens", "memory"]],
-    ]);
-  });
-
-  it("nhóm không còn mục nào theo hồ sơ thì bỏ cả nhóm", () => {
-    // Nhóm Máy này chỉ còn Lượt chạy và Môi trường: writer không có quyền nào trong đó.
-    const groups = NAV_GROUPS.map((g) =>
-      g.id === "machine" ? { ...g, items: g.items.filter((i) => i.id === "runs" || i.id === "setup") } : g,
-    );
-    expect(navGroups("writer", groups).map((g) => g.id)).toEqual(["work", "sdlc", "docs"]);
-    expect(navGroups("dev", groups).map((g) => g.id)).toEqual(["work", "sdlc", "docs", "machine"]);
-  });
-
-  it("đường dẫn lạ về Tổng quan", () => {
-    expect(screenFromHash("#/skills")).toBe("skills");
-    expect(screenFromHash("#/khong-co")).toBe("home");
-    expect(screenFromHash("")).toBe("home");
-  });
-
-  it("màn Soạn tài liệu mang key tài liệu trong đường dẫn", () => {
-    expect(screenFromHash("#/write/project%2Fpay%2Fprd")).toBe("write");
-    expect(screenParam("#/write/project%2Fpay%2Fprd")).toBe("project/pay/prd");
-    expect(screenParam("#/write")).toBe("");
-    expect(screenParam("#/write/%E0%A4%A")).toBe("");
-  });
-});
 
 describe("cửa sổ", () => {
   it("theo nhãn cửa sổ Tauri", () => {
@@ -139,26 +27,26 @@ describe("cửa sổ", () => {
 describe("AppShell", () => {
   beforeEach(() => setLang("vi"));
 
-  it("mặc định Tổng quan, đổi màn theo #/", async () => {
+  it("mặc định Máy này, đổi màn theo #/", async () => {
     render(<AppShell />);
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
-    expect(within(nav).getByRole("link", { name: "Tổng quan" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Máy này" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { level: 1, name: "Máy này" })).toBeTruthy();
     await act(async () => {
       location.hash = "#/runs";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
-    expect(screen.getByRole("heading", { level: 1, name: "Lượt chạy trên máy" })).toBeTruthy();
-    expect(within(nav).getByRole("link", { name: "Lượt chạy trên máy" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { level: 1, name: "Lượt chạy" })).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Lượt chạy" }).getAttribute("aria-current")).toBe("page");
     // Mọi mục của AppNav đã có màn thật: không còn trang "Sắp có".
     expect(screen.queryByText("Sắp có")).toBeNull();
   });
 
-  it("menu chia nhóm có tiêu đề, mục theo thứ tự trong nhóm", () => {
+  it("menu chỉ còn việc của máy: Máy này, rồi nhóm Chạy, Agent, Dự án; chân menu có web và Cài đặt", () => {
     render(<AppShell profile="lead" />);
     const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
     const groups = within(nav).getAllByRole("group");
-    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["Công việc", "AI SDLC", "Tài liệu", "Máy này"]);
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["Máy này", "Chạy", "Agent", "Dự án"]);
     expect(
       groups.map((g) =>
         within(g)
@@ -166,34 +54,84 @@ describe("AppShell", () => {
           .map((a) => a.textContent),
       ),
     ).toEqual([
-      ["Tổng quan", "Việc của tôi", "Chờ tôi duyệt", "Leader", "Artifact"],
-      ["Hạng mục", "Câu hỏi chờ tôi", "Tiến độ", "Chỉ số"],
-      ["Tra cứu tri thức", "Soạn tài liệu", "Tài liệu từ code"],
-      [
-        "Gói agent",
-        "Dự án trên máy",
-        "Lượt chạy trên máy",
-        "Điều khiển từ xa",
-        "Môi trường",
-        "Skills",
-        "Token và ngữ cảnh",
-        "Memory",
-      ],
+      ["Máy này"],
+      ["Lượt chạy", "Điều khiển từ xa"],
+      ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"],
+      ["Dự án trên máy", "Môi trường", "Tài liệu từ code"],
     ]);
-    for (const title of ["Công việc", "AI SDLC", "Tài liệu", "Máy này"])
-      expect(within(nav).getByText(title)).toBeTruthy();
+    // Nhóm đầu chỉ một mục nên không vẽ tiêu đề; ba nhóm sau có.
+    for (const title of ["Chạy", "Agent", "Dự án"]) expect(within(nav).getByText(title)).toBeTruthy();
+    expect(within(nav).getAllByText("Máy này")).toHaveLength(1);
     expect(within(nav).getByRole("link", { name: "Tài liệu từ code" }).getAttribute("href")).toBe("#/docs");
+    expect(within(nav).getByRole("link", { name: "Cài đặt" }).getAttribute("href")).toBe("#/settings");
+    expect(within(nav).getByRole("button", { name: "Mở hub trên web" })).toBeTruthy();
+    // Màn việc của đội đã chuyển sang web.
+    for (const gone of ["Việc của tôi", "Chờ tôi duyệt", "Leader", "Artifact", "Hạng mục", "Tra cứu tri thức"])
+      expect(within(nav).queryByRole("link", { name: gone })).toBeNull();
+  });
+
+  it("Mở hub trên web mở trang đầu của hub máy đã đăng ký", async () => {
+    const calls: { command: string; args?: Record<string, unknown> | undefined }[] = [];
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T,>(command: string, args?: Record<string, unknown>) => {
+          calls.push({ command, args });
+          if (command === "worker_state")
+            return {
+              kind: "online",
+              label: "Worker: đang nhận việc",
+              detail: null,
+              wanted: true,
+              hub: "https://hive.acme.vn",
+            } as T;
+          return null as T;
+        },
+      },
+    };
+    render(<AppShell />);
+    const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
+    expect(await within(nav).findByText("Worker đang nhận việc")).toBeTruthy();
+    await userEvent.setup().click(within(nav).getByRole("button", { name: "Mở hub trên web" }));
+    expect(calls.find((c) => c.command === "open_hub_page")?.args).toEqual({ path: "/" });
+  });
+
+  it("máy chưa đăng ký: Mở hub trên web mở hộp thoại kết nối", async () => {
+    render(<AppShell />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Mở hub trên web" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+  });
+
+  it("bấm thông báo về run trên máy thì Rust báo chuyển màn, app mở Lượt chạy", async () => {
+    let push: (v: unknown) => void = () => {};
+    window.__TAURI__ = {
+      core: { invoke: async <T,>() => null as T },
+      event: {
+        listen: async <T,>(event: string, handler: (e: { payload: T }) => void) => {
+          if (event === "app-navigate") push = (v) => handler({ payload: v as T });
+          return () => {};
+        },
+      },
+    };
+    render(<AppShell />);
+    await act(async () => {
+      push("runs");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(location.hash).toBe("#/runs");
+    expect(screen.getByRole("heading", { level: 1, name: "Lượt chạy" })).toBeTruthy();
   });
 
   it("không hiện người dùng hay thư mục mẫu khi chưa có dữ liệu", () => {
     render(<AppShell profile="writer" />);
     expect(screen.getByText("Chưa đăng nhập")).toBeTruthy();
     expect(screen.getByText("Chưa chọn thư mục")).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Môi trường" })).toBeNull();
+    const nav = screen.getByRole("navigation", { name: "Điều hướng app" });
+    expect(within(nav).queryByRole("link", { name: "Môi trường" })).toBeNull();
     // Người xem đội: Tài liệu từ code và Skills đều chỉ đọc (không cài skill lên máy).
-    expect(screen.getAllByText("chỉ đọc")).toHaveLength(2);
-    // Nhóm Máy này vẫn còn Skills, Token và Memory nên giữ tiêu đề.
-    expect(screen.getByText("Máy này")).toBeTruthy();
+    expect(within(nav).getAllByText("chỉ đọc")).toHaveLength(2);
+    // Nhóm Chạy không còn mục nào với writer nên mất cả tiêu đề; nhóm Agent còn Skills, Memory, Token.
+    expect(within(nav).queryByRole("group", { name: "Chạy" })).toBeNull();
+    expect(within(nav).getByText("Agent")).toBeTruthy();
   });
 
   it("tiếng Anh", () => {
@@ -205,8 +143,10 @@ describe("AppShell", () => {
     // Hồ sơ dev đọc được tài liệu từ code nhưng không sửa, nên tên mục kèm nhãn read-only.
     expect(within(nav).getByRole("link", { name: /^Docs from code/ })).toBeTruthy();
     expect(within(nav).getByRole("group", { name: "This machine" })).toBeTruthy();
-    expect(within(nav).getByText("Work")).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 1, name: "Runs on this machine" })).toBeTruthy();
+    expect(within(nav).getByText("Agents")).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Settings" })).toBeTruthy();
+    expect(within(nav).getByRole("button", { name: "Open the hub on the web" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Runs" })).toBeTruthy();
   });
 });
 
@@ -222,7 +162,7 @@ describe("chưa đăng nhập", () => {
 
   it("mở thẳng giao diện chính, không có màn chặn đăng nhập", async () => {
     render(<AppShell />);
-    expect(screen.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Máy này" })).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Điều hướng app" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: /Chưa đăng nhập/ })).toBeTruthy();
   });
@@ -230,20 +170,8 @@ describe("chưa đăng nhập", () => {
   it("màn chỉ có dữ liệu trên hub mời kết nối Hive, nút mở hộp thoại tài khoản", async () => {
     render(<AppShell />);
     const user = userEvent.setup();
-    for (const id of [
-      "work",
-      "reviews",
-      "sdlc",
-      "sdlc-questions",
-      "sdlc-progress",
-      "sdlc-metrics",
-      "knowledge",
-      "write",
-      "runs",
-    ]) {
-      await open(id);
-      expect(await screen.findByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeTruthy();
-    }
+    await open("runs");
+    expect(await screen.findByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Kết nối Hive" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("button", { name: "Đăng nhập bằng trình duyệt" })).toBeTruthy();
@@ -251,7 +179,18 @@ describe("chưa đăng nhập", () => {
 
   it("màn trên máy dùng được, không hiện lời mời kết nối thay cho màn", async () => {
     render(<AppShell />);
-    for (const id of ["home", "docs", "plans", "projects", "setup", "skills", "tokens", "memory"]) {
+    for (const id of [
+      "home",
+      "remote",
+      "docs",
+      "plans",
+      "projects",
+      "setup",
+      "skills",
+      "tokens",
+      "memory",
+      "settings",
+    ]) {
       await open(id);
       expect(screen.queryByRole("heading", { name: "Kết nối Hive để dùng mục này" })).toBeNull();
     }
@@ -264,21 +203,9 @@ describe("chưa đăng nhập", () => {
       .getAllByRole("link")
       .filter((a) => a.hasAttribute("data-offline"))
       .map((a) => a.getAttribute("href"));
-    expect(offline).toEqual([
-      "#/work",
-      "#/reviews",
-      "#/leader",
-      "#/artifacts",
-      "#/sdlc",
-      "#/sdlc-questions",
-      "#/sdlc-progress",
-      "#/sdlc-metrics",
-      "#/knowledge",
-      "#/write",
-      "#/runs",
-    ]);
-    expect(within(nav).getByRole("link", { name: "Việc của tôi" }).getAttribute("title")).toBe(
-      "Việc của tôi · Cần kết nối Hive",
+    expect(offline).toEqual(["#/runs"]);
+    expect(within(nav).getByRole("link", { name: "Lượt chạy" }).getAttribute("title")).toBe(
+      "Lượt chạy · Cần kết nối Hive",
     );
   });
 
@@ -337,13 +264,12 @@ describe("đóng mở menu và chọn ngôn ngữ", () => {
     const user = userEvent.setup();
     const nav = () => screen.getByRole("navigation", { name: "Điều hướng app" });
     expect(nav().hasAttribute("data-compact")).toBe(false);
-    expect(within(nav()).getByText("Công việc")).toBeTruthy();
+    expect(within(nav()).getByText("Agent")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Thu gọn menu" }));
     expect(nav().hasAttribute("data-compact")).toBe(true);
     // Chỉ còn icon thì bỏ tiêu đề nhóm, nhưng nhóm vẫn giữ tên cho trình đọc màn hình.
-    expect(within(nav()).queryByText("Công việc")).toBeNull();
-    expect(within(nav()).queryByText("Máy này")).toBeNull();
-    expect(within(nav()).getByRole("group", { name: "Công việc" })).toBeTruthy();
+    expect(within(nav()).queryByText("Agent")).toBeNull();
+    expect(within(nav()).getByRole("group", { name: "Agent" })).toBeTruthy();
     unmount();
     render(<AppShell />);
     expect(nav().hasAttribute("data-compact")).toBe(true);
@@ -363,7 +289,7 @@ describe("đóng mở menu và chọn ngôn ngữ", () => {
   it("chọn English ở danh sách ngôn ngữ thì cả app đổi sang tiếng Anh", async () => {
     render(<AppShell />);
     await userEvent.setup().selectOptions(screen.getByLabelText("Ngôn ngữ"), "en");
-    expect(screen.getByRole("heading", { level: 1, name: "Overview" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "This machine" })).toBeTruthy();
     expect(screen.getByLabelText("Language")).toBeTruthy();
     expect(document.documentElement.lang).toBe("en");
   });
@@ -422,7 +348,11 @@ describe("cửa sổ thấp", () => {
 
 describe("thẻ worker", () => {
   it("hiện trạng thái từ Rust và đổi theo sự kiện worker-state", async () => {
-    let push: (v: unknown) => void = () => {};
+    // AppNav và màn Máy này cùng nghe "worker-state": sự kiện phải tới mọi nơi nghe, như Tauri thật.
+    const heard: ((v: unknown) => void)[] = [];
+    const push = (v: unknown) => {
+      for (const h of heard) h(v);
+    };
     window.__TAURI__ = {
       core: {
         invoke: async <T,>(command: string) =>
@@ -437,15 +367,15 @@ describe("thẻ worker", () => {
             : null) as T,
       },
       event: {
-        listen: async <T,>(_e: string, handler: (e: { payload: T }) => void) => {
-          push = (v) => handler({ payload: v as T });
+        listen: async <T,>(event: string, handler: (e: { payload: T }) => void) => {
+          if (event === "worker-state") heard.push((v) => handler({ payload: v as T }));
           return () => {};
         },
       },
     };
     render(<AppShell />);
     expect(await screen.findByText("Worker đang kết nối")).toBeTruthy();
-    // Màn Tổng quan cũng có ô worker; ở đây chỉ kiểm thẻ trong AppNav.
+    // Màn Máy này cũng có thẻ worker; ở đây chỉ kiểm thẻ trong AppNav.
     expect(within(screen.getByRole("navigation")).getByText("hive.acme.vn")).toBeTruthy();
     await act(async () =>
       push({

@@ -5,11 +5,12 @@ import { ConnectHive } from "@/components/connect-hive.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
 import { SignOutDialog } from "@/components/sign-out-dialog.tsx";
 import { UpdateBanner } from "@/components/update-banner.tsx";
-import { AccountContext, ConnectContext, profileOf, useAccount } from "@/lib/account.ts";
-import { useArtifactsCapability } from "@/lib/artifacts-env.tsx";
+import { AccountContext, ConnectContext, profileOf, SignOutContext, useAccount } from "@/lib/account.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
 import { setNavCollapsed, useNavCollapsed } from "@/lib/nav-collapsed.ts";
+import { onTauriEvent } from "@/lib/tauri.ts";
+import { useTeamNotifications } from "@/lib/team-notify.ts";
 import { cn } from "@/lib/utils.ts";
 import { useWorkerState } from "@/lib/worker.ts";
 import { FULL_BLEED, SCREENS } from "@/screens/index.ts";
@@ -20,6 +21,9 @@ const text: Dict<{ collapse: string; expand: string }> = {
   en: { collapse: "Collapse menu", expand: "Expand menu" },
 };
 
+/** Sự kiện Rust phát khi người dùng bấm thông báo về run trên máy (src-tauri/src/notices.rs NAVIGATE_EVENT). */
+const NAVIGATE_EVENT = "app-navigate";
+
 function subscribe(listener: () => void) {
   window.addEventListener("hashchange", listener);
   return () => window.removeEventListener("hashchange", listener);
@@ -27,7 +31,8 @@ function subscribe(listener: () => void) {
 
 /**
  * Cửa sổ app cục bộ: AppNav bên trái, màn theo `#/<id>` bên phải. App là client, không bắt đăng nhập: mở thẳng giao
- * diện chính, màn tại máy dùng đủ; màn chỉ có dữ liệu trên hub thì mời kết nối Hive khi chưa liên kết tài khoản. Hồ sơ
+ * diện chính, màn tại máy dùng đủ; màn chỉ có dữ liệu trên hub thì mời kết nối Hive khi chưa liên kết tài khoản. Đã
+ * đăng nhập thì dò việc của đội đang chờ người dùng và báo bằng thông báo Windows (lib/team-notify.ts). Hồ sơ
  * menu tính từ vai trò của tài khoản đã liên kết (token cá nhân trong keychain); chưa liên kết thì dev. Hồ sơ chỉ quyết
  * định menu, hub kiểm từng thao tác.
  */
@@ -40,7 +45,14 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
   const lang = useLang();
   const t = useT(text);
   const worker = useWorkerState();
-  const artifacts = useArtifactsCapability(!!account);
+  useTeamNotifications(!!account);
+  useEffect(
+    () =>
+      onTauriEvent<string>(NAVIGATE_EVENT, (screen) => {
+        location.hash = `#/${screen}`;
+      }),
+    [],
+  );
   // Máy vừa đăng ký ở cửa sổ khác (khay → Bật worker): hub của worker đổi thì đọc lại tài khoản, không bắt mở lại app.
   const workerHub = worker?.hub ?? null;
   useEffect(() => {
@@ -66,7 +78,8 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
   };
   return (
     <div className="flex h-svh flex-col">
-      <UpdateBanner />
+      {/* Màn Cài đặt có thẻ cập nhật riêng với cùng các nút: không hiện hai lời mời mở lại cùng lúc. */}
+      {active !== "settings" && <UpdateBanner />}
       <div className="flex min-h-0 flex-1">
         <AppNav
           profile={profile}
@@ -77,7 +90,6 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
           connected={!!account}
           worker={worker}
           compact={collapsed}
-          features={artifacts === undefined ? {} : { artifacts }}
         />
         <AccountDialog
           open={accountOpen}
@@ -88,7 +100,7 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
         />
         <SignOutDialog open={signOutOpen} onOpenChange={setSignOutOpen} onSignedOut={setStatus} />
         <main className={cn("flex min-w-0 flex-1 flex-col", bleed ? "overflow-hidden" : "overflow-auto")}>
-          <header className="flex h-13 items-center gap-3 border-b px-5">
+          <header className="flex h-13 shrink-0 items-center gap-3 border-b px-5">
             <button
               type="button"
               aria-label={collapsed ? t.expand : t.collapse}
@@ -109,7 +121,9 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
           <div className={bleed ? "flex min-h-0 flex-1" : "p-5"}>
             <AccountContext.Provider value={account}>
               <ConnectContext.Provider value={openAccount}>
-                <Screen />
+                <SignOutContext.Provider value={account ? askSignOut : null}>
+                  <Screen />
+                </SignOutContext.Provider>
               </ConnectContext.Provider>
             </AccountContext.Provider>
           </div>
