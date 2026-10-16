@@ -8,7 +8,7 @@ import {
   outcomeToCodeWorkflow,
 } from "./code-reviews.ts";
 import { contract } from "./index.ts";
-import { defaultProjectSettings, type ProjectSettings } from "./projects.ts";
+import { defaultProjectSettings, type ProjectSettings, projectSettings, projectSettingsPatch } from "./projects.ts";
 import { WORKFLOW_PRESETS, workflowInput } from "./workflows.ts";
 
 const id = "6f9619ff-8b86-4011-b42d-00c04fc964ff";
@@ -211,5 +211,19 @@ describe("hợp đồng bình luận theo dòng", () => {
       expect(schema?.safeParse({ [key]: id, body: "x".repeat(20001) }).success).toBe(false);
       expect(schema?.safeParse({ [key]: id, body: "Góp ý" }).success).toBe(true);
     }
+  });
+});
+
+describe("hợp đồng đồng bộ bình luận PR", () => {
+  it("đăng ký thử lại và bật đồng bộ mặc định cho dự án", () => {
+    expect(codeReviewsContract.comments.retrySync).toBeDefined();
+    expect(defaultProjectSettings().features.prCommentSync).toBe(true);
+    const old = defaultProjectSettings();
+    const { prCommentSync: _, ...features } = old.features;
+    expect(projectSettings.parse({ ...old, features }).features.prCommentSync).toBe(true);
+    expect(projectSettingsPatch.parse({ features: { planMode: true } })).toEqual({ features: { planMode: true } });
+    expect(projectSettingsPatch.parse({ features: { prCommentSync: false } })).toEqual({
+      features: { prCommentSync: false },
+    });
   });
 });
