@@ -97,6 +97,7 @@ func syncEndToEnd(t *testing.T, native bool) {
 	root := filepath.Join(base, "code")
 	projectsFile := filepath.Join(base, "projects.json")
 	g := Group{
+		Path: "acme",
 		Root: root,
 		Repos: []Repo{
 			{Path: "acme/pay/api", Name: "api", DefaultBranch: "main", HTTPURL: apiBare},
@@ -187,6 +188,75 @@ func syncEndToEnd(t *testing.T, native bool) {
 	}
 	if e := got["acme/web"]; e.Status.State != StateError || !strings.Contains(e.Status.Reason, "repo khác") {
 		t.Fatalf("origin khác = %+v", e.Status)
+	}
+}
+
+// Người dùng tự clone trước khi theo dõi, chọn thư mục gốc là thư mục của chính group: repo nằm ở <gốc>/pay/api chứ
+// không phải <gốc>/acme/pay/api.
+func TestSyncFindsReposClonedUnderGroupFolder(t *testing.T) {
+	isolateGit(t)
+	base := t.TempDir()
+	apiBare, apiWork := remote(t, base, "api")
+	webBare, _ := remote(t, base, "web")
+	docsBare, _ := remote(t, base, "docs")
+	otherBare, _ := remote(t, base, "other")
+	root := filepath.Join(base, "code", "acme")
+	apiDir := filepath.Join(root, "pay", "api")
+	gitT(t, base, "clone", "-q", apiBare, apiDir)
+	// docs nằm theo đường dẫn đầy đủ: vẫn nhận, không clone thêm bản thứ hai.
+	docsDir := filepath.Join(root, "acme", "docs")
+	gitT(t, base, "clone", "-q", docsBare, docsDir)
+	// Đúng chỗ của other lại là repo khác.
+	otherDir := filepath.Join(root, "other")
+	gitT(t, base, "clone", "-q", webBare, otherDir)
+	g := Group{
+		Path: "ACME",
+		Root: root,
+		Repos: []Repo{
+			{Path: "acme/pay/api", Name: "api", DefaultBranch: "main", HTTPURL: "https://git.acme.vn/acme/pay/api.git", SSHURL: apiBare},
+			{Path: "acme/web", Name: "web", DefaultBranch: "main", HTTPURL: webBare},
+			{Path: "acme/docs", Name: "docs", DefaultBranch: "main", HTTPURL: docsBare},
+			{Path: "acme/other", Name: "other", DefaultBranch: "main", HTTPURL: otherBare},
+		},
+	}
+	s := Sync{Group: g, Concurrency: 2}
+	ctx := context.Background()
+
+	got, _ := runSync(t, s, ctx, ActionStatus)
+	if st := got["acme/pay/api"].Status; st.State != StateClean || st.Dir != apiDir {
+		t.Fatalf("api clone sẵn = %+v", st)
+	}
+	if st := got["acme/web"].Status; st.State != StateMissing || st.Dir != filepath.Join(root, "web") {
+		t.Fatalf("web chưa clone = %+v", st)
+	}
+	if st := got["acme/docs"].Status; st.State != StateClean || st.Dir != docsDir {
+		t.Fatalf("docs theo đường dẫn đầy đủ = %+v", st)
+	}
+	if st := got["acme/other"].Status; st.State != StateError || !strings.Contains(st.Reason, "repo khác") || !strings.Contains(st.Reason, "acme/other") {
+		t.Fatalf("other có origin khác = %+v", st)
+	}
+
+	push(t, apiWork, "v2\n")
+	got, done := runSync(t, s, ctx, ActionPull)
+	if e := got["acme/pay/api"]; e.Result != ResultDone || e.Status.State != StateClean {
+		t.Fatalf("pull api = %+v %+v", e, e.Status)
+	}
+	if b, _ := os.ReadFile(filepath.Join(apiDir, "README.md")); string(b) != "v2\n" {
+		t.Fatalf("api chưa tiến: %q", b)
+	}
+	if done.Summary[ResultSkipped] != 2 {
+		t.Fatalf("pull bỏ qua web chưa clone và other lỗi, tổng = %+v", done.Summary)
+	}
+
+	got, _ = runSync(t, s, ctx, ActionClone)
+	if e := got["acme/web"]; e.Result != ResultDone || e.Status.Dir != filepath.Join(root, "web") {
+		t.Fatalf("clone web = %+v %+v", e, e.Status)
+	}
+	if e := got["acme/docs"]; e.Result != ResultUnchanged {
+		t.Fatalf("docs bị clone lại = %+v", e)
+	}
+	if _, err := os.Stat(filepath.Join(root, "acme", "web")); !os.IsNotExist(err) {
+		t.Fatalf("clone vào <gốc>/acme/web: %v", err)
 	}
 }
 

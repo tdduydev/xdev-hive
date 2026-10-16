@@ -26,6 +26,47 @@ func TestRepoDirRejectsUnsafePaths(t *testing.T) {
 	}
 }
 
+func TestRepoDirAtLevel(t *testing.T) {
+	root := t.TempDir()
+	for _, tc := range []struct {
+		group, repo string
+		level       int
+		want        []string
+	}{
+		{"acme", "acme/pay/api", 0, []string{"acme", "pay", "api"}},
+		{"acme", "acme/pay/api", 1, []string{"pay", "api"}},
+		{"ACME", "acme/web", 1, []string{"web"}},
+		{"acme/pay", "acme/pay/api", 1, []string{"pay", "api"}},
+		{"acme/pay", "acme/pay/api", 2, []string{"api"}},
+		// Repo không nằm dưới group, hay nhóm cũ chưa có đường dẫn group: luôn theo đường dẫn đầy đủ.
+		{"acme", "other/api", 1, []string{"other", "api"}},
+		{"", "acme/api", 1, []string{"acme", "api"}},
+	} {
+		g := Group{Path: tc.group, Root: root}
+		dir, err := repoDir(g, tc.repo, tc.level)
+		if want := filepath.Join(append([]string{root}, tc.want...)...); err != nil || dir != want {
+			t.Errorf("repoDir(%q, %q, %d) = %q, %v; muốn %q", tc.group, tc.repo, tc.level, dir, err, want)
+		}
+	}
+	if _, err := repoDir(Group{Path: "acme", Root: root}, "acme/../x", 1); err == nil {
+		t.Error("đường dẫn ra ngoài thư mục gốc không báo lỗi")
+	}
+	if levels(Group{Path: "acme/pay"}) != 3 || levels(Group{}) != 1 {
+		t.Errorf("levels = %d, %d", levels(Group{Path: "acme/pay"}), levels(Group{}))
+	}
+	if runtime.GOOS != "windows" {
+		return
+	}
+	// Gốc chọn từ hộp thoại Windows: gạch ngược, gạch cuối, gạch xuôi đều ra cùng thư mục.
+	want := `E:\Codes\ehospital-ai\his\backend\his-service`
+	for _, r := range []string{`E:\Codes\ehospital-ai`, `E:\Codes\ehospital-ai\`, `E:/Codes/ehospital-ai`} {
+		g := Group{Path: "ehospital-ai", Root: r}
+		if dir, err := repoDir(g, "ehospital-ai/his/backend/his-service", 1); err != nil || dir != want {
+			t.Errorf("repoDir(%q) = %q, %v", r, dir, err)
+		}
+	}
+}
+
 func TestNormalizeHostAndGroupPath(t *testing.T) {
 	h, err := NormalizeHost(KindGitLab, "git.acme.vn/", "")
 	if err != nil || h.URL != "https://git.acme.vn" || h.Name != "git.acme.vn" {
