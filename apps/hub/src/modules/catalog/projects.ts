@@ -38,7 +38,7 @@ import {
   teamRolesOf,
 } from "../tenancy/index.ts";
 import { projectProvisionSteps, projects } from "./schema.ts";
-import { type PlannedStep, planSteps } from "./steps.ts";
+import { type PlannedStep, planSteps, protectionFor, splitTemplateFiles } from "./steps.ts";
 import { renderTemplate } from "./template.ts";
 
 export const PROVISION_QUEUE = "catalog-provision";
@@ -82,13 +82,15 @@ function needKey(deps: CatalogDeps): MasterKey {
   return deps.masterKey;
 }
 
-const templateFileCount = renderTemplate({
+// Mẫu riêng của tổ chức chỉ đổi nội dung, không đổi tên file, nên bộ đường dẫn của mẫu chuẩn dùng được cho xem trước.
+const standardTemplate = renderTemplate({
   projectKey: "x",
   projectName: "x",
   publicUrl: "http://x",
   defaultBranch: "main",
   systemName: "x",
-}).length;
+});
+const templateFileCount = standardTemplate.length;
 
 function planFor(
   project: ProjectRow,
@@ -260,7 +262,24 @@ async function prepare(tx: Tx, deps: CatalogDeps, actor: Actor, input: ProjectCr
   return { system, conn, repo, keyTaken: taken !== undefined };
 }
 
-function plan(deps: CatalogDeps, input: ProjectCreateRequest, p: Prepared, projectId: string | null): PlannedStep[] {
+/** Đầu vào đã chọn xong bảo vệ nhánh theo loại repo (protectionFor). */
+type CreateRequest = Omit<ProjectCreateRequest, "protection"> & {
+  protection: { protectDefault: boolean; requiredApprovals: number };
+};
+const resolved = (input: ProjectCreateRequest): CreateRequest => ({
+  ...input,
+  protection: protectionFor(input.repo.mode, input.protection),
+});
+
+type TemplateSplit = { add: string[]; keep: string[] };
+
+function plan(
+  deps: CatalogDeps,
+  input: CreateRequest,
+  p: Prepared,
+  projectId: string | null,
+  templateFiles?: TemplateSplit,
+): PlannedStep[] {
   return planSteps({
     mode: input.repo.mode,
     scmKind: p.conn.kind,
@@ -273,14 +292,20 @@ function plan(deps: CatalogDeps, input: ProjectCreateRequest, p: Prepared, proje
     webhook: input.webhook,
     webhookUrl: webhookUrl(deps.publicUrl, projectId),
     templateFileCount,
+    templateFiles,
   });
 }
 
 type Warning = ProjectCreateResult["warnings"][number];
 
 /** Hỏi nhà cung cấp như saga sẽ làm, nhưng chỉ đọc. Lỗi gọi API thành cảnh báo để người dùng vẫn xem được kế hoạch. */
-async function checkWithProvider(provider: GitProvider, input: ProjectCreateRequest, p: Prepared): Promise<Warning[]> {
+async function checkWithProvider(
+  provider: GitProvider,
+  input: CreateRequest,
+  p: Prepared,
+): Promise<{ warnings: Warning[]; templateFiles?: TemplateSplit }> {
   const warnings: Warning[] = [];
+  let templateFiles: TemplateSplit | undefined;
   const ref = { owner: p.repo.owner, name: p.repo.name };
   try {
     if (input.repo.mode === "new") {
@@ -316,18 +341,28 @@ async function checkWithProvider(provider: GitProvider, input: ProjectCreateRequ
           code: "REPO_NOT_FOUND",
           message: `Kết nối không thấy repo ${ref.owner}/${ref.name}. Kiểm URL và quyền của kết nối trên repo.`,
         });
-      } else if (input.protection.protectDefault) {
-        warnings.push({
-          code: "PROTECTION_OVERWRITE",
-          message: `Bảo vệ nhánh ${repo.defaultBranch} sẽ thay quy tắc đang có của nhánh này (nếu có).`,
-        });
+      } else {
+        const split = await splitTemplateFiles(provider, ref, repo.defaultBranch, standardTemplate);
+        templateFiles = { add: split.add.map((f) => f.path), keep: split.keep };
+        if (split.keep.length) {
+          warnings.push({
+            code: "TEMPLATE_KEEP",
+            message: `Repo đã có ${split.keep.join(", ")} trên ${repo.defaultBranch}: Hive giữ nguyên, không ghi đè.`,
+          });
+        }
+        if (input.protection.protectDefault) {
+          warnings.push({
+            code: "PROTECTION_OVERWRITE",
+            message: `Bảo vệ nhánh ${repo.defaultBranch} sẽ thay quy tắc đang có của nhánh này (nếu có).`,
+          });
+        }
       }
     }
   } catch (e) {
     if (!isGitProviderError(e)) throw e;
     warnings.push({ code: "SCM_ERROR", message: `Không kiểm được với nhà cung cấp: ${e.message}` });
   }
-  return warnings;
+  return templateFiles ? { warnings, templateFiles } : { warnings };
 }
 
 function localWarnings(deps: CatalogDeps, input: ProjectCreateRequest, p: Prepared): Warning[] {
@@ -361,13 +396,13 @@ export async function dryRunCreate(
   actor: Actor,
   input: ProjectCreateRequest,
 ): Promise<ProjectCreateResult> {
+  const req = resolved(input);
   // Đọc database trong transaction ngắn, gọi nhà cung cấp sau khi đã trả kết nối.
-  const p = await withTenant(pool, actor, (tx) => prepare(tx, deps, actor, input));
-  const warnings = [
-    ...localWarnings(deps, input, p),
-    ...(await checkWithProvider(deps.providerFactory(p.conn), input, p)),
-  ];
-  return { dryRun: true, projectId: null, state: "planned", steps: plannedView(plan(deps, input, p, null)), warnings };
+  const p = await withTenant(pool, actor, (tx) => prepare(tx, deps, actor, req));
+  const checked = await checkWithProvider(deps.providerFactory(p.conn), req, p);
+  const warnings = [...localWarnings(deps, req, p), ...checked.warnings];
+  const steps = plannedView(plan(deps, req, p, null, checked.templateFiles));
+  return { dryRun: true, projectId: null, state: "planned", steps, warnings };
 }
 
 async function existingByIdempotencyKey(
@@ -406,8 +441,9 @@ export async function createProject(
   pool: pg.Pool,
   deps: CatalogDeps,
   actor: Actor,
-  input: ProjectCreateRequest,
+  raw: ProjectCreateRequest,
 ): Promise<ProjectCreateResult> {
+  const input = resolved(raw);
   const jobs = deps.jobs;
   if (!jobs) {
     throw new ConflictError("JOBS_DISABLED", "Hub chưa bật hàng đợi (HIVE_DATABASE_JOBS_URL) nên chưa tạo được dự án.");
