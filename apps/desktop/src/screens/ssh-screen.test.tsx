@@ -74,8 +74,10 @@ function fakeApp(opts: {
       },
     },
   };
+  fakeApp.last = { calls };
   return { calls };
 }
+fakeApp.last = { calls: [] as Call[] };
 
 const row = (alias: string) => screen.getByRole("row", { name: new RegExp(alias) });
 
@@ -104,6 +106,37 @@ describe("màn Máy chủ SSH", () => {
     expect(await screen.findByText(/Máy chưa có OpenSSH client/)).toBeTruthy();
     expect(screen.getByText(/app tạo khoá ed25519/)).toBeTruthy();
     expect(screen.getByText(/Chưa có máy chủ nào/)).toBeTruthy();
+  });
+
+  it("Windows: ghi chú WSL có ~/.ssh riêng; macOS/Linux thì không", async () => {
+    fakeApp({
+      list: { configPath: "C:\\Users\\ha\\.ssh\\config", key: { ...KEY, path: "C:\\Users\\ha\\.ssh\\id_ed25519" } },
+    });
+    const { unmount } = render(<SshScreen />);
+    expect(await screen.findByText(/WSL/)).toBeTruthy();
+    unmount();
+    fakeApp({});
+    render(<SshScreen />);
+    await screen.findByText(FP);
+    expect(screen.queryByText(/WSL/)).toBeNull();
+  });
+
+  it("cài xong mà máy chủ vẫn từ chối khoá: gợi ý AuthorizedKeysFile", async () => {
+    const user = userEvent.setup();
+    fakeApp({
+      scan: { algorithm: "ssh-ed25519", fingerprint: HOST_FP, known: "known", adminCommand: "x" },
+      setup: () => ({ key: KEY, keyCreated: false, configWritten: true, check: { status: "auth" } }),
+    });
+    render(<SshScreen />);
+    await user.click(await screen.findByRole("button", { name: "Thêm máy chủ" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "192.0.2.10");
+    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "deploy");
+    await user.type(within(dialog).getByLabelText("Tên gợi nhớ"), "hive-prod");
+    await user.click(within(dialog).getByRole("button", { name: "Tiếp" }));
+    await user.type(await within(dialog).findByLabelText(/Mật khẩu của/), "pw");
+    await user.click(within(dialog).getByRole("button", { name: "Cài khoá" }));
+    expect(await within(dialog).findByText(/AuthorizedKeysFile/)).toBeTruthy();
   });
 
   it("thêm máy chủ chưa biết: đối chiếu dấu vân tay trước, mật khẩu gửi một lần rồi ô trống", async () => {
@@ -182,6 +215,8 @@ describe("màn Máy chủ SSH", () => {
     await user.click(within(dialog).getByRole("button", { name: "Cài khoá" }));
     expect(await within(dialog).findByText(/sai mật khẩu hoặc máy chủ/)).toBeTruthy();
     expect((within(dialog).getByLabelText(/Mật khẩu của/) as HTMLInputElement).value).toBe("");
+    // Khoá có thể đã được tạo trước khi lỗi: màn đọc lại danh sách.
+    await waitFor(() => expect(fakeApp.last.calls.filter((c) => c.command === "ssh_list")).toHaveLength(2));
   });
 
   it("khối viết tay: Chuyển sang khoá điền sẵn và khoá ô; máy trung gian hay khoá không được dùng thì nút bị khoá", async () => {
@@ -195,7 +230,12 @@ describe("màn Máy chủ SSH", () => {
         ],
       },
     });
+    const { calls } = fakeApp.last;
     render(<SshScreen />);
+    await waitFor(() => expect(within(row("other")).getByText("Cần thiết lập")).toBeTruthy());
+    // Khối đi qua máy trung gian không tự kiểm khi mở màn: lệnh proxy có thể mở trình duyệt hay gửi MFA.
+    expect(calls.filter((c) => c.command === "ssh_check").map((c) => c.args?.alias)).toEqual(["macmini", "other"]);
+    await user.click(within(row("jump")).getByRole("button", { name: "Kiểm tra" }));
     const jump = await waitFor(() => within(row("jump")).getByRole("button", { name: "Chuyển sang khoá" }));
     expect((jump as HTMLButtonElement).disabled).toBe(true);
     expect(within(row("jump")).getByText(/máy trung gian/)).toBeTruthy();

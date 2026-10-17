@@ -43,6 +43,7 @@ const text: Dict<{
   configWritten: (alias: string) => string;
   success: (alias: string) => string;
   partial: (label: string) => string;
+  authorizedKeysFile: string;
 }> = {
   vi: {
     title: "Thêm máy chủ SSH",
@@ -74,6 +75,8 @@ const text: Dict<{
     configWritten: (alias) => `Đã thêm ${alias} vào ~/.ssh/config (có bản sao lưu).`,
     success: (alias) => `Xong: ssh ${alias} đăng nhập bằng khoá, không cần mật khẩu.`,
     partial: (label) => `Đã chép khoá lên máy chủ, nhưng đăng nhập bằng khoá chưa được: ${label}.`,
+    authorizedKeysFile:
+      "Khoá đã nằm trong ~/.ssh/authorized_keys mà máy chủ vẫn từ chối. Nhờ người quản trị xem AuthorizedKeysFile và StrictModes trong sshd_config.",
   },
   en: {
     title: "Add SSH server",
@@ -105,6 +108,8 @@ const text: Dict<{
     configWritten: (alias) => `Added ${alias} to ~/.ssh/config (with a backup).`,
     success: (alias) => `Done: ssh ${alias} signs in with the key, no password.`,
     partial: (label) => `The key is on the server, but key sign-in does not work yet: ${label}.`,
+    authorizedKeysFile:
+      "The key is in ~/.ssh/authorized_keys but the server still refuses it. Ask the server admin to check AuthorizedKeysFile and StrictModes in sshd_config.",
   },
 };
 
@@ -114,14 +119,14 @@ export function SshAddDialog({
   open,
   initial,
   onClose,
-  onDone,
+  onChanged,
 }: {
   open: boolean;
   /** Mục có sẵn (khối viết tay, khối của app cần cài lại): ô điền sẵn và chỉ đọc. */
   initial: SshTarget | null;
   onClose: () => void;
-  /** Cài xong: màn đọc lại danh sách. */
-  onDone: () => void;
+  /** Đã chạy cài khoá (xong hay lỗi): khoá có thể vừa được tạo, màn đọc lại danh sách. */
+  onChanged: () => void;
 }) {
   const t = useT(text);
   const statusText = useT(SSH_STATUS_TEXT);
@@ -188,10 +193,10 @@ export function SshAddDialog({
     try {
       setResult(await sshSetup(target, scan.fingerprint, secret));
       setStep("done");
-      onDone();
     } catch (e) {
       setError(errorText(e));
     } finally {
+      onChanged();
       setBusy(false);
     }
   }
@@ -291,7 +296,9 @@ export function SshAddDialog({
               ) : (
                 <>
                   <p className="font-medium text-warning">{t.partial(statusText[result.check.status].label)}</p>
-                  <p className="text-muted-foreground">{statusText[result.check.status].hint}</p>
+                  <p className="text-muted-foreground">
+                    {result.check.status === "auth" ? t.authorizedKeysFile : statusText[result.check.status].hint}
+                  </p>
                   {result.check.detail && (
                     <pre className="m-0 font-mono text-xs whitespace-pre-wrap">{result.check.detail}</pre>
                   )}

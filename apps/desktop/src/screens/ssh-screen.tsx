@@ -38,6 +38,7 @@ const text: Dict<{
   keyTitle: string;
   noKey: (path: string) => string;
   encrypted: string;
+  wsl: string;
   copyKey: string;
   copied: string;
   empty: string;
@@ -72,6 +73,7 @@ const text: Dict<{
     keyTitle: "Khoá của máy",
     noKey: (path) => `Chưa có khoá ${path}. Lần cài khoá đầu tiên, app tạo khoá ed25519 không passphrase ở đó.`,
     encrypted: "Khoá có passphrase: ssh chỉ dùng được khi ssh-agent đã nạp khoá.",
+    wsl: "WSL có ~/.ssh riêng. Muốn dùng khoá này trong WSL thì chép id_ed25519 và id_ed25519.pub sang ~/.ssh của WSL rồi chmod 600 ~/.ssh/id_ed25519.",
     copyKey: "Chép khoá công khai",
     copied: "Đã chép",
     empty: "Chưa có máy chủ nào trong ~/.ssh/config.",
@@ -108,6 +110,7 @@ const text: Dict<{
     keyTitle: "This machine's key",
     noKey: (path) => `No key at ${path} yet. The first install creates an ed25519 key there, without a passphrase.`,
     encrypted: "The key has a passphrase: ssh can only use it once ssh-agent has loaded it.",
+    wsl: "WSL has its own ~/.ssh. To use this key in WSL, copy id_ed25519 and id_ed25519.pub into WSL's ~/.ssh, then chmod 600 ~/.ssh/id_ed25519.",
     copyKey: "Copy public key",
     copied: "Copied",
     empty: "No servers in ~/.ssh/config yet.",
@@ -176,7 +179,9 @@ export function SshScreen() {
     try {
       const next = await sshList();
       setList(next);
-      checkAll(next.hosts);
+      // Khối đi qua máy trung gian chỉ kiểm khi người dùng bấm: lệnh proxy (cloudflared, SSM…) có thể mở trình duyệt
+      // hay gửi yêu cầu MFA ngay khi vừa mở màn.
+      checkAll(next.hosts.filter((h) => !h.proxy));
     } catch (e) {
       setError(errorText(e));
     }
@@ -277,6 +282,8 @@ export function SshScreen() {
           ) : (
             <p className="text-sm text-muted-foreground">{t.noKey(key.path)}</p>
           )}
+          {/* Đường dẫn có ổ đĩa là Windows: chỉ ở đó mới có WSL. */}
+          {/^[A-Za-z]:[\\/]/.test(list.configPath) && <p className="text-xs text-muted-foreground">{t.wsl}</p>}
         </section>
       )}
 
@@ -370,7 +377,7 @@ export function SshScreen() {
         open={adding !== null}
         initial={adding?.initial ?? null}
         onClose={() => setAdding(null)}
-        onDone={() => void load()}
+        onChanged={() => void load()}
       />
       <SshPasswordOffDialog host={passwordOff} onClose={() => setPasswordOff(null)} />
       <Dialog open={removing !== null} onOpenChange={(o) => !o && !busy && setRemoving(null)}>
