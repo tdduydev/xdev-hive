@@ -313,6 +313,10 @@ const keepBackups = 5
 // chép sang (Windows: owner và DACL), vì OpenSSH từ chối config người khác sửa được. backup: giữ bản cũ thành
 // `<tên>.xdev-hive-YYYYMMDD-HHMMSS.bak`, chỉ giữ 5 bản mới nhất.
 func WriteFileSafe(path string, data []byte, backup bool, now time.Time) error {
+	// ~/.ssh/config hay là symlink tới repo dotfiles: ghi vào file đích, không thay symlink bằng file thường.
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
 	dir, base := filepath.Dir(path), filepath.Base(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err

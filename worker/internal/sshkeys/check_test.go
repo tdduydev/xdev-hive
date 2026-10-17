@@ -94,6 +94,27 @@ func TestResolvedUses(t *testing.T) {
 	}
 }
 
+func TestCheckArgsDisableMultiplexing(t *testing.T) {
+	args := checkArgs("hive-prod")
+	opts := map[string]bool{}
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "-o" {
+			opts[args[i+1]] = true
+		}
+	}
+	// Phiên ControlMaster mở bằng mật khẩu trước đó sẽ cho "ok" mà không thử khoá: phải tắt.
+	for _, want := range []string{"BatchMode=yes", "StrictHostKeyChecking=yes", "PasswordAuthentication=no",
+		"KbdInteractiveAuthentication=no", "ControlMaster=no", "ControlPath=none", "ClearAllForwardings=yes",
+		"RemoteCommand=none", "RequestTTY=no"} {
+		if !opts[want] {
+			t.Errorf("thiếu -o %s trong %v", want, args)
+		}
+	}
+	if tail := args[len(args)-3:]; tail[0] != "--" || tail[1] != "hive-prod" || tail[2] != "exit" {
+		t.Errorf("alias phải đứng sau --, có %v", args)
+	}
+}
+
 func TestCheckWithoutSSH(t *testing.T) {
 	if got := Check(context.Background(), "", "hive-prod", KeyInfo{}); got.Status != "no_ssh" {
 		t.Errorf("không có ssh: muốn no_ssh, có %+v", got)

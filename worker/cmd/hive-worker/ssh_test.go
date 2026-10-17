@@ -178,6 +178,16 @@ func TestSSHSetupRejectsAliasOfOtherServer(t *testing.T) {
 	}
 }
 
+func TestSSHSetupRejectsSecondNameBeforePassword(t *testing.T) {
+	home := sshEnv(t)
+	s := sshtest.New(t, sshtest.Options{Password: "pw"})
+	writeSSHConfig(t, home, "Host joinytran jt\n    HostName 192.0.2.30\n")
+	_, stderr, code := sshRun(t, "pw\n", setupArgs(s, "jt", scanFingerprint(t, s))...)
+	if code != 1 || !strings.Contains(stderr, sshkeys.ErrAliasExists.Error()) || s.Passwords() != 0 {
+		t.Errorf("tên thứ hai của một dòng Host: phải từ chối trước khi gửi mật khẩu; mã %d %q, mật khẩu %d", code, stderr, s.Passwords())
+	}
+}
+
 func TestSSHSetupHandWrittenNeedsSSH(t *testing.T) {
 	home := sshEnv(t)
 	s := sshtest.New(t, sshtest.Options{Password: "pw"})

@@ -85,10 +85,7 @@ func Check(ctx context.Context, sshPath, alias string, key KeyInfo) CheckResult 
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	cmd := procattr.CommandContext(ctx, sshPath,
-		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes",
-		"-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no",
-		"--", alias, "exit")
+	cmd := procattr.CommandContext(ctx, sshPath, checkArgs(alias)...)
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = io.Discard, &stderr
 	err := cmd.Run()
@@ -108,6 +105,19 @@ func Check(ctx context.Context, sshPath, alias string, key KeyInfo) CheckResult 
 		status = "passphrase"
 	}
 	return CheckResult{Status: status, Detail: tail(stderr.String(), 300)}
+}
+
+// checkArgs tắt ControlMaster: phiên chung mở bằng mật khẩu trước đó sẽ cho "ok" mà không thử khoá, rồi người dùng tắt
+// mật khẩu trên máy chủ và mất đường vào khi phiên đó hết. RemoteCommand, RequestTTY và forward trong config cũng bị bỏ
+// để lệnh `exit` chạy được với mọi alias.
+func checkArgs(alias string) []string {
+	return []string{
+		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes",
+		"-o", "PasswordAuthentication=no", "-o", "KbdInteractiveAuthentication=no",
+		"-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "ClearAllForwardings=yes",
+		"-o", "RemoteCommand=none", "-o", "RequestTTY=no",
+		"--", alias, "exit",
+	}
 }
 
 func agentHasKey(ctx context.Context, sshPath string, key KeyInfo) bool {

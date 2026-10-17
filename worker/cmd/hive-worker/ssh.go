@@ -55,6 +55,9 @@ const setupTimeout = 55 * time.Second
 
 var fingerprintRe = regexp.MustCompile(`^SHA256:[A-Za-z0-9+/]{43}$`)
 
+// sshIdentityFile: ssh mở `~` theo tài khoản trên mọi hệ điều hành, nên khối config dùng được trên máy khác.
+const sshIdentityFile = "~/.ssh/id_ed25519"
+
 type sshPaths struct{ home, config, known, key string }
 
 func sshPathsFor(home string) sshPaths {
@@ -266,6 +269,12 @@ func sshSetup(ctx context.Context, p sshPaths, stdin io.Reader, want sshkeys.Hos
 				got.HostName, got.Port)
 		}
 	}
+	// AddBlock kiểm mọi tên trên mọi dòng Host (ParseConfig chỉ lấy tên đầu): báo trùng trước khi tốn mật khẩu.
+	if writeConfig {
+		if _, err := sshkeys.AddBlock(config, want, sshIdentityFile); err != nil {
+			return view, err
+		}
+	}
 	key, err := sshkeys.InspectKey(p.key)
 	if err != nil {
 		return view, err
@@ -298,9 +307,14 @@ func sshSetup(ctx context.Context, p sshPaths, stdin io.Reader, want sshkeys.Hos
 		return view, fmt.Errorf("đã cài khoá nhưng không ghi được known_hosts: %w", err)
 	}
 	if writeConfig {
-		out, err := sshkeys.AddBlock(config, want, "~/.ssh/id_ed25519")
+		// Đọc lại: bước cài khoá có thể mất cả chục giây, người dùng có thể đã sửa config trong lúc đó.
+		latest, err := os.ReadFile(p.config)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return view, fmt.Errorf("đã cài khoá nhưng không đọc lại được ~/.ssh/config: %w", err)
+		}
+		out, err := sshkeys.AddBlock(latest, want, sshIdentityFile)
 		if err != nil {
-			return view, err
+			return view, fmt.Errorf("đã cài khoá nhưng không ghi được ~/.ssh/config: %w", err)
 		}
 		if err := sshkeys.WriteFileSafe(p.config, out, true, sshNow()); err != nil {
 			return view, fmt.Errorf("đã cài khoá nhưng không ghi được ~/.ssh/config: %w", err)
