@@ -1,4 +1,5 @@
 import type { CliProfile } from "@/lib/agent.ts";
+import { folderKey } from "@/lib/folder.ts";
 import { getLang, type Lang } from "@/lib/i18n.ts";
 import type { LocalProject } from "@/lib/local-projects.ts";
 import { invoke } from "@/lib/tauri.ts";
@@ -65,13 +66,10 @@ export const CLI_LABEL: Record<AgentCli, string> = {
   antigravity: "Antigravity",
 };
 
-/** Đường dẫn để so: mở `~`, dùng `/`, bỏ dấu phân cách cuối, chữ thường với đường dẫn kiểu Windows (`C:`). */
+/** Đường dẫn để so (folderKey), sau khi mở `~` của thư mục gói (`~/.xdev-hive/accounts/claude-2`). */
 export function normPath(path: string, home: string | null): string {
-  let p = path.trim();
-  if (home && (p === "~" || p.startsWith("~/") || p.startsWith("~\\"))) p = home + p.slice(1);
-  p = p.replace(/\\/g, "/");
-  if (p.length > 1) p = p.replace(/\/+$/, "");
-  return /^[a-z]:/i.test(p) ? p.toLowerCase() : p;
+  const p = path.trim();
+  return folderKey(home && (p === "~" || p.startsWith("~/") || p.startsWith("~\\")) ? home + p.slice(1) : p);
 }
 
 const inside = (child: string, parent: string) => child === parent || child.startsWith(`${parent}/`);

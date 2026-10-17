@@ -9,8 +9,10 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useSyncExternalStore } from "react";
+import { folderKey } from "@/lib/folder.ts";
 import { getLang } from "@/lib/i18n.ts";
 import { errorText, invoke } from "@/lib/tauri.ts";
+import { rememberTermDefault, termDefault } from "@/lib/term-defaults.ts";
 
 /**
  * Terminal nhúng của màn Tài liệu (src-tauri/src/pty.rs): PTY trên máy, vẽ bằng xterm.js. Kho nằm ngoài React như kho
@@ -18,6 +20,13 @@ import { errorText, invoke } from "@/lib/tauri.ts";
  * tiến trình.
  */
 export type TermCli = "claude" | "codex" | "antigravity" | "shell";
+
+export const TERM_CLI_LABEL: Record<TermCli, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  antigravity: "Antigravity (agy)",
+  shell: "Shell",
+};
 
 export interface TermOptions {
   cli: TermCli;
@@ -46,17 +55,26 @@ interface Live {
 
 let sessions: TermSession[] = [];
 let active: string | null = null;
+/** Dự án đang chọn ở màn Terminal; màn khác (Dự án trên máy, Agent trên máy) chọn trước rồi chuyển sang. */
+let folder: string | null = null;
 const live = new Map<string, Live>();
 /** Output đến trước khi `pty_open` trả id (CLI in ngay khi chạy): giữ lại rồi vẽ khi biết id. */
 const early = new Map<string, Uint8Array[]>();
+/** PTY đã đóng hay đã thay (Đổi gói): output và mã thoát đến muộn của nó bỏ qua. */
+const dead = new Set<string>();
 const listeners = new Set<() => void>();
 let listeningOn: unknown = null;
 let seq = 0;
 let fontSize = getTermFontSize();
-let snapshot: { sessions: TermSession[]; active: string | null; fontSize: number } = { sessions, active, fontSize };
+let snapshot: { sessions: TermSession[]; active: string | null; fontSize: number; folder: string | null } = {
+  sessions,
+  active,
+  fontSize,
+  folder,
+};
 
 function emit() {
-  snapshot = { sessions, active, fontSize };
+  snapshot = { sessions, active, fontSize, folder };
   for (const l of listeners) l();
 }
 
@@ -86,6 +104,7 @@ function ensureListening() {
   };
   tauri.event
     .listen<{ id: string; data: string }>("pty:data", (e) => {
+      if (dead.has(e.payload.id)) return;
       const s = sessions.find((x) => x.ptyId === e.payload.id);
       const bytes = decode(e.payload.data);
       if (!s) {
@@ -200,6 +219,7 @@ export function openTerminal(options: TermOptions): string {
   });
   sessions = [...sessions, { ...options, key, ptyId: null, status: "starting", code: null, error: null }];
   active = key;
+  rememberTermDefault(options.folder, { cli: options.cli, planId: options.planId });
   emit();
   return key;
 }
@@ -274,10 +294,63 @@ export function selectTerminal(key: string) {
   emit();
 }
 
+export const inFolder = (s: Pick<TermSession, "folder">, f: string) => folderKey(s.folder) === folderKey(f);
+
+/** Chọn dự án ở màn Terminal; tab đang chọn không thuộc dự án thì chọn tab mới nhất của dự án. */
+export function selectFolder(f: string | null) {
+  folder = f;
+  const current = sessions.find((s) => s.key === active);
+  if (f && !(current && inFolder(current, f))) active = sessions.filter((s) => inFolder(s, f)).at(-1)?.key ?? active;
+  emit();
+}
+
+const switchText = (label: string) => (getLang() === "vi" ? `── Đổi gói: ${label} ──` : `── Switched plan: ${label} ──`);
+
+/**
+ * Đổi gói của tab: đóng CLI đang chạy, mở lại cùng CLI trong cùng thư mục bằng gói khác. Hội thoại cũ không mang sang vì
+ * mỗi gói có thư mục cấu hình riêng. Không giữ bỏ hỏi quyền: mỗi terminal bỏ hỏi quyền phải xác nhận lại.
+ */
+export function restartTerminal(key: string, plan: { planId: string | null; label: string }) {
+  const s = sessions.find((x) => x.key === key);
+  const l = live.get(key);
+  if (!s || !l || s.cli === "shell") return;
+  if (s.ptyId) {
+    if (s.status === "running") void invoke("pty_close", { id: s.ptyId }).catch(() => {});
+    dead.add(s.ptyId);
+    early.delete(s.ptyId);
+  }
+  l.term.write(`\r\n\x1b[2m${switchText(plan.label)}\x1b[0m\r\n`);
+  update(key, { ...plan, bypass: false, ptyId: null, status: "starting", code: null, error: null });
+  rememberTermDefault(s.folder, { cli: s.cli, planId: plan.planId });
+  if (l.opened) void start(key);
+}
+
+/** Nút Terminal của một dự án: chọn dự án, mở lại tab đang có, chưa có thì mở tab theo CLI và gói dùng lần cuối. */
+export function openProjectTerminal(f: string) {
+  const mine = sessions.filter((s) => inFolder(s, f));
+  if (mine.length) {
+    const current = mine.find((s) => s.key === active) ?? mine.at(-1);
+    if (current) active = current.key;
+    folder = f;
+    emit();
+    return;
+  }
+  const d = termDefault(f) ?? { cli: "claude" as const, planId: null };
+  folder = f;
+  openTerminal({
+    cli: d.cli,
+    planId: d.planId,
+    bypass: false,
+    folder: f,
+    label: d.planId ? `${TERM_CLI_LABEL[d.cli]} · ${d.planId}` : TERM_CLI_LABEL[d.cli],
+  });
+}
+
 /** Đóng tab: giết tiến trình trong PTY và bỏ xterm. */
 export function closeTerminal(key: string) {
   const s = sessions.find((x) => x.key === key);
   if (s?.ptyId && s.status === "running") void invoke("pty_close", { id: s.ptyId }).catch(() => {});
+  if (s?.ptyId) dead.add(s.ptyId);
   const l = live.get(key);
   live.delete(key);
   l?.host.remove();
@@ -293,8 +366,10 @@ export function resetTerminals() {
   for (const l of live.values()) l.term.dispose();
   live.clear();
   early.clear();
+  dead.clear();
   sessions = [];
   active = null;
+  folder = null;
   listeningOn = null;
   emit();
 }
