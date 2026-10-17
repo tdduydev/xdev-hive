@@ -452,31 +452,31 @@ describe("scope của mục trong cây (spec 022)", () => {
     freeProject: `docs/scope-${tag}/free.png`,
     freeOrg: `scope-${tag}/free.png`,
   });
+  const doc = async (key: string, team: string | null, projectId: string | null) =>
+    (
+      await admin.query(
+        `insert into hive.docs (org_id, team_id, project_id, key, title, current_version, updated_by_user_id)
+         values ($1, $2, $3, $4, $4, 1, $5) returning id`,
+        [org.orgId, team, projectId, key, org.user("admin")],
+      )
+    ).rows[0].id as string;
+  const file = (homeId: string, docId: string, path: string) =>
+    admin.query("insert into hive.doc_repo_files (org_id, home_id, doc_id, repo_path) values ($1, $2, $3, $4)", [
+      org.orgId,
+      homeId,
+      docId,
+      path,
+    ]);
+  // missing_lfs không cần blob, đủ để dựng dòng đính kèm.
+  const asset = (homeId: string, path: string, owner: string | null) =>
+    admin.query(
+      `insert into hive.doc_assets (org_id, home_id, repo_path, media_type, size, sha256, lfs, state, owner_doc_id)
+       values ($1, $2, $3, 'image/png', 1, repeat('a', 64), true, 'missing_lfs', $4)`,
+      [org.orgId, homeId, path, owner],
+    );
 
   it("cây trả scope của tài liệu và của đính kèm", async () => {
     const p = paths();
-    const doc = async (key: string, team: string | null, projectId: string | null) =>
-      (
-        await admin.query(
-          `insert into hive.docs (org_id, team_id, project_id, key, title, current_version, updated_by_user_id)
-           values ($1, $2, $3, $4, $4, 1, $5) returning id`,
-          [org.orgId, team, projectId, key, org.user("admin")],
-        )
-      ).rows[0].id as string;
-    const file = (homeId: string, docId: string, path: string) =>
-      admin.query("insert into hive.doc_repo_files (org_id, home_id, doc_id, repo_path) values ($1, $2, $3, $4)", [
-        org.orgId,
-        homeId,
-        docId,
-        path,
-      ]);
-    // missing_lfs không cần blob, đủ để dựng dòng đính kèm.
-    const asset = (homeId: string, path: string, owner: string | null) =>
-      admin.query(
-        `insert into hive.doc_assets (org_id, home_id, repo_path, media_type, size, sha256, lfs, state, owner_doc_id)
-         values ($1, $2, $3, 'image/png', 1, repeat('a', 64), true, 'missing_lfs', $4)`,
-        [org.orgId, homeId, path, owner],
-      );
     const projectDocId = await doc(`project/${projectKey}/scope-${tag}`, org.teamId, project.projectId);
     const orgDocId = await doc(`org/scope-${tag}`, null, null);
     await file(projectHome.id, projectDocId, p.projectDoc);
@@ -494,6 +494,19 @@ describe("scope của mục trong cây (spec 022)", () => {
     expect(scopeOf(p.owned)).toEqual(inProject);
     expect(scopeOf(p.freeProject)).toEqual(inProject);
     expect(scopeOf(p.freeOrg)).toEqual(inOrg);
+  });
+
+  it("đính kèm có tài liệu chủ lấy scope của tài liệu chủ, không theo nhà chứa nó", async () => {
+    // Ở nhà dự án hai quy tắc cho cùng kết quả; chỉ nhà tổ chức chứa đính kèm của tài liệu dự án mới tách được.
+    const owned = `scope-owner-${tag}/owned.png`;
+    const ownerId = await doc(`project/${projectKey}/scope-owner-${tag}`, org.teamId, project.projectId);
+    await file(projectHome.id, ownerId, `docs/scope-owner-${tag}/a.md`);
+    await asset(orgHome.id, owned, ownerId);
+
+    const tree = await as("tmember", (tx) => listTree(tx, org.user("tmember"), { limit: 500 }));
+    const item = tree.items.find((i) => i.path === owned);
+    expect(item).toMatchObject({ kind: "asset", homeId: orgHome.id });
+    expect(item?.scope).toEqual({ level: "project", teamId: org.teamId, projectId: project.projectId });
   });
 });
 
