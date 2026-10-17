@@ -3,7 +3,7 @@ name = "xdev-hive-desktop"
 version = "0.0.0"
 description = "xDev Hive desktop: cửa sổ web và worker chạy nền"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 publish = false
 
 [lib]
@@ -40,6 +40,9 @@ base64 = "0.22"
 x509-parser = { version = "0.18", features = ["verify"] }
 # Terminal nhúng của màn Tài liệu từ code: PTY chạy được trên macOS, Windows (ConPTY) và Linux. 0.9.0 phát hành 02/2025.
 portable-pty = "0.9.0"
+# Màn Agent trên máy: đọc tiến trình (thư mục làm việc, môi trường, CPU, RAM, người dùng) trên Windows, macOS, Linux.
+# Tự đọc PEB (Windows) hay KERN_PROCARGS2 (macOS) là nhiều unsafe riêng từng hệ. 0.39.6 phát hành 09/07/2026, cần Rust 1.95.
+sysinfo = { version = "=0.39.6", default-features = false, features = ["system", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 # Dò, đóng và buộc tắt Claude Desktop bằng Win32 thay vì PowerShell/taskkill (có lúc treo). Cùng bản đã có trong cây
