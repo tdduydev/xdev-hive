@@ -16,20 +16,25 @@ import { type Dict, useT } from "@/lib/i18n.ts";
 import {
   attachTerminal,
   closeTerminal,
+  inFolder,
   openTerminal,
+  restartTerminal,
   selectTerminal,
   setTermFontSize,
+  TERM_CLI_LABEL,
   type TermCli,
   useTerminals,
 } from "@/lib/pty.ts";
+import { termDefault } from "@/lib/term-defaults.ts";
 import { cn } from "@/lib/utils.ts";
 
-const CLIS: { id: TermCli; label: string }[] = [
-  { id: "claude", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-  { id: "antigravity", label: "Antigravity (agy)" },
-  { id: "shell", label: "Shell" },
-];
+const CLIS: { id: TermCli; label: string }[] = (["claude", "codex", "antigravity", "shell"] as const).map((id) => ({
+  id,
+  label: TERM_CLI_LABEL[id],
+}));
+
+/** Giá trị của "Đăng nhập mặc định" trong ô Đổi gói (chuỗi rỗng là chưa chọn). */
+const DEFAULT_PLAN = "__default";
 
 const text: Dict<{
   run: string;
@@ -55,6 +60,8 @@ const text: Dict<{
   bypassBadge: string;
   signedOut: string;
   fontSize: string;
+  switchPlan: string;
+  switchHint: string;
 }> = {
   vi: {
     run: "Chạy",
@@ -86,6 +93,8 @@ const text: Dict<{
     bypassBadge: "bỏ hỏi quyền",
     signedOut: "chưa đăng nhập",
     fontSize: "Cỡ chữ terminal",
+    switchPlan: "Đổi gói",
+    switchHint: "Mở lại CLI của tab này bằng gói khác, trong cùng thư mục. Hội thoại cũ không mang sang.",
   },
   en: {
     run: "Run",
@@ -117,6 +126,8 @@ const text: Dict<{
     bypassBadge: "no prompts",
     signedOut: "signed out",
     fontSize: "Terminal font size",
+    switchPlan: "Switch plan",
+    switchHint: "Restart this tab's CLI with another plan in the same folder. The old conversation does not carry over.",
   },
 };
 
@@ -129,17 +140,27 @@ function TermView({ id }: { id: string }) {
 }
 
 /**
- * Tab Terminal của khung phải màn Tài liệu: chọn CLI và gói agent, mở PTY trong thư mục dự án (lib/pty.ts). Nhiều
- * terminal là tab con; đóng tab thì giết tiến trình.
+ * Terminal của một thư mục dự án (màn Terminal, tab Terminal của màn Tài liệu): chọn CLI và gói agent, mở PTY trong
+ * thư mục (lib/pty.ts). Chỉ hiện tab của thư mục này; đóng tab thì giết tiến trình. "Đổi gói" mở lại CLI của tab
+ * bằng gói khác.
  */
 export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickFolder: () => void }) {
   const t = useT(text);
-  const { sessions, active, fontSize } = useTerminals();
+  const { sessions: all, active, fontSize } = useTerminals();
+  const sessions = folder ? all.filter((s) => inFolder(s, folder)) : [];
   const [cli, setCli] = useState<TermCli>("claude");
   const [planId, setPlanId] = useState("");
   const [bypass, setBypass] = useState(false);
   const [asking, setAsking] = useState(false);
   const [plans, setPlans] = useState<CliProfile[]>([]);
+
+  useEffect(() => {
+    // Mỗi dự án mở lại bằng CLI và gói dùng lần cuối ở đó.
+    const d = folder ? termDefault(folder) : null;
+    setCli(d?.cli ?? "claude");
+    setPlanId(d?.planId ?? "");
+    setBypass(false);
+  }, [folder]);
 
   useEffect(() => {
     // Bản worker cũ chưa có `accounts --json` thì chỉ có đăng nhập mặc định.
@@ -151,7 +172,19 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
 
   const shell = cli === "shell";
   const cliPlans = plans.filter((p) => p.cli === cli);
-  const current = sessions.find((s) => s.key === active) ?? null;
+  const current = sessions.find((s) => s.key === active) ?? sessions.at(-1) ?? null;
+  const switchable = current && current.cli !== "shell" && current.status !== "starting";
+  const otherPlans = current ? plans.filter((p) => p.cli === current.cli && p.id !== current.planId) : [];
+
+  function switchPlan(value: string) {
+    if (!current || !value) return;
+    const plan = plans.find((p) => p.id === value);
+    const name = TERM_CLI_LABEL[current.cli];
+    restartTerminal(current.key, {
+      planId: plan?.id ?? null,
+      label: plan ? `${name} · ${plan.label || plan.id}` : name,
+    });
+  }
 
   function pickCli(next: TermCli) {
     setCli(next);
@@ -162,7 +195,7 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
   function open() {
     if (!folder) return;
     const plan = cliPlans.find((p) => p.id === planId);
-    const name = CLIS.find((c) => c.id === cli)?.label ?? cli;
+    const name = TERM_CLI_LABEL[cli];
     openTerminal({
       cli,
       planId: plan?.id ?? null,
@@ -239,23 +272,22 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
       </div>
 
       {sessions.length > 0 && (
-        <div
-          role="tablist"
-          aria-label={t.tabs}
-          className="flex gap-0.5 overflow-x-auto border-b bg-muted/50 px-1.5 pt-1"
-        >
+        <div className="flex items-center gap-1.5 border-b bg-muted/50 pr-2">
+        <div role="tablist" aria-label={t.tabs} className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto px-1.5 pt-1">
           {sessions.map((s) => (
             <div
               key={s.key}
               className={cn(
                 "flex h-7 shrink-0 items-center gap-1 rounded-t-md border border-b-0 pr-1 pl-2 text-xs",
-                s.key === active ? "bg-card font-semibold text-foreground" : "border-transparent text-muted-foreground",
+                s.key === current?.key
+                  ? "bg-card font-semibold text-foreground"
+                  : "border-transparent text-muted-foreground",
               )}
             >
               <button
                 type="button"
                 role="tab"
-                aria-selected={s.key === active}
+                aria-selected={s.key === current?.key}
                 onClick={() => selectTerminal(s.key)}
                 className="inline-flex max-w-48 cursor-pointer items-center gap-1.5"
               >
@@ -291,6 +323,26 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
               </button>
             </div>
           ))}
+        </div>
+          {switchable && (
+            <select
+              aria-label={t.switchPlan}
+              title={t.switchHint}
+              value=""
+              onChange={(e) => switchPlan(e.target.value)}
+              className={cn(select, "max-w-40")}
+            >
+              <option value="">{t.switchPlan}…</option>
+              {current.planId !== null && <option value={DEFAULT_PLAN}>{t.planDefault}</option>}
+              {otherPlans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label || p.id}
+                  {p.email ? ` · ${p.email}` : ""}
+                  {p.loggedIn === false ? ` (${t.signedOut})` : ""}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
