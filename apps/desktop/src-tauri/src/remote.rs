@@ -84,7 +84,7 @@ async fn hive_raw(app: &AppHandle, args: Vec<String>) -> Result<String, String> 
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-async fn hive_json(app: &AppHandle, args: &[&str]) -> Result<Value, String> {
+pub(crate) async fn hive_json(app: &AppHandle, args: &[&str]) -> Result<Value, String> {
     let text = hive_raw(app, args.iter().map(|a| a.to_string()).collect()).await?;
     if text.trim().is_empty() {
         return Ok(Value::Null);
