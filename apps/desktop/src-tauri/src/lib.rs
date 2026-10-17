@@ -1055,6 +1055,7 @@ pub fn run() {
         .manage(State::default())
         .manage(cli::Runs::default())
         .manage(pty::Ptys::default())
+        .manage(agents::Agents::default())
         .manage(remote::Remote::default())
         .manage(git_groups::Jobs::default())
         .manage(settings::Store::default())
@@ -1157,6 +1158,9 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_close,
+            agents::machine_agents,
+            agents::machine_agent_counts,
+            agents::machine_agent_stop,
             updates::update_status,
             updates::check_updates_now,
             updates::relaunch_to_update,
