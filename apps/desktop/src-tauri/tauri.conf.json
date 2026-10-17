@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; frame-src hive-artifact: http://hive-artifact.localhost"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; frame-src 'none'"
     },
     "withGlobalTauri": true
   },
@@ -39,10 +39,7 @@
     "externalBin": [
       "binaries/hive-worker",
       "binaries/hive"
-    ],
-    "resources": {
-      "../../../packages/artifacts-runtime/dist/lib/": "artifacts-lib/"
-    }
+    ]
   },
   "plugins": {
     "updater": {

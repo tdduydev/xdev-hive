@@ -205,4 +205,6 @@ fn app_webviews_only_load_local_content() {
         serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
     let csp = config["app"]["security"]["csp"].as_str().unwrap();
     assert!(csp.contains("connect-src ipc: http://ipc.localhost;"));
+    // Không màn nào nhúng khung: thiếu frame-src thì default-src 'self' cho trang cục bộ tự nhúng chính nó.
+    assert!(csp.contains("frame-src 'none'"));
 }
