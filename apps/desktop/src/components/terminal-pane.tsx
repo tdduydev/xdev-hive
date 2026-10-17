@@ -127,7 +127,8 @@ const text: Dict<{
     signedOut: "signed out",
     fontSize: "Terminal font size",
     switchPlan: "Switch plan",
-    switchHint: "Restart this tab's CLI with another plan in the same folder. The old conversation does not carry over.",
+    switchHint:
+      "Restart this tab's CLI with another plan in the same folder. The old conversation does not carry over.",
   },
 };
 
@@ -273,57 +274,57 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
 
       {sessions.length > 0 && (
         <div className="flex items-center gap-1.5 border-b bg-muted/50 pr-2">
-        <div role="tablist" aria-label={t.tabs} className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto px-1.5 pt-1">
-          {sessions.map((s) => (
-            <div
-              key={s.key}
-              className={cn(
-                "flex h-7 shrink-0 items-center gap-1 rounded-t-md border border-b-0 pr-1 pl-2 text-xs",
-                s.key === current?.key
-                  ? "bg-card font-semibold text-foreground"
-                  : "border-transparent text-muted-foreground",
-              )}
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={s.key === current?.key}
-                onClick={() => selectTerminal(s.key)}
-                className="inline-flex max-w-48 cursor-pointer items-center gap-1.5"
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    s.status === "running"
-                      ? "bg-success"
-                      : s.status === "failed"
-                        ? "bg-destructive"
-                        : s.status === "starting"
-                          ? "animate-pulse bg-muted-foreground"
-                          : "bg-muted-foreground",
-                  )}
-                />
-                <span className="truncate">{s.label}</span>
-                {s.bypass && <span className="font-normal text-destructive">· {t.bypassBadge}</span>}
-                {s.status !== "running" && (
-                  <span className="font-normal text-muted-foreground">
-                    · {s.status === "starting" ? t.starting : s.status === "failed" ? t.failed : t.exited}
-                  </span>
+          <div role="tablist" aria-label={t.tabs} className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto px-1.5 pt-1">
+            {sessions.map((s) => (
+              <div
+                key={s.key}
+                className={cn(
+                  "flex h-7 shrink-0 items-center gap-1 rounded-t-md border border-b-0 pr-1 pl-2 text-xs",
+                  s.key === current?.key
+                    ? "bg-card font-semibold text-foreground"
+                    : "border-transparent text-muted-foreground",
                 )}
-              </button>
-              <button
-                type="button"
-                aria-label={t.close(s.label)}
-                title={t.close(s.label)}
-                onClick={() => closeTerminal(s.key)}
-                className="inline-flex size-4.5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                <XIcon aria-hidden="true" className="size-3" />
-              </button>
-            </div>
-          ))}
-        </div>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={s.key === current?.key}
+                  onClick={() => selectTerminal(s.key)}
+                  className="inline-flex max-w-48 cursor-pointer items-center gap-1.5"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "size-1.5 shrink-0 rounded-full",
+                      s.status === "running"
+                        ? "bg-success"
+                        : s.status === "failed"
+                          ? "bg-destructive"
+                          : s.status === "starting"
+                            ? "animate-pulse bg-muted-foreground"
+                            : "bg-muted-foreground",
+                    )}
+                  />
+                  <span className="truncate">{s.label}</span>
+                  {s.bypass && <span className="font-normal text-destructive">· {t.bypassBadge}</span>}
+                  {s.status !== "running" && (
+                    <span className="font-normal text-muted-foreground">
+                      · {s.status === "starting" ? t.starting : s.status === "failed" ? t.failed : t.exited}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  aria-label={t.close(s.label)}
+                  title={t.close(s.label)}
+                  onClick={() => closeTerminal(s.key)}
+                  className="inline-flex size-4.5 cursor-pointer items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <XIcon aria-hidden="true" className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
           {switchable && (
             <select
               aria-label={t.switchPlan}
