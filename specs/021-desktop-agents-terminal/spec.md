@@ -38,7 +38,7 @@ Không được (hỏng dù chạy được):
 
 | CLI | Nhận theo |
 |---|---|
-| Claude Code | File chạy `claude` / `claude.exe` **không** nằm trong thư mục cài Claude Desktop (`is_desktop_exe` của `claude_desktop/win.rs`; macOS: trong `Claude.app`). Hoặc `node` chạy `@anthropic-ai/claude-code`. |
+| Claude Code | File chạy `claude` / `claude.exe` (hay file trong `…/claude/versions/` của trình cài native, hay argv[0] là `claude`) **không** nằm trong thư mục cài Claude Desktop (`is_desktop_exe` của `claude_desktop/win.rs`; macOS: trong `Claude.app`). Hoặc `node` chạy `@anthropic-ai/claude-code`. |
 | Codex | File chạy `codex` / `codex.exe`. Hoặc `node` chạy `@openai/codex`. |
 | Antigravity | File chạy `agy` / `agy.exe`. |
 
@@ -51,6 +51,7 @@ Không được (hỏng dù chạy được):
   ngoài cùng). Agent chạy agent khác (ví dụ Claude Code mở `claude -p` cho từng việc) là các dòng riêng.
 - Phiên chạy nền (`claude -p`, `codex exec`) vẫn hiện và vẫn đếm, có nhãn "chạy nền".
 - CPU và RAM của một dòng cộng cả cây con (rg, MCP server, shell con), trừ cây con của agent con đã có dòng riêng.
+- Cha của tiến trình chỉ được tin khi cha chạy trước con: Windows dùng lại pid của cha đã thoát.
 
 ### Nguồn: ai mở
 
