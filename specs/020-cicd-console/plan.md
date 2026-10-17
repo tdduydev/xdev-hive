@@ -167,8 +167,8 @@ Theo Key Entities của spec, cộng chi tiết:
 
 ### 4. Hỏi theo lịch, "ngoài Hive", đỏ/xanh (Q4, Q13, FR-025, FR-031)
 
-- `delivery-ci-poll` (pg-boss) mỗi phút cho mỗi kết nối Jenkins có người theo dõi. Có build đang chạy thì tự xếp lại sau 15
-  giây (`singletonKey` theo kết nối).
+- `delivery-ci-poll` (pg-boss) 5 phút một lần cho mỗi kết nối Jenkins có người theo dõi khi rảnh (Q4). Có build đang chạy
+  thì tự xếp lại sau 15 giây (`singletonKey` theo kết nối). Mở tab CI/CD thì đọc trực tiếp, không chờ lịch.
 - GitLab: webhook là chính; hỏi lại mỗi 5 phút cho dự án có pipeline chưa kết thúc.
 - Build xanh của job gắn với đích `jenkins-job` mà không có lần triển khai Hive nào chờ nó thì ghi lần triển khai
   `external`.
@@ -230,7 +230,8 @@ bridge của Docker tới `10.86.224.34:22`: kiểm khi làm task.
 - **`jenkins-job`**:
   - tham số = tham số cố định + tham số từ lần triển khai;
   - bấm bằng token của người yêu cầu (lần cần duyệt: vẫn token người yêu cầu, bấm sau khi đủ duyệt);
-  - theo dõi qua `delivery-ci-poll`, đọc phiên bản như spec;
+  - theo dõi bằng job theo dõi chung của bộ điều phối (`delivery-deploy-watch` gọi `poll` của từng cách), đọc phiên bản
+    như spec;
   - "đẩy từ môi trường": tham số build lấy từ `deploys.version.jenkinsBuild` của bản đang chạy ở nguồn;
   - `input` chờ: Proceed bằng token của người duyệt (FR-029).
 - **`gitlab-manual`**: tìm pipeline của commit, job tên đã cấu hình ở trạng thái `manual`, `playJob`, theo dõi.
@@ -254,7 +255,7 @@ bridge của Docker tới `10.86.224.34:22`: kiểm khi làm task.
   `***`. Áp cho mọi đoạn log trước khi ghi `deploy_log_chunks`. Đoạn cắt giữa một bí mật: giữ đuôi 200 ký tự của đoạn trước
   để ghép rồi mới che.
 - Log ghi theo đoạn `bytea`, `LISTEN/NOTIFY` như `runs/stream.ts`. SSE `/api/v1/deploys/:id/stream`. Giữ theo
-  `runLogRetentionDays` (Q12), dọn cùng job dọn log hiện có.
+  `runLogRetentionDays` (Q12), dọn bằng job dọn riêng của `delivery` (không sửa `runs`).
 
 ### 8. Duyệt, khoá, quay về (P2: FR-026…FR-029)
 
@@ -272,8 +273,12 @@ bridge của Docker tới `10.86.224.34:22`: kiểm khi làm task.
 - Môi trường có `policy.deployRoles`, `policy.approveRoles` (vai trò đội), kiểm sau quyền chung.
 - Mỗi lần giải mã khoá SSH hay token ghi audit nhẹ (`delivery.secret_used`: loại, id, lý do), gom theo lần triển khai để
   không làm phình audit.
-- Bản sao lưu database chứa khoá ở dạng mã hoá; `HIVE_MASTER_KEY` nằm trong `.env`, không nằm trong bản sao lưu database.
-  Tài liệu self-hosting ghi rõ: mất `HIVE_MASTER_KEY` thì phải sinh lại khoá cho mọi máy chủ.
+- **Sao lưu:** database chứa khoá ở dạng mã hoá, nhưng `deploy/backup.sh` hiện chép cả `.env` (có `HIVE_MASTER_KEY`) vào
+  cùng thư mục với bản dump để khôi phục được. Ai có một bản sao lưu là giải mã được mọi khoá SSH và token. Bản đầu:
+  - tài liệu self-hosting ghi rõ điều này, khuyến nghị bản sao lưu đưa ra khỏi máy chủ (`remote-backup.sh`) phải được mã
+    hoá hoặc cất ở nơi chỉ quản trị hub đọc được;
+  - mất `HIVE_MASTER_KEY` thì phải sinh lại khoá cho mọi máy chủ.
+  Tách `.env` khỏi bản sao lưu là đổi quy trình khôi phục, cần chủ dự án quyết; ghi ở R11.
 
 ### 10. Giao diện
 
@@ -321,7 +326,10 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 - **Log triển khai ở bảng riêng**, không dùng `run_logs`: lần triển khai không phải run của máy.
 - **Quyền theo vai trò tổ chức và đội**, cộng danh sách vai trò trên từng môi trường. Hive chưa có thành viên theo dự án hay
   môi trường.
-- **Thông báo**: kênh của tổ chức lọc theo sự kiện và hệ thống, cộng hộp thư trong app cho người liên quan.
+- **Thông báo**: kênh của tổ chức lọc theo sự kiện và hệ thống (thêm danh sách hệ thống vào cấu hình kênh), cộng hộp thư
+  trong app cho người liên quan.
+- **Theo dõi lần triển khai**: một job theo dõi chung (`delivery-deploy-watch`) gọi `poll` của từng cách triển khai, kể
+  cả `jenkins-job`; `delivery-ci-poll` chỉ lo tab CI/CD, lần "ngoài Hive" và thông báo đỏ/xanh.
 
 ## Rủi ro
 
@@ -337,6 +345,7 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | R8 | Hub tự triển khai chính nó | Bước tách khỏi phiên SSH; job watch nối lại từ vị trí đã lưu; SC-007 có test |
 | R9 | Rollback của Argo CD tắt autoSync | Cảnh báo trước khi quay về; tài liệu cách bật lại |
 | R10 | Host key đổi hợp lệ (cài lại máy) | Quản trị xác nhận lại dấu vân tay, có audit |
+| R11 | Bản sao lưu có cả `.env` (`HIVE_MASTER_KEY`) và dump: lộ một bản sao lưu là lộ quyền vào mọi máy chủ | Tài liệu và khuyến nghị mã hoá bản sao lưu ra ngoài máy (mục 9); cân nhắc tách `.env` khỏi bản sao lưu, cần chủ dự án quyết vì đổi quy trình khôi phục |
 
 ## Phương án đã cân nhắc
 
@@ -378,5 +387,6 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | 4 (P2) | Mục 8, thông báo: US6, US7, US8 | 5–6 ngày |
 | 5 (P3) | GitHub Actions: US9 | 3 ngày |
 
-Tổng khoảng 30–37 ngày-agent [Inference], chưa chia task. Tăng so với bản trước vì thêm Argo CD, Kubernetes (Q6) và token
+Tổng khoảng 30–37 ngày-agent [Inference] cho năm đợt trên. `tasks.md` tính 42,5 ngày-agent vì gồm cả việc bảng này
+chưa tính: hợp đồng API, thiết kế màn, ADR và tài liệu, kiểm tổng. Tăng so với bản trước vì thêm Argo CD, Kubernetes (Q6) và token
 từng người (Q3), bớt phần giao thức worker (Q1). Đợt 1 làm độc lập với đợt 2–3. Bước tiếp theo: viết `tasks.md`.

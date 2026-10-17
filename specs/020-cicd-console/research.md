@@ -69,6 +69,8 @@ không qua Jenkins.
   2. sao lưu;
   3. triển khai `origin/main`;
   4. kiểm `/api/v1/health` báo `9947aeb1`.
+- Thời gian: sao lưu xong lúc 05:33:42 UTC (`backups/20261017T053342Z`), health báo đúng `9947aeb1` lúc 05:39:08 UTC,
+  tức khoảng 5,5 phút cho phần sao lưu xong → dựng image → chạy lại → health. Mốc so cho SC-002.
 - Suýt có lỗi: script mặc định dùng `/opt/xdev-hive`, còn bản đang chạy ở `/home/adminvm/xdev-hive`. Chạy mặc định sẽ
   tạo `.env` với secret mới cho cùng compose project.
 

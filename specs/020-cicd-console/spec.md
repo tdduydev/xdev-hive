@@ -68,7 +68,7 @@ Khảo sát code ngày 2026-10-17 trên `main` tại `9947aeb1`. Chi tiết ở 
 | `runs/stream.ts` (log `bytea` + `LISTEN/NOTIFY` + SSE) | **Dùng lại cách làm** cho log triển khai (bảng riêng, vì lần triển khai không phải run của máy) |
 | `audit`, `notify` | **Dùng lại**, thêm sự kiện CI và triển khai |
 | `catalog`: hệ thống, dự án | **Dùng lại** làm gốc cho môi trường (hệ thống) và đích triển khai (dự án) |
-| `contracts/roles.ts` | **Mở rộng**: quyền mới (FR-028) |
+| `contracts/roles.ts` | **Mở rộng**: quyền mới (FR-030) |
 | Web: `LogCard`, `use-run-stream` | **Dùng lại** cho log triển khai |
 | `secret-scan.ts` | Chỉ phát hiện, không che. **Làm mới** hàm che dùng chung bộ mẫu |
 | Jenkins, Argo CD, Kubernetes, SSH | **Làm mới**: chưa có gì trong Hive |
@@ -393,16 +393,22 @@ Như US1–US2 cho dự án trên GitHub: workflow run, job, log, chạy lại, 
   - `ci.view`, `ci.operate`, `deploy.run`, `deploy.approve`, `servers.manage` (đội);
   - `ci.connections.manage` (tổ chức).
 
-  Gán mặc định: quản trị đội có tất cả quyền của đội; thành viên đội có `ci.view`, `ci.operate`, `deploy.run`. Môi trường
-  giới hạn thêm bằng danh sách vai trò của nó (vd. `prod`: chỉ quản trị đội triển khai và duyệt). Lệnh và cấu hình đích
-  chỉ người có `servers.manage` sửa; người `deploy.run` chỉ chọn phiên bản và chạy.
+  Gán mặc định:
+  - quản trị đội: tất cả quyền của đội;
+  - thành viên đội: `ci.view`, `ci.operate`, `deploy.run`;
+  - vai trò chỉ xem của đội và thành viên tổ chức ngoài đội: `ci.view` (quyết định của người viết, đổi được).
+
+  Môi trường giới hạn thêm bằng danh sách vai trò của nó (vd. `prod`: chỉ quản trị đội triển khai và duyệt). Lệnh và cấu
+  hình đích chỉ người có `servers.manage` sửa; người `deploy.run` chỉ chọn phiên bản và chạy. Các việc khác:
+  - xem lần triển khai và log của nó: `ci.view`;
+  - tạo, sửa, khoá môi trường; gắn job Jenkins vào dự án; khai báo đích triển khai: `servers.manage`.
 - **FR-031**: Thêm sự kiện vào `notify`:
   - `ci.failed` (nhánh chính), `ci.recovered`;
   - `deploy.started`, `deploy.succeeded`, `deploy.failed`;
   - `deploy.approval_requested`;
   - `server.hostkey_changed`.
 
-  Không gửi lặp cùng một lỗi đỏ liên tiếp.
+  Không gửi lặp cùng một lỗi đỏ liên tiếp. Kênh của tổ chức lọc được theo loại sự kiện và theo hệ thống.
 - **FR-032**: Khoá SSH riêng, token Jenkins, token Argo CD, token Kubernetes chỉ được giải mã trong bộ nhớ lúc dùng, không ghi
   log, không trả về qua API. Đọc, dùng, đổi khoá đều có audit.
 - **FR-033**: Mọi bảng mới có `org_id`, bật và ép RLS, truy cập qua `withTenant()`. Chữ giao diện và lỗi tiếng Việt.
@@ -431,10 +437,12 @@ Như US1–US2 cho dự án trên GitHub: workflow run, job, log, chạy lại, 
 
 ### Measurable Outcomes
 
-- **SC-001**: Với ≥ 20 job Jenkins và 5 dự án GitLab, tab CI/CD mở trong ≤ 2 giây (dữ liệu đã đệm). Trạng thái mới hiện
-  trong ≤ 30 giây với Jenkins và ≤ 10 giây với GitLab khi webhook tới được.
+- **SC-001**: Với ≥ 20 job Jenkins và 5 dự án GitLab, tab CI/CD mở trong ≤ 2 giây (dữ liệu đã đệm). Trạng thái mới hiện:
+  - Jenkins: ≤ 30 giây với build đã thấy đang chạy; ≤ 5 phút với build mới bắt đầu ngoài Hive (hỏi khi rảnh, Q4);
+  - GitLab: ≤ 10 giây khi webhook tới được.
 - **SC-002**: Triển khai lại hub `hive.xdev.asia` bằng Hive (đích `ssh-script`) đi đủ các bước như lần làm tay ngày
-  2026-10-17, không cần mở terminal, thời gian ≤ lần làm tay + 1 phút.
+  2026-10-17, không cần mở terminal, thời gian ≤ lần làm tay + 1 phút. Lần làm tay mất khoảng 5,5 phút từ lúc sao lưu xong
+  tới khi health báo đúng phiên bản (research mục 2).
 - **SC-003**: 100% thao tác CI và triển khai có bản ghi audit với người bấm thật. Thao tác Jenkins hiện đúng người bấm trên
   Jenkins (Q3).
 - **SC-004**: Host key đổi thì không lệnh nào chạy (test có kiểm).
