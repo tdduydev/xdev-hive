@@ -6,6 +6,7 @@ import { ChevronRightIcon, FolderIcon } from "lucide-react";
 import { useState } from "react";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
+import { type Folder, folderOf } from "@/pages/knowledge/doc-scope.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
@@ -141,29 +142,18 @@ function repoLabel(item: DocTreeItem): string {
   return `Kho tài liệu ${item.homeId?.slice(0, 8)}`;
 }
 
-type Folder = { name: string; path: string; folders: Map<string, Folder>; files: DocTreeItem[] };
 export function buildDocTree(items: DocTreeItem[]) {
-  const homes = new Map<string, Folder>();
+  const byHome = new Map<string, DocTreeItem[]>();
   for (const item of items) {
     const home = item.homeId ?? "unhomed";
-    let root = homes.get(home);
-    if (!root) {
-      root = { name: item.homeId ? repoLabel(item) : "Chưa có nhà", path: home, folders: new Map(), files: [] };
-      homes.set(home, root);
-    }
-    let folder: Folder = root;
-    const parts = (item.path ?? item.key ?? item.title).split("/");
-    for (const part of parts.slice(0, -1)) {
-      let child: Folder | undefined = folder.folders.get(part);
-      if (!child) {
-        child = { name: part, path: `${folder.path}/${part}`, folders: new Map(), files: [] };
-        folder.folders.set(part, child);
-      }
-      folder = child;
-    }
-    folder.files.push(item);
+    const group = byHome.get(home) ?? [];
+    group.push(item);
+    byHome.set(home, group);
   }
-  return [...homes.values()];
+  return [...byHome].map(([home, group]) => {
+    const first = group[0];
+    return folderOf(group, first?.homeId ? repoLabel(first) : "Chưa có nhà", home);
+  });
 }
 
 export function DocTree({
