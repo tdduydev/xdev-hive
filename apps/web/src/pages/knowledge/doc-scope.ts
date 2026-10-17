@@ -60,7 +60,7 @@ export function folderOf(items: DocTreeItem[], name: string, path: string): Fold
   return root;
 }
 
-const byName = (a: ScopeNode, b: ScopeNode) => a.name.localeCompare(b.name);
+const byName = (a: ScopeNode, b: ScopeNode) => a.name.localeCompare(b.name, "vi");
 const countDocs = (items: DocTreeItem[]) => items.filter((item) => item.kind === "doc").length;
 
 function leaf(kind: ScopeNodeKind, id: string, name: string, items: DocTreeItem[]): ScopeNode {

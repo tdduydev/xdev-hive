@@ -128,6 +128,8 @@ export const projectMembers = hive
         foreignColumns: [projects.id, projects.orgId, projects.teamId],
       }).onDelete("cascade"),
       index("project_members_user").on(t.orgId, t.userId),
+      // Khoá ngoại cascade từ team_members phải tìm theo (team_id, user_id) mỗi lần xoá thành viên đội hoặc đội.
+      index("project_members_team_user").on(t.teamId, t.userId),
       orgScoped("project_members"),
     ],
   )

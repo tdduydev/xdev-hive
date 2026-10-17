@@ -97,7 +97,7 @@ describe("ProjectMembersSection", () => {
     const list = await screen.findByRole("list", { name: "Thành viên dự án" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(1);
     expect(within(list).getByText("u-lan@acme.vn")).toBeTruthy();
-    expect(within(list).getByRole("button", { name: "Gỡ" })).toBeTruthy();
+    expect(within(list).getByRole("button", { name: /^Gỡ / })).toBeTruthy();
 
     // Người đã ở trong dự án không còn trong danh sách để chọn.
     expect(screen.queryByRole("checkbox", { name: /Trần Lan/ })).toBeNull();
@@ -119,7 +119,7 @@ describe("ProjectMembersSection", () => {
   it("bấm Gỡ thì gọi remove với userId của dòng đó", async () => {
     mount(true);
     const list = await screen.findByRole("list", { name: "Thành viên dự án" });
-    fireEvent.click(within(list).getByRole("button", { name: "Gỡ" }));
+    fireEvent.click(within(list).getByRole("button", { name: /^Gỡ / }));
     // Hết người thì danh sách được thay bằng dòng báo trống.
     expect(await screen.findByText("Dự án chưa có thành viên.")).toBeTruthy();
     expect(calls.find((c) => c.path === "projectMembers/remove")?.input).toEqual({
@@ -133,9 +133,9 @@ describe("ProjectMembersSection", () => {
     const list = await screen.findByRole("list", { name: "Thành viên dự án" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Thêm" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Gỡ" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Gỡ / })).toBeNull();
     expect(screen.queryByRole("checkbox")).toBeNull();
-    // Không có quyền quản lý thì hub cũng không cần danh sách đội.
+    // Người chỉ xem không chọn thêm người nên không cần danh sách đội.
     expect(calls.some((c) => c.path === "teamMembers/list")).toBe(false);
   });
 
@@ -153,7 +153,7 @@ describe("ProjectMembersSection", () => {
     mountForRole(false);
     const list = await screen.findByRole("list", { name: "Thành viên dự án" });
     // Quyền chỉ đến từ lời gọi theo đội; hỏi không kèm đội thì hub trả thiếu vai trò gán cho đội.
-    await waitFor(() => expect(within(list).getByRole("button", { name: "Gỡ" })).toBeTruthy());
+    await waitFor(() => expect(within(list).getByRole("button", { name: /^Gỡ / })).toBeTruthy());
     expect(await screen.findByRole("button", { name: "Thêm" })).toBeTruthy();
     expect(calls.find((c) => c.path === "roles/mine")?.input).toEqual({ teamId: TEAM_ID });
   });
@@ -162,14 +162,14 @@ describe("ProjectMembersSection", () => {
     mountForRole(false);
     const list = await screen.findByRole("list", { name: "Thành viên dự án" });
     await waitFor(() => expect(calls.some((c) => c.path === "roles/mine")).toBe(true));
-    expect(within(list).queryByRole("button", { name: "Gỡ" })).toBeNull();
+    expect(within(list).queryByRole("button", { name: /^Gỡ / })).toBeNull();
     expect(screen.queryByRole("button", { name: "Thêm" })).toBeNull();
   });
 
   it("quản trị đội thấy Thêm và Gỡ dù roles/mine không có projects.settings", async () => {
     mountForRole(true);
     const list = await screen.findByRole("list", { name: "Thành viên dự án" });
-    expect(within(list).getByRole("button", { name: "Gỡ" })).toBeTruthy();
+    expect(within(list).getByRole("button", { name: /^Gỡ / })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Thêm" })).toBeTruthy();
   });
 });

@@ -18,6 +18,7 @@ const text: Dict<{
   empty: string;
   addedOn: (day: string) => string;
   remove: string;
+  removeFor: (name: string) => string;
   removing: string;
   pick: string;
   noCandidates: string;
@@ -30,6 +31,7 @@ const text: Dict<{
     empty: "Dự án chưa có thành viên.",
     addedOn: (day) => `Thêm ngày ${day}`,
     remove: "Gỡ",
+    removeFor: (name) => `Gỡ ${name}`,
     removing: "Đang gỡ…",
     pick: "Thêm từ thành viên đội",
     noCandidates: "Mọi thành viên của đội đã ở trong dự án.",
@@ -42,6 +44,7 @@ const text: Dict<{
     empty: "This project has no members yet.",
     addedOn: (day) => `Added ${day}`,
     remove: "Remove",
+    removeFor: (name) => `Remove ${name}`,
     removing: "Removing…",
     pick: "Add from team members",
     noCandidates: "Every team member is already in the project.",
@@ -72,7 +75,7 @@ export function ProjectMembersSection({ project, canManage }: { project: Project
   const [failure, setFailure] = useState<string | null>(null);
 
   const members = useQuery(api.projectMembers.list.queryOptions({ input: { id: project.id } }));
-  // Hub chỉ cho quản trị đội xem đủ danh sách đội, nên người chỉ xem không gọi.
+  // Chỉ người quản lý mới chọn thêm người từ danh sách đội; người chỉ xem không cần nên không gọi.
   const team = useQuery({
     ...api.teamMembers.list.queryOptions({ input: { teamId: project.teamId } }),
     enabled: canManage,
@@ -124,6 +127,7 @@ export function ProjectMembersSection({ project, canManage }: { project: Project
                   type="button"
                   variant="outline"
                   size="sm"
+                  aria-label={t.removeFor(m.name)}
                   disabled={remove.isPending}
                   onClick={() => remove.mutate(m.userId)}
                 >
