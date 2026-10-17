@@ -33,7 +33,15 @@ export function docsyncDocsScenario(
     updatedBy: { userId: "u1", runId: null },
     content: CONTENT,
   });
-  const makeItem = (key: string, title: string, path: string, state: "synced" | "pending" | "failed", i: number) =>
+  const orgScope = { level: "org", teamId: null, projectId: null };
+  const makeItem = (
+    key: string,
+    title: string,
+    path: string,
+    state: "synced" | "pending" | "failed",
+    i: number,
+    scope: unknown = orgScope,
+  ) =>
     docTreeItem.parse({
       homeId: DOC_HOME_ID,
       path,
@@ -50,6 +58,7 @@ export function docsyncDocsScenario(
       assetId: null,
       version: 3,
       error: state === "failed" ? "Không kết nối được repo." : null,
+      scope,
     });
   const state = {
     items: [

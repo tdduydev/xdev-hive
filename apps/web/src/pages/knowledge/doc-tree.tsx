@@ -61,6 +61,7 @@ export function withUnhomedDocs(items: DocTreeItem[], docs: DocSummary[]): DocTr
           assetId: null,
           version: doc.version,
           error: null,
+          scope: doc.scope,
         }),
       ),
   ];
