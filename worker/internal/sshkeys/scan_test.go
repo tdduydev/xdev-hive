@@ -5,30 +5,31 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/sshkeys/sshtest"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 func TestScanUnknownPrefersEd25519(t *testing.T) {
-	s := newTestServer(t, serverOpts{password: "pw"})
-	got, err := Scan(context.Background(), s.host, s.port, filepath.Join(t.TempDir(), "known_hosts"))
+	s := sshtest.New(t, sshtest.Options{Password: "pw"})
+	got, err := Scan(context.Background(), s.Host, s.Port, filepath.Join(t.TempDir(), "known_hosts"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ssh.FingerprintSHA256(s.keys[ssh.KeyAlgoED25519].PublicKey())
+	want := ssh.FingerprintSHA256(s.Keys[ssh.KeyAlgoED25519].PublicKey())
 	if got.Algorithm != ssh.KeyAlgoED25519 || got.Fingerprint != want || got.Known != "unknown" ||
 		got.AdminCommand != "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub" {
 		t.Errorf("có %+v, muốn ed25519 %s", got, want)
 	}
-	if n := s.auths.Load(); n != 0 {
+	if n := s.Auths(); n != 0 {
 		t.Errorf("quét khoá không được thử xác thực, máy chủ thấy %d lần", n)
 	}
 }
 
 func TestScanUsesKnownKeyType(t *testing.T) {
-	s := newTestServer(t, serverOpts{password: "pw"})
-	known := writeKnown(t, knownhosts.Line([]string{knownhosts.Normalize(s.addr())}, s.keys[ssh.KeyAlgoECDSA256].PublicKey()))
-	got, err := Scan(context.Background(), s.host, s.port, known)
+	s := sshtest.New(t, sshtest.Options{Password: "pw"})
+	known := writeKnown(t, knownhosts.Line([]string{knownhosts.Normalize(s.Addr())}, s.Keys[ssh.KeyAlgoECDSA256].PublicKey()))
+	got, err := Scan(context.Background(), s.Host, s.Port, known)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,9 +40,9 @@ func TestScanUsesKnownKeyType(t *testing.T) {
 }
 
 func TestScanChanged(t *testing.T) {
-	s := newTestServer(t, serverOpts{password: "pw", algos: []string{ssh.KeyAlgoED25519}})
-	known := writeKnown(t, knownhosts.Line([]string{knownhosts.Normalize(s.addr())}, edKey(t)))
-	got, err := Scan(context.Background(), s.host, s.port, known)
+	s := sshtest.New(t, sshtest.Options{Password: "pw", Algos: []string{ssh.KeyAlgoED25519}})
+	known := writeKnown(t, knownhosts.Line([]string{knownhosts.Normalize(s.Addr())}, edKey(t)))
+	got, err := Scan(context.Background(), s.Host, s.Port, known)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,10 +52,10 @@ func TestScanChanged(t *testing.T) {
 }
 
 func TestScanUnreachable(t *testing.T) {
-	s := newTestServer(t, serverOpts{})
+	s := sshtest.New(t, sshtest.Options{})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := Scan(ctx, s.host, s.port, filepath.Join(t.TempDir(), "kh")); err == nil {
+	if _, err := Scan(ctx, s.Host, s.Port, filepath.Join(t.TempDir(), "kh")); err == nil {
 		t.Error("ctx đã huỷ thì phải lỗi")
 	}
 }
