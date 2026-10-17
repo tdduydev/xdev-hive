@@ -177,7 +177,25 @@ fn npm_cli(args: &[String]) -> Option<Cli> {
 pub(crate) fn match_cli(p: &Proc) -> Option<Match> {
     let args = p.cmd.get(1..).unwrap_or_default();
     let path = path_of(p);
+    let cli_stem = |s: &str| s == "claude" || s == "agy" || codex_binary(s);
     let file = stem(path);
+    // Trình cài native của Claude Code để `~/.local/bin/claude` trỏ tới `…/claude/versions/<bản>`, và macOS, Linux trả
+    // đường dẫn thật của file chạy. File chạy mang tên khác thì xét tên lệnh người dùng gõ (argv[0]).
+    let file = if path
+        .replace('\\', "/")
+        .to_lowercase()
+        .contains("/claude/versions/")
+    {
+        "claude".to_string()
+    } else if cli_stem(&file) || file == "node" || file == "bun" {
+        file
+    } else {
+        p.cmd
+            .first()
+            .map(|a| stem(a))
+            .filter(|a| cli_stem(a))
+            .unwrap_or(file)
+    };
     let (cli, shim) = match file.as_str() {
         "node" | "bun" => (npm_cli(args)?, true),
         _ if mac_app_main(path) => return None,
@@ -257,6 +275,16 @@ pub(crate) fn other_app(exe_or_name: &str) -> Option<&'static str> {
     }
 }
 
+/// Cha thật của tiến trình. Windows dùng lại pid và không xoá pid cha đã chết khỏi tiến trình con: một tiến trình chạy
+/// trước mà ghi cha là pid nay thuộc agent thì không phải con của agent. Không có giờ bắt đầu thì tin pid cha.
+fn parent_of<'a>(p: &Proc, get: impl Fn(u32) -> Option<&'a Proc>) -> Option<u32> {
+    let parent = p.parent.filter(|x| *x != p.pid)?;
+    match get(parent) {
+        Some(up) if up.start != 0 && p.start != 0 && up.start > p.start => None,
+        _ => Some(parent),
+    }
+}
+
 struct Tree<'a> {
     by_pid: HashMap<u32, &'a Proc>,
 }
@@ -273,7 +301,11 @@ impl<'a> Tree<'a> {
         let mut seen = HashSet::from([pid]);
         let mut out = Vec::new();
         let mut cur = pid;
-        while let Some(parent) = self.by_pid.get(&cur).and_then(|p| p.parent) {
+        while let Some(parent) = self
+            .by_pid
+            .get(&cur)
+            .and_then(|p| parent_of(p, |x| self.by_pid.get(&x).copied()))
+        {
             if out.len() >= MAX_DEPTH || !seen.insert(parent) {
                 break;
             }
@@ -430,9 +462,10 @@ pub(crate) fn rows(procs: &[Proc], ctx: &Context) -> Vec<Row> {
 
 /// Cả cây của `root`: con cháu trước, `root` sau cùng, để dừng từ lá lên.
 pub(crate) fn subtree(procs: &[Proc], root: u32) -> Vec<u32> {
+    let by_pid: HashMap<u32, &Proc> = procs.iter().map(|p| (p.pid, p)).collect();
     let mut kids: HashMap<u32, Vec<u32>> = HashMap::new();
     for p in procs {
-        if let Some(parent) = p.parent.filter(|x| *x != p.pid) {
+        if let Some(parent) = parent_of(p, |x| by_pid.get(&x).copied()) {
             kids.entry(parent).or_default().push(p.pid);
         }
     }
@@ -791,5 +824,39 @@ mod tests {
         let pos = |p: u32| all.iter().position(|x| *x == p).unwrap();
         assert!(pos(3) < pos(2));
         assert!(!all.contains(&5));
+    }
+
+    #[test]
+    fn ignores_parent_links_to_a_reused_pid() {
+        // Windows dùng lại pid: explorer (chạy trước) còn ghi cha là pid cũ của userinit, nay là pid của claude.
+        let mut explorer = proc(20, 10, r"C:\Windows\explorer.exe", &[]);
+        explorer.start = 100;
+        let mut app = proc(21, 20, r"C:\Apps\notepad.exe", &[]);
+        app.start = 200;
+        let procs = vec![
+            proc(10, 0, r"C:\Users\a\.local\bin\claude.exe", &[]),
+            proc(11, 10, r"C:\x\rg.exe", &[]),
+            explorer,
+            app,
+        ];
+        assert_eq!(subtree(&procs, 10), vec![11, 10]);
+        let rows = rows(&procs, &NONE);
+        assert_eq!((rows[0].cpu, rows[0].memory), (20.0, 200));
+    }
+
+    #[test]
+    fn matches_resolved_native_install_paths() {
+        // Trình cài native của Claude Code để `~/.local/bin/claude` trỏ tới file theo phiên bản; macOS và Linux trả
+        // đường dẫn thật của file chạy.
+        let mut native = proc(1, 0, "/Users/ha/.local/share/claude/versions/2.1.300", &[]);
+        native.name = "2.1.300".into();
+        assert_eq!(match_cli(&native).map(|m| m.cli), Some(Cli::Claude));
+        let mut argv0 = proc(1, 0, "/opt/tools/v/2.1.300", &[]);
+        argv0.cmd[0] = "claude".into();
+        assert_eq!(match_cli(&argv0).map(|m| m.cli), Some(Cli::Claude));
+        // Tên lệnh không cứu được Claude Desktop: luật loại theo đường dẫn vẫn thắng.
+        let mut desktop = proc(1, 0, "/Applications/Claude.app/Contents/MacOS/Claude", &[]);
+        desktop.cmd[0] = "claude".into();
+        assert_eq!(match_cli(&desktop), None);
     }
 }

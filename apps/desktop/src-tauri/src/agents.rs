@@ -132,44 +132,60 @@ fn collect(sys: &mut System, deep: bool) -> Snapshot {
     if !deep {
         return Snapshot { procs, env };
     }
-    let agents: Vec<Pid> = procs
+    let agents: Vec<u32> = procs
         .iter()
         .filter(|p| classify::match_cli(p).is_some())
-        .map(|p| Pid::from_u32(p.pid))
+        .map(|p| p.pid)
         .collect();
     if agents.is_empty() {
         return Snapshot { procs, env };
     }
-    let extra = ProcessRefreshKind::nothing()
-        .without_tasks()
-        .with_cwd(UpdateKind::Always)
-        .with_environ(UpdateKind::OnlyIfNotSet);
-    sys.refresh_processes_specifics(ProcessesToUpdate::Some(&agents), false, extra);
+    let mut details = read_details(&agents);
     for p in procs.iter_mut() {
-        let Some(sp) = agents
-            .contains(&Pid::from_u32(p.pid))
-            .then(|| sys.process(Pid::from_u32(p.pid)))
-            .flatten()
-        else {
-            continue;
-        };
-        p.cwd = sp.cwd().map(|c| lossy(c.as_os_str()));
-        let kept: Vec<(String, String)> = sp
-            .environ()
-            .iter()
-            .filter_map(|kv| {
-                let kv = kv.to_string_lossy();
-                let (k, v) = kv.split_once('=')?;
-                ENV_KEYS
-                    .iter()
-                    .find(|key| k.eq_ignore_ascii_case(key))
-                    .filter(|_| !v.is_empty())
-                    .map(|key| ((*key).to_string(), v.to_string()))
-            })
-            .collect();
-        env.insert(p.pid, kept);
+        if let Some(d) = details.remove(&p.pid) {
+            p.cwd = d.cwd;
+            env.insert(p.pid, d.env);
+        }
     }
     Snapshot { procs, env }
+}
+
+/// Thư mục làm việc và biến môi trường đã lọc của một agent.
+struct Details {
+    cwd: Option<String>,
+    env: Vec<(String, String)>,
+}
+
+/// Đọc thư mục làm việc và môi trường của các agent bằng một `System` dùng một lần: môi trường đầy đủ (có thể chứa
+/// token) chỉ sống trong hàm này, ra ngoài chỉ còn ba biến được giữ.
+fn read_details(pids: &[u32]) -> HashMap<u32, Details> {
+    let mut sys = System::new();
+    let list: Vec<Pid> = pids.iter().map(|p| Pid::from_u32(*p)).collect();
+    let kind = ProcessRefreshKind::nothing()
+        .without_tasks()
+        .with_cwd(UpdateKind::Always)
+        .with_environ(UpdateKind::Always);
+    sys.refresh_processes_specifics(ProcessesToUpdate::Some(&list), true, kind);
+    pids.iter()
+        .filter_map(|pid| {
+            let p = sys.process(Pid::from_u32(*pid))?;
+            let env = p
+                .environ()
+                .iter()
+                .filter_map(|kv| {
+                    let kv = kv.to_string_lossy();
+                    let (k, v) = kv.split_once('=')?;
+                    ENV_KEYS
+                        .iter()
+                        .find(|key| k.eq_ignore_ascii_case(key))
+                        .filter(|_| !v.is_empty())
+                        .map(|key| ((*key).to_string(), v.to_string()))
+                })
+                .collect();
+            let cwd = p.cwd().map(|c| lossy(c.as_os_str()));
+            Some((*pid, Details { cwd, env }))
+        })
+        .collect()
 }
 
 /// Tiến trình sẽ dừng: phải vẫn là agent đang hiện, cùng giờ bắt đầu với dòng người dùng thấy (pid chưa bị dùng
@@ -522,5 +538,38 @@ mod tests {
     fn cpu_is_share_of_machine() {
         assert_eq!(machine_cpu(400.0, 8), 50.0);
         assert_eq!(machine_cpu(30.0, 0), 30.0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn details_keep_only_allowed_env_and_nothing_stays_in_the_shared_system() {
+        let dir = std::env::temp_dir();
+        let mut child = std::process::Command::new("/bin/sh")
+            .args(["-c", "sleep 5"])
+            .current_dir(&dir)
+            .env("CLAUDE_CONFIG_DIR", "/plans/claude-2")
+            .env("HIVE_RUN_TOKEN", "hwr_secret")
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let details = read_details(&[pid]);
+        let _ = child.kill();
+        let _ = child.wait();
+        let d = details.get(&pid).expect("đọc được tiến trình con");
+        assert_eq!(
+            d.cwd.as_deref().map(Path::new),
+            Some(dir.canonicalize().unwrap().as_path())
+        );
+        assert_eq!(
+            d.env,
+            vec![(
+                "CLAUDE_CONFIG_DIR".to_string(),
+                "/plans/claude-2".to_string()
+            )]
+        );
+        // System giữ giữa các lần đọc không đọc môi trường nào.
+        let mut sys = System::new();
+        let _ = collect(&mut sys, true);
+        assert!(sys.processes().values().all(|p| p.environ().is_empty()));
     }
 }

@@ -312,6 +312,47 @@ pub(crate) fn claude_activity(
     Some(a)
 }
 
+/// Dòng đầu của file, đọc tới hết dòng, tối đa `max` byte. None khi dòng chưa ghi xong; Some(None) khi dòng dài quá.
+fn first_line(path: &Path, max: u64) -> Option<Option<String>> {
+    use std::io::{BufRead, BufReader, Read};
+    let file = std::fs::File::open(path).ok()?;
+    let mut buf = Vec::new();
+    BufReader::new(file.take(max))
+        .read_until(b'\n', &mut buf)
+        .ok()?;
+    if buf.ends_with(b"\n") {
+        Some(Some(String::from_utf8_lossy(&buf).trim_end().to_string()))
+    } else if buf.len() as u64 >= max {
+        Some(None)
+    } else {
+        None
+    }
+}
+
+/// Thư mục làm việc ở dòng `session_meta` đầu rollout Codex. Dòng này không đổi trong đời rollout nên nhớ theo đường
+/// dẫn: mỗi lần đọc lại màn chỉ đọc rollout mới.
+pub(crate) fn rollout_cwd(path: &Path) -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::{LazyLock, Mutex};
+    static SEEN: LazyLock<Mutex<HashMap<PathBuf, Option<String>>>> = LazyLock::new(Mutex::default);
+    if let Some(hit) = SEEN.lock().ok().and_then(|m| m.get(path).cloned()) {
+        return hit;
+    }
+    // Dòng đầu chưa ghi xong (rollout vừa tạo): không nhớ, lần sau đọc lại.
+    let line = first_line(path, META_MAX)?;
+    let cwd = line
+        .and_then(|l| serde_json::from_str::<serde_json::Value>(&l).ok())
+        .and_then(|m| m.get("payload").and_then(|p| text(p, "cwd")));
+    if let Ok(mut seen) = SEEN.lock() {
+        // Giữ bộ nhớ có hạn khi app mở nhiều ngày.
+        if seen.len() > 4096 {
+            seen.clear();
+        }
+        seen.insert(path.to_path_buf(), cwd.clone());
+    }
+    cwd
+}
+
 /// Hai thư mục là một: bỏ dấu phân cách cuối, so không phân biệt hoa thường với đường dẫn kiểu Windows.
 fn same_path(a: &str, b: &str) -> bool {
     let norm = |p: &str| {
@@ -344,7 +385,7 @@ pub(crate) fn codex_activity(home: &Path, cwd: &str, start: u64, now: u64) -> Op
     let first = (start / 86_400) as i64 - 1;
     let last = (now / 86_400) as i64 + 1;
     let since = start.saturating_sub(5);
-    let mut best: Option<(u64, PathBuf)> = None;
+    let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
     for day in first.max(last - 7)..=last {
         let (y, m, d) = civil_from_days(day);
         let dir = home.join(format!("sessions/{y:04}/{m:02}/{d:02}"));
@@ -356,25 +397,16 @@ pub(crate) fn codex_activity(home: &Path, cwd: &str, start: u64, now: u64) -> Op
             if !name.starts_with("rollout-") || !name.ends_with(".jsonl") {
                 continue;
             }
-            let Some(t) = modified_secs(&path).filter(|t| *t >= since) else {
-                continue;
-            };
-            if best.as_ref().is_some_and(|(bt, _)| *bt >= t) {
-                continue;
-            }
-            let meta = read_capped(&path, META_MAX)
-                .and_then(|raw| raw.lines().next().map(str::to_string))
-                .and_then(|l| serde_json::from_str::<serde_json::Value>(&l).ok());
-            let meta_cwd = meta
-                .as_ref()
-                .and_then(|m| m.get("payload"))
-                .and_then(|p| text(p, "cwd"));
-            if meta_cwd.is_some_and(|c| same_path(&c, cwd)) {
-                best = Some((t, path));
+            if let Some(t) = modified_secs(&path).filter(|t| *t >= since) {
+                candidates.push((t, path));
             }
         }
     }
-    let (_, path) = best?;
+    // Mới nhất trước, dừng ở rollout đầu tiên cùng thư mục: Codex chạy lâu (app-server) có cả tuần rollout.
+    candidates.sort_by_key(|c| std::cmp::Reverse(c.0));
+    let (_, path) = candidates
+        .into_iter()
+        .find(|(_, p)| rollout_cwd(p).is_some_and(|c| same_path(&c, cwd)))?;
     let entries = tail_entries(&path);
     let payload_type = |e: &serde_json::Value| {
         e.get("payload")
@@ -589,5 +621,28 @@ mod tests {
         assert_eq!(civil_from_days(0), (1970, 1, 1));
         assert_eq!(civil_from_days(19_723), (2024, 1, 1));
         assert_eq!(civil_from_days(20_743), (2026, 10, 17));
+    }
+
+    #[test]
+    fn rollout_cwd_reads_the_first_line_once() {
+        let dir = tmp("rollout-cwd");
+        let path = dir.join("rollout-a.jsonl");
+        let meta = |cwd: &str| json!({"type": "session_meta", "payload": {"cwd": cwd}}).to_string();
+        fs::write(&path, format!("{}\n{}\n", meta("/a"), "x".repeat(10))).unwrap();
+        assert_eq!(rollout_cwd(&path).as_deref(), Some("/a"));
+        // session_meta không đổi trong đời một rollout: lần sau không đọc lại file.
+        fs::write(&path, format!("{}\n", meta("/b"))).unwrap();
+        assert_eq!(rollout_cwd(&path).as_deref(), Some("/a"));
+        // Dòng đầu quá dài thì bỏ, không đọc cả file.
+        let huge = dir.join("rollout-huge.jsonl");
+        fs::write(
+            &huge,
+            format!(
+                "{{\"payload\":{{\"cwd\":\"/h\",\"x\":\"{}\"}}}}\n",
+                "y".repeat(2 * 1024 * 1024)
+            ),
+        )
+        .unwrap();
+        assert_eq!(rollout_cwd(&huge), None);
     }
 }
