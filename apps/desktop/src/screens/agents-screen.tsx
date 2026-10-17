@@ -11,7 +11,7 @@ import {
 import { agentHex, HexAvatar } from "@xdev-hive/ui/hex-avatar";
 import { Pill } from "@xdev-hive/ui/pill";
 import { ExternalLinkIcon, RefreshCwIcon, SquareIcon, SquareTerminalIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type CliProfile, cliProfiles } from "@/lib/agent.ts";
 import { folderName, shortPath } from "@/lib/folder.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
@@ -237,9 +237,13 @@ function AgentRow({
         {a.bypass && <Pill tone="bad">{t.bypass}</Pill>}
       </div>
       <p className="text-xs text-muted-foreground">
-        {[CLI_LABEL[a.cli], `PID ${a.pid}`, t.started(started), `CPU ${cpu}%`, `RAM ${formatBytes(a.memory, lang)}`].join(
-          " · ",
-        )}
+        {[
+          CLI_LABEL[a.cli],
+          `PID ${a.pid}`,
+          t.started(started),
+          `CPU ${cpu}%`,
+          `RAM ${formatBytes(a.memory, lang)}`,
+        ].join(" · ")}
       </p>
       <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
         {a.cwd && <span className="truncate font-mono text-muted-foreground">{shortPath(a.cwd)}</span>}
@@ -333,7 +337,8 @@ export function AgentsScreen() {
   const [plans, setPlans] = useState<CliProfile[]>([]);
   const [filter, setFilter] = useState<SourceKind | "">("");
   const [stopping, setStopping] = useState<MachineAgent | null>(null);
-  const [nonce, setNonce] = useState(0);
+  /** "Làm mới" và sau khi dừng: đọc ngay và bắt đầu lại nhịp 3 giây. */
+  const refresh = useRef<() => void>(() => {});
 
   useEffect(() => {
     // Hai danh sách chỉ để đặt tên dự án và gói; đọc lỗi thì dòng vẫn hiện thư mục.
@@ -349,26 +354,34 @@ export function AgentsScreen() {
 
   useEffect(() => {
     let alive = true;
+    // Mỗi lần làm mới là một lượt mới: lượt cũ đang chờ kết quả thì bỏ, không chạy hai nhịp song song.
+    let round = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const tick = async () => {
+    const tick = async (mine: number) => {
+      const current = () => alive && mine === round;
       try {
         const next = await machineAgents();
-        if (alive) {
+        if (current()) {
           setScan(next);
           setError(null);
         }
       } catch (e) {
-        if (alive) setError(errorText(e));
+        if (current()) setError(errorText(e));
       }
-      if (alive) timer = setTimeout(() => void tick(), POLL_MS);
+      if (current()) timer = setTimeout(() => void tick(mine), POLL_MS);
     };
-    void tick();
+    refresh.current = () => {
+      round += 1;
+      clearTimeout(timer);
+      void tick(round);
+    };
+    refresh.current();
     return () => {
       alive = false;
       clearTimeout(timer);
+      refresh.current = () => {};
     };
-    // nonce: "Làm mới" đọc ngay và bắt đầu lại nhịp 3 giây.
-  }, [nonce]);
+  }, []);
 
   const agents = scan?.agents ?? [];
   const shown = filter ? agents.filter((a) => a.source.kind === filter) : agents;
@@ -388,7 +401,7 @@ export function AgentsScreen() {
     } catch (e) {
       setError(errorText(e));
     }
-    setNonce((n) => n + 1);
+    refresh.current();
   }
 
   const warnings = (a: MachineAgent) => {
@@ -432,7 +445,7 @@ export function AgentsScreen() {
             </option>
           ))}
         </select>
-        <Button size="sm" variant="outline" onClick={() => setNonce((n) => n + 1)}>
+        <Button size="sm" variant="outline" onClick={() => refresh.current()}>
           <RefreshCwIcon aria-hidden="true" />
           {t.refresh}
         </Button>

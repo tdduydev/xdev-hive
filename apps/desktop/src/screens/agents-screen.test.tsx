@@ -69,7 +69,9 @@ function fakeTauri(agents: MachineAgent[]) {
       path: "/x/projects.json",
       exists: true,
       imported: 0,
-      projects: [{ projectId: "", name: "shop", folder: "/Users/ha/shop", fullPermission: false, exists: true, isGit: true }],
+      projects: [
+        { projectId: "", name: "shop", folder: "/Users/ha/shop", fullPermission: false, exists: true, isGit: true },
+      ],
     }),
     cli_profiles: () => ({
       path: "/x/worker.yaml",
@@ -238,9 +240,7 @@ describe("AgentsScreen", () => {
 
     await user.click(within(await row(6000)).getByRole("button", { name: "Dừng…" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Dừng" }));
-    await waitFor(() =>
-      expect(calls.find((c) => c.command === "remote_session_kill")?.args).toEqual({ id: "s-1" }),
-    );
+    await waitFor(() => expect(calls.find((c) => c.command === "remote_session_kill")?.args).toEqual({ id: "s-1" }));
   });
 
   it("đọc lại mỗi 3 giây, rời màn thì thôi", async () => {

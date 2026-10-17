@@ -307,7 +307,8 @@ export function selectFolder(f: string | null) {
   emit();
 }
 
-const switchText = (label: string) => (getLang() === "vi" ? `── Đổi gói: ${label} ──` : `── Switched plan: ${label} ──`);
+const switchText = (label: string) =>
+  getLang() === "vi" ? `── Đổi gói: ${label} ──` : `── Switched plan: ${label} ──`;
 
 /**
  * Đổi gói của tab: đóng CLI đang chạy, mở lại cùng CLI trong cùng thư mục bằng gói khác. Hội thoại cũ không mang sang vì

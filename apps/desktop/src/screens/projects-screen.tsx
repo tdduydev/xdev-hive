@@ -21,7 +21,6 @@ import { pickFolder, shortPath } from "@/lib/folder.ts";
 import { type GitGroups, gitGroups } from "@/lib/git-groups.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
-import { openProjectTerminal } from "@/lib/pty.ts";
 import {
   type BindingState,
   bindingState,
@@ -39,6 +38,7 @@ import {
   setProjectFull,
   unbindProject,
 } from "@/lib/local-projects.ts";
+import { openProjectTerminal } from "@/lib/pty.ts";
 import { errorText } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
 

@@ -128,9 +128,7 @@ export function TerminalScreen() {
         {projects?.length === 0 && others.size === 0 && (
           <p className="px-2 py-1.5 text-xs text-muted-foreground">{error ?? t.noProjects}</p>
         )}
-        {others.size > 0 && (
-          <p className="mt-2 px-2 text-xs font-medium text-muted-foreground uppercase">{t.others}</p>
-        )}
+        {others.size > 0 && <p className="mt-2 px-2 text-xs font-medium text-muted-foreground uppercase">{t.others}</p>}
         {[...others.values()].map((f) => (
           <FolderButton
             key={f}

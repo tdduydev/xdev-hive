@@ -92,8 +92,9 @@ describe("TerminalScreen", () => {
     first.unmount();
     render(<TerminalScreen />);
     expect(await screen.findByRole("tab", { name: /Claude Code/ })).toBeTruthy();
-    expect(within(screen.getByRole("navigation", { name: "Dự án" })).getByRole("button", { name: /shop.*1 tab/ }))
-      .toBeTruthy();
+    expect(
+      within(screen.getByRole("navigation", { name: "Dự án" })).getByRole("button", { name: /shop.*1 tab/ }),
+    ).toBeTruthy();
     expect(calls.filter((c) => c.command === "pty_open")).toHaveLength(1);
     expect(calls.some((c) => c.command === "pty_close")).toBe(false);
   });

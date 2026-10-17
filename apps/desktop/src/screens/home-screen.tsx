@@ -24,7 +24,7 @@ import { folderName, useFolder } from "@/lib/folder.ts";
 import { hub } from "@/lib/hub-rpc.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { type LocalProject, localProjects } from "@/lib/local-projects.ts";
-import { type AgentCounts, CLI_LABEL as AGENT_CLI, machineAgentCounts } from "@/lib/machine-agents.ts";
+import { CLI_LABEL as AGENT_CLI, type AgentCounts, machineAgentCounts } from "@/lib/machine-agents.ts";
 import { duration, type MachineRun, machineRuns, thisMachine } from "@/lib/machine-runs.ts";
 import { can, navItems, type ScreenId } from "@/lib/nav.ts";
 import { CLI_NAME, DEFAULTS, type Limit, meterTone, type Plan, plans } from "@/lib/plans.ts";
