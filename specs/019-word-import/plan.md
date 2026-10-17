@@ -2,13 +2,14 @@
 
 **Branch**: `019-word-import` · **Date**: 2026-10-16 · **Spec**: [spec.md](spec.md) · **Research**: [research.md](research.md)
 
-Q1–Q15 chưa chốt. Plan làm theo khuyến nghị trong spec. Chỗ nào phụ thuộc câu trả lời thì ghi **[Giả định Qn]**.
+Chủ dự án đã chốt Q1–Q15 ngày 2026-10-17 (bảng "Câu hỏi đã chốt" trong spec). Hai chỗ khác khuyến nghị ban đầu:
+`.doc` qua LibreOffice (Q9) và làm cả trên app desktop (Q12).
 
 ## Tóm tắt
 
 Thêm việc **nhập Word** vào module hub `docsync`, vì module này đã sở hữu nhà tài liệu, đính kèm, nhập từ repo và bản trích.
 - File `.docx`/`.odt` tải lên được lưu vào BlobStore.
-- Job nền chạy **pandoc** với bộ lọc Lua của hub [Giả định Q1], ra Markdown cho editor, ảnh đặt tên theo hash, và cảnh báo.
+- Job nền chạy **pandoc** với bộ lọc Lua của hub (Q1), ra Markdown cho editor, ảnh đặt tên theo hash, và cảnh báo.
 - Người nhập xem trước rồi bấm tạo. Tài liệu đã có (vd. từ `srs2md`) gắn được với file Word để cập nhật về sau. Tài liệu, ảnh và bản ghi lần nhập được ghi trong một giao dịch. Lô đẩy sẵn có của
   docsync đưa chúng vào repo.
 
@@ -21,7 +22,11 @@ Phần mới ở chỗ khác:
 - **Web**: hộp thoại "Nhập Word", trang lượt nhập (xem trước, tiến độ, báo cáo).
 - **Đóng gói**: binary pandoc ghim phiên bản trong image hub và trong CI; `/api/v1/health` báo `wordImport`.
 
-Worker Go và app desktop không đổi [Giả định Q12].
+- **`.doc`** (Q9): LibreOffice chạy không giao diện đổi sang `.docx`, rồi đi tiếp như `.docx` (mục 3, 12b).
+- **App desktop** (Q12): màn "Nhập Word" chọn file hoặc thư mục trên máy, lệnh Rust tải lên bằng token cá nhân, lệnh
+  Rust tải nhị phân để hiện ảnh (mục 11b).
+
+Worker Go không đổi.
 
 ## Technical Context
 
@@ -29,7 +34,7 @@ Worker Go và app desktop không đổi [Giả định Q12].
 |---|---|
 | Ngôn ngữ | TypeScript strict (hub chạy thẳng `.ts` bằng Node), bộ lọc Lua chạy trong pandoc |
 | Hub | Hono + oRPC, Drizzle, pg-boss, `withTenant()`, role `hive_app` |
-| Phụ thuộc mới | Binary **pandoc**, ghim bản 3.12 (bản đã thử trên 261 SRS) cho `linux-amd64` và `linux-arm64`, kiểm SHA-256. Không thêm gói npm |
+| Phụ thuộc mới | Binary **pandoc**, ghim bản 3.12 (bản đã thử trên 261 SRS) cho `linux-amd64` và `linux-arm64`, kiểm SHA-256. **LibreOffice** (chỉ phần Writer, không giao diện) từ kho gói của Debian trong image hub, cho `.doc`. Không thêm gói npm. Desktop: dùng `reqwest` và `tauri-plugin-dialog` sẵn có |
 | Lưu trữ | PostgreSQL: 2 bảng mới; file gốc và ảnh trong BlobStore sẵn có |
 | Test | Vitest. `*.db.test.ts` với Testcontainers và provider `memory` của `scm`. File `.docx` mẫu trong repo. Playwright cho hộp thoại |
 | Hiệu năng | SC-003: xem trước file 3 MB ≤ 20 giây; lượt 50 file ≤ 10 phút |
@@ -45,7 +50,7 @@ Worker Go và app desktop không đổi [Giả định Q12].
 | IV. Tested | Unit cho đặt tên, chọn phiên bản, hậu xử lý; test vàng cho bộ lọc trên file mẫu; `*.db.test.ts` cho luồng nhập, quyền, bí mật, RLS; test codec cho FR-015/016; Playwright cho hộp thoại |
 | V. Secure by default | `inspectFileType` + `readZip` trước pandoc. pandoc chạy `--sandbox`, không mạng, thư mục tạm riêng, giới hạn thời gian và bộ nhớ, dưới user `node`. `assertDocSecrets` trên Markdown. File gốc chỉ tải được khi đọc được tài liệu. Ảnh SVG phục vụ như đính kèm sẵn có (CSP chặn script) |
 | VI. Ngôn ngữ | Chữ giao diện, lỗi, cảnh báo tiếng Việt. ADR, SRS, code tiếng Anh. Spec tiếng Việt theo yêu cầu chủ dự án (như 011–018). **Lệch** VI, ghi ở Complexity Tracking |
-| VII. Simple to self-host | Không thêm dịch vụ. pandoc là một file binary trong image. Thiếu pandoc thì tính năng tắt, hub vẫn chạy (FR-023). ADR 0029 ghi lý do |
+| VII. Simple to self-host | Không thêm dịch vụ. pandoc và LibreOffice là chương trình trong image, chạy như tiến trình con. Thiếu pandoc thì tính năng tắt; thiếu LibreOffice thì chỉ tắt `.doc` (FR-023). ADR 0029 ghi lý do và dung lượng image |
 | Giao diện | Thiết kế theo Navy Hive (PR #410), shadcn/ui, token màu. 360 px, sáng/tối, bàn phím. Playwright theo role |
 
 ## Kiến trúc
@@ -73,7 +78,8 @@ flowchart LR
 
 ```text
 apps/hub/src/modules/docsync/word/
-  routes.ts          # POST /api/v1/docs/word-imports (multipart), GET file gốc, GET ảnh giữ tạm
+  routes.ts          # POST /api/v1/docs/word-imports (multipart, phiên web hoặc token cá nhân), GET file gốc, GET ảnh giữ tạm
+  soffice.ts         # .doc → .docx bằng LibreOffice không giao diện, hồ sơ riêng mỗi lần, có giới hạn
   link.ts            # Q13: gắn tài liệu có sẵn với file Word (FR-028)
   pandoc.ts          # tìm pandoc, kiểm phiên bản, chạy tiến trình con có giới hạn, đọc --log JSON
   filter.lua         # bộ lọc chuẩn (FR-014): chuyển từ tools/srs2md/srs.lua, thêm cảnh báo
@@ -92,14 +98,16 @@ apps/hub/src/modules/knowledge/index.ts     # export authorize, assertDocSecrets
 apps/hub/src/modules/knowledge/proposals.ts # P2: nguồn và lượt nhập của đề xuất, hook khi duyệt (mục 9)
 apps/hub/src/modules/knowledge/reviews.ts   # P2: hook nhiều bên đăng ký (mục 9)
 apps/hub/src/modules/docsync/conflicts.ts   # P2: xung đột nguồn Word (mục 8)
-apps/hub/src/modules/platform/magic.ts      # nhận .odt (FR-002)
+apps/hub/src/modules/platform/magic.ts      # nhận .odt, .doc; đọc thư mục OLE để tách .doc khỏi .docx có mật khẩu (FR-002)
 apps/hub/src/modules/platform/config.ts     # HIVE_PANDOC_PATH, HIVE_DOC_WORD_MAX_BYTES, HIVE_DOC_WORD_STAGING_DAYS
 apps/hub/db/migrations/00xx_word_import.sql # sinh bằng db:generate
 packages/contracts/src/doc-sync.ts          # wordImports.*, kiểu route multipart
 packages/doc-editor/src/markdown.ts         # FR-015, FR-016
 apps/web/src/components/word-import-dialog.tsx
 apps/web/src/pages/knowledge/word-import-page.tsx   # /knowledge/docs/word-imports/:id
-Dockerfile                                   # stage tải pandoc ghim phiên bản + SHA-256
+apps/desktop/src/screens/word-import-screen.tsx      # Q12: chọn file/thư mục, tiến độ, trang lượt nhập
+apps/desktop/src-tauri/src/word_import.rs           # hub_upload_word (multipart theo luồng), hub_fetch_bytes
+Dockerfile                                   # stage tải pandoc ghim phiên bản + SHA-256; cài LibreOffice Writer
 .github/workflows/ci.yml                     # cài pandoc ghim phiên bản cho test
 docs/adr/0029-pandoc-for-word-import.md
 docs/srs.md                                  # 3.24 Word import (WIMP-01…)
@@ -131,11 +139,13 @@ docs/srs.md                                  # 3.24 Word import (WIMP-01…)
 ### 2. Nhận file (FR-002…FR-004)
 
 `POST /api/v1/docs/word-imports`, multipart gồm `homeId`, `targetDir`, `files[]`, và `updateDocKey` tuỳ chọn (US3).
-1. Xác thực phiên, lấy tổ chức như `handleAssetUpload`. `requireOrgRole(member)`.
+1. Xác thực bằng phiên web **hoặc** token cá nhân (`Authorization: Bearer hive_pat_…`, cách RPC đang nhận cho desktop),
+   lấy tổ chức từ `x-hive-org`. `requireOrgRole(member)`.
 2. `authorize(propose)` ở phạm vi suy từ thư mục đích: `keyFromPath(<thư mục>/x.md, pathHome)` cho ra key, rồi
    `scopeOfDocKey`. Thư mục nằm ngoài gốc nhà thì từ chối. Quyền `manage` được kiểm lại lúc tạo.
-3. Kiểm `content-length` với giới hạn lượt. Mỗi file: đuôi `.docx`/`.odt`, `inspectFileType` khớp, ≤ `HIVE_DOC_WORD_MAX_BYTES`.
-   File OLE (`D0 CF 11 E0`) báo "File có mật khẩu" (Edge Cases).
+3. Kiểm `content-length` với giới hạn lượt. Mỗi file: đuôi `.docx`/`.odt`/`.doc`, `inspectFileType` khớp, ≤
+   `HIVE_DOC_WORD_MAX_BYTES`. File OLE (`D0 CF 11 E0`): đọc thư mục OLE, có `EncryptedPackage` thì báo "File có mật khẩu",
+   có `WordDocument` thì là `.doc` (Edge Cases). Hub chưa có LibreOffice thì từ chối `.doc` ngay ở bước này.
 4. `BlobStore.put` từng file theo luồng (stream), không đọc cả lượt vào bộ nhớ.
 5. Trong cùng giao dịch: ghi lượt và các file (`queued`), `enqueue("docsync-word-import", {orgId, fileId})` cho từng file.
 6. Trả `{importId}`. Web chuyển sang trang lượt nhập và hỏi trạng thái mỗi 2 giây cho tới khi mọi file xong.
@@ -143,8 +153,10 @@ docs/srs.md                                  # 3.24 Word import (WIMP-01…)
 ### 3. Chuyển (FR-003, FR-007…FR-013)
 
 Job `docsync-word-import` theo mẫu `runExtractJob`: đọc trong tenant, chạy ngoài giao dịch, ghi kết quả trong tenant.
-1. Đọc blob, `readZip(bytes, EXTRACT_LIMITS)`. Lỗi thì `failed` kèm lý do tiếng Việt.
-2. Ghi file vào thư mục tạm riêng (`mkdtemp`), xoá trong `finally`.
+1. Đọc blob. Ghi file vào thư mục tạm riêng (`mkdtemp`), xoá trong `finally`.
+2. `.doc`: chạy LibreOffice (`soffice.ts`, mục 12b) ra `in.docx` trong cùng thư mục tạm. Lỗi hoặc quá giờ thì `failed`.
+   `.docx`, `.odt` và `.docx` vừa sinh: `readZip(bytes, EXTRACT_LIMITS)`. Lỗi thì `failed` kèm lý do tiếng Việt.
+   `.odt` chạy pandoc với `-f odt` thay cho `-f docx`.
 3. Chạy pandoc (`pandoc.ts`):
    ```text
    pandoc in.docx -f docx -t gfm --wrap=none --track-changes=accept --sandbox
@@ -166,7 +178,7 @@ Job `docsync-word-import` theo mẫu `runExtractJob`: đọc trong tenant, chạ
    - thay link trong Markdown bằng đường dẫn tương đối từ tài liệu tới `homeDir(home, key)/<assetsDir>/<tên>`
      (`relativeFrom`), vd. `../../assets/9527ba12e6da.png` cho `docs/srs/OPD/OPD17.md`. Đường dẫn tài liệu có thể đổi
      ở bước xem trước, nên link tính lại lúc tạo (mục 6), lúc chuyển chỉ giữ tên ảnh;
-   - EMF/WMF giữ làm đính kèm, link tải kèm cảnh báo [Giả định Q10];
+   - EMF/WMF giữ làm đính kèm, link tải kèm cảnh báo (Q10). Image đã có LibreOffice nên đổi sang PNG để sau là việc nhỏ;
    - `BlobStore.put` từng ảnh;
    - thống kê số tiêu đề, bảng, ảnh;
    - front matter theo FR-012.
@@ -205,7 +217,7 @@ Job `docsync-word-import` theo mẫu `runExtractJob`: đọc trong tenant, chạ
 
 `wordImports.commit({importId, fileIds?})`. Mỗi file chạy một giao dịch riêng, để một file lỗi không chặn cả lượt:
 1. `authorize(manage)` ở phạm vi của key đích. Không đủ quyền thì đi nhánh đề xuất (mục 9, P2), còn P1 thì báo
-   "Cần quyền quản lý tài liệu" [Giả định Q2].
+   "Cần quyền quản lý tài liệu" (Q2).
 2. Key đã có thì báo `exists` (FR-019). Kiểm lại trong giao dịch vì có thể có người vừa tạo.
 3. `assertDocSecrets` (đã xác nhận thì mang `acknowledgeSecrets`).
 4. Ghi `doc_repo_files` với đúng đường dẫn đã chọn, giữ hoa thường, trạng thái `pending`, như nhập từ repo làm. Không có
@@ -255,7 +267,7 @@ gồm Markdown và ảnh.
 
 ### 9. Đề xuất cho người chỉ có `propose` (P2: FR-027, Q14)
 
-Mỗi file một đề xuất [Giả định Q14]. Lượt và ảnh nằm ở `doc_word_import_files`, vốn đã là chỗ giữ tạm. Phần đề xuất
+Mỗi file một đề xuất (Q14). Lượt và ảnh nằm ở `doc_word_import_files`, vốn đã là chỗ giữ tạm. Phần đề xuất
 hiện tại chưa đủ, phải mở rộng `knowledge`:
 - **Liên kết:** bảng `proposals` không có cột metadata (`knowledge/schema.ts`). Thêm `origin jsonb` tuỳ chọn, vd.
   `{kind: "word", importFileId}`. `createProposal`/`proposeDoc` nhận và lưu nó.
@@ -307,6 +319,21 @@ chuyển bằng `srs2md` và cho Markdown từ repo.
 - Chữ tiếng Việt, theo Navy Hive (PR #410). 360 px, sáng/tối, bàn phím. Playwright theo role.
 - Nút ẩn khi `/api/v1/health` báo `wordImport: false`. Trang quản trị nói cách cài pandoc.
 
+### 11b. App desktop (FR-029…FR-032, Q12, US7)
+
+- **Màn "Nhập Word"** (`word-import-screen.tsx`), đặt trong nhóm Tài liệu của sidebar desktop. Đây là việc trên máy (đọc file
+  trên ổ đĩa), hợp với hướng của PR #412.
+  1. Chọn nhà và thư mục đích (gọi `hub` oRPC qua `hub_rpc` như các màn khác).
+  2. Chọn file hoặc thư mục bằng `tauri-plugin-dialog`; Rust liệt kê file `.docx`, `.odt`, `.doc` (đệ quy, giữ thư mục con),
+     trả tên, kích thước, ngày sửa.
+  3. Bấm "Tải lên": lệnh Rust `hub_upload_word` gửi multipart theo luồng bằng `reqwest`, gắn token cá nhân từ keychain và
+     `x-hive-org`, phát sự kiện tiến độ từng file. Hub trả `importId`.
+  4. Trang lượt nhập dùng cùng API `wordImports.*` với web.
+- **Ảnh xem trước:** lệnh Rust `hub_fetch_bytes(path)` tải nhị phân bằng token cá nhân, chỉ cho đường dẫn route media của lượt
+  nhập và ảnh tài liệu (kiểm như `safe_rpc_path`), trả về để giao diện tạo URL `blob:`. Màn soạn tài liệu của desktop dùng
+  lại lệnh này cho `resolveLink`, vá chỗ thiếu "cầu nối nhị phân" hiện có.
+- Không ghi token ra log hay lỗi trả về (như `hub.rs`).
+
 ### 12. Đóng gói pandoc (FR-023, Q1)
 
 - **Dockerfile:**
@@ -323,11 +350,29 @@ chuyển bằng `srs2md` và cho Markdown từ repo.
 - **Máy dev:** `winget install JohnMacFarlane.Pandoc` hoặc `brew install pandoc`. Ghi vào `AGENTS.md` mục Lệnh.
 - [Unverified] Dung lượng image tăng thêm: đo lúc làm task, ghi vào ADR 0029.
 
+### 12b. LibreOffice cho `.doc` (FR-003, FR-023, Q9)
+
+- **Dockerfile:** stage `runtime` cài gói Writer không giao diện của Debian (`libreoffice-writer-nogui`,
+  `--no-install-recommends`), cùng font tiếng Việt cơ bản để đổi định dạng không lỗi chữ. [Unverified] Tên gói và dung
+  lượng trên `bookworm-slim`: kiểm và đo lúc làm task, ghi vào ADR 0029.
+- **Chạy** (`soffice.ts`):
+  ```text
+  soffice --headless --norestore --nolockcheck --nodefault
+          -env:UserInstallation=file://<thư mục tạm>/profile --convert-to docx --outdir <thư mục tạm> in.doc
+  ```
+  - `spawn` không qua shell, user `node`, env tối thiểu;
+  - quá `HIVE_DOC_WORD_TIMEOUT_MS` thì giết cả nhóm tiến trình (LibreOffice sinh tiến trình con);
+  - **mỗi tiến trình hub chỉ một LibreOffice chạy cùng lúc** (hàng đợi riêng `docsync-word-doc`), vì LibreOffice nặng và
+    hồ sơ người dùng không dùng chung được;
+  - đổi định dạng ở chế độ không giao diện không chạy macro, và không cần mạng.
+- **Máy dev và CI:** cài LibreOffice khi cần chạy test `.doc`; test `.doc` **skip** tại máy khi thiếu, **fail** trong CI.
+
 ### 13. Cấu hình
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `HIVE_PANDOC_PATH` | `pandoc` | Đường dẫn binary |
+| `HIVE_SOFFICE_PATH` | `soffice` | LibreOffice cho `.doc`; không có thì tắt riêng `.doc` |
 | `HIVE_DOC_WORD_MAX_BYTES` | 50 MiB | Một file Word |
 | `HIVE_DOC_WORD_BATCH_FILES` | 100 | Số file mỗi lượt |
 | `HIVE_DOC_WORD_BATCH_BYTES` | 500 MiB | Dung lượng mỗi lượt |
@@ -342,7 +387,9 @@ Thêm vào `apps/hub/.env.example` và `docs/self-hosting.md`.
 |---|---|
 | Unit | `names.ts` (biến thể tên của SharePoint ở research mục 1, thứ tự chọn bản); hậu xử lý ảnh và link; đọc `log.json`; front matter tất định |
 | Vàng (cần pandoc) | `fixtures/*.docx` sinh bằng `make-fixtures.py` (python-docx, giống test của `srs2md`): ô gộp ngang và dọc, STT tự động, style tiêu đề riêng kế thừa `Heading N`, ảnh kèm chú thích, trang bìa, mục lục, gạch chân, mục danh sách rỗng, bảng lồng, theo dõi thay đổi, bình luận. So từng byte với `*.md` đã duyệt (SC-002) |
-| Lỗi file | File có mật khẩu, file đổi đuôi, zip bomb, quá giới hạn, pandoc bị giết khi quá thời gian (dùng `HIVE_PANDOC_PATH` trỏ tới script treo), SC-005 |
+| Lỗi file | File có mật khẩu (OLE `EncryptedPackage`), `.doc` thật (OLE `WordDocument`), file đổi đuôi, zip bomb, quá giới hạn, pandoc và LibreOffice bị giết khi quá thời gian (dùng `HIVE_PANDOC_PATH`/`HIVE_SOFFICE_PATH` trỏ tới script treo), SC-005 |
+| `.doc`, `.odt` (cần LibreOffice) | Cùng nội dung với một `.docx` mẫu; so với Markdown vàng, khác biệt cho phép ghi trong file vàng (SC-002) |
+| Desktop | Rust: `hub_upload_word` gửi multipart theo luồng tới máy chủ HTTP giả, không lộ token, báo tiến độ; `hub_fetch_bytes` chỉ nhận đường dẫn hợp lệ. Vitest: màn chọn thư mục, lọc đuôi, chặn quá giới hạn |
 | DB | Luồng tạo với provider `memory`: tài liệu, ảnh, lô đẩy một commit; quyền `propose`/`manage`; bí mật và xác nhận có audit; trùng đường dẫn; RLS hai bảng mới; nguồn `word` được đẩy, nguồn `import` vẫn không |
 | Editor | FR-015, FR-016 (mục 10) |
 | E2E | Playwright: chọn 3 file mẫu, xem trước, sửa tên, tạo, mở tài liệu thấy bảng sửa được và ảnh |
@@ -359,6 +406,10 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 - **Kéo cả thư mục** thì giữ thư mục con dưới thư mục đích.
 - **Bảng xung đột** thêm `origin`, `base_content`; `repo_commit` cho phép rỗng với Word (mục 8).
 - **Hook khi duyệt đề xuất** là hook mới cho nhiều bên đăng ký, không dùng `provideReviewHooks` (mục 9).
+- **Desktop ở đợt 2b (P2)**, sau phần web, vì dùng chung route và API của hub. Chủ dự án chỉ chốt "làm cả desktop" (Q12),
+  chưa nói thứ tự; đổi được.
+- **Q9 hiểu là nhận cả `.docx`, `.odt`, `.doc`.**
+- **Một LibreOffice mỗi tiến trình hub**, hàng đợi riêng, để `.doc` không chiếm chỗ của `.docx`.
 
 ## Rủi ro
 
@@ -370,7 +421,10 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | R4 | Sửa `<br>` trong editor làm đổi tài liệu đang có | Khối không sửa vẫn ghi nguyên văn (`MarkdownCodec`). Test xuất lại từng byte trên bộ mẫu hiện có của `markdown.test.ts` và 261 SRS (tại máy) |
 | R5 | Đặt tên sai làm tài liệu nằm sai chỗ trong repo | Xem trước bắt buộc, sửa được từng dòng; chế độ `pr` mặc định nên còn bước duyệt PR |
 | R6 | Kho file phình vì file Word gốc | Hạn mức tổ chức sẵn có; khử trùng theo SHA-256; GC theo tham chiếu. 270 SRS khoảng 235 MB |
-| R7 | Hub đang chạy chưa có #413, thử trên `hive.xdev.asia` sẽ vấp lỗi nhập | Triển khai lại hub trước khi thử (Assumptions) |
+| R7 | Hub đang chạy chưa có #413 | Đã xử lý: `hive.xdev.asia` lên `9947aeb1` ngày 2026-10-17 |
+| R9 | File `.doc` độc nhắm vào LibreOffice (bộ đọc định dạng nhị phân cũ, bề mặt tấn công lớn) | Kiểm cấu trúc OLE và kích thước trước; không macro, không mạng; hồ sơ riêng mỗi lần; một tiến trình mỗi lúc; giới hạn thời gian; user `node`; theo dõi bản vá của Debian; tắt riêng `.doc` được bằng cách không cài LibreOffice |
+| R10 | Image hub tăng dung lượng vì LibreOffice | Chỉ cài Writer không giao diện; đo và ghi vào ADR 0029 |
+| R11 | Desktop tải nhiều file lớn | Rust đọc và gửi theo luồng, không qua bộ nhớ giao diện; chặn sớm theo giới hạn lượt |
 | R8 | Máy chủ không tải được pandoc lúc build | Mục 12: tarball dựng sẵn hoặc `HIVE_PANDOC_PATH`; thiếu pandoc thì tính năng tắt, hub vẫn chạy |
 
 ## Phương án đã cân nhắc
@@ -378,7 +432,7 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | Phương án | Lý do không chọn |
 |---|---|
 | mammoth + turndown (đã có trong hub) | Mất số STT và tiêu đề style riêng trên SRS thật (research mục 2). Sửa được thì phải tự đọc `styles.xml`, `numbering.xml` |
-| LibreOffice headless | Thêm vài trăm MB, khởi động chậm, nhiều bề mặt tấn công. Chỉ đáng khi cần `.doc` (Q9) |
+| LibreOffice cho mọi định dạng (thay pandoc) | Chỉ dùng cho `.doc` (Q9). `.docx` vẫn qua pandoc vì kết quả đã kiểm trên 261 SRS |
 | Chuyển trong trình duyệt (mammoth chạy ở web) | Cùng nhược điểm của mammoth. Kết quả phụ thuộc trình duyệt; hub vẫn phải kiểm lại |
 | Dịch vụ chuyển đổi riêng (container pandoc) | Thêm dịch vụ, trái constitution VII. Một binary trong image hub là đủ |
 | Chỉ giữ `tools/srs2md` | BA không cài được Python và pandoc; mỗi lần BA sửa Word lại phải nhờ dev |
@@ -390,11 +444,12 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 |---|---|---|
 | Spec viết tiếng Việt (constitution VI nói spec tiếng Anh) | Chủ dự án yêu cầu, như spec 011–018 | — |
 | Thêm binary pandoc vào image hub | Giữ đúng tiêu đề, số thứ tự, ô gộp của Word (research mục 2) | mammoth không giữ được những phần này nếu không tự viết bộ đọc OOXML |
+| Thêm LibreOffice vào image hub | Chủ dự án chọn nhận `.doc` (Q9) | Bắt người dùng tự lưu `.doc` thành `.docx` trước khi tải |
 
 ## SRS và ADR
 
-- **ADR 0029** "Use pandoc for Word import": chọn pandoc thay cho mammoth, cách chạy có giới hạn, cách đóng gói, cách tắt khi
-  thiếu.
+- **ADR 0029** "Use pandoc and LibreOffice for Word import": pandoc thay cho mammoth; LibreOffice chỉ cho `.doc`; cách chạy
+  có giới hạn; cách đóng gói, dung lượng image; cách tắt từng phần khi thiếu.
 - **SRS 3.24 Word import (`WIMP-01…`)** ánh xạ FR của spec. Mục 3.23 DSYNC thêm dòng trỏ sang 3.24.
 - `docs/architecture.md` mục `docsync`: thêm phần nhập Word. `docs/self-hosting.md`: pandoc và các biến mới.
 
@@ -402,10 +457,12 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 
 | Đợt | Nội dung | Ước lượng |
 |---|---|---|
-| 0 | Editor: FR-015, FR-016 (mục 10). PR riêng, gộp trước | 1,5 ngày |
+| 0 | Editor: FR-015, FR-016 (mục 10) | **Đã xong**: PR #416 đã merge, có trong v0.2.22 |
 | 1 (P1) | Mục 1–7, 8b, 11 (phần tạo), 12, 13, 14: nhập một hoặc nhiều file cho người `manage`, gắn tài liệu có sẵn | 9,5–11,5 ngày |
 | 2 (P2) | Mục 8 (cập nhật, xung đột nguồn Word, dọn ảnh), mục 9 (đề xuất, hook khi duyệt) | 7–9 ngày |
+| 1b (P1) | Mục 12b: `.doc` qua LibreOffice (Q9) | 2–3 ngày |
+| 2b (P2) | Mục 11b: app desktop (Q12, US7) | 3–4 ngày |
 | 3 (P3) | US5: nhãn, tải file gốc, danh sách lượt nhập | 1,5 ngày |
 
-Tổng khoảng 19,5–23,5 ngày-agent [Inference], ước theo cỡ của spec 018, chưa chia task. Bước tiếp theo sau khi chốt Q1–Q15:
-viết `tasks.md`.
+Tổng khoảng 23–29 ngày-agent [Inference] (không tính đợt 0 đã xong), ước theo cỡ của spec 018, chưa chia task. Bước tiếp
+theo: viết `tasks.md`.
