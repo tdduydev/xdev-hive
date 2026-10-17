@@ -34,7 +34,10 @@ const teamMembers = [LAN, HA, BINH].map((p) => ({ ...p, teamId: TEAM_ID, role: "
 /** Người đăng nhập (u1) là `role` của đội sở hữu dự án; vai trò tổ chức là member để quyền chỉ đến từ đội. */
 const orgMembers = (role: "admin" | "member") => [
   {
-    ...USER,
+    userId: USER.id,
+    name: USER.name,
+    email: USER.email,
+    image: USER.image,
     role: "member",
     status: "active",
     joinedAt: NOW,
