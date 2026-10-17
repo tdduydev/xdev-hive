@@ -2,7 +2,7 @@
 
 **Feature Branch**: `ai/desktop-ssh-keys`
 **Ngày**: 2026-10-17
-**Trạng thái**: Bản nháp, chờ chủ dự án duyệt
+**Trạng thái**: Chủ dự án đã duyệt (2026-10-17): Q1 dùng `~/.ssh/id_ed25519`, Q2 khoá mới không passphrase
 **Input**: Người dùng (2026-10-17): "thêm tính năng quản lý ssh username pass sang ssh-key vào client".
 
 ## Vì sao làm
