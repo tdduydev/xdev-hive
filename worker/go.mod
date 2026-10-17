@@ -8,6 +8,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/oapi-codegen/runtime v1.2.0
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
