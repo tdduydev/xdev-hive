@@ -170,6 +170,9 @@ export function openTermLink(_event: MouseEvent, uri: string) {
   if (/^https?:\/\//i.test(uri)) window.open(uri, "_blank", "noopener,noreferrer");
 }
 
+/** Trạng thái kho terminal ngoài React (test, màn chọn dự án trước khi chuyển sang màn Terminal). */
+export const terminals = () => snapshot;
+
 export function useTerminals() {
   useEffect(ensureListening, []);
   return useSyncExternalStore(
