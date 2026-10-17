@@ -11,7 +11,19 @@ const PROJECT = {
   key: "PAY",
   name: "payment-api",
   state: "active",
-  repo: null,
+  // Trang cài đặt đọc repo của dự án (mục Tài liệu); repo null làm cả trang lỗi.
+  repo: {
+    mode: "existing",
+    connectionId: "c0c0c0c0-0000-4000-8000-000000000001",
+    kind: "github",
+    owner: "acme",
+    name: "payment-api",
+    defaultBranch: "main",
+    visibility: "private",
+    httpUrl: null,
+    sshUrl: null,
+    webUrl: null,
+  },
   settings: {
     merge: { mode: "review", requiredApprovals: 1 },
     outcome: { default: [], byType: {} },
