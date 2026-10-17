@@ -21,7 +21,7 @@ import { leaderContract } from "./leader.ts";
 import { mcpAdminContract } from "./mcp-admin.ts";
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
 import { policiesContract } from "./policies.ts";
-import { projectsContract } from "./projects.ts";
+import { projectMembersContract, projectsContract } from "./projects.ts";
 import { rolesContract } from "./roles.ts";
 import { runsContract } from "./runs.ts";
 import { sandboxContract } from "./sandbox.ts";
@@ -137,6 +137,7 @@ export const contract = {
   inbox: inboxContract,
   chat: chatContract,
   projects: projectsContract,
+  projectMembers: projectMembersContract,
   memory: memoryContract,
   docs: docsContract,
   docHomes: docHomesContract,

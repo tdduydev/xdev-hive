@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expandDocTree } from "./docsync-docs-fixture.ts";
 import { fakeHub, ok, USER } from "./fake-hub.ts";
 
 const at = "2026-10-14T03:00:00.000Z";
@@ -87,6 +88,7 @@ async function open(page: import("@playwright/test").Page, scheme: "light" | "da
     },
   });
   await page.goto("/knowledge/docs");
+  await expandDocTree(page);
   await page.getByRole("button", { name: "Mở dòng Kiến trúc kênh worker" }).click();
 }
 

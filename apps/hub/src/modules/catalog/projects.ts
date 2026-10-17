@@ -37,6 +37,7 @@ import {
   teamRoleOf,
   teamRolesOf,
 } from "../tenancy/index.ts";
+import { addCreatorAsMember } from "./members.ts";
 import { projectProvisionSteps, projects } from "./schema.ts";
 import { type PlannedStep, planSteps } from "./steps.ts";
 import { renderTemplate } from "./template.ts";
@@ -476,6 +477,7 @@ export async function createProject(
         params: s.params,
       })),
     );
+    await addCreatorAsMember(tx, { id, teamId: p.system.teamId }, actor.userId);
     const jobId = await jobs.enqueue<ProvisionJob>(
       PROVISION_QUEUE,
       { orgId: actor.orgId, projectId: id },

@@ -443,6 +443,59 @@ describe("bí mật không vào repo hay embedding khi chưa xác nhận (SC-007
   });
 });
 
+describe("scope của mục trong cây (spec 019)", () => {
+  const paths = () => ({
+    projectDoc: `docs/scope-${tag}/a.md`,
+    orgDoc: `scope-${tag}/b.md`,
+    owned: `docs/scope-${tag}/owned.png`,
+    freeProject: `docs/scope-${tag}/free.png`,
+    freeOrg: `scope-${tag}/free.png`,
+  });
+
+  it("cây trả scope của tài liệu và của đính kèm", async () => {
+    const p = paths();
+    const doc = async (key: string, team: string | null, projectId: string | null) =>
+      (
+        await admin.query(
+          `insert into hive.docs (org_id, team_id, project_id, key, title, current_version, updated_by_user_id)
+           values ($1, $2, $3, $4, $4, 1, $5) returning id`,
+          [org.orgId, team, projectId, key, org.user("admin")],
+        )
+      ).rows[0].id as string;
+    const file = (homeId: string, docId: string, path: string) =>
+      admin.query("insert into hive.doc_repo_files (org_id, home_id, doc_id, repo_path) values ($1, $2, $3, $4)", [
+        org.orgId,
+        homeId,
+        docId,
+        path,
+      ]);
+    // missing_lfs không cần blob, đủ để dựng dòng đính kèm.
+    const asset = (homeId: string, path: string, owner: string | null) =>
+      admin.query(
+        `insert into hive.doc_assets (org_id, home_id, repo_path, media_type, size, sha256, lfs, state, owner_doc_id)
+         values ($1, $2, $3, 'image/png', 1, repeat('a', 64), true, 'missing_lfs', $4)`,
+        [org.orgId, homeId, path, owner],
+      );
+    const projectDocId = await doc(`project/${projectKey}/scope-${tag}`, org.teamId, project.projectId);
+    const orgDocId = await doc(`org/scope-${tag}`, null, null);
+    await file(projectHome.id, projectDocId, p.projectDoc);
+    await file(orgHome.id, orgDocId, p.orgDoc);
+    await asset(projectHome.id, p.owned, projectDocId);
+    await asset(projectHome.id, p.freeProject, null);
+    await asset(orgHome.id, p.freeOrg, null);
+
+    const tree = await as("tmember", (tx) => listTree(tx, org.user("tmember"), { limit: 500 }));
+    const scopeOf = (path: string) => tree.items.find((i) => i.path === path)?.scope;
+    const inProject = { level: "project", teamId: org.teamId, projectId: project.projectId };
+    const inOrg = { level: "org", teamId: null, projectId: null };
+    expect(scopeOf(p.projectDoc)).toEqual(inProject);
+    expect(scopeOf(p.orgDoc)).toEqual(inOrg);
+    expect(scopeOf(p.owned)).toEqual(inProject);
+    expect(scopeOf(p.freeProject)).toEqual(inProject);
+    expect(scopeOf(p.freeOrg)).toEqual(inOrg);
+  });
+});
+
 describe("người không có quyền không thấy gì (SC-009)", () => {
   const key = () => `project/${projectKey}/ke-hoach`;
   const word = () => `zircon${tag}`;

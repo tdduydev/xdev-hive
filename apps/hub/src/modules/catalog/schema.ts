@@ -9,6 +9,7 @@ import {
   pgPolicy,
   pgRole,
   pgSchema,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -100,6 +101,36 @@ export const projects = hive
         to: hiveApp,
         using: sql`id = hive.ctx_webhook_project()`,
       }),
+    ],
+  )
+  .enableRLS();
+
+/**
+ * Thành viên dự án chỉ chọn tài liệu hiện mặc định, không mang quyền (spec 019): quyền vẫn theo vai trò trong đội.
+ * Khoá ngoại (team_id, user_id) tới team_members nằm trong migration viết tay, để gỡ khỏi đội là mất luôn thành
+ * viên dự án.
+ */
+export const projectMembers = hive
+  .table(
+    "project_members",
+    {
+      projectId: uuid("project_id").notNull(),
+      orgId: uuid("org_id").notNull(),
+      teamId: uuid("team_id").notNull(),
+      userId: text("user_id").notNull(),
+      addedBy: text("added_by").notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      primaryKey({ columns: [t.projectId, t.userId] }),
+      foreignKey({
+        columns: [t.projectId, t.orgId, t.teamId],
+        foreignColumns: [projects.id, projects.orgId, projects.teamId],
+      }).onDelete("cascade"),
+      index("project_members_user").on(t.orgId, t.userId),
+      // Khoá ngoại cascade từ team_members phải tìm theo (team_id, user_id) mỗi lần xoá thành viên đội hoặc đội.
+      index("project_members_team_user").on(t.teamId, t.userId),
+      orgScoped("project_members"),
     ],
   )
   .enableRLS();
