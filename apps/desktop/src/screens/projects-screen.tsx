@@ -12,7 +12,7 @@ import {
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
-import { ChevronDownIcon, ChevronRightIcon, FolderOpenIcon, RefreshCwIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon, FolderOpenIcon, RefreshCwIcon, SquareTerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { GitGroupsSection } from "@/components/git-groups.tsx";
@@ -21,6 +21,7 @@ import { pickFolder, shortPath } from "@/lib/folder.ts";
 import { type GitGroups, gitGroups } from "@/lib/git-groups.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
+import { openProjectTerminal } from "@/lib/pty.ts";
 import {
   type BindingState,
   bindingState,
@@ -61,6 +62,8 @@ const text: Dict<{
   pickTitle: (name: string) => string;
   unbind: string;
   unbindLabel: (name: string) => string;
+  terminal: string;
+  terminalLabel: (name: string) => string;
   origin: (url: string) => string;
   noOrigin: string;
   full: string;
@@ -103,6 +106,8 @@ const text: Dict<{
     pickTitle: (name) => `Chọn thư mục repo của ${name}`,
     unbind: "Bỏ gắn",
     unbindLabel: (name) => `Bỏ gắn ${name}`,
+    terminal: "Terminal",
+    terminalLabel: (name) => `Mở terminal ở ${name}`,
     origin: (url) => `origin: ${url}`,
     noOrigin: "không có remote origin",
     full: "Cho toàn quyền trên máy này",
@@ -152,6 +157,8 @@ const text: Dict<{
     pickTitle: (name) => `Choose the repository folder of ${name}`,
     unbind: "Unbind",
     unbindLabel: (name) => `Unbind ${name}`,
+    terminal: "Terminal",
+    terminalLabel: (name) => `Open a terminal in ${name}`,
     origin: (url) => `origin: ${url}`,
     noOrigin: "no origin remote",
     full: "Full permission on this machine",
@@ -474,6 +481,7 @@ function LocalRepoList({
                               {l.projectId ? t.goneFromHub : l.origin ? t.origin(l.origin) : t.noOrigin}
                             </span>
                           </span>
+                          {l.exists && <TerminalButton name={l.name} folder={l.folder} />}
                           <Button
                             size="sm"
                             variant="outline"
@@ -494,6 +502,25 @@ function LocalRepoList({
         )}
       </div>
     </section>
+  );
+}
+
+/** Mở màn Terminal ở thư mục dự án, bằng CLI và gói dùng lần cuối ở đó (lib/term-defaults.ts). */
+function TerminalButton({ name, folder }: { name: string; folder: string }) {
+  const t = useT(text);
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      aria-label={t.terminalLabel(name)}
+      onClick={() => {
+        openProjectTerminal(folder);
+        location.hash = "#/terminal";
+      }}
+    >
+      <SquareTerminalIcon aria-hidden="true" />
+      {t.terminal}
+    </Button>
   );
 }
 
@@ -541,6 +568,7 @@ function ProjectRow({
             <span className="truncate text-xs text-warning">{local?.origin ? t.origin(local.origin) : t.noOrigin}</span>
           )}
         </span>
+        {local?.exists && <TerminalButton name={p.name} folder={local.folder} />}
         <Button size="sm" variant="outline" disabled={busy} aria-label={t.pickTitle(p.name)} onClick={onPick}>
           <FolderOpenIcon aria-hidden="true" />
           {local ? t.change : t.pick}
