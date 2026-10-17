@@ -1,6 +1,7 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, giao diện cục bộ gọi hub qua Rust.
 
 mod account;
+mod agents;
 mod browser_login;
 #[cfg(test)]
 mod capabilities_audit;
