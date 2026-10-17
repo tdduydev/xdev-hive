@@ -1,4 +1,5 @@
-package sshkeys
+// Package sshtest là máy chủ SSH trong tiến trình cho test của sshkeys và lệnh hive-worker ssh.
+package sshtest
 
 import (
 	"crypto/ecdsa"
@@ -18,15 +19,15 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// testServer là máy chủ SSH trong tiến trình cho test. Lệnh exec chạy bằng `sh -c` của máy chạy test với HOME tạm,
-// như shell đăng nhập của user trên máy chủ thật.
-type testServer struct {
-	host string
-	port int
-	// keys: khoá máy chủ theo loại ("ssh-ed25519", "ecdsa-sha2-nistp256").
-	keys     map[string]ssh.Signer
-	password string
-	home     string
+// Server là máy chủ SSH trong tiến trình. Lệnh exec chạy bằng `sh -c` của máy chạy test với HOME tạm, như shell đăng
+// nhập của user trên máy chủ thật.
+type Server struct {
+	Host string
+	Port int
+	// Keys: khoá máy chủ theo loại ("ssh-ed25519", "ecdsa-sha2-nistp256").
+	Keys     map[string]ssh.Signer
+	Password string
+	Home     string
 	// passwords: số lần máy chủ nhận được một mật khẩu (qua password hay keyboard-interactive).
 	passwords atomic.Int32
 	// auths: số lần client thử xác thực, kể cả "none".
@@ -36,22 +37,23 @@ type testServer struct {
 	commands []string
 }
 
-type serverOpts struct {
-	password string
-	// kbdOnly: chỉ cho keyboard-interactive, như máy chủ dùng PAM.
-	kbdOnly bool
-	// otp: sau mật khẩu hỏi thêm mã xác minh.
-	otp bool
-	// algos: loại khoá máy chủ có; mặc định ed25519 và ECDSA.
-	algos []string
+type Options struct {
+	Password string
+	// KbdOnly: chỉ cho keyboard-interactive, như máy chủ dùng PAM.
+	KbdOnly bool
+	// OTP: sau mật khẩu hỏi thêm mã xác minh.
+	OTP bool
+	// Algos: loại khoá máy chủ có; mặc định ed25519 và ECDSA.
+	Algos []string
 }
 
-func newTestServer(t *testing.T, o serverOpts) *testServer {
+// New mở máy chủ trên 127.0.0.1, đóng khi test xong.
+func New(t testing.TB, o Options) *Server {
 	t.Helper()
-	if len(o.algos) == 0 {
-		o.algos = []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256}
+	if len(o.Algos) == 0 {
+		o.Algos = []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256}
 	}
-	s := &testServer{keys: map[string]ssh.Signer{}, password: o.password, home: t.TempDir()}
+	s := &Server{Keys: map[string]ssh.Signer{}, Password: o.Password, Home: t.TempDir()}
 	cfg := &ssh.ServerConfig{
 		AuthLogCallback: func(ssh.ConnMetadata, string, error) { s.auths.Add(1) },
 		KeyboardInteractiveCallback: func(_ ssh.ConnMetadata, client ssh.KeyboardInteractiveChallenge) (*ssh.Permissions, error) {
@@ -60,10 +62,10 @@ func newTestServer(t *testing.T, o serverOpts) *testServer {
 				return nil, errors.New("không trả lời")
 			}
 			s.passwords.Add(1)
-			if answers[0] != s.password {
+			if answers[0] != s.Password {
 				return nil, errors.New("sai mật khẩu")
 			}
-			if o.otp {
+			if o.OTP {
 				if _, err := client("", "", []string{"Verification code: "}, []bool{false}); err != nil {
 					return nil, err
 				}
@@ -72,16 +74,16 @@ func newTestServer(t *testing.T, o serverOpts) *testServer {
 			return nil, nil
 		},
 	}
-	if !o.kbdOnly {
+	if !o.KbdOnly {
 		cfg.PasswordCallback = func(_ ssh.ConnMetadata, pw []byte) (*ssh.Permissions, error) {
 			s.passwords.Add(1)
-			if string(pw) != s.password {
+			if string(pw) != s.Password {
 				return nil, errors.New("sai mật khẩu")
 			}
 			return nil, nil
 		}
 	}
-	for _, algo := range o.algos {
+	for _, algo := range o.Algos {
 		var signer ssh.Signer
 		var err error
 		switch algo {
@@ -95,7 +97,7 @@ func newTestServer(t *testing.T, o serverOpts) *testServer {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s.keys[algo] = signer
+		s.Keys[algo] = signer
 		cfg.AddHostKey(signer)
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -104,7 +106,7 @@ func newTestServer(t *testing.T, o serverOpts) *testServer {
 	}
 	t.Cleanup(func() { ln.Close() })
 	addr := ln.Addr().(*net.TCPAddr)
-	s.host, s.port = "127.0.0.1", addr.Port
+	s.Host, s.Port = "127.0.0.1", addr.Port
 	go func() {
 		for {
 			conn, err := ln.Accept()
@@ -117,15 +119,23 @@ func newTestServer(t *testing.T, o serverOpts) *testServer {
 	return s
 }
 
-func (s *testServer) addr() string { return net.JoinHostPort(s.host, strconv.Itoa(s.port)) }
+// Addr là host:port của máy chủ.
+func (s *Server) Addr() string { return net.JoinHostPort(s.Host, strconv.Itoa(s.Port)) }
 
-func (s *testServer) execs() []string {
+// Passwords: số lần máy chủ nhận được một mật khẩu.
+func (s *Server) Passwords() int32 { return s.passwords.Load() }
+
+// Auths: số lần client thử xác thực, kể cả "none".
+func (s *Server) Auths() int32 { return s.auths.Load() }
+
+// Execs: chuỗi lệnh exec máy chủ đã nhận.
+func (s *Server) Execs() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.commands...)
 }
 
-func (s *testServer) serve(conn net.Conn, cfg *ssh.ServerConfig) {
+func (s *Server) serve(conn net.Conn, cfg *ssh.ServerConfig) {
 	defer conn.Close()
 	_, chans, reqs, err := ssh.NewServerConn(conn, cfg)
 	if err != nil {
@@ -145,7 +155,7 @@ func (s *testServer) serve(conn net.Conn, cfg *ssh.ServerConfig) {
 	}
 }
 
-func (s *testServer) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
+func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 	defer ch.Close()
 	for req := range reqs {
 		if req.Type != "exec" || len(req.Payload) < 4 {
@@ -158,8 +168,8 @@ func (s *testServer) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 		s.commands = append(s.commands, command)
 		s.mu.Unlock()
 		_ = req.Reply(true, nil)
-		cmd := exec.Command("sh", "-c", command) // procattr:allow — máy chủ giả của test
-		cmd.Env = append(os.Environ(), "HOME="+s.home)
+		cmd := exec.Command("sh", "-c", command) // procattr:allow: máy chủ giả chỉ dùng trong test
+		cmd.Env = append(os.Environ(), "HOME="+s.Home)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = ch, ch, ch.Stderr()
 		code := 0
 		if err := cmd.Run(); err != nil {
