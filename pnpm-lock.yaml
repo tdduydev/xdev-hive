@@ -217,9 +217,6 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.104.1
         version: 5.104.1(react@19.3.0)
-      '@xdev-hive/artifacts-runtime':
-        specifier: workspace:*
-        version: link:../../packages/artifacts-runtime
       '@xdev-hive/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
