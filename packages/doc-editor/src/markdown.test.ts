@@ -183,6 +183,18 @@ describe("Markdown round-trip", () => {
     expect(codec.serialize(edited)).toBe("* sao\n* sao hai\n\nĐoạn mới.\n\n1) một\n2) hai\n");
   });
 
+  // SRS chuyển từ Word và Markdown trong repo có mục kiểu `6.  `: trước đây cả tài liệu không mở được.
+  it.each(["1. Một\n2.  \n3. Ba\n", "6.  \n", "1. Một\n2.  \n", "- Một\n- \n- Ba\n", "- [ ] Việc\n- [ ] \n"])(
+    "mục danh sách rỗng nạp được, lưu không đổi chữ: %j",
+    (md) => {
+      const { codec, node, json } = load(md);
+      node.check();
+      expect(types(json)).not.toContain("rawMarkdown");
+      expect(codec.serialize(node)).toBe(normalizeDoc(md));
+      expect(meaning(rewrite(md))).toBe(meaning(md));
+    },
+  );
+
   it("chữ thường không bị thoát thừa nhưng vẫn không thành định dạng", () => {
     expect(escapeMarkdownText("a_b_c và 2 * 3 < 4 & x", true)).toBe("a_b_c và 2 * 3 < 4 & x");
     expect(escapeMarkdownText("*đậm* _x_ `c` [l] ~5", false)).toBe("\\*đậm\\* \\_x\\_ \\`c\\` \\[l\\] \\~5");
@@ -304,5 +316,74 @@ describe("cú pháp riêng của Hive", () => {
       const out = rewrite("![a \\[1\\]](a.png)");
       expect(out).toBe("![a \\[1\\]](a.png)\n");
     });
+  });
+});
+
+describe("xuống dòng trong ô bảng", () => {
+  const TABLE = [
+    "| Mã | Mô tả |",
+    "| --- | --- |",
+    "| UC-01 | Bước 1<br>Bước 2<br/>Bước 3 |",
+    "| UC-02 | Một <br /> hai<BR>ba |",
+  ].join("\n");
+  /** `<br>`, `<br/>`, `<br />` và khoảng trắng quanh chúng hiển thị như nhau. */
+  const cellMeaning = (md: string) => meaning(md).replace(/\s*<br\s*\/?>\s*/gi, "<br>");
+  const inline = (json: JSONContent, row: number, col: number) =>
+    json.content?.[0]?.content?.[row]?.content?.[col]?.content?.[0]?.content?.map((n) => n.type);
+
+  it("bảng có `<br>` nạp thành bảng, mỗi `<br>` là một hardBreak", () => {
+    const { json } = load(TABLE);
+    expect(types(json)).toEqual(["table"]);
+    expect(inline(json, 1, 1)).toEqual(["text", "hardBreak", "text", "hardBreak", "text"]);
+    expect(inline(json, 2, 1)).toEqual(["text", "hardBreak", "text", "hardBreak", "text"]);
+  });
+
+  it("không sửa thì lưu đúng nguyên văn; viết lại thì hardBreak trong ô thành `<br>`", () => {
+    const { codec, node } = load(`${TABLE}\n`);
+    expect(codec.serialize(node)).toBe(`${TABLE}\n`);
+    const out = rewrite(TABLE);
+    expect(out).toContain("Bước 1<br>Bước 2<br>Bước 3");
+    expect(cellMeaning(out)).toBe(cellMeaning(TABLE));
+    expect(rewrite(out)).toBe(out);
+  });
+
+  it("sửa một ô chỉ đổi khối bảng đó", () => {
+    const md = `# Use case\n\n${TABLE}\n\nĐoạn   cuối.\n`;
+    const { codec, node } = load(md);
+    const table = node.child(1).toJSON() as JSONContent;
+    const id = table.content?.[1]?.content?.[0]?.content?.[0]?.content?.[0];
+    if (id) id.text = "UC-09";
+    const edited = node.copy(node.content.replaceChild(1, schema.nodeFromJSON(table)));
+    const [head, body, tail] = codec.blocks(edited);
+    expect(head).toBe("# Use case");
+    expect(tail).toBe("Đoạn   cuối.");
+    expect(body).toContain("UC-09");
+    expect(body).toContain("Bước 1<br>Bước 2<br>Bước 3");
+    expect(cellMeaning(body ?? "")).toBe(cellMeaning(TABLE.replace("UC-01", "UC-09")));
+  });
+
+  it.each([
+    "| A |\n| --- |\n| `a<br>b` |",
+    "| A |\n| --- |\n| a \\<br> b |",
+    "| A |\n| --- |\n| <br>đầu |",
+    "| A |\n| --- |\n| cuối<br> |",
+    "| A |\n| --- |\n| a<br><br>b |",
+  ])("ô đặc biệt vẫn lưu đúng nguyên văn và giữ nghĩa khi viết lại: %j", (md) => {
+    const { codec, node } = load(`${md}\n`);
+    expect(codec.serialize(node)).toBe(`${md}\n`);
+    expect(cellMeaning(rewrite(md))).toBe(cellMeaning(md));
+  });
+
+  it("`<br>` trong code của ô vẫn là chữ", () => {
+    const { json } = load("| A |\n| --- |\n| `a<br>b` |\n");
+    expect(types(json)).toEqual(["table"]);
+    expect(JSON.stringify(json)).not.toContain("hardBreak");
+  });
+
+  it("`<br>` ngoài bảng giữ như cũ", () => {
+    const md = "Một<br>hai\n\n- mục<br/>một\n";
+    const { codec, node, json } = load(md);
+    expect(JSON.stringify(json)).not.toContain("hardBreak");
+    expect(codec.serialize(node)).toBe(md);
   });
 });
