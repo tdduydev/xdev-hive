@@ -7,9 +7,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Contract, Project, ProjectMember } from "@xdev-hive/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ProjectMembersSection } from "@/pages/project-members-section.tsx";
+import { ProjectMembersForRole, ProjectMembersSection } from "@/pages/project-members-section.tsx";
 
-vi.mock("@/shell/org-context.ts", () => ({ useOrg: () => ({ api, org: { id: "org-1" } }) }));
+vi.mock("@/shell/org-context.ts", () => ({
+  useOrg: () => ({ api, org: { id: "org-1" } }),
+  useOrgs: () => ({ current: { api, org: { id: "org-1", role: "member" } } }),
+}));
 
 const TEAM_ID = "00000000-0000-4000-8000-000000000001";
 const project = { id: "00000000-0000-4000-8000-000000000009", teamId: TEAM_ID, key: "PAY" } as Project;
@@ -24,6 +27,8 @@ const teamMembers = [
 let members: ProjectMember[];
 /** Đặt để lần thêm kế tiếp bị hub từ chối với câu này. */
 let addRejection: string | null;
+/** Quyền `roles/mine` trả theo đội: chỉ khi hỏi đúng đội mới có vai trò tự tạo gán cho đội đó. */
+let teamPermissions: string[];
 const calls: { path: string; input: Record<string, unknown> }[] = [];
 
 const json = (value: unknown, status = 200) =>
@@ -36,6 +41,7 @@ const client: ContractRouterClient<Contract> = createORPCClient(
       const path = new URL(request.url).pathname.replace("/rpc/", "");
       const input = (await request.json()).json as Record<string, unknown>;
       calls.push({ path, input });
+      if (path === "roles/mine") return json({ permissions: input.teamId === TEAM_ID ? teamPermissions : [] });
       if (path === "teamMembers/list") return json(teamMembers);
       if (path === "projectMembers/list") return json(members);
       if (path === "projectMembers/add") {
@@ -72,9 +78,18 @@ function mount(canManage: boolean) {
 beforeEach(() => {
   members = [{ ...person("u-lan", "Trần Lan"), addedBy: "u1", addedAt: at }];
   addRejection = null;
+  teamPermissions = [];
   calls.length = 0;
 });
 afterEach(cleanup);
+
+function mountForRole(canEdit: boolean) {
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ProjectMembersForRole project={project} canEdit={canEdit} />
+    </QueryClientProvider>,
+  );
+}
 
 describe("ProjectMembersSection", () => {
   it("quản trị đội thấy Thêm và Gỡ, chọn hai người rồi thêm thì gửi đúng hai userId", async () => {
@@ -131,5 +146,30 @@ describe("ProjectMembersSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Thêm" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Lê Bình chưa thuộc đội");
+  });
+
+  it("thành viên đội có projects.settings từ vai trò gán cho đội thì thấy Thêm và Gỡ", async () => {
+    teamPermissions = ["projects.settings"];
+    mountForRole(false);
+    const list = await screen.findByRole("list", { name: "Thành viên dự án" });
+    // Quyền chỉ đến từ lời gọi theo đội; hỏi không kèm đội thì hub trả thiếu vai trò gán cho đội.
+    await waitFor(() => expect(within(list).getByRole("button", { name: "Gỡ" })).toBeTruthy());
+    expect(await screen.findByRole("button", { name: "Thêm" })).toBeTruthy();
+    expect(calls.find((c) => c.path === "roles/mine")?.input).toEqual({ teamId: TEAM_ID });
+  });
+
+  it("thành viên đội không có projects.settings và không là quản trị đội thì chỉ xem", async () => {
+    mountForRole(false);
+    const list = await screen.findByRole("list", { name: "Thành viên dự án" });
+    await waitFor(() => expect(calls.some((c) => c.path === "roles/mine")).toBe(true));
+    expect(within(list).queryByRole("button", { name: "Gỡ" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Thêm" })).toBeNull();
+  });
+
+  it("quản trị đội thấy Thêm và Gỡ dù roles/mine không có projects.settings", async () => {
+    mountForRole(true);
+    const list = await screen.findByRole("list", { name: "Thành viên dự án" });
+    expect(within(list).getByRole("button", { name: "Gỡ" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Thêm" })).toBeTruthy();
   });
 });

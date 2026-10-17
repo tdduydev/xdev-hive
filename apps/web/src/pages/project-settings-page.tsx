@@ -48,7 +48,7 @@ import { teamRoleLookup } from "@/lib/projects.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
 import { ProjectDocsSettings } from "@/pages/project-docs-settings.tsx";
-import { ProjectMembersSection } from "@/pages/project-members-section.tsx";
+import { ProjectMembersForRole } from "@/pages/project-members-section.tsx";
 import { ProjectSdlcSections } from "@/pages/project-sdlc-settings.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -1229,7 +1229,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
         </SettingsSection>
 
         {/* Ai đọc được dự án cũng xem được danh sách; chỉ quản trị đội hay người có quyền sửa cấu hình mới đổi. */}
-        {canBrief && <ProjectMembersSection project={project} canManage={canEdit || can("projects.settings")} />}
+        {canBrief && <ProjectMembersForRole project={project} canEdit={canEdit} />}
 
         <ProjectDocsSettings project={project} canEdit={canEdit} />
         <ProjectSdlcSections project={project} canEdit={canEdit} orgPolicy={policy.data?.sdlc} />

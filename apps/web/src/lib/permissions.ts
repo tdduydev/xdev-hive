@@ -153,3 +153,22 @@ export function usePermissions(): (permission: string) => boolean {
   const admin = current ? isOrgAdmin(current.org.role) : false;
   return (permission) => granted.has(permission) || (admin && !mine.data);
 }
+
+/**
+ * Quyền hiệu lực của tôi khi làm việc trong một đội: thêm vai trò tự tạo gán cho đội đó, mà `usePermissions` (cấp tổ
+ * chức) không thấy. Hub tính quyền theo đội của đối tượng, nên nơi nào hub chấp nhận vai trò đội thì dùng hook này.
+ * Đang tải hay lỗi thì coi là không có quyền; hub vẫn là nơi chặn.
+ */
+export function useTeamPermissions(teamId: string): (permission: string) => boolean {
+  const { current } = useOrgs();
+  const mine = useQuery({
+    queryKey: ["org", current?.org.id ?? "none", "roles", "mine", "team", teamId],
+    queryFn: async (): Promise<{ permissions: string[] }> =>
+      current ? current.api.roles.mine.call({ teamId }) : { permissions: [] },
+    enabled: !!current,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const granted = new Set(mine.data?.permissions ?? []);
+  return (permission) => granted.has(permission);
+}

@@ -9,6 +9,7 @@ import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatDay } from "@/lib/format.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
+import { useTeamPermissions } from "@/lib/permissions.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
 const text: Dict<{
@@ -48,6 +49,15 @@ const text: Dict<{
     adding: "Adding…",
   },
 };
+
+/**
+ * Quản trị đội sở hữu dự án, hoặc người có `projects.settings` tính theo đội đó (vai trò tự tạo gán cho đội cũng
+ * tính, như hub). Quyền cấp tổ chức không đủ vì không thấy vai trò gán cho đội.
+ */
+export function ProjectMembersForRole({ project, canEdit }: { project: Project; canEdit: boolean }) {
+  const canInTeam = useTeamPermissions(project.teamId);
+  return <ProjectMembersSection project={project} canManage={canEdit || canInTeam("projects.settings")} />;
+}
 
 /**
  * Người của đội sở hữu mà dự án hiện trong "Dự án của tôi" của họ (FR-030..FR-033). Không có nút Lưu chung như các
