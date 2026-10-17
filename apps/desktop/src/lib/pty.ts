@@ -349,6 +349,12 @@ export function openProjectTerminal(f: string) {
   });
 }
 
+/** Dừng CLI của tab mà giữ tab: pty:exit đến thì tab hiện "đã thoát" (nút Dừng của màn Agent trên máy). */
+export function stopTerminal(key: string) {
+  const s = sessions.find((x) => x.key === key);
+  if (s?.ptyId && s.status === "running") void invoke("pty_close", { id: s.ptyId }).catch(() => {});
+}
+
 /** Đóng tab: giết tiến trình trong PTY và bỏ xterm. */
 export function closeTerminal(key: string) {
   const s = sessions.find((x) => x.key === key);
