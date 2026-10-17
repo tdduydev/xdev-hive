@@ -49,7 +49,7 @@ export function pickOrg<T extends { id: string }>(orgs: readonly T[], storedId: 
   return orgs.find((o) => o.id === storedId) ?? orgs[0] ?? null;
 }
 
-function browserStorage(): KeyValueStorage | null {
+export function browserStorage(): KeyValueStorage | null {
   try {
     return typeof window === "undefined" ? null : window.localStorage;
   } catch {

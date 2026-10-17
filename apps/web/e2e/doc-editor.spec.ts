@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { DocThread } from "@xdev-hive/contracts";
+import { expandDocTree } from "./docsync-docs-fixture.ts";
 import { fakeHub, ok, type RpcHandler, USER } from "./fake-hub.ts";
 
 const at = "2026-10-12T03:00:00.000Z";
@@ -245,6 +246,7 @@ test("doc editor: open from Docs, see workflow, edit a block directly and insert
 }) => {
   const hub = await setup(page);
   await page.goto("/knowledge/docs");
+  await expandDocTree(page);
   await page.getByRole("button", { name: "Mở dòng Hoàn tiền một phần" }).click();
   await page.getByRole("link", { name: "Soạn", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/knowledge/docs/${encodeURIComponent(key)}/edit$`));
