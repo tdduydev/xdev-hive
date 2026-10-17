@@ -55,8 +55,9 @@ function DocsScreen() {
   const teams = useQuery(api.teams.list.queryOptions());
   const systems = useQuery(api.systems.list.queryOptions({ input: {} }));
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
+  // Bộ lọc người dùng chọn; chưa chọn thì dùng bộ lọc đã nhớ cho tổ chức này.
   const [pickedFilter, setPickedFilter] = useState<DocScopeFilter | null>(null);
-  // Người dùng bấm nút thì ghi đè mặc định của lần mở trang; chưa bấm thì nhìn vào bộ lọc đã nhớ cho tổ chức này.
+  // null nghĩa là chưa bấm nút mở/đóng nào, để mặc định của lần mở trang còn hiệu lực.
   const [toggled, setToggled] = useState<ReadonlySet<string> | null>(null);
   const [selectedKey, setSelectedKey] = useState<string>();
   const [state, setState] = useState("");

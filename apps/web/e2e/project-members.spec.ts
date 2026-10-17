@@ -83,7 +83,7 @@ test("admin đội thêm và gỡ thành viên dự án", async ({ page }) => {
   // Thứ tự theo lúc bấm chọn.
   expect(add[0]?.input).toEqual({ id: PROJECT.id, userIds: ["u-ha", "u-binh"] });
 
-  await members.getByRole("listitem").filter({ hasText: "Phạm Hà" }).getByRole("button", { name: "Gỡ" }).click();
+  await members.getByRole("button", { name: "Gỡ Phạm Hà" }).click();
   await expect(members.getByRole("listitem")).toHaveCount(1);
   await expect(members.getByRole("listitem")).toContainText("Lê Bình");
   expect(hub.rpcCalls.filter((c) => c.path === "projectMembers/remove").map((c) => c.input)).toEqual([
@@ -99,7 +99,7 @@ test("thành viên thường chỉ xem danh sách", async ({ page }) => {
   await expect(members.getByRole("listitem")).toHaveCount(1);
   await expect(members.getByRole("listitem")).toContainText("Trần Lan");
   await expect(members.getByRole("button", { name: "Thêm" })).toHaveCount(0);
-  await expect(members.getByRole("button", { name: "Gỡ" })).toHaveCount(0);
+  await expect(members.getByRole("button", { name: /^Gỡ / })).toHaveCount(0);
 });
 
 test("hiện lỗi khi hub từ chối người ngoài đội", async ({ page }) => {
