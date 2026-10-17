@@ -58,7 +58,7 @@ Khảo sát code ngày 2026-10-16 trên `main` tại `de81b0df`. Spike trên fil
 | Web | `/knowledge/docs/import`: nhập Markdown từ repo, không có tải file. `NewDoc` trong `docs-page.tsx`. Upload duy nhất là `uploadAsset` viết thẳng trong `doc-editor-page.tsx` | **Làm mới** hộp thoại "Nhập Word" cạnh `NewDoc` và một link ở cài đặt tài liệu dự án, cạnh "Nhập từ repo" |
 | Kiểm sức khoẻ | `/api/v1/health` báo `clis`, `artifacts` | **Thêm** `wordImport` (có pandoc) và `wordImportDoc` (có LibreOffice cho `.doc`) |
 | App desktop | Gọi hub qua lệnh Rust `hub_rpc` bằng token cá nhân (`hive_pat_…`) trong keychain; giao diện không thấy token. Màn soạn tài liệu (`docs-screen.tsx`) không tải file lên, không hiện được ảnh của tài liệu (chưa có cầu nối tải nhị phân). Có `tauri-plugin-dialog`, `reqwest` | **Mở rộng**: lệnh Rust tải file lên route nhập Word bằng token cá nhân; lệnh Rust tải nhị phân (ảnh) để xem trước; màn "Nhập Word" (US7) |
-| Route tải file của hub | `POST /api/v1/docs/assets` chỉ nhận phiên đăng nhập web (better-auth) | Route nhập Word nhận **cả** phiên web lẫn token cá nhân, như RPC đang nhận cho desktop |
+| Route REST của hub | Đã nhận cả phiên web lẫn token cá nhân (`withPersonalTokens` trong `app.ts`), kể cả `POST /api/v1/docs/assets` | **Dùng lại** cùng `auth` cho route nhập Word, desktop gọi được ngay |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -161,7 +161,8 @@ tài liệu hay ảnh nào trong nhà.
 1. **Given** người `propose`, **When** bấm "Gửi duyệt", **Then** có đề xuất hiện trong danh sách duyệt, ảnh xem được trong
    bản xem của đề xuất.
 2. **Given** đề xuất được duyệt, **Then** tài liệu và ảnh được tạo như US1 bước 2.
-3. **Given** đề xuất bị từ chối, **Then** ảnh và Markdown giữ tạm bị xoá theo hạn giữ (mặc định 30 ngày).
+3. **Given** đề xuất bị từ chối, **Then** ảnh và Markdown giữ tạm bị xoá ngay. Đề xuất chưa ai duyệt quá hạn giữ
+   (mặc định 30 ngày) thì hết hạn và cũng bị xoá.
 
 ---
 
@@ -306,6 +307,7 @@ diện, tiến độ tải lên, kết quả trùng với lượt nhập qua web
   word:
     file: "<tên file gốc>"
     sha256: "<hash file gốc>"
+  confidential: true   # chỉ khi chọn "Tài liệu mật" (FR-033)
   ```
   Không ghi thời điểm nhập vào file, để kết quả không đổi giữa các lần chuyển.
 - **FR-013**: Cùng file và cùng phiên bản bộ lọc thì ra đúng từng byte (Markdown và tên ảnh).
@@ -364,6 +366,12 @@ diện, tiến độ tải lên, kết quả trùng với lượt nhập qua web
   - khớp thì ghi bản ghi lần nhập (`mode = link`) làm gốc cho FR-024;
   - không khớp thì hiện khác biệt và chỉ ghi khi người gắn xác nhận.
 
+**Nhãn mật (Q15)**
+
+- **FR-033**: Cài đặt tài liệu của nhà (`settings.docs` của dự án, cài đặt repo tài liệu tổ chức) có
+  `wordImportConfidential` (mặc định tắt). Hộp thoại nhập có ô "Tài liệu mật" lấy mặc định từ cài đặt này. Chọn thì
+  front matter có `confidential: true` (FR-012), tài liệu không gửi đi embedding.
+
 **App desktop (P2, Q12)**
 
 - **FR-029**: Desktop có màn "Nhập Word": chọn file hoặc thư mục bằng hộp thoại hệ điều hành, lọc `.docx`, `.odt`, `.doc`,
@@ -380,7 +388,7 @@ diện, tiến độ tải lên, kết quả trùng với lượt nhập qua web
 - **Lượt nhập Word** (`doc_word_imports`):
   - tổ chức, nhà, thư mục đích, chế độ (tạo, cập nhật, gắn);
   - người nhập;
-  - trạng thái (`uploading`, `converting`, `ready`, `committing`, `done`, `failed`);
+  - trạng thái (`uploading`, `converting`, `ready`, `committing`, `done`, `failed`, `cancelled`);
   - số file theo trạng thái;
   - thời điểm.
 - **File trong lượt** (`doc_word_import_files`):
@@ -388,7 +396,8 @@ diện, tiến độ tải lên, kết quả trùng với lượt nhập qua web
   - thư mục con tương đối (khi kéo cả thư mục);
   - tên file gốc, SHA-256, `blob_id` file gốc, phiên bản đọc từ tên;
   - đường dẫn và tiêu đề đề xuất, chỉnh sửa của người nhập;
-  - trạng thái (`queued`, `converting`, `ready`, `skipped`, `blocked_secret`, `failed`, `done`);
+  - trạng thái (`queued`, `converting`, `ready`, `skipped`, `blocked_secret`, `failed`, `proposed` (đã gửi đề xuất, P2),
+    `cancelled`, `done`);
   - Markdown đã chuyển, danh sách ảnh (`blob_id`, tên hash);
   - cảnh báo, lỗi;
   - tài liệu và phiên bản tạo ra.
