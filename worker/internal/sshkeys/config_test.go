@@ -236,3 +236,35 @@ func TestWriteFileSafePermissions(t *testing.T) {
 		t.Errorf("phải giữ quyền cũ 0644, có %v", st.Mode().Perm())
 	}
 }
+
+func TestWriteFileSafeFollowsSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink trên Windows cần quyền riêng")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "dotfiles", "ssh_config")
+	link := filepath.Join(dir, ".ssh", "config")
+	for _, d := range []string{filepath.Dir(target), filepath.Dir(link)} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(target, []byte("cũ"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFileSafe(link, []byte("mới"), true, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("config là symlink (dotfiles) thì phải giữ symlink, có %v %v", st, err)
+	}
+	if got, _ := os.ReadFile(target); string(got) != "mới" {
+		t.Errorf("nội dung mới phải ghi vào file đích, có %q", got)
+	}
+	if backups, _ := filepath.Glob(target + ".xdev-hive-*.bak"); len(backups) != 1 {
+		t.Errorf("bản sao lưu nằm cạnh file đích, có %v", backups)
+	}
+}
