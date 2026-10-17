@@ -56,6 +56,9 @@ function DocsScreen() {
   const teams = useQuery(api.teams.list.queryOptions());
   const systems = useQuery(api.systems.list.queryOptions({ input: {} }));
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
+  // Thiếu tên hay dự án của mình thì cây vẫn hiện với tên tạm; chỉ báo lỗi để người dùng tải lại phần hỏng.
+  const lookups = [teams, systems, projects, mine];
+  const lookupFailure = lookups.find((query) => query.isError);
   // Bộ lọc người dùng chọn; chưa chọn thì dùng bộ lọc đã nhớ cho tổ chức này.
   const [pickedFilter, setPickedFilter] = useState<DocScopeFilter | null>(null);
   // null nghĩa là chưa bấm nút mở/đóng nào, để mặc định của lần mở trang còn hiệu lực.
@@ -242,6 +245,12 @@ function DocsScreen() {
         projects.isPending) && <TableSkeleton label={t.loading} columns={4} />}
       {list.isError && <LoadFailure error={list.error} retry={list.refetch} />}
       {!archived && tree.isError && <LoadFailure error={tree.error} retry={tree.refetch} />}
+      {lookupFailure && (
+        <LoadFailure
+          error={lookupFailure.error}
+          retry={() => Promise.all(lookups.filter((query) => query.isError).map((query) => query.refetch()))}
+        />
+      )}
       {list.data &&
         (archived || tree.data) &&
         !mine.isPending &&
