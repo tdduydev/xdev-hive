@@ -1,4 +1,6 @@
-import { type Project, parseRepoUrl } from "@xdev-hive/contracts";
+import { type ParsedRepoUrl, type Project, parseRepoUrl } from "@xdev-hive/contracts";
+import { shortPath } from "@/lib/folder.ts";
+import type { GitGroups } from "@/lib/git-groups.ts";
 import { invoke } from "@/lib/tauri.ts";
 
 /**
@@ -36,15 +38,20 @@ export const forgetFolder = (folder: string) => invoke<LocalProjects>("local_pro
 export const setProjectFull = (id: string, full: boolean) =>
   invoke<LocalProjects>("local_project_set_full", { id, full });
 
-/** Máy chủ và đường dẫn của URL repo, chữ thường, bỏ giao thức, tên đăng nhập, cổng và đuôi .git; null khi không đọc được. */
-function repoKey(url: string | null | undefined): string | null {
+/** Máy chủ (bỏ cổng), namespace và tên repo của URL, bỏ giao thức, tên đăng nhập và đuôi .git; null khi không đọc được. */
+function parseOrigin(url: string | null | undefined): ParsedRepoUrl | null {
   if (!url) return null;
   // parseRepoUrl từ chối URL có tên đăng nhập; token trong origin không làm đổi repo nên bỏ trước khi đọc.
   const plain = url.trim().replace(/^(https?|ssh):\/\/[^@/]+@/i, (_, scheme: string) => `${scheme}://`);
   const ssh = plain.replace(/^ssh:\/\/([^/:]+):\d+\//i, "ssh://$1/").replace(/^ssh:\/\//i, "ssh://git@");
   const parsed = parseRepoUrl(ssh) ?? parseRepoUrl(plain);
-  if (!parsed) return null;
-  return `${parsed.host.replace(/:\d+$/, "")}/${parsed.owner}/${parsed.name}`.toLowerCase();
+  return parsed && { ...parsed, host: parsed.host.replace(/:\d+$/, "") };
+}
+
+/** Máy chủ và đường dẫn của URL repo, chữ thường; null khi không đọc được. */
+function repoKey(url: string | null | undefined): string | null {
+  const parsed = parseOrigin(url);
+  return parsed && `${parsed.host}/${parsed.owner}/${parsed.name}`.toLowerCase();
 }
 
 /** Hai URL cùng một repo theo cách worker so (worker/internal/projects SameRepo). */
@@ -101,4 +108,90 @@ export function matchLegacy(
     if (named.length === 1) claim(l, named[0]);
   }
   return out;
+}
+
+/** Một mục của danh sách repo trên máy: repo cùng namespace trên một máy chủ Git, hoặc cùng thư mục cha khi không có remote. */
+export interface RepoSection {
+  key: string;
+  title: string;
+  /** Máy chủ Git, hoặc tên kết nối khi máy chủ đã kết nối ở Nhóm Git theo dõi; null khi gom theo thư mục cha. */
+  host: string | null;
+  repos: LocalProject[];
+}
+
+const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+/** Thư mục cha, nhận cả đường dẫn Windows; bỏ dấu phân cách ở cuối. */
+function parentFolder(folder: string): string {
+  const path = folder.replace(/[\\/]+$/, "");
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return cut < 0 ? path : path.slice(0, cut) || path.slice(0, 1);
+}
+
+/** Tên máy chủ (chữ thường, không cổng) của địa chỉ web; null khi không đọc được. */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Gom repo trên máy theo namespace của remote origin (group lồng của GitLab như `ehospital-ai/his`), không có remote thì
+ * theo thư mục cha. Mục có repo của Nhóm Git theo dõi lấy tên theo đường dẫn nhóm trả về từ máy chủ, vì origin gõ tay có
+ * thể khác chữ hoa. Mục theo remote đứng trước; mục và repo sắp theo tên.
+ */
+export function groupLocalRepos(
+  entries: LocalProject[],
+  tracked: Pick<GitGroups, "hosts" | "groups"> | null,
+): RepoSection[] {
+  const connection = new Map<string, string>();
+  for (const h of tracked?.hosts ?? []) {
+    const host = hostOf(h.url);
+    if (host) connection.set(host, h.name);
+  }
+  const namespaces = new Map<string, string>();
+  for (const g of tracked?.groups ?? [])
+    for (const r of g.repos) {
+      const namespace = r.path.slice(0, Math.max(r.path.lastIndexOf("/"), 0));
+      for (const u of [r.httpUrl, r.sshUrl]) {
+        const k = repoKey(u);
+        if (k && namespace) namespaces.set(k, namespace);
+      }
+    }
+
+  const sections = new Map<string, RepoSection>();
+  for (const l of [...entries].sort((a, b) => byName(a.name, b.name) || byName(a.folder, b.folder))) {
+    const o = parseOrigin(l.origin);
+    const parent = parentFolder(l.folder);
+    const key = o ? `git:${o.host}/${o.owner}`.toLowerCase() : `dir:${parent}`;
+    let s = sections.get(key);
+    if (!s) {
+      const host = o ? (connection.get(o.host) ?? o.host) : null;
+      s = { key, title: o ? o.owner : shortPath(parent), host, repos: [] };
+      sections.set(key, s);
+    }
+    s.repos.push(l);
+    const namespace = o && namespaces.get(repoKey(l.origin) ?? "");
+    if (namespace) s.title = namespace;
+  }
+  return [...sections.values()].sort(
+    (a, b) =>
+      Number(a.host === null) - Number(b.host === null) ||
+      byName(a.title, b.title) ||
+      byName(a.host ?? "", b.host ?? ""),
+  );
+}
+
+/** Lọc không phân biệt hoa thường: trùng tên mục hoặc máy chủ thì giữ cả mục, không thì giữ repo trùng tên, thư mục, remote. */
+export function filterRepoSections(sections: RepoSection[], query: string): RepoSection[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return sections;
+  const has = (s: string | null | undefined) => !!s?.toLowerCase().includes(q);
+  return sections.flatMap((s) => {
+    if (has(s.title) || has(s.host)) return [s];
+    const repos = s.repos.filter((r) => has(r.name) || has(r.folder) || has(r.origin));
+    return repos.length > 0 ? [{ ...s, repos }] : [];
+  });
 }

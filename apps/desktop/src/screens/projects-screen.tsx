@@ -10,20 +10,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
-import { FolderOpenIcon, RefreshCwIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronRightIcon, FolderOpenIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { GitGroupsSection } from "@/components/git-groups.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { pickFolder, shortPath } from "@/lib/folder.ts";
+import { type GitGroups, gitGroups } from "@/lib/git-groups.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import {
   type BindingState,
   bindingState,
   bindProject,
+  filterRepoSections,
   forgetFolder,
+  groupLocalRepos,
   importLegacyProjects,
   type LocalProject,
   type LocalProjects,
@@ -47,6 +51,10 @@ const text: Dict<{
   localOnly: string;
   localOnlyLead: string;
   noLocalOnly: string;
+  filter: string;
+  filterHint: string;
+  noMatch: string;
+  repoCount: (n: number) => string;
   states: Record<BindingState, string>;
   pick: string;
   change: string;
@@ -85,6 +93,10 @@ const text: Dict<{
     localOnlyLead:
       "Repo nhập từ app cũ mà chưa khớp dự án nào của hub. Dự án mới tạo trên web của Hive, rồi bấm Làm mới để gắn.",
     noLocalOnly: "Không có repo nào chờ.",
+    filter: "Lọc repo trên máy",
+    filterHint: "Lọc theo tên, nhóm, thư mục…",
+    noMatch: "Không có repo nào khớp.",
+    repoCount: (n) => `${n} repo`,
     states: { unbound: "Chưa gắn", bound: "Đã gắn", mismatch: "Remote không khớp", missing: "Thư mục mất" },
     pick: "Chọn thư mục",
     change: "Đổi thư mục",
@@ -130,6 +142,10 @@ const text: Dict<{
     localOnlyLead:
       "Repositories imported from the old app that match no hub project. Create new projects on the Hive web, then press Refresh to bind.",
     noLocalOnly: "Nothing waiting.",
+    filter: "Filter repositories on this machine",
+    filterHint: "Filter by name, group, folder…",
+    noMatch: "No repository matches.",
+    repoCount: (n) => `${n} ${n === 1 ? "repository" : "repositories"}`,
     states: { unbound: "Not bound", bound: "Bound", mismatch: "Remote mismatch", missing: "Folder missing" },
     pick: "Choose folder",
     change: "Change folder",
@@ -192,6 +208,7 @@ function ProjectsView() {
   const projects = useQuery({ ...api.projects.list.queryOptions({ input: {} }), enabled: !!account });
   const policy = useQuery({ ...api.policies.get.queryOptions(), enabled: !!account });
   const [local, setLocal] = useState<LocalProjects | null>(null);
+  const [tracked, setTracked] = useState<GitGroups | null>(null);
   // Vừa nhập danh sách của app cũ: chờ danh sách dự án hub để tự gắn.
   const [imported, setImported] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -200,6 +217,8 @@ function ProjectsView() {
   const [confirming, setConfirming] = useState<Project | null>(null);
 
   const load = useCallback(async () => {
+    // Chỉ để đặt tên mục của repo chưa có trên hub; đọc lỗi thì vẫn gom theo remote, mục Nhóm Git tự báo lỗi.
+    void gitGroups().then(setTracked, () => setTracked(null));
     try {
       let list = await localProjects();
       if (!list.exists) {
@@ -318,48 +337,15 @@ function ProjectsView() {
         </div>
       </section>
 
-      <section aria-labelledby="projects-local" className="flex flex-col gap-2">
-        <div className="flex flex-col gap-0.5">
-          <h2 id="projects-local" className="text-sm font-semibold">
-            {t.localOnly}
-          </h2>
-          <p className="text-xs text-muted-foreground">{t.localOnlyLead}</p>
-        </div>
-        <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
-          {!local ? (
-            <p className="px-4 py-3 text-sm text-muted-foreground">{t.loading}</p>
-          ) : waiting.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-muted-foreground">{t.noLocalOnly}</p>
-          ) : (
-            <ul className="divide-y">
-              {waiting.map((l) => (
-                <li key={l.projectId || l.folder} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium">{l.name}</span>
-                    <span className="truncate font-mono text-xs text-muted-foreground">{shortPath(l.folder)}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {l.projectId ? t.goneFromHub : l.origin ? t.origin(l.origin) : t.noOrigin}
-                    </span>
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy === (l.projectId || l.folder)}
-                    aria-label={l.projectId ? t.unbindLabel(l.name) : t.forgetLabel(l.name)}
-                    onClick={() =>
-                      void act(l.projectId || l.folder, () =>
-                        l.projectId ? unbindProject(l.projectId) : forgetFolder(l.folder),
-                      )
-                    }
-                  >
-                    {l.projectId ? t.unbind : t.forget}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+      <LocalRepoList
+        entries={local ? waiting : null}
+        tracked={tracked}
+        t={t}
+        busy={busy}
+        onRemove={(l) =>
+          void act(l.projectId || l.folder, () => (l.projectId ? unbindProject(l.projectId) : forgetFolder(l.folder)))
+        }
+      />
 
       <GitGroupsSection onCloned={load} />
 
@@ -394,6 +380,120 @@ function ProjectsView() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Repo trên máy chưa có trên hub, gom theo namespace của remote (hoặc thư mục cha): clone cả group lớn như ehospital-ai
+ * thì danh sách phẳng quá dài, khó đọc. Nhiều mục thì thu gọn, chỉ hiện tên và số repo.
+ */
+function LocalRepoList({
+  entries,
+  tracked,
+  t,
+  busy,
+  onRemove,
+}: {
+  /** null khi chưa đọc xong danh sách trên máy. */
+  entries: LocalProject[] | null;
+  tracked: GitGroups | null;
+  t: (typeof text)["vi"];
+  busy: string | null;
+  onRemove: (l: LocalProject) => void;
+}) {
+  const [query, setQuery] = useState("");
+  // Mục đã bấm mở hoặc thu; mục chưa bấm thì mở khi đang lọc hoặc khi chỉ có một mục. Đổi chữ lọc thì bỏ các lần bấm.
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const sections = groupLocalRepos(entries ?? [], tracked);
+  const shown = filterRepoSections(sections, query);
+  const filtering = query.trim() !== "";
+
+  return (
+    <section aria-labelledby="projects-local" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="flex min-w-72 flex-1 flex-col gap-0.5">
+          <h2 id="projects-local" className="text-sm font-semibold">
+            {t.localOnly}
+          </h2>
+          <p className="text-xs text-muted-foreground">{t.localOnlyLead}</p>
+        </div>
+        {/* Còn chữ lọc thì giữ ô để xoá được, dù vừa bỏ bớt repo. */}
+        {entries && (entries.length > 1 || query !== "") && (
+          <Input
+            className="h-7.5 max-w-60 text-sm"
+            placeholder={t.filterHint}
+            aria-label={t.filter}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen({});
+            }}
+          />
+        )}
+      </div>
+      <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
+        {!entries ? (
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t.loading}</p>
+        ) : entries.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t.noLocalOnly}</p>
+        ) : shown.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t.noMatch}</p>
+        ) : (
+          <ul className="divide-y">
+            {shown.map((s) => {
+              const expanded = open[s.key] ?? (filtering || sections.length === 1);
+              const Chevron = expanded ? ChevronDownIcon : ChevronRightIcon;
+              return (
+                <li key={s.key}>
+                  {/* Khoảng trắng giữa các phần để tên của nút đọc được: "ehospital-ai/his · GitLab FIS 2 repo". */}
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    onClick={() => setOpen((o) => ({ ...o, [s.key]: !expanded }))}
+                    className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left hover:bg-muted"
+                  >
+                    <Chevron aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 truncate text-sm font-medium">{s.title}</span>{" "}
+                    {s.host && (
+                      <>
+                        <span className="min-w-0 truncate text-xs text-muted-foreground">· {s.host}</span>{" "}
+                      </>
+                    )}
+                    <Pill className="ml-auto">{t.repoCount(s.repos.length)}</Pill>
+                  </button>
+                  {expanded && (
+                    <ul className="divide-y border-t">
+                      {s.repos.map((l) => (
+                        <li key={l.projectId || l.folder} className="flex flex-wrap items-center gap-3 py-3 pr-4 pl-10">
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-sm font-medium">{l.name}</span>
+                            <span className="truncate font-mono text-xs text-muted-foreground">
+                              {shortPath(l.folder)}
+                            </span>
+                            <span className="truncate text-xs text-muted-foreground">
+                              {l.projectId ? t.goneFromHub : l.origin ? t.origin(l.origin) : t.noOrigin}
+                            </span>
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy === (l.projectId || l.folder)}
+                            aria-label={l.projectId ? t.unbindLabel(l.name) : t.forgetLabel(l.name)}
+                            onClick={() => onRemove(l)}
+                          >
+                            {l.projectId ? t.unbind : t.forget}
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
 
