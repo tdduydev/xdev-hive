@@ -283,16 +283,13 @@ export function SshScreen() {
       {list && list.hosts.length === 0 && <p className="text-sm text-muted-foreground">{t.empty}</p>}
       {list && list.hosts.length > 0 && (
         <div className="overflow-x-auto rounded-lg border">
-          <Table className="min-w-160">
+          <Table>
             <TableHeader>
               <TableRow>
                 <Th>{t.colAlias}</Th>
                 <Th>{t.colServer}</Th>
                 <Th>{t.colKind}</Th>
                 <Th>{t.colStatus}</Th>
-                <Th>
-                  <span className="sr-only">{t.check}</span>
-                </Th>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -308,54 +305,58 @@ export function SshScreen() {
                     <Td>
                       <Pill small>{h.managed ? t.managed : t.handWritten}</Pill>
                     </Td>
-                    <Td>
-                      {state === "checking" && <span className="text-sm text-muted-foreground">{t.checking}</span>}
-                      {done && (
-                        <div className="flex flex-col gap-0.5">
-                          <Pill dot tone={sshTone(done.status)} className="self-start">
+                    {/* Trạng thái và việc cần làm với nó nằm chung một ô để bảng vừa cửa sổ hẹp. */}
+                    <Td className="min-w-64">
+                      <div className="flex flex-col items-start gap-1">
+                        {state === "checking" && <span className="text-sm text-muted-foreground">{t.checking}</span>}
+                        {done && (
+                          <Pill dot tone={sshTone(done.status)}>
                             {statusText[done.status].label}
                           </Pill>
-                          {done.status !== "ok" && (
-                            <span className="text-xs text-muted-foreground">{statusText[done.status].hint}</span>
+                        )}
+                        {done && done.status !== "ok" && (
+                          <span className="text-xs text-muted-foreground">{statusText[done.status].hint}</span>
+                        )}
+                        {done?.status === "error" && done.detail && (
+                          <span className="font-mono text-xs break-all text-muted-foreground">{done.detail}</span>
+                        )}
+                        {canSetup && reason && <span className="text-xs text-muted-foreground">{reason}</span>}
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={state === "checking"}
+                            onClick={() => void check(h.alias)}
+                          >
+                            {t.check}
+                          </Button>
+                          {canSetup && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={reason !== null}
+                              onClick={() => setAdding({ initial: target(h) })}
+                            >
+                              {h.managed ? t.reinstall : t.convert}
+                            </Button>
                           )}
-                          {done.status === "error" && done.detail && (
-                            <span className="font-mono text-xs break-all text-muted-foreground">{done.detail}</span>
+                          {done?.status === "ok" && (
+                            <Button variant="ghost" size="sm" onClick={() => setPasswordOff(h)}>
+                              {t.passwordOff}
+                            </Button>
+                          )}
+                          {h.managed && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={() => setRemoving(h)}
+                            >
+                              {t.remove}
+                            </Button>
                           )}
                         </div>
-                      )}
-                    </Td>
-                    <Td>
-                      <div className="flex flex-wrap justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={state === "checking"}
-                          onClick={() => void check(h.alias)}
-                        >
-                          {t.check}
-                        </Button>
-                        {done?.status === "ok" && (
-                          <Button variant="ghost" size="sm" onClick={() => setPasswordOff(h)}>
-                            {t.passwordOff}
-                          </Button>
-                        )}
-                        {canSetup && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={reason !== null}
-                            onClick={() => setAdding({ initial: target(h) })}
-                          >
-                            {h.managed ? t.reinstall : t.convert}
-                          </Button>
-                        )}
-                        {h.managed && (
-                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setRemoving(h)}>
-                            {t.remove}
-                          </Button>
-                        )}
                       </div>
-                      {canSetup && reason && <p className="mt-1 text-right text-xs text-muted-foreground">{reason}</p>}
                     </Td>
                   </TableRow>
                 );
