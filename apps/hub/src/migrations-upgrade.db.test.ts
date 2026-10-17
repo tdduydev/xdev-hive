@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, describe, expect, inject, it } from "vitest";
+import { seedUsers } from "../test/seed.ts";
 import { bootstrapRoles, runMigrations } from "./modules/platform/index.ts";
 
 /**
@@ -208,6 +209,94 @@ describe("nâng cấp database đã có dữ liệu", () => {
           r: "hive.artifact_public_link_resolve(text)",
           p: "hive.artifact_purge(integer,integer)",
         });
+      } finally {
+        await old.end();
+      }
+    },
+    UPGRADE_TIMEOUT,
+  );
+
+  it(
+    "nâng từ trước migration thành viên dự án: người tạo còn trong đội thành thành viên, ở mọi tổ chức (FR-040)",
+    async () => {
+      const tag = "0078_fresh_rattler";
+      const entry = journal.entries.find((e) => e.tag === tag);
+      expect(entry).toBeDefined();
+      const ownerUrl = await emptyDatabase();
+      await runMigrations(ownerUrl, prefixFolder(entry?.idx ?? 0));
+      const adminOnDb = new URL(db.adminUrl);
+      adminOnDb.pathname = new URL(ownerUrl).pathname;
+      const old = new pg.Pool({ connectionString: adminOnDb.toString(), max: 1 });
+      try {
+        const one = async (q: string, p: unknown[]) => (await old.query(q, p)).rows[0].id as string;
+        await seedUsers(old, ["stays", "left", "elsewhere", "b-stays"]);
+        const org = async () => {
+          const id = randomUUID();
+          await old.query("insert into hive.orgs (id, slug, name, created_by) values ($1, $2, 'o', 'u')", [
+            id,
+            `org-${id.slice(0, 8)}`,
+          ]);
+          return id;
+        };
+        const orgA = await org();
+        const orgB = await org();
+        const team = (orgId: string, slug: string) =>
+          one("insert into hive.teams (org_id, slug, name) values ($1, $2, $2) returning id", [orgId, slug]);
+        const teamA = await team(orgA, "a");
+        const teamA2 = await team(orgA, "a2");
+        const teamB = await team(orgB, "b");
+        // "left" không còn ở đội nào; "elsewhere" chỉ ở đội khác với đội sở hữu dự án mình tạo.
+        for (const [orgId, teamId, userId] of [
+          [orgA, teamA, "stays"],
+          [orgA, teamA2, "elsewhere"],
+          [orgB, teamB, "b-stays"],
+        ]) {
+          await old.query(
+            "insert into hive.team_members (team_id, org_id, user_id, role) values ($1, $2, $3, 'member')",
+            [teamId, orgId, userId],
+          );
+        }
+        // Bỏ khoá ngoại tới systems và scm_connections: backfill chỉ đọc đội và người tạo của dự án.
+        await old.query("set session_replication_role = replica");
+        for (const [orgId, teamId, key, createdBy] of [
+          [orgA, teamA, "a-stays-1", "stays"],
+          [orgA, teamA, "a-stays-2", "stays"],
+          [orgA, teamA, "a-left", "left"],
+          [orgA, teamA, "a-elsewhere", "elsewhere"],
+          [orgB, teamB, "b-stays", "b-stays"],
+        ]) {
+          await old.query(
+            `insert into hive.projects (org_id, team_id, system_id, key, name, scm_connection_id, scm_kind, repo_mode,
+               repo_owner, repo_name, settings, idempotency_key, created_by)
+             values ($1, $2, $3, $4, $4, $5, 'github', 'existing', 'xdev-team', $4, '{}', $6, $7)`,
+            [orgId, teamId, randomUUID(), key, randomUUID(), randomUUID(), createdBy],
+          );
+        }
+        await old.query("set session_replication_role = origin");
+
+        // hive_owner chạy migration và cũng chịu FORCE RLS: thiếu bước NO FORCE thì backfill không thấy dòng nào.
+        await runMigrations(ownerUrl);
+
+        const { rows } = await old.query(
+          `select p.key, m.org_id, m.team_id, m.user_id, m.added_by
+             from hive.project_members m join hive.projects p on p.id = m.project_id
+            order by p.key`,
+        );
+        expect(rows).toEqual([
+          { key: "a-stays-1", org_id: orgA, team_id: teamA, user_id: "stays", added_by: "stays" },
+          { key: "a-stays-2", org_id: orgA, team_id: teamA, user_id: "stays", added_by: "stays" },
+          { key: "b-stays", org_id: orgB, team_id: teamB, user_id: "b-stays", added_by: "b-stays" },
+        ]);
+        const forced = await old.query(
+          `select relname, relforcerowsecurity as forced from pg_class
+            where oid in ('hive.projects'::regclass, 'hive.team_members'::regclass, 'hive.project_members'::regclass)
+            order by relname`,
+        );
+        expect(forced.rows).toEqual([
+          { relname: "project_members", forced: true },
+          { relname: "projects", forced: true },
+          { relname: "team_members", forced: true },
+        ]);
       } finally {
         await old.end();
       }
