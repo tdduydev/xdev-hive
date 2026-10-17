@@ -35,7 +35,7 @@ for (const provider of ["github", "gitlab"] as const) {
       .locator(":scope > li")
       .filter({ has: page.getByRole("button", { name: "Thu nhóm Chung toàn tổ chức" }) });
     await expect(orgNode.getByRole("button", { name: "Mở dòng Tài liệu chưa có nhà" })).toBeVisible();
-    await expect(tree(page).getByText("Chưa có nhà")).toHaveCount(0);
+    await expect(tree(page).getByRole("button", { name: /^(Mở|Thu) (nhóm|thư mục) Chưa có nhà$/ })).toHaveCount(0);
     await choose(page);
     await expect(page.getByRole("link", { name: "PR #128", exact: true })).toHaveAttribute(
       "href",
