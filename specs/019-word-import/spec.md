@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-16
 
-**Status**: Draft. Chờ chủ dự án chốt Q1–Q15.
+**Status**: Draft. Chủ dự án đã chốt Q1–Q15 ngày 2026-10-17.
 
 **Input**: Chủ dự án chốt ngày 2026-10-16:
 - BA tải file `.docx` lên hub. Hub tạo tài liệu Markdown kèm ảnh, bảng sửa được trong editor.
@@ -18,27 +18,29 @@ Bối cảnh:
 
 **Kế hoạch**: [plan.md](plan.md) · **Nghiên cứu**: [research.md](research.md)
 
-## Câu hỏi mở cho chủ dự án
+## Câu hỏi đã chốt
 
-Mỗi câu có khuyến nghị. Chưa chốt thì task làm theo khuyến nghị và ghi **[Giả định]**.
+Chủ dự án trả lời ngày 2026-10-17. Cột "Khác khuyến nghị" đánh dấu chỗ chọn khác đề xuất ban đầu.
 
-| # | Câu hỏi | Khuyến nghị | Ảnh hưởng nếu đổi |
+| # | Câu hỏi | Đã chốt | Khác khuyến nghị |
 |---|---|---|---|
-| Q1 | Bộ chuyển Word sang Markdown? | **pandoc** chạy trên hub như tiến trình con có giới hạn (thời gian, bộ nhớ, `--sandbox`), kèm bộ lọc Lua của hub. Image hub thêm binary pandoc ghim phiên bản và SHA-256. Lý do: trên file SRS thật, mammoth mất số STT và tiêu đề dùng style riêng (research mục 2) | mammoth: không thêm binary, nhưng phải tự đọc `styles.xml`, `numbering.xml` để giữ tiêu đề và số thứ tự. Đó là viết lại phần khó nhất của bộ đọc docx |
-| Q2 | Ai được nhập? | Người có quyền `manage` ở phạm vi đích tạo tài liệu ngay (như `docs.save`). Người chỉ có `propose`, thường là BA trong đội, tạo **đề xuất**: hub giữ tạm Markdown và ảnh, tạo tài liệu khi đề xuất được duyệt (P2, US4) | Chỉ cho `manage` thì bỏ được phần giữ tạm ảnh, nhưng BA phải nhờ quản trị đội nhập hộ |
-| Q3 | Nhập vào tài liệu chưa có nhà (chưa gắn repo)? | Bản đầu **chỉ nhập vào nhà đã cấu hình**: dự án đã bật tài liệu gắn repo, hoặc repo tài liệu tổ chức. Ảnh hiện cần nhà (`DOCSYNC_NO_HOME`) | Cho cả tài liệu chỉ trên hub thì phải có chỗ lưu ảnh không gắn repo: sửa `docsync/assets.ts` và cách phân giải link |
-| Q4 | Tên file, key, tiêu đề lấy từ đâu? | Thư mục đích do người nhập chọn, tên file lấy theo tên file Word: bỏ đuôi phiên bản (`_v1.0`, ` v1.1_1`), bỏ phần đầu chung của cả lượt (vd. `eHosV2i_SRS_OPD.`), bỏ dấu, chữ thường. Tiêu đề lấy theo tên file đã bỏ phiên bản. Sửa được từng file ở bước xem trước | Quy tắc riêng từng nhà (regex lấy mã, tra tên chức năng từ RMS như `srs2md`) để P3 |
-| Q5 | Trang bìa, ghi nhận thay đổi, trang ký, mục lục (phần trước tiêu đề cấp 1 đầu tiên)? | Bỏ mặc định, như `srs2md`. Ô "Giữ phần trước tiêu đề đầu tiên" ở bước xem trước. Không có tiêu đề cấp 1 thì giữ hết và cảnh báo | Giữ mặc định thì tài liệu nào cũng mở đầu bằng trang bìa và mục lục kèm số trang sai |
-| Q6 | File Word gốc lưu ở đâu? | Trong kho file hub, gắn với lần nhập: tải lại được, dùng để cập nhật lại. **Không** ghi vào repo. Lý do: repo chỉ cần Markdown, và SRS acme có 235 MB Word so với 84 MB Markdown + ảnh | Ghi vào repo thì repo nặng gấp ba, và mỗi lần BA sửa Word là một file nhị phân mới trong lịch sử git |
-| Q7 | BA sửa Word rồi tải lại bản mới cho tài liệu đã nhập? | "Cập nhật từ Word" tạo phiên bản mới. Nếu tài liệu đã được sửa trên hub sau lần nhập trước: hợp ba bên với gốc là Markdown của lần nhập trước (`mergeBlocks`), chồng nhau thì mở màn xung đột sẵn có (P2, US3) | Ghi đè thẳng thì mất phần đã sửa trên hub |
-| Q8 | Nhập nhiều file một lần? | Có. Chọn nhiều file hoặc kéo cả thư mục, tối đa 100 file và 500 MB một lượt. Chạy nền, có tiến độ và báo cáo | Một file mỗi lần thì 261 SRS phải bấm 261 lần |
-| Q9 | Định dạng nhận? | `.docx`. Thêm `.odt` vì pandoc đọc được với cùng bộ lọc. **Không** nhận `.doc`, `.rtf`, `.pdf` | `.doc` cần LibreOffice trên hub: thêm vài trăm MB và một bộ đọc file nhị phân cũ |
-| Q10 | Ảnh EMF/WMF và đối tượng nhúng (Visio, Excel trong Word)? | Giữ file gốc làm đính kèm, chèn link tải, cảnh báo trong báo cáo. Không đổi sang PNG trên hub. Chưa gặp EMF/WMF trong 261 SRS | Đổi sang PNG cần LibreOffice hoặc Inkscape trên hub |
-| Q11 | Theo dõi thay đổi và bình luận trong Word? | Chấp nhận mọi thay đổi đang theo dõi, bỏ bình luận. Xem trước báo "còn N thay đổi chưa chấp nhận, M bình luận" | Giữ thay đổi theo dõi thì Markdown có đoạn chèn, xoá lẫn vào nhau, editor không có cách hiển thị |
-| Q12 | App desktop? | Chỉ làm trên web. Desktop mở trang web như các việc của đội khác (PR #412) | Làm trên desktop cần cầu nối file nhị phân, hiện chưa có (màn soạn tài liệu `docs-screen.tsx` không có `uploadAsset`) |
-| Q13 | 261 SRS đã chuyển bằng `tools/srs2md` (nhánh `duythq/docs/srs-opd` của repo docs, chưa push): đợt chuyển đầu đi đường nào? | Đi đường `srs2md`: push nhánh, rồi "Nhập từ repo" lên hub, để đội có tài liệu ngay mà không chờ tính năng này. P1 thêm **"Gắn với file Word"** cho tài liệu đã có: tải đúng file Word đã dùng để chuyển; hub chuyển lại bằng cùng bộ lọc; kết quả khớp nội dung hiện tại (bỏ qua front matter) thì ghi làm gốc cho lần cập nhật sau, không tạo phiên bản; không khớp thì hiện khác biệt để người gắn chọn | Bỏ kết quả `srs2md`, nhập lại cả 270 file qua hub: mọi tài liệu có sẵn bản ghi lần nhập, không cần "Gắn với file Word", nhưng phải đợi xong P1. Không làm "Gắn" thì tài liệu từ `srs2md` không cập nhật từ Word được (US3 không có gốc để hợp) |
-| Q14 | (P2) BA chỉ có `propose` nhập cả lượt: mỗi file một đề xuất, hay duyệt cả lượt một lần? | Mỗi file một đề xuất, vì đề xuất và quy trình duyệt hiện gắn với một tài liệu. Trang lượt nhập có nút "Duyệt các file đã chọn" để người duyệt làm nhiều file một lần | Duyệt cả lượt cần mô hình đề xuất mới (một đề xuất nhiều tài liệu) và màn duyệt mới: tăng P2 thêm vài ngày |
-| Q15 | Tài liệu nhập từ Word có gắn `confidential: true` không? Cờ này giữ nội dung không bị gửi tới nhà cung cấp embedding bên ngoài (`knowledge/doc-search.ts`) | Ô "Tài liệu mật" trong hộp thoại nhập, mặc định theo một cài đặt mới của nhà: `wordImportConfidential`, mặc định tắt. Với nhà acme nên bật, vì SRS là tài liệu của khách hàng | Luôn bật: tìm theo nghĩa không dùng được cho tài liệu từ Word. Luôn tắt: tài liệu khách hàng có thể bị gửi đi embedding khi tổ chức đã cấu hình nhà cung cấp |
+| Q1 | Bộ chuyển | **pandoc** trên hub, chạy có giới hạn (thời gian, bộ nhớ, `--sandbox`), binary ghim phiên bản trong image | |
+| Q2 | Ai được nhập | Người `manage` tạo tài liệu ngay; người chỉ có `propose` (BA) tạo đề xuất, duyệt xong mới thành tài liệu (P2, US4) | |
+| Q3 | Tài liệu chưa có nhà | Bản đầu **chỉ nhập vào nhà đã gắn repo** | |
+| Q4 | Tên file, key, tiêu đề | Từ tên file Word: bỏ đuôi phiên bản, bỏ phần đầu chung của lượt, bỏ dấu; sửa được ở xem trước. Quy tắc riêng từng nhà để P3 | |
+| Q5 | Phần trước tiêu đề cấp 1 | Bỏ mặc định, có ô "Giữ phần trước tiêu đề đầu tiên" | |
+| Q6 | File Word gốc | Kho file hub, gắn với lần nhập; **không** ghi vào repo | |
+| Q7 | Cập nhật từ bản Word mới | Hợp ba bên với gốc là Markdown lần nhập trước; chồng nhau thì mở màn xung đột (P2, US3) | |
+| Q8 | Nhập nhiều file | Có: nhiều file hoặc cả thư mục, tối đa 100 file và 500 MB một lượt, chạy nền | |
+| Q9 | Định dạng | `.docx`, `.odt` và **`.doc` (Word 97–2003)**. `.doc` đổi sang `.docx` bằng **LibreOffice** chạy không giao diện trên hub, rồi qua pandoc như `.docx` | Có: thêm `.doc`, image hub thêm LibreOffice |
+| Q10 | Ảnh EMF/WMF, đối tượng nhúng | Giữ file gốc làm đính kèm, chèn link tải, cảnh báo. Không đổi sang PNG ở bản đầu (dù image đã có LibreOffice sau Q9) | |
+| Q11 | Theo dõi thay đổi, bình luận | Chấp nhận mọi thay đổi, bỏ bình luận; xem trước báo số lượng | |
+| Q12 | App desktop | **Làm cả trên desktop**: chọn file hoặc thư mục trên máy (vd. thư mục SharePoint đã đồng bộ OneDrive), tải lên hub, xem trạng thái lượt nhập (US7) | Có: khuyến nghị cũ là chỉ web |
+| Q13 | Đợt chuyển đầu của 261 SRS | Đi đường `srs2md`: push nhánh, "Nhập từ repo" lên hub; P1 thêm **"Gắn với file Word"** (US6) | |
+| Q14 | BA nhập cả lượt bằng quyền `propose` | Mỗi file một đề xuất; trang lượt nhập có "Duyệt các file đã chọn" | |
+| Q15 | Nhãn mật | Ô "Tài liệu mật" trong hộp thoại, mặc định theo cài đặt mới của nhà `wordImportConfidential` (mặc định tắt; nhà acme nên bật) | |
+
+**Cách hiểu Q9:** lựa chọn "Thêm .doc cũ" được hiểu là nhận cả ba định dạng `.docx`, `.odt`, `.doc`.
 
 ## Hiện trạng: dùng lại, mở rộng, làm mới
 
@@ -54,7 +56,9 @@ Khảo sát code ngày 2026-10-16 trên `main` tại `de81b0df`. Spike trên fil
 | Job | `platform/jobs.ts` (pg-boss): `enqueue` trong giao dịch, `work`, `schedule`. Hàng đợi docsync ở `docsync/queues.ts` | **Thêm** hàng đợi `docsync-word-import` |
 | Editor (`packages/doc-editor`) | Pipe table sửa được. Khối không khớp khi xuất lại thì giữ dạng chữ (`rawMarkdown`). Ảnh là node trong dòng, phân giải link tương đối qua `resolveLink` | **Mở rộng**: `<br>` trong ô bảng (26% bảng SRS đang thành khối thô). **Sửa lỗi**: mục danh sách rỗng làm codec ném lỗi |
 | Web | `/knowledge/docs/import`: nhập Markdown từ repo, không có tải file. `NewDoc` trong `docs-page.tsx`. Upload duy nhất là `uploadAsset` viết thẳng trong `doc-editor-page.tsx` | **Làm mới** hộp thoại "Nhập Word" cạnh `NewDoc` và một link ở cài đặt tài liệu dự án, cạnh "Nhập từ repo" |
-| Kiểm sức khoẻ | `/api/v1/health` báo `clis`, `artifacts` | **Thêm** `wordImport: true/false` theo việc hub tìm thấy pandoc |
+| Kiểm sức khoẻ | `/api/v1/health` báo `clis`, `artifacts` | **Thêm** `wordImport` (có pandoc) và `wordImportDoc` (có LibreOffice cho `.doc`) |
+| App desktop | Gọi hub qua lệnh Rust `hub_rpc` bằng token cá nhân (`hive_pat_…`) trong keychain; giao diện không thấy token. Màn soạn tài liệu (`docs-screen.tsx`) không tải file lên, không hiện được ảnh của tài liệu (chưa có cầu nối tải nhị phân). Có `tauri-plugin-dialog`, `reqwest` | **Mở rộng**: lệnh Rust tải file lên route nhập Word bằng token cá nhân; lệnh Rust tải nhị phân (ảnh) để xem trước; màn "Nhập Word" (US7) |
+| Route tải file của hub | `POST /api/v1/docs/assets` chỉ nhận phiên đăng nhập web (better-auth) | Route nhập Word nhận **cả** phiên web lẫn token cá nhân, như RPC đang nhận cho desktop |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -190,9 +194,37 @@ một file khác.
 2. **Given** không khớp (tài liệu đã sửa trên hub, hoặc bộ lọc đã đổi), **When** gắn, **Then** hiện khác biệt. Người gắn
    chọn lấy kết quả chuyển làm gốc, hoặc huỷ.
 
+---
+
+### User Story 7 - Nhập Word từ app desktop (Priority: P2, Q12)
+
+Trên app desktop, BA mở **Nhập Word**, chọn file hoặc cả thư mục trên máy, vd. thư mục `60.BA/SRS` đã đồng bộ OneDrive.
+App đọc file từ ổ đĩa và tải lên hub bằng token cá nhân, rồi hiện cùng trang lượt nhập như web:
+- bảng file, trạng thái, cảnh báo;
+- xem trước có ảnh;
+- tạo tài liệu hoặc gửi duyệt theo quyền.
+
+**Why this priority**: BA làm việc với thư mục OneDrive trên máy; desktop chọn thẳng thư mục, không phải kéo thả qua
+trình duyệt. Làm sau web vì dùng chung route và màn hình của hub.
+
+**Independent Test**: thư mục mẫu trên máy gồm 5 file `.docx`, 1 `.doc`, 1 file có mật khẩu. Kiểm token không lộ ra giao
+diện, tiến độ tải lên, kết quả trùng với lượt nhập qua web.
+
+**Acceptance Scenarios**:
+
+1. **Given** desktop đã đăng nhập hub bằng token cá nhân, **When** chọn thư mục 21 file OPD, **Then** app tải lên theo
+   luồng (không đọc cả lượt vào bộ nhớ giao diện), hiện tiến độ từng file, rồi mở trang lượt nhập.
+2. **Given** bản xem trước có ảnh, **Then** ảnh hiện được trong desktop (qua lệnh Rust tải nhị phân), không lộ token.
+3. **Given** token cá nhân hết hạn, **Then** báo như các màn desktop khác ("Token không còn dùng được…").
+
 ### Edge Cases
 
-- File có mật khẩu: docx mã hoá là file OLE, không phải ZIP. Báo "File có mật khẩu, mở khoá rồi tải lại".
+- File có mật khẩu: `.docx` mã hoá là file OLE, không phải ZIP, cùng chữ ký đầu với `.doc` (`D0 CF 11 E0`). Hub đọc
+  thư mục của file OLE để phân biệt: có luồng `EncryptedPackage` là file có mật khẩu ("File có mật khẩu, mở khoá rồi tải
+  lại"), có luồng `WordDocument` là `.doc`.
+- `.doc` có macro: LibreOffice đổi định dạng ở chế độ không giao diện, không chạy macro. LibreOffice treo hoặc quá thời
+  gian thì dừng tiến trình, báo lỗi file đó.
+- Hub có pandoc nhưng không có LibreOffice: nhận `.docx`, `.odt`; `.doc` báo "Hub chưa bật nhận .doc".
 - File hỏng hoặc đổi đuôi: `inspectFileType` không khớp thì báo "Không phải file Word".
 - Zip bomb, quá nhiều entry: `readZip` chặn trước khi chạy pandoc.
 - pandoc chạy quá thời gian hoặc quá bộ nhớ: dừng tiến trình, báo lỗi file đó, không ảnh hưởng file khác.
@@ -215,18 +247,22 @@ một file khác.
 
 - **FR-001**: Có nút "Nhập Word" ở danh sách tài liệu (cạnh "Tài liệu mới") và ở cài đặt tài liệu dự án (cạnh "Nhập từ
   repo"). Người nhập chọn nhà và thư mục đích trong nhà (Q3).
-- **FR-002**: Hub nhận file qua route multipart `POST /api/v1/docs/word-imports`, giống `POST /api/v1/docs/assets` (phiên
-  better-auth, tổ chức từ `x-hive-org`):
+- **FR-002**: Hub nhận file qua route multipart `POST /api/v1/docs/word-imports`. Xác thực bằng phiên web (better-auth)
+  **hoặc** token cá nhân của desktop (`Authorization: Bearer hive_pat_…`), tổ chức từ `x-hive-org` (Q12):
   - mỗi file ≤ `HIVE_DOC_WORD_MAX_BYTES` (mặc định 50 MiB);
   - mỗi lượt ≤ 100 file và ≤ 500 MiB (Q8);
-  - chỉ nhận `.docx`, `.odt`, kiểm theo byte bằng `inspectFileType` (Q9). `inspectFileType` hiện chưa biết `.odt`
-    (`platform/magic.ts`), phải bổ sung.
+  - chỉ nhận `.docx`, `.odt`, `.doc` (Q9), kiểm theo byte bằng `inspectFileType`. `inspectFileType` hiện chưa biết `.odt`
+    và `.doc` (`platform/magic.ts`), phải bổ sung, gồm phân biệt `.doc` với `.docx` có mật khẩu (Edge Cases).
 - **FR-003**: File gốc vào BlobStore ngay khi nhận. Việc chuyển chạy nền trên hàng đợi `docsync-word-import`:
+  - `.doc` trước hết đổi sang `.docx` bằng LibreOffice không giao diện (`soffice --headless --convert-to docx`), hồ sơ
+    người dùng riêng cho mỗi lần chạy, tối đa 120 giây; kết quả đi tiếp như `.docx`;
   - mỗi file một tiến trình pandoc;
   - tối đa 120 giây và 512 MiB;
   - chạy với `--sandbox` trong thư mục tạm riêng;
   - tối đa 2 file chạy cùng lúc trên một tiến trình hub.
-- **FR-004**: Trước khi chạy pandoc, hub kiểm file bằng `readZip` với cùng giới hạn của bản trích (`EXTRACT_LIMITS`).
+- **FR-004**: Trước khi chạy pandoc, hub kiểm `.docx`/`.odt` bằng `readZip` với cùng giới hạn của bản trích
+  (`EXTRACT_LIMITS`). `.doc` kiểm cấu trúc OLE và kích thước trước khi đưa cho LibreOffice; `.docx` LibreOffice sinh ra
+  cũng qua `readZip`.
 - **FR-005**: Xem trước từng file hiện:
   - tên file gốc, đường dẫn và tiêu đề đề xuất (sửa được);
   - phiên bản đọc từ tên file;
@@ -299,8 +335,10 @@ một file khác.
 - **FR-021**: `recordAudit()` cho: tạo lượt nhập, tạo hoặc cập nhật tài liệu từ Word, xác nhận "không phải bí mật", tải
   file gốc.
 - **FR-022**: Lỗi và cảnh báo viết tiếng Việt, có cách sửa (bảng trong Edge Cases).
-- **FR-023**: Hub tìm pandoc theo `HIVE_PANDOC_PATH` (mặc định `pandoc` trên `PATH`) và kiểm phiên bản tối thiểu lúc khởi
-  động. Không có hoặc quá cũ thì tắt tính năng: `/api/v1/health` báo `wordImport: false`, giao diện ẩn nút nhập.
+- **FR-023**: Hub tìm pandoc theo `HIVE_PANDOC_PATH` (mặc định `pandoc` trên `PATH`) và LibreOffice theo
+  `HIVE_SOFFICE_PATH` (mặc định `soffice`), kiểm phiên bản lúc khởi động:
+  - không có pandoc hoặc quá cũ: tắt tính năng, `/api/v1/health` báo `wordImport: false`, giao diện ẩn nút nhập;
+  - có pandoc, không có LibreOffice: `wordImportDoc: false`, chỉ nhận `.docx` và `.odt`.
 
 **Cập nhật từ Word (P2)**
 
@@ -325,6 +363,17 @@ một file khác.
   khi bỏ front matter:
   - khớp thì ghi bản ghi lần nhập (`mode = link`) làm gốc cho FR-024;
   - không khớp thì hiện khác biệt và chỉ ghi khi người gắn xác nhận.
+
+**App desktop (P2, Q12)**
+
+- **FR-029**: Desktop có màn "Nhập Word": chọn file hoặc thư mục bằng hộp thoại hệ điều hành, lọc `.docx`, `.odt`, `.doc`,
+  hiện tổng số file và dung lượng, chặn sớm khi quá giới hạn của lượt.
+- **FR-030**: Lệnh Rust `hub_upload_word` đọc file từ ổ đĩa và gửi multipart theo luồng tới route FR-002 bằng token cá nhân
+  trong keychain, báo tiến độ từng file cho giao diện. Token không đi qua giao diện (như `hub_rpc`).
+- **FR-031**: Lệnh Rust tải nhị phân của hub (ảnh xem trước, ảnh tài liệu) bằng token cá nhân, trả về cho giao diện dưới dạng
+  dữ liệu để hiện. Chỉ cho đường dẫn của hub thuộc nhóm ảnh và file gốc, kiểm như `safe_rpc_path`. Màn soạn tài liệu của
+  desktop dùng lại lệnh này để hiện ảnh.
+- **FR-032**: Trang lượt nhập trên desktop dùng cùng API oRPC (`wordImports.*`) với web, cùng trạng thái và thao tác.
 
 ### Key Entities
 
@@ -355,21 +404,23 @@ một file khác.
   - ≥ 99% bảng mở được dưới dạng bảng sửa được (hiện 74%, research mục 3);
   - không còn thẻ HTML nào ngoài `<br>` trong ô bảng.
 - **SC-002**: Bộ file mẫu sinh trong test (ô gộp, STT tự động, style tiêu đề riêng, chú thích, trang bìa, mục lục, gạch
-  chân, mục danh sách rỗng, bảng lồng, ảnh EMF, theo dõi thay đổi, file có mật khẩu, file hỏng) ra đúng Markdown đã duyệt,
-  so từng byte.
+  chân, mục danh sách rỗng, bảng lồng, ảnh EMF, theo dõi thay đổi, file có mật khẩu, file hỏng, một `.doc` và một `.odt`
+  cùng nội dung với một `.docx`) ra đúng Markdown đã duyệt, so từng byte. Riêng `.doc` so với Markdown của `.docx` cùng
+  nội dung, chấp nhận khác biệt đã liệt kê trong file vàng.
 - **SC-003**: Xem trước file SRS 3 MB ≤ 20 giây; lượt 50 file ≤ 10 phút trên máy chủ dev.
 - **SC-004**: Nhập lại đúng file đã nhập thì không có phiên bản mới, không có commit mới vào repo.
-- **SC-005**: File có mật khẩu, zip bomb, file quá lớn, pandoc treo đều bị từ chối hoặc dừng mà không làm hub dừng hay
-  chậm các yêu cầu khác. Có test cho từng trường hợp.
+- **SC-005**: File có mật khẩu, zip bomb, file quá lớn, pandoc treo, LibreOffice treo đều bị từ chối hoặc dừng mà không
+  làm hub dừng hay chậm các yêu cầu khác. Có test cho từng trường hợp.
 - **SC-006**: Không file nào có dấu hiệu bí mật được tạo thành tài liệu mà không có xác nhận đã ghi audit.
 - **SC-007**: Người không có quyền `propose` ở phạm vi đích không nhập được. Người không đọc được tài liệu không thấy lượt
   nhập và không tải được file gốc.
 
 ## Assumptions
 
-- Nhà tài liệu (spec 018) đã cấu hình và hub đã chạy bản có PR #413. Hub `hive.example.com` ngày 2026-10-16 chạy
-  `3fa5aadf`, chưa có #413 (research mục 5).
-- PostgreSQL vẫn là kho dữ liệu duy nhất. pandoc là binary trong image hub, không phải dịch vụ mới.
+- Nhà tài liệu (spec 018) đã cấu hình và hub đã chạy bản có PR #413. Hub `hive.example.com` đã lên `9947aeb1` (có #413,
+  #416) ngày 2026-10-17.
+- PostgreSQL vẫn là kho dữ liệu duy nhất. pandoc và LibreOffice là chương trình trong image hub, chạy như tiến trình con
+  khi cần, không phải dịch vụ mới.
 - Người dùng có file Word trên máy (tải về hoặc đồng bộ OneDrive). Hub không đọc thẳng SharePoint.
 - Bản trích để tìm kiếm của file Word đính kèm (spec 018 US6) không đổi.
 
@@ -377,7 +428,6 @@ một file khác.
 
 - Xuất tài liệu hub ra Word.
 - Đọc thẳng từ SharePoint, OneDrive, Google Drive.
-- `.doc`, `.rtf`, `.pdf` sang Markdown; OCR.
+- `.rtf`, `.pdf` sang Markdown; OCR.
 - Quy tắc đặt tên riêng từng nhà (lấy mã bằng regex, tra tên chức năng từ RMS): P3 (Q4).
-- Nhập trên app desktop (Q12).
 - Sinh mục lục, bảng tổng hợp yêu cầu từ nhiều tài liệu.
