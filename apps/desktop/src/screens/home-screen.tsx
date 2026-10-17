@@ -24,6 +24,7 @@ import { folderName, useFolder } from "@/lib/folder.ts";
 import { hub } from "@/lib/hub-rpc.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { type LocalProject, localProjects } from "@/lib/local-projects.ts";
+import { type AgentCounts, CLI_LABEL as AGENT_CLI, machineAgentCounts } from "@/lib/machine-agents.ts";
 import { duration, type MachineRun, machineRuns, thisMachine } from "@/lib/machine-runs.ts";
 import { can, navItems, type ScreenId } from "@/lib/nav.ts";
 import { CLI_NAME, DEFAULTS, type Limit, meterTone, type Plan, plans } from "@/lib/plans.ts";
@@ -74,6 +75,8 @@ const text: Dict<{
   loading: string;
   current: string;
   openRuns: string;
+  agentsTitle: string;
+  agentsMore: string;
   nothingRunning: string;
   noLog: string;
   tail: string;
@@ -164,6 +167,8 @@ const text: Dict<{
     loading: "Đang đọc…",
     current: "Đang chạy trên máy",
     openRuns: "Xem lượt chạy",
+    agentsTitle: "Agent đang chạy",
+    agentsMore: "Xem chi tiết",
     nothingRunning: "Máy chưa chạy run nào lúc này. Run hub giao cho máy sẽ hiện ở đây.",
     noLog: "Chưa có log.",
     tail: "Log gần nhất",
@@ -256,6 +261,8 @@ const text: Dict<{
     loading: "Reading…",
     current: "Running on this machine",
     openRuns: "See runs",
+    agentsTitle: "Running agents",
+    agentsMore: "See details",
     nothingRunning: "Nothing is running right now. Runs the hub gives this machine show up here.",
     noLog: "No log yet.",
     tail: "Latest log",
@@ -478,6 +485,43 @@ function CliBadge({ cli }: { cli: string }) {
     <HexAvatar aria-hidden="true" size="sm" tone={tone} title={CLI_NAME[cli] ?? cli} className="font-mono">
       {mark}
     </HexAvatar>
+  );
+}
+
+/** Agent CLI đang chạy trên máy, đếm theo CLI (spec 021); chi tiết ở màn Agent trên máy. Đọc lại mỗi 10 giây. */
+function AgentsCard() {
+  const t = useT(text);
+  const [counts, setCounts] = useState<AgentCounts | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = () =>
+      machineAgentCounts()
+        .then(
+          (c) => alive && setCounts(c),
+          () => {},
+        )
+        .finally(() => {
+          if (alive) timer = setTimeout(tick, 10_000);
+        });
+    void tick();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, []);
+  return (
+    <Card title={t.agentsTitle} aside={<CardLink href="#/agents">{t.agentsMore}</CardLink>}>
+      <ul className="flex flex-col gap-2">
+        {(["claude", "codex", "antigravity"] as const).map((c) => (
+          <li key={c} className="flex items-center gap-2 text-sm">
+            <CliBadge cli={c} />
+            <span>{AGENT_CLI[c]}</span>{" "}
+            <span className="ml-auto font-mono font-semibold">{counts ? counts[c] : "—"}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -1069,6 +1113,7 @@ export function HomeScreen() {
       <div className="grid grid-cols-1 items-start gap-3.5 min-[1000px]:grid-cols-2">
         {can(profile, "env.manage") && <EnvironmentCard folder={folder} />}
         <div className="flex min-w-0 flex-col gap-3.5">
+          <AgentsCard />
           {runsLocal && <RemoteCard />}
           <FolderCard folder={folder} />
         </div>
