@@ -126,17 +126,13 @@ pub async fn account_link(app: AppHandle, token: String) -> Result<AccountStatus
     if !looks_like_pat(&token) {
         return Err("Đây không phải token MCP cá nhân (bắt đầu bằng hive_pat_).".into());
     }
-    save_checked(&app, &hub, &token).await?;
+    save_checked(&hub, &token).await?;
     Ok(status_for(Some(hub)).await)
 }
 
 /// Kiểm token với hub rồi lưu vào keychain; đăng nhập bằng trình duyệt cũng đi qua đây.
-pub(crate) async fn save_checked(app: &AppHandle, hub: &str, token: &str) -> Result<(), String> {
+pub(crate) async fn save_checked(hub: &str, token: &str) -> Result<(), String> {
     whoami(hub, token).await.map_err(|e| e.text())?;
-    // Token mới có thể là người khác hay tổ chức khác: bản artifact đã đệm của token cũ không còn là của họ.
-    if let Some(old) = stored_token(hub).filter(|old| old != token) {
-        crate::artifacts::forget(app, hub, &old);
-    }
     entry(hub)?
         .set_password(token)
         .map_err(|e| format!("Không lưu được token vào keychain: {e}"))
@@ -145,12 +141,11 @@ pub(crate) async fn save_checked(app: &AppHandle, hub: &str, token: &str) -> Res
 /// Hub đổi địa chỉ: token cá nhân trong keychain lưu theo địa chỉ cũ. Hub mới vẫn nhận token đó (cùng hub, chỉ đổi
 /// http sang https hay bỏ cổng) thì chuyển sang địa chỉ mới để người dùng khỏi đăng nhập lại; không nhận thì để người
 /// dùng đăng nhập lại. Mục cũ luôn bị gỡ: worker không còn ở hub cũ, giữ lại chỉ là token thừa trong keychain.
-pub(crate) async fn carry_over(app: &AppHandle, old_hub: &str, new_hub: &str) -> bool {
+pub(crate) async fn carry_over(old_hub: &str, new_hub: &str) -> bool {
     let Some(token) = stored_token(old_hub) else {
         return false;
     };
-    crate::artifacts::forget(app, old_hub, &token);
-    let moved = stored_token(new_hub).is_none() && save_checked(app, new_hub, &token).await.is_ok();
+    let moved = stored_token(new_hub).is_none() && save_checked(new_hub, &token).await.is_ok();
     if let Ok(e) = entry(old_hub) {
         let _ = e.delete_credential();
     }
@@ -167,17 +162,13 @@ pub(crate) fn sign_out(app: &AppHandle) -> bool {
     let Some(hub) = crate::hub_of(app) else {
         return false;
     };
-    let old = stored_token(&hub);
-    // Đăng xuất bỏ luôn bản đọc offline (FR-091).
-    if let Some(old) = &old {
-        crate::artifacts::forget(app, &hub, old);
-    }
+    let had_token = stored_token(&hub).is_some();
     if let Ok(e) = entry(&hub) {
         // Chưa có token thì coi như đã gỡ.
         let _ = e.delete_credential();
     }
     let _ = app.emit(CHANGED_EVENT, ());
-    old.is_some()
+    had_token
 }
 
 /// Câu hỏi xác nhận trước khi đăng xuất, cùng nội dung với hộp xác nhận trong cửa sổ app.
@@ -185,14 +176,14 @@ pub fn sign_out_prompt(en: bool) -> (&'static str, &'static str, &'static str, &
     if en {
         (
             "Sign out of Hive?",
-            "Your personal token is removed from this machine's keychain and offline docs are cleared. The machine stays registered: the worker keeps taking runs, and agent plans, projects and tools on this machine keep working.",
+            "Your personal token is removed from this machine's keychain. The machine stays registered: the worker keeps taking runs, and agent plans, projects and tools on this machine keep working.",
             "Sign out",
             "Cancel",
         )
     } else {
         (
             "Đăng xuất khỏi Hive?",
-            "Token cá nhân bị gỡ khỏi keychain của máy và bản đọc offline bị xoá. Máy vẫn đăng ký với hub: worker vẫn nhận việc, gói agent, dự án và công cụ trên máy vẫn dùng được.",
+            "Token cá nhân bị gỡ khỏi keychain của máy. Máy vẫn đăng ký với hub: worker vẫn nhận việc, gói agent, dự án và công cụ trên máy vẫn dùng được.",
             "Đăng xuất",
             "Huỷ",
         )
