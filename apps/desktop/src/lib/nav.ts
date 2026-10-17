@@ -9,6 +9,7 @@ import {
   type LucideIcon,
   MonitorIcon,
   PlayIcon,
+  ServerIcon,
   SettingsIcon,
   ZapIcon,
 } from "lucide-react";
@@ -63,6 +64,7 @@ export type ScreenId =
   | "tokens"
   | "projects"
   | "setup"
+  | "ssh"
   | "docs"
   | "settings";
 
@@ -158,6 +160,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         needs: "runs.local",
       },
       { id: "setup", label: { vi: "Môi trường", en: "Environment" }, icon: CpuIcon, needs: "env.manage" },
+      {
+        // Chuyển đăng nhập SSH từ mật khẩu sang khoá (specs/020-desktop-ssh-keys). Khoá SSH là của người dùng trên máy,
+        // không theo vai trò trên hub, nên mọi hồ sơ đều thấy.
+        id: "ssh",
+        label: { vi: "Máy chủ SSH", en: "SSH servers" },
+        icon: ServerIcon,
+      },
       {
         // Agent đọc code của thư mục dự án rồi soạn bản nháp; tài liệu của đội soạn trên web.
         id: "docs",
