@@ -138,9 +138,10 @@ docs/srs.md                                  # 3.24 Word import (WIMP-01…)
 
 ### 2. Nhận file (FR-002…FR-004)
 
-`POST /api/v1/docs/word-imports`, multipart gồm `homeId`, `targetDir`, `files[]`, và `updateDocKey` tuỳ chọn (US3).
-1. Xác thực bằng phiên web **hoặc** token cá nhân (`Authorization: Bearer hive_pat_…`, cách RPC đang nhận cho desktop),
-   lấy tổ chức từ `x-hive-org`. `requireOrgRole(member)`.
+`POST /api/v1/docs/word-imports`, multipart gồm `homeId`, `targetDir`, `mode` (`create` | `update` | `link`), `docKey`
+(bắt buộc với `update` và `link`: US3, US6), `confidential` (Q15) và `files[]`.
+1. Xác thực bằng `auth` sẵn có của route REST: phiên web **hoặc** token cá nhân (`withPersonalTokens` trong `app.ts`,
+   như `/api/v1/docs/assets`). Tổ chức lấy từ `x-hive-org`. `requireOrgRole(member)`.
 2. `authorize(propose)` ở phạm vi suy từ thư mục đích: `keyFromPath(<thư mục>/x.md, pathHome)` cho ra key, rồi
    `scopeOfDocKey`. Thư mục nằm ngoài gốc nhà thì từ chối. Quyền `manage` được kiểm lại lúc tạo.
 3. Kiểm `content-length` với giới hạn lượt. Mỗi file: đuôi `.docx`/`.odt`/`.doc`, `inspectFileType` khớp, ≤
@@ -241,6 +242,8 @@ gồm Markdown và ảnh.
 
 - Lượt `mode = update` có `update_doc_id`. Gốc là `markdown` của file `done` gần nhất của tài liệu đó.
 - SHA-256 trùng lần trước thì `skipped` ("không có gì thay đổi", FR-025).
+- Trước khi hợp, chuẩn link ảnh của cả ba bản về tên ảnh (như mục 8b). Không làm thì ảnh do `srs2md` đặt ở thư mục module
+  bị coi là chỗ sửa trên hub ngay lần cập nhật đầu.
 - Hợp ba bên: `mergeBlocks(gốc, hiện tại trên hub, bản mới)`.
   - Sạch thì `saveDoc` với `baseVersion` hiện tại, nguồn `word`.
   - Chồng nhau thì tạo xung đột trong `docsync/conflicts.ts`, phía "repo" thay bằng "Word". Bảng xung đột hiện chỉ
@@ -361,7 +364,7 @@ chuyển bằng `srs2md` và cho Markdown từ repo.
           -env:UserInstallation=file://<thư mục tạm>/profile --convert-to docx --outdir <thư mục tạm> in.doc
   ```
   - `spawn` không qua shell, user `node`, env tối thiểu;
-  - quá `HIVE_DOC_WORD_TIMEOUT_MS` thì giết cả nhóm tiến trình (LibreOffice sinh tiến trình con);
+  - quá `HIVE_DOC_WORD_DOC_TIMEOUT_MS` thì giết cả nhóm tiến trình (LibreOffice sinh tiến trình con);
   - **mỗi tiến trình hub chỉ một LibreOffice chạy cùng lúc** (hàng đợi riêng `docsync-word-doc`), vì LibreOffice nặng và
     hồ sơ người dùng không dùng chung được;
   - đổi định dạng ở chế độ không giao diện không chạy macro, và không cần mạng.
@@ -373,6 +376,7 @@ chuyển bằng `srs2md` và cho Markdown từ repo.
 |---|---|---|
 | `HIVE_PANDOC_PATH` | `pandoc` | Đường dẫn binary |
 | `HIVE_SOFFICE_PATH` | `soffice` | LibreOffice cho `.doc`; không có thì tắt riêng `.doc` |
+| `HIVE_DOC_WORD_DOC_TIMEOUT_MS` | 120000 | Thời gian tối đa của LibreOffice cho một file `.doc` |
 | `HIVE_DOC_WORD_MAX_BYTES` | 50 MiB | Một file Word |
 | `HIVE_DOC_WORD_BATCH_FILES` | 100 | Số file mỗi lượt |
 | `HIVE_DOC_WORD_BATCH_BYTES` | 500 MiB | Dung lượng mỗi lượt |
@@ -406,6 +410,9 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 - **Kéo cả thư mục** thì giữ thư mục con dưới thư mục đích.
 - **Bảng xung đột** thêm `origin`, `base_content`; `repo_commit` cho phép rỗng với Word (mục 8).
 - **Hook khi duyệt đề xuất** là hook mới cho nhiều bên đăng ký, không dùng `provideReviewHooks` (mục 9).
+- **Nhãn mật (Q15)**: `wordImportConfidential` nằm trong `projectDocsSettings` (contracts) và cài đặt repo tài liệu tổ
+  chức; ghi ra front matter `confidential: true`, vì `knowledge` đã đọc cờ này để không gửi embedding.
+- **Đề xuất bị từ chối thì xoá phần giữ tạm ngay**; chỉ đề xuất chưa ai duyệt mới chờ hết hạn giữ.
 - **Desktop ở đợt 2b (P2)**, sau phần web, vì dùng chung route và API của hub. Chủ dự án chỉ chốt "làm cả desktop" (Q12),
   chưa nói thứ tự; đổi được.
 - **Q9 hiểu là nhận cả `.docx`, `.odt`, `.doc`.**
