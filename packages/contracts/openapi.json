@@ -69462,6 +69462,46 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "scope": {
+                            "type": "object",
+                            "properties": {
+                              "level": {
+                                "enum": [
+                                  "org",
+                                  "team",
+                                  "project"
+                                ],
+                                "type": "string"
+                              },
+                              "teamId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "projectId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "level",
+                              "teamId",
+                              "projectId"
+                            ]
                           }
                         },
                         "required": [
@@ -69478,7 +69518,8 @@
                           "docId",
                           "assetId",
                           "version",
-                          "error"
+                          "error",
+                          "scope"
                         ]
                       }
                     },
@@ -70124,6 +70165,46 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "level": {
+                          "enum": [
+                            "org",
+                            "team",
+                            "project"
+                          ],
+                          "type": "string"
+                        },
+                        "teamId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "projectId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "level",
+                        "teamId",
+                        "projectId"
+                      ]
                     }
                   },
                   "required": [
@@ -70140,7 +70221,8 @@
                     "docId",
                     "assetId",
                     "version",
-                    "error"
+                    "error",
+                    "scope"
                   ]
                 }
               }

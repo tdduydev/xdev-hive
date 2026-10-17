@@ -36,6 +36,8 @@ type TreeRow = {
   asset_id: string | null;
   version: number | null;
   error: string | null;
+  team_id: string | null;
+  project_id: string | null;
 };
 
 type Repo = { kind: string; baseUrl: string | null };
@@ -82,6 +84,12 @@ function treeItem(row: TreeRow, home: HomeRow, repo: Repo | undefined): DocTreeI
     assetId: row.asset_id,
     version: row.version,
     error: row.error,
+    // Cùng quy tắc với scopeView của knowledge; không import vì chỉ index.ts của module kia được phép.
+    scope: {
+      level: row.project_id ? "project" : row.team_id ? "team" : "org",
+      teamId: row.team_id,
+      projectId: row.project_id,
+    },
   };
 }
 
@@ -155,13 +163,19 @@ export async function listTree(
       union all
       select a.home_id, a.repo_path as path, null as key, null as title, 'asset' as kind, a.state,
              null as synced_commit, null as synced_hash, null as repo_hash, null::uuid as doc_id, a.id as asset_id,
-             null::int as version, null as error
-        from hive.doc_assets a left join hive.docs o on o.id = a.owner_doc_id
+             null::int as version, null as error,
+             -- Đính kèm không có tài liệu chủ thuộc về phạm vi của nhà chứa nó.
+             case when o.id is null then p.team_id else o.team_id end as team_id,
+             case when o.id is null then h.project_id else o.project_id end as project_id
+        from hive.doc_assets a
+        left join hive.docs o on o.id = a.owner_doc_id
+        left join hive.doc_homes h on h.id = a.home_id
+        left join hive.projects p on p.id = h.project_id
        where ${visible("o.team_id")}`;
   const { rows } = await tx.execute<TreeRow>(sql`
     select * from (
       select f.home_id, f.repo_path as path, d.key, d.title, 'doc' as kind, f.state, f.synced_commit, f.synced_hash,
-             f.repo_hash, f.doc_id, null::uuid as asset_id, d.current_version as version, f.error
+             f.repo_hash, f.doc_id, null::uuid as asset_id, d.current_version as version, f.error, d.team_id, d.project_id
         from hive.doc_repo_files f join hive.docs d on d.id = f.doc_id
        where d.archived_at is null and ${visible("d.team_id")} ${input.state ? sql`and f.state = ${input.state}` : sql``}
       ${assets}

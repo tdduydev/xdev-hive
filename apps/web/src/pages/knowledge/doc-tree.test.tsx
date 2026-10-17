@@ -19,6 +19,7 @@ const item = (patch: Partial<DocTreeItem> = {}): DocTreeItem => ({
   assetId: null,
   version: 1,
   error: null,
+  scope: { level: "org", teamId: null, projectId: null },
   ...patch,
 });
 afterEach(cleanup);

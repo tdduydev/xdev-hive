@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { id, orgRoute } from "./common.ts";
-import { DOC_MAX_CHARS, docKey, docSecretErrors, projectRef } from "./knowledge.ts";
+import { DOC_MAX_CHARS, docKey, docSecretErrors, projectRef, scopeView } from "./knowledge.ts";
 import { docRepoPath, projectDocsSettings } from "./projects.ts";
 import { repoOwner } from "./scm.ts";
 import { secretFinding } from "./secret-scan.ts";
@@ -403,6 +403,7 @@ export const docTreeItem = z.object({
   assetId: id.nullable(),
   version: positiveVersion.nullable(),
   error: z.string().nullable(),
+  scope: scopeView,
 });
 export const docTreeMoveInput = z.object({ key: docKey, repoPath: filePath, baseVersion: positiveVersion });
 export type DocTreeItem = z.output<typeof docTreeItem>;
