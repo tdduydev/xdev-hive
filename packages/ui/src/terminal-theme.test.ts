@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { TERMINAL_PALETTES, type TerminalMode, type TerminalPalette, terminalTheme } from "./terminal-theme.ts";
+import {
+  TERMINAL_FONT_FAMILY,
+  TERMINAL_PALETTES,
+  type TerminalMode,
+  type TerminalPalette,
+  terminalTheme,
+} from "./terminal-theme.ts";
 
 function luminance(hex: string) {
   const [r, g, b] = [1, 3, 5].map((i) => {
@@ -51,5 +57,14 @@ describe("terminal palettes", () => {
 
   it("falls back to the palette without a DOM root", () => {
     expect(terminalTheme("dark")).toBe(TERMINAL_PALETTES.dark);
+  });
+});
+
+describe("terminal font", () => {
+  it("keeps the app's mono font first and falls back to a Nerd Font for prompt icons", () => {
+    const fonts = TERMINAL_FONT_FAMILY.split(",").map((f) => f.trim().replaceAll('"', ""));
+    expect(fonts[0]).toBe("JetBrains Mono Variable");
+    expect(fonts.some((f) => /Nerd Font|\bNF$/.test(f))).toBe(true);
+    expect(fonts.at(-1)).toBe("monospace");
   });
 });

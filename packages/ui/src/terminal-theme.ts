@@ -89,8 +89,13 @@ export const TERMINAL_DEFAULT_FONT_SIZE = 13;
 /**
  * Font mono của app. xterm vẽ từng ô cố định nên ligature của font (=>, !=) làm lệch ký tự khi gõ: tắt bằng
  * `fontVariantLigatures` ở CSS của terminal, không đổi font.
+ *
+ * Ngay sau font của app là các Nerd Font (bản Mono, rộng đúng một ô) nếu máy đã cài: prompt của Oh My Posh, Oh My Zsh
+ * dùng biểu tượng Powerline mà JetBrains Mono không có. Trình duyệt chỉ lấy font sau cho ký tự font trước thiếu, nên chữ
+ * thường vẫn là JetBrains Mono.
  */
-export const TERMINAL_FONT_FAMILY = '"JetBrains Mono Variable", ui-monospace, Menlo, Consolas, monospace';
+export const TERMINAL_FONT_FAMILY =
+  '"JetBrains Mono Variable", "Symbols Nerd Font Mono", "JetBrainsMono Nerd Font Mono", "MesloLGS NF", ui-monospace, Menlo, Consolas, monospace';
 
 /**
  * Bảng màu theo chế độ; nền, chữ và con trỏ lấy từ token đang áp dụng trên trang (nếu có) để khớp tuỳ biến theme,
