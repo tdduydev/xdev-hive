@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-machine-agent-feed"
+description = "Enables the machine_agent_feed command without any pre-configured scope."
+commands.allow = ["machine_agent_feed"]
+
+[[permission]]
+identifier = "deny-machine-agent-feed"
+description = "Denies the machine_agent_feed command without any pre-configured scope."
+commands.deny = ["machine_agent_feed"]

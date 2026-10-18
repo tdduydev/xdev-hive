@@ -107,6 +107,8 @@ fn main() {
         "machine_agents",
         "machine_agent_counts",
         "machine_agent_stop",
+        "machine_agent_feed",
+        "machine_agent_feed_older",
         "update_status",
         "check_updates_now",
         "relaunch_to_update",
