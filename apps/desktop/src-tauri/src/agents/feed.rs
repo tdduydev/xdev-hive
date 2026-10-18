@@ -63,9 +63,13 @@ pub struct Feed {
     pub readable: bool,
 }
 
-const MESSAGE_MAX: usize = 4000;
-const TOOL_MAX: usize = 200;
-const RESULT_MAX: usize = 600;
+/// Chặn trên số ký tự mỗi mục gửi lên giao diện. Giao diện che bí mật trên chữ còn nguyên rồi mới cắt cho gọn: cắt
+/// trước thì một bí mật bị cắt đôi không còn khớp mẫu và lọt ra.
+const RAW_MAX: usize = 16_000;
+/// Đầu vào của công cụ chỉ hiện một dòng, nên chặn thấp hơn.
+const TOOL_RAW_MAX: usize = 2_000;
+/// Phiên đang xem còn được ghi trong ngần này giây thì giữ, dù thư mục có phiên mới hơn (hai phiên cùng thư mục).
+const STICKY_SECS: u64 = 60;
 /// Mỗi lần đọc tiếp tối đa ngần này: agent ghi nhiều cũng không làm đứng app, lần sau đọc phần còn lại.
 const FORWARD_MAX: u64 = 4 * 1024 * 1024;
 /// "Tải thêm" lùi tối đa ngần này mỗi lần, kể cả khi chưa đủ mục (dòng kết quả công cụ có thể rất dài).
@@ -120,7 +124,7 @@ fn claude(line: &Value) -> Vec<Entry> {
     match line.get("type").and_then(Value::as_str) {
         Some("user") => match content {
             Some(Value::String(s)) if !wrapped_command(s) && !s.trim().is_empty() => {
-                vec![entry(&at, Kind::User, None, cut(s, MESSAGE_MAX))]
+                vec![entry(&at, Kind::User, None, cut(s, RAW_MAX))]
             }
             Some(Value::Array(items)) => items
                 .iter()
@@ -129,12 +133,12 @@ fn claude(line: &Value) -> Vec<Entry> {
                         .get("text")
                         .and_then(Value::as_str)
                         .filter(|t| !wrapped_command(t) && !t.trim().is_empty())
-                        .map(|t| entry(&at, Kind::User, None, cut(t, MESSAGE_MAX))),
+                        .map(|t| entry(&at, Kind::User, None, cut(t, RAW_MAX))),
                     Some("tool_result") => {
                         let error = i.get("is_error").and_then(Value::as_bool) == Some(true);
                         let kind = if error { Kind::Error } else { Kind::Result };
                         let body = i.get("content").map(content_text).unwrap_or_default();
-                        Some(entry(&at, kind, None, cut(&body, RESULT_MAX)))
+                        Some(entry(&at, kind, None, cut(&body, RAW_MAX)))
                     }
                     _ => None,
                 })
@@ -150,17 +154,17 @@ fn claude(line: &Value) -> Vec<Entry> {
                     .get("text")
                     .and_then(Value::as_str)
                     .filter(|t| !t.trim().is_empty())
-                    .map(|t| entry(&at, Kind::Assistant, None, cut(t, MESSAGE_MAX))),
+                    .map(|t| entry(&at, Kind::Assistant, None, cut(t, RAW_MAX))),
                 Some("tool_use") => {
                     let name = super::activity::text(i, "name").unwrap_or_else(|| "tool".into());
                     let input = i.get("input").cloned().unwrap_or(Value::Null);
                     let detail =
-                        super::activity::tool_detail(&input).unwrap_or_else(|| input.to_string());
+                        super::activity::tool_target(&input).unwrap_or_else(|| input.to_string());
                     Some(entry(
                         &at,
                         Kind::Tool,
                         Some(name),
-                        super::activity::one_line(&detail, TOOL_MAX),
+                        cut(&detail, TOOL_RAW_MAX),
                     ))
                 }
                 // Suy nghĩ của model không hiện.
@@ -169,7 +173,7 @@ fn claude(line: &Value) -> Vec<Entry> {
             .collect(),
         Some("system") if line.get("level").and_then(Value::as_str) == Some("error") => {
             let body = line.get("content").map(content_text).unwrap_or_default();
-            vec![entry(&at, Kind::Error, None, cut(&body, RESULT_MAX))]
+            vec![entry(&at, Kind::Error, None, cut(&body, RAW_MAX))]
         }
         _ => Vec::new(),
     }
@@ -196,9 +200,9 @@ fn codex(line: &Value) -> Vec<Entry> {
     let kind = p.get("type").and_then(Value::as_str);
     match (line.get("type").and_then(Value::as_str), kind) {
         // Lời nhắn có cả ở response_item và event_msg: chỉ lấy event_msg để không hiện hai lần.
-        (Some("event_msg"), Some("user_message")) => message(Kind::User, MESSAGE_MAX),
-        (Some("event_msg"), Some("agent_message")) => message(Kind::Assistant, MESSAGE_MAX),
-        (Some("event_msg"), Some("error" | "stream_error")) => message(Kind::Error, RESULT_MAX),
+        (Some("event_msg"), Some("user_message")) => message(Kind::User, RAW_MAX),
+        (Some("event_msg"), Some("agent_message")) => message(Kind::Assistant, RAW_MAX),
+        (Some("event_msg"), Some("error" | "stream_error")) => message(Kind::Error, RAW_MAX),
         (
             Some("response_item"),
             Some("function_call" | "custom_tool_call" | "local_shell_call"),
@@ -209,14 +213,14 @@ fn codex(line: &Value) -> Vec<Entry> {
                 &at,
                 Kind::Tool,
                 Some(name),
-                super::activity::one_line(&detail, TOOL_MAX),
+                cut(&detail, TOOL_RAW_MAX),
             )]
         }
         (Some("response_item"), Some("function_call_output" | "custom_tool_call_output")) => {
             let body = super::activity::text(p, "output")
                 .map(|o| codex_output(&o))
                 .unwrap_or_default();
-            vec![entry(&at, Kind::Result, None, cut(&body, RESULT_MAX))]
+            vec![entry(&at, Kind::Result, None, cut(&body, RAW_MAX))]
         }
         _ => Vec::new(),
     }
@@ -374,8 +378,19 @@ pub(crate) fn next(
     let Some((path, guessed)) = resolved else {
         return unreadable(cursor.is_some());
     };
-    let len = std::fs::metadata(path).map(|m| m.len()).ok();
-    if let (Some((p, end)), Some(len)) = (cursor, len)
+    let Ok(len) = std::fs::metadata(path).map(|m| m.len()) else {
+        // Phiên Claude Code mới chưa có lời nhắc thì chưa có transcript: phiên trống, không phải định dạng lạ.
+        return Feed {
+            path: Some(path_text(path)),
+            entries: Vec::new(),
+            start: 0,
+            end: 0,
+            reset: cursor.is_some_and(|(p, _)| p != path_text(path)),
+            guessed,
+            readable: true,
+        };
+    };
+    if let Some((p, end)) = cursor
         && p == path_text(path)
         && end <= len
     {
@@ -388,6 +403,21 @@ pub(crate) fn next(
         Ok(c) => feed(path, guessed, c, cursor.is_some()),
         Err(_) => unreadable(cursor.is_some()),
     }
+}
+
+/// File phiên để xem trong các ứng viên của thư mục (mới nhất trước, kèm giờ sửa). Giữ file giao diện đang xem khi
+/// nó còn là ứng viên và còn được ghi gần đây, để hai phiên cùng thư mục không làm khung nhảy qua lại mỗi giây.
+pub(crate) fn pick(
+    candidates: &[(std::path::PathBuf, u64)],
+    cursor: Option<&str>,
+    now: u64,
+) -> Option<std::path::PathBuf> {
+    let sticky = cursor.and_then(|c| {
+        candidates
+            .iter()
+            .find(|(p, t)| path_text(p) == c && t + STICKY_SECS >= now)
+    });
+    sticky.or(candidates.first()).map(|(p, _)| p.clone())
 }
 
 /// "Tải thêm": trang trước byte `before` của đúng file đang xem; file đã đổi thì như lần đọc đầu.
@@ -553,14 +583,55 @@ mod tests {
     }
 
     #[test]
-    fn long_text_is_cut() {
-        let long = "á".repeat(10_000);
+    fn long_text_is_capped_but_kept_whole_for_masking() {
+        // Giao diện che bí mật rồi mới cắt cho gọn: Rust chỉ chặn trên để không gửi cả MB, giữ xuống dòng.
+        let long = "á".repeat(20_000);
         let user = json!({"type": "user", "message": {"content": long}});
         let e = entries(Format::Claude, &user);
-        assert_eq!(e[0].text.chars().count(), 4000);
+        assert_eq!(e[0].text.chars().count(), 16_000);
         assert!(e[0].text.ends_with('…'));
         let result = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "x\n".repeat(2000)}]}});
-        assert!(entries(Format::Claude, &result)[0].text.chars().count() <= 600);
+        assert_eq!(
+            entries(Format::Claude, &result)[0].text.lines().count(),
+            2000
+        );
+        let tool = json!({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Bash", "input": {"command": "cat <<EOF\nDB_PASSWORD=hunter2abc9\nEOF"}}
+        ]}});
+        assert_eq!(
+            entries(Format::Claude, &tool)[0].text,
+            "cat <<EOF\nDB_PASSWORD=hunter2abc9\nEOF"
+        );
+    }
+
+    #[test]
+    fn missing_transcript_is_an_empty_session() {
+        // Phiên Claude Code mới chưa có lời nhắc nào thì chưa có transcript.
+        let dir = tmp("missing");
+        let f = next(
+            Some((&dir.join("chua-co.jsonl"), false)),
+            Format::Claude,
+            None,
+        );
+        assert!(f.readable);
+        assert!(f.entries.is_empty());
+        assert!(f.path.is_some());
+    }
+
+    #[test]
+    fn pick_stays_on_an_active_session_of_the_same_folder() {
+        let now = 10_000;
+        let a = PathBuf::from("/s/a.jsonl");
+        let b = PathBuf::from("/s/b.jsonl");
+        let both = vec![(b.clone(), now), (a.clone(), now - 10)];
+        // Hai phiên cùng thư mục cùng đang ghi: không nhảy qua lại mỗi giây.
+        assert_eq!(pick(&both, Some("/s/a.jsonl"), now), Some(a.clone()));
+        // Phiên đang xem đã im hơn một phút mà có phiên mới hơn: chuyển.
+        let idle = vec![(b.clone(), now), (a.clone(), now - 120)];
+        assert_eq!(pick(&idle, Some("/s/a.jsonl"), now), Some(b.clone()));
+        assert_eq!(pick(&both, Some("/etc/passwd"), now), Some(b.clone()));
+        assert_eq!(pick(&both, None, now), Some(b));
+        assert_eq!(pick(&[], None, now), None);
     }
 
     fn claude_line(i: usize) -> Value {
