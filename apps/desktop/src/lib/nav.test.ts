@@ -16,6 +16,7 @@ describe("menu theo hồ sơ", () => {
       "tokens",
       "projects",
       "setup",
+      "ssh",
       "docs",
       "settings",
     ]);
@@ -32,6 +33,7 @@ describe("menu theo hồ sơ", () => {
       "skills",
       "memory",
       "tokens",
+      "ssh",
       "docs",
       "settings",
     ]);
@@ -40,7 +42,7 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(13);
+    expect(items).toHaveLength(14);
     expect(items.some((i) => i.readOnly)).toBe(false);
   });
 
@@ -50,7 +52,7 @@ describe("menu theo hồ sơ", () => {
       ["Máy này", true, ["Máy này"]],
       ["Chạy", false, ["Agent trên máy", "Terminal", "Lượt chạy", "Điều khiển từ xa"]],
       ["Agent", false, ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"]],
-      ["Dự án", false, ["Dự án trên máy", "Môi trường", "Tài liệu từ code"]],
+      ["Dự án", false, ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code"]],
     ]);
     expect(groups.map((g) => g.label.en)).toEqual(["This machine", "Runs", "Agents", "Projects"]);
   });

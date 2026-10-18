@@ -11,6 +11,7 @@ import { RunsScreen } from "@/screens/runs-screen.tsx";
 import { SettingsScreen } from "@/screens/settings-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
 import { SkillsScreen } from "@/screens/skills-screen.tsx";
+import { SshScreen } from "@/screens/ssh-screen.tsx";
 import { TerminalScreen } from "@/screens/terminal-screen.tsx";
 import { TokensScreen } from "@/screens/tokens-screen.tsx";
 
@@ -27,6 +28,7 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   settings: SettingsScreen,
   setup: SetupScreen,
   skills: SkillsScreen,
+  ssh: SshScreen,
   terminal: TerminalScreen,
   tokens: TokensScreen,
 };

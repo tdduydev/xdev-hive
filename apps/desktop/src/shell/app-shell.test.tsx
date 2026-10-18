@@ -57,7 +57,7 @@ describe("AppShell", () => {
       ["Máy này"],
       ["Agent trên máy", "Terminal", "Lượt chạy", "Điều khiển từ xa"],
       ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"],
-      ["Dự án trên máy", "Môi trường", "Tài liệu từ code"],
+      ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code"],
     ]);
     // Nhóm đầu chỉ một mục nên không vẽ tiêu đề; ba nhóm sau có.
     for (const title of ["Chạy", "Agent", "Dự án"]) expect(within(nav).getByText(title)).toBeTruthy();
