@@ -552,7 +552,16 @@ mod tests {
             .spawn()
             .unwrap();
         let pid = child.id();
-        let details = read_details(&[pid]);
+        // Ngay sau spawn, tiến trình con có thể chưa exec: /proc/<pid>/environ khi đó vẫn là môi trường của tiến trình
+        // cha (không có CLAUDE_CONFIG_DIR). Đọc lại tới khi thấy môi trường của chính nó, tối đa khoảng 2 giây.
+        let mut details = read_details(&[pid]);
+        for _ in 0..100 {
+            if details.get(&pid).is_some_and(|d| !d.env.is_empty()) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+            details = read_details(&[pid]);
+        }
         let _ = child.kill();
         let _ = child.wait();
         let d = details.get(&pid).expect("đọc được tiến trình con");
