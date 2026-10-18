@@ -53,3 +53,10 @@ export function shortPath(folder: string): string {
 }
 
 export const folderName = (folder: string) => folder.split(/[/\\]/).filter(Boolean).at(-1) ?? folder;
+
+/** Khoá để so hai thư mục: `/` thay `\`, bỏ dấu phân cách cuối, chữ thường với đường dẫn kiểu Windows (`C:`). */
+export function folderKey(folder: string): string {
+  let p = folder.trim().replace(/\\/g, "/");
+  if (p.length > 1) p = p.replace(/\/+$/, "");
+  return /^[a-z]:/i.test(p) ? p.toLowerCase() : p;
+}

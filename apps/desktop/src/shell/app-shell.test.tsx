@@ -55,7 +55,7 @@ describe("AppShell", () => {
       ),
     ).toEqual([
       ["Máy này"],
-      ["Lượt chạy", "Điều khiển từ xa"],
+      ["Agent trên máy", "Terminal", "Lượt chạy", "Điều khiển từ xa"],
       ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"],
       ["Dự án trên máy", "Môi trường", "Tài liệu từ code"],
     ]);
@@ -129,8 +129,12 @@ describe("AppShell", () => {
     expect(within(nav).queryByRole("link", { name: "Môi trường" })).toBeNull();
     // Người xem đội: Tài liệu từ code và Skills đều chỉ đọc (không cài skill lên máy).
     expect(within(nav).getAllByText("chỉ đọc")).toHaveLength(2);
-    // Nhóm Chạy không còn mục nào với writer nên mất cả tiêu đề; nhóm Agent còn Skills, Memory, Token.
-    expect(within(nav).queryByRole("group", { name: "Chạy" })).toBeNull();
+    // Writer không có Lượt chạy, Điều khiển từ xa; Agent trên máy và Terminal là việc tại máy nên vẫn có.
+    expect(
+      within(within(nav).getByRole("group", { name: "Chạy" }))
+        .getAllByRole("link")
+        .map((a) => a.textContent),
+    ).toEqual(["Agent trên máy", "Terminal"]);
     expect(within(nav).getByText("Agent")).toBeTruthy();
   });
 
