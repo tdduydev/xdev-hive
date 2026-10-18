@@ -1,4 +1,5 @@
 import {
+  ActivityIcon,
   BotIcon,
   CoinsIcon,
   CpuIcon,
@@ -11,6 +12,7 @@ import {
   PlayIcon,
   ServerIcon,
   SettingsIcon,
+  SquareTerminalIcon,
   ZapIcon,
 } from "lucide-react";
 import type { Dict } from "@/lib/i18n.ts";
@@ -56,6 +58,8 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
 
 export type ScreenId =
   | "home"
+  | "agents"
+  | "terminal"
   | "runs"
   | "remote"
   | "plans"
@@ -105,6 +109,18 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     id: "run",
     label: { vi: "Chạy", en: "Runs" },
     items: [
+      {
+        // Mọi Claude Code, Codex, Antigravity đang chạy trên máy, ai mở cũng thấy (spec 021). Việc tại máy nên hồ sơ nào cũng có.
+        id: "agents",
+        label: { vi: "Agent trên máy", en: "Agents on this machine" },
+        icon: ActivityIcon,
+      },
+      {
+        // Terminal nhúng theo từng dự án, gói agent chọn sẵn; trước chỉ là một tab trong Tài liệu từ code.
+        id: "terminal",
+        label: { vi: "Terminal", en: "Terminal" },
+        icon: SquareTerminalIcon,
+      },
       {
         id: "runs",
         label: { vi: "Lượt chạy", en: "Runs" },
