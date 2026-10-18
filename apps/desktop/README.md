@@ -85,6 +85,36 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
   là trang từ xa, không có capability nào, nên không gọi được lệnh của app. CSP không cho script inline, nên sáng/tối
   đặt trong `src/main.tsx` trước lần vẽ đầu.
 
+## Giao diện và prompt của Terminal
+
+Thanh trên của Terminal có ô **Giao diện terminal**: Luôn tối (mặc định), Luôn sáng, Theo app. Lựa chọn và cỡ chữ lưu
+theo máy.
+
+Prompt nhiều màu, nhiều biểu tượng kiểu [Oh My Zsh](https://ohmyz.sh/) do shell vẽ, không phải app. Terminal của app chạy
+`powershell.exe` trên Windows và shell đăng nhập (`$SHELL -l`, mặc định zsh) trên macOS, nên cài cho shell đó là thấy
+trong app. Theme có biểu tượng cần một Nerd Font: font của terminal là JetBrains Mono, rồi tới `Symbols Nerd Font Mono`,
+`JetBrainsMono Nerd Font Mono`, `MesloLGS NF` cho các ký tự JetBrains Mono không có. Cài font xong thì mở lại app.
+
+**Windows: Oh My Posh** (Oh My Zsh chỉ chạy với zsh)
+
+```powershell
+winget install JanDeDobbeleer.OhMyPosh -s winget
+oh-my-posh font install JetBrainsMono
+```
+
+Rồi trong một tab Shell của app, mở profile của Windows PowerShell bằng `notepad $PROFILE` (tạo file nếu chưa có) và thêm
+dòng `oh-my-posh init pwsh | Invoke-Expression`. Đổi theme bằng `--config`, xem danh sách theme ở trang của Oh My Posh.
+Máy chặn chạy profile thì đó là chính sách thực thi script của Windows: người dùng tự quyết có đổi hay không.
+
+**macOS: Oh My Zsh**
+
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+brew install --cask font-jetbrains-mono-nerd-font
+```
+
+Theme đặt bằng `ZSH_THEME` trong `~/.zshrc`. `robbyrussell` (mặc định) không cần Nerd Font; `agnoster` cần.
+
 ## Phát hành
 
 Tag `v*` (tự tạo mỗi lần nhánh `release` được cập nhật, xem `docs/releasing.md`) đóng gói app cho macOS arm64, Windows x64, Linux amd64 và gắn vào GitHub Release cùng worker; mỗi lần đổi
