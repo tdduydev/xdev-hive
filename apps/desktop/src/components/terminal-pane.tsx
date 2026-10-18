@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
-import { TERMINAL_FONT_SIZES } from "@xdev-hive/ui/terminal-theme";
+import { TERMINAL_FONT_SIZES, TERMINAL_PALETTES } from "@xdev-hive/ui/terminal-theme";
 import { FolderOpenIcon, PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type CliProfile, cliProfiles } from "@/lib/agent.ts";
@@ -21,8 +21,11 @@ import {
   restartTerminal,
   selectTerminal,
   setTermFontSize,
+  setTermThemePref,
   TERM_CLI_LABEL,
+  TERM_THEME_PREFS,
   type TermCli,
+  type TermThemePref,
   useTerminals,
 } from "@/lib/pty.ts";
 import { termDefault } from "@/lib/term-defaults.ts";
@@ -60,6 +63,8 @@ const text: Dict<{
   bypassBadge: string;
   signedOut: string;
   fontSize: string;
+  theme: string;
+  themes: Record<TermThemePref, string>;
   switchPlan: string;
   switchHint: string;
 }> = {
@@ -93,6 +98,8 @@ const text: Dict<{
     bypassBadge: "bỏ hỏi quyền",
     signedOut: "chưa đăng nhập",
     fontSize: "Cỡ chữ terminal",
+    theme: "Giao diện terminal",
+    themes: { dark: "Luôn tối", light: "Luôn sáng", app: "Theo app" },
     switchPlan: "Đổi gói",
     switchHint: "Mở lại CLI của tab này bằng gói khác, trong cùng thư mục. Hội thoại cũ không mang sang.",
   },
@@ -126,6 +133,8 @@ const text: Dict<{
     bypassBadge: "no prompts",
     signedOut: "signed out",
     fontSize: "Terminal font size",
+    theme: "Terminal theme",
+    themes: { dark: "Always dark", light: "Always light", app: "Follow app" },
     switchPlan: "Switch plan",
     switchHint:
       "Restart this tab's CLI with another plan in the same folder. The old conversation does not carry over.",
@@ -134,10 +143,18 @@ const text: Dict<{
 
 const select = "h-6.5 rounded-md border bg-background text-xs disabled:opacity-50";
 
-function TermView({ id }: { id: string }) {
+function TermView({ id, theme }: { id: string; theme: TermThemePref }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => (ref.current ? attachTerminal(id, ref.current) : undefined), [id]);
-  return <div ref={ref} data-testid="terminal" className="min-h-0 flex-1 overflow-hidden bg-card px-2 py-1.5" />;
+  // Lề quanh xterm cùng nền với terminal, không thì terminal tối trong app sáng có viền trắng.
+  return (
+    <div
+      ref={ref}
+      data-testid="terminal"
+      className={cn("min-h-0 flex-1 overflow-hidden px-2 py-1.5", theme === "app" && "bg-card")}
+      style={theme === "app" ? undefined : { background: TERMINAL_PALETTES[theme].background }}
+    />
+  );
 }
 
 /**
@@ -147,7 +164,7 @@ function TermView({ id }: { id: string }) {
  */
 export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickFolder: () => void }) {
   const t = useT(text);
-  const { sessions: all, active, fontSize } = useTerminals();
+  const { sessions: all, active, fontSize, theme } = useTerminals();
   const sessions = folder ? all.filter((s) => inFolder(s, folder)) : [];
   const [cli, setCli] = useState<TermCli>("claude");
   const [planId, setPlanId] = useState("");
@@ -254,6 +271,19 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
         </label>
         <span className="flex-1" />
         <select
+          aria-label={t.theme}
+          title={t.theme}
+          value={theme}
+          onChange={(e) => setTermThemePref(e.target.value as TermThemePref)}
+          className={cn(select, "w-24")}
+        >
+          {TERM_THEME_PREFS.map((p) => (
+            <option key={p} value={p}>
+              {t.themes[p]}
+            </option>
+          ))}
+        </select>
+        <select
           aria-label={t.fontSize}
           title={t.fontSize}
           value={fontSize}
@@ -348,7 +378,7 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
       )}
 
       {current ? (
-        <TermView key={current.key} id={current.key} />
+        <TermView key={current.key} id={current.key} theme={theme} />
       ) : (
         <div className="flex flex-col items-start gap-2.5 px-3.5 py-3">
           <p className="text-sm text-muted-foreground">{folder ? t.empty : t.needFolder}</p>
