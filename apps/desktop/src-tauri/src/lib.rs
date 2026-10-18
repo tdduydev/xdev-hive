@@ -1,6 +1,7 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, giao diện cục bộ gọi hub qua Rust.
 
 mod account;
+mod agents;
 mod browser_login;
 #[cfg(test)]
 mod capabilities_audit;
@@ -1055,6 +1056,7 @@ pub fn run() {
         .manage(State::default())
         .manage(cli::Runs::default())
         .manage(pty::Ptys::default())
+        .manage(agents::Agents::default())
         .manage(remote::Remote::default())
         .manage(git_groups::Jobs::default())
         .manage(ssh_keys::SetupLock::default())
@@ -1163,6 +1165,9 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_close,
+            agents::machine_agents,
+            agents::machine_agent_counts,
+            agents::machine_agent_stop,
             updates::update_status,
             updates::check_updates_now,
             updates::relaunch_to_update,
