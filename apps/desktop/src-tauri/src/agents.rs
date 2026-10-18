@@ -6,10 +6,11 @@
 
 pub(crate) mod activity;
 pub(crate) mod classify;
+pub(crate) mod feed;
 
 use activity::Activity;
 use classify::{Cli, Context, HiveSession, Proc, Row, Source};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -115,18 +116,7 @@ fn collect(sys: &mut System, deep: bool) -> Snapshot {
     let mut procs: Vec<Proc> = sys
         .processes()
         .values()
-        .map(|p| Proc {
-            pid: p.pid().as_u32(),
-            parent: p.parent().map(Pid::as_u32),
-            name: lossy(p.name()),
-            exe: p.exe().map(|e| lossy(e.as_os_str())),
-            cmd: p.cmd().iter().map(|a| lossy(a)).collect(),
-            cwd: None,
-            start: p.start_time(),
-            cpu: p.cpu_usage(),
-            memory: p.memory(),
-            own: me.is_some() && p.user_id() == me.as_ref(),
-        })
+        .map(|p| to_proc(p, me.as_ref()))
         .collect();
     let mut env = HashMap::new();
     if !deep {
@@ -150,6 +140,15 @@ fn collect(sys: &mut System, deep: bool) -> Snapshot {
     Snapshot { procs, env }
 }
 
+/// Đọc lại vài pid. Không bật xoá tiến trình đã chết: với cờ đó sysinfo 0.39 bỏ mất pid xuất hiện hai lần trong danh
+/// sách. Tiến trình đã chết vẫn nằm trong danh sách, nên chỗ dùng phải kiểm `exists()`.
+fn refresh_some(sys: &mut System, pids: &[Pid], kind: ProcessRefreshKind) {
+    let mut pids = pids.to_vec();
+    pids.sort_unstable();
+    pids.dedup();
+    sys.refresh_processes_specifics(ProcessesToUpdate::Some(&pids), false, kind);
+}
+
 /// Thư mục làm việc và biến môi trường đã lọc của một agent.
 struct Details {
     cwd: Option<String>,
@@ -165,10 +164,10 @@ fn read_details(pids: &[u32]) -> HashMap<u32, Details> {
         .without_tasks()
         .with_cwd(UpdateKind::Always)
         .with_environ(UpdateKind::Always);
-    sys.refresh_processes_specifics(ProcessesToUpdate::Some(&list), true, kind);
+    refresh_some(&mut sys, &list, kind);
     pids.iter()
         .filter_map(|pid| {
-            let p = sys.process(Pid::from_u32(*pid))?;
+            let p = sys.process(Pid::from_u32(*pid)).filter(|p| p.exists())?;
             let env = p
                 .environ()
                 .iter()
@@ -214,7 +213,7 @@ pub(crate) fn stop_targets(
 fn kill_tree(sys: &mut System, targets: &[u32], starts: &HashMap<u32, u64>) {
     let same = |sys: &System, pid: u32| {
         sys.process(Pid::from_u32(pid))
-            .filter(|p| starts.get(&pid) == Some(&p.start_time()))
+            .filter(|p| p.exists() && starts.get(&pid) == Some(&p.start_time()))
             .is_some()
     };
     let kill = |sys: &System, pid: u32| {
@@ -239,11 +238,7 @@ fn kill_tree(sys: &mut System, targets: &[u32], starts: &HashMap<u32, u64>) {
     let deadline = Instant::now() + STOP_GRACE;
     while Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(200));
-        sys.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&pids),
-            true,
-            ProcessRefreshKind::nothing().without_tasks(),
-        );
+        refresh_some(sys, &pids, ProcessRefreshKind::nothing().without_tasks());
         if !targets.iter().any(|pid| same(sys, *pid)) {
             return;
         }
@@ -269,6 +264,81 @@ fn config_key(cli: Cli) -> Option<&'static str> {
         Cli::Codex => Some("CODEX_HOME"),
         Cli::Antigravity => None,
     }
+}
+
+/// Tiến trình sysinfo đã đọc thành `Proc`; thư mục làm việc và môi trường đọc riêng (`read_details`).
+fn to_proc(p: &sysinfo::Process, me: Option<&sysinfo::Uid>) -> Proc {
+    Proc {
+        pid: p.pid().as_u32(),
+        parent: p.parent().map(Pid::as_u32),
+        name: lossy(p.name()),
+        exe: p.exe().map(|e| lossy(e.as_os_str())),
+        cmd: p.cmd().iter().map(|a| lossy(a)).collect(),
+        cwd: None,
+        start: p.start_time(),
+        cpu: p.cpu_usage(),
+        memory: p.memory(),
+        own: me.is_some() && p.user_id() == me,
+    }
+}
+
+type FeedTarget = (Option<feed::Format>, Option<(PathBuf, bool)>);
+
+/// File phiên của một agent cho khung Hoạt động, tìm lại từ pid ở mỗi lần đọc: tiến trình còn đó, cùng giờ bắt đầu,
+/// vẫn là agent và cùng người dùng với app. Giao diện chỉ gửi pid và giờ bắt đầu, không gửi đường dẫn để mở.
+fn feed_target(pid: u32, started_at: u64) -> Result<FeedTarget, String> {
+    let mut sys = System::new();
+    let me = sysinfo::get_current_pid().ok();
+    let list: Vec<Pid> = std::iter::once(Pid::from_u32(pid)).chain(me).collect();
+    let kind = ProcessRefreshKind::nothing()
+        .without_tasks()
+        .with_exe(UpdateKind::Always)
+        .with_cmd(UpdateKind::Always)
+        .with_user(UpdateKind::Always);
+    refresh_some(&mut sys, &list, kind);
+    let my_user = me
+        .and_then(|m| sys.process(m))
+        .and_then(|p| p.user_id().cloned());
+    let p = sys
+        .process(Pid::from_u32(pid))
+        .filter(|p| p.exists() && p.start_time() == started_at)
+        .ok_or("Agent đã thoát.")?;
+    let proc = to_proc(p, my_user.as_ref());
+    let m = classify::match_cli(&proc).ok_or("Tiến trình này không còn là agent.")?;
+    if !proc.own {
+        return Err("Chỉ xem được agent chạy bằng tài khoản máy của bạn.".into());
+    }
+    let details = read_details(&[pid]).remove(&pid);
+    let cwd = details.as_ref().and_then(|d| d.cwd.clone());
+    let config = config_key(m.cli).and_then(|key| {
+        details
+            .as_ref()?
+            .env
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| PathBuf::from(v))
+    });
+    let home = crate::profiles::home_dir();
+    let dir = |default: &str| {
+        config
+            .clone()
+            .or_else(|| home.as_ref().map(|h| h.join(default)))
+    };
+    Ok(match m.cli {
+        Cli::Claude => (
+            Some(feed::Format::Claude),
+            dir(".claude")
+                .and_then(|c| activity::claude_transcript(&c, &[pid], cwd.as_deref(), proc.start)),
+        ),
+        Cli::Codex => (
+            Some(feed::Format::Codex),
+            dir(".codex")
+                .zip(cwd.as_deref())
+                .and_then(|(h, c)| activity::codex_rollout(&h, c, proc.start, now_secs()))
+                .map(|p| (p, true)),
+        ),
+        Cli::Antigravity => (None, None),
+    })
 }
 
 fn read_activity(row: &Row, config: Option<&str>, home: Option<&Path>) -> Option<Activity> {
@@ -480,6 +550,52 @@ pub async fn machine_agent_stop(app: AppHandle, pid: u32, started_at: u64) -> Re
     .await?
 }
 
+/// Vị trí khung Hoạt động đã đọc tới: file (chỉ để so) và byte sau dòng cuối.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedCursor {
+    path: String,
+    end: u64,
+}
+
+/// Khung Hoạt động (spec 021 phần 3): đọc tiếp file phiên của agent từ chỗ giao diện đã có; mới mở thì trang cuối.
+#[tauri::command]
+pub async fn machine_agent_feed(
+    pid: u32,
+    started_at: u64,
+    cursor: Option<FeedCursor>,
+) -> Result<feed::Feed, String> {
+    blocking(move || {
+        let (format, file) = feed_target(pid, started_at)?;
+        let Some(format) = format else {
+            return Ok(feed::next(None, feed::Format::Claude, None));
+        };
+        let file = file.as_ref().map(|(p, guessed)| (p.as_path(), *guessed));
+        let cursor = cursor.as_ref().map(|c| (c.path.as_str(), c.end));
+        Ok(feed::next(file, format, cursor))
+    })
+    .await?
+}
+
+/// "Tải thêm" của khung Hoạt động: trang trước byte `before` của file đang xem.
+#[tauri::command]
+pub async fn machine_agent_feed_older(
+    pid: u32,
+    started_at: u64,
+    path: String,
+    before: u64,
+) -> Result<feed::Feed, String> {
+    blocking(move || {
+        let (format, file) = feed_target(pid, started_at)?;
+        let Some(format) = format else {
+            return Ok(feed::next(None, feed::Format::Claude, None));
+        };
+        let file = file.as_ref().map(|(p, guessed)| (p.as_path(), *guessed));
+        Ok(feed::older(file, format, &path, before))
+    })
+    .await?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,6 +648,45 @@ mod tests {
         assert!(me.own);
         assert!(me.start > 0);
         assert!(me.exe.is_some());
+    }
+
+    #[test]
+    fn read_details_reads_several_pids_at_once() {
+        // sysinfo bỏ mất tiến trình còn sống khi đọc nhiều pid một lần mà bật xoá tiến trình đã chết.
+        let spawn = || {
+            std::process::Command::new(if cfg!(windows) { "cmd" } else { "/bin/sh" })
+                .args(if cfg!(windows) {
+                    ["/C", "ping -n 6 127.0.0.1 >NUL"]
+                } else {
+                    ["-c", "sleep 5"]
+                })
+                .spawn()
+                .unwrap()
+        };
+        let (mut a, mut b) = (spawn(), spawn());
+        let me = std::process::id();
+        let details = read_details(&[a.id(), b.id(), me]);
+        for c in [&mut a, &mut b] {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        for pid in [a.id(), b.id(), me] {
+            assert!(details.contains_key(&pid), "thiếu {pid}");
+        }
+    }
+
+    #[test]
+    fn feed_target_checks_start_time_and_that_it_is_an_agent() {
+        let mut sys = System::new();
+        let me = collect(&mut sys, false)
+            .procs
+            .into_iter()
+            .find(|p| p.pid == std::process::id())
+            .unwrap();
+        let reused = feed_target(me.pid, me.start + 1000).unwrap_err();
+        assert!(reused.contains("đã thoát"), "{reused}");
+        let not_agent = feed_target(me.pid, me.start).unwrap_err();
+        assert!(not_agent.contains("không còn là agent"), "{not_agent}");
     }
 
     #[test]
