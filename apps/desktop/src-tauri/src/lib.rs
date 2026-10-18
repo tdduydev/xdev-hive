@@ -27,6 +27,7 @@ mod remote;
 mod settings;
 mod setup_extra;
 mod skills;
+mod ssh_keys;
 mod tls;
 mod tray_icon;
 mod updates;
@@ -1058,6 +1059,7 @@ pub fn run() {
         .manage(agents::Agents::default())
         .manage(remote::Remote::default())
         .manage(git_groups::Jobs::default())
+        .manage(ssh_keys::SetupLock::default())
         .manage(settings::Store::default())
         .manage(notices::Notices::default())
         .invoke_handler(tauri::generate_handler![
@@ -1148,6 +1150,11 @@ pub fn run() {
             git_groups::git_group_cancel,
             git_groups::open_folder,
             git_groups::open_folder_terminal,
+            ssh_keys::ssh_list,
+            ssh_keys::ssh_check,
+            ssh_keys::ssh_scan,
+            ssh_keys::ssh_setup,
+            ssh_keys::ssh_remove,
             cli::folder_tree,
             cli::folder_docs,
             cli::propose_doc,
