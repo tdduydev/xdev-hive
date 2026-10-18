@@ -326,6 +326,16 @@ describe("HomeScreen", () => {
     expect(screen.queryByText(/Worker mất kết nối với hub hơn 1 phút/)).toBeNull();
   });
 
+  it("thẻ Agent đang chạy đếm theo CLI và mở màn Agent trên máy", async () => {
+    fakeTauri({ machine_agent_counts: () => ({ claude: 12, codex: 1, antigravity: 0 }) });
+    renderHome();
+    const card = await screen.findByRole("region", { name: "Agent đang chạy" });
+    await waitFor(() => expect(within(card).getByText("Claude Code").parentElement?.textContent).toContain("12"));
+    expect(within(card).getByText("Codex").parentElement?.textContent).toContain("1");
+    expect(within(card).getByText("Antigravity").parentElement?.textContent).toContain("0");
+    expect(within(card).getByRole("link", { name: "Xem chi tiết" }).getAttribute("href")).toBe("#/agents");
+  });
+
   it("nút Tắt worker gọi set_worker", async () => {
     const calls = fakeTauri();
     renderHome();
