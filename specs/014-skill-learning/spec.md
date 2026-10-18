@@ -13,6 +13,9 @@ chính: không chạy sau mọi run.
 
 **Decision record**: [ADR 0025](../../docs/adr/0025-agent-skill-learning.md).
 
+**Mở rộng**: [spec 024](../024-skill-harness-probe/spec.md) thêm tầng thử đề xuất trong sandbox (Propose–Probe–Compose)
+cho một số ít việc đáng học (bản nháp, 2026-10-18).
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Hub chỉ chọn việc đáng học (Priority: P1)
