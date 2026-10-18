@@ -2,7 +2,7 @@ import type { Dict } from "@/lib/i18n.ts";
 import { invoke } from "@/lib/tauri.ts";
 
 /**
- * Máy chủ SSH của máy này (specs/020-desktop-ssh-keys): đọc và ghi qua `hive-worker ssh` (worker/internal/sshkeys).
+ * Máy chủ SSH của máy này (specs/023-desktop-ssh-keys): đọc và ghi qua `hive-worker ssh` (worker/internal/sshkeys).
  * Kiểu khớp JSON của worker. Mật khẩu chỉ đi một chiều vào `sshSetup` và không bao giờ quay lại giao diện.
  */
 export interface SshKey {

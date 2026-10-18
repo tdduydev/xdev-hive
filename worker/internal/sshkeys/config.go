@@ -1,4 +1,4 @@
-// Package sshkeys chuyển đăng nhập SSH của máy dev từ mật khẩu sang khoá (specs/020-desktop-ssh-keys): đọc và sửa
+// Package sshkeys chuyển đăng nhập SSH của máy dev từ mật khẩu sang khoá (specs/023-desktop-ssh-keys): đọc và sửa
 // ~/.ssh/config, known_hosts, tạo khoá ed25519, cài khoá công khai lên máy chủ bằng mật khẩu gõ một lần, rồi kiểm tra
 // bằng ssh của máy.
 package sshkeys
