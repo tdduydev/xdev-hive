@@ -123,7 +123,7 @@ fn modified_secs(path: &Path) -> Option<u64> {
         .map(|d| d.as_secs())
 }
 
-fn text(v: &serde_json::Value, key: &str) -> Option<String> {
+pub(crate) fn text(v: &serde_json::Value, key: &str) -> Option<String> {
     v.get(key)
         .and_then(|x| x.as_str())
         .map(str::to_string)
@@ -131,7 +131,7 @@ fn text(v: &serde_json::Value, key: &str) -> Option<String> {
 }
 
 /// Đích ngắn của một lần gọi công cụ: mô tả lệnh, tên file, mẫu tìm, dòng đầu của lệnh, URL.
-fn tool_detail(input: &serde_json::Value) -> Option<String> {
+pub(crate) fn tool_detail(input: &serde_json::Value) -> Option<String> {
     if let Some(d) = text(input, "description") {
         return Some(d);
     }
@@ -302,14 +302,35 @@ pub(crate) fn claude_activity(
         }
         return Some(a);
     }
-    let dir = project_dir(config, cwd?)?;
-    let path = newest_jsonl(&dir, start.saturating_sub(5))?;
+    let (path, guessed) = claude_transcript(config, pids, cwd, start)?;
     let mut a = Activity {
-        guessed: true,
+        guessed,
         ..Activity::default()
     };
     read_claude_transcript(&path, &mut a);
     Some(a)
+}
+
+/// Transcript Claude Code của tiến trình và cờ "đoán theo thư mục" (không có `sessions/<pid>.json` nối pid với phiên).
+pub(crate) fn claude_transcript(
+    config: &Path,
+    pids: &[u32],
+    cwd: Option<&str>,
+    start: u64,
+) -> Option<(PathBuf, bool)> {
+    if let Some(s) = pids
+        .iter()
+        .find_map(|pid| claude_session(config, *pid, start))
+    {
+        let dir = s
+            .cwd
+            .as_deref()
+            .or(cwd)
+            .and_then(|c| project_dir(config, c))?;
+        return Some((dir.join(format!("{}.jsonl", s.id)), false));
+    }
+    let dir = project_dir(config, cwd?)?;
+    newest_jsonl(&dir, start.saturating_sub(5)).map(|p| (p, true))
 }
 
 /// Dòng đầu của file, đọc tới hết dòng, tối đa `max` byte. None khi dòng chưa ghi xong; Some(None) khi dòng dài quá.
@@ -382,31 +403,7 @@ fn codex_command(args: &serde_json::Value) -> Option<String> {
 
 /// Codex không ghi pid: chọn rollout mới nhất của đúng thư mục, sửa sau khi tiến trình chạy, nên luôn là "đoán".
 pub(crate) fn codex_activity(home: &Path, cwd: &str, start: u64, now: u64) -> Option<Activity> {
-    let first = (start / 86_400) as i64 - 1;
-    let last = (now / 86_400) as i64 + 1;
-    let since = start.saturating_sub(5);
-    let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
-    for day in first.max(last - 7)..=last {
-        let (y, m, d) = civil_from_days(day);
-        let dir = home.join(format!("sessions/{y:04}/{m:02}/{d:02}"));
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for path in entries.flatten().map(|e| e.path()) {
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if !name.starts_with("rollout-") || !name.ends_with(".jsonl") {
-                continue;
-            }
-            if let Some(t) = modified_secs(&path).filter(|t| *t >= since) {
-                candidates.push((t, path));
-            }
-        }
-    }
-    // Mới nhất trước, dừng ở rollout đầu tiên cùng thư mục: Codex chạy lâu (app-server) có cả tuần rollout.
-    candidates.sort_by_key(|c| std::cmp::Reverse(c.0));
-    let (_, path) = candidates
-        .into_iter()
-        .find(|(_, p)| rollout_cwd(p).is_some_and(|c| same_path(&c, cwd)))?;
+    let path = codex_rollout(home, cwd, start, now)?;
     let entries = tail_entries(&path);
     let payload_type = |e: &serde_json::Value| {
         e.get("payload")
@@ -431,12 +428,7 @@ pub(crate) fn codex_activity(home: &Path, cwd: &str, start: u64, now: u64) -> Op
     }) {
         let p = &e["payload"];
         let name = text(p, "name").unwrap_or_else(|| "shell".into());
-        let detail = text(p, "arguments")
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-            .and_then(|args| codex_command(&args))
-            .or_else(|| p.get("action").and_then(codex_command))
-            .or_else(|| text(p, "input").and_then(|i| i.lines().next().map(str::to_string)));
-        a.step = Some(step_text(&name, detail));
+        a.step = Some(step_text(&name, codex_call_detail(p)));
         a.at = text(e, "timestamp");
     }
     a.status = entries
@@ -447,6 +439,45 @@ pub(crate) fn codex_activity(home: &Path, cwd: &str, start: u64, now: u64) -> Op
             _ => None,
         });
     Some(a)
+}
+
+/// Đích của một lần gọi công cụ Codex: lệnh shell, `action`, hay dòng đầu của đầu vào (apply_patch).
+pub(crate) fn codex_call_detail(p: &serde_json::Value) -> Option<String> {
+    text(p, "arguments")
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|args| codex_command(&args))
+        .or_else(|| p.get("action").and_then(codex_command))
+        .or_else(|| text(p, "input").and_then(|i| i.lines().next().map(str::to_string)))
+}
+
+/// Rollout mới nhất của đúng thư mục, sửa sau khi tiến trình chạy.
+pub(crate) fn codex_rollout(home: &Path, cwd: &str, start: u64, now: u64) -> Option<PathBuf> {
+    let first = (start / 86_400) as i64 - 1;
+    let last = (now / 86_400) as i64 + 1;
+    let since = start.saturating_sub(5);
+    let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
+    for day in first.max(last - 7)..=last {
+        let (y, m, d) = civil_from_days(day);
+        let dir = home.join(format!("sessions/{y:04}/{m:02}/{d:02}"));
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for path in entries.flatten().map(|e| e.path()) {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !name.starts_with("rollout-") || !name.ends_with(".jsonl") {
+                continue;
+            }
+            if let Some(t) = modified_secs(&path).filter(|t| *t >= since) {
+                candidates.push((t, path));
+            }
+        }
+    }
+    // Mới nhất trước, dừng ở rollout đầu tiên cùng thư mục: Codex chạy lâu (app-server) có cả tuần rollout.
+    candidates.sort_by_key(|c| std::cmp::Reverse(c.0));
+    candidates
+        .into_iter()
+        .find(|(_, p)| rollout_cwd(p).is_some_and(|c| same_path(&c, cwd)))
+        .map(|(_, p)| p)
 }
 
 #[cfg(test)]
