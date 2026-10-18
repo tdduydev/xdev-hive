@@ -177,7 +177,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       },
       { id: "setup", label: { vi: "Môi trường", en: "Environment" }, icon: CpuIcon, needs: "env.manage" },
       {
-        // Chuyển đăng nhập SSH từ mật khẩu sang khoá (specs/020-desktop-ssh-keys). Khoá SSH là của người dùng trên máy,
+        // Chuyển đăng nhập SSH từ mật khẩu sang khoá (specs/023-desktop-ssh-keys). Khoá SSH là của người dùng trên máy,
         // không theo vai trò trên hub, nên mọi hồ sơ đều thấy.
         id: "ssh",
         label: { vi: "Máy chủ SSH", en: "SSH servers" },
