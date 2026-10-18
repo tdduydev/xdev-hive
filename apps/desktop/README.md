@@ -71,7 +71,7 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
   qua stdin; sự kiện `cli:event` chỉ gửi cho cửa sổ `app`. Môi trường của CLI dựng từ danh sách cho phép (không biến
   `HIVE_*`, token, khoá API hay biến của phiên agent khác). Đề xuất của agent vào bản nháp trong app; bản nháp lên hub
   bằng `propose_doc` (tool `doc_propose`, token cá nhân), người duyệt quyết.
-- **Màn Máy chủ SSH** (`src-tauri/src/ssh_keys.rs`, `worker/internal/sshkeys`, [specs/020](../../specs/020-desktop-ssh-keys/spec.md)):
+- **Màn Máy chủ SSH** (`src-tauri/src/ssh_keys.rs`, `worker/internal/sshkeys`, [specs/023](../../specs/023-desktop-ssh-keys/spec.md)):
   chuyển đăng nhập SSH từ mật khẩu sang khoá qua `hive-worker ssh`. Khoá của máy là `~/.ssh/id_ed25519` (chưa có thì
   tạo, ed25519, không passphrase). Thêm máy chủ: app đọc khoá máy chủ, người dùng đối chiếu dấu vân tay với người quản
   trị, gõ mật khẩu một lần; sidecar chỉ gửi mật khẩu tới máy chủ có đúng dấu vân tay đó, một lần, rồi chép khoá công
