@@ -239,6 +239,8 @@ describe("vé và Origin", () => {
     const again = await browser(ticket);
     expect(again.status).toBeNull();
     expect(await again.closed).toBe(TERMINAL_WS_CLOSE.unauthorized);
+    // Hub gửi hello trước rồi mới ghi audit, nên đọc ngay sau hello có lúc chưa thấy dòng audit.
+    await until(async () => (await audits(sessionId)).includes("terminal.attach"));
     expect(await audits(sessionId)).toContain("terminal.attach");
   });
 
