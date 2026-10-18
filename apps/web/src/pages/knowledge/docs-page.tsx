@@ -8,11 +8,22 @@ import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } 
 import { Input } from "@xdev-hive/ui/input";
 import { Markdown } from "@xdev-hive/ui/markdown";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId, useMemo, useState } from "react";
+import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import { EmptyState, LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { docScopeStore } from "@/lib/doc-scope-store.ts";
 import { useT } from "@/lib/i18n.ts";
 import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge, When } from "@/pages/knowledge/common.tsx";
+import {
+  buildScopeTree,
+  type DocScopeFilter,
+  defaultFilter,
+  inFilter,
+  type MyMembership,
+  openByDefault,
+  type ScopeNames,
+} from "@/pages/knowledge/doc-scope.ts";
 import {
   badgeState,
   DocSyncDetails,
@@ -25,6 +36,10 @@ import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
 const text = knowledgeText;
+const SCOPE_OPTIONS = [
+  { value: "mine", label: "Dự án của tôi" },
+  { value: "all", label: "Tất cả" },
+] as const;
 export function DocsPage() {
   const { org } = useOrg();
   return <DocsScreen key={org.id} />;
@@ -36,14 +51,50 @@ function DocsScreen() {
   const [archived, setArchived] = useState(false);
   const list = useQuery(api.docs.list.queryOptions({ input: { archived } }));
   const tree = useDocTree();
+  const mine = useQuery(api.projectMembers.mine.queryOptions({ input: {} }));
+  const teams = useQuery(api.teams.list.queryOptions());
+  const systems = useQuery(api.systems.list.queryOptions({ input: {} }));
+  const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
+  // Bộ lọc người dùng chọn; chưa chọn thì dùng bộ lọc đã nhớ cho tổ chức này.
+  const [pickedFilter, setPickedFilter] = useState<DocScopeFilter | null>(null);
+  // null nghĩa là chưa bấm nút mở/đóng nào, để mặc định của lần mở trang còn hiệu lực.
+  const [toggled, setToggled] = useState<ReadonlySet<string> | null>(null);
   const [selectedKey, setSelectedKey] = useState<string>();
   const [state, setState] = useState("");
   const [query, setQuery] = useState("");
   const [searchText, setSearchText] = useState("");
   const search = useQuery({ ...api.docs.search.queryOptions({ input: { query: searchText } }), enabled: !!searchText });
   const selected = list.data?.find((doc) => doc.key === selectedKey);
-  const items = archived ? withUnhomedDocs([], list.data ?? []) : withUnhomedDocs(tree.data ?? [], list.data ?? []);
-  const visible = state ? items.filter((item) => badgeState(item) === state) : items;
+  const items = useMemo(
+    () => (archived ? withUnhomedDocs([], list.data ?? []) : withUnhomedDocs(tree.data ?? [], list.data ?? [])),
+    [archived, list.data, tree.data],
+  );
+  const membership = useMemo<MyMembership>(
+    () => ({ projectIds: new Set(mine.data?.projectIds), teamIds: new Set(mine.data?.teamIds) }),
+    [mine.data],
+  );
+  const names = useMemo<ScopeNames>(
+    () => ({
+      teams: new Map((teams.data ?? []).map((team) => [team.id, team.name])),
+      systems: new Map((systems.data ?? []).map((system) => [system.id, { name: system.name, teamId: system.teamId }])),
+      projects: new Map(
+        (projects.data ?? []).map((p) => [p.id, { name: p.name, systemId: p.systemId, teamId: p.teamId }]),
+      ),
+    }),
+    [teams.data, systems.data, projects.data],
+  );
+  // Chưa biết mình thuộc dự án nào thì hiện "Tất cả" để trang không trống.
+  const filter = pickedFilter ?? (mine.data ? defaultFilter(docScopeStore.get(org.id), membership) : "all");
+  // Bộ lọc trạng thái chạy trước, bộ lọc phạm vi chạy sau, rồi mới gom cây.
+  const nodes = useMemo(() => {
+    const byState = state ? items.filter((item) => badgeState(item) === state) : items;
+    return buildScopeTree(
+      byState.filter((item) => inFilter(item, filter, membership)),
+      names,
+    );
+  }, [items, state, filter, membership, names]);
+  const defaultOpen = useMemo(() => openByDefault(nodes, membership), [nodes, membership]);
+  const open = toggled ?? defaultOpen;
   return (
     <KnowledgeLayout title={t.docsTitle} lead={t.docsLead} actions={<NewDoc />}>
       <form
@@ -142,6 +193,20 @@ function DocsScreen() {
             ))}
           </NativeSelect>
         </label>
+        <div className="space-y-1 text-sm">
+          <span>Phạm vi</span>
+          <div>
+            <SegmentedControl
+              label="Phạm vi tài liệu"
+              value={filter}
+              options={SCOPE_OPTIONS}
+              onChange={(value) => {
+                setPickedFilter(value);
+                docScopeStore.set(org.id, value);
+              }}
+            />
+          </div>
+        </div>
         <label htmlFor={`${fieldId}-list`} className="space-y-1 text-sm">
           Danh sách
           <NativeSelect
@@ -159,11 +224,20 @@ function DocsScreen() {
           </NativeSelect>
         </label>
       </div>
-      {(list.isPending || (!archived && tree.isPending)) && <TableSkeleton label={t.loading} columns={4} />}
+      {(list.isPending ||
+        (!archived && tree.isPending) ||
+        mine.isPending ||
+        teams.isPending ||
+        systems.isPending ||
+        projects.isPending) && <TableSkeleton label={t.loading} columns={4} />}
       {list.isError && <LoadFailure error={list.error} retry={list.refetch} />}
       {!archived && tree.isError && <LoadFailure error={tree.error} retry={tree.refetch} />}
       {list.data &&
         (archived || tree.data) &&
+        !mine.isPending &&
+        !teams.isPending &&
+        !systems.isPending &&
+        !projects.isPending &&
         (!items.length ? (
           <EmptyState
             title={archived ? "Chưa có tài liệu lưu trữ" : t.docsEmptyTitle}
@@ -173,7 +247,13 @@ function DocsScreen() {
           <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
             <DocTree
               archived={archived}
-              items={visible}
+              nodes={nodes}
+              open={open}
+              onToggle={(id) => {
+                const next = new Set(open);
+                if (!next.delete(id)) next.add(id);
+                setToggled(next);
+              }}
               selectedKey={selectedKey}
               onSelect={(item) => {
                 if (item.key) setSelectedKey(item.key);

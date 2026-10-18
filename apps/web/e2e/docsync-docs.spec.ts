@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { docsyncDocsScenario, GUIDE_KEY } from "./docsync-docs-fixture.ts";
+import { docsyncDocsScenario, expandDocTree, GUIDE_KEY } from "./docsync-docs-fixture.ts";
 import { fail, ok } from "./fake-hub.ts";
 import { inOrg } from "./reviews-fixture.ts";
 
@@ -8,11 +8,13 @@ const PNG = Buffer.from(
   "base64",
 );
 
-const tree = (page: Page) => page.getByRole("list", { name: "Cây tài liệu theo repo" });
-const choose = (page: Page, name = "Hướng dẫn cài đặt") =>
-  tree(page)
+const tree = (page: Page) => page.getByRole("list", { name: "Cây tài liệu" });
+const choose = async (page: Page, name = "Hướng dẫn cài đặt") => {
+  await expandDocTree(page);
+  await tree(page)
     .getByRole("button", { name: new RegExp(name) })
     .click();
+};
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/docs/assets/image?**", (route) => route.fulfill({ contentType: "image/png", body: PNG }));
@@ -26,9 +28,14 @@ for (const provider of ["github", "gitlab"] as const) {
     const fixture = docsyncDocsScenario({ provider });
     await inOrg(page, "admin", fixture.rpc);
     await page.goto("/knowledge/docs");
-    await expect(tree(page)).toBeVisible({ timeout: 20_000 });
+    await expandDocTree(page);
     await expect(tree(page).getByText("PR #128 đang mở")).toBeVisible();
-    await expect(tree(page).getByText("Chưa có nhà", { exact: true }).first()).toBeVisible();
+    // Tài liệu chưa có nhà nằm theo scope của nó, không có nhóm "Chưa có nhà" riêng (US3-4).
+    const orgNode = tree(page)
+      .locator(":scope > li")
+      .filter({ has: page.getByRole("button", { name: "Thu nhóm Chung toàn tổ chức" }) });
+    await expect(orgNode.getByRole("button", { name: "Mở dòng Tài liệu chưa có nhà" })).toBeVisible();
+    await expect(tree(page).getByRole("button", { name: /^(Mở|Thu) (nhóm|thư mục) Chưa có nhà$/ })).toHaveCount(0);
     await choose(page);
     await expect(page.getByRole("link", { name: "PR #128", exact: true })).toHaveAttribute(
       "href",
@@ -70,6 +77,7 @@ test("di chuyển giữ key, lưu trữ và khôi phục dùng phiên bản đan
   await page.getByRole("button", { name: "Xác nhận", exact: true }).click();
   await expect(tree(page).getByText("Hướng dẫn cài đặt")).toBeHidden();
   await page.getByLabel("Danh sách tài liệu").selectOption("active");
+  await expandDocTree(page);
   await expect(tree(page).getByText("Hướng dẫn cài đặt")).toBeVisible();
 });
 
@@ -92,6 +100,7 @@ test("phân trang cây và 360 px sáng/tối, đóng mở bằng bàn phím", a
   const hub = await inOrg(page, "admin", fixture.rpc);
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/knowledge/docs");
+  await expandDocTree(page);
   await expect(tree(page).getByText("Tài liệu 204", { exact: true })).toBeVisible();
   expect(hub.rpcCalls.filter((call) => call.path === "docTree/list")).toHaveLength(2);
   const folder = tree(page).getByRole("button", { name: "Thu thư mục docs", exact: true });

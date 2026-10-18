@@ -129,3 +129,28 @@ export async function teamMemberIds(tx: Tx, teamId: string, min: TeamRole): Prom
   const admins = await notificationRecipients(tx);
   return [...new Set([...members.map((m) => m.userId), ...admins])];
 }
+
+/**
+ * Đội người dùng là thành viên trực tiếp (dòng team_members), không cộng mọi đội cho owner/admin tổ chức như
+ * visibleTeamIds: bộ lọc "Dự án của tôi" cần đội mình thật sự thuộc về, không phải đội mình xem được.
+ */
+export async function directTeamIds(tx: Tx, userId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.orgId, sql`hive.ctx_org()`), eq(teamMembers.userId, userId)));
+  return rows.map((r) => r.teamId);
+}
+
+/**
+ * Những người trong `userIds` có dòng team_members ở đội `teamId`. Khoá ngoại của project_members trỏ tới team_members,
+ * nên owner/admin tổ chức không có dòng ở đây thì không thêm được vào dự án.
+ */
+export async function directTeamMembers(tx: Tx, teamId: string, userIds: string[]): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await tx
+    .select({ userId: teamMembers.userId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), inArray(teamMembers.userId, [...new Set(userIds)])));
+  return new Set(rows.map((r) => r.userId));
+}

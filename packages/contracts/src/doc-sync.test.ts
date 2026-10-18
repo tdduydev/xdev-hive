@@ -152,6 +152,7 @@ describe("nhập, xung đột, file và cây", () => {
         prUrl: null,
         repoUrl: null,
         repoCommit: null,
+        scope: { level: "org", teamId: null, projectId: null },
       }),
     ).toMatchObject({ key: "org/old-doc", homeId: null, path: null, state: null });
     const schema = contract.docTree.list["~orpc"].inputSchema;
