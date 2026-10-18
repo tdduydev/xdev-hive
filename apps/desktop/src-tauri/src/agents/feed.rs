@@ -28,6 +28,8 @@ pub struct Entry {
     /// Tên công cụ của mục Tool.
     pub tool: Option<String>,
     pub text: String,
+    /// Chữ đã bị chặn trên: giao diện bỏ mẩu cuối (có thể là nửa bí mật) và thêm "…" sau khi che.
+    pub cut: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,23 +78,22 @@ const FORWARD_MAX: u64 = 4 * 1024 * 1024;
 const BACKWARD_MAX: u64 = 8 * 1024 * 1024;
 const BACKWARD_STEP: u64 = 256 * 1024;
 
-/// Cắt chữ dài, giữ xuống dòng.
-fn cut(s: &str, max: usize) -> String {
+/// Chặn trên chữ dài, giữ xuống dòng; trả kèm cờ đã cắt.
+fn cut(s: &str, max: usize) -> (String, bool) {
     let s = s.trim();
     if s.chars().count() <= max {
-        return s.to_string();
+        return (s.to_string(), false);
     }
-    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-    out.push('…');
-    out
+    (s.chars().take(max).collect(), true)
 }
 
-fn entry(at: &Option<String>, kind: Kind, tool: Option<String>, text: String) -> Entry {
+fn entry(at: &Option<String>, kind: Kind, tool: Option<String>, (text, cut): (String, bool)) -> Entry {
     Entry {
         at: at.clone(),
         kind,
         tool,
         text,
+        cut,
     }
 }
 
@@ -474,7 +475,8 @@ mod tests {
                 at: Some(T.into()),
                 kind: Kind::User,
                 tool: None,
-                text: "Sửa lỗi đăng nhập".into()
+                text: "Sửa lỗi đăng nhập".into(),
+                cut: false,
             }]
         );
         // Dòng hệ thống chèn vào và lệnh gạch chéo không phải lời người dùng.
@@ -589,7 +591,10 @@ mod tests {
         let user = json!({"type": "user", "message": {"content": long}});
         let e = entries(Format::Claude, &user);
         assert_eq!(e[0].text.chars().count(), 16_000);
-        assert!(e[0].text.ends_with('…'));
+        // Không thêm "…": cờ `cut` báo cho giao diện, vì chữ của người dùng cũng có thể kết thúc bằng "…".
+        assert!(e[0].cut && !e[0].text.ends_with('…'));
+        let short = json!({"type": "user", "message": {"content": "Đợi chút…"}});
+        assert!(!entries(Format::Claude, &short)[0].cut);
         let result = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "x\n".repeat(2000)}]}});
         assert_eq!(
             entries(Format::Claude, &result)[0].text.lines().count(),

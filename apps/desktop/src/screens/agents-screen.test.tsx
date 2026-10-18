@@ -65,7 +65,7 @@ function fakeTauri(agents: MachineAgent[]) {
     machine_agent_stop: () => null,
     machine_agent_feed: () => ({
       path: "/Users/ha/.claude/projects/-Users-ha-shop/s.jsonl",
-      entries: [{ at: "2026-10-18T08:00:00Z", kind: "user", tool: null, text: "Sửa lỗi đăng nhập" }],
+      entries: [{ at: "2026-10-18T08:00:00Z", kind: "user", tool: null, text: "Sửa lỗi đăng nhập", cut: false }],
       start: 0,
       end: 10,
       reset: false,
@@ -154,7 +154,10 @@ describe("AgentsScreen", () => {
     const calls = fakeTauri([MINE, RUN]);
     const user = userEvent.setup();
     render(<AgentsScreen />);
-    const card = within(await row(4242)).getByRole("button", { name: "Xem hoạt động: Sửa login (PID 4242)" });
+    const card = within(await row(4242)).getByRole("button", { name: /^Xem hoạt động: Sửa login/ });
+    // Tên của nút gồm cả nội dung thẻ: trình đọc màn hình vẫn nghe trạng thái, việc đang làm, lời nhắc cuối.
+    expect(card.textContent).toContain("Bash: Chạy test");
+    expect(card.getAttribute("aria-label")).toBeNull();
     card.focus();
     await user.keyboard("{Enter}");
     const dialog = await screen.findByRole("dialog", { name: /Hoạt động · Sửa login/ });
