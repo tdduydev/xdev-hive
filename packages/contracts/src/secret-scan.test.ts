@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { SECRET_KINDS, type SecretFinding, scanSecrets } from "./secret-scan.ts";
+import { redactSecrets, SECRET_KINDS, SECRET_MASK, type SecretFinding, scanSecrets } from "./secret-scan.ts";
 
 interface Sample {
   name: string;
@@ -48,5 +48,25 @@ describe("scanSecrets", () => {
     const started = performance.now();
     expect(scanSecrets(text)).toEqual([]);
     expect(performance.now() - started).toBeLessThan(2_000);
+  });
+});
+
+describe("redactSecrets", () => {
+  it.each(fixtures.positive)("che mọi chuỗi bắt được: $name", (sample) => {
+    const masked = redactSecrets(textOf(sample));
+    expect(scanSecrets(masked)).toEqual([]);
+    expect(masked).toContain(SECRET_MASK);
+  });
+
+  it.each(fixtures.negative)("giữ nguyên chữ không phải bí mật: $name", (sample) => {
+    expect(redactSecrets(textOf(sample))).toBe(textOf(sample));
+  });
+
+  it("chỉ che giá trị, giữ tên biến và chữ xung quanh", () => {
+    const pat = `hive_pat_${"a1".repeat(12)}`;
+    expect(redactSecrets(`curl -H "Authorization: Bearer ${pat}" x`)).toBe(
+      `curl -H "Authorization: Bearer ${SECRET_MASK}" x`,
+    );
+    expect(redactSecrets("DB_PASSWORD=hunter2abc9\nPORT=5432")).toBe(`DB_PASSWORD=${SECRET_MASK}\nPORT=5432`);
   });
 });
