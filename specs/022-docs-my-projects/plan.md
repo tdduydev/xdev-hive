@@ -13,7 +13,7 @@ Quyền đọc tài liệu ở hub giữ nguyên.
 **Tech Stack:** Hono + oRPC, drizzle-orm + Postgres RLS, zod (`packages/contracts`), React + TanStack Query, vitest,
 Playwright (`apps/web/e2e`, fake hub).
 
-**Spec:** [specs/019-docs-my-projects/spec.md](spec.md)
+**Spec:** [specs/022-docs-my-projects/spec.md](spec.md)
 
 ## Global Constraints
 
@@ -100,7 +100,7 @@ export const projectMembers = hive
   .enableRLS();
 ```
 
-Comment trên bảng: thành viên dự án chỉ chọn tài liệu hiện mặc định, không mang quyền (spec 019).
+Comment trên bảng: thành viên dự án chỉ chọn tài liệu hiện mặc định, không mang quyền (spec 022).
 
 - [ ] **Step 4: Sinh migration**
 

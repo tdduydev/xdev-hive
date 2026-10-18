@@ -106,7 +106,7 @@ export const projects = hive
   .enableRLS();
 
 /**
- * Thành viên dự án chỉ chọn tài liệu hiện mặc định, không mang quyền (spec 019): quyền vẫn theo vai trò trong đội.
+ * Thành viên dự án chỉ chọn tài liệu hiện mặc định, không mang quyền (spec 022): quyền vẫn theo vai trò trong đội.
  * Khoá ngoại (team_id, user_id) tới team_members nằm trong migration viết tay, để gỡ khỏi đội là mất luôn thành
  * viên dự án.
  */

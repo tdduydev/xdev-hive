@@ -213,7 +213,7 @@ Các quyết định sau không do chủ dự án nói. Người viết chọn �
 4. Bộ lọc lưu trong trình duyệt, không lưu ở hub. Đổi máy thì về mặc định.
 5. Tìm kiếm tài liệu không theo bộ lọc phạm vi.
 6. Bỏ nhóm "Chưa có nhà"; tài liệu chưa có nhà nằm theo `scope`.
-7. Đặt spec ở `specs/019-docs-my-projects/` theo cách đánh số của repo, không ở `docs/superpowers/specs/`.
+7. Đặt spec ở `specs/022-docs-my-projects/` theo cách đánh số của repo, không ở `docs/superpowers/specs/`.
 8. Chỉ làm web. Cây tài liệu của app desktop (`DocFolders` trong `apps/desktop/src/screens/write-screen.tsx`) giữ
    nguyên, làm sau nếu cần.
 9. Đính kèm không có tài liệu sở hữu nằm theo nhà (FR-015).

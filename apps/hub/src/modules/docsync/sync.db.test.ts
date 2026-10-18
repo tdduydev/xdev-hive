@@ -443,7 +443,7 @@ describe("bí mật không vào repo hay embedding khi chưa xác nhận (SC-007
   });
 });
 
-describe("scope của mục trong cây (spec 019)", () => {
+describe("scope của mục trong cây (spec 022)", () => {
   const paths = () => ({
     projectDoc: `docs/scope-${tag}/a.md`,
     orgDoc: `scope-${tag}/b.md`,

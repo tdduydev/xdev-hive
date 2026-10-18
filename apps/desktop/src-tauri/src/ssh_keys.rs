@@ -1,4 +1,4 @@
-//! Máy chủ SSH của máy này (specs/020-desktop-ssh-keys): chuyển đăng nhập từ mật khẩu sang khoá qua `hive-worker ssh`.
+//! Máy chủ SSH của máy này (specs/023-desktop-ssh-keys): chuyển đăng nhập từ mật khẩu sang khoá qua `hive-worker ssh`.
 //! Chạy được khi chưa đăng nhập Hive.
 //!
 //! Mật khẩu chỉ đi qua stdin của sidecar: không nằm trong tham số, biến môi trường, file hay log. Sidecar gửi nó tới máy
