@@ -63,7 +63,7 @@ const text: Dict<{
   openSession: string;
   openTab: string;
   terminalHere: string;
-  openFeed: (title: string, pid: number) => string;
+  openFeed: string;
   stop: string;
   stopTitle: (cli: string, pid: number) => string;
   stopLead: string;
@@ -108,7 +108,7 @@ const text: Dict<{
     openSession: "Mở phiên trên web",
     openTab: "Mở tab",
     terminalHere: "Terminal ở thư mục này",
-    openFeed: (title, pid) => `Xem hoạt động: ${title} (PID ${pid})`,
+    openFeed: "Xem hoạt động:",
     stop: "Dừng…",
     stopTitle: (cli, pid) => `Dừng ${cli} (PID ${pid})?`,
     stopLead: "Agent và mọi tiến trình nó mở sẽ dừng ngay. Việc đang làm dở không được lưu.",
@@ -154,7 +154,7 @@ const text: Dict<{
     openSession: "Open session on the web",
     openTab: "Open tab",
     terminalHere: "Terminal in this folder",
-    openFeed: (title, pid) => `View activity: ${title} (PID ${pid})`,
+    openFeed: "View activity:",
     stop: "Stop…",
     stopTitle: (cli, pid) => `Stop ${cli} (PID ${pid})?`,
     stopLead: "The agent and every process it started stop now. Unsaved work is lost.",
@@ -229,15 +229,16 @@ function AgentRow({
     <li aria-label={`${CLI_LABEL[a.cli]} PID ${a.pid}`} className="flex flex-col gap-2 px-4 py-3">
       <button
         type="button"
-        aria-label={t.openFeed(title, a.pid)}
         onClick={() => onOpen(a, title)}
         className="-mx-2 -my-1.5 flex cursor-pointer flex-col items-stretch gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring"
       >
         <span className="flex min-w-0 flex-wrap items-center gap-2">
+          {/* Tên của nút là cả nội dung thẻ (trạng thái, việc đang làm), mở đầu bằng lời nói nút làm gì. */}
+          <span className="sr-only">{t.openFeed}</span>{" "}
           <HexAvatar aria-hidden="true" size="sm" tone={tone} className="font-mono">
             {mark}
           </HexAvatar>
-          <span className="min-w-0 truncate text-sm font-semibold">{title}</span>
+          <span className="min-w-0 truncate text-sm font-semibold">{title}</span>{" "}
           {act?.status === "busy" && (
             <Pill tone="ok" dot>
               {t.busy}

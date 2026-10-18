@@ -66,6 +66,8 @@ export interface FeedEntry {
   kind: "user" | "assistant" | "tool" | "result" | "error";
   tool: string | null;
   text: string;
+  /** Rust đã chặn trên chữ: che bí mật rồi bỏ mẩu cuối dở và thêm "…". */
+  cut: boolean;
 }
 
 export interface AgentFeed {

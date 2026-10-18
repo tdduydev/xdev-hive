@@ -22,6 +22,24 @@ import { cn } from "@/lib/utils.ts";
 const FEED_MS = 1_000;
 /** Cách đáy dưới ngần này (px) vẫn coi là đang ở cuối danh sách. */
 const BOTTOM_SLACK = 40;
+/** Giữ tối đa ngần này mục: agent chạy cả giờ không làm khung nặng dần. */
+const MAX_ROWS = 2000;
+/** Độ dài hiện của từng loại mục, sau khi che bí mật. */
+const SHOW_MAX: Record<FeedEntry["kind"], number> = { user: 4000, assistant: 4000, tool: 200, result: 600, error: 600 };
+
+const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+/**
+ * Chữ hiện và chép của một mục: che bí mật trên chữ còn nguyên rồi mới cắt, vì bí mật bị cắt đôi không còn khớp mẫu.
+ * Rust đã chặn trên giữa chừng thì bỏ mẩu cuối (có thể là nửa bí mật). Đầu vào công cụ gộp thành một dòng sau khi che,
+ * để mẫu `KEY=value` cần cả dòng vẫn khớp.
+ */
+export function shown(e: FeedEntry): string {
+  let text = redactSecrets(e.text);
+  if (e.cut) text = `${text.replace(/\S+$/, "")}…`;
+  if (e.kind === "tool") text = text.replace(/\s+/g, " ").trim();
+  return clip(text, SHOW_MAX[e.kind]);
+}
 
 const text: Dict<{
   title: string;
@@ -35,6 +53,7 @@ const text: Dict<{
   unreadable: string;
   unreadableHint: string;
   switched: string;
+  trimmed: string;
   guessed: string;
   kinds: Record<FeedEntry["kind"], string>;
   local: string;
@@ -51,6 +70,7 @@ const text: Dict<{
     unreadable: "Không đọc được phiên.",
     unreadableHint: "Không thấy file phiên của agent này, hoặc định dạng file phiên của CLI đã đổi.",
     switched: "Đã chuyển sang phiên mới.",
+    trimmed: "Đã bỏ các mục cũ để khung nhẹ; chỉ giữ 2000 mục mới nhất.",
     guessed: "Chọn phiên mới nhất của thư mục (CLI không ghi phiên theo tiến trình).",
     kinds: { user: "Lời nhắc", assistant: "Agent", tool: "Công cụ", result: "Kết quả", error: "Lỗi" },
     local: "Đọc từ file phiên trên máy này, không gửi lên hub. Bí mật dạng token được che.",
@@ -67,6 +87,7 @@ const text: Dict<{
     unreadable: "Can't read the session.",
     unreadableHint: "No session file was found for this agent, or the CLI changed its session format.",
     switched: "Switched to a new session.",
+    trimmed: "Dropped older entries to keep the panel light; only the newest 2000 are kept.",
     guessed: "Showing the newest session of this folder (the CLI does not record sessions per process).",
     kinds: { user: "Prompt", assistant: "Agent", tool: "Tool", result: "Result", error: "Error" },
     local: "Read from the session file on this machine, never sent to the hub. Token-like secrets are masked.",
@@ -87,9 +108,11 @@ const clock = (at: string | null, lang: Lang) =>
   at ? new Date(at).toLocaleTimeString(LOCALE[lang], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
 
 /** Mục kèm số thứ tự nhận ở giao diện, làm khoá ổn định khi chèn trang cũ lên đầu. */
-type Row = FeedEntry & { id: number };
+type Row = FeedEntry & { id: number; shown: string };
 
-const withIds = (seq: { current: number }, list: FeedEntry[]): Row[] => list.map((e) => ({ ...e, id: ++seq.current }));
+/** Che và cắt một lần khi mục đến; mỗi lần vẽ lại không chạy lại các mẫu bí mật. */
+const withIds = (seq: { current: number }, list: FeedEntry[]): Row[] =>
+  list.map((e) => ({ ...e, id: ++seq.current, shown: shown(e) }));
 
 /** Nội dung khung của một agent; đổi agent thì dựng lại từ đầu (key theo pid và giờ bắt đầu). */
 function FeedBody({ agent, title }: { agent: MachineAgent; title: string }) {
@@ -103,6 +126,8 @@ function FeedBody({ agent, title }: { agent: MachineAgent; title: string }) {
   const [gone, setGone] = useState<string | null>(null);
   const [following, setFollowing] = useState(true);
   const [copied, setCopied] = useState(false);
+  /** Đã bỏ mục cũ để giữ MAX_ROWS: vị trí "Tải thêm" không còn đúng nên thôi tải thêm. */
+  const [trimmed, setTrimmed] = useState(false);
   const path = useRef<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   /** Chiều cao trước khi chèn trang cũ lên đầu, để giữ nguyên chỗ người dùng đang đọc. */
@@ -123,7 +148,12 @@ function FeedBody({ agent, title }: { agent: MachineAgent; title: string }) {
           setStart(f.start);
           if (cursor && f.reset) setSwitched(true);
         } else if (f.entries.length > 0) {
-          setEntries((prev) => [...prev, ...withIds(seq, f.entries)]);
+          setEntries((prev) => {
+            const next = [...prev, ...withIds(seq, f.entries)];
+            if (next.length <= MAX_ROWS) return next;
+            setTrimmed(true);
+            return next.slice(next.length - MAX_ROWS);
+          });
         }
         cursor = f.path ? { path: f.path, end: f.end } : null;
         path.current = f.path;
@@ -187,7 +217,7 @@ function FeedBody({ agent, title }: { agent: MachineAgent; title: string }) {
 
   async function copy() {
     const lines = entries.map(
-      (e) => `[${clock(e.at, lang)}] ${t.kinds[e.kind]}${e.tool ? ` (${e.tool})` : ""}: ${redactSecrets(e.text)}`,
+      (e) => `[${clock(e.at, lang)}] ${t.kinds[e.kind]}${e.tool ? ` (${e.tool})` : ""}: ${e.shown}`,
     );
     try {
       await navigator.clipboard.writeText(lines.join("\n"));
@@ -234,7 +264,8 @@ function FeedBody({ agent, title }: { agent: MachineAgent; title: string }) {
         {gone && <Alert variant="destructive">{gone}</Alert>}
         {switched && <p className="text-xs text-muted-foreground">{t.switched}</p>}
         {guessed && <p className="text-xs text-muted-foreground">{t.guessed}</p>}
-        {readable === true && start > 0 && (
+        {trimmed && <p className="text-xs text-muted-foreground">{t.trimmed}</p>}
+        {readable === true && start > 0 && !trimmed && (
           <Button size="xs" variant="ghost" className="self-center" onClick={() => void loadOlder()}>
             <ChevronsUpIcon aria-hidden="true" />
             {t.older}
@@ -263,9 +294,7 @@ function FeedBody({ agent, title }: { agent: MachineAgent; title: string }) {
                       </time>
                     )}
                   </span>
-                  <p className={cn("mt-0.5 text-sm break-words whitespace-pre-wrap", style.body)}>
-                    {redactSecrets(e.text)}
-                  </p>
+                  <p className={cn("mt-0.5 text-sm break-words whitespace-pre-wrap", style.body)}>{e.shown}</p>
                 </li>
               );
             })}

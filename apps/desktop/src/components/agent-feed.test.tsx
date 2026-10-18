@@ -29,6 +29,7 @@ const entry = (kind: FeedEntry["kind"], text: string, tool: string | null = null
   kind,
   tool,
   text,
+  cut: false,
 });
 
 const feed = (over: Partial<AgentFeed>): AgentFeed => ({
@@ -180,6 +181,47 @@ describe("AgentFeedPanel", () => {
     await user.click(follow);
     expect(follow.getAttribute("aria-checked")).toBe("true");
     expect(scroller.scrollTop).toBe(2000);
+  });
+
+  it("che bí mật trên chữ còn nguyên rồi mới cắt cho gọn", async () => {
+    fakeTauri([
+      feed({
+        entries: [
+          // Lệnh nhiều dòng: dòng KEY=value chỉ khớp mẫu khi còn xuống dòng; hiện thành một dòng sau khi che.
+          entry("tool", "cat <<EOF\nDB_PASSWORD=hunter2abc9\nEOF", "Bash"),
+          // Rust chặn trên giữa chừng một bí mật: phần dở cuối cùng không được hiện.
+          { ...entry("result", 'ok "password":"hunter2abcdefgh'), cut: true },
+          entry("user", "á".repeat(5000)),
+        ],
+      }),
+    ]);
+    render(<AgentFeedPanel agent={AGENT} title="x" onClose={() => {}} />);
+    const list = await screen.findByRole("list", { name: "Hoạt động của agent" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items[0]?.textContent).toContain("cat <<EOF DB_PASSWORD=•••••• EOF");
+    expect(list.textContent).not.toContain("hunter2");
+    expect(items[1]?.textContent).toContain("ok …");
+    const long = items[2]?.querySelector("p")?.textContent ?? "";
+    expect(long.length).toBe(4000);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
+  it("giữ tối đa 2000 mục: bỏ mục cũ nhất, thôi Tải thêm và báo", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const many = (n: number, from: number) =>
+      Array.from({ length: n }, (_, i) => entry("assistant", `mục ${from + i}`));
+    fakeTauri([feed({ entries: many(1990, 0), start: 900 }), feed({ entries: many(20, 1990), end: 200 })]);
+    render(<AgentFeedPanel agent={AGENT} title="x" onClose={() => {}} />);
+    await screen.findByText("mục 1989");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_100);
+    });
+    await screen.findByText("mục 2009");
+    const list = screen.getByRole("list", { name: "Hoạt động của agent" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2000);
+    expect(screen.queryByText("mục 9")).toBeNull();
+    expect(screen.getByText(/Đã bỏ các mục cũ/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Tải thêm" })).toBeNull();
   });
 
   it("định dạng lạ hay không có file phiên: báo Không đọc được phiên", async () => {
