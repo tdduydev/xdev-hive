@@ -12,6 +12,7 @@ import { agentHex, HexAvatar } from "@xdev-hive/ui/hex-avatar";
 import { Pill } from "@xdev-hive/ui/pill";
 import { ExternalLinkIcon, RefreshCwIcon, SquareIcon, SquareTerminalIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { AgentFeedPanel } from "@/components/agent-feed.tsx";
 import { type CliProfile, cliProfiles } from "@/lib/agent.ts";
 import { folderName, shortPath } from "@/lib/folder.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
@@ -62,6 +63,7 @@ const text: Dict<{
   openSession: string;
   openTab: string;
   terminalHere: string;
+  openFeed: (title: string, pid: number) => string;
   stop: string;
   stopTitle: (cli: string, pid: number) => string;
   stopLead: string;
@@ -106,6 +108,7 @@ const text: Dict<{
     openSession: "Mở phiên trên web",
     openTab: "Mở tab",
     terminalHere: "Terminal ở thư mục này",
+    openFeed: (title, pid) => `Xem hoạt động: ${title} (PID ${pid})`,
     stop: "Dừng…",
     stopTitle: (cli, pid) => `Dừng ${cli} (PID ${pid})?`,
     stopLead: "Agent và mọi tiến trình nó mở sẽ dừng ngay. Việc đang làm dở không được lưu.",
@@ -151,6 +154,7 @@ const text: Dict<{
     openSession: "Open session on the web",
     openTab: "Open tab",
     terminalHere: "Terminal in this folder",
+    openFeed: (title, pid) => `View activity: ${title} (PID ${pid})`,
     stop: "Stop…",
     stopTitle: (cli, pid) => `Stop ${cli} (PID ${pid})?`,
     stopLead: "The agent and every process it started stop now. Unsaved work is lost.",
@@ -186,6 +190,7 @@ function AgentRow({
   plans,
   onStop,
   onError,
+  onOpen,
 }: {
   agent: MachineAgent;
   scan: AgentScan;
@@ -193,6 +198,7 @@ function AgentRow({
   plans: CliProfile[];
   onStop: (a: MachineAgent) => void;
   onError: (e: string) => void;
+  onOpen: (a: MachineAgent, title: string) => void;
 }) {
   const t = useT(text);
   const lang = useLang();
@@ -221,57 +227,64 @@ function AgentRow({
 
   return (
     <li aria-label={`${CLI_LABEL[a.cli]} PID ${a.pid}`} className="flex flex-col gap-2 px-4 py-3">
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <HexAvatar aria-hidden="true" size="sm" tone={tone} className="font-mono">
-          {mark}
-        </HexAvatar>
-        <span className="min-w-0 truncate text-sm font-semibold">{title}</span>
-        {act?.status === "busy" && (
-          <Pill tone="ok" dot>
-            {t.busy}
-          </Pill>
+      <button
+        type="button"
+        aria-label={t.openFeed(title, a.pid)}
+        onClick={() => onOpen(a, title)}
+        className="-mx-2 -my-1.5 flex cursor-pointer flex-col items-stretch gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <HexAvatar aria-hidden="true" size="sm" tone={tone} className="font-mono">
+            {mark}
+          </HexAvatar>
+          <span className="min-w-0 truncate text-sm font-semibold">{title}</span>
+          {act?.status === "busy" && (
+            <Pill tone="ok" dot>
+              {t.busy}
+            </Pill>
+          )}
+          {act?.status === "idle" && <Pill>{t.idle}</Pill>}
+          <Pill tone="sel">{source}</Pill>
+          {a.background && <Pill>{t.background}</Pill>}
+          {a.bypass && <Pill tone="bad">{t.bypass}</Pill>}
+        </span>
+        <span className="block text-xs text-muted-foreground">
+          {[
+            CLI_LABEL[a.cli],
+            `PID ${a.pid}`,
+            t.started(started),
+            `CPU ${cpu}%`,
+            `RAM ${formatBytes(a.memory, lang)}`,
+          ].join(" · ")}
+        </span>
+        <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+          {a.cwd && <span className="truncate font-mono text-muted-foreground">{shortPath(a.cwd)}</span>}
+          <span>
+            {t.project}: {projectText}
+          </span>
+          <span>
+            {t.plan}: {planText}
+          </span>
+        </span>
+        {act && (act.step || act.prompt) && (
+          <span className="flex flex-col gap-0.5 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs">
+            {act.step && (
+              <span className="truncate">
+                <span className="text-muted-foreground">{t.doing}: </span>
+                {act.step}
+                {since !== null && <span className="text-muted-foreground"> · {t.ago(since)}</span>}
+              </span>
+            )}
+            {act.prompt && (
+              <span className="line-clamp-2" title={act.prompt}>
+                <span className="text-muted-foreground">{t.lastPrompt}: </span>
+                {act.prompt}
+              </span>
+            )}
+            {act.guessed && <span className="text-muted-foreground">{t.guessed}</span>}
+          </span>
         )}
-        {act?.status === "idle" && <Pill>{t.idle}</Pill>}
-        <Pill tone="sel">{source}</Pill>
-        {a.background && <Pill>{t.background}</Pill>}
-        {a.bypass && <Pill tone="bad">{t.bypass}</Pill>}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {[
-          CLI_LABEL[a.cli],
-          `PID ${a.pid}`,
-          t.started(started),
-          `CPU ${cpu}%`,
-          `RAM ${formatBytes(a.memory, lang)}`,
-        ].join(" · ")}
-      </p>
-      <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-        {a.cwd && <span className="truncate font-mono text-muted-foreground">{shortPath(a.cwd)}</span>}
-        <span>
-          {t.project}: {projectText}
-        </span>
-        <span>
-          {t.plan}: {planText}
-        </span>
-      </p>
-      {act && (act.step || act.prompt) && (
-        <div className="flex flex-col gap-0.5 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs">
-          {act.step && (
-            <span className="truncate">
-              <span className="text-muted-foreground">{t.doing}: </span>
-              {act.step}
-              {since !== null && <span className="text-muted-foreground"> · {t.ago(since)}</span>}
-            </span>
-          )}
-          {act.prompt && (
-            <span className="line-clamp-2" title={act.prompt}>
-              <span className="text-muted-foreground">{t.lastPrompt}: </span>
-              {act.prompt}
-            </span>
-          )}
-          {act.guessed && <span className="text-muted-foreground">{t.guessed}</span>}
-        </div>
-      )}
+      </button>
       <div className="flex flex-wrap gap-1.5">
         {runId && (
           <Button size="xs" variant="outline" onClick={() => void openHub(`/runs/${runId}`)}>
@@ -337,6 +350,7 @@ export function AgentsScreen() {
   const [plans, setPlans] = useState<CliProfile[]>([]);
   const [filter, setFilter] = useState<SourceKind | "">("");
   const [stopping, setStopping] = useState<MachineAgent | null>(null);
+  const [viewing, setViewing] = useState<{ agent: MachineAgent; title: string } | null>(null);
   /** "Làm mới" và sau khi dừng: đọc ngay và bắt đầu lại nhịp 3 giây. */
   const refresh = useRef<() => void>(() => {});
 
@@ -467,12 +481,15 @@ export function AgentsScreen() {
                 plans={plans}
                 onStop={setStopping}
                 onError={setError}
+                onOpen={(agent, title) => setViewing({ agent, title })}
               />
             ))}
           </ul>
         )}
       </section>
       <p className="text-xs text-muted-foreground">{t.note}</p>
+
+      <AgentFeedPanel agent={viewing?.agent ?? null} title={viewing?.title ?? ""} onClose={() => setViewing(null)} />
 
       <Dialog open={stopping !== null} onOpenChange={(open) => !open && setStopping(null)}>
         <DialogContent>
