@@ -6,6 +6,8 @@ describe("menu theo hồ sơ", () => {
     const items = navItems("dev");
     expect(items.map((i) => i.id)).toEqual([
       "home",
+      "agents",
+      "terminal",
       "runs",
       "remote",
       "plans",
@@ -23,13 +25,22 @@ describe("menu theo hồ sơ", () => {
 
   it("writer: không có worker, gói, môi trường; Skills và Tài liệu từ code chỉ đọc", () => {
     const items = navItems("writer");
-    expect(items.map((i) => i.id)).toEqual(["home", "skills", "memory", "tokens", "docs", "settings"]);
+    expect(items.map((i) => i.id)).toEqual([
+      "home",
+      "agents",
+      "terminal",
+      "skills",
+      "memory",
+      "tokens",
+      "docs",
+      "settings",
+    ]);
     expect(items.filter((i) => i.readOnly).map((i) => i.id)).toEqual(["skills", "docs"]);
   });
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(11);
+    expect(items).toHaveLength(13);
     expect(items.some((i) => i.readOnly)).toBe(false);
   });
 
@@ -37,7 +48,7 @@ describe("menu theo hồ sơ", () => {
     const groups = navGroups("lead");
     expect(groups.map((g) => [g.label.vi, g.untitled ?? false, g.items.map((i) => i.label.vi)])).toEqual([
       ["Máy này", true, ["Máy này"]],
-      ["Chạy", false, ["Lượt chạy", "Điều khiển từ xa"]],
+      ["Chạy", false, ["Agent trên máy", "Terminal", "Lượt chạy", "Điều khiển từ xa"]],
       ["Agent", false, ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"]],
       ["Dự án", false, ["Dự án trên máy", "Môi trường", "Tài liệu từ code"]],
     ]);
@@ -53,7 +64,7 @@ describe("menu theo hồ sơ", () => {
   });
 
   it("nhóm không còn mục nào theo hồ sơ thì bỏ cả nhóm", () => {
-    expect(navGroups("writer").map((g) => g.id)).toEqual(["machine", "agent", "project"]);
+    expect(navGroups("writer").map((g) => g.id)).toEqual(["machine", "run", "agent", "project"]);
     const onlyRuns = NAV_GROUPS.map((g) => (g.id === "agent" ? { ...g, items: [] } : g));
     expect(navGroups("dev", onlyRuns).map((g) => g.id)).toEqual(["machine", "run", "project"]);
   });
