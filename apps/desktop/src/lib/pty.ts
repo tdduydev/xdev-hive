@@ -66,15 +66,23 @@ const listeners = new Set<() => void>();
 let listeningOn: unknown = null;
 let seq = 0;
 let fontSize = getTermFontSize();
-let snapshot: { sessions: TermSession[]; active: string | null; fontSize: number; folder: string | null } = {
+let themePref = getTermThemePref();
+let snapshot: {
+  sessions: TermSession[];
+  active: string | null;
+  fontSize: number;
+  theme: TermThemePref;
+  folder: string | null;
+} = {
   sessions,
   active,
   fontSize,
+  theme: themePref,
   folder,
 };
 
 function emit() {
-  snapshot = { sessions, active, fontSize, folder };
+  snapshot = { sessions, active, fontSize, theme: themePref, folder };
   for (const l of listeners) l();
 }
 
@@ -127,10 +135,28 @@ function ensureListening() {
     .catch(fail);
 }
 
-/** Bảng màu theo giao diện đang dùng (sáng/tối), đọc lúc mở terminal và khi đổi giao diện. */
+/** Giao diện terminal: theo app, hoặc luôn tối/sáng bất kể app. */
+export type TermThemePref = "app" | "dark" | "light";
+export const TERM_THEME_PREFS: readonly TermThemePref[] = ["dark", "light", "app"];
+
+const THEME_KEY = "hive.terminal.theme";
+
+/** Mặc định luôn tối: terminal nền trắng trong app sáng khó đọc màu của CLI và prompt. */
+export function getTermThemePref(): TermThemePref {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === "app" || v === "light" || v === "dark" ? v : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
+/** Bảng màu theo lựa chọn giao diện terminal, đọc lúc mở terminal và khi đổi giao diện. */
 export function termTheme() {
-  const dark = document.documentElement.classList.contains("dark");
-  return terminalTheme(dark ? "dark" : "light", document.documentElement);
+  const appMode = document.documentElement.classList.contains("dark") ? "dark" : "light";
+  const mode = themePref === "app" ? appMode : themePref;
+  // Token màu trên trang là của giao diện app: chỉ lấy khi terminal cùng chế độ, không thì nền sáng lọt vào terminal tối.
+  return terminalTheme(mode, mode === appMode ? document.documentElement : null);
 }
 
 const FONT_KEY = "hive.terminal.fontSize";
@@ -162,6 +188,18 @@ export function setTermFontSize(size: number) {
     }
   }
   fontSize = size;
+  emit();
+}
+
+/** Đổi giao diện mọi terminal đang mở ngay, không cần mở lại. */
+export function setTermThemePref(pref: TermThemePref) {
+  try {
+    localStorage.setItem(THEME_KEY, pref);
+  } catch {
+    /* Không lưu được thì chỉ mất lựa chọn ở lần mở sau. */
+  }
+  themePref = pref;
+  for (const l of live.values()) l.term.options.theme = termTheme();
   emit();
 }
 
