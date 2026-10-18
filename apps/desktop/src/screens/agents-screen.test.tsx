@@ -63,6 +63,15 @@ function fakeTauri(agents: MachineAgent[]) {
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     machine_agents: () => ({ agents, home: "/Users/ha" }),
     machine_agent_stop: () => null,
+    machine_agent_feed: () => ({
+      path: "/Users/ha/.claude/projects/-Users-ha-shop/s.jsonl",
+      entries: [{ at: "2026-10-18T08:00:00Z", kind: "user", tool: null, text: "Sửa lỗi đăng nhập", cut: false }],
+      start: 0,
+      end: 10,
+      reset: false,
+      guessed: false,
+      readable: true,
+    }),
     remote_session_kill: () => null,
     open_hub_page: () => null,
     local_projects: () => ({
@@ -139,6 +148,34 @@ describe("AgentsScreen", () => {
     expect(within(run).getByText(/PAY/)).toBeTruthy();
     expect(within(run).getByText(/Đăng nhập mặc định/)).toBeTruthy();
     expect(within(run).getByText(/đoán theo thư mục/)).toBeTruthy();
+  });
+
+  it("bấm vào thẻ agent (hay Enter) mở khung Hoạt động của đúng tiến trình", async () => {
+    const calls = fakeTauri([MINE, RUN]);
+    const user = userEvent.setup();
+    render(<AgentsScreen />);
+    const card = within(await row(4242)).getByRole("button", { name: /^Xem hoạt động: Sửa login/ });
+    // Tên của nút gồm cả nội dung thẻ: trình đọc màn hình vẫn nghe trạng thái, việc đang làm, lời nhắc cuối.
+    expect(card.textContent).toContain("Bash: Chạy test");
+    expect(card.getAttribute("aria-label")).toBeNull();
+    card.focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: /Hoạt động · Sửa login/ });
+    expect(await within(dialog).findByText("Sửa lỗi đăng nhập")).toBeTruthy();
+    expect(calls.find((c) => c.command === "machine_agent_feed")?.args).toMatchObject({
+      pid: 4242,
+      startedAt: STARTED,
+      cursor: null,
+    });
+    // Nút trên thẻ vẫn làm việc riêng của nó, không mở khung.
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(
+      within(await row(5000))
+        .getByRole("button", { name: "Mở run trên web" })
+        .closest("button") as HTMLElement,
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("đếm theo CLI và lọc theo nguồn", async () => {

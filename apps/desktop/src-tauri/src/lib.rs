@@ -1168,6 +1168,8 @@ pub fn run() {
             agents::machine_agents,
             agents::machine_agent_counts,
             agents::machine_agent_stop,
+            agents::machine_agent_feed,
+            agents::machine_agent_feed_older,
             updates::update_status,
             updates::check_updates_now,
             updates::relaunch_to_update,

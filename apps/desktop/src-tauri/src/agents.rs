@@ -6,10 +6,11 @@
 
 pub(crate) mod activity;
 pub(crate) mod classify;
+pub(crate) mod feed;
 
 use activity::Activity;
 use classify::{Cli, Context, HiveSession, Proc, Row, Source};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -115,18 +116,7 @@ fn collect(sys: &mut System, deep: bool) -> Snapshot {
     let mut procs: Vec<Proc> = sys
         .processes()
         .values()
-        .map(|p| Proc {
-            pid: p.pid().as_u32(),
-            parent: p.parent().map(Pid::as_u32),
-            name: lossy(p.name()),
-            exe: p.exe().map(|e| lossy(e.as_os_str())),
-            cmd: p.cmd().iter().map(|a| lossy(a)).collect(),
-            cwd: None,
-            start: p.start_time(),
-            cpu: p.cpu_usage(),
-            memory: p.memory(),
-            own: me.is_some() && p.user_id() == me.as_ref(),
-        })
+        .map(|p| to_proc(p, me.as_ref()))
         .collect();
     let mut env = HashMap::new();
     if !deep {
@@ -150,6 +140,15 @@ fn collect(sys: &mut System, deep: bool) -> Snapshot {
     Snapshot { procs, env }
 }
 
+/// Đọc lại vài pid, bỏ pid trùng trước: sysinfo 0.39 xoá mất pid xuất hiện hai lần trong danh sách khi bật xoá tiến
+/// trình đã chết.
+fn refresh_some(sys: &mut System, pids: &[Pid], kind: ProcessRefreshKind) {
+    let mut pids = pids.to_vec();
+    pids.sort_unstable();
+    pids.dedup();
+    sys.refresh_processes_specifics(ProcessesToUpdate::Some(&pids), true, kind);
+}
+
 /// Thư mục làm việc và biến môi trường đã lọc của một agent.
 struct Details {
     cwd: Option<String>,
@@ -165,10 +164,10 @@ fn read_details(pids: &[u32]) -> HashMap<u32, Details> {
         .without_tasks()
         .with_cwd(UpdateKind::Always)
         .with_environ(UpdateKind::Always);
-    sys.refresh_processes_specifics(ProcessesToUpdate::Some(&list), true, kind);
+    refresh_some(&mut sys, &list, kind);
     pids.iter()
         .filter_map(|pid| {
-            let p = sys.process(Pid::from_u32(*pid))?;
+            let p = sys.process(Pid::from_u32(*pid)).filter(|p| p.exists())?;
             let env = p
                 .environ()
                 .iter()
@@ -214,7 +213,7 @@ pub(crate) fn stop_targets(
 fn kill_tree(sys: &mut System, targets: &[u32], starts: &HashMap<u32, u64>) {
     let same = |sys: &System, pid: u32| {
         sys.process(Pid::from_u32(pid))
-            .filter(|p| starts.get(&pid) == Some(&p.start_time()))
+            .filter(|p| p.exists() && starts.get(&pid) == Some(&p.start_time()))
             .is_some()
     };
     let kill = |sys: &System, pid: u32| {
@@ -239,11 +238,7 @@ fn kill_tree(sys: &mut System, targets: &[u32], starts: &HashMap<u32, u64>) {
     let deadline = Instant::now() + STOP_GRACE;
     while Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(200));
-        sys.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&pids),
-            true,
-            ProcessRefreshKind::nothing().without_tasks(),
-        );
+        refresh_some(sys, &pids, ProcessRefreshKind::nothing().without_tasks());
         if !targets.iter().any(|pid| same(sys, *pid)) {
             return;
         }
@@ -269,6 +264,120 @@ fn config_key(cli: Cli) -> Option<&'static str> {
         Cli::Codex => Some("CODEX_HOME"),
         Cli::Antigravity => None,
     }
+}
+
+/// Tiến trình sysinfo đã đọc thành `Proc`; thư mục làm việc và môi trường đọc riêng (`read_details`).
+fn to_proc(p: &sysinfo::Process, me: Option<&sysinfo::Uid>) -> Proc {
+    Proc {
+        pid: p.pid().as_u32(),
+        parent: p.parent().map(Pid::as_u32),
+        name: lossy(p.name()),
+        exe: p.exe().map(|e| lossy(e.as_os_str())),
+        cmd: p.cmd().iter().map(|a| lossy(a)).collect(),
+        cwd: None,
+        start: p.start_time(),
+        cpu: p.cpu_usage(),
+        memory: p.memory(),
+        own: me.is_some() && p.user_id() == me,
+    }
+}
+
+type FeedTarget = (Option<feed::Format>, Option<(PathBuf, bool)>);
+
+/// Dòng agent của khung Hoạt động: cùng cách gộp với thẻ (shim và con cùng CLI là một dòng), kiểm tiến trình còn đó,
+/// cùng giờ bắt đầu, vẫn là agent và cùng người dùng với app.
+pub(crate) fn feed_row(
+    procs: &[Proc],
+    rows: &[Row],
+    pid: u32,
+    started_at: u64,
+) -> Result<Row, String> {
+    let Some(row) = rows.iter().find(|r| r.pid == pid && r.start == started_at) else {
+        let alive = procs.iter().any(|p| p.pid == pid && p.start == started_at);
+        return Err(if alive {
+            "Tiến trình này không còn là agent.".into()
+        } else {
+            "Agent đã thoát.".into()
+        });
+    };
+    if !row.own {
+        return Err("Chỉ xem được agent chạy bằng tài khoản máy của bạn.".into());
+    }
+    Ok(row.clone())
+}
+
+/// File phiên của một agent cho khung Hoạt động, tìm lại từ pid ở mỗi lần đọc. Giao diện chỉ gửi pid, giờ bắt đầu và
+/// file đang xem (để giữ phiên khi thư mục có hai phiên); Rust chỉ mở file chính nó tìm ra.
+fn feed_target(
+    sys: &mut System,
+    pid: u32,
+    started_at: u64,
+    cursor: Option<&str>,
+) -> Result<FeedTarget, String> {
+    let snap = collect(sys, false);
+    let ctx = Context {
+        app_pid: std::process::id(),
+        ptys: &[],
+        hive: &[],
+    };
+    let rows = classify::rows(&snap.procs, &ctx);
+    let row = feed_row(&snap.procs, &rows, pid, started_at)?;
+    let details = read_details(&row.pids);
+    let cwd = row
+        .pids
+        .iter()
+        .find_map(|p| details.get(p).and_then(|d| d.cwd.clone()));
+    let config = config_key(row.m.cli).and_then(|key| {
+        row.pids.iter().find_map(|p| {
+            details
+                .get(p)?
+                .env
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| PathBuf::from(v))
+        })
+    });
+    let home = crate::profiles::home_dir();
+    let dir = |default: &str| {
+        config
+            .clone()
+            .or_else(|| home.as_ref().map(|h| h.join(default)))
+    };
+    let now = now_secs();
+    Ok(match row.m.cli {
+        Cli::Claude => (
+            Some(feed::Format::Claude),
+            dir(".claude")
+                .and_then(|c| {
+                    activity::claude_transcripts(&c, &row.pids, cwd.as_deref(), row.start)
+                })
+                .and_then(|(list, guessed)| feed::pick(&list, cursor, now).map(|p| (p, guessed))),
+        ),
+        Cli::Codex => (
+            Some(feed::Format::Codex),
+            dir(".codex")
+                .zip(cwd.as_deref())
+                .and_then(|(h, c)| {
+                    feed::pick(
+                        &activity::codex_rollouts(&h, c, row.start, now),
+                        cursor,
+                        now,
+                    )
+                })
+                .map(|p| (p, true)),
+        ),
+        Cli::Antigravity => (None, None),
+    })
+}
+
+/// Chạy `f` với `System` dùng chung của màn Agent (đọc lại nhẹ vì tên, dòng lệnh chỉ đọc một lần mỗi tiến trình).
+fn with_sys<T>(
+    app: &AppHandle,
+    f: impl FnOnce(&mut System) -> Result<T, String>,
+) -> Result<T, String> {
+    let state = app.state::<Agents>();
+    let mut inner = state.0.lock().map_err(|_| "Không đọc được tiến trình.")?;
+    f(inner.sys.get_or_insert_with(System::new))
 }
 
 fn read_activity(row: &Row, config: Option<&str>, home: Option<&Path>) -> Option<Activity> {
@@ -480,6 +589,55 @@ pub async fn machine_agent_stop(app: AppHandle, pid: u32, started_at: u64) -> Re
     .await?
 }
 
+/// Vị trí khung Hoạt động đã đọc tới: file (chỉ để so) và byte sau dòng cuối.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedCursor {
+    path: String,
+    end: u64,
+}
+
+/// Khung Hoạt động (spec 021 phần 3): đọc tiếp file phiên của agent từ chỗ giao diện đã có; mới mở thì trang cuối.
+#[tauri::command]
+pub async fn machine_agent_feed(
+    app: AppHandle,
+    pid: u32,
+    started_at: u64,
+    cursor: Option<FeedCursor>,
+) -> Result<feed::Feed, String> {
+    blocking(move || {
+        let current = cursor.as_ref().map(|c| c.path.as_str());
+        let (format, file) = with_sys(&app, |sys| feed_target(sys, pid, started_at, current))?;
+        let Some(format) = format else {
+            return Ok(feed::next(None, feed::Format::Claude, None));
+        };
+        let file = file.as_ref().map(|(p, guessed)| (p.as_path(), *guessed));
+        let cursor = cursor.as_ref().map(|c| (c.path.as_str(), c.end));
+        Ok(feed::next(file, format, cursor))
+    })
+    .await?
+}
+
+/// "Tải thêm" của khung Hoạt động: trang trước byte `before` của file đang xem.
+#[tauri::command]
+pub async fn machine_agent_feed_older(
+    app: AppHandle,
+    pid: u32,
+    started_at: u64,
+    path: String,
+    before: u64,
+) -> Result<feed::Feed, String> {
+    blocking(move || {
+        let (format, file) = with_sys(&app, |sys| feed_target(sys, pid, started_at, Some(&path)))?;
+        let Some(format) = format else {
+            return Ok(feed::next(None, feed::Format::Claude, None));
+        };
+        let file = file.as_ref().map(|(p, guessed)| (p.as_path(), *guessed));
+        Ok(feed::older(file, format, &path, before))
+    })
+    .await?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,6 +690,88 @@ mod tests {
         assert!(me.own);
         assert!(me.start > 0);
         assert!(me.exe.is_some());
+    }
+
+    #[test]
+    fn read_details_reads_several_pids_at_once() {
+        // sysinfo bỏ mất tiến trình còn sống khi đọc nhiều pid một lần mà bật xoá tiến trình đã chết.
+        let spawn = || {
+            std::process::Command::new(if cfg!(windows) { "cmd" } else { "/bin/sh" })
+                .args(if cfg!(windows) {
+                    ["/C", "ping -n 6 127.0.0.1 >NUL"]
+                } else {
+                    ["-c", "sleep 5"]
+                })
+                .spawn()
+                .unwrap()
+        };
+        let (mut a, mut b) = (spawn(), spawn());
+        let me = std::process::id();
+        let details = read_details(&[a.id(), b.id(), me]);
+        for c in [&mut a, &mut b] {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+        for pid in [a.id(), b.id(), me] {
+            assert!(details.contains_key(&pid), "thiếu {pid}");
+        }
+    }
+
+    #[test]
+    fn feed_target_checks_start_time_and_that_it_is_an_agent() {
+        let mut sys = System::new();
+        let me = collect(&mut sys, false)
+            .procs
+            .into_iter()
+            .find(|p| p.pid == std::process::id())
+            .unwrap();
+        let reused = feed_target(&mut sys, me.pid, me.start + 1000, None).unwrap_err();
+        assert!(reused.contains("đã thoát"), "{reused}");
+        let not_agent = feed_target(&mut sys, me.pid, me.start, None).unwrap_err();
+        assert!(not_agent.contains("không còn là agent"), "{not_agent}");
+    }
+
+    #[test]
+    fn feed_row_uses_the_whole_shim_row_like_the_card() {
+        let mut node = proc(10, 1, "/usr/bin/node", 500, true);
+        node.cmd = vec![
+            "/usr/bin/node".into(),
+            "/usr/lib/node_modules/@openai/codex/bin/codex.js".into(),
+        ];
+        let procs = vec![
+            node,
+            proc(
+                11,
+                10,
+                "/usr/lib/node_modules/@openai/codex/vendor/codex-x86_64-unknown-linux-musl",
+                501,
+                true,
+            ),
+            proc(20, 1, "/bin/claude", 600, false),
+            proc(30, 1, "/bin/zsh", 700, true),
+        ];
+        let rows = classify::rows(&procs, &NONE);
+        assert_eq!(feed_row(&procs, &rows, 10, 500).unwrap().pids, vec![10, 11]);
+        assert!(
+            feed_row(&procs, &rows, 10, 499)
+                .unwrap_err()
+                .contains("đã thoát")
+        );
+        assert!(
+            feed_row(&procs, &rows, 99, 1)
+                .unwrap_err()
+                .contains("đã thoát")
+        );
+        assert!(
+            feed_row(&procs, &rows, 30, 700)
+                .unwrap_err()
+                .contains("không còn là agent")
+        );
+        assert!(
+            feed_row(&procs, &rows, 20, 600)
+                .unwrap_err()
+                .contains("tài khoản máy")
+        );
     }
 
     #[test]

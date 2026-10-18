@@ -60,6 +60,35 @@ export const machineAgentCounts = () => invoke<AgentCounts>("machine_agent_count
 export const stopMachineAgent = (pid: number, startedAt: number) =>
   invoke<void>("machine_agent_stop", { pid, startedAt });
 
+/** Một mục của khung Hoạt động (src-tauri/src/agents/feed.rs), đọc từ file phiên của chính CLI trên máy. */
+export interface FeedEntry {
+  at: string | null;
+  kind: "user" | "assistant" | "tool" | "result" | "error";
+  tool: string | null;
+  text: string;
+  /** Rust đã chặn trên chữ: che bí mật rồi bỏ mẩu cuối dở và thêm "…". */
+  cut: boolean;
+}
+
+export interface AgentFeed {
+  /** File phiên đang đọc; gửi lại ở lần sau để Rust biết còn cùng file (Rust không mở theo đường dẫn này). */
+  path: string | null;
+  entries: FeedEntry[];
+  /** Byte đầu của mục cũ nhất đã nhận; 0 là đã tới đầu file. */
+  start: number;
+  /** Byte sau dòng cuối đã đọc. */
+  end: number;
+  /** Đọc lại từ đầu file khác (phiên mới, file bị ghi đè): thay danh sách. */
+  reset: boolean;
+  guessed: boolean;
+  readable: boolean;
+}
+
+export const machineAgentFeed = (pid: number, startedAt: number, cursor: { path: string; end: number } | null) =>
+  invoke<AgentFeed>("machine_agent_feed", { pid, startedAt, cursor });
+export const machineAgentFeedOlder = (pid: number, startedAt: number, path: string, before: number) =>
+  invoke<AgentFeed>("machine_agent_feed_older", { pid, startedAt, path, before });
+
 export const CLI_LABEL: Record<AgentCli, string> = {
   claude: "Claude Code",
   codex: "Codex",

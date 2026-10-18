@@ -166,6 +166,41 @@ Dữ liệu nhạy cảm:
 - Giữ nguyên quy tắc an toàn của `pty.rs`: không nhận lệnh tuỳ ý từ giao diện, gói lấy từ `hive-worker accounts`,
   không có token trên giao diện, tối đa 8 terminal.
 
+## Phần 3: Xem hoạt động của agent (bổ sung 18/10/2026)
+
+Người dùng muốn bấm vào một agent để xem nó đang chạy gì, kiểu log trực tiếp. Thẻ hiện chỉ có bước cuối và lời nhắc cuối.
+
+- **Mở**: bấm vào thẻ agent (thẻ là một nút, dùng được bằng bàn phím) mở khung bên phải "Hoạt động" của tiến trình đó.
+- **Nội dung**, mỗi mục có giờ, mới nhất ở dưới:
+  - lời nhắc của người dùng;
+  - trả lời của agent;
+  - lần gọi công cụ: tên và tóm tắt đầu vào một dòng;
+  - kết quả công cụ, cắt ngắn;
+  - lỗi.
+  Suy nghĩ ẩn (thinking, reasoning) và dòng hệ thống chèn vào (`isMeta`) không hiện.
+- **Nguồn**, chỉ đọc, chỉ trên máy, không gửi hub:
+  - Claude Code: transcript JSONL, nối pid qua `sessions/<pid>.json` như Phần 1;
+  - Codex: rollout JSONL mới nhất của thư mục.
+  Antigravity và định dạng lạ: hiện "Không đọc được phiên".
+- **Đọc theo đuôi**:
+  - Lần đầu: 200 mục cuối. "Tải thêm" đọc 200 mục trước đó.
+  - Sau đó mỗi 1 giây đọc tiếp từ vị trí đã đọc, chỉ dòng đã ghi xong.
+  - File ngắn lại (bị ghi đè) hay agent chuyển sang file phiên mới (`/clear`, phiên Codex mới): đọc lại từ đầu file
+    mới và báo "Đã chuyển sang phiên mới".
+  - Mỗi lần đọc tối đa vài MB, file lớn không làm đứng app.
+- **An toàn**:
+  - Rust tự tìm file phiên từ pid và giờ bắt đầu, kiểm lại tiến trình còn là agent của chính người dùng.
+  - Đường dẫn giao diện gửi lại chỉ dùng để so; Rust không mở file theo đường dẫn từ giao diện.
+  - Chữ hiện và chữ chép đều được che bí mật bằng mẫu token chung của `packages/contracts` (`secret-scan.ts`).
+- **Điều khiển**:
+  - Tự cuộn xuống mục mới; người dùng cuộn lên thì dừng tự cuộn.
+  - Công tắc "Theo dõi" bật lại tự cuộn.
+  - "Sao chép" chép các mục đang có, đã che bí mật.
+  - Agent thoát thì báo và thôi đọc.
+- **Hive run**: vẫn có "Mở run trên web". Khung Hoạt động đọc transcript tại máy như mọi agent. Log của run qua hub
+  không đưa vào khung này: transcript tại máy đã có cùng nội dung, chi tiết hơn.
+- **Terminal trong app**: vẫn có "Mở tab".
+
 ## Menu sau thay đổi
 
 Nhóm "Chạy": Agent trên máy, Terminal, Lượt chạy, Điều khiển từ xa. Hai mục mới hiện cho mọi hồ sơ, vì là việc tại máy
