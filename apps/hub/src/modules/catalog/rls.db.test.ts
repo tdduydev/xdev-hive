@@ -1,9 +1,12 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { call } from "@orpc/server";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { type OrgFixture, pgCode, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
+import type { Auth } from "../identity/index.ts";
 import { createPool, parseMasterKey, withTenant } from "../platform/index.ts";
+import { ORG_HEADER, tenancyRouter } from "../tenancy/index.ts";
 import { projectMembers } from "./schema.ts";
 
 const { adminUrl, appUrl } = inject("db");
@@ -82,7 +85,8 @@ describe("RLS của project_members", () => {
 
 describe("khoá ngoại của project_members", () => {
   it("khoá ngoại chặn người không thuộc đội", async () => {
-    expect(await pgCode(() => addMember(orgA, projectA, "loner"))).toBe(FK_VIOLATION);
+    const error = await addMember(orgA, projectA, "loner").catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: FK_VIOLATION, constraint: "project_members_team_member_fk" });
   });
 
   it("gỡ khỏi đội thì mất thành viên dự án", async () => {
@@ -96,5 +100,30 @@ describe("khoá ngoại của project_members", () => {
       orgA.user("tviewer"),
     ]);
     expect(rows).toHaveLength(0);
+  });
+
+  it("gỡ khỏi đội qua route teamMembers.remove bằng hive_app thì mất thành viên dự án", async () => {
+    // Route chạy dưới RLS của hive_app, khác lệnh xoá bằng superuser ở ca trên.
+    const tadmin = orgB.user("tadmin");
+    const tenancy = tenancyRouter({
+      pool: app,
+      auth: {
+        api: { getSession: async () => ({ user: { id: tadmin, name: tadmin, email: `${tadmin}@seed.test` } }) },
+      } as unknown as Auth,
+    });
+    await addMember(orgB, projectB, "tadmin");
+    const members = async () =>
+      (await admin.query("select user_id from hive.project_members where project_id = $1 order by user_id", [projectB]))
+        .rows;
+    expect(await members()).toEqual([{ user_id: tadmin }, { user_id: orgB.user("tmember") }]);
+
+    expect(
+      await call(
+        tenancy.teamMembers.remove,
+        { teamId: orgB.teamId, userId: orgB.user("tmember") },
+        { context: { headers: new Headers({ [ORG_HEADER]: orgB.orgId }) } },
+      ),
+    ).toEqual({ ok: true });
+    expect(await members()).toEqual([{ user_id: tadmin }]);
   });
 });
