@@ -18,6 +18,7 @@ import type {
   RepoInfo,
   RepoRef,
 } from "./types.ts";
+import { ciTime } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -492,7 +493,16 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
             sha: null,
           };
         });
-      return { files, incomplete: false };
+      // %x1f (unit separator) không có trong tên tác giả hay tiêu đề; %s là dòng đầu của message.
+      const log = await git(dir, ["log", "--reverse", "--format=%H%x1f%an%x1f%aI%x1f%s", `${from}..${to}`]);
+      const commits = log
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [sha = "", author = "", at = "", title = ""] = line.split("\x1f");
+          return { sha, title, author: author || null, authoredAt: ciTime(at) };
+        });
+      return { files, commits, incomplete: false };
     },
     async archive(ref, sha, path) {
       const dir = await need(ref);
@@ -538,5 +548,17 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
       if (!found || (found.pr.state ?? "open") !== "open") return;
       await writeFile(found.file, `${JSON.stringify({ ...found.pr, state: "closed" }, null, 2)}\n`);
     },
+
+    listPipelines: noPipelines,
+    pipelineJobs: noPipelines,
+    jobLog: noPipelines,
+    retryPipeline: noPipelines,
+    cancelPipeline: noPipelines,
+    retryJob: noPipelines,
+    cancelJob: noPipelines,
+    playJob: noPipelines,
   };
 }
+
+// Script e2e chỉ kiểm luồng repo và PR; bảng CI/CD thử bằng provider memory.
+const noPipelines = () => Promise.reject(new GitProviderError("unsupported", "local: chưa hỗ trợ pipeline, job"));

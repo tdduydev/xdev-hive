@@ -1,15 +1,21 @@
 import { GitProviderError } from "./errors.ts";
+import type { JobEvent, PipelineEvent } from "./events.ts";
 import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
   ChecksState,
+  CiJob,
+  CiPipeline,
+  CiStatus,
   CommentOptions,
   CommitFilesInput,
   CommitStatusInput,
+  CompareCommit,
   CreateRepoInput,
   GitProvider,
   GitProviderKind,
+  ListPipelinesOptions,
   MergeMethod,
   PullRequestFile,
   PullRequestInput,
@@ -21,7 +27,7 @@ import type {
   ScmUser,
   WebhookInput,
 } from "./types.ts";
-import { COMMIT_STATUS_DESCRIPTION_MAX } from "./types.ts";
+import { CI_ACTIVE_STATUSES, COMMIT_STATUS_DESCRIPTION_MAX } from "./types.ts";
 
 type Method = Exclude<keyof GitProvider, "kind">;
 
@@ -30,7 +36,14 @@ export interface MemoryRepo {
   modes?: { truncated?: boolean; incomplete?: boolean };
   /** Nội dung file theo nhánh. */
   branches: Map<string, Map<string, string>>;
-  commits: Array<{ branch: string; message: string; sha: string; paths: string[]; snapshot: Map<string, string> }>;
+  commits: Array<{
+    branch: string;
+    message: string;
+    sha: string;
+    paths: string[];
+    snapshot: Map<string, string>;
+    at?: string;
+  }>;
   /** Ảnh chụp nhánh chính lúc tạo repo, khóa theo sha `<nhánh>@init`; không phải commit nên không nằm trong `commits`. */
   initial: Map<string, Map<string, string>>;
   protection: Map<string, BranchRules>;
@@ -41,6 +54,26 @@ export interface MemoryRepo {
   checks: Map<string, ChecksState>;
   /** Commit status theo `sha` rồi `context`; đặt lại cùng context thì ghi đè như nhà cung cấp thật. */
   statuses: Map<string, Map<string, CommitStatusInput>>;
+  pipelines: CiPipeline[];
+  /** Job của mọi pipeline, theo thứ tự pipelineJobs trả. */
+  jobs: MemoryJob[];
+}
+
+export interface MemoryJob extends CiJob {
+  log: string;
+  /** Đã có job mới thay sau retry; như GitLab, pipelineJobs không trả job này nữa. */
+  retried: boolean;
+}
+
+export interface MemoryPipelineInput {
+  /** Mặc định nhánh mặc định của repo. */
+  ref?: string;
+  /** Mặc định head của `ref`. */
+  sha?: string;
+  /** Mặc định `running`. */
+  status?: CiStatus;
+  source?: string;
+  jobs?: Array<{ name: string; stage?: string; status?: CiStatus; log?: string; allowFailure?: boolean }>;
 }
 
 export interface MemoryPull {
@@ -76,6 +109,14 @@ export interface MemoryProvider extends GitProvider {
   /** Đổi trạng thái PR (merge tay, đóng, nhánh chính tiến...) như người dùng làm trên GitHub/GitLab. */
   setPull(ref: RepoRef, number: number, patch: Partial<Omit<MemoryPull, "number">>): MemoryPull;
   setChecks(ref: RepoRef, sha: string, state: ChecksState): void;
+  /** Tạo pipeline như GitLab vừa chạy, kèm job theo thứ tự cho trước (mặc định job `pending`). */
+  seedPipeline(ref: RepoRef, input?: MemoryPipelineInput): { pipeline: CiPipeline; jobs: CiJob[] };
+  setPipeline(ref: RepoRef, pipelineId: string, patch: Partial<Omit<CiPipeline, "id">>): CiPipeline;
+  /** Đổi trạng thái job; `appendLog` ghi thêm vào cuối log như runner đang chạy. */
+  setJob(ref: RepoRef, jobId: string, patch: Partial<Omit<CiJob, "id" | "pipelineId">> & { appendLog?: string }): CiJob;
+  /** Sự kiện như webhook Pipeline Hook đã chuẩn hoá, theo trạng thái hiện tại; test đưa vào handler của onScmEvent. */
+  pipelineEvent(ref: RepoRef, pipelineId: string): PipelineEvent;
+  jobEvent(ref: RepoRef, jobId: string): JobEvent;
 }
 
 const key = (ref: RepoRef) => `${ref.owner}/${ref.name}`.toLowerCase();
@@ -120,6 +161,8 @@ export function createMemoryProvider(
       comments: [],
       checks: new Map(),
       statuses: new Map(),
+      pipelines: [],
+      jobs: [],
     };
     repos.set(key(ref), repo);
     return repo;
@@ -189,6 +232,56 @@ export function createMemoryProvider(
     return files;
   };
 
+  /** Commit sau `from` tới hết `to`, cùng nhánh với `to`, cũ tới mới. */
+  const commitsBetween = (repo: MemoryRepo, from: string, to: string): CompareCommit[] => {
+    const end = repo.commits.findIndex((c) => c.sha === to);
+    const branch = repo.commits[end]?.branch;
+    if (branch === undefined) return [];
+    const start = repo.commits.findIndex((c) => c.sha === from);
+    return repo.commits
+      .slice(start + 1, end + 1)
+      .filter((c) => c.branch === branch)
+      .map((c) => ({
+        sha: c.sha,
+        title: c.message.split("\n", 1)[0] ?? "",
+        author: "hive",
+        authoredAt: c.at ?? null,
+      }));
+  };
+
+  const pipelineOf = (repo: MemoryRepo, id: string): CiPipeline => {
+    const p = repo.pipelines.find((item) => item.id === id);
+    if (!p) throw new GitProviderError("not_found", `${host}: không có pipeline ${id}`);
+    return p;
+  };
+  const jobOf = (repo: MemoryRepo, id: string): MemoryJob => {
+    const j = repo.jobs.find((item) => item.id === id);
+    if (!j) throw new GitProviderError("not_found", `${host}: không có job ${id}`);
+    return j;
+  };
+  const jobView = ({ log: _log, retried: _retried, ...job }: MemoryJob): CiJob => ({ ...job });
+  const isActive = (status: CiStatus) => CI_ACTIVE_STATUSES.includes(status);
+  const wrongState = (what: string) => new GitProviderError("invalid", `${host}: ${what}`, { status: 400 });
+
+  /** Như GitLab: job cũ ẩn đi, job mới đứng ngay chỗ job cũ trong danh sách. */
+  const retryJobIn = (repo: MemoryRepo, job: MemoryJob): MemoryJob => {
+    seq += 1;
+    const again: MemoryJob = {
+      ...job,
+      id: String(seq),
+      status: "pending",
+      failureReason: null,
+      startedAt: null,
+      finishedAt: null,
+      durationSec: null,
+      log: "",
+      retried: false,
+    };
+    job.retried = true;
+    repo.jobs.splice(repo.jobs.indexOf(job) + 1, 0, again);
+    return again;
+  };
+
   const track = <A extends unknown[], R>(method: Method, fn: (...args: A) => R) =>
     (async (...args: A) => {
       calls.push({ method, args });
@@ -223,6 +316,85 @@ export function createMemoryProvider(
     },
     setChecks(ref, sha, state) {
       need(ref).checks.set(sha, state);
+    },
+    seedPipeline(ref, input = {}) {
+      const repo = need(ref);
+      const branch = input.ref ?? repo.info.defaultBranch;
+      const sha = input.sha ?? headOf(repo, branch) ?? nextSha();
+      seq += 1;
+      const now = new Date().toISOString();
+      const pipeline: CiPipeline = {
+        id: String(seq),
+        ref: branch,
+        sha,
+        status: input.status ?? "running",
+        source: input.source ?? "push",
+        url: `${repo.info.webUrl}/-/pipelines/${seq}`,
+        createdAt: now,
+        updatedAt: now,
+        startedAt: now,
+        finishedAt: null,
+        durationSec: null,
+        user: null,
+      };
+      repo.pipelines.push(pipeline);
+      const jobs = (input.jobs ?? []).map((j) => {
+        seq += 1;
+        const job: MemoryJob = {
+          id: String(seq),
+          pipelineId: pipeline.id,
+          name: j.name,
+          stage: j.stage ?? "test",
+          ref: branch,
+          sha,
+          status: j.status ?? "pending",
+          allowFailure: j.allowFailure ?? false,
+          failureReason: null,
+          url: `${repo.info.webUrl}/-/jobs/${seq}`,
+          createdAt: now,
+          startedAt: null,
+          finishedAt: null,
+          durationSec: null,
+          user: null,
+          log: j.log ?? "",
+          retried: false,
+        };
+        repo.jobs.push(job);
+        return jobView(job);
+      });
+      return { pipeline: { ...pipeline }, jobs };
+    },
+    setPipeline(ref, pipelineId, patch) {
+      return { ...Object.assign(pipelineOf(need(ref), pipelineId), patch) };
+    },
+    setJob(ref, jobId, { appendLog, ...patch }) {
+      const job = Object.assign(jobOf(need(ref), jobId), patch);
+      if (appendLog) job.log += appendLog;
+      return jobView(job);
+    },
+    pipelineEvent(ref, pipelineId) {
+      const repo = need(ref);
+      const pipeline = { ...pipelineOf(repo, pipelineId) };
+      return {
+        provider: kind,
+        repo: `${repo.info.owner}/${repo.info.name}`,
+        actor: null,
+        actorId: null,
+        kind: "pipeline",
+        pipeline,
+      };
+    },
+    jobEvent(ref, jobId) {
+      const repo = need(ref);
+      const job = jobView(jobOf(repo, jobId));
+      return {
+        provider: kind,
+        repo: `${repo.info.owner}/${repo.info.name}`,
+        actor: null,
+        actorId: null,
+        kind: "job",
+        job,
+      };
     },
 
     checkAccess: track("checkAccess", (owner: string): AccessCheck => {
@@ -272,6 +444,7 @@ export function createMemoryProvider(
         sha,
         paths: input.files.map((f) => f.path),
         snapshot: new Map(files),
+        at: new Date().toISOString(),
       });
       return { sha };
     }),
@@ -473,7 +646,7 @@ export function createMemoryProvider(
           },
         ];
       });
-      return { files, incomplete: Boolean(repo.modes?.incomplete) };
+      return { files, commits: commitsBetween(repo, from, to), incomplete: Boolean(repo.modes?.incomplete) };
     }),
     archive: track("archive", async (ref: RepoRef, sha: string, path?: string) => {
       const entries = [...filesAt(need(ref), sha)].filter(
@@ -512,6 +685,73 @@ export function createMemoryProvider(
     closePR: track("closePR", (ref: RepoRef, number: number) => {
       const pr = need(ref).pulls.find((p) => p.number === number);
       if (pr?.state === "open") pr.state = "closed";
+    }),
+
+    listPipelines: track("listPipelines", (ref: RepoRef, opts: ListPipelinesOptions) => {
+      const perPage = opts.perPage ?? 20;
+      const all = need(ref)
+        .pipelines.filter(
+          (p) =>
+            (!opts.branch || p.ref === opts.branch) &&
+            (!opts.sha || p.sha === opts.sha) &&
+            (!opts.status || p.status === opts.status),
+        )
+        .sort((a, b) => Number(b.id) - Number(a.id));
+      const start = (opts.page - 1) * perPage;
+      return {
+        items: all.slice(start, start + perPage).map((p) => ({ ...p })),
+        nextPage: start + perPage < all.length ? opts.page + 1 : null,
+      };
+    }),
+    pipelineJobs: track("pipelineJobs", (ref: RepoRef, pipelineId: string) => {
+      const repo = need(ref);
+      pipelineOf(repo, pipelineId);
+      return repo.jobs.filter((j) => j.pipelineId === pipelineId && !j.retried).map(jobView);
+    }),
+    jobLog: track("jobLog", (ref: RepoRef, jobId: string, from: number) => {
+      const job = jobOf(need(ref), jobId);
+      const bytes = new TextEncoder().encode(job.log);
+      const complete = !isActive(job.status);
+      if (from >= bytes.length) return { text: "", next: from, complete };
+      return { text: new TextDecoder().decode(bytes.subarray(from)), next: bytes.length, complete };
+    }),
+    retryPipeline: track("retryPipeline", (ref: RepoRef, pipelineId: string) => {
+      const repo = need(ref);
+      const pipeline = pipelineOf(repo, pipelineId);
+      const failed = repo.jobs.filter(
+        (j) => j.pipelineId === pipelineId && !j.retried && (j.status === "failed" || j.status === "canceled"),
+      );
+      for (const job of failed) retryJobIn(repo, job);
+      pipeline.status = "pending";
+      pipeline.finishedAt = null;
+      return { ...pipeline };
+    }),
+    cancelPipeline: track("cancelPipeline", (ref: RepoRef, pipelineId: string) => {
+      const repo = need(ref);
+      const pipeline = pipelineOf(repo, pipelineId);
+      for (const job of repo.jobs)
+        if (job.pipelineId === pipelineId && !job.retried && isActive(job.status)) job.status = "canceled";
+      pipeline.status = "canceled";
+      return { ...pipeline };
+    }),
+    retryJob: track("retryJob", (ref: RepoRef, jobId: string) => {
+      const repo = need(ref);
+      const job = jobOf(repo, jobId);
+      if (job.retried || !["success", "failed", "canceled"].includes(job.status))
+        throw wrongState(`job ${jobId} chưa dừng nên chưa chạy lại được`);
+      return jobView(retryJobIn(repo, job));
+    }),
+    cancelJob: track("cancelJob", (ref: RepoRef, jobId: string) => {
+      const job = jobOf(need(ref), jobId);
+      if (!isActive(job.status)) throw wrongState(`job ${jobId} không còn chạy nên không huỷ được`);
+      job.status = "canceled";
+      return jobView(job);
+    }),
+    playJob: track("playJob", (ref: RepoRef, jobId: string) => {
+      const job = jobOf(need(ref), jobId);
+      if (job.status !== "manual") throw wrongState(`job ${jobId} không chờ bấm tay`);
+      job.status = "pending";
+      return jobView(job);
     }),
   };
 }
