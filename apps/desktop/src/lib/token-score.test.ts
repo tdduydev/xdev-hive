@@ -129,13 +129,13 @@ describe("lệnh invoke", () => {
   it("chỉ gửi id sửa nhanh, id gói và khoá dự án", async () => {
     const calls = fakeTauri();
     await tokenScore();
-    await tokenScore(true);
+    await tokenScore(true, "claude-2");
     await tokenScoreFixPreview("optimizer.balanced", "claude-2");
     await tokenScoreFix("codegraph.init", "claude-2", "p1");
     await tokenScoreUndo("optimizer.balanced", "claude-2", null, "20261019T000000Z");
     expect(calls).toEqual([
-      { command: "token_score", args: { fresh: false } },
-      { command: "token_score", args: { fresh: true } },
+      { command: "token_score", args: { fresh: false, profileId: null } },
+      { command: "token_score", args: { fresh: true, profileId: "claude-2" } },
       {
         command: "token_score_fix_preview",
         args: { fixId: "optimizer.balanced", profileId: "claude-2", projectKey: null },

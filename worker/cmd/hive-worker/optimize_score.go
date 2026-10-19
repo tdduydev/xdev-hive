@@ -67,7 +67,7 @@ func scoreProfiles(o *optimizer.Optimizer, view *optimizeView) []score.Profile {
 }
 
 // optimizeScore chấm điểm tối ưu token của máy (spec 025) và ghi lịch sử điểm.
-func optimizeScore(o *optimizer.Optimizer, file string, days int, fresh, asJSON bool, stdout, stderr io.Writer) int {
+func optimizeScore(o *optimizer.Optimizer, file string, days int, fresh bool, measureProfile string, asJSON bool, stdout, stderr io.Writer) int {
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -99,9 +99,18 @@ func optimizeScore(o *optimizer.Optimizer, file string, days int, fresh, asJSON 
 		}
 	}
 	dir := filepath.Dir(o.StatePath())
+	// --fresh chạy /context (gọi model): chỉ cho gói được bấm đo (--profile); không chọn gói thì mọi gói Claude.
+	var measured []string
+	if fresh {
+		for _, p := range profiles {
+			if p.CLI == "claude" && (measureProfile == "" || p.ID == measureProfile) {
+				measured = append(measured, p.ID)
+			}
+		}
+	}
 	res := score.Compute(score.Inputs{
 		Home: o.Home, GOOS: runtime.GOOS, Now: now, Days: days, Profiles: profiles, Sessions: sessions,
-		Context: score.LoadContexts(ctx, dir, profiles, optimizeContext, now, fresh), HasTool: optimizeHasTool,
+		Context: score.LoadContexts(ctx, dir, profiles, optimizeContext, now, measured), HasTool: optimizeHasTool,
 	})
 	prev, err := score.Record(dir, res, takePendingFix(dir), now)
 	if err != nil {
@@ -134,8 +143,9 @@ func printScore(w io.Writer, r *score.Result) {
 	}
 }
 
-// fixRecord nhớ trạng thái gói trước lần sửa nhanh gần nhất để hoàn tác bằng cách bật lại mức cũ hoặc tắt, thay vì
-// chép bản sao lưu (chép bản sao lưu để manifest ghi sai mức). Recorded: lịch sử điểm đã có dòng cho lần sửa này.
+// fixRecord nhớ trạng thái gói trước một lần sửa nhanh, để hoàn tác bằng cách bật lại mức cũ hoặc tắt, thay vì chép
+// bản sao lưu (chép bản sao lưu để manifest ghi sai mức). Mỗi gói giữ một chồng bản ghi, cũ trước mới sau; hoàn tác đi
+// từ lần cuối nên hoàn tác hết thì gói về đúng trạng thái trước lần sửa đầu. Recorded: lịch sử điểm đã có dòng cho nó.
 type fixRecord struct {
 	FixID       string    `json:"fixId"`
 	PrevEnabled bool      `json:"prevEnabled"`
@@ -147,15 +157,20 @@ type fixRecord struct {
 
 func fixesPath(dir string) string { return filepath.Join(dir, "score-fixes.json") }
 
-func loadFixes(dir string) map[string]fixRecord {
-	m := map[string]fixRecord{}
-	if b, err := os.ReadFile(fixesPath(dir)); err == nil {
-		_ = json.Unmarshal(b, &m)
+func loadFixes(dir string) map[string][]fixRecord {
+	m := map[string][]fixRecord{}
+	if b, err := os.ReadFile(fixesPath(dir)); err == nil && json.Unmarshal(b, &m) != nil {
+		m = map[string][]fixRecord{}
 	}
 	return m
 }
 
-func saveFixes(dir string, m map[string]fixRecord) error {
+func saveFixes(dir string, m map[string][]fixRecord) error {
+	for id, stack := range m {
+		if len(stack) == 0 {
+			delete(m, id)
+		}
+	}
 	b, err := json.Marshal(m)
 	if err != nil {
 		return err
@@ -171,16 +186,17 @@ func takePendingFix(dir string) string {
 	m := loadFixes(dir)
 	latest, at := "", time.Time{}
 	changed := false
-	for id, r := range m {
-		if r.Recorded {
-			continue
+	for _, stack := range m {
+		for i := range stack {
+			if stack[i].Recorded {
+				continue
+			}
+			if stack[i].At.After(at) {
+				latest, at = stack[i].FixID, stack[i].At
+			}
+			stack[i].Recorded = true
+			changed = true
 		}
-		if r.At.After(at) {
-			latest, at = r.FixID, r.At
-		}
-		r.Recorded = true
-		m[id] = r
-		changed = true
 	}
 	if changed {
 		_ = saveFixes(dir, m)
@@ -266,9 +282,13 @@ func optimizeFix(o *optimizer.Optimizer, file, fixID, profile string, preview, u
 	fixes := loadFixes(dir)
 	switch {
 	case undo:
-		rec, ok := fixes[p.ID]
-		if !ok || rec.FixID != fixID {
+		stack := fixes[p.ID]
+		if len(stack) == 0 {
 			return fail(errors.New("gói này không có lần sửa nhanh nào để hoàn tác"))
+		}
+		rec := stack[len(stack)-1]
+		if rec.FixID != fixID {
+			return fail(fmt.Errorf("hãy hoàn tác lần sửa nhanh sau cùng của gói (%s) trước", rec.FixID))
 		}
 		var res *optimizer.Result
 		if rec.PrevEnabled {
@@ -279,7 +299,7 @@ func optimizeFix(o *optimizer.Optimizer, file, fixID, profile string, preview, u
 		if err != nil {
 			return fail(err)
 		}
-		delete(fixes, p.ID)
+		fixes[p.ID] = stack[:len(stack)-1]
 		if err := saveFixes(dir, fixes); err != nil {
 			return fail(err)
 		}
@@ -291,12 +311,17 @@ func optimizeFix(o *optimizer.Optimizer, file, fixID, profile string, preview, u
 		}
 		return printJSON(stdout, stderr, out)
 	}
-	res, err := optimizeEnable(o, p, level, withRTK)
-	if err != nil {
+	// Ghi bản ghi trước khi đổi cấu hình: tiến trình chết giữa chừng vẫn còn đường hoàn tác.
+	stack := fixes[p.ID]
+	fixes[p.ID] = append(stack, fixRecord{FixID: fixID, PrevEnabled: row.Enabled, PrevLevel: row.Level, PrevRTK: row.RTK,
+		At: optimizeNow().UTC()})
+	if err := saveFixes(dir, fixes); err != nil {
 		return fail(err)
 	}
-	fixes[p.ID] = fixRecord{FixID: fixID, PrevEnabled: row.Enabled, PrevLevel: row.Level, PrevRTK: row.RTK, At: optimizeNow().UTC()}
-	if err := saveFixes(dir, fixes); err != nil {
+	res, err := optimizeEnable(o, p, level, withRTK)
+	if err != nil {
+		fixes[p.ID] = stack
+		_ = saveFixes(dir, fixes)
 		return fail(err)
 	}
 	return printJSON(stdout, stderr, fixResult{FixID: fixID, Profile: p.ID, Backup: res.Backup, Changed: res.Changed})

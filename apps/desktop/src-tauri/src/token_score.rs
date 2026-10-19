@@ -5,12 +5,12 @@
 //! Giao diện chỉ gửi id, không bao giờ gửi chuỗi lệnh hay đường dẫn: id lạ, gói hay dự án không có trong kết quả
 //! điểm gần nhất đều bị từ chối.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::{AppHandle, Manager};
 
@@ -25,12 +25,81 @@ const OUTPUT_TAIL: usize = 400;
 const MCP_NAME: &str = "codegraph";
 const EXCLUDE_LINE: &str = ".codegraph/";
 
-/// Kết quả điểm gần nhất và những dòng exclude mà app đã thêm.
+/// Tắt telemetry ẩn danh (mặc định bật) và daemon nền của CodeGraph, như worker (`runner/tools.go` `codegraphEnv`).
+const CODEGRAPH_ENV: [(&str, &str); 3] = [
+    ("CODEGRAPH_TELEMETRY", "0"),
+    ("DO_NOT_TRACK", "1"),
+    ("CODEGRAPH_NO_DAEMON", "1"),
+];
+
+/// Kết quả điểm gần nhất, và khoá cho file các lần sửa nhanh Rust đã áp dụng.
 #[derive(Default)]
 pub struct Last {
     score: Mutex<Option<Value>>,
-    /// Chỉ gỡ dòng `.codegraph/` ở thư mục mà chính app đã thêm, không đụng dòng người dùng tự viết.
-    excluded: Mutex<BTreeSet<PathBuf>>,
+    applied: Mutex<()>,
+}
+
+/// Một lần sửa nhanh chạy trong Rust (`codegraph.mcp`, `codegraph.init`) đã áp dụng. Lưu xuống đĩa để hoàn tác chỉ gỡ
+/// đúng thứ app đã làm, kể cả sau khi mở lại app: không có bản ghi thì không hoàn tác.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct Applied {
+    fix_id: String,
+    profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project: Option<PathBuf>,
+    /// Chỉ gỡ dòng `.codegraph/` khi chính app đã thêm, không đụng dòng người dùng tự viết.
+    #[serde(default)]
+    exclude_added: bool,
+}
+
+fn applied_path() -> Result<PathBuf, String> {
+    Ok(home()?
+        .join(".xdev-hive")
+        .join("optimizer")
+        .join("score-desktop-fixes.json"))
+}
+
+fn load_applied(path: &Path) -> Vec<Applied> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_applied(path: &Path, list: &[Applied]) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let text = serde_json::to_string(list).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|e| format!("Không ghi được danh sách sửa nhanh đã áp dụng: {e}"))
+}
+
+/// Lần áp dụng gần nhất khớp sửa nhanh, gói và (với `codegraph.init`) dự án.
+fn find_applied(list: &[Applied], fix: Fix, profile: &str, project: Option<&Path>) -> Option<usize> {
+    list.iter()
+        .rposition(|a| a.fix_id == fix.id() && a.profile == profile && a.project.as_deref() == project)
+}
+
+/// Đọc, sửa rồi ghi lại danh sách dưới khoá, để hai lần bấm cùng lúc không ghi đè nhau.
+fn update_applied<T>(
+    app: &AppHandle,
+    change: impl FnOnce(&mut Vec<Applied>) -> Result<T, String>,
+) -> Result<T, String> {
+    let state = app.state::<Last>();
+    let _guard = state.applied.lock().map_err(|e| e.to_string())?;
+    let path = applied_path()?;
+    let mut list = load_applied(&path);
+    let out = change(&mut list)?;
+    save_applied(&path, &list)?;
+    Ok(out)
+}
+
+fn codegraph_env() -> Vec<(&'static str, String)> {
+    CODEGRAPH_ENV
+        .iter()
+        .map(|(k, v)| (*k, (*v).to_string()))
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,12 +211,16 @@ fn profile_arg(profile: &str) -> Result<String, String> {
     Ok(format!("--profile={profile}"))
 }
 
-fn score_args(fresh: bool) -> Vec<String> {
+/// `fresh` chạy `/context` (gọi model, tốn token) cho đúng gói người dùng bấm đo; không có gói thì mọi gói Claude.
+fn score_args(fresh: bool, profile: Option<&str>) -> Result<Vec<String>, String> {
     let mut args = vec!["optimize".to_string(), "score".into(), "--json".into()];
     if fresh {
         args.push("--fresh".into());
+        if let Some(profile) = profile {
+            args.push(profile_arg(profile)?);
+        }
     }
-    args
+    Ok(args)
 }
 
 fn fix_args(fix: Fix, profile: &str, preview: bool) -> Result<Vec<String>, String> {
@@ -189,8 +262,19 @@ fn codegraph_need(windows: bool) -> McpNeed {
 }
 
 fn mcp_add(cli: &str, windows: bool) -> Result<Vec<String>, String> {
-    mcp_add_argv(cli, &codegraph_need(windows))
-        .ok_or_else(|| "CLI này chưa hỗ trợ thêm MCP.".to_string())
+    let mut argv = mcp_add_argv(cli, &codegraph_need(windows))
+        .ok_or_else(|| "CLI này chưa hỗ trợ thêm MCP.".to_string())?;
+    // Server do CLI chạy về sau cũng phải tắt telemetry, nên env nằm trong cấu hình server (`--env` của cả hai CLI).
+    let at = argv
+        .iter()
+        .position(|a| a == "--")
+        .ok_or("Lệnh thêm MCP thiếu phần lệnh của server.")?;
+    let env: Vec<String> = CODEGRAPH_ENV
+        .iter()
+        .flat_map(|(k, v)| ["--env".to_string(), format!("{k}={v}")])
+        .collect();
+    argv.splice(at..at, env);
+    Ok(argv)
 }
 
 fn mcp_remove(cli: &str) -> Result<Vec<String>, String> {
@@ -333,7 +417,7 @@ fn resolve_program(program: &str, path: &str) -> String {
 
 fn run_argv(
     argv: &[String],
-    env: Option<(&str, String)>,
+    env: Vec<(&'static str, String)>,
     dir: Option<&Path>,
     timeout: Duration,
 ) -> Result<Output, String> {
@@ -341,7 +425,7 @@ fn run_argv(
     let path = user_path();
     let mut cmd = Command::new(resolve_program(program, path));
     cmd.args(args).env("PATH", path);
-    if let Some((key, value)) = env {
+    for (key, value) in env {
         cmd.env(key, value);
     }
     if let Some(dir) = dir {
@@ -367,7 +451,7 @@ fn output_tail(out: &Output) -> String {
 fn run_checked(
     what: &str,
     argv: &[String],
-    env: Option<(&str, String)>,
+    env: Vec<(&'static str, String)>,
     dir: Option<&Path>,
     timeout: Duration,
 ) -> Result<(), String> {
@@ -444,8 +528,13 @@ fn remove_exclude(dir: &Path) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn token_score(app: AppHandle, fresh: Option<bool>) -> Result<Value, String> {
-    let score: Value = sidecar_json(&app, score_args(fresh.unwrap_or(false)), vec![]).await?;
+pub async fn token_score(
+    app: AppHandle,
+    fresh: Option<bool>,
+    profile_id: Option<String>,
+) -> Result<Value, String> {
+    let args = score_args(fresh.unwrap_or(false), profile_id.as_deref())?;
+    let score: Value = sidecar_json(&app, args, vec![]).await?;
     if let Ok(mut last) = app.state::<Last>().score.lock() {
         *last = Some(score.clone());
     }
@@ -499,9 +588,20 @@ pub async fn token_score_fix(
             let cli = resolved.cli;
             let dir = profile_dir(&app, &profile_id).await?;
             let argv = mcp_add(&cli, cfg!(windows))?;
-            let env = mcp_env(&cli, &dir)?;
+            let mut env: Vec<_> = mcp_env(&cli, &dir)?.into_iter().collect();
+            env.extend(codegraph_env());
             blocking(move || run_checked("Thêm MCP codegraph", &argv, env, None, MCP_TIMEOUT))
                 .await?;
+            let record = Applied {
+                fix_id: Fix::CodegraphMcp.id().into(),
+                profile: profile_id.clone(),
+                project: None,
+                exclude_added: false,
+            };
+            update_applied(&app, |list| {
+                list.push(record);
+                Ok(())
+            })?;
             Ok(json!({ "fixId": Fix::CodegraphMcp.id(), "profile": profile_id }))
         }
         fix => {
@@ -510,13 +610,20 @@ pub async fn token_score_fix(
             let added = blocking(move || {
                 let argv = init_argv(&dir.to_string_lossy());
                 let cwd = Some(dir.as_path());
-                run_checked("codegraph init", &argv, None, cwd, INIT_TIMEOUT)?;
+                run_checked("codegraph init", &argv, codegraph_env(), cwd, INIT_TIMEOUT)?;
                 add_exclude(&dir)
             })
             .await?;
-            if added && let Ok(mut set) = app.state::<Last>().excluded.lock() {
-                set.insert(path);
-            }
+            let record = Applied {
+                fix_id: fix.id().into(),
+                profile: profile_id.clone(),
+                project: Some(path),
+                exclude_added: added,
+            };
+            update_applied(&app, |list| {
+                list.push(record);
+                Ok(())
+            })?;
             Ok(json!({ "fixId": fix.id(), "profile": profile_id }))
         }
     }
@@ -534,41 +641,49 @@ pub async fn token_score_undo(
     let _ = backup;
     let score = last_score(&app)?;
     let resolved = resolve(&score, &fix_id, &profile_id, project_key.as_deref())?;
-    match resolved.fix {
-        fix if fix.in_sidecar() => sidecar_json(&app, undo_args(fix, &profile_id)?, vec![]).await,
-        Fix::CodegraphMcp => {
-            let cli = resolved.cli;
-            let dir = profile_dir(&app, &profile_id).await?;
-            let argv = mcp_remove(&cli)?;
-            let env = mcp_env(&cli, &dir)?;
-            blocking(move || run_checked("Gỡ MCP codegraph", &argv, env, None, MCP_TIMEOUT))
-                .await?;
-            Ok(json!({ "fixId": Fix::CodegraphMcp.id(), "profile": profile_id }))
-        }
-        fix => {
-            let path = project_dir(&resolved.project.unwrap_or_default())?;
-            let added = app
-                .state::<Last>()
-                .excluded
-                .lock()
-                .is_ok_and(|set| set.contains(&path));
-            let dir = path.clone();
-            blocking(move || {
-                let argv = uninit_argv(&dir.to_string_lossy());
-                let cwd = Some(dir.as_path());
-                run_checked("codegraph uninit", &argv, None, cwd, INIT_TIMEOUT)?;
-                if added {
-                    remove_exclude(&dir)?;
-                }
-                Ok(())
-            })
-            .await?;
-            if let Ok(mut set) = app.state::<Last>().excluded.lock() {
-                set.remove(&path);
-            }
-            Ok(json!({ "fixId": fix.id(), "profile": profile_id }))
-        }
+    if resolved.fix.in_sidecar() {
+        return sidecar_json(&app, undo_args(resolved.fix, &profile_id)?, vec![]).await;
     }
+    let fix = resolved.fix;
+    let project = match fix {
+        Fix::CodegraphInit => Some(project_dir(&resolved.project.unwrap_or_default())?),
+        _ => None,
+    };
+    // Chỉ hoàn tác thứ chính app đã làm: không có bản ghi thì không gỡ MCP hay xoá `.codegraph/` của ai cả.
+    let record = {
+        let state = app.state::<Last>();
+        let _guard = state.applied.lock().map_err(|e| e.to_string())?;
+        let list = load_applied(&applied_path()?);
+        let index = find_applied(&list, fix, &profile_id, project.as_deref())
+            .ok_or("App chưa áp dụng sửa nhanh này nên không có gì để hoàn tác.")?;
+        list[index].clone()
+    };
+    if fix == Fix::CodegraphMcp {
+        let cli = resolved.cli;
+        let dir = profile_dir(&app, &profile_id).await?;
+        let argv = mcp_remove(&cli)?;
+        let env: Vec<_> = mcp_env(&cli, &dir)?.into_iter().collect();
+        blocking(move || run_checked("Gỡ MCP codegraph", &argv, env, None, MCP_TIMEOUT)).await?;
+    } else {
+        let dir = project.clone().unwrap_or_default();
+        let remove_line = record.exclude_added;
+        blocking(move || {
+            let argv = uninit_argv(&dir.to_string_lossy());
+            run_checked("codegraph uninit", &argv, codegraph_env(), Some(dir.as_path()), INIT_TIMEOUT)?;
+            if remove_line {
+                remove_exclude(&dir)?;
+            }
+            Ok(())
+        })
+        .await?;
+    }
+    update_applied(&app, |list| {
+        if let Some(index) = find_applied(list, fix, &profile_id, project.as_deref()) {
+            list.remove(index);
+        }
+        Ok(())
+    })?;
+    Ok(json!({ "fixId": fix.id(), "profile": profile_id }))
 }
 
 async fn blocking<T: Send + 'static>(
@@ -655,19 +770,19 @@ mod tests {
     fn builds_codegraph_mcp_argv_for_both_clis() {
         assert_eq!(
             mcp_add("claude", false).unwrap().join(" "),
-            "claude mcp add --scope user codegraph -- codegraph serve --mcp"
+            "claude mcp add --scope user codegraph --env CODEGRAPH_TELEMETRY=0 --env DO_NOT_TRACK=1 --env CODEGRAPH_NO_DAEMON=1 -- codegraph serve --mcp"
         );
         assert_eq!(
             mcp_add("codex", false).unwrap().join(" "),
-            "codex mcp add codegraph -- codegraph serve --mcp"
+            "codex mcp add codegraph --env CODEGRAPH_TELEMETRY=0 --env DO_NOT_TRACK=1 --env CODEGRAPH_NO_DAEMON=1 -- codegraph serve --mcp"
         );
         assert_eq!(
             mcp_add("claude", true).unwrap().join(" "),
-            "claude mcp add --scope user codegraph -- cmd /c codegraph.cmd serve --mcp"
+            "claude mcp add --scope user codegraph --env CODEGRAPH_TELEMETRY=0 --env DO_NOT_TRACK=1 --env CODEGRAPH_NO_DAEMON=1 -- cmd /c codegraph.cmd serve --mcp"
         );
         assert_eq!(
             mcp_add("codex", true).unwrap().join(" "),
-            "codex mcp add codegraph -- cmd /c codegraph.cmd serve --mcp"
+            "codex mcp add codegraph --env CODEGRAPH_TELEMETRY=0 --env DO_NOT_TRACK=1 --env CODEGRAPH_NO_DAEMON=1 -- cmd /c codegraph.cmd serve --mcp"
         );
         assert!(mcp_add("gemini", false).is_err());
         assert_eq!(
@@ -726,6 +841,36 @@ mod tests {
     }
 
     #[test]
+    fn undo_needs_a_matching_applied_record() {
+        let app = Path::new("/home/dev/app");
+        let lib = Path::new("/home/dev/lib");
+        let list = vec![
+            Applied {
+                fix_id: "codegraph.mcp".into(),
+                profile: "claude-2".into(),
+                project: None,
+                exclude_added: false,
+            },
+            Applied {
+                fix_id: "codegraph.init".into(),
+                profile: "claude-2".into(),
+                project: Some(app.to_path_buf()),
+                exclude_added: true,
+            },
+        ];
+        assert_eq!(find_applied(&list, Fix::CodegraphMcp, "claude-2", None), Some(0));
+        assert_eq!(find_applied(&list, Fix::CodegraphInit, "claude-2", Some(app)), Some(1));
+        // Dự án khác, gói khác hay sửa nhanh khác: không có gì để hoàn tác.
+        assert_eq!(find_applied(&list, Fix::CodegraphInit, "claude-2", Some(lib)), None);
+        assert_eq!(find_applied(&list, Fix::CodegraphMcp, "codex-1", None), None);
+        assert_eq!(find_applied(&list, Fix::CodegraphInit, "claude-2", None), None);
+        let text = serde_json::to_string(&list).unwrap();
+        assert!(text.contains("\"excludeAdded\":true"));
+        let back: Vec<Applied> = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, list);
+    }
+
+    #[test]
     fn sidecar_arguments_keep_fix_id_first_and_profile_as_value() {
         assert_eq!(
             fix_args(Fix::Balanced, "claude-2", true).unwrap(),
@@ -736,8 +881,14 @@ mod tests {
             ["optimize", "fix", "optimizer.aggressive", "--json", "--profile=-x"]
         );
         assert!(fix_args(Fix::Rtk, "x\n--rtk", false).is_err());
-        assert_eq!(score_args(false), ["optimize", "score", "--json"]);
-        assert_eq!(score_args(true), ["optimize", "score", "--json", "--fresh"]);
+        // Không đo thì không truyền gói: /context chỉ chạy khi người dùng bấm đo một gói.
+        assert_eq!(score_args(false, Some("claude-2")).unwrap(), ["optimize", "score", "--json"]);
+        assert_eq!(
+            score_args(true, Some("claude-2")).unwrap(),
+            ["optimize", "score", "--json", "--fresh", "--profile=claude-2"]
+        );
+        assert_eq!(score_args(true, None).unwrap(), ["optimize", "score", "--json", "--fresh"]);
+        assert!(score_args(true, Some("a\nb")).is_err());
         assert_eq!(
             undo_args(Fix::Balanced, "codex-1").unwrap(),
             ["optimize", "fix", "optimizer.balanced", "--json", "--profile=codex-1", "--undo"]

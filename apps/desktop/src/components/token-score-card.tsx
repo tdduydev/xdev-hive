@@ -135,11 +135,11 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
   const [copy, setCopy] = useState<"copied" | "failed" | null>(null);
   const latest = useRef(0);
 
-  const load = useCallback(async (fresh: boolean) => {
+  const load = useCallback(async (fresh: boolean, profileId: string | null = null) => {
     const id = ++latest.current;
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      const score = await tokenScore(fresh);
+      const score = await tokenScore(fresh, profileId);
       if (id === latest.current) setState({ score, error: null, loading: false });
     } catch (e) {
       // Giữ điểm cũ trên màn: lần tính lại lỗi không làm mất số đang xem.
@@ -297,7 +297,8 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
           hints={hints}
           onChanged={() => load(false)}
           onApplied={(fix) => setApplied((list) => [...list, fix])}
-          onMeasureContext={() => void load(true)}
+          onMeasureContext={(profileId) => void load(true, profileId)}
+          refreshing={loading}
         />
       )}
     </section>

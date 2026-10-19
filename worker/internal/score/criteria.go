@@ -1,6 +1,8 @@
 package score
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"math"
 	"os"
 	"path/filepath"
@@ -217,10 +219,17 @@ func topProjects(home string, sessions []tokenreport.SessionSummary, n int) []Pr
 		if sum > 0 {
 			share = round2(byDir[d] / sum)
 		}
-		out = append(out, Project{Key: "p" + string(rune('1'+len(out))), Path: ShortPath(home, d), Share: share,
+		out = append(out, Project{Key: ProjectKey(d), Path: ShortPath(home, d), Share: share,
 			Codegraph: isDir(filepath.Join(d, ".codegraph")), dir: d})
 	}
 	return out
+}
+
+// ProjectKey là khoá của một thư mục dự án trong JSON điểm: băm đường dẫn, nên vẫn trỏ đúng thư mục khi thứ hạng dự án
+// đổi giữa lúc xem trước và lúc áp dụng sửa nhanh.
+func ProjectKey(dir string) string {
+	sum := sha256.Sum256([]byte(filepath.Clean(dir)))
+	return "p" + hex.EncodeToString(sum[:6])
 }
 
 // ShortPath rút đường dẫn trong thư mục nhà về dạng "~/…" với dấu "/" để hiện trên màn hình.

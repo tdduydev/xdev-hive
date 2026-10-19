@@ -51,7 +51,7 @@ describe("TokenScoreCard: thẻ điểm", () => {
     const calls = fakeTauri({ token_score: () => sampleScore() });
     render(<TokenScoreCard />);
     expect(await screen.findByText("55,0")).toBeTruthy();
-    expect(calls[0]).toEqual({ command: "token_score", args: { fresh: false } });
+    expect(calls[0]).toEqual({ command: "token_score", args: { fresh: false, profileId: null } });
     expect(screen.getByText("Cần cải thiện")).toBeTruthy();
     expect(screen.getByText("Đo được 87/100 điểm")).toBeTruthy();
     expect(screen.getByText("Tăng 3,5 điểm so với lần tính trước")).toBeTruthy();
@@ -103,7 +103,7 @@ describe("TokenScoreCard: thẻ điểm", () => {
     fail = true;
     await user.click(screen.getByRole("button", { name: "Tính lại" }));
     expect(await screen.findByText("Không chạy được worker.")).toBeTruthy();
-    expect(calls.at(-1)).toEqual({ command: "token_score", args: { fresh: false } });
+    expect(calls.at(-1)).toEqual({ command: "token_score", args: { fresh: false, profileId: null } });
     expect(screen.getByText("55,0")).toBeTruthy();
   });
 

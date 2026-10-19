@@ -100,6 +100,28 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
 - Hoàn tác `optimizer.*` qua `optimize fix … --undo`, không qua `restore` (plan mục 6).
 - Tỉ trọng token theo họ model (FR-007) để sang T009.
 - Máy dev Windows không có Rust: `token_score.rs` chỉ CI biên dịch và chạy test.
+- Sau review PR #427:
+  - hoàn tác `optimizer.*` dùng chồng bản ghi mỗi gói (`score-fixes.json`), đi ngược từ lần sửa cuối; bản ghi được ghi
+    trước khi đổi cấu hình;
+  - `projects[].key` là băm đường dẫn thư mục (`score.ProjectKey`), không theo thứ hạng; nút sửa khoá khi điểm đang tải
+    lại;
+  - "Đo /context" chỉ chạy cho gói được bấm (`optimize score --fresh --profile P`);
+  - `codegraph init/uninit` và server MCP `codegraph` chạy với `CODEGRAPH_TELEMETRY=0`, `DO_NOT_TRACK=1`,
+    `CODEGRAPH_NO_DAEMON=1`;
+  - Rust lưu các lần `codegraph.*` đã áp dụng vào `~/.xdev-hive/optimizer/score-desktop-fixes.json`; không có bản ghi thì
+    từ chối hoàn tác.
+
+### Để làm sau (review PR #427)
+
+- Codex: server `codegraph` có `enabled = false` đang bị tính là thiếu MCP (A5).
+- Sao lưu `config.toml` / `.claude.json` trước `mcp add`.
+- Đánh dấu A6 là `unsupported` trên Windows thay vì 0 điểm mục hook.
+- So thư mục không phân biệt hoa thường trên Windows (dự án top, `.claude.json`).
+- Hiện `items[].file` và số dòng cho A3 (US2 kịch bản 2).
+- Câu xác nhận của mức Mạnh nói về bản sao lưu: sửa cho khớp cách hoàn tác mới.
+- Thêm exclude `.codegraph/` trước khi chạy `codegraph init`.
+- Lọc thư mục home khỏi danh sách dự án top.
+- Test Rust cho `add_exclude`, `remove_exclude`, `project_dir`.
 
 ## Đợt 0: kiểm giả định
 

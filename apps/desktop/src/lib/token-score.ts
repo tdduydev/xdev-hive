@@ -116,8 +116,12 @@ export interface FixResult {
  * Lệnh Rust (src-tauri/src/token_score.rs). Giao diện chỉ gửi id sửa nhanh, id gói và khoá dự án của lần tính gần
  * nhất; Rust không nhận chuỗi lệnh hay đường dẫn.
  */
-/** `fresh` chạy lại `claude -p /context` cho mọi gói Claude: lệnh này gọi model nên chỉ dùng khi người dùng bấm đo. */
-export const tokenScore = (fresh = false) => invoke<TokenScore>("token_score", { fresh });
+/**
+ * `fresh` chạy lại `claude -p /context` cho gói `profileId`: lệnh này gọi model nên chỉ dùng khi người dùng bấm đo
+ * đúng gói đó.
+ */
+export const tokenScore = (fresh = false, profileId: string | null = null) =>
+  invoke<TokenScore>("token_score", { fresh, profileId });
 export const tokenScoreFixPreview = (fixId: FixId, profileId: string, projectKey?: string | null) =>
   invoke<FixPreview>("token_score_fix_preview", { fixId, profileId, projectKey: projectKey ?? null });
 export const tokenScoreFix = (fixId: FixId, profileId: string, projectKey?: string | null) =>
