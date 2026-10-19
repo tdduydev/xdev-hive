@@ -86,6 +86,36 @@ không qua Jenkins.
 
 Chiều ngược lại (Jenkins và GitLab gọi về hub `hive.example.com`) chưa đo.
 
+**Đo mạng từ trong container hub (T006, 2026-10-19 khoảng 07:40 UTC).**
+- Máy đo: container `xdev-hive-hub-1` trên `app-host`, hub ở commit `81f6cc98`.
+- Cách đo: mở kết nối TCP (chờ 5 giây) hoặc lấy mã HTTP (chờ 8 giây). Không đăng nhập.
+
+| Đích | Kết quả |
+|---|---|
+| cổng 22 của `198.51.100.53`, `.54`, `.55`, `.57`, `.59`, `.60` | quá 5 s, không vào được |
+| `https://198.51.100.{57,60,54,55}:6443/version` (API Kubernetes) | quá 8 s, không vào được |
+| `https://198.51.100.55/version` (nginx cổng 443) | 404, chứng chỉ không khớp khi gọi bằng IP: không có API Kubernetes qua đường này |
+| `192.0.2.10:22` từ mạng bridge của Docker | mở: hub SSH được tới chính máy nó |
+| `http://198.51.100.53:8080/login` | quá 8 s, như lần đo 2026-10-17 |
+| `https://jenkins.example.com/login` | 200 |
+| `https://gitlab.example.com/users/sign_in` | 200 |
+| `https://argocd.example.com/api/version` | 200, `{"Version":"v3.5.1"}` |
+
+Ghi chú về các con số trên:
+- Tên `argocd.example.com` là tên đoán theo mẫu tên của Jenkins và Harbor. [Inference] Đây là Argo CD của
+  acme; chờ chủ dự án xác nhận ở T007.
+- Chiều GitLab gọi về hub vẫn chưa đo được: log của hub không ghi đường dẫn request.
+
+**Sự cố và hệ quả:**
+- **Lần đo này làm SOC báo động "quét SSH" từ `192.0.2.10` tới các IP của FCI.** Chủ dự án đã gỡ hẳn hub khỏi máy
+  `app-host` (container, volume database, `.env`, bản sao lưu).
+- Từ nay **không đo bằng cách mở cổng tới máy nội bộ** khi SOC chưa đồng ý. Việc đo mạng là của chủ dự án hoặc quản trị
+  hạ tầng.
+- Mọi chỗ trong spec, plan, tasks nói hub chạy trên `app-host` hoặc `hive.example.com` đã cũ. Cần chọn máy mới cho hub
+  trước khi làm phần triển khai (US3, US4, SC-002).
+- Hub không SSH được tới các máy `198.51.100.x`, cũng không gọi được API Kubernetes của chúng. Vì vậy triển khai lên hạ
+  tầng acme phải đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl` (máy runner để sau, Q14).
+
 ## 3. Hive hiện có gì để dùng lại
 
 | Phần | Đã có | Thiếu |
