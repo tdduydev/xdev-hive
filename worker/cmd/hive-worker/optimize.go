@@ -178,7 +178,7 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	case "report":
 		return optimizeReport(o, file, *profile, *days, *asJSON, stdout, stderr)
 	case "score":
-		return optimizeScore(o, file, *days, *fresh, *asJSON, stdout, stderr)
+		return optimizeScore(o, file, *days, *fresh, *profile, *asJSON, stdout, stderr)
 	case "fix":
 		if fixID == "" {
 			fmt.Fprintln(stderr, optimizeUsage)

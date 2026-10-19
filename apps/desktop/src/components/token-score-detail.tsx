@@ -409,22 +409,31 @@ interface DetailProps {
   onChanged: () => void | Promise<void>;
   onApplied: (fix: AppliedFix) => void;
   /** Đo lại /context cho mọi gói (gọi model, tốn token): chỉ chạy khi người dùng bấm. */
-  onMeasureContext?: () => void;
+  onMeasureContext?: (profileId: string) => void;
+  /** Điểm đang tải lại: khoá dự án và kết quả có thể đổi, nên chưa cho bấm sửa nhanh. */
+  refreshing?: boolean;
 }
 
 /** Chi tiết điểm: tiêu chí của từng gói xếp theo điểm thiếu, kèm gợi ý và nút sửa nhanh có xem trước. */
-export function TokenScoreDetail({ score, hints = [], onChanged, onApplied, onMeasureContext }: DetailProps) {
+export function TokenScoreDetail({
+  score,
+  hints = [],
+  onChanged,
+  onApplied,
+  onMeasureContext,
+  refreshing = false,
+}: DetailProps) {
   const t = useT(text);
   const [flow, setFlow] = useState<Flow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
-  const busy = flow !== null;
+  const busy = flow !== null || refreshing;
 
   async function start(fixId: FixId, profileId: string, projectKey: string | null) {
     if (busy) return;
     // Không ghi cấu hình nào: chỉ chấm lại có kèm /context.
     if (fixId === "context.measure") {
-      onMeasureContext?.();
+      onMeasureContext?.(profileId);
       return;
     }
     const id = ++seq.current;

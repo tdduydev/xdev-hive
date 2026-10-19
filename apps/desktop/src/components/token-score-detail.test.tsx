@@ -45,6 +45,13 @@ function Harness({ score, onChanged }: { score: TokenScore; onChanged: () => voi
 beforeEach(() => setLang("vi"));
 
 describe("TokenScoreDetail", () => {
+  it("khoá nút sửa nhanh khi điểm đang tải lại", () => {
+    render(<TokenScoreDetail score={sampleScore()} onChanged={() => {}} onApplied={() => {}} refreshing />);
+    const buttons = screen.getAllByRole("button", { name: /^Bật tối ưu/ });
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const b of buttons) expect((b as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("nút đo /context gọi lại điểm có /context, không mở hộp sửa nhanh", async () => {
     const user = userEvent.setup();
     const score = sampleScore();
@@ -63,7 +70,7 @@ describe("TokenScoreDetail", () => {
     const measure = vi.fn();
     render(<TokenScoreDetail score={score} onChanged={() => {}} onApplied={() => {}} onMeasureContext={measure} />);
     await user.click(screen.getByRole("button", { name: "Đo /context (tốn khoảng 50k token)" }));
-    expect(measure).toHaveBeenCalledTimes(1);
+    expect(measure).toHaveBeenCalledWith("claude-2");
     expect(calls).toEqual([]);
     expect(screen.queryByRole("dialog")).toBeNull();
   });

@@ -171,3 +171,80 @@ func TestOptimizeFixRejectsUnknownAndWrongCLI(t *testing.T) {
 		t.Error("sửa nhanh bị từ chối không được ghi gì")
 	}
 }
+
+func TestOptimizeScoreMeasuresOnlyChosenProfile(t *testing.T) {
+	e := fakeScoreEnv(t)
+	e.write(t, ".xdev-hive/accounts/claude-a/settings.json", "{}\n")
+	e.write(t, ".xdev-hive/accounts/claude-b/settings.json", "{}\n")
+	e.accounts(t, `{"id":"claude-a","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-a"},`+
+		`{"id":"claude-b","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-b"}`)
+	measure := optimizeContext
+	var ran []string
+	optimizeContext = func(ctx context.Context, p score.Profile) ([]byte, error) {
+		ran = append(ran, p.ID)
+		return measure(ctx, p)
+	}
+	e.ok(t, "score", "--json")
+	if len(ran) != 0 {
+		t.Fatalf("không có --fresh mà đã chạy /context cho %v", ran)
+	}
+	e.ok(t, "score", "--json", "--fresh", "--profile", "claude-b")
+	if strings.Join(ran, ",") != "claude-b" {
+		t.Errorf("chỉ đo gói được bấm, đã chạy %v", ran)
+	}
+}
+
+// Hoàn tác đi ngược từng lần sửa; hoàn tác hết thì file về đúng từng byte bản gốc (FR-010, SC-003).
+func TestOptimizeFixUndoStack(t *testing.T) {
+	cases := []struct {
+		name, cli, rel, content string
+		fixes                   []string
+	}{
+		{"claude", "claude", ".xdev-hive/accounts/p-1/settings.json", userClaudeSettings,
+			[]string{"optimizer.balanced", "optimizer.aggressive"}},
+		{"codex", "codex", ".xdev-hive/accounts/p-1/config.toml", "model = \"gpt-5.6\"\n\n[mcp_servers.x]\ncommand = \"x\"\n",
+			[]string{"optimizer.balanced", "optimizer.balanced"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := fakeScoreEnv(t)
+			file := e.write(t, c.rel, c.content)
+			e.accounts(t, `{"id":"p-1","cli":"`+c.cli+`","configDir":"~/.xdev-hive/accounts/p-1"}`)
+			var after []string
+			for _, fix := range c.fixes {
+				e.ok(t, "fix", fix, "--profile", "p-1", "--json")
+				after = append(after, readFile(t, file))
+			}
+			// Chỉ hoàn tác được lần sửa sau cùng.
+			if c.fixes[0] != c.fixes[1] {
+				if code, _, errOut := e.run(t, "fix", c.fixes[0], "--profile", "p-1", "--undo"); code == 0 || !strings.Contains(errOut, c.fixes[1]) {
+					t.Errorf("hoàn tác lần sửa đầu khi chưa hoàn tác lần sau: %d %s", code, errOut)
+				}
+			}
+			e.ok(t, "fix", c.fixes[1], "--profile", "p-1", "--undo", "--json")
+			if got := readFile(t, file); got != after[0] {
+				t.Errorf("hoàn tác lần hai phải về trạng thái sau lần một:\n%s", got)
+			}
+			e.ok(t, "fix", c.fixes[0], "--profile", "p-1", "--undo", "--json")
+			if got := readFile(t, file); got != c.content {
+				t.Errorf("hoàn tác hết phải về đúng bản gốc:\n%s", got)
+			}
+			if v := decodeView(t, e.ok(t, "status", "--json")).profile(t, "p-1"); v.Enabled {
+				t.Errorf("hoàn tác hết thì gói không còn bật: %+v", v)
+			}
+		})
+	}
+}
+
+func TestOptimizeFixRecordsBeforeChanging(t *testing.T) {
+	e := fakeScoreEnv(t)
+	e.write(t, ".xdev-hive/accounts/claude-2/settings.json", "{hỏng")
+	e.accounts(t, `{"id":"claude-2","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-2"}`)
+	if code, _, _ := e.run(t, "fix", "optimizer.balanced", "--profile", "claude-2", "--json"); code == 0 {
+		t.Fatal("settings.json hỏng thì sửa nhanh phải lỗi")
+	}
+	// Bật lỗi thì bỏ bản ghi vừa ghi trước, để không còn lần sửa "ma" để hoàn tác.
+	if code, _, errOut := e.run(t, "fix", "optimizer.balanced", "--profile", "claude-2", "--undo"); code == 0 || !strings.Contains(errOut, "không có lần sửa nhanh") {
+		t.Errorf("không được còn bản ghi sau khi bật lỗi: %d %s", code, errOut)
+	}
+}

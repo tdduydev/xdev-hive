@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -103,9 +104,10 @@ type contextEntry struct {
 	Report *ContextReport `json:"report"`
 }
 
-// LoadContexts lấy /context của mọi gói Claude từ dir/context-cache.json. measure: chạy lại cho mọi gói, song song.
-// Gói không chạy được (chưa đăng nhập, quá giờ) không có trong kết quả; lỗi đọc hay ghi cache không làm hỏng điểm.
-func LoadContexts(ctx context.Context, dir string, profiles []Profile, run ContextRunner, now time.Time, measure bool) map[string]*ContextReport {
+// LoadContexts lấy /context của các gói Claude từ dir/context-cache.json, và chạy lại cho các gói có id trong measure
+// (người dùng bấm đo gói nào thì chỉ tốn token cho gói đó). Gói không chạy được (chưa đăng nhập, quá giờ) không có
+// trong kết quả; lỗi đọc hay ghi cache không làm hỏng điểm.
+func LoadContexts(ctx context.Context, dir string, profiles []Profile, run ContextRunner, now time.Time, measure []string) map[string]*ContextReport {
 	path := filepath.Join(dir, "context-cache.json")
 	cache := map[string]contextEntry{}
 	if b, err := os.ReadFile(path); err == nil {
@@ -119,7 +121,7 @@ func LoadContexts(ctx context.Context, dir string, profiles []Profile, run Conte
 		if p.CLI != "claude" {
 			continue
 		}
-		if !measure {
+		if !slices.Contains(measure, p.ID) {
 			if e, ok := cache[p.ID]; ok && e.Report != nil && now.Sub(e.At) < ContextTTL && !e.At.After(now) {
 				out[p.ID] = e.Report
 			}

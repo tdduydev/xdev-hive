@@ -352,7 +352,7 @@ func TestProjectsAndCodegraph(t *testing.T) {
 	has := map[string]bool{"codegraph": true}
 	res := compute(t, Inputs{Home: home, Profiles: []Profile{p}, Sessions: sessions, HasTool: func(n string) bool { return has[n] }})
 	ps := res.Profiles[0]
-	if len(ps.Projects) != 2 || ps.Projects[0].Path != "~/code/app" || !ps.Projects[0].Codegraph || ps.Projects[0].Key != "p1" {
+	if len(ps.Projects) != 2 || ps.Projects[0].Path != "~/code/app" || !ps.Projects[0].Codegraph || ps.Projects[0].Key != ProjectKey(app) || ps.Projects[1].Key == ps.Projects[0].Key {
 		t.Fatalf("dự án: %+v", ps.Projects)
 	}
 	a5 := criterion(t, ps, "A5")
@@ -421,22 +421,26 @@ func TestHistory(t *testing.T) {
 
 func TestLoadContextsCaches(t *testing.T) {
 	dir := t.TempDir()
-	calls := 0
-	run := func(context.Context, Profile) ([]byte, error) { calls++; return []byte(contextFixture), nil }
-	profiles := []Profile{{ID: "claude-2", CLI: "claude"}, {ID: "codex-1", CLI: "codex"}}
+	var ran []string
+	run := func(_ context.Context, p Profile) ([]byte, error) {
+		ran = append(ran, p.ID)
+		return []byte(contextFixture), nil
+	}
+	profiles := []Profile{{ID: "claude-2", CLI: "claude"}, {ID: "claude-3", CLI: "claude"}, {ID: "codex-1", CLI: "codex"}}
 	// /context gọi model nên không tự chạy khi chưa bấm đo.
-	if got := LoadContexts(context.Background(), dir, profiles, run, now, false); len(got) != 0 || calls != 0 {
-		t.Fatalf("chưa đo: %v, %d lần gọi", got, calls)
+	if got := LoadContexts(context.Background(), dir, profiles, run, now, nil); len(got) != 0 || len(ran) != 0 {
+		t.Fatalf("chưa đo: %v, đã chạy %v", got, ran)
 	}
-	got := LoadContexts(context.Background(), dir, profiles, run, now, true)
-	if got["claude-2"] == nil || len(got) != 1 || calls != 1 {
-		t.Fatalf("đo: %v, %d lần gọi", got, calls)
+	// Bấm đo một gói thì chỉ tốn token cho gói đó.
+	got := LoadContexts(context.Background(), dir, profiles, run, now, []string{"claude-2"})
+	if got["claude-2"] == nil || len(got) != 1 || strings.Join(ran, ",") != "claude-2" {
+		t.Fatalf("đo: %v, đã chạy %v", got, ran)
 	}
-	if got := LoadContexts(context.Background(), dir, profiles, run, now.Add(6*24*time.Hour), false); got["claude-2"] == nil || calls != 1 {
-		t.Errorf("trong 7 ngày dùng kết quả đã lưu: %v, %d lần gọi", got, calls)
+	if got := LoadContexts(context.Background(), dir, profiles, run, now.Add(6*24*time.Hour), nil); got["claude-2"] == nil || len(ran) != 1 {
+		t.Errorf("trong 7 ngày dùng kết quả đã lưu: %v, đã chạy %v", got, ran)
 	}
-	if got := LoadContexts(context.Background(), dir, profiles, run, now.Add(8*24*time.Hour), false); len(got) != 0 || calls != 1 {
-		t.Errorf("quá 7 ngày thì bỏ, không tự chạy lại: %v, %d lần gọi", got, calls)
+	if got := LoadContexts(context.Background(), dir, profiles, run, now.Add(8*24*time.Hour), nil); len(got) != 0 || len(ran) != 1 {
+		t.Errorf("quá 7 ngày thì bỏ, không tự chạy lại: %v, đã chạy %v", got, ran)
 	}
 }
 

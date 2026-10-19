@@ -211,8 +211,11 @@ Bảng cho phép có ở Rust (id, chạy ở đâu). Phần chạy trong sideca
 
 - `hive-worker optimize fix <fixId> --profile P --preview` trả danh sách thay đổi (file, khoá, cũ, mới, cảnh báo) mà không
   ghi gì.
-- Hoàn tác `optimizer.*` là `optimize fix <fixId> --profile P --undo`. Lúc áp dụng, sidecar ghi mức và RTK của gói trước
-  lần sửa vào `score-fixes.json`; hoàn tác thì bật lại mức cũ, hoặc tắt nếu trước đó chưa bật. Không chép bản sao lưu, vì
+- Hoàn tác `optimizer.*` là `optimize fix <fixId> --profile P --undo`. Trước khi đổi cấu hình, sidecar đẩy mức và RTK
+  của gói vào chồng bản ghi của gói trong `score-fixes.json`; hoàn tác chỉ nhận lần sửa sau cùng, bật lại mức cũ hoặc
+  tắt nếu trước đó chưa bật. Hoàn tác hết thì file về đúng bản trước lần sửa đầu.
+- `codegraph.*` do Rust chạy: lần áp dụng được lưu vào `score-desktop-fixes.json`; hoàn tác chỉ khi có bản ghi khớp gói
+  và dự án. Không chép bản sao lưu, vì
   `Restore` về một bản không phải bản đầu vẫn để manifest ghi mức mới (`optimizer.go:449–455`).
 - Không có lệnh ghi từng khoá lẻ. Lý do: `Enable` gỡ khoá của mức cũ trước khi áp mức mới (`claude.go:49–57`), nên một
   khoá lẻ đặt ngoài preset sẽ bị gỡ ở lần bật sau.
