@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-token-score-undo"
+description = "Enables the token_score_undo command without any pre-configured scope."
+commands.allow = ["token_score_undo"]
+
+[[permission]]
+identifier = "deny-token-score-undo"
+description = "Denies the token_score_undo command without any pre-configured scope."
+commands.deny = ["token_score_undo"]
