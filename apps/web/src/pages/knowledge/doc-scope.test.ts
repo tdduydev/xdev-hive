@@ -116,6 +116,60 @@ describe("lọc và gom cây tài liệu", () => {
     expect(a?.children[0]?.name).toBe("Dự án khác");
   });
 
+  it("Dự án khác đứng sau Chung đơn vị và các hệ thống", () => {
+    const tree = buildScopeTree(
+      [
+        item({ scope: projectScope("A", "lạ") }),
+        item({ scope: projectScope("A", "P1") }),
+        item({ scope: teamScope("A") }),
+      ],
+      names,
+    );
+    expect(tree[0]?.children.map((n) => n.id)).toEqual(["team-common:A", "system:S1", "other:A"]);
+  });
+
+  it("xếp hệ thống và dự án theo tên tiếng Việt", () => {
+    // "vi" xếp U trước Ư (bảng gốc của ICU thì ngược lại) và Đ trước K (so mã Unicode thì ngược lại).
+    const viNames: ScopeNames = {
+      teams: new Map([["A", "Đơn vị A"]]),
+      systems: new Map([
+        ["S-ung", { name: "Ứng dụng", teamId: "A" }],
+        ["S-uy", { name: "Uỷ quyền", teamId: "A" }],
+      ]),
+      projects: new Map([
+        ["P-cong", { name: "Cổng", systemId: "S-ung", teamId: "A" }],
+        ["P-kho", { name: "Kho", systemId: "S-uy", teamId: "A" }],
+        ["P-dieu", { name: "Điều phối", systemId: "S-uy", teamId: "A" }],
+      ]),
+    };
+    const tree = buildScopeTree(
+      [
+        item({ scope: projectScope("A", "P-cong") }),
+        item({ scope: projectScope("A", "P-kho") }),
+        item({ scope: projectScope("A", "P-dieu") }),
+      ],
+      viNames,
+    );
+    const systems = tree[0]?.children ?? [];
+    expect(systems.map((n) => n.name)).toEqual(["Uỷ quyền", "Ứng dụng"]);
+    expect(systems[0]?.children.map((n) => n.name)).toEqual(["Điều phối", "Kho"]);
+  });
+
+  it("dự án có hệ thống không còn trong danh mục thì vào Dự án khác", () => {
+    const withLostSystem: ScopeNames = {
+      ...names,
+      projects: new Map([...names.projects, ["P3", { name: "Dự án 3", systemId: "S-mất", teamId: "A" }]]),
+    };
+    const tree = buildScopeTree(
+      [item({ scope: projectScope("A", "P3") }), item({ scope: projectScope("A", "P1") })],
+      withLostSystem,
+    );
+    const a = tree[0];
+    expect(a?.children.map((n) => n.id)).toEqual(["system:S1", "other:A"]);
+    expect(fileCount(a?.children[1]?.folder)).toBe(1);
+    expect(a?.children[0]?.children.map((n) => n.id)).toEqual(["project:P1"]);
+  });
+
   it("đính kèm nằm cùng dự án với tài liệu, count chỉ đếm tài liệu", () => {
     const tree = buildScopeTree(
       [
