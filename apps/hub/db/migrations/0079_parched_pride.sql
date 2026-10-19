@@ -1,0 +1,1 @@
+CREATE INDEX "project_members_team_user" ON "hive"."project_members" USING btree ("team_id","user_id");

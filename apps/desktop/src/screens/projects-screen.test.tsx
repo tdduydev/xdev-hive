@@ -2,8 +2,10 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, AccountContext } from "@/lib/account.ts";
+import type { GitGroups } from "@/lib/git-groups.ts";
 import { setLang } from "@/lib/i18n.ts";
 import type { LocalProject, LocalProjects } from "@/lib/local-projects.ts";
+import { resetTerminals, terminals } from "@/lib/pty.ts";
 import { ProjectsScreen } from "@/screens/projects-screen.tsx";
 
 const ACCOUNT: Account = {
@@ -69,6 +71,7 @@ function fakeApp(opts: {
   exists?: boolean;
   legacy?: LocalProject[];
   picked?: string;
+  gitGroups?: Pick<GitGroups, "hosts" | "groups">;
 }) {
   const calls: Call[] = [];
   let list = [...opts.local];
@@ -106,7 +109,8 @@ function fakeApp(opts: {
       return view();
     },
     "plugin:dialog|open": () => opts.picked ?? null,
-    git_groups: () => ({ path: "/x/gitgroups.json", hosts: [], groups: [] }),
+    git_groups: () => ({ path: "/x/gitgroups.json", hosts: [], groups: [], ...opts.gitGroups }),
+    git_group_status: () => ({ path: "/x/gitgroups.json", hosts: [], groups: [], ...opts.gitGroups, status: [] }),
     hub_rpc: (a) => {
       const path =
         String(a?.path)
@@ -203,6 +207,28 @@ describe("ProjectsScreen", () => {
     expect(within(await row("payment-api")).getByText("Đã gắn")).toBeTruthy();
   });
 
+  it("nút Terminal mở màn Terminal ở thư mục của dự án; thư mục mất thì không có nút", async () => {
+    resetTerminals();
+    fakeApp({
+      hub: { "projects/list": [PAY, WEB], "policies/get": policy(true) },
+      local: [
+        entry({ projectId: P1, name: "payment-api", folder: "/w/pay" }),
+        entry({ projectId: P2, name: "web-shop", folder: "/w/web", exists: false }),
+        entry({ name: "cu", folder: "/w/cu", origin: "https://gitlab.com/acme/cu.git" }),
+      ],
+    });
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(within(await row("payment-api")).getByRole("button", { name: "Mở terminal ở payment-api" }));
+    expect(location.hash).toBe("#/terminal");
+    expect(terminals().folder).toBe("/w/pay");
+    expect(terminals().sessions.map((s) => s.folder)).toEqual(["/w/pay"]);
+    expect(within(await row("web-shop")).queryByRole("button", { name: /Mở terminal/ })).toBeNull();
+    const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
+    await user.click(within(waiting).getByRole("button", { name: "Mở terminal ở cu" }));
+    expect(terminals().folder).toBe("/w/cu");
+  });
+
   it("bật toàn quyền phải xác nhận rủi ro; tắt thì không hỏi", async () => {
     const calls = fakeApp({
       hub: { "projects/list": [PAY], "policies/get": policy(true) },
@@ -245,6 +271,91 @@ describe("ProjectsScreen", () => {
     expect(await within(await row("payment-api")).findByText(/Tổ chức không cho toàn quyền CLI/)).toBeTruthy();
     const web = screen.getByRole("switch", { name: "Cho toàn quyền trên máy này với web-shop" });
     expect((web as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("repo chưa có trên hub gom theo namespace: thu gọn, đếm repo, mở từng nhóm, lọc", async () => {
+    fakeApp({
+      hub: { "projects/list": [], "policies/get": policy(true) },
+      local: [
+        entry({ name: "his-web", folder: "/w/his-web", origin: "git@gitlab.fis.vn:EHospital-AI/HIS/his-web.git" }),
+        entry({
+          name: "his-admin",
+          folder: "/w/his-admin",
+          origin: "https://gitlab.fis.vn/EHospital-AI/HIS/his-admin.git",
+        }),
+        entry({
+          name: "emr-core",
+          folder: "/w/emr-core",
+          origin: "https://gitlab.fis.vn/ehospital-ai/emr/emr-core.git",
+        }),
+        entry({ name: "nhap", folder: "/w/tmp/nhap" }),
+      ],
+      gitGroups: {
+        hosts: [{ id: "h1", kind: "gitlab", url: "https://gitlab.fis.vn", name: "GitLab FIS" }],
+        groups: [
+          {
+            id: "g1",
+            hostId: "h1",
+            path: "ehospital-ai",
+            root: "/w",
+            protocol: "https",
+            repos: [
+              {
+                path: "ehospital-ai/his/his-web",
+                name: "his-web",
+                httpUrl: "https://gitlab.fis.vn/ehospital-ai/his/his-web.git",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    renderScreen();
+    const user = userEvent.setup();
+    const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
+    // Nhiều nhóm thì thu gọn; tên nhóm lấy theo Nhóm Git theo dõi, máy chủ hiện tên kết nối.
+    const his = await within(waiting).findByRole("button", { name: "ehospital-ai/his · GitLab FIS 2 repo" });
+    expect(
+      within(waiting)
+        .getAllByRole("button", { expanded: false })
+        .map((b) => b.textContent),
+    ).toEqual(["ehospital-ai/emr · GitLab FIS 1 repo", "ehospital-ai/his · GitLab FIS 2 repo", "/w/tmp 1 repo"]);
+    expect(within(waiting).queryByText("his-web")).toBeNull();
+    await user.click(his);
+    expect(his.getAttribute("aria-expanded")).toBe("true");
+    // Nút của từng repo giữ nguyên.
+    expect(within(waiting).getByRole("button", { name: "Bỏ his-web khỏi danh sách" })).toBeTruthy();
+    expect(within(waiting).getByText("origin: git@gitlab.fis.vn:EHospital-AI/HIS/his-web.git")).toBeTruthy();
+    await user.click(his);
+    expect(within(waiting).queryByText("his-web")).toBeNull();
+    // Đang lọc thì mở sẵn các nhóm còn lại.
+    const filter = within(waiting).getByRole("textbox", { name: "Lọc repo trên máy" });
+    await user.type(filter, "core");
+    expect(within(waiting).queryByRole("button", { name: /^ehospital-ai\/his/ })).toBeNull();
+    expect(
+      within(waiting)
+        .getByRole("button", { name: /^ehospital-ai\/emr/ })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(within(waiting).getByText("emr-core")).toBeTruthy();
+    await user.clear(filter);
+    await user.type(filter, "khong-co");
+    expect(within(waiting).getByText("Không có repo nào khớp.")).toBeTruthy();
+  });
+
+  it("bỏ repo khi đang lọc mà danh sách còn một repo thì vẫn giữ ô lọc để xoá chữ", async () => {
+    fakeApp({
+      hub: { "projects/list": [], "policies/get": policy(true) },
+      local: [entry({ name: "cu", folder: "/w/cu" }), entry({ name: "moi", folder: "/w/moi" })],
+    });
+    renderScreen();
+    const user = userEvent.setup();
+    const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
+    await user.type(await within(waiting).findByRole("textbox", { name: "Lọc repo trên máy" }), "cu");
+    await user.click(within(waiting).getByRole("button", { name: "Bỏ cu khỏi danh sách" }));
+    expect(await within(waiting).findByText("Không có repo nào khớp.")).toBeTruthy();
+    await user.clear(within(waiting).getByRole("textbox", { name: "Lọc repo trên máy" }));
+    expect(within(waiting).getByText("moi")).toBeTruthy();
   });
 
   it("chưa liên kết tài khoản thì không gọi hub, vẫn hiện repo trên máy", async () => {

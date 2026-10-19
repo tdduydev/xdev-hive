@@ -1,7 +1,7 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, giao diện cục bộ gọi hub qua Rust.
 
 mod account;
-mod artifacts;
+mod agents;
 mod browser_login;
 #[cfg(test)]
 mod capabilities_audit;
@@ -18,13 +18,16 @@ mod hub_switch;
 mod local_projects;
 mod memory_store;
 mod no_window;
+mod notices;
 mod optimizer;
 mod profiles;
 mod pty;
 mod register;
 mod remote;
+mod settings;
 mod setup_extra;
 mod skills;
+mod ssh_keys;
 mod tls;
 mod tray_icon;
 mod updates;
@@ -105,6 +108,8 @@ struct WorkerView {
     detail: Option<String>,
     wanted: bool,
     hub: Option<String>,
+    /// Giây Unix lúc bắt đầu mất kết nối với hub; None khi không đang chờ nối.
+    offline_since: Option<u64>,
 }
 
 fn lang_of(app: &AppHandle) -> String {
@@ -131,6 +136,7 @@ fn worker_view(app: &AppHandle) -> Option<WorkerView> {
         detail: w.detail().map(str::to_string),
         wanted: w.wanted(),
         hub: hub_of(app),
+        offline_since: w.offline_since(),
     })
 }
 
@@ -272,6 +278,11 @@ fn perform(app: &AppHandle, action: Action) {
         }
         Action::Stop => stop_worker(app),
         Action::Notify(body) => notify(app, &body),
+        Action::NotifyOffline(body) => {
+            if settings::get(app).notify_offline {
+                notify(app, &body);
+            }
+        }
         Action::AskRegister => show_register(app),
         Action::RetryIn(secs) => {
             let app = app.clone();
@@ -434,7 +445,12 @@ fn toggle(app: &AppHandle) {
         .lock()
         .map(|w| w.wanted())
         .unwrap_or(false);
-    if wanted {
+    set_wanted(app, !wanted);
+}
+
+/// Bật hay tắt worker. Máy chưa đăng ký thì chưa có hub để nối: mở cửa sổ đăng ký thay vì bật.
+fn set_wanted(app: &AppHandle, on: bool) {
+    if !on {
         dispatch(app, Event::Stop);
     } else if hub_of(app).is_some() {
         dispatch(app, Event::Start);
@@ -527,7 +543,15 @@ fn worker_state(app: AppHandle) -> Option<WorkerView> {
     worker_view(&app)
 }
 
-/// Giao diện đổi ngôn ngữ thì khay đổi theo.
+/// Bật hay tắt worker từ màn Máy này, như mục Tắt/Bật worker của khay. Trả trạng thái ngay sau khi đổi; các bước
+/// sau (đang nối, đang nhận việc) đến qua sự kiện "worker-state".
+#[tauri::command]
+fn set_worker(app: AppHandle, on: bool) -> Option<WorkerView> {
+    set_wanted(&app, on);
+    worker_view(&app)
+}
+
+/// Giao diện đổi ngôn ngữ thì khay và nút trên thông báo đổi theo.
 #[tauri::command]
 fn set_lang(app: AppHandle, lang: String) {
     if let Ok(mut l) = app.state::<State>().lang.lock() {
@@ -537,6 +561,7 @@ fn set_lang(app: AppHandle, lang: String) {
             "vi".into()
         };
     }
+    notices::register_actions(&app, lang == "en");
     refresh_tray(&app);
 }
 
@@ -636,7 +661,7 @@ async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
     let args = register::validate(&hub, token, Some(&ex.machine))?;
     let machine_id = register_and_start(&app, args).await?;
     // Máy đã đăng ký và worker đã chạy; token cá nhân lỗi thì người dùng vẫn liên kết tay được ở màn Tài khoản.
-    if let Err(e) = account::save_checked(&app, &hub, &ex.personal_token).await {
+    if let Err(e) = account::save_checked(&hub, &ex.personal_token).await {
         eprintln!("Không liên kết được tài khoản sau khi đăng nhập: {e}");
     }
     Ok(machine_id)
@@ -648,7 +673,7 @@ async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
 async fn account_browser_login(app: AppHandle) -> Result<account::AccountStatus, String> {
     let hub = hub_of(&app).ok_or("Máy chưa đăng ký với hub nào. Đăng ký máy trước.")?;
     let ex = browser_exchange(&app, &hub, browser_login::Purpose::SignIn).await?;
-    account::save_checked(&app, &hub, &ex.personal_token).await?;
+    account::save_checked(&hub, &ex.personal_token).await?;
     let _ = app.emit(account::CHANGED_EVENT, ());
     Ok(account::status_for(Some(hub)).await)
 }
@@ -732,7 +757,7 @@ async fn hub_change(app: AppHandle, hub: String) -> Result<HubChange, String> {
     if let Ok(mut slot) = app.state::<State>().hub.lock() {
         *slot = Some(hub.clone());
     }
-    account::carry_over(&app, &current, &hub).await;
+    account::carry_over(&current, &hub).await;
     if wanted {
         dispatch(&app, Event::Start);
     } else {
@@ -1005,6 +1030,16 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     })
 }
 
+/// Bản cũ đệm artifact đã mở vào `<app_data>/artifacts` và chỉ dọn khi đăng xuất. Màn Artifact đã chuyển sang web nên
+/// không còn gì đọc hay dọn thư mục đó: xoá đi để tài liệu của tổ chức không nằm lại trên máy sau khi đăng xuất.
+fn remove_old_artifact_cache(app_data: &std::path::Path) {
+    match std::fs::remove_dir_all(app_data.join("artifacts")) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => eprintln!("Không xoá được bộ đệm artifact cũ: {e}"),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tls::ensure();
@@ -1021,8 +1056,12 @@ pub fn run() {
         .manage(State::default())
         .manage(cli::Runs::default())
         .manage(pty::Ptys::default())
+        .manage(agents::Agents::default())
         .manage(remote::Remote::default())
         .manage(git_groups::Jobs::default())
+        .manage(ssh_keys::SetupLock::default())
+        .manage(settings::Store::default())
+        .manage(notices::Notices::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
             register_worker,
@@ -1040,7 +1079,11 @@ pub fn run() {
             usage::claude_usage,
             usage::session_stats,
             worker_state,
+            set_worker,
             set_lang,
+            settings::app_settings,
+            settings::set_app_setting,
+            notices::show_notification,
             account::account_status,
             account::account_link,
             account::account_unlink,
@@ -1107,6 +1150,11 @@ pub fn run() {
             git_groups::git_group_cancel,
             git_groups::open_folder,
             git_groups::open_folder_terminal,
+            ssh_keys::ssh_list,
+            ssh_keys::ssh_check,
+            ssh_keys::ssh_scan,
+            ssh_keys::ssh_setup,
+            ssh_keys::ssh_remove,
             cli::folder_tree,
             cli::folder_docs,
             cli::propose_doc,
@@ -1117,6 +1165,11 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_close,
+            agents::machine_agents,
+            agents::machine_agent_counts,
+            agents::machine_agent_stop,
+            agents::machine_agent_feed,
+            agents::machine_agent_feed_older,
             updates::update_status,
             updates::check_updates_now,
             updates::relaunch_to_update,
@@ -1136,18 +1189,18 @@ pub fn run() {
             remote::remote_totp_disable,
             remote::remote_totp_unlock,
             remote::remote_sessions,
-            remote::remote_session_kill,
-            artifacts::artifact_cache_put,
-            artifacts::artifact_cache_get,
-            artifacts::artifact_cache_list,
-            artifacts::artifact_cache_clear
+            remote::remote_session_kill
         ])
-        .register_asynchronous_uri_scheme_protocol(artifacts::SCHEME, artifacts::protocol)
         .on_window_event(|window, event| {
-            // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.
+            // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền. Người dùng tắt "Đóng cửa sổ chỉ ẩn xuống khay" ở màn Cài
+            // đặt thì đóng cửa sổ app là thoát hẳn, worker dừng êm trước như khi chọn Thoát ở khay.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                if window.label() == APP && !settings::get(window.app_handle()).hide_on_close {
+                    quit(window.app_handle());
+                    return;
+                }
                 // Terminal nhúng gắn với cửa sổ đang mở: ẩn cửa sổ thì không để CLI chạy tiếp không ai thấy.
                 if window.label() == APP {
                     window.app_handle().state::<pty::Ptys>().close_all();
@@ -1161,11 +1214,17 @@ pub fn run() {
         })
         .setup(|app| {
             doctor::warm_user_path();
+            if let Ok(dir) = app.path().app_data_dir() {
+                // Bộ đệm có thể tới 200 MiB: không giữ khởi động chờ xoá.
+                tauri::async_runtime::spawn_blocking(move || remove_old_artifact_cache(&dir));
+            }
             optimizer::link_on_start(app.handle());
             git_groups::start_auto_fetch(app.handle().clone());
             remote::start(app.handle());
             let tray = build_tray(app)?;
             app.manage(tray);
+            notices::register_actions(app.handle(), false);
+            notices::listen(app.handle());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match sidecar_json::<WorkerConfig>(
@@ -1198,7 +1257,9 @@ pub fn run() {
                         {
                             eprintln!("Không nhập được tài khoản CLI của app v1: {e}");
                         }
-                        dispatch(&handle, Event::Start);
+                        if settings::get(&handle).start_worker {
+                            dispatch(&handle, Event::Start);
+                        }
                     }
                     Ok(_) => {}
                     Err(e) => eprintln!("Không đọc được cấu hình worker: {e}"),
@@ -1283,5 +1344,20 @@ mod tests {
         assert!(!safe_hub_path("https://evil.example"));
         assert!(!safe_hub_path("/a b"));
         assert!(!safe_hub_path("/x#<script>"));
+    }
+
+    #[test]
+    fn removes_only_the_old_artifact_cache() {
+        let dir = std::env::temp_dir().join(format!("hive-app-data-{}", std::process::id()));
+        let cached = dir.join("artifacts").join("a1b2").join("org").join("id");
+        std::fs::create_dir_all(&cached).unwrap();
+        std::fs::write(cached.join("1.json"), "{}").unwrap();
+        std::fs::write(dir.join("installed-skills.json"), "{}").unwrap();
+        super::remove_old_artifact_cache(&dir);
+        assert!(!dir.join("artifacts").exists());
+        assert!(dir.join("installed-skills.json").is_file());
+        // Lần mở app sau không còn thư mục để xoá: không lỗi.
+        super::remove_old_artifact_cache(&dir);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

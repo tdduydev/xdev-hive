@@ -263,6 +263,15 @@ describe("projects.create chạy thật", () => {
     expect(row.team_id).toBe(org.teamId);
     expect(row.settings.merge).toEqual({ mode: "review", requiredApprovals: 1 });
     expect(row.webhook_secret_enc).toMatch(/^v1\./);
+    const members = await admin.query("select user_id, added_by from hive.project_members where project_id = $1", [id]);
+    expect(members.rows).toEqual([{ user_id: org.user("tadmin"), added_by: org.user("tadmin") }]);
+  });
+
+  it("quản trị tổ chức không ở đội tạo dự án được, không thành thành viên dự án", async () => {
+    const r = await createProject(app, deps, actor("admin"), input());
+    const id = r.projectId as string;
+    const members = await admin.query("select user_id from hive.project_members where project_id = $1", [id]);
+    expect(members.rows).toEqual([]);
   });
 
   it("idempotencyKey gửi hai lần chỉ tạo một dự án", async () => {

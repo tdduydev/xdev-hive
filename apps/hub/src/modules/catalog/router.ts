@@ -2,6 +2,7 @@ import { implement } from "@orpc/server";
 import { contract } from "@xdev-hive/contracts";
 import type { RequestContext } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { addProjectMembers, listProjectMembers, myProjectMembership, removeProjectMember } from "./members.ts";
 import { enqueueMergeAs, queueForUser, removeMergeAs } from "./merge-queue.ts";
 import {
   type CatalogDeps,
@@ -50,5 +51,20 @@ export function catalogRouter(deps: CatalogDeps & OrgDeps) {
     updateSettings: os.updateSettings
       .use(inOrg)
       .handler(({ context: { tx, user }, input }) => updateProjectSettings(tx, user.id, input.key, input.settings)),
+  };
+}
+
+export function projectMembersRouter(deps: CatalogDeps & OrgDeps) {
+  const { authed, inOrg } = orgMiddlewares(deps);
+  const os = implement(contract.projectMembers).$context<RequestContext>().use(authed);
+  return {
+    list: os.list.use(inOrg).handler(({ context: { tx, user }, input }) => listProjectMembers(tx, user.id, input.id)),
+    add: os.add
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => addProjectMembers(tx, user.id, input.id, input.userIds)),
+    remove: os.remove
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => removeProjectMember(tx, user.id, input.id, input.userId)),
+    mine: os.mine.use(inOrg).handler(({ context: { tx, user } }) => myProjectMembership(tx, user.id)),
   };
 }

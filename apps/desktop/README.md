@@ -71,11 +71,49 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
   qua stdin; sự kiện `cli:event` chỉ gửi cho cửa sổ `app`. Môi trường của CLI dựng từ danh sách cho phép (không biến
   `HIVE_*`, token, khoá API hay biến của phiên agent khác). Đề xuất của agent vào bản nháp trong app; bản nháp lên hub
   bằng `propose_doc` (tool `doc_propose`, token cá nhân), người duyệt quyết.
+- **Màn Máy chủ SSH** (`src-tauri/src/ssh_keys.rs`, `worker/internal/sshkeys`, [specs/023](../../specs/023-desktop-ssh-keys/spec.md)):
+  chuyển đăng nhập SSH từ mật khẩu sang khoá qua `hive-worker ssh`. Khoá của máy là `~/.ssh/id_ed25519` (chưa có thì
+  tạo, ed25519, không passphrase). Thêm máy chủ: app đọc khoá máy chủ, người dùng đối chiếu dấu vân tay với người quản
+  trị, gõ mật khẩu một lần; sidecar chỉ gửi mật khẩu tới máy chủ có đúng dấu vân tay đó, một lần, rồi chép khoá công
+  khai vào `~/.ssh/authorized_keys` (700/600, không thêm trùng), ghi `known_hosts` và khối `Host` giữa hai dòng
+  `# >>> xdev-hive` trong `~/.ssh/config` (có sao lưu), rồi kiểm tra bằng `ssh -o BatchMode=yes` của máy. Mật khẩu chỉ
+  đi qua stdin của sidecar, không lưu, không ghi log. App không tự tắt đăng nhập bằng mật khẩu trên máy chủ, chỉ hiện
+  hướng dẫn sau cảnh báo.
 - **Bảo mật:** lệnh của app (`parse_registration`, `register_worker`, `browser_login`) khai báo trong `build.rs`. Capability chỉ cấp
   các lệnh này cho cửa sổ `register` (`capabilities/default.json`). Cửa sổ `app` có capability riêng
   (`capabilities/app.json`), hiện chỉ `core:default`; màn nào cần lệnh Rust thì thêm đúng lệnh đó. Cửa sổ web của hub
   là trang từ xa, không có capability nào, nên không gọi được lệnh của app. CSP không cho script inline, nên sáng/tối
   đặt trong `src/main.tsx` trước lần vẽ đầu.
+
+## Giao diện và prompt của Terminal
+
+Thanh trên của Terminal có ô **Giao diện terminal**: Luôn tối (mặc định), Luôn sáng, Theo app. Lựa chọn và cỡ chữ lưu
+theo máy.
+
+Prompt nhiều màu, nhiều biểu tượng kiểu [Oh My Zsh](https://ohmyz.sh/) do shell vẽ, không phải app. Terminal của app chạy
+`powershell.exe` trên Windows và shell đăng nhập (`$SHELL -l`, mặc định zsh) trên macOS, nên cài cho shell đó là thấy
+trong app. Theme có biểu tượng cần một Nerd Font: font của terminal là JetBrains Mono, rồi tới `Symbols Nerd Font Mono`,
+`JetBrainsMono Nerd Font Mono`, `MesloLGS NF` cho các ký tự JetBrains Mono không có. Cài font xong thì mở lại app.
+
+**Windows: Oh My Posh** (Oh My Zsh chỉ chạy với zsh)
+
+```powershell
+winget install JanDeDobbeleer.OhMyPosh -s winget
+oh-my-posh font install JetBrainsMono
+```
+
+Rồi trong một tab Shell của app, mở profile của Windows PowerShell bằng `notepad $PROFILE` (tạo file nếu chưa có) và thêm
+dòng `oh-my-posh init pwsh | Invoke-Expression`. Đổi theme bằng `--config`, xem danh sách theme ở trang của Oh My Posh.
+Máy chặn chạy profile thì đó là chính sách thực thi script của Windows: người dùng tự quyết có đổi hay không.
+
+**macOS: Oh My Zsh**
+
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+brew install --cask font-jetbrains-mono-nerd-font
+```
+
+Theme đặt bằng `ZSH_THEME` trong `~/.zshrc`. `robbyrussell` (mặc định) không cần Nerd Font; `agnoster` cần.
 
 ## Phát hành
 

@@ -1,3 +1,4 @@
+import { expect, type Page } from "@playwright/test";
 import { doc, docEditorState, docSearchOutput, docTreeItem, docTreeMoveInput, submitInput } from "@xdev-hive/contracts";
 import { DOC_HOME_ID, type DocsyncFixtureHandler } from "./docsync-settings-fixture.ts";
 
@@ -33,7 +34,15 @@ export function docsyncDocsScenario(
     updatedBy: { userId: "u1", runId: null },
     content: CONTENT,
   });
-  const makeItem = (key: string, title: string, path: string, state: "synced" | "pending" | "failed", i: number) =>
+  const orgScope = { level: "org", teamId: null, projectId: null };
+  const makeItem = (
+    key: string,
+    title: string,
+    path: string,
+    state: "synced" | "pending" | "failed",
+    i: number,
+    scope: unknown = orgScope,
+  ) =>
     docTreeItem.parse({
       homeId: DOC_HOME_ID,
       path,
@@ -50,6 +59,7 @@ export function docsyncDocsScenario(
       assetId: null,
       version: 3,
       error: state === "failed" ? "Không kết nối được repo." : null,
+      scope,
     });
   const state = {
     items: [
@@ -98,6 +108,8 @@ export function docsyncDocsScenario(
   ];
   const rpc: Record<string, DocsyncFixtureHandler> = {
     "projects/list": () => ok([]),
+    "systems/list": () => ok([]),
+    "projectMembers/mine": () => ok({ projectIds: [], teamIds: [] }),
     "docs/list": (input) =>
       ok(
         docs().filter(
@@ -228,5 +240,17 @@ export function docsyncDocsScenario(
 }
 
 export function docsyncDocsFixture(): Record<string, DocsyncFixtureHandler> {
-  return { "docTree/list": () => ok({ items: [], nextCursor: null }) };
+  return {
+    "docTree/list": () => ok({ items: [], nextCursor: null }),
+    // Trang Tài liệu hỏi thêm ba danh mục này để dựng cây theo đơn vị; mặc định chưa thuộc dự án nào.
+    "projectMembers/mine": () => ok({ projectIds: [], teamIds: [] }),
+    "systems/list": () => ok([]),
+  };
+}
+
+/** Cây tài liệu chỉ mở sẵn nhánh tới dự án của người dùng, nên test cần mở hết trước khi tìm một dòng. */
+export async function expandDocTree(page: Page) {
+  await expect(page.getByRole("list", { name: "Cây tài liệu" })).toBeVisible({ timeout: 20_000 });
+  const closed = page.getByRole("list", { name: "Cây tài liệu" }).locator('button[aria-expanded="false"]');
+  while ((await closed.count()) > 0) await closed.first().click();
 }

@@ -13,6 +13,7 @@ import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/t
 import { CopyIcon, LoaderCircleIcon, PlayIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { FolderForm } from "@/components/folder-form.tsx";
+import { ScoreRing } from "@/components/score-ring.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { useFolder } from "@/lib/folder.ts";
 import { projectKeyOf } from "@/lib/hub.ts";
@@ -165,24 +166,6 @@ const TONE: Record<CheckStatus, NonNullable<PillProps["tone"]>> = {
   optional: "neutral",
 };
 /** Vòng điểm sẵn sàng như AppSetup.dc.html; màu theo tỉ lệ, xanh khi đủ hết. */
-function ScoreRing({ ready, required, label }: { ready: number; required: number; label: string }) {
-  const pct = required ? Math.round((ready / required) * 100) : 100;
-  return (
-    <div
-      role="img"
-      aria-label={label}
-      className="inline-flex size-18 shrink-0 items-center justify-center rounded-full"
-      style={{
-        background: `conic-gradient(var(${pct === 100 ? "--success" : "--primary"}) ${pct}%, var(--muted) 0)`,
-      }}
-    >
-      <span className="inline-flex size-14 items-center justify-center rounded-full bg-background font-mono text-[15px] font-semibold">
-        {ready}/{required}
-      </span>
-    </div>
-  );
-}
-
 /** Nguồn của yêu cầu để hiện: file dự án, hoặc hub (MCP được phép, token MCP). */
 function sourceLabel(item: CheckItem, t: (typeof text)["vi"]): string {
   if (item.source === "hub") return item.id.startsWith("mcp:") ? t.allowedMcp : t.mcpTools;

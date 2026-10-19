@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-machine-agents"
+description = "Enables the machine_agents command without any pre-configured scope."
+commands.allow = ["machine_agents"]
+
+[[permission]]
+identifier = "deny-machine-agents"
+description = "Denies the machine_agents command without any pre-configured scope."
+commands.deny = ["machine_agents"]

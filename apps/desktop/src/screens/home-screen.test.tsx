@@ -3,44 +3,113 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, AccountContext } from "@/lib/account.ts";
 import { saveFolder } from "@/lib/folder.ts";
-import { type HubProject, matchProject, normalizeRepo } from "@/lib/hub.ts";
 import { setLang } from "@/lib/i18n.ts";
+import type { MachineRun } from "@/lib/machine-runs.ts";
+import type { Plan } from "@/lib/plans.ts";
 import type { SessionStats } from "@/lib/usage.ts";
-import { HomeScreen, tokensByDay } from "@/screens/home-screen.tsx";
+import { HomeScreen, lastLines, runsToday, tokensToday, untilText } from "@/screens/home-screen.tsx";
 
 const ACCOUNT: Account = {
-  name: "Phạm Hà",
-  email: "ha@acme.vn",
+  name: "Trần Lan",
+  email: "lan@acme.vn",
   orgId: "o1",
   orgName: "Acme",
   orgRole: "member",
   teams: [{ id: "t1", name: "Thanh toán", role: "member" }],
 };
-const PROJECT: HubProject = {
-  key: "PAY",
-  name: "payment-api",
-  state: "active",
-  repo: {
-    kind: "github",
-    owner: "acme",
-    name: "payment-api",
-    httpUrl: "https://github.com/acme/payment-api.git",
-    sshUrl: "git@github.com:acme/payment-api.git",
-    webUrl: "https://github.com/acme/payment-api",
+
+const NOW = Date.now();
+const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
+
+function run(over: Partial<MachineRun>): MachineRun {
+  return {
+    id: "7f3a21c0-0000-4000-8000-000000000000",
+    kind: "code",
+    state: "succeeded",
+    taskKey: "PAY-138",
+    title: "Sửa tiền tệ",
+    projectId: "p",
+    project: { key: "PAY", name: "payment-api" },
+    cli: "claude",
+    model: "sonnet",
+    machine: "dev-ha",
+    costUsd: 0.5,
+    tokensIn: 1000,
+    prUrl: null,
+    createdAt: iso(60_000),
+    startedAt: iso(60_000),
+    finishedAt: iso(30_000),
+    ...over,
+  };
+}
+
+const RUNS: MachineRun[] = [
+  run({
+    id: "7f3a21c0-aaaa-4000-8000-000000000000",
+    state: "running",
+    taskKey: "PAY-139",
+    title: "Retry webhook khi cổng thanh toán trả 502",
+    costUsd: 0.31,
+    startedAt: iso(6 * 60_000),
+    finishedAt: null,
+  }),
+  run({ id: "b", state: "succeeded", costUsd: 1.5 }),
+  run({ id: "c", state: "failed", costUsd: null }),
+];
+
+const PLANS: Plan[] = [
+  {
+    id: "max",
+    label: "Claude Max team",
+    cli: "claude",
+    enabled: true,
+    priority: 1,
+    maxConcurrent: 2,
+    cooldownMinutes: 5,
+    supported: true,
+    loggedIn: true,
+    usage: {
+      session: { percent: 32, resetsAt: new Date(NOW + 190 * 60_000).toISOString() },
+      week: { percent: 58, resetsAt: null },
+      checkedAt: iso(0),
+      reason: null,
+    },
   },
-};
-const now = new Date().toISOString();
+  {
+    id: "gm",
+    label: "Gemini",
+    cli: "gemini",
+    enabled: false,
+    priority: 2,
+    maxConcurrent: 1,
+    cooldownMinutes: 5,
+    supported: true,
+    loggedIn: null,
+  },
+];
+
 const STATS: SessionStats = {
-  totals: { sessions: 1, input: 2_000_000, cached: 1_500_000, output: 1_000 },
+  totals: { sessions: 2, input: 3_000_000, cached: 2_000_000, output: 0 },
   sessions: [
     {
-      id: "s",
-      at: now,
-      cwd: "/w/payment-api",
-      model: "claude-opus-5-5",
+      id: "s1",
+      at: iso(0),
+      cwd: "/w",
+      model: null,
+      input: 1_000_000,
+      cached: 750_000,
+      output: 0,
+      contextUsed: null,
+      contextWindow: null,
+    },
+    {
+      id: "old",
+      at: iso(3 * 86_400_000),
+      cwd: "/w",
+      model: null,
       input: 2_000_000,
-      cached: 1_500_000,
-      output: 1_000,
+      cached: 1_250_000,
+      output: 0,
       contextUsed: null,
       contextWindow: null,
     },
@@ -49,64 +118,108 @@ const STATS: SessionStats = {
   secondary: null,
 };
 
+const CHECKS = [
+  {
+    id: "git",
+    name: "Git",
+    kind: "tool",
+    required: true,
+    need: null,
+    have: "2.5",
+    status: "ok",
+    source: "",
+    install: null,
+  },
+  {
+    id: "go",
+    name: "Go",
+    kind: "runtime",
+    required: true,
+    need: "1.27",
+    have: "1.25.4",
+    status: "outdated",
+    source: "go.mod",
+    install: null,
+  },
+  {
+    id: "lint",
+    name: "golangci-lint",
+    kind: "tool",
+    required: true,
+    need: "2.x",
+    have: null,
+    status: "missing",
+    source: "",
+    install: null,
+  },
+];
+
+const ONLINE = {
+  kind: "online",
+  label: "Worker: đang nhận việc",
+  detail: null,
+  wanted: true,
+  hub: "https://hive.acme.vn",
+};
+
 type Handlers = Record<string, (args?: Record<string, unknown>) => unknown>;
 
-function fakeTauri(docsVersion = 7, over: Handlers = {}) {
+const logChunk = (text: string) => ({
+  id: 1,
+  attempt: 1,
+  offset: 0,
+  bytes: btoa(String.fromCharCode(...new TextEncoder().encode(text))),
+  createdAt: iso(0),
+});
+
+function fakeTauri(over: Handlers = {}) {
   const calls: { command: string; args?: Record<string, unknown> | undefined }[] = [];
   const handlers: Handlers = {
+    worker_state: () => ONLINE,
+    this_machine: () => "dev-ha",
+    "plugin:app|version": () => "0.9.4",
+    hub_tool: (args) => {
+      if (args?.name === "run_list") return { runs: RUNS };
+      throw new Error(`tool chưa giả: ${String(args?.name)}`);
+    },
+    hub_rpc: () => ({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        json: [logChunk("tool Edit retry.ts\n\ntool Bash pnpm test\ntest 12 đạt\nagent Thêm backoff\n")],
+      }),
+    }),
+    cli_profiles: () => ({ path: "/x/accounts.json", accounts: PLANS }),
+    scan_environment: () => CHECKS,
+    session_stats: () => STATS,
+    remote_status: () => ({ enabled: true, devices: [{ id: "d" }], roots: [] }),
+    remote_disable: () => ({ enabled: false, devices: [], roots: [] }),
+    remote_sessions: () => [
+      { id: "s", cli: "claude", cwd: "/w", account: "max", started: iso(0), controlled: false, viewers: 1 },
+    ],
     workspace_meta: () => ({
       folder: "/w/payment-api",
       name: "payment-api",
       isGit: true,
       branch: "main",
-      remote: "git@github.com:Acme/payment-api.git",
+      remote: null,
     }),
-    scan_environment: () => [
-      {
-        id: "git",
-        name: "Git",
-        kind: "tool",
-        required: true,
-        need: null,
-        have: "2.5",
-        status: "ok",
-        source: "",
-        install: null,
-      },
-      {
-        id: "go",
-        name: "Go",
-        kind: "runtime",
-        required: true,
-        need: "≥ 1.27",
-        have: "1.25.4",
-        status: "outdated",
-        source: "go.mod",
-        install: null,
-      },
-    ],
-    session_stats: () => STATS,
-    hub_tool: (args) => {
-      const name = args?.name;
-      if (name === "project_list") return { projects: [PROJECT] };
-      if (name === "doc_list")
-        return {
-          docs: [
-            { key: "pay/money", title: "Quy ước tiền tệ", version: docsVersion, updatedAt: now },
-            { key: "pay/api", title: "Hướng dẫn thiết kế API", version: 3, updatedAt: now },
-          ],
-        };
-      if (name === "skill_list")
-        return { skills: [{ name: "db-migration", description: "", scope: "org", version: 1 }] };
-      throw new Error(`tool chưa giả: ${String(name)}`);
-    },
-    worker_state: () => ({
-      kind: "online",
-      label: "Worker: đang nhận việc",
-      detail: null,
-      wanted: true,
-      hub: "https://hive.acme.vn",
+    local_projects: () => ({
+      path: "",
+      exists: true,
+      imported: 0,
+      projects: [
+        {
+          projectId: "p",
+          name: "PAY",
+          folder: "/w/payment-api",
+          fullPermission: false,
+          exists: true,
+          isGit: true,
+        },
+      ],
     }),
+    set_worker: (args) => ({ ...ONLINE, wanted: args?.on }),
     ...over,
   };
   window.__TAURI__ = {
@@ -129,21 +242,32 @@ const renderHome = (account: Account | null = ACCOUNT) =>
     </AccountContext.Provider>,
   );
 
-describe("so thư mục với dự án", () => {
-  it("https và ssh của cùng một repo khớp nhau", () => {
-    expect(normalizeRepo("https://github.com/Acme/payment-api.git")).toBe("github.com/acme/payment-api");
-    expect(normalizeRepo("git@github.com:acme/payment-api.git")).toBe("github.com/acme/payment-api");
-    expect(normalizeRepo("ssh://git@github.com/acme/payment-api")).toBe("github.com/acme/payment-api");
-    expect(matchProject("git@github.com:acme/payment-api.git", [PROJECT])?.key).toBe("PAY");
-    expect(matchProject("git@github.com:acme/other.git", [PROJECT])).toBeNull();
-    expect(matchProject(null, [PROJECT])).toBeNull();
+describe("số liệu của màn Máy này", () => {
+  it("chỉ tính run tạo từ nửa đêm, run đang chạy tính cả cũ", () => {
+    const yesterday = new Date(NOW);
+    yesterday.setHours(0, 0, 0, 0);
+    const old = run({ id: "old", state: "running", createdAt: new Date(yesterday.getTime() - 1000).toISOString() });
+    const today = runsToday([...RUNS, old], NOW);
+    expect(today.count).toBe(3);
+    expect(today.active.map((r) => r.id)).toEqual([RUNS[0]?.id, "old"]);
+    expect(today.ok).toBe(1);
+    expect(today.look).toBe(1);
+    expect(today.cost).toBeCloseTo(1.81);
+    expect(today.costed).toBe(2);
   });
 
-  it("cộng token theo 7 ngày, ngày cũ trước", () => {
-    const days = tokensByDay(STATS);
-    expect(days).toHaveLength(7);
-    expect(days.at(-1)?.input).toBe(2_000_000);
-    expect(days[0]?.input).toBe(0);
+  it("token hôm nay chỉ cộng phiên hôm nay", () => {
+    expect(tokensToday(STATS, NOW)).toEqual({ input: 1_000_000, cached: 750_000 });
+  });
+
+  it("thời gian tới lúc làm mới", () => {
+    expect(untilText(new Date(NOW + 190 * 60_000).toISOString(), NOW, "vi")).toBe("3 giờ 10 phút");
+    expect(untilText(new Date(NOW + 45 * 60_000).toISOString(), NOW, "en")).toBe("45 min");
+    expect(untilText(new Date(NOW - 1000).toISOString(), NOW, "vi")).toBeNull();
+  });
+
+  it("vài dòng log cuối, bỏ dòng trống", () => {
+    expect(lastLines("a\n\nb\nc\nd\ne\n")).toEqual(["b", "c", "d", "e"]);
   });
 });
 
@@ -153,126 +277,153 @@ describe("HomeScreen", () => {
     saveFolder("/w/payment-api");
   });
 
-  it("nhận ra dự án, hiện số liệu thật và tài liệu; đánh dấu đã đọc", async () => {
+  it("worker, run đang chạy với log, hạn mức gói, môi trường, điều khiển từ xa và thư mục", async () => {
     const calls = fakeTauri();
     renderHome();
-    expect(await screen.findByText(/đã nối với dự án payment-api trên hub/)).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Chào Phạm Hà" })).toBeTruthy();
-    expect(await screen.findByText("Quy ước tiền tệ")).toBeTruthy();
-    expect(screen.getByText("1/2")).toBeTruthy();
-    expect(screen.getByText("1 mục cần cài")).toBeTruthy();
-    expect(screen.getByText("2M")).toBeTruthy();
+    const machine = await screen.findByRole("region", { name: "Máy này" });
+    expect(await within(machine).findByText("dev-ha")).toBeTruthy();
+    expect(within(machine).getByText("Đang nhận việc")).toBeTruthy();
+    expect(await within(machine).findByText("nối với hive.acme.vn · app 0.9.4")).toBeTruthy();
+
+    const current = screen.getByRole("region", { name: "Đang chạy trên máy" });
+    expect(await within(current).findByText("Retry webhook khi cổng thanh toán trả 502")).toBeTruthy();
+    expect(within(current).getByText("PAY-139 · run 7f3a21c0")).toBeTruthy();
+    const log = await within(current).findByLabelText("Log gần nhất");
+    await waitFor(() =>
+      expect(log.textContent).toBe("tool Edit retry.ts\ntool Bash pnpm test\ntest 12 đạt\nagent Thêm backoff"),
+    );
+    expect(calls.some((c) => c.command === "hub_rpc" && String(c.args?.path).includes("logs"))).toBe(true);
+
+    expect(screen.getByText("Run hôm nay").parentElement?.textContent).toContain("1 thành công · 1 cần xem");
+    expect(screen.getByText("Chi phí hôm nay").parentElement?.textContent).toContain("1,81 USD");
+    expect(await screen.findByText("1M")).toBeTruthy();
     expect(screen.getByText("cache trúng 75%")).toBeTruthy();
-    expect(screen.getByText("lần đầu mở trên máy này")).toBeTruthy();
-    expect(calls.find((c) => c.command === "hub_tool" && c.args?.name === "doc_list")?.args).toEqual({
-      name: "doc_list",
-      args: { prefix: "project/PAY/" },
-    });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Đánh dấu đã đọc" }));
-    expect(screen.getByText("không có gì mới")).toBeTruthy();
-    expect(JSON.parse(localStorage.getItem("hive.home.seen") ?? "{}")).toEqual({
-      PAY: { "pay/money": 7, "pay/api": 3 },
-    });
+
+    const quotas = screen.getByRole("region", { name: "Hạn mức gói agent" });
+    expect(await within(quotas).findByText("Claude Max team")).toBeTruthy();
+    expect(within(quotas).getByText("làm mới sau 3 giờ 10 phút")).toBeTruthy();
+    expect(within(quotas).getByRole("meter", { name: "Phiên 5 giờ" }).getAttribute("aria-valuenow")).toBe("32");
+    expect(within(quotas).getByRole("meter", { name: "Tuần" }).getAttribute("aria-valuenow")).toBe("58");
+    expect(within(quotas).getByText("Đã tắt")).toBeTruthy();
+
+    const env = screen.getByRole("region", { name: "Môi trường" });
+    expect(await within(env).findByText("2 mục cần xử lý")).toBeTruthy();
+    expect(within(env).getByText("cần 1.27 · máy có 1.25.4")).toBeTruthy();
+    expect(within(env).getByText("cần 2.x · chưa cài")).toBeTruthy();
+    expect(within(env).getByRole("link", { name: "Xem 2 mục cần sửa" }).getAttribute("href")).toBe("#/setup");
+
+    const folder = screen.getByRole("region", { name: "Thư mục đang làm" });
+    expect(await within(folder).findByText("Toàn quyền tắt")).toBeTruthy();
+    expect(within(folder).getByText(/nhánh main/)).toBeTruthy();
+
+    const remote = screen.getByRole("region", { name: "Điều khiển từ xa" });
+    expect(await within(remote).findByText("Đang bật")).toBeTruthy();
+    expect(await within(remote).findByText("1 thiết bị đã ghép · 1 đang xem")).toBeTruthy();
+    await userEvent.setup().click(within(remote).getByRole("button", { name: "Tắt điều khiển từ xa ngay" }));
+    expect(await within(remote).findByText("Đã tắt")).toBeTruthy();
+    expect(calls.some((c) => c.command === "remote_disable")).toBe(true);
+    // Máy nối bình thường thì không có lời báo mất kết nối.
+    expect(screen.queryByText(/Worker mất kết nối với hub hơn 1 phút/)).toBeNull();
   });
 
-  it("tài liệu có bản mới so với lần đọc trước thì báo đổi từ bản cũ", async () => {
-    localStorage.setItem("hive.home.seen", JSON.stringify({ PAY: { "pay/money": 6, "pay/api": 3 } }));
-    fakeTauri(7);
+  it("thẻ Agent đang chạy đếm theo CLI và mở màn Agent trên máy", async () => {
+    fakeTauri({ machine_agent_counts: () => ({ claude: 12, codex: 1, antigravity: 0 }) });
     renderHome();
-    const item = (await screen.findByText("Quy ước tiền tệ")).closest("li") as HTMLElement;
-    expect(within(item).getByText("Đổi từ v6")).toBeTruthy();
-    const tile = screen.getByText("Tài liệu đổi từ lần trước").parentElement as HTMLElement;
-    expect(within(tile).getByText("1")).toBeTruthy();
+    const card = await screen.findByRole("region", { name: "Agent đang chạy" });
+    await waitFor(() => expect(within(card).getByText("Claude Code").parentElement?.textContent).toContain("12"));
+    expect(within(card).getByText("Codex").parentElement?.textContent).toContain("1");
+    expect(within(card).getByText("Antigravity").parentElement?.textContent).toContain("0");
+    expect(within(card).getByRole("link", { name: "Xem chi tiết" }).getAttribute("href")).toBe("#/agents");
   });
 
-  it("người viết tài liệu không thấy phần môi trường của máy", async () => {
+  it("nút Tắt worker gọi set_worker", async () => {
     const calls = fakeTauri();
-    renderHome({ ...ACCOUNT, teams: [{ id: "t1", name: "Thanh toán", role: "viewer" }] });
-    await screen.findByText("Quy ước tiền tệ");
-    expect(screen.queryByText("Máy sẵn sàng")).toBeNull();
-    expect(screen.queryByText("Máy này còn thiếu")).toBeNull();
-    expect(calls.some((c) => c.command === "scan_environment")).toBe(false);
+    renderHome();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Tắt worker" }));
+    expect(calls.find((c) => c.command === "set_worker")?.args).toEqual({ on: false });
   });
 
-  it("chưa liên kết tài khoản: không gọi hub, nhắc liên kết", async () => {
+  it("mất kết nối quá 1 phút: báo, và nhắc các mục trên máy vẫn dùng được", async () => {
+    fakeTauri({
+      worker_state: () => ({
+        kind: "disconnected",
+        label: "Worker: mất kết nối, đang thử lại",
+        detail: null,
+        wanted: true,
+        hub: "https://hive.acme.vn",
+        offlineSince: Math.floor((NOW - 120_000) / 1000),
+      }),
+    });
+    renderHome();
+    expect(
+      (await screen.findByRole("alert")).textContent?.startsWith(
+        "Worker mất kết nối với hub hơn 1 phút. Máy này tạm không nhận việc.",
+      ),
+    ).toBe(true);
+    expect(
+      screen.getByText(
+        "Không đăng nhập vẫn dùng được các mục trên máy: gói agent, dự án, môi trường, skills, token và tài liệu từ code.",
+      ),
+    ).toBeTruthy();
+    const local = screen.getByRole("region", { name: "Vẫn dùng được khi không có hub" });
+    expect(within(local).getByRole("link", { name: "Gói agent" }).getAttribute("href")).toBe("#/plans");
+    expect(screen.getByText("Mất kết nối, đang thử lại")).toBeTruthy();
+  });
+
+  it("mới mất kết nối chưa tới 1 phút thì chưa báo", async () => {
+    fakeTauri({
+      worker_state: () => ({ ...ONLINE, kind: "connecting", offlineSince: Math.floor(NOW / 1000) }),
+    });
+    renderHome();
+    expect(await screen.findByText("Đang nối với hub")).toBeTruthy();
+    expect(screen.queryByText(/Worker mất kết nối với hub hơn 1 phút/)).toBeNull();
+  });
+
+  it("chưa đăng nhập: không gọi hub, ô run mời kết nối, phần trên máy vẫn hiện", async () => {
     const calls = fakeTauri();
     renderHome(null);
-    expect((await screen.findAllByText("Kết nối Hive để xem tài liệu và skill của dự án.")).length).toBeGreaterThan(0);
-    expect(calls.some((c) => c.command === "hub_tool")).toBe(false);
+    expect((await screen.findAllByText("Kết nối Hive để xem run của máy này.")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Không đăng nhập vẫn dùng được các mục trên máy/)).toBeTruthy();
+    expect(await screen.findByText("Claude Max team")).toBeTruthy();
+    expect(await screen.findByText("2 mục cần xử lý")).toBeTruthy();
+    expect(calls.some((c) => c.command === "hub_tool" || c.command === "hub_rpc")).toBe(false);
   });
 
-  it("chưa chọn thư mục: vẫn hiện máy, worker, token và tài liệu trên hub; chỉ ô skill mời chọn thư mục", async () => {
+  it("người xem đội: không có worker, gói, môi trường; token và thư mục vẫn có", async () => {
+    const calls = fakeTauri();
+    renderHome({ ...ACCOUNT, teams: [{ id: "t1", name: "Thanh toán", role: "viewer" }] });
+    expect(await screen.findByText("Token hôm nay")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Thư mục đang làm" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Máy này" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Môi trường" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Hạn mức gói agent" })).toBeNull();
+    await waitFor(() => expect(calls.some((c) => c.command === "session_stats")).toBe(true));
+    expect(calls.some((c) => c.command === "scan_environment" || c.command === "cli_profiles")).toBe(false);
+  });
+
+  it("đọc lỗi thì báo lý do ngắn, không kẹt Đang đọc", async () => {
+    fakeTauri({
+      cli_profiles: () => Promise.reject("Không chạy được worker"),
+      scan_environment: () => Promise.reject("Không chạy được lệnh kiểm tra."),
+      session_stats: () => Promise.reject("Không đọc được ~/.claude."),
+      remote_status: () => Promise.reject("Không có hive"),
+    });
+    renderHome();
+    expect(await screen.findByText("Không đọc được gói agent")).toBeTruthy();
+    expect(await screen.findByText("Không kiểm được máy")).toBeTruthy();
+    expect(await screen.findByText("Không đọc được phiên trên máy")).toBeTruthy();
+    expect(await screen.findByText("Không đọc được trạng thái điều khiển từ xa")).toBeTruthy();
+  });
+
+  it("chưa chọn thư mục: mời chọn thư mục, Rust chỉ kiểm công cụ chung của máy", async () => {
     saveFolder("");
     const calls = fakeTauri();
     renderHome();
-    expect(await screen.findByText("Quy ước tiền tệ")).toBeTruthy();
-    expect(screen.getByText(/Chưa chọn thư mục làm việc: số liệu dưới đây tính trên cả máy/)).toBeTruthy();
-    // Máy, worker, token tải bằng các lệnh Tauri riêng, không cùng lúc với tài liệu trên hub.
-    expect(await screen.findByText("1/2")).toBeTruthy();
-    expect(await screen.findByText("Đang chạy")).toBeTruthy();
-    expect(await screen.findByText("hive.acme.vn")).toBeTruthy();
-    expect(await screen.findByText("2M")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Tài liệu trên hub" })).toBeTruthy();
-    const skills = screen.getByText("Skill áp cho thư mục").parentElement as HTMLElement;
-    expect(within(skills).getByText("—")).toBeTruthy();
-    expect(within(skills).getByText("Chọn thư mục để xem skill của dự án")).toBeTruthy();
-    expect(within(skills).getByRole("button", { name: "Chọn thư mục" })).toBeTruthy();
-    expect(screen.getByText(/Mới kiểm công cụ chung của máy/)).toBeTruthy();
-    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
-    await waitFor(() => expect(screen.queryByText("Đang kiểm tra…")).toBeNull());
+    const folder = screen.getByRole("region", { name: "Thư mục đang làm" });
+    expect(within(folder).getByText("Chưa chọn thư mục làm việc.")).toBeTruthy();
+    expect(within(folder).getByRole("button", { name: "Chọn thư mục" })).toBeTruthy();
+    await screen.findByText("2 mục cần xử lý");
     expect(calls.find((c) => c.command === "scan_environment")?.args).toEqual({ folder: null, project: null });
-    expect(calls.find((c) => c.command === "session_stats")?.args).toEqual({ engine: "claude", folder: null });
-    expect(calls.find((c) => c.args?.name === "doc_list")?.args).toEqual({ name: "doc_list", args: {} });
     expect(calls.some((c) => c.command === "workspace_meta")).toBe(false);
-    expect(calls.some((c) => c.args?.name === "skill_list")).toBe(false);
-  });
-
-  it("chọn thư mục ngay trong ô skill thì đọc dự án của thư mục đó", async () => {
-    saveFolder("");
-    const calls = fakeTauri(7, { "plugin:dialog|open": () => "/w/payment-api" });
-    renderHome();
-    const skillsTile = () => screen.getByText("Skill áp cho thư mục").parentElement as HTMLElement;
-    await userEvent.setup().click(within(skillsTile()).getByRole("button", { name: "Chọn thư mục" }));
-    expect(await screen.findByText(/đã nối với dự án payment-api trên hub/)).toBeTruthy();
-    expect(localStorage.getItem("hive.folder")).toBe("/w/payment-api");
-    // Có thư mục thì ô thành link sang màn Skills, không còn nút chọn.
-    expect(await within(skillsTile()).findByText("1")).toBeTruthy();
-    expect(skillsTile().tagName).toBe("A");
-    expect(calls.find((c) => c.command === "workspace_meta")?.args).toEqual({ folder: "/w/payment-api" });
-  });
-
-  it("lỗi hoặc không có dữ liệu: ô hiện — và lý do, không kẹt Đang đọc", async () => {
-    fakeTauri(7, {
-      scan_environment: () => Promise.reject("Không chạy được lệnh kiểm tra."),
-      session_stats: () => ({ ...STATS, totals: { sessions: 0, input: 0, cached: 0, output: 0 }, sessions: [] }),
-      hub_tool: () => Promise.reject("Hub không trả lời."),
-      worker_state: () => Promise.reject("lệnh chưa giả"),
-    });
-    renderHome();
-    expect(await screen.findByText("Không kiểm được máy")).toBeTruthy();
-    expect(screen.getByText("Không kiểm được máy").getAttribute("title")).toBe("Không chạy được lệnh kiểm tra.");
-    expect(await screen.findByText("chưa có phiên nào trong 7 ngày")).toBeTruthy();
-    expect((await screen.findAllByText("Không đọc được hub")).length).toBe(2);
-    expect(screen.getByText("không đọc được trạng thái")).toBeTruthy();
-    expect(screen.getAllByText("Hub không trả lời.").length).toBeGreaterThan(0);
-    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
-    await waitFor(() => expect(screen.queryByText("Đang kiểm tra…")).toBeNull());
-  });
-
-  it("thư mục không đọc được: báo lỗi thư mục, phần còn lại vẫn chạy", async () => {
-    saveFolder("/khong-co");
-    fakeTauri(7, { workspace_meta: () => Promise.reject("Không tìm thấy thư mục /khong-co.") });
-    renderHome();
-    expect((await screen.findAllByText("Không đọc được thư mục khong-co.")).length).toBe(2);
-    expect(await screen.findByText("Quy ước tiền tệ")).toBeTruthy();
-    expect(await screen.findByText("2M")).toBeTruthy();
-    await waitFor(() => expect(screen.queryByText("Đang đọc…")).toBeNull());
-  });
-
-  it("phiên trên máy đọc lỗi: ô token và biểu đồ báo lý do", async () => {
-    fakeTauri(7, { session_stats: () => Promise.reject("Không đọc được ~/.claude.") });
-    renderHome();
-    expect((await screen.findAllByText("Không đọc được phiên trên máy")).length).toBe(2);
-    expect(screen.queryByRole("img", { name: "Token 7 ngày" })).toBeNull();
   });
 });

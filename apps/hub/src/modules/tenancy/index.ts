@@ -4,6 +4,8 @@ export { registerMcpTools } from "./mcp-tools.ts";
 export { orphanUsersQueue, purgeOrphanUsers, registerOrphanUsersWorker } from "./orphans.ts";
 export {
   checkTeamRole,
+  directTeamIds,
+  directTeamMembers,
   notificationRecipients,
   type OrgRole,
   orgRoleOf,

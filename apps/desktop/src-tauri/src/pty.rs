@@ -258,6 +258,18 @@ pub fn spawn(
 pub struct Ptys(Mutex<HashMap<String, Session>>);
 
 impl Ptys {
+    /// Id và pid của terminal đang mở: màn Agent trên máy nhận ra agent chạy trong tab nào của app.
+    pub fn pids(&self) -> Vec<(String, u32)> {
+        self.0
+            .lock()
+            .map(|m| {
+                m.iter()
+                    .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Đóng cửa sổ hay thoát app: không để CLI chạy mồ côi.
     pub fn close_all(&self) {
         let sessions: Vec<Session> = match self.0.lock() {
