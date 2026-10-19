@@ -1,0 +1,9 @@
+{
+  "_class": "hudson.model.FreeStyleProject",
+  "name": "keycloak-theme",
+  "fullName": "keycloak-theme",
+  "url": "https://jenkins.example.test/job/keycloak-theme/",
+  "buildable": true,
+  "inQueue": false,
+  "property": [{ "_class": "jenkins.model.BuildDiscarderProperty" }]
+}

@@ -1,0 +1,9 @@
+{
+  "_class": "hudson.model.Queue$LeftItem",
+  "id": 7001,
+  "blocked": false,
+  "buildable": false,
+  "cancelled": true,
+  "stuck": false,
+  "why": null
+}

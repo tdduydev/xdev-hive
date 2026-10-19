@@ -1,0 +1,7 @@
+<html>
+<head><title>Error 403 No valid crumb was included in the request</title></head>
+<body><h2>HTTP ERROR 403 No valid crumb was included in the request</h2>
+<table><tr><th>URI:</th><td>/job/ehospital/job/build-dev-v3/build</td></tr>
+<tr><th>STATUS:</th><td>403</td></tr>
+<tr><th>MESSAGE:</th><td>No valid crumb was included in the request</td></tr></table>
+</body></html>
