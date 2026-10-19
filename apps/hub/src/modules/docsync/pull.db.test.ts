@@ -85,6 +85,7 @@ async function setup(kind: Kind) {
         exclude: [],
         assetsDir: "assets",
         repoChangesNeedReview: true,
+        wordImportConfidential: false,
       },
     }),
   );

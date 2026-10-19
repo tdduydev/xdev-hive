@@ -14,6 +14,7 @@ import {
   docHomesContract,
   docImportsContract,
   docTreeContract,
+  wordImportsContract,
 } from "./doc-sync.ts";
 import { fleetContract } from "./fleet.ts";
 import { briefContract, docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
@@ -84,6 +85,10 @@ export const healthOutput = z.object({
   clis: z.array(z.string()).optional(),
   /** Hub có artifact (specs/012); app desktop ẩn mục Artifact khi thiếu, vì hub cũ không trả. */
   artifacts: z.boolean().optional(),
+  /** Có pandoc đúng phiên bản (spec 019, FR-023); web và desktop ẩn nút "Nhập Word" khi false. Hub cũ không trả. */
+  wordImport: z.boolean().optional(),
+  /** Có LibreOffice để nhận `.doc`; false thì chỉ nhận `.docx`, `.odt`. Hub cũ không trả. */
+  wordImportDoc: z.boolean().optional(),
 });
 export const desktopUpdateOutput = z.object({
   version: z.string(),
@@ -146,6 +151,7 @@ export const contract = {
   docAssets: docAssetsContract,
   docExtracts: docExtractsContract,
   docTree: docTreeContract,
+  wordImports: wordImportsContract,
   briefs: briefContract,
   skills: skillsContract,
   proposals: proposalsContract,

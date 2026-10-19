@@ -98,6 +98,7 @@ beforeAll(async () => {
           exclude: [],
           assetsDir: "assets",
           repoChangesNeedReview: false,
+          wordImportConfidential: false,
         },
       }),
     )

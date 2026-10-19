@@ -3,7 +3,9 @@ import {
   DOCSYNC_ERRORS,
   docAssetDownloadOutput,
   docAssetUploadOutput,
+  docConflict,
   docConflictResolveInput,
+  docHome,
   docHomeConfigureOrgInput,
   docHomeConfigureProjectInput,
   docHomeGetInput,
@@ -17,8 +19,26 @@ import {
   docSyncState,
   docTreeItem,
   docTreeMoveInput,
+  WORD_IMPORT_ERRORS,
+  WORD_IMPORT_UPLOAD_PATH,
+  WORD_IMPORT_WARNINGS,
+  wordImportCommitInput,
+  wordImportErrorCode,
+  wordImportErrorData,
+  wordImportFile,
+  wordImportFileState,
+  wordImportFormatOf,
+  wordImportGetOutput,
+  wordImportMediaPath,
+  wordImportOriginalPath,
+  wordImportState,
+  wordImportUpdateInput,
+  wordImportUploadInput,
+  wordImportUploadOutput,
+  wordImportWarning,
+  wordImportWarningCode,
 } from "./doc-sync.ts";
-import { contract } from "./index.ts";
+import { contract, healthOutput } from "./index.ts";
 import {
   DOC_MAX_CHARS,
   docAssetGetInput,
@@ -28,6 +48,9 @@ import {
   docSearchMcpInput,
   docSearchOutput,
   docSecretErrorData,
+  docVersion,
+  docVersionSource,
+  proposal,
 } from "./knowledge.ts";
 import { notificationChannelEvent, notificationEvent } from "./notify.ts";
 import { docRepoPath } from "./projects.ts";
@@ -244,6 +267,7 @@ describe("đăng ký hợp đồng", () => {
       docAssets: ["resolve", "list"],
       docExtracts: ["list", "get", "update", "approve", "reject", "confirmSecret"],
       docTree: ["list", "move"],
+      wordImports: ["get", "list", "file", "update", "commit", "cancel", "confirmLink", "approve", "ofDoc"],
     } as const;
     for (const group of Object.keys(groups) as (keyof typeof groups)[]) {
       expect(Object.keys(contract[group]).sort()).toEqual([...groups[group]].sort());
@@ -282,5 +306,351 @@ describe("đăng ký hợp đồng", () => {
       expect(notificationEvent.parse(event)).toBe(event);
       expect(notificationChannelEvent.parse(event)).toBe(event);
     }
+  });
+});
+
+describe("nhập Word", () => {
+  const word = (name: string) => new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], name);
+  const upload = { homeId: id, targetDir: "docs/srs/OPD/" };
+  const fileId = "00000000-0000-4000-8000-000000000002";
+
+  it("multipart nhận trường đơn hay lặp lại như nhau, cờ mật để trống thì theo cài đặt nhà", () => {
+    const one = wordImportUploadInput.parse({
+      ...upload,
+      files: word("eHosV2i_SRS_OPD.OPD02_v1.1.docx"),
+      relativePaths: "",
+      lastModified: "1760000000000",
+      confidential: "true",
+    });
+    expect(one).toMatchObject({
+      mode: "create",
+      relativePaths: [""],
+      lastModified: [1760000000000],
+      confidential: true,
+    });
+    expect(one.files).toHaveLength(1);
+    expect(wordImportUploadInput.parse({ ...upload, files: [word("a.docx")] }).confidential).toBeUndefined();
+    const many = wordImportUploadInput.parse({
+      ...upload,
+      files: [word("a.docx"), word("B.ODT"), word("c.doc")],
+      relativePaths: ["", "OPD", "Thư mục con/OPD"],
+      lastModified: [1, 2, 3],
+    });
+    expect(many.relativePaths).toEqual(["", "OPD", "Thư mục con/OPD"]);
+    expect(wordImportUploadInput.parse({ homeId: id, targetDir: "", files: word("a.docx") }).targetDir).toBe("");
+    expect(wordImportUploadOutput.parse({ importId: id })).toEqual({ importId: id });
+  });
+
+  it("multipart chặn sai đuôi, thiếu file, lệch số phần tử, thư mục thoát repo", () => {
+    for (const input of [
+      { ...upload, files: [] },
+      { ...upload },
+      { ...upload, files: word("srs.pdf") },
+      { ...upload, files: word("docx") },
+      { ...upload, files: "a.docx" },
+      { ...upload, files: [word("a.docx"), word("b.docx")], relativePaths: [""] },
+      { ...upload, files: [word("a.docx")], lastModified: [1, 2] },
+      { ...upload, files: word("a.docx"), relativePaths: "../ngoai" },
+      { ...upload, files: word("a.docx"), relativePaths: "/tuyet-doi" },
+      { ...upload, targetDir: "../docs", files: word("a.docx") },
+      { ...upload, files: word("a.docx"), lastModified: "-1" },
+      { homeId: "khong-phai-uuid", targetDir: "docs/", files: word("a.docx") },
+    ]) {
+      expect(wordImportUploadInput.safeParse(input).success, JSON.stringify(input)).toBe(false);
+    }
+  });
+
+  it("tạo cần thư mục đích và không nhận docKey; cập nhật và gắn cần docKey và đúng một file", () => {
+    expect(wordImportUploadInput.safeParse({ homeId: id, files: word("a.docx") }).success).toBe(false);
+    expect(wordImportUploadInput.safeParse({ ...upload, docKey: "org/a", files: word("a.docx") }).success).toBe(false);
+    for (const mode of ["update", "link"] as const) {
+      expect(
+        wordImportUploadInput.parse({ homeId: id, mode, docKey: "project/ehis/srs/opd/opd02", files: word("a.docx") }),
+      ).toMatchObject({ mode, docKey: "project/ehis/srs/opd/opd02" });
+      expect(wordImportUploadInput.safeParse({ homeId: id, mode, files: word("a.docx") }).success).toBe(false);
+      expect(
+        wordImportUploadInput.safeParse({ homeId: id, mode, docKey: "org/a", files: [word("a.docx"), word("b.docx")] })
+          .success,
+      ).toBe(false);
+    }
+    expect(wordImportUploadInput.safeParse({ ...upload, mode: "replace", files: word("a.docx") }).success).toBe(false);
+  });
+
+  it("định dạng đọc theo đuôi, không phân biệt hoa thường", () => {
+    expect(wordImportFormatOf("SRS v1.1.DOCX")).toBe("docx");
+    expect(wordImportFormatOf("a.odt")).toBe("odt");
+    expect(wordImportFormatOf("cu.doc")).toBe("doc");
+    for (const name of ["a.pdf", "a.docx.zip", "docx", "a.dotx", ""]) expect(wordImportFormatOf(name), name).toBeNull();
+  });
+
+  it("trạng thái lượt và file theo spec, thêm proposed và cancelled", () => {
+    expect(wordImportState.options).toEqual([
+      "uploading",
+      "converting",
+      "ready",
+      "committing",
+      "done",
+      "failed",
+      "cancelled",
+    ]);
+    expect(wordImportFileState.options).toEqual([
+      "queued",
+      "converting",
+      "ready",
+      "skipped",
+      "blocked_secret",
+      "failed",
+      "proposed",
+      "cancelled",
+      "done",
+    ]);
+  });
+
+  it("mã cảnh báo cố định, mỗi mã có chữ tiếng Việt dùng chung", () => {
+    expect(wordImportWarningCode.options).toEqual([
+      "nested_table",
+      "equation",
+      "footnote",
+      "emf_image",
+      "tracked_changes",
+      "comments",
+      "no_h1",
+      "textbox",
+      "skipped_older",
+    ]);
+    expect(Object.keys(WORD_IMPORT_WARNINGS).sort()).toEqual([...wordImportWarningCode.options].sort());
+    for (const text of Object.values(WORD_IMPORT_WARNINGS)) expect(text.length).toBeGreaterThan(20);
+    expect(wordImportWarning.parse({ code: "footnote", count: 3, detail: null })).toEqual({
+      code: "footnote",
+      count: 3,
+      detail: null,
+    });
+    expect(wordImportWarning.safeParse({ code: "unknown", count: 1, detail: null }).success).toBe(false);
+    expect(wordImportWarning.safeParse({ code: "footnote", count: 0, detail: null }).success).toBe(false);
+  });
+
+  it("lỗi WORD_IMPORT_* tiếng Việt kèm cách sửa, data mang mã ổn định", () => {
+    expect([...wordImportErrorCode.options].sort()).toEqual(
+      [
+        "WORD_IMPORT_PASSWORD",
+        "WORD_IMPORT_NOT_WORD",
+        "WORD_IMPORT_FILE_TOO_LARGE",
+        "WORD_IMPORT_BATCH_TOO_LARGE",
+        "WORD_IMPORT_DOC_DISABLED",
+        "WORD_IMPORT_DISABLED",
+        "WORD_IMPORT_TOO_LONG",
+        "WORD_IMPORT_EXISTS",
+        "WORD_IMPORT_DUPLICATE_PATH",
+        "WORD_IMPORT_OUTSIDE_HOME",
+        "WORD_IMPORT_NEEDS_MANAGE",
+        "WORD_IMPORT_CONVERT_FAILED",
+        "WORD_IMPORT_TIMEOUT",
+      ].sort(),
+    );
+    expect(Object.keys(WORD_IMPORT_ERRORS).sort()).toEqual([...wordImportErrorCode.options].sort());
+    for (const [code, error] of Object.entries(WORD_IMPORT_ERRORS)) {
+      expect(wordImportErrorData.parse({ code })).toEqual({ code });
+      // Câu lỗi nói cả lý do lẫn cách sửa: ít nhất hai câu.
+      expect(error.message.split(". ").length, code).toBeGreaterThan(1);
+    }
+    expect(WORD_IMPORT_ERRORS.WORD_IMPORT_NEEDS_MANAGE.status).toBe("FORBIDDEN");
+    expect(WORD_IMPORT_ERRORS.WORD_IMPORT_EXISTS.status).toBe("CONFLICT");
+    expect(WORD_IMPORT_ERRORS.WORD_IMPORT_PASSWORD.status).toBe("BAD_REQUEST");
+    expect(wordImportErrorData.parse({ code: "WORD_IMPORT_FILE_TOO_LARGE", fileId, limit: 52428800 })).toMatchObject({
+      limit: 52428800,
+    });
+    expect(wordImportErrorData.safeParse({ code: "DOCSYNC_PAUSED" }).success).toBe(false);
+  });
+
+  it("sửa file trong lượt cần ít nhất một trường; đường dẫn là file .md trong repo", () => {
+    expect(wordImportUpdateInput.parse({ fileId, path: "docs/srs/OPD/OPD02.md" }).path).toBe("docs/srs/OPD/OPD02.md");
+    expect(wordImportUpdateInput.parse({ fileId, keepFront: true, excluded: false })).toEqual({
+      fileId,
+      keepFront: true,
+      excluded: false,
+    });
+    expect(wordImportUpdateInput.parse({ fileId, title: "  OPD02  " }).title).toBe("OPD02");
+    for (const input of [
+      { fileId },
+      { fileId, path: "docs/srs/OPD/OPD02.docx" },
+      { fileId, path: "../OPD02.md" },
+      { fileId, path: "docs/srs/OPD/" },
+      { fileId, title: " " },
+      { fileId, keepFront: "true" },
+    ]) {
+      expect(wordImportUpdateInput.safeParse(input).success, JSON.stringify(input)).toBe(false);
+    }
+  });
+
+  it("tạo nhận danh sách file tuỳ chọn và xác nhận bí mật tường minh", () => {
+    expect(wordImportCommitInput.parse({ importId: id })).toEqual({ importId: id });
+    expect(wordImportCommitInput.parse({ importId: id, fileIds: [fileId], acknowledgeSecrets: true })).toEqual({
+      importId: id,
+      fileIds: [fileId],
+      acknowledgeSecrets: true,
+    });
+    for (const input of [
+      { importId: id, fileIds: [] },
+      { importId: id, acknowledgeSecrets: "true" },
+    ]) {
+      expect(wordImportCommitInput.safeParse(input).success).toBe(false);
+    }
+  });
+
+  const counts = {
+    queued: 0,
+    converting: 0,
+    ready: 1,
+    skipped: 0,
+    blockedSecret: 0,
+    failed: 0,
+    proposed: 0,
+    cancelled: 0,
+    done: 0,
+  };
+  const lot = {
+    id,
+    homeId: id,
+    targetDir: "docs/srs/OPD/",
+    mode: "create",
+    docKey: null,
+    confidential: false,
+    state: "ready",
+    counts,
+    createdBy: { id: "user-1", name: "BA" },
+    createdAt: "2026-10-19T00:00:00.000Z",
+    updatedAt: "2026-10-19T00:00:00.000Z",
+  };
+  const item = {
+    id: fileId,
+    importId: id,
+    relativeDir: "",
+    fileName: "eHosV2i_SRS_OPD.OPD02_v1.1.docx",
+    format: "docx",
+    size: 3_000_000,
+    sha256: "a".repeat(64),
+    versionLabel: "1.1",
+    proposedPath: "docs/srs/OPD/OPD02.md",
+    proposedTitle: "OPD02",
+    path: "docs/srs/OPD/OPD02.md",
+    title: "OPD02",
+    key: "project/ehis/srs/opd/opd02",
+    exists: false,
+    keepFront: false,
+    excluded: false,
+    state: "ready",
+    stats: { headings: 41, tables: 32, images: 33 },
+    warnings: [{ code: "tracked_changes", count: 2, detail: null }],
+    findings: [],
+    error: null,
+    linkMatches: null,
+    docId: null,
+    docVersion: null,
+    proposalId: null,
+    createdAt: "2026-10-19T00:00:00.000Z",
+    updatedAt: "2026-10-19T00:00:00.000Z",
+  };
+
+  it("xem lượt trả quyền của người hỏi ở phạm vi đích để chọn Tạo hay Gửi duyệt", () => {
+    for (const access of ["manage", "propose"] as const) {
+      expect(wordImportGetOutput.parse({ import: lot, files: [item], access }).access).toBe(access);
+    }
+    expect(wordImportGetOutput.safeParse({ import: lot, files: [item], access: "read" }).success).toBe(false);
+    expect(
+      wordImportFile.parse({
+        ...item,
+        state: "failed",
+        stats: null,
+        error: { code: "WORD_IMPORT_PASSWORD", message: WORD_IMPORT_ERRORS.WORD_IMPORT_PASSWORD.message },
+      }).error,
+    ).toMatchObject({ code: "WORD_IMPORT_PASSWORD" });
+  });
+
+  it("xung đột nguồn Word không có commit repo; xung đột cũ mặc định nguồn repo", () => {
+    const conflict = {
+      id,
+      homeId: id,
+      docId: id,
+      key: "org/a",
+      title: "A",
+      repoPath: "docs/a.md",
+      baseVersion: 1,
+      hubVersion: 2,
+      repoCommit: "a".repeat(40),
+      state: "open",
+      resolution: null,
+      resolvedVersion: null,
+      createdAt: "2026-10-19T00:00:00.000Z",
+      updatedAt: "2026-10-19T00:00:00.000Z",
+    };
+    expect(docConflict.parse(conflict).origin).toBe("repo");
+    expect(docConflict.parse({ ...conflict, origin: "word", repoCommit: null })).toMatchObject({
+      origin: "word",
+      repoCommit: null,
+    });
+    expect(docConflict.safeParse({ ...conflict, origin: "sharepoint" }).success).toBe(false);
+  });
+
+  it("nhà có wordImportConfidential mặc định tắt, quản trị tổ chức bật được", () => {
+    expect(docHomeConfigureOrgInput.parse(orgConfig).wordImportConfidential).toBe(false);
+    expect(docHomeConfigureOrgInput.parse({ ...orgConfig, wordImportConfidential: true }).wordImportConfidential).toBe(
+      true,
+    );
+    const shape = docHome.shape.wordImportConfidential;
+    expect(shape.parse(undefined)).toBe(false);
+    expect(shape.parse(true)).toBe(true);
+  });
+
+  it("phiên bản có nguồn word; đề xuất cũ không có origin vẫn hợp lệ", () => {
+    expect(docVersionSource.options).toEqual(["hub", "repo", "import", "merge", "word"]);
+    const v = { version: 1, title: "A", author: { userId: "u", runId: null }, message: null, proposalId: null };
+    expect(docVersion.parse({ ...v, chars: 1, createdAt: "2026-10-19T00:00:00.000Z" }).source).toBeUndefined();
+    expect(docVersion.parse({ ...v, chars: 1, createdAt: "2026-10-19T00:00:00.000Z", source: "word" }).source).toBe(
+      "word",
+    );
+    const p = {
+      id,
+      kind: "doc",
+      target: "org/a",
+      scope: { level: "org", teamId: null, projectId: null },
+      baseVersion: 0,
+      title: null,
+      description: null,
+      content: "",
+      reason: null,
+      status: "pending",
+      author: { userId: "u", runId: null },
+      createdAt: "2026-10-19T00:00:00.000Z",
+      decidedBy: null,
+      decidedAt: null,
+      decisionNote: null,
+      resultVersion: null,
+    };
+    expect(proposal.parse(p).origin).toBeUndefined();
+    expect(proposal.parse({ ...p, origin: { kind: "word", importFileId: fileId } }).origin).toEqual({
+      kind: "word",
+      importFileId: fileId,
+    });
+    expect(proposal.safeParse({ ...p, origin: { kind: "word" } }).success).toBe(false);
+  });
+
+  it("health báo nhập Word và .doc, hub cũ không trả vẫn hợp lệ", () => {
+    const base = { status: "ok", version: "abc", time: "2026-10-19T00:00:00.000Z" };
+    expect(healthOutput.parse(base)).toEqual(base);
+    expect(healthOutput.parse({ ...base, wordImport: true, wordImportDoc: false })).toMatchObject({
+      wordImport: true,
+      wordImportDoc: false,
+    });
+  });
+
+  it("route tải lên, ảnh giữ tạm và file gốc nằm ngoài oRPC", () => {
+    expect(WORD_IMPORT_UPLOAD_PATH).toBe("/api/v1/docs/word-imports");
+    expect(wordImportMediaPath(id, fileId, "9527ba12e6da.png")).toBe(
+      `/api/v1/docs/word-imports/${id}/files/${fileId}/media/9527ba12e6da.png`,
+    );
+    expect(wordImportMediaPath(id, fileId, "a b.png")).toMatch(/media\/a%20b\.png$/);
+    expect(wordImportOriginalPath(id, fileId)).toBe(`/api/v1/docs/word-imports/${id}/files/${fileId}/original`);
+    const paths = Object.values(contract.wordImports).map((r) => r["~orpc"].route.path);
+    expect(paths).not.toContain("/v1/docs/word-imports");
   });
 });
