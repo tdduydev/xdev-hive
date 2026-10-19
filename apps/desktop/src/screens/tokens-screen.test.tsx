@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
+import { sampleScore } from "@/lib/token-score.fixture.ts";
 import {
   type ContextReport,
   cacheRate,
@@ -102,6 +103,7 @@ function fakeTauri(handlers: Record<string, (args?: Record<string, unknown>) => 
 const claudeHandlers = {
   claude_context: () => CONTEXT,
   claude_usage: () => USAGE,
+  token_score: () => sampleScore(),
   session_stats: (args?: Record<string, unknown>) => (args?.engine === "codex" ? CODEX : STATS),
 };
 
@@ -128,13 +130,20 @@ describe("TokensScreen", () => {
   it("Claude: ô số liệu, ngữ cảnh theo nhóm, thứ tiêu hạn mức, gợi ý và phiên", async () => {
     const calls = fakeTauri(claudeHandlers);
     render(<TokensScreen />);
+    const user = userEvent.setup();
     // Ngữ cảnh, hạn mức và thống kê phiên tải bằng ba lệnh riêng, về không theo thứ tự.
     expect(await screen.findByText("12,7k", { selector: "span.text-2xl" })).toBeTruthy();
     expect(await screen.findByText("95%")).toBeTruthy();
     expect(await screen.findByText("11%")).toBeTruthy();
     expect(await screen.findByText("trên 1M của claude-opus-5-5")).toBeTruthy();
     expect(await screen.findByText("hạn mức tiêu ở mức ngữ cảnh trên 150k")).toBeTruthy();
-    expect(await screen.findByText("Gọn ngữ cảnh sớm hơn")).toBeTruthy();
+    // Gợi ý cũ nằm dưới tiêu chí liên quan của điểm; subagent không có tiêu chí riêng nên hiện ở thẻ điểm.
+    expect(await screen.findByText("Bớt subagent cho việc nhỏ")).toBeTruthy();
+    expect(screen.queryByText("Gợi ý tối ưu")).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Xem chi tiết" }));
+    const claude = screen.getByRole("region", { name: "Claude Code Gói Max" });
+    const peak = within(claude).getByText("Ngữ cảnh đỉnh").closest("li") as HTMLElement;
+    expect(within(peak).getByText("Gọn ngữ cảnh sớm hơn.")).toBeTruthy();
     expect(screen.queryByText("Free space")).toBeNull();
     const table = await screen.findByRole("table");
     expect(within(table).getAllByText("payment-api")).toHaveLength(2);
@@ -146,11 +155,16 @@ describe("TokensScreen", () => {
     render(<TokensScreen />);
     const user = userEvent.setup();
     await screen.findByText("hạn mức tiêu ở mức ngữ cảnh trên 150k");
+    await user.click(await screen.findByRole("button", { name: "Xem chi tiết" }));
     const before = calls.length;
     await user.click(screen.getByRole("button", { name: "Codex" }));
     expect(await screen.findByText("72%")).toBeTruthy();
     expect(screen.getByText("77%")).toBeTruthy();
-    expect(screen.getByText("Dùng /compact trong Codex")).toBeTruthy();
+    const codex = screen.getByRole("region", { name: "Codex codex-1" });
+    const a1 = within(codex).getByText("Trần ngữ cảnh, nén sớm").closest("li") as HTMLElement;
+    expect(within(a1).getByText("Dùng /compact trong Codex.")).toBeTruthy();
+    const b4 = within(codex).getByText("Cache trúng").closest("li") as HTMLElement;
+    expect(within(b4).getByText("Giữ phiên liền mạch để trúng cache.")).toBeTruthy();
     expect(calls.slice(before).map((c) => c.command)).toEqual(["session_stats"]);
     expect(screen.queryByText("Thứ đang tiêu hạn mức")).toBeNull();
   });
@@ -174,6 +188,15 @@ describe("TokensScreen", () => {
       ).toEqual(["claude_context", "session_stats"]),
     );
     expect(localStorage.getItem("hive.folder")).toBe("/w/api");
+  });
+
+  it("thẻ điểm ở đầu màn, trên bộ tối ưu và các ô số liệu", async () => {
+    fakeTauri(claudeHandlers);
+    render(<TokensScreen />);
+    const card = await screen.findByRole("region", { name: "Điểm tối ưu token" });
+    expect(await within(card).findByText("55,0")).toBeTruthy();
+    const tokens = screen.getByText("Token vào 7 ngày");
+    expect(card.compareDocumentPosition(tokens) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("lỗi của từng phần hiện riêng, phần khác vẫn chạy", async () => {
@@ -203,8 +226,11 @@ describe("TokensScreen", () => {
     setLang("en");
     fakeTauri(claudeHandlers);
     render(<TokensScreen />);
+    const user = userEvent.setup();
     expect(await screen.findByText("of your usage was at >150k context")).toBeTruthy();
-    expect(await screen.findByText("Compact context earlier")).toBeTruthy();
+    await user.click(await screen.findByRole("button", { name: "Show details" }));
+    expect(await screen.findByText("Compact context earlier.")).toBeTruthy();
+    expect(screen.getByText("Use fewer subagents for small tasks")).toBeTruthy();
     expect(await screen.findByText("12.7k", { selector: "span.text-2xl" })).toBeTruthy();
   });
 });
