@@ -5,9 +5,12 @@ import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { FolderForm } from "@/components/folder-form.tsx";
 import { OptimizerPanel } from "@/components/optimizer-panel.tsx";
+import { TokenScoreCard } from "@/components/token-score-card.tsx";
+import type { ExtraHint } from "@/components/token-score-detail.tsx";
 import { useFolder } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
+import type { CriterionId } from "@/lib/token-score.ts";
 import {
   type ContextReport,
   cacheRate,
@@ -47,9 +50,6 @@ const text: Dict<{
   drivers: string;
   driverText: Record<string, string>;
   topSubagents: string;
-  tipsTitle: string;
-  tipsSub: string;
-  noTips: string;
   tips: Record<TipId, { title: string; why: string }>;
   sessionsTitle: string;
   noSessions: string;
@@ -90,9 +90,6 @@ const text: Dict<{
       "of your usage came from sessions active for 8+ hours": "từ phiên chạy liên tục 8 giờ trở lên",
     },
     topSubagents: "Subagent dùng nhiều:",
-    tipsTitle: "Gợi ý tối ưu",
-    tipsSub: "Rút từ số liệu ở trên",
-    noTips: "Chưa thấy gì cần tối ưu trong 7 ngày qua.",
     tips: {
       compact: {
         title: "Gọn ngữ cảnh sớm hơn",
@@ -148,9 +145,6 @@ const text: Dict<{
     drivers: "What drives your limits",
     driverText: {},
     topSubagents: "Top subagents:",
-    tipsTitle: "Optimization tips",
-    tipsSub: "Drawn from the figures above",
-    noTips: "Nothing to optimize in the last 7 days.",
     tips: {
       compact: {
         title: "Compact context earlier",
@@ -180,6 +174,14 @@ const text: Dict<{
     ago: (m) => (m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`),
     unknown: "—",
   },
+};
+
+// Gợi ý cũ đặt dưới tiêu chí điểm liên quan (spec 025); `subagents` không có tiêu chí riêng nên hiện ở thẻ điểm.
+const TIP_CRITERION: Record<TipId, CriterionId | null> = {
+  compact: "B1",
+  cache: "B4",
+  codexCompact: "A1",
+  subagents: null,
 };
 
 // Màu theo token chung (không mã màu cứng); nhóm thứ n lấy màu thứ n.
@@ -299,6 +301,11 @@ export function TokensScreen() {
   const rate = s ? cacheRate(s.totals.input, s.totals.cached) : null;
   const codexCtx = s && engine === "codex" ? latestContext(s) : null;
   const tipIds = tips(engine, usage.data, s);
+  const tipHints: ExtraHint[] = tipIds.flatMap((id) => {
+    const criterion = TIP_CRITERION[id];
+    return criterion ? [{ cli: engine, criterion, title: t.tips[id].title, why: t.tips[id].why }] : [];
+  });
+  const generalTips = tipIds.filter((id) => TIP_CRITERION[id] === null).map((id) => t.tips[id]);
   const now = Date.now();
   const fmt = (n: number) => formatTokens(n, lang);
   const codexResets = (sec: string | null) =>
@@ -308,6 +315,7 @@ export function TokensScreen() {
 
   return (
     <div className="flex flex-col gap-3.5">
+      <TokenScoreCard hints={tipHints} tips={generalTips} />
       <OptimizerPanel />
       <header className="flex flex-wrap items-center gap-3">
         <p className="min-w-60 flex-1 text-sm text-muted-foreground">{t.lead}</p>
@@ -428,21 +436,6 @@ export function TokensScreen() {
           </LoadState>
         </Card>
       )}
-
-      <Card title={t.tipsTitle} aside={<span className="text-xs text-muted-foreground">{t.tipsSub}</span>}>
-        {tipIds.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted-foreground">{t.noTips}</p>
-        ) : (
-          <ul>
-            {tipIds.map((id) => (
-              <li key={id} className="flex flex-col border-b px-4 py-2.5 last:border-b-0">
-                <strong className="text-sm font-semibold">{t.tips[id].title}</strong>
-                <span className="text-sm text-muted-foreground">{t.tips[id].why}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
 
       <Card
         title={t.sessionsTitle}
