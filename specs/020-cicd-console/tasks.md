@@ -26,7 +26,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     T029 (Đợt 5, chọn hệ thống cho kênh).
   - Mọi `schema.ts` và migration: chỉ T008 (một migration cho cả spec), gồm một cột ở `notify/schema.ts`. Task sau
     không đổi bảng.
-  - `apps/hub/package.json`, `pnpm-lock.yaml`: chỉ T008 thêm `ssh2` và `@types/ssh2` (bản theo T001). Không thêm phụ
+  - `apps/hub/package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` (`allowBuilds`): chỉ T008 thêm `ssh2` và `@types/ssh2` (bản theo T001). Không thêm phụ
     thuộc nào khác: Jenkins, Argo CD, Kubernetes gọi bằng `fetch` hoặc `node:https`.
   - `apps/hub/src/modules/delivery/{index.ts,router.ts,deps.ts,jobs.ts}`, `apps/hub/src/main.ts`, `apps/hub/src/app.ts`:
     T008 tạo khung. Mỗi phần có file riêng và hàm `register<Phần>(jobs, deps)` riêng; T008 tạo dạng rỗng (ném
@@ -228,7 +228,10 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
       `hive.purge_run_logs()`.
     - `notify/schema.ts`: `notification_channels.system_ids uuid[]` (null là mọi hệ thống) **[Suy luận]**: plan.md chọn
       lọc kênh theo hệ thống, bảng hiện chưa có cột.
-    - `apps/hub/package.json`: `ssh2`, `@types/ssh2` (bản theo T001).
+    - `apps/hub/package.json`: `ssh2` 1.17.0, `@types/ssh2` 1.15.6 (spike T001). `pnpm-workspace.yaml`: thêm
+      `ssh2: false` vào `allowBuilds` (pnpm chặn script cài đặt của `ssh2`; bản JS thuần chạy được, research.md mục 4).
+    - `deploy_servers.host_keys jsonb` (`{algorithm, fingerprint}`), không phải `text[]` (plan.md mục 1).
+    - `jobs.ts`: `delivery-deploy-watch` là queue `stately`, đặt `heartbeatSeconds` (plan.md mục 5).
     - Khung `delivery`:
       - `index.ts`, `router.ts` (gộp `routes/*.ts`), `deps.ts`;
       - `jobs.ts`: tên queue (`delivery-ci-poll`, `delivery-deploy`, `delivery-deploy-watch`,
@@ -261,7 +264,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/hub/src/modules/catalog/index.ts`, `apps/hub/src/modules/tenancy/index.ts` (chỉ export)
     - `apps/hub/src/main.ts`, `apps/hub/src/app.ts`
     - `apps/hub/db/migrations/*` (một file mới + meta)
-    - `apps/hub/package.json`, `pnpm-lock.yaml`
+    - `apps/hub/package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` (một dòng `allowBuilds`)
   - **Kiểm**: hub typecheck, `rls.db.test.ts`, test upgrade migration từ bản mới nhất trên `main`, `pnpm deps`.
 
 - [ ] **T009 [P] [US4] [nặng] · 0,5 ngày — Che bí mật dùng chung**
@@ -323,7 +326,9 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     bàn phím.
 
 - [ ] **T012 [P] [—] [nhẹ] · 0,5 ngày — ADR 0030, 0031, SRS, tài liệu kỹ thuật**
-  - **Phụ thuộc**: T001. Dùng kết quả T006, T007 nếu đã có; chưa có thì ghi "chưa đo", người điều phối cập nhật sau.
+  - **Phụ thuộc**: T001. T006 đã có (research.md mục 2): hub không vào được cổng 22 và API Kubernetes của
+    `10.205.76.x`, nên triển khai lên hạ tầng eHospital đi qua `jenkins-job` hoặc `argocd`. T007 chưa có: ghi "chưa
+    kiểm" và để mọi chi tiết Jenkins, Argo CD ở mức **[Suy luận]**; người điều phối cập nhật sau.
   - **Goal**:
     - ADR 0030 "Hub runs deploy steps over SSH" (tiếng Anh, theo `docs/adr/template.md`): Q1, Q2; `ssh2` (bản, giấy
       phép, kết quả audit từ T001) thay binary `ssh`; khoá theo máy chủ, mã hoá theo bản ghi; host key cố định; bước
@@ -412,13 +417,15 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Goal**: US3, FR-010, FR-011, FR-032, SC-004, SC-008, plan.md mục 5 "Khoá", "Kết nối".
     - `clients/ssh.ts` (`ssh2`):
       - kết nối bằng khoá riêng trong bộ nhớ, không ghi file;
-      - `hostVerifier` so SHA256 với danh sách đã xác nhận; sai thì dừng trước mọi lệnh (`SSH_HOSTKEY_CHANGED`); lần đầu
-        trả dấu vân tay, không chạy lệnh;
+      - `hostVerifier` so SHA256 với `host_keys`; sai thì dừng trước mọi lệnh (`SSH_HOSTKEY_CHANGED`); lần đầu trả dấu
+        vân tay, không chạy lệnh; ghi lý do từ chối trong biến của lần kết nối (`ssh2` báo chung `Host denied`);
+      - đã có host key thì ép `algorithms.serverHostKey` theo thuật toán đã lưu;
+      - `on('error')` suốt đời kết nối, không dùng `once` (lỗi thứ hai sau timeout làm sập tiến trình, spike T001);
       - chờ kết nối 10 giây; tách lỗi mạng (`ECONNREFUSED`, `ETIMEDOUT`, `EHOSTUNREACH`) khỏi lỗi xác thực;
       - `exec` có hạn giờ và trần output; SFTP `mkdir`, ghi từ stream, `chmod`.
     - `servers.ts`:
       - thêm, sửa, xoá máy chủ của đội (cần `servers.manage`);
-      - sinh cặp ed25519 (cách theo T001), mã hoá ngay với ngữ cảnh `deploy_servers:<id>:key`; trả khoá công khai và
+      - sinh cặp ed25519 bằng `ssh2.utils.generateKeyPairSync` (spike T001), mã hoá ngay với ngữ cảnh `deploy_servers:<id>:key`; trả khoá công khai và
         lệnh cài (`mkdir -p ~/.ssh`, `chmod`, `echo '…' >> ~/.ssh/authorized_keys`);
       - "Kiểm kết nối": hệ điều hành, phiên bản Docker và Compose, đĩa trống; xác nhận dấu vân tay;
       - "Đổi khoá": khoá mới ở `pending_*`, khoá cũ vẫn dùng tới khi kiểm bằng khoá mới thành công thì thay;
