@@ -5,6 +5,17 @@ import { auditContract } from "./audit.ts";
 import { chatContract } from "./chat.ts";
 import { codeReviewsContract } from "./code-reviews.ts";
 import { costsContract } from "./cost.ts";
+import {
+  ciConnectionsContract,
+  ciContract,
+  ciJobsContract,
+  ciTokensContract,
+  deploysContract,
+  environmentsContract,
+  infraConnectionsContract,
+  serversContract,
+  targetsContract,
+} from "./delivery.ts";
 import { desktopConnectContract } from "./desktop-connect.ts";
 import { docEditorContract } from "./doc-editor.ts";
 import {
@@ -40,6 +51,7 @@ export * from "./audit.ts";
 export * from "./breakdown.ts";
 export * from "./code-reviews.ts";
 export * from "./cost.ts";
+export * from "./delivery.ts";
 export * from "./desktop-connect.ts";
 export * from "./doc-editor.ts";
 export * from "./doc-sync.ts";
@@ -53,6 +65,7 @@ export * from "./mcp-admin.ts";
 export * from "./notify.ts";
 export * from "./policies.ts";
 export * from "./projects.ts";
+export * from "./redact.ts";
 export * from "./repo-url.ts";
 export * from "./roles.ts";
 export * from "./run-log.ts";
@@ -175,6 +188,15 @@ export const contract = {
   terminal: terminalContract,
   remote: remoteContract,
   artifacts: artifactsContract,
+  ciConnections: ciConnectionsContract,
+  ciTokens: ciTokensContract,
+  infraConnections: infraConnectionsContract,
+  ciJobs: ciJobsContract,
+  ci: ciContract,
+  servers: serversContract,
+  environments: environmentsContract,
+  deployTargets: targetsContract,
+  deploys: deploysContract,
 };
 
 export type Contract = typeof contract;

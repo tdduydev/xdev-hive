@@ -35,6 +35,14 @@ export const notificationEvent = z.enum([
   // Artifact (specs/012): dung lượng tổ chức vượt 80%; link công khai bị quản trị thu hồi hay hết hiệu lực do sự kiện.
   "artifact.quota",
   "artifact.public_link.revoked",
+  // CI/CD và triển khai (specs/020 FR-031). `ci.failed` chỉ cho nhánh chính, không gửi lại tới khi `ci.recovered`.
+  "ci.failed",
+  "ci.recovered",
+  "deploy.started",
+  "deploy.succeeded",
+  "deploy.failed",
+  "deploy.approval_requested",
+  "server.hostkey_changed",
   // Phiên trên máy cá nhân (specs/010): chỉ tới hộp thư và thông báo đẩy của chủ máy, không qua kênh của tổ chức.
   "terminal.remote_session",
   "terminal.attention",
@@ -104,6 +112,16 @@ const events = z
   .min(1, "Chọn ít nhất một loại sự kiện.")
   .max(notificationChannelEvent.options.length)
   .transform((list) => [...new Set(list)]);
+/**
+ * Hệ thống mà kênh nhận sự kiện (specs/020): null hoặc bỏ trống là mọi hệ thống. Sự kiện không gắn hệ thống nào (máy mất
+ * kết nối, thành viên chờ duyệt) luôn tới kênh.
+ */
+const systemIds = z
+  .array(id)
+  .min(1, "Chọn ít nhất một hệ thống, hoặc để trống để nhận mọi hệ thống.")
+  .max(200)
+  .transform((list) => [...new Set(list)])
+  .nullable();
 
 export const telegramConfig = z.object({
   kind: z.literal("telegram"),
@@ -148,6 +166,7 @@ export type NotificationChannelConfig = z.input<typeof notificationChannelConfig
 export const notificationChannelCreateInput = z.object({
   name,
   events,
+  systemIds: systemIds.optional(),
   enabled: z.boolean().default(true),
   config: notificationChannelConfig,
 });
@@ -158,6 +177,7 @@ export const notificationChannelUpdateInput = z.object({
   id,
   name: name.optional(),
   events: events.optional(),
+  systemIds: systemIds.optional(),
   enabled: z.boolean().optional(),
   config: notificationChannelConfig.optional(),
 });
@@ -169,6 +189,8 @@ export const notificationChannel = z.object({
   kind: notificationChannelKind,
   name: z.string(),
   events: z.array(notificationChannelEvent),
+  /** Null là mọi hệ thống. Hub cũ không trả. */
+  systemIds: z.array(id).nullable().optional(),
   enabled: z.boolean(),
   target: z.string(),
   createdAt: z.iso.datetime(),
