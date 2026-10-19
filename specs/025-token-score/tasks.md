@@ -37,7 +37,7 @@ trong JSON; giao diện làm tròn 1 chữ số khi hiện.
 ```ts
 type Status = "ok" | "partial" | "low" | "unknown" | "unsupported";
 type FixId = "optimizer.balanced" | "optimizer.rtk" | "optimizer.aggressive" | "tool.rtk" | "tool.codegraph"
-  | "codegraph.mcp" | "codegraph.init" | "open.memory" | "open.mcp";
+  | "codegraph.mcp" | "codegraph.init" | "open.memory" | "open.mcp" | "context.measure";
 
 interface TokenScore {
   scoreVersion: 1;
@@ -86,13 +86,24 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
   có `earned = 0` và không tính vào `coverage`.
 - Mục con (`items[].id`): A2 `bash`, `read`, `mcp`, `hook` (Codex: `toolOutput`); A3 `tokens`, `truncated`; A5 `tool`,
   `mcp`, `index`; A6 `rtk`, `hook`; A7 `cache`, `version`; A8 `effort`, `subagent` (Codex: `effort`, `verbosity`).
-- `warnings[].code`: `claude_md_long` (A3), `tool_search_off`, `always_load` (A4), `user_set` (A2).
+- `warnings[].code`: `claude_md_long` (A3), `tool_search_off`, `always_load` (A4), `user_set` (A2), `auto_compact_off` (A1).
 - Mã lý do: `not_enough_sessions`, `context_unavailable`, `config_unreadable`, `unsupported_cli`, `no_edit_sessions`,
-  `windows_rtk_unsupported`, `cli_version_unknown`, `no_projects`, `no_token_logs`, `codex_not_measured`.
+  `windows_rtk_unsupported`, `cli_version_unknown`, `no_projects`, `no_token_logs`, `codex_not_measured`,
+  `context_not_measured`, `default` (mục con để mặc định của CLI).
+- `context.measure` chỉ có ở giao diện: chấm lại với `--fresh` để chạy `/context` (gọi model, research mục 7).
+
+## Ghi chú khi làm P1 (2026-10-19)
+
+- Danh sách gói lấy thẳng từ `optimizeStatus` (đã gộp `accounts.json` với manifest), không tách `ListProfiles`.
+- A3 đọc file chỉ dẫn trực tiếp trong `score`, không sửa `memstore`.
+- `/context` gọi model (research mục 7), nên chỉ chạy khi người dùng bấm đo; kết quả giữ 7 ngày.
+- Hoàn tác `optimizer.*` qua `optimize fix … --undo`, không qua `restore` (plan mục 6).
+- Tỉ trọng token theo họ model (FR-007) để sang T009.
+- Máy dev Windows không có Rust: `token_score.rs` chỉ CI biên dịch và chạy test.
 
 ## Đợt 0: kiểm giả định
 
-- [ ] **T001 [P] [—] [nhẹ] · 0,5 ngày — Kiểm giả định của plan đợt 0**
+- [x] **T001 [P] [—] [nhẹ] · 0,5 ngày — Kiểm giả định của plan đợt 0**
   - **Goal**:
     - tên nhóm `/context` trên máy có MCP và plugin (Claude Code 2.1.300);
     - `claude -p /context` có tốn hạn mức không (so `/usage` trước và sau);
@@ -104,7 +115,7 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
 
 ## Đợt 1: Go (P1)
 
-- [ ] **T002 [US1] [nặng] · 1,5 ngày — Danh sách gói và số mới của `tokenreport`**
+- [x] **T002 [US1] [nặng] · 1,5 ngày — Danh sách gói và số mới của `tokenreport`**
   - **Goal**:
     - `optimizer.ListProfiles(o, accountsFile, claudeVersion)`: phần gộp `accounts.json` với manifest, tách khỏi
       `optimizeStatus`; `optimizeStatus` gọi lại hàm này, output `optimize status` không đổi.
@@ -120,7 +131,7 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
     `worker/internal/tokenreport/testdata/**` (chỉ thêm).
   - **Kiểm**: test cũ của `tokenreport` và `optimize` vẫn qua (FR-007); test mới cho gói thư mục tuỳ chọn, cờ subagent,
     token trước lần sửa đầu (có ca tool_use nằm ở dòng sau của cùng message).
-- [ ] **T003 [US1] [US2] [nặng] · 2 ngày — Gói `score` và `optimize score`** (sau T002)
+- [x] **T003 [US1] [US2] [nặng] · 2 ngày — Gói `score` và `optimize score`** (sau T002)
   - **Goal**: plan mục 1–5.
     - `criteria.go`: bảng tiêu chí, `f(x)`, trạng thái, điểm gói, điểm máy, `scoreVersion`.
     - `config_claude.go`, `config_codex.go`, `config_agy.go`, `tools.go`: đo nhóm A theo plan mục 3. Lệnh ngoài (`rtk
@@ -134,7 +145,7 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
     `worker/cmd/hive-worker/optimize_test.go`.
   - **Kiểm**: test bảng (SC-002): mỗi tiêu chí và mục con có ca đủ, 0, giữa, `unknown`; `HOME`/`USERPROFILE` giả với 2 gói
     Claude (một gói thư mục tuỳ chọn), 1 Codex, 1 Antigravity; riêng tư (SC-005) cho lịch sử.
-- [ ] **T004 [US3] [vừa] · 1 ngày — `optimize fix`** (sau T003)
+- [x] **T004 [US3] [vừa] · 1 ngày — `optimize fix`** (sau T003)
   - **Goal**: plan mục 6, phần chạy trong Go: `optimizer.balanced`, `optimizer.rtk`, `optimizer.aggressive`.
     - `--preview`: `FixPreview` mà không ghi gì.
     - Áp dụng: gọi `Enable` như `optimize enable` (giữ `--rtk` khi gói đang có hook RTK của Hive), trả `FixResult` có
@@ -146,7 +157,7 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
 
 ## Đợt 2: app desktop (P1, song song với Đợt 1 sau khi chốt hợp đồng JSON)
 
-- [ ] **T005 [P] [US1] [US3] [vừa] · 1 ngày — Lệnh Tauri**
+- [x] **T005 [P] [US1] [US3] [vừa] · 1 ngày — Lệnh Tauri**
   - **Goal**:
     - `token_score(fresh)`: chạy sidecar `optimize score --json`, giữ kết quả gần nhất trong state để tra `projectKey`.
     - `token_score_fix_preview(fixId, profileId, projectKey?)`, `token_score_fix(…)`, `token_score_undo(fixId,
@@ -156,7 +167,7 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
       và `.git/info/exclude`, hoàn tác bằng `codegraph uninit`. Id lạ, `projectKey` lạ bị từ chối.
   - **PHẠM VI**: `apps/desktop/src-tauri/src/token_score.rs` (mới), `lib.rs`, `build.rs`, `capabilities/app.json`.
   - **Kiểm**: `cargo test` (CI): bảng cho phép, id lạ, `projectKey` lạ, argv dựng đúng.
-- [ ] **T006 [P] [US1] [US2] [US3] [vừa] · 2 ngày — Thẻ điểm, chi tiết, sửa nhanh**
+- [x] **T006 [P] [US1] [US2] [US3] [vừa] · 2 ngày — Thẻ điểm, chi tiết, sửa nhanh**
   - **Goal**: plan mục 8 (trừ biểu đồ, huy hiệu, lịch hằng ngày: P2).
     - `lib/token-score.ts`: kiểu theo hợp đồng JSON, lệnh `invoke`, `copyReport()` (chỉ số, id tiêu chí, mã lý do, CLI).
     - `TokenScoreCard`: điểm, mức, phạm vi đo, "tạm tính", nhóm A/B, điểm từng gói, chênh lệch với `previous`, nút

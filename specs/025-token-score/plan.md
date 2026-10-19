@@ -78,8 +78,9 @@ hive-worker optimize fix <fixId> --profile P [--preview]
 | Đo cấu hình | `worker/internal/score/config_claude.go`, `config_codex.go`, `config_agy.go`, `tools.go`, `context.go` (mới) |
 | Lịch sử | `worker/internal/score/history.go` (mới) |
 | Số mới của báo cáo | `worker/internal/tokenreport/report.go` (gốc quét từ `accounts.json`), `session.go`, `transcript.go`, `aggregate.go`, `cache.go` (tăng `cacheVersion`) |
-| Memory | `worker/internal/memstore/scan.go`: thêm `Lines`, `Bytes` vào `File` |
-| Lệnh con | `worker/cmd/hive-worker/optimize.go`: thêm `case "score"`, `case "fix"` |
+| Đọc file chỉ dẫn | Trong `score/config.go` và `criteria.go` (đếm dòng, byte, ký tự). Không sửa `memstore` |
+| Chạy CLI theo gói | `worker/internal/accounts/print.go` (`ClaudePrint`) |
+| Lệnh con | `worker/cmd/hive-worker/optimize.go` (`case "score"`, `case "fix"`, tách `optimizeEnable`), `optimize_score.go` |
 | Tauri | `apps/desktop/src-tauri/src/token_score.rs` (mới), đăng ký trong `lib.rs`, khai lệnh trong `build.rs` và `capabilities/app.json` |
 | Cài công cụ | `apps/desktop/src-tauri/src/doctor.rs`: thêm mục `rtk`, `codegraph` vào bảng cài |
 | UI | `apps/desktop/src/lib/token-score.ts`, `components/token-score-card.tsx`, `components/token-score-detail.tsx` (mới); một dòng trong `tokens-screen.tsx`; huy hiệu trong `shell/app-nav.tsx` |
@@ -182,12 +183,16 @@ nguồn phiên (`aggregate.go:149–169`). Việc cần làm:
 ### 5. `/context` theo gói
 
 - `score/context.go` chạy `claude -p /context --no-session-persistence` (cùng đối số app đang dùng,
-  `usage.rs:251`) với `CLAUDE_CONFIG_DIR` của gói và token OAuth như `accounts.ReadUsage` (`accounts/usage.go:166–185`).
+  `usage.rs:251`) qua `accounts.ClaudePrint`: `CLAUDE_CONFIG_DIR` của gói và token OAuth như `accounts.ReadUsage`, chạy
+  ngoài mọi repo.
 - Không dùng `--strict-mcp-config`: cần MCP của gói để đếm A4.
-- Timeout 30 giây như `usage.rs:20`. Cache 10 phút trong `context-cache.json` theo gói.
+- Đã đo (research mục 7): lệnh này gọi model. Vì vậy:
+  - chỉ chạy khi có `optimize score --fresh`, tức khi người dùng bấm "Đo /context" ở A4 (sửa nhanh `context.measure`,
+    chỉ có ở giao diện); nút "Tính lại" không chạy nó;
+  - kết quả giữ 7 ngày trong `context-cache.json` theo gói; quá hạn thì bỏ, không tự chạy lại;
+  - các gói Claude chạy song song, timeout 30 giây mỗi gói.
 - Đọc bảng theo cách `parse_context` của `usage.rs`. Bản Go dùng cùng fixture (`usage.rs:857`) để hai bên đọc giống nhau.
-- **[Unverified]** Chạy `/context` có tốn hạn mức không, và có khởi động MCP server của gói hay không: đợt 0 kiểm. Tốn hạn
-  mức thì chỉ chạy khi người dùng bấm "Tính lại", không chạy hằng ngày.
+- A4 cộng các nhóm "Skills", "MCP tools", "MCP server instructions", "Custom agents"; bỏ nhóm "(deferred)".
 
 ### 6. Sửa nhanh
 
@@ -195,7 +200,7 @@ Bảng cho phép có ở Rust (id, chạy ở đâu). Phần chạy trong sideca
 
 | fixId | Tiêu chí | Chạy ở | Làm gì | Hoàn tác | Xác nhận |
 |---|---|---|---|---|---|
-| `optimizer.balanced` | A1, A2 | Go | `optimizer.Enable(profile, balanced)`, thêm `--rtk` khi dòng trạng thái của gói có `rtk: true` (`optimize.go:394`) để không gỡ hook RTK đang có | `optimize disable` hoặc `restore` (015) | Xem trước. Không hiện khi gói đã ở `aggressive` |
+| `optimizer.balanced` | A1, A2 | Go | `optimizer.Enable(profile, balanced)`, thêm `--rtk` khi dòng trạng thái của gói có `rtk: true` (`optimize.go:394`) để không gỡ hook RTK đang có | `optimize fix … --undo` (bật lại mức cũ hoặc tắt) | Xem trước. Chỉ hiện khi gói chưa bật tối ưu |
 | `optimizer.rtk` | A6 | Go | `optimizer.Enable(profile, mức hiện tại hoặc balanced, rtk)` | Như trên | Xem trước. Ẩn trên Windows (`optimize.go:280–283`) và khi không có `rtk` |
 | `optimizer.aggressive` | A8 | Go | `optimizer.Enable(profile, aggressive, rtk như hiện tại)`. Mức này đặt `CLAUDE_CODE_SUBAGENT_MODEL` và `_FORCE` (`runner/preset.go:121–122`) | Như trên | **Hộp xác nhận** liệt kê mọi khoá của mức này |
 | `tool.rtk`, `tool.codegraph` | A5, A6 | Rust | Mở màn Môi trường ở mục đó. `doctor.rs` thêm mục cài: `winget install rtk-ai.rtk`, `brew install rtk` [Unverified: README RTK, chưa chạy]; lệnh cài `codegraph` [Unverified], đợt 0 kiểm | Gỡ bằng tay | Theo màn Môi trường |
@@ -206,6 +211,9 @@ Bảng cho phép có ở Rust (id, chạy ở đâu). Phần chạy trong sideca
 
 - `hive-worker optimize fix <fixId> --profile P --preview` trả danh sách thay đổi (file, khoá, cũ, mới, cảnh báo) mà không
   ghi gì.
+- Hoàn tác `optimizer.*` là `optimize fix <fixId> --profile P --undo`. Lúc áp dụng, sidecar ghi mức và RTK của gói trước
+  lần sửa vào `score-fixes.json`; hoàn tác thì bật lại mức cũ, hoặc tắt nếu trước đó chưa bật. Không chép bản sao lưu, vì
+  `Restore` về một bản không phải bản đầu vẫn để manifest ghi mức mới (`optimizer.go:449–455`).
 - Không có lệnh ghi từng khoá lẻ. Lý do: `Enable` gỡ khoá của mức cũ trước khi áp mức mới (`claude.go:49–57`), nên một
   khoá lẻ đặt ngoài preset sẽ bị gỡ ở lần bật sau.
 - Sau khi áp dụng: chạy lại `score` với số nhóm B lấy từ cache, ghi lịch sử.
