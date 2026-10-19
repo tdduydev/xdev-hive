@@ -109,6 +109,16 @@ function summary(e: ScmEvent): Record<string, unknown> {
       return { ...base, number: e.issue.number, commentId: e.comment.id };
     case "comment.mentioned":
       return { ...base, target: e.target.type, number: e.target.number, commentId: e.comment.id };
+    case "pipeline":
+      return {
+        ...base,
+        pipelineId: e.pipeline.id,
+        ref: e.pipeline.ref,
+        sha: e.pipeline.sha,
+        status: e.pipeline.status,
+      };
+    case "job":
+      return { ...base, jobId: e.job.id, pipelineId: e.job.pipelineId, name: e.job.name, status: e.job.status };
   }
 }
 
