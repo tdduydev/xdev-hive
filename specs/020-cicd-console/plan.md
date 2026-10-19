@@ -273,12 +273,17 @@ bridge của Docker tới `10.86.224.34:22`: kiểm khi làm task.
 - Môi trường có `policy.deployRoles`, `policy.approveRoles` (vai trò đội), kiểm sau quyền chung.
 - Mỗi lần giải mã khoá SSH hay token ghi audit nhẹ (`delivery.secret_used`: loại, id, lý do), gom theo lần triển khai để
   không làm phình audit.
-- **Sao lưu:** database chứa khoá ở dạng mã hoá, nhưng `deploy/backup.sh` hiện chép cả `.env` (có `HIVE_MASTER_KEY`) vào
-  cùng thư mục với bản dump để khôi phục được. Ai có một bản sao lưu là giải mã được mọi khoá SSH và token. Bản đầu:
-  - tài liệu self-hosting ghi rõ điều này, khuyến nghị bản sao lưu đưa ra khỏi máy chủ (`remote-backup.sh`) phải được mã
-    hoá hoặc cất ở nơi chỉ quản trị hub đọc được;
-  - mất `HIVE_MASTER_KEY` thì phải sinh lại khoá cho mọi máy chủ.
-  Tách `.env` khỏi bản sao lưu là đổi quy trình khôi phục, cần chủ dự án quyết; ghi ở R11.
+- **Sao lưu (R11, chủ dự án đã chốt 2026-10-19: tách `.env` khỏi bản sao lưu):** database chứa khoá ở dạng mã hoá.
+  Trước đây `deploy/backup.sh` chép cả `.env` (có `HIVE_MASTER_KEY`) vào cùng thư mục với bản dump, nên ai có một bản
+  sao lưu là giải mã được mọi khoá SSH và token. Nay:
+  - bản sao lưu gồm `hive.dump`, `meta` và `SHA256SUMS` (phủ hai file kia). `meta` không có secret, chỉ ghi
+    `HIVE_COMPOSE_PROJECT` và `HIVE_MASTER_KEY_SHA256` (sha256 của khoá);
+  - `deploy/restore.sh` dùng `.env` đang có trên máy chủ, kiểm project và dấu khoá theo `meta`; lệch thì dừng và báo cần
+    `.env` gốc. Bản sao lưu cũ còn `.env` vẫn khôi phục như trước (hỏi trước khi ghi đè `.env`);
+  - quản trị cất `.env` riêng, ở nơi chỉ quản trị đọc được. Mất `.env` (mất `HIVE_MASTER_KEY`) thì không giải mã được
+    khoá SSH và token trong bản dump, phải sinh lại khoá cho mọi máy chủ;
+  - bản sao lưu cũ trên máy chủ vẫn còn `.env` cho tới khi quản trị xoá hoặc retention của `backup.sh` xoá. Quản trị tự
+    quyết có xoá sớm không; không script nào xoá thêm.
 
 ### 10. Giao diện
 
@@ -345,7 +350,7 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | R8 | Hub tự triển khai chính nó | Bước tách khỏi phiên SSH; job watch nối lại từ vị trí đã lưu; SC-007 có test |
 | R9 | Rollback của Argo CD tắt autoSync | Cảnh báo trước khi quay về; tài liệu cách bật lại |
 | R10 | Host key đổi hợp lệ (cài lại máy) | Quản trị xác nhận lại dấu vân tay, có audit |
-| R11 | Bản sao lưu có cả `.env` (`HIVE_MASTER_KEY`) và dump: lộ một bản sao lưu là lộ quyền vào mọi máy chủ | Tài liệu và khuyến nghị mã hoá bản sao lưu ra ngoài máy (mục 9); cân nhắc tách `.env` khỏi bản sao lưu, cần chủ dự án quyết vì đổi quy trình khôi phục |
+| R11 | Bản sao lưu có cả `.env` (`HIVE_MASTER_KEY`) và dump: lộ một bản sao lưu là lộ quyền vào mọi máy chủ | **Đã chốt 2026-10-19:** tách `.env` khỏi bản sao lưu (mục 9). Bản sao lưu chỉ còn dump và `meta` không có secret; restore kiểm dấu khoá theo `meta`. Quản trị cất `.env` riêng. Còn lại: bản sao lưu cũ trên máy chủ vẫn có `.env` cho tới khi quản trị xoá hoặc retention xoá |
 
 ## Phương án đã cân nhắc
 
