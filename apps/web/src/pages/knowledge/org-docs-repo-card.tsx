@@ -74,6 +74,7 @@ function RepoForm({ home, canEdit }: { home: DocHome | null; canEdit: boolean })
       include: docs.data.include,
       exclude: docs.data.exclude,
       repoChangesNeedReview: docs.data.repoChangesNeedReview,
+      wordImportConfidential: docs.data.wordImportConfidential,
     });
     if (!input.success) {
       setValidation("Kết nối, chủ sở hữu, tên repo hoặc nhánh không hợp lệ. Kiểm tra lại các ô.");

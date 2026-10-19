@@ -11,6 +11,7 @@ import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { type FormEvent, useId, useMemo, useState } from "react";
 import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import { EmptyState, LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
+import { WordImportButton } from "@/components/word-import-dialog.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { docScopeStore } from "@/lib/doc-scope-store.ts";
 import { useT } from "@/lib/i18n.ts";
@@ -96,7 +97,16 @@ function DocsScreen() {
   const defaultOpen = useMemo(() => openByDefault(nodes, membership), [nodes, membership]);
   const open = toggled ?? defaultOpen;
   return (
-    <KnowledgeLayout title={t.docsTitle} lead={t.docsLead} actions={<NewDoc />}>
+    <KnowledgeLayout
+      title={t.docsTitle}
+      lead={t.docsLead}
+      actions={
+        <>
+          <WordImportButton />
+          <NewDoc />
+        </>
+      }
+    >
       <form
         className="flex min-w-0 flex-wrap items-end gap-2"
         onSubmit={(event) => {
