@@ -48,6 +48,21 @@ Khi chưa đủ phiên để so sánh, màn hình báo chưa đủ dữ liệu. 
 máy dev; mức tiết kiệm thực tế phụ thuộc cách dùng. Hãy dùng bảng sau khi có đủ phiên để đánh giá thay vì coi ước tính
 trong nghiên cứu là cam kết.
 
+## Điểm tối ưu token
+
+Đầu màn **Token** có thẻ **Điểm tối ưu token** (0–100) cho máy và cho từng gói CLI ([spec 025](../specs/025-token-score/spec.md)).
+
+- **Nhóm A, cấu hình (45 điểm)**: trần ngữ cảnh, trần output tool, file chỉ dẫn, skill và MCP nạp sẵn, chỉ mục code, RTK,
+  prompt cache, model và effort mặc định.
+- **Nhóm B, số liệu phiên 7 ngày (55 điểm)**: ngữ cảnh đỉnh, phần token ở phiên rất dài, ngữ cảnh lượt đầu, cache trúng,
+  token mỗi lượt, output tool, token trước lần sửa đầu. Cần ít nhất 5 phiên của gói.
+- **Đo được X/100 điểm** cho biết phần đã đo. Tiêu chí chưa đo không tính vào điểm.
+- Mở **Xem chi tiết** để thấy từng tiêu chí, gợi ý và nút sửa nhanh. Sửa nhanh luôn cho xem trước và có **Hoàn tác**.
+  Mức **Mạnh** đổi model subagent nên cần xác nhận riêng.
+- Tiêu chí "skill và MCP nạp sẵn" cần chạy `/context`. Lệnh này gọi model và tốn token, nên chỉ chạy khi bạn bấm
+  **Đo /context**. Kết quả được giữ 7 ngày. Nút **Tính lại** không chạy lệnh này.
+- Điểm đo cấu hình và kích thước ngữ cảnh, không đo chất lượng kết quả của agent.
+
 ## Memory
 
 Màn **Memory** quét các file memory và hướng dẫn của Claude, Codex và Gemini trên máy, ước tính token, ngày sửa và
