@@ -17,6 +17,8 @@ import type {
   AccessCheck,
   BranchRules,
   ChecksState,
+  CiJob,
+  CiPipeline,
   CommentOptions,
   CommitFilesInput,
   CommitStatusInput,
@@ -35,7 +37,7 @@ import type {
   ScmUser,
   WebhookInput,
 } from "./types.ts";
-import { COMMIT_STATUS_DESCRIPTION_MAX, MAX_PR_FILES } from "./types.ts";
+import { asCiStatus, CI_ACTIVE_STATUSES, COMMIT_STATUS_DESCRIPTION_MAX, ciTime, MAX_PR_FILES } from "./types.ts";
 
 export interface GitLabProviderOptions {
   /** Địa chỉ GitLab, ví dụ `https://gitlab.com` hoặc bản tự host. */
@@ -153,6 +155,93 @@ function toPullRequestFile(d: GlDiff): PullRequestFile {
   };
 }
 
+interface GlPipeline {
+  id: number;
+  ref: string;
+  sha: string;
+  status: string;
+  source?: string | null;
+  web_url?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  /** Chỉ có khi đọc một pipeline, không có trong danh sách. */
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration?: number | null;
+  user?: { username?: string } | null;
+}
+
+function toPipeline(p: GlPipeline): CiPipeline {
+  return {
+    id: String(p.id),
+    ref: p.ref,
+    sha: p.sha,
+    status: asCiStatus(p.status),
+    source: p.source ?? null,
+    url: p.web_url ?? null,
+    createdAt: ciTime(p.created_at),
+    updatedAt: ciTime(p.updated_at),
+    startedAt: ciTime(p.started_at),
+    finishedAt: ciTime(p.finished_at),
+    durationSec: p.duration ?? null,
+    user: p.user?.username ?? null,
+  };
+}
+
+interface GlJob {
+  id: number;
+  name: string;
+  stage: string;
+  ref: string;
+  status: string;
+  allow_failure?: boolean;
+  failure_reason?: string | null;
+  web_url?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration?: number | null;
+  user?: { username?: string } | null;
+  pipeline: { id: number; sha?: string };
+  commit?: { id?: string } | null;
+}
+
+function toJob(j: GlJob): CiJob {
+  return {
+    id: String(j.id),
+    pipelineId: String(j.pipeline.id),
+    name: j.name,
+    stage: j.stage,
+    ref: j.ref,
+    sha: j.pipeline.sha ?? j.commit?.id ?? null,
+    status: asCiStatus(j.status),
+    allowFailure: j.allow_failure ?? false,
+    failureReason: j.failure_reason ?? null,
+    url: j.web_url ?? null,
+    createdAt: ciTime(j.created_at),
+    startedAt: ciTime(j.started_at),
+    finishedAt: ciTime(j.finished_at),
+    durationSec: j.duration ?? null,
+    user: j.user?.username ?? null,
+  };
+}
+
+/** Số byte đầu tạo thành chuỗi UTF-8 trọn ký tự: trace của job đang ghi có thể dừng giữa một ký tự nhiều byte. */
+function wholeUtf8(bytes: Uint8Array): number {
+  let i = bytes.length - 1;
+  let tail = 0;
+  while (i >= 0 && tail < 3 && ((bytes[i] as number) & 0xc0) === 0x80) {
+    i--;
+    tail++;
+  }
+  if (i < 0) return bytes.length;
+  const lead = bytes[i] as number;
+  const size = lead >= 0xf0 ? 4 : lead >= 0xe0 ? 3 : lead >= 0xc0 ? 2 : 1;
+  return size > tail + 1 ? i : bytes.length;
+}
+
+const firstLine = (message: string | undefined) => (message ?? "").split("\n", 1)[0] ?? "";
+
 /** GitLab trả `message` là chuỗi hoặc object theo trường (ví dụ `{"name":["has already been taken"]}`). */
 function detailOf(text: string): string | undefined {
   if (!text) return undefined;
@@ -185,6 +274,10 @@ async function orNull<T>(fn: () => Promise<T>): Promise<T | null> {
 /** Repo GitLab định danh bằng đường dẫn đầy đủ; gitbeaker tự mã hoá, còn gọi tay thì phải mã hoá. */
 const projectPath = (ref: RepoRef) => `${ref.owner}/${ref.name}`;
 const mrPath = (ref: RepoRef, iid: number) => `projects/${encodeURIComponent(projectPath(ref))}/merge_requests/${iid}`;
+const pipelinePath = (ref: RepoRef, id: string) =>
+  `projects/${encodeURIComponent(projectPath(ref))}/pipelines/${encodeURIComponent(id)}`;
+const jobPath = (ref: RepoRef, id: string) =>
+  `projects/${encodeURIComponent(projectPath(ref))}/jobs/${encodeURIComponent(id)}`;
 
 export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
   const doFetch: FetchLike = opts.fetch ?? ((input, init) => fetch(input, init));
@@ -693,6 +786,8 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
         mergeRequestsEvents: input.events.includes("pull_request"),
         issuesEvents: input.events.includes("issues"),
         noteEvents: input.events.includes("issue_comment"),
+        pipelineEvents: input.events.includes("pipeline"),
+        jobEvents: input.events.includes("job"),
         enableSslVerification: true,
       };
       const hooks = (await gl.projectHooks.all(id)) as unknown as Array<{ id: number; url: string }>;
@@ -759,6 +854,14 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
           renamed_file: boolean;
           new_blob_id?: string;
         }[];
+        commits?: {
+          id: string;
+          title?: string;
+          message?: string;
+          author_name?: string;
+          authored_date?: string;
+          created_at?: string;
+        }[];
         compare_timeout?: boolean;
         overflow?: boolean;
       }>(
@@ -777,6 +880,12 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
                 ? ("removed" as const)
                 : ("modified" as const),
           sha: f.new_blob_id ?? null,
+        })),
+        commits: (result.commits ?? []).map((c) => ({
+          sha: c.id,
+          title: c.title ?? firstLine(c.message),
+          author: c.author_name ?? null,
+          authoredAt: ciTime(c.authored_date ?? c.created_at),
         })),
         incomplete: Boolean(result.compare_timeout || result.overflow),
       };
@@ -832,6 +941,67 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
       const mr = await orNull(() => rest<{ state: string }>("GET", mrPath(ref, number)));
       if (mr?.state !== "opened") return;
       await rest("PUT", mrPath(ref, number), { state_event: "close" });
+    },
+
+    async listPipelines(ref, o) {
+      const q = new URLSearchParams({
+        order_by: "id",
+        sort: "desc",
+        per_page: String(o.perPage ?? 20),
+        page: String(o.page),
+      });
+      if (o.branch) q.set("ref", o.branch);
+      if (o.sha) q.set("sha", o.sha);
+      if (o.status) q.set("status", o.status);
+      const url = new URL(`projects/${encodeURIComponent(projectPath(ref))}/pipelines?${q}`, apiBase);
+      const res = await send("GET", url, { headers: { "private-token": opts.token } });
+      const next = res.headers.get("x-next-page");
+      return {
+        items: ((await res.json()) as GlPipeline[]).map(toPipeline),
+        nextPage: next ? Number(next) : null,
+      };
+    },
+
+    async pipelineJobs(ref, pipelineId) {
+      const out: CiJob[] = [];
+      for (let page = "1"; page; ) {
+        const url = new URL(`${pipelinePath(ref, pipelineId)}/jobs`, apiBase);
+        url.search = new URLSearchParams({ per_page: "100", page }).toString();
+        const res = await send("GET", url, { headers: { "private-token": opts.token } });
+        out.push(...((await res.json()) as GlJob[]).map(toJob));
+        page = res.headers.get("x-next-page") ?? "";
+      }
+      return out;
+    },
+
+    async jobLog(ref, jobId, from) {
+      // Đọc trạng thái trước trace: job đã dừng lúc hỏi trạng thái thì trace đọc sau đó chắc chắn đủ.
+      const job = await rest<GlJob>("GET", jobPath(ref, jobId));
+      const complete = !CI_ACTIVE_STATUSES.includes(asCiStatus(job.status));
+      // [Unverified] Tài liệu API trace không nói có nhận Range, nên đọc cả log rồi cắt từ `from`.
+      const res = await send("GET", new URL(`${jobPath(ref, jobId)}/trace`, apiBase), {
+        headers: { "private-token": opts.token },
+      });
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const end = complete ? bytes.length : wholeUtf8(bytes);
+      if (from >= end) return { text: "", next: from, complete };
+      return { text: new TextDecoder().decode(bytes.subarray(from, end)), next: end, complete };
+    },
+
+    async retryPipeline(ref, pipelineId) {
+      return toPipeline(await rest<GlPipeline>("POST", `${pipelinePath(ref, pipelineId)}/retry`));
+    },
+    async cancelPipeline(ref, pipelineId) {
+      return toPipeline(await rest<GlPipeline>("POST", `${pipelinePath(ref, pipelineId)}/cancel`));
+    },
+    async retryJob(ref, jobId) {
+      return toJob(await rest<GlJob>("POST", `${jobPath(ref, jobId)}/retry`));
+    },
+    async cancelJob(ref, jobId) {
+      return toJob(await rest<GlJob>("POST", `${jobPath(ref, jobId)}/cancel`));
+    },
+    async playJob(ref, jobId) {
+      return toJob(await rest<GlJob>("POST", `${jobPath(ref, jobId)}/play`));
     },
   };
 }
