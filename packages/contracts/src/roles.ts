@@ -43,6 +43,12 @@ export const PERMISSION_TREE: readonly PermissionNode[] = [
     branch("fleet", [leaf("machines.read"), leaf("machines.register"), leaf("machines.remove")]),
     branch("sandbox", [leaf("sandbox.read"), leaf("sandbox.write")]),
   ]),
+  // CI/CD và triển khai (specs/020 FR-030). `servers.manage` sửa lệnh chạy trên máy chủ, `ci.connections.manage` giữ token
+  // vào Jenkins, Argo CD, Kubernetes của cả tổ chức: cả hai là quyền nguy hiểm.
+  branch("delivery", [
+    branch("ci", [leaf("ci.view"), leaf("ci.operate"), leaf("ci.connections.manage", true)]),
+    branch("deploy", [leaf("deploy.run"), leaf("deploy.approve"), leaf("servers.manage", true)]),
+  ]),
   branch("agents", [
     branch("mcp", [leaf("mcp.tokens"), leaf("mcp.servers")]),
     branch("policy", [leaf("policies.write"), leaf("policies.fullaccess", true)]),
@@ -72,7 +78,9 @@ const isRead = (k: string) => k.endsWith(".read");
 // Quyền đọc nhạy cảm: thiết kế mẫu cho người xem mọi quyền ".read", nhưng hub chỉ cho quản trị xem nhật ký, chi phí
 // và allowlist sandbox. Vai trò hệ thống phải đúng như hub đang chặn; muốn cho thêm thì tạo vai trò riêng.
 const ADMIN_READS = new Set(["audit.read", "costs.read", "sandbox.read", "machines.read"]);
-const viewer = (k: string) => isRead(k) && !ADMIN_READS.has(k);
+// Quyền xem không theo đuôi ".read" nên liệt kê riêng.
+const VIEWER_EXTRA = new Set(["ci.view"]);
+const viewer = (k: string) => (isRead(k) && !ADMIN_READS.has(k)) || VIEWER_EXTRA.has(k);
 const MEMBER_EXTRA = new Set([
   "tasks.create",
   "tasks.assign",
@@ -88,6 +96,10 @@ const MEMBER_EXTRA = new Set([
   "sdlc.write",
 ]);
 const member = (k: string) => viewer(k) || MEMBER_EXTRA.has(k);
+// Quyền của vai trò tổ chức được cộng bất kể đội, nên thao tác CI và triển khai chỉ cấp qua vai trò đội: thành viên tổ
+// chức ngoài đội chỉ xem (specs/020 FR-030).
+const TEAM_MEMBER_EXTRA = new Set(["ci.operate", "deploy.run"]);
+const teamMember = (k: string) => member(k) || TEAM_MEMBER_EXTRA.has(k);
 const TEAM_ADMIN_EXTRA = new Set([
   "projects.create",
   "projects.settings",
@@ -107,6 +119,8 @@ const TEAM_ADMIN_EXTRA = new Set([
   "sdlc.override",
   "sdlc.modes.write",
   "leader.terminal",
+  "deploy.approve",
+  "servers.manage",
 ]);
 /**
  * BA/PO (specs/011 FR-061): soạn, đề xuất và duyệt tài liệu AI SDLC; không tạo task, không chạy run, không quản trị máy.
@@ -130,8 +144,8 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleId, readonly string[]> = 
   owner: PERMISSIONS,
   admin: PERMISSIONS.filter((k) => k !== "policies.fullaccess"),
   member: PERMISSIONS.filter(member),
-  "team-admin": PERMISSIONS.filter((k) => member(k) || TEAM_ADMIN_EXTRA.has(k)),
-  "team-member": PERMISSIONS.filter(member),
+  "team-admin": PERMISSIONS.filter((k) => teamMember(k) || TEAM_ADMIN_EXTRA.has(k)),
+  "team-member": PERMISSIONS.filter(teamMember),
   "team-viewer": PERMISSIONS.filter(viewer),
   "team-ba": PERMISSIONS.filter((k) => TEAM_BA.has(k)),
 };
