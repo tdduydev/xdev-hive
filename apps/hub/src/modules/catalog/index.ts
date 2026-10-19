@@ -60,4 +60,9 @@ export {
   templateService,
   templateSyncQueue,
 } from "./template-sync.ts";
+export {
+  refreshProjectWebhooks,
+  type WebhookRefreshDeps,
+  type WebhookRefreshResult,
+} from "./webhook-refresh.ts";
 export { findWebhookTarget } from "./webhook-target.ts";

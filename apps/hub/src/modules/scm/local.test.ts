@@ -255,6 +255,32 @@ describe("createLocalProvider", () => {
       description: "ok",
     });
   });
+
+  it("compare có commit theo thứ tự cũ tới mới; thao tác pipeline báo chưa hỗ trợ", async () => {
+    const repo = { owner: "e2e", name: "cmp" };
+    await scm.createRepo({ ...repo, visibility: "private", defaultBranch: "main", marker });
+    const from = await scm.branchHead(repo, "main");
+    const one = await scm.commitFiles(repo, {
+      branch: "main",
+      message: "một\n\nchi tiết",
+      files: [{ path: "a.txt", content: "1\n" }],
+    });
+    const two = await scm.commitFiles(repo, {
+      branch: "main",
+      message: "hai",
+      files: [{ path: "a.txt", content: "2\n" }],
+    });
+    const { files, commits } = await scm.compare(repo, from as string, two.sha);
+    expect(files.map((f) => [f.path, f.status])).toEqual([["a.txt", "added"]]);
+    expect(commits.map((c) => [c.sha, c.title])).toEqual([
+      [one.sha, "một"],
+      [two.sha, "hai"],
+    ]);
+    expect(commits[0]?.author).toBeTruthy();
+    expect(commits[0]?.authoredAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+    const err = await scm.listPipelines(repo, { page: 1 }).catch((e: unknown) => e);
+    expect(isGitProviderError(err, "unsupported")).toBe(true);
+  });
 });
 
 describe("parseGitDiff", () => {

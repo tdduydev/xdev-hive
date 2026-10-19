@@ -29,8 +29,18 @@ import { projectProvisionSteps, projects } from "./schema.ts";
 import { describeFailure, StepFailure, splitTemplateFiles, TEMPLATE_BRANCH } from "./steps.ts";
 import { renderTemplate } from "./template.ts";
 
-/** Issue và bình luận để giao việc từ issue; push và PR để chuyển trạng thái task, run. */
-const WEBHOOK_EVENTS = ["push", "pull_request", "issues", "issue_comment"] as const satisfies WebhookEvent[];
+/**
+ * Issue và bình luận để giao việc từ issue; push và PR để chuyển trạng thái task, run; pipeline và job cho bảng CI/CD
+ * (GitHub bỏ qua hai sự kiện này tới khi có GitHub Actions). Đổi danh sách thì dự án cũ cần refreshProjectWebhooks.
+ */
+export const WEBHOOK_EVENTS = [
+  "push",
+  "pull_request",
+  "issues",
+  "issue_comment",
+  "pipeline",
+  "job",
+] as const satisfies WebhookEvent[];
 
 export interface ProvisionDeps {
   /** Pool của hive_app. Job chạy với tenant là tổ chức trong payload, không có người dùng. */
