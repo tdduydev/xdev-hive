@@ -21,3 +21,6 @@ apps/desktop/src-tauri/gen/
 
 # Cache của script Python trong skill
 __pycache__/
+
+# Tarball pandoc đặt sẵn cho máy chủ không ra được GitHub khi dựng image (Dockerfile, stage pandoc).
+deploy/vendor/
