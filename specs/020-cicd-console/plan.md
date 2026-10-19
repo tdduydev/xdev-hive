@@ -116,7 +116,9 @@ Theo Key Entities của spec, cộng chi tiết:
 - `deploy_servers`:
   - `private_key_enc` và `public_key`, ngữ cảnh mã hoá `deploy_servers:<id>:key`;
   - `pending_private_key_enc` và `pending_public_key` khi đang đổi khoá;
-  - `host_key_fingerprints text[]` (SHA256 từng loại khoá host đã xác nhận).
+  - `host_keys jsonb`: danh sách `{algorithm, fingerprint}` đã xác nhận (vd. `ssh-ed25519`, `SHA256:…`). Lưu thuật toán
+    vì máy có nhiều host key thì dấu vân tay phụ thuộc thuật toán thương lượng (spike T001, research.md mục 4). API vẫn
+    trả `fingerprints` theo hợp đồng của T002.
 - `ci_jenkins_user_tokens`: `unique (connection_id, user_id)`, `token_enc` với ngữ cảnh `ci_jenkins_user_tokens:<id>`.
   RLS theo tổ chức, quyền đọc dòng chỉ chính người dùng và quản trị (quản trị không thấy giá trị).
 - `deploy_connections` (Argo CD, Kubernetes): `kind`, `url`, `ca_pem` (Kubernetes), `token_enc`.
@@ -181,27 +183,39 @@ Theo Key Entities của spec, cộng chi tiết:
 ### 5. SSH từ hub và đích `ssh-script` (Q1, Q2, FR-010, FR-011, FR-016…FR-018)
 
 **Khoá:**
-- Hub sinh cặp ed25519 bằng `crypto.generateKeyPairSync('ed25519')` của Node, xuất khoá công khai dạng OpenSSH.
+- Hub sinh cặp ed25519 bằng `ssh2.utils.generateKeyPairSync('ed25519')`: ra khoá riêng `OPENSSH PRIVATE KEY` và dòng
+  công khai `ssh-ed25519 …`. Không dùng `crypto.generateKeyPairSync` của Node: khoá PKCS#8 bị `ssh2` báo
+  `Unsupported key format` (spike T001).
 - Khoá riêng mã hoá ngay. Chỉ giải mã trong `clients/ssh.ts` lúc kết nối, không ghi file, không log.
 - Màn máy chủ hiện khoá công khai và lệnh cài: `echo '<khoá công khai>' >> ~/.ssh/authorized_keys`, kèm `mkdir -p ~/.ssh`,
   `chmod`.
 - Đổi khoá theo US3 bước 4: khoá mới ở cột `pending_*` tới khi kiểm thành công thì thay khoá cũ.
 
 **Kết nối** (`clients/ssh.ts`, `ssh2`):
-- `hostVerifier` so SHA256 của host key với `host_key_fingerprints`. Chưa có (lần đầu kiểm) thì trả dấu vân tay để quản
-  trị xác nhận, không chạy lệnh.
-- Thời gian chờ kết nối 10 giây. Lỗi mạng (`ECONNREFUSED`, `ETIMEDOUT`) tách khỏi lỗi xác thực khi báo (US3 bước 3).
+- `hostVerifier` so SHA256 của host key với `host_keys`. Chưa có (lần đầu kiểm) thì trả dấu vân tay để quản trị xác
+  nhận, không chạy lệnh.
+- Đã có host key thì ép `algorithms.serverHostKey` theo thuật toán đã lưu, để máy chủ không thương lượng sang khoá khác
+  rồi bị báo nhầm "host key đổi".
+- `ssh2` báo cùng một lỗi `Host denied` cho "chưa có" và "đã đổi": `hostVerifier` ghi lý do (`hostkey_unconfirmed`,
+  `hostkey_changed`) và dấu vân tay vào biến của lần kết nối.
+- Gắn `on('error')` suốt đời kết nối, không dùng `once`: sau lỗi timeout `ssh2` còn phát thêm "Connection lost before
+  handshake", `once` làm sập tiến trình hub (spike T001).
+- `readyTimeout: 10_000`. Lỗi mạng (`ECONNREFUSED`, `level: client-socket`; timeout) tách khỏi lỗi xác thực
+  (`level: client-authentication`) khi báo (US3 bước 3). Xử lý `close` khi đang SFTP.
 
 **Chạy bước tách khỏi phiên SSH** (giải quyết hub tự khởi động lại, SC-007):
 1. Hub tạo `~/.hive-deploy/<deployId>/` trên máy chủ qua SFTP, gồm:
    - `run.sh`: script POSIX sinh từ cấu hình đích;
    - các file bước;
    - file biến (quyền 600, xoá khi xong).
-2. Hub chạy `nohup setsid sh run.sh >/dev/null 2>&1 & echo $!` rồi đóng phiên. `run.sh`:
+2. Hub chạy `cd <dir>; nohup setsid sh run.sh >/dev/null 2>&1 & echo $!` (dùng `;`, không `&&`) rồi đóng phiên; huỷ
+   bằng `kill -TERM -- -<pgid>`. `run.sh`:
    - chạy từng bước, ghi output vào `log`;
    - ghi `status.json` (bước hiện tại, mã thoát từng bước, `done`);
    - bắt `TERM` để dừng có kiểm soát khi huỷ.
-3. Job `delivery-deploy-watch` (pg-boss, 2 giây một lần khi đang chạy) mở phiên SSH ngắn:
+3. Job `delivery-deploy-watch` (pg-boss, queue `stately`, `singletonKey` theo `deployId`, tự xếp lại bằng `startAfter`;
+   2 giây một lần khi đang chạy, `heartbeatSeconds` 10 để hub chết đột ngột thì job được nhận lại trong khoảng 60 giây)
+   mở phiên SSH ngắn (khoảng 0,45 giây mỗi lần bắt tay, spike T001):
    - đọc `log` từ vị trí đã lưu (`tail -c +<offset>`), che bí mật, ghi `deploy_log_chunks`, `NOTIFY`;
    - đọc `status.json`, cập nhật `deploys.steps`;
    - lưu vị trí mới trong cùng giao dịch.
@@ -341,7 +355,7 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | # | Rủi ro | Cách giảm |
 |---|---|---|
 | R1 | Hub giữ khoá vào mọi máy chủ: lộ database cùng `HIVE_MASTER_KEY` là lộ quyền vào mọi máy chủ (hệ quả của Q1, Q2) | Khoá riêng theo từng máy chủ, mã hoá theo bản ghi; giải mã chỉ trong bộ nhớ; audit mỗi lần dùng; đổi khoá dễ; user trên máy chủ nên là user triển khai riêng, không phải `root` (tài liệu khuyến nghị) |
-| R2 | Hub không vào được cổng SSH của mạng khác (`10.205.76.x`) | Đo trước khi khai báo máy chủ; báo lỗi mạng rõ ràng; máy runner để sau (Q14, Q16) |
+| R2 | Hub không vào được cổng SSH của mạng khác (`10.205.76.x`). **Đã xảy ra** (T006, 2026-10-19): từ hub không vào được cổng 22 và API Kubernetes của `10.205.76.x` | Triển khai lên hạ tầng eHospital đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl`. `ssh-script` cho máy chủ hub vào được. Đo trước khi khai báo máy chủ (do chủ dự án làm, khi SOC đồng ý); báo lỗi mạng rõ ràng; máy runner để sau (Q14, Q16) |
 | R3 | Lệnh triển khai sai hoặc bị sửa trái phép | Chỉ `servers.manage` sửa; cấu hình có phiên bản, audit kèm khác biệt; bước "kiểm trước" so thư mục, project |
 | R4 | Token Jenkins từng người: người theo dõi nghỉ hoặc token hết hạn thì mất phần đọc theo lịch | Báo trên tab và cho quản trị; đổi người theo dõi một bước |
 | R5 | Hỏi Jenkins nhiều | `?tree=`; 15 giây chỉ khi có build chạy; lùi lại khi lỗi |
