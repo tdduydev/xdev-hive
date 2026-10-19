@@ -384,6 +384,8 @@ export const projectDocsSettings = z.object({
     .default(() => [...DOC_DEFAULT_EXCLUDE]),
   assetsDir: docRepoPath.default("assets"),
   repoChangesNeedReview: z.boolean().default(false),
+  /** Mặc định của ô "Tài liệu mật" khi nhập Word (spec 019, Q15). */
+  wordImportConfidential: z.boolean().default(false),
 });
 export type ProjectDocsSettings = z.output<typeof projectDocsSettings>;
 
@@ -561,6 +563,7 @@ export const projectSettingsPatch = z
         exclude: projectDocsSettings.shape.exclude.unwrap().optional(),
         assetsDir: projectDocsSettings.shape.assetsDir.unwrap().optional(),
         repoChangesNeedReview: projectDocsSettings.shape.repoChangesNeedReview.unwrap().optional(),
+        wordImportConfidential: projectDocsSettings.shape.wordImportConfidential.unwrap().optional(),
       })
       .optional(),
     brief: briefSettings.partial().strict().optional(),

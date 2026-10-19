@@ -63,6 +63,7 @@ const settings = {
   exclude: [],
   assetsDir: "assets",
   repoChangesNeedReview: false,
+  wordImportConfidential: false,
 };
 
 async function scan(k: string) {

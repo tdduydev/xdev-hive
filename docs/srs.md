@@ -435,7 +435,7 @@ checks, not completed implementation or results of this documentation task.
 | NFR-07 | Reliability | Run messages shall be delivered at least once and stored exactly once (deduplicated by run, attempt and sequence or offset). | Implemented | `hub:runs.db.test.ts`, `worker:internal/channel` tests |
 | NFR-08 | Reliability | A machine that misses three heartbeats (30 seconds each) shall be disconnected; a run whose lease (90 seconds) expires shall be retried. | Implemented | `hub:fleet.db.test.ts`, `hub:runs.db.test.ts` |
 | NFR-09 | Reliability | Database migrations shall apply to databases created by earlier releases. | Implemented | `hub:migrations-upgrade.db.test.ts` |
-| NFR-10 | Recoverability | The operator shall be able to back up the database with the configuration and restore it in one transaction. | Implemented | `deploy/test-backup.sh` |
+| NFR-10 | Recoverability | The operator shall be able to back up the database without the configuration's secrets and restore it in one transaction after checking that the configuration holds the same master key. | Implemented | `deploy/test-backup.sh` |
 | NFR-11 | Usability | Every screen shall be usable at 360 px wide without horizontal scrolling, in light and dark themes, with Vietnamese text. | Partial: Playwright checks 360 px on the admin, project, run, task, plan and queue screens | `web:tasks-runs.spec.ts`, `web:projects-runs.spec.ts`, `web:admin.spec.ts` |
 | NFR-12 | Portability | The worker shall run on macOS, Linux and Windows (amd64 and arm64). | Implemented | CI worker matrix, release builds |
 | NFR-13 | Maintainability | Hub modules shall depend on each other only through their public `index.ts`. | Implemented | `pnpm deps` |

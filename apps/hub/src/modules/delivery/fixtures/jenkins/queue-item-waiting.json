@@ -1,0 +1,9 @@
+{
+  "_class": "hudson.model.Queue$WaitingItem",
+  "id": 7001,
+  "blocked": false,
+  "buildable": false,
+  "cancelled": false,
+  "stuck": false,
+  "why": "In the quiet period. Expires in 4.9 sec"
+}
