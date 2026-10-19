@@ -82,6 +82,8 @@ const ReviewsPage = lazyRouteComponent(() => import("@/pages/knowledge/reviews-p
 const SkillDetailPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillDetailPage");
 const SkillsPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillsPage");
 const WorkflowsPage = lazyRouteComponent(() => import("@/pages/knowledge/workflows-page.tsx"), "WorkflowsPage");
+const WordImportPage = lazyRouteComponent(() => import("@/pages/knowledge/word-import-page.tsx"), "WordImportPage");
+const WordImportsPage = lazyRouteComponent(() => import("@/pages/knowledge/word-imports-page.tsx"), "WordImportsPage");
 const LeaderPage = lazyRouteComponent(() => import("@/pages/leader-page.tsx"), "LeaderPage");
 const LeaderTerminalPage = lazyRouteComponent(() => import("@/pages/leader-terminal-page.tsx"), "LeaderTerminalPage");
 const LoginPage = lazyRouteComponent(() => import("@/pages/login-page.tsx"), "LoginPage");
@@ -444,6 +446,12 @@ const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/import", component: DocImportPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/conflicts/$id", component: DocConflictPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/extracts", component: DocExtractsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/word-imports", component: WordImportsPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/docs/word-imports/$id",
+    component: WordImportPage,
+  }),
 
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/$key/edit", component: DocEditorPage }),
   createRoute({

@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import type { Health } from "@xdev-hive/contracts";
 
 /** Mã commit rút gọn: deploy đặt HIVE_VERSION là SHA đầy đủ, bản phát hành là số semver thì giữ nguyên. */
@@ -18,4 +19,26 @@ export async function fetchHealth(): Promise<Health> {
   const res = await fetch("/api/v1/health");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()) as Health;
+}
+
+/**
+ * Hub có nhận file Word không (FR-023). `unknown` là lúc chưa đọc được health: chưa hiện nút, cũng chưa nói "đang tắt".
+ * Hub cũ không trả trường này nên coi là tắt: route nhập Word không có ở hub đó.
+ */
+export interface WordImportSupport {
+  state: "unknown" | "on" | "off";
+  /** Có LibreOffice để nhận `.doc`. */
+  doc: boolean;
+}
+
+export function wordImportSupport(health: Health | undefined): WordImportSupport {
+  if (!health) return { state: "unknown", doc: false };
+  if (health.wordImport !== true) return { state: "off", doc: false };
+  return { state: "on", doc: health.wordImportDoc === true };
+}
+
+/** Dùng chung khoá ["health"] với BuildInfo ở user-card để hai nơi chỉ gọi hub một lần. */
+export function useWordImportSupport(): WordImportSupport {
+  const health = useQuery({ queryKey: ["health"], queryFn: fetchHealth, staleTime: 5 * 60_000 });
+  return wordImportSupport(health.data);
 }
