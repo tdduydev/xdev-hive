@@ -213,8 +213,10 @@ describe("projects.create dryRun", () => {
     );
     expect(r.steps.map((s) => s.kind)).toEqual(["link-repo", "commit-template", "add-webhook"]);
     const commit = r.steps.find((s) => s.kind === "commit-template")?.title ?? "";
-    expect(commit).toContain("AGENTS.md");
-    expect(commit).not.toContain("CLAUDE.md");
+    const [added, kept] = commit.split("; giữ nguyên ");
+    expect(added).toContain("AGENTS.md");
+    expect(added).not.toContain("CLAUDE.md");
+    expect(kept).toContain("CLAUDE.md");
     const keep = r.warnings.find((w) => w.code === "TEMPLATE_KEEP")?.message ?? "";
     expect(keep).toContain("CLAUDE.md");
     expect(keep).toContain("README.md");
