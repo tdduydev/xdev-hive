@@ -80,7 +80,7 @@ thì dùng cách thay thế ở plan mục 3.
 | A1 | Trần ngữ cảnh, nén sớm | 10 | Ngưỡng nén hiệu lực: cửa sổ trừ "Autocompact buffer" của `/context`. Không đo được `/context` thì tính từ `CLAUDE_CODE_AUTO_COMPACT_WINDOW`/`autoCompactWindow` và `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`. `DISABLE_AUTO_COMPACT=1` là 0 điểm. Codex: `model_auto_compact_token_limit` | ≤ 200k (Codex ≤ 150k) | ≥ 600k (Codex ≥ 400k hoặc không đặt) | Bật tối ưu `balanced` cho gói | Dùng `/compact` giữa các việc, `/clear` khi đổi việc |
 | A2 | Trần output tool | 8 | Claude 4 mục con: `BASH_MAX_OUTPUT_LENGTH`, `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`, `MAX_MCP_OUTPUT_TOKENS`, hook cắt output của Hive. Codex 1 mục: `tool_output_token_limit` | Mỗi biến ≤ 15.000 (Codex ≤ 8.000); có hook | Biến lớn hơn mặc định CLI (Codex > 24.000); không có hook. Biến để mặc định: 0,5 | Bật tối ưu `balanced` | Đọc file theo đoạn (`Read` có offset/limit) thay vì `cat` cả file |
 | A3 | File chỉ dẫn gọn | 5 | 2 mục con: (1) token chỉ dẫn nạp mỗi phiên, trung vị, gồm `@import`; (2) không file nào bị CLI cắt: `MEMORY.md` > 200 dòng hoặc > 25 KB, `AGENTS.md` > 32 KiB, rule Antigravity > 24.000 byte. CLAUDE.md > 200 dòng chỉ cảnh báo, không trừ điểm | (1) ≤ 2.000 token; (2) không file nào bị cắt | (1) ≥ 8.000 token; (2) có file bị cắt | Không. Mở màn Memory lọc file vượt trần | Chuyển hướng dẫn chuyên biệt sang skill hoặc `.claude/rules/` có `paths:` |
-| A4 | Tool, MCP, skill nạp sẵn | 7 | Tổng token các nhóm "Skills", "MCP tools", "Custom agents" của `/context`. Không tính nhóm có chữ "(deferred)". Nhân 0,5 khi `ENABLE_TOOL_SEARCH=false` hoặc có server `alwaysLoad: true`. Codex: số server trong `mcp_servers` không có `enabled = false` | ≤ 4.000 token; Codex ≤ 2 server | ≥ 20.000 token; Codex ≥ 8 server | Không. Mở danh sách MCP và skill kèm token ước tính | Tắt MCP không dùng; dùng CLI (`gh`, `glab`) thay MCP; đặt `disable-model-invocation: true` cho skill chỉ gọi tay |
+| A4 | Tool, MCP, skill nạp sẵn | 7 | Tổng token các nhóm "Skills", "MCP tools", "MCP server instructions", "Custom agents" của `/context` (chỉ khi người dùng đã bấm đo, FR-008). Không tính nhóm có chữ "(deferred)". Nhân 0,5 khi `ENABLE_TOOL_SEARCH=false` hoặc có server `alwaysLoad: true`. Codex: số server trong `mcp_servers` không có `enabled = false` | ≤ 4.000 token; Codex ≤ 2 server | ≥ 20.000 token; Codex ≥ 8 server | Không. Mở danh sách MCP và skill kèm token ước tính | Tắt MCP không dùng; dùng CLI (`gh`, `glab`) thay MCP; đặt `disable-model-invocation: true` cho skill chỉ gọi tay |
 | A5 | Chỉ mục code | 5 | 3 mục con: (1) có `codegraph` (hoặc Serena); (2) gói có MCP `codegraph`; (3) tỉ lệ dự án có `.codegraph/` trong 3 dự án dùng nhiều token nhất | Đủ 3 mục | Không mục nào | Cài `codegraph` (màn Môi trường); thêm MCP vào gói; `codegraph init` ở dự án (hỏi trước) | Nhắc agent dùng `codegraph_explore` trước grep |
 | A6 | Lọc output lệnh | 3 | Claude 2 mục con: (1) `rtk --version` chạy được; (2) gói có hook `PreToolUse` khớp `Bash` gọi `rtk`. Codex: `unsupported` ở bản đầu | Đủ 2 mục | Không có `rtk` | Cài `rtk`; bật hook RTK qua bộ tối ưu (không có trên Windows) | Tác dụng nhỏ với việc đọc code (015 mục 4) |
 | A7 | Cache và phiên bản CLI | 3 | Claude 2 mục con: (1) không có `DISABLE_PROMPT_CACHING*`; (2) CLI hỗ trợ hook dạng exec và `updatedToolOutput` (≥ 2.1.296). Codex: `unsupported` | Đủ 2 mục | Không mục nào | Không. Chỉ ra file và khoá | Không đổi model, effort, MCP giữa phiên; cập nhật CLI giữa các phiên |
@@ -290,7 +290,9 @@ Playwright: cột điểm hiện ở danh sách máy.
   - tỉ trọng token theo họ model.
   Báo cáo cũ (`optimize report`) giữ nguyên các trường hiện có. Có test so khớp với fixture hiện có.
 - **FR-008**: A1 và A4 dùng `/context` của từng gói. Sidecar chạy `claude -p /context` với `CLAUDE_CONFIG_DIR` của gói,
-  theo cách `accounts.ReadUsage` đang chạy `/usage`. Kết quả cache 10 phút.
+  theo cách `accounts.ReadUsage` đang chạy `/usage`. Lệnh này gọi model (research mục 7), nên **chỉ chạy khi người dùng
+  bấm "Đo /context"** (`optimize score --fresh`). Kết quả giữ 7 ngày. Chưa đo thì A4 là `unknown` (`context_not_measured`)
+  và A1 tính từ cấu hình.
 
 **Sửa nhanh**
 
@@ -363,11 +365,11 @@ Playwright: cột điểm hiện ở danh sách máy.
 - Tên khoá trong bảng có trong binary Claude Code 2.1.300 và Codex 0.142.5 (research mục 3). Cách CLI dùng khoá và giá
   trị mặc định lấy từ tài liệu, chưa kiểm hết bằng chạy thật. Task đầu tiên phải kiểm lại các mặc định dùng để chấm
   (Bash 30.000 ký tự, Read 25.000, MCP 25.000, nén ở khoảng 967k) và tên nhóm của `/context`.
-- Tên nhóm `/context` đã thấy trong fixture thật của app (`usage.rs:857`): "System prompt", "System tools", "System tools
-  (deferred)", "Skills", "Messages", "Free space", "Autocompact buffer". "MCP tools" và "Custom agents" **[Unverified]**:
-  chưa thấy trong output thật; task kiểm trên máy có MCP và agent riêng.
-- `claude -p /context` không tốn hạn mức gói. **[Unverified]** Màn Token đang chạy lệnh này; task kiểm bằng `/usage`
-  trước và sau.
+- Tên nhóm `/context` đã thấy trên máy dev (Claude Code 2.1.300, research mục 7): "System prompt", "System tools",
+  "MCP tools", "MCP server instructions", "MCP tools (deferred)", "System tools (deferred)", "Memory files", "Skills",
+  "Messages", "Free space", "Autocompact buffer". "Custom agents" **[Unverified]**: chưa thấy.
+- `claude -p /context` **có tốn hạn mức**: đo ngày 2026-10-19 thấy một lượt gọi model (research mục 7). Vì vậy điểm
+  không tự chạy nó (FR-008).
 - Phần T001–T015 của 015 đã có trong `main`, trừ các mục "Còn lại" ghi ở Hiện trạng. Spec này chạy được trước khi có kết
   quả T016.
 - Thang điểm đo cấu hình và kích thước ngữ cảnh, không đo chất lượng kết quả của agent.

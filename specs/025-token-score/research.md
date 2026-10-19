@@ -213,6 +213,25 @@ Giới hạn của ví dụ:
 **[Inference]** Bấm "Bật tối ưu Cân bằng" cho gói này thì A1 lên 10 và A2 lên 8, tức thêm 15 điểm trên 87. Điểm lên
 khoảng 65 ngay. Nhóm B chỉ đổi sau khi có phiên mới.
 
+## 7. Kết quả kiểm (T001, 2026-10-19)
+
+Máy dev Windows, Claude Code 2.1.300, Codex 0.142.5.
+
+| Điều cần kiểm | Kết quả |
+|---|---|
+| `claude -p /context` có tốn hạn mức không | **Có.** `claude -p /context --output-format json --no-session-persistence` trả `num_turns: 1`, `cache_creation_input_tokens: 45962` (TTL 1 giờ), `output_tokens: 817` (467 token thinking), CLI ước tính `total_cost_usd` 0,38. Vì vậy điểm chỉ chạy lệnh này khi người dùng bấm đo (spec FR-008). **[Inference]** Màn Token hiện có cũng chạy `/context` mỗi lần mở (giữ 1 phút, `usage.rs`), nên mỗi lần mở màn tốn khoảng chừng đó |
+| Tên nhóm `/context` khi có MCP và plugin | "System prompt", "System tools", "MCP tools", "MCP server instructions", "MCP tools (deferred)", "System tools (deferred)", "Memory files", "Skills", "Messages", "Free space", "Autocompact buffer". Chưa thấy "Custom agents" |
+| Ngưỡng nén mặc định | Cửa sổ "1m", "Autocompact buffer" 33k, tức nén ở 967k: khớp tài liệu (mục 3, dòng 9) |
+| Lệnh cài `rtk` | `winget show rtk-ai.rtk`: có gói, bản 0.50.0, nhà phát hành rtk-ai. Chưa chạy cài |
+| Cách cài `codegraph` | Máy dev có `codegraph` ở `AppData/Local/codegraph/current`. Chưa rõ bộ cài **[Unverified]**. `codegraph --help` có `init`, `uninit`, `status`; app gọi `init -y`, `uninit -f` |
+| Mặc định `BASH_MAX_OUTPUT_LENGTH` (30.000), Read và MCP (25.000) | Chưa đọc lại trang gốc **[Unverified]**; giữ theo mục 3 |
+
+Chạy `hive-worker optimize score` bản dev trên máy này (chưa bấm đo `/context` thì A4 chưa đo; lần chạy này đã đo):
+- gói Claude chính: 47,0 điểm, đo được 100/100 điểm (35 phiên chính);
+- A1 0/10 (nén ở 967k), A2 3/8, A4 2,56/7 (8,3k token skill và MCP nạp sẵn), B2 0/10 (77% token ở phiên > 400k),
+  B3 0/8 (ngữ cảnh lượt đầu 71k);
+- khớp ước tính ở mục 6 (khoảng 48).
+
 ## Nguồn
 
 Truy cập ngày 2026-10-18.
