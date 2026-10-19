@@ -29,6 +29,7 @@ mod setup_extra;
 mod skills;
 mod ssh_keys;
 mod tls;
+mod token_score;
 mod tray_icon;
 mod updates;
 mod usage;
@@ -1062,6 +1063,7 @@ pub fn run() {
         .manage(ssh_keys::SetupLock::default())
         .manage(settings::Store::default())
         .manage(notices::Notices::default())
+        .manage(token_score::Last::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
             register_worker,
@@ -1127,6 +1129,10 @@ pub fn run() {
             optimizer::optimizer_disable,
             optimizer::optimizer_restore,
             optimizer::optimizer_report,
+            token_score::token_score,
+            token_score::token_score_fix_preview,
+            token_score::token_score_fix,
+            token_score::token_score_undo,
             memory_store::memory_scan,
             memory_store::memory_apply,
             memory_store::memory_compress,
