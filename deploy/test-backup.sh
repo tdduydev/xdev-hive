@@ -11,11 +11,13 @@ cp "$repo"/deploy/backup*.sh "$repo/deploy/restore.sh" "$fixture/src/deploy/"
 cp "$repo/deploy/compose.yaml" "$fixture/src/deploy/"
 cat >"$fixture/.env" <<'ENV'
 HIVE_COMPOSE_PROJECT=backup-test
-HIVE_MASTER_KEY=khoa-gia-chi-cho-test
+HIVE_MASTER_KEY="a2hvYS1naWEtY2hpLWNoby10ZXN0LTMyLWJ5dGUhISE="
 HIVE_DB_ADMIN_PASSWORD=mat-khau-gia-chi-cho-test
 HIVE_BACKUP_KEEP=2
 ENV
 cp "$fixture/.env" "$tmp/env.goc"
+# Khoá giả ở dạng chuẩn hoá: không ngoặc, không "=" đệm.
+key=a2hvYS1naWEtY2hpLWNoby10ZXN0LTMyLWJ5dGUhISE
 export MOCK_LOG="$tmp/docker.log" MOCK_CRONTAB="$tmp/crontab" MOCK_STAMP=20261011T030000Z
 export MOCK_SQL="$tmp/restore.sql" MOCK_ENV="$fixture/.env"
 export PATH="$tmp/bin:$PATH"
@@ -91,8 +93,8 @@ backup
 first=$fixture/backups/$MOCK_STAMP
 [ -s "$first/hive.dump" ] && [ -s "$first/meta" ] && [ -s "$first/SHA256SUMS" ] || fail 'Thiếu file backup.'
 [ ! -e "$first/.env" ] || fail 'Bản sao lưu vẫn chép .env.'
-if grep -rqF -e khoa-gia-chi-cho-test -e mat-khau-gia-chi-cho-test "$first"; then fail 'Bản sao lưu chứa secret.'; fi
-key_sha=$(printf '%s' khoa-gia-chi-cho-test | sums | cut -d ' ' -f 1)
+if grep -rqF -e "$key" -e mat-khau-gia-chi-cho-test "$first"; then fail 'Bản sao lưu chứa secret.'; fi
+key_sha=$(printf '%s' "$key" | sums | cut -d ' ' -f 1)
 printf 'HIVE_COMPOSE_PROJECT=backup-test\nHIVE_MASTER_KEY_SHA256=%s\n' "$key_sha" | cmp -s - "$first/meta" ||
   fail 'meta sai project hoặc dấu khoá.'
 [ "$(awk '{ print $2 }' "$first/SHA256SUMS" | tr '\n' ' ')" = 'hive.dump meta ' ] || fail 'SHA256SUMS phải phủ đúng hive.dump và meta.'
@@ -146,6 +148,12 @@ sed 's/^HIVE_MASTER_KEY=.*/HIVE_MASTER_KEY=khoa-khac/' "$tmp/env.goc" >"$fixture
 reject restore "$saved" --yes
 grep -q '.env gốc' "$tmp/output" || fail 'Lệch khoá nhưng không nói cần .env gốc.'
 no_stop
+# Hub đọc các cách viết này là cùng một khoá (lúc sao lưu khoá có ngoặc): restore không được báo lệch khoá.
+for line in "HIVE_MASTER_KEY=$key=" "HIVE_MASTER_KEY=$key=   " "HIVE_MASTER_KEY=$key= # khoá chủ, không đổi"   "HIVE_MASTER_KEY=$key" "HIVE_MASTER_KEY='$key='"; do
+  sed "s|^HIVE_MASTER_KEY=.*|$line|" "$tmp/env.goc" >"$fixture/.env"
+  restore "$saved" </dev/null >"$tmp/output" 2>&1 || fail "Báo lệch khoá dù cùng khoá: $line"
+done
+: >"$MOCK_LOG"
 cp "$tmp/env.goc" "$fixture/.env"
 printf 'HIVE_PUBLIC_URL=https://doi.example.com\n' >>"$fixture/.env"
 cp "$fixture/.env" "$tmp/env.hien-tai"

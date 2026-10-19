@@ -369,6 +369,10 @@ service: content lives in PostgreSQL, so the database backup covers it. Set thes
 
 ## Backup and restore
 
+**Before updating a hub whose backups still include `.env`, save a copy of `<dir>/.env`** somewhere only
+administrators can read. New backups no longer contain it, and retention removes the older backups that do: with a
+daily cron and the default `HIVE_BACKUP_KEEP=14`, the last of them is gone about 14 days after the update.
+
 With the layout created by `deploy/remote.sh` (`<dir>/.env`, `<dir>/src`), on the server:
 
 ```sh
@@ -380,7 +384,8 @@ deploy/restore.sh <dir>/backups/20261011T030000Z --yes   # non-interactive
 ```
 
 - A backup contains `hive.dump` (pg_dump custom format), `meta` and `SHA256SUMS` (covering `hive.dump` and `meta`).
-  `meta` holds no secret: only `HIVE_COMPOSE_PROJECT` and `HIVE_MASTER_KEY_SHA256`, the SHA-256 of the master key.
+  `meta` holds no secret: only `HIVE_COMPOSE_PROJECT` and `HIVE_MASTER_KEY_SHA256`, the SHA-256 of the normalized
+  `HIVE_MASTER_KEY` string (below).
   Directories are mode 700 and files mode 600. The dump is validated with `pg_restore --list`; on failure the script
   exits non-zero and keeps older backups.
 - **Backups do not include `<dir>/.env`.** The dump holds the stored secrets encrypted with `HIVE_MASTER_KEY`; a backup
@@ -388,6 +393,15 @@ deploy/restore.sh <dir>/backups/20261011T030000Z --yes   # non-interactive
   from the backups, somewhere only administrators can read (a password manager or secret store), and update it whenever
   `.env` changes. **If you lose `.env`, the stored secrets cannot be recovered**: a backup restores only with the same
   `HIVE_MASTER_KEY`.
+- **Check a saved `.env` against a backup** without restoring. The fingerprint is the SHA-256 of the `HIVE_MASTER_KEY`
+  value with quotes, whitespace, a trailing `# comment` and `=` padding removed and the URL-safe `-_` read as `+/`, so
+  every spelling the hub reads as the same key gives the same fingerprint. Replace `saved.env` with your copy (use
+  `shasum -a 256` instead of `sha256sum` on macOS):
+
+  ```sh
+  fp=$(sed -n 's/^HIVE_MASTER_KEY=//p' saved.env | tail -n 1 | sed 's/#.*//' | tr -d "[:space:]\"'=" | tr '_-' '/+' | sha256sum | cut -d ' ' -f 1)
+  grep -qx "HIVE_MASTER_KEY_SHA256=$fp" <dir>/backups/20261011T030000Z/meta && echo 'same key' || echo 'DIFFERENT key'
+  ```
 - `HIVE_BACKUP_KEEP` (default 14) can be set in `<dir>/.env` or the environment. Old backups are pruned only after the
   new one completes. Copy backups off the server.
 - Restore uses the `.env` already on the server. Before stopping the hub it verifies checksums, the dump, that `meta`
@@ -395,8 +409,13 @@ deploy/restore.sh <dir>/backups/20261011T030000Z --yes   # non-interactive
   key differs it stops without changing anything and asks for the original `.env`: put it at `<dir>/.env` and run
   restore again. It then restores in a single transaction while keeping roles, ownership and ACLs, recreates the hub
   from the existing image and waits up to 3 minutes for it to become healthy.
-- To restore on a new server, put your copy of `.env` at `<dir>/.env` before the first `deploy/remote.sh` run (it keeps
-  existing secrets and only adds missing variables), deploy, then restore.
+- To restore on a new server:
+  1. put your copy of `.env` at `<dir>/.env` (mode 600) before the first `deploy/remote.sh` run; it keeps existing
+     secrets and only adds missing variables;
+  2. run `deploy/remote.sh` without `HIVE_COMPOSE_PROJECT`, or with the value already in that `.env`: a different value
+     overwrites the one in `.env`, and restore then refuses the backup as belonging to another project;
+  3. copy the backup directory (`hive.dump`, `meta`, `SHA256SUMS`) to the server, for example into `<dir>/backups/`;
+  4. run `deploy/restore.sh` on it.
 - **Older backups still contain `.env`.** Backups made before `meta` was introduced hold `.env`, including
   `HIVE_MASTER_KEY` and the database passwords. Restore still accepts them as before: it asks before replacing a
   different `.env` (or use `--yes`). They stay on the server until you delete them or retention prunes them (once
