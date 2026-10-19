@@ -1,0 +1,60 @@
+{
+  "_class": "org.jenkinsci.plugins.workflow.job.WorkflowJob",
+  "builds": [
+    {
+      "_class": "org.jenkinsci.plugins.workflow.job.WorkflowRun",
+      "number": 42,
+      "url": "https://jenkins.example.test/job/ehospital/job/build-dev-v3/42/",
+      "result": null,
+      "building": true,
+      "timestamp": 1792400000000,
+      "duration": 0,
+      "actions": [
+        {
+          "_class": "hudson.model.ParametersAction",
+          "parameters": [
+            { "_class": "hudson.model.StringParameterValue", "name": "BRANCH", "value": "main" },
+            { "_class": "hudson.model.BooleanParameterValue", "name": "DRY_RUN", "value": false },
+            { "_class": "hudson.model.PasswordParameterValue", "name": "REGISTRY_PASSWORD" }
+          ]
+        },
+        {
+          "_class": "hudson.model.CauseAction",
+          "causes": [
+            {
+              "_class": "hudson.model.Cause$UserIdCause",
+              "shortDescription": "Started by user Nguyễn Văn An",
+              "userId": "an.nguyen",
+              "userName": "Nguyễn Văn An"
+            }
+          ]
+        },
+        {},
+        {
+          "_class": "hudson.plugins.git.util.BuildData",
+          "lastBuiltRevision": {
+            "SHA1": "9947aeb1c0ffee00112233445566778899aabbcc",
+            "branch": [{ "SHA1": "9947aeb1c0ffee00112233445566778899aabbcc", "name": "refs/remotes/origin/main" }]
+          }
+        }
+      ]
+    },
+    {
+      "_class": "org.jenkinsci.plugins.workflow.job.WorkflowRun",
+      "number": 41,
+      "url": "https://jenkins.example.test/job/ehospital/job/build-dev-v3/41/",
+      "result": "FAILURE",
+      "building": false,
+      "timestamp": 1792390000000,
+      "duration": 185000,
+      "actions": [
+        {
+          "_class": "hudson.model.CauseAction",
+          "causes": [
+            { "_class": "hudson.triggers.SCMTrigger$SCMTriggerCause", "shortDescription": "Started by an SCM change" }
+          ]
+        }
+      ]
+    }
+  ]
+}

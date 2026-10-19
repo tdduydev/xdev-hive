@@ -1,0 +1,18 @@
+[
+  {
+    "id": "Approveprod",
+    "proceedText": "Duyệt",
+    "message": "Lên prod?",
+    "inputs": [
+      {
+        "name": "NOTE",
+        "type": "StringParameterDefinition",
+        "description": "Lý do",
+        "definition": { "name": "NOTE", "defaultVal": "" }
+      }
+    ],
+    "proceedUrl": "/job/ehospital/job/build-dev-v3/42/wfapi/inputSubmit?inputId=Approveprod",
+    "abortUrl": "/job/ehospital/job/build-dev-v3/42/input/Approveprod/abort",
+    "redirectApprovalUrl": "/job/ehospital/job/build-dev-v3/42/input/"
+  }
+]

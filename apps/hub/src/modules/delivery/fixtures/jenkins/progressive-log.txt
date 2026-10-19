@@ -1,0 +1,7 @@
+Started by user Nguyễn Văn An
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on agent-1 in /var/jenkins/workspace/build-dev-v3
+[Pipeline] stage
+[Pipeline] { (Checkout)
++ git fetch origin main
