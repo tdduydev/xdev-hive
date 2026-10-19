@@ -58,6 +58,7 @@ export function docsyncImportScenario(options: { many?: boolean; failScan?: bool
     include: ["docs/**", "specs/**"],
     exclude: ["**/node_modules/**"],
     repoChangesNeedReview: false,
+    wordImportConfidential: false,
     lastCommit: COMMIT,
     status: "active",
     statusReason: null,
