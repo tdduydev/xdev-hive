@@ -4,9 +4,13 @@ import { cli } from "@xdev-hive/contracts/worker-protocol";
 import type { HubConfig, RequestContext } from "../platform/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate } from "./desktop-updates.ts";
 
+/** Công cụ nhập Word đã dò lúc khởi động; lớp ghép đưa vào để `system` không phụ thuộc `docsync`. */
+export type WordImportHealth = () => { wordImport: boolean; wordImportDoc: boolean };
+
 export function systemRouter(
   config: HubConfig,
   desktopReleases: DesktopReleaseCache = new DesktopReleaseCache(config.desktopReleases),
+  wordImport: WordImportHealth = () => ({ wordImport: false, wordImportDoc: false }),
 ) {
   const os = implement(contract.system).$context<RequestContext>();
   return {
@@ -17,6 +21,7 @@ export function systemRouter(
       builtAt: config.builtAt ?? null,
       clis: [...cli.options],
       artifacts: true as const,
+      ...wordImport(),
     })),
     desktopUpdate: os.desktopUpdate.handler(async ({ input }) => {
       const result = await findDesktopUpdate(desktopReleases, input.os, input.arch, input.currentVersion);

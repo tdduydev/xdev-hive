@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { loadConfig, loadDocStorageLimits } from "./config.ts";
+import { loadConfig, loadDocStorageLimits, loadWordImportConfig } from "./config.ts";
 
 describe("loadConfig: hạn mức kho tài liệu", () => {
   it("mặc định 50 MiB/file, 2 GiB/nhập, 5 GiB/tổ chức", () => {
@@ -26,6 +26,66 @@ describe("loadConfig: hạn mức kho tài liệu", () => {
         expect(() => loadConfig({ [name]: value })).toThrow(name);
     },
   );
+});
+
+describe("loadConfig: nhập Word", () => {
+  it("mặc định theo plan.md mục 13", () => {
+    expect(loadConfig({}).wordImport).toEqual({
+      pandocPath: "pandoc",
+      sofficePath: "soffice",
+      docTimeoutMs: 120_000,
+      maxBytes: 50 * 1024 ** 2,
+      batchFiles: 100,
+      batchBytes: 500 * 1024 ** 2,
+      timeoutMs: 120_000,
+      stagingDays: 30,
+    });
+  });
+  it("đọc riêng từng biến", () => {
+    expect(
+      loadWordImportConfig({
+        HIVE_PANDOC_PATH: "/opt/pandoc/bin/pandoc",
+        HIVE_SOFFICE_PATH: "/usr/bin/soffice",
+        HIVE_DOC_WORD_DOC_TIMEOUT_MS: "5000",
+        HIVE_DOC_WORD_MAX_BYTES: "1024",
+        HIVE_DOC_WORD_BATCH_FILES: "3",
+        HIVE_DOC_WORD_BATCH_BYTES: "4096",
+        HIVE_DOC_WORD_TIMEOUT_MS: "7000",
+        HIVE_DOC_WORD_STAGING_DAYS: "7",
+      }),
+    ).toEqual({
+      pandocPath: "/opt/pandoc/bin/pandoc",
+      sofficePath: "/usr/bin/soffice",
+      docTimeoutMs: 5000,
+      maxBytes: 1024,
+      batchFiles: 3,
+      batchBytes: 4096,
+      timeoutMs: 7000,
+      stagingDays: 7,
+    });
+  });
+  it("đường dẫn rỗng thì dùng mặc định", () => {
+    expect(loadWordImportConfig({ HIVE_PANDOC_PATH: "", HIVE_SOFFICE_PATH: " " })).toMatchObject({
+      pandocPath: "pandoc",
+      sofficePath: "soffice",
+    });
+  });
+  it.each([
+    "HIVE_DOC_WORD_DOC_TIMEOUT_MS",
+    "HIVE_DOC_WORD_MAX_BYTES",
+    "HIVE_DOC_WORD_BATCH_FILES",
+    "HIVE_DOC_WORD_BATCH_BYTES",
+    "HIVE_DOC_WORD_TIMEOUT_MS",
+    "HIVE_DOC_WORD_STAGING_DAYS",
+  ])("từ chối %s sai", (name) => {
+    for (const value of ["", "abc", "0", "-1", "1.5", "Infinity", "9007199254740992"])
+      expect(() => loadConfig({ [name]: value })).toThrow(name);
+  });
+  it("một file không được lớn hơn cả lượt", () => {
+    expect(() => loadConfig({ HIVE_DOC_WORD_MAX_BYTES: "2048", HIVE_DOC_WORD_BATCH_BYTES: "1024" })).toThrow(
+      "HIVE_DOC_WORD_MAX_BYTES",
+    );
+  });
 });
 
 describe("loadConfig", () => {

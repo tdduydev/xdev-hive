@@ -46,6 +46,8 @@ export const docHomes = hive
       include: strings("include"),
       exclude: strings("exclude"),
       repoChangesNeedReview: boolean("repo_changes_need_review").notNull().default(false),
+      /** Mặc định của ô "Tài liệu mật" khi nhập Word vào nhà này (Q15). */
+      wordImportConfidential: boolean("word_import_confidential").notNull().default(false),
       lastCommit: text("last_commit"),
       status: text("status").notNull().default("active"),
       statusReason: text("status_reason"),
@@ -152,8 +154,13 @@ export const docConflicts = hive
       docId: uuid("doc_id").notNull(),
       baseVersion: integer("base_version").notNull(),
       hubVersion: integer("hub_version").notNull(),
-      repoCommit: text("repo_commit").notNull(),
+      /** Bên kia của xung đột: `repo` (kéo từ repo) hoặc `word` (cập nhật từ Word, P2). */
+      origin: text("origin").notNull().default("repo"),
+      /** null khi bên kia là Word: bản mới chưa nằm trong commit nào. */
+      repoCommit: text("repo_commit"),
       repoContent: text("repo_content").notNull(),
+      /** Gốc của Word là Markdown của lần nhập trước, không phải một phiên bản hub, nên phải lưu riêng. */
+      baseContent: text("base_content"),
       state: text("state").notNull().default("open"),
       resolution: text("resolution"),
       resolvedBy: text("resolved_by"),
@@ -165,6 +172,10 @@ export const docConflicts = hive
       uniqueIndex("doc_conflicts_open").on(t.docId).where(sql`state = 'open'`),
       check("doc_conflicts_state", sql`state in ('open', 'resolved')`),
       check("doc_conflicts_resolution", sql`resolution is null or resolution in ('hub', 'repo', 'manual')`),
+      check(
+        "doc_conflicts_origin",
+        sql`(origin = 'repo' and repo_commit is not null) or (origin = 'word' and base_content is not null)`,
+      ),
       index("doc_conflicts_org_state").on(t.orgId, t.state),
       orgScoped("doc_conflicts"),
     ],
@@ -222,7 +233,11 @@ export const docAssets = hive
       unique("doc_assets_id_org").on(t.id, t.orgId),
       unique("doc_assets_home_path").on(t.homeId, t.repoPath),
       foreignKey({ columns: [t.homeId, t.orgId], foreignColumns: [docHomes.id, docHomes.orgId] }).onDelete("cascade"),
-      check("doc_assets_state", sql`state in ('available', 'missing_lfs', 'too_large', 'pending_push')`),
+      // pending_delete: ảnh không còn tài liệu nào trỏ tới sau khi cập nhật từ Word, lô đẩy kế tiếp xoá khỏi repo (P2).
+      check(
+        "doc_assets_state",
+        sql`state in ('available', 'missing_lfs', 'too_large', 'pending_push', 'pending_delete')`,
+      ),
       check("doc_assets_size", sql`size >= 0`),
       check("doc_assets_blob", sql`state not in ('available', 'pending_push') or blob_id is not null`),
       index("doc_assets_blob").on(t.orgId, t.blobId),
@@ -294,6 +309,139 @@ export const docImportFiles = hive
       check("doc_import_files_size", sql`size >= 0`),
       index("doc_import_files_resume").on(t.orgId, t.importId, t.state),
       orgScoped("doc_import_files"),
+    ],
+  )
+  .enableRLS();
+
+// ---- Nhập Word (specs/019-word-import, plan.md mục 1) ---------------------------------------------------------------
+
+/** Số file theo trạng thái, cùng khoá với `wordImportCounts` của contracts. */
+export interface WordImportCountsRow {
+  queued: number;
+  converting: number;
+  ready: number;
+  skipped: number;
+  blockedSecret: number;
+  failed: number;
+  proposed: number;
+  cancelled: number;
+  done: number;
+}
+const noFiles: WordImportCountsRow = {
+  queued: 0,
+  converting: 0,
+  ready: 0,
+  skipped: 0,
+  blockedSecret: 0,
+  failed: 0,
+  proposed: 0,
+  cancelled: 0,
+  done: 0,
+};
+
+export const docWordImports = hive
+  .table(
+    "doc_word_imports",
+    {
+      ...identity(),
+      homeId: uuid("home_id").notNull(),
+      /** Thư mục đích trong repo khi tạo; cập nhật và gắn lấy đường dẫn theo tài liệu đích. */
+      targetDir: text("target_dir"),
+      mode: text("mode").notNull().default("create"),
+      /** Tài liệu được cập nhật (US3) hoặc gắn với file Word (US6). */
+      updateDocId: uuid("update_doc_id"),
+      confidential: boolean("confidential").notNull().default(false),
+      state: text("state").notNull().default("uploading"),
+      counts: jsonb("counts").$type<WordImportCountsRow>().notNull().default(noFiles),
+      createdBy: text("created_by").notNull(),
+      ...times(),
+    },
+    (t) => [
+      unique("doc_word_imports_id_org").on(t.id, t.orgId),
+      foreignKey({ columns: [t.homeId, t.orgId], foreignColumns: [docHomes.id, docHomes.orgId] }).onDelete("cascade"),
+      check("doc_word_imports_mode", sql`mode in ('create', 'update', 'link')`),
+      check(
+        "doc_word_imports_target",
+        sql`(mode = 'create' and target_dir is not null and update_doc_id is null) or (mode <> 'create' and update_doc_id is not null)`,
+      ),
+      check(
+        "doc_word_imports_state",
+        sql`state in ('uploading', 'converting', 'ready', 'committing', 'done', 'failed', 'cancelled')`,
+      ),
+      index("doc_word_imports_home").on(t.orgId, t.homeId, t.createdAt),
+      orgScoped("doc_word_imports"),
+    ],
+  )
+  .enableRLS();
+
+/** Ảnh đã tách khỏi file Word, giữ tạm tới khi tạo tài liệu; tên là 12 ký tự đầu SHA-256 kèm đuôi. */
+export interface WordImportImageRow {
+  name: string;
+  blobId: string;
+  mediaType: string;
+  bytes: number;
+}
+
+export const docWordImportFiles = hive
+  .table(
+    "doc_word_import_files",
+    {
+      ...identity(),
+      importId: uuid("import_id").notNull(),
+      /** Thư mục con khi kéo cả thư mục; rỗng khi file nằm thẳng trong thư mục đích. */
+      relativeDir: text("relative_dir").notNull().default(""),
+      fileName: text("file_name").notNull(),
+      format: text("format").notNull(),
+      size: bigint("size", { mode: "number" }).notNull(),
+      sha256: text("sha256").notNull(),
+      /** File Word gốc; null khi đã dọn (đề xuất bị từ chối hoặc quá hạn giữ tạm). */
+      blobId: uuid("blob_id"),
+      /** Ngày sửa web gửi kèm, để chọn bản khi tên và phiên bản trùng (FR-006). */
+      lastModified: timestamp("last_modified", { withTimezone: true }),
+      versionLabel: text("version_label"),
+      proposedPath: text("proposed_path"),
+      proposedTitle: text("proposed_title"),
+      pathOverride: text("path_override"),
+      titleOverride: text("title_override"),
+      keepFront: boolean("keep_front").notNull().default(false),
+      excluded: boolean("excluded").notNull().default(false),
+      state: text("state").notNull().default("queued"),
+      markdown: text("markdown"),
+      images: jsonb("images").$type<WordImportImageRow[]>().notNull().default([]),
+      stats: jsonb("stats").$type<{ headings: number; tables: number; images: number }>(),
+      warnings: jsonb("warnings")
+        .$type<Array<{ code: string; count: number; detail: string | null }>>()
+        .notNull()
+        .default([]),
+      /** Loại và dòng của chuỗi giống bí mật, không bao giờ lưu giá trị. */
+      findings: jsonb("findings").$type<Array<{ kind: string; line: number }>>().notNull().default([]),
+      error: jsonb("error").$type<{ code: string; message: string; detail?: string }>(),
+      /** Gắn (FR-028): kết quả chuyển có khớp nội dung hiện tại không. */
+      linkMatches: boolean("link_matches"),
+      docId: uuid("doc_id"),
+      docVersion: integer("doc_version"),
+      /** Đề xuất đã gửi khi người nhập chỉ có quyền `propose` (P2). */
+      proposalId: uuid("proposal_id"),
+      ...times(),
+    },
+    (t) => [
+      unique("doc_word_import_files_import_name").on(t.importId, t.relativeDir, t.fileName),
+      foreignKey({
+        columns: [t.importId, t.orgId],
+        foreignColumns: [docWordImports.id, docWordImports.orgId],
+      }).onDelete("cascade"),
+      check("doc_word_import_files_format", sql`format in ('docx', 'odt', 'doc')`),
+      check(
+        "doc_word_import_files_state",
+        sql`state in ('queued', 'converting', 'ready', 'skipped', 'blocked_secret', 'failed', 'proposed', 'cancelled', 'done')`,
+      ),
+      check("doc_word_import_files_size", sql`size >= 0`),
+      check("doc_word_import_files_doc_version", sql`doc_version is null or doc_version >= 1`),
+      index("doc_word_import_files_resume").on(t.orgId, t.importId, t.state),
+      // Lần nhập gần nhất của một tài liệu: gốc khi cập nhật từ Word (P2) và nhãn "Nhập từ Word" (P3).
+      index("doc_word_import_files_doc").on(t.orgId, t.docId),
+      index("doc_word_import_files_blob").on(t.orgId, t.blobId),
+      orgScoped("doc_word_import_files"),
     ],
   )
   .enableRLS();
