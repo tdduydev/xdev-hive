@@ -262,7 +262,7 @@ describe("RLS các bảng nền docsync", () => {
       ["doc_chunks", { doc_id: seeds.b.docId }],
       ["blob_chunks", { blob_id: String(seeds.b.rows.blobs.id), ord: 1 }],
       ["doc_word_imports", { home_id: String(seeds.b.rows.doc_homes.id) }],
-      ["doc_word_import_files", { import_id: String(seeds.b.rows.doc_word_imports.id) }],
+      ["doc_word_import_files", { import_id: String(seeds.b.rows.doc_word_imports.id), file_name: "other.docx" }],
     ];
     for (const [table, changes] of cases) {
       const row = { ...seeds.a.rows[table], ...changes };
@@ -593,6 +593,10 @@ it("nâng từ trước migration nhập Word: xung đột cũ là nguồn repo,
     await old.query(
       "insert into hive.doc_homes (id, org_id, scope, connection_id, owner, name, branch, configured_by) values ($1, $2, 'org', $3, 'org', 'docs', 'main', $4)",
       [homeId, org.orgId, connectionId, org.user("owner")],
+    );
+    await old.query(
+      "insert into hive.docs (id, org_id, key, title, current_version, updated_by_user_id) values ($1, $2, 'org/guide', 'Hướng dẫn', 1, $3)",
+      [docId, org.orgId, org.user("owner")],
     );
     await old.query(
       "insert into hive.doc_conflicts (org_id, home_id, doc_id, base_version, hub_version, repo_commit, repo_content) values ($1, $2, $3, 1, 2, 'abc', 'Bản repo')",
