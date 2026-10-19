@@ -1,10 +1,10 @@
-import type { GitProviderKind } from "./types.ts";
+import { asCiStatus, type CiJob, type CiPipeline, ciTime, type GitProviderKind } from "./types.ts";
 
 /**
  * Sự kiện Git đã chuẩn hoá, chung cho GitHub và GitLab. Module khác (tasks, runs) chỉ đọc kiểu này, không đọc
  * payload gốc, để thêm nhà cung cấp hay đổi định dạng payload chỉ phải sửa ở đây.
  */
-export type ScmEvent = PullRequestEvent | PushEvent | IssueEvent | MentionEvent;
+export type ScmEvent = PullRequestEvent | PushEvent | IssueEvent | MentionEvent | PipelineEvent | JobEvent;
 export type ScmEventKind = ScmEvent["kind"];
 
 export const SCM_EVENT_KINDS = [
@@ -16,6 +16,8 @@ export const SCM_EVENT_KINDS = [
   "issue.labeled",
   "issue.commented",
   "comment.mentioned",
+  "pipeline",
+  "job",
 ] as const satisfies readonly ScmEventKind[];
 
 interface Base {
@@ -77,6 +79,21 @@ export interface MentionEvent extends Base {
   kind: "comment.mentioned";
   target: { type: "issue" | "pull_request"; number: number; title: string; url: string | null };
   comment: CommentInfo;
+}
+
+/**
+ * Pipeline đổi trạng thái (GitLab Pipeline Hook). Webhook không gửi `updatedAt`, `startedAt`, nên hai trường này null;
+ * cần thì đọc lại qua `listPipelines`.
+ */
+export interface PipelineEvent extends Base {
+  kind: "pipeline";
+  pipeline: CiPipeline;
+}
+
+/** Job đổi trạng thái (GitLab Job Hook, `object_kind` là `build`). */
+export interface JobEvent extends Base {
+  kind: "job";
+  job: CiJob;
 }
 
 export interface NormalizeOptions {
@@ -231,18 +248,37 @@ const glLabels = (v: unknown) =>
 /** URL của issue/MR từ URL bình luận (`.../issues/17#note_1241`), vì payload note không phải lúc nào cũng có. */
 const stripNote = (url: string | null) => (url ? url.replace(/#note_\d+$/, "") : null);
 
+/**
+ * Đường dẫn repo từ URL trang dự án, cho Job Hook của bản GitLab cũ chưa gửi `project`. Sai khi GitLab chạy dưới một
+ * đường dẫn con (relative URL root).
+ */
+function repoFromUrl(v: unknown): string | null {
+  const url = str(v);
+  if (!url) return null;
+  try {
+    return new URL(url).pathname.replace(/^\/+|\/+$/g, "") || null;
+  } catch {
+    return null;
+  }
+}
+
 /** `event` là header X-Gitlab-Event (`Push Hook`, `Issue Hook`...). Định tuyến theo `object_kind` trong payload. */
 export function normalizeGitLab(_event: string, payload: unknown, opts: NormalizeOptions): ScmEvent[] {
   return safely(() => {
+    const kind = str(at(payload, "object_kind"));
     const base: Base = {
       provider: "gitlab",
-      repo: need(str(at(payload, "project", "path_with_namespace")), "project.path_with_namespace"),
+      repo: need(
+        str(at(payload, "project", "path_with_namespace")) ??
+          (kind === "build" ? repoFromUrl(at(payload, "repository", "homepage")) : null),
+        "project.path_with_namespace",
+      ),
       actor: str(at(payload, "user", "username")) ?? str(at(payload, "user_username")),
       actorId: num(at(payload, "user", "id")) ?? num(at(payload, "user_id")),
     };
     const oa = at(payload, "object_attributes");
     const action = str(at(oa, "action"));
-    switch (str(at(payload, "object_kind"))) {
+    switch (kind) {
       case "merge_request": {
         const kind =
           action === "open"
@@ -328,6 +364,46 @@ export function normalizeGitLab(_event: string, payload: unknown, opts: Normaliz
         }
         if (mentions(comment.body, opts.mention)) out.push({ ...base, kind: "comment.mentioned", target, comment });
         return out;
+      }
+      case "pipeline": {
+        const pipeline: CiPipeline = {
+          id: String(need(num(at(oa, "id")), "object_attributes.id")),
+          ref: need(str(at(oa, "ref")), "object_attributes.ref"),
+          sha: need(str(at(oa, "sha")), "object_attributes.sha"),
+          status: asCiStatus(at(oa, "status")),
+          source: str(at(oa, "source")),
+          url: str(at(oa, "url")),
+          createdAt: ciTime(at(oa, "created_at")),
+          updatedAt: null,
+          startedAt: null,
+          finishedAt: ciTime(at(oa, "finished_at")),
+          durationSec: num(at(oa, "duration")),
+          user: base.actor,
+        };
+        return [{ ...base, kind: "pipeline", pipeline }];
+      }
+      case "build": {
+        const id = need(num(at(payload, "build_id")), "build_id");
+        // Payload không có URL của job; dựng từ trang dự án như đường dẫn GitLab hiện job.
+        const web = str(at(payload, "project", "web_url")) ?? str(at(payload, "repository", "homepage"));
+        const job: CiJob = {
+          id: String(id),
+          pipelineId: String(need(num(at(payload, "pipeline_id")), "pipeline_id")),
+          name: need(str(at(payload, "build_name")), "build_name"),
+          stage: str(at(payload, "build_stage")) ?? "",
+          ref: need(str(at(payload, "ref")), "ref"),
+          sha: str(at(payload, "sha")),
+          status: asCiStatus(at(payload, "build_status")),
+          allowFailure: at(payload, "build_allow_failure") === true,
+          failureReason: str(at(payload, "build_failure_reason")),
+          url: web ? `${web.replace(/\/+$/, "")}/-/jobs/${id}` : null,
+          createdAt: ciTime(at(payload, "build_created_at")),
+          startedAt: ciTime(at(payload, "build_started_at")),
+          finishedAt: ciTime(at(payload, "build_finished_at")),
+          durationSec: num(at(payload, "build_duration")),
+          user: base.actor,
+        };
+        return [{ ...base, kind: "job", job }];
       }
       default:
         return [];

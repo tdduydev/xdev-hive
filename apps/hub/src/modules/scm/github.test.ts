@@ -801,3 +801,68 @@ describe("GitHub đọc cây và file (kho skill)", () => {
     });
   });
 });
+
+describe("GitHub compare và CI (pipeline làm ở T031)", () => {
+  it("compare có danh sách commit: tiêu đề là dòng đầu, tác giả theo git", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: "/repos/acme/web/compare/v1...v2?per_page=100", method: "GET" }).reply(
+      200,
+      {
+        total_commits: 1,
+        commits: [
+          {
+            sha: "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+            commit: {
+              message: "Fix all the bugs\n\nChi tiết.",
+              author: { name: "Monalisa Octocat", email: "support@github.com", date: "2011-04-14T16:00:49Z" },
+            },
+            author: { login: "octocat" },
+          },
+        ],
+        files: [{ filename: "a.txt", status: "modified", sha: "bbcd538c8e72b8c175046e27cc8f907076331401" }],
+      },
+      JSON_HEADERS,
+    );
+    expect(await gh.compare(ref, "v1", "v2")).toEqual({
+      files: [{ path: "a.txt", status: "modified", sha: "bbcd538c8e72b8c175046e27cc8f907076331401" }],
+      commits: [
+        {
+          sha: "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+          title: "Fix all the bugs",
+          author: "Monalisa Octocat",
+          authoredAt: "2011-04-14T16:00:49.000Z",
+        },
+      ],
+      incomplete: false,
+    });
+  });
+
+  it("thao tác pipeline, job báo chưa hỗ trợ, không gọi GitHub", async () => {
+    http = mockHttp();
+    const gh = createGitHubProvider({ appId: 1, privateKey, installationId: 42, fetch: http.fetch });
+    for (const p of [
+      gh.listPipelines(ref, { page: 1 }),
+      gh.pipelineJobs(ref, "1"),
+      gh.jobLog(ref, "1", 0),
+      gh.retryPipeline(ref, "1"),
+      gh.cancelPipeline(ref, "1"),
+      gh.retryJob(ref, "1"),
+      gh.cancelJob(ref, "1"),
+      gh.playJob(ref, "1"),
+    ]) {
+      expect((await rejected(p)).code).toBe("unsupported");
+    }
+  });
+
+  it("addWebhook bỏ pipeline, job (GitHub chưa có sự kiện cùng tên)", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: "/repos/acme/web/hooks?per_page=100", method: "GET" }).reply(200, [], JSON_HEADERS);
+    pool.intercept({ path: "/repos/acme/web/hooks", method: "POST" }).reply(201, http.json({ id: 99 }), JSON_HEADERS);
+    await gh.addWebhook(ref, {
+      url: "https://hive.example/hooks/git",
+      secret: "s3",
+      events: ["push", "pipeline", "job"],
+    });
+    expect(http.calls[0]?.body).toMatchObject({ events: ["push"] });
+  });
+});

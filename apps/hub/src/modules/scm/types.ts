@@ -70,8 +70,18 @@ export interface PullRequestInput {
   labels?: string[];
 }
 
-/** Tên theo GitHub. `issue_comment` ở GitLab là note events, gồm cả bình luận trên merge request. */
-export type WebhookEvent = "push" | "pull_request" | "issues" | "issue_comment" | "pull_request_review_comment";
+/**
+ * Tên theo GitHub. `issue_comment` ở GitLab là note events, gồm cả bình luận trên merge request. `pipeline`, `job` là
+ * Pipeline/Job events của GitLab; GitHub chưa đăng ký (workflow_run, workflow_job làm ở đợt sau).
+ */
+export type WebhookEvent =
+  | "push"
+  | "pull_request"
+  | "issues"
+  | "issue_comment"
+  | "pull_request_review_comment"
+  | "pipeline"
+  | "job";
 
 export interface ReviewComment {
   id: string;
@@ -166,6 +176,129 @@ export interface ScmUser {
   id: number | null;
 }
 
+/** Trạng thái pipeline và job, theo tên của GitLab. */
+export const CI_STATUSES = [
+  "created",
+  "waiting_for_resource",
+  "preparing",
+  "pending",
+  "running",
+  "canceling",
+  "success",
+  "failed",
+  "canceled",
+  "skipped",
+  "manual",
+  "scheduled",
+] as const;
+export type CiStatus = (typeof CI_STATUSES)[number];
+
+/** Còn chạy tiếp mà không cần ai bấm: log còn ghi thêm, trạng thái còn đổi. `manual`, `scheduled` chờ người hoặc giờ. */
+export const CI_ACTIVE_STATUSES: readonly CiStatus[] = [
+  "created",
+  "waiting_for_resource",
+  "preparing",
+  "pending",
+  "running",
+  "canceling",
+];
+
+/**
+ * Trạng thái lạ (GitLab bản mới thêm) coi là `pending`: màn hình hỏi lại tới khi gặp trạng thái biết được, thay vì
+ * báo xong hay báo lỗi sai.
+ */
+export function asCiStatus(value: unknown): CiStatus {
+  return CI_STATUSES.find((s) => s === value) ?? "pending";
+}
+
+// Payload webhook của GitLab có lúc gửi `2016-08-12 15:23:28 UTC`; dạng này không thuộc chuẩn mà Date phải đọc được.
+const GITLAB_UTC = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) UTC$/;
+
+/** Thời điểm về ISO UTC; null khi trống hoặc không đọc được. */
+export function ciTime(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const at = new Date(value.replace(GITLAB_UTC, "$1T$2Z"));
+  return Number.isNaN(at.getTime()) ? null : at.toISOString();
+}
+
+/** Thời điểm đều đổi về ISO UTC (`ciTime`). */
+export interface CiPipeline {
+  id: string;
+  /** Nhánh hoặc tag. */
+  ref: string;
+  sha: string;
+  status: CiStatus;
+  /** push, web, schedule, merge_request_event…; null khi nhà cung cấp không gửi. */
+  source: string | null;
+  url: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationSec: number | null;
+  /** Người chạy pipeline (username). */
+  user: string | null;
+}
+
+export interface CiJob {
+  id: string;
+  pipelineId: string;
+  name: string;
+  stage: string;
+  ref: string;
+  sha: string | null;
+  status: CiStatus;
+  allowFailure: boolean;
+  failureReason: string | null;
+  url: string | null;
+  createdAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationSec: number | null;
+  user: string | null;
+}
+
+export interface ListPipelinesOptions {
+  branch?: string;
+  sha?: string;
+  status?: CiStatus;
+  /** Bắt đầu từ 1. */
+  page: number;
+  /** Mặc định 20. */
+  perPage?: number;
+}
+
+export interface PipelinePage {
+  /** Mới nhất trước. */
+  items: CiPipeline[];
+  nextPage: number | null;
+}
+
+/**
+ * Một đoạn log job. `from` và `next` tính theo byte UTF-8 của cả log: lần sau đọc tiếp từ `next`. `complete` là job đã
+ * dừng (xong, lỗi, huỷ, bỏ qua, chờ tay), log không ghi thêm nữa.
+ */
+export interface JobLogChunk {
+  text: string;
+  next: number;
+  complete: boolean;
+}
+
+/** Commit giữa hai bản của `compare`, cũ tới mới. `author` là tên tác giả trong git, không phải tài khoản. */
+export interface CompareCommit {
+  sha: string;
+  /** Dòng đầu của message. */
+  title: string;
+  author: string | null;
+  authoredAt: string | null;
+}
+
+export interface CompareResult {
+  files: CommitChange[];
+  commits: CompareCommit[];
+  incomplete: boolean;
+}
+
 export interface AccessCheck {
   canCreate: boolean;
   missingScopes: string[];
@@ -226,7 +359,8 @@ export interface GitProvider {
   /** Nguyên byte của file ở commit `sha` (ảnh, PDF…), không giải mã chữ; null khi không có file. */
   readFileBytes(ref: RepoRef, path: string, sha: string): Promise<Uint8Array | null>;
   readBlob(ref: RepoRef, blob: string): Promise<Uint8Array>;
-  compare(ref: RepoRef, from: string, to: string): Promise<{ files: CommitChange[]; incomplete: boolean }>;
+  /** `incomplete`: danh sách file bị nhà cung cấp cắt. */
+  compare(ref: RepoRef, from: string, to: string): Promise<CompareResult>;
   archive(ref: RepoRef, sha: string, path?: string): Promise<ReadableStream<Uint8Array>>;
   lfsBatch(ref: RepoRef, operation: "upload" | "download", objects: LfsObject[]): Promise<unknown>;
   /**
@@ -241,6 +375,21 @@ export interface GitProvider {
   setCommitStatus(ref: RepoRef, sha: string, input: CommitStatusInput): Promise<void>;
   /** Đóng PR không merge (đề xuất skill bị từ chối). PR đã đóng hoặc đã merge thì bỏ qua. */
   closePR(ref: RepoRef, number: number): Promise<void>;
+
+  // CI. Chỉ GitLab có; GitHub và provider local ném lỗi `unsupported`. Thao tác ghi dùng token kết nối của dự án.
+  listPipelines(ref: RepoRef, opts: ListPipelinesOptions): Promise<PipelinePage>;
+  /** Mọi job của pipeline (không gồm lần chạy cũ của job đã chạy lại), theo thứ tự nhà cung cấp trả. */
+  pipelineJobs(ref: RepoRef, pipelineId: string): Promise<CiJob[]>;
+  /** Log job từ byte `from`. Byte cuối là nửa ký tự UTF-8 thì để lại cho lần đọc sau. */
+  jobLog(ref: RepoRef, jobId: string, from: number): Promise<JobLogChunk>;
+  /** Chạy lại các job lỗi hoặc đã huỷ của pipeline. */
+  retryPipeline(ref: RepoRef, pipelineId: string): Promise<CiPipeline>;
+  cancelPipeline(ref: RepoRef, pipelineId: string): Promise<CiPipeline>;
+  /** Trả job mới (id khác) do lần chạy lại tạo ra. */
+  retryJob(ref: RepoRef, jobId: string): Promise<CiJob>;
+  cancelJob(ref: RepoRef, jobId: string): Promise<CiJob>;
+  /** Chạy job chờ tay (`manual`). Job ở trạng thái khác thì lỗi invalid. */
+  playJob(ref: RepoRef, jobId: string): Promise<CiJob>;
 }
 
 /** Cho phép test và proxy thay `fetch`, không phụ thuộc dispatcher toàn cục. */
