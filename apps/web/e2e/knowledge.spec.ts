@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { expandDocTree } from "./docsync-docs-fixture.ts";
 import { fail, fakeHub, ok, type RpcHandler, USER } from "./fake-hub.ts";
 
 const at = "2026-10-12T03:00:00.000Z";
@@ -215,6 +216,7 @@ async function setup(
 test("docs: read markdown safely and select historical version using the keyboard", async ({ page }) => {
   const hub = await setup(page);
   await page.goto("/knowledge/docs");
+  await expandDocTree(page);
   await page.getByRole("button", { name: "Mở dòng Quy ước tiền tệ" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Money", exact: true })).toBeVisible();
@@ -606,7 +608,7 @@ for (const route of ["docs", "skills", "memory", "proposals"] as const) {
       await setup(page);
       await page.goto(`/knowledge/${route}`);
       // Trang Skills có thêm bảng skill mặc định của Hive bên dưới.
-      if (route === "docs") await expect(page.getByRole("list", { name: "Cây tài liệu theo repo" })).toBeVisible();
+      if (route === "docs") await expandDocTree(page);
       else await expect(page.getByRole("table").first()).toBeVisible();
       await expect(page.locator("main").last()).toContainText(
         route === "docs"

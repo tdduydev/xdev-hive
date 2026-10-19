@@ -773,3 +773,49 @@ export const projectsContract = {
     .input(z.object({ key: projectKey, settings: projectSettingsPatch }))
     .output(projectSettings),
 };
+
+/** Thành viên dự án: người của đội sở hữu được gắn vào dự án để lọc tài liệu "Dự án của tôi". */
+export const projectMember = z.object({
+  userId: z.string(),
+  name: z.string(),
+  email: z.string(),
+  image: z.string().nullable(),
+  addedBy: z.string(),
+  addedAt: z.iso.datetime(),
+});
+export type ProjectMember = z.output<typeof projectMember>;
+
+/** Dự án mình là thành viên và đội mình là thành viên trực tiếp (không tính quyền owner/admin tổ chức). */
+export const projectMembership = z.object({ projectIds: z.array(id), teamIds: z.array(id) });
+export type ProjectMembership = z.output<typeof projectMembership>;
+
+export const projectMembersContract = {
+  list: orgRoute("GET", "/v1/projects/{id}/members", "Thành viên của dự án (người trong đội sở hữu)", "projects")
+    .input(z.object({ id }))
+    .output(z.array(projectMember)),
+  add: orgRoute(
+    "POST",
+    "/v1/projects/{id}/members",
+    "Thêm thành viên đội vào dự án, trả danh sách sau khi thêm (quản trị đội)",
+    "projects",
+  )
+    .input(z.object({ id, userIds: z.array(z.string().min(1)).min(1).max(100) }))
+    .output(z.array(projectMember)),
+  remove: orgRoute(
+    "DELETE",
+    "/v1/projects/{id}/members/{userId}",
+    "Gỡ thành viên khỏi dự án (quản trị đội)",
+    "projects",
+  )
+    .input(z.object({ id, userId: z.string().min(1) }))
+    .output(z.object({ ok: z.literal(true) })),
+  // Tiền tố riêng để không trùng mẫu /v1/projects/{id}.
+  mine: orgRoute(
+    "GET",
+    "/v1/project-members/mine",
+    "Dự án mình là thành viên và đội mình là thành viên trực tiếp",
+    "projects",
+  )
+    .input(z.object({}))
+    .output(projectMembership),
+};

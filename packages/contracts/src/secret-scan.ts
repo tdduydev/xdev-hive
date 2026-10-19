@@ -83,9 +83,18 @@ function secretValue(value: string, quoted: boolean, wholeLine: boolean, op: str
   return wholeLine && (op === "=" || /\d/.test(value));
 }
 
-/** Phát hiện theo thứ tự dòng; rỗng là không có gì giống bí mật. */
-export function scanSecrets(text: string): SecretFinding[] {
-  const hits: { index: number; kind: SecretKind }[] = [];
+/** Một chuỗi bị nghi: `index` để tính dòng báo lỗi, [`start`, `end`) là phần phải che. */
+interface SecretSpan {
+  index: number;
+  start: number;
+  end: number;
+  kind: SecretKind;
+}
+
+const PEM_END = /-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/g;
+
+function secretSpans(text: string): SecretSpan[] {
+  const hits: SecretSpan[] = [];
   const taken: [number, number][] = [];
   const overlaps = (start: number, end: number) => taken.some(([s, e]) => start < e && s < end);
 
@@ -94,7 +103,15 @@ export function scanSecrets(text: string): SecretFinding[] {
       const end = m.index + m[0].length;
       if ((accept && !accept(m[0])) || overlaps(m.index, end)) continue;
       taken.push([m.index, end]);
-      hits.push({ index: m.index, kind });
+      // Mẫu chỉ khớp dòng BEGIN; phần cần che là cả khối tới dòng END (thiếu END thì tới hết chữ). Chỉ phần che dài
+      // ra, phần phát hiện giữ như cũ để scanSecrets báo đúng các chuỗi khác.
+      let maskEnd = end;
+      if (kind === "private_key") {
+        PEM_END.lastIndex = end;
+        const close = PEM_END.exec(text);
+        maskEnd = close ? close.index + close[0].length : text.length;
+      }
+      hits.push({ index: m.index, start: m.index, end: maskEnd, kind });
     }
   }
 
@@ -112,10 +129,33 @@ export function scanSecrets(text: string): SecretFinding[] {
       /^[ \t\r]*$/.test(text.slice(end, lineEnd === -1 ? undefined : lineEnd));
     if (!secretValue(value, quotedValue !== undefined, wholeLine, op)) continue;
     taken.push([valueStart, end]);
-    hits.push({ index: m.index, kind: "credential_assignment" });
+    hits.push({ index: m.index, start: valueStart, end, kind: "credential_assignment" });
   }
+  return hits;
+}
 
-  hits.sort((a, b) => a.index - b.index);
+/** Chữ thay cho bí mật khi hiện ra; dài cố định để không lộ độ dài của bí mật. */
+export const SECRET_MASK = "••••••";
+
+/**
+ * Che chuỗi giống bí mật bằng cùng bộ mẫu với scanSecrets, giữ chữ xung quanh (tên biến, lệnh). Dùng khi hiện hay chép
+ * log của agent trên máy (khung Hoạt động của app desktop).
+ */
+export function redactSecrets(text: string): string {
+  const spans = secretSpans(text).sort((a, b) => a.start - b.start);
+  let out = "";
+  let at = 0;
+  for (const s of spans) {
+    if (s.start < at) continue;
+    out += text.slice(at, s.start) + SECRET_MASK;
+    at = s.end;
+  }
+  return out + text.slice(at);
+}
+
+/** Phát hiện theo thứ tự dòng; rỗng là không có gì giống bí mật. */
+export function scanSecrets(text: string): SecretFinding[] {
+  const hits = secretSpans(text).sort((a, b) => a.index - b.index);
   const lineOf = lineCounter(text);
   const seen = new Set<string>();
   const findings: SecretFinding[] = [];

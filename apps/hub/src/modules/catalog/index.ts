@@ -41,7 +41,7 @@ export {
   webhookSecretContext,
   webhookUrl,
 } from "./projects.ts";
-export { catalogRouter } from "./router.ts";
+export { catalogRouter, projectMembersRouter } from "./router.ts";
 export {
   PROVISION_RETRY_LIMIT,
   type ProvisionDeps,

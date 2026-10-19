@@ -225,8 +225,13 @@ export function escapeMarkdownText(text: string, lineStart: boolean): string {
 type TextEncoder = (text: string, node: JSONContent, parent?: JSONContent) => string;
 
 const html = new Marked({ gfm: true });
+// Trong ô bảng, `<br/>`, `<br />` và khoảng trắng quanh `<br>` hiển thị như nhau, mà Tiptap luôn xuất `<br>` liền chữ.
 const rendered = (md: string) =>
-  (html.parse(md, { async: false }) as string).replace(/>\s+</g, "><").replace(/\s+/g, " ").trim();
+  (html.parse(md, { async: false }) as string)
+    .replace(/<(t[dh])\b[^>]*>[\s\S]*?<\/\1>/g, (cell) => cell.replace(/\s*<br\s*\/?>\s*/gi, "<br>"))
+    .replace(/>\s+</g, "><")
+    .replace(/\s+/g, " ")
+    .trim();
 
 /** Nhóm node cấp cao dựng từ cùng một khối Markdown; còn y nguyên thì xuất lại đúng chữ gốc của khối. */
 type Source = { text: string; nodes: PMNode[] };
@@ -361,6 +366,17 @@ const firstText = (node: JSONContent | undefined) => {
 
 const TEXT_HOSTS = new Set(["paragraph", "heading"]);
 
+/**
+ * GFM chỉ xuống dòng được trong ô bảng bằng `<br>`. Có DOM thì @tiptap/markdown tự đổi thành hardBreak, không có thì để
+ * nguyên chữ; tách ở đây để hai môi trường ra cùng một cây. Ngoài bảng giữ như cũ.
+ */
+const cellBreaks = (node: JSONContent): JSONContent[] =>
+  node.type !== "text" || !node.text || node.marks?.some((m) => m.type === "code")
+    ? [node]
+    : node.text
+        .split(/<br\s*\/?>/i)
+        .flatMap((text, i) => [...(i ? [{ type: "hardBreak" }] : []), ...(text ? [{ ...node, text }] : [])]);
+
 /** @tiptap/markdown bỏ đoạn văn bọc quanh ảnh đứng một mình; ảnh của ta là node trong dòng nên phải bọc lại. */
 const inParagraph = (node: JSONContent): JSONContent =>
   node.type === "image" ? { type: "paragraph", content: [node] } : node;
@@ -370,6 +386,13 @@ function enhance(node: JSONContent): JSONContent {
   const content = node.content?.map(enhance);
   const out: JSONContent = content ? { ...node, content } : { ...node };
   if (out.content && !TEXT_HOSTS.has(out.type ?? "")) out.content = out.content.map(inParagraph);
+  // Danh sách đánh số của @tiptap/markdown dựng mục `6.  ` không có đoạn nào: schema cần một đoạn, bộ xuất thì ném lỗi.
+  if ((out.type === "listItem" || out.type === "taskItem") && !out.content?.length) {
+    out.content = [{ type: "paragraph" }];
+  }
+  if ((out.type === "tableCell" || out.type === "tableHeader") && out.content) {
+    out.content = out.content.map((p) => (p.content ? { ...p, content: p.content.flatMap(cellBreaks) } : p));
+  }
   if (out.type === "paragraph" && out.content?.length === 1) {
     const t = firstText(out);
     const key = t && EMBED_LINE.exec(t.text?.trim() ?? "")?.[1];

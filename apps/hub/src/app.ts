@@ -30,6 +30,7 @@ import {
   findProject,
   findWebhookTarget,
   loadProject,
+  projectMembersRouter,
   templateService,
 } from "./modules/catalog/index.ts";
 import { type ChatApiDeps, chatRouter, handleSlackWebhook, handleTelegramWebhook } from "./modules/chat/index.ts";
@@ -267,6 +268,7 @@ export function createApp({
     inbox: inboxRouter({ auth, pool, jobs }),
     chat: chatRouter({ ...shared, ...chatApis, publicUrl, telegramPollingBotIds: config.telegramPollingBotIds }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
+    projectMembers: projectMembersRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({
       auth,
       pool,
