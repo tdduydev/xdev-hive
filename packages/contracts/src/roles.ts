@@ -94,10 +94,12 @@ const MEMBER_EXTRA = new Set([
   "mcp.tokens",
   "machines.read",
   "sdlc.write",
-  "ci.operate",
-  "deploy.run",
 ]);
 const member = (k: string) => viewer(k) || MEMBER_EXTRA.has(k);
+// Quyền của vai trò tổ chức được cộng bất kể đội, nên thao tác CI và triển khai chỉ cấp qua vai trò đội: thành viên tổ
+// chức ngoài đội chỉ xem (specs/020 FR-030).
+const TEAM_MEMBER_EXTRA = new Set(["ci.operate", "deploy.run"]);
+const teamMember = (k: string) => member(k) || TEAM_MEMBER_EXTRA.has(k);
 const TEAM_ADMIN_EXTRA = new Set([
   "projects.create",
   "projects.settings",
@@ -142,8 +144,8 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<SystemRoleId, readonly string[]> = 
   owner: PERMISSIONS,
   admin: PERMISSIONS.filter((k) => k !== "policies.fullaccess"),
   member: PERMISSIONS.filter(member),
-  "team-admin": PERMISSIONS.filter((k) => member(k) || TEAM_ADMIN_EXTRA.has(k)),
-  "team-member": PERMISSIONS.filter(member),
+  "team-admin": PERMISSIONS.filter((k) => teamMember(k) || TEAM_ADMIN_EXTRA.has(k)),
+  "team-member": PERMISSIONS.filter(teamMember),
   "team-viewer": PERMISSIONS.filter(viewer),
   "team-ba": PERMISSIONS.filter((k) => TEAM_BA.has(k)),
 };

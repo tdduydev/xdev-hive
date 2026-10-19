@@ -37,9 +37,14 @@ describe("quyền CI/CD và triển khai (specs/020 FR-030)", () => {
     expect(deliveryOf("team-viewer")).toEqual(["ci.view"]);
   });
 
-  it("thành viên tổ chức như thành viên đội; BA/PO không có quyền nào", () => {
-    expect(deliveryOf("member")).toEqual(deliveryOf("team-member"));
+  it("thành viên tổ chức ngoài đội chỉ xem; BA/PO không có quyền nào", () => {
+    expect(deliveryOf("member")).toEqual(["ci.view"]);
     expect(deliveryOf("team-ba")).toEqual([]);
+  });
+
+  it("quyền khác của thành viên tổ chức và thành viên đội không đổi", () => {
+    const others = (role: SystemRoleId) => SYSTEM_ROLE_PERMISSIONS[role].filter((k) => !DELIVERY.includes(k));
+    expect(others("member")).toEqual(others("team-member"));
   });
 
   it("chủ sở hữu và quản trị tổ chức có cả quyền kết nối", () => {
