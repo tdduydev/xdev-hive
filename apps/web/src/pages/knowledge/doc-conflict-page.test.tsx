@@ -91,6 +91,7 @@ beforeEach(() => {
     baseVersion: 1,
     hubVersion: 2,
     repoCommit: "a".repeat(40),
+    origin: "repo",
     state: "open",
     resolution: null,
     resolvedVersion: null,

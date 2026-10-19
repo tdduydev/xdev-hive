@@ -371,7 +371,7 @@ flowchart TB
 | Database roles | `hive_owner` (owns schema `hive`, runs migrations), `hive_app` (the hub, subject to RLS), `hive_auth` (schema `auth`), `hive_jobs` (schema `pgboss`); none is superuser or bypasses RLS |
 | Network | Hub published on `HIVE_BIND:3000` (loopback by default). With a public name, the `https` profile adds Caddy with automatic certificates; a name pointing at a private IP gets a Let's Encrypt certificate over DNS-01 (Cloudflare, `HIVE_TLS=dns-cloudflare`); an IP uses Caddy's internal CA. On a LAN without HTTPS, `HIVE_BIND=0.0.0.0` and MCP OAuth turns off (run tokens can still be allowed with `HIVE_MCP_ALLOW_HTTP=1`) |
 | Deploy | `deploy/remote.sh` sends a `git archive` over SSH, generates secrets on the server once into a mode-600 `.env`, keeps the previous source in `src.old`, runs `docker compose up -d --build` and waits for `/api/v1/health` |
-| Backup | `deploy/backup.sh`: `pg_dump -Fc`, the `.env` (including `HIVE_MASTER_KEY`) and `SHA256SUMS`, with retention; `deploy/restore.sh` restores in one transaction |
+| Backup | `deploy/backup.sh`: `pg_dump -Fc`, `meta` (Compose project and SHA-256 of `HIVE_MASTER_KEY`, no secret) and `SHA256SUMS`, with retention; `.env` is kept separately by the administrator. `deploy/restore.sh` checks the key against `meta` and restores in one transaction |
 | Worker builds | Tag `v*` → `.github/workflows/release.yml`: goreleaser builds six archives, signs `checksums.txt`, creates a draft, verifies signature and version, attests provenance, then publishes |
 | CI | `.github/workflows/ci.yml`: TypeScript checks and tests with PostgreSQL, worker on Ubuntu, macOS and Windows, end-to-end smoke test, gVisor sandbox test, image build, desktop check |
 

@@ -154,6 +154,7 @@ describe("cài đặt kho tài liệu", () => {
       repoSync: "pr",
       assetsDir: "assets",
       repoChangesNeedReview: false,
+      wordImportConfidential: false,
       include: ["docs/**", "doc/**", "specs/**", "adr/**", "**/adr/**", "**/README.md", "*.md"],
       exclude: [
         "node_modules/**",
@@ -185,5 +186,15 @@ describe("cài đặt kho tài liệu", () => {
     for (const docs of [{ root: "../docs" }, { assetsDir: "/tmp" }, { repoSync: "auto" }, { enabled: "true" }]) {
       expect(projectSettingsPatch.safeParse({ docs }).success).toBe(false);
     }
+  });
+
+  it("nhãn mật khi nhập Word mặc định tắt, vá được riêng", () => {
+    const { docs, ...rest } = defaultProjectSettings();
+    const { wordImportConfidential: _, ...oldDocs } = docs;
+    expect(projectSettings.parse({ ...rest, docs: oldDocs }).docs.wordImportConfidential).toBe(false);
+    expect(projectSettingsPatch.parse({ docs: { wordImportConfidential: true } }).docs).toEqual({
+      wordImportConfidential: true,
+    });
+    expect(projectSettingsPatch.safeParse({ docs: { wordImportConfidential: "true" } }).success).toBe(false);
   });
 });
