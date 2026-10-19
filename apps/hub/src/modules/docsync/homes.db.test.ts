@@ -128,6 +128,18 @@ describe("nhà tài liệu của dự án", () => {
     expect(await as("tmember", (tx) => getHome(tx, org.user("tmember"), keys.main))).toMatchObject({ id: row.id });
   });
 
+  it("ghi và đọc lại tài liệu mật khi nhập Word (Q15)", async () => {
+    const on = await configureMain("tadmin", { wordImportConfidential: true });
+    expect(on.wordImportConfidential).toBe(true);
+    expect(homeView(on, deps).wordImportConfidential).toBe(true);
+    const { rows } = await admin.query("select settings->'docs' as docs from hive.projects where id = $1", [
+      project.projectId,
+    ]);
+    expect(rows[0].docs).toMatchObject({ wordImportConfidential: true });
+    const off = await configureMain("tadmin");
+    expect(homeView(off, deps).wordImportConfidential).toBe(false);
+  });
+
   it("kết nối thiếu quyền thì báo DOCSYNC_NO_ACCESS", async () => {
     mem.fail("getRepo", new GitProviderError("forbidden", "gitlab: 403", { status: 403 }));
     await expect(configureMain("tadmin", { root: "tai-lieu/" })).rejects.toMatchObject({ code: "DOCSYNC_NO_ACCESS" });
@@ -215,6 +227,11 @@ describe("nhà tài liệu của tổ chức", () => {
     expect(row.webhookSecretEnc).not.toContain(hook?.secret ?? "?");
     expect(decryptSecret(masterKey, row.webhookSecretEnc as string, homeSecretContext(row.id))).toBe(hook?.secret);
     expect(homeView(row, deps).webhookUrl).toBe(`https://hive.example/hooks/docs/${row.id}`);
+    expect(homeView(row, deps).wordImportConfidential).toBe(false);
+    const confidential = await as("admin", (tx) =>
+      configureOrgHome(tx, deps, actor("admin"), orgInput({ create: false, wordImportConfidential: true })),
+    );
+    expect(homeView(confidential, deps).wordImportConfidential).toBe(true);
   });
 
   it("thư mục chồng với nhà dự án cùng repo hoặc với kho skill thì báo trùng", async () => {

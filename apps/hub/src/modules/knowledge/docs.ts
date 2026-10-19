@@ -6,6 +6,7 @@ import {
   type DocSaveInput,
   type DocSummary,
   type DocVersion,
+  type DocVersionSource,
   docGetInput,
   docKey,
   docListInput,
@@ -85,8 +86,11 @@ export async function currentDocVersion(tx: Tx, key: string): Promise<number> {
   return (await loadDoc(tx, key))?.currentVersion ?? 0;
 }
 
-/** Nguồn của phiên bản: `repo` đã có sẵn trong repo nên đồng bộ không đẩy lại; `import` và `merge` do docsync tạo. */
-export type DocSource = "hub" | "repo" | "import" | "merge";
+/**
+ * Nguồn của phiên bản: `repo` đã có sẵn trong repo nên đồng bộ không đẩy lại; `import` và `merge` do docsync tạo;
+ * `word` là bản nhập từ Word, được đẩy như `hub`.
+ */
+export type DocSource = DocVersionSource;
 
 /** Người lưu của phiên bản do đồng bộ tạo; như `AI_AUTO_ACTOR`, không phải người dùng thật nên không mang quyền gì. */
 export const DOC_SYNC_ACTOR = "system:docsync";
@@ -275,8 +279,16 @@ export async function assertNotArchived(tx: Tx, key: string): Promise<void> {
   if ((await loadDoc(tx, key))?.archivedAt) throw archivedError();
 }
 
-/** Lưu tài liệu trực tiếp (quản trị đội của phạm vi). Phạm vi suy ra từ key. */
-export async function saveDoc(tx: Tx, principal: Principal, input: DocSaveInput): Promise<Doc> {
+/**
+ * Lưu tài liệu trực tiếp (quản trị đội của phạm vi). Phạm vi suy ra từ key. Chỉ module khác (nhập Word) mới đặt
+ * `source`; oRPC không mở tham số này, nên người dùng không tự gắn được nguồn cho bản lưu của mình.
+ */
+export async function saveDoc(
+  tx: Tx,
+  principal: Principal,
+  input: DocSaveInput,
+  options: { source?: Extract<DocSource, "hub" | "word"> } = {},
+): Promise<Doc> {
   const data = docSaveInput.parse(input);
   const reader = await readerFor(tx, principal);
   const scope = await docScope(tx, reader, data.key);
@@ -288,7 +300,7 @@ export async function saveDoc(tx: Tx, principal: Principal, input: DocSaveInput)
     { reader, scope, key: data.key, content: data.content },
     data.acknowledgeSecrets,
   );
-  const doc = await applyDocSave(tx, principal, scope, data);
+  const doc = await applyDocSave(tx, principal, scope, { ...data, source: options.source });
   await audit(tx, principal, "doc.save", { type: "doc", id: doc.id }, { key: doc.key, version: doc.version });
   return doc;
 }
@@ -434,6 +446,7 @@ export async function docHistory(tx: Tx, principal: Principal, input: { key: str
       authorRunId: docVersions.authorRunId,
       message: docVersions.message,
       proposalId: docVersions.proposalId,
+      source: docVersions.source,
       chars: sql<number>`char_length(${docVersions.content})::int`,
       createdAt: docVersions.createdAt,
     })
@@ -446,6 +459,8 @@ export async function docHistory(tx: Tx, principal: Principal, input: { key: str
     author: authorView(r),
     message: r.message,
     proposalId: r.proposalId,
+    // Cột có check theo đúng tập giá trị của contracts.
+    source: r.source as DocSource,
     chars: r.chars,
     createdAt: iso(r.createdAt),
   }));

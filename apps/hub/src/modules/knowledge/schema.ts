@@ -144,7 +144,7 @@ export const docVersions = hive
       unique("doc_versions_doc_version").on(t.docId, t.version),
       foreignKey({ columns: [t.docId, t.orgId], foreignColumns: [docs.id, docs.orgId] }).onDelete("cascade"),
       authorCheck("doc_versions_author", "author"),
-      check("doc_versions_source", sql`source in ('hub', 'repo', 'import', 'merge')`),
+      check("doc_versions_source", sql`source in ('hub', 'repo', 'import', 'merge', 'word')`),
       index("doc_versions_org").on(t.orgId),
       orgScoped("doc_versions"),
     ],
@@ -257,6 +257,8 @@ export const proposals = hive
       /** PR mở trong kho skill Git cho đề xuất skill (SKILL-04); duyệt hoặc từ chối trên hub thì đóng PR. */
       gitPrNumber: integer("git_pr_number"),
       gitPrUrl: text("git_pr_url"),
+      /** Nơi đề xuất được tạo ra, vd. `{kind: "word", importFileId}` khi nhập Word chỉ có quyền đề xuất (P2). */
+      origin: jsonb("origin").$type<{ kind: "word"; importFileId: string }>(),
     },
     (t) => [
       scopeCheck("proposals"),
