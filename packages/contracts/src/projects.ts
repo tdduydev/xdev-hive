@@ -48,10 +48,11 @@ export const projectCreateInput = z.object({
   repo: z.discriminatedUnion("mode", [newRepo, existingRepo]),
   protection: z
     .object({
-      protectDefault: z.boolean().default(true),
+      /** Bỏ trống thì hub chọn: repo mới bảo vệ, repo có sẵn không (bảo vệ sẽ thay quy tắc đang có của nhánh). */
+      protectDefault: z.boolean().optional(),
       requiredApprovals: z.number().int().min(0).max(6).default(1),
     })
-    .default({ protectDefault: true, requiredApprovals: 1 }),
+    .default({ requiredApprovals: 1 }),
   webhook: z.boolean().default(true),
   /** Mỗi lần mở form tạo một khoá; gửi lại cùng khoá trả về dự án đã tạo, không tạo trùng. */
   idempotencyKey: z.uuid("Khoá chống trùng phải là UUID."),
