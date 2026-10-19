@@ -1,6 +1,13 @@
 import type { ProvisionStepKind } from "@xdev-hive/contracts";
-import { type GitProviderKind, isGitProviderError, type ScmAuthMode } from "../scm/index.ts";
+import {
+  type GitProvider,
+  type GitProviderKind,
+  isGitProviderError,
+  type RepoRef,
+  type ScmAuthMode,
+} from "../scm/index.ts";
 import type { StepError } from "./schema.ts";
+import type { TemplateFile } from "./template.ts";
 
 /** Nhánh đưa file mẫu vào repo có sẵn qua PR, không commit thẳng vào nhánh chính. */
 export const TEMPLATE_BRANCH = "hive/khoi-tao";
@@ -18,6 +25,47 @@ export interface PlanInput {
   webhook: boolean;
   webhookUrl: string;
   templateFileCount: number;
+  /** Repo có sẵn: file mẫu sẽ thêm và file repo đã có (giữ nguyên); thiếu khi chưa đọc được repo. */
+  templateFiles?: { add: readonly string[]; keep: readonly string[] } | undefined;
+}
+
+/**
+ * Bảo vệ nhánh thay quy tắc đang có của nhánh chính, nên repo có sẵn chỉ bảo vệ khi người tạo chọn; repo mới mặc định
+ * bảo vệ vì chưa có quy tắc nào.
+ */
+export function protectionFor(
+  mode: "new" | "existing",
+  p: { protectDefault?: boolean | undefined; requiredApprovals: number },
+): { protectDefault: boolean; requiredApprovals: number } {
+  return { protectDefault: p.protectDefault ?? mode === "new", requiredApprovals: p.requiredApprovals };
+}
+
+/**
+ * Chia file mẫu theo nhánh `branch` của repo có sẵn: file repo đã có thì giữ nguyên (CLAUDE.md, README.md của đội),
+ * chỉ thêm file còn thiếu. Nhánh chưa có thì thêm hết.
+ */
+export async function splitTemplateFiles(
+  provider: GitProvider,
+  ref: RepoRef,
+  branch: string,
+  files: readonly TemplateFile[],
+): Promise<{ add: TemplateFile[]; keep: string[] }> {
+  const head = await provider.branchHead(ref, branch);
+  if (!head) return { add: [...files], keep: [] };
+  const add: TemplateFile[] = [];
+  const keep: string[] = [];
+  for (const file of files) {
+    if ((await provider.readFile(ref, file.path, head)) === null) add.push(file);
+    else keep.push(file.path);
+  }
+  return { add, keep };
+}
+
+function existingTemplateTitle(files: PlanInput["templateFiles"]): string {
+  if (!files) return `Mở PR ${TEMPLATE_BRANCH} với file mẫu repo chưa có`;
+  if (!files.add.length) return `Không mở PR: repo đã có ${files.keep.join(", ")}`;
+  const kept = files.keep.length ? `; giữ nguyên ${files.keep.join(", ")}` : "";
+  return `Mở PR ${TEMPLATE_BRANCH} thêm ${files.add.join(", ")}${kept}`;
 }
 
 export interface PlannedStep {
@@ -51,7 +99,7 @@ export function planSteps(p: PlanInput): PlannedStep[] {
     steps.push({
       kind: "commit-template",
       target: null,
-      title: `Mở PR ${TEMPLATE_BRANCH} với ${p.templateFileCount} file mẫu`,
+      title: existingTemplateTitle(p.templateFiles),
       params: { branch: TEMPLATE_BRANCH },
     });
   }
