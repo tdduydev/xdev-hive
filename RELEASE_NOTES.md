@@ -3,7 +3,7 @@
 A `## vX.Y.Z` section here becomes the whole release body for that version (release page and the app's update notice),
 replacing the notes generated from merged PR titles (`scripts/release/notes.sh`).
 
-## v0.2.25
+## v0.2.26
 
 ### Upgrade notes
 
