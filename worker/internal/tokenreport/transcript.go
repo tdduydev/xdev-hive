@@ -166,11 +166,19 @@ type toolRef struct {
 	at     int
 }
 
+// editState nhớ usage trước message vừa tính, vì khối tool_use sửa file có thể tới ở dòng sau của cùng message.id,
+// khi usage của message đó đã được cộng.
+type editState struct {
+	lastID string
+	before usageMark
+}
+
 func readClaude(path, account string) (*session, error) {
 	s := newSession("claude", account)
 	seen := map[string]bool{}
 	toolName := map[string]toolRef{}
 	readCount := map[string]int{}
+	var edits editState
 	// Lượt gọi API (đã gộp theo message.id) của từng output tool, để tính phần bị đọc lại tới lần nén kế tiếp.
 	var pending []pendingTool
 	var cwd, entrypoint string
@@ -233,7 +241,7 @@ func readClaude(path, account string) (*session, error) {
 			if o.Message == nil {
 				return
 			}
-			claudeAssistant(s, &o, seen, toolName, readCount)
+			claudeAssistant(s, &o, seen, toolName, readCount, &edits)
 		case "user":
 			if o.Message == nil {
 				return
@@ -265,10 +273,11 @@ func readClaude(path, account string) (*session, error) {
 	}
 	settle(s.Calls)
 	s.Source = classify(cwd, entrypoint == "sdk-cli")
+	s.Cwd = cwd
 	return s, nil
 }
 
-func claudeAssistant(s *session, o *claudeLine, seen map[string]bool, toolName map[string]toolRef, readCount map[string]int) {
+func claudeAssistant(s *session, o *claudeLine, seen map[string]bool, toolName map[string]toolRef, readCount map[string]int, edits *editState) {
 	m := o.Message
 	id := m.ID
 	if id == "" {
@@ -306,6 +315,14 @@ func claudeAssistant(s *session, o *claudeLine, seen map[string]bool, toolName m
 			}
 		}
 		toolName[b.ID] = toolRef{name: name, key: key, reread: reread, at: s.Calls + 1}
+		if editTools[name] && s.Edit == nil {
+			// Message chưa tính usage: số hiện tại đã không gồm nó. Message đã tính: lấy số trước khi cộng nó.
+			mark := s.mark()
+			if seen[id] && id == edits.lastID {
+				mark = edits.before
+			}
+			s.Edit = &mark
+		}
 	}
 	if seen[id] {
 		return
@@ -315,6 +332,7 @@ func claudeAssistant(s *session, o *claudeLine, seen map[string]bool, toolName m
 	if u == nil {
 		return
 	}
+	edits.lastID, edits.before = id, s.mark()
 	s.Calls++
 	if m.Model != "" && m.Model != "<synthetic>" {
 		s.Models = addUnique(s.Models, m.Model)
@@ -430,6 +448,7 @@ func readCodex(path, account string) (*session, error) {
 		s.Output = last.OutputTokens + last.ReasoningOutputTokens
 	}
 	s.Source = classify(cwd, originator == "codex_exec")
+	s.Cwd = cwd
 	return s, nil
 }
 

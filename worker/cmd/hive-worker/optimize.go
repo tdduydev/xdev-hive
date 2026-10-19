@@ -20,12 +20,13 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/optimizer"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
+	"github.com/tdduydev/xdev-hive/worker/internal/score"
 	"github.com/tdduydev/xdev-hive/worker/internal/tokenreport"
 )
 
-const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --profile ID [--level balanced|aggressive] [--rtk] | disable --profile ID | restore --profile ID [--backup THỜI_ĐIỂM] | link | report [--profile ID] [--days N]] [--config FILE] [--json]"
+const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --profile ID [--level balanced|aggressive] [--rtk] | disable --profile ID | restore --profile ID [--backup THỜI_ĐIỂM] | link | report [--profile ID] [--days N] | score [--days N] [--fresh] | fix MÃ --profile ID [--preview | --undo]] [--config FILE] [--json]"
 
-// Test thay thư mục nhà, giờ, phiên bản CLI và RTK để không đụng máy thật.
+// Test thay thư mục nhà, giờ, phiên bản CLI, RTK, /context và công cụ trên PATH để không đụng máy thật.
 var (
 	optimizeHome          = os.UserHomeDir
 	optimizeExecutable    = os.Executable
@@ -34,6 +35,14 @@ var (
 	optimizeFindRTK       = func() string { p, _ := exec.LookPath("rtk"); return p }
 	// optimizeReportRTK nil là chạy `rtk gain` thật.
 	optimizeReportRTK tokenreport.RTKFunc
+	optimizeContext   score.ContextRunner = func(ctx context.Context, p score.Profile) ([]byte, error) {
+		dir := p.Dir
+		if p.Default {
+			dir = ""
+		}
+		return accounts.ClaudePrint(ctx, "", dir, []string{"-p", "/context", "--no-session-persistence"})
+	}
+	optimizeHasTool = func(name string) bool { _, err := exec.LookPath(name); return err == nil }
 )
 
 // optimizeProfile là một gói trong kết quả `optimize status --json`. Gói nào cũng có mặt, bật hay chưa, để màn Token
@@ -77,6 +86,11 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
 		action, args = args[0], args[1:]
 	}
+	// `fix MÃ --profile …`: flag dừng ở đối số không phải cờ đầu tiên, nên lấy mã sửa nhanh ra trước.
+	fixID := ""
+	if action == "fix" && len(args) > 0 && args[0] != "" && args[0][0] != '-' {
+		fixID, args = args[0], args[1:]
+	}
 	fs := flag.NewFlagSet("optimize "+action, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "file cấu hình worker (accounts.json nằm cạnh)")
@@ -85,7 +99,10 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	level := fs.String("level", runner.PresetBalanced, "mức tối ưu: balanced hoặc aggressive")
 	withRTK := fs.Bool("rtk", false, "enable: thêm hook RTK nén output lệnh Bash (cần rtk trên máy)")
 	backup := fs.String("backup", "", "restore: thời điểm bản sao lưu (mặc định bản trước lần bật đầu)")
-	days := fs.Int("days", 0, "report: chỉ đọc phiên N ngày gần nhất (0 là tất cả)")
+	days := fs.Int("days", 0, "report: chỉ đọc phiên N ngày gần nhất (0 là tất cả); score: mặc định 7")
+	fresh := fs.Bool("fresh", false, "score: đo lại /context của mọi gói Claude (gọi model, tốn token)")
+	preview := fs.Bool("preview", false, "fix: chỉ liệt kê thay đổi, không ghi gì")
+	undo := fs.Bool("undo", false, "fix: hoàn tác lần sửa nhanh gần nhất của gói")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -123,30 +140,7 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return fail(err)
 		}
-		if *level != runner.PresetBalanced && *level != runner.PresetAggressive {
-			return fail(optimizer.ErrInvalidLevel)
-		}
-		version := ""
-		if p.CLI == "claude" {
-			version = optimizeClaudeVersion(context.Background())
-		}
-		preset := optimizePreset(o, runner.InteractivePreset(p.CLI, version, *level))
-		if *withRTK {
-			if p.CLI != "claude" {
-				return fail(errors.New("RTK chỉ dùng được với Claude Code"))
-			}
-			if err := optimizeAddRTK(&preset); err != nil {
-				return fail(err)
-			}
-		}
-		if len(preset.Hooks) > 0 {
-			// Hook gọi hive-worker qua đường dẫn ổn định, nên liên kết phải có trước khi cấu hình trỏ tới nó.
-			if _, err := optimizeLink(o); err != nil {
-				return fail(fmt.Errorf("không đặt được liên kết hive-worker: %w", err))
-			}
-		}
-		// --profile là lựa chọn riêng của người dùng, nên thư mục mặc định cũng được bật.
-		if result, err = o.Enable(p, *level, preset, optimizer.Options{Explicit: true}); err != nil {
+		if result, err = optimizeEnable(o, p, *level, *withRTK); err != nil {
 			return fail(err)
 		}
 	case "disable":
@@ -183,6 +177,17 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case "report":
 		return optimizeReport(o, file, *profile, *days, *asJSON, stdout, stderr)
+	case "score":
+		return optimizeScore(o, file, *days, *fresh, *asJSON, stdout, stderr)
+	case "fix":
+		if fixID == "" {
+			fmt.Fprintln(stderr, optimizeUsage)
+			return 2
+		}
+		if !needProfile() {
+			return 2
+		}
+		return optimizeFix(o, file, fixID, *profile, *preview, *undo, stdout, stderr)
 	default:
 		fmt.Fprintln(stderr, optimizeUsage)
 		return 2
@@ -198,6 +203,43 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	}
 	printOptimize(stdout, view)
 	return 0
+}
+
+// optimizeEnable dựng preset theo phiên bản CLI và mức, thêm RTK nếu chọn, rồi ghi cấu hình gói. Dùng chung cho
+// `enable` và sửa nhanh của điểm tối ưu.
+func optimizeEnable(o *optimizer.Optimizer, p optimizer.Profile, level string, withRTK bool) (*optimizer.Result, error) {
+	preset, err := optimizeBuildPreset(o, p, level, withRTK)
+	if err != nil {
+		return nil, err
+	}
+	if len(preset.Hooks) > 0 {
+		// Hook gọi hive-worker qua đường dẫn ổn định, nên liên kết phải có trước khi cấu hình trỏ tới nó.
+		if _, err := optimizeLink(o); err != nil {
+			return nil, fmt.Errorf("không đặt được liên kết hive-worker: %w", err)
+		}
+	}
+	// --profile là lựa chọn riêng của người dùng, nên thư mục mặc định cũng được bật.
+	return o.Enable(p, level, preset, optimizer.Options{Explicit: true})
+}
+
+func optimizeBuildPreset(o *optimizer.Optimizer, p optimizer.Profile, level string, withRTK bool) (optimizer.Preset, error) {
+	if level != runner.PresetBalanced && level != runner.PresetAggressive {
+		return optimizer.Preset{}, optimizer.ErrInvalidLevel
+	}
+	version := ""
+	if p.CLI == "claude" {
+		version = optimizeClaudeVersion(context.Background())
+	}
+	preset := optimizePreset(o, runner.InteractivePreset(p.CLI, version, level))
+	if withRTK {
+		if p.CLI != "claude" {
+			return optimizer.Preset{}, errors.New("RTK chỉ dùng được với Claude Code")
+		}
+		if err := optimizeAddRTK(&preset); err != nil {
+			return optimizer.Preset{}, err
+		}
+	}
+	return preset, nil
 }
 
 func optimizeLink(o *optimizer.Optimizer) (string, error) {
