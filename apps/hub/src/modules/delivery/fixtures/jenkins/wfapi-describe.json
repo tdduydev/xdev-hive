@@ -1,0 +1,41 @@
+{
+  "_links": { "self": { "href": "/job/ehospital/job/build-dev-v3/42/wfapi/describe" } },
+  "id": "42",
+  "name": "#42",
+  "status": "PAUSED_PENDING_INPUT",
+  "startTimeMillis": 1792400000000,
+  "endTimeMillis": 0,
+  "durationMillis": 95000,
+  "queueDurationMillis": 120,
+  "pauseDurationMillis": 30000,
+  "stages": [
+    {
+      "id": "6",
+      "name": "Checkout",
+      "execNode": "",
+      "status": "SUCCESS",
+      "startTimeMillis": 1792400000200,
+      "durationMillis": 4000,
+      "pauseDurationMillis": 0
+    },
+    {
+      "id": "12",
+      "name": "Trivy scan",
+      "execNode": "agent-1",
+      "status": "FAILED",
+      "startTimeMillis": 1792400004200,
+      "durationMillis": 61000,
+      "pauseDurationMillis": 0,
+      "error": { "message": "script returned exit code 1", "type": "hudson.AbortException" }
+    },
+    {
+      "id": "20",
+      "name": "Approve prod",
+      "execNode": "",
+      "status": "PAUSED_PENDING_INPUT",
+      "startTimeMillis": 1792400065200,
+      "durationMillis": 0,
+      "pauseDurationMillis": 30000
+    }
+  ]
+}

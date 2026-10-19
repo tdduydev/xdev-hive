@@ -336,8 +336,8 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `docs/self-hosting.md`:
       - hub cần mạng tới cổng SSH của máy chủ đích, Jenkins, GitLab, Argo CD, API Kubernetes (kết quả T006);
       - `HIVE_MASTER_KEY` mở được mọi khoá SSH và token; mất khoá thì phải sinh lại khoá cho mọi máy chủ;
-      - bản sao lưu hiện chứa cả `hive.dump` lẫn `.env` có `HIVE_MASTER_KEY` (mục backup), nên phải bảo vệ như chính
-        khoá SSH. plan.md mục 9 nói khác: ghi bàn giao để người điều phối sửa plan;
+      - bản sao lưu không còn chứa `.env` (R11 đã chốt 2026-10-19, plan.md mục 9; mục backup đã ghi): quản trị cất
+        `.env` riêng và bảo vệ như chính khoá SSH. Bản sao lưu cũ còn `.env` thì bảo vệ như vậy cho tới khi xoá;
       - khuyến nghị user triển khai riêng trên máy chủ, không dùng `root` (R1); đặt `approvers` cho `ehosPromote` (R7).
   - **PHẠM VI**:
     - `docs/adr/0030-hub-deploys-over-ssh.md`, `docs/adr/0031-external-ci-and-deploy-sources.md` (mới)

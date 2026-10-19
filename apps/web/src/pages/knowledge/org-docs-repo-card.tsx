@@ -194,6 +194,7 @@ function formFromHome(home: DocHome | null) {
       include: home?.include ?? projectDocsSettings.parse({}).include,
       exclude: home?.exclude ?? projectDocsSettings.parse({}).exclude,
       repoChangesNeedReview: home?.repoChangesNeedReview ?? false,
+      wordImportConfidential: home?.wordImportConfidential ?? false,
     }),
   };
 }
