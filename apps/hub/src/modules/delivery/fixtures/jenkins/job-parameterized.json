@@ -1,0 +1,56 @@
+{
+  "_class": "org.jenkinsci.plugins.workflow.job.WorkflowJob",
+  "name": "acmePromote",
+  "fullName": "acme/acmePromote",
+  "url": "https://jenkins.example.test/job/acme/job/acmePromote/",
+  "buildable": true,
+  "inQueue": false,
+  "property": [
+    { "_class": "jenkins.model.BuildDiscarderProperty" },
+    {
+      "_class": "hudson.model.ParametersDefinitionProperty",
+      "parameterDefinitions": [
+        {
+          "_class": "hudson.model.StringParameterDefinition",
+          "name": "APP",
+          "type": "StringParameterDefinition",
+          "description": "Tên ứng dụng",
+          "defaultParameterValue": {
+            "_class": "hudson.model.StringParameterValue",
+            "name": "APP",
+            "value": "his-service"
+          }
+        },
+        {
+          "_class": "hudson.model.ChoiceParameterDefinition",
+          "name": "TO_ENV",
+          "type": "ChoiceParameterDefinition",
+          "description": "Môi trường đích",
+          "defaultParameterValue": { "_class": "hudson.model.StringParameterValue", "name": "TO_ENV", "value": "stg" },
+          "choices": ["stg", "prod"]
+        },
+        {
+          "_class": "hudson.model.BooleanParameterDefinition",
+          "name": "DRY_RUN",
+          "type": "BooleanParameterDefinition",
+          "description": "",
+          "defaultParameterValue": { "_class": "hudson.model.BooleanParameterValue", "name": "DRY_RUN", "value": false }
+        },
+        {
+          "_class": "hudson.model.PasswordParameterDefinition",
+          "name": "REGISTRY_PASSWORD",
+          "type": "PasswordParameterDefinition",
+          "description": "",
+          "defaultParameterValue": { "_class": "hudson.util.Secret", "name": "REGISTRY_PASSWORD" }
+        },
+        {
+          "_class": "hudson.model.TextParameterDefinition",
+          "name": "NOTES",
+          "type": "TextParameterDefinition",
+          "description": "Ghi chú",
+          "defaultParameterValue": { "_class": "hudson.model.StringParameterValue", "name": "NOTES", "value": "" }
+        }
+      ]
+    }
+  ]
+}

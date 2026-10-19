@@ -1,0 +1,18 @@
+[
+  {
+    "id": "Approveprod",
+    "proceedText": "Duyệt",
+    "message": "Lên prod?",
+    "inputs": [
+      {
+        "name": "NOTE",
+        "type": "StringParameterDefinition",
+        "description": "Lý do",
+        "definition": { "name": "NOTE", "defaultVal": "" }
+      }
+    ],
+    "proceedUrl": "/job/acme/job/build-dev-v3/42/wfapi/inputSubmit?inputId=Approveprod",
+    "abortUrl": "/job/acme/job/build-dev-v3/42/input/Approveprod/abort",
+    "redirectApprovalUrl": "/job/acme/job/build-dev-v3/42/input/"
+  }
+]

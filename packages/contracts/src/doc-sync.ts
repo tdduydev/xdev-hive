@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { id, orgRoute } from "./common.ts";
-import { DOC_MAX_CHARS, docKey, docSecretErrors, projectRef, scopeView } from "./knowledge.ts";
+import { id, orgRoute, queryFlag } from "./common.ts";
+import { DOC_MAX_CHARS, docKey, docSecretErrors, docTitle, projectRef, scopeView } from "./knowledge.ts";
 import { docRepoPath, projectDocsSettings } from "./projects.ts";
 import { repoOwner } from "./scm.ts";
 import { secretFinding } from "./secret-scan.ts";
@@ -23,6 +23,8 @@ export const docAssetState = z.enum(["available", "missing_lfs", "too_large", "p
 export const docExtractState = z.enum(["pending", "review", "approved", "rejected", "failed"]);
 export const docConflictState = z.enum(["open", "resolved"]);
 export const docConflictChoice = z.enum(["hub", "repo", "manual"]);
+/** Bên kia của xung đột: repo, hoặc bản Word mới khi cập nhật từ Word (spec 019, P2). */
+export const docConflictOrigin = z.enum(["repo", "word"]);
 export const docSyncBatchState = z.enum(["queued", "pushing", "done", "failed"]);
 
 /** Mã nằm trong data.code để client không phải so khớp câu thông báo. */
@@ -107,6 +109,8 @@ export const docHome = z.object({
   prNumber: positiveVersion.nullable(),
   prUrl: z.url().nullable(),
   lfsPatterns: z.array(z.string()),
+  /** Mặc định của ô "Tài liệu mật" khi nhập Word (Q15). Có mặc định vì hub chưa lưu cờ này vẫn trả nhà. */
+  wordImportConfidential: z.boolean().default(false),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -126,6 +130,7 @@ export const docHomeConfigureOrgInput = z.object({
   include: projectDocsSettings.shape.include,
   exclude: projectDocsSettings.shape.exclude,
   repoChangesNeedReview: z.boolean().default(false),
+  wordImportConfidential: projectDocsSettings.shape.wordImportConfidential,
 });
 export const docAdoptItem = z.object({
   key: docKey,
@@ -274,7 +279,10 @@ export const docConflict = z.object({
   repoPath: filePath,
   baseVersion: positiveVersion,
   hubVersion: positiveVersion,
-  repoCommit: sha,
+  /** null khi bên kia là Word: bản mới chưa nằm trong commit nào. */
+  repoCommit: sha.nullable(),
+  /** Có mặc định vì xung đột ghi trước spec 019 chỉ có thể đến từ repo. */
+  origin: docConflictOrigin.default("repo"),
   state: docConflictState,
   resolution: docConflictChoice.nullable(),
   resolvedVersion: positiveVersion.nullable(),
@@ -421,4 +429,390 @@ export const docTreeContract = {
   move: route("POST", "/v1/docs/tree/move", "Di chuyển file trong nhà, giữ nguyên key tài liệu")
     .input(docTreeMoveInput)
     .output(docTreeItem),
+};
+
+// ---------------------------------------------------------------------------------------------------------------
+// Nhập Word (specs/019-word-import)
+
+export const wordImportFormat = z.enum(["docx", "odt", "doc"]);
+export type WordImportFormat = z.output<typeof wordImportFormat>;
+
+/** Đuôi quyết định cách đổi (`.doc` qua LibreOffice); hub vẫn kiểm nội dung theo byte. */
+export function wordImportFormatOf(name: string): WordImportFormat | null {
+  const ext = /\.(docx|odt|doc)$/i.exec(name)?.[1];
+  return ext ? wordImportFormat.parse(ext.toLowerCase()) : null;
+}
+
+export const wordImportMode = z.enum(["create", "update", "link"]);
+export const wordImportState = z.enum([
+  "uploading",
+  "converting",
+  "ready",
+  "committing",
+  "done",
+  "failed",
+  "cancelled",
+]);
+export const wordImportFileState = z.enum([
+  "queued",
+  "converting",
+  "ready",
+  "skipped",
+  "blocked_secret",
+  "failed",
+  "proposed",
+  "cancelled",
+  "done",
+]);
+/** Quyền của người hỏi ở phạm vi đích: `manage` thì giao diện hiện "Tạo", chỉ `propose` thì "Gửi duyệt" (Q2). */
+export const wordImportAccess = z.enum(["manage", "propose"]);
+export type WordImportMode = z.output<typeof wordImportMode>;
+export type WordImportState = z.output<typeof wordImportState>;
+export type WordImportFileState = z.output<typeof wordImportFileState>;
+
+/** Mặc định của `HIVE_DOC_WORD_*`. Quản trị đổi được, nên giao diện chỉ dùng để chặn sớm; hub kiểm lại theo cấu hình. */
+export const WORD_IMPORT_DEFAULT_LIMITS = {
+  fileBytes: 50 * 1024 * 1024,
+  batchFiles: 100,
+  batchBytes: 500 * 1024 * 1024,
+} as const;
+
+// Bộ lọc Lua và hub chỉ ghi mã; web và desktop lấy chữ ở đây để hai nơi nói giống nhau.
+export const wordImportWarningCode = z.enum([
+  "nested_table",
+  "equation",
+  "footnote",
+  "emf_image",
+  "tracked_changes",
+  "comments",
+  "no_h1",
+  "textbox",
+  "skipped_older",
+]);
+export type WordImportWarningCode = z.output<typeof wordImportWarningCode>;
+export const WORD_IMPORT_WARNINGS: Record<WordImportWarningCode, string> = {
+  nested_table: "Có bảng lồng trong bảng. Bảng trong đã được dàn thành chữ trong ô, hãy kiểm lại ô đó.",
+  equation: "Có công thức toán. Editor giữ công thức dạng chữ thô, hãy kiểm lại hoặc thay bằng ảnh.",
+  footnote: "Có chú thích cuối trang. Editor giữ chú thích dạng chữ thô.",
+  emf_image: "Có ảnh EMF/WMF. Ảnh được giữ làm file đính kèm kèm link tải, không hiện trong tài liệu.",
+  tracked_changes: "File còn theo dõi thay đổi. Mọi thay đổi đã được chấp nhận khi chuyển.",
+  comments: "File có bình luận. Bình luận đã bị bỏ khi chuyển.",
+  no_h1: "Không có tiêu đề cấp 1 nên không bỏ được trang bìa và mục lục. Hãy kiểm lại phần đầu tài liệu.",
+  textbox: "Có text box, hình vẽ, header hoặc footer. Phần này bị bỏ, hãy chép nội dung cần giữ ra đoạn văn thường.",
+  skipped_older: "Bỏ qua vì lượt có bản mới hơn của cùng tài liệu.",
+};
+export const wordImportWarning = z.object({
+  code: wordImportWarningCode,
+  count: z.number().int().min(1),
+  /** Ví dụ tên file của bản mới hơn với `skipped_older`. */
+  detail: z.string().max(500).nullable(),
+});
+export type WordImportWarning = z.output<typeof wordImportWarning>;
+
+/** Mã nằm trong data.code (lỗi ném ra) hoặc error.code của từng file; câu nói lý do rồi cách sửa (FR-022). */
+export const WORD_IMPORT_ERRORS = {
+  WORD_IMPORT_PASSWORD: {
+    status: "BAD_REQUEST",
+    message: "File có mật khẩu. Mở khoá trong Word, lưu lại rồi tải lên.",
+  },
+  WORD_IMPORT_NOT_WORD: {
+    status: "BAD_REQUEST",
+    message: "File hỏng hoặc không phải Word. Mở bằng Word, lưu lại dạng .docx rồi tải lên.",
+  },
+  WORD_IMPORT_FILE_TOO_LARGE: {
+    status: "BAD_REQUEST",
+    message: "File Word vượt giới hạn dung lượng. Nén ảnh trong Word hoặc tách thành nhiều file.",
+  },
+  WORD_IMPORT_BATCH_TOO_LARGE: {
+    status: "BAD_REQUEST",
+    message: "Lượt nhập vượt giới hạn số file hoặc dung lượng. Chia thành nhiều lượt nhỏ hơn.",
+  },
+  WORD_IMPORT_DOC_DISABLED: {
+    status: "BAD_REQUEST",
+    message:
+      "Hub chưa bật nhận .doc. Mở file bằng Word, lưu thành .docx rồi tải lên, hoặc nhờ quản trị cài LibreOffice.",
+  },
+  WORD_IMPORT_DISABLED: {
+    status: "CONFLICT",
+    message: "Hub chưa bật nhập Word. Quản trị cần cài pandoc theo hướng dẫn tự host.",
+  },
+  WORD_IMPORT_TOO_LONG: {
+    status: "BAD_REQUEST",
+    message: "Tài liệu sau khi chuyển quá 200.000 ký tự. Tách file Word thành nhiều file nhỏ hơn.",
+  },
+  WORD_IMPORT_EXISTS: {
+    status: "CONFLICT",
+    message: "Đường dẫn này đã có tài liệu. Đổi tên, hoặc cập nhật tài liệu đó từ Word.",
+  },
+  WORD_IMPORT_DUPLICATE_PATH: {
+    status: "CONFLICT",
+    message: "Hai file trong lượt có cùng đường dẫn. Đổi tên một trong hai file trước khi tạo.",
+  },
+  WORD_IMPORT_OUTSIDE_HOME: {
+    status: "BAD_REQUEST",
+    message: "Thư mục đích nằm ngoài thư mục tài liệu của nhà. Chọn một thư mục trong nhà.",
+  },
+  WORD_IMPORT_NEEDS_MANAGE: {
+    status: "FORBIDDEN",
+    message: "Cần quyền quản lý tài liệu ở thư mục này. Gửi duyệt, hoặc nhờ quản trị đội nhập hộ.",
+  },
+  WORD_IMPORT_CONVERT_FAILED: {
+    status: "BAD_REQUEST",
+    message: "Không chuyển được file Word. Mở bằng Word, lưu lại rồi tải lên; vẫn lỗi thì gửi file cho quản trị.",
+  },
+  WORD_IMPORT_TIMEOUT: {
+    status: "BAD_REQUEST",
+    message: "Chuyển file quá thời gian cho phép. Tách file Word thành nhiều file nhỏ hơn rồi tải lại.",
+  },
+} as const;
+export type WordImportErrorCode = keyof typeof WORD_IMPORT_ERRORS;
+export const wordImportErrorCode = z.enum(
+  Object.keys(WORD_IMPORT_ERRORS) as [WordImportErrorCode, ...WordImportErrorCode[]],
+);
+export const wordImportErrorData = z.object({
+  code: wordImportErrorCode,
+  importId: id.optional(),
+  fileId: id.optional(),
+  path: docRepoPath.optional(),
+  limit: count.optional(),
+});
+/** Lỗi của một file lưu trong lượt, không ném ra: các file khác vẫn đi tiếp. */
+export const wordImportFileError = z.object({
+  code: wordImportErrorCode,
+  message: z.string(),
+  /** Vài dòng stderr của pandoc hoặc LibreOffice, đã bỏ đường dẫn tạm. */
+  detail: z.string().max(2000).optional(),
+});
+// Lỗi của docsync (tạm dừng, hết dung lượng kho) cũng có thể ra từ các route này.
+const wordImportAnyErrorData = z.union([wordImportErrorData, docSyncErrorData]);
+const wordImportErrors = {
+  FORBIDDEN: { message: "Bạn không có quyền nhập Word ở thư mục này.", data: wordImportAnyErrorData.optional() },
+  CONFLICT: { message: "Không thể nhập Word lúc này.", data: wordImportAnyErrorData.optional() },
+  // Lỗi kiểm tra đầu vào của oRPC cũng dùng BAD_REQUEST, có issues thay vì code.
+  BAD_REQUEST: {
+    message: "Dữ liệu nhập Word không hợp lệ.",
+    data: z
+      .looseObject({ ...wordImportErrorData.shape, code: z.union([wordImportErrorCode, docSyncErrorCode]).optional() })
+      .optional(),
+  },
+};
+const wordRoute = (method: "GET" | "POST" | "PATCH", path: `/v1/docs/word-imports${string}`, summary: string) =>
+  orgRoute(method, path, summary, "docsync").errors(wordImportErrors);
+
+/** Multipart đi qua Hono như `docs/assets`, nên không có route oRPC cùng đường dẫn. */
+export const WORD_IMPORT_UPLOAD_PATH = "/api/v1/docs/word-imports";
+/** Ảnh giữ tạm để xem trước; chỉ người tạo lượt và người `manage` ở phạm vi đích xem được. */
+export function wordImportMediaPath(importId: string, fileId: string, name: string): string {
+  return `${WORD_IMPORT_UPLOAD_PATH}/${importId}/files/${fileId}/media/${encodeURIComponent(name)}`;
+}
+/** File Word gốc; chỉ người đọc được tài liệu tạo ra từ nó tải được (FR-020). */
+export function wordImportOriginalPath(importId: string, fileId: string): string {
+  return `${WORD_IMPORT_UPLOAD_PATH}/${importId}/files/${fileId}/original`;
+}
+
+const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
+const wordImportDir = z.union([z.literal(""), docRepoPath]);
+const wordImportFileField = z
+  .instanceof(File)
+  .refine((file) => wordImportFormatOf(file.name) !== null, "Chỉ nhận file .docx, .odt, .doc.");
+// Form gửi một file thì trường là giá trị đơn, nhiều file thì là mảng; hub không phải tự phân biệt.
+const many = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (value === undefined ? [] : Array.isArray(value) ? value : [value]), schema);
+
+/** Trường của `POST /api/v1/docs/word-imports` (multipart). Phần tử thứ i của các mảng đi với file thứ i. */
+export const wordImportUploadInput = z
+  .object({
+    homeId: id,
+    /** Thư mục trong repo, vd. `docs/srs/OPD/`; rỗng là gốc repo. Bắt buộc khi tạo, bỏ qua khi cập nhật hay gắn. */
+    targetDir: wordImportDir.optional(),
+    mode: wordImportMode.default("create"),
+    /** Tài liệu cần cập nhật (US3) hoặc gắn với file Word (US6). */
+    docKey: docKey.optional(),
+    /** Bỏ trống thì theo `wordImportConfidential` của nhà (Q15). */
+    confidential: queryFlag.optional(),
+    files: many(z.array(wordImportFileField).min(1).max(1000)),
+    /** Thư mục con của từng file dưới thư mục đích, không gồm tên file. Bỏ trống là mọi file nằm thẳng trong đích. */
+    relativePaths: many(z.array(wordImportDir).max(1000)),
+    /** Ngày sửa của từng file (ms từ epoch), để chọn bản khi tên và phiên bản trùng (FR-006). */
+    lastModified: many(z.array(z.coerce.number().int().nonnegative()).max(1000)),
+  })
+  .superRefine((input, ctx) => {
+    for (const field of ["relativePaths", "lastModified"] as const) {
+      if (input[field].length > 0 && input[field].length !== input.files.length)
+        ctx.addIssue({ code: "custom", path: [field], message: "Số phần tử phải bằng số file." });
+    }
+    if (input.mode === "create") {
+      if (input.targetDir === undefined)
+        ctx.addIssue({ code: "custom", path: ["targetDir"], message: "Chọn thư mục đích." });
+      if (input.docKey !== undefined)
+        ctx.addIssue({ code: "custom", path: ["docKey"], message: "Chỉ cập nhật hoặc gắn mới cần tài liệu đích." });
+      return;
+    }
+    if (input.docKey === undefined)
+      ctx.addIssue({ code: "custom", path: ["docKey"], message: "Chọn tài liệu cần cập nhật hoặc gắn." });
+    if (input.files.length !== 1)
+      ctx.addIssue({ code: "custom", path: ["files"], message: "Cập nhật hoặc gắn chỉ nhận đúng một file." });
+  });
+export type WordImportUploadInput = z.output<typeof wordImportUploadInput>;
+export const wordImportUploadOutput = z.object({ importId: id });
+export type WordImportUploadOutput = z.output<typeof wordImportUploadOutput>;
+
+export const wordImportCounts = z.object({
+  queued: count,
+  converting: count,
+  ready: count,
+  skipped: count,
+  blockedSecret: count,
+  failed: count,
+  proposed: count,
+  cancelled: count,
+  done: count,
+});
+export const wordImport = z.object({
+  id,
+  homeId: id,
+  /** null khi cập nhật hay gắn: đường dẫn lấy theo tài liệu đích. */
+  targetDir: wordImportDir.nullable(),
+  mode: wordImportMode,
+  docKey: docKey.nullable(),
+  confidential: z.boolean(),
+  state: wordImportState,
+  counts: wordImportCounts,
+  createdBy: z.object({ id: z.string(), name: z.string().nullable() }),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export const wordImportStats = z.object({ headings: count, tables: count, images: count });
+export const wordImportFile = z.object({
+  id,
+  importId: id,
+  relativeDir: z.string(),
+  fileName: z.string(),
+  format: wordImportFormat,
+  size: count,
+  sha256,
+  /** Phiên bản đọc từ tên file, vd. `1.1`; null khi tên không có. */
+  versionLabel: z.string().nullable(),
+  proposedPath: filePath.nullable(),
+  proposedTitle: z.string().nullable(),
+  /** Bản người nhập đã sửa nếu có, không thì bản đề xuất. */
+  path: filePath.nullable(),
+  title: z.string().nullable(),
+  key: docKey.nullable(),
+  /** Đường dẫn đích đã có tài liệu (FR-019). */
+  exists: z.boolean(),
+  keepFront: z.boolean(),
+  excluded: z.boolean(),
+  state: wordImportFileState,
+  stats: wordImportStats.nullable(),
+  warnings: z.array(wordImportWarning),
+  findings: z.array(secretFinding),
+  error: wordImportFileError.nullable(),
+  /** Gắn (FR-028): kết quả chuyển có khớp nội dung hiện tại không; null khi chưa chuyển xong hoặc không phải gắn. */
+  linkMatches: z.boolean().nullable(),
+  docId: id.nullable(),
+  /** null khi gắn xong: gắn không tạo phiên bản. */
+  docVersion: positiveVersion.nullable(),
+  /** Đề xuất đã gửi khi người nhập chỉ có quyền `propose` (P2). */
+  proposalId: id.nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export const wordImportImage = z.object({
+  name: z.string(),
+  mediaType: z.string(),
+  bytes: count,
+  /** `wordImportMediaPath` của ảnh. */
+  url: z.string(),
+});
+export const wordImportFileDetail = wordImportFile.extend({
+  /** null khi chưa chuyển xong hoặc lỗi. */
+  markdown: content.nullable(),
+  images: z.array(wordImportImage),
+  /** Gắn: nội dung hiện tại (bỏ front matter, link ảnh chuẩn về tên ảnh) để hiện khác biệt từng khối. */
+  current: z.object({ content, version: positiveVersion }).nullable(),
+});
+export const wordImportGetOutput = z.object({
+  import: wordImport,
+  files: z.array(wordImportFile),
+  access: wordImportAccess,
+});
+export type WordImport = z.output<typeof wordImport>;
+export type WordImportFile = z.output<typeof wordImportFile>;
+export type WordImportFileDetail = z.output<typeof wordImportFileDetail>;
+export type WordImportGetOutput = z.output<typeof wordImportGetOutput>;
+
+const importInput = z.object({ importId: id });
+const fileInput = z.object({ fileId: id });
+export const wordImportUpdateInput = fileInput
+  .extend({
+    path: filePath.refine((value) => /\.md$/i.test(value), "Đường dẫn tài liệu phải kết thúc bằng .md.").optional(),
+    title: docTitle.optional(),
+    /** Đổi thì hub chạy lại pandoc cho file này (Q5). */
+    keepFront: z.boolean().optional(),
+    excluded: z.boolean().optional(),
+  })
+  .refine(
+    (input) =>
+      input.path !== undefined ||
+      input.title !== undefined ||
+      input.keepFront !== undefined ||
+      input.excluded !== undefined,
+    "Không có trường nào để đổi.",
+  );
+export const wordImportCommitInput = importInput.extend({
+  /** Bỏ trống là mọi file sẵn sàng và chưa bị loại. */
+  fileIds: z.array(id).min(1).max(1000).optional(),
+  acknowledgeSecrets: z.boolean().optional(),
+});
+export const wordImportApproveInput = importInput.extend({
+  fileIds: z.array(id).min(1).max(1000),
+  note: z.string().trim().max(500).optional(),
+});
+export type WordImportUpdateInput = z.input<typeof wordImportUpdateInput>;
+export type WordImportCommitInput = z.input<typeof wordImportCommitInput>;
+export type WordImportApproveInput = z.input<typeof wordImportApproveInput>;
+
+export const wordImportsContract = {
+  get: wordRoute("GET", "/v1/docs/word-imports/{importId}", "Lượt nhập Word, các file và quyền của mình")
+    .input(importInput)
+    .output(wordImportGetOutput),
+  list: wordRoute("GET", "/v1/docs/word-imports/list", "Các lượt nhập Word của một nhà mình đọc được")
+    .input(homeInput.merge(page).extend({ state: wordImportState.optional() }))
+    .output(paged(wordImport)),
+  file: wordRoute("GET", "/v1/docs/word-imports/files/{fileId}", "Markdown và ảnh của một file để xem trước")
+    .input(fileInput)
+    .output(wordImportFileDetail),
+  update: wordRoute("PATCH", "/v1/docs/word-imports/files/{fileId}", "Sửa đường dẫn, tiêu đề hoặc cách chuyển một file")
+    .input(wordImportUpdateInput)
+    .output(wordImportFile),
+  commit: wordRoute(
+    "POST",
+    "/v1/docs/word-imports/{importId}/commit",
+    "Tạo tài liệu, hoặc gửi duyệt khi chỉ có quyền đề xuất",
+  )
+    .errors(docSecretErrors)
+    .input(wordImportCommitInput)
+    .output(wordImportGetOutput),
+  cancel: wordRoute("POST", "/v1/docs/word-imports/{importId}/cancel", "Huỷ lượt nhập, giữ tài liệu đã tạo")
+    .input(importInput)
+    .output(wordImport),
+  confirmLink: wordRoute(
+    "POST",
+    "/v1/docs/word-imports/files/{fileId}/confirm-link",
+    "Lấy bản chuyển làm gốc khi gắn tài liệu có sẵn với file Word",
+  )
+    .input(fileInput)
+    .output(wordImportFile),
+  approve: wordRoute(
+    "POST",
+    "/v1/docs/word-imports/{importId}/approve",
+    "Duyệt đề xuất của các file đã chọn (quản trị đội)",
+  )
+    .errors(docSecretErrors)
+    .input(wordImportApproveInput)
+    .output(wordImportGetOutput),
+  ofDoc: wordRoute("GET", "/v1/docs/word-imports/of-doc", "Lần nhập Word gần nhất của một tài liệu")
+    .input(z.object({ docKey }))
+    .output(z.object({ import: wordImport, file: wordImportFile }).nullable()),
 };

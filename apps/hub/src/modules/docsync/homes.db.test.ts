@@ -57,6 +57,7 @@ const settings = (over: Record<string, unknown> = {}) => ({
   exclude: [],
   assetsDir: "assets",
   repoChangesNeedReview: false,
+  wordImportConfidential: false,
   ...over,
 });
 const projectRef = () => ({ owner: project.owner, name: project.repo });
