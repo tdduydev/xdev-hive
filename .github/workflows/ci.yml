@@ -67,6 +67,38 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
       - name: Bộ skill khớp submodule
         run: node packages/skill-pack/scripts/sync.ts check
+      # Test nhập Word chạy pandoc thật, thiếu thì fail trong CI. Phiên bản và SHA-256 đọc từ Dockerfile để chỉ ghim một
+      # chỗ; runner ubuntu-latest là x64 nên dùng bản amd64.
+      - name: Phiên bản pandoc ghim
+        id: pandoc
+        run: |
+          echo "version=$(sed -n 's/^ARG PANDOC_VERSION=//p' Dockerfile)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sed -n 's/^ARG PANDOC_SHA256_AMD64=//p' Dockerfile)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: ~/.cache/pandoc
+          key: pandoc-${{ runner.os }}-${{ steps.pandoc.outputs.version }}-${{ steps.pandoc.outputs.sha256 }}
+      - uses: actions/cache/restore@v4
+        if: github.ref != 'refs/heads/main'
+        with:
+          path: ~/.cache/pandoc
+          key: pandoc-${{ runner.os }}-${{ steps.pandoc.outputs.version }}-${{ steps.pandoc.outputs.sha256 }}
+      - name: Cài pandoc
+        env:
+          VERSION: ${{ steps.pandoc.outputs.version }}
+          SHA256: ${{ steps.pandoc.outputs.sha256 }}
+        run: |
+          dir=$HOME/.cache/pandoc
+          if [ ! -x "$dir/pandoc" ]; then
+            file=pandoc-$VERSION-linux-amd64.tar.gz
+            scripts/ci/retry.sh 3 curl -fsSL -o "$RUNNER_TEMP/$file" "https://github.com/jgm/pandoc/releases/download/$VERSION/$file"
+            echo "$SHA256  $RUNNER_TEMP/$file" | sha256sum -c -
+            mkdir -p "$dir"
+            tar -xzf "$RUNNER_TEMP/$file" -C "$dir" --strip-components=2 "pandoc-$VERSION/bin/pandoc"
+          fi
+          echo "$dir" >> "$GITHUB_PATH"
+          "$dir/pandoc" --version | head -1
       # Test có database dùng ảnh pgvector: tải trước qua bản sao, Testcontainers thấy ảnh có sẵn thì không tải lại.
       - name: Ảnh Postgres cho test
         run: echo "HIVE_TEST_POSTGRES_IMAGE=$(scripts/ci/pull-image.sh pgvector/pgvector:0.8.7-pg18-trixie)" >> "$GITHUB_ENV"
