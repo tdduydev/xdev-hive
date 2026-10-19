@@ -339,6 +339,7 @@ describe.each(["github", "gitlab"] as const)("%s: repo → hub", (kind) => {
     ]);
     f().setCompare(async () => ({
       files: [{ path: to, previousPath: item.path, status: "renamed", sha: content } satisfies CommitChange],
+      commits: [],
       incomplete: false,
     }));
     try {
@@ -354,7 +355,7 @@ describe.each(["github", "gitlab"] as const)("%s: repo → hub", (kind) => {
     const item = await tracked(f());
     const content = doc.replace("Đoạn một.", "Đoạn một qua so cây.");
     await commit(f(), [{ path: item.path, content }]);
-    f().setCompare(async () => ({ files: [], incomplete: true }));
+    f().setCompare(async () => ({ files: [], commits: [], incomplete: true }));
     try {
       expect((await pull(f())).counts).toMatchObject({ applied: 1 });
     } finally {
