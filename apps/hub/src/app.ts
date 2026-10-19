@@ -5,7 +5,7 @@ import { brotliCompress, gzip, constants as zlibConstants } from "node:zlib";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { implement } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
-import { contract } from "@xdev-hive/contracts";
+import { contract, WORD_IMPORT_UPLOAD_PATH } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import type pg from "pg";
@@ -42,6 +42,10 @@ import {
   handleAssetDownload,
   handleAssetUpload,
   handleDocsWebhook,
+  handleWordMedia,
+  handleWordOriginal,
+  handleWordUpload,
+  wordImportHealth,
 } from "./modules/docsync/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
@@ -253,7 +257,7 @@ export function createApp({
   };
   const router = {
     audit,
-    system: systemRouter(config, desktopReleases),
+    system: systemRouter(config, desktopReleases, wordImportHealth),
     me: meRouter(auth),
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl, resolveTxt }),
     ...fleetRouter({
@@ -338,6 +342,21 @@ export function createApp({
   app.get("/api/v1/docs/assets", (c) => handleAssetDownload(docSyncDeps, c.req.raw));
   app.get("/api/v1/docs/assets/:id", (c, next) =>
     c.req.param("id") === "list" ? next() : handleAssetDownload(docSyncDeps, c.req.raw, c.req.param("id")),
+  );
+  // Nhập Word (spec 019): multipart và file nhị phân đi qua Hono như đính kèm; phần còn lại là oRPC `wordImports`.
+  app.post(WORD_IMPORT_UPLOAD_PATH, (c) => handleWordUpload(docSyncDeps, c.req.raw));
+  app.get(`${WORD_IMPORT_UPLOAD_PATH}/:importId/files/:fileId/media/:name`, (c) =>
+    handleWordMedia(docSyncDeps, c.req.raw, {
+      importId: c.req.param("importId"),
+      fileId: c.req.param("fileId"),
+      name: c.req.param("name"),
+    }),
+  );
+  app.get(`${WORD_IMPORT_UPLOAD_PATH}/:importId/files/:fileId/original`, (c) =>
+    handleWordOriginal(docSyncDeps, c.req.raw, {
+      importId: c.req.param("importId"),
+      fileId: c.req.param("fileId"),
+    }),
   );
   app.post("/hooks/git/:projectId", (c) => handleGitWebhook(hooks, c.req.param("projectId"), c.req.raw));
   // Kho skill Git của tổ chức (ADR 0014); đường riêng vì /hooks/git/{projectId} coi mọi đoạn là id dự án.

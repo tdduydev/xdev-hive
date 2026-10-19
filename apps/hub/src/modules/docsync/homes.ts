@@ -226,6 +226,7 @@ export async function configureProjectHome(
     include: settings.include,
     exclude: settings.exclude,
     repoChangesNeedReview: settings.repoChangesNeedReview,
+    wordImportConfidential: settings.wordImportConfidential,
     status: settings.enabled ? (old?.status ?? "active") : "paused",
     statusReason: settings.enabled
       ? old?.statusReason === "disabled"
@@ -323,6 +324,7 @@ export async function configureOrgHome(tx: Tx, deps: DocSyncDeps, actor: Actor, 
     include: input.include,
     exclude: input.exclude,
     repoChangesNeedReview: input.repoChangesNeedReview,
+    wordImportConfidential: input.wordImportConfidential,
     webhookId,
     webhookSecretEnc: encryptSecret(
       deps.masterKey as NonNullable<DocSyncDeps["masterKey"]>,

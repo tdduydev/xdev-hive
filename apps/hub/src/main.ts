@@ -25,7 +25,7 @@ import {
   registerReviewStatusWorker,
   reviewGate,
 } from "./modules/codereview/index.ts";
-import { docSyncQueues, registerDocSync } from "./modules/docsync/index.ts";
+import { detectWordTools, docSyncQueues, registerDocSync, wordImportBlobRefs } from "./modules/docsync/index.ts";
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
@@ -101,6 +101,13 @@ const config = loadConfig();
 const roles = config.roles ?? ["api", "jobs"];
 const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
 if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
+// Dò một lần cho cả health, route nhận file và job chuyển (FR-023). Thiếu công cụ thì hub vẫn chạy, chỉ tắt nhập Word
+// hoặc riêng `.doc`.
+if (config.wordImport) {
+  const word = await detectWordTools(config.wordImport);
+  if (!word.pandoc.ok) console.warn(`Tắt nhập Word: ${word.pandoc.reason}`);
+  else if (!word.soffice.ok) console.warn(`Nhập Word không nhận .doc: ${word.soffice.reason}`);
+}
 let jobs: ReturnType<typeof createJobs> | undefined;
 const auth =
   config.authDatabaseUrl && config.authSecret
@@ -297,6 +304,7 @@ if (roles.includes("jobs") && jobs) {
     await registerArtifactPurgeWorker(jobs, { pool, publicUrl: config.publicUrl });
     await registerDocSync(jobs, { pool, masterKey: config.masterKey, jobs });
     provideBlobRefs("docsync", blobRefsIn("doc_assets"));
+    provideBlobRefs("docsync-word", wordImportBlobRefs);
     provideBlobRefs("artifacts", blobRefsIn("artifact_versions"));
     await registerBlobGc(jobs, { pool });
     await registerSdlcWorker(jobs, { ...sdlcDeps, pool });

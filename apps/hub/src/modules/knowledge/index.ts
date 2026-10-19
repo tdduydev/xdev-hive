@@ -2,6 +2,8 @@
 // Các hàm nhận (tx, principal, input) là API public để cổng MCP gắn tool vào: tx là transaction withTenant của tổ
 // chức, principal là người dùng hoặc run đã được xác thực.
 export {
+  type Action as DocAction,
+  authorize,
   type DocAccessFor,
   type DocAccessGrant,
   type Principal,
@@ -28,12 +30,15 @@ export {
 } from "./doc-search.ts";
 export {
   archiveDoc,
+  assertDocSecrets,
   DOC_SYNC_ACTOR,
   type DocSavedEvent,
   type DocSavedHook,
+  DocSecretError,
   type DocSource,
   docContentHash,
   docHistory,
+  docScope,
   getDoc,
   listDocs,
   provideDocSaved,

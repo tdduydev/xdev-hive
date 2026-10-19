@@ -8,6 +8,8 @@ export interface OAuthAppConfig {
 
 export interface HubConfig {
   docStorage?: DocStorageLimits | undefined;
+  /** Nhập Word (spec 019, plan.md mục 13). */
+  wordImport?: WordImportConfig | undefined;
   port: number;
   version: string;
   /** Giờ dựng image (file BUILD_TIME ở gốc repo do Dockerfile ghi); null khi chạy từ mã nguồn. */
@@ -76,6 +78,41 @@ export function loadDocStorageLimits(env: Env = process.env): DocStorageLimits {
     importMaxBytes: bytes("HIVE_DOC_IMPORT_MAX_BYTES", 2 * 1024 ** 3),
     orgStorageBytes: bytes("HIVE_DOC_ORG_STORAGE_BYTES", 5 * 1024 ** 3),
   };
+}
+
+export interface WordImportConfig {
+  pandocPath: string;
+  /** LibreOffice cho `.doc`; không chạy được thì chỉ tắt riêng `.doc`. */
+  sofficePath: string;
+  docTimeoutMs: number;
+  maxBytes: number;
+  batchFiles: number;
+  batchBytes: number;
+  timeoutMs: number;
+  /** Số ngày giữ tạm file và ảnh của đề xuất chưa duyệt (P2). */
+  stagingDays: number;
+}
+
+export function loadWordImportConfig(env: Env = process.env): WordImportConfig {
+  const positive = (name: string, fallback: number) => {
+    const value = env[name] === undefined ? fallback : Number(env[name]);
+    if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} phải là số nguyên dương an toàn.`);
+    return value;
+  };
+  const config = {
+    pandocPath: env.HIVE_PANDOC_PATH?.trim() || "pandoc",
+    sofficePath: env.HIVE_SOFFICE_PATH?.trim() || "soffice",
+    docTimeoutMs: positive("HIVE_DOC_WORD_DOC_TIMEOUT_MS", 120_000),
+    maxBytes: positive("HIVE_DOC_WORD_MAX_BYTES", 50 * 1024 ** 2),
+    batchFiles: positive("HIVE_DOC_WORD_BATCH_FILES", 100),
+    batchBytes: positive("HIVE_DOC_WORD_BATCH_BYTES", 500 * 1024 ** 2),
+    timeoutMs: positive("HIVE_DOC_WORD_TIMEOUT_MS", 120_000),
+    stagingDays: positive("HIVE_DOC_WORD_STAGING_DAYS", 30),
+  };
+  // Lượt chỉ có một file vẫn phải qua được giới hạn của lượt.
+  if (config.maxBytes > config.batchBytes)
+    throw new Error("HIVE_DOC_WORD_MAX_BYTES không được lớn hơn HIVE_DOC_WORD_BATCH_BYTES.");
+  return config;
 }
 
 function roles(env: Env): HubRole[] {
@@ -149,6 +186,7 @@ export function loadConfig(env: Env = process.env): HubConfig {
   return {
     port,
     docStorage: loadDocStorageLimits(env),
+    wordImport: loadWordImportConfig(env),
     version: env.HIVE_VERSION ?? "0.0.0-dev",
     builtAt: env.HIVE_BUILT_AT ?? buildTime(),
     publicUrl: env.HIVE_PUBLIC_URL ?? `http://localhost:${port}`,
