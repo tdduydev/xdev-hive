@@ -7,7 +7,7 @@ import (
 )
 
 // cacheVersion tăng mỗi khi cách đọc transcript đổi, để số liệu cũ trong cache không bị dùng lại.
-const cacheVersion = 1
+const cacheVersion = 2
 
 type cacheEntry struct {
 	MtimeNs int64    `json:"mtimeNs"`
