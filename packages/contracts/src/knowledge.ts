@@ -129,7 +129,11 @@ export const docKey = z
   );
 
 export const DOC_MAX_CHARS = 200_000;
-const docTitle = z.string().trim().min(1, "Tiêu đề không được để trống.").max(200, "Tiêu đề dài tối đa 200 ký tự.");
+export const docTitle = z
+  .string()
+  .trim()
+  .min(1, "Tiêu đề không được để trống.")
+  .max(200, "Tiêu đề dài tối đa 200 ký tự.");
 const docContent = z.string().max(DOC_MAX_CHARS, `Tài liệu dài tối đa ${DOC_MAX_CHARS} ký tự.`);
 const changeNote = z.string().trim().max(500, "Ghi chú dài tối đa 500 ký tự.");
 
@@ -204,6 +208,10 @@ export type DocSearchOutput = z.output<typeof docSearchOutput>;
 export const docSearchMcpInput = docSearchInput;
 export const docAssetGetInput = z.object({ docKey, path: z.string().min(1).max(1000) });
 
+/** Nguồn của một phiên bản, cùng ràng buộc `doc_versions_source` của hub. `word`: nhập từ file Word (spec 019). */
+export const docVersionSource = z.enum(["hub", "repo", "import", "merge", "word"]);
+export type DocVersionSource = z.output<typeof docVersionSource>;
+
 export const docVersion = z.object({
   version: z.number().int(),
   title: z.string(),
@@ -213,6 +221,8 @@ export const docVersion = z.object({
   proposalId: id.nullable(),
   chars: z.number().int(),
   createdAt: z.iso.datetime(),
+  /** Hub cũ không trả. */
+  source: docVersionSource.optional(),
 });
 export type DocVersion = z.output<typeof docVersion>;
 
@@ -379,6 +389,13 @@ export const proposalStatus = z.enum(["pending", "approved", "rejected"]);
 export type ProposalStatus = z.output<typeof proposalStatus>;
 const reason = z.string().trim().max(2000, "Lý do dài tối đa 2000 ký tự.");
 
+/**
+ * Module khác tạo đề xuất thay người dùng, vd. nhập Word bằng quyền `propose` (spec 019, P2). Hub tự gắn, không nhận
+ * từ input của API để không ai tự nhận đề xuất của mình đến từ Word.
+ */
+export const proposalOrigin = z.discriminatedUnion("kind", [z.object({ kind: z.literal("word"), importFileId: id })]);
+export type ProposalOrigin = z.output<typeof proposalOrigin>;
+
 export const proposalCreateInput = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("doc"),
@@ -419,6 +436,8 @@ export const proposal = z.object({
   decisionNote: z.string().nullable(),
   /** Phiên bản được tạo khi duyệt. */
   resultVersion: z.number().int().nullable(),
+  /** Không có là đề xuất người hoặc agent gửi thẳng; hub cũ không trả. */
+  origin: proposalOrigin.nullable().optional(),
 });
 export type Proposal = z.output<typeof proposal>;
 

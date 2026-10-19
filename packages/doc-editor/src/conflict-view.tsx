@@ -284,7 +284,7 @@ export function ConflictView({
   const meta: Record<Col, string> = {
     base: t.baseMeta(conflict.baseVersion),
     hub: t.hubMeta(conflict.hubVersion),
-    repo: t.repoMeta(conflict.repoCommit.slice(0, 7)),
+    repo: t.repoMeta((conflict.repoCommit ?? "").slice(0, 7)),
   };
   const toggle = (runId: number) =>
     setOpen((prev) => {

@@ -67,6 +67,7 @@ export function docsyncSettingsFixture(
     include: project.settings.docs.include,
     exclude: project.settings.docs.exclude,
     repoChangesNeedReview: false,
+    wordImportConfidential: false,
     lastCommit: "a".repeat(40),
     status: "active",
     statusReason: null,
