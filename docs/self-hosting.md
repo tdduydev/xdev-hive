@@ -25,8 +25,9 @@ HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com dep
   the repository. Code lands in `<dir>/src`; `<dir>` defaults to `/opt/xdev-hive` and can be changed with
   `HIVE_REMOTE_DIR`. The script then runs `docker compose up -d --build` and waits until the hub reports healthy.
 - On the first run, database passwords, `HIVE_AUTH_SECRET` and `HIVE_MASTER_KEY` are generated on the server into
-  `<dir>/.env` (mode 600). They are never printed and never copied back. **Back up `HIVE_MASTER_KEY`**: losing it
-  means losing every stored secret (Git tokens, notification channels).
+  `<dir>/.env` (mode 600). They are never printed and never copied back. **Keep a copy of `<dir>/.env`** where only
+  administrators can read it: backups do not include it ([Backup and restore](#backup-and-restore)), and losing
+  `HIVE_MASTER_KEY` means losing every stored secret (Git tokens, notification channels).
 - Later runs keep existing secrets and only add variables that are missing. `HIVE_PUBLIC_URL`, `HIVE_BIND`,
   `HIVE_TLS`, `HIVE_POSTGRES_IMAGE` and `HIVE_NODE_IMAGE` follow the command line.
 - `HIVE_PUBLIC_URL=https://<IP>` turns on the `https` profile with Caddy's internal CA. `https://<domain name>` turns on
@@ -378,14 +379,30 @@ deploy/restore.sh <dir>/backups/20261011T030000Z
 deploy/restore.sh <dir>/backups/20261011T030000Z --yes   # non-interactive
 ```
 
-- A backup contains `hive.dump` (pg_dump custom format), `.env` **including `HIVE_MASTER_KEY`**, and `SHA256SUMS`.
+- A backup contains `hive.dump` (pg_dump custom format), `meta` and `SHA256SUMS` (covering `hive.dump` and `meta`).
+  `meta` holds no secret: only `HIVE_COMPOSE_PROJECT` and `HIVE_MASTER_KEY_SHA256`, the SHA-256 of the master key.
   Directories are mode 700 and files mode 600. The dump is validated with `pg_restore --list`; on failure the script
   exits non-zero and keeps older backups.
+- **Backups do not include `<dir>/.env`.** The dump holds the stored secrets encrypted with `HIVE_MASTER_KEY`; a backup
+  that also carried `.env` would let anyone who obtains it decrypt them all. Keep your own copy of `<dir>/.env`, apart
+  from the backups, somewhere only administrators can read (a password manager or secret store), and update it whenever
+  `.env` changes. **If you lose `.env`, the stored secrets cannot be recovered**: a backup restores only with the same
+  `HIVE_MASTER_KEY`.
 - `HIVE_BACKUP_KEEP` (default 14) can be set in `<dir>/.env` or the environment. Old backups are pruned only after the
-  new one completes. Copy backups off the server; anyone who can read `.env` can read your secrets.
-- Restore verifies checksums, the dump and the Compose project before stopping the hub, asks before replacing a
-  different `.env` (or use `--yes`), restores in a single transaction while keeping roles, ownership and ACLs, recreates
-  the hub from the existing image and waits up to 3 minutes for it to become healthy.
+  new one completes. Copy backups off the server.
+- Restore uses the `.env` already on the server. Before stopping the hub it verifies checksums, the dump, that `meta`
+  names the same Compose project and that `HIVE_MASTER_KEY` in `<dir>/.env` matches the fingerprint in `meta`. If the
+  key differs it stops without changing anything and asks for the original `.env`: put it at `<dir>/.env` and run
+  restore again. It then restores in a single transaction while keeping roles, ownership and ACLs, recreates the hub
+  from the existing image and waits up to 3 minutes for it to become healthy.
+- To restore on a new server, put your copy of `.env` at `<dir>/.env` before the first `deploy/remote.sh` run (it keeps
+  existing secrets and only adds missing variables), deploy, then restore.
+- **Older backups still contain `.env`.** Backups made before `meta` was introduced hold `.env`, including
+  `HIVE_MASTER_KEY` and the database passwords. Restore still accepts them as before: it asks before replacing a
+  different `.env` (or use `--yes`). They stay on the server until you delete them or retention prunes them (once
+  `HIVE_BACKUP_KEEP` newer backups exist); copies made elsewhere are not touched. Whether to delete them earlier is the
+  administrator's decision. Before deleting them, make sure you have your own copy of `.env`, since an old backup may
+  hold the only other copy of the key.
 - **Restore overwrites current data.** Back up first. Restore only trusted backups into the same bootstrapped project
   and a compatible code version. Dumps do not include cluster-wide roles, source code, blobs outside PostgreSQL or
   infrastructure configuration.
@@ -401,7 +418,8 @@ HIVE_REMOTE_DIR=/opt/xdev-hive deploy/remote-backup.sh user@server --cron "0 3 *
 
 `--cron` installs a schedule in the SSH user's crontab (rerunning replaces the schedule for the same `<dir>`). Cron uses
 the server's time zone and logs to `<dir>/backups/cron.log` (mode 600). Dumps and `.env` are never downloaded.
-`sh deploy/test-backup.sh` tests the failure paths and cron handling with fake Docker and SSH.
+`sh deploy/test-backup.sh` tests the failure paths, the key check, older backups with `.env` and cron handling with fake
+Docker and SSH.
 
 ## Importing knowledge from an older hub
 
