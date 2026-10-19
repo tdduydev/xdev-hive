@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-18
 
-**Status**: Draft. Đã qua một lượt reviewer đối chiếu với code. Chờ chủ dự án trả lời Q1–Q11. Chưa code.
+**Status**: Draft. Chủ dự án chốt Q1–Q11 theo khuyến nghị ngày 2026-10-19. Đang làm đợt P1 ([tasks.md](tasks.md)).
 
 **Input**: Chủ dự án (2026-10-18): nghiên cứu cách tối ưu token cho agent CLI (Claude Code, Codex, Antigravity) chạy
 trên máy dev, đưa vào app desktop, kèm **thang điểm đánh giá mức tối ưu token trên từng máy**. Mỗi máy có điểm, chi
@@ -20,11 +20,11 @@ Bối cảnh (chi tiết ở [research.md](research.md)):
 
 **Kế hoạch**: [plan.md](plan.md) · **Nghiên cứu**: [research.md](research.md)
 
-## Câu hỏi mở
+## Câu hỏi đã chốt
 
-Mỗi câu có khuyến nghị. Spec và plan viết theo khuyến nghị; chủ dự án chọn khác thì sửa lại.
+Chủ dự án chốt cả Q1–Q11 theo cột khuyến nghị ngày 2026-10-19. Cột "Nếu chọn khác" giữ lại để biết đã cân nhắc gì.
 
-| # | Câu hỏi | Khuyến nghị | Nếu chọn khác |
+| # | Câu hỏi | Đã chốt (khuyến nghị) | Nếu chọn khác |
 |---|---|---|---|
 | Q1 | Điểm tính cho cả máy hay cho từng gói CLI? | **Cả hai.** Điểm máy là trung bình điểm các gói, trọng số theo token quy đổi 7 ngày của gói. **[Inference]** Token quy đổi của Claude và Codex không cùng bảng giá (`aggregate.go:8–9`), nhưng cùng đo lượng ngữ cảnh đọc lại, nên dùng được làm trọng số | Trọng số bằng nhau cho mỗi CLI có dùng: đơn giản, nhưng gói ít dùng kéo điểm như gói dùng nhiều |
 | Q2 | Điểm gồm cấu hình hay cả thói quen dùng (số liệu phiên)? | **Cả hai**: nhóm A cấu hình 45 điểm, nhóm B số liệu phiên 55 điểm. Bật cấu hình mà phiên vẫn phình thì điểm vẫn thấp | Chỉ cấu hình: bấm vài nút là được 100 điểm, nhưng không phản ánh token thật |

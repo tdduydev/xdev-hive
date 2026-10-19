@@ -2,7 +2,7 @@
 
 **Branch**: `025-token-score` · **Date**: 2026-10-18 · **Spec**: [spec.md](spec.md) · **Research**: [research.md](research.md)
 
-Plan viết theo khuyến nghị của Q1–Q11 trong spec. Chủ dự án chưa chốt.
+Chủ dự án chốt Q1–Q11 theo khuyến nghị ngày 2026-10-19. Task: [tasks.md](tasks.md).
 
 ## Tóm tắt
 
