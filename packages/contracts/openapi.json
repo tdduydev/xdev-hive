@@ -32821,8 +32821,7 @@
                     "type": "object",
                     "properties": {
                       "protectDefault": {
-                        "type": "boolean",
-                        "default": true
+                        "type": "boolean"
                       },
                       "requiredApprovals": {
                         "type": "integer",
@@ -32832,7 +32831,6 @@
                       }
                     },
                     "default": {
-                      "protectDefault": true,
                       "requiredApprovals": 1
                     }
                   },

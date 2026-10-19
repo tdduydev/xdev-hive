@@ -27,6 +27,7 @@ import {
 } from "./projects.ts";
 import { provisionQueue, RetryLater, registerProvisionWorker, runProvision } from "./saga.ts";
 import { projectProvisionSteps, projects } from "./schema.ts";
+import { renderTemplate } from "./template.ts";
 
 const { adminUrl, appUrl, jobsUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -195,8 +196,45 @@ describe("projects.create dryRun", () => {
       actor("tadmin"),
       input({ repo: { mode: "existing", connectionId, url: "https://github.com/xdev-team/khong-co" } }),
     );
-    expect(r.steps.map((s) => s.kind)).toEqual(["link-repo", "commit-template", "protect-branch", "add-webhook"]);
+    expect(r.steps.map((s) => s.kind)).toEqual(["link-repo", "commit-template", "add-webhook"]);
     expect(r.warnings.map((w) => w.code)).toEqual(["REPO_NOT_FOUND"]);
+  });
+
+  it("repo có sẵn: mặc định không bảo vệ nhánh; xem trước ghi file sẽ thêm và file giữ nguyên", async () => {
+    provider().seedRepo(
+      { owner: "xdev-team", name: "co-claude" },
+      { defaultBranch: "dev", files: { "CLAUDE.md": "# Quy ước của đội\n", "README.md": "# Repo của đội\n" } },
+    );
+    const r = await dryRunCreate(
+      app,
+      deps,
+      actor("tadmin"),
+      input({ repo: { mode: "existing", connectionId, url: "https://github.com/xdev-team/co-claude" } }),
+    );
+    expect(r.steps.map((s) => s.kind)).toEqual(["link-repo", "commit-template", "add-webhook"]);
+    const commit = r.steps.find((s) => s.kind === "commit-template")?.title ?? "";
+    const [added, kept] = commit.split("; giữ nguyên ");
+    expect(added).toContain("AGENTS.md");
+    expect(added).not.toContain("CLAUDE.md");
+    expect(kept).toContain("CLAUDE.md");
+    const keep = r.warnings.find((w) => w.code === "TEMPLATE_KEEP")?.message ?? "";
+    expect(keep).toContain("CLAUDE.md");
+    expect(keep).toContain("README.md");
+  });
+
+  it("repo có sẵn chọn bảo vệ nhánh thì có bước đó và cảnh báo thay quy tắc cũ", async () => {
+    provider().seedRepo({ owner: "xdev-team", name: "muon-bao-ve" }, { defaultBranch: "main" });
+    const r = await dryRunCreate(
+      app,
+      deps,
+      actor("tadmin"),
+      input({
+        repo: { mode: "existing", connectionId, url: "https://github.com/xdev-team/muon-bao-ve" },
+        protection: { protectDefault: true, requiredApprovals: 1 },
+      }),
+    );
+    expect(r.steps.map((s) => s.kind)).toContain("protect-branch");
+    expect(r.warnings.map((w) => w.code)).toContain("PROTECTION_OVERWRITE");
   });
 
   it("lỗi của nhà cung cấp thành cảnh báo, không làm hỏng kế hoạch", async () => {
@@ -440,7 +478,10 @@ describe("saga khởi tạo", () => {
       app,
       deps,
       actor("tadmin"),
-      input({ repo: { mode: "existing", connectionId, url: "git@github.com:xdev-team/billing-export.git" } }),
+      input({
+        repo: { mode: "existing", connectionId, url: "git@github.com:xdev-team/billing-export.git" },
+        protection: { protectDefault: true, requiredApprovals: 1 },
+      }),
     );
     const id = r.projectId as string;
     expect(await runProvision(sagaDeps, { orgId: org.orgId, projectId: id })).toBe("active");
@@ -451,6 +492,53 @@ describe("saga khởi tạo", () => {
     const view = await as("tadmin", (tx) => getProvision(tx, deps, org.user("tadmin"), id));
     expect(view.project.repo.defaultBranch).toBe("develop");
     expect(view.steps.find((s) => s.kind === "commit-template")?.result).toMatchObject({ prNumber: 1 });
+  });
+
+  it("repo có sẵn: không ghi đè file của đội, chỉ thêm file còn thiếu, mặc định không bảo vệ nhánh", async () => {
+    const team = { "CLAUDE.md": "# Quy ước của đội\n", "README.md": "# Repo của đội\n" };
+    const repo = provider().seedRepo({ owner: "xdev-team", name: "his-portal" }, { defaultBranch: "dev", files: team });
+    const r = await createProject(
+      app,
+      deps,
+      actor("tadmin"),
+      input({ repo: { mode: "existing", connectionId, url: "https://github.com/xdev-team/his-portal" } }),
+    );
+    const id = r.projectId as string;
+    expect(await runProvision(sagaDeps, { orgId: org.orgId, projectId: id })).toBe("active");
+    const paths = repo.commits.flatMap((c) => c.paths);
+    expect(paths).toContain("AGENTS.md");
+    expect(paths).not.toContain("CLAUDE.md");
+    expect(paths).not.toContain("README.md");
+    expect(repo.branches.get("hive/khoi-tao")?.get("CLAUDE.md")).toBe(team["CLAUDE.md"]);
+    expect(repo.branches.get("hive/khoi-tao")?.get("README.md")).toBe(team["README.md"]);
+    expect(repo.protection.has("dev")).toBe(false);
+    const result = (await steps(id)).find((s) => s.kind === "commit-template")?.result;
+    expect(result).toMatchObject({ kept: ["CLAUDE.md", "README.md"] });
+  });
+
+  it("repo có sẵn đã đủ file mẫu thì không commit, không mở PR", async () => {
+    const files = Object.fromEntries(
+      renderTemplate({
+        projectKey: "x",
+        projectName: "x",
+        publicUrl: "http://x",
+        defaultBranch: "main",
+        systemName: "x",
+      }).map((f) => [f.path, `# Bản của đội ${f.path}\n`]),
+    );
+    const repo = provider().seedRepo({ owner: "xdev-team", name: "du-file" }, { defaultBranch: "main", files });
+    const r = await createProject(
+      app,
+      deps,
+      actor("tadmin"),
+      input({ repo: { mode: "existing", connectionId, url: "https://github.com/xdev-team/du-file" } }),
+    );
+    const id = r.projectId as string;
+    expect(await runProvision(sagaDeps, { orgId: org.orgId, projectId: id })).toBe("active");
+    expect(repo.commits).toEqual([]);
+    expect(repo.pulls).toEqual([]);
+    const result = (await steps(id)).find((s) => s.kind === "commit-template")?.result;
+    expect(result).toMatchObject({ skipped: true });
   });
 });
 

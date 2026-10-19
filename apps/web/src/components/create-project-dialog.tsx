@@ -44,6 +44,9 @@ const text: Dict<{
   fOwnerGl: string;
   fRepoName: string;
   fVisibility: string;
+  fProtect: string;
+  fProtectHintNew: string;
+  fProtectHintExisting: string;
   visPrivate: string;
   visInternal: string;
   visPublic: string;
@@ -59,7 +62,8 @@ const text: Dict<{
   vi: {
     btnCreate: "Tạo dự án",
     dlgTitle: "Tạo dự án",
-    dlgLead: "Nối một repo có sẵn hoặc tạo repo mới. Hub thêm AGENTS.md, bảo vệ nhánh chính và webhook cho repo.",
+    dlgLead:
+      "Nối một repo có sẵn hoặc tạo repo mới. Hub thêm file mẫu còn thiếu (AGENTS.md…) và webhook; file repo đã có được giữ nguyên.",
     loading: "Đang tải…",
     noSystem: "Chưa có hệ thống nào trong đội bạn quản trị. Thêm hệ thống ở “Đội và hệ thống” trước.",
     noConnection: "Tổ chức chưa có kết nối GitHub/GitLab. Nhờ quản trị tổ chức thêm kết nối trước.",
@@ -82,6 +86,9 @@ const text: Dict<{
     fOwnerGl: "Group GitLab",
     fRepoName: "Tên repo",
     fVisibility: "Ai xem được repo",
+    fProtect: "Bảo vệ nhánh chính",
+    fProtectHintNew: "Cần 1 người duyệt PR, cấm force push.",
+    fProtectHintExisting: "Bật thì thay quy tắc bảo vệ đang có của nhánh chính (cần 1 người duyệt, cấm force push).",
     visPrivate: "Riêng tư",
     visInternal: "Nội bộ tổ chức",
     visPublic: "Công khai",
@@ -97,7 +104,8 @@ const text: Dict<{
   en: {
     btnCreate: "New project",
     dlgTitle: "New project",
-    dlgLead: "Link an existing repo or create a new one. The hub adds AGENTS.md, branch protection, and webhooks.",
+    dlgLead:
+      "Link an existing repo or create a new one. The hub adds missing template files (AGENTS.md…) and a webhook; files already in the repo are kept.",
     loading: "Loading…",
     noSystem: "No systems in your administered teams. Add a system under Teams and Systems first.",
     noConnection:
@@ -121,6 +129,9 @@ const text: Dict<{
     fOwnerGl: "GitLab group",
     fRepoName: "Repo name",
     fVisibility: "Repo visibility",
+    fProtect: "Protect the default branch",
+    fProtectHintNew: "Requires 1 PR approval and blocks force pushes.",
+    fProtectHintExisting: "Replaces the branch's current protection rules (1 approval, no force push).",
     visPrivate: "Private",
     visInternal: "Internal to organization",
     visPublic: "Public",
@@ -204,7 +215,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
   const t = useT(text);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const ids = { system: useId(), connection: useId(), visibility: useId() };
+  const ids = { system: useId(), connection: useId(), visibility: useId(), protect: useId() };
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const teams = useQuery(api.teams.list.queryOptions());
   const systems = useQuery(api.systems.list.queryOptions({ input: {} }));
@@ -217,6 +228,9 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState("");
   const [key, setKey] = useState<string | null>(null);
   const [mode, setMode] = useState<"existing" | "new">("existing");
+  // Chưa chạm thì theo loại repo: bảo vệ nhánh repo có sẵn sẽ thay quy tắc đội đang dùng.
+  const [protect, setProtect] = useState<boolean | null>(null);
+  const protectDefault = protect ?? mode === "new";
   const [connectionId, setConnectionId] = useState("");
   const [owner, setOwner] = useState<string | null>(null);
   const [repoName, setRepoName] = useState<string | null>(null);
@@ -266,6 +280,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
       name: read("name"),
       key: read("key"),
       repo,
+      protection: { protectDefault, requiredApprovals: 1 },
       idempotencyKey,
       dryRun: true,
     };
@@ -478,6 +493,23 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
               </div>
             </>
           )}
+          <label htmlFor={ids.protect} className="flex items-start gap-2 text-sm text-foreground">
+            <input
+              id={ids.protect}
+              type="checkbox"
+              name="protectDefault"
+              checked={protectDefault}
+              onChange={(e) => setProtect(e.target.checked)}
+              disabled={busy}
+              className="mt-0.5 size-4 accent-accent"
+            />
+            <span className="grid gap-0.5">
+              {t.fProtect}
+              <span className="text-xs text-muted-foreground">
+                {mode === "existing" ? t.fProtectHintExisting : t.fProtectHintNew}
+              </span>
+            </span>
+          </label>
         </>
       )}
       {failure && <Alert variant="destructive">{failure}</Alert>}

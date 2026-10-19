@@ -26,7 +26,7 @@ import {
   webhookUrl,
 } from "./projects.ts";
 import { projectProvisionSteps, projects } from "./schema.ts";
-import { describeFailure, StepFailure, TEMPLATE_BRANCH } from "./steps.ts";
+import { describeFailure, StepFailure, splitTemplateFiles, TEMPLATE_BRANCH } from "./steps.ts";
 import { renderTemplate } from "./template.ts";
 
 /** Issue và bình luận để giao việc từ issue; push và PR để chuyển trạng thái task, run. */
@@ -158,15 +158,27 @@ async function execute(step: StepRow, c: StepContext): Promise<StepOutput> {
         const { sha } = await provider.commitFiles(ref, { branch: base, message, files });
         return { result: { sha, files: files.map((f) => f.path) } };
       }
-      // Repo có sẵn: không commit thẳng vào nhánh chính, đưa file mẫu qua PR để chủ repo duyệt.
-      const { sha } = await provider.commitFiles(ref, { branch: TEMPLATE_BRANCH, fromBranch: base, message, files });
+      // Repo có sẵn: không commit thẳng vào nhánh chính, đưa file mẫu qua PR để chủ repo duyệt. File đội đã có
+      // (CLAUDE.md, README.md…) giữ nguyên: thay bằng bản mẫu là xoá quy ước và tài liệu của đội.
+      const { add, keep } = await splitTemplateFiles(provider, ref, base, files);
+      if (!add.length) return { result: { skipped: true, files: [], kept: keep } };
+      const { sha } = await provider.commitFiles(ref, {
+        branch: TEMPLATE_BRANCH,
+        fromBranch: base,
+        message,
+        files: add,
+      });
+      const list = (paths: string[]) => paths.map((path) => `\`${path}\``).join(", ");
+      const kept = keep.length ? ` Repo đã có ${list(keep)} nên Hive giữ nguyên, không ghi đè.` : "";
       const pr = await provider.openPR(ref, {
         head: TEMPLATE_BRANCH,
         base,
         title: "Thêm file mẫu xDev Hive",
-        body: `Hive thêm ${files.map((f) => `\`${f.path}\``).join(", ")} cho dự án \`${project.key}\`. File đã có trong repo sẽ bị thay bằng bản trong PR này; xem kỹ trước khi merge.`,
+        body: `Hive thêm ${list(add.map((f) => f.path))} cho dự án \`${project.key}\`.${kept}`,
       });
-      return { result: { sha, files: files.map((f) => f.path), prNumber: pr.number, prUrl: pr.url } };
+      return {
+        result: { sha, files: add.map((f) => f.path), kept: keep, prNumber: pr.number, prUrl: pr.url },
+      };
     }
     case "protect-branch": {
       const branch = needBranch(project);
