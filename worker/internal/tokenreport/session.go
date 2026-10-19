@@ -1,6 +1,7 @@
 // Package tokenreport đo token và memory của CLI agent trên máy từ transcript (chỉ đọc). Đây là bản Go của
-// scripts/token-audit.ts: cùng cách chia nguồn, cùng công thức quy đổi, cùng tên trường JSON. Chỉ trả số tổng hợp:
-// không có prompt, output tool hay đường dẫn dự án trong kết quả, để chép báo cáo vào issue không lộ dữ liệu người dùng.
+// scripts/token-audit.ts: cùng cách chia nguồn, cùng công thức quy đổi, cùng tên trường JSON. Report chỉ có số tổng
+// hợp: không có prompt, output tool hay đường dẫn dự án, để chép báo cáo vào issue không lộ dữ liệu người dùng.
+// Sessions trả thêm thư mục làm việc của từng phiên cho người gọi trong sidecar (điểm tối ưu tìm dự án dùng nhiều).
 package tokenreport
 
 import (
@@ -55,7 +56,30 @@ type session struct {
 	PeakContext int64          `json:"peakContext"`
 	// Ngữ cảnh ở lượt gọi đầu: system prompt, định nghĩa tool/MCP, CLAUDE.md, memory; phần trả mỗi lượt dù chưa làm gì.
 	FirstContext int64 `json:"firstContext"`
+	// Cwd chỉ nằm trong cache cục bộ và Sessions, không vào Report.
+	Cwd string `json:"cwd,omitempty"`
+	// Subagent gán theo đường dẫn file mỗi lần đọc, như Account, nên không lưu vào cache.
+	Subagent bool `json:"-"`
+	// Edit là usage trước lượt có lệnh sửa file đầu tiên, không tính lượt đó (như freezeExplore của worker); nil là
+	// phiên chưa sửa file.
+	Edit *usageMark `json:"edit,omitempty"`
 }
+
+// usageMark là usage luỹ kế của phiên tại một thời điểm.
+type usageMark struct {
+	Input        int64 `json:"input"`
+	Output       int64 `json:"output"`
+	CacheRead    int64 `json:"cacheRead"`
+	CacheWrite5m int64 `json:"cacheWrite5m"`
+	CacheWrite1h int64 `json:"cacheWrite1h"`
+}
+
+func (s *session) mark() usageMark {
+	return usageMark{Input: s.Input, Output: s.Output, CacheRead: s.CacheRead, CacheWrite5m: s.CacheWrite5m, CacheWrite1h: s.CacheWrite1h}
+}
+
+// editTools là tool sửa file của Claude Code, cùng danh sách worker dùng để chốt phần khảo sát.
+var editTools = map[string]bool{"Edit": true, "Write": true, "MultiEdit": true, "NotebookEdit": true}
 
 func newSession(cli, account string) *session {
 	return &session{
