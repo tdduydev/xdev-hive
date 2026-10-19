@@ -1,0 +1,29 @@
+{
+  "_class": "org.jenkinsci.plugins.workflow.job.WorkflowRun",
+  "number": 40,
+  "url": "https://jenkins.example.test/job/ehospital/job/build-dev-v3/40/",
+  "result": "SUCCESS",
+  "building": false,
+  "timestamp": 1792380000000,
+  "duration": 412345,
+  "actions": [
+    {
+      "_class": "hudson.model.CauseAction",
+      "causes": [
+        {
+          "_class": "hudson.model.Cause$UserIdCause",
+          "shortDescription": "Started by user Trần Thị Bình",
+          "userId": "binh.tran",
+          "userName": "Trần Thị Bình"
+        }
+      ]
+    },
+    {
+      "_class": "hudson.plugins.git.util.BuildData",
+      "lastBuiltRevision": {
+        "SHA1": "1111111111111111111111111111111111111111",
+        "branch": [{ "SHA1": "1111111111111111111111111111111111111111", "name": "origin/release/1.2" }]
+      }
+    }
+  ]
+}

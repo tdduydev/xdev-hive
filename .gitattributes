@@ -3,3 +3,5 @@
 worker/internal/update/release-signing.pem text eol=lf
 # Fixture của tokenreport so khớp từng byte/ký tự với expected.json: không để checkout Windows đổi LF thành CRLF.
 worker/internal/tokenreport/testdata/** -text
+# Mẫu vàng của bộ lọc Word so từng byte với Markdown pandoc sinh ra: không để checkout Windows đổi LF thành CRLF.
+apps/hub/src/modules/docsync/word/fixtures/** -text

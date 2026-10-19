@@ -14,13 +14,27 @@ for arg in "$@"; do
 done
 [ -n "$backup" ] && [ -d "$backup" ] || fail "Cách dùng: deploy/restore.sh <thư mục bản sao lưu> [--yes]."
 backup=$(CDPATH='' cd -- "$backup" && pwd)
-for file in hive.dump .env SHA256SUMS; do
+for file in hive.dump SHA256SUMS; do
   [ -s "$backup/$file" ] || fail "Bản sao lưu thiếu $file."
 done
-[ "$(get_env HIVE_COMPOSE_PROJECT "$backup/.env")" = "$project" ] || fail "Bản sao lưu thuộc compose project khác; không khôi phục nhầm hệ thống."
-[ -n "$(get_env HIVE_MASTER_KEY "$backup/.env")" ] || fail "Bản sao lưu thiếu HIVE_MASTER_KEY."
-admin_password=$(get_env HIVE_DB_ADMIN_PASSWORD "$backup/.env")
-[ -n "$admin_password" ] || fail "Bản sao lưu thiếu HIVE_DB_ADMIN_PASSWORD."
+# Bản sao lưu mới có meta thay cho .env và dùng .env đang có trên máy chủ. Bản cũ còn .env thì khôi phục như trước.
+if [ -s "$backup/meta" ]; then saved=meta; elif [ -s "$backup/.env" ]; then saved=.env; else
+  fail "Bản sao lưu thiếu meta (bản sao lưu cũ thì thiếu .env)."
+fi
+[ "$(get_env HIVE_COMPOSE_PROJECT "$backup/$saved")" = "$project" ] || fail "Bản sao lưu thuộc compose project khác; không khôi phục nhầm hệ thống."
+if [ "$saved" = meta ]; then
+  # Secret trong dump chỉ giải mã được bằng đúng khoá lúc sao lưu; khôi phục với khoá khác là mất mọi secret đã lưu.
+  key_sha=$(get_env HIVE_MASTER_KEY_SHA256 "$backup/meta")
+  [ -n "$key_sha" ] || fail "meta của bản sao lưu thiếu HIVE_MASTER_KEY_SHA256."
+  [ "$key_sha" = "$(key_fingerprint "$env")" ] ||
+    fail "HIVE_MASTER_KEY trong $env khác khoá lúc sao lưu; database chưa thay đổi. Cần .env gốc: chép vào $env rồi chạy lại."
+  source_env=$env
+else
+  [ -n "$(get_env HIVE_MASTER_KEY "$backup/.env")" ] || fail "Bản sao lưu thiếu HIVE_MASTER_KEY."
+  source_env=$backup/.env
+fi
+admin_password=$(get_env HIVE_DB_ADMIN_PASSWORD "$source_env")
+[ -n "$admin_password" ] || fail "Thiếu HIVE_DB_ADMIN_PASSWORD trong $source_env."
 acquire_lock
 stopped=0
 env_tmp=
@@ -37,12 +51,12 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-(cd "$backup" && checksum hive.dump .env | cmp -s - SHA256SUMS) || fail "Checksum không khớp; không dừng hub hay sửa database."
+(cd "$backup" && checksum hive.dump "$saved" | cmp -s - SHA256SUMS) || fail "Checksum không khớp; không dừng hub hay sửa database."
 compose exec -T postgres pg_restore --list <"$backup/hive.dump" >/dev/null
 # pg_dump không chứa role toàn cụm. Giữ role, ownership và ACL của bản triển khai đã bootstrap.
 roles=$(compose exec -T postgres psql -U postgres -d hive -Atqc "SELECT count(*) FROM pg_roles WHERE rolname IN ('hive_owner', 'hive_app', 'hive_auth', 'hive_jobs')")
 [ "$roles" = 4 ] || fail "Thiếu role của Hive; cần bootstrap bản triển khai trước khi restore."
-if ! cmp -s "$env" "$backup/.env"; then
+if [ "$saved" = .env ] && ! cmp -s "$env" "$backup/.env"; then
   if [ "$yes" -eq 0 ]; then
     printf 'Ghi đè %s bằng .env của bản sao lưu (gồm khoá chủ và secret)? [y/N] ' "$env" >&2
     answer=
@@ -72,7 +86,7 @@ stopped=1
 escaped_password=$(printf '%s' "$admin_password" | sed "s/'/''/g")
 printf "SET standard_conforming_strings = on; ALTER ROLE postgres PASSWORD '%s';\n" "$escaped_password" |
   compose exec -T postgres psql -U postgres -d hive -v ON_ERROR_STOP=1 >/dev/null
-if ! cmp -s "$env" "$backup/.env"; then
+if [ "$saved" = .env ] && ! cmp -s "$env" "$backup/.env"; then
   env_tmp=$(mktemp "$dir/.env.restore.XXXXXX")
   cp "$backup/.env" "$env_tmp"
   chmod 600 "$env_tmp"

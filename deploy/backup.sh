@@ -24,14 +24,14 @@ stamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup=$root/$stamp
 [ ! -e "$backup" ] || fail "Đã có bản sao lưu ở $backup; thử lại sau một giây."
 pending=$(mktemp -d "$root/.pending.XXXXXX")
-cp "$env" "$pending/.env"
-chmod 600 "$pending/.env"
+backup_meta "$env" >"$pending/meta"
+chmod 600 "$pending/meta"
 echo "Sao lưu database hive của project ${project}…"
 compose exec -T postgres pg_dump -U postgres -Fc hive >"$pending/hive.dump"
 chmod 600 "$pending/hive.dump"
 compose exec -T postgres pg_restore --list <"$pending/hive.dump" >/dev/null
-cmp -s "$env" "$pending/.env" || fail ".env đã thay đổi khi sao lưu; giữ nguyên các bản sao lưu cũ."
-(cd "$pending" && checksum hive.dump .env >SHA256SUMS)
+backup_meta "$env" | cmp -s - "$pending/meta" || fail "HIVE_COMPOSE_PROJECT hoặc HIVE_MASTER_KEY trong .env đã thay đổi khi sao lưu; giữ nguyên các bản sao lưu cũ."
+(cd "$pending" && checksum hive.dump meta >SHA256SUMS)
 chmod 600 "$pending/SHA256SUMS"
 mv "$pending" "$backup"
 pending=
