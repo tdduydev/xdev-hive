@@ -472,3 +472,61 @@ console.log(`PASS: ${combinations} tổ hợp; 8 luồng, bàn phím, quyền, t
 await browser.close();
 JS
 ```
+
+## Bảng điều khiển CI/CD và triển khai (spec 020, T003)
+
+Tám bản mẫu dưới đây là nguồn bàn giao cho T011 (khung web, kết nối CI, token cá nhân), T021 (tab CI/CD), T022 (máy chủ,
+môi trường, đích), T023 (bảng triển khai, trang lần triển khai) và T030 (duyệt, khoá, quay về). Làm theo plan.md mục 10, Q1–Q16 đã chốt ngày 17/10/2026, Navy Hive (token màu, sáng/tối,
+360 px). Không đổi spec hay mã sản phẩm trong T003.
+
+| File | Màn / route dự kiến | Các giá trị `view` |
+|---|---|---|
+| [CicdTab.dc.html](CicdTab.dc.html) | Tab CI/CD của dự án; `/projects/$key/cicd` | `ready`, `detail-jenkins` (giai đoạn + log), `input` (Jenkins chờ xác nhận), `detail-gitlab` (job, chạy job chờ tay), `params` (form Build with Parameters sinh từ tham số khai báo), `no-token` ("Chưa có token để đọc Jenkins"), `readonly`, `stale`, `loading`, `empty`, `error` |
+| [CiConnections.dc.html](CiConnections.dc.html) | Quản trị → Kết nối CI; `/admin/ci-connections` | `ready`, `watcher-error` ("Không đọc được Jenkins", đổi người theo dõi), `test-ok`, `add`, `readonly`, `stale`, `loading`, `empty`, `error`. Có Jenkins, Argo CD, Kubernetes |
+| [JenkinsTokens.dc.html](JenkinsTokens.dc.html) | Cài đặt cá nhân → Token Jenkins; `/settings/jenkins-tokens` | `ready`, `none`, `expired`, `adding`, `test-fail`, `stale`, `loading`, `empty` (chưa có kết nối), `error` |
+| [Servers.dc.html](Servers.dc.html) | Quản trị → Máy chủ; `/admin/servers` | `ready` (danh sách), `new`, `install` (khoá công khai + lệnh cài), `tested`, `confirm` (xác nhận dấu vân tay), `detail`, `rotate` (đổi khoá), `hostkey` ("Host key của máy chủ đã đổi"), `unreachable`, `authfail`, `readonly`, `stale`, `loading`, `empty`, `error` |
+| [DeployTargets.dc.html](DeployTargets.dc.html) | Hệ thống → Môi trường; `/systems/$systemId/environments` | `ready` (tab môi trường, chính sách duyệt, bảng đích), `edit-ssh`, `edit-jenkins`, `edit-gitlab`, `edit-argocd`, `edit-kubectl`, `conflict` (có người sửa trước), `locked`, `lock-dialog`, `readonly`, `stale`, `loading`, `empty`, `error` |
+| [DeployBoard.dc.html](DeployBoard.dc.html) | Hệ thống → Triển khai; `/systems/$systemId/deploys` | `ready` (bảng "đang chạy", lịch sử), `approvals`, `deploy`, `deploy-prod`, `promote` (đẩy từ môi trường), `rollback`, `rollback-argocd`, `running-busy`, `locked`, `readonly`, `stale`, `loading`, `empty`, `error` |
+| [DeployRun.dc.html](DeployRun.dc.html) | Lần triển khai; `/deploys/$id` | `running`, `running-k8s`, `reconnecting` (hub khởi động lại), `stale`, `waiting`, `success`, `failed`, `review`, `unknown`, `cancelled`, `cancel-dialog`, `external` (ngoài Hive), `readonly`, `loading`, `notfound`, `error` |
+| [DeployApproval.dc.html](DeployApproval.dc.html) | Duyệt triển khai; `/deploys/$id` (khối duyệt) | `ready`, `jenkins-input` (duyệt = Proceed bằng token người duyệt), `no-token`, `self-request`, `readonly`, `reject-dialog`, `locked`, `expired`, `approved`, `rejected`, `stale`, `loading`, `empty`, `error` |
+
+**Cách xem.** Như tám màn T010: mở trực tiếp được trong trình duyệt, không cần `support.js` hay mạng ngoài. Từ gốc
+worktree chạy `python3 -m http.server 48110 --bind 127.0.0.1`, rồi mở
+`http://127.0.0.1:48110/docs/design-system/screens/CicdTab.dc.html`. Mỗi file có ô **Trạng thái xem**, nút
+**Sáng / tối**, **Khung 360 px**, và mở được thẳng bằng `?theme=dark&view=input&narrow=1`. Từ 900 px trở xuống (đo theo
+khung chứa) thanh bên ẩn, thay bằng thanh trên có Menu, bảng thành thẻ.
+
+**Handoff.**
+
+- Chỉ tiếng Việt, theo yêu cầu của T003; không có nút VI/EN như các màn cũ.
+- Các file nhúng sẵn token Navy Hive (từ `../tokens.json`, v3), vì `ds/xdev-hive/tokens.css` vẫn là bản v2 (xanh `#1D4ED8`,
+  IBM Plex). Khi triển khai dùng token của web, không chép khối `<style id="tokens">`. Nên cập nhật `ds/` ở một việc riêng.
+- Chữ dùng font hệ thống khi xem độc lập (không tải Be Vietnam Pro). Icon là SVG outline 1,5 px vẽ tay; thay bằng bộ icon
+  của web khi làm.
+- Dữ liệu mẫu giả: dự án `his-portal`, URL kiểu `jenkins.example.vn`, IP thuộc dải tài liệu (`192.0.2.x`,
+  `198.51.100.x`). Không có IP hay tên máy nội bộ thật.
+- Thay phần HTML minh hoạ bằng component shadcn/ui có sẵn: `Card`, `Button`, `Badge`, `Alert`, `Table`, `Tabs`, `Dialog`,
+  `Select`, `Input`, `Textarea`, `Checkbox`, `RadioGroup`, `Progress`. Log dùng `LogCard` (T011 tách khỏi `run-page.tsx`).
+- Bản mẫu không gọi API, không lưu thật, không kiểm quyền; nút ghi chỉ đổi trạng thái hoặc báo "Mẫu thiết kế".
+
+Các hành vi cần giữ khi triển khai:
+
+- Mỗi màn có đủ: bình thường, đang tải, rỗng, lỗi (nút Thử lại), và **dữ liệu cũ kèm giờ** khi nguồn không trả lời (Jenkins,
+  Argo CD, GitLab, hub); phần khác của trang vẫn hiện.
+- Trạng thái luôn có chữ và icon, không chỉ màu. Lần triển khai: chờ duyệt, chờ, đang chạy, thành công, thất bại,
+  thất bại cần xem, không rõ kết quả, đã huỷ, bị từ chối, hết hạn. Lần Jenkins tự build mang nhãn **Ngoài Hive**.
+- **Nút tắt luôn kèm lý do hiện ngay bên dưới**, nhất là: chưa có token Jenkins (kèm link Cài đặt cá nhân), thiếu quyền
+  (`ci.operate`, `deploy.run`, `deploy.approve`, `servers.manage`, `ci.connections.manage`), đích đang có lần triển khai
+  (ghi người và giờ), môi trường đang khoá, chưa có bản thành công để quay về, đích promote không có Quay về,
+  người yêu cầu không tự duyệt, yêu cầu hết hạn.
+- Token và khoá riêng không bao giờ hiện lại: ô token chỉ ghi, "Đã lưu". Tham số mật khẩu của Jenkins và biến đánh dấu
+  bí mật không ghi giá trị vào audit và log (log hiện `***`). Khoá công khai và lệnh cài có nút sao chép.
+- Host key đổi: dừng ngay, không chạy lệnh nào; xác nhận dấu vân tay mới cần lý do. Xác nhận lần đầu cần đối chiếu dấu
+  vân tay và tick xác nhận. Đổi khoá giữ khoá cũ tới khi khoá mới kiểm thành công. "Hub không kết nối được" tách khỏi
+  "Máy chủ từ chối khoá".
+- Duyệt Jenkins có bước `input`: duyệt = Proceed, từ chối = Abort, đều bằng token của người duyệt; thiếu token thì không
+  duyệt được. Từ chối cần lý do. Quay về đi qua duyệt của môi trường, ghi "quay về từ …", không hoàn tác dữ liệu; Argo CD
+  cảnh báo tắt `autoSync` và cần tick đã hiểu.
+- Hub khởi động lại giữa lần triển khai: hiện "Đang nối lại", các bước vẫn chạy trên máy chủ, không chạy lại bước nào.
+- Form đích chọn một trong năm cách (`ssh-script`, `jenkins-job`, `gitlab-manual`, `argocd`, `kubectl`), mỗi cách hiện
+  đúng nhóm trường của FR-013; sửa có phiên bản cấu hình, xung đột phiên bản được chặn kèm xem khác biệt.
