@@ -353,7 +353,7 @@ describe("saga khởi tạo", () => {
     });
     const [hook] = [...(repo?.hooks.values() ?? [])];
     expect(hook?.url).toBe(`${publicUrl}/hooks/git/${id}`);
-    expect(hook?.events).toEqual(["push", "pull_request", "issues", "issue_comment"]);
+    expect(hook?.events).toEqual(["push", "pull_request", "issues", "issue_comment", "pipeline", "job"]);
     expect(hook?.secret).toMatch(/^[0-9a-f]{64}$/);
 
     const view = await as("tviewer", (tx) => getProvision(tx, deps, org.user("tviewer"), id));

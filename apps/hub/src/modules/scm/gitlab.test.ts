@@ -369,8 +369,18 @@ describe("GitLab webhook", () => {
     merge_requests_events: true,
     issues_events: true,
     note_events: true,
+    pipeline_events: false,
+    job_events: false,
     enable_ssl_verification: true,
   };
+
+  it("pipeline, job bật pipeline_events, job_events", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/hooks`, method: "GET" }).reply(200, [{ id: 4, url: input.url }], JSON_HEADERS);
+    pool.intercept({ path: `${P}/hooks/4`, method: "PUT" }).reply(200, http.json({ id: 4 }), JSON_HEADERS);
+    await gl.addWebhook(ref, { ...input, events: [...input.events, "pipeline", "job"] });
+    expect(http.calls[0]?.body).toEqual({ ...body, pipeline_events: true, job_events: true });
+  });
 
   it("tạo webhook mới, pull_request đổi thành merge_requests_events, issue_comment thành note_events", async () => {
     const { gl, pool } = setup();
@@ -745,5 +755,194 @@ describe("GitLab đọc cây và file (kho skill)", () => {
       );
       expect(err.code).toBe("forbidden");
     });
+  });
+});
+
+describe("GitLab CI: pipeline và job", () => {
+  const fixture = (name: string) =>
+    JSON.parse(readFileSync(new URL(`./fixtures/gitlab/${name}.json`, import.meta.url), "utf8"));
+  const pageHeaders = (next: string) => ({ headers: { "content-type": "application/json", "x-next-page": next } });
+  const TEXT = { headers: { "content-type": "text/plain" } };
+  const job = (over: Record<string, unknown> = {}) => ({ ...fixture("pipeline_jobs")[0], ...over });
+
+  it("liệt kê pipeline mới nhất trước, lọc nhánh, sha, trạng thái, có trang sau", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({
+        path: `${P}/pipelines?order_by=id&sort=desc&per_page=20&page=2&ref=new-pipeline&sha=eb94b6&status=failed`,
+        method: "GET",
+      })
+      .reply(200, fixture("pipelines"), pageHeaders("3"));
+    const page = await gl.listPipelines(ref, { branch: "new-pipeline", sha: "eb94b6", status: "failed", page: 2 });
+    expect(page.nextPage).toBe(3);
+    expect(page.items[0]).toEqual({
+      id: "48",
+      ref: "new-pipeline",
+      sha: "eb94b618fb5865b26e80fdd8ae531b7a63ad851a",
+      status: "pending",
+      source: "push",
+      url: "https://example.com/foo/bar/pipelines/48",
+      createdAt: "2016-08-12T10:06:04.561Z",
+      updatedAt: "2016-08-12T10:09:56.223Z",
+      startedAt: null,
+      finishedAt: null,
+      durationSec: null,
+      user: null,
+    });
+    expect(page.items.map((p) => p.status)).toEqual(["pending", "failed"]);
+  });
+
+  it("trang cuối: x-next-page rỗng thành null", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${P}/pipelines?order_by=id&sort=desc&per_page=20&page=1`, method: "GET" })
+      .reply(200, [], pageHeaders(""));
+    expect(await gl.listPipelines(ref, { page: 1 })).toEqual({ items: [], nextPage: null });
+  });
+
+  it("trạng thái lạ của bản GitLab mới coi là đang chờ", async () => {
+    const { gl, pool } = setup();
+    const [first] = fixture("pipelines");
+    pool
+      .intercept({ path: `${P}/pipelines?order_by=id&sort=desc&per_page=20&page=1`, method: "GET" })
+      .reply(200, [{ ...first, status: "teleporting" }], pageHeaders(""));
+    expect((await gl.listPipelines(ref, { page: 1 })).items[0]?.status).toBe("pending");
+  });
+
+  it("job của pipeline qua mọi trang", async () => {
+    const { gl, pool } = setup();
+    const [failed, manual] = fixture("pipeline_jobs");
+    pool
+      .intercept({ path: `${P}/pipelines/6/jobs?per_page=100&page=1`, method: "GET" })
+      .reply(200, [failed], pageHeaders("2"));
+    pool
+      .intercept({ path: `${P}/pipelines/6/jobs?per_page=100&page=2`, method: "GET" })
+      .reply(200, [manual], pageHeaders(""));
+    const jobs = await gl.pipelineJobs(ref, "6");
+    expect(jobs[0]).toEqual({
+      id: "6",
+      pipelineId: "6",
+      name: "rspec:other",
+      stage: "test",
+      ref: "main",
+      sha: "0ff3ae198f8601a285adcf5c0fff204ee6fba5fd",
+      status: "failed",
+      allowFailure: false,
+      failureReason: "script_failure",
+      url: "https://example.com/foo/bar/-/jobs/6",
+      createdAt: "2015-12-24T15:51:21.727Z",
+      startedAt: "2015-12-24T17:54:24.729Z",
+      finishedAt: "2015-12-24T17:54:24.921Z",
+      durationSec: 0.192,
+      user: "root",
+    });
+    expect(jobs.map((j) => [j.name, j.status, j.allowFailure])).toEqual([
+      ["rspec:other", "failed", false],
+      ["deploy:production", "manual", true],
+    ]);
+  });
+
+  describe("jobLog", () => {
+    it("đọc cả trace rồi cắt từ vị trí byte; job xong thì complete", async () => {
+      const { gl, pool } = setup();
+      pool.intercept({ path: `${P}/jobs/6`, method: "GET" }).reply(200, job(), JSON_HEADERS);
+      pool.intercept({ path: `${P}/jobs/6/trace`, method: "GET" }).reply(200, "dòng 1\ndòng 2\n", TEXT);
+      expect(await gl.jobLog(ref, "6", Buffer.byteLength("dòng 1\n"))).toEqual({
+        text: "dòng 2\n",
+        next: Buffer.byteLength("dòng 1\ndòng 2\n"),
+        complete: true,
+      });
+    });
+
+    it("job đang chạy: chưa complete; byte cuối là nửa ký tự UTF-8 thì để lần sau", async () => {
+      const { gl, pool } = setup();
+      pool.intercept({ path: `${P}/jobs/6`, method: "GET" }).reply(200, job({ status: "running" }), JSON_HEADERS);
+      const bytes = Buffer.from("ab đ", "utf8");
+      // "đ" là hai byte; trace của job đang ghi có thể dừng giữa ký tự.
+      pool
+        .intercept({ path: `${P}/jobs/6/trace`, method: "GET" })
+        .reply(200, bytes.subarray(0, bytes.length - 1), TEXT);
+      expect(await gl.jobLog(ref, "6", 0)).toEqual({ text: "ab ", next: 3, complete: false });
+    });
+
+    it("vị trí vượt độ dài trace (log bị xoá) thì không trả gì thêm", async () => {
+      const { gl, pool } = setup();
+      pool.intercept({ path: `${P}/jobs/6`, method: "GET" }).reply(200, job(), JSON_HEADERS);
+      pool.intercept({ path: `${P}/jobs/6/trace`, method: "GET" }).reply(200, "", TEXT);
+      expect(await gl.jobLog(ref, "6", 50)).toEqual({ text: "", next: 50, complete: true });
+    });
+
+    it("trace gửi kèm content-type JSON vẫn đọc nguyên văn", async () => {
+      const { gl, pool } = setup();
+      pool.intercept({ path: `${P}/jobs/6`, method: "GET" }).reply(200, job(), JSON_HEADERS);
+      pool.intercept({ path: `${P}/jobs/6/trace`, method: "GET" }).reply(200, '{"a": 1}', JSON_HEADERS);
+      expect((await gl.jobLog(ref, "6", 0)).text).toBe('{"a": 1}');
+    });
+  });
+
+  it("chạy lại, huỷ pipeline", async () => {
+    const { gl, pool } = setup();
+    const [first] = fixture("pipelines");
+    pool
+      .intercept({ path: `${P}/pipelines/48/retry`, method: "POST" })
+      .reply(201, http.json({ ...first, status: "running" }), JSON_HEADERS);
+    pool
+      .intercept({ path: `${P}/pipelines/48/cancel`, method: "POST" })
+      .reply(200, http.json({ ...first, status: "canceled" }), JSON_HEADERS);
+    expect((await gl.retryPipeline(ref, "48")).status).toBe("running");
+    expect((await gl.cancelPipeline(ref, "48")).status).toBe("canceled");
+    expect(http.calls.map((c) => [c.method, c.path])).toEqual([
+      ["POST", `${P}/pipelines/48/retry`],
+      ["POST", `${P}/pipelines/48/cancel`],
+    ]);
+  });
+
+  it("chạy lại job ra job mới; huỷ; bấm job chờ tay", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${P}/jobs/6/retry`, method: "POST" })
+      .reply(201, http.json(job({ id: 8, status: "pending" })), JSON_HEADERS);
+    pool
+      .intercept({ path: `${P}/jobs/8/cancel`, method: "POST" })
+      .reply(201, http.json(job({ id: 8, status: "canceled" })), JSON_HEADERS);
+    pool
+      .intercept({ path: `${P}/jobs/7/play`, method: "POST" })
+      .reply(200, http.json(job({ id: 7, status: "pending" })), JSON_HEADERS);
+    expect(await gl.retryJob(ref, "6")).toMatchObject({ id: "8", status: "pending" });
+    expect(await gl.cancelJob(ref, "8")).toMatchObject({ id: "8", status: "canceled" });
+    expect(await gl.playJob(ref, "7")).toMatchObject({ id: "7", status: "pending" });
+  });
+
+  it("bấm job không chờ tay: GitLab trả 400 thành invalid", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${P}/jobs/6/play`, method: "POST" })
+      .reply(400, { message: "400 Unplayable Job" }, JSON_HEADERS);
+    const e = await rejected(gl.playJob(ref, "6"));
+    expect(e.code).toBe("invalid");
+  });
+
+  it("compare có danh sách commit: sha, tiêu đề, tác giả, giờ", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${P}/repository/compare?from=v1&to=v2`, method: "GET" })
+      .reply(200, fixture("compare"), JSON_HEADERS);
+    const result = await gl.compare(ref, "v1", "v2");
+    expect(result.files).toEqual([{ path: "files/js/application.js", status: "modified", sha: null }]);
+    expect(result.commits).toEqual([
+      {
+        sha: "6104942438c14ec7bd21c6cd5bd995272b3faff6",
+        title: "Sanitize for network graph",
+        author: "Example User",
+        authoredAt: "2014-02-27T06:12:41.000Z",
+      },
+      {
+        sha: "12d65c8dd2b2676fa3ac47d955accc085a37a9c1",
+        title: "JS fix",
+        author: "Example User",
+        authoredAt: "2014-02-27T08:27:00.000Z",
+      },
+    ]);
+    expect(result.incomplete).toBe(false);
   });
 });
