@@ -12,7 +12,8 @@
     "db:migrate": "node --env-file-if-exists=.env src/cli.ts db:migrate",
     "db:setup": "pnpm db:bootstrap && pnpm db:migrate",
     "db:generate": "drizzle-kit generate",
-    "import:legacy": "node --env-file-if-exists=.env src/import-legacy.ts"
+    "import:legacy": "node --env-file-if-exists=.env src/import-legacy.ts",
+    "word:corpus": "node scripts/word-corpus.ts"
   },
   "dependencies": {
     "@better-auth/cimd": "^1.7.7",

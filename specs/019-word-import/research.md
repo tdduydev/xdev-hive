@@ -103,3 +103,36 @@ Chạy pandoc như một tiến trình con với:
 `https://hive.example.com/api/v1/health` ngày 2026-10-16 báo `version` `3fa5aadf` (merge PR #409), build `06:01Z`. Bản này
 chưa có PR #413 (sửa nhập từ repo khi archive bị chặn và khi hook lưu đang bật), nên muốn thử spec này trên hub thật thì
 phải triển khai lại hub trước.
+
+## 6. Kết quả bộ thật lần 1
+
+Chạy ngày 2026-10-19 bằng `pnpm --filter @xdev-hive/hub word:corpus <thư mục SRS>` trên máy dev Windows (pandoc 3.12, `filter.lua` và `runPandoc` của hub trên `main` tại `fd51f925`, 2 file cùng lúc, file đọc từ thư mục OneDrive). Chi tiết từng file nằm ngoài repo (`E:\DevCache\word-corpus\run2`).
+
+**Bộ chạy khác mục 1:** thư mục SRS hôm nay có 283 file `.docx` (mục 1 ghi 270). Sau khi chọn bản mới nhất mỗi tài liệu trong từng thư mục bằng `names.ts` còn 278 file, không phải 261. [Unverified] Chưa rõ vì OneDrive đã có thêm tài liệu, hay vì `pick` theo từng thư mục chưa gộp mã chép ở hai thư mục như cách chọn của `srs2md`. SC-001 vì vậy đo trên 278, rộng hơn bộ 261.
+
+| Chỉ số | Kết quả |
+|---|---|
+| File pandoc lỗi | 0 / 278 |
+| File làm codec ném lỗi (hoặc schema từ chối) | 0 / 278 (mục 3: 24 / 237 với `srs2md`) |
+| Bảng | 5.976; thành `table` 5.975 (99,98%); thành khối thô 1 |
+| Tài liệu có bảng thành khối thô | 1: EME03 (`SpO<sub>2</sub>` trong ô) |
+| Thẻ HTML còn sót ngoài `<br>` trong ô | 1 tài liệu, 2 thẻ: `<sub>` của EME03 |
+| Khối không phải bảng mà codec để thô | 215, gồm 28 dòng `<!-- -->` (pandoc ngăn hai danh sách liền nhau) và 187 khối danh sách hoặc đoạn mà codec xuất lại khác chữ gốc |
+| Cảnh báo của bộ lọc | `emf_image` 31 (16 tài liệu); `nested_table` 4 (1 tài liệu: OPD20) |
+| Thời gian cả bộ | 321 giây (5 phút 21 giây), 2 file cùng lúc |
+| Thời gian mỗi file | p50 1,9 giây; p95 4,1 giây; lớn nhất 8,5 giây (giới hạn của hub là 120 giây) |
+
+Lần chạy đầu cho cùng kết quả pandoc, codec nhưng báo 30 tài liệu sót thẻ và file lớn nhất 31,9 giây:
+- 30 tài liệu báo sót thẻ là báo sai của script: chữ `\<tên\>`, `Nullable\<int\>` đã được pandoc thoát nên không phải HTML. Script đã bỏ qua `\<`. Biểu thức kiểm thẻ trong `filter.test.ts` (SC-001) giống bản đầu của script, nên gặp chữ như vậy cũng sẽ báo sai.
+- 31,9 giây chỉ ở lần đầu, lần hai 8,5 giây. [Inference] Do OneDrive tải file về máy hoặc máy bận lúc đó.
+
+Kết luận SC-001 trên bộ này: không file lỗi, không codec lỗi, 99,98% bảng sửa được trực quan. So với mục 3 (74% bảng sửa được, 24 file làm codec ném lỗi), [Inference] khác biệt đến từ `<br>` trong ô (mọi bảng thô ở mục 3 đều có `<br>`) và mục danh sách rỗng, vì codec hiện tại nạp được cả hai. Chưa tách riêng từng nguyên nhân.
+
+**Lỗi của bộ lọc và bộ chuyển, đề xuất thành task mới** (không sửa trong T007):
+1. `<sub>` và `<sup>` trong ô bảng ra HTML thô nên cả bảng thành khối thô (EME03). Đề xuất: bộ lọc đổi chỉ số dưới, trên thành chữ thường (Unicode `₂`) hoặc editor hiểu `<sub>`/`<sup>` trong ô.
+2. `runPandoc` không truyền `--eol=lf`: trên Windows pandoc ra CRLF (đã đo trên `srs.docx`: 124 ký tự `\r`), `filter.test.ts` thì có. Hub chạy Linux nên không ảnh hưởng bản chạy thật, nhưng làm hash và test của `runPandoc` khác nhau giữa hai hệ điều hành.
+3. Dòng `<!-- -->` giữa hai danh sách liền nhau (28 khối, 12 tài liệu) thành khối thô trong editor. Đề xuất: hậu xử lý bỏ dòng này, hoặc bộ lọc chèn đoạn trống nhìn thấy được.
+4. 187 khối danh sách hoặc đoạn bị codec để thô vì xuất lại khác chữ gốc (ví dụ danh sách đánh số lồng bullet, khối `"BenhVien": …`, chú thích ảnh `*![](…)*`). Chưa phân loại nguyên nhân; cần một lần xem mẫu để tách lỗi bộ lọc với giới hạn codec.
+5. Biểu thức kiểm thẻ HTML trong `filter.test.ts` tính nhầm `\<…>`; nên bỏ qua `\<`.
+6. `apps/hub/tsconfig.json` chỉ gồm `src`, `test`: thư mục `scripts/` mới không được `pnpm typecheck` kiểm. T007 đã kiểm tay bằng tsconfig tạm.
+7. Chọn bản trong `pick` theo từng thư mục cho 278, mục 1 nói 261: cần xem 17 tài liệu khác nhau là mã chép hai nơi hay tài liệu mới.
