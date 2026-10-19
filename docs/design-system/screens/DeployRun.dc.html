@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lần triển khai · xDev Hive</title>
+    <style id="tokens">
+:root,[data-theme=light]{--brand-sky:#7BD4FF;--brand-blue:#1E90FF;--brand-deep:#004CFF;--brand-navy:#142745;--brand-letter:#344568;--background:#F5F7FB;--foreground:#0F1B31;--card:#FFFFFF;--card-foreground:#0F1B31;--popover:#FFFFFF;--popover-foreground:#0F1B31;--primary:#1C58FF;--primary-foreground:#FFFFFF;--secondary:#EEF2F8;--secondary-foreground:#0F1B31;--muted:#EEF2F8;--muted-foreground:#55627A;--accent:#E6EEFF;--accent-foreground:#1C3FB0;--destructive:#C81E1E;--destructive-soft:#FDECEC;--success:#16803D;--success-soft:#E8F7EE;--warning:#B45309;--warning-soft:#FFF4DB;--border:#E2E7F0;--input:#8490A6;--ring:#1C58FF;--sidebar:#142745;--sidebar-foreground:#A9B8D4;--sidebar-accent:#1B3358;--sidebar-accent-foreground:#FFFFFF;--sidebar-active:#1C3E66;--sidebar-active-icon:#7FD0FF;--sidebar-primary:#3FA9FF;--sidebar-primary-foreground:#0A1322;--sidebar-border:#22406E;--sidebar-ring:#7FD0FF;--sidebar-success:#4ADE80;--sidebar-warning:#FBBF24;--sidebar-destructive:#F87171;--radius:0.5rem;--font-sans:"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;--font-heading:"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;--font-mono:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;--shadow-sm:0 1px 3px 0 rgb(0 0 0 / .1),0 1px 2px -1px rgb(0 0 0 / .1);--shadow-lg:0 10px 15px -3px rgb(0 0 0 / .1),0 4px 6px -4px rgb(0 0 0 / .1);--backdrop:rgb(0 0 0 / .5);}
+[data-theme=dark]{--brand-sky:#B8F1FF;--brand-blue:#3FA9FF;--brand-deep:#1C58FF;--brand-navy:#142745;--brand-letter:#E8ECF8;--background:#0A1322;--foreground:#E8ECF8;--card:#111E36;--card-foreground:#E8ECF8;--popover:#111E36;--popover-foreground:#E8ECF8;--primary:#3FA9FF;--primary-foreground:#0A1322;--secondary:#17253F;--secondary-foreground:#E8ECF8;--muted:#17253F;--muted-foreground:#8FA3C7;--accent:#16305A;--accent-foreground:#B8F1FF;--destructive:#F87171;--destructive-soft:#3A1D24;--success:#4ADE80;--success-soft:#12321F;--warning:#FBBF24;--warning-soft:#3A2E10;--border:#1F2F4D;--input:#536990;--ring:#B8F1FF;--sidebar:#0F1B31;--sidebar-foreground:#8FA3C7;--sidebar-accent:#16274A;--sidebar-accent-foreground:#F1F5FF;--sidebar-active:#173252;--sidebar-active-icon:#B8F1FF;--sidebar-primary:#3FA9FF;--sidebar-primary-foreground:#0A1322;--sidebar-border:#1F2F4D;--sidebar-ring:#B8F1FF;--sidebar-success:#4ADE80;--sidebar-warning:#FBBF24;--sidebar-destructive:#F87171;--backdrop:rgb(0 0 0 / .6);}
+    </style>
+    <style>
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
+body { margin: 0; background: var(--background); color: var(--foreground); font: 14px / 1.5 var(--font-sans); }
+x-dc { display: block; container-type: inline-size; }
+.board { container-type: inline-size; width: 100%; min-height: 100vh; background: var(--background); }
+.board.narrow { max-width: 360px; margin: auto; border-inline: 1px solid var(--border); }
+h1, h2, h3, h4, p, ul, ol, dl, dd { margin: 0; }
+h1 { font: 600 20px / 1.35 var(--font-heading); letter-spacing: -0.01em; }
+h2 { font-size: 16px; font-weight: 600; line-height: 1.4; }
+h3 { font-size: 14px; font-weight: 600; }
+a { color: var(--primary); text-underline-offset: 3px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button, summary, select, label.check { cursor: pointer; }
+:is(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+button:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { width: 100%; min-width: 0; border: 1px solid var(--input); background: var(--card); color: var(--foreground); border-radius: var(--radius); padding: 7px 10px; min-height: 36px; }
+input:disabled, select:disabled, textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+input[readonly], textarea[readonly] { background: var(--muted); }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); flex: none; width: 18px; height: 18px; margin: 0; }
+textarea { resize: vertical; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+legend { font-weight: 600; padding: 0; margin-bottom: 8px; }
+code, pre, .mono { font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.small { font-size: 13px; }
+.muted { color: var(--muted-foreground); }
+.num { font-variant-numeric: tabular-nums; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack.tight { gap: 8px; }
+.row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.row.spread { justify-content: space-between; }
+.grow { flex: 1; min-width: 0; }
+.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.skip { position: absolute; left: 12px; top: -100px; background: var(--card); padding: 12px; z-index: 30; }
+.skip:focus { top: 12px; }
+
+/* thanh công cụ xem thử */
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px dashed var(--input); background: var(--muted); }
+.tools label { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.tools select { width: auto; max-width: 260px; min-width: 0; }
+
+/* nút */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; max-width: 100%; border: 1px solid var(--input); border-radius: var(--radius); padding: 6px 12px; background: var(--card); color: var(--foreground); font-weight: 500; text-decoration: none; text-align: center; }
+.btn:hover:not(:disabled) { background: var(--muted); }
+.btn.primary { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+.btn.primary:hover:not(:disabled) { background: var(--primary); filter: brightness(0.93); }
+.btn.danger { color: var(--destructive); border-color: var(--destructive); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.sm { min-height: 30px; padding: 3px 10px; font-size: 13px; }
+.btn.icon { padding: 6px; width: 36px; }
+.why { display: block; font-size: 13px; color: var(--muted-foreground); margin-top: 4px; }
+.act { display: flex; flex-direction: column; align-items: flex-start; }
+
+/* khung ứng dụng */
+.shell { display: flex; min-height: 760px; }
+.nav { width: 256px; flex: none; padding: 16px 12px; background: var(--sidebar); color: var(--sidebar-foreground); border-right: 1px solid var(--sidebar-border); display: flex; flex-direction: column; gap: 2px; }
+.nav .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; color: var(--sidebar-accent-foreground); font-weight: 600; font-size: 15px; }
+.nav .brand img { width: 28px; height: 32px; }
+.nav .org { display: flex; align-items: center; gap: 8px; background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); border-radius: var(--radius); padding: 8px 10px; margin: 0 0 12px; font-weight: 500; }
+.nav .caps { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sidebar-foreground); opacity: 0.8; padding: 12px 10px 4px; }
+.nav a { display: flex; align-items: center; gap: 10px; color: var(--sidebar-foreground); padding: 8px 10px; border-radius: var(--radius); text-decoration: none; }
+.nav a:hover { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+.nav a[aria-current] { background: var(--sidebar-active); color: var(--sidebar-accent-foreground); font-weight: 600; }
+.nav a[aria-current] .i { color: var(--sidebar-active-icon); }
+.nav :is(a):focus-visible { outline-color: var(--sidebar-ring); }
+.nav .foot { margin-top: auto; padding: 12px 10px 0; border-top: 1px solid var(--sidebar-border); font-size: 13px; }
+.work { flex: 1; min-width: 0; }
+.crumb { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--card); color: var(--muted-foreground); }
+.crumb b { color: var(--foreground); font-weight: 500; }
+.mbar { display: none; align-items: center; gap: 10px; padding: 10px 16px; background: var(--sidebar); color: var(--sidebar-accent-foreground); font-weight: 600; }
+.mbar img { width: 24px; height: 28px; }
+.mbar details { margin-left: auto; position: relative; }
+.mbar summary { list-style: none; border: 1px solid var(--sidebar-border); border-radius: var(--radius); padding: 6px 12px; min-height: 36px; display: flex; align-items: center; }
+.mbar summary::-webkit-details-marker { display: none; }
+.mbar nav { position: absolute; right: 0; top: 44px; z-index: 20; width: 260px; background: var(--sidebar); border: 1px solid var(--sidebar-border); border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
+.mbar nav a { color: var(--sidebar-foreground); text-decoration: none; padding: 10px; border-radius: var(--radius); font-weight: 400; }
+.mbar nav a[aria-current] { background: var(--sidebar-active); color: var(--sidebar-accent-foreground); }
+main { max-width: 1200px; margin: auto; padding: 24px; display: flex; flex-direction: column; gap: 24px; }
+.head { display: flex; flex-direction: column; gap: 6px; }
+.head .row.spread { align-items: flex-start; }
+
+/* thẻ, banner, nhãn */
+.card { background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: 12px; padding: 20px; min-width: 0; }
+.card.flush { padding: 0; overflow: hidden; }
+.card > .pad { padding: 20px; }
+.card .cardhead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; }
+.alert { display: flex; gap: 10px; align-items: flex-start; background: var(--accent); color: var(--accent-foreground); padding: 12px 14px; border-radius: var(--radius); border: 1px solid currentColor; overflow-wrap: anywhere; }
+.alert .i { margin-top: 3px; }
+.alert .grow > * + * { margin-top: 6px; }
+.alert.warning { color: var(--warning); background: var(--warning-soft); }
+.alert.error { color: var(--destructive); background: var(--destructive-soft); }
+.alert.success { color: var(--success); background: var(--success-soft); }
+.alert :is(strong, b) { color: inherit; }
+.alert .txt { color: var(--foreground); }
+.badge { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 999px; background: var(--muted); color: var(--muted-foreground); padding: 1px 8px; font-size: 13px; font-weight: 500; line-height: 1.5; max-width: 100%; white-space: nowrap; }
+.badge .i { width: 14px; height: 14px; }
+.badge.success { background: var(--success-soft); color: var(--success); border-color: currentColor; }
+.badge.warning { background: var(--warning-soft); color: var(--warning); border-color: currentColor; }
+.badge.error { background: var(--destructive-soft); color: var(--destructive); border-color: currentColor; }
+.badge.run { background: var(--accent); color: var(--accent-foreground); border-color: var(--primary); }
+.badge.plain { background: transparent; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; white-space: nowrap; }
+
+/* bảng (thành thẻ ở màn hẹp) */
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+.tbl th { text-align: left; font-weight: 500; background: var(--muted); padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid var(--border); }
+.tbl td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; min-height: 44px; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl tbody tr:hover { background: var(--muted); }
+.tbl tr[aria-selected="true"] { background: var(--accent); color: var(--accent-foreground); box-shadow: inset 3px 0 0 var(--primary); }
+.tbl .r { text-align: right; }
+.tbl td.act-col { white-space: nowrap; }
+.tbl a.rowlink { color: inherit; font-weight: 500; text-decoration: none; }
+.tbl a.rowlink:hover { text-decoration: underline; }
+
+/* form */
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.field { display: flex; flex-direction: column; gap: 6px; font-weight: 500; min-width: 0; }
+.field .hint { font-weight: 400; font-size: 13px; color: var(--muted-foreground); }
+.field .err { font-weight: 400; font-size: 13px; color: var(--destructive); }
+.check { display: flex; align-items: flex-start; gap: 10px; min-height: 28px; }
+.check span.t { padding-top: 0; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+.filters .f { width: auto; min-width: 130px; max-width: 200px; }
+.filters .search { flex: 1; min-width: 160px; max-width: 280px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px 20px; border-bottom: 1px solid var(--border); }
+.tabs a, .tabs button { color: var(--muted-foreground); padding: 8px 2px; text-decoration: none; border: 0; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+.tabs [aria-current], .tabs [aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
+.seg { display: grid; gap: 8px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.opt { display: flex; gap: 10px; border: 1px solid var(--input); border-radius: var(--radius); padding: 10px 12px; background: var(--card); align-items: flex-start; min-width: 0; }
+.opt:has(input:checked) { background: var(--accent); color: var(--accent-foreground); border-color: var(--primary); }
+.opt:has(input:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
+.opt .t { display: flex; flex-direction: column; min-width: 0; }
+.opt .t small { font-size: 13px; opacity: 0.85; font-weight: 400; }
+
+/* log, bước, khối mã */
+.log { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin: 0; max-height: 300px; overflow: auto; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.log .ln { color: var(--muted-foreground); user-select: none; display: inline-block; min-width: 3ch; text-align: right; margin-right: 12px; }
+.log .e { color: var(--destructive); }
+.log .w { color: var(--warning); }
+.log .ok { color: var(--success); }
+.log mark { background: var(--warning-soft); color: var(--warning); }
+.code { background: var(--muted); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 12px; }
+.steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
+.steps li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: start; }
+.steps li:last-child { border-bottom: 0; }
+.steps .mk { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--muted); color: var(--muted-foreground); border: 1px solid var(--border); }
+.steps .mk .i { width: 14px; height: 14px; }
+.steps .mk.success { background: var(--success-soft); color: var(--success); border-color: currentColor; }
+.steps .mk.error { background: var(--destructive-soft); color: var(--destructive); border-color: currentColor; }
+.steps .mk.run { background: var(--accent); color: var(--accent-foreground); border-color: var(--primary); }
+.steps .mk.warning { background: var(--warning-soft); color: var(--warning); border-color: currentColor; }
+.steps .meta { color: var(--muted-foreground); font-size: 13px; text-align: right; }
+.steps .sub { grid-column: 2 / 4; color: var(--muted-foreground); font-size: 13px; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; }
+.kv dt { color: var(--muted-foreground); }
+.kv dd { min-width: 0; overflow-wrap: anywhere; }
+.stat { font: 600 28px var(--font-sans); font-variant-numeric: tabular-nums; }
+.divider { border-top: 1px solid var(--border); padding-top: 16px; }
+
+/* ma trận "đang chạy" */
+.matrix { display: grid; grid-template-columns: minmax(130px, 0.7fr) repeat(3, minmax(0, 1fr)); }
+.matrix > div { padding: 12px; border-bottom: 1px solid var(--border); min-width: 0; }
+.matrix .h { background: var(--muted); font-weight: 500; }
+.cell { display: flex; flex-direction: column; gap: 6px; }
+.cell.locked { background: var(--muted); }
+
+/* trạng thái tải, rỗng */
+.skeleton { height: 16px; border-radius: var(--radius); background: var(--muted); width: 80%; }
+.skeleton.short { width: 50%; }
+.skeleton.area { height: 160px; width: 100%; }
+.empty { text-align: center; padding: 48px 20px; align-items: center; }
+.empty .art { width: 48px; height: 48px; border-radius: 12px; background: var(--muted); color: var(--muted-foreground); display: grid; place-items: center; }
+.empty .art .i { width: 24px; height: 24px; }
+.empty p { max-width: 46ch; }
+
+/* hộp thoại */
+dialog { background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); border-radius: 12px; max-width: 640px; width: calc(100% - 32px); padding: 0; max-height: 92vh; box-shadow: var(--shadow-lg); }
+dialog::backdrop { background: var(--backdrop); }
+dialog > .dlg { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+dialog h2 { font-size: 18px; }
+dialog .foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.toast { position: sticky; bottom: 12px; z-index: 6; }
+.toast:empty { display: none; }
+.compact-only { display: none; }
+
+/* màn hẹp (360 px): ẩn thanh bên, bảng thành thẻ */
+@container (max-width: 899px) {
+  .nav { display: none; }
+  .mbar { display: flex; }
+  .grid, .grid.three, .seg { grid-template-columns: minmax(0, 1fr); }
+  main { padding: 16px; gap: 16px; }
+  .crumb { padding: 10px 16px; }
+  .tools { padding: 12px; }
+  .tools label { width: 100%; }
+  .tools select { flex: 1; max-width: none; }
+  .btn { min-height: 44px; }
+  .btn.sm { min-height: 40px; }
+  .btn.icon { width: 44px; }
+  input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
+  h1 { font-size: 19px; }
+  .card { padding: 16px; }
+  .card > .pad, dialog > .dlg { padding: 16px; }
+  .filters { padding: 12px 16px; }
+  .filters .f, .filters .search { flex: 1 1 100%; max-width: none; }
+  .tbl thead { display: none; }
+  .tbl, .tbl tbody { display: block; }
+  .tbl tr { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .tbl tr:last-child { border-bottom: 0; }
+  .tbl td { display: block; padding: 0; border: 0; min-width: 0; min-height: 0; }
+  .tbl tr { gap: 2px 12px; }
+  .tbl td.pri { flex: 1 1 100%; }
+  .tbl td[data-label]::before { content: attr(data-label) ": "; color: var(--muted-foreground); }
+  .tbl td.act-col { flex: 1 1 100%; white-space: normal; }
+  .tbl td.r { text-align: left; }
+  .matrix { grid-template-columns: minmax(0, 1fr); }
+  .matrix .h { display: none; }
+  .matrix > div[data-env]::before { content: attr(data-env); display: block; color: var(--muted-foreground); font-weight: 500; margin-bottom: 4px; }
+  .matrix > div.rowhead { background: var(--muted); font-weight: 600; }
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .kv dt { margin-top: 8px; }
+  .steps li { grid-template-columns: 24px minmax(0, 1fr); }
+  .steps .meta { grid-column: 2; text-align: left; }
+  .steps .sub { grid-column: 2; }
+  .compact-only { display: inline-flex; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; animation: none !important; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+    </style>
+  </head>
+  <body>
+    <x-dc
+      ><div class="board">
+        <a class="skip" href="#main">Đến nội dung chính</a>
+        <section class="tools" aria-label="Trạng thái thiết kế">
+          <label for="design-view">Trạng thái xem
+            <select id="design-view"><option value="running">Đang chạy (SSH script, log trực tiếp)</option><option value="running-k8s">Đang chạy (Kubernetes, chờ rollout)</option><option value="reconnecting">Hub khởi động lại, đang nối lại</option><option value="stale">Dữ liệu cũ (log dừng lúc 14:12)</option><option value="waiting">Chờ duyệt</option><option value="success">Thành công</option><option value="failed">Thất bại</option><option value="review">Thất bại, cần xem (health không đạt)</option><option value="unknown">Không rõ kết quả</option><option value="cancelled">Đã huỷ</option><option value="cancel-dialog">Hộp xác nhận huỷ</option><option value="external">Ngoài Hive (Jenkins tự build)</option><option value="readonly">Chỉ xem (thiếu deploy.run)</option><option value="loading">Đang tải</option><option value="notfound">Không tìm thấy</option><option value="error">Lỗi</option></select></label
+          ><button type="button" class="btn" id="theme-toggle" aria-pressed="false">Sáng / tối</button
+          ><button type="button" class="btn" id="size-toggle">Khung 360 px</button
+          ><span class="small muted">Bản mẫu tương tác · dữ liệu minh hoạ</span>
+        </section>
+        <div class="shell">
+          <nav class="nav" aria-label="Điều hướng chính">
+            <div class="brand"><img src="../assets/logos/xdev-hive-mark-navy.svg" alt="" width="28" height="32">xDev Hive</div>
+            <div class="org"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z"/></svg>Tổ chức Acme</div>
+            <div class="caps">Công việc</div><a href="Home.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.5L8 3l5.5 4.5M4 6.5V13h8V6.5"/></svg>Tổng quan</a><a href="AppWork.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h10"/></svg>Công việc</a><a href="Main.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5l7 4.5-7 4.5z"/></svg>Lượt chạy</a><div class="caps">Dự án và hạ tầng</div><a href="Projects.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5L8 2.5 13.5 5v6L8 13.5 2.5 11zM2.5 5L8 7.5 13.5 5M8 7.5v6"/></svg>Dự án</a><a href="CicdTab.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="3.5" r="1.5"/><circle cx="5" cy="12.5" r="1.5"/><circle cx="11" cy="6" r="1.5"/><path d="M5 5v6M11 7.5c0 2.5-6 1.5-6 3.5"/></svg>CI/CD của dự án</a><a href="DeployBoard.dc.html" aria-current="page"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3.5c2-1 4-1 4-1s0 2-1 4l-3 3-3-3zM6 9.5L3.5 12M5 8l-2 .5M8 11l-.5 2"/></svg>Triển khai</a><a href="DeployTargets.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l5.5 3L8 8.5l-5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3"/></svg>Môi trường</a><a href="Servers.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/><path d="M4.5 5h.01M4.5 11h.01"/></svg>Máy chủ</a><div class="caps">Quản trị</div><a href="CiConnections.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 9a2.5 2.5 0 0 0 3.5 0l2-2A2.5 2.5 0 0 0 9 3.5l-.7.7M9 7a2.5 2.5 0 0 0-3.5 0l-2 2A2.5 2.5 0 0 0 7 12.5l.7-.7"/></svg>Kết nối CI</a><a href="Members.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><path d="M2 13c0-2.5 1.8-4 4-4s4 1.5 4 4M10.5 3.8a2.3 2.3 0 0 1 0 4.4M12 9.2c1.2.6 2 1.8 2 3.8"/></svg>Thành viên</a><div class="caps">Cá nhân</div><a href="JenkinsTokens.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="10.5" r="2.5"/><path d="M7.3 8.7L13 3M11 5l1.5 1.5"/></svg>Token Jenkins</a>
+            <div class="foot">Bản mẫu · Lê Bình<br><span style="opacity:.8">Quản trị đội Nền tảng</span></div>
+          </nav>
+          <div class="work">
+            <div class="mbar"><img src="../assets/logos/xdev-hive-mark-navy.svg" alt="" width="24" height="28">xDev Hive
+              <details><summary>Menu</summary><nav aria-label="Điều hướng chính (điện thoại)"><div class="caps">Công việc</div><a href="Home.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.5L8 3l5.5 4.5M4 6.5V13h8V6.5"/></svg>Tổng quan</a><a href="AppWork.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h10"/></svg>Công việc</a><a href="Main.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5l7 4.5-7 4.5z"/></svg>Lượt chạy</a><div class="caps">Dự án và hạ tầng</div><a href="Projects.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5L8 2.5 13.5 5v6L8 13.5 2.5 11zM2.5 5L8 7.5 13.5 5M8 7.5v6"/></svg>Dự án</a><a href="CicdTab.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="3.5" r="1.5"/><circle cx="5" cy="12.5" r="1.5"/><circle cx="11" cy="6" r="1.5"/><path d="M5 5v6M11 7.5c0 2.5-6 1.5-6 3.5"/></svg>CI/CD của dự án</a><a href="DeployBoard.dc.html" aria-current="page"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3.5c2-1 4-1 4-1s0 2-1 4l-3 3-3-3zM6 9.5L3.5 12M5 8l-2 .5M8 11l-.5 2"/></svg>Triển khai</a><a href="DeployTargets.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l5.5 3L8 8.5l-5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3"/></svg>Môi trường</a><a href="Servers.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="4" rx="1"/><rect x="2" y="9" width="12" height="4" rx="1"/><path d="M4.5 5h.01M4.5 11h.01"/></svg>Máy chủ</a><div class="caps">Quản trị</div><a href="CiConnections.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 9a2.5 2.5 0 0 0 3.5 0l2-2A2.5 2.5 0 0 0 9 3.5l-.7.7M9 7a2.5 2.5 0 0 0-3.5 0l-2 2A2.5 2.5 0 0 0 7 12.5l.7-.7"/></svg>Kết nối CI</a><a href="Members.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><path d="M2 13c0-2.5 1.8-4 4-4s4 1.5 4 4M10.5 3.8a2.3 2.3 0 0 1 0 4.4M12 9.2c1.2.6 2 1.8 2 3.8"/></svg>Thành viên</a><div class="caps">Cá nhân</div><a href="JenkinsTokens.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="10.5" r="2.5"/><path d="M7.3 8.7L13 3M11 5l1.5 1.5"/></svg>Token Jenkins</a></nav></details></div>
+            <div class="crumb">Hệ thống HIS / Triển khai / <b>D-486</b></div>
+            <main id="main" tabindex="-1">
+
+              <header class="head">
+                <a class="small" href="DeployBoard.dc.html">← Triển khai</a>
+                <h1>Lần triển khai</h1>
+              </header>
+              <div data-v="readonly"><div class="alert " role="status" ><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 7.5V11M8 5h.01"/></svg><div class="grow"><div class="txt">Bạn xem được lần triển khai và log (<code>ci.view</code>). Huỷ và quay về cần quyền <code>deploy.run</code>.</div></div></div></div>
+              <div data-v="loading"><section class="card stack" aria-busy="true"><p role="status" class="muted">Đang tải…</p><div class="skeleton"></div><div class="skeleton short"></div><div class="skeleton area"></div></section></div>
+              <div data-v="notfound"><section class="card stack empty"><span class="art"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3.5c2-1 4-1 4-1s0 2-1 4l-3 3-3-3zM6 9.5L3.5 12M5 8l-2 .5M8 11l-.5 2"/></svg></span><h2>Không tìm thấy lần triển khai</h2><p class="muted">Mã D-999 không tồn tại hoặc bạn không có quyền xem hệ thống này. Kiểm lại đường dẫn hoặc mở lịch sử ở màn Triển khai.</p><a class="btn primary" href="DeployBoard.dc.html">Về màn Triển khai</a></section></div>
+              <div data-v="error"><section class="card stack" role="alert"><div class="row"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg><h2>Không tải được dữ liệu</h2></div><p>Hub không đọc được lần triển khai này. Log đã lưu vẫn còn; thử lại sau ít phút.</p><div><button type="button" class="btn" data-go="ready"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v3h-3"/></svg>Thử lại</button></div></section></div>
+              <div class="stack" data-v="running cancel-dialog readonly"><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge run"><span class="dot" aria-hidden="true"></span>Đang chạy</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Bắt đầu</dt><dd>14:05 · đã chạy 6 phút</dd></dl></section>
+<div class="row"><span data-off-in="readonly"><button type="button" class="btn danger" data-open="dlg-cancel"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Huỷ triển khai</button></span></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm trước</strong><br><span class="muted small">Thư mục, compose project, <code>.env</code> khớp cấu hình</span></span><span class="meta num">2 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Sao lưu</strong><br><span class="muted small"><code>pg_dump</code> → <code>backup/2026-10-19.sql.gz</code></span></span><span class="meta num">14 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đưa mã lên</strong><br><span class="muted small">git-archive <code>7ff9637</code> · 4,2 MB</span></span><span class="meta num">8 giây · mã thoát 0</span></li><li><span class="mk run"><span class="dot"></span></span><span><strong>Triển khai</strong><br><span class="muted small"><code>docker compose pull &amp;&amp; docker compose up -d</code></span></span><span class="meta num">đang chạy…</span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Kiểm health</strong><br><span class="muted small">Chờ tối đa 3 phút</span></span><span class="meta num">chưa chạy</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge run"><span class="dot"></span>Đang nhận log trực tiếp</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">205</span>[04] + docker compose pull
+<span class="ln">206</span> Container his-portal  Pulling
+<span class="ln">207</span> his-portal Pulled
+<span class="ln">208</span>[04] + docker compose up -d --remove-orphans
+<span class="ln">209</span>DB_PASSWORD=***
+<span class="ln">210</span> Container his-portal  Recreate
+<span class="ln">211</span> Container his-portal  Started
+<span class="ln">212</span>[04] bước triển khai đang chạy…
+</pre></section></div><div class="stack" data-v="reconnecting"><div class="alert warning" role="status" ><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg><div class="grow"><strong>Đang nối lại với máy chủ</strong><div class="txt">Hub vừa khởi động lại (khi triển khai chính nó). <b>Các bước vẫn chạy trên máy chủ.</b> Hub đang đọc tiếp log và trạng thái từ vị trí đã lưu (dòng 212); không chạy lại bước nào.</div></div></div><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge run"><span class="dot" aria-hidden="true"></span>Đang chạy</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Bắt đầu</dt><dd>14:05</dd></dl></section>
+<div class="row"><span data-off-in="readonly"><button type="button" class="btn danger" data-open="dlg-cancel"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Huỷ triển khai</button></span></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm trước</strong><br><span class="muted small">Thư mục, compose project, <code>.env</code> khớp cấu hình</span></span><span class="meta num">2 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Sao lưu</strong><br><span class="muted small"><code>pg_dump</code> → <code>backup/2026-10-19.sql.gz</code></span></span><span class="meta num">14 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đưa mã lên</strong><br><span class="muted small">git-archive <code>7ff9637</code> · 4,2 MB</span></span><span class="meta num">8 giây · mã thoát 0</span></li><li><span class="mk run"><span class="dot"></span></span><span><strong>Triển khai</strong><br><span class="muted small">Đang chạy trên máy chủ, tách khỏi phiên SSH</span></span><span class="meta num">đang chạy…</span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Kiểm health</strong><br></span><span class="meta num">chưa chạy</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge warning"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5.5a9 9 0 0 1 3-1.6M14 5.5a9 9 0 0 0-3-1.6M4.5 8a5.5 5.5 0 0 1 2-1.1M11.5 8a5.5 5.5 0 0 0-1.2-.9M8 12h.01M2 2l12 12"/></svg>Đang nối lại…</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">205</span>[04] + docker compose pull
+<span class="ln">206</span> Container his-portal  Pulling
+<span class="ln">207</span> his-portal Pulled
+<span class="ln">208</span>[04] + docker compose up -d --remove-orphans
+<span class="ln">209</span>DB_PASSWORD=***
+<span class="ln">210</span> Container his-portal  Recreate
+<span class="ln">211</span> Container his-portal  Started
+<span class="ln">212</span>[04] bước triển khai đang chạy…
+</pre></section></div><div class="stack" data-v="stale"><div class="alert warning" role="status" ><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg><div class="grow"><strong>Dữ liệu log có thể cũ</strong><div class="txt">Hub chưa đọc được log mới từ <code>hive-stg-01</code> từ <b>14:12</b> (9 phút trước). Đang hiện log tới dòng 212. Sau 15 phút không đọc được, lần này thành “không rõ kết quả”.</div><div style="margin-top:8px"><button type="button" class="btn sm" data-go="running"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v3h-3"/></svg>Thử nối lại</button></div></div></div><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge run"><span class="dot" aria-hidden="true"></span>Đang chạy</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Bắt đầu</dt><dd>14:05</dd></dl></section>
+<div class="row"><span data-off-in="readonly"><button type="button" class="btn danger" data-open="dlg-cancel"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Huỷ triển khai</button></span></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm trước</strong><br><span class="muted small">Thư mục, compose project, <code>.env</code> khớp cấu hình</span></span><span class="meta num">2 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Sao lưu</strong><br><span class="muted small"><code>pg_dump</code> → <code>backup/2026-10-19.sql.gz</code></span></span><span class="meta num">14 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đưa mã lên</strong><br><span class="muted small">git-archive <code>7ff9637</code> · 4,2 MB</span></span><span class="meta num">8 giây · mã thoát 0</span></li><li><span class="mk run"><span class="dot"></span></span><span><strong>Triển khai</strong><br></span><span class="meta num">đang chạy…</span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Kiểm health</strong><br></span><span class="meta num">chưa chạy</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge warning"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5.5a9 9 0 0 1 3-1.6M14 5.5a9 9 0 0 0-3-1.6M4.5 8a5.5 5.5 0 0 1 2-1.1M11.5 8a5.5 5.5 0 0 0-1.2-.9M8 12h.01M2 2l12 12"/></svg>Log dừng lúc 14:12</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">205</span>[04] + docker compose pull
+<span class="ln">206</span> Container his-portal  Pulling
+<span class="ln">207</span> his-portal Pulled
+<span class="ln">208</span>[04] + docker compose up -d --remove-orphans
+<span class="ln">209</span>DB_PASSWORD=***
+<span class="ln">210</span> Container his-portal  Recreate
+<span class="ln">211</span> Container his-portal  Started
+<span class="ln">212</span>[04] bước triển khai đang chạy…
+</pre></section></div><div class="stack" data-v="waiting"><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge warning"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>Chờ duyệt</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Chờ duyệt từ</dt><dd>14:30 · hết hạn sau 23 giờ 20 phút</dd><dt>Người duyệt</dt><dd>Cần 1 người có quyền, khác Trần Chi</dd></dl></section>
+<div class="row"><a class="btn primary" href="DeployApproval.dc.html">Xem và duyệt</a><button type="button" class="btn" data-open="dlg-cancel">Huỷ yêu cầu</button></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Kiểm trước</strong><br></span><span class="meta num">chờ duyệt</span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Sao lưu</strong><br></span><span class="meta num"></span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Đưa mã lên</strong><br></span><span class="meta num"></span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Triển khai</strong><br></span><span class="meta num"></span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Kiểm health</strong><br></span><span class="meta num"></span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge">Đã kết thúc</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">1</span>Chưa có log. Lần triển khai chờ duyệt.
+</pre></section></div><div class="stack" data-v="success"><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Thành công</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Bắt đầu</dt><dd>14:05</dd><dt>Thời lượng</dt><dd>3 phút 12 giây</dd><dt>Health</dt><dd>200 · <code>version=7ff9637</code> khớp</dd></dl></section>
+<div class="row"><a class="btn" href="DeployBoard.dc.html">Về bảng Đang chạy</a></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm trước</strong><br><span class="muted small">Thư mục, compose project, <code>.env</code> khớp cấu hình</span></span><span class="meta num">2 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Sao lưu</strong><br><span class="muted small"><code>pg_dump</code> → <code>backup/2026-10-19.sql.gz</code></span></span><span class="meta num">14 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đưa mã lên</strong><br><span class="muted small">git-archive <code>7ff9637</code> · 4,2 MB</span></span><span class="meta num">8 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Triển khai</strong><br></span><span class="meta num">1 phút 31 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm health</strong><br><span class="muted small"><code>https://his.example.vn/api/v1/health</code> đạt ở lần thử 3</span></span><span class="meta num">26 giây</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge">Đã kết thúc</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">231</span><span class="ok">[04] xong, mã thoát 0</span>
+<span class="ln">232</span>[05] kiểm health https://his.example.vn/api/v1/health
+<span class="ln">233</span><span class="ok">[05] 200 · version=7ff9637 khớp</span>
+<span class="ln">234</span>Lần triển khai D-485 thành công.
+</pre></section></div><div class="stack" data-v="failed"><div class="alert error" role="alert" ><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg><div class="grow"><strong>Triển khai thất bại</strong><div class="txt">Bước <b>Triển khai</b> lỗi: container trùng tên. Hive dừng ở bước lỗi đầu tiên và chưa đổi gì sau bước sao lưu. Sửa nguyên nhân rồi triển khai lại.</div></div></div><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge error"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>Thất bại</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Bắt đầu</dt><dd>14:05</dd><dt>Thời lượng</dt><dd>58 giây</dd></dl></section>
+<div class="row"><span data-off-in="readonly"><button type="button" class="btn primary" data-notice="Mẫu thiết kế: tạo lần triển khai mới cùng phiên bản."><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v3h-3"/></svg>Triển khai lại</button></span></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm trước</strong><br><span class="muted small">Thư mục, compose project, <code>.env</code> khớp cấu hình</span></span><span class="meta num">2 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Sao lưu</strong><br><span class="muted small"><code>pg_dump</code> → <code>backup/2026-10-19.sql.gz</code></span></span><span class="meta num">14 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đưa mã lên</strong><br><span class="muted small">git-archive <code>7ff9637</code> · 4,2 MB</span></span><span class="meta num">8 giây · mã thoát 0</span></li><li><span class="mk error"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></span><span><strong>Triển khai</strong><br><span class="muted small">Container trùng tên đang chạy</span></span><span class="meta num">mã thoát 1</span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M3.8 3.8l8.4 8.4"/></svg></span><span><strong>Kiểm health</strong><br><span class="muted small">Không chạy vì bước trước lỗi</span></span><span class="meta num">bỏ qua</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge">Đã kết thúc</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">88</span>[04] + docker compose up -d
+<span class="ln">89</span><span class="e">Error response from daemon: Conflict. The container name "/his-portal" is already in use</span>
+<span class="ln">90</span><span class="e">[04] kết thúc với mã thoát 1</span>
+<span class="ln">91</span>Hub dừng ở bước lỗi đầu tiên; bước kiểm health không chạy.
+</pre></section></div><div class="stack" data-v="review"><div class="alert error" role="alert" ><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg><div class="grow"><strong>Thất bại, cần xem</strong><div class="txt">Mã đã được đưa lên và lệnh triển khai chạy xong, nhưng health không đạt. Hive <b>không tự quay về</b>. Kiểm máy chủ, hoặc quay về bản thành công gần nhất (<code>c04be12</code>).</div></div></div><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge error"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg>Thất bại, cần xem</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Bắt đầu</dt><dd>14:05</dd><dt>Thời lượng</dt><dd>5 phút 02 giây</dd><dt>Health</dt><dd>Không đạt: mong đợi <code>7ff9637</code>, máy chủ báo <code>a8d02f1</code></dd></dl></section>
+<div class="row"><span data-off-in="readonly"><a class="btn primary" href="DeployBoard.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6h6a4 4 0 0 1 0 8H6M5.5 3.5L3 6l2.5 2.5"/></svg>Quay về bản trước</a></span><button type="button" class="btn" data-notice="Mẫu thiết kế: gọi lại URL health."><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v3h-3"/></svg>Kiểm health lại</button></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm trước</strong><br><span class="muted small">Thư mục, compose project, <code>.env</code> khớp cấu hình</span></span><span class="meta num">2 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Sao lưu</strong><br><span class="muted small"><code>pg_dump</code> → <code>backup/2026-10-19.sql.gz</code></span></span><span class="meta num">14 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đưa mã lên</strong><br><span class="muted small">git-archive <code>7ff9637</code> · 4,2 MB</span></span><span class="meta num">8 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Triển khai</strong><br></span><span class="meta num">1 phút 31 giây · mã thoát 0</span></li><li><span class="mk error"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></span><span><strong>Kiểm health</strong><br><span class="muted small">Hết 3 phút chờ, phiên bản trả về không khớp</span></span><span class="meta num">không đạt</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge">Đã kết thúc</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">230</span>[04] + docker compose up -d
+<span class="ln">231</span><span class="ok">[04] xong, mã thoát 0</span>
+<span class="ln">232</span>[05] kiểm health https://his.example.vn/api/v1/health (chờ tối đa 3 phút)
+<span class="ln">233</span><span class="w">[05] lần 1: 503 · lần 2: 503 · lần 3: 200 nhưng version=a8d02f1, mong đợi 7ff9637</span>
+<span class="ln">234</span><span class="e">[05] hết thời gian chờ, health không đạt</span>
+</pre></section></div><div class="stack" data-v="unknown"><div class="alert warning" role="status" ><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg><div class="grow"><strong>Không rõ kết quả</strong><div class="txt">Hub không đọc được trạng thái trên <code>hive-stg-01</code> (máy chủ tắt hoặc mất mạng). Hive <b>không tự chạy lại</b>. Kiểm health rồi quyết định: giữ nguyên, hay quay về bản trước.</div></div></div><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge warning"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg>Không rõ kết quả</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Bắt đầu</dt><dd>14:05</dd></dl></section>
+<div class="row"><button type="button" class="btn primary" data-notice="Mẫu thiết kế: gọi URL health ngay."><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v3h-3"/></svg>Kiểm health ngay</button><span data-off-in="readonly"><a class="btn primary" href="DeployBoard.dc.html"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6h6a4 4 0 0 1 0 8H6M5.5 3.5L3 6l2.5 2.5"/></svg>Quay về bản trước</a></span></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm trước</strong><br><span class="muted small">Thư mục, compose project, <code>.env</code> khớp cấu hình</span></span><span class="meta num">2 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Sao lưu</strong><br><span class="muted small"><code>pg_dump</code> → <code>backup/2026-10-19.sql.gz</code></span></span><span class="meta num">14 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đưa mã lên</strong><br><span class="muted small">git-archive <code>7ff9637</code> · 4,2 MB</span></span><span class="meta num">8 giây · mã thoát 0</span></li><li><span class="mk warning"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg></span><span><strong>Triển khai</strong><br><span class="muted small">Hub không đọc được trạng thái trên máy chủ sau 15 phút</span></span><span class="meta num">không rõ</span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Kiểm health</strong><br></span><span class="meta num">chưa chạy</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge">Đã kết thúc</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">205</span>[04] + docker compose pull
+<span class="ln">206</span> Container his-portal  Pulling
+<span class="ln">207</span> his-portal Pulled
+<span class="ln">208</span>[04] + docker compose up -d --remove-orphans
+<span class="ln">209</span>DB_PASSWORD=***
+<span class="ln">210</span> Container his-portal  Recreate
+<span class="ln">211</span> Container his-portal  Started
+<span class="ln">212</span>[04] bước triển khai đang chạy…
+</pre></section></div><div class="stack" data-v="cancelled"><div class="alert " role="status" ><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 7.5V11M8 5h.01"/></svg><div class="grow"><strong>Đã huỷ</strong><div class="txt">Lần triển khai bị huỷ giữa chừng. Bước sao lưu và đưa mã lên đã xong; bước triển khai bị dừng nên môi trường có thể đang ở trạng thái dở.</div></div></div><section class="card stack"><div class="cardhead"><div><p class="muted small">his-portal → staging</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M3.8 3.8l8.4 8.4"/></svg>Đã huỷ</span></div><dl class="kv"><dt>Phiên bản</dt><dd><code>7ff9637</code> · tag <code>v1.8.2</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>ssh-script</code> · máy <code>hive-stg-01</code> · cấu hình <b>v7</b></dd><dt>Bắt đầu</dt><dd>14:05</dd><dt>Huỷ bởi</dt><dd>Lê Bình · 14:08</dd></dl></section>
+
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Kiểm trước</strong><br><span class="muted small">Thư mục, compose project, <code>.env</code> khớp cấu hình</span></span><span class="meta num">2 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Sao lưu</strong><br><span class="muted small"><code>pg_dump</code> → <code>backup/2026-10-19.sql.gz</code></span></span><span class="meta num">14 giây · mã thoát 0</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đưa mã lên</strong><br><span class="muted small">git-archive <code>7ff9637</code> · 4,2 MB</span></span><span class="meta num">8 giây · mã thoát 0</span></li><li><span class="mk warning"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5h.01"/></svg></span><span><strong>Triển khai</strong><br><span class="muted small">Hub gửi tín hiệu dừng tới script trên máy chủ lúc 14:08. Có thể còn trạng thái dở, kiểm thủ công.</span></span><span class="meta num">đã dừng</span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M3.8 3.8l8.4 8.4"/></svg></span><span><strong>Kiểm health</strong><br></span><span class="meta num">bỏ qua</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge">Đã kết thúc</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">205</span>[04] + docker compose pull
+<span class="ln">206</span> Container his-portal  Pulling
+<span class="ln">207</span> his-portal Pulled
+<span class="ln">208</span>[04] + docker compose up -d --remove-orphans
+<span class="ln">209</span>DB_PASSWORD=***
+<span class="ln">210</span> Container his-portal  Recreate
+<span class="ln">211</span> Container his-portal  Started
+<span class="ln">212</span>[04] bước triển khai đang chạy…
+</pre></section></div><div class="stack" data-v="running-k8s"><section class="card stack"><div class="cardhead"><div><p class="muted small">notify-svc → dev</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-486</span></h2></div><span class="badge run"><span class="dot" aria-hidden="true"></span>Đang chạy</span></div><dl class="kv"><dt>Phiên bản</dt><dd>image <code>registry.example.vn/his/notify-svc:dev-98</code></dd><dt>Người yêu cầu</dt><dd>Trần Chi</dd><dt>Cách triển khai</dt><dd><code>kubectl</code> · <code>his</code>/Deployment <code>notify-svc</code> · cấu hình <b>v4</b></dd></dl></section>
+<div class="row"><span data-off-in="readonly"><button type="button" class="btn danger" data-open="dlg-cancel"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Huỷ triển khai</button></span></div>
+<section class="card stack"><h2>Các bước</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Đổi image</strong><br><span class="muted small">container <code>app</code> → <code>notify-svc:dev-98</code></span></span><span class="meta num">1 giây</span></li><li><span class="mk run"><span class="dot"></span></span><span><strong>Chờ rollout</strong><br><span class="muted small">observedGeneration 14 · đã cập nhật 3/3 · sẵn sàng 2/3</span></span><span class="meta num">đang chạy…</span></li><li><span class="mk "><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></span><span><strong>Kiểm health</strong><br><span class="muted small">Tuỳ chọn, theo đích</span></span><span class="meta num">chưa chạy</span></li></ol></section><section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge run"><span class="dot"></span>Đang nhận log trực tiếp</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">1</span>[01] PATCH deployments/notify-svc  container app → registry.example.vn/his/notify-svc:dev-98
+<span class="ln">2</span>[02] chờ rollout: observedGeneration 14, đã cập nhật 2/3, sẵn sàng 2/3
+<span class="ln">3</span>[02] chờ rollout: đã cập nhật 3/3, sẵn sàng 2/3…
+</pre></section></div><div class="stack" data-v="external"><div class="alert " role="status" ><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 7.5V11M8 5h.01"/></svg><div class="grow"><strong>Ngoài Hive</strong><div class="txt">Build này do Jenkins tự chạy (không qua Hive). Hive chỉ ghi lại: không dừng, không duyệt, không quay về được lần này.</div></div></div>
+<section class="card stack"><div class="cardhead"><div><p class="muted small">pay-gateway → dev</p><h2 style="font-size:18px">Lần triển khai <span class="mono" style="font-size:inherit">D-484</span></h2></div><span class="badge success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Thành công</span> <span class="badge run plain" title="Lần này không do Hive tạo"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h4v4M13 3L7 9M11 9.5V13H3V5h3.5"/></svg>Ngoài Hive</span></div><dl class="kv"><dt>Phiên bản</dt><dd>build <code>#312</code> · commit <code>9be4c77</code> · image <code>pay:dev-312</code></dd><dt>Người kích hoạt (theo Jenkins)</dt><dd>Tự động · Git push</dd><dt>Người yêu cầu</dt><dd>—</dd><dt>Cách triển khai</dt><dd><code>jenkins-job</code> · <code>pay/build-dev</code></dd><dt>Bắt đầu</dt><dd>12:30 · 7 phút</dd></dl></section>
+<div class="row"><a class="btn" href="https://jenkins.example.vn/job/pay/job/build-dev/312/"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h4v4M13 3L7 9M11 9.5V13H3V5h3.5"/></svg>Mở trong Jenkins</a></div>
+<section class="card stack"><h2>Các giai đoạn (đọc từ Jenkins)</h2><ol class="steps" aria-label="Các bước"><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Checkout</strong><br></span><span class="meta num">9 giây</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Build</strong><br></span><span class="meta num">3 phút 40 giây</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Push image</strong><br></span><span class="meta num">52 giây</span></li><li><span class="mk success"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span><strong>Deploy dev</strong><br></span><span class="meta num">2 phút 10 giây</span></li></ol></section>
+<section class="card stack" aria-label="Log"><div class="cardhead"><h2>Log</h2><span class="badge">Đã kết thúc</span></div>
+<p class="muted small">Log lưu ở Hive, giữ 365 ngày theo thiết lập tổ chức. Giá trị bí mật đã được che thành <code>***</code>. Với lần ngoài Hive, log đọc từ Jenkins khi mở.</p>
+<div class="row"><label class="check"><input type="checkbox" checked><span class="t">Tự cuộn</span></label><input type="search" placeholder="Tìm trong log" aria-label="Tìm trong log" style="max-width:220px"><button type="button" class="btn sm" data-notice="Mẫu thiết kế: tải log về.">Tải log</button></div>
+<pre class="log" tabindex="0" aria-label="Log lần triển khai"><span class="ln">1</span>Started by SCM change
+<span class="ln">2</span>[Pipeline] stage (Checkout)
+<span class="ln">3</span>…
+<span class="ln">40</span>Finished: SUCCESS
+</pre></section></div>
+              <dialog id="dlg-cancel" data-open-in="cancel-dialog" data-back="running" aria-labelledby="cn-h"><form method="dialog" class="dlg"><h2 id="cn-h">Huỷ lần triển khai D-486?</h2>
+<p>Hub gửi tín hiệu dừng tới script đang chạy trên <code>hive-stg-01</code>. Bước đang chạy có thể để lại trạng thái dở; sau đó nên kiểm health và cân nhắc quay về bản trước.</p>
+<div class="foot"><button type="button" class="btn" data-close="">Để chạy tiếp</button><button type="button" class="btn danger" data-close="Mẫu thiết kế: đã gửi lệnh huỷ (ghi audit)."><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>Huỷ triển khai</button></div></form></dialog>
+
+              <p id="feedback" class="alert success toast" role="status" aria-live="polite"></p>
+            </main>
+          </div>
+        </div>
+      </div></x-dc
+    >
+    <!-- Vanilla DOM: các bản mẫu chạy được trong trình duyệt, không cần support.js của canvas. -->
+    <script type="module" data-dc-script>
+const board = document.querySelector(".board");
+const params = new URLSearchParams(location.search);
+const viewControl = document.querySelector("#design-view");
+const root = document.documentElement;
+
+function say(message) {
+  const el = document.querySelector("#feedback");
+  if (el) el.textContent = message;
+}
+
+function setTheme(dark) {
+  root.dataset.theme = dark ? "dark" : "light";
+  root.style.colorScheme = dark ? "dark" : "light";
+  const btn = document.querySelector("#theme-toggle");
+  if (btn) btn.setAttribute("aria-pressed", String(dark));
+}
+
+function setView(value) {
+  viewControl.value = value;
+  if (!viewControl.value) viewControl.value = viewControl.options[0].value;
+  const view = viewControl.value;
+  document.querySelectorAll("[data-v]").forEach((el) => {
+    el.hidden = !el.dataset.v.split(" ").includes(view);
+  });
+  document.querySelectorAll("[data-nv]").forEach((el) => {
+    if (el.dataset.nv.split(" ").includes(view)) el.hidden = true;
+    else if (!el.hasAttribute("data-v")) el.hidden = false;
+  });
+  document.querySelectorAll("dialog[data-open-in]").forEach((d) => {
+    const want = d.dataset.openIn.split(" ").includes(view);
+    if (want && !d.open) d.showModal();
+    if (!want && d.open) d.close();
+  });
+  document.querySelectorAll("[data-off-in]").forEach((el) => {
+    const off = el.dataset.offIn.split(" ").includes(view);
+    const set = (c) => {
+      if (off) {
+        if (!c.disabled) c.dataset.offBy = "1";
+        c.disabled = true;
+      } else if (c.dataset.offBy) {
+        c.disabled = false;
+        delete c.dataset.offBy;
+      }
+    };
+    if (el.matches("button, input, select, textarea")) set(el);
+    else el.querySelectorAll("button, input, select, textarea").forEach(set);
+    el.toggleAttribute("aria-disabled", off);
+  });
+  document.querySelectorAll("[data-why-in]").forEach((el) => {
+    el.hidden = !el.dataset.whyIn.split(" ").includes(view);
+  });
+  document.querySelectorAll("[data-mode]").forEach((el) => {
+    const m = el.dataset.mode;
+    if (m === "view") el.value = view;
+  });
+  document.querySelectorAll("[data-pick]").forEach((el) => {
+    const map = el.dataset.pick.split(" ").map((p) => p.split(":"));
+    const hit = map.find((p) => p[0] === view);
+    if (hit) {
+      const radio = el.querySelector("input[value='" + hit[1] + "']");
+      if (radio) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+  });
+  if (typeof onView === "function") onView(view);
+  say("");
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set("view", view);
+    history.replaceState(null, "", u);
+  } catch (e) {}
+}
+
+viewControl.addEventListener("change", () => setView(viewControl.value));
+document.querySelectorAll("[data-go]").forEach((el) => el.addEventListener("click", () => setView(el.dataset.go)));
+document.querySelector("#theme-toggle").addEventListener("click", () => setTheme(root.dataset.theme !== "dark"));
+document.querySelector("#size-toggle").addEventListener("click", () => board.classList.toggle("narrow"));
+document.querySelectorAll("form").forEach((f) =>
+  f.addEventListener("submit", (e) => {
+    e.preventDefault();
+    say("Mẫu thiết kế: chưa lưu thật, chỉ để xem bố cục.");
+  }),
+);
+document.querySelectorAll("[data-notice]").forEach((el) => el.addEventListener("click", () => say(el.dataset.notice)));
+document.querySelectorAll("[data-open]").forEach((el) =>
+  el.addEventListener("click", () => document.querySelector("#" + el.dataset.open).showModal()),
+);
+document.querySelectorAll("[data-close]").forEach((el) =>
+  el.addEventListener("click", () => {
+    const d = el.closest("dialog");
+    d.close();
+    if (el.dataset.close) say(el.dataset.close);
+  }),
+);
+document.querySelectorAll("dialog").forEach((d) =>
+  d.addEventListener("close", () => {
+    if (d.dataset.openIn && d.dataset.openIn.split(" ").includes(viewControl.value) && d.dataset.back)
+      setView(d.dataset.back);
+  }),
+);
+/* nhóm công tắc: radio chọn một khối [data-case] trong cùng [data-switch] */
+document.querySelectorAll("[data-switch]").forEach((group) => {
+  const apply = () => {
+    const picked = group.querySelector("input[type=radio]:checked");
+    const value = picked ? picked.value : "";
+    document.querySelectorAll("[data-case-of='" + group.dataset.switch + "']").forEach((c) => {
+      c.hidden = !c.dataset.case.split(" ").includes(value);
+    });
+  };
+  group.addEventListener("change", apply);
+  apply();
+});
+document.querySelectorAll("[data-tabs]").forEach((group) => {
+  group.querySelectorAll("[data-tab]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      group.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b === btn)));
+      document.querySelectorAll("[data-tabpane-of='" + group.dataset.tabs + "']").forEach((p) => {
+        p.hidden = p.dataset.tabpane !== btn.dataset.tab;
+      });
+    }),
+  );
+});
+document.querySelectorAll("[data-copy]").forEach((el) =>
+  el.addEventListener("click", () => say("Mẫu thiết kế: đã sao chép " + el.dataset.copy + "."))
+);
+document.querySelectorAll("[data-gate]").forEach((gate) => {
+  const target = document.querySelector("#" + gate.dataset.gate);
+  const apply = () => (target.disabled = !gate.checked);
+  gate.addEventListener("change", apply);
+  apply();
+});
+
+
+
+
+setTheme(params.get("theme") === "dark");
+if (params.get("narrow") === "1") board.classList.add("narrow");
+setView(params.get("view") || viewControl.options[0].value);
+
+    </script>
+  </body>
+</html>

@@ -292,6 +292,90 @@ describe("GitLab", () => {
   });
 });
 
+describe("GitLab CI", () => {
+  it("Pipeline Hook thành sự kiện pipeline: id, ref, sha, trạng thái", () => {
+    expect(normalizeGitLab("Pipeline Hook", fixture("gitlab/pipeline"), opts)).toEqual([
+      {
+        provider: "gitlab",
+        kind: "pipeline",
+        repo: "gitlab-org/gitlab-test",
+        actor: "root",
+        actorId: 1,
+        pipeline: {
+          id: "31",
+          ref: "master",
+          sha: "bcbb5ec396a2c0f828686f14fac9b80b780504f2",
+          status: "success",
+          source: "merge_request_event",
+          url: "http://example.com/gitlab-org/gitlab-test/-/pipelines/31",
+          createdAt: "2016-08-12T15:23:28.000Z",
+          updatedAt: null,
+          startedAt: null,
+          finishedAt: "2016-08-12T15:26:29.000Z",
+          durationSec: 63,
+          user: "root",
+        },
+      },
+    ]);
+  });
+
+  it("Job Hook (object_kind build) thành sự kiện job", () => {
+    expect(normalizeGitLab("Job Hook", fixture("gitlab/job"), opts)).toEqual([
+      {
+        provider: "gitlab",
+        kind: "job",
+        repo: "gitlab-org/gitlab-test",
+        actor: "user",
+        actorId: 3,
+        job: {
+          id: "1977",
+          pipelineId: "2366",
+          name: "test",
+          stage: "test",
+          ref: "gitlab-script-trigger",
+          sha: "2293ada6b400935a1378653304eaf6221e0fdb8f",
+          status: "created",
+          allowFailure: false,
+          failureReason: "script_failure",
+          url: "http://192.168.64.1:3005/gitlab-org/gitlab-test/-/jobs/1977",
+          createdAt: "2021-02-23T02:41:37.886Z",
+          startedAt: null,
+          finishedAt: null,
+          durationSec: null,
+          user: "user",
+        },
+      },
+    ]);
+  });
+
+  it("Job Hook thiếu project: lấy đường dẫn repo từ repository.homepage", () => {
+    const p = fixture("gitlab/job");
+    delete p.project;
+    const [event] = normalizeGitLab("Job Hook", p, opts);
+    expect(event).toMatchObject({ kind: "job", repo: "gitlab-org/gitlab-test" });
+  });
+
+  it("trạng thái lạ coi là đang chờ; thiếu id thì bỏ", () => {
+    const p = fixture("gitlab/pipeline");
+    p.object_attributes.status = "teleporting";
+    expect(normalizeGitLab("Pipeline Hook", p, opts)).toMatchObject([{ pipeline: { status: "pending" } }]);
+    const j = fixture("gitlab/job");
+    delete j.build_id;
+    expect(normalizeGitLab("Job Hook", j, opts)).toEqual([]);
+  });
+
+  it("rawEventName giữ object_kind", () => {
+    expect(rawEventName("gitlab", "Pipeline Hook", fixture("gitlab/pipeline"))).toBe("pipeline");
+    expect(rawEventName("gitlab", "Job Hook", fixture("gitlab/job"))).toBe("build");
+  });
+
+  it("GitHub workflow_run chưa đổi thành pipeline (làm ở T031)", () => {
+    expect(normalizeGitHub("workflow_run", { action: "completed", repository: { full_name: "a/b" } }, opts)).toEqual(
+      [],
+    );
+  });
+});
+
 describe("mentions", () => {
   it.each([
     ["@hive làm giúp", true],
