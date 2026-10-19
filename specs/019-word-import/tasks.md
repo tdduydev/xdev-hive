@@ -51,7 +51,12 @@ description: "Task list: nhập Word thành tài liệu hub"
     `assertDocSecrets`). Rồi T012 (Đợt 2) sửa `index.ts` để export hook duyệt.
   - `apps/hub/src/modules/platform/magic.ts`: chỉ T008. `platform/config.ts`: chỉ T005 (mọi biến ở plan.md mục 13).
   - `Dockerfile`, `.github/workflows/ci.yml`: T004 (pandoc), rồi T014 (LibreOffice, Đợt 3).
-  - `apps/hub/src/modules/docsync/word/fixtures/**`: T003. T014 thêm `.doc` (Đợt 3). `.gitattributes` gốc: chỉ T003.
+  - `apps/hub/src/modules/docsync/word/fixtures/**` và `word/filter.lua`: T003, rồi T026 (Đợt 2). T014 thêm `.doc`
+    vào fixtures (Đợt 3). `.gitattributes` gốc: chỉ T003.
+  - `apps/hub/src/modules/docsync/word/{pandoc.ts,pandoc.test.ts}`: T004, rồi T009 (`--eol=lf`, Đợt 2).
+    `word/filter.test.ts`: T003, rồi T009.
+  - `apps/hub/scripts/word-corpus.ts`: T007, rồi T027. `apps/hub/tsconfig.json`: chỉ T027.
+  - `specs/019-word-import/research.md` mục 6: T007, rồi T027.
   - `apps/web/src/router.tsx`, `apps/web/e2e/fake-hub.ts`: chỉ T006. T006 tạo sẵn route và trang rỗng cho T011, T021,
     và fixture `apps/web/e2e/word-import-fixture.ts`. T011, T018, T021 chỉ thêm vào fixture này (khác đợt).
   - `apps/web/src/pages/knowledge/doc-editor-page.tsx`: T011, rồi T018, rồi T021 (khác đợt).
@@ -311,10 +316,14 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `media.ts`: ảnh giữ tạm của một file; chỉ người tạo lượt và người `manage` ở phạm vi đích; SVG trả `attachment`
       (CSP) như đính kèm; `Cache-Control: private`.
     - `filter.test.ts` chuyển sang gọi `runPandoc`; test của job so Markdown với `*.md` vàng của T003.
+    - Hai việc T007 tìm thấy (PR #438, research.md mục 6):
+      - `runPandoc` truyền `--eol=lf`, để kết quả trên Windows giống Linux; bỏ `--eol=lf` tự thêm trong `filter.test.ts`;
+      - biểu thức kiểm thẻ HTML trong `filter.test.ts` không tính `\<` (dấu `<` đã escape) là thẻ.
     - Test: zip bomb, quá 200.000 ký tự, pandoc treo (SC-005), token giả trong file, logo lặp chỉ một blob (US2 kịch bản
-      4), hai file cùng đường dẫn bị chặn.
+      4), hai file cùng đường dẫn bị chặn; `runPandoc` có `--eol=lf`; `\<b>` không bị tính là thẻ.
   - **PHẠM VI**:
     - `apps/hub/src/modules/docsync/word/{convert.ts,media.ts,filter.test.ts}`, `word/postprocess.ts` (nếu cần)
+    - `apps/hub/src/modules/docsync/word/{pandoc.ts,pandoc.test.ts}`
     - `apps/hub/src/modules/docsync/routes/word-imports.ts`
     - `apps/hub/src/modules/docsync/word/{convert.db.test.ts,preview.db.test.ts}` (mới)
   - **Kiểm**: hub test (cần pandoc), typecheck.
@@ -393,6 +402,40 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/asset-orphans.ts` (mới) + `asset-orphans.db.test.ts`
     - `apps/hub/src/modules/docsync/{push.ts,push.db.test.ts}`
   - **Kiểm**: hub test docsync (test cũ của lô đẩy vẫn qua), typecheck.
+
+- [ ] **T026 [P] [US1] [vừa] · 1 ngày — Bộ lọc: `<sub>`/`<sup>` trong ô bảng, bỏ `<!-- -->` giữa hai danh sách**
+  - **Phụ thuộc**: T003, T007. Merge sau T009: T009 so kết quả job với `*.md` vàng, task này đổi bộ vàng.
+  - **Goal**: giai đoạn 1. FR-007…FR-009, SC-001. Việc 1 và 3 T007 tìm thấy (PR #438, research.md mục 6).
+    - `<sub>`, `<sup>` trong ô bảng làm cả bảng thành khối thô (EME03 trên bộ thật). Bộ lọc đổi chỉ số dưới, chỉ số
+      trên trong ô thành dạng codec đọc được, hoặc bỏ định dạng và giữ chữ. Chọn cách nào thì ghi lý do vào bàn giao.
+    - Bỏ dòng `<!-- -->` pandoc chèn giữa hai danh sách liền nhau (28 dòng trên bộ thật), mà hai danh sách vẫn tách
+      nhau khi codec đọc lại.
+    - Sửa trong `filter.lua`. Không làm được ở bộ lọc mà phải sửa `postprocess.ts` (T009 giữ) thì ghi bàn giao.
+    - Mẫu: thêm vào `make-fixtures.py` một bảng có chỉ số dưới, chỉ số trên và hai danh sách liền nhau; sinh lại file
+      mẫu và `*.md` vàng.
+  - **PHẠM VI**:
+    - `apps/hub/src/modules/docsync/word/filter.lua`
+    - `apps/hub/src/modules/docsync/word/fixtures/**`
+  - **Kiểm**: hub test `word/` (cần pandoc), `word:corpus` trên `word/fixtures`: không còn thẻ HTML ngoài `<br>` trong ô,
+    không còn `<!-- -->`.
+
+- [ ] **T027 [P] [—] [nhẹ] · 0,5 ngày — Bộ thật: phân loại khối thô, 278 so với 261, typecheck `scripts/`**
+  - **Phụ thuộc**: T007, T024 (máy có dữ liệu, cho phần chạy trên bộ thật).
+  - **Goal**: giai đoạn 1. SC-001. Việc 4, 6 và 7 T007 tìm thấy (PR #438, research.md mục 6).
+    - `apps/hub/tsconfig.json` gồm `scripts/`; sửa lỗi kiểu nếu có trong `word-corpus.ts`.
+    - `word-corpus.ts`: với mỗi khối không phải bảng mà codec để thô, ghi loại khối và lý do (danh sách lồng, đoạn
+      chứa ký tự codec escape khác, ảnh trong chữ nghiêng…) vào thư mục chi tiết; in số đếm theo loại.
+    - Chạy trên bộ thật (máy có dữ liệu). Ghi vào research.md mục 6:
+      - bảng phân loại 187 khối thô: loại nào là lỗi bộ lọc (thành task mới), loại nào là giới hạn codec;
+      - 17 tài liệu chênh giữa 278 và 261: mã chép ở hai thư mục, tài liệu mới trên OneDrive, hay khác cách chọn của
+        `srs2md`. Chỉ ghi mã tài liệu, không ghi nội dung.
+    - Phần chạy trên bộ thật không làm được trên máy giao task thì commit phần code, ghi bàn giao để người điều phối
+      chạy tại máy có dữ liệu.
+  - **PHẠM VI**:
+    - `apps/hub/tsconfig.json`, `apps/hub/scripts/word-corpus.ts`
+    - `specs/019-word-import/research.md` (mục 6)
+  - **Kiểm**: hub typecheck (gồm `scripts/`), `word:corpus` trên `word/fixtures` ra đúng số liệu cũ. Không có file nào
+    của bộ thật trong commit.
 
 ## Đợt 3: `.doc`, cập nhật, đề xuất, desktop Rust (song song, sau Đợt 2)
 
@@ -612,14 +655,17 @@ flowchart LR
   T011 --> T018
   T012 --> T016
   T013 --> T015
+  T007 --> T026 & T027
+  T009 --> T026
   T017 --> T019
   T018 --> T021
   T014 --> T022
-  T007 & T014 & T015 & T016 & T019 & T020 & T021 & T022 --> T023
+  T007 & T014 & T015 & T016 & T019 & T020 & T021 & T022 & T026 & T027 --> T023
   T023 --> T025
 ```
 
-T024 và T025 là việc của chủ dự án. T024 làm trước khi giao T003.
+T024 và T025 là việc của chủ dự án. T024 làm trước khi giao T003. `T009 --> T026` là thứ tự merge, không phải chờ
+code: T026 chạy cùng đợt, merge sau T009 rồi chạy lại test của job với bộ vàng mới.
 
 ## Đợt chạy song song
 
@@ -629,12 +675,12 @@ Tối đa khoảng 6 agent build cùng lúc trên Mac mini (CLAUDE.md).
 |---|---|---|---|---|
 | 0 | T001, T002, T003, T004 (+ T024 chủ dự án) | 4 | nặng, vừa, nặng, nặng | 2 ngày (T003) |
 | 1 | T005, T006, T007 | 3 | nặng, vừa, vừa | 1,5 ngày |
-| 2 | T008, T009, T010, T011, T012, T013 | 6 | nặng ×4, vừa ×2 | 2 ngày (T009) |
+| 2 | T008, T009, T010, T011, T012, T013, T026, T027 | 8 (tối đa 5 cùng lúc) | nặng ×4, vừa ×3, nhẹ ×1 | 2 ngày (T009) |
 | 3 | T014, T015, T016, T017, T018 | 5 | nặng ×4, vừa ×1 | 2 ngày |
 | 4 | T019, T020, T021, T022 | 4 | vừa ×3, nhẹ ×1 | 1,5 ngày |
 | 5 | T023 (+ T025 chủ dự án) | 1 | vừa | 0,5 ngày |
 
-Tổng: **23 task giao agent, 29 ngày-agent**, cộng T024, T025 cho chủ dự án. Khoảng **9,5 ngày lịch** với 3–6 agent
+Tổng: **25 task giao agent, 30,5 ngày-agent**, cộng T024, T025 cho chủ dự án. Khoảng **9,5 ngày lịch** với 3–6 agent
 **[Suy luận]**.
 
 So với plan.md "Phân đợt và ước lượng":
@@ -642,13 +688,13 @@ So với plan.md "Phân đợt và ước lượng":
 | Giai đoạn | Plan | Task | Ngày-agent |
 |---|---|---|---|
 | 0 Editor | đã xong (PR #416, v0.2.22) | — | 0 |
-| 1 (P1) | 9,5–11,5 | T001–T011 | 14 |
+| 1 (P1) | 9,5–11,5 | T001–T011, T026, T027 | 15,5 |
 | 1b (P1) | 2–3 | T014 | 2 |
 | 2 (P2) | 7–9 | T012, T013, T015, T016, T018 | 7 |
 | 2b (P2) | 3–4 | T017, T019 | 3 |
 | 3 (P3) | 1,5 | T020, T021 | 1,5 |
 | Chung | — | T022, T023 | 1,5 |
-| **Tổng** | **23–29** | | **29** |
+| **Tổng** | **23–29** | | **30,5** |
 
 Giai đoạn 1 cao hơn plan vì T001 và T005 làm hợp đồng và bảng cho mọi giai đoạn; các giai đoạn sau ở cận dưới.
 
@@ -660,14 +706,14 @@ Giai đoạn 1 cao hơn plan vì T001 và T005 làm hợp đồng và bảng cho
 
 | Story | Task |
 |---|---|
-| US1 Nhập một file | T003, T006, T008, T009, T010, T011, T014 |
+| US1 Nhập một file | T003, T006, T008, T009, T010, T011, T014, T026 |
 | US2 Nhập nhiều file | T002, T008, T009, T011 |
 | US3 Cập nhật từ bản Word mới | T013, T015, T018 |
 | US4 Gửi bản nhập để duyệt | T012, T016, T018 |
 | US5 Xem lại lần nhập, tải file gốc | T020, T021 |
 | US6 Gắn tài liệu có sẵn với file Word | T009 (gọi `prepareLink`), T010, T011 |
 | US7 Nhập Word từ app desktop | T008 (token cá nhân), T017, T019 |
-| Chung | T001, T004, T005, T007, T022, T023, T024, T025 |
+| Chung | T001, T004, T005, T007, T022, T023, T024, T025, T027 |
 
 ## Theo yêu cầu
 
