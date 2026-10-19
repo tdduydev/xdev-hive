@@ -32,6 +32,16 @@ type Options struct {
 	RTK   RTKFunc
 	NoRTK bool
 	Now   func() time.Time
+	// Roots là danh sách gói người gọi đã biết (accounts.json), kể cả gói có thư mục cấu hình ngoài
+	// ~/.xdev-hive/accounts. Rỗng thì quét theo tiền tố như cũ. Accounts vẫn lọc theo Root.Account.
+	Roots []Root
+}
+
+// Root là thư mục cấu hình của một gói CLI; transcript nằm trong projects/ (Claude) hoặc sessions/ (Codex) của nó.
+type Root struct {
+	Account string
+	CLI     string
+	Dir     string
 }
 
 // Report giữ tên trường của scripts/token-audit.ts; phần thêm (sessions, split, trimmed, rtkGain) bỏ trống khi không có.
@@ -78,9 +88,18 @@ func (o *Options) wants(account string) bool {
 	return false
 }
 
-// roots liệt kê thư mục cấu hình của các gói có tiền tố prefix, rồi tới đăng nhập mặc định.
+// roots liệt kê thư mục cấu hình của các gói có tiền tố prefix, rồi tới đăng nhập mặc định. Có Options.Roots thì chỉ
+// dùng các gói của CLI prefix trong đó.
 func (o *Options) roots(home, prefix, defaultDir, sub string) []root {
 	var out []root
+	if len(o.Roots) > 0 {
+		for _, r := range o.Roots {
+			if r.CLI == prefix && o.wants(r.Account) {
+				out = append(out, root{r.Account, r.Dir, filepath.Join(r.Dir, sub)})
+			}
+		}
+		return existingRoots(out)
+	}
 	accountsDir := filepath.Join(home, ".xdev-hive", "accounts")
 	if entries, err := os.ReadDir(accountsDir); err == nil {
 		for _, e := range entries {
@@ -94,6 +113,10 @@ func (o *Options) roots(home, prefix, defaultDir, sub string) []root {
 		h := filepath.Join(home, defaultDir)
 		out = append(out, root{DefaultAccount, h, filepath.Join(h, sub)})
 	}
+	return existingRoots(out)
+}
+
+func existingRoots(out []root) []root {
 	var existing []root
 	for _, r := range out {
 		if exists(r.dir) {
@@ -130,8 +153,16 @@ func walk(dir string, since time.Time, match func(string) bool) []string {
 	return out
 }
 
-// Run đọc transcript (chỉ đọc) và trả số tổng hợp.
-func Run(ctx context.Context, opts Options) (*Report, error) {
+// collected là kết quả đọc transcript, dùng chung cho Run và Sessions.
+type collected struct {
+	home, optDir            string
+	now                     func() time.Time
+	since                   time.Time
+	claudeRoots, codexRoots []root
+	sessions                []*session
+}
+
+func collect(ctx context.Context, opts Options) (*collected, error) {
 	now := time.Now
 	if opts.Now != nil {
 		now = opts.Now
@@ -183,6 +214,7 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		// Cache dùng chung giữa các lần lọc gói, nên gói gán lại theo thư mục đang đọc.
 		cp := *s
 		cp.Account = account
+		cp.Subagent = isSubagent(file)
 		if cp.Start.IsZero() {
 			cp.Start = info.ModTime()
 		}
@@ -207,6 +239,18 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		}
 	}
 	c.save()
+	return &collected{home: home, optDir: optDir, now: now, since: since, claudeRoots: claudeRoots, codexRoots: codexRoots,
+		sessions: sessions}, nil
+}
+
+// Run đọc transcript (chỉ đọc) và trả số tổng hợp.
+func Run(ctx context.Context, opts Options) (*Report, error) {
+	col, err := collect(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	home, optDir, now, since, sessions := col.home, col.optDir, col.now, col.since, col.sessions
+	claudeRoots, codexRoots := col.claudeRoots, col.codexRoots
 
 	rep := &Report{
 		Days:        "all",
