@@ -24,7 +24,7 @@ import type {
   ScmUser,
   WebhookInput,
 } from "./types.ts";
-import { COMMIT_STATUS_DESCRIPTION_MAX, MAX_PR_FILES } from "./types.ts";
+import { COMMIT_STATUS_DESCRIPTION_MAX, ciTime, MAX_PR_FILES } from "./types.ts";
 
 interface CommonOptions {
   /** GitHub Enterprise Server: `https://ghe.example.com/api/v3`. */
@@ -820,7 +820,8 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
       const repo = { owner: ref.owner, repo: ref.name };
       const body = {
         active: true,
-        events: input.events,
+        // GitHub không có sự kiện tên pipeline, job; đổi sang workflow_run, workflow_job ở đợt sau.
+        events: input.events.filter((e) => e !== "pipeline" && e !== "job"),
         config: { url: input.url, secret: input.secret, content_type: "json", insecure_ssl: "0" },
       };
       const hooks = await request<GhHook[]>("GET /repos/{owner}/{repo}/hooks", { ...repo, per_page: 100 });
@@ -932,6 +933,7 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
     async compare(ref, from, to) {
       const data = await request<{
         files?: { filename: string; previous_filename?: string; status: string; sha: string }[];
+        commits?: { sha: string; commit: { message: string; author?: { name?: string; date?: string } | null } }[];
       }>("GET /repos/{owner}/{repo}/compare/{basehead}", {
         owner: ref.owner,
         repo: ref.name,
@@ -950,7 +952,13 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
               : "modified") as "added" | "removed" | "modified" | "renamed",
         sha: f.sha,
       }));
-      return { files, incomplete: files.length >= 300 };
+      const commits = (data.commits ?? []).map((c) => ({
+        sha: c.sha,
+        title: c.commit.message.split("\n", 1)[0] ?? "",
+        author: c.commit.author?.name ?? null,
+        authoredAt: ciTime(c.commit.author?.date),
+      }));
+      return { files, commits, incomplete: files.length >= 300 };
     },
     async archive(ref, sha, path) {
       const o = await octokit();
@@ -1062,5 +1070,18 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
         state: "closed",
       });
     },
+
+    listPipelines: noActions,
+    pipelineJobs: noActions,
+    jobLog: noActions,
+    retryPipeline: noActions,
+    cancelPipeline: noActions,
+    retryJob: noActions,
+    cancelJob: noActions,
+    playJob: noActions,
   };
 }
+
+// GitHub Actions (workflow run, job) làm ở đợt sau của spec 020 (Q11).
+const noActions = () =>
+  Promise.reject(new GitProviderError("unsupported", "GitHub: chưa hỗ trợ xem và chạy GitHub Actions"));
