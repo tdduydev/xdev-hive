@@ -23,6 +23,12 @@ compose() { $docker compose -p "$project" --env-file "$env" -f "$src/deploy/comp
 checksum() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
 }
+# Bản sao lưu không chứa .env: ai có bản sao lưu cùng khoá chủ là giải mã được mọi secret. meta thay chỗ đó, đủ để
+# restore kiểm .env đang dùng đúng project và đúng khoá với bản dump. Khoá là 32 byte ngẫu nhiên, sha256 không lộ khoá.
+key_fingerprint() { printf '%s' "$(get_env HIVE_MASTER_KEY "$1")" | checksum | cut -d ' ' -f 1; }
+backup_meta() {
+  printf 'HIVE_COMPOSE_PROJECT=%s\nHIVE_MASTER_KEY_SHA256=%s\n' "$(get_env HIVE_COMPOSE_PROJECT "$1")" "$(key_fingerprint "$1")"
+}
 lock=$dir/.backup-restore.lock
 acquire_lock() {
   umask 077
