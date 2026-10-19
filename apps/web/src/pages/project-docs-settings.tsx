@@ -17,12 +17,18 @@ import { useId, useState } from "react";
 import { FormRow, SettingsSection, SwitchRow } from "@/components/page/settings.tsx";
 import { UnsavedChangesGuard } from "@/components/page/unsaved-guard.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { WordImportButton } from "@/components/word-import-dialog.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { useWordImportSupport } from "@/lib/build-info.ts";
 import { type DocsSettingsForm, docsFormFromSettings, parseDocsForm } from "@/lib/project-settings.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
 export const DOC_REPO_ACCESS_WARNING =
   "Quyền đọc trên hub và repo được cấp riêng. Người có quyền đọc repo có thể đọc mọi file trong repo đó, kể cả tài liệu bị giới hạn trên hub.";
+
+/** Chỗ duy nhất nói cách bật nhập Word khi hub báo `wordImport: false` (FR-023). */
+export const WORD_IMPORT_OFF_HINT =
+  "Nhập Word đang tắt vì hub chưa tìm thấy pandoc. Quản trị cài pandoc trên máy chạy hub (hoặc đặt HIVE_PANDOC_PATH tới file pandoc) rồi khởi động lại hub. Xem docs/self-hosting.md.";
 
 export function DocsRepoFields({
   form,
@@ -93,6 +99,13 @@ export function DocsRepoFields({
           onChange={(e) => setForm({ ...form, exclude: e.target.value })}
         />
       </FormRow>
+      <SwitchRow
+        label="Tài liệu mật khi nhập Word"
+        hint="Tài liệu nhập từ Word mặc định là tài liệu mật: không gửi đi tạo embedding. Người nhập đổi được ở hộp thoại Nhập Word."
+        checked={form.wordImportConfidential}
+        disabled={disabled}
+        onChange={(checked) => setForm({ ...form, wordImportConfidential: checked })}
+      />
       <p className="rounded-lg border border-border bg-muted px-3 py-2 text-sm">{DOC_REPO_ACCESS_WARNING}</p>
     </>
   );
@@ -204,6 +217,7 @@ export function DocsHomeStatus({ home, canEdit }: { home: DocHome; canEdit: bool
   const branchId = useId();
   const [message, setMessage] = useState("");
   const current = status.data?.home ?? home;
+  const wordImport = useWordImportSupport();
   const action = useMutation({
     mutationFn: async (kind: "sync" | "pause" | "resume" | "branch") => {
       const input = { homeId: home.id };
@@ -305,8 +319,10 @@ export function DocsHomeStatus({ home, canEdit }: { home: DocHome; canEdit: bool
             <Link to="/knowledge/docs/import" className="self-center text-sm text-primary underline">
               Nhập từ repo
             </Link>
+            <WordImportButton variant="link" homeId={home.id} targetDir={home.root} />
           </div>
         )}
+        {wordImport.state === "off" && <Alert role="note">{WORD_IMPORT_OFF_HINT}</Alert>}
       </div>
       <Dialog open={dialog === "branch"} onOpenChange={(open) => !open && !action.isPending && setDialog(null)}>
         <DialogContent>
