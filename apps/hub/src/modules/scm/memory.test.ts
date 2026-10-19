@@ -101,3 +101,111 @@ describe("memory provider: prFiles và setCommitStatus", () => {
     expect(repo.statuses.get("sha2")?.get("xdev-hive/review")?.description).toHaveLength(140);
   });
 });
+
+describe("memory provider: pipeline và job", () => {
+  const seed = () => {
+    const scm = createMemoryProvider("gitlab");
+    scm.seedRepo(ref);
+    const { pipeline, jobs } = scm.seedPipeline(ref, {
+      jobs: [
+        { name: "build", stage: "build", status: "success", log: "đã build\n" },
+        { name: "test", stage: "test", status: "failed" },
+        { name: "deploy", stage: "deploy", status: "manual" },
+      ],
+    });
+    const idOf = (name: string) => {
+      const job = jobs.find((j) => j.name === name);
+      if (!job) throw new Error(`thiếu job ${name}`);
+      return job.id;
+    };
+    return { scm, pipeline, build: idOf("build"), test: idOf("test"), deploy: idOf("deploy") };
+  };
+
+  it("tạo pipeline trên head nhánh mặc định; lọc nhánh, sha, trạng thái; mới nhất trước, phân trang", async () => {
+    const { scm, pipeline } = seed();
+    expect(pipeline).toMatchObject({ ref: "main", sha: await scm.branchHead(ref, "main"), status: "running" });
+    const other = scm.seedPipeline(ref, { ref: "feat", sha: "abc", status: "success" }).pipeline;
+    expect((await scm.listPipelines(ref, { page: 1 })).items.map((p) => p.id)).toEqual([other.id, pipeline.id]);
+    expect((await scm.listPipelines(ref, { branch: "feat", page: 1 })).items.map((p) => p.id)).toEqual([other.id]);
+    expect((await scm.listPipelines(ref, { sha: "abc", page: 1 })).items).toHaveLength(1);
+    expect((await scm.listPipelines(ref, { status: "running", page: 1 })).items.map((p) => p.id)).toEqual([
+      pipeline.id,
+    ]);
+    expect(await scm.listPipelines(ref, { page: 1, perPage: 1 })).toMatchObject({ nextPage: 2 });
+    expect(await scm.listPipelines(ref, { page: 2, perPage: 1 })).toMatchObject({ nextPage: null });
+  });
+
+  it("job, log theo vị trí byte, đổi trạng thái job", async () => {
+    const { scm, pipeline, build, test } = seed();
+    expect((await scm.pipelineJobs(ref, pipeline.id)).map((j) => [j.name, j.status])).toEqual([
+      ["build", "success"],
+      ["test", "failed"],
+      ["deploy", "manual"],
+    ]);
+    const size = Buffer.byteLength("đã build\n");
+    expect(await scm.jobLog(ref, build, 0)).toEqual({ text: "đã build\n", next: size, complete: true });
+    expect(await scm.jobLog(ref, build, size)).toEqual({ text: "", next: size, complete: true });
+    scm.setJob(ref, test, { status: "running", appendLog: "chạy test\n" });
+    expect(await scm.jobLog(ref, test, 0)).toMatchObject({ text: "chạy test\n", complete: false });
+    await expect(scm.jobLog(ref, "999", 0)).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("bấm job chờ tay; job khác thì invalid", async () => {
+    const { scm, build, deploy } = seed();
+    expect(await scm.playJob(ref, deploy)).toMatchObject({ id: deploy, status: "pending" });
+    await expect(scm.playJob(ref, build)).rejects.toMatchObject({ code: "invalid" });
+  });
+
+  it("chạy lại job ra job mới thay job cũ; huỷ job đang chạy", async () => {
+    const { scm, pipeline, build, test, deploy } = seed();
+    const again = await scm.retryJob(ref, test);
+    expect(again).toMatchObject({ name: "test", status: "pending", pipelineId: pipeline.id });
+    expect(again.id).not.toBe(test);
+    expect((await scm.pipelineJobs(ref, pipeline.id)).map((j) => j.id)).toEqual([build, again.id, deploy]);
+    expect(await scm.cancelJob(ref, again.id)).toMatchObject({ status: "canceled" });
+    await expect(scm.cancelJob(ref, build)).rejects.toMatchObject({ code: "invalid" });
+  });
+
+  it("chạy lại pipeline làm lại job lỗi; huỷ pipeline huỷ job đang chờ", async () => {
+    const { scm, pipeline } = seed();
+    expect(await scm.retryPipeline(ref, pipeline.id)).toMatchObject({ status: "pending" });
+    expect((await scm.pipelineJobs(ref, pipeline.id)).map((j) => j.status)).toEqual(["success", "pending", "manual"]);
+    expect(await scm.cancelPipeline(ref, pipeline.id)).toMatchObject({ status: "canceled" });
+    expect((await scm.pipelineJobs(ref, pipeline.id)).map((j) => j.status)).toEqual(["success", "canceled", "manual"]);
+    scm.setPipeline(ref, pipeline.id, { status: "failed" });
+    expect((await scm.listPipelines(ref, { page: 1 })).items[0]?.status).toBe("failed");
+  });
+
+  it("phát sự kiện pipeline, job như webhook GitLab đã chuẩn hoá", async () => {
+    const { scm, pipeline, test } = seed();
+    expect(scm.pipelineEvent(ref, pipeline.id)).toMatchObject({
+      provider: "gitlab",
+      kind: "pipeline",
+      repo: "xdev-team/web",
+      pipeline: { id: pipeline.id, ref: "main", sha: pipeline.sha, status: "running" },
+    });
+    expect(scm.jobEvent(ref, test)).toMatchObject({
+      kind: "job",
+      job: { id: test, pipelineId: pipeline.id, name: "test", status: "failed" },
+    });
+  });
+
+  it("compare trả commit giữa hai sha của nhánh", async () => {
+    const scm = createMemoryProvider();
+    scm.seedRepo(ref, { files: { "a.txt": "a" } });
+    const before = (await scm.branchHead(ref, "main")) ?? "";
+    const one = await scm.commitFiles(ref, {
+      branch: "main",
+      message: "một\n\nchi tiết",
+      files: [{ path: "a", content: "1" }],
+    });
+    const two = await scm.commitFiles(ref, { branch: "main", message: "hai", files: [{ path: "a", content: "2" }] });
+    const { commits } = await scm.compare(ref, before, two.sha);
+    expect(commits.map((c) => [c.sha, c.title, c.author])).toEqual([
+      [one.sha, "một", "hive"],
+      [two.sha, "hai", "hive"],
+    ]);
+    expect(commits[0]?.authoredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect((await scm.compare(ref, one.sha, two.sha)).commits.map((c) => c.sha)).toEqual([two.sha]);
+  });
+});

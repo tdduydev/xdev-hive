@@ -21,11 +21,13 @@ export {
   type CommentInfo,
   type IssueEvent,
   type IssueInfo,
+  type JobEvent,
   type MentionEvent,
   mentions,
   normalizeEvent,
   normalizeGitHub,
   normalizeGitLab,
+  type PipelineEvent,
   type PullRequestEvent,
   type PullRequestInfo,
   type PushEvent,
@@ -51,23 +53,38 @@ export {
   scmEvents,
 } from "./handlers.ts";
 export { type LfsAction, lfsDownload, lfsUpload } from "./lfs.ts";
-export { createMemoryProvider, type MemoryProvider, type MemoryPull, type MemoryRepo } from "./memory.ts";
+export {
+  createMemoryProvider,
+  type MemoryJob,
+  type MemoryPipelineInput,
+  type MemoryProvider,
+  type MemoryPull,
+  type MemoryRepo,
+} from "./memory.ts";
 export { checkConnection, type ScmDeps, scmRouter } from "./router.ts";
 export type {
   AccessCheck,
   BranchRules,
   ChecksState,
+  CiJob,
+  CiPipeline,
+  CiStatus,
   CommentOptions,
   CommitChange,
   CommitFilesInput,
   CommitStatusInput,
   CommitStatusState,
+  CompareCommit,
+  CompareResult,
   CreateRepoInput,
   FetchLike,
   GitProvider,
   GitProviderKind,
+  JobLogChunk,
   LfsObject,
+  ListPipelinesOptions,
   MergeMethod,
+  PipelinePage,
   PullRequestFile,
   PullRequestFileStatus,
   PullRequestInput,
@@ -81,5 +98,6 @@ export type {
   WebhookEvent,
   WebhookInput,
 } from "./types.ts";
+export { asCiStatus, CI_ACTIVE_STATUSES, CI_STATUSES } from "./types.ts";
 export { verifyGitHubSignature, verifyGitLabToken } from "./verify.ts";
 export { handleGitWebhook, type WebhookDeps, type WebhookTarget, type WebhookTargetResolver } from "./webhooks.ts";
