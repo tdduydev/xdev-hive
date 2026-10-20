@@ -9,6 +9,7 @@ mod claude_desktop;
 mod cli;
 mod doctor;
 mod files;
+mod git_branches;
 mod git_credentials;
 mod git_groups;
 mod hive_cli;
@@ -538,6 +539,43 @@ async fn sidecar_json<T: serde::de::DeserializeOwned>(
         .map_err(|e| format!("Không đọc được kết quả của worker: {e}"))
 }
 
+/// Sidecar dạng `std::process::Command` (plugin shell đã đặt đường dẫn, ẩn cửa sổ trên Windows), cho lệnh cần ghi
+/// stdin rồi đóng hay giữ stdin để gửi tiếp.
+async fn sidecar_command(
+    app: &AppHandle,
+    args: Vec<String>,
+    env: Vec<(&str, String)>,
+) -> Result<std::process::Command, String> {
+    let (key, path) = tauri::async_runtime::spawn_blocking(sidecar_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut cmd = app
+        .shell()
+        .sidecar(SIDECAR)
+        .map_err(|e| e.to_string())?
+        .args(args)
+        .env(key, path);
+    for (k, v) in env {
+        cmd = cmd.env(k, v);
+    }
+    Ok(cmd.into())
+}
+
+/// Như `sidecar_json` nhưng ghi `input` làm dòng đầu stdin và giết sidecar nếu không trả lời trong `wait`.
+async fn sidecar_json_stdin<T: serde::de::DeserializeOwned + Send + 'static>(
+    app: &AppHandle,
+    args: Vec<String>,
+    env: Vec<(&str, String)>,
+    input: serde_json::Value,
+    wait: std::time::Duration,
+) -> Result<T, String> {
+    let cmd = sidecar_command(app, args, env).await?;
+    let v = tauri::async_runtime::spawn_blocking(move || git_branches::run_json(cmd, &input, wait))
+        .await
+        .map_err(|e| e.to_string())??;
+    serde_json::from_value(v).map_err(|e| format!("Không đọc được kết quả của worker: {e}"))
+}
+
 /// Trạng thái worker hiện tại; sau đó cửa sổ app nghe sự kiện "worker-state".
 #[tauri::command]
 fn worker_state(app: AppHandle) -> Option<WorkerView> {
@@ -1060,6 +1098,7 @@ pub fn run() {
         .manage(agents::Agents::default())
         .manage(remote::Remote::default())
         .manage(git_groups::Jobs::default())
+        .manage(git_branches::BranchJobs::default())
         .manage(ssh_keys::SetupLock::default())
         .manage(settings::Store::default())
         .manage(notices::Notices::default())
@@ -1156,6 +1195,21 @@ pub fn run() {
             git_groups::git_group_cancel,
             git_groups::open_folder,
             git_groups::open_folder_terminal,
+            git_branches::git_branches_status,
+            git_branches::git_branches_list,
+            git_branches::git_branches_switch,
+            git_branches::git_branches_create,
+            git_branches::git_branches_fetch,
+            git_branches::git_branches_pull,
+            git_branches::git_branches_scan,
+            git_branches::git_branches_clean,
+            git_branches::git_branches_cancel,
+            git_branches::git_branches_settings,
+            git_branches::git_branches_settings_set,
+            git_branches::git_branches_merge,
+            git_branches::git_branches_rebase,
+            git_branches::git_branches_continue,
+            git_branches::git_branches_abort,
             ssh_keys::ssh_list,
             ssh_keys::ssh_check,
             ssh_keys::ssh_scan,

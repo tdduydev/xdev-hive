@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-git-branches-cancel"
+description = "Enables the git_branches_cancel command without any pre-configured scope."
+commands.allow = ["git_branches_cancel"]
+
+[[permission]]
+identifier = "deny-git-branches-cancel"
+description = "Denies the git_branches_cancel command without any pre-configured scope."
+commands.deny = ["git_branches_cancel"]
