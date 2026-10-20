@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOC_MAX_CHARS, scanSecrets, WORD_IMPORT_ERRORS, type WordImportErrorCode } from "@xdev-hive/contracts";
-import { and, count, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import {
   BadRequestError,
   createPostgresBlobStore,
@@ -16,10 +16,11 @@ import { EXTRACT_LIMITS, ExtractError } from "../extract/types.ts";
 import { readZip } from "../extract/zip.ts";
 import { DOCSYNC_WORD_IMPORT_QUEUE, type WordImportFileJob } from "../queues.ts";
 import type { DocSyncDeps } from "../routes/deps.ts";
-import { docWordImportFiles, docWordImports, type WordImportCountsRow } from "../schema.ts";
+import { docWordImportFiles, docWordImports } from "../schema.ts";
 import { prepareLink } from "./link.ts";
 import { type PandocCommand, runPandoc } from "./pandoc.ts";
 import { countStats, frontMatter, type MediaFile, parsePandocLog, renameImages } from "./postprocess.ts";
+import { refreshWordImportCounts, titleOf } from "./shared.ts";
 import { type WordImportFileRow, type WordTools, wordTools } from "./tools.ts";
 import { prepareUpdate } from "./update.ts";
 
@@ -51,65 +52,6 @@ const fileError = (code: WordImportErrorCode, detail?: string, message?: string)
   ...(detail ? { detail: detail.slice(0, 2000) } : {}),
 });
 
-const titleOf = (file: WordImportFileRow): string =>
-  file.titleOverride ?? file.proposedTitle ?? file.fileName.replace(/\.[^.]+$/, "");
-
-const COUNT_KEYS: Record<string, keyof WordImportCountsRow> = {
-  queued: "queued",
-  converting: "converting",
-  ready: "ready",
-  skipped: "skipped",
-  blocked_secret: "blockedSecret",
-  failed: "failed",
-  proposed: "proposed",
-  cancelled: "cancelled",
-  done: "done",
-};
-
-/**
- * Đếm lại file theo trạng thái và chuyển trạng thái lượt khi đang chuyển: còn file chờ chuyển thì `converting`, còn file
- * chờ tạo thì `ready`, chuyển xong mà không còn gì để tạo thì `done`. Lượt đã sang bước tạo, huỷ hay hỏng thì chỉ đổi
- * `counts`.
- */
-export async function refreshWordImportCounts(tx: Tx, importId: string): Promise<void> {
-  const rows = await tx
-    .select({ state: docWordImportFiles.state, excluded: docWordImportFiles.excluded, n: count() })
-    .from(docWordImportFiles)
-    .where(eq(docWordImportFiles.importId, importId))
-    .groupBy(docWordImportFiles.state, docWordImportFiles.excluded);
-  const counts: WordImportCountsRow = {
-    queued: 0,
-    converting: 0,
-    ready: 0,
-    skipped: 0,
-    blockedSecret: 0,
-    failed: 0,
-    proposed: 0,
-    cancelled: 0,
-    done: 0,
-  };
-  let converting = 0;
-  let waiting = 0;
-  for (const r of rows) {
-    const key = COUNT_KEYS[r.state];
-    if (key) counts[key] += r.n;
-    if (r.state === "queued" || r.state === "converting") converting += r.n;
-    if (!r.excluded && ["queued", "converting", "ready", "blocked_secret"].includes(r.state)) waiting += r.n;
-  }
-  const [imp] = await tx
-    .select({ state: docWordImports.state })
-    .from(docWordImports)
-    .where(eq(docWordImports.id, importId));
-  if (!imp) return;
-  // Từ `ready` chỉ bước tạo mới đóng lượt: người nhập bỏ hết file rồi vẫn phải bỏ chọn lại được.
-  const next = converting > 0 ? "converting" : waiting > 0 ? "ready" : imp.state === "converting" ? "done" : imp.state;
-  const moves = imp.state === "converting" || imp.state === "ready";
-  await tx
-    .update(docWordImports)
-    .set({ counts, ...(moves ? { state: next } : {}), updatedAt: new Date() })
-    .where(eq(docWordImports.id, importId));
-}
-
 async function readBlob(tx: Tx, orgId: string, blobId: string): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   for await (const chunk of await createPostgresBlobStore().get(tx, orgId, blobId)) chunks.push(chunk);
@@ -127,7 +69,7 @@ async function failFile(tx: Tx, file: WordImportFileRow, error: FileError): Prom
     .update(docWordImportFiles)
     .set({ state: "failed", error, updatedAt: new Date() })
     .where(eq(docWordImportFiles.id, file.id));
-  await refreshWordImportCounts(tx, file.importId);
+  await refreshWordImportCounts(tx, file.importId, "convert");
 }
 
 async function prepare(tx: Tx, job: WordImportFileJob): Promise<Prepared | null> {
@@ -150,7 +92,7 @@ async function prepare(tx: Tx, job: WordImportFileJob): Promise<Prepared | null>
       .update(docWordImportFiles)
       .set({ state: "converting", updatedAt: new Date() })
       .where(eq(docWordImportFiles.id, file.id));
-    await refreshWordImportCounts(tx, file.importId);
+    await refreshWordImportCounts(tx, file.importId, "convert");
   }
   return { file, confidential: imp.confidential, bytes };
 }
@@ -324,7 +266,7 @@ async function save(tx: Tx, orgId: string, prepared: Prepared, outcome: Outcome)
     if (imp?.mode === "link") await prepareLink(tx, saved);
     else if (imp?.mode === "update") await prepareUpdate(tx, saved);
   }
-  await refreshWordImportCounts(tx, file.importId);
+  await refreshWordImportCounts(tx, file.importId, "convert");
   return state;
 }
 
