@@ -22,6 +22,7 @@ const SETTINGS: AppSettings = {
   notifyApprovals: true,
   notifyQuestions: true,
   notifyOffline: true,
+  tokenScoreDaily: true,
 };
 
 type Handlers = Record<string, (args?: Record<string, unknown>) => unknown>;

@@ -9,6 +9,7 @@ import {
   levelOf,
   needsSessionTip,
   onTokenScoreChanged,
+  type Status,
   scoreDelta,
   sortCriteria,
   TOKEN_SCORE_UPDATED,
@@ -134,7 +135,7 @@ describe("copyReport", () => {
 });
 
 describe("needsSessionTip", () => {
-  function withValues(a1: Criterion["status"], b2: number | undefined) {
+  function withValues(a1: Status, b2: number | undefined) {
     const score = sampleScore();
     const claude = score.profiles[0];
     if (!claude) throw new Error("fixture thiếu gói");
