@@ -477,7 +477,13 @@ describe("Nút mở hộp thoại dọn nhánh", () => {
     const button = await screen.findByRole("button", { name: "Dọn nhánh" });
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     await userEvent.setup().click(button);
-    await waitFor(() => expect(app.named("git_branches_scan")).toEqual([{ folders: [FOLDER, OTHER], fetch: true }]));
+    // Lượt đầu là lượt đếm huy hiệu lúc mở màn (không fetch), lượt sau là của hộp thoại.
+    await waitFor(() =>
+      expect(app.named("git_branches_scan")).toEqual([
+        { folders: [FOLDER, OTHER], fetch: false },
+        { folders: [FOLDER, OTHER], fetch: true },
+      ]),
+    );
     expect(await screen.findByRole("heading", { name: "Dọn nhánh đã merge" })).toBeTruthy();
   });
 
