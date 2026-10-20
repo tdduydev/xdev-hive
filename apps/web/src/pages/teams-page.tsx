@@ -68,6 +68,8 @@ const text: Dict<{
   noAdmins: string;
   adminsHidden: string;
   noDescriptionYet: string;
+  deploysLink: string;
+  deploysLinkFor: (name: string) => string;
   projects: string;
   projectsHint: string;
   noProjects: string;
@@ -151,6 +153,8 @@ const text: Dict<{
     noAdmins: "Chưa có",
     adminsHidden: "Chỉ người trong đội xem được",
     noDescriptionYet: "Chưa có mô tả",
+    deploysLink: "Triển khai",
+    deploysLinkFor: (n) => `Triển khai của hệ thống ${n}`,
     projects: "Dự án của đội",
     projectsHint: "Thành viên đội giao task và duyệt kết quả trên các dự án này.",
     noProjects: "Đội chưa có dự án nào.",
@@ -234,6 +238,8 @@ const text: Dict<{
     noAdmins: "None yet",
     adminsHidden: "Visible to team members only",
     noDescriptionYet: "No description yet",
+    deploysLink: "Deployments",
+    deploysLinkFor: (n) => `Deployments of system ${n}`,
     projects: "Team projects",
     projectsHint: "Team members assign tasks and review results on these projects.",
     noProjects: "This team has no projects yet.",
@@ -813,10 +819,18 @@ function SystemCard({ system, teamSlug }: { system: System; teamSlug: string }) 
     <div className="grid content-start gap-1.5 rounded-lg border border-border bg-card p-3">
       <b className="font-semibold text-foreground">{system.name}</b>
       <small className="line-clamp-2 text-xs text-muted-foreground">{system.description || t.noDescriptionYet}</small>
-      <span>
+      <span className="flex flex-wrap items-center justify-between gap-2">
         <Pill tone="sel">
           {teamSlug}/{system.slug}
         </Pill>
+        <Link
+          to="/systems/$systemId/deploys"
+          params={{ systemId: system.id }}
+          aria-label={t.deploysLinkFor(system.name)}
+          className="text-xs text-primary hover:text-primary/90"
+        >
+          {t.deploysLink}
+        </Link>
       </span>
     </div>
   );
