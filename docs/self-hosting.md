@@ -367,6 +367,38 @@ service: content lives in PostgreSQL, so the database backup covers it. Set thes
   artifacts that nobody can see yet, an administrator can switch them off first in *Admin → MCP* (MCP-04) and turn them
   on after the web screens are deployed.
 
+## CI/CD console and deploys from the hub (planned)
+
+Spec [020](../specs/020-cicd-console/spec.md) adds a console for Jenkins, GitLab CI, Argo CD and Kubernetes and a
+"Deploy" button ([ADR 0030](adr/0030-hub-deploys-over-ssh.md), [ADR 0031](adr/0031-external-ci-and-deploy-sources.md)).
+It is not built yet; read this before you plan the network and the backups for it.
+
+- **Network.** The hub connects out, so it must reach:
+  - the SSH port of every server you declare as a deploy target;
+  - Jenkins, GitLab, Argo CD, and the Kubernetes API server if you use `kubectl` targets (HTTPS).
+
+  Check reachability from the hub's own container, and only with the agreement of the target network's
+  administrators and security team: probing internal ranges can trigger security alerts. Targets the hub cannot
+  reach by SSH must deploy through a `jenkins-job` or `argocd` target. If GitLab cannot call the hub's webhook URL
+  (`/hooks/git/…`), GitLab pipelines refresh by polling only.
+- **`HIVE_MASTER_KEY` opens every SSH key and token.** The hub stores one private key per server, plus Jenkins, Argo CD
+  and Kubernetes tokens, encrypted with it. Anyone who has the database and `HIVE_MASTER_KEY` can reach every declared
+  server. Protect `.env` like the SSH keys themselves. If the key is lost, the stored keys and tokens cannot be
+  decrypted: generate new keys for every server and install the new public keys.
+- **Backups do not contain `.env`** (see [Backup and restore](#backup-and-restore)). Keep your own copy of `<dir>/.env`
+  apart from the backups, readable only by administrators. Backups made before this change still contain `.env`;
+  protect them the same way until you delete them or retention prunes them.
+- **Use a dedicated deploy user on each server, not `root`.** The public key the hub shows you goes into that user's
+  `~/.ssh/authorized_keys`. Give the user only what the deploy needs, such as membership of the `docker` group.
+- **Hub deploying itself.** Steps run detached from the SSH session, so the hub can restart in the middle of its own
+  deploy. If the hub cannot read the server for 15 minutes the deploy shows `unknown` and is never rerun automatically:
+  check the health URL, then decide.
+- **Jenkins and Argo CD approvals are separate.** Hive's approval does not stop someone who presses the button in Jenkins or
+  Argo CD directly. Set `approvers` for the `acmePromote` job (it is empty by default, so anyone who can build can approve)
+  and restrict who may build and sync there.
+- **Not verified.** How the real Jenkins (API tokens under Keycloak OIDC, crumbs, plugins) and Argo CD (login method, rights
+  of a token) behave has not been checked against the live systems (task T007 of spec 020).
+
 ## Backup and restore
 
 **Before updating a hub whose backups still include `.env`, save a copy of `<dir>/.env`** somewhere only

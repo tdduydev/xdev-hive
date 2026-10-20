@@ -1,16 +1,25 @@
-package gitgroups
+// Package gitexec chạy git của máy cho gitgroups và branches: môi trường không hỏi mật khẩu, token chỉ đi qua askpass,
+// lỗi đã che token.
+package gitexec
 
 import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
+)
+
+// Loại máy chủ Git; quyết định tên đăng nhập đi với token.
+const (
+	KindGitLab = "gitlab"
+	KindGitHub = "github"
 )
 
 // Git chạy git của máy cho một kết nối. Token chỉ đi qua askpass, không nằm trong URL, tham số hay cấu hình repo.
@@ -20,7 +29,18 @@ type Git struct {
 	Kind              string
 	Token             string
 	UseGitCredentials bool
+	// MachineCredentials: git dùng credential helper, khoá SSH của máy như người dùng tự gõ (quản lý nhánh, spec 026).
+	// Khác UseGitCredentials ở chỗ lệnh tại máy vẫn trả dòng lỗi của git, vì chỉ lệnh mạng mới gọi tới helper.
+	MachineCredentials bool
+	// Timeout > 0: quá hạn thì dừng git như khi huỷ và trả GitError có Timeout.
+	Timeout time.Duration
 }
+
+// machine: không đặt credential.helper rỗng và không đưa askpass của người dùng cho git.
+func (g Git) machine() bool { return g.UseGitCredentials || g.MachineCredentials }
+
+// networkCommands là lệnh git gọi tới máy chủ, tức có thể chạy credential helper.
+var networkCommands = map[string]bool{"fetch": true, "ls-remote": true, "pull": true, "push": true, "clone": true}
 
 // secretEnv là biến môi trường không được lọt sang git và các tiến trình con của nó.
 var secretEnv = []string{TokensEnv, TokenEnv, AskpassEnv, askpassUserEnv, askpassTokenEnv, askpassHostEnv}
@@ -36,7 +56,7 @@ func (g Git) env(host string) []string {
 				skip = true
 			}
 		}
-		if g.UseGitCredentials && (strings.EqualFold(name, "GIT_ASKPASS") || strings.EqualFold(name, "SSH_ASKPASS")) {
+		if g.machine() && (strings.EqualFold(name, "GIT_ASKPASS") || strings.EqualFold(name, "SSH_ASKPASS")) {
 			skip = true
 		}
 		if !skip {
@@ -46,7 +66,7 @@ func (g Git) env(host string) []string {
 	// Không có terminal nào để hỏi: thiếu quyền thì git báo lỗi ngay thay vì treo chờ nhập.
 	// GIT_OPTIONAL_LOCKS=0: đọc trạng thái không giữ khoá index, khỏi tranh với IDE đang mở repo.
 	out = append(out, "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=never", "LC_ALL=C", "GIT_OPTIONAL_LOCKS=0")
-	if !g.UseGitCredentials && g.Askpass != "" && g.Token != "" && host != "" {
+	if !g.machine() && g.Askpass != "" && g.Token != "" && host != "" {
 		out = append(out,
 			"GIT_ASKPASS="+g.Askpass,
 			AskpassEnv+"=1",
@@ -64,6 +84,8 @@ type GitError struct {
 	// Auth: máy chủ từ chối đăng nhập. Lần thử sai liên tiếp làm GitLab khoá IP cho Git qua HTTPS (mặc định 10 lần
 	// trong một phút, khoá một giờ), nên thao tác hàng loạt dừng gọi máy chủ khi gặp lỗi này.
 	Auth bool
+	// Timeout: git chạy quá Git.Timeout nên đã bị dừng.
+	Timeout bool
 }
 
 // authFailures là dấu hiệu trong stderr của git khi máy chủ không nhận đăng nhập hoặc git không có gì để gửi.
@@ -87,20 +109,24 @@ func authFailed(stderr string) bool {
 
 func (e *GitError) Error() string { return e.Msg }
 
-// run chạy git trong dir (rỗng là thư mục hiện tại), trả stdout. Huỷ ctx thì git nhận Interrupt để tự dọn (clone dở
-// tự xoá thư mục), quá 10 giây mới bị giết.
-func (g Git) run(ctx context.Context, dir, host string, args ...string) (string, error) {
+// Run chạy git trong dir (rỗng là thư mục hiện tại), trả stdout. Huỷ ctx thì git nhận Interrupt để tự dọn (clone dở
+// tự xoá thư mục), quá 10 giây mới bị giết. Hết Timeout cũng dừng git theo cách đó.
+func (g Git) Run(ctx context.Context, dir, host string, args ...string) (string, error) {
 	// credential.helper rỗng: không đọc credential đã lưu của người dùng và không ghi token của app vào đó.
 	full := append([]string{"-c", "credential.helper=", "-c", "core.askPass="}, args...)
-	if g.UseGitCredentials {
+	if g.machine() {
 		full = append([]string{"-c", "core.askPass="}, args...)
 	}
-	cmd := procattr.CommandContext(ctx, "git", full...)
+	runCtx := ctx
+	if g.Timeout > 0 {
+		var cancel context.CancelFunc
+		runCtx, cancel = context.WithTimeout(ctx, g.Timeout)
+		defer cancel()
+	}
+	cmd := procattr.CommandContext(runCtx, "git", full...)
 	cmd.Dir = dir
 	cmd.Env = g.env(host)
-	if runtime.GOOS != "windows" {
-		cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
-	}
+	interruptGroup(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -109,6 +135,9 @@ func (g Git) run(ctx context.Context, dir, host string, args ...string) (string,
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", ctx.Err()
+		}
+		if runCtx.Err() != nil {
+			return "", &GitError{Timeout: true, Msg: fmt.Sprintf("git %s chạy quá %g giây nên đã dừng.", args[0], g.Timeout.Seconds())}
 		}
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) {
@@ -122,16 +151,33 @@ func (g Git) run(ctx context.Context, dir, host string, args ...string) (string,
 			}
 			return "", &GitError{Msg: "Git của máy không hoàn tất thao tác; kiểm tra đăng nhập Git và quyền truy cập repo."}
 		}
+		if g.MachineCredentials && networkCommands[args[0]] {
+			if auth {
+				return "", &GitError{Auth: true, Msg: "Máy chủ từ chối đăng nhập Git của máy; kiểm tra credential helper, khoá SSH và quyền truy cập repo."}
+			}
+			return "", &GitError{Msg: "git " + args[0] + " không hoàn tất; kiểm tra mạng, đăng nhập Git của máy và quyền truy cập repo."}
+		}
 		return stdout.String(), &GitError{Auth: auth, Msg: lastLine(g.redact(stderr.String()), "git "+args[0]+" lỗi")}
 	}
 	return stdout.String(), nil
 }
 
+// urlUserinfo là phần "user:mật-khẩu@" của URL trong câu lỗi; remote của người dùng hay chứa token kiểu
+// https://ghp_…@github.com/….
+var urlUserinfo = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://)([^/\s@'"]+)@`)
+
 func (g Git) redact(s string) string {
 	if g.Token != "" {
 		s = strings.ReplaceAll(s, g.Token, "***")
 	}
-	return s
+	return urlUserinfo.ReplaceAllStringFunc(s, func(m string) string {
+		p := urlUserinfo.FindStringSubmatch(m)
+		// ssh://git@host chỉ có tên người dùng, không phải secret; giữ để lỗi còn đọc được như projects.Redact.
+		if strings.EqualFold(p[1], "ssh://") && !strings.Contains(p[2], ":") {
+			return m
+		}
+		return p[1] + "***@"
+	})
 }
 
 // lastLine lấy dòng có nghĩa cuối cùng của stderr: git in tiến độ trước, lỗi thật ở cuối.

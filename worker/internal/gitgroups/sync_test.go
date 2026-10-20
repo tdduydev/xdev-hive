@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/gitexec"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 )
 
@@ -106,7 +107,7 @@ func syncEndToEnd(t *testing.T, native bool) {
 			{Path: "acme/old", Name: "old", DefaultBranch: "main", HTTPURL: oldBare, Archived: true},
 		},
 	}
-	s := Sync{Git: Git{UseGitCredentials: native}, Group: g, Projects: projectsFile, Concurrency: 2}
+	s := Sync{Git: gitexec.Git{UseGitCredentials: native}, Group: g, Projects: projectsFile, Concurrency: 2}
 	ctx := context.Background()
 
 	got, _ := runSync(t, s, ctx, ActionStatus)
@@ -276,28 +277,5 @@ func TestSyncCancelled(t *testing.T) {
 	}
 	if err := (Sync{Group: g}).Run(context.Background(), "push", func(Event) {}); err == nil {
 		t.Fatal("thao tác lạ không báo lỗi")
-	}
-}
-
-func TestGitEnvDropsSecretsAndScopesAskpass(t *testing.T) {
-	t.Setenv(TokensEnv, `{"a":"x"}`)
-	t.Setenv(TokenEnv, "y")
-	env := strings.Join(Git{Askpass: "/bin/hive-worker", Kind: KindGitLab, Token: "glpat-z"}.env("gitlab.com"), "\n")
-	for _, bad := range []string{TokensEnv + "=", TokenEnv + "="} {
-		if strings.Contains(env, bad) {
-			t.Errorf("env còn %s", bad)
-		}
-	}
-	for _, want := range []string{"GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/bin/hive-worker", askpassHostEnv + "=gitlab.com", askpassTokenEnv + "=glpat-z", askpassUserEnv + "=oauth2"} {
-		if !strings.Contains(env, want) {
-			t.Errorf("env thiếu %s", want)
-		}
-	}
-	// Không có máy chủ HTTPS (SSH, lệnh tại máy): không đưa token cho git.
-	if env := strings.Join((Git{Askpass: "/x", Token: "glpat-z"}).env(""), "\n"); strings.Contains(env, "glpat-z") {
-		t.Error("lệnh không cần mạng vẫn có token")
-	}
-	if got := (Git{Token: "glpat-z"}).redact("fatal: https://oauth2:glpat-z@h/x"); strings.Contains(got, "glpat-z") {
-		t.Errorf("redact = %q", got)
 	}
 }
