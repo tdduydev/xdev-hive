@@ -266,6 +266,16 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 ## Đợt 5: P3, tài liệu
 
+- [ ] **T020 [P] [US7] [nặng] · 0,5 ngày — Chỉ chặn submodule đã init**
+  - **Goal**: research mục 5 (T013): SC-004 không đạt vì `hasSubmodule` chặn mọi worktree của repo có `.gitmodules`,
+    kể cả khi submodule chưa init. Chỉ chặn khi worktree có submodule đã init, đúng điều kiện `git worktree remove` từ
+    chối (spec, mục "Submodule trong worktree", FR-022). Đọc được không chắc thì vẫn chặn.
+  - **PHẠM VI**: `worker/internal/branches/{state.go,state_test.go,scan_test.go,list_test.go}`; `scan.go`, `list.go`
+    chỉ khi phải đổi chỗ gọi.
+  - **Kiểm**: test với git thật trong `t.TempDir()`: `.gitmodules` + submodule chưa init → không chặn và
+    `git worktree remove` không `--force` gỡ được; đã init → chặn và git cũng từ chối; gitlink không có `.gitmodules`.
+  - **Phụ thuộc**: T013, T015 (`list.go`).
+
 - [ ] **T017 [P] [US7] [vừa] · 1 ngày — Huy hiệu số nhánh dọn được**
   - **Goal**: giai đoạn 4. Sau mỗi fetch (tay, hay tự fetch của nhóm Git), chạy `scan` không fetch cho repo đó, lưu số
     ứng viên; nút "Dọn nhánh" hiện số. Không tự xoá.
@@ -305,6 +315,7 @@ flowchart LR
   T010 --> T015
   T011 --> T016 & T017
   T013 & T016 --> T018
+  T013 & T015 --> T020
   T016 & T017 --> T019
 ```
 
