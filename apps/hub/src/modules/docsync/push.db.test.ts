@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
 import { archiveDoc, provideDocSaved, saveDoc } from "../knowledge/index.ts";
-import { createPool, type Jobs, parseMasterKey, withTenant } from "../platform/index.ts";
+import { createPool, createPostgresBlobStore, type Jobs, parseMasterKey, withTenant } from "../platform/index.ts";
 import { createMemoryProvider, GitProviderError, type PullRequestEvent, type ScmEventContext } from "../scm/index.ts";
 import { contentHash } from "./content.ts";
 import { configureProjectHome, type HomeRow, homeById } from "./homes.ts";
@@ -134,6 +134,16 @@ describe("message commit", () => {
       "docs: sync 1 document and 2 attachments from xDev Hive\n\nHive-Doc-Sync: b1\nCo-authored-by: An <an@x.test>",
     );
     expect(syncBranchName(null)).toBe("hive/docs-sync-org");
+  });
+
+  it("ảnh mồ côi bị xoá ghi trong tiêu đề, chỉ xoá thì không đếm tài liệu", () => {
+    const base = { batchId: "b2", coAuthors: [] };
+    expect(pushCommitMessage({ ...base, docs: 1, assets: 0, removed: 2 })).toContain(
+      "docs: sync 1 document and remove 2 orphaned attachments from xDev Hive",
+    );
+    expect(pushCommitMessage({ ...base, docs: 0, assets: 0, removed: 1 })).toContain(
+      "docs: remove 1 orphaned attachment from xDev Hive",
+    );
   });
 });
 
@@ -368,6 +378,37 @@ describe("chế độ PR cuốn chiếu", () => {
     expect(repo("pr").branches.get(branch())?.get("docs/guide/alpha.md")).toBe("# alpha\n\nBản 2.\n");
     const { rows } = await admin.query("select pr_number, pr_url from hive.doc_homes where id = $1", [homes.pr?.id]);
     expect(rows[0]).toEqual({ pr_number: 1, pr_url: repo("pr").pulls[0]?.url });
+  });
+
+  it("ảnh mồ côi chỉ nằm trên nhánh PR bị xoá khỏi nhánh đó, nhánh chính không đụng", async () => {
+    const bytes = Buffer.from(`89504e470d0a1a0a${tag}`, "hex");
+    const blob = await as("tadmin", (tx) =>
+      createPostgresBlobStore().put(
+        tx,
+        org.orgId,
+        (async function* () {
+          yield bytes;
+        })(),
+        "image/png",
+      ),
+    );
+    const path = "docs/assets/0123456789ab.png";
+    await admin.query(
+      `insert into hive.doc_assets (org_id, home_id, repo_path, blob_id, media_type, size, sha256, state)
+       values ($1, $2, $3, $4, 'image/png', $5, $6, 'pending_push')`,
+      [org.orgId, homes.pr?.id, path, blob.id, bytes.length, blob.sha256],
+    );
+    expect(await push("pr", true)).toBe("pushed");
+    expect(repo("pr").branches.get(branch())?.has(path)).toBe(true);
+
+    await admin.query("update hive.doc_assets set state = 'pending_delete' where repo_path = $1", [path]);
+    const before = syncCommits("pr", branch()).length;
+    expect(await push("pr", true)).toBe("pushed");
+    expect(syncCommits("pr", branch())).toHaveLength(before + 1);
+    expect(repo("pr").branches.get(branch())?.has(path)).toBe(false);
+    expect(repo("pr").branches.get("main")?.has(path)).toBe(false);
+    const { rows } = await admin.query("select 1 from hive.doc_assets where repo_path = $1", [path]);
+    expect(rows).toHaveLength(0);
   });
 
   it("PR bị đóng không merge: file về pending, nhà báo lỗi, không tự đẩy lại", async () => {
