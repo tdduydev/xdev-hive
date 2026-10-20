@@ -72,7 +72,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 ## Đợt 0: tách phần dùng chung, hợp đồng
 
-- [ ] **T001 [P] [Chung] [nặng] · 1,5 ngày — Tách `gitexec` từ `gitgroups`**
+- [x] **T001 [P] [Chung] [nặng] · 1,5 ngày — Tách `gitexec` từ `gitgroups`**
   - **Goal**: giai đoạn 1, plan.md mục 1. Gói `worker/internal/gitexec` có `Git`, `Run`, `env`, `GitError`,
     `authFailed`, `redact`, `lastLine`, biến askpass, `secretEnv`, `TokensEnv`, `TokenEnv`, `AskpassEnv`, `tokenUser`.
     Thêm `Timeout` (FR-041: `GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `LC_ALL=C`) và chế độ
@@ -87,7 +87,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
     Commit tách: một commit chỉ di chuyển code, một commit thêm tính năng (plan.md R4).
   - **Phụ thuộc**: không.
 
-- [ ] **T002 [P] [Chung] [nặng] · 1 ngày — Tách `repolock` từ `runner`, thêm `DataDir()`**
+- [x] **T002 [P] [Chung] [nặng] · 1 ngày — Tách `repolock` từ `runner`, thêm `DataDir()`**
   - **Goal**: giai đoạn 1, plan.md mục 1. Gói `worker/internal/repolock` có `LockRepo`, `LocalLock`, khoá file (unix,
     windows), `ParseWorktrees` (đọc thêm `locked`, `prunable`, `detached`, `bare`, `HEAD`), `CleanAbs`, `SamePath`,
     `InsideDir`, `DataDir()`. `runner` giữ wrapper không export cùng tên. `cmd/hive-worker/main.go` dùng `DataDir()`.
@@ -99,7 +99,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
     `prunable`, `detached`. Ghi vào SUMMARY cách `DataDir()` chạy trên Linux service (plan.md R8, [Suy luận]).
   - **Phụ thuộc**: không.
 
-- [ ] **T003 [P] [Chung] [nặng] · 1 ngày — Hợp đồng sidecar và lớp gọi TypeScript**
+- [x] **T003 [P] [Chung] [nặng] · 1 ngày — Hợp đồng sidecar và lớp gọi TypeScript**
   - **Goal**: giai đoạn 1, plan.md mục 2–7 và 3b. `contracts/branches-cli.md` ghi cho mọi lệnh con (`list`, `status`,
     `fetch`, `pull`, `switch`, `create`, `scan`, `clean`, `settings`, `settings-set`, `merge`, `rebase`, `continue`,
     `abort`): cờ, JSON dòng đầu stdin (`busy`, `items`, `fetched`, `settings`), dòng `cancel`, JSON kết quả, sự kiện
@@ -115,7 +115,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 ## Đợt 1: đọc nhánh, Rust, màn xem
 
-- [ ] **T004 [P] [US1] [nặng] · 2 ngày — Gói `branches`: đọc stdin, list, status, fetch; lệnh `hive-worker branches`**
+- [x] **T004 [P] [US1] [nặng] · 2 ngày — Gói `branches`: đọc stdin, list, status, fetch; lệnh `hive-worker branches`**
   - **Goal**: giai đoạn 1, plan.md mục 2 và 4. `input.go` (bộ đọc `bufio.Reader`, `busy` mới thay cũ, `cancel`),
     `state.go` (thao tác dở theo `git rev-parse --git-dir`, sạch/bẩn, file bị bỏ qua), `list.go` (bốn lệnh đọc song
     song, `for-each-ref` có `ahead-behind`, fallback git < 2.41, trạng thái worktree song song tối đa 4 thành sự kiện
@@ -130,7 +130,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
     ≤ 2 giây trên máy dev (ghi số vào SUMMARY).
   - **Phụ thuộc**: T001, T002, T003.
 
-- [ ] **T005 [P] [Chung] [nặng] · 1,5 ngày — Rust: `git_branches.rs`, `sidecar_json_stdin`, 15 lệnh Tauri**
+- [x] **T005 [P] [Chung] [nặng] · 1,5 ngày — Rust: `git_branches.rs`, `sidecar_json_stdin`, 15 lệnh Tauri**
   - **Goal**: giai đoạn 1, plan.md mục 4, 7 và 3b. `sidecar_json_stdin` (spawn, ghi một dòng, đọc một JSON) cho
     `status`, `list`, `switch`, `create`, `settings`, `settings_set`, `merge`, `rebase`, `continue`, `abort`. Job cho
     `fetch`, `pull`, `scan`, `clean` (giữ stdin để gửi `cancel` và `busy` mỗi 5 giây; phát `git-branches:event`; state
@@ -142,7 +142,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
     `capabilities_audit.rs` xanh (mỗi lệnh một `allow-…`).
   - **Phụ thuộc**: T003.
 
-- [ ] **T006 [P] [US1] [vừa] · 1,5 ngày — Cột nhánh ở màn Dự án, BranchesSheet (xem, lọc, Fetch)**
+- [x] **T006 [P] [US1] [vừa] · 1,5 ngày — Cột nhánh ở màn Dự án, BranchesSheet (xem, lọc, Fetch)**
   - **Goal**: giai đoạn 1, plan.md mục 8. Mỗi dòng repo có `⎇ <nhánh>` hay "HEAD rời", chấm sạch/có thay đổi, `↑N ↓M`
     (FR-001). Nút Nhánh mở BranchesSheet: tab Local, Remote, Worktree; ô lọc; sắp như FR-003; nút Fetch và thời điểm
     fetch cuối (FR-004); worktree điền dần theo sự kiện. Menu dòng: Sao chép tên, Mở terminal ở worktree (Đổi sang để
@@ -155,7 +155,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 ## Đợt 2: đổi, tạo nhánh, quét
 
-- [ ] **T007 [P] [US2, US3] [nặng] · 1,5 ngày — Go: `switch`, `create`**
+- [x] **T007 [P] [US2, US3] [nặng] · 1,5 ngày — Go: `switch`, `create`**
   - **Goal**: giai đoạn 1, plan.md mục 3. FR-010…FR-013: `git switch [--track] --end-of-options`; `dirty` kèm danh
     sách file khi không có `--carry`; từ chối khi dở thao tác hay nhánh đang mở ở worktree khác; `check-ref-format
     --branch`; `exists`; `--no-track`; `--fetch` ngoài khoá; lệnh ghi trong `repolock.LocalLock`, context không huỷ.
@@ -164,7 +164,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
     trùng tên, tên sai, trùng, `--no-track`); khoá đang bị giữ thì chờ rồi `locked`.
   - **Phụ thuộc**: T004.
 
-- [ ] **T008 [P] [US2, US3] [vừa] · 1,5 ngày — React: Đổi nhánh, hộp thoại Q10, Tạo nhánh**
+- [x] **T008 [P] [US2, US3] [vừa] · 1,5 ngày — React: Đổi nhánh, hộp thoại Q10, Tạo nhánh**
   - **Goal**: giai đoạn 1. Menu Đổi sang; `dirty` thì hỏi theo Q10 (mang thay đổi theo hay huỷ); thư mục có agent đang
     chạy thì xác nhận lần nữa (FR-014); lỗi git hiện dòng cuối đã che (FR-042). BranchCreateDialog: tên, nhánh gốc,
     "Đổi sang sau khi tạo", "Fetch nhánh gốc trước". ≤ 3 lần bấm mỗi thao tác (SC-005). Nhánh đang đứng ở thư mục chính
@@ -174,7 +174,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
   - **Kiểm**: Vitest: `dirty` → `--carry`, `exists`, `in_progress`, `checked_out`, agent đang chạy, đếm số lần bấm.
   - **Phụ thuộc**: T006.
 
-- [ ] **T009 [P] [US4] [nặng] · 2 ngày — Go: quét ứng viên, bằng chứng git, cấu hình dọn**
+- [x] **T009 [P] [US4] [nặng] · 2 ngày — Go: quét ứng viên, bằng chứng git, cấu hình dọn**
   - **Goal**: giai đoạn 2, plan.md mục 5. `scan` song song tối đa 4 repo (FR-044): fetch, đọc, lọc theo mẫu (Q8: `ai/*`,
     `claude/*`), bằng chứng git first-parent với cửa sổ 5000, bước chặn 1–5 theo thứ tự (FR-020…FR-024, FR-027); file
     bị bỏ qua chấp nhận theo danh sách dựng lại được (Q15, khớp bất kỳ đoạn đường dẫn); sự kiện `repo`. `settings.go`:
@@ -187,7 +187,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 ## Đợt 3: dọn
 
-- [ ] **T010 [P] [US4] [nặng] · 2 ngày — Go: dọn, kiểm lại, nhật ký, test SC-003**
+- [x] **T010 [P] [US4] [nặng] · 2 ngày — Go: dọn, kiểm lại, nhật ký, test SC-003**
   - **Goal**: giai đoạn 2, plan.md mục 6. FR-026, FR-028, FR-029, FR-031, FR-032: kiểm lại `tip`, bước chặn 1–4 với
     `busy` mới nhất, `ls-remote` cho bằng chứng đã đóng (chỉ nhận ref đúng tên), gỡ worktree không `--force` (đọc lại
     file bị bỏ qua ngay trước), `prunable` chỉ gỡ đăng ký, xoá nhánh trong khoá sau khi kiểm lại commit chưa đẩy,
@@ -199,7 +199,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
     repo đang bị giữ; nhánh vừa được checkout ở worktree khác. Không có lệnh nào đụng remote (FR-031).
   - **Phụ thuộc**: T009.
 
-- [ ] **T011 [P] [US4] [vừa] · 2 ngày — React: CleanupDialog**
+- [x] **T011 [P] [US4] [vừa] · 2 ngày — React: CleanupDialog**
   - **Goal**: giai đoạn 2, plan.md mục 8. Quét (tiến độ từng repo) → Xem trước (nhóm theo repo; ứng viên mặc định không
     chọn theo Q11; nhóm "Không dọn" thu gọn kèm lý do và file bị bỏ qua; `prunable` ghi chú riêng; đường dẫn
     `.claude/worktrees/…` hiện rõ) → Xác nhận (AlertDialog) → Đang dọn (Huỷ) → Kết quả (mã đỉnh, nút sao chép lệnh khôi
@@ -214,14 +214,14 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 ## Đợt 4: P2 (Pull, API, merge/rebase) và đo P1
 
-- [ ] **T012 [P] [US5] [vừa] · 1 ngày — Go: Pull**
+- [x] **T012 [P] [US5] [vừa] · 1 ngày — Go: Pull**
   - **Goal**: giai đoạn 3. US5: fetch rồi `merge --ff-only @{u}` trong khoá; ahead và behind cùng lúc hay thư mục bẩn
     thì không chạy, trả lý do (`diverged`, `dirty`). `diverged` kèm gợi ý cho US8 (hợp đồng).
   - **PHẠM VI**: `worker/internal/branches/{pull.go,pull_test.go}`.
   - **Kiểm**: behind sạch, diverged, bẩn, không có upstream, fetch lỗi.
   - **Phụ thuộc**: T007 (dùng chung cách khoá, khác file).
 
-- [ ] **T013 [P] [Chung] [nhẹ] · 0,5 ngày — Đo và kiểm P1 trên máy dev**
+- [x] **T013 [P] [Chung] [nhẹ] · 0,5 ngày — Đo và kiểm P1 trên máy dev**
   - **Goal**: giai đoạn 1–2. Chạy `hive-worker branches list`, `scan` (chỉ quét, **không** `clean`) trên các repo của
     máy dev; ghi SC-001, SC-002 vào `research.md`. SC-004 đo trên **bản sao** `xdev-hive` (`git clone --mirror` cộng
     worktree giả trong `t.TempDir()` hay thư mục tạm của scratchpad), không trên checkout thật. Ghi lệch so với spec
@@ -230,7 +230,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
   - **Kiểm**: số liệu kèm lệnh đã chạy, phiên bản git, hệ điều hành.
   - **Phụ thuộc**: T010, T011.
 
-- [ ] **T014 [P] [US6] [nặng] · 1,5 ngày — Go: bằng chứng GitHub/GitLab**
+- [x] **T014 [P] [US6] [nặng] · 1,5 ngày — Go: bằng chứng GitHub/GitLab**
   - **Goal**: giai đoạn 3, plan.md mục 7. `gitgroups/api.go` thêm `ListMergeRequests`, `ListPulls` (tối đa 3 trang, bỏ
     PR từ fork). `branches/evidence_api.go` chọn PR mới nhất theo tên nhánh; `scan.go` chỉ gọi khi repo có nhánh khớp
     mẫu thiếu bằng chứng git; PR đang mở chặn (bước chặn 6); PR đóng không merge theo FR-026. 401/403 → nhãn trên repo,
@@ -240,7 +240,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
   - **Kiểm**: máy chủ HTTP giả: squash-merge GitLab, nhiều PR một nhánh, PR mở, PR fork, 401, phân trang dừng ở 3.
   - **Phụ thuộc**: T009, T010.
 
-- [ ] **T015 [P] [US8] [nặng] · 2 ngày — Go: merge, rebase, continue, abort**
+- [x] **T015 [P] [US8] [nặng] · 2 ngày — Go: merge, rebase, continue, abort**
   - **Goal**: giai đoạn 3, plan.md mục 3b. FR-050…FR-056. Kiểm sạch, đứng trên nhánh, không dở thao tác; rebase đếm
     commit đã đẩy → `needsConfirm` khi thiếu `--confirm-rewrite` (cách đếm ở contracts/branches-cli.md, T015 đã kiểm); ghi `headBefore`
     vào nhật ký; `GIT_EDITOR=true`, context không huỷ, 120 giây, hết giờ không tự abort. `conflict` kèm tối đa 200 file
@@ -252,7 +252,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
     dùng).
   - **Phụ thuộc**: T007, T010 (nhật ký `log.go`). Chủ dự án soát US8 trước khi giao.
 
-- [ ] **T016 [P] [US5, US6, US8] [vừa] · 2 ngày — React: Pull, nhãn bằng chứng API, merge/rebase**
+- [x] **T016 [P] [US5, US6, US8] [vừa] · 2 ngày — React: Pull, nhãn bằng chứng API, merge/rebase**
   - **Goal**: giai đoạn 3. Nút Pull và lý do khi không chạy; `diverged` gợi ý "Merge upstream" hay "Rebase lên
     upstream". Menu nhánh: "Merge vào nhánh đang đứng", "Rebase nhánh đang đứng lên nhánh này"; dòng nhánh đang đứng có
     "Cập nhật từ <mặc định>"; xác nhận khi `needsConfirm` hay có agent. `git-operation-panel.tsx` ở đầu BranchesSheet:
@@ -266,7 +266,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 ## Đợt 5: P3, tài liệu
 
-- [ ] **T020 [P] [US7] [nặng] · 0,5 ngày — Chỉ chặn submodule đã init**
+- [x] **T020 [P] [US7] [nặng] · 0,5 ngày — Chỉ chặn submodule đã init**
   - **Goal**: research mục 5 (T013): SC-004 không đạt vì `hasSubmodule` chặn mọi worktree của repo có `.gitmodules`,
     kể cả khi submodule chưa init. Chỉ chặn khi worktree có submodule đã init, đúng điều kiện `git worktree remove` từ
     chối (spec, mục "Submodule trong worktree", FR-022). Đọc được không chắc thì vẫn chặn.
@@ -276,14 +276,14 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
     `git worktree remove` không `--force` gỡ được; đã init → chặn và git cũng từ chối; gitlink không có `.gitmodules`.
   - **Phụ thuộc**: T013, T015 (`list.go`).
 
-- [ ] **T017 [P] [US7] [vừa] · 1 ngày — Huy hiệu số nhánh dọn được**
+- [x] **T017 [P] [US7] [vừa] · 1 ngày — Huy hiệu số nhánh dọn được**
   - **Goal**: giai đoạn 4. Sau mỗi fetch (tay, hay tự fetch của nhóm Git), chạy `scan` không fetch cho repo đó, lưu số
     ứng viên; nút "Dọn nhánh" hiện số. Không tự xoá.
   - **PHẠM VI**: `apps/desktop/src/screens/projects-screen.tsx`, `apps/desktop/src/lib/i18n.ts`, test của màn.
   - **Kiểm**: Vitest: số cập nhật sau Fetch, sau dọn, không hiện khi 0.
   - **Phụ thuộc**: T011. Cần cờ "không fetch" của `scan` trong hợp đồng (T003).
 
-- [ ] **T018 [P] [Chung] [nhẹ] · 0,5 ngày — Tài liệu**
+- [x] **T018 [P] [Chung] [nhẹ] · 0,5 ngày — Tài liệu**
   - **Goal**: hướng dẫn dùng (màn Dự án, Dọn nhánh, khôi phục từ nhật ký), mục SRS, cập nhật `docs/architecture.md`
     (gói `gitexec`, `repolock`, `branches`). Số mục SRS: `docs/srs.md` hiện tới mục 3 có các mục con; kiểm số lúc làm vì
     spec 019, 020 cũng thêm.
