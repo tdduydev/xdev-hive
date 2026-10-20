@@ -443,7 +443,7 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | Chuyển trong trình duyệt (mammoth chạy ở web) | Cùng nhược điểm của mammoth. Kết quả phụ thuộc trình duyệt; hub vẫn phải kiểm lại |
 | Dịch vụ chuyển đổi riêng (container pandoc) | Thêm dịch vụ, trái constitution VII. Một binary trong image hub là đủ |
 | Chỉ giữ `tools/srs2md` | BA không cài được Python và pandoc; mỗi lần BA sửa Word lại phải nhờ dev |
-| Ghi file Word gốc vào repo | Repo nặng gấp ba với SRS acme; Markdown là bản cần cho người và agent (Q6) |
+| Ghi file Word gốc vào repo | Repo nặng gấp ba với SRS ACME; Markdown là bản cần cho người và agent (Q6) |
 
 ## Complexity Tracking
 

@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **Ngày**: 2026-10-17
 
-## 1. CI/CD của acme hiện nay
+## 1. CI/CD của ACME hiện nay
 
 Đọc file trong các repo `gitlab.example.com/acme-ai/*` đã clone về máy dev. Repo GitOps trên Gitea và Argo CD chưa clone
 nên chưa kiểm được.
@@ -56,7 +56,7 @@ không qua Jenkins.
 
 ## 2. Máy chủ Ubuntu riêng: máy chạy hub
 
-`app-host` (`192.0.2.10`, user `deploy`) là máy Ubuntu riêng, **không thuộc** hạ tầng Jenkins/RKE2 của acme
+`app-host` (`192.0.2.10`, user `deploy`) là máy Ubuntu riêng, **không thuộc** hạ tầng Jenkins/RKE2 của ACME
 (chủ dự án xác nhận 2026-10-17).
 - Hub chạy bằng docker compose, project `xdev-hive`, thư mục `/home/deploy/xdev-hive`.
 - Triển khai bằng `deploy/remote.sh` từ máy dev:
@@ -103,7 +103,7 @@ Chiều ngược lại (Jenkins và GitLab gọi về hub `hive.example.com`) ch
 
 Ghi chú về các con số trên:
 - Tên `argocd.example.com` là tên đoán theo mẫu tên của Jenkins và Harbor. [Inference] Đây là Argo CD của
-  acme; chờ chủ dự án xác nhận ở T007.
+  ACME; chờ chủ dự án xác nhận ở T007.
 - Chiều GitLab gọi về hub vẫn chưa đo được: log của hub không ghi đường dẫn request.
 
 **Sự cố và hệ quả:**
@@ -114,7 +114,7 @@ Ghi chú về các con số trên:
 - Mọi chỗ trong spec, plan, tasks nói hub chạy trên `app-host` hoặc `hive.example.com` đã cũ. Cần chọn máy mới cho hub
   trước khi làm phần triển khai (US3, US4, SC-002).
 - Hub không SSH được tới các máy `198.51.100.x`, cũng không gọi được API Kubernetes của chúng. Vì vậy triển khai lên hạ
-  tầng acme phải đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl` (máy runner để sau, Q14).
+  tầng ACME phải đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl` (máy runner để sau, Q14).
 
 ## 3. Hive hiện có gì để dùng lại
 

@@ -140,7 +140,7 @@ describe("RegisterScreen", () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Địa chỉ Hive"), "https://192.0.2.10");
     await user.click(screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
-    expect(await screen.findByText(/chưa tin chứng chỉ HTTPS của 10\.86\.224\.34/)).toBeTruthy();
+    expect(await screen.findByText(/chưa tin chứng chỉ HTTPS của 192\.0\.2\.10/)).toBeTruthy();
     expect(calls.some((c) => c.command === "browser_login")).toBe(false);
   });
 

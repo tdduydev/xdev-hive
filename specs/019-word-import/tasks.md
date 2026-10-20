@@ -83,7 +83,7 @@ description: "Task list: nhập Word thành tài liệu hub"
   (`docs/srs.md` hiện tới 3.23; spec 020 cũng thêm mục và chọn số khi gộp). Kiểm lại lúc làm T022.
 - **Provider thật**: mọi test tự động dùng provider `memory` của `scm`. Không task agent nào gọi GitHub/GitLab thật. Chỉ
   T025 (chủ dự án) thử trên hub thật. Không commit token.
-- **Dữ liệu thật**: 261 SRS acme và `tools/srs2md` nằm ngoài repo này. Không commit file Word, Markdown hay ảnh của
+- **Dữ liệu thật**: 261 SRS ACME và `tools/srs2md` nằm ngoài repo này. Không commit file Word, Markdown hay ảnh của
   bộ thật; chỉ ghi số liệu tổng và mã tài liệu. File mẫu của test sinh bằng `make-fixtures.py`.
 
 ## Đợt 0: hợp đồng, bộ lọc, pandoc, phần thuần (song song)
@@ -634,7 +634,7 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **Phụ thuộc**: T023, bản đã triển khai lên `hive.example.com`.
   - **Goal**: `/api/v1/health` báo `wordImport`, `wordImportDoc`; nhập vài SRS vào nhà thử (repo thử, chế độ `pr`), xem
     PR; cập nhật từ Word; gửi duyệt bằng tài khoản chỉ có `propose`; desktop nhập một thư mục OneDrive. Nhập vào nhà
-    thật của acme chỉ khi chủ dự án quyết, sau khi xem hub sẽ đổi gì trong repo của đội.
+    thật của ACME chỉ khi chủ dự án quyết, sau khi xem hub sẽ đổi gì trong repo của đội.
   - **PHẠM VI**: không sửa file. Không gửi token qua chat, issue hay commit.
   - **Xong khi**: người điều phối ghi kết quả vào research.md hoặc mở task sửa lỗi.
 

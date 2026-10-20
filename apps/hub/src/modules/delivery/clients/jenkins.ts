@@ -1,13 +1,13 @@
 // Client Jenkins thuần trên fetch (plan.md mục 2). Không đụng DB, không biết người dùng Hive: bên gọi truyền user và API
 // token của người bấm (thao tác ghi) hoặc của người theo dõi (đọc theo lịch).
-// Mọi dạng JSON ở đây theo tài liệu công khai của Jenkins [Suy luận]; T007 đối chiếu với Jenkins acme.
+// Mọi dạng JSON ở đây theo tài liệu công khai của Jenkins [Suy luận]; T007 đối chiếu với Jenkins ACME.
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export type JenkinsErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
-  // 403 do thiếu crumb CSRF: tách riêng để T007 biết Jenkins acme có đòi crumb khi POST bằng API token không.
+  // 403 do thiếu crumb CSRF: tách riêng để T007 biết Jenkins ACME có đòi crumb khi POST bằng API token không.
   | "CRUMB_REQUIRED"
   | "NOT_FOUND"
   // Hết giờ, không nối được, 5xx, 429, hoặc phản hồi không đọc được.

@@ -18,8 +18,8 @@
 - Viết spec và kế hoạch trước, chưa code.
 
 Bối cảnh (chi tiết ở [research.md](research.md)):
-- acme build và deploy bằng **Jenkins** (Harbor, GitOps, Argo CD, RKE2). GitLab CI chỉ chạy kiểm tra.
-- Hub Hive chạy trên một máy **Ubuntu riêng** (`app-host`), không thuộc hạ tầng acme. Hiện triển khai bằng script
+- ACME build và deploy bằng **Jenkins** (Harbor, GitOps, Argo CD, RKE2). GitLab CI chỉ chạy kiểm tra.
+- Hub Hive chạy trên một máy **Ubuntu riêng** (`app-host`), không thuộc hạ tầng ACME. Hiện triển khai bằng script
   qua SSH với docker compose.
 
 **Kế hoạch**: [plan.md](plan.md) · **Nghiên cứu**: [research.md](research.md)
@@ -269,7 +269,7 @@ Như US1–US2 cho dự án trên GitHub: workflow run, job, log, chạy lại, 
 - Hai người sửa cùng một đích triển khai: khoá lạc quan theo phiên bản cấu hình.
 - Đích `ssh-script` khai báo thư mục sai (như suýt gặp với `/opt/xdev-hive`): bước "kiểm trước" so thư mục, compose
   project, `.env` có sẵn với cấu hình; không khớp thì dừng.
-- Argo CD application đang tự sync (`autoSync`, như `dev` của acme): rollback của Argo CD tắt autoSync. Hive cảnh báo
+- Argo CD application đang tự sync (`autoSync`, như `dev` của ACME): rollback của Argo CD tắt autoSync. Hive cảnh báo
   trước khi quay về.
 
 ## Requirements *(mandatory)*
@@ -461,7 +461,7 @@ Như US1–US2 cho dự án trên GitHub: workflow run, job, log, chạy lại, 
 - Người quản trị tự cài khoá công khai do hub sinh lên máy chủ (bằng tay, hoặc bằng tính năng SSH của desktop nếu nó hỗ trợ
   cài một khoá công khai cho trước). Spec này không nhập mật khẩu máy chủ.
 - PostgreSQL vẫn là kho duy nhất (ADR 0003). Không thêm dịch vụ.
-- Jenkins Keycloak OIDC của acme cho phép người dùng tạo API token. [Unverified] Kiểm khi làm task.
+- Jenkins Keycloak OIDC của ACME cho phép người dùng tạo API token. [Unverified] Kiểm khi làm task.
 
 ## Out of Scope
 

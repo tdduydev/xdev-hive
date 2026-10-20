@@ -200,7 +200,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Xong khi**: mỗi đích có "vào được / không" kèm ngày. Đích "không" thì T012 ghi vào tài liệu và máy chủ đó chưa
     khai báo được (máy runner để sau, Q14).
 
-- [ ] **T007 [—] [người: chủ dự án] · 0,5 ngày người — Kiểm Jenkins acme, Argo CD, ServiceAccount**
+- [ ] **T007 [—] [người: chủ dự án] · 0,5 ngày người — Kiểm Jenkins ACME, Argo CD, ServiceAccount**
   - **Goal**: các dòng **[Unverified]** ở spec Assumptions, plan.md mục 2 và "Quyết định của người viết":
     - Jenkins (Keycloak OIDC, realm `devops`): người dùng tự tạo được API token; `GET /me/api/json` bằng user + token;
       `POST` bằng API token **không cần crumb** (vd. `stop` một build thử hoặc `buildWithParameters` một job thử); có
@@ -327,7 +327,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 - [ ] **T012 [P] [—] [nhẹ] · 0,5 ngày — ADR 0030, 0031, SRS, tài liệu kỹ thuật**
   - **Phụ thuộc**: T001. T006 đã có (research.md mục 2): hub không vào được cổng 22 và API Kubernetes của
-    `198.51.100.x`, nên triển khai lên hạ tầng acme đi qua `jenkins-job` hoặc `argocd`. T007 chưa có: ghi "chưa
+    `198.51.100.x`, nên triển khai lên hạ tầng ACME đi qua `jenkins-job` hoặc `argocd`. T007 chưa có: ghi "chưa
     kiểm" và để mọi chi tiết Jenkins, Argo CD ở mức **[Suy luận]**; người điều phối cập nhật sau.
   - **Goal**:
     - ADR 0030 "Hub runs deploy steps over SSH" (tiếng Anh, theo `docs/adr/template.md`): Q1, Q2; `ssh2` (bản, giấy
@@ -730,7 +730,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/web/e2e/hub/{delivery.spec.ts,global-setup.ts}` (`delivery.spec.ts` mới)
   - **Kiểm**: hub test, Playwright hub. Ghi số đo vào bàn giao. Lỗi tìm ra thì tạo task mới.
 
-- [ ] **T034 [—] [US4] [vừa + người: chủ dự án] · 0,5 ngày + 0,5 ngày người — Chạy thật: SC-002, Jenkins acme**
+- [ ] **T034 [—] [US4] [vừa + người: chủ dự án] · 0,5 ngày + 0,5 ngày người — Chạy thật: SC-002, Jenkins ACME**
   - **Phụ thuộc**: T006, T007, T033; bản có spec này đã lên `hive.example.com` (lần này lên bằng `deploy/remote.sh`).
   - **Goal**: làm cùng chủ dự án, theo đúng các bước làm tay ngày 2026-10-17 (research.md mục 2):
     - SC-002: khai báo máy chủ `app-host` (user `deploy`); chủ dự án cài khoá công khai, xác nhận dấu vân tay; đích
@@ -738,7 +738,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
       commit mới qua Hive, không mở terminal; hub khởi động lại giữa chừng, đọc tiếp log; health báo đúng phiên bản;
       đo thời gian, so với lần làm tay + 1 phút. research.md chưa ghi thời gian lần làm tay: chủ dự án đo lại một lần
       bằng `deploy/remote.sh` trước đó **[Suy luận]**.
-    - SC-003 phần Jenkins: một người thêm token của mình, bấm Build with Parameters một job thử trên Jenkins acme;
+    - SC-003 phần Jenkins: một người thêm token của mình, bấm Build with Parameters một job thử trên Jenkins ACME;
       Jenkins ghi đúng người đó là người kích hoạt; dừng build.
     - Đọc theo lịch bằng token người theo dõi; build bấm thẳng trên Jenkins hiện nhãn "ngoài Hive".
   - **PHẠM VI**:
