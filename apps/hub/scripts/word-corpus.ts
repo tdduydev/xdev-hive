@@ -37,6 +37,16 @@ const DELIMITER_ROW = /^\|(?:\s*:?-+:?\s*\|)+$/gm;
 const HTML_TAG = /(?<!\\)<\/?[a-zA-Z][^>]*>/g;
 const FENCE = /^\s*(?:```|~~~)/;
 
+export interface RawDetail {
+  /** Thứ tự khối trong tài liệu. */
+  index: number;
+  kind: string;
+  reason: string;
+  chars: number;
+  /** Đầu khối, để tìm lại chỗ trong Markdown ở thư mục chi tiết. */
+  head: string;
+}
+
 export interface FileReport {
   /** Đường dẫn tương đối với thư mục gốc. */
   file: string;
@@ -50,6 +60,8 @@ export interface FileReport {
   /** Bảng thành khối thô `rawMarkdown` (không sửa trực quan được). */
   rawTables: number;
   rawBlocks: number;
+  /** Từng khối thô: loại và lý do codec không nạp được, để tách lỗi bộ lọc khỏi giới hạn codec. */
+  rawDetails: RawDetail[];
   /** Thẻ HTML còn sót, tính theo tên thẻ; `<br>` trong ô bảng không tính. */
   strayTags: Record<string, number>;
   codecError: string | null;
@@ -62,6 +74,36 @@ function count(node: Node, type: string): number {
 function rawTables(doc: Node): number {
   const text = (node: Node) => (node.content ?? []).map((child) => child.text ?? "").join("");
   return (doc.content ?? []).filter((node) => node.type === "rawMarkdown" && /^\s*\|/.test(text(node))).length;
+}
+
+// Thứ tự kiểm quan trọng: một khối khớp nhiều dấu hiệu thì lấy dấu hiệu gây thô đầu tiên.
+export function classifyRaw(text: string): { kind: string; reason: string } {
+  const lines = text.split("\n");
+  if (/^\s*\|/.test(text)) return { kind: "bảng", reason: "bảng pipe codec không dựng được thành table" };
+  if (lines.some((line) => /^ {2,}(?:[-*+]|\d+[.)])\s/.test(line))) {
+    return { kind: "danh sách lồng", reason: "mục danh sách thụt vào trong mục khác" };
+  }
+  if (/(?<![\w\\])(?:\*{1,3}|_{1,3})!\[|!\[[^\]]*\]\([^)]*\)(?:\*{1,3}|_{1,3})(?!\w)/.test(text)) {
+    return { kind: "ảnh trong chữ nghiêng", reason: "ảnh nằm trong cặp * hoặc _" };
+  }
+  if (/(?<!\\)<\/?[a-zA-Z][^>]*>/.test(text)) return { kind: "HTML", reason: "còn thẻ HTML trong khối" };
+  if (/\\[^\s]/.test(text)) return { kind: "ký tự escape", reason: "đoạn chứa ký tự codec escape khác" };
+  if (/^\s*(?:[-*+]|\d+[.)])\s/.test(text))
+    return { kind: "danh sách", reason: "danh sách phẳng nhưng xuất lại khác chữ" };
+  if (/^\s*>/.test(text)) return { kind: "trích dẫn", reason: "khối trích dẫn xuất lại khác chữ" };
+  if (/^\s*(?:```|~~~)/.test(text)) return { kind: "mã", reason: "khối mã xuất lại khác chữ" };
+  if (/^\s*#{1,6}\s/.test(text)) return { kind: "tiêu đề", reason: "tiêu đề xuất lại khác chữ" };
+  return { kind: "khác", reason: "xuất lại khác chữ, chưa rõ nguyên nhân" };
+}
+
+function rawDetails(doc: Node): RawDetail[] {
+  const details: RawDetail[] = [];
+  (doc.content ?? []).forEach((node, index) => {
+    if (node.type !== "rawMarkdown") return;
+    const text = (node.content ?? []).map((child) => child.text ?? "").join("");
+    details.push({ index, ...classifyRaw(text), chars: text.length, head: text.slice(0, 80) });
+  });
+  return details;
 }
 
 function strayTags(markdown: string): Record<string, number> {
@@ -178,7 +220,17 @@ async function main() {
         keepFront: false,
       });
       const ms = Math.round(performance.now() - t0);
-      const base = { file: file.rel, bytes, ms, warnings: {}, tables: 0, tableNodes: 0, rawTables: 0, rawBlocks: 0 };
+      const base = {
+        file: file.rel,
+        bytes,
+        ms,
+        warnings: {},
+        tables: 0,
+        tableNodes: 0,
+        rawTables: 0,
+        rawBlocks: 0,
+        rawDetails: [],
+      };
       if (!run.ok) {
         return { ...base, pandoc: run, strayTags: {}, codecError: null };
       }
@@ -205,6 +257,7 @@ async function main() {
         report.tableNodes = count(doc, "table");
         report.rawBlocks = count(doc, "rawMarkdown");
         report.rawTables = rawTables(doc);
+        report.rawDetails = rawDetails(doc);
       } catch (error) {
         report.codecError = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       }
@@ -238,6 +291,8 @@ async function main() {
     for (const r of reports) for (const [k, v] of Object.entries(of(r))) total[k] = (total[k] ?? 0) + v;
     return Object.fromEntries(Object.entries(total).sort(([a], [b]) => (a < b ? -1 : 1)));
   };
+  const rawByKind: Record<string, number> = {};
+  for (const r of codecOk) for (const d of r.rawDetails) rawByKind[d.kind] = (rawByKind[d.kind] ?? 0) + 1;
   const times = reports.map((r) => r.ms).sort((a, b) => a - b);
   const tablesLoaded = sum(codecOk, (r) => r.tables);
   const tableNodes = sum(codecOk, (r) => r.tableNodes);
@@ -256,6 +311,7 @@ async function main() {
     tableRatio: tablesLoaded ? tableNodes / tablesLoaded : null,
     rawTables: sum(codecOk, (r) => r.rawTables),
     rawBlocks: sum(codecOk, (r) => r.rawBlocks),
+    rawByKind: Object.fromEntries(Object.entries(rawByKind).sort(([, a], [, b]) => b - a)),
     filesWithStrayTags: ok.filter((r) => Object.keys(r.strayTags).length).length,
     strayTags: merge((r) => r.strayTags),
     warnings: merge((r) => r.warnings),
@@ -276,6 +332,7 @@ File Word: ${summary.wordFilesFound}; chạy ${summary.files}${values.all ? " (-
 pandoc lỗi: ${summary.pandocFailed}
 codec ném lỗi: ${summary.codecFailed}
 bảng: ${summary.tablesInCodecFiles}, thành table: ${summary.tableNodes} (${percent}), thành khối thô: ${summary.rawTables}
+khối thô theo loại: ${JSON.stringify(summary.rawByKind)}
 file còn thẻ HTML ngoài <br> trong ô: ${summary.filesWithStrayTags}; thẻ: ${JSON.stringify(summary.strayTags)}
 cảnh báo của bộ lọc: ${JSON.stringify(summary.warnings)}
 thời gian: cả bộ ${wallMs} ms; mỗi file p50 ${summary.ms.perFileP50} ms, p95 ${summary.ms.perFileP95} ms, lớn nhất ${summary.ms.perFileMax} ms
