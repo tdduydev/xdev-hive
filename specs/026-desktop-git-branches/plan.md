@@ -3,13 +3,14 @@
 **Branch**: `claude/spec-026-git-branches-0e58d1` · **Date**: 2026-10-19 · **Spec**: [spec.md](spec.md) ·
 **Research**: [research.md](research.md)
 
-Plan viết theo khuyến nghị của mọi câu hỏi mở (Q1–Q15). Chủ dự án chọn khác thì sửa mục liên quan.
+Chủ dự án chốt Q1–Q15 ngày 2026-10-20: theo khuyến nghị, trừ **Q7: có merge và rebase** (US8, mục 3b). Việc chia ở
+[tasks.md](tasks.md).
 
 ## Tóm tắt
 
 Thêm vào app desktop:
 - **Sidecar Go**: lệnh mới `hive-worker branches` (package `worker/internal/branches`). Đọc nhánh, worktree, trạng thái;
-  đổi nhánh; tạo nhánh; quét và dọn nhánh, worktree đã merge. In JSON như `gitgroups`.
+  đổi nhánh; tạo nhánh; merge, rebase, tiếp tục, huỷ (P2); quét và dọn nhánh, worktree đã merge. In JSON như `gitgroups`.
 - **Rust**: module `git_branches.rs`, chuyển tiếp lệnh tới sidecar. Gửi kèm danh sách thư mục đang dùng (agent từ
   `agents.rs`, terminal từ `pty.rs`) qua stdin, và token kết nối Git (P2) qua biến môi trường.
 - **React**: cột nhánh/trạng thái ở màn Dự án trên máy; bảng "Nhánh" của một repo; hộp thoại "Dọn nhánh" có xem trước,
@@ -100,6 +101,7 @@ worker/
 │   ├── list.go                  #   for-each-ref, worktree list, status → RepoBranches
 │   ├── state.go                 #   thao tác dở (MERGE_HEAD…), sạch/bẩn, file bị bỏ qua từng worktree
 │   ├── switch.go                #   switch, create (check-ref-format)
+│   ├── operation.go             #   merge, rebase, continue, abort, đọc xung đột (P2, US8)
 │   ├── scan.go                  #   ứng viên, quy tắc chặn
 │   ├── evidence.go              #   bằng chứng git (first-parent), API (P2)
 │   ├── clean.go                 #   kiểm lại, gỡ worktree, xoá nhánh, nhật ký
@@ -120,6 +122,7 @@ apps/desktop/src/
 ├── components/branches-sheet.tsx       # MỚI
 ├── components/cleanup-dialog.tsx       # MỚI
 ├── components/branch-create-dialog.tsx # MỚI
+├── components/git-operation-panel.tsx  # MỚI (P2): băng "Đang merge/rebase", file xung đột, Tiếp tục, Huỷ
 ├── screens/projects-screen.tsx  # SỬA: cột nhánh, nút Nhánh, nút Dọn nhánh
 └── lib/i18n.ts                  # SỬA: chuỗi vi/en
 ```
@@ -188,6 +191,31 @@ Lệnh:
   - `git switch --no-track -c <tên> <gốc>` hay `git branch --no-track <tên> <gốc>` trong khoá.
 - Agent đang chạy trong thư mục (FR-014): Rust kiểm trước khi gọi, React hỏi lại.
 
+### 3b. Merge, rebase (P2, US8, FR-050…FR-056)
+
+Chủ dự án chốt Q7 = có. Cách làm sau là [Inference] của người điều phối, chọn theo hướng an toàn.
+
+- `branches merge --folder=… --onto=<mã> --onto-name=<tên hiện> [--ff]` và `branches rebase --folder=… --onto=<mã>
+  --onto-name=…`:
+  - kiểm: đứng trên nhánh, sạch (`status --porcelain=v2 --untracked-files=normal` rỗng), không dở thao tác (FR-012);
+  - rebase: đếm commit đã đẩy `git rev-list --count <onto>..HEAD --remotes` [Inference: cách đếm, kiểm lại khi làm];
+    lớn hơn 0 mà không có `--confirm-rewrite` thì trả `needsConfirm` kèm số commit;
+  - đọc `headBefore` (`rev-parse HEAD`), ghi nhật ký;
+  - trong khoá repo: `git merge --no-ff --no-edit --end-of-options <mã>` (bỏ `--no-ff` khi `--ff`) hay
+    `git rebase --end-of-options <mã>`; `GIT_EDITOR=true`, context không huỷ, giới hạn 120 giây.
+- Kết quả: `done` (mã mới), `conflict` hay `error`. `conflict` đọc `git diff --name-only --diff-filter=U -z` (tối đa 200)
+  và, với rebase, `rebase-merge/msgnum`, `rebase-merge/end` (hay `rebase-apply/next`, `last`).
+- `branches continue --folder=…`: còn file `U` thì trả `conflict`; không thì `git merge --continue` hay
+  `git rebase --continue` (`GIT_EDITOR=true`) trong khoá.
+- `branches abort --folder=…`: `git merge --abort` hay `git rebase --abort` trong khoá.
+- `list` (mục 2) trả thêm `operation` với file xung đột khi repo đang dở, để bảng hiện băng kể cả khi người dùng tự chạy
+  merge ngoài app.
+- Không có `--skip`, `--quit`, `-i`, `--autostash`, `--onto <a> <b>`, `checkout --ours/--theirs`.
+- **Rust**: lệnh `git_branches_merge`, `git_branches_rebase`, `git_branches_continue`, `git_branches_abort` qua
+  `sidecar_json_stdin` (không phải job): mỗi lệnh git một lần, có giới hạn thời gian.
+- **React**: menu nhánh có Merge, Rebase; dòng nhánh đang đứng có "Cập nhật từ <mặc định>"; `git-operation-panel.tsx` hiện
+  ở đầu BranchesSheet khi `operation` có giá trị. Nút Mở terminal dùng `pty_open` của spec 021.
+
 ### 4. Gọi sidecar, stdin, giới hạn thời gian
 
 - **Đầu vào qua stdin**: mọi lệnh `branches` đọc dòng đầu stdin là một JSON
@@ -206,7 +234,8 @@ Lệnh:
 - **Lệnh Tauri** (mỗi lệnh một mục trong `generate_handler!`, `build.rs` và một `allow-…` trong `capabilities/app.json`,
   đúng yêu cầu của `capabilities_audit.rs`): `git_branches_status`, `git_branches_list`, `git_branches_switch`,
   `git_branches_create`, `git_branches_fetch`, `git_branches_pull`, `git_branches_scan`, `git_branches_clean`,
-  `git_branches_cancel`, `git_branches_settings`, `git_branches_settings_set`.
+  `git_branches_cancel`, `git_branches_settings`, `git_branches_settings_set`; P2 thêm `git_branches_merge`,
+  `git_branches_rebase`, `git_branches_continue`, `git_branches_abort`.
 
 ### 5. Quét ứng viên (US4, FR-020…FR-027)
 
@@ -306,6 +335,9 @@ Huỷ: dừng trước mục kế tiếp; mục đang chạy chạy hết.
   - dọn: commit mới, file mới, agent mới giữa quét và dọn (SC-003); `.env` bị bỏ qua; `prunable` có và không có thư mục
     cha; remote xoá nhánh sau khi PR đóng (FR-026); khoá repo đang bị giữ.
   - API (P2): máy chủ HTTP giả như test phân trang của `gitgroups`.
+  - merge, rebase (P2): không xung đột, `--no-ff` và `--ff`, xung đột → `conflict` → Tiếp tục, xung đột → Huỷ về đúng
+    `headBefore`, rebase nhiều commit xung đột ở commit thứ hai, bẩn → từ chối, rebase nhánh đã đẩy → `needsConfirm`,
+    tag trùng tên với nhánh đích, repo đang dở merge do người dùng tự chạy.
 - Go (`runner`): bộ test hiện có xanh, không sửa test (nhờ wrapper). Go (`gitgroups`): test dùng phần đã chuyển được sửa
   hoặc chuyển sang `gitexec`, cùng ca kiểm như cũ.
 - Rust: tham số sidecar, JSON stdin, timeout, capability audit.
@@ -372,10 +404,10 @@ Các điểm spec để người làm tự chọn, đã chọn khi viết plan:
 |---|---|---|
 | 1 (P1) | Mục 1 (tách `gitexec`, `repolock`), mục 2, 3, 4: xem, Fetch, đổi, tạo nhánh; cột nhánh ở màn Dự án; BranchesSheet (US1–US3) | 6–7 ngày-agent |
 | 2 (P1) | Mục 5, 6, 8 (CleanupDialog): quét, xem trước, dọn với bằng chứng git; danh sách thư mục dựng lại được; nhật ký; test SC-003 (US4) | 6–7 ngày-agent |
-| 3 (P2) | Pull (US5); mục 7: bằng chứng API GitHub/GitLab, PR đã đóng (US6) | 3–4 ngày-agent |
+| 3 (P2) | Pull (US5); mục 7: bằng chứng API GitHub/GitLab, PR đã đóng (US6); mục 3b: merge, rebase (US8) | 6–7 ngày-agent |
 | 4 (P3) | Huy hiệu số ứng viên (US7) | 1 ngày-agent |
 
-Tổng khoảng 16–19 ngày-agent [Inference], chưa tính thiết kế màn bằng `ui-ux-pro-max` và kiểm tay trên Windows, macOS.
+Tổng khoảng 19–22 ngày-agent [Inference] (thêm 3 cho merge, rebase theo Q7), chưa tính thiết kế màn bằng `ui-ux-pro-max` và kiểm tay trên Windows, macOS.
 Tăng so với bản nháp đầu (14–17) vì thêm kiểm file bị bỏ qua, stdin chung, giới hạn thời gian trong sidecar, wrapper giữ
 test cũ. Đợt 1 và 2 làm tuần tự (đợt 2 dùng mục 1, 2). Phần API của đợt 3 làm song song với đợt 2 được nếu tách file
-`evidence.go`. Bước tiếp theo sau khi chủ dự án chốt câu hỏi mở: viết `tasks.md`.
+`evidence.go`. Chia task ở [tasks.md](tasks.md).
