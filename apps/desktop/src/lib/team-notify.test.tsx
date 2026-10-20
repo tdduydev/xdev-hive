@@ -101,6 +101,7 @@ const ON: AppSettings = {
   notifyApprovals: true,
   notifyQuestions: true,
   notifyOffline: true,
+  tokenScoreDaily: true,
 };
 
 function Probe({ signedIn }: { signedIn: boolean }) {

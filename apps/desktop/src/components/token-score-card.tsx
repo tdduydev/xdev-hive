@@ -3,6 +3,7 @@ import { Button } from "@xdev-hive/ui/button";
 import { Pill } from "@xdev-hive/ui/pill";
 import { RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Toggle } from "@/components/toggle.tsx";
 import {
   type AppliedFix,
   AppliedFixes,
@@ -10,18 +11,25 @@ import {
   profileName,
   TokenScoreDetail,
 } from "@/components/token-score-detail.tsx";
+import { TokenScoreHistory } from "@/components/token-score-history.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { errorText } from "@/lib/tauri.ts";
+import { appSettings, setAppSetting } from "@/lib/settings.ts";
+import { errorText, onTauriEvent } from "@/lib/tauri.ts";
 import {
+  announceTokenScore,
   copyReport,
   formatPoints,
   formatScore,
   groupTotals,
+  type HistoryEntry,
   type Level,
   levelOf,
+  needsSessionTip,
   scoreDelta,
+  TOKEN_SCORE_UPDATED,
   type TokenScore,
   tokenScore,
+  tokenScoreHistory,
 } from "@/lib/token-score.ts";
 
 const text: Dict<{
@@ -50,6 +58,10 @@ const text: Dict<{
   excludedReasons: Record<string, string>;
   cli: Record<string, string>;
   tipsTitle: string;
+  sessionTip: { title: string; why: string };
+  daily: string;
+  dailyHint: string;
+  dailyFailed: string;
   note: string;
 }> = {
   vi: {
@@ -78,6 +90,13 @@ const text: Dict<{
     excludedReasons: { no_token_logs: "không có log token", unsupported_cli: "CLI chưa được hỗ trợ" },
     cli: { claude: "Claude Code", codex: "Codex", antigravity: "Antigravity", gemini: "Gemini" },
     tipsTitle: "Gợi ý về cách dùng",
+    sessionTip: {
+      title: "Tách việc thành phiên ngắn, /clear giữa các việc không liên quan",
+      why: "Cấu hình đã đủ điểm mà phần lớn token vẫn nằm ở phiên rất dài: ngữ cảnh cũ bị gửi lại ở mọi lượt.",
+    },
+    daily: "Tự tính lại điểm mỗi ngày khi mở app",
+    dailyHint: "Chạy ngầm sau khi mở app 2 phút nếu điểm đã quá 24 giờ. Việc tính gọi model nên tốn một ít token.",
+    dailyFailed: "Không lưu được cài đặt tự tính lại điểm.",
     note: "Điểm đo cấu hình và kích thước ngữ cảnh, không đo chất lượng kết quả của agent.",
   },
   en: {
@@ -106,6 +125,14 @@ const text: Dict<{
     excludedReasons: { no_token_logs: "no token logs", unsupported_cli: "CLI not supported yet" },
     cli: { claude: "Claude Code", codex: "Codex", antigravity: "Antigravity", gemini: "Gemini" },
     tipsTitle: "Usage tips",
+    sessionTip: {
+      title: "Split work into short sessions, /clear between unrelated tasks",
+      why: "The configuration already scores in full, yet most tokens are still in very long sessions: old context is resent on every turn.",
+    },
+    daily: "Recalculate the score daily when the app opens",
+    dailyHint:
+      "Runs in the background 2 minutes after the app opens if the score is over 24 hours old. Calculating calls the model, so it costs a few tokens.",
+    dailyFailed: "Could not save the daily recalculation setting.",
     note: "The score measures configuration and context size, not the quality of the agent's results.",
   },
 };
@@ -133,6 +160,10 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
   const [open, setOpen] = useState(false);
   const [applied, setApplied] = useState<AppliedFix[]>([]);
   const [copy, setCopy] = useState<"copied" | "failed" | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  // null: chưa đọc được cài đặt (ngoài Tauri, hay đang đọc), công tắc chưa hiện.
+  const [daily, setDaily] = useState<boolean | null>(null);
+  const [dailyError, setDailyError] = useState(false);
   const latest = useRef(0);
 
   const load = useCallback(async (fresh: boolean, profileId: string | null = null) => {
@@ -140,7 +171,11 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const score = await tokenScore(fresh, profileId);
-      if (id === latest.current) setState({ score, error: null, loading: false });
+      if (id === latest.current) {
+        setState({ score, error: null, loading: false });
+        // Lần tính vừa ghi một dòng lịch sử: huy hiệu ở menu đọc lại số này.
+        announceTokenScore();
+      }
     } catch (e) {
       // Giữ điểm cũ trên màn: lần tính lại lỗi không làm mất số đang xem.
       if (id === latest.current) setState((s) => ({ ...s, error: errorText(e), loading: false }));
@@ -154,7 +189,48 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
     };
   }, [load]);
 
+  // Lần tính nền hằng ngày của Rust xong thì đọc lại điểm (không `--fresh`, không gọi model). Chỉ nghe sự kiện của
+  // Rust, không nghe thông báo nội bộ của chính thẻ này: `load` tự thông báo nên nghe cả hai sẽ lặp vô hạn.
+  useEffect(() => onTauriEvent(TOKEN_SCORE_UPDATED, () => void load(false)), [load]);
+
   const { score, error, loading } = state;
+  const generatedAt = score?.generatedAt;
+
+  // Lịch sử đổi khi có lần tính mới; lỗi đọc lịch sử chỉ làm biểu đồ trống, không báo lỗi lên thẻ điểm.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: đọc lại mỗi khi có lần tính mới (generatedAt đổi)
+  useEffect(() => {
+    let live = true;
+    tokenScoreHistory(30).then(
+      (entries) => live && setHistory(entries),
+      () => live && setHistory([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [generatedAt]);
+
+  useEffect(() => {
+    let live = true;
+    appSettings().then(
+      (s) => live && setDaily(s.tokenScoreDaily),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function toggleDaily(next: boolean) {
+    setDailyError(false);
+    setDaily(next);
+    try {
+      const saved = await setAppSetting("tokenScoreDaily", next);
+      setDaily(saved.tokenScoreDaily);
+    } catch {
+      setDaily(!next);
+      setDailyError(true);
+    }
+  }
 
   async function copyScore() {
     if (!score) return;
@@ -172,8 +248,10 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
   const level = machine && machine.score !== null ? (machine.level ?? levelOf(machine.score)) : null;
   const delta = score ? scoreDelta(score) : null;
   const groups = score ? groupTotals(score) : null;
+  // Gợi ý hành vi: phần đo được nằm ở tiêu chí, còn thói quen dùng thì không có nút sửa (T008).
   const general = [
     ...tips,
+    ...(score && needsSessionTip(score) ? [t.sessionTip] : []),
     ...hints.filter(
       (h) => !score?.profiles.some((p) => p.cli === h.cli && p.criteria.some((c) => c.id === h.criterion)),
     ),
@@ -281,12 +359,28 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
             </div>
           )}
 
+          <TokenScoreHistory entries={history} />
+
           {copy && (
             <p role={copy === "failed" ? "alert" : "status"} className="text-sm">
               {copy === "failed" ? t.copyFailed : t.copied}
             </p>
           )}
           <AppliedFixes score={score} applied={applied} setApplied={setApplied} onChanged={() => load(false)} />
+          {daily !== null && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-sm">
+                <Toggle on={daily} label={t.daily} onChange={(next) => void toggleDaily(next)} />
+                <span aria-hidden="true">{t.daily}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{t.dailyHint}</p>
+              {dailyError && (
+                <p role="alert" className="text-xs text-destructive">
+                  {t.dailyFailed}
+                </p>
+              )}
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">{t.note}</p>
         </div>
       )}

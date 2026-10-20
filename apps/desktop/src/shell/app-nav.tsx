@@ -16,6 +16,7 @@ import { openHubPage } from "@/lib/hub.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { navGroups, type Profile, type ScreenId, SETTINGS_ITEM, type VisibleNavItem } from "@/lib/nav.ts";
 import { errorText, type WorkerView } from "@/lib/tauri.ts";
+import { levelOf, onTokenScoreChanged, tokenScoreLast } from "@/lib/token-score.ts";
 import { cn } from "@/lib/utils.ts";
 import { WORKER_DOT, workerSentence } from "@/lib/worker.ts";
 
@@ -37,6 +38,7 @@ const text: Dict<{
   signOut: string;
   web: string;
   webTitle: string;
+  scoreAria: (score: string) => string;
 }> = {
   vi: {
     aria: "Điều hướng app",
@@ -56,6 +58,7 @@ const text: Dict<{
     signOut: "Đăng xuất khỏi Hive",
     web: "Mở hub trên web",
     webTitle: "Việc của đội (bảng việc, duyệt, Leader, AI SDLC, tài liệu) mở trên web của hub",
+    scoreAria: (score) => `Điểm tối ưu token của máy ${score} trên 100`,
   },
   en: {
     aria: "App navigation",
@@ -75,6 +78,7 @@ const text: Dict<{
     signOut: "Sign out of Hive",
     web: "Open the hub on the web",
     webTitle: "Team work (board, reviews, Leader, AI SDLC, docs) opens on the hub's web",
+    scoreAria: (score) => `Machine token optimization score ${score} out of 100`,
   },
 };
 
@@ -140,17 +144,55 @@ const NAV_LINK = cn(
 );
 const NAV_IDLE = "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
 
+const SCORE_DOT = { good: "bg-success", fair: "bg-warning", low: "bg-destructive" } as const;
+
+/**
+ * Điểm máy của lần tính gần nhất đã lưu, để làm huy hiệu ở mục Token. Chỉ đọc dòng lịch sử cuối, không tính lại
+ * và không gọi model; ngoài Tauri hay chưa có điểm thì không có huy hiệu.
+ */
+function useMachineScore(): number | null {
+  const [score, setScore] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    const read = () =>
+      tokenScoreLast().then(
+        (entry) => live && setScore(entry?.machine ?? null),
+        () => {},
+      );
+    void read();
+    const off = onTokenScoreChanged(() => void read());
+    return () => {
+      live = false;
+      off();
+    };
+  }, []);
+  return score;
+}
+
 /** Một mục của menu: link tới `#/<màn>`, mờ kèm biểu tượng khi màn cần hub mà chưa đăng nhập. */
-function NavLink({ item, active, connected }: { item: VisibleNavItem; active: ScreenId; connected: boolean }) {
+function NavLink({
+  item,
+  active,
+  connected,
+  score = null,
+}: {
+  item: VisibleNavItem;
+  active: ScreenId;
+  connected: boolean;
+  score?: number | null;
+}) {
   const t = useT(text);
   const lang = useLang();
   const current = item.id === active;
   const offline = !connected && !!item.hub;
+  const shown = score === null ? null : Math.round(score).toLocaleString(lang);
+  const label = offline ? `${item.label[lang]} · ${t.needsHubTitle}` : item.label[lang];
   return (
     <a
       href={`#/${item.id}`}
       aria-current={current ? "page" : undefined}
-      title={offline ? `${item.label[lang]} · ${t.needsHubTitle}` : item.label[lang]}
+      // Ở bản `compact` huy hiệu bị ẩn, nên điểm nằm thêm trong tooltip.
+      title={shown ? `${label} · ${t.scoreAria(shown)}` : label}
       data-offline={offline || undefined}
       className={cn(
         NAV_LINK,
@@ -170,6 +212,17 @@ function NavLink({ item, active, connected }: { item: VisibleNavItem; active: Sc
         <CloudOffIcon aria-hidden="true" className="size-3.5 text-muted-foreground compact:hidden" />
       ) : (
         item.readOnly && <span className="shrink-0 text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>
+      )}
+      {shown && (
+        <span
+          role="img"
+          aria-label={t.scoreAria(shown)}
+          data-score-badge
+          className="flex h-5 shrink-0 items-center gap-1 rounded-full bg-sidebar-accent px-1.5 font-mono text-2xs text-sidebar-accent-foreground compact:hidden"
+        >
+          <span aria-hidden="true" className={cn("size-1.5 rounded-full", SCORE_DOT[levelOf(score ?? 0)])} />
+          <span aria-hidden="true">{shown}</span>
+        </span>
       )}
     </a>
   );
@@ -211,6 +264,7 @@ export function AppNav({
   const t = useT(text);
   const lang = useLang();
   const [folder, setFolder] = useFolder();
+  const machineScore = useMachineScore();
   const short = useShortWindow();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [webError, setWebError] = useState<string | null>(null);
@@ -296,7 +350,13 @@ export function AppNav({
                 </div>
               )}
               {group.items.map((item) => (
-                <NavLink key={item.id} item={item} active={active} connected={connected} />
+                <NavLink
+                  key={item.id}
+                  item={item}
+                  active={active}
+                  connected={connected}
+                  score={item.id === "tokens" ? machineScore : null}
+                />
               ))}
             </div>
           ))}

@@ -67,6 +67,8 @@ fn main() {
         "optimizer_restore",
         "optimizer_report",
         "token_score",
+        "token_score_history",
+        "token_score_last",
         "token_score_fix_preview",
         "token_score_fix",
         "token_score_undo",

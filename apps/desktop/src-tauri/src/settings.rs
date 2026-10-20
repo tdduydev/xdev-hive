@@ -26,6 +26,8 @@ pub struct Settings {
     pub notify_questions: bool,
     /// Worker mất kết nối với hub quá 1 phút.
     pub notify_offline: bool,
+    /// Mở app mà điểm token đã quá 24 giờ thì tính lại ở nền (gọi model, tốn token). Tắt thì chỉ tính khi bấm.
+    pub token_score_daily: bool,
 }
 
 impl Default for Settings {
@@ -37,6 +39,7 @@ impl Default for Settings {
             notify_approvals: true,
             notify_questions: true,
             notify_offline: true,
+            token_score_daily: true,
         }
     }
 }
@@ -51,6 +54,7 @@ impl Settings {
             "notifyApprovals" => &mut self.notify_approvals,
             "notifyQuestions" => &mut self.notify_questions,
             "notifyOffline" => &mut self.notify_offline,
+            "tokenScoreDaily" => &mut self.token_score_daily,
             _ => return Err(format!("Không có cài đặt {key}.")),
         };
         *slot = value;
@@ -134,6 +138,10 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"startWorker":false}"#).unwrap();
         assert!(!s.start_worker);
         assert!(s.hide_on_close && s.notify_runs && s.notify_offline);
+        assert!(
+            s.token_score_daily,
+            "bản cũ chưa có khoá này thì giữ mặc định bật"
+        );
     }
 
     #[test]
@@ -143,6 +151,7 @@ mod tests {
         let mut s = Settings::default();
         s.set("hideOnClose", false).unwrap();
         s.set("notifyQuestions", false).unwrap();
+        s.set("tokenScoreDaily", false).unwrap();
         write_at(&path, &s).unwrap();
         assert_eq!(read_at(&path), s);
         let raw = std::fs::read_to_string(&path).unwrap();
@@ -150,6 +159,7 @@ mod tests {
             raw.contains("\"hideOnClose\": false"),
             "khoá camelCase như giao diện: {raw}"
         );
+        assert!(raw.contains("\"tokenScoreDaily\": false"), "{raw}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

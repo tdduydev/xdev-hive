@@ -1,4 +1,4 @@
-import { invoke } from "@/lib/tauri.ts";
+import { invoke, onTauriEvent } from "@/lib/tauri.ts";
 import { formatTokens } from "@/lib/usage.ts";
 
 /*
@@ -87,10 +87,13 @@ export interface ProfileScore {
   /** `path` dạng `~/…`; `key` chỉ có nghĩa trong một lần tính. */
   projects: { key: string; path: string; share: number; codegraph: boolean }[];
   context?: { name: string; tokens: number }[];
+  /** Tỉ trọng token quy đổi theo họ model, chỉ để hiện cạnh A8, không vào điểm. */
+  modelShare?: { family: string; share: number }[];
 }
 
 export interface TokenScore {
-  scoreVersion: 1;
+  /** Đổi thang điểm thì Go tăng số này; lịch sử cũ có thể mang số cũ. */
+  scoreVersion: number;
   generatedAt: string;
   days: number;
   machine: { score: number | null; level: Level | null; coverage: number; provisional: boolean };
@@ -110,6 +113,24 @@ export interface FixResult {
   fixId: FixId;
   profile: string;
   backup?: string;
+  /** false: cấu hình đã đúng sẵn nên không ghi gì. */
+  changed?: boolean;
+  /** true: kết quả của hoàn tác. */
+  undone?: boolean;
+}
+
+/** Một dòng của `optimize score history --json`: chỉ số, id tiêu chí và CLI, không có id gói hay đường dẫn. */
+export interface HistoryEntry {
+  ts: string;
+  /** Ngày theo giờ máy lúc ghi, `YYYY-MM-DD`. */
+  day: string;
+  scoreVersion: number;
+  machine: number | null;
+  coverage: number;
+  groups: Record<string, number>;
+  profiles: { cli: Cli; score: number | null; share: number; values?: Record<string, number> }[];
+  criteria: Record<string, number>;
+  fixes?: { id: string; action: "apply" | "undo" }[];
 }
 
 /**
@@ -128,6 +149,29 @@ export const tokenScoreFix = (fixId: FixId, profileId: string, projectKey?: stri
   invoke<FixResult>("token_score_fix", { fixId, profileId, projectKey: projectKey ?? null });
 export const tokenScoreUndo = (fixId: FixId, profileId: string, projectKey?: string | null, backup?: string | null) =>
   invoke<unknown>("token_score_undo", { fixId, profileId, projectKey: projectKey ?? null, backup: backup ?? null });
+/** 30 ngày là khoảng biểu đồ của thẻ điểm; Go giữ 90 ngày. */
+export const tokenScoreHistory = (days = 30) =>
+  invoke<{ entries: HistoryEntry[] }>("token_score_history", { days }).then((r) => r.entries);
+/** Lần tính gần nhất đã lưu, không tính lại và không gọi model: dùng cho huy hiệu ở menu. */
+export const tokenScoreLast = () =>
+  invoke<{ entries: HistoryEntry[] }>("token_score_last").then((r) => r.entries.at(-1) ?? null);
+
+/** Rust phát sự kiện này khi lần tính nền hằng ngày xong, để thẻ điểm và huy hiệu đọc lại. */
+export const TOKEN_SCORE_UPDATED = "token-score-updated";
+const LOCAL_UPDATED = "hive:token-score-updated";
+
+/** Thẻ điểm báo trong cửa sổ này là vừa có dòng lịch sử mới (người dùng bấm tính lại, hay vừa sửa nhanh). */
+export const announceTokenScore = () => window.dispatchEvent(new Event(LOCAL_UPDATED));
+
+/** Nghe cả lần tính nền của Rust lẫn lần tính do thẻ điểm trong cửa sổ này; trả hàm huỷ nghe. */
+export function onTokenScoreChanged(handler: () => void): () => void {
+  window.addEventListener(LOCAL_UPDATED, handler);
+  const stop = onTauriEvent<null>(TOKEN_SCORE_UPDATED, handler);
+  return () => {
+    window.removeEventListener(LOCAL_UPDATED, handler);
+    stop();
+  };
+}
 
 /** Tốt ≥ 80, Khá 60–79, Cần cải thiện < 60 (spec 025 "Thang điểm"). */
 export function levelOf(score: number): Level {
@@ -168,21 +212,38 @@ export function formatValue(n: number, unit: Criterion["unit"], locale: string):
 }
 
 /**
- * Điểm nhóm A và B của cả máy: trung bình các gói được tính, trọng số theo tỉ trọng token (chia đều khi không gói
- * nào có token), cùng cách tính điểm máy.
+ * Điểm nhóm A và B của cả máy: trung bình các gói được tính, trọng số theo tỉ trọng token, cùng cách tính điểm máy.
+ * Không gói nào có token thì chia đều, và chỉ lấy gói có điểm và có điểm nhóm A (như `machine()` của Go).
  */
 export function groupTotals(score: TokenScore): { A: GroupScore; B: GroupScore } {
   const counted = score.profiles.filter((p) => p.counted);
   const total = counted.reduce((sum, p) => sum + p.share, 0);
+  const used = total > 0 ? counted : counted.filter((p) => p.score !== null && p.groups.A.max > 0);
   const out = { A: { earned: 0, max: 0 }, B: { earned: 0, max: 0 } };
-  for (const p of counted) {
-    const weight = total > 0 ? p.share / total : 1 / counted.length;
+  for (const p of used) {
+    const weight = total > 0 ? p.share / total : 1 / used.length;
     for (const g of ["A", "B"] as const) {
       out[g].earned += p.groups[g].earned * weight;
       out[g].max += p.groups[g].max * weight;
     }
   }
   return out;
+}
+
+/** B2 từ ngưỡng này trở lên là phần lớn phiên kéo dài qua nhiều việc không liên quan. */
+const LONG_SESSION_SHARE = 0.5;
+
+/**
+ * Gợi ý hành vi (T008, US5): gói đã sửa đủ cấu hình (A1 trọn điểm) mà B2 vẫn từ 50% trở lên thì cấu hình không còn
+ * là chỗ để cải thiện, chỉ còn cách dùng. Chỉ nhìn gói được tính; không có nút sửa vì đây là thói quen.
+ */
+export function needsSessionTip(score: TokenScore): boolean {
+  return score.profiles.some((p) => {
+    if (!p.counted) return false;
+    const a1 = p.criteria.find((c) => c.id === "A1");
+    const b2 = p.criteria.find((c) => c.id === "B2");
+    return a1?.status === "ok" && b2?.value !== undefined && b2.value >= LONG_SESSION_SHARE;
+  });
 }
 
 /** Chênh lệch điểm máy so với lần tính trước; null khi một trong hai chưa có điểm. */
