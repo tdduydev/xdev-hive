@@ -63,6 +63,29 @@ trong nghiên cứu là cam kết.
   **Đo /context**. Kết quả được giữ 7 ngày. Nút **Tính lại** không chạy lệnh này.
 - Điểm đo cấu hình và kích thước ngữ cảnh, không đo chất lượng kết quả của agent.
 
+Các tiêu chí (nguồn: `worker/internal/score/criteria.go`). Giá trị nằm giữa mức đủ điểm và mức 0 điểm thì tính tuyến
+tính. Tiêu chí có mục con lấy trung bình các mục con.
+
+| Id | Tên | Tối đa | Mức đủ điểm | Nguồn đo |
+|---|---|---|---|---|
+| A1 | Trần ngữ cảnh (ngưỡng tự nén) | 10 | ≤ 200k token (0 điểm từ 600k) | cấu hình, `/context` |
+| A2 | Trần output tool | 8 | Bash, Read, MCP ≤ 15k và có hook output của Hive | cấu hình |
+| A3 | File chỉ dẫn | 5 | ≤ 2k token, không bị cắt | phiên, file chỉ dẫn |
+| A4 | Skill và MCP nạp sẵn | 7 | ≤ 4k token (0 điểm từ 20k) | `/context` |
+| A5 | Chỉ mục code | 5 | có công cụ, có MCP, dự án top đã lập chỉ mục | công cụ, cấu hình |
+| A6 | RTK | 3 | đã cài và có hook | công cụ, cấu hình |
+| A7 | Prompt cache | 3 | cache bật, CLI đủ phiên bản | cấu hình |
+| A8 | Model và effort mặc định | 4 | effort không quá cao, subagent không dùng Opus | cấu hình |
+| B1 | Ngữ cảnh đỉnh (trung vị) | 12 | ≤ 120k token (0 điểm từ 300k) | phiên |
+| B2 | Token ở phiên rất dài (> 400k) | 10 | ≤ 10% (0 điểm từ 50%) | phiên |
+| B3 | Ngữ cảnh lượt đầu (trung vị) | 8 | ≤ 20k token (0 điểm từ 50k) | phiên |
+| B4 | Cache trúng | 6 | ≥ 90% (0 điểm dưới 60%) | phiên |
+| B5 | Token mỗi lượt | 8 | ≤ 20k (0 điểm từ 60k) | phiên |
+| B6 | Output tool mỗi lần gọi | 5 | ≤ 600 token (0 điểm từ 2.500) | phiên |
+| B7 | Token trước lần sửa đầu | 6 | ≤ 30% (0 điểm từ 70%) | phiên (chỉ Claude) |
+
+Trên Windows, RTK chưa hỗ trợ nên A6 là "không áp dụng" và không tính vào điểm.
+
 ## Memory
 
 Màn **Memory** quét các file memory và hướng dẫn của Claude, Codex và Gemini trên máy, ước tính token, ngày sửa và
