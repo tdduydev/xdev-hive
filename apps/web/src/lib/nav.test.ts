@@ -59,3 +59,27 @@ describe("AI SDLC", () => {
     expect(inAdminArea("/sdlc")).toBe(false);
   });
 });
+
+describe("CI/CD", () => {
+  const ids = (groups: ReturnType<typeof visibleGroups>) => groups.flatMap((g) => g.items.map((i) => i.id));
+
+  it("shows the CI connection and server pages to org admins, or to people holding the dangerous permission", () => {
+    expect(ids(visibleGroups(true))).toEqual(expect.arrayContaining(["ci-connections", "servers"]));
+    expect(ids(visibleGroups(false, (p) => p === "ci.connections.manage"))).toContain("ci-connections");
+    expect(ids(visibleGroups(false, (p) => p === "ci.connections.manage"))).not.toContain("servers");
+    expect(ids(visibleGroups(false, (p) => p === "servers.manage"))).toContain("servers");
+    expect(ids(visibleGroups(false, (p) => p === "servers.manage"))).not.toContain("ci-connections");
+    expect(ids(visibleGroups(false))).not.toContain("ci-connections");
+  });
+
+  it("keeps the admin pages in the admin area and the project CI/CD page with the work pages", () => {
+    expect(inAdminArea("/admin/ci-connections")).toBe(true);
+    expect(inAdminArea("/admin/servers")).toBe(true);
+    expect(activeNavItem("/admin/ci-connections")?.id).toBe("ci-connections");
+    expect(activeNavItem("/admin/servers")?.id).toBe("servers");
+    expect(inAdminArea("/projects/PAY/cicd")).toBe(false);
+    expect(inAdminArea("/projects/PAY/cicd/")).toBe(false);
+    expect(activeNavItem("/projects/PAY/cicd")?.id).toBe("tasks");
+    expect(inAdminArea("/settings/jenkins-tokens")).toBe(false);
+  });
+});

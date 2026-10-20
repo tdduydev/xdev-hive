@@ -6,7 +6,8 @@ import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
-import { type FormEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { LogCard } from "@/components/log-card.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
 import { Meter } from "@/components/ui/meter.tsx";
@@ -34,7 +35,7 @@ import {
   tokenGuardSummary,
 } from "@/lib/run-view.ts";
 import { useNow } from "@/lib/use-now.ts";
-import { type StreamStatus, useRunStream } from "@/lib/use-run-stream.ts";
+import { useRunStream } from "@/lib/use-run-stream.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -236,64 +237,6 @@ function SectionCard({ title, aside, children }: { title: string; aside?: ReactN
           {aside}
         </div>
         {children}
-      </section>
-    </Card>
-  );
-}
-
-const STREAM_TEXT: Record<StreamStatus, string> = {
-  connecting: "Đang kết nối…",
-  live: "Trực tiếp · tự cuộn",
-  ended: "Run đã xong",
-  error: "Mất kết nối",
-};
-
-/** Log terminal. Tự cuộn xuống cuối khi có log mới, trừ khi người xem đang cuộn lên đọc phần trên. */
-function LogCard({ log, status, onRetry }: { log: string; status: StreamStatus; onRetry: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  const stick = useRef(true);
-  const headingId = useId();
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (el && stick.current && log) el.scrollTop = el.scrollHeight;
-  }, [log]);
-  return (
-    <Card className="overflow-hidden">
-      <section aria-labelledby={headingId}>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-          <h2 id={headingId} className="text-base font-semibold text-foreground">
-            Log trực tiếp
-          </h2>
-          <span role="status" className="text-xs text-muted-foreground">
-            {STREAM_TEXT[status]}
-          </span>
-        </div>
-        {status === "error" && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
-            <Alert variant="destructive" className="flex-1">
-              Không nhận được log trực tiếp từ hub. Kiểm tra mạng rồi thử lại.
-            </Alert>
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              Thử lại
-            </Button>
-          </div>
-        )}
-        {/* Vùng cuộn nhận focus để đọc log bằng bàn phím; có tên để trình đọc màn hình biết đang ở đâu. */}
-        <section
-          ref={ref}
-          aria-label="Nội dung log"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: vùng cuộn cần focus để cuộn bằng bàn phím.
-          tabIndex={0}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-          }}
-          className="max-h-160 min-h-80 overflow-auto bg-muted px-4 py-3.5"
-        >
-          <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap break-words text-foreground">
-            {log || (status === "ended" ? "Run không có log." : "Chưa có log.")}
-          </pre>
-        </section>
       </section>
     </Card>
   );
