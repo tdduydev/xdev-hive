@@ -567,7 +567,7 @@ function ProjectsView() {
 }
 
 /**
- * Repo trên máy chưa có trên hub, gom theo namespace của remote (hoặc thư mục cha): clone cả group lớn như ehospital-ai
+ * Repo trên máy chưa có trên hub, gom theo namespace của remote (hoặc thư mục cha): clone cả group lớn như acme-ai
  * thì danh sách phẳng quá dài, khó đọc. Nhiều mục thì thu gọn, chỉ hiện tên và số repo.
  */
 function LocalRepoList({
@@ -632,7 +632,7 @@ function LocalRepoList({
               const Chevron = expanded ? ChevronDownIcon : ChevronRightIcon;
               return (
                 <li key={s.key}>
-                  {/* Khoảng trắng giữa các phần để tên của nút đọc được: "ehospital-ai/his · GitLab FIS 2 repo". */}
+                  {/* Khoảng trắng giữa các phần để tên của nút đọc được: "acme-ai/his · GitLab nội bộ 2 repo". */}
                   <button
                     type="button"
                     aria-expanded={expanded}

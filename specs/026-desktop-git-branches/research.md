@@ -36,7 +36,7 @@ Code trên `main` tại `3a0c6304`.
 | `apps/desktop/src/screens/projects-screen.tsx`, `components/git-groups.tsx`, `lib/local-projects.ts` | Danh sách repo chưa hiện nhánh; nhóm Git hiện nhánh, ahead/behind |
 | `.claude/skills/agent-fleet/scripts/cleanup-merged.sh` (trong git, `HEAD`) | Tiền lệ dọn: `gh pr list --state merged`, `--force` khi chỉ có file chưa theo dõi |
 | `docs/history/phan-tich-2026-10/README.md:378-379` | Ý tưởng cũ A2, A3: dọn worktree N ngày sau khi task xong, xoá nhánh `ai/*` đã merge; chưa làm |
-| Ghi chú các phiên khác (thư mục ghi chú chung) | Repo git nhóm `ehospital-ai` clone tay; máy dev không có Go toolchain mặc định (`E:\DevCache\go`); `GOTOOLCHAIN=local` |
+| Ghi chú các phiên khác (thư mục ghi chú chung) | Repo git nhóm `acme-ai` clone tay; máy dev không có Go toolchain mặc định (`E:\DevCache\go`); `GOTOOLCHAIN=local` |
 
 ## 2. Đo trên máy dev Windows (2026-10-19)
 
@@ -80,7 +80,7 @@ Kết luận:
 ## 4. Hiểu biết chưa kiểm chứng
 
 - [Unverified] `%(ahead-behind:…)` có từ git 2.41. Plan có đường chậm cho git cũ hơn.
-- [Unverified] Cách merge mặc định (merge commit hay squash) của các repo GitLab `ehospital-ai`. Nếu là squash, bằng
+- [Unverified] Cách merge mặc định (merge commit hay squash) của các repo GitLab `acme-ai`. Nếu là squash, bằng
   chứng git ở P1 nhận rất ít nhánh; nên làm P2 sớm.
 - [Unverified] API GitLab `merge_requests` cần quyền `read_api`; token theo hướng dẫn của spec 016 đã có quyền này.
   GitHub fine-grained token cần quyền đọc Pull requests.

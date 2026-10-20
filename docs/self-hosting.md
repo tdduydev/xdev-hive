@@ -394,7 +394,7 @@ It is not built yet; read this before you plan the network and the backups for i
   deploy. If the hub cannot read the server for 15 minutes the deploy shows `unknown` and is never rerun automatically:
   check the health URL, then decide.
 - **Jenkins and Argo CD approvals are separate.** Hive's approval does not stop someone who presses the button in Jenkins or
-  Argo CD directly. Set `approvers` for the `ehosPromote` job (it is empty by default, so anyone who can build can approve)
+  Argo CD directly. Set `approvers` for the `acmePromote` job (it is empty by default, so anyone who can build can approve)
   and restrict who may build and sync there.
 - **Not verified.** How the real Jenkins (API tokens under Keycloak OIDC, crumbs, plugins) and Argo CD (login method, rights
   of a token) behave has not been checked against the live systems (task T007 of spec 020).
