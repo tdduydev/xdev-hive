@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -34,4 +34,4 @@
 - Tên thành phần hiện có (`hive-worker`, `hive mcp`, `hub_rpc`, tên tool MCP, OAuth, GitHub App token) được giữ có chủ ý:
   spec này chuyển đổi kiến trúc đang có, người đọc là chủ dự án, đội dev và SOC, nên phải chỉ rõ phần nào đổi. Cách làm
   (lưu trữ, giao thức, thư viện) để cho plan.
-- Còn 3 câu hỏi Q1 (FR-012), Q2 (FR-062), Q3 (FR-051) chờ chủ dự án chốt trước `/speckit-plan`.
+- Q1–Q3 đã chốt ngày 2026-10-20 (Q1 tiến độ + đề xuất, Q2 không chặn, Q3 chỉ siêu dữ liệu).

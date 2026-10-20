@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-20
 
-**Status**: Bản nháp. Còn 3 câu hỏi (Q1–Q3) chờ chủ dự án chốt. Chưa có plan, chưa code.
+**Status**: Đã chốt Q1–Q3 (2026-10-20). Chưa có plan, chưa code.
 
 **Input**: Chủ dự án (2026-10-20): "với hệ thống này dữ liệu, và tiến độ dự án để trên server, và client sẽ làm hết qua
 tools client thì mình nên làm thế nào? review qua kiến trúc hiện tại đi", rồi "dùng spec để viết spec chuyển đổi đi".
@@ -28,20 +28,28 @@ Kiến trúc hiện tại đã theo mô hình này ở phần lõi (mục "Hiệ
 
 **Ràng buộc:** hub cũ ở 192.0.2.10 (hive.example.com) đã bị gỡ sau cảnh báo SOC. Hiện không có hub nào chạy. Spec này
 **không** chọn nơi đặt hub, không mở cổng, không đo mạng tới máy nội bộ. Các việc đó cần SOC và chủ dự án đồng ý
-(FR-060). Spec chỉ mô tả điều hub và client phải đáp ứng **trước khi** được mở lại.
+(FR-060). Spec chỉ mô tả điều hub và client phải đáp ứng. Theo Q2, phần token làm song song, không chặn việc xin mở
+lại hub.
 
 > Correction: bản review ngày 2026-10-20 gọi "API evidence của spec 026 T014" là một đường ghi lên hub. Điều đó sai.
 > T014 lấy bằng chứng từ GitHub/GitLab, và spec 026 FR-040 không gửi gì lên hub. Spec này không đổi spec 026.
 
-## Câu hỏi cần chốt
+## Câu hỏi đã chốt
 
-| # | Câu hỏi | Khuyến nghị |
-|---|---|---|
-| Q1 | Khi hub vắng, hộp thư đi giữ những loại ghi nào? | **B** |
-| Q2 | Mở lại hub ra mạng cần xong những phần token nào? | **A** |
-| Q3 | Hub nhận log terminal của run và phiên đầy đủ hay chỉ siêu dữ liệu? | **A** |
+Chủ dự án chốt ngày 2026-10-20:
 
-Chi tiết từng câu nằm ở các dấu `[NEEDS CLARIFICATION]` trong FR-012, FR-051 và FR-062.
+| # | Câu hỏi | Khuyến nghị | Chốt | Ghi ở |
+|---|---|---|---|---|
+| Q1 | Khi hub vắng, hộp thư đi giữ những loại ghi nào? | Tiến độ và đề xuất | **Tiến độ và đề xuất** | FR-012 |
+| Q2 | Phải làm xong gì trước khi xin SOC mở lại hub? | Đủ token và che secret | **Không chặn, làm song song** | FR-062 |
+| Q3 | Hub nhận log terminal đầy đủ hay chỉ siêu dữ liệu? | Đầy đủ, có che secret | **Chỉ siêu dữ liệu** | FR-051, FR-055 |
+
+Hệ quả của hai lựa chọn khác khuyến nghị:
+- **Q2:** việc xin mở lại hub không phải chờ US3. Hồ sơ gửi SOC (FR-061) phải ghi rõ phần nào chưa làm và khi nào làm,
+  để SOC tự quyết. [Suy luận] SOC có thể đòi US3 trước khi cho mở lại hub; khi đó hàng việc đổi theo SOC.
+- **Q3:** log terminal không rời máy đã chạy run. Web và app desktop hiện đọc log run từ hub
+  (`apps/web/src/lib/run-stream.ts`, `apps/desktop/src/screens/home-screen.tsx:570`), nên phải đổi (FR-055). RMT-03 của
+  spec 010 (ghi output phiên lên hub, đang ở trạng thái Planned) cũng phải sửa theo.
 
 ## Hiện trạng: dùng lại, mở rộng, làm mới
 
@@ -55,7 +63,8 @@ Chi tiết từng câu nằm ở các dấu `[NEEDS CLARIFICATION]` trong FR-012
 | Desktop → hub | Lệnh Rust `hub_rpc`, `hub_tool` gắn token cá nhân lưu trong keychain (`apps/desktop/src/lib/hub-rpc.ts`) | Đưa các lần ghi qua hộp thư đi |
 | Tool MCP ghi | `task_update`, `memory_write`, `doc_propose`, `doc_comment`, `skill_propose`, `plan_submit`, `review_submit`, `sdlc_report`… (`apps/hub/src/modules/mcp/registry.ts`) | Thêm khoá chống trùng và nguồn gửi |
 | Token | Machine token đến khi thu hồi; run token JWT; khoá máy và token git **[Chưa làm]** (`docs/architecture.md` §6) | Làm mới |
-| Giữ log | Chính sách giữ log (POL-05) và audit (OPS-07) đã có | Dùng lại; thêm che secret |
+| Giữ log | Chính sách giữ log (POL-05) và audit (OPS-07) đã có. Log run lưu ở bảng `run_logs` trên hub (`apps/hub/src/modules/runs/retention.ts`) | Log ở lại máy; chính sách giữ log áp ở máy |
+| Xem log run | Web xem log qua SSE (`apps/web/src/lib/run-stream.ts`). Desktop đọc `hub.runs.logs` (`home-screen.tsx:570`) | Đổi: hub chỉ có siêu dữ liệu; log đọc tại máy đã chạy (FR-055) |
 | Backup | `deploy/backup.sh` (`pg_dump`); pgBackRest **[Chưa làm]** (§10) | Làm mới |
 | Triển khai | Một container hub vai trò `api,jobs` (§10) | Tách vai trò khi chạy |
 
@@ -120,12 +129,12 @@ Cả 20 tới hub, đúng thứ tự trong từng task, không trùng.
 
 ---
 
-### User Story 3 - Token ngắn hạn trước khi mở lại hub (Priority: P1)
+### User Story 3 - Token ngắn hạn (Priority: P1)
 
-Trước khi hub được mở lại, SOC cần thấy: máy không giữ token dài hạn có quyền gọi API; push git dùng token theo repo, có
-hạn; người dùng dùng MCP ngoài run qua HTTPS và OAuth.
+Máy không giữ token dài hạn có quyền gọi API. Push git dùng token theo repo, có hạn. Người dùng dùng MCP ngoài run qua
+HTTPS và OAuth.
 
-**Why this priority**: đây là điều kiện SOC sẽ xét khi cho mở lại hub. Q2 chốt phần nào là bắt buộc.
+**Why this priority**: [Suy luận] SOC sẽ xét phần này. Theo Q2, US3 làm song song và không chặn việc xin mở lại hub.
 
 **Independent Test**: lấy cắp `worker.json` của một máy rồi dùng sau 20 phút. Hub từ chối vì không có khoá máy.
 Token git cấp cho run A không push được vào repo của dự án B.
@@ -166,20 +175,26 @@ phục, có biên bản. Nâng cấp hub không làm client mất sự kiện.
 
 ### User Story 5 - Ranh giới dữ liệu: code và secret ở lại máy (Priority: P2)
 
-SOC hỏi: "hub giữ những gì?". Admin trả lời bằng một trang liệt kê các loại dữ liệu hub nhận. Code, secret và tài khoản
-AI không có trong danh sách. Log có giá trị secret đã biết thì bị che trước khi rời máy.
+SOC hỏi: "hub giữ những gì?". Admin trả lời bằng một trang liệt kê các loại dữ liệu hub nhận. Code, secret, tài khoản AI
+và log terminal không có trong danh sách. Người xem run trên web thấy pha, thời gian, mã thoát, chi phí. Muốn đọc log
+đầy đủ thì mở app desktop trên máy đã chạy run.
 
-**Why this priority**: phạm vi dữ liệu là điều SOC xét. Q3 chốt phần log.
+**Why this priority**: phạm vi dữ liệu là điều SOC xét. Q3 chốt: log ở lại máy.
 
-**Independent Test**: chạy một run in ra một secret của dự án và một token có dạng đã biết. Log trên hub không chứa hai
-giá trị đó.
+**Independent Test**: chạy một run in ra một secret của dự án. Database và mọi request tới hub không chứa chuỗi log
+terminal của run đó. App desktop trên máy chạy run vẫn mở được log đầy đủ.
 
 **Acceptance Scenarios**:
 
-1. **Given** run in ra giá trị secret của dự án, **When** log tới hub, **Then** giá trị đã bị thay bằng dấu che.
-2. **Given** chính sách giữ log của tổ chức là N ngày, **When** quá N ngày, **Then** log và artifact của run bị xoá, và
-   lần xoá được ghi audit.
-3. **Given** admin mở trang "Dữ liệu hub giữ", **Then** thấy danh sách loại dữ liệu, nguồn, thời gian giữ, đúng với
+1. **Given** một run đang chạy, **When** worker báo tiến độ, **Then** hub chỉ nhận siêu dữ liệu (FR-051). Không có gói
+   log terminal nào rời máy.
+2. **Given** run đã xong trên máy của mình, **When** chủ máy mở run trong app desktop, **Then** thấy log đầy đủ đọc từ
+   máy.
+3. **Given** người dùng xem run trên web, hoặc trên app desktop của máy khác, **Then** thấy siêu dữ liệu kèm câu "Log
+   nằm trên máy <tên máy>", không có nút xem log.
+4. **Given** chính sách giữ log của tổ chức là N ngày, **When** quá N ngày, **Then** máy xoá log của run cũ hơn N ngày.
+   Hub xoá artifact theo chính sách của nó và ghi audit.
+5. **Given** admin mở trang "Dữ liệu hub giữ", **Then** thấy danh sách loại dữ liệu, nguồn, thời gian giữ, đúng với
    FR-050.
 
 ---
@@ -198,6 +213,9 @@ giá trị đó.
   (FR-016).
 - Hub trở lại sau khi đã khôi phục về thời điểm cũ hơn sự kiện máy đã gửi. Máy không biết hub đã quên. [Suy luận] Cần
   một "mã đời database" để máy phát hiện và gửi lại (FR-042).
+- Máy đã chạy run bị tắt, bị thu hồi hay cài lại. Log của run đó mất. Hub vẫn giữ siêu dữ liệu và báo cáo agent (Q3).
+- Reviewer cần log của run trên máy người khác để duyệt. Reviewer dùng báo cáo agent và kết quả kiểm tra trên hub, hoặc
+  nhờ chủ máy gửi đoạn log cần thiết qua bình luận (gửi có chủ đích, đã qua bước che ở FR-052).
 - Worker không chạy nhưng app desktop đang mở. App báo "Sidecar không chạy" và không ghi trực tiếp lên hub, bỏ qua hộp
   thư đi.
 
@@ -225,11 +243,13 @@ giá trị đó.
   đương trên Windows). Hàng tồn qua khởi động lại máy.
 - **FR-011**: Desktop và `hive` CLI đưa sự kiện vào hộp thư đi qua socket cục bộ của ADR 0019. `hive mcp` đưa lần gọi
   tool ghi vào hộp thư đi khi hub không trả lời.
-- **FR-012**: Loại ghi được xếp hàng khi hub vắng: [NEEDS CLARIFICATION: Q1 – (A) chỉ tiến độ task/run (`task_update`,
-  `sdlc_report`, kết quả run); (B) tiến độ cùng đề xuất có người duyệt sau (`doc_propose`, `doc_comment`,
-  `skill_propose`, `memory_write`, `plan_submit`, `review_submit`); (C) mọi tool ghi. Khuyến nghị B: đề xuất vốn đã qua
-  người duyệt trên hub nên gửi trễ không gây sai. Các tool tạo tác động ngay như `leader_action` hay `artifact_create`
-  thì vẫn báo lỗi khi hub vắng.]
+- **FR-012** (Q1): Khi hub vắng, hộp thư đi xếp hàng hai nhóm:
+  - tiến độ task/run: `task_update`, `sdlc_report`, kết quả run;
+  - đề xuất có người duyệt sau: `doc_propose`, `doc_comment`, `skill_propose`, `memory_write`, `plan_submit`,
+    `review_submit`.
+
+  Tool tạo tác động ngay, như `leader_action` và `artifact_create`, báo lỗi "Hub đang vắng" và không xếp hàng. Thêm
+  tool ghi mới thì phải ghi rõ tool đó thuộc nhóm nào.
 - **FR-013**: Tool đọc không có bộ đệm. Khi hub vắng, tool đọc trả lỗi "Hub đang vắng", không trả dữ liệu cũ.
 - **FR-014**: Gửi theo thứ tự tạo trong từng task (hay từng tài liệu, từng skill). Một mục bị `rejected` không chặn các
   mục của task khác.
@@ -266,28 +286,40 @@ giá trị đó.
 
 **Ranh giới dữ liệu (US5)**
 
-- **FR-050**: Hub chỉ nhận: siêu dữ liệu dự án và máy, sự kiện client, log và artifact của run, tài liệu và đề xuất mà
-  người dùng chủ động gửi. Hub không nhận mã nguồn (ngoài nội dung người dùng đưa vào tài liệu hay đề xuất), secret của
-  máy, hay thông tin tài khoản AI.
-- **FR-051**: Log terminal gửi lên hub: [NEEDS CLARIFICATION: Q3 – (A) gửi đầy đủ như hiện nay, có che secret và giữ
-  theo chính sách; (B) chỉ gửi siêu dữ liệu (pha, thời gian, mã thoát, chi phí), log đầy đủ ở lại máy; (C) mặc định A,
-  tổ chức chọn B được. Khuyến nghị A: xem log trên web là tính năng đang dùng, và che secret cùng giới hạn thời gian giữ
-  đã giải quyết phần lớn rủi ro.]
-- **FR-052**: Worker che mọi giá trị secret đã biết của dự án và các token có dạng đã biết **trước khi** log rời máy.
-  Hub che thêm một lần khi nhận.
-- **FR-053**: Log và artifact của run bị xoá theo chính sách giữ log của tổ chức (POL-05). Mỗi lần xoá ghi audit.
+- **FR-050**: Hub chỉ nhận:
+  - siêu dữ liệu dự án, máy và run;
+  - sự kiện client;
+  - artifact, tài liệu và đề xuất mà người dùng hay agent chủ động gửi.
+
+  Hub không nhận: log terminal, mã nguồn (trừ nội dung người dùng đưa vào tài liệu hay đề xuất), secret của máy, thông
+  tin tài khoản AI.
+- **FR-051** (Q3): Về run, hub chỉ nhận siêu dữ liệu: pha, thời gian, mã thoát, chi phí, `headSha`, kết quả kiểm tra, báo
+  cáo agent (`agent_report`). Worker không gửi `log_chunk` và không gửi output phiên PTY. Log đầy đủ ở lại máy đã chạy
+  run.
+- **FR-052**: Mọi chuỗi chữ tự do gửi lên hub (báo cáo agent, lỗi, tóm tắt) đều qua bước che secret trên máy, rồi hub
+  che thêm một lần khi nhận. Bước che xử lý mọi giá trị secret đã biết của dự án và các token có dạng đã biết.
+- **FR-053**: Máy xoá log run theo chính sách giữ log của tổ chức (POL-05), lấy từ hub ở lần kết nối gần nhất. Hub xoá
+  artifact theo chính sách của mình và ghi audit mỗi lần xoá.
 - **FR-054**: Có trang "Dữ liệu hub giữ" cho admin, liệt kê loại dữ liệu, nguồn và thời gian giữ, khớp FR-050.
+- **FR-055**: Xem log run:
+  - Web và desktop của máy khác chỉ hiện siêu dữ liệu, kèm câu "Log nằm trên máy <tên máy>".
+  - Desktop của máy đã chạy run đọc log từ đĩa máy.
+  - Run trên runner host hay trong container sandbox thì log ở lại runner host, giữ theo FR-053. Quản trị máy đó đọc
+    tại chỗ.
+  - Hub ngừng ghi `run_logs`. Dữ liệu cũ trong bảng bị xoá theo chính sách hiện có, không chuyển đi đâu.
 
 **Điều kiện mở lại hub**
 
 - **FR-060**: Spec này không chọn nơi đặt hub, không mở cổng, không đo mạng tới máy nội bộ. Việc mở lại hub chỉ diễn ra
   khi SOC và chủ dự án đồng ý bằng văn bản.
-- **FR-062**: Phần phải xong trước khi xin mở lại hub: [NEEDS CLARIFICATION: Q2 – (A) FR-020…FR-025 và FR-052 (khoá máy,
-  token git, OAuth HTTPS, che secret); (B) chỉ khoá máy và che secret, token git và OAuth làm sau; (C) không chặn, làm
-  song song. Khuyến nghị A: hub cũ bị gỡ sau cảnh báo SOC, nên mở lại với token dài hạn và push bằng thông tin git trên
-  máy là rủi ro bị gỡ lần nữa. [Suy luận]]
-- **FR-061**: Có tài liệu một trang gửi SOC, gồm: dữ liệu hub giữ (FR-050), cách xác thực máy và người (FR-020…FR-025),
-  cổng cần mở, chiều kết nối (chỉ client gọi ra hub), backup (FR-040).
+- **FR-061**: Có tài liệu một trang gửi SOC, gồm:
+  - dữ liệu hub giữ (FR-050, FR-051);
+  - cách xác thực máy và người hiện tại, và theo FR-020…FR-025;
+  - cổng cần mở;
+  - chiều kết nối (chỉ client gọi ra hub);
+  - backup (FR-040).
+- **FR-062** (Q2): Việc xin mở lại hub không chờ US3 xong. Tài liệu FR-061 ghi trạng thái từng mục FR-020…FR-025 (đã
+  làm hay chưa, dự kiến khi nào). SOC đòi mục nào là điều kiện thì mục đó lên trước trong hàng việc.
 
 ### Key Entities
 
@@ -313,7 +345,8 @@ giá trị đó.
   kết thúc.
 - **SC-005**: Diễn tập khôi phục hằng tháng thành công 3 lần liên tiếp, mỗi lần khôi phục xong trong 1 giờ với database
   hiện tại.
-- **SC-006**: Trong 100 run thử có in secret của dự án, 0 giá trị secret xuất hiện trong log trên hub.
+- **SC-006**: Trong 100 run thử có in secret của dự án, hub nhận 0 byte log terminal và 0 giá trị secret.
+- **SC-008**: Chủ máy mở được log đầy đủ của run trên máy mình trong 2 giây, với log 10 MB.
 - **SC-007**: SOC nhận tài liệu FR-061 và trả lời được "hub giữ gì, ai gọi vào đâu" mà không cần hỏi thêm đội.
 
 ## Assumptions
@@ -333,3 +366,4 @@ giá trị đó.
 - Đồng bộ hai chiều kiểu CRDT giữa các máy. Hub là nơi duy nhất quyết định.
 - Đổi cách worker nhận job, lease và huỷ run.
 - Chạy nhiều bản `api` để nâng cấp không gián đoạn. Ghi lại làm sau.
+- Gom log run về hub, kể cả bản nén sau khi run xong (Q3).
