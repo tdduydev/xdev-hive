@@ -606,7 +606,7 @@ function WorktreeRow({ worktree: w, onTerminal }: { worktree: WorktreeInfo; onTe
           {shortPath(w.path)}
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="min-w-0 truncate font-mono text-xs">
+          <span className={cn("min-w-0 truncate text-xs", w.branch && "font-mono")}>
             {w.branch ?? (w.head ? t.headOnly(w.head.slice(0, 7)) : t.detached)}
           </span>
           {w.isMain && <Pill>{t.main}</Pill>}
@@ -619,8 +619,8 @@ function WorktreeRow({ worktree: w, onTerminal }: { worktree: WorktreeInfo; onTe
         {w.locked && w.lockReason && <span className="text-xs text-muted-foreground">{t.lockedWhy(w.lockReason)}</span>}
         {w.state === "error" && w.error && <span className="text-xs text-destructive">{w.error}</span>}
         {files.length > 0 && (
-          <span className="font-mono text-xs break-all text-muted-foreground">
-            {files.slice(0, 3).join(", ")}
+          <span className="text-xs break-all text-muted-foreground">
+            <span className="font-mono">{files.slice(0, 3).join(", ")}</span>
             {hidden > 0 ? ` ${t.moreFiles(hidden)}` : ""}
           </span>
         )}
