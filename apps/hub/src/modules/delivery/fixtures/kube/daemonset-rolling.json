@@ -1,0 +1,14 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "DaemonSet",
+  "metadata": { "name": "his-agent", "namespace": "his-system", "generation": 2 },
+  "spec": {
+    "template": { "spec": { "containers": [{ "name": "agent", "image": "registry.example.invalid/his/agent:2.0" }] } }
+  },
+  "status": {
+    "observedGeneration": 2,
+    "desiredNumberScheduled": 4,
+    "updatedNumberScheduled": 2,
+    "numberAvailable": 3
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {},
+  "status": "Failure",
+  "message": "Deployment.apps \"his-portal\" is invalid: spec.template.spec.containers[0].image: Required value",
+  "reason": "Invalid",
+  "code": 422
+}
