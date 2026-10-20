@@ -310,9 +310,16 @@ const webUrl = (c: ScmConnection) => (c.baseUrl ?? "").replace(/\/api\/v[34]\/?$
 
 /**
  * Mục Nhóm Git theo dõi của màn Dự án trên máy. Chạy được khi chưa đăng nhập Hive; đã đăng nhập thì form kết nối gợi ý
- * kết nối Git của tổ chức để điền sẵn. Clone xong thì gọi onCloned để danh sách Dự án trên máy đọc lại.
+ * kết nối Git của tổ chức để điền sẵn. Clone xong thì gọi onCloned để danh sách Dự án trên máy đọc lại; fetch/pull xong
+ * thì gọi onSynced vì ref của repo đã đổi.
  */
-export function GitGroupsSection({ onCloned }: { onCloned: () => void }) {
+export function GitGroupsSection({
+  onCloned,
+  onSynced,
+}: {
+  onCloned: () => void;
+  onSynced?: (() => void) | undefined;
+}) {
   const t = useT(text);
   const [data, setData] = useState<GitGroups | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -395,6 +402,7 @@ export function GitGroupsSection({ onCloned }: { onCloned: () => void }) {
                 onChanged={(next) => setData(next)}
                 onRemoved={() => void load()}
                 onCloned={onCloned}
+                onSynced={onSynced}
                 onError={setError}
               />
             ))
@@ -432,6 +440,7 @@ function GroupCard({
   onChanged,
   onRemoved,
   onCloned,
+  onSynced,
   onError,
 }: {
   group: GitGroup;
@@ -440,6 +449,7 @@ function GroupCard({
   onChanged: (next: GitGroups) => void;
   onRemoved: () => void;
   onCloned: () => void;
+  onSynced: (() => void) | undefined;
   onError: (e: string | null) => void;
 }) {
   const [statuses, setStatuses] = useState<Record<string, RepoStatus>>({});
@@ -472,7 +482,9 @@ function GroupCard({
     setStatuses((s) => ({ ...s, ...job.statuses }));
     if (job.error) onError(job.error);
     if (job.action === "clone") onCloned();
-  }, [finished, job, onCloned, onError]);
+    // Lượt bị huỷ hay lỗi giữa chừng vẫn có thể đã fetch được vài repo.
+    else onSynced?.();
+  }, [finished, job, onCloned, onSynced, onError]);
 
   async function run(action: SyncAction) {
     onError(null);
