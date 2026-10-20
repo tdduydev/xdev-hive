@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-19
 
-**Status**: Đã chốt câu hỏi Q1–Q15 (2026-10-20). Đã code P1 và P2: Go, Rust, màn xem, đổi, tạo, dọn, pull, merge, rebase (T001–T016). Còn T017 (huy hiệu), T019 (kiểm tay) và T020 (chỉ chặn submodule đã init, SC-004 chờ T020). Có [tasks.md](tasks.md); hướng dẫn dùng ở [docs/git-branches.md](../../docs/git-branches.md).
+**Status**: Đã chốt câu hỏi Q1–Q15 (2026-10-20). Đã code P1–P3: Go, Rust, màn xem, đổi, tạo, dọn, pull, merge, rebase, huy hiệu (T001–T018, T020). Còn T019 (kiểm tay trên macOS và Windows); SC-004 chưa đo lại sau T020. Có [tasks.md](tasks.md); hướng dẫn dùng ở [docs/git-branches.md](../../docs/git-branches.md).
 
 **Input**: Chủ dự án (2026-10-19): "Mở một phiên riêng viết spec, plan, research cho quản lý nhánh Git trong app desktop
 (danh sách nhánh, ahead/behind, đổi, tạo nhánh, dọn nhánh và worktree ai/* đã merge), câu hỏi mở kèm khuyến nghị.
