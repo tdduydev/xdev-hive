@@ -8,15 +8,19 @@
 | `srs.docx` + `keep-front=true` | `srs.keep-front.md` | Như trên, giữ phần trước tiêu đề cấp 1 (Q5); mục lục vẫn bị bỏ |
 | `srs.odt` | `srs.odt.md` | `srs.docx` lưu lại bằng LibreOffice |
 | `no-h1.docx` | `no-h1.md` | Không có tiêu đề cấp 1, chú thích cuối trang, công thức, hộp chữ |
+| `inline-lists.docx` | `inline-lists.md` | Chỉ số dưới, chỉ số trên (trong và ngoài ô bảng, có dấu, ngoặc, in đậm, chữ không có dạng Unicode), hai danh sách đánh số và hai danh sách chấm liền nhau. Test riêng: `inline-lists.test.ts` |
 
 ## Sinh lại
 
 ```sh
 python make-fixtures.py
 soffice --headless --convert-to odt --outdir . srs.docx
-HIVE_UPDATE_GOLDEN=1 pnpm --filter @xdev-hive/hub exec vitest run src/modules/docsync/word/filter.test.ts
+HIVE_UPDATE_GOLDEN=1 pnpm --filter @xdev-hive/hub exec vitest run src/modules/docsync/word/filter.test.ts src/modules/docsync/word/fixtures/inline-lists.test.ts
 git diff -- .
 ```
+
+Chạy riêng một mẫu: `python make-fixtures.py inline-lists`. Phiên bản python-docx/lxml khác có thể ra byte khác cho `srs.docx`
+và `no-h1.docx`; khi đó chỉ sinh mẫu mới và giữ file cũ.
 
 - `make-fixtures.py` cần python-docx 1.2 và chạy lại ra cùng byte. `.odt` do LibreOffice sinh nên mỗi lần một khác: chỉ
   sinh lại khi đổi `srs.docx`.
@@ -33,3 +37,11 @@ Do bộ đọc odt của pandoc 3.12, bộ lọc không sửa được:
 - Chú thích hình và chú thích bảng ra chữ đậm, không thành hình có chú thích: chú thích hình là `**…**` thay cho `*…*`.
 - Bảng lồng mất hẳn chữ: bộ đọc odt bỏ bảng trong ô. Bộ lọc vẫn báo `nested_table` nhờ đọc `content.xml`.
 - Ô STT sau ô có bảng lồng đánh lại từ 1.
+
+## Chỉ số dưới, chỉ số trên và danh sách liền nhau
+
+- `<sub>`/`<sup>` đổi sang chữ Unicode (`SpO₂`, `m²`, `Ca²⁺`) khi mọi ký tự có chữ tương ứng (số, `+ - = ( )`, và `n`, `i` cho
+  chỉ số trên). Còn lại (`T` + `max`, `5` + `th`) giữ chữ và bỏ định dạng. Áp dụng cả ngoài ô bảng.
+- Pandoc chèn `<!-- -->` giữa hai danh sách cùng loại liền nhau; bộ lọc chen một khối raw rỗng nên dòng này biến mất. Hai
+  danh sách vẫn là hai khối riêng khi editor nạp (codec tách khối theo dòng trống), nhưng một trình đọc Markdown khác sẽ
+  gộp chúng làm một (danh sách đánh số đếm tiếp 1, 2, 3, 4).
