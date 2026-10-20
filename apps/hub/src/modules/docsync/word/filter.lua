@@ -2,7 +2,8 @@
 -- FILTER_VERSION đã chép. Đổi quy tắc thì tăng FILTER_VERSION và duyệt lại fixtures/*.md vàng.
 -- Chép từ tools/srs2md/srs.lua của gitlab.example.com/acme-ai/docs, commit 440f2f5b50287009788f4cf944840c023bff41e7
 -- (sha256 của file 6eb181fb5147afa66cf3f5e312228c861feeba481db98570d09c4a72af907881).
-local FILTER_VERSION = "1.0.0"
+-- 1.1.0: chỉ số dưới/trên đổi sang chữ Unicode, bỏ <!-- --> giữa hai danh sách liền nhau (WIMP-T026).
+local FILTER_VERSION = "1.1.0"
 
 -- Lọc pandoc cho SRS Word: đưa bảng về pipe table vì editor của hub chỉ sửa được bảng dạng này (bảng HTML bị giữ
 -- nguyên dạng chữ), và bỏ phần chỉ có nghĩa trong Word.
@@ -282,6 +283,58 @@ function Underline(u)
   return u.content
 end
 
+-- gfm in <sub>/<sup>; trong ô bảng thẻ HTML khiến cả bảng thành khối thô (research.md mục 6). Chỉ số đổi sang chữ
+-- Unicode (SpO₂, m²) khi mọi ký tự có chữ tương ứng; không thì bỏ định dạng, giữ chữ, vì ghép nửa chữ nửa số khó đọc hơn.
+local SUBSCRIPT = {
+  ["0"] = "\u{2080}", ["1"] = "\u{2081}", ["2"] = "\u{2082}", ["3"] = "\u{2083}", ["4"] = "\u{2084}",
+  ["5"] = "\u{2085}", ["6"] = "\u{2086}", ["7"] = "\u{2087}", ["8"] = "\u{2088}", ["9"] = "\u{2089}",
+  ["+"] = "\u{208A}", ["-"] = "\u{208B}", ["\u{2212}"] = "\u{208B}", ["="] = "\u{208C}",
+  ["("] = "\u{208D}", [")"] = "\u{208E}",
+}
+local SUPERSCRIPT = {
+  ["0"] = "\u{2070}", ["1"] = "\u{B9}", ["2"] = "\u{B2}", ["3"] = "\u{B3}", ["4"] = "\u{2074}",
+  ["5"] = "\u{2075}", ["6"] = "\u{2076}", ["7"] = "\u{2077}", ["8"] = "\u{2078}", ["9"] = "\u{2079}",
+  ["+"] = "\u{207A}", ["-"] = "\u{207B}", ["\u{2212}"] = "\u{207B}", ["="] = "\u{207C}",
+  ["("] = "\u{207D}", [")"] = "\u{207E}", ["n"] = "\u{207F}", ["i"] = "\u{2071}",
+}
+
+local function script_inlines(el, map)
+  local complex = false
+  el.content:walk({
+    Link = function() complex = true end,
+    Image = function() complex = true end,
+    Code = function() complex = true end,
+    Math = function() complex = true end,
+    Note = function() complex = true end,
+    RawInline = function() complex = true end,
+    Cite = function() complex = true end,
+    Quoted = function() complex = true end,
+  })
+  if complex then
+    return el.content
+  end
+  local text = pandoc.utils.stringify(el.content)
+  local out = {}
+  for ch in text:gmatch(utf8.charpattern) do
+    if not map[ch] then
+      return el.content
+    end
+    table.insert(out, map[ch])
+  end
+  if #out == 0 then
+    return el.content
+  end
+  return pandoc.Str(table.concat(out))
+end
+
+function Subscript(el)
+  return script_inlines(el, SUBSCRIPT)
+end
+
+function Superscript(el)
+  return script_inlines(el, SUPERSCRIPT)
+end
+
 function Figure(fig)
   local out = pandoc.Blocks(fig.content)
   local caption = pandoc.utils.blocks_to_inlines(fig.caption.long)
@@ -382,6 +435,25 @@ local function drop_blank_items(list)
   return list
 end
 
+-- Hai danh sách cùng loại liền nhau (Word đánh số lại từ đầu) làm pandoc chèn "<!-- -->", mà editor để thành khối thô.
+-- Khối raw rỗng chen giữa cắt liền kề nên pandoc không chèn nữa; codec tách khối theo dòng trống, nên mỗi danh sách vẫn
+-- là khối riêng khi nạp lại. Chạy sau bước bỏ mục rỗng, vì bỏ đoạn rỗng giữa hai danh sách cũng làm chúng liền nhau.
+local function is_list(block)
+  return block.t == "BulletList" or block.t == "OrderedList"
+end
+
+local function separate_lists(blocks)
+  local out = pandoc.Blocks({})
+  for _, block in ipairs(blocks) do
+    local prev = out[#out]
+    if prev and is_list(prev) and prev.t == block.t then
+      out:insert(pandoc.RawBlock("gfm", ""))
+    end
+    out:insert(block)
+  end
+  return out
+end
+
 local function warn(doc)
   for _, code in ipairs(WARNING_CODES) do
     if (counts[code] or 0) > 0 then
@@ -395,9 +467,11 @@ end
 -- cột STT không mất.
 return {
   { Pandoc = Pandoc },
-  { Span = Span, Underline = Underline, Image = Image, Math = Math, Note = Note },
+  { Span = Span, Underline = Underline, Image = Image, Math = Math, Note = Note, Subscript = Subscript,
+    Superscript = Superscript },
   { Para = Para, Plain = Plain },
   { Link = Link, Table = Table, Figure = Figure },
   { Para = drop_blank, Plain = drop_blank, BulletList = drop_blank_items, OrderedList = drop_blank_items },
+  { Blocks = separate_lists },
   { Pandoc = warn },
 }
