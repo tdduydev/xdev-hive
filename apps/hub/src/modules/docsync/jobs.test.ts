@@ -152,14 +152,20 @@ describe("khung nhập Word", () => {
 
   it("route HTTP chưa có thì trả 501, không đọc request", async () => {
     const request = new Request("http://localhost/", { method: "POST" });
-    const ids = { importId: randomUUID(), fileId: randomUUID() };
-    for (const response of await Promise.all([
-      handleWordMedia({}, request, { ...ids, name: "a.png" }),
-      handleWordOriginal({}, request, ids),
-    ])) {
-      expect(response.status).toBe(501);
-      expect(await response.json()).toMatchObject({ code: "NOT_IMPLEMENTED" });
-    }
+    const response = await handleWordOriginal({}, request, { importId: randomUUID(), fileId: randomUUID() });
+    expect(response.status).toBe(501);
+    expect(await response.json()).toMatchObject({ code: "NOT_IMPLEMENTED" });
+  });
+
+  it("route ảnh xem trước chưa đăng nhập thì 401", async () => {
+    const request = new Request("http://localhost/");
+    const response = await handleWordMedia({}, request, {
+      importId: randomUUID(),
+      fileId: randomUUID(),
+      name: "a.png",
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("route nhận file chưa đăng nhập thì 401, không đọc request", async () => {
