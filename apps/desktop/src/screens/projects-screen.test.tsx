@@ -1,7 +1,9 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
+import { branch, failure, repoOf, status } from "@/components/branch-test-helpers.ts";
 import { type Account, AccountContext } from "@/lib/account.ts";
+import type { BranchEvent, Candidate, ScanRepo } from "@/lib/git-branches.ts";
 import type { GitGroups } from "@/lib/git-groups.ts";
 import { setLang } from "@/lib/i18n.ts";
 import type { LocalProject, LocalProjects } from "@/lib/local-projects.ts";
@@ -57,6 +59,8 @@ const entry = (over: Partial<LocalProject>): LocalProject => ({
   ...over,
 });
 
+type Listen = NonNullable<NonNullable<Window["__TAURI__"]>["event"]>["listen"];
+
 interface Call {
   command: string;
   args?: Record<string, unknown> | undefined;
@@ -72,11 +76,15 @@ function fakeApp(opts: {
   legacy?: LocalProject[];
   picked?: string;
   gitGroups?: Pick<GitGroups, "hosts" | "groups">;
+  /** Lệnh thêm (nhánh Git); đặt thì cũng có `event.listen` ghi lại handler vào `listeners`. */
+  extra?: Record<string, (args?: Record<string, unknown>) => unknown>;
+  listeners?: Record<string, ((e: { payload: unknown }) => void)[]>;
 }) {
   const calls: Call[] = [];
   let list = [...opts.local];
   let exists = opts.exists ?? true;
   const view = (imported = 0): LocalProjects => ({ path: "/x/projects.json", exists, imported, projects: list });
+  const listeners = opts.listeners;
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     local_projects: () => view(),
     local_projects_import: () => {
@@ -108,6 +116,7 @@ function fakeApp(opts: {
       list = list.map((l) => (l.projectId === a?.id ? { ...l, fullPermission: Boolean(a?.full) } : l));
       return view();
     },
+    ...opts.extra,
     "plugin:dialog|open": () => opts.picked ?? null,
     git_groups: () => ({ path: "/x/gitgroups.json", hosts: [], groups: [], ...opts.gitGroups }),
     git_group_status: () => ({ path: "/x/gitgroups.json", hosts: [], groups: [], ...opts.gitGroups, status: [] }),
@@ -137,6 +146,14 @@ function fakeApp(opts: {
         return (await h(args)) as T;
       },
     },
+    ...(listeners && {
+      event: {
+        listen: (async (name: string, handler: (e: { payload: unknown }) => void) => {
+          listeners[name] = [...(listeners[name] ?? []), handler];
+          return () => {};
+        }) as Listen,
+      },
+    }),
   };
   return calls;
 }
@@ -364,5 +381,202 @@ describe("ProjectsScreen", () => {
     expect(await screen.findByText(/Kết nối Hive để xem và gắn dự án/)).toBeTruthy();
     expect(await screen.findByText("cu")).toBeTruthy();
     expect(calls.some((c) => c.command === "hub_rpc")).toBe(false);
+  });
+});
+
+// Tiến độ gom theo id ở cấp module (lib/git-branches.ts), số đếm giữ ở cấp module của màn: mỗi ca một id, một thư mục.
+let seq = 0;
+
+const candidate = (folder: string, name: string): Candidate => ({
+  folder,
+  branch: name,
+  tip: "abc1234",
+  committedAt: 1_792_000_000,
+  evidence: { kind: "mergedGit", onto: "origin/main" },
+  selected: true,
+});
+
+const scanned = (folder: string, count: number, over: Partial<ScanRepo> = {}): ScanRepo => ({
+  folder,
+  defaultBranch: "main",
+  fetched: [],
+  fetchFailed: [],
+  candidates: Array.from({ length: count }, (_, i) => candidate(folder, `ai/old-${i}`)),
+  blocked: [],
+  ...over,
+});
+
+/** Một dự án gắn thư mục `folder`, Tauri giả có sự kiện; `scans` ghi các id job quét theo thứ tự gọi. */
+function branchesApp(folder: string, extra: Record<string, (args?: Record<string, unknown>) => unknown> = {}) {
+  const listeners: Record<string, ((e: { payload: unknown }) => void)[]> = {};
+  const scans: string[] = [];
+  const calls = fakeApp({
+    hub: { "projects/list": [PAY], "policies/get": policy(true) },
+    local: [entry({ projectId: P1, name: "payment-api", folder, origin: PAY.repo.httpUrl })],
+    listeners,
+    extra: {
+      git_branches_status: () => ({ repos: [status({ folder })] }),
+      git_branches_list: () => ({
+        ...repoOf({ folder, branches: [branch("main", { isCurrent: true, isDefault: true })] }),
+        jobId: `list-${++seq}`,
+      }),
+      git_branches_fetch: () => `fetch-${++seq}`,
+      git_branches_scan: () => {
+        const id = `scan-${++seq}`;
+        scans.push(id);
+        return id;
+      },
+      git_branches_cancel: () => undefined,
+      ...extra,
+    },
+  });
+  const emit = (channel: string, payload: unknown) =>
+    act(() => {
+      for (const l of listeners[channel] ?? []) l({ payload });
+    });
+  const job = (jobId: string, event: BranchEvent) => emit("git-branches:event", { jobId, event });
+  /** Trả kết quả cho lượt quét thứ `n` (từ 0). */
+  const finishScan = async (n: number, repos: ScanRepo[]) => {
+    await waitFor(() => expect(scans.length).toBeGreaterThan(n));
+    const id = scans[n] ?? "";
+    for (const repo of repos) await job(id, { type: "repo", folder: repo.folder, repo, done: 1, total: repos.length });
+    await job(id, { type: "done", total: repos.length });
+  };
+  const scanArgs = () => calls.filter((c) => c.command === "git_branches_scan").map((c) => c.args);
+  const fetchViaSheet = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole("button", { name: "Xem nhánh của payment-api" }));
+    await user.click(await screen.findByRole("button", { name: "Fetch" }));
+    const id = await waitFor(() => {
+      const c = calls.find((x) => x.command === "git_branches_fetch");
+      expect(c).toBeTruthy();
+      return `fetch-${seq}`;
+    });
+    await job(id, { type: "done", folder, fetched: ["origin"], fetchFailed: [] });
+  };
+  return { calls, emit, job, finishScan, scanArgs, fetchViaSheet, scans };
+}
+
+// Không lấy "Dọn nhánh repo này" của bảng nhánh.
+const cleanButton = () => screen.findByRole("button", { name: /^Dọn nhánh(:|$)/ });
+
+describe("ProjectsScreen: huy hiệu số nhánh dọn được", () => {
+  beforeEach(() => {
+    setLang("vi");
+    location.hash = "#/projects";
+  });
+
+  it("chưa fetch thì không quét, không hiện số; fetch trong bảng nhánh xong thì quét không fetch đúng repo đó rồi hiện số", async () => {
+    const folder = "/w/badge-fetch";
+    const app = branchesApp(folder);
+    const user = userEvent.setup();
+    renderScreen();
+    expect(((await cleanButton()) as HTMLButtonElement).getAttribute("aria-label")).toBeNull();
+    expect(app.scanArgs()).toEqual([]);
+
+    await app.fetchViaSheet(user);
+    await waitFor(() => expect(app.scanArgs()).toEqual([{ folders: [folder], fetch: false }]));
+    await app.finishScan(0, [scanned(folder, 2)]);
+    // Bảng nhánh phủ màn Dự án (aria-hidden): đóng rồi mới thấy nút.
+    await user.keyboard("{Escape}");
+
+    const button = await screen.findByRole("button", { name: /^Dọn nhánh: 2 nhánh có thể dọn/ });
+    expect(within(button).getByText("2")).toBeTruthy();
+    // Chỉ đếm: không có lệnh dọn nào chạy.
+    expect(app.calls.some((c) => c.command === "git_branches_clean")).toBe(false);
+  });
+
+  it("quét ra 0 ứng viên thì không hiện huy hiệu", async () => {
+    const folder = "/w/badge-zero";
+    const app = branchesApp(folder);
+    const user = userEvent.setup();
+    renderScreen();
+    await app.fetchViaSheet(user);
+    await app.finishScan(0, [scanned(folder, 0)]);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(app.scanArgs()).toHaveLength(1));
+    const button = (await cleanButton()) as HTMLButtonElement;
+    expect(button.textContent).toBe("Dọn nhánh");
+    expect(button.getAttribute("aria-label")).toBeNull();
+  });
+
+  it("đóng hộp thoại Dọn nhánh thì đếm lại: số giảm về 0 thì huy hiệu biến mất", async () => {
+    const folder = "/w/badge-clean";
+    const app = branchesApp(folder);
+    const user = userEvent.setup();
+    renderScreen();
+    await app.fetchViaSheet(user);
+    await app.finishScan(0, [scanned(folder, 3)]);
+    // Đóng bảng nhánh rồi mở Dọn nhánh ở đầu màn (quét có fetch của hộp thoại là lượt thứ hai).
+    await user.keyboard("{Escape}");
+    expect(await screen.findByRole("button", { name: /^Dọn nhánh: 3 nhánh/ })).toBeTruthy();
+    await user.click(await screen.findByRole("button", { name: /^Dọn nhánh: 3 nhánh/ }));
+    await waitFor(() =>
+      expect(app.scanArgs()).toEqual([
+        { folders: [folder], fetch: false },
+        { folders: [folder], fetch: true },
+      ]),
+    );
+    await app.finishScan(1, [scanned(folder, 0, { fetched: ["origin"] })]);
+    await user.click(await screen.findByRole("button", { name: "Đóng" }));
+
+    await waitFor(() => expect(app.scanArgs()).toHaveLength(3));
+    expect(app.scanArgs()[2]).toEqual({ folders: [folder], fetch: false });
+    await app.finishScan(2, [scanned(folder, 0)]);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /nhánh có thể dọn/ })).toBeNull());
+    expect(((await cleanButton()) as HTMLButtonElement).textContent).toBe("Dọn nhánh");
+  });
+
+  it("lượt tự fetch của nhóm Git xong thì quét lại mọi repo; yêu cầu đến lúc đang quét gộp thành một lượt sau", async () => {
+    const folder = "/w/badge-auto";
+    const app = branchesApp(folder);
+    renderScreen();
+    await cleanButton();
+    await waitFor(() => expect(app.calls.some((c) => c.command === "git_groups")).toBe(true));
+
+    await app.emit("git-groups:changed", null);
+    await waitFor(() => expect(app.scanArgs()).toEqual([{ folders: [folder], fetch: false }]));
+    // Hai lượt tự fetch nữa trong lúc lượt đầu còn chạy: chưa có lượt mới.
+    await app.emit("git-groups:changed", null);
+    await app.emit("git-groups:changed", null);
+    expect(app.scanArgs()).toHaveLength(1);
+
+    await app.finishScan(0, [scanned(folder, 1)]);
+    await waitFor(() => expect(app.scanArgs()).toHaveLength(2));
+    expect(await screen.findByRole("button", { name: /^Dọn nhánh: 1 nhánh/ })).toBeTruthy();
+    await app.finishScan(1, [scanned(folder, 1)]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(app.scanArgs()).toHaveLength(2);
+  });
+
+  it("repo quét lỗi giữ số cũ; lệnh quét chưa có (sidecar cũ) thì màn vẫn dùng được, không có huy hiệu", async () => {
+    const folder = "/w/badge-error";
+    const app = branchesApp(folder);
+    renderScreen();
+    await cleanButton();
+    await app.emit("git-groups:changed", null);
+    await app.finishScan(0, [scanned(folder, 4)]);
+    expect(await screen.findByRole("button", { name: /^Dọn nhánh: 4 nhánh/ })).toBeTruthy();
+
+    await app.emit("git-groups:changed", null);
+    await app.finishScan(1, [scanned(folder, 0, { error: failure("not_repo").error })]);
+    await waitFor(() => expect(app.scanArgs()).toHaveLength(2));
+    expect(screen.getByRole("button", { name: /^Dọn nhánh: 4 nhánh/ })).toBeTruthy();
+  });
+
+  it("sidecar cũ không có lệnh quét: màn vẫn dùng được, không có huy hiệu", async () => {
+    const folder = "/w/badge-old";
+    const app = branchesApp(folder, {
+      git_branches_scan: () => {
+        throw new Error("không có lệnh này");
+      },
+    });
+    renderScreen();
+    await cleanButton();
+    await app.emit("git-groups:changed", null);
+    await waitFor(() => expect(app.scanArgs()).toHaveLength(1));
+    // Yêu cầu sau vẫn được thử lại, không kẹt ở trạng thái "đang quét".
+    await app.emit("git-groups:changed", null);
+    await waitFor(() => expect(app.scanArgs()).toHaveLength(2));
+    expect(((await cleanButton()) as HTMLButtonElement).textContent).toBe("Dọn nhánh");
   });
 });
