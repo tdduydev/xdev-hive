@@ -24,7 +24,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/tokenreport"
 )
 
-const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --profile ID [--level balanced|aggressive] [--rtk] | disable --profile ID | restore --profile ID [--backup THỜI_ĐIỂM] | link | report [--profile ID] [--days N] | score [--days N] [--fresh] | fix MÃ --profile ID [--preview | --undo]] [--config FILE] [--json]"
+const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --profile ID [--level balanced|aggressive] [--rtk] | disable --profile ID | restore --profile ID [--backup THỜI_ĐIỂM] | link | report [--profile ID] [--days N] | score [--days N] [--fresh] | score history [--days N | --last] | score mark --fix MÃ --action apply|undo | fix MÃ --profile ID [--preview | --undo]] [--config FILE] [--json]"
 
 // Test thay thư mục nhà, giờ, phiên bản CLI, RTK, /context và công cụ trên PATH để không đụng máy thật.
 var (
@@ -43,6 +43,8 @@ var (
 		return accounts.ClaudePrint(ctx, "", dir, []string{"-p", "/context", "--no-session-persistence"})
 	}
 	optimizeHasTool = func(name string) bool { _, err := exec.LookPath(name); return err == nil }
+	// optimizeGOOS cho test giả Windows ở các nhánh chỉ kiểm hệ điều hành, không chạy lệnh.
+	optimizeGOOS = func() string { return runtime.GOOS }
 )
 
 // optimizeProfile là một gói trong kết quả `optimize status --json`. Gói nào cũng có mặt, bật hay chưa, để màn Token
@@ -91,6 +93,11 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	if action == "fix" && len(args) > 0 && args[0] != "" && args[0][0] != '-' {
 		fixID, args = args[0], args[1:]
 	}
+	// `score history` và `score mark` là lệnh con của score.
+	scoreAction := ""
+	if action == "score" && len(args) > 0 && (args[0] == "history" || args[0] == "mark") {
+		scoreAction, args = args[0], args[1:]
+	}
 	fs := flag.NewFlagSet("optimize "+action, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "file cấu hình worker (accounts.json nằm cạnh)")
@@ -103,6 +110,9 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	fresh := fs.Bool("fresh", false, "score: đo lại /context của mọi gói Claude (gọi model, tốn token)")
 	preview := fs.Bool("preview", false, "fix: chỉ liệt kê thay đổi, không ghi gì")
 	undo := fs.Bool("undo", false, "fix: hoàn tác lần sửa nhanh gần nhất của gói")
+	last := fs.Bool("last", false, "score history: chỉ dòng lịch sử sau cùng")
+	markFix := fs.String("fix", "", "score mark: mã sửa nhanh app desktop đã chạy")
+	markAction := fs.String("action", "", "score mark: apply hoặc undo")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -165,6 +175,9 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 		if result, err = o.Restore(p, *backup); err != nil {
 			return fail(err)
 		}
+		if err := restoreMarks(filepath.Dir(o.StatePath()), p.ID); err != nil {
+			fmt.Fprintln(stderr, "không ghi được mốc hoàn tác sửa nhanh:", err)
+		}
 	case "link":
 		path, err := optimizeLink(o)
 		if err != nil {
@@ -178,6 +191,12 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	case "report":
 		return optimizeReport(o, file, *profile, *days, *asJSON, stdout, stderr)
 	case "score":
+		switch scoreAction {
+		case "history":
+			return optimizeScoreHistory(o, *days, *last, stdout, stderr)
+		case "mark":
+			return optimizeScoreMark(o, *markFix, *markAction, stdout, stderr)
+		}
 		return optimizeScore(o, file, *days, *fresh, *profile, *asJSON, stdout, stderr)
 	case "fix":
 		if fixID == "" {

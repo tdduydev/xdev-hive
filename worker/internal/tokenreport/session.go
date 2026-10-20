@@ -52,8 +52,10 @@ type session struct {
 	Memory      map[string]int `json:"memory"`
 	Compactions int            `json:"compactions"`
 	Models      []string       `json:"models"`
-	Versions    []string       `json:"versions"`
-	PeakContext int64          `json:"peakContext"`
+	// ModelWeighted là token quy đổi theo họ model (ModelFamily) của từng lượt, cho tỉ trọng model ở điểm (FR-007).
+	ModelWeighted map[string]float64 `json:"modelWeighted,omitempty"`
+	Versions      []string           `json:"versions"`
+	PeakContext   int64              `json:"peakContext"`
 	// Ngữ cảnh ở lượt gọi đầu: system prompt, định nghĩa tool/MCP, CLAUDE.md, memory; phần trả mỗi lượt dù chưa làm gì.
 	FirstContext int64 `json:"firstContext"`
 	// Cwd chỉ nằm trong cache cục bộ và Sessions, không vào Report.
@@ -90,6 +92,33 @@ func newSession(cli, account string) *session {
 		Bash:    map[string]*toolStat{},
 		Memory:  map[string]int{},
 	}
+}
+
+// ModelFamily gộp tên model về họ: opus, sonnet, haiku, fable, gpt; không nhận ra là other. Tên bản cụ thể đổi theo
+// từng đợt phát hành, còn họ thì đủ để biết phiên dùng model đắt hay rẻ.
+func ModelFamily(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	for _, f := range []string{"opus", "sonnet", "haiku", "fable"} {
+		if strings.Contains(m, f) {
+			return f
+		}
+	}
+	if strings.HasPrefix(m, "gpt") || strings.Contains(m, "codex") || openAIReasoning.MatchString(m) {
+		return "gpt"
+	}
+	return "other"
+}
+
+var openAIReasoning = regexp.MustCompile(`^o\d`)
+
+func (s *session) addModel(model string, w float64) {
+	if w <= 0 {
+		return
+	}
+	if s.ModelWeighted == nil {
+		s.ModelWeighted = map[string]float64{}
+	}
+	s.ModelWeighted[ModelFamily(model)] += w
 }
 
 func bump(m map[string]*toolStat, key string, chars, carried float64) {

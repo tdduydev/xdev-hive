@@ -146,14 +146,14 @@ func LoadContexts(ctx context.Context, dir string, profiles []Profile, run Conte
 	wg.Wait()
 	if changed {
 		if b, err := json.Marshal(cache); err == nil && os.MkdirAll(dir, 0o700) == nil {
-			writeAtomic(path, b)
+			WriteAtomic(path, b)
 		}
 	}
 	return out
 }
 
-// writeAtomic ghi file tạm cùng thư mục rồi đổi tên, để hai lần chạy cùng lúc không để lại file dở.
-func writeAtomic(path string, b []byte) error {
+// WriteAtomic ghi file tạm cùng thư mục rồi đổi tên, để hai lần chạy cùng lúc không để lại file dở.
+func WriteAtomic(path string, b []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
 	if err != nil {
 		return err

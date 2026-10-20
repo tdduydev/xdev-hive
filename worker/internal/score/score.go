@@ -11,8 +11,8 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/tokenreport"
 )
 
-// Version là scoreVersion trong JSON.
-const Version = 1
+// Version là scoreVersion trong JSON. 2: A5 của Codex tính server codegraph có `enabled = false` là có.
+const Version = 2
 
 type Status string
 
@@ -90,6 +90,13 @@ type ProfileScore struct {
 	Criteria []Criterion       `json:"criteria"`
 	Projects []Project         `json:"projects"`
 	Context  []Category        `json:"context,omitempty"`
+	// ModelShare là tỉ trọng token quy đổi theo họ model (FR-007), chỉ để hiện cạnh A8, không vào điểm.
+	ModelShare []ModelShare `json:"modelShare,omitempty"`
+}
+
+type ModelShare struct {
+	Family string  `json:"family"`
+	Share  float64 `json:"share"`
 }
 
 type Machine struct {

@@ -35,6 +35,8 @@ type SessionSummary struct {
 	RTK             bool
 	Guard           bool
 	Models          []string
+	// ModelWeighted là token quy đổi theo họ model (ModelFamily); rỗng khi transcript không ghi model.
+	ModelWeighted map[string]float64
 }
 
 // Sessions đọc transcript như Run (cùng cache, cùng phạm vi) nhưng trả từng phiên thay vì số tổng hợp.
@@ -56,6 +58,12 @@ func summarize(s *session) SessionSummary {
 		Calls: s.Calls, Input: s.Input, Output: s.Output, CacheRead: s.CacheRead, CacheWrite: s.CacheWrite5m + s.CacheWrite1h,
 		Weighted: weighted(s), FirstContext: s.FirstContext, PeakContext: s.PeakContext, RTK: s.RTK, Guard: s.Guard,
 		Models: append([]string(nil), s.Models...),
+	}
+	if len(s.ModelWeighted) > 0 {
+		sum.ModelWeighted = make(map[string]float64, len(s.ModelWeighted))
+		for f, w := range s.ModelWeighted {
+			sum.ModelWeighted[f] = w
+		}
 	}
 	for _, t := range s.Tools {
 		sum.ToolCalls += t.Calls

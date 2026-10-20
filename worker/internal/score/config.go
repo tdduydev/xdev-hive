@@ -295,7 +295,11 @@ func (c CodexConfig) EnabledServers() int {
 	return n
 }
 
-func (c CodexConfig) HasServer(name string) bool { return c.servers[name] }
+// HasServer: có bảng [mcp_servers.<name>] hay không, và server có bật không (không có `enabled = false`).
+func (c CodexConfig) HasServer(name string) (present, enabled bool) {
+	enabled, present = c.servers[name]
+	return present, enabled
+}
 
 // fileStats trả số dòng và cỡ byte; file không đọc được là 0, 0.
 func fileStats(path string) (int, int64) {
