@@ -4,10 +4,11 @@ import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
-import { EllipsisIcon, GitBranchIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import { BrushCleaningIcon, EllipsisIcon, GitBranchIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { BranchCreateDialog } from "@/components/branch-create-dialog.tsx";
 import { BranchSwitchDialog } from "@/components/branch-switch-dialog.tsx";
+import { CleanupDialog } from "@/components/cleanup-dialog.tsx";
 import { shortPath } from "@/lib/folder.ts";
 import {
   type BranchInfo,
@@ -66,6 +67,7 @@ const text: Dict<{
   menu: (name: string) => string;
   switchTo: string;
   createBranch: string;
+  cleanupRepo: string;
   switched: (name: ReactNode) => ReactNode;
   created: (name: ReactNode, switched: boolean) => ReactNode;
   offDefault: (current: ReactNode, main: ReactNode) => ReactNode;
@@ -125,6 +127,7 @@ const text: Dict<{
     menu: (name) => `Thao tác với ${name}`,
     switchTo: "Đổi sang nhánh này",
     createBranch: "Tạo nhánh",
+    cleanupRepo: "Dọn nhánh repo này",
     switched: (name) => <>Đã đổi sang {name}.</>,
     created: (name, switched) => (switched ? <>Đã tạo và đổi sang {name}.</> : <>Đã tạo nhánh {name}.</>),
     offDefault: (current, main) => (
@@ -209,6 +212,7 @@ const text: Dict<{
     menu: (name) => `Actions for ${name}`,
     switchTo: "Switch to this branch",
     createBranch: "Create branch",
+    cleanupRepo: "Clean up this repo",
     switched: (name) => <>Switched to {name}.</>,
     created: (name, switched) => (switched ? <>Created and switched to {name}.</> : <>Created branch {name}.</>),
     offDefault: (current, main) => (
@@ -380,6 +384,7 @@ function BranchesBody({
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [switching, setSwitching] = useState<BranchInfo | null>(null);
   const [creating, setCreating] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [notice, setNotice] = useState<ReactNode>(null);
   const fetchJob = useBranchJob(fetchId);
   const listJob = useBranchJob(repo?.jobId ?? null);
@@ -480,6 +485,10 @@ function BranchesBody({
         <Button size="sm" variant="outline" disabled={!view} onClick={() => setCreating(true)}>
           <PlusIcon aria-hidden="true" />
           {t.createBranch}
+        </Button>
+        <Button size="sm" variant="outline" disabled={!view} onClick={() => setCleaning(true)}>
+          <BrushCleaningIcon aria-hidden="true" />
+          {t.cleanupRepo}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setReloads((n) => n + 1)}>
           {t.reload}
@@ -596,6 +605,20 @@ function BranchesBody({
           repo={repo}
           onClose={() => setCreating(false)}
           onCreated={(r: CreateResult) => changed(t.created(<Name>{r.name}</Name>, r.switched))}
+        />
+      )}
+      {cleaning && (
+        <CleanupDialog
+          folders={[folder]}
+          onClose={() => {
+            setCleaning(false);
+            // Dọn xong (hay quét có fetch) làm ref đổi: đọc lại bảng dù người dùng đóng hộp thoại ngay.
+            setReloads((n) => n + 1);
+          }}
+          onChanged={() => {
+            setReloads((n) => n + 1);
+            onChanged();
+          }}
         />
       )}
     </>
