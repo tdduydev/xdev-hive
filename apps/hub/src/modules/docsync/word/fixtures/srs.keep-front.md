@@ -4,7 +4,7 @@ TÀI LIỆU ĐẶC TẢ YÊU CẦU PHẦN MỀM
 
 Mã tài liệu: eHosV2i_SRS_OPD.OPD99
 
-| Dự án     | eHospital V2i |
+| Dự án     | ACME V2i |
 |-----------|---------------|
 | Phiên bản | 1.1           |
 

@@ -1,8 +1,8 @@
 {
   "_class": "org.jenkinsci.plugins.workflow.job.WorkflowJob",
-  "name": "ehosPromote",
-  "fullName": "ehospital/ehosPromote",
-  "url": "https://jenkins.example.test/job/ehospital/job/ehosPromote/",
+  "name": "acmePromote",
+  "fullName": "acme/acmePromote",
+  "url": "https://jenkins.example.test/job/acme/job/acmePromote/",
   "buildable": true,
   "inQueue": false,
   "property": [

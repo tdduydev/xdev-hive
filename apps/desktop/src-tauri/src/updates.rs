@@ -388,7 +388,7 @@ mod tests {
             Some("https://hive.acme.vn/api/v1/desktop/updates/macos/aarch64/0.2.4".into())
         );
         assert_eq!(
-            hub_endpoint("http://10.86.224.34:3000", "windows", "x86_64", "0.2.5")
+            hub_endpoint("http://192.0.2.10:3000", "windows", "x86_64", "0.2.5")
                 .map(|u| u.path().to_string()),
             Some("/api/v1/desktop/updates/windows/x86_64/0.2.5".into())
         );

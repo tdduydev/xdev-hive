@@ -40,7 +40,7 @@ export function checkNameSlug(form: FormData): NameSlugErrors {
 export interface NameSlugFieldsProps {
   nameLabel: string;
   namePlaceholder?: string | undefined;
-  /** Phần đứng trước định danh, như "hive.xdev.asia/" hoặc "thanh-toan/". */
+  /** Phần đứng trước định danh, như "hive.example.com/" hoặc "thanh-toan/". */
   slugPrefix?: string | undefined;
   slugPlaceholder?: string | undefined;
   slugHint: string;

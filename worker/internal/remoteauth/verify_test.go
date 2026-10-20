@@ -38,7 +38,7 @@ func boolPtr(b bool) *bool { return &b }
 
 func TestVerifyTOTPPolicy(t *testing.T) {
 	now := time.Unix(1_792_000_000, 0)
-	httpHub := Policy{HubURL: "http://10.86.224.34:3000", OwnerUserID: "user-an"}
+	httpHub := Policy{HubURL: "http://192.0.2.10:3000", OwnerUserID: "user-an"}
 	cases := []struct {
 		name string
 		pol  Policy
@@ -150,7 +150,7 @@ func TestHubOrigin(t *testing.T) {
 		"https://Hive.Example.com/":     {"https://hive.example.com", "hive.example.com"},
 		"https://hive.example.com:443":  {"https://hive.example.com", "hive.example.com"},
 		"https://hive.example.com:8443": {"https://hive.example.com:8443", "hive.example.com"},
-		"http://10.86.224.34:3000":      {"http://10.86.224.34:3000", "10.86.224.34"},
+		"http://192.0.2.10:3000":        {"http://192.0.2.10:3000", "192.0.2.10"},
 		"http://hub.local:80/x":         {"http://hub.local", "hub.local"},
 	} {
 		o, rp, err := HubOrigin(in)

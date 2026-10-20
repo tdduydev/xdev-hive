@@ -18,8 +18,8 @@
 - Viết spec và kế hoạch trước, chưa code.
 
 Bối cảnh (chi tiết ở [research.md](research.md)):
-- eHospital build và deploy bằng **Jenkins** (Harbor, GitOps, Argo CD, RKE2). GitLab CI chỉ chạy kiểm tra.
-- Hub Hive chạy trên một máy **Ubuntu riêng** (`hc-his-app`), không thuộc hạ tầng eHospital. Hiện triển khai bằng script
+- ACME build và deploy bằng **Jenkins** (Harbor, GitOps, Argo CD, RKE2). GitLab CI chỉ chạy kiểm tra.
+- Hub Hive chạy trên một máy **Ubuntu riêng** (`app-host`), không thuộc hạ tầng ACME. Hiện triển khai bằng script
   qua SSH với docker compose.
 
 **Kế hoạch**: [plan.md](plan.md) · **Nghiên cứu**: [research.md](research.md)
@@ -49,8 +49,8 @@ Chủ dự án trả lời ngày 2026-10-17. Cột "Khác khuyến nghị" đán
 
 **Hệ quả của Q1, Q2:**
 - Hub giữ khoá vào mọi máy chủ đã khai báo, nên `HIVE_MASTER_KEY` và database của hub thành tài sản cần bảo vệ nhất.
-- Hub phải vào được cổng SSH của máy chủ đích. Từ `hc-his-app` mới đo HTTP tới Jenkins, Harbor, Gitea, GitLab. Cổng 22
-  của các máy `10.205.76.x` **chưa đo** (research mục 2).
+- Hub phải vào được cổng SSH của máy chủ đích. Từ `app-host` mới đo HTTP tới Jenkins, Harbor, Gitea, GitLab. Cổng 22
+  của các máy `198.51.100.x` **chưa đo** (research mục 2).
 - Khi hub triển khai lại chính nó, tiến trình hub bị khởi động lại giữa chừng. Vì vậy các bước phải chạy **tách khỏi phiên
   SSH** trên máy chủ (FR-016).
 
@@ -171,8 +171,8 @@ dừng khi một bước lỗi, log, trạng thái, nối lại sau khi tiến t
 
 **Acceptance Scenarios**:
 
-1. **Given** đích `ssh-script` cho hub (`/home/adminvm/xdev-hive`, project `xdev-hive`, health
-   `https://hive.xdev.asia/api/v1/health` chứa phiên bản), **When** triển khai một commit mới, **Then** chạy đủ các bước,
+1. **Given** đích `ssh-script` cho hub (`/home/deploy/xdev-hive`, project `xdev-hive`, health
+   `https://hive.example.com/api/v1/health` chứa phiên bản), **When** triển khai một commit mới, **Then** chạy đủ các bước,
    hub khởi động lại giữa chừng, sau khi lên lại vẫn đọc tiếp log, health báo đúng phiên bản, lần triển khai `thành công`.
 2. **Given** bước sao lưu lỗi, **Then** không chạy bước triển khai; lần triển khai `thất bại`, ghi rõ bước và lỗi.
 3. **Given** health không đạt trong thời gian chờ, **Then** lần triển khai `thất bại, cần xem`; Hive gợi ý "Quay về bản
@@ -214,7 +214,7 @@ khai bị chặn.
 
 1. **Given** người yêu cầu cũng có quyền duyệt, **Then** không tự duyệt được.
 2. **Given** yêu cầu chờ duyệt quá 24 giờ, **Then** hết hạn, phải tạo lại.
-3. **Given** đích `jenkins-job` có bước `input` (vd. `ehosPromote` lên prod), **When** người duyệt bấm Duyệt trên Hive,
+3. **Given** đích `jenkins-job` có bước `input` (vd. `acmePromote` lên prod), **When** người duyệt bấm Duyệt trên Hive,
    **Then** Hive bấm Proceed bằng **token của người duyệt**; từ chối thì bấm Abort. Người duyệt chưa có token thì không
    duyệt được bước này.
 
@@ -269,7 +269,7 @@ Như US1–US2 cho dự án trên GitHub: workflow run, job, log, chạy lại, 
 - Hai người sửa cùng một đích triển khai: khoá lạc quan theo phiên bản cấu hình.
 - Đích `ssh-script` khai báo thư mục sai (như suýt gặp với `/opt/xdev-hive`): bước "kiểm trước" so thư mục, compose
   project, `.env` có sẵn với cấu hình; không khớp thì dừng.
-- Argo CD application đang tự sync (`autoSync`, như `dev` của eHospital): rollback của Argo CD tắt autoSync. Hive cảnh báo
+- Argo CD application đang tự sync (`autoSync`, như `dev` của ACME): rollback của Argo CD tắt autoSync. Hive cảnh báo
   trước khi quay về.
 
 ## Requirements *(mandatory)*
@@ -327,7 +327,7 @@ Như US1–US2 cho dự án trên GitHub: workflow run, job, log, chạy lại, 
   - `gitlab-manual`: tên job chờ tay trong pipeline của commit được chọn;
   - `argocd`: kết nối, tên application, có đồng bộ tới revision của lần triển khai hay không;
   - `kubectl`: kết nối, namespace, loại và tên workload, tên container, mẫu image (vd.
-    `harbor.ehospital-v3.azladin.com/his/his-portal:{{tag}}`).
+    `harbor.example.com/his/his-portal:{{tag}}`).
 - **FR-014**: Cấu hình đích có phiên bản. Mỗi lần sửa ghi audit kèm khác biệt. Lần triển khai lưu phiên bản cấu hình đã
   dùng. Chỉ người có `servers.manage` sửa lệnh và cấu hình (FR-030).
 
@@ -440,7 +440,7 @@ Như US1–US2 cho dự án trên GitHub: workflow run, job, log, chạy lại, 
 - **SC-001**: Với ≥ 20 job Jenkins và 5 dự án GitLab, tab CI/CD mở trong ≤ 2 giây (dữ liệu đã đệm). Trạng thái mới hiện:
   - Jenkins: ≤ 30 giây với build đã thấy đang chạy; ≤ 5 phút với build mới bắt đầu ngoài Hive (hỏi khi rảnh, Q4);
   - GitLab: ≤ 10 giây khi webhook tới được.
-- **SC-002**: Triển khai lại hub `hive.xdev.asia` bằng Hive (đích `ssh-script`) đi đủ các bước như lần làm tay ngày
+- **SC-002**: Triển khai lại hub `hive.example.com` bằng Hive (đích `ssh-script`) đi đủ các bước như lần làm tay ngày
   2026-10-17, không cần mở terminal, thời gian ≤ lần làm tay + 1 phút. Lần làm tay mất khoảng 5,5 phút từ lúc sao lưu xong
   tới khi health báo đúng phiên bản (research mục 2).
 - **SC-003**: 100% thao tác CI và triển khai có bản ghi audit với người bấm thật. Thao tác Jenkins hiện đúng người bấm trên
@@ -456,12 +456,12 @@ Như US1–US2 cho dự án trên GitHub: workflow run, job, log, chạy lại, 
 ## Assumptions
 
 - Hub vào được cổng SSH của máy chủ đích, và vào được Jenkins, GitLab, Argo CD, API Kubernetes. Mới đo được HTTP tới
-  Jenkins, Harbor, Gitea, GitLab từ `hc-his-app` (research mục 2). Cổng 22 và API Kubernetes của mạng `10.205.76.x`, cùng
+  Jenkins, Harbor, Gitea, GitLab từ `app-host` (research mục 2). Cổng 22 và API Kubernetes của mạng `198.51.100.x`, cùng
   địa chỉ Argo CD, chưa đo.
 - Người quản trị tự cài khoá công khai do hub sinh lên máy chủ (bằng tay, hoặc bằng tính năng SSH của desktop nếu nó hỗ trợ
   cài một khoá công khai cho trước). Spec này không nhập mật khẩu máy chủ.
 - PostgreSQL vẫn là kho duy nhất (ADR 0003). Không thêm dịch vụ.
-- Jenkins Keycloak OIDC của eHospital cho phép người dùng tạo API token. [Unverified] Kiểm khi làm task.
+- Jenkins Keycloak OIDC của ACME cho phép người dùng tạo API token. [Unverified] Kiểm khi làm task.
 
 ## Out of Scope
 

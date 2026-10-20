@@ -17,16 +17,16 @@ func TestClassify(t *testing.T) {
 		{255, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n" +
 			"@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n" +
 			"Offending ED25519 key in /home/ha/.ssh/known_hosts:3\nHost key verification failed.\n", "hostkey_changed"},
-		{255, "No ED25519 host key is known for 10.86.224.34 and you have requested strict checking.\r\n" +
+		{255, "No ED25519 host key is known for 192.0.2.10 and you have requested strict checking.\r\n" +
 			"Host key verification failed.\r\n", "hostkey_unknown"},
-		{255, "adminvm@10.86.224.34: Permission denied (publickey,password).\r\n", "auth"},
+		{255, "deploy@192.0.2.10: Permission denied (publickey,password).\r\n", "auth"},
 		{255, "Received disconnect from 10.0.0.1 port 22:2: Too many authentication failures\n", "auth"},
 		{255, "@         WARNING: UNPROTECTED PRIVATE KEY FILE!          @\n" +
-			"Load key \"/home/ha/.ssh/id_ed25519\": bad permissions\nadminvm@h: Permission denied (publickey).\n", "key_perms"},
+			"Load key \"/home/ha/.ssh/id_ed25519\": bad permissions\ndeploy@h: Permission denied (publickey).\n", "key_perms"},
 		{255, "Bad permissions. Try removing permissions for user: BUILTIN\\Users (S-1-5-32-545) on file " +
-			"C:/Users/ha/.ssh/id_ed25519.\nadminvm@h: Permission denied (publickey).\n", "key_perms"},
+			"C:/Users/ha/.ssh/id_ed25519.\ndeploy@h: Permission denied (publickey).\n", "key_perms"},
 		{255, "Bad owner or permissions on C:\\Users\\ha/.ssh/config\r\n", "key_perms"},
-		{255, "ssh: connect to host 10.86.224.34 port 22: Connection timed out\r\n", "unreachable"},
+		{255, "ssh: connect to host 192.0.2.10 port 22: Connection timed out\r\n", "unreachable"},
 		{255, "ssh: connect to host h port 22: Connection refused\n", "unreachable"},
 		{255, "ssh: Could not resolve hostname nope: Name or service not known\n", "unreachable"},
 		{255, "ssh: connect to host h port 22: No route to host\n", "unreachable"},
@@ -39,8 +39,8 @@ func TestClassify(t *testing.T) {
 	}
 }
 
-const resolvedPlain = `user adminvm
-hostname 10.86.224.34
+const resolvedPlain = `user deploy
+hostname 192.0.2.10
 port 22
 identitiesonly no
 pubkeyauthentication true
@@ -58,7 +58,7 @@ proxyjump bastion
 
 func TestParseResolved(t *testing.T) {
 	r := ParseResolved(resolvedPlain)
-	if r.HostName != "10.86.224.34" || r.User != "adminvm" || r.Port != 22 || r.IdentitiesOnly || !r.Pubkey || r.Proxy ||
+	if r.HostName != "192.0.2.10" || r.User != "deploy" || r.Port != 22 || r.IdentitiesOnly || !r.Pubkey || r.Proxy ||
 		len(r.IdentityFiles) != 2 {
 		t.Errorf("có %+v", r)
 	}

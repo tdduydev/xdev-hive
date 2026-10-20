@@ -94,10 +94,10 @@ class Component extends DCLogic {
     const sw = (key) => { const on = !!this.state[key]; return { aria: on ? 'true' : 'false', track: 'background: ' + (on ? 'var(--primary)' : 'var(--input)') + ';', knob: on ? 'transform: translateX(16px);' : '', flip: () => this.setState({ [key]: !on }) }; };
     const rules = [
       { rule: '*.acme.vn', note: x(['Registry và API nội bộ', 'Internal registry and APIs']) },
-      { rule: '10.86.0.0/16', note: x(['Mạng LAN văn phòng', 'Office LAN']) },
+      { rule: '10.0.0.0/16', note: x(['Mạng LAN văn phòng', 'Office LAN']) },
       { rule: 'artifactory.acme.vn:443', note: x(['Gói Maven nội bộ', 'Internal Maven packages']) },
     ];
-    const hosts = ['*.acme.vn', '10.86.0.0/16', 'artifactory.acme.vn:443', 'api.stripe.com:443', 'sandbox.vnpay.vn', 'registry.npmjs.org', 'proxy.golang.org', 'pypi.org', 'crates.io', 'github.com:443', 'objects.githubusercontent.com', 'dl.google.com', 'repo.maven.apache.org', 'api.openai.com', 'api.anthropic.com', 'sentry.io', 'hooks.slack.com', '172.16.10.0/24', 'nexus.acme.vn', 'docker.io', 'ghcr.io', 'quay.io', 'cdn.jsdelivr.net', 'fonts.googleapis.com'];
+    const hosts = ['*.acme.vn', '10.0.0.0/16', 'artifactory.acme.vn:443', 'api.stripe.com:443', 'sandbox.vnpay.vn', 'registry.npmjs.org', 'proxy.golang.org', 'pypi.org', 'crates.io', 'github.com:443', 'objects.githubusercontent.com', 'dl.google.com', 'repo.maven.apache.org', 'api.openai.com', 'api.anthropic.com', 'sentry.io', 'hooks.slack.com', '172.16.10.0/24', 'nexus.acme.vn', 'docker.io', 'ghcr.io', 'quay.io', 'cdn.jsdelivr.net', 'fonts.googleapis.com'];
     const who = ['Trần Lan', 'Nguyễn Minh', 'Phạm Hà', 'Lê Quang'];
     const kindOf = (h) => (/\/\d+$/.test(h) ? 'CIDR' : /^\d/.test(h) ? 'IP' : h.startsWith('*.') ? x(['Tên miền con', 'Wildcard']) : x(['Tên miền', 'Domain']));
     const ruleRows = hosts.map((h, i) => ({ id: 'n' + i, rule: h, kind: kindOf(h), port: h.includes(':') ? h.split(':').pop() : x(['mọi cổng', 'any']), note: x(['Mở cho run cần gọi ra ngoài', 'Needed by runs that call out']), by: who[i % 4], hits: (i * 37 % 400), _sort_hits: i * 37 % 400, src: i < 5 ? x(['Đề xuất', 'Suggested']) : i % 3 ? x(['Tổ chức', 'Organization']) : x(['Dự án', 'Project']) }));

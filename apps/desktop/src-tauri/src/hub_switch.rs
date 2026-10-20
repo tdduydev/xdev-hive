@@ -357,11 +357,11 @@ mod tests {
 
     #[test]
     fn explains_certificate_problems() {
-        let hub = "https://10.86.224.34";
-        let unknown = "error sending request for url (https://10.86.224.34/api/v1/health): client error (Connect): invalid peer certificate: UnknownIssuer";
+        let hub = "https://192.0.2.10";
+        let unknown = "error sending request for url (https://192.0.2.10/api/v1/health): client error (Connect): invalid peer certificate: UnknownIssuer";
         let text = explain(hub, unknown, false);
         assert!(
-            text.contains("chưa tin chứng chỉ HTTPS của 10.86.224.34"),
+            text.contains("chưa tin chứng chỉ HTTPS của 192.0.2.10"),
             "{text}"
         );
         assert!(text.contains("root.crt"), "{text}");
@@ -377,8 +377,8 @@ mod tests {
         assert!(same_hub("https://Hive.acme.vn/", "https://hive.acme.vn"));
         assert!(same_hub("https://hive.acme.vn:443", "https://hive.acme.vn"));
         assert!(!same_hub(
-            "http://10.86.224.34:7780",
-            "https://10.86.224.34"
+            "http://192.0.2.10:7780",
+            "https://192.0.2.10"
         ));
         assert!(!same_hub("not a url", "not a url"));
     }
@@ -412,14 +412,14 @@ mod tests {
         let path = dir.join("worker.json");
         std::fs::write(
             &path,
-            r#"{"hubUrl":"http://10.86.224.34:7780","machineId":"mac-ha","machineToken":"hwm_secret","teamId":"t1","future":{"x":1}}"#,
+            r#"{"hubUrl":"http://192.0.2.10:7780","machineId":"mac-ha","machineToken":"hwm_secret","teamId":"t1","future":{"x":1}}"#,
         )
         .unwrap();
         assert_eq!(machine_token(&path).unwrap(), "hwm_secret");
-        set_worker_hub(&path, "https://10.86.224.34").unwrap();
+        set_worker_hub(&path, "https://192.0.2.10").unwrap();
         let v: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(v["hubUrl"], "https://10.86.224.34");
+        assert_eq!(v["hubUrl"], "https://192.0.2.10");
         assert_eq!(v["machineId"], "mac-ha");
         assert_eq!(v["machineToken"], "hwm_secret");
         assert_eq!(v["teamId"], "t1");

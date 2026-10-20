@@ -27,7 +27,7 @@ async function codeOf(p: Promise<unknown>): Promise<JenkinsErrorCode> {
 describe("jobUrlPath", () => {
   it("folder và multibranch: mỗi đoạn một /job/", () => {
     expect(jobUrlPath("a/b/c")).toBe("/job/a/job/b/job/c");
-    expect(jobUrlPath("ehospital/build-dev-v3")).toBe("/job/ehospital/job/build-dev-v3");
+    expect(jobUrlPath("acme/build-dev-v3")).toBe("/job/acme/job/build-dev-v3");
   });
 
   it("mã hoá từng đoạn", () => {
@@ -106,12 +106,12 @@ describe("JenkinsClient", () => {
 
   describe("job", () => {
     it("đọc parameterDefinitions qua ?tree= và chuẩn hoá theo kiểu", async () => {
-      fake.route("GET /job/ehospital/job/ehosPromote/api/json", { json: json("job-parameterized.json") });
-      const job = await client.job("ehospital/ehosPromote");
+      fake.route("GET /job/acme/job/acmePromote/api/json", { json: json("job-parameterized.json") });
+      const job = await client.job("acme/acmePromote");
 
       const tree = fake.requests[0]?.query.get("tree") ?? "";
       expect(tree).toContain("property[parameterDefinitions[");
-      expect(job).toMatchObject({ name: "ehosPromote", fullName: "ehospital/ehosPromote", buildable: true });
+      expect(job).toMatchObject({ name: "acmePromote", fullName: "acme/acmePromote", buildable: true });
       expect(job.parameters).toEqual([
         {
           name: "APP",
@@ -189,8 +189,8 @@ describe("JenkinsClient", () => {
 
   describe("builds", () => {
     it("liệt kê qua ?tree= có giới hạn {0,limit} và chuẩn hoá", async () => {
-      fake.route("GET /job/ehospital/job/build-dev-v3/api/json", { json: json("builds.json") });
-      const builds = await client.builds("ehospital/build-dev-v3", 5);
+      fake.route("GET /job/acme/job/build-dev-v3/api/json", { json: json("builds.json") });
+      const builds = await client.builds("acme/build-dev-v3", 5);
 
       const tree = fake.requests[0]?.query.get("tree") ?? "";
       expect(tree).toMatch(/^builds\[.*\]\{0,5\}$/);
@@ -200,7 +200,7 @@ describe("JenkinsClient", () => {
       expect(builds).toHaveLength(2);
       expect(builds[0]).toEqual({
         number: 42,
-        url: "https://jenkins.example.test/job/ehospital/job/build-dev-v3/42/",
+        url: "https://jenkins.example.test/job/acme/job/build-dev-v3/42/",
         result: null,
         building: true,
         startedAt: 1792400000000,
@@ -235,8 +235,8 @@ describe("JenkinsClient", () => {
 
   describe("getBuild", () => {
     it("đọc một build theo số", async () => {
-      fake.route("GET /job/ehospital/job/build-dev-v3/40/api/json", { json: json("build-success.json") });
-      const b = await client.getBuild("ehospital/build-dev-v3", 40);
+      fake.route("GET /job/acme/job/build-dev-v3/40/api/json", { json: json("build-success.json") });
+      const b = await client.getBuild("acme/build-dev-v3", 40);
       expect(fake.requests[0]?.query.get("tree")).toContain("number,result,building,timestamp,duration");
       expect(b).toMatchObject({
         number: 40,
@@ -361,16 +361,16 @@ describe("JenkinsClient", () => {
     const QUEUE_LOCATION = { location: "https://jenkins.internal.example/queue/item/7001/" };
 
     it("có tham số: POST buildWithParameters, tham số nằm trong thân form, không nằm trên URL", async () => {
-      fake.route("POST /job/ehospital/job/ehosPromote/buildWithParameters", { status: 201, headers: QUEUE_LOCATION });
+      fake.route("POST /job/acme/job/acmePromote/buildWithParameters", { status: 201, headers: QUEUE_LOCATION });
       fake.route("GET /queue/item/7001/api/json", { json: json("queue-item-started.json") });
 
-      const r = await client.triggerBuild("ehospital/ehosPromote", {
+      const r = await client.triggerBuild("acme/acmePromote", {
         APP: "his-service",
         TO_ENV: "prod",
         DRY_RUN: false,
       });
 
-      const post = fake.callsTo("POST /job/ehospital/job/ehosPromote/buildWithParameters")[0];
+      const post = fake.callsTo("POST /job/acme/job/acmePromote/buildWithParameters")[0];
       expect(post?.headers.authorization).toBe(BASIC);
       expect(post?.headers["content-type"]).toContain("application/x-www-form-urlencoded");
       expect(Object.fromEntries(new URLSearchParams(post?.body))).toEqual({
@@ -382,7 +382,7 @@ describe("JenkinsClient", () => {
       expect(r).toEqual({
         queueId: 7001,
         number: 43,
-        url: "https://jenkins.example.test/job/ehospital/job/build-dev-v3/43/",
+        url: "https://jenkins.example.test/job/acme/job/build-dev-v3/43/",
         cancelled: false,
       });
     });

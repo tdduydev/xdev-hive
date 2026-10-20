@@ -11,8 +11,8 @@
 - Viết spec và kế hoạch trước, chưa code.
 
 Bối cảnh:
-- Tài liệu SRS của eHospital nằm trên SharePoint: 270 file Word, cùng một mẫu của FIS.
-- Script `tools/srs2md` (Python + pandoc) trong repo `ehospital-ai/docs` đã chuyển thử cả 261 tài liệu, nhưng cần máy có
+- Tài liệu SRS của ACME nằm trên SharePoint: 270 file Word, cùng một mẫu của FIS.
+- Script `tools/srs2md` (Python + pandoc) trong repo `acme-ai/docs` đã chuyển thử cả 261 tài liệu, nhưng cần máy có
   Python và pandoc.
 - BA có thể còn viết Word một thời gian. Spec này đưa việc chuyển vào hub để BA tự làm trên trình duyệt.
 
@@ -38,7 +38,7 @@ Chủ dự án trả lời ngày 2026-10-17. Cột "Khác khuyến nghị" đán
 | Q12 | App desktop | **Làm cả trên desktop**: chọn file hoặc thư mục trên máy (vd. thư mục SharePoint đã đồng bộ OneDrive), tải lên hub, xem trạng thái lượt nhập (US7) | Có: khuyến nghị cũ là chỉ web |
 | Q13 | Đợt chuyển đầu của 261 SRS | Đi đường `srs2md`: push nhánh, "Nhập từ repo" lên hub; P1 thêm **"Gắn với file Word"** (US6) | |
 | Q14 | BA nhập cả lượt bằng quyền `propose` | Mỗi file một đề xuất; trang lượt nhập có "Duyệt các file đã chọn" | |
-| Q15 | Nhãn mật | Ô "Tài liệu mật" trong hộp thoại, mặc định theo cài đặt mới của nhà `wordImportConfidential` (mặc định tắt; nhà eHospital nên bật) | |
+| Q15 | Nhãn mật | Ô "Tài liệu mật" trong hộp thoại, mặc định theo cài đặt mới của nhà `wordImportConfidential` (mặc định tắt; nhà ACME nên bật) | |
 
 **Cách hiểu Q9:** lựa chọn "Thêm .doc cũ" được hiểu là nhận cả ba định dạng `.docx`, `.odt`, `.doc`.
 
@@ -107,7 +107,7 @@ BA chọn cả thư mục SRS của một module (vd. 21 file OPD), hoặc thư 
 nguyên dưới thư mục đích. Hub tự bỏ phần đầu chung của tên file và đuôi phiên bản, đề xuất `OPD02.md`, `OPD17.md`… Cùng một mã có nhiều phiên bản thì chỉ lấy bản cao nhất và ghi lý do. Người nhập bỏ chọn file
 không cần, bấm **Nhập**, theo dõi tiến độ, cuối cùng xem báo cáo.
 
-**Why this priority**: SRS eHospital có 270 file. Nhập từng file là không dùng được.
+**Why this priority**: SRS ACME có 270 file. Nhập từng file là không dùng được.
 
 **Independent Test**: 30 file mẫu trong một lượt, gồm 2 mã có hai phiên bản, 1 file hỏng, 1 file có mật khẩu, 1 file có
 token giả.
@@ -407,7 +407,7 @@ diện, tiến độ tải lên, kết quả trùng với lượt nhập qua web
 
 ### Measurable Outcomes
 
-- **SC-001**: Trên bộ 261 SRS eHospital (chỉ chạy tại máy có dữ liệu, không đưa vào repo):
+- **SC-001**: Trên bộ 261 SRS ACME (chỉ chạy tại máy có dữ liệu, không đưa vào repo):
   - 100% file chuyển không lỗi;
   - 0 tài liệu làm editor ném lỗi;
   - ≥ 99% bảng mở được dưới dạng bảng sửa được (hiện 74%, research mục 3);
@@ -426,7 +426,7 @@ diện, tiến độ tải lên, kết quả trùng với lượt nhập qua web
 
 ## Assumptions
 
-- Nhà tài liệu (spec 018) đã cấu hình và hub đã chạy bản có PR #413. Hub `hive.xdev.asia` đã lên `9947aeb1` (có #413,
+- Nhà tài liệu (spec 018) đã cấu hình và hub đã chạy bản có PR #413. Hub `hive.example.com` đã lên `9947aeb1` (có #413,
   #416) ngày 2026-10-17.
 - PostgreSQL vẫn là kho dữ liệu duy nhất. pandoc và LibreOffice là chương trình trong image hub, chạy như tiến trình con
   khi cần, không phải dịch vụ mới.

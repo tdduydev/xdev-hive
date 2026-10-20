@@ -1,5 +1,5 @@
 {
-  "_links": { "self": { "href": "/job/ehospital/job/build-dev-v3/42/wfapi/describe" } },
+  "_links": { "self": { "href": "/job/acme/job/build-dev-v3/42/wfapi/describe" } },
   "id": "42",
   "name": "#42",
   "status": "PAUSED_PENDING_INPUT",

@@ -2,15 +2,15 @@
 
 **Spec**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **Ngày**: 2026-10-17
 
-## 1. CI/CD của eHospital hiện nay
+## 1. CI/CD của ACME hiện nay
 
-Đọc file trong các repo `gitlab.fis.vn/ehospital-ai/*` đã clone về máy dev. Repo GitOps trên Gitea và Argo CD chưa clone
+Đọc file trong các repo `gitlab.example.com/acme-ai/*` đã clone về máy dev. Repo GitOps trên Gitea và Argo CD chưa clone
 nên chưa kiểm được.
 
 **Jenkins là nơi build và deploy chính.**
-- Chạy ở `10.205.76.53:8080`, ra ngoài qua `jenkins.ehospital-v3.azladin.com` (nginx `10.205.76.55`).
+- Chạy ở `198.51.100.53:8080`, ra ngoài qua `jenkins.example.com` (nginx `198.51.100.55`).
 - Đăng nhập bằng Keycloak OIDC, realm `devops`, các vai trò admin, developer, viewer.
-- Thư viện chung `deploy/infa/vars/ehosBuild.groovy` chạy lần lượt:
+- Thư viện chung `deploy/infa/vars/acmeBuild.groovy` chạy lần lượt:
   - checkout;
   - quét bí mật (Gitleaks);
   - quét thư viện (Trivy fs);
@@ -22,13 +22,13 @@ nên chưa kiểm được.
   - push lên Harbor;
   - ghi tag vào repo GitOps (Gitea), Argo CD tự sync.
 - Tag image là `dev-<BUILD_NUMBER>` và `dev-latest`.
-- `ehosPromote.groovy` đẩy cùng image lên môi trường khác (tham số `APP`, `FROM_ENV`, `TO_ENV`, `BUILD`) bằng cách gắn lại
+- `acmePromote.groovy` đẩy cùng image lên môi trường khác (tham số `APP`, `FROM_ENV`, `TO_ENV`, `BUILD`) bằng cách gắn lại
   tag (`dev-N` → `stg-N` → `prod-N`). Lên prod có bước `input` chờ duyệt 8 giờ, nhưng mặc định `approvers` để trống:
   ai build được thì duyệt được.
 - Khoảng 20 job (`jenkins/job-stubs.md`): his-service (`build-dev-v3`), các portal (`build-dev`), keycloak-theme,
   sign-service, ai-studio…
 - Job chỉ chạy khi bấm **Build Now** hoặc theo lịch poll (`H/2 * * * *`). **Không có webhook**, vì GitLab không gọi vào
-  được mạng `10.205.76.x` (RUNBOOK).
+  được mạng `198.51.100.x` (RUNBOOK).
 
 **GitLab CI chỉ kiểm tra và publish.**
 - `system-portal-v2`: `check`, `e2e-testenv`. E2E chờ Jenkins deploy xong bằng cách hỏi `build-info.json` của trang.
@@ -38,13 +38,13 @@ nên chưa kiểm được.
 
 **Môi trường.**
 - Chỉ `dev` đang chạy thật.
-- Staging và prod mới có trong tham số mặc định của `ehosPromote`. Repo GitOps chưa có thư mục theo môi trường.
+- Staging và prod mới có trong tham số mặc định của `acmePromote`. Repo GitOps chưa có thư mục theo môi trường.
 
 **Hạ tầng** (`deploy/infa/docs/ARCHITECTURE.md`): Jenkins, Harbor `.53`; nginx `.55`; RKE2 ba node `.57/.60/.54`; MSSQL
 `.59`.
 
 **Chưa có:**
-- quay về bản cũ tự động: phải sửa `tag:` trong `values.yaml` rồi push, và `ehosPromote` không cho đi lùi;
+- quay về bản cũ tự động: phải sửa `tag:` trong `values.yaml` rồi push, và `acmePromote` không cho đi lùi;
 - duyệt thật trước khi lên prod;
 - một chỗ xem chung trạng thái của Jenkins và GitLab CI;
 - thông báo khi đỏ.
@@ -56,9 +56,9 @@ không qua Jenkins.
 
 ## 2. Máy chủ Ubuntu riêng: máy chạy hub
 
-`hc-his-app` (`10.86.224.34`, user `adminvm`) là máy Ubuntu riêng, **không thuộc** hạ tầng Jenkins/RKE2 của eHospital
+`app-host` (`192.0.2.10`, user `deploy`) là máy Ubuntu riêng, **không thuộc** hạ tầng Jenkins/RKE2 của ACME
 (chủ dự án xác nhận 2026-10-17).
-- Hub chạy bằng docker compose, project `xdev-hive`, thư mục `/home/adminvm/xdev-hive`.
+- Hub chạy bằng docker compose, project `xdev-hive`, thư mục `/home/deploy/xdev-hive`.
 - Triển khai bằng `deploy/remote.sh` từ máy dev:
   1. gửi `git archive` qua SSH;
   2. `docker compose up -d --build`;
@@ -71,50 +71,50 @@ không qua Jenkins.
   4. kiểm `/api/v1/health` báo `9947aeb1`.
 - Thời gian: sao lưu xong lúc 05:33:42 UTC (`backups/20261017T053342Z`), health báo đúng `9947aeb1` lúc 05:39:08 UTC,
   tức khoảng 5,5 phút cho phần sao lưu xong → dựng image → chạy lại → health. Mốc so cho SC-002.
-- Suýt có lỗi: script mặc định dùng `/opt/xdev-hive`, còn bản đang chạy ở `/home/adminvm/xdev-hive`. Chạy mặc định sẽ
+- Suýt có lỗi: script mặc định dùng `/opt/xdev-hive`, còn bản đang chạy ở `/home/deploy/xdev-hive`. Chạy mặc định sẽ
   tạo `.env` với secret mới cho cùng compose project.
 
-**Kết nối mạng đo từ `hc-his-app`** (2026-10-17, chỉ lấy mã HTTP, không đăng nhập):
+**Kết nối mạng đo từ `app-host`** (2026-10-17, chỉ lấy mã HTTP, không đăng nhập):
 
 | Đích | Kết quả |
 |---|---|
-| `https://jenkins.ehospital-v3.azladin.com/login` | 200, 0,43 s |
-| `http://10.205.76.53:8080/login` | quá 8 s, không vào được |
-| `https://harbor.ehospital-v3.azladin.com/api/v2.0/ping` | 200 |
-| `https://git.ehospital-v3.azladin.com/` (Gitea) | 200 |
-| `https://gitlab.fis.vn/users/sign_in` | 200 |
+| `https://jenkins.example.com/login` | 200, 0,43 s |
+| `http://198.51.100.53:8080/login` | quá 8 s, không vào được |
+| `https://harbor.example.com/api/v2.0/ping` | 200 |
+| `https://git.example.com/` (Gitea) | 200 |
+| `https://gitlab.example.com/users/sign_in` | 200 |
 
-Chiều ngược lại (Jenkins và GitLab gọi về hub `hive.xdev.asia`) chưa đo.
+Chiều ngược lại (Jenkins và GitLab gọi về hub `hive.example.com`) chưa đo.
 
 **Đo mạng từ trong container hub (T006, 2026-10-19 khoảng 07:40 UTC).**
-- Máy đo: container `xdev-hive-hub-1` trên `hc-his-app`, hub ở commit `81f6cc98`.
+- Máy đo: container `xdev-hive-hub-1` trên `app-host`, hub ở commit `81f6cc98`.
 - Cách đo: mở kết nối TCP (chờ 5 giây) hoặc lấy mã HTTP (chờ 8 giây). Không đăng nhập.
 
 | Đích | Kết quả |
 |---|---|
-| cổng 22 của `10.205.76.53`, `.54`, `.55`, `.57`, `.59`, `.60` | quá 5 s, không vào được |
-| `https://10.205.76.{57,60,54,55}:6443/version` (API Kubernetes) | quá 8 s, không vào được |
-| `https://10.205.76.55/version` (nginx cổng 443) | 404, chứng chỉ không khớp khi gọi bằng IP: không có API Kubernetes qua đường này |
-| `10.86.224.34:22` từ mạng bridge của Docker | mở: hub SSH được tới chính máy nó |
-| `http://10.205.76.53:8080/login` | quá 8 s, như lần đo 2026-10-17 |
-| `https://jenkins.ehospital-v3.azladin.com/login` | 200 |
-| `https://gitlab.fis.vn/users/sign_in` | 200 |
-| `https://argocd.ehospital-v3.azladin.com/api/version` | 200, `{"Version":"v3.5.1"}` |
+| cổng 22 của `198.51.100.53`, `.54`, `.55`, `.57`, `.59`, `.60` | quá 5 s, không vào được |
+| `https://198.51.100.{57,60,54,55}:6443/version` (API Kubernetes) | quá 8 s, không vào được |
+| `https://198.51.100.55/version` (nginx cổng 443) | 404, chứng chỉ không khớp khi gọi bằng IP: không có API Kubernetes qua đường này |
+| `192.0.2.10:22` từ mạng bridge của Docker | mở: hub SSH được tới chính máy nó |
+| `http://198.51.100.53:8080/login` | quá 8 s, như lần đo 2026-10-17 |
+| `https://jenkins.example.com/login` | 200 |
+| `https://gitlab.example.com/users/sign_in` | 200 |
+| `https://argocd.example.com/api/version` | 200, `{"Version":"v3.5.1"}` |
 
 Ghi chú về các con số trên:
-- Tên `argocd.ehospital-v3.azladin.com` là tên đoán theo mẫu tên của Jenkins và Harbor. [Inference] Đây là Argo CD của
-  eHospital; chờ chủ dự án xác nhận ở T007.
+- Tên `argocd.example.com` là tên đoán theo mẫu tên của Jenkins và Harbor. [Inference] Đây là Argo CD của
+  ACME; chờ chủ dự án xác nhận ở T007.
 - Chiều GitLab gọi về hub vẫn chưa đo được: log của hub không ghi đường dẫn request.
 
 **Sự cố và hệ quả:**
-- **Lần đo này làm SOC báo động "quét SSH" từ `10.86.224.34` tới các IP của FCI.** Chủ dự án đã gỡ hẳn hub khỏi máy
-  `hc-his-app` (container, volume database, `.env`, bản sao lưu).
+- **Lần đo này làm SOC báo động "quét SSH" từ `192.0.2.10` tới các IP của FCI.** Chủ dự án đã gỡ hẳn hub khỏi máy
+  `app-host` (container, volume database, `.env`, bản sao lưu).
 - Từ nay **không đo bằng cách mở cổng tới máy nội bộ** khi SOC chưa đồng ý. Việc đo mạng là của chủ dự án hoặc quản trị
   hạ tầng.
-- Mọi chỗ trong spec, plan, tasks nói hub chạy trên `hc-his-app` hoặc `hive.xdev.asia` đã cũ. Cần chọn máy mới cho hub
+- Mọi chỗ trong spec, plan, tasks nói hub chạy trên `app-host` hoặc `hive.example.com` đã cũ. Cần chọn máy mới cho hub
   trước khi làm phần triển khai (US3, US4, SC-002).
-- Hub không SSH được tới các máy `10.205.76.x`, cũng không gọi được API Kubernetes của chúng. Vì vậy triển khai lên hạ
-  tầng eHospital phải đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl` (máy runner để sau, Q14).
+- Hub không SSH được tới các máy `198.51.100.x`, cũng không gọi được API Kubernetes của chúng. Vì vậy triển khai lên hạ
+  tầng ACME phải đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl` (máy runner để sau, Q14).
 
 ## 3. Hive hiện có gì để dùng lại
 
@@ -222,7 +222,7 @@ pg-boss **12.37.1** (hub đang dùng `^12.37.1`; bản mới nhất 12.38.0, yê
 | Ubuntu 22.04 / 24.04 | WSL của máy này chỉ có Ubuntu 26.04; cài thêm bản khác là tải về, chưa được cho phép |
 | Image `sshd` dựng từ `ubuntu:24.04` qua mirror `public.ecr.aws`, thời gian dựng | Cần Docker, máy này không có |
 | `ssh2` chạy trong image hub | Cần Docker |
-| Đường từ mạng bridge của Docker tới `10.86.224.34:22` | Máy hub cũ đã gỡ; theo ràng buộc an toàn không SSH hay dò tới máy khác |
+| Đường từ mạng bridge của Docker tới `192.0.2.10:22` | Máy hub cũ đã gỡ; theo ràng buộc an toàn không SSH hay dò tới máy khác |
 | `ETIMEDOUT` thật khi máy chủ không trả lời | Cần địa chỉ không phản hồi; không dò mạng ngoài localhost |
 | pg-boss với role `hive_jobs` trên Postgres của hub | Chưa chạy hub; spike dùng Postgres 18 riêng trong WSL |
 | Thông lượng, độ trễ SSH qua mạng thật | Chỉ đo qua localhost |

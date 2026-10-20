@@ -20,8 +20,8 @@ const KEY = {
 
 const host = (alias: string, over: Partial<SshHost> = {}): SshHost => ({
   alias,
-  hostName: "10.86.224.34",
-  user: "adminvm",
+  hostName: "192.0.2.10",
+  user: "deploy",
   port: 22,
   managed: false,
   proxy: false,
@@ -29,7 +29,7 @@ const host = (alias: string, over: Partial<SshHost> = {}): SshHost => ({
   ...over,
 });
 
-const MACMINI = host("macmini", { hostName: "10.86.140.63", user: "duynh60" });
+const MACMINI = host("macmini", { hostName: "192.0.2.20", user: "duynh60" });
 const HIVE = host("hive-prod", { managed: true, identityFile: "~/.ssh/id_ed25519" });
 
 interface Call {
@@ -94,7 +94,7 @@ describe("màn Máy chủ SSH", () => {
     expect(screen.getByText(KEY.path)).toBeTruthy();
     await waitFor(() => expect(within(row("hive-prod")).getByText("Khoá dùng được")).toBeTruthy());
     expect(within(row("hive-prod")).getByText("Do app quản lý")).toBeTruthy();
-    expect(within(row("macmini")).getByText("duynh60@10.86.140.63:22")).toBeTruthy();
+    expect(within(row("macmini")).getByText("duynh60@192.0.2.20:22")).toBeTruthy();
     expect(within(row("macmini")).getByText("Tự viết")).toBeTruthy();
     expect(within(row("macmini")).getByText("Cần thiết lập")).toBeTruthy();
     expect(calls.filter((c) => c.command === "ssh_check").map((c) => c.args?.alias)).toEqual(["macmini", "hive-prod"]);
@@ -130,8 +130,8 @@ describe("màn Máy chủ SSH", () => {
     render(<SshScreen />);
     await user.click(await screen.findByRole("button", { name: "Thêm máy chủ" }));
     const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "10.86.224.34");
-    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "adminvm");
+    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "192.0.2.10");
+    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "deploy");
     await user.type(within(dialog).getByLabelText("Tên gợi nhớ"), "hive-prod");
     await user.click(within(dialog).getByRole("button", { name: "Tiếp" }));
     await user.type(await within(dialog).findByLabelText(/Mật khẩu của/), "pw");
@@ -147,19 +147,19 @@ describe("màn Máy chủ SSH", () => {
     render(<SshScreen />);
     await user.click(await screen.findByRole("button", { name: "Thêm máy chủ" }));
     const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "10.86.224.34");
-    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "adminvm");
+    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "192.0.2.10");
+    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "deploy");
     await user.type(within(dialog).getByLabelText("Tên gợi nhớ"), "hive-prod");
     await user.click(within(dialog).getByRole("button", { name: "Tiếp" }));
     expect(await within(dialog).findByText(HOST_FP)).toBeTruthy();
     expect(within(dialog).getByText("ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub")).toBeTruthy();
-    expect(calls.find((c) => c.command === "ssh_scan")?.args).toEqual({ host: "10.86.224.34", port: 22 });
+    expect(calls.find((c) => c.command === "ssh_scan")?.args).toEqual({ host: "192.0.2.10", port: 22 });
     const next = within(dialog).getByRole("button", { name: "Tiếp" });
     expect((next as HTMLButtonElement).disabled).toBe(true);
     expect(within(dialog).queryByLabelText(/Mật khẩu/)).toBeNull();
     await user.click(within(dialog).getByLabelText(/Tôi đã đối chiếu/));
     await user.click(next);
-    const password = within(dialog).getByLabelText("Mật khẩu của adminvm@10.86.224.34") as HTMLInputElement;
+    const password = within(dialog).getByLabelText("Mật khẩu của deploy@192.0.2.10") as HTMLInputElement;
     expect(password.type).toBe("password");
     expect(password.autocomplete).toBe("off");
     await user.type(password, "pw-thu");
@@ -167,9 +167,9 @@ describe("màn Máy chủ SSH", () => {
     expect(await within(dialog).findByText(/ssh hive-prod đăng nhập bằng khoá/)).toBeTruthy();
     expect(within(dialog).getByText(/Đã tạo khoá mới/)).toBeTruthy();
     expect(calls.find((c) => c.command === "ssh_setup")?.args).toEqual({
-      host: "10.86.224.34",
+      host: "192.0.2.10",
       port: 22,
-      user: "adminvm",
+      user: "deploy",
       alias: "hive-prod",
       fingerprint: HOST_FP,
       password: "pw-thu",
@@ -184,8 +184,8 @@ describe("màn Máy chủ SSH", () => {
     render(<SshScreen />);
     await user.click(await screen.findByRole("button", { name: "Thêm máy chủ" }));
     const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "10.86.224.34");
-    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "adminvm");
+    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "192.0.2.10");
+    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "deploy");
     await user.type(within(dialog).getByLabelText("Tên gợi nhớ"), "hive-prod");
     await user.click(within(dialog).getByRole("button", { name: "Tiếp" }));
     expect(await within(dialog).findByText("Khoá máy chủ đã đổi")).toBeTruthy();
@@ -205,8 +205,8 @@ describe("màn Máy chủ SSH", () => {
     render(<SshScreen />);
     await user.click(await screen.findByRole("button", { name: "Thêm máy chủ" }));
     const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "10.86.224.34");
-    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "adminvm");
+    await user.type(within(dialog).getByLabelText("Địa chỉ máy chủ"), "192.0.2.10");
+    await user.type(within(dialog).getByLabelText("Tên đăng nhập"), "deploy");
     await user.type(within(dialog).getByLabelText("Tên gợi nhớ"), "hive-prod");
     await user.click(within(dialog).getByRole("button", { name: "Tiếp" }));
     expect(await within(dialog).findByText(/Máy chủ đã biết/)).toBeTruthy();
@@ -246,7 +246,7 @@ describe("màn Máy chủ SSH", () => {
     await user.click(within(row("macmini")).getByRole("button", { name: "Chuyển sang khoá" }));
     const dialog = screen.getByRole("dialog");
     const address = within(dialog).getByLabelText("Địa chỉ máy chủ") as HTMLInputElement;
-    expect(address.value).toBe("10.86.140.63");
+    expect(address.value).toBe("192.0.2.20");
     expect(address.readOnly).toBe(true);
     expect((within(dialog).getByLabelText("Tên gợi nhớ") as HTMLInputElement).value).toBe("macmini");
   });
@@ -263,7 +263,7 @@ describe("màn Máy chủ SSH", () => {
     await user.click(within(dialog).getByRole("button", { name: "Xoá" }));
     const howTo = await screen.findByText(/authorized_keys/);
     expect(howTo.textContent).toContain(`"${KEY.comment}"`);
-    expect(howTo.textContent).toContain("adminvm@10.86.224.34");
+    expect(howTo.textContent).toContain("deploy@192.0.2.10");
     expect(calls.find((c) => c.command === "ssh_remove")?.args).toEqual({ alias: "hive-prod" });
     expect(screen.queryByRole("row", { name: /hive-prod/ })).toBeNull();
   });

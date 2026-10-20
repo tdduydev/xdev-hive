@@ -50,7 +50,7 @@ func newCtlEnv(t *testing.T, tune func(*Controller)) *ctlEnv {
 	t.Helper()
 	e := &ctlEnv{t: t, link: newFakeLink(), now: ctlStart}
 	e.rem = newRemote(t)
-	e.rem.HubURL = "http://10.86.224.34:3000"
+	e.rem.HubURL = "http://192.0.2.10:3000"
 	if _, err := e.rem.Store.Update(func(c *remoteauth.Config) error {
 		c.Enabled, c.OwnerUserID = true, "u1"
 		return nil

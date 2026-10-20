@@ -232,7 +232,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
     <div><h1 style="margin:0;font-size:22px;color:var(--ink)">Tạo tổ chức</h1><p style="margin:4px 0 0;color:var(--muted)">Tổ chức chứa các đội, hệ thống và dự án. Bạn là chủ sở hữu.</p></div>
     <div class="field"><label for="org-name">Tên tổ chức</label><input class="in-f" id="org-name" value="Acme Software xDev"></div>
     <div class="field"><label for="org-slug">Định danh</label>
-      <div class="prefix"><span>hive.xdev.asia/</span><input class="in-f" id="org-slug" value="acme-dev"></div>
+      <div class="prefix"><span>hive.example.com/</span><input class="in-f" id="org-slug" value="acme-dev"></div>
       <span class="hint" style="color:var(--ok)">Còn trống. Dùng trong đường dẫn và trong lệnh của agent.</span>
     </div>
     <div class="field"><label for="org-domain">Tên miền email (không bắt buộc)</label><input class="in-f" id="org-domain" value="example.com">
@@ -343,7 +343,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
           <div class="field"><label for="oidc-secret">Client secret</label><input class="in-f" id="oidc-secret" value="••••••••••••3kQ9"><span class="hint">Để trống nếu không đổi.</span></div>
         </div>
         <div class="field"><label for="cb">Callback URL (dán vào cấu hình app bên nhà cung cấp)</label>
-          <div class="copy"><input class="in-f" id="cb" readonly value="https://hive.xdev.asia/api/auth/sso/callback/acme-azure"><button class="btn" type="button">Chép</button></div></div>
+          <div class="copy"><input class="in-f" id="cb" readonly value="https://hive.example.com/api/auth/sso/callback/acme-azure"><button class="btn" type="button">Chép</button></div></div>
         <div class="field"><label for="oidc-map">Khi người mới đăng nhập SSO lần đầu</label>
           <select class="in-f" id="oidc-map"><option>Vào hàng chờ duyệt (khuyên dùng)</option><option>Tự thêm vào tổ chức với vai trò Thành viên, chưa thuộc đội nào</option></select></div>
         <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button">Thử đăng nhập</button><button class="btn primary" type="button">Lưu</button></div>
@@ -375,7 +375,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
     <div class="field"><label for="i-role">Vai trò tổ chức</label><select class="in-f" id="i-role"><option>Thành viên</option><option>Quản trị</option></select></div>
     <div class="field"><label for="i-team">Thêm vào đội</label><select class="in-f" id="i-team"><option>Thanh toán · Thành viên</option><option>CRM · Thành viên</option><option>Không thêm</option></select></div>
   </div>
-  <div class="field"><label for="i-link">Link mời (hết hạn sau 7 ngày, dùng một lần)</label><div class="copy"><input class="in-f" id="i-link" readonly value="https://hive.xdev.asia/invite/7Hk2…"><button class="btn" type="button">Chép</button></div></div>
+  <div class="field"><label for="i-link">Link mời (hết hạn sau 7 ngày, dùng một lần)</label><div class="copy"><input class="in-f" id="i-link" readonly value="https://hive.example.com/invite/7Hk2…"><button class="btn" type="button">Chép</button></div></div>
   <div class="act"><button class="btn" value="cancel">Đóng</button><button class="btn primary" value="ok">Tạo lời mời</button></div>
 </form></dialog>
 </main>

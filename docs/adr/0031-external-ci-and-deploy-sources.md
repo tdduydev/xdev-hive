@@ -7,7 +7,7 @@
 ## Context
 
 Spec [020](../../specs/020-cicd-console/spec.md) makes Hive a console over the CI that teams already run, and a place
-to start deploys. It does not replace GitLab CI or Jenkins. eHospital builds and deploys with Jenkins (Keycloak OIDC,
+to start deploys. It does not replace GitLab CI or Jenkins. ACME builds and deploys with Jenkins (Keycloak OIDC,
 Harbor, GitOps, Argo CD, RKE2); GitLab CI only runs checks. Jenkins has no webhook, because GitLab cannot reach the
 internal network. The project owner settled Q3, Q4, Q6, Q11, Q12, Q13 and Q15 on 17 October 2026. Requirements
 are [CICD-01–CICD-12](../srs.md#325-cicd-console-cicd) and [DEPLOY-01–DEPLOY-14](../srs.md#326-deploy-deploy).
@@ -15,11 +15,11 @@ are [CICD-01–CICD-12](../srs.md#325-cicd-console-cicd) and [DEPLOY-01–DEPLOY
 Facts that bound the design:
 
 - From the hub's container (T006, 19 October 2026) Jenkins, GitLab and Argo CD answer over HTTPS, but ports 22 and
-  6443 of the internal network do not. Deploys to the eHospital infrastructure must go through `jenkins-job` or `argocd`;
+  6443 of the internal network do not. Deploys to the ACME infrastructure must go through `jenkins-job` or `argocd`;
   `kubectl` works only where the hub can reach the API server.
 - T007 (checking Jenkins, Argo CD and the ServiceAccount against the real systems) has **not been done**. Every
   statement below about how the real Jenkins, Argo CD or Kubernetes behaves is an inference from public API
-  documentation and from reading the eHospital pipeline files. The coordinator updates this record after T007.
+  documentation and from reading the ACME pipeline files. The coordinator updates this record after T007.
 - PostgreSQL is the only stateful dependency ([ADR 0003](0003-postgresql-only-state.md)), and every tenant table
   forces RLS ([ADR 0004](0004-row-level-security-tenancy.md)).
 
@@ -56,7 +56,7 @@ Facts that bound the design:
    `ci_runs_seen` keeps only status and notification state.
 7. **Approval and locks are Hive's.** For a Jenkins `input` step, Hive proceeds with the approver's token and aborts on
    reject (Q7). A person who presses the button directly in Jenkins or Argo CD bypasses Hive's approval (R7); this is out of
-   Hive's reach, and the documentation advises setting `approvers` on `ehosPromote`.
+   Hive's reach, and the documentation advises setting `approvers` on `acmePromote`.
 8. **Failures are coded in Vietnamese.** Jenkins errors become `JENKINS_NO_TOKEN`, `JENKINS_UNAUTHORIZED`,
    `JENKINS_FORBIDDEN`, `JENKINS_NOT_FOUND` and `JENKINS_UNAVAILABLE`, each with a repair hint. A source that does not
    answer shows the last data with its time and never blocks the others.
@@ -64,7 +64,7 @@ Facts that bound the design:
 ## Consequences
 
 - Good: no CI is replaced; Jenkins keeps the audit trail of who pressed what; no CI log is duplicated in the database.
-- Good: the eHospital infrastructure can be deployed from the hub through HTTPS-only methods the network allows.
+- Good: the ACME infrastructure can be deployed from the hub through HTTPS-only methods the network allows.
 - Bad: each user must create and paste a Jenkins token, and token expiry affects only that person. The watcher is a single
   point of failure for reading (R4).
 - Bad: Jenkins and Argo CD are polled, so a build that starts outside Hive is seen within about 5 minutes (SC-001).
@@ -80,7 +80,7 @@ Facts that bound the design:
 
 - A Jenkins service account (the earlier recommendation): simpler, but Jenkins would record the service account instead of
   the person. Rejected by Q3.
-- Webhooks from Jenkins: eHospital's jobs run on Build Now or a poll schedule and have no webhook today
+- Webhooks from Jenkins: ACME's jobs run on Build Now or a poll schedule and have no webhook today
   (research section 1). Whether the hub is reachable from Jenkins is unmeasured, so the first release polls.
 - Store CI logs in Hive: duplicates data and grows the database (Q12).
 - `@kubernetes/client-node` or a binary `kubectl`: more code and a binary for two calls; `fetch` is enough.

@@ -6,7 +6,7 @@ exports[`mẫu xdev-standard > snapshot 1`] = `
   "mcpServers": {
     "xdev-hive": {
       "type": "http",
-      "url": "https://hive.xdev.asia/mcp",
+      "url": "https://hive.example.com/mcp",
       "headers": {
         "Authorization": "Bearer \${HIVE_MCP_TOKEN}",
         "X-Hive-Project": "hoa-don-xuat-file"
@@ -48,7 +48,7 @@ Bổ sung tại đây: cách cài, cách chạy test, cấu trúc thư mục, qu
 ",
   "README.md": "# Xuất file hoá đơn
 
-Dự án \`hoa-don-xuat-file\` thuộc hệ thống Hoá đơn, quản lý trên xDev Hive (https://hive.xdev.asia).
+Dự án \`hoa-don-xuat-file\` thuộc hệ thống Hoá đơn, quản lý trên xDev Hive (https://hive.example.com).
 
 Coding agent đọc hướng dẫn trong [AGENTS.md](AGENTS.md).
 ",

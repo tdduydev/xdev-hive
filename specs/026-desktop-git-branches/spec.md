@@ -474,9 +474,9 @@ Sau mỗi lần fetch (tay hay tự fetch của nhóm Git), nút "Dọn nhánh" 
   hơn. Máy dev có git 2.56.
 - Origin của repo là remote tên `origin` (như worker và spec 016).
 - PR của đội được merge bằng merge commit (repo `xdev-hive` trên GitHub: đúng, theo `git log`) hoặc squash (cần P2).
-  [Unverified] Cách merge mặc định của các repo GitLab `ehospital-ai`.
+  [Unverified] Cách merge mặc định của các repo GitLab `acme-ai`.
 - Màn Agent trên máy (spec 021) đã chạy được trên Windows và macOS để biết thư mục làm việc của agent.
-- Không có hub ở `10.86.224.34` (đã gỡ ngày 2026-10-19). Tính năng không cần hub.
+- Không có hub ở `192.0.2.10` (đã gỡ ngày 2026-10-19). Tính năng không cần hub.
 
 ## Out of Scope
 

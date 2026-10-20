@@ -83,7 +83,7 @@ description: "Task list: nhập Word thành tài liệu hub"
   (`docs/srs.md` hiện tới 3.23; spec 020 cũng thêm mục và chọn số khi gộp). Kiểm lại lúc làm T022.
 - **Provider thật**: mọi test tự động dùng provider `memory` của `scm`. Không task agent nào gọi GitHub/GitLab thật. Chỉ
   T025 (chủ dự án) thử trên hub thật. Không commit token.
-- **Dữ liệu thật**: 261 SRS eHospital và `tools/srs2md` nằm ngoài repo này. Không commit file Word, Markdown hay ảnh của
+- **Dữ liệu thật**: 261 SRS ACME và `tools/srs2md` nằm ngoài repo này. Không commit file Word, Markdown hay ảnh của
   bộ thật; chỉ ghi số liệu tổng và mã tài liệu. File mẫu của test sinh bằng `make-fixtures.py`.
 
 ## Đợt 0: hợp đồng, bộ lọc, pandoc, phần thuần (song song)
@@ -136,7 +136,7 @@ description: "Task list: nhập Word thành tài liệu hub"
 - [ ] **T003 [P] [US1] [nặng] · 2 ngày — Bộ lọc Lua chuẩn và bộ mẫu vàng**
   - **Phụ thuộc**: T024 (bản sao `srs.lua`).
   - **Goal**: giai đoạn 1. FR-007…FR-011, FR-013, FR-014, SC-002, plan.md mục 3 bước 4, mục 14 "Vàng".
-    - Chép `tools/srs2md/srs.lua` của repo `ehospital-ai/docs` (repo riêng, không sửa ở đây) thành `filter.lua`. Đầu
+    - Chép `tools/srs2md/srs.lua` của repo `acme-ai/docs` (repo riêng, không sửa ở đây) thành `filter.lua`. Đầu
       file ghi `FILTER_VERSION` và commit gốc đã chép. Từ đây bản của hub là bản chuẩn (FR-014).
     - Thêm vào bộ lọc:
       - bỏ mục danh sách rỗng; dàn bảng lồng thành chữ trong ô; bỏ màu, tô nền, gạch chân nhưng giữ chữ;
@@ -180,9 +180,9 @@ description: "Task list: nhập Word thành tài liệu hub"
 
 - [ ] **T024 [—] [người: chủ dự án] · 0,5 ngày người — Chuẩn bị: bộ lọc gốc, dữ liệu thật, máy chủ**
   - **Goal**:
-    - đưa bản sao `tools/srs2md/srs.lua` (kèm commit) của repo `ehospital-ai/docs` cho T003, đặt ngoài repo này;
+    - đưa bản sao `tools/srs2md/srs.lua` (kèm commit) của repo `acme-ai/docs` cho T003, đặt ngoài repo này;
     - chỉ máy có thư mục 261 SRS (OneDrive) cho T007 và T023;
-    - kiểm máy chủ `hive.xdev.asia` tải được release pandoc trên GitHub khi dựng image (plan.md mục 12
+    - kiểm máy chủ `hive.example.com` tải được release pandoc trên GitHub khi dựng image (plan.md mục 12
       **[Unverified]**) và cài được gói LibreOffice Writer từ kho Debian (mục 12b); báo kết quả cho T004, T014.
   - **PHẠM VI**: không sửa file. Không gửi token qua chat, issue hay commit.
   - **Xong khi**: làm trước khi giao T003. Người điều phối ghi kết quả vào bàn giao của T004.
@@ -624,17 +624,17 @@ description: "Task list: nhập Word thành tài liệu hub"
     - Chạy lại `word:corpus` trên 261 SRS với bản cuối (SC-001), ghi research.md mục 7.
     - Đo SC-003 trên máy chủ dev: xem trước file SRS 3 MB, lượt 50 file.
     - Rà bảng "Theo yêu cầu": mỗi FR, SC có test, hoặc ghi lý do.
-    - Bàn giao cho chủ dự án `FILTER_VERSION` để chép sang `tools/srs2md` của repo `ehospital-ai/docs` (FR-014). Việc
+    - Bàn giao cho chủ dự án `FILTER_VERSION` để chép sang `tools/srs2md` của repo `acme-ai/docs` (FR-014). Việc
       chép làm ở repo kia, không thuộc spec này.
   - **PHẠM VI**:
     - `specs/019-word-import/research.md` (thêm mục 7 "Kết quả kiểm tổng")
   - **Kiểm**: mọi dòng có kết quả. Lỗi tìm ra thành task mới, không sửa file khác.
 
 - [ ] **T025 [—] [người: chủ dự án] · 0,5 ngày người — Thử trên hub thật**
-  - **Phụ thuộc**: T023, bản đã triển khai lên `hive.xdev.asia`.
+  - **Phụ thuộc**: T023, bản đã triển khai lên `hive.example.com`.
   - **Goal**: `/api/v1/health` báo `wordImport`, `wordImportDoc`; nhập vài SRS vào nhà thử (repo thử, chế độ `pr`), xem
     PR; cập nhật từ Word; gửi duyệt bằng tài khoản chỉ có `propose`; desktop nhập một thư mục OneDrive. Nhập vào nhà
-    thật của eHospital chỉ khi chủ dự án quyết, sau khi xem hub sẽ đổi gì trong repo của đội.
+    thật của ACME chỉ khi chủ dự án quyết, sau khi xem hub sẽ đổi gì trong repo của đội.
   - **PHẠM VI**: không sửa file. Không gửi token qua chat, issue hay commit.
   - **Xong khi**: người điều phối ghi kết quả vào research.md hoặc mở task sửa lỗi.
 

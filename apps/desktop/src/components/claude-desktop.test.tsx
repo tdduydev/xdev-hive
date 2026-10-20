@@ -15,7 +15,7 @@ function profile(over: Partial<DesktopProfile> = {}): DesktopProfile {
   return {
     id: "claude-2",
     label: "Gói phụ",
-    email: "phu@fpt.com",
+    email: "phu@example.com",
     saved: true,
     active: false,
     accountKnown: true,
@@ -391,11 +391,11 @@ describe("khung Claude Desktop chung", { timeout: 20_000 }, () => {
     const p = profile();
     const { rerender } = render(
       <ClaudeDesktopPanel
-        view={views([p], { signedIn: { account: "uuid-b", email: "phu@fpt.com", plan: "claude-2" } })}
+        view={views([p], { signedIn: { account: "uuid-b", email: "phu@example.com", plan: "claude-2" } })}
         onChanged={() => {}}
       />,
     );
-    expect(screen.getByText(/Claude Desktop đang đăng nhập phu@fpt.com/).textContent).toContain("của Gói phụ");
+    expect(screen.getByText(/Claude Desktop đang đăng nhập phu@example.com/).textContent).toContain("của Gói phụ");
     rerender(
       <ClaudeDesktopPanel
         view={views([p], { signedIn: { account: "296f5a0d-1111-2222", email: null, plan: null } })}
@@ -413,13 +413,13 @@ describe("khung Claude Desktop chung", { timeout: 20_000 }, () => {
     render(
       <ClaudeDesktopPanel
         view={views([main, third], {
-          mismatch: { account: "chinh@fpt.com", expected: "claude-3", adopted: "claude-1" },
+          mismatch: { account: "chinh@example.com", expected: "claude-3", adopted: "claude-1" },
         })}
         onChanged={onChanged}
       />,
     );
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("Bạn vừa đăng nhập tài khoản chinh@fpt.com, không phải của Gói ba.");
+    expect(alert.textContent).toContain("Bạn vừa đăng nhập tài khoản chinh@example.com, không phải của Gói ba.");
     expect(alert.textContent).toContain("Hive đã lưu đăng nhập này cho Gói chính");
     await user().click(within(alert).getByRole("button", { name: "Đã hiểu" }));
     expect(named(calls, "dismiss_claude_desktop_mismatch")).toEqual([undefined]);

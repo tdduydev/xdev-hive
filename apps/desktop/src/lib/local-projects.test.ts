@@ -112,17 +112,17 @@ describe("gom repo trên máy theo nhóm", () => {
   const hisApi = local({
     name: "his-api",
     folder: "/w/his-api",
-    origin: "https://gitlab.fis.vn/ehospital-ai/his/his-api.git",
+    origin: "https://gitlab.example.com/acme-ai/his/his-api.git",
   });
   const hisWeb = local({
     name: "his-web",
     folder: "/w/his-web",
-    origin: "git@gitlab.fis.vn:ehospital-ai/his/his-web.git",
+    origin: "git@gitlab.example.com:acme-ai/his/his-web.git",
   });
   const emr = local({
     name: "emr-core",
     folder: "/w/emr-core",
-    origin: "https://gitlab.fis.vn/ehospital-ai/emr/emr-core.git",
+    origin: "https://gitlab.example.com/acme-ai/emr/emr-core.git",
   });
   const pay = local({ name: "pay", folder: "/w/pay", origin: "git@github.com:acme/pay.git" });
 
@@ -131,8 +131,8 @@ describe("gom repo trên máy theo nhóm", () => {
     expect(shape(groupLocalRepos([hisWeb, emr, hisApi, x, pay], null))).toEqual([
       ["acme", "github.com", ["pay"]],
       ["acme", "gitlab.com", ["x"]],
-      ["ehospital-ai/emr", "gitlab.fis.vn", ["emr-core"]],
-      ["ehospital-ai/his", "gitlab.fis.vn", ["his-api", "his-web"]],
+      ["acme-ai/emr", "gitlab.example.com", ["emr-core"]],
+      ["acme-ai/his", "gitlab.example.com", ["his-api", "his-web"]],
     ]);
   });
 
@@ -162,20 +162,20 @@ describe("gom repo trên máy theo nhóm", () => {
   });
 
   it("repo thuộc Nhóm Git theo dõi lấy tên theo nhóm; máy chủ đã kết nối hiện tên kết nối", () => {
-    const hosts: GitHost[] = [{ id: "h1", kind: "gitlab", url: "https://gitlab.fis.vn", name: "GitLab FIS" }];
+    const hosts: GitHost[] = [{ id: "h1", kind: "gitlab", url: "https://gitlab.example.com", name: "GitLab FIS" }];
     const groups: GitGroup[] = [
       {
         id: "g1",
         hostId: "h1",
-        path: "ehospital-ai",
-        root: "E:\\Codes\\ehospital-ai",
+        path: "acme-ai",
+        root: "E:\\Codes\\acme-ai",
         protocol: "https",
         repos: [
           {
-            path: "ehospital-ai/his/his-admin",
+            path: "acme-ai/his/his-admin",
             name: "his-admin",
-            httpUrl: "https://gitlab.fis.vn/ehospital-ai/his/his-admin.git",
-            sshUrl: "git@gitlab.fis.vn:ehospital-ai/his/his-admin.git",
+            httpUrl: "https://gitlab.example.com/acme-ai/his/his-admin.git",
+            sshUrl: "git@gitlab.example.com:acme-ai/his/his-admin.git",
           },
         ],
       },
@@ -183,11 +183,11 @@ describe("gom repo trên máy theo nhóm", () => {
     const got = groupLocalRepos(
       [
         // Chưa có trong danh sách nhóm đọc lần trước, chữ hoa khác: vẫn chung mục với repo của nhóm.
-        local({ name: "his-api", folder: "/w/his-api", origin: "https://gitlab.fis.vn/EHospital-AI/HIS/his-api.git" }),
+        local({ name: "his-api", folder: "/w/his-api", origin: "https://gitlab.example.com/ACME-AI/HIS/his-api.git" }),
         local({
           name: "his-admin",
           folder: "/w/his-admin",
-          origin: "git@gitlab.fis.vn:EHospital-AI/HIS/his-admin.git",
+          origin: "git@gitlab.example.com:ACME-AI/HIS/his-admin.git",
         }),
         emr,
         pay,
@@ -196,8 +196,8 @@ describe("gom repo trên máy theo nhóm", () => {
     );
     expect(shape(got)).toEqual([
       ["acme", "github.com", ["pay"]],
-      ["ehospital-ai/emr", "GitLab FIS", ["emr-core"]],
-      ["ehospital-ai/his", "GitLab FIS", ["his-admin", "his-api"]],
+      ["acme-ai/emr", "GitLab FIS", ["emr-core"]],
+      ["acme-ai/his", "GitLab FIS", ["his-admin", "his-api"]],
     ]);
   });
 
@@ -205,15 +205,15 @@ describe("gom repo trên máy theo nhóm", () => {
     const sections = groupLocalRepos([hisApi, hisWeb, emr, pay], null);
     expect(filterRepoSections(sections, "  ")).toEqual(sections);
     expect(shape(filterRepoSections(sections, "HIS"))).toEqual([
-      ["ehospital-ai/his", "gitlab.fis.vn", ["his-api", "his-web"]],
+      ["acme-ai/his", "gitlab.example.com", ["his-api", "his-web"]],
     ]);
     expect(shape(filterRepoSections(sections, "github"))).toEqual([["acme", "github.com", ["pay"]]]);
-    expect(shape(filterRepoSections(sections, "web"))).toEqual([["ehospital-ai/his", "gitlab.fis.vn", ["his-web"]]]);
+    expect(shape(filterRepoSections(sections, "web"))).toEqual([["acme-ai/his", "gitlab.example.com", ["his-web"]]]);
     expect(shape(filterRepoSections(sections, "/w/emr"))).toEqual([
-      ["ehospital-ai/emr", "gitlab.fis.vn", ["emr-core"]],
+      ["acme-ai/emr", "gitlab.example.com", ["emr-core"]],
     ]);
     expect(shape(filterRepoSections(sections, "his-web.git"))).toEqual([
-      ["ehospital-ai/his", "gitlab.fis.vn", ["his-web"]],
+      ["acme-ai/his", "gitlab.example.com", ["his-web"]],
     ]);
     expect(filterRepoSections(sections, "khong-co")).toEqual([]);
   });

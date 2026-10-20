@@ -91,10 +91,10 @@ describe("RegisterScreen", () => {
     const user = userEvent.setup();
     const button = screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    await user.type(screen.getByLabelText("Địa chỉ Hive"), " http://10.86.224.34:3000 ");
+    await user.type(screen.getByLabelText("Địa chỉ Hive"), " http://192.0.2.10:3000 ");
     await user.click(button);
     expect(await screen.findByText("Đang chờ bạn đăng nhập trên trình duyệt…")).toBeTruthy();
-    expect(calls.find((c) => c.command === "browser_login")?.args).toEqual({ hub: "http://10.86.224.34:3000" });
+    expect(calls.find((c) => c.command === "browser_login")?.args).toEqual({ hub: "http://192.0.2.10:3000" });
     finish("mac-duy");
     expect(await screen.findByText("Đã đăng ký. Worker đang kết nối với hub.")).toBeTruthy();
   });
@@ -133,14 +133,14 @@ describe("RegisterScreen", () => {
       ...notification,
       hub_check: () =>
         Promise.reject(
-          "Máy này chưa tin chứng chỉ HTTPS của 10.86.224.34. Hub dùng chứng chỉ nội bộ (vd. Caddy local CA) thì xin quản trị hub file chứng chỉ gốc (root.crt) rồi cài vào máy.",
+          "Máy này chưa tin chứng chỉ HTTPS của 192.0.2.10. Hub dùng chứng chỉ nội bộ (vd. Caddy local CA) thì xin quản trị hub file chứng chỉ gốc (root.crt) rồi cài vào máy.",
         ),
     });
     render(<RegisterScreen />);
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Địa chỉ Hive"), "https://10.86.224.34");
+    await user.type(screen.getByLabelText("Địa chỉ Hive"), "https://192.0.2.10");
     await user.click(screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
-    expect(await screen.findByText(/chưa tin chứng chỉ HTTPS của 10\.86\.224\.34/)).toBeTruthy();
+    expect(await screen.findByText(/chưa tin chứng chỉ HTTPS của 192\.0\.2\.10/)).toBeTruthy();
     expect(calls.some((c) => c.command === "browser_login")).toBe(false);
   });
 

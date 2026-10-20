@@ -26,7 +26,7 @@ Kiến trúc hiện tại đã theo mô hình này ở phần lõi (mục "Hiệ
    OAuth cần HTTPS.
 4. **Server chưa đủ bền để làm nguồn duy nhất.** Chỉ có `pg_dump`, một container `api,jobs`.
 
-**Ràng buộc:** hub cũ ở 10.86.224.34 (hive.xdev.asia) đã bị gỡ sau cảnh báo SOC. Hiện không có hub nào chạy. Spec này
+**Ràng buộc:** hub cũ ở 192.0.2.10 (hive.example.com) đã bị gỡ sau cảnh báo SOC. Hiện không có hub nào chạy. Spec này
 **không** chọn nơi đặt hub, không mở cổng, không đo mạng tới máy nội bộ. Các việc đó cần SOC và chủ dự án đồng ý
 (FR-060). Spec chỉ mô tả điều hub và client phải đáp ứng. Theo Q2, phần token làm song song, không chặn việc xin mở
 lại hub.
@@ -357,7 +357,7 @@ terminal của run đó. App desktop trên máy chạy run vẫn mở được l
 - 14 ngày giữ mục và 200 MB là mặc định đủ cho một máy dev. [Suy luận] Chưa đo dung lượng thật.
 - Spec 026 (nhánh Git trên desktop) không gửi gì lên hub và không đổi.
 - VS Code extension (spec 017) dùng cùng đường `hive` CLI/socket cục bộ khi làm phần ghi.
-- Hub được mở lại ở một nơi khác với 10.86.224.34. Nơi đó do SOC và chủ dự án chọn.
+- Hub được mở lại ở một nơi khác với 192.0.2.10. Nơi đó do SOC và chủ dự án chọn.
 
 ## Out of Scope
 

@@ -191,7 +191,7 @@ fingerprint, password)`, `ssh_remove(alias)`, đều trả `serde_json::Value`.
   `password + "\n"` vào stdin rồi `wipe(password)` (`into_bytes`, `fill(0)`, `black_box`); gom stdout/stderr; quá
   60 giây thì kill.
 
-- [ ] Test `mod tests`: host hợp lệ (`10.86.224.34`, `srv.example.vn`, `::1`), không hợp lệ (`-oProxyCommand=x`,
+- [ ] Test `mod tests`: host hợp lệ (`192.0.2.10`, `srv.example.vn`, `::1`), không hợp lệ (`-oProxyCommand=x`,
   `a b`, chuỗi rỗng, ký tự điều khiển); cổng 0/65536; user `-x`; alias `a*`, `-a`, 65 ký tự; dấu vân tay thiếu
   `SHA256:` hay sai độ dài; `setup_args` không chứa mật khẩu. `capabilities_audit` tự kiểm lệnh mới.
 - [ ] Chạy `cargo test --locked` trong container Linux có thư viện Tauri (hoặc để CI nếu không dựng được). Commit

@@ -191,16 +191,16 @@ class Component extends DCLogic {
     const mod = (name, p) => ({ name, pct: p + '%', fill: bar(p, 100).fill });
     const rst = (a, b) => x(['reset ' + a, 'resets ' + b]);
     const claude = [
-      card({ name: 'Duy Max', email: 'duy@fpt.com', id: 'claude-1', st: 'running', runs: 1, max: 2, m: meters(42, 89, rst('16:00', '4pm'), rst('T5 09:00', 'Thu 09:00')), models: [mod('Sonnet', 12), mod('Opus', 71)] }),
-      card({ name: 'Gói phụ', email: 'phu@fpt.com', id: 'claude-2', st: 'cooling', pri: 10, m: meters(97, 40, rst('17:30', '5:30pm'), rst('T6 09:00', 'Fri 09:00')), models: [mod('Sonnet', 9)], note: x(['Nghỉ tới 17:30 · Dùng tiếp', 'Rests until 17:30 · Use again']) }),
-      card({ name: 'Gói đội', email: 'doi@fpt.com', id: 'claude-4', st: 'ready', pri: 20, m: meters(8, 22, rst('18:10', '6:10pm'), rst('T4 09:00', 'Wed 09:00')), models: [mod('Sonnet', 5), mod('Opus', 18)] }),
+      card({ name: 'Duy Max', email: 'duy@example.com', id: 'claude-1', st: 'running', runs: 1, max: 2, m: meters(42, 89, rst('16:00', '4pm'), rst('T5 09:00', 'Thu 09:00')), models: [mod('Sonnet', 12), mod('Opus', 71)] }),
+      card({ name: 'Gói phụ', email: 'phu@example.com', id: 'claude-2', st: 'cooling', pri: 10, m: meters(97, 40, rst('17:30', '5:30pm'), rst('T6 09:00', 'Fri 09:00')), models: [mod('Sonnet', 9)], note: x(['Nghỉ tới 17:30 · Dùng tiếp', 'Rests until 17:30 · Use again']) }),
+      card({ name: 'Gói đội', email: 'doi@example.com', id: 'claude-4', st: 'ready', pri: 20, m: meters(8, 22, rst('18:10', '6:10pm'), rst('T4 09:00', 'Wed 09:00')), models: [mod('Sonnet', 5), mod('Opus', 18)] }),
     ];
     const codex = [
-      card({ name: 'Codex chính', email: 'codex@fpt.com', id: 'codex-1', st: 'ready', m: meters(15, 33, rst('15:10', '3:10pm'), rst('T3 08:00', 'Tue 08:00')) }),
+      card({ name: 'Codex chính', email: 'codex@example.com', id: 'codex-1', st: 'ready', m: meters(15, 33, rst('15:10', '3:10pm'), rst('T3 08:00', 'Tue 08:00')) }),
       card({ name: 'Codex mới', email: '', id: 'codex-2', st: 'signedOut', m: [{ label: t.session, pct: '—', reset: x(['Chưa biết', 'Unknown']), ...bar(0, 95) }, { label: t.week, pct: '—', reset: x(['Chưa biết', 'Unknown']), ...bar(0, 90) }], note: x(['Đăng nhập để dùng', 'Sign in to use']) }),
     ];
     const gem = { name: x(['Nhóm Gemini', 'Gemini models']), models: 'Gemini Flash, Gemini Pro', s: '2%', w: '8%' };
-    const agy = [card({ name: 'Antigravity', email: 'duy@fpt.com', id: 'antigravity-1', st: 'ready', m: meters(31, 18, rst('17:00', '5pm'), rst('T6 09:00', 'Fri 09:00')), groups: [{ name: x(['Nhóm Claude và GPT', 'Claude and GPT models']), models: 'Claude Sonnet, GPT-OSS', s: '31%', w: '18%' }, gem, { name: x(['Nhóm tính toán', 'Compute models']), models: 'Gemini Flash Lite', s: x(['tắt', 'off']), w: '—' }] })];
+    const agy = [card({ name: 'Antigravity', email: 'duy@example.com', id: 'antigravity-1', st: 'ready', m: meters(31, 18, rst('17:00', '5pm'), rst('T6 09:00', 'Fri 09:00')), groups: [{ name: x(['Nhóm Claude và GPT', 'Claude and GPT models']), models: 'Claude Sonnet, GPT-OSS', s: '31%', w: '18%' }, gem, { name: x(['Nhóm tính toán', 'Compute models']), models: 'Gemini Flash Lite', s: x(['tắt', 'off']), w: '—' }] })];
     const blocks = [
       { mark: 'C', name: 'Claude Code', count: x(['7 gói', '7 plans']), canAdd: true, addLabel: x(['Thêm gói Claude Code', 'Add Claude Code plan']), cards: claude, off: x(['4 gói đang tắt', '4 plans off']) },
       { mark: 'O', name: 'Codex', count: x(['2 gói', '2 plans']), canAdd: true, addLabel: x(['Thêm gói Codex', 'Add Codex plan']), cards: codex, off: '' },
@@ -225,8 +225,8 @@ class Component extends DCLogic {
     return {
       theme: this.props.dark ? 'dark' : 'light', lang, t, sum, blocks, clis, ways,
       foundRows: [
-        { title: 'claude-8', sub: x(['Claude Code · ~/.xdev-hive/accounts/claude-8 · hoa@fpt.com', 'Claude Code · ~/.xdev-hive/accounts/claude-8 · hoa@fpt.com']), on: true, note: '' },
-        { title: x(['Đăng nhập mặc định của Codex', 'Default Codex sign-in']), sub: 'Codex · ~/.codex · duy@fpt.com', on: false, note: x(['Trùng email với codex-1', 'Same email as codex-1']) },
+        { title: 'claude-8', sub: x(['Claude Code · ~/.xdev-hive/accounts/claude-8 · hoa@example.com', 'Claude Code · ~/.xdev-hive/accounts/claude-8 · hoa@example.com']), on: true, note: '' },
+        { title: x(['Đăng nhập mặc định của Codex', 'Default Codex sign-in']), sub: 'Codex · ~/.codex · duy@example.com', on: false, note: x(['Trùng email với codex-1', 'Same email as codex-1']) },
       ],
       showAdd: view === 'add', showFound: view === 'found',
       openAdd: () => this.setState({ view: 'add' }), openFound: () => this.setState({ view: 'found' }), closeAll: () => this.setState({ view: 'list' }),

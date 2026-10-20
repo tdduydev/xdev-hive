@@ -132,10 +132,10 @@ describe("ArgoCdClient", () => {
       const app = await client.getApplication("his-portal");
       expect(app).toMatchObject({
         name: "his-portal",
-        project: "ehospital",
+        project: "acme",
         destinationNamespace: "his-portal",
         source: {
-          repoUrl: "https://gitlab.example.invalid/ehospital/deploy.git",
+          repoUrl: "https://gitlab.example.invalid/acme/deploy.git",
           path: "charts/his-portal",
           targetRevision: "main",
         },

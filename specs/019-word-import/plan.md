@@ -344,7 +344,7 @@ chuyển bằng `srs2md` và cho Markdown từ repo.
   - tải `pandoc-<v>-linux-<arch>.tar.gz` từ release chính thức trên GitHub, `sha256sum -c`;
   - chép `bin/pandoc` vào `/usr/local/bin` của stage `runtime`.
 - **Máy chủ không ra được GitHub:** `deploy/remote.sh` dựng image trên máy chủ, nên máy chủ cần ra được GitHub.
-  [Unverified] Máy chủ `hive.xdev.asia` có ra được không: kiểm lúc làm task. Không ra được thì:
+  [Unverified] Máy chủ `hive.example.com` có ra được không: kiểm lúc làm task. Không ra được thì:
   - tải tarball sẵn vào `deploy/vendor/` (gitignore) rồi `COPY`;
   - hoặc đặt `HIVE_PANDOC_PATH` trỏ tới pandoc cài sẵn.
 - **Lúc khởi động:** `pandoc --version` phải ≥ bản ghim. Kết quả ghi vào cấu hình runtime và `/api/v1/health`.
@@ -428,7 +428,7 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | R4 | Sửa `<br>` trong editor làm đổi tài liệu đang có | Khối không sửa vẫn ghi nguyên văn (`MarkdownCodec`). Test xuất lại từng byte trên bộ mẫu hiện có của `markdown.test.ts` và 261 SRS (tại máy) |
 | R5 | Đặt tên sai làm tài liệu nằm sai chỗ trong repo | Xem trước bắt buộc, sửa được từng dòng; chế độ `pr` mặc định nên còn bước duyệt PR |
 | R6 | Kho file phình vì file Word gốc | Hạn mức tổ chức sẵn có; khử trùng theo SHA-256; GC theo tham chiếu. 270 SRS khoảng 235 MB |
-| R7 | Hub đang chạy chưa có #413 | Đã xử lý: `hive.xdev.asia` lên `9947aeb1` ngày 2026-10-17 |
+| R7 | Hub đang chạy chưa có #413 | Đã xử lý: `hive.example.com` lên `9947aeb1` ngày 2026-10-17 |
 | R9 | File `.doc` độc nhắm vào LibreOffice (bộ đọc định dạng nhị phân cũ, bề mặt tấn công lớn) | Kiểm cấu trúc OLE và kích thước trước; không macro, không mạng; hồ sơ riêng mỗi lần; một tiến trình mỗi lúc; giới hạn thời gian; user `node`; theo dõi bản vá của Debian; tắt riêng `.doc` được bằng cách không cài LibreOffice |
 | R10 | Image hub tăng dung lượng vì LibreOffice | Chỉ cài Writer không giao diện; đo và ghi vào ADR 0029 |
 | R11 | Desktop tải nhiều file lớn | Rust đọc và gửi theo luồng, không qua bộ nhớ giao diện; chặn sớm theo giới hạn lượt |
@@ -443,7 +443,7 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | Chuyển trong trình duyệt (mammoth chạy ở web) | Cùng nhược điểm của mammoth. Kết quả phụ thuộc trình duyệt; hub vẫn phải kiểm lại |
 | Dịch vụ chuyển đổi riêng (container pandoc) | Thêm dịch vụ, trái constitution VII. Một binary trong image hub là đủ |
 | Chỉ giữ `tools/srs2md` | BA không cài được Python và pandoc; mỗi lần BA sửa Word lại phải nhờ dev |
-| Ghi file Word gốc vào repo | Repo nặng gấp ba với SRS eHospital; Markdown là bản cần cho người và agent (Q6) |
+| Ghi file Word gốc vào repo | Repo nặng gấp ba với SRS ACME; Markdown là bản cần cho người và agent (Q6) |
 
 ## Complexity Tracking
 

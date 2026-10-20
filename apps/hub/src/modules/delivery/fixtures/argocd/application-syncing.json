@@ -1,10 +1,10 @@
 {
   "metadata": { "name": "his-portal", "namespace": "argocd" },
   "spec": {
-    "project": "ehospital",
+    "project": "acme",
     "sources": [
       {
-        "repoURL": "https://gitlab.example.invalid/ehospital/deploy.git",
+        "repoURL": "https://gitlab.example.invalid/acme/deploy.git",
         "path": "charts/his-portal",
         "targetRevision": "main"
       }

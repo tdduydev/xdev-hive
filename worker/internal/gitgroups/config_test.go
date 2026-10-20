@@ -58,10 +58,10 @@ func TestRepoDirAtLevel(t *testing.T) {
 		return
 	}
 	// Gốc chọn từ hộp thoại Windows: gạch ngược, gạch cuối, gạch xuôi đều ra cùng thư mục.
-	want := `E:\Codes\ehospital-ai\his\backend\his-service`
-	for _, r := range []string{`E:\Codes\ehospital-ai`, `E:\Codes\ehospital-ai\`, `E:/Codes/ehospital-ai`} {
-		g := Group{Path: "ehospital-ai", Root: r}
-		if dir, err := repoDir(g, "ehospital-ai/his/backend/his-service", 1); err != nil || dir != want {
+	want := `E:\Codes\acme-ai\his\backend\his-service`
+	for _, r := range []string{`E:\Codes\acme-ai`, `E:\Codes\acme-ai\`, `E:/Codes/acme-ai`} {
+		g := Group{Path: "acme-ai", Root: r}
+		if dir, err := repoDir(g, "acme-ai/his/backend/his-service", 1); err != nil || dir != want {
 			t.Errorf("repoDir(%q) = %q, %v", r, dir, err)
 		}
 	}

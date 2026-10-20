@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn hosts() {
         for ok in [
-            "10.86.224.34",
+            "192.0.2.10",
             "srv.example.vn",
             "::1",
             "fe80::1",
@@ -269,7 +269,7 @@ mod tests {
         ] {
             assert!(host_arg(bad).is_err(), "{bad}");
         }
-        assert_eq!(host_arg(" 10.86.224.34 ").unwrap(), "--host=10.86.224.34");
+        assert_eq!(host_arg(" 192.0.2.10 ").unwrap(), "--host=192.0.2.10");
     }
 
     #[test]
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn users_and_aliases() {
-        assert_eq!(user_arg("adminvm").unwrap(), "--user=adminvm");
+        assert_eq!(user_arg("deploy").unwrap(), "--user=deploy");
         assert_eq!(alias_arg("hive-prod").unwrap(), "--alias=hive-prod");
         assert!(alias_arg(&"a".repeat(64)).is_ok());
         for bad in ["", "-x", "a*", "a b", "a\nb", "dư", &"a".repeat(65)] {
@@ -309,19 +309,19 @@ mod tests {
     #[test]
     fn setup_args_never_carry_password() {
         assert_eq!(
-            setup_args("10.86.224.34", 22, "adminvm", "hive-prod", FP).unwrap(),
+            setup_args("192.0.2.10", 22, "deploy", "hive-prod", FP).unwrap(),
             [
                 "ssh",
                 "setup",
                 "--json",
-                "--host=10.86.224.34",
+                "--host=192.0.2.10",
                 "--port=22",
-                "--user=adminvm",
+                "--user=deploy",
                 "--alias=hive-prod",
                 &format!("--fingerprint={FP}"),
             ]
         );
-        assert!(setup_args("10.86.224.34", 22, "adminvm", "a*", FP).is_err());
+        assert!(setup_args("192.0.2.10", 22, "deploy", "a*", FP).is_err());
     }
 
     #[test]

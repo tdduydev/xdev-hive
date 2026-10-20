@@ -11,8 +11,8 @@
         "definition": { "name": "NOTE", "defaultVal": "" }
       }
     ],
-    "proceedUrl": "/job/ehospital/job/build-dev-v3/42/wfapi/inputSubmit?inputId=Approveprod",
-    "abortUrl": "/job/ehospital/job/build-dev-v3/42/input/Approveprod/abort",
-    "redirectApprovalUrl": "/job/ehospital/job/build-dev-v3/42/input/"
+    "proceedUrl": "/job/acme/job/build-dev-v3/42/wfapi/inputSubmit?inputId=Approveprod",
+    "abortUrl": "/job/acme/job/build-dev-v3/42/input/Approveprod/abort",
+    "redirectApprovalUrl": "/job/acme/job/build-dev-v3/42/input/"
   }
 ]

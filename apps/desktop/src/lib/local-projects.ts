@@ -138,7 +138,7 @@ function hostOf(url: string): string | null {
 }
 
 /**
- * Gom repo trên máy theo namespace của remote origin (group lồng của GitLab như `ehospital-ai/his`), không có remote thì
+ * Gom repo trên máy theo namespace của remote origin (group lồng của GitLab như `acme-ai/his`), không có remote thì
  * theo thư mục cha. Mục có repo của Nhóm Git theo dõi lấy tên theo đường dẫn nhóm trả về từ máy chủ, vì origin gõ tay có
  * thể khác chữ hoa. Mục theo remote đứng trước; mục và repo sắp theo tên.
  */

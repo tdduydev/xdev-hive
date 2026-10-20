@@ -60,7 +60,7 @@ class Component extends DCLogic {
     let s = 3; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
     this.data = Array.from({ length: 6830 }, (_, i) => {
       const a = this.acts[Math.floor(rnd() * this.acts.length)];
-      return { id: 'e' + i, at: i * 7 + Math.floor(rnd() * 6), a, who: a[1] === 'user' ? users[Math.floor(rnd() * 4)] : a[1] === 'run' ? 'run ' + (0x7f3a91c2 - i * 7919 >>> 0).toString(16).slice(-8) : 'xDev Hive', src: a[1] === 'user' ? '10.86.140.' + (20 + Math.floor(rnd() * 80)) : a[1] === 'run' ? 'mcp' : 'hub', ok: rnd() > 0.04 };
+      return { id: 'e' + i, at: i * 7 + Math.floor(rnd() * 6), a, who: a[1] === 'user' ? users[Math.floor(rnd() * 4)] : a[1] === 'run' ? 'run ' + (0x7f3a91c2 - i * 7919 >>> 0).toString(16).slice(-8) : 'xDev Hive', src: a[1] === 'user' ? '192.0.2.' + (20 + Math.floor(rnd() * 80)) : a[1] === 'run' ? 'mcp' : 'hub', ok: rnd() > 0.04 };
     });
   }
   renderVals() {

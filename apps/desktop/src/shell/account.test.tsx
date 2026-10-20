@@ -209,8 +209,8 @@ describe("liên kết tài khoản", () => {
 
 describe("đăng nhập lại và đổi địa chỉ hub", () => {
   beforeEach(() => setLang("vi"));
-  const NEW = "https://10.86.224.34";
-  const OLD = "http://10.86.224.34:7780";
+  const NEW = "https://192.0.2.10";
+  const OLD = "http://192.0.2.10:7780";
   const at = (hub: string, account: Account | null): AccountStatus => ({
     hub,
     linked: !!account,
@@ -340,7 +340,7 @@ describe("đăng nhập lại và đổi địa chỉ hub", () => {
       account_status: () => at(OLD, null),
       hub_check: () =>
         Promise.reject(
-          "Máy này chưa tin chứng chỉ HTTPS của 10.86.224.34. Hub dùng chứng chỉ nội bộ (vd. Caddy local CA) thì xin quản trị hub file chứng chỉ gốc (root.crt) rồi cài vào máy: macOS mở file bằng Keychain Access, thêm vào System và chọn Always Trust.",
+          "Máy này chưa tin chứng chỉ HTTPS của 192.0.2.10. Hub dùng chứng chỉ nội bộ (vd. Caddy local CA) thì xin quản trị hub file chứng chỉ gốc (root.crt) rồi cài vào máy: macOS mở file bằng Keychain Access, thêm vào System và chọn Always Trust.",
         ),
     });
     render(<AppShell />);

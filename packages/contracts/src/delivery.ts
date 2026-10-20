@@ -870,7 +870,7 @@ function targetConfigSchema<V extends z.ZodType<{ name: string }>>(variable: V) 
       kind: z.enum(["Deployment", "StatefulSet"]),
       name: z.string().regex(/^[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?$/, "Tên workload không hợp lệ."),
       container: z.string().regex(/^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/, "Tên container không hợp lệ."),
-      /** Vd. `harbor.ehospital-v3.azladin.com/his/his-portal:{{tag}}`. */
+      /** Vd. `harbor.example.com/his/his-portal:{{tag}}`. */
       imageTemplate: z
         .string()
         .trim()

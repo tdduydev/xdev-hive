@@ -165,8 +165,8 @@
       "file": "021.md",
       "commit": "c90560568bb78477510719739ddd632d2466f3bc",
       "path": "docs/adr/0019-hive-cli-and-remote-sessions.md",
-      "sha256": "eaaaeceb610aa1d60b7c836546677ca1544bfe30f0befa5e88b035c64f403ae7",
-      "codecSha256": "eaaaeceb610aa1d60b7c836546677ca1544bfe30f0befa5e88b035c64f403ae7",
+      "sha256": "39cc6bcdd97d8b2d7c6d03e4791244e7df2a73660926af55a0e1da03db75841f",
+      "codecSha256": "39cc6bcdd97d8b2d7c6d03e4791244e7df2a73660926af55a0e1da03db75841f",
       "codecExact": true
     },
     {
@@ -573,16 +573,16 @@
       "file": "072.md",
       "commit": "c90560568bb78477510719739ddd632d2466f3bc",
       "path": "specs/010-hive-cli-remote/spec.md",
-      "sha256": "0e630fc82d68840f397da65c0318a026c58cf2701141b99e9585ce884346f7df",
-      "codecSha256": "0e630fc82d68840f397da65c0318a026c58cf2701141b99e9585ce884346f7df",
+      "sha256": "cc5c74de3149eb5e9caa376ed996c475c353de58331b956e27d183feac73f30b",
+      "codecSha256": "cc5c74de3149eb5e9caa376ed996c475c353de58331b956e27d183feac73f30b",
       "codecExact": true
     },
     {
       "file": "073.md",
       "commit": "c90560568bb78477510719739ddd632d2466f3bc",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "191fde8b7d4e724ea55de4bba14782817ae03b7d8780d3a36b347faeffdfaaf7",
-      "codecSha256": "191fde8b7d4e724ea55de4bba14782817ae03b7d8780d3a36b347faeffdfaaf7",
+      "sha256": "c91b63b08c7d93f8f04e00cb95ba36c8aa93bcde6f6bf502f08904246ce0b2ac",
+      "codecSha256": "c91b63b08c7d93f8f04e00cb95ba36c8aa93bcde6f6bf502f08904246ce0b2ac",
       "codecExact": true
     },
     {
@@ -741,8 +741,8 @@
       "file": "093.md",
       "commit": "c90560568bb78477510719739ddd632d2466f3bc",
       "path": "specs/017-vscode-extension/spec.md",
-      "sha256": "b0fe20f7fd85879807472794f752879b6b993c2a611f43fa02e18500ca1256b2",
-      "codecSha256": "b0fe20f7fd85879807472794f752879b6b993c2a611f43fa02e18500ca1256b2",
+      "sha256": "dba71dc692fadcbc2bea645f545d868daeef66ed9665357c135615ef59517a32",
+      "codecSha256": "dba71dc692fadcbc2bea645f545d868daeef66ed9665357c135615ef59517a32",
       "codecExact": true
     },
     {
@@ -861,8 +861,8 @@
       "file": "108.md",
       "commit": "38926801dfd3d2ad2d38e9edde01e325ca7c5f26",
       "path": "specs/017-vscode-extension/spec.md",
-      "sha256": "b6cacf520dd6e306e19c7644cccfcbd5a5fe0f8535b803993a0c44a76197130e",
-      "codecSha256": "b6cacf520dd6e306e19c7644cccfcbd5a5fe0f8535b803993a0c44a76197130e",
+      "sha256": "0ff656405679e325f72bededc7ca00e5faf3c585ec9a089a7427c78efeae7994",
+      "codecSha256": "0ff656405679e325f72bededc7ca00e5faf3c585ec9a089a7427c78efeae7994",
       "codecExact": true
     },
     {
@@ -901,16 +901,16 @@
       "file": "113.md",
       "commit": "b3ce219610c918b9375432ed5109d9e1493516d3",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "b9c56c46eaeef29cd1c39fb9a7f0fd2af41fa8a9a24e3de12915cfd7668f3408",
-      "codecSha256": "b9c56c46eaeef29cd1c39fb9a7f0fd2af41fa8a9a24e3de12915cfd7668f3408",
+      "sha256": "a08339ece283adec6896057f280d276590121aa98e8d5ec912ebb20204eb5e0f",
+      "codecSha256": "a08339ece283adec6896057f280d276590121aa98e8d5ec912ebb20204eb5e0f",
       "codecExact": true
     },
     {
       "file": "114.md",
       "commit": "f63961dd01bf0f244b6fabf174bfa7ae0db8ab67",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "121a8452dce4a7d85eb71dc68057aaf01562bedbbc86ff321d71e67ab23fe485",
-      "codecSha256": "121a8452dce4a7d85eb71dc68057aaf01562bedbbc86ff321d71e67ab23fe485",
+      "sha256": "ec8a2e915d7a55c5db03f52461afb3ddd35ccd00a697585d1673e3ea54a09492",
+      "codecSha256": "ec8a2e915d7a55c5db03f52461afb3ddd35ccd00a697585d1673e3ea54a09492",
       "codecExact": true
     },
     {
@@ -933,8 +933,8 @@
       "file": "117.md",
       "commit": "4638ee595d6371630110062960e3d92f390f816a",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "bb52135429b84da1af5ba66cceb805c0cfb52fd8b56a993fe9f38d37b41bb10d",
-      "codecSha256": "bb52135429b84da1af5ba66cceb805c0cfb52fd8b56a993fe9f38d37b41bb10d",
+      "sha256": "e9bf3c3b8388f62ae55e357258ec05811adf21361d775f29e33dce49fcdab35a",
+      "codecSha256": "e9bf3c3b8388f62ae55e357258ec05811adf21361d775f29e33dce49fcdab35a",
       "codecExact": true
     },
     {
@@ -949,32 +949,32 @@
       "file": "119.md",
       "commit": "461bae7ded385b1c81adcd96d31267e983f89ee9",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "8ae28d7e8d809f0552e18c55322436c15c5a9a12e2186d59e7fb3db9f9683c15",
-      "codecSha256": "8ae28d7e8d809f0552e18c55322436c15c5a9a12e2186d59e7fb3db9f9683c15",
+      "sha256": "d35e32930b5372c11e9d6e34d8cfc0400a475277aea8ff792f1e46c5b620f726",
+      "codecSha256": "d35e32930b5372c11e9d6e34d8cfc0400a475277aea8ff792f1e46c5b620f726",
       "codecExact": true
     },
     {
       "file": "120.md",
       "commit": "f7ff515695afd6b23981c1be2d211c61a4357ee0",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "25d5b891337ff979b481ad823d6000484fa6b0dce48791a7d8e9659860e66f76",
-      "codecSha256": "25d5b891337ff979b481ad823d6000484fa6b0dce48791a7d8e9659860e66f76",
+      "sha256": "913891ec83ea3dceda888ac7b9c8abcc9eced0e4d90fe91044f0522157a094b3",
+      "codecSha256": "913891ec83ea3dceda888ac7b9c8abcc9eced0e4d90fe91044f0522157a094b3",
       "codecExact": true
     },
     {
       "file": "121.md",
       "commit": "d716d6dac78812fa46ce27cdc05dd2e769440d7f",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "7de696aaa68537173e2e349c8ff7f53393499eacf4a9c63aadc205e91b6fc5bf",
-      "codecSha256": "7de696aaa68537173e2e349c8ff7f53393499eacf4a9c63aadc205e91b6fc5bf",
+      "sha256": "8e312e70e659c2a8ba7790d424e9fe84c07f1e9ceaa6a3d602e8afcc74729f4f",
+      "codecSha256": "8e312e70e659c2a8ba7790d424e9fe84c07f1e9ceaa6a3d602e8afcc74729f4f",
       "codecExact": true
     },
     {
       "file": "122.md",
       "commit": "8db3806a796c0ecdf60ea20ca5f127db268caa0c",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "497e56611f55f0b0fd5e5731efede35604fdd01d80b1875537cc6ba389c7c695",
-      "codecSha256": "497e56611f55f0b0fd5e5731efede35604fdd01d80b1875537cc6ba389c7c695",
+      "sha256": "fdf30c3b6a979194ec5c593db7d4b57b01705d6e47b18304c28fd514f78834fb",
+      "codecSha256": "fdf30c3b6a979194ec5c593db7d4b57b01705d6e47b18304c28fd514f78834fb",
       "codecExact": true
     },
     {
@@ -989,16 +989,16 @@
       "file": "124.md",
       "commit": "7bdf081153ad5862c525f0b297316e1d15c31b5f",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "ad6c87e7b247f2fc33d6d3aeba0cac9d93a1dbed531008809e24b398d9c31793",
-      "codecSha256": "ad6c87e7b247f2fc33d6d3aeba0cac9d93a1dbed531008809e24b398d9c31793",
+      "sha256": "98ce36405388302d3f591f9265291eb609229288747be1cd97df82240f2f1059",
+      "codecSha256": "98ce36405388302d3f591f9265291eb609229288747be1cd97df82240f2f1059",
       "codecExact": true
     },
     {
       "file": "125.md",
       "commit": "d447f70a72917fbe00e27a440eeb73d441447e6a",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "237ab1873e04dc2de732007db2194bdf75634482a3f103c7189596f4beafb012",
-      "codecSha256": "237ab1873e04dc2de732007db2194bdf75634482a3f103c7189596f4beafb012",
+      "sha256": "dff5cc7e2f1b57ed21c732911551af329eb3fabba53133a6547d61e4adc52f7b",
+      "codecSha256": "dff5cc7e2f1b57ed21c732911551af329eb3fabba53133a6547d61e4adc52f7b",
       "codecExact": true
     },
     {
@@ -1069,8 +1069,8 @@
       "file": "134.md",
       "commit": "3de9507127def6de418183dec0b0cc956322bc0d",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "7d0ebbbb36de84013a8f2452a96925865752966cd6e25c009af69f1efccbdb03",
-      "codecSha256": "7d0ebbbb36de84013a8f2452a96925865752966cd6e25c009af69f1efccbdb03",
+      "sha256": "bb2bf4d0666b57a7a58edb43e67a7d58233e6662c6793c637da386d4a1313df3",
+      "codecSha256": "bb2bf4d0666b57a7a58edb43e67a7d58233e6662c6793c637da386d4a1313df3",
       "codecExact": true
     },
     {
@@ -1085,24 +1085,24 @@
       "file": "136.md",
       "commit": "df02e109b48c9b0b061ece612dcbe012b4b660ca",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "a5f5a54882164c434bd58afce452ddd6405667ce1d5c0b5cee48649a886d5767",
-      "codecSha256": "a5f5a54882164c434bd58afce452ddd6405667ce1d5c0b5cee48649a886d5767",
+      "sha256": "de23f9fcd7cf279c9b03173a40002d96c3224df719b6b4fe71e0e2147db65399",
+      "codecSha256": "de23f9fcd7cf279c9b03173a40002d96c3224df719b6b4fe71e0e2147db65399",
       "codecExact": true
     },
     {
       "file": "137.md",
       "commit": "0a5fe940b8ee34a233b7b9219550d961d205f5ff",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "612fde210bffa1e689c0a014f68ac71c0ff916951180491c6c95fe57bb5c16fe",
-      "codecSha256": "612fde210bffa1e689c0a014f68ac71c0ff916951180491c6c95fe57bb5c16fe",
+      "sha256": "eb08b97d8d915c00a7b654da182726aba440ea11ce7d80a0821d76902d4d25be",
+      "codecSha256": "eb08b97d8d915c00a7b654da182726aba440ea11ce7d80a0821d76902d4d25be",
       "codecExact": true
     },
     {
       "file": "138.md",
       "commit": "e0858037d8015307d3a0dfb602de25c1aff32c2a",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "294d1248bfc87cdbe5cd8758149bf15bf7376e014e8227bd3caf3cd9bb788032",
-      "codecSha256": "294d1248bfc87cdbe5cd8758149bf15bf7376e014e8227bd3caf3cd9bb788032",
+      "sha256": "6ac242b1cebc329529f61c9af2ec6502ac36a109814b718f9f36d9c523aeb5e5",
+      "codecSha256": "6ac242b1cebc329529f61c9af2ec6502ac36a109814b718f9f36d9c523aeb5e5",
       "codecExact": true
     },
     {
@@ -1189,16 +1189,16 @@
       "file": "149.md",
       "commit": "e7e48b639cc30198b0729f299b869485d6d938bc",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "bed393f5ba27a8807421d13dfebb6826a1c92e49b6e3976a927ba0574d9f7ea6",
-      "codecSha256": "bed393f5ba27a8807421d13dfebb6826a1c92e49b6e3976a927ba0574d9f7ea6",
+      "sha256": "b3955b6d168f2df066bcbfa3956dc6448c478cd5072f164d5f29a660ebfb6088",
+      "codecSha256": "b3955b6d168f2df066bcbfa3956dc6448c478cd5072f164d5f29a660ebfb6088",
       "codecExact": true
     },
     {
       "file": "150.md",
       "commit": "cc93f43ca906c34da07b0207a144dafa9279e125",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "42ed336cfc925d7aab7ced21b37de851003481eba22de36915bacf6db12c1be9",
-      "codecSha256": "42ed336cfc925d7aab7ced21b37de851003481eba22de36915bacf6db12c1be9",
+      "sha256": "eef9d87522c9b207504d333aaf693f45a64d73b42f901aa879c4a36707f5e68c",
+      "codecSha256": "eef9d87522c9b207504d333aaf693f45a64d73b42f901aa879c4a36707f5e68c",
       "codecExact": true
     },
     {
@@ -1221,16 +1221,16 @@
       "file": "153.md",
       "commit": "14b8aa55ce80d3514d963b6c535b57ac4d31a160",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "ca8d1416c7175a0fe65d175eb8655e467124d4a95fdfe1fba207d9082dc6e183",
-      "codecSha256": "ca8d1416c7175a0fe65d175eb8655e467124d4a95fdfe1fba207d9082dc6e183",
+      "sha256": "58a233a7c28dd0a05a4f78a76f9c8a5d766e75728636e0e1a96ce9aab7d53fe4",
+      "codecSha256": "58a233a7c28dd0a05a4f78a76f9c8a5d766e75728636e0e1a96ce9aab7d53fe4",
       "codecExact": true
     },
     {
       "file": "154.md",
       "commit": "41d4ca92462b55803d7be30c9a59aae291e809c8",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "cabaab0e77f5df913bd5726680d656b5600e9690fada228950da1bc8e1e9cd23",
-      "codecSha256": "cabaab0e77f5df913bd5726680d656b5600e9690fada228950da1bc8e1e9cd23",
+      "sha256": "3418f33c5372cda673df4c59a9e4eb8fc80234d32877d2cdaf1f86730b516031",
+      "codecSha256": "3418f33c5372cda673df4c59a9e4eb8fc80234d32877d2cdaf1f86730b516031",
       "codecExact": true
     },
     {
@@ -1245,8 +1245,8 @@
       "file": "156.md",
       "commit": "2f3328aa9c5bb58f30a61960f61b7b4b348b4920",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "8f9046391a0f5e021c2647663cc0caa83bb5cc82c471e86d9f6632a7e55dcabc",
-      "codecSha256": "8f9046391a0f5e021c2647663cc0caa83bb5cc82c471e86d9f6632a7e55dcabc",
+      "sha256": "7e7c35a851c11cd2ce0365fbaf2be11b1b91724ff051c8b26fa39e9d1bdb3f4c",
+      "codecSha256": "7e7c35a851c11cd2ce0365fbaf2be11b1b91724ff051c8b26fa39e9d1bdb3f4c",
       "codecExact": true
     },
     {
@@ -1269,8 +1269,8 @@
       "file": "159.md",
       "commit": "a143dd24c3259c080aa2b8ea8ae88902a14c4be1",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "1f1cf83cce13a0ba0558f8526147b940f2d27b239a82d99f511f5bf98888053b",
-      "codecSha256": "1f1cf83cce13a0ba0558f8526147b940f2d27b239a82d99f511f5bf98888053b",
+      "sha256": "43efdefd3033aa13b886e571be28f22e8195230e2d79bb34dc7fed92481f5374",
+      "codecSha256": "43efdefd3033aa13b886e571be28f22e8195230e2d79bb34dc7fed92481f5374",
       "codecExact": true
     },
     {
@@ -1293,8 +1293,8 @@
       "file": "162.md",
       "commit": "da9dc3a9b20cf3339a90fae6dd61df2f32a339a9",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "347edf2fc98990256b84434fa9c1349315c5cd336b9ae052dc7ee88256e783ee",
-      "codecSha256": "347edf2fc98990256b84434fa9c1349315c5cd336b9ae052dc7ee88256e783ee",
+      "sha256": "f01a44a155dc3e532c3df053901fde5ba8bd1d927ab8dfbe4d68ed6477f8b3bf",
+      "codecSha256": "f01a44a155dc3e532c3df053901fde5ba8bd1d927ab8dfbe4d68ed6477f8b3bf",
       "codecExact": true
     },
     {
@@ -1333,24 +1333,24 @@
       "file": "167.md",
       "commit": "afd952751568e122537ff2276be12ff5015ca230",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "9cfbc35220ffd9dd847e60b22211b64e8579e17a695db5b2b6930cd466873d1d",
-      "codecSha256": "9cfbc35220ffd9dd847e60b22211b64e8579e17a695db5b2b6930cd466873d1d",
+      "sha256": "887eaea2a243d3bbf401df0040dc919d36102bd00fcfc84b151c3e30774e34bc",
+      "codecSha256": "887eaea2a243d3bbf401df0040dc919d36102bd00fcfc84b151c3e30774e34bc",
       "codecExact": true
     },
     {
       "file": "168.md",
       "commit": "f66b6306f2406056bd3ed94115ece589188498a5",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "f4a33812d91483f855610f690b2cc06e99fb12f4875acae7bab8dd227dc9ff52",
-      "codecSha256": "f4a33812d91483f855610f690b2cc06e99fb12f4875acae7bab8dd227dc9ff52",
+      "sha256": "1cb14f1fd9dbf277cdebc8c4c6b7f2f6fbb6de383d02f4067b6a2059a5b70d29",
+      "codecSha256": "1cb14f1fd9dbf277cdebc8c4c6b7f2f6fbb6de383d02f4067b6a2059a5b70d29",
       "codecExact": true
     },
     {
       "file": "169.md",
       "commit": "3fc026923fa9effe22f21d20499ae268b95809c4",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "0c09ffeef9779f5732e9532b6aec982a344a4fcd6ac2ea0bf0679483f7fcbf37",
-      "codecSha256": "0c09ffeef9779f5732e9532b6aec982a344a4fcd6ac2ea0bf0679483f7fcbf37",
+      "sha256": "213c89f37f5e06d27b0dae435db3bdea3cd69c7e568da437c5a0b12bbea1d18c",
+      "codecSha256": "213c89f37f5e06d27b0dae435db3bdea3cd69c7e568da437c5a0b12bbea1d18c",
       "codecExact": true
     },
     {
@@ -1373,8 +1373,8 @@
       "file": "172.md",
       "commit": "18ff77efdb8cad2deeefbaebbb7fcaea43f1a77b",
       "path": "specs/010-hive-cli-remote/tasks.md",
-      "sha256": "7df3614d34e37564f9e6da6e9080eadb11c014d5f43f525282701221b7f129df",
-      "codecSha256": "7df3614d34e37564f9e6da6e9080eadb11c014d5f43f525282701221b7f129df",
+      "sha256": "20914bde51a5637fd20c5f4d841760b7f1b31f94fe0d26135693ceeff6391808",
+      "codecSha256": "20914bde51a5637fd20c5f4d841760b7f1b31f94fe0d26135693ceeff6391808",
       "codecExact": true
     },
     {

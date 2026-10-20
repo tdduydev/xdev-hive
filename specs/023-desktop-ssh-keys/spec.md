@@ -7,7 +7,7 @@
 
 ## Vì sao làm
 
-Đội ehospital-ai triển khai hub lên máy chủ `10.86.224.34` (user `adminvm`) bằng `deploy/remote.sh`. Script gọi `ssh`
+Đội acme-ai triển khai hub lên máy chủ `192.0.2.10` (user `deploy`) bằng `deploy/remote.sh`. Script gọi `ssh`
 nhiều lần. Máy dev đăng nhập máy chủ bằng mật khẩu, nên mỗi lần triển khai phải gõ mật khẩu nhiều lần, và agent không
 được gõ mật khẩu thay người dùng. Máy dev của người dùng đã có `~/.ssh/id_ed25519`, nhưng máy chủ từ chối khoá đó vì
 khoá công khai chưa có trong `authorized_keys`.
@@ -68,7 +68,7 @@ OpenSSH bỏ qua khoá mà không báo rõ. Người dùng muốn app desktop l�
 
 ### User Story 1 - Thêm máy chủ và chuyển sang khoá (Priority: P1)
 
-Người dùng mở màn Máy chủ SSH, bấm Thêm máy chủ, nhập `10.86.224.34`, cổng `22`, user `adminvm`, tên gợi nhớ
+Người dùng mở màn Máy chủ SSH, bấm Thêm máy chủ, nhập `192.0.2.10`, cổng `22`, user `deploy`, tên gợi nhớ
 `hive-prod`. App hiện dấu vân tay khoá máy chủ. Người dùng đối chiếu rồi xác nhận, gõ mật khẩu một lần. App cài khoá,
 kiểm tra đăng nhập bằng khoá, ghi alias vào `~/.ssh/config`.
 
@@ -229,8 +229,8 @@ kiểm tra đăng nhập bằng khoá, ghi alias vào `~/.ssh/config`.
   ```
   # >>> xdev-hive hive-prod
   Host hive-prod
-      HostName 10.86.224.34
-      User adminvm
+      HostName 192.0.2.10
+      User deploy
       Port 22
       IdentityFile ~/.ssh/id_ed25519
       IdentitiesOnly yes
@@ -374,7 +374,7 @@ Máy dev Windows này không có Go, Rust và trình liên kết MSVC. Kế ho�
 ## Câu hỏi cho chủ dự án
 
 - **Q1 - Khoá ở đâu?** Đề xuất: dùng `~/.ssh/id_ed25519`; chưa có thì tạo ở đó. Lý do: `ssh` tự thử khoá này với mọi
-  máy chủ, nên `deploy/remote.sh adminvm@10.86.224.34` chạy được cả khi không dùng alias. Cách khác: khoá riêng của
+  máy chủ, nên `deploy/remote.sh deploy@192.0.2.10` chạy được cả khi không dùng alias. Cách khác: khoá riêng của
   app `~/.ssh/xdev-hive_ed25519`. Cách này dễ thu hồi riêng, nhưng chỉ dùng được qua alias hoặc `-i`.
 - **Q2 - Khoá mới có passphrase không?** Đề xuất: không passphrase. Khoá chỉ người dùng đọc được. Có passphrase thì
   an toàn hơn khi mất máy, nhưng cần ssh-agent; trên Windows dịch vụ ssh-agent mặc định tắt và cần quyền quản trị để

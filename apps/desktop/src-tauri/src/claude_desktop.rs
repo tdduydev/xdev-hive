@@ -2114,7 +2114,7 @@ mod tests {
         )
         .unwrap();
         let plans = [
-            plan("claude-1", "claude", "Duy Max", Some("duy@fpt.com")),
+            plan("claude-1", "claude", "Duy Max", Some("duy@example.com")),
             plan("codex-1", "codex", "Codex", None),
             plan("claude-2", "claude", "", Some("")),
         ];
@@ -2150,7 +2150,7 @@ mod tests {
         Owner {
             id: id.into(),
             uuid: who.map(|w| format!("uuid-{w}")),
-            email: who.map(|w| format!("{w}@fpt.com")),
+            email: who.map(|w| format!("{w}@example.com")),
         }
     }
 
@@ -2178,16 +2178,16 @@ mod tests {
         );
         put(
             &home.join(".claude.json"),
-            r#"{"projects":{"/x":{}},"oauthAccount":{"accountUuid":"uuid-a","emailAddress":"a@fpt.com"}}"#,
+            r#"{"projects":{"/x":{}},"oauthAccount":{"accountUuid":"uuid-a","emailAddress":"a@example.com"}}"#,
         );
         put(
             &home.join(".xdev-hive/accounts/claude-2/.claude.json"),
             r#"{"oauthAccount":null}"#,
         );
-        let mut c2 = plan("claude-2", "claude", "", Some("b@fpt.com"));
+        let mut c2 = plan("claude-2", "claude", "", Some("b@example.com"));
         c2.config_dir = Some("~/.xdev-hive/accounts/claude-2".into());
         let plans = [
-            plan("claude-1", "claude", "", Some("a@fpt.com")),
+            plan("claude-1", "claude", "", Some("a@example.com")),
             c2,
             plan("codex-1", "codex", "", None),
         ];
@@ -2198,7 +2198,7 @@ mod tests {
                 Owner {
                     id: "claude-2".into(),
                     uuid: None,
-                    email: Some("b@fpt.com".into())
+                    email: Some("b@example.com".into())
                 },
             ]
         );
@@ -2332,7 +2332,7 @@ mod tests {
             assert_eq!(
                 state.mismatch,
                 Some(Mismatch {
-                    account: "a@fpt.com".into(),
+                    account: "a@example.com".into(),
                     expected: "claude-3".into(),
                     adopted: Some("claude-1".into()),
                 })
@@ -2566,8 +2566,8 @@ mod tests {
         for (home, paths) in layouts("signedin") {
             fake_profile(&paths, &paths.real, "b");
             let plans = [
-                plan("claude-1", "claude", "Max", Some("a@fpt.com")),
-                plan("claude-2", "claude", "Pro", Some("b@fpt.com")),
+                plan("claude-1", "claude", "Max", Some("a@example.com")),
+                plan("claude-2", "claude", "Pro", Some("b@example.com")),
                 plan("claude-4", "claude", "Token", None),
             ];
             let owners = vec![
@@ -2581,7 +2581,7 @@ mod tests {
                 v.signed_in,
                 Some(SignedIn {
                     account: "uuid-b".into(),
-                    email: Some("b@fpt.com".into()),
+                    email: Some("b@example.com".into()),
                     plan: Some("claude-2".into()),
                 })
             );
@@ -2768,14 +2768,14 @@ mod tests {
         let mut p = ProfileView {
             id: "claude-1".into(),
             label: "Duy Max".into(),
-            email: Some("duy@fpt.com".into()),
+            email: Some("duy@example.com".into()),
             saved: true,
             active: false,
             account_known: true,
         };
-        assert_eq!(tray_label(&p, false), "Duy Max (duy@fpt.com)");
+        assert_eq!(tray_label(&p, false), "Duy Max (duy@example.com)");
         p.active = true;
-        assert_eq!(tray_label(&p, false), "Duy Max (duy@fpt.com) · đang dùng");
-        assert_eq!(tray_label(&p, true), "Duy Max (duy@fpt.com) · in use");
+        assert_eq!(tray_label(&p, false), "Duy Max (duy@example.com) · đang dùng");
+        assert_eq!(tray_label(&p, true), "Duy Max (duy@example.com) · in use");
     }
 }

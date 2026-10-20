@@ -17,13 +17,13 @@ import { notificationChannelCreateInput, notificationChannelEvent, notificationC
 const id = "6f9619ff-8b86-4011-b42d-00c04fc964ff";
 const other = "0e3c2a4b-1f2d-4c5e-8a9b-112233445566";
 const sha = "a".repeat(40);
-const health = { url: "https://hive.xdev.asia/api/v1/health", match: { path: "version", equals: "{{commit8}}" } };
+const health = { url: "https://hive.example.com/api/v1/health", match: { path: "version", equals: "{{commit8}}" } };
 
 const sshScript = {
   method: "ssh-script",
   schemaVersion: 1,
   serverId: id,
-  workdir: "/home/adminvm/xdev-hive",
+  workdir: "/home/deploy/xdev-hive",
   composeProject: "xdev-hive",
   steps: {
     precheck: { script: "test -f .env" },
@@ -56,7 +56,7 @@ const configs = {
     kind: "Deployment",
     name: "his-portal",
     container: "app",
-    imageTemplate: "harbor.ehospital-v3.azladin.com/his/his-portal:{{tag}}",
+    imageTemplate: "harbor.example.com/his/his-portal:{{tag}}",
   },
 } as const;
 const upsert = (config: unknown) =>

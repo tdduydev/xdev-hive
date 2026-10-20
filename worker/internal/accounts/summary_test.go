@@ -54,7 +54,7 @@ func TestSummariesReportQuotaWithoutSecrets(t *testing.T) {
 			t.Errorf("codex-1 thiếu %s: %s", field, b)
 		}
 	}
-	if strings.Contains(string(b), "duy@fpt.com") {
+	if strings.Contains(string(b), "duy@example.com") {
 		t.Fatalf("lộ email: %s", b)
 	}
 }

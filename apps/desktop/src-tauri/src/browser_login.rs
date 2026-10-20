@@ -311,7 +311,7 @@ mod tests {
         assert!(url.starts_with("http://10.0.0.1:3000/desktop/connect?port=51234&state="));
         assert!(url.ends_with("&machine=mac-ha"));
         let url =
-            connect_url("https://10.86.224.34", 51234, &p, "mac-ha", Purpose::SignIn).unwrap();
+            connect_url("https://192.0.2.10", 51234, &p, "mac-ha", Purpose::SignIn).unwrap();
         assert!(
             url.ends_with("&machine=mac-ha&purpose=cli&client=desktop"),
             "{url}"

@@ -29,7 +29,7 @@ function seed(): Plan[] {
       id: "claude-1",
       label: "Duy Max",
       cli: "claude",
-      email: "duy@fpt.com",
+      email: "duy@example.com",
       maxConcurrent: 2,
       active: 1,
       state: "running",
@@ -118,7 +118,7 @@ function fakeTauri(list = seed(), found?: FoundLogin[], desktop?: DesktopProfile
       list = [...list, account];
       return {
         account,
-        loginCommand: "claude auth login --sso --email duy@fpt.com",
+        loginCommand: "claude auth login --sso --email duy@example.com",
         env: { CLAUDE_CONFIG_DIR: account.configDir },
       };
     },
@@ -151,7 +151,7 @@ function fakeTauri(list = seed(), found?: FoundLogin[], desktop?: DesktopProfile
   return {
     calls,
     signIn: (id: string) => {
-      list = list.map((p) => (p.id === id ? { ...p, loggedIn: true, state: "ready", email: "moi@fpt.com" } : p));
+      list = list.map((p) => (p.id === id ? { ...p, loggedIn: true, state: "ready", email: "moi@example.com" } : p));
     },
   };
 }
@@ -416,7 +416,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(r.textContent).toContain("ưu tiên 0 · 1/2 run");
     // Trạng thái có ký hiệu đi kèm chữ, không chỉ màu.
     expect(within(r).getByText("Đang chạy").querySelector("svg")).toBeTruthy();
-    expect(within(r).getByText("duy@fpt.com")).toBeTruthy();
+    expect(within(r).getByText("duy@example.com")).toBeTruthy();
     expect(within(r).getByText("Đang chạy")).toBeTruthy();
     const session = within(r).getByRole("meter", { name: "Phiên 5 giờ: Duy Max" });
     expect(session.getAttribute("aria-valuenow")).toBe("42");
@@ -509,9 +509,16 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
 
   it("hai gói cùng một tài khoản thì mỗi thẻ ghi gói trùng với nó", async () => {
     const list = seed();
-    list.push({ ...base, id: "claude-4", label: "Gói trùng", cli: "claude", email: "DUY@fpt.com ", state: "ready" });
+    list.push({
+      ...base,
+      id: "claude-4",
+      label: "Gói trùng",
+      cli: "claude",
+      email: "DUY@example.com ",
+      state: "ready",
+    });
     // Cùng email nhưng khác CLI thì không phải cùng tài khoản.
-    list.push({ ...base, id: "codex-5", label: "Codex Duy", cli: "codex", email: "duy@fpt.com", state: "ready" });
+    list.push({ ...base, id: "codex-5", label: "Codex Duy", cli: "codex", email: "duy@example.com", state: "ready" });
     fakeTauri(list);
     render(<PlansScreen />);
     await screen.findByText("Duy Max");
@@ -566,17 +573,17 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
 
     await u.type(within(dialog).getByLabelText("Tên hiển thị"), "Gói công ty");
     await u.click(within(dialog).getByRole("radio", { name: "SSO của công ty" }));
-    await u.type(within(dialog).getByLabelText("Email (tuỳ chọn)"), "duy@fpt.com");
+    await u.type(within(dialog).getByLabelText("Email (tuỳ chọn)"), "duy@example.com");
     await u.click(within(dialog).getByRole("button", { name: "Thêm và đăng nhập" }));
 
     expect(sent(fake.calls, "cli_profile_add")).toEqual([
-      { cli: "claude", label: "Gói công ty", how: "sso", email: "duy@fpt.com" },
+      { cli: "claude", label: "Gói công ty", how: "sso", email: "duy@example.com" },
     ]);
     // Terminal chỉ mở sau khi cli_profile_add trả về lệnh đăng nhập.
     await waitFor(() =>
       expect(sent(fake.calls, "open_login_terminal")).toEqual([
         {
-          command: "claude auth login --sso --email duy@fpt.com",
+          command: "claude auth login --sso --email duy@example.com",
           env: { CLAUDE_CONFIG_DIR: "~/.xdev-hive/accounts/claude-9" },
         },
       ]),
@@ -590,7 +597,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     expect(reads()).toBe(before + 1);
     fake.signIn("claude-9");
     await act(() => vi.advanceTimersByTimeAsync(LOGIN_POLL_MS));
-    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("claude-9 đã đăng nhập moi@fpt.com."));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("claude-9 đã đăng nhập moi@example.com."));
     const after = reads();
     await act(() => vi.advanceTimersByTimeAsync(LOGIN_POLL_MS * 3));
     expect(reads()).toBe(after);
@@ -641,7 +648,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
         cli: "claude",
         configDir: "~/.xdev-hive/accounts/claude-8",
         loggedIn: true,
-        email: "hoa@fpt.com",
+        email: "hoa@example.com",
         suggestedId: "claude-8",
         note: null,
       },
@@ -649,7 +656,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
         cli: "codex",
         configDir: null,
         loggedIn: true,
-        email: "duy@fpt.com",
+        email: "duy@example.com",
         suggestedId: "codex-3",
         note: "Trùng email với codex-1",
       },

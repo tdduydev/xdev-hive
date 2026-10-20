@@ -14,7 +14,7 @@ import (
 func signIn(t *testing.T, home, configDir, cli string) {
 	t.Helper()
 	dir := expandHome(home, configDir)
-	name, body := ".claude.json", `{"oauthAccount":{"emailAddress":"duy@fpt.com"}}`
+	name, body := ".claude.json", `{"oauthAccount":{"emailAddress":"duy@example.com"}}`
 	if cli == "codex" {
 		if dir == "" {
 			dir = filepath.Join(home, ".codex")

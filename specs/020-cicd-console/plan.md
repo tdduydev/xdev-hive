@@ -67,7 +67,7 @@ flowchart LR
   G[("GitLab")]
   A[("Argo CD")]
   K[("API Kubernetes")]
-  M[("Máy chủ Ubuntu\nvd. hc-his-app")]
+  M[("Máy chủ Ubuntu\nvd. app-host")]
   D -- "token người dùng / người theo dõi" --> J
   D --> S -- REST --> G
   G -- "webhook Pipeline/Job" --> S
@@ -139,7 +139,7 @@ Theo Key Entities của spec, cộng chi tiết:
 
 - Xác thực Basic bằng user và API token của **người bấm** cho mọi thao tác ghi. Token của **người theo dõi** chỉ dùng cho
   đọc theo lịch (mục 4) và cho tab CI/CD khi người xem chưa có token.
-- POST bằng API token không cần crumb CSRF. [Unverified] Kiểm trên Jenkins của eHospital (plugin Keycloak OIDC) cả việc
+- POST bằng API token không cần crumb CSRF. [Unverified] Kiểm trên Jenkins của ACME (plugin Keycloak OIDC) cả việc
   tạo API token lẫn POST không crumb, khi làm task.
 - Đọc bằng `?tree=`:
   - job: `property[parameterDefinitions[...]]`;
@@ -234,10 +234,10 @@ lần triển khai. `run.sh` giải nén ở bước "đưa mã lên".
 - **đưa mã lên**: giải nén vào `<dir>/src.new`;
 - **triển khai**: đổi `src.new` → `src` (giữ `src.old`), `docker compose -p <project> --env-file <dir>/.env -f
   deploy/compose.yaml up -d --build` với `HIVE_VERSION=<commit>`, tạo lại Caddy nếu `Caddyfile` đổi;
-- **health**: `https://hive.xdev.asia/api/v1/health`, `version == <commit 8 ký tự>`.
+- **health**: `https://hive.example.com/api/v1/health`, `version == <commit 8 ký tự>`.
 
-Hub chạy trong container trên chính `hc-his-app` nên SSH tới IP máy chủ từ trong container. [Unverified] Đường từ mạng
-bridge của Docker tới `10.86.224.34:22`: kiểm khi làm task.
+Hub chạy trong container trên chính `app-host` nên SSH tới IP máy chủ từ trong container. [Unverified] Đường từ mạng
+bridge của Docker tới `192.0.2.10:22`: kiểm khi làm task.
 
 ### 6. Các cách triển khai khác (FR-021…FR-024, FR-034)
 
@@ -328,7 +328,7 @@ bridge của Docker tới `10.86.224.34:22`: kiểm khi làm task.
 | Hệ ngoài giả | Jenkins, Argo CD, Kubernetes bằng máy chủ HTTP trong test; GitLab qua provider `memory`; webhook Pipeline/Job |
 | Bí mật | Log có mật khẩu và token giả bị che (SC-005); khoá riêng không có trong log, phản hồi API (SC-008) |
 | E2E | Playwright: tab CI/CD với nguồn giả; thêm máy chủ, xác nhận dấu vân tay; triển khai `ssh-script` với `sshd` trong container |
-| Thật (tay) | Triển khai lại `hive.xdev.asia` bằng Hive (SC-002) |
+| Thật (tay) | Triển khai lại `hive.example.com` bằng Hive (SC-002) |
 
 ## Quyết định của người viết
 
@@ -339,8 +339,8 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 - **Bước chạy tách khỏi phiên SSH** cho mọi đích `ssh-script`, không chỉ khi triển khai chính hub: một cách duy nhất, chịu
   được hub khởi động lại vì bất kỳ lý do gì.
 - **Kết nối Argo CD và Kubernetes dùng token chung của tổ chức**, khác Jenkins (Q3 chỉ nói về Jenkins). Lý do: Kubernetes
-  của eHospital đang dùng token ServiceAccount (`his-portal/jenkins-deployer-token`), không có token từng người sẵn.
-  [Unverified] Argo CD của eHospital xác thực thế nào chưa đọc được (repo GitOps và Argo CD chưa clone).
+  của ACME đang dùng token ServiceAccount (`his-portal/jenkins-deployer-token`), không có token từng người sẵn.
+  [Unverified] Argo CD của ACME xác thực thế nào chưa đọc được (repo GitOps và Argo CD chưa clone).
 - **Gọi API Kubernetes bằng `fetch`**, không thêm `@kubernetes/client-node`: chỉ cần `GET` và `PATCH` một loại tài nguyên.
 - **Log triển khai ở bảng riêng**, không dùng `run_logs`: lần triển khai không phải run của máy.
 - **Quyền theo vai trò tổ chức và đội**, cộng danh sách vai trò trên từng môi trường. Hive chưa có thành viên theo dự án hay
@@ -355,12 +355,12 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | # | Rủi ro | Cách giảm |
 |---|---|---|
 | R1 | Hub giữ khoá vào mọi máy chủ: lộ database cùng `HIVE_MASTER_KEY` là lộ quyền vào mọi máy chủ (hệ quả của Q1, Q2) | Khoá riêng theo từng máy chủ, mã hoá theo bản ghi; giải mã chỉ trong bộ nhớ; audit mỗi lần dùng; đổi khoá dễ; user trên máy chủ nên là user triển khai riêng, không phải `root` (tài liệu khuyến nghị) |
-| R2 | Hub không vào được cổng SSH của mạng khác (`10.205.76.x`). **Đã xảy ra** (T006, 2026-10-19): từ hub không vào được cổng 22 và API Kubernetes của `10.205.76.x` | Triển khai lên hạ tầng eHospital đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl`. `ssh-script` cho máy chủ hub vào được. Đo trước khi khai báo máy chủ (do chủ dự án làm, khi SOC đồng ý); báo lỗi mạng rõ ràng; máy runner để sau (Q14, Q16) |
+| R2 | Hub không vào được cổng SSH của mạng khác (`198.51.100.x`). **Đã xảy ra** (T006, 2026-10-19): từ hub không vào được cổng 22 và API Kubernetes của `198.51.100.x` | Triển khai lên hạ tầng ACME đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl`. `ssh-script` cho máy chủ hub vào được. Đo trước khi khai báo máy chủ (do chủ dự án làm, khi SOC đồng ý); báo lỗi mạng rõ ràng; máy runner để sau (Q14, Q16) |
 | R3 | Lệnh triển khai sai hoặc bị sửa trái phép | Chỉ `servers.manage` sửa; cấu hình có phiên bản, audit kèm khác biệt; bước "kiểm trước" so thư mục, project |
 | R4 | Token Jenkins từng người: người theo dõi nghỉ hoặc token hết hạn thì mất phần đọc theo lịch | Báo trên tab và cho quản trị; đổi người theo dõi một bước |
 | R5 | Hỏi Jenkins nhiều | `?tree=`; 15 giây chỉ khi có build chạy; lùi lại khi lỗi |
 | R6 | Lộ secret qua log | Che trước khi lưu (mục 7); khuyến nghị bước không in `.env` |
-| R7 | Người vẫn bấm trực tiếp trên Jenkins hay Argo CD, bỏ qua duyệt của Hive | Ngoài tầm Hive; tài liệu khuyến nghị đặt `approvers` cho `ehosPromote` và giới hạn quyền ở Jenkins, Argo CD |
+| R7 | Người vẫn bấm trực tiếp trên Jenkins hay Argo CD, bỏ qua duyệt của Hive | Ngoài tầm Hive; tài liệu khuyến nghị đặt `approvers` cho `acmePromote` và giới hạn quyền ở Jenkins, Argo CD |
 | R8 | Hub tự triển khai chính nó | Bước tách khỏi phiên SSH; job watch nối lại từ vị trí đã lưu; SC-007 có test |
 | R9 | Rollback của Argo CD tắt autoSync | Cảnh báo trước khi quay về; tài liệu cách bật lại |
 | R10 | Host key đổi hợp lệ (cài lại máy) | Quản trị xác nhận lại dấu vân tay, có audit |

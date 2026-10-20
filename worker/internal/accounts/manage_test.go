@@ -14,7 +14,7 @@ import (
 
 const legacy = `{"runner":{"maxParallel":4},"agents":[
  {"id":"claude-3","label":"claude-3","kind":"claude","env":{"CLAUDE_CONFIG_DIR":"~/.xdev-hive/accounts/claude-3","ANTHROPIC_API_KEY":"sk-ant-bimat"},"enabled":true,"priority":30,"maxConcurrent":1,"cooldownMinutes":60,"stopAtSession":80,"stopAtWeek":70,"roles":["implement","research"],"timeoutMinutes":120},
- {"id":"codex-3","label":"duy@xdev.asia","kind":"codex","env":{"CODEX_HOME":"~/.xdev-hive/accounts/codex-3"},"enabled":false,"priority":5,"maxConcurrent":1},
+ {"id":"codex-3","label":"duy@example.com","kind":"codex","env":{"CODEX_HOME":"~/.xdev-hive/accounts/codex-3"},"enabled":false,"priority":5,"maxConcurrent":1},
  {"id":"antigravity-1","label":"anti","kind":"antigravity","env":{},"enabled":true,"priority":35}
 ]}`
 
@@ -88,8 +88,8 @@ func TestViewsReadLoginWithoutTokens(t *testing.T) {
 	codexDir := filepath.Join(home, ".xdev-hive", "accounts", "codex-3")
 	_ = os.MkdirAll(claudeDir, 0o700)
 	_ = os.MkdirAll(codexDir, 0o700)
-	_ = os.WriteFile(filepath.Join(claudeDir, ".claude.json"), []byte(`{"oauthAccount":{"emailAddress":"duy@fpt.com"}}`), 0o600)
-	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"duy@xdev.asia"}`))
+	_ = os.WriteFile(filepath.Join(claudeDir, ".claude.json"), []byte(`{"oauthAccount":{"emailAddress":"duy@example.com"}}`), 0o600)
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"duy@example.com"}`))
 	_ = os.WriteFile(filepath.Join(codexDir, "auth.json"), []byte(`{"tokens":{"id_token":"h.`+payload+`.s","access_token":"bimat"}}`), 0o600)
 	st, _ := LoadState(filepath.Join(home, "none.json"))
 	views := Views([]Account{
@@ -98,10 +98,10 @@ func TestViewsReadLoginWithoutTokens(t *testing.T) {
 		{ID: "claude-9", CLI: "claude", ConfigDir: "~/.xdev-hive/accounts/claude-9", Enabled: true},
 		{ID: "antigravity-1", CLI: "antigravity", Enabled: true},
 	}, st, home, t0)
-	if !*views[0].LoggedIn || views[0].Email != "duy@fpt.com" {
+	if !*views[0].LoggedIn || views[0].Email != "duy@example.com" {
 		t.Fatalf("claude = %+v", views[0])
 	}
-	if !*views[1].LoggedIn || views[1].Email != "duy@xdev.asia" {
+	if !*views[1].LoggedIn || views[1].Email != "duy@example.com" {
 		t.Fatalf("codex = %+v", views[1])
 	}
 	if *views[2].LoggedIn || views[2].State != StateSignedOut || *views[2].Usage.Reason != "Chưa đăng nhập" {
@@ -171,9 +171,9 @@ func TestAddCreatesIDAndDir(t *testing.T) {
 	if !first.Enabled || first.StopAtSession != 95 || first.StopAtWeek != 90 || first.TimeoutMinutes != 60 || len(first.Roles) != 3 {
 		t.Fatalf("mặc định của tài khoản mới: %+v", first)
 	}
-	second, command, env, err := Add(path, home, "claude", "Công ty", "sso", "duy@fpt.com")
+	second, command, env, err := Add(path, home, "claude", "Công ty", "sso", "duy@example.com")
 	dir := filepath.Join(home, ".xdev-hive", "accounts", "claude-2")
-	if err != nil || second.ID != "claude-2" || second.ConfigDir != "~/.xdev-hive/accounts/claude-2" || command != "claude auth login --sso --email duy@fpt.com" || env["CLAUDE_CONFIG_DIR"] != dir {
+	if err != nil || second.ID != "claude-2" || second.ConfigDir != "~/.xdev-hive/accounts/claude-2" || command != "claude auth login --sso --email duy@example.com" || env["CLAUDE_CONFIG_DIR"] != dir {
 		t.Fatalf("claude sau = %+v %q %v %v", second, command, env, err)
 	}
 	st, err := os.Stat(dir)
@@ -204,8 +204,8 @@ func TestAddCreatesIDAndDir(t *testing.T) {
 		{"claude", strings.Repeat("a", 81), "", ""},
 		{"claude", "x", "device", ""},
 		{"codex", "x", "sso", ""},
-		{"codex", "x", "", "duy@fpt.com"},
-		{"claude", "x", "", "duy@fpt.com; rm -rf ~"},
+		{"codex", "x", "", "duy@example.com"},
+		{"claude", "x", "", "duy@example.com; rm -rf ~"},
 		{"claude", "x", "", "khong-phai-email"},
 	} {
 		if _, _, _, err := Add(path, home, bad.cli, bad.label, bad.how, bad.email); err == nil {

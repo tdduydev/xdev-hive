@@ -703,14 +703,14 @@ mod tests {
     #[test]
     fn add_builds_worker_flags() {
         assert_eq!(
-            add_args("claude", " Duy Max ", Some("sso"), Some("duy@fpt.com")).unwrap(),
+            add_args("claude", " Duy Max ", Some("sso"), Some("duy@example.com")).unwrap(),
             [
                 "accounts",
                 "add",
                 "--cli=claude",
                 "--label=Duy Max",
                 "--how=sso",
-                "--email=duy@fpt.com",
+                "--email=duy@example.com",
                 "--json"
             ]
         );
@@ -838,14 +838,14 @@ mod tests {
     fn login_accepts_only_cli_sign_in() {
         let home = Path::new("/Users/duy");
         let ok = parse_login(
-            "claude auth login --sso --email duy@fpt.com",
+            "claude auth login --sso --email duy@example.com",
             &env(&[("CLAUDE_CONFIG_DIR", "~/.xdev-hive/accounts/claude-2")]),
             Some(home),
         )
         .unwrap();
         assert_eq!(
             ok.argv,
-            ["claude", "auth", "login", "--sso", "--email", "duy@fpt.com"]
+            ["claude", "auth", "login", "--sso", "--email", "duy@example.com"]
         );
         assert_eq!(
             ok.env,

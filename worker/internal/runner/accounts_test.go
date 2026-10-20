@@ -47,7 +47,7 @@ func TestRunnerUsesAccountConfigDir(t *testing.T) {
 	remote, base := makeRemote(t)
 	dir := codexLogin(t)
 	quoted, _ := json.Marshal(dir) // đường dẫn Windows có dấu \ phải được escape trong JSON
-	pool := accounts.NewPool(writeAccounts(t, `{"accounts":[{"id":"codex-3","label":"duy@xdev.asia","cli":"codex","configDir":`+string(quoted)+`,"enabled":true,"maxConcurrent":1}]}`))
+	pool := accounts.NewPool(writeAccounts(t, `{"accounts":[{"id":"codex-3","label":"duy@example.com","cli":"codex","configDir":`+string(quoted)+`,"enabled":true,"maxConcurrent":1}]}`))
 	lease, err := pool.Acquire("codex", accounts.RoleImplement)
 	if err != nil || lease == nil {
 		t.Fatalf("acquire = %v, %v", lease, err)
@@ -63,7 +63,7 @@ func TestRunnerUsesAccountConfigDir(t *testing.T) {
 	if !strings.Contains(log, "CODEX_HOME="+dir) {
 		t.Fatalf("CLI không nhận thư mục của tài khoản: %q", log)
 	}
-	if !strings.Contains(log, "chạy bằng tài khoản duy@xdev.asia") {
+	if !strings.Contains(log, "chạy bằng tài khoản duy@example.com") {
 		t.Fatalf("log thiếu tên tài khoản: %q", log)
 	}
 }

@@ -122,20 +122,20 @@ func TestAppendKnownHost(t *testing.T) {
 	}
 	k := edKey(t)
 	for range 2 {
-		if err := AppendKnownHost(path, "10.86.224.34", 22, k); err != nil {
+		if err := AppendKnownHost(path, "192.0.2.10", 22, k); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := AppendKnownHost(path, "10.86.224.34", 2222, k); err != nil {
+	if err := AppendKnownHost(path, "192.0.2.10", 2222, k); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(path)
 	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-	if len(lines) != 3 || !strings.HasPrefix(lines[0], "old ") || !strings.HasPrefix(lines[1], "10.86.224.34 ssh-ed25519 ") ||
-		!strings.HasPrefix(lines[2], "[10.86.224.34]:2222 ssh-ed25519 ") {
+	if len(lines) != 3 || !strings.HasPrefix(lines[0], "old ") || !strings.HasPrefix(lines[1], "192.0.2.10 ssh-ed25519 ") ||
+		!strings.HasPrefix(lines[2], "[192.0.2.10]:2222 ssh-ed25519 ") {
 		t.Errorf("known_hosts sai:\n%s", data)
 	}
-	if got, _ := HostKeyStatus(path, "10.86.224.34", 22, k); got != "known" {
+	if got, _ := HostKeyStatus(path, "192.0.2.10", 22, k); got != "known" {
 		t.Errorf("dòng vừa thêm phải đọc lại được, có %s", got)
 	}
 	fresh := filepath.Join(dir, "sub", "known_hosts")

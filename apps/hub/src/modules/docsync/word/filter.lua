@@ -1,6 +1,6 @@
 -- Bộ lọc pandoc cho nhập Word của hub (spec 019). Từ FR-014 đây là bản chuẩn: tools/srs2md chép lại file này và ghi
 -- FILTER_VERSION đã chép. Đổi quy tắc thì tăng FILTER_VERSION và duyệt lại fixtures/*.md vàng.
--- Chép từ tools/srs2md/srs.lua của gitlab.fis.vn/ehospital-ai/docs, commit 440f2f5b50287009788f4cf944840c023bff41e7
+-- Chép từ tools/srs2md/srs.lua của gitlab.example.com/acme-ai/docs, commit 440f2f5b50287009788f4cf944840c023bff41e7
 -- (sha256 của file 6eb181fb5147afa66cf3f5e312228c861feeba481db98570d09c4a72af907881).
 -- 1.1.0: chỉ số dưới/trên đổi sang chữ Unicode, bỏ <!-- --> giữa hai danh sách liền nhau (WIMP-T026).
 local FILTER_VERSION = "1.1.0"

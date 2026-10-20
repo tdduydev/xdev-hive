@@ -59,8 +59,8 @@ func writeSSHConfig(t *testing.T, home, data string) string {
 
 func managedConfig(t *testing.T, alias, host string, port int) string {
 	t.Helper()
-	out, err := sshkeys.AddBlock([]byte("Host macmini\n    HostName 10.86.140.63\n    User duynh60\n"),
-		sshkeys.Host{Alias: alias, HostName: host, User: "adminvm", Port: port}, "~/.ssh/id_ed25519")
+	out, err := sshkeys.AddBlock([]byte("Host macmini\n    HostName 192.0.2.20\n    User duynh60\n"),
+		sshkeys.Host{Alias: alias, HostName: host, User: "deploy", Port: port}, "~/.ssh/id_ed25519")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func managedConfig(t *testing.T, alias, host string, port int) string {
 
 func TestSSHList(t *testing.T) {
 	home := sshEnv(t)
-	writeSSHConfig(t, home, managedConfig(t, "hive-prod", "10.86.224.34", 22))
+	writeSSHConfig(t, home, managedConfig(t, "hive-prod", "192.0.2.10", 22))
 	out, stderr, code := sshRun(t, "", "list", "--json")
 	if code != 0 {
 		t.Fatalf("mã %d: %s", code, stderr)
@@ -100,7 +100,7 @@ func scanFingerprint(t *testing.T, s *sshtest.Server) string {
 }
 
 func setupArgs(s *sshtest.Server, alias, fingerprint string) []string {
-	return []string{"setup", "--host", s.Host, "--port", strconv.Itoa(s.Port), "--user", "adminvm",
+	return []string{"setup", "--host", s.Host, "--port", strconv.Itoa(s.Port), "--user", "deploy",
 		"--alias", alias, "--fingerprint", fingerprint, "--json"}
 }
 
@@ -181,7 +181,7 @@ func TestSSHSetupRejectsAliasOfOtherServer(t *testing.T) {
 func TestSSHSetupRejectsSecondNameBeforePassword(t *testing.T) {
 	home := sshEnv(t)
 	s := sshtest.New(t, sshtest.Options{Password: "pw"})
-	writeSSHConfig(t, home, "Host joinytran jt\n    HostName 10.86.138.74\n")
+	writeSSHConfig(t, home, "Host joinytran jt\n    HostName 192.0.2.30\n")
 	_, stderr, code := sshRun(t, "pw\n", setupArgs(s, "jt", scanFingerprint(t, s))...)
 	if code != 1 || !strings.Contains(stderr, sshkeys.ErrAliasExists.Error()) || s.Passwords() != 0 {
 		t.Errorf("tên thứ hai của một dòng Host: phải từ chối trước khi gửi mật khẩu; mã %d %q, mật khẩu %d", code, stderr, s.Passwords())
@@ -209,7 +209,7 @@ func TestSSHSetupEmptyPassword(t *testing.T) {
 
 func TestSSHRemove(t *testing.T) {
 	home := sshEnv(t)
-	path := writeSSHConfig(t, home, managedConfig(t, "hive-prod", "10.86.224.34", 22))
+	path := writeSSHConfig(t, home, managedConfig(t, "hive-prod", "192.0.2.10", 22))
 	out, stderr, code := sshRun(t, "", "remove", "--alias", "hive-prod", "--json")
 	if code != 0 {
 		t.Fatalf("mã %d: %s", code, stderr)
@@ -217,7 +217,7 @@ func TestSSHRemove(t *testing.T) {
 	if v := decode[sshListView](t, out); len(v.Hosts) != 1 || v.Hosts[0].Alias != "macmini" {
 		t.Errorf("có %+v", v.Hosts)
 	}
-	if got, _ := os.ReadFile(path); string(got) != "Host macmini\n    HostName 10.86.140.63\n    User duynh60\n" {
+	if got, _ := os.ReadFile(path); string(got) != "Host macmini\n    HostName 192.0.2.20\n    User duynh60\n" {
 		t.Errorf("config sau khi gỡ: %q", got)
 	}
 	if backups, _ := filepath.Glob(path + ".xdev-hive-*.bak"); len(backups) != 1 {

@@ -79,7 +79,7 @@ operator, or a stolen web session. Each of these must be unable to start a sessi
    read-only viewers may watch. The local terminal can always take control back. Nobody but the machine owner can ever
    control a session.
 10. **TOTP fallback when the hub runs over HTTP** (product owner, 2026-10-13). Passkeys stay the primary method whenever
-    HTTPS is available. A hub served over plain HTTP, such as the internal `http://10.86.224.34:3000`, cannot use
+    HTTPS is available. A hub served over plain HTTP, such as the internal `http://192.0.2.10:3000`, cannot use
     WebAuthn, so the worker accepts a TOTP code instead:
     - The worker creates the 160-bit key on the machine, shows it as an `otpauth://` QR code for an Authenticator app,
       and stores it only after the owner enters one correct code. The hub never sees or stores the key.

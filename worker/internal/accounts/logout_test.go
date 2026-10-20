@@ -77,8 +77,8 @@ func TestLogoutClaudeOnlyThatAccountDir(t *testing.T) {
 	home, path := logoutHome(t)
 	dir1 := filepath.Join(home, ".xdev-hive", "accounts", "claude-1")
 	dir2 := filepath.Join(home, ".xdev-hive", "accounts", "claude-2")
-	writeClaudeLogin(t, dir1, "a@fpt.com")
-	writeClaudeLogin(t, dir2, "b@fpt.com")
+	writeClaudeLogin(t, dir1, "a@example.com")
+	writeClaudeLogin(t, dir2, "b@example.com")
 	if err := WriteToken(dir1, "sk-ant-oat-bimat"); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestLogoutClaudeOnlyThatAccountDir(t *testing.T) {
 		t.Fatalf(".claude.json sau đăng xuất = %s", b)
 	}
 	b2, _ := os.ReadFile(filepath.Join(dir2, ".claude.json"))
-	if !strings.Contains(string(b2), "b@fpt.com") {
+	if !strings.Contains(string(b2), "b@example.com") {
 		t.Fatalf("claude-2 mất oauthAccount: %s", b2)
 	}
 	st, _ := LoadState(StatePath(path))
@@ -141,7 +141,7 @@ func TestLogoutClaudeOnlyThatAccountDir(t *testing.T) {
 func TestLogoutClaudeDeletesKeychainOfThatDirOnMac(t *testing.T) {
 	home, path := logoutHome(t)
 	dir := filepath.Join(home, ".xdev-hive", "accounts", "claude-2")
-	writeClaudeLogin(t, dir, "b@fpt.com")
+	writeClaudeLogin(t, dir, "b@example.com")
 	calls := fakeLogout(t, "darwin", nil, "")
 
 	if err := Logout(path, home, "claude-2"); err != nil {
@@ -160,12 +160,12 @@ func TestLogoutClaudeDefaultLoginUsesDefaultService(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Đăng nhập mặc định: ~/.claude.json và ~/.claude/.credentials.json; thư mục gói khác không đụng.
-	writeClaudeLogin(t, filepath.Join(home, ".claude"), "x@fpt.com")
+	writeClaudeLogin(t, filepath.Join(home, ".claude"), "x@example.com")
 	if err := os.Rename(filepath.Join(home, ".claude", ".claude.json"), filepath.Join(home, ".claude.json")); err != nil {
 		t.Fatal(err)
 	}
 	other := filepath.Join(home, ".xdev-hive", "accounts", "claude-1")
-	writeClaudeLogin(t, other, "a@fpt.com")
+	writeClaudeLogin(t, other, "a@example.com")
 	calls := fakeLogout(t, "darwin", nil, "")
 
 	if err := Logout(path, home, "claude-def"); err != nil {
@@ -186,21 +186,21 @@ func TestLogoutClaudeDefaultLoginUsesDefaultService(t *testing.T) {
 func TestLogoutKeychainErrors(t *testing.T) {
 	home, path := logoutHome(t)
 	dir := filepath.Join(home, ".xdev-hive", "accounts", "claude-1")
-	writeClaudeLogin(t, dir, "a@fpt.com")
+	writeClaudeLogin(t, dir, "a@example.com")
 
 	// Mục không có (security báo không tìm thấy) hay máy không có security: coi như đã xoá.
 	fakeLogout(t, "darwin", errors.New("exit status 44"), "The specified item could not be found in the keychain.")
 	if err := Logout(path, home, "claude-1"); err != nil {
 		t.Fatal(err)
 	}
-	writeClaudeLogin(t, dir, "a@fpt.com")
+	writeClaudeLogin(t, dir, "a@example.com")
 	fakeLogout(t, "darwin", exec.ErrNotFound, "")
 	if err := Logout(path, home, "claude-1"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Lỗi thật: báo lỗi và chưa đổi gì.
-	writeClaudeLogin(t, dir, "a@fpt.com")
+	writeClaudeLogin(t, dir, "a@example.com")
 	fakeLogout(t, "darwin", errors.New("exit status 1"), "denied")
 	if err := Logout(path, home, "claude-1"); err == nil {
 		t.Fatal("lỗi keychain phải báo ra")

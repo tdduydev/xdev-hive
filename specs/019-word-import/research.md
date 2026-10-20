@@ -2,9 +2,9 @@
 
 **Spec**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **Ngày**: 2026-10-16
 
-## 1. Bộ dữ liệu thật: SRS eHospital trên SharePoint
+## 1. Bộ dữ liệu thật: SRS ACME trên SharePoint
 
-Nguồn: thư viện SharePoint `ehospitalv2i`, thư mục `60.BA/SRS`, đồng bộ về máy dev bằng OneDrive. Dữ liệu không đưa vào
+Nguồn: thư viện SharePoint `acmev2i`, thư mục `60.BA/SRS`, đồng bộ về máy dev bằng OneDrive. Dữ liệu không đưa vào
 repo này.
 
 | Mục | Số liệu |
@@ -17,7 +17,7 @@ repo này.
 | Tên file | 10 biến thể ngoài mẫu `eHosV2i_SRS_<MODULE>.<MÃ>_v<x.y>.docx` (tiền tố `HC_`, `_` thay `.`, dấu cách trước `v`, hậu tố ` -`, thiếu mã) |
 | Dữ liệu cần người xem | 1 mã có hai bản cùng phiên bản khác nội dung (BIL10); 3 mã chép ở hai thư mục; 2 file đặt sai mã (BILL27, BILL30); 1 file nghi đặt nhầm (RIS38) |
 
-Script `tools/srs2md` (Python + pandoc 3.12 + bộ lọc Lua) trong repo `ehospital-ai/docs` đã chuyển cả 261 tài liệu:
+Script `tools/srs2md` (Python + pandoc 3.12 + bộ lọc Lua) trong repo `acme-ai/docs` đã chuyển cả 261 tài liệu:
 - không còn bảng HTML, thẻ `<figure>`, `<img>`, `<u>`;
 - không tài liệu nào sót trang bìa;
 - chạy lại cho ra đúng từng byte.
@@ -100,7 +100,7 @@ Chạy pandoc như một tiến trình con với:
 
 ## 5. Hub đang chạy
 
-`https://hive.xdev.asia/api/v1/health` ngày 2026-10-16 báo `version` `3fa5aadf` (merge PR #409), build `06:01Z`. Bản này
+`https://hive.example.com/api/v1/health` ngày 2026-10-16 báo `version` `3fa5aadf` (merge PR #409), build `06:01Z`. Bản này
 chưa có PR #413 (sửa nhập từ repo khi archive bị chặn và khi hook lưu đang bật), nên muốn thử spec này trên hub thật thì
 phải triển khai lại hub trước.
 

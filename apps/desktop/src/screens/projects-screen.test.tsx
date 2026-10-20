@@ -294,33 +294,33 @@ describe("ProjectsScreen", () => {
     fakeApp({
       hub: { "projects/list": [], "policies/get": policy(true) },
       local: [
-        entry({ name: "his-web", folder: "/w/his-web", origin: "git@gitlab.fis.vn:EHospital-AI/HIS/his-web.git" }),
+        entry({ name: "his-web", folder: "/w/his-web", origin: "git@gitlab.example.com:ACME-AI/HIS/his-web.git" }),
         entry({
           name: "his-admin",
           folder: "/w/his-admin",
-          origin: "https://gitlab.fis.vn/EHospital-AI/HIS/his-admin.git",
+          origin: "https://gitlab.example.com/ACME-AI/HIS/his-admin.git",
         }),
         entry({
           name: "emr-core",
           folder: "/w/emr-core",
-          origin: "https://gitlab.fis.vn/ehospital-ai/emr/emr-core.git",
+          origin: "https://gitlab.example.com/acme-ai/emr/emr-core.git",
         }),
         entry({ name: "nhap", folder: "/w/tmp/nhap" }),
       ],
       gitGroups: {
-        hosts: [{ id: "h1", kind: "gitlab", url: "https://gitlab.fis.vn", name: "GitLab FIS" }],
+        hosts: [{ id: "h1", kind: "gitlab", url: "https://gitlab.example.com", name: "GitLab FIS" }],
         groups: [
           {
             id: "g1",
             hostId: "h1",
-            path: "ehospital-ai",
+            path: "acme-ai",
             root: "/w",
             protocol: "https",
             repos: [
               {
-                path: "ehospital-ai/his/his-web",
+                path: "acme-ai/his/his-web",
                 name: "his-web",
-                httpUrl: "https://gitlab.fis.vn/ehospital-ai/his/his-web.git",
+                httpUrl: "https://gitlab.example.com/acme-ai/his/his-web.git",
               },
             ],
           },
@@ -331,27 +331,27 @@ describe("ProjectsScreen", () => {
     const user = userEvent.setup();
     const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
     // Nhiều nhóm thì thu gọn; tên nhóm lấy theo Nhóm Git theo dõi, máy chủ hiện tên kết nối.
-    const his = await within(waiting).findByRole("button", { name: "ehospital-ai/his · GitLab FIS 2 repo" });
+    const his = await within(waiting).findByRole("button", { name: "acme-ai/his · GitLab FIS 2 repo" });
     expect(
       within(waiting)
         .getAllByRole("button", { expanded: false })
         .map((b) => b.textContent),
-    ).toEqual(["ehospital-ai/emr · GitLab FIS 1 repo", "ehospital-ai/his · GitLab FIS 2 repo", "/w/tmp 1 repo"]);
+    ).toEqual(["acme-ai/emr · GitLab FIS 1 repo", "acme-ai/his · GitLab FIS 2 repo", "/w/tmp 1 repo"]);
     expect(within(waiting).queryByText("his-web")).toBeNull();
     await user.click(his);
     expect(his.getAttribute("aria-expanded")).toBe("true");
     // Nút của từng repo giữ nguyên.
     expect(within(waiting).getByRole("button", { name: "Bỏ his-web khỏi danh sách" })).toBeTruthy();
-    expect(within(waiting).getByText("origin: git@gitlab.fis.vn:EHospital-AI/HIS/his-web.git")).toBeTruthy();
+    expect(within(waiting).getByText("origin: git@gitlab.example.com:ACME-AI/HIS/his-web.git")).toBeTruthy();
     await user.click(his);
     expect(within(waiting).queryByText("his-web")).toBeNull();
     // Đang lọc thì mở sẵn các nhóm còn lại.
     const filter = within(waiting).getByRole("textbox", { name: "Lọc repo trên máy" });
     await user.type(filter, "core");
-    expect(within(waiting).queryByRole("button", { name: /^ehospital-ai\/his/ })).toBeNull();
+    expect(within(waiting).queryByRole("button", { name: /^acme-ai\/his/ })).toBeNull();
     expect(
       within(waiting)
-        .getByRole("button", { name: /^ehospital-ai\/emr/ })
+        .getByRole("button", { name: /^acme-ai\/emr/ })
         .getAttribute("aria-expanded"),
     ).toBe("true");
     expect(within(waiting).getByText("emr-core")).toBeTruthy();

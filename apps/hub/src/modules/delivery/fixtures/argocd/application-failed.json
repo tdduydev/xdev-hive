@@ -1,9 +1,9 @@
 {
   "metadata": { "name": "his-api", "namespace": "argocd" },
   "spec": {
-    "project": "ehospital",
+    "project": "acme",
     "source": {
-      "repoURL": "https://gitlab.example.invalid/ehospital/deploy.git",
+      "repoURL": "https://gitlab.example.invalid/acme/deploy.git",
       "path": "charts/his-api",
       "targetRevision": "main"
     },

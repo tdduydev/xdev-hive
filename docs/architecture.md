@@ -183,7 +183,7 @@ Hai file `.env.example` và `deploy/compose.yaml` khai báo cùng mặc định 
   khởi động lại (kể cả khi triển khai chính nó) không làm dở bước.
 - Các cách khác gọi bằng `fetch`: Jenkins (`delivery-ci-poll` hỏi 5 phút khi rảnh, 15 giây khi có build chạy), GitLab qua
   `scm` và webhook Pipeline/Job, Argo CD (`sync`, `rollback`), API Kubernetes (`PATCH` image).
-- Mạng: hub không vào được cổng 22 và API Kubernetes của máy nội bộ (T006), nên hạ tầng eHospital đi qua `jenkins-job`
+- Mạng: hub không vào được cổng 22 và API Kubernetes của máy nội bộ (T006), nên hạ tầng ACME đi qua `jenkins-job`
   hoặc `argocd`. Chi tiết Jenkins, Argo CD thật chưa kiểm (T007) và vẫn là suy luận. Chi tiết:
   [ADR 0030](adr/0030-hub-deploys-over-ssh.md), [ADR 0031](adr/0031-external-ci-and-deploy-sources.md).
 

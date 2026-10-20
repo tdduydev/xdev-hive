@@ -7,7 +7,7 @@ import { makeRun } from "@/lib/test-fixtures.ts";
 const member = (teams: OrgMember["teams"]): OrgMember => ({
   userId: "u1",
   name: "Duy",
-  email: "duy@fpt.com",
+  email: "duy@example.com",
   image: null,
   role: "member",
   status: "active",

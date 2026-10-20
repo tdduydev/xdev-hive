@@ -12,12 +12,12 @@ import (
 
 const handConfig = `# máy dev
 Host macmini
-    HostName 10.86.140.63
+    HostName 192.0.2.20
     User duynh60
     IdentityFile ~/.ssh/id_ed25519
 
 Host joinytran jt
-    HostName 10.86.138.74
+    HostName 192.0.2.30
     User joinytran
     Port 2222
 
@@ -35,7 +35,7 @@ Host *
     ServerAliveInterval 30
 `
 
-var hiveProd = Host{Alias: "hive-prod", HostName: "10.86.224.34", User: "adminvm", Port: 22}
+var hiveProd = Host{Alias: "hive-prod", HostName: "192.0.2.10", User: "deploy", Port: 22}
 
 func TestParseConfig(t *testing.T) {
 	hosts := ParseConfig([]byte(handConfig))
@@ -46,7 +46,7 @@ func TestParseConfig(t *testing.T) {
 	if len(hosts) != 3 {
 		t.Fatalf("muốn 3 khối có tên cụ thể (macmini, joinytran, jump-target), có %d: %+v", len(hosts), hosts)
 	}
-	if h := got["macmini"]; h.HostName != "10.86.140.63" || h.User != "duynh60" || h.Port != 22 ||
+	if h := got["macmini"]; h.HostName != "192.0.2.20" || h.User != "duynh60" || h.Port != 22 ||
 		h.IdentityFile != "~/.ssh/id_ed25519" || h.Managed || h.Proxy {
 		t.Errorf("macmini sai: %+v", h)
 	}
@@ -77,7 +77,7 @@ func TestAddBlockBeforeHostStar(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(out)
-	block := "# >>> xdev-hive hive-prod\nHost hive-prod\n    HostName 10.86.224.34\n    User adminvm\n    Port 22\n" +
+	block := "# >>> xdev-hive hive-prod\nHost hive-prod\n    HostName 192.0.2.10\n    User deploy\n    Port 22\n" +
 		"    IdentityFile ~/.ssh/id_ed25519\n    IdentitiesOnly yes\n# <<< xdev-hive\n"
 	if !strings.Contains(s, block+"\nHost *\n") {
 		t.Fatalf("khối phải nằm ngay trước Host *, có:\n%s", s)
@@ -91,7 +91,7 @@ func TestAddBlockBeforeHostStar(t *testing.T) {
 			managed = append(managed, h)
 		}
 	}
-	if len(managed) != 1 || managed[0].Alias != "hive-prod" || managed[0].HostName != "10.86.224.34" {
+	if len(managed) != 1 || managed[0].Alias != "hive-prod" || managed[0].HostName != "192.0.2.10" {
 		t.Errorf("đọc lại khối quản lý sai: %+v", managed)
 	}
 }

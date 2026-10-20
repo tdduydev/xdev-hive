@@ -31,10 +31,10 @@ func discoverHome(t *testing.T) (home, path string) {
 	t.Helper()
 	home = t.TempDir()
 	acc := AccountsDir(home)
-	writeFile(t, filepath.Join(acc, "claude-3", ".claude.json"), claudeJSON("duy@fpt.com"))
-	writeFile(t, filepath.Join(acc, "claude-8", ".claude.json"), claudeJSON("DUY@fpt.com"))
+	writeFile(t, filepath.Join(acc, "claude-3", ".claude.json"), claudeJSON("duy@example.com"))
+	writeFile(t, filepath.Join(acc, "claude-8", ".claude.json"), claudeJSON("DUY@example.com"))
 	writeFile(t, filepath.Join(acc, "codex-2", "config.toml"), "model = \"gpt-5\"\n")
-	writeFile(t, filepath.Join(acc, "work", ".claude.json"), claudeJSON("work@xdev.asia"))
+	writeFile(t, filepath.Join(acc, "work", ".claude.json"), claudeJSON("work@example.com"))
 	writeFile(t, filepath.Join(acc, "notes", "readme.txt"), "x")
 	writeFile(t, filepath.Join(acc, "loose.json"), "{}")
 	if err := os.MkdirAll(filepath.Join(acc, "rong"), 0o700); err != nil {
@@ -76,10 +76,10 @@ func TestDiscoverFindsLoginsNotInList(t *testing.T) {
 		got = append(got, row{f.CLI, str(f.ConfigDir), str(f.Email), f.SuggestedID, str(f.Note)})
 	}
 	want := []row{
-		{"claude", "~/.xdev-hive/accounts/claude-8", "DUY@fpt.com", "claude-8", "Trùng email với claude-3"},
+		{"claude", "~/.xdev-hive/accounts/claude-8", "DUY@example.com", "claude-8", "Trùng email với claude-3"},
 		{"codex", "~/.xdev-hive/accounts/codex-2", "<nil>", "codex-2", "<nil>"},
 		// Tên không theo <cli>-<n>: id mới, bỏ qua tên đang dùng (claude-1, claude-3) và tên thư mục (claude-8).
-		{"claude", "~/.xdev-hive/accounts/work", "work@xdev.asia", "claude-2", "<nil>"},
+		{"claude", "~/.xdev-hive/accounts/work", "work@example.com", "claude-2", "<nil>"},
 		{"claude", "<nil>", "me@gmail.com", "claude-4", "<nil>"},
 		{"antigravity", "<nil>", "<nil>", "antigravity-1", "Antigravity giữ đăng nhập trong keyring, worker không kiểm được"},
 	}
@@ -112,7 +112,7 @@ func TestAddFoundAddsWithoutLogin(t *testing.T) {
 	home, path := discoverHome(t)
 	// Thư mục ghi tuyệt đối hay "~/" đều nhận; tên rỗng thì lấy email.
 	a, err := AddFound(path, home, filepath.Join(AccountsDir(home), "claude-8"), "")
-	if err != nil || a.ID != "claude-8" || a.Label != "DUY@fpt.com" || a.ConfigDir != "~/.xdev-hive/accounts/claude-8" || !a.Enabled || a.StopAtWeek != DefaultStopAtWeek {
+	if err != nil || a.ID != "claude-8" || a.Label != "DUY@example.com" || a.ConfigDir != "~/.xdev-hive/accounts/claude-8" || !a.Enabled || a.StopAtWeek != DefaultStopAtWeek {
 		t.Fatalf("thêm claude-8 = %+v, %v", a, err)
 	}
 	if a, err = AddFound(path, home, "~/.xdev-hive/accounts/work", "Công việc"); err != nil || a.ID != "claude-2" || a.Label != "Công việc" {
@@ -146,7 +146,7 @@ func TestAddFoundAddsWithoutLogin(t *testing.T) {
 // Gói Codex cùng email với gói Claude đã có là hai gói thật (một người có cả hai), không ghi "Trùng email".
 func TestDiscoverDuplicateEmailOnlyWithinCLI(t *testing.T) {
 	home, path := discoverHome(t)
-	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"duy@fpt.com"}`))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"duy@example.com"}`))
 	writeFile(t, filepath.Join(AccountsDir(home), "codex-5", "auth.json"), `{"tokens":{"id_token":"h.`+payload+`.s"}}`)
 	found, err := Discover(path, home)
 	if err != nil {
@@ -154,7 +154,7 @@ func TestDiscoverDuplicateEmailOnlyWithinCLI(t *testing.T) {
 	}
 	for _, f := range found {
 		if f.SuggestedID == "codex-5" {
-			if str(f.Email) != "duy@fpt.com" || f.Note != nil {
+			if str(f.Email) != "duy@example.com" || f.Note != nil {
 				t.Fatalf("codex-5 = email %s note %s", str(f.Email), str(f.Note))
 			}
 			return

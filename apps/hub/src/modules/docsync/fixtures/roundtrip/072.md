@@ -513,7 +513,7 @@ Audit (US5)
 ## Assumptions
 
 - Hub dùng thật chạy HTTPS (Caddy profile `https` hoặc proxy công ty). Hub HTTP (như hub nội bộ
-  `http://10.86.224.34:3000`) có ghi phiên, `hive attach` và điều khiển từ xa qua đường lui TOTP, không có passkey, PWA và
+  `http://192.0.2.10:3000`) có ghi phiên, `hive attach` và điều khiển từ xa qua đường lui TOTP, không có passkey, PWA và
   thông báo đẩy.
 - Điện thoại dùng iOS 16.4+ (Safari, Web Push khi đã cài lên màn hình chính) hoặc Android với Chrome/Edge mới; trình
   duyệt hỗ trợ passkey với xác thực sinh trắc hoặc mã máy.
@@ -528,7 +528,7 @@ Product owner chốt ngày 2026-10-13.
 - **Q1, ai xem được phiên**: Mặc định riêng tư, chỉ chủ xem trực tiếp và bản ghi; chủ bật "Cho đội xem" cho từng phiên
   (US8, FR-029). Phiên gắn task không tự cho đội xem.
 - **Q2, hub chạy HTTP**: **Khác đề xuất ban đầu.** Cho mã TOTP làm đường lui khi hub chạy HTTP (ví dụ hub nội bộ
-  `http://10.86.224.34:3000`). Passkey vẫn là cách chính khi có HTTPS. TOTP: khoá do worker giữ (tạo và ghép tại máy,
+  `http://192.0.2.10:3000`). Passkey vẫn là cách chính khi có HTTPS. TOTP: khoá do worker giữ (tạo và ghép tại máy,
   quét QR bằng app Authenticator), worker tự kiểm mã (hub không kiểm được thay), mỗi lần mở phiên hay xin quyền gõ cần
   mã mới, chống dùng lại mã, giới hạn số lần sai rồi khoá tạm, có audit (FR-033…FR-037). Rủi ro đã chấp nhận: trên HTTP
   nội dung phiên và phím gõ đi qua mạng không mã hoá, và mã TOTP đi qua hub nên kẻ nghe đường truyền hoặc hub bị chiếm

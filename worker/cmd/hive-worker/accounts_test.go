@@ -157,7 +157,7 @@ func TestAccountsCommandDiscover(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, ".claude.json"), []byte(`{"oauthAccount":{"emailAddress":"duy@fpt.com"}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".claude.json"), []byte(`{"oauthAccount":{"emailAddress":"duy@example.com"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -177,10 +177,10 @@ func TestAccountsCommandDiscover(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &found); err != nil {
 		t.Fatal(err)
 	}
-	if len(found.Found) != 1 || found.Found[0].SuggestedID != "claude-8" || *found.Found[0].ConfigDir != "~/.xdev-hive/accounts/claude-8" || !*found.Found[0].LoggedIn || *found.Found[0].Email != "duy@fpt.com" {
+	if len(found.Found) != 1 || found.Found[0].SuggestedID != "claude-8" || *found.Found[0].ConfigDir != "~/.xdev-hive/accounts/claude-8" || !*found.Found[0].LoggedIn || *found.Found[0].Email != "duy@example.com" {
 		t.Fatalf("found = %s", out)
 	}
-	if code, out, _ = runAccounts(t, config, "discover"); code != 0 || !strings.Contains(out, "claude-8") || !strings.Contains(out, "đã đăng nhập duy@fpt.com") {
+	if code, out, _ = runAccounts(t, config, "discover"); code != 0 || !strings.Contains(out, "claude-8") || !strings.Contains(out, "đã đăng nhập duy@example.com") {
 		t.Fatalf("discover chữ: %d %q", code, out)
 	}
 

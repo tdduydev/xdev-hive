@@ -38,7 +38,7 @@ func installOpts(t *testing.T, s *sshtest.Server, password string) InstallOption
 	return InstallOptions{
 		Host:        s.Host,
 		Port:        s.Port,
-		User:        "adminvm",
+		User:        "deploy",
 		Fingerprint: ssh.FingerprintSHA256(s.Keys[ssh.KeyAlgoED25519].PublicKey()),
 		Password:    []byte(password),
 		KnownHosts:  filepath.Join(t.TempDir(), "known_hosts"),
