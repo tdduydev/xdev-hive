@@ -269,6 +269,35 @@ func TestScanWorktreeBlocks(t *testing.T) {
 	}
 }
 
+// SC-004 (research mục 5): repo có .gitmodules mà worktree chưa init submodule vẫn dọn được; đã init thì chặn, cả khi
+// gitlink không có .gitmodules.
+func TestScanSubmodule(t *testing.T) {
+	isolateGit(t)
+	_, _, folder := newRemote(t)
+	addSubmodule(t, folder)
+	sub := addGitlink(t, folder)
+	base := filepath.Dir(folder)
+	mergedWorktree(t, folder, "ai/plain", filepath.Join(base, "wt", "plain"))
+	mergedWorktree(t, folder, "ai/init", filepath.Join(base, "wt", "init"))
+	mergedWorktree(t, folder, "ai/emb", filepath.Join(base, "wt", "emb"))
+	gitFile(t, filepath.Join(base, "wt", "init"), "submodule", "update", "-q", "--init", "libs/sub")
+	gitT(t, "", "clone", "-q", sub, filepath.Join(base, "wt", "emb", "vendor", "emb"))
+
+	r := scanOne(t, testEnv(t), folder, true)
+	if r.Error != nil {
+		t.Fatal(r.Error)
+	}
+	cands, blocked := byBranch(r)
+	if c := cands["ai/plain"]; c.Worktree == nil || c.Blocked != nil || !c.Selected {
+		t.Fatalf("ai/plain: %+v %+v", c, c.Worktree)
+	}
+	for _, name := range []string{"ai/init", "ai/emb"} {
+		if b := blockCode(t, blocked, name); b.Code != BlockSubmodule {
+			t.Fatalf("%s: %+v", name, b)
+		}
+	}
+}
+
 func TestScanBranchWithoutWorktree(t *testing.T) {
 	isolateGit(t)
 	_, _, folder := newRemote(t)

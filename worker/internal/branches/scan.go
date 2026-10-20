@@ -339,7 +339,7 @@ func blockWorktree(l *Listing, it *scanItem, busy []BusyDir) *BlockReason {
 		return nil
 	}
 	t := it.tree
-	if t.submodule || hasSubmodule(w.Path) {
+	if t.submodule {
 		return &BlockReason{Code: BlockSubmodule, Message: "Worktree có submodule."}
 	}
 	if it.op != "" {

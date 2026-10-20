@@ -2,9 +2,11 @@ package branches
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -132,5 +134,157 @@ func TestReadTreeMergeConflict(t *testing.T) {
 	}
 	if op != OpMerge || tr.state() != StateDirty {
 		t.Fatalf("merge dở: op=%q state=%q", op, tr.state())
+	}
+}
+
+// subRepo là repo nhỏ để làm submodule.
+func subRepo(t testing.TB) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "sub")
+	gitT(t, "", "init", "-q", "-b", "main", dir)
+	writeFile(t, dir, "a.txt", "a\n")
+	gitT(t, dir, "add", "-A")
+	gitT(t, dir, "commit", "-qm", "sub")
+	return dir
+}
+
+// gitFile chạy git với protocol.file.allow: từ git 2.38.1 submodule clone từ đường dẫn tại máy bị chặn mặc định.
+func gitFile(t testing.TB, dir string, args ...string) {
+	t.Helper()
+	gitT(t, dir, append([]string{"-c", "protocol.file.allow=always"}, args...)...)
+}
+
+// addSubmodule thêm submodule libs/sub (có .gitmodules) vào dir rồi commit.
+func addSubmodule(t testing.TB, dir string) {
+	t.Helper()
+	gitFile(t, dir, "submodule", "add", "-q", filepath.ToSlash(subRepo(t)), "libs/sub")
+	gitT(t, dir, "commit", "-qm", "submodule")
+}
+
+// addGitlink thêm gitlink vendor/emb không ghi trong .gitmodules (git add một repo lồng), trả repo nguồn.
+func addGitlink(t testing.TB, dir string) string {
+	t.Helper()
+	sub := subRepo(t)
+	gitT(t, "", "clone", "-q", sub, filepath.Join(dir, "vendor", "emb"))
+	gitT(t, dir, "add", "vendor/emb")
+	gitT(t, dir, "commit", "-qm", "gitlink")
+	if out := gitT(t, dir, "ls-files", "--stage", "vendor/emb"); !strings.HasPrefix(out, "160000 ") {
+		t.Fatalf("vendor/emb phải là gitlink: %q", out)
+	}
+	return sub
+}
+
+// readSubmodule là cờ submodule của lượt đọc cho dọn.
+func readSubmodule(t *testing.T, env Env, dir string) bool {
+	t.Helper()
+	tr, _, err := env.readTree(context.Background(), dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tr.submodule
+}
+
+// Cờ submodule khớp đúng lúc git worktree remove (không --force) từ chối (FR-022, research mục 5).
+func TestSubmoduleMatchesGitWorktreeRemove(t *testing.T) {
+	isolateGit(t)
+	env := testEnv(t)
+	withModules := newRepo(t)
+	addSubmodule(t, withModules)
+	gitlinkOnly := newRepo(t)
+	sub := addGitlink(t, gitlinkOnly)
+	if _, err := os.Stat(filepath.Join(gitlinkOnly, ".gitmodules")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("không được có .gitmodules: %v", err)
+	}
+	wts := t.TempDir()
+
+	cases := []struct {
+		name     string
+		repo     string
+		populate func(wt string)
+		want     bool
+	}{
+		{"gitmodules-uninit", withModules, func(string) {}, false},
+		{"gitmodules-init", withModules, func(wt string) { gitFile(t, wt, "submodule", "update", "-q", "--init") }, true},
+		// deinit để lại modules/ trong thư mục git của worktree; git vẫn từ chối.
+		{"gitmodules-deinit", withModules, func(wt string) {
+			gitFile(t, wt, "submodule", "update", "-q", "--init")
+			gitT(t, wt, "submodule", "deinit", "-q", "-f", "libs/sub")
+		}, true},
+		{"gitlink-empty", gitlinkOnly, func(string) {}, false},
+		{"gitlink-cloned", gitlinkOnly, func(wt string) { gitT(t, "", "clone", "-q", sub, filepath.Join(wt, "vendor", "emb")) }, true},
+	}
+	for _, c := range cases {
+		wt := filepath.Join(wts, c.name)
+		gitT(t, c.repo, "worktree", "add", "-q", "-b", c.name, wt)
+		c.populate(wt)
+		if got := readSubmodule(t, env, wt); got != c.want {
+			t.Errorf("%s: submodule = %v, muốn %v", c.name, got, c.want)
+		}
+		out, err := gitTry(c.repo, "worktree", "remove", wt)
+		if refused := err != nil; refused != c.want {
+			t.Errorf("%s: git từ chối = %v, muốn %v\n%s", c.name, refused, c.want, out)
+		}
+	}
+	// Thư mục chính: repo lồng vendor/emb có .git nên là submodule đã init; libs/sub do submodule add clone vào.
+	if !readSubmodule(t, env, gitlinkOnly) || !readSubmodule(t, env, withModules) {
+		t.Fatal("thư mục chính có submodule đã init")
+	}
+}
+
+func TestMayHaveGitlink(t *testing.T) {
+	isolateGit(t)
+	// Repo không có gitlink: không gọi thêm git cho worktree nào (đo SC-001 không đổi).
+	repo := newRepo(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	gitT(t, repo, "worktree", "add", "-q", "-b", "w", wt)
+	for _, d := range []string{repo, wt} {
+		gitDir := gitT(t, d, "rev-parse", "--absolute-git-dir")
+		if maybe, err := mayHaveGitlink(gitDir); maybe || err != nil {
+			t.Fatalf("%s: %v %v", d, maybe, err)
+		}
+	}
+	gitlink := newRepo(t)
+	addGitlink(t, gitlink)
+	if maybe, err := mayHaveGitlink(filepath.Join(gitlink, ".git")); !maybe || err != nil {
+		t.Fatalf("có gitlink: %v %v", maybe, err)
+	}
+
+	dir := t.TempDir()
+	if maybe, err := mayHaveGitlink(dir); maybe || err != nil {
+		t.Fatalf("chưa có index: %v %v", maybe, err)
+	}
+	index := filepath.Join(dir, "index")
+	if err := os.WriteFile(index, []byte("DIRC\x00\x00\x00\x02\x00\x00\x00\x01\x00\x00\x81\xa4"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if maybe, err := mayHaveGitlink(dir); maybe || err != nil {
+		t.Fatalf("không có gitlink: %v %v", maybe, err)
+	}
+	// Split index: mục nằm ở sharedindex.<mã>, không đọc được từ index.
+	writeFile(t, dir, "sharedindex.0123", "")
+	if maybe, err := mayHaveGitlink(dir); !maybe || err != nil {
+		t.Fatalf("split index phải hỏi git: %v %v", maybe, err)
+	}
+	if err := os.Remove(filepath.Join(dir, "sharedindex.0123")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(index, []byte("DIRC\x00\x00\x00\x02\x00\x00\x00\x01\x00\x00\xe0\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if maybe, err := mayHaveGitlink(dir); !maybe || err != nil {
+		t.Fatalf("có mode gitlink: %v %v", maybe, err)
+	}
+}
+
+// Index có thể có gitlink mà git ls-files lỗi: không biết thì chặn.
+func TestHasSubmoduleUnsureBlocks(t *testing.T) {
+	isolateGit(t)
+	gitDir, dir := t.TempDir(), t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
+	if err := os.WriteFile(filepath.Join(gitDir, "index"), []byte("DIRC\x00\x00\xe0\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !testEnv(t).hasSubmodule(context.Background(), dir, gitDir) {
+		t.Fatal("git ls-files lỗi thì phải chặn")
 	}
 }
