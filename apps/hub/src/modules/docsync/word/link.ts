@@ -4,7 +4,8 @@ import { recordAudit } from "../../audit/index.ts";
 import { authorize, docScope, type Principal, readerFor } from "../../knowledge/index.ts";
 import { BadRequestError, NotFoundError, type Tx } from "../../platform/index.ts";
 import { docWordImportFiles } from "../schema.ts";
-import { filePlaces, loadWordTarget, refreshWordImport, stripFrontMatter, wordFileView } from "./commit.ts";
+import { stripFrontMatter } from "./commit.ts";
+import { filePlaces, loadWordTarget, refreshWordImportCounts, wordFileView } from "./shared.ts";
 import type { WordImportFileRow } from "./tools.ts";
 
 // Đích link ảnh bất kỳ (tên băm của bản chuyển, `../assets/x.png` của tài liệu đang có).
@@ -62,7 +63,7 @@ export async function prepareLink(tx: Tx, file: WordImportFileRow): Promise<void
         : { linkMatches: false, updatedAt: new Date() },
     )
     .where(eq(docWordImportFiles.id, file.id));
-  await refreshWordImport(tx, target.imp.id);
+  await refreshWordImportCounts(tx, target.imp.id, "commit");
 }
 
 /** Người gắn chọn "Lấy bản chuyển làm gốc" khi kết quả không khớp nội dung hiện tại. */
@@ -94,7 +95,7 @@ export async function confirmLink(tx: Tx, principal: Principal, input: { fileId:
     targetId: doc.id,
     data: { importId: target.imp.id, fileId: file.id, docKey: doc.key, sha256: file.sha256, matches: file.linkMatches },
   });
-  await refreshWordImport(tx, target.imp.id);
+  await refreshWordImportCounts(tx, target.imp.id, "commit");
   const row = saved ?? file;
   const places = await filePlaces(tx, target, [row]);
   return wordFileView(row, places.get(row.id) ?? { path: null, key: doc.key, exists: true });

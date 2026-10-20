@@ -41,15 +41,16 @@ export const secretFinding = z.object({
 });
 export type SecretFinding = z.output<typeof secretFinding>;
 
-interface TokenPattern {
+export interface SecretPattern {
   kind: SecretKind;
   re: RegExp;
   accept?: (token: string) => boolean;
 }
 
 // Mẫu có dạng đặc trưng xét trước mẫu gán giá trị: `GITHUB_TOKEN=ghp_…` chỉ báo một lần với loại cụ thể. Độ dài tối thiểu
-// chặt hơn `checks.go` (worker chỉ che log nên được phép bắt thừa; ở đây bắt thừa là chặn lưu của người dùng).
-const TOKEN_PATTERNS: TokenPattern[] = [
+// chặt hơn `checks.go` (worker chỉ che log nên được phép bắt thừa; ở đây bắt thừa là chặn lưu của người dùng). Export để
+// bộ che log triển khai (`redact.ts`) và test thấy cùng một bộ mẫu; cờ `g` nên chỉ dùng qua `matchAll`.
+export const SECRET_PATTERNS: readonly SecretPattern[] = [
   { kind: "private_key", re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/g },
   { kind: "anthropic_key", re: /\bsk-ant-[A-Za-z0-9_-]{20,}/g },
   // Khoá OpenAI là chuỗi ngẫu nhiên nên luôn có chữ số; tên kebab-case bắt đầu bằng `sk-` thì không.
@@ -65,7 +66,7 @@ const TOKEN_PATTERNS: TokenPattern[] = [
 
 // Tên phải kết thúc ở từ khoá (cho phép đuôi `key`, `secretKey`) để `tokenizer`, `max_tokens`, `passwordPolicy` không bị
 // coi là bí mật. `==`, `===`, `=>` là so sánh hay hàm, không phải gán.
-const ASSIGNMENT =
+export const SECRET_ASSIGNMENT =
   /(?<![A-Za-z0-9_.-])[A-Za-z0-9_.-]*?(?:token|secret|passw(?:or)?d|api[_-]?key|credentials?|private[_-]?key|access[_-]?key)(?:[_-]?key)?["']?[ \t]*(:=|[:=](?![=>]))[ \t]*(?:"([^"\s]*)"|'([^'\s]*)'|`([^`\s]*)`|([^\s"'`,;(){}[\]<>]+))/gi;
 
 const MIN_VALUE = 8;
@@ -83,22 +84,25 @@ function secretValue(value: string, quoted: boolean, wholeLine: boolean, op: str
   return wholeLine && (op === "=" || /\d/.test(value));
 }
 
-/** Một chuỗi bị nghi: `index` để tính dòng báo lỗi, [`start`, `end`) là phần phải che. */
-interface SecretSpan {
+/**
+ * Một chuỗi bị nghi: `index` là đầu đoạn khớp (gồm cả tên biến của phép gán), dùng để tính dòng báo lỗi và để bộ che
+ * theo đoạn không tách đoạn khớp; [`start`, `end`) là phần phải che.
+ */
+export interface SecretSpan {
   index: number;
   start: number;
   end: number;
   kind: SecretKind;
 }
 
-const PEM_END = /-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/g;
+export const PRIVATE_KEY_END = /-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/g;
 
-function secretSpans(text: string): SecretSpan[] {
+export function secretSpans(text: string): SecretSpan[] {
   const hits: SecretSpan[] = [];
   const taken: [number, number][] = [];
   const overlaps = (start: number, end: number) => taken.some(([s, e]) => start < e && s < end);
 
-  for (const { kind, re, accept } of TOKEN_PATTERNS) {
+  for (const { kind, re, accept } of SECRET_PATTERNS) {
     for (const m of text.matchAll(re)) {
       const end = m.index + m[0].length;
       if ((accept && !accept(m[0])) || overlaps(m.index, end)) continue;
@@ -107,15 +111,15 @@ function secretSpans(text: string): SecretSpan[] {
       // ra, phần phát hiện giữ như cũ để scanSecrets báo đúng các chuỗi khác.
       let maskEnd = end;
       if (kind === "private_key") {
-        PEM_END.lastIndex = end;
-        const close = PEM_END.exec(text);
+        PRIVATE_KEY_END.lastIndex = end;
+        const close = PRIVATE_KEY_END.exec(text);
         maskEnd = close ? close.index + close[0].length : text.length;
       }
       hits.push({ index: m.index, start: m.index, end: maskEnd, kind });
     }
   }
 
-  for (const m of text.matchAll(ASSIGNMENT)) {
+  for (const m of text.matchAll(SECRET_ASSIGNMENT)) {
     const op = m[1] ?? "";
     const quotedValue = m[2] ?? m[3] ?? m[4];
     const value = quotedValue ?? m[5] ?? "";
