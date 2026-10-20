@@ -6,12 +6,10 @@ import {
   type WordImportGetOutput,
   type WordImportState,
   type WordImportUpdateInput,
-  type WordImportWarning,
   wordImportMediaPath,
 } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { authUser } from "../../identity/index.ts";
-import { authorize, docScope, getDoc, type Principal, type Reader, readerFor } from "../../knowledge/index.ts";
+import { getDoc, type Principal, type Reader, readerFor } from "../../knowledge/index.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -20,17 +18,27 @@ import {
   NotFoundError,
   type Tx,
 } from "../../platform/index.ts";
-import type { HomeRow } from "../homes.ts";
-import { keyFromPath, type PathHome } from "../paths.ts";
-import { pathHomeOf, projectKeyOf } from "../push.ts";
 import { queueWordDoc, queueWordImport } from "../queues.ts";
-import { docHomes, docWordImportFiles, docWordImports } from "../schema.ts";
-import { refreshWordImportCounts } from "../word/convert.ts";
+import { docWordImportFiles, docWordImports } from "../schema.ts";
 import { frontMatter } from "../word/postprocess.ts";
+import {
+  canManage,
+  docKeyOf,
+  type FilePlace,
+  filePlaces,
+  keyOfPath,
+  loadWordTarget,
+  NO_PLACE,
+  pathOf,
+  refreshWordImportCounts,
+  scopeKeyOf,
+  taken,
+  type WordTarget,
+  wordFileView,
+  wordImportOf,
+} from "../word/shared.ts";
 import type { WordImportFileRow, WordImportRow } from "../word/tools.ts";
 import { type DocSyncRouteDeps, docSyncApi, notImplemented } from "./common.ts";
-
-// Như word/commit.ts của T010: chưa có chỗ chung nên mỗi bên giữ một bản, gộp khi cả hai vào main.
 
 const notFound = () => new NotFoundError("WORD_IMPORT_NOT_FOUND", "Không tìm thấy lượt nhập Word.");
 const fileNotFound = () => new NotFoundError("WORD_IMPORT_FILE_NOT_FOUND", "Không tìm thấy file trong lượt nhập Word.");
@@ -43,58 +51,14 @@ const FRONT_MATTER = /^﻿?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 // Link ảnh của tài liệu có sẵn về tên ảnh, như Markdown vừa chuyển, để so từng khối không lệch vì đường dẫn.
 const STORED_IMAGE_LINK = /(!?\[[^\]]*\]\()(?:[^()\s]*\/)?([0-9a-f]{12}\.[a-z0-9]+)(\))/g;
 
-interface WordTarget {
-  imp: WordImportRow;
-  home: HomeRow;
-  pathHome: PathHome;
-}
-
-async function loadTarget(tx: Tx, importId: string, lock = false): Promise<WordTarget> {
-  const query = tx.select().from(docWordImports).where(eq(docWordImports.id, importId));
-  const [imp] = lock ? await query.for("update") : await query;
-  if (!imp) throw notFound();
-  const [home] = await tx.select().from(docHomes).where(eq(docHomes.id, imp.homeId));
-  if (!home) throw notFound();
-  const pathHome = { ...pathHomeOf(home, await projectKeyOf(tx, home)), include: home.include, exclude: home.exclude };
-  return { imp, home, pathHome };
-}
-
-const pathOf = (file: WordImportFileRow): string | null => file.pathOverride ?? file.proposedPath;
-
-/** Key suy từ đường dẫn; null khi đường dẫn nằm ngoài thư mục tài liệu của nhà hoặc bị loại trừ. */
-function keyOfPath(target: WordTarget, path: string | null): string | null {
-  if (!path) return null;
-  const root = target.home.root.replace(/\/+$/, "");
-  if (root && !path.startsWith(`${root}/`)) return null;
+/** Phạm vi không thấy được thì coi như không có quyền, để người gọi nhận 404 thay vì lỗi. */
+async function canManageVisible(tx: Tx, reader: Reader, key: string): Promise<boolean> {
   try {
-    return keyFromPath(path, target.pathHome);
-  } catch {
-    return null;
-  }
-}
-
-async function docKeyOf(tx: Tx, docId: string | null): Promise<string | null> {
-  if (!docId) return null;
-  const { rows } = await tx.execute<{ key: string }>(sql`select key from hive.docs where id = ${docId}`);
-  return rows[0]?.key ?? null;
-}
-
-async function canManage(tx: Tx, reader: Reader, key: string): Promise<boolean> {
-  try {
-    await authorize(tx, reader, await docScope(tx, reader, key), "manage");
-    return true;
+    return await canManage(tx, reader, key);
   } catch (error) {
-    if (error instanceof ForbiddenError || error instanceof NotFoundError) return false;
+    if (error instanceof NotFoundError) return false;
     throw error;
   }
-}
-
-/** Key đại diện cho phạm vi đích: thư mục đích khi tạo, tài liệu đích khi cập nhật hay gắn. */
-async function scopeKeyOf(tx: Tx, target: WordTarget): Promise<string | null> {
-  const { imp } = target;
-  if (imp.mode !== "create") return docKeyOf(tx, imp.updateDocId);
-  const dir = imp.targetDir ? `${imp.targetDir.replace(/\/+$/, "")}/` : "";
-  return keyOfPath(target, `${dir}word-import.md`);
 }
 
 /**
@@ -107,12 +71,12 @@ export async function wordImportAccess(
   target: WordTarget,
 ): Promise<WordImportGetOutput["access"] | null> {
   const key = await scopeKeyOf(tx, target);
-  if (key && (await canManage(tx, await readerFor(tx, principal), key))) return "manage";
+  if (key && (await canManageVisible(tx, await readerFor(tx, principal), key))) return "manage";
   return principal.kind === "user" && target.imp.createdBy === principal.userId ? "propose" : null;
 }
 
 export async function loadVisible(tx: Tx, principal: Principal, importId: string, lock = false) {
-  const target = await loadTarget(tx, importId, lock);
+  const target = await loadWordTarget(tx, importId, lock);
   const access = await wordImportAccess(tx, principal, target);
   if (!access) throw notFound();
   return { target, access };
@@ -136,93 +100,8 @@ async function loadFile(tx: Tx, principal: Principal, fileId: string, lock = fal
 
 // ---- Dạng trả về ---------------------------------------------------------------------------------------------------
 
-interface FilePlace {
-  path: string | null;
-  key: string | null;
-  exists: boolean;
-}
-
-function fileView(file: WordImportFileRow, place: FilePlace): WordImportFile {
-  return {
-    id: file.id,
-    importId: file.importId,
-    relativeDir: file.relativeDir,
-    fileName: file.fileName,
-    format: file.format as WordImportFile["format"],
-    size: file.size,
-    sha256: file.sha256,
-    versionLabel: file.versionLabel,
-    proposedPath: file.proposedPath,
-    proposedTitle: file.proposedTitle,
-    path: place.path,
-    title: file.titleOverride ?? file.proposedTitle,
-    key: place.key,
-    exists: place.exists,
-    keepFront: file.keepFront,
-    excluded: file.excluded,
-    state: file.state as WordImportFile["state"],
-    stats: file.stats ?? null,
-    warnings: file.warnings as WordImportWarning[],
-    findings: file.findings as WordImportFile["findings"],
-    error: (file.error as WordImportFile["error"]) ?? null,
-    linkMatches: file.linkMatches,
-    docId: file.docId,
-    docVersion: file.docVersion,
-    proposalId: file.proposalId,
-    createdAt: file.createdAt.toISOString(),
-    updatedAt: file.updatedAt.toISOString(),
-  };
-}
-
-/** Vị trí của các file; một truy vấn cho mọi key thay vì một truy vấn mỗi file. */
-async function filePlaces(tx: Tx, target: WordTarget, files: WordImportFileRow[]): Promise<Map<string, FilePlace>> {
-  const docKey = target.imp.mode === "create" ? null : await docKeyOf(tx, target.imp.updateDocId);
-  const keys = new Map(
-    files.map((f) => [f.id, target.imp.mode === "create" ? keyOfPath(target, pathOf(f)) : docKey] as const),
-  );
-  const wanted = [...new Set([...keys.values()].filter((k): k is string => k !== null))];
-  const existing = new Set<string>();
-  if (wanted.length) {
-    const { rows } = await tx.execute<{ key: string }>(
-      sql`select key from hive.docs where key in (${sql.join(
-        wanted.map((k) => sql`${k}`),
-        sql`, `,
-      )})`,
-    );
-    for (const r of rows) existing.add(r.key);
-  }
-  return new Map(
-    files.map((f) => {
-      const key = keys.get(f.id) ?? null;
-      return [f.id, { path: pathOf(f), key, exists: key !== null && existing.has(key) }];
-    }),
-  );
-}
-
 async function placeOf(tx: Tx, target: WordTarget, file: WordImportFileRow): Promise<FilePlace> {
-  return (await filePlaces(tx, target, [file])).get(file.id) ?? { path: null, key: null, exists: false };
-}
-
-async function importView(tx: Tx, imp: WordImportRow, names?: Map<string, string | null>): Promise<WordImport> {
-  let name = names?.get(imp.createdBy);
-  if (name === undefined) {
-    const [creator] = await tx.select({ name: authUser.name }).from(authUser).where(eq(authUser.id, imp.createdBy));
-    name = creator?.name ?? null;
-    names?.set(imp.createdBy, name);
-  }
-  return {
-    id: imp.id,
-    homeId: imp.homeId,
-    targetDir: imp.targetDir,
-    mode: imp.mode as WordImport["mode"],
-    docKey: await docKeyOf(tx, imp.updateDocId),
-    confidential: imp.confidential,
-    state: imp.state as WordImport["state"],
-    counts: imp.counts,
-    createdBy: { id: imp.createdBy, name },
-    createdAt: imp.createdAt.toISOString(),
-    updatedAt: imp.updatedAt.toISOString(),
-  };
+  return (await filePlaces(tx, target, [file])).get(file.id) ?? NO_PLACE;
 }
 
 // ---- Thao tác -----------------------------------------------------------------------------------------------------
@@ -236,8 +115,8 @@ export async function getWordImport(tx: Tx, principal: Principal, importId: stri
     .orderBy(asc(docWordImportFiles.relativeDir), asc(docWordImportFiles.fileName));
   const places = await filePlaces(tx, target, files);
   return {
-    import: await importView(tx, target.imp),
-    files: files.map((f) => fileView(f, places.get(f.id) ?? { path: null, key: null, exists: false })),
+    import: await wordImportOf(tx, target.imp),
+    files: files.map((f) => wordFileView(f, places.get(f.id) ?? NO_PLACE)),
     access,
   };
 }
@@ -286,7 +165,7 @@ export async function listWordImports(
       if (ok === undefined) {
         let target = targets.get(imp.homeId);
         if (!target) {
-          target = await loadTarget(tx, imp.id);
+          target = await loadWordTarget(tx, imp.id);
           targets.set(imp.homeId, target);
         }
         ok = (await wordImportAccess(tx, principal, { ...target, imp })) !== null;
@@ -302,7 +181,7 @@ export async function listWordImports(
   const page = visible.slice(0, input.limit);
   const names = new Map<string, string | null>();
   const items: WordImport[] = [];
-  for (const imp of page) items.push(await importView(tx, imp, names));
+  for (const imp of page) items.push(await wordImportOf(tx, imp, names));
   const tail = page.at(-1);
   return {
     items,
@@ -331,7 +210,7 @@ export async function getWordImportFile(tx: Tx, principal: Principal, fileId: st
     }
   }
   return {
-    ...fileView(file, await placeOf(tx, target, file)),
+    ...wordFileView(file, await placeOf(tx, target, file)),
     markdown: converted ? file.markdown : null,
     images: converted
       ? file.images.map((image) => ({
@@ -367,16 +246,6 @@ async function siblingKeys(tx: Tx, target: WordTarget, fileId: string): Promise<
     if (key) keys.add(key);
   }
   return keys;
-}
-
-/** Key hoặc đường dẫn đã có tài liệu (FR-019); đường dẫn so không phân biệt hoa thường như repo trên Windows, macOS. */
-async function taken(tx: Tx, home: HomeRow, key: string, path: string): Promise<boolean> {
-  const { rows } = await tx.execute(sql`
-    select 1 from hive.docs where key = ${key}
-    union all
-    select 1 from hive.doc_repo_files where home_id = ${home.id} and lower(repo_path) = lower(${path})
-    limit 1`);
-  return rows.length > 0;
 }
 
 const errorOf = (code: keyof typeof WORD_IMPORT_ERRORS) => WORD_IMPORT_ERRORS[code].message;
@@ -451,8 +320,8 @@ export async function updateWordImportFile(
     if (saved.format === "doc") await queueWordDoc(jobs, job, { tx });
     else await queueWordImport(jobs, job, { tx });
   }
-  await refreshWordImportCounts(tx, target.imp.id);
-  return fileView(saved, await placeOf(tx, target, saved));
+  await refreshWordImportCounts(tx, target.imp.id, "convert");
+  return wordFileView(saved, await placeOf(tx, target, saved));
 }
 
 /** Huỷ lượt: file chưa tạo thành `cancelled`, tài liệu đã tạo giữ nguyên. */
@@ -475,11 +344,11 @@ export async function cancelWordImport(tx: Tx, principal: Principal, importId: s
       .update(docWordImports)
       .set({ state: "cancelled", updatedAt: new Date() })
       .where(eq(docWordImports.id, imp.id));
-    await refreshWordImportCounts(tx, imp.id);
+    await refreshWordImportCounts(tx, imp.id, "convert");
   }
   const [saved] = await tx.select().from(docWordImports).where(eq(docWordImports.id, imp.id));
   if (!saved) throw notFound();
-  return importView(tx, saved);
+  return wordImportOf(tx, saved);
 }
 
 /** Xem và chỉnh lượt nhập Word (plan.md mục 5), lịch sử nhập của tài liệu (US5). */
