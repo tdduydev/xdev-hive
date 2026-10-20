@@ -1,0 +1,44 @@
+{
+  "metadata": { "resourceVersion": "88300" },
+  "items": [
+    {
+      "metadata": { "name": "his-portal", "namespace": "argocd" },
+      "spec": {
+        "project": "acme",
+        "source": {
+          "repoURL": "https://gitlab.example.invalid/acme/deploy.git",
+          "path": "charts/his-portal",
+          "targetRevision": "main"
+        },
+        "destination": { "server": "https://kubernetes.default.svc", "namespace": "his-portal" },
+        "syncPolicy": { "automated": {} }
+      },
+      "status": {
+        "sync": { "status": "Synced", "revision": "9f8e7d6c5b4a39281706f5e4d3c2b1a099887766" },
+        "health": { "status": "Healthy" },
+        "summary": { "images": ["registry.example.invalid/his/portal:1.8.3"] }
+      }
+    },
+    {
+      "metadata": { "name": "his-api", "namespace": "argocd" },
+      "spec": {
+        "project": "acme",
+        "source": {
+          "repoURL": "https://gitlab.example.invalid/acme/deploy.git",
+          "path": "charts/his-api",
+          "targetRevision": "main"
+        },
+        "destination": { "server": "https://kubernetes.default.svc", "namespace": "his-api" }
+      },
+      "status": {
+        "sync": { "status": "OutOfSync", "revision": "0000000000000000000000000000000000000001" },
+        "health": { "status": "Degraded" }
+      }
+    },
+    {
+      "metadata": { "name": "his-lis", "namespace": "argocd" },
+      "spec": { "project": "default", "destination": { "namespace": "his-lis" } },
+      "status": { "sync": { "status": "Unknown" }, "health": { "status": "Missing" } }
+    }
+  ]
+}
