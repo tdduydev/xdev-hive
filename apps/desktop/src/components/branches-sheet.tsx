@@ -4,17 +4,33 @@ import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
-import { BrushCleaningIcon, EllipsisIcon, GitBranchIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import {
+  ArrowDownToLineIcon,
+  BrushCleaningIcon,
+  EllipsisIcon,
+  GitBranchIcon,
+  PlusIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { BranchCreateDialog } from "@/components/branch-create-dialog.tsx";
 import { BranchSwitchDialog } from "@/components/branch-switch-dialog.tsx";
 import { CleanupDialog } from "@/components/cleanup-dialog.tsx";
+import {
+  type GitAction,
+  GitActionDialog,
+  type GitActionResult,
+  GitOperationPanel,
+  isResumable,
+  ResetCommand,
+} from "@/components/git-operation-panel.tsx";
 import { shortPath } from "@/lib/folder.ts";
 import {
   type BranchInfo,
   type BranchStatus,
   type CreateResult,
   fetchRemotes,
+  type GitOperation,
   lastFetchedAt,
   listBranches,
   type RepoBranches,
@@ -85,6 +101,21 @@ const text: Dict<{
   busy: Record<NonNullable<WorktreeInfo["busy"]>, string>;
   ops: Record<NonNullable<BranchStatus["operation"]>, string>;
   moreFiles: (n: number) => string;
+  pull: string;
+  pulling: string;
+  pullWhy: (reason: string) => string;
+  needBranch: string;
+  opRunning: string;
+  pullNoUpstream: string;
+  pullGone: string;
+  mergeInto: string;
+  rebaseOnto: string;
+  updateFrom: (name: ReactNode) => ReactNode;
+  pulled: (branch: ReactNode, n: number | undefined) => ReactNode;
+  pullUnchanged: (branch: ReactNode) => ReactNode;
+  merged: (onto: ReactNode, into: ReactNode) => ReactNode;
+  rebased: (branch: ReactNode, onto: ReactNode) => ReactNode;
+  aborted: (kind: "merge" | "rebase") => ReactNode;
 }> = {
   vi: {
     branch: "Nhánh",
@@ -169,6 +200,36 @@ const text: Dict<{
       bisect: "Đang bisect",
     },
     moreFiles: (n) => `và ${n} file nữa`,
+    pull: "Pull",
+    pulling: "Đang pull…",
+    pullWhy: (reason) => `Pull không chạy được: ${reason}`,
+    needBranch: "Cần đứng trên một nhánh",
+    opRunning: "Repo đang dở một thao tác, hoàn tất hay huỷ nó trước",
+    pullNoUpstream: "Nhánh này chưa theo dõi nhánh remote nào",
+    pullGone: "Nhánh remote của nhánh này đã bị xoá",
+    mergeInto: "Merge vào nhánh đang đứng",
+    rebaseOnto: "Rebase nhánh đang đứng lên nhánh này",
+    updateFrom: (name) => <>Cập nhật từ {name}</>,
+    pulled: (branch, n) =>
+      n ? (
+        <>
+          Đã pull {n} commit vào {branch}.
+        </>
+      ) : (
+        <>Đã pull vào {branch}.</>
+      ),
+    pullUnchanged: (branch) => <>{branch} đã mới nhất, không có commit mới để pull.</>,
+    merged: (onto, into) => (
+      <>
+        Đã merge {onto} vào {into}.
+      </>
+    ),
+    rebased: (branch, onto) => (
+      <>
+        Đã rebase {branch} lên {onto}.
+      </>
+    ),
+    aborted: (kind) => `Đã huỷ ${kind}, thư mục về như trước khi bắt đầu.`,
   },
   en: {
     branch: "Branches",
@@ -254,6 +315,36 @@ const text: Dict<{
       bisect: "Bisect in progress",
     },
     moreFiles: (n) => `and ${n} more`,
+    pull: "Pull",
+    pulling: "Pulling…",
+    pullWhy: (reason) => `Pull cannot run: ${reason}`,
+    needBranch: "Check out a branch first",
+    opRunning: "The repository has an unfinished operation, finish or abort it first",
+    pullNoUpstream: "This branch does not track a remote branch",
+    pullGone: "The remote branch of this branch was deleted",
+    mergeInto: "Merge into the checked-out branch",
+    rebaseOnto: "Rebase the checked-out branch onto this one",
+    updateFrom: (name) => <>Update from {name}</>,
+    pulled: (branch, n) =>
+      n ? (
+        <>
+          Pulled {n} {n === 1 ? "commit" : "commits"} into {branch}.
+        </>
+      ) : (
+        <>Pulled into {branch}.</>
+      ),
+    pullUnchanged: (branch) => <>{branch} is up to date, no new commits to pull.</>,
+    merged: (onto, into) => (
+      <>
+        Merged {onto} into {into}.
+      </>
+    ),
+    rebased: (branch, onto) => (
+      <>
+        Rebased {branch} onto {onto}.
+      </>
+    ),
+    aborted: (kind) => `Aborted the ${kind}, the folder is back as it was before it started.`,
   },
 };
 
@@ -374,6 +465,7 @@ function BranchesBody({
   const t = useT(text);
   const lang = useLang();
   const tabsId = useId();
+  const pullWhyId = useId();
   const [repo, setRepo] = useState<(RepoBranches & { jobId: string }) | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
@@ -385,6 +477,7 @@ function BranchesBody({
   const [switching, setSwitching] = useState<BranchInfo | null>(null);
   const [creating, setCreating] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const [gitAction, setGitAction] = useState<GitAction | null>(null);
   const [notice, setNotice] = useState<ReactNode>(null);
   const fetchJob = useBranchJob(fetchId);
   const listJob = useBranchJob(repo?.jobId ?? null);
@@ -426,9 +519,40 @@ function BranchesBody({
   function changed(message: ReactNode) {
     setSwitching(null);
     setCreating(false);
+    setGitAction(null);
     setNotice(message);
     setReloads((n) => n + 1);
     onChanged();
+  }
+
+  // Pull, merge, rebase xong: pull và merge/rebase sạch báo kết quả kèm lệnh quay về (FR-056); dừng vì xung đột thì khung
+  // thao tác dở hiện ra sau khi đọc lại, không cần câu báo.
+  function gitDone(r: GitActionResult) {
+    if (r.kind === "pull") {
+      const name = <Name>{r.branch}</Name>;
+      changed(
+        r.pull.state === "unchanged" ? (
+          t.pullUnchanged(name)
+        ) : (
+          <>
+            {t.pulled(name, r.pull.behind)}
+            {r.pull.headBefore && <UndoLine headBefore={r.pull.headBefore} />}
+          </>
+        ),
+      );
+    } else changed(r.operation.state === "done" ? operationNotice(r.operation) : null);
+  }
+
+  function operationNotice(op: GitOperation): ReactNode {
+    if (op.state === "aborted") return t.aborted(op.kind === "rebase" ? "rebase" : "merge");
+    const onto = <Name>{op.onto?.name ?? ""}</Name>;
+    const branch = <Name>{op.branch ?? ""}</Name>;
+    return (
+      <>
+        {op.kind === "rebase" ? t.rebased(branch, onto) : t.merged(onto, branch)}
+        {op.headBefore && <UndoLine headBefore={op.headBefore} />}
+      </>
+    );
   }
 
   const view = repo ? withWorktreeEvents(repo, listJob) : null;
@@ -441,6 +565,18 @@ function BranchesBody({
       ? (locals.find((b) => b.isDefault) ??
         remotes.find((b) => b.isDefault || b.name.endsWith(`/${view.defaultBranch}`)))
       : undefined;
+  // Merge, rebase, pull cần đứng trên một nhánh và repo không đang dở thao tác; thư mục có thay đổi hay đang có chương
+  // trình dùng thì sidecar từ chối kèm danh sách, hộp thoại hỏi tiếp.
+  const gitBlock = view?.current.detached
+    ? t.needBranch
+    : view?.current.operation || view?.operation
+      ? t.opRunning
+      : undefined;
+  const pullBlock = !view
+    ? undefined
+    : (gitBlock ?? (view.current.upstreamGone ? t.pullGone : view.current.upstream ? undefined : t.pullNoUpstream));
+  const currentName = view?.current.branch;
+  const operation = isResumable(view?.operation) ? view.operation : undefined;
   const counts: Record<Tab, number> = { local: locals.length, remote: remotes.length, worktree: worktrees.length };
 
   const branchRows = (tab === "remote" ? remotes : locals).filter((b) => matches(query, b.name, b.subject));
@@ -482,6 +618,16 @@ function BranchesBody({
           <RefreshCwIcon aria-hidden="true" className={cn(fetching && "animate-spin")} />
           {fetching ? t.fetching : t.fetch}
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!view || !!pullBlock || !currentName}
+          aria-describedby={pullBlock ? pullWhyId : undefined}
+          onClick={() => currentName && setGitAction({ kind: "pull", branch: currentName })}
+        >
+          <ArrowDownToLineIcon aria-hidden="true" />
+          {t.pull}
+        </Button>
         <Button size="sm" variant="outline" disabled={!view} onClick={() => setCreating(true)}>
           <PlusIcon aria-hidden="true" />
           {t.createBranch}
@@ -496,6 +642,11 @@ function BranchesBody({
         <span aria-live="polite" className="w-full text-xs text-muted-foreground">
           {when ? t.fetchedAt(when) : t.neverFetched}
         </span>
+        {pullBlock && (
+          <span id={pullWhyId} className="w-full text-xs text-muted-foreground">
+            {t.pullWhy(pullBlock)}
+          </span>
+        )}
       </div>
       {notice && (
         <p role="status" className="text-sm text-success">
@@ -505,6 +656,14 @@ function BranchesBody({
       {fetchProblem && <Alert variant="destructive">{fetchProblem}</Alert>}
       {loadError && <Alert variant="destructive">{loadError}</Alert>}
       {view?.slowPath && <p className="text-xs text-muted-foreground">{t.slowPath}</p>}
+      {operation && (
+        <GitOperationPanel
+          folder={folder}
+          operation={operation}
+          onFinished={(op) => changed(operationNotice(op))}
+          onTerminal={onTerminal}
+        />
+      )}
       {view && defaultTarget && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/50 px-2.5 py-2 text-sm">
           <span className="min-w-0 flex-1 break-words">
@@ -567,18 +726,36 @@ function BranchesBody({
               ? worktreeRows
                   .slice(0, shown)
                   .map((w) => <WorktreeRow key={w.path} worktree={w} onTerminal={() => onTerminal(w.path)} />)
-              : branchRows
-                  .slice(0, shown)
-                  .map((b) => (
-                    <BranchRow
-                      key={b.ref}
-                      branch={b}
-                      defaultBranch={view.defaultBranch}
-                      lang={lang}
-                      onSwitch={setSwitching}
-                      onTerminal={onTerminal}
-                    />
-                  ))}
+              : branchRows.slice(0, shown).map((b) => (
+                  <BranchRow
+                    key={b.ref}
+                    branch={b}
+                    defaultBranch={view.defaultBranch}
+                    lang={lang}
+                    gitBlock={gitBlock}
+                    onSwitch={setSwitching}
+                    onTerminal={onTerminal}
+                    onMerge={(onto) =>
+                      currentName &&
+                      setGitAction({ kind: "merge", onto: { name: onto.name, tip: onto.tip }, into: currentName })
+                    }
+                    onRebase={(onto) =>
+                      currentName &&
+                      setGitAction({ kind: "rebase", onto: { name: onto.name, tip: onto.tip }, branch: currentName })
+                    }
+                    onUpdate={
+                      b.isCurrent && defaultTarget && currentName
+                        ? () =>
+                            setGitAction({
+                              kind: "merge",
+                              onto: { name: defaultTarget.name, tip: defaultTarget.tip },
+                              into: currentName,
+                            })
+                        : undefined
+                    }
+                    updateFrom={defaultTarget?.name}
+                  />
+                ))}
           </ul>
         )}
         {total > shown && (
@@ -598,6 +775,9 @@ function BranchesBody({
           onOpenTerminal={onTerminal}
           onSwitched={(r: SwitchResult) => changed(t.switched(<Name>{r.branch}</Name>))}
         />
+      )}
+      {gitAction && (
+        <GitActionDialog folder={folder} action={gitAction} onClose={() => setGitAction(null)} onDone={gitDone} />
       )}
       {creating && repo && (
         <BranchCreateDialog
@@ -622,6 +802,26 @@ function BranchesBody({
         />
       )}
     </>
+  );
+}
+
+/** Dòng quay về sau khi pull, merge hay rebase xong (FR-056). */
+function UndoLine({ headBefore }: { headBefore: string }) {
+  return (
+    <span className="mt-1 block text-xs text-muted-foreground">
+      <ResetCommand headBefore={headBefore} />
+    </span>
+  );
+}
+
+/** Mục menu bị khoá vẫn nói lý do ngay dưới tên, vì `title` không tới được người dùng bàn phím. */
+function ItemText({ label, reason }: { label: ReactNode; reason: string | undefined }) {
+  if (!reason) return <>{label}</>;
+  return (
+    <span className="flex flex-col">
+      <span>{label}</span>
+      <span className="text-xs text-muted-foreground">{reason}</span>
+    </span>
   );
 }
 
@@ -658,14 +858,26 @@ function BranchRow({
   branch: b,
   defaultBranch,
   lang,
+  gitBlock,
   onSwitch,
   onTerminal,
+  onMerge,
+  onRebase,
+  onUpdate,
+  updateFrom,
 }: {
   branch: BranchInfo;
   defaultBranch: string | undefined;
   lang: Lang;
+  /** Lý do chưa merge/rebase được; trống là được. */
+  gitBlock: string | undefined;
   onSwitch: (branch: BranchInfo) => void;
   onTerminal: (path: string) => void;
+  onMerge: (onto: BranchInfo) => void;
+  onRebase: (onto: BranchInfo) => void;
+  /** Chỉ có ở dòng nhánh đang đứng khi nó không phải nhánh mặc định: merge nhánh mặc định vào đây. */
+  onUpdate: (() => void) | undefined;
+  updateFrom: string | undefined;
 }) {
   const t = useT(text);
   const date = new Date(b.committedAt * 1000).toLocaleDateString(locale(lang));
@@ -697,6 +909,21 @@ function BranchRow({
           <Menu.Item className={MENU_ITEM} onClick={() => onSwitch(b)}>
             {t.switchTo}
           </Menu.Item>
+        )}
+        {b.isCurrent && onUpdate && (
+          <Menu.Item className={MENU_ITEM} disabled={!!gitBlock} onClick={onUpdate}>
+            <ItemText label={t.updateFrom(<Name>{updateFrom ?? ""}</Name>)} reason={gitBlock} />
+          </Menu.Item>
+        )}
+        {!b.isCurrent && (
+          <>
+            <Menu.Item className={MENU_ITEM} disabled={!!gitBlock} onClick={() => onMerge(b)}>
+              <ItemText label={t.mergeInto} reason={gitBlock} />
+            </Menu.Item>
+            <Menu.Item className={MENU_ITEM} disabled={!!gitBlock} onClick={() => onRebase(b)}>
+              <ItemText label={t.rebaseOnto} reason={gitBlock} />
+            </Menu.Item>
+          </>
         )}
         <Menu.Item className={MENU_ITEM} onClick={() => copy(b.name)}>
           {t.copyName}
