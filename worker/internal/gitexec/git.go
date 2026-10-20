@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 
@@ -127,9 +126,7 @@ func (g Git) Run(ctx context.Context, dir, host string, args ...string) (string,
 	cmd := procattr.CommandContext(runCtx, "git", full...)
 	cmd.Dir = dir
 	cmd.Env = g.env(host)
-	if runtime.GOOS != "windows" {
-		cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
-	}
+	interruptGroup(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
