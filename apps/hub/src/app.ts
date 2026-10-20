@@ -36,6 +36,7 @@ import {
 import { type ChatApiDeps, chatRouter, handleSlackWebhook, handleTelegramWebhook } from "./modules/chat/index.ts";
 import { type CodeRunPort, codeReviewsRouter } from "./modules/codereview/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
+import { deliveryRouter, deployStreamHandler } from "./modules/delivery/index.ts";
 import {
   registerMcpTools as docsyncMcpTools,
   docsyncRouter,
@@ -285,6 +286,14 @@ export function createApp({
       briefs: runs?.briefs,
     }),
     ...docsyncRouter({ auth, pool, jobs, masterKey: config.masterKey, publicUrl }),
+    ...deliveryRouter({
+      auth,
+      pool,
+      jobs,
+      masterKey: config.masterKey,
+      providerFactory: providerFactory ?? defaultProviderFactory,
+      publicUrl,
+    }),
     ...skillLearningRouter({ auth, pool, jobs }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),
@@ -330,6 +339,7 @@ export function createApp({
   // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
   const notifier = runNotifier ?? (pool ? new RunNotifier(pool) : undefined);
   app.get("/api/v1/runs/:id/stream", runStreamHandler({ auth, pool, notifier }));
+  app.get("/api/v1/deploys/:id/stream", deployStreamHandler({ auth, pool }));
   // Webhook đọc thân request dạng byte để kiểm HMAC, nên đi thẳng qua Hono, không qua oRPC.
   const hooks = {
     pool,
