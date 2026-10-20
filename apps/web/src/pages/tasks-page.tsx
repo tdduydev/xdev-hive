@@ -114,14 +114,23 @@ export function ProjectTasksPage() {
       crumb={<ProjectCrumb project={project} />}
       projectId={project.id}
       actions={
-        <Link
-          to="/projects/$key/settings"
-          params={{ key: project.key }}
-          className={buttonVariants({ variant: "outline" })}
-        >
-          <Icon name="gear" />
-          Cấu hình
-        </Link>
+        <>
+          <Link
+            to="/projects/$key/cicd"
+            params={{ key: project.key }}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            CI/CD
+          </Link>
+          <Link
+            to="/projects/$key/settings"
+            params={{ key: project.key }}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            <Icon name="gear" />
+            Cấu hình
+          </Link>
+        </>
       }
       creatable={project.state === "active" ? [project] : []}
       blockedReason={createTaskBlockedReason(project.state, project.state === "active" ? 1 : 0, lang)}
