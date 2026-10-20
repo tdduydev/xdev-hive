@@ -91,4 +91,88 @@ Kết luận:
   khi gốc ổ hay thư mục cha không truy cập được.
 - [Inference] Trên Linux, service systemd của worker chỉ đặt `HOME`, `PATH`; `XDG_CACHE_HOME` của service có thể khác
   của app desktop, làm hai bên khoá hai file khác nhau.
-- [Unverified] Thời gian `git status` của 28 worktree trên Windows (SC-001).
+- [Unverified] Thời gian `git status` của 28 worktree trên Windows (SC-001). Đã đo trên macOS ở mục 5.
+
+## 5. Đo P1 trên máy dev macOS (2026-10-20, task T013)
+
+Chỉ đọc. Chỉ chạy `hive-worker branches list` và `scan --no-fetch`; không `fetch`, `clean`, `pull`, không gọi API
+GitHub/GitLab. `HOME` đặt về thư mục tạm khi đo, nên không đọc cấu hình git hay `branches.json` của người dùng. Bản
+build từ `worker/` của nhánh T013 (`go build ./cmd/hive-worker`, go 1.27.2 darwin/arm64).
+
+Môi trường: git 2.54.0 (Apple Git-157), macOS 27.0.1 (build 26A434, theo `sw_vers`). Đo thời gian bằng `date +%s.%N`
+quanh lệnh, hay bằng tiến trình Python đọc từng dòng stdout để lấy thời điểm dòng đầu.
+
+Repo đo: 4 repo thật của máy dev (A, B, C, D) và 16 bản sao `git clone --no-hardlinks` của chính 4 repo này; bản sao
+SC-001 và SC-004 là clone của repo A. Mọi bản sao nằm trong thư mục tạm, đã xoá khi xong.
+
+### 5.1. Bốn repo thật (`list`, 3 lần mỗi repo)
+
+| Repo | Mục `git worktree list` | Nhánh local | Ref remote | `list` (giây, lần 1 → lần 2, 3) |
+|---|---|---|---|---|
+| A | 37 | 37 | 35 | 2,05 → 0,72, 0,67 |
+| B | 1 | 1 | 3 | 0,07 |
+| C | 5 | 87 | 2 | 0,50 → 0,42, 0,42 |
+| D | 5 | 6 | 8 | 0,10 → 0,09, 0,09 |
+
+[Inference] Lần đầu của repo A chậm hơn do cache đĩa lạnh. Với repo A, dòng kết quả đầu (bảng nhánh) về sau 0,21–0,22
+giây, dòng cuối (đủ trạng thái các worktree liên kết) sau 0,68–1,16 giây.
+
+### 5.2. SC-001: 30 worktree và 200 nhánh (bản sao của repo A)
+
+Dựng: 201 nhánh local (`ai/B1…B200` và `main`), thêm 200 ref `refs/remotes/origin/feat/R*` (từ commit của `main`),
+28 worktree liên kết trong `.claude/worktrees/` (mục 5.4), rồi thêm 2 worktree. Mỗi worktree là checkout đủ của repo
+(hàng nghìn file). Lệnh:
+
+```text
+hive-worker branches list --folder=<bản sao> --timeout=30
+```
+
+| Trạng thái | Nhánh trong bảng | Dòng đầu (bảng nhánh) | Dòng cuối (đủ trạng thái worktree) |
+|---|---|---|---|
+| 28 liên kết + thư mục chính (29 mục) | 465 | 1,10–1,12 giây | 3,17–3,25 giây (3 lần) |
+| 29 liên kết + thư mục chính (30 mục) | 467 | 1,32–1,45 giây | 4,26–4,43 giây (3 lần) |
+
+Kết luận: bảng nhánh hiện sau khoảng 1,1–1,5 giây, đạt ≤ 2 giây. Đủ trạng thái 30 worktree mất khoảng 4,3 giây, **không
+đạt** nếu hiểu SC-001 là "mọi thứ xong"; plan mục 2 tách trạng thái từng worktree để hiện dần, nên bảng dùng được trước
+đó. Chưa tách riêng chi phí của 200 nhánh với chi phí của worktree. [Unverified] Số đo trên Windows.
+
+### 5.3. SC-002: quét 20 repo
+
+```text
+hive-worker branches scan --folder=<repo> (lặp 20 lần) --no-fetch --timeout=150
+```
+
+Không `fetch` được (giới hạn mạng của task), nên đây là quét `--no-fetch`, không phải "đã fetch" như SC-002.
+
+| Bộ repo | Kết quả |
+|---|---|
+| 20 repo = 4 thật + 16 bản sao | 3,06–3,48 giây (2 lần); 75 ứng viên, 50 bị chặn, 0 lỗi |
+| 16 bản sao chỉ có nhánh mặc định | 2,05–2,65 giây (2 lần); 0 ứng viên |
+| Từng repo thật, quét riêng | A 0,80 giây; B 0,07 giây; C 0,78 giây; D 0,13 giây |
+
+Kết luận: đạt ≤ 10 giây cho 20 repo, nhưng bộ đo nhẹ: bản sao chỉ có nhánh `main`, không có nhánh khớp mẫu. Một repo
+nặng (bản sao mục 5.2: 200 nhánh khớp `ai/*`, 28 worktree) tự quét hết 5,0–8,9 giây (lần đầu 8,9 giây), nên 20 repo nặng
+như vậy sẽ vượt 10 giây. [Inference] Chi phí chính nằm ở repo nặng, không ở số repo.
+
+### 5.4. SC-004: quét trên bản sao repo A có 28 worktree giả
+
+Dựng 28 worktree liên kết trong `.claude/worktrees/`: 20 nhánh `claude/m*` tại đỉnh nằm ngoài first-parent của
+`origin/main` (đã merge bằng merge commit, sạch), 3 nhánh `claude/d*` như vậy nhưng có file đã theo dõi bị sửa, 3 nhánh
+`claude/u*` có một commit riêng, 2 nhánh `claude/e*` mới tạo tại đỉnh `origin/main`. Lệnh:
+`hive-worker branches scan --folder=<bản sao> --no-fetch --timeout=150` (không chạy `clean`).
+
+| Số đo | Kết quả |
+|---|---|
+| Worktree có bằng chứng `mergedGit` | 23 (20 sạch, 3 bẩn) |
+| `notMerged` | 3 |
+| `noOwnCommits` | 2 |
+| **Worktree bị chặn với lý do `submodule`** | **28 trên 28** |
+| Worktree được chọn sẵn để dọn | **0** |
+| Nhánh local khớp mẫu không có worktree | 200 (146 `mergedGit` được chọn sẵn, 54 `noOwnCommits` bị chặn `noEvidence`) |
+
+Nguyên nhân: repo A có `.gitmodules` (một gitlink) và `hasSubmodule` coi có `.gitmodules` là có submodule, chặn mọi
+worktree (`state.go`, `scan.go`). Thử riêng `git worktree remove` (không `--force`) trên một worktree của bản sao này
+(submodule chưa init): git gỡ được, không phàn nàn. Kết luận: với repo A, số worktree liên kết **không giảm** theo bản
+code hiện tại, **không đạt SC-004** dù đủ điều kiện về mặt git. Chưa chạy `clean` nên chưa đo số worktree sau dọn.
+[Inference] Nếu bỏ chặn này cho submodule chưa init, ước tính 20 worktree được chọn sẵn, còn lại 8 (3 bẩn, 3 chưa
+merge, 2 mới tạo). [Unverified] Git có từ chối worktree có submodule đã `init` hay không: chưa thử.
