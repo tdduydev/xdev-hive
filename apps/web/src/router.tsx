@@ -107,6 +107,19 @@ const RunsPage = lazyRouteComponent(() => import("@/pages/runs-page.tsx"), "Runs
 const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "ProjectSandboxPage");
 const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
 const SdlcMetricsPage = lazyRouteComponent(() => import("@/pages/sdlc/metrics-page.tsx"), "SdlcMetricsPage");
+const CiConnectionsPage = lazyRouteComponent(
+  () => import("@/pages/settings/ci-connections-page.tsx"),
+  "CiConnectionsPage",
+);
+const JenkinsTokensPage = lazyRouteComponent(
+  () => import("@/pages/settings/jenkins-tokens-page.tsx"),
+  "JenkinsTokensPage",
+);
+const CiCdPage = lazyRouteComponent(() => import("@/pages/projects/cicd-page.tsx"), "CiCdPage");
+const ServersPage = lazyRouteComponent(() => import("@/pages/settings/servers-page.tsx"), "ServersPage");
+const EnvironmentsPage = lazyRouteComponent(() => import("@/pages/settings/environments-page.tsx"), "EnvironmentsPage");
+const DeployBoardPage = lazyRouteComponent(() => import("@/pages/deploys/board-page.tsx"), "DeployBoardPage");
+const DeployPage = lazyRouteComponent(() => import("@/pages/deploys/deploy-page.tsx"), "DeployPage");
 const SdlcModesPage = lazyRouteComponent(() => import("@/pages/admin/sdlc-modes-page.tsx"), "SdlcModesPage");
 const SdlcFleetPage = lazyRouteComponent(() => import("@/pages/sdlc/fleet-page.tsx"), "SdlcFleetPage");
 const SdlcBoardPage = lazyRouteComponent(() => import("@/pages/sdlc/sdlc-pages.tsx"), "SdlcBoardPage");
@@ -440,6 +453,21 @@ const sdlcRoutes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/sdlc/$project/$number/$tab", component: SdlcItemPage }),
 ];
 
+/** CI/CD và triển khai (specs/020). Trang của T021–T023 thay nội dung các trang rỗng, không đổi đường dẫn. */
+const deliveryRoutes = [
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/projects/$key/cicd", component: CiCdPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/systems/$systemId/deploys", component: DeployBoardPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/systems/$systemId/environments",
+    component: EnvironmentsPage,
+  }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/deploys/$id", component: DeployPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/servers", component: ServersPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/ci-connections", component: CiConnectionsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/settings/jenkins-tokens", component: JenkinsTokensPage }),
+];
+
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
 const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
@@ -556,6 +584,7 @@ const routeTree = rootRoute.addChildren([
         roleRoute,
         ...v2Routes,
         ...sdlcRoutes,
+        ...deliveryRoutes,
       ]),
     ]),
   ]),

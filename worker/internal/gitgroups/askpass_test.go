@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/gitexec"
 )
 
 // TestMain cho chính binary test làm GIT_ASKPASS, như hive-worker trong main.go.
@@ -61,7 +63,7 @@ func TestCloneOverHTTPUsesAskpass(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, _ := runSync(t, Sync{Git: Git{Askpass: self, Kind: KindGitLab, Token: "sai"}, Group: g}, context.Background(), ActionClone)
+	got, _ := runSync(t, Sync{Git: gitexec.Git{Askpass: self, Kind: KindGitLab, Token: "sai"}, Group: g}, context.Background(), ActionClone)
 	if e := got["acme/api"]; e.Result != ResultFailed || strings.Contains(e.Message, "oauth2:") {
 		t.Fatalf("token sai = %+v", e)
 	}
@@ -69,7 +71,7 @@ func TestCloneOverHTTPUsesAskpass(t *testing.T) {
 		t.Fatal("clone hỏng còn để lại thư mục")
 	}
 
-	s := Sync{Git: Git{Askpass: self, Kind: KindGitLab, Token: token}, Group: g}
+	s := Sync{Git: gitexec.Git{Askpass: self, Kind: KindGitLab, Token: token}, Group: g}
 	got, _ = runSync(t, s, context.Background(), ActionClone)
 	if e := got["acme/api"]; e.Result != ResultDone || e.Status.State != StateClean {
 		t.Fatalf("clone = %+v %+v", e, e.Status)
