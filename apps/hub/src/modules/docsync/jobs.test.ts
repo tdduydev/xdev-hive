@@ -154,13 +154,18 @@ describe("khung nhập Word", () => {
     const request = new Request("http://localhost/", { method: "POST" });
     const ids = { importId: randomUUID(), fileId: randomUUID() };
     for (const response of await Promise.all([
-      handleWordUpload({}, request),
       handleWordMedia({}, request, { ...ids, name: "a.png" }),
       handleWordOriginal({}, request, ids),
     ])) {
       expect(response.status).toBe(501);
       expect(await response.json()).toMatchObject({ code: "NOT_IMPLEMENTED" });
     }
+  });
+
+  it("route nhận file chưa đăng nhập thì 401, không đọc request", async () => {
+    const response = await handleWordUpload({}, new Request("http://localhost/", { method: "POST" }));
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("phần chưa làm: gắn và cập nhật bỏ qua, đề xuất báo cần quyền quản lý", async () => {
