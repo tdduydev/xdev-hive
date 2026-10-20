@@ -315,6 +315,31 @@ func TestListWorktrees(t *testing.T) {
 	}
 }
 
+// Trường submodule là submodule đã init (hợp đồng mục 2.2), như cờ chặn của scan; chỉ có .gitmodules thì false.
+func TestListSubmodule(t *testing.T) {
+	isolateGit(t)
+	folder := newRepo(t)
+	addSubmodule(t, folder)
+	wtBase := filepath.Join(filepath.Dir(folder), "wt")
+	gitT(t, folder, "worktree", "add", "-q", "-b", "ai/plain", filepath.Join(wtBase, "plain"))
+	gitT(t, folder, "worktree", "add", "-q", "-b", "ai/init", filepath.Join(wtBase, "init"))
+	gitFile(t, filepath.Join(wtBase, "init"), "submodule", "update", "-q", "--init")
+
+	r, events, _ := listAll(t, context.Background(), testEnv(t), folder)
+	if r.Error != nil || len(events) != 2 {
+		t.Fatalf("lỗi %v, sự kiện %+v", r.Error, events)
+	}
+	if !r.Worktrees[0].Submodule {
+		t.Fatalf("thư mục chính có submodule đã clone: %+v", r.Worktrees[0])
+	}
+	if w := events["plain"]; w.Submodule || w.State != StateClean {
+		t.Fatalf("submodule chưa init: %+v", w)
+	}
+	if w := events["init"]; !w.Submodule || w.State != StateClean {
+		t.Fatalf("submodule đã init: %+v", w)
+	}
+}
+
 // Huỷ trong lúc đọc: worktree chưa xong có state error "Đã huỷ", vẫn có done.
 func TestListCancelMarksPending(t *testing.T) {
 	isolateGit(t)
