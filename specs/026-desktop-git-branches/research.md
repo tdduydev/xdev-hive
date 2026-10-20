@@ -176,3 +176,54 @@ worktree (`state.go`, `scan.go`). Thử riêng `git worktree remove` (không `--
 code hiện tại, **không đạt SC-004** dù đủ điều kiện về mặt git. Chưa chạy `clean` nên chưa đo số worktree sau dọn.
 [Inference] Nếu bỏ chặn này cho submodule chưa init, ước tính 20 worktree được chọn sẵn, còn lại 8 (3 bẩn, 3 chưa
 merge, 2 mới tạo). [Unverified] Git có từ chối worktree có submodule đã `init` hay không: chưa thử.
+
+### 5.5. SC-004 đo lại sau T020 (2026-10-20)
+
+Máy dev macOS (cùng máy mục 5), git 2.54.0 (Apple Git-157). `hive-worker` build từ nhánh `ai/GITBR-SC004` (gốc là `main`
+sau PR #481, có T020): `cd worker && go build -o <tmp>/hive-worker ./cmd/hive-worker`. `HOME` và `USERPROFILE` đặt về thư
+mục tạm, nên không đọc cấu hình git hay `branches.json` của người dùng. Mọi lệnh `branches` chỉ chạy trên bản sao; repo
+thật chỉ được đọc để clone.
+
+Dựng bộ đo như 5.4: `git clone --no-hardlinks` repo A (repo A **có** `.gitmodules`, một submodule chưa init) vào thư mục
+tạm, rồi dựng bằng lệnh git: 20 nhánh `claude/m*` đã merge bằng `merge --no-ff` vào `main` (đỉnh nằm ngoài first-parent,
+sạch), 3 nhánh `claude/d*` như vậy nhưng sửa `package.json` trong worktree, 3 nhánh `claude/u*` có một commit riêng, 2
+nhánh `claude/e*` tại đỉnh `main`; `refs/remotes/origin/main` đặt bằng `git update-ref` về `main`. Mỗi nhánh một worktree
+trong `.claude/worktrees/`: 28 worktree liên kết. Thêm 200 nhánh local `ai/*` không có worktree.
+
+Lệnh:
+
+```text
+hive-worker branches scan  --folder=<bản sao> --no-fetch --timeout=150            # 9,4 s
+hive-worker branches clean --timeout=300 < clean.in                                # theo branches-cli.md mục 3.8
+```
+
+`clean.in` là `{"busy":[],"fetched":{},"items":[…]}` với đúng các ứng viên `selected` của `scan` (20 mục, có `worktree`,
+`evidence`, `tip` như `scan` trả). Không `fetch`, không gọi mạng.
+
+| Số đo | Trước T020 (5.4) | Sau T020 (đo này) |
+|---|---|---|
+| Bị chặn `submodule` | 28 trên 28 | **0** |
+| Ứng viên chọn sẵn (`mergedGit`, có worktree) | 0 | **20** |
+| Bị chặn `dirty` (3 `d*`) | (che bởi `submodule`) | 3 |
+| Bị chặn `unpushed`, evidence `notMerged` (3 `u*`) | (che) | 3 |
+| Bị chặn `noEvidence`, `noOwnCommits` (2 `e*`) | (che) | 2 |
+| 200 nhánh `ai/*` không worktree | 146 chọn sẵn, 54 chặn | 200 chặn `noEvidence` (xem lưu ý) |
+| `git worktree list` trước dọn | 29 dòng (1 chính + 28) | 29 dòng |
+| `clean` | không chạy | 20 `removed`, 0 `skipped`/`partial`/`error`/`cancelled` |
+| `git worktree list` sau dọn | không đo | **9 dòng (1 chính + 8)** |
+
+Sau dọn còn đúng 8 worktree liên kết: `d1`–`d3` (bẩn, file `package.json` vẫn còn sửa nguyên), `u1`–`u3` (có commit chưa
+merge), `e1`–`e2` (mới tạo). Số worktree liên kết giảm từ 28 xuống 8. 20 nhánh `claude/m*` bị xoá cùng worktree.
+`clean` chạy khoảng 3 phút cho 20 mục [Unverified: chỉ đo bằng đồng hồ tay, không đo chính xác].
+
+Lưu ý bộ đo: 200 nhánh `ai/*` tôi tạo tại các commit first-parent cũ của `main`, nên đều là tổ tiên (`noOwnCommits`),
+khác 5.4 (146 `mergedGit`). Con số này không ảnh hưởng SC-004 vì chỉ đếm worktree liên kết.
+
+Thử worktree có submodule đã init (repo tạm trong thư mục tạm, submodule trỏ tới repo cục bộ, `git -c
+protocol.file.allow=always submodule update --init` trong worktree): `scan` chặn nhánh đó với lý do `submodule`, và
+`git worktree remove` (không `--force`) từ chối: "working trees containing submodules cannot be moved or removed".
+Worktree `.gitmodules` + gitlink nhưng chưa init cùng repo đó được chọn sẵn.
+
+Kết luận: **SC-004 đạt** trên bản sao repo A có 28 worktree giả, trên macOS dev, git 2.54.0: 28 xuống 8, đúng các
+worktree bẩn, có commit chưa merge và mới tạo. [Unverified] Chưa đo trên Windows, chưa đo trên repo A thật (không chạy
+`clean` trên repo thật), bộ 28 worktree là giả lập chứ không phải worktree agent thật.
