@@ -445,7 +445,7 @@ type Onto = { name: string; tip: string };
 /** Việc hộp thoại sẽ chạy. Merge và rebase nhận `tip` đã đọc lúc bấm (FR-050), không tra lại theo tên. */
 export type GitAction =
   | { kind: "pull"; branch: string }
-  | { kind: "merge"; onto: Onto; into: string }
+  | { kind: "merge"; onto: Onto; into: string; ff?: boolean }
   | { kind: "rebase"; onto: Onto; branch: string };
 
 export type GitActionResult =
@@ -496,7 +496,7 @@ export function GitActionDialog({
       }
       const operation =
         next.kind === "merge"
-          ? await mergeBranch(folder, next.onto, { confirmBusy: confirmed.current.busy })
+          ? await mergeBranch(folder, next.onto, { confirmBusy: confirmed.current.busy, ff: next.ff })
           : await rebaseBranch(folder, next.onto, {
               confirmBusy: confirmed.current.busy,
               confirmRewrite: confirmed.current.rewrite,
