@@ -6,6 +6,8 @@ import { relativeFrom } from "../assets.ts";
 const IMAGE_LINK = /(!\[[^\]]*\]\()([^()\s]+)(\))/g;
 // Ảnh đã đổi tên chỉ còn tên băm, đường dẫn tính lại ở `relinkImages`.
 const HASHED_IMAGE_LINK = /(!\[[^\]]*\]\()([0-9a-f]{12}\.[a-z0-9]+)(\))/g;
+// EMF/WMF trình duyệt không hiện được nên lúc chuyển đã thành link tải thường (Q10); vẫn nằm trong thư mục ảnh.
+const HASHED_DOWNLOAD_LINK = /((?<!!)\[[^\]]*\]\()([0-9a-f]{12}\.(?:emf|wmf|emz|wmz))(\))/g;
 
 const text = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -62,10 +64,9 @@ export function renameImages(
  */
 export function relinkImages(markdown: string, docPath: string, assetsDir: string): string {
   const dir = assetsDir.replace(/\/+$/, "");
-  return markdown.replace(
-    HASHED_IMAGE_LINK,
-    (_all, open: string, name: string, close: string) => `${open}${relativeFrom(docPath, `${dir}/${name}`)}${close}`,
-  );
+  const relink = (_all: string, open: string, name: string, close: string) =>
+    `${open}${relativeFrom(docPath, `${dir}/${name}`)}${close}`;
+  return markdown.replace(HASHED_IMAGE_LINK, relink).replace(HASHED_DOWNLOAD_LINK, relink);
 }
 
 export interface FrontMatterInput {

@@ -136,3 +136,15 @@ Kết luận SC-001 trên bộ này: không file lỗi, không codec lỗi, 99,9
 5. Biểu thức kiểm thẻ HTML trong `filter.test.ts` tính nhầm `\<…>`; nên bỏ qua `\<`.
 6. `apps/hub/tsconfig.json` chỉ gồm `src`, `test`: thư mục `scripts/` mới không được `pnpm typecheck` kiểm. T007 đã kiểm tay bằng tsconfig tạm.
 7. Chọn bản trong `pick` theo từng thư mục cho 278, mục 1 nói 261: cần xem 17 tài liệu khác nhau là mã chép hai nơi hay tài liệu mới.
+
+### Việc 4, 6, 7: chờ chạy trên máy có dữ liệu (T027)
+
+`word-corpus.ts` nay phân loại từng khối thô (`rawDetails` trong `report.json`, `rawByKind` trong `summary.json` và dòng "khối thô theo loại" ở màn hình). Loại: bảng, danh sách lồng, ảnh trong chữ nghiêng, HTML, ký tự escape, danh sách, trích dẫn, mã, tiêu đề, khác. Bộ `word/fixtures` ra số cũ (2 bảng, 2 thành table, 0 khối thô).
+
+[Unverified] Chưa chạy trên bộ thật vì máy giao task không có dữ liệu. Khi chạy, điền vào đây:
+
+| Loại khối thô | Số khối | Lỗi bộ lọc (task mới) hay giới hạn codec |
+|---|---|---|
+| | | |
+
+Với 17 tài liệu chênh giữa 278 và 261: ghi mã tài liệu và nguyên nhân (mã chép hai thư mục, tài liệu mới trên OneDrive, hay khác cách chọn của `srs2md`). Không ghi nội dung.

@@ -1,0 +1,24 @@
+{
+  "metadata": { "name": "his-api", "namespace": "argocd" },
+  "spec": {
+    "project": "ehospital",
+    "source": {
+      "repoURL": "https://gitlab.example.invalid/ehospital/deploy.git",
+      "path": "charts/his-api",
+      "targetRevision": "main"
+    },
+    "destination": { "server": "https://kubernetes.default.svc", "namespace": "his-api" }
+  },
+  "status": {
+    "sync": { "status": "OutOfSync" },
+    "health": { "status": "Degraded", "message": "Deployment has exceeded its progress deadline" },
+    "history": [],
+    "operationState": {
+      "operation": { "sync": { "revision": "HEAD" } },
+      "phase": "Failed",
+      "message": "one or more objects failed to apply",
+      "startedAt": "2026-10-20T03:10:00Z",
+      "finishedAt": "2026-10-20T03:10:09Z"
+    }
+  }
+}

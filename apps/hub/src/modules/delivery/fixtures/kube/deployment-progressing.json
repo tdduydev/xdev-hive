@@ -1,0 +1,28 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": { "name": "his-portal", "namespace": "his-portal", "generation": 8 },
+  "spec": {
+    "replicas": 3,
+    "progressDeadlineSeconds": 600,
+    "template": {
+      "spec": {
+        "containers": [
+          { "name": "portal", "image": "registry.example.invalid/his/portal:1.9.0" },
+          { "name": "sidecar", "image": "registry.example.invalid/his/sidecar:0.4.1" }
+        ]
+      }
+    }
+  },
+  "status": {
+    "observedGeneration": 8,
+    "replicas": 4,
+    "updatedReplicas": 1,
+    "readyReplicas": 3,
+    "availableReplicas": 3,
+    "conditions": [
+      { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" },
+      { "type": "Progressing", "status": "True", "reason": "ReplicaSetUpdated" }
+    ]
+  }
+}
