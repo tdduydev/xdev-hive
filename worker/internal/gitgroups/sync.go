@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/gitexec"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 )
 
@@ -51,7 +52,7 @@ type Event struct {
 
 // Sync chạy một thao tác trên các repo đã chọn của nhóm.
 type Sync struct {
-	Git   Git
+	Git   gitexec.Git
 	Group Group
 	// Projects là projects.json: repo clone xong được thêm vào danh sách Dự án trên máy. Rỗng thì không thêm.
 	Projects    string
@@ -143,7 +144,7 @@ func (s Sync) one(ctx context.Context, action string, r Repo, authDenied *atomic
 		return st, ResultSkipped, authStopped
 	}
 	url := CloneURL(s.Group, r)
-	if _, err := s.Git.run(ctx, st.Dir, hostOf(url), "fetch", "--prune", "--quiet", "origin"); err != nil {
+	if _, err := s.Git.Run(ctx, st.Dir, hostOf(url), "fetch", "--prune", "--quiet", "origin"); err != nil {
 		return s.failed(ctx, st, err, authDenied)
 	}
 	st = Inspect(ctx, s.Git, s.Group, r)
@@ -159,7 +160,7 @@ func (s Sync) one(ctx context.Context, action string, r Repo, authDenied *atomic
 		return st, ResultUnchanged, ""
 	}
 	// Đã fetch ở trên nên chỉ cần tiến nhánh tới @{u}, không gọi mạng lần hai như `pull --ff-only`.
-	_, err := s.Git.run(ctx, st.Dir, "", "merge", "--ff-only", "--quiet", "@{u}")
+	_, err := s.Git.Run(ctx, st.Dir, "", "merge", "--ff-only", "--quiet", "@{u}")
 	after := Inspect(context.WithoutCancel(ctx), s.Git, s.Group, r)
 	if err != nil {
 		return s.failed(ctx, after, err, authDenied)
@@ -177,7 +178,7 @@ func (s Sync) clone(ctx context.Context, r Repo, st RepoStatus, authDenied *atom
 		return st, ResultFailed, err.Error()
 	}
 	// "--" để URL lạ từ API (bắt đầu bằng "-") không thành cờ của git.
-	if _, err := s.Git.run(ctx, parent, hostOf(url), "clone", "--quiet", "--origin", "origin", "--", url, st.Dir); err != nil {
+	if _, err := s.Git.Run(ctx, parent, hostOf(url), "clone", "--quiet", "--origin", "origin", "--", url, st.Dir); err != nil {
 		// Thư mục chưa có trước lượt clone này (StateMissing). Git tự dọn khi nhận Interrupt, nhưng trên Windows git bị
 		// giết thẳng nên còn lại clone dở; để lại thì lần sau thành "không phải repo" và chặn clone lại.
 		_ = os.RemoveAll(st.Dir)
@@ -196,7 +197,7 @@ func (s Sync) failed(ctx context.Context, st RepoStatus, err error, authDenied *
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 		return st, ResultCancelled, "đã huỷ"
 	}
-	if ge := (*GitError)(nil); errors.As(err, &ge) && ge.Auth {
+	if ge := (*gitexec.GitError)(nil); errors.As(err, &ge) && ge.Auth {
 		authDenied.Store(true)
 	}
 	return st, ResultFailed, err.Error()
