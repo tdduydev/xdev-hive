@@ -464,8 +464,8 @@ planned, not completed.
 Spec [026](../specs/026-desktop-git-branches/spec.md), user guide [git-branches.md](git-branches.md). The product owner
 settled Q1–Q15 on 20 October 2026, with merge and rebase included (Q7). Everything runs on the machine through
 `hive-worker branches`; no hub sign-in and no hub call is needed. The FR column maps spec 026 FR-001–FR-056. The badge
-with the count of cleanable branches (US7, task T017) is built but has no requirement here: it shows the count from the
-last scan, hides at zero and never deletes on its own.
+with the count of cleanable branches (US7, task T017) is built but has no requirement here: it counts with a scan without fetch when the
+projects screen opens, recounts after fetch, pull and cleanup, hides at zero and never fetches or deletes on its own.
 
 | ID | Requirement | Spec 026 FR | Status | Verification |
 |---|---|---|---|---|
