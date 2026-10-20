@@ -27,6 +27,13 @@ export type { RequestContext } from "./context.ts";
 export { createPool, type TenantContext, type Tx, withTenant } from "./db.ts";
 export { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "./errors.ts";
 export { createJobs, type EnqueueOptions, JOBS_SCHEMA, type JobQueue, type JobRun, type Jobs } from "./jobs.ts";
-export { type BlobReader, detectMediaType, inspectFileType } from "./magic.ts";
+export {
+  type BlobReader,
+  detectMediaType,
+  inspectFileType,
+  inspectWordFile,
+  WORD_MEDIA_TYPES,
+  type WordFormat,
+} from "./magic.ts";
 export { bootstrapRoles, type RolePasswords, runMigrations } from "./migrate.ts";
 export { decryptSecret, encryptSecret, type MasterKey, parseMasterKey, SecretDecryptError } from "./secrets.ts";
