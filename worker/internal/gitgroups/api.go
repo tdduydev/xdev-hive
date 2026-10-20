@@ -302,6 +302,122 @@ func (c Client) Suggest(ctx context.Context, search string) ([]string, error) {
 	return out, nil
 }
 
+// maxPRPages: bằng chứng dọn nhánh chỉ cần PR gần đây (FR-030), 3 trang × 100 mục mỗi repo cho mỗi lượt quét.
+const maxPRPages = 3
+
+// Trạng thái PR/MR đã quy về chung cho hai máy chủ.
+const (
+	PROpen   = "open"
+	PRMerged = "merged"
+	PRClosed = "closed"
+)
+
+// PullRequest là PR (GitHub) hay MR (GitLab) đã rút gọn cho bằng chứng dọn nhánh.
+type PullRequest struct {
+	Number int
+	// Branch là nhánh nguồn (head.ref, source_branch).
+	Branch string
+	State  string
+	// HeadSHA là đỉnh nhánh nguồn máy chủ biết lần cuối; rỗng khi máy chủ không trả.
+	HeadSHA   string
+	URL       string
+	UpdatedAt time.Time
+}
+
+type gitlabMR struct {
+	IID             int       `json:"iid"`
+	State           string    `json:"state"`
+	SourceBranch    string    `json:"source_branch"`
+	SourceProjectID int64     `json:"source_project_id"`
+	ProjectID       int64     `json:"project_id"`
+	SHA             string    `json:"sha"`
+	WebURL          string    `json:"web_url"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type githubPull struct {
+	Number    int        `json:"number"`
+	State     string     `json:"state"`
+	MergedAt  *time.Time `json:"merged_at"`
+	HTMLURL   string     `json:"html_url"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Head      struct {
+		Ref  string `json:"ref"`
+		SHA  string `json:"sha"`
+		Repo *struct {
+			ID int64 `json:"id"`
+		} `json:"repo"`
+	} `json:"head"`
+	Base struct {
+		Repo *struct {
+			ID int64 `json:"id"`
+		} `json:"repo"`
+	} `json:"base"`
+}
+
+// ListMergeRequests đọc MR của một project GitLab (đường dẫn đầy đủ), mới cập nhật trước, tối đa 3 trang. Bỏ MR từ
+// fork: nhánh nguồn cùng tên ở fork không phải nhánh của repo này.
+func (c Client) ListMergeRequests(ctx context.Context, project string) ([]PullRequest, error) {
+	next := fmt.Sprintf("%s/projects/%s/merge_requests?state=all&order_by=updated_at&sort=desc&per_page=100",
+		apiBase(c.Host), url.PathEscape(project))
+	out := []PullRequest{}
+	for page := 0; next != "" && page < maxPRPages; page++ {
+		var batch []gitlabMR
+		var err error
+		if next, err = c.get(ctx, next, &batch); err != nil {
+			return nil, err
+		}
+		for _, m := range batch {
+			if m.SourceProjectID != m.ProjectID {
+				continue
+			}
+			state := PRClosed
+			switch m.State {
+			case "merged":
+				state = PRMerged
+			case "opened", "locked":
+				// locked là MR đang được merge: chưa xong thì vẫn coi là mở.
+				state = PROpen
+			}
+			out = append(out, PullRequest{Number: m.IID, Branch: m.SourceBranch, State: state, HeadSHA: m.SHA, URL: m.WebURL, UpdatedAt: m.UpdatedAt})
+		}
+	}
+	return out, nil
+}
+
+// ListPulls đọc PR của một repo GitHub (owner/repo), mới cập nhật trước, tối đa 3 trang. Bỏ PR từ fork; fork đã xoá thì
+// head.repo là null, cũng bỏ.
+func (c Client) ListPulls(ctx context.Context, repo string) ([]PullRequest, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return nil, fmt.Errorf("đường dẫn repo GitHub %q phải dạng owner/repo", repo)
+	}
+	next := fmt.Sprintf("%s/repos/%s/%s/pulls?state=all&sort=updated&direction=desc&per_page=100",
+		apiBase(c.Host), url.PathEscape(owner), url.PathEscape(name))
+	out := []PullRequest{}
+	for page := 0; next != "" && page < maxPRPages; page++ {
+		var batch []githubPull
+		var err error
+		if next, err = c.get(ctx, next, &batch); err != nil {
+			return nil, err
+		}
+		for _, p := range batch {
+			if p.Head.Repo == nil || p.Base.Repo == nil || p.Head.Repo.ID != p.Base.Repo.ID {
+				continue
+			}
+			state := PRClosed
+			switch {
+			case p.MergedAt != nil:
+				state = PRMerged
+			case p.State == "open":
+				state = PROpen
+			}
+			out = append(out, PullRequest{Number: p.Number, Branch: p.Head.Ref, State: state, HeadSHA: p.Head.SHA, URL: p.HTMLURL, UpdatedAt: p.UpdatedAt})
+		}
+	}
+	return out, nil
+}
+
 func filterPrefix(list []string, search string) []string {
 	s := strings.ToLower(strings.TrimSpace(search))
 	if s == "" {
