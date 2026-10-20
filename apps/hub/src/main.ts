@@ -25,6 +25,7 @@ import {
   registerReviewStatusWorker,
   reviewGate,
 } from "./modules/codereview/index.ts";
+import { deliveryQueues, registerDelivery } from "./modules/delivery/index.ts";
 import { detectWordTools, docSyncQueues, registerDocSync, wordImportBlobRefs } from "./modules/docsync/index.ts";
 import {
   attachWorkerGateway,
@@ -154,6 +155,7 @@ jobs = config.jobsDatabaseUrl
       connectionString: config.jobsDatabaseUrl,
       queues: [
         ...docSyncQueues,
+        ...deliveryQueues,
         provisionQueue,
         mergeQueue,
         runsTimerQueue,
@@ -303,6 +305,13 @@ if (roles.includes("jobs") && jobs) {
     await registerAuditRetentionWorker(jobs, { pool });
     await registerArtifactPurgeWorker(jobs, { pool, publicUrl: config.publicUrl });
     await registerDocSync(jobs, { pool, masterKey: config.masterKey, jobs });
+    await registerDelivery(jobs, {
+      pool,
+      masterKey: config.masterKey,
+      jobs,
+      providerFactory: defaultProviderFactory,
+      publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+    });
     provideBlobRefs("docsync", blobRefsIn("doc_assets"));
     provideBlobRefs("docsync-word", wordImportBlobRefs);
     provideBlobRefs("artifacts", blobRefsIn("artifact_versions"));
