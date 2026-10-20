@@ -20,15 +20,15 @@ import {
   RefreshCwIcon,
   SquareTerminalIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { BranchesSheet, RepoBranchStatus } from "@/components/branches-sheet.tsx";
 import { CleanupDialog } from "@/components/cleanup-dialog.tsx";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { GitGroupsSection } from "@/components/git-groups.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { folderKey, pickFolder, shortPath } from "@/lib/folder.ts";
-import { type BranchStatus, branchStatus } from "@/lib/git-branches.ts";
-import { type GitGroups, gitGroups } from "@/lib/git-groups.ts";
+import { type BranchStatus, branchStatus, scanBranches, useBranchJob } from "@/lib/git-branches.ts";
+import { type GitGroups, gitGroups, useAutoFetched } from "@/lib/git-groups.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import {
@@ -59,6 +59,7 @@ const text: Dict<{
   refresh: string;
   cleanup: string;
   cleanupHint: string;
+  cleanupCount: (n: number) => string;
   hubProjects: string;
   noProjects: string;
   localOnly: string;
@@ -104,6 +105,7 @@ const text: Dict<{
     refresh: "Làm mới",
     cleanup: "Dọn nhánh",
     cleanupHint: "Dọn nhánh đã merge ở mọi repo trên máy",
+    cleanupCount: (n) => `Dọn nhánh: ${n} nhánh có thể dọn sau lần fetch gần nhất. Bấm để xem trước, app không tự xoá.`,
     hubProjects: "Dự án trên hub",
     noProjects: "Bạn chưa thấy dự án nào trên hub.",
     localOnly: "Repo trên máy chưa có trên hub",
@@ -157,6 +159,8 @@ const text: Dict<{
     refresh: "Refresh",
     cleanup: "Clean up branches",
     cleanupHint: "Clean up merged branches in every repo on this machine",
+    cleanupCount: (n) =>
+      `Clean up branches: ${n} ${n === 1 ? "branch" : "branches"} can be cleaned since the last fetch. Press to preview, the app never deletes on its own.`,
     hubProjects: "Hub projects",
     noProjects: "You cannot see any project on the hub yet.",
     localOnly: "Repositories on this machine without a hub project",
@@ -211,6 +215,67 @@ const STATE_TONE: Record<BindingState, "neutral" | "ok" | "warn" | "bad"> = {
   mismatch: "warn",
   missing: "bad",
 };
+
+// Số trong bộ nhớ để quay lại màn không phải chờ lần fetch kế tiếp mới thấy lại huy hiệu (plan.md, huy hiệu P3).
+const cleanableCache = new Map<string, number>();
+
+/**
+ * Số nhánh dọn được của từng repo (US7): `scan` không fetch chạy lại khi ref có thể đã đổi, nên không đụng mạng và
+ * không xoá gì. Mỗi lúc chỉ một lượt quét; yêu cầu đến lúc đang quét thì gộp lại chạy một lượt nữa sau đó.
+ */
+function useCleanable(folders: string[]) {
+  const [counts, setCounts] = useState(() => new Map(cleanableCache));
+  const [scanId, setScanId] = useState<string | null>(null);
+  const scan = useBranchJob(scanId);
+  const queue = useRef(new Set<string>());
+  const running = useRef(false);
+  const all = useRef(folders);
+  all.current = folders;
+
+  const drain = useCallback(() => {
+    if (running.current || queue.current.size === 0) return;
+    const batch = [...queue.current];
+    queue.current.clear();
+    running.current = true;
+    // Sidecar cũ hay lệnh chưa có: huy hiệu chỉ không hiện, màn vẫn dùng được.
+    scanBranches(batch, { fetch: false }).then(setScanId, () => {
+      running.current = false;
+    });
+  }, []);
+
+  const rescan = useCallback(
+    (only?: string[]) => {
+      for (const f of only ?? all.current) queue.current.add(f);
+      drain();
+    },
+    [drain],
+  );
+
+  const repos = scan?.repos;
+  useEffect(() => {
+    if (!repos) return;
+    // Repo lỗi (đang rebase, thư mục mất…) giữ số cũ thay vì báo 0 sai.
+    const ok = Object.values(repos).filter((r) => !r.error);
+    if (ok.length === 0) return;
+    setCounts((prev) => {
+      const next = new Map(prev);
+      for (const r of ok) next.set(folderKey(r.folder), r.candidates.length);
+      for (const [k, n] of next) cleanableCache.set(k, n);
+      return next;
+    });
+  }, [repos]);
+
+  const finished = scan?.finished === true;
+  useEffect(() => {
+    // `scanId` cũng là điều kiện: lượt mới có thể đã xong ngay khi biết id (sự kiện đến trước), `finished` không đổi.
+    if (!finished || scanId === null) return;
+    running.current = false;
+    drain();
+  }, [finished, scanId, drain]);
+
+  const total = folders.reduce((sum, f) => sum + (counts.get(folderKey(f)) ?? 0), 0);
+  return { total, rescan };
+}
 
 /**
  * Màn Dự án trên máy (nhóm Máy này, ADR 0020): dự án hub người dùng thấy, thư mục repo đã gắn trên máy, công tắc toàn
@@ -277,6 +342,22 @@ function ProjectsView() {
     void loadBranches();
   }, [loadBranches]);
 
+  const repoFolders = useMemo(() => (repoKey === "" ? [] : repoKey.split("\n")), [repoKey]);
+  const cleanable = useCleanable(repoFolders);
+  const { rescan } = cleanable;
+  // Lượt tự fetch của nhóm Git xong: ref của các repo trong nhóm đã đổi.
+  useAutoFetched(rescan);
+
+  // Phải giữ nguyên danh tính giữa các lần render: BranchesSheet gọi lại nó mỗi khi nó đổi và fetch đã xong, mà mỗi lần gọi
+  // lại làm màn này render lại.
+  const sheetFolder = useRef<string | null>(null);
+  sheetFolder.current = sheet?.folder ?? sheetFolder.current;
+  const onSheetChanged = useCallback(() => {
+    void loadBranches();
+    // Fetch, đổi nhánh, pull đều làm ref của đúng repo này đổi.
+    if (sheetFolder.current) rescan([sheetFolder.current]);
+  }, [loadBranches, rescan]);
+
   const hubList = projects.data;
   useEffect(() => {
     if (imported === null || !hubList || !local) return;
@@ -335,11 +416,20 @@ function ProjectsView() {
             variant="outline"
             size="sm"
             disabled={repoKey === ""}
-            title={t.cleanupHint}
+            title={cleanable.total > 0 ? t.cleanupCount(cleanable.total) : t.cleanupHint}
+            aria-label={cleanable.total > 0 ? t.cleanupCount(cleanable.total) : undefined}
             onClick={() => setCleaning(true)}
           >
             <BrushCleaningIcon aria-hidden="true" />
             {t.cleanup}
+            {cleanable.total > 0 && (
+              <span
+                aria-hidden="true"
+                className="min-w-5 rounded-full bg-primary px-1.5 text-center font-mono text-xs tabular-nums text-primary-foreground"
+              >
+                {cleanable.total}
+              </span>
+            )}
           </Button>
           <Button
             variant="outline"
@@ -347,6 +437,7 @@ function ProjectsView() {
             onClick={() => {
               void load();
               void loadBranches();
+              rescan();
               void projects.refetch();
               void policy.refetch();
             }}
@@ -410,8 +501,12 @@ function ProjectsView() {
 
       {cleaning && (
         <CleanupDialog
-          folders={repoKey.split("\n")}
-          onClose={() => setCleaning(false)}
+          folders={repoFolders}
+          // Quét của hộp thoại có fetch và lượt dọn đổi ref: đếm lại, kể cả khi người dùng đóng mà không dọn gì.
+          onClose={() => {
+            setCleaning(false);
+            rescan();
+          }}
           onChanged={() => void loadBranches()}
         />
       )}
@@ -421,7 +516,7 @@ function ProjectsView() {
           folder={sheet.folder}
           name={sheet.name}
           onClose={() => setSheet(null)}
-          onChanged={() => void loadBranches()}
+          onChanged={onSheetChanged}
         />
       )}
 
