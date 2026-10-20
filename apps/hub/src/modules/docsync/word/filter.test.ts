@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { copyFile, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { runPandoc } from "./pandoc.ts";
 
 const PANDOC_VERSION = "3.12";
 const pandoc = process.env.HIVE_PANDOC_PATH || "pandoc";
@@ -67,51 +69,33 @@ const cases: Case[] = [
 
 type Result = { markdown: Buffer; warnings: string[]; media: Map<string, Buffer> };
 
-// Đúng tham số ở plan.md mục 3 bước 3, chạy trong thư mục tạm riêng như job của hub. Thêm --eol=lf vì pandoc mặc định
-// xuống dòng theo hệ điều hành: trên Windows ra CRLF, khác byte với hub chạy Linux.
-function convert(input: string, keepFront = false): Result {
-  const dir = mkdtempSync(join(tmpdir(), "hive-word-filter-"));
+// Chạy đúng `runPandoc` của job (plan.md mục 3 bước 3), trong thư mục tạm riêng như job của hub.
+async function convert(input: string, keepFront = false): Promise<Result> {
+  const dir = await mkdtemp(join(tmpdir(), "hive-word-filter-"));
   try {
-    const ext = input.endsWith(".odt") ? "odt" : "docx";
-    copyFileSync(join(fixtureDir, input), join(dir, `in.${ext}`));
-    const args = [
-      `in.${ext}`,
-      "-f",
-      ext,
-      "-t",
-      "gfm",
-      "--wrap=none",
-      "--eol=lf",
-      "--track-changes=accept",
-      "--sandbox",
-      "--extract-media=m",
-      `--lua-filter=${filterPath}`,
-      "--log=log.json",
-      ...(keepFront ? ["--metadata", "keep-front=true"] : []),
-      "-o",
-      "out.md",
-      "+RTS",
-      "-M512m",
-      "-RTS",
-    ];
-    const run = spawnSync(pandoc, args, { cwd: dir, encoding: "utf8", shell: false, timeout: 60_000 });
-    expect(run.status, run.stderr).toBe(0);
-    const log = JSON.parse(readFileSync(join(dir, "log.json"), "utf8")) as { type: string; message: string }[];
+    const from = input.endsWith(".odt") ? "odt" : "docx";
+    await copyFile(join(fixtureDir, input), join(dir, `in.${from}`));
+    const run = await runPandoc({ path: pandoc, input: `in.${from}`, from, cwd: dir, filter: filterPath, keepFront });
+    if (!run.ok) throw new Error(`${run.message}\n${run.stderr}`);
     const media = new Map<string, Buffer>();
-    const mediaDir = join(dir, "m", "media");
-    if (existsSync(mediaDir)) {
-      for (const file of readdirSync(mediaDir).sort()) {
-        media.set(file, readFileSync(join(mediaDir, file)));
-      }
-    }
+    for (const file of await listFiles(run.mediaDir)) media.set(file, await readFile(join(run.mediaDir, file)));
     return {
-      markdown: readFileSync(join(dir, "out.md")),
-      warnings: log.filter((entry) => entry.type === "ScriptingWarning").map((entry) => entry.message),
+      markdown: Buffer.from(run.markdown, "utf8"),
+      warnings: run.log.filter((entry) => entry.type === "ScriptingWarning").map((entry) => entry.message ?? ""),
       media,
     };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    await rm(dir, { recursive: true, force: true, maxRetries: 5 });
   }
+}
+
+// docx đặt ảnh ở m/media, odt ở m/Pictures.
+async function listFiles(root: string): Promise<string[]> {
+  const entries = await readdir(root, { recursive: true, withFileTypes: true }).catch(() => []);
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(root, join(entry.parentPath, entry.name)).replaceAll("\\", "/"))
+    .sort();
 }
 
 describe("filter.lua: đầu file", () => {
@@ -129,10 +113,11 @@ describe.runIf(inCi && !pandocReady)("pandoc trong CI", () => {
   });
 });
 
-describe.runIf(pandocReady)("filter.lua: mẫu vàng (SC-002, FR-013)", () => {
+// Mỗi mẫu chạy pandoc hai lần; máy dev bận (nhiều agent cùng build) có lúc chậm.
+describe.runIf(pandocReady)("filter.lua: mẫu vàng (SC-002, FR-013)", { timeout: 60_000 }, () => {
   for (const sample of cases) {
-    it(sample.name, () => {
-      const first = convert(sample.input, sample.keepFront);
+    it(sample.name, async () => {
+      const first = await convert(sample.input, sample.keepFront);
       const goldenPath = join(fixtureDir, sample.golden);
       if (updateGolden) {
         writeFileSync(goldenPath, first.markdown);
@@ -142,7 +127,7 @@ describe.runIf(pandocReady)("filter.lua: mẫu vàng (SC-002, FR-013)", () => {
       expect(first.markdown.equals(readFileSync(goldenPath))).toBe(true);
       expect(first.warnings).toEqual(sample.warnings);
 
-      const second = convert(sample.input, sample.keepFront);
+      const second = await convert(sample.input, sample.keepFront);
       expect(second.markdown.equals(first.markdown)).toBe(true);
       expect(second.warnings).toEqual(first.warnings);
       expect([...second.media.keys()]).toEqual([...first.media.keys()]);
@@ -158,6 +143,12 @@ describe("filter.lua: Markdown vàng mở được trong editor", () => {
   const count = (node: Node, type: string): number =>
     (node.type === type ? 1 : 0) + (node.content ?? []).reduce((sum, child) => sum + count(child, type), 0);
   const delimiterRow = /^\|(?:\s*:?-+:?\s*\|)+$/gm;
+  // `\<b>` là chữ `<b>` đã thoát trong Markdown, không phải thẻ.
+  const htmlTags = (line: string) => line.match(/(?<!\\)<\/?[a-zA-Z][^>]*>/g) ?? [];
+
+  it("chữ <b> đã thoát không bị tính là thẻ", () => {
+    expect(htmlTags("Dùng \\<b> để in đậm, còn <i>này</i> là thẻ")).toEqual(["<i>", "</i>"]);
+  });
 
   for (const golden of [...new Set(cases.map((sample) => sample.golden))]) {
     it(golden, () => {
@@ -169,7 +160,7 @@ describe("filter.lua: Markdown vàng mở được trong editor", () => {
       expect(count(doc, "table")).toBe(tables);
       // Không còn thẻ HTML nào ngoài <br> trong ô bảng (SC-001).
       for (const line of markdown.split("\n")) {
-        for (const tag of line.match(/<\/?[a-zA-Z][^>]*>/g) ?? []) {
+        for (const tag of htmlTags(line)) {
           expect({ tag, inTable: line.startsWith("|") }).toEqual({ tag: "<br>", inTable: true });
         }
       }
