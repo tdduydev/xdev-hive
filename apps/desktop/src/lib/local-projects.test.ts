@@ -162,7 +162,7 @@ describe("gom repo trên máy theo nhóm", () => {
   });
 
   it("repo thuộc Nhóm Git theo dõi lấy tên theo nhóm; máy chủ đã kết nối hiện tên kết nối", () => {
-    const hosts: GitHost[] = [{ id: "h1", kind: "gitlab", url: "https://gitlab.example.com", name: "GitLab FIS" }];
+    const hosts: GitHost[] = [{ id: "h1", kind: "gitlab", url: "https://gitlab.example.com", name: "GitLab nội bộ" }];
     const groups: GitGroup[] = [
       {
         id: "g1",
@@ -196,8 +196,8 @@ describe("gom repo trên máy theo nhóm", () => {
     );
     expect(shape(got)).toEqual([
       ["acme", "github.com", ["pay"]],
-      ["acme-ai/emr", "GitLab FIS", ["emr-core"]],
-      ["acme-ai/his", "GitLab FIS", ["his-admin", "his-api"]],
+      ["acme-ai/emr", "GitLab nội bộ", ["emr-core"]],
+      ["acme-ai/his", "GitLab nội bộ", ["his-admin", "his-api"]],
     ]);
   });
 

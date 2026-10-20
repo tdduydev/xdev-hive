@@ -308,7 +308,7 @@ describe("ProjectsScreen", () => {
         entry({ name: "nhap", folder: "/w/tmp/nhap" }),
       ],
       gitGroups: {
-        hosts: [{ id: "h1", kind: "gitlab", url: "https://gitlab.example.com", name: "GitLab FIS" }],
+        hosts: [{ id: "h1", kind: "gitlab", url: "https://gitlab.example.com", name: "GitLab nội bộ" }],
         groups: [
           {
             id: "g1",
@@ -331,12 +331,12 @@ describe("ProjectsScreen", () => {
     const user = userEvent.setup();
     const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
     // Nhiều nhóm thì thu gọn; tên nhóm lấy theo Nhóm Git theo dõi, máy chủ hiện tên kết nối.
-    const his = await within(waiting).findByRole("button", { name: "acme-ai/his · GitLab FIS 2 repo" });
+    const his = await within(waiting).findByRole("button", { name: "acme-ai/his · GitLab nội bộ 2 repo" });
     expect(
       within(waiting)
         .getAllByRole("button", { expanded: false })
         .map((b) => b.textContent),
-    ).toEqual(["acme-ai/emr · GitLab FIS 1 repo", "acme-ai/his · GitLab FIS 2 repo", "/w/tmp 1 repo"]);
+    ).toEqual(["acme-ai/emr · GitLab nội bộ 1 repo", "acme-ai/his · GitLab nội bộ 2 repo", "/w/tmp 1 repo"]);
     expect(within(waiting).queryByText("his-web")).toBeNull();
     await user.click(his);
     expect(his.getAttribute("aria-expanded")).toBe("true");
