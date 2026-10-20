@@ -220,7 +220,7 @@ interface WorktreeInfo {
   files?: string[];                  // dirty/untracked: tối đa 20 file
   filesTotal?: number;
   ignoredBlocking?: string[];        // file bị bỏ qua ngoài danh sách dựng lại được (Q15), tối đa 20
-  submodule: boolean;
+  submodule: boolean;                // có submodule đã init (T020); chỉ có .gitmodules thì false
   busy?: BusyKind;                   // ưu tiên hiveWorker > agent > terminal > app
   operation?: OperationKind;
   error?: string;                    // state "error": dòng cuối stderr đã che
