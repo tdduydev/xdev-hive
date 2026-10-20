@@ -86,21 +86,6 @@ func TestBranchesBadArgsExit2(t *testing.T) {
 	}
 }
 
-// Lệnh của task sau: thoát 0 với lỗi not_implemented đúng dạng kết quả của từng lệnh.
-func TestBranchesStubsNotImplemented(t *testing.T) {
-	abs := t.TempDir()
-	jobs := [][]string{
-		{"pull", "--folder=" + abs, "--confirm-busy"},
-	}
-	for _, args := range jobs {
-		code, out, _ := branchesRun(t, "{}\n", args...)
-		ev := decode[branches.Event](t, out)
-		if code != 0 || ev.Type != branches.EventDone || ev.Error == nil || ev.Error.Code != branches.CodeNotImplemented {
-			t.Fatalf("%q: %d %s", args, code, out)
-		}
-	}
-}
-
 func TestBranchesInvalidInput(t *testing.T) {
 	abs := t.TempDir()
 	code, out, _ := branchesRun(t, "không phải json\n", "status", "--folder="+abs)
@@ -156,5 +141,16 @@ func TestBranchesFetchUnknownRemote(t *testing.T) {
 	if ev := decode[branches.Event](t, out); ev.Type != branches.EventDone || ev.Error.Code != branches.CodeNotFound ||
 		!strings.Contains(out, `"fetched":[]`) {
 		t.Fatalf("fetch: %s", out)
+	}
+}
+
+// pull là job: một dòng done kể cả khi lỗi nghiệp vụ, thoát 0.
+func TestBranchesPullNoUpstream(t *testing.T) {
+	repo := branchesRepo(t)
+	code, out, errOut := branchesRun(t, "{}\n", "pull", "--folder="+repo, "--confirm-busy", "--timeout=30")
+	ev := decode[branches.Event](t, out)
+	if code != 0 || len(lines(out)) != 1 || ev.Type != branches.EventDone || ev.Folder != repo ||
+		ev.Error == nil || ev.Error.Code != branches.CodeNoUpstream {
+		t.Fatalf("pull: %d %s %s", code, out, errOut)
 	}
 }
