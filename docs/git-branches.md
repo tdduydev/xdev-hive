@@ -58,8 +58,9 @@ Hai nhánh đã rẽ nhau (`diverged`) thì hộp thoại đề nghị **Merge u
 
 Trong menu của một nhánh khác:
 
-- **Merge vào nhánh đang đứng**: `git merge --no-ff --no-edit`, luôn tạo merge commit. Lệnh worker có cờ cho phép tiến
-  nhanh, nhưng hộp thoại hiện chưa có tuỳ chọn này.
+- **Merge vào nhánh đang đứng**: `git merge --no-ff --no-edit`, luôn tạo merge commit.
+- **Merge vào nhánh đang đứng, cho phép tiến nhanh**: `git merge --no-edit`; nếu nhánh đang đứng chưa rẽ nhánh thì git
+  chỉ dời nhánh lên, không tạo merge commit. Mục này tắt khi HEAD đang tách rời.
 - **Rebase nhánh đang đứng lên nhánh này**: nếu nhánh đang đứng có commit đã nằm trên ref remote nào đó thì app hỏi thêm,
   vì rebase viết lại lịch sử.
 - Dòng nhánh đang đứng có lối tắt **Cập nhật từ \<nhánh mặc định\>**.
@@ -114,7 +115,7 @@ Mục bị chặn nằm ở nhóm **Không dọn**, kèm lý do:
 | Có file đã sửa, file chưa theo dõi | Worktree không sạch |
 | File bị bỏ qua không dựng lại được | Ví dụ `.env` tạo tay. `git worktree remove` xoá cả file bị bỏ qua, nên app chặn (liệt kê tối đa 20 file) |
 | Worktree đang bị khoá, không truy cập được | `git worktree lock`, ổ chưa gắn |
-| Có submodule | Xem mục 8 |
+| Có submodule | Worktree có submodule đã init (có `modules/` trong thư mục git của worktree, hoặc gitlink có `.git`). `git worktree remove` cũng từ chối các worktree này. Submodule chưa init không chặn |
 | Có commit chưa đẩy | Không bao giờ xoá |
 | PR/MR đang mở | |
 | Nhánh đang mở ở thư mục chính | Xem gợi ý bên dưới |
@@ -190,13 +191,15 @@ git reset --keep <headBefore>
 
 ## 8. Giới hạn đã biết
 
-- **Submodule.** Code hiện chặn mọi worktree có file `.gitmodules`, kể cả khi submodule chưa init. Với repo có
-  `.gitmodules`, mọi worktree liên kết hiện "Có submodule" và không được chọn sẵn. Task T020 của spec 026 sửa điều này
-  (chỉ chặn submodule đã init). Tài liệu này mô tả hành vi **trước** T020. Sau khi T020 merge, cập nhật dòng này.
-- **SC-004** (số worktree liên kết giảm sau khi dọn) **chưa đạt** vì giới hạn trên. Số đo ở
+- **Submodule.** Chỉ chặn worktree có submodule đã init (T020). Không đọc được trạng thái submodule chắc chắn thì app
+  vẫn chặn.
+- **SC-004** (số worktree liên kết giảm sau khi dọn) chưa đạt ở lần đo T013, vì khi đó code chặn mọi repo có
+  `.gitmodules`. Số đo ở
   [research.md mục 5](../specs/026-desktop-git-branches/research.md#5-đo-p1-trên-máy-dev-macos-2026-10-20-task-t013).
-  Chưa đo lại sau T020.
+  **Chưa đo lại** sau T020.
 - **Hiệu năng.** Trên macOS, bảng nhánh hiện sau khoảng 1,1–1,5 giây với 29–30 worktree và hơn 460 nhánh. Trạng thái đủ
   của mọi worktree xong sau khoảng 3–4,5 giây, nên bảng hiện dần. Chưa đo trên Windows.
-- **Huy hiệu số nhánh dọn được** ở nút Dọn nhánh (T017) chưa có trong tài liệu này, vì chưa merge khi viết.
+- **Huy hiệu số nhánh dọn được** ở nút Dọn nhánh (T017). Số lấy từ lần quét gần nhất: sau khi fetch, sau khi dọn hoặc
+  bấm Làm mới. Mở màn Dự án chưa tự quét, nên huy hiệu trống tới lần fetch đầu. Fetch từ nhóm Git cũng chưa quét lại.
+  Số bằng 0 thì ẩn. Huy hiệu chỉ đếm, không bao giờ tự xoá.
 - Kho bare trong bộ nhớ đệm của worker không được quét. Nhánh trên remote không bao giờ bị xoá.
