@@ -13,11 +13,13 @@ import {
 import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
 import { ChevronDownIcon, ChevronRightIcon, FolderOpenIcon, RefreshCwIcon, SquareTerminalIcon } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { BranchesSheet, RepoBranchStatus } from "@/components/branches-sheet.tsx";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { GitGroupsSection } from "@/components/git-groups.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
-import { pickFolder, shortPath } from "@/lib/folder.ts";
+import { folderKey, pickFolder, shortPath } from "@/lib/folder.ts";
+import { type BranchStatus, branchStatus } from "@/lib/git-branches.ts";
 import { type GitGroups, gitGroups } from "@/lib/git-groups.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
@@ -222,6 +224,9 @@ function ProjectsView() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<Project | null>(null);
+  // Nhánh, sạch/bẩn, trước/sau của từng repo trên máy (FR-001), theo folderKey; thiếu thì repo không hiện nhánh.
+  const [branches, setBranches] = useState<Record<string, BranchStatus>>({});
+  const [sheet, setSheet] = useState<{ folder: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     // Chỉ để đặt tên mục của repo chưa có trên hub; đọc lỗi thì vẫn gom theo remote, mục Nhóm Git tự báo lỗi.
@@ -241,6 +246,21 @@ function ProjectsView() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Chuỗi thay vì mảng: mảng tạo lại mỗi lần `local` đổi và sẽ bắt đọc lại trạng thái dù danh sách repo không đổi.
+  const repoKey = useMemo(
+    () => [...new Set((local?.projects ?? []).filter((l) => l.exists && l.isGit).map((l) => l.folder))].join("\n"),
+    [local],
+  );
+  const loadBranches = useCallback(async () => {
+    if (repoKey === "") return setBranches({});
+    // Sidecar cũ hay lệnh chưa có: màn vẫn dùng được, chỉ không có cột nhánh.
+    const list = await branchStatus(repoKey.split("\n")).catch(() => []);
+    setBranches(Object.fromEntries(list.map((s) => [folderKey(s.folder), s])));
+  }, [repoKey]);
+  useEffect(() => {
+    void loadBranches();
+  }, [loadBranches]);
 
   const hubList = projects.data;
   useEffect(() => {
@@ -300,6 +320,7 @@ function ProjectsView() {
           size="sm"
           onClick={() => {
             void load();
+            void loadBranches();
             void projects.refetch();
             void policy.refetch();
           }}
@@ -329,6 +350,8 @@ function ProjectsView() {
                   key={p.id}
                   project={p}
                   local={byId.get(p.id)}
+                  branch={byId.get(p.id) && branches[folderKey(byId.get(p.id)?.folder ?? "")]}
+                  onBranches={(folder) => setSheet({ folder, name: p.name })}
                   t={t}
                   busy={busy === p.id}
                   allowFull={allowFull}
@@ -347,6 +370,8 @@ function ProjectsView() {
       <LocalRepoList
         entries={local ? waiting : null}
         tracked={tracked}
+        branches={branches}
+        onBranches={(l) => setSheet({ folder: l.folder, name: l.name })}
         t={t}
         busy={busy}
         onRemove={(l) =>
@@ -355,6 +380,15 @@ function ProjectsView() {
       />
 
       <GitGroupsSection onCloned={load} />
+
+      {sheet && (
+        <BranchesSheet
+          folder={sheet.folder}
+          name={sheet.name}
+          onClose={() => setSheet(null)}
+          onChanged={() => void loadBranches()}
+        />
+      )}
 
       <Dialog open={confirming !== null} onOpenChange={(o) => !o && busy === null && setConfirming(null)}>
         <DialogContent showCloseButton={false}>
@@ -397,6 +431,8 @@ function ProjectsView() {
 function LocalRepoList({
   entries,
   tracked,
+  branches,
+  onBranches,
   t,
   busy,
   onRemove,
@@ -404,6 +440,8 @@ function LocalRepoList({
   /** null khi chưa đọc xong danh sách trên máy. */
   entries: LocalProject[] | null;
   tracked: GitGroups | null;
+  branches: Record<string, BranchStatus>;
+  onBranches: (l: LocalProject) => void;
   t: (typeof text)["vi"];
   busy: string | null;
   onRemove: (l: LocalProject) => void;
@@ -480,6 +518,15 @@ function LocalRepoList({
                             <span className="truncate text-xs text-muted-foreground">
                               {l.projectId ? t.goneFromHub : l.origin ? t.origin(l.origin) : t.noOrigin}
                             </span>
+                            {branches[folderKey(l.folder)] && (
+                              <span className="mt-1">
+                                <RepoBranchStatus
+                                  status={branches[folderKey(l.folder)] as BranchStatus}
+                                  name={l.name}
+                                  onOpen={() => onBranches(l)}
+                                />
+                              </span>
+                            )}
                           </span>
                           {l.exists && <TerminalButton name={l.name} folder={l.folder} />}
                           <Button
@@ -527,6 +574,8 @@ function TerminalButton({ name, folder }: { name: string; folder: string }) {
 function ProjectRow({
   project: p,
   local,
+  branch,
+  onBranches,
   t,
   busy,
   allowFull,
@@ -536,6 +585,8 @@ function ProjectRow({
 }: {
   project: Project;
   local: LocalProject | undefined;
+  branch: BranchStatus | undefined;
+  onBranches: (folder: string) => void;
   t: (typeof text)["vi"];
   busy: boolean;
   allowFull: boolean | undefined;
@@ -566,6 +617,11 @@ function ProjectRow({
           <span className="truncate font-mono text-xs">{local ? shortPath(local.folder) : "—"}</span>
           {state === "mismatch" && (
             <span className="truncate text-xs text-warning">{local?.origin ? t.origin(local.origin) : t.noOrigin}</span>
+          )}
+          {local && branch && (
+            <span className="mt-1">
+              <RepoBranchStatus status={branch} name={p.name} onOpen={() => onBranches(local.folder)} />
+            </span>
           )}
         </span>
         {local?.exists && <TerminalButton name={p.name} folder={local.folder} />}
