@@ -1,0 +1,46 @@
+{
+  "metadata": { "name": "his-portal", "namespace": "argocd", "resourceVersion": "88213" },
+  "spec": {
+    "project": "acme",
+    "source": {
+      "repoURL": "https://gitlab.example.invalid/acme/deploy.git",
+      "path": "charts/his-portal",
+      "targetRevision": "main"
+    },
+    "destination": { "server": "https://kubernetes.default.svc", "namespace": "his-portal" },
+    "syncPolicy": { "automated": { "prune": true, "selfHeal": true } }
+  },
+  "status": {
+    "sync": { "status": "Synced", "revision": "9f8e7d6c5b4a39281706f5e4d3c2b1a099887766" },
+    "health": { "status": "Healthy" },
+    "history": [
+      {
+        "revision": "1111111111111111111111111111111111111111",
+        "deployedAt": "2026-10-10T08:00:00Z",
+        "id": 0,
+        "deployStartedAt": "2026-10-10T07:59:40Z"
+      },
+      {
+        "revision": "2222222222222222222222222222222222222222",
+        "deployedAt": "2026-10-12T09:30:00Z",
+        "id": 1,
+        "deployStartedAt": "2026-10-12T09:29:40Z"
+      },
+      {
+        "revision": "9f8e7d6c5b4a39281706f5e4d3c2b1a099887766",
+        "deployedAt": "2026-10-15T14:05:12Z",
+        "id": 2,
+        "deployStartedAt": "2026-10-15T14:04:50Z"
+      }
+    ],
+    "operationState": {
+      "operation": { "sync": { "revision": "9f8e7d6c5b4a39281706f5e4d3c2b1a099887766" } },
+      "phase": "Succeeded",
+      "message": "successfully synced (all tasks run)",
+      "syncResult": { "revision": "9f8e7d6c5b4a39281706f5e4d3c2b1a099887766" },
+      "startedAt": "2026-10-15T14:04:50Z",
+      "finishedAt": "2026-10-15T14:05:12Z"
+    },
+    "summary": { "images": ["registry.example.invalid/his/portal:1.8.3", "registry.example.invalid/his/sidecar:0.4.1"] }
+  }
+}

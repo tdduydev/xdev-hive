@@ -23,7 +23,9 @@ import {
   NetworkIcon,
   PlayIcon,
   PlugIcon,
+  PlugZapIcon,
   ScrollTextIcon,
+  ServerIcon,
   SettingsIcon,
   ShieldCheckIcon,
   ShieldIcon,
@@ -268,6 +270,24 @@ export const NAV_GROUPS: NavGroup[] = [
         adminOnly: true,
       },
       {
+        id: "ci-connections",
+        label: { vi: "Kết nối CI", en: "CI connections" },
+        icon: PlugZapIcon,
+        to: route("/admin/ci-connections"),
+        match: "/admin/ci-connections",
+        adminOnly: true,
+        permission: "ci.connections.manage",
+      },
+      {
+        id: "servers",
+        label: { vi: "Máy chủ triển khai", en: "Deploy servers" },
+        icon: ServerIcon,
+        to: route("/admin/servers"),
+        match: "/admin/servers",
+        adminOnly: true,
+        permission: "servers.manage",
+      },
+      {
         id: "sandbox",
         label: { vi: "Sandbox", en: "Sandbox" },
         icon: ShieldIcon,
@@ -362,10 +382,10 @@ export const NAV_ADMIN = {
 };
 
 /*
- * Bảng việc của một dự án là màn làm việc, không phải màn quản trị, dù nằm dưới /projects: không hiện menu Quản trị
- * để cột thẻ đủ rộng, và sáng mục Bảng việc như /tasks.
+ * Bảng việc của một dự án và màn CI/CD của dự án là màn làm việc, không phải màn quản trị, dù nằm dưới /projects:
+ * không hiện menu Quản trị để cột thẻ và bảng build đủ rộng, và sáng mục Bảng việc như /tasks.
  */
-const PROJECT_BOARD = /^\/projects\/[^/]+\/?$/;
+const PROJECT_BOARD = /^\/projects\/[^/]+(?:\/cicd(?:\/.*)?)?\/?$/;
 
 /** Mục khớp đường dẫn hiện tại (khớp dài nhất), để sáng mục ở sidebar và hiện tên màn ở Topbar. */
 export function activeNavItem(pathname: string): NavItem | undefined {

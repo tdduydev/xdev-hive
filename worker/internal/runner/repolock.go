@@ -7,73 +7,28 @@ import (
 	"io"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
+	"github.com/tdduydev/xdev-hive/worker/internal/repolock"
 )
 
-// Các run cùng repo dùng chung một repo cache bare. Hai lệnh git ghi vào cache cùng lúc (fetch cùng ref, worktree add
-// sửa config chung) tranh file .lock của git và một bên hỏng với "cannot lock ref". Khoá chỉ giữ trong lúc một lệnh git
-// chạy, nên CLI của các run vẫn chạy song song.
+// Khoá repo nằm ở gói repolock để lệnh `hive-worker branches` của app desktop khoá cùng file với run. Các wrapper giữ
+// tên cũ cho code và test của runner.
 
-var (
-	repoLocksMu sync.Mutex
-	repoLocks   = map[string]chan struct{}{}
-)
+const filePollInterval = repolock.FilePollInterval
 
-// filePollInterval là nhịp thử lại khoá file; khoá file không chờ theo context được nên thử không chặn rồi ngủ.
-const filePollInterval = 50 * time.Millisecond
-
-// lockRepo khoá repo cache trong tiến trình và giữa các tiến trình worker dùng chung DataDir (service và chạy tay
-// cùng dùng os.UserCacheDir của một người dùng). Khoá file nằm cạnh cache vì lúc clone thư mục cache chưa có.
 func lockRepo(ctx context.Context, cache string) (func(), error) {
-	repoLocksMu.Lock()
-	ch, ok := repoLocks[cache]
-	if !ok {
-		ch = make(chan struct{}, 1)
-		repoLocks[cache] = ch
-	}
-	repoLocksMu.Unlock()
-	select {
-	case ch <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	f, err := lockFile(ctx, cache+".lock")
-	if err != nil {
-		<-ch
-		return nil, err
-	}
-	return func() {
-		_ = unlockFile(f)
-		_ = f.Close()
-		<-ch
-	}, nil
+	return repolock.LockRepo(ctx, cache)
 }
 
 func lockFile(ctx context.Context, path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-	if err != nil {
-		return nil, err
-	}
-	for {
-		locked, err := tryLockFile(f)
-		if err != nil {
-			_ = f.Close()
-			return nil, err
-		}
-		if locked {
-			return f, nil
-		}
-		select {
-		case <-ctx.Done():
-			_ = f.Close()
-			return nil, ctx.Err()
-		case <-time.After(filePollInterval):
-		}
-	}
+	return repolock.LockFile(ctx, path)
 }
+
+func tryLockFile(f *os.File) (bool, error) { return repolock.TryLockFile(f) }
+
+func unlockFile(f *os.File) error { return repolock.UnlockFile(f) }
 
 // gitLockRetries và gitLockBackoff giới hạn việc thử lại: git của tiến trình ngoài worker (người dùng chạy tay, gc tự
 // động) vẫn có thể giữ file .lock trong chốc lát dù worker đã tự tuần tự hoá.
