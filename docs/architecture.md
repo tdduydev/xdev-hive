@@ -390,8 +390,9 @@ Nguyên tắc thiết kế:
 - **Rust chỉ chuyển tiếp:** `git_branches.rs` gom danh sách thư mục đang có agent, terminal hay cửa sổ app (`busy`) cho
   sidecar, chuyển token Git cho `scan` qua `HIVE_GIT_TOKENS` và mỗi dòng stdout thành sự kiện `git-branches:event`.
   Giao diện bọc bằng `lib/git-branches.ts` (`useBranchJob`).
-- **Hiện trạng:** `hasSubmodule` (`state.go`) chặn mọi worktree có `.gitmodules`, kể cả submodule chưa init (task T020
-  sửa). Hệ quả cho SC-004 ghi ở [research.md mục 5](../specs/026-desktop-git-branches/research.md).
+- **Hiện trạng:** `hasSubmodule` (`state.go`) theo `validate_no_submodules` của git: chặn khi thư mục git của worktree
+  có `modules/` hoặc gitlink trong index có `.git` (T020); không đọc chắc được thì vẫn chặn. SC-004 chưa đo lại sau T020
+  ([research.md mục 5](../specs/026-desktop-git-branches/research.md)).
 
 ## 6. Bảo mật và token
 
