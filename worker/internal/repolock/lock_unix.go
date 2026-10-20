@@ -1,6 +1,6 @@
 //go:build !windows
 
-package runner
+package repolock
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func tryLockFile(f *os.File) (bool, error) {
+func TryLockFile(f *os.File) (bool, error) {
 	err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
 		return false, nil
@@ -19,4 +19,4 @@ func tryLockFile(f *os.File) (bool, error) {
 	return err == nil, err
 }
 
-func unlockFile(f *os.File) error { return syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }
+func UnlockFile(f *os.File) error { return syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }
