@@ -351,6 +351,8 @@ func claudeAssistant(s *session, o *claudeLine, seen map[string]bool, toolName m
 	s.CacheRead += u.CacheReadInputTokens
 	s.CacheWrite5m += w5m
 	s.CacheWrite1h += w1h
+	s.addModel(m.Model, weighted(&session{Input: u.InputTokens, Output: u.OutputTokens, CacheRead: u.CacheReadInputTokens,
+		CacheWrite5m: w5m, CacheWrite1h: w1h}))
 	context := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
 	s.PeakContext = max(s.PeakContext, context)
 	if s.FirstContext == 0 {
@@ -385,7 +387,8 @@ func readCodex(path, account string) (*session, error) {
 	s := newSession("codex", account)
 	var last *codexUsage
 	callName := map[string]string{}
-	var cwd, originator string
+	var cwd, originator, model string
+	var counted float64
 	var pending []pendingTool
 	err := forEachLine(path, func(line []byte) {
 		var o struct {
@@ -408,9 +411,14 @@ func readCodex(path, account string) (*session, error) {
 		}
 		if o.Type == "turn_context" && p.Model != "" {
 			s.Models = addUnique(s.Models, p.Model)
+			model = p.Model
 		}
 		if p.Type == "token_count" && p.Info != nil && p.Info.Total != nil {
 			s.Calls++
+			// Số của Codex là luỹ kế cả phiên: phần tăng từ lần đếm trước thuộc về model của lượt hiện tại.
+			w := codexWeighted(p.Info.Total)
+			s.addModel(model, w-counted)
+			counted = max(counted, w)
 			last = p.Info.Total
 			if l := p.Info.Last; l != nil {
 				s.PeakContext = max(s.PeakContext, l.InputTokens)
@@ -441,15 +449,21 @@ func readCodex(path, account string) (*session, error) {
 		bump(s.Tools, t.name, t.chars, t.chars*float64(max(0, s.Calls-t.at)))
 	}
 	if last != nil {
-		// Codex tính input gồm cả phần cache; tách ra cho cùng nghĩa với Claude.
-		s.CacheRead = last.CachedInputTokens
-		s.Input = last.InputTokens - s.CacheRead
-		s.CacheWrite5m = last.CacheWriteInputTokens
-		s.Output = last.OutputTokens + last.ReasoningOutputTokens
+		s.Input, s.Output, s.CacheRead, s.CacheWrite5m = codexTokens(last)
 	}
 	s.Source = classify(cwd, originator == "codex_exec")
 	s.Cwd = cwd
 	return s, nil
+}
+
+// codexTokens: Codex tính input gồm cả phần cache; tách ra cho cùng nghĩa với Claude.
+func codexTokens(u *codexUsage) (input, output, cacheRead, cacheWrite int64) {
+	return u.InputTokens - u.CachedInputTokens, u.OutputTokens + u.ReasoningOutputTokens, u.CachedInputTokens, u.CacheWriteInputTokens
+}
+
+func codexWeighted(u *codexUsage) float64 {
+	input, output, cacheRead, cacheWrite := codexTokens(u)
+	return weighted(&session{Input: input, Output: output, CacheRead: cacheRead, CacheWrite5m: cacheWrite})
 }
 
 // codexOutputLength: output dạng chuỗi đếm thẳng, dạng khác đếm theo JSON gọn như JSON.stringify(out ?? "").
