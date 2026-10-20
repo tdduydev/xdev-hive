@@ -363,9 +363,7 @@ export function GitOperationPanel({
         <h3 className="text-sm font-semibold">{t.running[op.kind]}</h3>
         {op.step !== undefined && op.total !== undefined && (
           <Pill tone="warn">
-            <span translate="no" className="font-mono">
-              {t.step(op.step, op.total)}
-            </span>
+            <span className="tabular-nums">{t.step(op.step, op.total)}</span>
           </Pill>
         )}
       </div>
