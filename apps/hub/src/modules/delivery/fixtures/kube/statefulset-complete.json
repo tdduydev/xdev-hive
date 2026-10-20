@@ -1,0 +1,17 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "StatefulSet",
+  "metadata": { "name": "his-db", "namespace": "his-data", "generation": 3 },
+  "spec": {
+    "replicas": 2,
+    "template": { "spec": { "containers": [{ "name": "db", "image": "registry.example.invalid/his/db:16.4" }] } }
+  },
+  "status": {
+    "observedGeneration": 3,
+    "replicas": 2,
+    "readyReplicas": 2,
+    "updatedReplicas": 2,
+    "currentRevision": "his-db-7c9d",
+    "updateRevision": "his-db-7c9d"
+  }
+}

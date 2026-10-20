@@ -33,6 +33,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/instancelock"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
+	"github.com/tdduydev/xdev-hive/worker/internal/repolock"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/service"
 	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
@@ -388,7 +389,7 @@ func run(args []string) int {
 			cancel()
 		}()
 	}
-	dataDir, err := os.UserCacheDir()
+	dataDir, err := repolock.DataDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -398,8 +399,9 @@ func run(args []string) int {
 	pool := accounts.NewPool(accounts.DefaultPath(path))
 	go pool.Watch(ctx)
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
-	status := newWorkerStatus(cfg, *owner, dataDir)
-	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "xdev-hive", "worker", "terminal"), newRemote(cfg, path, detectCLIs()), status)
+	// newWorkerStatus còn nhận thư mục cache gốc, hai cấp trên DataDir.
+	status := newWorkerStatus(cfg, *owner, filepath.Dir(filepath.Dir(dataDir)))
+	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "terminal"), newRemote(cfg, path, detectCLIs()), status)
 	defer stopLocal()
 	slots := *capacity
 	if !flagSet(fs, "capacity") {
@@ -484,7 +486,7 @@ func host(args []string) int {
 	if *hub != "" {
 		cfg.HubURL = *hub
 	}
-	dataDir, err := os.UserCacheDir()
+	dataDir, err := repolock.DataDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -630,7 +632,7 @@ func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, 
 	if mode == "host" {
 		clis = knownCLIs
 	}
-	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool, Projects: projectsFile, Terminal: term}
+	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: dataDir, Logger: slog.Default(), SelfUpdate: selfUpdate, Accounts: pool, Projects: projectsFile, Terminal: term}
 	cc.OnStatus = onStatus
 	err := cc.Run(ctx)
 	var requested *channel.UpdateRequest

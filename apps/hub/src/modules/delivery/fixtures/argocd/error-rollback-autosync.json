@@ -1,0 +1,5 @@
+{
+  "error": "rollback cannot be initiated when auto-sync is enabled",
+  "code": 9,
+  "message": "rollback cannot be initiated when auto-sync is enabled"
+}

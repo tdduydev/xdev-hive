@@ -1,0 +1,10 @@
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {},
+  "status": "Failure",
+  "message": "deployments.apps \"his-portal\" not found",
+  "reason": "NotFound",
+  "details": { "name": "his-portal", "group": "apps", "kind": "deployments" },
+  "code": 404
+}
