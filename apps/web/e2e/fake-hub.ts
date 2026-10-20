@@ -37,6 +37,10 @@ import {
   PASSKEY_KEY_INFO,
   toBase64url,
 } from "@xdev-hive/contracts/terminal-auth";
+import { deliveryApprovalsDefaults } from "./delivery-approvals-fixture.ts";
+import { deliveryCiDefaults } from "./delivery-ci-fixture.ts";
+import { deliveryDeployStreams, deliveryDeploysDefaults } from "./delivery-deploys-fixture.ts";
+import { deliveryServersDefaults } from "./delivery-servers-fixture.ts";
 import { docsyncDocsFixture } from "./docsync-docs-fixture.ts";
 import { docsyncImportFixture } from "./docsync-import-fixture.ts";
 import { docsyncReviewFixture } from "./docsync-review-fixture.ts";
@@ -99,6 +103,10 @@ export async function fakeHub(
     ...docsyncImportFixture(),
     ...docsyncDocsFixture(),
     ...docsyncReviewFixture(),
+    ...deliveryCiDefaults(),
+    ...deliveryServersDefaults(),
+    ...deliveryDeploysDefaults(),
+    ...deliveryApprovalsDefaults(),
     ...opts.rpc,
   };
   // BuildInfo thử lại khi thiếu phiên bản; giữ trạng thái đó mà không để request chạm proxy tới hub không chạy.
@@ -127,6 +135,14 @@ export async function fakeHub(
     hub.rpcCalls.push(call);
     const handler = rpc[path];
     return route.fulfill(handler ? handler(input, call, hub) : fail("NOT_FOUND", 404, `Hub giả chưa có ${path}.`));
+  });
+  // Luồng log của lần triển khai (specs/020): khung SSE đọc từ fixture, rồi đóng luồng như hub khi lần chạy kết thúc.
+  await page.route("**/api/v1/deploys/*/stream**", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-2) ?? "";
+    const body = (deliveryDeployStreams[id] ?? [])
+      .map((f) => `${f.id ? `id: ${f.id}\n` : ""}event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`)
+      .join("");
+    return route.fulfill({ status: 200, headers: { "content-type": "text/event-stream" }, body });
   });
   await page.route("**/api/auth/**", (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/api\/auth/, "");
