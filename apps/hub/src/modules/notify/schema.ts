@@ -35,6 +35,8 @@ export const notificationChannels = hive
       name: text("name").notNull(),
       /** Loại sự kiện kênh nhận (contracts notificationEvent). */
       events: text("events").array().notNull(),
+      /** Chỉ nhận sự kiện CI/CD của các hệ thống này; null là mọi hệ thống. */
+      systemIds: uuid("system_ids").array(),
       enabled: boolean("enabled").notNull().default(true),
       target: text("target").notNull(),
       /** JSON cấu hình, mã hoá envelope với ngữ cảnh là id dòng. */
