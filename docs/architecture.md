@@ -83,6 +83,7 @@ Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth)
 | `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, bộ skill mặc định của Hive (`packages/skill-pack`, bật/tắt theo tổ chức và dự án), đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `skill_pack_settings`, `proposals`, `legacy_*` |
 | `skilllearn` | Agent đề xuất skill sau việc khó (ADR 0025): chọn run đáng học, lô mỗi ngày mỗi dự án chạy run `skill_proposal` chỉ đọc, bỏ trùng, hạn mức theo ngày, duyệt thành PR vào kho skill hoặc skill của tổ chức, số liệu | `skill_learning_batches`, `skill_learning_marks`, `learned_skill_proposals` |
 | `docsync` | Nhà tài liệu trên GitHub/GitLab, nhập và đồng bộ hai chiều, xung đột, ảnh/đính kèm và bản trích có duyệt; nhận sự kiện lưu từ `knowledge` qua hook | `doc_homes`, `doc_repo_files`, `doc_imports`, `doc_import_files`, `doc_sync_batches`, `doc_conflicts`, `doc_assets`, `doc_extracts` |
+| `delivery` | Bảng điều khiển CI/CD và triển khai (specs/020, ADR 0030, 0031): kết nối Jenkins (token từng người, người theo dõi), Argo CD, Kubernetes; tab CI/CD gộp pipeline GitLab và build Jenkins; máy chủ có khoá SSH do hub sinh, môi trường, đích triển khai (`ssh-script`, `jenkins-job`, `gitlab-manual`, `argocd`, `kubectl`), duyệt, khoá, quay về, log triển khai đã che bí mật. **[Chưa làm]** | `ci_jenkins_connections`, `ci_jenkins_user_tokens`, `ci_project_jobs`, `ci_runs_seen`, `deploy_connections`, `deploy_servers`, `deploy_environments`, `deploy_targets`, `deploys`, `deploy_log_chunks`, `deploy_approvals` |
 | `leader` | Chat với leader agent, đề xuất hành động cần người duyệt | `chat_threads`, `chat_messages`, `approvals` |
 | `artifacts` | Artifact (specs/012, ADR 0023): sản phẩm có phiên bản của agent và người (markdown, code, html, mermaid, react), phạm vi, link công khai, biên dịch `react` ở hub, khung cách ly và job dọn thùng rác. MVP chưa có `svg`, `json`, `csv`, ảnh, PDF, phạm vi `team`/`org` và Terminal Leader | `artifacts`, `artifact_versions`, `artifact_links`, `artifact_previews`, `artifact_public_links` |
 | `terminal` | Terminal Leader: phiên Claude CLI tương tác trên máy dùng chung, chuyển tiếp web ↔ worker qua `/ws/terminal`, bản ghi đã che bí mật (specs/010 lát đầu) | `terminal_sessions`, `terminal_chunks` |
@@ -162,6 +163,29 @@ PostgreSQL hiện tại; chuyển sang S3 có thể thực hiện sau qua giao d
 Giới hạn cấu hình bằng byte nguyên dương: `HIVE_DOC_ASSET_MAX_BYTES` mặc định 52428800 (50 MiB),
 `HIVE_DOC_ORG_STORAGE_BYTES` mặc định 5368709120 (5 GiB), `HIVE_DOC_IMPORT_MAX_BYTES` mặc định 2147483648 (2 GiB).
 Hai file `.env.example` và `deploy/compose.yaml` khai báo cùng mặc định này.
+
+### Bảng điều khiển CI/CD và triển khai
+
+**[Chưa làm]** Thiết kế của [spec 020](../specs/020-cicd-console/spec.md); chưa có code trên `main`. Mọi bảng mới có
+`org_id`, bật và ép RLS, truy cập qua `withTenant()` bằng `hive_app`; một migration cho cả spec.
+
+- Kết nối: `ci_jenkins_connections` (người theo dõi) và `ci_jenkins_user_tokens` (token Jenkins từng người, mã hoá theo
+  bản ghi); `deploy_connections` giữ Argo CD và Kubernetes (token dùng chung của tổ chức). Mọi token và khoá riêng mã
+  hoá bằng `platform/secrets.ts`, chỉ giải mã trong bộ nhớ lúc dùng.
+- Máy chủ và đích: `deploy_servers` giữ khoá riêng mã hoá, khoá công khai, khoá đang chờ đổi và `host_keys` (thuật toán cùng
+  dấu vân tay). `deploy_environments` thuộc hệ thống (chính sách duyệt, khoá); `deploy_targets` là dự án × môi trường, cấu
+  hình `jsonb` có phiên bản.
+- Lần triển khai: `deploys` (trạng thái, các bước, phiên bản, `origin` là `hive` hoặc `external`, vị trí log đã đọc trên
+  máy chủ), `deploy_log_chunks` (log `bytea` theo đoạn, đã che bí mật, xem bằng SSE), `deploy_approvals`. Mỗi đích có tối đa
+  một lần đang đi do Hive tạo. `ci_runs_seen` chỉ giữ trạng thái đã thấy để báo đỏ/xanh; log CI không lưu.
+- `ssh-script`: hub dùng `ssh2`, host key cố định, tải thư mục `~/.hive-deploy/<deployId>/` qua SFTP và chạy `run.sh` tách
+  khỏi phiên SSH. Job `delivery-deploy-watch` (pg-boss) mở phiên ngắn đọc `log` và `status.json` từ vị trí đã lưu, nên hub
+  khởi động lại (kể cả khi triển khai chính nó) không làm dở bước.
+- Các cách khác gọi bằng `fetch`: Jenkins (`delivery-ci-poll` hỏi 5 phút khi rảnh, 15 giây khi có build chạy), GitLab qua
+  `scm` và webhook Pipeline/Job, Argo CD (`sync`, `rollback`), API Kubernetes (`PATCH` image).
+- Mạng: hub không vào được cổng 22 và API Kubernetes của máy nội bộ (T006), nên hạ tầng acme đi qua `jenkins-job`
+  hoặc `argocd`. Chi tiết Jenkins, Argo CD thật chưa kiểm (T007) và vẫn là suy luận. Chi tiết:
+  [ADR 0030](adr/0030-hub-deploys-over-ssh.md), [ADR 0031](adr/0031-external-ci-and-deploy-sources.md).
 
 ## 4. Run
 
