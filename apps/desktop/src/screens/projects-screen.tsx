@@ -12,9 +12,17 @@ import {
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
-import { ChevronDownIcon, ChevronRightIcon, FolderOpenIcon, RefreshCwIcon, SquareTerminalIcon } from "lucide-react";
+import {
+  BrushCleaningIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FolderOpenIcon,
+  RefreshCwIcon,
+  SquareTerminalIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { BranchesSheet, RepoBranchStatus } from "@/components/branches-sheet.tsx";
+import { CleanupDialog } from "@/components/cleanup-dialog.tsx";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { GitGroupsSection } from "@/components/git-groups.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
@@ -49,6 +57,8 @@ const text: Dict<{
   noAccount: string;
   loading: string;
   refresh: string;
+  cleanup: string;
+  cleanupHint: string;
   hubProjects: string;
   noProjects: string;
   localOnly: string;
@@ -92,6 +102,8 @@ const text: Dict<{
     noAccount: "Kết nối Hive để xem và gắn dự án của bạn trên hub. Repo trên máy bên dưới vẫn quản lý được.",
     loading: "Đang đọc…",
     refresh: "Làm mới",
+    cleanup: "Dọn nhánh",
+    cleanupHint: "Dọn nhánh đã merge ở mọi repo trên máy",
     hubProjects: "Dự án trên hub",
     noProjects: "Bạn chưa thấy dự án nào trên hub.",
     localOnly: "Repo trên máy chưa có trên hub",
@@ -143,6 +155,8 @@ const text: Dict<{
     noAccount: "Connect to Hive to see and bind your hub projects. The repositories below still work.",
     loading: "Reading…",
     refresh: "Refresh",
+    cleanup: "Clean up branches",
+    cleanupHint: "Clean up merged branches in every repo on this machine",
     hubProjects: "Hub projects",
     noProjects: "You cannot see any project on the hub yet.",
     localOnly: "Repositories on this machine without a hub project",
@@ -227,6 +241,7 @@ function ProjectsView() {
   // Nhánh, sạch/bẩn, trước/sau của từng repo trên máy (FR-001), theo folderKey; thiếu thì repo không hiện nhánh.
   const [branches, setBranches] = useState<Record<string, BranchStatus>>({});
   const [sheet, setSheet] = useState<{ folder: string; name: string } | null>(null);
+  const [cleaning, setCleaning] = useState(false);
 
   const load = useCallback(async () => {
     // Chỉ để đặt tên mục của repo chưa có trên hub; đọc lỗi thì vẫn gom theo remote, mục Nhóm Git tự báo lỗi.
@@ -315,19 +330,31 @@ function ProjectsView() {
         <div className="flex min-w-72 flex-1 flex-col gap-1">
           <p className="text-sm text-muted-foreground">{t.lead}</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            void load();
-            void loadBranches();
-            void projects.refetch();
-            void policy.refetch();
-          }}
-        >
-          <RefreshCwIcon aria-hidden="true" className={cn(projects.isFetching && "animate-spin")} />
-          {t.refresh}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={repoKey === ""}
+            title={t.cleanupHint}
+            onClick={() => setCleaning(true)}
+          >
+            <BrushCleaningIcon aria-hidden="true" />
+            {t.cleanup}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void load();
+              void loadBranches();
+              void projects.refetch();
+              void policy.refetch();
+            }}
+          >
+            <RefreshCwIcon aria-hidden="true" className={cn(projects.isFetching && "animate-spin")} />
+            {t.refresh}
+          </Button>
+        </div>
       </header>
       {(error || projects.error) && <Alert variant="destructive">{error ?? errorText(projects.error)}</Alert>}
       {notice && <Alert>{notice}</Alert>}
@@ -380,6 +407,14 @@ function ProjectsView() {
       />
 
       <GitGroupsSection onCloned={load} />
+
+      {cleaning && (
+        <CleanupDialog
+          folders={repoKey.split("\n")}
+          onClose={() => setCleaning(false)}
+          onChanged={() => void loadBranches()}
+        />
+      )}
 
       {sheet && (
         <BranchesSheet
