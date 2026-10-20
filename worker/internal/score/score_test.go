@@ -362,13 +362,15 @@ func TestProjectsAndCodegraph(t *testing.T) {
 	}
 }
 
-func TestRTKHookOnWindows(t *testing.T) {
+func TestRTKOnWindowsIsUnsupported(t *testing.T) {
 	home := t.TempDir()
 	p := claudeProfile(home, "claude-2")
-	res := compute(t, Inputs{Home: home, GOOS: "windows", Profiles: []Profile{p}, HasTool: func(n string) bool { return n == "rtk" }})
-	a6 := criterion(t, res.Profiles[0], "A6")
-	if len(a6.Fixes) != 0 || a6.Items[1].Reason != "windows_rtk_unsupported" {
-		t.Errorf("Windows không có nút bật hook RTK: %+v", a6)
+	for _, has := range []bool{true, false} {
+		res := compute(t, Inputs{Home: home, GOOS: "windows", Profiles: []Profile{p}, HasTool: func(n string) bool { return has && n == "rtk" }})
+		a6 := criterion(t, res.Profiles[0], "A6")
+		if a6.Status != StatusUnsupported || a6.Reason != "windows_rtk_unsupported" || len(a6.Fixes) != 0 || a6.Earned != 0 {
+			t.Errorf("Windows (rtk=%v): A6 phải unsupported, không gợi ý cài hay bật hook: %+v", has, a6)
+		}
 	}
 }
 
