@@ -1,6 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { redactSecrets, SECRET_KINDS, SECRET_MASK, type SecretFinding, scanSecrets } from "./secret-scan.ts";
+import {
+  redactSecrets,
+  SECRET_KINDS,
+  SECRET_MASK,
+  SECRET_PATTERNS,
+  type SecretFinding,
+  scanSecrets,
+  secretSpans,
+} from "./secret-scan.ts";
 
 interface Sample {
   name: string;
@@ -68,5 +76,19 @@ describe("redactSecrets", () => {
       `curl -H "Authorization: Bearer ${SECRET_MASK}" x`,
     );
     expect(redactSecrets("DB_PASSWORD=hunter2abc9\nPORT=5432")).toBe(`DB_PASSWORD=${SECRET_MASK}\nPORT=5432`);
+  });
+});
+
+describe("bộ mẫu export", () => {
+  it("mẫu token cộng phép gán đủ mọi loại", () => {
+    const kinds = [...SECRET_PATTERNS.map((p) => p.kind), "credential_assignment"];
+    expect(kinds.sort()).toEqual([...SECRET_KINDS].sort());
+  });
+
+  it("khoá riêng OpenSSH: phát hiện ở dòng BEGIN, phần che gồm cả khối tới END", () => {
+    const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----";
+    const text = `key:\n${key}\nnext`;
+    expect(secretSpans(text)).toEqual([{ index: 5, start: 5, end: 5 + key.length, kind: "private_key" }]);
+    expect(scanSecrets(text)).toEqual([{ line: 2, kind: "private_key" }]);
   });
 });
