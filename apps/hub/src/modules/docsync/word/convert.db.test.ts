@@ -360,13 +360,13 @@ const real = await detectPandoc("pandoc");
 const goldenReady = real.ok && real.version === PANDOC_VERSION;
 if (!goldenReady) console.warn(`Bỏ qua so job với golden: cần pandoc ${PANDOC_VERSION}.`);
 
-/** Về dạng so được: bỏ front matter, link ảnh (tên băm hay `m/media/…`) thành chỗ giữ, EMF thành link tải. */
+/** Về dạng so được: bỏ front matter, link ảnh (tên băm hay `m/media/…`, ODT là `m/Pictures/…`) thành chỗ giữ, EMF thành link tải. */
 function normalize(markdown: string): string {
   return markdown
     .replace(/^---\n[\s\S]*?\n---\n\n/, "")
-    .replace(/!\[([^\]]*)\]\(m\/media\/[^)]+\.(?:emf|wmf)\)/g, "[EMF]")
+    .replace(/!\[([^\]]*)\]\(m\/(?:media|Pictures)\/[^)]+\.(?:emf|wmf)\)/g, "[EMF]")
     .replace(/\[[^\]]*\]\([0-9a-f]{12}\.(?:emf|wmf)\)/g, "[EMF]")
-    .replace(/(!\[[^\]]*\]\()(?:m\/media\/[^)]+|[0-9a-f]{12}\.[a-z0-9]+)\)/g, "$1IMG)");
+    .replace(/(!\[[^\]]*\]\()(?:m\/(?:media|Pictures)\/[^)]+|[0-9a-f]{12}\.[a-z0-9]+)\)/g, "$1IMG)");
 }
 
 describe.skipIf(!goldenReady)("job chuyển Word với pandoc thật", () => {
