@@ -1,5 +1,6 @@
+import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@xdev-hive/ui/button";
-import { LogOutIcon } from "lucide-react";
+import { KeyRoundIcon, LogOutIcon } from "lucide-react";
 import { PersonAvatar } from "@/components/person.tsx";
 import {
   DropdownMenu,
@@ -14,14 +15,21 @@ import { type Dict, useT } from "@/lib/i18n.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useSignOut } from "@/shell/use-sign-out.ts";
 
-const text: Dict<{ account: string; signOut: string; pending: string; failure: string }> = {
+const text: Dict<{ account: string; jenkinsTokens: string; signOut: string; pending: string; failure: string }> = {
   vi: {
     account: "Tài khoản",
+    jenkinsTokens: "Token Jenkins",
     signOut: "Đăng xuất",
     pending: "Đang đăng xuất…",
     failure: "Không đăng xuất được. Thử lại.",
   },
-  en: { account: "Account", signOut: "Sign out", pending: "Signing out…", failure: "Could not sign out. Try again." },
+  en: {
+    account: "Account",
+    jenkinsTokens: "Jenkins tokens",
+    signOut: "Sign out",
+    pending: "Signing out…",
+    failure: "Could not sign out. Try again.",
+  },
 };
 
 /**
@@ -32,6 +40,7 @@ export function UserMenu() {
   const t = useT(text);
   const me = useMe();
   const signOut = useSignOut();
+  const navigate = useNavigate();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -48,6 +57,11 @@ export function UserMenu() {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        {/* Token Jenkins là của từng người, nên nằm ở menu cá nhân thay vì menu Quản trị. */}
+        <DropdownMenuItem onClick={() => void navigate({ to: "/settings/jenkins-tokens" })}>
+          <KeyRoundIcon aria-hidden="true" />
+          {t.jenkinsTokens}
+        </DropdownMenuItem>
         {/* Không đóng menu khi bấm: lỗi phải hiện ngay tại đây để người dùng thử lại, thay vì biến mất cùng menu. */}
         <DropdownMenuItem
           variant="destructive"
