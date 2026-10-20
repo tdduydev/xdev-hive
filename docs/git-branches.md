@@ -193,13 +193,12 @@ git reset --keep <headBefore>
 
 - **Submodule.** Chỉ chặn worktree có submodule đã init (T020). Không đọc được trạng thái submodule chắc chắn thì app
   vẫn chặn.
-- **SC-004** (số worktree liên kết giảm sau khi dọn) chưa đạt ở lần đo T013, vì khi đó code chặn mọi repo có
-  `.gitmodules`. Số đo ở
-  [research.md mục 5](../specs/026-desktop-git-branches/research.md#5-đo-p1-trên-máy-dev-macos-2026-10-20-task-t013).
-  **Chưa đo lại** sau T020.
+- **SC-004** (số worktree liên kết giảm sau khi dọn): đạt sau T020 trên bản sao repo A (28 xuống 8 worktree liên kết;
+  còn lại đúng worktree bẩn, có commit chưa merge và mới tạo). Đo trên macOS, chưa đo trên Windows, chưa chạy trên
+  repo thật. Số đo ở [research.md mục 5.5](../specs/026-desktop-git-branches/research.md).
 - **Hiệu năng.** Trên macOS, bảng nhánh hiện sau khoảng 1,1–1,5 giây với 29–30 worktree và hơn 460 nhánh. Trạng thái đủ
   của mọi worktree xong sau khoảng 3–4,5 giây, nên bảng hiện dần. Chưa đo trên Windows.
-- **Huy hiệu số nhánh dọn được** ở nút Dọn nhánh (T017). Số lấy từ lần quét gần nhất: sau khi fetch, sau khi dọn hoặc
-  bấm Làm mới. Mở màn Dự án chưa tự quét, nên huy hiệu trống tới lần fetch đầu. Fetch từ nhóm Git cũng chưa quét lại.
-  Số bằng 0 thì ẩn. Huy hiệu chỉ đếm, không bao giờ tự xoá.
+- **Huy hiệu số nhánh dọn được** ở nút Dọn nhánh (T017). Huy hiệu tự đếm bằng `scan --no-fetch` khi mở màn Dự án (và
+  khi danh sách repo đổi), rồi đếm lại sau fetch trong bảng nhánh, fetch/pull ở nhóm Git, tự fetch của nhóm Git, đóng
+  hộp thoại Dọn nhánh và nút Làm mới. Số bằng 0 thì ẩn. Không bao giờ tự fetch hay tự dọn.
 - Kho bare trong bộ nhớ đệm của worker không được quét. Nhánh trên remote không bao giờ bị xoá.
