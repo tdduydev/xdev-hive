@@ -84,6 +84,9 @@ tính. Tiêu chí có mục con lấy trung bình các mục con.
 | B6 | Output tool mỗi lần gọi | 5 | ≤ 600 token (0 điểm từ 2.500) | phiên |
 | B7 | Token trước lần sửa đầu | 6 | ≤ 30% (0 điểm từ 70%) | phiên (chỉ Claude) |
 
+Ngưỡng trong bảng là của Claude. Với Codex, A1 đủ điểm khi ≤ 150k token (0 điểm từ 400k), A4 đếm số máy chủ MCP bật
+(≤ 2 đủ điểm, 0 điểm từ 8).
+
 Trên Windows, RTK chưa hỗ trợ nên A6 là "không áp dụng" và không tính vào điểm.
 
 ## Memory
