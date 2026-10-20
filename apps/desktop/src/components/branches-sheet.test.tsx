@@ -367,7 +367,7 @@ describe("BranchesSheet", () => {
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
   });
 
-  it("menu dòng: Sao chép tên, Mở terminal ở worktree; Đổi sang ẩn tới khi có onSwitch", async () => {
+  it("menu dòng: Sao chép tên, Mở terminal ở worktree; Đổi sang có ở nhánh khác nhánh đang đứng", async () => {
     const WT = "/Users/ha/Code/shop-wt/feature";
     fakeApp({
       repo: repoOf({
@@ -381,7 +381,7 @@ describe("BranchesSheet", () => {
     const writeText = vi.spyOn(navigator.clipboard, "writeText");
 
     await user.click(await screen.findByRole("button", { name: "Thao tác với feature" }));
-    expect(screen.queryByRole("menuitem", { name: "Đổi sang nhánh này" })).toBeNull();
+    expect(await screen.findByRole("menuitem", { name: "Đổi sang nhánh này" })).toBeTruthy();
     await user.click(await screen.findByRole("menuitem", { name: "Sao chép tên" }));
     expect(writeText).toHaveBeenCalledWith("feature");
 
@@ -395,16 +395,6 @@ describe("BranchesSheet", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Mở terminal ở worktree" }));
     expect(location.hash).toBe("#/terminal");
     expect(onClose).toHaveBeenCalled();
-  });
-
-  it("có onSwitch thì menu có Đổi sang nhánh này", async () => {
-    fakeApp({ repo: repoOf({ branches: [branch("feature")] }) });
-    const onSwitch = vi.fn();
-    renderSheet({ onSwitch });
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Thao tác với feature" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Đổi sang nhánh này" }));
-    expect(onSwitch).toHaveBeenCalledWith(expect.objectContaining({ name: "feature" }));
   });
 
   it("toàn màn khi hẹp (360 px), cột 640 px bên phải khi rộng; chữ tiếng Anh theo ngôn ngữ", async () => {
