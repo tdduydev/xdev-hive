@@ -77,7 +77,18 @@ export {
   type WriteMemoryInput,
   writeMemory,
 } from "./memory.ts";
-export { approveProposal, createProposal, listProposals, proposeDoc, rejectProposal } from "./proposals.ts";
+export {
+  approveProposal,
+  createProposal,
+  listProposals,
+  type ProposalApprovedHandler,
+  type ProposalOptions,
+  type ProposalOriginState,
+  proposalsByOrigin,
+  proposeDoc,
+  provideProposalApproved,
+  rejectProposal,
+} from "./proposals.ts";
 export { type ReviewJobDeps, registerReviewWorker, remindOverdue } from "./review-jobs.ts";
 export { docTypeOf, flatGates, gateApplies, requiredApprovals, requirementsOf, slaOf } from "./review-rules.ts";
 export {

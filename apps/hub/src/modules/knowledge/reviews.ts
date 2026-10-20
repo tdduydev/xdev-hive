@@ -1,5 +1,6 @@
 import {
   type ChecklistItem,
+  type Doc,
   type DryRunResult,
   dryRunInput,
   type GateRun,
@@ -46,7 +47,7 @@ import {
   visibleWhere,
 } from "./access.ts";
 import { applyDocSave, DocSecretError, secretsAcknowledged } from "./docs.ts";
-import { createProposal } from "./proposals.ts";
+import { approvedSource, createProposal, type ProposalOptions, proposalApproved, proposalView } from "./proposals.ts";
 import {
   type BreakdownRuleInput,
   diffCounts,
@@ -492,8 +493,9 @@ export async function proposeWithReview(
   principal: Principal,
   input: ProposalCreateInput,
   deps: ReviewDeps,
+  options: ProposalOptions = {},
 ): Promise<Proposal> {
-  const proposal = await createProposal(tx, principal, input);
+  const proposal = await createProposal(tx, principal, input, options);
   if (proposal.kind === "doc") await startReview(tx, proposal.id, hooksOf(deps));
   return proposal;
 }
@@ -831,6 +833,7 @@ async function finish(
   const principal: Principal = decider ? { kind: "user", userId: decider } : authorPrincipal(p);
   const reaffirm = inst.route === REAFFIRM_ROUTE;
   let version: number;
+  let saved: Doc | null = null;
   if (reaffirm) {
     // Đề xuất là bản đang hiệu lực: không lưu gì, chỉ xác nhận lại. Tài liệu đã sang bản khác thì xác nhận này cũ rồi.
     const [current] = await tx.select({ version: docs.currentVersion }).from(docs).where(eq(docs.key, p.target));
@@ -842,7 +845,7 @@ async function finish(
     const findings = scanSecrets(p.content);
     if (findings.length > 0 && !(await secretsAcknowledged(tx, p.target, p.content)))
       return requestChanges(tx, inst, "author", new DocSecretError(findings).message, decider, deps);
-    const doc = await applyDocSave(
+    saved = await applyDocSave(
       tx,
       principal,
       p,
@@ -852,12 +855,13 @@ async function finish(
         content: p.content,
         baseVersion: p.baseVersion,
         message: p.reason ?? undefined,
+        source: approvedSource(p),
       },
       p.id,
     );
-    version = doc.version;
+    version = saved.version;
   }
-  await tx
+  const [approved] = await tx
     .update(proposals)
     .set({
       status: "approved",
@@ -866,7 +870,8 @@ async function finish(
       decisionNote: `Qua quy trình ${inst.workflowName}.`,
       resultVersion: version,
     })
-    .where(eq(proposals.id, p.id));
+    .where(eq(proposals.id, p.id))
+    .returning();
   const [row] = await tx
     .update(reviewInstances)
     .set({ status: "approved", gateIndex: flatGates(inst.phases).length, updatedAt: sql`now()` })
@@ -888,6 +893,7 @@ async function finish(
       reaffirm,
       autoApproved: await onlyAutoApproved(tx, inst),
     });
+  if (saved && approved) await proposalApproved(tx, proposalView(approved), saved);
   return row ?? inst;
 }
 

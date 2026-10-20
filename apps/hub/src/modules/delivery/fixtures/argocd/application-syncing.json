@@ -1,0 +1,28 @@
+{
+  "metadata": { "name": "his-portal", "namespace": "argocd" },
+  "spec": {
+    "project": "acme",
+    "sources": [
+      {
+        "repoURL": "https://gitlab.example.invalid/acme/deploy.git",
+        "path": "charts/his-portal",
+        "targetRevision": "main"
+      }
+    ],
+    "destination": { "server": "https://kubernetes.default.svc", "namespace": "his-portal" },
+    "syncPolicy": {}
+  },
+  "status": {
+    "sync": { "status": "OutOfSync", "revision": "9f8e7d6c5b4a39281706f5e4d3c2b1a099887766" },
+    "health": {
+      "status": "Progressing",
+      "message": "Waiting for rollout to finish: 1 old replicas are pending termination..."
+    },
+    "operationState": {
+      "operation": { "sync": { "revision": "9f8e7d6c5b4a39281706f5e4d3c2b1a099887766" } },
+      "phase": "Running",
+      "message": "one or more tasks are running",
+      "startedAt": "2026-10-20T03:00:00Z"
+    }
+  }
+}

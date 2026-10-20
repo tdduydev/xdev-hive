@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
+	"github.com/tdduydev/xdev-hive/worker/internal/repolock"
 )
 
 // repoSource là repo mà run tạo worktree từ đó: repo cache bare của worker, hoặc repo người dùng đã gắn với dự án
@@ -34,11 +34,7 @@ func bareSource(dataDir, repoURL string) repoSource {
 
 func localSource(folder string) repoSource { return repoSource{dir: folder, local: true} }
 
-// localLock là khoá của repo đã gắn, theo thư mục git chung: worktree nào của repo cũng ra cùng một khoá.
-func localLock(dataDir, common string) string {
-	digest := sha256.Sum256([]byte(cleanAbs(common)))
-	return filepath.Join(dataDir, "repos", fmt.Sprintf("local-%x", digest[:12]))
-}
+func localLock(dataDir, common string) string { return repolock.LocalLock(dataDir, common) }
 
 // openLocal kiểm repo đã gắn trước khi đụng tới nó: thư mục còn, là work tree git, origin khớp repo của dự án. Không
 // đoán: sai thì run hỏng kèm lý do, không quay về repo cache hay remote khác.
@@ -168,47 +164,17 @@ type worktreeEntry struct{ path, branch string }
 
 func parseWorktrees(porcelain string) []worktreeEntry {
 	var out []worktreeEntry
-	for _, block := range strings.Split(strings.ReplaceAll(porcelain, "\r\n", "\n"), "\n\n") {
-		var e worktreeEntry
-		for _, line := range strings.Split(block, "\n") {
-			if p, ok := strings.CutPrefix(line, "worktree "); ok {
-				e.path = filepath.FromSlash(p)
-			} else if b, ok := strings.CutPrefix(line, "branch "); ok {
-				e.branch = b
-			}
-		}
-		if e.path != "" {
-			out = append(out, e)
-		}
+	for _, w := range repolock.ParseWorktrees(porcelain) {
+		out = append(out, worktreeEntry{path: w.Path, branch: w.Branch})
 	}
 	return out
 }
 
-func insideDir(root, p string) bool {
-	rel, err := filepath.Rel(cleanAbs(root), cleanAbs(p))
-	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
-}
+func insideDir(root, p string) bool { return repolock.InsideDir(root, p) }
 
-func samePath(a, b string) bool { return cleanAbs(a) == cleanAbs(b) }
+func samePath(a, b string) bool { return repolock.SamePath(a, b) }
 
-// cleanAbs đi qua symlink (thư mục tạm của macOS là /private/var qua /var) để so được đường dẫn git trả về với
-// đường dẫn worker tự dựng; Windows không phân biệt hoa thường.
-func cleanAbs(p string) string {
-	if abs, err := filepath.Abs(p); err == nil {
-		p = abs
-	}
-	// Worktree đã dời đi thì không còn để đi qua symlink: đi qua thư mục cha rồi ghép tên.
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		p = real
-	} else if dir, err := filepath.EvalSymlinks(filepath.Dir(p)); err == nil {
-		p = filepath.Join(dir, filepath.Base(p))
-	}
-	p = filepath.Clean(p)
-	if runtime.GOOS == "windows" {
-		p = strings.ToLower(p)
-	}
-	return p
-}
+func cleanAbs(p string) string { return repolock.CleanAbs(p) }
 
 // reapLocal dọn phần của repo đã gắn mà run chết giữa chừng để lại trong runs/: siêu dữ liệu worktree trong repo của
 // người dùng và nhánh run đã đặt lại.
