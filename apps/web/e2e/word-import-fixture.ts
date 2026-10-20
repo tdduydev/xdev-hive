@@ -151,3 +151,293 @@ export const wordImportFailure = (code: string, status = 400) => ({
   status,
   body: { defined: true, code: status === 409 ? "CONFLICT" : "BAD_REQUEST", status, message: "x", data: { code } },
 });
+
+// ---- Trang lượt nhập (T011) ----
+
+const AT = "2026-10-19T03:00:00.000Z";
+const fileId = (n: number) => `20202020-0000-4000-8000-0000000000c${n}`;
+const MEDIA_NAME = "9f2c4b7a1d3e.png";
+/** PNG 1×1 để ảnh xem trước và ảnh trong editor có thật mà không cần file ngoài. */
+export const PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+export const WORD_IMAGE_URL = "/e2e/word-pixel.png";
+
+const ERROR_CODES: Record<number, string> = { 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT" };
+const err = (status: number, data: unknown) => ({
+  status,
+  json: {
+    json: {
+      defined: true,
+      code: ERROR_CODES[status] ?? "BAD_REQUEST",
+      status,
+      message: "x",
+      data,
+    },
+  },
+});
+
+export interface WordImportPageOptions extends WordImportOptions {
+  mode?: "create" | "link";
+  access?: "manage" | "propose";
+  /** File thứ ba bị chặn vì dấu hiệu bí mật. */
+  secret?: boolean;
+  /** File đầu có đường dẫn đã có tài liệu. */
+  exists?: boolean;
+  /** Số lần `get` đầu còn trả "đang chuyển", để thử vòng hỏi lại. */
+  slowGets?: number;
+  /** Lần tạo làm file thứ hai lỗi, các file khác vẫn tạo được. */
+  failOnCommit?: boolean;
+  /** Gắn: bản chuyển có khớp nội dung hiện tại không. */
+  linkMatches?: boolean;
+}
+
+const SAMPLES = [
+  { name: "SRS-OPD v1.0.docx", path: "docs/srs/OPD/srs-opd.md", title: "SRS OPD", version: "1.0" },
+  { name: "SRS-IPD v1.1.docx", path: "docs/srs/IPD/srs-ipd.md", title: "SRS IPD", version: "1.1" },
+  {
+    name: "Quy-trinh-vien-phi.docx",
+    path: "docs/srs/quy-trinh-vien-phi.md",
+    title: "Quy trình viện phí",
+    version: null,
+  },
+] as const;
+
+const OPD_MARKDOWN = [
+  "# SRS OPD",
+  "",
+  `![Sơ đồ tiếp đón](media/${MEDIA_NAME})`,
+  "",
+  "| Mã | Yêu cầu |",
+  "| --- | --- |",
+  "| R-1 | Đăng ký khám |",
+  "| R-2 | Thu viện phí |",
+  "",
+].join("\n");
+const CURRENT_MARKDOWN = "# SRS OPD\n\nMô tả cũ.\n\n| Mã | Yêu cầu |\n| --- | --- |\n| R-1 | Đăng ký khám |\n";
+
+/**
+ * Hub giả cho trang lượt nhập: ba file mẫu (hoặc một file ở chế độ gắn), `get`/`file`/`update`/`commit`/`cancel`/
+ * `confirmLink`/`ofDoc` có trạng thái, editor trả tài liệu có bảng và ảnh, và hai route ảnh. `state.calls` ghi lại các
+ * lần ghi để test kiểm đúng input.
+ */
+export function wordImportPageScenario(options: WordImportPageOptions = {}) {
+  const base = wordImportScenario(options);
+  const link = options.mode === "link";
+  const access = options.access ?? "manage";
+  const calls = { update: [] as unknown[], commit: [] as unknown[], cancel: 0, confirmLink: 0, gets: 0 };
+  let tick = 0;
+  const stamp = () => new Date(Date.parse(AT) + ++tick * 1000).toISOString();
+
+  const makeFile = (i: number): Record<string, unknown> => {
+    const sample = SAMPLES[i] as (typeof SAMPLES)[number];
+    const blocked = options.secret && i === 2;
+    return {
+      id: fileId(i + 1),
+      importId: WORD_IMPORT_ID,
+      relativeDir: "",
+      fileName: sample.name,
+      format: "docx",
+      size: 40_000 + i,
+      sha256: String(i + 1).repeat(64),
+      versionLabel: sample.version,
+      proposedPath: sample.path,
+      proposedTitle: sample.title,
+      path: sample.path,
+      title: sample.title,
+      key: null,
+      exists: options.exists === true && i === 0,
+      keepFront: false,
+      excluded: false,
+      state: blocked ? "blocked_secret" : "ready",
+      stats: { headings: 3, tables: i === 0 ? 1 : 0, images: i === 0 ? 1 : 0 },
+      warnings: i === 1 ? [{ code: "nested_table", count: 2, detail: null }] : [],
+      findings: blocked ? [{ line: 12, kind: "credential_assignment" }] : [],
+      error: null,
+      linkMatches: null,
+      docId: null,
+      docVersion: null,
+      proposalId: null,
+      createdAt: AT,
+      updatedAt: AT,
+    };
+  };
+  const files: Record<string, unknown>[] = link ? [makeFile(0)] : SAMPLES.map((_, i) => makeFile(i));
+  if (link) Object.assign(files[0] as object, { path: "docs/srs/OPD/a.md", linkMatches: options.linkMatches ?? false });
+  const meta = { state: link ? "ready" : "ready" };
+  const markdownOf = (file: Record<string, unknown>) => {
+    const body = file.fileName === SAMPLES[0].name ? OPD_MARKDOWN : `# ${String(file.title)}\n\nNội dung mẫu.\n`;
+    return file.keepFront ? `Trang bìa\n\n${body}` : body;
+  };
+
+  const counts = () => {
+    const n = (state: string) => files.filter((file) => file.state === state).length;
+    return {
+      queued: n("queued"),
+      converting: n("converting"),
+      ready: n("ready"),
+      skipped: n("skipped"),
+      blockedSecret: n("blocked_secret"),
+      failed: n("failed"),
+      proposed: n("proposed"),
+      cancelled: n("cancelled"),
+      done: n("done"),
+    };
+  };
+  const importOf = () => ({
+    id: WORD_IMPORT_ID,
+    homeId: base.orgHome.id,
+    targetDir: link ? null : "docs/srs/",
+    mode: link ? "link" : "create",
+    docKey: link ? "org/srs-0" : null,
+    confidential: false,
+    state: meta.state,
+    counts: counts(),
+    createdBy: { id: "u1", name: "Quản trị" },
+    createdAt: AT,
+    updatedAt: AT,
+  });
+  const snapshot = () => {
+    const slow = options.slowGets !== undefined && calls.gets <= options.slowGets;
+    const shown = slow ? files.map((file) => ({ ...file, state: calls.gets === 1 ? "queued" : "converting" })) : files;
+    return { import: { ...importOf(), ...(slow ? { state: "converting" } : {}) }, files: shown, access };
+  };
+  const find = (input: unknown) => files.find((file) => file.id === (input as { fileId: string }).fileId);
+
+  const rpc: Record<string, DocsyncFixtureHandler> = {
+    ...base.rpc,
+    "wordImports/get": () => {
+      calls.gets += 1;
+      return ok(snapshot());
+    },
+    "wordImports/file": (input) => {
+      const file = find(input);
+      if (!file) return err(404, undefined);
+      const converted = markdownOf(file);
+      return ok({
+        ...file,
+        markdown: converted,
+        images:
+          file.fileName === SAMPLES[0].name
+            ? [
+                {
+                  name: MEDIA_NAME,
+                  mediaType: "image/png",
+                  bytes: PIXEL_PNG.length,
+                  url: `${WORD_IMPORT_UPLOAD_URL.replace("**", "")}/${WORD_IMPORT_ID}/files/${String(file.id)}/media/${MEDIA_NAME}`,
+                },
+              ]
+            : [],
+        current: link ? { content: CURRENT_MARKDOWN, version: 2 } : null,
+      });
+    },
+    "wordImports/update": (input) => {
+      const i = input as { path?: string; title?: string; keepFront?: boolean; excluded?: boolean };
+      calls.update.push(input);
+      const file = find(input);
+      if (!file) return err(404, undefined);
+      if (i.path !== undefined && files.some((other) => other !== file && other.path === i.path))
+        return err(409, { code: "WORD_IMPORT_DUPLICATE_PATH" });
+      Object.assign(file, {
+        ...(i.path !== undefined ? { path: i.path, exists: false } : {}),
+        ...(i.title !== undefined ? { title: i.title } : {}),
+        ...(i.keepFront !== undefined ? { keepFront: i.keepFront } : {}),
+        ...(i.excluded !== undefined ? { excluded: i.excluded } : {}),
+        updatedAt: stamp(),
+      });
+      return ok(file);
+    },
+    "wordImports/commit": (input) => {
+      const i = input as { fileIds?: string[]; acknowledgeSecrets?: boolean };
+      calls.commit.push(input);
+      const chosen = files.filter((file) =>
+        i.fileIds ? i.fileIds.includes(String(file.id)) : file.state === "ready" && file.excluded !== true,
+      );
+      if (chosen.some((file) => file.exists)) return err(409, { code: "WORD_IMPORT_EXISTS" });
+      for (const file of chosen) {
+        if (file.state === "blocked_secret" && i.acknowledgeSecrets !== true) continue;
+        if (options.failOnCommit && file.id === fileId(2)) {
+          Object.assign(file, {
+            state: "failed",
+            error: { code: "WORD_IMPORT_EXISTS", message: "x" },
+            updatedAt: stamp(),
+          });
+          continue;
+        }
+        const slug = String(file.path).replace(/^.*\//, "").replace(/\.md$/, "");
+        Object.assign(
+          file,
+          access === "propose"
+            ? { state: "proposed", proposalId: "20202020-0000-4000-8000-0000000000d1" }
+            : { state: "done", key: `org/${slug}`, docId: "20202020-0000-4000-8000-0000000000e1", docVersion: 1 },
+          { updatedAt: stamp() },
+        );
+      }
+      if (!files.some((file) => ["ready", "blocked_secret"].includes(String(file.state)))) meta.state = "done";
+      return ok(snapshot());
+    },
+    "wordImports/cancel": () => {
+      calls.cancel += 1;
+      meta.state = "cancelled";
+      for (const file of files) if (file.state === "ready") Object.assign(file, { state: "cancelled" });
+      return ok(importOf());
+    },
+    "wordImports/confirmLink": (input) => {
+      calls.confirmLink += 1;
+      const file = find(input);
+      if (!file) return err(404, undefined);
+      Object.assign(file, { state: "done", updatedAt: stamp() });
+      meta.state = "done";
+      return ok(file);
+    },
+    "wordImports/ofDoc": () => ok(null),
+    "docAssets/resolve": (input) =>
+      ok(
+        (input as { hrefs: string[] }).hrefs.map((href) => ({
+          kind: "asset",
+          href,
+          assetId: "20202020-0000-4000-8000-0000000000f1",
+          url: WORD_IMAGE_URL,
+        })),
+      ),
+    "docEditor/state": (input) => {
+      const key = (input as { key: string }).key;
+      return ok({
+        draft: {
+          key,
+          title: key.endsWith("srs-opd") ? "SRS OPD" : key,
+          content: OPD_MARKDOWN.replace(`media/${MEDIA_NAME}`, MEDIA_NAME),
+          scope: { level: "org", teamId: null, projectId: null },
+          baseVersion: 1,
+          latestVersion: 1,
+          revision: 1,
+          updatedAt: AT,
+          updatedBy: { userId: "u1", runId: null, name: "Quản trị" },
+          canEdit: true,
+        },
+        presence: [],
+        workflow: null,
+        review: null,
+        stage: "drafting",
+        draftNumber: 1,
+        openComments: 0,
+        pendingSuggestions: 0,
+      });
+    },
+    "docEditor/suggestions/list": () => ok([]),
+    "docEditor/comments/list": () => ok([]),
+    "docEditor/snapshots/list": () => ok([]),
+    "docEditor/assist/targets": () => ok([]),
+    "docEditor/assist/list": () => ok([]),
+  };
+
+  const install = async (page: Page) => {
+    await base.install(page);
+    const png = (route: import("@playwright/test").Route) =>
+      route.fulfill({ status: 200, contentType: "image/png", body: PIXEL_PNG });
+    await page.route("**/api/v1/docs/word-imports/*/files/*/media/*", png);
+    await page.route(`**${WORD_IMAGE_URL}`, png);
+  };
+  return { ...base, rpc, install, calls, files };
+}
