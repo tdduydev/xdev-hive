@@ -1,47 +1,36 @@
 import {
   WORD_IMPORT_ERRORS,
-  type WordImport,
   type WordImportCommitInput,
   type WordImportErrorCode,
-  type WordImportFile,
   type WordImportGetOutput,
-  type WordImportWarning,
 } from "@xdev-hive/contracts";
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../../audit/index.ts";
-import { authUser } from "../../identity/index.ts";
-import {
-  authorize,
-  DocSecretError,
-  docScope,
-  type Principal,
-  type Reader,
-  readerFor,
-  saveDoc,
-} from "../../knowledge/index.ts";
-import {
-  ConflictError,
-  createPostgresBlobStore,
-  ForbiddenError,
-  NotFoundError,
-  type Tx,
-} from "../../platform/index.ts";
+import { DocSecretError, type Principal, readerFor, saveDoc } from "../../knowledge/index.ts";
+import { ConflictError, createPostgresBlobStore, NotFoundError, type Tx } from "../../platform/index.ts";
 import { isLfsPath, parseGitattributes } from "../content.ts";
 import type { HomeRow } from "../homes.ts";
-import { keyFromPath, type PathHome } from "../paths.ts";
-import { pathHomeOf, projectKeyOf, queueHomePush } from "../push.ts";
+import { queueHomePush } from "../push.ts";
 import type { DocSyncDeps } from "../routes/deps.ts";
-import {
-  docAssets,
-  docHomes,
-  docRepoFiles,
-  docWordImportFiles,
-  docWordImports,
-  type WordImportCountsRow,
-} from "../schema.ts";
+import { docAssets, docRepoFiles, docWordImportFiles } from "../schema.ts";
 import { frontMatter, relinkImages } from "./postprocess.ts";
+import {
+  canManage,
+  filePlaces,
+  keyOfPath,
+  loadWordTarget,
+  NO_PLACE,
+  pathOf,
+  refreshWordImportCounts,
+  scopeKeyOf,
+  taken,
+  titleOf,
+  type WordTarget,
+  wordFileView,
+  wordImportOf,
+} from "./shared.ts";
 import { stageProposal } from "./staging.ts";
-import type { WordImportFileRow, WordImportRow } from "./tools.ts";
+import type { WordImportFileRow } from "./tools.ts";
 import { commitUpdate } from "./update.ts";
 
 type FileError = NonNullable<WordImportFileRow["error"]>;
@@ -62,24 +51,6 @@ class FileFailure extends Error {
   }
 }
 
-/** Lượt nhập kèm nhà và cách đọc đường dẫn của nhà, đọc một lần cho cả lượt. */
-export interface WordTarget {
-  imp: WordImportRow;
-  home: HomeRow;
-  pathHome: PathHome;
-}
-
-export async function loadWordTarget(tx: Tx, importId: string, lock = false): Promise<WordTarget> {
-  const query = tx.select().from(docWordImports).where(eq(docWordImports.id, importId));
-  // Khoá lượt để hai lần bấm "Tạo" liền nhau không cùng tạo một file.
-  const [imp] = lock ? await query.for("update") : await query;
-  if (!imp) throw new NotFoundError("WORD_IMPORT_NOT_FOUND", "Không tìm thấy lượt nhập Word.");
-  const [home] = await tx.select().from(docHomes).where(eq(docHomes.id, imp.homeId));
-  if (!home) throw new NotFoundError("WORD_IMPORT_NOT_FOUND", "Không tìm thấy lượt nhập Word.");
-  const pathHome = { ...pathHomeOf(home, await projectKeyOf(tx, home)), include: home.include, exclude: home.exclude };
-  return { imp, home, pathHome };
-}
-
 /** Như `homeDir` của assets.ts (chưa export): ảnh của nhà dự án nằm ở gốc nhà, nhà tổ chức tách theo đội. */
 function homeDir(home: HomeRow, key: string): string {
   const root = home.root.replace(/\/+$/, "");
@@ -92,31 +63,12 @@ export function assetsDirOf(home: HomeRow, key: string): string {
   return [homeDir(home, key), home.assetsDir.replace(/^\/+|\/+$/g, "")].filter(Boolean).join("/");
 }
 
-/** Đường dẫn người nhập đã sửa, không thì đường dẫn đề xuất. */
-const pathOf = (file: WordImportFileRow): string | null => file.pathOverride ?? file.proposedPath;
-
-/** Key suy từ đường dẫn; null khi đường dẫn nằm ngoài nhà hoặc bị loại trừ. */
-export function keyOfPath(target: WordTarget, path: string | null): string | null {
-  if (!path) return null;
-  const root = target.home.root.replace(/\/+$/, "");
-  // Nhà dự án nhận cả đường dẫn ngoài gốc (`keyFromPath`), nhưng tài liệu nhập phải nằm trong thư mục tài liệu.
-  if (root && !path.startsWith(`${root}/`)) return null;
-  try {
-    return keyFromPath(path, target.pathHome);
-  } catch {
-    return null;
-  }
-}
-
 const FRONT_MATTER = /^﻿?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 
 /** Bỏ front matter ở đầu Markdown (như `countStats` của postprocess.ts) và các dòng trống ngay sau nó. */
 export function stripFrontMatter(markdown: string): string {
   return markdown.replace(FRONT_MATTER, "").replace(/^(?:[ \t]*\r?\n)+/, "");
 }
-
-const titleOf = (file: WordImportFileRow): string =>
-  file.titleOverride ?? file.proposedTitle ?? file.fileName.replace(/\.[^.]+$/, "");
 
 /**
  * Nội dung tài liệu: front matter theo FR-012 với tiêu đề cuối, thân với link ảnh tính theo đường dẫn cuối. Front
@@ -132,16 +84,6 @@ function documentContent(target: WordTarget, file: WordImportFileRow, key: strin
       confidential: target.imp.confidential,
     }) + body
   );
-}
-
-/** Key hoặc đường dẫn đã có tài liệu (FR-019). So đường dẫn không phân biệt hoa thường: repo trên Windows và macOS coi là một. */
-async function taken(tx: Tx, home: HomeRow, key: string, path: string): Promise<boolean> {
-  const { rows } = await tx.execute(sql`
-    select 1 from hive.docs where key = ${key}
-    union all
-    select 1 from hive.doc_repo_files where home_id = ${home.id} and lower(repo_path) = lower(${path})
-    limit 1`);
-  return rows.length > 0;
 }
 
 /**
@@ -270,16 +212,6 @@ function failureOf(error: unknown): FilePatch | null {
   return null;
 }
 
-async function canManage(tx: Tx, reader: Reader, key: string): Promise<boolean> {
-  try {
-    await authorize(tx, reader, await docScope(tx, reader, key), "manage");
-    return true;
-  } catch (error) {
-    if (error instanceof ForbiddenError) return false;
-    throw error;
-  }
-}
-
 async function createDocs(
   tx: Tx,
   deps: DocSyncDeps,
@@ -329,51 +261,6 @@ async function createDocs(
       .where(eq(docWordImportFiles.id, id));
 }
 
-const COUNT_KEYS: Record<string, keyof WordImportCountsRow> = {
-  queued: "queued",
-  converting: "converting",
-  ready: "ready",
-  skipped: "skipped",
-  blocked_secret: "blockedSecret",
-  failed: "failed",
-  proposed: "proposed",
-  cancelled: "cancelled",
-  done: "done",
-};
-
-/** Đếm lại file theo trạng thái; không còn file nào chờ tạo thì lượt xong. */
-export async function refreshWordImport(tx: Tx, importId: string): Promise<void> {
-  const rows = await tx
-    .select({ state: docWordImportFiles.state, excluded: docWordImportFiles.excluded, n: count() })
-    .from(docWordImportFiles)
-    .where(eq(docWordImportFiles.importId, importId))
-    .groupBy(docWordImportFiles.state, docWordImportFiles.excluded);
-  const counts: WordImportCountsRow = {
-    queued: 0,
-    converting: 0,
-    ready: 0,
-    skipped: 0,
-    blockedSecret: 0,
-    failed: 0,
-    proposed: 0,
-    cancelled: 0,
-    done: 0,
-  };
-  let waiting = 0;
-  for (const r of rows) {
-    const key = COUNT_KEYS[r.state];
-    if (key) counts[key] += r.n;
-    if (!r.excluded && ["queued", "converting", "ready", "blocked_secret"].includes(r.state)) waiting += r.n;
-  }
-  const [imp] = await tx.select().from(docWordImports).where(eq(docWordImports.id, importId));
-  if (!imp) return;
-  const finished = waiting === 0 && !["uploading", "failed", "cancelled"].includes(imp.state);
-  await tx
-    .update(docWordImports)
-    .set({ counts, ...(finished ? { state: "done" } : {}), updatedAt: new Date() })
-    .where(eq(docWordImports.id, importId));
-}
-
 /**
  * Tạo tài liệu từ các file `ready` của lượt (FR-017…FR-021, plan.md mục 6). Mỗi file một savepoint; trùng đường dẫn,
  * đã có tài liệu hay có bí mật chưa xác nhận thì ghi vào file đó và đi tiếp. Thiếu quyền `manage` thì đi `stageProposal`.
@@ -404,116 +291,21 @@ export async function commitWordImport(
   if (target.imp.mode === "create") await createDocs(tx, deps, principal, target, chosen, acknowledge);
   else if (target.imp.mode === "update") for (const file of chosen) await commitUpdate(tx, deps, principal, file);
   // Gắn (mode = link) không tạo phiên bản: file xong ở `prepareLink` hoặc `confirmLink`.
-  await refreshWordImport(tx, target.imp.id);
+  await refreshWordImportCounts(tx, target.imp.id, "commit");
   return wordImportView(tx, principal, target.imp.id);
 }
 
 // ---- Dạng trả về ---------------------------------------------------------------------------------------------------
 
-/** Key và đường dẫn hiện của file: lượt tạo suy từ đường dẫn, lượt cập nhật và gắn lấy theo tài liệu đích. */
-interface FilePlace {
-  path: string | null;
-  key: string | null;
-  exists: boolean;
-}
-
-export function wordFileView(file: WordImportFileRow, place: FilePlace): WordImportFile {
-  return {
-    id: file.id,
-    importId: file.importId,
-    relativeDir: file.relativeDir,
-    fileName: file.fileName,
-    format: file.format as WordImportFile["format"],
-    size: file.size,
-    sha256: file.sha256,
-    versionLabel: file.versionLabel,
-    proposedPath: file.proposedPath,
-    proposedTitle: file.proposedTitle,
-    path: place.path,
-    title: file.titleOverride ?? file.proposedTitle,
-    key: place.key,
-    exists: place.exists,
-    keepFront: file.keepFront,
-    excluded: file.excluded,
-    state: file.state as WordImportFile["state"],
-    stats: file.stats ?? null,
-    warnings: file.warnings as WordImportWarning[],
-    findings: file.findings as WordImportFile["findings"],
-    error: (file.error as WordImportFile["error"]) ?? null,
-    linkMatches: file.linkMatches,
-    docId: file.docId,
-    docVersion: file.docVersion,
-    proposalId: file.proposalId,
-    createdAt: file.createdAt.toISOString(),
-    updatedAt: file.updatedAt.toISOString(),
-  };
-}
-
-async function docKeyOf(tx: Tx, docId: string | null): Promise<string | null> {
-  if (!docId) return null;
-  const { rows } = await tx.execute<{ key: string }>(sql`select key from hive.docs where id = ${docId}`);
-  return rows[0]?.key ?? null;
-}
-
-/** Vị trí của các file trong lượt; một truy vấn cho mọi key thay vì một truy vấn mỗi file. */
-export async function filePlaces(
-  tx: Tx,
-  target: WordTarget,
-  files: WordImportFileRow[],
-): Promise<Map<string, FilePlace>> {
-  const docKey = await docKeyOf(tx, target.imp.updateDocId);
-  const keys = new Map(
-    files.map((f) => [f.id, target.imp.mode === "create" ? keyOfPath(target, pathOf(f)) : docKey] as const),
-  );
-  const wanted = [...new Set([...keys.values()].filter((k): k is string => k !== null))];
-  const existing = new Set<string>();
-  if (wanted.length) {
-    const { rows } = await tx.execute<{ key: string }>(
-      sql`select key from hive.docs where key in (${sql.join(
-        wanted.map((k) => sql`${k}`),
-        sql`, `,
-      )})`,
-    );
-    for (const r of rows) existing.add(r.key);
-  }
-  return new Map(
-    files.map((f) => {
-      const key = keys.get(f.id) ?? null;
-      return [f.id, { path: pathOf(f), key, exists: key !== null && existing.has(key) }];
-    }),
-  );
-}
-
 /** Quyền ở phạm vi đích: `manage` thì giao diện hiện "Tạo", chỉ `propose` thì "Gửi duyệt" (Q2). */
 async function accessOf(tx: Tx, principal: Principal, target: WordTarget): Promise<WordImportGetOutput["access"]> {
-  const { imp } = target;
-  const key =
-    imp.mode === "create"
-      ? keyOfPath(target, `${imp.targetDir ? `${imp.targetDir.replace(/\/+$/, "")}/` : ""}word-import.md`)
-      : await docKeyOf(tx, imp.updateDocId);
+  const key = await scopeKeyOf(tx, target);
   if (!key) return "propose";
   try {
     return (await canManage(tx, await readerFor(tx, principal), key)) ? "manage" : "propose";
   } catch {
     return "propose";
   }
-}
-
-export async function wordImportOf(tx: Tx, imp: WordImportRow): Promise<WordImport> {
-  const [creator] = await tx.select({ name: authUser.name }).from(authUser).where(eq(authUser.id, imp.createdBy));
-  return {
-    id: imp.id,
-    homeId: imp.homeId,
-    targetDir: imp.targetDir,
-    mode: imp.mode as WordImport["mode"],
-    docKey: await docKeyOf(tx, imp.updateDocId),
-    confidential: imp.confidential,
-    state: imp.state as WordImport["state"],
-    counts: imp.counts,
-    createdBy: { id: imp.createdBy, name: creator?.name ?? null },
-    createdAt: imp.createdAt.toISOString(),
-    updatedAt: imp.updatedAt.toISOString(),
-  };
 }
 
 export async function wordImportView(tx: Tx, principal: Principal, importId: string): Promise<WordImportGetOutput> {
@@ -526,7 +318,7 @@ export async function wordImportView(tx: Tx, principal: Principal, importId: str
   const places = await filePlaces(tx, target, files);
   return {
     import: await wordImportOf(tx, target.imp),
-    files: files.map((f) => wordFileView(f, places.get(f.id) ?? { path: null, key: null, exists: false })),
+    files: files.map((f) => wordFileView(f, places.get(f.id) ?? NO_PLACE)),
     access: await accessOf(tx, principal, target),
   };
 }
