@@ -6,11 +6,14 @@ import {
   formatValue,
   groupTotals,
   levelOf,
+  needsSessionTip,
   scoreDelta,
   sortCriteria,
   tokenScore,
   tokenScoreFix,
   tokenScoreFixPreview,
+  tokenScoreHistory,
+  tokenScoreLast,
   tokenScoreUndo,
 } from "@/lib/token-score.ts";
 
@@ -71,6 +74,21 @@ describe("điểm nhóm và chênh lệch", () => {
     expect(groupTotals(score).A.earned).toBeCloseTo((15 + 10) / 2);
   });
 
+  it("không gói nào có token thì chỉ lấy gói có điểm và có điểm nhóm A", () => {
+    const score = sampleScore();
+    for (const p of score.profiles) p.share = 0;
+    const [claude, codex] = score.profiles;
+    if (!claude || !codex) throw new Error("fixture thiếu gói");
+    // Gói codex được tính nhưng chưa có điểm: Go bỏ nó khỏi trung bình, nên nhóm A chỉ còn của claude.
+    codex.score = null;
+    expect(groupTotals(score).A.earned).toBeCloseTo(15);
+    expect(groupTotals(score).A.max).toBeCloseTo(38);
+    // Gói có điểm nhưng nhóm A không có điểm tối đa cũng bị bỏ.
+    codex.score = 75;
+    claude.groups.A = { earned: 0, max: 0 };
+    expect(groupTotals(score).A).toEqual({ earned: 10, max: 20 });
+  });
+
   it("chênh lệch so với lần trước làm tròn một chữ số; thiếu một bên thì null", () => {
     const score = sampleScore();
     expect(scoreDelta(score)).toBe(3.5);
@@ -112,6 +130,30 @@ describe("copyReport", () => {
   });
 });
 
+describe("needsSessionTip", () => {
+  function withValues(a1: Criterion["status"], b2: number | undefined) {
+    const score = sampleScore();
+    const claude = score.profiles[0];
+    if (!claude) throw new Error("fixture thiếu gói");
+    claude.criteria = [
+      criterion("A1", { status: a1, earned: 10, max: 10 }),
+      criterion("B2", b2 === undefined ? { status: "unknown" } : { status: "low", value: b2 }),
+    ];
+    for (const p of score.profiles.slice(1)) p.counted = false;
+    return score;
+  }
+
+  it("hiện khi A1 đủ điểm và B2 từ 50% trở lên", () => {
+    expect(needsSessionTip(withValues("ok", 0.5))).toBe(true);
+    expect(needsSessionTip(withValues("ok", 0.49))).toBe(false);
+  });
+
+  it("không hiện khi A1 chưa đủ điểm (việc cần làm là sửa cấu hình) hay B2 chưa đo", () => {
+    expect(needsSessionTip(withValues("partial", 0.9))).toBe(false);
+    expect(needsSessionTip(withValues("ok", undefined))).toBe(false);
+  });
+});
+
 describe("lệnh invoke", () => {
   function fakeTauri() {
     const calls: { command: string; args?: Record<string, unknown> | undefined }[] = [];
@@ -133,6 +175,13 @@ describe("lệnh invoke", () => {
     await tokenScoreFixPreview("optimizer.balanced", "claude-2");
     await tokenScoreFix("codegraph.init", "claude-2", "p1");
     await tokenScoreUndo("optimizer.balanced", "claude-2", null, "20261019T000000Z");
+    await tokenScoreHistory();
+    await tokenScoreHistory(7);
+    expect(calls.slice(5)).toEqual([
+      { command: "token_score_history", args: { days: 30 } },
+      { command: "token_score_history", args: { days: 7 } },
+    ]);
+    calls.length = 5;
     expect(calls).toEqual([
       { command: "token_score", args: { fresh: false, profileId: null } },
       { command: "token_score", args: { fresh: true, profileId: "claude-2" } },
@@ -146,5 +195,35 @@ describe("lệnh invoke", () => {
         args: { fixId: "optimizer.balanced", profileId: "claude-2", projectKey: null, backup: "20261019T000000Z" },
       },
     ]);
+  });
+});
+
+describe("lịch sử", () => {
+  const entry = { ts: "2026-10-19T08:00:00Z", day: "2026-10-19", scoreVersion: 2, machine: 61 };
+
+  function fakeEntries(entries: unknown[]) {
+    const calls: string[] = [];
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T>(command: string) => {
+          calls.push(command);
+          return { entries } as T;
+        },
+      },
+    };
+    return calls;
+  }
+
+  it("tokenScoreHistory trả danh sách dòng", async () => {
+    fakeEntries([entry]);
+    expect(await tokenScoreHistory(30)).toEqual([entry]);
+  });
+
+  it("tokenScoreLast lấy dòng cuối, null khi chưa có lần tính nào", async () => {
+    const calls = fakeEntries([{ ...entry, day: "2026-10-18" }, entry]);
+    expect(await tokenScoreLast()).toEqual(entry);
+    expect(calls).toEqual(["token_score_last"]);
+    fakeEntries([]);
+    expect(await tokenScoreLast()).toBeNull();
   });
 });

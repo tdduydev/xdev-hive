@@ -147,7 +147,7 @@ export function sampleScore(): TokenScore {
     projects: [],
   };
   return {
-    scoreVersion: 1,
+    scoreVersion: 2,
     generatedAt: "2026-10-19T09:00:00Z",
     days: 7,
     machine: { score: 55, level: "low", coverage: 87, provisional: false },
