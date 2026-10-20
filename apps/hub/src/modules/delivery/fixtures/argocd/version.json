@@ -1,0 +1,11 @@
+{
+  "Version": "v2.14.2+ab12cd3",
+  "BuildDate": "2026-02-14T10:12:03Z",
+  "GitCommit": "ab12cd3ef4567890ab12cd3ef4567890ab12cd3e",
+  "GitTreeState": "clean",
+  "GoVersion": "go1.23.5",
+  "Compiler": "gc",
+  "Platform": "linux/amd64",
+  "KustomizeVersion": "v5.4.3",
+  "HelmVersion": "v3.17.0"
+}

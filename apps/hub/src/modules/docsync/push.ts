@@ -18,6 +18,7 @@ import {
   type ScmEventContext,
 } from "../scm/index.ts";
 import { notificationRecipients, teamMemberIds } from "../tenancy/index.ts";
+import { restoreReferencedAssets } from "./asset-orphans.ts";
 import { contentHash, type Eol, fromLf, isLfsPath, type LfsRule, lfsPointer, parseGitattributes } from "./content.ts";
 import { type PathHome, pathFromKey } from "./paths.ts";
 import type { DocSyncDeps } from "./routes/deps.ts";
@@ -92,14 +93,19 @@ export function retryDelayMs(attempt: number): number | null {
 export function pushCommitMessage(input: {
   docs: number;
   assets: number;
+  /** Ảnh mồ côi xoá khỏi repo (FR-026). */
+  removed?: number;
   batchId: string;
   coAuthors: { name: string; email: string }[];
 }): string {
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-  const parts = [
-    ...(input.docs || !input.assets ? [plural(input.docs, "document")] : []),
+  const removed = input.removed ?? 0;
+  const synced = [
+    ...(input.docs || !(input.assets || removed) ? [plural(input.docs, "document")] : []),
     ...(input.assets ? [plural(input.assets, "attachment")] : []),
   ];
+  const removal = removed ? `remove ${plural(removed, "orphaned attachment")}` : "";
+  const subject = synced.length ? [`sync ${synced.join(" and ")}`, removal] : [removal];
   const seen = new Set<string>();
   const authors = input.coAuthors.filter((a) => {
     const k = a.email.toLowerCase();
@@ -108,7 +114,7 @@ export function pushCommitMessage(input: {
     return true;
   });
   return [
-    `docs: sync ${parts.join(" and ")} from xDev Hive`,
+    `docs: ${subject.filter(Boolean).join(" and ")} from xDev Hive`,
     "",
     `Hive-Doc-Sync: ${input.batchId}`,
     ...authors.map((a) => `Co-authored-by: ${a.name || a.email} <${a.email}>`),
@@ -255,6 +261,8 @@ interface PushPlan {
   batch: Batch;
   docs: PlannedDoc[];
   assets: PlannedAsset[];
+  /** Ảnh `pending_delete`: xoá khỏi repo rồi xoá dòng. */
+  removals: AssetRow[];
   coAuthors: { name: string; email: string }[];
   mergeQueue: boolean;
   provider: GitProvider;
@@ -389,8 +397,16 @@ async function planPush(tx: Tx, deps: PushDeps, job: DocSyncPushJob): Promise<Pu
     .limit(MAX_FILES);
   const assets: PlannedAsset[] = [];
   for (const row of assetRows) if (row.blobId) assets.push({ row, bytes: await readBlob(tx, home.orgId, row.blobId) });
+  // Tài liệu vừa lưu có thể đã trỏ lại tới ảnh đang chờ xoá: trả về trước khi lập danh sách xoá.
+  await restoreReferencedAssets(tx, home.id);
+  const removals = await tx
+    .select()
+    .from(docAssets)
+    .where(and(eq(docAssets.homeId, home.id), eq(docAssets.state, "pending_delete")))
+    .orderBy(docAssets.repoPath)
+    .limit(MAX_FILES);
 
-  if (!docs.length && !assets.length) {
+  if (!docs.length && !assets.length && !removals.length) {
     await tx.update(docHomes).set({ firstQueuedAt: null }).where(eq(docHomes.id, home.id));
     if (reuse)
       await tx
@@ -431,6 +447,7 @@ async function planPush(tx: Tx, deps: PushDeps, job: DocSyncPushJob): Promise<Pu
     batch: batch as Batch,
     docs,
     assets,
+    removals,
     coAuthors: await coAuthorsOf(
       tx,
       docs.map((d) => d.row.id),
@@ -460,6 +477,8 @@ interface PushResult {
   /** Đã ghi; tài liệu bị bỏ vì repo đổi chưa kéo về (FR-016) nằm ở `skipped`. */
   docs: PlannedDoc[];
   assets: Array<PlannedAsset & { lfs: boolean }>;
+  /** Ảnh đã xoá khỏi repo, hoặc vốn không còn ở đó; dòng của chúng bị xoá khi ghi kết quả. */
+  removed: AssetRow[];
   skipped: PlannedDoc[];
   skippedAssets: PlannedAsset[];
 }
@@ -536,7 +555,25 @@ async function pushPlan(deps: PushDeps, plan: PushPlan): Promise<PushResult> {
     if (tree.has(a.row.repoPath)) skippedAssets.push(a);
     else assets.push({ ...a, lfs: a.row.lfs || isLfsPath(a.row.repoPath, lfsRules) });
   }
-  if (!docs.length && !assets.length) return { head, sha: null, pr: null, docs, assets, skipped, skippedAssets };
+  // Chế độ pr: ảnh có thể mới chỉ nằm trên nhánh PR (lô trước chưa merge), nhánh chính chưa có để mà xoá.
+  const prBranch = syncBranchName(plan.projectKey);
+  let prHead: string | null | undefined;
+  const prHeadOf = async () => {
+    if (prHead === undefined) prHead = await provider.branchHead(ref, prBranch);
+    return prHead;
+  };
+  const removed: AssetRow[] = [];
+  const deletes: string[] = [];
+  if (plan.removals.length) {
+    const prHeadNow = home.mode === "direct" ? null : await prHeadOf();
+    const target = prHeadNow ? new Set(await provider.listFiles(ref, prHeadNow)) : tree;
+    for (const row of plan.removals) {
+      removed.push(row);
+      if (target.has(row.repoPath)) deletes.push(row.repoPath);
+    }
+  }
+  if (!docs.length && !assets.length && !deletes.length)
+    return { head, sha: null, pr: null, docs, assets, removed, skipped, skippedAssets };
 
   await uploadLfs(
     provider,
@@ -559,9 +596,11 @@ async function pushPlan(deps: PushDeps, plan: PushPlan): Promise<PushResult> {
         ? { path: a.row.repoPath, content: lfsPointer(a.row.sha256, a.bytes.byteLength) }
         : { path: a.row.repoPath, bytes: a.bytes },
     );
+  for (const path of deletes) files.push({ path, delete: true });
   const message = pushCommitMessage({
     docs: docs.length,
     assets: assets.length,
+    removed: deletes.length,
     batchId: plan.batch.id,
     coAuthors: plan.coAuthors,
   });
@@ -569,20 +608,20 @@ async function pushPlan(deps: PushDeps, plan: PushPlan): Promise<PushResult> {
   if (home.mode === "direct") {
     try {
       const { sha } = await provider.commitFiles(ref, { branch: home.branch, expectedHead: head, message, files });
-      return { head, sha, pr: null, docs, assets, skipped, skippedAssets };
+      return { head, sha, pr: null, docs, assets, removed, skipped, skippedAssets };
     } catch (e) {
       if (isProtection(e)) throw new BranchProtectedError(errorText(e));
       throw e;
     }
   }
-  const branch = syncBranchName(plan.projectKey);
-  const prHead = await provider.branchHead(ref, branch);
+  const branch = prBranch;
+  const expectedHead = await prHeadOf();
   const { sha } = await provider.commitFiles(ref, {
     branch,
     fromBranch: home.branch,
     message,
     files,
-    ...(prHead ? { expectedHead: prHead } : {}),
+    ...(expectedHead ? { expectedHead } : {}),
   });
   const link = deps.publicUrl ? `${deps.publicUrl.replace(/\/+$/, "")}/docs` : null;
   const pr = await provider.openPR(ref, {
@@ -602,7 +641,7 @@ async function pushPlan(deps: PushDeps, plan: PushPlan): Promise<PushResult> {
     description: "Tài liệu đã lưu trên xDev Hive",
     ...(link ? { targetUrl: link } : {}),
   });
-  return { head, sha, pr: { ...pr, branch }, docs, assets, skipped, skippedAssets };
+  return { head, sha, pr: { ...pr, branch }, docs, assets, removed, skipped, skippedAssets };
 }
 
 // ---- Ghi kết quả --------------------------------------------------------------------------------------------------
@@ -630,6 +669,16 @@ async function recordSuccess(tx: Tx, deps: PushDeps, plan: PushPlan, out: PushRe
       })
       .where(eq(docRepoFiles.id, d.row.id));
   }
+  if (out.removed.length)
+    await tx.delete(docAssets).where(
+      and(
+        inArray(
+          docAssets.id,
+          out.removed.map((a) => a.id),
+        ),
+        eq(docAssets.state, "pending_delete"),
+      ),
+    );
   if (out.assets.length)
     for (const a of out.assets)
       await tx
@@ -696,6 +745,7 @@ async function recordSuccess(tx: Tx, deps: PushDeps, plan: PushPlan, out: PushRe
       prUrl: out.pr?.url ?? null,
       files: out.docs.map((d) => ({ path: d.row.repoPath, version: d.version, deleted: d.content === null })),
       assets: out.assets.map((a) => a.row.repoPath),
+      removedAssets: out.removed.map((a) => a.repoPath),
       skipped: out.skipped.map((d) => d.row.repoPath),
     },
   });
@@ -770,7 +820,7 @@ export async function pushHome(deps: PushDeps, job: DocSyncPushJob): Promise<Pus
     return "failed";
   }
   await withTenant(deps.pool, ctx, (tx) => recordSuccess(tx, deps, plan, out));
-  return out.docs.length || out.assets.length ? "pushed" : "empty";
+  return out.sha && (out.docs.length || out.assets.length || out.removed.length) ? "pushed" : "empty";
 }
 
 // ---- Đồng bộ ngay, PR bị đóng -------------------------------------------------------------------------------------
