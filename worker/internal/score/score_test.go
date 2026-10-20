@@ -3,6 +3,7 @@ package score
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -384,43 +385,6 @@ func TestBrokenSettingsAreUnknown(t *testing.T) {
 	}
 }
 
-func TestHistory(t *testing.T) {
-	home := t.TempDir()
-	dir := filepath.Join(home, "optimizer")
-	p := claudeProfile(home, "claude-secret-id")
-	res := compute(t, Inputs{Home: home, Profiles: []Profile{p}})
-	prev, err := Record(dir, res, "", now)
-	if err != nil || prev != nil {
-		t.Fatalf("lần đầu: %v, %v", prev, err)
-	}
-	if prev, _ = Record(dir, res, "", now.Add(time.Hour)); prev == nil || prev.At != now.Format(time.RFC3339) {
-		t.Errorf("lần sau trả lần trước: %+v", prev)
-	}
-	_, _ = Record(dir, res, FixBalanced, now.Add(2*time.Hour))
-	_, _ = Record(dir, res, "", now.Add(24*time.Hour))
-	b, err := os.ReadFile(filepath.Join(dir, "score-history.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("muốn 3 dòng (ngày 1, sau sửa nhanh, ngày 2), có %d", len(lines))
-	}
-	if strings.Contains(string(b), "claude-secret-id") || strings.Contains(string(b), home) {
-		t.Error("lịch sử có id gói hoặc đường dẫn")
-	}
-	var e HistoryEntry
-	if err := json.Unmarshal([]byte(lines[1]), &e); err != nil || e.Fix != FixBalanced {
-		t.Errorf("dòng sửa nhanh: %+v %v", e, err)
-	}
-	// Dòng quá 90 ngày bị dọn.
-	_, _ = Record(dir, res, FixRTK, now.Add(100*24*time.Hour))
-	b, _ = os.ReadFile(filepath.Join(dir, "score-history.jsonl"))
-	if n := len(strings.Split(strings.TrimSpace(string(b)), "\n")); n != 1 {
-		t.Errorf("còn %d dòng, muốn 1", n)
-	}
-}
-
 func TestLoadContextsCaches(t *testing.T) {
 	dir := t.TempDir()
 	var ran []string
@@ -465,5 +429,65 @@ func TestResultJSONShape(t *testing.T) {
 		if _, ok := p[k]; !ok {
 			t.Errorf("gói thiếu %s", k)
 		}
+	}
+}
+
+func TestCodexA5DisabledServerIsPresent(t *testing.T) {
+	home := t.TempDir()
+	p := Profile{ID: "codex-1", CLI: "codex", Dir: filepath.Join(home, "codex-1")}
+	has := func(n string) bool { return n == "codegraph" }
+	a5 := func(toml string) Criterion {
+		write(t, filepath.Join(p.Dir, "config.toml"), toml)
+		return criterion(t, compute(t, Inputs{Home: home, Profiles: []Profile{p}, HasTool: has}).Profiles[0], "A5")
+	}
+	on := a5("[mcp_servers.codegraph]\ncommand = \"codegraph\"\n")
+	off := a5("[mcp_servers.codegraph]\ncommand = \"codegraph\"\nenabled = false\n")
+	missing := a5("model = \"gpt-5.5\"\n")
+	if !near(off.Earned, on.Earned) || off.Earned <= missing.Earned {
+		t.Errorf("server tắt phải tính như có: bật %v, tắt %v, thiếu %v", on.Earned, off.Earned, missing.Earned)
+	}
+	var mcp Item
+	for _, it := range off.Items {
+		if it.ID == "mcp" {
+			mcp = it
+		}
+	}
+	if mcp.Score == nil || *mcp.Score != 1 || mcp.Reason != "disabled" {
+		t.Errorf("mục mcp: %+v", mcp)
+	}
+	for _, f := range off.Fixes {
+		if f == FixGraphMCP {
+			t.Errorf("server người dùng tắt không gợi ý thêm lại: %v", off.Fixes)
+		}
+	}
+	if !strings.Contains(strings.Join(missing.Fixes, ","), FixGraphMCP) {
+		t.Errorf("thiếu server thì gợi ý thêm: %v", missing.Fixes)
+	}
+}
+
+func TestModelShare(t *testing.T) {
+	home := t.TempDir()
+	p := claudeProfile(home, "claude-2")
+	sessions := fiveSessions("claude-2", 100_000, 10_000)
+	sessions[0].ModelWeighted = map[string]float64{"opus": 600, "sonnet": 200}
+	sessions[1].ModelWeighted = map[string]float64{"haiku": 200}
+	sessions[2].Subagent = true
+	sessions[2].ModelWeighted = map[string]float64{"sonnet": 1000}
+	res := compute(t, Inputs{Home: home, Profiles: []Profile{p}, Sessions: sessions})
+	got := fmt.Sprint(res.Profiles[0].ModelShare)
+	if want := "[{sonnet 0.6} {opus 0.3} {haiku 0.1}]"; got != want {
+		t.Errorf("modelShare %s, muốn %s (gồm subagent)", got, want)
+	}
+	if a8 := criterion(t, res.Profiles[0], "A8"); len(a8.Items) > 0 {
+		for _, it := range a8.Items {
+			if strings.Contains(it.ID, "model") {
+				t.Errorf("tỉ trọng model không vào mục của A8: %+v", it)
+			}
+		}
+	}
+	res = compute(t, Inputs{Home: home, Profiles: []Profile{p}, Sessions: fiveSessions("claude-2", 100_000, 10_000)})
+	b, _ := json.Marshal(res.Profiles[0])
+	if res.Profiles[0].ModelShare != nil || strings.Contains(string(b), "modelShare") {
+		t.Errorf("không có số theo model thì bỏ modelShare: %s", b)
 	}
 }

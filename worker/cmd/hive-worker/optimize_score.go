@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +20,9 @@ import (
 
 // scoreDays là khoảng ngày mặc định của nhóm B (spec 025).
 const scoreDays = 7
+
+// scoreHistoryDays là khoảng mặc định của biểu đồ lịch sử điểm.
+const scoreHistoryDays = 30
 
 // scoreProfiles đổi danh sách gói của `optimize status` sang đầu vào của điểm. Thư mục mặc định ~/.claude, ~/.codex
 // được thêm khi chưa gói nào trỏ tới nó, vì phần lớn phiên làm tay chạy bằng đăng nhập mặc định.
@@ -109,10 +111,10 @@ func optimizeScore(o *optimizer.Optimizer, file string, days int, fresh bool, me
 		}
 	}
 	res := score.Compute(score.Inputs{
-		Home: o.Home, GOOS: runtime.GOOS, Now: now, Days: days, Profiles: profiles, Sessions: sessions,
+		Home: o.Home, GOOS: optimizeGOOS(), Now: now, Days: days, Profiles: profiles, Sessions: sessions,
 		Context: score.LoadContexts(ctx, dir, profiles, optimizeContext, now, measured), HasTool: optimizeHasTool,
 	})
-	prev, err := score.Record(dir, res, takePendingFix(dir), now)
+	prev, err := score.Record(dir, res, now, fixQueue{dir})
 	if err != nil {
 		// Lịch sử chỉ để so lần trước; ghi lỗi không làm hỏng điểm.
 		fmt.Fprintln(stderr, "không ghi được lịch sử điểm:", err)
@@ -145,63 +147,115 @@ func printScore(w io.Writer, r *score.Result) {
 
 // fixRecord nhớ trạng thái gói trước một lần sửa nhanh, để hoàn tác bằng cách bật lại mức cũ hoặc tắt, thay vì chép
 // bản sao lưu (chép bản sao lưu để manifest ghi sai mức). Mỗi gói giữ một chồng bản ghi, cũ trước mới sau; hoàn tác đi
-// từ lần cuối nên hoàn tác hết thì gói về đúng trạng thái trước lần sửa đầu. Recorded: lịch sử điểm đã có dòng cho nó.
+// từ lần cuối nên hoàn tác hết thì gói về đúng trạng thái trước lần sửa đầu.
 type fixRecord struct {
 	FixID       string    `json:"fixId"`
 	PrevEnabled bool      `json:"prevEnabled"`
 	PrevLevel   string    `json:"prevLevel,omitempty"`
 	PrevRTK     bool      `json:"prevRtk,omitempty"`
 	At          time.Time `json:"at"`
-	Recorded    bool      `json:"recorded,omitempty"`
+}
+
+// fixState là score-fixes.json: chồng hoàn tác theo gói và hàng chờ mốc cho lịch sử điểm. Mốc rời hàng chờ khi
+// `optimize score` đã ghi dòng lịch sử chứa nó (score.Record).
+type fixState struct {
+	Stacks  map[string][]fixRecord `json:"stacks"`
+	Pending []score.FixMark        `json:"pending"`
 }
 
 func fixesPath(dir string) string { return filepath.Join(dir, "score-fixes.json") }
 
-func loadFixes(dir string) map[string][]fixRecord {
-	m := map[string][]fixRecord{}
-	if b, err := os.ReadFile(fixesPath(dir)); err == nil && json.Unmarshal(b, &m) != nil {
-		m = map[string][]fixRecord{}
+// loadFixes đọc trạng thái sửa nhanh; gọi khi đã giữ score.LockHistory. File của bản trước là map gói → chồng, bản
+// ghi có `recorded` false là mốc chưa lên lịch sử.
+func loadFixes(dir string) fixState {
+	st := fixState{Stacks: map[string][]fixRecord{}}
+	b, err := os.ReadFile(fixesPath(dir))
+	if err != nil {
+		return st
 	}
-	return m
-}
-
-func saveFixes(dir string, m map[string][]fixRecord) error {
-	for id, stack := range m {
-		if len(stack) == 0 {
-			delete(m, id)
+	var probe map[string]json.RawMessage
+	if json.Unmarshal(b, &probe) != nil {
+		return st
+	}
+	_, hasStacks := probe["stacks"]
+	_, hasPending := probe["pending"]
+	if hasStacks || hasPending {
+		if json.Unmarshal(b, &st) != nil {
+			return fixState{Stacks: map[string][]fixRecord{}}
+		}
+		if st.Stacks == nil {
+			st.Stacks = map[string][]fixRecord{}
+		}
+		return st
+	}
+	var legacy map[string][]struct {
+		fixRecord
+		Recorded bool `json:"recorded"`
+	}
+	if json.Unmarshal(b, &legacy) != nil {
+		return st
+	}
+	var waiting []fixRecord
+	for id, stack := range legacy {
+		for _, r := range stack {
+			st.Stacks[id] = append(st.Stacks[id], r.fixRecord)
+			if !r.Recorded {
+				waiting = append(waiting, r.fixRecord)
+			}
 		}
 	}
-	b, err := json.Marshal(m)
+	sort.SliceStable(waiting, func(i, j int) bool { return waiting[i].At.Before(waiting[j].At) })
+	for _, r := range waiting {
+		st.Pending = append(st.Pending, score.FixMark{ID: r.FixID, Action: score.MarkApply})
+	}
+	return st
+}
+
+func saveFixes(dir string, st fixState) error {
+	for id, stack := range st.Stacks {
+		if len(stack) == 0 {
+			delete(st.Stacks, id)
+		}
+	}
+	b, err := json.Marshal(st)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(fixesPath(dir), b, 0o600)
+	return score.WriteAtomic(fixesPath(dir), b)
 }
 
-// takePendingFix trả mã sửa nhanh mới nhất chưa có dòng lịch sử và đánh dấu mọi lần sửa là đã ghi.
-func takePendingFix(dir string) string {
-	m := loadFixes(dir)
-	latest, at := "", time.Time{}
-	changed := false
-	for _, stack := range m {
-		for i := range stack {
-			if stack[i].Recorded {
-				continue
-			}
-			if stack[i].At.After(at) {
-				latest, at = stack[i].FixID, stack[i].At
-			}
-			stack[i].Recorded = true
-			changed = true
-		}
+// withFixes đọc, sửa và ghi trạng thái sửa nhanh trong khoá lịch sử điểm, để hai lệnh fix hay fix và score chạy cùng
+// lúc không làm mất bản ghi của nhau.
+func withFixes(dir string, fn func(st *fixState) error) error {
+	unlock, err := score.LockHistory(dir)
+	if err != nil {
+		return err
 	}
-	if changed {
-		_ = saveFixes(dir, m)
+	defer unlock()
+	st := loadFixes(dir)
+	if err := fn(&st); err != nil {
+		return err
 	}
-	return latest
+	return saveFixes(dir, st)
+}
+
+// fixQueue là hàng chờ mốc cho score.Record, chạy trong khoá Record đã giữ nên không khoá lại.
+type fixQueue struct{ dir string }
+
+func (q fixQueue) Pending() ([]score.FixMark, error) { return loadFixes(q.dir).Pending, nil }
+
+func (q fixQueue) Done(n int) error {
+	st := loadFixes(q.dir)
+	st.Pending = st.Pending[min(n, len(st.Pending)):]
+	return saveFixes(q.dir, st)
+}
+
+// addMarks thêm mốc vào hàng chờ; lần `optimize score` sau ghi chúng lên lịch sử.
+func addMarks(dir string, marks ...score.FixMark) error {
+	return withFixes(dir, func(st *fixState) error {
+		st.Pending = append(st.Pending, marks...)
+		return nil
+	})
 }
 
 type fixChange struct {
@@ -226,6 +280,9 @@ type fixResult struct {
 	Undone  bool   `json:"undone,omitempty"`
 }
 
+// errWindowsRTK mở đầu bằng mã lý do của A6 để app desktop nhận ra mà không dò chữ.
+var errWindowsRTK = errors.New("windows_rtk_unsupported: RTK chưa hỗ trợ trên Windows")
+
 // fixTarget đổi mã sửa nhanh thành mức và RTK cần bật. Chỉ các mã ghi cấu hình CLI chạy trong sidecar; cài công cụ
 // và lệnh codegraph do app desktop chạy.
 func fixTarget(fixID string, p optimizer.Profile, row optimizeProfile) (string, bool, error) {
@@ -238,6 +295,10 @@ func fixTarget(fixID string, p optimizer.Profile, row optimizeProfile) (string, 
 	case score.FixRTK:
 		if p.CLI != "claude" {
 			break
+		}
+		// Báo ngay bằng mã lý do như A6, trước khi dựng preset hay ghi bản ghi hoàn tác (optimizeAddRTK cũng chặn).
+		if optimizeGOOS() == "windows" {
+			return "", false, errWindowsRTK
 		}
 		level := runner.PresetBalanced
 		if row.Enabled {
@@ -279,16 +340,21 @@ func optimizeFix(o *optimizer.Optimizer, file, fixID, profile string, preview, u
 		return fail(err)
 	}
 	dir := filepath.Dir(o.StatePath())
-	fixes := loadFixes(dir)
 	switch {
 	case undo:
-		stack := fixes[p.ID]
-		if len(stack) == 0 {
-			return fail(errors.New("gói này không có lần sửa nhanh nào để hoàn tác"))
-		}
-		rec := stack[len(stack)-1]
-		if rec.FixID != fixID {
-			return fail(fmt.Errorf("hãy hoàn tác lần sửa nhanh sau cùng của gói (%s) trước", rec.FixID))
+		var rec fixRecord
+		err := withFixes(dir, func(st *fixState) error {
+			stack := st.Stacks[p.ID]
+			if len(stack) == 0 {
+				return errors.New("gói này không có lần sửa nhanh nào để hoàn tác")
+			}
+			if rec = stack[len(stack)-1]; rec.FixID != fixID {
+				return fmt.Errorf("hãy hoàn tác lần sửa nhanh sau cùng của gói (%s) trước", rec.FixID)
+			}
+			return nil
+		})
+		if err != nil {
+			return fail(err)
 		}
 		var res *optimizer.Result
 		if rec.PrevEnabled {
@@ -299,8 +365,14 @@ func optimizeFix(o *optimizer.Optimizer, file, fixID, profile string, preview, u
 		if err != nil {
 			return fail(err)
 		}
-		fixes[p.ID] = stack[:len(stack)-1]
-		if err := saveFixes(dir, fixes); err != nil {
+		err = withFixes(dir, func(st *fixState) error {
+			if stack := st.Stacks[p.ID]; len(stack) > 0 && stack[len(stack)-1] == rec {
+				st.Stacks[p.ID] = stack[:len(stack)-1]
+			}
+			st.Pending = append(st.Pending, score.FixMark{ID: fixID, Action: score.MarkUndo})
+			return nil
+		})
+		if err != nil {
 			return fail(err)
 		}
 		return printJSON(stdout, stderr, fixResult{FixID: fixID, Profile: p.ID, Changed: res.Changed, Undone: true})
@@ -312,19 +384,86 @@ func optimizeFix(o *optimizer.Optimizer, file, fixID, profile string, preview, u
 		return printJSON(stdout, stderr, out)
 	}
 	// Ghi bản ghi trước khi đổi cấu hình: tiến trình chết giữa chừng vẫn còn đường hoàn tác.
-	stack := fixes[p.ID]
-	fixes[p.ID] = append(stack, fixRecord{FixID: fixID, PrevEnabled: row.Enabled, PrevLevel: row.Level, PrevRTK: row.RTK,
-		At: optimizeNow().UTC()})
-	if err := saveFixes(dir, fixes); err != nil {
+	rec := fixRecord{FixID: fixID, PrevEnabled: row.Enabled, PrevLevel: row.Level, PrevRTK: row.RTK, At: optimizeNow().UTC()}
+	if err := withFixes(dir, func(st *fixState) error {
+		st.Stacks[p.ID] = append(st.Stacks[p.ID], rec)
+		return nil
+	}); err != nil {
 		return fail(err)
 	}
 	res, err := optimizeEnable(o, p, level, withRTK)
 	if err != nil {
-		fixes[p.ID] = stack
-		_ = saveFixes(dir, fixes)
+		_ = withFixes(dir, func(st *fixState) error {
+			if stack := st.Stacks[p.ID]; len(stack) > 0 && stack[len(stack)-1] == rec {
+				st.Stacks[p.ID] = stack[:len(stack)-1]
+			}
+			return nil
+		})
 		return fail(err)
 	}
+	// Mốc vào hàng chờ chỉ khi cấu hình đã đổi; ghi lỗi thì cấu hình vẫn đúng, chỉ thiếu mốc trên biểu đồ.
+	if err := addMarks(dir, score.FixMark{ID: fixID, Action: score.MarkApply}); err != nil {
+		fmt.Fprintln(stderr, "không ghi được mốc sửa nhanh:", err)
+	}
 	return printJSON(stdout, stderr, fixResult{FixID: fixID, Profile: p.ID, Backup: res.Backup, Changed: res.Changed})
+}
+
+// restoreMarks: chép bản sao lưu bỏ mọi lần sửa nhanh sau bản đó, nên chồng hoàn tác của gói không còn đúng. Ghi mốc
+// hoàn tác cho từng lần, mới trước cũ sau, rồi xoá chồng.
+func restoreMarks(dir, profileID string) error {
+	return withFixes(dir, func(st *fixState) error {
+		stack := st.Stacks[profileID]
+		for i := len(stack) - 1; i >= 0; i-- {
+			st.Pending = append(st.Pending, score.FixMark{ID: stack[i].FixID, Action: score.MarkUndo})
+		}
+		delete(st.Stacks, profileID)
+		return nil
+	})
+}
+
+// optimizeScoreHistory in lịch sử điểm cho biểu đồ của app desktop: không tính điểm, không gọi model.
+func optimizeScoreHistory(o *optimizer.Optimizer, days int, last bool, stdout, stderr io.Writer) int {
+	if days < 0 {
+		fmt.Fprintln(stderr, "--days phải từ 0 trở lên")
+		return 2
+	}
+	if days == 0 {
+		days = scoreHistoryDays
+	}
+	if last {
+		// --last là dòng cuối bất kể khoảng ngày, để thẻ điểm hiện lần trước cả khi lâu không mở.
+		days = 0
+	}
+	entries, err := score.History(filepath.Dir(o.StatePath()), optimizeNow(), days)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if last && len(entries) > 0 {
+		entries = entries[len(entries)-1:]
+	}
+	if entries == nil {
+		entries = []score.HistoryEntry{}
+	}
+	return printJSON(stdout, stderr, map[string][]score.HistoryEntry{"entries": entries})
+}
+
+// optimizeScoreMark thêm mốc cho sửa nhanh do app desktop tự chạy (cài công cụ, `codegraph init`, thêm MCP).
+func optimizeScoreMark(o *optimizer.Optimizer, fixID, action string, stdout, stderr io.Writer) int {
+	if !score.MarkableFix(fixID) {
+		fmt.Fprintf(stderr, "không có sửa nhanh %q để ghi mốc\n", fixID)
+		return 2
+	}
+	if action != score.MarkApply && action != score.MarkUndo {
+		fmt.Fprintln(stderr, "--action phải là apply hoặc undo")
+		return 2
+	}
+	mark := score.FixMark{ID: fixID, Action: action}
+	if err := addMarks(filepath.Dir(o.StatePath()), mark); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	return printJSON(stdout, stderr, mark)
 }
 
 // optimizeFixPreview liệt kê khoá sẽ thêm, đổi hay gỡ mà không ghi gì. Khoá người dùng tự đặt được giữ nguyên khi bật,

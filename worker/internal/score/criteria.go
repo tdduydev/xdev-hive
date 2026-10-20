@@ -45,6 +45,16 @@ const (
 	FixMeasureContext = "context.measure"
 )
 
+// MarkableFix: mã sửa nhanh có đổi cấu hình hay công cụ trên máy, nên được ghi mốc trên lịch sử điểm. Mở màn và đo
+// /context không đổi gì nên không có mốc.
+func MarkableFix(id string) bool {
+	switch id {
+	case FixBalanced, FixRTK, FixAggressive, FixToolRTK, FixToolGraph, FixGraphMCP, FixGraphInit:
+		return true
+	}
+	return false
+}
+
 // linear: x ở mức good được 1, ở mức bad được 0, kẹp trong [0, 1]. good < bad là thấp tốt, good > bad là cao tốt.
 func linear(x, good, bad float64) float64 {
 	if good == bad {
@@ -161,6 +171,7 @@ func scoreProfile(in Inputs, p Profile) ProfileScore {
 		ps.Weighted += s.Weighted
 	}
 	ps.Sessions = len(d.main)
+	ps.ModelShare = modelShare(d.all)
 	d.projects = topProjects(in.Home, d.all, 3)
 	ps.Projects = d.projects
 	if r := in.Context[p.ID]; r != nil {
@@ -184,6 +195,34 @@ func scoreProfile(in Inputs, p Profile) ProfileScore {
 	}
 	total(&ps)
 	return ps
+}
+
+// modelShare gộp token quy đổi theo họ model của các phiên, xếp họ dùng nhiều trước. Không có số theo model thì nil.
+func modelShare(sessions []tokenreport.SessionSummary) []ModelShare {
+	byFamily := map[string]float64{}
+	sum := 0.0
+	for _, s := range sessions {
+		for f, w := range s.ModelWeighted {
+			byFamily[f] += w
+			sum += w
+		}
+	}
+	if sum <= 0 {
+		return nil
+	}
+	out := make([]ModelShare, 0, len(byFamily))
+	for f, w := range byFamily {
+		if w > 0 {
+			out = append(out, ModelShare{Family: f, Share: math.Round(w/sum*10000) / 10000})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Share != out[j].Share {
+			return out[i].Share > out[j].Share
+		}
+		return out[i].Family < out[j].Family
+	})
+	return out
 }
 
 // topProjects: n thư mục làm việc có token quy đổi lớn nhất và còn trên đĩa.
@@ -743,9 +782,20 @@ func instructionFiles(id, home string, files []string, maxBytes int64, budget fl
 	return itemized(id, "files", []Item{tok, trunc})
 }
 
+// codexA5: mục MCP xét bảng [mcp_servers.codegraph] có trong config.toml (plan mục 3). Server có mà `enabled = false`
+// là người dùng đã cài rồi tự tắt: vẫn được điểm, ghi lý do "disabled" để giao diện hiện "có nhưng tắt", và không gợi
+// ý codegraph.mcp vì `codex mcp add` sẽ ghi đè lựa chọn đó. Phần token MCP đang nạp đã do A4 tính.
 func codexA5(d profileData, cfg CodexConfig) Criterion {
-	mcp := cfg.OK && cfg.HasServer("codegraph")
+	present, enabled := cfg.HasServer("codegraph")
+	mcp := cfg.OK && present
 	items, fixes := graphItems(d, &mcp)
+	if mcp && !enabled {
+		for i := range items {
+			if items[i].ID == "mcp" {
+				items[i].Reason = "disabled"
+			}
+		}
+	}
 	c := itemized("A5", "tools", items)
 	if c.Earned < c.Max-0.01 {
 		c.Fixes = fixes
