@@ -104,7 +104,6 @@ func TestBranchesStubsNotImplemented(t *testing.T) {
 	}
 	jobs := [][]string{
 		{"pull", "--folder=" + abs, "--confirm-busy"},
-		{"clean"},
 	}
 	for _, args := range jobs {
 		code, out, _ := branchesRun(t, "{}\n", args...)
