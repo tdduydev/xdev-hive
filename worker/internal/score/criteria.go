@@ -613,16 +613,17 @@ func claudeA5(d profileData) Criterion {
 }
 
 func claudeA6(d profileData, st ClaudeSettings) Criterion {
+	// Worker chưa bật RTK trên Windows (tools.go), nên không trừ điểm và không gợi ý cài.
+	if d.in.GOOS == "windows" {
+		return unsupported("A6", "windows_rtk_unsupported")
+	}
 	rtk := d.in.HasTool("rtk")
 	hookItem := boolItem("hook", strings.Contains(st.Hooks("PreToolUse"), "rtk"))
-	if *hookItem.Score == 0 && d.in.GOOS == "windows" {
-		hookItem.Reason = "windows_rtk_unsupported"
-	}
 	c := itemized("A6", "tools", []Item{boolItem("rtk", rtk), hookItem})
 	switch {
 	case !rtk:
 		c.addFix(FixToolRTK)
-	case *hookItem.Score == 0 && d.in.GOOS != "windows":
+	case *hookItem.Score == 0:
 		c.addFix(FixRTK)
 	}
 	return c
