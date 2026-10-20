@@ -332,6 +332,67 @@ WSS tới `/ws/worker`. Mỗi gói là JSON có `v` (phiên bản giao thức), 
 - **Phiên bản:** hai bên thoả thuận trong `protoRange`; lệch thì hub đóng kết nối mã 4426. Worker tự cập nhật bằng gói `worker/internal/update` (kiểm chữ ký ECDSA của `checksums.txt` và `sha256`) khi admin bấm cập nhật hoặc khi chạy `hive-worker update`. Không dùng `go-selfupdate` vì riêng thư viện đó thêm khoảng 8 MB và hơn 15 module ([add.md](add.md) mục 9).
 - **Worktree:** worker tạo worktree trong thư mục riêng của nó, và luôn gỡ ở bước `finally`. Dự án đã gắn với repo trên máy (`projects.json`, ADR 0020) thì worktree tạo từ repo đó thay cho repo cache bare, nhánh của run hiện trong repo của người dùng. Khi khởi động, worker quét và gỡ worktree không thuộc run đang sống. Hệ cũ để lọt hơn 50 worktree vì thiếu bước này.
 
+### 5.1 Quản lý nhánh Git tại máy (spec 026)
+
+Phần này không đi qua hub. App desktop gọi sidecar `hive-worker branches <lệnh con>`; hub không biết gì về nhánh của
+máy dev. Hợp đồng lệnh con, cờ, JSON stdin, sự kiện và mã lỗi: [contracts/branches-cli.md](../specs/026-desktop-git-branches/contracts/branches-cli.md).
+Hướng dẫn dùng: [git-branches.md](git-branches.md).
+
+```mermaid
+flowchart LR
+  UI["Màn Dự án trên máy<br/>BranchesSheet, CleanupDialog,<br/>GitOperationPanel"]
+  RS["src-tauri/git_branches.rs<br/>15 lệnh Tauri"]
+  SC["hive-worker branches"]
+  BR["internal/branches"]
+  GX["internal/gitexec"]
+  RL["internal/repolock"]
+  GIT["git của máy"]
+  UI -- "invoke, sự kiện git-branches:event" --> RS
+  RS -- "một JSON qua stdin,<br/>mỗi dòng stdout một sự kiện" --> SC
+  SC --> BR
+  BR --> GX --> GIT
+  BR --> RL
+```
+
+Ba gói Go chia nhau việc:
+
+| Gói | Việc | Dùng chung với |
+|---|---|---|
+| `worker/internal/gitexec` | Chạy `git`: môi trường an toàn (`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, `LC_ALL=C`, bỏ biến chứa secret), askpass, huỷ (Interrupt rồi giết sau 10 giây, riêng Windows giết ngay), `GitError` che token | `gitgroups` (nhóm Git theo dõi, spec 016), `branches` |
+| `worker/internal/repolock` | `DataDir()` (mọi tiến trình ra cùng một thư mục dữ liệu), khoá repo hai tầng (trong tiến trình và file khoá): `LockRepo` cho repo cache bare của run, `LocalLock` cho repo đã gắn (file `<DataDir>/repos/local-<băm của thư mục git chung>.lock`); bộ đọc `worktree list --porcelain` (path, branch, `locked`, `prunable`, `detached`, `bare`); `SamePath`, `InsideDir` để so đường dẫn | `runner` (worker giữ khoá cho từng lệnh git ghi), `branches` |
+| `worker/internal/branches` | Nghiệp vụ nhánh, xem bên dưới | — |
+
+`runner` giữ nguyên hành vi: `runner/repolock.go` và `runner/local.go` gọi `repolock` thay cho bản sao cũ của chính nó, nên worker và app cùng một khoá.
+
+Gói `branches`, mỗi lệnh con một file:
+
+| Lệnh con | File | Việc |
+|---|---|---|
+| `status`, `list` | `list.go`, `state.go` | Trạng thái gọn; bảng nhánh bằng một `for-each-ref` và một `worktree list`; trạng thái từng worktree gửi dần bằng sự kiện `worktree` |
+| `fetch` | `fetch.go` | `fetch --prune` từng remote, báo remote lỗi |
+| `switch`, `create` | `switch.go` | `git switch`, tạo nhánh, kiểm tên, xử lý thư mục bẩn |
+| `pull` | `pull.go` | Chỉ tiến nhanh tới mã upstream đã fetch |
+| `scan` | `scan.go`, `evidence.go`, `evidence_api.go` | Ứng viên dọn, bằng chứng từ git, bằng chứng PR/MR qua `gitgroups/api.go` (`ListMergeRequests`, `ListPulls`, tối đa 3 trang 100 mục, bỏ PR từ fork) |
+| `clean` | `clean.go` | Kiểm lại từng mục, gỡ worktree rồi xoá nhánh, không bao giờ xoá nhánh trên remote |
+| `settings`, `settings-set` | `settings.go` | `branches.json` cạnh `worker.json` |
+| `merge`, `rebase`, `continue`, `abort` | `operation.go` | Thao tác có xung đột; đọc lại trạng thái từ `.git` của worktree |
+| (mọi lệnh ghi) | `log.go` | Nhật ký `branches-log.jsonl`, 1.000 dòng gần nhất |
+
+Nguyên tắc thiết kế:
+
+- **An toàn trước tiện:** mọi lệnh nhận revision dùng mã đỉnh đầy đủ hay `refs/heads/…`, không dùng tên ngắn vì tag cùng
+  tên đứng trước nhánh. Trước khi ghi từng mục, `clean` đọc lại bằng chứng, trạng thái worktree và mã đỉnh; lệch thì bỏ qua.
+- **Khoá:** lệnh ghi ngắn giữ khoá repo dùng chung với runner. `git worktree remove` (xoá file, có thể lâu) chạy ngoài
+  khoá để worker không phải chờ.
+- **Ranh giới với worker:** worktree dưới `<DataDir>` (`runs/`, `terminals/`) luôn là "Của worker Hive". App chỉ ghi file
+  khoá chung dưới thư mục này và không đụng kho bare `<DataDir>/repos/*.git`.
+- **Huỷ:** lệnh đọc và fetch dừng ngay; lệnh ghi không bị ngắt giữa chừng, nên huỷ có hiệu lực từ lệnh sau.
+- **Rust chỉ chuyển tiếp:** `git_branches.rs` gom danh sách thư mục đang có agent, terminal hay cửa sổ app (`busy`) cho
+  sidecar, chuyển token Git cho `scan` qua `HIVE_GIT_TOKENS` và mỗi dòng stdout thành sự kiện `git-branches:event`.
+  Giao diện bọc bằng `lib/git-branches.ts` (`useBranchJob`).
+- **Hiện trạng:** `hasSubmodule` (`state.go`) chặn mọi worktree có `.gitmodules`, kể cả submodule chưa init (task T020
+  sửa). Hệ quả cho SC-004 ghi ở [research.md mục 5](../specs/026-desktop-git-branches/research.md).
+
 ## 6. Bảo mật và token
 
 | Token | Cấp cho | Đời sống | Cách cấp |
