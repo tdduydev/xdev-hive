@@ -1,4 +1,6 @@
-package gitgroups
+// Package gitexec chạy git của máy cho gitgroups và branches: môi trường không hỏi mật khẩu, token chỉ đi qua askpass,
+// lỗi đã che token.
+package gitexec
 
 import (
 	"bytes"
@@ -11,6 +13,12 @@ import (
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
+)
+
+// Loại máy chủ Git; quyết định tên đăng nhập đi với token.
+const (
+	KindGitLab = "gitlab"
+	KindGitHub = "github"
 )
 
 // Git chạy git của máy cho một kết nối. Token chỉ đi qua askpass, không nằm trong URL, tham số hay cấu hình repo.
@@ -87,9 +95,9 @@ func authFailed(stderr string) bool {
 
 func (e *GitError) Error() string { return e.Msg }
 
-// run chạy git trong dir (rỗng là thư mục hiện tại), trả stdout. Huỷ ctx thì git nhận Interrupt để tự dọn (clone dở
+// Run chạy git trong dir (rỗng là thư mục hiện tại), trả stdout. Huỷ ctx thì git nhận Interrupt để tự dọn (clone dở
 // tự xoá thư mục), quá 10 giây mới bị giết.
-func (g Git) run(ctx context.Context, dir, host string, args ...string) (string, error) {
+func (g Git) Run(ctx context.Context, dir, host string, args ...string) (string, error) {
 	// credential.helper rỗng: không đọc credential đã lưu của người dùng và không ghi token của app vào đó.
 	full := append([]string{"-c", "credential.helper=", "-c", "core.askPass="}, args...)
 	if g.UseGitCredentials {

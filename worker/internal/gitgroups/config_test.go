@@ -185,8 +185,8 @@ func TestDue(t *testing.T) {
 
 func TestParsePorcelainAndClassify(t *testing.T) {
 	out := "# branch.oid abc\r\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +0 -3\n? new.txt\n"
-	p := parsePorcelain(out)
-	if s, _ := classify(p, "main"); s != StateBehind || p.behind != 3 {
+	p := ParsePorcelain(out)
+	if s, _ := classify(p, "main"); s != StateBehind || p.Behind != 3 {
 		t.Fatalf("behind = %+v %s", p, s)
 	}
 	cases := []struct {
@@ -203,29 +203,14 @@ func TestParsePorcelainAndClassify(t *testing.T) {
 		{"# branch.oid a\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +0 -0\nu UU N... 1 2 3 4 a b c f\n", "", StateDirty},
 	}
 	for _, c := range cases {
-		if got, _ := classify(parsePorcelain(c.out), c.def); got != c.want {
+		if got, _ := classify(ParsePorcelain(c.out), c.def); got != c.want {
 			t.Errorf("classify(%q) = %s, muốn %s", c.out, got, c.want)
 		}
 	}
 }
 
-func TestAskpassAnswersOnlyItsHost(t *testing.T) {
-	t.Setenv(askpassHostEnv, "gitlab.acme.vn:8443")
-	t.Setenv(askpassUserEnv, "oauth2")
-	t.Setenv(askpassTokenEnv, "glpat-secret")
-	var out bytes.Buffer
-	if code := Askpass([]string{"Username for 'https://gitlab.acme.vn:8443': "}, &out); code != 0 || out.String() != "oauth2\n" {
-		t.Fatalf("username = %d %q", code, out.String())
-	}
-	out.Reset()
-	if code := Askpass([]string{"Password for 'https://oauth2@GITLAB.acme.vn:8443': "}, &out); code != 0 || out.String() != "glpat-secret\n" {
-		t.Fatalf("password = %d %q", code, out.String())
-	}
-	out.Reset()
-	if code := Askpass([]string{"Password for 'https://evil.example': "}, &out); code == 0 || out.Len() != 0 {
-		t.Fatalf("máy chủ lạ = %d %q", code, out.String())
-	}
-	if tokenUser(KindGitHub) != "x-access-token" || hostOf("git@github.com:a/b.git") != "" || hostOf("https://h:1/a") != "h:1" {
-		t.Error("tokenUser/hostOf sai")
+func TestHostOf(t *testing.T) {
+	if hostOf("git@github.com:a/b.git") != "" || hostOf("https://h:1/a") != "h:1" {
+		t.Error("hostOf sai")
 	}
 }
