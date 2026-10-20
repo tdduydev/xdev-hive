@@ -90,8 +90,6 @@ func TestBranchesBadArgsExit2(t *testing.T) {
 func TestBranchesStubsNotImplemented(t *testing.T) {
 	abs := t.TempDir()
 	oneShot := [][]string{
-		{"settings"},
-		{"settings-set"},
 		{"merge", "--folder=" + abs, "--onto=abc", "--onto-name=main", "--ff"},
 		{"rebase", "--folder=" + abs, "--onto=abc", "--confirm-rewrite"},
 		{"continue", "--folder=" + abs},
@@ -106,7 +104,6 @@ func TestBranchesStubsNotImplemented(t *testing.T) {
 	}
 	jobs := [][]string{
 		{"pull", "--folder=" + abs, "--confirm-busy"},
-		{"scan", "--folder=" + abs, "--folder=" + filepath.Join(abs, "b"), "--no-fetch"},
 		{"clean"},
 	}
 	for _, args := range jobs {
