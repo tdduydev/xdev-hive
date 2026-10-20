@@ -242,7 +242,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 - [ ] **T015 [P] [US8] [nặng] · 2 ngày — Go: merge, rebase, continue, abort**
   - **Goal**: giai đoạn 3, plan.md mục 3b. FR-050…FR-056. Kiểm sạch, đứng trên nhánh, không dở thao tác; rebase đếm
-    commit đã đẩy → `needsConfirm` khi thiếu `--confirm-rewrite` (cách đếm là [Suy luận], kiểm lại); ghi `headBefore`
+    commit đã đẩy → `needsConfirm` khi thiếu `--confirm-rewrite` (cách đếm ở contracts/branches-cli.md, T015 đã kiểm); ghi `headBefore`
     vào nhật ký; `GIT_EDITOR=true`, context không huỷ, 120 giây, hết giờ không tự abort. `conflict` kèm tối đa 200 file
     và bước rebase. `list` trả `operation` khi repo đang dở (cả khi người dùng tự chạy ngoài app). Không có `--skip`,
     `--quit`, `-i`, `--autostash`.
