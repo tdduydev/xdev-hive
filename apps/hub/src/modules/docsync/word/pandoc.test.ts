@@ -84,7 +84,16 @@ describe("runPandoc với pandoc giả", SPAWN_TESTS, () => {
       const { argv, env } = JSON.parse(result.markdown) as { argv: string[]; env: Record<string, string> };
       expect(argv[0]).toBe("in.docx");
       expect(argv).toEqual(
-        expect.arrayContaining(["-f", "docx", "-t", "gfm", "--sandbox", "--extract-media=m", "--log=log.json"]),
+        expect.arrayContaining([
+          "-f",
+          "docx",
+          "-t",
+          "gfm",
+          "--eol=lf",
+          "--sandbox",
+          "--extract-media=m",
+          "--log=log.json",
+        ]),
       );
       expect(argv).toContain(`--lua-filter=${filter}`);
       expect(argv.join(" ")).toContain("--metadata keep-front=true");
