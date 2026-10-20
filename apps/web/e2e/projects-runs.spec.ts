@@ -261,7 +261,10 @@ test("cấu hình dự án: lưu từng mục, bật toàn quyền phải xác n
   await expect(perm).toContainText("Có thay đổi chưa lưu");
 
   // Còn mục chưa lưu thì rời trang phải xác nhận; ở lại thì giữ bản nháp.
-  await page.getByRole("navigation", { name: "Điều hướng quản trị" }).getByRole("link", { name: "Máy" }).click();
+  await page
+    .getByRole("navigation", { name: "Điều hướng quản trị" })
+    .getByRole("link", { name: "Máy", exact: true })
+    .click();
   const leave = page.getByRole("dialog", { name: "Rời trang khi còn thay đổi chưa lưu?" });
   await leave.getByRole("button", { name: "Ở lại" }).click();
   await expect(page).toHaveURL("/projects/PAY/settings");
@@ -270,7 +273,10 @@ test("cấu hình dự án: lưu từng mục, bật toàn quyền phải xác n
   await perm.getByRole("button", { name: "Lưu" }).click();
   await expect.poll(() => saves().at(-1)).toEqual({ key: "PAY", settings: { runPermissions: { mode: "full" } } });
   await expect(perm.getByRole("status")).toContainText("Đã lưu");
-  await page.getByRole("navigation", { name: "Điều hướng quản trị" }).getByRole("link", { name: "Máy" }).click();
+  await page
+    .getByRole("navigation", { name: "Điều hướng quản trị" })
+    .getByRole("link", { name: "Máy", exact: true })
+    .click();
   await expect(page).toHaveURL("/machines");
 });
 
@@ -288,7 +294,10 @@ test("cấu hình dự án: Huỷ hoàn tác đúng mục, rời trang sau khi c
   await expect(budget.getByRole("button", { name: "Lưu" })).toBeDisabled();
   await expect(run.getByRole("switch", { name: "Sandbox" })).toBeChecked();
 
-  await page.getByRole("navigation", { name: "Điều hướng quản trị" }).getByRole("link", { name: "Máy" }).click();
+  await page
+    .getByRole("navigation", { name: "Điều hướng quản trị" })
+    .getByRole("link", { name: "Máy", exact: true })
+    .click();
   await page
     .getByRole("dialog", { name: "Rời trang khi còn thay đổi chưa lưu?" })
     .getByRole("button", { name: "Rời trang" })
