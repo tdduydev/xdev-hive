@@ -3,6 +3,7 @@ package gitgroups
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -144,5 +145,105 @@ func TestAPIBase(t *testing.T) {
 		if got := apiBase(h); got != want {
 			t.Errorf("apiBase(%v) = %s", h, got)
 		}
+	}
+}
+
+func TestGitLabListMergeRequestsSkipsForksAndStopsAtThreePages(t *testing.T) {
+	token := strings.Join([]string{"glpat", "mrtest"}, "-")
+	pages := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.EscapedPath() != "/api/v4/projects/acme%2Fshop/merge_requests" {
+			t.Errorf("gọi lạ %s", r.URL)
+			http.NotFound(w, r)
+			return
+		}
+		q := r.URL.Query()
+		if q.Get("state") != "all" || q.Get("order_by") != "updated_at" || q.Get("per_page") != "100" {
+			t.Errorf("query = %s", r.URL.RawQuery)
+		}
+		if r.Header.Get("PRIVATE-TOKEN") != token {
+			t.Errorf("thiếu token")
+		}
+		pages++
+		page, _ := strconv.Atoi(q.Get("page"))
+		if page == 0 {
+			page = 1
+		}
+		// Máy chủ còn trang mãi: client phải dừng ở trang 3.
+		w.Header().Set("X-Next-Page", strconv.Itoa(page+1))
+		if page > 1 {
+			_, _ = fmt.Fprintf(w, `[{"iid":%d,"state":"closed","source_branch":"ai/old%d","source_project_id":7,"project_id":7}]`, 100+page, page)
+			return
+		}
+		_, _ = w.Write([]byte(`[
+			{"iid":12,"state":"merged","source_branch":"ai/squash","source_project_id":7,"project_id":7,"sha":"abc","web_url":"https://gl/acme/shop/-/merge_requests/12","updated_at":"2026-10-01T10:00:00.000Z"},
+			{"iid":13,"state":"opened","source_branch":"ai/fork","source_project_id":99,"project_id":7},
+			{"iid":14,"state":"locked","source_branch":"ai/merging","source_project_id":7,"project_id":7}
+		]`))
+	}))
+	defer srv.Close()
+	c := Client{Host: Host{Kind: KindGitLab, URL: srv.URL}, Token: token}
+	prs, err := c.ListMergeRequests(context.Background(), "acme/shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages != maxPRPages {
+		t.Fatalf("đọc %d trang, muốn %d", pages, maxPRPages)
+	}
+	if len(prs) != 4 {
+		t.Fatalf("prs = %+v", prs)
+	}
+	m := prs[0]
+	if m.Number != 12 || m.Branch != "ai/squash" || m.State != PRMerged || m.HeadSHA != "abc" ||
+		m.URL != "https://gl/acme/shop/-/merge_requests/12" || m.UpdatedAt.IsZero() {
+		t.Fatalf("MR squash: %+v", m)
+	}
+	if prs[1].Branch != "ai/merging" || prs[1].State != PROpen || prs[2].State != PRClosed {
+		t.Fatalf("trạng thái: %+v", prs)
+	}
+}
+
+func TestGitHubListPullsMapsStateAndSkipsForks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/repos/acme/shop/pulls" || r.URL.Query().Get("state") != "all" ||
+			r.URL.Query().Get("sort") != "updated" || r.URL.Query().Get("direction") != "desc" {
+			t.Errorf("gọi lạ %s", r.URL)
+		}
+		_, _ = w.Write([]byte(`[
+			{"number":5,"state":"closed","merged_at":"2026-10-02T00:00:00Z","html_url":"https://ghe/acme/shop/pull/5","updated_at":"2026-10-02T00:00:00Z",
+			 "head":{"ref":"ai/a","sha":"s5","repo":{"id":1}},"base":{"repo":{"id":1}}},
+			{"number":6,"state":"closed","merged_at":null,"head":{"ref":"ai/b","repo":{"id":1}},"base":{"repo":{"id":1}}},
+			{"number":7,"state":"open","head":{"ref":"ai/c","repo":{"id":1}},"base":{"repo":{"id":1}}},
+			{"number":8,"state":"open","head":{"ref":"ai/a","repo":{"id":2}},"base":{"repo":{"id":1}}},
+			{"number":9,"state":"closed","head":{"ref":"ai/a","repo":null},"base":{"repo":{"id":1}}}
+		]`))
+	}))
+	defer srv.Close()
+	c := Client{Host: Host{Kind: KindGitHub, URL: srv.URL}, Token: "t"}
+	prs, err := c.ListPulls(context.Background(), "acme/shop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prs) != 3 || prs[0].State != PRMerged || prs[0].HeadSHA != "s5" || prs[0].Number != 5 ||
+		prs[1].State != PRClosed || prs[2].State != PROpen || prs[2].Branch != "ai/c" {
+		t.Fatalf("prs = %+v", prs)
+	}
+	if _, err := c.ListPulls(context.Background(), "acme/sub/shop"); err == nil {
+		t.Fatal("đường dẫn ba đoạn phải lỗi")
+	}
+}
+
+func TestListPullsReportsUnauthorized(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	token := strings.Join([]string{"ghp", "unauthorizedtest"}, "_")
+	_, err := Client{Host: Host{Kind: KindGitHub, URL: srv.URL}, Token: token}.ListPulls(context.Background(), "acme/shop")
+	var api *APIError
+	if !errors.As(err, &api) || api.Status != http.StatusUnauthorized || strings.Contains(err.Error(), token) || calls != 1 {
+		t.Fatalf("err = %v, gọi %d lần", err, calls)
 	}
 }
