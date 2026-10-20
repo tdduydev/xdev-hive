@@ -1,13 +1,15 @@
 import {
+  type Doc,
   type Proposal,
   type ProposalCreateInput,
   type ProposalDecideInput,
   type ProposalListInput,
+  type ProposalOrigin,
   proposalCreateInput,
   proposalDecideInput,
   proposalListInput,
 } from "@xdev-hive/contracts";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
 import {
   audit,
@@ -33,7 +35,7 @@ type ProposalRow = typeof proposals.$inferSelect;
 
 const notFound = () => new NotFoundError("PROPOSAL_NOT_FOUND", "Không tìm thấy đề xuất.");
 
-function view(p: ProposalRow): Proposal {
+export function proposalView(p: ProposalRow): Proposal {
   return {
     id: p.id,
     kind: p.kind,
@@ -51,14 +53,47 @@ function view(p: ProposalRow): Proposal {
     decidedAt: p.decidedAt ? iso(p.decidedAt) : null,
     decisionNote: p.decisionNote,
     resultVersion: p.resultVersion,
+    origin: p.origin ?? null,
   };
+}
+
+/** Nguồn phiên bản khi duyệt: bản nhập Word được đẩy như `hub` nhưng lịch sử vẫn ghi đúng là từ Word. */
+export const approvedSource = (p: ProposalRow) => (p.origin?.kind === "word" ? ("word" as const) : undefined);
+
+// ---- Hook khi duyệt --------------------------------------------------------------------------------------------------
+
+export type ProposalApprovedHandler = (tx: Tx, proposal: Proposal, savedDoc: Doc) => Promise<void>;
+
+// Khác `provideReviewHooks` (một bộ, sdlc giữ): nhiều module cùng cần biết đề xuất tài liệu đã thành phiên bản, nên giữ
+// danh sách. Gọi trong transaction duyệt để handler lỗi thì phiên bản mới không được lưu, như `onBaseline`.
+const approvedHandlers = new Set<ProposalApprovedHandler>();
+
+/** Đăng ký lúc khởi động hub; trả hàm gỡ để test không để handler sót sang ca khác. */
+export function provideProposalApproved(handler: ProposalApprovedHandler): () => void {
+  approvedHandlers.add(handler);
+  return () => approvedHandlers.delete(handler);
+}
+
+/** Chỉ đề xuất tài liệu có phiên bản mới mới gọi; skill và xác nhận lại baseline không lưu tài liệu nào. */
+export async function proposalApproved(tx: Tx, proposal: Proposal, savedDoc: Doc): Promise<void> {
+  for (const handler of approvedHandlers) await handler(tx, proposal, savedDoc);
+}
+
+export interface ProposalOptions {
+  /** Chỉ module khác đặt (nhập Word); oRPC và MCP không mở, nên không ai tự gắn nguồn cho đề xuất của mình. */
+  origin?: ProposalOrigin | undefined;
 }
 
 /**
  * Tạo đề xuất sửa tài liệu hoặc skill. Base đã cũ thì báo CONFLICT ngay, để agent đọc lại bản mới rồi đề xuất trên
  * đó, thay vì để người duyệt nhận một đề xuất chắc chắn xung đột.
  */
-export async function createProposal(tx: Tx, principal: Principal, input: ProposalCreateInput): Promise<Proposal> {
+export async function createProposal(
+  tx: Tx,
+  principal: Principal,
+  input: ProposalCreateInput,
+  options: ProposalOptions = {},
+): Promise<Proposal> {
   const data = proposalCreateInput.parse(input);
   const reader = await readerFor(tx, principal);
   let scope: Scope;
@@ -86,6 +121,7 @@ export async function createProposal(tx: Tx, principal: Principal, input: Propos
       description: data.kind === "skill" ? data.description : null,
       content: data.content,
       reason: data.reason ?? null,
+      origin: options.origin ?? null,
       ...authorColumns(principal),
     })
     .returning();
@@ -97,7 +133,7 @@ export async function createProposal(tx: Tx, principal: Principal, input: Propos
     { type: "proposal", id: row.id },
     { kind: row.kind, target: row.target },
   );
-  return view(row);
+  return proposalView(row);
 }
 
 /** Đề xuất sửa tài liệu. Hàm public cho MCP: agent không lưu tài liệu trực tiếp. */
@@ -105,8 +141,40 @@ export function proposeDoc(
   tx: Tx,
   principal: Principal,
   input: Omit<Extract<ProposalCreateInput, { kind: "doc" }>, "kind">,
+  options: ProposalOptions = {},
 ): Promise<Proposal> {
-  return createProposal(tx, principal, { ...input, kind: "doc" });
+  return createProposal(tx, principal, { ...input, kind: "doc" }, options);
+}
+
+export interface ProposalOriginState {
+  id: string;
+  importFileId: string;
+  status: Proposal["status"];
+  createdAt: Date;
+  decidedAt: Date | null;
+}
+
+/**
+ * Đề xuất của các file nhập Word, để cron dọn của docsync biết file giữ tạm nào đã bị từ chối hay chờ quá hạn mà
+ * không đọc thẳng bảng của knowledge. Không kiểm quyền: cron chạy bằng hệ thống, RLS vẫn giới hạn trong tổ chức.
+ */
+export async function proposalsByOrigin(
+  tx: Tx,
+  origin: { kind: "word"; importFileIds: readonly string[] },
+): Promise<ProposalOriginState[]> {
+  if (origin.importFileIds.length === 0) return [];
+  const importFileId = sql<string>`${proposals.origin}->>'importFileId'`;
+  return tx
+    .select({
+      id: proposals.id,
+      importFileId,
+      status: proposals.status,
+      createdAt: proposals.createdAt,
+      decidedAt: proposals.decidedAt,
+    })
+    .from(proposals)
+    .where(and(sql`${proposals.origin}->>'kind' = ${origin.kind}`, inArray(importFileId, [...origin.importFileIds])))
+    .orderBy(desc(proposals.createdAt), desc(proposals.id));
 }
 
 export async function listProposals(tx: Tx, principal: Principal, input: ProposalListInput): Promise<Proposal[]> {
@@ -126,7 +194,7 @@ export async function listProposals(tx: Tx, principal: Principal, input: Proposa
     .orderBy(desc(proposals.createdAt), desc(proposals.id))
     .limit(data.limit)
     .offset(data.offset);
-  return rows.map(view);
+  return rows.map(proposalView);
 }
 
 /** Đề xuất đang chờ mà người gọi được quyết; khoá dòng để hai người duyệt cùng lúc không tạo hai phiên bản. */
@@ -165,35 +233,44 @@ export async function approveProposal(tx: Tx, principal: Principal, input: Propo
       "Đề xuất đang đi theo quy trình duyệt; hãy duyệt ở trang Duyệt tài liệu.",
     );
   const message = data.note ?? p.reason ?? undefined;
-  const version =
+  const doc =
     p.kind === "doc"
-      ? (
-          await applyDocSave(
-            tx,
-            principal,
-            p,
-            { key: p.target, title: p.title ?? undefined, content: p.content, baseVersion: p.baseVersion, message },
-            p.id,
-          )
-        ).version
-      : (
-          await applySkillSave(
-            tx,
-            principal,
-            p,
-            {
-              name: p.target,
-              description: p.description ?? "",
-              content: p.content,
-              baseVersion: p.baseVersion,
-              message,
-            },
-            p.id,
-          )
-        ).version;
-  const row = await decide(tx, principal, p, "approved", data.note, version);
+      ? await applyDocSave(
+          tx,
+          principal,
+          p,
+          {
+            key: p.target,
+            title: p.title ?? undefined,
+            content: p.content,
+            baseVersion: p.baseVersion,
+            message,
+            source: approvedSource(p),
+          },
+          p.id,
+        )
+      : null;
+  const version = doc
+    ? doc.version
+    : (
+        await applySkillSave(
+          tx,
+          principal,
+          p,
+          {
+            name: p.target,
+            description: p.description ?? "",
+            content: p.content,
+            baseVersion: p.baseVersion,
+            message,
+          },
+          p.id,
+        )
+      ).version;
+  const proposal = proposalView(await decide(tx, principal, p, "approved", data.note, version));
   await audit(tx, principal, "proposal.approve", { type: "proposal", id: p.id }, { kind: p.kind, version });
-  return view(row);
+  if (doc) await proposalApproved(tx, proposal, doc);
+  return proposal;
 }
 
 export async function rejectProposal(tx: Tx, principal: Principal, input: ProposalDecideInput): Promise<Proposal> {
@@ -206,7 +283,7 @@ export async function rejectProposal(tx: Tx, principal: Principal, input: Propos
     .set({ status: "cancelled", updatedAt: new Date() })
     .where(and(eq(reviewInstances.proposalId, p.id), eq(reviewInstances.status, "in_review")));
   await audit(tx, principal, "proposal.reject", { type: "proposal", id: p.id }, { kind: p.kind });
-  return view(row);
+  return proposalView(row);
 }
 
 async function decide(
