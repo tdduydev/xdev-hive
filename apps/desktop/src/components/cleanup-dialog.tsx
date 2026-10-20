@@ -35,6 +35,10 @@ import {
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
 
+/** "MR !12" (GitLab), "PR #12" (GitHub); thiếu số thì chỉ còn "MR"/"PR". */
+const requestRef = (e: Evidence) =>
+  e.provider === "gitlab" ? `MR${e.number ? ` !${e.number}` : ""}` : `PR${e.number ? ` #${e.number}` : ""}`;
+
 const text: Dict<{
   title: string;
   lead: string;
@@ -143,7 +147,7 @@ const text: Dict<{
     suggestDirty: "Thư mục chính đang có thay đổi, hãy xử lý trước khi đổi nhánh.",
     checkLabel: (branch) => `Dọn nhánh ${branch}`,
     evidence: (e) => {
-      const number = e.number ?? "";
+      const ref = requestRef(e);
       switch (e.kind) {
         case "mergedGit":
           return (
@@ -156,9 +160,9 @@ const text: Dict<{
             </>
           );
         case "mergedApi":
-          return e.provider === "gitlab" ? `MR !${number} đã merge` : `PR #${number} đã merge`;
+          return `${ref} đã merge`;
         case "closedApi":
-          return e.provider === "gitlab" ? `MR !${number} đã đóng, chưa merge` : `PR #${number} đã đóng, chưa merge`;
+          return `${ref} đã đóng, chưa merge`;
         case "none":
           return "Chưa có bằng chứng merge";
       }
@@ -291,7 +295,7 @@ const text: Dict<{
     suggestDirty: "The main folder has changes, deal with them before switching branches.",
     checkLabel: (branch) => `Clean up ${branch}`,
     evidence: (e) => {
-      const number = e.number ?? "";
+      const ref = requestRef(e);
       switch (e.kind) {
         case "mergedGit":
           return (
@@ -304,9 +308,9 @@ const text: Dict<{
             </>
           );
         case "mergedApi":
-          return e.provider === "gitlab" ? `MR !${number} merged` : `PR #${number} merged`;
+          return `${ref} merged`;
         case "closedApi":
-          return e.provider === "gitlab" ? `MR !${number} closed, not merged` : `PR #${number} closed, not merged`;
+          return `${ref} closed, not merged`;
         case "none":
           return "No merge evidence";
       }
