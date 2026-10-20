@@ -109,6 +109,7 @@ const text: Dict<{
   pullNoUpstream: string;
   pullGone: string;
   mergeInto: string;
+  mergeIntoFf: string;
   rebaseOnto: string;
   updateFrom: (name: ReactNode) => ReactNode;
   pulled: (branch: ReactNode, n: number | undefined) => ReactNode;
@@ -208,6 +209,7 @@ const text: Dict<{
     pullNoUpstream: "Nhánh này chưa theo dõi nhánh remote nào",
     pullGone: "Nhánh remote của nhánh này đã bị xoá",
     mergeInto: "Merge vào nhánh đang đứng",
+    mergeIntoFf: "Merge vào nhánh đang đứng, cho phép tiến nhanh",
     rebaseOnto: "Rebase nhánh đang đứng lên nhánh này",
     updateFrom: (name) => <>Cập nhật từ {name}</>,
     pulled: (branch, n) =>
@@ -323,6 +325,7 @@ const text: Dict<{
     pullNoUpstream: "This branch does not track a remote branch",
     pullGone: "The remote branch of this branch was deleted",
     mergeInto: "Merge into the checked-out branch",
+    mergeIntoFf: "Merge into the checked-out branch, allow fast-forward",
     rebaseOnto: "Rebase the checked-out branch onto this one",
     updateFrom: (name) => <>Update from {name}</>,
     pulled: (branch, n) =>
@@ -735,9 +738,9 @@ function BranchesBody({
                     gitBlock={gitBlock}
                     onSwitch={setSwitching}
                     onTerminal={onTerminal}
-                    onMerge={(onto) =>
+                    onMerge={(onto, ff) =>
                       currentName &&
-                      setGitAction({ kind: "merge", onto: { name: onto.name, tip: onto.tip }, into: currentName })
+                      setGitAction({ kind: "merge", onto: { name: onto.name, tip: onto.tip }, into: currentName, ff })
                     }
                     onRebase={(onto) =>
                       currentName &&
@@ -873,7 +876,8 @@ function BranchRow({
   gitBlock: string | undefined;
   onSwitch: (branch: BranchInfo) => void;
   onTerminal: (path: string) => void;
-  onMerge: (onto: BranchInfo) => void;
+  /** `ff`: bỏ `--no-ff` (FR-050, "Cho phép tiến nhanh"). */
+  onMerge: (onto: BranchInfo, ff: boolean) => void;
   onRebase: (onto: BranchInfo) => void;
   /** Chỉ có ở dòng nhánh đang đứng khi nó không phải nhánh mặc định: merge nhánh mặc định vào đây. */
   onUpdate: (() => void) | undefined;
@@ -917,8 +921,11 @@ function BranchRow({
         )}
         {!b.isCurrent && (
           <>
-            <Menu.Item className={MENU_ITEM} disabled={!!gitBlock} onClick={() => onMerge(b)}>
+            <Menu.Item className={MENU_ITEM} disabled={!!gitBlock} onClick={() => onMerge(b, false)}>
               <ItemText label={t.mergeInto} reason={gitBlock} />
+            </Menu.Item>
+            <Menu.Item className={MENU_ITEM} disabled={!!gitBlock} onClick={() => onMerge(b, true)}>
+              <ItemText label={t.mergeIntoFf} reason={gitBlock} />
             </Menu.Item>
             <Menu.Item className={MENU_ITEM} disabled={!!gitBlock} onClick={() => onRebase(b)}>
               <ItemText label={t.rebaseOnto} reason={gitBlock} />

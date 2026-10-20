@@ -216,6 +216,27 @@ describe("Merge và Rebase", () => {
     expect(screen.queryByRole("region", { name: "Đang merge" })).toBeNull();
   });
 
+  it("cho phép tiến nhanh: gửi ff true (FR-050)", async () => {
+    const app = fakeApp(onFeature(), {
+      git_branches_merge: () => ({
+        operation: operation({
+          state: "done",
+          branch: "feature",
+          onto: { name: "ai/other", tip: "7777777" },
+          conflicts: [],
+          conflictsTotal: 0,
+        }),
+      }),
+    });
+    const user = userEvent.setup();
+    renderSheet();
+    await pressMenu(user, "ai/other", "Merge vào nhánh đang đứng, cho phép tiến nhanh");
+    expect(await screen.findByText(notice("Đã merge ai/other vào feature."))).toBeTruthy();
+    expect(app.named("git_branches_merge")).toEqual([
+      { folder: FOLDER, onto: "7777777", ontoName: "ai/other", ff: true, confirmBusy: false },
+    ]);
+  });
+
   it("merge dừng vì xung đột: đọc lại và hiện khung Đang merge với file xung đột", async () => {
     const state = { stopped: false };
     const dangling = operation({ branch: "feature", onto: { name: "ai/other", tip: "7777777" } });
@@ -324,8 +345,11 @@ describe("Merge và Rebase", () => {
     await waitFor(() => expect((pull as HTMLButtonElement).disabled).toBe(true));
     expect(screen.getByText("Pull không chạy được: Cần đứng trên một nhánh")).toBeTruthy();
     await user.click(await screen.findByRole("button", { name: "Thao tác với ai/other" }));
-    const merge = await screen.findByRole("menuitem", { name: /Merge vào nhánh đang đứng/ });
+    const merge = await screen.findByRole("menuitem", { name: /^Merge vào nhánh đang đứng(?!, cho phép)/ });
     expect(merge.hasAttribute("data-disabled")).toBe(true);
+    expect((await screen.findByRole("menuitem", { name: /cho phép tiến nhanh/ })).hasAttribute("data-disabled")).toBe(
+      true,
+    );
     expect(within(merge).getByText("Cần đứng trên một nhánh")).toBeTruthy();
     expect(
       (await screen.findByRole("menuitem", { name: /Rebase nhánh đang đứng lên nhánh này/ })).hasAttribute(
