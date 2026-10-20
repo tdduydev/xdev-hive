@@ -302,6 +302,86 @@ def build_srs():
     save(d, "srs.docx")
 
 
+def script_run(paragraph, text: str, kind: str, bold: bool = False):
+    # kind: "subscript" hoặc "superscript"; python-docx đặt w:vertAlign qua thuộc tính của run.
+    run = paragraph.add_run(text)
+    setattr(run.font, kind, True)
+    run.bold = bold or None
+    return run
+
+
+def build_inline_lists():
+    d = docx.Document()
+    fixed_core(d)
+    d.add_paragraph("I. TỔNG QUAN", style="Heading 1")
+
+    p = d.add_paragraph("Chỉ số SpO")
+    script_run(p, "2", "subscript")
+    p.add_run(" và diện tích m")
+    script_run(p, "2", "superscript")
+    p.add_run(" ngoài bảng.")
+
+    d.add_paragraph("Bảng chỉ số:")
+    t = d.add_table(rows=7, cols=2)
+    t.style = "Table Grid"
+    header_rows(t, 1)
+    fill_cell(t.cell(0, 0), "Chỉ số")
+    fill_cell(t.cell(0, 1), "Đơn vị")
+    p = t.cell(1, 0).paragraphs[0]
+    p.add_run("SpO")
+    script_run(p, "2", "subscript")
+    fill_cell(t.cell(1, 1), "%")
+    fill_cell(t.cell(2, 0), "Diện tích")
+    p = t.cell(2, 1).paragraphs[0]
+    p.add_run("m")
+    script_run(p, "2", "superscript")
+    # Chỉ số có dấu và ngoặc, trong ô nhiều đoạn.
+    p = t.cell(3, 0).paragraphs[0]
+    p.add_run("Ion Ca")
+    script_run(p, "2+", "superscript")
+    p = t.cell(3, 1).paragraphs[0]
+    p.add_run("Dòng một")
+    p = t.cell(3, 1).add_paragraph("H")
+    script_run(p, "2", "subscript")
+    p.add_run("O")
+    # Chỉ số in đậm.
+    p = t.cell(4, 0).paragraphs[0]
+    p.add_run("x")
+    script_run(p, "(n+1)", "superscript", bold=True)
+    fill_cell(t.cell(4, 1), "Mũ")
+    # Chỉ số có chữ không đổi được sang Unicode: giữ chữ, bỏ định dạng.
+    p = t.cell(5, 0).paragraphs[0]
+    p.add_run("T")
+    script_run(p, "max", "subscript")
+    p = t.cell(5, 1).paragraphs[0]
+    p.add_run("Lần 5")
+    script_run(p, "th", "superscript")
+    # Chỉ số trong tiêu đề cột.
+    p = t.cell(6, 0).paragraphs[0]
+    p.add_run("Nồng độ CO")
+    script_run(p, "2", "subscript")
+    fill_cell(t.cell(6, 1), "ppm")
+    # Tiêu đề cột thứ hai có chỉ số: đặt sau để hàng đầu giữ chữ thường cho cả hai bản.
+    p = t.cell(0, 1).paragraphs[0]
+    script_run(p, "(2)", "superscript")
+
+    # Hai danh sách đánh số liền nhau, mỗi danh sách một định nghĩa số riêng nên Word đánh lại từ 1.
+    d.add_paragraph("Hai danh sách đánh số liền nhau:")
+    for numbering, items in [(new_numbering(d, "List Number"), ["Bước một", "Bước hai"]),
+                             (new_numbering(d, "List Number"), ["Bước ba", "Bước bốn"])]:
+        for text in items:
+            q = d.add_paragraph(text, style="List Number")
+            set_numbering(q, numbering)
+    d.add_paragraph("Hai danh sách chấm liền nhau:")
+    for numbering, items in [(new_numbering(d, "List Bullet"), ["Ý một", "Ý hai"]),
+                             (new_numbering(d, "List Bullet"), ["Ý ba"])]:
+        for text in items:
+            q = d.add_paragraph(text, style="List Bullet")
+            set_numbering(q, numbering)
+    d.add_paragraph("Hết tài liệu.")
+    save(d, "inline-lists.docx")
+
+
 FOOTNOTES = (
     '<w:footnotes {decls}>'
     '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
@@ -341,6 +421,11 @@ def build_no_h1():
     save(d, "no-h1.docx")
 
 
+BUILDERS = {"srs": build_srs, "no-h1": build_no_h1, "inline-lists": build_inline_lists}
+
 if __name__ == "__main__":
-    build_srs()
-    build_no_h1()
+    # Chạy riêng một mẫu được, vì python-docx/lxml khác phiên bản có thể ra byte khác cho các mẫu còn lại.
+    import sys
+
+    for name in sys.argv[1:] or BUILDERS:
+        BUILDERS[name]()
