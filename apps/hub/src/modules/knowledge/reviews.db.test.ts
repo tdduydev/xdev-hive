@@ -15,7 +15,7 @@ import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/ind
 import type { Principal, Reader } from "./access.ts";
 import { saveDoc } from "./docs.ts";
 import { editorState, previewSubmit } from "./editor.ts";
-import { approveProposal, createProposal, rejectProposal } from "./proposals.ts";
+import { approveProposal, createProposal, provideProposalApproved, rejectProposal } from "./proposals.ts";
 import { remindOverdue } from "./review-jobs.ts";
 import {
   AI_AUTO_ACTOR,
@@ -697,6 +697,56 @@ describe("điểm nối của AI SDLC", () => {
     expect((await instanceOf(q.id)).status).toBe("in_review");
   });
 
+  it("chốt qua quy trình: hook của sdlc vẫn chạy cùng các bên đăng ký provideProposalApproved; nguồn word", async () => {
+    const events: BaselineEvent[] = [];
+    provideReviewHooks({
+      workflowFor: async () => derived([human("lead")]),
+      onBaseline: async (_tx, e) => void events.push(e),
+    });
+    const approved: Array<[string, string, string | undefined, number]> = [];
+    const offs = ["docsync", "khác"].map((who) =>
+      provideProposalApproved(async (_tx, p, doc) => void approved.push([who, p.status, p.origin?.kind, doc.version])),
+    );
+    try {
+      const importFileId = randomUUID();
+      const p = await as("tmember", (tx) =>
+        proposeWithReview(
+          tx,
+          user("tmember"),
+          { kind: "doc", key: docKey, content: PRD_V2, baseVersion: docVersion },
+          {},
+          { origin: { kind: "word", importFileId } },
+        ),
+      );
+      expect(p.origin).toEqual({ kind: "word", importFileId });
+      await approve("tadmin", (await instanceOf(p.id)).id, {});
+      expect(events.map((e) => e.proposalId)).toEqual([p.id]);
+      expect(approved).toEqual([
+        ["docsync", "approved", "word", docVersion + 1],
+        ["khác", "approved", "word", docVersion + 1],
+      ]);
+      const { rows } = await admin.query(
+        "select v.source from hive.doc_versions v join hive.docs d on d.id = v.doc_id where d.key = $1 and v.version = $2",
+        [docKey, docVersion + 1],
+      );
+      expect(rows[0]?.source).toBe("word");
+
+      // Handler lỗi thì bản chốt rollback như onBaseline.
+      await freshDoc();
+      offs.push(
+        provideProposalApproved(async () => {
+          throw new Error("docsync lỗi");
+        }),
+      );
+      const q = await proposeWith("tmember", {});
+      await expect(approve("tadmin", (await instanceOf(q.id)).id, {})).rejects.toThrow("docsync lỗi");
+      expect(await versionNow()).toBe(docVersion);
+      expect((await instanceOf(q.id)).status).toBe("in_review");
+    } finally {
+      for (const off of offs) off();
+    }
+  });
+
   it("queueAuthorFix nhận việc sửa thì không tạo task chung; không nhận thì dùng task chung", async () => {
     const asked: string[] = [];
     const hooks = (taken: boolean): ReviewDeps => ({
@@ -936,7 +986,15 @@ describe("điểm nối của AI SDLC", () => {
         startReview(tx, p.id, hooks, { workflow: derived([human("po")]), reaffirm: true }),
       );
       expect(inst).toMatchObject({ status: "in_review" });
-      await approve("tadmin", inst?.id ?? "", hooks);
+      // Không lưu phiên bản nào nên bên đăng ký "đề xuất đã duyệt" không có tài liệu để xử lý.
+      const approvedHook = vi.fn(async () => {});
+      const off = provideProposalApproved(approvedHook);
+      try {
+        await approve("tadmin", inst?.id ?? "", hooks);
+      } finally {
+        off();
+      }
+      expect(approvedHook).not.toHaveBeenCalled();
       expect(await versionNow()).toBe(docVersion);
       const versions = await admin.query(
         "select count(*)::int as n from hive.doc_versions v join hive.docs d on d.id = v.doc_id where d.key = $1",
