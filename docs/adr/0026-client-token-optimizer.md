@@ -41,6 +41,20 @@ change subagent behavior.
 - Bad: platform-specific CLI capabilities can limit hooks or integrations; unsupported options must be reported rather
   than silently applied.
 
+## Score
+
+The desktop app also shows a token optimization score from 0 to 100 ([spec 025](../../specs/025-token-score/spec.md)).
+The sidecar computes it with `hive-worker optimize score`, for the same reasons as above: the inputs are local CLI
+settings and session logs, the score must work offline, and one implementation avoids two sources of truth.
+
+- Session logs, project paths and profile names are private. They stay on the machine. The score history keeps only
+  numbers, criterion ids and CLI names, and the copyable report omits profile ids and paths.
+- Every quick fix shows a preview and can be undone. Fixes that change model behavior (the aggressive level) need their
+  own confirmation. No fix edits memory or instruction files, or removes MCP servers or skills.
+- `/context` calls the model and costs tokens, so it runs only when the user presses the measure button. The result is
+  kept for seven days, and recalculating the score never runs it.
+- The score measures configuration and context size, not the quality of the agent's results.
+
 ## Alternatives considered
 
 - **(b) Reimplement the feature in Rust inside Tauri:** rejected because it would duplicate preset, version-detection,
@@ -54,4 +68,5 @@ change subagent behavior.
 
 - [Spec 015: client token optimizer](../../specs/015-client-token-optimizer/spec.md)
 - [Plan](../../specs/015-client-token-optimizer/plan.md) and [research](../../specs/015-client-token-optimizer/research.md)
+- [Spec 025: token optimization score](../../specs/025-token-score/spec.md)
 - [ADR 0019: local interactive sessions](0019-hive-cli-and-remote-sessions.md)

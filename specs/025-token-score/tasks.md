@@ -165,6 +165,10 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
     - `optimize score --json [--profile P] [--days 7] [--fresh]`.
   - **PHẠM VI**: `worker/internal/score/**`, `worker/cmd/hive-worker/optimize.go` (`case "score"`),
     `worker/cmd/hive-worker/optimize_test.go`.
+  - **Ghi chú file thực tế (2026-10-20)**: danh sách file ở Goal là kế hoạch cũ. Code nằm ở `config.go` (đọc cấu hình
+    Claude, Codex, Antigravity), `criteria.go` (bảng tiêu chí, `f(x)`, trạng thái, các tiêu chí nhóm A và B),
+    `context.go`, `history.go`, `score.go`. Sửa nhanh nằm trong `worker/cmd/hive-worker/optimize_score.go`, không phải
+    `fixes.go`; không có `config_*.go` và `tools.go` riêng.
   - **Kiểm**: test bảng (SC-002): mỗi tiêu chí và mục con có ca đủ, 0, giữa, `unknown`; `HOME`/`USERPROFILE` giả với 2 gói
     Claude (một gói thư mục tuỳ chọn), 1 Codex, 1 Antigravity; riêng tư (SC-005) cho lịch sử.
 - [x] **T004 [US3] [vừa] · 1 ngày — `optimize fix`** (sau T003)
@@ -208,18 +212,40 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
 - [ ] **T007 [US4] [vừa] · 1,5 ngày — Biểu đồ 30 ngày, huy hiệu, tính lại hằng ngày** (sau T003, T006)
   - **PHẠM VI**: `apps/desktop/src/components/token-score-history.tsx`, `shell/app-nav.tsx`, `token_score.rs`
     (`token_score_last`, lịch chạy nền).
+  - **Phạm vi thêm (2026-10-20)**: `worker/internal/score/history.go` (khoá file, ngày địa phương, giá trị thô, mốc
+    fix/undo, lệnh `optimize score history|mark`), `apps/desktop/src-tauri/src/lib.rs`, `build.rs`,
+    `capabilities/app.json`, `settings.rs`, `apps/desktop/src/lib/nav.ts`,
+    `apps/desktop/src/components/token-score-card.tsx`.
 - [ ] **T008 [US5] [nhẹ] · 0,5 ngày — Gợi ý theo hành vi dùng** (sau T006)
+  - **Điều kiện (2026-10-20)**: gợi ý `/clear` hiện khi **A1 đủ điểm** và B2 ≥ 50% (đúng spec US5 kịch bản 1).
+    Gợi ý "đọc cả file lớn" chưa có số đo: để sau.
 - [ ] **T009 [—] [nhẹ] · 0,5 ngày — Tỉ trọng token theo họ model** (FR-007, hiện trong chi tiết A8)
+  - **Ghi chú (2026-10-20)**: cần tăng `cacheVersion` của `tokenreport`; trường `modelShare` tính theo profile; chỉ để
+    xem, không vào điểm A8.
 
 ## Đợt 4: P3 (Q5)
 
 - [ ] **T010 [US6] [nặng] · 2 ngày — Hợp đồng, bảng `machine_token_scores`, route** (plan mục 9)
+  - **Tạm giữ: làm sau khi spec 027 có plan** (chủ dự án, 2026-10-20). Lý do: spec 027 đã định cách máy gửi dữ liệu
+    lên hub, nên T010 phải theo đó thay vì tự đặt riêng:
+    - FR-004: `idempotencyKey` và `source` cho mỗi lần gửi;
+    - FR-011: hộp thư đi của `hive-worker`;
+    - FR-012: phân loại việc ghi khi hub vắng;
+    - FR-050, FR-054: ranh giới dữ liệu được gửi;
+    - định danh máy bằng khoá máy, thay PAT.
+    Cần thêm ADR "máy gửi điểm token" trước khi làm.
 - [ ] **T011 [US6] [vừa] · 1,5 ngày — Web: cột điểm ở danh sách máy, trang chi tiết**
+  - **Tạm giữ: làm sau khi spec 027 có plan** (cùng lý do với T010; T011 chờ hợp đồng của T010).
 
 ## Đợt 5: tài liệu và đo thật
 
-- [ ] **T012 [—] [nhẹ] · 0,5 ngày — `docs/token-optimizer.md`, đoạn "Score" của ADR 0026** (sau T006)
+- [x] **T012 [—] [nhẹ] · 0,5 ngày — `docs/token-optimizer.md`, đoạn "Score" của ADR 0026** (sau T006)
+  - Đã thêm: bảng tiêu chí và ghi chú A6 trên Windows ở `docs/token-optimizer.md`; đoạn "Score" ở ADR 0026 (giữ
+    trạng thái ADR); mục 3.28 (TSCORE) ở `docs/srs.md`. Biểu đồ 30 ngày, huy hiệu, tính lại hằng ngày (T007) chưa mô tả
+    như đã có.
 - [ ] **T013 [—] [nhẹ] · 7 ngày chờ — Đo SC-006 trên máy dev Windows** (sau khi P1 có trong bản phát hành)
+  - **Nguồn số đo (2026-10-20)**: B2 và token/lượt lấy từ `values` theo CLI trong `score-history.jsonl`
+    (`optimize score history --json`).
 
 ## Theo user story
 
