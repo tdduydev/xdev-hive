@@ -4,13 +4,13 @@
 
 **Created**: 2026-10-19
 
-**Status**: Draft, chờ chủ dự án chốt câu hỏi mở. Chưa code.
+**Status**: Đã chốt câu hỏi Q1–Q15 (2026-10-20). Có [tasks.md](tasks.md). Chưa code.
 
 **Input**: Chủ dự án (2026-10-19): "Mở một phiên riêng viết spec, plan, research cho quản lý nhánh Git trong app desktop
 (danh sách nhánh, ahead/behind, đổi, tạo nhánh, dọn nhánh và worktree ai/* đã merge), câu hỏi mở kèm khuyến nghị.
 Chưa code."
 
-**Kế hoạch**: [plan.md](plan.md) · **Nghiên cứu**: [research.md](research.md)
+**Kế hoạch**: [plan.md](plan.md) · **Nghiên cứu**: [research.md](research.md) · **Tasks**: [tasks.md](tasks.md)
 
 ## Vì sao làm
 
@@ -35,9 +35,10 @@ Số liệu đổi theo giờ vì các phiên khác trên máy vẫn tạo nhán
 
 Vì vậy spec này dọn theo **mẫu tên nhánh** và **bằng chứng đã merge**, không dọn theo "ai tạo ra" (câu hỏi Q8).
 
-## Câu hỏi mở
+## Câu hỏi đã chốt
 
-Mỗi câu có khuyến nghị. Plan viết theo khuyến nghị; chủ dự án chọn khác thì sửa plan.
+Chủ dự án chốt ngày 2026-10-20: Q1–Q6, Q8–Q15 theo khuyến nghị; **Q7 chọn khác khuyến nghị: có merge và rebase**
+(US8, FR-050…FR-056). Cột "Khuyến nghị" giữ nguyên để thấy lý do ban đầu.
 
 | # | Câu hỏi | Khuyến nghị | Phương án khác |
 |---|---|---|---|
@@ -47,7 +48,7 @@ Mỗi câu có khuyến nghị. Plan viết theo khuyến nghị; chủ dự án
 | Q4 | Có cần đăng nhập Hive không | **Không**. Mọi thao tác chạy tại máy như spec 016 | Bắt đăng nhập để dùng bằng chứng từ hub: không có lợi khi Q2 không hỏi hub |
 | Q5 | Có cho force-delete không | **Không có nút force** cho người dùng. Nhánh có commit chưa có trên remote nào **không bao giờ** bị xoá. Bên trong, app được dùng `branch -D` chỉ khi đủ bằng chứng merge và mọi commit đã có trên remote (vì `branch -d` từ chối nhánh squash-merge). Worktree có thay đổi chưa commit, file chưa theo dõi, hay file bị bỏ qua ngoài danh sách thư mục dựng lại được (Q15) thì không gỡ | (a) Nút force sau hộp thoại cảnh báo thứ hai: mất việc khó lấy lại. (b) Cho gỡ worktree bẩn nếu chỉ có file chưa theo dõi: dễ mất file tạo tay |
 | Q6 | Đụng worktree mà run hoặc agent đang chạy | **Bỏ qua, nêu lý do**. Worktree nằm dưới thư mục dữ liệu của worker (`runs/`, `terminals/`, `.trash-*`) không bao giờ là ứng viên. Worktree có agent đang chạy (màn Agent trên máy, spec 021), có terminal của app đang mở, hoặc bị `git worktree lock` cũng vậy. Lệnh ghi ngắn (xoá nhánh, gỡ siêu dữ liệu, đổi, tạo nhánh) giữ cùng khoá repo với worker | Hỏi worker qua localipc danh sách run: `worker.status` hiện chỉ trả số run, phải thêm thao tác mới |
-| Q7 | Có làm merge hoặc rebase không | **Không** ở bản đầu. Có Fetch và Pull chỉ tiến nhanh (`merge --ff-only @{u}`) như spec 016 | Merge, rebase có giao diện xung đột: phạm vi lớn, trùng IDE |
+| Q7 | Có làm merge hoặc rebase không | **Đã chốt: có** (US8, P2). Khuyến nghị ban đầu: **không** ở bản đầu. Có Fetch và Pull chỉ tiến nhanh (`merge --ff-only @{u}`) như spec 016 | Merge, rebase có giao diện xung đột: phạm vi lớn, trùng IDE |
 | Q8 | Dọn những nhánh nào | **Mẫu tên cấu hình được, mặc định `ai/*` và `claude/*`**. Nhánh khác hiện trong danh sách nhưng không được đề xuất dọn | (a) Chỉ `ai/*` theo lời chủ dự án: bỏ sót 19 nhánh `claude/*` trên máy dev. (b) Mọi nhánh đã merge: dễ xoá nhánh người dùng giữ có chủ đích (`release/*`, `develop`) |
 | Q9 | Có xoá nhánh trên remote không | **Không** ở bản đầu. GitHub/GitLab đã có tuỳ chọn tự xoá nhánh nguồn khi merge | Nút xoá nhánh remote sau khi merge: cần quyền ghi repo, ảnh hưởng cả đội |
 | Q10 | Đổi nhánh khi worktree bẩn | **Hỏi**: hộp thoại liệt kê file đang sửa, hai nút "Huỷ" và "Đổi, mang thay đổi theo". Git tự từ chối khi thay đổi đụng file khác nhau giữa hai nhánh; app báo lại lỗi đó. Không stash | (a) Chặn hẳn: an toàn nhưng phiền khi chỉ sửa một file không liên quan. (b) Stash tự động: dễ quên stash, khó thấy trong app |
@@ -235,6 +236,49 @@ mẫu dọn. Nhờ đó nhận được nhánh squash-merge, rebase-merge và PR
 
 ---
 
+### User Story 8 - Merge hoặc rebase nhánh đang đứng (Priority: P2)
+
+Chủ dự án chốt Q7 ngày 2026-10-20: có merge và rebase. Cách làm dưới đây là [Inference] của người điều phối, chọn theo
+hướng an toàn; chủ dự án sửa được khi duyệt tasks.
+
+Trong bảng nhánh, menu của một nhánh (local hay remote) có **Merge vào nhánh đang đứng** và **Rebase nhánh đang đứng lên
+nhánh này**. Dòng nhánh đang đứng có lối tắt **Cập nhật từ <nhánh mặc định>** (merge hay rebase lên `origin/<mặc định>`).
+Pull mà nhánh vừa ahead vừa behind (US5 kịch bản 2) gợi ý hai nút "Merge upstream" và "Rebase lên upstream".
+
+App không có trình giải xung đột. Khi xung đột, app liệt kê file, cho mở thư mục hay terminal để người dùng sửa bằng IDE,
+rồi bấm **Tiếp tục** hoặc **Huỷ merge/rebase**.
+
+**Why this priority**: chủ dự án muốn có (Q7). Đặt P2 vì cần US1–US2 trước và có giao diện xung đột.
+
+**Independent Test**: repo thử có bare remote:
+- merge nhánh không xung đột → có merge commit;
+- merge tiến nhanh được → chỉ tiến nhanh khi người dùng chọn "Cho phép tiến nhanh" (mặc định tạo merge commit, `--no-ff`);
+- merge có xung đột → trạng thái "Đang merge", danh sách file xung đột, Huỷ đưa repo về đúng mã trước merge;
+- rebase không xung đột → lịch sử tuyến tính, cảnh báo khi nhánh đã đẩy;
+- rebase xung đột → sửa file, `add`, Tiếp tục → xong; Huỷ → về đúng mã trước rebase;
+- thư mục bẩn → từ chối.
+
+**Acceptance Scenarios**:
+
+1. **Given** thư mục sạch, không dở thao tác, **When** merge `origin/main` vào `feature`, **Then** chạy
+   `git merge --no-ff --no-edit --end-of-options <mã của origin/main>` trong khoá repo; bảng tải lại, hiện mã trước và sau.
+2. **Given** thư mục có thay đổi đã theo dõi hay file chưa theo dõi sẽ bị ghi đè, **When** merge hay rebase, **Then** từ
+   chối "Cần commit hoặc bỏ thay đổi trước" và liệt kê file (tối đa 20). Không stash, không `--autostash`.
+3. **Given** merge hay rebase gặp xung đột, **When** git dừng, **Then** bảng hiện băng "Đang merge/rebase <nhánh>",
+   danh sách file xung đột (`git diff --name-only --diff-filter=U`), các nút **Mở thư mục**, **Mở terminal**, **Tiếp tục**
+   (chỉ bật khi không còn file xung đột chưa `add`), **Huỷ merge/rebase**.
+4. **Given** đang dở rebase, **When** bấm Tiếp tục, **Then** chạy `git rebase --continue` với `GIT_EDITOR=true`; gặp
+   xung đột ở commit sau thì quay lại kịch bản 3. Merge thì `git merge --continue` (cũng `GIT_EDITOR=true`).
+5. **Given** đang dở merge hay rebase (kể cả do người dùng tự chạy ngoài app), **When** bấm Huỷ, **Then** xác nhận rồi
+   chạy `git merge --abort` hay `git rebase --abort`; kết quả: HEAD về mã trước thao tác.
+6. **Given** nhánh đang đứng có commit đã nằm trên một ref remote, **When** chọn rebase, **Then** hộp thoại cảnh báo
+   "Rebase viết lại N commit đã đẩy. Sau đó phải force-push (app không push)." và phải bấm **Rebase** lần nữa.
+7. **Given** có agent hay terminal của app đang chạy trong thư mục, **When** merge hay rebase, **Then** cảnh báo và phải
+   xác nhận lần nữa (như FR-014).
+8. **Given** HEAD rời, **When** mở menu, **Then** merge và rebase bị tắt, nêu "Cần đứng trên một nhánh".
+
+---
+
 ### User Story 7 - Huy hiệu số nhánh dọn được (Priority: P3)
 
 Sau mỗi lần fetch (tay hay tự fetch của nhóm Git), nút "Dọn nhánh" hiện số ứng viên. Không tự xoá.
@@ -317,6 +361,24 @@ Sau mỗi lần fetch (tay hay tự fetch của nhóm Git), nút "Dọn nhánh" 
   upstream (`--no-track`).
 - **FR-014**: Đổi hay tạo nhánh trong thư mục có agent đang chạy (spec 021) phải xác nhận lần nữa.
 
+**Merge, rebase (P2, Q7, US8)**
+
+- **FR-050**: Merge dùng `git merge --no-ff --no-edit` (tuỳ chọn "Cho phép tiến nhanh" bỏ `--no-ff`); rebase dùng
+  `git rebase` không `-i`, không `--autostash`, không `--onto`. Ref đích truyền bằng mã commit đã đọc lúc người dùng bấm,
+  không bằng tên ngắn (tránh nhầm tag, như FR-021).
+- **FR-051**: Chỉ chạy khi thư mục sạch (không thay đổi đã theo dõi, không file chưa theo dõi), đứng trên một nhánh, không
+  dở thao tác nào (FR-012). Không stash.
+- **FR-052**: Lệnh `merge`, `rebase`, `--continue`, `--abort` giữ khoá repo dùng chung với worker (FR-025) và không bị
+  ngắt khi huỷ (FR-041). Giới hạn thời gian 120 giây; hết giờ thì báo, không tự `--abort`.
+- **FR-053**: Khi git dừng vì xung đột, trả trạng thái `conflict` kèm thao tác (`merge`/`rebase`), file xung đột (tối đa
+  200), với rebase thêm commit đang áp (`rebase-merge/msgnum`, `end`). App không tự sửa file, không `checkout --ours/--theirs`.
+- **FR-054**: `--continue` chạy với `GIT_EDITOR=true` (giữ thông điệp có sẵn). Còn file xung đột chưa `add` thì không chạy.
+  `rebase --skip`, `merge --quit`, `rebase --quit` không có trong app.
+- **FR-055**: Rebase nhánh có commit đã nằm trên ref remote nào đó phải xác nhận thêm (US8 kịch bản 6). Merge thì không
+  cần (không viết lại lịch sử).
+- **FR-056**: Ghi mã HEAD trước thao tác vào nhật ký tại máy (`branches-log.jsonl`, FR-032) để khôi phục bằng
+  `git reset --keep <mã>` khi cần; app hiện lệnh này trong kết quả, không tự chạy.
+
 **Dọn**
 
 - **FR-020**: Ứng viên dọn phải khớp mẫu dọn (Q8). Nhánh mặc định, nhánh đang đứng ở thư mục chính và nhánh có
@@ -383,6 +445,8 @@ Sau mỗi lần fetch (tay hay tự fetch của nhóm Git), nút "Dọn nhánh" 
   `fetchedAt?`, `error?`.
 - **CleanupCandidate**: `repo`, `branch`, `tip`, `worktree?`, `evidence` (`mergedGit`/`mergedApi`/`closedApi`, kèm số
   PR/MR và URL nếu có), `selected`, `blocked?` (mã lý do + chữ), `committedAt`.
+- **GitOperation** (P2): `kind` (`merge`/`rebase`), `onto` (tên và mã), `headBefore`, `conflicts[]`, `step?`/`total?`
+  (rebase), `state` (`done`/`conflict`/`aborted`/`error`).
 - **CleanupResult**: `repo`, `branch`, `tip`, `worktree?`, `result` (`removed`/`skipped`/`partial`/`error`), `reason?`.
 - **BranchSettings** (tại máy, `branches.json`): `patterns[]` (mặc định `["ai/*", "claude/*"]`), `rebuildable[]` (danh
   sách thư mục dựng lại được của Q15).
@@ -414,7 +478,7 @@ Sau mỗi lần fetch (tay hay tự fetch của nhóm Git), nút "Dọn nhánh" 
 
 ## Out of Scope
 
-- Merge, rebase, cherry-pick, giải xung đột (Q7).
+- Cherry-pick, rebase tương tác, trình giải xung đột trong app (Q7 chỉ thêm merge và rebase, US8).
 - Push, xoá nhánh trên remote, mở PR (Q9).
 - Stash và quản lý stash.
 - Đổi tên nhánh, đặt upstream bằng tay.
