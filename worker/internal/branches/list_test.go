@@ -409,6 +409,35 @@ func TestListAndStatusNotRepo(t *testing.T) {
 	}
 }
 
+// Merge người dùng tự chạy ngoài app rồi bỏ dở: list báo operation, headBefore đọc từ ORIG_HEAD.
+func TestListOperationLeftByUser(t *testing.T) {
+	_, folder := switchRepo(t)
+	commit(t, folder, "main side")
+	mainTip := headOf(t, folder)
+	if _, err := gitTry(folder, "merge", "--no-edit", "feature"); err == nil {
+		t.Fatal("merge phải xung đột")
+	}
+	env := testEnv(t)
+	r, _, _ := listAll(t, context.Background(), env, folder)
+	o := r.Operation
+	if o == nil || o.Kind != OpMerge || o.State != OperationConflict || o.Branch != "main" || o.HeadBefore != mainTip ||
+		o.ConflictsTotal != 1 || o.Conflicts[0] != "log.txt" || o.Onto != nil || r.Current.Operation != OpMerge {
+		t.Fatalf("operation = %+v", o)
+	}
+
+	writeFile(t, folder, "log.txt", "resolved\n")
+	gitT(t, folder, "add", "log.txt")
+	r, _, _ = listAll(t, context.Background(), env, folder)
+	if o := r.Operation; o == nil || o.State != OperationInProgress || o.ConflictsTotal != 0 || o.Conflicts == nil {
+		t.Fatalf("đã add hết: operation = %+v", o)
+	}
+
+	gitT(t, folder, "merge", "--abort")
+	if r, _, _ = listAll(t, context.Background(), env, folder); r.Operation != nil {
+		t.Fatalf("hết dở mà vẫn có operation: %+v", r.Operation)
+	}
+}
+
 // bigRepo dựng repo của SC-001: 200 nhánh (100 local ai/*, 100 chỉ trên remote) và 30 worktree liên kết.
 func bigRepo(b testing.TB) string {
 	isolateGit(b)

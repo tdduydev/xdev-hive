@@ -99,6 +99,7 @@ func Scan(ctx context.Context, env Env, o ScanOptions, emit Emit) {
 	var mu sync.Mutex
 	done := 0
 	summary := map[string]int{"candidates": 0, "blocked": 0, "failed": 0}
+	api := env.loadAPI()
 	parallel(total, readConcurrency, func(i int) {
 		folder := o.Folders[i]
 		progress := func(ev Event) {
@@ -112,7 +113,7 @@ func Scan(ctx context.Context, env Env, o ScanOptions, emit Emit) {
 		if err := ctx.Err(); err != nil {
 			r.Error = gitFailure(err)
 		} else {
-			r = env.scanRepo(ctx, folder, o.NoFetch, progress)
+			r = env.scanRepo(ctx, folder, o.NoFetch, api, progress)
 		}
 		// In trong khoá: sự kiện repo phải đến theo thứ tự done tăng dần.
 		mu.Lock()
@@ -141,10 +142,14 @@ type scanItem struct {
 	err    error
 	ev     tipEvidence
 	block  *BlockReason
+	// prOpen là nhãn PR/MR mới nhất của nhánh khi nó đang mở (bước chặn 6), kể cả khi nhánh có bằng chứng git.
+	prOpen string
+	// apiNote là câu giải thích khi PR/MR có mà không dùng làm bằng chứng được.
+	apiNote string
 }
 
 // scanRepo quét một repo theo plan.md mục 5: fetch, đọc như list, lọc theo mẫu, bằng chứng, rồi chặn theo thứ tự.
-func (e Env) scanRepo(ctx context.Context, folder string, noFetch bool, progress Emit) ScanRepo {
+func (e Env) scanRepo(ctx context.Context, folder string, noFetch bool, api *apiSource, progress Emit) ScanRepo {
 	r := newScanRepo(folder)
 	if !isDir(folder) {
 		r.Error = notRepo(folder)
@@ -230,8 +235,11 @@ func (e Env) scanRepo(ctx context.Context, folder string, noFetch bool, progress
 	for _, it := range items {
 		it.ev = evs[it.branch.Tip]
 	}
-	// Bằng chứng API (P2, FR-030) do T014 thêm ở đây (evidence_api.go): điền mergedApi, closedApi hay none/prOpen cho
-	// nhánh chưa có bằng chứng git, lỗi thì ghi r.APIError. Bước chặn 6 bên dưới đã đọc note prOpen.
+	r.APIError = e.apiEvidence(ctx, api, folder, items, progress)
+	if err := ctx.Err(); err != nil {
+		r.Error = gitFailure(err)
+		return r
+	}
 
 	busy := e.busy()
 	for _, it := range items {
@@ -242,8 +250,8 @@ func (e Env) scanRepo(ctx context.Context, folder string, noFetch bool, progress
 		return r
 	}
 	for _, it := range items {
-		if it.block == nil && it.ev.Kind == EvidenceNone && it.ev.Note == NotePROpen {
-			it.block = &BlockReason{Code: BlockPROpen, Message: "PR/MR của nhánh đang mở."}
+		if it.block == nil && it.prOpen != "" {
+			it.block = &BlockReason{Code: BlockPROpen, Message: it.prOpen + " của nhánh đang mở."}
 		}
 	}
 
@@ -256,7 +264,11 @@ func (e Env) scanRepo(ctx context.Context, folder string, noFetch bool, progress
 		case it.block == nil && it.wt >= 0 && !removable:
 			it.block = &BlockReason{Code: BlockCheckedOutMain, Message: "Nhánh đang mở ở thư mục chính của repo, không gỡ được."}
 		case it.block == nil && it.ev.Kind == EvidenceNone:
-			it.block = &BlockReason{Code: BlockNoEvidence, Message: noEvidenceText(it.ev.Note)}
+			msg := it.apiNote
+			if msg == "" {
+				msg = noEvidenceText(it.ev.Note)
+			}
+			it.block = &BlockReason{Code: BlockNoEvidence, Message: msg}
 		case it.block == nil && fetchFailed && !it.ev.inDefault:
 			it.block = &BlockReason{Code: BlockNeedsFetch, Message: "Cần fetch được để kiểm."}
 		}

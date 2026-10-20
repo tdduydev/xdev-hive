@@ -242,7 +242,7 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
 
 - [ ] **T015 [P] [US8] [nặng] · 2 ngày — Go: merge, rebase, continue, abort**
   - **Goal**: giai đoạn 3, plan.md mục 3b. FR-050…FR-056. Kiểm sạch, đứng trên nhánh, không dở thao tác; rebase đếm
-    commit đã đẩy → `needsConfirm` khi thiếu `--confirm-rewrite` (cách đếm là [Suy luận], kiểm lại); ghi `headBefore`
+    commit đã đẩy → `needsConfirm` khi thiếu `--confirm-rewrite` (cách đếm ở contracts/branches-cli.md, T015 đã kiểm); ghi `headBefore`
     vào nhật ký; `GIT_EDITOR=true`, context không huỷ, 120 giây, hết giờ không tự abort. `conflict` kèm tối đa 200 file
     và bước rebase. `list` trả `operation` khi repo đang dở (cả khi người dùng tự chạy ngoài app). Không có `--skip`,
     `--quit`, `-i`, `--autostash`.
@@ -265,6 +265,16 @@ description: "Danh sách task: Quản lý nhánh Git trong app desktop"
   - **Phụ thuộc**: T011. Chủ dự án soát US8 trước khi giao.
 
 ## Đợt 5: P3, tài liệu
+
+- [ ] **T020 [P] [US7] [nặng] · 0,5 ngày — Chỉ chặn submodule đã init**
+  - **Goal**: research mục 5 (T013): SC-004 không đạt vì `hasSubmodule` chặn mọi worktree của repo có `.gitmodules`,
+    kể cả khi submodule chưa init. Chỉ chặn khi worktree có submodule đã init, đúng điều kiện `git worktree remove` từ
+    chối (spec, mục "Submodule trong worktree", FR-022). Đọc được không chắc thì vẫn chặn.
+  - **PHẠM VI**: `worker/internal/branches/{state.go,state_test.go,scan_test.go,list_test.go}`; `scan.go`, `list.go`
+    chỉ khi phải đổi chỗ gọi.
+  - **Kiểm**: test với git thật trong `t.TempDir()`: `.gitmodules` + submodule chưa init → không chặn và
+    `git worktree remove` không `--force` gỡ được; đã init → chặn và git cũng từ chối; gitlink không có `.gitmodules`.
+  - **Phụ thuộc**: T013, T015 (`list.go`).
 
 - [ ] **T017 [P] [US7] [vừa] · 1 ngày — Huy hiệu số nhánh dọn được**
   - **Goal**: giai đoạn 4. Sau mỗi fetch (tay, hay tự fetch của nhóm Git), chạy `scan` không fetch cho repo đó, lưu số
@@ -305,6 +315,7 @@ flowchart LR
   T010 --> T015
   T011 --> T016 & T017
   T013 & T016 --> T018
+  T013 & T015 --> T020
   T016 & T017 --> T019
 ```
 

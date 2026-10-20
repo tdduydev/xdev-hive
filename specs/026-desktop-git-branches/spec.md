@@ -324,7 +324,9 @@ Sau mỗi lần fetch (tay hay tự fetch của nhóm Git), nút "Dọn nhánh" 
   chứng git; repo hiện "Không xác định nhánh mặc định".
 - **Repo không có remote**: chỉ xem, đổi, tạo nhánh. Không dọn (mọi commit đều "chưa đẩy").
 - **Nhiều remote** (`origin`, `upstream`): bằng chứng merge theo `origin`; "đã đẩy" tính theo mọi remote fetch được.
-- **Submodule trong worktree**: `git worktree remove` từ chối; mục bị chặn với lý do "Có submodule".
+- **Submodule trong worktree**: `git worktree remove` từ chối worktree có submodule **đã init** (có `.git` trong thư mục
+  submodule); mục bị chặn với lý do "Có submodule". Repo chỉ có `.gitmodules` mà submodule chưa init thì không chặn vì
+  lý do này (đo ở research mục 5, T020).
 - **Worker đang chuẩn bị run trên cùng repo**: lệnh ghi chờ khoá repo tối đa 30 giây rồi bỏ qua mục đó. Worker chỉ giữ
   khoá cho từng lệnh ghi, nên app có thể xoá `ai/<key>` giữa lúc `prepareBranch` đọc và lúc `worktree add -B` ghi.
   [Inference] Vô hại: `-B` tạo lại nhánh từ `origin/<base>`, và `restoreBranch` có thể tạo lại nhánh đã xoá từ mã đỉnh cũ
@@ -388,7 +390,7 @@ Sau mỗi lần fetch (tay hay tự fetch của nhóm Git), nút "Dọn nhánh" 
   0 mới được xoá). Không đưa tên ngắn của nhánh vào lệnh nhận revision (`rev-list`, `rev-parse`, `merge-base`): tên ngắn
   trỏ vào tag cùng tên trước nhánh (đã thử, research mục 3). Dùng mã đỉnh hay `refs/heads/…`.
 - **FR-022**: Worktree chỉ được gỡ khi sạch: không có thay đổi đã theo dõi, không có file chưa theo dõi, mọi file bị bỏ
-  qua nằm trong danh sách thư mục dựng lại được (Q15), không bị `git worktree lock`, không có submodule. Gỡ bằng
+  qua nằm trong danh sách thư mục dựng lại được (Q15), không bị `git worktree lock`, không có submodule đã init. Gỡ bằng
   `git worktree remove <đường dẫn>` **không** `--force`. Đã thử trên git 2.56 (Windows): worktree có file bị bỏ qua gỡ
   được và **file bị bỏ qua mất theo**; có file chưa theo dõi hay bị khoá thì git từ chối.
 - **FR-023**: Worktree đang dùng thì không gỡ: có tiến trình agent có thư mục làm việc nằm trong worktree (spec 021), có
