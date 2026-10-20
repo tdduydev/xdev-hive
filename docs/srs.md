@@ -488,8 +488,7 @@ projects screen opens, recounts after fetch, pull and cleanup, hides at zero and
 
 Spec [025](../specs/025-token-score/spec.md), user guide [token-optimizer.md](token-optimizer.md), [ADR 0026](adr/0026-client-token-optimizer.md).
 The product owner settled Q1–Q11 on 19 October 2026. The score runs on the machine through `hive-worker optimize score`;
-no hub sign-in is needed. The 30-day chart, the badge and the daily recalculation (US4) and sending the score to the hub
-(US6) are not built yet, so they have no requirement here.
+no hub sign-in is needed. Sending the score to the hub (US6) waits for the spec 027 plan, so it has no requirement here.
 
 | ID | Requirement | Spec 025 FR | Status | Verification |
 |---|---|---|---|---|
@@ -498,6 +497,8 @@ no hub sign-in is needed. The 30-day chart, the badge and the daily recalculatio
 | TSCORE-03 | A quick fix shall come from a fixed list, show a preview (file, key, old and new value) and be undoable. A fix that changes model behavior shall need its own confirmation. No fix shall edit memory or instruction files, or remove MCP servers or skills. | FR-009–FR-012 | Implemented | `worker:cmd/hive-worker/optimize_score_test.go`, `desktop:src-tauri/src/token_score.rs`, `desktop:src/components/token-score-*.test.tsx` |
 | TSCORE-04 | The score history shall hold only numbers, criterion ids, CLI names and times, and be kept for 90 days. The copyable report shall hold no profile id, path or project name. | FR-014, FR-015 | Implemented | `worker:internal/score/score_test.go`, `desktop:src/lib/token-score.test.ts` |
 | TSCORE-05 | The score card and its detail shall use Vietnamese text with an English dictionary and the design system v2 tokens. | FR-017, FR-018 | Implemented | `desktop:src/components/token-score-*.test.tsx` |
+| TSCORE-06 | The desktop shall show a 30-day score chart with fix markers, a break where `scoreVersion` changes and a text table; a badge on the Token menu item shall read the last history line without computing. When the app opens and the last score is over 24 hours old, it shall recompute in the background after 2 minutes without running `/context`; the user can turn this off. | US4, FR-013, FR-014, FR-018 | Implemented | `desktop:src-tauri/src/token_score.rs`, `desktop:src/components/token-score-history.test.tsx` |
+| TSCORE-07 | The detail shall suggest short sessions with `/clear` when A1 is full and B2 is at least 50%, without a quick fix, and show each profile's token share by model family under A8 without changing the score. | FR-007, US5 | Implemented | `desktop:src/components/token-score-card.test.tsx`, `worker:internal/tokenreport` |
 
 ## 4. External interface requirements
 
