@@ -4,16 +4,20 @@ import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { Pill } from "@xdev-hive/ui/pill";
-import { EllipsisIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
+import { EllipsisIcon, GitBranchIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
+import { BranchCreateDialog } from "@/components/branch-create-dialog.tsx";
+import { BranchSwitchDialog } from "@/components/branch-switch-dialog.tsx";
 import { shortPath } from "@/lib/folder.ts";
 import {
   type BranchInfo,
   type BranchStatus,
+  type CreateResult,
   fetchRemotes,
   lastFetchedAt,
   listBranches,
   type RepoBranches,
+  type SwitchResult,
   useBranchJob,
   type WorktreeInfo,
   withWorktreeEvents,
@@ -61,6 +65,12 @@ const text: Dict<{
   slowPath: string;
   menu: (name: string) => string;
   switchTo: string;
+  createBranch: string;
+  switched: (name: ReactNode) => ReactNode;
+  created: (name: ReactNode, switched: boolean) => ReactNode;
+  offDefault: (current: ReactNode, main: ReactNode) => ReactNode;
+  backToDefault: string;
+  backToDefaultBlocked: string;
   copyName: string;
   copyPath: string;
   openTerminal: string;
@@ -114,6 +124,16 @@ const text: Dict<{
     slowPath: "Git trên máy cũ hơn 2.41 nên số commit trước/sau nhánh mặc định chỉ có ở nhánh khớp mẫu dọn.",
     menu: (name) => `Thao tác với ${name}`,
     switchTo: "Đổi sang nhánh này",
+    createBranch: "Tạo nhánh",
+    switched: (name) => <>Đã đổi sang {name}.</>,
+    created: (name, switched) => (switched ? <>Đã tạo và đổi sang {name}.</> : <>Đã tạo nhánh {name}.</>),
+    offDefault: (current, main) => (
+      <>
+        Thư mục chính đang ở {current}, không phải nhánh mặc định {main}.
+      </>
+    ),
+    backToDefault: "Về nhánh mặc định",
+    backToDefaultBlocked: "Thư mục đang có thay đổi hay đang dở thao tác, hãy xử lý trước.",
     copyName: "Sao chép tên",
     copyPath: "Sao chép đường dẫn",
     openTerminal: "Mở terminal ở worktree",
@@ -188,6 +208,16 @@ const text: Dict<{
       "Git on this machine is older than 2.41, so ahead/behind the default branch is only known for branches matching the cleanup pattern.",
     menu: (name) => `Actions for ${name}`,
     switchTo: "Switch to this branch",
+    createBranch: "Create branch",
+    switched: (name) => <>Switched to {name}.</>,
+    created: (name, switched) => (switched ? <>Created and switched to {name}.</> : <>Created branch {name}.</>),
+    offDefault: (current, main) => (
+      <>
+        The main folder is on {current}, not the default branch {main}.
+      </>
+    ),
+    backToDefault: "Back to the default branch",
+    backToDefaultBlocked: "The folder has changes or an unfinished operation, deal with that first.",
     copyName: "Copy name",
     copyPath: "Copy path",
     openTerminal: "Open terminal in worktree",
@@ -299,15 +329,12 @@ export function BranchesSheet({
   name,
   onClose,
   onChanged,
-  onSwitch,
 }: {
   folder: string;
   name: string;
   onClose: () => void;
-  /** Sau khi fetch xong, để màn Dự án đọc lại trạng thái gọn. */
+  /** Sau khi fetch, đổi hay tạo nhánh xong, để màn Dự án đọc lại trạng thái gọn. */
   onChanged: () => void;
-  /** T008 nối vào; chưa có thì menu ẩn mục Đổi sang. */
-  onSwitch?: ((branch: BranchInfo) => void) | undefined;
 }) {
   const t = useT(text);
   return (
@@ -320,7 +347,6 @@ export function BranchesSheet({
         <BranchesBody
           folder={folder}
           onChanged={onChanged}
-          onSwitch={onSwitch}
           onTerminal={(path) => {
             openProjectTerminal(path);
             location.hash = "#/terminal";
@@ -335,12 +361,10 @@ export function BranchesSheet({
 function BranchesBody({
   folder,
   onChanged,
-  onSwitch,
   onTerminal,
 }: {
   folder: string;
   onChanged: () => void;
-  onSwitch: ((branch: BranchInfo) => void) | undefined;
   onTerminal: (path: string) => void;
 }) {
   const t = useT(text);
@@ -354,6 +378,9 @@ function BranchesBody({
   const [shown, setShown] = useState(PAGE);
   const [fetchId, setFetchId] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [switching, setSwitching] = useState<BranchInfo | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState<ReactNode>(null);
   const fetchJob = useBranchJob(fetchId);
   const listJob = useBranchJob(repo?.jobId ?? null);
   const fetching = fetchId !== null && !fetchJob?.finished;
@@ -390,10 +417,25 @@ function BranchesBody({
     }
   }
 
+  // Đổi hay tạo nhánh xong: ref và nhánh đang đứng đã đổi, đọc lại bảng và báo màn Dự án.
+  function changed(message: ReactNode) {
+    setSwitching(null);
+    setCreating(false);
+    setNotice(message);
+    setReloads((n) => n + 1);
+    onChanged();
+  }
+
   const view = repo ? withWorktreeEvents(repo, listJob) : null;
   const locals = sortBranches(view?.branches.filter((b) => b.kind === "local") ?? []);
   const remotes = sortBranches(view?.branches.filter((b) => b.kind === "remote") ?? []);
   const worktrees = view?.worktrees ?? [];
+  // Q13: thư mục chính đứng ở nhánh khác nhánh mặc định thì gợi ý về lại; chỉ bấm được khi thư mục sạch.
+  const defaultTarget =
+    view?.defaultBranch && view.current.branch !== view.defaultBranch
+      ? (locals.find((b) => b.isDefault) ??
+        remotes.find((b) => b.isDefault || b.name.endsWith(`/${view.defaultBranch}`)))
+      : undefined;
   const counts: Record<Tab, number> = { local: locals.length, remote: remotes.length, worktree: worktrees.length };
 
   const branchRows = (tab === "remote" ? remotes : locals).filter((b) => matches(query, b.name, b.subject));
@@ -435,6 +477,10 @@ function BranchesBody({
           <RefreshCwIcon aria-hidden="true" className={cn(fetching && "animate-spin")} />
           {fetching ? t.fetching : t.fetch}
         </Button>
+        <Button size="sm" variant="outline" disabled={!view} onClick={() => setCreating(true)}>
+          <PlusIcon aria-hidden="true" />
+          {t.createBranch}
+        </Button>
         <Button size="sm" variant="ghost" onClick={() => setReloads((n) => n + 1)}>
           {t.reload}
         </Button>
@@ -442,9 +488,30 @@ function BranchesBody({
           {when ? t.fetchedAt(when) : t.neverFetched}
         </span>
       </div>
+      {notice && (
+        <p role="status" className="text-sm text-success">
+          {notice}
+        </p>
+      )}
       {fetchProblem && <Alert variant="destructive">{fetchProblem}</Alert>}
       {loadError && <Alert variant="destructive">{loadError}</Alert>}
       {view?.slowPath && <p className="text-xs text-muted-foreground">{t.slowPath}</p>}
+      {view && defaultTarget && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/50 px-2.5 py-2 text-sm">
+          <span className="min-w-0 flex-1 break-words">
+            {t.offDefault(<Name>{view.current.branch ?? t.detached}</Name>, <Name>{view.defaultBranch}</Name>)}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={view.current.dirty || !!view.current.operation || !!view.operation}
+            title={view.current.dirty || view.current.operation || view.operation ? t.backToDefaultBlocked : undefined}
+            onClick={() => setSwitching(defaultTarget)}
+          >
+            {t.backToDefault}
+          </Button>
+        </div>
+      )}
 
       <div role="tablist" aria-label={t.tabs} className="flex gap-3.5 border-b">
         {(["local", "remote", "worktree"] as const).map((id) => (
@@ -499,7 +566,7 @@ function BranchesBody({
                       branch={b}
                       defaultBranch={view.defaultBranch}
                       lang={lang}
-                      onSwitch={onSwitch}
+                      onSwitch={setSwitching}
                       onTerminal={onTerminal}
                     />
                   ))}
@@ -513,7 +580,34 @@ function BranchesBody({
           </div>
         )}
       </div>
+
+      {switching && (
+        <BranchSwitchDialog
+          folder={folder}
+          branch={switching}
+          onClose={() => setSwitching(null)}
+          onOpenTerminal={onTerminal}
+          onSwitched={(r: SwitchResult) => changed(t.switched(<Name>{r.branch}</Name>))}
+        />
+      )}
+      {creating && repo && (
+        <BranchCreateDialog
+          folder={folder}
+          repo={repo}
+          onClose={() => setCreating(false)}
+          onCreated={(r: CreateResult) => changed(t.created(<Name>{r.name}</Name>, r.switched))}
+        />
+      )}
     </>
+  );
+}
+
+/** Tên nhánh trong câu: mono, không dịch. */
+function Name({ children }: { children: ReactNode }) {
+  return (
+    <span translate="no" className="font-mono font-medium">
+      {children}
+    </span>
   );
 }
 
@@ -547,7 +641,7 @@ function BranchRow({
   branch: BranchInfo;
   defaultBranch: string | undefined;
   lang: Lang;
-  onSwitch: ((branch: BranchInfo) => void) | undefined;
+  onSwitch: (branch: BranchInfo) => void;
   onTerminal: (path: string) => void;
 }) {
   const t = useT(text);
@@ -576,7 +670,7 @@ function BranchRow({
         <span className="text-xs break-words text-muted-foreground">{meta.join(" · ")}</span>
       </span>
       <RowMenu label={t.menu(b.name)}>
-        {onSwitch && (
+        {!b.isCurrent && (
           <Menu.Item className={MENU_ITEM} onClick={() => onSwitch(b)}>
             {t.switchTo}
           </Menu.Item>
