@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::doctor::{Output, run_with_timeout, user_path};
 use crate::setup_extra::{McpNeed, in_path, mcp_add_argv};
@@ -24,6 +24,12 @@ const GIT_TIMEOUT: Duration = Duration::from_secs(15);
 const OUTPUT_TAIL: usize = 400;
 const MCP_NAME: &str = "codegraph";
 const EXCLUDE_LINE: &str = ".codegraph/";
+/// Chờ sau khi mở app rồi mới tính nền, để việc tính không tranh tài nguyên với lúc app khởi động.
+const DAILY_DELAY: Duration = Duration::from_secs(2 * 60);
+/// Điểm cũ hơn mức này thì tính lại khi mở app.
+const DAILY_MAX_AGE_SECS: i64 = 24 * 60 * 60;
+/// Sự kiện báo lần tính nền xong; tên khớp `TOKEN_SCORE_UPDATED` ở `lib/token-score.ts`.
+const UPDATED_EVENT: &str = "token-score-updated";
 
 /// Tắt telemetry ẩn danh (mặc định bật) và daemon nền của CodeGraph, như worker (`runner/tools.go` `codegraphEnv`).
 const CODEGRAPH_ENV: [(&str, &str); 3] = [
@@ -72,13 +78,20 @@ fn save_applied(path: &Path, list: &[Applied]) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
     let text = serde_json::to_string(list).map_err(|e| e.to_string())?;
-    std::fs::write(path, text).map_err(|e| format!("Không ghi được danh sách sửa nhanh đã áp dụng: {e}"))
+    std::fs::write(path, text)
+        .map_err(|e| format!("Không ghi được danh sách sửa nhanh đã áp dụng: {e}"))
 }
 
 /// Lần áp dụng gần nhất khớp sửa nhanh, gói và (với `codegraph.init`) dự án.
-fn find_applied(list: &[Applied], fix: Fix, profile: &str, project: Option<&Path>) -> Option<usize> {
-    list.iter()
-        .rposition(|a| a.fix_id == fix.id() && a.profile == profile && a.project.as_deref() == project)
+fn find_applied(
+    list: &[Applied],
+    fix: Fix,
+    profile: &str,
+    project: Option<&Path>,
+) -> Option<usize> {
+    list.iter().rposition(|a| {
+        a.fix_id == fix.id() && a.profile == profile && a.project.as_deref() == project
+    })
 }
 
 /// Đọc, sửa rồi ghi lại danh sách dưới khoá, để hai lần bấm cùng lúc không ghi đè nhau.
@@ -137,6 +150,11 @@ impl Fix {
             .unwrap_or_default()
     }
 
+    /// Sửa nhanh Rust tự chạy thì Rust tự ghi mốc cho biểu đồ; `optimizer.*` do sidecar ghi trong `optimize fix`.
+    fn marks_in_rust(self) -> bool {
+        matches!(self, Fix::CodegraphMcp | Fix::CodegraphInit)
+    }
+
     /// Chạy trong sidecar (`optimize fix`), không phải trong Rust.
     fn in_sidecar(self) -> bool {
         matches!(self, Fix::Balanced | Fix::Rtk | Fix::Aggressive)
@@ -160,10 +178,7 @@ struct Resolved {
 }
 
 fn find_profile<'a>(score: &'a Value, id: &str) -> Option<&'a Value> {
-    score["profiles"]
-        .as_array()?
-        .iter()
-        .find(|p| p["id"] == id)
+    score["profiles"].as_array()?.iter().find(|p| p["id"] == id)
 }
 
 fn project_path(score: &Value, profile: &str, key: &str) -> Result<String, String> {
@@ -221,6 +236,52 @@ fn score_args(fresh: bool, profile: Option<&str>) -> Result<Vec<String>, String>
         }
     }
     Ok(args)
+}
+
+/// Lịch sử cho biểu đồ: không tính điểm, không gọi model.
+fn history_args(days: u32) -> Vec<String> {
+    vec![
+        "optimize".into(),
+        "score".into(),
+        "history".into(),
+        "--json".into(),
+        format!("--days={days}"),
+    ]
+}
+
+/// Chỉ dòng cuối của lịch sử (huy hiệu ở menu, và kiểm điểm đã quá 24 giờ chưa).
+fn last_args() -> Vec<String> {
+    vec![
+        "optimize".into(),
+        "score".into(),
+        "history".into(),
+        "--json".into(),
+        "--last".into(),
+    ]
+}
+
+/// Ghi mốc cho sửa nhanh Rust tự chạy; id ngoài `codegraph.*` bị từ chối vì mốc của `optimizer.*` là của sidecar.
+fn mark_args(fix: Fix, apply: bool) -> Result<Vec<String>, String> {
+    if !fix.marks_in_rust() {
+        return Err("Sửa nhanh này do worker tự ghi mốc.".into());
+    }
+    Ok(vec![
+        "optimize".into(),
+        "score".into(),
+        "mark".into(),
+        "--json".into(),
+        format!("--fix={}", fix.id()),
+        format!("--action={}", if apply { "apply" } else { "undo" }),
+    ])
+}
+
+/// `optimize fix optimizer.rtk` trên Windows thoát với stderr bắt đầu bằng `windows_rtk_unsupported:`: đổi mã đó thành
+/// câu tiếng Việt, các lỗi khác giữ nguyên chữ của worker.
+fn sidecar_fix_error(message: String) -> String {
+    if message.starts_with("windows_rtk_unsupported:") {
+        return "RTK chưa hỗ trợ Windows nên không bật được trên máy này.".into();
+    }
+    message
 }
 
 fn fix_args(fix: Fix, profile: &str, preview: bool) -> Result<Vec<String>, String> {
@@ -288,9 +349,7 @@ fn mcp_remove(cli: &str) -> Result<Vec<String>, String> {
 
 /// `-y` và `-f` để lệnh không hỏi lại: stdin đã đóng nên một câu hỏi sẽ treo tới hết thời hạn.
 fn init_argv(path: &str) -> Vec<String> {
-    ["codegraph", "init", "-y", path]
-        .map(String::from)
-        .to_vec()
+    ["codegraph", "init", "-y", path].map(String::from).to_vec()
 }
 
 fn uninit_argv(path: &str) -> Vec<String> {
@@ -541,6 +600,18 @@ pub async fn token_score(
     Ok(score)
 }
 
+/// Lịch sử điểm `days` ngày gần nhất cho biểu đồ; chỉ đọc file lịch sử, không tính điểm.
+#[tauri::command]
+pub async fn token_score_history(app: AppHandle, days: Option<u32>) -> Result<Value, String> {
+    sidecar_json(&app, history_args(days.unwrap_or(30).clamp(1, 90)), vec![]).await
+}
+
+/// Dòng lịch sử sau cùng, không tính lại: huy hiệu ở menu đọc số này, không có gì chạy lúc khởi động.
+#[tauri::command]
+pub async fn token_score_last(app: AppHandle) -> Result<Value, String> {
+    sidecar_json(&app, last_args(), vec![]).await
+}
+
 #[tauri::command]
 pub async fn token_score_fix_preview(
     app: AppHandle,
@@ -551,9 +622,9 @@ pub async fn token_score_fix_preview(
     let score = last_score(&app)?;
     let resolved = resolve(&score, &fix_id, &profile_id, project_key.as_deref())?;
     match resolved.fix {
-        fix if fix.in_sidecar() => {
-            sidecar_json(&app, fix_args(fix, &profile_id, true)?, vec![]).await
-        }
+        fix if fix.in_sidecar() => sidecar_json(&app, fix_args(fix, &profile_id, true)?, vec![])
+            .await
+            .map_err(sidecar_fix_error),
         Fix::CodegraphMcp => {
             let cli = resolved.cli;
             let dir = profile_dir(&app, &profile_id).await?;
@@ -581,9 +652,9 @@ pub async fn token_score_fix(
     let score = last_score(&app)?;
     let resolved = resolve(&score, &fix_id, &profile_id, project_key.as_deref())?;
     match resolved.fix {
-        fix if fix.in_sidecar() => {
-            sidecar_json(&app, fix_args(fix, &profile_id, false)?, vec![]).await
-        }
+        fix if fix.in_sidecar() => sidecar_json(&app, fix_args(fix, &profile_id, false)?, vec![])
+            .await
+            .map_err(sidecar_fix_error),
         Fix::CodegraphMcp => {
             let cli = resolved.cli;
             let dir = profile_dir(&app, &profile_id).await?;
@@ -602,6 +673,7 @@ pub async fn token_score_fix(
                 list.push(record);
                 Ok(())
             })?;
+            mark_fix(&app, Fix::CodegraphMcp, true).await;
             Ok(json!({ "fixId": Fix::CodegraphMcp.id(), "profile": profile_id }))
         }
         fix => {
@@ -624,6 +696,7 @@ pub async fn token_score_fix(
                 list.push(record);
                 Ok(())
             })?;
+            mark_fix(&app, fix, true).await;
             Ok(json!({ "fixId": fix.id(), "profile": profile_id }))
         }
     }
@@ -642,7 +715,9 @@ pub async fn token_score_undo(
     let score = last_score(&app)?;
     let resolved = resolve(&score, &fix_id, &profile_id, project_key.as_deref())?;
     if resolved.fix.in_sidecar() {
-        return sidecar_json(&app, undo_args(resolved.fix, &profile_id)?, vec![]).await;
+        return sidecar_json(&app, undo_args(resolved.fix, &profile_id)?, vec![])
+            .await
+            .map_err(sidecar_fix_error);
     }
     let fix = resolved.fix;
     let project = match fix {
@@ -669,7 +744,13 @@ pub async fn token_score_undo(
         let remove_line = record.exclude_added;
         blocking(move || {
             let argv = uninit_argv(&dir.to_string_lossy());
-            run_checked("codegraph uninit", &argv, codegraph_env(), Some(dir.as_path()), INIT_TIMEOUT)?;
+            run_checked(
+                "codegraph uninit",
+                &argv,
+                codegraph_env(),
+                Some(dir.as_path()),
+                INIT_TIMEOUT,
+            )?;
             if remove_line {
                 remove_exclude(&dir)?;
             }
@@ -683,7 +764,109 @@ pub async fn token_score_undo(
         }
         Ok(())
     })?;
+    mark_fix(&app, fix, false).await;
     Ok(json!({ "fixId": fix.id(), "profile": profile_id }))
+}
+
+/// Ghi mốc cho biểu đồ sau khi sửa nhanh Rust đã thành công. Lỗi ghi mốc không làm hỏng sửa nhanh đã áp dụng, chỉ
+/// mất một dấu trên biểu đồ.
+async fn mark_fix(app: &AppHandle, fix: Fix, apply: bool) {
+    let args = match mark_args(fix, apply) {
+        Ok(args) => args,
+        Err(e) => return eprintln!("{e}"),
+    };
+    if let Err(e) = sidecar_json::<Value>(app, args, vec![]).await {
+        eprintln!("Không ghi được mốc sửa nhanh: {e}");
+    }
+}
+
+/// Số giây Unix của một mốc RFC 3339 (`2026-10-19T08:00:00Z`, `…+07:00`, có hay không có phần lẻ giây). Dùng cho một
+/// phép so "đã quá 24 giờ chưa" nên không kéo thêm thư viện thời gian.
+fn parse_rfc3339(text: &str) -> Option<i64> {
+    let (date, rest) = text.split_once(['T', 't'])?;
+    let mut d = date.split('-');
+    let (year, month, day) = (
+        d.next()?.parse::<i64>().ok()?,
+        d.next()?.parse::<i64>().ok()?,
+        d.next()?.parse::<i64>().ok()?,
+    );
+    let split = rest.find(['Z', 'z', '+', '-'])?;
+    let (clock, zone) = rest.split_at(split);
+    let mut t = clock.split(':');
+    let hour = t.next()?.parse::<i64>().ok()?;
+    let minute = t.next()?.parse::<i64>().ok()?;
+    let second = t.next()?.split('.').next()?.parse::<i64>().ok()?;
+    let offset = match zone.as_bytes().first()? {
+        b'Z' | b'z' => 0,
+        sign => {
+            let (h, m) = zone[1..].split_once(':')?;
+            let secs = h.parse::<i64>().ok()? * 3600 + m.parse::<i64>().ok()? * 60;
+            if *sign == b'-' { -secs } else { secs }
+        }
+    };
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    // Ngày dân sự sang số ngày từ 1970-01-01 (Howard Hinnant, days_from_civil).
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + hour * 3600 + minute * 60 + second - offset)
+}
+
+/// Cần tính lại khi chưa có dòng lịch sử nào, mốc không đọc được, hoặc dòng cuối đã quá 24 giờ.
+fn daily_due(last: &Value, now_secs: i64) -> bool {
+    last["entries"]
+        .as_array()
+        .and_then(|entries| entries.last())
+        .and_then(|entry| entry["ts"].as_str())
+        .and_then(parse_rfc3339)
+        .is_none_or(|ts| now_secs - ts > DAILY_MAX_AGE_SECS)
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or_default()
+}
+
+/// Mở app thì sau 2 phút kiểm điểm đã quá 24 giờ chưa; quá thì tính lại ở nền, không `--fresh` vì `/context` gọi model
+/// và tốn token. Chạy trong tác vụ riêng nên không chặn giao diện. Xong thì phát sự kiện để thẻ và huy hiệu đọc lại.
+pub fn start_daily(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(DAILY_DELAY).await;
+        if !crate::settings::get(&app).token_score_daily {
+            return;
+        }
+        let last: Value = match sidecar_json(&app, last_args(), vec![]).await {
+            Ok(last) => last,
+            Err(e) => return eprintln!("Không đọc được lịch sử điểm token: {e}"),
+        };
+        if !daily_due(&last, unix_now()) {
+            return;
+        }
+        match sidecar_json::<Value>(&app, score_args(false, None).unwrap_or_default(), vec![]).await
+        {
+            Ok(score) => {
+                if let Ok(mut slot) = app.state::<Last>().score.lock() {
+                    *slot = Some(score);
+                }
+                if let Err(e) = app.emit(UPDATED_EVENT, ()) {
+                    eprintln!("Không phát được sự kiện điểm token: {e}");
+                }
+            }
+            Err(e) => eprintln!("Không tính được điểm token hằng ngày: {e}"),
+        }
+    });
 }
 
 async fn blocking<T: Send + 'static>(
@@ -858,12 +1041,27 @@ mod tests {
                 exclude_added: true,
             },
         ];
-        assert_eq!(find_applied(&list, Fix::CodegraphMcp, "claude-2", None), Some(0));
-        assert_eq!(find_applied(&list, Fix::CodegraphInit, "claude-2", Some(app)), Some(1));
+        assert_eq!(
+            find_applied(&list, Fix::CodegraphMcp, "claude-2", None),
+            Some(0)
+        );
+        assert_eq!(
+            find_applied(&list, Fix::CodegraphInit, "claude-2", Some(app)),
+            Some(1)
+        );
         // Dự án khác, gói khác hay sửa nhanh khác: không có gì để hoàn tác.
-        assert_eq!(find_applied(&list, Fix::CodegraphInit, "claude-2", Some(lib)), None);
-        assert_eq!(find_applied(&list, Fix::CodegraphMcp, "codex-1", None), None);
-        assert_eq!(find_applied(&list, Fix::CodegraphInit, "claude-2", None), None);
+        assert_eq!(
+            find_applied(&list, Fix::CodegraphInit, "claude-2", Some(lib)),
+            None
+        );
+        assert_eq!(
+            find_applied(&list, Fix::CodegraphMcp, "codex-1", None),
+            None
+        );
+        assert_eq!(
+            find_applied(&list, Fix::CodegraphInit, "claude-2", None),
+            None
+        );
         let text = serde_json::to_string(&list).unwrap();
         assert!(text.contains("\"excludeAdded\":true"));
         let back: Vec<Applied> = serde_json::from_str(&text).unwrap();
@@ -874,24 +1072,56 @@ mod tests {
     fn sidecar_arguments_keep_fix_id_first_and_profile_as_value() {
         assert_eq!(
             fix_args(Fix::Balanced, "claude-2", true).unwrap(),
-            ["optimize", "fix", "optimizer.balanced", "--json", "--profile=claude-2", "--preview"]
+            [
+                "optimize",
+                "fix",
+                "optimizer.balanced",
+                "--json",
+                "--profile=claude-2",
+                "--preview"
+            ]
         );
         assert_eq!(
             fix_args(Fix::Aggressive, "-x", false).unwrap(),
-            ["optimize", "fix", "optimizer.aggressive", "--json", "--profile=-x"]
+            [
+                "optimize",
+                "fix",
+                "optimizer.aggressive",
+                "--json",
+                "--profile=-x"
+            ]
         );
         assert!(fix_args(Fix::Rtk, "x\n--rtk", false).is_err());
         // Không đo thì không truyền gói: /context chỉ chạy khi người dùng bấm đo một gói.
-        assert_eq!(score_args(false, Some("claude-2")).unwrap(), ["optimize", "score", "--json"]);
+        assert_eq!(
+            score_args(false, Some("claude-2")).unwrap(),
+            ["optimize", "score", "--json"]
+        );
         assert_eq!(
             score_args(true, Some("claude-2")).unwrap(),
-            ["optimize", "score", "--json", "--fresh", "--profile=claude-2"]
+            [
+                "optimize",
+                "score",
+                "--json",
+                "--fresh",
+                "--profile=claude-2"
+            ]
         );
-        assert_eq!(score_args(true, None).unwrap(), ["optimize", "score", "--json", "--fresh"]);
+        assert_eq!(
+            score_args(true, None).unwrap(),
+            ["optimize", "score", "--json", "--fresh"]
+        );
         assert!(score_args(true, Some("a\nb")).is_err());
         assert_eq!(
             undo_args(Fix::Balanced, "codex-1").unwrap(),
-            ["optimize", "fix", "optimizer.balanced", "--json", "--profile=codex-1", "--undo"]
+            [
+                "optimize",
+                "fix",
+                "optimizer.balanced",
+                "--json",
+                "--profile=codex-1",
+                "--undo"
+            ]
         );
         assert!(undo_args(Fix::Balanced, "a\nb").is_err());
     }
@@ -940,7 +1170,10 @@ mod tests {
         assert_eq!(expand_home("/srv/app", home), PathBuf::from("/srv/app"));
         // `~user` không phải thư mục nhà của người dùng này.
         assert_eq!(expand_home("~other/x", home), PathBuf::from("~other/x"));
-        assert_eq!(shorten_home(&home.join(".claude.json"), home), "~/.claude.json");
+        assert_eq!(
+            shorten_home(&home.join(".claude.json"), home),
+            "~/.claude.json"
+        );
         assert_eq!(shorten_home(Path::new("/data/c2"), home), "/data/c2");
     }
 
@@ -979,5 +1212,90 @@ mod tests {
             "# c\nnode_modules/\n"
         );
         assert_eq!(without_line("# c\n", ".codegraph/"), "# c\n");
+    }
+
+    #[test]
+    fn history_and_last_arguments_use_the_read_only_subcommand() {
+        assert_eq!(
+            history_args(30),
+            ["optimize", "score", "history", "--json", "--days=30"]
+        );
+        assert_eq!(
+            last_args(),
+            ["optimize", "score", "history", "--json", "--last"]
+        );
+        // Không có cờ tính điểm: đọc lịch sử không gọi model.
+        assert!(!history_args(7).iter().any(|a| a == "--fresh"));
+    }
+
+    #[test]
+    fn mark_arguments_carry_fix_and_action_as_values() {
+        assert_eq!(
+            mark_args(Fix::CodegraphMcp, true).unwrap(),
+            [
+                "optimize",
+                "score",
+                "mark",
+                "--json",
+                "--fix=codegraph.mcp",
+                "--action=apply"
+            ]
+        );
+        assert_eq!(
+            mark_args(Fix::CodegraphInit, false).unwrap(),
+            [
+                "optimize",
+                "score",
+                "mark",
+                "--json",
+                "--fix=codegraph.init",
+                "--action=undo"
+            ]
+        );
+    }
+
+    #[test]
+    fn mark_rejects_fixes_the_sidecar_marks_itself() {
+        for fix in [Fix::Balanced, Fix::Rtk, Fix::Aggressive] {
+            assert!(mark_args(fix, true).is_err(), "{}", fix.id());
+        }
+        assert!(Fix::parse("tool.rtk").is_err());
+        assert!(Fix::parse("codegraph.mcp; rm -rf").is_err());
+    }
+
+    #[test]
+    fn windows_rtk_code_becomes_a_vietnamese_message() {
+        let msg = sidecar_fix_error("windows_rtk_unsupported: rtk chưa chạy trên Windows".into());
+        assert!(msg.contains("Windows") && !msg.contains("windows_rtk_unsupported"));
+        assert_eq!(sidecar_fix_error("lỗi khác".into()), "lỗi khác");
+    }
+
+    #[test]
+    fn parses_rfc3339_with_zone_and_fraction() {
+        assert_eq!(parse_rfc3339("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_rfc3339("2026-10-19T08:00:00Z"), Some(1_792_396_800));
+        assert_eq!(
+            parse_rfc3339("2026-10-19T15:00:00.123456+07:00"),
+            parse_rfc3339("2026-10-19T08:00:00Z")
+        );
+        assert_eq!(
+            parse_rfc3339("2026-10-19T03:00:00-05:00"),
+            parse_rfc3339("2026-10-19T08:00:00Z")
+        );
+        assert_eq!(parse_rfc3339("2024-03-01T00:00:00Z"), Some(1_709_251_200));
+        assert_eq!(parse_rfc3339("không phải mốc"), None);
+        assert_eq!(parse_rfc3339("2026-13-01T00:00:00Z"), None);
+    }
+
+    #[test]
+    fn daily_recompute_is_due_after_24_hours_or_without_history() {
+        let at = parse_rfc3339("2026-10-19T08:00:00Z").unwrap();
+        let last = json!({ "entries": [{ "ts": "2026-10-19T08:00:00Z" }] });
+        assert!(!daily_due(&last, at + 23 * 3600));
+        assert!(!daily_due(&last, at + 24 * 3600));
+        assert!(daily_due(&last, at + 24 * 3600 + 1));
+        assert!(daily_due(&json!({ "entries": [] }), at));
+        assert!(daily_due(&json!({}), at));
+        assert!(daily_due(&json!({ "entries": [{ "ts": "hỏng" }] }), at));
     }
 }

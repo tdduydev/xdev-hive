@@ -8,6 +8,8 @@ export interface AppSettings {
   notifyApprovals: boolean;
   notifyQuestions: boolean;
   notifyOffline: boolean;
+  /** Tính lại điểm token ở nền khi mở app mà điểm đã quá 24 giờ (gọi model, tốn token). */
+  tokenScoreDaily: boolean;
 }
 
 export type SettingKey = keyof AppSettings;

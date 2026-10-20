@@ -1169,6 +1169,8 @@ pub fn run() {
             optimizer::optimizer_restore,
             optimizer::optimizer_report,
             token_score::token_score,
+            token_score::token_score_history,
+            token_score::token_score_last,
             token_score::token_score_fix_preview,
             token_score::token_score_fix,
             token_score::token_score_undo,
@@ -1281,6 +1283,7 @@ pub fn run() {
             optimizer::link_on_start(app.handle());
             git_groups::start_auto_fetch(app.handle().clone());
             remote::start(app.handle());
+            token_score::start_daily(app.handle().clone());
             let tray = build_tray(app)?;
             app.manage(tray);
             notices::register_actions(app.handle(), false);

@@ -70,6 +70,8 @@
     "allow-optimizer-restore",
     "allow-optimizer-report",
     "allow-token-score",
+    "allow-token-score-history",
+    "allow-token-score-last",
     "allow-token-score-fix-preview",
     "allow-token-score-fix",
     "allow-token-score-undo",
