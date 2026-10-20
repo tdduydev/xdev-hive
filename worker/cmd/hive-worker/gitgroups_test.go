@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/gitexec"
 	"github.com/tdduydev/xdev-hive/worker/internal/gitgroups"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 )
@@ -41,7 +42,7 @@ func TestGitgroupsNativeHostModePersistsWithoutSecret(t *testing.T) {
 			}))
 			defer srv.Close()
 			cfg := filepath.Join(t.TempDir(), "worker.json")
-			t.Setenv(gitgroups.TokenEnv, "rotating-secret")
+			t.Setenv(gitexec.TokenEnv, "rotating-secret")
 			view, out, stderr, code := gitgroupsJSON(t, "", "host-add", "--config", cfg, "--kind", kind,
 				"--url", srv.URL, "--auth-mode", "git", "--json")
 			if code != 0 || view.Host == nil || view.Host.AuthMode != "git" || view.Host.Username != "test" {
@@ -84,19 +85,19 @@ func TestGitgroupsCommand(t *testing.T) {
 	cfg := filepath.Join(dir, "worker.json")
 	root := filepath.Join(dir, "code")
 
-	t.Setenv(gitgroups.TokenEnv, "sai")
+	t.Setenv(gitexec.TokenEnv, "sai")
 	if _, _, stderr, code := gitgroupsJSON(t, "", "host-add", "--config", cfg, "--kind", "gitlab", "--url", srv.URL, "--json"); code != 1 || !strings.Contains(stderr, "Token không dùng được") {
 		t.Fatalf("token sai = %d %q", code, stderr)
 	}
 	if _, err := os.Stat(gitgroups.DefaultPath(cfg)); !os.IsNotExist(err) {
 		t.Fatal("token sai mà vẫn ghi cấu hình")
 	}
-	t.Setenv(gitgroups.TokenEnv, "glpat-ok")
+	t.Setenv(gitexec.TokenEnv, "glpat-ok")
 	v, _, _, code := gitgroupsJSON(t, "", "host-add", "--config", cfg, "--kind", "gitlab", "--url", srv.URL, "--name", "GitLab công ty", "--json")
 	if code != 0 || v.Host == nil || v.Host.Username != "ha" || len(v.Hosts) != 1 {
 		t.Fatalf("host-add = %+v (%d)", v, code)
 	}
-	if os.Getenv(gitgroups.TokenEnv) != "" {
+	if os.Getenv(gitexec.TokenEnv) != "" {
 		t.Fatal("biến token còn trong tiến trình")
 	}
 	host := v.Host.ID
@@ -104,11 +105,11 @@ func TestGitgroupsCommand(t *testing.T) {
 		t.Fatal("token nằm trong gitgroups.json")
 	}
 
-	t.Setenv(gitgroups.TokensEnv, fmt.Sprintf(`{%q:"glpat-ok"}`, host))
+	t.Setenv(gitexec.TokensEnv, fmt.Sprintf(`{%q:"glpat-ok"}`, host))
 	if v, _, _, code = gitgroupsJSON(t, "", "suggest", "--config", cfg, "--host", host, "--json"); code != 0 || strings.Join(v.Items, ",") != "acme" {
 		t.Fatalf("suggest = %+v (%d)", v, code)
 	}
-	t.Setenv(gitgroups.TokensEnv, fmt.Sprintf(`{%q:"glpat-ok"}`, host))
+	t.Setenv(gitexec.TokensEnv, fmt.Sprintf(`{%q:"glpat-ok"}`, host))
 	v, _, stderr, code := gitgroupsJSON(t, "", "group-add", "--config", cfg, "--host", host, "--path", "acme", "--root", root, "--json")
 	if code != 0 || v.Group == nil || len(v.Group.Repos) != 2 || v.Group.Protocol != "https" {
 		t.Fatalf("group-add = %+v (%d) %s", v, code, stderr)

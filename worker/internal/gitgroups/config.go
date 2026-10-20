@@ -18,12 +18,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/gitexec"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 )
 
 const (
-	KindGitLab = "gitlab"
-	KindGitHub = "github"
+	KindGitLab = gitexec.KindGitLab
+	KindGitHub = gitexec.KindGitHub
 
 	ProtocolHTTPS = "https"
 	ProtocolSSH   = "ssh"
