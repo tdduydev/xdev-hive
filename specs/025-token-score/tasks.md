@@ -209,17 +209,17 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
 
 ## Đợt 3: P2
 
-- [ ] **T007 [US4] [vừa] · 1,5 ngày — Biểu đồ 30 ngày, huy hiệu, tính lại hằng ngày** (sau T003, T006)
+- [x] **T007 [US4] [vừa] · 1,5 ngày — Biểu đồ 30 ngày, huy hiệu, tính lại hằng ngày** (sau T003, T006)
   - **PHẠM VI**: `apps/desktop/src/components/token-score-history.tsx`, `shell/app-nav.tsx`, `token_score.rs`
     (`token_score_last`, lịch chạy nền).
   - **Phạm vi thêm (2026-10-20)**: `worker/internal/score/history.go` (khoá file, ngày địa phương, giá trị thô, mốc
     fix/undo, lệnh `optimize score history|mark`), `apps/desktop/src-tauri/src/lib.rs`, `build.rs`,
     `capabilities/app.json`, `settings.rs`, `apps/desktop/src/lib/nav.ts`,
     `apps/desktop/src/components/token-score-card.tsx`.
-- [ ] **T008 [US5] [nhẹ] · 0,5 ngày — Gợi ý theo hành vi dùng** (sau T006)
+- [x] **T008 [US5] [nhẹ] · 0,5 ngày — Gợi ý theo hành vi dùng** (sau T006)
   - **Điều kiện (2026-10-20)**: gợi ý `/clear` hiện khi **A1 đủ điểm** và B2 ≥ 50% (đúng spec US5 kịch bản 1).
     Gợi ý "đọc cả file lớn" chưa có số đo: để sau.
-- [ ] **T009 [—] [nhẹ] · 0,5 ngày — Tỉ trọng token theo họ model** (FR-007, hiện trong chi tiết A8)
+- [x] **T009 [—] [nhẹ] · 0,5 ngày — Tỉ trọng token theo họ model** (FR-007, hiện trong chi tiết A8)
   - **Ghi chú (2026-10-20)**: cần tăng `cacheVersion` của `tokenreport`; trường `modelShare` tính theo profile; chỉ để
     xem, không vào điểm A8.
 
@@ -241,8 +241,7 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
 
 - [x] **T012 [—] [nhẹ] · 0,5 ngày — `docs/token-optimizer.md`, đoạn "Score" của ADR 0026** (sau T006)
   - Đã thêm: bảng tiêu chí và ghi chú A6 trên Windows ở `docs/token-optimizer.md`; đoạn "Score" ở ADR 0026 (giữ
-    trạng thái ADR); mục 3.28 (TSCORE) ở `docs/srs.md`. Biểu đồ 30 ngày, huy hiệu, tính lại hằng ngày (T007) chưa mô tả
-    như đã có.
+    trạng thái ADR); mục 3.28 (TSCORE) ở `docs/srs.md`. Phần T007–T009 bổ sung sau khi PR desktop merge (TSCORE-06, TSCORE-07).
 - [ ] **T013 [—] [nhẹ] · 7 ngày chờ — Đo SC-006 trên máy dev Windows** (sau khi P1 có trong bản phát hành)
   - **Nguồn số đo (2026-10-20)**: B2 và token/lượt lấy từ `values` theo CLI trong `score-history.jsonl`
     (`optimize score history --json`).

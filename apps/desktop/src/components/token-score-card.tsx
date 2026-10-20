@@ -95,7 +95,8 @@ const text: Dict<{
       why: "Cấu hình đã đủ điểm mà phần lớn token vẫn nằm ở phiên rất dài: ngữ cảnh cũ bị gửi lại ở mọi lượt.",
     },
     daily: "Tự tính lại điểm mỗi ngày khi mở app",
-    dailyHint: "Chạy ngầm sau khi mở app 2 phút nếu điểm đã quá 24 giờ. Việc tính gọi model nên tốn một ít token.",
+    dailyHint:
+      "Chạy ngầm sau khi mở app 2 phút nếu điểm đã quá 24 giờ. Không chạy /context nên không gọi model, không tốn token.",
     dailyFailed: "Không lưu được cài đặt tự tính lại điểm.",
     note: "Điểm đo cấu hình và kích thước ngữ cảnh, không đo chất lượng kết quả của agent.",
   },
@@ -131,7 +132,7 @@ const text: Dict<{
     },
     daily: "Recalculate the score daily when the app opens",
     dailyHint:
-      "Runs in the background 2 minutes after the app opens if the score is over 24 hours old. Calculating calls the model, so it costs a few tokens.",
+      "Runs in the background 2 minutes after the app opens if the score is over 24 hours old. It does not run /context, so it does not call the model or spend tokens.",
     dailyFailed: "Could not save the daily recalculation setting.",
     note: "The score measures configuration and context size, not the quality of the agent's results.",
   },

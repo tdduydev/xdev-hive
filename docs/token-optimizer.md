@@ -61,6 +61,13 @@ trong nghiên cứu là cam kết.
   Mức **Mạnh** đổi model subagent nên cần xác nhận riêng.
 - Tiêu chí "skill và MCP nạp sẵn" cần chạy `/context`. Lệnh này gọi model và tốn token, nên chỉ chạy khi bạn bấm
   **Đo /context**. Kết quả được giữ 7 ngày. Nút **Tính lại** không chạy lệnh này.
+- **Lịch sử 30 ngày**: biểu đồ điểm theo ngày, có dấu ở ngày áp dụng hoặc hoàn tác sửa nhanh và có bảng xem dạng
+  chữ. Khi công thức điểm đổi, biểu đồ ngắt đoạn để không so hai thang khác nhau.
+- Mục **Token** ở menu hiện điểm của máy, đọc từ lần tính gần nhất.
+- Mở app khi điểm đã quá 24 giờ thì app tự tính lại ở nền sau 2 phút. Lần tính này không chạy `/context`. Tắt được
+  ở thẻ điểm.
+- Gói có trần ngữ cảnh tốt mà vẫn có nhiều token ở phiên rất dài sẽ có gợi ý tách việc thành phiên ngắn và `/clear`
+  giữa các việc không liên quan. Chi tiết A8 hiện tỉ trọng token theo họ model, chỉ để xem.
 - Điểm đo cấu hình và kích thước ngữ cảnh, không đo chất lượng kết quả của agent.
 
 Các tiêu chí (nguồn: `worker/internal/score/criteria.go`). Giá trị nằm giữa mức đủ điểm và mức 0 điểm thì tính tuyến
