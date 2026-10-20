@@ -484,6 +484,21 @@ projects screen opens, recounts after fetch, pull and cleanup, hides at zero and
 | GITBR-13 | Screen text shall be Vietnamese with an English dictionary. The app shall not need a hub sign-in and shall send no branch data to the hub. | FR-040, FR-043 | Implemented | `desktop:src/components/branches-sheet.test.tsx`, `desktop:src/components/cleanup-dialog.test.tsx` |
 | GITBR-14 | Measured on a macOS development machine (T013): the branch table shall appear within 2 seconds for a repository with 30 worktrees and 200 branches (SC-001), and 20 repositories shall scan within 10 seconds (SC-002). After a cleanup, the linked worktrees of the reference repository shall fall to those that are dirty, in use or unmerged (SC-004). | SC-001, SC-002, SC-004 | Partial: SC-001 table in 1.1–1.5 s but all worktree states take 3.2–4.3 s; SC-002 measured only on a light set without fetch; SC-004 not met at T013, met after T020 on a copy of the reference repository (28 to 8 linked worktrees, 20 removed, dirty, unmerged and new ones kept; macOS, 2026-10-20); no Windows measurement | [research.md section 5](../specs/026-desktop-git-branches/research.md) |
 
+### 3.28 Token optimization score on the desktop (TSCORE)
+
+Spec [025](../specs/025-token-score/spec.md), user guide [token-optimizer.md](token-optimizer.md), [ADR 0026](adr/0026-client-token-optimizer.md).
+The product owner settled Q1–Q11 on 19 October 2026. The score runs on the machine through `hive-worker optimize score`;
+no hub sign-in is needed. The 30-day chart, the badge and the daily recalculation (US4) and sending the score to the hub
+(US6) are not built yet, so they have no requirement here.
+
+| ID | Requirement | Spec 025 FR | Status | Verification |
+|---|---|---|---|---|
+| TSCORE-01 | The sidecar shall compute a score from 0 to 100 per CLI profile and for the machine: group A (configuration, 45 points) and group B (7-day session data, 55 points) over 15 criteria. The profile score shall be the earned points divided by the maximum of the measured criteria; unmeasured criteria shall not count. Group B shall need at least 5 main sessions. The machine score shall weight Claude and Codex profiles by their converted tokens. | FR-001–FR-006 | Implemented | `worker:internal/score/score_test.go` |
+| TSCORE-02 | The score shall run offline. It shall run `/context` (which calls the model) only when the user asks, and keep the result for 7 days. It shall mark A6 as not applicable on Windows. | FR-008, FR-016 | Implemented | `worker:internal/score/score_test.go` |
+| TSCORE-03 | A quick fix shall come from a fixed list, show a preview (file, key, old and new value) and be undoable. A fix that changes model behavior shall need its own confirmation. No fix shall edit memory or instruction files, or remove MCP servers or skills. | FR-009–FR-012 | Implemented | `worker:cmd/hive-worker/optimize_score_test.go`, `desktop:src-tauri/src/token_score.rs`, `desktop:src/components/token-score-*.test.tsx` |
+| TSCORE-04 | The score history shall hold only numbers, criterion ids, CLI names and times, and be kept for 90 days. The copyable report shall hold no profile id, path or project name. | FR-014, FR-015 | Implemented | `worker:internal/score/score_test.go`, `desktop:src/lib/token-score.test.ts` |
+| TSCORE-05 | The score card and its detail shall use Vietnamese text with an English dictionary and the design system v2 tokens. | FR-017, FR-018 | Implemented | `desktop:src/components/token-score-*.test.tsx` |
+
 ## 4. External interface requirements
 
 | ID | Requirement | Status |
