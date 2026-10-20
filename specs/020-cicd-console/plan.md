@@ -139,7 +139,7 @@ Theo Key Entities của spec, cộng chi tiết:
 
 - Xác thực Basic bằng user và API token của **người bấm** cho mọi thao tác ghi. Token của **người theo dõi** chỉ dùng cho
   đọc theo lịch (mục 4) và cho tab CI/CD khi người xem chưa có token.
-- POST bằng API token không cần crumb CSRF. [Unverified] Kiểm trên Jenkins của acme (plugin Keycloak OIDC) cả việc
+- POST bằng API token không cần crumb CSRF. [Unverified] Kiểm trên Jenkins của ACME (plugin Keycloak OIDC) cả việc
   tạo API token lẫn POST không crumb, khi làm task.
 - Đọc bằng `?tree=`:
   - job: `property[parameterDefinitions[...]]`;
@@ -339,8 +339,8 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 - **Bước chạy tách khỏi phiên SSH** cho mọi đích `ssh-script`, không chỉ khi triển khai chính hub: một cách duy nhất, chịu
   được hub khởi động lại vì bất kỳ lý do gì.
 - **Kết nối Argo CD và Kubernetes dùng token chung của tổ chức**, khác Jenkins (Q3 chỉ nói về Jenkins). Lý do: Kubernetes
-  của acme đang dùng token ServiceAccount (`his-portal/jenkins-deployer-token`), không có token từng người sẵn.
-  [Unverified] Argo CD của acme xác thực thế nào chưa đọc được (repo GitOps và Argo CD chưa clone).
+  của ACME đang dùng token ServiceAccount (`his-portal/jenkins-deployer-token`), không có token từng người sẵn.
+  [Unverified] Argo CD của ACME xác thực thế nào chưa đọc được (repo GitOps và Argo CD chưa clone).
 - **Gọi API Kubernetes bằng `fetch`**, không thêm `@kubernetes/client-node`: chỉ cần `GET` và `PATCH` một loại tài nguyên.
 - **Log triển khai ở bảng riêng**, không dùng `run_logs`: lần triển khai không phải run của máy.
 - **Quyền theo vai trò tổ chức và đội**, cộng danh sách vai trò trên từng môi trường. Hive chưa có thành viên theo dự án hay
@@ -355,7 +355,7 @@ Các điểm spec để người làm tự quyết, đã chọn khi viết plan,
 | # | Rủi ro | Cách giảm |
 |---|---|---|
 | R1 | Hub giữ khoá vào mọi máy chủ: lộ database cùng `HIVE_MASTER_KEY` là lộ quyền vào mọi máy chủ (hệ quả của Q1, Q2) | Khoá riêng theo từng máy chủ, mã hoá theo bản ghi; giải mã chỉ trong bộ nhớ; audit mỗi lần dùng; đổi khoá dễ; user trên máy chủ nên là user triển khai riêng, không phải `root` (tài liệu khuyến nghị) |
-| R2 | Hub không vào được cổng SSH của mạng khác (`198.51.100.x`). **Đã xảy ra** (T006, 2026-10-19): từ hub không vào được cổng 22 và API Kubernetes của `198.51.100.x` | Triển khai lên hạ tầng acme đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl`. `ssh-script` cho máy chủ hub vào được. Đo trước khi khai báo máy chủ (do chủ dự án làm, khi SOC đồng ý); báo lỗi mạng rõ ràng; máy runner để sau (Q14, Q16) |
+| R2 | Hub không vào được cổng SSH của mạng khác (`198.51.100.x`). **Đã xảy ra** (T006, 2026-10-19): từ hub không vào được cổng 22 và API Kubernetes của `198.51.100.x` | Triển khai lên hạ tầng ACME đi qua `jenkins-job` hoặc `argocd`, không qua `ssh-script` hay `kubectl`. `ssh-script` cho máy chủ hub vào được. Đo trước khi khai báo máy chủ (do chủ dự án làm, khi SOC đồng ý); báo lỗi mạng rõ ràng; máy runner để sau (Q14, Q16) |
 | R3 | Lệnh triển khai sai hoặc bị sửa trái phép | Chỉ `servers.manage` sửa; cấu hình có phiên bản, audit kèm khác biệt; bước "kiểm trước" so thư mục, project |
 | R4 | Token Jenkins từng người: người theo dõi nghỉ hoặc token hết hạn thì mất phần đọc theo lịch | Báo trên tab và cho quản trị; đổi người theo dõi một bước |
 | R5 | Hỏi Jenkins nhiều | `?tree=`; 15 giây chỉ khi có build chạy; lùi lại khi lỗi |

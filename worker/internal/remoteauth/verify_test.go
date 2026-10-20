@@ -150,7 +150,7 @@ func TestHubOrigin(t *testing.T) {
 		"https://Hive.Example.com/":     {"https://hive.example.com", "hive.example.com"},
 		"https://hive.example.com:443":  {"https://hive.example.com", "hive.example.com"},
 		"https://hive.example.com:8443": {"https://hive.example.com:8443", "hive.example.com"},
-		"http://192.0.2.10:3000":      {"http://192.0.2.10:3000", "192.0.2.10"},
+		"http://192.0.2.10:3000":        {"http://192.0.2.10:3000", "192.0.2.10"},
 		"http://hub.local:80/x":         {"http://hub.local", "hub.local"},
 	} {
 		o, rp, err := HubOrigin(in)

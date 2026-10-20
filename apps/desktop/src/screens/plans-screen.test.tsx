@@ -509,7 +509,14 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
 
   it("hai gói cùng một tài khoản thì mỗi thẻ ghi gói trùng với nó", async () => {
     const list = seed();
-    list.push({ ...base, id: "claude-4", label: "Gói trùng", cli: "claude", email: "DUY@example.com ", state: "ready" });
+    list.push({
+      ...base,
+      id: "claude-4",
+      label: "Gói trùng",
+      cli: "claude",
+      email: "DUY@example.com ",
+      state: "ready",
+    });
     // Cùng email nhưng khác CLI thì không phải cùng tài khoản.
     list.push({ ...base, id: "codex-5", label: "Codex Duy", cli: "codex", email: "duy@example.com", state: "ready" });
     fakeTauri(list);

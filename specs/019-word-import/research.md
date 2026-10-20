@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **Ngày**: 2026-10-16
 
-## 1. Bộ dữ liệu thật: SRS acme trên SharePoint
+## 1. Bộ dữ liệu thật: SRS ACME trên SharePoint
 
 Nguồn: thư viện SharePoint `acmev2i`, thư mục `60.BA/SRS`, đồng bộ về máy dev bằng OneDrive. Dữ liệu không đưa vào
 repo này.

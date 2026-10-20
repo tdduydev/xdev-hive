@@ -175,7 +175,7 @@ def build_srs():
     d.add_paragraph("Mã tài liệu: eHosV2i_SRS_OPD.OPD99")
     info = d.add_table(rows=2, cols=2)
     info.style = "Table Grid"
-    for r, (k, v) in enumerate([("Dự án", "acme V2i"), ("Phiên bản", "1.1")]):
+    for r, (k, v) in enumerate([("Dự án", "ACME V2i"), ("Phiên bản", "1.1")]):
         fill_cell(info.cell(r, 0), k)
         fill_cell(info.cell(r, 1), v)
     d.add_paragraph("BẢNG GHI NHẬN THAY ĐỔI")

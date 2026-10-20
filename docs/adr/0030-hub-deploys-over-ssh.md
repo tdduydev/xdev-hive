@@ -20,7 +20,7 @@ Constraints:
 - The hub may deploy itself. Its process restarts in the middle of the deploy, so a step cannot live inside one SSH
   session held by the hub (SC-007).
 - The hub must reach the target's SSH port. The T006 measurement (19 October 2026) showed that the hub could not reach
-  port 22 or the Kubernetes API of the internal machines. Deploys to the acme infrastructure therefore go
+  port 22 or the Kubernetes API of the internal machines. Deploys to the ACME infrastructure therefore go
   through `jenkins-job` or `argocd` ([ADR 0031](0031-external-ci-and-deploy-sources.md)), not through this record's
   method.
 - A hub that holds keys to every server is a high-value target (risk R1), and a backup that carried `.env` would carry

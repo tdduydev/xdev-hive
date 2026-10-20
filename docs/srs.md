@@ -416,7 +416,7 @@ Spec [020](../specs/020-cicd-console/spec.md), [ADR 0031](adr/0031-external-ci-a
 The product owner settled Q1–Q16 on 17 October 2026: Hive is a console over GitLab CI and Jenkins, not a replacement,
 and Jenkins writes use each person's own token. The FR column maps spec 020 FR-001–FR-035 together with section 3.26.
 Status and verification below describe planned behavior and acceptance checks, not completed implementation.
-Behavior of the real Jenkins, Argo CD and Kubernetes of acme is not verified (task T007 is pending); requirements
+Behavior of the real Jenkins, Argo CD and Kubernetes of the ACME customer is not verified (task T007 is pending); requirements
 that depend on it are written from public API documentation.
 
 | ID | Requirement | Spec 020 FR | Status | Verification |
@@ -439,7 +439,7 @@ that depend on it are written from public API documentation.
 Spec [020](../specs/020-cicd-console/spec.md), [ADR 0030](adr/0030-hub-deploys-over-ssh.md),
 [ADR 0031](adr/0031-external-ci-and-deploy-sources.md). The hub connects to servers itself and keeps one encrypted key
 per server (Q1, Q2). Measurement T006 (19 October 2026) found that the hub cannot reach port 22 or the Kubernetes API of
-the acme internal machines, so deploys there use `jenkins-job` or `argocd`. Status and verification below are
+the ACME internal machines, so deploys there use `jenkins-job` or `argocd`. Status and verification below are
 planned, not completed.
 
 | ID | Requirement | Spec 020 FR | Status | Verification |
