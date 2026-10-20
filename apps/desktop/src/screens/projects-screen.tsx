@@ -229,6 +229,7 @@ function useCleanable(folders: string[]) {
   const scan = useBranchJob(scanId);
   const queue = useRef(new Set<string>());
   const running = useRef(false);
+  const inflight = useRef(new Set<string>());
   const all = useRef(folders);
   all.current = folders;
 
@@ -237,6 +238,7 @@ function useCleanable(folders: string[]) {
     const batch = [...queue.current];
     queue.current.clear();
     running.current = true;
+    inflight.current = new Set(batch);
     // Sidecar cũ hay lệnh chưa có: huy hiệu chỉ không hiện, màn vẫn dùng được.
     scanBranches(batch, { fetch: false }).then(setScanId, () => {
       running.current = false;
@@ -250,6 +252,15 @@ function useCleanable(folders: string[]) {
     },
     [drain],
   );
+
+  // Mở màn và mỗi khi tập repo đổi: huy hiệu không phải chờ lần fetch đầu. Lượt đang chạy đã gồm đủ các repo này thì
+  // không mở thêm lượt (React StrictMode chạy effect hai lần).
+  useEffect(() => {
+    if (folders.length === 0) return;
+    if (running.current && folders.every((f) => inflight.current.has(f))) return;
+    for (const f of folders) queue.current.add(f);
+    drain();
+  }, [folders, drain]);
 
   const repos = scan?.repos;
   useEffect(() => {
@@ -346,7 +357,8 @@ function ProjectsView() {
   const cleanable = useCleanable(repoFolders);
   const { rescan } = cleanable;
   // Lượt tự fetch của nhóm Git xong: ref của các repo trong nhóm đã đổi.
-  useAutoFetched(rescan);
+  const rescanAll = useCallback(() => rescan(), [rescan]);
+  useAutoFetched(rescanAll);
 
   // Phải giữ nguyên danh tính giữa các lần render: BranchesSheet gọi lại nó mỗi khi nó đổi và fetch đã xong, mà mỗi lần gọi
   // lại làm màn này render lại.
@@ -497,7 +509,7 @@ function ProjectsView() {
         }
       />
 
-      <GitGroupsSection onCloned={load} />
+      <GitGroupsSection onCloned={load} onSynced={rescanAll} />
 
       {cleaning && (
         <CleanupDialog

@@ -407,13 +407,18 @@ const scanned = (folder: string, count: number, over: Partial<ScanRepo> = {}): S
 });
 
 /** Một dự án gắn thư mục `folder`, Tauri giả có sự kiện; `scans` ghi các id job quét theo thứ tự gọi. */
-function branchesApp(folder: string, extra: Record<string, (args?: Record<string, unknown>) => unknown> = {}) {
+function branchesApp(
+  folder: string,
+  extra: Record<string, (args?: Record<string, unknown>) => unknown> = {},
+  gitGroups?: Pick<GitGroups, "hosts" | "groups">,
+) {
   const listeners: Record<string, ((e: { payload: unknown }) => void)[]> = {};
   const scans: string[] = [];
   const calls = fakeApp({
     hub: { "projects/list": [PAY], "policies/get": policy(true) },
     local: [entry({ projectId: P1, name: "payment-api", folder, origin: PAY.repo.httpUrl })],
     listeners,
+    ...(gitGroups && { gitGroups }),
     extra: {
       git_branches_status: () => ({ repos: [status({ folder })] }),
       git_branches_list: () => ({
@@ -465,34 +470,112 @@ describe("ProjectsScreen: huy hiệu số nhánh dọn được", () => {
     location.hash = "#/projects";
   });
 
-  it("chưa fetch thì không quét, không hiện số; fetch trong bảng nhánh xong thì quét không fetch đúng repo đó rồi hiện số", async () => {
+  it("mở màn thì quét không fetch đúng một lần cho các repo đang hiện rồi hiện số; render lại không quét lặp", async () => {
+    const folder = "/w/badge-open";
+    const app = branchesApp(folder);
+    renderScreen();
+    await waitFor(() => expect(app.scanArgs()).toEqual([{ folders: [folder], fetch: false }]));
+    await app.finishScan(0, [scanned(folder, 2)]);
+
+    const button = await screen.findByRole("button", { name: /^Dọn nhánh: 2 nhánh có thể dọn/ });
+    expect(within(button).getByText("2")).toBeTruthy();
+    // Chờ thêm để một lượt quét thừa (nếu có) kịp lộ ra.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(app.scanArgs()).toHaveLength(1);
+    // Chỉ đếm: không có lệnh dọn và không có lệnh fetch nào chạy.
+    expect(app.calls.some((c) => c.command === "git_branches_clean" || c.command === "git_branches_fetch")).toBe(false);
+  });
+
+  it("lượt quét lúc mở còn chạy thì không mở lượt thứ hai cho cùng tập repo", async () => {
+    const folder = "/w/badge-once";
+    const app = branchesApp(folder);
+    const { rerender } = renderScreen();
+    await waitFor(() => expect(app.scanArgs()).toHaveLength(1));
+    rerender(
+      <AccountContext.Provider value={ACCOUNT}>
+        <ProjectsScreen />
+      </AccountContext.Provider>,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    expect(app.scanArgs()).toHaveLength(1);
+  });
+
+  it("fetch trong bảng nhánh xong thì quét không fetch lại đúng repo đó và số cập nhật", async () => {
     const folder = "/w/badge-fetch";
     const app = branchesApp(folder);
     const user = userEvent.setup();
     renderScreen();
-    expect(((await cleanButton()) as HTMLButtonElement).getAttribute("aria-label")).toBeNull();
-    expect(app.scanArgs()).toEqual([]);
+    await app.finishScan(0, [scanned(folder, 1)]);
+    expect(await screen.findByRole("button", { name: /^Dọn nhánh: 1 nhánh/ })).toBeTruthy();
 
     await app.fetchViaSheet(user);
-    await waitFor(() => expect(app.scanArgs()).toEqual([{ folders: [folder], fetch: false }]));
-    await app.finishScan(0, [scanned(folder, 2)]);
+    await waitFor(() =>
+      expect(app.scanArgs()).toEqual([
+        { folders: [folder], fetch: false },
+        { folders: [folder], fetch: false },
+      ]),
+    );
+    await app.finishScan(1, [scanned(folder, 3)]);
     // Bảng nhánh phủ màn Dự án (aria-hidden): đóng rồi mới thấy nút.
     await user.keyboard("{Escape}");
-
-    const button = await screen.findByRole("button", { name: /^Dọn nhánh: 2 nhánh có thể dọn/ });
-    expect(within(button).getByText("2")).toBeTruthy();
-    // Chỉ đếm: không có lệnh dọn nào chạy.
+    expect(await screen.findByRole("button", { name: /^Dọn nhánh: 3 nhánh có thể dọn/ })).toBeTruthy();
     expect(app.calls.some((c) => c.command === "git_branches_clean")).toBe(false);
+  });
+
+  it("fetch từ nhóm Git xong thì quét lại không fetch và số cập nhật", async () => {
+    const folder = "/w/badge-groups";
+    const host = {
+      id: "0a1b2c3d4e5f",
+      kind: "gitlab",
+      url: "https://git.example.invalid",
+      name: "GitLab",
+      username: "ha",
+    };
+    const group = {
+      id: "aaaaaaaaaaaa",
+      hostId: host.id,
+      path: "acme",
+      root: "/w",
+      protocol: "https",
+      repos: [
+        { path: "acme/api", name: "api", defaultBranch: "main", httpUrl: "https://git.example.invalid/acme/api.git" },
+      ],
+    };
+    const app = branchesApp(folder, { git_group_sync: () => "git-job-1" }, {
+      hosts: [host],
+      groups: [group],
+    } as Pick<GitGroups, "hosts" | "groups">);
+    const user = userEvent.setup();
+    renderScreen();
+    await app.finishScan(0, [scanned(folder, 1)]);
+    expect(await screen.findByRole("button", { name: /^Dọn nhánh: 1 nhánh/ })).toBeTruthy();
+
+    const card = await screen.findByRole("article", { name: "acme" });
+    await user.click(within(card).getByRole("button", { name: "Fetch" }));
+    await waitFor(() => expect(app.calls.some((c) => c.command === "git_group_sync")).toBe(true));
+    // Chưa xong thì chưa quét lại.
+    expect(app.scanArgs()).toHaveLength(1);
+    await app.emit("git-groups:event", { jobId: "git-job-1", event: { type: "start", action: "fetch", total: 1 } });
+    await app.emit("git-groups:event", {
+      jobId: "git-job-1",
+      event: { type: "done", action: "fetch", total: 1, done: 1 },
+    });
+
+    await waitFor(() =>
+      expect(app.scanArgs()).toEqual([
+        { folders: [folder], fetch: false },
+        { folders: [folder], fetch: false },
+      ]),
+    );
+    await app.finishScan(1, [scanned(folder, 4)]);
+    expect(await screen.findByRole("button", { name: /^Dọn nhánh: 4 nhánh/ })).toBeTruthy();
   });
 
   it("quét ra 0 ứng viên thì không hiện huy hiệu", async () => {
     const folder = "/w/badge-zero";
     const app = branchesApp(folder);
-    const user = userEvent.setup();
     renderScreen();
-    await app.fetchViaSheet(user);
     await app.finishScan(0, [scanned(folder, 0)]);
-    await user.keyboard("{Escape}");
     await waitFor(() => expect(app.scanArgs()).toHaveLength(1));
     const button = (await cleanButton()) as HTMLButtonElement;
     expect(button.textContent).toBe("Dọn nhánh");
@@ -504,11 +587,8 @@ describe("ProjectsScreen: huy hiệu số nhánh dọn được", () => {
     const app = branchesApp(folder);
     const user = userEvent.setup();
     renderScreen();
-    await app.fetchViaSheet(user);
     await app.finishScan(0, [scanned(folder, 3)]);
-    // Đóng bảng nhánh rồi mở Dọn nhánh ở đầu màn (quét có fetch của hộp thoại là lượt thứ hai).
-    await user.keyboard("{Escape}");
-    expect(await screen.findByRole("button", { name: /^Dọn nhánh: 3 nhánh/ })).toBeTruthy();
+    // Mở Dọn nhánh ở đầu màn (quét có fetch của hộp thoại là lượt thứ hai).
     await user.click(await screen.findByRole("button", { name: /^Dọn nhánh: 3 nhánh/ }));
     await waitFor(() =>
       expect(app.scanArgs()).toEqual([
@@ -530,12 +610,11 @@ describe("ProjectsScreen: huy hiệu số nhánh dọn được", () => {
     const folder = "/w/badge-auto";
     const app = branchesApp(folder);
     renderScreen();
-    await cleanButton();
+    await waitFor(() => expect(app.scanArgs()).toEqual([{ folders: [folder], fetch: false }]));
     await waitFor(() => expect(app.calls.some((c) => c.command === "git_groups")).toBe(true));
 
+    // Ba lượt tự fetch trong lúc lượt quét lúc mở còn chạy: chưa có lượt mới.
     await app.emit("git-groups:changed", null);
-    await waitFor(() => expect(app.scanArgs()).toEqual([{ folders: [folder], fetch: false }]));
-    // Hai lượt tự fetch nữa trong lúc lượt đầu còn chạy: chưa có lượt mới.
     await app.emit("git-groups:changed", null);
     await app.emit("git-groups:changed", null);
     expect(app.scanArgs()).toHaveLength(1);
@@ -548,12 +627,10 @@ describe("ProjectsScreen: huy hiệu số nhánh dọn được", () => {
     expect(app.scanArgs()).toHaveLength(2);
   });
 
-  it("repo quét lỗi giữ số cũ; lệnh quét chưa có (sidecar cũ) thì màn vẫn dùng được, không có huy hiệu", async () => {
+  it("repo quét lỗi giữ số cũ", async () => {
     const folder = "/w/badge-error";
     const app = branchesApp(folder);
     renderScreen();
-    await cleanButton();
-    await app.emit("git-groups:changed", null);
     await app.finishScan(0, [scanned(folder, 4)]);
     expect(await screen.findByRole("button", { name: /^Dọn nhánh: 4 nhánh/ })).toBeTruthy();
 
@@ -571,8 +648,6 @@ describe("ProjectsScreen: huy hiệu số nhánh dọn được", () => {
       },
     });
     renderScreen();
-    await cleanButton();
-    await app.emit("git-groups:changed", null);
     await waitFor(() => expect(app.scanArgs()).toHaveLength(1));
     // Yêu cầu sau vẫn được thử lại, không kẹt ở trạng thái "đang quét".
     await app.emit("git-groups:changed", null);
