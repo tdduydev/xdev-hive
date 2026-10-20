@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { detectMediaType, inspectFileType } from "./magic.ts";
+import { buildOle, encryptedOoxml, oleDoc } from "../../../test/ole-fixture.ts";
+import { detectMediaType, inspectFileType, inspectWordFile } from "./magic.ts";
 
 const inspect = (filename: string, data: Uint8Array, declaredType?: string) =>
   inspectFileType(
@@ -8,6 +9,22 @@ const inspect = (filename: string, data: Uint8Array, declaredType?: string) =>
     filename,
     declaredType,
   );
+const reader = (data: Uint8Array) => ({
+  size: data.length,
+  read: async (offset: number, length: number) => data.subarray(offset, offset + length),
+});
+const ODT = "application/vnd.oasis.opendocument.text";
+const odt = (mimetype = ODT, compression: "STORE" | "DEFLATE" = "STORE") =>
+  new JSZip()
+    .file("mimetype", mimetype, { compression })
+    .file("content.xml", "<office:document-content/>")
+    .file("META-INF/manifest.xml", "<manifest/>")
+    .generateAsync({ type: "uint8array", compression: "DEFLATE" });
+const docx = () =>
+  new JSZip()
+    .file("[Content_Types].xml", "<Types/>")
+    .file("word/document.xml", "<w:document/>")
+    .generateAsync({ type: "uint8array" });
 const samples = [
   ["image.PNG", "89504e470d0a1a0a", "image/png"],
   ["image.jpeg", "ffd8ffe000", "image/jpeg"],
@@ -77,5 +94,48 @@ describe("kiểm nội dung file", () => {
       ),
     ).rejects.toMatchObject({ code: "BLOB_TYPE_MISMATCH" });
     expect(await inspect("file.zip", await new JSZip().generateAsync({ type: "uint8array" }))).toBe("application/zip");
+  });
+  it("nhận .odt qua entry mimetype không nén; ODF khác hoặc mimetype bị nén chỉ là ZIP", async () => {
+    expect(await inspect("bao-cao.odt", await odt())).toBe(ODT);
+    expect(await inspect("bao-cao.zip", await odt("application/vnd.oasis.opendocument.spreadsheet"))).toBe(
+      "application/zip",
+    );
+    await expect(inspect("bang.odt", await odt("application/vnd.oasis.opendocument.spreadsheet"))).rejects.toThrow(
+      /không khớp/,
+    );
+    await expect(inspect("bao-cao.odt", await odt(ODT, "DEFLATE"))).rejects.toThrow(/không khớp/);
+    await expect(inspect("bao-cao.docx", await odt())).rejects.toThrow(/không khớp/);
+  });
+
+  it("nhận .doc Word 97-2003; file có mật khẩu báo BLOB_ENCRYPTED", async () => {
+    expect(await inspect("cu.doc", oleDoc())).toBe("application/msword");
+    await expect(inspect("mat-khau.docx", encryptedOoxml())).rejects.toMatchObject({ code: "BLOB_ENCRYPTED" });
+    await expect(inspect("mat-khau.xlsx", encryptedOoxml())).rejects.toMatchObject({ code: "BLOB_ENCRYPTED" });
+    // Word đổi đuôi khác vẫn được đính kèm như file lạ, như trước khi nhận dạng .doc.
+    expect(await inspect("cu.bin", oleDoc())).toBe("application/octet-stream");
+    // RTF lưu tên .doc và Excel 97 đổi đuôi .doc: đính kèm được như trước, nhưng không phải Word.
+    expect(await inspect("rtf.doc", Buffer.from("{\\rtf1\\ansi hello}"))).toBe("application/octet-stream");
+    const xls = buildOle([{ name: "Workbook", data: Buffer.alloc(4096) }]);
+    expect(await inspect("bang.doc", xls)).toBe("application/octet-stream");
+  });
+
+  it("nhập Word kiểm chặt: đuôi khớp nội dung, có mật khẩu, OLE hỏng", async () => {
+    expect(await inspectWordFile(reader(await docx()), "A.DOCX")).toBe("docx");
+    expect(await inspectWordFile(reader(oleDoc()), "cu.doc")).toBe("doc");
+    expect(await inspectWordFile(reader(await odt()), "moi.odt")).toBe("odt");
+    for (const [name, data] of [
+      ["doi-duoi.docx", oleDoc()],
+      ["doi-duoi.doc", await docx()],
+      ["rtf.doc", Buffer.from("{\\rtf1}")],
+      ["bang.doc", buildOle([{ name: "Workbook", data: Buffer.alloc(4096) }])],
+      ["hong.doc", oleDoc().subarray(0, 1024)],
+      ["anh.pdf", Buffer.from("%PDF-1.7")],
+    ] as const) {
+      await expect(inspectWordFile(reader(data), name), name).rejects.toMatchObject({ code: "BLOB_TYPE_MISMATCH" });
+    }
+    await expect(inspectWordFile(reader(encryptedOoxml()), "a.docx")).rejects.toMatchObject({ code: "BLOB_ENCRYPTED" });
+    await expect(inspectWordFile(reader(oleDoc({ encrypted: true })), "a.doc")).rejects.toMatchObject({
+      code: "BLOB_ENCRYPTED",
+    });
   });
 });

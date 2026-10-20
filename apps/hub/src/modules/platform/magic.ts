@@ -1,11 +1,18 @@
 import { extname } from "node:path";
 import { BadRequestError } from "./errors.ts";
+import { isOle, oleKind } from "./ole.ts";
 
 const OOXML = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 } as const;
+export const WORD_MEDIA_TYPES = {
+  docx: OOXML.docx,
+  doc: "application/msword",
+  odt: "application/vnd.oasis.opendocument.text",
+} as const;
+const OFFICE = new Set<string>([...Object.values(OOXML), WORD_MEDIA_TYPES.doc]);
 const extensions: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -16,6 +23,7 @@ const extensions: Record<string, string> = {
   zip: "application/zip",
   svg: "image/svg+xml",
   ...OOXML,
+  odt: WORD_MEDIA_TYPES.odt,
   txt: "text/plain",
   md: "text/plain",
   markdown: "text/plain",
@@ -54,6 +62,22 @@ function mismatch(): never {
   throw new BadRequestError("BLOB_TYPE_MISMATCH", "Đuôi file, loại MIME và nội dung file không khớp.");
 }
 
+function encrypted(): never {
+  throw new BadRequestError("BLOB_ENCRYPTED", "File có mật khẩu. Gỡ mật khẩu trong Word rồi gửi lại.");
+}
+
+const ODT_MIMETYPE_MAX = 128;
+
+/** ODF bắt buộc entry `mimetype` không nén; đọc nó qua local header vì central directory không chứa dữ liệu. */
+async function odfMimetype(reader: BlobReader, offset: number, size: number): Promise<string | null> {
+  if (size > ODT_MIMETYPE_MAX || offset + 30 > reader.size) return null;
+  const local = Buffer.from(await reader.read(offset, 30));
+  if (local.length !== 30 || local.readUInt32LE(0) !== 0x04034b50) return null;
+  const start = offset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
+  if (start + size > reader.size) return null;
+  return Buffer.from(await reader.read(start, size)).toString("ascii");
+}
+
 /** Chỉ đọc tên trong central directory; không giải nén dữ liệu do người dùng gửi. */
 async function zipType(reader: BlobReader): Promise<string> {
   const tailOffset = Math.max(0, reader.size - 65_557);
@@ -71,6 +95,7 @@ async function zipType(reader: BlobReader): Promise<string> {
   if (count === 0xffff || offset === 0xffffffff || tail.readUInt32LE(end + 4) !== 0 || stop > tailOffset + end)
     return mismatch();
   const names = new Set<string>();
+  let mimetype: { offset: number; size: number } | null = null;
   for (let i = 0; i < count; i++) {
     if (offset + 46 > stop) return mismatch();
     const header = Buffer.from(await reader.read(offset, 46));
@@ -78,7 +103,11 @@ async function zipType(reader: BlobReader): Promise<string> {
     const length = header.readUInt16LE(28);
     const next = offset + 46 + length + header.readUInt16LE(30) + header.readUInt16LE(32);
     if (next > stop) return mismatch();
-    names.add(Buffer.from(await reader.read(offset + 46, length)).toString("utf8"));
+    const name = Buffer.from(await reader.read(offset + 46, length)).toString("utf8");
+    names.add(name);
+    const size = header.readUInt32LE(20);
+    if (name === "mimetype" && header.readUInt16LE(10) === 0 && size === header.readUInt32LE(24))
+      mimetype = { offset: header.readUInt32LE(42), size };
     offset = next;
   }
   if (offset !== stop) return mismatch();
@@ -86,6 +115,10 @@ async function zipType(reader: BlobReader): Promise<string> {
     if (names.has("word/document.xml")) return OOXML.docx;
     if (names.has("xl/workbook.xml")) return OOXML.xlsx;
     if (names.has("ppt/presentation.xml")) return OOXML.pptx;
+  }
+  if (mimetype && names.has("content.xml")) {
+    if ((await odfMimetype(reader, mimetype.offset, mimetype.size)) === WORD_MEDIA_TYPES.odt)
+      return WORD_MEDIA_TYPES.odt;
   }
   return "application/zip";
 }
@@ -95,11 +128,22 @@ export async function inspectFileType(reader: BlobReader, filename?: string, dec
   let detected = detectMediaType(prefix);
   if (detected === "application/zip") detected = await zipType(reader);
   const declared = declaredType?.split(";")[0]?.trim().toLowerCase();
-  const expected = filename
-    ? extensions[extname(filename).slice(1).toLowerCase()]
+  const ext = filename ? extname(filename).slice(1).toLowerCase() : "";
+  let expected = filename
+    ? extensions[ext]
     : declared?.startsWith("text/") || declared === "application/json"
       ? declared
       : undefined;
+  if (!detected && isOle(prefix)) {
+    const kind = await oleKind(reader);
+    if (kind === "encrypted" && OFFICE.has(expected ?? "")) return encrypted();
+    // `.doc` không có trong bảng đuôi: file RTF hay HTML lưu tên `.doc`, hay Word đặt tên lạ, vẫn được đính kèm như
+    // trước. Chỉ Word thật mang tên `.doc` mới có loại `application/msword`; nhập Word kiểm chặt bằng `inspectWordFile`.
+    if (kind === "doc" && (ext === "doc" || !filename)) {
+      detected = WORD_MEDIA_TYPES.doc;
+      if (filename) expected = detected;
+    }
+  }
   if (filename && !expected && detected) return mismatch();
   if (expected && detected !== expected) {
     if (!detected && (expected.startsWith("text/") || expected === "application/json")) {
@@ -115,4 +159,21 @@ export async function inspectFileType(reader: BlobReader, filename?: string, dec
   const mediaType = detected ?? "application/octet-stream";
   if (declared && declared !== "application/octet-stream" && declared !== mediaType) return mismatch();
   return mediaType;
+}
+
+export type WordFormat = keyof typeof WORD_MEDIA_TYPES;
+
+/**
+ * Kiểm chặt cho lượt nhập Word (FR-002): đuôi `.docx`, `.doc`, `.odt` phải khớp nội dung. Word 97-2003 có mật khẩu bị
+ * báo `BLOB_ENCRYPTED` dù `inspectFileType` vẫn cho đính kèm nó như file thường.
+ */
+export async function inspectWordFile(reader: BlobReader, filename: string): Promise<WordFormat> {
+  const format = extname(filename).slice(1).toLowerCase();
+  if (!(format in WORD_MEDIA_TYPES)) return mismatch();
+  const word = format as WordFormat;
+  const prefix = await reader.read(0, Math.min(reader.size, 8));
+  if (isOle(prefix) && (await oleKind(reader)) === "encrypted") return encrypted();
+  const mediaType = await inspectFileType(reader, filename);
+  if (mediaType !== WORD_MEDIA_TYPES[word]) return mismatch();
+  return word;
 }
