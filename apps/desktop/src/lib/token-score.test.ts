@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { criterion, sampleScore } from "@/lib/token-score.fixture.ts";
 import {
+  announceTokenScore,
   copyReport,
   formatScore,
   formatValue,
   groupTotals,
   levelOf,
   needsSessionTip,
+  onTokenScoreChanged,
   scoreDelta,
   sortCriteria,
+  TOKEN_SCORE_UPDATED,
   tokenScore,
   tokenScoreFix,
   tokenScoreFixPreview,
@@ -195,6 +198,36 @@ describe("lệnh invoke", () => {
         args: { fixId: "optimizer.balanced", profileId: "claude-2", projectKey: null, backup: "20261019T000000Z" },
       },
     ]);
+  });
+});
+
+describe("onTokenScoreChanged", () => {
+  it("nghe cả thông báo trong cửa sổ lẫn sự kiện của Rust, và ngừng sau khi huỷ", async () => {
+    let rustHandler: ((e: { payload: null }) => void) | undefined;
+    let unlistened = false;
+    window.__TAURI__ = {
+      core: { invoke: async <T>() => ({}) as T },
+      event: {
+        listen: async (event, handler) => {
+          expect(event).toBe(TOKEN_SCORE_UPDATED);
+          rustHandler = handler as (e: { payload: null }) => void;
+          return () => {
+            unlistened = true;
+          };
+        },
+      },
+    };
+    let calls = 0;
+    const stop = onTokenScoreChanged(() => calls++);
+    await Promise.resolve();
+    announceTokenScore();
+    rustHandler?.({ payload: null });
+    expect(calls).toBe(2);
+    stop();
+    await Promise.resolve();
+    announceTokenScore();
+    expect(calls).toBe(2);
+    expect(unlistened).toBe(true);
   });
 });
 

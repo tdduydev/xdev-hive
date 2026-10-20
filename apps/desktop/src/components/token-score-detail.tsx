@@ -50,6 +50,8 @@ const text: Dict<{
   items: Record<string, string>;
   warnings: Record<string, string>;
   reasons: Record<string, string>;
+  modelShare: string;
+  families: Record<string, string>;
   cli: Record<string, string>;
   fixes: Record<FixId, { button: (profile: string) => string; title: string }>;
   pickProject: string;
@@ -175,8 +177,11 @@ const text: Dict<{
       codex_not_measured: "Codex chưa đo được tiêu chí này.",
       not_measured_yet: "Chưa đo được.",
       default: "Đang để mặc định của CLI.",
+      disabled: "Có nhưng đang tắt.",
       context_not_measured: "Chưa đo /context. Lệnh này gọi model nên chỉ chạy khi bạn bấm đo; kết quả giữ 7 ngày.",
     },
+    modelShare: "Token 7 ngày theo họ model",
+    families: { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku", fable: "Fable", gpt: "GPT", other: "Khác" },
     cli: { claude: "Claude Code", codex: "Codex", antigravity: "Antigravity", gemini: "Gemini" },
     fixes: {
       "optimizer.balanced": { button: (p) => `Bật tối ưu Cân bằng cho ${p}`, title: "Bật tối ưu mức Cân bằng" },
@@ -319,9 +324,12 @@ const text: Dict<{
       codex_not_measured: "Codex cannot measure this criterion yet.",
       not_measured_yet: "Not measured yet.",
       default: "Left at the CLI default.",
+      disabled: "Present but turned off.",
       context_not_measured:
         "/context has not been measured. It calls the model, so it only runs when you ask; the result is kept for 7 days.",
     },
+    modelShare: "7-day tokens by model family",
+    families: { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku", fable: "Fable", gpt: "GPT", other: "Other" },
     cli: { claude: "Claude Code", codex: "Codex", antigravity: "Antigravity", gemini: "Gemini" },
     fixes: {
       "optimizer.balanced": { button: (p) => `Enable Balanced optimizer for ${p}`, title: "Enable the Balanced level" },
@@ -666,6 +674,9 @@ function CriterionRow({
   const needsWork = c.status !== "ok" && c.status !== "unsupported";
   const reason = c.reason ? (t.reasons[c.reason] ?? c.reason) : undefined;
   const fixes = needsWork ? (c.fixes ?? []) : [];
+  // Khi A1 đã đủ điểm, thẻ ở trên đã có gợi ý tách phiên: lặp lại ở đây chỉ thêm chữ.
+  const hintShown =
+    needsWork && measured && !(c.id === "B2" && profile.criteria.some((x) => x.id === "A1" && x.status === "ok"));
   return (
     <li data-criterion={c.id} className="flex flex-col gap-1.5 border-b py-3 last:border-b-0">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -729,7 +740,10 @@ function CriterionRow({
           {w.file && <span className="font-mono"> {w.file}</span>}
         </p>
       ))}
-      {needsWork && measured && <p className="text-xs text-muted-foreground">{t.hints[c.id]}</p>}
+      {hintShown && <p className="text-xs text-muted-foreground">{t.hints[c.id]}</p>}
+      {c.id === "A8" && profile.modelShare && profile.modelShare.length > 0 && (
+        <ModelShare shares={profile.modelShare} />
+      )}
       {hints.map((h) => (
         <p key={h.title} className="rounded-lg bg-muted px-3 py-2 text-sm">
           <strong className="font-semibold">{h.title}.</strong> <span className="text-muted-foreground">{h.why}</span>
@@ -753,6 +767,30 @@ function CriterionRow({
       )}
       {showContext && fixes.includes("open.mcp") && <ContextList profile={profile} />}
     </li>
+  );
+}
+
+/** Tỉ trọng token theo họ model: chỉ để xem, không vào điểm. Chữ là nguồn chính, thanh chỉ minh hoạ. */
+function ModelShare({ shares }: { shares: NonNullable<ProfileScore["modelShare"]> }) {
+  const t = useT(text);
+  const lang = useLang();
+  return (
+    <div className="flex flex-col gap-1 text-xs">
+      <span className="text-muted-foreground">{t.modelShare}</span>
+      <ul className="flex flex-col gap-0.5">
+        {[...shares]
+          .sort((a, b) => b.share - a.share)
+          .map((m) => (
+            <li key={m.family} className="flex items-center gap-2">
+              <span className="w-16 shrink-0">{t.families[m.family] ?? m.family}</span>
+              <span aria-hidden="true" className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                <span className="block h-full bg-primary" style={{ width: `${Math.round(m.share * 100)}%` }} />
+              </span>
+              <span className="w-12 shrink-0 text-right font-mono">{formatValue(m.share, "ratio", lang)}</span>
+            </li>
+          ))}
+      </ul>
+    </div>
   );
 }
 

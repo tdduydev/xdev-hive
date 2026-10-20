@@ -1,4 +1,4 @@
-import { invoke } from "@/lib/tauri.ts";
+import { invoke, onTauriEvent } from "@/lib/tauri.ts";
 import { formatTokens } from "@/lib/usage.ts";
 
 /*
@@ -158,6 +158,20 @@ export const tokenScoreLast = () =>
 
 /** Rust phát sự kiện này khi lần tính nền hằng ngày xong, để thẻ điểm và huy hiệu đọc lại. */
 export const TOKEN_SCORE_UPDATED = "token-score-updated";
+const LOCAL_UPDATED = "hive:token-score-updated";
+
+/** Thẻ điểm báo trong cửa sổ này là vừa có dòng lịch sử mới (người dùng bấm tính lại, hay vừa sửa nhanh). */
+export const announceTokenScore = () => window.dispatchEvent(new Event(LOCAL_UPDATED));
+
+/** Nghe cả lần tính nền của Rust lẫn lần tính do thẻ điểm trong cửa sổ này; trả hàm huỷ nghe. */
+export function onTokenScoreChanged(handler: () => void): () => void {
+  window.addEventListener(LOCAL_UPDATED, handler);
+  const stop = onTauriEvent<null>(TOKEN_SCORE_UPDATED, handler);
+  return () => {
+    window.removeEventListener(LOCAL_UPDATED, handler);
+    stop();
+  };
+}
 
 /** Tốt ≥ 80, Khá 60–79, Cần cải thiện < 60 (spec 025 "Thang điểm"). */
 export function levelOf(score: number): Level {

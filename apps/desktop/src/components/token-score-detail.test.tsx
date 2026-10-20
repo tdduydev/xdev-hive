@@ -172,3 +172,66 @@ describe("TokenScoreDetail", () => {
     expect(within(claude).getAllByRole("button", { name: "Enable Balanced optimizer for Gói Max" }).length).toBe(2);
   });
 });
+
+describe("TokenScoreDetail: A8, B2 và lý do disabled", () => {
+  const withCriteria = (criteria: TokenScore["profiles"][number]["criteria"], extra = {}) => {
+    const score = sampleScore();
+    score.profiles = [{ ...(score.profiles[0] as TokenScore["profiles"][number]), criteria, ...extra }];
+    return score;
+  };
+  const B2 = (): ReturnType<typeof criterion> =>
+    criterion("B2", { status: "low", value: 0.6, unit: "ratio", earned: 0, max: 6 });
+
+  it("A8 hiện tỉ trọng token theo họ model, lớn nhất trước, chỉ để xem", () => {
+    const score = withCriteria([criterion("A8", { status: "partial", earned: 1, max: 3 })], {
+      modelShare: [
+        { family: "sonnet", share: 0.25 },
+        { family: "opus", share: 0.75 },
+      ],
+    });
+    render(<TokenScoreDetail score={score} onChanged={() => {}} onApplied={() => {}} />);
+    const row = screen.getByText("Model và effort mặc định").closest("li") as HTMLElement;
+    expect(within(row).getByText("Token 7 ngày theo họ model")).toBeTruthy();
+    const items = within(row).getAllByText(/^(Opus|Sonnet)$/);
+    expect(items.map((e) => e.textContent)).toEqual(["Opus", "Sonnet"]);
+    expect(within(row).getByText("75%")).toBeTruthy();
+    expect(within(row).queryByRole("button")).toBeNull();
+  });
+
+  it("không có modelShare thì A8 không hiện khối tỉ trọng", () => {
+    render(
+      <TokenScoreDetail
+        score={withCriteria([criterion("A8", { status: "partial", earned: 1, max: 3 })])}
+        onChanged={() => {}}
+        onApplied={() => {}}
+      />,
+    );
+    expect(screen.queryByText("Token 7 ngày theo họ model")).toBeNull();
+  });
+
+  it("B2: A1 chưa đủ thì giữ gợi ý tĩnh, A1 đủ thì bỏ vì thẻ đã có gợi ý tách phiên", () => {
+    const { unmount } = render(
+      <TokenScoreDetail
+        score={withCriteria([criterion("A1", { status: "partial", earned: 5, max: 10 }), B2()])}
+        onChanged={() => {}}
+        onApplied={() => {}}
+      />,
+    );
+    expect(screen.getByText("Sửa A1; /clear giữa các việc không liên quan.")).toBeTruthy();
+    unmount();
+    render(
+      <TokenScoreDetail score={withCriteria([criterion("A1"), B2()])} onChanged={() => {}} onApplied={() => {}} />,
+    );
+    expect(screen.queryByText("Sửa A1; /clear giữa các việc không liên quan.")).toBeNull();
+  });
+
+  it("lý do disabled có chữ riêng, cả hai ngôn ngữ", () => {
+    const score = withCriteria([criterion("A5", { status: "unknown", reason: "disabled", earned: 0, max: 3 })]);
+    const { unmount } = render(<TokenScoreDetail score={score} onChanged={() => {}} onApplied={() => {}} />);
+    expect(screen.getByText("Có nhưng đang tắt.")).toBeTruthy();
+    unmount();
+    setLang("en");
+    render(<TokenScoreDetail score={score} onChanged={() => {}} onApplied={() => {}} />);
+    expect(screen.getByText("Present but turned off.")).toBeTruthy();
+  });
+});

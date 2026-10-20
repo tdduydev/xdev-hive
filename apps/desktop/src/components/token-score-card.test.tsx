@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TokenScoreCard } from "@/components/token-score-card.tsx";
 import { setLang } from "@/lib/i18n.ts";
-import { sampleScore } from "@/lib/token-score.fixture.ts";
-import type { FixPreview, TokenScore } from "@/lib/token-score.ts";
+import { criterion, sampleScore } from "@/lib/token-score.fixture.ts";
+import type { FixPreview, HistoryEntry, TokenScore } from "@/lib/token-score.ts";
 
 type Handler = (args?: Record<string, unknown>) => unknown;
 
@@ -23,7 +23,10 @@ function fakeTauri(handlers: Record<string, Handler>) {
   return calls;
 }
 
-const commands = (calls: { command: string }[]) => calls.map((c) => c.command);
+// Lịch sử và cài đặt do hiệu ứng riêng của thẻ gọi; các test luồng sửa nhanh chỉ đếm lệnh điểm.
+const scoreCalls = <T extends { command: string }>(calls: T[]) =>
+  calls.filter((c) => c.command !== "token_score_history" && c.command !== "app_settings");
+const commands = (calls: { command: string }[]) => scoreCalls(calls).map((c) => c.command);
 
 const balancedPreview: FixPreview = {
   fixId: "optimizer.balanced",
@@ -254,13 +257,21 @@ describe("TokenScoreCard: sửa nhanh", () => {
     expect(within(dialog).getByText("200000")).toBeTruthy();
     // Chỉ xem trước: chưa ghi gì.
     expect(commands(calls)).toEqual(["token_score", "token_score_fix_preview"]);
-    expect(calls[1]?.args).toEqual({ fixId: "optimizer.balanced", profileId: "claude-2", projectKey: null });
+    expect(scoreCalls(calls)[1]?.args).toEqual({
+      fixId: "optimizer.balanced",
+      profileId: "claude-2",
+      projectKey: null,
+    });
 
     await user.click(within(dialog).getByRole("button", { name: "Áp dụng" }));
     expect(await screen.findByText("Đã áp dụng: Bật tối ưu mức Cân bằng (Gói Max).")).toBeTruthy();
     expect(await screen.findByText("61,2")).toBeTruthy();
     expect(commands(calls)).toEqual(["token_score", "token_score_fix_preview", "token_score_fix", "token_score"]);
-    expect(calls[2]?.args).toEqual({ fixId: "optimizer.balanced", profileId: "claude-2", projectKey: null });
+    expect(scoreCalls(calls)[2]?.args).toEqual({
+      fixId: "optimizer.balanced",
+      profileId: "claude-2",
+      projectKey: null,
+    });
     expect(screen.queryByRole("dialog")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Hoàn tác" }));
@@ -384,5 +395,68 @@ describe("TokenScoreCard: sửa nhanh", () => {
       projectKey: "q7",
       backup: null,
     });
+  });
+});
+
+describe("TokenScoreCard: lịch sử, tự tính lại, gợi ý phiên ngắn", () => {
+  const entry = (day: string, machine: number): HistoryEntry => ({
+    ts: `${day}T08:00:00Z`,
+    day,
+    scoreVersion: 2,
+    machine,
+    coverage: 87,
+    groups: {},
+    profiles: [],
+    criteria: {},
+  });
+
+  it("vẽ biểu đồ 30 ngày từ lịch sử", async () => {
+    fakeTauri({
+      token_score: () => sampleScore(),
+      token_score_history: (args) => {
+        expect(args).toEqual({ days: 30 });
+        return { entries: [entry("2026-10-18", 50), entry("2026-10-19", 55)] };
+      },
+    });
+    render(<TokenScoreCard />);
+    expect(await screen.findByRole("group", { name: /2 ngày có điểm/ })).toBeTruthy();
+  });
+
+  it("công tắc tự tính lại đọc và ghi cài đặt tokenScoreDaily", async () => {
+    const user = userEvent.setup();
+    const calls = fakeTauri({
+      token_score: () => sampleScore(),
+      token_score_history: () => ({ entries: [] }),
+      app_settings: () => ({ tokenScoreDaily: true }),
+      set_app_setting: () => ({ tokenScoreDaily: false }),
+    });
+    render(<TokenScoreCard />);
+    const toggle = await screen.findByRole("switch", { name: "Tự tính lại điểm mỗi ngày khi mở app" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(calls.find((c) => c.command === "set_app_setting")?.args).toEqual({
+        key: "tokenScoreDaily",
+        value: false,
+      }),
+    );
+  });
+
+  it("A1 đủ điểm mà B2 từ 50% thì hiện gợi ý tách phiên, không có nút sửa", async () => {
+    const score = sampleScore();
+    const claude = score.profiles[0];
+    if (!claude) throw new Error("thiếu gói mẫu");
+    claude.criteria = [criterion("A1"), criterion("B2", { status: "low", value: 0.6, earned: 0, max: 6 })];
+    fakeTauri({ token_score: () => score, token_score_history: () => ({ entries: [] }) });
+    render(<TokenScoreCard />);
+    const tip = await screen.findByText("Tách việc thành phiên ngắn, /clear giữa các việc không liên quan");
+    expect(within(tip.closest("li") ?? tip).queryByRole("button")).toBeNull();
+  });
+
+  it("A1 chưa đủ thì không hiện gợi ý tách phiên", async () => {
+    fakeTauri({ token_score: () => sampleScore(), token_score_history: () => ({ entries: [] }) });
+    render(<TokenScoreCard />);
+    await screen.findByText("Cần cải thiện");
+    expect(screen.queryByText(/Tách việc thành phiên ngắn/)).toBeNull();
   });
 });
