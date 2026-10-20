@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-git-branches-continue"
+description = "Enables the git_branches_continue command without any pre-configured scope."
+commands.allow = ["git_branches_continue"]
+
+[[permission]]
+identifier = "deny-git-branches-continue"
+description = "Denies the git_branches_continue command without any pre-configured scope."
+commands.deny = ["git_branches_continue"]

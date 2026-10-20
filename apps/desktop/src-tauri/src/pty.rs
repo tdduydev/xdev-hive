@@ -15,7 +15,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -168,6 +168,8 @@ pub struct Session {
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     pid: Option<u32>,
+    /// Thư mục lúc mở: đổi nhánh hay dọn worktree hỏi lại khi còn terminal ở đó (spec 026).
+    folder: PathBuf,
 }
 
 impl Session {
@@ -250,6 +252,7 @@ pub fn spawn(
         pid: child.process_id(),
         master: pair.master,
         writer,
+        folder: cwd.to_path_buf(),
     };
     Ok((session, reader, child))
 }
@@ -265,6 +268,19 @@ impl Ptys {
             .map(|m| {
                 m.iter()
                     .filter_map(|(id, s)| s.pid.map(|pid| (id.clone(), pid)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Thư mục của terminal đang mở, kèm id. Shell trong terminal có thể đã `cd` đi nơi khác; app không theo dõi được
+    /// nên giữ thư mục lúc mở.
+    pub fn folders(&self) -> Vec<(String, PathBuf)> {
+        self.0
+            .lock()
+            .map(|m| {
+                m.iter()
+                    .map(|(id, s)| (id.clone(), s.folder.clone()))
                     .collect()
             })
             .unwrap_or_default()
@@ -586,5 +602,28 @@ mod tests {
         session.kill();
         let _ = child.wait();
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_terminals_report_the_folder_they_started_in() {
+        let dir = std::env::temp_dir().join(format!("hive-pty-folder-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let env = term_env(Vec::new(), "/usr/bin:/bin", None);
+        let (session, _reader, mut child) = spawn(
+            &echo_spec("/bin/sh", &["-c", "cd /; sleep 30"]),
+            &dir,
+            env,
+            80,
+            24,
+        )
+        .unwrap();
+        let ptys = Ptys::default();
+        ptys.0.lock().unwrap().insert("pty-1".into(), session);
+        assert_eq!(ptys.folders(), vec![("pty-1".to_string(), dir.clone())]);
+        ptys.close_all();
+        let _ = child.wait();
+        assert!(ptys.folders().is_empty());
+        let _ = std::fs::remove_dir(&dir);
     }
 }
