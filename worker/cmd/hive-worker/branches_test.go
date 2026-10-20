@@ -90,8 +90,6 @@ func TestBranchesBadArgsExit2(t *testing.T) {
 func TestBranchesStubsNotImplemented(t *testing.T) {
 	abs := t.TempDir()
 	oneShot := [][]string{
-		{"switch", "--folder=" + abs, "--branch=main", "--carry"},
-		{"create", "--folder=" + abs, "--name=a", "--base=refs/heads/main", "--switch", "--dry-run"},
 		{"settings"},
 		{"settings-set"},
 		{"merge", "--folder=" + abs, "--onto=abc", "--onto-name=main", "--ff"},
