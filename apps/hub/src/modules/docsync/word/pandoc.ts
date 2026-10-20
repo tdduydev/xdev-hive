@@ -77,6 +77,8 @@ export async function runPandoc(input: RunPandocInput): Promise<PandocRun> {
     "-t",
     "gfm",
     "--wrap=none",
+    // Mặc định pandoc xuống dòng theo hệ điều hành: hub chạy Windows sẽ ra CRLF, khác byte với Linux (FR-013).
+    "--eol=lf",
     "--track-changes=accept",
     "--sandbox",
     `--extract-media=${MEDIA}`,
