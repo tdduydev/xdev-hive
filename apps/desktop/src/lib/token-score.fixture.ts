@@ -68,7 +68,7 @@ export function sampleScore(): TokenScore {
         ],
         fixes: ["tool.codegraph", "codegraph.mcp", "codegraph.init"],
       }),
-      criterion("A6", { status: "unknown", reason: "windows_rtk_unsupported", earned: 0, max: 3, fixes: ["tool.rtk"] }),
+      criterion("A6", { status: "unsupported", reason: "windows_rtk_unsupported", earned: 0, max: 3 }),
       criterion("A7", { earned: 3, max: 3 }),
       criterion("A8", { status: "low", earned: 1, max: 4, fixes: ["optimizer.aggressive"] }),
       criterion("B1", {

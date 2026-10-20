@@ -207,7 +207,9 @@ describe("TokenScoreCard: chi tiết", () => {
 
   it("nút mở màn khác và danh sách nhóm /context", async () => {
     const { user } = await open();
-    await user.click(screen.getByRole("button", { name: "Cài rtk ở màn Môi trường" }));
+    // RTK chưa dùng được trên Windows: không có nút cài.
+    expect(screen.queryByRole("button", { name: "Cài rtk ở màn Môi trường" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Cài codegraph ở màn Môi trường" }));
     expect(location.hash).toBe("#/setup");
     await user.click(screen.getByRole("button", { name: "Mở trong màn Memory" }));
     expect(location.hash).toBe("#/memory");
