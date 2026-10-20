@@ -1,6 +1,7 @@
 package branches
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -194,7 +195,8 @@ func IgnoredBlocking(ignored, rebuildable []string) []string {
 	return out
 }
 
-// readTree đọc status và thao tác dở của một thư mục làm việc.
+// readTree đọc status và thao tác dở của một thư mục làm việc. Submodule chỉ xét ở lượt đọc cho dọn (có file bị bỏ
+// qua): status, đổi nhánh, pull không cần, khỏi tốn thêm lệnh git.
 func (e Env) readTree(ctx context.Context, dir string, ignored bool) (tree, string, error) {
 	gitDir, err := e.gitDirOf(ctx, dir)
 	if err != nil {
@@ -204,7 +206,11 @@ func (e Env) readTree(ctx context.Context, dir string, ignored bool) (tree, stri
 	if err != nil {
 		return tree{}, "", err
 	}
-	return parseStatus(out), OperationIn(gitDir), nil
+	t := parseStatus(out)
+	if ignored && !t.submodule {
+		t.submodule = e.hasSubmodule(ctx, dir, gitDir)
+	}
+	return t, OperationIn(gitDir), nil
 }
 
 // pathState phân biệt worktree mất thư mục (cha còn, git worktree prune gỡ được) với worktree trên ổ chưa gắn hay thư
@@ -225,8 +231,61 @@ func pathState(path string) string {
 	return StateMissing
 }
 
-// hasSubmodule: git worktree remove từ chối worktree có submodule, nên dọn phải biết trước. .gitmodules có là coi như có submodule, kể cả khi chưa init: chặn thừa an toàn hơn sót.
-func hasSubmodule(path string) bool {
-	_, err := os.Stat(filepath.Join(path, ".gitmodules"))
-	return err == nil
+// hasSubmodule theo validate_no_submodules của git (builtin/worktree.c): git worktree remove từ chối khi thư mục git
+// riêng của worktree có modules/ (git submodule update trong worktree liên kết clone vào đó), hay khi index có gitlink
+// mà thư mục của gitlink có .git. Chỉ có .gitmodules, submodule chưa init thì git gỡ được (research mục 5) nên không
+// chặn. Đọc không chắc thì coi như có: chặn thừa an toàn hơn sót.
+func (e Env) hasSubmodule(ctx context.Context, dir, gitDir string) bool {
+	if info, err := os.Stat(filepath.Join(gitDir, "modules")); err == nil {
+		if info.IsDir() {
+			return true
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+	if maybe, err := mayHaveGitlink(gitDir); err != nil || !maybe {
+		return err != nil
+	}
+	out, err := e.read(ctx, dir, "ls-files", "--stage", "-z")
+	if err != nil {
+		return true
+	}
+	for entry := range strings.SplitSeq(out, "\x00") {
+		meta, path, ok := strings.Cut(entry, "\t")
+		if !ok || !strings.HasPrefix(meta, "160000 ") {
+			continue
+		}
+		// Git còn xét .git có trỏ tới thư mục git hợp lệ không; .git hỏng hiếm, chặn luôn cho gọn.
+		if _, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(path), ".git")); !errors.Is(err, os.ErrNotExist) {
+			return true
+		}
+	}
+	return false
+}
+
+// mayHaveGitlink đọc thẳng file index để khỏi gọi git cho mỗi worktree của repo không có gitlink: mọi bản index (2, 3,
+// 4) ghi mode của mục bằng 32 bit big-endian, gitlink 0160000 là 00 00 e0 00. Không có dãy byte đó thì chắc chắn không
+// có gitlink; có thì có thể chỉ trùng ở trường khác, để git ls-files trả lời. Split index để phần lớn mục ở
+// sharedindex.<mã> cạnh index, nên có file đó thì cũng hỏi git.
+func mayHaveGitlink(gitDir string) (bool, error) {
+	data, err := os.ReadFile(filepath.Join(gitDir, "index"))
+	if errors.Is(err, os.ErrNotExist) {
+		// Chưa có index (worktree add --no-checkout): git cũng coi như không có mục nào.
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	if bytes.Contains(data, []byte{0, 0, 0xe0, 0}) {
+		return true, nil
+	}
+	entries, err := os.ReadDir(gitDir)
+	if err != nil {
+		return false, err
+	}
+	for _, en := range entries {
+		if strings.HasPrefix(en.Name(), "sharedindex.") {
+			return true, nil
+		}
+	}
+	return false, nil
 }

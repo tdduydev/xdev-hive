@@ -536,7 +536,7 @@ func fillTree(info *WorktreeInfo, t tree, op string, rebuild []string) {
 	info.State = t.state()
 	info.Files, info.FilesTotal = t.files()
 	info.IgnoredBlocking, _ = capList(IgnoredBlocking(t.ignored, rebuild), maxFiles)
-	info.Submodule = t.submodule || hasSubmodule(info.Path)
+	info.Submodule = t.submodule
 	info.Operation = op
 }
 
