@@ -222,6 +222,9 @@ func List(ctx context.Context, env Env, folder string) *Listing {
 
 	r := &l.Repo
 	r.Current = statusOf(folder, main, mainOp)
+	if mainOp != "" {
+		r.Operation = env.pendingOperation(ctx, folder, mainOp)
+	}
 	r.GitVersion, r.SlowPath = refs.version, refs.slow
 	r.DefaultBranch, r.DefaultRef = refs.defaultBranch, refs.defaultRef
 	for _, name := range strings.Split(strings.TrimSpace(remOut), "\n") {

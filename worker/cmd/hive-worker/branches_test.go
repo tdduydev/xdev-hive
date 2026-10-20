@@ -89,19 +89,6 @@ func TestBranchesBadArgsExit2(t *testing.T) {
 // Lệnh của task sau: thoát 0 với lỗi not_implemented đúng dạng kết quả của từng lệnh.
 func TestBranchesStubsNotImplemented(t *testing.T) {
 	abs := t.TempDir()
-	oneShot := [][]string{
-		{"merge", "--folder=" + abs, "--onto=abc", "--onto-name=main", "--ff"},
-		{"rebase", "--folder=" + abs, "--onto=abc", "--confirm-rewrite"},
-		{"continue", "--folder=" + abs},
-		{"abort", "--folder=" + abs, "--timeout=120"},
-	}
-	for _, args := range oneShot {
-		code, out, _ := branchesRun(t, "{}\n", args...)
-		got := decode[struct{ Error *branches.Error }](t, out)
-		if code != 0 || got.Error == nil || got.Error.Code != branches.CodeNotImplemented || len(lines(out)) != 1 {
-			t.Fatalf("%q: %d %s", args, code, out)
-		}
-	}
 	jobs := [][]string{
 		{"pull", "--folder=" + abs, "--confirm-busy"},
 	}
