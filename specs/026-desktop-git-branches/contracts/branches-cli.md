@@ -682,7 +682,9 @@ hive-worker branches abort    --folder=F --timeout=150
 - `--onto` là mã commit đầy đủ đã đọc lúc người dùng bấm (FR-050); `--onto-name` chỉ để hiện và ghi nhật ký.
 - `merge`, `rebase`, thứ tự kiểm: `not_repo` → `detached` → `in_progress` → `not_found` (`--onto` không phải commit) →
   `busy` → `dirty` (thay đổi đã theo dõi **và** file chưa theo dõi, FR-051, tối đa 20 file) → rebase: đếm commit đã đẩy
-  `git rev-list --count <onto>..HEAD --remotes` [Inference: cách đếm, T015 kiểm lại], lớn hơn 0 mà thiếu
+  = `git rev-list --count HEAD --not <onto>` trừ `git rev-list --count HEAD --not <onto> --remotes` (commit sẽ bị viết
+  lại mà đã nằm trên ref remote nào đó; `--remotes` đặt sau `--not` nên ref remote là vế loại trừ, không phải vế thêm
+  vào, kiểm bằng `TestRebaseNeedsConfirmPushed`), lớn hơn 0 mà thiếu
   `--confirm-rewrite` thì `needsConfirm` với `count` → đọc `headBefore`, ghi nhật ký → trong khoá, `GIT_EDITOR=true`:
   `git merge --no-ff --no-edit --end-of-options <mã>` (bỏ `--no-ff` khi `--ff`) hay `git rebase --end-of-options <mã>`.
 - `continue`: không dở merge/rebase → `no_operation`; còn file `U` → trả `state: "conflict"` (không chạy git); không thì

@@ -198,7 +198,8 @@ Chủ dự án chốt Q7 = có. Cách làm sau là [Inference] của người đ
 - `branches merge --folder=… --onto=<mã> --onto-name=<tên hiện> [--ff]` và `branches rebase --folder=… --onto=<mã>
   --onto-name=…`:
   - kiểm: đứng trên nhánh, sạch (`status --porcelain=v2 --untracked-files=normal` rỗng), không dở thao tác (FR-012);
-  - rebase: đếm commit đã đẩy `git rev-list --count <onto>..HEAD --remotes` [Inference: cách đếm, kiểm lại khi làm];
+  - rebase: đếm commit đã đẩy = `rev-list --count HEAD --not <onto>` trừ `rev-list --count HEAD --not <onto> --remotes`
+    (theo contracts/branches-cli.md, T015 đã kiểm);
     lớn hơn 0 mà không có `--confirm-rewrite` thì trả `needsConfirm` kèm số commit;
   - đọc `headBefore` (`rev-parse HEAD`), ghi nhật ký;
   - trong khoá repo: `git merge --no-ff --no-edit --end-of-options <mã>` (bỏ `--no-ff` khi `--ff`) hay
