@@ -19,6 +19,33 @@ const gitEnv = {
 const git = (...args: string[]) => execFileSync("git", args, { env: gitEnv, encoding: "utf8" }).trim();
 
 console.log(`[cli giả] nhận việc: ${prompt.split("\n")[0]}`);
+
+// Một sub-agent theo đúng dạng dòng system/task_* của Claude Code 2.1.306 (specs/028): worker phải nhận ra và chỉ gửi
+// siêu dữ liệu lên hub. Prompt và summary chứa chuỗi đánh dấu để e2e kiểm chúng không rời máy.
+const subagent = "toolu_e2e_subagent_1";
+console.log(
+  JSON.stringify({
+    type: "system",
+    subtype: "task_started",
+    task_id: "e2e-task-1",
+    tool_use_id: subagent,
+    subagent_type: "Explore",
+    description: "tìm file README",
+    spawn_depth: 1,
+    prompt: "E2E-PROMPT-KHONG-DUOC-LEN-HUB",
+  }),
+);
+console.log(
+  JSON.stringify({
+    type: "system",
+    subtype: "task_notification",
+    task_id: "e2e-task-1",
+    tool_use_id: subagent,
+    status: "completed",
+    summary: "E2E-SUMMARY-KHONG-DUOC-LEN-HUB",
+    usage: { total_tokens: 1234, tool_uses: 2, duration_ms: 500 },
+  }),
+);
 const { HTTP_PROXY: proxyUrl } = process.env;
 const sandboxUrls = /\[e2e-sandbox:(http:\/\/[^\s]+) (http:\/\/[^\s\]]+)\]/.exec(prompt);
 if (sandboxUrls) {
