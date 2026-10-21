@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -622,5 +623,66 @@ func TestResultMessageCarriesSdlcArtifacts(t *testing.T) {
 	}
 	if plain := resultMessage("r", 1, 9, &runner.Result{Status: "succeeded"}); strings.Contains(string(plain.Report), "artifacts") {
 		t.Fatalf("report có artifacts dù không phải run sdlc: %s", plain.Report)
+	}
+}
+
+// Chờ tài khoản theo loại máy (máy dùng chung không giữ run chờ lâu; không tài khoản nào tự dùng lại được thì không
+// chờ), thay vì nhận rồi chờ tới khi run bị huỷ.
+func TestOfferAndWaitGiveUpOnUnusableAccounts(t *testing.T) {
+	saved := accountPoll
+	accountPoll = 5 * time.Millisecond
+	defer func() { accountPoll = saved }()
+	writeAccounts := func(t *testing.T, path string, enabled bool) {
+		body := string(codexAccounts(t))
+		if !enabled {
+			body = strings.Replace(body, `"enabled":true`, `"enabled":false`, 1)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	overWeek := func(reset time.Duration) func(t *testing.T, path string) {
+		return func(t *testing.T, path string) {
+			writeAccounts(t, path, true)
+			at := time.Now().Add(reset)
+			err := accounts.UpdateState(accounts.StatePath(path), time.Now(), func(s *accounts.State) {
+				s.Usage["codex-3"] = accounts.Usage{Week: &accounts.Limit{Percent: 99, ResetsAt: &at}}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	disabled := func(t *testing.T, path string) { writeAccounts(t, path, false) }
+	for _, c := range []struct {
+		name   string
+		shared bool
+		setup  func(t *testing.T, path string)
+		// accept: nhận đề nghị; waits: chờ tới khi run bị huỷ, không thì thôi chờ ngay với lỗi.
+		accept, waits bool
+	}{
+		{"dùng chung, quota tuần reset sau 3 ngày", true, overWeek(72 * time.Hour), false, false},
+		{"dùng chung, quota tuần reset sau 10 phút", true, overWeek(10 * time.Minute), true, true},
+		{"dùng chung, mọi gói tắt", true, disabled, false, false},
+		{"cá nhân, quota tuần reset sau 3 ngày", false, overWeek(72 * time.Hour), true, true},
+		{"cá nhân, mọi gói tắt", false, disabled, true, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			j := testJobs(t, 2)
+			j.shared = c.shared
+			path := filepath.Join(t.TempDir(), "accounts.json")
+			c.setup(t, path)
+			j.cfg.Accounts = accounts.NewPool(path)
+			j.onOffer(&JobOffer{RunID: "r", Attempt: 1, TTL: 30, Spec: json.RawMessage(`{"cli":"codex"}`)})
+			if o, ok := j.offers["r"]; ok != c.accept || (ok && (o.account != nil || !o.waitAccount)) {
+				t.Fatalf("nhận đề nghị = %v, muốn %v: %+v", ok, c.accept, o)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			got, err := j.waitAccount(ctx, "codex", accounts.RoleImplement, "r")
+			if got != nil || err == nil || errors.Is(err, context.DeadlineExceeded) != c.waits {
+				t.Fatalf("chờ tới khi huỷ = %v, muốn %v: %v", errors.Is(err, context.DeadlineExceeded), c.waits, err)
+			}
+		})
 	}
 }
