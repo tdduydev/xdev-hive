@@ -22,7 +22,6 @@ mod no_window;
 mod notices;
 mod optimizer;
 mod profiles;
-mod pty;
 mod register;
 mod remote;
 mod settings;
@@ -1094,7 +1093,6 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(State::default())
         .manage(cli::Runs::default())
-        .manage(pty::Ptys::default())
         .manage(agents::Agents::default())
         .manage(remote::Remote::default())
         .manage(git_groups::Jobs::default())
@@ -1152,6 +1150,7 @@ pub fn run() {
             profiles::cli_profile_discover_add,
             profiles::open_login_terminal,
             profiles::open_cli_terminal,
+            profiles::open_agent_terminal,
             claude_desktop::claude_desktop_profiles,
             claude_desktop::switch_claude_desktop,
             claude_desktop::restore_claude_desktop,
@@ -1225,10 +1224,6 @@ pub fn run() {
             files::folder_list,
             files::read_local_file,
             files::write_local_file,
-            pty::pty_open,
-            pty::pty_write,
-            pty::pty_resize,
-            pty::pty_close,
             agents::machine_agents,
             agents::machine_agent_counts,
             agents::machine_agent_stop,
@@ -1264,10 +1259,6 @@ pub fn run() {
                 if window.label() == APP && !settings::get(window.app_handle()).hide_on_close {
                     quit(window.app_handle());
                     return;
-                }
-                // Terminal nhúng gắn với cửa sổ đang mở: ẩn cửa sổ thì không để CLI chạy tiếp không ai thấy.
-                if window.label() == APP {
-                    window.app_handle().state::<pty::Ptys>().close_all();
                 }
             }
             if let WindowEvent::Focused(true) = event
@@ -1357,7 +1348,6 @@ pub fn run() {
         .expect("không khởi động được xDev Hive desktop")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                app.state::<pty::Ptys>().close_all();
                 remote::stop(app);
             }
             // Cmd+Q, đăng xuất hệ điều hành: dừng worker êm trước. app.exit() của quit() gửi lại sự kiện kèm mã, cho qua.

@@ -12,7 +12,7 @@ lại các khối này: khi vẽ, theo đúng bảng dưới.
 | `Markdown` | `packages/ui/src/markdown.tsx` | mọi chỗ render Markdown ngoài editor |
 | `CodeBlock` (tô màu, tên ngôn ngữ, nút chép, số dòng) | `packages/ui/src/code-block.tsx` | `Markdown` và khối code của Tiptap |
 | `MermaidDiagram`, `renderMermaid` | `packages/ui/src/mermaid-diagram.tsx`, `mermaid-render.ts` | `Markdown` và khối Mermaid của Tiptap |
-| Bảng màu terminal | `packages/ui/src/terminal-theme.ts` | terminal nhúng của app, Terminal Leader trên web |
+| Bảng màu terminal | `packages/ui/src/terminal-theme.ts` | Terminal Leader và phiên từ xa trên web |
 
 Không chép style sang chỗ khác. Màu đi theo token (`tokens.json`), đổi sáng/tối bằng class `.dark` ở `<html>`.
 

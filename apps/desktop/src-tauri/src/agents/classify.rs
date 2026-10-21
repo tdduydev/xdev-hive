@@ -57,9 +57,7 @@ pub enum Source {
         session_id: Option<String>,
         hub_id: Option<String>,
     },
-    App {
-        pty: Option<String>,
-    },
+    App,
     ClaudeDesktop,
     OtherApp {
         name: String,
@@ -77,8 +75,6 @@ pub(crate) struct HiveSession {
 
 pub(crate) struct Context<'a> {
     pub app_pid: u32,
-    /// Terminal của app: id PTY và pid tiến trình nó chạy.
-    pub ptys: &'a [(String, u32)],
     pub hive: &'a [HiveSession],
 }
 
@@ -346,19 +342,8 @@ fn source(tree: &Tree, p: &Proc, ctx: &Context) -> (Source, bool) {
         };
         return (unknown, true);
     }
-    if let Some((id, _)) = chain
-        .iter()
-        .find_map(|pid| ctx.ptys.iter().find(|(_, p)| p == pid))
-    {
-        return (
-            Source::App {
-                pty: Some(id.clone()),
-            },
-            false,
-        );
-    }
     if up.contains(&ctx.app_pid) {
-        return (Source::App { pty: None }, false);
+        return (Source::App, false);
     }
     if procs_up().any(|a| a.exe.as_deref().is_some_and(is_claude_desktop_exe)) {
         return (Source::ClaudeDesktop, false);
@@ -517,7 +502,6 @@ mod tests {
 
     const NONE: Context<'static> = Context {
         app_pid: 0,
-        ptys: &[],
         hive: &[],
     };
 
@@ -747,10 +731,8 @@ mod tests {
             pid: 31,
             hub_id: Some("h-9".into()),
         }];
-        let ptys = [("pty-3".to_string(), 40)];
         let ctx = Context {
             app_pid: 2,
-            ptys: &ptys,
             hive: &hive,
         };
         let rows = rows(&procs, &ctx);
@@ -778,13 +760,8 @@ mod tests {
             }
         );
         assert!(under(32));
-        assert_eq!(
-            source(41),
-            Source::App {
-                pty: Some("pty-3".into())
-            }
-        );
-        assert_eq!(source(42), Source::App { pty: None });
+        assert_eq!(source(41), Source::App);
+        assert_eq!(source(42), Source::App);
         assert_eq!(source(51), Source::ClaudeDesktop);
         assert_eq!(
             source(61),

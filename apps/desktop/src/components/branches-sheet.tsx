@@ -40,8 +40,8 @@ import {
   withWorktreeEvents,
 } from "@/lib/git-branches.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
-import { openProjectTerminal } from "@/lib/pty.ts";
 import { errorText } from "@/lib/tauri.ts";
+import { openProjectTerminal } from "@/lib/terminal.ts";
 import { cn } from "@/lib/utils.ts";
 
 type Tab = "local" | "remote" | "worktree";
@@ -435,6 +435,7 @@ export function BranchesSheet({
   onChanged: () => void;
 }) {
   const t = useT(text);
+  const [termError, setTermError] = useState<string | null>(null);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="top-0 right-0 left-auto flex h-full max-w-full translate-x-0 translate-y-0 flex-col gap-3 rounded-none sm:max-w-160 sm:rounded-l-xl motion-reduce:animate-none data-open:slide-in-from-right-8 data-open:zoom-in-100 data-closed:slide-out-to-right-8 data-closed:zoom-out-100">
@@ -442,13 +443,13 @@ export function BranchesSheet({
           <DialogTitle>{t.title(name)}</DialogTitle>
           <DialogDescription className="truncate font-mono text-xs">{shortPath(folder)}</DialogDescription>
         </DialogHeader>
+        {termError && <Alert variant="destructive">{termError}</Alert>}
         <BranchesBody
           folder={folder}
           onChanged={onChanged}
           onTerminal={(path) => {
-            openProjectTerminal(path);
-            location.hash = "#/terminal";
-            onClose();
+            setTermError(null);
+            openProjectTerminal(path).catch((e: unknown) => setTermError(errorText(e)));
           }}
         />
       </DialogContent>

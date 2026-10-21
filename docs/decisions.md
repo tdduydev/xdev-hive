@@ -16,6 +16,7 @@ Chốt qua hỏi đáp ngày 11/10/2026. Phân tích hệ cũ (repo [`tdduydev/x
 | Đăng nhập | Cả ba: SSO OIDC, GitHub/GitLab OAuth, email + mật khẩu |
 | Dữ liệu cũ | Chuyển memory, tài liệu, skill. Task và run để lại hub cũ, chỉ đọc |
 | Desktop | App nhẹ bằng Tauri (gói worker + cửa sổ web) |
+| Terminal trên desktop | Nút Terminal và "Mở bằng agent" mở cửa sổ terminal của máy (Terminal của macOS, terminal mặc định của Windows) chạy đúng CLI, gói và thư mục. Bỏ terminal nhúng xterm.js + PTY (22/10/2026) vì hay lỗi gõ, dán, IME, màu |
 | Tổ chức, quyền | Tổ chức → Đội → Hệ thống → Dự án |
 | Merge | Mỗi dự án tự cấu hình (cần người duyệt hoặc tự merge khi đạt điều kiện) |
 | Chi phí AI | Chỉ theo dõi theo đội, dự án, người, CLI. Không tự chặn |

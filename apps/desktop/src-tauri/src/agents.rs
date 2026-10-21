@@ -317,7 +317,6 @@ fn feed_target(
     let snap = collect(sys, false);
     let ctx = Context {
         app_pid: std::process::id(),
-        ptys: &[],
         hive: &[],
     };
     let rows = classify::rows(&snap.procs, &ctx);
@@ -499,7 +498,6 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
 /// Mọi agent trên máy, kèm việc đang làm đọc từ file phiên của chính CLI.
 #[tauri::command]
 pub async fn machine_agents(app: AppHandle) -> Result<Scan, String> {
-    let ptys = app.state::<crate::pty::Ptys>().pids();
     let read = app.clone();
     let (snap, under_worker) = blocking(move || {
         let state = read.state::<Agents>();
@@ -507,7 +505,6 @@ pub async fn machine_agents(app: AppHandle) -> Result<Scan, String> {
         let snap = collect(inner.sys.get_or_insert_with(System::new), true);
         let ctx = Context {
             app_pid: std::process::id(),
-            ptys: &ptys,
             hive: &[],
         };
         let under = classify::rows(&snap.procs, &ctx)
@@ -521,12 +518,10 @@ pub async fn machine_agents(app: AppHandle) -> Result<Scan, String> {
     } else {
         Vec::new()
     };
-    let ptys = app.state::<crate::pty::Ptys>().pids();
     let read = app.clone();
     blocking(move || {
         let ctx = Context {
             app_pid: std::process::id(),
-            ptys: &ptys,
             hive: &hive,
         };
         let rows = classify::rows(&snap.procs, &ctx);
@@ -551,7 +546,6 @@ pub async fn machine_agent_counts(app: AppHandle) -> Result<Counts, String> {
         let snap = collect(inner.sys.get_or_insert_with(System::new), false);
         let ctx = Context {
             app_pid: std::process::id(),
-            ptys: &[],
             hive: &[],
         };
         let mut counts = Counts::default();
@@ -577,7 +571,6 @@ pub async fn machine_agent_stop(app: AppHandle, pid: u32, started_at: u64) -> Re
         let snap = collect(sys, false);
         let ctx = Context {
             app_pid: std::process::id(),
-            ptys: &[],
             hive: &[],
         };
         let rows = classify::rows(&snap.procs, &ctx);
@@ -657,7 +650,6 @@ mod tests {
 
     const NONE: Context<'static> = Context {
         app_pid: 0,
-        ptys: &[],
         hive: &[],
     };
 

@@ -7,7 +7,6 @@ describe("menu theo hồ sơ", () => {
     expect(items.map((i) => i.id)).toEqual([
       "home",
       "agents",
-      "terminal",
       "tree",
       "runs",
       "remote",
@@ -27,23 +26,13 @@ describe("menu theo hồ sơ", () => {
 
   it("writer: không có worker, gói, môi trường; Skills và Tài liệu từ code chỉ đọc", () => {
     const items = navItems("writer");
-    expect(items.map((i) => i.id)).toEqual([
-      "home",
-      "agents",
-      "terminal",
-      "skills",
-      "memory",
-      "tokens",
-      "ssh",
-      "docs",
-      "settings",
-    ]);
+    expect(items.map((i) => i.id)).toEqual(["home", "agents", "skills", "memory", "tokens", "ssh", "docs", "settings"]);
     expect(items.filter((i) => i.readOnly).map((i) => i.id)).toEqual(["skills", "docs"]);
   });
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(15);
+    expect(items).toHaveLength(14);
     expect(items.some((i) => i.readOnly)).toBe(false);
   });
 
@@ -51,7 +40,7 @@ describe("menu theo hồ sơ", () => {
     const groups = navGroups("lead");
     expect(groups.map((g) => [g.label.vi, g.untitled ?? false, g.items.map((i) => i.label.vi)])).toEqual([
       ["Máy này", true, ["Máy này"]],
-      ["Chạy", false, ["Agent trên máy", "Terminal", "Cây giao việc", "Lượt chạy", "Điều khiển từ xa"]],
+      ["Chạy", false, ["Agent trên máy", "Cây giao việc", "Lượt chạy", "Điều khiển từ xa"]],
       ["Agent", false, ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"]],
       ["Dự án", false, ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code"]],
     ]);

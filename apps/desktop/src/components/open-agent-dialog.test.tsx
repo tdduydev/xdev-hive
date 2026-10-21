@@ -5,11 +5,7 @@ import { FOLDER, fakeTauri, type Handler, status } from "@/components/branch-tes
 import { OpenAgentButton, pullTarget } from "@/components/open-agent-dialog.tsx";
 import type { BranchEvent, BranchStatus } from "@/lib/git-branches.ts";
 import { setLang } from "@/lib/i18n.ts";
-import { resetTerminals, terminals } from "@/lib/pty.ts";
 import { rememberTermDefault } from "@/lib/term-defaults.ts";
-
-vi.mock("@xterm/xterm", () => import("@/test-fake-xterm.ts"));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {} }));
 
 const plan = (id: string, cli: string, extra: { enabled?: boolean; loggedIn?: boolean; priority?: number } = {}) => ({
   id,
@@ -44,6 +40,7 @@ function fakeApp(extra: Record<string, Handler> = {}) {
       ids.pull = `pull-${++seq}`;
       return ids.pull;
     },
+    open_agent_terminal: () => null,
     ...extra,
   });
   const event = window.__TAURI__?.event;
@@ -68,12 +65,11 @@ function renderButton(branch: BranchStatus | undefined, onPulled = () => {}) {
 describe("OpenAgentButton", () => {
   beforeEach(() => {
     setLang("vi");
-    resetTerminals();
     localStorage.clear();
     location.hash = "";
   });
 
-  it("chỉ cho chọn gói đã đăng nhập, đang bật; pull xong mới mở terminal bỏ hỏi quyền", async () => {
+  it("chỉ cho chọn gói đã đăng nhập, đang bật; pull xong mới mở terminal của máy bỏ hỏi quyền", async () => {
     const app = fakeApp();
     const onPulled = vi.fn();
     const user = userEvent.setup();
@@ -89,19 +85,17 @@ describe("OpenAgentButton", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Pull rồi mở không hỏi quyền" }));
     await waitFor(() => expect(app.named("git_branches_pull")).toEqual([{ folder: FOLDER, confirmBusy: false }]));
-    expect(terminals().sessions).toEqual([]);
+    expect(app.named("open_agent_terminal")).toEqual([]);
 
     await app.emit(app.ids.pull, { type: "done", folder: FOLDER, pull: { state: "done", behind: 3 } });
-    await waitFor(() => expect(terminals().sessions).toHaveLength(1));
-    expect(terminals().sessions[0]).toMatchObject({
-      cli: "claude",
-      planId: "claude-2",
-      bypass: true,
-      folder: FOLDER,
-      label: "Claude Code · claude-2",
-    });
+    await waitFor(() =>
+      expect(app.named("open_agent_terminal")).toEqual([
+        { cli: "claude", planId: "claude-2", bypass: true, folder: FOLDER },
+      ]),
+    );
     expect(onPulled).toHaveBeenCalledOnce();
-    expect(location.hash).toBe("#/terminal");
+    expect(location.hash).toBe("");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(JSON.stringify(localStorage)).not.toContain("bypass");
   });
 
@@ -116,7 +110,7 @@ describe("OpenAgentButton", () => {
     await waitFor(() => expect(app.ids.pull).not.toBe(""));
     await app.emit(app.ids.pull, { type: "done", folder: FOLDER, error: { code: "dirty", message: "lỗi dirty" } });
     await screen.findByText(/lỗi dirty|thay đổi/);
-    expect(terminals().sessions).toEqual([]);
+    expect(app.named("open_agent_terminal")).toEqual([]);
   });
 
   it("nhánh không theo dõi remote thì mở luôn, không pull; đổi CLI chọn sẵn gói của CLI đó", async () => {
@@ -136,7 +130,25 @@ describe("OpenAgentButton", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Mở không hỏi quyền" }));
     expect(app.named("git_branches_pull")).toEqual([]);
-    expect(terminals().sessions[0]).toMatchObject({ cli: "claude", planId: "claude-2", bypass: true });
+    await waitFor(() =>
+      expect(app.named("open_agent_terminal")).toEqual([
+        { cli: "claude", planId: "claude-2", bypass: true, folder: FOLDER },
+      ]),
+    );
+  });
+
+  it("không mở được terminal thì giữ hộp thoại và hiện lỗi", async () => {
+    fakeApp({
+      open_agent_terminal: () => {
+        throw "Không tìm thấy ứng dụng terminal.";
+      },
+    });
+    const user = userEvent.setup();
+    renderButton(status({ branch: "local-only" }));
+    await user.click(screen.getByRole("button", { name: /Pull rồi mở shop bằng agent/ }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Mở không hỏi quyền" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("Không tìm thấy ứng dụng terminal.");
   });
 });
 

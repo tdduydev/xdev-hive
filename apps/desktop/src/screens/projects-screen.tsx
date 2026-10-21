@@ -50,8 +50,8 @@ import {
   setProjectFull,
   unbindProject,
 } from "@/lib/local-projects.ts";
-import { openProjectTerminal } from "@/lib/pty.ts";
 import { errorText } from "@/lib/tauri.ts";
+import { openProjectTerminal } from "@/lib/terminal.ts";
 import { cn } from "@/lib/utils.ts";
 
 const text: Dict<{
@@ -719,24 +719,27 @@ function LocalRepoList({
 }
 
 /**
- * Mở màn Terminal ở thư mục dự án, bằng CLI và gói dùng lần cuối ở đó (lib/term-defaults.ts); gói đó không còn dùng
+ * Mở terminal của máy ở thư mục dự án, bằng CLI và gói dùng lần cuối ở đó (lib/term-defaults.ts); gói đó không còn dùng
  * được thì bằng gói đã đăng nhập, đang bật có ưu tiên cao nhất.
  */
 function TerminalButton({ name, folder }: { name: string; folder: string }) {
   const t = useT(text);
+  const [error, setError] = useState<string | null>(null);
   return (
     <Button
       size="sm"
       variant="outline"
       aria-label={t.terminalLabel(name)}
+      title={error ?? undefined}
+      className={cn(error && "border-destructive text-destructive")}
       onClick={async () => {
+        setError(null);
         // Bản worker cũ chưa có `accounts --json` thì mở bằng gói đã nhớ hay đăng nhập mặc định như trước.
         const plans = await cliProfiles().then(
           (p) => p.accounts,
           () => [],
         );
-        openProjectTerminal(folder, plans);
-        location.hash = "#/terminal";
+        await openProjectTerminal(folder, plans).catch((e: unknown) => setError(errorText(e)));
       }}
     >
       <SquareTerminalIcon aria-hidden="true" />

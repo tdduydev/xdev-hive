@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { segments } from "@/components/doc-view.tsx";
 import { type Account, AccountContext } from "@/lib/account.ts";
 import {
@@ -17,49 +17,7 @@ import {
 import { saveFolder } from "@/lib/folder.ts";
 import type { HubProject } from "@/lib/hub.ts";
 import { setLang } from "@/lib/i18n.ts";
-import { resetTerminals } from "@/lib/pty.ts";
 import { DocsScreen, slugify } from "@/screens/docs-screen.tsx";
-
-/** xterm.js giả: jsdom không có canvas. Ghi lại thứ được vẽ và cho test gõ phím vào. */
-interface FakeTerm {
-  options: Record<string, unknown>;
-  written: (string | Uint8Array)[];
-  focused: number;
-  type: (data: string) => void;
-}
-const xterm = vi.hoisted(() => ({ terms: [] as FakeTerm[] }));
-vi.mock("@xterm/xterm", () => ({
-  Terminal: class {
-    cols = 80;
-    rows = 24;
-    options: Record<string, unknown>;
-    written: (string | Uint8Array)[] = [];
-    focused = 0;
-    type: (data: string) => void = () => {};
-    constructor(options: Record<string, unknown>) {
-      this.options = options;
-      xterm.terms.push(this);
-    }
-    unicode = { activeVersion: "6" };
-    loadAddon() {}
-    open() {}
-    focus() {
-      this.focused++;
-    }
-    dispose() {}
-    write(data: string | Uint8Array) {
-      this.written.push(data);
-    }
-    onData(handler: (data: string) => void) {
-      this.type = handler;
-      return { dispose() {} };
-    }
-    onResize() {
-      return { dispose() {} };
-    }
-  },
-}));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {} }));
 
 const FOLDER = "/w/payment-api";
 const KEY = "project/payment-api/architecture";
@@ -102,7 +60,6 @@ function fakeTauri() {
     "go.mod": "module example.com/w\n\ngo 1.27\n",
     "internal/channel/ws.go": "package channel\n\nfunc Dial() {}\n",
   };
-  let ptys = 0;
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     workspace_meta: () => ({
       folder: FOLDER,
@@ -164,10 +121,7 @@ function fakeTauri() {
         },
       ],
     }),
-    pty_open: () => `pty-${++ptys}`,
-    pty_write: () => null,
-    pty_resize: () => null,
-    pty_close: () => null,
+    open_agent_terminal: () => null,
     cli_accounts: () => [
       {
         engine: "claude",
@@ -341,8 +295,6 @@ describe("DocsScreen", () => {
   beforeEach(() => {
     setLang("vi");
     resetAgentStore();
-    resetTerminals();
-    xterm.terms.length = 0;
     saveFolder(FOLDER);
   });
 
@@ -721,73 +673,21 @@ describe("DocsScreen", () => {
     });
   });
 
-  it("tab Terminal: mở PTY trong thư mục bằng gói đã chọn, gõ phím, bỏ hỏi quyền phải xác nhận, đóng tab", async () => {
-    const { calls, emit } = fakeTauri();
+  it("nút Terminal mở terminal của máy ở thư mục, bằng gói dùng lần cuối, không bỏ hỏi quyền", async () => {
+    const { calls } = fakeTauri();
+    localStorage.setItem("hive.terminal.defaults", JSON.stringify({ [FOLDER]: { cli: "claude", planId: "claude-2" } }));
     const user = userEvent.setup();
     renderDocs();
     const panel = screen.getByRole("complementary", { name: "Hỏi về thư mục này" });
-    await user.click(within(panel).getByRole("tab", { name: "Terminal" }));
-    expect(within(panel).getByText(/Mở terminal để chạy Claude Code, Codex, Antigravity hay shell/)).toBeTruthy();
-    await within(panel).findByRole("option", { name: /claude-2 · ha@acme\.vn/ });
-    // Gói của CLI khác không hiện.
-    expect(within(panel).queryByRole("option", { name: /codex-1/ })).toBeNull();
-    await user.selectOptions(within(panel).getByRole("combobox", { name: "Gói agent" }), "claude-2");
-    await user.click(within(panel).getAllByRole("button", { name: "Mở terminal" })[0] as HTMLElement);
+    expect(within(panel).queryByRole("tab", { name: "Terminal" })).toBeNull();
+    await user.click(within(panel).getByRole("button", { name: "Mở terminal của máy ở thư mục này" }));
     await waitFor(() =>
-      expect(calls.find((c) => c.command === "pty_open")?.args).toEqual({
+      expect(calls.find((c) => c.command === "open_agent_terminal")?.args).toEqual({
         cli: "claude",
         planId: "claude-2",
         bypass: false,
         folder: FOLDER,
-        cols: 80,
-        rows: 24,
       }),
     );
-    const term = xterm.terms[0] as FakeTerm;
-    await waitFor(() => expect(within(panel).getByRole("tab", { name: /Claude Code · claude-2/ })).toBeTruthy());
-    await emit("pty:data", { id: "pty-1", data: btoa("Welcome to Claude Code") });
-    // Output đến trước khi pty_open trả id thì được giữ lại, vẽ khi terminal chuyển sang chạy.
-    await waitFor(() =>
-      expect(new TextDecoder().decode(term.written.at(-1) as Uint8Array)).toBe("Welcome to Claude Code"),
-    );
-    term.type("/help\r");
-    expect(calls.find((c) => c.command === "pty_write")?.args).toEqual({ id: "pty-1", data: "/help\r" });
-
-    // Bỏ hỏi quyền: hộp xác nhận, rồi terminal mới (tab con) chạy với cờ cố định của Rust. Đổi CLI thì chọn sẵn gói đang
-    // bật của CLI đó.
-    await user.selectOptions(within(panel).getByRole("combobox", { name: "Chạy" }), "codex");
-    await user.click(within(panel).getByRole("checkbox", { name: "Bỏ hỏi quyền" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/--dangerously-bypass-approvals-and-sandbox/)).toBeTruthy();
-    await user.click(within(dialog).getByRole("button", { name: "Mở không hỏi quyền" }));
-    expect(within(panel).getByRole("checkbox", { name: "Bỏ hỏi quyền" })).toHaveProperty("checked", true);
-    await user.click(within(panel).getByRole("button", { name: "Terminal mới" }));
-    await waitFor(() =>
-      expect(calls.filter((c) => c.command === "pty_open").at(-1)?.args).toMatchObject({
-        cli: "codex",
-        planId: "codex-1",
-        bypass: true,
-      }),
-    );
-    // Mỗi terminal bỏ hỏi quyền phải xác nhận lại.
-    expect(within(panel).getByRole("checkbox", { name: "Bỏ hỏi quyền" })).toHaveProperty("checked", false);
-    expect(
-      within(panel)
-        .getByRole("tab", { name: /Codex.*bỏ hỏi quyền/ })
-        .getAttribute("aria-selected"),
-    ).toBe("true");
-
-    // Terminal chỉ nhận pty:exit sau khi pty_open trả id; lúc đó app gọi focus().
-    await waitFor(() => expect((xterm.terms[1] as FakeTerm).focused).toBeGreaterThan(0));
-    await emit("pty:exit", { id: "pty-2", code: 0 });
-    expect(within(panel).getByRole("tab", { name: /Codex.*đã thoát/ })).toBeTruthy();
-    await user.click(within(panel).getByRole("button", { name: "Đóng Claude Code · claude-2" }));
-    expect(calls.find((c) => c.command === "pty_close")?.args).toEqual({ id: "pty-1" });
-    expect(within(panel).queryByRole("tab", { name: /claude-2/ })).toBeNull();
-
-    // Sang Chat rồi quay lại: terminal còn đó.
-    await user.click(within(panel).getByRole("tab", { name: "Chat" }));
-    await user.click(within(panel).getByRole("tab", { name: "Terminal" }));
-    expect(within(panel).getByRole("tab", { name: /Codex/ })).toBeTruthy();
   });
 });

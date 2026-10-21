@@ -689,6 +689,91 @@ pub async fn open_cli_terminal(
         .map_err(|e| e.to_string())?
 }
 
+/// Lệnh mở CLI trong thư mục dự án, bằng gói agent (`plan`: danh sách gói của worker và id gói chọn) hay đăng nhập mặc
+/// định của CLI. Gói phải là gói của đúng CLI đó.
+pub(crate) fn agent_launch(
+    cli: &str,
+    plan: Option<(&[Account], &str)>,
+    folder: &str,
+    home: Option<&Path>,
+    bypass: bool,
+) -> Result<Launch, String> {
+    let binary = cli_binary(cli).ok_or_else(|| format!("Chưa mở được CLI {cli} từ app."))?;
+    if folder.trim().is_empty() {
+        return Err("Chưa chọn thư mục dự án.".into());
+    }
+    if let Some((list, id)) = plan {
+        let id = id.trim();
+        if list
+            .iter()
+            .find(|a| a.id == id)
+            .is_some_and(|a| a.cli != cli)
+        {
+            return Err(format!("Gói {id} không phải gói của {cli}."));
+        }
+        return cli_launch(list, id, Some(folder), home, bypass);
+    }
+    let mut argv = vec![binary.to_string()];
+    if bypass {
+        argv.push(
+            bypass_flag(cli)
+                .ok_or_else(|| format!("CLI {cli} không có chế độ bỏ hỏi quyền."))?
+                .into(),
+        );
+    }
+    Ok(Launch {
+        argv,
+        env: None,
+        path: None,
+        cwd: Some(work_dir(folder, home)?),
+        note: if bypass {
+            "xDev Hive: mở CLI bằng đăng nhập mặc định, BỎ HỎI QUYỀN: CLI tự chạy lệnh và sửa file không hỏi lại."
+        } else {
+            "xDev Hive: mở CLI bằng đăng nhập mặc định."
+        },
+    })
+}
+
+/// Nút Terminal và "Mở bằng agent" của dự án: mở cửa sổ terminal của máy (Terminal của macOS, terminal mặc định của
+/// Windows) chạy Claude Code, Codex, Antigravity hay shell trong thư mục dự án. App không tự vẽ terminal nữa: terminal
+/// của máy đã lo gõ, dán, IME, màu, cỡ chữ ổn hơn. Cửa sổ chỉ gửi loại CLI, id gói và thư mục; binary, cờ và thư mục
+/// đăng nhập cố định ở đây và lấy từ worker.
+#[tauri::command]
+pub async fn open_agent_terminal(
+    app: AppHandle,
+    cli: String,
+    plan_id: Option<String>,
+    bypass: Option<bool>,
+    folder: String,
+) -> Result<(), String> {
+    let bypass = bypass.unwrap_or(false);
+    let plan_id = plan_id.filter(|p| !p.trim().is_empty());
+    if cli == "shell" {
+        if bypass || plan_id.is_some() {
+            return Err("Shell không có gói agent hay chế độ bỏ hỏi quyền.".into());
+        }
+        return crate::git_groups::open_folder_terminal(folder).await;
+    }
+    let accounts = match &plan_id {
+        Some(_) => {
+            let Accounts { accounts } =
+                sidecar_json(&app, vec!["accounts".into(), "--json".into()], vec![]).await?;
+            accounts
+        }
+        None => Vec::new(),
+    };
+    let job = agent_launch(
+        &cli,
+        plan_id.as_deref().map(|id| (accounts.as_slice(), id)),
+        &folder,
+        home_dir().as_deref(),
+        bypass,
+    )?;
+    tauri::async_runtime::spawn_blocking(move || open_terminal(&job))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -976,6 +1061,38 @@ mod tests {
             plan("gemini-1", "gemini", None),
             plan("claude-9", "claude", Some("/x\"; rm -rf ~; \"")),
         ]
+    }
+
+    #[test]
+    fn agent_terminal_uses_fixed_binaries_flags_and_plan_folders() {
+        let home = Path::new("/Users/duy");
+        let folder = env!("CARGO_MANIFEST_DIR");
+        let list = plans();
+        let default = agent_launch("claude", None, folder, Some(home), false).unwrap();
+        assert_eq!(default.argv, ["claude"]);
+        assert_eq!(default.env, None);
+        assert_eq!(default.cwd.as_deref(), Some(folder));
+        assert_eq!(
+            agent_launch("codex", None, folder, None, true).unwrap().argv,
+            ["codex", "--dangerously-bypass-approvals-and-sandbox"]
+        );
+        let claude =
+            agent_launch("claude", Some((&list, "claude-2")), folder, Some(home), false).unwrap();
+        assert_eq!(
+            claude.env,
+            Some((
+                "CLAUDE_CONFIG_DIR",
+                "/Users/duy/.xdev-hive/accounts/claude-2".into()
+            ))
+        );
+        assert_eq!(claude.cwd.as_deref(), Some(folder));
+        // Gói của CLI khác, gói không có, CLI lạ, thiếu thư mục: từ chối.
+        assert!(agent_launch("codex", Some((&list, "claude-1")), folder, None, false).is_err());
+        assert!(agent_launch("claude", Some((&list, "claude-9")), folder, None, false).is_err());
+        assert!(agent_launch("/bin/sh", None, folder, None, false).is_err());
+        assert!(agent_launch("shell", None, folder, None, false).is_err());
+        assert!(agent_launch("claude", None, " ", None, false).is_err());
+        assert!(agent_launch("claude", None, "/no/such/dir/hive", None, false).is_err());
     }
 
     #[test]

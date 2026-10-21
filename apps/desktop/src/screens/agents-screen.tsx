@@ -29,8 +29,8 @@ import {
   projectOf,
   stopMachineAgent,
 } from "@/lib/machine-agents.ts";
-import { openTerminal, selectFolder, selectTerminal, stopTerminal, terminals } from "@/lib/pty.ts";
 import { errorText, invoke } from "@/lib/tauri.ts";
+import { openAgentTerminal } from "@/lib/terminal.ts";
 
 /** Đọc lại danh sách mỗi ngần này khi màn đang mở; CPU % tính giữa hai lần đọc. */
 const POLL_MS = 3_000;
@@ -61,7 +61,6 @@ const text: Dict<{
   guessed: string;
   openRun: string;
   openSession: string;
-  openTab: string;
   terminalHere: string;
   openFeed: string;
   stop: string;
@@ -70,7 +69,6 @@ const text: Dict<{
   stopRun: string;
   stopDesktop: string;
   stopHive: string;
-  stopTab: string;
   stopChildren: (n: number) => string;
   stopOk: string;
   cancel: string;
@@ -85,7 +83,7 @@ const text: Dict<{
     sources: {
       run: "Hive run",
       hive: "Phiên hive",
-      app: "Terminal trong app",
+      app: "Trong app",
       claudeDesktop: "Claude Desktop",
       otherApp: "App khác",
       terminal: "Terminal của bạn",
@@ -106,7 +104,6 @@ const text: Dict<{
     guessed: "(đoán theo thư mục)",
     openRun: "Mở run trên web",
     openSession: "Mở phiên trên web",
-    openTab: "Mở tab",
     terminalHere: "Terminal ở thư mục này",
     openFeed: "Xem hoạt động:",
     stop: "Dừng…",
@@ -115,7 +112,6 @@ const text: Dict<{
     stopRun: "Run của Hive sẽ báo lỗi. Muốn dừng gọn thì huỷ run trên web.",
     stopDesktop: "Phiên trong Claude Desktop sẽ ngắt.",
     stopHive: "Phiên hive sẽ đóng; thiết bị đang xem từ xa cũng mất phiên.",
-    stopTab: "Tab Terminal của app chuyển sang đã thoát.",
     stopChildren: (n) => `Cũng dừng ${n} agent con chạy bên dưới.`,
     stopOk: "Dừng",
     cancel: "Huỷ",
@@ -131,7 +127,7 @@ const text: Dict<{
     sources: {
       run: "Hive run",
       hive: "Hive session",
-      app: "Terminal in the app",
+      app: "In the app",
       claudeDesktop: "Claude Desktop",
       otherApp: "Other app",
       terminal: "Your terminal",
@@ -152,7 +148,6 @@ const text: Dict<{
     guessed: "(guessed from the folder)",
     openRun: "Open run on the web",
     openSession: "Open session on the web",
-    openTab: "Open tab",
     terminalHere: "Terminal in this folder",
     openFeed: "View activity:",
     stop: "Stop…",
@@ -161,7 +156,6 @@ const text: Dict<{
     stopRun: "The Hive run will fail. To stop it cleanly, cancel the run on the web.",
     stopDesktop: "The Claude Desktop session will be cut off.",
     stopHive: "The hive session closes; remote viewers lose it too.",
-    stopTab: "The app's Terminal tab will show as exited.",
     stopChildren: (n) => `Also stops ${n} child ${n === 1 ? "agent" : "agents"} below it.`,
     stopOk: "Stop",
     cancel: "Cancel",
@@ -171,17 +165,6 @@ const text: Dict<{
 };
 
 const LOCALE: Record<Lang, string> = { vi: "vi-VN", en: "en-GB" };
-
-/** Tab của app chạy agent này (theo id PTY), nếu có. */
-function appTab(a: MachineAgent) {
-  if (a.source.kind !== "app" || !a.source.pty) return null;
-  const pty = a.source.pty;
-  return terminals().sessions.find((s) => s.ptyId === pty) ?? null;
-}
-
-function goTerminal() {
-  location.hash = "#/terminal";
-}
 
 function AgentRow({
   agent: a,
@@ -220,7 +203,6 @@ function AgentRow({
           : t.defaultPlan;
   const projectText = a.source.kind === "run" ? (a.hiveProject ?? "—") : (project?.name ?? "—");
   const since = act?.at ? Math.max(0, Math.round((Date.now() - Date.parse(act.at)) / 1000)) : null;
-  const tab = appTab(a);
   const runId = a.source.kind === "run" ? a.source.runId : null;
   const hubId = a.source.kind === "hive" ? a.source.hubId : null;
   const openHub = (path: string) => invoke("open_hub_page", { path }).catch((e) => onError(errorText(e)));
@@ -299,29 +281,15 @@ function AgentRow({
             {t.openSession}
           </Button>
         )}
-        {tab && (
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={() => {
-              selectFolder(tab.folder);
-              selectTerminal(tab.key);
-              goTerminal();
-            }}
-          >
-            <SquareTerminalIcon aria-hidden="true" />
-            {t.openTab}
-          </Button>
-        )}
         {a.cwd && (
           <Button
             size="xs"
             variant="outline"
             onClick={() => {
               const cwd = a.cwd as string;
-              selectFolder(cwd);
-              openTerminal({ cli: "shell", planId: null, bypass: false, folder: cwd, label: "Shell" });
-              goTerminal();
+              openAgentTerminal({ cli: "shell", planId: null, bypass: false, folder: cwd }).catch((e: unknown) =>
+                onError(errorText(e)),
+              );
             }}
           >
             <SquareTerminalIcon aria-hidden="true" />
@@ -419,9 +387,7 @@ export function AgentsScreen() {
   async function confirmStop(a: MachineAgent) {
     setStopping(null);
     try {
-      const tab = appTab(a);
-      if (tab && tab.cli !== "shell") stopTerminal(tab.key);
-      else if (a.source.kind === "hive" && a.source.sessionId)
+      if (a.source.kind === "hive" && a.source.sessionId)
         await invoke("remote_session_kill", { id: a.source.sessionId });
       else await stopMachineAgent(a.pid, a.startedAt);
     } catch (e) {
@@ -435,8 +401,6 @@ export function AgentsScreen() {
     if (a.source.kind === "run") out.push(t.stopRun);
     if (a.source.kind === "claudeDesktop") out.push(t.stopDesktop);
     if (a.source.kind === "hive" && a.source.sessionId) out.push(t.stopHive);
-    const tab = appTab(a);
-    if (tab && tab.cli !== "shell") out.push(t.stopTab);
     if (a.children > 0) out.push(t.stopChildren(a.children));
     return out;
   };

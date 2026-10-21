@@ -13,7 +13,6 @@ import {
   PlayIcon,
   ServerIcon,
   SettingsIcon,
-  SquareTerminalIcon,
   ZapIcon,
 } from "lucide-react";
 import type { Dict } from "@/lib/i18n.ts";
@@ -60,7 +59,6 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
 export type ScreenId =
   | "home"
   | "agents"
-  | "terminal"
   | "tree"
   | "runs"
   | "remote"
@@ -118,13 +116,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: ActivityIcon,
       },
       {
-        // Terminal nhúng theo từng dự án, gói agent chọn sẵn; trước chỉ là một tab trong Tài liệu từ code.
-        id: "terminal",
-        label: { vi: "Terminal", en: "Terminal" },
-        icon: SquareTerminalIcon,
-      },
-      {
-        // Cây Leader giao việc cho agent trên các máy (specs/028 US4), cạnh Terminal vì là lối mở tới terminal của run.
+        // Cây Leader giao việc cho agent trên các máy (specs/028 US4), cạnh Agent trên máy vì là lối mở tới terminal của run.
         // Dữ liệu của đội trên hub nên cần kết nối Hive; cùng quyền với Lượt chạy vì người xem đội không giao việc.
         id: "tree",
         label: { vi: "Cây giao việc", en: "Delegation tree" },
