@@ -158,7 +158,8 @@ describe("TerminalPane", () => {
     render(<TerminalPane folder={SHOP} onPickFolder={() => {}} />);
     await screen.findByRole("option", { name: "claude-3" });
     const picker = screen.getByRole("combobox", { name: "Gói agent" }) as HTMLSelectElement;
-    expect(picker.value).toBe("claude-3");
+    // Gói mặc định được chọn trong effect chạy sau khi danh sách gói đọc xong.
+    await waitFor(() => expect(picker.value).toBe("claude-3"));
     expect([...picker.options].map((o) => o.value)).toEqual(["", "claude-3", "claude-2"]);
   });
 

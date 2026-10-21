@@ -82,7 +82,7 @@ describe("OpenAgentButton", () => {
     const dialog = await screen.findByRole("dialog");
     await within(dialog).findByRole("option", { name: "claude-2" });
     const picker = within(dialog).getByRole("combobox", { name: "Gói agent" }) as HTMLSelectElement;
-    expect(picker.value).toBe("claude-2");
+    await waitFor(() => expect(picker.value).toBe("claude-2"));
     expect([...picker.options].map((o) => o.value)).toEqual(["", "claude-2"]);
     expect(within(dialog).getByText("Pull feature từ origin/feature trước khi mở.")).toBeTruthy();
     expect(within(dialog).getByText(/--dangerously-skip-permissions/)).toBeTruthy();
@@ -127,7 +127,9 @@ describe("OpenAgentButton", () => {
     await user.click(screen.getByRole("button", { name: /Pull rồi mở shop bằng agent/ }));
     const dialog = await screen.findByRole("dialog");
     await within(dialog).findByRole("option", { name: "codex-1" });
-    expect((within(dialog).getByRole("combobox", { name: "Chạy" }) as HTMLSelectElement).value).toBe("codex");
+    await waitFor(() =>
+      expect((within(dialog).getByRole("combobox", { name: "Chạy" }) as HTMLSelectElement).value).toBe("codex"),
+    );
     expect(within(dialog).getByText("Không pull: nhánh chưa theo dõi nhánh remote nào.")).toBeTruthy();
     await user.selectOptions(within(dialog).getByRole("combobox", { name: "Chạy" }), "claude");
     expect((within(dialog).getByRole("combobox", { name: "Gói agent" }) as HTMLSelectElement).value).toBe("claude-2");
