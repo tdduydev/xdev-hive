@@ -225,17 +225,15 @@ interface FixResult { fixId: FixId; profile: string; backup?: string }   // opti
 
 ## Đợt 4: P3 (Q5)
 
-- [ ] **T010 [US6] [nặng] · 2 ngày — Hợp đồng, bảng `machine_token_scores`, route** (plan mục 9)
-  - **Tạm giữ: làm sau khi spec 027 có plan** (chủ dự án, 2026-10-20). Lý do: spec 027 đã định cách máy gửi dữ liệu
-    lên hub, nên T010 phải theo đó thay vì tự đặt riêng:
-    - FR-004: `idempotencyKey` và `source` cho mỗi lần gửi;
-    - FR-011: hộp thư đi của `hive-worker`;
-    - FR-012: phân loại việc ghi khi hub vắng;
-    - FR-050, FR-054: ranh giới dữ liệu được gửi;
-    - định danh máy bằng khoá máy, thay PAT.
-    Cần thêm ADR "máy gửi điểm token" trước khi làm.
-- [ ] **T011 [US6] [vừa] · 1,5 ngày — Web: cột điểm ở danh sách máy, trang chi tiết**
-  - **Tạm giữ: làm sau khi spec 027 có plan** (cùng lý do với T010; T011 chờ hợp đồng của T010).
+- [x] **T010 [US6] [nặng] · 2 ngày — Hợp đồng, bảng `machine_token_scores`, route** (plan mục 9)
+  - Làm theo [ADR 0036](../../docs/adr/0036-machine-sends-token-score.md) sau khi spec 027 có plan (2026-10-21), thay
+    cho cách gửi bằng PAT của plan mục 9:
+    - sự kiện client `machine.token_score`, khoá chống trùng, nguồn `worker`, ghi `client_events` (lát đầu của 027 US1);
+    - máy gửi bằng danh tính máy (`hwm_` tới khi ADR 0033 xong), bật tắt bằng `hive-worker optimize report on|off`;
+    - hub chặn lần gửi cách lần trước dưới 10 phút; giữ 90 ngày;
+    - hub vắng: giữ một bản chưa gửi tới khi có hộp thư đi (027 US2).
+- [x] **T011 [US6] [vừa] · 1,5 ngày — Web: cột điểm ở danh sách máy, trang chi tiết**
+  - Cột "Điểm token" ở danh sách máy và trang máy, hộp thoại chi tiết theo tiêu chí và xu hướng 90 ngày.
 
 ## Đợt 5: tài liệu và đo thật
 

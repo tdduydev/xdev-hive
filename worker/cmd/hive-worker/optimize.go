@@ -24,7 +24,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/tokenreport"
 )
 
-const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --profile ID [--level balanced|aggressive] [--rtk] | disable --profile ID | restore --profile ID [--backup THỜI_ĐIỂM] | link | report [--profile ID] [--days N] | score [--days N] [--fresh] | score history [--days N | --last] | score mark --fix MÃ --action apply|undo | fix MÃ --profile ID [--preview | --undo]] [--config FILE] [--json]"
+const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --profile ID [--level balanced|aggressive] [--rtk] | disable --profile ID | restore --profile ID [--backup THỜI_ĐIỂM] | link | report [--profile ID] [--days N] | report on|off|status | score [--days N] [--fresh] | score history [--days N | --last] | score mark --fix MÃ --action apply|undo | fix MÃ --profile ID [--preview | --undo]] [--config FILE] [--json]"
 
 // Test thay thư mục nhà, giờ, phiên bản CLI, RTK, /context và công cụ trên PATH để không đụng máy thật.
 var (
@@ -97,6 +97,11 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	scoreAction := ""
 	if action == "score" && len(args) > 0 && (args[0] == "history" || args[0] == "mark") {
 		scoreAction, args = args[0], args[1:]
+	}
+	// `report on|off|status` bật, tắt gửi điểm lên hub (ADR 0036); `report` không kèm lệnh con vẫn là báo cáo token.
+	reportAction := ""
+	if action == "report" && len(args) > 0 && (args[0] == "on" || args[0] == "off" || args[0] == "status") {
+		reportAction, args = args[0], args[1:]
 	}
 	fs := flag.NewFlagSet("optimize "+action, flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -189,6 +194,9 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "Đã đặt liên kết hive-worker tại %s\n", path)
 		return 0
 	case "report":
+		if reportAction != "" {
+			return optimizeScoreReport(filepath.Dir(o.StatePath()), cfg, reportAction, *asJSON, stdout, stderr)
+		}
 		return optimizeReport(o, file, *profile, *days, *asJSON, stdout, stderr)
 	case "score":
 		switch scoreAction {
@@ -197,7 +205,7 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 		case "mark":
 			return optimizeScoreMark(o, *markFix, *markAction, stdout, stderr)
 		}
-		return optimizeScore(o, file, *days, *fresh, *profile, *asJSON, stdout, stderr)
+		return optimizeScore(o, file, cfg, *days, *fresh, *profile, *asJSON, stdout, stderr)
 	case "fix":
 		if fixID == "" {
 			fmt.Fprintln(stderr, optimizeUsage)

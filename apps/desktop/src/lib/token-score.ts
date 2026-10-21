@@ -156,6 +156,20 @@ export const tokenScoreHistory = (days = 30) =>
 export const tokenScoreLast = () =>
   invoke<{ entries: HistoryEntry[] }>("token_score_last").then((r) => r.entries.at(-1) ?? null);
 
+/**
+ * Cài đặt gửi điểm lên hub (ADR 0036). `registered` false: máy chưa đăng ký với hub nên worker không gửi dù đã bật.
+ * `pending` true: còn một báo cáo hub chưa nhận, lần tính sau gửi lại.
+ */
+export interface ScoreReportStatus {
+  enabled: boolean;
+  registered: boolean;
+  lastSentAt: string | null;
+  pending: boolean;
+}
+export const tokenScoreReportStatus = () => invoke<ScoreReportStatus>("token_score_report_status");
+export const setTokenScoreReport = (enabled: boolean) =>
+  invoke<ScoreReportStatus>("token_score_report_set", { enabled });
+
 /** Rust phát sự kiện này khi lần tính nền hằng ngày xong, để thẻ điểm và huy hiệu đọc lại. */
 export const TOKEN_SCORE_UPDATED = "token-score-updated";
 const LOCAL_UPDATED = "hive:token-score-updated";

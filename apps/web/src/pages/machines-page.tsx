@@ -44,6 +44,7 @@ import type { MachineTab } from "@/lib/route-search.ts";
 import { CLI_LABEL, RUN_STATE_LABEL, runStateTone, shortId } from "@/lib/run-view.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { MachineAccountsPanel } from "@/pages/machine-accounts.tsx";
+import { TokenScoreCell, TokenScoreDialog } from "@/pages/machine-token-score.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { DetailHeader, PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
@@ -91,6 +92,7 @@ const text: Dict<{
   runs: string;
   cli: string;
   worker: string;
+  tokenScore: string;
   actions: string;
   states: Record<Status | "busy", string>;
   seen: (ago: string) => string;
@@ -222,6 +224,7 @@ const text: Dict<{
     runs: "Run",
     cli: "CLI",
     worker: "Worker",
+    tokenScore: "Điểm token",
     actions: "Thao tác",
     states: {
       online: "Sẵn sàng",
@@ -361,6 +364,7 @@ const text: Dict<{
     runs: "Runs",
     cli: "CLI",
     worker: "Worker",
+    tokenScore: "Token score",
     actions: "Actions",
     states: {
       online: "Ready",
@@ -681,6 +685,7 @@ export function MachinesPage() {
   }
   const [revoking, setRevoking] = useState<Machine | null>(null);
   const [labelling, setLabelling] = useState<Machine | null>(null);
+  const [scoring, setScoring] = useState<Machine | null>(null);
   const selectedTeam = teams.data?.find((team) => team.id === teamId) ?? teams.data?.[0];
   const active = useTeamActiveRuns(selectedTeam?.id);
   const machines = useQuery({
@@ -805,7 +810,7 @@ export function MachinesPage() {
               rowLabel={(machine) => machine.name}
               placeholder={t.search}
               onRowClick={(machine) => void open(machine)}
-              minWidth={760}
+              minWidth={860}
               facets={[
                 {
                   key: "status",
@@ -928,6 +933,14 @@ export function MachinesPage() {
                   ),
                 },
                 {
+                  key: "tokenScore",
+                  label: t.tokenScore,
+                  // Máy chưa gửi điểm xếp dưới máy có điểm 0, để sắp giảm dần không đẩy chúng lên đầu.
+                  value: (machine) => (machine.tokenScore ? (machine.tokenScore.score ?? -1) : -2),
+                  sortable: true,
+                  cell: (machine) => <TokenScoreCell machine={machine} now={now} onOpen={() => setScoring(machine)} />,
+                },
+                {
                   key: "actions",
                   label: t.actions,
                   value: () => null,
@@ -997,6 +1010,7 @@ export function MachinesPage() {
         {labelling && <MachineLabelsDialog machine={labelling} onClose={() => setLabelling(null)} />}
       </Dialog>
       <RevokeDialog machine={revoking} actions={actions} onClose={() => setRevoking(null)} />
+      <TokenScoreDialog machine={scoring} onClose={() => setScoring(null)} />
     </>
   );
 }
@@ -1326,6 +1340,7 @@ function MachineOverview({
   // Trang đầu của tab Lượt chạy, cùng khoá truy vấn: run đang giữ chỗ luôn nằm trong các run mới nhất.
   const runs = useMachineRuns(machine.id, undefined);
   const running = runs.data?.items.filter(isActiveRun) ?? [];
+  const [scoring, setScoring] = useState(false);
   return (
     <>
       {machine.status === "offline" && <Alert variant="destructive">{t.offline(machine.name)}</Alert>}
@@ -1373,6 +1388,10 @@ function MachineOverview({
                   ),
                 },
                 { term: t.infoRegistered, detail: formatDay(machine.createdAt) },
+                {
+                  term: t.tokenScore,
+                  detail: <TokenScoreCell machine={machine} now={now} onOpen={() => setScoring(true)} />,
+                },
               ]}
             />
           </div>
@@ -1420,6 +1439,7 @@ function MachineOverview({
           </Button>
         </DangerZone>
       )}
+      <TokenScoreDialog machine={scoring ? machine : null} onClose={() => setScoring(false)} />
     </>
   );
 }

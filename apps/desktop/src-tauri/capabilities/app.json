@@ -75,6 +75,8 @@
     "allow-token-score-fix-preview",
     "allow-token-score-fix",
     "allow-token-score-undo",
+    "allow-token-score-report-status",
+    "allow-token-score-report-set",
     "allow-memory-scan",
     "allow-memory-apply",
     "allow-memory-compress",

@@ -537,6 +537,60 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "tokenScore": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "score": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "level": {
+                                "anyOf": [
+                                  {
+                                    "enum": [
+                                      "good",
+                                      "fair",
+                                      "low"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "coverage": {
+                                "type": "number"
+                              },
+                              "provisional": {
+                                "type": "boolean"
+                              },
+                              "reportedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "required": [
+                              "score",
+                              "level",
+                              "coverage",
+                              "provisional",
+                              "reportedAt"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     },
                     "required": [
@@ -1425,6 +1479,60 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "tokenScore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "score": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "level": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "good",
+                                    "fair",
+                                    "low"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "coverage": {
+                              "type": "number"
+                            },
+                            "provisional": {
+                              "type": "boolean"
+                            },
+                            "reportedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "score",
+                            "level",
+                            "coverage",
+                            "provisional",
+                            "reportedAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -1958,6 +2066,60 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "tokenScore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "score": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "level": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "good",
+                                    "fair",
+                                    "low"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "coverage": {
+                              "type": "number"
+                            },
+                            "provisional": {
+                              "type": "boolean"
+                            },
+                            "reportedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "score",
+                            "level",
+                            "coverage",
+                            "provisional",
+                            "reportedAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -2509,6 +2671,60 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "tokenScore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "score": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "level": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "good",
+                                    "fair",
+                                    "low"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "coverage": {
+                              "type": "number"
+                            },
+                            "provisional": {
+                              "type": "boolean"
+                            },
+                            "reportedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "score",
+                            "level",
+                            "coverage",
+                            "provisional",
+                            "reportedAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -3042,6 +3258,60 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "tokenScore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "score": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "level": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "good",
+                                    "fair",
+                                    "low"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "coverage": {
+                              "type": "number"
+                            },
+                            "provisional": {
+                              "type": "boolean"
+                            },
+                            "reportedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "score",
+                            "level",
+                            "coverage",
+                            "provisional",
+                            "reportedAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -3591,6 +3861,60 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "tokenScore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "score": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "level": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "good",
+                                    "fair",
+                                    "low"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "coverage": {
+                              "type": "number"
+                            },
+                            "provisional": {
+                              "type": "boolean"
+                            },
+                            "reportedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "score",
+                            "level",
+                            "coverage",
+                            "provisional",
+                            "reportedAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -4221,6 +4545,60 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "tokenScore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "score": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "level": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "good",
+                                    "fair",
+                                    "low"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "coverage": {
+                              "type": "number"
+                            },
+                            "provisional": {
+                              "type": "boolean"
+                            },
+                            "reportedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "score",
+                            "level",
+                            "coverage",
+                            "provisional",
+                            "reportedAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -4782,6 +5160,60 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "tokenScore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "score": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "level": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "good",
+                                    "fair",
+                                    "low"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "coverage": {
+                              "type": "number"
+                            },
+                            "provisional": {
+                              "type": "boolean"
+                            },
+                            "reportedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "score",
+                            "level",
+                            "coverage",
+                            "provisional",
+                            "reportedAt"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -7796,6 +8228,60 @@
                           "type": "string"
                         }
                       },
+                      "tokenScore": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "score": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "level": {
+                                "anyOf": [
+                                  {
+                                    "enum": [
+                                      "good",
+                                      "fair",
+                                      "low"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "coverage": {
+                                "type": "number"
+                              },
+                              "provisional": {
+                                "type": "boolean"
+                              },
+                              "reportedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "required": [
+                              "score",
+                              "level",
+                              "coverage",
+                              "provisional",
+                              "reportedAt"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "teamName": {
                         "type": "string"
                       },
@@ -8251,6 +8737,555 @@
         }
       }
     },
+    "/v1/machines/{machineId}/token-score": {
+      "get": {
+        "operationId": "machines.tokenScore",
+        "summary": "Điểm tối ưu token của máy: bản mới nhất và lịch sử 90 ngày",
+        "tags": [
+          "fleet"
+        ],
+        "parameters": [
+          {
+            "name": "machineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "machineId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "latest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "reportedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "report": {
+                              "type": "object",
+                              "properties": {
+                                "scoreVersion": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 1000
+                                },
+                                "generatedAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                },
+                                "days": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 90
+                                },
+                                "machine": {
+                                  "type": "object",
+                                  "properties": {
+                                    "score": {
+                                      "anyOf": [
+                                        {
+                                          "type": "number",
+                                          "minimum": 0,
+                                          "maximum": 100
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "level": {
+                                      "anyOf": [
+                                        {
+                                          "enum": [
+                                            "good",
+                                            "fair",
+                                            "low"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "coverage": {
+                                      "type": "number",
+                                      "minimum": 0,
+                                      "maximum": 100
+                                    },
+                                    "provisional": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "score",
+                                    "level",
+                                    "coverage",
+                                    "provisional"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "profiles": {
+                                  "type": "array",
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "cli": {
+                                        "type": "string",
+                                        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+                                      },
+                                      "score": {
+                                        "anyOf": [
+                                          {
+                                            "type": "number",
+                                            "minimum": 0,
+                                            "maximum": 100
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "coverage": {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "maximum": 100
+                                      },
+                                      "share": {
+                                        "type": "number",
+                                        "minimum": 0,
+                                        "maximum": 1
+                                      },
+                                      "groups": {
+                                        "type": "object",
+                                        "propertyNames": {
+                                          "type": "string",
+                                          "pattern": "^[A-Z]$"
+                                        },
+                                        "additionalProperties": {
+                                          "type": "object",
+                                          "properties": {
+                                            "earned": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 100
+                                            },
+                                            "max": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 100
+                                            }
+                                          },
+                                          "required": [
+                                            "earned",
+                                            "max"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "criteria": {
+                                        "type": "array",
+                                        "maxItems": 40,
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string",
+                                              "pattern": "^[A-Z][0-9]{1,2}$"
+                                            },
+                                            "status": {
+                                              "enum": [
+                                                "ok",
+                                                "partial",
+                                                "low",
+                                                "unknown",
+                                                "unsupported"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "earned": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 100
+                                            },
+                                            "max": {
+                                              "type": "number",
+                                              "minimum": 0,
+                                              "maximum": 100
+                                            },
+                                            "value": {
+                                              "type": "number"
+                                            },
+                                            "unit": {
+                                              "type": "string",
+                                              "pattern": "^[a-z_%/]{1,20}$"
+                                            },
+                                            "reason": {
+                                              "type": "string",
+                                              "pattern": "^[a-z][a-z0-9_]{0,47}$"
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "status",
+                                            "earned",
+                                            "max"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "cli",
+                                      "score",
+                                      "coverage",
+                                      "share",
+                                      "groups",
+                                      "criteria"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "scoreVersion",
+                                "generatedAt",
+                                "days",
+                                "machine",
+                                "profiles"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "reportedAt",
+                            "report"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "reportedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "score": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "coverage": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "reportedAt",
+                          "score",
+                          "coverage"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "machineId",
+                    "latest",
+                    "history"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/worker/releases/latest": {
       "get": {
         "operationId": "machines.workerRelease",
@@ -8626,6 +9661,404 @@
                             "code"
                           ]
                         }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/client-events": {
+      "post": {
+        "operationId": "worker.clientEvent",
+        "summary": "Máy gửi sự kiện client (ADR 0036): xác thực bằng machine token, chống trùng theo khoá",
+        "tags": [
+          "worker"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{16,64}$"
+                  },
+                  "kind": {
+                    "const": "machine.token_score"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "payload": {
+                    "type": "object",
+                    "properties": {
+                      "scoreVersion": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000
+                      },
+                      "generatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "days": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 90
+                      },
+                      "machine": {
+                        "type": "object",
+                        "properties": {
+                          "score": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 100
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "level": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "good",
+                                  "fair",
+                                  "low"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "coverage": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "provisional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "score",
+                          "level",
+                          "coverage",
+                          "provisional"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "profiles": {
+                        "type": "array",
+                        "maxItems": 20,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "cli": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9-]{0,31}$"
+                            },
+                            "score": {
+                              "anyOf": [
+                                {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 100
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "coverage": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 100
+                            },
+                            "share": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "groups": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string",
+                                "pattern": "^[A-Z]$"
+                              },
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "earned": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "max": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  }
+                                },
+                                "required": [
+                                  "earned",
+                                  "max"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "criteria": {
+                              "type": "array",
+                              "maxItems": 40,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "pattern": "^[A-Z][0-9]{1,2}$"
+                                  },
+                                  "status": {
+                                    "enum": [
+                                      "ok",
+                                      "partial",
+                                      "low",
+                                      "unknown",
+                                      "unsupported"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "earned": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "max": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "value": {
+                                    "type": "number"
+                                  },
+                                  "unit": {
+                                    "type": "string",
+                                    "pattern": "^[a-z_%/]{1,20}$"
+                                  },
+                                  "reason": {
+                                    "type": "string",
+                                    "pattern": "^[a-z][a-z0-9_]{0,47}$"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "status",
+                                  "earned",
+                                  "max"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "cli",
+                            "score",
+                            "coverage",
+                            "share",
+                            "groups",
+                            "criteria"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "scoreVersion",
+                      "generatedAt",
+                      "days",
+                      "machine",
+                      "profiles"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "key",
+                  "kind",
+                  "createdAt",
+                  "payload"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{16,64}$"
+                    },
+                    "outcome": {
+                      "enum": [
+                        "accepted",
+                        "duplicate",
+                        "rejected"
+                      ],
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "receivedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "outcome",
+                    "receivedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Machine token không hợp lệ hoặc máy đã bị thu hồi."
+                        },
+                        "data": {}
                       },
                       "required": [
                         "defined",

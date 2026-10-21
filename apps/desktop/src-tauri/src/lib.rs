@@ -1171,6 +1171,8 @@ pub fn run() {
             token_score::token_score,
             token_score::token_score_history,
             token_score::token_score_last,
+            token_score::token_score_report_status,
+            token_score::token_score_report_set,
             token_score::token_score_fix_preview,
             token_score::token_score_fix,
             token_score::token_score_undo,

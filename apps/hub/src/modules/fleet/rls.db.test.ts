@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPool, withTenant } from "../platform/index.ts";
-import { machines, machineTokens, registrationTokens } from "./schema.ts";
+import { machines, machineTokenScores, machineTokens, registrationTokens } from "./schema.ts";
 import { withTokenLookup } from "./tokens.ts";
 
 const { adminUrl, appUrl } = inject("db");
@@ -38,6 +38,11 @@ beforeAll(async () => {
        ($1, $2, $5, now() + interval '1 hour', 'u'), ($3, $4, $6, now() + interval '1 hour', 'u')`,
     [orgA, ids.teamA, orgB, ids.teamB, `rt-a-${tag}`, `rt-b-${tag}`],
   );
+  await admin.query(
+    `insert into hive.machine_token_scores (org_id, team_id, machine_id, score, coverage, score_version, report, generated_at)
+     values ($1, $2, $3, 50, 80, 2, '{}', now()), ($4, $5, $6, 70, 90, 2, '{}', now())`,
+    [orgA, ids.teamA, ids.machineA, orgB, ids.teamB, ids.machineB],
+  );
 });
 
 afterAll(async () => {
@@ -55,10 +60,10 @@ async function pgCode(run: () => Promise<unknown>): Promise<string | undefined> 
 }
 const RLS_VIOLATION = "42501";
 const FK_VIOLATION = "23503";
-const tables = [machines, machineTokens, registrationTokens];
+const tables = [machines, machineTokens, registrationTokens, machineTokenScores];
 
 describe("RLS bảng fleet", () => {
-  it("không có context thì cả ba bảng trả 0 dòng", async () => {
+  it("không có context thì mọi bảng trả 0 dòng", async () => {
     await withTenant(app, {}, async (tx) => {
       for (const t of tables) expect(await tx.select().from(t)).toHaveLength(0);
     });
@@ -105,6 +110,23 @@ describe("RLS bảng fleet", () => {
     const code = await pgCode(() =>
       withTenant(app, { orgId: orgA }, (tx) =>
         tx.insert(machineTokens).values({ orgId: orgA, teamId: ids.teamA, machineId: ids.machineB, tokenHash: "z" }),
+      ),
+    );
+    expect(code).toBe(FK_VIOLATION);
+  });
+
+  it("điểm token không trỏ được tới máy của tổ chức khác (khoá kép)", async () => {
+    const code = await pgCode(() =>
+      withTenant(app, { orgId: orgA }, (tx) =>
+        tx.insert(machineTokenScores).values({
+          orgId: orgA,
+          teamId: ids.teamA,
+          machineId: ids.machineB,
+          coverage: 1,
+          scoreVersion: 2,
+          report: {} as never,
+          generatedAt: new Date(),
+        }),
       ),
     );
     expect(code).toBe(FK_VIOLATION);
