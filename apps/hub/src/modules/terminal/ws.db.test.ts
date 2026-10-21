@@ -13,7 +13,7 @@ import { type OrgFixture, seedOrg } from "../../../test/org-fixture.ts";
 import { attachWorkerGateway, createRegistration, registerMachine, registerTerminalHandlers } from "../fleet/index.ts";
 import { createPool, type Tx, withTenant } from "../platform/index.ts";
 import { createTerminalHandlers } from "./gateway.ts";
-import { resetMachineBuckets, untrackSession } from "./live.ts";
+import { resetMachineBuckets, setViewerRateForTests, untrackSession } from "./live.ts";
 import { attachTerminalGateway, remoteTicket, withRemoteLive } from "./ws.ts";
 
 const { adminUrl, appUrl } = inject("db");
@@ -211,6 +211,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  setViewerRateForTests(null);
   for (const sessionId of opened.splice(0)) {
     worker.send({ type: "term_exit", sessionId, exitCode: 0, reason: "exit" });
     await until(
@@ -449,25 +450,31 @@ describe("output và nối lại", () => {
 
   it("client nhận quá băng thông: hub bỏ phần giữa và gửi sync kèm đuôi; bản ghi vẫn đủ", async () => {
     const sessionId = await openSession();
+    // 128 KB/giây (bằng đuôi `sync`): 768 KB vượt hạn mức dù hub ghi mỗi lát chậm tới cả trăm ms. Hạn mức thật
+    // (512 KB/giây) chỉ vượt khi hub nhanh, nên trước đây test chập chờn theo tốc độ máy.
+    setViewerRateForTests(128 * 1024);
     const slow = await browser(await ticketFor("tmember", sessionId));
     await slow.hello();
     slow.send({ t: "resume", after: -1 });
-    await new Promise((r) => setTimeout(r, 100));
+    // `resume` đọc bản ghi từ DB rồi mới nhận output trực tiếp. Chờ một lát output nhỏ tới nơi thay vì ngủ cố định: máy
+    // chậm mà resume xong sau loạt output thì hub phát lại cả bộ đệm, không đi qua đường client chậm, và không có `sync`.
+    await output(sessionId, 0, ["warm"]);
+    await slow.inbox.until((f) => f.t === "out" && f.seq === 0, 6000);
     const chunk = "x".repeat(32 * 1024);
     await output(
       sessionId,
-      0,
+      1,
       Array.from({ length: 24 }, () => chunk),
     );
     const sync = await slow.inbox.until((f) => f.t === "sync", 6000);
-    expect(sync.t === "sync" && sync.after).toBeGreaterThan(15);
-    await slow.inbox.until((f) => f.t === "out" && f.seq === 23, 6000);
+    expect(sync.t === "sync" && sync.after).toBeGreaterThan(16);
+    await slow.inbox.until((f) => f.t === "out" && f.seq === 24, 6000);
     const seqs = slow.inbox.all.flatMap((f) => (f.t === "out" ? [f.seq] : []));
-    expect(seqs.length).toBeLessThan(24);
+    expect(seqs.length).toBeLessThan(25);
     const { rows } = await admin.query("select count(*)::int as n from hive.terminal_chunks where session_id = $1", [
       sessionId,
     ]);
-    expect(rows[0].n).toBe(24);
+    expect(rows[0].n).toBe(25);
   });
 
   it("hub khởi động lại (mất bộ đệm): phát lại từ bản ghi trong DB rồi nhận tiếp", async () => {

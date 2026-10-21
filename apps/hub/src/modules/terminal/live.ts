@@ -193,6 +193,16 @@ export function resetMachineBuckets(): void {
   machineBuckets.clear();
 }
 
+let viewerRateBytes: number = REMOTE_LIMITS.viewerRateBytes;
+
+/**
+ * Chỉ test dùng: hạn mức của người xem mở sau lời gọi này; null trả về mặc định. Test client chậm không dựa được vào
+ * tốc độ hub ghi từng lát (máy CI chậm thì hạn mức thật kịp hồi), nên hạ hạn mức để loạt output chắc chắn vượt.
+ */
+export function setViewerRateForTests(bytesPerSec: number | null): void {
+  viewerRateBytes = bytesPerSec ?? REMOTE_LIMITS.viewerRateBytes;
+}
+
 export interface RemoteSink {
   send(frame: RemoteServerFrame): void;
   /** Byte đã xếp chờ gửi tới trình duyệt (`ws.bufferedAmount`). */
@@ -224,7 +234,7 @@ export class RemoteConn {
   closed = false;
   readonly #sink: RemoteSink;
   readonly #recoverMs: number;
-  readonly #bucket = new Bucket(REMOTE_LIMITS.viewerRateBytes, REMOTE_LIMITS.viewerRateBytes);
+  readonly #bucket = new Bucket(viewerRateBytes, viewerRateBytes);
   #lastSeq = -1;
   /** Chưa `resume` xong thì output trực tiếp bị bỏ: phần đó sẽ được gửi khi phát lại đuổi kịp bộ đệm. */
   #ready = false;
