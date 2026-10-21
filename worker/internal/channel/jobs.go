@@ -275,10 +275,15 @@ func (j *jobs) onOffer(m *JobOffer) {
 	default:
 		// Giữ tài khoản ngay khi nhận để hai đề nghị cùng lúc không chọn trùng một tài khoản đã đủ run. Không tài khoản
 		// nào rảnh thì vẫn nhận và chờ lúc chạy (execute): từ chối thì hub bỏ máy này cho lần thử, mà run của chủ máy cá
-		// nhân không có máy nào khác nhận.
+		// nhân không có máy nào khác nhận. Máy dùng chung thì từ chối khi phải chờ lâu, để máy khác của đội nhận.
 		account, err := j.cfg.Accounts.Acquire(cli, accounts.RoleOf(spec.Kind))
 		if err != nil && !errors.Is(err, accounts.ErrBusy) {
 			reason = fmt.Sprintf("CLI %s: %v", cli, err)
+			break
+		}
+		if giveUp := accountGiveUp(err, cli, j.shared, j.now()); giveUp != "" && j.shared {
+			// Hợp đồng chặn reason 500 ký tự; danh sách lý do của từng tài khoản có thể dài hơn.
+			reason = truncateRunes(giveUp, 480)
 			break
 		}
 		wait := max(time.Duration(m.TTL)*time.Second, minOfferWait)
@@ -338,8 +343,12 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	if err == nil && run.waitAccount {
 		run.account, err = j.waitAccount(ctx, job.CLI, accounts.RoleOf(job.Kind), run.runID)
-		if err != nil && ctx.Err() != nil {
-			_ = sink.Emit(runner.Event{Type: "result", RunID: run.runID, Attempt: run.attempt, Result: &runner.Result{Status: "cancelled", Error: err.Error()}})
+		if err != nil {
+			status := "failed"
+			if ctx.Err() != nil {
+				status = "cancelled"
+			}
+			_ = sink.Emit(runner.Event{Type: "result", RunID: run.runID, Attempt: run.attempt, Result: &runner.Result{Status: status, Error: err.Error()}})
 			return
 		}
 	}
@@ -373,6 +382,40 @@ func (j *jobs) removeDir(dir string) {
 // accountPoll là chu kỳ thử lại khi chờ tài khoản CLI rảnh (hết run khác, hết nghỉ).
 var accountPoll = 15 * time.Second
 
+// maxSharedAccountWait: máy dùng chung không giữ run chờ tài khoản lâu hơn chừng này; máy khác của đội có thể đang rảnh.
+var maxSharedAccountWait = 30 * time.Minute
+
+// accountGiveUp là lý do thôi chờ tài khoản, rỗng khi còn đáng chờ: không tài khoản nào tự dùng lại được (phải có người
+// bật, đăng nhập), hoặc máy dùng chung phải chờ quá maxSharedAccountWait. Máy cá nhân chờ tới lúc quota reset vì run
+// của chủ máy không có máy nào khác nhận.
+func accountGiveUp(err error, cli string, shared bool, now time.Time) string {
+	var busy *accounts.BusyError
+	if !errors.As(err, &busy) {
+		return ""
+	}
+	if busy.Until.IsZero() {
+		return fmt.Sprintf("không tài khoản %s nào dùng được tới khi có người bật hoặc đăng nhập (%s)", cli, busy.Reason)
+	}
+	if shared && busy.Until.Sub(now) > maxSharedAccountWait {
+		return fmt.Sprintf("tài khoản %s sớm nhất dùng lại lúc %s, máy dùng chung không giữ run chờ quá %s (%s)",
+			cli, busy.Until.Local().Format("15:04 02/01"), maxSharedAccountWait, busy.Reason)
+	}
+	return ""
+}
+
+func truncateRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
+}
+
+func (j *jobs) isShared() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.shared
+}
+
 // waitAccount chờ một tài khoản của CLI nhận được run (rảnh, hết nghỉ, dưới ngưỡng quota) cho run đã nhận lease. Lease
 // của hub vẫn được gia hạn qua heartbeat.
 func (j *jobs) waitAccount(ctx context.Context, cli, role, runID string) (*accounts.Lease, error) {
@@ -381,6 +424,10 @@ func (j *jobs) waitAccount(ctx context.Context, cli, role, runID string) (*accou
 		account, err := j.cfg.Accounts.Acquire(cli, role)
 		if !errors.Is(err, accounts.ErrBusy) {
 			return account, err
+		}
+		// Xét lại mỗi lần thử: người dùng có thể vừa tắt hết tài khoản, hay CLI vừa báo hết lượt tuần.
+		if giveUp := accountGiveUp(err, cli, j.isShared(), j.now()); giveUp != "" {
+			return nil, errors.New(giveUp)
 		}
 		// Ghi lại khi lý do đổi (hết nghỉ nhưng chạm ngưỡng, …), không ghi mỗi lần thử.
 		if err.Error() != last {

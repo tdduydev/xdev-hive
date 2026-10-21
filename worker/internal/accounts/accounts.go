@@ -230,6 +230,18 @@ func Capacity(path string, limit int) (int, error) {
 // ngưỡng quota, đang nghỉ hoặc đang chạy đủ số run). Lỗi trả về bọc ErrBusy kèm lý do cho log.
 var ErrBusy = errors.New("mọi tài khoản của CLI đang bận hoặc đang nghỉ")
 
+// BusyError là lỗi Acquire trả khi CLI có tài khoản mà chưa tài khoản nào nhận được run; errors.Is(err, ErrBusy) vẫn
+// đúng. Until cho người gọi quyết chờ hay trả run về hub: run chờ máy dùng chung vài ngày thì thà để máy khác nhận.
+type BusyError struct {
+	Reason string
+	// Until là lúc sớm nhất một tài khoản có thể nhận run (hết nghỉ, quota reset, hoặc ngay khi một run khác xong);
+	// zero khi không tài khoản nào tự dùng lại được (tắt, chưa đăng nhập, sai vai trò) mà phải chờ người sửa.
+	Until time.Time
+}
+
+func (e *BusyError) Error() string { return ErrBusy.Error() + ": " + e.Reason }
+func (e *BusyError) Unwrap() error { return ErrBusy }
+
 // Pool giữ số run đang chạy của từng tài khoản. Đọc lại accounts.json và accounts-state.json mỗi lần chọn để thay đổi
 // trong app (bật tắt, ngưỡng, Dùng tiếp) có hiệu lực ngay, không cần khởi động lại worker.
 type Pool struct {
@@ -462,6 +474,30 @@ func (p *Pool) skip(a Account, role string, st State, now time.Time) string {
 	return ""
 }
 
+// readyAt là lúc sớm nhất tài khoản bị skip có thể nhận run vai trò role; zero khi nó không tự dùng lại được. Thanh
+// quota vượt mà không biết giờ reset thì tính như dùng lại được ngay: lần đọc quota kế (10 phút) sẽ cho biết.
+func (p *Pool) readyAt(a Account, role string, st State, now time.Time) time.Time {
+	if loggedIn, _ := loginOf(a, p.home); !a.takes(role) || (loggedIn != nil && !*loggedIn) {
+		return time.Time{}
+	}
+	at := now
+	if st.CoolUntil[a.ID].After(at) {
+		at = st.CoolUntil[a.ID]
+	}
+	if !st.ResumeUntil[a.ID].After(now) {
+		u := st.Usage[a.ID].at(now)
+		for _, bar := range []struct {
+			limit *Limit
+			stop  int
+		}{{u.Session, a.StopAtSession}, {u.Week, a.StopAtWeek}} {
+			if bar.limit != nil && bar.limit.Percent >= float64(bar.stop) && bar.limit.ResetsAt != nil && bar.limit.ResetsAt.After(at) {
+				at = *bar.limit.ResetsAt
+			}
+		}
+	}
+	return at
+}
+
 // Acquire giữ một tài khoản cho run của CLI ở vai trò role (xem RoleOf). Trả (nil, nil) khi CLI không có tài khoản
 // nào trong danh sách (dùng đăng nhập mặc định), lỗi bọc ErrBusy khi có mà không tài khoản nào nhận được.
 func (p *Pool) Acquire(cli, role string) (*Lease, error) {
@@ -494,19 +530,25 @@ func (p *Pool) Acquire(cli, role string) (*Lease, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var why []string
+	var until time.Time
 	for _, a := range p.candidates(list, cli, st, now) {
 		if reason := p.skip(a, role, st, now); reason != "" {
 			why = append(why, a.ID+" "+reason)
+			if at := p.readyAt(a, role, st, now); !at.IsZero() && (until.IsZero() || at.Before(until)) {
+				until = at
+			}
 			continue
 		}
 		p.active[a.ID]++
 		p.syncActive()
 		return &Lease{pool: p, account: a, dir: p.expand(a.ConfigDir)}, nil
 	}
+	// Mọi tài khoản tắt thì không quay về đăng nhập mặc định: người dùng đã có danh sách tài khoản cho CLI này, đăng
+	// nhập mặc định có thể là tài khoản riêng họ không muốn run dùng.
 	if len(why) == 0 {
-		return nil, fmt.Errorf("%w: không tài khoản %s nào đang bật", ErrBusy, cli)
+		return nil, &BusyError{Reason: fmt.Sprintf("không tài khoản %s nào đang bật", cli)}
 	}
-	return nil, fmt.Errorf("%w: %s", ErrBusy, strings.Join(why, "; "))
+	return nil, &BusyError{Reason: strings.Join(why, "; "), Until: until}
 }
 
 // ErrNoAccount: gói người mở chọn không có, không thuộc CLI, tắt, chưa đăng nhập hay đang nghỉ. Lỗi trả về bọc nó kèm

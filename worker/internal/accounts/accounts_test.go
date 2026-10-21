@@ -365,3 +365,73 @@ func TestLimitWatcherAcrossWrites(t *testing.T) {
 		t.Fatal("không có câu báo hết lượt")
 	}
 }
+
+// Có gói của CLI nhưng gói nào cũng tắt: không quay về đăng nhập mặc định (có thể là tài khoản riêng người dùng không
+// muốn run dùng), và báo không gói nào tự dùng lại được để worker không chờ mãi.
+func TestAllDisabledIsBusyNotDefaultLogin(t *testing.T) {
+	p := pool(t, `{"accounts":[
+ {"id":"claude-3","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-3","enabled":false},
+ {"id":"claude-4","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-4","enabled":false}
+]}`)
+	l, err := p.Acquire("claude", RoleImplement)
+	var busy *BusyError
+	if l != nil || !errors.Is(err, ErrBusy) || !errors.As(err, &busy) || !busy.Until.IsZero() || !strings.Contains(err.Error(), "không tài khoản claude nào đang bật") {
+		t.Fatalf("mọi gói tắt phải ErrBusy không có giờ dùng lại: %v %v", l, err)
+	}
+}
+
+// Until là lúc sớm nhất một tài khoản bận dùng lại được, để worker quyết chờ hay trả run.
+func TestBusyUntilEarliestUsable(t *testing.T) {
+	until := func(t *testing.T, p *Pool) time.Time {
+		t.Helper()
+		_, err := p.Acquire("claude", RoleImplement)
+		var busy *BusyError
+		if !errors.As(err, &busy) {
+			t.Fatalf("phải BusyError: %v", err)
+		}
+		return busy.Until
+	}
+	t.Run("nghỉ và chạm ngưỡng: lấy giờ sớm hơn", func(t *testing.T) {
+		p := pool(t, three)
+		fixed(p, t0)
+		weekReset := t0.Add(72 * time.Hour)
+		setUsage(t, p, "claude-3", Usage{Week: &Limit{Percent: 95, ResetsAt: &weekReset}})
+		if err := UpdateState(p.state, t0, func(s *State) { s.CoolUntil["claude-4"] = t0.Add(time.Hour) }); err != nil {
+			t.Fatal(err)
+		}
+		if got := until(t, p); !got.Equal(t0.Add(time.Hour)) {
+			t.Fatalf("Until = %v", got)
+		}
+	})
+	t.Run("nghỉ nhưng quota tuần còn vượt: lấy giờ reset tuần", func(t *testing.T) {
+		p := pool(t, `{"accounts":[{"id":"claude-3","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-3","enabled":true}]}`)
+		fixed(p, t0)
+		weekReset := t0.Add(72 * time.Hour)
+		setUsage(t, p, "claude-3", Usage{Week: &Limit{Percent: 95, ResetsAt: &weekReset}})
+		if err := UpdateState(p.state, t0, func(s *State) { s.CoolUntil["claude-3"] = t0.Add(time.Hour) }); err != nil {
+			t.Fatal(err)
+		}
+		if got := until(t, p); !got.Equal(weekReset) {
+			t.Fatalf("Until = %v", got)
+		}
+	})
+	t.Run("đang chạy đủ run: dùng lại ngay khi run kia xong", func(t *testing.T) {
+		p := pool(t, `{"accounts":[{"id":"claude-3","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-3","enabled":true}]}`)
+		fixed(p, t0)
+		if _, err := p.Acquire("claude", RoleImplement); err != nil {
+			t.Fatal(err)
+		}
+		if got := until(t, p); !got.Equal(t0) {
+			t.Fatalf("Until = %v", got)
+		}
+	})
+	t.Run("chưa đăng nhập hay sai vai trò: không tự dùng lại", func(t *testing.T) {
+		p := pool(t, `{"accounts":[
+ {"id":"claude-3","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-3","enabled":true,"roles":["review"]},
+ {"id":"claude-6","cli":"claude","configDir":"~/.xdev-hive/accounts/claude-6","enabled":true}
+]}`)
+		if got := until(t, p); !got.IsZero() {
+			t.Fatalf("Until = %v", got)
+		}
+	})
+}
