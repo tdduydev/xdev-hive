@@ -93,6 +93,27 @@
       }
     },
     {
+      "type": "run_event",
+      "v": 1,
+      "id": "m-event-subagent",
+      "runId": "run-1",
+      "attempt": 1,
+      "seq": 8,
+      "event": "subagent",
+      "data": {
+        "id": "toolu_01",
+        "parentId": null,
+        "phase": "end",
+        "type": "general-purpose",
+        "description": "count files",
+        "status": "completed",
+        "depth": 1,
+        "tokens": 17974,
+        "toolUses": 0,
+        "durationMs": 1110
+      }
+    },
+    {
       "type": "log_chunk",
       "v": 1,
       "id": "m-log",

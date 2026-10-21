@@ -8,6 +8,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { PlanEditor } from "@/components/plan-editor.tsx";
+import { TreeLinks } from "@/components/tree-links.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
@@ -398,6 +399,7 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
 
   const header = (
     <PageHeader crumb={crumb} title={task.title}>
+      <TreeLinks taskId={task.id} />
       {decidable && !editing && (
         <>
           <Button variant="destructive" onClick={() => setDialog("reject")} aria-haspopup="dialog">

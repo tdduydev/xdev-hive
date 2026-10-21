@@ -97,6 +97,62 @@ const thread = z.object({
 });
 export type ChatThread = z.output<typeof thread>;
 
+/** Nút sub-agent trong cây (specs/028): dựng từ sự kiện `subagent` của run. */
+export const treeSubagent = z.object({
+  id: z.string(),
+  parentId: z.string().nullable(),
+  type: z.string(),
+  description: z.string(),
+  status: z.enum(["running", "completed", "failed", "killed", "unknown"]),
+  depth: z.number().int(),
+  tokens: z.number().int().nullable(),
+  toolUses: z.number().int().nullable(),
+  durationMs: z.number().int().nullable(),
+});
+export type TreeSubagent = z.output<typeof treeSubagent>;
+
+export const treeRun = z.object({
+  id,
+  kind: z.string(),
+  state: z.string(),
+  attempt: z.number().int(),
+  parentRunId: id.nullable(),
+  machine: z.object({ id, name: z.string() }).nullable(),
+  cli: z.string().nullable(),
+  account: z.string().nullable(),
+  startedAt: z.iso.datetime().nullable(),
+  endedAt: z.iso.datetime().nullable(),
+  costUsd: z.number().nullable(),
+  error: z.string().nullable(),
+  /** null: CLI chưa báo gì về sub-agent; [] khi có báo mà không gọi sub-agent nào. */
+  subagents: z.array(treeSubagent).nullable(),
+  subagentsUnsupported: z.boolean(),
+});
+export type TreeRun = z.output<typeof treeRun>;
+
+export const treeTask = z.object({
+  id,
+  key: z.string(),
+  title: z.string(),
+  status: z.string(),
+  projectKey: z.string(),
+  /** `leader`: Leader tạo trong phiên này; `user`: người tạo, Leader chỉ giao run. */
+  createdBy: z.enum(["leader", "user"]),
+  runs: z.array(treeRun),
+});
+export type TreeTask = z.output<typeof treeTask>;
+
+/** Cây giao việc của một phiên Leader (specs/028): phiên → task → run (run con theo parentRunId) → sub-agent. */
+export const delegationTree = z.object({
+  thread: z.object({ id, title: z.string(), createdAt: z.iso.datetime() }),
+  tasks: z.array(treeTask),
+  /** Task và run có liên quan mà người xem không có quyền xem (FR-015). */
+  hidden: z.number().int(),
+  /** Còn run hay sub-agent đang chạy: client poll dày hơn. */
+  active: z.boolean(),
+});
+export type DelegationTree = z.output<typeof delegationTree>;
+
 export const leaderContract = {
   threads: {
     create: orgRoute("POST", "/v1/leader/threads", "Tạo cuộc trò chuyện với leader", "leader")
@@ -123,5 +179,13 @@ export const leaderContract = {
     reject: orgRoute("POST", "/v1/leader/approvals/{id}/reject", "Từ chối đề xuất của leader", "leader")
       .input(z.object({ id, reason: z.string().trim().min(1).max(2000) }))
       .output(approval),
+  },
+  tree: {
+    get: orgRoute("GET", "/v1/leader/threads/{id}/tree", "Cây giao việc của cuộc trò chuyện với leader", "leader")
+      .input(z.object({ id }))
+      .output(delegationTree),
+    links: orgRoute("GET", "/v1/leader/tree-links", "Các cuộc trò chuyện có giao task hay run này", "leader")
+      .input(z.object({ taskId: id.optional(), runId: id.optional() }))
+      .output(z.array(z.object({ threadId: id, title: z.string() }))),
   },
 };

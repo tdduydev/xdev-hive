@@ -9,6 +9,7 @@ import {
   GlobeIcon,
   type LucideIcon,
   MonitorIcon,
+  NetworkIcon,
   PlayIcon,
   ServerIcon,
   SettingsIcon,
@@ -60,6 +61,7 @@ export type ScreenId =
   | "home"
   | "agents"
   | "terminal"
+  | "tree"
   | "runs"
   | "remote"
   | "plans"
@@ -120,6 +122,15 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         id: "terminal",
         label: { vi: "Terminal", en: "Terminal" },
         icon: SquareTerminalIcon,
+      },
+      {
+        // Cây Leader giao việc cho agent trên các máy (specs/028 US4), cạnh Terminal vì là lối mở tới terminal của run.
+        // Dữ liệu của đội trên hub nên cần kết nối Hive; cùng quyền với Lượt chạy vì người xem đội không giao việc.
+        id: "tree",
+        label: { vi: "Cây giao việc", en: "Delegation tree" },
+        icon: NetworkIcon,
+        needs: "runs.local",
+        hub: true,
       },
       {
         id: "runs",

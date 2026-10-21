@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { ScreenId } from "@/lib/nav.ts";
 import { AgentsScreen } from "@/screens/agents-screen.tsx";
+import { DelegationTreeScreen } from "@/screens/delegation-tree-screen.tsx";
 import { DocsScreen } from "@/screens/docs-screen.tsx";
 import { HomeScreen } from "@/screens/home-screen.tsx";
 import { MemoryScreen } from "@/screens/memory-screen.tsx";
@@ -31,6 +32,7 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   ssh: SshScreen,
   terminal: TerminalScreen,
   tokens: TokensScreen,
+  tree: DelegationTreeScreen,
 };
 
 /**

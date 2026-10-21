@@ -8,6 +8,7 @@ describe("menu theo hồ sơ", () => {
       "home",
       "agents",
       "terminal",
+      "tree",
       "runs",
       "remote",
       "plans",
@@ -42,7 +43,7 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu từ code sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(14);
+    expect(items).toHaveLength(15);
     expect(items.some((i) => i.readOnly)).toBe(false);
   });
 
@@ -50,19 +51,19 @@ describe("menu theo hồ sơ", () => {
     const groups = navGroups("lead");
     expect(groups.map((g) => [g.label.vi, g.untitled ?? false, g.items.map((i) => i.label.vi)])).toEqual([
       ["Máy này", true, ["Máy này"]],
-      ["Chạy", false, ["Agent trên máy", "Terminal", "Lượt chạy", "Điều khiển từ xa"]],
+      ["Chạy", false, ["Agent trên máy", "Terminal", "Cây giao việc", "Lượt chạy", "Điều khiển từ xa"]],
       ["Agent", false, ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"]],
       ["Dự án", false, ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code"]],
     ]);
     expect(groups.map((g) => g.label.en)).toEqual(["This machine", "Runs", "Agents", "Projects"]);
   });
 
-  it("chỉ Lượt chạy cần hub; mọi mục khác dùng được khi chưa đăng nhập", () => {
+  it("chỉ Cây giao việc và Lượt chạy cần hub; mọi mục khác dùng được khi chưa đăng nhập", () => {
     expect(
       navItems("lead")
         .filter((i) => i.hub)
         .map((i) => i.id),
-    ).toEqual(["runs"]);
+    ).toEqual(["tree", "runs"]);
   });
 
   it("nhóm không còn mục nào theo hồ sơ thì bỏ cả nhóm", () => {

@@ -13,6 +13,9 @@ const capAccountsRemote = "accounts-remote"
 // featureShared: hub báo trong welcome rằng máy là máy dùng chung (ADR 0017).
 const featureShared = "shared"
 
+// featureSubagents: hub báo trong welcome rằng nó nhận run_event "subagent" (specs/028 R4).
+const featureSubagents = "subagents"
+
 // capabilities là capability khai trong hello. Chỉ khai accounts-remote khi máy có accounts pool: runner host không có
 // accounts.json nên không có gói để bật/tắt hay đăng nhập.
 func (c Config) capabilities() []string {
@@ -26,11 +29,20 @@ func (c Config) capabilities() []string {
 	return caps
 }
 
-// setShared ghi cờ máy dùng chung của phiên vừa nối; hub chỉ báo lại khi nối lại nên giữ tới phiên sau.
+// setShared ghi cờ máy dùng chung của phiên vừa nối; hub chỉ báo lại khi nối lại nên giữ tới phiên sau. Cờ sub-agent
+// (specs/028) cũng đọc từ welcome này.
 func (j *jobs) setShared(w Welcome) {
 	j.mu.Lock()
 	j.shared = slices.Contains(w.Features, featureShared)
+	j.subagents = slices.Contains(w.Features, featureSubagents)
 	j.mu.Unlock()
+}
+
+// subagentsEnabled: hub của phiên hiện tại nhận run_event "subagent".
+func (j *jobs) subagentsEnabled() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.subagents
 }
 
 // remoteAccounts: chỉ nhận lệnh gói từ hub khi máy có pool và hub đã báo máy dùng chung. Máy cá nhân dùng gói riêng của

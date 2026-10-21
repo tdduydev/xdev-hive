@@ -142,7 +142,27 @@ export const runEventKind = z.enum([
   "agent_report",
   // Worker báo chỉ dẫn (gói `steer` có steerId) đã đưa được vào agent đang chạy hay chưa.
   "steer_result",
+  // Sub-agent bắt đầu, kết thúc (specs/028). Worker chỉ gửi khi welcome.features có `subagents`: hub cũ không nhận loại này.
+  "subagent",
 ]);
+
+/**
+ * Dữ liệu của sự kiện `subagent` (specs/028 FR-021): chỉ siêu dữ liệu. `description` đã che secret ở worker, hub che lại;
+ * không có prompt, tóm tắt hay output của sub-agent (ranh giới dữ liệu specs/027).
+ */
+export const subagentEventData = z.object({
+  id: z.string().min(1).max(64),
+  parentId: z.string().min(1).max(64).nullable(),
+  phase: z.enum(["start", "end", "unsupported"]),
+  type: z.string().max(64),
+  description: z.string().max(120),
+  status: z.enum(["running", "completed", "failed", "killed", "unknown"]),
+  depth: z.number().int().min(0).max(10),
+  tokens: z.number().int().min(0).nullable().optional(),
+  toolUses: z.number().int().min(0).nullable().optional(),
+  durationMs: z.number().int().min(0).nullable().optional(),
+});
+export type SubagentEventData = z.output<typeof subagentEventData>;
 /**
  * Usage agent dùng để khảo sát repo trước lần sửa file đầu tiên (Edit, Write, MultiEdit, NotebookEdit), ADR 0022.
  * `edited` false là agent chưa sửa gì: số bằng toàn bộ usage tới lúc đó.

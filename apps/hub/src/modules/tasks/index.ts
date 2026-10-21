@@ -29,6 +29,7 @@ export {
   getTask,
   listTasks,
   loadTask,
+  loadTasks,
   setTaskStatus,
   type TaskRow,
   taskByKeyForUser,

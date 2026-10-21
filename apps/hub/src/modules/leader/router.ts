@@ -17,6 +17,7 @@ import {
   sendLeaderMessage,
   threadView,
 } from "./service.ts";
+import { delegationLinks, delegationTree } from "./tree.ts";
 
 export interface LeaderRouterDeps extends OrgDeps {
   runs?: RunsEngine | undefined;
@@ -80,6 +81,12 @@ export function leaderRouter(deps: LeaderRouterDeps) {
       reject: os.approvals.reject
         .use(inOrg)
         .handler(({ context: { tx, user }, input }) => rejectApproval(tx, user.id, input.id, input.reason)),
+    },
+    tree: {
+      get: os.tree.get.use(inOrg).handler(({ context: { tx, user }, input }) => delegationTree(tx, user.id, input.id)),
+      links: os.tree.links
+        .use(inOrg)
+        .handler(({ context: { tx, user }, input }) => delegationLinks(tx, user.id, input)),
     },
   };
 }
