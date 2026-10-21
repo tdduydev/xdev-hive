@@ -4,8 +4,14 @@ import type pg from "pg";
 import { ClientEventRejected, type Jobs, type Tx, withClientEvent, withTenant } from "../platform/index.ts";
 import { allowWith, requireTeamRole } from "../tenancy/index.ts";
 import { FleetError } from "./errors.ts";
-import type { AuthedMachine } from "./machines.ts";
 import { machines, machineTokenScores } from "./schema.ts";
+
+/** Máy đã xác thực (cùng hình với AuthedMachine). Khai riêng vì machines.ts import file này: tránh vòng phụ thuộc. */
+interface ScoringMachine {
+  id: string;
+  orgId: string;
+  teamId: string;
+}
 
 /** Máy gửi tối đa một lần mỗi giờ (ADR 0036); hub chặn ở 10 phút để máy lỗi không làm đầy bảng. */
 export const TOKEN_SCORE_MIN_INTERVAL_MS = 10 * 60 * 1000;
@@ -17,7 +23,7 @@ const HISTORY_DAYS = 90;
  */
 export async function receiveMachineEvent(
   pool: pg.Pool,
-  machine: AuthedMachine,
+  machine: ScoringMachine,
   input: MachineEventInput,
 ): Promise<ClientEventResult> {
   const result = await withClientEvent(
