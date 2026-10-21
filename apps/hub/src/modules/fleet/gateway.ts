@@ -182,8 +182,9 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         if (ws.readyState !== ws.OPEN) return;
         session = randomUUID();
         registerConnection(machine.id, ws);
-        // Worker chỉ nhận account_set và đăng nhập gói khi hub báo máy dùng chung (ADR 0017).
-        const features = online.shared ? ["shared"] : [];
+        // Worker chỉ nhận account_set và đăng nhập gói khi hub báo máy dùng chung (ADR 0017). `subagents`: hub nhận
+        // run_event loại `subagent` (specs/028); worker chỉ gửi khi thấy cờ này vì hub cũ không biết loại đó.
+        const features = [...(online.shared ? ["shared"] : []), "subagents"];
         const extra = (await terminalHandlers.welcome?.(machine, online)) ?? {};
         sendToMachine(machine.id, {
           type: "welcome",

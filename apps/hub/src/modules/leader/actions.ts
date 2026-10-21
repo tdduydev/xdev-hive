@@ -1,10 +1,12 @@
 import { EventEmitter } from "node:events";
 import { defaultRouting, LEADER_TIER_GUIDE, type LeaderAction, type TaskTier } from "@xdev-hive/contracts";
+import { sql } from "drizzle-orm";
 import { loadProject, updateProjectSettings } from "../catalog/index.ts";
 import type { Tx } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
 import { createItem, type SdlcDeps } from "../sdlc/index.ts";
 import { createTask, loadTask } from "../tasks/index.ts";
+import { leaderDelegations } from "./schema.ts";
 
 export interface ActionOutcome {
   result: Record<string, unknown> | null;
@@ -66,7 +68,8 @@ export async function tierTable(tx: Tx, projectId: string | null) {
 
 /**
  * Thực hiện một hành động leader bằng quyền của `userId`: dùng chung cho duyệt đề xuất và cho terminal Leader ở chế độ
- * Bypass, để hai đường cùng kiểm quyền và cùng hiệu ứng.
+ * Bypass, để hai đường cùng kiểm quyền và cùng hiệu ứng. Có `threadId` thì ghi liên kết giao việc cùng transaction
+ * (specs/028), để cây của phiên không thiếu việc đã làm mà cũng không có việc bị rollback.
  */
 export async function executeLeaderAction(
   tx: Tx,
@@ -74,6 +77,7 @@ export async function executeLeaderAction(
   action: LeaderAction,
   runs: RunsEngine | undefined,
   sdlc: SdlcDeps = {},
+  threadId?: string,
 ): Promise<ActionOutcome> {
   if (action.type === "task.create") {
     // Cấp độ đi qua nhãn `tier:` của task để định tuyến của run code (runs/routing.ts) dùng đúng cấp Leader chọn.
@@ -87,6 +91,7 @@ export async function executeLeaderAction(
       { projectId: action.projectId, title: action.title, body: action.body },
       source,
     );
+    if (threadId) await recordDelegation(tx, userId, threadId, { kind: "task", taskId: task.id, runId: null });
     return { result: { task } };
   }
   if (action.type === "project.settings")
@@ -98,6 +103,8 @@ export async function executeLeaderAction(
       ...(action.cli ? { cli: action.cli } : {}),
       ...(action.tier ? { tier: action.tier } : {}),
     });
+    if (threadId)
+      await recordDelegation(tx, userId, threadId, { kind: "run", taskId: action.taskId, runId: queued.run.id });
     return { result: { run: queued.run }, afterCommit: queued.afterCommit };
   }
   if (action.type === "run.cancel") {
@@ -113,6 +120,15 @@ export async function executeLeaderAction(
     };
   }
   return { result: null };
+}
+
+async function recordDelegation(
+  tx: Tx,
+  userId: string,
+  threadId: string,
+  link: { kind: "task" | "run"; taskId: string; runId: string | null },
+): Promise<void> {
+  await tx.insert(leaderDelegations).values({ orgId: sql`hive.ctx_org()`, threadId, createdBy: userId, ...link });
 }
 
 /** Một dòng tóm tắt hành động cho nhật ký (không có nội dung tự do dài). */

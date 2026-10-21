@@ -8,6 +8,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { LogCard } from "@/components/log-card.tsx";
+import { TreeLinks } from "@/components/tree-links.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
 import { Meter } from "@/components/ui/meter.tsx";
@@ -163,6 +164,7 @@ function RunMeta({ run, task }: { run: Run; task: Task | undefined }) {
           PR {prLabel(run.prUrl)}
         </a>
       )}
+      <TreeLinks runId={run.id} />
     </div>
   );
 }

@@ -136,6 +136,8 @@ type Event struct {
 	Cost *Usage `json:"cost,omitempty"`
 	// Steer có ở sự kiện "steer_result".
 	Steer *SteerResult `json:"steer,omitempty"`
+	// Subagent có ở sự kiện "subagent" (specs/028).
+	Subagent *SubagentEvent `json:"subagent,omitempty"`
 }
 
 type Sink interface{ Emit(Event) error }
@@ -551,6 +553,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}()
 	process.Stdout = io.MultiWriter(stdoutLog, usage)
 	process.Stderr = stderrLog
+	// Gửi sub-agent còn dở ("unknown") trước run_result: hub bỏ mọi gói của run đến sau run_result.
+	subagents := startSubagents(job, sink)
+	defer subagents.finish()
+	if subagents != nil {
+		process.Stdout = io.MultiWriter(process.Stdout, subagents)
+	}
 	if r.Account != nil && r.Sandbox == nil {
 		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] %s chạy bằng tài khoản %s.\n", job.CLI, r.Account.Label())
 		// Run không thành công vì tài khoản hết lượt dùng: cho tài khoản nghỉ để run sau sang tài khoản khác. Chỉ xét khi
@@ -603,6 +611,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	steer.listen(job.Steers)
 	waitErr := waitProcess(runCtx, process, r.grace)
 	steer.finish()
+	subagents.finish()
 	if errors.Is(waitErr, exec.ErrWaitDelay) {
 		// CLI đã thoát thành công, chỉ là process con còn giữ pipe: không coi là lỗi của run.
 		waitErr = nil
@@ -1194,6 +1203,19 @@ func startMeter(job Job, sink Sink, stop context.CancelFunc) (*meter, func() err
 		close(done)
 		return m.finish()
 	}
+}
+
+// startSubagents gắn bộ đọc sub-agent vào stdout của Claude (stream-json). CLI khác chưa đọc được sub-agent: gửi một
+// sự kiện "unsupported" để cây ghi rõ là không theo dõi được, rồi trả nil.
+func startSubagents(job Job, sink Sink) *subagentTracker {
+	send := func(e SubagentEvent) error {
+		return emit(sink, Event{Type: "subagent", RunID: job.RunID, Attempt: job.Attempt, Subagent: &e})
+	}
+	if job.CLI != "claude" {
+		_ = send(unsupportedSubagents(job.CLI))
+		return nil
+	}
+	return newSubagentTracker(secretValues(job.Env), send)
 }
 
 // ReviewDiffFile là diff của run cha mà worker ghi sẵn vào worktree của run review: CLI chạy chỉ đọc (Claude ở chế độ

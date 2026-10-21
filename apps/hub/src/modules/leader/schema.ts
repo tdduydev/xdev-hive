@@ -96,3 +96,36 @@ export const approvals = hive
     ],
   )
   .enableRLS();
+
+export const delegationKind = hive.enum("leader_delegation_kind", ["task", "run"]);
+
+/**
+ * Liên kết giao việc (specs/028): một dòng mỗi lần Leader tạo task hay giao run trong một phiên, để dựng cây phiên →
+ * task → run. Không unique vì Leader giao run nhiều lần cho một task. Khoá ngoại tới tasks và runs (module khác) nằm trong
+ * migration viết tay; run_id dùng `on delete set null (run_id)` vì set null cả khoá ghép sẽ làm org_id null và vỡ RLS.
+ */
+export const leaderDelegations = hive
+  .table(
+    "leader_delegations",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      threadId: uuid("thread_id").notNull(),
+      kind: delegationKind("kind").notNull(),
+      taskId: uuid("task_id").notNull(),
+      runId: uuid("run_id"),
+      createdBy: text("created_by").notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      foreignKey({ columns: [t.threadId, t.orgId], foreignColumns: [chatThreads.id, chatThreads.orgId] }).onDelete(
+        "cascade",
+      ),
+      index("leader_delegations_thread").on(t.orgId, t.threadId, t.createdAt),
+      // tree.links tìm phiên theo task hay run; xoá task, run cũng tìm theo hai cột này.
+      index("leader_delegations_task").on(t.orgId, t.taskId),
+      index("leader_delegations_run").on(t.orgId, t.runId),
+      scoped("leader_delegations"),
+    ],
+  )
+  .enableRLS();

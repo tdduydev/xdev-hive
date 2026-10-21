@@ -1,16 +1,18 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { seedOrg } from "../../../test/org-fixture.ts";
-import { createPool, withTenant } from "../platform/index.ts";
-import { approvals, chatMessages, chatThreads } from "./schema.ts";
+import { seedProject } from "../../../test/project-fixture.ts";
+import { createPool, parseMasterKey, withTenant } from "../platform/index.ts";
+import { approvals, chatMessages, chatThreads, leaderDelegations } from "./schema.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
 const app = createPool(appUrl);
+const masterKey = parseMasterKey(randomBytes(32).toString("base64"));
 const orgs: Record<"a" | "b", { orgId: string }> = {} as never;
 const threadIds: Record<"a" | "b", string> = {} as never;
-const tables = [chatThreads, chatMessages, approvals];
+const tables = [chatThreads, chatMessages, approvals, leaderDelegations];
 
 beforeAll(async () => {
   for (const name of ["a", "b"] as const) {
@@ -28,6 +30,23 @@ beforeAll(async () => {
     await admin.query(
       'insert into hive.approvals (org_id, thread_id, action, expires_at) values ($1, $2, \'{"type":"run.cancel","runId":"00000000-0000-0000-0000-000000000000"}\', now() + interval \'1 hour\')',
       [org.orgId, rows[0].id],
+    );
+    // Liên kết giao việc cần task thật (khoá kép tới tasks).
+    const { projectId } = await seedProject(admin, app, {
+      orgId: org.orgId,
+      teamId: org.teamId,
+      systemId: org.systemId,
+      adminUserId: org.user("admin"),
+      masterKey,
+      key: `lr${name}${randomUUID().slice(0, 4)}`,
+    });
+    const { rows: tasks } = await admin.query(
+      "insert into hive.tasks (org_id, team_id, project_id, number, key, title, created_by) values ($1, $2, $3, 1, 'LR-1', 't', 'user') returning id",
+      [org.orgId, org.teamId, projectId],
+    );
+    await admin.query(
+      "insert into hive.leader_delegations (org_id, thread_id, kind, task_id, created_by) values ($1, $2, 'task', $3, 'user')",
+      [org.orgId, rows[0].id, tasks[0].id],
     );
   }
 });

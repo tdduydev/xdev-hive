@@ -411,6 +411,39 @@ func TestSteerResultEventCarriesOutcome(t *testing.T) {
 	}
 }
 
+// Hub cũ không nhận run_event "subagent" (enum đóng): thiếu cờ trong welcome thì bỏ hẳn, không gửi, không ghi đĩa và
+// không tốn seq; có cờ thì gửi đúng payload.
+func TestSubagentEventNeedsHubFeature(t *testing.T) {
+	j := testJobs(t, 1)
+	sink, err := j.newSink(&activeRun{runID: "run-s", attempt: 1, cancel: func() {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent []any
+	sink.send = func(v any) error { sent = append(sent, v); return nil }
+	ev := runner.Event{Type: "subagent", RunID: "run-s", Attempt: 1, Subagent: &runner.SubagentEvent{ID: "toolu_1", Phase: "start", Type: "Explore", Description: "đọc repo", Status: "running", Depth: 1}}
+
+	j.setShared(Welcome{Features: []string{"shared"}})
+	if err := sink.Emit(ev); err != nil {
+		t.Fatal(err)
+	}
+	if len(sent) != 0 || len(pendingMessages(j.pending)) != 0 || sink.run.Seq != 0 {
+		t.Fatalf("hub thiếu cờ vẫn gửi: %v, pending %d, seq %d", sent, len(pendingMessages(j.pending)), sink.run.Seq)
+	}
+
+	j.setShared(Welcome{Features: []string{"shared", "subagents"}})
+	if err := sink.Emit(ev); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := sent[0].(RunEvent)
+	if !ok || got.Event != "subagent" || got.Seq != 1 || string(got.Data) != `{"id":"toolu_1","parentId":null,"phase":"start","type":"Explore","description":"đọc repo","status":"running","depth":1}` {
+		t.Fatalf("gói = %#v (%s)", sent[0], got.Data)
+	}
+	if len(pendingMessages(j.pending)) != 1 {
+		t.Fatal("gói subagent phải nằm trên đĩa tới khi hub ack")
+	}
+}
+
 func TestSandboxJobSnapshotDecodeAndModeGuard(t *testing.T) {
 	policy := `{"execution":"sandbox","sandbox":{"allowlist":["api.openai.com:443"],"image":{"baseImage":"node:24","setupScriptHash":"` + strings.Repeat("a", 64) + `"}},"cli":"codex"}`
 	offer := &JobOffer{RunID: "sandbox-run", Attempt: 1, Spec: json.RawMessage(policy)}

@@ -5,6 +5,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
 // File mẫu dùng chung với test TypeScript (packages/contracts/src/worker-protocol.test.ts). Test TypeScript kiểm mẫu
@@ -57,6 +59,33 @@ func TestProtocolRoundTrip(t *testing.T) {
 	}
 	if len(seen) != 43 {
 		t.Errorf("file mẫu có %d loại, Go biết 43", len(seen))
+	}
+}
+
+// Payload của run_event "subagent" trong file mẫu (khớp subagentEventData của zod) giải mã vào struct runner rồi mã hoá
+// lại phải y nguyên, để tên trường Go không lệch hợp đồng.
+func TestSubagentEventMatchesFixture(t *testing.T) {
+	found := false
+	for _, raw := range loadFixtures(t) {
+		var ev RunEvent
+		if json.Unmarshal(raw, &ev) != nil || ev.Type != "run_event" || ev.Event != "subagent" {
+			continue
+		}
+		found = true
+		var data runner.SubagentEvent
+		if err := json.Unmarshal(ev.Data, &data); err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ := json.Marshal(data)
+		var want, got map[string]any
+		_ = json.Unmarshal(ev.Data, &want)
+		_ = json.Unmarshal(encoded, &got)
+		if !reflect.DeepEqual(want, got) {
+			t.Errorf("subagent: mã hoá lại khác mẫu\nmẫu: %v\nGo:  %v", want, got)
+		}
+	}
+	if !found {
+		t.Fatal("file mẫu thiếu run_event subagent")
 	}
 }
 

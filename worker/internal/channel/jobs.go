@@ -101,6 +101,8 @@ type jobs struct {
 	update   string
 	// shared: hub báo máy dùng chung trong welcome của phiên hiện tại; chỉ khi đó mới nhận lệnh gói (accounts.go).
 	shared bool
+	// subagents: hub của phiên hiện tại nhận run_event "subagent" (welcome.features); hub cũ gặp loại lạ sẽ đóng kết nối.
+	subagents bool
 	// term giữ phiên terminal Leader (terminal.go); nil khi máy không khai capability terminal.
 	term *terminal.Host
 	done chan struct{}
@@ -580,6 +582,8 @@ type durableSink struct {
 	send   func(any) error
 	log    *slog.Logger
 	result bool
+	// subagents cho biết hub hiện tại nhận sự kiện "subagent"; đọc mỗi lần vì máy có thể nối lại với hub khác giữa run.
+	subagents func() bool
 	// logOffset đếm byte log của cả stdout lẫn stderr: hub giữ một luồng terminal cho mỗi lần thử và bỏ chunk trùng
 	// offset, nên offset riêng của từng luồng làm stderr trùng với stdout và bị mất.
 	logOffset int64
@@ -589,7 +593,7 @@ func (j *jobs) newSink(run *activeRun) (*durableSink, error) {
 	if err := os.MkdirAll(j.markers, 0700); err != nil {
 		return nil, err
 	}
-	s := &durableSink{dir: j.pending, marker: markerPath(j.markers, run.runID), run: runMarker{RunID: run.runID, Attempt: run.attempt, LeaseID: run.leaseID}, send: j.write, log: j.log}
+	s := &durableSink{dir: j.pending, marker: markerPath(j.markers, run.runID), run: runMarker{RunID: run.runID, Attempt: run.attempt, LeaseID: run.leaseID}, send: j.write, log: j.log, subagents: j.subagentsEnabled}
 	return s, writeMarker(s.marker, s.run)
 }
 
@@ -600,6 +604,10 @@ func (s *durableSink) hasResult() bool {
 }
 
 func (s *durableSink) Emit(e runner.Event) error {
+	// Bỏ hẳn (không tốn seq, không ghi đĩa) khi hub không nhận: gói chờ ack sẽ bị gửi lại mãi cho hub cũ.
+	if e.Type == "subagent" && (e.Subagent == nil || s.subagents == nil || !s.subagents()) {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.run.Seq++
@@ -617,6 +625,9 @@ func (s *durableSink) Emit(e runner.Event) error {
 		msg = RunEvent{Type: "run_event", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Event: e.Type, Data: data}
 	case "steer_result":
 		data, _ := json.Marshal(e.Steer)
+		msg = RunEvent{Type: "run_event", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Event: e.Type, Data: data}
+	case "subagent":
+		data, _ := json.Marshal(e.Subagent)
 		msg = RunEvent{Type: "run_event", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Event: e.Type, Data: data}
 	default:
 		data, _ := json.Marshal(map[string]any{"phase": e.Phase, "event": e.Type})
