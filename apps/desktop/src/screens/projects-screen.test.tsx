@@ -7,7 +7,6 @@ import type { BranchEvent, Candidate, ScanRepo } from "@/lib/git-branches.ts";
 import type { GitGroups } from "@/lib/git-groups.ts";
 import { setLang } from "@/lib/i18n.ts";
 import type { LocalProject, LocalProjects } from "@/lib/local-projects.ts";
-import { resetTerminals, terminals } from "@/lib/pty.ts";
 import { ProjectsScreen } from "@/screens/projects-screen.tsx";
 
 const ACCOUNT: Account = {
@@ -224,26 +223,27 @@ describe("ProjectsScreen", () => {
     expect(within(await row("payment-api")).getByText("Đã gắn")).toBeTruthy();
   });
 
-  it("nút Terminal mở màn Terminal ở thư mục của dự án; thư mục mất thì không có nút", async () => {
-    resetTerminals();
-    fakeApp({
+  it("nút Terminal mở terminal của máy ở thư mục của dự án; thư mục mất thì không có nút", async () => {
+    localStorage.clear();
+    const calls = fakeApp({
       hub: { "projects/list": [PAY, WEB], "policies/get": policy(true) },
       local: [
         entry({ projectId: P1, name: "payment-api", folder: "/w/pay" }),
         entry({ projectId: P2, name: "web-shop", folder: "/w/web", exists: false }),
         entry({ name: "cu", folder: "/w/cu", origin: "https://gitlab.com/acme/cu.git" }),
       ],
+      extra: { open_agent_terminal: () => null },
     });
+    const opened = () => calls.filter((c) => c.command === "open_agent_terminal").map((c) => c.args);
     const user = userEvent.setup();
     renderScreen();
     await user.click(within(await row("payment-api")).getByRole("button", { name: "Mở terminal ở payment-api" }));
-    expect(location.hash).toBe("#/terminal");
-    expect(terminals().folder).toBe("/w/pay");
-    expect(terminals().sessions.map((s) => s.folder)).toEqual(["/w/pay"]);
+    await waitFor(() => expect(opened()).toEqual([{ cli: "claude", planId: null, bypass: false, folder: "/w/pay" }]));
+    expect(location.hash).not.toBe("#/terminal");
     expect(within(await row("web-shop")).queryByRole("button", { name: /Mở terminal/ })).toBeNull();
     const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
     await user.click(within(waiting).getByRole("button", { name: "Mở terminal ở cu" }));
-    expect(terminals().folder).toBe("/w/cu");
+    await waitFor(() => expect(opened().map((a) => a?.folder)).toEqual(["/w/pay", "/w/cu"]));
   });
 
   it("bật toàn quyền phải xác nhận rủi ro; tắt thì không hỏi", async () => {

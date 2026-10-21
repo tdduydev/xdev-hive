@@ -55,7 +55,7 @@ describe("AppShell", () => {
       ),
     ).toEqual([
       ["Máy này"],
-      ["Agent trên máy", "Terminal", "Cây giao việc", "Lượt chạy", "Điều khiển từ xa"],
+      ["Agent trên máy", "Cây giao việc", "Lượt chạy", "Điều khiển từ xa"],
       ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"],
       ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code"],
     ]);
@@ -134,7 +134,7 @@ describe("AppShell", () => {
       within(within(nav).getByRole("group", { name: "Chạy" }))
         .getAllByRole("link")
         .map((a) => a.textContent),
-    ).toEqual(["Agent trên máy", "Terminal"]);
+    ).toEqual(["Agent trên máy"]);
     expect(within(nav).getByText("Agent")).toBeTruthy();
   });
 

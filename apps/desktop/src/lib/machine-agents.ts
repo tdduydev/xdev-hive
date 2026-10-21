@@ -14,7 +14,7 @@ export type AgentCli = "claude" | "codex" | "antigravity";
 export type AgentSource =
   | { kind: "run"; runId: string }
   | { kind: "hive"; sessionId: string | null; hubId: string | null }
-  | { kind: "app"; pty: string | null }
+  | { kind: "app" }
   | { kind: "claudeDesktop" }
   | { kind: "otherApp"; name: string }
   | { kind: "terminal" };

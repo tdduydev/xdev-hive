@@ -17,6 +17,7 @@ import {
   FolderOpenIcon,
   LoaderCircleIcon,
   PlusIcon,
+  SquareTerminalIcon,
   UserRoundIcon,
 } from "lucide-react";
 import {
@@ -35,7 +36,6 @@ import { Markdown, SuggestionView } from "@/components/doc-view.tsx";
 import { FolderForm } from "@/components/folder-form.tsx";
 import { LocalFileView } from "@/components/local-file.tsx";
 import { Wordmark } from "@/components/logo.tsx";
-import { TerminalPane } from "@/components/terminal-pane.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import {
   type Access,
@@ -44,6 +44,7 @@ import {
   type CliAccount,
   cancelRun,
   cliAccounts,
+  cliProfiles,
   EDIT_TOOLS,
   type Engine,
   findProposal,
@@ -66,6 +67,7 @@ import { type HubDoc, type HubProject, hubTool, matchProject } from "@/lib/hub.t
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { can } from "@/lib/nav.ts";
 import { errorText, type WorkspaceMeta, workspaceMeta } from "@/lib/tauri.ts";
+import { openProjectTerminal } from "@/lib/terminal.ts";
 import { formatTokens } from "@/lib/usage.ts";
 import { cn } from "@/lib/utils.ts";
 
@@ -174,9 +176,9 @@ const text: Dict<{
   bypassLead: string;
   bypassFlag: Record<Engine, string>;
   bypassOk: string;
-  panel: string;
   tabChat: string;
-  tabTerminal: string;
+  terminal: string;
+  terminalLabel: string;
 }> = {
   vi: {
     pickTitle: "Chọn thư mục để viết tài liệu",
@@ -326,9 +328,9 @@ const text: Dict<{
       codex: "Codex chạy với --dangerously-bypass-approvals-and-sandbox: không hỏi và không có sandbox.",
     },
     bypassOk: "Bật Bypass",
-    panel: "Khung bên phải",
     tabChat: "Chat",
-    tabTerminal: "Terminal",
+    terminal: "Terminal",
+    terminalLabel: "Mở terminal của máy ở thư mục này",
   },
   en: {
     pickTitle: "Pick a folder to write docs in",
@@ -481,9 +483,9 @@ const text: Dict<{
       codex: "Codex runs with --dangerously-bypass-approvals-and-sandbox: no prompts and no sandbox.",
     },
     bypassOk: "Turn on Bypass",
-    panel: "Right panel",
     tabChat: "Chat",
-    tabTerminal: "Terminal",
+    terminal: "Terminal",
+    terminalLabel: "Open this machine's terminal in this folder",
   },
 };
 
@@ -760,8 +762,8 @@ interface HubDocFull {
 /**
  * Màn Tài liệu (AppDocs.dc.html, specs/008-desktop-v2 T011): chọn thư mục dự án; cột trái là tài liệu của dự án trên
  * hub và cây code (chấm xanh: file agent đã đọc; bấm file để mở ở giữa); giữa là bản nháp tài liệu với đề xuất của
- * agent tô xanh, hoặc file trong thư mục (components/local-file.tsx); phải là tab Chat chạy Claude Code hoặc Codex trên
- * máy (mặc định chỉ đọc, người dùng bật chế độ ghi) và tab Terminal (components/terminal-pane.tsx). Bản nháp lên hub
+ * agent tô xanh, hoặc file trong thư mục (components/local-file.tsx); phải là Chat chạy Claude Code hoặc Codex trên
+ * máy (mặc định chỉ đọc, người dùng bật chế độ ghi), kèm nút mở terminal của máy ở thư mục. Bản nháp lên hub
  * bằng đề xuất (`propose_doc`), người duyệt quyết.
  */
 export function DocsScreen() {
@@ -813,7 +815,7 @@ export function DocsScreen() {
   }));
   const [access, setAccess] = useState<Access>("read");
   const [askBypass, setAskBypass] = useState(false);
-  const [panel, setPanel] = useState<"chat" | "terminal">("chat");
+  const [termError, setTermError] = useState<string | null>(null);
   const runAccess = useRef<Access>("read");
   const wasRunning = useRef(false);
   const folderRef = useRef(folder);
@@ -1572,283 +1574,275 @@ export function DocsScreen() {
 
       <aside
         aria-label={t.chat}
-        className={cn(
-          "flex shrink-0 flex-col border-l bg-background",
-          panel === "terminal"
-            ? "w-[560px] max-[1240px]:w-[440px] max-[900px]:w-[320px]"
-            : "w-[420px] max-[1240px]:w-[360px] max-[900px]:w-[300px]",
-        )}
+        className="flex w-[420px] shrink-0 flex-col border-l bg-background max-[1240px]:w-[360px] max-[900px]:w-[300px]"
       >
-        <div role="tablist" aria-label={t.panel} className="flex gap-3.5 border-b px-3.5">
-          {(
-            [
-              ["chat", t.tabChat],
-              ["terminal", t.tabTerminal],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={panel === id}
-              onClick={() => setPanel(id)}
-              className={cn(
-                "-mb-px h-8.5 cursor-pointer border-b-2 text-sm",
-                panel === id
-                  ? "border-primary font-semibold text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex items-center justify-between gap-2 border-b px-3.5">
+          <span className="flex h-8.5 items-center text-sm font-semibold">{t.tabChat}</span>
+          <Button
+            size="xs"
+            variant="ghost"
+            aria-label={t.terminalLabel}
+            title={termError ?? t.terminalLabel}
+            className={cn(termError && "text-destructive")}
+            onClick={async () => {
+              setTermError(null);
+              // Bản worker cũ chưa có `accounts --json` thì mở bằng gói đã nhớ hay đăng nhập mặc định.
+              const plans = await cliProfiles().then(
+                (p) => p.accounts,
+                () => [],
+              );
+              await openProjectTerminal(folder, plans).catch((e: unknown) => setTermError(errorText(e)));
+            }}
+          >
+            <SquareTerminalIcon aria-hidden="true" />
+            {t.terminal}
+          </Button>
         </div>
-        {panel === "terminal" ? (
-          <TerminalPane folder={folder} onPickFolder={() => void chooseFolder()} />
-        ) : (
-          <>
-            <div className="flex flex-col gap-2 border-b px-3 py-2">
-              <div className="flex items-center gap-2">
-                <div role="tablist" aria-label={t.engine} className="inline-flex rounded-lg bg-muted p-0.5">
-                  {(
-                    [
-                      ["claude", "Claude Code", "bg-[#D97757]"],
-                      ["codex", "Codex", "bg-foreground"],
-                    ] as const
-                  ).map(([id, label, dot]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="tab"
-                      aria-selected={engine === id}
-                      disabled={running && engine !== id}
-                      onClick={() => pickEngine(id)}
-                      className={cn(
-                        "inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm disabled:cursor-not-allowed",
-                        engine === id ? "bg-card font-semibold text-foreground shadow-sm" : "text-muted-foreground",
-                      )}
-                    >
-                      <span aria-hidden="true" className={cn("size-1.75 rounded-full", dot)} />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                {engine === "claude" ? (
-                  <select
-                    aria-label={t.model}
-                    title={t.model}
-                    disabled={running}
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="h-6.5 min-w-0 rounded-md border bg-background font-mono text-xs disabled:opacity-50"
-                  >
-                    <option value="">{t.modelDefault}</option>
-                    {CLAUDE_MODELS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <Input
-                    aria-label={t.model}
-                    title={modelOk ? t.model : t.modelInvalid}
-                    placeholder={t.codexModel}
-                    disabled={running}
-                    aria-invalid={!modelOk}
-                    value={models.codex}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="h-6.5 w-32 min-w-0 px-2 font-mono text-xs md:text-xs"
-                  />
-                )}
-                <span className="flex-1" />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t.manageAcc}
-                  title={t.manageAcc}
-                  onClick={() => setAccOpen(true)}
-                >
-                  <UserRoundIcon aria-hidden="true" className="size-3.75" />
-                </Button>
-              </div>
-              {!modelOk && <p className="text-xs text-destructive">{t.modelInvalid}</p>}
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                <select
-                  aria-label={t.session}
-                  disabled={running}
-                  value={chat.session ?? "new"}
-                  onChange={(e) => pickSession(e.target.value)}
-                  className="h-6.5 max-w-52.5 rounded-md border bg-background text-xs"
-                >
-                  {chat.session && !engineSessions.some((s) => s.id === chat.session) && (
-                    <option value={chat.session}>{t.sessionAt(chat.session.slice(0, 8), "")}</option>
+        {termError && (
+          <p role="alert" className="border-b px-3.5 py-2 text-xs text-destructive">
+            {termError}
+          </p>
+        )}
+        <div className="flex flex-col gap-2 border-b px-3 py-2">
+          <div className="flex items-center gap-2">
+            <div role="tablist" aria-label={t.engine} className="inline-flex rounded-lg bg-muted p-0.5">
+              {(
+                [
+                  ["claude", "Claude Code", "bg-[#D97757]"],
+                  ["codex", "Codex", "bg-foreground"],
+                ] as const
+              ).map(([id, label, dot]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={engine === id}
+                  disabled={running && engine !== id}
+                  onClick={() => pickEngine(id)}
+                  className={cn(
+                    "inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-sm disabled:cursor-not-allowed",
+                    engine === id ? "bg-card font-semibold text-foreground shadow-sm" : "text-muted-foreground",
                   )}
-                  {engineSessions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {t.sessionAt(s.title, timeOf(s.at, lang))}
-                    </option>
-                  ))}
-                  <option value="new">{t.newSession}</option>
-                </select>
-                <span className="text-muted-foreground">{t.modeLabel}</span>
-                <fieldset className="inline-flex gap-0.5 rounded-[7px] bg-muted p-0.5">
-                  <legend className="sr-only">{t.modeLabel}</legend>
-                  {(engine === "claude" ? [t.readOnly, "Accept edits", "Bypass"] : CODEX_ACCESS).map((label, i) => {
-                    const a = ACCESS[i] as Access;
-                    const on = access === a;
-                    return (
-                      <button
-                        key={label}
-                        type="button"
-                        aria-pressed={on}
-                        disabled={running && !on}
-                        title={t.accessHint[engine][i]}
-                        onClick={() => pickAccess(a)}
-                        className={cn(
-                          "h-5.5 cursor-pointer rounded-[5px] px-2 text-xs disabled:cursor-not-allowed disabled:opacity-45",
-                          on
-                            ? a === "bypass"
-                              ? "bg-destructive-soft font-semibold text-destructive"
-                              : "bg-card font-semibold text-foreground"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </fieldset>
-              </div>
-            </div>
-
-            <div
-              ref={transcript}
-              aria-live="polite"
-              className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-3.5 py-3 font-mono text-sm leading-[1.55]"
-            >
-              {!folder ? (
-                <div className="flex flex-col items-start gap-2.5 font-sans">
-                  <p className="text-sm text-muted-foreground">{t.chatNeedsFolder}</p>
-                  <Button size="sm" onClick={() => void chooseFolder()}>
-                    <FolderOpenIcon aria-hidden="true" />
-                    {t.openFolder}
-                  </Button>
-                </div>
-              ) : (
-                chat.items.length === 0 && (
-                  <p className="font-sans text-sm text-muted-foreground">{chat.session ? t.resumed : t.emptyChat}</p>
-                )
-              )}
-              {chat.items.map((item, i) => (
-                <ChatLine
-                  // biome-ignore lint/suspicious/noArrayIndexKey: dòng chat chỉ thêm vào cuối
-                  key={i}
-                  item={item}
-                  engine={engine}
-                  stripProposal={!!chat.docKey}
-                  docSuggestion={chat.suggestion?.text ?? null}
-                  baseText={baseText}
-                  onReopen={(key, proposal) => {
-                    setSelected(key);
-                    setMode("view");
-                    setSuggestion({ key, text: proposal });
-                  }}
-                />
+                >
+                  <span aria-hidden="true" className={cn("size-1.75 rounded-full", dot)} />
+                  {label}
+                </button>
               ))}
-              {running && (
-                <span className="flex items-center gap-1.5 font-sans text-sm text-muted-foreground">
-                  <LoaderCircleIcon aria-hidden="true" className="size-3.5 animate-spin" />
-                  {t.running}
+            </div>
+            {engine === "claude" ? (
+              <select
+                aria-label={t.model}
+                title={t.model}
+                disabled={running}
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="h-6.5 min-w-0 rounded-md border bg-background font-mono text-xs disabled:opacity-50"
+              >
+                <option value="">{t.modelDefault}</option>
+                {CLAUDE_MODELS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                aria-label={t.model}
+                title={modelOk ? t.model : t.modelInvalid}
+                placeholder={t.codexModel}
+                disabled={running}
+                aria-invalid={!modelOk}
+                value={models.codex}
+                onChange={(e) => setModel(e.target.value)}
+                className="h-6.5 w-32 min-w-0 px-2 font-mono text-xs md:text-xs"
+              />
+            )}
+            <span className="flex-1" />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t.manageAcc}
+              title={t.manageAcc}
+              onClick={() => setAccOpen(true)}
+            >
+              <UserRoundIcon aria-hidden="true" className="size-3.75" />
+            </Button>
+          </div>
+          {!modelOk && <p className="text-xs text-destructive">{t.modelInvalid}</p>}
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <select
+              aria-label={t.session}
+              disabled={running}
+              value={chat.session ?? "new"}
+              onChange={(e) => pickSession(e.target.value)}
+              className="h-6.5 max-w-52.5 rounded-md border bg-background text-xs"
+            >
+              {chat.session && !engineSessions.some((s) => s.id === chat.session) && (
+                <option value={chat.session}>{t.sessionAt(chat.session.slice(0, 8), "")}</option>
+              )}
+              {engineSessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {t.sessionAt(s.title, timeOf(s.at, lang))}
+                </option>
+              ))}
+              <option value="new">{t.newSession}</option>
+            </select>
+            <span className="text-muted-foreground">{t.modeLabel}</span>
+            <fieldset className="inline-flex gap-0.5 rounded-[7px] bg-muted p-0.5">
+              <legend className="sr-only">{t.modeLabel}</legend>
+              {(engine === "claude" ? [t.readOnly, "Accept edits", "Bypass"] : CODEX_ACCESS).map((label, i) => {
+                const a = ACCESS[i] as Access;
+                const on = access === a;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={on}
+                    disabled={running && !on}
+                    title={t.accessHint[engine][i]}
+                    onClick={() => pickAccess(a)}
+                    className={cn(
+                      "h-5.5 cursor-pointer rounded-[5px] px-2 text-xs disabled:cursor-not-allowed disabled:opacity-45",
+                      on
+                        ? a === "bypass"
+                          ? "bg-destructive-soft font-semibold text-destructive"
+                          : "bg-card font-semibold text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </fieldset>
+          </div>
+        </div>
+
+        <div
+          ref={transcript}
+          aria-live="polite"
+          className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-3.5 py-3 font-mono text-sm leading-[1.55]"
+        >
+          {!folder ? (
+            <div className="flex flex-col items-start gap-2.5 font-sans">
+              <p className="text-sm text-muted-foreground">{t.chatNeedsFolder}</p>
+              <Button size="sm" onClick={() => void chooseFolder()}>
+                <FolderOpenIcon aria-hidden="true" />
+                {t.openFolder}
+              </Button>
+            </div>
+          ) : (
+            chat.items.length === 0 && (
+              <p className="font-sans text-sm text-muted-foreground">{chat.session ? t.resumed : t.emptyChat}</p>
+            )
+          )}
+          {chat.items.map((item, i) => (
+            <ChatLine
+              // biome-ignore lint/suspicious/noArrayIndexKey: dòng chat chỉ thêm vào cuối
+              key={i}
+              item={item}
+              engine={engine}
+              stripProposal={!!chat.docKey}
+              docSuggestion={chat.suggestion?.text ?? null}
+              baseText={baseText}
+              onReopen={(key, proposal) => {
+                setSelected(key);
+                setMode("view");
+                setSuggestion({ key, text: proposal });
+              }}
+            />
+          ))}
+          {running && (
+            <span className="flex items-center gap-1.5 font-sans text-sm text-muted-foreground">
+              <LoaderCircleIcon aria-hidden="true" className="size-3.5 animate-spin" />
+              {t.running}
+            </span>
+          )}
+          {chat.error && <p className="font-sans text-sm text-destructive">{chat.error}</p>}
+        </div>
+
+        <div className="flex flex-col gap-1.5 border-t px-3 py-2.5">
+          {slash && (
+            <div role="menu" aria-label={t.quick} className="rounded-xl border bg-card p-1 shadow-lg">
+              {quicks.map((q) => (
+                <button
+                  key={q.cmd}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setInput(q.prompt);
+                    setSlash(false);
+                  }}
+                  className="flex w-full cursor-pointer gap-2.5 rounded-md px-2 py-1.25 text-left text-sm hover:bg-muted"
+                >
+                  <span className="w-23 shrink-0 font-mono text-primary">{q.cmd}</span>
+                  <span className="text-muted-foreground">{q.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-col gap-1.5 rounded-[10px] border border-input p-2">
+            <div className="flex flex-wrap gap-1">
+              {folder && (
+                <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
+                  @{folderName(folder)}/
                 </span>
               )}
-              {chat.error && <p className="font-sans text-sm text-destructive">{chat.error}</p>}
-            </div>
-
-            <div className="flex flex-col gap-1.5 border-t px-3 py-2.5">
-              {slash && (
-                <div role="menu" aria-label={t.quick} className="rounded-xl border bg-card p-1 shadow-lg">
-                  {quicks.map((q) => (
-                    <button
-                      key={q.cmd}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setInput(q.prompt);
-                        setSlash(false);
-                      }}
-                      className="flex w-full cursor-pointer gap-2.5 rounded-md px-2 py-1.25 text-left text-sm hover:bg-muted"
-                    >
-                      <span className="w-23 shrink-0 font-mono text-primary">{q.cmd}</span>
-                      <span className="text-muted-foreground">{q.label}</span>
-                    </button>
-                  ))}
-                </div>
+              {hubDoc && (
+                <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
+                  @{docName(hubDoc.key)}
+                </span>
               )}
-              <div className="flex flex-col gap-1.5 rounded-[10px] border border-input p-2">
-                <div className="flex flex-wrap gap-1">
-                  {folder && (
-                    <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
-                      @{folderName(folder)}/
-                    </span>
-                  )}
-                  {hubDoc && (
-                    <span className="inline-flex h-5 items-center rounded-[5px] bg-secondary px-1.5 font-mono text-xs text-secondary-foreground">
-                      @{docName(hubDoc.key)}
-                    </span>
-                  )}
-                </div>
-                <textarea
-                  aria-label={t.ask}
-                  placeholder={t.placeholder[engine]}
-                  disabled={!folder}
-                  value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    setSlash(e.target.value === "/");
-                  }}
-                  onKeyDown={onKey}
-                  className="h-11 resize-none border-0 bg-transparent font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                />
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    aria-label={t.quick}
-                    aria-expanded={slash}
-                    onClick={() => setSlash((s) => !s)}
-                    className="font-mono"
-                  >
-                    /
-                  </Button>
-                  <span className="flex-1 truncate text-xs text-muted-foreground">{t.hint}</span>
-                  {running ? (
-                    <Button size="sm" variant="outline" className="h-6.5" onClick={() => void cancelRun()}>
-                      {t.stop}
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="h-6.5"
-                      disabled={!input.trim() || !folder || !modelOk}
-                      onClick={() => void send(input)}
-                    >
-                      {t.send}
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2.5 font-mono text-xs text-muted-foreground">
-                <span>{statusLeft.filter(Boolean).join(" · ")}</span>
-                {lastResult?.kind === "result" && lastResult.ok && (
-                  <span className="ml-auto">
-                    {t.lastRun(formatTokens(lastResult.inputTokens, lang), formatTokens(lastResult.outputTokens, lang))}
-                  </span>
-                )}
-              </div>
             </div>
-          </>
-        )}
+            <textarea
+              aria-label={t.ask}
+              placeholder={t.placeholder[engine]}
+              disabled={!folder}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                setSlash(e.target.value === "/");
+              }}
+              onKeyDown={onKey}
+              className="h-11 resize-none border-0 bg-transparent font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            />
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="xs"
+                aria-label={t.quick}
+                aria-expanded={slash}
+                onClick={() => setSlash((s) => !s)}
+                className="font-mono"
+              >
+                /
+              </Button>
+              <span className="flex-1 truncate text-xs text-muted-foreground">{t.hint}</span>
+              {running ? (
+                <Button size="sm" variant="outline" className="h-6.5" onClick={() => void cancelRun()}>
+                  {t.stop}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  className="h-6.5"
+                  disabled={!input.trim() || !folder || !modelOk}
+                  onClick={() => void send(input)}
+                >
+                  {t.send}
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2.5 font-mono text-xs text-muted-foreground">
+            <span>{statusLeft.filter(Boolean).join(" · ")}</span>
+            {lastResult?.kind === "result" && lastResult.ok && (
+              <span className="ml-auto">
+                {t.lastRun(formatTokens(lastResult.inputTokens, lang), formatTokens(lastResult.outputTokens, lang))}
+              </span>
+            )}
+          </div>
+        </div>
       </aside>
 
       <AiAccountsDialog

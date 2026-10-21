@@ -81,6 +81,7 @@ function fakeApp(opts: { repo?: RepoBranches; statuses?: BranchStatus[]; local?:
     git_branches_status: () => ({ repos: opts.statuses ?? [] }),
     local_projects: view,
     git_groups: () => ({ path: "/x/gitgroups.json", hosts: [], groups: [] }),
+    open_agent_terminal: () => null,
   };
   window.__TAURI__ = {
     core: {
@@ -369,7 +370,7 @@ describe("BranchesSheet", () => {
 
   it("menu dòng: Sao chép tên, Mở terminal ở worktree; Đổi sang có ở nhánh khác nhánh đang đứng", async () => {
     const WT = "/Users/ha/Code/shop-wt/feature";
-    fakeApp({
+    const { calls } = fakeApp({
       repo: repoOf({
         branches: [branch("main", { isCurrent: true }), branch("feature", { worktreePath: WT })],
       }),
@@ -393,8 +394,11 @@ describe("BranchesSheet", () => {
 
     await user.click(screen.getByRole("button", { name: "Thao tác với feature" }));
     await user.click(await screen.findByRole("menuitem", { name: "Mở terminal ở worktree" }));
-    expect(location.hash).toBe("#/terminal");
-    expect(onClose).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(calls.find((c) => c.command === "open_agent_terminal")?.args).toMatchObject({ folder: WT, bypass: false }),
+    );
+    // Terminal mở ở cửa sổ riêng của máy: bảng nhánh vẫn mở.
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("toàn màn khi hẹp (360 px), cột 640 px bên phải khi rộng; chữ tiếng Anh theo ngôn ngữ", async () => {

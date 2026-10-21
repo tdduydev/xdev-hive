@@ -1,15 +1,9 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TerminalPane } from "@/components/terminal-pane.tsx";
 import { setLang } from "@/lib/i18n.ts";
 import type { MachineAgent } from "@/lib/machine-agents.ts";
-import { openTerminal, resetTerminals, terminals } from "@/lib/pty.ts";
 import { AgentsScreen } from "@/screens/agents-screen.tsx";
-import { terms } from "@/test-fake-xterm.ts";
-
-vi.mock("@xterm/xterm", () => import("@/test-fake-xterm.ts"));
-vi.mock("@xterm/addon-fit", () => ({ FitAddon: class {} }));
 
 type Call = { command: string; args?: Record<string, unknown> | undefined };
 
@@ -59,7 +53,6 @@ const FOREIGN = agent({ pid: 8000, cli: "antigravity", configDir: null, own: fal
 
 function fakeTauri(agents: MachineAgent[]) {
   const calls: Call[] = [];
-  let ptys = 0;
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     machine_agents: () => ({ agents, home: "/Users/ha" }),
     machine_agent_stop: () => null,
@@ -100,10 +93,7 @@ function fakeTauri(agents: MachineAgent[]) {
         },
       ],
     }),
-    pty_open: () => `pty-${++ptys}`,
-    pty_write: () => null,
-    pty_resize: () => null,
-    pty_close: () => null,
+    open_agent_terminal: () => null,
   };
   window.__TAURI__ = {
     core: {
@@ -124,8 +114,6 @@ const row = (pid: number) => screen.findByRole("listitem", { name: new RegExp(`P
 describe("AgentsScreen", () => {
   beforeEach(() => {
     setLang("vi");
-    resetTerminals();
-    terms.length = 0;
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -212,51 +200,19 @@ describe("AgentsScreen", () => {
     ]);
   });
 
-  it("Terminal ở thư mục này mở tab shell ở thư mục của agent", async () => {
-    fakeTauri([MINE]);
+  it("Terminal ở thư mục này mở shell của máy ở thư mục của agent", async () => {
+    const calls = fakeTauri([MINE]);
     const user = userEvent.setup();
     render(<AgentsScreen />);
     await user.click(within(await row(4242)).getByRole("button", { name: "Terminal ở thư mục này" }));
-    expect(location.hash).toBe("#/terminal");
-    expect(terminals().folder).toBe("/Users/ha/shop/src");
-    expect(terminals().sessions.at(-1)).toMatchObject({ cli: "shell", folder: "/Users/ha/shop/src", bypass: false });
-  });
-
-  it("agent trong tab của app: Mở tab chọn đúng tab; Dừng đóng tab CLI, tab shell chỉ dừng agent", async () => {
-    const calls = fakeTauri([]);
-    openTerminal({ cli: "claude", planId: null, bypass: false, folder: "/Users/ha/shop", label: "Claude Code" });
-    openTerminal({ cli: "shell", planId: null, bypass: false, folder: "/Users/ha/blog", label: "Shell" });
-    const shopPane = render(<TerminalPane folder="/Users/ha/shop" onPickFolder={() => {}} />);
-    await waitFor(() => expect(terminals().sessions[0]?.status).toBe("running"));
-    shopPane.unmount();
-    const blogPane = render(<TerminalPane folder="/Users/ha/blog" onPickFolder={() => {}} />);
-    await waitFor(() => expect(terminals().sessions[1]?.status).toBe("running"));
-    blogPane.unmount();
-    const [cliTab, shellTab] = terminals().sessions;
-    expect(calls.filter((c) => c.command === "pty_open")).toHaveLength(2);
-    const later = fakeTauri([
-      agent({ pid: 9000, configDir: null, source: { kind: "app", pty: cliTab?.ptyId ?? null } }),
-      agent({ pid: 9100, configDir: null, source: { kind: "app", pty: shellTab?.ptyId ?? null } }),
-    ]);
-    const user = userEvent.setup();
-    render(<AgentsScreen />);
-    await user.click(within(await row(9000)).getByRole("button", { name: "Mở tab" }));
-    expect(location.hash).toBe("#/terminal");
-    expect(terminals().active).toBe(cliTab?.key);
-    expect(terminals().folder).toBe("/Users/ha/shop");
-
-    // Agent là CLI chính của tab: đóng PTY để tab chuyển sang đã thoát, tab vẫn còn.
-    await user.click(within(await row(9000)).getByRole("button", { name: "Dừng…" }));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Dừng" }));
-    await waitFor(() => expect(later.find((c) => c.command === "pty_close")?.args).toEqual({ id: cliTab?.ptyId }));
-    expect(terminals().sessions).toHaveLength(2);
-    // Agent chạy trong tab shell: chỉ dừng agent, shell còn mở.
-    await user.click(within(await row(9100)).getByRole("button", { name: "Dừng…" }));
-    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Dừng" }));
     await waitFor(() =>
-      expect(later.find((c) => c.command === "machine_agent_stop")?.args).toEqual({ pid: 9100, startedAt: STARTED }),
+      expect(calls.find((c) => c.command === "open_agent_terminal")?.args).toEqual({
+        cli: "shell",
+        planId: null,
+        bypass: false,
+        folder: "/Users/ha/shop/src",
+      }),
     );
-    expect(later.filter((c) => c.command === "pty_close")).toHaveLength(1);
   });
 
   it("Dừng: chỉ agent của mình, cảnh báo theo nguồn, kiểm lại pid và giờ bắt đầu", async () => {

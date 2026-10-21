@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
@@ -510,32 +510,23 @@ fn cli_name(cli: Cli) -> &'static str {
     }
 }
 
-pub(crate) fn busy_list(terminals: &[(String, PathBuf)], agents: &[AgentDir]) -> Vec<BusyDir> {
-    let mut out: Vec<BusyDir> = Vec::new();
-    for a in agents.iter().filter(|a| !a.worker_run && !a.cwd.is_empty()) {
-        out.push(BusyDir {
+/// Terminal mở bằng app là cửa sổ terminal của máy, app không theo dõi được: chỉ agent chạy trong đó (thấy qua tiến
+/// trình) mới làm thư mục bận.
+pub(crate) fn busy_list(agents: &[AgentDir]) -> Vec<BusyDir> {
+    agents
+        .iter()
+        .filter(|a| !a.worker_run && !a.cwd.is_empty())
+        .map(|a| BusyDir {
             path: a.cwd.clone(),
             kind: "agent",
             label: Some(format!("{} (pid {})", cli_name(a.cli), a.pid)),
-        });
-    }
-    for (_, folder) in terminals {
-        let path = folder.to_string_lossy().into_owned();
-        if !out.iter().any(|b| b.kind == "terminal" && b.path == path) {
-            out.push(BusyDir {
-                path,
-                kind: "terminal",
-                label: None,
-            });
-        }
-    }
-    out
+        })
+        .collect()
 }
 
-/// Thư mục đang có agent (spec 021) hay terminal của app. Đọc tiến trình lỗi thì chỉ còn terminal: sidecar vẫn chặn
+/// Thư mục đang có agent (spec 021). Đọc tiến trình lỗi thì danh sách rỗng: sidecar vẫn chặn
 /// được phần nó tự biết (worktree của worker).
 async fn busy_dirs(app: &AppHandle) -> Vec<BusyDir> {
-    let terminals = app.state::<crate::pty::Ptys>().folders();
     let agents: Vec<AgentDir> = crate::agents::machine_agents(app.clone())
         .await
         .map(|scan| {
@@ -552,7 +543,7 @@ async fn busy_dirs(app: &AppHandle) -> Vec<BusyDir> {
                 .collect()
         })
         .unwrap_or_default();
-    busy_list(&terminals, &agents)
+    busy_list(&agents)
 }
 
 async fn busy_input(app: &AppHandle) -> Value {
@@ -1150,11 +1141,7 @@ mod tests {
     }
 
     #[test]
-    fn busy_list_has_agents_and_terminals_but_not_worker_runs() {
-        let terminals = vec![
-            ("pty-1".to_string(), PathBuf::from(abs("code/shop"))),
-            ("pty-2".to_string(), PathBuf::from(abs("code/shop"))),
-        ];
+    fn busy_list_has_agents_but_not_worker_runs() {
         let agents = vec![
             AgentDir {
                 cwd: abs("code/shop/.claude/worktrees/a"),
@@ -1169,12 +1156,11 @@ mod tests {
                 worker_run: true,
             },
         ];
-        let list = busy_list(&terminals, &agents);
+        let list = busy_list(&agents);
         assert_eq!(
             serde_json::to_value(&list).unwrap(),
             json!([
                 {"path": abs("code/shop/.claude/worktrees/a"), "kind": "agent", "label": "claude (pid 4242)"},
-                {"path": abs("code/shop"), "kind": "terminal"},
             ])
         );
     }

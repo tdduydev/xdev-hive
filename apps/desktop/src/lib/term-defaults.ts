@@ -1,6 +1,6 @@
 import type { CliProfile } from "@/lib/agent.ts";
 import { folderKey } from "@/lib/folder.ts";
-import type { TermCli } from "@/lib/pty.ts";
+import type { TermCli } from "@/lib/terminal.ts";
 
 /**
  * CLI và gói agent mở lần cuối ở từng dự án, để nút Terminal của dự án mở lại đúng gói. Không nhớ "bỏ hỏi quyền": mỗi

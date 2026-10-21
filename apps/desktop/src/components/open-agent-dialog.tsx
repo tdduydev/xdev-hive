@@ -14,8 +14,9 @@ import { type CliProfile, cliProfiles } from "@/lib/agent.ts";
 import { shortPath } from "@/lib/folder.ts";
 import type { BranchStatus } from "@/lib/git-branches.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
-import { openTerminal, selectFolder, TERM_CLI_LABEL, type TermCli, termLabel } from "@/lib/pty.ts";
+import { errorText } from "@/lib/tauri.ts";
 import { pickPlan, termDefault, usablePlans } from "@/lib/term-defaults.ts";
+import { openAgentTerminal, TERM_CLI_LABEL, type TermCli } from "@/lib/terminal.ts";
 import { cn } from "@/lib/utils.ts";
 
 type AgentCli = Exclude<TermCli, "shell">;
@@ -31,6 +32,7 @@ const text: Dict<{
   plan: string;
   planDefault: string;
   noPlan: string;
+  where: string;
   willPull: (branch: string, upstream: string) => string;
   noPull: Record<NoPull, string>;
   lead: string;
@@ -47,6 +49,7 @@ const text: Dict<{
     plan: "Gói agent",
     planDefault: "Đăng nhập mặc định của CLI",
     noPlan: "Máy chưa có gói nào của CLI này đã đăng nhập và đang bật; terminal mở bằng đăng nhập mặc định của CLI.",
+    where: "Mở trong cửa sổ terminal của máy.",
     willPull: (branch, upstream) => `Pull ${branch} từ ${upstream} trước khi mở.`,
     noPull: {
       unknown: "Không pull: chưa đọc được nhánh của repo.",
@@ -73,6 +76,7 @@ const text: Dict<{
     plan: "Agent plan",
     planDefault: "CLI's default sign-in",
     noPlan: "This machine has no signed-in, enabled plan for this CLI; the terminal uses the CLI's default sign-in.",
+    where: "Opens in a terminal window of this machine.",
     willPull: (branch, upstream) => `Pull ${branch} from ${upstream} before opening.`,
     noPull: {
       unknown: "No pull: could not read the repository's branch.",
@@ -106,8 +110,8 @@ export function pullTarget(status: BranchStatus | undefined): { branch: string; 
 const select = "h-8 w-full rounded-md border bg-background px-2 text-sm";
 
 /**
- * Nút "Mở bằng agent" của một dự án: chọn CLI và gói đã đăng nhập, đang bật trên máy, pull nhánh đang đứng rồi mở tab
- * terminal bỏ hỏi quyền ở màn Terminal. Bỏ hỏi quyền phải xác nhận mỗi lần mở, như ô "Bỏ hỏi quyền" của màn Terminal.
+ * Nút "Mở bằng agent" của một dự án: chọn CLI và gói đã đăng nhập, đang bật trên máy, pull nhánh đang đứng rồi mở CLI
+ * bỏ hỏi quyền trong cửa sổ terminal của máy. Bỏ hỏi quyền phải xác nhận mỗi lần mở.
  */
 export function OpenAgentButton({
   name,
@@ -126,6 +130,7 @@ export function OpenAgentButton({
   const [plans, setPlans] = useState<CliProfile[]>([]);
   const [cli, setCli] = useState<AgentCli>("claude");
   const [planId, setPlanId] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -151,24 +156,36 @@ export function OpenAgentButton({
   const cliPlans = usablePlans(plans, cli);
   const target = pullTarget(branch);
 
-  function launch() {
+  async function launch() {
     const plan = cliPlans.find((p) => p.id === planId);
-    selectFolder(folder);
-    openTerminal({ cli, planId: plan?.id ?? null, bypass: true, folder, label: termLabel(cli, plan) });
     setPulling(null);
-    setOpen(false);
-    location.hash = "#/terminal";
+    try {
+      await openAgentTerminal({ cli, planId: plan?.id ?? null, bypass: true, folder });
+      setOpen(false);
+    } catch (e) {
+      // Pull xong mà không mở được terminal: mở lại hộp thoại để người dùng thấy lỗi, không mất lựa chọn.
+      setOpen(true);
+      setError(errorText(e));
+    }
   }
 
   function confirm() {
-    if (typeof target === "string") return launch();
+    if (typeof target === "string") return void launch();
     setOpen(false);
     setPulling(target.branch);
   }
 
   return (
     <>
-      <Button size="sm" variant="outline" aria-label={t.openLabel(name)} onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        aria-label={t.openLabel(name)}
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
+      >
         <BotIcon aria-hidden="true" />
         {t.open}
       </Button>
@@ -211,11 +228,17 @@ export function OpenAgentButton({
             </label>
           </div>
           {cliPlans.length === 0 && <p className="text-xs text-muted-foreground">{t.noPlan}</p>}
+          <p className="text-xs text-muted-foreground">{t.where}</p>
           <p className={cn("text-sm", typeof target === "string" && "text-muted-foreground")}>
             {typeof target === "string" ? t.noPull[target] : t.willPull(target.branch, target.upstream)}
           </p>
           <p className="text-sm text-muted-foreground">{t.lead}</p>
           <p className="font-mono text-xs text-destructive">{t.flag[cli]}</p>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
           <DialogActions>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               {t.cancel}
@@ -234,7 +257,7 @@ export function OpenAgentButton({
           onDone={(r) => {
             onPulled?.();
             // Pull lệch nhánh rồi merge/rebase dừng vì xung đột: không mở agent lên repo đang dở thao tác.
-            if (r.kind === "pull" || r.operation.state === "done") launch();
+            if (r.kind === "pull" || r.operation.state === "done") void launch();
             else setPulling(null);
           }}
         />
