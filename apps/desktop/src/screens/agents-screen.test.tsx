@@ -178,6 +178,14 @@ describe("AgentsScreen", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("mở từ Cây giao việc (#/agents/<run>) thì mở sẵn khung Hoạt động của agent chạy run đó", async () => {
+    location.hash = "#/agents/r-77";
+    const calls = fakeTauri([MINE, RUN]);
+    render(<AgentsScreen />);
+    expect(await screen.findByRole("dialog", { name: /Hoạt động · PAY/ })).toBeTruthy();
+    expect(calls.find((c) => c.command === "machine_agent_feed")?.args).toMatchObject({ pid: 5000 });
+  });
+
   it("đếm theo CLI và lọc theo nguồn", async () => {
     fakeTauri([MINE, RUN, HIVE]);
     const user = userEvent.setup();

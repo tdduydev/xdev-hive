@@ -24,8 +24,8 @@ function fakeTauri(handlers: Record<string, Handler>) {
 }
 
 // Lịch sử và cài đặt do hiệu ứng riêng của thẻ gọi; các test luồng sửa nhanh chỉ đếm lệnh điểm.
-const scoreCalls = <T extends { command: string }>(calls: T[]) =>
-  calls.filter((c) => c.command !== "token_score_history" && c.command !== "app_settings");
+const SIDE_CALLS = new Set(["token_score_history", "app_settings", "token_score_report_status"]);
+const scoreCalls = <T extends { command: string }>(calls: T[]) => calls.filter((c) => !SIDE_CALLS.has(c.command));
 const commands = (calls: { command: string }[]) => scoreCalls(calls).map((c) => c.command);
 
 const balancedPreview: FixPreview = {
@@ -440,6 +440,68 @@ describe("TokenScoreCard: lịch sử, tự tính lại, gợi ý phiên ngắn"
         value: false,
       }),
     );
+  });
+
+  it("công tắc gửi điểm lên hub đọc trạng thái, bật qua worker và nói chỉ gửi số điểm", async () => {
+    const user = userEvent.setup();
+    const calls = fakeTauri({
+      token_score: () => sampleScore(),
+      token_score_history: () => ({ entries: [] }),
+      token_score_report_status: () => ({ enabled: false, registered: true, lastSentAt: null, pending: false }),
+      token_score_report_set: (args) => ({
+        enabled: args?.enabled,
+        registered: true,
+        lastSentAt: null,
+        pending: false,
+      }),
+    });
+    render(<TokenScoreCard />);
+    const toggle = await screen.findByRole("switch", { name: "Gửi điểm lên hub" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(toggle.hasAttribute("disabled")).toBe(false);
+    expect(
+      screen.getByText("Chỉ gửi số điểm, không gửi đường dẫn hay tên dự án; tối đa mỗi giờ một lần."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/chưa đăng ký với hub/)).toBeNull();
+    await user.click(toggle);
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
+    expect(calls.find((c) => c.command === "token_score_report_set")?.args).toEqual({ enabled: true });
+  });
+
+  it("máy chưa đăng ký với hub thì khoá công tắc gửi điểm và nói lý do", async () => {
+    fakeTauri({
+      token_score: () => sampleScore(),
+      token_score_history: () => ({ entries: [] }),
+      token_score_report_status: () => ({ enabled: false, registered: false, lastSentAt: null, pending: false }),
+    });
+    render(<TokenScoreCard />);
+    const toggle = await screen.findByRole("switch", { name: "Gửi điểm lên hub" });
+    expect(toggle.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Máy chưa đăng ký với hub nên chưa gửi điểm được.")).toBeTruthy();
+  });
+
+  it("lưu cài đặt gửi điểm lỗi thì trả công tắc về như cũ và báo lỗi", async () => {
+    const user = userEvent.setup();
+    fakeTauri({
+      token_score: () => sampleScore(),
+      token_score_history: () => ({ entries: [] }),
+      token_score_report_status: () => ({ enabled: true, registered: true, lastSentAt: null, pending: false }),
+      token_score_report_set: () => {
+        throw new Error("worker lỗi");
+      },
+    });
+    render(<TokenScoreCard />);
+    const toggle = await screen.findByRole("switch", { name: "Gửi điểm lên hub" });
+    await user.click(toggle);
+    expect(await screen.findByText("Không lưu được cài đặt gửi điểm lên hub.")).toBeTruthy();
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("worker chưa có lệnh gửi điểm thì không hiện công tắc", async () => {
+    fakeTauri({ token_score: () => sampleScore(), token_score_history: () => ({ entries: [] }) });
+    render(<TokenScoreCard />);
+    await screen.findByText("Cần cải thiện");
+    expect(screen.queryByRole("switch", { name: "Gửi điểm lên hub" })).toBeNull();
   });
 
   it("A1 đủ điểm mà B2 từ 50% thì hiện gợi ý tách phiên, không có nút sửa", async () => {

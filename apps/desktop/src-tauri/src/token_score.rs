@@ -260,6 +260,21 @@ fn last_args() -> Vec<String> {
     ]
 }
 
+/// Bật, tắt hay xem việc gửi điểm lên hub (ADR 0036). Chỉ ba lệnh con cố định; worker tự kiểm máy đã đăng ký chưa.
+fn report_args(enabled: Option<bool>) -> Vec<String> {
+    let sub = match enabled {
+        None => "status",
+        Some(true) => "on",
+        Some(false) => "off",
+    };
+    vec![
+        "optimize".into(),
+        "report".into(),
+        sub.into(),
+        "--json".into(),
+    ]
+}
+
 /// Ghi mốc cho sửa nhanh Rust tự chạy; id ngoài `codegraph.*` bị từ chối vì mốc của `optimizer.*` là của sidecar.
 fn mark_args(fix: Fix, apply: bool) -> Result<Vec<String>, String> {
     if !fix.marks_in_rust() {
@@ -600,6 +615,18 @@ pub async fn token_score(
     Ok(score)
 }
 
+/// Cài đặt gửi điểm lên hub và máy đã đăng ký với hub chưa; chỉ đọc file, không gọi hub.
+#[tauri::command]
+pub async fn token_score_report_status(app: AppHandle) -> Result<Value, String> {
+    sidecar_json(&app, report_args(None), vec![]).await
+}
+
+/// Bật hay tắt gửi điểm lên hub; lần `optimize score` sau mới gửi, tối đa mỗi giờ một lần.
+#[tauri::command]
+pub async fn token_score_report_set(app: AppHandle, enabled: bool) -> Result<Value, String> {
+    sidecar_json(&app, report_args(Some(enabled)), vec![]).await
+}
+
 /// Lịch sử điểm `days` ngày gần nhất cho biểu đồ; chỉ đọc file lịch sử, không tính điểm.
 #[tauri::command]
 pub async fn token_score_history(app: AppHandle, days: Option<u32>) -> Result<Value, String> {
@@ -897,6 +924,13 @@ mod tests {
                 { "id": "gem", "cli": "gemini" }
             ]
         })
+    }
+
+    #[test]
+    fn report_args_are_fixed() {
+        assert_eq!(report_args(None), ["optimize", "report", "status", "--json"]);
+        assert_eq!(report_args(Some(true)), ["optimize", "report", "on", "--json"]);
+        assert_eq!(report_args(Some(false)), ["optimize", "report", "off", "--json"]);
     }
 
     #[test]

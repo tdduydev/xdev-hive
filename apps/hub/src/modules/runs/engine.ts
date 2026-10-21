@@ -14,6 +14,7 @@ import {
   type RunRtk,
   type RunStartInput,
   type RunTokenGuard,
+  redactSecrets,
   type SandboxJobConfig,
   type TaskStatus,
   TERMINAL_RUN_STATES,
@@ -28,6 +29,7 @@ import {
   sdlcJobSpec,
   sdlcReportArtifacts,
   steerResultData,
+  subagentEventData,
 } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, desc, eq, gt, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
@@ -1156,6 +1158,12 @@ export function createRunsEngine(deps: RunsDeps) {
   }
 
   async function onRunEvent(machine: AuthedMachine, msg: Extract<RunMessage, { type: "run_event" }>) {
+    const data = msg.event === "subagent" ? subagentData(msg.data) : msg.data;
+    if (!data) {
+      log.warn(`Bỏ sự kiện subagent sai dạng: run ${msg.runId}, seq ${msg.seq}`);
+      send(machine.id, { type: "ack", runId: msg.runId, uptoSeq: msg.seq });
+      return;
+    }
     const accepted = await tenant(machine.orgId, async (tx) => {
       const run = await fenced(tx, machine, msg.runId, msg.attempt);
       if (!run) return false;
@@ -1167,7 +1175,7 @@ export function createRunsEngine(deps: RunsDeps) {
           attempt: run.attempt,
           seq: msg.seq,
           type: msg.event,
-          data: msg.data,
+          data,
         })
         .onConflictDoNothing()
         .returning({ id: runEvents.id });
@@ -1193,6 +1201,16 @@ export function createRunsEngine(deps: RunsDeps) {
     if (!accepted) log.warn(`Bỏ run_event của lần thử cũ hoặc máy lạ: run ${msg.runId}, attempt ${msg.attempt}`);
     // Vẫn ack gói bị bỏ, để worker xoá khỏi bộ đệm thay vì gửi lại mãi.
     send(machine.id, { type: "ack", runId: msg.runId, uptoSeq: msg.seq });
+  }
+
+  /**
+   * Sự kiện sub-agent (specs/028) chỉ giữ siêu dữ liệu đã kiểm dạng: trường lạ (prompt, output) bị bỏ, mô tả che secret
+   * lần nữa ở hub vì worker cũ hay bị sửa có thể không che, rồi cắt 120 ký tự. Sai dạng thì null để bỏ cả sự kiện.
+   */
+  function subagentData(raw: Record<string, unknown>): Record<string, unknown> | null {
+    const parsed = subagentEventData.safeParse(raw);
+    if (!parsed.success) return null;
+    return { ...parsed.data, description: redactSecrets(parsed.data.description).slice(0, 120) };
   }
 
   /**

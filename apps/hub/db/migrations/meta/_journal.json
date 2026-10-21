@@ -575,6 +575,20 @@
       "when": 1792470992836,
       "tag": "0081_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1792577108045,
+      "tag": "0082_token_score_client_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1792585856759,
+      "tag": "0083_leader_delegations",
+      "breakpoints": true
     }
   ]
 }

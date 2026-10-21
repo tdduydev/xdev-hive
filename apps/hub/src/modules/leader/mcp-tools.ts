@@ -194,7 +194,14 @@ export function registerMcpTools(
         return { approvalId: approval.id, status: approval.status, message: "Đã gửi đề xuất, chờ người duyệt." };
       }
       // Bypass: người mở đã xác nhận cho Leader làm thẳng bằng quyền của họ; vẫn ghi audit từng lần (kèm cấp độ, model).
-      const outcome = await executeLeaderAction(tx, principal.userId, checked.data, opts.runs);
+      const outcome = await executeLeaderAction(
+        tx,
+        principal.userId,
+        checked.data,
+        opts.runs,
+        {},
+        terminal.threadId ?? undefined,
+      );
       await recordAudit(tx, {
         action: "terminal.action",
         targetType: "terminal_session",

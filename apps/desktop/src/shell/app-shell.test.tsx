@@ -55,7 +55,7 @@ describe("AppShell", () => {
       ),
     ).toEqual([
       ["Máy này"],
-      ["Agent trên máy", "Terminal", "Lượt chạy", "Điều khiển từ xa"],
+      ["Agent trên máy", "Terminal", "Cây giao việc", "Lượt chạy", "Điều khiển từ xa"],
       ["Gói agent", "Skills", "Memory", "Token và ngữ cảnh"],
       ["Dự án trên máy", "Môi trường", "Máy chủ SSH", "Tài liệu từ code"],
     ]);
@@ -207,7 +207,7 @@ describe("chưa đăng nhập", () => {
       .getAllByRole("link")
       .filter((a) => a.hasAttribute("data-offline"))
       .map((a) => a.getAttribute("href"));
-    expect(offline).toEqual(["#/runs"]);
+    expect(offline).toEqual(["#/tree", "#/runs"]);
     expect(within(nav).getByRole("link", { name: "Lượt chạy" }).getAttribute("title")).toBe(
       "Lượt chạy · Cần kết nối Hive",
     );

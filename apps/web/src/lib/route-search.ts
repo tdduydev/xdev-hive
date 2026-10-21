@@ -52,10 +52,15 @@ export function validateWorkflowsSearch(search: Record<string, unknown>): Workfl
 export interface LeaderSearch {
   /** Cuộc trò chuyện đang mở; bỏ trống thì mở cuộc mới nhất. */
   thread?: string;
+  /** `tree`: tab Cây giao việc (specs/028), để lối mở từ trang task, trang run dẫn thẳng tới cây. */
+  view?: "tree" | undefined;
 }
 
 export function validateLeaderSearch(search: Record<string, unknown>): LeaderSearch {
-  return typeof search.thread === "string" ? { thread: search.thread } : {};
+  return {
+    ...(typeof search.thread === "string" ? { thread: search.thread } : {}),
+    view: search.view === "tree" ? "tree" : undefined,
+  };
 }
 
 export interface SdlcBoardSearch {

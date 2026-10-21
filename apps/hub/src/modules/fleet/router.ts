@@ -21,6 +21,7 @@ import {
 import { FleetError } from "./errors.ts";
 import { CLOSE } from "./gateway.ts";
 import {
+  authenticateMachine,
   findMachine,
   listMachines,
   pauseMachine,
@@ -33,6 +34,7 @@ import {
 import { createRegistration, registerMachine } from "./registration.ts";
 import { installCommands, type WorkerReleaseCache } from "./releases.ts";
 import { listSdlcFleet } from "./sdlc-fleet.ts";
+import { getMachineTokenScore, receiveMachineEvent } from "./token-scores.ts";
 
 /** Mã đóng để worker nối lại ngay (1012: dịch vụ khởi động lại), không phải lỗi. */
 const CLOSE_RECONNECT = 1012;
@@ -207,6 +209,9 @@ export function fleetRouter(deps: FleetDeps) {
           });
         return machine;
       }),
+      tokenScore: machinesOs.tokenScore.handler(({ context, input }) =>
+        inOrg(context.headers, (tx, userId) => getMachineTokenScore(tx, userId, input.machineId)),
+      ),
       workerRelease: machinesOs.workerRelease.handler(async ({ context }) => {
         const session = deps.auth ? await deps.auth.api.getSession({ headers: context.headers }) : null;
         if (!session) throw new ORPCError("UNAUTHORIZED", { message: "Chưa đăng nhập." });
@@ -215,6 +220,15 @@ export function fleetRouter(deps: FleetDeps) {
     },
     worker: {
       register: workerOs.register.handler(({ input }) => registerMachine(requirePool(), input).catch(toORPC)),
+      // Sự kiện máy (ADR 0036): danh tính là máy của token, không lấy từ body. ADR 0033 sẽ đổi sang access token ngắn hạn.
+      clientEvent: workerOs.clientEvent.handler(async ({ context, input }) => {
+        const pool = requirePool();
+        const token = /^Bearer\s+(\S+)$/i.exec(context.headers.get("authorization") ?? "")?.[1];
+        const machine = token ? await authenticateMachine(pool, token) : null;
+        if (!machine)
+          throw new ORPCError("UNAUTHORIZED", { message: "Machine token không hợp lệ hoặc máy đã bị thu hồi." });
+        return receiveMachineEvent(pool, machine, input);
+      }),
     },
     desktopConnect: {
       options: desktopOs.options.handler(({ context }) =>

@@ -38,3 +38,10 @@ export { createRegistration, registerMachine } from "./registration.ts";
 export { installCommands, WORKER_DOWNLOADS, WorkerReleaseCache } from "./releases.ts";
 export { type FleetDeps, fleetRouter } from "./router.ts";
 export { provideSdlcFleetRuns, type SdlcFleetRun } from "./sdlc-fleet.ts";
+export {
+  latestTokenScores,
+  purgeTokenScores,
+  registerTokenScoreRetentionWorker,
+  TOKEN_SCORE_RETENTION_QUEUE,
+  tokenScoreRetentionQueue,
+} from "./token-scores.ts";

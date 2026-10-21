@@ -46,6 +46,12 @@ export async function loadTask(tx: Tx, id: string): Promise<TaskRow | null> {
   return row ?? null;
 }
 
+/** Nhiều task trong một truy vấn, không kiểm quyền: người gọi tự lọc theo đội (cây giao việc của Leader, specs/028). */
+export async function loadTasks(tx: Tx, ids: string[]): Promise<TaskRow[]> {
+  if (ids.length === 0) return [];
+  return tx.select().from(tasks).where(inArray(tasks.id, ids));
+}
+
 /** Mã và tiêu đề của nhiều task trong một truy vấn, cho danh sách run. Không kiểm quyền; người gọi đã lọc theo đội. */
 export async function taskSummaries(tx: Tx, ids: string[]): Promise<Map<string, { key: string; title: string }>> {
   if (ids.length === 0) return new Map();

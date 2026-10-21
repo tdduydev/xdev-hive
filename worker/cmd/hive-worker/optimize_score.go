@@ -68,8 +68,9 @@ func scoreProfiles(o *optimizer.Optimizer, view *optimizeView) []score.Profile {
 	return out
 }
 
-// optimizeScore chấm điểm tối ưu token của máy (spec 025) và ghi lịch sử điểm.
-func optimizeScore(o *optimizer.Optimizer, file string, days int, fresh bool, measureProfile string, asJSON bool, stdout, stderr io.Writer) int {
+// optimizeScore chấm điểm tối ưu token của máy (spec 025), ghi lịch sử điểm rồi gửi điểm lên hub nếu người dùng đã bật
+// (ADR 0036). cfgPath là worker.json, nơi có địa chỉ hub và machine token.
+func optimizeScore(o *optimizer.Optimizer, file, cfgPath string, days int, fresh bool, measureProfile string, asJSON bool, stdout, stderr io.Writer) int {
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -120,11 +121,15 @@ func optimizeScore(o *optimizer.Optimizer, file string, days int, fresh bool, me
 		fmt.Fprintln(stderr, "không ghi được lịch sử điểm:", err)
 	}
 	res.Previous = prev
+	code := 0
 	if asJSON {
-		return printJSON(stdout, stderr, res)
+		code = printJSON(stdout, stderr, res)
+	} else {
+		printScore(stdout, res)
 	}
-	printScore(stdout, res)
-	return 0
+	// Gửi sau khi in: hub chậm hay lỗi không làm mất điểm đã chấm, chỉ kéo dài lúc tiến trình thoát.
+	sendScoreReport(dir, cfgPath, res, now, stderr)
+	return code
 }
 
 func printScore(w io.Writer, r *score.Result) {

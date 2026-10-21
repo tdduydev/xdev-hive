@@ -72,6 +72,8 @@ fn main() {
         "token_score_fix_preview",
         "token_score_fix",
         "token_score_undo",
+        "token_score_report_status",
+        "token_score_report_set",
         "memory_scan",
         "memory_apply",
         "memory_compress",

@@ -15,6 +15,7 @@ import { TerminalSessions } from "@/components/terminal-sessions.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Field, FieldLabel } from "@/components/ui/field.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
 import { formatDayTime } from "@/lib/format.ts";
@@ -22,6 +23,7 @@ import { type Dict, useT } from "@/lib/i18n.ts";
 import { awaitingLeader } from "@/lib/leader.ts";
 import { ThreadArtifactLayout, type ThreadArtifacts, useThreadArtifacts } from "@/pages/artifacts/leader-panel.tsx";
 import { WebArtifacts } from "@/pages/artifacts/web-env.tsx";
+import { LeaderTree } from "@/pages/leader-tree.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -48,7 +50,10 @@ const text: Dict<
     | "composerPlaceholder"
     | "sending"
     | "send"
-    | "artifacts",
+    | "artifacts"
+    | "views"
+    | "chatTab"
+    | "treeTab",
     string
   >
 > = {
@@ -75,6 +80,9 @@ const text: Dict<
     sending: "Đang gửi…",
     send: "Gửi",
     artifacts: "Artifact của cuộc trò chuyện",
+    views: "Xem cuộc trò chuyện",
+    chatTab: "Trò chuyện",
+    treeTab: "Cây giao việc",
   },
   en: {
     search: "Search conversations",
@@ -99,6 +107,9 @@ const text: Dict<
     sending: "Sending…",
     send: "Send",
     artifacts: "Conversation artifacts",
+    views: "Conversation views",
+    chatTab: "Chat",
+    treeTab: "Delegation tree",
   },
 };
 
@@ -113,7 +124,10 @@ export function LeaderPage() {
   const [filter, setFilter] = useState("");
   const [showNew, setShowNew] = useState(false);
   const selected = search.thread ?? threads.data?.[0]?.id;
-  const open = (thread: string) => navigate({ to: "/leader", search: { thread }, replace: true });
+  const view = search.view ?? "chat";
+  // Đổi cuộc trò chuyện giữ tab đang xem: người đang soi cây của các phiên không bị đẩy về chat.
+  const open = (thread: string, next: "chat" | "tree" = view) =>
+    navigate({ to: "/leader", search: next === "tree" ? { thread, view: "tree" } : { thread }, replace: true });
 
   let body: React.ReactNode;
   if (threads.isPending) body = <LoadingState />;
@@ -139,7 +153,7 @@ export function LeaderPage() {
               projects={projects.data}
               onCreated={(id) => {
                 setShowNew(false);
-                void open(id);
+                void open(id, "chat");
               }}
             />
           )}
@@ -185,9 +199,24 @@ export function LeaderPage() {
           <TerminalSessions />
         </aside>
         {selected ? (
-          <WebArtifacts key={selected} threadId={selected}>
-            <Thread threadId={selected} projects={projects.data} />
-          </WebArtifacts>
+          <Tabs
+            value={view}
+            onValueChange={(value) => void open(selected, value === "tree" ? "tree" : "chat")}
+            className="min-w-0"
+          >
+            <TabsList aria-label={t.views}>
+              <TabsTrigger value="chat">{t.chatTab}</TabsTrigger>
+              <TabsTrigger value="tree">{t.treeTab}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="chat" className="min-w-0">
+              <WebArtifacts key={selected} threadId={selected}>
+                <Thread threadId={selected} projects={projects.data} />
+              </WebArtifacts>
+            </TabsContent>
+            <TabsContent value="tree" className="min-w-0">
+              <LeaderTree key={selected} threadId={selected} />
+            </TabsContent>
+          </Tabs>
         ) : (
           <EmptyState title={t.emptyTitle} description={t.emptyDescription} />
         )}

@@ -354,6 +354,17 @@ export function AgentsScreen() {
   const [viewing, setViewing] = useState<{ agent: MachineAgent; title: string } | null>(null);
   /** "Làm mới" và sau khi dừng: đọc ngay và bắt đầu lại nhịp 3 giây. */
   const refresh = useRef<() => void>(() => {});
+  /** Mở từ Cây giao việc (`#/agents/<runId>`, specs/028 R8): mở sẵn bảng theo dõi của agent đang chạy run đó. */
+  const wantedRun = useRef(location.hash.split("/")[2] || null);
+
+  useEffect(() => {
+    const runId = wantedRun.current;
+    if (!runId || !scan) return;
+    const agent = scan.agents.find((a) => a.source.kind === "run" && a.source.runId === runId);
+    if (!agent) return;
+    wantedRun.current = null;
+    setViewing({ agent, title: agent.activity?.title ?? agent.hiveProject ?? CLI_LABEL[agent.cli] });
+  }, [scan]);
 
   useEffect(() => {
     // Hai danh sách chỉ để đặt tên dự án và gói; đọc lỗi thì dòng vẫn hiện thư mục.

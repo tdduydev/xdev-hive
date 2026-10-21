@@ -163,7 +163,7 @@ describe("welcome cho phiên máy cá nhân", () => {
   it("máy cá nhân có capability terminal: features terminal, chủ máy, chính sách TOTP", async () => {
     const welcome = await personal.until((m) => m.type === "welcome");
     expect(welcome).toMatchObject({
-      features: ["terminal"],
+      features: ["subagents", "terminal"],
       owner: { userId: org.user("tmember"), shared: false },
       policy: { totpFallback: true },
     });
@@ -173,13 +173,13 @@ describe("welcome cho phiên máy cá nhân", () => {
     const shared = await newMachine("shared", true);
     const w = await Worker.connect(shared.machineToken, `shared-${tag}`, ["terminal"]);
     const welcome = await w.until((m) => m.type === "welcome");
-    expect(welcome).toMatchObject({ features: ["shared"], owner: { shared: true } });
+    expect(welcome).toMatchObject({ features: ["shared", "subagents"], owner: { shared: true } });
     expect(welcome.type === "welcome" && welcome.policy).toBeFalsy();
 
     const old = await newMachine("old", false);
     const o = await Worker.connect(old.machineToken, `old-${tag}`, []);
     const w2 = await o.until((m) => m.type === "welcome");
-    expect(w2.type === "welcome" && w2.features).toEqual([]);
+    expect(w2.type === "welcome" && w2.features).toEqual(["subagents"]);
   });
 });
 

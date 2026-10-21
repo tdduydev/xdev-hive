@@ -137,7 +137,14 @@ export async function approveApproval(
   const action =
     tier && (proposed.type === "task.create" || proposed.type === "run.dispatch") ? { ...proposed, tier } : proposed;
   const choice = await tierChoice(tx, action);
-  const { result, afterCommit: afterCommitAction } = await executeLeaderAction(tx, userId, action, runsEngine, sdlc);
+  const { result, afterCommit: afterCommitAction } = await executeLeaderAction(
+    tx,
+    userId,
+    action,
+    runsEngine,
+    sdlc,
+    row.threadId,
+  );
   const [updated] = await tx
     .update(approvals)
     .set({ status: "approved", decidedBy: userId, action })

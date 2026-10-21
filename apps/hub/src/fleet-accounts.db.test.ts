@@ -239,7 +239,7 @@ describe("tóm tắt gói từ heartbeat (T060)", () => {
   it("welcome báo shared cho máy dùng chung; heartbeat lưu gói, bỏ trường lạ, thiếu accounts thì giữ", async () => {
     const m = await newMachine("hb", { shared: true, labels: ["sdlc"] });
     const { w, welcome } = await Worker.connect(m.machineToken, m.machineId);
-    expect(welcome.features).toEqual(["shared"]);
+    expect(welcome.features).toEqual(["shared", "subagents"]);
     await w.heartbeat({ accounts: [{ ...summary, email: "a@b.vn", token: "sk-secret" }] });
     await w.heartbeat();
     const [row] = (await admin.query("select accounts, accounts_at from hive.machines where id = $1", [m.id])).rows;
@@ -257,7 +257,7 @@ describe("tóm tắt gói từ heartbeat (T060)", () => {
   it("máy cá nhân: welcome không có shared, quản trị đội không thấy gói của chủ máy", async () => {
     const m = await newMachine("own", {}, "owner");
     const { w, welcome } = await Worker.connect(m.machineToken, m.machineId);
-    expect(welcome.features).toEqual([]);
+    expect(welcome.features).toEqual(["subagents"]);
     await w.heartbeat({ accounts: [summary] });
     const list = await asUser("admin", (tx, userId) => listMachines(tx, userId, teamId));
     expect(list.find((x) => x.id === m.id)?.accounts).toBeNull();
