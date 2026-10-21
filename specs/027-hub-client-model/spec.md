@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-20
 
-**Status**: Đã chốt Q1–Q3 (2026-10-20). Chưa có plan, chưa code.
+**Status**: Đã chốt Q1–Q3 (2026-10-20). Có plan (2026-10-21), chưa có tasks, chưa code.
 
 **Input**: Chủ dự án (2026-10-20): "với hệ thống này dữ liệu, và tiến độ dự án để trên server, và client sẽ làm hết qua
 tools client thì mình nên làm thế nào? review qua kiến trúc hiện tại đi", rồi "dùng spec để viết spec chuyển đổi đi".
