@@ -3,7 +3,12 @@ import { Button } from "@xdev-hive/ui/button";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MemoryCompressDialog } from "@/components/memory-compress-dialog.tsx";
+import { type LocalMemoryItem, MemoryHubSync } from "@/components/memory-hub-sync.tsx";
+import { useLinkedAccount } from "@/lib/account.ts";
+import { folderKey } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { localProjects } from "@/lib/local-projects.ts";
 import {
   applyMemory,
   canMergeMemory,
@@ -22,6 +27,9 @@ interface Text {
   title: string;
   lead: string;
   refresh: string;
+  compress: string;
+  compressLabel: (profile: string) => string;
+  hubSync: string;
   loading: string;
   empty: string;
   session: string;
@@ -68,6 +76,9 @@ const text: Dict<Text> = {
     title: "Memory",
     lead: "Memory và hướng dẫn trên máy, dùng được khi chưa đăng nhập. Token là số ước tính.",
     refresh: "Đọc lại",
+    compress: "Nén bằng AI",
+    compressLabel: (profile) => `Nén memory của gói ${profile} bằng AI`,
+    hubSync: "Đồng bộ với hub",
     loading: "Đang đọc…",
     empty: "Chưa tìm thấy memory hoặc hướng dẫn trên máy.",
     session: "Token nạp mỗi phiên theo dự án và gói",
@@ -120,6 +131,9 @@ const text: Dict<Text> = {
     title: "Memory",
     lead: "Local memory and instructions, available without signing in. Token counts are estimates.",
     refresh: "Reload",
+    compress: "Compress with AI",
+    compressLabel: (profile) => `Compress the memory of plan ${profile} with AI`,
+    hubSync: "Sync with the hub",
     loading: "Reading…",
     empty: "No local memory or instructions found.",
     session: "Tokens loaded per session by project and profile",
@@ -205,6 +219,10 @@ export function MemoryScreen() {
   const [deleting, setDeleting] = useState<MemoryFile | null>(null);
   const [merge, setMerge] = useState<MergePreview | null>(null);
   const [share, setShare] = useState<ShareReview | null>(null);
+  const account = useLinkedAccount();
+  const [compressing, setCompressing] = useState<{ profile: string; project: string } | null>(null);
+  // Thư mục dự án → id dự án trên hub (projects.json): chỉ dự án đã gắn mới đồng bộ được memory với hub.
+  const [bound, setBound] = useState<Map<string, string>>(new Map());
   // File đọc chậm không được ghi đè nội dung của file người dùng chọn sau đó.
   const readGeneration = useRef(0);
   const date = (at: string) => new Date(at).toLocaleString(lang === "vi" ? "vi-VN" : "en-US");
@@ -213,7 +231,10 @@ export function MemoryScreen() {
     setBusy(true);
     setError("");
     try {
-      setInventory(await scanMemory());
+      // Danh sách dự án đã gắn chỉ để hiện khung hub; đọc hỏng thì màn vẫn chạy như trước.
+      const [scan, local] = await Promise.all([scanMemory(), localProjects().catch(() => null)]);
+      setInventory(scan);
+      setBound(new Map((local?.projects ?? []).map((p) => [folderKey(p.folder), p.projectId])));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -413,11 +434,34 @@ export function MemoryScreen() {
                         project.key &&
                         project.profiles.some((p) => p.files.some((f) => f.kind === "memory")) &&
                         sharing(project)}
+                      {account && cli.cli === "claude" && project.path && bound.has(folderKey(project.path)) && (
+                        <HubSyncDetails
+                          title={t.hubSync}
+                          projectId={bound.get(folderKey(project.path)) as string}
+                          project={project}
+                        />
+                      )}
                       {project.profiles.map((profile) => (
                         <details open key={profile.id} className="ml-3 mt-2">
                           <summary className="cursor-pointer text-sm">
                             {profile.id} · {profile.files.length} {t.files} ·{" "}
                             {profile.files.reduce((sum, f) => sum + f.tokens, 0).toLocaleString(lang)} {t.tokens}
+                            {cli.cli === "claude" && project.key && profile.files.some((f) => f.kind === "memory") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="ml-2 h-6"
+                                aria-label={t.compressLabel(profile.id)}
+                                disabled={busy}
+                                onClick={(e) => {
+                                  // Nút nằm trong summary: không để lần bấm thu gọn nhánh.
+                                  e.preventDefault();
+                                  setCompressing({ profile: profile.id, project: project.key });
+                                }}
+                              >
+                                {t.compress}
+                              </Button>
+                            )}
                           </summary>
                           <ul className="ml-3 divide-y">
                             {profile.files.map((file) => (
@@ -682,6 +726,48 @@ export function MemoryScreen() {
           </section>
         </>
       )}
+      {compressing && (
+        <MemoryCompressDialog
+          open
+          onOpenChange={(open) => !open && setCompressing(null)}
+          profile={compressing.profile}
+          project={compressing.project}
+          onApplied={() => {
+            setCompressing(null);
+            void reload();
+          }}
+        />
+      )}
     </div>
   );
+}
+
+/** Khung đồng bộ hub của một dự án: chỉ dựng (và đọc file memory) khi người dùng mở, không đọc trước cả cây. */
+function HubSyncDetails({ title, projectId, project }: { title: string; projectId: string; project: MemoryProject }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="ml-3 mt-2" onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className="cursor-pointer text-sm">{title}</summary>
+      {open && <ProjectHubSync projectId={projectId} project={project} />}
+    </details>
+  );
+}
+
+/** Memory của dự án trên máy (mọi gói Claude) để gửi lên hub. */
+function ProjectHubSync({ projectId, project }: { projectId: string; project: MemoryProject }) {
+  const [items, setItems] = useState<LocalMemoryItem[]>([]);
+  useEffect(() => {
+    let live = true;
+    const files = project.profiles.flatMap((p) => p.files.filter((f) => f.kind === "memory" && f.name !== "MEMORY.md"));
+    void Promise.all(
+      files.map(async (f) => ({ id: f.path, label: `${f.name} · ${f.profile}`, content: await readMemory(f.path) })),
+    ).then(
+      (list) => live && setItems(list),
+      () => live && setItems([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [project]);
+  return <MemoryHubSync projectId={projectId} items={items} />;
 }

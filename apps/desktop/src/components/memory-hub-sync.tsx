@@ -70,23 +70,50 @@ const text: Dict<{
  * Mục "Hub" của màn Memory (specs/015 US6). Chưa liên kết tài khoản thì không vẽ gì: app vẫn dùng đủ trên máy, mục
  * này chỉ thêm đường sang hub. Gửi lên là `memory.write` với `source: "machine"`, hub luôn đặt chờ duyệt.
  */
-export function MemoryHubSync({ projectKey, items = [] }: { projectKey: string; items?: LocalMemoryItem[] }) {
+/**
+ * Đọc brief, memory của dự án trên hub và gửi memory máy lên hub. Màn Bộ nhớ chỉ biết id dự án đã gắn với thư mục
+ * (projects.json), nên nhận `projectId` thay cho `projectKey` và tự tra key.
+ */
+export function MemoryHubSync({
+  projectKey,
+  projectId,
+  items = [],
+}: {
+  projectKey?: string | undefined;
+  projectId?: string | undefined;
+  items?: LocalMemoryItem[];
+}) {
   const account = useLinkedAccount();
   if (!account) return null;
   return (
     <QueryClientProvider client={queryClient}>
-      <HubSection projectKey={projectKey} items={items} />
+      <HubSection projectKey={projectKey} boundId={projectId} items={items} />
     </QueryClientProvider>
   );
 }
 
-function HubSection({ projectKey, items }: { projectKey: string; items: LocalMemoryItem[] }) {
+function HubSection({
+  projectKey: givenKey,
+  boundId,
+  items,
+}: {
+  projectKey: string | undefined;
+  boundId: string | undefined;
+  items: LocalMemoryItem[];
+}) {
   const t = useT(text);
-  const brief = useQuery(api.briefs.get.queryOptions({ input: { project: projectKey } }));
-  const memories = useQuery(api.memory.list.queryOptions({ input: { project: projectKey } }));
-  // `memory.write` nhận id dự án chứ không nhận key, nên tra id từ danh sách dự án mình thấy.
+  // `memory.write` nhận id dự án, brief và memory nhận key: tra chiều còn thiếu từ danh sách dự án mình thấy.
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
-  const projectId = projects.data?.find((p) => p.key === projectKey)?.id;
+  const projectKey = givenKey ?? projects.data?.find((p) => p.id === boundId)?.key ?? "";
+  const projectId = boundId ?? projects.data?.find((p) => p.key === projectKey)?.id;
+  const brief = useQuery({
+    ...api.briefs.get.queryOptions({ input: { project: projectKey } }),
+    enabled: projectKey !== "",
+  });
+  const memories = useQuery({
+    ...api.memory.list.queryOptions({ input: { project: projectKey } }),
+    enabled: projectKey !== "",
+  });
   const error = brief.error ?? memories.error ?? projects.error;
 
   return (
