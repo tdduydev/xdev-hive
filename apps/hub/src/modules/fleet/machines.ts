@@ -8,6 +8,7 @@ import { type Jobs, type Tx, withTenant } from "../platform/index.ts";
 import { allowWith, requireTeamRole, teams } from "../tenancy/index.ts";
 import { FleetError } from "./errors.ts";
 import { machines, machineTokens } from "./schema.ts";
+import { latestTokenScores } from "./token-scores.ts";
 import { hashToken, MACHINE_PREFIX, withTokenLookup } from "./tokens.ts";
 
 export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
@@ -45,7 +46,11 @@ export const toMachineFor = (m: typeof machines.$inferSelect, userId: string): M
 export async function listMachines(tx: Tx, userId: string, teamId: string): Promise<Machine[]> {
   await allowWith(tx, userId, "machines.read", () => requireTeamRole(tx, userId, teamId, "admin"), teamId);
   const rows = await tx.select().from(machines).where(eq(machines.teamId, teamId)).orderBy(asc(machines.name));
-  return rows.map((m) => toMachineFor(m, userId));
+  const scores = await latestTokenScores(
+    tx,
+    rows.map((m) => m.id),
+  );
+  return rows.map((m) => ({ ...toMachineFor(m, userId), tokenScore: scores.get(m.id) ?? null }));
 }
 
 /**

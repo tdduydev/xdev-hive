@@ -49,6 +49,7 @@ import { reviewsContract, workflowsContract } from "./workflows.ts";
 export * from "./artifacts.ts";
 export * from "./audit.ts";
 export * from "./breakdown.ts";
+export * from "./client-events.ts";
 export * from "./code-reviews.ts";
 export * from "./cost.ts";
 export * from "./delivery.ts";

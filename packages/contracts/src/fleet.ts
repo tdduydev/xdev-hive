@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { clientEventResult, machineEventInput, tokenScoreLevel, tokenScoreReport } from "./client-events.ts";
 import { orgRoute } from "./common.ts";
 import { accountLoginCli, accountLoginHow, cli, machineId, workerAccountSummary, workerOs } from "./worker-protocol.ts";
 
@@ -56,8 +57,27 @@ export const machine = z.object({
   boundProjects: z.array(z.string()).optional(),
   /** Id dự án máy đã bật toàn quyền (ADR 0020); run chỉ nhận toàn quyền khi chính sách tổ chức cũng cho. */
   fullProjects: z.array(z.string()).optional(),
+  /** Điểm tối ưu token máy gửi lần gần nhất (specs/025 US6, ADR 0036); null khi máy chưa bật gửi hay chưa gửi. */
+  tokenScore: z
+    .object({
+      score: z.number().nullable(),
+      level: tokenScoreLevel.nullable(),
+      coverage: z.number(),
+      provisional: z.boolean(),
+      reportedAt: z.iso.datetime(),
+    })
+    .nullable()
+    .optional(),
 });
 export type Machine = z.output<typeof machine>;
+
+/** Chi tiết điểm token của một máy: bản mới nhất đầy đủ và điểm máy theo thời gian (90 ngày). */
+export const machineTokenScore = z.object({
+  machineId: id,
+  latest: z.object({ reportedAt: z.iso.datetime(), report: tokenScoreReport }).nullable(),
+  history: z.array(z.object({ reportedAt: z.iso.datetime(), score: z.number().nullable(), coverage: z.number() })),
+});
+export type MachineTokenScore = z.output<typeof machineTokenScore>;
 
 /**
  * Máy trên trang Đội máy AI SDLC (specs/011 US15): máy có nhãn của đội, kèm run `sdlc` và run task hạng mục đang chạy.
@@ -341,6 +361,16 @@ export const fleetContract = {
     sdlc: orgRoute("GET", "/v1/machines/sdlc", "Đội máy AI SDLC: máy có nhãn, run đang chạy, gói và quota", "fleet")
       .input(z.object({ teamId: id.optional() }))
       .output(z.array(sdlcFleetMachine)),
+    tokenScore: oc
+      .route({
+        method: "GET",
+        path: "/v1/machines/{machineId}/token-score",
+        summary: "Điểm tối ưu token của máy: bản mới nhất và lịch sử 90 ngày",
+        tags: ["fleet"],
+      })
+      .errors(userErrors)
+      .input(z.object({ machineId: id }))
+      .output(machineTokenScore),
     workerRelease: oc
       .route({
         method: "GET",
@@ -366,5 +396,18 @@ export const fleetContract = {
       })
       .input(registerInput)
       .output(registerOutput),
+    clientEvent: oc
+      .route({
+        method: "POST",
+        path: "/v1/client-events",
+        summary: "Máy gửi sự kiện client (ADR 0036): xác thực bằng machine token, chống trùng theo khoá",
+        tags: ["worker"],
+      })
+      .errors({
+        BAD_REQUEST: { message: "Dữ liệu gửi lên không hợp lệ." },
+        UNAUTHORIZED: { message: "Machine token không hợp lệ hoặc máy đã bị thu hồi." },
+      })
+      .input(machineEventInput)
+      .output(clientEventResult),
   },
 };

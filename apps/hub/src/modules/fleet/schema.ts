@@ -1,9 +1,10 @@
-import type { ConnectPurpose } from "@xdev-hive/contracts";
+import type { ConnectPurpose, TokenScoreReport } from "@xdev-hive/contracts";
 import type { WorkerAccountSummary } from "@xdev-hive/contracts/worker-protocol";
 import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -20,6 +21,7 @@ import { teams } from "../tenancy/index.ts";
 
 const hive = pgSchema("hive");
 const hiveApp = pgRole("hive_app").existing();
+const hiveOwner = pgRole("hive_owner").existing();
 
 const inOrg = sql`org_id = hive.ctx_org()`;
 // Worker và người cài máy không có phiên người dùng, nên chưa biết tổ chức. Cho tìm đúng một dòng theo băm của token
@@ -177,6 +179,46 @@ export const desktopConnectCodes = hive
         sql`${t.purpose} = 'cli' or (${t.purpose} = 'desktop' and ${t.teamId} is not null)`,
       ),
       ...tokenPolicies("desktop_connect_codes"),
+    ],
+  )
+  .enableRLS();
+
+/**
+ * Điểm tối ưu token máy gửi lên (specs/025 US6, ADR 0036): một dòng mỗi lần gửi, giữ 90 ngày. `report` đã qua schema
+ * strict của contracts nên chỉ có số, enum và mã lý do.
+ */
+export const machineTokenScores = hive
+  .table(
+    "machine_token_scores",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      teamId: uuid("team_id").notNull(),
+      machineId: uuid("machine_id").notNull(),
+      score: doublePrecision("score"),
+      coverage: doublePrecision("coverage").notNull(),
+      scoreVersion: integer("score_version").notNull(),
+      report: jsonb("report").$type<TokenScoreReport>().notNull(),
+      generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+      reportedAt: timestamp("reported_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      foreignKey({ columns: [t.machineId, t.orgId], foreignColumns: [machines.id, machines.orgId] }).onDelete(
+        "cascade",
+      ),
+      index("machine_token_scores_machine").on(t.machineId, t.reportedAt),
+      index("machine_token_scores_team").on(t.teamId),
+      pgPolicy("machine_token_scores_rw", {
+        as: "permissive",
+        for: "all",
+        to: hiveApp,
+        using: inOrg,
+        withCheck: inOrg,
+      }),
+      // Job dọn hằng ngày chạy hàm SECURITY DEFINER của hive_owner, không có tổ chức trong context; FORCE RLS áp cả cho
+      // chủ bảng nên cần hai policy này. hive_app không được gì thêm.
+      pgPolicy("machine_token_scores_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
+      pgPolicy("machine_token_scores_owner_purge", { for: "delete", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();

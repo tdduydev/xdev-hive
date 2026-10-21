@@ -25,11 +25,14 @@ import {
   type Level,
   levelOf,
   needsSessionTip,
+  type ScoreReportStatus,
   scoreDelta,
+  setTokenScoreReport,
   TOKEN_SCORE_UPDATED,
   type TokenScore,
   tokenScore,
   tokenScoreHistory,
+  tokenScoreReportStatus,
 } from "@/lib/token-score.ts";
 
 const text: Dict<{
@@ -62,6 +65,10 @@ const text: Dict<{
   daily: string;
   dailyHint: string;
   dailyFailed: string;
+  report: string;
+  reportHint: string;
+  reportUnregistered: string;
+  reportFailed: string;
   note: string;
 }> = {
   vi: {
@@ -98,6 +105,10 @@ const text: Dict<{
     dailyHint:
       "Chạy ngầm sau khi mở app 2 phút nếu điểm đã quá 24 giờ. Không chạy /context nên không gọi model, không tốn token.",
     dailyFailed: "Không lưu được cài đặt tự tính lại điểm.",
+    report: "Gửi điểm lên hub",
+    reportHint: "Chỉ gửi số điểm, không gửi đường dẫn hay tên dự án; tối đa mỗi giờ một lần.",
+    reportUnregistered: "Máy chưa đăng ký với hub nên chưa gửi điểm được.",
+    reportFailed: "Không lưu được cài đặt gửi điểm lên hub.",
     note: "Điểm đo cấu hình và kích thước ngữ cảnh, không đo chất lượng kết quả của agent.",
   },
   en: {
@@ -134,6 +145,10 @@ const text: Dict<{
     dailyHint:
       "Runs in the background 2 minutes after the app opens if the score is over 24 hours old. It does not run /context, so it does not call the model or spend tokens.",
     dailyFailed: "Could not save the daily recalculation setting.",
+    report: "Send the score to the hub",
+    reportHint: "Sends only the score figures, never paths or project names; at most once an hour.",
+    reportUnregistered: "This machine is not registered with a hub, so the score cannot be sent.",
+    reportFailed: "Could not save the setting for sending the score to the hub.",
     note: "The score measures configuration and context size, not the quality of the agent's results.",
   },
 };
@@ -165,6 +180,9 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
   // null: chưa đọc được cài đặt (ngoài Tauri, hay đang đọc), công tắc chưa hiện.
   const [daily, setDaily] = useState<boolean | null>(null);
   const [dailyError, setDailyError] = useState(false);
+  // null: chưa đọc được (ngoài Tauri, hay worker cũ chưa có `optimize report on|off`), công tắc gửi điểm chưa hiện.
+  const [report, setReport] = useState<ScoreReportStatus | null>(null);
+  const [reportError, setReportError] = useState(false);
   const latest = useRef(0);
 
   const load = useCallback(async (fresh: boolean, profileId: string | null = null) => {
@@ -220,6 +238,30 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
       live = false;
     };
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    tokenScoreReportStatus().then(
+      (s) => live && setReport(s),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function toggleReport(next: boolean) {
+    if (!report) return;
+    const before = report;
+    setReportError(false);
+    setReport({ ...report, enabled: next });
+    try {
+      setReport(await setTokenScoreReport(next));
+    } catch {
+      setReport(before);
+      setReportError(true);
+    }
+  }
 
   async function toggleDaily(next: boolean) {
     setDailyError(false);
@@ -378,6 +420,26 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
               {dailyError && (
                 <p role="alert" className="text-xs text-destructive">
                   {t.dailyFailed}
+                </p>
+              )}
+            </div>
+          )}
+          {report && (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-sm">
+                <Toggle
+                  on={report.enabled}
+                  label={t.report}
+                  disabled={!report.registered}
+                  onChange={(next) => void toggleReport(next)}
+                />
+                <span aria-hidden="true">{t.report}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{t.reportHint}</p>
+              {!report.registered && <p className="text-xs text-muted-foreground">{t.reportUnregistered}</p>}
+              {reportError && (
+                <p role="alert" className="text-xs text-destructive">
+                  {t.reportFailed}
                 </p>
               )}
             </div>

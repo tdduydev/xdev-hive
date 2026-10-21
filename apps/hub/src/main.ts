@@ -34,6 +34,8 @@ import {
   registerFleetOfflineWorker,
   registerRunHandlers,
   registerTerminalHandlers,
+  registerTokenScoreRetentionWorker,
+  tokenScoreRetentionQueue,
 } from "./modules/fleet/index.ts";
 import { createAuth, mcpMode } from "./modules/identity/index.ts";
 import {
@@ -59,11 +61,13 @@ import {
 } from "./modules/notify/index.ts";
 import {
   blobRefsIn,
+  clientEventRetentionQueue,
   createJobs,
   createPool,
   loadConfig,
   provideBlobRefs,
   registerBlobGc,
+  registerClientEventRetentionWorker,
 } from "./modules/platform/index.ts";
 import {
   createRunsEngine,
@@ -167,6 +171,8 @@ jobs = config.jobsDatabaseUrl
         fleetOfflineQueue,
         orphanUsersQueue,
         runLogRetentionQueue,
+        clientEventRetentionQueue,
+        tokenScoreRetentionQueue,
         skillGitQueue,
         skillLearningQueue,
         skillLearningPrQueue,
@@ -301,6 +307,8 @@ if (roles.includes("jobs") && jobs) {
     });
     await registerOrphanUsersWorker(jobs, { pool, keepEmails: config.orgCreators });
     await registerRunLogRetentionWorker(jobs, pool);
+    await registerClientEventRetentionWorker(jobs, pool);
+    await registerTokenScoreRetentionWorker(jobs, pool);
     await registerInboxCleanupWorker(jobs, pool);
     await registerAuditRetentionWorker(jobs, { pool });
     await registerArtifactPurgeWorker(jobs, { pool, publicUrl: config.publicUrl });
