@@ -92,6 +92,24 @@ function fakeApp(
           if (options.scanError) throw new Error(options.scanError);
           return data as T;
         }
+        if (command === "local_projects") {
+          // /repo/app đã gắn với dự án hub; /repo/other chưa gắn.
+          return {
+            path: "/cfg/projects.json",
+            exists: true,
+            imported: 0,
+            projects: [
+              {
+                projectId: "p-app",
+                name: "App",
+                folder: "/repo/app",
+                fullPermission: false,
+                exists: true,
+                isGit: true,
+              },
+            ],
+          } as T;
+        }
         if (command === "memory_apply") {
           const operation = args?.operation as MemoryOperation;
           operations.push(operation);
@@ -146,7 +164,38 @@ describe("MemoryScreen", () => {
     const ancestors = screen.getByText(A.path).closest("li")?.parentElement?.closest("details");
     expect(ancestors?.querySelector("summary")?.textContent).toContain("claude-1");
     expect(ancestors?.parentElement?.querySelector("summary")?.textContent).toContain("/repo/app");
-    expect(calls.map((c) => c.command)).toEqual(["memory_scan"]);
+    expect(calls.map((c) => c.command).sort()).toEqual(["local_projects", "memory_scan"]);
+  });
+
+  it("mỗi gói Claude có memory có nút Nén bằng AI mở hộp gợi ý nén đúng gói và dự án", async () => {
+    fakeApp();
+    renderMemory();
+    await screen.findByText(A.path);
+    await userEvent.click(screen.getByRole("button", { name: "Nén memory của gói claude-2 bằng AI" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Gợi ý nén memory")).toBeTruthy();
+    // Gói codex không có nút: nén chỉ dùng được với memory của Claude.
+    expect(screen.queryByRole("button", { name: /gói codex-1/ })).toBeNull();
+  });
+
+  it("chỉ dự án đã gắn với hub có khung Đồng bộ với hub, và chỉ khi đã nối hub", async () => {
+    fakeApp();
+    const { unmount } = renderMemory();
+    await screen.findByText(A.path);
+    expect(screen.queryByText("Đồng bộ với hub")).toBeNull();
+    unmount();
+    const account = { name: "Hà", email: "ha@x.vn", orgId: "o", orgName: "O", orgRole: "member" as const, teams: [] };
+    render(
+      <AccountContext.Provider value={account}>
+        <MemoryScreen />
+      </AccountContext.Provider>,
+    );
+    await screen.findByText(A.path);
+    const app = screen.getByText(A.path).closest("li")?.parentElement?.closest("details")?.parentElement as HTMLElement;
+    expect(within(app).getByText("Đồng bộ với hub")).toBeTruthy();
+    const other = screen.getByText(OTHER.path).closest("li")?.parentElement?.closest("details")
+      ?.parentElement as HTMLElement;
+    expect(within(other).queryByText("Đồng bộ với hub")).toBeNull();
   });
 
   it("sửa qua sidecar, truyền nội dung nguyên vẹn và khôi phục được bản sao lưu", async () => {
