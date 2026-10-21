@@ -93,6 +93,7 @@ const STEPS = {
   pr: "8c. PR tồn tại",
   report: "8d. Agent báo cáo qua MCP",
   worktree: "8e. Worktree trên worker đã gỡ",
+  subagent: "8f. Sub-agent của agent lên hub, chỉ siêu dữ liệu",
   mergeOn: "9a. API settings: bật merge queue, merge.mode auto",
   mqEnqueue: "9b. PR của run tự vào hàng merge",
   mqMerged: "9c. Job catalog-merge xử lý tới merged",
@@ -1105,6 +1106,21 @@ async function main(): Promise<number> {
       throw new Error("Không có sự kiện agent_report: CLI giả không gọi được task_update qua /mcp.");
     });
     await check("worktree", () => checkWorktree(run));
+    await check("subagent", async () => {
+      // CLI thật chỉ gọi sub-agent khi nó tự quyết; chỉ kiểm chắc với CLI giả.
+      if (REAL_CLI) throw new Pending("CLI thật không nhất thiết gọi sub-agent.");
+      const events = await api.get<RunEventView[]>(`/api/v1/runs/${run.id}/events?after=0&limit=1000`);
+      const subs = events.filter((e) => e.type === "subagent" && e.attempt === run.attempt);
+      const end = subs.find((e) => e.data.phase === "end");
+      if (!subs.some((e) => e.data.phase === "start") || !end)
+        throw new Error(`Thiếu sự kiện subagent start/end (có ${subs.length} sự kiện).`);
+      if (end.data.type !== "Explore" || end.data.tokens !== 1234 || end.data.status !== "completed")
+        throw new Error(`Sự kiện subagent sai: ${JSON.stringify(end.data)}`);
+      const raw = JSON.stringify(subs);
+      if (raw.includes("E2E-PROMPT") || raw.includes("E2E-SUMMARY"))
+        throw new Error("Prompt hay summary của sub-agent đã lên hub.");
+      console.log(`  ${String(end.data.type)}: ${String(end.data.tokens)} token, ${String(end.data.durationMs)} ms`);
+    });
 
     await check("mqEnqueue", () => checkEnqueued(api, project, run));
     let merged: MergeQueueEntry | undefined;
