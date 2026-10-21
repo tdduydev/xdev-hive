@@ -15,7 +15,7 @@ const BLOG = "/Users/ha/blog";
 
 type Call = { command: string; args?: Record<string, unknown> | undefined };
 
-const plan = (id: string, cli: string) => ({
+const plan = (id: string, cli: string, extra: { enabled?: boolean; loggedIn?: boolean; priority?: number } = {}) => ({
   id,
   label: id,
   cli,
@@ -25,16 +25,17 @@ const plan = (id: string, cli: string) => ({
   cooldownMinutes: 0,
   supported: true,
   loggedIn: true,
+  ...extra,
 });
 
-function fakeTauri() {
+function fakeTauri(accounts = [plan("claude-2", "claude"), plan("claude-3", "claude"), plan("codex-1", "codex")]) {
   const calls: Call[] = [];
   const listeners: Record<string, (e: { payload: unknown }) => void> = {};
   let ptys = 0;
   const handlers: Record<string, (args?: Record<string, unknown>) => unknown> = {
     cli_profiles: () => ({
       path: "/Users/ha/.xdev-hive/worker.yaml",
-      accounts: [plan("claude-2", "claude"), plan("claude-3", "claude"), plan("codex-1", "codex")],
+      accounts,
     }),
     pty_open: () => `pty-${++ptys}`,
     pty_write: () => null,
@@ -90,7 +91,8 @@ describe("TerminalPane", () => {
     await user.click(screen.getByRole("checkbox", { name: "Bỏ hỏi quyền" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Mở không hỏi quyền" }));
     await user.click(screen.getByRole("button", { name: "Terminal mới" }));
-    expect(termDefault(SHOP)).toEqual({ cli: "codex", planId: null });
+    // Đổi CLI thì chọn sẵn gói đang bật của CLI đó.
+    expect(termDefault(SHOP)).toEqual({ cli: "codex", planId: "codex-1" });
     expect(JSON.stringify(localStorage)).not.toContain("bypass");
     expect(termDefault(BLOG)).toBeNull();
   });
@@ -144,5 +146,35 @@ describe("TerminalPane", () => {
     await screen.findByRole("option", { name: "codex-1" });
     expect((screen.getByRole("combobox", { name: "Chạy" }) as HTMLSelectElement).value).toBe("codex");
     expect((screen.getByRole("combobox", { name: "Gói agent" }) as HTMLSelectElement).value).toBe("codex-1");
+  });
+
+  it("chỉ cho chọn gói đã đăng nhập và đang bật, mặc định gói ưu tiên cao nhất", async () => {
+    fakeTauri([
+      plan("claude-2", "claude", { priority: 10 }),
+      plan("claude-3", "claude", { priority: 50 }),
+      plan("claude-4", "claude", { enabled: false, priority: 99 }),
+      plan("claude-5", "claude", { loggedIn: false, priority: 99 }),
+    ]);
+    render(<TerminalPane folder={SHOP} onPickFolder={() => {}} />);
+    await screen.findByRole("option", { name: "claude-3" });
+    const picker = screen.getByRole("combobox", { name: "Gói agent" }) as HTMLSelectElement;
+    // Gói mặc định được chọn trong effect chạy sau khi danh sách gói đọc xong.
+    await waitFor(() => expect(picker.value).toBe("claude-3"));
+    expect([...picker.options].map((o) => o.value)).toEqual(["", "claude-3", "claude-2"]);
+  });
+
+  it("gói nhớ ở dự án đã tắt thì đổi sang gói dùng được; đã chọn đăng nhập mặc định thì giữ", async () => {
+    fakeTauri([plan("claude-2", "claude", { enabled: false }), plan("claude-3", "claude")]);
+    rememberTermDefault(SHOP, { cli: "claude", planId: "claude-2" });
+    rememberTermDefault(BLOG, { cli: "claude", planId: null });
+    const { rerender } = render(<TerminalPane folder={SHOP} onPickFolder={() => {}} />);
+    await screen.findByRole("option", { name: "claude-3" });
+    await waitFor(() =>
+      expect((screen.getByRole("combobox", { name: "Gói agent" }) as HTMLSelectElement).value).toBe("claude-3"),
+    );
+    rerender(<TerminalPane folder={BLOG} onPickFolder={() => {}} />);
+    await waitFor(() =>
+      expect((screen.getByRole("combobox", { name: "Gói agent" }) as HTMLSelectElement).value).toBe(""),
+    );
   });
 });

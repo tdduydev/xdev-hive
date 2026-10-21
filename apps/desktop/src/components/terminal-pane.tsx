@@ -26,9 +26,10 @@ import {
   TERM_THEME_PREFS,
   type TermCli,
   type TermThemePref,
+  termLabel,
   useTerminals,
 } from "@/lib/pty.ts";
-import { termDefault } from "@/lib/term-defaults.ts";
+import { pickPlan, termDefault, usablePlans } from "@/lib/term-defaults.ts";
 import { cn } from "@/lib/utils.ts";
 
 const CLIS: { id: TermCli; label: string }[] = (["claude", "codex", "antigravity", "shell"] as const).map((id) => ({
@@ -61,7 +62,6 @@ const text: Dict<{
   exited: string;
   failed: string;
   bypassBadge: string;
-  signedOut: string;
   fontSize: string;
   theme: string;
   themes: Record<TermThemePref, string>;
@@ -96,7 +96,6 @@ const text: Dict<{
     exited: "đã thoát",
     failed: "lỗi",
     bypassBadge: "bỏ hỏi quyền",
-    signedOut: "chưa đăng nhập",
     fontSize: "Cỡ chữ terminal",
     theme: "Giao diện terminal",
     themes: { dark: "Luôn tối", light: "Luôn sáng", app: "Theo app" },
@@ -131,7 +130,6 @@ const text: Dict<{
     exited: "exited",
     failed: "error",
     bypassBadge: "no prompts",
-    signedOut: "signed out",
     fontSize: "Terminal font size",
     theme: "Terminal theme",
     themes: { dark: "Always dark", light: "Always light", app: "Follow app" },
@@ -173,12 +171,14 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
   const [plans, setPlans] = useState<CliProfile[]>([]);
 
   useEffect(() => {
-    // Mỗi dự án mở lại bằng CLI và gói dùng lần cuối ở đó.
+    // Mỗi dự án mở lại bằng CLI và gói dùng lần cuối ở đó; gói đó không còn dùng được, hay dự án chưa nhớ gói, thì chọn
+    // gói đang bật có ưu tiên cao nhất. Chạy lại khi danh sách gói đọc xong.
     const d = folder ? termDefault(folder) : null;
-    setCli(d?.cli ?? "claude");
-    setPlanId(d?.planId ?? "");
+    const next = d?.cli ?? "claude";
+    setCli(next);
+    setPlanId(pickPlan(plans, next, d ? d.planId : undefined) ?? "");
     setBypass(false);
-  }, [folder]);
+  }, [folder, plans]);
 
   useEffect(() => {
     // Bản worker cũ chưa có `accounts --json` thì chỉ có đăng nhập mặc định.
@@ -189,38 +189,28 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
   }, []);
 
   const shell = cli === "shell";
-  const cliPlans = plans.filter((p) => p.cli === cli);
+  // Chỉ gói đã đăng nhập và đang bật: gói tắt hay đăng xuất mở ra cũng không chạy được.
+  const cliPlans = usablePlans(plans, cli);
   const current = sessions.find((s) => s.key === active) ?? sessions.at(-1) ?? null;
   const switchable = current && current.cli !== "shell" && current.status !== "starting";
-  const otherPlans = current ? plans.filter((p) => p.cli === current.cli && p.id !== current.planId) : [];
+  const otherPlans = current ? usablePlans(plans, current.cli).filter((p) => p.id !== current.planId) : [];
 
   function switchPlan(value: string) {
     if (!current || !value) return;
     const plan = plans.find((p) => p.id === value);
-    const name = TERM_CLI_LABEL[current.cli];
-    restartTerminal(current.key, {
-      planId: plan?.id ?? null,
-      label: plan ? `${name} · ${plan.label || plan.id}` : name,
-    });
+    restartTerminal(current.key, { planId: plan?.id ?? null, label: termLabel(current.cli, plan) });
   }
 
   function pickCli(next: TermCli) {
     setCli(next);
-    setPlanId("");
+    setPlanId(pickPlan(plans, next, undefined) ?? "");
     setBypass(false);
   }
 
   function open() {
     if (!folder) return;
     const plan = cliPlans.find((p) => p.id === planId);
-    const name = TERM_CLI_LABEL[cli];
-    openTerminal({
-      cli,
-      planId: plan?.id ?? null,
-      bypass: bypass && !shell,
-      folder,
-      label: plan ? `${name} · ${plan.label || plan.id}` : name,
-    });
+    openTerminal({ cli, planId: plan?.id ?? null, bypass: bypass && !shell, folder, label: termLabel(cli, plan) });
     // Mỗi terminal bỏ hỏi quyền phải xác nhận lại.
     setBypass(false);
   }
@@ -252,7 +242,6 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
             <option key={p.id} value={p.id}>
               {p.label || p.id}
               {p.email ? ` · ${p.email}` : ""}
-              {p.loggedIn === false ? ` (${t.signedOut})` : ""}
             </option>
           ))}
         </select>
@@ -369,7 +358,6 @@ export function TerminalPane({ folder, onPickFolder }: { folder: string; onPickF
                 <option key={p.id} value={p.id}>
                   {p.label || p.id}
                   {p.email ? ` · ${p.email}` : ""}
-                  {p.loggedIn === false ? ` (${t.signedOut})` : ""}
                 </option>
               ))}
             </select>
