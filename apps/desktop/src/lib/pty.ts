@@ -9,10 +9,11 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useSyncExternalStore } from "react";
+import type { CliProfile } from "@/lib/agent.ts";
 import { folderKey } from "@/lib/folder.ts";
 import { getLang } from "@/lib/i18n.ts";
 import { errorText, invoke } from "@/lib/tauri.ts";
-import { rememberTermDefault, termDefault } from "@/lib/term-defaults.ts";
+import { pickPlan, rememberTermDefault, termDefault } from "@/lib/term-defaults.ts";
 
 /**
  * Terminal nhúng của màn Tài liệu (src-tauri/src/pty.rs): PTY trên máy, vẽ bằng xterm.js. Kho nằm ngoài React như kho
@@ -367,8 +368,16 @@ export function restartTerminal(key: string, plan: { planId: string | null; labe
   if (l.opened) void start(key);
 }
 
-/** Nút Terminal của một dự án: chọn dự án, mở lại tab đang có, chưa có thì mở tab theo CLI và gói dùng lần cuối. */
-export function openProjectTerminal(f: string) {
+/** Nhãn tab: tên CLI, kèm tên gói khi mở bằng gói của worker. */
+export function termLabel(cli: TermCli, plan: { id: string; label?: string } | null | undefined): string {
+  return plan ? `${TERM_CLI_LABEL[cli]} · ${plan.label || plan.id}` : TERM_CLI_LABEL[cli];
+}
+
+/**
+ * Nút Terminal của một dự án: chọn dự án, mở lại tab đang có, chưa có thì mở tab theo CLI và gói dùng lần cuối. Gói đó đã
+ * tắt hay đăng xuất, hoặc dự án chưa nhớ gói nào, thì mở bằng gói dùng được có ưu tiên cao nhất trong `plans`.
+ */
+export function openProjectTerminal(f: string, plans: readonly CliProfile[] = []) {
   const mine = sessions.filter((s) => inFolder(s, f));
   if (mine.length) {
     const current = mine.find((s) => s.key === active) ?? mine.at(-1);
@@ -377,14 +386,16 @@ export function openProjectTerminal(f: string) {
     emit();
     return;
   }
-  const d = termDefault(f) ?? { cli: "claude" as const, planId: null };
+  const d = termDefault(f);
+  const cli = d?.cli ?? "claude";
+  const planId = pickPlan(plans, cli, d ? d.planId : undefined);
   folder = f;
   openTerminal({
-    cli: d.cli,
-    planId: d.planId,
+    cli,
+    planId,
     bypass: false,
     folder: f,
-    label: d.planId ? `${TERM_CLI_LABEL[d.cli]} · ${d.planId}` : TERM_CLI_LABEL[d.cli],
+    label: termLabel(cli, planId ? (plans.find((p) => p.id === planId) ?? { id: planId }) : null),
   });
 }
 

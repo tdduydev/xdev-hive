@@ -753,7 +753,8 @@ describe("DocsScreen", () => {
     term.type("/help\r");
     expect(calls.find((c) => c.command === "pty_write")?.args).toEqual({ id: "pty-1", data: "/help\r" });
 
-    // Bỏ hỏi quyền: hộp xác nhận, rồi terminal mới (tab con) chạy với cờ cố định của Rust.
+    // Bỏ hỏi quyền: hộp xác nhận, rồi terminal mới (tab con) chạy với cờ cố định của Rust. Đổi CLI thì chọn sẵn gói đang
+    // bật của CLI đó.
     await user.selectOptions(within(panel).getByRole("combobox", { name: "Chạy" }), "codex");
     await user.click(within(panel).getByRole("checkbox", { name: "Bỏ hỏi quyền" }));
     const dialog = await screen.findByRole("dialog");
@@ -764,7 +765,7 @@ describe("DocsScreen", () => {
     await waitFor(() =>
       expect(calls.filter((c) => c.command === "pty_open").at(-1)?.args).toMatchObject({
         cli: "codex",
-        planId: null,
+        planId: "codex-1",
         bypass: true,
       }),
     );

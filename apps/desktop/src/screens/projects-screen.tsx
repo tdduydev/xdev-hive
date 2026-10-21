@@ -25,7 +25,9 @@ import { BranchesSheet, RepoBranchStatus } from "@/components/branches-sheet.tsx
 import { CleanupDialog } from "@/components/cleanup-dialog.tsx";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { GitGroupsSection } from "@/components/git-groups.tsx";
+import { OpenAgentButton } from "@/components/open-agent-dialog.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
+import { cliProfiles } from "@/lib/agent.ts";
 import { folderKey, pickFolder, shortPath } from "@/lib/folder.ts";
 import { type BranchStatus, branchStatus, scanBranches, useBranchJob } from "@/lib/git-branches.ts";
 import { type GitGroups, gitGroups, useAutoFetched } from "@/lib/git-groups.ts";
@@ -369,6 +371,14 @@ function ProjectsView() {
     // Fetch, đổi nhánh, pull đều làm ref của đúng repo này đổi.
     if (sheetFolder.current) rescan([sheetFolder.current]);
   }, [loadBranches, rescan]);
+  // Nút Mở bằng agent vừa pull repo này.
+  const onPulled = useCallback(
+    (folder: string) => {
+      void loadBranches();
+      rescan([folder]);
+    },
+    [loadBranches, rescan],
+  );
 
   const hubList = projects.data;
   useEffect(() => {
@@ -482,6 +492,7 @@ function ProjectsView() {
                   local={byId.get(p.id)}
                   branch={byId.get(p.id) && branches[folderKey(byId.get(p.id)?.folder ?? "")]}
                   onBranches={(folder) => setSheet({ folder, name: p.name })}
+                  onPulled={onPulled}
                   t={t}
                   busy={busy === p.id}
                   allowFull={allowFull}
@@ -502,6 +513,7 @@ function ProjectsView() {
         tracked={tracked}
         branches={branches}
         onBranches={(l) => setSheet({ folder: l.folder, name: l.name })}
+        onPulled={onPulled}
         t={t}
         busy={busy}
         onRemove={(l) =>
@@ -575,6 +587,7 @@ function LocalRepoList({
   tracked,
   branches,
   onBranches,
+  onPulled,
   t,
   busy,
   onRemove,
@@ -584,6 +597,7 @@ function LocalRepoList({
   tracked: GitGroups | null;
   branches: Record<string, BranchStatus>;
   onBranches: (l: LocalProject) => void;
+  onPulled: (folder: string) => void;
   t: (typeof text)["vi"];
   busy: string | null;
   onRemove: (l: LocalProject) => void;
@@ -670,7 +684,17 @@ function LocalRepoList({
                               </span>
                             )}
                           </span>
-                          {l.exists && <TerminalButton name={l.name} folder={l.folder} />}
+                          {l.exists && (
+                            <>
+                              <OpenAgentButton
+                                name={l.name}
+                                folder={l.folder}
+                                branch={branches[folderKey(l.folder)]}
+                                onPulled={() => onPulled(l.folder)}
+                              />
+                              <TerminalButton name={l.name} folder={l.folder} />
+                            </>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -694,7 +718,10 @@ function LocalRepoList({
   );
 }
 
-/** Mở màn Terminal ở thư mục dự án, bằng CLI và gói dùng lần cuối ở đó (lib/term-defaults.ts). */
+/**
+ * Mở màn Terminal ở thư mục dự án, bằng CLI và gói dùng lần cuối ở đó (lib/term-defaults.ts); gói đó không còn dùng
+ * được thì bằng gói đã đăng nhập, đang bật có ưu tiên cao nhất.
+ */
 function TerminalButton({ name, folder }: { name: string; folder: string }) {
   const t = useT(text);
   return (
@@ -702,8 +729,13 @@ function TerminalButton({ name, folder }: { name: string; folder: string }) {
       size="sm"
       variant="outline"
       aria-label={t.terminalLabel(name)}
-      onClick={() => {
-        openProjectTerminal(folder);
+      onClick={async () => {
+        // Bản worker cũ chưa có `accounts --json` thì mở bằng gói đã nhớ hay đăng nhập mặc định như trước.
+        const plans = await cliProfiles().then(
+          (p) => p.accounts,
+          () => [],
+        );
+        openProjectTerminal(folder, plans);
         location.hash = "#/terminal";
       }}
     >
@@ -718,6 +750,7 @@ function ProjectRow({
   local,
   branch,
   onBranches,
+  onPulled,
   t,
   busy,
   allowFull,
@@ -729,6 +762,7 @@ function ProjectRow({
   local: LocalProject | undefined;
   branch: BranchStatus | undefined;
   onBranches: (folder: string) => void;
+  onPulled: (folder: string) => void;
   t: (typeof text)["vi"];
   busy: boolean;
   allowFull: boolean | undefined;
@@ -766,7 +800,17 @@ function ProjectRow({
             </span>
           )}
         </span>
-        {local?.exists && <TerminalButton name={p.name} folder={local.folder} />}
+        {local?.exists && (
+          <>
+            <OpenAgentButton
+              name={p.name}
+              folder={local.folder}
+              branch={branch}
+              onPulled={() => onPulled(local.folder)}
+            />
+            <TerminalButton name={p.name} folder={local.folder} />
+          </>
+        )}
         <Button size="sm" variant="outline" disabled={busy} aria-label={t.pickTitle(p.name)} onClick={onPick}>
           <FolderOpenIcon aria-hidden="true" />
           {local ? t.change : t.pick}
