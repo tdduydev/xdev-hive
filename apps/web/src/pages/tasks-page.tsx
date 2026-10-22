@@ -123,6 +123,13 @@ export function ProjectTasksPage() {
             CI/CD
           </Link>
           <Link
+            to="/projects/$key/token-usage"
+            params={{ key: project.key }}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            Token
+          </Link>
+          <Link
             to="/projects/$key/settings"
             params={{ key: project.key }}
             className={buttonVariants({ variant: "outline" })}
