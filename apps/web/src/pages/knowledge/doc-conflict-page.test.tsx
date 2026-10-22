@@ -126,6 +126,14 @@ afterEach(() => {
 });
 
 describe("DocConflictPage", () => {
+  it("xung đột từ Word hiện nhãn Word thay cho repo", async () => {
+    conflict = { ...conflict, origin: "word", repoCommit: null };
+    mount(<DocConflictPage />);
+    await screen.findByRole("button", { name: "Giữ bản Word" });
+    expect(screen.queryByText("Giữ bản repo")).toBeNull();
+    expect(screen.getByText("Hub và file Word cùng sửa 1 chỗ khác nhau. Giữ một bản hoặc sửa tay.")).toBeTruthy();
+  });
+
   it("tải lại hubVersion mới dù timestamp xung đột không đổi, rồi gửi đúng phiên bản", async () => {
     stale = true;
     mount(<DocConflictPage />);

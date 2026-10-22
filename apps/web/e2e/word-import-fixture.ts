@@ -156,6 +156,8 @@ export const wordImportFailure = (code: string, status = 400) => ({
 
 const AT = "2026-10-19T03:00:00.000Z";
 const fileId = (n: number) => `20202020-0000-4000-8000-0000000000c${n}`;
+const DOC_ID = "20202020-0000-4000-8000-0000000000e1";
+export const WORD_CONFLICT_ID = "20202020-0000-4000-8000-0000000000a1";
 const MEDIA_NAME = "9f2c4b7a1d3e.png";
 /** PNG 1×1 để ảnh xem trước và ảnh trong editor có thật mà không cần file ngoài. */
 export const PIXEL_PNG = Buffer.from(
@@ -179,7 +181,9 @@ const err = (status: number, data: unknown) => ({
 });
 
 export interface WordImportPageOptions extends WordImportOptions {
-  mode?: "create" | "link";
+  mode?: "create" | "link" | "update";
+  /** Cập nhật: bản Word mới hợp sạch, chồng nhau, hay trùng lần nhập trước. */
+  outcome?: "clean" | "overlap" | "unchanged";
   access?: "manage" | "propose";
   /** File thứ ba bị chặn vì dấu hiệu bí mật. */
   secret?: boolean;
@@ -224,9 +228,19 @@ const CURRENT_MARKDOWN = "# SRS OPD\n\nMô tả cũ.\n\n| Mã | Yêu cầu |\n| 
  */
 export function wordImportPageScenario(options: WordImportPageOptions = {}) {
   const base = wordImportScenario(options);
-  const link = options.mode === "link";
-  const access = options.access ?? "manage";
-  const calls = { update: [] as unknown[], commit: [] as unknown[], cancel: 0, confirmLink: 0, gets: 0 };
+  const update = options.mode === "update";
+  const outcome = options.outcome ?? "clean";
+  // Gắn và cập nhật cùng làm việc trên một tài liệu có sẵn.
+  const link = options.mode === "link" || update;
+  let access = options.access ?? "manage";
+  const calls = {
+    update: [] as unknown[],
+    commit: [] as unknown[],
+    approve: [] as unknown[],
+    cancel: 0,
+    confirmLink: 0,
+    gets: 0,
+  };
   let tick = 0;
   const stamp = () => new Date(Date.parse(AT) + ++tick * 1000).toISOString();
 
@@ -265,7 +279,15 @@ export function wordImportPageScenario(options: WordImportPageOptions = {}) {
   };
   const files: Record<string, unknown>[] = link ? [makeFile(0)] : SAMPLES.map((_, i) => makeFile(i));
   if (link) Object.assign(files[0] as object, { path: "docs/srs/OPD/a.md", linkMatches: options.linkMatches ?? false });
-  const meta = { state: link ? "ready" : "ready" };
+  if (update)
+    Object.assign(files[0] as object, {
+      exists: true,
+      key: "org/srs-0",
+      docId: DOC_ID,
+      state: outcome === "unchanged" ? "skipped" : "ready",
+      linkMatches: outcome === "unchanged" ? null : outcome === "clean",
+    });
+  const meta = { state: update && outcome === "unchanged" ? "done" : "ready" };
   const markdownOf = (file: Record<string, unknown>) => {
     const body = file.fileName === SAMPLES[0].name ? OPD_MARKDOWN : `# ${String(file.title)}\n\nNội dung mẫu.\n`;
     return file.keepFront ? `Trang bìa\n\n${body}` : body;
@@ -289,7 +311,7 @@ export function wordImportPageScenario(options: WordImportPageOptions = {}) {
     id: WORD_IMPORT_ID,
     homeId: base.orgHome.id,
     targetDir: link ? null : "docs/srs/",
-    mode: link ? "link" : "create",
+    mode: update ? "update" : link ? "link" : "create",
     docKey: link ? "org/srs-0" : null,
     confidential: false,
     state: meta.state,
@@ -303,6 +325,28 @@ export function wordImportPageScenario(options: WordImportPageOptions = {}) {
     const shown = slow ? files.map((file) => ({ ...file, state: calls.gets === 1 ? "queued" : "converting" })) : files;
     return { import: { ...importOf(), ...(slow ? { state: "converting" } : {}) }, files: shown, access };
   };
+  const state = { conflictOpen: false };
+  const conflictOf = () => ({
+    id: WORD_CONFLICT_ID,
+    homeId: base.orgHome.id,
+    docId: DOC_ID,
+    key: "org/srs-0",
+    title: "SRS OPD",
+    repoPath: "docs/srs/OPD/a.md",
+    origin: "word",
+    baseVersion: 2,
+    hubVersion: 3,
+    repoCommit: null,
+    state: "open",
+    resolution: null,
+    resolvedVersion: null,
+    createdAt: AT,
+    updatedAt: AT,
+    baseContent: "# SRS OPD\n\nMô tả gốc.",
+    hubContent: "# SRS OPD\n\nMô tả sửa trên hub.",
+    repoContent: "# SRS OPD\n\nMô tả sửa trong Word.",
+    merge: { content: "# SRS OPD\n\nMô tả sửa trên hub.", conflicts: 1 },
+  });
   const find = (input: unknown) => files.find((file) => file.id === (input as { fileId: string }).fileId);
 
   const rpc: Record<string, DocsyncFixtureHandler> = {
@@ -351,6 +395,20 @@ export function wordImportPageScenario(options: WordImportPageOptions = {}) {
     "wordImports/commit": (input) => {
       const i = input as { fileIds?: string[]; acknowledgeSecrets?: boolean };
       calls.commit.push(input);
+      if (update) {
+        if (access !== "manage") return err(403, { code: "WORD_IMPORT_NEEDS_MANAGE" });
+        const file = files[0] as Record<string, unknown>;
+        Object.assign(
+          file,
+          outcome === "clean"
+            ? { state: "done", docVersion: 3, linkMatches: true }
+            : { state: "done", docVersion: null, linkMatches: false },
+          { updatedAt: stamp() },
+        );
+        meta.state = "done";
+        if (outcome === "overlap") state.conflictOpen = true;
+        return ok(snapshot());
+      }
       const chosen = files.filter((file) =>
         i.fileIds ? i.fileIds.includes(String(file.id)) : file.state === "ready" && file.excluded !== true,
       );
@@ -391,7 +449,21 @@ export function wordImportPageScenario(options: WordImportPageOptions = {}) {
       meta.state = "done";
       return ok(file);
     },
-    "wordImports/ofDoc": () => ok(null),
+    "wordImports/approve": (input) => {
+      const i = input as { fileIds: string[] };
+      calls.approve.push(input);
+      const chosen = files.filter((file) => i.fileIds.includes(String(file.id)));
+      if (chosen.length === 0 || chosen.some((file) => file.state !== "proposed"))
+        return err(409, { code: "WORD_IMPORT_NOT_PROPOSED" });
+      for (const file of chosen) {
+        const slug = String(file.path).replace(/^.*\//, "").replace(/\.md$/, "");
+        Object.assign(file, { state: "done", key: `org/${slug}`, docId: DOC_ID, docVersion: 1, updatedAt: stamp() });
+      }
+      return ok(snapshot());
+    },
+    "wordImports/ofDoc": () => ok(update ? { import: importOf(), file: files[0] } : null),
+    "docConflicts/list": () => ok({ items: state.conflictOpen ? [conflictOf()] : [], nextCursor: null }),
+    "docConflicts/get": () => ok(conflictOf()),
     "docAssets/resolve": (input) =>
       ok(
         (input as { hrefs: string[] }).hrefs.map((href) => ({
@@ -439,5 +511,15 @@ export function wordImportPageScenario(options: WordImportPageOptions = {}) {
     await page.route("**/api/v1/docs/word-imports/*/files/*/media/*", png);
     await page.route(`**${WORD_IMAGE_URL}`, png);
   };
-  return { ...base, rpc, install, calls, files };
+  return {
+    ...base,
+    rpc,
+    install,
+    calls,
+    files,
+    /** Đổi quyền giữa hai lần mở trang: người gửi duyệt xong thì người duyệt vào xem. */
+    setAccess: (next: "manage" | "propose") => {
+      access = next;
+    },
+  };
 }
