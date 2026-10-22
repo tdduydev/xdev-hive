@@ -59,7 +59,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 1: Go (P1)
 
-- [ ] **T003 [US1] [nặng] · 2 ngày — Gói `ctxsync`: nguồn, khối, file đích, gương Codex** (sau T002)
+- [x] **T003 [US1] [nặng] · 2 ngày — Gói `ctxsync`: nguồn, khối, file đích, gương Codex** (sau T002)
   - **Goal**: theo [plan.md](plan.md) mục 1, [data-model.md](data-model.md) "Trên máy", [research.md](research.md) mục 1–2:
     - khoá nguồn `p_<projectId>` / `f_<ProjectKey>`; `source.md`, `state.json` (version 1);
     - `RenderBlock`, `ParseBlocks`: dòng mở `<!-- xdev-hive:context v1 sha=<12 hex> -->`, dòng đóng

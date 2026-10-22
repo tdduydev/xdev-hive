@@ -3,7 +3,9 @@
 package gitexclude
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,9 +17,17 @@ func git(repo string, args ...string) ([]byte, error) {
 	return procattr.Command("git", append([]string{"-C", repo}, args...)...).Output()
 }
 
-func inWorkTree(repo string) bool {
-	out, err := git(repo, "rev-parse", "--is-inside-work-tree")
-	return err == nil && strings.TrimSpace(string(out)) == "true"
+// exitCode là mã thoát của git; -1 khi không chạy được git. Dùng mã thoát thay cho một lần gọi rev-parse riêng để biết
+// thư mục có phải repo không: mỗi lần gọi git trên Windows mất cỡ 50 ms.
+func exitCode(err error) int {
+	var ee *exec.ExitError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &ee):
+		return ee.ExitCode()
+	}
+	return -1
 }
 
 // Line là dòng exclude cho đường dẫn tương đối rel; dấu / đầu dòng neo vào gốc repo để không bỏ qua file trùng tên ở
@@ -37,10 +47,8 @@ func Path(repo string) (string, error) {
 // Add thêm rel vào exclude nếu git chưa bỏ qua nó. added=true khi đã thêm dòng Line(rel), để bên gọi ghi lại và gỡ đúng
 // dòng đó khi tắt. warn không rỗng khi không làm được; không phải repo git thì không cảnh báo.
 func Add(repo, rel string) (added bool, warn string) {
-	if !inWorkTree(repo) {
-		return false, ""
-	}
-	if _, err := git(repo, "check-ignore", "-q", filepath.ToSlash(rel)); err == nil {
+	// check-ignore: 0 là đã bỏ qua, 1 là chưa, khác (128) là không phải repo git.
+	if _, err := git(repo, "check-ignore", "-q", filepath.ToSlash(rel)); exitCode(err) != 1 {
 		return false, ""
 	}
 	hint := "; thêm " + filepath.ToSlash(rel) + " vào .gitignore để khỏi commit nhầm"
@@ -68,7 +76,7 @@ func Add(repo, rel string) (added bool, warn string) {
 
 // Remove gỡ đúng dòng line (do Add thêm) khỏi exclude; các dòng khác giữ nguyên. Trả cảnh báo khi không ghi được.
 func Remove(repo, line string) string {
-	if line == "" || !inWorkTree(repo) {
+	if line == "" {
 		return ""
 	}
 	path, err := Path(repo)
@@ -98,9 +106,7 @@ func Remove(repo, line string) string {
 // Tracked cho biết rel đang được git theo dõi. File bị theo dõi thì exclude không có tác dụng, nên bên gọi không được
 // ghi nội dung riêng của máy vào đó.
 func Tracked(repo, rel string) bool {
-	if !inWorkTree(repo) {
-		return false
-	}
+	// Ngoài repo git, ls-files cũng lỗi, nên không cần hỏi riêng.
 	_, err := git(repo, "ls-files", "--error-unmatch", "--", filepath.ToSlash(rel))
 	return err == nil
 }
