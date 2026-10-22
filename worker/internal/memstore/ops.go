@@ -79,15 +79,17 @@ type EntrySummary struct {
 
 var errIndexName = errors.New("không thao tác trực tiếp lên chỉ mục MEMORY.md bằng lệnh này")
 
-// batch gom các thay đổi của một thao tác: file nào cũng được lưu một lần trước khi bị ghi hay xoá.
-type batch struct {
+// Batch gom các thay đổi của một thao tác: file nào cũng được lưu một lần trước khi bị ghi hay xoá. Gói khác (ctxsync)
+// dùng nó để mọi lần ghi file ngữ cảnh có bản sao lưu và khôi phục được bằng Restore.
+type Batch struct {
 	store Store
 	entry Entry
 	dir   string
 	saved map[string]bool
 }
 
-func (s Store) begin(op string, trash bool) (*batch, error) {
+// Begin mở một thao tác op; trash=true khi thao tác xoá file, để bản lưu nằm trong thùng rác.
+func (s Store) Begin(op string, trash bool) (*Batch, error) {
 	if s.Dir == "" {
 		return nil, errors.New("thiếu thư mục dữ liệu của bộ tối ưu")
 	}
@@ -102,7 +104,7 @@ func (s Store) begin(op string, trash bool) (*batch, error) {
 	if trash {
 		root = s.trashDir()
 	}
-	b := &batch{store: s, dir: filepath.Join(root, id), saved: map[string]bool{},
+	b := &Batch{store: s, dir: filepath.Join(root, id), saved: map[string]bool{},
 		entry: Entry{ID: id, Op: op, CreatedAt: now, Trash: trash, Files: []StoredFile{}}}
 	if err := os.MkdirAll(filepath.Join(b.dir, "files"), 0o700); err != nil {
 		return nil, err
@@ -110,8 +112,8 @@ func (s Store) begin(op string, trash bool) (*batch, error) {
 	return b, nil
 }
 
-// save lưu nội dung hiện tại của path vào bản sao lưu (nếu có), trước khi sửa hoặc xoá.
-func (b *batch) save(path string, deleted bool) error {
+// Save lưu nội dung hiện tại của path vào bản sao lưu (nếu có), trước khi sửa hoặc xoá.
+func (b *Batch) Save(path string, deleted bool) error {
 	path = filepath.Clean(path)
 	if b.saved[path] {
 		if deleted {
@@ -140,7 +142,8 @@ func (b *batch) save(path string, deleted bool) error {
 	return nil
 }
 
-func (b *batch) commit() (Result, error) {
+// Commit ghi meta.json của bản lưu; trả id để Restore.
+func (b *Batch) Commit() (Result, error) {
 	raw, err := json.MarshalIndent(b.entry, "", "  ")
 	if err != nil {
 		return Result{}, err
@@ -160,20 +163,20 @@ func (b *batch) commit() (Result, error) {
 	return res, nil
 }
 
-// fail kết thúc thao tác lỗi giữa chừng. Đã đổi gì thì giữ bản lưu để người dùng khôi phục, chưa đổi gì thì bỏ.
-func (b *batch) fail(err error) (Result, error) {
+// Fail kết thúc thao tác lỗi giữa chừng. Đã đổi gì thì giữ bản lưu để người dùng khôi phục, chưa đổi gì thì bỏ.
+func (b *Batch) Fail(err error) (Result, error) {
 	if len(b.entry.Files) == 0 && len(b.entry.Index) == 0 {
-		b.abort()
+		b.Abort()
 		return Result{}, err
 	}
-	if _, cerr := b.commit(); cerr != nil {
+	if _, cerr := b.Commit(); cerr != nil {
 		return Result{}, fmt.Errorf("%w (và không ghi được bản lưu: %v)", err, cerr)
 	}
 	return Result{}, fmt.Errorf("%w (đã lưu bản khôi phục %s)", err, b.entry.ID)
 }
 
-// abort bỏ bản lưu khi thao tác thất bại trước khi ghi gì; sau khi đã ghi thì giữ để người dùng khôi phục.
-func (b *batch) abort() { _ = os.RemoveAll(b.dir) }
+// Abort bỏ bản lưu khi thao tác thất bại trước khi ghi gì; sau khi đã ghi thì giữ để người dùng khôi phục.
+func (b *Batch) Abort() { _ = os.RemoveAll(b.dir) }
 
 // checkMemoryFile chặn đường dẫn ngoài ý muốn: chỉ file .md thường, không phải chỉ mục.
 func checkMemoryFile(path string) (string, error) {
@@ -219,19 +222,19 @@ func (s Store) Edit(path, content string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	b, err := s.begin("edit", false)
+	b, err := s.Begin("edit", false)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := b.save(real, false); err != nil {
-		b.abort()
+	if err := b.Save(real, false); err != nil {
+		b.Abort()
 		return Result{}, err
 	}
 	if err := writeFile(real, []byte(content), fileMode(real)); err != nil {
-		b.abort()
+		b.Abort()
 		return Result{}, err
 	}
-	return b.commit()
+	return b.Commit()
 }
 
 // Delete chuyển file vào thùng rác và bỏ dòng chỉ mục trỏ tới nó.
@@ -243,21 +246,21 @@ func (s Store) Delete(path string) (Result, error) {
 	if filepath.Base(real) == "MEMORY.md" {
 		return Result{}, errIndexName
 	}
-	b, err := s.begin("delete", true)
+	b, err := s.Begin("delete", true)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := b.save(real, true); err != nil {
-		b.abort()
+	if err := b.Save(real, true); err != nil {
+		b.Abort()
 		return Result{}, err
 	}
 	if _, err := b.removeIndexLines(filepath.Dir(real), []string{real}); err != nil {
-		return b.fail(err)
+		return b.Fail(err)
 	}
 	if err := os.Remove(real); err != nil {
-		return b.fail(err)
+		return b.Fail(err)
 	}
-	return b.commit()
+	return b.Commit()
 }
 
 // Merge ghi bản gộp vào target (tạo nếu chưa có), chuyển các file nguồn vào thùng rác, bỏ dòng chỉ mục của nguồn và đổi
@@ -291,11 +294,11 @@ func (s Store) Merge(sources []string, target, content string) (Result, error) {
 	if len(srcs) == 0 {
 		return Result{}, errors.New("chưa chọn file nguồn nào để gộp")
 	}
-	b, err := s.begin("merge", true)
+	b, err := s.Begin("merge", true)
 	if err != nil {
 		return Result{}, err
 	}
-	fail := b.fail
+	fail := b.Fail
 	// Thư mục bị ảnh hưởng: nơi đặt đích và nơi chứa từng nguồn.
 	dirs := []string{filepath.Dir(target)}
 	for _, src := range srcs {
@@ -314,11 +317,11 @@ func (s Store) Merge(sources []string, target, content string) (Result, error) {
 			reuse = removed[0]
 		}
 	}
-	if err := b.save(target, false); err != nil {
+	if err := b.Save(target, false); err != nil {
 		return fail(err)
 	}
 	for _, src := range srcs {
-		if err := b.save(src, true); err != nil {
+		if err := b.Save(src, true); err != nil {
 			return fail(err)
 		}
 	}
@@ -339,7 +342,7 @@ func (s Store) Merge(sources []string, target, content string) (Result, error) {
 			return fail(err)
 		}
 	}
-	return b.commit()
+	return b.Commit()
 }
 
 // Restore trả file về từ thùng rác hay bản sao lưu. Trạng thái hiện tại của file bị ghi đè được lưu thành một bản mới, nên
@@ -364,7 +367,7 @@ func (s Store) Restore(id string) (Result, error) {
 	if dir == "" {
 		return Result{}, fmt.Errorf("không tìm thấy bản lưu %s (có thể đã quá %d ngày)", id, int(TrashRetention.Hours()/24))
 	}
-	b, err := s.begin("restore", false)
+	b, err := s.Begin("restore", false)
 	if err != nil {
 		return Result{}, err
 	}
@@ -376,8 +379,8 @@ func (s Store) Restore(id string) (Result, error) {
 		paths = append(paths, c.Path)
 	}
 	for _, p := range paths {
-		if err := b.save(p, false); err != nil {
-			b.abort()
+		if err := b.Save(p, false); err != nil {
+			b.Abort()
 			return Result{}, err
 		}
 	}
@@ -385,24 +388,24 @@ func (s Store) Restore(id string) (Result, error) {
 		if f.Stored == "" {
 			// File do thao tác tạo ra thì khôi phục là xoá nó.
 			if err := os.Remove(f.Path); err != nil && !os.IsNotExist(err) {
-				return b.fail(err)
+				return b.Fail(err)
 			}
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(f.Stored)))
 		if err != nil {
-			return b.fail(fmt.Errorf("bản lưu %s thiếu dữ liệu của %s: %w", id, f.Path, err))
+			return b.Fail(fmt.Errorf("bản lưu %s thiếu dữ liệu của %s: %w", id, f.Path, err))
 		}
 		if err := writeFile(f.Path, data, fileMode(f.Path)); err != nil {
-			return b.fail(err)
+			return b.Fail(err)
 		}
 	}
 	for _, change := range entry.Index {
 		if err := restoreIndex(change); err != nil {
-			return b.fail(err)
+			return b.Fail(err)
 		}
 	}
-	return b.commit()
+	return b.Commit()
 }
 
 // Entries liệt kê thùng rác và bản sao lưu, mới nhất trước.
@@ -502,7 +505,7 @@ func linkFile(raw, dir string) (string, bool) {
 
 // removeIndexLines bỏ các dòng danh sách trong MEMORY.md của dir mà trỏ tới files, trả các dòng đã bỏ. Chỉ ghi các dòng
 // đã bỏ vào bản lưu, không lưu cả file: khôi phục theo dòng không đè lên chỗ người dùng sửa sau đó.
-func (b *batch) removeIndexLines(dir string, files []string) ([]string, error) {
+func (b *Batch) removeIndexLines(dir string, files []string) ([]string, error) {
 	index := filepath.Join(dir, "MEMORY.md")
 	raw, err := os.ReadFile(index)
 	if os.IsNotExist(err) {
@@ -531,7 +534,7 @@ func (b *batch) removeIndexLines(dir string, files []string) ([]string, error) {
 
 // ensureIndexed thêm dòng chỉ mục cho file memory chưa có trong MEMORY.md cùng thư mục. Thư mục không có MEMORY.md và
 // không tên là "memory" thì không phải thư mục memory của CLI, nên không tạo chỉ mục.
-func (b *batch) ensureIndexed(file, reuse string) error {
+func (b *Batch) ensureIndexed(file, reuse string) error {
 	dir := filepath.Dir(file)
 	index := filepath.Join(dir, "MEMORY.md")
 	raw, err := os.ReadFile(index)
@@ -553,7 +556,7 @@ func (b *batch) ensureIndexed(file, reuse string) error {
 	if reuse != "" {
 		line = retarget(reuse, dir, file)
 	}
-	if err := b.save(index, false); err != nil {
+	if err := b.Save(index, false); err != nil {
 		return err
 	}
 	text := string(raw)
@@ -606,7 +609,7 @@ func retarget(line, dir, file string) string {
 }
 
 // rewriteLinks đổi mọi link trong các file .md của dir trỏ tới sources sang target.
-func (b *batch) rewriteLinks(dir string, sources []string, target string) error {
+func (b *Batch) rewriteLinks(dir string, sources []string, target string) error {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil
@@ -640,7 +643,7 @@ func (b *batch) rewriteLinks(dir string, sources []string, target string) error 
 		if !changed {
 			continue
 		}
-		if err := b.save(path, false); err != nil {
+		if err := b.Save(path, false); err != nil {
 			return err
 		}
 		if err := writeFile(path, []byte(strings.Join(lines, "\n")), fileMode(path)); err != nil {

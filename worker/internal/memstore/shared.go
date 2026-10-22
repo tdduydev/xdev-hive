@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
+	"github.com/tdduydev/xdev-hive/worker/internal/gitexclude"
 )
 
 // Dùng chung memory (spec 015 US4). Kết quả thử trên claude 2.1.299 (research.md mục 9):
@@ -252,25 +252,25 @@ func (s Store) Share(opts ShareOptions) (ShareResult, error) {
 		return res, nil
 	}
 
-	b, err := s.begin("share", true)
+	b, err := s.Begin("share", true)
 	if err != nil {
 		return res, err
 	}
 	rec := SharedRecord{Key: opts.Key, ProjectPath: absolute(opts.ProjectPath), SharedDir: shared, Settings: settings,
 		SharedAt: s.now().UTC(), Profiles: profiles, SettingsCreated: !existed}
 	fail := func(err error) (ShareResult, error) {
-		_, err = b.fail(err)
+		_, err = b.Fail(err)
 		return res, err
 	}
 	// Bản gốc của mọi gói vào thùng rác trước khi đụng tới thư mục nào.
 	for _, rel := range order {
 		for _, f := range byRel[rel] {
-			if err := b.save(f.path, true); err != nil {
+			if err := b.Save(f.path, true); err != nil {
 				return fail(err)
 			}
 		}
 	}
-	if err := b.save(settings, false); err != nil {
+	if err := b.Save(settings, false); err != nil {
 		return fail(err)
 	}
 	for _, rel := range order {
@@ -289,10 +289,11 @@ func (s Store) Share(opts ShareOptions) (ShareResult, error) {
 	if err := writeFile(settings, renderLocalSettings(items), 0o644); err != nil {
 		return fail(err)
 	}
-	if line, warn := gitExclude(rec.ProjectPath, filepath.Join(".claude", localSettingsName)); warn != "" {
+	rel := filepath.Join(".claude", localSettingsName)
+	if added, warn := gitexclude.Add(rec.ProjectPath, rel); warn != "" {
 		res.Warnings = append(res.Warnings, warn)
-	} else {
-		rec.ExcludeAdded = line
+	} else if added {
+		rec.ExcludeAdded = gitexclude.Line(rel)
 	}
 	for _, p := range profiles {
 		if err := os.RemoveAll(p.MemoryDir); err != nil {
@@ -303,7 +304,7 @@ func (s Store) Share(opts ShareOptions) (ShareResult, error) {
 	if err := s.saveShared(state); err != nil {
 		return fail(err)
 	}
-	out, err := b.commit()
+	out, err := b.Commit()
 	if err != nil {
 		return res, err
 	}
@@ -333,12 +334,12 @@ func (s Store) Unshare(key string) (ShareResult, error) {
 	if err != nil {
 		return res, fmt.Errorf("không đọc được thư mục memory chung %s: %w", rec.SharedDir, err)
 	}
-	b, err := s.begin("unshare", true)
+	b, err := s.Begin("unshare", true)
 	if err != nil {
 		return res, err
 	}
 	fail := func(err error) (ShareResult, error) {
-		_, err = b.fail(err)
+		_, err = b.Fail(err)
 		return res, err
 	}
 	for _, p := range rec.Profiles {
@@ -347,7 +348,7 @@ func (s Store) Unshare(key string) (ShareResult, error) {
 			if old, err := os.ReadFile(dest); err == nil && bytes.Equal(old, f.data) {
 				continue
 			}
-			if err := b.save(dest, false); err != nil {
+			if err := b.Save(dest, false); err != nil {
 				return fail(err)
 			}
 			if err := writeFile(dest, f.data, 0o644); err != nil {
@@ -371,7 +372,7 @@ func (s Store) Unshare(key string) (ShareResult, error) {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s đã được sửa sau khi dùng chung, giữ nguyên %s", rec.Settings, autoMemorySetting))
 		default:
 			items = delKV(items, autoMemorySetting)
-			if err := b.save(rec.Settings, false); err != nil {
+			if err := b.Save(rec.Settings, false); err != nil {
 				return fail(err)
 			}
 			if len(items) == 0 && rec.SettingsCreated {
@@ -387,12 +388,12 @@ func (s Store) Unshare(key string) (ShareResult, error) {
 		}
 	}
 	if rec.ExcludeAdded != "" {
-		if warn := removeGitExclude(rec.ProjectPath, rec.ExcludeAdded); warn != "" {
+		if warn := gitexclude.Remove(rec.ProjectPath, rec.ExcludeAdded); warn != "" {
 			res.Warnings = append(res.Warnings, warn)
 		}
 	}
 	for _, f := range files {
-		if err := b.save(f.path, true); err != nil {
+		if err := b.Save(f.path, true); err != nil {
 			return fail(err)
 		}
 	}
@@ -406,7 +407,7 @@ func (s Store) Unshare(key string) (ShareResult, error) {
 	if err := s.saveShared(state); err != nil {
 		return fail(err)
 	}
-	out, err := b.commit()
+	out, err := b.Commit()
 	if err != nil {
 		return res, err
 	}
@@ -564,59 +565,6 @@ func delKV(items []kv, key string) []kv {
 		}
 	}
 	return out
-}
-
-// --- .git/info/exclude ---
-
-// gitExclude thêm file cài đặt cục bộ vào .git/info/exclude nếu git chưa bỏ qua nó, để đường dẫn riêng của máy không lọt
-// vào commit. Trả dòng đã thêm; warn không rỗng khi không làm được (không phải repo git thì không cảnh báo).
-func gitExclude(project, rel string) (added, warn string) {
-	git := func(args ...string) ([]byte, error) {
-		return procattr.Command("git", append([]string{"-C", project}, args...)...).Output()
-	}
-	if out, err := git("rev-parse", "--is-inside-work-tree"); err != nil || strings.TrimSpace(string(out)) != "true" {
-		return "", ""
-	}
-	if _, err := git("check-ignore", "-q", filepath.ToSlash(rel)); err == nil {
-		return "", ""
-	}
-	out, err := git("rev-parse", "--path-format=absolute", "--git-path", "info/exclude")
-	if err != nil {
-		return "", "không tìm được .git/info/exclude; thêm " + filepath.ToSlash(rel) + " vào .gitignore để khỏi commit nhầm"
-	}
-	path := strings.TrimSpace(string(out))
-	line := "/" + filepath.ToSlash(rel)
-	cur, _ := os.ReadFile(path)
-	text := string(cur)
-	if text != "" && !strings.HasSuffix(text, "\n") {
-		text += "\n"
-	}
-	if err := writeFile(path, []byte(text+line+"\n"), 0o644); err != nil {
-		return "", "không ghi được " + path + "; thêm " + filepath.ToSlash(rel) + " vào .gitignore để khỏi commit nhầm"
-	}
-	return line, ""
-}
-
-func removeGitExclude(project, line string) string {
-	out, err := procattr.Command("git", "-C", project, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude").Output()
-	if err != nil {
-		return ""
-	}
-	path := strings.TrimSpace(string(out))
-	cur, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	var kept []string
-	for _, l := range strings.Split(string(cur), "\n") {
-		if l != line {
-			kept = append(kept, l)
-		}
-	}
-	if err := writeFile(path, []byte(strings.Join(kept, "\n")), 0o644); err != nil {
-		return "không gỡ được dòng " + line + " khỏi " + path
-	}
-	return ""
 }
 
 // --- phiên bản ---
