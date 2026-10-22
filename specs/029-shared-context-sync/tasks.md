@@ -88,7 +88,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `worker/internal/ctxsync/testdata/context-project.json` (cho T007 so kiểu TS).
   - **Kiểm**: test lệnh với `HOME`/`USERPROFILE` giả và repo git tạm; fixture JSON ổn định.
 
-- [ ] **T005 [P] [US2] [nặng] · 2 ngày — Gói `optimizeall`: kế hoạch, chạy, nhật ký, hoàn tác, khoá** (sau T002; song song T003, T004)
+- [x] **T005 [P] [US2] [nặng] · 2 ngày — Gói `optimizeall`: kế hoạch, chạy, nhật ký, hoàn tác, khoá** (sau T002; song song T003, T004)
   - **Goal**: theo [plan.md](plan.md) mục 4, [data-model.md](data-model.md) "Lần tối ưu", [research.md](research.md) mục 7–8:
     - `Plan(policies map[string]Policy) (OptimizePlan, error)`: bước `optimizer.enable` mỗi gói chưa đạt mức đích
       (`aggressive` → `selected:false`, `requiresConfirm:true`), `fix.<id>` chỉ id trong `FIXES` của Rust (`codegraph.mcp`,
