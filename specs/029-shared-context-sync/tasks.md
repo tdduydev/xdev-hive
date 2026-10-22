@@ -46,7 +46,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **Kiểm**: mỗi CLI có kết quả "đọc được / không / chưa rõ" kèm phiên bản và ngày thử. CLI "không" thì ghi để T003 đặt
     trạng thái `skipped` với lý do "chưa hỗ trợ".
 
-- [ ] **T002 [P] [—] [vừa] · 0,5 ngày — Tách `gitexclude`, xuất API sao lưu của `memstore`**
+- [x] **T002 [P] [—] [vừa] · 0,5 ngày — Tách `gitexclude`, xuất API sao lưu của `memstore`**
   - **Goal**:
     - chuyển `gitExclude`, `removeGitExclude` (`memstore/shared.go:573`, `:600`) sang gói mới `worker/internal/gitexclude`
       (`Add(repo, rel) (added bool, warn string)`, `Remove(repo, line) string`, `Tracked(repo, rel) bool` dùng
