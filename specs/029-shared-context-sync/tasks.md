@@ -79,7 +79,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     Codex khi `AGENTS.md` đổi, file bị theo dõi, Gemini settings bị theo dõi, frontmatter Antigravity, tắt rồi khôi phục
     từ thùng rác.
 
-- [ ] **T004 [US1] [vừa] · 1 ngày — Lệnh `hive-worker context`, chuyển từ chia sẻ cũ** (sau T003)
+- [x] **T004 [US1] [vừa] · 1 ngày — Lệnh `hive-worker context`, chuyển từ chia sẻ cũ** (sau T003)
   - **Goal**: các lệnh ở [contracts/sidecar-cli.md](contracts/sidecar-cli.md) "`hive-worker context`" (`status`, `enable`,
     `disable`, `save-source`, `sync`, `resolve`, `migrate`), JSON đúng kiểu `ContextProject`; `migrate.go` đọc
     `memory-shared.json`, ghép bản nháp nguồn, `--apply` thì lưu nguồn và gọi `memstore.Unshare` (FR-007). Lỗi

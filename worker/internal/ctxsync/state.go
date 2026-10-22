@@ -104,6 +104,9 @@ func (st *State) target(id TargetID) *TargetState {
 
 var keyRe = regexp.MustCompile(`^[pf]_[A-Za-z0-9-]{1,200}$`)
 
+// ValidKey cho lệnh ngoài gói chặn khoá hỏng trước khi đụng tới đĩa.
+func ValidKey(key string) bool { return keyRe.MatchString(key) }
+
 // ErrNotFound: dự án chưa bật ngữ cảnh dùng chung trên máy.
 var ErrNotFound = errors.New("dự án chưa bật ngữ cảnh dùng chung")
 
