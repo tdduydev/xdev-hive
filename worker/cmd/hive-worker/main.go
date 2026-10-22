@@ -87,6 +87,8 @@ func main() {
 		os.Exit(memoryCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "context":
 		os.Exit(contextCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "outbox":
+		os.Exit(outboxCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "context-pack":
 		os.Exit(contextPackCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "service":
@@ -100,7 +102,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | branches <status | list | fetch | pull | switch | create | scan | clean | settings | settings-set | merge | rebase | continue | abort> [--timeout GIÂY] | ssh [list | check | scan | setup | remove] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | context [status | enable | disable | save-source | sync | resolve | migrate] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | branches <status | list | fetch | pull | switch | create | scan | clean | settings | settings-set | merge | rebase | continue | abort> [--timeout GIÂY] | ssh [list | check | scan | setup | remove] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | context [status | enable | disable | save-source | sync | resolve | migrate] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | outbox [status | submit | flush | drop] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -393,6 +395,8 @@ func run(args []string) int {
 			cancel()
 		}()
 	}
+	// Việc dồn trong hộp thư đi lúc máy ngoại tuyến (điểm máy, đề xuất ghi nhớ) được gửi dần khi hub nối lại.
+	go outboxLoop(ctx, cfg, outboxFlushEvery)
 	dataDir, err := repolock.DataDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
