@@ -290,6 +290,43 @@ describe("ProjectsScreen", () => {
     expect((web as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("nhóm nhiều repo có nút mở cả nhóm bằng agent ở thư mục chung, không pull", async () => {
+    const calls = fakeApp({
+      hub: { "projects/list": [], "policies/get": policy(true) },
+      local: [
+        entry({ name: "his-web", folder: "/Users/ha/his/his-web", origin: "https://gitlab.com/acme/his-web.git" }),
+        entry({ name: "his-api", folder: "/Users/ha/his/his-api", origin: "https://gitlab.com/acme/his-api.git" }),
+        entry({ name: "le", folder: "/Users/ha/tmp/le" }),
+      ],
+      extra: {
+        cli_profiles: () => ({ path: "/x/worker.yaml", accounts: [] }),
+        open_agent_terminal: () => null,
+      },
+    });
+    renderScreen();
+    const user = userEvent.setup();
+    const waiting = screen.getByRole("region", { name: "Repo trên máy chưa có trên hub" });
+    const groupButton = await within(waiting).findByRole("button", {
+      name: "Mở cả nhóm acme bằng agent không hỏi quyền",
+    });
+    // Nhóm một repo đã có nút ở dòng repo.
+    expect(within(waiting).getAllByRole("button", { name: /^Mở cả nhóm/ })).toHaveLength(1);
+    await user.click(groupButton);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("~/his")).toBeTruthy();
+    expect(within(dialog).getByText(/Không pull/)).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Mở không hỏi quyền" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.command === "open_agent_terminal")?.args).toEqual({
+        cli: "claude",
+        planId: null,
+        bypass: true,
+        folder: "/Users/ha/his",
+      }),
+    );
+    expect(calls.some((c) => c.command === "git_branches_pull")).toBe(false);
+  });
+
   it("repo chưa có trên hub gom theo namespace: thu gọn, đếm repo, mở từng nhóm, lọc", async () => {
     fakeApp({
       hub: { "projects/list": [], "policies/get": policy(true) },
