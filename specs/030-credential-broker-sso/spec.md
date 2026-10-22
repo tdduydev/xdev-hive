@@ -22,7 +22,7 @@ Bối cảnh:
 | # | Câu hỏi | Đã chốt | Phương án đã bỏ |
 |---|---|---|---|
 | D1 | Kho token kiểu gì? | **Bộ môi giới đăng nhập** (credential broker): token nằm trong kho khoá hệ điều hành, công cụ lấy qua cơ chế helper của chính nó, theo đúng máy chủ nó cần, có kiểm ai gọi. **Không** có lệnh "đưa tôi token thô" cho tiến trình bất kỳ | Kho token đọc tự do |
-| D2 | Làm những hệ thống nào? | **Cả bốn nhóm**: Git + cloud (đợt 1), tự host + hạ tầng (đợt 2), công cụ cộng tác (đợt 3), token nhập tay cho hệ thống không có SSO. Thêm **Cloudflare** và các công cụ dev thường dùng (bảng Hệ thống) | Chỉ đợt 1 |
+| D2 | Làm những hệ thống nào? | **Cả bốn nhóm**: Git + cloud (đợt 1), tự host + hạ tầng (đợt 2), công cụ cộng tác (đợt 3), token nhập tay cho hệ thống không có SSO. Thêm **Cloudflare**, **Expo/EAS** và các công cụ dev thường dùng (bảng Hệ thống) | Chỉ đợt 1 |
 | D3 | SSO gốc của công ty? | Hỗ trợ **Microsoft Entra ID, Google Workspace, Keycloak**, và trường hợp **chưa có** (đăng nhập riêng từng hệ thống) | Chỉ một IdP |
 | D4 | Token lưu ở đâu? | **Trên máy, hub làm môi giới khi cần**: token nằm ở kho khoá từng máy, không gửi lên hub. Hệ thống bắt buộc client secret (Atlassian Cloud, Slack) thì hub giữ secret và làm bước đổi mã; token kết quả vẫn về máy | Đồng bộ token qua hub cho mọi máy |
 | D5 | Token gói thuê bao của CLI AI? | **Không lấy, không chuyển tiếp** token đăng nhập gói Claude, Codex, Gemini; mỗi CLI tự đăng nhập. App chỉ giữ API key nếu người dùng nhập | Lấy token gói để dùng chung |
@@ -236,6 +236,7 @@ chạy.
 | Nhóm | Hệ thống | Cách lấy token (dự kiến) |
 |---|---|---|
 | Đợt 1 — Git, registry, cloud | GitHub.com, GitLab.com, Azure DevOps; GHCR, GitLab registry; npm (GitHub Packages, npmjs); AWS IAM Identity Center, Azure, Google Cloud; **Cloudflare** (`wrangler`, API token, Cloudflare Access `cloudflared`); Vercel, Netlify, Supabase, Firebase | OAuth mã thiết bị/PKCE hoặc CLI chính thức |
+| Đợt 1 — mobile | **Expo / EAS** (`eas login`, có SSO cho tổ chức; `EXPO_TOKEN` cho máy build), App Store Connect (khoá API `.p8`), Google Play (khoá tài khoản dịch vụ JSON) | CLI chính thức; khoá App Store, Google Play nhập tay như token và chỉ đưa cho `eas`/`fastlane` khi build |
 | Đợt 2 — tự host, hạ tầng | GitLab tự host, GitHub Enterprise Server, Bitbucket Cloud; Argo CD; Kubernetes (OIDC, EKS/AKS/GKE); HashiCorp Vault; Docker Hub; Terraform Cloud/HCP; Sentry; DigitalOcean | OAuth có đăng ký theo máy chủ, OIDC, CLI chính thức |
 | Đợt 3 — cộng tác | Microsoft Teams/Graph, Google Workspace, Jira/Confluence Cloud, Slack | OAuth; hub đổi mã khi cần secret |
 | Nhập tay | Jenkins, SonarQube, PyPI, Nexus/Artifactory, Harbor, Bitbucket/Jira/Confluence Data Center, bot Telegram, API key Claude/OpenAI/Gemini | Dán token, kiểm, nhắc hạn |
@@ -260,7 +261,7 @@ chạy.
 - **SC-003**: **100%** lần xin token từ chương trình ngoài danh sách cho phép bị từ chối trong bộ test.
 - **SC-004**: Công cụ không phải đăng nhập lại trong **30 ngày** dùng liên tục với hệ thống có làm mới token.
 - **SC-005**: Hub không có token người dùng nào trong cơ sở dữ liệu và nhật ký sau toàn bộ bộ test đợt 3 (kiểm bằng quét).
-- **SC-006**: Đợt 1 phủ ít nhất **12** hệ thống ở bảng Hệ thống.
+- **SC-006**: Đợt 1 phủ ít nhất **14** hệ thống ở bảng Hệ thống (kể cả Cloudflare và Expo).
 
 ## Assumptions
 
