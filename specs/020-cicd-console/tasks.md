@@ -551,7 +551,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/web/e2e/delivery-servers.spec.ts` (mới), `apps/web/e2e/delivery-servers-fixture.ts`
   - **Kiểm**: web typecheck, test, Playwright file của task.
 
-- [ ] **T023 [P] [US4] [vừa] · 1,5 ngày — Web: bảng triển khai, nút Triển khai, trang lần triển khai**
+- [x] **T023 [P] [US4] [vừa] · 1,5 ngày — Web: bảng triển khai, nút Triển khai, trang lần triển khai**
   - **Phụ thuộc**: T011.
   - **Goal**: US4, US5 (giao diện), FR-015, FR-020, FR-034 (chọn "đẩy từ môi trường").
     - `board-page.tsx`: bảng "đang chạy" (dòng dự án, cột môi trường; ô: commit, tag, số build, image, revision, giờ,
