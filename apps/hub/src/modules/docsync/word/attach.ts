@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { createPostgresBlobStore, type Tx } from "../../platform/index.ts";
 import { isLfsPath, parseGitattributes } from "../content.ts";
 import type { HomeRow } from "../homes.ts";
-import { docAssets } from "../schema.ts";
+import { docAssets, docRepoFiles } from "../schema.ts";
 import type { WordImportFileRow } from "./tools.ts";
 
 // Phần chung của bước tạo (commit.ts) và bước cập nhật (update.ts). Tách riêng vì commit.ts gọi update.ts: update.ts
@@ -43,6 +43,23 @@ const FRONT_MATTER = /^﻿?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 /** Bỏ front matter ở đầu Markdown (như `countStats` của postprocess.ts) và các dòng trống ngay sau nó. */
 export function stripFrontMatter(markdown: string): string {
   return markdown.replace(FRONT_MATTER, "").replace(/^(?:[ \t]*\r?\n)+/, "");
+}
+
+/**
+ * Ghi đúng đường dẫn đã chọn. Hook lưu của docsync đã gắn tài liệu vào đường dẫn suy từ key (chữ thường), nên sửa
+ * dòng đó thay vì thêm dòng thứ hai. Nhà tắt đồng bộ thì hook không gắn, ở đây cũng không.
+ */
+export async function pinPath(tx: Tx, home: HomeRow, docId: string, path: string): Promise<void> {
+  if (home.mode === "off") return;
+  const [row] = await tx.select().from(docRepoFiles).where(eq(docRepoFiles.docId, docId));
+  if (row) {
+    await tx
+      .update(docRepoFiles)
+      .set({ repoPath: path, state: "pending", updatedAt: new Date() })
+      .where(eq(docRepoFiles.id, row.id));
+    return;
+  }
+  await tx.insert(docRepoFiles).values({ orgId: home.orgId, homeId: home.id, docId, repoPath: path, state: "pending" });
 }
 
 const blobStore = createPostgresBlobStore();

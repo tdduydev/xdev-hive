@@ -11,7 +11,7 @@ import { docConflicts, docWordImportFiles } from "../schema.ts";
 import { assetsDirOf, attachImages, FileFailure, stripFrontMatter } from "./attach.ts";
 import { frontMatter } from "./postprocess.ts";
 import { canManage, docKeyOf, loadWordTarget } from "./shared.ts";
-import { stageProposal } from "./staging.ts";
+import { needsManage } from "./staging.ts";
 import type { WordImportFileRow } from "./tools.ts";
 
 /*
@@ -198,8 +198,8 @@ export async function commitUpdate(
   const key = await docKeyOf(tx, docId);
   if (!docId || !key) throw new NotFoundError("DOC_NOT_FOUND", "Không tìm thấy tài liệu cần cập nhật.");
   if (!(await canManage(tx, await readerFor(tx, principal), key))) {
-    await stageProposal(tx, principal, file);
-    return;
+    // Đề xuất từ Word mới làm cho lượt tạo (T016); cập nhật vẫn cần quyền quản lý như P1 (Q2).
+    throw needsManage();
   }
   const base = await previousImport(tx, docId, file.id);
   if (!base)

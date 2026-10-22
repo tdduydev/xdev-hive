@@ -26,7 +26,7 @@ import { prepareLink } from "./word/link.ts";
 import { handleWordMedia } from "./word/media.ts";
 import { handleWordOriginal } from "./word/original.ts";
 import { detectPandoc } from "./word/pandoc.ts";
-import { stageProposal } from "./word/staging.ts";
+import { needsManage } from "./word/staging.ts";
 import { detectWordTools, provideWordTools, wordImportHealth, wordTools } from "./word/tools.ts";
 import { prepareUpdate } from "./word/update.ts";
 import { handleWordUpload } from "./word/upload.ts";
@@ -179,9 +179,7 @@ describe("khung nhập Word", () => {
     const file = { id: randomUUID() } as Parameters<typeof prepareLink>[1];
     await expect(prepareLink(tx, file)).resolves.toBeUndefined();
     await expect(prepareUpdate(tx, file)).resolves.toBeUndefined();
-    await expect(stageProposal(tx, { kind: "user", userId: "u" }, file)).rejects.toMatchObject({
-      code: "WORD_IMPORT_NEEDS_MANAGE",
-    });
+    expect(needsManage()).toMatchObject({ code: "WORD_IMPORT_NEEDS_MANAGE" });
   });
 
   it("chưa dò công cụ thì tắt nhập Word", () => {
