@@ -71,6 +71,9 @@ export function applySettingsPatch(current: ProjectSettings, patch: ProjectSetti
       tiers,
     };
   }
+  // Chính sách máy dev thay nguyên khối: bản vá đã qua zod nên mọi trường có mặc định, và `null` là bỏ chính sách để
+  // người dùng desktop tự chọn như trước.
+  if (patch.devOptimizer !== undefined) next.devOptimizer = patch.devOptimizer;
   if (patch.defaultCli !== undefined) next.defaultCli = patch.defaultCli;
   if (patch.budget !== undefined) {
     const budget = patch.budget === null ? {} : assign(current.budget, patch.budget);

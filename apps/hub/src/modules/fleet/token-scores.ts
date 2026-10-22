@@ -1,9 +1,11 @@
 import type { ClientEventResult, Machine, MachineEventInput, MachineTokenScore } from "@xdev-hive/contracts";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import type pg from "pg";
+import { proposeFromMachine } from "../knowledge/index.ts";
 import { ClientEventRejected, type Jobs, type Tx, withClientEvent, withTenant } from "../platform/index.ts";
 import { allowWith, requireTeamRole } from "../tenancy/index.ts";
 import { FleetError } from "./errors.ts";
+import { purgeProjectUsage, recordProjectUsage } from "./project-usage.ts";
 import { machines, machineTokenScores } from "./schema.ts";
 
 /** Máy đã xác thực (cùng hình với AuthedMachine). Khai riêng vì machines.ts import file này: tránh vòng phụ thuộc. */
@@ -39,9 +41,15 @@ export async function receiveMachineEvent(
       clientCreatedAt: new Date(input.createdAt),
     },
     async (tx) => {
-      // Stub tới khi T021/T022 (spec 029) làm nhánh xử lý: hợp đồng đã nhận kind mới, hub chưa ghi gì.
-      if (input.kind !== "machine.token_score")
-        throw new ClientEventRejected("NOT_IMPLEMENTED", "Hub chưa xử lý loại sự kiện này.");
+      if (input.kind === "memory.propose") {
+        const [m] = await tx.select({ owner: machines.registeredBy }).from(machines).where(eq(machines.id, machine.id));
+        await proposeFromMachine(tx, { id: machine.id, ownerUserId: m?.owner ?? null }, input.payload);
+        return null;
+      }
+      if (input.kind === "project.token_usage") {
+        await recordProjectUsage(tx, machine, input.payload);
+        return null;
+      }
       const since = new Date(Date.now() - TOKEN_SCORE_MIN_INTERVAL_MS);
       const [recent] = await tx
         .select({ id: machineTokenScores.id })
@@ -151,6 +159,8 @@ export async function registerTokenScoreRetentionWorker(jobs: Jobs, pool: pg.Poo
   await jobs.work(TOKEN_SCORE_RETENTION_QUEUE, async () => {
     const purged = await purgeTokenScores(pool);
     if (purged > 0) console.info(`Đã xoá ${purged} điểm token máy quá 90 ngày.`);
+    const usage = await purgeProjectUsage(pool);
+    if (usage > 0) console.info(`Đã xoá ${usage} dòng token theo dự án quá 90 ngày.`);
   });
   await jobs.schedule(TOKEN_SCORE_RETENTION_QUEUE, TOKEN_SCORE_RETENTION_CRON);
 }
