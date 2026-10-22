@@ -106,7 +106,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **Kiểm**: SC-004 (hoàn tác so byte `settings.json`, `config.toml`, khối), bước lỗi giữa chừng, gộp chính sách, khoá
     song song, test danh sách bước đóng.
 
-- [ ] **T006 [US2] [vừa] · 1 ngày — Lệnh `hive-worker optimize all`** (sau T004, T005)
+- [x] **T006 [US2] [vừa] · 1 ngày — Lệnh `hive-worker optimize all`** (sau T004, T005)
   - **Goal**: `optimize all --preview|--apply --plan-file|--undo --run|--last` theo
     [contracts/sidecar-cli.md](contracts/sidecar-cli.md); nối `optimizeall.ContextSyncer` vào `ctxsync.Sync`; `context
     sync` cũng lấy `optimize.lock` (bỏ lượt với `locked:true` khi bận). Fixture JSON `OptimizePlan`, `OptimizeRun`.
@@ -194,7 +194,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `worker/internal/ctxsync/{hub.go,secrets.go}` (+ test), `worker/internal/ctxsync/sync.go` (gọi phần hub).
   - **Kiểm**: FR-022…FR-025: ngân sách, bỏ bí mật, mục bị gỡ biến mất, mất mạng giữ bản cũ.
 
-- [ ] **T017 [US3] [vừa] · 1 ngày — Desktop: kéo memory hub, đồng bộ định kỳ** (sau T008, T013, T016)
+- [x] **T017 [US3] [vừa] · 1 ngày — Desktop: kéo memory hub, đồng bộ định kỳ** (sau T008, T013, T016)
   - **Goal**: `lib/hub-context.ts` gọi `memory.list({project, status:"approved", limit:200})` bằng PAT, ghi file tạm, gọi
     `context_sync`; nút "Đồng bộ", công tắc tự đồng bộ, bộ hẹn giờ khi app mở (như lịch tính điểm hằng ngày của 025);
     phần "Từ hub" của `<SharedContextSection>` (số mục, đã bỏ, lần cuối, lỗi).
@@ -245,7 +245,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/hub/src/modules/fleet/token-scores.ts` (nhánh mới, sau T021), `apps/hub/src/modules/catalog/router.ts` (route đọc), `*.db.test.ts`.
   - **Kiểm**: RLS tổ chức khác không đọc được; người ngoài dự án không đọc được; giới hạn; xoá.
 
-- [ ] **T023 [P] [US6] [vừa] · 1 ngày — Worker: gom token theo dự án, gửi `project.token_usage`** (sau T019)
+- [x] **T023 [P] [US6] [vừa] · 1 ngày — Worker: gom token theo dự án, gửi `project.token_usage`** (sau T019)
   - **Goal**: `tokenreport` gán phiên vào dự án khi `cwd` nằm trong thư mục đã gắn (`projects.json`); dựng payload 7 ngày
     (tokens theo CLI, số phiên, điểm máy, `policyDrift`); gửi qua outbox khi người dùng bật (cờ theo dự án trong cấu hình
     máy, mặc định tắt).
@@ -261,7 +261,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/components/memory-hub-sync.tsx`, `apps/desktop/src/screens/memory-screen.tsx`, test.
   - **Kiểm**: Vitest: xếp hàng khi lỗi mạng, hiện số chờ, từ chối có lý do.
 
-- [ ] **T025 [P] [US6] [vừa] · 1 ngày — Web: bảng token của dự án** (sau T022)
+- [x] **T025 [P] [US6] [vừa] · 1 ngày — Web: bảng token của dự án** (sau T022)
   - **Goal**: tab/mục "Token" ở trang dự án: bảng theo người và máy (token quy đổi 7 ngày, số phiên, điểm, lệch chính
     sách), chỉ thành viên dự án; trống thì giải thích cách bật trên app desktop.
   - **PHẠM VI**: `apps/web/src/pages/projects/**` (trang/tab mới), `apps/web/src/router.tsx`, `apps/web/e2e/project-token-usage.spec.ts`.

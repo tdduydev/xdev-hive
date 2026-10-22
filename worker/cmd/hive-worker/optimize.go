@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +25,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/tokenreport"
 )
 
-const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --profile ID [--level balanced|aggressive] [--rtk] | disable --profile ID | restore --profile ID [--backup THỜI_ĐIỂM] | link | report [--profile ID] [--days N] | report on|off|status | score [--days N] [--fresh] | score history [--days N | --last] | score mark --fix MÃ --action apply|undo | fix MÃ --profile ID [--preview | --undo]] [--config FILE] [--json]"
+const optimizeUsage = "Cách dùng: hive-worker optimize [status | enable --profile ID [--level balanced|aggressive] [--rtk] | disable --profile ID | restore --profile ID [--backup THỜI_ĐIỂM] | link | report [--profile ID] [--days N] | report on|off|status | score [--days N] [--fresh] | score history [--days N | --last] | score mark --fix MÃ --action apply|undo | fix MÃ --profile ID [--preview | --undo] | all --preview [--policy-file FILE] | all --apply --plan-file FILE | all --undo --run ID | all --last] [--config FILE] [--json]"
 
 // Test thay thư mục nhà, giờ, phiên bản CLI, RTK, /context và công cụ trên PATH để không đụng máy thật.
 var (
@@ -87,6 +88,9 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 	action := "status"
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
 		action, args = args[0], args[1:]
+	}
+	if action == "all" {
+		return optimizeAllCommand(args, stdout, stderr)
 	}
 	// `fix MÃ --profile …`: flag dừng ở đối số không phải cờ đầu tiên, nên lấy mã sửa nhanh ra trước.
 	fixID := ""
@@ -235,9 +239,29 @@ func optimizeCommand(args []string, stdout, stderr io.Writer) int {
 // optimizeEnable dựng preset theo phiên bản CLI và mức, thêm RTK nếu chọn, rồi ghi cấu hình gói. Dùng chung cho
 // `enable` và sửa nhanh của điểm tối ưu.
 func optimizeEnable(o *optimizer.Optimizer, p optimizer.Profile, level string, withRTK bool) (*optimizer.Result, error) {
+	return optimizeEnableWith(o, p, level, withRTK, nil)
+}
+
+// optimizeEnableWith đặt thêm trần nén theo chính sách dự án (spec 029); nil giữ giá trị của preset.
+func optimizeEnableWith(o *optimizer.Optimizer, p optimizer.Profile, level string, withRTK bool, window *int) (*optimizer.Result, error) {
 	preset, err := optimizeBuildPreset(o, p, level, withRTK)
 	if err != nil {
 		return nil, err
+	}
+	if window != nil {
+		v := strconv.Itoa(*window)
+		switch p.CLI {
+		case "claude":
+			if preset.Env == nil {
+				preset.Env = map[string]string{}
+			}
+			preset.Env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = v
+		case "codex":
+			if preset.Codex == nil {
+				preset.Codex = map[string]string{}
+			}
+			preset.Codex["model_auto_compact_token_limit"] = v
+		}
 	}
 	if len(preset.Hooks) > 0 {
 		// Hook gọi hive-worker qua đường dẫn ổn định, nên liên kết phải có trước khi cấu hình trỏ tới nó.

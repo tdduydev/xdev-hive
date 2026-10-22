@@ -13,7 +13,9 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ConnectHiveButton } from "@/components/connect-hive.tsx";
 import { Toggle } from "@/components/toggle.tsx";
+import { useLinkedAccount } from "@/lib/account.ts";
 import {
   type ContextMigration,
   type ContextProject,
@@ -27,6 +29,13 @@ import {
   contextStatus,
 } from "@/lib/context-sync.ts";
 import { folderKey, shortPath } from "@/lib/folder.ts";
+import {
+  autoSyncActive,
+  machineAutoSyncKeys,
+  setMachineAutoSync,
+  syncHubContext,
+  useHubContextSchedule,
+} from "@/lib/hub-context.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
 
@@ -69,6 +78,20 @@ interface Text {
   migrateDraft: string;
   migrate: string;
   later: string;
+  hubTitle: string;
+  hubLead: string;
+  hubSignedOut: string;
+  hubUnbound: string;
+  hubSync: string;
+  hubSyncing: string;
+  hubAuto: (minutes: string) => string;
+  hubAutoPolicy: (minutes: string) => string;
+  hubItems: string;
+  hubOmitted: string;
+  hubNoneOmitted: string;
+  hubOmittedDetail: (budget: string, secret: string) => string;
+  hubLast: string;
+  hubNever: string;
 }
 
 const text: Dict<Text> = {
@@ -106,6 +129,21 @@ const text: Dict<Text> = {
     migrateDraft: "Bản nháp nguồn mới",
     migrate: "Chuyển sang nguồn mới",
     later: "Để sau",
+    hubTitle: "Từ hub",
+    hubLead:
+      "Memory đã duyệt của dự án trên hub, ghi vào khối ngữ cảnh sau phần nguồn tại máy. Mục có dấu hiệu bí mật không được ghi.",
+    hubSignedOut: "Chưa đăng nhập hub. Kết nối Hive bằng thẻ tài khoản góc dưới bên trái để lấy memory của dự án.",
+    hubUnbound: "Thư mục này chưa gắn với dự án trên hub nên chưa có memory để kéo. Gắn dự án ở màn Dự án.",
+    hubSync: "Đồng bộ",
+    hubSyncing: "Đang đồng bộ…",
+    hubAuto: (minutes) => `Tự đồng bộ mỗi ${minutes} phút khi màn Memory đang mở`,
+    hubAutoPolicy: (minutes) => `Chính sách dự án bật tự đồng bộ mỗi ${minutes} phút`,
+    hubItems: "Số mục",
+    hubOmitted: "Đã bỏ",
+    hubNoneOmitted: "Không bỏ mục nào",
+    hubOmittedDetail: (budget, secret) => `${budget} mục vượt ngân sách token · ${secret} mục có dấu hiệu bí mật`,
+    hubLast: "Lần cuối",
+    hubNever: "Chưa đồng bộ",
   },
   en: {
     title: "Shared context",
@@ -143,6 +181,21 @@ const text: Dict<Text> = {
     migrateDraft: "Draft of the new source",
     migrate: "Move to the new source",
     later: "Later",
+    hubTitle: "From the hub",
+    hubLead:
+      "Approved project memory from the hub, written to the context block after the local source. Items that look like secrets are not written.",
+    hubSignedOut: "Not signed in to the hub. Connect to Hive with the account card at the bottom left to pull memory.",
+    hubUnbound: "This folder is not linked to a hub project yet, so there is no memory to pull. Link it on Projects.",
+    hubSync: "Sync",
+    hubSyncing: "Syncing…",
+    hubAuto: (minutes) => `Sync every ${minutes} minutes while the Memory screen is open`,
+    hubAutoPolicy: (minutes) => `Project policy syncs every ${minutes} minutes`,
+    hubItems: "Items",
+    hubOmitted: "Left out",
+    hubNoneOmitted: "Nothing left out",
+    hubOmittedDetail: (budget, secret) => `${budget} over the token budget · ${secret} that look like secrets`,
+    hubLast: "Last sync",
+    hubNever: "Not synced yet",
   },
 };
 
@@ -183,6 +236,10 @@ export function SharedContextSection({
   const [confirmOff, setConfirmOff] = useState(false);
   const [resolving, setResolving] = useState<string | null>(null);
   const [migration, setMigration] = useState<ContextMigration | null>(null);
+  const account = useLinkedAccount();
+  const [pulling, setPulling] = useState(false);
+  const [pullError, setPullError] = useState("");
+  const [autoKeys, setAutoKeys] = useState(machineAutoSyncKeys);
   // Lệnh chậm của dự án cũ không được ghi đè màn khi người dùng đã chuyển sang dự án khác.
   const generation = useRef(0);
   const projectId = useId();
@@ -213,6 +270,22 @@ export function SharedContextSection({
   const replace = (next: ContextProject) =>
     setProjects((list) => [...(list ?? []).filter((p) => p.key !== next.key), next]);
 
+  // App-shell đã hẹn giờ cho cả app; gọi thêm ở đây để bảng cập nhật khi lần kéo xong. `attempts` và `inflight` dùng
+  // chung nên hai hẹn giờ không kéo trùng.
+  useHubContextSchedule(account !== null, replace);
+
+  const pull = async () => {
+    if (!current) return;
+    const mine = generation.current;
+    setPulling(true);
+    setPullError("");
+    const outcome = await syncHubContext(current);
+    if (mine !== generation.current) return;
+    if (outcome.project) replace(outcome.project);
+    setPullError(outcome.project ? "" : (outcome.error ?? ""));
+    setPulling(false);
+  };
+
   /** Chạy một lệnh ghi: khoá nút, bỏ kết quả nếu đã đổi dự án, báo lỗi bằng tiếng Việt của sidecar. */
   const run = async (action: () => Promise<void>) => {
     const mine = ++generation.current;
@@ -235,6 +308,8 @@ export function SharedContextSection({
     setNotice("");
     setError("");
     setBusy(false);
+    setPulling(false);
+    setPullError("");
     setResolving(null);
     setMigration(null);
     setConfirmOff(false);
@@ -284,6 +359,9 @@ export function SharedContextSection({
 
   const conflict = current?.targets.find((x) => x.id === resolving && x.status === "conflict" && x.conflict);
   const number = (n: number) => n.toLocaleString(lang);
+  const autoText = current
+    ? (current.autoSync.source === "policy" ? t.hubAutoPolicy : t.hubAuto)(number(current.autoSync.minutes))
+    : "";
 
   return (
     <section aria-label={t.title} className="min-w-0 space-y-4 rounded-lg border p-4">
@@ -421,6 +499,56 @@ export function SharedContextSection({
                   </div>
                 </section>
               )}
+              <section aria-label={t.hubTitle} className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-medium">{t.hubTitle}</h3>
+                  <p className="text-xs text-muted-foreground">{t.hubLead}</p>
+                </div>
+                {!account && (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="min-w-60 flex-1 text-sm text-muted-foreground">{t.hubSignedOut}</p>
+                    <ConnectHiveButton />
+                  </div>
+                )}
+                {account && !current.projectId && <p className="text-sm text-muted-foreground">{t.hubUnbound}</p>}
+                {account && current.projectId && (
+                  <>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <Button disabled={busy || pulling} aria-busy={pulling} onClick={() => void pull()}>
+                        {pulling ? t.hubSyncing : t.hubSync}
+                      </Button>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Toggle
+                          on={autoSyncActive(current, autoKeys)}
+                          label={autoText}
+                          disabled={current.autoSync.source === "policy"}
+                          onChange={(on) => setAutoKeys(setMachineAutoSync(current.key, on))}
+                        />
+                        <span>{autoText}</span>
+                      </div>
+                    </div>
+                    {(pullError || current.hub?.lastError) && (
+                      <Alert variant="destructive">{pullError || current.hub?.lastError}</Alert>
+                    )}
+                    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                      <dt className="text-muted-foreground">{t.hubItems}</dt>
+                      <dd>{number(current.hub?.items ?? 0)}</dd>
+                      <dt className="text-muted-foreground">{t.hubOmitted}</dt>
+                      <dd className="min-w-0">
+                        {current.hub && (current.hub.omitted.budget > 0 || current.hub.omitted.secret > 0)
+                          ? t.hubOmittedDetail(number(current.hub.omitted.budget), number(current.hub.omitted.secret))
+                          : t.hubNoneOmitted}
+                      </dd>
+                      <dt className="text-muted-foreground">{t.hubLast}</dt>
+                      <dd>
+                        {current.hub?.syncedAt
+                          ? new Date(current.hub.syncedAt).toLocaleString(lang === "vi" ? "vi-VN" : "en-US")
+                          : t.hubNever}
+                      </dd>
+                    </dl>
+                  </>
+                )}
+              </section>
             </>
           )}
         </>

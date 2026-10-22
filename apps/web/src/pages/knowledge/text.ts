@@ -3,6 +3,7 @@ import type { Dict } from "@/lib/i18n.ts";
 export const knowledgeText: Dict<{
   docsTitle: string;
   docsLead: string;
+  docsWordImports: string;
   docsSearch: string;
   docsMcpNote: string;
   skillsLead: string;
@@ -149,6 +150,7 @@ export const knowledgeText: Dict<{
     skillMissing: "Không tìm thấy skill gốc của đề xuất này.",
     docsTitle: "Tài liệu",
     docsLead: "Tài liệu markdown có phiên bản. Agent đọc qua MCP; người và agent đề xuất sửa.",
+    docsWordImports: "Lượt nhập Word",
     docsSearch: "Tìm tiêu đề, key, người sửa…",
     docsMcpNote: "Agent đọc tài liệu này bằng",
     skillsLead: "Skill (SKILL.md) nạp cho agent khi chạy.",
@@ -267,6 +269,7 @@ export const knowledgeText: Dict<{
     skillMissing: "The proposal's original skill was not found.",
     docsTitle: "Docs",
     docsLead: "Versioned markdown docs. Agents read them over MCP; people and agents propose edits.",
+    docsWordImports: "Word imports",
     docsSearch: "Search title, key, editor…",
     docsMcpNote: "Agents read this doc with",
     skillsLead: "Skills (SKILL.md) loaded into agent runs.",
