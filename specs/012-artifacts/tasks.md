@@ -311,7 +311,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
 - T060 (loại `react`) **đã chuyển vào MVP** theo quyết định PO 2026-10-14: thư viện và khung ở T004, biên dịch ở T014,
   trình xem ở T020. Giữ số để tham chiếu cũ không gãy.
 
-- [ ] T061 [P] [US3] Loại `svg`, `json`, `csv` (bảng + biểu đồ trong khung)
+- [x] T061 [P] [US3] Loại `svg`, `json`, `csv` (bảng + biểu đồ trong khung)
   - **Scope**: `packages/artifacts-ui/src/viewer/{svg,json,csv}.tsx`, `packages/artifacts-runtime/src/frame-document.ts`
     (nhánh `csv-chart`)
   - **Phụ thuộc**: MVP (Recharts đã có trong bộ đóng gói từ T004) · **Mức**: vừa

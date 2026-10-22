@@ -59,6 +59,16 @@ export interface ArtifactsText {
   open: string;
   unavailable: string;
   cardLabel: (title: string, n: number) => string;
+  csvTable: string;
+  csvChart: string;
+  csvView: string;
+  csvTruncated: (n: number) => string;
+  csvEmpty: string;
+  jsonInvalid: (message: string) => string;
+  jsonExpand: string;
+  jsonCollapse: string;
+  jsonEmptyObject: string;
+  jsonEmptyArray: string;
 }
 
 export const artifactsText: Dict<ArtifactsText> = {
@@ -118,6 +128,16 @@ export const artifactsText: Dict<ArtifactsText> = {
     open: "Mở",
     unavailable: "Artifact không còn truy cập được.",
     cardLabel: (title, n) => `Artifact ${title}, phiên bản ${n}`,
+    csvTable: "Bảng",
+    csvChart: "Biểu đồ",
+    csvView: "Cách xem CSV",
+    csvTruncated: (n) => `Chỉ hiện ${n} dòng đầu.`,
+    csvEmpty: "Tệp CSV không có dữ liệu.",
+    jsonInvalid: (message) => `JSON không hợp lệ: ${message}. Đang hiện nguồn.`,
+    jsonExpand: "Mở rộng",
+    jsonCollapse: "Thu gọn",
+    jsonEmptyObject: "{} (rỗng)",
+    jsonEmptyArray: "[] (rỗng)",
   },
   en: {
     panel: "Artifact",
@@ -175,5 +195,15 @@ export const artifactsText: Dict<ArtifactsText> = {
     open: "Open",
     unavailable: "Artifact is no longer accessible.",
     cardLabel: (title, n) => `Artifact ${title}, version ${n}`,
+    csvTable: "Table",
+    csvChart: "Chart",
+    csvView: "CSV view",
+    csvTruncated: (n) => `Showing the first ${n} rows only.`,
+    csvEmpty: "The CSV file has no data.",
+    jsonInvalid: (message) => `Invalid JSON: ${message}. Showing source.`,
+    jsonExpand: "Expand",
+    jsonCollapse: "Collapse",
+    jsonEmptyObject: "{} (empty)",
+    jsonEmptyArray: "[] (empty)",
   },
 };
