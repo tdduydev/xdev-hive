@@ -29,6 +29,8 @@ import {
   NotFoundError,
   type Tx,
 } from "../platform/index.ts";
+import { markOrphanAssets } from "./asset-orphans.ts";
+import { docLocation } from "./assets.ts";
 import { contentHash, fromLf } from "./content.ts";
 import type { DocSyncDeps } from "./routes/deps.ts";
 import { docConflicts, docRepoFiles } from "./schema.ts";
@@ -77,12 +79,21 @@ async function managedDocs(tx: Tx, principal: Principal): Promise<DocSummary[]> 
   return result;
 }
 
-function view(row: ConflictRow, file: FileRow, doc: DocSummary): DocConflict {
+/**
+ * Xung đột với Word có thể thuộc tài liệu chưa có dòng `doc_repo_files` (nhà tắt đồng bộ, chưa đẩy lần nào): đường dẫn
+ * lấy theo cách lô đẩy sẽ đặt.
+ */
+async function pathOf(tx: Tx, file: FileRow | null, doc: DocSummary): Promise<string> {
+  if (file) return file.repoPath;
+  return (await docLocation(tx, doc))?.path ?? `${doc.key}.md`;
+}
+
+function view(row: ConflictRow, repoPath: string, doc: DocSummary): DocConflict {
   return docConflict.parse({
     ...row,
     key: doc.key,
     title: doc.title,
-    repoPath: file.repoPath,
+    repoPath,
     hubVersion: row.state === "open" ? doc.version : row.hubVersion,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -104,7 +115,7 @@ export async function listConflicts(
   const rows = await tx
     .select({ conflict: docConflicts, file: docRepoFiles })
     .from(docConflicts)
-    .innerJoin(
+    .leftJoin(
       docRepoFiles,
       and(eq(docRepoFiles.docId, docConflicts.docId), eq(docRepoFiles.homeId, docConflicts.homeId)),
     )
@@ -118,11 +129,12 @@ export async function listConflicts(
     )
     .orderBy(asc(docConflicts.id))
     .limit(data.limit + 1);
-  const items = rows.slice(0, data.limit).map(({ conflict, file }) => {
+  const items: DocConflict[] = [];
+  for (const { conflict, file } of rows.slice(0, data.limit)) {
     const doc = byId.get(conflict.docId);
     if (!doc) throw notFound();
-    return view(conflict, file, doc);
-  });
+    items.push(view(conflict, await pathOf(tx, file, doc), doc));
+  }
   return { items, nextCursor: rows.length > data.limit ? (items.at(-1)?.id ?? null) : null };
 }
 
@@ -135,17 +147,107 @@ export async function getConflict(tx: Tx, principal: Principal, id: string): Pro
     .select()
     .from(docRepoFiles)
     .where(and(eq(docRepoFiles.docId, row.docId), eq(docRepoFiles.homeId, row.homeId)));
-  if (!file) throw notFound();
+  if (!file && row.origin !== "word") throw notFound();
   const hubVersion = row.state === "open" ? doc.version : row.hubVersion;
-  const base = await getDoc(tx, principal, { key: doc.key, version: row.baseVersion });
+  // Gốc của xung đột với Word là Markdown lần nhập trước, không phải một phiên bản hub.
+  const base = row.baseContent ?? (await getDoc(tx, principal, { key: doc.key, version: row.baseVersion })).content;
   const hub = await getDoc(tx, principal, { key: doc.key, version: hubVersion });
   return {
-    ...view(row, file, doc),
-    baseContent: base.content,
+    ...view(row, await pathOf(tx, file ?? null, doc), doc),
+    baseContent: base,
     hubContent: hub.content,
     repoContent: row.repoContent,
-    merge: mergeBlocks(base.content, hub.content, row.repoContent),
+    merge: mergeBlocks(base, hub.content, row.repoContent),
   };
+}
+
+/** Bản người giải quyết tự sửa có chuỗi giống bí mật thì phải xác nhận, và lần xác nhận được ghi audit. */
+async function checkManualSecrets(
+  tx: Tx,
+  userId: string,
+  key: string,
+  data: Extract<DocConflictResolveInput, { choice: "manual" }>,
+): Promise<void> {
+  const findings = scanSecrets(data.content);
+  if (findings.length && !data.acknowledgeSecrets) throw new ConflictSecretError(findings);
+  if (findings.length)
+    await recordAudit(tx, {
+      action: "doc.secrets.acknowledge",
+      actorUserId: userId,
+      targetType: "doc_key",
+      targetId: key,
+      data: { key, contentHash: docContentHash(data.content), findings },
+    });
+}
+
+/**
+ * Xung đột với Word (spec 019 FR-024): bên kia là bản Word chưa nằm trong commit nào, nên không đụng tới trạng thái
+ * đồng bộ repo của file. Giữ bản hub thì không tạo phiên bản; lấy bản Word hay bản tự sửa thì lưu rồi để lô đẩy ghi
+ * lên repo như lần lưu thường, và dọn ảnh bản Word đã bỏ.
+ */
+async function resolveWordConflict(
+  tx: Tx,
+  principal: Extract<Principal, { kind: "user" }>,
+  data: DocConflictResolveInput,
+  conflict: ConflictRow,
+  doc: DocSummary,
+  file: FileRow | null,
+  queuePush: QueuePush,
+): Promise<{ key: string; version: number }> {
+  const current = await getDoc(tx, principal, { key: doc.key });
+  if (current.version !== data.baseVersion)
+    throw new ConflictError("VERSION_CONFLICT", "Tài liệu vừa đổi. Tải bản mới nhất trước khi giải quyết.");
+  let version = current.version;
+  let secretFlag = false;
+  if (data.choice !== "hub") {
+    if (data.choice === "manual") await checkManualSecrets(tx, principal.userId, doc.key, data);
+    const saved = await saveDocFromSync(tx, {
+      key: doc.key,
+      scope: doc.scope,
+      content: data.choice === "manual" ? data.content : conflict.repoContent,
+      baseVersion: data.baseVersion,
+      source: data.choice === "manual" ? "merge" : "word",
+      repoCommit: null,
+      message: "Giải quyết xung đột cập nhật từ Word.",
+      secretsAcknowledged: data.choice === "manual" && data.acknowledgeSecrets === true,
+    });
+    version = saved.version;
+    secretFlag = saved.secretFlag;
+    // Như lần giải quyết xung đột với repo: bản có bí mật chưa xác nhận không được đẩy.
+    if (secretFlag && file)
+      await tx
+        .update(docRepoFiles)
+        .set({ state: "blocked_secret", updatedAt: new Date() })
+        .where(eq(docRepoFiles.id, file.id));
+    await markOrphanAssets(tx, conflict.homeId);
+  }
+  await tx
+    .update(docConflicts)
+    .set({
+      state: "resolved",
+      resolution: data.choice,
+      resolvedBy: principal.userId,
+      resolvedVersion: version,
+      hubVersion: current.version,
+      updatedAt: new Date(),
+    })
+    .where(eq(docConflicts.id, conflict.id));
+  await recordAudit(tx, {
+    action: "doc.conflict_resolve",
+    actorUserId: principal.userId,
+    targetType: "doc",
+    targetId: doc.id,
+    data: {
+      key: doc.key,
+      homeId: conflict.homeId,
+      conflictId: conflict.id,
+      origin: "word",
+      choice: data.choice,
+      version,
+    },
+  });
+  if (data.choice !== "hub" && !secretFlag) await queuePush(tx, { orgId: conflict.orgId, homeId: conflict.homeId });
+  return { key: doc.key, version };
 }
 
 export async function resolveConflict(
@@ -176,6 +278,8 @@ export async function resolveConflict(
       `Tài liệu đã ở phiên bản ${doc.version}. Tải bản mới nhất trước khi giải quyết.`,
     );
   const [file] = await tx.select().from(docRepoFiles).where(eq(docRepoFiles.docId, docId)).for("update");
+  if (conflict?.origin === "word")
+    return resolveWordConflict(tx, principal, data, conflict, doc, file ?? null, queuePush);
   if (!file || (conflict && file.homeId !== conflict.homeId)) throw notFound();
   const deleted = file.state === "deleted_in_repo";
   if (!conflict && !deleted) throw notFound();
@@ -197,18 +301,7 @@ export async function resolveConflict(
         : data.choice === "repo" && conflict
           ? conflict.repoContent
           : current.content;
-    if (data.choice === "manual") {
-      const findings = scanSecrets(content);
-      if (findings.length && !data.acknowledgeSecrets) throw new ConflictSecretError(findings);
-      if (findings.length)
-        await recordAudit(tx, {
-          action: "doc.secrets.acknowledge",
-          actorUserId: principal.userId,
-          targetType: "doc_key",
-          targetId: doc.key,
-          data: { key: doc.key, contentHash: docContentHash(content), findings },
-        });
-    }
+    if (data.choice === "manual") await checkManualSecrets(tx, principal.userId, doc.key, data);
     const saved = await saveDocFromSync(tx, {
       key: doc.key,
       scope: doc.scope,

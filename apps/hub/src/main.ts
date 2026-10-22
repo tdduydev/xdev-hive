@@ -26,7 +26,13 @@ import {
   reviewGate,
 } from "./modules/codereview/index.ts";
 import { deliveryQueues, registerDelivery } from "./modules/delivery/index.ts";
-import { detectWordTools, docSyncQueues, registerDocSync, wordImportBlobRefs } from "./modules/docsync/index.ts";
+import {
+  detectWordTools,
+  docSyncQueues,
+  registerDocSync,
+  wordImportBlobRefs,
+  wordProposalApproved,
+} from "./modules/docsync/index.ts";
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
@@ -43,6 +49,7 @@ import {
   embedQueue,
   provideDocAccess,
   provideDocIndexJobs,
+  provideProposalApproved,
   provideReviewHooks,
   registerDocIndexWorker,
   registerEmbedWorker,
@@ -224,6 +231,7 @@ const sdlcDeps: SdlcDeps = runs?.sdlcDeps ?? {
   masterKey: config.masterKey,
 };
 provideReviewHooks(sdlcReviewHooks(sdlcDeps));
+provideProposalApproved(wordProposalApproved(jobs));
 provideDocAccess(docAccessFor);
 provideDocIndexJobs(jobs);
 provideSdlcFleetRuns(sdlcFleetRuns);
