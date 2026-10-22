@@ -1,13 +1,20 @@
-import { type DeliveryRouteDeps, deliveryApi, notImplemented } from "../deps.ts";
+import {
+  createInfraConnection,
+  listInfraConnections,
+  removeInfraConnection,
+  testInfraConnection,
+  updateInfraConnection,
+} from "../connections/infra.ts";
+import { type DeliveryRouteDeps, deliveryApi } from "../deps.ts";
 
-/** Kết nối Argo CD và Kubernetes (T009). Làm ở task sau. */
+/** Kết nối Argo CD và Kubernetes (FR-006). */
 export function infraConnectionsRoutes(deps: DeliveryRouteDeps) {
   const api = deliveryApi(deps).infraConnections;
   return {
-    list: api.list.handler(notImplemented),
-    create: api.create.handler(notImplemented),
-    update: api.update.handler(notImplemented),
-    remove: api.remove.handler(notImplemented),
-    test: api.test.handler(notImplemented),
+    list: api.list.handler(({ context }) => listInfraConnections(context.tx)),
+    create: api.create.handler(({ context, input }) => createInfraConnection(context.tx, deps, context.user.id, input)),
+    update: api.update.handler(({ context, input }) => updateInfraConnection(context.tx, deps, context.user.id, input)),
+    remove: api.remove.handler(({ context, input }) => removeInfraConnection(context.tx, context.user.id, input.id)),
+    test: api.test.handler(({ context, input }) => testInfraConnection(context.tx, deps, context.user.id, input.id)),
   };
 }

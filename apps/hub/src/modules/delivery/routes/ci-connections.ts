@@ -1,14 +1,22 @@
-import { type DeliveryRouteDeps, deliveryApi, notImplemented } from "../deps.ts";
+import {
+  createJenkinsConnection,
+  listJenkinsConnections,
+  removeJenkinsConnection,
+  setJenkinsWatcher,
+  testJenkinsConnection,
+  updateJenkinsConnection,
+} from "../connections/jenkins.ts";
+import { type DeliveryRouteDeps, deliveryApi } from "../deps.ts";
 
-/** Kết nối Jenkins của tổ chức (T009). Làm ở task sau. */
+/** Kết nối Jenkins của tổ chức (FR-001). */
 export function ciConnectionsRoutes(deps: DeliveryRouteDeps) {
   const api = deliveryApi(deps).ciConnections;
   return {
-    list: api.list.handler(notImplemented),
-    create: api.create.handler(notImplemented),
-    update: api.update.handler(notImplemented),
-    remove: api.remove.handler(notImplemented),
-    test: api.test.handler(notImplemented),
-    setWatcher: api.setWatcher.handler(notImplemented),
+    list: api.list.handler(({ context }) => listJenkinsConnections(context.tx)),
+    create: api.create.handler(({ context, input }) => createJenkinsConnection(context.tx, context.user.id, input)),
+    update: api.update.handler(({ context, input }) => updateJenkinsConnection(context.tx, context.user.id, input)),
+    remove: api.remove.handler(({ context, input }) => removeJenkinsConnection(context.tx, context.user.id, input.id)),
+    test: api.test.handler(({ context, input }) => testJenkinsConnection(context.tx, deps, context.user.id, input.id)),
+    setWatcher: api.setWatcher.handler(({ context, input }) => setJenkinsWatcher(context.tx, context.user.id, input)),
   };
 }
