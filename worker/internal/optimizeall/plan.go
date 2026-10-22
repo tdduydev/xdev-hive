@@ -197,9 +197,11 @@ type Fixer interface {
 
 // ContextProject là dự án đã bật ngữ cảnh dùng chung; Files là file có khối sẽ được ghi (xem trước).
 type ContextProject struct {
-	Key   string
-	Name  string
-	Files []string
+	Key string
+	// ProjectID là id dự án trên hub (rỗng khi chưa gắn): chính sách và tên dự án theo id này, không theo Key.
+	ProjectID string
+	Name      string
+	Files     []string
 }
 
 // ContextSyncer là cửa duy nhất để ghi file ngữ cảnh (ctxsync.Manager.Sync, chỉ ghi trong khối). Sync trả id mục
@@ -377,11 +379,12 @@ func (r *Runner) Plan(policies map[string]Policy) (OptimizePlan, error) {
 			return OptimizePlan{}, err
 		}
 		for _, p := range projects {
+			id := firstNonEmpty(p.ProjectID, p.Key)
 			s := Step{ID: StepContextSync, Group: GroupContext, Target: p.Key, Project: p.Key, Selected: true, Undoable: true,
-				Title: "Cập nhật khối ngữ cảnh của dự án " + firstNonEmpty(p.Name, names[p.Key], p.Key), Changes: []Change{},
+				Title: "Cập nhật khối ngữ cảnh của dự án " + firstNonEmpty(p.Name, names[id], p.Key), Changes: []Change{},
 				Reason: "Mặc định"}
-			if _, ok := policies[p.Key]; ok {
-				s.Reason = reason([]string{p.Key})
+			if _, ok := policies[id]; ok {
+				s.Reason = reason([]string{id})
 			}
 			for _, f := range p.Files {
 				s.Changes = append(s.Changes, Change{File: f, Key: "Khối xDev Hive"})
