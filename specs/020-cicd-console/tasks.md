@@ -454,7 +454,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (hai người sửa cùng đích thì người sau bị từ chối; người chỉ có `deploy.run` không sửa được
     lệnh), typecheck.
 
-- [ ] **T018 [P] [US4] [vừa] · 1 ngày — Log triển khai, SSE, health, dọn log**
+- [x] **T018 [P] [US4] [vừa] · 1 ngày — Log triển khai, SSE, health, dọn log**
   - **Phụ thuộc**: T008, T009.
   - **Goal**: FR-018, FR-019, Q12, plan.md mục 7.
     - `logs.ts`: `appendDeployLog(tx, deployId, text, redactor)` che bằng `createRedactor` (bí mật của đích và mẫu
