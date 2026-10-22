@@ -116,7 +116,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 2: Desktop (P1)
 
-- [ ] **T007 [US1] [vừa] · 1 ngày — Rust `context_sync.rs` và `lib/context-sync.ts`** (sau T004)
+- [x] **T007 [US1] [vừa] · 1 ngày — Rust `context_sync.rs` và `lib/context-sync.ts`** (sau T004)
   - **Goal**: lệnh Tauri `context_status`, `context_enable`, `context_disable`, `context_save_source`, `context_sync`,
     `context_resolve`, `context_migrate` gọi sidecar (nguồn, memory hub, chính sách qua file tạm, xoá sau khi chạy); kiểu
     TS khớp fixture Go.
