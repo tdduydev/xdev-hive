@@ -88,7 +88,7 @@ description: "Task list: nhập Word thành tài liệu hub"
 
 ## Đợt 0: hợp đồng, bộ lọc, pandoc, phần thuần (song song)
 
-- [ ] **T001 [P] [—] [nặng] · 1 ngày — Hợp đồng API cho mọi giai đoạn**
+- [x] **T001 [P] [—] [nặng] · 1 ngày — Hợp đồng API cho mọi giai đoạn**
   - **Goal**: giai đoạn 1, làm trước cho cả 1b, 2, 2b, 3. Constitution I, plan.md mục 1, 2, 5, 6, 8, 8b, 9, 11.
     - `doc-sync.ts`:
       - `wordImportsContract`: `get`, `list` (theo nhà, phân trang), `file` (Markdown một file), `update` (`path?`,
@@ -114,7 +114,7 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **Kiểm**: contracts test, `pnpm openapi`, typecheck hub và web vẫn qua (route chưa có handler thì ghi bàn giao tới
     khi T005 xong).
 
-- [ ] **T002 [P] [US2] [vừa] · 1 ngày — Phần thuần: tên, phiên bản, hậu xử lý Markdown**
+- [x] **T002 [P] [US2] [vừa] · 1 ngày — Phần thuần: tên, phiên bản, hậu xử lý Markdown**
   - **Goal**: giai đoạn 1. FR-006, FR-010 (link ảnh), FR-012, FR-013, plan.md mục 3 bước 5, mục 4, research.md mục 1.
     Hàm thuần, không đụng DB hay pandoc:
     - `names.ts`: `stripVersion`, `commonPrefix` (tính riêng từng thư mục con, chỉ khi ≥ 2 file và phần còn lại không
@@ -133,7 +133,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/word/{names.ts,postprocess.ts}` (mới) + `names.test.ts`, `postprocess.test.ts`
   - **Kiểm**: hub test (các file test mới), typecheck.
 
-- [ ] **T003 [P] [US1] [nặng] · 2 ngày — Bộ lọc Lua chuẩn và bộ mẫu vàng**
+- [x] **T003 [P] [US1] [nặng] · 2 ngày — Bộ lọc Lua chuẩn và bộ mẫu vàng**
   - **Phụ thuộc**: T024 (bản sao `srs.lua`).
   - **Goal**: giai đoạn 1. FR-007…FR-011, FR-013, FR-014, SC-002, plan.md mục 3 bước 4, mục 14 "Vàng".
     - Chép `tools/srs2md/srs.lua` của repo `acme-ai/docs` (repo riêng, không sửa ở đây) thành `filter.lua`. Đầu
@@ -159,7 +159,7 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **Kiểm**: hub test (cần pandoc 3.12), typecheck.
   - **Bàn giao**: `FILTER_VERSION` và danh sách quy tắc mới so với `srs.lua`, để T023 chuyển cho chủ dự án.
 
-- [ ] **T004 [P] [—] [nặng] · 1 ngày — pandoc: chạy có giới hạn, kiểm phiên bản, đóng gói**
+- [x] **T004 [P] [—] [nặng] · 1 ngày — pandoc: chạy có giới hạn, kiểm phiên bản, đóng gói**
   - **Goal**: giai đoạn 1. FR-003 và FR-023 (phần pandoc), SC-005, plan.md mục 3 bước 3, mục 12, R1, R2, R8.
     - `pandoc.ts`:
       - `detectPandoc(path)`: chạy `--version`, so với bản ghim 3.12, trả `{ok, version, reason}`;
@@ -179,6 +179,7 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **Bàn giao**: dung lượng image trước và sau (cho ADR 0029 ở T022); kết quả kiểm máy chủ của T024.
 
 - [ ] **T024 [—] [người: chủ dự án] · 0,5 ngày người — Chuẩn bị: bộ lọc gốc, dữ liệu thật, máy chủ**
+  - **Còn thiếu**: bộ lọc gốc và bộ 261 SRS đã dùng (T003, T007, research.md mục 6); chưa có ghi nhận kết quả kiểm máy chủ tải được release pandoc và gói LibreOffice Writer (cho T004, T014).
   - **Goal**:
     - đưa bản sao `tools/srs2md/srs.lua` (kèm commit) của repo `acme-ai/docs` cho T003, đặt ngoài repo này;
     - chỉ máy có thư mục 261 SRS (OneDrive) cho T007 và T023;
@@ -189,7 +190,7 @@ description: "Task list: nhập Word thành tài liệu hub"
 
 ## Đợt 1: nền (song song, sau Đợt 0)
 
-- [ ] **T005 [P] [—] [nặng] · 1,5 ngày — Bảng, RLS, migration, cấu hình, khung `docsync/word`**
+- [x] **T005 [P] [—] [nặng] · 1,5 ngày — Bảng, RLS, migration, cấu hình, khung `docsync/word`**
   - **Phụ thuộc**: T001, T004 (`detectPandoc`).
   - **Goal**: giai đoạn 1, bảng cho mọi giai đoạn. Plan.md mục 1, 8, 9, 13; spec "Key Entities"; FR-017 (nguồn `word`),
     FR-023 (health), Q15.
@@ -230,7 +231,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/db/migrations/*` (một file mới + meta)
   - **Kiểm**: hub typecheck, `rls.db.test.ts`, `migrations-upgrade.db.test.ts` từ `0077`, `pnpm deps`.
 
-- [ ] **T006 [P] [US1] [vừa] · 1 ngày — Web: hộp thoại "Nhập Word", khung route, cài đặt "Tài liệu mật"**
+- [x] **T006 [P] [US1] [vừa] · 1 ngày — Web: hộp thoại "Nhập Word", khung route, cài đặt "Tài liệu mật"**
   - **Phụ thuộc**: T001.
   - **Goal**: giai đoạn 1. FR-001, FR-002 (chặn sớm ở trình duyệt), FR-023 (ẩn nút), Q8, Q15, plan.md mục 11.
     - `word-import-dialog.tsx`:
@@ -259,7 +260,7 @@ description: "Task list: nhập Word thành tài liệu hub"
       (mới)
   - **Kiểm**: web typecheck, test, Playwright `word-import-dialog.spec.ts` (360 px, bàn phím).
 
-- [ ] **T007 [P] [—] [vừa] · 0,5 ngày — Bộ thật: script `word:corpus`, chạy lần đầu trên 261 SRS**
+- [x] **T007 [P] [—] [vừa] · 0,5 ngày — Bộ thật: script `word:corpus`, chạy lần đầu trên 261 SRS**
   - **Phụ thuộc**: T003, T004, T024 (máy có dữ liệu).
   - **Goal**: giai đoạn 1. SC-001, plan.md mục 14 "Bộ thật", R3, R4.
     - `apps/hub/scripts/word-corpus.ts`: nhận một thư mục Word; chạy `runPandoc` + `filter.lua` từng file, 2 file cùng
@@ -276,7 +277,7 @@ description: "Task list: nhập Word thành tài liệu hub"
 
 ## Đợt 2: lõi nhập, nền cho P2 (song song, sau Đợt 1)
 
-- [ ] **T008 [P] [US1] [nặng] · 1 ngày — Nhận file: route multipart, nhận dạng `.odt`, `.doc`, file có mật khẩu**
+- [x] **T008 [P] [US1] [nặng] · 1 ngày — Nhận file: route multipart, nhận dạng `.odt`, `.doc`, file có mật khẩu**
   - **Phụ thuộc**: T002, T005.
   - **Goal**: giai đoạn 1. FR-002, FR-003 (lưu file gốc), FR-006 (áp tên), FR-021 (tạo lượt), SC-005, SC-007, plan.md
     mục 2, spec Edge Cases.
@@ -300,7 +301,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/word/upload.ts` + `upload.db.test.ts` (mới)
   - **Kiểm**: hub test, typecheck, `pnpm deps`.
 
-- [ ] **T009 [P] [US1] [nặng] · 2 ngày — Job chuyển, xem trước, ảnh xem trước**
+- [x] **T009 [P] [US1] [nặng] · 2 ngày — Job chuyển, xem trước, ảnh xem trước**
   - **Phụ thuộc**: T002, T003, T004, T005.
   - **Goal**: giai đoạn 1. FR-003, FR-004, FR-005, FR-010, FR-012, FR-018 (đánh dấu), FR-019 (kiểm ở xem trước),
     US2 kịch bản 2 và 4, plan.md mục 3, 5.
@@ -328,7 +329,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/word/{convert.db.test.ts,preview.db.test.ts}` (mới)
   - **Kiểm**: hub test (cần pandoc), typecheck.
 
-- [ ] **T010 [P] [US1] [nặng] · 1,5 ngày — Tạo tài liệu, gắn tài liệu có sẵn với file Word**
+- [x] **T010 [P] [US1] [nặng] · 1,5 ngày — Tạo tài liệu, gắn tài liệu có sẵn với file Word**
   - **Phụ thuộc**: T002, T005.
   - **Goal**: giai đoạn 1. FR-017…FR-021, FR-028, US1 kịch bản 2, 3, 5, 6, US6, SC-006, plan.md mục 6, 7, 8b.
     - `commit.ts` + `routes/word-commit.ts` (`wordImports.commit`), mỗi file một giao dịch:
@@ -352,7 +353,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/routes/{word-commit.ts,word-link.ts}`
   - **Kiểm**: hub test, typecheck, `pnpm deps`.
 
-- [ ] **T011 [P] [US1] [vừa] · 1,5 ngày — Web: trang lượt nhập, gắn với file Word**
+- [x] **T011 [P] [US1] [vừa] · 1,5 ngày — Web: trang lượt nhập, gắn với file Word**
   - **Phụ thuộc**: T006 (API từ T009, T010 dùng qua fixture).
   - **Goal**: giai đoạn 1. FR-005, FR-018 và FR-019 (giao diện), FR-022, US1, US2, US6, plan.md mục 11.
     - `word-import-page.tsx` (`/knowledge/docs/word-imports/$id`):
@@ -373,7 +374,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/web/e2e/word-import.spec.ts` (mới), `apps/web/e2e/word-import-fixture.ts`
   - **Kiểm**: web typecheck, test, Playwright file của task.
 
-- [ ] **T012 [P] [US4] [nặng] · 1 ngày — `knowledge`: nguồn của đề xuất, hook khi duyệt**
+- [x] **T012 [P] [US4] [nặng] · 1 ngày — `knowledge`: nguồn của đề xuất, hook khi duyệt**
   - **Phụ thuộc**: T001, T005.
   - **Goal**: giai đoạn 2. FR-027, plan.md mục 9.
     - `createProposal`, `proposeDoc` nhận và lưu `origin`; `approveProposal` lưu nguồn `word` khi
@@ -389,7 +390,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/knowledge/proposal-approved.db.test.ts` (mới)
   - **Kiểm**: hub test `knowledge` (test cũ vẫn qua, gồm `review.db.test.ts`), typecheck, `pnpm deps`.
 
-- [ ] **T013 [P] [US3] [vừa] · 1 ngày — Dọn ảnh: `pending_delete` và lô đẩy xoá ảnh**
+- [x] **T013 [P] [US3] [vừa] · 1 ngày — Dọn ảnh: `pending_delete` và lô đẩy xoá ảnh**
   - **Phụ thuộc**: T005.
   - **Goal**: giai đoạn 2. FR-026, plan.md mục 8 "Dọn ảnh".
     - `asset-orphans.ts`: `markOrphanAssets(tx, homeId)`. Ảnh tên kiểu hash (`<12 hex>.<đuôi>`) trong thư mục ảnh của
@@ -403,7 +404,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/{push.ts,push.db.test.ts}`
   - **Kiểm**: hub test docsync (test cũ của lô đẩy vẫn qua), typecheck.
 
-- [ ] **T026 [P] [US1] [vừa] · 1 ngày — Bộ lọc: `<sub>`/`<sup>` trong ô bảng, bỏ `<!-- -->` giữa hai danh sách**
+- [x] **T026 [P] [US1] [vừa] · 1 ngày — Bộ lọc: `<sub>`/`<sup>` trong ô bảng, bỏ `<!-- -->` giữa hai danh sách**
   - **Phụ thuộc**: T003, T007. Merge sau T009: T009 so kết quả job với `*.md` vàng, task này đổi bộ vàng.
   - **Goal**: giai đoạn 1. FR-007…FR-009, SC-001. Việc 1 và 3 T007 tìm thấy (PR #438, research.md mục 6).
     - `<sub>`, `<sup>` trong ô bảng làm cả bảng thành khối thô (EME03 trên bộ thật). Bộ lọc đổi chỉ số dưới, chỉ số
@@ -419,7 +420,7 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **Kiểm**: hub test `word/` (cần pandoc), `word:corpus` trên `word/fixtures`: không còn thẻ HTML ngoài `<br>` trong ô,
     không còn `<!-- -->`.
 
-- [ ] **T027 [P] [—] [nhẹ] · 0,5 ngày — Bộ thật: phân loại khối thô, 278 so với 261, typecheck `scripts/`**
+- [x] **T027 [P] [—] [nhẹ] · 0,5 ngày — Bộ thật: phân loại khối thô, 278 so với 261, typecheck `scripts/`**
   - **Phụ thuộc**: T007, T024 (máy có dữ liệu, cho phần chạy trên bộ thật).
   - **Goal**: giai đoạn 1. SC-001. Việc 4, 6 và 7 T007 tìm thấy (PR #438, research.md mục 6).
     - `apps/hub/tsconfig.json` gồm `scripts/`; sửa lỗi kiểu nếu có trong `word-corpus.ts`.
