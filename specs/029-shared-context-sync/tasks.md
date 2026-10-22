@@ -106,7 +106,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **Kiểm**: SC-004 (hoàn tác so byte `settings.json`, `config.toml`, khối), bước lỗi giữa chừng, gộp chính sách, khoá
     song song, test danh sách bước đóng.
 
-- [ ] **T006 [US2] [vừa] · 1 ngày — Lệnh `hive-worker optimize all`** (sau T004, T005)
+- [x] **T006 [US2] [vừa] · 1 ngày — Lệnh `hive-worker optimize all`** (sau T004, T005)
   - **Goal**: `optimize all --preview|--apply --plan-file|--undo --run|--last` theo
     [contracts/sidecar-cli.md](contracts/sidecar-cli.md); nối `optimizeall.ContextSyncer` vào `ctxsync.Sync`; `context
     sync` cũng lấy `optimize.lock` (bỏ lượt với `locked:true` khi bận). Fixture JSON `OptimizePlan`, `OptimizeRun`.
