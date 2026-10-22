@@ -589,6 +589,13 @@
       "when": 1792585856759,
       "tag": "0083_leader_delegations",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1792678404371,
+      "tag": "0084_gray_goblin_queen",
+      "breakpoints": true
     }
   ]
 }

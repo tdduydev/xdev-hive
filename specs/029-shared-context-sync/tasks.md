@@ -168,7 +168,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `packages/contracts/src/{projects.ts,knowledge.ts}` (+ test), `openapi.json`.
   - **Kiểm**: test zod giá trị biên; `pnpm openapi` không lệch.
 
-- [ ] **T013 [US3] [vừa] · 1 ngày — Hub `knowledge`: cột `pinned`, sắp, `pinMemory`** (sau T012)
+- [x] **T013 [US3] [vừa] · 1 ngày — Hub `knowledge`: cột `pinned`, sắp, `pinMemory`** (sau T012)
   - **Goal**: migration `0084_*` thêm `memories.pinned boolean not null default false`; `listMemories` sắp
     `pinned desc, created_at desc`; `pinMemory` (quyền như duyệt memory ở phạm vi của memory, audit `memory.pin`); route.
   - **PHẠM VI**: `apps/hub/db/migrations/0084_*.sql` (+ meta drizzle), `apps/hub/src/modules/knowledge/{schema.ts,memory.ts,router.ts}`, `*.db.test.ts`.
