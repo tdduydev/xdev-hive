@@ -156,6 +156,9 @@ fn main() {
         "remote_totp_unlock",
         "remote_sessions",
         "remote_session_kill",
+        "pick_word_files",
+        "hub_upload_word",
+        "hub_fetch_bytes",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");
