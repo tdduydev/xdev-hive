@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { seedOrg } from "../../../test/org-fixture.ts";
 import { createPool, type Jobs, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { deployBoard, getDeploy, listDeploys } from "./deploys/board.ts";
+import type { HealthResult } from "./deploys/health.ts";
 import type { DeployMethod, DeployRun } from "./deploys/method.ts";
 import {
   cancelDeploy,
@@ -71,7 +72,7 @@ interface FakeRun {
   unreachable: boolean;
   /** Hub dừng giữa nhịp đọc: huỷ signal sau khi đã đọc. */
   dieOnPoll: AbortController | null;
-  health: Record<string, unknown> | null;
+  health: HealthResult | null;
   canceled: boolean;
   cancelFails: boolean;
 }

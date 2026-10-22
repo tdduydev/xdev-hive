@@ -495,7 +495,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (bấm hai lần cùng đích thì lần sau bị chặn; khởi động lại worker giữa chừng thì watch chạy tiếp;
     15 phút không đọc được thì `unknown`; lần "ngoài Hive" không tính vào khoá), typecheck.
 
-- [ ] **T020 [P] [US4] [nặng] · 2,5 ngày — Cách `ssh-script`: script chạy bước, tách phiên, đọc tiếp**
+- [x] **T020 [P] [US4] [nặng] · 2,5 ngày — Cách `ssh-script`: script chạy bước, tách phiên, đọc tiếp**
   - **Phụ thuộc**: T001, T005 (provider `memory`; `scm.archive` có từ spec 018), T016, T017, T018.
   - **Goal**: US4, FR-016, FR-017, FR-018 (gọi health), SC-007, plan.md mục 5 "Chạy bước tách khỏi phiên SSH", "Đưa
     mã lên".

@@ -39,7 +39,7 @@ import { DELIVERY_DEPLOY_QUEUE, DELIVERY_DEPLOY_WATCH_QUEUE } from "../queues.ts
 import { deployApprovals, deploys, deployTargets } from "../schema.ts";
 import { targetVariableContext } from "../targets.ts";
 import { type DeployRow, deployNotFound, deployView, type LocatedDeploy, loadLocatedDeploy } from "./board.ts";
-import type { DeployMethod, DeployMethodContext, DeployProgress, DeployRun } from "./method.ts";
+import type { DeployMethod, DeployMethodContext, DeployRun } from "./method.ts";
 import { methodFor as registeredMethodFor } from "./methods.ts";
 
 // Bộ điều phối lần triển khai (FR-015…FR-019, FR-025, plan.md mục 5): tạo lần mới và giữ khoá đích, job
@@ -717,16 +717,8 @@ export async function startDeploy(deps: DeliveryDeps, job: DeployJob, opts: JobO
 
 // ---- Job delivery-deploy-watch --------------------------------------------------------------------------------------
 
-const TERMINAL: ReadonlySet<string> = new Set(["succeeded", "failed", "failed_needs_review", "unknown"]);
-
-/**
- * Tiến độ do cách triển khai trả. `failed_needs_review` và `health` dành cho cách chạy health sau các bước (T020) dù
- * `DeployProgress` chưa khai báo.
- */
-type Progress = Omit<DeployProgress, "state"> & {
-  state: DeployProgress["state"] | "failed_needs_review";
-  health?: Record<string, unknown> | null | undefined;
-};
+// `canceled` ở đây là phía máy chủ đã dừng (ai đó giết run.sh); huỷ từ hub đã đổi trạng thái trước khi tới nhịp đọc.
+const TERMINAL: ReadonlySet<string> = new Set(["succeeded", "failed", "failed_needs_review", "canceled", "unknown"]);
 
 /**
  * Một nhịp theo dõi: đọc tiến độ từ vị trí đã lưu, lưu bước, log, vị trí mới trong cùng giao dịch rồi xếp nhịp sau. Hub
@@ -742,10 +734,10 @@ export async function watchDeploy(deps: DeliveryDeps, job: DeployJob, opts: JobO
       const target = await loadTarget(tx, deploy.targetId);
       if (!target) return;
       const { own, hive } = splitRemote(deploy.remote);
-      const progress = (await methodOf(opts, deploy.method).poll(
+      const progress = await methodOf(opts, deploy.method).poll(
         { tx, deps },
         runOf(job.orgId, deploy, target, own, signal),
-      )) as Progress;
+      );
       const now = clock(opts)();
       const done = TERMINAL.has(progress.state);
       const next = await writeLog(
