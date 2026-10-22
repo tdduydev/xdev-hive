@@ -153,6 +153,8 @@ func (m Manager) Enable(folder, projectID string) (Project, error) {
 		if _, err := m.removeTargets(&st); err != nil {
 			return Project{}, err
 		}
+		// Created, Lead, ExcludeAdded thuộc thư mục cũ; giữ lại thì lúc tắt sẽ xoá file và dòng exclude của người dùng.
+		st.Targets = nil
 	}
 	st.Enabled, st.Folder, st.ProjectID = true, abs, projectID
 	if st.AutoSync.Minutes == 0 {
@@ -388,10 +390,11 @@ func (m Manager) apply(key string, st *State, force map[TargetID]bool) ([]planne
 					return nil, "", err
 				}
 			}
-			if err := m.write(st.Folder, batch, &p); err != nil {
+			// Đếm cả file đã sao lưu trước khi hỏng: file đó đã bị ghi đè, Abort sẽ mất bản sao lưu của nó.
+			n, err := m.write(st.Folder, batch, &p)
+			saved += n
+			if err != nil {
 				p.status, p.reason = StatusSkipped, err.Error()
-			} else {
-				saved++
 			}
 		}
 		record(ts, p)
@@ -411,40 +414,44 @@ func (m Manager) apply(key string, st *State, force map[TargetID]bool) ([]planne
 	return plans, res.Entry, nil
 }
 
-// write ghi các file của một file đích: thêm exclude trước để file mới không lộ ra git status dù chỉ một lúc.
-func (m Manager) write(folder string, batch *memstore.Batch, p *planned) error {
-	var excluded []string
+// write ghi các file của một file đích: thêm exclude trước để file mới không lộ ra git status dù chỉ một lúc. saved là
+// số file đã sao lưu, kể cả khi hỏng giữa chừng.
+func (m Manager) write(folder string, batch *memstore.Batch, p *planned) (saved int, err error) {
 	for _, rel := range p.excludes {
 		added, warn := gitexclude.Add(folder, rel)
 		if warn != "" {
 			p.reason = warn
 		}
-		if added {
-			excluded = append(excluded, gitexclude.Line(rel))
+		if !added {
+			continue
+		}
+		// Dòng exclude của settings Gemini ghi vào extra, các dòng khác vào file đích.
+		line := gitexclude.Line(rel)
+		if p.extra != nil && line == gitexclude.Line(geminiSettings) {
+			p.extra.ExcludeAdded = strPtr(line)
+		} else {
+			p.excludeLine = strPtr(line)
 		}
 	}
 	for _, w := range p.writes {
 		path := filepath.Join(folder, w.rel)
 		if err := batch.Save(path, false); err != nil {
-			return fmt.Errorf("không sao lưu được %s: %v", filepath.ToSlash(w.rel), err)
+			return saved, fmt.Errorf("không sao lưu được %s: %v", filepath.ToSlash(w.rel), err)
 		}
+		saved++
 		if err := writeFile(path, []byte(w.content), fileMode(path)); err != nil {
-			return fmt.Errorf("không ghi được %s: %v", filepath.ToSlash(w.rel), err)
+			return saved, fmt.Errorf("không ghi được %s: %v", filepath.ToSlash(w.rel), err)
 		}
 	}
-	// Dòng exclude của settings Gemini ghi vào extra, các dòng khác vào file đích.
-	for _, line := range excluded {
-		if p.extra != nil && line == gitexclude.Line(geminiSettings) {
-			p.extra.ExcludeAdded = strPtr(line)
-			continue
-		}
-		p.excludeLine = strPtr(line)
-	}
-	return nil
+	return saved, nil
 }
 
 // record chép kết quả vào state.json.
 func record(ts *TargetState, p planned) {
+	// Ghi cả khi ghi file hỏng giữa chừng: dòng đã thêm vào exclude thì lúc tắt phải gỡ được.
+	if p.excludeLine != nil && ts.ExcludeAdded == nil {
+		ts.ExcludeAdded = p.excludeLine
+	}
 	ts.Status = p.status
 	ts.Reason = nil
 	if p.reason != "" {
@@ -459,9 +466,6 @@ func record(ts *TargetState, p planned) {
 	}
 	if p.lead != nil {
 		ts.Lead = *p.lead
-	}
-	if p.excludeLine != nil && ts.ExcludeAdded == nil {
-		ts.ExcludeAdded = p.excludeLine
 	}
 	if p.mirror != nil {
 		ts.MirrorOf = p.mirror

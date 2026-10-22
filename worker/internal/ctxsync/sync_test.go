@@ -558,3 +558,62 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(raw)
 }
+
+// Chuyển thư mục: trạng thái file đích của thư mục cũ không được theo sang, kẻo lúc tắt gỡ mất dòng exclude người dùng tự viết.
+func TestMoveFolderDoesNotCarryOldTargetState(t *testing.T) {
+	fx := newFixture(t)
+	p, err := fx.m.Enable(fx.folder, "0b6c6a3e-1f7e-4c55-9a64-1c8d0f2b9a10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.m.SaveSource(p.Key, "ngữ cảnh\n"); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(filepath.Dir(fx.folder), "moved")
+	if err := os.MkdirAll(moved, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, moved, "init", "-q")
+	exclude := filepath.Join(moved, ".git", "info", "exclude")
+	if err := os.WriteFile(exclude, []byte("/CLAUDE.local.md\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(moved, "CLAUDE.local.md"), []byte("ghi chú riêng\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.m.Enable(moved, *p.ProjectID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fx.m.Disable(p.Key); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, exclude); !strings.Contains(got, "/CLAUDE.local.md") {
+		t.Fatalf("dòng exclude của người dùng bị gỡ: %q", got)
+	}
+	if got := readFile(t, filepath.Join(moved, "CLAUDE.local.md")); got != "ghi chú riêng\n" {
+		t.Fatalf("CLAUDE.local.md = %q", got)
+	}
+}
+
+// File đã sao lưu rồi ghi trước khi hỏng phải được đếm, để apply không Abort mất bản sao lưu của nó.
+func TestWriteCountsFilesSavedBeforeFailure(t *testing.T) {
+	fx := newFixture(t)
+	fx.write(t, "first.md", "cũ\n")
+	fx.write(t, "blocker", "là file, không phải thư mục\n")
+	batch, err := fx.m.Store.Begin("context.sync", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := planned{writes: []write{{rel: "first.md", content: "mới\n"}, {rel: filepath.Join("blocker", "x.md"), content: "x"}}}
+	saved, err := fx.m.write(fx.folder, batch, &p)
+	if err == nil || saved < 1 {
+		t.Fatalf("saved = %d, err = %v", saved, err)
+	}
+	if got := fx.read(t, "first.md"); got != "mới\n" {
+		t.Fatalf("first.md = %q", got)
+	}
+	res, err := batch.Commit()
+	if err != nil || res.Entry == "" {
+		t.Fatalf("Commit = %+v, %v", res, err)
+	}
+}
