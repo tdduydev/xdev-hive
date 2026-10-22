@@ -174,7 +174,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `apps/hub/db/migrations/0084_*.sql` (+ meta drizzle), `apps/hub/src/modules/knowledge/{schema.ts,memory.ts,router.ts}`, `*.db.test.ts`.
   - **Kiểm**: quyền (thành viên thường không ghim được), thứ tự, audit, migration lên từ schema cũ.
 
-- [ ] **T014 [P] [US4] [vừa] · 1 ngày — Hub + web: chính sách "Tối ưu máy dev" của dự án** (sau T012)
+- [x] **T014 [P] [US4] [vừa] · 1 ngày — Hub + web: chính sách "Tối ưu máy dev" của dự án** (sau T012)
   - **Goal**: `updateProjectSettings` nhận `devOptimizer` (quyền và audit sẵn có); mục cài đặt "Tối ưu máy dev" sau mục
     `tokens` trên trang cài đặt dự án, chỉ admin sửa; mô tả rõ "chỉ áp cho máy dev, run hub dùng mục Tiết kiệm token".
   - **PHẠM VI**: `apps/hub/src/modules/catalog/settings.ts` (+ db test), `apps/web/src/lib/project-settings.ts`,

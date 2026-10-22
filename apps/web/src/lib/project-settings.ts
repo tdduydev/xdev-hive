@@ -1,8 +1,10 @@
 import { ORPCError } from "@orpc/client";
 import {
   DEFAULT_BRIEF_SETTINGS,
+  type DevOptimizerPolicy,
   defaultRouting,
   defaultTokenSaving,
+  devOptimizerPolicy,
   type OutcomeCheck,
   type ProjectDocsSettings,
   type ProjectSettings,
@@ -126,6 +128,16 @@ export interface SettingsForm {
   contextPack: boolean;
   exploreBudget: string;
   toolOutputMaxChars: string;
+  /** Chính sách "Tối ưu máy dev" (chỉ máy dev, không phải run hub); tắt là không có chính sách (null). */
+  devOptimizer: boolean;
+  devLevel: DevOptimizerPolicy["level"];
+  devRtk: boolean;
+  devCodegraph: boolean;
+  /** "" là không ép cửa sổ ngữ cảnh. */
+  devCompactWindow: string;
+  devContextBudget: string;
+  devMemoryAutoSync: boolean;
+  devMemorySyncMinutes: string;
 }
 
 // null là "không giới hạn" trong bản vá; hub có thể trả lại nguyên như vậy.
@@ -140,6 +152,8 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
   // Hub cũ chưa gửi mục này: hiện mặc định, như hub mới điền cho dự án lưu từ trước.
   const saving = s.tokenSaving ?? defaultTokenSaving;
   const routing = s.routing ?? defaultRouting;
+  const dev = s.devOptimizer ?? null;
+  const devDefault = devOptimizerPolicy.parse({});
   const tier = (t: TaskTier): TierForm => ({
     model: routing.tiers[t].model,
     effort: routing.tiers[t].effort,
@@ -189,6 +203,15 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     contextPack: saving.contextPack ?? defaultTokenSaving.contextPack,
     exploreBudget: String(saving.exploreBudget ?? defaultTokenSaving.exploreBudget),
     toolOutputMaxChars: String(saving.toolOutputMaxChars ?? defaultTokenSaving.toolOutputMaxChars),
+    // Hub cũ chưa có mục này: coi như chưa đặt chính sách. Bật lên thì các ô bắt đầu từ mặc định của hub.
+    devOptimizer: dev !== null,
+    devLevel: (dev ?? devDefault).level,
+    devRtk: (dev ?? devDefault).rtk,
+    devCodegraph: (dev ?? devDefault).codegraph,
+    devCompactWindow: text((dev ?? devDefault).autoCompactWindow),
+    devContextBudget: String((dev ?? devDefault).contextBudgetTokens),
+    devMemoryAutoSync: (dev ?? devDefault).memoryAutoSync,
+    devMemorySyncMinutes: String((dev ?? devDefault).memorySyncMinutes),
   };
 }
 
@@ -264,6 +287,18 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       sandbox: form.sandbox,
     },
     outcome: { default: outcomeDefault },
+    // Tắt công tắc là bỏ chính sách; các ô bên dưới chỉ đọc khi bật nên ô gõ dở lúc tắt không báo lỗi.
+    devOptimizer: form.devOptimizer
+      ? {
+          level: form.devLevel,
+          rtk: form.devRtk,
+          codegraph: form.devCodegraph,
+          autoCompactWindow: num(form.devCompactWindow, "devCompactWindow", errors),
+          contextBudgetTokens: requiredNum(form.devContextBudget, "devContextBudget", errors),
+          memoryAutoSync: form.devMemoryAutoSync,
+          memorySyncMinutes: requiredNum(form.devMemorySyncMinutes, "devMemorySyncMinutes", errors),
+        }
+      : null,
     budget: {
       perRunUsd: num(form.perRunUsd, "perRunUsd", errors),
       perTaskUsd: num(form.perTaskUsd, "perTaskUsd", errors),
@@ -341,6 +376,15 @@ export function fieldOfPath(path: readonly PropertyKey[]): string | undefined {
         key === "toolOutputMaxChars"
         ? key
         : undefined;
+    case "devOptimizer":
+      return (
+        {
+          level: "devLevel",
+          autoCompactWindow: "devCompactWindow",
+          contextBudgetTokens: "devContextBudget",
+          memorySyncMinutes: "devMemorySyncMinutes",
+        } as Record<string, string | undefined>
+      )[key ?? ""];
     case "routing": {
       // routing.tiers.<cấp>.<trường>
       const [, , tier, field] = path.map(String);
@@ -436,6 +480,16 @@ export const SETTINGS_SECTIONS = {
     "contextPack",
     "exploreBudget",
     "toolOutputMaxChars",
+  ],
+  devOptimizer: [
+    "devOptimizer",
+    "devLevel",
+    "devRtk",
+    "devCodegraph",
+    "devCompactWindow",
+    "devContextBudget",
+    "devMemoryAutoSync",
+    "devMemorySyncMinutes",
   ],
   routing: ["routing", "tiers"],
   perm: ["runPermissions"],
