@@ -23,5 +23,6 @@ export { handleDocsWebhook } from "./webhook.ts";
 export { wordImportBlobRefs } from "./word/blob-refs.ts";
 export { handleWordMedia } from "./word/media.ts";
 export { handleWordOriginal } from "./word/original.ts";
+export { wordProposalApproved } from "./word/staging.ts";
 export { detectWordTools, type WordTools, wordImportHealth } from "./word/tools.ts";
 export { handleWordUpload } from "./word/upload.ts";

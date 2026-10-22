@@ -3,6 +3,7 @@ import { createPostgresBlobStore, ForbiddenError, NotFoundError, withTenant } fr
 import { ORG_HEADER, requireOrgRole } from "../../tenancy/index.ts";
 import { loadVisible } from "../routes/word-imports.ts";
 import { docWordImportFiles } from "../schema.ts";
+import { canReviewStaged } from "./staging.ts";
 import type { WordHttpDeps } from "./tools.ts";
 
 export interface WordMediaParams {
@@ -27,8 +28,8 @@ function contentDisposition(name: string, mediaType: string): string {
 
 /**
  * `GET /api/v1/docs/word-imports/:importId/files/:fileId/media/:name`: ảnh giữ tạm để xem trước (plan.md mục 5). Chỉ
- * người tạo lượt và người `manage` ở phạm vi đích xem được. Tổ chức lấy từ header hoặc tham số `org` vì thẻ <img> không
- * đặt được header.
+ * người tạo lượt, người `manage` ở phạm vi đích và người duyệt đề xuất của file (plan.md mục 9) xem được. Tổ chức lấy
+ * từ header hoặc tham số `org` vì thẻ <img> không đặt được header.
  */
 export async function handleWordMedia(
   deps: WordHttpDeps,
@@ -47,12 +48,20 @@ export async function handleWordMedia(
     // Ảnh xem trước nhỏ (đã qua giới hạn giải nén) nên đọc hết trong cùng transaction với bước kiểm quyền.
     const found = await withTenant(deps.pool, ctx, async (tx) => {
       await requireOrgRole(tx, ctx.userId, "member");
-      await loadVisible(tx, { kind: "user", userId: ctx.userId }, params.importId);
+      const principal = { kind: "user" as const, userId: ctx.userId };
+      const visible = await loadVisible(tx, principal, params.importId).then(
+        () => true,
+        (error) => {
+          if (error instanceof NotFoundError) return false;
+          throw error;
+        },
+      );
       const [file] = await tx
-        .select({ images: docWordImportFiles.images })
+        .select()
         .from(docWordImportFiles)
         .where(and(eq(docWordImportFiles.id, params.fileId), eq(docWordImportFiles.importId, params.importId)));
-      const image = file?.images.find((i) => i.name === params.name);
+      if (!file || !(visible || (await canReviewStaged(tx, principal, file)))) return null;
+      const image = file.images.find((i) => i.name === params.name);
       if (!image) return null;
       const chunks: Uint8Array[] = [];
       for await (const chunk of await blobStore.get(tx, orgId, image.blobId)) chunks.push(chunk);

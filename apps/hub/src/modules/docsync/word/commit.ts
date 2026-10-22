@@ -3,11 +3,10 @@ import { asc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../../audit/index.ts";
 import { DocSecretError, type Principal, readerFor, saveDoc } from "../../knowledge/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../../platform/index.ts";
-import type { HomeRow } from "../homes.ts";
 import { queueHomePush } from "../push.ts";
 import type { DocSyncDeps } from "../routes/deps.ts";
-import { docRepoFiles, docWordImportFiles } from "../schema.ts";
-import { assetsDirOf, attachImages, FileFailure, fileError, stripFrontMatter } from "./attach.ts";
+import { docWordImportFiles } from "../schema.ts";
+import { assetsDirOf, attachImages, FileFailure, fileError, pinPath, stripFrontMatter } from "./attach.ts";
 import { frontMatter, relinkImages } from "./postprocess.ts";
 import {
   canManage,
@@ -31,7 +30,9 @@ import { commitUpdate } from "./update.ts";
 // link.ts và test vẫn import các hàm này từ đây.
 export { assetsDirOf, fileError, stripFrontMatter };
 
-type FilePatch = Partial<Pick<WordImportFileRow, "state" | "error" | "findings" | "docId" | "docVersion">>;
+type FilePatch = Partial<
+  Pick<WordImportFileRow, "state" | "error" | "findings" | "docId" | "docVersion" | "proposalId">
+>;
 
 /**
  * Nội dung tài liệu: front matter theo FR-012 với tiêu đề cuối, thân với link ảnh tính theo đường dẫn cuối. Front
@@ -47,23 +48,6 @@ function documentContent(target: WordTarget, file: WordImportFileRow, key: strin
       confidential: target.imp.confidential,
     }) + body
   );
-}
-
-/**
- * Ghi đúng đường dẫn đã chọn. Hook lưu của docsync đã gắn tài liệu vào đường dẫn suy từ key (chữ thường), nên sửa
- * dòng đó thay vì thêm dòng thứ hai. Nhà tắt đồng bộ thì hook không gắn, ở đây cũng không.
- */
-async function pinPath(tx: Tx, home: HomeRow, docId: string, path: string): Promise<void> {
-  if (home.mode === "off") return;
-  const [row] = await tx.select().from(docRepoFiles).where(eq(docRepoFiles.docId, docId));
-  if (row) {
-    await tx
-      .update(docRepoFiles)
-      .set({ repoPath: path, state: "pending", updatedAt: new Date() })
-      .where(eq(docRepoFiles.id, row.id));
-    return;
-  }
-  await tx.insert(docRepoFiles).values({ orgId: home.orgId, homeId: home.id, docId, repoPath: path, state: "pending" });
 }
 
 async function createDoc(
@@ -144,15 +128,22 @@ async function createDocs(
       patches.set(file.id, { error: fileError("WORD_IMPORT_DUPLICATE_PATH") });
       continue;
     }
-    if (!(await canManage(tx, reader, plan.key))) {
-      // Tới T016 thì file thành đề xuất; trước đó báo cần quyền quản lý (Q2).
-      await stageProposal(tx, principal, file);
-      continue;
-    }
+    // Chỉ có `propose` thì file thành đề xuất (plan.md mục 9); bước 4–8 chạy khi đề xuất được duyệt.
+    const manage = await canManage(tx, reader, plan.key);
     // withTenant đã mở transaction nên dùng savepoint tay, như import.ts: một file lỗi không làm hỏng các file khác.
     await tx.execute(sql`savepoint word_commit_file`);
     try {
-      patches.set(file.id, await createDoc(tx, deps, principal, target, file, plan, acknowledgeSecrets));
+      const patch = manage
+        ? await createDoc(tx, deps, principal, target, file, plan, acknowledgeSecrets)
+        : await stageProposal(
+            tx,
+            principal,
+            target,
+            file,
+            { ...plan, content: documentContent(target, file, plan.key, plan.path) },
+            acknowledgeSecrets,
+          );
+      patches.set(file.id, patch);
       await tx.execute(sql`release savepoint word_commit_file`);
     } catch (error) {
       await tx.execute(sql`rollback to savepoint word_commit_file`);

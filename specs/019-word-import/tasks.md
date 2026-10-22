@@ -492,7 +492,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - bàn giao: hợp đồng chưa có số chỗ chồng nhau (T018 cần "N chỗ chồng nhau"), cần thêm trường vào `wordImportFile`;
       `pull.ts` cập nhật hoặc đóng xung đột mở mà không xét `origin`, xung đột Word gặp thay đổi từ repo sẽ bị ghi đè.
 
-- [ ] **T016 [P] [US4] [nặng] · 1,5 ngày — Đề xuất cho người chỉ có `propose`**
+- [x] **T016 [P] [US4] [nặng] · 1,5 ngày — Đề xuất cho người chỉ có `propose`**
   - **Phụ thuộc**: T009, T010, T012.
   - **Goal**: giai đoạn 2. FR-027, Q2, Q14, US4, SC-006, SC-007, plan.md mục 9.
     - `staging.ts`:
