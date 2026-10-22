@@ -37,7 +37,7 @@ const PROJECT = {
 
 const VIEW = ["ci.view"];
 const OPERATE = ["ci.view", "ci.operate"];
-const ADMIN = ["ci.view", "ci.operate", "projects.settings"];
+const ADMIN = ["ci.view", "ci.operate", "servers.manage"];
 
 /** Quyền theo đội: `roles/mine` có `teamId` thì trả đúng tập này, nên quyền chỉ đến từ đội của dự án. */
 async function open(
@@ -245,7 +245,7 @@ test("trả lời bước input của Jenkins", async ({ page }) => {
     .toEqual([{ projectId: CI_PROJECT_ID, runId: JENKINS_WAITING, inputId: "in1", action: "proceed" }]);
 });
 
-test("người có projects.settings gắn và gỡ job Jenkins", async ({ page }) => {
+test("người có servers.manage gắn và gỡ job Jenkins", async ({ page }) => {
   const fixture = deliveryCiFixture({ attached: false });
   await open(page, fixture, ADMIN);
 
@@ -270,7 +270,7 @@ test("người có projects.settings gắn và gỡ job Jenkins", async ({ page 
   await expect(page.getByText("Chưa gắn job Jenkins nào.")).toBeVisible();
 });
 
-test("thiếu projects.settings thì không có nút gắn hay gỡ job", async ({ page }) => {
+test("thiếu servers.manage thì không có nút gắn hay gỡ job", async ({ page }) => {
   const fixture = deliveryCiFixture();
   await open(page, fixture, OPERATE);
 

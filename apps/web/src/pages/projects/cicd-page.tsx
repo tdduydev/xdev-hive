@@ -265,7 +265,7 @@ function CiCdBody({ project }: { project: Project }) {
   const can = useTeamPermissions(project.teamId);
   const canView = can("ci.view");
   const canOperate = can("ci.operate");
-  const canSettings = can("projects.settings");
+  const canManageJobs = can("servers.manage");
   const [openRunId, setOpenRunId] = useState<string | null>(null);
   const [source, setSource] = useState<SourceFilter>("all");
   const [status, setStatus] = useState<CiRunStatus | "">("");
@@ -383,7 +383,7 @@ function CiCdBody({ project }: { project: Project }) {
             project={project}
             sources={sources}
             canOperate={canOperate}
-            canSettings={canSettings}
+            canManageJobs={canManageJobs}
             onOpenRun={setOpenRunId}
           />
         </div>
@@ -557,13 +557,13 @@ function JobsSection({
   project,
   sources,
   canOperate,
-  canSettings,
+  canManageJobs,
   onOpenRun,
 }: {
   project: Project;
   sources: CiFeedSource[];
   canOperate: boolean;
-  canSettings: boolean;
+  canManageJobs: boolean;
   onOpenRun: (runId: string) => void;
 }) {
   const { api } = useOrg();
@@ -583,7 +583,7 @@ function JobsSection({
         <h2 id={`${reasonId}-h`} className="min-w-0 flex-1 text-base font-semibold">
           {t.jobs}
         </h2>
-        {canSettings && (
+        {canManageJobs && (
           <Button variant="outline" size="sm" onClick={() => setDialog({ kind: "attach" })}>
             {t.attach}
           </Button>
@@ -635,7 +635,7 @@ function JobsSection({
                     Build
                   </Button>
                 )}
-                {canSettings && (
+                {canManageJobs && (
                   <Button
                     variant="outline"
                     size="sm"
