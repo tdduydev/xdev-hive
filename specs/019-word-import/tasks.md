@@ -579,7 +579,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     (US7 Independent Test): token không lộ ra giao diện, kết quả trùng lượt nhập qua web. Chờ các nhánh desktop đang mở
     merge nếu đụng `docs-screen.tsx`.
 
-- [ ] **T020 [P] [US5] [vừa] · 0,5 ngày — Hub: lần nhập của tài liệu, danh sách lượt, tải file gốc**
+- [x] **T020 [P] [US5] [vừa] · 0,5 ngày — Hub: lần nhập của tài liệu, danh sách lượt, tải file gốc**
   - **Phụ thuộc**: T009, T010.
   - **Goal**: giai đoạn 3. FR-020, FR-021 (tải file gốc), US5, SC-007.
     - `original.ts`: tải file Word gốc chỉ khi đọc được tài liệu tạo ra từ file đó (`canRead`);
