@@ -1,5 +1,6 @@
 import { ORPCError } from "@orpc/client";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
   SECRET_KIND_LABELS,
   WORD_IMPORT_ERRORS,
@@ -284,6 +285,98 @@ export function WordLinkReview({
         </>
       )}
       {pending && file.linkMatches !== false && <LoadingState label="Đang gắn tài liệu…" />}
+    </div>
+  );
+}
+
+export type UpdateOutcome = "pending" | "unchanged" | "clean" | "overlap" | "updated" | "conflict";
+
+/**
+ * Kết quả lượt `update` suy từ file (hub ghi `linkMatches` khi xem trước và khi tạo, plan.md mục 8): `skipped` là cùng
+ * SHA-256 với lần trước; `ready` xem trước hợp sạch hay chồng nhau; `done` có phiên bản mới, hoặc đã ghi xung đột (không
+ * có phiên bản), hoặc không đổi chữ nào.
+ */
+export function updateOutcome(file: WordImportFile): UpdateOutcome {
+  if (file.state === "skipped") return "unchanged";
+  if (file.state === "ready") return file.linkMatches === null ? "pending" : file.linkMatches ? "clean" : "overlap";
+  if (file.state === "done") {
+    if (file.docVersion !== null) return "updated";
+    return file.linkMatches === false ? "conflict" : "unchanged";
+  }
+  return "pending";
+}
+
+function SavedConflict({ file, homeId }: { file: WordImportFile; homeId: string }) {
+  const { api } = useOrg();
+  const open = useQuery(api.docConflicts.list.queryOptions({ input: { homeId, state: "open", limit: 200 } }));
+  const found = open.data?.items.find((item) => item.docId === file.docId);
+  const detail = useQuery({
+    ...api.docConflicts.get.queryOptions({ input: { id: found?.id ?? "" } }),
+    enabled: !!found,
+  });
+  const count = detail.data?.merge.conflicts;
+  return (
+    <Alert role="status" className="grid justify-items-start gap-2">
+      <p>
+        {count === undefined ? "Có chỗ chồng nhau" : `${count} chỗ chồng nhau`} giữa tài liệu và bản Word mới. Bản Word
+        này đã thành gốc cho lần cập nhật sau; chọn cách giải quyết ở màn xung đột.
+      </p>
+      {open.isError && <p className="text-sm text-destructive">{importErrorMessage(open.error)}</p>}
+      {found && (
+        <Link
+          to="/knowledge/docs/conflicts/$id"
+          params={{ id: found.id }}
+          className="text-sm text-primary underline underline-offset-2"
+        >
+          Giải quyết xung đột
+        </Link>
+      )}
+    </Alert>
+  );
+}
+
+function OverlapPreview({ file }: { file: WordImportFile }) {
+  const detail = useFileDetail(file);
+  return (
+    <>
+      <Alert>
+        Có chỗ chồng nhau giữa tài liệu hiện tại và bản Word mới. Bấm "Cập nhật" để ghi thành xung đột rồi giải quyết ở
+        màn xung đột; tài liệu chưa đổi.
+      </Alert>
+      {detail.isError && <LoadFailure error={detail.error} retry={detail.refetch} />}
+      {detail.data?.current && detail.data.markdown != null ? (
+        <LinkDiff current={detail.data.current.content} converted={detail.data.markdown} />
+      ) : (
+        !detail.isError && <LoadingState label="Đang tải hai bản để so…" />
+      )}
+    </>
+  );
+}
+
+/** Lượt `update` (FR-024, FR-025): một file; hiện kết quả hợp ba bên, buộc người cập nhật nhìn trước khi áp dụng. */
+export function WordUpdateReview({ file, homeId }: { file: WordImportFile; homeId: string }) {
+  const outcome = updateOutcome(file);
+  const waiting = file.state === "queued" || file.state === "converting";
+  return (
+    <div className="grid min-w-0 gap-4">
+      {waiting && <LoadingState label="Đang chuyển file Word để so với tài liệu…" />}
+      {file.error && <Alert variant="destructive">{WORD_IMPORT_ERRORS[file.error.code].message}</Alert>}
+      {file.state === "blocked_secret" && (
+        <Alert variant="destructive">
+          Có dấu hiệu bí mật: {file.findings.map(findingLine).join("; ")}. Chỉ hiện loại và dòng, không hiện giá trị.
+        </Alert>
+      )}
+      <WarningList file={file} />
+      {file.state === "ready" && outcome === "pending" && (
+        <Alert>Chưa so được: tài liệu chưa nhập hay gắn với file Word nào. Gắn tài liệu với file Word trước.</Alert>
+      )}
+      {outcome === "unchanged" && <p role="status">Không có gì thay đổi so với lần nhập Word trước.</p>}
+      {outcome === "clean" && (
+        <Alert role="status">Hợp sạch. Bản Word mới hợp được với tài liệu hiện tại, không có chỗ chồng nhau.</Alert>
+      )}
+      {outcome === "overlap" && <OverlapPreview file={file} />}
+      {outcome === "updated" && <p role="status">Hợp sạch. Đã lưu phiên bản {file.docVersion} của tài liệu.</p>}
+      {outcome === "conflict" && <SavedConflict file={file} homeId={homeId} />}
     </div>
   );
 }

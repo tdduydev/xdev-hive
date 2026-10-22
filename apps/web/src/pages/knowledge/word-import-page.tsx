@@ -18,7 +18,14 @@ import { Checkbox } from "@/components/ui/checkbox.tsx";
 import { FilterChips } from "@/components/ui/filter-chips.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet.tsx";
-import { importErrorMessage, WordImportFilePanel, WordLinkReview } from "@/pages/knowledge/word-import-file-panel.tsx";
+import { WordImportDialog } from "@/components/word-import-dialog.tsx";
+import { useDocTree } from "@/pages/knowledge/doc-tree.tsx";
+import {
+  importErrorMessage,
+  WordImportFilePanel,
+  WordLinkReview,
+  WordUpdateReview,
+} from "@/pages/knowledge/word-import-file-panel.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -69,6 +76,15 @@ export function pathProblem(value: string): string | null {
   return null;
 }
 
+const HEADER = {
+  create: { title: "Lượt nhập Word", description: "Xem lại các file đã tải lên trước khi tạo tài liệu." },
+  link: { title: "Gắn tài liệu với file Word", description: "So nội dung tài liệu với file Word trước khi gắn." },
+  update: {
+    title: "Cập nhật tài liệu từ Word",
+    description: "Hợp bản Word mới với tài liệu hiện tại, giữ phần đã sửa sau lần nhập trước.",
+  },
+} as const;
+
 export function WordImportPage() {
   const { id } = useParams({ from: "/session/app/in-org/knowledge/docs/word-imports/$id" });
   const { api } = useOrg();
@@ -81,18 +97,16 @@ export function WordImportPage() {
     <>
       <PageHeader
         crumb={<Link to="/knowledge/docs/word-imports">← Các lượt nhập Word</Link>}
-        title={data?.import.mode === "link" ? "Gắn tài liệu với file Word" : "Lượt nhập Word"}
-        description={
-          data?.import.mode === "link"
-            ? "So nội dung tài liệu với file Word trước khi gắn."
-            : "Xem lại các file đã tải lên trước khi tạo tài liệu."
-        }
+        title={HEADER[data?.import.mode ?? "create"].title}
+        description={HEADER[data?.import.mode ?? "create"].description}
         width="wide"
       />
       <PageBody width="wide">
         {query.isPending && <LoadingState label="Đang tải lượt nhập…" />}
         {query.isError && <LoadFailure error={query.error} retry={query.refetch} />}
-        {data && (data.import.mode === "link" ? <LinkImport data={data} /> : <FileImport data={data} />)}
+        {data?.import.mode === "link" && <LinkImport data={data} />}
+        {data?.import.mode === "update" && <UpdateImport data={data} />}
+        {data && data.import.mode === "create" && <FileImport data={data} />}
       </PageBody>
     </>
   );
@@ -142,16 +156,83 @@ function LinkImport({ data }: { data: WordImportGetOutput }) {
   );
 }
 
+/** Lượt `update` (FR-024): một file, hợp ba bên rồi áp dụng; chồng nhau thì sang màn xung đột. */
+function UpdateImport({ data }: { data: WordImportGetOutput }) {
+  const { api } = useOrg();
+  const cache = useQueryClient();
+  const cancel = useCancel(data.import.id);
+  const commit = useMutation({
+    mutationFn: () => api.wordImports.commit.call({ importId: data.import.id }),
+    onSuccess: () => cache.invalidateQueries({ queryKey: api.wordImports.key() }),
+  });
+  const file = data.files[0];
+  const docKey = data.import.docKey;
+  const cancelled = data.import.state === "cancelled";
+  const open = !cancelled && file?.state === "ready";
+  const manage = data.access === "manage";
+  return (
+    <div className="grid min-w-0 gap-4">
+      {file && (
+        <p className="text-sm text-muted-foreground">
+          File Word: <span className="font-medium text-foreground">{file.fileName}</span>
+        </p>
+      )}
+      {cancelled && <p role="status">Đã huỷ. Tài liệu giữ nguyên.</p>}
+      {commit.isError && <Alert variant="destructive">{importErrorMessage(commit.error)}</Alert>}
+      {cancel.isError && <Alert variant="destructive">{importErrorMessage(cancel.error)}</Alert>}
+      {file && !cancelled && <WordUpdateReview file={file} homeId={data.import.homeId} />}
+      {open && !manage && (
+        <p className="text-sm text-muted-foreground">Chỉ người có quyền quản lý tài liệu mới cập nhật từ Word.</p>
+      )}
+      {open && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            disabled={!manage || data.import.state !== "ready" || file?.linkMatches == null || commit.isPending}
+            onClick={() => commit.mutate()}
+          >
+            Cập nhật tài liệu
+          </Button>
+          <Button variant="outline" disabled={cancel.isPending || commit.isPending} onClick={() => cancel.mutate()}>
+            Huỷ
+          </Button>
+        </div>
+      )}
+      {docKey && (
+        <Link
+          to="/knowledge/docs/$key/edit"
+          params={{ key: docKey }}
+          className="w-fit text-sm text-primary underline underline-offset-2"
+        >
+          Mở tài liệu
+        </Link>
+      )}
+    </div>
+  );
+}
+
 function FileImport({ data }: { data: WordImportGetOutput }) {
   const { api } = useOrg();
   const cache = useQueryClient();
   const [filter, setFilter] = useState<Filter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [approving, setApproving] = useState<ReadonlySet<string>>(new Set());
+  const [updating, setUpdating] = useState<string | null>(null);
+  const tree = useDocTree();
   const cancel = useCancel(data.import.id);
   const commit = useMutation({
     mutationFn: () => api.wordImports.commit.call({ importId: data.import.id }),
     onSuccess: () => cache.invalidateQueries({ queryKey: api.wordImports.key() }),
+  });
+  const approve = useMutation({
+    mutationFn: (fileIds: string[]) => api.wordImports.approve.call({ importId: data.import.id, fileIds }),
+    onSuccess: async () => {
+      setApproving(new Set());
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: api.wordImports.key() }),
+        cache.invalidateQueries({ queryKey: api.docTree.key() }),
+      ]);
+    },
   });
   const toggle = useMutation({
     mutationFn: (input: { fileId: string; excluded: boolean }) => api.wordImports.update.call(input),
@@ -165,6 +246,12 @@ function FileImport({ data }: { data: WordImportGetOutput }) {
   const opened = data.files.find((file) => file.id === openId) ?? null;
   const finished = data.files.some((file) => ["done", "proposed", "failed"].includes(file.state));
   const commitLabel = `${proposing ? "Gửi duyệt" : "Tạo"} ${chosen.length} tài liệu`;
+  const awaiting = data.files.filter((file) => file.state === "proposed" && file.proposalId !== null);
+  const canApprove = data.access === "manage" && awaiting.length > 0;
+  const chosenApprove = awaiting.filter((file) => approving.has(file.id));
+  // Khoá tài liệu đã có theo đường dẫn đích trong cây của nhà này; chưa có trong cây thì không cập nhật được.
+  const docKeyOf = (file: WordImportFile) =>
+    tree.data?.find((item) => item.homeId === data.import.homeId && item.path === file.path)?.key ?? null;
   return (
     <div className="grid min-w-0 gap-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -180,6 +267,15 @@ function FileImport({ data }: { data: WordImportGetOutput }) {
           {open && (
             <Button variant="outline" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
               Huỷ lượt nhập
+            </Button>
+          )}
+          {canApprove && (
+            <Button
+              variant="outline"
+              disabled={chosenApprove.length === 0 || approve.isPending}
+              onClick={() => approve.mutate(chosenApprove.map((file) => file.id))}
+            >
+              Duyệt các file đã chọn
             </Button>
           )}
           {open && (
@@ -202,6 +298,13 @@ function FileImport({ data }: { data: WordImportGetOutput }) {
       {commit.isError && <Alert variant="destructive">{importErrorMessage(commit.error)}</Alert>}
       {cancel.isError && <Alert variant="destructive">{importErrorMessage(cancel.error)}</Alert>}
       {toggle.isError && <Alert variant="destructive">{importErrorMessage(toggle.error)}</Alert>}
+      {approve.isError && <Alert variant="destructive">{importErrorMessage(approve.error)}</Alert>}
+      {canApprove && (
+        <p className="text-sm text-muted-foreground">
+          {awaiting.length} file đang chờ duyệt. Chọn file rồi bấm "Duyệt các file đã chọn"; đề xuất đi theo quy trình
+          duyệt thì duyệt ở trang Duyệt tài liệu.
+        </p>
+      )}
       {files.length === 0 ? (
         <EmptyState
           icon={FileTextIcon}
@@ -237,6 +340,21 @@ function FileImport({ data }: { data: WordImportGetOutput }) {
                   onRename={(on) => setRenaming(on ? file.id : null)}
                   onToggle={(excluded) => toggle.mutate({ fileId: file.id, excluded })}
                   onOpen={() => setOpenId(file.id)}
+                  approve={
+                    canApprove && file.state === "proposed"
+                      ? {
+                          checked: approving.has(file.id),
+                          onChange: (on) =>
+                            setApproving((old) => {
+                              const next = new Set(old);
+                              if (on) next.add(file.id);
+                              else next.delete(file.id);
+                              return next;
+                            }),
+                        }
+                      : null
+                  }
+                  onUpdate={docKeyOf(file) ? () => setUpdating(docKeyOf(file)) : null}
                 />
               ))}
             </TableBody>
@@ -244,6 +362,15 @@ function FileImport({ data }: { data: WordImportGetOutput }) {
         </div>
       )}
       {(finished || !open) && <Report data={data} />}
+      {updating && (
+        <WordImportDialog
+          open
+          onOpenChange={(next) => !next && setUpdating(null)}
+          mode="update"
+          docKey={updating}
+          homeId={data.import.homeId}
+        />
+      )}
       <Sheet open={opened !== null} onOpenChange={(next) => !next && setOpenId(null)}>
         <SheetContent side="right" className="w-full overflow-y-auto data-[side=right]:sm:max-w-2xl">
           {opened && (
@@ -272,6 +399,8 @@ function FileRow({
   onRename,
   onToggle,
   onOpen,
+  approve,
+  onUpdate,
 }: {
   file: WordImportFile;
   editable: boolean;
@@ -279,6 +408,9 @@ function FileRow({
   onRename: (on: boolean) => void;
   onToggle: (excluded: boolean) => void;
   onOpen: () => void;
+  approve: { checked: boolean; onChange: (on: boolean) => void } | null;
+  /** null khi chưa biết tài liệu đang chiếm đường dẫn này. */
+  onUpdate: (() => void) | null;
 }) {
   const label = STATE_LABEL[file.state];
   return (
@@ -290,6 +422,13 @@ function FileRow({
             checked={!file.excluded}
             disabled={!editable}
             onCheckedChange={(checked) => onToggle(!checked)}
+          />
+        )}
+        {approve && (
+          <Checkbox
+            aria-label={`Chọn ${file.fileName} để duyệt`}
+            checked={approve.checked}
+            onCheckedChange={(checked) => approve.onChange(checked === true)}
           />
         )}
       </Td>
@@ -320,8 +459,13 @@ function FileRow({
                 Đổi tên
               </Button>
             )}
-            {/* Cập nhật từ Word là việc của T018; nút giữ chỗ để người dùng thấy lối đi thứ hai. */}
-            <Button variant="outline" size="sm" disabled title="Chưa có ở bản này">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!onUpdate}
+              title={onUpdate ? undefined : "Chưa tìm thấy tài liệu ở đường dẫn này"}
+              onClick={onUpdate ?? undefined}
+            >
               Cập nhật từ Word
             </Button>
           </div>

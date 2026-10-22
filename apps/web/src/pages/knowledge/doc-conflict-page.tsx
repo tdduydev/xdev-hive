@@ -56,6 +56,7 @@ function ConflictReview({ conflict, reload }: { conflict: DocConflictDetail; rel
       ]);
     },
   });
+  const word = conflict.origin === "word";
   const stale = ["VERSION_CONFLICT", "DOCSYNC_CONFLICT_RESOLVED"].includes(apiErrorCode(resolve.error) ?? "");
   const secret = docSecretErrorData.safeParse(
     resolve.error && "data" in resolve.error ? resolve.error.data : undefined,
@@ -71,7 +72,13 @@ function ConflictReview({ conflict, reload }: { conflict: DocConflictDetail; rel
         Về danh sách tài liệu
       </Link>
       <h2 className="text-lg font-semibold break-words">{conflict.title}</h2>
-      {resolved && <p role="status">Đã giải quyết xung đột. Thay đổi sẽ được đồng bộ vào repo.</p>}
+      {resolved && (
+        <p role="status">
+          {word
+            ? "Đã giải quyết xung đột. Phiên bản mới đã được lưu vào tài liệu."
+            : "Đã giải quyết xung đột. Thay đổi sẽ được đồng bộ vào repo."}
+        </p>
+      )}
       {stale && (
         <Alert className="grid justify-items-start gap-2">
           Tài liệu đã đổi. Tải bản mới nhất trước khi chọn lại; phần sửa tay hiện tại sẽ được thay thế.
@@ -87,6 +94,7 @@ function ConflictReview({ conflict, reload }: { conflict: DocConflictDetail; rel
         busy={resolve.isPending || stale}
         error={resolve.isError && !stale ? apiErrorMessage(resolve.error) : undefined}
         lang="vi"
+        source={word ? "word" : "repo"}
       />
       <Dialog
         open={secret.success && attempt?.choice === "manual"}
