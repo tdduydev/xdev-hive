@@ -87,13 +87,20 @@ async function pull(project: ContextProject): Promise<HubSyncOutcome> {
 const attempts = new Map<string, number>();
 /** Lần đang chạy: nút bấm và hẹn giờ cùng gọi thì dùng chung một lần, không chạy chồng hai lần. */
 const inflight = new Map<string, Promise<HubSyncOutcome>>();
+/** Màn đang mở nghe mọi lần kéo xong, kể cả lần do hẹn giờ của app-shell chạy. */
+const listeners = new Set<(project: ContextProject) => void>();
 
 /** Kéo memory hub của một dự án rồi ghi ngữ cảnh. Không bao giờ ném lỗi: lỗi nằm trong kết quả. */
 export function syncHubContext(project: ContextProject): Promise<HubSyncOutcome> {
   const running = inflight.get(project.key);
   if (running) return running;
   attempts.set(project.key, Date.now());
-  const run = pull(project).finally(() => inflight.delete(project.key));
+  const run = pull(project)
+    .then((outcome) => {
+      if (outcome.project) for (const listener of listeners) listener(outcome.project);
+      return outcome;
+    })
+    .finally(() => inflight.delete(project.key));
   inflight.set(project.key, run);
   return run;
 }
@@ -141,6 +148,13 @@ export function useHubContextSchedule(signedIn: boolean, onSynced?: (project: Co
   const notify = useRef(onSynced);
   notify.current = onSynced;
   useEffect(() => {
+    const listener = (project: ContextProject) => notify.current?.(project);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+  useEffect(() => {
     if (!signedIn) return;
     let stopped = false;
     const tick = async () => {
@@ -153,8 +167,7 @@ export function useHubContextSchedule(signedIn: boolean, onSynced?: (project: Co
       const keys = machineAutoSyncKeys();
       for (const project of projects) {
         if (stopped || !isDue(project, keys, Date.now())) continue;
-        const { project: next } = await syncHubContext(project);
-        if (next && !stopped) notify.current?.(next);
+        await syncHubContext(project);
       }
     };
     void tick();

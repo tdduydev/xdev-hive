@@ -244,6 +244,19 @@ describe("useHubContextSchedule", () => {
     expect(syncs(calls)).toHaveLength(2);
   });
 
+  it("app-shell và màn Memory cùng hẹn giờ thì chỉ kéo một lần, màn Memory vẫn nhận dự án mới", async () => {
+    const p = stale();
+    setMachineAutoSync(p.key, true);
+    const calls = fakeTauri({ projects: [p] });
+    const onSynced = vi.fn();
+    renderHook(() => useHubContextSchedule(true));
+    renderHook(() => useHubContextSchedule(true, onSynced));
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(syncs(calls)).toHaveLength(1);
+    expect(onSynced).toHaveBeenCalledTimes(1);
+  });
+
   it("lần đồng bộ gần đây chưa đến hạn thì không kéo", async () => {
     const p = stale({
       hub: { syncedAt: "2026-10-20T23:30:00.000Z", items: 1, omitted: { budget: 0, secret: 0 }, lastError: null },

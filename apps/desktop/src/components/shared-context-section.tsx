@@ -270,7 +270,8 @@ export function SharedContextSection({
   const replace = (next: ContextProject) =>
     setProjects((list) => [...(list ?? []).filter((p) => p.key !== next.key), next]);
 
-  // Hẹn giờ chạy khi màn mở; app-shell có thể gọi cùng hook để chạy cả khi ở màn khác.
+  // App-shell đã hẹn giờ cho cả app; gọi thêm ở đây để bảng cập nhật khi lần kéo xong. `attempts` và `inflight` dùng
+  // chung nên hai hẹn giờ không kéo trùng.
   useHubContextSchedule(account !== null, replace);
 
   const pull = async () => {
