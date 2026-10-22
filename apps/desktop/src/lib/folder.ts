@@ -62,8 +62,8 @@ export function folderKey(folder: string): string {
 }
 
 /**
- * Thư mục chung sâu nhất của các thư mục (giữ kiểu dấu phân cách của thư mục đầu). Null khi không có, hoặc chỉ còn gốc
- * ổ đĩa hay `/`: mở agent ở đó là quá rộng.
+ * Thư mục chung sâu nhất của các thư mục (giữ kiểu dấu phân cách của thư mục đầu). Null khi không có, khi chỉ cách gốc ổ
+ * đĩa hay `/` một cấp, hoặc là thư mục nhà: agent mở không hỏi quyền ở đó chạm được mọi dự án và bí mật trên máy.
  */
 export function commonFolder(folders: readonly string[]): string | null {
   const first = folders[0]?.trim();
@@ -81,6 +81,7 @@ export function commonFolder(folders: readonly string[]): string | null {
   let n = 0;
   while (n < head.length && parts.every((p) => same(p[n], head[n]))) n++;
   const segments = head.slice(0, n);
-  if (segments.filter(Boolean).length < 2) return null;
-  return segments.join(first.includes("\\") ? "\\" : "/");
+  if (segments.filter(Boolean).length - (windows ? 1 : 0) < 2) return null;
+  const shared = segments.join(first.includes("\\") ? "\\" : "/");
+  return shortPath(shared) === "~" ? null : shared;
 }
