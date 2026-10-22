@@ -63,7 +63,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 0: spike, hợp đồng, thiết kế, client thuần, `scm` (song song)
 
-- [ ] **T001 [P] [—] [vừa] · 0,5 ngày — Spike: `ssh2`, chạy bước tách phiên SSH, pg-boss**
+- [x] **T001 [P] [—] [vừa] · 0,5 ngày — Spike: `ssh2`, chạy bước tách phiên SSH, pg-boss**
   - **Goal**: kiểm từng điểm **[Inference]**/**[Unverified]** ở plan.md mục 5 và "Quyết định của người viết". Dùng
     script tạm ngoài repo, chỉ commit kết quả:
     - `ssh2`: bản mới nhất, giấy phép, `pnpm audit`, kích thước cài đặt, `@types/ssh2`; chạy được trong image hub khi
@@ -81,7 +81,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `specs/020-cicd-console/research.md` (thêm mục 4 "Kết quả spike")
   - **Kiểm**: mỗi dòng có kết quả "có / không / chưa rõ" kèm bản và ngày thử.
 
-- [ ] **T002 [P] [—] [nặng] · 1,5 ngày — Hợp đồng API**
+- [x] **T002 [P] [—] [nặng] · 1,5 ngày — Hợp đồng API**
   - **Goal**: plan.md mục 1–10, constitution I.
     - `delivery.ts` mới:
       - `ciConnectionsContract` (Jenkins): `list`, `create`, `update`, `remove`, `test`, `setWatcher`;
@@ -127,7 +127,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     typecheck hub và web vẫn qua (route mới chưa có handler thì hub dùng `NOT_IMPLEMENTED` ở T008; ghi bàn giao nếu
     typecheck hub hỏng tới khi T008 xong).
 
-- [ ] **T003 [P] [—] [vừa] · 1 ngày — Thiết kế màn**
+- [x] **T003 [P] [—] [vừa] · 1 ngày — Thiết kế màn**
   - **Goal**: plan.md mục 10, constitution "Giao diện". Dùng skill `ui-ux-pro-max`, design system v2 (Navy Hive),
     shadcn/ui. Mỗi màn có trạng thái rỗng, đang tải, lỗi, dữ liệu cũ kèm giờ (nguồn không trả lời); 360 px; sáng/tối;
     chữ tiếng Việt; nút tắt có lý do:
@@ -143,7 +143,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `docs/design-system/screens/README.md`
   - **Kiểm**: mở từng file trong trình duyệt ở 360 px và 1280 px, sáng và tối.
 
-- [ ] **T004 [P] [US1] [vừa] · 1,5 ngày — Client Jenkins**
+- [x] **T004 [P] [US1] [vừa] · 1,5 ngày — Client Jenkins**
   - **Goal**: FR-005, plan.md mục 2. Hàm thuần trên `fetch`, không đụng DB, nhận `{ baseUrl, user, token }`:
     - đọc: `me()` (`/me/api/json`); `job(path)` có `parameterDefinitions`; `builds(path, limit)`, `build(path, n)` qua
       `?tree=` (plan.md mục 2); `stages` (`wfapi/describe`, 404 thì `null`); `log(path, n, start)` qua
@@ -164,7 +164,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/hub/src/modules/delivery/fixtures/jenkins/**` (mới)
   - **Kiểm**: hub test (file mới), typecheck.
 
-- [ ] **T005 [P] [US1] [nặng] · 1,5 ngày — `scm`: pipeline/job GitLab, `compare` có commit, webhook Pipeline/Job**
+- [x] **T005 [P] [US1] [nặng] · 1,5 ngày — `scm`: pipeline/job GitLab, `compare` có commit, webhook Pipeline/Job**
   - **Goal**: FR-003 (GitLab), FR-004 (đăng ký sự kiện), FR-035, plan.md mục 3.
     - `types.ts`: kiểu `CiPipeline`, `CiJob`; `GitProvider` thêm `listPipelines(ref, { branch?, sha?, status?, page })`,
       `pipelineJobs`, `jobLog(ref, jobId, from)` → `{ text, next, complete }`, `retryPipeline`, `cancelPipeline`,
@@ -186,7 +186,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/hub/src/modules/catalog/{saga.ts,webhook-refresh.ts,index.ts}` (`webhook-refresh.ts` mới) + test
   - **Kiểm**: hub test phần `scm`, `catalog` (test cũ của docsync, SDLC, code review vẫn qua), typecheck.
 
-- [ ] **T006 [—] [người: chủ dự án hoặc quản trị hub] · 0,5 ngày người — Đo mạng từ hub**
+- [x] **T006 [—] [người: chủ dự án hoặc quản trị hub] · 0,5 ngày người — Đo mạng từ hub**
   - **Goal**: các đường **chưa đo** ở research.md mục 2 và Assumptions của spec. Đo từ **trong container hub** trên
     `app-host` (đúng nơi hub chạy), chỉ lấy kết nối hoặc mã HTTP, không đăng nhập:
     - cổng 22 của các máy `198.51.100.x` sẽ khai báo (`nc -zv -w 5 <ip> 22`);
@@ -201,6 +201,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     khai báo được (máy runner để sau, Q14).
 
 - [ ] **T007 [—] [người: chủ dự án] · 0,5 ngày người — Kiểm Jenkins ACME, Argo CD, ServiceAccount**
+  - **Còn thiếu**: research.md chưa có mục 5 "Kiểm hệ thật" (Jenkins ACME, Argo CD, ServiceAccount).
   - **Goal**: các dòng **[Unverified]** ở spec Assumptions, plan.md mục 2 và "Quyết định của người viết":
     - Jenkins (Keycloak OIDC, realm `devops`): người dùng tự tạo được API token; `GET /me/api/json` bằng user + token;
       `POST` bằng API token **không cần crumb** (vd. `stop` một build thử hoặc `buildWithParameters` một job thử); có
@@ -215,7 +216,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 1: nền (song song, sau Đợt 0)
 
-- [ ] **T008 [P] [—] [nặng] · 1,5 ngày — Bảng, RLS, migration, `ssh2`, khung module `delivery`**
+- [x] **T008 [P] [—] [nặng] · 1,5 ngày — Bảng, RLS, migration, `ssh2`, khung module `delivery`**
   - **Phụ thuộc**: T001 (bản `ssh2`), T002.
   - **Goal**: plan.md mục 1, FR-033, spec Key Entities.
     - `delivery/schema.ts` (mới), 11 bảng: `ci_jenkins_connections` (thêm `watcher_user_id`, `last_poll_at`,
@@ -267,7 +268,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/hub/package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` (một dòng `allowBuilds`)
   - **Kiểm**: hub typecheck, `rls.db.test.ts`, test upgrade migration từ bản mới nhất trên `main`, `pnpm deps`.
 
-- [ ] **T009 [P] [US4] [nặng] · 0,5 ngày — Che bí mật dùng chung**
+- [x] **T009 [P] [US4] [nặng] · 0,5 ngày — Che bí mật dùng chung**
   - **Phụ thuộc**: T002 (khung `redact.ts`).
   - **Goal**: FR-019, SC-005, plan.md mục 7.
     - `secret-scan.ts`: export bộ mẫu, không đổi kết quả `scanSecrets`. Thiếu mẫu khoá riêng OpenSSH thì thêm (cả
@@ -281,7 +282,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `packages/contracts/src/{redact.ts,redact.test.ts,secret-scan.ts,secret-scan.test.ts}`
   - **Kiểm**: contracts test, typecheck, `pnpm openapi` không đổi `openapi.json`.
 
-- [ ] **T010 [P] [US5] [vừa] · 1 ngày — Client Argo CD và Kubernetes**
+- [x] **T010 [P] [US5] [vừa] · 1 ngày — Client Argo CD và Kubernetes**
   - **Phụ thuộc**: T004 (`testing/fake-http.ts`).
   - **Goal**: FR-006, FR-023, FR-024, plan.md mục 6. Hàm thuần, không đụng DB:
     - `argocd.ts`: `version`, `listApplications(limit)`, `getApplication` (sync, health, revision, `summary.images`,
@@ -296,7 +297,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/hub/src/modules/delivery/fixtures/{argocd,kube}/**` (mới)
   - **Kiểm**: hub test (file mới; Kubernetes giả chạy HTTPS với CA tự sinh trong test), typecheck.
 
-- [ ] **T011 [P] [US2] [vừa] · 1,5 ngày — Web: khung route, kết nối CI, token Jenkins cá nhân**
+- [x] **T011 [P] [US2] [vừa] · 1,5 ngày — Web: khung route, kết nối CI, token Jenkins cá nhân**
   - **Phụ thuộc**: T002, T003.
   - **Goal**: FR-001, FR-006 (giao diện), US1 scenario 4, US2 scenario 2.
     - `ci-connections-page.tsx` (tổ chức, cần `ci.connections.manage`): kết nối Jenkins (tên, URL, người theo dõi, lần
@@ -325,7 +326,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: web typecheck, test, Playwright `delivery-settings.spec.ts` và `projects-runs.spec.ts` (LogCard), 360 px,
     bàn phím.
 
-- [ ] **T012 [P] [—] [nhẹ] · 0,5 ngày — ADR 0030, 0031, SRS, tài liệu kỹ thuật**
+- [x] **T012 [P] [—] [nhẹ] · 0,5 ngày — ADR 0030, 0031, SRS, tài liệu kỹ thuật**
   - **Phụ thuộc**: T001. T006 đã có (research.md mục 2): hub không vào được cổng 22 và API Kubernetes của
     `198.51.100.x`, nên triển khai lên hạ tầng ACME đi qua `jenkins-job` hoặc `argocd`. T007 chưa có: ghi "chưa
     kiểm" và để mọi chi tiết Jenkins, Argo CD ở mức **[Suy luận]**; người điều phối cập nhật sau.
