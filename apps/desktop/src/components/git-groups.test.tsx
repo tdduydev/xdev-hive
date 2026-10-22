@@ -73,13 +73,20 @@ function fakeApp(opts: {
     },
     git_host_discover: () => opts.discovered ?? [],
     git_host_add: (a) => {
-      if (a?.authMode !== "git" && a?.token !== "glpat-ok") throw "Token không dùng được với https://gitlab.com (401)";
+      // glpat-khac là token của tài khoản khác, như người dùng dán nhầm PAT của đồng nghiệp.
+      if (a?.authMode !== "git" && a?.token !== "glpat-ok" && a?.token !== "glpat-khac")
+        throw "Token không dùng được với https://gitlab.com (401)";
+      const url = String(a.url) || "https://gitlab.com";
+      const username = a.token === "glpat-khac" ? "khac" : (opts.gitUser ?? "ha");
+      // Như AddHost của worker: cùng loại, máy chủ và tài khoản thì trả kết nối cũ.
+      const same = hosts.find((h) => h.kind === a.kind && h.url === url && h.username === username);
+      if (same) return view({ host: same });
       const h: GitHost = {
         id: "bbbbbbbbbbbb",
         kind: a.kind as "gitlab",
-        url: String(a.url) || "https://gitlab.com",
+        url,
         name: String(a.name) || "gitlab.com",
-        username: opts.gitUser ?? "ha",
+        username,
         authMode: a.authMode as "git" | "token",
       };
       hosts = [...hosts, h];
@@ -402,5 +409,39 @@ describe("GitGroupsSection", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Xoá kết nối GitLab Acme" }));
     expect(await screen.findByText(/đang được nhóm acme dùng/)).toBeTruthy();
+  });
+
+  it("đổi token giữ kết nối và nhóm; token của tài khoản khác bị từ chối và gỡ kết nối thừa", async () => {
+    const { calls } = fakeApp({ hosts: [HOST], groups: [GROUP] });
+    renderSection();
+    await userEvent.click(await screen.findByRole("button", { name: "Đổi token kết nối GitLab Acme" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/tài khoản ha trên https:\/\/git.acme.vn/)).toBeTruthy();
+
+    await userEvent.type(within(dialog).getByLabelText("Personal access token"), "glpat-khac");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    expect(await within(dialog).findByText(/thuộc tài khoản khac, không phải ha/)).toBeTruthy();
+    expect(calls.find((c) => c.command === "git_host_remove")?.args).toEqual({ id: "bbbbbbbbbbbb" });
+    expect(within(dialog).getByLabelText<HTMLInputElement>("Personal access token").value).toBe("");
+
+    await userEvent.type(within(dialog).getByLabelText("Personal access token"), "glpat-ok");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.filter((c) => c.command === "git_host_add").at(-1)?.args).toEqual({
+      kind: "gitlab",
+      url: "https://git.acme.vn",
+      name: "GitLab Acme",
+      token: "glpat-ok",
+      authMode: "token",
+    });
+    expect(screen.getAllByText(/GitLab · /)).toHaveLength(1);
+    expect(screen.getByRole("article", { name: "acme" })).toBeTruthy();
+  });
+
+  it("kết nối dùng đăng nhập Git không có nút đổi token", async () => {
+    fakeApp({ hosts: [{ ...HOST, authMode: "git" }] });
+    renderSection();
+    expect(await screen.findByText("GitLab Acme")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Đổi token kết nối GitLab Acme" })).toBeNull();
   });
 });
