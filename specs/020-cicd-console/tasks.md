@@ -373,7 +373,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (token của người A không dùng được cho người B; API không bao giờ trả token; xoá kết nối xoá
     token), typecheck, `pnpm deps`.
 
-- [ ] **T014 [P] [US1] [nặng] · 1,5 ngày — CI: danh sách gộp, chi tiết, log, thao tác**
+- [x] **T014 [P] [US1] [nặng] · 1,5 ngày — CI: danh sách gộp, chi tiết, log, thao tác**
   - **Phụ thuộc**: T004, T005, T008.
   - **Goal**: US1, US2, FR-005, FR-007…FR-009, FR-035, plan.md mục 2–4.
     - `ci/feed.ts`: gộp pipeline GitLab (`listPipelines`) và build Jenkins của các job trong `ci_project_jobs`, mới
