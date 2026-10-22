@@ -394,7 +394,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (GitLab `memory` 3 pipeline và Jenkins giả 2 build như Independent Test của US1; Jenkins nhận
     header Basic của người bấm; audit đủ), typecheck.
 
-- [ ] **T015 [P] [US1] [nặng] · 1,5 ngày — Hỏi theo lịch, sự kiện GitLab, đỏ/xanh**
+- [x] **T015 [P] [US1] [nặng] · 1,5 ngày — Hỏi theo lịch, sự kiện GitLab, đỏ/xanh**
   - **Phụ thuộc**: T004, T005, T008.
   - **Goal**: FR-004, FR-025 (phần phát hiện), FR-031 (`ci.failed`, `ci.recovered`), plan.md mục 4, Q4, Q13.
     - `ci/poll.ts`: `delivery-ci-poll` cho mỗi kết nối Jenkins có người theo dõi (`singletonKey` theo kết nối); có build
