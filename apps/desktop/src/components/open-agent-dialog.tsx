@@ -22,12 +22,14 @@ import { cn } from "@/lib/utils.ts";
 type AgentCli = Exclude<TermCli, "shell">;
 const AGENT_CLIS: readonly AgentCli[] = ["claude", "codex", "antigravity"];
 
-type NoPull = "unknown" | "detached" | "noUpstream" | "gone" | "operation";
+type NoPull = "unknown" | "detached" | "noUpstream" | "gone" | "operation" | "group";
 
 const text: Dict<{
   open: string;
   openLabel: (name: string) => string;
+  groupLabel: (name: string) => string;
   title: (name: string) => string;
+  groupTitle: (name: string) => string;
   run: string;
   plan: string;
   planDefault: string;
@@ -44,7 +46,9 @@ const text: Dict<{
   vi: {
     open: "Mở bằng agent",
     openLabel: (name) => `Pull rồi mở ${name} bằng agent không hỏi quyền`,
+    groupLabel: (name) => `Mở cả nhóm ${name} bằng agent không hỏi quyền`,
     title: (name) => `Mở ${name} bằng agent`,
+    groupTitle: (name) => `Mở cả nhóm ${name} bằng agent`,
     run: "Chạy",
     plan: "Gói agent",
     planDefault: "Đăng nhập mặc định của CLI",
@@ -57,6 +61,8 @@ const text: Dict<{
       noUpstream: "Không pull: nhánh chưa theo dõi nhánh remote nào.",
       gone: "Không pull: nhánh remote của nhánh này đã bị xoá.",
       operation: "Không pull: repo đang dở merge hay rebase.",
+      group:
+        "Mở ở thư mục chung của nhóm: agent làm việc được với mọi repo bên dưới. Không pull; muốn mới nhất thì Pull cả nhóm trước.",
     },
     lead: "Agent sẽ tự chạy lệnh, sửa và xoá file mà không hỏi lại. Lệnh sai hay lời nhắc độc giấu trong code có thể làm mất dữ liệu hoặc lộ bí mật trên máy. Chỉ mở khi thư mục đã commit hoặc có bản sao.",
     flag: {
@@ -71,7 +77,9 @@ const text: Dict<{
   en: {
     open: "Open with agent",
     openLabel: (name) => `Pull, then open ${name} with an agent without permission prompts`,
+    groupLabel: (name) => `Open the whole ${name} group with an agent without permission prompts`,
     title: (name) => `Open ${name} with an agent`,
+    groupTitle: (name) => `Open the whole ${name} group with an agent`,
     run: "Run",
     plan: "Agent plan",
     planDefault: "CLI's default sign-in",
@@ -84,6 +92,8 @@ const text: Dict<{
       noUpstream: "No pull: the branch does not track a remote branch.",
       gone: "No pull: the remote branch of this branch was deleted.",
       operation: "No pull: a merge or rebase is in progress.",
+      group:
+        "Opens in the group's shared folder: the agent can work across every repository below it. No pull; pull the group first for the latest code.",
     },
     lead: "The agent will run commands, edit and delete files without asking. A wrong command or a prompt injection hidden in the code can lose data or leak secrets on this machine. Only open it when the folder is committed or backed up.",
     flag: {
@@ -111,17 +121,20 @@ const select = "h-8 w-full rounded-md border bg-background px-2 text-sm";
 
 /**
  * Nút "Mở bằng agent" của một dự án: chọn CLI và gói đã đăng nhập, đang bật trên máy, pull nhánh đang đứng rồi mở CLI
- * bỏ hỏi quyền trong cửa sổ terminal của máy. Bỏ hỏi quyền phải xác nhận mỗi lần mở.
+ * bỏ hỏi quyền trong cửa sổ terminal của máy. Bỏ hỏi quyền phải xác nhận mỗi lần mở. `group`: mở ở thư mục chung của
+ * một nhóm repo, không pull vì thư mục đó không phải một repo.
  */
 export function OpenAgentButton({
   name,
   folder,
   branch,
+  group = false,
   onPulled,
 }: {
   name: string;
   folder: string;
-  branch: BranchStatus | undefined;
+  branch?: BranchStatus | undefined;
+  group?: boolean;
   onPulled?: (() => void) | undefined;
 }) {
   const t = useT(text);
@@ -154,7 +167,7 @@ export function OpenAgentButton({
   }, [open, folder, plans]);
 
   const cliPlans = usablePlans(plans, cli);
-  const target = pullTarget(branch);
+  const target: NoPull | { branch: string; upstream: string } = group ? "group" : pullTarget(branch);
 
   async function launch() {
     const plan = cliPlans.find((p) => p.id === planId);
@@ -180,7 +193,7 @@ export function OpenAgentButton({
       <Button
         size="sm"
         variant="outline"
-        aria-label={t.openLabel(name)}
+        aria-label={group ? t.groupLabel(name) : t.openLabel(name)}
         onClick={() => {
           setError(null);
           setOpen(true);
@@ -192,7 +205,7 @@ export function OpenAgentButton({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="break-words">{t.title(name)}</DialogTitle>
+            <DialogTitle className="break-words">{group ? t.groupTitle(name) : t.title(name)}</DialogTitle>
             <DialogDescription className="truncate font-mono text-xs">{shortPath(folder)}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">

@@ -60,3 +60,27 @@ export function folderKey(folder: string): string {
   if (p.length > 1) p = p.replace(/\/+$/, "");
   return /^[a-z]:/i.test(p) ? p.toLowerCase() : p;
 }
+
+/**
+ * Thư mục chung sâu nhất của các thư mục (giữ kiểu dấu phân cách của thư mục đầu). Null khi không có, hoặc chỉ còn gốc
+ * ổ đĩa hay `/`: mở agent ở đó là quá rộng.
+ */
+export function commonFolder(folders: readonly string[]): string | null {
+  const first = folders[0]?.trim();
+  if (!first) return null;
+  const windows = /^[a-z]:/i.test(first);
+  const parts = folders.map((f) =>
+    f
+      .trim()
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]/),
+  );
+  const head = parts[0] ?? [];
+  const same = (a: string | undefined, b: string | undefined) =>
+    a !== undefined && b !== undefined && (windows ? a.toLowerCase() === b.toLowerCase() : a === b);
+  let n = 0;
+  while (n < head.length && parts.every((p) => same(p[n], head[n]))) n++;
+  const segments = head.slice(0, n);
+  if (segments.filter(Boolean).length < 2) return null;
+  return segments.join(first.includes("\\") ? "\\" : "/");
+}
