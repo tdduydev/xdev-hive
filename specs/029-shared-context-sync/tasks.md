@@ -140,7 +140,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/lib/optimize-all.ts` (+ test).
   - **Kiểm**: Rust test từ chối id lạ; Vitest kiểu khớp fixture.
 
-- [ ] **T010 [US2] [vừa] · 1,5 ngày — Nút "Tối ưu", hộp xem trước, kết quả, hoàn tác** (sau T009)
+- [x] **T010 [US2] [vừa] · 1,5 ngày — Nút "Tối ưu", hộp xem trước, kết quả, hoàn tác** (sau T009)
   - **Goal**: `<OptimizeAllButton>` ở hàng đầu `token-score-card.tsx` (trước nút tính lại); `<OptimizePreviewDialog>` nhóm
     theo `group` ("Cấu hình CLI", "Công cụ", "Ngữ cảnh", "Điểm"), ô chọn mỗi dòng, cảnh báo `aggressive` như 025, ghi
     `reason`; sau khi chạy: điểm trước → sau, từng dòng ✓/✗ kèm lý do, nút "Hoàn tác lần này"; báo "Đang tối ưu ở cửa sổ

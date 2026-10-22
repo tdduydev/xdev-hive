@@ -3,6 +3,7 @@ import { Button } from "@xdev-hive/ui/button";
 import { Pill } from "@xdev-hive/ui/pill";
 import { RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { OptimizeAllButton } from "@/components/optimize-all-button.tsx";
 import { Toggle } from "@/components/toggle.tsx";
 import {
   type AppliedFix,
@@ -304,6 +305,7 @@ export function TokenScoreCard({ hints = [], tips = [] }: Props) {
     <section aria-label={t.title} className="overflow-hidden rounded-xl border bg-card text-card-foreground">
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
         <h2 className="min-w-40 flex-1 text-[15px] font-semibold">{t.title}</h2>
+        <OptimizeAllButton onDone={() => void load(false)} />
         <Button variant="outline" size="sm" disabled={loading} onClick={() => void load(false)}>
           <RefreshCwIcon aria-hidden="true" className={loading ? "animate-spin" : undefined} />
           {t.recalc}
