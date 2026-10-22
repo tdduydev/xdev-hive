@@ -1,8 +1,10 @@
 import {
   type KnowledgeScope,
+  MEMORY_MAX_CHARS,
   type Memory,
   type MemoryListInput,
   type MemoryPinInput,
+  type MemoryProposePayload,
   type MemorySearchHit,
   type MemorySearchInput,
   type MemorySupersedeInput,
@@ -16,7 +18,15 @@ import {
 import { and, desc, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import type pg from "pg";
 import { loadPolicy } from "../governance/index.ts";
-import { ConflictError, ForbiddenError, type Jobs, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
+import {
+  ClientEventRejected,
+  ConflictError,
+  ForbiddenError,
+  type Jobs,
+  NotFoundError,
+  type Tx,
+  withTenant,
+} from "../platform/index.ts";
 import {
   audit,
   authorColumns,
@@ -166,6 +176,61 @@ async function machineWriteStatus(tx: Tx): Promise<Memory["status"]> {
     throw new ForbiddenError("AGENT_MEMORY_OFF", "Chính sách của tổ chức không cho agent ghi memory.");
   }
   return "pending";
+}
+
+/** Máy gửi `memory.propose` (spec 029): id để ghi vào audit, chủ máy đứng tên đề xuất vì máy không có tài khoản. */
+export interface ProposingMachine {
+  id: string;
+  /** `machines.registered_by`; máy đăng ký trước khi hub ghi người đăng ký thì null. */
+  ownerUserId: string | null;
+}
+
+/**
+ * Memory máy đẩy lên qua hộp thư đi (spec 029). Cùng luật với `writeMemory` nguồn `machine` (luôn chờ duyệt), nhưng lỗi
+ * trả bằng mã từ chối của sự kiện client: máy hiện lý do cho người dùng và không gửi lại việc chắc chắn hỏng.
+ */
+export async function proposeFromMachine(
+  tx: Tx,
+  machine: ProposingMachine,
+  payload: MemoryProposePayload,
+  deps: KnowledgeDeps = {},
+): Promise<Memory> {
+  const { agentMemory } = await loadPolicy(tx);
+  if (agentMemory.mode === "off")
+    throw new ClientEventRejected("MEMORY_DISABLED", "Chính sách của tổ chức không nhận memory từ máy.");
+  const content = nfc(payload.content);
+  // Contract đã chặn độ dài; kiểm lại vì hàm còn được gọi ngoài route và NFC có thể đổi số ký tự.
+  if (content.length > MEMORY_MAX_CHARS)
+    throw new ClientEventRejected("TOO_LONG", `Nội dung memory dài tối đa ${MEMORY_MAX_CHARS} ký tự.`);
+  const notMember = () =>
+    new ClientEventRejected("NOT_PROJECT_MEMBER", "Chủ máy không phải thành viên của dự án nên không gửi được memory.");
+  if (!machine.ownerUserId) throw notMember();
+  const principal: Principal = { kind: "user", userId: machine.ownerUserId };
+  let scope: Scope;
+  try {
+    const reader = await readerFor(tx, principal);
+    scope = await resolveScope(tx, reader, { level: "project", projectId: payload.projectId });
+    await authorize(tx, reader, scope, "write");
+  } catch (error) {
+    // Rời tổ chức, mất vai trò ở đội hay dự án đã xoá: với máy đều là một lý do, gửi lại cũng không qua.
+    if (error instanceof ForbiddenError || error instanceof NotFoundError) throw notMember();
+    throw error;
+  }
+  const row = await insertMemory(
+    tx,
+    principal,
+    scope,
+    { kind: payload.kind, content, files: [], status: "pending" },
+    deps,
+  );
+  await audit(
+    tx,
+    principal,
+    "memory.write",
+    { type: "memory", id: row.id },
+    { kind: row.kind, status: row.status, source: "machine", machineId: machine.id },
+  );
+  return memoryView(row);
 }
 
 /**

@@ -68,6 +68,8 @@ export {
   embedQueue,
   type KnowledgeDeps,
   listMemories,
+  type ProposingMachine,
+  proposeFromMachine,
   registerEmbedWorker,
   rejectMemory,
   runEmbed,
