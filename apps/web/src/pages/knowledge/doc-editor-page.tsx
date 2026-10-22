@@ -97,6 +97,8 @@ function WebDocEditor({ docKey }: { docKey: string }) {
     enabled: word.state === "on" && canManage && !!homeId,
     retry: false,
   });
+  const [updating, setUpdating] = useState(false);
+  const canUpdate = word.state === "on" && canManage && !!homeId && !!imported.data;
   const canLink = word.state === "on" && canManage && !!homeId && (imported.isError || imported.data === null);
   const pending = useRef<PendingSecret | null>(null);
   useEffect(() => () => pending.current?.cancel(), []);
@@ -198,9 +200,17 @@ function WebDocEditor({ docKey }: { docKey: string }) {
             Gắn với file Word
           </Button>
         )}
+        {canUpdate && (
+          <Button variant="outline" size="sm" onClick={() => setUpdating(true)}>
+            Cập nhật từ Word
+          </Button>
+        )}
       </div>
       {homeId && (
         <WordImportDialog open={linking} onOpenChange={setLinking} mode="link" docKey={docKey} homeId={homeId} />
+      )}
+      {homeId && (
+        <WordImportDialog open={updating} onOpenChange={setUpdating} mode="update" docKey={docKey} homeId={homeId} />
       )}
       <DocEditorProvider env={env}>
         <DocEditor docKey={docKey} />
