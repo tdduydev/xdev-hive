@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-context-status"
+description = "Enables the context_status command without any pre-configured scope."
+commands.allow = ["context_status"]
+
+[[permission]]
+identifier = "deny-context-status"
+description = "Denies the context_status command without any pre-configured scope."
+commands.deny = ["context_status"]

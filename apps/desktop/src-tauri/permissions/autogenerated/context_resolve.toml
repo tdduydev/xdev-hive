@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-context-resolve"
+description = "Enables the context_resolve command without any pre-configured scope."
+commands.allow = ["context_resolve"]
+
+[[permission]]
+identifier = "deny-context-resolve"
+description = "Denies the context_resolve command without any pre-configured scope."
+commands.deny = ["context_resolve"]

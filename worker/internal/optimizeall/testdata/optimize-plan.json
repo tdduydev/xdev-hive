@@ -1,0 +1,168 @@
+{
+  "createdAt": "2026-10-22T09:00:01Z",
+  "scoreBefore": 48,
+  "policySources": ["acme/web"],
+  "steps": [
+    {
+      "id": "optimizer.enable",
+      "group": "cli",
+      "target": "claude-2",
+      "title": "Bật tối ưu balanced cho Claude 2",
+      "changes": [
+        {
+          "file": "$HOME/.xdev-hive/accounts/claude-2/settings.json",
+          "key": "level",
+          "before": null,
+          "after": "balanced"
+        },
+        {
+          "file": "$HOME/.xdev-hive/accounts/claude-2/settings.json",
+          "key": "env.CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+          "before": null,
+          "after": "150000"
+        }
+      ],
+      "selected": true,
+      "requiresConfirm": false,
+      "undoable": true,
+      "reason": "Theo chính sách dự án Acme Web",
+      "profile": "claude-2",
+      "level": "balanced",
+      "autoCompactWindow": 150000
+    },
+    {
+      "id": "optimizer.enable",
+      "group": "cli",
+      "target": "claude-2",
+      "title": "Đổi tối ưu của Claude 2 từ balanced sang aggressive",
+      "changes": [
+        {
+          "file": "$HOME/.xdev-hive/accounts/claude-2/settings.json",
+          "key": "level",
+          "before": "balanced",
+          "after": "aggressive"
+        }
+      ],
+      "selected": false,
+      "requiresConfirm": true,
+      "undoable": true,
+      "reason": "Theo chính sách dự án Acme Web",
+      "profile": "claude-2",
+      "level": "aggressive",
+      "autoCompactWindow": 150000
+    },
+    {
+      "id": "optimizer.enable",
+      "group": "cli",
+      "target": "codex-2",
+      "title": "Bật tối ưu balanced cho Codex 2",
+      "changes": [
+        {
+          "file": "$HOME/.xdev-hive/accounts/codex-2/config.toml",
+          "key": "level",
+          "before": null,
+          "after": "balanced"
+        },
+        {
+          "file": "$HOME/.xdev-hive/accounts/codex-2/config.toml",
+          "key": "codex.model_auto_compact_token_limit",
+          "before": null,
+          "after": "150000"
+        }
+      ],
+      "selected": true,
+      "requiresConfirm": false,
+      "undoable": true,
+      "reason": "Theo chính sách dự án Acme Web",
+      "profile": "codex-2",
+      "level": "balanced",
+      "autoCompactWindow": 150000
+    },
+    {
+      "id": "optimizer.enable",
+      "group": "cli",
+      "target": "codex-2",
+      "title": "Đổi tối ưu của Codex 2 từ balanced sang aggressive",
+      "changes": [
+        {
+          "file": "$HOME/.xdev-hive/accounts/codex-2/config.toml",
+          "key": "level",
+          "before": "balanced",
+          "after": "aggressive"
+        }
+      ],
+      "selected": false,
+      "requiresConfirm": true,
+      "undoable": true,
+      "reason": "Theo chính sách dự án Acme Web",
+      "profile": "codex-2",
+      "level": "aggressive",
+      "autoCompactWindow": 150000
+    },
+    {
+      "id": "fix.optimizer.rtk",
+      "group": "cli",
+      "target": "claude-2",
+      "title": "Bật RTK cho Claude 2",
+      "changes": [],
+      "selected": true,
+      "requiresConfirm": false,
+      "undoable": true,
+      "reason": "Theo chính sách dự án Acme Web",
+      "profile": "claude-2"
+    },
+    {
+      "id": "tool.codegraph",
+      "group": "tools",
+      "target": "codegraph",
+      "title": "Cài codegraph",
+      "changes": [],
+      "selected": true,
+      "requiresConfirm": false,
+      "undoable": false,
+      "reason": "Mặc định"
+    },
+    {
+      "id": "fix.codegraph.mcp",
+      "group": "tools",
+      "target": "codex-2",
+      "title": "Thêm MCP codegraph cho Codex 2",
+      "changes": [],
+      "selected": true,
+      "requiresConfirm": false,
+      "undoable": true,
+      "reason": "Mặc định",
+      "profile": "codex-2"
+    },
+    {
+      "id": "context.sync",
+      "group": "context",
+      "target": "acme/web",
+      "title": "Cập nhật khối ngữ cảnh của dự án Acme Web",
+      "changes": [
+        {
+          "file": "$HOME/src/acme-web/CLAUDE.md",
+          "key": "Khối xDev Hive",
+          "before": null,
+          "after": null
+        }
+      ],
+      "selected": true,
+      "requiresConfirm": false,
+      "undoable": true,
+      "reason": "Theo chính sách dự án Acme Web",
+      "project": "acme/web"
+    },
+    {
+      "id": "score.recompute",
+      "group": "score",
+      "target": "machine",
+      "title": "Tính lại điểm token",
+      "changes": [],
+      "selected": true,
+      "requiresConfirm": false,
+      "undoable": false,
+      "reason": "Mặc định"
+    }
+  ]
+}

@@ -3,8 +3,11 @@ import {
   defaultProjectSettings,
   defaultRouting,
   defaultTokenSaving,
+  devOptimizerPolicy,
   projectSettings,
   projectSettingsPatch,
+  projectTokenUsageInput,
+  projectTokenUsageRow,
 } from "./projects.ts";
 
 describe("quyền CLI trong dự án", () => {
@@ -196,5 +199,100 @@ describe("cài đặt kho tài liệu", () => {
       wordImportConfidential: true,
     });
     expect(projectSettingsPatch.safeParse({ docs: { wordImportConfidential: "true" } }).success).toBe(false);
+  });
+});
+
+describe("chính sách tối ưu máy dev", () => {
+  const policy = (over: Record<string, unknown> = {}) => ({ ...devOptimizerPolicy.parse({}), ...over });
+
+  it("mặc định cân bằng, tắt rtk, codegraph và đồng bộ memory", () => {
+    expect(devOptimizerPolicy.parse({})).toEqual({
+      level: "balanced",
+      rtk: false,
+      codegraph: false,
+      autoCompactWindow: null,
+      contextBudgetTokens: 2000,
+      memoryAutoSync: false,
+      memorySyncMinutes: 60,
+    });
+  });
+
+  it("settings lưu trước khi có mục này là null, không đụng tokenSaving", () => {
+    const { devOptimizer: _, ...old } = defaultProjectSettings();
+    const parsed = projectSettings.parse(old);
+    expect(parsed.devOptimizer).toBeNull();
+    expect(parsed.tokenSaving).toEqual(defaultTokenSaving);
+    expect(defaultProjectSettings().devOptimizer).toBeNull();
+  });
+
+  it("settings giữ chính sách đã đặt", () => {
+    const set = policy({ level: "aggressive", rtk: true, autoCompactWindow: 120_000 });
+    expect(projectSettings.parse({ ...defaultProjectSettings(), devOptimizer: set }).devOptimizer).toEqual(set);
+  });
+
+  it("contextBudgetTokens nhận 500 đến 8.000", () => {
+    for (const v of [500, 2000, 8000])
+      expect(devOptimizerPolicy.safeParse({ contextBudgetTokens: v }).success).toBe(true);
+    for (const v of [499, 8001, 0, -1, 1000.5, "2000"]) {
+      expect(devOptimizerPolicy.safeParse({ contextBudgetTokens: v }).success).toBe(false);
+    }
+  });
+
+  it("memorySyncMinutes nhận 15 đến 1.440", () => {
+    for (const v of [15, 60, 1440]) expect(devOptimizerPolicy.safeParse({ memorySyncMinutes: v }).success).toBe(true);
+    for (const v of [14, 1441, 0, 30.5, "60"]) {
+      expect(devOptimizerPolicy.safeParse({ memorySyncMinutes: v }).success).toBe(false);
+    }
+  });
+
+  it("autoCompactWindow nhận 50.000 đến 1.000.000 hoặc null", () => {
+    for (const v of [50_000, 200_000, 1_000_000, null]) {
+      expect(devOptimizerPolicy.safeParse({ autoCompactWindow: v }).success).toBe(true);
+    }
+    for (const v of [49_999, 1_000_001, 0, 100_000.5, "100000"]) {
+      expect(devOptimizerPolicy.safeParse({ autoCompactWindow: v }).success).toBe(false);
+    }
+  });
+
+  it("level chỉ nhận off, balanced, aggressive", () => {
+    for (const v of ["off", "balanced", "aggressive"])
+      expect(devOptimizerPolicy.safeParse({ level: v }).success).toBe(true);
+    expect(devOptimizerPolicy.safeParse({ level: "max" }).success).toBe(false);
+  });
+
+  it("bản vá đặt, thay hoặc bỏ chính sách và từ chối khoá lạ", () => {
+    expect(projectSettingsPatch.parse({ devOptimizer: { level: "off" } }).devOptimizer).toEqual(
+      policy({ level: "off" }),
+    );
+    expect(projectSettingsPatch.parse({ devOptimizer: null }).devOptimizer).toBeNull();
+    expect(projectSettingsPatch.parse({ tokenSaving: { rtk: false } }).devOptimizer).toBeUndefined();
+    expect(projectSettingsPatch.safeParse({ devOptimizer: { levl: "off" } }).success).toBe(false);
+    expect(projectSettingsPatch.safeParse({ devOptimizer: { contextBudgetTokens: 9000 } }).success).toBe(false);
+  });
+});
+
+describe("projects.tokenUsage", () => {
+  it("days mặc định 7, nhận chuỗi từ query, giới hạn 1–90", () => {
+    expect(projectTokenUsageInput.parse({ key: "demo" }).days).toBe(7);
+    expect(projectTokenUsageInput.parse({ key: "demo", days: "30" }).days).toBe(30);
+    expect(projectTokenUsageInput.safeParse({ key: "demo", days: 0 }).success).toBe(false);
+    expect(projectTokenUsageInput.safeParse({ key: "demo", days: 91 }).success).toBe(false);
+    expect(projectTokenUsageInput.safeParse({ key: "demo", days: 1.5 }).success).toBe(false);
+  });
+  it("dòng kết quả chỉ có số và tên hiển thị, score rỗng được", () => {
+    const row = {
+      userId: "u1",
+      userName: "An",
+      machineId: "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e5f",
+      machineName: "may-01",
+      periodEnd: "2026-10-22T00:00:00.000Z",
+      tokens: 1200,
+      sessions: 2,
+      score: null,
+      policyDrift: ["rtk"],
+    };
+    expect(projectTokenUsageRow.safeParse(row).success).toBe(true);
+    expect(projectTokenUsageRow.safeParse({ ...row, score: 101 }).success).toBe(false);
+    expect(projectTokenUsageRow.safeParse({ ...row, policyDrift: ["x"] }).success).toBe(false);
   });
 });

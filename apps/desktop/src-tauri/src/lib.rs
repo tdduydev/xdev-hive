@@ -7,6 +7,7 @@ mod browser_login;
 mod capabilities_audit;
 mod claude_desktop;
 mod cli;
+mod context_sync;
 mod doctor;
 mod files;
 mod git_branches;
@@ -1178,6 +1179,13 @@ pub fn run() {
             memory_store::memory_scan,
             memory_store::memory_apply,
             memory_store::memory_compress,
+            context_sync::context_status,
+            context_sync::context_enable,
+            context_sync::context_disable,
+            context_sync::context_save_source,
+            context_sync::context_sync,
+            context_sync::context_resolve,
+            context_sync::context_migrate,
             local_projects::local_projects,
             local_projects::local_projects_import,
             local_projects::local_project_bind,

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-context-save-source"
+description = "Enables the context_save_source command without any pre-configured scope."
+commands.allow = ["context_save_source"]
+
+[[permission]]
+identifier = "deny-context-save-source"
+description = "Denies the context_save_source command without any pre-configured scope."
+commands.deny = ["context_save_source"]

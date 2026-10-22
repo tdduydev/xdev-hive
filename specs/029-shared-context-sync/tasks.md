@@ -46,7 +46,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **Kiểm**: mỗi CLI có kết quả "đọc được / không / chưa rõ" kèm phiên bản và ngày thử. CLI "không" thì ghi để T003 đặt
     trạng thái `skipped` với lý do "chưa hỗ trợ".
 
-- [ ] **T002 [P] [—] [vừa] · 0,5 ngày — Tách `gitexclude`, xuất API sao lưu của `memstore`**
+- [x] **T002 [P] [—] [vừa] · 0,5 ngày — Tách `gitexclude`, xuất API sao lưu của `memstore`**
   - **Goal**:
     - chuyển `gitExclude`, `removeGitExclude` (`memstore/shared.go:573`, `:600`) sang gói mới `worker/internal/gitexclude`
       (`Add(repo, rel) (added bool, warn string)`, `Remove(repo, line) string`, `Tracked(repo, rel) bool` dùng
@@ -59,7 +59,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 1: Go (P1)
 
-- [ ] **T003 [US1] [nặng] · 2 ngày — Gói `ctxsync`: nguồn, khối, file đích, gương Codex** (sau T002)
+- [x] **T003 [US1] [nặng] · 2 ngày — Gói `ctxsync`: nguồn, khối, file đích, gương Codex** (sau T002)
   - **Goal**: theo [plan.md](plan.md) mục 1, [data-model.md](data-model.md) "Trên máy", [research.md](research.md) mục 1–2:
     - khoá nguồn `p_<projectId>` / `f_<ProjectKey>`; `source.md`, `state.json` (version 1);
     - `RenderBlock`, `ParseBlocks`: dòng mở `<!-- xdev-hive:context v1 sha=<12 hex> -->`, dòng đóng
@@ -79,7 +79,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     Codex khi `AGENTS.md` đổi, file bị theo dõi, Gemini settings bị theo dõi, frontmatter Antigravity, tắt rồi khôi phục
     từ thùng rác.
 
-- [ ] **T004 [US1] [vừa] · 1 ngày — Lệnh `hive-worker context`, chuyển từ chia sẻ cũ** (sau T003)
+- [x] **T004 [US1] [vừa] · 1 ngày — Lệnh `hive-worker context`, chuyển từ chia sẻ cũ** (sau T003)
   - **Goal**: các lệnh ở [contracts/sidecar-cli.md](contracts/sidecar-cli.md) "`hive-worker context`" (`status`, `enable`,
     `disable`, `save-source`, `sync`, `resolve`, `migrate`), JSON đúng kiểu `ContextProject`; `migrate.go` đọc
     `memory-shared.json`, ghép bản nháp nguồn, `--apply` thì lưu nguồn và gọi `memstore.Unshare` (FR-007). Lỗi
@@ -88,7 +88,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `worker/internal/ctxsync/testdata/context-project.json` (cho T007 so kiểu TS).
   - **Kiểm**: test lệnh với `HOME`/`USERPROFILE` giả và repo git tạm; fixture JSON ổn định.
 
-- [ ] **T005 [P] [US2] [nặng] · 2 ngày — Gói `optimizeall`: kế hoạch, chạy, nhật ký, hoàn tác, khoá** (sau T002; song song T003, T004)
+- [x] **T005 [P] [US2] [nặng] · 2 ngày — Gói `optimizeall`: kế hoạch, chạy, nhật ký, hoàn tác, khoá** (sau T002; song song T003, T004)
   - **Goal**: theo [plan.md](plan.md) mục 4, [data-model.md](data-model.md) "Lần tối ưu", [research.md](research.md) mục 7–8:
     - `Plan(policies map[string]Policy) (OptimizePlan, error)`: bước `optimizer.enable` mỗi gói chưa đạt mức đích
       (`aggressive` → `selected:false`, `requiresConfirm:true`), `fix.<id>` chỉ id trong `FIXES` của Rust (`codegraph.mcp`,
@@ -149,7 +149,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/components/token-score-card.tsx`.
   - **Kiểm**: Vitest: xem trước không ghi gì, bỏ chọn dòng, `aggressive` không chọn sẵn, kết quả có lỗi một dòng, hoàn tác.
 
-- [ ] **T011 [P] [—] [nhẹ] · 0,5 ngày — ADR 0037, sửa FR-012 spec 025, tài liệu người dùng** (song song đợt 1–2)
+- [x] **T011 [P] [—] [nhẹ] · 0,5 ngày — ADR 0037, sửa FR-012 spec 025, tài liệu người dùng** (song song đợt 1–2)
   - **Goal**: `docs/adr/0037-shared-context-local-files.md` (một nguồn, file cục bộ, dấu khối, gương Codex, thay FR-012);
     `docs/adr/README.md`; `specs/025-token-score/spec.md` FR-012 và gợi ý A3 trỏ sang spec 029; `docs/token-optimizer.md`
     (nút "Tối ưu", ngữ cảnh dùng chung); `docs/architecture.md` (gói `ctxsync`, `optimizeall`).
@@ -160,7 +160,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 3: Hub và đồng bộ (P2)
 
-- [ ] **T012 [P] [US3] [US4] [vừa] · 0,5 ngày — Contracts: `devOptimizer`, `pinned`, `memory.pin`**
+- [x] **T012 [P] [US3] [US4] [vừa] · 0,5 ngày — Contracts: `devOptimizer`, `pinned`, `memory.pin`**
   - **Goal**: theo [contracts/hub-api.md](contracts/hub-api.md) mục `projects.ts` (chỉ `devOptimizerPolicy`,
     `projectSettings.devOptimizer`, `projectSettingsPatch.devOptimizer`; **không** đụng `tokenSaving`) và `knowledge.ts`
     (`pinned`, route `memory.pin`). Ràng buộc: `contextBudgetTokens` 500–8.000 (mặc định 2.000), `memorySyncMinutes`
@@ -168,7 +168,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `packages/contracts/src/{projects.ts,knowledge.ts}` (+ test), `openapi.json`.
   - **Kiểm**: test zod giá trị biên; `pnpm openapi` không lệch.
 
-- [ ] **T013 [US3] [vừa] · 1 ngày — Hub `knowledge`: cột `pinned`, sắp, `pinMemory`** (sau T012)
+- [x] **T013 [US3] [vừa] · 1 ngày — Hub `knowledge`: cột `pinned`, sắp, `pinMemory`** (sau T012)
   - **Goal**: migration `0084_*` thêm `memories.pinned boolean not null default false`; `listMemories` sắp
     `pinned desc, created_at desc`; `pinMemory` (quyền như duyệt memory ở phạm vi của memory, audit `memory.pin`); route.
   - **PHẠM VI**: `apps/hub/db/migrations/0084_*.sql` (+ meta drizzle), `apps/hub/src/modules/knowledge/{schema.ts,memory.ts,router.ts}`, `*.db.test.ts`.
@@ -213,7 +213,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 4: Outbox và báo cáo token (P3)
 
-- [ ] **T019 [P] [US5] [nặng] · 1,5 ngày — Outbox tối thiểu trong worker**
+- [x] **T019 [P] [US5] [nặng] · 1,5 ngày — Outbox tối thiểu trong worker**
   - **Goal**: theo [spec 027 data-model](../027-hub-client-model/data-model.md) "Mục hộp thư đi", chỉ kênh `worker`:
     `outbox/<identity>/<ulid>.json` (0600), trạng thái `pending → sending → accepted|duplicate|rejected|expired`, backoff
     5 s → 5 phút, hết hạn 14 ngày, `sent.jsonl`; gửi bằng `hubclient.PostClientEvent` với `idempotencyKey` = ULID; lệnh
@@ -221,7 +221,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `worker/internal/outbox/**`, `worker/cmd/hive-worker/{outbox.go,main.go,optimize_score_report.go}`, test.
   - **Kiểm**: SC-006 đúng một lần qua khởi động lại (tiến trình bị giết giữa `sending`), từ chối, hết hạn, backoff.
 
-- [ ] **T020 [P] [US5] [US6] [vừa] · 0,5 ngày — Contracts: `memory.propose`, `project.token_usage`, token dự án** (sau T012)
+- [x] **T020 [P] [US5] [US6] [vừa] · 0,5 ngày — Contracts: `memory.propose`, `project.token_usage`, token dự án** (sau T012)
   - **Goal**: theo [contracts/hub-api.md](contracts/hub-api.md) mục `client-events.ts` (payload `.strict()`, chỉ số/enum/
     uuid/ngày; `content` 1–2.000 ký tự), `projects.tokenUsage`, `fleet.deleteMyProjectUsage`; `MACHINE_EVENT_KINDS`;
     `pnpm openapi`.

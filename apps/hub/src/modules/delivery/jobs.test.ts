@@ -104,7 +104,7 @@ describe("router delivery", () => {
     expect((error as Error).message).toMatch(/chưa được làm/);
   });
 
-  it("luồng SSE của lần triển khai: chưa đăng nhập 401, đã đăng nhập 501", async () => {
+  it("luồng SSE của lần triển khai: chưa đăng nhập 401, đã đăng nhập mà hub không có database 500", async () => {
     const mount = (session?: unknown) => {
       const app = new Hono();
       const auth = session === undefined ? undefined : ({ api: { getSession: async () => session } } as never);
@@ -115,7 +115,6 @@ describe("router delivery", () => {
     expect((await mount().request(url)).status).toBe(401);
     expect((await mount(null).request(url)).status).toBe(401);
     const res = await mount({ user: { id: "u" } }).request(url);
-    expect(res.status).toBe(501);
-    expect(await res.json()).toMatchObject({ data: { code: "NOT_IMPLEMENTED" } });
+    expect(res.status).toBe(500);
   });
 });

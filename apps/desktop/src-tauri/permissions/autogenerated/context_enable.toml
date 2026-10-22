@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-context-enable"
+description = "Enables the context_enable command without any pre-configured scope."
+commands.allow = ["context_enable"]
+
+[[permission]]
+identifier = "deny-context-enable"
+description = "Denies the context_enable command without any pre-configured scope."
+commands.deny = ["context_enable"]

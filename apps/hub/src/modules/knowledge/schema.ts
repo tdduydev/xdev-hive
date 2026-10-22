@@ -78,6 +78,8 @@ export const memories = hive
       /** Mô hình đã tạo embedding; chỉ so vector cùng mô hình (cùng số chiều, cùng không gian). */
       embeddingModel: text("embedding_model"),
       supersededBy: uuid("superseded_by"),
+      /** Ghim: memory quan trọng lên đầu danh sách và vào ngữ cảnh máy dev trước (spec 029). */
+      pinned: boolean("pinned").notNull().default(false),
       search: tsvector("search").generatedAlwaysAs(sql`to_tsvector('simple'::regconfig, content)`),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },

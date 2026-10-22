@@ -389,6 +389,40 @@ export const projectDocsSettings = z.object({
 });
 export type ProjectDocsSettings = z.output<typeof projectDocsSettings>;
 
+/**
+ * Chính sách "Tối ưu máy dev" của dự án (spec 029): chỉ áp cho máy dev của thành viên (app desktop), không áp cho run
+ * của hub; run hub dùng `tokenSaving`. Tách khỏi `tokenSaving` để hai nơi áp dụng không đè lên nhau.
+ */
+export const devOptimizerPolicy = z.object({
+  level: z.enum(["off", "balanced", "aggressive"]).default("balanced"),
+  rtk: z.boolean().default(false),
+  codegraph: z.boolean().default(false),
+  /** Cửa sổ ngữ cảnh (token) trước khi Claude Code nén; null là không ép. */
+  autoCompactWindow: z
+    .number("Nhập một số.")
+    .int("Nhập số nguyên.")
+    .min(50_000, "Tối thiểu 50.000 token.")
+    .max(1_000_000, "Tối đa 1.000.000 token.")
+    .nullable()
+    .default(null),
+  /** Ngân sách token cho phần ngữ cảnh từ hub đưa vào máy dev. */
+  contextBudgetTokens: z
+    .number("Nhập một số.")
+    .int("Nhập số nguyên.")
+    .min(500, "Tối thiểu 500 token.")
+    .max(8_000, "Tối đa 8.000 token.")
+    .default(2_000),
+  memoryAutoSync: z.boolean().default(false),
+  /** Chu kỳ đồng bộ memory từ hub về máy dev, tính bằng phút. */
+  memorySyncMinutes: z
+    .number("Nhập một số.")
+    .int("Nhập số nguyên.")
+    .min(15, "Tối thiểu 15 phút.")
+    .max(1_440, "Tối đa 1.440 phút.")
+    .default(60),
+});
+export type DevOptimizerPolicy = z.output<typeof devOptimizerPolicy>;
+
 export const projectSettings = z.object({
   /** `full` bỏ kiểm soát của CLI; chỉ nên dùng trong container của M6. */
   runPermissions: z.object({ mode: runPermissionMode }).optional(),
@@ -472,6 +506,8 @@ export const projectSettings = z.object({
   docs: projectDocsSettings.prefault({}),
   /** Có mặc định vì settings đã lưu trước ADR 0022 không có mục này. */
   brief: briefSettings.default(() => ({ ...DEFAULT_BRIEF_SETTINGS })),
+  /** `null` là chưa đặt (máy dev giữ cấu hình riêng). Có mặc định vì settings đã lưu trước spec 029 không có mục này. */
+  devOptimizer: devOptimizerPolicy.nullable().default(null),
 });
 export type ProjectSettings = z.output<typeof projectSettings>;
 
@@ -567,6 +603,8 @@ export const projectSettingsPatch = z
       })
       .optional(),
     brief: briefSettings.partial().strict().optional(),
+    /** Thay cả chính sách (các trường vắng lấy mặc định); `null` là bỏ chính sách, về chưa đặt. */
+    devOptimizer: devOptimizerPolicy.strict().nullable().optional(),
   })
   .refine((p) => Object.keys(p).length > 0, "Bản vá settings không có trường nào để đổi.");
 export type ProjectSettingsPatch = z.output<typeof projectSettingsPatch>;
@@ -601,6 +639,7 @@ export function defaultProjectSettings(requiredApprovals = 1): ProjectSettings {
     routing: structuredClone(defaultRouting),
     docs: projectDocsSettings.parse({}),
     brief: { ...DEFAULT_BRIEF_SETTINGS },
+    devOptimizer: null,
   };
 }
 
@@ -719,6 +758,27 @@ export const mergeQueueEntry = z.object({
 });
 export type MergeQueueEntry = z.output<typeof mergeQueueEntry>;
 
+/** Một dòng token theo người và máy trong một dự án (spec 029); chỉ số, không có nội dung phiên. */
+export const projectTokenUsageRow = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  machineId: id,
+  machineName: z.string(),
+  periodEnd: z.iso.datetime(),
+  tokens: z.number().int().nonnegative(),
+  sessions: z.number().int().nonnegative(),
+  score: z.number().int().min(0).max(100).nullable(),
+  policyDrift: z.array(
+    z.enum(["level", "rtk", "codegraph", "autoCompactWindow", "contextBudgetTokens", "memoryAutoSync"]),
+  ),
+});
+export type ProjectTokenUsageRow = z.output<typeof projectTokenUsageRow>;
+
+export const projectTokenUsageInput = z.object({
+  key: projectKey,
+  days: z.coerce.number().int().min(1).max(90).default(7),
+});
+
 export const projectsContract = {
   create: orgRoute(
     "POST",
@@ -775,6 +835,14 @@ export const projectsContract = {
   )
     .input(z.object({ key: projectKey, settings: projectSettingsPatch }))
     .output(projectSettings),
+  tokenUsage: orgRoute(
+    "GET",
+    "/v1/projects/{key}/token-usage",
+    "Token theo người và máy trong dự án, theo số ngày gần nhất (thành viên dự án)",
+    "projects",
+  )
+    .input(projectTokenUsageInput)
+    .output(z.object({ rows: z.array(projectTokenUsageRow) })),
 };
 
 /** Thành viên dự án: người của đội sở hữu được gắn vào dự án để lọc tài liệu "Dự án của tôi". */

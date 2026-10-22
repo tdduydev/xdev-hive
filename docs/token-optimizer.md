@@ -96,6 +96,56 @@ Ngưỡng trong bảng là của Claude. Với Codex, A1 đủ điểm khi ≤ 1
 
 Trên Windows, RTK chưa hỗ trợ nên A6 là "không áp dụng" và không tính vào điểm.
 
+## Ngữ cảnh dùng chung và nút "Tối ưu"
+
+Phần này theo [spec 029](../specs/029-shared-context-sync/spec.md) và [ADR 0037](adr/0037-shared-context-local-files.md).
+Gói `ctxsync` của `hive-worker` đã có code; mục "Ngữ cảnh dùng chung" trên màn Memory, nút "Tối ưu" và lệnh
+`optimize all` là **theo kế hoạch spec 029**, chưa có trong app.
+
+### Ngữ cảnh dùng chung
+
+Mỗi dự án có **một nguồn ngữ cảnh** (quy ước, lệnh test, tóm tắt kiến trúc) lưu ngoài repo, trong
+`~/.xdev-hive/context/`. Bạn soạn nguồn một lần; app ghi nó vào file ngữ cảnh cục bộ của từng CLI đã cài trên máy:
+
+| CLI | File đích |
+|---|---|
+| Claude Code | `CLAUDE.local.md` |
+| Codex | `AGENTS.override.md` (bản gương của `AGENTS.md` kèm khối) |
+| Gemini | `GEMINI.local.md` |
+| Antigravity | `.agents/rules/xdev-hive.md` |
+
+- Các file này không được git theo dõi: app thêm chúng vào `.git/info/exclude` và không bao giờ ghi vào file git đang
+  theo dõi.
+- Nội dung nằm trong một **khối có đánh dấu** `<!-- xdev-hive:context … -->`. App không sửa, xoá hay sắp xếp lại chữ
+  ngoài khối.
+- Nếu bạn sửa tay bên trong khối, app không ghi đè mà báo xung đột để bạn chọn giữ bản file hay bản nguồn.
+- Codex chỉ đọc một file mỗi thư mục, nên bản gương thay `AGENTS.md`. Nếu bạn đã tự viết `AGENTS.override.md`, app bỏ
+  qua Codex và ghi lý do.
+- Mọi lần ghi có bản sao lưu. Tắt ngữ cảnh dùng chung gỡ khối khỏi mọi file; file app tạo mà chỉ có khối được chuyển
+  vào thùng rác.
+- Nếu dự án đang dùng **Dùng chung memory** ở mục Memory, app đề nghị chuyển sang nguồn mới, có xem trước. App không
+  tự chuyển.
+- Khi đã đăng nhập hub, app có thể kéo memory đã duyệt vào phần "Từ hub" của khối, trong ngân sách token (mặc định
+  2.000). Phần này thuộc đợt sau của spec 029.
+
+### Nút "Tối ưu"
+
+Nút ở thẻ **Điểm tối ưu token** chạy một chuỗi cố định cho cả máy:
+
+1. Bật bộ tối ưu cho các gói CLI chưa đạt mức đích.
+2. Các sửa nhanh an toàn của thang điểm ở trên.
+3. Cập nhật khối ngữ cảnh của các dự án đã bật ngữ cảnh dùng chung.
+4. Tính lại điểm.
+
+Cách dùng: bấm **Tối ưu**, xem danh sách thay đổi theo nhóm (cấu hình CLI, công cụ, ngữ cảnh), bỏ chọn dòng không muốn,
+xác nhận một lần. Chưa xác nhận thì không có gì bị ghi. Sau khi chạy, app hiện điểm trước và sau, kết quả từng dòng;
+một bước lỗi không dừng các bước khác. **Hoàn tác** đảo cả lần chạy về đúng nội dung trước đó. Công cụ đã cài (RTK,
+CodeGraph) được giữ lại.
+
+Giới hạn: nút chỉ ghi CLAUDE.md, AGENTS.md, GEMINI.md, rules và memory **trong khối đánh dấu của xDev Hive**. Nút không
+tắt MCP, không xoá skill, không chạy nén bằng AI (nén vẫn duyệt từng file ở màn Memory). Mức **Mạnh** và việc đổi model
+luôn tắt sẵn, cần chọn tay.
+
 ## Memory
 
 Màn **Memory** quét các file memory và hướng dẫn của Claude, Codex và Gemini trên máy, ước tính token, ngày sửa và

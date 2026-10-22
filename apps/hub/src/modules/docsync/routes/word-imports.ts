@@ -8,8 +8,8 @@ import {
   type WordImportUpdateInput,
   wordImportMediaPath,
 } from "@xdev-hive/contracts";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { getDoc, type Principal, type Reader, readerFor } from "../../knowledge/index.ts";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { docScope, getDoc, type Principal, type Reader, readerFor } from "../../knowledge/index.ts";
 import {
   BadRequestError,
   ConflictError,
@@ -38,7 +38,7 @@ import {
   wordImportOf,
 } from "../word/shared.ts";
 import type { WordImportFileRow, WordImportRow } from "../word/tools.ts";
-import { type DocSyncRouteDeps, docSyncApi, notImplemented } from "./common.ts";
+import { type DocSyncRouteDeps, docSyncApi } from "./common.ts";
 
 const notFound = () => new NotFoundError("WORD_IMPORT_NOT_FOUND", "Không tìm thấy lượt nhập Word.");
 const fileNotFound = () => new NotFoundError("WORD_IMPORT_FILE_NOT_FOUND", "Không tìm thấy file trong lượt nhập Word.");
@@ -73,6 +73,31 @@ export async function wordImportAccess(
   const key = await scopeKeyOf(tx, target);
   if (key && (await canManageVisible(tx, await readerFor(tx, principal), key))) return "manage";
   return principal.kind === "user" && target.imp.createdBy === principal.userId ? "propose" : null;
+}
+
+/** Tài liệu đọc được theo cách `getDoc` đọc: không có hoặc không đọc được đều là false, không lộ là có tồn tại. */
+export async function canReadDoc(tx: Tx, principal: Principal, docId: string | null): Promise<boolean> {
+  const key = await docKeyOf(tx, docId);
+  if (!key) return false;
+  try {
+    await docScope(tx, await readerFor(tx, principal), key);
+    return true;
+  } catch (error) {
+    if (error instanceof NotFoundError) return false;
+    throw error;
+  }
+}
+
+/** Lượt có tài liệu đích hoặc tài liệu đã tạo mà người gọi đọc được (FR-020, US5). */
+async function hasReadableDoc(tx: Tx, principal: Principal, imp: WordImportRow): Promise<boolean> {
+  const rows = await tx
+    .selectDistinct({ docId: docWordImportFiles.docId })
+    .from(docWordImportFiles)
+    .where(and(eq(docWordImportFiles.importId, imp.id), isNotNull(docWordImportFiles.docId)));
+  const ids = new Set<string>(rows.flatMap((r) => (r.docId ? [r.docId] : [])));
+  if (imp.updateDocId) ids.add(imp.updateDocId);
+  for (const id of ids) if (await canReadDoc(tx, principal, id)) return true;
+  return false;
 }
 
 export async function loadVisible(tx: Tx, principal: Principal, importId: string, lock = false) {
@@ -171,6 +196,9 @@ export async function listWordImports(
         ok = (await wordImportAccess(tx, principal, { ...target, imp })) !== null;
         access.set(cacheKey, ok);
       }
+      // Tài liệu tạo ra từ lượt thì ai đọc được tài liệu cũng thấy lượt đã sinh ra nó (US5); tài liệu khác nhau theo
+      // từng lượt nên không dùng chung kết quả.
+      if (!ok) ok = await hasReadableDoc(tx, principal, imp);
       if (ok) visible.push(imp);
       if (visible.length > input.limit) break;
     }
@@ -186,6 +214,31 @@ export async function listWordImports(
   return {
     items,
     nextCursor: visible.length > input.limit && tail ? `${tail.createdAt.toISOString()}|${tail.id}` : null,
+  };
+}
+
+/** Lần nhập gần nhất tạo, cập nhật hoặc gắn tài liệu; null khi tài liệu chưa từng nhập từ Word hoặc không đọc được. */
+export async function wordImportOfDoc(
+  tx: Tx,
+  principal: Principal,
+  input: { docKey: string },
+): Promise<{ import: WordImport; file: WordImportFile } | null> {
+  const { rows } = await tx.execute<{ id: string }>(sql`select id from hive.docs where key = ${input.docKey}`);
+  const docId = rows[0]?.id;
+  if (!docId || !(await canReadDoc(tx, principal, docId))) return null;
+  const [latest] = await tx
+    .select({ file: docWordImportFiles })
+    .from(docWordImportFiles)
+    .innerJoin(docWordImports, eq(docWordImports.id, docWordImportFiles.importId))
+    .where(and(eq(docWordImportFiles.docId, docId), inArray(docWordImportFiles.state, ["done", "skipped"])))
+    .orderBy(desc(createdMs), desc(docWordImports.id), desc(docWordImportFiles.createdAt))
+    .limit(1);
+  if (!latest) return null;
+  const target = await loadWordTarget(tx, latest.file.importId);
+  const places = await filePlaces(tx, target, [latest.file]);
+  return {
+    import: await wordImportOf(tx, target.imp),
+    file: wordFileView(latest.file, places.get(latest.file.id) ?? NO_PLACE),
   };
 }
 
@@ -370,6 +423,8 @@ export function wordImportsRoutes(deps: DocSyncRouteDeps) {
     cancel: api.cancel.handler(({ context, input }) =>
       cancelWordImport(context.tx, { kind: "user", userId: context.user.id }, input.importId),
     ),
-    ofDoc: api.ofDoc.handler(() => notImplemented()),
+    ofDoc: api.ofDoc.handler(({ context, input }) =>
+      wordImportOfDoc(context.tx, { kind: "user", userId: context.user.id }, input),
+    ),
   };
 }

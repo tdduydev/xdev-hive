@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
+	"github.com/tdduydev/xdev-hive/worker/internal/outbox"
 	"github.com/tdduydev/xdev-hive/worker/internal/score"
 )
 
@@ -159,20 +160,36 @@ func TestScoreReportNetworkErrorKeepsPending(t *testing.T) {
 	if !strings.Contains(errOut, "chưa gửi được điểm") {
 		t.Errorf("stderr: %q", errOut)
 	}
-	st := e.reportState(t)
-	if st.Pending == nil || st.LastSentAt != nil {
-		t.Fatalf("hub vắng thì giữ báo cáo chờ: %+v", st)
+	if st := e.reportState(t); st.Pending != nil || st.LastSentAt != nil {
+		t.Fatalf("điểm chờ nằm trong hộp thư đi, không trong score-report.json: %+v", st)
 	}
-	var ev map[string]any
-	if err := json.Unmarshal(st.Pending.Body, &ev); err != nil || ev["key"] != st.Pending.Key || ev["kind"] != "machine.token_score" {
-		t.Errorf("báo cáo chờ: %s %v", st.Pending.Body, err)
+	items := e.outboxItems(t)
+	if len(items) != 1 || items[0].State != outbox.StatePending || items[0].Kind != "machine.token_score" || items[0].NextAttemptAt == nil {
+		t.Fatalf("hub vắng thì giữ điểm trong hộp thư đi: %+v", items)
 	}
 	if v := e.reportView(t, "status"); !v.Pending {
 		t.Errorf("status phải báo còn báo cáo chờ: %+v", v)
 	}
 }
 
-func TestScoreReportRejectedClearsPending(t *testing.T) {
+// Chấm lại khi điểm cũ còn chờ: chỉ giữ điểm mới nhất.
+func TestScoreReportReplacesOlderPending(t *testing.T) {
+	hub := newFakeHub(t)
+	e := scoreReportEnv(t, hub.srv.URL)
+	e.reportView(t, "on")
+	hub.srv.Close()
+	e.run(t, "score", "--json")
+	first := e.outboxItems(t)
+	base := optimizeNow()
+	optimizeNow = func() time.Time { return base.Add(10 * time.Minute) }
+	e.run(t, "score", "--json")
+	items := e.outboxItems(t)
+	if len(first) != 1 || len(items) != 1 || items[0].Key == first[0].Key {
+		t.Fatalf("trước %+v, sau %+v", first, items)
+	}
+}
+
+func TestScoreReportRejectedKeptInOutbox(t *testing.T) {
 	hub := newFakeHub(t)
 	hub.outcome = "rejected"
 	e := scoreReportEnv(t, hub.srv.URL)
@@ -182,7 +199,19 @@ func TestScoreReportRejectedClearsPending(t *testing.T) {
 		t.Fatalf("hub nhận %d lần, stderr %q", hub.count(), errOut)
 	}
 	if st := e.reportState(t); st.Pending != nil || st.LastSentAt != nil {
-		t.Errorf("bị từ chối thì bỏ báo cáo chờ, không ghi lần gửi: %+v", st)
+		t.Errorf("bị từ chối thì không ghi lần gửi: %+v", st)
+	}
+	items := e.outboxItems(t)
+	if len(items) != 1 || items[0].State != outbox.StateRejected || items[0].Result == nil || items[0].Result.Code != "TOKEN_SCORE_TOO_FREQUENT" {
+		t.Fatalf("mục bị từ chối giữ lại để người dùng xem: %+v", items)
+	}
+	if v := e.reportView(t, "status"); v.Pending {
+		t.Errorf("mục bị từ chối không còn chờ gửi: %+v", v)
+	}
+	// Không gửi lại mục bị từ chối.
+	e.outbox(t, "flush")
+	if hub.count() != 1 {
+		t.Errorf("gửi lại mục bị từ chối: %d", hub.count())
 	}
 }
 
@@ -211,6 +240,9 @@ func TestScoreReportNotRegisteredSendsNothing(t *testing.T) {
 	if st := e.reportState(t); st.Pending != nil {
 		t.Errorf("không có báo cáo chờ khi chưa đăng ký: %+v", st)
 	}
+	if _, err := os.Stat(filepath.Join(e.home, ".xdev-hive", "outbox")); !os.IsNotExist(err) {
+		t.Errorf("chưa đăng ký thì không tạo hộp thư đi: %v", err)
+	}
 }
 
 func TestScoreReportOffDropsPending(t *testing.T) {
@@ -219,8 +251,14 @@ func TestScoreReportOffDropsPending(t *testing.T) {
 	e.reportView(t, "on")
 	hub.srv.Close()
 	e.run(t, "score", "--json")
+	if len(e.outboxItems(t)) != 1 {
+		t.Fatal("hub vắng thì phải còn điểm chờ")
+	}
 	if v := e.reportView(t, "off"); v.Enabled || v.Pending {
 		t.Fatalf("tắt thì bỏ báo cáo chờ: %+v", v)
+	}
+	if items := e.outboxItems(t); len(items) != 0 {
+		t.Errorf("tắt thì bỏ điểm trong hộp thư đi: %+v", items)
 	}
 }
 

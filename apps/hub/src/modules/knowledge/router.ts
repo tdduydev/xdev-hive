@@ -28,6 +28,7 @@ import {
   embedQuery,
   type KnowledgeDeps,
   listMemories,
+  pinMemory,
   rejectMemory,
   searchMemory,
   supersedeMemory,
@@ -229,6 +230,7 @@ export function knowledgeRouter(
       approve: memory.approve
         .use(inOrg)
         .handler(({ context: { tx, user }, input }) => approveMemory(tx, asUser(user), input.id, deps)),
+      pin: memory.pin.use(inOrg).handler(({ context: { tx, user }, input }) => pinMemory(tx, asUser(user), input)),
       reject: memory.reject.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
         await rejectMemory(tx, asUser(user), input.id);
         return { ok: true as const };
