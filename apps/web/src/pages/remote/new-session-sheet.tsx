@@ -9,14 +9,16 @@ import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { PlusIcon } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { TotpCodeField, type TotpError, totpReady } from "@/components/totp-code-sheet.tsx";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet.tsx";
-import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { apiErrorCode, apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { cliLabel } from "@/lib/run-view.ts";
-import { newStartAttempt } from "@/lib/terminal/input-mac.ts";
 import { machineRemoteKind } from "@/lib/terminal/sessions.ts";
-import { getAssertion, PasskeyError, pairedDevices, passkeySupport } from "@/lib/terminal/webauthn.ts";
+import { markTotpUsed, remoteAuthMethod, requestRemoteAuth } from "@/lib/terminal/totp-auth.ts";
+import { PasskeyError } from "@/lib/terminal/webauthn.ts";
 import { clampSize } from "@/lib/terminal.ts";
+import { useNow } from "@/lib/use-now.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
@@ -42,7 +44,8 @@ const text: Dict<
     | "confirmHint"
     | "unpaired"
     | "pairLink"
-    | "insecure"
+    | "totp_not_allowed"
+    | "totp_off"
     | "unsupported"
     | "passkeyFailed"
     | "submit"
@@ -74,7 +77,10 @@ const text: Dict<
     confirmHint: "Máy này hỏi chủ máy bấm Cho phép tại máy trước khi mở (tối đa 60 giây).",
     unpaired: "Thiết bị này chưa ghép với máy nên chưa mở phiên được.",
     pairLink: "Ghép thiết bị",
-    insecure: "Trang không chạy HTTPS nên trình duyệt không dùng được passkey.",
+    totp_not_allowed:
+      "Hub chạy HTTP nên trình duyệt không dùng được passkey, và tổ chức không cho dùng mã Authenticator. Bật HTTPS cho hub.",
+    totp_off:
+      "Hub chạy HTTP nên cần mã Authenticator, nhưng máy chưa bật. Bật mã Authenticator tại máy (ứng dụng desktop) rồi thử lại.",
     unsupported: "Trình duyệt này không hỗ trợ passkey.",
     passkeyFailed: "Không xác thực được bằng passkey.",
     submit: "Xác thực và mở",
@@ -104,7 +110,10 @@ const text: Dict<
     confirmHint: "This machine asks its owner to press Allow at the machine before opening (up to 60 seconds).",
     unpaired: "This device is not paired with the machine yet, so it cannot open sessions.",
     pairLink: "Pair device",
-    insecure: "The page is not served over HTTPS, so the browser cannot use passkeys.",
+    totp_not_allowed:
+      "The hub runs on HTTP so the browser cannot use passkeys, and your organization does not allow Authenticator codes. Enable HTTPS on the hub.",
+    totp_off:
+      "The hub runs on HTTP so an Authenticator code is needed, but the machine has not turned it on. Turn it on at the machine (desktop app), then try again.",
     unsupported: "This browser does not support passkeys.",
     passkeyFailed: "Passkey verification failed.",
     submit: "Verify and open",
@@ -148,8 +157,6 @@ export function NewSessionButton({ machines }: { machines: readonly RemoteMachin
   );
 }
 
-type Problem = "unpaired" | "insecure" | "unsupported";
-
 function NewSessionForm({ machines, onDone }: { machines: readonly RemoteMachine[]; onDone: () => void }) {
   const t = useT(text);
   const me = useMe();
@@ -173,23 +180,23 @@ function NewSessionForm({ machines, onDone }: { machines: readonly RemoteMachine
   const [taskId, setTaskId] = useState("");
   const [prompt, setPrompt] = useState("");
   const [stage, setStage] = useState<"verify" | "wait">("verify");
+  const [code, setCode] = useState("");
+  const now = useNow(1000);
 
   const tasks = useQuery({ ...api.tasks.list.queryOptions({ input: { mine: true } }), staleTime: 60_000 });
   const openTasks = (tasks.data ?? []).filter((task) => OPEN_TASK.has(task.status));
   const task = openTasks.find((x) => x.id === taskId);
 
-  const support = passkeySupport();
-  const device = machine ? pairedDevices()[machine.id] : undefined;
-  const problem: Problem | null = support !== "ok" ? support : machine && !device ? "unpaired" : null;
+  const method = machine ? remoteAuthMethod(machine) : null;
+  const problem = method?.kind === "blocked" ? method.reason : null;
 
   const start = useMutation({
     mutationFn: async () => {
-      if (!machine || !root || !device) throw new Error("form");
+      if (!machine || !root || !method || method.kind === "blocked") throw new Error("form");
       setStage("verify");
       // Giá trị rỗng thì bỏ hẳn: máy dựng lại challenge không có trường đó, gửi chuỗi rỗng sẽ lệch chữ ký.
-      const params: StartParams = {
+      const params: Omit<StartParams, "deviceId"> = {
         userId: me.id,
-        deviceId: device.deviceId,
         cli,
         ...(account ? { accountId: account.id } : {}),
         rootId: root.id,
@@ -198,18 +205,27 @@ function NewSessionForm({ machines, onDone }: { machines: readonly RemoteMachine
         ...(prompt.trim() ? { prompt } : {}),
         ...screenSize(),
       };
-      const attempt = await newStartAttempt({ machineId: machine.id, params });
-      const assertion = await getAssertion({ challenge: attempt.challenge, credentialIds: [device.credentialId] });
+      const proof = await requestRemoteAuth({ method, machineId: machine.id, action: "start", params, code });
       setStage("wait");
       const { userId: _, ...fields } = params;
       const input: RemoteStartInput = {
         machineId: machine.id,
         ...fields,
+        ...(proof.deviceId ? { deviceId: proof.deviceId } : {}),
         cli: params.cli as RemoteStartInput["cli"],
-        auth: { kind: "passkey", assertion, ephPub: attempt.ephPub, ts: attempt.ts, nonce: attempt.nonce },
+        auth: proof.auth,
       };
-      return api.remote.start.call(input);
+      try {
+        const session = await api.remote.start.call(input);
+        // Máy nhận mỗi mã một lần: xin quyền gõ ngay sau đó phải chờ mã mới.
+        if (proof.code) markTotpUsed();
+        return session;
+      } catch (e) {
+        if (proof.code && apiErrorCode(e) === "TOTP_REPLAY") markTotpUsed();
+        throw e;
+      }
     },
+    onError: () => setCode(""),
     onSuccess: async (session) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: api.remote.list.key() }),
@@ -221,15 +237,20 @@ function NewSessionForm({ machines, onDone }: { machines: readonly RemoteMachine
     },
   });
 
-  const ready = !!machine && !!root && !!cli && !problem;
+  const totp = method?.kind === "totp";
+  const ready = !!machine && !!root && !!cli && !problem && (!totp || totpReady(code, now));
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (ready && !start.isPending) start.mutate();
   }
 
+  const errorCode = apiErrorCode(start.error);
+  const totpError: TotpError | null =
+    totp && errorCode?.startsWith("TOTP_") ? { code: errorCode, message: apiErrorMessage(start.error) } : null;
   let error: string | null = null;
-  if (start.error instanceof PasskeyError) error = start.error.message;
+  if (totpError) error = null;
+  else if (start.error instanceof PasskeyError) error = start.error.message;
   else if (start.error instanceof DOMException) error = t.passkeyFailed;
   else if (start.error) error = apiErrorMessage(start.error);
 
@@ -339,6 +360,9 @@ function NewSessionForm({ machines, onDone }: { machines: readonly RemoteMachine
             {t.promptHint}
           </p>
         </Field>
+        {totp && (
+          <TotpCodeField value={code} onChange={setCode} error={totpError} lockedUntil={remote.totp.lockedUntil} />
+        )}
         {remote.confirmOnMachine && <p className="text-xs text-muted-foreground">{t.confirmHint}</p>}
         {problem && (
           <Alert variant={problem === "unpaired" ? undefined : "destructive"}>

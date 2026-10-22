@@ -43,9 +43,9 @@ export function newStartAttempt(
   return newAuthAttempt({ ...input, action: "start" }, now);
 }
 
-async function newAuthAttempt(
+export async function newAuthAttempt(
   input: { machineId: string; action: RemoteAction; params: ControlParams | StartParams },
-  now: () => number,
+  now: () => number = Date.now,
 ): Promise<ControlAttempt> {
   const pair = (await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, [
     "deriveBits",

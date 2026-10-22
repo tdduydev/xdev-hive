@@ -8,15 +8,17 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { TERMINAL_DEFAULT_FONT_SIZE, TERMINAL_FONT_SIZES } from "@xdev-hive/ui/terminal-theme";
 import { ChevronLeftIcon, KeyboardIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { HttpWarning } from "@/components/http-warning.tsx";
 import { TerminalKeys, useKeyPad } from "@/components/terminal-keys.tsx";
 import { type LiveSink, TerminalView, type TerminalViewHandle } from "@/components/terminal-view.tsx";
+import { TotpCodeSheet, type TotpError } from "@/components/totp-code-sheet.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { formatDayTime, formatDuration } from "@/lib/format.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { cliLabel } from "@/lib/run-view.ts";
-import { newControlAttempt } from "@/lib/terminal/input-mac.ts";
 import { formatBytes, ORIGIN_LABEL, remoteEndReasonText, sessionDurationMs } from "@/lib/terminal/sessions.ts";
-import { getAssertion, PasskeyError, pairedDevices, passkeySupport } from "@/lib/terminal/webauthn.ts";
+import { markTotpUsed, remoteAuthMethod, requestRemoteAuth } from "@/lib/terminal/totp-auth.ts";
+import { PasskeyError } from "@/lib/terminal/webauthn.ts";
 import { type ControlState, RemoteSocket, type RevokeReason } from "@/lib/terminal/ws-client.ts";
 import { isEnded, isLive, STATE_VIEW } from "@/lib/terminal.ts";
 import type { Connection } from "@/lib/terminal-socket.ts";
@@ -59,7 +61,8 @@ const text: Dict<
     | "keyBarHint"
     | "unpaired"
     | "pairLink"
-    | "insecure"
+    | "totp_not_allowed"
+    | "totp_off"
     | "unsupported"
     | "passkeyFailed"
     | "hubMessage"
@@ -101,13 +104,15 @@ const text: Dict<
     resuming: "Đang lấy lại quyền gõ…",
     release: "Trả quyền",
     controlling: "Bạn đang điều khiển phiên này. Phím gõ ở đây đi thẳng tới máy.",
-    watching: "Đang xem trực tiếp. Bấm “Điều khiển” và xác thực bằng passkey để gõ.",
+    watching: "Đang xem trực tiếp. Bấm “Điều khiển” và xác thực bằng passkey hoặc mã Authenticator để gõ.",
     fontSize: "Cỡ chữ",
     keyBar: "Thanh phím",
     keyBarHint: "Esc, Tab, Ctrl, mũi tên và ô soạn dòng cho điện thoại",
     unpaired: "Thiết bị này chưa ghép với máy nên chưa điều khiển được.",
     pairLink: "Ghép thiết bị",
-    insecure: "Trang không chạy HTTPS nên trình duyệt không dùng được passkey.",
+    totp_not_allowed:
+      "Hub chạy HTTP nên trình duyệt không dùng được passkey, và tổ chức không cho dùng mã Authenticator. Bật HTTPS cho hub.",
+    totp_off: "Hub chạy HTTP nên cần mã Authenticator, nhưng máy chưa bật. Bật mã Authenticator tại máy rồi thử lại.",
     unsupported: "Trình duyệt này không hỗ trợ passkey.",
     passkeyFailed: "Không xác thực được bằng passkey.",
     hubMessage: "Hub báo",
@@ -147,13 +152,16 @@ const text: Dict<
     resuming: "Getting control back…",
     release: "Give back",
     controlling: "You are controlling this session. Keys typed here go straight to the machine.",
-    watching: "Watching live. Press “Take control” and verify with your passkey to type.",
+    watching: "Watching live. Press “Take control” and verify with your passkey or Authenticator code to type.",
     fontSize: "Font size",
     keyBar: "Key bar",
     keyBarHint: "Esc, Tab, Ctrl, arrows and a line composer for phones",
     unpaired: "This device is not paired with the machine yet, so it cannot take control.",
     pairLink: "Pair device",
-    insecure: "The page is not served over HTTPS, so the browser cannot use passkeys.",
+    totp_not_allowed:
+      "The hub runs on HTTP so the browser cannot use passkeys, and your organization does not allow Authenticator codes. Enable HTTPS on the hub.",
+    totp_off:
+      "The hub runs on HTTP so an Authenticator code is needed, but the machine has not turned it on. Turn it on at the machine, then try again.",
     unsupported: "This browser does not support passkeys.",
     passkeyFailed: "Passkey verification failed.",
     hubMessage: "Hub says",
@@ -198,7 +206,7 @@ function readFontSize(): number {
 type Notice =
   | { kind: "revoked"; reason: RevokeReason }
   | { kind: "message"; message: string }
-  | { kind: "text"; key: "unpaired" | "insecure" | "unsupported" | "passkeyFailed" };
+  | { kind: "text"; key: "unpaired" | "totp_not_allowed" | "totp_off" | "unsupported" | "passkeyFailed" };
 
 /**
  * Trang một phiên tương tác. Phiên đã đóng: phát lại bản ghi theo trang (`remote.chunks`). Phiên đang chạy: xem trực
@@ -253,6 +261,13 @@ function SessionView({ session }: { session: RemoteSession }) {
   const view = useRef<TerminalViewHandle>(null);
   const socket = useRef<RemoteSocket | null>(null);
   const pad = useKeyPad();
+  // Trạng thái TOTP của máy (bật, khoá tới khi nào) và chính sách tổ chức nằm trong danh sách máy.
+  const machines = useQuery(api.remote.machines.queryOptions());
+  const machine = machines.data?.find((m) => m.id === session.machineId);
+  const [totpOpen, setTotpOpen] = useState(false);
+  const [totpError, setTotpError] = useState<TotpError | null>(null);
+  // Đang chờ máy trả lời một mã: từ chối lúc này hiện trong hộp nhập mã thay vì thông báo chung.
+  const totpPending = useRef(false);
   const ended = isEnded(session);
   const live = isLive(session);
   const state = STATE_VIEW[session.state];
@@ -285,46 +300,66 @@ function SessionView({ session }: { session: RemoteSession }) {
         onState: put,
         onControl: (value) => {
           setControl(value);
-          if (value === "granted") setNotice(null);
+          if (value === "granted") {
+            setNotice(null);
+            if (totpPending.current) {
+              totpPending.current = false;
+              markTotpUsed();
+              setTotpOpen(false);
+            }
+          }
         },
         onRevoked: (reason) => setNotice({ kind: "revoked", reason }),
-        onDenied: (_code, message) => setNotice({ kind: "message", message }),
+        onDenied: (code, message) => totpDenied(code, message) || setNotice({ kind: "message", message }),
         onEvent: () => {},
-        onError: (_code, message) => setNotice({ kind: "message", message }),
+        onError: (code, message) => totpDenied(code, message) || setNotice({ kind: "message", message }),
       },
     });
     socket.current = next;
     return next;
   };
 
-  const takeControl = async () => {
+  /** Từ chối mã TOTP vừa gửi: báo trong hộp nhập mã. Trả false nếu không phải đang chờ mã. */
+  function totpDenied(code: string, message: string): boolean {
+    if (!totpPending.current) return false;
+    totpPending.current = false;
+    // Mã sai thì máy không ghi nhận; mã dùng lại thì bước này coi như đã dùng.
+    if (code === "TOTP_REPLAY") markTotpUsed();
+    if (code === "TOTP_LOCKED") void machines.refetch();
+    setTotpError({ code, message });
+    setTotpOpen(true);
+    return true;
+  }
+
+  /** Xin quyền gõ. Hub HTTP: lần gọi đầu mở hộp nhập mã, lần sau (có `code`) mới gửi. */
+  const takeControl = async (code?: string) => {
     const current = socket.current;
     if (!current) return;
     setNotice(null);
-    const support = passkeySupport();
-    if (support !== "ok") {
-      setNotice({ kind: "text", key: support });
+    const method = remoteAuthMethod(machine ?? { id: session.machineId, totpAllowed: false, remote: null });
+    if (method.kind === "blocked") {
+      setNotice({ kind: "text", key: method.reason });
       return;
     }
-    const device = pairedDevices()[session.machineId];
-    if (!device) {
-      setNotice({ kind: "text", key: "unpaired" });
+    if (method.kind === "totp" && code === undefined) {
+      setTotpError(null);
+      setTotpOpen(true);
       return;
     }
+    totpPending.current = method.kind === "totp";
     try {
       await current.requestControl(async (connId) => {
-        const attempt = await newControlAttempt({
+        const proof = await requestRemoteAuth({
+          method,
           machineId: session.machineId,
-          params: { userId: me.id, deviceId: device.deviceId, sessionId: session.id, connId },
+          action: "control",
+          params: { userId: me.id, sessionId: session.id, connId },
+          ...(code ? { code } : {}),
         });
-        const assertion = await getAssertion({ challenge: attempt.challenge, credentialIds: [device.credentialId] });
-        return {
-          attempt,
-          deviceId: device.deviceId,
-          auth: { kind: "passkey", assertion, ephPub: attempt.ephPub, ts: attempt.ts, nonce: attempt.nonce },
-        };
-      });
+        return { attempt: proof.attempt, auth: proof.auth, ...(proof.deviceId ? { deviceId: proof.deviceId } : {}) };
+      }, code);
     } catch (error) {
+      totpPending.current = false;
       setNotice(
         error instanceof PasskeyError
           ? { kind: "message", message: error.message }
@@ -340,6 +375,8 @@ function SessionView({ session }: { session: RemoteSession }) {
   useEffect(() => {
     if (!autoControl || autoTried.current || !canControl || connection.kind !== "connected" || control !== "none")
       return;
+    // Phải biết máy (chính sách, TOTP) mới chọn được passkey hay mã.
+    if (!machines.data) return;
     autoTried.current = true;
     void navigate({ to: "/remote/$id", params: { id: session.id }, search: {}, replace: true });
     void takeControl();
@@ -385,6 +422,7 @@ function SessionView({ session }: { session: RemoteSession }) {
           {!session.isOwner && session.ownerName && <Meta label={t.owner}>{session.ownerName}</Meta>}
         </dl>
 
+        <HttpWarning />
         {ended && (
           <Alert variant={session.state === "failed" ? "destructive" : undefined}>
             {remoteEndReasonText(session, lang)}
@@ -505,6 +543,20 @@ function SessionView({ session }: { session: RemoteSession }) {
           />
         </div>
         {typing && keysOpen && <TerminalKeys pad={pad} send={(data) => view.current?.send(data)} />}
+        <TotpCodeSheet
+          open={totpOpen}
+          onOpenChange={(open) => {
+            setTotpOpen(open);
+            if (!open) setTotpError(null);
+          }}
+          onSubmit={(code) => {
+            setTotpError(null);
+            void takeControl(code);
+          }}
+          pending={control === "requesting"}
+          error={totpError}
+          lockedUntil={machine?.remote?.totp.lockedUntil}
+        />
       </PageBody>
     </>
   );

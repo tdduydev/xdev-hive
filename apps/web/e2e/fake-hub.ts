@@ -35,6 +35,9 @@ import {
   inputMac,
   inputMacPayload,
   PASSKEY_KEY_INFO,
+  sessionKeyInfo,
+  TERM_DENY_MESSAGES,
+  TOTP_DEVICE_ID,
   toBase64url,
 } from "@xdev-hive/contracts/terminal-auth";
 import { deliveryApprovalsDefaults } from "./delivery-approvals-fixture.ts";
@@ -1066,6 +1069,11 @@ export function remoteFixture(
     revokeError?: Reply;
     /** `remote.start` trả lỗi này (máy từ chối, hết giờ chờ máy…). */
     startError?: Reply;
+    /**
+     * Mã Authenticator (hub HTTP, T028): máy bật TOTP và tổ chức cho dùng (`allowed` mặc định true). Mã trong `codes`
+     * đúng một lần, dùng lại thì `TOTP_REPLAY`; `LOCK_CODE` làm máy khoá; mã khác `TOTP_INVALID`.
+     */
+    totp?: { codes: string[]; allowed?: boolean };
   } = {},
 ) {
   const state = {
@@ -1103,11 +1111,25 @@ export function remoteFixture(
     pairCalls: [] as Record<string, unknown>[],
     revokeCalls: [] as { machineId: string; deviceId: string }[],
     startCalls: [] as Record<string, unknown>[],
+    totpUsed: [] as string[],
+    totpLockedUntil: null as string | null,
     ticketCalls: 0,
     /** Giả mất mạng: xin vé trả 503 (lỗi tạm) nên trang cứ nối lại theo backoff. */
     offline: false,
   };
   const chunks = (opts.chunks ?? []).map((text, seq) => ({ seq, data: b64(text) }));
+  /** Kiểm mã như worker: trả mã từ chối, null là đúng (và đánh dấu đã dùng). */
+  const checkTotp = (code: string): "TOTP_INVALID" | "TOTP_REPLAY" | "TOTP_LOCKED" | null => {
+    if (state.totpLockedUntil) return "TOTP_LOCKED";
+    if (code === LOCK_CODE) {
+      state.totpLockedUntil = new Date(Date.now() + 5 * 60_000).toISOString();
+      return "TOTP_LOCKED";
+    }
+    if (state.totpUsed.includes(code)) return "TOTP_REPLAY";
+    if (!opts.totp?.codes.includes(code)) return "TOTP_INVALID";
+    state.totpUsed.push(code);
+    return null;
+  };
   const machine = (id: string, name: string, over: Record<string, unknown> = {}) => ({
     id,
     name,
@@ -1118,11 +1140,15 @@ export function remoteFixture(
       roots: [{ id: "r1", label: "payment-api" }],
       clis: ["claude"],
       accounts: [],
-      totp: { enabled: false, locked: false, lockedUntil: null },
+      totp: {
+        enabled: opts.totp !== undefined,
+        locked: state.totpLockedUntil !== null,
+        lockedUntil: state.totpLockedUntil,
+      },
       confirmOnMachine: true,
       updatedAt: "2026-10-15T00:00:00.000Z",
     },
-    totpAllowed: false,
+    totpAllowed: opts.totp ? opts.totp.allowed !== false : false,
     sessions: [],
     ...over,
   });
@@ -1208,6 +1234,11 @@ export function remoteFixture(
       const call = input as Record<string, unknown>;
       state.startCalls.push(call);
       if (opts.startError) return opts.startError;
+      const auth = call.auth as { kind: string; code?: string };
+      if (auth.kind === "totp") {
+        const denied = checkTotp(auth.code ?? "");
+        if (denied) return fail(denied, 403, TERM_DENY_MESSAGES[denied]);
+      }
       const session = remoteSession({
         id: REMOTE_SESSION_STARTED,
         machineId: call.machineId,
@@ -1252,8 +1283,11 @@ export function remoteFixture(
       return ok(call);
     },
   };
-  return { state, rpc };
+  return { state, rpc, checkTotp };
 }
+
+/** Mã làm máy giả khoá TOTP (nhập sai quá nhiều lần). */
+export const LOCK_CODE = "999999";
 
 /**
  * Hub và worker giả cho WebSocket của phiên trên máy cá nhân (`remoteClientFrame`). Kiểm như worker thật: chữ ký passkey
@@ -1278,7 +1312,7 @@ export async function fakeRemoteSocket(
     outputs: [] as string[],
     inputs: [] as string[],
     resizes: [] as { cols: number; rows: number }[],
-    grant: null as { key: CryptoKey; last: number; connId: string } | null,
+    grant: null as { key: CryptoKey; last: number; connId: string; deviceId: string } | null,
     rejected: [] as string[],
     controls: 0,
     resumes: [] as Frame[],
@@ -1311,7 +1345,11 @@ export async function fakeRemoteSocket(
         if (seq > after) ws.send(JSON.stringify({ t: "out", seq, data: b64(text) }));
       });
       if (frame.resumeToken !== undefined) {
-        if (state.grant && frame.resumeToken === RESUME_TOKEN && frame.deviceId === opts.deviceId) {
+        if (
+          state.grant &&
+          frame.resumeToken === RESUME_TOKEN &&
+          (frame.deviceId ?? TOTP_DEVICE_ID) === state.grant.deviceId
+        ) {
           state.grant.connId = connId;
           ws.send(JSON.stringify({ t: "granted", workerEphPub, resumeToken: RESUME_TOKEN }));
         } else {
@@ -1321,6 +1359,27 @@ export async function fakeRemoteSocket(
     }
     if (frame.t === "control") {
       state.controls += 1;
+      if ((frame.auth as { kind: string }).kind === "totp") {
+        const auth = frame.auth as { code: string; ephPub: string; ts: number; nonce: string };
+        const denied = frame.deviceId === undefined ? fixture.checkTotp(auth.code) : "AUTH_INVALID";
+        if (denied) {
+          ws.send(JSON.stringify({ t: "denied", code: denied, message: TERM_DENY_MESSAGES[denied] }));
+          return;
+        }
+        const challenge = await challengeBytes({
+          machineId: String(session().machineId),
+          action: "control",
+          params: { userId: USER.id, deviceId: TOTP_DEVICE_ID, sessionId: opts.sessionId, connId },
+          ephPub: auth.ephPub,
+          ts: auth.ts,
+          nonce: auth.nonce,
+        });
+        const info = sessionKeyInfo({ kind: "totp", code: auth.code });
+        const key = await deriveInputKey(worker.privateKey, auth.ephPub, challenge, info);
+        state.grant = { key, last: 0, connId, deviceId: TOTP_DEVICE_ID };
+        ws.send(JSON.stringify({ t: "granted", workerEphPub, resumeToken: RESUME_TOKEN }));
+        return;
+      }
       const auth = frame.auth as {
         kind: string;
         ephPub: string;
@@ -1352,7 +1411,7 @@ export async function fakeRemoteSocket(
         return;
       }
       const key = await deriveInputKey(worker.privateKey, auth.ephPub, challenge, PASSKEY_KEY_INFO);
-      state.grant = { key, last: 0, connId };
+      state.grant = { key, last: 0, connId, deviceId: opts.deviceId };
       ws.send(JSON.stringify({ t: "granted", workerEphPub, resumeToken: RESUME_TOKEN }));
     }
     if (frame.t === "release") state.grant = null;

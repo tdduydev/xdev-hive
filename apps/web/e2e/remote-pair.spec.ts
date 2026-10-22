@@ -156,7 +156,7 @@ test("hub chạy HTTP: báo cần HTTPS, không có nút ghép; trang Điều kh
   await expect.poll(() => page.evaluate(() => window.location.hash)).toBe("");
 
   await page.goto("/remote");
-  await expect(page.getByText("Hub chạy HTTP: nội dung phiên và phím gõ không được mã hoá")).toBeVisible();
+  await expect(page.getByText("Hub chạy HTTP: nội dung phiên và phím gõ đi qua mạng không mã hoá")).toBeVisible();
 });
 
 test("link thiếu bí mật: nói quét lại mã QR", async ({ page }) => {

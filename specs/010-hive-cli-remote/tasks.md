@@ -548,7 +548,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ---
 
-- [ ] T028 [US2] [US3] Web: nhập mã TOTP và cảnh báo HTTP
+- [x] T028 [US2] [US3] Web: nhập mã TOTP và cảnh báo HTTP
   - Khi trang không phải secure context: `lib/terminal/totp-auth.ts` (gửi `auth{kind: "totp", code, ephPub, ts, nonce}`;
     trộn mã vào HKDF như worker), `totp-code-sheet.tsx` (ô 6 số, "Chờ mã mới" khi mã vừa dùng, báo `TOTP_INVALID`,
     `TOTP_REPLAY`, `TOTP_LOCKED` còn bao lâu, `TOTP_NOT_ALLOWED`), `http-warning.tsx` ("Hub chạy HTTP: nội dung phiên và
@@ -559,6 +559,15 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Scope**: `apps/web/src/lib/terminal/{totp-auth.ts,totp-auth.test.ts}`,
     `apps/web/src/components/{totp-code-sheet.tsx,http-warning.tsx}`,
     `apps/web/src/pages/remote/{remote-page.tsx,session-page.tsx}`, `apps/web/e2e/{remote-totp.spec.ts,fake-hub.ts}`
+  - Đã làm (CLI010): `remoteAuthMethod` chọn một chỗ: secure context → passkey (thiết bị đã ghép), không bao giờ hỏi mã;
+    HTTP → mã khi `totpAllowed` và máy bật TOTP, không thì nói lý do (`totp_not_allowed`, `totp_off`).
+    `requestRemoteAuth` dựng bằng chứng cho `start` và `control` (TOTP: challenge dùng `TOTP_DEVICE_ID`, không gửi
+    `deviceId`, mã trộn vào HKDF qua `RemoteSocket.requestControl(…, code)`). Nhớ bước 30 s vừa dùng trong bộ nhớ trang để
+    báo "Chờ mã mới" trước khi gửi (mở phiên bằng mã rồi xin quyền gõ ngay). `TotpCodeField` (tấm "Mở phiên mới") và
+    `TotpCodeSheet` (trang phiên) báo `TOTP_INVALID`, `TOTP_REPLAY`, `TOTP_LOCKED` kèm số phút còn khoá (từ
+    `machines.remote.totp.lockedUntil`), `TOTP_NOT_ALLOWED`. `HttpWarning` trên danh sách và trang phiên. Playwright
+    `remote-totp.spec.ts` (giả `isSecureContext = false`, đồng hồ giả của Playwright cho bước 30 s), vitest
+    `totp-auth.test.ts`.
   - **Phụ thuộc**: T032, T052 (cùng làn), T027 · **Mức**: vừa
 
 ## Phase 7: User Story 6 — `hive attach` (P2)
