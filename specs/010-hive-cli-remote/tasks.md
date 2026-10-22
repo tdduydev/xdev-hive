@@ -517,10 +517,19 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
     `start_unit_test.go` (chạy cả Windows). Chưa có: `term_opened` chưa cấp quyền điều khiển, điện thoại gửi `control`
     sau khi mở (T051/T052 chốt).
 
-- [ ] T051 [US4] Hub: route `start`
+- [x] T051 [US4] Hub: route `start`
   - Kiểm chủ máy, máy online có `terminal` và bật từ xa; gắn chính sách agent của tổ chức (model, mức quyền) vào
     `term_start`; theo dõi `requestId`, đổi `term_denied` thành lỗi tiếng Việt; audit `terminal.open|deny`.
   - **Scope**: `apps/hub/src/modules/terminal/{start.ts,router.ts,start.db.test.ts}`
+  - Đã làm (CLI010): `start.ts`. Route `remote.start` (orgMember, không giữ transaction lúc chờ) chỉ cho chủ máy
+    (`MACHINE_NOT_YOURS`), máy online có `terminal`, máy chưa báo tắt (`REMOTE_NOT_ENABLED`), TOTP khi chính sách cho
+    (`TOTP_NOT_ALLOWED`); passkey thiếu `deviceId` → `DEVICE_NOT_FOUND`, TOTP dùng `TOTP_DEVICE_ID`. Model theo
+    `resolveModel(policy, cli, null)`, mức quyền theo `defaultPermissionMode` qua `resolvePermission`. Chờ `term_opened`
+    (`origin: remote`, cùng `requestId`, đúng máy) hay `term_denied` tới 70 s (`START_TIMEOUT`), móc trong `withRemoteLive`.
+    Lỗi giữ mã của máy (`TOTP_LOCKED`, `ROOT_ESCAPE`…) với câu `TERM_DENY_MESSAGES`; xác thực → 403, thư mục/CLI → 400,
+    còn lại 409. Audit `terminal.deny` (gồm lỗi hub tự chặn, ghi ở transaction riêng), `totp_ok`/`totp_fail`;
+    `terminal.open` vẫn ghi ở `recordOpened` (có `requestId`). Hub không ghi được phiên (đủ số phiên) thì `term_close` và
+    `BUSY`. Còn: máy trả lời sau khi hết giờ thì phiên vẫn mở và hiện trong danh sách.
   - **Phụ thuộc**: T041 (cùng làn) · **Mức**: vừa
 
 - [ ] T052 [US4] Web: "Mở phiên mới"

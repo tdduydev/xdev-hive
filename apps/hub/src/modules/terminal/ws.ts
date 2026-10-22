@@ -54,6 +54,7 @@ import { getRemoteSession } from "./queries.ts";
 import { machineOwner, personal } from "./record.ts";
 import { remoteDevices, terminalSessions } from "./schema.ts";
 import { loadSession, readChunks, sessionView } from "./service.ts";
+import { onStartDenied, onStartOpened } from "./start.ts";
 import { totpAllowed } from "./totp.ts";
 
 /**
@@ -648,8 +649,8 @@ export function withRemoteLive(
   }
 
   async function onRemote(machine: AuthedMachine, msg: RemoteMessage) {
-    // `term_denied` mang requestId của `term_start` (T051); từ chối `control` đi bằng `term_event`.
-    if (msg.type === "term_denied") return;
+    // `term_denied` chỉ mang requestId của `term_start`; từ chối `control` đi bằng `term_event`.
+    if (msg.type === "term_denied") return onStartDenied(machine, msg);
     const live = ownLive(machine, msg.sessionId);
     const conn = findConn(live, msg.connId);
     if (msg.type === "term_granted") {
@@ -698,6 +699,10 @@ export function withRemoteLive(
     onMessage: async (machine, msg) => {
       if (msg.type === "term_exit") return onExit(machine, msg);
       await base.onMessage(machine, msg);
+      // Sau khi ghi phiên, để route `start` đang chờ đọc được dòng phiên ngay.
+      if (msg.type === "term_opened" && msg.origin === "remote" && msg.requestId) {
+        onStartOpened(machine, msg.requestId, msg.sessionId);
+      }
       if (msg.type === "term_event") {
         await onEvent(machine, msg).catch((e: unknown) => logger.error("Không chuyển được sự kiện terminal", e));
       }
