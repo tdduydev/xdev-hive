@@ -72,7 +72,7 @@ export interface PullRequestInput {
 
 /**
  * Tên theo GitHub. `issue_comment` ở GitLab là note events, gồm cả bình luận trên merge request. `pipeline`, `job` là
- * Pipeline/Job events của GitLab; GitHub chưa đăng ký (workflow_run, workflow_job làm ở đợt sau).
+ * Pipeline/Job events của GitLab, ở GitHub là `workflow_run`, `workflow_job`.
  */
 export type WebhookEvent =
   | "push"
@@ -176,7 +176,10 @@ export interface ScmUser {
   id: number | null;
 }
 
-/** Trạng thái pipeline và job, theo tên của GitLab. */
+/**
+ * Trạng thái pipeline và job, theo tên của GitLab. `waiting` chỉ GitHub có: run hoặc job dừng chờ người duyệt
+ * deployment vào environment được bảo vệ.
+ */
 export const CI_STATUSES = [
   "created",
   "waiting_for_resource",
@@ -190,10 +193,14 @@ export const CI_STATUSES = [
   "skipped",
   "manual",
   "scheduled",
+  "waiting",
 ] as const;
 export type CiStatus = (typeof CI_STATUSES)[number];
 
-/** Còn chạy tiếp mà không cần ai bấm: log còn ghi thêm, trạng thái còn đổi. `manual`, `scheduled` chờ người hoặc giờ. */
+/**
+ * Còn chạy tiếp mà không cần ai bấm: log còn ghi thêm, trạng thái còn đổi. `manual`, `scheduled`, `waiting` chờ người
+ * hoặc giờ.
+ */
 export const CI_ACTIVE_STATUSES: readonly CiStatus[] = [
   "created",
   "waiting_for_resource",
@@ -209,6 +216,35 @@ export const CI_ACTIVE_STATUSES: readonly CiStatus[] = [
  */
 export function asCiStatus(value: unknown): CiStatus {
   return CI_STATUSES.find((s) => s === value) ?? "pending";
+}
+
+/**
+ * Trạng thái run hoặc job của GitHub Actions (`status` + `conclusion`) theo tên của GitLab. `action_required` là chờ
+ * người bấm nên coi như `manual`; kết luận lạ coi là lỗi vì run đã dừng.
+ */
+export function githubCiStatus(status: unknown, conclusion: unknown): CiStatus {
+  switch (status) {
+    case "completed":
+      switch (conclusion) {
+        case "success":
+        case "neutral":
+          return "success";
+        case "skipped":
+          return "skipped";
+        case "cancelled":
+          return "canceled";
+        case "action_required":
+          return "manual";
+        default:
+          return "failed";
+      }
+    case "in_progress":
+      return "running";
+    case "waiting":
+      return "waiting";
+    default:
+      return "pending";
+  }
 }
 
 // Payload webhook của GitLab có lúc gửi `2016-08-12 15:23:28 UTC`; dạng này không thuộc chuẩn mà Date phải đọc được.
@@ -238,6 +274,8 @@ export interface CiPipeline {
   durationSec: number | null;
   /** Người chạy pipeline (username). */
   user: string | null;
+  /** Tên hiện trên màn hình. GitHub có tên workflow và số lượt chạy; vắng thì màn hình tự đặt theo id. */
+  title?: string | null;
 }
 
 export interface CiJob {
@@ -282,6 +320,24 @@ export interface JobLogChunk {
   text: string;
   next: number;
   complete: boolean;
+}
+
+/** Một environment đang chờ duyệt deployment của run GitHub. */
+export interface PendingDeployment {
+  environment: string;
+  environmentId: string;
+  url: string | null;
+  /** Token kết nối có được duyệt environment này không (là người duyệt được chỉ định). */
+  canApprove: boolean;
+  /** Người hoặc team được chỉ định duyệt. */
+  reviewers: string[];
+}
+
+export interface ReviewDeploymentsInput {
+  /** Tên environment, phải đang chờ duyệt. */
+  environments: string[];
+  decision: "approve" | "reject";
+  comment: string;
 }
 
 /** Commit giữa hai bản của `compare`, cũ tới mới. `author` là tên tác giả trong git, không phải tài khoản. */
@@ -376,7 +432,8 @@ export interface GitProvider {
   /** Đóng PR không merge (đề xuất skill bị từ chối). PR đã đóng hoặc đã merge thì bỏ qua. */
   closePR(ref: RepoRef, number: number): Promise<void>;
 
-  // CI. Chỉ GitLab có; GitHub và provider local ném lỗi `unsupported`. Thao tác ghi dùng token kết nối của dự án.
+  // CI: pipeline GitLab, workflow run GitHub Actions. Provider local ném lỗi `unsupported`. Thao tác ghi dùng token kết
+  // nối của dự án.
   listPipelines(ref: RepoRef, opts: ListPipelinesOptions): Promise<PipelinePage>;
   /** Mọi job của pipeline (không gồm lần chạy cũ của job đã chạy lại), theo thứ tự nhà cung cấp trả. */
   pipelineJobs(ref: RepoRef, pipelineId: string): Promise<CiJob[]>;
@@ -390,6 +447,11 @@ export interface GitProvider {
   cancelJob(ref: RepoRef, jobId: string): Promise<CiJob>;
   /** Chạy job chờ tay (`manual`). Job ở trạng thái khác thì lỗi invalid. */
   playJob(ref: RepoRef, jobId: string): Promise<CiJob>;
+  // Duyệt deployment chỉ GitHub có; provider không có hai hàm này thì người gọi báo chưa hỗ trợ.
+  /** Environment đang chờ duyệt của run; run không chờ thì mảng rỗng. */
+  pendingDeployments?(ref: RepoRef, pipelineId: string): Promise<PendingDeployment[]>;
+  /** Duyệt hoặc từ chối. Environment không đang chờ thì lỗi invalid. */
+  reviewDeployments?(ref: RepoRef, pipelineId: string, input: ReviewDeploymentsInput): Promise<void>;
 }
 
 /** Cho phép test và proxy thay `fetch`, không phụ thuộc dispatcher toàn cục. */

@@ -29,7 +29,7 @@ export interface WebhookRefreshResult {
 }
 
 /**
- * Đăng ký lại webhook cho mọi dự án GitLab đang hoạt động của các tổ chức `orgIds`, để dự án tạo trước khi
+ * Đăng ký lại webhook cho mọi dự án GitLab, GitHub đang hoạt động của các tổ chức `orgIds`, để dự án tạo trước khi
  * WEBHOOK_EVENTS có pipeline, job cũng nhận sự kiện CI. `addWebhook` cập nhật webhook cùng URL nên chạy lại bao nhiêu
  * lần cũng không tạo thêm webhook. Chỉ dự án đã xong bước add-webhook: dự án tắt webhook lúc tạo thì giữ nguyên.
  *
@@ -53,7 +53,7 @@ export async function refreshProjectWebhooks(
             eq(projectProvisionSteps.state, "done"),
           ),
         )
-        .where(and(eq(projects.state, "active"), eq(projects.scmKind, "gitlab"), isNotNull(projects.webhookSecretEnc)));
+        .where(and(eq(projects.state, "active"), isNotNull(projects.webhookSecretEnc)));
       const out: WebhookRefreshItem[] = [];
       for (const { project, step } of rows) {
         out.push({
@@ -74,7 +74,7 @@ export async function refreshProjectWebhooks(
   return result;
 }
 
-/** Gọi GitLab ngoài transaction. Lỗi ở một dự án (repo đã xoá, token hết quyền) ghi lại rồi làm tiếp dự án khác. */
+/** Gọi GitLab, GitHub ngoài transaction. Lỗi ở một dự án (repo đã xoá, token hết quyền) ghi lại rồi làm tiếp dự án khác. */
 export async function applyWebhookRefresh(
   providerFactory: ProviderFactory,
   items: readonly WebhookRefreshItem[],

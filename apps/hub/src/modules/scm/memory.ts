@@ -17,6 +17,7 @@ import type {
   GitProviderKind,
   ListPipelinesOptions,
   MergeMethod,
+  PendingDeployment,
   PullRequestFile,
   PullRequestInput,
   PullRequestState,
@@ -24,6 +25,7 @@ import type {
   RepoRef,
   ReviewComment,
   ReviewCommentInput,
+  ReviewDeploymentsInput,
   ScmUser,
   WebhookInput,
 } from "./types.ts";
@@ -57,6 +59,10 @@ export interface MemoryRepo {
   pipelines: CiPipeline[];
   /** Job của mọi pipeline, theo thứ tự pipelineJobs trả. */
   jobs: MemoryJob[];
+  /** Environment đang chờ duyệt theo pipeline (GitHub Actions). */
+  deployments: Map<string, string[]>;
+  /** Lần duyệt, từ chối đã gửi, theo thứ tự. */
+  reviews: Array<{ pipelineId: string } & ReviewDeploymentsInput>;
 }
 
 export interface MemoryJob extends CiJob {
@@ -74,6 +80,8 @@ export interface MemoryPipelineInput {
   status?: CiStatus;
   source?: string;
   jobs?: Array<{ name: string; stage?: string; status?: CiStatus; log?: string; allowFailure?: boolean }>;
+  /** Environment chờ duyệt như GitHub Actions; có thì trạng thái mặc định là `waiting`. */
+  pendingDeployments?: string[];
 }
 
 export interface MemoryPull {
@@ -93,6 +101,9 @@ export interface MemoryPull {
 }
 
 export interface MemoryProvider extends GitProvider {
+  // Bản giả luôn có duyệt deployment, kể cả kind gitlab, để test gọi thẳng không cần kiểm.
+  pendingDeployments: NonNullable<GitProvider["pendingDeployments"]>;
+  reviewDeployments: NonNullable<GitProvider["reviewDeployments"]>;
   readonly repos: Map<string, MemoryRepo>;
   /** Owner mà provider có quyền tạo repo; owner khác thì checkAccess báo thiếu quyền. */
   readonly owners: Set<string>;
@@ -163,6 +174,8 @@ export function createMemoryProvider(
       statuses: new Map(),
       pipelines: [],
       jobs: [],
+      deployments: new Map(),
+      reviews: [],
     };
     repos.set(key(ref), repo);
     return repo;
@@ -327,7 +340,7 @@ export function createMemoryProvider(
         id: String(seq),
         ref: branch,
         sha,
-        status: input.status ?? "running",
+        status: input.status ?? (input.pendingDeployments?.length ? "waiting" : "running"),
         source: input.source ?? "push",
         url: `${repo.info.webUrl}/-/pipelines/${seq}`,
         createdAt: now,
@@ -338,6 +351,7 @@ export function createMemoryProvider(
         user: null,
       };
       repo.pipelines.push(pipeline);
+      if (input.pendingDeployments?.length) repo.deployments.set(pipeline.id, [...input.pendingDeployments]);
       const jobs = (input.jobs ?? []).map((j) => {
         seq += 1;
         const job: MemoryJob = {
@@ -752,6 +766,32 @@ export function createMemoryProvider(
       if (job.status !== "manual") throw wrongState(`job ${jobId} không chờ bấm tay`);
       job.status = "pending";
       return jobView(job);
+    }),
+    pendingDeployments: track("pendingDeployments", (ref: RepoRef, pipelineId: string): PendingDeployment[] => {
+      const repo = need(ref);
+      pipelineOf(repo, pipelineId);
+      return (repo.deployments.get(pipelineId) ?? []).map((environment, i) => ({
+        environment,
+        environmentId: String(i + 1),
+        url: `${repo.info.webUrl}/deployments/${environment}`,
+        canApprove: true,
+        reviewers: [],
+      }));
+    }),
+    reviewDeployments: track("reviewDeployments", (ref: RepoRef, pipelineId: string, input: ReviewDeploymentsInput) => {
+      const repo = need(ref);
+      const pipeline = pipelineOf(repo, pipelineId);
+      const waiting = repo.deployments.get(pipelineId) ?? [];
+      const missing = input.environments.filter((e) => !waiting.includes(e));
+      if (missing.length) throw wrongState(`environment ${missing.join(", ")} không chờ duyệt`);
+      repo.reviews.push({ pipelineId, ...input, environments: [...input.environments] });
+      const left = waiting.filter((e) => !input.environments.includes(e));
+      repo.deployments.set(pipelineId, left);
+      // Như GitHub: từ chối thì run lỗi ngay; duyệt hết thì job deploy chạy tiếp.
+      if (input.decision === "reject") {
+        pipeline.status = "failed";
+        pipeline.finishedAt = new Date().toISOString();
+      } else if (!left.length) pipeline.status = "running";
     }),
   };
 }

@@ -96,6 +96,13 @@ export async function scmTarget(tx: Tx, deps: CiDeps, project: ProjectRow): Prom
 
 const SOURCE_NAME: Record<CiSource, string> = { gitlab: "GitLab", github: "GitHub", jenkins: "Jenkins" };
 
+const SCM_ROLE_HINT: Record<ScmTarget["source"], string> = {
+  gitlab: "Cần tài khoản có vai trò Developer trở lên trong repo và token có scope api.",
+  github:
+    "Cần GitHub App hoặc token có quyền Actions (đọc và ghi) trên repo; duyệt deployment cần thêm quyền Deployments và tài khoản là người duyệt của environment.",
+  jenkins: "",
+};
+
 /** Lỗi của GitLab/GitHub thành lỗi nghiệp vụ nói rõ thiếu gì, ở đâu (US2 scenario 4). */
 export function scmDomainError(e: unknown, target: ScmTarget, what: string): unknown {
   if (!(e instanceof GitProviderError)) return e;
@@ -111,7 +118,7 @@ export function scmDomainError(e: unknown, target: ScmTarget, what: string): unk
       const scopes = e.missingScopes.length ? ` (thiếu scope ${e.missingScopes.join(", ")})` : "";
       return new ForbiddenError(
         "CI_SOURCE_FORBIDDEN",
-        `Token của kết nối Git "${target.connectionName}" không có quyền ${what} trên ${host} ${repo}${scopes}. Cần tài khoản có vai trò Developer trở lên trong repo và token có scope api.`,
+        `Token của kết nối Git "${target.connectionName}" không có quyền ${what} trên ${host} ${repo}${scopes}. ${SCM_ROLE_HINT[target.source]}`,
       );
     }
     case "not_found":
@@ -247,6 +254,7 @@ const GIT_STATUS: Record<CiStatus, CiRunStatus> = {
   canceled: "canceled",
   skipped: "skipped",
   manual: "waiting",
+  waiting: "waiting",
 };
 
 export const gitStatus = (s: CiStatus): CiRunStatus => GIT_STATUS[s] ?? "queued";
@@ -312,13 +320,14 @@ export function gitRun(
     finishedAt: string | null;
     durationSec: number | null;
     user: string | null;
+    title?: string | null | undefined;
   },
 ): CiRun {
   return {
     id: `${source}:${p.id}`,
     source,
     jobId: null,
-    title: `Pipeline #${p.id}`,
+    title: p.title || `Pipeline #${p.id}`,
     number: /^\d+$/.test(p.id) ? Number(p.id) : null,
     branch: p.ref || null,
     sha: p.sha || null,

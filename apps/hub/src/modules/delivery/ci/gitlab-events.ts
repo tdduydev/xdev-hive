@@ -10,7 +10,7 @@ import {
 import type { DeliveryDeps } from "../deps.ts";
 import { type CiPollDeps, markGitPipelineActive, queueGitlabRecheck, recordGitPipeline } from "./poll.ts";
 
-// Sự kiện pipeline và job của GitLab cập nhật `ci_runs_seen` và báo đỏ/xanh ngay trong transaction của webhook (FR-006).
+// Sự kiện pipeline và job của GitLab, GitHub Actions cập nhật `ci_runs_seen` và báo đỏ/xanh ngay trong transaction của webhook (FR-006).
 // Pipeline còn chạy thì hẹn hỏi lại sau 5 phút, phòng webhook lúc xong bị lỡ.
 
 const active = (s: CiStatus) => (CI_ACTIVE_STATUSES as readonly CiStatus[]).includes(s);
@@ -32,7 +32,7 @@ export function gitlabEventHandlers(
         jobs,
         now: now(),
       });
-      if (project.scmKind === "gitlab" && active(event.pipeline.status)) await recheck(ctx.tx, ctx.orgId, project.id);
+      if (active(event.pipeline.status)) await recheck(ctx.tx, ctx.orgId, project.id);
     },
     async job(event, ctx) {
       // Job xong không nói pipeline xong hay chưa: chờ sự kiện pipeline hoặc lần hỏi lại.
@@ -44,7 +44,7 @@ export function gitlabEventHandlers(
         jobs,
         now: now(),
       });
-      if (project.scmKind === "gitlab") await recheck(ctx.tx, ctx.orgId, project.id);
+      await recheck(ctx.tx, ctx.orgId, project.id);
     },
   };
 }

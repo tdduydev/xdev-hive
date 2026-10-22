@@ -31,7 +31,7 @@ import { renderTemplate } from "./template.ts";
 
 /**
  * Issue và bình luận để giao việc từ issue; push và PR để chuyển trạng thái task, run; pipeline và job cho bảng CI/CD
- * (GitHub bỏ qua hai sự kiện này tới khi có GitHub Actions). Đổi danh sách thì dự án cũ cần refreshProjectWebhooks.
+ * (GitHub là workflow_run, workflow_job). Đổi danh sách thì dự án cũ cần refreshProjectWebhooks.
  */
 export const WEBHOOK_EVENTS = [
   "push",

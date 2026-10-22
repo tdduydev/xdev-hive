@@ -13,7 +13,7 @@ import { DELIVERY_CI_POLL_QUEUE } from "../queues.ts";
 import { ciJenkinsConnections, ciProjectJobs, ciRunsSeen } from "../schema.ts";
 import { gitStatus, jenkinsRun, requirePool, scmTarget } from "./feed.ts";
 
-// Hỏi Jenkins theo lịch, hỏi lại GitLab khi lỡ webhook, và báo đỏ/xanh của nhánh mặc định (FR-006, plan.md mục 4).
+// Hỏi Jenkins theo lịch, hỏi lại GitLab, GitHub khi lỡ webhook, và báo đỏ/xanh của nhánh mặc định (FR-006, plan.md mục 4).
 // Gọi Jenkins/GitLab ngoài transaction: một nguồn chậm không được giữ kết nối pool. Phần ghi `ci_runs_seen` nằm ở đây
 // (không tách file) để gitlab-events.ts và webhook-refresh.ts dùng lại mà không import vòng.
 
@@ -371,7 +371,10 @@ export function ensureCiPoll(
   });
 }
 
-/** Hẹn hỏi lại GitLab sau 5 phút cho dự án còn pipeline chưa xong. */
+/**
+ * Hẹn hỏi lại GitLab, GitHub sau 5 phút cho dự án còn pipeline chưa xong. Job vẫn tên `gitlab` cho cả GitHub: đổi tên
+ * thì job đã xếp hàng và singletonKey cũ không còn khớp.
+ */
 export function queueGitlabRecheck(
   jobs: Jobs,
   target: { orgId: string; projectId: string },
@@ -611,7 +614,7 @@ async function recheckGitlabProject(
       );
     if (!pending.length) return null;
     const project = await loadProject(tx, data.projectId);
-    if (project?.scmKind !== "gitlab") return null;
+    if (!project) return null;
     const target = await scmTarget(tx, deps, project);
     return { project, target, ids: new Set(pending.map((p) => p.externalId.slice(prefix.length))) };
   });
