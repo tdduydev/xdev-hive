@@ -149,7 +149,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/components/token-score-card.tsx`.
   - **Kiểm**: Vitest: xem trước không ghi gì, bỏ chọn dòng, `aggressive` không chọn sẵn, kết quả có lỗi một dòng, hoàn tác.
 
-- [ ] **T011 [P] [—] [nhẹ] · 0,5 ngày — ADR 0037, sửa FR-012 spec 025, tài liệu người dùng** (song song đợt 1–2)
+- [x] **T011 [P] [—] [nhẹ] · 0,5 ngày — ADR 0037, sửa FR-012 spec 025, tài liệu người dùng** (song song đợt 1–2)
   - **Goal**: `docs/adr/0037-shared-context-local-files.md` (một nguồn, file cục bộ, dấu khối, gương Codex, thay FR-012);
     `docs/adr/README.md`; `specs/025-token-score/spec.md` FR-012 và gợi ý A3 trỏ sang spec 029; `docs/token-optimizer.md`
     (nút "Tối ưu", ngữ cảnh dùng chung); `docs/architecture.md` (gói `ctxsync`, `optimizeall`).
@@ -213,7 +213,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 4: Outbox và báo cáo token (P3)
 
-- [ ] **T019 [P] [US5] [nặng] · 1,5 ngày — Outbox tối thiểu trong worker**
+- [x] **T019 [P] [US5] [nặng] · 1,5 ngày — Outbox tối thiểu trong worker**
   - **Goal**: theo [spec 027 data-model](../027-hub-client-model/data-model.md) "Mục hộp thư đi", chỉ kênh `worker`:
     `outbox/<identity>/<ulid>.json` (0600), trạng thái `pending → sending → accepted|duplicate|rejected|expired`, backoff
     5 s → 5 phút, hết hạn 14 ngày, `sent.jsonl`; gửi bằng `hubclient.PostClientEvent` với `idempotencyKey` = ULID; lệnh
