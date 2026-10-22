@@ -36069,6 +36069,65 @@
                               "refreshCommits": 50,
                               "refreshDays": 7
                             }
+                          },
+                          "devOptimizer": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "level": {
+                                    "enum": [
+                                      "off",
+                                      "balanced",
+                                      "aggressive"
+                                    ],
+                                    "type": "string",
+                                    "default": "balanced"
+                                  },
+                                  "rtk": {
+                                    "type": "boolean",
+                                    "default": false
+                                  },
+                                  "codegraph": {
+                                    "type": "boolean",
+                                    "default": false
+                                  },
+                                  "autoCompactWindow": {
+                                    "anyOf": [
+                                      {
+                                        "type": "integer",
+                                        "minimum": 50000,
+                                        "maximum": 1000000
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
+                                  },
+                                  "contextBudgetTokens": {
+                                    "type": "integer",
+                                    "minimum": 500,
+                                    "maximum": 8000,
+                                    "default": 2000
+                                  },
+                                  "memoryAutoSync": {
+                                    "type": "boolean",
+                                    "default": false
+                                  },
+                                  "memorySyncMinutes": {
+                                    "type": "integer",
+                                    "minimum": 15,
+                                    "maximum": 1440,
+                                    "default": 60
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "default": null
                           }
                         },
                         "required": [
@@ -37642,6 +37701,65 @@
                             "refreshCommits": 50,
                             "refreshDays": 7
                           }
+                        },
+                        "devOptimizer": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "level": {
+                                  "enum": [
+                                    "off",
+                                    "balanced",
+                                    "aggressive"
+                                  ],
+                                  "type": "string",
+                                  "default": "balanced"
+                                },
+                                "rtk": {
+                                  "type": "boolean",
+                                  "default": false
+                                },
+                                "codegraph": {
+                                  "type": "boolean",
+                                  "default": false
+                                },
+                                "autoCompactWindow": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": 50000,
+                                      "maximum": 1000000
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ],
+                                  "default": null
+                                },
+                                "contextBudgetTokens": {
+                                  "type": "integer",
+                                  "minimum": 500,
+                                  "maximum": 8000,
+                                  "default": 2000
+                                },
+                                "memoryAutoSync": {
+                                  "type": "boolean",
+                                  "default": false
+                                },
+                                "memorySyncMinutes": {
+                                  "type": "integer",
+                                  "minimum": 15,
+                                  "maximum": 1440,
+                                  "default": 60
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "default": null
                         }
                       },
                       "required": [
@@ -39217,6 +39335,65 @@
                                 "refreshCommits": 50,
                                 "refreshDays": 7
                               }
+                            },
+                            "devOptimizer": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "level": {
+                                      "enum": [
+                                        "off",
+                                        "balanced",
+                                        "aggressive"
+                                      ],
+                                      "type": "string",
+                                      "default": "balanced"
+                                    },
+                                    "rtk": {
+                                      "type": "boolean",
+                                      "default": false
+                                    },
+                                    "codegraph": {
+                                      "type": "boolean",
+                                      "default": false
+                                    },
+                                    "autoCompactWindow": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 50000,
+                                          "maximum": 1000000
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "default": null
+                                    },
+                                    "contextBudgetTokens": {
+                                      "type": "integer",
+                                      "minimum": 500,
+                                      "maximum": 8000,
+                                      "default": 2000
+                                    },
+                                    "memoryAutoSync": {
+                                      "type": "boolean",
+                                      "default": false
+                                    },
+                                    "memorySyncMinutes": {
+                                      "type": "integer",
+                                      "minimum": 15,
+                                      "maximum": 1440,
+                                      "default": 60
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
                             }
                           },
                           "required": [
@@ -40945,6 +41122,65 @@
                                 "refreshCommits": 50,
                                 "refreshDays": 7
                               }
+                            },
+                            "devOptimizer": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "level": {
+                                      "enum": [
+                                        "off",
+                                        "balanced",
+                                        "aggressive"
+                                      ],
+                                      "type": "string",
+                                      "default": "balanced"
+                                    },
+                                    "rtk": {
+                                      "type": "boolean",
+                                      "default": false
+                                    },
+                                    "codegraph": {
+                                      "type": "boolean",
+                                      "default": false
+                                    },
+                                    "autoCompactWindow": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer",
+                                          "minimum": 50000,
+                                          "maximum": 1000000
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ],
+                                      "default": null
+                                    },
+                                    "contextBudgetTokens": {
+                                      "type": "integer",
+                                      "minimum": 500,
+                                      "maximum": 8000,
+                                      "default": 2000
+                                    },
+                                    "memoryAutoSync": {
+                                      "type": "boolean",
+                                      "default": false
+                                    },
+                                    "memorySyncMinutes": {
+                                      "type": "integer",
+                                      "minimum": 15,
+                                      "maximum": 1440,
+                                      "default": 60
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
                             }
                           },
                           "required": [
@@ -44138,6 +44374,65 @@
                           }
                         },
                         "additionalProperties": false
+                      },
+                      "devOptimizer": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "level": {
+                                "enum": [
+                                  "off",
+                                  "balanced",
+                                  "aggressive"
+                                ],
+                                "type": "string",
+                                "default": "balanced"
+                              },
+                              "rtk": {
+                                "type": "boolean",
+                                "default": false
+                              },
+                              "codegraph": {
+                                "type": "boolean",
+                                "default": false
+                              },
+                              "autoCompactWindow": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": 50000,
+                                    "maximum": 1000000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "default": null
+                              },
+                              "contextBudgetTokens": {
+                                "type": "integer",
+                                "minimum": 500,
+                                "maximum": 8000,
+                                "default": 2000
+                              },
+                              "memoryAutoSync": {
+                                "type": "boolean",
+                                "default": false
+                              },
+                              "memorySyncMinutes": {
+                                "type": "integer",
+                                "minimum": 15,
+                                "maximum": 1440,
+                                "default": 60
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     },
                     "additionalProperties": false
@@ -45207,6 +45502,65 @@
                         "refreshCommits": 50,
                         "refreshDays": 7
                       }
+                    },
+                    "devOptimizer": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "level": {
+                              "enum": [
+                                "off",
+                                "balanced",
+                                "aggressive"
+                              ],
+                              "type": "string",
+                              "default": "balanced"
+                            },
+                            "rtk": {
+                              "type": "boolean",
+                              "default": false
+                            },
+                            "codegraph": {
+                              "type": "boolean",
+                              "default": false
+                            },
+                            "autoCompactWindow": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": 50000,
+                                  "maximum": 1000000
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "contextBudgetTokens": {
+                              "type": "integer",
+                              "minimum": 500,
+                              "maximum": 8000,
+                              "default": 2000
+                            },
+                            "memoryAutoSync": {
+                              "type": "boolean",
+                              "default": false
+                            },
+                            "memorySyncMinutes": {
+                              "type": "integer",
+                              "minimum": 15,
+                              "maximum": 1440,
+                              "default": 60
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
                     }
                   },
                   "required": [
@@ -47355,6 +47709,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -47366,7 +47723,8 @@
                     "scope",
                     "author",
                     "createdAt",
-                    "supersededBy"
+                    "supersededBy",
+                    "pinned"
                   ]
                 }
               }
@@ -47706,7 +48064,7 @@
       },
       "get": {
         "operationId": "memory.list",
-        "summary": "Memory mình thấy được, mới nhất trước",
+        "summary": "Memory mình thấy được, ghim trước rồi mới nhất trước",
         "description": "Tổ chức lấy từ header `x-hive-org`.",
         "tags": [
           "knowledge"
@@ -47921,6 +48279,9 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       }
                     },
                     "required": [
@@ -47932,7 +48293,8 @@
                       "scope",
                       "author",
                       "createdAt",
-                      "supersededBy"
+                      "supersededBy",
+                      "pinned"
                     ]
                   }
                 }
@@ -48443,6 +48805,9 @@
                           }
                         ]
                       },
+                      "pinned": {
+                        "type": "boolean"
+                      },
                       "score": {
                         "type": "number"
                       },
@@ -48467,6 +48832,7 @@
                       "author",
                       "createdAt",
                       "supersededBy",
+                      "pinned",
                       "score",
                       "matchedBy"
                     ]
@@ -48986,6 +49352,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -48997,7 +49366,8 @@
                     "scope",
                     "author",
                     "createdAt",
-                    "supersededBy"
+                    "supersededBy",
+                    "pinned"
                   ]
                 }
               }
@@ -49476,6 +49846,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -49487,7 +49860,8 @@
                     "scope",
                     "author",
                     "createdAt",
-                    "supersededBy"
+                    "supersededBy",
+                    "pinned"
                   ]
                 }
               }
@@ -49859,6 +50233,518 @@
                   },
                   "required": [
                     "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memories/{id}/pin": {
+      "post": {
+        "operationId": "memory.pin",
+        "summary": "Ghim hoặc bỏ ghim memory (quyền như duyệt memory)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pinned": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "pinned"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "kind": {
+                      "enum": [
+                        "decision",
+                        "convention",
+                        "gotcha",
+                        "note"
+                      ],
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "approved",
+                        "pending"
+                      ],
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "level": {
+                          "enum": [
+                            "org",
+                            "team",
+                            "project"
+                          ],
+                          "type": "string"
+                        },
+                        "teamId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "projectId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "level",
+                        "teamId",
+                        "projectId"
+                      ]
+                    },
+                    "author": {
+                      "type": "object",
+                      "properties": {
+                        "userId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "runId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "userId",
+                        "runId"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "supersededBy": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "status",
+                    "content",
+                    "files",
+                    "scope",
+                    "author",
+                    "createdAt",
+                    "supersededBy",
+                    "pinned"
                   ]
                 }
               }
@@ -113827,6 +114713,65 @@
                                       }
                                     },
                                     "additionalProperties": false
+                                  },
+                                  "devOptimizer": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "level": {
+                                            "enum": [
+                                              "off",
+                                              "balanced",
+                                              "aggressive"
+                                            ],
+                                            "type": "string",
+                                            "default": "balanced"
+                                          },
+                                          "rtk": {
+                                            "type": "boolean",
+                                            "default": false
+                                          },
+                                          "codegraph": {
+                                            "type": "boolean",
+                                            "default": false
+                                          },
+                                          "autoCompactWindow": {
+                                            "anyOf": [
+                                              {
+                                                "type": "integer",
+                                                "minimum": 50000,
+                                                "maximum": 1000000
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ],
+                                            "default": null
+                                          },
+                                          "contextBudgetTokens": {
+                                            "type": "integer",
+                                            "minimum": 500,
+                                            "maximum": 8000,
+                                            "default": 2000
+                                          },
+                                          "memoryAutoSync": {
+                                            "type": "boolean",
+                                            "default": false
+                                          },
+                                          "memorySyncMinutes": {
+                                            "type": "integer",
+                                            "minimum": 15,
+                                            "maximum": 1440,
+                                            "default": 60
+                                          }
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   }
                                 },
                                 "additionalProperties": false
@@ -115519,6 +116464,65 @@
                                         }
                                       },
                                       "additionalProperties": false
+                                    },
+                                    "devOptimizer": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "level": {
+                                              "enum": [
+                                                "off",
+                                                "balanced",
+                                                "aggressive"
+                                              ],
+                                              "type": "string",
+                                              "default": "balanced"
+                                            },
+                                            "rtk": {
+                                              "type": "boolean",
+                                              "default": false
+                                            },
+                                            "codegraph": {
+                                              "type": "boolean",
+                                              "default": false
+                                            },
+                                            "autoCompactWindow": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "integer",
+                                                  "minimum": 50000,
+                                                  "maximum": 1000000
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ],
+                                              "default": null
+                                            },
+                                            "contextBudgetTokens": {
+                                              "type": "integer",
+                                              "minimum": 500,
+                                              "maximum": 8000,
+                                              "default": 2000
+                                            },
+                                            "memoryAutoSync": {
+                                              "type": "boolean",
+                                              "default": false
+                                            },
+                                            "memorySyncMinutes": {
+                                              "type": "integer",
+                                              "minimum": 15,
+                                              "maximum": 1440,
+                                              "default": 60
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
                                     }
                                   },
                                   "additionalProperties": false
@@ -117236,6 +118240,65 @@
                                     }
                                   },
                                   "additionalProperties": false
+                                },
+                                "devOptimizer": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "level": {
+                                          "enum": [
+                                            "off",
+                                            "balanced",
+                                            "aggressive"
+                                          ],
+                                          "type": "string",
+                                          "default": "balanced"
+                                        },
+                                        "rtk": {
+                                          "type": "boolean",
+                                          "default": false
+                                        },
+                                        "codegraph": {
+                                          "type": "boolean",
+                                          "default": false
+                                        },
+                                        "autoCompactWindow": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer",
+                                              "minimum": 50000,
+                                              "maximum": 1000000
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ],
+                                          "default": null
+                                        },
+                                        "contextBudgetTokens": {
+                                          "type": "integer",
+                                          "minimum": 500,
+                                          "maximum": 8000,
+                                          "default": 2000
+                                        },
+                                        "memoryAutoSync": {
+                                          "type": "boolean",
+                                          "default": false
+                                        },
+                                        "memorySyncMinutes": {
+                                          "type": "integer",
+                                          "minimum": 15,
+                                          "maximum": 1440,
+                                          "default": 60
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               },
                               "additionalProperties": false
@@ -222093,6 +223156,65 @@
                                           }
                                         },
                                         "additionalProperties": false
+                                      },
+                                      "devOptimizer": {
+                                        "anyOf": [
+                                          {
+                                            "type": "object",
+                                            "properties": {
+                                              "level": {
+                                                "enum": [
+                                                  "off",
+                                                  "balanced",
+                                                  "aggressive"
+                                                ],
+                                                "type": "string",
+                                                "default": "balanced"
+                                              },
+                                              "rtk": {
+                                                "type": "boolean",
+                                                "default": false
+                                              },
+                                              "codegraph": {
+                                                "type": "boolean",
+                                                "default": false
+                                              },
+                                              "autoCompactWindow": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "integer",
+                                                    "minimum": 50000,
+                                                    "maximum": 1000000
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ],
+                                                "default": null
+                                              },
+                                              "contextBudgetTokens": {
+                                                "type": "integer",
+                                                "minimum": 500,
+                                                "maximum": 8000,
+                                                "default": 2000
+                                              },
+                                              "memoryAutoSync": {
+                                                "type": "boolean",
+                                                "default": false
+                                              },
+                                              "memorySyncMinutes": {
+                                                "type": "integer",
+                                                "minimum": 15,
+                                                "maximum": 1440,
+                                                "default": 60
+                                              }
+                                            },
+                                            "additionalProperties": false
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
                                       }
                                     },
                                     "additionalProperties": false
