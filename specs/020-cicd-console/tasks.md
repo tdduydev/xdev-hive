@@ -536,7 +536,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/web/e2e/delivery-ci.spec.ts` (mới), `apps/web/e2e/delivery-ci-fixture.ts`
   - **Kiểm**: web typecheck, test, Playwright file của task (360 px, bàn phím).
 
-- [ ] **T022 [P] [US3] [vừa] · 1,5 ngày — Web: máy chủ, môi trường, đích triển khai**
+- [x] **T022 [P] [US3] [vừa] · 1,5 ngày — Web: máy chủ, môi trường, đích triển khai**
   - **Phụ thuộc**: T011.
   - **Goal**: US3, FR-010…FR-014 (giao diện).
     - `servers-page.tsx`, `server-dialogs.tsx`: danh sách theo đội; thêm máy chủ; khoá công khai và lệnh cài (nút
