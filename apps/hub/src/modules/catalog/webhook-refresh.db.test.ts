@@ -87,16 +87,17 @@ afterAll(async () => {
 });
 
 describe("refreshProjectWebhooks", () => {
-  it("dự án GitLab đang hoạt động: cùng webhook, thêm pipeline, job; GitHub và dự án lưu trữ giữ nguyên", async () => {
+  it("dự án GitLab, GitHub đang hoạt động: cùng webhook, thêm pipeline, job; dự án lưu trữ giữ nguyên", async () => {
     const gl = await activeProject("gitlab", "whr-gl");
     const archived = await activeProject("gitlab", "whr-luu");
     const gh = await activeProject("github", "whr-gh");
     await admin.query("update hive.projects set state = 'archived' where id = $1", [archived.id]);
     const before = [...gl.repo.hooks.entries()];
+    const ghBefore = [...gh.repo.hooks.keys()];
 
     const result = await refreshProjectWebhooks({ pool: app, masterKey, providerFactory, publicUrl }, [org.orgId]);
 
-    expect(result).toEqual({ updated: 1, failed: [] });
+    expect(result).toEqual({ updated: 2, failed: [] });
     const after = [...gl.repo.hooks.entries()];
     expect(after.map(([id]) => id)).toEqual(before.map(([id]) => id));
     expect(after[0]?.[1]).toMatchObject({
@@ -104,10 +105,14 @@ describe("refreshProjectWebhooks", () => {
       events: ["push", "pull_request", "issues", "issue_comment", "pipeline", "job"],
     });
     expect([...archived.repo.hooks.values()][0]?.events).not.toContain("pipeline");
-    expect([...gh.repo.hooks.values()][0]?.events).not.toContain("pipeline");
+    expect([...gh.repo.hooks.keys()]).toEqual(ghBefore);
+    expect([...gh.repo.hooks.values()][0]).toMatchObject({
+      url: `${publicUrl}/hooks/git/${gh.id}`,
+      events: ["push", "pull_request", "issues", "issue_comment", "pipeline", "job"],
+    });
   });
 
-  it("tổ chức không có dự án GitLab thì không làm gì", async () => {
+  it("tổ chức không có dự án thì không làm gì", async () => {
     expect(await refreshProjectWebhooks({ pool: app, masterKey, providerFactory, publicUrl }, [randomUUID()])).toEqual({
       updated: 0,
       failed: [],

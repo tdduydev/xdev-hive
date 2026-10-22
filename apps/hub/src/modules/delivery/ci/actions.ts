@@ -20,11 +20,11 @@ import {
   scmTarget,
 } from "./feed.ts";
 
-// Thao tác CI (FR-008, FR-009, FR-035). GitLab dùng token kết nối Git của dự án; Jenkins dùng token của chính người bấm
+// Thao tác CI (FR-008, FR-009, FR-035). GitLab, GitHub dùng token kết nối Git của dự án; Jenkins dùng token của chính người bấm
 // để Jenkins ghi đúng người (Q3), không bao giờ mượn token người theo dõi. Mỗi lần bấm một dòng audit, kể cả khi nguồn
 // từ chối, để tra được ai đã thử gì.
 
-type ActionName = "retry" | "cancel" | "play" | "build" | "stop" | "input";
+type ActionName = "retry" | "cancel" | "play" | "build" | "stop" | "input" | "approveDeployment";
 
 /** Hạn chờ build rời hàng đợi Jenkins; quá hạn thì trả `runId: null`, build vẫn chạy khi tới lượt. */
 const TRIGGER_WAIT_MS = 10_000;
@@ -243,7 +243,7 @@ export async function ciPlay(
 ): Promise<CiActionResult> {
   const p = onlyGit(
     await prepareRun(deps, actor, input.projectId, input.runId, "play"),
-    "Chỉ job chờ tay của GitLab mới chạy bằng nút này. Build Jenkins dùng Build.",
+    "Chỉ job chờ tay của GitLab mới chạy bằng nút này. Build Jenkins dùng Build; GitHub chờ duyệt dùng Duyệt deployment.",
   );
   const audit = {
     action: "play" as const,
@@ -287,7 +287,7 @@ export async function ciStop(
 ): Promise<CiActionResult> {
   const j = onlyJenkins(
     await prepareRun(deps, actor, input.projectId, input.runId, "stop"),
-    "Pipeline GitLab dùng nút Huỷ, không dùng Dừng.",
+    "Pipeline GitLab, GitHub dùng nút Huỷ, không dùng Dừng.",
   );
   const audit = {
     action: "stop" as const,
@@ -328,6 +328,45 @@ export async function ciInput(
       return { result: { ok: true, runId: input.runId, stepId: null } };
     } catch (e) {
       throw jenkinsWriteError(e, j.job, j.auth, "Job/Build (hoặc là người được duyệt của bước input)");
+    }
+  });
+}
+
+export async function ciApproveDeployment(
+  deps: CiDeps,
+  actor: CiActor,
+  input: {
+    projectId: string;
+    runId: string;
+    environments: string[];
+    decision: "approve" | "reject";
+    comment?: string | undefined;
+  },
+): Promise<CiActionResult> {
+  const p = onlyGit(
+    await prepareRun(deps, actor, input.projectId, input.runId, "approveDeployment"),
+    "Chỉ workflow GitHub Actions chờ duyệt environment mới duyệt được. Build Jenkins có bước input dùng Tiếp tục.",
+  );
+  const review = p.target.provider.reviewDeployments;
+  if (p.target.source !== "github" || !review)
+    throw new BadRequestError("CI_UNSUPPORTED", "Chỉ workflow GitHub Actions có duyệt deployment theo environment.");
+  const environments = [...new Set(input.environments)];
+  const audit = {
+    action: "approveDeployment" as const,
+    projectId: input.projectId,
+    source: sourceOf(p),
+    data: { ...auditBase(p, input.runId), environments, decision: input.decision, comment: input.comment ?? null },
+  };
+  return audited(deps, actor, audit, async () => {
+    try {
+      await review.call(p.target.provider, p.target.ref, p.run.pipelineId, {
+        environments,
+        decision: input.decision,
+        comment: input.comment ?? "",
+      });
+      return { result: { ok: true, runId: input.runId, stepId: null } };
+    } catch (e) {
+      throw scmDomainError(e, p.target, "duyệt deployment");
     }
   });
 }
