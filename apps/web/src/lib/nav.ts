@@ -385,7 +385,7 @@ export const NAV_ADMIN = {
  * Bảng việc của một dự án và màn CI/CD của dự án là màn làm việc, không phải màn quản trị, dù nằm dưới /projects:
  * không hiện menu Quản trị để cột thẻ và bảng build đủ rộng, và sáng mục Bảng việc như /tasks.
  */
-const PROJECT_BOARD = /^\/projects\/[^/]+(?:\/cicd(?:\/.*)?)?\/?$/;
+const PROJECT_BOARD = /^\/projects\/[^/]+(?:\/(?:cicd|token-usage)(?:\/.*)?)?\/?$/;
 
 /** Mục khớp đường dẫn hiện tại (khớp dài nhất), để sáng mục ở sidebar và hiện tên màn ở Topbar. */
 export function activeNavItem(pathname: string): NavItem | undefined {

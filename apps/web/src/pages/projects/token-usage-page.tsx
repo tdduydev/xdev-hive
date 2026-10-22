@@ -220,7 +220,7 @@ function UsageTable({ rows }: { rows: readonly ProjectTokenUsageRow[] }) {
             <Td colSpan={3} />
           </tr>
           {rows.map((row) => (
-            <tr key={row.machineId}>
+            <tr key={`${row.userId}:${row.machineId}`}>
               <Td className="text-sm font-medium">{row.userName || row.userId}</Td>
               <Td className="text-sm break-all">{row.machineName}</Td>
               <Td className="text-right text-sm tabular-nums">{formatInt(row.tokens)}</Td>
