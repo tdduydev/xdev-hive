@@ -228,7 +228,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `packages/contracts/src/{client-events.ts,projects.ts,fleet.ts}` (+ test), `openapi.json`.
   - **Kiểm**: test zod: payload có trường lạ bị từ chối; không trường chuỗi tự do ở `project.token_usage` (SC-007).
 
-- [ ] **T021 [US5] [vừa] · 1 ngày — Hub: nhận `memory.propose`** (sau T020)
+- [x] **T021 [US5] [vừa] · 1 ngày — Hub: nhận `memory.propose`** (sau T020)
   - **Goal**: `knowledge.proposeFromMachine(tx, machine, payload)` (xuất qua `index.ts`): chính sách memory tổ chức tắt →
     `MEMORY_DISABLED`; chủ máy không là thành viên dự án → `NOT_PROJECT_MEMBER`; ghi `pending`, `source:"machine"`, máy
     nguồn trong audit; nhánh trong `receiveMachineEvent`.
@@ -236,7 +236,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     (nhánh mới), `*.db.test.ts`.
   - **Kiểm**: db test các mã từ chối, chống trùng `idempotencyKey`.
 
-- [ ] **T022 [P] [US6] [nặng] · 1,5 ngày — Hub: bảng `project_token_usage`, nhận, đọc, xoá** (sau T020; song song T021)
+- [x] **T022 [P] [US6] [nặng] · 1,5 ngày — Hub: bảng `project_token_usage`, nhận, đọc, xoá** (sau T020; song song T021)
   - **Goal**: migration `0085_*` theo [data-model.md](data-model.md) (khoá duy nhất `(machine_id, project_id, period_end)`,
     chỉ mục `(org_id, project_id, period_end desc)`, bật + ép RLS); `recordProjectUsage` upsert, giới hạn 1 lần/10 phút mỗi
     `(machine_id, project_id)`, kiểm chủ máy là thành viên dự án; dọn 90 ngày cùng `machine_token_scores`;

@@ -31,6 +31,7 @@ import {
   setMachineLabels,
   setMachineShared,
 } from "./machines.ts";
+import { deleteMyProjectUsage } from "./project-usage.ts";
 import { createRegistration, registerMachine } from "./registration.ts";
 import { installCommands, type WorkerReleaseCache } from "./releases.ts";
 import { listSdlcFleet } from "./sdlc-fleet.ts";
@@ -211,6 +212,9 @@ export function fleetRouter(deps: FleetDeps) {
       }),
       tokenScore: machinesOs.tokenScore.handler(({ context, input }) =>
         inOrg(context.headers, (tx, userId) => getMachineTokenScore(tx, userId, input.machineId)),
+      ),
+      deleteMyProjectUsage: machinesOs.deleteMyProjectUsage.handler(({ context, input }) =>
+        inOrg(context.headers, (tx, userId) => deleteMyProjectUsage(tx, userId, input.id)),
       ),
       workerRelease: machinesOs.workerRelease.handler(async ({ context }) => {
         const session = deps.auth ? await deps.auth.api.getSession({ headers: context.headers }) : null;
