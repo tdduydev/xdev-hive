@@ -1,0 +1,1 @@
+ALTER TABLE "hive"."memories" ADD COLUMN "pinned" boolean DEFAULT false NOT NULL;

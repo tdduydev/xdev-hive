@@ -7,7 +7,7 @@ import { saveAgentPolicy } from "../governance/index.ts";
 import { createPool, type Tx, withTenant } from "../platform/index.ts";
 import type { Principal } from "./access.ts";
 import { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
-import { approveMemory, listMemories, searchMemory, supersedeMemory, writeMemory } from "./memory.ts";
+import { approveMemory, listMemories, pinMemory, searchMemory, supersedeMemory, writeMemory } from "./memory.ts";
 import { approveProposal, createProposal, listProposals, proposeDoc, rejectProposal } from "./proposals.ts";
 import { docs, docVersions, memories, proposals, skills, skillVersions } from "./schema.ts";
 import { getSkill, listSkills, listSkillsWithHidden, saveSkill } from "./skills.ts";
@@ -635,5 +635,68 @@ describe("đề xuất: tạo, duyệt, từ chối", () => {
     await as("tadmin", (tx, p) => approveProposal(tx, p, { id: prop.id }));
     const s = await as("tviewer", (tx, p) => getSkill(tx, p, { name: "viet-test", project: project.key }));
     expect([s.version, s.description, s.scope.level]).toEqual([1, "Cách viết test của đội", "team"]);
+  });
+});
+
+describe("memory.pin", () => {
+  const write = (who: string, content: string, scope: Parameters<typeof writeMemory>[2]["scope"] = projectScope()) =>
+    as(who, (tx, p) => writeMemory(tx, p, { scope, kind: "note", content }));
+  const listed = () => as("tmember", (tx, p) => listMemories(tx, p, { project: project.key, limit: 100 }));
+
+  it("cột pinned mặc định false, không null (dòng có sẵn từ schema cũ không bị ghim)", async () => {
+    const { rows } = await admin.query(
+      "select is_nullable, column_default, data_type from information_schema.columns where table_schema = 'hive' and table_name = 'memories' and column_name = 'pinned'",
+    );
+    expect(rows).toEqual([{ is_nullable: "NO", column_default: "false", data_type: "boolean" }]);
+    const { rows: ins } = await admin.query(
+      "insert into hive.memories (org_id, kind, content, author_user_id) values ($1, 'note', 'dòng cũ', 'x') returning pinned",
+      [org.orgId],
+    );
+    expect(ins[0].pinned).toBe(false);
+  });
+
+  it("ghim đưa memory lên đầu, bỏ ghim trả về thứ tự mới nhất trước; audit memory.pin", async () => {
+    const a = await write("tmember", "Ghim A cũ");
+    const b = await write("tmember", "Ghim B giữa");
+    const c = await write("tmember", "Ghim C mới");
+    const order = async () => (await listed()).filter((m) => /^Ghim [ABC]/.test(m.content)).map((m) => m.content[5]);
+    expect(await order()).toEqual(["C", "B", "A"]);
+    const pinned = await as("tmember", (tx, p) => pinMemory(tx, p, { id: a.id, pinned: true }));
+    expect(pinned.pinned).toBe(true);
+    expect(await order()).toEqual(["A", "C", "B"]);
+    await as("tmember", (tx, p) => pinMemory(tx, p, { id: b.id, pinned: true }));
+    expect(await order()).toEqual(["B", "A", "C"]);
+    const unpinned = await as("tmember", (tx, p) => pinMemory(tx, p, { id: a.id, pinned: false }));
+    expect(unpinned.pinned).toBe(false);
+    expect(await order()).toEqual(["B", "C", "A"]);
+    expect(c.pinned).toBe(false);
+    const { rows } = await admin.query(
+      "select data from hive.audit_log where target_id = $1 and action = 'memory.pin' order by created_at",
+      [a.id],
+    );
+    expect(rows.map((r) => r.data.pinned)).toEqual([true, false]);
+  });
+
+  it("người xem, người ngoài đội và thành viên thường ở memory cấp tổ chức không ghim được", async () => {
+    const m = await write("tmember", "Không được ghim");
+    expect(await errorCode(() => as("tviewer", (tx, p) => pinMemory(tx, p, { id: m.id, pinned: true })))).toBe(
+      "TEAM_ROLE_REQUIRED",
+    );
+    const orgWide = await write("owner", "Cấp tổ chức", { level: "org" });
+    expect(await errorCode(() => as("tmember", (tx, p) => pinMemory(tx, p, { id: orgWide.id, pinned: true })))).toBe(
+      "ORG_ROLE_REQUIRED",
+    );
+    expect((await as("admin", (tx, p) => pinMemory(tx, p, { id: orgWide.id, pinned: true }))).pinned).toBe(true);
+    expect(await errorCode(() => as("oadmin", (tx, p) => pinMemory(tx, p, { id: m.id, pinned: true })))).toBe(
+      "MEMORY_NOT_FOUND",
+    );
+  });
+
+  it("memory đã bị thay thì không ghim được", async () => {
+    const old = await write("tmember", "Sắp bị thay");
+    await as("tmember", (tx, p) => supersedeMemory(tx, p, { id: old.id, content: "Bản thay" }));
+    expect(await errorCode(() => as("tmember", (tx, p) => pinMemory(tx, p, { id: old.id, pinned: true })))).toBe(
+      "MEMORY_SUPERSEDED",
+    );
   });
 });
