@@ -40,6 +40,39 @@ describe("buildFrameDocument · snapshot theo loại", () => {
   it("code", () => {
     expect(readable(build({ type: "code", content: "const a = 1 < 2;" }))).toMatchSnapshot();
   });
+  it("csv (biểu đồ)", () => {
+    expect(readable(build({ type: "csv", content: "Tháng,Thu\nT1,10\nT2,20" }))).toMatchSnapshot();
+  });
+});
+
+describe("buildFrameDocument · svg và csv", () => {
+  it("svg giữ nguyên văn trong khung, không qua script của runtime", () => {
+    const doc = build({ type: "svg", content: "<svg><text>a</text></svg>" });
+    expect(doc).toContain("<svg><text>a</text></svg>");
+    expect(modules(doc)).toHaveLength(0);
+  });
+
+  it("csv: dữ liệu đi qua JSON, không thoát khỏi khối script", () => {
+    const evil = "x</script><script>window.pwned=1</script>";
+    const doc = build({ type: "csv", content: `a,b\n"${evil}",1\n` });
+    expect(modules(doc)).toHaveLength(1);
+    expect(tag(doc, /<script>window\.pwned/g)).toBe(0);
+    expect(modules(doc)[0]).toContain("\\u003c/script");
+  });
+
+  it("csv: import map chỉ có thư viện của hub và có SRI", () => {
+    const doc = build({ type: "csv", content: "a,b\n1,2" });
+    expect(doc).toContain('"recharts"');
+    expect(doc).toContain(LIB_BASE);
+    expect(doc).toContain("sha384-");
+  });
+
+  it("csv không có cột số thì hiện thông báo, không nạp thư viện", () => {
+    const doc = build({ type: "csv", content: "a,b\nx,y" });
+    expect(doc).toContain("Không có cột số");
+    expect(modules(doc)).toHaveLength(0);
+    expect(doc).not.toContain("importmap");
+  });
 });
 
 describe("buildFrameDocument · html", () => {
@@ -219,7 +252,7 @@ describe("buildFrameDocument · điều kiện chung", () => {
 
   it("mọi loại dùng cùng CSP với route khung", () => {
     // CSP nằm ở header chứ không trong tài liệu; test này khoá việc không có <meta http-equiv> thay thế nó.
-    for (const type of ["html", "mermaid", "svg", "markdown", "code"] as const) {
+    for (const type of ["html", "mermaid", "svg", "markdown", "code", "csv"] as const) {
       expect(build({ type, content: "x" })).not.toMatch(/http-equiv/i);
     }
     expect(buildCsp({ libBase: LIB_BASE })).toContain("connect-src 'none'");

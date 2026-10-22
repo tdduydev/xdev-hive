@@ -2,6 +2,36 @@
 
 exports[`buildFrameDocument · snapshot theo loại > code 1`] = `"<!doctype html><html data-hive-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><style>html{color-scheme:light}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}pre{margin:0;padding:1rem;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,monospace}</style></head><body><pre><code>const a = 1 &#60; 2;</code></pre></body></html>"`;
 
+exports[`buildFrameDocument · snapshot theo loại > csv (biểu đồ) 1`] = `
+"<!doctype html><html data-hive-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><script type="importmap">{"imports":{"react":"https://hive.example.com/_artifact/lib/react@19.0.0/index.js","react/jsx-runtime":"https://hive.example.com/_artifact/lib/react@19.0.0/jsx-runtime.js","react-dom":"https://hive.example.com/_artifact/lib/react-dom@19.0.0/index.js","react-dom/client":"https://hive.example.com/_artifact/lib/react-dom@19.0.0/client.js","recharts":"https://hive.example.com/_artifact/lib/recharts@3.0.0/index.js","lucide-react":"https://hive.example.com/_artifact/lib/lucide-react@1.0.0/index.js"},"integrity":{"https://hive.example.com/_artifact/lib/react@19.0.0/index.js":"sha384-reactA19A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/react@19.0.0/jsx-runtime.js":"sha384-reactA19A0A0AjsxAruntimeAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/react-dom@19.0.0/index.js":"sha384-reactAdomA19A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/react-dom@19.0.0/client.js":"sha384-reactAdomA19A0A0AclientAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/recharts@3.0.0/index.js":"sha384-rechartsA3A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","https://hive.example.com/_artifact/lib/lucide-react@1.0.0/index.js":"sha384-lucideAreactA1A0A0AindexAjsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}}</script><style>html{color-scheme:light}body{margin:0;font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}#root{padding:1rem}.bar{display:flex;gap:.5rem;margin-bottom:.75rem}.bar button{font:inherit;padding:.25rem .75rem;border:1px solid rgba(127,127,127,.5);border-radius:6px;background:transparent;color:inherit;cursor:pointer}.bar button[aria-pressed=true]{background:rgba(127,127,127,.25)}.empty{color:rgba(127,127,127,1)}</style></head><body><div id="root" style="color:#111827"></div><script type="module">import * as React from "react";
+import { createRoot } from "react-dom/client";
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
+const chart = {"labelKey":"Tháng","series":["Thu"],"data":[{"Tháng":"T1","Thu":10},{"Tháng":"T2","Thu":20}]};
+const colors = ["#3b82f6","#f59e0b","#10b981","#ef4444","#8b5cf6","#06b6d4","#ec4899","#84cc16"];
+const grid = "rgba(127,127,127,.35)";
+const h = React.createElement;
+function App() {
+  const [kind, setKind] = React.useState("bar");
+  const Chart = kind === "bar" ? BarChart : LineChart;
+  const Series = kind === "bar" ? Bar : Line;
+  const kinds = [["bar", "Cột"], ["line", "Đường"]];
+  return h("div", null,
+    h("div", { className: "bar", role: "group", "aria-label": "Kiểu biểu đồ" },
+      kinds.map(([id, label]) => h("button", { key: id, type: "button", "aria-pressed": kind === id, onClick: () => setKind(id) }, label))),
+    h(ResponsiveContainer, { width: "100%", height: 360 },
+      h(Chart, { data: chart.data },
+        h(CartesianGrid, { stroke: grid, strokeDasharray: "3 3" }),
+        h(XAxis, { dataKey: chart.labelKey, stroke: "currentColor" }),
+        h(YAxis, { stroke: "currentColor" }),
+        h(Tooltip, { contentStyle: { color: "#111" } }),
+        h(Legend),
+        chart.series.map((name, i) => h(Series, kind === "bar"
+          ? { key: name, dataKey: name, fill: colors[i % colors.length] }
+          : { key: name, dataKey: name, stroke: colors[i % colors.length], dot: false, type: "monotone" })))));
+}
+createRoot(document.getElementById("root")).render(h(App));</script></body></html>"
+`;
+
 exports[`buildFrameDocument · snapshot theo loại > html 1`] = `"<!doctype html><html data-hive-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><script><BOOTSTRAP></script><h1>Xin chào</h1>"`;
 
 exports[`buildFrameDocument · snapshot theo loại > markdown 1`] = `

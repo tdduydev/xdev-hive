@@ -46,7 +46,7 @@ function as<T>(who: string, fn: (tx: Tx, reader: Reader) => Promise<T>, fixture:
   );
 }
 
-const create = (who: string, type: "html" | "markdown" | "csv", content: string, fixture: Org = org) =>
+const create = (who: string, type: "html" | "markdown" | "csv" | "json", content: string, fixture: Org = org) =>
   as(who, (tx, r) => createArtifact(tx, r, { type, title: "Trang", content }), fixture);
 
 /** Đường dẫn của URL khung để gọi thẳng vào Hono (URL tuyệt đối dựng từ HIVE_PUBLIC_URL). */
@@ -182,7 +182,7 @@ describe("route khung", () => {
     ).toBe("ARTIFACT_NOT_FOUND");
   });
 
-  it("loại không có khung (csv) không cấp vé", async () => {
+  it("loại không có khung (json) không cấp vé", async () => {
     await admin.query(
       `insert into hive.agent_policies (org_id, policy) values ($1, $2)
        on conflict (org_id) do update set policy = excluded.policy`,
@@ -190,16 +190,32 @@ describe("route khung", () => {
         org.orgId,
         JSON.stringify({
           ...DEFAULT_AGENT_POLICY,
-          artifacts: { types: ["markdown", "code", "html", "mermaid", "react", "csv"] },
+          artifacts: { types: ["markdown", "code", "html", "mermaid", "react", "csv", "json"] },
         }),
       ],
     );
-    const created = await create("tmember", "csv", "a,b\n1,2");
+    const created = await create("tmember", "json", "{}");
     expect(
       await errorCode(() =>
         as("tmember", (tx, r) => frameUrl(tx, r, { id: created.artifact.id, version: 1, theme: "light" }, deps)),
       ),
     ).toBe("ARTIFACT_TYPE_DISABLED");
+    await admin.query("delete from hive.agent_policies where org_id = $1", [org.orgId]);
+  });
+
+  it("csv có khung biểu đồ: cấp vé và khung có biểu đồ của dữ liệu", async () => {
+    await admin.query(
+      `insert into hive.agent_policies (org_id, policy) values ($1, $2)
+       on conflict (org_id) do update set policy = excluded.policy`,
+      [org.orgId, JSON.stringify({ ...DEFAULT_AGENT_POLICY, artifacts: { types: ["markdown", "html", "csv"] } })],
+    );
+    const created = await create("tmember", "csv", "Tháng,Thu\nT1,10\nT2,20");
+    const { url } = await as("tmember", (tx, r) =>
+      frameUrl(tx, r, { id: created.artifact.id, version: 1, theme: "light" }, deps),
+    );
+    const res = await get(pathOf(url));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('"series":["Thu"]');
     await admin.query("delete from hive.agent_policies where org_id = $1", [org.orgId]);
   });
 
@@ -253,7 +269,7 @@ describe("bản xem trước", () => {
   });
 
   it("loại tắt hay không có khung bị từ chối; quá cỡ bị từ chối", async () => {
-    for (const type of ["csv", "json"] as const) {
+    for (const type of ["json", "image"] as const) {
       expect(
         await errorCode(() =>
           as("tmember", (tx, r) => createPreview(tx, r, { type, content: "{}", theme: "light" }, deps)),

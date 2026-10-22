@@ -30,7 +30,7 @@ export type ArtifactType = z.output<typeof artifactType>;
 /** Loại bật mặc định (PO chốt 2026-10-14); loại khác có trình xem sau MVP. */
 export const ARTIFACT_MVP_TYPES: readonly ArtifactType[] = ["markdown", "code", "html", "mermaid", "react"];
 /** Loại chạy trong khung cách ly ở hub và app; trên trang công khai mọi loại đều vào khung (FR-144). */
-export const ARTIFACT_FRAME_TYPES: readonly ArtifactType[] = ["html", "react", "svg", "mermaid", "pdf"];
+export const ARTIFACT_FRAME_TYPES: readonly ArtifactType[] = ["html", "react", "svg", "mermaid", "csv", "pdf"];
 
 export const artifactScope = z.enum(["private", "project", "team", "org"]);
 export type ArtifactScope = z.output<typeof artifactScope>;
