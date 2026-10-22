@@ -4,6 +4,7 @@ import {
   defaultProjectSettings,
   defaultRouting,
   defaultTokenSaving,
+  devOptimizerPolicy,
   type ProjectSettingsPatch,
   projectSettingsPatch,
 } from "@xdev-hive/contracts";
@@ -347,5 +348,77 @@ describe("projects.updateSettings: RLS", () => {
       return r.rows.length;
     });
     expect(n).toBe(0);
+  });
+});
+
+describe("projects.updateSettings: Tối ưu máy dev", () => {
+  const policy = devOptimizerPolicy.parse({
+    level: "aggressive",
+    rtk: true,
+    codegraph: true,
+    contextBudgetTokens: 3_000,
+  });
+
+  it("dự án mới chưa có chính sách; đặt, đổi và bỏ chính sách; mục khác giữ nguyên", async () => {
+    const p = await newProject();
+    expect((await update("tadmin", p.key, { features: { mergeQueue: true } })).devOptimizer).toBeNull();
+    const set = await update("tadmin", p.key, { devOptimizer: policy });
+    expect(set.devOptimizer).toEqual({
+      level: "aggressive",
+      rtk: true,
+      codegraph: true,
+      autoCompactWindow: null,
+      contextBudgetTokens: 3_000,
+      memoryAutoSync: false,
+      memorySyncMinutes: 60,
+    });
+    expect(set.features.mergeQueue).toBe(true);
+    expect((await stored(p.id)).devOptimizer).toEqual(set.devOptimizer);
+    // Đặt lại thay nguyên khối: trường không gửi về mặc định, không giữ giá trị cũ.
+    const again = await update("tadmin", p.key, {
+      devOptimizer: devOptimizerPolicy.parse({ level: "off", memorySyncMinutes: 30 }),
+    });
+    expect(again.devOptimizer).toMatchObject({
+      level: "off",
+      rtk: false,
+      contextBudgetTokens: 2_000,
+      memorySyncMinutes: 30,
+    });
+    expect((await update("tadmin", p.key, { devOptimizer: null })).devOptimizer).toBeNull();
+  });
+
+  it("dự án lưu trước khi có devOptimizer vẫn vá được", async () => {
+    const p = await newProject();
+    await admin.query("update hive.projects set settings = settings - 'devOptimizer' where id = $1", [p.id]);
+    expect((await update("tadmin", p.key, { budget: { maxTurns: 5 } })).devOptimizer).toBeNull();
+    expect((await update("tadmin", p.key, { devOptimizer: policy })).devOptimizer?.level).toBe("aggressive");
+  });
+
+  it("chỉ quản trị đội hoặc tổ chức sửa được; thành viên thường bị từ chối và settings không đổi", async () => {
+    const p = await newProject();
+    expect(await errorCode(() => update("tmember", p.key, { devOptimizer: policy }))).toBe("TEAM_ROLE_REQUIRED");
+    expect((await stored(p.id)).devOptimizer ?? null).toBeNull();
+    expect((await update("admin", p.key, { devOptimizer: policy })).devOptimizer?.level).toBe("aggressive");
+  });
+
+  it("chặn giá trị ngoài khoảng và khoá lạ", async () => {
+    expect(projectSettingsPatch.safeParse({ devOptimizer: { contextBudgetTokens: 9_000 } }).success).toBe(false);
+    expect(projectSettingsPatch.safeParse({ devOptimizer: { levl: "off" } }).success).toBe(false);
+  });
+
+  it("ghi audit với chính sách trước và sau", async () => {
+    const p = await newProject();
+    await update("tadmin", p.key, { devOptimizer: policy });
+    const { rows } = await admin.query(
+      "select data from hive.audit_log where action = 'project.settings.update' and target_id = $1",
+      [p.id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].data.before).toEqual({ devOptimizer: null });
+    expect(rows[0].data.after.devOptimizer).toMatchObject({
+      level: "aggressive",
+      rtk: true,
+      contextBudgetTokens: 3_000,
+    });
   });
 });

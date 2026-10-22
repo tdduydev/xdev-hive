@@ -3,6 +3,7 @@
   "projectId": "7f3c1b52-0a1e-4c0e-9d57-2f4c8f0b6a11",
   "folder": "/work/app",
   "enabled": true,
+  "source": "# Nguồn\n\nDùng pnpm cho mọi lệnh.\n",
   "sourceTokens": 120,
   "blockTokens": 340,
   "targets": [

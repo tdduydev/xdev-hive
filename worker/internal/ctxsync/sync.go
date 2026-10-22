@@ -1,7 +1,6 @@
 package ctxsync
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,7 +8,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/gitexclude"
 	"github.com/tdduydev/xdev-hive/worker/internal/memstore"
@@ -54,35 +52,13 @@ type Project struct {
 	ProjectID    *string  `json:"projectId"`
 	Folder       string   `json:"folder"`
 	Enabled      bool     `json:"enabled"`
+	Source       string   `json:"source"`
 	SourceTokens int      `json:"sourceTokens"`
 	BlockTokens  int      `json:"blockTokens"`
 	Targets      []Target `json:"targets"`
 	Hub          *HubView `json:"hub"`
 	AutoSync     AutoSync `json:"autoSync"`
 	Locked       bool     `json:"locked,omitempty"`
-}
-
-// HubSnapshot là memory đã duyệt app desktop lấy từ hub (bằng PAT) rồi đưa qua file.
-type HubSnapshot struct {
-	ProjectID string    `json:"projectId"`
-	Items     []HubItem `json:"items"`
-}
-
-// Policy là phần chính sách dự án (devOptimizerPolicy) mà ngữ cảnh dùng chung cần.
-type Policy struct {
-	ContextBudgetTokens int  `json:"contextBudgetTokens,omitempty"`
-	MemoryAutoSync      bool `json:"memoryAutoSync"`
-	MemorySyncMinutes   int  `json:"memorySyncMinutes,omitempty"`
-}
-
-// hubState là context/<khoá>/hub.json.
-type hubState struct {
-	ProjectID    string    `json:"projectId"`
-	SyncedAt     *string   `json:"syncedAt"`
-	LastError    *string   `json:"lastError"`
-	BudgetTokens int       `json:"budgetTokens"`
-	Items        []HubItem `json:"items"`
-	Omitted      Omitted   `json:"omitted"`
 }
 
 // DisableResult: đường dẫn (tương đối với thư mục dự án) đã gỡ khối và đã cho vào thùng rác. Entry là mã khôi phục.
@@ -94,38 +70,6 @@ type DisableResult struct {
 }
 
 func defaultAutoSync() AutoSync { return AutoSync{Minutes: defaultSyncMinutes, Source: "machine"} }
-
-func (m Manager) hubPath(key string) string { return filepath.Join(m.dir(key), "hub.json") }
-
-func (m Manager) loadHub(key string) (*hubState, error) {
-	raw, err := os.ReadFile(m.hubPath(key))
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var h hubState
-	if err := json.Unmarshal(raw, &h); err != nil {
-		return nil, fmt.Errorf("hub.json của %s hỏng: %w", key, err)
-	}
-	return &h, nil
-}
-
-// saveHub thay cả mục "Từ hub" bằng bản mới: memory bị thay hay gỡ trên hub tự biến mất (FR-023).
-func (m Manager) saveHub(key string, snap *HubSnapshot, policy *Policy) error {
-	budget := DefaultBudgetTokens
-	if policy != nil && policy.ContextBudgetTokens > 0 {
-		budget = policy.ContextBudgetTokens
-	}
-	now := m.now().UTC().Format(time.RFC3339)
-	h := hubState{ProjectID: snap.ProjectID, SyncedAt: &now, BudgetTokens: budget, Items: []HubItem{}}
-	for _, it := range snap.Items {
-		it.Tokens = memstore.EstimateTokens(it.Content)
-		h.Items = append(h.Items, it)
-	}
-	return writeJSON(m.hubPath(key), h)
-}
 
 // Enable bật ngữ cảnh dùng chung cho thư mục (gắn dự án hub nếu có projectID) rồi ghi mọi file đích.
 func (m Manager) Enable(folder, projectID string) (Project, error) {
@@ -175,8 +119,8 @@ func (m Manager) Enable(folder, projectID string) (Project, error) {
 	return p, err
 }
 
-// Sync ghi lại mọi file đích từ nguồn và bản hub. hub khác nil thì thay bản hub đã lưu; policy khác nil thì áp lịch tự
-// đồng bộ của dự án. Trả mã bản sao lưu memstore của lần ghi (rỗng khi không đổi gì) để hoàn tác.
+// Sync ghi lại mọi file đích từ nguồn và bản hub. hub khác nil thì thay bản hub đã lưu (hub.Error khác rỗng thì giữ bản
+// cũ, ghi lỗi); policy khác nil thì áp ngân sách và lịch tự đồng bộ của dự án. Trả mã bản sao lưu memstore của lần ghi (rỗng khi không đổi gì) để hoàn tác.
 func (m Manager) Sync(key string, hub *HubSnapshot, policy *Policy) (Project, string, error) {
 	st, err := m.loadState(key)
 	if err != nil {
@@ -185,22 +129,13 @@ func (m Manager) Sync(key string, hub *HubSnapshot, policy *Policy) (Project, st
 	if !st.Enabled {
 		return Project{}, "", fmt.Errorf("%w: %s", ErrNotFound, key)
 	}
-	if hub != nil {
-		if err := m.saveHub(key, hub, policy); err != nil {
+	if hub != nil || policy != nil {
+		if err := m.updateHub(key, st, hub, policy); err != nil {
 			return Project{}, "", err
 		}
 	}
 	if policy != nil {
-		switch {
-		case policy.MemoryAutoSync:
-			min := policy.MemorySyncMinutes
-			if min <= 0 {
-				min = defaultSyncMinutes
-			}
-			st.AutoSync = AutoSync{Enabled: true, Minutes: min, Source: "policy"}
-		case st.AutoSync.Source == "policy":
-			st.AutoSync = defaultAutoSync()
-		}
+		st.AutoSync = autoSyncFor(st.AutoSync, policy)
 	}
 	plans, entry, err := m.apply(key, &st, nil)
 	if err != nil {
@@ -321,14 +256,6 @@ func (m Manager) Status(key string) ([]Project, error) {
 		out = append(out, p)
 	}
 	return out, nil
-}
-
-func (m Manager) hubItems(key string) ([]HubItem, error) {
-	h, err := m.loadHub(key)
-	if err != nil || h == nil {
-		return nil, err
-	}
-	return h.Items, nil
 }
 
 // plan tính một file đích, chưa ghi gì.
@@ -492,7 +419,7 @@ func (m Manager) view(key string, st State, plans []planned) (Project, error) {
 		items = hub.Items
 	}
 	p := Project{Key: key, Folder: st.Folder, Enabled: st.Enabled, AutoSync: st.AutoSync, Targets: []Target{},
-		SourceTokens: memstore.EstimateTokens(local), BlockTokens: memstore.EstimateTokens(renderBody(local, items, false))}
+		Source: local, SourceTokens: memstore.EstimateTokens(local), BlockTokens: memstore.EstimateTokens(renderBody(local, items, false))}
 	if p.AutoSync.Source == "" {
 		p.AutoSync = defaultAutoSync()
 	}
