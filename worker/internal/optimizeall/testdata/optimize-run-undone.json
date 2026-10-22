@@ -4,9 +4,7 @@
   "finishedAt": "2026-10-22T09:00:10Z",
   "scoreBefore": 48,
   "scoreAfter": 81,
-  "policySources": [
-    "acme/web"
-  ],
+  "policySources": ["acme/web"],
   "steps": [
     {
       "id": "optimizer.enable",

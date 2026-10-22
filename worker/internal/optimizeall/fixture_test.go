@@ -1,6 +1,7 @@
 package optimizeall
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"os"
@@ -48,9 +49,19 @@ func checkFixture(t *testing.T, name, got string) {
 	if err != nil {
 		t.Fatalf("thiếu %s, chạy go test -run TestFixtures -update: %v", path, err)
 	}
-	if strings.ReplaceAll(string(want), "\r\n", "\n") != got {
+	if compact(t, want) != compact(t, []byte(got)) {
 		t.Fatalf("%s đổi; kiểm lại kiểu TS rồi chạy -update:\n%s", path, got)
 	}
+}
+
+// compact bỏ khoảng trắng trước khi so: biome định dạng lại testdata/*.json khác MarshalIndent của Go.
+func compact(t *testing.T, raw []byte) string {
+	t.Helper()
+	var b bytes.Buffer
+	if err := json.Compact(&b, raw); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
 }
 
 func TestFixtures(t *testing.T) {
