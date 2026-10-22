@@ -28,7 +28,7 @@ import { GitGroupsSection } from "@/components/git-groups.tsx";
 import { OpenAgentButton } from "@/components/open-agent-dialog.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { cliProfiles } from "@/lib/agent.ts";
-import { folderKey, pickFolder, shortPath } from "@/lib/folder.ts";
+import { commonFolder, folderKey, pickFolder, shortPath } from "@/lib/folder.ts";
 import { type BranchStatus, branchStatus, scanBranches, useBranchJob } from "@/lib/git-branches.ts";
 import { type GitGroups, gitGroups, useAutoFetched } from "@/lib/git-groups.ts";
 import { api, queryClient } from "@/lib/hub-query.tsx";
@@ -644,24 +644,34 @@ function LocalRepoList({
             {shown.map((s) => {
               const expanded = open[s.key] ?? (filtering || sections.length === 1);
               const Chevron = expanded ? ChevronDownIcon : ChevronRightIcon;
+              // Mở agent cho cả nhóm ở thư mục chung của các repo còn trên máy; nhóm một repo đã có nút ở dòng repo.
+              const present = s.repos.filter((l) => l.exists);
+              const shared = present.length > 1 ? commonFolder(present.map((l) => l.folder)) : null;
               return (
                 <li key={s.key}>
-                  {/* Khoảng trắng giữa các phần để tên của nút đọc được: "acme-ai/his · GitLab nội bộ 2 repo". */}
-                  <button
-                    type="button"
-                    aria-expanded={expanded}
-                    onClick={() => setOpen((o) => ({ ...o, [s.key]: !expanded }))}
-                    className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left hover:bg-muted"
-                  >
-                    <Chevron aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 truncate text-sm font-medium">{s.title}</span>{" "}
-                    {s.host && (
-                      <>
-                        <span className="min-w-0 truncate text-xs text-muted-foreground">· {s.host}</span>{" "}
-                      </>
+                  <div className="flex items-center hover:bg-muted">
+                    {/* Khoảng trắng giữa các phần để tên của nút đọc được: "acme-ai/his · GitLab nội bộ 2 repo". */}
+                    <button
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() => setOpen((o) => ({ ...o, [s.key]: !expanded }))}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-2.5 text-left"
+                    >
+                      <Chevron aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 truncate text-sm font-medium">{s.title}</span>{" "}
+                      {s.host && (
+                        <>
+                          <span className="min-w-0 truncate text-xs text-muted-foreground">· {s.host}</span>{" "}
+                        </>
+                      )}
+                      <Pill className="ml-auto">{t.repoCount(s.repos.length)}</Pill>
+                    </button>
+                    {shared && (
+                      <span className="pr-4" title={shortPath(shared)}>
+                        <OpenAgentButton name={s.title} folder={shared} group />
+                      </span>
                     )}
-                    <Pill className="ml-auto">{t.repoCount(s.repos.length)}</Pill>
-                  </button>
+                  </div>
                   {expanded && (
                     <ul className="divide-y border-t">
                       {s.repos.map((l) => (

@@ -1,10 +1,13 @@
 import type { ArtifactPageError, ArtifactSummary, ArtifactVersion } from "@xdev-hive/contracts";
 import { useText } from "../env.tsx";
 import { CodeViewer } from "./code.tsx";
+import { CsvViewer } from "./csv.tsx";
 import { HtmlViewer } from "./html.tsx";
+import { JsonViewer } from "./json.tsx";
 import { MarkdownViewer } from "./markdown.tsx";
 import { MermaidViewer } from "./mermaid.tsx";
 import { ReactViewer } from "./react.tsx";
+import { SvgViewer } from "./svg.tsx";
 
 export interface ArtifactViewerProps {
   artifact: Pick<ArtifactSummary, "id" | "title" | "type" | "language">;
@@ -28,6 +31,12 @@ export function ArtifactViewer({ artifact, version, onErrors }: ArtifactViewerPr
       return <HtmlViewer {...frame} />;
     case "mermaid":
       return <MermaidViewer {...frame} />;
+    case "svg":
+      return <SvgViewer {...frame} />;
+    case "json":
+      return <JsonViewer content={version.content} />;
+    case "csv":
+      return <CsvViewer content={version.content} {...frame} />;
     case "react":
       return <ReactViewer {...frame} compileError={version.compileError} />;
     default:

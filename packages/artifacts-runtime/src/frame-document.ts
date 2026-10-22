@@ -2,11 +2,15 @@ import type { DirectExport } from "es-module-lexer";
 import { parse } from "es-module-lexer/js";
 import { BOOTSTRAP_SOURCE } from "./bootstrap.ts";
 import { libSource } from "./csp.ts";
+import { csvChartData, parseCsv } from "./csv.ts";
 import type { LibManifest } from "./manifest.ts";
 import { MAX_FRAME_TEXT } from "./messages.ts";
 
-/** Loại đã có nhánh dựng; `pdf` và `csv-chart` do T061–T062 thêm vào đây. */
-export const FRAME_TYPES = ["html", "mermaid", "svg", "react", "markdown", "code"] as const;
+/**
+ * Loại đã có nhánh dựng; `pdf` do T062 thêm vào đây. `csv` là nhánh `csv-chart`: khung chỉ vẽ biểu đồ, bảng do trình xem
+ * dựng ngoài khung (chữ thuần, không cần cách ly), nên khoá loại giữ đúng tên loại artifact để route khung dùng chung.
+ */
+export const FRAME_TYPES = ["html", "mermaid", "svg", "react", "markdown", "code", "csv"] as const;
 export type FrameType = (typeof FRAME_TYPES)[number];
 export type FrameTheme = "light" | "dark";
 
@@ -214,6 +218,52 @@ function svgPage({ content, theme }: FrameDocumentInput): string {
   return page(theme, `<style>${themeCss(theme)}svg{max-width:100%;height:auto}</style>`, content);
 }
 
+const CHART_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
+
+function csvChartPage({ content, theme, manifest }: FrameDocumentInput, base: string): string {
+  const chart = csvChartData(parseCsv(content));
+  const style = `<style>${themeCss(theme)}#root{padding:1rem}.bar{display:flex;gap:.5rem;margin-bottom:.75rem}.bar button{font:inherit;padding:.25rem .75rem;border:1px solid rgba(127,127,127,.5);border-radius:6px;background:transparent;color:inherit;cursor:pointer}.bar button[aria-pressed=true]{background:rgba(127,127,127,.25)}.empty{color:rgba(127,127,127,1)}</style>`;
+  if (!chart)
+    return page(
+      theme,
+      style,
+      '<p id="root" class="empty">Không có cột số để vẽ biểu đồ. Cột đầu là nhãn, các cột sau cần chứa số.</p>',
+    );
+  // Dữ liệu đi qua JSON đã phân tích sẵn ở hub: khung không chạy bộ phân tích CSV và không có đường thoát khỏi thẻ.
+  const script = `import * as React from "react";
+import { createRoot } from "react-dom/client";
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
+const chart = ${jsonForScript(chart)};
+const colors = ${jsonForScript(CHART_COLORS)};
+const grid = "rgba(127,127,127,.35)";
+const h = React.createElement;
+function App() {
+  const [kind, setKind] = React.useState("bar");
+  const Chart = kind === "bar" ? BarChart : LineChart;
+  const Series = kind === "bar" ? Bar : Line;
+  const kinds = [["bar", "Cột"], ["line", "Đường"]];
+  return h("div", null,
+    h("div", { className: "bar", role: "group", "aria-label": "Kiểu biểu đồ" },
+      kinds.map(([id, label]) => h("button", { key: id, type: "button", "aria-pressed": kind === id, onClick: () => setKind(id) }, label))),
+    h(ResponsiveContainer, { width: "100%", height: 360 },
+      h(Chart, { data: chart.data },
+        h(CartesianGrid, { stroke: grid, strokeDasharray: "3 3" }),
+        h(XAxis, { dataKey: chart.labelKey, stroke: "currentColor" }),
+        h(YAxis, { stroke: "currentColor" }),
+        h(Tooltip, { contentStyle: { color: "#111" } }),
+        h(Legend),
+        chart.series.map((name, i) => h(Series, kind === "bar"
+          ? { key: name, dataKey: name, fill: colors[i % colors.length] }
+          : { key: name, dataKey: name, stroke: colors[i % colors.length], dot: false, type: "monotone" })))));
+}
+createRoot(document.getElementById("root")).render(h(App));`;
+  return page(
+    theme,
+    `${importMap(manifest, base, REACT_MODULES)}${style}`,
+    `<div id="root" style="color:${theme === "dark" ? "#e5e7eb" : "#111827"}"></div><script type="module">${escapeInlineScript(script)}</script>`,
+  );
+}
+
 /**
  * Tài liệu HTML đầy đủ cho một khung cách ly. Hub dựng (route khung, trang công khai) và app dùng lại qua
  * `artifacts.frameDocument`, nên không có bản sao logic ở hai nơi. Nội dung của agent không bao giờ đi qua `innerHTML` của
@@ -234,6 +284,8 @@ export function buildFrameDocument(input: FrameDocumentInput): string {
       return markdownPage(input, base);
     case "code":
       return codePage(input);
+    case "csv":
+      return csvChartPage(input, base);
     default:
       throw new Error(`Loại "${input.type as string}" chưa có khung cách ly`);
   }

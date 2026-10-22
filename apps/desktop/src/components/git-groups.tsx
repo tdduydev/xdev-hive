@@ -16,6 +16,7 @@ import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { FolderOpenIcon, PlusIcon, RefreshCwIcon, SettingsIcon, SquareTerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
+import { OpenAgentButton } from "@/components/open-agent-dialog.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { pickFolder, shortPath } from "@/lib/folder.ts";
 import {
@@ -550,6 +551,8 @@ function GroupCard({
 
   const live = { ...statuses, ...(job?.statuses ?? {}) };
   const disabled = running || busy;
+  // Thư mục gốc chỉ có thật khi đã clone ít nhất một repo.
+  const cloned = selected.some((r) => live[r.path] && live[r.path]?.state !== "missing");
 
   return (
     <article
@@ -566,6 +569,7 @@ function GroupCard({
             {g.autoFetchMinutes ? ` · ${t.autoFetch}: ${t.autoFetchEvery(g.autoFetchMinutes)}` : ""}
           </span>
         </span>
+        {cloned && <OpenAgentButton name={g.path} folder={g.root} group />}
         <Button size="sm" disabled={disabled} onClick={() => void run("clone")}>
           {t.cloneMissing}
         </Button>
