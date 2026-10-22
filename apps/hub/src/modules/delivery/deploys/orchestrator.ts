@@ -734,10 +734,10 @@ export async function watchDeploy(deps: DeliveryDeps, job: DeployJob, opts: JobO
       const target = await loadTarget(tx, deploy.targetId);
       if (!target) return;
       const { own, hive } = splitRemote(deploy.remote);
-      const progress = (await methodOf(opts, deploy.method).poll(
+      const progress = await methodOf(opts, deploy.method).poll(
         { tx, deps },
         runOf(job.orgId, deploy, target, own, signal),
-      ));
+      );
       const now = clock(opts)();
       const done = TERMINAL.has(progress.state);
       const next = await writeLog(
