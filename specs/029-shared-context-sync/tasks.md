@@ -181,7 +181,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/web/src/pages/project-settings-page.tsx` (+ component mới), `apps/web/e2e/project-dev-optimizer.spec.ts`.
   - **Kiểm**: db test quyền + audit; Playwright admin/không admin (quickstart mục 5 bước 1).
 
-- [ ] **T015 [P] [US3] [nhẹ] · 0,5 ngày — Web: nút ghim memory** (sau T013)
+- [x] **T015 [P] [US3] [nhẹ] · 0,5 ngày — Web: nút ghim memory** (sau T013)
   - **Goal**: nút "Ghim"/"Bỏ ghim" ở danh sách memory dự án, chỉ hiện với người có quyền; biểu tượng ghim trên mục đã ghim.
   - **PHẠM VI**: trang/danh sách memory của web (`apps/web/src/pages/**/memor*`), e2e liên quan.
   - **Kiểm**: Playwright ghim, bỏ ghim, người không quyền không thấy nút.

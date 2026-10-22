@@ -8,7 +8,7 @@ import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } 
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
-import { PlusIcon } from "lucide-react";
+import { PinIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { PageSection } from "@/components/page/page-section.tsx";
@@ -18,7 +18,7 @@ import { Field, FieldLabel } from "@/components/ui/field.tsx";
 import { EmptyState, LoadFailure, SectionsSkeleton, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
-import { useT } from "@/lib/i18n.ts";
+import { type Dict, useT } from "@/lib/i18n.ts";
 import { useKnowledgeAccess } from "@/lib/knowledge.ts";
 import { shortId } from "@/lib/run-view.ts";
 import {
@@ -36,6 +36,11 @@ import { useOrg } from "@/shell/org-context.ts";
 import { DetailHeader, PageBody, PageHeader, PageTab, PageTabList } from "@/shell/page-header.tsx";
 
 const text = knowledgeText;
+// Chữ của nút ghim đặt tại đây vì từ điển chung của trang kiến thức thuộc file khác.
+const pinText: Dict<{ pin: string; unpin: string; pinned: string; pinColumn: string }> = {
+  vi: { pin: "Ghim", unpin: "Bỏ ghim", pinned: "Đã ghim", pinColumn: "Ghim" },
+  en: { pin: "Pin", unpin: "Unpin", pinned: "Pinned", pinColumn: "Pin" },
+};
 const kinds: MemoryKind[] = ["decision", "convention", "gotcha", "note"];
 type Row = Memory | MemorySearchHit;
 
@@ -99,9 +104,21 @@ function MemoryScreen() {
  */
 function ApprovedMemories() {
   const t = useT(text);
+  const p = useT(pinText);
   const fieldId = useId();
   const { api } = useOrg();
+  const cache = useQueryClient();
+  const access = useKnowledgeAccess();
   const navigate = useNavigate();
+  const pin = useMutation(api.memory.pin.mutationOptions());
+  const togglePin = async (row: Row) => {
+    try {
+      await pin.mutateAsync({ id: row.id, pinned: !row.pinned });
+      await cache.invalidateQueries({ queryKey: api.memory.key() });
+    } catch {
+      /* Lỗi hiện phía trên bảng; mục giữ nguyên trạng thái cũ để thử lại. */
+    }
+  };
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
@@ -131,6 +148,11 @@ function ApprovedMemories() {
       cell: (row) => (
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            {row.pinned && (
+              <span role="img" aria-label={p.pinned} title={p.pinned} className="text-primary">
+                <PinIcon aria-hidden="true" className="size-3.5" />
+              </span>
+            )}
             <KindPill kind={row.kind} />
             {row.supersededBy && <Pill>{t.superseded}</Pill>}
           </div>
@@ -174,9 +196,27 @@ function ApprovedMemories() {
       sortable: true,
       cell: (row) => <When iso={row.createdAt} />,
     },
+    {
+      key: "pin",
+      label: p.pinColumn,
+      value: (row) => (row.pinned ? 1 : 0),
+      cell: (row) =>
+        row.status === "approved" && !row.supersededBy && access.allowed(row.scope, "write") ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pin.isPending}
+            aria-label={`${row.pinned ? p.unpin : p.pin}: ${row.content.slice(0, 60)}`}
+            onClick={() => togglePin(row)}
+          >
+            {row.pinned ? p.unpin : p.pin}
+          </Button>
+        ) : null,
+    },
   ];
   return (
     <>
+      {pin.error && <Alert variant="destructive">{apiErrorMessage(pin.error)}</Alert>}
       {active.isPending && <TableSkeleton label={t.loading} columns={5} />}
       {active.isError && <LoadFailure error={active.error} retry={active.refetch} />}
       {active.data && (
