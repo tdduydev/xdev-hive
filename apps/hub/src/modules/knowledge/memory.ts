@@ -78,6 +78,8 @@ export function memoryView(m: MemoryRow): Memory {
     author: authorView(m),
     createdAt: m.createdAt.toISOString(),
     supersededBy: m.supersededBy,
+    // Tạm thời: cột `memories.pinned` đến với T013 (spec 029), đến lúc đó chưa memory nào được ghim.
+    pinned: false,
   };
 }
 
