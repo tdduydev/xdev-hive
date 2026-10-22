@@ -13,6 +13,7 @@ import { SegmentedControl } from "@/components/page/segmented-control.tsx";
 import { EmptyState, LoadFailure, TableSkeleton } from "@/components/ui/query-state.tsx";
 import { WordImportButton } from "@/components/word-import-dialog.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { useWordImportSupport } from "@/lib/build-info.ts";
 import { docScopeStore } from "@/lib/doc-scope-store.ts";
 import { useT } from "@/lib/i18n.ts";
 import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge, When } from "@/pages/knowledge/common.tsx";
@@ -48,6 +49,7 @@ export function DocsPage() {
 function DocsScreen() {
   const t = useT(text);
   const { api, org } = useOrg();
+  const word = useWordImportSupport();
   const fieldId = useId();
   const [archived, setArchived] = useState(false);
   const list = useQuery(api.docs.list.queryOptions({ input: { archived } }));
@@ -105,6 +107,11 @@ function DocsScreen() {
       lead={t.docsLead}
       actions={
         <>
+          {word.state === "on" && (
+            <Link to="/knowledge/docs/word-imports" className={buttonVariants({ variant: "outline" })}>
+              Lượt nhập Word
+            </Link>
+          )}
           <WordImportButton />
           <NewDoc />
         </>
