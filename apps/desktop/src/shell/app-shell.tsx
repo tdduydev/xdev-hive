@@ -6,6 +6,7 @@ import { LangToggle } from "@/components/lang-toggle.tsx";
 import { SignOutDialog } from "@/components/sign-out-dialog.tsx";
 import { UpdateBanner } from "@/components/update-banner.tsx";
 import { AccountContext, ConnectContext, profileOf, SignOutContext, useAccount } from "@/lib/account.ts";
+import { useHubContextSchedule } from "@/lib/hub-context.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
 import { setNavCollapsed, useNavCollapsed } from "@/lib/nav-collapsed.ts";
@@ -46,6 +47,8 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
   const t = useT(text);
   const worker = useWorkerState();
   useTeamNotifications(!!account);
+  // Kéo memory hub theo lịch cả khi không mở màn Memory; màn Memory gọi cùng hook chỉ để cập nhật giao diện.
+  useHubContextSchedule(!!account);
   useEffect(
     () =>
       onTauriEvent<string>(NAVIGATE_EVENT, (screen) => {

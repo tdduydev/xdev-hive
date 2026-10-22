@@ -4,6 +4,9 @@ import type { Tx } from "../../platform/index.ts";
 import { DeployMethodNotImplementedError } from "./method.ts";
 import { deployMethods, methodFor } from "./methods.ts";
 
+// Cách đã có cài đặt thật có test riêng (vd. run-script.test.ts, ssh-script.db.test.ts).
+const IMPLEMENTED = new Set<string>(["ssh-script"]);
+
 describe("cách triển khai", () => {
   it("mỗi cách trong hợp đồng có đúng một cài đặt mang tên của nó", () => {
     expect(Object.keys(deployMethods).sort()).toEqual([...DEPLOY_METHODS].sort());
@@ -12,7 +15,7 @@ describe("cách triển khai", () => {
 
   it("cách chưa làm báo NOT_IMPLEMENTED ở mọi thao tác, không chạy dở", async () => {
     const ctx = { tx: {} as Tx, deps: {} };
-    for (const method of DEPLOY_METHODS) {
+    for (const method of DEPLOY_METHODS.filter((m) => !IMPLEMENTED.has(m))) {
       const impl = methodFor(method);
       const run = {
         orgId: "o",

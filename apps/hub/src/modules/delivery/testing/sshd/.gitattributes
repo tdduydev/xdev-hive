@@ -1,0 +1,2 @@
+# Dockerfile và script chạy trong container Linux: giữ LF dù checkout trên Windows.
+* text eol=lf

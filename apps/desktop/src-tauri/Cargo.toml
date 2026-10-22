@@ -25,9 +25,13 @@ tauri-plugin-dialog = "~2.7.3"
 # Bản thứ hai của app thoát ngay và đưa cửa sổ bản đang chạy lên trước. Giữ 2.5.1: các bản sau chưa đủ hai tuần.
 tauri-plugin-single-instance = "=2.5.1"
 url = "2"
-tokio = { version = "1", features = ["time", "process", "io-util"] }
+tokio = { version = "1", features = ["time", "process", "io-util", "fs"] }
 # Gọi MCP của hub bằng token cá nhân. Cùng bản với tauri-plugin-updater nên không dựng thêm; TLS do updater bật.
-reqwest = { version = "0.13", default-features = false }
+# `stream` (updater cũng bật) để gửi file Word theo luồng. Thân multipart tự dựng trong word_import.rs: tính năng
+# `multipart` kéo thêm mime_guess, chưa có trong Cargo.lock.
+reqwest = { version = "0.13", default-features = false, features = ["stream"] }
+# Stream đọc file từng đoạn cho thân request nhập Word. Cùng bản đã có trong cây phụ thuộc.
+futures-util = "0.3"
 # reqwest trong cây dùng rustls-no-provider: app tự cài provider ring (src/tls.rs). Cùng bản và tính năng updater dùng.
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # Token cá nhân lưu trong keychain của hệ điều hành (macOS Keychain, Windows Credential Manager, Secret Service).

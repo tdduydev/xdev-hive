@@ -13,6 +13,7 @@ import (
 
 	"github.com/tdduydev/xdev-hive/worker/internal/ctxsync"
 	"github.com/tdduydev/xdev-hive/worker/internal/memstore"
+	"github.com/tdduydev/xdev-hive/worker/internal/optimizeall"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
@@ -232,6 +233,24 @@ func contextCommand(args []string, stdout, stderr io.Writer) int {
 				return fail(inputErr("File chính sách không dùng được: %v", err))
 			}
 		}
+		// Chuỗi "Tối ưu" đang chạy sẽ tự đồng bộ ngữ cảnh và hoàn tác được bước đó; ghi xen vào giữa thì hoàn tác lấy sai
+		// bản trước. Đồng bộ định kỳ chỉ bỏ lượt này, lượt sau chạy lại.
+		unlock, err := optimizeall.Lock(m.Store.Dir)
+		if errors.Is(err, optimizeall.ErrLocked) {
+			list, err := m.Status(*project)
+			if err != nil {
+				return fail(err)
+			}
+			if len(list) == 0 {
+				return fail(ctxsync.ErrNotFound)
+			}
+			list[0].Locked = true
+			return emit(list[0], "Đang tối ưu ở cửa sổ khác; bỏ lượt đồng bộ này.")
+		}
+		if err != nil {
+			return fail(err)
+		}
+		defer unlock()
 		p, _, err := m.Sync(*project, hub, policy)
 		if err != nil {
 			return fail(err)

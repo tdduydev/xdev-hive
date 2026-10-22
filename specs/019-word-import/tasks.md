@@ -515,7 +515,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/main.ts` (một dòng)
   - **Kiểm**: hub test, typecheck, `pnpm deps`.
 
-- [ ] **T017 [P] [US7] [nặng] · 1,5 ngày — Desktop Rust: chọn file, tải lên theo luồng, tải nhị phân**
+- [x] **T017 [P] [US7] [nặng] · 1,5 ngày — Desktop Rust: chọn file, tải lên theo luồng, tải nhị phân**
   - **Phụ thuộc**: T001, T008 (route và giới hạn).
   - **Goal**: giai đoạn 2b. FR-029 (phần Rust), FR-030, FR-031, R11, plan.md mục 11b.
     - `word_import.rs`:
@@ -592,7 +592,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/routes/word-imports.ts`
   - **Kiểm**: hub test, typecheck.
 
-- [ ] **T021 [P] [US5] [vừa] · 1 ngày — Web: nhãn "Nhập từ Word", tải file gốc, danh sách lượt nhập**
+- [x] **T021 [P] [US5] [vừa] · 1 ngày — Web: nhãn "Nhập từ Word", tải file gốc, danh sách lượt nhập**
   - **Phụ thuộc**: T018 (cùng `doc-editor-page.tsx`, khác đợt). API từ T020 dùng qua fixture.
   - **Goal**: giai đoạn 3. US5 (giao diện).
     - `doc-editor-page.tsx`: nhãn "Nhập từ Word" kèm tên file, ngày, người nhập (`wordImports.ofDoc`); nút "Tải file

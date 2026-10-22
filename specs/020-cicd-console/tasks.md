@@ -472,7 +472,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 3: điều phối, `ssh-script`, giao diện (song song, sau Đợt 2)
 
-- [ ] **T019 [P] [US4] [nặng] · 2 ngày — Bộ điều phối triển khai, bảng "đang chạy"**
+- [x] **T019 [P] [US4] [nặng] · 2 ngày — Bộ điều phối triển khai, bảng "đang chạy"**
   - **Phụ thuộc**: T008, T017, T018.
   - **Goal**: FR-015, FR-020, FR-027 (kiểm khoá), Q9, plan.md "Kiến trúc", mục 1, 8.
     - `deploys/orchestrator.ts`:
@@ -495,7 +495,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (bấm hai lần cùng đích thì lần sau bị chặn; khởi động lại worker giữa chừng thì watch chạy tiếp;
     15 phút không đọc được thì `unknown`; lần "ngoài Hive" không tính vào khoá), typecheck.
 
-- [ ] **T020 [P] [US4] [nặng] · 2,5 ngày — Cách `ssh-script`: script chạy bước, tách phiên, đọc tiếp**
+- [x] **T020 [P] [US4] [nặng] · 2,5 ngày — Cách `ssh-script`: script chạy bước, tách phiên, đọc tiếp**
   - **Phụ thuộc**: T001, T005 (provider `memory`; `scm.archive` có từ spec 018), T016, T017, T018.
   - **Goal**: US4, FR-016, FR-017, FR-018 (gọi health), SC-007, plan.md mục 5 "Chạy bước tách khỏi phiên SSH", "Đưa
     mã lên".
@@ -551,7 +551,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/web/e2e/delivery-servers.spec.ts` (mới), `apps/web/e2e/delivery-servers-fixture.ts`
   - **Kiểm**: web typecheck, test, Playwright file của task.
 
-- [ ] **T023 [P] [US4] [vừa] · 1,5 ngày — Web: bảng triển khai, nút Triển khai, trang lần triển khai**
+- [x] **T023 [P] [US4] [vừa] · 1,5 ngày — Web: bảng triển khai, nút Triển khai, trang lần triển khai**
   - **Phụ thuộc**: T011.
   - **Goal**: US4, US5 (giao diện), FR-015, FR-020, FR-034 (chọn "đẩy từ môi trường").
     - `board-page.tsx`: bảng "đang chạy" (dòng dự án, cột môi trường; ô: commit, tag, số build, image, revision, giờ,

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hub-upload-word"
+description = "Enables the hub_upload_word command without any pre-configured scope."
+commands.allow = ["hub_upload_word"]
+
+[[permission]]
+identifier = "deny-hub-upload-word"
+description = "Denies the hub_upload_word command without any pre-configured scope."
+commands.deny = ["hub_upload_word"]
