@@ -403,8 +403,8 @@ Phần này cũng không đi qua hub ở đợt P1. Quyết định: [ADR 0037](
 |---|---|---|
 | `worker/internal/ctxsync` | Giữ một nguồn ngữ cảnh mỗi dự án trong `~/.xdev-hive/context/<khoá>/`; ghi nó vào file cục bộ không theo dõi của từng CLI (`CLAUDE.local.md`, `AGENTS.override.md` gương, `GEMINI.local.md`, `.agents/rules/xdev-hive.md`) trong khối `<!-- xdev-hive:context … -->`; phát hiện sửa tay bằng băm trong dòng mở; xung đột; chuyển từ chia sẻ memory cũ | Có code |
 | `worker/internal/gitexclude` | Thêm và gỡ dòng trong `.git/info/exclude`, tách từ `memstore` | Có code |
-| `worker/internal/optimizeall` | Lệnh `hive-worker optimize all`: lập kế hoạch, chạy các bước đã chọn, ghi nhật ký `runs/<id>.json` sau mỗi bước, hoàn tác cả lần. Dùng `optimizer`, sửa nhanh của `score`, `ctxsync`. Danh sách id bước là đóng (không nén bằng AI, không gỡ MCP, không xoá skill) | Theo kế hoạch spec 029 |
-| `worker/internal/outbox` | Hàng đợi bền cho việc gửi lên hub, phần tối thiểu của spec 027 | Theo kế hoạch spec 029 |
+| `worker/internal/optimizeall` | Lệnh `hive-worker optimize all`: lập kế hoạch, chạy các bước đã chọn, ghi nhật ký `runs/<id>.json` sau mỗi bước, hoàn tác cả lần. Dùng `optimizer`, sửa nhanh của `score`, `ctxsync`. Danh sách id bước là đóng (không nén bằng AI, không gỡ MCP, không xoá skill) | Có code gói; lệnh `optimize all` theo kế hoạch spec 029 |
+| `worker/internal/outbox` | Hàng đợi bền cho việc gửi lên hub, phần tối thiểu của spec 027. `hive-worker run` gửi 15 giây một lần | Có code |
 
 Mọi lần `ctxsync` ghi đi qua kho sao lưu của `memstore`, nên hoàn tác đưa file về đúng byte. Lệnh con `context` của
 `hive-worker` đã có; `optimize all` và các lệnh Tauri tương ứng chưa có.
