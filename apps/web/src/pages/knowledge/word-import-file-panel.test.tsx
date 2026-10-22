@@ -8,6 +8,7 @@ import {
   importErrorMessage,
   linkDiffRows,
   previewMarkdown,
+  updateOutcome,
   warningText,
 } from "@/pages/knowledge/word-import-file-panel.tsx";
 import { filterFiles, pathProblem, stillWorking } from "@/pages/knowledge/word-import-page.tsx";
@@ -20,6 +21,19 @@ const image = {
   bytes: 67,
   url: "/api/v1/docs/word-imports/i/files/f/media/9f2c4b7a1d3e.png",
 };
+
+describe("updateOutcome", () => {
+  const of = (state: WordImportFile["state"], linkMatches: boolean | null, docVersion: number | null = null) =>
+    updateOutcome({ state, linkMatches, docVersion } as WordImportFile);
+  it("phân loại lượt cập nhật trước và sau khi áp dụng", () => {
+    expect(of("skipped", null)).toBe("unchanged");
+    expect(of("ready", null)).toBe("pending");
+    expect(of("ready", true)).toBe("clean");
+    expect(of("ready", false)).toBe("overlap");
+    expect(of("done", true, 3)).toBe("updated");
+    expect(of("done", false)).toBe("conflict");
+  });
+});
 
 describe("previewMarkdown", () => {
   it("viết lại link ảnh theo tên đã băm thành URL tuyệt đối kèm org", () => {

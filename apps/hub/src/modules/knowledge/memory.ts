@@ -2,11 +2,13 @@ import {
   type KnowledgeScope,
   type Memory,
   type MemoryListInput,
+  type MemoryPinInput,
   type MemorySearchHit,
   type MemorySearchInput,
   type MemorySupersedeInput,
   type MemoryWriteInput,
   memoryListInput,
+  memoryPinInput,
   memorySearchInput,
   memorySupersedeInput,
   memoryWriteInput,
@@ -78,8 +80,7 @@ export function memoryView(m: MemoryRow): Memory {
     author: authorView(m),
     createdAt: m.createdAt.toISOString(),
     supersededBy: m.supersededBy,
-    // Tạm thời: cột `memories.pinned` đến với T013 (spec 029), đến lúc đó chưa memory nào được ghim.
-    pinned: false,
+    pinned: m.pinned,
   };
 }
 
@@ -240,10 +241,24 @@ export async function listMemories(tx: Tx, principal: Principal, input: MemoryLi
         data.includeSuperseded ? undefined : isNull(memories.supersededBy),
       ),
     )
-    .orderBy(desc(memories.createdAt), desc(memories.id))
+    .orderBy(desc(memories.pinned), desc(memories.createdAt), desc(memories.id))
     .limit(data.limit)
     .offset(data.offset);
   return rows.map(memoryView);
+}
+
+/** Ghim hoặc bỏ ghim: quyền như duyệt memory (`write` ở phạm vi của memory). Chỉ memory đã duyệt và còn hiệu lực. */
+export async function pinMemory(tx: Tx, principal: Principal, input: MemoryPinInput): Promise<Memory> {
+  const data = memoryPinInput.parse(input);
+  const reader = await readerFor(tx, principal);
+  const [old] = await tx.select().from(memories).where(eq(memories.id, data.id)).for("update");
+  if (old?.status !== "approved" || !canRead(reader, old)) throw notFound();
+  await authorize(tx, reader, old, "write");
+  if (old.supersededBy) throw new ConflictError("MEMORY_SUPERSEDED", "Memory này đã được thay bằng memory khác.");
+  const [row] = await tx.update(memories).set({ pinned: data.pinned }).where(eq(memories.id, old.id)).returning();
+  if (!row) throw notFound();
+  await audit(tx, principal, "memory.pin", { type: "memory", id: row.id }, { pinned: row.pinned });
+  return memoryView(row);
 }
 
 /** Thay memory cũ bằng nội dung mới cùng phạm vi; memory cũ giữ lại, trỏ sang memory mới và không hiện khi tìm. */

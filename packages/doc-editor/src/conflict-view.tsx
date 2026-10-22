@@ -193,6 +193,25 @@ const text: Dict<{
   },
 };
 
+/** Nhãn thay cho "repo" khi bản thứ ba là file Word đã nhập; giá trị `choice` vẫn là "repo". */
+const wordText: Dict<Pick<(typeof text)["vi"], "repo" | "repoMeta" | "summary" | "tag" | "keepRepo">> = {
+  vi: {
+    repo: "Bản Word",
+    repoMeta: () => "File Word",
+    summary: (n) => `Hub và file Word cùng sửa ${n} chỗ khác nhau. Giữ một bản hoặc sửa tay.`,
+    tag: { ...text.vi.tag, repo: "Đổi ở Word" },
+    keepRepo: "Giữ bản Word",
+  },
+  en: {
+    repo: "Word version",
+    repoMeta: () => "Word file",
+    summary: (n) =>
+      `The hub and the Word file changed ${n} place${n === 1 ? "" : "s"} differently. Keep one or edit by hand.`,
+    tag: { ...text.en.tag, repo: "Changed in Word" },
+    keepRepo: "Keep Word version",
+  },
+};
+
 export type ConflictResolution = { choice: "hub" } | { choice: "repo" } | { choice: "manual"; content: string };
 
 type Col = "base" | "hub" | "repo";
@@ -220,7 +239,7 @@ function collapseRuns(rows: readonly ConflictRow[]): Item[] {
   return items;
 }
 
-function Cell({ row, col, active, lang }: { row: ConflictRow; col: Col; active: Col; lang: Lang }) {
+function Cell({ row, col, active, t }: { row: ConflictRow; col: Col; active: Col; t: (typeof text)["vi"] }) {
   const blocks = row[col];
   return (
     <div
@@ -233,12 +252,12 @@ function Cell({ row, col, active, lang }: { row: ConflictRow; col: Col; active: 
       )}
     >
       {row.kind !== "same" && col !== "base" && (
-        <div className="mb-1 text-2xs font-medium text-muted-foreground">{text[lang].tag[row.kind]}</div>
+        <div className="mb-1 text-2xs font-medium text-muted-foreground">{t.tag[row.kind]}</div>
       )}
       {blocks.length ? (
         <pre className="font-mono text-xs/5 break-words whitespace-pre-wrap">{blocks.join("\n\n")}</pre>
       ) : (
-        <span className="text-xs italic text-muted-foreground">{text[lang].empty}</span>
+        <span className="text-xs italic text-muted-foreground">{t.empty}</span>
       )}
     </div>
   );
@@ -255,6 +274,7 @@ export function ConflictView({
   busy = false,
   error,
   lang,
+  source = "repo",
   className,
 }: {
   conflict: Pick<
@@ -265,11 +285,13 @@ export function ConflictView({
   busy?: boolean;
   error?: string | undefined;
   lang?: Lang | undefined;
+  /** `word`: bản thứ ba là file Word nhập vào, nhãn hiện "Word" thay "repo". */
+  source?: "repo" | "word" | undefined;
   className?: string | undefined;
 }) {
   const envLang = useOptionalDocEditorEnv()?.lang;
   const l = lang ?? envLang ?? "vi";
-  const t = text[l];
+  const t = source === "word" ? { ...text[l], ...wordText[l] } : text[l];
   const id = useId();
   const [tab, setTab] = useState<Col>("hub");
   const [open, setOpen] = useState<ReadonlySet<number>>(new Set());
@@ -338,7 +360,7 @@ export function ConflictView({
           item.kind === "row" ? (
             <div key={`r${item.id}`} className="grid md:grid-cols-3">
               {COLS.map((c) => (
-                <Cell key={c} row={item.row} col={c} active={tab} lang={l} />
+                <Cell key={c} row={item.row} col={c} active={tab} t={t} />
               ))}
             </div>
           ) : (
@@ -354,7 +376,7 @@ export function ConflictView({
                   // biome-ignore lint/suspicious/noArrayIndexKey: hàng không đổi, thứ tự cố định theo tài liệu.
                   <div key={k} className="grid md:grid-cols-3">
                     {COLS.map((c) => (
-                      <Cell key={c} row={row} col={c} active={tab} lang={l} />
+                      <Cell key={c} row={row} col={c} active={tab} t={t} />
                     ))}
                   </div>
                 ))}
