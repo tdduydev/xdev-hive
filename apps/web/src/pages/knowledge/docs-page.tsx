@@ -109,7 +109,7 @@ function DocsScreen() {
         <>
           {word.state === "on" && (
             <Link to="/knowledge/docs/word-imports" className={buttonVariants({ variant: "outline" })}>
-              Lượt nhập Word
+              {t.docsWordImports}
             </Link>
           )}
           <WordImportButton />

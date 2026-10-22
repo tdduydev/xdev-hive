@@ -247,7 +247,7 @@ function ImportRow({ item }: { item: WordImport }) {
         >
           {MODE_LABEL[item.mode]}
         </Link>
-        <div className="font-mono text-xs break-all text-muted-foreground">{importTarget(item)}</div>
+        <div className="text-xs break-all text-muted-foreground">{importTarget(item)}</div>
       </Td>
       <Td className="min-w-28 break-words">{item.createdBy.name ?? "—"}</Td>
       <Td className="whitespace-nowrap">
