@@ -39,6 +39,9 @@ export async function receiveMachineEvent(
       clientCreatedAt: new Date(input.createdAt),
     },
     async (tx) => {
+      // Stub tới khi T021/T022 (spec 029) làm nhánh xử lý: hợp đồng đã nhận kind mới, hub chưa ghi gì.
+      if (input.kind !== "machine.token_score")
+        throw new ClientEventRejected("NOT_IMPLEMENTED", "Hub chưa xử lý loại sự kiện này.");
       const since = new Date(Date.now() - TOKEN_SCORE_MIN_INTERVAL_MS);
       const [recent] = await tx
         .select({ id: machineTokenScores.id })
