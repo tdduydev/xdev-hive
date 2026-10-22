@@ -310,6 +310,9 @@ const remoteRoute = createRoute({
 const remoteSessionRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/remote/$id",
+  /** `control`: vừa mở phiên từ "Mở phiên mới", trang tự xin quyền gõ. */
+  validateSearch: (search: Record<string, unknown>): { control?: boolean } =>
+    search.control === true || search.control === "true" ? { control: true } : {},
   component: RemoteSessionPage,
 });
 /** Trang mở từ mã QR của máy: `?m=<tên máy>&p=<pairId>#s=<bí mật>`; trang tự đọc fragment nên search chỉ giữ m, p. */

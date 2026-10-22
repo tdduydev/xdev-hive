@@ -1,5 +1,6 @@
 export { BOOTSTRAP_SOURCE } from "./bootstrap.ts";
 export { buildCsp, libSource } from "./csp.ts";
+export { CSV_MAX_ROWS, CSV_MAX_SERIES, type CsvChartData, csvChartData, type ParsedCsv, parseCsv } from "./csv.ts";
 export {
   buildFrameDocument,
   FRAME_TYPES,

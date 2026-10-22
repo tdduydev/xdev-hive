@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { RemoteMachine } from "@xdev-hive/contracts";
-import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Pill } from "@xdev-hive/ui/pill";
 import { SmartphoneIcon } from "lucide-react";
+import { HttpWarning } from "@/components/http-warning.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import {
@@ -16,6 +16,7 @@ import {
 import { isLive } from "@/lib/terminal.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
+import { NewSessionButton } from "./new-session-sheet.tsx";
 import { RemoteSessionRow } from "./session-row.tsx";
 
 const text: Dict<
@@ -30,8 +31,7 @@ const text: Dict<
     | "emptyBody"
     | "noMachines"
     | "devices"
-    | "machineDevices"
-    | "http",
+    | "machineDevices",
     string
   >
 > = {
@@ -48,7 +48,6 @@ const text: Dict<
     noMachines: "Chưa có máy cá nhân nào. Cài và chạy hive-worker trên máy để máy hiện ở đây.",
     devices: "Thiết bị đã ghép",
     machineDevices: "Thiết bị",
-    http: "Hub chạy HTTP: nội dung phiên và phím gõ không được mã hoá trên đường truyền. Chỉ dùng trong mạng nội bộ.",
   },
   en: {
     title: "Remote control",
@@ -63,7 +62,6 @@ const text: Dict<
     noMachines: "No personal machines yet. Install and run hive-worker on a machine to see it here.",
     devices: "Paired devices",
     machineDevices: "Devices",
-    http: "The hub runs on HTTP: session output and keystrokes are not encrypted in transit. Use it only on an internal network.",
   },
 };
 
@@ -140,7 +138,7 @@ function MachineCard({ machine }: { machine: RemoteMachine }) {
 
 /**
  * Trang Điều khiển từ xa (spec 010): máy cá nhân với trạng thái từ xa, và danh sách phiên (đang chạy trước). Bật từ xa,
- * bắt đầu ghép thiết bị, thêm thư mục làm tại máy (FR-012); ở đây chỉ xem, phát lại và gỡ thiết bị đã ghép.
+ * bắt đầu ghép thiết bị, thêm thư mục làm tại máy (FR-012); ở đây xem, phát lại, mở phiên mới và gỡ thiết bị đã ghép.
  */
 export function RemotePage() {
   const t = useT(text);
@@ -157,6 +155,7 @@ export function RemotePage() {
   return (
     <>
       <PageHeader title={t.title} description={t.description}>
+        {machines.data && <NewSessionButton machines={machines.data} />}
         <Button
           variant="outline"
           className="h-11"
@@ -168,8 +167,7 @@ export function RemotePage() {
         </Button>
       </PageHeader>
       <PageBody>
-        {/* localhost cũng là secure context, nên cảnh báo chỉ hiện khi hub thật sự chạy HTTP. */}
-        {!window.isSecureContext && <Alert>{t.http}</Alert>}
+        <HttpWarning />
         <section aria-labelledby="remote-machines" className="grid min-w-0 content-start gap-2">
           <h2 id="remote-machines" className="font-heading text-lg font-semibold">
             {t.machines}
