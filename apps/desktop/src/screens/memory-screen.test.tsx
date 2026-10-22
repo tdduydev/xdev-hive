@@ -323,9 +323,13 @@ describe("MemoryScreen", () => {
     renderMemory();
     await screen.findByText(A.path);
     await userEvent.click(
-      within(screen.getByText("/repo/app").closest("details") as HTMLElement).getByRole("button", {
-        name: "Dùng chung memory",
-      }),
+      // Mục Ngữ cảnh dùng chung cũng có option "/repo/app", hiện ra tuỳ lúc context_status trả về.
+      within(screen.getByText("/repo/app", { selector: "details *" }).closest("details") as HTMLElement).getByRole(
+        "button",
+        {
+          name: "Dùng chung memory",
+        },
+      ),
     );
     await screen.findByText("Chọn bản memory cần giữ");
     expect(screen.getByRole("button", { name: "Áp dụng lựa chọn" }).hasAttribute("disabled")).toBe(true);
