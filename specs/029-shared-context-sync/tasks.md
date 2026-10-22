@@ -160,7 +160,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 3: Hub và đồng bộ (P2)
 
-- [ ] **T012 [P] [US3] [US4] [vừa] · 0,5 ngày — Contracts: `devOptimizer`, `pinned`, `memory.pin`**
+- [x] **T012 [P] [US3] [US4] [vừa] · 0,5 ngày — Contracts: `devOptimizer`, `pinned`, `memory.pin`**
   - **Goal**: theo [contracts/hub-api.md](contracts/hub-api.md) mục `projects.ts` (chỉ `devOptimizerPolicy`,
     `projectSettings.devOptimizer`, `projectSettingsPatch.devOptimizer`; **không** đụng `tokenSaving`) và `knowledge.ts`
     (`pinned`, route `memory.pin`). Ràng buộc: `contextBudgetTokens` 500–8.000 (mặc định 2.000), `memorySyncMinutes`

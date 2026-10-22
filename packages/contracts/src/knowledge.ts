@@ -76,6 +76,8 @@ export const memory = z.object({
   author: knowledgeAuthor,
   createdAt: z.iso.datetime(),
   supersededBy: id.nullable(),
+  /** Memory ghim luôn đứng đầu danh sách và được ưu tiên khi đồng bộ về máy dev. */
+  pinned: z.boolean(),
 });
 export type Memory = z.output<typeof memory>;
 
@@ -112,6 +114,9 @@ export const memorySupersedeInput = z.object({
   files: memoryFiles.optional(),
 });
 export type MemorySupersedeInput = z.input<typeof memorySupersedeInput>;
+
+export const memoryPinInput = z.object({ id, pinned: z.boolean() });
+export type MemoryPinInput = z.input<typeof memoryPinInput>;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Tài liệu
@@ -461,7 +466,7 @@ export const memoryContract = {
   search: orgRoute("GET", "/v1/memories/search", "Tìm memory theo từ và theo nghĩa", "knowledge")
     .input(memorySearchInput)
     .output(z.array(memorySearchHit)),
-  list: orgRoute("GET", "/v1/memories", "Memory mình thấy được, mới nhất trước", "knowledge")
+  list: orgRoute("GET", "/v1/memories", "Memory mình thấy được, ghim trước rồi mới nhất trước", "knowledge")
     .input(memoryListInput)
     .output(z.array(memory)),
   supersede: orgRoute("POST", "/v1/memories/{id}/supersede", "Thay memory cũ bằng nội dung mới", "knowledge")
@@ -473,6 +478,9 @@ export const memoryContract = {
   reject: orgRoute("POST", "/v1/memories/{id}/reject", "Bỏ memory agent đề xuất (thành viên đội)", "knowledge")
     .input(z.object({ id }))
     .output(z.object({ ok: z.literal(true) })),
+  pin: orgRoute("POST", "/v1/memories/{id}/pin", "Ghim hoặc bỏ ghim memory (quyền như duyệt memory)", "knowledge")
+    .input(memoryPinInput)
+    .output(memory),
 };
 
 export const docsContract = {
