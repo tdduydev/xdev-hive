@@ -47,6 +47,7 @@ import {
 import { teamRoleLookup } from "@/lib/projects.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
+import { ProjectDevOptimizerSettings, useDevOptimizerTitle } from "@/pages/project-dev-optimizer-settings.tsx";
 import { ProjectDocsSettings } from "@/pages/project-docs-settings.tsx";
 import { ProjectMembersForRole } from "@/pages/project-members-section.tsx";
 import { ProjectSdlcSections } from "@/pages/project-sdlc-settings.tsx";
@@ -607,6 +608,7 @@ function ProjectMachines({ project, fullLocked }: { project: Project; fullLocked
 function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canEdit: boolean; canBrief: boolean }) {
   const { org, api } = useOrg();
   const t = useT(text);
+  const devOptimizerTitle = useDevOptimizerTitle();
   const workflows = useQuery({ ...api.reviewWorkflows.list.queryOptions(), retry: false });
   const codeWorkflows = codeWorkflowsForProject(workflows.data ?? [], project);
   const can = usePermissions();
@@ -713,6 +715,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
       { id: "budget", label: t.budgetTitle },
       { id: "model", label: t.modelTitle },
       { id: "tokens", label: t.tokensTitle },
+      { id: "devOptimizer", label: devOptimizerTitle },
       { id: "routing", label: t.routingTitle },
       { id: "perm", label: t.permTitle },
       ...(canBrief ? [{ id: "members", label: "Thành viên dự án" }] : []),
@@ -721,7 +724,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
       { id: "sdlc-auto", label: t.sdlcAutoTitle },
       ...(canEdit ? [{ id: "machines", label: t.machinesTitle }] : []),
     ],
-    [t, canEdit, canBrief],
+    [t, devOptimizerTitle, canEdit, canBrief],
   );
   const tokenOff = disabled || !form.tokenSaving;
   const routingOff = disabled || !form.routing;
@@ -1140,6 +1143,15 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             disabled={tokenOff}
           />
         </SettingsSection>
+
+        <ProjectDevOptimizerSettings
+          form={form}
+          set={set}
+          errors={errors}
+          canEdit={canEdit}
+          disabled={disabled}
+          save={sectionSave("devOptimizer")}
+        />
 
         <SettingsSection id="routing" save={sectionSave("routing")} title={t.routingTitle} description={t.routingHint}>
           <SwitchRow

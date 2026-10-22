@@ -453,3 +453,65 @@ describe("cấu hình nhà tài liệu", () => {
     );
   });
 });
+
+describe("chính sách Tối ưu máy dev", () => {
+  it("dự án chưa có chính sách: công tắc tắt và không có thay đổi", () => {
+    const form = formFromSettings(base());
+    expect(form).toMatchObject({ devOptimizer: false, devLevel: "balanced", devContextBudget: "2000" });
+    expect(buildSectionPatch(form, base(), "devOptimizer")).toEqual({ ok: true, patch: null });
+  });
+
+  it("bật và gửi cả khối; ô trống của cửa sổ ngữ cảnh là null", () => {
+    const form = { ...formFromSettings(base()), devOptimizer: true, devLevel: "aggressive" as const, devRtk: true };
+    const built = buildSectionPatch(form, base(), "devOptimizer");
+    expect(built).toEqual({
+      ok: true,
+      patch: {
+        devOptimizer: {
+          level: "aggressive",
+          rtk: true,
+          codegraph: false,
+          autoCompactWindow: null,
+          contextBudgetTokens: 2000,
+          memoryAutoSync: false,
+          memorySyncMinutes: 60,
+        },
+      },
+    });
+  });
+
+  it("tắt công tắc khi đã có chính sách thì gửi null; ô gõ dở lúc tắt không báo lỗi", () => {
+    const saved = { ...base(), devOptimizer: devPolicy() };
+    const form = { ...formFromSettings(saved), devOptimizer: false, devContextBudget: "abc" };
+    expect(buildSectionPatch(form, saved, "devOptimizer")).toEqual({ ok: true, patch: { devOptimizer: null } });
+  });
+
+  it("báo lỗi theo ô khi ngoài khoảng, không gửi", () => {
+    const form = { ...formFromSettings(base()), devOptimizer: true, devContextBudget: "9000", devCompactWindow: "10" };
+    const built = buildSectionPatch(form, base(), "devOptimizer");
+    expect(built.ok).toBe(false);
+    if (!built.ok) {
+      expect(built.errors.devContextBudget).toBe("Tối đa 8.000 token.");
+      expect(built.errors.devCompactWindow).toBe("Tối thiểu 50.000 token.");
+    }
+    expect(fieldOfPath(["devOptimizer", "memorySyncMinutes"])).toBe("devMemorySyncMinutes");
+    expect(sectionOfField("devMemorySyncMinutes")).toBe("devOptimizer");
+  });
+
+  it("giữ nguyên khi không sửa gì", () => {
+    const saved = { ...base(), devOptimizer: devPolicy() };
+    expect(buildSectionPatch(formFromSettings(saved), saved, "devOptimizer")).toEqual({ ok: true, patch: null });
+  });
+});
+
+function devPolicy() {
+  return {
+    level: "aggressive" as const,
+    rtk: true,
+    codegraph: true,
+    autoCompactWindow: 200_000,
+    contextBudgetTokens: 3000,
+    memoryAutoSync: true,
+    memorySyncMinutes: 30,
+  };
+}

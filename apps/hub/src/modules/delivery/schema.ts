@@ -60,6 +60,8 @@ export const ciJenkinsConnections = hive
       unique("ci_jenkins_connections_org_name").on(t.orgId, t.name),
       unique("ci_jenkins_connections_id_org").on(t.id, t.orgId),
       orgScoped("ci_jenkins_connections"),
+      // hive.delivery_active_orgs (SECURITY DEFINER, chạy bằng hive_owner) tìm tổ chức có việc đọc CI theo cron.
+      pgPolicy("ci_jenkins_connections_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();
@@ -131,6 +133,7 @@ export const ciProjectJobs = hive
       }).onDelete("cascade"),
       index("ci_project_jobs_connection").on(t.connectionId),
       orgScoped("ci_project_jobs"),
+      pgPolicy("ci_project_jobs_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();
@@ -155,6 +158,7 @@ export const ciRunsSeen = hive
       check("ci_runs_seen_source", sql`source in ('gitlab', 'github', 'jenkins')`),
       index("ci_runs_seen_project").on(t.projectId),
       orgScoped("ci_runs_seen"),
+      pgPolicy("ci_runs_seen_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();

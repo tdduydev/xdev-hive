@@ -1,8 +1,10 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { ReviewStatus, ReviewSummary, SlaState } from "@xdev-hive/contracts";
+import type { ReviewStatus, ReviewSummary, SlaState, WordImportFileDetail } from "@xdev-hive/contracts";
 import {
+  type DocEditorEnv,
   DocEditorProvider,
+  type DocLinkTarget,
   ReviewPane,
   ReviewStatusPill,
   reviewText,
@@ -13,7 +15,7 @@ import { AutoApproval, SdlcProvider } from "@xdev-hive/sdlc-ui";
 import { Button } from "@xdev-hive/ui/button";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { BotIcon } from "lucide-react";
-import { lazy, type ReactNode, Suspense, useId, useState } from "react";
+import { lazy, type ReactNode, Suspense, useId, useMemo, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
 import { FilterChips } from "@/components/ui/filter-chips.tsx";
@@ -32,6 +34,29 @@ import { CodeReviewsTab } from "./code-reviews-tab.tsx";
 const BreakdownReview = lazy(() =>
   import("@xdev-hive/sdlc-ui/breakdown").then((m) => ({ default: m.BreakdownReview })),
 );
+
+/**
+ * Ảnh của đề xuất nguồn Word chưa nằm trong kho file của tài liệu; chúng chỉ có ở route ảnh xem trước của lượt nhập.
+ * Trả null khi `href` không khớp ảnh nào để người gọi quay về cách phân giải thường.
+ */
+export function wordImageTarget(
+  images: WordImportFileDetail["images"],
+  href: string,
+  origin: string,
+  orgId: string,
+): DocLinkTarget | null {
+  const name = /[^/]+$/.exec(href.split(/[?#]/)[0] ?? "")?.[0];
+  if (!name) return null;
+  let decoded = name;
+  try {
+    decoded = decodeURIComponent(name);
+  } catch {
+    // Tên không giải mã được thì so nguyên văn.
+  }
+  const url = images.find((image) => image.name === decoded)?.url;
+  if (!url) return null;
+  return { kind: "asset", url: `${origin}${url}${url.includes("?") ? "&" : "?"}org=${encodeURIComponent(orgId)}` };
+}
 
 type Scope = "mine" | "all";
 const STATUSES: ReviewStatus[] = ["in_review", "changes_requested", "approved", "cancelled"];
@@ -107,8 +132,9 @@ export function ReviewsPage() {
 
 /** Hàng chờ duyệt tài liệu (DocReview.dc.html): bảng phiên duyệt, thay đổi so với bản đã duyệt, quyết định. */
 function DocReviews(): ReactNode {
-  const { api } = useOrg();
+  const { api, org } = useOrg();
   const queryClient = useQueryClient();
+  const baseEnv = useWebDocEnv();
   const t = useT(reviewText);
   const lang = useLang();
   const fmt = useReviewFormat(lang);
@@ -136,6 +162,24 @@ function DocReviews(): ReactNode {
   ];
   const selectedId = search.id ?? items[0]?.id;
   const select = (id: string) => navigate({ search: { id }, replace: true });
+  const selectedProposalId = items.find((row) => row.id === selectedId)?.proposalId;
+  // Hub không cho biết nguồn trong bản tóm tắt phiên duyệt; đọc từ danh sách đề xuất, chỉ khi đang xem một phiên.
+  const proposals = useQuery({
+    ...api.proposals.list.queryOptions({ input: { kind: "doc", limit: 200 } }),
+    enabled: !!selectedProposalId,
+  });
+  const origin = proposals.data?.find((proposal) => proposal.id === selectedProposalId)?.origin;
+  const wordFile = useQuery({
+    ...api.wordImports.file.queryOptions({ input: { fileId: origin?.importFileId ?? "" } }),
+    enabled: origin?.kind === "word",
+  });
+  const wordImages = wordFile.data?.images;
+  const paneEnv = useMemo<DocEditorEnv>(() => {
+    if (!wordImages) return baseEnv;
+    const resolveLink: NonNullable<DocEditorEnv["resolveLink"]> = (docKey, href) =>
+      wordImageTarget(wordImages, href, window.location.origin, org.id) ?? baseEnv.resolveLink?.(docKey, href) ?? null;
+    return { ...baseEnv, resolveLink };
+  }, [baseEnv, wordImages, org.id]);
 
   const slaOptions = SLA_STATES.map((s) => ({ value: s, label: t.slaText[s] }));
   const columns: Column<ReviewSummary>[] = [
@@ -304,30 +348,32 @@ function DocReviews(): ReactNode {
         </div>
       )}
       {selectedId ? (
-        <ReviewPane
-          key={selectedId}
-          id={selectedId}
-          now={now}
-          sdlc={{
-            breakdown: (item) => (
-              <SdlcProvider env={sdlcEnv}>
-                <Suspense fallback={null}>
-                  <BreakdownReview item={item} />
-                </Suspense>
-              </SdlcProvider>
-            ),
-            revoke: (approval) => (
-              <SdlcProvider env={sdlcEnv}>
-                <AutoApproval approval={approval} />
-              </SdlcProvider>
-            ),
-          }}
-          // Quyết định xong thì tài liệu rời hàng "chờ tôi"; ghim lựa chọn để người duyệt vẫn thấy kết quả.
-          onDecided={() => {
-            select(selectedId);
-            void queryClient.invalidateQueries({ queryKey: api.sdlc.key() });
-          }}
-        />
+        <DocEditorProvider env={paneEnv}>
+          <ReviewPane
+            key={`${selectedId}:${wordImages ? "word" : "plain"}`}
+            id={selectedId}
+            now={now}
+            sdlc={{
+              breakdown: (item) => (
+                <SdlcProvider env={sdlcEnv}>
+                  <Suspense fallback={null}>
+                    <BreakdownReview item={item} />
+                  </Suspense>
+                </SdlcProvider>
+              ),
+              revoke: (approval) => (
+                <SdlcProvider env={sdlcEnv}>
+                  <AutoApproval approval={approval} />
+                </SdlcProvider>
+              ),
+            }}
+            // Quyết định xong thì tài liệu rời hàng "chờ tôi"; ghim lựa chọn để người duyệt vẫn thấy kết quả.
+            onDecided={() => {
+              select(selectedId);
+              void queryClient.invalidateQueries({ queryKey: api.sdlc.key() });
+            }}
+          />
+        </DocEditorProvider>
       ) : (
         list.data && items.length > 0 && <p className="text-muted-foreground">{t.pick}</p>
       )}
