@@ -758,6 +758,27 @@ export const mergeQueueEntry = z.object({
 });
 export type MergeQueueEntry = z.output<typeof mergeQueueEntry>;
 
+/** Một dòng token theo người và máy trong một dự án (spec 029); chỉ số, không có nội dung phiên. */
+export const projectTokenUsageRow = z.object({
+  userId: z.string(),
+  userName: z.string(),
+  machineId: id,
+  machineName: z.string(),
+  periodEnd: z.iso.datetime(),
+  tokens: z.number().int().nonnegative(),
+  sessions: z.number().int().nonnegative(),
+  score: z.number().int().min(0).max(100).nullable(),
+  policyDrift: z.array(
+    z.enum(["level", "rtk", "codegraph", "autoCompactWindow", "contextBudgetTokens", "memoryAutoSync"]),
+  ),
+});
+export type ProjectTokenUsageRow = z.output<typeof projectTokenUsageRow>;
+
+export const projectTokenUsageInput = z.object({
+  key: projectKey,
+  days: z.coerce.number().int().min(1).max(90).default(7),
+});
+
 export const projectsContract = {
   create: orgRoute(
     "POST",
@@ -814,6 +835,14 @@ export const projectsContract = {
   )
     .input(z.object({ key: projectKey, settings: projectSettingsPatch }))
     .output(projectSettings),
+  tokenUsage: orgRoute(
+    "GET",
+    "/v1/projects/{key}/token-usage",
+    "Token theo người và máy trong dự án, theo số ngày gần nhất (thành viên dự án)",
+    "projects",
+  )
+    .input(projectTokenUsageInput)
+    .output(z.object({ rows: z.array(projectTokenUsageRow) })),
 };
 
 /** Thành viên dự án: người của đội sở hữu được gắn vào dự án để lọc tài liệu "Dự án của tôi". */

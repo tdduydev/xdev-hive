@@ -371,6 +371,16 @@ export const fleetContract = {
       .errors(userErrors)
       .input(z.object({ machineId: id }))
       .output(machineTokenScore),
+    deleteMyProjectUsage: oc
+      .route({
+        method: "DELETE",
+        path: "/v1/machines/{id}/project-usage",
+        summary: "Xoá số token theo dự án mà máy của mình đã gửi lên (chủ máy)",
+        tags: ["fleet"],
+      })
+      .errors(userErrors)
+      .input(z.object({ id }))
+      .output(z.object({ deleted: z.number().int().nonnegative() })),
     workerRelease: oc
       .route({
         method: "GET",

@@ -6,6 +6,8 @@ import {
   devOptimizerPolicy,
   projectSettings,
   projectSettingsPatch,
+  projectTokenUsageInput,
+  projectTokenUsageRow,
 } from "./projects.ts";
 
 describe("quyền CLI trong dự án", () => {
@@ -266,5 +268,31 @@ describe("chính sách tối ưu máy dev", () => {
     expect(projectSettingsPatch.parse({ tokenSaving: { rtk: false } }).devOptimizer).toBeUndefined();
     expect(projectSettingsPatch.safeParse({ devOptimizer: { levl: "off" } }).success).toBe(false);
     expect(projectSettingsPatch.safeParse({ devOptimizer: { contextBudgetTokens: 9000 } }).success).toBe(false);
+  });
+});
+
+describe("projects.tokenUsage", () => {
+  it("days mặc định 7, nhận chuỗi từ query, giới hạn 1–90", () => {
+    expect(projectTokenUsageInput.parse({ key: "demo" }).days).toBe(7);
+    expect(projectTokenUsageInput.parse({ key: "demo", days: "30" }).days).toBe(30);
+    expect(projectTokenUsageInput.safeParse({ key: "demo", days: 0 }).success).toBe(false);
+    expect(projectTokenUsageInput.safeParse({ key: "demo", days: 91 }).success).toBe(false);
+    expect(projectTokenUsageInput.safeParse({ key: "demo", days: 1.5 }).success).toBe(false);
+  });
+  it("dòng kết quả chỉ có số và tên hiển thị, score rỗng được", () => {
+    const row = {
+      userId: "u1",
+      userName: "An",
+      machineId: "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e5f",
+      machineName: "may-01",
+      periodEnd: "2026-10-22T00:00:00.000Z",
+      tokens: 1200,
+      sessions: 2,
+      score: null,
+      policyDrift: ["rtk"],
+    };
+    expect(projectTokenUsageRow.safeParse(row).success).toBe(true);
+    expect(projectTokenUsageRow.safeParse({ ...row, score: 101 }).success).toBe(false);
+    expect(projectTokenUsageRow.safeParse({ ...row, policyDrift: ["x"] }).success).toBe(false);
   });
 });

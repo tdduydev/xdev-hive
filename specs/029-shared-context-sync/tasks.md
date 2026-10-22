@@ -221,7 +221,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `worker/internal/outbox/**`, `worker/cmd/hive-worker/{outbox.go,main.go,optimize_score_report.go}`, test.
   - **Kiểm**: SC-006 đúng một lần qua khởi động lại (tiến trình bị giết giữa `sending`), từ chối, hết hạn, backoff.
 
-- [ ] **T020 [P] [US5] [US6] [vừa] · 0,5 ngày — Contracts: `memory.propose`, `project.token_usage`, token dự án** (sau T012)
+- [x] **T020 [P] [US5] [US6] [vừa] · 0,5 ngày — Contracts: `memory.propose`, `project.token_usage`, token dự án** (sau T012)
   - **Goal**: theo [contracts/hub-api.md](contracts/hub-api.md) mục `client-events.ts` (payload `.strict()`, chỉ số/enum/
     uuid/ngày; `content` 1–2.000 ký tự), `projects.tokenUsage`, `fleet.deleteMyProjectUsage`; `MACHINE_EVENT_KINDS`;
     `pnpm openapi`.

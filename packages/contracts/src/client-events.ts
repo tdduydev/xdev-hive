@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MEMORY_MAX_CHARS, memoryKind } from "./knowledge.ts";
 
 /**
  * Sự kiện client (specs/027 US1). Bản đầu chỉ có sự kiện máy `machine.token_score` (ADR 0036); tool MCP và thủ tục oRPC
@@ -84,6 +85,46 @@ export const tokenScoreReport = z.strictObject({
 });
 export type TokenScoreReport = z.output<typeof tokenScoreReport>;
 
+// ---- Ngữ cảnh dùng chung (specs/029) ----
+// Chỉ số, enum, uuid và ngày: payload `project.token_usage` không chứa chuỗi tự do (SC-007).
+
+export const memoryProposePayload = z.strictObject({
+  projectId: z.uuid(),
+  kind: memoryKind,
+  content: z.string().min(1).max(MEMORY_MAX_CHARS),
+});
+export type MemoryProposePayload = z.output<typeof memoryProposePayload>;
+
+export const projectTokenUsagePolicyDrift = z.enum([
+  "level",
+  "rtk",
+  "codegraph",
+  "autoCompactWindow",
+  "contextBudgetTokens",
+  "memoryAutoSync",
+]);
+
+const tokenCount = z.number().int().nonnegative();
+
+export const projectTokenUsagePayload = z.strictObject({
+  projectId: z.uuid(),
+  periodStart: z.iso.datetime(),
+  periodEnd: z.iso.datetime(),
+  tokens: z.partialRecord(
+    z.enum(["claude", "codex"]),
+    z.strictObject({
+      input: tokenCount,
+      output: tokenCount,
+      cacheRead: tokenCount,
+      weighted: z.number().nonnegative(),
+    }),
+  ),
+  sessions: tokenCount,
+  score: z.number().int().min(0).max(100).nullable(),
+  policyDrift: z.array(projectTokenUsagePolicyDrift),
+});
+export type ProjectTokenUsagePayload = z.output<typeof projectTokenUsagePayload>;
+
 /** Sự kiện máy gửi lên `POST /v1/client-events`. Danh tính lấy từ token của máy, không lấy từ body. */
 export const machineEventInput = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -92,8 +133,24 @@ export const machineEventInput = z.discriminatedUnion("kind", [
     createdAt: z.iso.datetime(),
     payload: tokenScoreReport,
   }),
+  z.strictObject({
+    key: idempotencyKey,
+    kind: z.literal("memory.propose"),
+    createdAt: z.iso.datetime(),
+    payload: memoryProposePayload,
+  }),
+  z.strictObject({
+    key: idempotencyKey,
+    kind: z.literal("project.token_usage"),
+    createdAt: z.iso.datetime(),
+    payload: projectTokenUsagePayload,
+  }),
 ]);
 export type MachineEventInput = z.output<typeof machineEventInput>;
 
-/** Nhóm của từng loại sự kiện máy khi hub vắng (specs/027 FR-012): `progress` thì hộp thư đi giữ lại. */
-export const MACHINE_EVENT_KINDS = { "machine.token_score": "progress" } as const;
+/** Nhóm của từng loại sự kiện máy khi hub vắng (specs/027 FR-012): `progress` thì hộp thư đi giữ lại; `proposal` là đề xuất cần người duyệt. */
+export const MACHINE_EVENT_KINDS = {
+  "machine.token_score": "progress",
+  "memory.propose": "proposal",
+  "project.token_usage": "progress",
+} as const;
