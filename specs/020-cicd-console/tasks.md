@@ -439,7 +439,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (host key sai thì không lệnh nào chạy, SC-004 mức đơn vị; khoá riêng không có trong phản hồi API,
     audit, log, SC-008 mức đơn vị; đổi khoá giữa chừng không làm mất đường vào), typecheck, `pnpm deps`.
 
-- [ ] **T017 [P] [US3] [vừa] · 1 ngày — Môi trường và đích triển khai**
+- [x] **T017 [P] [US3] [vừa] · 1 ngày — Môi trường và đích triển khai**
   - **Phụ thuộc**: T008.
   - **Goal**: FR-012…FR-014, FR-026 (trường chính sách), FR-030 (chỉ `servers.manage` sửa lệnh và cấu hình).
     - `environments.ts`: môi trường của hệ thống (tên, thứ tự, chính sách duyệt: số người, `approveRoles`,
