@@ -405,7 +405,10 @@ mod tests {
             parse_output(false, out.as_bytes(), b"").unwrap_err(),
             "Dự án chưa bật ngữ cảnh."
         );
-        assert_eq!(parse_output(false, b"", b" hỏng \n").unwrap_err(), "hỏng");
+        assert_eq!(
+            parse_output(false, b"", " hỏng \n".as_bytes()).unwrap_err(),
+            "hỏng"
+        );
         assert_eq!(
             parse_output(false, b"", b"").unwrap_err(),
             "Worker báo lỗi mà không có chi tiết."
