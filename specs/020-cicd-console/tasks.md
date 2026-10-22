@@ -472,7 +472,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 3: điều phối, `ssh-script`, giao diện (song song, sau Đợt 2)
 
-- [ ] **T019 [P] [US4] [nặng] · 2 ngày — Bộ điều phối triển khai, bảng "đang chạy"**
+- [x] **T019 [P] [US4] [nặng] · 2 ngày — Bộ điều phối triển khai, bảng "đang chạy"**
   - **Phụ thuộc**: T008, T017, T018.
   - **Goal**: FR-015, FR-020, FR-027 (kiểm khoá), Q9, plan.md "Kiến trúc", mục 1, 8.
     - `deploys/orchestrator.ts`:
