@@ -354,7 +354,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 2: lõi hub: kết nối, CI, máy chủ, đích, log (song song, sau Đợt 1)
 
-- [ ] **T013 [P] [US2] [nặng] · 1,5 ngày — Kết nối Jenkins, token cá nhân, người theo dõi, Argo CD, Kubernetes**
+- [x] **T013 [P] [US2] [nặng] · 1,5 ngày — Kết nối Jenkins, token cá nhân, người theo dõi, Argo CD, Kubernetes**
   - **Phụ thuộc**: T004, T008, T010.
   - **Goal**: FR-001, FR-002, FR-006, FR-032, plan.md mục 2.
     - `connections/jenkins.ts`: kết nối Jenkins (thêm, sửa, xoá, kiểm) cần `ci.connections.manage`; người theo dõi mặc
