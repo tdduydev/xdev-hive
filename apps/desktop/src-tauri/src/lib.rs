@@ -21,6 +21,7 @@ mod local_projects;
 mod memory_store;
 mod no_window;
 mod notices;
+mod optimize_all;
 mod optimizer;
 mod profiles;
 mod register;
@@ -1188,6 +1189,10 @@ pub fn run() {
             context_sync::context_sync,
             context_sync::context_resolve,
             context_sync::context_migrate,
+            optimize_all::optimize_all_preview,
+            optimize_all::optimize_all_apply,
+            optimize_all::optimize_all_undo,
+            optimize_all::optimize_all_last,
             local_projects::local_projects,
             local_projects::local_projects_import,
             local_projects::local_project_bind,

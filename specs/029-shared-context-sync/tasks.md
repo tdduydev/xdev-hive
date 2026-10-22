@@ -132,7 +132,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/screens/memory-screen.tsx`.
   - **Kiểm**: Vitest theo vai trò và tên: bật, lưu nguồn, xung đột, tắt, chuyển từ chia sẻ cũ.
 
-- [ ] **T009 [P] [US2] [vừa] · 1 ngày — Rust `optimize_all.rs` và `lib/optimize-all.ts`** (sau T006, sau T007 vì `lib.rs`)
+- [x] **T009 [P] [US2] [vừa] · 1 ngày — Rust `optimize_all.rs` và `lib/optimize-all.ts`** (sau T006, sau T007 vì `lib.rs`)
   - **Goal**: `optimize_all_preview(policyFile?)`, `optimize_all_apply(plan)` (chạy bước `tool.*` theo bảng `doctor.rs`
     trước, ghi kết quả vào kế hoạch, rồi gọi sidecar `--apply`), `optimize_all_undo(runId)`, `optimize_all_last`. Chỉ id
     trong bảng cho phép; giao diện chỉ gửi id và cờ `selected`.

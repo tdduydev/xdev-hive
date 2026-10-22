@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-optimize-all-last"
+description = "Enables the optimize_all_last command without any pre-configured scope."
+commands.allow = ["optimize_all_last"]
+
+[[permission]]
+identifier = "deny-optimize-all-last"
+description = "Denies the optimize_all_last command without any pre-configured scope."
+commands.deny = ["optimize_all_last"]

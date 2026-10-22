@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-optimize-all-preview"
+description = "Enables the optimize_all_preview command without any pre-configured scope."
+commands.allow = ["optimize_all_preview"]
+
+[[permission]]
+identifier = "deny-optimize-all-preview"
+description = "Denies the optimize_all_preview command without any pre-configured scope."
+commands.deny = ["optimize_all_preview"]

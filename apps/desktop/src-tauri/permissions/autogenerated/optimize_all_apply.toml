@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-optimize-all-apply"
+description = "Enables the optimize_all_apply command without any pre-configured scope."
+commands.allow = ["optimize_all_apply"]
+
+[[permission]]
+identifier = "deny-optimize-all-apply"
+description = "Denies the optimize_all_apply command without any pre-configured scope."
+commands.deny = ["optimize_all_apply"]
