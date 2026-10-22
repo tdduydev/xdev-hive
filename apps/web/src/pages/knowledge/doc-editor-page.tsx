@@ -1,5 +1,5 @@
 import { ORPCError } from "@orpc/client";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import {
   type DocResolvedLink,
@@ -7,16 +7,21 @@ import {
   docSecretErrorData,
   SECRET_KIND_LABELS,
   type SubmitInput,
+  type WordImport,
+  type WordImportFile,
+  wordImportOriginalPath,
 } from "@xdev-hive/contracts";
 import { DocEditor, type DocEditorEnv, DocEditorProvider, type DocLinkTarget } from "@xdev-hive/doc-editor";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { FileTextIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadFailure } from "@/components/ui/query-state.tsx";
 import { WordImportDialog } from "@/components/word-import-dialog.tsx";
 import { useWordImportSupport } from "@/lib/build-info.ts";
 import { useWebDocEnv } from "@/lib/doc-editor-env.tsx";
+import { When } from "@/pages/knowledge/common.tsx";
 import { DocSyncDetails, useDocManage, useDocTree } from "@/pages/knowledge/doc-tree.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 
@@ -69,6 +74,67 @@ export function createAssetResolver(
   return { resolveLink, clear: () => cache.clear() };
 }
 
+/** File gốc cần cookie và tổ chức của người xem nên đi qua fetch rồi mới đưa cho trình duyệt lưu, không dùng link thẳng. */
+export async function downloadWordOriginal(
+  orgId: string,
+  importId: string,
+  file: Pick<WordImportFile, "id" | "fileName">,
+) {
+  const response = await fetch(wordImportOriginalPath(importId, file.id), {
+    headers: { "x-hive-org": orgId },
+    credentials: "same-origin",
+  }).catch(() => {
+    throw new Error("Không tải được file Word gốc. Kiểm tra kết nối rồi thử lại.");
+  });
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    throw new Error(
+      typeof payload === "object" && payload && "message" in payload && typeof payload.message === "string"
+        ? payload.message
+        : "Không tải được file Word gốc. Hãy thử lại.",
+    );
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.fileName;
+  link.click();
+  // Trình duyệt cần một nhịp để bắt đầu lưu trước khi thu hồi địa chỉ tạm.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Nhãn nguồn của tài liệu nhập từ Word: tên file, ngày, người nhập, và nút tải file gốc. */
+function WordOrigin({ from }: { from: { import: WordImport; file: WordImportFile } }) {
+  const { org } = useOrg();
+  const download = useMutation({
+    mutationFn: () => downloadWordOriginal(org.id, from.import.id, from.file),
+  });
+  return (
+    <div className="flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <FileTextIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      <p className="min-w-0 break-words">
+        <span className="font-medium">Nhập từ Word</span>
+        <span className="text-muted-foreground">
+          {" · "}
+          {from.file.fileName}
+          {" · "}
+          <When iso={from.import.createdAt} />
+          {" · "}
+          {from.import.createdBy.name ?? "—"}
+        </span>
+      </p>
+      <Button variant="outline" size="sm" disabled={download.isPending} onClick={() => download.mutate()}>
+        Tải file Word gốc
+      </Button>
+      {download.isError && (
+        <Alert variant="destructive" className="basis-full">
+          {download.error.message}
+        </Alert>
+      )}
+    </div>
+  );
+}
+
 export function DocEditorPage() {
   const { key } = useParams({ from: "/session/app/in-org/knowledge/docs/$key/edit" });
   const { org } = useOrg();
@@ -91,10 +157,11 @@ function WebDocEditor({ docKey }: { docKey: string }) {
   const [linking, setLinking] = useState(false);
   const word = useWordImportSupport();
   const homeId = tree.data?.find((item) => item.key === docKey)?.homeId;
-  // Chỉ hỏi khi hub nhận Word và người xem gắn được; hub chưa có `ofDoc` thì lỗi cũng coi như chưa gắn, nút vẫn hiện.
+  // Hỏi cho mọi người đọc được tài liệu: nhãn nguồn và file gốc không đòi quyền sửa. Hub chưa có `ofDoc` thì lỗi cũng
+  // coi như chưa gắn, nút vẫn hiện.
   const imported = useQuery({
     ...api.wordImports.ofDoc.queryOptions({ input: { docKey } }),
-    enabled: word.state === "on" && canManage && !!homeId,
+    enabled: word.state === "on",
     retry: false,
   });
   const [updating, setUpdating] = useState(false);
@@ -195,6 +262,7 @@ function WebDocEditor({ docKey }: { docKey: string }) {
             <DocSyncDetails item={tree.data.find((item) => item.key === docKey)} canManage={canManage} />
           )}
         </div>
+        {imported.data && <WordOrigin from={imported.data} />}
         {canLink && (
           <Button variant="outline" size="sm" onClick={() => setLinking(true)}>
             Gắn với file Word

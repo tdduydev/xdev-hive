@@ -245,7 +245,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/hub/src/modules/fleet/token-scores.ts` (nhánh mới, sau T021), `apps/hub/src/modules/catalog/router.ts` (route đọc), `*.db.test.ts`.
   - **Kiểm**: RLS tổ chức khác không đọc được; người ngoài dự án không đọc được; giới hạn; xoá.
 
-- [ ] **T023 [P] [US6] [vừa] · 1 ngày — Worker: gom token theo dự án, gửi `project.token_usage`** (sau T019)
+- [x] **T023 [P] [US6] [vừa] · 1 ngày — Worker: gom token theo dự án, gửi `project.token_usage`** (sau T019)
   - **Goal**: `tokenreport` gán phiên vào dự án khi `cwd` nằm trong thư mục đã gắn (`projects.json`); dựng payload 7 ngày
     (tokens theo CLI, số phiên, điểm máy, `policyDrift`); gửi qua outbox khi người dùng bật (cờ theo dự án trong cấu hình
     máy, mặc định tắt).
