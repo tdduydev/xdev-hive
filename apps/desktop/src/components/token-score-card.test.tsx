@@ -522,3 +522,63 @@ describe("TokenScoreCard: lịch sử, tự tính lại, gợi ý phiên ngắn"
     expect(screen.queryByText(/Tách việc thành phiên ngắn/)).toBeNull();
   });
 });
+
+describe("TokenScoreCard: nút Tối ưu", () => {
+  const optimizePlan = {
+    createdAt: "2026-10-23T09:00:00Z",
+    scoreBefore: 55,
+    policySources: [],
+    steps: [
+      {
+        id: "score.recompute",
+        group: "score",
+        target: "machine",
+        title: "Tính lại điểm",
+        changes: [],
+        selected: true,
+        requiresConfirm: false,
+        undoable: true,
+        reason: "Mặc định",
+      },
+    ],
+  };
+
+  it("nút Tối ưu đứng trước nút Tính lại ở hàng đầu thẻ", async () => {
+    fakeTauri({ token_score: () => sampleScore() });
+    render(<TokenScoreCard />);
+    await screen.findByText("55,0");
+    const optimize = screen.getByRole("button", { name: "Tối ưu" });
+    const recalc = screen.getByRole("button", { name: "Tính lại" });
+    expect(optimize.compareDocumentPosition(recalc) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(optimize.parentElement).toBe(recalc.parentElement);
+  });
+
+  it("áp dụng xong thì thẻ đọc lại điểm", async () => {
+    const user = userEvent.setup();
+    let score = sampleScore();
+    const calls = fakeTauri({
+      token_score: () => score,
+      optimize_all_preview: () => optimizePlan,
+      optimize_all_apply: () => {
+        score = better();
+        return {
+          id: "r1",
+          startedAt: "x",
+          finishedAt: "y",
+          scoreBefore: 55,
+          scoreAfter: 61.2,
+          policySources: [],
+          undoneAt: null,
+          steps: [{ ...optimizePlan.steps[0], status: "ok", error: null, undo: {} }],
+        };
+      },
+    });
+    render(<TokenScoreCard />);
+    await screen.findByText("55,0");
+    await user.click(screen.getByRole("button", { name: "Tối ưu" }));
+    await user.click(await screen.findByRole("button", { name: "Áp dụng 1 dòng" }));
+    await screen.findByText("Điểm sau");
+    expect((await screen.findAllByText("61,2")).length).toBeGreaterThan(0);
+    expect(commands(calls)).toEqual(["token_score", "optimize_all_preview", "optimize_all_apply", "token_score"]);
+  });
+});
