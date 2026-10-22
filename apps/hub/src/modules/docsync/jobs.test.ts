@@ -150,11 +150,11 @@ describe("khung nhập Word", () => {
   const ok = { ok: true, version: "3.12", reason: null };
   const missing = { ok: false, version: null, reason: "Không chạy được." };
 
-  it("route HTTP chưa có thì trả 501, không đọc request", async () => {
-    const request = new Request("http://localhost/", { method: "POST" });
+  it("route tải file gốc chưa đăng nhập thì 401", async () => {
+    const request = new Request("http://localhost/");
     const response = await handleWordOriginal({}, request, { importId: randomUUID(), fileId: randomUUID() });
-    expect(response.status).toBe(501);
-    expect(await response.json()).toMatchObject({ code: "NOT_IMPLEMENTED" });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("route ảnh xem trước chưa đăng nhập thì 401", async () => {
