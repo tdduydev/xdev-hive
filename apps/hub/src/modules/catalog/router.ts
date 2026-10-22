@@ -1,13 +1,15 @@
 import { implement } from "@orpc/server";
-import { contract } from "@xdev-hive/contracts";
-import type { RequestContext } from "../platform/index.ts";
-import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { contract, type ProjectTokenUsageRow } from "@xdev-hive/contracts";
+import { sql } from "drizzle-orm";
+import { NotFoundError, type RequestContext, type Tx } from "../platform/index.ts";
+import { type OrgDeps, orgMiddlewares, teamRoleOf } from "../tenancy/index.ts";
 import { addProjectMembers, listProjectMembers, myProjectMembership, removeProjectMember } from "./members.ts";
 import { enqueueMergeAs, queueForUser, removeMergeAs } from "./merge-queue.ts";
 import {
   type CatalogDeps,
   createProject,
   dryRunCreate,
+  findProject,
   getProject,
   getProvision,
   listProjects,
@@ -51,7 +53,54 @@ export function catalogRouter(deps: CatalogDeps & OrgDeps) {
     updateSettings: os.updateSettings
       .use(inOrg)
       .handler(({ context: { tx, user }, input }) => updateProjectSettings(tx, user.id, input.key, input.settings)),
+    tokenUsage: os.tokenUsage.use(inOrg).handler(async ({ context: { tx, user }, input }) => ({
+      rows: await projectTokenUsage(tx, user.id, input.key, input.days),
+    })),
   };
+}
+
+/**
+ * Token theo người và máy của dự án (spec 029): dòng mới nhất của từng máy có kỳ kết thúc trong `days` ngày. Ai có vai
+ * trò ở đội của dự án thì xem được, như xem dự án. Bảng thuộc fleet nhưng đọc bằng SQL: fleet đã phụ thuộc catalog
+ * (qua knowledge), import ngược fleet sẽ thành vòng tròn.
+ */
+async function projectTokenUsage(tx: Tx, userId: string, key: string, days: number): Promise<ProjectTokenUsageRow[]> {
+  const project = await findProject(tx, key);
+  // Không có quyền xem thì báo như không tồn tại để không lộ dự án.
+  if (!project || !(await teamRoleOf(tx, userId, project.teamId)))
+    throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
+  const { rows } = await tx.execute<{
+    user_id: string;
+    user_name: string | null;
+    machine_id: string;
+    machine_name: string;
+    period_end: Date | string;
+    tokens: Record<string, { weighted: number } | undefined>;
+    sessions: number;
+    score: number | null;
+    policy_drift: ProjectTokenUsageRow["policyDrift"];
+  }>(sql`
+    select distinct on (u.machine_id)
+           u.user_id, au.name as user_name, u.machine_id, m.name as machine_name, u.period_end, u.tokens, u.sessions,
+           u.score, u.policy_drift
+      from hive.project_token_usage u
+      join hive.machines m on m.id = u.machine_id
+      left join auth."user" au on au.id = u.user_id
+     where u.project_id = ${project.id} and u.period_end > now() - make_interval(days => ${days})
+     order by u.machine_id, u.period_end desc`);
+  const out = rows.map((r) => ({
+    userId: r.user_id,
+    userName: r.user_name ?? "",
+    machineId: r.machine_id,
+    machineName: r.machine_name,
+    periodEnd: new Date(r.period_end).toISOString(),
+    // Token quy đổi (weighted) như điểm máy: cộng mọi CLI.
+    tokens: Math.round(Object.values(r.tokens).reduce((sum, t) => sum + (t?.weighted ?? 0), 0)),
+    sessions: r.sessions,
+    score: r.score,
+    policyDrift: r.policy_drift,
+  }));
+  return out.sort((x, y) => y.tokens - x.tokens);
 }
 
 export function projectMembersRouter(deps: CatalogDeps & OrgDeps) {
