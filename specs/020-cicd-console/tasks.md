@@ -413,7 +413,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
   - **Kiểm**: hub test (đỏ hai lần liên tiếp chỉ một tin; xanh lại một tin; webhook gửi lại không đổi kết quả; chu kỳ
     15 giây khi có build chạy), typecheck.
 
-- [ ] **T016 [P] [US3] [nặng] · 2 ngày — Client SSH và máy chủ**
+- [x] **T016 [P] [US3] [nặng] · 2 ngày — Client SSH và máy chủ**
   - **Phụ thuộc**: T001, T008.
   - **Goal**: US3, FR-010, FR-011, FR-032, SC-004, SC-008, plan.md mục 5 "Khoá", "Kết nối".
     - `clients/ssh.ts` (`ssh2`):
