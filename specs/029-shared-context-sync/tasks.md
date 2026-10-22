@@ -106,7 +106,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **Kiểm**: SC-004 (hoàn tác so byte `settings.json`, `config.toml`, khối), bước lỗi giữa chừng, gộp chính sách, khoá
     song song, test danh sách bước đóng.
 
-- [ ] **T006 [US2] [vừa] · 1 ngày — Lệnh `hive-worker optimize all`** (sau T004, T005)
+- [x] **T006 [US2] [vừa] · 1 ngày — Lệnh `hive-worker optimize all`** (sau T004, T005)
   - **Goal**: `optimize all --preview|--apply --plan-file|--undo --run|--last` theo
     [contracts/sidecar-cli.md](contracts/sidecar-cli.md); nối `optimizeall.ContextSyncer` vào `ctxsync.Sync`; `context
     sync` cũng lấy `optimize.lock` (bỏ lượt với `locked:true` khi bận). Fixture JSON `OptimizePlan`, `OptimizeRun`.
@@ -261,7 +261,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/components/memory-hub-sync.tsx`, `apps/desktop/src/screens/memory-screen.tsx`, test.
   - **Kiểm**: Vitest: xếp hàng khi lỗi mạng, hiện số chờ, từ chối có lý do.
 
-- [ ] **T025 [P] [US6] [vừa] · 1 ngày — Web: bảng token của dự án** (sau T022)
+- [x] **T025 [P] [US6] [vừa] · 1 ngày — Web: bảng token của dự án** (sau T022)
   - **Goal**: tab/mục "Token" ở trang dự án: bảng theo người và máy (token quy đổi 7 ngày, số phiên, điểm, lệch chính
     sách), chỉ thành viên dự án; trống thì giải thích cách bật trên app desktop.
   - **PHẠM VI**: `apps/web/src/pages/projects/**` (trang/tab mới), `apps/web/src/router.tsx`, `apps/web/e2e/project-token-usage.spec.ts`.

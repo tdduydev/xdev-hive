@@ -80,6 +80,8 @@ describe("CI/CD", () => {
     expect(inAdminArea("/projects/PAY/cicd")).toBe(false);
     expect(inAdminArea("/projects/PAY/cicd/")).toBe(false);
     expect(activeNavItem("/projects/PAY/cicd")?.id).toBe("tasks");
+    expect(inAdminArea("/projects/PAY/token-usage")).toBe(false);
+    expect(activeNavItem("/projects/PAY/token-usage")?.id).toBe("tasks");
     expect(inAdminArea("/settings/jenkins-tokens")).toBe(false);
   });
 });

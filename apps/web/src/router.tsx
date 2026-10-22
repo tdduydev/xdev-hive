@@ -116,6 +116,7 @@ const JenkinsTokensPage = lazyRouteComponent(
   "JenkinsTokensPage",
 );
 const CiCdPage = lazyRouteComponent(() => import("@/pages/projects/cicd-page.tsx"), "CiCdPage");
+const TokenUsagePage = lazyRouteComponent(() => import("@/pages/projects/token-usage-page.tsx"), "TokenUsagePage");
 const ServersPage = lazyRouteComponent(() => import("@/pages/settings/servers-page.tsx"), "ServersPage");
 const EnvironmentsPage = lazyRouteComponent(() => import("@/pages/settings/environments-page.tsx"), "EnvironmentsPage");
 const DeployBoardPage = lazyRouteComponent(() => import("@/pages/deploys/board-page.tsx"), "DeployBoardPage");
@@ -459,6 +460,7 @@ const sdlcRoutes = [
 /** CI/CD và triển khai (specs/020). Trang của T021–T023 thay nội dung các trang rỗng, không đổi đường dẫn. */
 const deliveryRoutes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/projects/$key/cicd", component: CiCdPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/projects/$key/token-usage", component: TokenUsagePage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/systems/$systemId/deploys", component: DeployBoardPage }),
   createRoute({
     getParentRoute: () => inOrgRoute,
