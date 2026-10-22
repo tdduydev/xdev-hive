@@ -1011,6 +1011,14 @@ export async function fakeTerminalSocket(
 export const REMOTE_SESSION_LIVE = "7b7b7b7b-0000-4000-8000-0000000000b1";
 export const REMOTE_SESSION_ENDED = "7b7b7b7b-0000-4000-8000-0000000000b2";
 export const REMOTE_SESSION_COLLEAGUE = "7b7b7b7b-0000-4000-8000-0000000000b3";
+/** Phiên `remote.start` tạo ra (T052). */
+export const REMOTE_SESSION_STARTED = "7b7b7b7b-0000-4000-8000-0000000000b4";
+export const REMOTE_TASK = {
+  id: "5a5a5a5a-0000-4000-8000-0000000000b9",
+  projectId: TERMINAL_PROJECT.id,
+  key: "PAY-31",
+  title: "Sửa lỗi đăng nhập",
+};
 
 export function remoteSession(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -1056,6 +1064,8 @@ export function remoteFixture(
     devices?: RemoteDeviceRow[];
     pairError?: Reply;
     revokeError?: Reply;
+    /** `remote.start` trả lỗi này (máy từ chối, hết giờ chờ máy…). */
+    startError?: Reply;
   } = {},
 ) {
   const state = {
@@ -1092,6 +1102,7 @@ export function remoteFixture(
     pairOptionsCalls: [] as { machineId: string; pairId: string }[],
     pairCalls: [] as Record<string, unknown>[],
     revokeCalls: [] as { machineId: string; deviceId: string }[],
+    startCalls: [] as Record<string, unknown>[],
     ticketCalls: 0,
     /** Giả mất mạng: xin vé trả 503 (lỗi tạm) nên trang cứ nối lại theo backoff. */
     offline: false,
@@ -1193,6 +1204,46 @@ export function remoteFixture(
       const { machineId } = input as { machineId: string };
       return ok(state.devices.filter((d) => d.machineId === machineId).map(({ machineId: _, ...row }) => row));
     },
+    "remote/start": (input: unknown) => {
+      const call = input as Record<string, unknown>;
+      state.startCalls.push(call);
+      if (opts.startError) return opts.startError;
+      const session = remoteSession({
+        id: REMOTE_SESSION_STARTED,
+        machineId: call.machineId,
+        origin: "remote",
+        cli: call.cli,
+        cwdLabel: call.subdir ? `payment-api/${String(call.subdir)}` : "payment-api",
+        taskId: call.taskId ?? null,
+        taskKey: call.taskId === REMOTE_TASK.id ? REMOTE_TASK.key : null,
+        state: "running",
+        exitCode: null,
+        endReason: null,
+        endedAt: null,
+        bytes: 0,
+        cols: call.cols,
+        rows: call.rows,
+        createdAt: "2026-10-15T02:00:00.000Z",
+      });
+      state.sessions.unshift(session);
+      return ok(session);
+    },
+    "tasks/list": () =>
+      ok([
+        {
+          ...REMOTE_TASK,
+          teamId: TERMINAL_ORG.id,
+          number: 31,
+          body: "",
+          type: null,
+          status: "todo",
+          preferredCli: null,
+          source: {},
+          createdBy: USER.id,
+          createdAt: "2026-10-14T00:00:00.000Z",
+          updatedAt: "2026-10-14T00:00:00.000Z",
+        },
+      ]),
     "remote/revokeDevice": (input: unknown) => {
       const call = input as { machineId: string; deviceId: string };
       state.revokeCalls.push(call);

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { RemoteSession } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
@@ -7,7 +7,7 @@ import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { TERMINAL_DEFAULT_FONT_SIZE, TERMINAL_FONT_SIZES } from "@xdev-hive/ui/terminal-theme";
 import { ChevronLeftIcon, KeyboardIcon } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { TerminalKeys, useKeyPad } from "@/components/terminal-keys.tsx";
 import { type LiveSink, TerminalView, type TerminalViewHandle } from "@/components/terminal-view.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
@@ -332,6 +332,18 @@ function SessionView({ session }: { session: RemoteSession }) {
       );
     }
   };
+
+  // Vừa mở từ "Mở phiên mới": xin quyền gõ một lần khi đã nối, rồi bỏ cờ khỏi URL để tải lại không hỏi passkey nữa.
+  const { control: autoControl } = useSearch({ from: "/session/app/in-org/remote/$id" });
+  const navigate = useNavigate();
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (!autoControl || autoTried.current || !canControl || connection.kind !== "connected" || control !== "none")
+      return;
+    autoTried.current = true;
+    void navigate({ to: "/remote/$id", params: { id: session.id }, search: {}, replace: true });
+    void takeControl();
+  });
 
   let status = { tone: state.tone, label: state.label[lang] };
   if (live && connection.kind === "connecting") status = { tone: "sel", label: t.connecting };

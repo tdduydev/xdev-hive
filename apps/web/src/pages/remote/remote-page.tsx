@@ -16,6 +16,7 @@ import {
 import { isLive } from "@/lib/terminal.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
+import { NewSessionButton } from "./new-session-sheet.tsx";
 import { RemoteSessionRow } from "./session-row.tsx";
 
 const text: Dict<
@@ -140,7 +141,7 @@ function MachineCard({ machine }: { machine: RemoteMachine }) {
 
 /**
  * Trang Điều khiển từ xa (spec 010): máy cá nhân với trạng thái từ xa, và danh sách phiên (đang chạy trước). Bật từ xa,
- * bắt đầu ghép thiết bị, thêm thư mục làm tại máy (FR-012); ở đây chỉ xem, phát lại và gỡ thiết bị đã ghép.
+ * bắt đầu ghép thiết bị, thêm thư mục làm tại máy (FR-012); ở đây xem, phát lại, mở phiên mới và gỡ thiết bị đã ghép.
  */
 export function RemotePage() {
   const t = useT(text);
@@ -157,6 +158,7 @@ export function RemotePage() {
   return (
     <>
       <PageHeader title={t.title} description={t.description}>
+        {machines.data && <NewSessionButton machines={machines.data} />}
         <Button
           variant="outline"
           className="h-11"

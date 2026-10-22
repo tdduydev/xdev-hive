@@ -532,11 +532,18 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
     `BUSY`. Còn: máy trả lời sau khi hết giờ thì phiên vẫn mở và hiện trong danh sách.
   - **Phụ thuộc**: T041 (cùng làn) · **Mức**: vừa
 
-- [ ] T052 [US4] Web: "Mở phiên mới"
+- [x] T052 [US4] Web: "Mở phiên mới"
   - `new-session-sheet.tsx`: CLI, tài khoản (Tự chọn), thư mục được phép + thư mục con, task, lời nhắc; passkey; vào phiên
     với quyền điều khiển; nút tắt khi chưa có thư mục.
   - **Scope**: `apps/web/src/pages/remote/{new-session-sheet.tsx,remote-page.tsx}`,
     `apps/web/e2e/{remote-start.spec.ts,fake-hub.ts}`
+  - Đã làm (CLI010): nút "Mở phiên mới" trên trang Điều khiển từ xa mở tấm trượt dưới: máy (chỉ máy online bật từ xa),
+    CLI, tài khoản (Tự chọn, gói không `ready` bị khoá), thư mục + thư mục con, task (`tasks.list mine`, gắn cả
+    `projectId`), lời nhắc; báo "Hỏi tại máy" khi máy bật. `newStartAttempt` (input-mac.ts) ký `StartParams`, trường rỗng
+    bỏ hẳn để khớp challenge của máy; cỡ PTY theo màn. Xong thì vào `/remote/$id?control=true`: trang phiên tự xin quyền
+    gõ một lần (passkey lần hai, vì `term_opened` không cấp quyền) rồi bỏ cờ khỏi URL. Thiết bị chưa ghép, trang HTTP,
+    máy chưa có thư mục thì tắt nút và nói lý do. Playwright `remote-start.spec.ts` (360×740, kiểm chữ ký passkey của
+    `start` như worker). Còn: Safari iOS có thể chặn passkey tự gọi không qua cú chạm, lúc đó người dùng bấm "Điều khiển".
   - **Phụ thuộc**: T032 (cùng làn), T051 · **Mức**: vừa
 
 ---
