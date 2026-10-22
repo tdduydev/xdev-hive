@@ -36,3 +36,4 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0030](0030-hub-deploys-over-ssh.md) | Run deploy steps from the hub over SSH with `ssh2`, one encrypted key per server and a pinned host key | Proposed |
 | [0031](0031-external-ci-and-deploy-sources.md) | Read and drive Jenkins, GitLab, Argo CD and Kubernetes from the hub with per-person Jenkins tokens, and do not store CI logs | Proposed |
 | [0036](0036-machine-sends-token-score.md) | Send the token score as a machine client event with an idempotency key, opt-in per machine, numbers only | Accepted |
+| [0037](0037-shared-context-local-files.md) | Share project context through one source written into local, untracked files, in a marked block | Proposed |
