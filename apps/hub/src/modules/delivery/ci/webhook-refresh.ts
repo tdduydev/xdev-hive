@@ -5,11 +5,14 @@ import type { DeliveryDeps } from "../deps.ts";
 import { DELIVERY_WEBHOOK_REFRESH_QUEUE } from "../queues.ts";
 import { deliveryActiveOrgs } from "./poll.ts";
 
-// Dự án GitLab tạo trước spec 020 có webhook chưa gửi pipeline/job events. Hub khởi động thì đăng ký lại một lần cho
-// mỗi tổ chức; dấu đã làm nằm trong audit của tổ chức, nên khởi động lại không gọi GitLab lần nữa.
+// Dự án GitLab, GitHub tạo trước spec 020 có webhook chưa gửi sự kiện pipeline, job. Hub khởi động thì đăng ký lại một
+// lần cho mỗi tổ chức; dấu đã làm nằm trong audit của tổ chức, nên khởi động lại không gọi GitLab, GitHub lần nữa.
 
-/** Đổi khi WEBHOOK_EVENTS thêm loại sự kiện mới, để chạy lại cho mọi dự án. */
-export const WEBHOOK_REFRESH_VERSION = "020-ci-events";
+/**
+ * Đổi khi WEBHOOK_EVENTS thêm loại sự kiện mới hoặc thêm loại dự án được đăng ký lại, để chạy lại cho mọi dự án. Bản
+ * `020-ci-events` chỉ làm GitLab; bản này thêm GitHub (workflow_run, workflow_job), GitLab chạy lại cũng không sao.
+ */
+export const WEBHOOK_REFRESH_VERSION = "020-ci-events-github";
 const REFRESHED_ACTION = "delivery.webhooks_refreshed";
 
 export interface WebhookRefreshJob {

@@ -37,6 +37,7 @@ let projectId: string;
 let connId: string;
 let jenkins: FakeHttp;
 let gitlab: MemoryProvider;
+let github: MemoryProvider;
 /** Đồng hồ cố định để kiểm giờ hẹn chạy lại chính xác tới mili giây. */
 const clock = Date.now();
 
@@ -62,7 +63,7 @@ const lastPoll = () => ciPolls().at(-1);
 const deps = (): CiPollDeps => ({
   pool: app,
   masterKey,
-  providerFactory: () => gitlab,
+  providerFactory: (conn) => (conn.kind === "github" ? github : gitlab),
   publicUrl: PUBLIC_URL,
   fetch: (input, init) => fetch(input, init),
   now: () => clock,
@@ -491,5 +492,75 @@ describe("đăng ký lại webhook GitLab", () => {
     expect(hooks()).toBe(before + 1);
     await runWebhookRefresh(refreshDeps, { version: "test", orgIds: [org.orgId] });
     expect(hooks()).toBe(before + 1);
+  });
+});
+
+describe("sự kiện workflow GitHub Actions", () => {
+  const GH_REPO = { owner: "xdev-team", name: "portal" };
+  let ghProjectId: string;
+
+  beforeAll(async () => {
+    const scm = randomUUID();
+    await admin.query(
+      "insert into hive.scm_connections (id, org_id, kind, name, secret_enc, created_by) values ($1, $2, 'github', 'GitHub ACME', $3, $4)",
+      [
+        scm,
+        org.orgId,
+        encryptSecret(masterKey, JSON.stringify({ token: "ghp-poll-0123456789" }), `scm_connections:${scm}`),
+        org.user("owner"),
+      ],
+    );
+    ghProjectId = (
+      await admin.query(
+        `insert into hive.projects (org_id, team_id, system_id, key, name, scm_connection_id, scm_kind, repo_mode,
+           repo_owner, repo_name, settings, idempotency_key, created_by, state)
+         values ($1, $2, $3, 'portal', 'portal', $4, 'github', 'existing', $5, $6, '{}', $7, $8, 'active')
+         returning id`,
+        [org.orgId, org.teamId, org.systemId, scm, GH_REPO.owner, GH_REPO.name, randomUUID(), org.user("owner")],
+      )
+    ).rows[0].id as string;
+    github = createMemoryProvider("github", [GH_REPO.owner]);
+    github.seedRepo(GH_REPO);
+  });
+
+  const handlers = () => gitlabEventHandlers(deps(), fakeJobs);
+  const ctx = (tx: ScmEventContext["tx"]): ScmEventContext => ({
+    tx,
+    orgId: org.orgId,
+    projectId: ghProjectId,
+    deliveryRowId: randomUUID(),
+    intake: {} as ScmEventContext["intake"],
+    afterCommit: () => {},
+  });
+  const deliver = (event: ReturnType<MemoryProvider["pipelineEvent"]>) =>
+    withTenant(app, { orgId: org.orgId }, (tx) => handlers().pipeline(event, ctx(tx)));
+  const row = async (runId: string) => (await seen("github")).find((r) => r.external_id === `${ghProjectId}:${runId}`);
+
+  it("run đang chạy hẹn hỏi lại GitHub như GitLab; webhook lúc xong bị lỡ vẫn báo đỏ", async () => {
+    const failedBefore = await count("ci.failed");
+    enqueued = [];
+    const run = github.seedPipeline(GH_REPO, { status: "running" }).pipeline;
+    await deliver(github.pipelineEvent(GH_REPO, run.id));
+    expect(await row(run.id)).toMatchObject({ status: "running", branch: "main", finished_at: null });
+    expect(lastPoll()).toMatchObject({
+      data: { kind: "gitlab", orgId: org.orgId, projectId: ghProjectId },
+      opts: { singletonKey: `gitlab:${ghProjectId}`, startAfter: new Date(clock + GITLAB_RECHECK_MS) },
+    });
+
+    github.setPipeline(GH_REPO, run.id, { status: "failed", finishedAt: new Date().toISOString() });
+    enqueued = [];
+    await runCiPollJob(deps(), fakeJobs, { kind: "gitlab", orgId: org.orgId, projectId: ghProjectId });
+    expect(await row(run.id)).toMatchObject({ status: "failed", notified_state: "failed" });
+    expect(await count("ci.failed")).toBe(failedBefore + 1);
+    expect(github.calls.some((c) => c.method === "listPipelines")).toBe(true);
+    expect(ciPolls()).toEqual([]);
+  });
+
+  it("run chờ duyệt deployment không hẹn hỏi lại: chờ người duyệt, không chờ GitHub", async () => {
+    enqueued = [];
+    const run = github.seedPipeline(GH_REPO, { pendingDeployments: ["production"] }).pipeline;
+    await deliver(github.pipelineEvent(GH_REPO, run.id));
+    expect(await row(run.id)).toMatchObject({ status: "waiting", finished_at: null });
+    expect(ciPolls()).toEqual([]);
   });
 });
