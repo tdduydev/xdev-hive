@@ -463,7 +463,7 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **Kiểm**: hub test (cần LibreOffice), typecheck, `docker build .`.
   - **Bàn giao**: dung lượng image tăng thêm (cho ADR 0029 ở T022).
 
-- [ ] **T015 [P] [US3] [nặng] · 2 ngày — Cập nhật từ Word: hợp ba bên, xung đột nguồn Word**
+- [x] **T015 [P] [US3] [nặng] · 2 ngày — Cập nhật từ Word: hợp ba bên, xung đột nguồn Word**
   - **Phụ thuộc**: T009, T010, T013.
   - **Goal**: giai đoạn 2. FR-024, FR-025, FR-026 (gọi dọn ảnh), FR-021, US3, SC-004, plan.md mục 8.
     - `update.ts`:
@@ -484,6 +484,13 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/word/update.ts` + `update.db.test.ts` (mới)
     - `apps/hub/src/modules/docsync/{conflicts.ts,routes/conflicts.ts,conflicts.db.test.ts}`
   - **Kiểm**: hub test docsync (test xung đột cũ vẫn qua), typecheck.
+  - **Đã làm**:
+    - xem trước ghi `linkMatches` (true là hợp sạch); cùng SHA-256 thì file `skipped`; có xung đột thì file `done`
+      không có `doc_version` và bản Word đó thành gốc lần sau; đang có xung đột mở thì báo `DOCSYNC_CONFLICT_OPEN`;
+    - ngoài phạm vi: tách `attachImages`, `assetsDirOf`, `stripFrontMatter`, `fileError` từ `commit.ts` sang
+      `word/attach.ts` (mới), vì `commit.ts` import `update.ts` nên `update.ts` import ngược thì thành vòng;
+    - bàn giao: hợp đồng chưa có số chỗ chồng nhau (T018 cần "N chỗ chồng nhau"), cần thêm trường vào `wordImportFile`;
+      `pull.ts` cập nhật hoặc đóng xung đột mở mà không xét `origin`, xung đột Word gặp thay đổi từ repo sẽ bị ghi đè.
 
 - [ ] **T016 [P] [US4] [nặng] · 1,5 ngày — Đề xuất cho người chỉ có `propose`**
   - **Phụ thuộc**: T009, T010, T012.
