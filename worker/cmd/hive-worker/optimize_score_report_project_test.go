@@ -27,7 +27,8 @@ func usageTranscript(t *testing.T, cwd, ts string) string {
 func projectUsageEnv(t *testing.T, hubURL string) (optimizeEnv, string) {
 	t.Helper()
 	e := scoreReportEnv(t, hubURL)
-	repo := filepath.Join(e.home, "repo")
+	// Repo nằm ngoài thư mục tạm: thư mục tạm của macOS có `/T/`, tokenreport coi phiên ở đó là phiên test và bỏ qua.
+	repo := filepath.Join(string(filepath.Separator), "srv", "repo")
 	e.write(t, ".claude/projects/-a/in1.jsonl", usageTranscript(t, filepath.Join(repo, "pkg", "sub"), "2026-10-12T08:00:00Z"))
 	e.write(t, ".claude/projects/-a/in2.jsonl", usageTranscript(t, repo, "2026-10-12T09:00:00Z"))
 	e.write(t, ".claude/projects/-a/out.jsonl", usageTranscript(t, filepath.Join(e.home, "other"), "2026-10-12T09:00:00Z"))

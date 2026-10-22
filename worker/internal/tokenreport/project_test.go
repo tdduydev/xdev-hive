@@ -67,9 +67,12 @@ func TestAssignProjectWindowsPaths(t *testing.T) {
 			t.Errorf("cwd %q: got (%q,%v), want %q", c.cwd, got, ok, c.want)
 		}
 	}
-	unc := []ProjectFolder{{ProjectID: projA, Folder: `\\Server\Share\Repo`}}
-	if got, _ := AssignProject(`//server/share/repo/src`, unc); got != projA {
-		t.Errorf("UNC: got %q", got)
+	// `//server/share` chỉ là UNC trên Windows; Linux, macOS coi đó là đường dẫn thường.
+	if runtime.GOOS == "windows" {
+		unc := []ProjectFolder{{ProjectID: projA, Folder: `\\Server\Share\Repo`}}
+		if got, _ := AssignProject(`//server/share/repo/src`, unc); got != projA {
+			t.Errorf("UNC: got %q", got)
+		}
 	}
 }
 
