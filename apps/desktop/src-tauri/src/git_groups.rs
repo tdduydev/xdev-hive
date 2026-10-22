@@ -268,6 +268,8 @@ pub async fn git_host_add(
         _ => return Err("Cách đăng nhập không hợp lệ.".into()),
     };
     args.push(arg("auth-mode", mode));
+    // Thêm lại cùng máy chủ và tài khoản là đổi token: worker trả id cũ, và kết nối đó vẫn còn token cũ trong keychain.
+    let before: Value = sidecar_json(&app, base(""), vec![]).await?;
     let view: Value = sidecar_json(&app, args, vec![(TOKEN_ENV, token.clone())]).await?;
     if mode == "git" {
         return Ok(view);
@@ -280,11 +282,19 @@ pub async fn git_host_add(
         e.set_password(&token)
             .map_err(|e| format!("Không lưu được token vào keychain: {e}"))
     }) {
-        // Không có token thì kết nối vô dụng: bỏ luôn để người dùng thêm lại.
-        let _ = sidecar_json::<Value>(&app, host_remove_args(&id)?, vec![]).await;
+        // Kết nối mới không có token thì vô dụng: bỏ luôn để người dùng thêm lại. Kết nối có sẵn thì giữ nguyên.
+        if !has_host(&before, &id) {
+            let _ = sidecar_json::<Value>(&app, host_remove_args(&id)?, vec![]).await;
+        }
         return Err(e);
     }
     Ok(view)
+}
+
+fn has_host(view: &Value, id: &str) -> bool {
+    view["hosts"]
+        .as_array()
+        .is_some_and(|hosts| hosts.iter().any(|h| h["id"].as_str() == Some(id)))
 }
 
 fn host_remove_args(id: &str) -> Result<Vec<String>, String> {
@@ -574,6 +584,14 @@ mod tests {
     use super::*;
 
     const ID: &str = "0a1b2c3d4e5f";
+
+    #[test]
+    fn has_host_tells_renewed_connection_from_new_one() {
+        let view = serde_json::json!({ "hosts": [{ "id": ID }] });
+        assert!(has_host(&view, ID));
+        assert!(!has_host(&view, "bbbbbbbbbbbb"));
+        assert!(!has_host(&serde_json::json!({}), ID));
+    }
 
     #[test]
     fn host_add_never_puts_token_in_args() {
