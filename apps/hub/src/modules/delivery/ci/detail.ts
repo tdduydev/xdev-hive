@@ -1,6 +1,6 @@
 import type { CiRun, CiRunDetail, CiRunStatus, CiStep, JenkinsParam } from "@xdev-hive/contracts";
 import { withTenant } from "../../platform/index.ts";
-import type { CiJob } from "../../scm/index.ts";
+import type { CiJob, GitProvider } from "../../scm/index.ts";
 import type { JenkinsParamDef } from "../clients/jenkins.ts";
 import { jenkinsClient, jenkinsDomainError } from "../connections/jenkins.ts";
 import {
@@ -21,12 +21,12 @@ import {
   scmTarget,
 } from "./feed.ts";
 
-// Chi tiết một lượt CI: job GitLab hoặc giai đoạn Jenkins (FR-007). Đọc database trước, gọi nguồn sau khi đã trả kết
+// Chi tiết một lượt CI: job GitLab, GitHub Actions hoặc giai đoạn Jenkins (FR-007). Đọc database trước, gọi nguồn sau khi đã trả kết
 // nối, như feed.ts.
 
 const iso = (ms: number) => (ms > 0 ? new Date(ms).toISOString() : null);
 
-function gitStep(j: CiJob): CiStep {
+function gitStep(source: ScmTarget["source"], j: CiJob): CiStep {
   return {
     id: j.id,
     kind: "job",
@@ -37,7 +37,8 @@ function gitStep(j: CiJob): CiStep {
     startedAt: j.startedAt,
     durationSec: j.durationSec,
     allowFailure: j.allowFailure,
-    playable: j.status === "manual",
+    // GitHub Actions không có job chờ bấm tay; action_required là chờ người có quyền cho chạy trên GitHub.
+    playable: source === "gitlab" && j.status === "manual",
     hasLog: true,
     url: j.url,
   };
@@ -57,7 +58,7 @@ function statusFromJobs(steps: CiStep[]): CiRunStatus {
 
 async function gitDetail(target: ScmTarget, pipelineId: string): Promise<CiRunDetail> {
   const jobs = await target.provider.pipelineJobs(target.ref, pipelineId);
-  const steps = jobs.map(gitStep);
+  const steps = jobs.map((j) => gitStep(target.source, j));
   // `GitProvider` chưa có hàm đọc một pipeline: tìm trong danh sách theo sha của job, thường chỉ vài pipeline.
   const sha = jobs[0]?.sha ?? undefined;
   const page = await target.provider.listPipelines(target.ref, { page: 1, perPage: 100, ...(sha ? { sha } : {}) });
@@ -80,7 +81,26 @@ async function gitDetail(target: ScmTarget, pipelineId: string): Promise<CiRunDe
         status: statusFromJobs(steps),
         rawStatus: "unknown",
       };
-  return { run, steps, pendingInputs: [] };
+  return { run, steps, pendingInputs: await pendingDeployments(target, pipelineId, run.status) };
+}
+
+type PendingDeployment = Awaited<ReturnType<NonNullable<GitProvider["pendingDeployments"]>>>[number];
+
+function deploymentMessage(d: PendingDeployment): string {
+  const who = d.reviewers.length ? ` Người duyệt: ${d.reviewers.join(", ")}.` : "";
+  const can = d.canApprove ? "" : " Tài khoản của kết nối Git không phải người duyệt environment này.";
+  return `Chờ duyệt deployment vào environment ${d.environment}.${who}${can}`;
+}
+
+/** Environment GitHub đang chờ duyệt thành ô chờ duyệt; id là tên environment để gửi lại khi duyệt. */
+async function pendingDeployments(
+  target: ScmTarget,
+  pipelineId: string,
+  status: CiRunStatus,
+): Promise<CiRunDetail["pendingInputs"]> {
+  if (status !== "waiting" || !target.provider.pendingDeployments) return [];
+  const list = await target.provider.pendingDeployments(target.ref, pipelineId);
+  return list.map((d) => ({ id: d.environment, message: deploymentMessage(d) }));
 }
 
 export async function ciDetail(

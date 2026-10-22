@@ -39,6 +39,10 @@ describe("trạng thái chung", () => {
     expect(gitStatus("failed")).toBe("failed");
   });
 
+  it("GitHub: chờ duyệt environment là waiting", () => {
+    expect(gitStatus("waiting")).toBe("waiting");
+  });
+
   it("Jenkins: giai đoạn chờ input là waiting, lạ thì queued", () => {
     expect(jenkinsStageStatus("PAUSED_PENDING_INPUT")).toBe("waiting");
     expect(jenkinsStageStatus("FAILED")).toBe("failed");
@@ -94,6 +98,25 @@ describe("chuyển sang lượt CI của hợp đồng", () => {
       status: "waiting",
       startedAt: "2026-10-20T08:00:00.000Z",
     });
+  });
+
+  it("workflow run GitHub giữ tiêu đề tên workflow, số lượt", () => {
+    const run = ciRun.parse(
+      gitRun("github", {
+        id: "30433642",
+        ref: "main",
+        sha: "abc",
+        status: "waiting",
+        url: "https://github.com/acme/web/actions/runs/30433642",
+        createdAt: "2026-10-20T08:00:00.000Z",
+        startedAt: "2026-10-20T08:00:05.000Z",
+        finishedAt: null,
+        durationSec: null,
+        user: "octocat",
+        title: "CI #562",
+      }),
+    );
+    expect(run).toMatchObject({ id: "github:30433642", title: "CI #562", status: "waiting", triggeredBy: "octocat" });
   });
 });
 

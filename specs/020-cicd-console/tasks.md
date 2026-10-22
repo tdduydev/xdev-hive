@@ -688,7 +688,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
 
 ## Đợt 6: P3: GitHub Actions (song song, sau Đợt 3; chạy cùng Đợt 4 hoặc 5 được)
 
-- [ ] **T031 [P] [US9] [nặng] · 2 ngày — GitHub Actions trên hub**
+- [x] **T031 [P] [US9] [nặng] · 2 ngày — GitHub Actions trên hub**
   - **Phụ thuộc**: T005, T014, T015.
   - **Goal**: US9, FR-003 (GitHub), Q11.
     - `scm/github.ts`: workflow run (liệt kê, lọc nhánh, trạng thái), job, log job (`/actions/jobs/:id/logs`), chạy

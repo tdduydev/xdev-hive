@@ -190,6 +190,35 @@ describe("memory provider: pipeline và job", () => {
     });
   });
 
+  it("deployment chờ duyệt: duyệt hết thì chạy tiếp, từ chối thì lỗi, environment không chờ thì invalid", async () => {
+    const scm = createMemoryProvider("github");
+    const repo = scm.seedRepo(ref);
+    const { pipeline } = scm.seedPipeline(ref, { pendingDeployments: ["staging", "production"] });
+    expect(pipeline.status).toBe("waiting");
+    expect((await scm.pendingDeployments(ref, pipeline.id)).map((d) => [d.environment, d.canApprove])).toEqual([
+      ["staging", true],
+      ["production", true],
+    ]);
+    await scm.reviewDeployments(ref, pipeline.id, { environments: ["staging"], decision: "approve", comment: "" });
+    expect((await scm.listPipelines(ref, { page: 1 })).items[0]?.status).toBe("waiting");
+    await scm.reviewDeployments(ref, pipeline.id, { environments: ["production"], decision: "approve", comment: "ok" });
+    expect((await scm.listPipelines(ref, { page: 1 })).items[0]?.status).toBe("running");
+    expect(repo.reviews.map((r) => [r.environments, r.decision, r.comment])).toEqual([
+      [["staging"], "approve", ""],
+      [["production"], "approve", "ok"],
+    ]);
+    await expect(
+      scm.reviewDeployments(ref, pipeline.id, { environments: ["production"], decision: "approve", comment: "" }),
+    ).rejects.toMatchObject({ code: "invalid" });
+
+    const other = scm.seedPipeline(ref, { pendingDeployments: ["production"] }).pipeline;
+    await scm.reviewDeployments(ref, other.id, { environments: ["production"], decision: "reject", comment: "chưa" });
+    const rejected = (await scm.listPipelines(ref, { page: 1 })).items.find((p) => p.id === other.id);
+    expect(rejected).toMatchObject({ status: "failed" });
+    expect(rejected?.finishedAt).not.toBeNull();
+    expect(await scm.pendingDeployments(ref, other.id)).toEqual([]);
+  });
+
   it("compare trả commit giữa hai sha của nhánh", async () => {
     const scm = createMemoryProvider();
     scm.seedRepo(ref, { files: { "a.txt": "a" } });

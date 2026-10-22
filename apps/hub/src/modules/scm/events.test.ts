@@ -368,11 +368,91 @@ describe("GitLab CI", () => {
     expect(rawEventName("gitlab", "Pipeline Hook", fixture("gitlab/pipeline"))).toBe("pipeline");
     expect(rawEventName("gitlab", "Job Hook", fixture("gitlab/job"))).toBe("build");
   });
+});
 
-  it("GitHub workflow_run chưa đổi thành pipeline (làm ở T031)", () => {
-    expect(normalizeGitHub("workflow_run", { action: "completed", repository: { full_name: "a/b" } }, opts)).toEqual(
-      [],
-    );
+describe("GitHub CI", () => {
+  it("workflow_run thành sự kiện pipeline; workflow không đặt tên thì tiêu đề lấy display_title", () => {
+    expect(normalizeGitHub("workflow_run", fixture("github/workflow_run.completed"), opts)).toEqual([
+      {
+        provider: "github",
+        kind: "pipeline",
+        repo: "octo-org/octo-repo",
+        actor: "Codertocat",
+        actorId: 15669918,
+        pipeline: {
+          id: "289782451",
+          ref: "master",
+          sha: "3484a3fb816e0859fd6e1cea078d76385ff50625",
+          status: "success",
+          source: "repository_dispatch",
+          url: "https://github.com/octo-org/octo-repo/actions/runs/289782451",
+          createdAt: "2020-10-05T16:33:24.000Z",
+          updatedAt: "2020-10-05T16:33:49.000Z",
+          startedAt: "2020-10-05T16:33:49.000Z",
+          finishedAt: "2020-10-05T16:33:49.000Z",
+          durationSec: 0,
+          user: "Codertocat",
+          title: "ci(action): update actions/setup-node digest to 8c91899 #163",
+        },
+      },
+    ]);
+  });
+
+  it("workflow_run requested: đang chờ, chưa xong", () => {
+    const [event] = normalizeGitHub("workflow_run", fixture("github/workflow_run.requested"), opts);
+    expect(event).toMatchObject({
+      kind: "pipeline",
+      pipeline: { status: "pending", finishedAt: null, durationSec: null },
+    });
+  });
+
+  it("workflow_job thành sự kiện job, người làm là sender", () => {
+    expect(normalizeGitHub("workflow_job", fixture("github/workflow_job.completed"), opts)).toEqual([
+      {
+        provider: "github",
+        kind: "job",
+        repo: "Codertocat/Hello-World",
+        actor: "Codertocat",
+        actorId: 21031067,
+        job: {
+          id: "289782451",
+          pipelineId: "2202229078",
+          name: "linters",
+          stage: "CodeQL",
+          ref: "main",
+          sha: "3484a3fb816e0859fd6e1cea078d76385ff50625",
+          status: "failed",
+          allowFailure: false,
+          failureReason: "failure",
+          url: "https://github.com/octo-org/octo-repo/runs/1291536064",
+          createdAt: "2021-08-05T10:33:58.000Z",
+          startedAt: "2021-08-05T10:34:58.000Z",
+          finishedAt: "2021-08-05T10:38:16.000Z",
+          durationSec: 198,
+          user: "Codertocat",
+        },
+      },
+    ]);
+  });
+
+  it("workflow_job chờ duyệt environment thành waiting; đang chạy thành running", () => {
+    const [waiting] = normalizeGitHub("workflow_job", fixture("github/workflow_job.waiting"), opts);
+    expect(waiting).toMatchObject({ kind: "job", job: { status: "waiting", finishedAt: null, failureReason: null } });
+    const [running] = normalizeGitHub("workflow_job", fixture("github/workflow_job.in_progress"), opts);
+    expect(running).toMatchObject({ kind: "job", job: { status: "running", name: "Analyze (javascript)" } });
+  });
+
+  it("thiếu id hoặc run_id thì bỏ, không ném lỗi", () => {
+    const run = fixture("github/workflow_run.completed");
+    delete run.workflow_run.id;
+    expect(normalizeGitHub("workflow_run", run, opts)).toEqual([]);
+    const job = fixture("github/workflow_job.completed");
+    delete job.workflow_job.run_id;
+    expect(normalizeGitHub("workflow_job", job, opts)).toEqual([]);
+  });
+
+  it("rawEventName ghép action", () => {
+    expect(rawEventName("github", "workflow_job", fixture("github/workflow_job.waiting"))).toBe("workflow_job.waiting");
   });
 });
 
