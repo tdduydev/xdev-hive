@@ -1,4 +1,4 @@
-import type { ConnectPurpose, TokenScoreReport } from "@xdev-hive/contracts";
+import type { ConnectPurpose, ProjectTokenUsagePayload, TokenScoreReport } from "@xdev-hive/contracts";
 import type { WorkerAccountSummary } from "@xdev-hive/contracts/worker-protocol";
 import { sql } from "drizzle-orm";
 import {
@@ -219,6 +219,52 @@ export const machineTokenScores = hive
       // chủ bảng nên cần hai policy này. hive_app không được gì thêm.
       pgPolicy("machine_token_scores_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
       pgPolicy("machine_token_scores_owner_purge", { for: "delete", to: hiveOwner, using: sql`true` }),
+    ],
+  )
+  .enableRLS();
+
+/**
+ * Token theo dự án máy gửi lên (spec 029, sự kiện `project.token_usage`): một dòng mỗi máy × dự án × kỳ, chỉ số, không có
+ * nội dung phiên. Giữ 90 ngày như điểm máy.
+ */
+export const projectTokenUsage = hive
+  .table(
+    "project_token_usage",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      /** Đội của dự án lúc nhận. */
+      teamId: uuid("team_id").notNull(),
+      /** Khoá ngoại tới projects viết tay trong migration: fleet không import schema của catalog. */
+      projectId: uuid("project_id").notNull(),
+      machineId: uuid("machine_id").notNull(),
+      /** Chủ máy (`machines.registered_by`) lúc nhận. */
+      userId: text("user_id").notNull(),
+      periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+      periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+      tokens: jsonb("tokens").$type<ProjectTokenUsagePayload["tokens"]>().notNull(),
+      sessions: integer("sessions").notNull(),
+      score: integer("score"),
+      policyDrift: text("policy_drift").array().$type<ProjectTokenUsagePayload["policyDrift"]>().notNull(),
+      receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      foreignKey({ columns: [t.machineId, t.orgId], foreignColumns: [machines.id, machines.orgId] }).onDelete(
+        "cascade",
+      ),
+      // Máy gửi lại cùng kỳ thì ghi đè: số của kỳ đang chạy tăng dần tới khi kỳ đóng.
+      unique("project_token_usage_period").on(t.machineId, t.projectId, t.periodEnd),
+      index("project_token_usage_project").on(t.orgId, t.projectId, t.periodEnd.desc()),
+      pgPolicy("project_token_usage_rw", {
+        as: "permissive",
+        for: "all",
+        to: hiveApp,
+        using: inOrg,
+        withCheck: inOrg,
+      }),
+      // Như machine_token_scores: job dọn chạy hàm SECURITY DEFINER không có tổ chức trong context.
+      pgPolicy("project_token_usage_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
+      pgPolicy("project_token_usage_owner_purge", { for: "delete", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();
