@@ -213,7 +213,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 4: Outbox và báo cáo token (P3)
 
-- [ ] **T019 [P] [US5] [nặng] · 1,5 ngày — Outbox tối thiểu trong worker**
+- [x] **T019 [P] [US5] [nặng] · 1,5 ngày — Outbox tối thiểu trong worker**
   - **Goal**: theo [spec 027 data-model](../027-hub-client-model/data-model.md) "Mục hộp thư đi", chỉ kênh `worker`:
     `outbox/<identity>/<ulid>.json` (0600), trạng thái `pending → sending → accepted|duplicate|rejected|expired`, backoff
     5 s → 5 phút, hết hạn 14 ngày, `sent.jsonl`; gửi bằng `hubclient.PostClientEvent` với `idempotencyKey` = ULID; lệnh
