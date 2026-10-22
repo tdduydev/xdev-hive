@@ -34,6 +34,7 @@ mod token_score;
 mod tray_icon;
 mod updates;
 mod usage;
+mod word_import;
 mod worker;
 mod workspace;
 
@@ -1102,6 +1103,7 @@ pub fn run() {
         .manage(settings::Store::default())
         .manage(notices::Notices::default())
         .manage(token_score::Last::default())
+        .manage(word_import::Picks::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
             register_worker,
@@ -1256,7 +1258,10 @@ pub fn run() {
             remote::remote_totp_disable,
             remote::remote_totp_unlock,
             remote::remote_sessions,
-            remote::remote_session_kill
+            remote::remote_session_kill,
+            word_import::pick_word_files,
+            word_import::hub_upload_word,
+            word_import::hub_fetch_bytes
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền. Người dùng tắt "Đóng cửa sổ chỉ ẩn xuống khay" ở màn Cài

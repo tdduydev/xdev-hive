@@ -515,7 +515,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/main.ts` (một dòng)
   - **Kiểm**: hub test, typecheck, `pnpm deps`.
 
-- [ ] **T017 [P] [US7] [nặng] · 1,5 ngày — Desktop Rust: chọn file, tải lên theo luồng, tải nhị phân**
+- [x] **T017 [P] [US7] [nặng] · 1,5 ngày — Desktop Rust: chọn file, tải lên theo luồng, tải nhị phân**
   - **Phụ thuộc**: T001, T008 (route và giới hạn).
   - **Goal**: giai đoạn 2b. FR-029 (phần Rust), FR-030, FR-031, R11, plan.md mục 11b.
     - `word_import.rs`:
