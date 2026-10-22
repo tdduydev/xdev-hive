@@ -494,7 +494,7 @@ func TestUnreadableCLIIsSkipped(t *testing.T) {
 func TestHubItemsGoToHubSection(t *testing.T) {
 	fx := newFixture(t)
 	p := fx.enable(t, "")
-	hub := &HubSnapshot{ProjectID: "x", Items: []HubItem{{ID: "1", Content: "Bài học từ đội", Pinned: true}}}
+	hub := &HubSnapshot{ProjectID: "x", Items: []HubMemory{{ID: "1", Content: "Bài học từ đội", Pinned: true}}}
 	p, _, err := fx.m.Sync(p.Key, hub, &Policy{MemoryAutoSync: true, MemorySyncMinutes: 30})
 	if err != nil {
 		t.Fatal(err)
