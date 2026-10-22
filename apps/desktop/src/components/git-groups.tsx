@@ -63,6 +63,11 @@ type T = {
   noGroups: string;
   hosts: string;
   removeHost: (name: string) => string;
+  renewToken: string;
+  renewTokenLabel: (name: string) => string;
+  renewTitle: string;
+  renewLead: (username: string, url: string) => string;
+  otherAccount: (got: string, want: string) => string;
   kind: string;
   url: string;
   urlHint: (kind: GitKind) => string;
@@ -131,6 +136,13 @@ const text: Dict<T> = {
     noGroups: "Chưa theo dõi group nào.",
     hosts: "Kết nối",
     removeHost: (n) => `Xoá kết nối ${n}`,
+    renewToken: "Đổi token",
+    renewTokenLabel: (n) => `Đổi token kết nối ${n}`,
+    renewTitle: "Đổi token",
+    renewLead: (u, url) =>
+      `Token mới phải thuộc tài khoản ${u} trên ${url}. Các nhóm đang theo dõi giữ nguyên, token cũ bị thay trong keychain.`,
+    otherAccount: (got, want) =>
+      `Token này thuộc tài khoản ${got}, không phải ${want}. Kết nối vẫn dùng token cũ; muốn đổi tài khoản thì thêm kết nối mới.`,
     kind: "Loại",
     url: "Địa chỉ máy chủ",
     urlHint: (k) =>
@@ -218,6 +230,13 @@ const text: Dict<T> = {
     noGroups: "No tracked groups yet.",
     hosts: "Connections",
     removeHost: (n) => `Remove connection ${n}`,
+    renewToken: "Change token",
+    renewTokenLabel: (n) => `Change token of connection ${n}`,
+    renewTitle: "Change token",
+    renewLead: (u, url) =>
+      `The new token must belong to ${u} on ${url}. Tracked groups stay as they are; the old token is replaced in the keychain.`,
+    otherAccount: (got, want) =>
+      `This token belongs to ${got}, not ${want}. The connection keeps its old token; add a new connection to use another account.`,
     kind: "Kind",
     url: "Server address",
     urlHint: (k) =>
@@ -324,6 +343,7 @@ export function GitGroupsSection({
   const [data, setData] = useState<GitGroups | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState<"host" | "group" | null>(null);
+  const [renewing, setRenewing] = useState<GitHost | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -372,6 +392,16 @@ export function GitGroupsSection({
                 <span className="text-muted-foreground">
                   {h.kind === "gitlab" ? "GitLab" : "GitHub"} · {h.username}
                 </span>
+                {h.authMode !== "git" && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    aria-label={t.renewTokenLabel(h.name)}
+                    onClick={() => setRenewing(h)}
+                  >
+                    {t.renewToken}
+                  </Button>
+                )}
                 <Button
                   size="xs"
                   variant="ghost"
@@ -418,6 +448,17 @@ export function GitGroupsSection({
           setAdding(null);
         }}
       />
+      {renewing && (
+        <TokenDialog
+          host={renewing}
+          t={t}
+          onClose={() => setRenewing(null)}
+          onSaved={(next) => {
+            setData(next);
+            setRenewing(null);
+          }}
+        />
+      )}
       {adding === "group" && (
         <GroupDialog
           hosts={hosts}
@@ -962,6 +1003,87 @@ function HostDialog({
               {t.cancel}
             </Button>
             <Button type="submit" disabled={saving || (authMode === "token" && !token.trim())}>
+              {t.save}
+            </Button>
+          </DialogActions>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Đổi token của một kết nối: worker gộp kết nối theo loại, máy chủ và tài khoản rồi ghi đè token theo id, nên gửi lại
+ * đúng loại và máy chủ là đủ. Token của tài khoản khác thì worker tạo kết nối mới; gỡ nó đi để nhóm không bị treo
+ * trên kết nối cũ mà người dùng tưởng đã đổi.
+ */
+function TokenDialog({
+  host,
+  t,
+  onClose,
+  onSaved,
+}: {
+  host: GitHost;
+  t: T;
+  onClose: () => void;
+  onSaved: (next: GitGroups) => void;
+}) {
+  const id = useId();
+  const [token, setToken] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const next = await addGitHost(host.kind, host.url, host.name, token, "token");
+      const saved = next.host;
+      if (saved && saved.id !== host.id) {
+        await removeGitHost(saved.id);
+        setError(t.otherAccount(saved.username ?? "?", host.username ?? "?"));
+        return;
+      }
+      onSaved(next);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setSaving(false);
+      // Không giữ token trong bộ nhớ của form lâu hơn cần.
+      setToken("");
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !saving && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t.renewTitle}</DialogTitle>
+          <DialogDescription>{t.renewLead(host.username ?? "?", host.url)}</DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`${id}-token`}>{t.token}</Label>
+            <Input
+              id={`${id}-token`}
+              type="password"
+              autoComplete="off"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+            />
+            <span className="text-xs text-muted-foreground">{t.tokenHint(host.kind)}</span>
+          </div>
+          {error && <Alert variant="destructive">{error}</Alert>}
+          <DialogActions>
+            <Button type="button" variant="outline" disabled={saving} onClick={onClose}>
+              {t.cancel}
+            </Button>
+            <Button type="submit" disabled={saving || !token.trim()}>
               {t.save}
             </Button>
           </DialogActions>
