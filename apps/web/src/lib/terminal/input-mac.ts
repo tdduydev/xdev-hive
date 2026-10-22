@@ -5,6 +5,8 @@ import {
   deriveInputKey,
   inputMac,
   inputMacPayload,
+  type RemoteAction,
+  type StartParams,
   sessionKeyInfo,
   toBase64url,
   type WebCryptoKey,
@@ -26,8 +28,23 @@ export interface ControlAttempt {
   nonce: string;
 }
 
-export async function newControlAttempt(
+export function newControlAttempt(
   input: { machineId: string; params: ControlParams },
+  now: () => number = Date.now,
+): Promise<ControlAttempt> {
+  return newAuthAttempt({ ...input, action: "control" }, now);
+}
+
+/** Mở phiên (`remote.start`): cùng dạng challenge, `params` là các trường của `term_start` được ký. */
+export function newStartAttempt(
+  input: { machineId: string; params: StartParams },
+  now: () => number = Date.now,
+): Promise<ControlAttempt> {
+  return newAuthAttempt({ ...input, action: "start" }, now);
+}
+
+export async function newAuthAttempt(
+  input: { machineId: string; action: RemoteAction; params: ControlParams | StartParams },
   now: () => number = Date.now,
 ): Promise<ControlAttempt> {
   const pair = (await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, [
@@ -38,7 +55,7 @@ export async function newControlAttempt(
   const ts = Math.floor(now() / 1000);
   const challenge: ChallengeInput = {
     machineId: input.machineId,
-    action: "control",
+    action: input.action,
     params: input.params,
     ephPub,
     ts,

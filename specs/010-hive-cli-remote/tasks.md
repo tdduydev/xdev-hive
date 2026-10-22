@@ -517,22 +517,38 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
     `start_unit_test.go` (chạy cả Windows). Chưa có: `term_opened` chưa cấp quyền điều khiển, điện thoại gửi `control`
     sau khi mở (T051/T052 chốt).
 
-- [ ] T051 [US4] Hub: route `start`
+- [x] T051 [US4] Hub: route `start`
   - Kiểm chủ máy, máy online có `terminal` và bật từ xa; gắn chính sách agent của tổ chức (model, mức quyền) vào
     `term_start`; theo dõi `requestId`, đổi `term_denied` thành lỗi tiếng Việt; audit `terminal.open|deny`.
   - **Scope**: `apps/hub/src/modules/terminal/{start.ts,router.ts,start.db.test.ts}`
+  - Đã làm (CLI010): `start.ts`. Route `remote.start` (orgMember, không giữ transaction lúc chờ) chỉ cho chủ máy
+    (`MACHINE_NOT_YOURS`), máy online có `terminal`, máy chưa báo tắt (`REMOTE_NOT_ENABLED`), TOTP khi chính sách cho
+    (`TOTP_NOT_ALLOWED`); passkey thiếu `deviceId` → `DEVICE_NOT_FOUND`, TOTP dùng `TOTP_DEVICE_ID`. Model theo
+    `resolveModel(policy, cli, null)`, mức quyền theo `defaultPermissionMode` qua `resolvePermission`. Chờ `term_opened`
+    (`origin: remote`, cùng `requestId`, đúng máy) hay `term_denied` tới 70 s (`START_TIMEOUT`), móc trong `withRemoteLive`.
+    Lỗi giữ mã của máy (`TOTP_LOCKED`, `ROOT_ESCAPE`…) với câu `TERM_DENY_MESSAGES`; xác thực → 403, thư mục/CLI → 400,
+    còn lại 409. Audit `terminal.deny` (gồm lỗi hub tự chặn, ghi ở transaction riêng), `totp_ok`/`totp_fail`;
+    `terminal.open` vẫn ghi ở `recordOpened` (có `requestId`). Hub không ghi được phiên (đủ số phiên) thì `term_close` và
+    `BUSY`. Còn: máy trả lời sau khi hết giờ thì phiên vẫn mở và hiện trong danh sách.
   - **Phụ thuộc**: T041 (cùng làn) · **Mức**: vừa
 
-- [ ] T052 [US4] Web: "Mở phiên mới"
+- [x] T052 [US4] Web: "Mở phiên mới"
   - `new-session-sheet.tsx`: CLI, tài khoản (Tự chọn), thư mục được phép + thư mục con, task, lời nhắc; passkey; vào phiên
     với quyền điều khiển; nút tắt khi chưa có thư mục.
   - **Scope**: `apps/web/src/pages/remote/{new-session-sheet.tsx,remote-page.tsx}`,
     `apps/web/e2e/{remote-start.spec.ts,fake-hub.ts}`
+  - Đã làm (CLI010): nút "Mở phiên mới" trên trang Điều khiển từ xa mở tấm trượt dưới: máy (chỉ máy online bật từ xa),
+    CLI, tài khoản (Tự chọn, gói không `ready` bị khoá), thư mục + thư mục con, task (`tasks.list mine`, gắn cả
+    `projectId`), lời nhắc; báo "Hỏi tại máy" khi máy bật. `newStartAttempt` (input-mac.ts) ký `StartParams`, trường rỗng
+    bỏ hẳn để khớp challenge của máy; cỡ PTY theo màn. Xong thì vào `/remote/$id?control=true`: trang phiên tự xin quyền
+    gõ một lần (passkey lần hai, vì `term_opened` không cấp quyền) rồi bỏ cờ khỏi URL. Thiết bị chưa ghép, trang HTTP,
+    máy chưa có thư mục thì tắt nút và nói lý do. Playwright `remote-start.spec.ts` (360×740, kiểm chữ ký passkey của
+    `start` như worker). Còn: Safari iOS có thể chặn passkey tự gọi không qua cú chạm, lúc đó người dùng bấm "Điều khiển".
   - **Phụ thuộc**: T032 (cùng làn), T051 · **Mức**: vừa
 
 ---
 
-- [ ] T028 [US2] [US3] Web: nhập mã TOTP và cảnh báo HTTP
+- [x] T028 [US2] [US3] Web: nhập mã TOTP và cảnh báo HTTP
   - Khi trang không phải secure context: `lib/terminal/totp-auth.ts` (gửi `auth{kind: "totp", code, ephPub, ts, nonce}`;
     trộn mã vào HKDF như worker), `totp-code-sheet.tsx` (ô 6 số, "Chờ mã mới" khi mã vừa dùng, báo `TOTP_INVALID`,
     `TOTP_REPLAY`, `TOTP_LOCKED` còn bao lâu, `TOTP_NOT_ALLOWED`), `http-warning.tsx` ("Hub chạy HTTP: nội dung phiên và
@@ -543,6 +559,15 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Scope**: `apps/web/src/lib/terminal/{totp-auth.ts,totp-auth.test.ts}`,
     `apps/web/src/components/{totp-code-sheet.tsx,http-warning.tsx}`,
     `apps/web/src/pages/remote/{remote-page.tsx,session-page.tsx}`, `apps/web/e2e/{remote-totp.spec.ts,fake-hub.ts}`
+  - Đã làm (CLI010): `remoteAuthMethod` chọn một chỗ: secure context → passkey (thiết bị đã ghép), không bao giờ hỏi mã;
+    HTTP → mã khi `totpAllowed` và máy bật TOTP, không thì nói lý do (`totp_not_allowed`, `totp_off`).
+    `requestRemoteAuth` dựng bằng chứng cho `start` và `control` (TOTP: challenge dùng `TOTP_DEVICE_ID`, không gửi
+    `deviceId`, mã trộn vào HKDF qua `RemoteSocket.requestControl(…, code)`). Nhớ bước 30 s vừa dùng trong bộ nhớ trang để
+    báo "Chờ mã mới" trước khi gửi (mở phiên bằng mã rồi xin quyền gõ ngay). `TotpCodeField` (tấm "Mở phiên mới") và
+    `TotpCodeSheet` (trang phiên) báo `TOTP_INVALID`, `TOTP_REPLAY`, `TOTP_LOCKED` kèm số phút còn khoá (từ
+    `machines.remote.totp.lockedUntil`), `TOTP_NOT_ALLOWED`. `HttpWarning` trên danh sách và trang phiên. Playwright
+    `remote-totp.spec.ts` (giả `isSecureContext = false`, đồng hồ giả của Playwright cho bước 30 s), vitest
+    `totp-auth.test.ts`.
   - **Phụ thuộc**: T032, T052 (cùng làn), T027 · **Mức**: vừa
 
 ## Phase 7: User Story 6 — `hive attach` (P2)

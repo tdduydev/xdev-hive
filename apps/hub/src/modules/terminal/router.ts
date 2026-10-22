@@ -25,6 +25,7 @@ import {
   type TerminalDeps,
   terminalOptions,
 } from "./service.ts";
+import { startRemoteSession } from "./start.ts";
 import { remoteTicket } from "./ws.ts";
 
 export interface TerminalRouterDeps extends OrgDeps {
@@ -69,11 +70,11 @@ export function terminalRouter(deps: TerminalRouterDeps) {
 }
 
 export interface RemoteRouterDeps extends OrgDeps {
-  remote: RemoteDeps;
+  remote: RemoteDeps & { startWaitMs?: number };
 }
 
 /**
- * Phiên trên máy cá nhân (specs/010 US1, US2, US5). Mở phiên và đẩy thông báo thêm ở T051, T071.
+ * Phiên trên máy cá nhân (specs/010 US1–US5). Đẩy thông báo thêm ở T071.
  * Ghi phiên luôn bật: `HIVE_REMOTE_TERMINAL` chỉ chặn phần từ xa.
  */
 export function remoteRouter(deps: RemoteRouterDeps) {
@@ -87,6 +88,12 @@ export function remoteRouter(deps: RemoteRouterDeps) {
     ticket: os.ticket
       .use(inOrg)
       .handler(({ context: { tx, user, orgId }, input }) => remoteTicket(tx, user.id, orgId, input.id, deps.remote)),
+    // orgMember: chờ máy mở phiên (có thể hỏi chủ máy tới cả phút), không giữ transaction trong lúc đó.
+    start: os.start
+      .use(orgMember)
+      .handler(({ context: { pool, user, orgId }, input }) =>
+        startRemoteSession(pool, orgId, user, input, deps.remote),
+      ),
     close: os.close.use(inOrg).handler(({ context: { tx, user }, input }) => closeRemoteSession(tx, user.id, input.id)),
     setVisibility: os.setVisibility
       .use(inOrg)
