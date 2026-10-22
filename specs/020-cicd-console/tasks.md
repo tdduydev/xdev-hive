@@ -520,7 +520,7 @@ description: "Task list: bảng điều khiển CI/CD và triển khai lên máy
     - `apps/hub/src/modules/delivery/ssh-script.db.test.ts` (mới, ca cơ bản: đủ bước, bước lỗi dừng chuỗi)
   - **Kiểm**: hub test (cần Docker), typecheck. Ca khó (SC-004, SC-005, SC-007, SC-008) ở T026.
 
-- [ ] **T021 [P] [US1] [vừa] · 1,5 ngày — Web: tab CI/CD của dự án**
+- [x] **T021 [P] [US1] [vừa] · 1,5 ngày — Web: tab CI/CD của dự án**
   - **Phụ thuộc**: T011 (API của T013, T014 dùng qua fixture).
   - **Goal**: US1, US2 (giao diện), FR-002 (gắn job), FR-007, FR-008.
     - `cicd-page.tsx`: danh sách gộp (nguồn, nhánh, commit, trạng thái, thời lượng, người kích hoạt, link gốc); lọc
