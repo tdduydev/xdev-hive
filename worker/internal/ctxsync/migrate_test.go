@@ -155,7 +155,8 @@ func TestDraftFromSkipsEmptyFilesAndMissingDir(t *testing.T) {
 func goldenProject() Project {
 	id, reason, syncedAt := "7f3c1b52-0a1e-4c0e-9d57-2f4c8f0b6a11", "Chưa cài Codex.", "2026-10-22T10:00:00Z"
 	return Project{
-		Key: "p_" + id, ProjectID: &id, Folder: "/work/app", Enabled: true, SourceTokens: 120, BlockTokens: 340,
+		Key: "p_" + id, ProjectID: &id, Folder: "/work/app", Enabled: true, Source: "# Nguồn\n\nDùng pnpm cho mọi lệnh.\n",
+		SourceTokens: 120, BlockTokens: 340,
 		Targets: []Target{
 			{ID: Claude, Path: "CLAUDE.local.md", Status: StatusOK},
 			{ID: Codex, Path: "AGENTS.override.md", Status: StatusSkipped, Reason: &reason},
