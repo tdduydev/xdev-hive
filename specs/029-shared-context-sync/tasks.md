@@ -46,7 +46,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **Kiểm**: mỗi CLI có kết quả "đọc được / không / chưa rõ" kèm phiên bản và ngày thử. CLI "không" thì ghi để T003 đặt
     trạng thái `skipped` với lý do "chưa hỗ trợ".
 
-- [ ] **T002 [P] [—] [vừa] · 0,5 ngày — Tách `gitexclude`, xuất API sao lưu của `memstore`**
+- [x] **T002 [P] [—] [vừa] · 0,5 ngày — Tách `gitexclude`, xuất API sao lưu của `memstore`**
   - **Goal**:
     - chuyển `gitExclude`, `removeGitExclude` (`memstore/shared.go:573`, `:600`) sang gói mới `worker/internal/gitexclude`
       (`Add(repo, rel) (added bool, warn string)`, `Remove(repo, line) string`, `Tracked(repo, rel) bool` dùng
@@ -59,7 +59,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 1: Go (P1)
 
-- [ ] **T003 [US1] [nặng] · 2 ngày — Gói `ctxsync`: nguồn, khối, file đích, gương Codex** (sau T002)
+- [x] **T003 [US1] [nặng] · 2 ngày — Gói `ctxsync`: nguồn, khối, file đích, gương Codex** (sau T002)
   - **Goal**: theo [plan.md](plan.md) mục 1, [data-model.md](data-model.md) "Trên máy", [research.md](research.md) mục 1–2:
     - khoá nguồn `p_<projectId>` / `f_<ProjectKey>`; `source.md`, `state.json` (version 1);
     - `RenderBlock`, `ParseBlocks`: dòng mở `<!-- xdev-hive:context v1 sha=<12 hex> -->`, dòng đóng
@@ -79,7 +79,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     Codex khi `AGENTS.md` đổi, file bị theo dõi, Gemini settings bị theo dõi, frontmatter Antigravity, tắt rồi khôi phục
     từ thùng rác.
 
-- [ ] **T004 [US1] [vừa] · 1 ngày — Lệnh `hive-worker context`, chuyển từ chia sẻ cũ** (sau T003)
+- [x] **T004 [US1] [vừa] · 1 ngày — Lệnh `hive-worker context`, chuyển từ chia sẻ cũ** (sau T003)
   - **Goal**: các lệnh ở [contracts/sidecar-cli.md](contracts/sidecar-cli.md) "`hive-worker context`" (`status`, `enable`,
     `disable`, `save-source`, `sync`, `resolve`, `migrate`), JSON đúng kiểu `ContextProject`; `migrate.go` đọc
     `memory-shared.json`, ghép bản nháp nguồn, `--apply` thì lưu nguồn và gọi `memstore.Unshare` (FR-007). Lỗi
@@ -160,7 +160,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 3: Hub và đồng bộ (P2)
 
-- [ ] **T012 [P] [US3] [US4] [vừa] · 0,5 ngày — Contracts: `devOptimizer`, `pinned`, `memory.pin`**
+- [x] **T012 [P] [US3] [US4] [vừa] · 0,5 ngày — Contracts: `devOptimizer`, `pinned`, `memory.pin`**
   - **Goal**: theo [contracts/hub-api.md](contracts/hub-api.md) mục `projects.ts` (chỉ `devOptimizerPolicy`,
     `projectSettings.devOptimizer`, `projectSettingsPatch.devOptimizer`; **không** đụng `tokenSaving`) và `knowledge.ts`
     (`pinned`, route `memory.pin`). Ràng buộc: `contextBudgetTokens` 500–8.000 (mặc định 2.000), `memorySyncMinutes`

@@ -3,6 +3,7 @@ import {
   defaultProjectSettings,
   defaultRouting,
   defaultTokenSaving,
+  devOptimizerPolicy,
   projectSettings,
   projectSettingsPatch,
 } from "./projects.ts";
@@ -196,5 +197,74 @@ describe("cài đặt kho tài liệu", () => {
       wordImportConfidential: true,
     });
     expect(projectSettingsPatch.safeParse({ docs: { wordImportConfidential: "true" } }).success).toBe(false);
+  });
+});
+
+describe("chính sách tối ưu máy dev", () => {
+  const policy = (over: Record<string, unknown> = {}) => ({ ...devOptimizerPolicy.parse({}), ...over });
+
+  it("mặc định cân bằng, tắt rtk, codegraph và đồng bộ memory", () => {
+    expect(devOptimizerPolicy.parse({})).toEqual({
+      level: "balanced",
+      rtk: false,
+      codegraph: false,
+      autoCompactWindow: null,
+      contextBudgetTokens: 2000,
+      memoryAutoSync: false,
+      memorySyncMinutes: 60,
+    });
+  });
+
+  it("settings lưu trước khi có mục này là null, không đụng tokenSaving", () => {
+    const { devOptimizer: _, ...old } = defaultProjectSettings();
+    const parsed = projectSettings.parse(old);
+    expect(parsed.devOptimizer).toBeNull();
+    expect(parsed.tokenSaving).toEqual(defaultTokenSaving);
+    expect(defaultProjectSettings().devOptimizer).toBeNull();
+  });
+
+  it("settings giữ chính sách đã đặt", () => {
+    const set = policy({ level: "aggressive", rtk: true, autoCompactWindow: 120_000 });
+    expect(projectSettings.parse({ ...defaultProjectSettings(), devOptimizer: set }).devOptimizer).toEqual(set);
+  });
+
+  it("contextBudgetTokens nhận 500 đến 8.000", () => {
+    for (const v of [500, 2000, 8000])
+      expect(devOptimizerPolicy.safeParse({ contextBudgetTokens: v }).success).toBe(true);
+    for (const v of [499, 8001, 0, -1, 1000.5, "2000"]) {
+      expect(devOptimizerPolicy.safeParse({ contextBudgetTokens: v }).success).toBe(false);
+    }
+  });
+
+  it("memorySyncMinutes nhận 15 đến 1.440", () => {
+    for (const v of [15, 60, 1440]) expect(devOptimizerPolicy.safeParse({ memorySyncMinutes: v }).success).toBe(true);
+    for (const v of [14, 1441, 0, 30.5, "60"]) {
+      expect(devOptimizerPolicy.safeParse({ memorySyncMinutes: v }).success).toBe(false);
+    }
+  });
+
+  it("autoCompactWindow nhận 50.000 đến 1.000.000 hoặc null", () => {
+    for (const v of [50_000, 200_000, 1_000_000, null]) {
+      expect(devOptimizerPolicy.safeParse({ autoCompactWindow: v }).success).toBe(true);
+    }
+    for (const v of [49_999, 1_000_001, 0, 100_000.5, "100000"]) {
+      expect(devOptimizerPolicy.safeParse({ autoCompactWindow: v }).success).toBe(false);
+    }
+  });
+
+  it("level chỉ nhận off, balanced, aggressive", () => {
+    for (const v of ["off", "balanced", "aggressive"])
+      expect(devOptimizerPolicy.safeParse({ level: v }).success).toBe(true);
+    expect(devOptimizerPolicy.safeParse({ level: "max" }).success).toBe(false);
+  });
+
+  it("bản vá đặt, thay hoặc bỏ chính sách và từ chối khoá lạ", () => {
+    expect(projectSettingsPatch.parse({ devOptimizer: { level: "off" } }).devOptimizer).toEqual(
+      policy({ level: "off" }),
+    );
+    expect(projectSettingsPatch.parse({ devOptimizer: null }).devOptimizer).toBeNull();
+    expect(projectSettingsPatch.parse({ tokenSaving: { rtk: false } }).devOptimizer).toBeUndefined();
+    expect(projectSettingsPatch.safeParse({ devOptimizer: { levl: "off" } }).success).toBe(false);
+    expect(projectSettingsPatch.safeParse({ devOptimizer: { contextBudgetTokens: 9000 } }).success).toBe(false);
   });
 });
