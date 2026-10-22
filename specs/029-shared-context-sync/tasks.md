@@ -124,7 +124,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/lib/context-sync.ts` (+ test).
   - **Kiểm**: Rust test dựng argv; Vitest so kiểu với fixture `context-project.json`.
 
-- [ ] **T008 [US1] [vừa] · 1,5 ngày — Màn Memory: mục "Ngữ cảnh dùng chung"** (sau T007)
+- [x] **T008 [US1] [vừa] · 1,5 ngày — Màn Memory: mục "Ngữ cảnh dùng chung"** (sau T007)
   - **Goal**: `<SharedContextSection>` theo [plan.md](plan.md) mục 7: chọn dự án, bật/tắt (xác nhận), ô soạn nguồn (lưu →
     đồng bộ), bảng file đích (CLI, đường dẫn ngắn, trạng thái, lý do), hộp so sánh khi xung đột (giữ bản file / bản
     nguồn), đề nghị chuyển từ chia sẻ cũ (xem trước bản nháp), ước lượng token khối. Chữ vi/en, 360 px, bàn phím.

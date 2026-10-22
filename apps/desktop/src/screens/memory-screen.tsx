@@ -2,13 +2,14 @@ import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { RefreshCwIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MemoryCompressDialog } from "@/components/memory-compress-dialog.tsx";
 import { type LocalMemoryItem, MemoryHubSync } from "@/components/memory-hub-sync.tsx";
+import { type ContextCandidate, SharedContextSection } from "@/components/shared-context-section.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { folderKey } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
-import { localProjects } from "@/lib/local-projects.ts";
+import { type LocalProject, localProjects } from "@/lib/local-projects.ts";
 import {
   applyMemory,
   canMergeMemory,
@@ -223,6 +224,7 @@ export function MemoryScreen() {
   const [compressing, setCompressing] = useState<{ profile: string; project: string } | null>(null);
   // Thư mục dự án → id dự án trên hub (projects.json): chỉ dự án đã gắn mới đồng bộ được memory với hub.
   const [bound, setBound] = useState<Map<string, string>>(new Map());
+  const [localList, setLocalList] = useState<LocalProject[]>([]);
   // File đọc chậm không được ghi đè nội dung của file người dùng chọn sau đó.
   const readGeneration = useRef(0);
   const date = (at: string) => new Date(at).toLocaleString(lang === "vi" ? "vi-VN" : "en-US");
@@ -235,6 +237,7 @@ export function MemoryScreen() {
       const [scan, local] = await Promise.all([scanMemory(), localProjects().catch(() => null)]);
       setInventory(scan);
       setBound(new Map((local?.projects ?? []).map((p) => [folderKey(p.folder), p.projectId])));
+      setLocalList(local?.projects ?? []);
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -311,6 +314,20 @@ export function MemoryScreen() {
       setBusy(false);
     }
   };
+
+  // Dự án chọn được cho ngữ cảnh dùng chung: repo đã gắn với hub và thư mục dự án có memory Claude trên máy.
+  const contextCandidates = useMemo(() => {
+    const byKey = new Map<string, ContextCandidate>();
+    for (const p of localList) {
+      if (p.exists) byKey.set(folderKey(p.folder), { folder: p.folder, projectId: p.projectId || null });
+    }
+    for (const f of inventory?.files ?? []) {
+      if (f.cli === "claude" && f.projectPath && !byKey.has(folderKey(f.projectPath))) {
+        byKey.set(folderKey(f.projectPath), { folder: f.projectPath, projectId: null });
+      }
+    }
+    return [...byKey.values()].sort((a, b) => a.folder.localeCompare(b.folder));
+  }, [localList, inventory]);
 
   const picked = inventory?.files.filter((f) => selected.includes(f.path)) ?? [];
   const prepareMerge = async () => {
@@ -413,6 +430,7 @@ export function MemoryScreen() {
               ))}
             </ul>
           </section>
+          <SharedContextSection candidates={contextCandidates} onMigrated={() => void reload()} />
           {inventory.files.length === 0 && <p className="text-sm text-muted-foreground">{t.empty}</p>}
           <div className="grid gap-6 lg:grid-cols-2">
             <section aria-label={t.title} className="min-w-0 rounded-lg border p-4">
