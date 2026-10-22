@@ -1,11 +1,22 @@
 import { App } from "@octokit/app";
 import { Octokit } from "@octokit/core";
 import { errorFromResponse, GitProviderError, isGitProviderError, networkError } from "./errors.ts";
+import {
+  GH_RUN_STATUS_FILTER,
+  type GhPendingDeployment,
+  type GhWorkflowJob,
+  type GhWorkflowRun,
+  ghJob,
+  ghPendingDeployment,
+  ghPipeline,
+  wholeUtf8,
+} from "./github-ci.ts";
 import { assertOwnedRepo, combineChecks, describeWithMarker, notMergeable } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
   ChecksState,
+  CiJob,
   CommentOptions,
   CommitFilesInput,
   CommitStatusInput,
@@ -24,7 +35,7 @@ import type {
   ScmUser,
   WebhookInput,
 } from "./types.ts";
-import { COMMIT_STATUS_DESCRIPTION_MAX, ciTime, MAX_PR_FILES } from "./types.ts";
+import { CI_ACTIVE_STATUSES, COMMIT_STATUS_DESCRIPTION_MAX, ciTime, githubCiStatus, MAX_PR_FILES } from "./types.ts";
 
 interface CommonOptions {
   /** GitHub Enterprise Server: `https://ghe.example.com/api/v3`. */
@@ -116,6 +127,15 @@ interface GhHook {
   id: number;
   config: { url?: string };
 }
+
+// GitHub không có sự kiện tên pipeline, job: lượt chạy và job của Actions là workflow_run, workflow_job.
+const GH_HOOK_EVENT: Partial<Record<WebhookInput["events"][number], string>> = {
+  pipeline: "workflow_run",
+  job: "workflow_job",
+};
+
+// Lượt chạy có job hỏng thì chạy lại riêng job hỏng (và job phụ thuộc); lượt đã đạt thì chạy lại cả lượt.
+const GH_RERUN_FAILED = new Set(["failure", "cancelled", "timed_out", "startup_failure"]);
 
 function toRepoInfo(r: GhRepo): RepoInfo {
   const visibility: RepoVisibility =
@@ -351,6 +371,57 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
       new_name: branch,
     });
     return { ...repo, defaultBranch: branch };
+  }
+
+  function workflowRun(ref: RepoRef, runId: string): Promise<GhWorkflowRun> {
+    return request<GhWorkflowRun>("GET /repos/{owner}/{repo}/actions/runs/{run_id}", {
+      owner: ref.owner,
+      repo: ref.name,
+      run_id: runId,
+    });
+  }
+
+  /**
+   * Log của job: API trả 302 sang địa chỉ tải có chữ ký. Tự đi theo để không gửi token sang máy chủ lưu log. null khi
+   * GitHub chưa có log (404).
+   */
+  async function jobLogBytes(ref: RepoRef, jobId: string): Promise<Uint8Array | null> {
+    const o = await octokit();
+    // auth() của App đòi nói rõ loại token, thiếu thì ném lỗi; token người dùng bỏ qua tham số.
+    const credentials = (await o.auth({ type: "installation" })) as { token?: string };
+    if (!credentials.token) throw new GitProviderError("invalid", "GitHub: không lấy được thông tin xác thực log job");
+    const base = (opts.baseUrl ?? "https://api.github.com").replace(/\/?$/, "/");
+    const endpoint = new URL(
+      `repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.name)}/actions/jobs/${encodeURIComponent(jobId)}/logs`,
+      base,
+    );
+    const send = opts.fetch ?? fetch;
+    let response: Response;
+    try {
+      response = await send(endpoint, {
+        headers: { authorization: `Bearer ${credentials.token}`, accept: "application/vnd.github+json" },
+        redirect: "manual",
+      });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        await response.body?.cancel();
+        if (!location) throw new GitProviderError("invalid", "GitHub: log job không có địa chỉ tải");
+        response = await send(new URL(location, endpoint));
+      }
+    } catch (error) {
+      if (error instanceof GitProviderError) throw error;
+      throw networkError("github", error);
+    }
+    if (response.status === 404) {
+      await response.body?.cancel();
+      return null;
+    }
+    // Không đưa nội dung trả về vào lỗi: trang lỗi của máy chủ lưu log có thể chứa địa chỉ có chữ ký.
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw errorFromResponse("github", response.status, response.headers);
+    }
+    return new Uint8Array(await response.arrayBuffer());
   }
 
   return {
@@ -820,8 +891,7 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
       const repo = { owner: ref.owner, repo: ref.name };
       const body = {
         active: true,
-        // GitHub không có sự kiện tên pipeline, job; đổi sang workflow_run, workflow_job ở đợt sau.
-        events: input.events.filter((e) => e !== "pipeline" && e !== "job"),
+        events: input.events.map((e) => GH_HOOK_EVENT[e] ?? e),
         config: { url: input.url, secret: input.secret, content_type: "json", insecure_ssl: "0" },
       };
       const hooks = await request<GhHook[]>("GET /repos/{owner}/{repo}/hooks", { ...repo, per_page: 100 });
@@ -962,7 +1032,7 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
     },
     async archive(ref, sha, path) {
       const o = await octokit();
-      const credentials = (await o.auth()) as { token?: string };
+      const credentials = (await o.auth({ type: "installation" })) as { token?: string };
       if (!credentials.token)
         throw new GitProviderError("invalid", "GitHub: không lấy được thông tin xác thực archive");
       const base = opts.baseUrl ? new URL(opts.baseUrl) : new URL("https://api.github.com");
@@ -987,7 +1057,7 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
     },
     async lfsBatch(ref, operation, objects) {
       const o = await octokit();
-      const credentials = (await o.auth()) as { token?: string };
+      const credentials = (await o.auth({ type: "installation" })) as { token?: string };
       if (!credentials.token) throw new GitProviderError("invalid", "GitHub: không lấy được thông tin xác thực LFS");
       const base = opts.baseUrl ? new URL(opts.baseUrl).origin : "https://github.com";
       const url = `${base}/${ref.owner}/${ref.name}.git/info/lfs/objects/batch`;
@@ -1071,17 +1141,143 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
       });
     },
 
-    listPipelines: noActions,
-    pipelineJobs: noActions,
-    jobLog: noActions,
-    retryPipeline: noActions,
-    cancelPipeline: noActions,
-    retryJob: noActions,
-    cancelJob: noActions,
-    playJob: noActions,
+    async listPipelines(ref, o) {
+      const perPage = o.perPage ?? 20;
+      const status = o.status ? GH_RUN_STATUS_FILTER[o.status] : undefined;
+      // Trạng thái chỉ GitLab có (created, preparing…) không bao giờ xuất hiện ở GitHub.
+      if (o.status && !status) return { items: [], nextPage: null };
+      const data = await request<{ total_count: number; workflow_runs: GhWorkflowRun[] }>(
+        "GET /repos/{owner}/{repo}/actions/runs",
+        {
+          owner: ref.owner,
+          repo: ref.name,
+          per_page: perPage,
+          page: o.page,
+          ...(o.branch ? { branch: o.branch } : {}),
+          ...(o.sha ? { head_sha: o.sha } : {}),
+          ...(status ? { status } : {}),
+        },
+      );
+      return {
+        items: data.workflow_runs.map(ghPipeline).filter((p) => !o.status || p.status === o.status),
+        nextPage: data.total_count > o.page * perPage ? o.page + 1 : null,
+      };
+    },
+
+    async pipelineJobs(ref, pipelineId) {
+      const out: CiJob[] = [];
+      const perPage = 100;
+      // filter=latest: chỉ lần thử mới nhất của mỗi job, như GitLab không trả job đã được chạy lại.
+      for (let page = 1; ; page++) {
+        const data = await request<{ total_count: number; jobs: GhWorkflowJob[] }>(
+          "GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs",
+          { owner: ref.owner, repo: ref.name, run_id: pipelineId, filter: "latest", per_page: perPage, page },
+        );
+        out.push(...data.jobs.map(ghJob));
+        if (data.jobs.length < perPage || out.length >= data.total_count) return out;
+      }
+    },
+
+    async jobLog(ref, jobId, from) {
+      // Đọc trạng thái trước log: job đã dừng lúc hỏi trạng thái thì log tải sau đó chắc chắn đủ.
+      const job = await request<GhWorkflowJob>("GET /repos/{owner}/{repo}/actions/jobs/{job_id}", {
+        owner: ref.owner,
+        repo: ref.name,
+        job_id: jobId,
+      });
+      const complete = !CI_ACTIVE_STATUSES.includes(githubCiStatus(job.status, job.conclusion));
+      const bytes = await jobLogBytes(ref, jobId);
+      // Job chưa chạy hoặc đang chạy có thể chưa có log tải được.
+      if (!bytes) {
+        if (complete) throw new GitProviderError("not_found", "GitHub: job không có log");
+        return { text: "", next: from, complete };
+      }
+      const end = complete ? bytes.length : wholeUtf8(bytes);
+      if (from >= end) return { text: "", next: from, complete };
+      return { text: new TextDecoder().decode(bytes.subarray(from, end)), next: end, complete };
+    },
+
+    async retryPipeline(ref, pipelineId) {
+      const run = await workflowRun(ref, pipelineId);
+      const failedOnly = GH_RERUN_FAILED.has(run.conclusion ?? "");
+      await request(`POST /repos/{owner}/{repo}/actions/runs/{run_id}/${failedOnly ? "rerun-failed-jobs" : "rerun"}`, {
+        owner: ref.owner,
+        repo: ref.name,
+        run_id: pipelineId,
+      });
+      // GitHub nhận lệnh rồi mới xếp hàng; trả trạng thái chờ thay vì kết quả cũ của lượt trước.
+      return { ...ghPipeline(run), status: "pending" as const, finishedAt: null, durationSec: null };
+    },
+
+    async cancelPipeline(ref, pipelineId) {
+      await request("POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel", {
+        owner: ref.owner,
+        repo: ref.name,
+        run_id: pipelineId,
+      });
+      const p = ghPipeline(await workflowRun(ref, pipelineId));
+      return CI_ACTIVE_STATUSES.includes(p.status) ? { ...p, status: "canceling" as const } : p;
+    },
+
+    async retryJob(ref, jobId) {
+      await request("POST /repos/{owner}/{repo}/actions/jobs/{job_id}/rerun", {
+        owner: ref.owner,
+        repo: ref.name,
+        job_id: jobId,
+      });
+      // Lần thử mới có id job mới nhưng API không trả về; màn hình đọc lại danh sách job (filter=latest) để thấy.
+      const job = await request<GhWorkflowJob>("GET /repos/{owner}/{repo}/actions/jobs/{job_id}", {
+        owner: ref.owner,
+        repo: ref.name,
+        job_id: jobId,
+      });
+      return { ...ghJob(job), status: "pending" as const, finishedAt: null, durationSec: null, failureReason: null };
+    },
+
+    cancelJob: () =>
+      Promise.reject(
+        new GitProviderError("unsupported", "GitHub Actions không huỷ được riêng một job. Huỷ cả lượt chạy."),
+      ),
+
+    playJob: () =>
+      Promise.reject(
+        new GitProviderError(
+          "unsupported",
+          "GitHub Actions không có job chờ bấm tay. Lượt chạy chờ duyệt environment thì dùng Duyệt deployment.",
+        ),
+      ),
+
+    async pendingDeployments(ref, pipelineId) {
+      const list = await request<GhPendingDeployment[]>(
+        "GET /repos/{owner}/{repo}/actions/runs/{run_id}/pending_deployments",
+        { owner: ref.owner, repo: ref.name, run_id: pipelineId },
+      );
+      return list.map(ghPendingDeployment);
+    },
+
+    async reviewDeployments(ref, pipelineId, input) {
+      const pending = (
+        await request<GhPendingDeployment[]>("GET /repos/{owner}/{repo}/actions/runs/{run_id}/pending_deployments", {
+          owner: ref.owner,
+          repo: ref.name,
+          run_id: pipelineId,
+        })
+      ).map(ghPendingDeployment);
+      const byName = new Map(pending.map((d) => [d.environment, d.environmentId]));
+      const missing = input.environments.filter((e) => !byName.has(e));
+      if (missing.length > 0)
+        throw new GitProviderError("invalid", `GitHub: environment ${missing.join(", ")} không chờ duyệt`, {
+          status: 422,
+        });
+      await request("POST /repos/{owner}/{repo}/actions/runs/{run_id}/pending_deployments", {
+        owner: ref.owner,
+        repo: ref.name,
+        run_id: pipelineId,
+        environment_ids: input.environments.map((e) => Number(byName.get(e))),
+        state: input.decision === "approve" ? "approved" : "rejected",
+        // GitHub bắt buộc có comment, kể cả rỗng.
+        comment: input.comment,
+      });
+    },
   };
 }
-
-// GitHub Actions (workflow run, job) làm ở đợt sau của spec 020 (Q11).
-const noActions = () =>
-  Promise.reject(new GitProviderError("unsupported", "GitHub: chưa hỗ trợ xem và chạy GitHub Actions"));

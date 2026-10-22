@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "v
 import { seedOrg } from "../../../test/org-fixture.ts";
 import { createPool, encryptSecret, parseMasterKey, withTenant } from "../platform/index.ts";
 import { createMemoryProvider, type MemoryProvider } from "../scm/index.ts";
-import { ciBuild, ciCancel, ciInput, ciPlay, ciRetry, ciStop } from "./ci/actions.ts";
+import { ciApproveDeployment, ciBuild, ciCancel, ciInput, ciPlay, ciRetry, ciStop } from "./ci/actions.ts";
 import { ciDetail, ciJenkinsParams } from "./ci/detail.ts";
 import { type CiDeps, ciFeed, clearCiFeedCache } from "./ci/feed.ts";
 import { ciLog } from "./ci/logs.ts";
@@ -22,6 +22,7 @@ const TOKENS = {
   watcher: "jenkins-token-watcher-0123456789",
   member: "jenkins-token-member-0123456789",
   gitlab: "glpat-project-connection-0123456789",
+  github: "ghp-project-connection-0123456789",
   password: "db-password-0123456789",
 };
 // an.nguyen là người theo dõi (quản trị tổ chức), binh.tran là thành viên đội có token riêng.
@@ -38,6 +39,7 @@ let connId: string;
 let jobId: string;
 let jenkins: FakeHttp;
 let gitlab: MemoryProvider;
+let github: MemoryProvider;
 let clock = T;
 const pipelines: Record<string, string> = {};
 const jobs: Record<string, string> = {};
@@ -45,7 +47,7 @@ const jobs: Record<string, string> = {};
 const deps = (): CiDeps => ({
   pool: app,
   masterKey,
-  providerFactory: () => gitlab,
+  providerFactory: (conn) => (conn.kind === "github" ? github : gitlab),
   fetch: (input, init) => fetch(input, init),
   now: () => clock,
 });
@@ -538,6 +540,143 @@ describe("thao tác", () => {
     const actions = new Set(rows.map((r) => r.action as string));
     for (const a of ["retry", "cancel", "play", "build", "stop", "input"])
       expect(actions).toContain(`delivery.ci.${a}`);
+    expect(leaksToken(rows)).toBe(false);
+  });
+});
+
+describe("GitHub Actions", () => {
+  const GH_REPO = { owner: "xdev-team", name: "portal" };
+  let ghProjectId: string;
+  const runs: Record<string, string> = {};
+
+  beforeAll(async () => {
+    const scm = randomUUID();
+    await admin.query(
+      "insert into hive.scm_connections (id, org_id, kind, name, secret_enc, created_by) values ($1, $2, 'github', 'GitHub ACME', $3, $4)",
+      [
+        scm,
+        org.orgId,
+        encryptSecret(masterKey, JSON.stringify({ token: TOKENS.github }), `scm_connections:${scm}`),
+        org.user("owner"),
+      ],
+    );
+    ghProjectId = (
+      await admin.query(
+        `insert into hive.projects (org_id, team_id, system_id, key, name, scm_connection_id, scm_kind, repo_mode,
+           repo_owner, repo_name, settings, idempotency_key, created_by)
+         values ($1, $2, $3, 'portal', 'portal', $4, 'github', 'existing', $5, $6, '{}', $7, $8)
+         returning id`,
+        [org.orgId, org.teamId, org.systemId, scm, GH_REPO.owner, GH_REPO.name, randomUUID(), org.user("owner")],
+      )
+    ).rows[0].id as string;
+    github = createMemoryProvider("github", [GH_REPO.owner]);
+    github.seedRepo(GH_REPO);
+    const deploy = [{ name: "deploy", stage: "CD", status: "waiting" as const }];
+    runs.approve = github.seedPipeline(GH_REPO, { pendingDeployments: ["production"], jobs: deploy }).pipeline.id;
+    runs.reject = github.seedPipeline(GH_REPO, { pendingDeployments: ["staging"], jobs: deploy }).pipeline.id;
+    runs.done = github.seedPipeline(GH_REPO, {
+      status: "failed",
+      jobs: [{ name: "test", status: "failed" }],
+    }).pipeline.id;
+  });
+
+  const approve = (name: string, runId: string, extra: Partial<Parameters<typeof ciApproveDeployment>[2]> = {}) =>
+    ciApproveDeployment(deps(), actor(name), {
+      projectId: ghProjectId,
+      runId,
+      environments: ["production"],
+      decision: "approve",
+      ...extra,
+    });
+
+  it("chi tiết run chờ duyệt có ô duyệt theo environment; job GitHub không bấm chạy được", async () => {
+    const detail = ciRunDetail.parse(
+      await ciDetail(deps(), actor("tviewer"), { projectId: ghProjectId, runId: `github:${runs.approve}` }),
+    );
+    expect(detail.run).toMatchObject({ id: `github:${runs.approve}`, source: "github", status: "waiting" });
+    expect(detail.steps.map((s) => [s.name, s.status, s.playable])).toEqual([["deploy", "waiting", false]]);
+    expect(detail.pendingInputs).toEqual([
+      { id: "production", message: "Chờ duyệt deployment vào environment production." },
+    ]);
+  });
+
+  it("duyệt deployment cần ci.operate", async () => {
+    for (const name of ["tviewer", "loner"])
+      expect(await failure(() => approve(name, `github:${runs.approve}`))).toMatchObject({
+        name: "ForbiddenError",
+        code: "CI_OPERATE_REQUIRED",
+      });
+    expect(github.calls.filter((c) => c.method === "reviewDeployments")).toHaveLength(0);
+  });
+
+  it("duyệt thì run chạy tiếp, từ chối thì run lỗi; có audit", async () => {
+    expect(await approve("tmember", `github:${runs.approve}`, { comment: "Đã kiểm tra" })).toEqual({
+      ok: true,
+      runId: `github:${runs.approve}`,
+      stepId: null,
+    });
+    const after = await ciDetail(deps(), actor("tviewer"), { projectId: ghProjectId, runId: `github:${runs.approve}` });
+    expect(after.run.status).toBe("running");
+    expect(after.pendingInputs).toEqual([]);
+
+    await approve("tmember", `github:${runs.reject}`, { environments: ["staging", "staging"], decision: "reject" });
+    const rejected = await ciDetail(deps(), actor("tviewer"), {
+      projectId: ghProjectId,
+      runId: `github:${runs.reject}`,
+    });
+    expect(rejected.run.status).toBe("failed");
+
+    const rows = await audits("delivery.ci.approveDeployment");
+    expect(rows.map((r) => r.data)).toEqual([
+      expect.objectContaining({
+        ok: true,
+        source: "github",
+        environments: ["production"],
+        decision: "approve",
+        comment: "Đã kiểm tra",
+      }),
+      expect.objectContaining({ ok: true, environments: ["staging"], decision: "reject", comment: null }),
+    ]);
+    expect(rows.every((r) => r.actor_user_id === org.user("tmember"))).toBe(true);
+  });
+
+  it("environment không chờ duyệt thì báo sai trạng thái và vẫn ghi audit", async () => {
+    expect(await failure(() => approve("tmember", `github:${runs.done}`))).toMatchObject({ code: "CI_WRONG_STATE" });
+    expect((await audits("delivery.ci.approveDeployment")).at(-1)?.data).toMatchObject({ ok: false });
+  });
+
+  it("pipeline GitLab, build Jenkins không duyệt deployment được", async () => {
+    const gitlabRun = await failure(() =>
+      ciApproveDeployment(deps(), actor("tmember"), {
+        projectId,
+        runId: `gitlab:${pipelines.p3}`,
+        environments: ["production"],
+        decision: "approve",
+      }),
+    );
+    expect(gitlabRun).toMatchObject({ code: "CI_UNSUPPORTED" });
+    const jenkinsRun = await failure(() =>
+      ciApproveDeployment(deps(), actor("tmember"), {
+        projectId,
+        runId: `jenkins:${jobId}:2`,
+        environments: ["production"],
+        decision: "approve",
+      }),
+    );
+    expect(jenkinsRun).toMatchObject({ code: "CI_UNSUPPORTED" });
+  });
+
+  it("chạy lại, huỷ workflow run bằng kết nối GitHub của dự án; run của GitHub không đọc được qua dự án GitLab", async () => {
+    expect(
+      await ciRetry(deps(), actor("tmember"), { projectId: ghProjectId, runId: `github:${runs.done}` }),
+    ).toMatchObject({
+      ok: true,
+    });
+    expect(github.calls.map((c) => c.method)).toContain("retryPipeline");
+    expect(
+      await failure(() => ciDetail(deps(), actor("tviewer"), { projectId, runId: `github:${runs.done}` })),
+    ).toMatchObject({ code: "CI_NOT_FOUND" });
+    const { rows } = await admin.query("select data from hive.audit_log where org_id = $1", [org.orgId]);
     expect(leaksToken(rows)).toBe(false);
   });
 });

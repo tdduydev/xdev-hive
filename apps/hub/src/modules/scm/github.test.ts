@@ -802,7 +802,7 @@ describe("GitHub đọc cây và file (kho skill)", () => {
   });
 });
 
-describe("GitHub compare và CI (pipeline làm ở T031)", () => {
+describe("GitHub compare", () => {
   it("compare có danh sách commit: tiêu đề là dòng đầu, tác giả theo git", async () => {
     const { gh, pool } = setup();
     pool.intercept({ path: "/repos/acme/web/compare/v1...v2?per_page=100", method: "GET" }).reply(
@@ -836,25 +836,288 @@ describe("GitHub compare và CI (pipeline làm ở T031)", () => {
       incomplete: false,
     });
   });
+});
 
-  it("thao tác pipeline, job báo chưa hỗ trợ, không gọi GitHub", async () => {
-    http = mockHttp();
-    const gh = createGitHubProvider({ appId: 1, privateKey, installationId: 42, fetch: http.fetch });
-    for (const p of [
-      gh.listPipelines(ref, { page: 1 }),
-      gh.pipelineJobs(ref, "1"),
-      gh.jobLog(ref, "1", 0),
-      gh.retryPipeline(ref, "1"),
-      gh.cancelPipeline(ref, "1"),
-      gh.retryJob(ref, "1"),
-      gh.cancelJob(ref, "1"),
-      gh.playJob(ref, "1"),
-    ]) {
-      expect((await rejected(p)).code).toBe("unsupported");
-    }
+// undici đưa header cho callback dạng object hoặc mảng phẳng tuỳ phiên bản.
+function headerNames(h: unknown): string[] {
+  const keys = Array.isArray(h) ? h.filter((_, i) => i % 2 === 0) : Object.keys((h ?? {}) as object);
+  return keys.map((k) => String(k).toLowerCase());
+}
+
+describe("GitHub Actions", () => {
+  const RUNS = "/repos/acme/web/actions/runs";
+
+  function run(over: Record<string, unknown> = {}) {
+    return {
+      id: 30433642,
+      name: "CI",
+      display_title: "Sửa lỗi đăng nhập",
+      run_number: 562,
+      head_branch: "main",
+      head_sha: "acb5820ced9479c074f688cc328bf03f341a511d",
+      status: "completed",
+      conclusion: "success",
+      event: "push",
+      html_url: "https://github.com/acme/web/actions/runs/30433642",
+      created_at: "2026-01-01T10:00:00Z",
+      run_started_at: "2026-01-01T10:00:05Z",
+      updated_at: "2026-01-01T10:02:05Z",
+      actor: { login: "octocat" },
+      triggering_actor: { login: "hubot" },
+      ...over,
+    };
+  }
+
+  function job(over: Record<string, unknown> = {}) {
+    return {
+      id: 399444496,
+      run_id: 30433642,
+      name: "build",
+      workflow_name: "CI",
+      head_branch: "main",
+      head_sha: "acb5820ced9479c074f688cc328bf03f341a511d",
+      status: "completed",
+      conclusion: "failure",
+      html_url: "https://github.com/acme/web/actions/runs/30433642/job/399444496",
+      created_at: "2026-01-01T10:00:00Z",
+      started_at: "2026-01-01T10:00:10Z",
+      completed_at: "2026-01-01T10:01:10Z",
+      ...over,
+    };
+  }
+
+  function pending(over: Record<string, unknown> = {}) {
+    return {
+      environment: { id: 161088068, name: "production", html_url: "https://github.com/acme/web/deployments" },
+      current_user_can_approve: true,
+      reviewers: [
+        { type: "User", reviewer: { login: "octocat" } },
+        { type: "Team", reviewer: { slug: "ops" } },
+      ],
+      ...over,
+    };
+  }
+
+  it("liệt kê workflow run theo nhánh và trạng thái, đổi sang dạng CI chung", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: `${RUNS}?per_page=2&page=1&branch=main&status=failure`, method: "GET" })
+      .reply(200, { total_count: 3, workflow_runs: [run({ conclusion: "failure" })] }, JSON_HEADERS);
+    expect(await gh.listPipelines(ref, { page: 1, perPage: 2, branch: "main", status: "failed" })).toEqual({
+      items: [
+        {
+          id: "30433642",
+          ref: "main",
+          sha: "acb5820ced9479c074f688cc328bf03f341a511d",
+          status: "failed",
+          source: "push",
+          url: "https://github.com/acme/web/actions/runs/30433642",
+          createdAt: "2026-01-01T10:00:00.000Z",
+          updatedAt: "2026-01-01T10:02:05.000Z",
+          startedAt: "2026-01-01T10:00:05.000Z",
+          finishedAt: "2026-01-01T10:02:05.000Z",
+          durationSec: 120,
+          user: "hubot",
+          title: "CI #562",
+        },
+      ],
+      nextPage: 2,
+    });
   });
 
-  it("addWebhook bỏ pipeline, job (GitHub chưa có sự kiện cùng tên)", async () => {
+  it("trạng thái chỉ GitLab có thì trả trang rỗng, không gọi GitHub", async () => {
+    http = mockHttp();
+    const gh = createGitHubProvider({ appId: 1, privateKey, installationId: 42, fetch: http.fetch });
+    expect(await gh.listPipelines(ref, { page: 1, status: "preparing" })).toEqual({ items: [], nextPage: null });
+  });
+
+  it("đổi trạng thái run: chờ duyệt, đang chạy, đã huỷ", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: `${RUNS}?per_page=20&page=1`, method: "GET" }).reply(
+      200,
+      {
+        total_count: 3,
+        workflow_runs: [
+          run({ id: 1, status: "waiting", conclusion: null }),
+          run({ id: 2, status: "in_progress", conclusion: null }),
+          run({ id: 3, conclusion: "cancelled" }),
+        ],
+      },
+      JSON_HEADERS,
+    );
+    const page = await gh.listPipelines(ref, { page: 1 });
+    expect(page.items.map((p) => [p.id, p.status, p.finishedAt])).toEqual([
+      ["1", "waiting", null],
+      ["2", "running", null],
+      ["3", "canceled", "2026-01-01T10:02:05.000Z"],
+    ]);
+    expect(page.nextPage).toBeNull();
+  });
+
+  it("job của run: lần thử mới nhất, đọc hết các trang", async () => {
+    const { gh, pool } = setup();
+    const first = Array.from({ length: 100 }, (_, i) => job({ id: 1000 + i, name: `j${i}` }));
+    pool
+      .intercept({ path: `${RUNS}/30433642/jobs?filter=latest&per_page=100&page=1`, method: "GET" })
+      .reply(200, { total_count: 101, jobs: first }, JSON_HEADERS);
+    pool
+      .intercept({ path: `${RUNS}/30433642/jobs?filter=latest&per_page=100&page=2`, method: "GET" })
+      .reply(200, { total_count: 101, jobs: [job()] }, JSON_HEADERS);
+    const jobs = await gh.pipelineJobs(ref, "30433642");
+    expect(jobs).toHaveLength(101);
+    expect(jobs[100]).toEqual({
+      id: "399444496",
+      pipelineId: "30433642",
+      name: "build",
+      stage: "CI",
+      ref: "main",
+      sha: "acb5820ced9479c074f688cc328bf03f341a511d",
+      status: "failed",
+      allowFailure: false,
+      failureReason: "failure",
+      url: "https://github.com/acme/web/actions/runs/30433642/job/399444496",
+      createdAt: "2026-01-01T10:00:00.000Z",
+      startedAt: "2026-01-01T10:00:10.000Z",
+      finishedAt: "2026-01-01T10:01:10.000Z",
+      durationSec: 60,
+      user: null,
+    });
+  });
+
+  it("log job đi theo chuyển hướng, không gửi token sang máy chủ lưu log", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: "/repos/acme/web/actions/jobs/399444496", method: "GET" }).reply(200, job(), JSON_HEADERS);
+    let apiHeaders: unknown;
+    pool.intercept({ path: "/repos/acme/web/actions/jobs/399444496/logs", method: "GET" }).reply((o) => {
+      apiHeaders = o.headers;
+      return {
+        statusCode: 302,
+        data: "",
+        responseOptions: { headers: { location: "https://logs.example.com/job/399444496?sig=abc" } },
+      };
+    });
+    let logHeaders: unknown;
+    http.agent
+      .get("https://logs.example.com")
+      .intercept({ path: "/job/399444496?sig=abc", method: "GET" })
+      .reply(200, (o) => {
+        logHeaders = o.headers;
+        return "dòng 1\ndòng 2\n";
+      });
+    // "dòng 1\n" dài 8 byte (ò chiếm 2 byte).
+    expect(await gh.jobLog(ref, "399444496", 8)).toEqual({ text: "dòng 2\n", next: 16, complete: true });
+    expect(JSON.stringify(apiHeaders)).toContain("Bearer ghs_test");
+    expect(headerNames(logHeaders)).not.toContain("authorization");
+  });
+
+  it("log chưa có: job đang chạy trả rỗng, job đã xong báo not_found", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: "/repos/acme/web/actions/jobs/1", method: "GET" })
+      .reply(200, job({ id: 1, status: "in_progress", conclusion: null }), JSON_HEADERS);
+    pool
+      .intercept({ path: "/repos/acme/web/actions/jobs/1/logs", method: "GET" })
+      .reply(404, { message: "Not Found" }, JSON_HEADERS);
+    expect(await gh.jobLog(ref, "1", 0)).toEqual({ text: "", next: 0, complete: false });
+    pool.intercept({ path: "/repos/acme/web/actions/jobs/2", method: "GET" }).reply(200, job({ id: 2 }), JSON_HEADERS);
+    pool
+      .intercept({ path: "/repos/acme/web/actions/jobs/2/logs", method: "GET" })
+      .reply(404, { message: "Not Found" }, JSON_HEADERS);
+    expect((await rejected(gh.jobLog(ref, "2", 0))).code).toBe("not_found");
+  });
+
+  it("chạy lại: run lỗi chỉ chạy lại job lỗi, run đạt chạy lại cả run", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: `${RUNS}/1`, method: "GET" })
+      .reply(200, run({ id: 1, conclusion: "failure" }), JSON_HEADERS);
+    pool.intercept({ path: `${RUNS}/1/rerun-failed-jobs`, method: "POST" }).reply(201, {}, JSON_HEADERS);
+    expect(await gh.retryPipeline(ref, "1")).toMatchObject({ id: "1", status: "pending", finishedAt: null });
+    pool.intercept({ path: `${RUNS}/2`, method: "GET" }).reply(200, run({ id: 2 }), JSON_HEADERS);
+    pool.intercept({ path: `${RUNS}/2/rerun`, method: "POST" }).reply(201, {}, JSON_HEADERS);
+    expect(await gh.retryPipeline(ref, "2")).toMatchObject({ id: "2", status: "pending" });
+  });
+
+  it("chạy lại một job", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: "/repos/acme/web/actions/jobs/399444496/rerun", method: "POST" })
+      .reply(201, {}, JSON_HEADERS);
+    pool.intercept({ path: "/repos/acme/web/actions/jobs/399444496", method: "GET" }).reply(200, job(), JSON_HEADERS);
+    expect(await gh.retryJob(ref, "399444496")).toMatchObject({
+      id: "399444496",
+      status: "pending",
+      failureReason: null,
+      finishedAt: null,
+    });
+  });
+
+  it("huỷ run còn chạy thì báo đang huỷ", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: `${RUNS}/30433642/cancel`, method: "POST" }).reply(202, {}, JSON_HEADERS);
+    pool
+      .intercept({ path: `${RUNS}/30433642`, method: "GET" })
+      .reply(200, run({ status: "in_progress", conclusion: null }), JSON_HEADERS);
+    expect(await gh.cancelPipeline(ref, "30433642")).toMatchObject({ id: "30433642", status: "canceling" });
+  });
+
+  it("huỷ hoặc bấm chạy một job báo chưa hỗ trợ, không gọi GitHub", async () => {
+    http = mockHttp();
+    const gh = createGitHubProvider({ appId: 1, privateKey, installationId: 42, fetch: http.fetch });
+    expect((await rejected(gh.cancelJob(ref, "1"))).code).toBe("unsupported");
+    expect((await rejected(gh.playJob(ref, "1"))).code).toBe("unsupported");
+  });
+
+  it("đọc deployment chờ duyệt", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: `${RUNS}/30433642/pending_deployments`, method: "GET" })
+      .reply(
+        200,
+        [pending(), pending({ environment: { id: 7 }, current_user_can_approve: false, reviewers: [] })],
+        JSON_HEADERS,
+      );
+    expect(await gh.pendingDeployments?.(ref, "30433642")).toEqual([
+      {
+        environment: "production",
+        environmentId: "161088068",
+        url: "https://github.com/acme/web/deployments",
+        canApprove: true,
+        reviewers: ["octocat", "ops"],
+      },
+      { environment: "7", environmentId: "7", url: null, canApprove: false, reviewers: [] },
+    ]);
+  });
+
+  it("duyệt deployment gửi id environment; environment không chờ duyệt thì invalid, không gửi", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: `${RUNS}/30433642/pending_deployments`, method: "GET" })
+      .reply(200, [pending()], JSON_HEADERS)
+      .times(2);
+    pool
+      .intercept({ path: `${RUNS}/30433642/pending_deployments`, method: "POST" })
+      .reply(200, http.json([]), JSON_HEADERS);
+    await gh.reviewDeployments?.(ref, "30433642", {
+      environments: ["production"],
+      decision: "reject",
+      comment: "Chưa tới giờ phát hành",
+    });
+    expect(http.calls[0]?.body).toEqual({
+      environment_ids: [161088068],
+      state: "rejected",
+      comment: "Chưa tới giờ phát hành",
+    });
+    const review = gh.reviewDeployments?.(ref, "30433642", {
+      environments: ["staging"],
+      decision: "approve",
+      comment: "",
+    });
+    expect((await rejected(review ?? Promise.resolve())).code).toBe("invalid");
+    expect(http.calls).toHaveLength(1);
+  });
+
+  it("addWebhook đổi pipeline, job thành workflow_run, workflow_job", async () => {
     const { gh, pool } = setup();
     pool.intercept({ path: "/repos/acme/web/hooks?per_page=100", method: "GET" }).reply(200, [], JSON_HEADERS);
     pool.intercept({ path: "/repos/acme/web/hooks", method: "POST" }).reply(201, http.json({ id: 99 }), JSON_HEADERS);
@@ -863,6 +1126,6 @@ describe("GitHub compare và CI (pipeline làm ở T031)", () => {
       secret: "s3",
       events: ["push", "pipeline", "job"],
     });
-    expect(http.calls[0]?.body).toMatchObject({ events: ["push"] });
+    expect(http.calls[0]?.body).toMatchObject({ events: ["push", "workflow_run", "workflow_job"] });
   });
 });

@@ -1,3 +1,4 @@
+import { type GhWorkflowJob, type GhWorkflowRun, ghJob, ghPipeline } from "./github-ci.ts";
 import { asCiStatus, type CiJob, type CiPipeline, ciTime, type GitProviderKind } from "./types.ts";
 
 /**
@@ -82,15 +83,15 @@ export interface MentionEvent extends Base {
 }
 
 /**
- * Pipeline đổi trạng thái (GitLab Pipeline Hook). Webhook không gửi `updatedAt`, `startedAt`, nên hai trường này null;
- * cần thì đọc lại qua `listPipelines`.
+ * Pipeline đổi trạng thái (GitLab Pipeline Hook, GitHub workflow_run). Webhook GitLab không gửi `updatedAt`,
+ * `startedAt`, nên hai trường này null; cần thì đọc lại qua `listPipelines`.
  */
 export interface PipelineEvent extends Base {
   kind: "pipeline";
   pipeline: CiPipeline;
 }
 
-/** Job đổi trạng thái (GitLab Job Hook, `object_kind` là `build`). */
+/** Job đổi trạng thái (GitLab Job Hook, `object_kind` là `build`; GitHub workflow_job). */
 export interface JobEvent extends Base {
   kind: "job";
   job: CiJob;
@@ -230,6 +231,19 @@ export function normalizeGitHub(event: string, payload: unknown, opts: Normalize
           });
         }
         return out;
+      }
+      case "workflow_run": {
+        const run = at(payload, "workflow_run");
+        need(num(at(run, "id")), "workflow_run.id");
+        need(str(at(run, "head_sha")), "workflow_run.head_sha");
+        return [{ ...base, kind: "pipeline", pipeline: ghPipeline(run as GhWorkflowRun) }];
+      }
+      case "workflow_job": {
+        const job = at(payload, "workflow_job");
+        need(num(at(job, "id")), "workflow_job.id");
+        need(num(at(job, "run_id")), "workflow_job.run_id");
+        need(str(at(job, "name")), "workflow_job.name");
+        return [{ ...base, kind: "job", job: { ...ghJob(job as GhWorkflowJob), user: base.actor } }];
       }
       default:
         return [];
