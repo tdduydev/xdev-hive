@@ -92,6 +92,7 @@ function fakeApp(
           if (options.scanError) throw new Error(options.scanError);
           return data as T;
         }
+        if (command === "context_status") return { projects: [] } as T;
         if (command === "local_projects") {
           // /repo/app đã gắn với dự án hub; /repo/other chưa gắn.
           return {
@@ -164,7 +165,16 @@ describe("MemoryScreen", () => {
     const ancestors = screen.getByText(A.path).closest("li")?.parentElement?.closest("details");
     expect(ancestors?.querySelector("summary")?.textContent).toContain("claude-1");
     expect(ancestors?.parentElement?.querySelector("summary")?.textContent).toContain("/repo/app");
-    expect(calls.map((c) => c.command).sort()).toEqual(["local_projects", "memory_scan"]);
+    expect(calls.map((c) => c.command).sort()).toEqual(["context_status", "local_projects", "memory_scan"]);
+  });
+
+  it("hiện mục Ngữ cảnh dùng chung với dự án đã gắn và dự án có memory Claude trên máy", async () => {
+    fakeApp();
+    renderMemory();
+    const section = await screen.findByRole("region", { name: "Ngữ cảnh dùng chung" });
+    const options = (await within(section).findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["/repo/app", "/repo/other"]);
+    expect(within(section).getByRole("button", { name: "Bật ngữ cảnh dùng chung" })).toBeTruthy();
   });
 
   it("mỗi gói Claude có memory có nút Nén bằng AI mở hộp gợi ý nén đúng gói và dự án", async () => {
