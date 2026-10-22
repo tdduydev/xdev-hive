@@ -500,12 +500,12 @@ mod tests {
             parse_output(true, br#"{"id":"r1"}"#, b"").unwrap()["id"],
             "r1"
         );
-        let locked = br#"{"error":{"code":"OPTIMIZE_LOCKED","message":"Đang tối ưu ở cửa sổ khác."}}"#;
+        let locked = r#"{"error":{"code":"OPTIMIZE_LOCKED","message":"Đang tối ưu ở cửa sổ khác."}}"#;
         assert_eq!(
-            parse_output(false, locked, b"").unwrap_err(),
+            parse_output(false, locked.as_bytes(), b"").unwrap_err(),
             "Đang tối ưu ở cửa sổ khác."
         );
-        assert_eq!(parse_output(false, b"", b"hỏng\n").unwrap_err(), "hỏng");
+        assert_eq!(parse_output(false, b"", "hỏng\n".as_bytes()).unwrap_err(), "hỏng");
         assert!(parse_output(false, b"", b"").is_err());
         assert!(parse_output(true, b"khong phai json", b"").is_err());
     }
