@@ -182,10 +182,13 @@ describe("RLS các bảng CI/CD và triển khai", () => {
       "select tablename, policyname, cmd, roles::text[] as roles, qual, with_check from pg_policies where schemaname = 'hive' and tablename = any($1)",
       [tableNames],
     );
-    // deploy_log_chunks có thêm policy cho hive_owner để hàm SECURITY DEFINER purge_deploy_logs đọc và xoá.
-    expect(policies.rows).toHaveLength(tableNames.length + 2);
+    // hive_owner có thêm policy cho hàm SECURITY DEFINER: purge_deploy_logs đọc và xoá log, delivery_active_orgs đọc bảng CI.
+    expect(policies.rows).toHaveLength(tableNames.length + 5);
     const ownerPolicies = policies.rows.filter((row) => row.roles.includes("hive_owner"));
     expect(ownerPolicies.map((row) => [row.tablename, row.policyname, row.cmd]).sort()).toEqual([
+      ["ci_jenkins_connections", "ci_jenkins_connections_owner_select", "SELECT"],
+      ["ci_project_jobs", "ci_project_jobs_owner_select", "SELECT"],
+      ["ci_runs_seen", "ci_runs_seen_owner_select", "SELECT"],
       ["deploy_log_chunks", "deploy_log_chunks_owner_purge", "DELETE"],
       ["deploy_log_chunks", "deploy_log_chunks_owner_select", "SELECT"],
     ]);
@@ -197,17 +200,25 @@ describe("RLS các bảng CI/CD và triển khai", () => {
     }
   });
 
-  it("không tenant: hive_app không thấy gì; chủ bảng chỉ đọc được log triển khai, không sửa được", async () => {
+  it("không tenant: hive_app không thấy gì; chủ bảng chỉ đọc được log triển khai và bảng CI, không sửa được", async () => {
+    const ownerReads = new Set<Table>([
+      "deploy_log_chunks",
+      "ci_jenkins_connections",
+      "ci_project_jobs",
+      "ci_runs_seen",
+    ]);
     for (const pool of [app, owner])
       await withTenant(pool, {}, async (tx) => {
         for (const table of tableNames) {
-          if (pool === owner && table === "deploy_log_chunks") continue;
+          if (pool === owner && ownerReads.has(table)) continue;
           expect((await tx.execute(sql`select * from ${tableSql(table)}`)).rows, table).toEqual([]);
         }
       });
-    await withTenant(owner, {}, async (tx) =>
-      expect((await tx.execute(sql`update hive.deploy_log_chunks set seq = seq returning id`)).rows).toEqual([]),
-    );
+    await withTenant(owner, {}, async (tx) => {
+      expect((await tx.execute(sql`update hive.deploy_log_chunks set seq = seq returning id`)).rows).toEqual([]);
+      expect((await tx.execute(sql`update hive.ci_runs_seen set status = status returning id`)).rows).toEqual([]);
+      expect((await tx.execute(sql`delete from hive.ci_project_jobs returning id`)).rows).toEqual([]);
+    });
   });
 
   for (const table of tableNames) {
@@ -446,6 +457,34 @@ describe("RLS các bảng CI/CD và triển khai", () => {
     expect(left).toEqual([aNew, bOld].sort());
     const fn = await admin.query(
       "select prosecdef, has_function_privilege('hive_app', p.oid, 'EXECUTE') as app, has_function_privilege('public', p.oid, 'EXECUTE') as pub from pg_proc p where p.oid = 'hive.purge_deploy_logs()'::regprocedure",
+    );
+    expect(fn.rows[0]).toEqual({ prosecdef: true, app: true, pub: false });
+  });
+
+  it("delivery_active_orgs trả tổ chức có kết nối Jenkins đang theo dõi job hoặc lần chạy CI chưa xong", async () => {
+    const active = async () =>
+      withTenant(app, {}, async (tx) =>
+        (await tx.execute<{ org_id: string }>(sql`select org_id from hive.delivery_active_orgs()`)).rows.map((r) =>
+          String(r.org_id),
+        ),
+      );
+    const a = seeds.a;
+    const b = seeds.b;
+    // A: kết nối có người theo dõi và job. B: lần chạy GitLab đã xong, kết nối chưa có người theo dõi.
+    await admin.query("update hive.ci_jenkins_connections set watcher_user_id = null where org_id = $1", [b.orgId]);
+    let orgs = await active();
+    expect(orgs).toContain(a.orgId);
+    expect(orgs).not.toContain(b.orgId);
+    await admin.query("update hive.ci_runs_seen set status = 'running' where org_id = $1", [b.orgId]);
+    orgs = await active();
+    expect(orgs).toContain(b.orgId);
+    await admin.query("update hive.ci_runs_seen set status = 'failed' where org_id = $1", [b.orgId]);
+    await admin.query("update hive.ci_jenkins_connections set watcher_user_id = $2 where org_id = $1", [
+      b.orgId,
+      b.userId,
+    ]);
+    const fn = await admin.query(
+      "select prosecdef, has_function_privilege('hive_app', p.oid, 'EXECUTE') as app, has_function_privilege('public', p.oid, 'EXECUTE') as pub from pg_proc p where p.oid = 'hive.delivery_active_orgs()'::regprocedure",
     );
     expect(fn.rows[0]).toEqual({ prosecdef: true, app: true, pub: false });
   });

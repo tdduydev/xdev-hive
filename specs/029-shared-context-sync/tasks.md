@@ -116,7 +116,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt 2: Desktop (P1)
 
-- [ ] **T007 [US1] [vừa] · 1 ngày — Rust `context_sync.rs` và `lib/context-sync.ts`** (sau T004)
+- [x] **T007 [US1] [vừa] · 1 ngày — Rust `context_sync.rs` và `lib/context-sync.ts`** (sau T004)
   - **Goal**: lệnh Tauri `context_status`, `context_enable`, `context_disable`, `context_save_source`, `context_sync`,
     `context_resolve`, `context_migrate` gọi sidecar (nguồn, memory hub, chính sách qua file tạm, xoá sau khi chạy); kiểu
     TS khớp fixture Go.
@@ -124,7 +124,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
     `apps/desktop/src/lib/context-sync.ts` (+ test).
   - **Kiểm**: Rust test dựng argv; Vitest so kiểu với fixture `context-project.json`.
 
-- [ ] **T008 [US1] [vừa] · 1,5 ngày — Màn Memory: mục "Ngữ cảnh dùng chung"** (sau T007)
+- [x] **T008 [US1] [vừa] · 1,5 ngày — Màn Memory: mục "Ngữ cảnh dùng chung"** (sau T007)
   - **Goal**: `<SharedContextSection>` theo [plan.md](plan.md) mục 7: chọn dự án, bật/tắt (xác nhận), ô soạn nguồn (lưu →
     đồng bộ), bảng file đích (CLI, đường dẫn ngắn, trạng thái, lý do), hộp so sánh khi xung đột (giữ bản file / bản
     nguồn), đề nghị chuyển từ chia sẻ cũ (xem trước bản nháp), ước lượng token khối. Chữ vi/en, 360 px, bàn phím.
@@ -168,7 +168,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `packages/contracts/src/{projects.ts,knowledge.ts}` (+ test), `openapi.json`.
   - **Kiểm**: test zod giá trị biên; `pnpm openapi` không lệch.
 
-- [ ] **T013 [US3] [vừa] · 1 ngày — Hub `knowledge`: cột `pinned`, sắp, `pinMemory`** (sau T012)
+- [x] **T013 [US3] [vừa] · 1 ngày — Hub `knowledge`: cột `pinned`, sắp, `pinMemory`** (sau T012)
   - **Goal**: migration `0084_*` thêm `memories.pinned boolean not null default false`; `listMemories` sắp
     `pinned desc, created_at desc`; `pinMemory` (quyền như duyệt memory ở phạm vi của memory, audit `memory.pin`); route.
   - **PHẠM VI**: `apps/hub/db/migrations/0084_*.sql` (+ meta drizzle), `apps/hub/src/modules/knowledge/{schema.ts,memory.ts,router.ts}`, `*.db.test.ts`.
@@ -186,7 +186,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: trang/danh sách memory của web (`apps/web/src/pages/**/memor*`), e2e liên quan.
   - **Kiểm**: Playwright ghim, bỏ ghim, người không quyền không thấy nút.
 
-- [ ] **T016 [P] [US3] [nặng] · 1,5 ngày — `ctxsync`: mục "Từ hub", lọc bí mật, ngân sách** (sau T006; song song T012–T015)
+- [x] **T016 [P] [US3] [nặng] · 1,5 ngày — `ctxsync`: mục "Từ hub", lọc bí mật, ngân sách** (sau T006; song song T012–T015)
   - **Goal**: `hub.go` đọc `HubSnapshot` (`--hub-file`), bỏ bản `supersededBy`, thứ tự ghim → mới; `secrets.go` dùng lại
     mẫu nhận dạng bí mật sẵn có của worker nếu có, không thì bộ nhỏ (khoá API phổ biến, `PRIVATE KEY`, chuỗi entropy cao);
     ngân sách theo `contextBudgetTokens` (ước lượng như `memstore/tokens.go`); `omitted{budget,secret}`; giữ `hub.json`
