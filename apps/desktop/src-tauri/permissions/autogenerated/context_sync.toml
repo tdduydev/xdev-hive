@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-context-sync"
+description = "Enables the context_sync command without any pre-configured scope."
+commands.allow = ["context_sync"]
+
+[[permission]]
+identifier = "deny-context-sync"
+description = "Denies the context_sync command without any pre-configured scope."
+commands.deny = ["context_sync"]
