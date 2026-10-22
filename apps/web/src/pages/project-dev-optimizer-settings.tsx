@@ -43,9 +43,9 @@ const text: Dict<{
     off: "Tắt",
     balanced: "Cân bằng",
     aggressive: "Tích cực",
-    rtk: "Nén output lệnh bằng RTK",
+    rtk: "Dùng RTK trên máy dev",
     rtkHint: "Khuyến nghị bật RTK trên máy dev của dự án này.",
-    codegraph: "Gắn CodeGraph cho agent",
+    codegraph: "Dùng CodeGraph trên máy dev",
     codegraphHint: "Khuyến nghị gắn CodeGraph khi máy dev có codegraph.",
     window: "Cửa sổ ngữ cảnh trước khi nén",
     windowHint: "Số token ngữ cảnh trước khi Claude Code nén. Để trống là không ép.",
@@ -69,9 +69,9 @@ const text: Dict<{
     off: "Off",
     balanced: "Balanced",
     aggressive: "Aggressive",
-    rtk: "Compress command output with RTK",
+    rtk: "Use RTK on dev machines",
     rtkHint: "Recommend RTK on this project's dev machines.",
-    codegraph: "Attach CodeGraph for agents",
+    codegraph: "Use CodeGraph on dev machines",
     codegraphHint: "Recommend CodeGraph when the dev machine has codegraph.",
     window: "Context window before compaction",
     windowHint: "Context tokens before Claude Code compacts. Leave empty to not enforce.",
@@ -112,11 +112,7 @@ export function ProjectDevOptimizerSettings({
   const off = disabled || !form.devOptimizer;
   return (
     <SettingsSection id="devOptimizer" save={save} title={t.title} description={t.hint}>
-      {!canEdit && (
-        <p role="note" className="text-xs text-muted-foreground">
-          {t.readOnly}
-        </p>
-      )}
+      {!canEdit && <p className="text-xs text-muted-foreground">{t.readOnly}</p>}
       <SwitchRow
         label={t.on}
         hint={t.onHint}

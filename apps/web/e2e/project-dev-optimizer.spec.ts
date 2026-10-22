@@ -86,7 +86,7 @@ test("quản trị đặt chính sách máy dev, lưu cả khối rồi bỏ ch�
 
   await policy.getByRole("switch", { name: "Đặt chính sách cho dự án" }).click();
   await policy.getByLabel("Mức tối ưu").selectOption("aggressive");
-  await policy.getByRole("switch", { name: "Nén output lệnh bằng RTK" }).click();
+  await policy.getByRole("switch", { name: "Dùng RTK trên máy dev" }).click();
   await policy.getByRole("textbox", { name: "Ngân sách ngữ cảnh từ hub" }).fill("9000");
   await policy.getByRole("button", { name: "Lưu", exact: true }).click();
   // Ngoài khoảng của hợp đồng: báo ở ô, không gọi hub.
