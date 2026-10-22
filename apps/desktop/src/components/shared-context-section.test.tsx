@@ -1,7 +1,8 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SharedContextSection } from "@/components/shared-context-section.tsx";
+import { type ContextCandidate, SharedContextSection } from "@/components/shared-context-section.tsx";
+import { type Account, AccountContext } from "@/lib/account.ts";
 import type { ContextMigration, ContextProject } from "@/lib/context-sync.ts";
 import { setLang } from "@/lib/i18n.ts";
 
@@ -198,5 +199,112 @@ describe("SharedContextSection", () => {
     fakeTauri({ context_status: () => ({ projects: [] }) });
     renderSection();
     expect(await screen.findByRole("button", { name: "Turn on shared context" })).toBeTruthy();
+  });
+});
+
+const ACCOUNT: Account = {
+  name: "An",
+  email: "an@example.com",
+  orgId: "o1",
+  orgName: "Công ty",
+  orgRole: "member",
+  teams: [],
+};
+
+const hubReply = (memories: unknown[]) => ({
+  status: 200,
+  contentType: "application/json",
+  body: JSON.stringify({ json: memories }),
+});
+
+const renderSignedIn = (list: ContextCandidate[] = candidates) =>
+  render(
+    <AccountContext.Provider value={ACCOUNT}>
+      <SharedContextSection candidates={list} />
+    </AccountContext.Provider>,
+  );
+
+describe("SharedContextSection: phần Từ hub", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("chưa đăng nhập hub: nói rõ cách kết nối và không có nút Đồng bộ", async () => {
+    fakeTauri({ context_status: () => ({ projects: [project()] }) });
+    renderSection();
+    const hub = await screen.findByRole("region", { name: "Từ hub" });
+    expect(within(hub).getByText(/Chưa đăng nhập hub/)).toBeTruthy();
+    expect(within(hub).queryByRole("button", { name: "Đồng bộ" })).toBeNull();
+  });
+
+  it("thư mục chưa gắn dự án hub: giải thích, không có nút Đồng bộ", async () => {
+    fakeTauri({ context_status: () => ({ projects: [project({ projectId: null })] }) });
+    renderSignedIn([{ folder: FOLDER, projectId: null }]);
+    const hub = await screen.findByRole("region", { name: "Từ hub" });
+    expect(within(hub).getByText(/chưa gắn với dự án trên hub/)).toBeTruthy();
+    expect(within(hub).queryByRole("button", { name: "Đồng bộ" })).toBeNull();
+  });
+
+  it("Đồng bộ kéo memory hub rồi hiện số mục, số mục đã bỏ và lần cuối", async () => {
+    const calls = fakeTauri({
+      context_status: () => ({ projects: [project()] }),
+      hub_rpc: () => hubReply([]),
+      context_sync: () =>
+        project({
+          hub: { syncedAt: "2026-10-21T09:30:00.000Z", items: 4, omitted: { budget: 2, secret: 1 }, lastError: null },
+        }),
+    });
+    renderSignedIn();
+    const hub = await screen.findByRole("region", { name: "Từ hub" });
+    expect(within(hub).getByText("Chưa đồng bộ")).toBeTruthy();
+    expect(within(hub).getByText("Không bỏ mục nào")).toBeTruthy();
+    await userEvent.click(within(hub).getByRole("button", { name: "Đồng bộ" }));
+    expect(await within(hub).findByText("2 mục vượt ngân sách token · 1 mục có dấu hiệu bí mật")).toBeTruthy();
+    expect(within(hub).getByText("4")).toBeTruthy();
+    expect(within(hub).queryByText("Chưa đồng bộ")).toBeNull();
+    expect(calls.find((c) => c.command === "context_sync")?.args.project).toBe(KEY);
+  });
+
+  it("hub lỗi: hiện lỗi mà sidecar đã ghi, số mục giữ bản cũ", async () => {
+    fakeTauri({
+      context_status: () => ({ projects: [project()] }),
+      hub_rpc: () => {
+        throw "Không kết nối được hub.";
+      },
+      context_sync: () =>
+        project({
+          hub: {
+            syncedAt: "2026-10-20T09:30:00.000Z",
+            items: 3,
+            omitted: { budget: 0, secret: 0 },
+            lastError: "Không kết nối được hub.",
+          },
+        }),
+    });
+    renderSignedIn();
+    const hub = await screen.findByRole("region", { name: "Từ hub" });
+    await userEvent.click(within(hub).getByRole("button", { name: "Đồng bộ" }));
+    expect((await within(hub).findByRole("alert")).textContent).toContain("Không kết nối được hub.");
+    expect(within(hub).getByText("3")).toBeTruthy();
+  });
+
+  it("công tắc tự đồng bộ nhớ trên máy; chính sách bật thì công tắc khoá", async () => {
+    fakeTauri({ context_status: () => ({ projects: [project()] }) });
+    const { unmount } = renderSignedIn();
+    const hub = await screen.findByRole("region", { name: "Từ hub" });
+    const toggle = within(hub).getByRole("switch", { name: "Tự đồng bộ mỗi 60 phút khi màn Memory đang mở" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(JSON.parse(localStorage.getItem("hive.context.autosync") ?? "[]")).toEqual([KEY]);
+    unmount();
+
+    fakeTauri({
+      context_status: () => ({
+        projects: [project({ autoSync: { enabled: true, minutes: 30, source: "policy" } })],
+      }),
+    });
+    renderSignedIn();
+    const locked = await screen.findByRole("switch", { name: "Chính sách dự án bật tự đồng bộ mỗi 30 phút" });
+    expect(locked.getAttribute("aria-checked")).toBe("true");
+    expect((locked as HTMLButtonElement).disabled).toBe(true);
   });
 });

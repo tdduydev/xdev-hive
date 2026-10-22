@@ -194,7 +194,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `worker/internal/ctxsync/{hub.go,secrets.go}` (+ test), `worker/internal/ctxsync/sync.go` (gọi phần hub).
   - **Kiểm**: FR-022…FR-025: ngân sách, bỏ bí mật, mục bị gỡ biến mất, mất mạng giữ bản cũ.
 
-- [ ] **T017 [US3] [vừa] · 1 ngày — Desktop: kéo memory hub, đồng bộ định kỳ** (sau T008, T013, T016)
+- [x] **T017 [US3] [vừa] · 1 ngày — Desktop: kéo memory hub, đồng bộ định kỳ** (sau T008, T013, T016)
   - **Goal**: `lib/hub-context.ts` gọi `memory.list({project, status:"approved", limit:200})` bằng PAT, ghi file tạm, gọi
     `context_sync`; nút "Đồng bộ", công tắc tự đồng bộ, bộ hẹn giờ khi app mở (như lịch tính điểm hằng ngày của 025);
     phần "Từ hub" của `<SharedContextSection>` (số mục, đã bỏ, lần cuối, lỗi).
