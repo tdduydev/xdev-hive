@@ -394,6 +394,21 @@ Nguyên tắc thiết kế:
   có `modules/` hoặc gitlink trong index có `.git` (T020); không đọc chắc được thì vẫn chặn. SC-004 chưa đo lại sau T020
   ([research.md mục 5](../specs/026-desktop-git-branches/research.md)).
 
+### 5.2 Ngữ cảnh dùng chung và nút "Tối ưu" (spec 029)
+
+Phần này cũng không đi qua hub ở đợt P1. Quyết định: [ADR 0037](adr/0037-shared-context-local-files.md). Thiết kế:
+[plan.md](../specs/029-shared-context-sync/plan.md).
+
+| Gói Go | Việc | Trạng thái |
+|---|---|---|
+| `worker/internal/ctxsync` | Giữ một nguồn ngữ cảnh mỗi dự án trong `~/.xdev-hive/context/<khoá>/`; ghi nó vào file cục bộ không theo dõi của từng CLI (`CLAUDE.local.md`, `AGENTS.override.md` gương, `GEMINI.local.md`, `.agents/rules/xdev-hive.md`) trong khối `<!-- xdev-hive:context … -->`; phát hiện sửa tay bằng băm trong dòng mở; xung đột; chuyển từ chia sẻ memory cũ | Có code |
+| `worker/internal/gitexclude` | Thêm và gỡ dòng trong `.git/info/exclude`, tách từ `memstore` | Có code |
+| `worker/internal/optimizeall` | Lệnh `hive-worker optimize all`: lập kế hoạch, chạy các bước đã chọn, ghi nhật ký `runs/<id>.json` sau mỗi bước, hoàn tác cả lần. Dùng `optimizer`, sửa nhanh của `score`, `ctxsync`. Danh sách id bước là đóng (không nén bằng AI, không gỡ MCP, không xoá skill) | Có code gói; lệnh `optimize all` theo kế hoạch spec 029 |
+| `worker/internal/outbox` | Hàng đợi bền cho việc gửi lên hub, phần tối thiểu của spec 027. `hive-worker run` gửi 15 giây một lần | Có code |
+
+Mọi lần `ctxsync` ghi đi qua kho sao lưu của `memstore`, nên hoàn tác đưa file về đúng byte. Lệnh con `context` của
+`hive-worker` đã có; `optimize all` và các lệnh Tauri tương ứng chưa có.
+
 ## 6. Bảo mật và token
 
 | Token | Cấp cho | Đời sống | Cách cấp |
