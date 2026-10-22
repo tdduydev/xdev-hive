@@ -592,7 +592,7 @@ description: "Task list: nhập Word thành tài liệu hub"
     - `apps/hub/src/modules/docsync/routes/word-imports.ts`
   - **Kiểm**: hub test, typecheck.
 
-- [ ] **T021 [P] [US5] [vừa] · 1 ngày — Web: nhãn "Nhập từ Word", tải file gốc, danh sách lượt nhập**
+- [x] **T021 [P] [US5] [vừa] · 1 ngày — Web: nhãn "Nhập từ Word", tải file gốc, danh sách lượt nhập**
   - **Phụ thuộc**: T018 (cùng `doc-editor-page.tsx`, khác đợt). API từ T020 dùng qua fixture.
   - **Goal**: giai đoạn 3. US5 (giao diện).
     - `doc-editor-page.tsx`: nhãn "Nhập từ Word" kèm tên file, ngày, người nhập (`wordImports.ofDoc`); nút "Tải file

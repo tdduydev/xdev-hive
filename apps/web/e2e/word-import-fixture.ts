@@ -523,3 +523,125 @@ export function wordImportPageScenario(options: WordImportPageOptions = {}) {
     },
   };
 }
+
+// ---- Nhãn nguồn, file gốc và danh sách lượt nhập (T021) ----
+
+export const WORD_HISTORY_DOC_KEY = "org/srs-0";
+export const WORD_ORIGINAL_NAME = "SRS-OPD v1.0.docx";
+export const WORD_ORIGINAL_BYTES = Buffer.from("PK file Word gốc giả");
+const ZERO_COUNTS = {
+  queued: 0,
+  converting: 0,
+  ready: 0,
+  skipped: 0,
+  blockedSecret: 0,
+  failed: 0,
+  proposed: 0,
+  cancelled: 0,
+  done: 0,
+};
+const HISTORY_IDS = {
+  done: WORD_IMPORT_ID,
+  update: "20202020-0000-4000-8000-0000000000b2",
+  failed: "20202020-0000-4000-8000-0000000000b3",
+};
+
+export interface WordHistoryOptions extends WordImportPageOptions {
+  /** Trả lỗi cho lần tải file gốc. */
+  originalFails?: boolean;
+  /** Danh sách lượt nhập trả lỗi cho tới khi test gọi `healList()`. */
+  listFails?: boolean;
+}
+
+/**
+ * Hub giả cho nhãn "Nhập từ Word", nút tải file gốc và trang danh sách. Dựng trên `wordImportPageScenario` nên editor,
+ * cây tài liệu và nhà giữ nguyên; chỉ `ofDoc` (tài liệu `org/srs-0` có lượt nhập, tài liệu khác không) và `list` (ba lượt
+ * ở nhà tổ chức, nhà dự án trống) là của riêng nó. `state.listCalls` ghi lại input của `list`, `state.originals` ghi tổ
+ * chức gửi kèm mỗi lần tải file gốc.
+ */
+export function wordImportHistoryScenario(options: WordHistoryOptions = {}) {
+  const base = wordImportPageScenario(options);
+  const state = { listCalls: [] as { homeId: string; state?: string }[], originals: [] as (string | undefined)[] };
+  let listFails = options.listFails === true;
+  const stampImport = (id: string, patch: Record<string, unknown>, createdAt: string): Record<string, unknown> => ({
+    id,
+    homeId: base.orgHome.id,
+    targetDir: null,
+    mode: "create",
+    docKey: null,
+    confidential: false,
+    state: "done",
+    counts: ZERO_COUNTS,
+    createdBy: { id: "u1", name: "Quản trị" },
+    createdAt,
+    updatedAt: createdAt,
+    ...patch,
+  });
+  const done = stampImport(
+    HISTORY_IDS.done,
+    { targetDir: "docs/srs/", counts: { ...ZERO_COUNTS, done: 3 } },
+    "2026-10-19T03:00:00.000Z",
+  );
+  const updating = stampImport(
+    HISTORY_IDS.update,
+    { mode: "update", docKey: WORD_HISTORY_DOC_KEY, state: "ready", counts: { ...ZERO_COUNTS, ready: 1 } },
+    "2026-10-20T03:00:00.000Z",
+  );
+  const failed = stampImport(
+    HISTORY_IDS.failed,
+    {
+      targetDir: "",
+      state: "failed",
+      counts: { ...ZERO_COUNTS, failed: 1, blockedSecret: 1 },
+      createdBy: { id: "u2", name: null },
+    },
+    "2026-10-18T03:00:00.000Z",
+  );
+  const imports = [updating, done, failed];
+  const originalFile = {
+    ...(base.files[0] as Record<string, unknown>),
+    fileName: WORD_ORIGINAL_NAME,
+    state: "done",
+    docId: "20202020-0000-4000-8000-0000000000e1",
+    key: WORD_HISTORY_DOC_KEY,
+    docVersion: 1,
+  };
+  const rpc: Record<string, DocsyncFixtureHandler> = {
+    ...base.rpc,
+    "wordImports/ofDoc": (input) =>
+      ok((input as { docKey: string }).docKey === WORD_HISTORY_DOC_KEY ? { import: done, file: originalFile } : null),
+    "wordImports/list": (input) => {
+      const i = input as { homeId: string; state?: string };
+      state.listCalls.push({ homeId: i.homeId, ...(i.state ? { state: i.state } : {}) });
+      if (listFails) return err(403, { code: "WORD_IMPORT_NEEDS_MANAGE" });
+      const items = i.homeId === base.orgHome.id ? imports.filter((item) => !i.state || item.state === i.state) : [];
+      return ok({ items, nextCursor: null });
+    },
+  };
+  const install = async (page: Page) => {
+    await base.install(page);
+    await page.route("**/api/v1/docs/word-imports/*/files/*/original", (route) => {
+      state.originals.push(route.request().headers()["x-hive-org"]);
+      if (options.originalFails)
+        return route.fulfill({
+          status: 404,
+          json: { defined: false, code: "NOT_FOUND", status: 404, message: "Không tìm thấy file Word gốc." },
+        });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers: { "content-disposition": `attachment; filename="srs-opd.docx"` },
+        body: WORD_ORIGINAL_BYTES,
+      });
+    });
+  };
+  return {
+    ...base,
+    rpc,
+    install,
+    history: state,
+    healList: () => {
+      listFails = false;
+    },
+  };
+}
