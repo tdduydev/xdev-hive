@@ -186,7 +186,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: trang/danh sách memory của web (`apps/web/src/pages/**/memor*`), e2e liên quan.
   - **Kiểm**: Playwright ghim, bỏ ghim, người không quyền không thấy nút.
 
-- [ ] **T016 [P] [US3] [nặng] · 1,5 ngày — `ctxsync`: mục "Từ hub", lọc bí mật, ngân sách** (sau T006; song song T012–T015)
+- [x] **T016 [P] [US3] [nặng] · 1,5 ngày — `ctxsync`: mục "Từ hub", lọc bí mật, ngân sách** (sau T006; song song T012–T015)
   - **Goal**: `hub.go` đọc `HubSnapshot` (`--hub-file`), bỏ bản `supersededBy`, thứ tự ghim → mới; `secrets.go` dùng lại
     mẫu nhận dạng bí mật sẵn có của worker nếu có, không thì bộ nhỏ (khoá API phổ biến, `PRIVATE KEY`, chuỗi entropy cao);
     ngân sách theo `contextBudgetTokens` (ước lượng như `memstore/tokens.go`); `omitted{budget,secret}`; giữ `hub.json`
