@@ -457,6 +457,31 @@ describe("sự kiện pipeline GitLab", () => {
   });
 });
 
+describe("quét định kỳ", () => {
+  it("hẹn hỏi Jenkins có người theo dõi và hỏi lại pipeline GitLab chưa xong, không đụng kết nối thiếu người theo dõi", async () => {
+    const pending = gitlab.seedPipeline(REPO, { status: "running" }).pipeline;
+    await admin.query(
+      `insert into hive.ci_runs_seen (org_id, project_id, source, external_id, status, branch)
+       values ($1, $2, 'gitlab', $3, 'running', 'main')`,
+      [org.orgId, projectId, `${projectId}:${pending.id}`],
+    );
+    enqueued = [];
+    await runCiPollJob(deps(), fakeJobs, { kind: "scan" });
+    // Cùng container có tổ chức của file test khác; chỉ xét việc của tổ chức này.
+    const keys = ciPolls()
+      .filter((e) => e.data.orgId === org.orgId)
+      .map((e) => e.opts?.singletonKey);
+    expect(keys).toEqual(expect.arrayContaining([connId, `gitlab:${projectId}`]));
+    // Kết nối của test trước: có người theo dõi (dù chưa có token) thì vẫn hỏi để ghi last_error; không ai theo dõi thì bỏ.
+    const lonely = await admin.query<{ id: string }>(
+      "select id from hive.ci_jenkins_connections where org_id = $1 and watcher_user_id is null",
+      [org.orgId],
+    );
+    expect(lonely.rows).not.toHaveLength(0);
+    for (const { id } of lonely.rows) expect(keys).not.toContain(id);
+  });
+});
+
 describe("đăng ký lại webhook GitLab", () => {
   it("mỗi tổ chức một lần: lần sau không gọi GitLab nữa", async () => {
     const refreshDeps = { pool: app, masterKey, providerFactory: () => gitlab, publicUrl: PUBLIC_URL };

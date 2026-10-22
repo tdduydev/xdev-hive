@@ -394,14 +394,10 @@ export function queueGitlabRecheck(
 
 /**
  * Tổ chức có Jenkins hoặc dự án GitLab cần theo dõi. Job không có tổ chức trong context nên cần hàm SECURITY DEFINER
- * `hive.delivery_active_orgs()`; chưa có migration thì trả rỗng và chuỗi hỏi chỉ bắt đầu từ `ensureCiPoll`.
+ * `hive.delivery_active_orgs()`.
  */
 export async function deliveryActiveOrgs(pool: pg.Pool): Promise<string[]> {
   return withTenant(pool, {}, async (tx) => {
-    const { rows: probe } = await tx.execute<{ ok: boolean }>(
-      sql`select to_regprocedure('hive.delivery_active_orgs()') is not null as ok`,
-    );
-    if (!probe[0]?.ok) return [];
     const { rows } = await tx.execute<{ org_id: string }>(sql`select org_id from hive.delivery_active_orgs()`);
     return rows.map((r) => r.org_id);
   });
