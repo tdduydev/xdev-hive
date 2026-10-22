@@ -1,6 +1,7 @@
 import type { DeployMethod as DeployMethodName, DeployStep, DeployVersion, TargetConfig } from "@xdev-hive/contracts";
 import type { Tx } from "../../platform/index.ts";
 import type { DeliveryDeps } from "../deps.ts";
+import type { HealthResult } from "./health.ts";
 
 /** Một lần triển khai như cách triển khai thấy: đủ để bắt đầu, đọc tiếp sau khi hub khởi động lại, huỷ. */
 export interface DeployRun {
@@ -31,12 +32,15 @@ export interface DeployStarted {
 }
 
 export interface DeployProgress {
-  state: "running" | "succeeded" | "failed" | "unknown";
+  /** `failed_needs_review`: các bước xong nhưng health không đạt (FR-018). `canceled`: phía máy chủ đã dừng vì huỷ. */
+  state: "running" | "succeeded" | "failed" | "failed_needs_review" | "canceled" | "unknown";
   steps: DeployStep[];
   remote?: Record<string, unknown> | undefined;
   external?: Record<string, unknown> | undefined;
   /** Log mới đọc được từ lần trước, chưa che bí mật. */
   log?: string | undefined;
+  /** Kết quả health khi cách triển khai tự gọi health sau các bước (ssh-script). */
+  health?: HealthResult | undefined;
 }
 
 /**

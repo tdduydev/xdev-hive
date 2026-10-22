@@ -1,0 +1,397 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildRunScript > bỏ bước không cấu hình, bỏ qua sao lưu theo yêu cầu, không gửi mã khi upload none > run.sh bỏ qua sao lưu, không gửi mã 1`] = `
+"#!/bin/sh
+# Lần triển khai 0192f3a0-0000-7000-8000-000000000001 của xDev Hive. Hub sinh file này và đọc status.json theo đúng dạng ở đây:
+# không sửa tay.
+umask 077
+cd "$(dirname "$0")" || exit 1
+_hive_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+_hive_log() { printf '== %s %s\\n' "$(date -u +%H:%M:%S)" "$*" >> log; }
+_hive_q() { if [ -n "$1" ]; then printf '"%s"' "$1"; else printf null; fi; }
+_hive_n() { if [ -n "$1" ]; then printf %s "$1"; else printf null; fi; }
+_hive_step() {
+  eval "_hive_s=\\$_hive_st_$1 _hive_b=\\$_hive_begin_$1 _hive_e=\\$_hive_end_$1 _hive_c=\\$_hive_code_$1 _hive_r=\\$_hive_reason_$1"
+  printf '{"key":"%s","state":"%s","startedAt":' "$1" "$_hive_s"
+  _hive_q "$_hive_b"
+  printf ',"finishedAt":'
+  _hive_q "$_hive_e"
+  printf ',"exitCode":'
+  _hive_n "$_hive_c"
+  printf ',"reason":'
+  _hive_q "$_hive_r"
+  printf '}'
+}
+# Ghi file tạm rồi mv: hub đọc giữa chừng không bao giờ thấy JSON dở.
+_hive_status() {
+  {
+    printf '{"v":1,"pid":%s,"current":' "$$"
+    _hive_q "$_hive_current"
+    printf ',"done":%s,"exit":' "$1"
+    _hive_n "$2"
+    printf ',"steps":['
+    _hive_step precheck
+    printf ,
+    _hive_step backup
+    printf ,
+    _hive_step upload
+    printf ,
+    _hive_step deploy
+    printf ']}\\n'
+  } > status.json.tmp && mv -f status.json.tmp status.json
+}
+_hive_end() {
+  eval "_hive_st_$1=\\$2 _hive_end_$1=\\$(_hive_now) _hive_code_$1=\\$3 _hive_reason_$1=\\$4"
+  _hive_status false
+}
+_hive_skipped() { _hive_log "$2: bỏ qua, $3."; }
+# Huỷ: hub gửi TERM cho cả nhóm tiến trình của run.sh. \`timeout\` tự tách nhóm riêng nên TERM không tới bước đang
+# chạy: chuyển tiếp cho \`timeout\`, nó dừng cả nhóm của bước. Các bước sau ghi "đã huỷ".
+_hive_on_term() {
+  _hive_trapped=1
+  _hive_canceled=1
+  if [ -n "$_hive_child" ]; then kill -TERM "$_hive_child" 2>/dev/null; fi
+}
+# Chạy bước ở nền rồi \`wait\`: sh chỉ chạy trap khi lệnh tiền cảnh xong, \`wait\` thì bị TERM cắt ngang ngay.
+_hive_run() {
+  eval "_hive_s=\\$_hive_st_$1"
+  [ "$_hive_s" = pending ] || return 0
+  if [ -n "$_hive_canceled" ]; then
+    _hive_end "$1" canceled "" canceled
+    _hive_log "$3: đã huỷ."
+    return 0
+  fi
+  if [ -n "$_hive_failed" ]; then
+    _hive_end "$1" skipped "" previous_failed
+    _hive_log "$3: bỏ qua vì bước trước lỗi."
+    return 0
+  fi
+  _hive_current=$1
+  eval "_hive_st_$1=running _hive_begin_$1=\\$(_hive_now)"
+  _hive_status false
+  _hive_log "$3: bắt đầu (tối đa $2 giây)."
+  rm -f reason
+  _hive_t0=$(date +%s)
+  timeout -k 10 "$2" sh "$_hive_dir/steps/$1.sh" >> log 2>&1 < /dev/null &
+  _hive_child=$!
+  if [ -n "$_hive_canceled" ]; then kill -TERM "$_hive_child" 2>/dev/null; fi
+  while :; do
+    _hive_trapped=
+    wait "$_hive_child"
+    _hive_rc=$?
+    if [ -n "$_hive_trapped" ] && kill -0 "$_hive_child" 2>/dev/null; then continue; fi
+    break
+  done
+  _hive_child=
+  _hive_current=
+  if [ "$_hive_rc" -eq 0 ]; then
+    _hive_end "$1" succeeded 0 ""
+    _hive_log "$3: xong."
+  elif [ -n "$_hive_canceled" ]; then
+    _hive_end "$1" canceled "$_hive_rc" canceled
+    _hive_log "$3: đã huỷ."
+  else
+    _hive_failed=$1
+    # 124: \`timeout\` dừng bước; 137: bước không chịu dừng sau TERM nên bị KILL.
+    if [ "$_hive_rc" -eq 124 ] || { [ "$_hive_rc" -eq 137 ] && [ $(($(date +%s) - _hive_t0)) -ge "$2" ]; }; then
+      _hive_r=timeout
+      _hive_log "$3: quá $2 giây, đã dừng."
+    else
+      _hive_r=exit
+      if [ -f reason ]; then
+        _hive_r=$(cat reason)
+        case "$_hive_r" in
+          workdir_missing | env_missing | compose_unavailable | project_missing | project_elsewhere) ;;
+          *) _hive_r=exit ;;
+        esac
+      fi
+      _hive_log "$3: lỗi, mã thoát $_hive_rc."
+    fi
+    _hive_end "$1" failed "$_hive_rc" "$_hive_r"
+  fi
+}
+
+trap _hive_on_term TERM
+# Biến của đích (có biến bí mật) nằm trên đĩa tới lúc đọc xong; script dừng sớm thì EXIT vẫn xoá.
+trap 'rm -f "$_hive_dir/vars"' EXIT
+_hive_dir=$(pwd)
+if [ -f vars ]; then
+  set -a
+  . ./vars
+  set +a
+  rm -f vars
+fi
+
+# Đặt sau biến của đích để đích không ghi đè được.
+_hive_dir=$(pwd)
+HIVE_DEPLOY_ID='0192f3a0-0000-7000-8000-000000000001'
+HIVE_DEPLOY_DIR=$_hive_dir
+HIVE_WORKDIR='/opt/billing'
+HIVE_COMPOSE_PROJECT='billing'
+HIVE_COMMIT=''
+HIVE_TAG='v1.4.0'
+export HIVE_DEPLOY_ID HIVE_DEPLOY_DIR HIVE_WORKDIR HIVE_COMPOSE_PROJECT HIVE_COMMIT HIVE_TAG
+_hive_st_precheck=pending
+_hive_begin_precheck= _hive_end_precheck= _hive_code_precheck= _hive_reason_precheck=
+_hive_st_backup=skipped
+_hive_begin_backup= _hive_end_backup= _hive_code_backup= _hive_reason_backup=skip_requested
+_hive_st_upload=skipped
+_hive_begin_upload= _hive_end_upload= _hive_code_upload= _hive_reason_upload=upload_none
+_hive_st_deploy=pending
+_hive_begin_deploy= _hive_end_deploy= _hive_code_deploy= _hive_reason_deploy=
+_hive_current= _hive_failed= _hive_canceled= _hive_child= _hive_trapped=
+
+: >> log
+_hive_status false
+_hive_log 'Bắt đầu: tag v1.4.0, thư mục /opt/billing, compose project billing.'
+_hive_run precheck 60 'kiểm trước'
+_hive_skipped backup 'sao lưu' 'người triển khai chọn bỏ qua sao lưu lần này'
+_hive_skipped upload 'đưa mã lên' 'đích không gửi mã nguồn, bước triển khai tự lấy mã'
+_hive_run deploy 900 'triển khai'
+_hive_current=
+if [ -n "$_hive_canceled" ]; then
+  _hive_exit=143
+  _hive_log "Kết thúc: đã huỷ."
+elif [ -n "$_hive_failed" ]; then
+  _hive_exit=1
+  _hive_log "Kết thúc: lỗi ở bước $_hive_failed."
+else
+  _hive_exit=0
+  _hive_log "Kết thúc: các bước đều xong."
+fi
+# Log trước, status sau: hub thấy \`done\` thì log đã đủ.
+_hive_status true "$_hive_exit"
+exit "$_hive_exit"
+"
+`;
+
+exports[`buildRunScript > sinh run.sh và file bước đủ bốn bước > run.sh 1`] = `
+"#!/bin/sh
+# Lần triển khai 0192f3a0-0000-7000-8000-000000000001 của xDev Hive. Hub sinh file này và đọc status.json theo đúng dạng ở đây:
+# không sửa tay.
+umask 077
+cd "$(dirname "$0")" || exit 1
+_hive_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+_hive_log() { printf '== %s %s\\n' "$(date -u +%H:%M:%S)" "$*" >> log; }
+_hive_q() { if [ -n "$1" ]; then printf '"%s"' "$1"; else printf null; fi; }
+_hive_n() { if [ -n "$1" ]; then printf %s "$1"; else printf null; fi; }
+_hive_step() {
+  eval "_hive_s=\\$_hive_st_$1 _hive_b=\\$_hive_begin_$1 _hive_e=\\$_hive_end_$1 _hive_c=\\$_hive_code_$1 _hive_r=\\$_hive_reason_$1"
+  printf '{"key":"%s","state":"%s","startedAt":' "$1" "$_hive_s"
+  _hive_q "$_hive_b"
+  printf ',"finishedAt":'
+  _hive_q "$_hive_e"
+  printf ',"exitCode":'
+  _hive_n "$_hive_c"
+  printf ',"reason":'
+  _hive_q "$_hive_r"
+  printf '}'
+}
+# Ghi file tạm rồi mv: hub đọc giữa chừng không bao giờ thấy JSON dở.
+_hive_status() {
+  {
+    printf '{"v":1,"pid":%s,"current":' "$$"
+    _hive_q "$_hive_current"
+    printf ',"done":%s,"exit":' "$1"
+    _hive_n "$2"
+    printf ',"steps":['
+    _hive_step precheck
+    printf ,
+    _hive_step backup
+    printf ,
+    _hive_step upload
+    printf ,
+    _hive_step deploy
+    printf ']}\\n'
+  } > status.json.tmp && mv -f status.json.tmp status.json
+}
+_hive_end() {
+  eval "_hive_st_$1=\\$2 _hive_end_$1=\\$(_hive_now) _hive_code_$1=\\$3 _hive_reason_$1=\\$4"
+  _hive_status false
+}
+_hive_skipped() { _hive_log "$2: bỏ qua, $3."; }
+# Huỷ: hub gửi TERM cho cả nhóm tiến trình của run.sh. \`timeout\` tự tách nhóm riêng nên TERM không tới bước đang
+# chạy: chuyển tiếp cho \`timeout\`, nó dừng cả nhóm của bước. Các bước sau ghi "đã huỷ".
+_hive_on_term() {
+  _hive_trapped=1
+  _hive_canceled=1
+  if [ -n "$_hive_child" ]; then kill -TERM "$_hive_child" 2>/dev/null; fi
+}
+# Chạy bước ở nền rồi \`wait\`: sh chỉ chạy trap khi lệnh tiền cảnh xong, \`wait\` thì bị TERM cắt ngang ngay.
+_hive_run() {
+  eval "_hive_s=\\$_hive_st_$1"
+  [ "$_hive_s" = pending ] || return 0
+  if [ -n "$_hive_canceled" ]; then
+    _hive_end "$1" canceled "" canceled
+    _hive_log "$3: đã huỷ."
+    return 0
+  fi
+  if [ -n "$_hive_failed" ]; then
+    _hive_end "$1" skipped "" previous_failed
+    _hive_log "$3: bỏ qua vì bước trước lỗi."
+    return 0
+  fi
+  _hive_current=$1
+  eval "_hive_st_$1=running _hive_begin_$1=\\$(_hive_now)"
+  _hive_status false
+  _hive_log "$3: bắt đầu (tối đa $2 giây)."
+  rm -f reason
+  _hive_t0=$(date +%s)
+  timeout -k 10 "$2" sh "$_hive_dir/steps/$1.sh" >> log 2>&1 < /dev/null &
+  _hive_child=$!
+  if [ -n "$_hive_canceled" ]; then kill -TERM "$_hive_child" 2>/dev/null; fi
+  while :; do
+    _hive_trapped=
+    wait "$_hive_child"
+    _hive_rc=$?
+    if [ -n "$_hive_trapped" ] && kill -0 "$_hive_child" 2>/dev/null; then continue; fi
+    break
+  done
+  _hive_child=
+  _hive_current=
+  if [ "$_hive_rc" -eq 0 ]; then
+    _hive_end "$1" succeeded 0 ""
+    _hive_log "$3: xong."
+  elif [ -n "$_hive_canceled" ]; then
+    _hive_end "$1" canceled "$_hive_rc" canceled
+    _hive_log "$3: đã huỷ."
+  else
+    _hive_failed=$1
+    # 124: \`timeout\` dừng bước; 137: bước không chịu dừng sau TERM nên bị KILL.
+    if [ "$_hive_rc" -eq 124 ] || { [ "$_hive_rc" -eq 137 ] && [ $(($(date +%s) - _hive_t0)) -ge "$2" ]; }; then
+      _hive_r=timeout
+      _hive_log "$3: quá $2 giây, đã dừng."
+    else
+      _hive_r=exit
+      if [ -f reason ]; then
+        _hive_r=$(cat reason)
+        case "$_hive_r" in
+          workdir_missing | env_missing | compose_unavailable | project_missing | project_elsewhere) ;;
+          *) _hive_r=exit ;;
+        esac
+      fi
+      _hive_log "$3: lỗi, mã thoát $_hive_rc."
+    fi
+    _hive_end "$1" failed "$_hive_rc" "$_hive_r"
+  fi
+}
+
+trap _hive_on_term TERM
+# Biến của đích (có biến bí mật) nằm trên đĩa tới lúc đọc xong; script dừng sớm thì EXIT vẫn xoá.
+trap 'rm -f "$_hive_dir/vars"' EXIT
+_hive_dir=$(pwd)
+if [ -f vars ]; then
+  set -a
+  . ./vars
+  set +a
+  rm -f vars
+fi
+
+# Đặt sau biến của đích để đích không ghi đè được.
+_hive_dir=$(pwd)
+HIVE_DEPLOY_ID='0192f3a0-0000-7000-8000-000000000001'
+HIVE_DEPLOY_DIR=$_hive_dir
+HIVE_WORKDIR='/opt/billing'
+HIVE_COMPOSE_PROJECT='billing'
+HIVE_COMMIT='4f1c2d3e5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d'
+HIVE_TAG='v1.4.0'
+export HIVE_DEPLOY_ID HIVE_DEPLOY_DIR HIVE_WORKDIR HIVE_COMPOSE_PROJECT HIVE_COMMIT HIVE_TAG
+_hive_st_precheck=pending
+_hive_begin_precheck= _hive_end_precheck= _hive_code_precheck= _hive_reason_precheck=
+_hive_st_backup=pending
+_hive_begin_backup= _hive_end_backup= _hive_code_backup= _hive_reason_backup=
+_hive_st_upload=pending
+_hive_begin_upload= _hive_end_upload= _hive_code_upload= _hive_reason_upload=
+_hive_st_deploy=pending
+_hive_begin_deploy= _hive_end_deploy= _hive_code_deploy= _hive_reason_deploy=
+_hive_current= _hive_failed= _hive_canceled= _hive_child= _hive_trapped=
+
+: >> log
+_hive_status false
+_hive_log 'Bắt đầu: commit 4f1c2d3e5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d, tag v1.4.0, thư mục /opt/billing, compose project billing.'
+_hive_run precheck 60 'kiểm trước'
+_hive_run backup 300 'sao lưu'
+_hive_run upload 600 'đưa mã lên'
+_hive_run deploy 900 'triển khai'
+_hive_current=
+if [ -n "$_hive_canceled" ]; then
+  _hive_exit=143
+  _hive_log "Kết thúc: đã huỷ."
+elif [ -n "$_hive_failed" ]; then
+  _hive_exit=1
+  _hive_log "Kết thúc: lỗi ở bước $_hive_failed."
+else
+  _hive_exit=0
+  _hive_log "Kết thúc: các bước đều xong."
+fi
+# Log trước, status sau: hub thấy \`done\` thì log đã đủ.
+_hive_status true "$_hive_exit"
+exit "$_hive_exit"
+"
+`;
+
+exports[`buildRunScript > sinh run.sh và file bước đủ bốn bước > steps 1`] = `
+{
+  "steps/backup.sh": "# Bước sao lưu (backup) của xDev Hive. Dừng ở lệnh lỗi đầu tiên, như một job CI.
+set -e
+cd "$HIVE_WORKDIR"
+pg_dump -Fc billing > backup/$HIVE_DEPLOY_ID.dump
+",
+  "steps/deploy.sh": "# Bước triển khai (deploy) của xDev Hive. Dừng ở lệnh lỗi đầu tiên, như một job CI.
+set -e
+cd "$HIVE_WORKDIR"
+rm -rf src && mv src.new src
+docker compose -p billing up -d --build
+",
+  "steps/precheck.sh": "# Bước kiểm trước (precheck) của xDev Hive. Dừng ở lệnh lỗi đầu tiên, như một job CI.
+set -e
+_hive_reject() {
+  printf '%s\\n' "$1" > "$HIVE_DEPLOY_DIR/reason"
+  printf '%s\\n' "$2" >&2
+  exit 2
+}
+[ -d "$HIVE_WORKDIR" ] || _hive_reject workdir_missing "Không có thư mục $HIVE_WORKDIR trên máy chủ."
+[ -f "$HIVE_WORKDIR/.env" ] || _hive_reject env_missing "Không có file $HIVE_WORKDIR/.env."
+_hive_ls=$(docker compose ls -a --format json) ||
+  _hive_reject compose_unavailable "Không chạy được docker compose ls trên máy chủ."
+# \`docker compose ls\` in JSON gọn một dòng; tách theo \`{\` để mỗi project một dòng.
+_hive_entry=$(printf '%s\\n' "$_hive_ls" | tr '{' '\\n' | grep -F "\\"Name\\":\\"$HIVE_COMPOSE_PROJECT\\"" | head -n 1)
+[ -n "$_hive_entry" ] ||
+  _hive_reject project_missing "Máy chủ không có compose project $HIVE_COMPOSE_PROJECT."
+_hive_files=$(printf '%s\\n' "$_hive_entry" | sed -n 's/.*"ConfigFiles":"\\([^"]*\\)".*/\\1/p')
+[ -n "$_hive_files" ] ||
+  _hive_reject project_elsewhere "Không đọc được file compose của project $HIVE_COMPOSE_PROJECT."
+_hive_ifs=$IFS
+IFS=,
+set -f
+for _hive_file in $_hive_files; do
+  case "$_hive_file" in
+    "\${HIVE_WORKDIR%/}"/*) ;;
+    *) _hive_reject project_elsewhere "Compose project $HIVE_COMPOSE_PROJECT chạy từ $_hive_file, không nằm trong $HIVE_WORKDIR." ;;
+  esac
+done
+set +f
+IFS=$_hive_ifs
+echo "Thư mục, .env và compose project $HIVE_COMPOSE_PROJECT khớp cấu hình."
+
+cd "$HIVE_WORKDIR"
+docker compose config -q
+",
+  "steps/upload.sh": "# Bước đưa mã lên (upload) của xDev Hive. Dừng ở lệnh lỗi đầu tiên, như một job CI.
+set -e
+cd "$HIVE_WORKDIR"
+rm -rf src.new src.new.tmp
+mkdir src.new.tmp
+tar -xzf "$HIVE_DEPLOY_DIR/src.new.tar.gz" -C src.new.tmp
+_hive_top=$(ls -A src.new.tmp)
+if [ -n "$_hive_top" ] && [ "$(printf '%s\\n' "$_hive_top" | wc -l)" -eq 1 ] && [ -d "src.new.tmp/$_hive_top" ]; then
+  mv "src.new.tmp/$_hive_top" src.new
+  rmdir src.new.tmp
+else
+  mv src.new.tmp src.new
+fi
+rm -f "$HIVE_DEPLOY_DIR/src.new.tar.gz"
+echo "Đã giải nén mã của commit $HIVE_COMMIT vào $HIVE_WORKDIR/src.new."
+",
+}
+`;
