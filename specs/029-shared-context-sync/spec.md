@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-22
 
-**Status**: Draft. Chủ dự án chốt hướng đi ngày 2026-10-22 (bảng Quyết định). Chưa có plan.
+**Status**: Draft. Chủ dự án chốt D1–D6 ngày 2026-10-22 (bảng Quyết định). Có [plan.md](plan.md).
 
 **Input**: Chủ dự án (2026-10-22): nghiên cứu cách tối ưu token, bộ nhớ và ngữ cảnh dùng chung trên một máy; đồng bộ
 nhiều máy cho nhiều người trong dự án; có nút tối ưu các phần này.
@@ -30,6 +30,8 @@ Bối cảnh (khảo sát code trên `origin/main` tại `9b484526`, ngày 2026-
 | D2 | Đồng bộ nhiều máy, nhiều người tới đâu? | **Đủ bốn phần**: kéo memory đã duyệt về máy; chính sách tối ưu của dự án; hàng đợi ngoại tuyến; báo cáo token chung (chỉ số liệu) | Chọn một phần |
 | D3 | Nút "Tối ưu" làm gì? | **Xem trước rồi áp dụng tất cả**: một danh sách thay đổi, xác nhận một lần, hoàn tác một lần cho cả gói | Chỉ phần an toàn; ba nút riêng |
 | D4 | Nút có được ghi CLAUDE.md/AGENTS.md/memory? | **Có, nhưng chỉ trong khối do xDev Hive đánh dấu.** Nén bằng AI vẫn duyệt từng file. Đây là thay đổi FR-012 của spec 025 | Giữ nguyên FR-012 |
+| D5 | Ghi khối vào file trong repo hay file cục bộ? | **File cục bộ, không theo dõi bằng git** (vd. `CLAUDE.local.md`), để không làm bẩn repo và không đẩy ngữ cảnh máy này cho cả đội. CLI không có file cục bộ thì app thêm file đích vào git exclude của repo | Ghi vào file trong repo; hỏi từng dự án |
+| D6 | Gộp chính sách tối ưu dự án với `tokenSaving`? | **Tách riêng.** `tokenSaving` giữ nguyên, chỉ áp cho run hub; chính sách mới chỉ áp cho máy dev | Gộp một chỗ cấu hình |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -181,8 +183,8 @@ không có chuỗi nội dung.
 
 - File đích có hai khối đánh dấu, hoặc khối mất dòng đóng (người dùng sửa hỏng): app không ghi, báo lỗi, chỉ chỗ hỏng.
 - File đích là symlink, chỉ đọc, hoặc nằm ngoài thư mục dự án: bỏ qua file đó, ghi lý do; các file khác vẫn ghi.
-- Dự án là repo git và file đích đang được theo dõi: khối mới làm `git status` bẩn. App hỏi một lần cho mỗi dự án: ghi vào
-  file trong repo (cả đội thấy) hay ghi vào file cục bộ không theo dõi khi CLI hỗ trợ (vd. `CLAUDE.local.md`).
+- Dự án là repo git: khối luôn nằm ở file cục bộ không theo dõi (D5). File đích bị git theo dõi (người dùng lỡ commit) thì
+  app không ghi, báo người dùng gỡ file khỏi repo.
 - CLI chưa cài hoặc chưa có gói nào: không tạo file cho CLI đó.
 - Hai cửa sổ app cùng chạy "Tối ưu": lần sau chờ hoặc báo đang chạy, không ghi chồng.
 - Memory trên hub chứa thứ trông như bí mật (token, mật khẩu): không ghi vào khối, báo cho người dùng.
@@ -198,6 +200,8 @@ không có chuỗi nội dung.
 - **FR-001**: Mỗi dự án trên máy có **một nguồn ngữ cảnh** do app quản lý, lưu ngoài repo dự án.
 - **FR-002**: App ghi nguồn vào file ngữ cảnh mà từng CLI tự đọc ở thư mục dự án: Claude Code, Codex, Gemini, Antigravity.
   Chỉ ghi cho CLI có cài trên máy.
+- **FR-002a**: File đích là file cục bộ không theo dõi bằng git: dùng file cục bộ của CLI nếu CLI có (vd. `CLAUDE.local.md`),
+  không thì thêm file đích vào git exclude của repo trước khi ghi. App không bao giờ ghi vào file mà git đang theo dõi.
 - **FR-003**: Nội dung app ghi nằm trong **một khối có dòng mở và dòng đóng đánh dấu** của xDev Hive. App không bao giờ
   sửa, xoá hay sắp xếp lại chữ ngoài khối.
 - **FR-004**: Khối gồm hai phần tách bạch: "Tại máy" (nguồn do người dùng soạn) và "Từ hub" (memory đã duyệt, US3).
@@ -304,8 +308,8 @@ không có chuỗi nội dung.
 - Khối đánh dấu dùng chú thích ẩn của Markdown; CLI vẫn đọc phần giữa hai dòng đánh dấu như chữ thường.
 - "Sửa nhanh an toàn" là danh sách cho phép đang có trong spec 025, không mở rộng ở spec này ngoài phần khối ngữ cảnh.
 - Gắn máy với dự án dùng cơ chế gắn dự án sẵn có của app desktop (`projects.json`).
-- Chính sách tối ưu của dự án là phần mới trên hub, tách khỏi `tokenSaving` của dự án (chỉ áp cho run hub). Có gộp hai
-  phần không thì chốt ở plan.
+- Chính sách tối ưu của dự án là phần mới trên hub, tách khỏi `tokenSaving` của dự án (D6): `tokenSaving` chỉ áp cho run
+  hub, chính sách mới chỉ áp cho máy dev.
 - Hàng đợi ngoại tuyến làm theo plan spec 027; nếu 027 đổi thiết kế thì phần US5 theo 027.
 - Ngân sách mặc định 2.000 token cho phần "Từ hub" và chu kỳ 60 phút là giá trị khởi đầu, xem lại sau khi đo.
 - Ngoài phạm vi: đồng bộ memory riêng của từng người giữa các máy của chính họ (chỉ memory dự án đã duyệt); đồng bộ

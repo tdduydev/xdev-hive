@@ -34,5 +34,4 @@
 - Tên file ngữ cảnh của từng CLI (CLAUDE.md, AGENTS.md, GEMINI.md, rules) là khái niệm người dùng thấy, không phải chi
   tiết cài đặt. Phần Bối cảnh và Assumptions nhắc đường dẫn code sẵn có để plan dùng lại; yêu cầu (FR) không phụ thuộc
   vào chúng.
-- Hai điểm để `/speckit-clarify` cân nhắc: ghi khối vào file trong repo hay file cục bộ (Edge Cases), và gộp chính sách
-  tối ưu dự án với `tokenSaving` hay tách (Assumptions).
+- Hai điểm mở đã chốt ngày 2026-10-22: file cục bộ (D5), tách `tokenSaving` (D6).
