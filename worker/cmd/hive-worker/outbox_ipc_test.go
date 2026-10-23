@@ -464,3 +464,69 @@ func TestOutboxRetryAndBodyFile(t *testing.T) {
 		t.Fatalf("không được xoá file ngoài incoming: %v", err)
 	}
 }
+
+func TestOutboxWatchEvents(t *testing.T) {
+	e := newOBEnv(t)
+	var mu sync.Mutex
+	var events []map[string]any
+	e.svc.setNotify(func(ev any) {
+		mu.Lock()
+		events = append(events, ev.(map[string]any))
+		mu.Unlock()
+	})
+	seen := func(event string) []map[string]any {
+		mu.Lock()
+		defer mu.Unlock()
+		var out []map[string]any
+		for _, ev := range events {
+			if ev["event"] == event {
+				out = append(out, ev)
+			}
+		}
+		return out
+	}
+
+	e.hub.down.Store(true)
+	e.ok(t, taskUpdate("01JBFFFFFFFFFFFFFFFFFFFFFF", 5000))
+	e.idle(t)
+	got := seen("outbox")
+	if len(got) == 0 {
+		t.Fatal("thiếu sự kiện outbox")
+	}
+	if last := got[len(got)-1]; last["hub"] != hubDown || last["pending"] != 1 || last["hubUrl"] != nil {
+		t.Fatalf("outbox khi hub vắng: %v", last)
+	}
+	n := len(got)
+	// Lượt gửi không đổi gì thì không báo lại.
+	e.svc.tick()
+	e.idle(t)
+	if len(seen("outbox")) != n {
+		t.Fatalf("báo lại khi không đổi: %v", seen("outbox")[n:])
+	}
+
+	e.hub.down.Store(false)
+	e.hub.outcome = "rejected"
+	e.advance(time.Minute)
+	e.svc.tick()
+	e.idle(t)
+	items := seen("outbox.item")
+	var rejected map[string]any
+	for _, it := range items {
+		if it["key"] == "01JBFFFFFFFFFFFFFFFFFFFFFF" && it["state"] == "rejected" {
+			rejected = it
+		}
+	}
+	if rejected == nil || rejected["code"] != "TASK_CANCELLED" || rejected["reason"] != "Task đã huỷ." {
+		t.Fatalf("outbox.item: %v", items)
+	}
+	got = seen("outbox")
+	if last := got[len(got)-1]; last["hub"] != hubUp || last["pending"] != 0 || last["rejected"] != 1 {
+		t.Fatalf("outbox sau khi hub trả lời: %v", last)
+	}
+
+	e.ok(t, map[string]any{"op": "outbox.drop", "keys": []string{"01JBFFFFFFFFFFFFFFFFFFFFFF"}})
+	got = seen("outbox")
+	if last := got[len(got)-1]; last["rejected"] != 0 {
+		t.Fatalf("outbox sau khi bỏ: %v", last)
+	}
+}

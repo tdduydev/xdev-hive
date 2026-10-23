@@ -74,6 +74,11 @@ type outboxService struct {
 	flushes  map[string]*flushState
 	health   map[string]*hubHealth
 	loginFor map[string]string
+	// notify đẩy sự kiện vào luồng watch (nil là máy không có watch). notifyMu xếp các lần báo `outbox` theo thứ tự,
+	// để số liệu cũ không tới sau số liệu mới.
+	notify      func(any)
+	notifyMu    sync.Mutex
+	lastSummary string
 }
 
 // newOutboxService dựng phần hộp thư đi của `hive-worker run`. ctx là đời của worker: lượt gửi không theo ctx của yêu
@@ -132,6 +137,7 @@ func (s *outboxService) tick() {
 		if err != nil && s.ctx.Err() == nil {
 			slog.Warn("không gửi được hộp thư đi", "err", err)
 		}
+		s.changed()
 	}
 	ids, err := s.store.Identities()
 	if err != nil {
@@ -208,7 +214,9 @@ func (s *outboxService) flushLoop(id outbox.Identity, st *flushState) {
 		outcomes := map[string]outbox.Outcome{}
 		for _, o := range res.Items {
 			outcomes[o.Key] = o
+			s.itemChanged(o)
 		}
+		s.changed()
 
 		s.mu.Lock()
 		keep := st.waiters[:0]
@@ -342,6 +350,7 @@ func (s *outboxService) submit(ctx context.Context, c *localipc.Conn, req locali
 	if err != nil {
 		return failOutbox(c, err)
 	}
+	s.changed()
 	// Nộp lại khoá đã có kết quả (client gửi lại sau khi socket đứt): trả luôn kết quả cũ.
 	switch it.State {
 	case outbox.StateRejected, outbox.StateAccepted, outbox.StateDuplicate:
@@ -379,6 +388,8 @@ func (s *outboxService) submit(ctx context.Context, c *localipc.Conn, req locali
 func (s *outboxService) sendNow(ctx context.Context, c *localipc.Conn, it outbox.Item) error {
 	ctx, cancel := context.WithTimeout(ctx, immediateTimeout)
 	defer cancel()
+	// Lần gửi thẳng cũng cho biết hub còn hay vắng.
+	defer s.changed()
 	d, err := s.send(ctx, it)
 	var (
 		hold      *outbox.HoldError
@@ -507,15 +518,23 @@ func (s *outboxService) statusHub() string {
 }
 
 func (s *outboxService) status(c *localipc.Conn) error {
-	ids, err := s.store.Identities()
+	out, err := s.summary()
 	if err != nil {
 		return c.Fail(localipc.CodeFailed, err.Error())
+	}
+	return c.OK(out)
+}
+
+func (s *outboxService) summary() (map[string]any, error) {
+	ids, err := s.store.Identities()
+	if err != nil {
+		return nil, err
 	}
 	var total outbox.Stats
 	for _, id := range ids {
 		st, err := s.store.Stats(id)
 		if err != nil {
-			return c.Fail(localipc.CodeFailed, err.Error())
+			return nil, err
 		}
 		total.Pending += st.Pending
 		total.Held += st.Held
@@ -536,7 +555,67 @@ func (s *outboxService) status(c *localipc.Conn) error {
 	if last != nil {
 		out["lastContactAt"] = last.Format(time.RFC3339)
 	}
-	return c.OK(out)
+	return out, nil
+}
+
+// setNotify nối hộp thư với luồng watch. loop đã chạy từ trước khi socket mở nên giữ dưới khoá.
+func (s *outboxService) setNotify(f func(any)) {
+	s.mu.Lock()
+	s.notify = f
+	s.mu.Unlock()
+}
+
+func (s *outboxService) notifier() func(any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.notify
+}
+
+// changed báo `outbox` khi số mục hay trạng thái hub đổi. Lượt gửi chạy mỗi nhịp, nên bỏ qua khi không có gì mới để
+// app không phải vẽ lại liên tục.
+func (s *outboxService) changed() {
+	f := s.notifier()
+	if f == nil {
+		return
+	}
+	s.notifyMu.Lock()
+	defer s.notifyMu.Unlock()
+	sum, err := s.summary()
+	if err != nil {
+		return
+	}
+	e := map[string]any{"event": "outbox"}
+	for _, k := range []string{"hub", "pending", "held", "rejected", "expired"} {
+		e[k] = sum[k]
+	}
+	b, _ := json.Marshal(e)
+	if string(b) == s.lastSummary {
+		return
+	}
+	s.lastSummary = string(b)
+	f(e)
+}
+
+// itemChanged báo kết quả của từng mục trong lượt gửi (bị từ chối, bị giữ, hub đã nhận) để app hiện ngay.
+func (s *outboxService) itemChanged(o outbox.Outcome) {
+	f := s.notifier()
+	if f == nil {
+		return
+	}
+	e := map[string]any{"event": "outbox.item", "key": o.Key, "kind": o.Kind, "state": string(o.State)}
+	if o.Code != "" {
+		e["code"] = o.Code
+	}
+	switch {
+	case o.Reason != "":
+		e["reason"] = o.Reason
+	case o.Error != "":
+		e["reason"] = o.Error
+	}
+	if o.HeldReason != "" {
+		e["heldReason"] = o.HeldReason
+	}
+	f(e)
 }
 
 type outboxListItem struct {
@@ -705,6 +784,7 @@ func (s *outboxService) drop(c *localipc.Conn, req localipc.Request) error {
 		}
 		dropped = append(dropped, key)
 	}
+	s.changed()
 	return c.OK(map[string]any{"dropped": dropped, "skipped": skipped})
 }
 
@@ -732,6 +812,7 @@ func (s *outboxService) retry(c *localipc.Conn, req localipc.Request) error {
 			s.kick(ids[k], nil)
 		}
 	}
+	s.changed()
 	return c.OK(map[string]any{"retried": n})
 }
 

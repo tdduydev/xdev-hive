@@ -132,7 +132,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
   vắng – N mục chờ gửi" · `apps/desktop/src/components/outbox-panel.tsx`, `apps/desktop/src/lib/outbox.ts`,
   `apps/desktop/src/i18n.ts`
 - [ ] T023 [P] [US2] VS Code ghi qua `outbox.submit` · `apps/vscode/src/worker/ipc.ts`
-- [ ] T024 [US2] Sự kiện `watch`: `outbox`, `outbox.item` · `worker/cmd/hive-worker/outbox_ipc.go`,
+- [x] T024 [US2] Sự kiện `watch`: `outbox`, `outbox.item` · `worker/cmd/hive-worker/outbox_ipc.go`,
   `worker/internal/terminal/local.go`
 - [ ] T025 [US2] Đăng xuất khi còn mục: hỏi "Gửi trước", "Giữ lại", "Bỏ" · `apps/desktop/src/components/outbox-panel.tsx`,
   `worker/cmd/hive/login.go`

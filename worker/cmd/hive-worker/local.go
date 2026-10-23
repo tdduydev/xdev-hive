@@ -109,6 +109,9 @@ func startLocalIPC(pool *accounts.Pool, recordDir string, remote *terminal.Remot
 		ctl := &terminal.Controller{Local: local, Remote: remote, Recorder: recorder, Logger: slog.Default(),
 			Verifier: &remoteauth.Verifier{Devices: remote.Store, TOTP: remote.TOTP}}
 		recorder.Controller, local.Controller, remote.Controller = ctl, ctl, ctl
+		if ob != nil {
+			ob.setNotify(remote.Notify)
+		}
 	}
 	handle := func(ctx context.Context, c *localipc.Conn, req localipc.Request) error {
 		switch {
