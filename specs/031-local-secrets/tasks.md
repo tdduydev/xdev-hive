@@ -235,7 +235,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     - nhật ký có `leaked`.
 
   Sau T013 và T005.
-- [ ] T015 [P] [US5] A2·vừa — `worker/internal/terminal/redact.go` dùng `secretmask` (mặt nạ `***` giữ như cũ). Test cũ
+- [x] T015 [P] [US5] A2·vừa — `worker/internal/terminal/redact.go` dùng `secretmask` (mặt nạ `***` giữ như cũ). Test cũ
   của terminal phải xanh, thêm test base64 và JSON.
 
   Sau T005.
