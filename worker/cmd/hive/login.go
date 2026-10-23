@@ -24,6 +24,7 @@ import (
 
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubtls"
+	"github.com/tdduydev/xdev-hive/worker/internal/outbox"
 )
 
 // Đăng nhập hub cho `hive` (specs/010 D12): luồng loopback PKCE của app desktop với `purpose: cli` (hub chỉ cấp token
@@ -66,6 +67,8 @@ type cliConfig struct {
 	UserID string `json:"userId,omitempty"`
 	OrgID  string `json:"orgId,omitempty"`
 	Email  string `json:"email,omitempty"`
+	// TokenSHA256 gắn danh tính với token: hộp thư đi chỉ tin danh tính khi token trong keychain vẫn là token này.
+	TokenSHA256 string `json:"tokenSha256,omitempty"`
 }
 
 func defaultCLIConfigPath() (string, error) {
@@ -288,7 +291,8 @@ func (a *app) storeToken(hub, token string, who *me) int {
 func (a *app) saveToken(hub, token string) (string, error) { return a.saveLogin(hub, token, nil) }
 
 // saveLogin ghi token và danh tính. Không biết danh tính (`hive auth store` của app desktop) thì chỉ giữ danh tính cũ khi
-// token không đổi: token khác có thể là người khác, và mục ghi dưới tên người cũ thì không được gửi bằng token mới.
+// token không đổi: token khác có thể là người khác, và mục ghi dưới tên người cũ thì không được gửi bằng token mới. So
+// với dấu vân tay đã lưu chứ không với keychain, vì keychain có thể đã bị ghi thẳng token mới.
 func (a *app) saveLogin(hub, token string, who *me) (string, error) {
 	prev, path, err := a.loadCLIConfig()
 	if err != nil && path == "" {
@@ -300,10 +304,11 @@ func (a *app) saveLogin(hub, token string, who *me) (string, error) {
 		if m := patOrg.FindStringSubmatch(token); m != nil {
 			cfg.OrgID = m[1]
 		}
-	} else if prevHub, _ := normalizeHub(prev.HubURL); prevHub == hub && prev.UserID != "" {
-		if old, _, _ := a.readToken(hub); old == token {
-			cfg.UserID, cfg.OrgID, cfg.Email = prev.UserID, prev.OrgID, prev.Email
-		}
+	} else if prevHub, _ := normalizeHub(prev.HubURL); prevHub == hub && prev.UserID != "" && prev.TokenSHA256 == outbox.TokenFingerprint(token) {
+		cfg.UserID, cfg.OrgID, cfg.Email = prev.UserID, prev.OrgID, prev.Email
+	}
+	if cfg.UserID != "" {
+		cfg.TokenSHA256 = outbox.TokenFingerprint(token)
 	}
 	if kerr := a.keyring.Set(keyringService, hub, token); kerr != nil {
 		previous, err := a.keyring.Get(keyringService, hub)

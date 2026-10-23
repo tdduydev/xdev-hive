@@ -49,13 +49,13 @@ const keyPair = () => {
   return { publicKey: publicKey.export({ format: "jwk" }).x as string, privateKey };
 };
 
-async function register(publicKey?: string) {
+async function register(publicKey?: string, name = `m-${randomUUID().slice(0, 8)}`) {
   const { token } = await withTenant(app, { userId: adminUser, orgId: orgA }, (tx) =>
     createRegistration(tx, adminUser, teamA),
   );
   return registerMachine(app, {
     registrationToken: token,
-    machineId: `m-${randomUUID().slice(0, 8)}`,
+    machineId: name,
     os: "linux",
     version: "0.1.0",
     clis: ["claude"],
@@ -123,6 +123,18 @@ describe("đăng ký kèm khoá", () => {
     await withTenant(app, { userId: adminUser, orgId: orgA }, (tx) => revokeMachine(tx, adminUser, machine.id));
     expect(await auth.authenticate(accessToken)).toBeNull();
     expect(await fleetCode(() => exchange(machine.id, privateKey))).toBe("MACHINE_AUTH_FAILED");
+  });
+
+  it("cài lại máy với khoá mới thì access token của bản cài cũ hết dùng", async () => {
+    const old = keyPair();
+    const machine = await register(old.publicKey);
+    const { accessToken } = await exchange(machine.id, old.privateKey);
+    const fresh = keyPair();
+    const again = await register(fresh.publicKey, machine.machineId);
+    expect(again.id).toBe(machine.id);
+    expect(await auth.authenticate(accessToken)).toBeNull();
+    expect(await fleetCode(() => exchange(machine.id, old.privateKey))).toBe("MACHINE_AUTH_FAILED");
+    expect(await auth.authenticate((await exchange(machine.id, fresh.privateKey)).accessToken)).not.toBeNull();
   });
 });
 

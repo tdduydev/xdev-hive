@@ -2,7 +2,15 @@ import { implement, ORPCError } from "@orpc/server";
 import { desktopConnectContract, fleetContract } from "@xdev-hive/contracts";
 import type pg from "pg";
 import type { Auth } from "../identity/index.ts";
-import { ForbiddenError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
+import {
+  clientIp,
+  ForbiddenError,
+  parseTrustedProxies,
+  type RequestContext,
+  type TrustedProxies,
+  type Tx,
+  withTenant,
+} from "../platform/index.ts";
 import {
   cancelAccountLogin,
   getAccountLogin,
@@ -53,16 +61,11 @@ export interface FleetDeps {
   issuePersonalToken?: IssuePersonalToken | undefined;
   /** Access token máy (ADR 0033). Không có (thiếu HIVE_AUTH_SECRET) thì máy chỉ dùng được machine token. */
   machineAuth?: MachineAuth | undefined;
+  /** Proxy được tin `X-Forwarded-For`; mặc định đọc `HIVE_TRUSTED_PROXIES`. */
+  trustedProxies?: TrustedProxies | undefined;
 }
 
 const bearer = (headers: Headers) => /^Bearer\s+(\S+)$/i.exec(headers.get("authorization") ?? "")?.[1];
-
-/**
- * IP để giới hạn số lần xin token theo IP. Hub đứng sau reverse proxy nên lấy địa chỉ đầu của x-forwarded-for; giả
- * được header này chỉ né được giới hạn theo IP, giới hạn theo máy vẫn còn.
- */
-const clientIp = (headers: Headers) =>
-  headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip") || undefined;
 
 /** Cùng header chọn tổ chức với API tổ chức, đội (M1c). */
 export const ORG_HEADER = "x-hive-org";
@@ -89,6 +92,10 @@ function toORPC(error: unknown): never {
 }
 
 export function fleetRouter(deps: FleetDeps) {
+  // Giới hạn xin token đếm theo IP: header người gọi tự đặt thì giả được IP của máy khác để chặn máy đó.
+  const trusted = deps.trustedProxies ?? parseTrustedProxies(process.env.HIVE_TRUSTED_PROXIES);
+  const callerIp = (context: RequestContext) =>
+    clientIp(context.remoteAddress, context.headers.get("x-forwarded-for") ?? undefined, trusted);
   const requirePool = () => {
     if (!deps.pool) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Hub chưa cấu hình HIVE_DATABASE_URL." });
     return deps.pool;
@@ -256,13 +263,13 @@ export function fleetRouter(deps: FleetDeps) {
       ),
       challenge: workerOs.challenge.handler(({ context, input }) => {
         try {
-          return requireMachineAuth().challenge(input.machine, clientIp(context.headers));
+          return requireMachineAuth().challenge(input.machine, callerIp(context));
         } catch (error) {
           return toORPC(error);
         }
       }),
       token: workerOs.token.handler(({ context, input }) =>
-        requireMachineAuth().exchange(input, clientIp(context.headers)).catch(toORPC),
+        requireMachineAuth().exchange(input, callerIp(context)).catch(toORPC),
       ),
       // Sự kiện máy (ADR 0036): danh tính là máy của token, không lấy từ body. Nhận access token máy (ADR 0033), và
       // machine token khi máy chưa có khoá.

@@ -18,6 +18,11 @@ func (s *fixedSigner) Sign(hubURL, machineID, nonce string) string {
 }
 
 func tokenHub(t *testing.T, exp time.Time, status int) (*httptest.Server, *atomic.Int32) {
+	return tokenHubAt(t, exp, status, "")
+}
+
+// tokenHubAt giả hub có HIVE_PUBLIC_URL là public; rỗng là hub cũ không trả URL trong challenge.
+func tokenHubAt(t *testing.T, exp time.Time, status int, public string) (*httptest.Server, *atomic.Int32) {
 	var tokens atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -26,7 +31,11 @@ func tokenHub(t *testing.T, exp time.Time, status int) (*httptest.Server, *atomi
 			if r.URL.Query().Get("machine") != "id-1" {
 				t.Errorf("challenge cho máy %q", r.URL.Query().Get("machine"))
 			}
-			_, _ = w.Write([]byte(`{"nonce":"n1","expiresAt":"2026-10-23T00:01:00Z"}`))
+			body := map[string]string{"nonce": "n1", "expiresAt": "2026-10-23T00:01:00Z"}
+			if public != "" {
+				body["hub"] = public
+			}
+			_ = json.NewEncoder(w).Encode(body)
 		case "/api/v1/worker/token":
 			var body map[string]string
 			_ = json.NewDecoder(r.Body).Decode(&body)
@@ -70,6 +79,18 @@ func TestTokenSourceCachesUntilRefresh(t *testing.T) {
 	}
 	if _, _, _ = ts.Token(ctx, true); tokens.Load() != 3 {
 		t.Fatal("fresh phải đổi token mới")
+	}
+}
+
+func TestTokenSourceSignsHubPublicURL(t *testing.T) {
+	srv, _ := tokenHubAt(t, time.Now().Add(15*time.Minute), http.StatusOK, "https://hive.example.com")
+	signer := &fixedSigner{}
+	ts := &TokenSource{Client: New(srv.URL), HubURL: srv.URL, MachineID: "id-1", Key: signer}
+	if _, _, err := ts.Token(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if signer.hub != "https://hive.example.com" {
+		t.Fatalf("ký URL %q, cần URL hub trả trong challenge", signer.hub)
 	}
 }
 

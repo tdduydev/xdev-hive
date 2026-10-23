@@ -27,6 +27,7 @@ export {
   registerClientEventRetentionWorker,
   withClientEvent,
 } from "./client-events.ts";
+export { clientIp, normalizeIp, parseTrustedProxies, socketAddress, type TrustedProxies } from "./client-ip.ts";
 export {
   type ClientRequest,
   INVALID_KEY_MESSAGE,

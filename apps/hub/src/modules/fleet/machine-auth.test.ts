@@ -6,6 +6,7 @@ import {
   CHALLENGE_TTL_SEC,
   createMachineAuth,
   ed25519Key,
+  MACHINE_TOKEN_IP_PER_MINUTE,
   MACHINE_TOKEN_PER_MINUTE,
   MACHINE_TOKEN_TTL_SEC,
   machineAudience,
@@ -36,7 +37,12 @@ const code = async (run: () => unknown) => {
 describe("access token máy", () => {
   it("ký JWT HS256 15 phút với aud của cổng worker", () => {
     const { auth, now } = setup();
-    const { accessToken, expiresAt } = auth.sign({ id: machineId, orgId: "org-1", teamId: "team-1" });
+    const { accessToken, expiresAt } = auth.sign({
+      id: machineId,
+      orgId: "org-1",
+      teamId: "team-1",
+      publicKey: "A".repeat(43),
+    });
     const claims = auth.verifyToken(accessToken);
     expect(claims).toMatchObject({
       iss: "https://hub.test",
@@ -52,7 +58,7 @@ describe("access token máy", () => {
 
   it("từ chối token hết hạn, bị sửa, hay ký bằng khoá của hub khác", () => {
     const { auth, advance } = setup();
-    const { accessToken } = auth.sign({ id: machineId, orgId: "org-1", teamId: "team-1" });
+    const { accessToken } = auth.sign({ id: machineId, orgId: "org-1", teamId: "team-1", publicKey: "A".repeat(43) });
     const [h, p, s] = accessToken.split(".") as [string, string, string];
     const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, "base64url").toString()), org_id: "x" }));
     expect(auth.verifyToken(`${h}.${forged.toString("base64url")}.${s}`)).toBeNull();
@@ -68,7 +74,7 @@ describe("access token máy", () => {
 
   it("khoá ký tách khỏi run token: cùng secret nhưng nhãn HKDF khác", () => {
     const { auth } = setup();
-    const { accessToken } = auth.sign({ id: machineId, orgId: "org-1", teamId: "team-1" });
+    const { accessToken } = auth.sign({ id: machineId, orgId: "org-1", teamId: "team-1", publicKey: "A".repeat(43) });
     const [h, p] = accessToken.split(".") as [string, string, string];
     const runKey = Buffer.from(hkdfSync("sha256", "s".repeat(32), "", "xdev-hive run token v1", 32));
     const sig = createHmac("sha256", runKey).update(`${h}.${p}`).digest("base64url");
@@ -97,16 +103,29 @@ describe("nonce", () => {
     expect(await code(() => auth.exchange({ machineId, nonce, signature }))).toBe("MACHINE_AUTH_FAILED");
   });
 
-  it("giới hạn 30 lần mỗi phút cho một máy, sang phút sau thì mở lại", () => {
+  it("đổi token giới hạn 30 lần mỗi phút cho một máy trên một IP, IP khác không bị chặn theo", async () => {
     const { auth, advance } = setup();
-    for (let i = 0; i < MACHINE_TOKEN_PER_MINUTE; i += 1) auth.challenge(machineId, "10.0.0.1");
-    expect(() => auth.challenge(machineId, "10.0.0.1")).toThrow(
+    const signature = "A".repeat(86);
+    const attempt = (ip: string) => code(() => auth.exchange({ machineId, nonce: "1.2", signature }, ip));
+    for (let i = 0; i < MACHINE_TOKEN_PER_MINUTE; i += 1) expect(await attempt("10.0.0.1")).toBe("MACHINE_AUTH_FAILED");
+    expect(await attempt("10.0.0.1")).toBe("MACHINE_TOKEN_RATE_LIMITED");
+    // Ai đó biết id máy và xin liên tục từ IP khác không làm máy thật hết lượt.
+    expect(await attempt("10.0.0.2")).toBe("MACHINE_AUTH_FAILED");
+    advance(60_000);
+    expect(await attempt("10.0.0.1")).toBe("MACHINE_AUTH_FAILED");
+  });
+
+  it("xin nonce chỉ đếm theo IP", () => {
+    const { auth } = setup();
+    for (let i = 0; i < MACHINE_TOKEN_IP_PER_MINUTE; i += 1) auth.challenge(machineId, "10.0.0.1");
+    expect(() => auth.challenge("0198a1b2-0000-7000-8000-000000000003", "10.0.0.1")).toThrow(
       expect.objectContaining({ code: "MACHINE_TOKEN_RATE_LIMITED" }),
     );
-    // Máy khác cùng IP vẫn xin được: giới hạn IP cao hơn nhiều.
-    expect(() => auth.challenge("0198a1b2-0000-7000-8000-000000000003", "10.0.0.1")).not.toThrow();
-    advance(60_000);
-    expect(() => auth.challenge(machineId, "10.0.0.1")).not.toThrow();
+    expect(() => auth.challenge(machineId, "10.0.0.2")).not.toThrow();
+  });
+
+  it("nonce kèm URL hub mà máy phải ký", () => {
+    expect(setup().auth.challenge(machineId).hub).toBe("https://hub.test");
   });
 });
 

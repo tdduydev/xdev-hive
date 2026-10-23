@@ -186,10 +186,19 @@ func TestLoginBrowserFlow(t *testing.T) {
 	if _, err := a.saveToken(hub.URL, testToken); err != nil {
 		t.Fatal(err)
 	}
-	if cfg, _, _ := a.loadCLIConfig(); cfg.UserID != "u1" {
-		t.Fatalf("cùng token mất danh tính: %+v", cfg)
+	if cfg, _, _ := a.loadCLIConfig(); cfg.UserID != "u1" || cfg.TokenSHA256 != outbox.TokenFingerprint(testToken) {
+		t.Fatalf("cùng token mất danh tính hay dấu vân tay: %+v", cfg)
 	}
 	otherToken := "hive_pat_" + testOrg + "_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	// Keychain bị ghi thẳng token khác (không qua hive): outbox không tin danh tính cũ, và auth store đúng token đang nằm
+	// trong keychain cũng không được giữ danh tính đó.
+	if err := a.keyring.Set(keyringService, hub.URL, otherToken); err != nil {
+		t.Fatal(err)
+	}
+	var oe *outbox.Error
+	if _, err := creds.Current(context.Background()); !errors.As(err, &oe) || oe.Code != "NOT_SIGNED_IN" {
+		t.Fatalf("token đổi ngoài hive mà outbox vẫn tin danh tính cũ: %v", err)
+	}
 	if _, err := a.saveToken(hub.URL, otherToken); err != nil {
 		t.Fatal(err)
 	}

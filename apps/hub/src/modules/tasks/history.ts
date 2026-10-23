@@ -35,9 +35,8 @@ export async function taskHistory(tx: Tx, userId: string, taskId: string): Promi
       select ce.received_at as at, ce.client_created_at, ce.kind, ce.outcome::text as outcome, ce.source::text as source,
              ce.machine_id, ce.user_id as actor_id, ce.reason_code, ce.reason
         from hive.client_events ce
-       where ce.outcome <> 'duplicate'
-         and ((ce.target_type = 'task' and ce.target_id = ${taskId})
-           or (ce.target_type = 'run' and ce.target_id in (select id::text from task_runs)))
+       where (ce.target_type = 'task' and ce.target_id = ${taskId})
+          or (ce.target_type = 'run' and ce.target_id in (select id::text from task_runs))
       union all
       -- Trạng thái run do hub ghi khi nhận gói của worker hay lệnh của người dùng; "by" là người khi có người bấm.
       select e.created_at, null, 'run.' || (e.data ->> 'to'), 'accepted', 'worker-run',

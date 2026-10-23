@@ -48,6 +48,15 @@ type CLILogin struct {
 	UserID string `json:"userId,omitempty"`
 	OrgID  string `json:"orgId,omitempty"`
 	Email  string `json:"email,omitempty"`
+	// TokenSHA256 là TokenFingerprint của token mà danh tính trên thuộc về.
+	TokenSHA256 string `json:"tokenSha256,omitempty"`
+}
+
+// TokenFingerprint là sha256 hex của token, ghi cạnh danh tính trong hive.json để biết danh tính đó của token nào mà
+// không phải lưu token.
+func TokenFingerprint(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 // Me là danh tính hub trả cho token (`GET /api/v1/me`).
@@ -121,14 +130,15 @@ func (c *Credentials) identity(ctx context.Context, l CLILogin, token string) (I
 	if m := patOrg.FindStringSubmatch(token); m != nil {
 		id.OrgID = m[1]
 	}
-	if id.UserID != "" {
+	fp := TokenFingerprint(token)
+	// Danh tính đã lưu chỉ đúng với token lúc ghi. Keychain đổi token mà không qua `hive` (bản cũ, app khác ghi thẳng)
+	// thì token mới có thể của người khác, nên hỏi hub.
+	if id.UserID != "" && l.TokenSHA256 == fp {
 		return id, nil
 	}
 	if c.Resolve == nil {
 		return Identity{}, ErrLoginRequired
 	}
-	sum := sha256.Sum256([]byte(token))
-	fp := hex.EncodeToString(sum[:])
 	c.mu.Lock()
 	me, ok := c.resolved[fp]
 	c.mu.Unlock()
@@ -177,6 +187,15 @@ func (c *Credentials) Current(ctx context.Context) (Identity, error) {
 	var hold *HoldError
 	if errors.As(err, &hold) {
 		return Identity{}, &Error{Code: "NOT_SIGNED_IN", Message: hold.Message}
+	}
+	if err != nil && l.UserID != "" {
+		// Hub vắng nên chưa hỏi được token là của ai: vẫn xếp hàng dưới tên đã lưu để không mất lượt ghi. Token() hỏi lại
+		// hub trước khi gửi, nên token đã sang người khác thì mục bị giữ (`identity_mismatch`) chứ không gửi sai tên.
+		stale := Identity{HubURL: l.HubURL, OrgID: l.OrgID, UserID: l.UserID, Email: l.Email}
+		if m := patOrg.FindStringSubmatch(token); m != nil {
+			stale.OrgID = m[1]
+		}
+		return stale, nil
 	}
 	return id, err
 }

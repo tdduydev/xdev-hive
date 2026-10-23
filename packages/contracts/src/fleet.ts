@@ -215,7 +215,15 @@ export const workerKeyInput = z.object({ publicKey: machinePublicKey, keyStorage
 export const workerKeyOutput = z.object({ machineId: id, registeredAt: z.iso.datetime() });
 
 export const workerChallengeInput = z.object({ machine: id });
-export const workerChallengeOutput = z.object({ nonce: z.string().max(200), expiresAt: z.iso.datetime() });
+export const workerChallengeOutput = z.object({
+  nonce: z.string().max(200),
+  expiresAt: z.iso.datetime(),
+  /**
+   * URL hub dùng trong `machineTokenMessage`. Máy ký đúng chuỗi này thay vì URL trong worker.json: máy gọi hub bằng IP
+   * hay tên khác HIVE_PUBLIC_URL vẫn đổi được token. Khoá máy riêng theo từng hub nên không ký hộ được hub khác.
+   */
+  hub: z.string().max(2048),
+});
 
 /** Chuỗi máy ký để đổi lấy access token. Có hubUrl để chữ ký cho hub này không dùng được ở hub khác. */
 export const machineTokenMessage = (hubUrl: string, machineId: string, nonce: string) =>

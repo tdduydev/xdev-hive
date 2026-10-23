@@ -23,22 +23,23 @@ func (c *HealthClient) RegisterKey(ctx context.Context, machineToken, publicKey,
 	return r.MachineID, err
 }
 
-// Challenge xin nonce 60 giây để ký.
-func (c *HealthClient) Challenge(ctx context.Context, machineID string) (string, error) {
+// Challenge xin nonce 60 giây để ký, kèm URL hub phải ký (HIVE_PUBLIC_URL của hub). Hub cũ không trả URL thì hub rỗng.
+func (c *HealthClient) Challenge(ctx context.Context, machineID string) (nonce, hub string, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/api/v1/worker/challenge?machine="+url.QueryEscape(machineID), nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var r struct {
 		Nonce string `json:"nonce"`
+		Hub   string `json:"hub"`
 	}
 	if err := c.do(req, "", &r); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if r.Nonce == "" {
-		return "", &StatusError{Status: http.StatusBadGateway, Message: "hub không trả nonce"}
+		return "", "", &StatusError{Status: http.StatusBadGateway, Message: "hub không trả nonce"}
 	}
-	return r.Nonce, nil
+	return r.Nonce, r.Hub, nil
 }
 
 // AccessToken đổi chữ ký trên nonce lấy access token.
@@ -90,11 +91,16 @@ func (s *TokenSource) Token(ctx context.Context, fresh bool) (string, time.Time,
 	if !fresh && s.token != "" && s.exp.Sub(s.now()) > RefreshBefore {
 		return s.token, s.exp, nil
 	}
-	nonce, err := s.Client.Challenge(ctx, s.MachineID)
+	nonce, hub, err := s.Client.Challenge(ctx, s.MachineID)
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	token, exp, err := s.Client.AccessToken(ctx, s.MachineID, nonce, s.Key.Sign(s.HubURL, s.MachineID, nonce))
+	// Ký URL hub tự báo: máy gọi hub bằng IP hay tên khác HIVE_PUBLIC_URL vẫn đổi được token. Khoá máy riêng theo từng
+	// hub (machinekey.Store), nên hub khác có trả URL nào thì chữ ký cũng không dùng được ở hub thật.
+	if hub == "" {
+		hub = s.HubURL
+	}
+	token, exp, err := s.Client.AccessToken(ctx, s.MachineID, nonce, s.Key.Sign(hub, s.MachineID, nonce))
 	if err != nil {
 		return "", time.Time{}, err
 	}

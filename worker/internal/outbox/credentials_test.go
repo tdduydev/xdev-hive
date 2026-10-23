@@ -23,6 +23,9 @@ const (
 	credToken = "hive_pat_" + credOrg + "_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 )
 
+// credFP là dấu vân tay `hive login` ghi cạnh danh tính của credToken.
+var credFP = TokenFingerprint(credToken)
+
 type fakeKeyring map[string]string
 
 func (k fakeKeyring) Get(service, user string) (string, error) {
@@ -69,7 +72,7 @@ func TestCurrentIdentity(t *testing.T) {
 	if _, err := loggedOut.Current(ctx); !errors.As(err, &oe) || oe.Code != "NOT_SIGNED_IN" {
 		t.Fatalf("đã đăng xuất: %v", err)
 	}
-	c := signedIn(t, CLILogin{HubURL: credHub + "/", UserID: credUser, Email: "an@example.test"})
+	c := signedIn(t, CLILogin{HubURL: credHub + "/", UserID: credUser, Email: "an@example.test", TokenSHA256: credFP})
 	id, err := c.Current(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +85,7 @@ func TestCurrentIdentity(t *testing.T) {
 
 func TestTokenChecksIdentity(t *testing.T) {
 	ctx := context.Background()
-	c := signedIn(t, CLILogin{HubURL: credHub, UserID: credUser, Email: "an@example.test"})
+	c := signedIn(t, CLILogin{HubURL: credHub, UserID: credUser, Email: "an@example.test", TokenSHA256: credFP})
 	me := Identity{HubURL: credHub, OrgID: credOrg, UserID: credUser}
 	if tok, err := c.Token(ctx, me); err != nil || tok != credToken {
 		t.Fatalf("đúng người: %q, %v", tok, err)
@@ -107,7 +110,7 @@ func TestTokenChecksIdentity(t *testing.T) {
 		t.Fatalf("đã đăng xuất: %v", err)
 	}
 	// Máy không có keychain: token nằm trong hive.json.
-	file := &Credentials{Path: writeLogin(t, CLILogin{HubURL: credHub, UserID: credUser, Token: credToken}), Keyring: fakeKeyring{}}
+	file := &Credentials{Path: writeLogin(t, CLILogin{HubURL: credHub, UserID: credUser, Token: credToken, TokenSHA256: credFP}), Keyring: fakeKeyring{}}
 	if tok, err := file.Token(ctx, me); err != nil || tok != credToken {
 		t.Fatalf("token trong file: %q, %v", tok, err)
 	}
@@ -146,6 +149,35 @@ func TestResolveWhenLoginHasNoUser(t *testing.T) {
 	var oe *Error
 	if _, err := none.Current(ctx); !errors.As(err, &oe) || oe.Code != "NOT_SIGNED_IN" {
 		t.Fatalf("không có Resolve: %v", err)
+	}
+}
+
+func TestStoredIdentityNeedsMatchingToken(t *testing.T) {
+	ctx := context.Background()
+	an := Identity{HubURL: credHub, OrgID: credOrg, UserID: credUser, Email: "an@example.test"}
+	for name, fp := range map[string]string{"token khác": TokenFingerprint("hive_pat_cu"), "bản cũ không có dấu vân tay": ""} {
+		t.Run(name, func(t *testing.T) {
+			// hive.json ghi An, nhưng keychain đã bị ghi thẳng token của Bình: phải hỏi hub, không tin tên đã lưu.
+			c := signedIn(t, CLILogin{HubURL: credHub, UserID: credUser, Email: "an@example.test", TokenSHA256: fp})
+			c.Resolve = func(context.Context, string, string) (Me, error) {
+				return Me{ID: "u-binh", Email: "binh@example.test"}, nil
+			}
+			if id, err := c.Current(ctx); err != nil || id.UserID != "u-binh" {
+				t.Fatalf("mục mới phải ghi tên người của token: %+v, %v", id, err)
+			}
+			if _, err := c.Token(ctx, an); holdReason(err) != HeldIdentityMismatch {
+				t.Fatalf("mục của An không được gửi bằng token của Bình: %v", err)
+			}
+		})
+	}
+	// Hub vắng: vẫn xếp hàng dưới tên đã lưu, nhưng chỉ gửi khi hỏi được hub token là của ai.
+	offline := signedIn(t, CLILogin{HubURL: credHub, UserID: credUser, Email: "an@example.test", TokenSHA256: TokenFingerprint("hive_pat_cu")})
+	offline.Resolve = func(context.Context, string, string) (Me, error) { return Me{}, errors.New("dial tcp: refused") }
+	if id, err := offline.Current(ctx); err != nil || id != an {
+		t.Fatalf("hub vắng phải xếp hàng dưới tên đã lưu: %+v, %v", id, err)
+	}
+	if tok, err := offline.Token(ctx, an); err == nil || tok != "" || holdReason(err) != "" {
+		t.Fatalf("hub vắng thì thử lại sau, không gửi: %q, %v", tok, err)
 	}
 }
 

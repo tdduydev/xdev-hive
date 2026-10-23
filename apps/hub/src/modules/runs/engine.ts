@@ -24,6 +24,7 @@ import {
   checkCommandResult,
   type DiffStats,
   diffStats,
+  RUN_GIT_TOKEN_CAPABILITY,
   type RunGitCredential,
   reportRepo,
   type SdlcJobSpec,
@@ -347,14 +348,16 @@ export function labelsMatch(
 }
 
 /**
- * Lý do chờ máy của run AI SDLC hay run có nhãn: chưa máy nào có worker mới (capability `sdlc`) hoặc có đủ nhãn. null
- * thì dùng lý do chung (máy cá nhân, máy dùng chung).
+ * Lý do chờ máy của run AI SDLC, run có nhãn hay run cần token git theo run: chưa máy nào có worker mới (capability
+ * `sdlc`, `run_git_token`) hoặc có đủ nhãn. null thì dùng lý do chung (máy cá nhân, máy dùng chung).
  */
-async function sdlcWaitingReason(tx: Tx, run: RunRow, sandboxed: boolean): Promise<string | null> {
-  if (run.kind !== "sdlc" && run.requiredLabels.length === 0) return null;
+async function sdlcWaitingReason(tx: Tx, run: RunRow, sandboxed: boolean, requireGit: boolean): Promise<string | null> {
+  if (run.kind !== "sdlc" && run.requiredLabels.length === 0 && !requireGit) return null;
   const online = (await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker")).filter((m) =>
     usableBy(m, run, sandboxed),
   );
+  if (requireGit && !online.some((m) => m.capabilities.includes(RUN_GIT_TOKEN_CAPABILITY)))
+    return "Chính sách của tổ chức bắt buộc token git theo run: chưa máy online nào của đội có worker dùng được token này. Cập nhật worker trên máy của đội.";
   if (run.kind === "sdlc" && !online.some((m) => m.capabilities.includes("sdlc")))
     return "Cần worker mới: chưa máy online nào của đội chạy được bước AI SDLC. Cập nhật worker trên máy dùng chung của đội.";
   if (run.requiredLabels.length && !online.some((m) => labelsMatch(m, run.requiredLabels))) {
@@ -771,6 +774,7 @@ export function createRunsEngine(deps: RunsDeps) {
         !run.rejectedBy.includes(m.id) &&
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
         (!CAPABILITY_KINDS.includes(run.kind) || m.capabilities.includes(run.kind)) &&
+        (!policy.git.requireRunGitToken || m.capabilities.includes(RUN_GIT_TOKEN_CAPABILITY)) &&
         labelsMatch(m, run.requiredLabels) &&
         (run.cli
           ? m.clis.includes(run.cli) && runsCli(m, run.cli)
@@ -851,7 +855,7 @@ export function createRunsEngine(deps: RunsDeps) {
       if (!machine && contended) return "contended" as const;
       if (!machine) {
         if (!sandboxed) {
-          const special = await sdlcWaitingReason(tx, run, sandboxed);
+          const special = await sdlcWaitingReason(tx, run, sandboxed, policy.git.requireRunGitToken);
           await noteOnce(tx, run, "waiting_machine", {
             message:
               special ??
@@ -1096,10 +1100,12 @@ export function createRunsEngine(deps: RunsDeps) {
       const project = await loadProject(tx, run.projectId);
       if (!project) return null;
       const requireGit = (await loadPolicy(tx)).git.requireRunGitToken;
+      // Worker cũ bỏ qua lease.git và dùng thông tin git của máy: không cấp token cho máy không khai capability.
+      const gitCapable = (await findMachine(tx, machine.id))?.capabilities.includes(RUN_GIT_TOKEN_CAPABILITY) ?? false;
       // job_accept gửi lại (worker nối lại trước khi nhận gói lease): gửi lại lease đang giữ.
       if (run.machineId === machine.id && ON_MACHINE.includes(run.state) && run.state !== "cancelling") {
         const [lease] = await tx.select().from(runLeases).where(eq(runLeases.runId, run.id));
-        return lease ? { run, lease, project, requireGit } : null;
+        return lease ? { run, lease, project, requireGit, gitCapable } : null;
       }
       if (run.state !== "queued" || run.offerMachineId !== machine.id) return null;
       if (await machineIsPaused(tx, machine.id)) {
@@ -1134,7 +1140,7 @@ export function createRunsEngine(deps: RunsDeps) {
       // Task của run review đã ở running theo run cha đang kiểm kết quả. Run plan là agent bắt đầu làm task.
       if (run.kind !== "review" && run.kind !== "leader" && run.taskId) await setTaskStatus(tx, run.taskId, "running");
       await schedule({ kind: "lease", orgId: run.orgId, runId: run.id, leaseId: lease.id }, expiresAt, tx);
-      return { run: leased, lease, project, requireGit };
+      return { run: leased, lease, project, requireGit, gitCapable };
     });
     if (!out) {
       // Máy đã tạm dừng hoặc đề nghị đã hết hạn: bảo worker không chạy offer cũ.
@@ -1143,10 +1149,11 @@ export function createRunsEngine(deps: RunsDeps) {
       return;
     }
     // Cấp sau khi lease đã ghi: gọi GitHub/GitLab ngoài transaction đang khoá run.
-    const git = await runGitToken(out.run, out.project);
+    const git = out.gitCapable ? await runGitToken(out.run, out.project) : null;
     if (!git && out.requireGit) {
-      await requeueWithoutGit(machine, out.run);
-      send(machine.id, { type: "cancel", runId: out.run.id, graceSec: 0 });
+      // job_accept gửi lại khi run đã chạy: máy đã có lease và đang làm, không huỷ giữa chừng.
+      if (await requeueWithoutGit(machine, out.run))
+        send(machine.id, { type: "cancel", runId: out.run.id, graceSec: 0 });
       return;
     }
     const { token } = signRunToken(tokenKey, deps.publicUrl, {
@@ -1169,16 +1176,18 @@ export function createRunsEngine(deps: RunsDeps) {
 
   /**
    * Chính sách bắt buộc token git mà không cấp được (GitHub/GitLab lỗi, kết nối đổi sang PAT sau lúc giao): trả run về
-   * hàng đợi thay vì để máy chạy bằng thông tin git của máy. Lần giao sau (heartbeat) thử cấp lại.
+   * hàng đợi thay vì để máy chạy bằng thông tin git của máy. Lần giao sau (heartbeat) thử cấp lại. false khi run không
+   * còn ở `leased` (đã chạy, đã huỷ): không đổi gì.
    */
-  async function requeueWithoutGit(machine: AuthedMachine, leased: RunRow) {
-    await tenant(machine.orgId, async (tx) => {
+  async function requeueWithoutGit(machine: AuthedMachine, leased: RunRow): Promise<boolean> {
+    return tenant(machine.orgId, async (tx) => {
       const run = await fenced(tx, machine, leased.id, leased.attempt);
-      if (run?.state !== "leased") return;
+      if (run?.state !== "leased") return false;
       await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
       await transition(tx, run, "queued", { machineId: null, offerMachineId: null, offerExpiresAt: null });
       if (run.kind !== "review" && run.kind !== "leader" && run.taskId) await setTaskStatus(tx, run.taskId, "queued");
       await noteOnce(tx, run, "policy_git_token", { message: GIT_TOKEN_UNAVAILABLE });
+      return true;
     });
   }
 

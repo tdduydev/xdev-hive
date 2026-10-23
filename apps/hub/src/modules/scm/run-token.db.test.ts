@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { type OrgFixture, seedOrg } from "../../../test/org-fixture.ts";
 import { createPool, parseMasterKey, withTenant } from "../platform/index.ts";
 import { createConnection } from "./connections.ts";
@@ -128,5 +128,66 @@ describe("token git theo run", () => {
     const byRun = Object.fromEntries(rows.rows.map((r) => [r.run_id, r.revoked_at]));
     expect(byRun[live]).toBeNull();
     expect(byRun[gone]).not.toBeNull();
+  });
+
+  it("job quét đi qua nhiều trang: trang đầu toàn run còn chạy thì vẫn thu hồi token phía sau", async () => {
+    const runs = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    for (const runId of runs) await issueRunGitToken(deps(), target(runId));
+    const rows = await admin.query("select id, run_id from hive.run_git_tokens where run_id = any($1) order by id", [
+      runs,
+    ]);
+    // Token có id lớn nhất là của run đã rời máy; ba token trước nằm trên các trang đầu.
+    const gone = rows.rows.at(-1).run_id;
+    await sweepRunGitTokens({ ...deps(), pageSize: 1, isLive: async (_tx, runId) => runId !== gone });
+    const after = await admin.query("select run_id, revoked_at from hive.run_git_tokens where run_id = any($1)", [
+      runs,
+    ]);
+    for (const r of after.rows) expect(r.revoked_at === null).toBe(r.run_id !== gone);
+  });
+
+  it("thu hồi lỗi ở một token thì vẫn thu hồi các token khác, token lỗi để lượt sau", async () => {
+    const runId = randomUUID();
+    const first = await issueRunGitToken(deps(), target(runId, 1));
+    await issueRunGitToken(deps(), target(runId, 2));
+    const bad = first?.token.replace("glpat-run-", "");
+    const flaky = {
+      ...gitlab,
+      async revokeRunToken(_ref: unknown, id: string) {
+        if (id === bad) throw new Error("GitLab 503");
+        revoked.push(id);
+      },
+    } as unknown as GitProvider;
+    const warn = vi.fn();
+    expect(await revokeRunGitTokens({ ...deps(flaky), logger: { warn } }, org.orgId, runId)).toBe(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const open = await admin.query("select attempt from hive.run_git_tokens where run_id = $1 and revoked_at is null", [
+      runId,
+    ]);
+    expect(open.rows.map((r) => r.attempt)).toEqual([1]);
+    expect(await revokeRunGitTokens(deps(), org.orgId, runId)).toBe(1);
+  });
+
+  it("GitHub/GitLab treo quá hạn chờ: báo lỗi, không ghi dòng, token về muộn bị thu hồi ngay", async () => {
+    const runId = randomUUID();
+    let release: () => void = () => undefined;
+    const slow = {
+      ...gitlab,
+      issueRunToken: () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              host: "gitlab.example.com",
+              username: "oauth2",
+              token: "glpat-muon",
+              expiresAt: new Date(),
+              externalId: "muon",
+            });
+        }),
+    } as unknown as GitProvider;
+    await expect(issueRunGitToken({ ...deps(slow), issueTimeoutMs: 50 }, target(runId))).rejects.toThrow(/50|0.05/);
+    release();
+    await vi.waitFor(() => expect(revoked).toContain("muon"));
+    const rows = await admin.query("select 1 from hive.run_git_tokens where run_id = $1", [runId]);
+    expect(rows.rows).toHaveLength(0);
   });
 });

@@ -21,6 +21,7 @@ import {
   type HubToWorker,
   hubToWorker,
   PROTOCOL_VERSION,
+  RUN_GIT_TOKEN_CAPABILITY,
 } from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
@@ -2010,7 +2011,7 @@ describe("chính sách agent của tổ chức", () => {
     it("bắt buộc mà kết nối không cấp được: run chờ, báo một lần; bỏ bắt buộc thì giao", async () => {
       await setPolicy({ git: { requireRunGitToken: true } });
       const m = await seedMachine(`git-none-${tag}`);
-      const w = await FakeWorker.connect(m);
+      const w = await FakeWorker.connect({ ...m, capabilities: [RUN_GIT_TOKEN_CAPABILITY] });
       try {
         const run = await startRun((await newTask("Cần token git")).id);
         await new Promise((r) => setTimeout(r, 800));
@@ -2032,7 +2033,7 @@ describe("chính sách agent của tổ chức", () => {
       gitlabTokens();
       await setPolicy({ git: { requireRunGitToken: true } });
       const m = await seedMachine(`git-issue-${tag}`);
-      const w = await FakeWorker.connect(m);
+      const w = await FakeWorker.connect({ ...m, capabilities: [RUN_GIT_TOKEN_CAPABILITY] });
       try {
         const run = await startRun((await newTask("Có token git")).id);
         await w.next("job_offer", (o) => o.runId === run.id);
@@ -2069,7 +2070,7 @@ describe("chính sách agent của tổ chức", () => {
       gitlabTokens(true);
       await setPolicy({ git: { requireRunGitToken: true } });
       const m = await seedMachine(`git-fail-${tag}`);
-      const w = await FakeWorker.connect(m);
+      const w = await FakeWorker.connect({ ...m, capabilities: [RUN_GIT_TOKEN_CAPABILITY] });
       try {
         const task = await newTask("Cấp token lỗi");
         const run = await startRun(task.id);
@@ -2101,6 +2102,74 @@ describe("chính sách agent của tổ chức", () => {
         expect(lease.git).toBeNull();
       } finally {
         await w.close();
+      }
+    });
+
+    it("bắt buộc: không giao cho worker cũ chưa khai run_git_token, báo cần cập nhật worker", async () => {
+      gitlabTokens();
+      await setPolicy({ git: { requireRunGitToken: true } });
+      const m = await seedMachine(`git-old-${tag}`);
+      const w = await FakeWorker.connect(m);
+      try {
+        const run = await startRun((await newTask("Worker cũ")).id);
+        await new Promise((r) => setTimeout(r, 800));
+        expect(w.has("job_offer")).toBe(false);
+        const waiting = await admin.query(
+          "select data from hive.run_events where run_id = $1 and type = 'waiting_machine'",
+          [run.id],
+        );
+        expect(waiting.rows[0]?.data.message).toContain("worker dùng được token");
+      } finally {
+        await w.close();
+        await setPolicy({});
+      }
+    });
+
+    it("không bắt buộc: worker cũ nhận lease không có token, hub không cấp token thừa", async () => {
+      gitlabTokens();
+      await setPolicy({});
+      const m = await seedMachine(`git-skip-${tag}`);
+      const w = await FakeWorker.connect(m);
+      try {
+        const before = issued;
+        const run = await startRun((await newTask("Worker cũ không bắt buộc")).id);
+        await w.next("job_offer", (o) => o.runId === run.id);
+        w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+        const lease = await w.next("lease", (l) => l.runId === run.id);
+        expect(lease.git).toBeNull();
+        expect(issued).toBe(before);
+      } finally {
+        await w.close();
+      }
+    });
+
+    it("job_accept gửi lại khi run đang chạy mà cấp token lỗi: không huỷ, run vẫn chạy", async () => {
+      gitlabTokens();
+      await setPolicy({ git: { requireRunGitToken: true } });
+      const m = await seedMachine(`git-resend-${tag}`);
+      const w = await FakeWorker.connect({ ...m, capabilities: [RUN_GIT_TOKEN_CAPABILITY] });
+      try {
+        const run = await startRun((await newTask("Gửi lại accept")).id);
+        await w.next("job_offer", (o) => o.runId === run.id);
+        w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+        await w.next("lease", (l) => l.runId === run.id);
+        const s = w.sendRun({
+          type: "run_event",
+          runId: run.id,
+          attempt: 1,
+          event: "phase",
+          data: { phase: "running" },
+        });
+        await w.next("ack", (a) => a.uptoSeq === s);
+        expect((await runRow(run.id)).state).toBe("running");
+        gitlabTokens(true);
+        w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+        await new Promise((r) => setTimeout(r, 800));
+        expect(w.has("cancel")).toBe(false);
+        expect((await runRow(run.id)).state).toBe("running");
+      } finally {
+        await w.close();
+        await setPolicy({});
       }
     });
   });

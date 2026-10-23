@@ -74,7 +74,14 @@ import {
   type RunTokenVerifier,
 } from "./modules/mcp/index.ts";
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
-import { type HubConfig, type Jobs, NotFoundError, type RequestContext, type Tx } from "./modules/platform/index.ts";
+import {
+  type HubConfig,
+  type Jobs,
+  NotFoundError,
+  type RequestContext,
+  socketAddress,
+  type Tx,
+} from "./modules/platform/index.ts";
 import {
   RunNotifier,
   type RunsEngine,
@@ -477,7 +484,7 @@ export function createApp({
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
-      context: { headers: c.req.raw.headers },
+      context: { headers: c.req.raw.headers, remoteAddress: socketAddress(c.env) },
     });
     if (matched) return c.newResponse(response.body, response);
     await next();
@@ -485,7 +492,7 @@ export function createApp({
   app.use("/api/*", async (c, next) => {
     const { matched, response } = await openapi.handle(c.req.raw, {
       prefix: "/api",
-      context: { headers: c.req.raw.headers },
+      context: { headers: c.req.raw.headers, remoteAddress: socketAddress(c.env) },
     });
     if (matched) return c.newResponse(response.body, response);
     await next();

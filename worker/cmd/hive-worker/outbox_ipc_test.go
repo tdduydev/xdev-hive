@@ -162,7 +162,8 @@ func (e *obEnv) advance(d time.Duration) {
 
 func (e *obEnv) signIn(t *testing.T, user, email string) {
 	t.Helper()
-	b, _ := json.Marshal(map[string]string{"hubUrl": e.hubURL(), "userId": user, "email": email})
+	// Như `hive login`: danh tính kèm dấu vân tay của token trong keychain.
+	b, _ := json.Marshal(map[string]string{"hubUrl": e.hubURL(), "userId": user, "email": email, "tokenSha256": outbox.TokenFingerprint(obToken)})
 	if err := os.WriteFile(e.login, b, 0o600); err != nil {
 		t.Fatal(err)
 	}

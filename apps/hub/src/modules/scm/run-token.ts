@@ -1,5 +1,5 @@
 import type { RunGitCredential } from "@xdev-hive/contracts/worker-protocol";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { type Jobs, type MasterKey, type Tx, withTenant } from "../platform/index.ts";
@@ -12,7 +12,13 @@ export interface RunGitTokenDeps {
   pool: pg.Pool;
   masterKey: MasterKey;
   providerFactory: ProviderFactory;
+  /** Mặc định `RUN_GIT_TOKEN_ISSUE_TIMEOUT_MS`; test đặt ngắn hơn. */
+  issueTimeoutMs?: number;
+  logger?: Pick<Console, "warn">;
 }
+
+/** Máy đang chờ lease: GitHub/GitLab treo thì thôi chờ, người gọi xử như cấp lỗi (theo `git.requireRunGitToken`). */
+export const RUN_GIT_TOKEN_ISSUE_TIMEOUT_MS = 15_000;
 
 export interface RunGitTokenTarget {
   orgId: string;
@@ -54,7 +60,14 @@ export async function issueRunGitToken(
   const provider = deps.providerFactory(conn);
   if (!provider.issueRunToken) return null;
   // Gọi GitHub/GitLab ngoài transaction để không giữ kết nối database trong lúc chờ mạng.
-  const grant = await provider.issueRunToken(target.repo, `hive-run-${target.runId}-${target.attempt}`);
+  const grant = await within(
+    provider.issueRunToken(target.repo, `hive-run-${target.runId}-${target.attempt}`),
+    deps.issueTimeoutMs ?? RUN_GIT_TOKEN_ISSUE_TIMEOUT_MS,
+    // Token về sau hạn chờ thì không ai dùng, và chưa có dòng để job quét thấy: thu hồi ngay.
+    (late) => {
+      if (late.externalId) provider.revokeRunToken?.(target.repo, late.externalId).catch(() => undefined);
+    },
+  );
   const repo = repoName(target.repo);
   try {
     await tenant(async (tx) => {
@@ -90,6 +103,22 @@ export async function issueRunGitToken(
   };
 }
 
+function within<T>(work: Promise<T>, ms: number, onLate: (value: T) => void): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let late = false;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      late = true;
+      reject(new Error(`GitHub/GitLab không cấp token git trong ${ms / 1000} giây`));
+    }, ms);
+  });
+  work.then(
+    (value) => late && onLate(value),
+    () => undefined,
+  );
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
 type OpenToken = Pick<typeof runGitTokens.$inferSelect, "id" | "runId" | "attempt" | "connectionId" | "repo"> & {
   externalId: string;
 };
@@ -110,23 +139,27 @@ async function revokeTokens(deps: RunGitTokenDeps, orgId: string, tokens: OpenTo
   const providers = new Map<string, GitProvider | null>();
   let revoked = 0;
   for (const t of tokens) {
-    if (!providers.has(t.connectionId)) {
-      const conn = await tenant((tx) => loadConnection(tx, deps.masterKey, t.connectionId));
-      providers.set(t.connectionId, conn ? deps.providerFactory(conn) : null);
-    }
-    // Lỗi mạng hay hết hạn mức thì để dòng mở, lượt quét sau thử lại.
-    await providers.get(t.connectionId)?.revokeRunToken?.(repoRef(t.repo), t.externalId);
-    await tenant(async (tx) => {
-      await tx.update(runGitTokens).set({ revokedAt: sql`now()` }).where(eq(runGitTokens.id, t.id));
-      await recordAudit(tx, {
-        action: "scm.run_token_revoke",
-        actorUserId: null,
-        targetType: "run",
-        targetId: t.runId,
-        data: { attempt: t.attempt, repo: t.repo },
+    try {
+      if (!providers.has(t.connectionId)) {
+        const conn = await tenant((tx) => loadConnection(tx, deps.masterKey, t.connectionId));
+        providers.set(t.connectionId, conn ? deps.providerFactory(conn) : null);
+      }
+      await providers.get(t.connectionId)?.revokeRunToken?.(repoRef(t.repo), t.externalId);
+      await tenant(async (tx) => {
+        await tx.update(runGitTokens).set({ revokedAt: sql`now()` }).where(eq(runGitTokens.id, t.id));
+        await recordAudit(tx, {
+          action: "scm.run_token_revoke",
+          actorUserId: null,
+          targetType: "run",
+          targetId: t.runId,
+          data: { attempt: t.attempt, repo: t.repo },
+        });
       });
-    });
-    revoked += 1;
+      revoked += 1;
+    } catch (e) {
+      // Lỗi mạng hay hết hạn mức ở một token không chặn các token sau; dòng còn mở, lượt quét sau thử lại.
+      (deps.logger ?? console).warn(`Không thu hồi được token git ${t.id} của run ${t.runId}`, e);
+    }
   }
   return revoked;
 }
@@ -154,8 +187,11 @@ export const runGitTokenQueue = {
 export interface RunGitTokenSweepDeps extends RunGitTokenDeps {
   /** Lần thử này của run còn trên máy thì giữ token. Module runs cài vào: scm không đọc bảng runs. */
   isLive: (tx: Tx, runId: string, attempt: number) => Promise<boolean>;
-  logger?: Pick<Console, "warn">;
+  /** Số dòng mỗi trang, mặc định 200; test đặt nhỏ để đi qua nhiều trang. */
+  pageSize?: number;
 }
+
+const SWEEP_PAGE = 200;
 
 /**
  * Thu hồi token GitLab của run đã rời máy mà chưa thu hồi được lúc kết thúc (hub tắt giữa chừng, GitLab lỗi).
@@ -166,20 +202,33 @@ export async function sweepRunGitTokens(deps: RunGitTokenSweepDeps): Promise<num
     const { rows } = await tx.execute<{ org_id: string }>(sql`select org_id from hive.run_git_token_orgs()`);
     return rows.map((r) => r.org_id);
   });
+  const pageSize = deps.pageSize ?? SWEEP_PAGE;
   let revoked = 0;
   for (const orgId of orgs) {
-    const due = await withTenant(deps.pool, { orgId }, async (tx) => {
-      const rows = await tx
-        .select({ ...openColumns, externalId: sql<string>`${runGitTokens.externalId}` })
-        .from(runGitTokens)
-        .where(open)
-        .limit(200);
-      const out: OpenToken[] = [];
-      for (const row of rows) if (!(await deps.isLive(tx, row.runId, row.attempt))) out.push(row);
-      return out;
-    });
     try {
-      revoked += await revokeTokens(deps, orgId, due);
+      // Đi hết theo trang: chỉ lấy 200 dòng đầu thì khi 200 dòng đó đều của run còn chạy, token phía sau không bao giờ
+      // được thu hồi.
+      for (let after: string | null = null; ; ) {
+        const cursor: string | null = after;
+        const page: { last: string | null; full: boolean; due: OpenToken[] } = await withTenant(
+          deps.pool,
+          { orgId },
+          async (tx) => {
+            const rows = await tx
+              .select({ ...openColumns, externalId: sql<string>`${runGitTokens.externalId}` })
+              .from(runGitTokens)
+              .where(cursor ? and(open, gt(runGitTokens.id, cursor)) : open)
+              .orderBy(asc(runGitTokens.id))
+              .limit(pageSize);
+            const due: OpenToken[] = [];
+            for (const row of rows) if (!(await deps.isLive(tx, row.runId, row.attempt))) due.push(row);
+            return { last: rows.at(-1)?.id ?? null, full: rows.length === pageSize, due };
+          },
+        );
+        revoked += await revokeTokens(deps, orgId, page.due);
+        if (!page.full || !page.last) break;
+        after = page.last;
+      }
     } catch (e) {
       // Một tổ chức lỗi (GitLab sập, kết nối bị xoá quyền) không chặn tổ chức khác.
       (deps.logger ?? console).warn(`Không thu hồi được token git theo run của tổ chức ${orgId}`, e);

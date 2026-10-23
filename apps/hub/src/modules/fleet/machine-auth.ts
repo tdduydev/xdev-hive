@@ -1,4 +1,5 @@
 import {
+  createHash,
   createHmac,
   createPublicKey,
   hkdfSync,
@@ -39,6 +40,8 @@ export interface MachineTokenClaims {
   iat: number;
   exp: number;
   jti: string;
+  /** Dấu của khoá công khai đã ký nonce. Cài lại máy giữ id máy nhưng thay khoá, nên token của bản cài cũ hết dùng. */
+  kid: string;
 }
 
 /** Máy đã xác thực, kèm hạn của access token; `exp` không có khi máy mở bằng machine token. */
@@ -64,7 +67,9 @@ export function createMachineAuth(opts: MachineAuthOptions) {
   const iss = opts.publicUrl.replace(/\/+$/, "");
   const aud = machineAudience(opts.publicUrl);
   const now = opts.now ?? Date.now;
-  const perMachine = new FixedWindow(MACHINE_TOKEN_PER_MINUTE);
+  // Đếm theo máy cộng IP chứ không theo máy: id máy không bí mật, đếm theo máy thì ai cũng xin nonce thay máy được để
+  // máy thật hết lượt đổi token.
+  const perMachineIp = new FixedWindow(MACHINE_TOKEN_PER_MINUTE);
   const perIp = new FixedWindow(MACHINE_TOKEN_IP_PER_MINUTE);
   // Nonce không lưu ở database nên chữ ký bắt được có thể đem đổi lại trong 60 giây; giữ nonce đã dùng tới khi hết hạn.
   // Hub chạy một tiến trình (NFR-14) nên bộ nhớ là đủ.
@@ -73,9 +78,9 @@ export function createMachineAuth(opts: MachineAuthOptions) {
   const mac = (machineId: string, exp: number, salt: string) =>
     createHmac("sha256", challengeKey).update(`${machineId}|${exp}|${salt}`).digest("base64url");
 
-  const limit = (machineId: string, ip: string | undefined) => {
+  const limit = (ip: string, machineId?: string) => {
     const t = now();
-    if (!perMachine.hit(machineId, t) || (ip !== undefined && !perIp.hit(ip, t))) {
+    if (!perIp.hit(ip, t) || (machineId !== undefined && !perMachineIp.hit(`${machineId}|${ip}`, t))) {
       throw new FleetError("rate_limited", "MACHINE_TOKEN_RATE_LIMITED", "Máy xin token quá nhiều lần; thử lại sau.");
     }
   };
@@ -84,11 +89,16 @@ export function createMachineAuth(opts: MachineAuthOptions) {
    * Nonce không hỏi database: máy không tồn tại cũng nhận nonce, để người dò không biết id nào có thật. Hạn theo đồng
    * hồ của hub nên đồng hồ máy lệch không làm hỏng lần đổi.
    */
-  const challenge = (machineId: string, ip?: string) => {
-    limit(machineId, ip);
+  const challenge = (machineId: string, ip = "unknown") => {
+    // Nonce không chạm database và không đổi được gì nếu thiếu khoá máy, nên chỉ đếm theo IP.
+    limit(ip);
     const exp = Math.floor(now() / 1000) + CHALLENGE_TTL_SEC;
     const salt = randomBytes(16).toString("base64url");
-    return { nonce: `${exp}.${salt}.${mac(machineId, exp, salt)}`, expiresAt: new Date(exp * 1000).toISOString() };
+    return {
+      nonce: `${exp}.${salt}.${mac(machineId, exp, salt)}`,
+      expiresAt: new Date(exp * 1000).toISOString(),
+      hub: iss,
+    };
   };
 
   const takeNonce = (machineId: string, nonce: string): boolean => {
@@ -105,7 +115,7 @@ export function createMachineAuth(opts: MachineAuthOptions) {
     return true;
   };
 
-  const sign = (machine: { id: string; orgId: string; teamId: string }) => {
+  const sign = (machine: { id: string; orgId: string; teamId: string; publicKey: string }) => {
     const iat = Math.floor(now() / 1000);
     const claims: MachineTokenClaims = {
       iss,
@@ -116,6 +126,7 @@ export function createMachineAuth(opts: MachineAuthOptions) {
       iat,
       exp: iat + MACHINE_TOKEN_TTL_SEC,
       jti: randomUUID(),
+      kid: keyId(machine.publicKey),
     };
     const body = `${HEADER}.${Buffer.from(JSON.stringify(claims)).toString("base64url")}`;
     const sig = createHmac("sha256", tokenKey).update(body).digest("base64url");
@@ -123,8 +134,8 @@ export function createMachineAuth(opts: MachineAuthOptions) {
   };
 
   /** Đổi chữ ký trên nonce lấy access token. Mọi lý do hỏng đều là MACHINE_AUTH_FAILED. */
-  const exchange = async (input: WorkerTokenInput, ip?: string) => {
-    limit(input.machineId, ip);
+  const exchange = async (input: WorkerTokenInput, ip = "unknown") => {
+    limit(ip, input.machineId);
     if (!takeNonce(input.machineId, input.nonce)) throw machineAuthFailed();
     const [row] = await withMachineLookup(opts.pool, input.machineId, (tx) =>
       tx
@@ -134,10 +145,10 @@ export function createMachineAuth(opts: MachineAuthOptions) {
     );
     const key = row?.publicKey ? ed25519Key(row.publicKey) : null;
     const message = Buffer.from(machineTokenMessage(iss, input.machineId, input.nonce), "utf8");
-    if (!row || !key || !verify(null, message, key, Buffer.from(input.signature, "base64url"))) {
+    if (!row?.publicKey || !key || !verify(null, message, key, Buffer.from(input.signature, "base64url"))) {
       throw machineAuthFailed();
     }
-    return sign(row);
+    return sign({ ...row, publicKey: row.publicKey });
   };
 
   const verifyToken = (token: string): MachineTokenClaims | null => {
@@ -156,7 +167,12 @@ export function createMachineAuth(opts: MachineAuthOptions) {
     }
     if (claims.aud !== aud || claims.iss !== iss) return null;
     if (typeof claims.exp !== "number" || claims.exp * 1000 <= now()) return null;
-    if (typeof claims.sub !== "string" || !claims.sub.startsWith("machine:") || typeof claims.org_id !== "string") {
+    if (
+      typeof claims.sub !== "string" ||
+      !claims.sub.startsWith("machine:") ||
+      typeof claims.org_id !== "string" ||
+      typeof claims.kid !== "string"
+    ) {
       return null;
     }
     return claims;
@@ -174,7 +190,7 @@ export function createMachineAuth(opts: MachineAuthOptions) {
     const claims = verifyToken(token);
     if (!claims) return null;
     const id = claims.sub.slice("machine:".length);
-    const [machine] = await withTenant(opts.pool, { orgId: claims.org_id }, (tx) =>
+    const [row] = await withTenant(opts.pool, { orgId: claims.org_id }, (tx) =>
       tx
         .select({
           id: machines.id,
@@ -182,11 +198,15 @@ export function createMachineAuth(opts: MachineAuthOptions) {
           teamId: machines.teamId,
           name: machines.name,
           kind: machines.kind,
+          publicKey: machines.publicKey,
         })
         .from(machines)
         .where(and(eq(machines.id, id), isNull(machines.revokedAt), isNotNull(machines.publicKey))),
     );
-    return machine ? { machine, exp: new Date(claims.exp * 1000) } : null;
+    // So dấu khoá chứ không so giờ: hub và database có thể chạy ở hai máy đồng hồ lệch nhau.
+    if (!row?.publicKey || claims.kid !== keyId(row.publicKey)) return null;
+    const { publicKey: _, ...machine } = row;
+    return { machine, exp: new Date(claims.exp * 1000) };
   };
 
   /**
@@ -232,6 +252,8 @@ export function createMachineAuth(opts: MachineAuthOptions) {
 
   return { challenge, exchange, verifyToken, authenticate, registerKey, sign };
 }
+
+const keyId = (publicKey: string) => createHash("sha256").update(publicKey).digest("base64url").slice(0, 22);
 
 /** null khi chuỗi không phải 32 byte base64url. OpenSSL nhận mọi 32 byte nên khoá rác chỉ lộ ra khi chữ ký không khớp. */
 export function ed25519Key(publicKey: string): KeyObject | null {

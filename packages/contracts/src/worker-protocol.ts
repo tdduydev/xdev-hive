@@ -419,6 +419,12 @@ export const runGitCredential = z.object({
 });
 export type RunGitCredential = z.output<typeof runGitCredential>;
 
+/**
+ * Capability worker khai trong hello khi dùng được `lease.git`. Hub chỉ cấp token git cho máy có capability này: worker
+ * cũ bỏ qua token và dùng thông tin git của máy, nên chính sách `requireRunGitToken` chỉ giao run cho máy có nó.
+ */
+export const RUN_GIT_TOKEN_CAPABILITY = "run_git_token";
+
 // runId và attempt để worker ghép lease với job đã nhận; bảng ở mục 5 chỉ ghi leaseId, expiresAt, runToken.
 export const lease = z.object({
   ...envelope("lease"),

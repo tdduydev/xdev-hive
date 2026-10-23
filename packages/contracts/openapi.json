@@ -10287,11 +10287,16 @@
                     "expiresAt": {
                       "type": "string",
                       "format": "date-time"
+                    },
+                    "hub": {
+                      "type": "string",
+                      "maxLength": 2048
                     }
                   },
                   "required": [
                     "nonce",
-                    "expiresAt"
+                    "expiresAt",
+                    "hub"
                   ]
                 }
               }

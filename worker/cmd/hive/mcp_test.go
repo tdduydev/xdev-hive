@@ -29,11 +29,20 @@ func startMCP(t *testing.T, handler http.HandlerFunc, args ...string) *mcpHarnes
 // startMCPWith như startMCP, kèm socket worker (rỗng là socket không tồn tại).
 func startMCPWith(t *testing.T, handler http.HandlerFunc, socket string, args ...string) *mcpHarness {
 	t.Helper()
+	return startMCPSetup(t, handler, socket, nil, args...)
+}
+
+// startMCPSetup như startMCPWith; setup (nếu có) chạy sau khi đã lưu đăng nhập, trước khi proxy chạy.
+func startMCPSetup(t *testing.T, handler http.HandlerFunc, socket string, setup func(a *testApp), args ...string) *mcpHarness {
+	t.Helper()
 	a := authApp(t)
 	hub := httptest.NewServer(handler)
 	t.Cleanup(hub.Close)
 	if _, err := a.saveToken(hub.URL, testToken); err != nil {
 		t.Fatal(err)
+	}
+	if setup != nil {
+		setup(a)
 	}
 	a.getwd = func() (string, error) { return t.TempDir(), nil }
 	if socket == "" {
@@ -283,6 +292,42 @@ func TestMCPWriteToolsGoThroughOutbox(t *testing.T) {
 	case p := <-hubCalls:
 		t.Fatalf("tool ghi không được gọi thẳng hub (%s)", p)
 	default:
+	}
+}
+
+func TestMCPWriteToolsSkipOutboxWithOtherLogin(t *testing.T) {
+	cases := map[string]func(a *testApp){
+		// Worker gửi bằng lần đăng nhập đã lưu; HIVE_TOKEN có thể là người khác nên mục xếp hàng sẽ ghi sai tên.
+		"HIVE_TOKEN": func(a *testApp) {
+			a.getenv = func(k string) string { return map[string]string{"HIVE_TOKEN": testToken}[k] }
+		},
+		// Keychain có token của hub này nhưng lần đăng nhập đã lưu (worker dùng) là hub khác.
+		"hub khác": func(a *testApp) {
+			path, err := a.cliConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := saveCLIConfig(path, cliConfig{HubURL: "https://khac.example.com"}); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			path, f := startOutbox(t)
+			f.submit = func(req map[string]any) (map[string]any, string) {
+				t.Errorf("không được xếp hàng qua worker: %v", req)
+				return map[string]any{"error": "x"}, "BAD"
+			}
+			h := startMCPSetup(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"hub ghi thẳng"}]}}`)
+			}, path, setup)
+			h.send(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"task_update","arguments":{"note":"xong"}}}`)
+			if line := h.lines(t, 1)[0]; !strings.Contains(line, "hub ghi thẳng") {
+				t.Fatalf("phải gọi thẳng hub: %s", line)
+			}
+		})
 	}
 }
 

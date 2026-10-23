@@ -539,6 +539,7 @@ export async function findMachine(
       revoked: boolean;
       shared: boolean;
       registeredBy: string | null;
+      capabilities: string[];
     } & MachineProjects)
   | null
 > {
@@ -550,6 +551,7 @@ export async function findMachine(
       revokedAt: machines.revokedAt,
       shared: machines.shared,
       registeredBy: machines.registeredBy,
+      capabilities: machines.capabilities,
       boundProjects: machines.boundProjects,
       fullProjects: machines.fullProjects,
     })
@@ -563,6 +565,7 @@ export async function findMachine(
         revoked: row.revokedAt !== null,
         shared: row.shared,
         registeredBy: row.registeredBy,
+        capabilities: row.capabilities,
         boundProjects: row.boundProjects,
         fullProjects: row.fullProjects,
       }
