@@ -498,7 +498,29 @@ no hub sign-in is needed. Sending the score to the hub (US6) waits for the spec 
 | TSCORE-06 | The desktop shall show a 30-day score chart with fix markers, a break where `scoreVersion` changes and a text table; a badge on the Token menu item shall read the last history line without computing. When the app opens and the last score is over 24 hours old, it shall recompute in the background after 2 minutes without running `/context`; the user can turn this off. | US4, FR-013, FR-014, FR-018 | Implemented | `desktop:src-tauri/src/token_score.rs`, `desktop:src/components/token-score-history.test.tsx` |
 | TSCORE-07 | The detail shall suggest short sessions with `/clear` when A1 is full and B2 is at least 50%, without a quick fix, and show each profile's token share by model family under A8 without changing the score. | FR-007, US5 | Implemented | `desktop:src/components/token-score-card.test.tsx`, `worker:internal/tokenreport` |
 
-### 3.29 Shared developer context and the Optimize button (CTXSYNC)
+### 3.29 Local secrets (LSEC)
+
+Spec [031](../specs/031-local-secrets/spec.md), [ADR 0038](adr/0038-local-secrets-keyring.md). A developer keeps secrets
+in the operating system keyring on their own machine. The worker puts them in the environment of an agent process by
+name, masks the values in all output, and writes a local grant log. The hub gets a policy and a count only. The worker and
+the desktop parts are built by other streams, so their rows stay Planned until those land.
+
+| ID | Requirement | Spec 031 FR | Status | Verification |
+|---|---|---|---|---|
+| LSEC-01 | The machine shall keep each secret value only in the operating system keyring, never in a plain file, an app database or the hub. The local catalog shall hold the name, description, dates and assigned project ids, and no value, hash or length. A value longer than one keyring entry shall be split into chunks. | FR-001, FR-002, FR-005 | Planned | — |
+| LSEC-02 | A secret name shall match `[A-Z_][A-Z0-9_]*`, be at most 64 characters and be unique on the machine. The app shall refuse the reserved names (`HIVE_*`, `PATH`, `HOME`, `LD_*`, `GIT_*`, `ANTHROPIC_*` and the rest of the list in the spec) with a Vietnamese error. A value shall be 8 characters to 8 KiB with no NUL byte. | FR-003–FR-005 | Implemented (name rules) | `contracts:local-secrets.test.ts` |
+| LSEC-03 | The desktop shall let the user add, edit, reassign and delete a secret, without a hub sign-in. After saving, the app shall not return the value unless the user chooses Show or Copy, which shall need re-authentication and hide the value after 10 seconds. | FR-006–FR-008, FR-052 | Planned | — |
+| LSEC-04 | Commands that handle a value shall take it through stdin or local IPC, never through an argument or an environment variable of an intermediate process, and never write it to a log. | FR-009, FR-036 | Planned | — |
+| LSEC-05 | When a run, a desktop terminal or an agent session starts for a project, the machine shall read the keyring once before it creates the process and put only the secrets assigned to that project in the environment, byte for byte, without a shell step. An assigned secret shall override a variable of the same name except a reserved one. | FR-010–FR-018 | Planned | — |
+| LSEC-06 | The agent context shall list the names and descriptions of the assigned secrets with the instruction to use them by name, and never the values. The app shall scan a description for secret patterns on save, and the feature shall not write a name into a repository file. | FR-020–FR-022 | Planned | — |
+| LSEC-07 | The machine shall mask the exact value and its base64, base64url, URL-encoded, shell-quoted and JSON-escaped forms with `[đã che]` in every output path (run log, transcript, check output, artifact, agent report, hub message), also when the value is split between two output chunks. It shall block a commit or push that contains a value. | FR-030–FR-035, FR-037, FR-038 | Planned | — |
+| LSEC-08 | The machine shall write one grant log line per injection (time, session kind, run or session id, project, secret names, no value) and one line per Show or Copy. The user shall be able to filter, clear and expire the log. | FR-040–FR-042, FR-044 | Planned | — |
+| LSEC-09 | The organization policy shall have `secretInjection` with `allow` (default), `approve` and `deny`. An administrator shall change it at `/admin/policies`, the change shall be audited, and the hub shall send it in `welcome.policy` and in the job policy. A member without the write permission shall see it read-only. | FR-050 | Implemented | `contracts:policies.test.ts`, `hub:policies.db.test.ts`, `web:policies.spec.ts` |
+| LSEC-10 | The worker shall apply the policy: `deny` reads no keyring and sets no variable, `approve` asks the user on the machine with names only, and `allow` injects without asking. A linked project with an unknown policy shall act as `deny`. | FR-051, FR-053 | Planned | — |
+| LSEC-11 | The hub shall receive only the number of secrets a run used, as `report.secretsInjected` (integer 0–64), and shall drop every other worker report key whose name contains "secret". The hub shall not store or return a secret name or value in the run row, the run events, the run view or the events route. The run page shall show "Dùng N bí mật tại máy" when N is above 0. | FR-043 | Implemented | `hub:modules/runs/secrets-report.test.ts`, `hub:runs.db.test.ts`, `web:tasks-runs.spec.ts` |
+| LSEC-12 | When the keyring cannot be read and the project has assigned secrets, the run shall stop before it creates the agent process, with a Vietnamese reason naming only the missing secrets. The app shall say that the keyring is not available and shall not store the value elsewhere. | FR-060–FR-062 | Planned | — |
+
+### 3.30 Shared developer context and the Optimize button (CTXSYNC)
 
 Spec [029](../specs/029-shared-context-sync/spec.md), plan [plan.md](../specs/029-shared-context-sync/plan.md), user guide
 [token-optimizer.md](token-optimizer.md), [ADR 0037](adr/0037-shared-context-local-files.md). The context source, the

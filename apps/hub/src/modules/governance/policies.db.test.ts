@@ -9,7 +9,7 @@ import { assertSettingsUnlocked, setOrgEntry } from "../layers/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { purgeRunLogs } from "../runs/index.ts";
 import { createMemoryProvider, type MemoryProvider } from "../scm/index.ts";
-import { getAgentPolicy, loadPolicy, saveAgentPolicy, sdlcPolicyOf } from "./policies.ts";
+import { getAgentPolicy, jobPolicyOf, loadPolicy, saveAgentPolicy, sdlcPolicyOf } from "./policies.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -129,6 +129,55 @@ describe("lưu và đọc chính sách", () => {
     const other = await seedOrg(admin, `pol2-${tag}`);
     const seen = await withTenant(app, { userId: other.user("admin"), orgId: other.orgId }, (tx) => loadPolicy(tx));
     expect(seen.requireSandbox).toBe(false);
+  });
+});
+
+describe("bí mật tại máy (specs/031 FR-050)", () => {
+  it("lưu lựa chọn thì có ghi audit, đọc lại và gửi cho worker đúng lựa chọn đó", async () => {
+    const saved = await as("admin", (tx) =>
+      saveAgentPolicy(tx, org.user("admin"), policy({ secretInjection: "approve" })),
+    );
+    expect(saved.policy.secretInjection).toBe("approve");
+    // Máy cá nhân nhận lựa chọn này trong welcome.policy, nên đổi nó phải báo cho máy nối lại.
+    expect(saved.remoteChanged).toBe(true);
+    const got = await as("tmember", (tx) => getAgentPolicy(tx));
+    expect(got.secretInjection).toBe("approve");
+    expect(jobPolicyOf(await as("tmember", (tx) => loadPolicy(tx))).secretInjection).toBe("approve");
+    const { rows } = await admin.query(
+      "select data from hive.audit_log where org_id = $1 and action = 'policies.update' order by created_at desc limit 1",
+      [org.orgId],
+    );
+    expect(rows[0].data.changed).toEqual(["secretInjection"]);
+    expect(rows[0].data.before.secretInjection).toBe("allow");
+    expect(rows[0].data.after.secretInjection).toBe("approve");
+  });
+
+  it("dòng lưu trước specs/031 không có trường thì đọc ra allow", async () => {
+    const { secretInjection: _drop, ...old } = DEFAULT_AGENT_POLICY;
+    await admin.query("insert into hive.agent_policies (org_id, policy) values ($1, $2)", [
+      org.orgId,
+      JSON.stringify(old),
+    ]);
+    expect((await as("tmember", (tx) => loadPolicy(tx))).secretInjection).toBe("allow");
+    expect((await as("tmember", (tx) => getAgentPolicy(tx))).secretInjection).toBe("allow");
+  });
+
+  it("lưu mà thiếu trường thì giữ lựa chọn đã đặt, không lặng lẽ về allow", async () => {
+    await as("admin", (tx) => saveAgentPolicy(tx, org.user("admin"), policy({ secretInjection: "deny" })));
+    const { secretInjection: _drop, ...withoutField } = DEFAULT_AGENT_POLICY;
+    const saved = await as("admin", (tx) =>
+      saveAgentPolicy(tx, org.user("admin"), { ...withoutField, requireSandbox: true }),
+    );
+    expect(saved.policy.secretInjection).toBe("deny");
+    expect((await as("admin", (tx) => loadPolicy(tx))).secretInjection).toBe("deny");
+  });
+
+  it("thành viên thường không đổi được lựa chọn", async () => {
+    expect(
+      await errorCode(() =>
+        as("tmember", (tx) => saveAgentPolicy(tx, org.user("tmember"), policy({ secretInjection: "deny" }))),
+      ),
+    ).toBe("ORG_ROLE_REQUIRED");
   });
 });
 
