@@ -17,7 +17,7 @@ CREATE TABLE "hive"."delivery_jobs" (
 	"finished_at" timestamp with time zone,
 	CONSTRAINT "delivery_jobs_id_org" UNIQUE("id","org_id"),
 	CONSTRAINT "delivery_jobs_state" CHECK (state in ('waiting', 'leased', 'running', 'succeeded', 'failed', 'lost', 'canceled')),
-	CONSTRAINT "delivery_jobs_kind" CHECK (kind in ('ssh-script', 'jenkins-job', 'gitlab-manual', 'argocd', 'kubectl', 'health', 'ci-action')),
+	CONSTRAINT "delivery_jobs_kind" CHECK (kind in ('jenkins-job', 'argocd')),
 	CONSTRAINT "delivery_jobs_attempt" CHECK (attempt >= 1),
 	CONSTRAINT "delivery_jobs_error_message" CHECK (error_message is null or char_length(error_message) <= 200)
 );

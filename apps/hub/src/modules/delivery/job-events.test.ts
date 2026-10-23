@@ -39,24 +39,15 @@ describe("applyDeliveryEvent", () => {
     expect(a.steps[0]).toMatchObject({ state: "skipped", startedAt: null });
   });
 
-  it("external và health được lưu", () => {
-    const a = run([
-      ev(0, { type: "external", ref: "billing#42", url: "https://ci.example.invalid/42" }),
-      ev(1, { type: "health", ok: true, status: 200 }),
-    ]);
+  it("external được lưu", () => {
+    const a = run([ev(0, { type: "external", ref: "billing#42", url: "https://ci.example.invalid/42" })]);
     expect(a.external).toEqual({ label: "billing#42", url: "https://ci.example.invalid/42" });
-    expect(a.health).toMatchObject({ ok: true, status: 200 });
   });
 
   it("finished thành công", () => {
     const a = run([ev(0, { type: "started", workerId: "m" }), ev(1, { type: "finished", state: "succeeded" })]);
     expect(a.state).toBe("succeeded");
     expect(a.finishedAt).toBe(T(1));
-  });
-
-  it("thành công nhưng sức khoẻ không đạt thì cần xem lại", () => {
-    const a = run([ev(0, { type: "health", ok: false, status: 503 }), ev(1, { type: "finished", state: "succeeded" })]);
-    expect(a.state).toBe("failed_needs_review");
   });
 
   it("lỗi: bước đang chạy hỏng và mang thông điệp, bước chưa chạy bị bỏ qua", () => {

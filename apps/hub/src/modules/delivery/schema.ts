@@ -421,10 +421,7 @@ export const deliveryJobs = hive
         "delivery_jobs_state",
         sql`state in ('waiting', 'leased', 'running', 'succeeded', 'failed', 'lost', 'canceled')`,
       ),
-      check(
-        "delivery_jobs_kind",
-        sql`kind in ('ssh-script', 'jenkins-job', 'gitlab-manual', 'argocd', 'kubectl', 'health', 'ci-action')`,
-      ),
+      check("delivery_jobs_kind", sql`kind in ('jenkins-job', 'argocd')`),
       check("delivery_jobs_attempt", sql`attempt >= 1`),
       check("delivery_jobs_error_message", sql`error_message is null or char_length(error_message) <= 200`),
       index("delivery_jobs_org_state").on(t.orgId, t.state),

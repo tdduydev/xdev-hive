@@ -121,7 +121,7 @@ describe("delivery_jobs", () => {
       createDeliveryJob(tx, {
         orgId: org.orgId,
         deployId: null,
-        kind: "health",
+        kind: "argocd",
         configVersion: null,
         credentialNames: [],
         workerId: null,

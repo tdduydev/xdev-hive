@@ -55,16 +55,6 @@ export function applyDeliveryEvent(progress: DeployOutcome, event: DeliveryEvent
     }
     case "external":
       return { ...progress, external: { label: event.ref, url: event.url ?? null } };
-    case "health":
-      return {
-        ...progress,
-        health: {
-          ok: event.ok,
-          at: event.at,
-          status: event.status ?? null,
-          message: event.ok ? "Kiểm tra sức khoẻ đạt." : "Kiểm tra sức khoẻ không đạt.",
-        },
-      };
     case "finished": {
       // Bước còn dở khi việc đã dừng: huỷ thì ghi huỷ, lỗi thì bước đang chạy là bước hỏng.
       const steps = progress.steps.map((s): DeployStep => {
@@ -80,10 +70,7 @@ export function applyDeliveryEvent(progress: DeployOutcome, event: DeliveryEvent
         if (s.state === "pending") return { ...s, state: event.state === "canceled" ? "canceled" : "skipped" };
         return s;
       });
-      // Các bước xong mà kiểm tra sức khoẻ không đạt: cần người xem, như đường cũ (spec 020).
-      const state: DeployState =
-        event.state === "succeeded" && progress.health?.ok === false ? "failed_needs_review" : event.state;
-      return { ...progress, state, steps, finishedAt: event.at };
+      return { ...progress, state: event.state, steps, finishedAt: event.at };
     }
   }
 }

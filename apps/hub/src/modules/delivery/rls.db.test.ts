@@ -153,7 +153,7 @@ async function seed(name: string): Promise<Seed> {
     }),
     deploy_log_chunks: { org_id: orgId, deploy_id: deploy, seq: 0, data: Buffer.from("bước 1\n") },
     deploy_approvals: row({ deploy_id: deploy, user_id: userId, decision: "approve" }),
-    delivery_jobs: row({ deploy_id: deploy, kind: "ssh-script", state: "waiting" }),
+    delivery_jobs: row({ deploy_id: deploy, kind: "jenkins-job", state: "waiting" }),
   };
   await withTenant(app, { orgId, userId }, async (tx) => {
     for (const table of tableNames) await insert(tx, table, rows[table]);
