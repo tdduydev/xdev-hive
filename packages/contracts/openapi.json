@@ -12268,10 +12268,30 @@
                   "properties": {
                     "firstAdminSignUp": {
                       "type": "boolean"
+                    },
+                    "loginMethods": {
+                      "type": "object",
+                      "properties": {
+                        "sso": {
+                          "type": "boolean"
+                        },
+                        "github": {
+                          "type": "boolean"
+                        },
+                        "gitlab": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "sso",
+                        "github",
+                        "gitlab"
+                      ]
                     }
                   },
                   "required": [
-                    "firstAdminSignUp"
+                    "firstAdminSignUp",
+                    "loginMethods"
                   ]
                 }
               }

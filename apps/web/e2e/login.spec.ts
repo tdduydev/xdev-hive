@@ -1,26 +1,40 @@
 import { expect, test } from "@playwright/test";
 import { fakeHub, ok, USER } from "./fake-hub.ts";
 
-test("chưa đăng nhập: trang khác chuyển về /login và hiện đủ ba cách đăng nhập", async ({ page }) => {
-  const hub = await fakeHub(page);
+test("chưa đăng nhập: chuyển về /login; hub chưa cấu hình gì thì chỉ có email và mật khẩu", async ({ page }) => {
+  const hub = await fakeHub(page, {
+    rpc: {
+      "hubSetup/get": () => ok({ firstAdminSignUp: false, loginMethods: { sso: false, github: false, gitlab: false } }),
+    },
+  });
   await page.goto("/projects/abc");
   await expect(page).toHaveURL("/login?redirect=%2Fprojects%2Fabc");
   expect(hub.meMethods).toContain("GET");
 
   await expect(page.getByRole("heading", { name: "Đăng nhập" })).toBeVisible();
-  // SSO
+  await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Mật khẩu", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Đăng nhập", exact: true })).toBeVisible();
+  await expect(page.getByText("Dùng email và mật khẩu.")).toBeVisible();
+  await expect(page.getByLabel("Email công ty")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "GitHub" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "GitLab" })).toHaveCount(0);
+  await expect(page.getByText("hoặc", { exact: true })).toHaveCount(0);
+});
+
+test("hub đã cấu hình SSO và GitHub: hiện thêm đúng hai cách đó dưới email và mật khẩu", async ({ page }) => {
+  await fakeHub(page, {
+    rpc: {
+      "hubSetup/get": () => ok({ firstAdminSignUp: false, loginMethods: { sso: true, github: true, gitlab: false } }),
+    },
+  });
+  await page.goto("/login");
+  await expect(page.getByLabel("Mật khẩu", { exact: true })).toBeVisible();
+  await expect(page.getByText("Dùng email và mật khẩu, hoặc SSO, GitHub.")).toBeVisible();
   await expect(page.getByLabel("Email công ty")).toBeVisible();
   await expect(page.getByRole("button", { name: "Tiếp tục với SSO" })).toBeVisible();
-  // GitHub, GitLab
   await expect(page.getByRole("button", { name: "GitHub" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "GitLab" })).toBeVisible();
-  // Email + mật khẩu: ẩn tới khi bấm mở
-  const password = page.getByLabel("Mật khẩu");
-  await expect(password).toBeHidden();
-  await page.getByText("Đăng nhập bằng email và mật khẩu").click();
-  await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
-  await expect(password).toBeVisible();
-  await expect(page.getByRole("button", { name: "Đăng nhập", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "GitLab" })).toHaveCount(0);
 });
 
 test("SSO: gọi sign-in/sso theo tên miền rồi chuyển sang trang của IdP", async ({ page }) => {
@@ -91,13 +105,12 @@ test("email: sai mật khẩu báo lỗi, đúng thì vào trang chủ", async (
   });
   await page.goto("/");
   await expect(page).toHaveURL("/login");
-  await page.getByText("Đăng nhập bằng email và mật khẩu").click();
   await page.getByLabel("Email", { exact: true }).fill(USER.email);
-  await page.getByLabel("Mật khẩu").fill("sai-mat-khau");
+  await page.getByLabel("Mật khẩu", { exact: true }).fill("sai-mat-khau");
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Email hoặc mật khẩu không đúng.");
 
-  await page.getByLabel("Mật khẩu").fill("mat-khau-dung-123");
+  await page.getByLabel("Mật khẩu", { exact: true }).fill("mat-khau-dung-123");
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: `Chào ${USER.name}` })).toBeVisible();
@@ -114,7 +127,9 @@ test("hub chưa có tổ chức: form tạo quản trị đầu tiên, từ ch�
   page,
 }) => {
   const hub = await fakeHub(page, {
-    rpc: { "hubSetup/get": () => ok({ firstAdminSignUp: true }) },
+    rpc: {
+      "hubSetup/get": () => ok({ firstAdminSignUp: true, loginMethods: { sso: false, github: false, gitlab: false } }),
+    },
     auth: {
       "/sign-up/email": (body, hub) => {
         if ((body as { email: string }).email !== USER.email) {
@@ -152,7 +167,7 @@ test("hub chưa có tổ chức: form tạo quản trị đầu tiên, từ ch�
 });
 
 test("hub đã có tổ chức: không hiện form tạo quản trị", async ({ page }) => {
-  await fakeHub(page, { rpc: { "hubSetup/get": () => ok({ firstAdminSignUp: false }) } });
+  await fakeHub(page);
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "Đăng nhập" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Tạo tài khoản quản trị đầu tiên" })).toHaveCount(0);

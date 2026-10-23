@@ -99,6 +99,12 @@ function isDomainConflict(error: unknown): boolean {
   return false;
 }
 
+/** Có tổ chức nào đã khai SSO chưa; chưa có thì trang đăng nhập không hiện ô SSO. */
+export async function anySsoProvider(auth: Auth): Promise<boolean> {
+  const ctx = await auth.$context;
+  return (await ctx.adapter.count({ model: "ssoProvider" })) > 0;
+}
+
 async function findProvider(auth: Auth, providerId: string): Promise<StoredProvider | null> {
   const ctx = await auth.$context;
   return ctx.adapter.findOne<StoredProvider>({

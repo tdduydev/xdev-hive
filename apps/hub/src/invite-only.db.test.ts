@@ -383,7 +383,7 @@ describe("người quản trị hub đăng ký bằng mật khẩu khi hub còn 
 
   it("chưa có tổ chức nào: người trong danh sách đăng ký được, người ngoài thì không", async () => {
     // Trang đăng nhập hỏi trước khi có phiên để hiện form tạo người quản trị đầu tiên.
-    expect(await setup()).toEqual({ firstAdminSignUp: true });
+    expect(await setup()).toMatchObject({ firstAdminSignUp: true });
     expect((await signUp(fresh.app, mail("nguoi-ngoai"))).status).toBe(403);
     const res = await signUp(fresh.app, creator);
     expect(res.status).toBe(200);
@@ -405,7 +405,7 @@ describe("người quản trị hub đăng ký bằng mật khẩu khi hub còn 
       body: { name: "Tổ chức đầu tiên", slug: `dau-tien-${run}` },
     });
     expect(org.status).toBe(200);
-    expect(await setup()).toEqual({ firstAdminSignUp: false });
+    expect(await setup()).toMatchObject({ firstAdminSignUp: false });
     const res = await signUp(fresh.app, second);
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code: string }).code).toBe("SIGN_UP_INVITE_REQUIRED");

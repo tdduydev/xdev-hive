@@ -64,9 +64,9 @@ for (const [scheme, canvas, surface, accent, onAccent] of [
     const card = page.getByRole("heading", { name: "Đăng nhập" }).locator("..");
     await expect(page.locator("body")).toHaveCSS("background-color", canvas);
     await expect(card).toHaveCSS("background-color", surface);
-    const sso = page.getByRole("button", { name: "Tiếp tục với SSO" });
-    await expect(sso).toHaveCSS("background-color", accent);
-    await expect(sso).toHaveCSS("color", onAccent);
+    const signIn = page.getByRole("button", { name: "Đăng nhập", exact: true });
+    await expect(signIn).toHaveCSS("background-color", accent);
+    await expect(signIn).toHaveCSS("color", onAccent);
     // Logo đúng theme: chỉ ảnh của theme hiện tại hiện ra.
     await expect(page.locator(`img[src="/xdev-hive-${scheme}.svg"]`)).toBeVisible();
   });
