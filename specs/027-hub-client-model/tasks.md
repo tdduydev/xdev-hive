@@ -150,7 +150,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 - [x] T027 [US3] Cột `public_key_at`, `key_storage`, `machine_tokens.superseded_at` · `apps/hub/src/modules/fleet/schema.ts`
 - [x] T028 [US3] Challenge → token, xác thực trước khi nâng WSS, đóng `4401` theo `exp`, `reauth` ·
   `apps/hub/src/modules/fleet/machine-auth.ts`, `gateway.ts`, `machine-auth.db.test.ts`
-- [ ] T029 [P] [US3] Khoá máy trong keychain (file 0600 khi không có) · `worker/internal/machinekey/`
+- [x] T029 [P] [US3] Khoá máy trong keychain (file 0600 khi không có) · `worker/internal/machinekey/`
 - [ ] T030 [US3] Worker chuyển `hwm_` sang khoá, đổi token 2 phút trước hạn · `worker/internal/hubclient/register.go`,
   `worker/internal/channel/channel.go`
 - [ ] T031 [US3] Token git theo run (GitHub App, GitLab), `requireRunGitToken` · `apps/hub/src/modules/scm/run-token.ts`,
