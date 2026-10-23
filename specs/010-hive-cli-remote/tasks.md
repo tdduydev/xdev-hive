@@ -572,10 +572,17 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
 
 ## Phase 7: User Story 6 — `hive attach` (P2)
 
-- [ ] T060 [US6] CLI `hive attach`
+- [x] T060 [US6] CLI `hive attach`
   - Run: SSE `/api/v1/runs/:id/stream` với token cá nhân, nối lại theo `Last-Event-ID`, dòng nhập → `runs.steer`, in
     `steer_result`; phiên trên máy này: socket nội bộ; phiên máy khác: vé `view` + `/ws/terminal`, chỉ xem.
   - **Scope**: `worker/cmd/hive/{attach.go,attach_test.go,sse.go,hubws.go}`
+  - Đã làm (CLI010B): mã hex của worker gắn qua socket như cũ; mã UUID của hub thử `session.list` của worker trước
+    (`hubId` khớp thì gắn qua socket, gõ được), rồi `runs.get`, rồi `remote.get`. 403 và 404 cùng báo "Không tìm thấy run
+    hoặc phiên." Run: SSE với client không timeout, nối lại bằng `Last-Event-ID` (chờ 1–10 s), mỗi dòng stdin là một
+    `runs.steer` (`--view` không gửi), in `steer_result` kèm nội dung chỉ dẫn, `end` → in trạng thái cuối, mã 0. Phiên máy
+    khác: vé `remote.ticket` (không xin quyền điều khiển), WS với `Origin` của hub, `resume` từ `seq` cuối khi nối lại, `sync`
+    xoá màn hình, phím bị bỏ kèm "Chỉ xem: phiên ở máy khác" (tối đa một lần mỗi 3 s), Ctrl-] d hoặc Ctrl-C thôi xem, cảnh
+    báo hub HTTP.
   - **Phụ thuộc**: T024 (cùng làn), T030 · **Mức**: vừa
 
 ---

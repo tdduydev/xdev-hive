@@ -64,7 +64,7 @@ func main() {
 const usageText = `Cách dùng: hive <lệnh> [cờ]
 
   login [--hub URL] [--with-token] [--no-browser]
-                          đăng nhập hub (chỉ cần cho --task, --project, ls --all)
+                          đăng nhập hub (chỉ cần cho --task, --project, ls --all, attach run)
   logout                  xoá token trên máy
   whoami                  đang đăng nhập bằng ai, hub nào
   chat [--cli claude|codex|gemini] [--account ID] [--model M] [--task KEY | --project KEY] [--no-record] [--force]
@@ -74,7 +74,8 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
                           như chat, gửi lời nhắc làm câu đầu
   ls [--json] [--all]     liệt kê phiên trên máy (--all: phiên đang chạy trên mọi máy của bạn, cần đăng nhập)
   attach <id> [--view] [--escape KEY]
-                          gắn lại vào phiên (--view: chỉ xem)
+                          gắn lại vào phiên (--view: chỉ xem); id của run thì xem log và gõ chỉ dẫn,
+                          id phiên trên máy khác thì chỉ xem (cần đăng nhập)
   kill <id>               ngắt phiên
   remote <lệnh>           điều khiển từ xa máy này: status, on, off, roots, devices, pair, set, watch
                           (hive remote help để xem đủ)

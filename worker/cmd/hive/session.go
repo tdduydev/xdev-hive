@@ -195,44 +195,6 @@ func (a *app) resolveLink(o chatOptions) (projectID, taskID string, code int) {
 	return p.ID, "", exitOK
 }
 
-func (a *app) attachCmd(args []string) int {
-	fs := newFlagSet("attach", a.stderr)
-	view := fs.Bool("view", false, "chỉ xem, không gõ")
-	escFlag := escapeFlag(fs)
-	pos, err := parseInterspersed(fs, args)
-	if err != nil {
-		return exitUsage
-	}
-	if len(pos) != 1 {
-		return a.errorf(exitUsage, "Cách dùng: hive attach <id> [--view] [--escape KEY].")
-	}
-	esc, err := parseEscape(*escFlag)
-	if err != nil {
-		return a.errorf(exitUsage, "%v", err)
-	}
-	mode := modeControl
-	if *view {
-		mode = modeView
-	}
-	c, _, code := a.connect()
-	if code != exitOK {
-		return code
-	}
-	defer c.Close()
-	var resp struct {
-		ID string `json:"id"`
-	}
-	if err := c.Call(map[string]string{"op": "session.attach", "id": pos[0], "mode": mode}, &resp); err != nil {
-		return a.fail(err)
-	}
-	if mode == modeView {
-		fmt.Fprintf(a.stderr, "hive: đang xem phiên %s. %s\n", resp.ID, escHint(esc, true))
-	} else {
-		fmt.Fprintf(a.stderr, "hive: đã gắn phiên %s. %s\n", resp.ID, escHint(esc, false))
-	}
-	return a.interact(c, resp.ID, mode, esc)
-}
-
 type sessionInfo struct {
 	ID         string    `json:"id"`
 	CLI        string    `json:"cli"`
@@ -241,6 +203,8 @@ type sessionInfo struct {
 	Started    time.Time `json:"started"`
 	Controlled bool      `json:"controlled"`
 	Viewers    int       `json:"viewers"`
+	// HubID: mã phiên trên hub, để hive attach nhận cả mã thấy trên web hay hive ls --all.
+	HubID string `json:"hubId"`
 }
 
 func (a *app) ls(args []string) int {
@@ -293,7 +257,7 @@ func (a *app) ls(args []string) int {
 	return exitOK
 }
 
-// lsAll đọc từ hub nên thấy cả máy khác; mã phiên là mã trên hub (mở trên web), không gắn được bằng hive attach.
+// lsAll đọc từ hub nên thấy cả máy khác; mã phiên là mã trên hub: hive attach gắn được phiên máy này, chỉ xem phiên máy khác.
 func (a *app) lsAll(asJSON bool) int {
 	hub, code := a.hubFor()
 	if code != exitOK {
