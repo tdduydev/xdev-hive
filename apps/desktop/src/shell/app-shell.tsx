@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { AccountDialog } from "@/components/account-dialog.tsx";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
+import { ScreenErrorBoundary } from "@/components/screen-error-boundary.tsx";
 import { SignOutDialog } from "@/components/sign-out-dialog.tsx";
 import { UpdateBanner } from "@/components/update-banner.tsx";
 import { AccountContext, ConnectContext, profileOf, SignOutContext, useAccount } from "@/lib/account.ts";
@@ -125,7 +126,10 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
             <AccountContext.Provider value={account}>
               <ConnectContext.Provider value={openAccount}>
                 <SignOutContext.Provider value={account ? askSignOut : null}>
-                  <Screen />
+                  {/* key theo màn: đổi màn thì bỏ lỗi của màn trước, người dùng không bị kẹt ở thông báo lỗi. */}
+                  <ScreenErrorBoundary key={active}>
+                    <Screen />
+                  </ScreenErrorBoundary>
                 </SignOutContext.Provider>
               </ConnectContext.Provider>
             </AccountContext.Provider>

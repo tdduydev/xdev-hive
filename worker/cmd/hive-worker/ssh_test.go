@@ -86,6 +86,22 @@ func TestSSHList(t *testing.T) {
 	}
 }
 
+func TestSSHListWithoutConfigHasEmptyHosts(t *testing.T) {
+	home := sshEnv(t)
+	for _, config := range []string{"", "Host *\n    ServerAliveInterval 30\n"} {
+		if config != "" {
+			writeSSHConfig(t, home, config)
+		}
+		out, stderr, code := sshRun(t, "", "list", "--json")
+		if code != 0 {
+			t.Fatalf("mã %d: %s", code, stderr)
+		}
+		if !strings.Contains(out, `"hosts":[]`) {
+			t.Errorf("app đọc hosts là mảng, không nhận null; config %q có %s", config, out)
+		}
+	}
+}
+
 func scanFingerprint(t *testing.T, s *sshtest.Server) string {
 	t.Helper()
 	out, stderr, code := sshRun(t, "", "scan", "--host", s.Host, "--port", strconv.Itoa(s.Port), "--json")
