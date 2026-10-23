@@ -93,7 +93,7 @@ func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult
 			continue
 		}
 		now := s.now()
-		if now.Sub(it.CreatedAt) >= ExpireAfter {
+		if it.expired(now) {
 			it.State, it.NextAttemptAt = StateExpired, nil
 			if err := s.write(id, it); err != nil {
 				return res, err
@@ -103,6 +103,12 @@ func (s Store) Flush(ctx context.Context, id Identity, send Sender) (FlushResult
 			continue
 		}
 		if blocked[it.Stream] {
+			continue
+		}
+		if it.State == StateHeld {
+			// Mục sau cùng stream có thể phụ thuộc mục bị giữ (cập nhật task sau khi gửi kế hoạch), nên chờ cùng.
+			blocked[it.Stream] = true
+			res.Waiting++
 			continue
 		}
 		if offline || (it.State == StatePending && it.NextAttemptAt != nil && now.Before(*it.NextAttemptAt)) {

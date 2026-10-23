@@ -102,11 +102,11 @@ description: "Danh sách task: Hub giữ dữ liệu và tiến độ, client l�
 **Independent Test**: tắt hub, agent gọi `task_update` ba lần qua `hive mcp` → nhận "Đã xếp hàng, chờ hub"; bật hub →
 ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mục chờ.
 
-- [ ] T014 [US2] Mở rộng kho: trạng thái `held` và `heldReason`; danh tính người dùng (`userId`, khoá thư mục =
+- [x] T014 [US2] Mở rộng kho: trạng thái `held` và `heldReason`; danh tính người dùng (`userId`, khoá thư mục =
   16 hex đầu SHA-256(`hubUrl|userId`)); transport `mcp`, `rpc`; `Target` quyết định stream; mục `held` chặn cùng
   stream; `Retry`, `Export`, `Stats` (số byte, đếm theo trạng thái) · `worker/internal/outbox/store.go`,
   `worker/internal/outbox/identity.go`, `worker/internal/outbox/store_test.go`
-- [ ] T015 [P] [US2] Bảng nhóm Go khớp fixture `client-write-tools.json` · `worker/internal/outbox/tools.go`,
+- [x] T015 [P] [US2] Bảng nhóm Go khớp fixture `client-write-tools.json` · `worker/internal/outbox/tools.go`,
   `worker/internal/outbox/tools_test.go`
 - [ ] T016 [US2] Sender cho người dùng: `POST /mcp` (`tools/call` kèm `Idempotency-Key`, `X-Hive-Source`,
   `X-Hive-Machine`, `X-Hive-Created-At`, `X-Hive-Client`) và `POST /rpc/<path>`; đọc `_meta` và header
