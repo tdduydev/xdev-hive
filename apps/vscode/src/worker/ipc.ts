@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -55,13 +56,17 @@ export class WorkerIpc {
     this.timeoutMs = timeoutMs;
   }
 
-  async call<T>(op: "worker.status" | "session.list"): Promise<T> {
+  async call<T>(
+    op: "worker.status" | "session.list" | "outbox.submit",
+    params: Record<string, unknown> = {},
+    timeoutMs = this.timeoutMs,
+  ): Promise<T> {
     const path = await this.path();
     return new Promise((resolve, reject) => {
       const socket = createConnection(path);
       let buffer = Buffer.alloc(0);
       let hello = true;
-      const timer = setTimeout(() => finish(new Error("Worker không trả lời đúng hạn")), this.timeoutMs);
+      const timer = setTimeout(() => finish(new Error("Worker không trả lời đúng hạn")), timeoutMs);
       const finish = (error?: Error, result?: T) => {
         clearTimeout(timer);
         socket.destroy();
@@ -93,7 +98,7 @@ export class WorkerIpc {
             if (hello) {
               if (reply.v !== 1) return finish(new IpcError("version", "Phiên bản giao thức worker không tương thích"));
               hello = false;
-              socket.write(`${JSON.stringify({ op })}\n`);
+              socket.write(`${JSON.stringify({ ...params, op })}\n`);
             } else {
               finish(undefined, reply);
               return;
@@ -124,4 +129,72 @@ export class WorkerIpc {
   sessions(): Promise<{ sessions: unknown[] }> {
     return this.call("session.list");
   }
+
+  /**
+   * Nộp một lần ghi cho hộp thư đi của worker (specs/027 contracts/outbox-ipc.md): hub vắng thì worker giữ và gửi lại
+   * cùng khoá, nên extension không ghi thẳng hub và không tự thử lại. Worker không chạy thì lỗi kết nối được ném ra để
+   * người gọi báo, không gọi hub thay.
+   */
+  async submit(request: OutboxSubmit): Promise<OutboxReply> {
+    const waitMs = request.waitMs ?? 10_000;
+    const params: Record<string, unknown> = { ...request, key: request.key ?? newKey(), waitMs };
+    if (Buffer.byteLength(JSON.stringify(params)) > submitLineBudget) {
+      // Thân lớn hơn một dòng IPC: đi qua file trong incoming, worker đọc rồi xoá.
+      const file = await writeIncoming(params.body);
+      delete params.body;
+      params.bodyFile = file;
+      try {
+        return await this.call<OutboxReply>("outbox.submit", params, waitMs + this.timeoutMs);
+      } finally {
+        await rm(file, { force: true });
+      }
+    }
+    return this.call<OutboxReply>("outbox.submit", params, waitMs + this.timeoutMs);
+  }
+}
+
+export type OutboxSubmit = {
+  key?: string;
+  source: string;
+  transport: "mcp" | "rpc";
+  kind: string;
+  target?: { type: string; id: string };
+  project?: string;
+  body: unknown;
+  waitMs?: number;
+};
+
+export type OutboxResult = {
+  outcome: "accepted" | "duplicate" | "rejected";
+  code?: string;
+  reason?: string;
+  receivedAt?: string;
+  response?: unknown;
+};
+
+export type OutboxReply =
+  | { state: "accepted" | "duplicate" | "rejected"; key: string; result: OutboxResult }
+  | { state: "queued"; key: string; pending: number; hub: string }
+  | { state: "held"; key: string; heldReason: string; reason?: string; pending: number; hub: string };
+
+// Chừa chỗ cho phần còn lại của dòng dưới giới hạn 64 KiB của socket.
+const submitLineBudget = 65536 - 4096;
+
+const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/** Khoá ULID như `outbox.NewKey` của worker, để tên file trong hộp thư xếp theo thứ tự tạo. */
+export function newKey(now = Date.now()): string {
+  let time = "";
+  for (let t = now, i = 0; i < 10; i++, t = Math.floor(t / 32)) time = crockford[t % 32] + time;
+  let rand = "";
+  for (const byte of randomBytes(16)) rand += crockford[byte % 32];
+  return time + rand;
+}
+
+async function writeIncoming(body: unknown): Promise<string> {
+  const dir = join(homedir(), ".xdev-hive", "outbox", "incoming");
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const file = join(dir, `${randomBytes(12).toString("hex")}.json`);
+  await writeFile(file, JSON.stringify(body), { mode: 0o600 });
+  return file;
 }
