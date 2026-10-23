@@ -490,7 +490,7 @@ không chứa giá trị.
   - `docs/srs.md`: FR của spec 031.
 
   Không sửa `docs/decisions.md`.
-- [ ] T041 A·vừa — Test quét SC-004 trong `worker/internal/secretstore/sc004_test.go`.
+- [x] T041 A·vừa — Test quét SC-004 trong `worker/internal/secretstore/sc004_test.go`.
   - Chạy chuỗi set → assign → Grant run giả → reveal → delete với backend giả.
   - Quét mọi file trong thư mục cấu hình tạm và pending dir giả.
   - Mong đợi: 0 byte giá trị, 0 byte base64 của giá trị.
