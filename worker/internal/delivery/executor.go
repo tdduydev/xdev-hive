@@ -173,8 +173,10 @@ func (e *Executor) dispatch(ctx context.Context, spec JobSpec, cred []byte, jl *
 		return e.runKube(ctx, spec, cred, jl)
 	case "health":
 		return e.runHealth(ctx, spec, jl)
+	case "ssh-script":
+		return e.runSSH(ctx, spec, cred, jl)
 	default:
-		// ssh-script, gitlab-manual, ci-action chưa có trên worker; hub không giao khi worker không khai khả năng.
+		// gitlab-manual, ci-action chưa có trên worker; hub không giao khi worker không khai khả năng.
 		return newError(CodeUnsupported, 0, "Worker này chưa hỗ trợ loại việc %q.", spec.Kind)
 	}
 }
@@ -399,4 +401,45 @@ func (e *Executor) runHealth(ctx context.Context, spec JobSpec, jl *JobLog) erro
 	}
 	e.step(spec.JobID, "Kiểm tra sức khoẻ", "succeeded")
 	return nil
+}
+
+func (e *Executor) runSSH(ctx context.Context, spec JobSpec, cred []byte, jl *JobLog) error {
+	if err := requireTarget(spec, "host", "user"); err != nil {
+		return err
+	}
+	t := SSHTarget{Host: targetStr(spec.Target, "host"), User: targetStr(spec.Target, "user")}
+	if p, ok := spec.Target["port"].(float64); ok {
+		t.Port = int(p)
+	}
+	for _, k := range arr(spec.Target["hostKeys"]) {
+		m := rec(k)
+		t.HostKeys = append(t.HostKeys, SSHHostKey{Algorithm: str(m["algorithm"]), Fingerprint: str(m["fingerprint"])})
+	}
+	var steps []SSHStep
+	for _, s := range arr(spec.Params["steps"]) {
+		m := rec(s)
+		steps = append(steps, SSHStep{Name: str(m["name"]), Script: str(m["script"])})
+	}
+	if len(steps) == 0 {
+		return newError(CodeBadRequest, 0, "Việc SSH không có bước nào.")
+	}
+	env := map[string]string{}
+	for k, v := range rec(spec.Params["env"]) {
+		env[k] = str(v)
+	}
+	e.emit(spec.JobID, "external", Event{"ref": t.Host})
+	c, err := DialSSH(ctx, t, cred, 0)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	jl.Printf("đã kết nối %s, chạy %d bước", t.Host, len(steps))
+	_, err = RunSSHSteps(ctx, c, steps, env, jl, func(name, state string, exit int) {
+		ev := Event{"name": truncate(name, 120), "state": state}
+		if state == "failed" && exit != 0 {
+			ev["exitCode"] = exit
+		}
+		e.emit(spec.JobID, "step", ev)
+	})
+	return err
 }
