@@ -365,6 +365,9 @@ fn handle_line(app: &AppHandle, line: &str) {
         Some("pair_done") => {
             let _ = app.emit("remote-pair-done", &v);
         }
+        Some("outbox" | "outbox.item") => {
+            let _ = app.emit("outbox-changed", &v);
+        }
         Some(_) => {}
     }
 }

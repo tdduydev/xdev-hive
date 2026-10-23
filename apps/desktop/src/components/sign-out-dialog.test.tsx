@@ -32,6 +32,7 @@ function fakeApp(over: Record<string, () => unknown> = {}) {
   const calls: { command: string; args?: Record<string, unknown> | undefined }[] = [];
   const handlers: Record<string, () => unknown> = {
     account_unlink: () => UNLINKED,
+    outbox_status: () => ({ pending: 0, held: 0 }),
     local_projects: () => ({
       path: "",
       exists: true,
@@ -65,6 +66,48 @@ function open(orgName: string | null = "Acme") {
 }
 
 describe("đăng xuất và gán bí mật", () => {
+  it.each(["send", "keep", "drop"] as const)(
+    "còn mục: chọn %s trước khi gỡ token, vẫn có ô dọn bí mật",
+    async (action) => {
+      const calls = fakeApp({ outbox_status: () => ({ pending: 2, held: 1 }) });
+      const user = userEvent.setup();
+      const onSignedOut = open();
+      expect(await screen.findByText("Hộp thư đi trên máy còn 3 mục chờ gửi hoặc đang giữ.")).toBeTruthy();
+      expect(await screen.findByRole("checkbox")).toBeTruthy();
+      const names = { send: "Gửi trước", keep: "Giữ lại", drop: "Bỏ" };
+      await user.click(screen.getByRole("button", { name: names[action] }));
+      await waitFor(() => expect(onSignedOut).toHaveBeenCalled());
+      expect(calls.find((c) => c.command === "account_unlink")?.args).toEqual({ outboxAction: action });
+    },
+  );
+
+  it("gửi trước thất bại thì còn đăng nhập và giữ hộp thoại", async () => {
+    const calls = fakeApp({
+      outbox_status: () => ({ pending: 1, held: 0 }),
+      account_unlink: () => {
+        throw new Error("Không xác định được người đăng nhập; chọn Giữ lại.");
+      },
+    });
+    const onSignedOut = open();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Gửi trước" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("chọn Giữ lại");
+    expect(onSignedOut).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.command === "account_unlink")).toBe(true);
+  });
+
+  it("không đọc được hộp thư đi vẫn cho giữ lại để đăng xuất", async () => {
+    const calls = fakeApp({
+      outbox_status: () => {
+        throw new Error("Sidecar không chạy");
+      },
+    });
+    const onSignedOut = open();
+    await screen.findByText(/Chưa đọc được hộp thư đi/);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Giữ lại" }));
+    await waitFor(() => expect(onSignedOut).toHaveBeenCalled());
+    expect(calls.find((c) => c.command === "account_unlink")?.args).toEqual({ outboxAction: "keep" });
+  });
   it("hỏi gỡ gán cho dự án của tổ chức, mặc định không chọn; đăng xuất không gọi purge", async () => {
     const calls = fakeApp();
     const user = userEvent.setup();

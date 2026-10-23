@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { AccountDialog } from "@/components/account-dialog.tsx";
 import { ConnectHive } from "@/components/connect-hive.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
+import { OutboxBanner } from "@/components/outbox-panel.tsx";
 import { ScreenErrorBoundary } from "@/components/screen-error-boundary.tsx";
 import { SecretApprovalDialog } from "@/components/secret-approval-dialog.tsx";
 import { SignOutDialog } from "@/components/sign-out-dialog.tsx";
@@ -42,7 +43,14 @@ function subscribe(listener: () => void) {
 export function AppShell({ profile: forced }: { profile?: Profile }) {
   const { status, error, refresh, setStatus } = useAccount();
   const [accountOpen, setAccountOpen] = useState(false);
-  const [signOutOpen, setSignOutOpen] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(() => new URLSearchParams(location.search).get("signOut") === "1");
+  useEffect(() => {
+    const url = new URL(location.href);
+    if (url.searchParams.has("signOut")) {
+      url.searchParams.delete("signOut");
+      history.replaceState(null, "", url);
+    }
+  }, []);
   const account = status?.account ?? null;
   const profile = forced ?? profileOf(account);
   const lang = useLang();
@@ -51,6 +59,7 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
   useTeamNotifications(!!account);
   // Kéo memory hub theo lịch cả khi không mở màn Memory; màn Memory gọi cùng hook chỉ để cập nhật giao diện.
   useHubContextSchedule(!!account);
+  useEffect(() => onTauriEvent("account-sign-out", () => setSignOutOpen(true)), []);
   useEffect(
     () =>
       onTauriEvent<string>(NAVIGATE_EVENT, (screen) => {
@@ -85,6 +94,7 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
     <div className="flex h-svh flex-col">
       {/* Màn Cài đặt có thẻ cập nhật riêng với cùng các nút: không hiện hai lời mời mở lại cùng lúc. */}
       {active !== "settings" && <UpdateBanner />}
+      <OutboxBanner />
       <div className="flex min-h-0 flex-1">
         <AppNav
           profile={profile}

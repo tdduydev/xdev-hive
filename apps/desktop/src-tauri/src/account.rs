@@ -82,6 +82,19 @@ pub(crate) fn stored_token(hub: &str) -> Option<String> {
     entry(hub).ok()?.get_password().ok()
 }
 
+/// App cũ chỉ lưu keychain; CLI cần biết hub để worker đọc cùng danh tính, kể cả sau nâng cấp.
+pub(crate) async fn sync_cli_login(app: &AppHandle) -> Result<(), String> {
+    let hub = crate::hub_of(app).ok_or("Máy chưa đăng ký với hub nào.")?;
+    let token = stored_token(&hub).ok_or("Chưa liên kết tài khoản Hive.")?;
+    crate::outbox::hive(
+        app,
+        vec!["auth".into(), "store".into(), format!("--hub={hub}"), "--json".into()],
+        Some(format!("{token}\n")),
+    )
+    .await?;
+    Ok(())
+}
+
 async fn whoami(hub: &str, token: &str) -> Result<Account, HubError> {
     let v = call_tool(hub, token, "hive_whoami", json!({})).await?;
     parse_whoami(&v).ok_or_else(|| HubError::Message("Hub không trả thông tin tài khoản.".into()))
@@ -126,26 +139,31 @@ pub async fn account_link(app: AppHandle, token: String) -> Result<AccountStatus
     if !looks_like_pat(&token) {
         return Err("Đây không phải token MCP cá nhân (bắt đầu bằng hive_pat_).".into());
     }
-    save_checked(&hub, &token).await?;
+    save_checked(&app, &hub, &token).await?;
     Ok(status_for(Some(hub)).await)
 }
 
 /// Kiểm token với hub rồi lưu vào keychain; đăng nhập bằng trình duyệt cũng đi qua đây.
-pub(crate) async fn save_checked(hub: &str, token: &str) -> Result<(), String> {
+pub(crate) async fn save_checked(app: &AppHandle, hub: &str, token: &str) -> Result<(), String> {
     whoami(hub, token).await.map_err(|e| e.text())?;
-    entry(hub)?
-        .set_password(token)
-        .map_err(|e| format!("Không lưu được token vào keychain: {e}"))
+    // CLI lưu cả userId và dấu vân tay token để worker nhận đúng danh tính khi hub vắng.
+    crate::outbox::hive(
+        app,
+        vec!["login".into(), format!("--hub={hub}"), "--with-token".into()],
+        Some(format!("{token}\n")),
+    )
+    .await?;
+    Ok(())
 }
 
 /// Hub đổi địa chỉ: token cá nhân trong keychain lưu theo địa chỉ cũ. Hub mới vẫn nhận token đó (cùng hub, chỉ đổi
 /// http sang https hay bỏ cổng) thì chuyển sang địa chỉ mới để người dùng khỏi đăng nhập lại; không nhận thì để người
 /// dùng đăng nhập lại. Mục cũ luôn bị gỡ: worker không còn ở hub cũ, giữ lại chỉ là token thừa trong keychain.
-pub(crate) async fn carry_over(old_hub: &str, new_hub: &str) -> bool {
+pub(crate) async fn carry_over(app: &AppHandle, old_hub: &str, new_hub: &str) -> bool {
     let Some(token) = stored_token(old_hub) else {
         return false;
     };
-    let moved = stored_token(new_hub).is_none() && save_checked(new_hub, &token).await.is_ok();
+    let moved = stored_token(new_hub).is_none() && save_checked(app, new_hub, &token).await.is_ok();
     if let Ok(e) = entry(old_hub) {
         let _ = e.delete_credential();
     }
@@ -171,27 +189,16 @@ pub(crate) fn sign_out(app: &AppHandle) -> bool {
     had_token
 }
 
-/// Câu hỏi xác nhận trước khi đăng xuất, cùng nội dung với hộp xác nhận trong cửa sổ app.
-pub fn sign_out_prompt(en: bool) -> (&'static str, &'static str, &'static str, &'static str) {
-    if en {
-        (
-            "Sign out of Hive?",
-            "Your personal token is removed from this machine's keychain. The machine stays registered: the worker keeps taking runs, and agent plans, projects and tools on this machine keep working.",
-            "Sign out",
-            "Cancel",
-        )
-    } else {
-        (
-            "Đăng xuất khỏi Hive?",
-            "Token cá nhân bị gỡ khỏi keychain của máy. Máy vẫn đăng ký với hub: worker vẫn nhận việc, gói agent, dự án và công cụ trên máy vẫn dùng được.",
-            "Đăng xuất",
-            "Huỷ",
-        )
-    }
-}
-
 #[tauri::command]
-pub async fn account_unlink(app: AppHandle) -> Result<AccountStatus, String> {
+pub async fn account_unlink(
+    app: AppHandle,
+    outbox_action: Option<String>,
+) -> Result<AccountStatus, String> {
+    let args = crate::outbox::logout_args(outbox_action.as_deref().unwrap_or("keep"))?;
+    if crate::hub_of(&app).is_some_and(|hub| stored_token(&hub).is_some()) {
+        sync_cli_login(&app).await?;
+        crate::outbox::hive(&app, args, None).await?;
+    }
     sign_out(&app);
     Ok(status_for(crate::hub_of(&app)).await)
 }
