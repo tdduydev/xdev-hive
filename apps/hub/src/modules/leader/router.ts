@@ -18,6 +18,7 @@ import {
   threadView,
 } from "./service.ts";
 import { delegationLinks, delegationTree } from "./tree.ts";
+import { requireThreadAccess, visibleThreadsWhere } from "./visibility.ts";
 
 export interface LeaderRouterDeps extends OrgDeps {
   runs?: RunsEngine | undefined;
@@ -34,14 +35,19 @@ export function leaderRouter(deps: LeaderRouterDeps) {
       create: os.threads.create
         .use(inOrg)
         .handler(async ({ context: { tx, user }, input }) => threadView(await createThread(tx, user.id, input))),
-      list: os.threads.list
-        .use(inOrg)
-        .handler(async ({ context: { tx } }) =>
-          (await tx.select().from(chatThreads).orderBy(desc(chatThreads.updatedAt))).map(threadView),
-        ),
+      list: os.threads.list.use(inOrg).handler(async ({ context: { tx, user } }) =>
+        (
+          await tx
+            .select()
+            .from(chatThreads)
+            .where(await visibleThreadsWhere(tx, user.id))
+            .orderBy(desc(chatThreads.updatedAt))
+        ).map(threadView),
+      ),
       get: os.threads.get.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
         const [row] = await tx.select().from(chatThreads).where(eq(chatThreads.id, input.id));
         if (!row) throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
+        await requireThreadAccess(tx, user.id, row);
         const messages = await tx
           .select()
           .from(chatMessages)
@@ -70,7 +76,7 @@ export function leaderRouter(deps: LeaderRouterDeps) {
     approvals: {
       list: os.approvals.list
         .use(inOrg)
-        .handler(({ context: { tx }, input }) => listApprovals(tx, input.status, input.threadId)),
+        .handler(({ context: { tx, user }, input }) => listApprovals(tx, user.id, input.status, input.threadId)),
       approve: os.approvals.approve.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
         const { response, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, (tx) =>
           approveApproval(deps.runs, tx, user.id, input.id, input.tier, deps.sdlc),

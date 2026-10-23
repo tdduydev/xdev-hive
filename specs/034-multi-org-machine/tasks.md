@@ -46,12 +46,12 @@ description: "Task list: một máy làm việc cho nhiều tổ chức, và s�
 
 Mục tiêu: đóng các rủi ro R1–R4, R6, R7, R10 trong rbac-review.md. Test db chạy trên CI.
 
-- [ ] T010 [US8] H·vừa — FR-090: `leader.threads.list/get/send` và `approvals.list` chỉ trả hội thoại người dùng thấy
+- [x] T010 [US8] H·vừa — FR-090: `leader.threads.list/get/send` và `approvals.list` chỉ trả hội thoại người dùng thấy
   được (dự án thuộc đội thấy được; hội thoại không dự án: người tạo, owner/admin tổ chức). `approvals.reject` cần
   `member` của đội sở hữu dự án. (`apps/hub/src/modules/leader/service.ts`, `router.ts`, `visibility.ts`,
-  `leader.db.test.ts`)
-- [ ] T011 H·vừa — FR-096: hành động leader chạy theo người duyệt; kiểm lại `executeLeaderAction` cho dự án ngoài đội.
-  (`apps/hub/src/modules/leader/actions.ts`) — chỉ rà, sửa nếu thiếu
+  `visibility.db.test.ts`)
+- [x] T011 H·vừa — FR-096: hành động leader chạy theo người duyệt; kiểm lại `executeLeaderAction` cho dự án ngoài đội.
+  (`apps/hub/src/modules/leader/actions.ts`) — đã rà: mọi nhánh gọi hàm nghiệp vụ có kiểm vai trò (`createTask`, `updateProjectSettings`, `startRun`, `cancelRun`, `createItem`); không cần sửa
 - [ ] T012 [P] H·nhẹ — FR-091: router fleet gọi `requireOrgRole(tx, userId, "member")` trong `inOrg`.
   (`apps/hub/src/modules/fleet/router.ts`, `fleet-rbac.db.test.ts`)
 - [ ] T013 [P] H·vừa — FR-094: token cá nhân chỉ dùng được trong tổ chức của token, kể cả khi tổ chức nằm ở đường dẫn.

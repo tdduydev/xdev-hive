@@ -15,6 +15,7 @@ import { runEvents, runForUser, runs } from "../runs/index.ts";
 import { loadTasks, taskForUser } from "../tasks/index.ts";
 import { teamRolesOf } from "../tenancy/index.ts";
 import { chatThreads, leaderDelegations } from "./schema.ts";
+import { requireThreadAccess, visibleThreadsWhere } from "./visibility.ts";
 
 /** Trần số run mỗi cây (plan.md, rủi ro "cây lớn"): poll 3 giây không được đọc vô hạn. */
 export const TREE_RUN_LIMIT = 500;
@@ -77,9 +78,10 @@ function runError(row: RunRow): string | null {
  * và chỉ đếm vào `hidden`, như taskForUser coi là không tồn tại.
  */
 export async function delegationTree(tx: Tx, userId: string, threadId: string): Promise<DelegationTree> {
-  // Như threads.get: phiên thấy được theo tổ chức (RLS), không thấy thì báo không tồn tại.
+  // Như threads.get: phiên phải thấy được theo đội (spec 034 FR-090), không thấy thì báo không tồn tại.
   const [thread] = await tx.select().from(chatThreads).where(eq(chatThreads.id, threadId));
   if (!thread) throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
+  await requireThreadAccess(tx, userId, thread);
   const links = await tx
     .select({ kind: leaderDelegations.kind, taskId: leaderDelegations.taskId })
     .from(leaderDelegations)
@@ -204,7 +206,7 @@ export async function delegationLinks(
     })
     .from(leaderDelegations)
     .innerJoin(chatThreads, eq(chatThreads.id, leaderDelegations.threadId))
-    .where(inArray(leaderDelegations.taskId, [...taskIds]))
+    .where(and(inArray(leaderDelegations.taskId, [...taskIds]), await visibleThreadsWhere(tx, userId)))
     .groupBy(chatThreads.id, chatThreads.title)
     .orderBy(desc(sql`last`));
   return rows.map((r) => ({ threadId: r.threadId, title: r.title }));
