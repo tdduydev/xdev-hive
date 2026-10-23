@@ -92,38 +92,30 @@ func TestExecutorLogsGoToScopedDirAndMaskSecrets(t *testing.T) {
 	}
 }
 
-func TestExecutorHealthJob(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
-	defer srv.Close()
-	s := &sink{}
-	e := newExec(t, "reg-a", nil, s)
-	if err := e.Run(context.Background(), JobSpec{JobID: jobA, Kind: "health", Target: map[string]any{"url": srv.URL}, TimeoutSeconds: 5}); err != nil {
-		t.Fatal(err)
-	}
-	if s.last()["state"] != "succeeded" {
-		t.Fatalf("last = %v", s.last())
-	}
-}
-
 func TestExecutorUnsupportedKindAndInvalidScope(t *testing.T) {
 	s := &sink{}
 	e := newExec(t, "reg-a", nil, s)
-	if err := e.Run(context.Background(), JobSpec{JobID: jobA, Kind: "ssh-script"}); CodeOf(err) != CodeUnsupported {
-		t.Fatalf("err = %v", err)
+	for _, kind := range []string{"ssh-script", "kubectl", "health"} {
+		if err := e.Run(context.Background(), JobSpec{JobID: jobA, Kind: kind}); CodeOf(err) != CodeUnsupported {
+			t.Fatalf("%s: err = %v", kind, err)
+		}
 	}
 	bad := newExec(t, "../x", nil, &sink{})
-	if err := bad.Run(context.Background(), JobSpec{JobID: jobA, Kind: "health"}); CodeOf(err) != CodeBadRequest {
+	if err := bad.Run(context.Background(), JobSpec{JobID: jobA, Kind: "jenkins-job"}); CodeOf(err) != CodeBadRequest {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestExecutorTimeout(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
+	// Argo CD báo đang sync mãi; việc phải dừng ở hạn và báo failed với mã timeout.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(fixture(t, "argocd", "application-syncing.json"))
+	}))
 	defer srv.Close()
 	s := &sink{}
-	e := newExec(t, "reg-a", nil, s)
-	err := e.Run(context.Background(), JobSpec{JobID: jobA, Kind: "health", Target: map[string]any{"url": srv.URL}, TimeoutSeconds: 1})
-	if err == nil || s.last()["state"] != "failed" {
+	e := newExec(t, "reg-a", MapCredentials{"delivery/reg-a/argo-prod": "tok"}, s)
+	err := e.Run(context.Background(), JobSpec{JobID: jobA, Kind: "argocd", Credential: "argo-prod", Target: map[string]any{"baseUrl": srv.URL, "app": "his-portal"}, TimeoutSeconds: 1})
+	if CodeOf(err) != CodeTimeout || s.last()["state"] != "failed" {
 		t.Fatalf("err = %v, last = %v", err, s.last())
 	}
 }
