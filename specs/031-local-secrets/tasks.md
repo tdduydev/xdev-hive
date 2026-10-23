@@ -394,7 +394,7 @@ không chứa giá trị.
   chính sách, và khối ngữ cảnh "không có bí mật" khi `deny`, `declined` hoặc `timeout`. Test.
 
   Sau T028, T018.
-- [ ] T030 [US7] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: `secrets approvals`, `secrets approve --id --allow|--deny`.
+- [x] T030 [US7] A·nhẹ — `worker/cmd/hive-worker/secrets.go`: `secrets approvals`, `secrets approve --id --allow|--deny`.
   Phần hỏi `[c/K]` trong terminal thuộc T019 (file của A2), không sửa ở đây.
 
   Sau T028, T022.

@@ -27,6 +27,8 @@ const secretsUsage = `Cách dùng: hive-worker secrets <lệnh> [--config FILE] 
   delete    --name TÊN
   log       [--name TÊN] [--project LOCAL_ID] [--limit 200]
   log clear                                 xoá nhật ký cấp tại máy
+  approvals                                 yêu cầu đang chờ duyệt
+  approve   --id MÃ --allow|--deny
 Giá trị chỉ đọc từ stdin, không bao giờ từ tham số hay biến môi trường.`
 
 // Kiểu ra của lệnh, khớp contracts/sidecar-cli.md và fixture testdata/cli của secretstore.
@@ -108,6 +110,9 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	project := fs.String("project", "", "localId của dự án trên máy")
 	descFile := fs.String("description-file", "", "file chứa mô tả")
 	limit := fs.Int("limit", secretstore.DefaultLogLimit, "số dòng nhật ký")
+	approvalID := fs.String("id", "", "mã yêu cầu duyệt")
+	allow := fs.Bool("allow", false, "cho phép")
+	deny := fs.Bool("deny", false, "từ chối")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
 		fmt.Fprintln(stderr, "Tham số không hợp lệ.")
 		return usage()
@@ -123,6 +128,20 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	}
 	var view any
 	switch action {
+	case "approvals":
+		var pending []secretstore.ApprovalRequest
+		pending, err = secretstore.PendingApprovals(path)
+		view = struct {
+			Pending []secretstore.ApprovalRequest `json:"pending"`
+		}{pending}
+	case "approve":
+		if *approvalID == "" || *allow == *deny {
+			return usage()
+		}
+		err = secretstore.AnswerApproval(path, *approvalID, *allow)
+		view = struct {
+			OK bool `json:"ok"`
+		}{true}
 	case "status":
 		view = cmd.store.Status()
 	case "list":
