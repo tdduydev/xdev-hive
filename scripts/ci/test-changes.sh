@@ -35,6 +35,7 @@ check "logo của desktop và web"           "t t t t t f f" docs/design-system/
 check "màn web"                           "t t t t f f f" apps/web/src/routes/home.tsx
 check "hub"                               "t t t t f f f" apps/hub/src/modules/task/router.ts
 check "contracts"                         "t t t t t f f" packages/contracts/src/index.ts
+check "fixture giao thức (test Go đọc)"    "t t t t t t t" packages/contracts/fixtures/worker-protocol.json
 check "gói skill-pack (chỉ hub dùng)"     "f t t t t f f" packages/skill-pack/src/index.ts
 check "worker Go"                         "f f t t t t t" worker/internal/update/update.go
 check "script cài Windows"                "f f f f f t t" scripts/install.ps1
