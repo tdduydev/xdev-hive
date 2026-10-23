@@ -18,7 +18,7 @@ beforeAll(async () => {
   other = await seedOrg(admin, `cfg-rls-other-${tag}`);
   for (const o of [org, other])
     await withTenant(app, { orgId: o.orgId }, (tx) =>
-      tx.insert(configLayerEntries).values({ layer: "team", targetId: o.teamId, key: "limits.perRunUsd", value: 5 }),
+      tx.insert(configLayerEntries).values({ layer: "org", targetId: o.orgId, key: "limits.perRunUsd", value: 5 }),
     );
 });
 afterAll(async () => {
@@ -57,7 +57,7 @@ describe("config_layer_entries RLS", () => {
         withTenant(app, { orgId: org.orgId }, (tx) =>
           tx.insert(configLayerEntries).values({
             orgId: other.orgId,
-            layer: "team",
+            layer: "org",
             targetId: other.otherTeamId,
             key: "limits.perRunUsd",
             value: 1,
@@ -72,12 +72,12 @@ describe("config_layer_entries RLS", () => {
     expect(rows[0].value).toBe(5);
   });
 
-  it("rejects a layer other than org and team", async () => {
+  it.each(["team", "run", "instance"])("rejects the removed layer %s", async (layer) => {
     expect(
       await pgCode(() =>
         withTenant(app, { orgId: org.orgId }, (tx) =>
           tx.execute(
-            sql`insert into hive.config_layer_entries (layer, target_id, key) values ('project', ${randomUUID()}::uuid, 'x')`,
+            sql`insert into hive.config_layer_entries (layer, target_id, key) values (${layer}, ${randomUUID()}::uuid, 'x')`,
           ),
         ),
       ),

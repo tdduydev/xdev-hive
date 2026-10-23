@@ -2,31 +2,25 @@ import { z } from "zod";
 import { id, orgRoute } from "./common.ts";
 
 /**
- * Cấu hình theo tầng (specs/033): hệ thống → công ty → đội → dự án. Hub gộp các tầng và chỉ trả giá trị hiệu lực;
- * client không tự gộp (FR-066). Mọi lời gọi thuộc đúng một công ty (header `x-hive-org`), client giữ bộ đệm theo từng
- * công ty (FR-069).
+ * Cấu hình hai tầng (specs/033): công ty dùng chung, dự án riêng. Dự án ghi đè giá trị của công ty trừ khi công ty đã
+ * khoá mục đó. Hub trả cả giá trị hiệu lực và nguồn; client không tự gộp. Mọi lời gọi thuộc đúng một công
+ * ty (header `x-hive-org`).
  */
-export const CONFIG_LAYERS = ["instance", "org", "team", "project"] as const;
+export const CONFIG_LAYERS = ["org", "project"] as const;
 export const configLayer = z.enum(CONFIG_LAYERS);
 export type ConfigLayer = z.output<typeof configLayer>;
 
-export const mergeKind = z.enum(["ceiling", "override", "additive"]);
-export type MergeKind = z.output<typeof mergeKind>;
-
-export const configGroup = z.enum(["agent", "limits", "project"]);
-
 export const settingKey = z.string().trim().min(1).max(80);
 
-/** Số phiên bản của dạng ảnh chụp; client bỏ qua khoá nó không biết (FR-067). */
+/** Client bỏ qua khoá chưa biết để có thể nâng cấp hub và client riêng. */
 export const CONFIG_SCHEMA_VERSION = 1;
 
 export const settingDef = z.object({
   key: settingKey,
-  group: configGroup,
-  kind: mergeKind,
+  group: z.enum(["agent", "limits", "project"]),
   layers: z.array(configLayer),
-  /** Nới giá trị này ở tầng hệ thống hoặc công ty cần quyền nguy hiểm (FR-043). */
-  dangerous: z.boolean(),
+  /** Giá trị khi không tầng nào đặt. */
+  default: z.unknown(),
 });
 export type SettingDef = z.output<typeof settingDef>;
 
@@ -37,12 +31,10 @@ export const effectiveSetting = z.object({
   value: z.unknown(),
   /** Tầng quyết định giá trị; null là giá trị mặc định của sổ cài đặt. */
   source: layerRef.nullable(),
-  /** Tầng đã khoá cài đặt này với các tầng dưới nó (FR-021). */
-  lock: z.object({ layer: configLayer }).nullable(),
-  /** Tầng dưới đã đặt giá trị rộng hơn trần, đang bị hạ (FR-015). */
-  overCeiling: layerRef.extend({ value: z.unknown() }).nullable(),
-  /** Giá trị từng tầng; chỉ trả cho người có quyền sửa cấu hình dự án (FR-044). */
-  chain: z.array(layerRef.extend({ value: z.unknown(), locked: z.boolean(), applied: z.boolean() })).optional(),
+  /** Khi tổ chức khoá, giá trị riêng của dự án tạm ngưng cho tới lúc mở khoá. */
+  locked: z.boolean(),
+  /** Giá trị từng tầng, và tầng nào đang có hiệu lực. */
+  chain: z.array(layerRef.extend({ value: z.unknown(), locked: z.boolean(), applied: z.boolean() })),
 });
 export type EffectiveSetting = z.output<typeof effectiveSetting>;
 
@@ -51,31 +43,29 @@ export const effectiveConfig = z.object({
   projectId: id,
   schemaVersion: z.number().int(),
   generatedAt: z.iso.datetime(),
-  /** Băm nội dung hiệu lực; client chỉ tải lại khi khác (FR-061). */
+  /** Băm nội dung hiệu lực và nguồn để nhận biết thay đổi. */
   configVersion: z.string(),
   settings: z.array(effectiveSetting),
 });
 export type EffectiveConfig = z.output<typeof effectiveConfig>;
 
-export const layerEntry = z.object({
-  layer: z.enum(["org", "team"]),
-  targetId: id,
+export const orgEntry = z.object({
   key: settingKey,
+  /** null là "chỉ khoá, chưa đặt giá trị". */
   value: z.unknown().nullable(),
   locked: z.boolean(),
   version: z.number().int(),
   updatedBy: z.string().nullable(),
   updatedAt: z.iso.datetime(),
 });
-export type LayerEntry = z.output<typeof layerEntry>;
+export type OrgEntry = z.output<typeof orgEntry>;
 
-export const teamSetInput = z.object({
-  teamId: id,
+export const orgSetInput = z.object({
   key: settingKey,
-  /** null là gỡ giá trị của đội (dùng giá trị thừa kế, FR-013); vắng mặt là giữ giá trị cũ, chỉ đổi cờ khoá. */
-  value: z.unknown(),
+  /** null là gỡ giá trị của công ty; vắng mặt là giữ giá trị cũ, chỉ đổi cờ khoá. */
+  value: z.unknown().optional(),
   locked: z.boolean().optional(),
-  /** Phiên bản đã đọc; lệch thì báo xung đột thay vì ghi đè (edge case sửa cùng lúc). */
+  /** Phiên bản đã đọc; lệch thì báo xung đột thay vì ghi đè (sửa cùng lúc). */
   expectedVersion: z.number().int().min(0).optional(),
 });
 
@@ -86,13 +76,13 @@ export const layeredConfigContract = {
   effective: orgRoute("GET", "/v1/config/effective", "Cấu hình hiệu lực của dự án", "config")
     .input(z.object({ projectId: id }))
     .output(effectiveConfig),
-  teamGet: orgRoute("GET", "/v1/config/team", "Cấu hình riêng của đội", "config")
-    .input(z.object({ teamId: id }))
-    .output(z.object({ entries: z.array(layerEntry) })),
-  teamSet: orgRoute("POST", "/v1/config/team", "Đặt hoặc gỡ cấu hình của đội", "config")
-    .input(teamSetInput)
-    .output(layerEntry.nullable()),
-  orgLock: orgRoute("POST", "/v1/config/org-lock", "Khoá hoặc mở khoá một cài đặt cho cả công ty", "config")
-    .input(z.object({ key: settingKey, locked: z.boolean() }))
-    .output(z.object({ key: settingKey, locked: z.boolean() })),
+  orgGet: orgRoute("GET", "/v1/config/org", "Cấu hình của công ty", "config").output(
+    z.object({ entries: z.array(orgEntry) }),
+  ),
+  orgSet: orgRoute("POST", "/v1/config/org", "Đặt, khoá hoặc gỡ cấu hình của công ty", "config")
+    .input(orgSetInput)
+    .output(orgEntry.nullable()),
+  projectSet: orgRoute("POST", "/v1/config/project", "Ghi đè hoặc kế thừa cấu hình dự án", "config")
+    .input(z.object({ projectId: id, key: settingKey, value: z.unknown() }))
+    .output(effectiveConfig),
 };

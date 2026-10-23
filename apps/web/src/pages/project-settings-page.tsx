@@ -51,6 +51,7 @@ import { ProjectDevOptimizerSettings, useDevOptimizerTitle } from "@/pages/proje
 import { ProjectDocsSettings } from "@/pages/project-docs-settings.tsx";
 import { ProjectMembersForRole } from "@/pages/project-members-section.tsx";
 import { ProjectSdlcSections } from "@/pages/project-sdlc-settings.tsx";
+import { ProjectConfigSection } from "@/pages/projects/config-page.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -315,7 +316,7 @@ const text: Dict<{
     pFullHint:
       "Tắt sandbox và mọi bước hỏi duyệt của CLI. Chỉ dùng trong container dùng một lần hoặc máy riêng cho agent.",
     fullBanner: "Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.",
-    fullLocked: "Chính sách agent của tổ chức không cho dự án bật toàn quyền; run chạy trong worktree.",
+    fullLocked: "Tổ chức đã khoá quyền CLI. Xem giá trị hiệu lực ở phần cấu hình tổ chức và dự án.",
     machinesTitle: "Máy đã gắn dự án này",
     machinesHint:
       "Máy của đội đã gắn dự án với một repo local, và máy đã bật toàn quyền cho dự án (cài ở app desktop trên máy đó). Chỉ để xem.",
@@ -473,7 +474,8 @@ const text: Dict<{
     pFullHint:
       "Turns off the CLI sandbox and every approval prompt. Only for throwaway containers or machines dedicated to agents.",
     fullBanner: "Runs in this project use the full rights of the account on the machine that picks them up.",
-    fullLocked: "The organization's agent policy does not let projects enable full access; runs stay in the worktree.",
+    fullLocked:
+      "The organization locked CLI permissions. See the effective value in organization and project configuration.",
     machinesTitle: "Machines linked to this project",
     machinesHint:
       "Team machines that linked this project to a local repository, and machines that turned on full access for it (set in the desktop app on that machine). Read only.",
@@ -615,7 +617,12 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   const canCreateWorkflow = isOrgAdmin(org.role) || can("workflows.write");
   // Hub cũ chưa có chính sách thì coi như không khoá, như trước.
   const policy = useQuery({ ...api.policies.get.queryOptions(), retry: false });
-  const fullLocked = policy.data?.allowFullPermission === false;
+  const effective = useQuery({
+    ...api.layeredConfig.effective.queryOptions({ input: { projectId: project.id } }),
+    retry: false,
+  });
+  const configLocked = (key: string) => effective.data?.settings.find((s) => s.key === key)?.locked ?? false;
+  const fullLocked = configLocked("agent.permissionMode");
   const queryClient = useQueryClient();
   const [saved, setSaved] = useState<ProjectSettings>(project.settings);
   const [form, setForm] = useState<SettingsForm>(() => formFromSettings(project.settings));
@@ -642,6 +649,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
       setForm((f) => withSection(f, formFromSettings(next), section));
       setResults((r) => ({ ...r, [section]: { done: true } }));
       await queryClient.invalidateQueries({ queryKey: api.projects.key() });
+      await queryClient.invalidateQueries({ queryKey: api.layeredConfig.key() });
     },
     onError: (error, { section }) => {
       const r = saveErrors(error);
@@ -732,6 +740,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
   return (
     <div className="grid gap-4">
       <UnsavedChangesGuard when={anyDirty} />
+      <ProjectConfigSection projectId={project.id} teamId={project.teamId} canEdit={canEdit} />
       {!canEdit && (
         <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">
           {t.readOnlyBanner}
@@ -746,7 +755,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             columns={2}
             value={form.mergeMode}
             onChange={(value) => set("mergeMode", value)}
-            disabled={disabled}
+            disabled={disabled || configLocked("merge.mode")}
             options={[
               { value: "review", title: t.modeReview, description: t.modeReviewHint },
               { value: "auto", title: t.modeAuto, description: t.modeAutoHint },
@@ -783,7 +792,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             hint={t.ciHint}
             checked={form.requireCi}
             onChange={(v) => set("requireCi", v)}
-            disabled={disabled}
+            disabled={disabled || configLocked("merge.requireCi")}
           />
           <SwitchRow
             label={t.queueLabel}
@@ -979,7 +988,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
               error={errors.perRunUsd}
               value={form.perRunUsd}
               onChange={(v) => set("perRunUsd", v)}
-              disabled={disabled}
+              disabled={disabled || configLocked("limits.perRunUsd")}
               inputMode="decimal"
               placeholder={t.unlimited}
               suffix="USD"
@@ -1213,7 +1222,7 @@ function SettingsEditor({ project, canEdit, canBrief }: { project: Project; canE
             label={t.permTitle}
             value={form.runPermissions}
             onChange={choosePermission}
-            disabled={disabled}
+            disabled={disabled || configLocked("agent.permissionMode")}
             options={[
               { value: "workspace", title: t.pWt, description: t.pWtHint },
               {

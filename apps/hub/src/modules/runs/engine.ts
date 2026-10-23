@@ -80,7 +80,7 @@ import {
   recordBriefDrift,
   submitBrief,
 } from "../knowledge/index.ts";
-import { runSettingsOf } from "../layers/index.ts";
+import { resolveProjectSettings, runSettingsOf } from "../layers/index.ts";
 import { mcpServersForProject } from "../mcp/index.ts";
 import { notify } from "../notify/index.ts";
 import {
@@ -833,7 +833,7 @@ export function createRunsEngine(deps: RunsDeps) {
         ...(await instructionsOf(tx, run.id)),
       ];
       const sandbox = sandboxed ? await loadSandboxJobConfig(tx, project.id) : undefined;
-      const baseBudget = runSettings.clampBudget(project.settings.budget);
+      const baseBudget = runSettings.resolveBudget(project.settings.budget);
       const taskSpent = task ? await taskSpentUsd(tx, task.id) : 0;
       // Run review, plan, leader là run chỉ đọc: server ngoài (vd. GitHub) có tool ghi mà chế độ chỉ đọc của CLI không
       // chặn hết, nên chỉ run code nhận.
@@ -1861,7 +1861,8 @@ export function createRunsEngine(deps: RunsDeps) {
         !workflow &&
         outcome === "succeeded" &&
         prNumber !== null &&
-        project?.settings.merge.mode === "auto" &&
+        project &&
+        (await resolveProjectSettings(tx, project)).merge.mode === "auto" &&
         project.settings.features.mergeQueue
       ) {
         await enqueueMerge(

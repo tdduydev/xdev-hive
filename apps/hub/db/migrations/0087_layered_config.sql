@@ -9,7 +9,7 @@ CREATE TABLE "hive"."config_layer_entries" (
 	"updated_by" text,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "config_layer_entries_org_id_layer_target_id_key_pk" PRIMARY KEY("org_id","layer","target_id","key"),
-	CONSTRAINT "config_layer_entries_layer" CHECK (layer in ('org', 'team'))
+	CONSTRAINT "config_layer_entries_layer" CHECK (layer in ('org', 'project'))
 );
 --> statement-breakpoint
 ALTER TABLE "hive"."config_layer_entries" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint

@@ -35520,6 +35520,18 @@
                       "settings": {
                         "type": "object",
                         "properties": {
+                          "inheritedConfigKeys": {
+                            "type": "array",
+                            "items": {
+                              "enum": [
+                                "agent.permissionMode",
+                                "limits.perRunUsd",
+                                "merge.mode",
+                                "merge.requireCi"
+                              ],
+                              "type": "string"
+                            }
+                          },
                           "runPermissions": {
                             "type": "object",
                             "properties": {
@@ -37152,6 +37164,18 @@
                     "settings": {
                       "type": "object",
                       "properties": {
+                        "inheritedConfigKeys": {
+                          "type": "array",
+                          "items": {
+                            "enum": [
+                              "agent.permissionMode",
+                              "limits.perRunUsd",
+                              "merge.mode",
+                              "merge.requireCi"
+                            ],
+                            "type": "string"
+                          }
+                        },
                         "runPermissions": {
                           "type": "object",
                           "properties": {
@@ -38786,6 +38810,18 @@
                         "settings": {
                           "type": "object",
                           "properties": {
+                            "inheritedConfigKeys": {
+                              "type": "array",
+                              "items": {
+                                "enum": [
+                                  "agent.permissionMode",
+                                  "limits.perRunUsd",
+                                  "merge.mode",
+                                  "merge.requireCi"
+                                ],
+                                "type": "string"
+                              }
+                            },
                             "runPermissions": {
                               "type": "object",
                               "properties": {
@@ -40573,6 +40609,18 @@
                         "settings": {
                           "type": "object",
                           "properties": {
+                            "inheritedConfigKeys": {
+                              "type": "array",
+                              "items": {
+                                "enum": [
+                                  "agent.permissionMode",
+                                  "limits.perRunUsd",
+                                  "merge.mode",
+                                  "merge.requireCi"
+                                ],
+                                "type": "string"
+                              }
+                            },
                             "runPermissions": {
                               "type": "object",
                               "properties": {
@@ -43856,6 +43904,18 @@
                   "settings": {
                     "type": "object",
                     "properties": {
+                      "inheritedConfigKeys": {
+                        "type": "array",
+                        "items": {
+                          "enum": [
+                            "agent.permissionMode",
+                            "limits.perRunUsd",
+                            "merge.mode",
+                            "merge.requireCi"
+                          ],
+                          "type": "string"
+                        }
+                      },
                       "merge": {
                         "type": "object",
                         "properties": {
@@ -44953,6 +45013,18 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "inheritedConfigKeys": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "agent.permissionMode",
+                          "limits.perRunUsd",
+                          "merge.mode",
+                          "merge.requireCi"
+                        ],
+                        "type": "string"
+                      }
+                    },
                     "runPermissions": {
                       "type": "object",
                       "properties": {
@@ -114655,6 +114727,18 @@
                               "patch": {
                                 "type": "object",
                                 "properties": {
+                                  "inheritedConfigKeys": {
+                                    "type": "array",
+                                    "items": {
+                                      "enum": [
+                                        "agent.permissionMode",
+                                        "limits.perRunUsd",
+                                        "merge.mode",
+                                        "merge.requireCi"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
                                   "merge": {
                                     "type": "object",
                                     "properties": {
@@ -116406,6 +116490,18 @@
                                 "patch": {
                                   "type": "object",
                                   "properties": {
+                                    "inheritedConfigKeys": {
+                                      "type": "array",
+                                      "items": {
+                                        "enum": [
+                                          "agent.permissionMode",
+                                          "limits.perRunUsd",
+                                          "merge.mode",
+                                          "merge.requireCi"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    },
                                     "merge": {
                                       "type": "object",
                                       "properties": {
@@ -118173,6 +118269,18 @@
                             "patch": {
                               "type": "object",
                               "properties": {
+                                "inheritedConfigKeys": {
+                                  "type": "array",
+                                  "items": {
+                                    "enum": [
+                                      "agent.permissionMode",
+                                      "limits.perRunUsd",
+                                      "merge.mode",
+                                      "merge.requireCi"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
                                 "merge": {
                                   "type": "object",
                                   "properties": {
@@ -136788,36 +136896,22 @@
                             ],
                             "type": "string"
                           },
-                          "kind": {
-                            "enum": [
-                              "ceiling",
-                              "override",
-                              "additive"
-                            ],
-                            "type": "string"
-                          },
                           "layers": {
                             "type": "array",
                             "items": {
                               "enum": [
-                                "instance",
                                 "org",
-                                "team",
                                 "project"
                               ],
                               "type": "string"
                             }
                           },
-                          "dangerous": {
-                            "type": "boolean"
-                          }
+                          "default": {}
                         },
                         "required": [
                           "key",
                           "group",
-                          "kind",
-                          "layers",
-                          "dangerous"
+                          "layers"
                         ]
                       }
                     }
@@ -137229,9 +137323,7 @@
                                 "properties": {
                                   "layer": {
                                     "enum": [
-                                      "instance",
                                       "org",
-                                      "team",
                                       "project"
                                     ],
                                     "type": "string"
@@ -137258,66 +137350,8 @@
                               }
                             ]
                           },
-                          "lock": {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "layer": {
-                                    "enum": [
-                                      "instance",
-                                      "org",
-                                      "team",
-                                      "project"
-                                    ],
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "layer"
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
-                          },
-                          "overCeiling": {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "layer": {
-                                    "enum": [
-                                      "instance",
-                                      "org",
-                                      "team",
-                                      "project"
-                                    ],
-                                    "type": "string"
-                                  },
-                                  "targetId": {
-                                    "anyOf": [
-                                      {
-                                        "type": "string",
-                                        "format": "uuid"
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ]
-                                  },
-                                  "value": {}
-                                },
-                                "required": [
-                                  "layer",
-                                  "targetId"
-                                ]
-                              },
-                              {
-                                "type": "null"
-                              }
-                            ]
+                          "locked": {
+                            "type": "boolean"
                           },
                           "chain": {
                             "type": "array",
@@ -137326,9 +137360,7 @@
                               "properties": {
                                 "layer": {
                                   "enum": [
-                                    "instance",
                                     "org",
-                                    "team",
                                     "project"
                                   ],
                                   "type": "string"
@@ -137364,8 +137396,8 @@
                         "required": [
                           "key",
                           "source",
-                          "lock",
-                          "overCeiling"
+                          "locked",
+                          "chain"
                         ]
                       }
                     }
@@ -137715,26 +137747,13 @@
         }
       }
     },
-    "/v1/config/team": {
+    "/v1/config/org": {
       "get": {
-        "operationId": "layeredConfig.teamGet",
-        "summary": "Cấu hình riêng của đội",
+        "operationId": "layeredConfig.orgGet",
+        "summary": "Cấu hình của công ty",
         "description": "Tổ chức lấy từ header `x-hive-org`.",
         "tags": [
           "config"
-        ],
-        "parameters": [
-          {
-            "name": "teamId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "allowEmptyValue": true,
-            "allowReserved": true
-          }
         ],
         "responses": {
           "200": {
@@ -137749,17 +137768,6 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "layer": {
-                            "enum": [
-                              "org",
-                              "team"
-                            ],
-                            "type": "string"
-                          },
-                          "targetId": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
                           "key": {
                             "type": "string",
                             "minLength": 1,
@@ -137797,8 +137805,6 @@
                           }
                         },
                         "required": [
-                          "layer",
-                          "targetId",
                           "key",
                           "locked",
                           "version",
@@ -138148,8 +138154,8 @@
         }
       },
       "post": {
-        "operationId": "layeredConfig.teamSet",
-        "summary": "Đặt hoặc gỡ cấu hình của đội",
+        "operationId": "layeredConfig.orgSet",
+        "summary": "Đặt, khoá hoặc gỡ cấu hình của công ty",
         "description": "Tổ chức lấy từ header `x-hive-org`.",
         "tags": [
           "config"
@@ -138161,10 +138167,6 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "teamId": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
                   "key": {
                     "type": "string",
                     "minLength": 1,
@@ -138181,7 +138183,6 @@
                   }
                 },
                 "required": [
-                  "teamId",
                   "key"
                 ]
               }
@@ -138198,17 +138199,6 @@
                     {
                       "type": "object",
                       "properties": {
-                        "layer": {
-                          "enum": [
-                            "org",
-                            "team"
-                          ],
-                          "type": "string"
-                        },
-                        "targetId": {
-                          "type": "string",
-                          "format": "uuid"
-                        },
                         "key": {
                           "type": "string",
                           "minLength": 1,
@@ -138246,8 +138236,6 @@
                         }
                       },
                       "required": [
-                        "layer",
-                        "targetId",
                         "key",
                         "locked",
                         "version",
@@ -138596,10 +138584,10 @@
         }
       }
     },
-    "/v1/config/org-lock": {
+    "/v1/config/project": {
       "post": {
-        "operationId": "layeredConfig.orgLock",
-        "summary": "Khoá hoặc mở khoá một cài đặt cho cả công ty",
+        "operationId": "layeredConfig.projectSet",
+        "summary": "Ghi đè hoặc kế thừa cấu hình dự án",
         "description": "Tổ chức lấy từ header `x-hive-org`.",
         "tags": [
           "config"
@@ -138611,18 +138599,20 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "projectId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
                   "key": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 80
                   },
-                  "locked": {
-                    "type": "boolean"
-                  }
+                  "value": {}
                 },
                 "required": [
-                  "key",
-                  "locked"
+                  "projectId",
+                  "key"
                 ]
               }
             }
@@ -138636,18 +138626,130 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "key": {
+                    "orgId": {
                       "type": "string",
-                      "minLength": 1,
-                      "maxLength": 80
+                      "format": "uuid"
                     },
-                    "locked": {
-                      "type": "boolean"
+                    "projectId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "schemaVersion": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "generatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "configVersion": {
+                      "type": "string"
+                    },
+                    "settings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "value": {},
+                          "source": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "layer": {
+                                    "enum": [
+                                      "org",
+                                      "project"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "targetId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "layer",
+                                  "targetId"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "locked": {
+                            "type": "boolean"
+                          },
+                          "chain": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "layer": {
+                                  "enum": [
+                                    "org",
+                                    "project"
+                                  ],
+                                  "type": "string"
+                                },
+                                "targetId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "value": {},
+                                "locked": {
+                                  "type": "boolean"
+                                },
+                                "applied": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "layer",
+                                "targetId",
+                                "locked",
+                                "applied"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "key",
+                          "source",
+                          "locked",
+                          "chain"
+                        ]
+                      }
                     }
                   },
                   "required": [
-                    "key",
-                    "locked"
+                    "orgId",
+                    "projectId",
+                    "schemaVersion",
+                    "generatedAt",
+                    "configVersion",
+                    "settings"
                   ]
                 }
               }
@@ -225426,6 +225528,18 @@
                                   "patch": {
                                     "type": "object",
                                     "properties": {
+                                      "inheritedConfigKeys": {
+                                        "type": "array",
+                                        "items": {
+                                          "enum": [
+                                            "agent.permissionMode",
+                                            "limits.perRunUsd",
+                                            "merge.mode",
+                                            "merge.requireCi"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
                                       "merge": {
                                         "type": "object",
                                         "properties": {

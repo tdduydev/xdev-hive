@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "v
 import { errorCode, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
 import { syncInstructionTemplates, templateService, updateProjectSettings } from "../catalog/index.ts";
+import { assertSettingsUnlocked, setOrgEntry } from "../layers/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import { purgeRunLogs } from "../runs/index.ts";
 import { createMemoryProvider, type MemoryProvider } from "../scm/index.ts";
@@ -41,6 +42,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await admin.query("delete from hive.agent_policies where org_id = $1", [org.orgId]);
+  await admin.query("delete from hive.config_layer_entries where org_id = $1", [org.orgId]);
 });
 
 afterAll(async () => {
@@ -90,15 +92,24 @@ describe("lưu và đọc chính sách", () => {
     expect((await as("admin", (tx) => loadPolicy(tx))).allowFullPermission).toBe(true);
   });
 
-  it("dự án không bật được toàn quyền khi tổ chức khoá", async () => {
+  it("dự án không bật được toàn quyền khi tổ chức khoá cấu hình", async () => {
     await as("owner", (tx) => saveAgentPolicy(tx, org.user("owner"), policy({ allowFullPermission: false })));
+    await as("owner", (tx) =>
+      setOrgEntry(tx, org.user("owner"), { key: "agent.permissionMode", value: "workspace", locked: true }),
+    );
     expect(
       await errorCode(() =>
         as("tadmin", (tx) =>
-          updateProjectSettings(tx, org.user("tadmin"), `pol-${tag}`, { runPermissions: { mode: "full" } }),
+          updateProjectSettings(
+            tx,
+            org.user("tadmin"),
+            `pol-${tag}`,
+            { runPermissions: { mode: "full" } },
+            assertSettingsUnlocked,
+          ),
         ),
       ),
-    ).toBe("POLICY_FULL_ACCESS_LOCKED");
+    ).toBe("CONFIG_LOCKED");
     const ok = await as("tadmin", (tx) =>
       updateProjectSettings(tx, org.user("tadmin"), `pol-${tag}`, { runPermissions: { mode: "workspace" } }),
     );

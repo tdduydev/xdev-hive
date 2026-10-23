@@ -58,7 +58,7 @@ import {
   registerMcpTools as knowledgeMcpTools,
   knowledgeRouter,
 } from "./modules/knowledge/index.ts";
-import { assertSettingsUnlocked, layeredConfigRouter } from "./modules/layers/index.ts";
+import { assertSettingsUnlocked, layeredConfigRouter, syncPolicyEntries } from "./modules/layers/index.ts";
 import {
   createThreadHost,
   createThreadLinkTarget,
@@ -325,6 +325,7 @@ export function createApp({
     mcpAdmin: mcpAdminRouter({ auth: baseAuth, pool, registry }),
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({
+      policyGuard: syncPolicyEntries,
       auth,
       pool,
       templates: templateService({ publicUrl, jobs }),

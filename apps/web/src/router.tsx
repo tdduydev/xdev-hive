@@ -116,6 +116,8 @@ const JenkinsTokensPage = lazyRouteComponent(
   "JenkinsTokensPage",
 );
 const CiCdPage = lazyRouteComponent(() => import("@/pages/projects/cicd-page.tsx"), "CiCdPage");
+const ProjectConfigPage = lazyRouteComponent(() => import("@/pages/projects/config-page.tsx"), "ProjectConfigPage");
+const OrgConfigPage = lazyRouteComponent(() => import("@/pages/projects/config-page.tsx"), "OrgConfigPage");
 const TokenUsagePage = lazyRouteComponent(() => import("@/pages/projects/token-usage-page.tsx"), "TokenUsagePage");
 const ServersPage = lazyRouteComponent(() => import("@/pages/settings/servers-page.tsx"), "ServersPage");
 const EnvironmentsPage = lazyRouteComponent(() => import("@/pages/settings/environments-page.tsx"), "EnvironmentsPage");
@@ -475,6 +477,7 @@ const deliveryRoutes = [
 
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
 const v2Routes = [
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/projects/$key/config", component: ProjectConfigPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/import", component: DocImportPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/conflicts/$id", component: DocConflictPage }),
@@ -538,6 +541,7 @@ const v2Routes = [
     component: McpPage,
   }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/policies", component: PoliciesPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/config", component: OrgConfigPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/public-links", component: PublicLinksPage }),
   createRoute({
     getParentRoute: () => inOrgRoute,

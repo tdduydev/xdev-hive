@@ -1,45 +1,9 @@
-# Data Model: Layered configuration
+# Dữ liệu cấu hình hai lớp
 
-## Registry entry (code, not a table)
+`config_layer_entries`: khoá chính `(org_id, layer, target_id, key)`; CHECK `layer in ('org', 'project')`; value JSONB có thể null, locked boolean, version số nguyên, updated_by, updated_at. RLS bật và ép, USING/WITH CHECK theo `hive.ctx_org()`.
 
-| Field | Meaning |
-|---|---|
-| `key` | Stable id, for example `limits.perRunUsd` |
-| `group` | `agent`, `limits`, `project` |
-| `kind` | `ceiling`, `override`, `additive` |
-| `layers` | Layers allowed to set it (`instance`, `org`, `team`, `project`) |
-| `schema` | zod schema of one value |
-| `default` | Value when no layer sets it; equals today's code default |
-| `safe` | Value a client uses when its snapshot is too old (only for settings that widen permissions) |
-| `dangerous` | Loosening needs `policies.fullaccess` |
-| `merge` | Ceiling only: `restrictive-bool`, `min-number`, `scale` (with ordered list) |
+Service chỉ ghi hàng tổ chức. Dự án vẫn lưu trong `projects.settings`. Với khoá ánh xạ chính sách, hàng tổ chức chỉ giữ khoá/phiên bản; `agent_policies` giữ giá trị duy nhất. Hàng đã gỡ giữ phiên bản để form cũ không ghi đè sau một chu kỳ đặt/gỡ.
 
-## Table `config_layer_entries` (new, RLS forced)
+`projects.settings.inheritedConfigKeys` là danh sách bốn khoá được phép kế thừa rõ ràng; adapter bỏ các khoá này khỏi lớp dự án. Nhờ vậy không xoá trường bắt buộc của cấu trúc cũ. Ghi giá trị khác qua API settings cũ gỡ dấu kế thừa đúng mục.
 
-| Column | Type | Notes |
-|---|---|---|
-| `org_id` | uuid, default `hive.ctx_org()` | RLS key |
-| `layer` | text, `org` or `team` (check) | `project` and `instance` are not stored here |
-| `target_id` | uuid | org id for `org`, team id for `team` |
-| `key` | text | registry key |
-| `value` | jsonb, nullable | null means "no value, only the lock flag" |
-| `locked` | boolean, default false | lower layers cannot change it |
-| `version` | integer, default 1 | optimistic concurrency |
-| `updated_by` | text | user id |
-| `updated_at` | timestamptz | |
-
-Primary key `(org_id, layer, target_id, key)`. Policy `config_layer_entries_rw` for `hive_app`, `org_id = hive.ctx_org()`.
-Team deletion removes its rows in the same transaction as before (checked by test), and the table has no foreign key to
-`teams` so module boundaries stay clean; a stale row for a missing team is ignored on read.
-
-## Effective setting (response)
-
-`key`, `value`, `source { layer, targetId }`, `lock { layer } | null`, `overCeiling { layer, targetId, value } | null`,
-`chain` (per layer value, filtered by the viewer's rights; the MVP returns the chain only to users allowed to write
-the project settings).
-
-## Snapshot
-
-`orgId`, `projectId`, `schemaVersion`, `generatedAt`, `configVersion`, `settings[]` (effective settings without chain).
-
-The snapshot is always for exactly one org. Clients key their cache by hub + org + project and never merge two orgs (FR-069, spec 034).
+Team, run, instance, ceiling và cache desktop: ngoài phạm vi.

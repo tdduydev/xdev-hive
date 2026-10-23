@@ -7,8 +7,7 @@ import {
 } from "@xdev-hive/contracts";
 import { eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
-import { loadPolicy } from "../governance/index.ts";
-import { BadRequestError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
+import { BadRequestError, NotFoundError, type Tx } from "../platform/index.ts";
 import { allowWith, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { findProject } from "./projects.ts";
 import { projects } from "./schema.ts";
@@ -36,6 +35,23 @@ function assign<T extends object>(base: T | undefined, patch: object): T {
 /** Áp bản vá lên settings hiện tại. Chưa kiểm kết quả; người gọi kiểm bằng projectSettings. */
 export function applySettingsPatch(current: ProjectSettings, patch: ProjectSettingsPatch): Record<string, unknown> {
   const next: Record<string, unknown> = { ...current };
+  // Đường ghi cũ đặt một giá trị rõ ràng thì phải kết thúc việc kế thừa cho đúng khoá đó.
+  const touched = [
+    ...(patch.runPermissions !== undefined && patch.runPermissions?.mode !== current.runPermissions?.mode
+      ? ["agent.permissionMode"]
+      : []),
+    ...((patch.budget === null || patch.budget?.perRunUsd !== undefined) &&
+    patch.budget?.perRunUsd !== current.budget?.perRunUsd
+      ? ["limits.perRunUsd"]
+      : []),
+    ...(patch.merge?.mode !== undefined && patch.merge.mode !== current.merge?.mode ? ["merge.mode"] : []),
+    ...(patch.merge?.requireCi !== undefined && patch.merge.requireCi !== current.merge?.requireCi
+      ? ["merge.requireCi"]
+      : []),
+  ];
+  if (current.inheritedConfigKeys)
+    next.inheritedConfigKeys = current.inheritedConfigKeys.filter((k) => !touched.includes(k));
+  if (patch.inheritedConfigKeys !== undefined) next.inheritedConfigKeys = patch.inheritedConfigKeys;
   if (patch.merge) next.merge = assign(current.merge, patch.merge);
   if (patch.outcome) {
     next.outcome = {
@@ -114,12 +130,6 @@ export async function updateProjectSettings(
     throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
   }
   await allowWith(tx, userId, "projects.settings", () => requireTeamRole(tx, userId, ref.teamId, "admin"), ref.teamId);
-  if (patch.runPermissions?.mode === "full" && !(await loadPolicy(tx)).allowFullPermission) {
-    throw new ForbiddenError(
-      "POLICY_FULL_ACCESS_LOCKED",
-      "Chính sách agent của tổ chức không cho dự án bật toàn quyền CLI.",
-    );
-  }
   const [row] = await tx
     .select({ settings: projects.settings })
     .from(projects)

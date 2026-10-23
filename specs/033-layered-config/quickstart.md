@@ -1,18 +1,12 @@
-# Quickstart: Layered configuration
+# Kiểm tra nhanh
 
-1. Org admin sets `limits.perRunUsd = 20` on the policy page (unchanged flow).
-2. Team admin calls `layeredConfig.teamSet({ teamId, key: "limits.perRunUsd", value: 5 })`.
-3. A project in that team sets `budget.perRunUsd = 8` in project settings (unchanged flow).
-4. `layeredConfig.effective({ projectId })` returns `limits.perRunUsd = 5`, source `team`, `overCeiling` pointing at the
-   project value 8.
-5. Org admin calls `layeredConfig.orgLock({ key: "agent.permissionMode", locked: true })`. The project value for that
-   override setting stays stored but is no longer applied.
+1. Đăng nhập bằng quản trị tổ chức, mở `/admin/config`. Đặt ngân sách mỗi run 20, chưa khoá.
+2. Mở `/projects/<key>/config` hoặc tab cài đặt. Đặt ngân sách 50: nhãn ghi đè, hiệu lực 50.
+3. Tổ chức khoá ngân sách: dự án hiện bị khoá, hiệu lực 20, giá trị riêng 50 tạm ngưng. API settings cũ cũng không sửa được ngân sách đó.
+4. Mở khoá: hiệu lực 50 trở lại. Chọn dùng kế thừa: hiệu lực 20. Khoá khác không bị ảnh hưởng.
+5. Sửa chính sách tổ chức qua trang cũ: giá trị ánh xạ đổi theo và cờ khoá giữ nguyên. Form cấu hình tổ chức cũ nhận lỗi phiên bản.
+6. Thành viên chỉ xem và người ngoài đội không đọc được cấu hình dự án.
 
-Run the checks:
+Chạy vitest `src/modules/layers`, DB test layers/catalog/governance khi có Docker; web vitest helpers và Playwright `e2e/layered-config.spec.ts`, `e2e/projects-runs.spec.ts`. Chạy typecheck, deps, biome và openapi trước commit. Không chạy full `pnpm ci:local`.
 
-```bash
-npx -y pnpm@12.11.2 biome check --write .
-npx -y pnpm@12.11.2 --filter @xdev-hive/hub exec vitest run src/modules/layers
-npx -y pnpm@12.11.2 deps
-npx -y pnpm@12.11.2 openapi
-```
+Team, run, instance, ceiling, additive và cache desktop: ngoài phạm vi.
