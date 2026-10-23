@@ -29,6 +29,7 @@ import {
 } from "./doc-sync.ts";
 import { fleetContract } from "./fleet.ts";
 import { briefContract, docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
+import { layeredConfigContract } from "./layered-config.ts";
 import { leaderContract } from "./leader.ts";
 import { mcpAdminContract } from "./mcp-admin.ts";
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
@@ -62,6 +63,7 @@ export * from "./egress.ts";
 export * from "./glob.ts";
 export * from "./knowledge.ts";
 export * from "./knowledge-search.ts";
+export * from "./layered-config.ts";
 export * from "./line-diff.ts";
 export * from "./mcp-admin.ts";
 export * from "./notify.ts";
@@ -182,6 +184,7 @@ export const contract = {
   skillRepo: skillRepoContract,
   skillLearning: skillLearningContract,
   policies: policiesContract,
+  layeredConfig: layeredConfigContract,
   reviewWorkflows: workflowsContract,
   reviews: reviewsContract,
   codeReviews: codeReviewsContract,

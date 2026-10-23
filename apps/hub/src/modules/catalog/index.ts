@@ -51,7 +51,7 @@ export {
   registerProvisionWorker,
   runProvision,
 } from "./saga.ts";
-export { applySettingsPatch, updateProjectSettings } from "./settings.ts";
+export { applySettingsPatch, type SettingsGuard, updateProjectSettings } from "./settings.ts";
 export { renderTemplate, TEMPLATE_ID, TEMPLATE_VERSION, type TemplateFile, type TemplateInput } from "./template.ts";
 export {
   registerTemplateSyncWorker,
