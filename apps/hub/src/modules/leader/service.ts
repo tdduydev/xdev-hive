@@ -6,9 +6,11 @@ import type { Tx } from "../platform/index.ts";
 import { ConflictError, NotFoundError } from "../platform/index.ts";
 import type { RunsEngine } from "../runs/index.ts";
 import type { SdlcDeps } from "../sdlc/index.ts";
+import { requireTeamRole } from "../tenancy/index.ts";
 import { emitLeaderActivity, executeLeaderAction, tierChoice } from "./actions.ts";
 import { assembleLeaderPrompt, loadTranscript, projectContext } from "./prompt.ts";
 import { approvals, chatMessages, chatThreads } from "./schema.ts";
+import { requireThreadAccess, visibleThreadsWhere } from "./visibility.ts";
 
 export const messageView = (row: typeof chatMessages.$inferSelect, artifact: ChatArtifactRef | null = null) => ({
   id: row.id,
@@ -41,6 +43,12 @@ export async function createThread(
   userId: string,
   input: { projectId?: string | null | undefined; title: string },
 ) {
+  // Hội thoại gắn dự án chỉ thấy được trong đội của dự án, nên người tạo phải có vai trò ở đội đó (spec 034 FR-090).
+  if (input.projectId) {
+    const project = await loadProject(tx, input.projectId);
+    if (!project) throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án.");
+    await requireTeamRole(tx, userId, project.teamId, "viewer");
+  }
   const [row] = await tx
     .insert(chatThreads)
     .values({
@@ -71,6 +79,7 @@ export async function sendLeaderMessage(
 ) {
   const [thread] = await tx.select().from(chatThreads).where(eq(chatThreads.id, input.threadId));
   if (!thread) throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
+  await requireThreadAccess(tx, userId, thread);
   if (!thread.projectId)
     throw new ConflictError("LEADER_PROJECT_REQUIRED", "Hãy gắn cuộc trò chuyện với một dự án trước khi gửi tin nhắn.");
   const project = await loadProject(tx, thread.projectId);
@@ -109,16 +118,34 @@ export async function sendLeaderMessage(
   };
 }
 
-export async function listApprovals(tx: Tx, status?: (typeof approvals.$inferSelect)["status"], threadId?: string) {
+/** Đề xuất của các hội thoại người dùng thấy được (spec 034 FR-090), kể cả khi gọi từ kênh chat. */
+export async function listApprovals(
+  tx: Tx,
+  userId: string,
+  status?: (typeof approvals.$inferSelect)["status"],
+  threadId?: string,
+) {
   await expireApprovals(tx);
   const rows = await tx
-    .select()
+    .select({ approval: approvals })
     .from(approvals)
+    .innerJoin(chatThreads, eq(chatThreads.id, approvals.threadId))
     .where(
-      and(status ? eq(approvals.status, status) : undefined, threadId ? eq(approvals.threadId, threadId) : undefined),
+      and(
+        status ? eq(approvals.status, status) : undefined,
+        threadId ? eq(approvals.threadId, threadId) : undefined,
+        await visibleThreadsWhere(tx, userId),
+      ),
     )
     .orderBy(desc(approvals.createdAt));
-  return rows.map(approvalView);
+  return rows.map((r) => approvalView(r.approval));
+}
+
+/** Kiểm người dùng thấy hội thoại của đề xuất; `min` là vai trò đội tối thiểu để quyết định. */
+async function requireApprovalThread(tx: Tx, userId: string, threadId: string, min?: "member") {
+  const [thread] = await tx.select().from(chatThreads).where(eq(chatThreads.id, threadId));
+  if (!thread) throw new NotFoundError("LEADER_THREAD_NOT_FOUND", "Không tìm thấy cuộc trò chuyện.");
+  await requireThreadAccess(tx, userId, thread, min);
 }
 
 export async function approveApproval(
@@ -132,6 +159,8 @@ export async function approveApproval(
   await expireApprovals(tx);
   const [row] = await tx.select().from(approvals).where(eq(approvals.id, id)).for("update");
   if (row?.status !== "pending") throw new ConflictError("APPROVAL_NOT_PENDING", "Đề xuất không còn chờ duyệt.");
+  // Hành động chạy với quyền của người duyệt nên tự kiểm vai trò; ở đây chỉ chặn người không thấy hội thoại.
+  await requireApprovalThread(tx, userId, row.threadId);
   const proposed = leaderAction.parse(row.action);
   // Người duyệt sửa cấp độ Leader đã chọn: hành động lưu lại với cấp mới để lịch sử khớp việc đã làm.
   const action =
@@ -188,6 +217,8 @@ export async function rejectApproval(tx: Tx, userId: string, id: string, reason:
   const [row] = await tx.select().from(approvals).where(eq(approvals.id, id)).for("update");
   if (row?.status !== "pending" || row.expiresAt <= new Date())
     throw new ConflictError("APPROVAL_NOT_PENDING", "Đề xuất không còn chờ xử lý.");
+  // Từ chối bỏ việc Leader đề xuất cho đội; người xem của đội không được quyết thay (spec 034 FR-090).
+  await requireApprovalThread(tx, userId, row.threadId, "member");
   const [updated] = await tx
     .update(approvals)
     .set({ status: "rejected", decidedBy: userId, reason })

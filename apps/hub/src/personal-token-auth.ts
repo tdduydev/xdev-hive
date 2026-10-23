@@ -39,6 +39,9 @@ export function withPersonalTokens(auth: Auth, pool: pg.Pool, registry: McpToolR
       session: {
         // Không phải phiên Better Auth: id cho biết đến từ token cá nhân, để nơi cần chặn (quản trị token) nhận ra.
         id: `pat:${principal.personalTokenId ?? ""}`,
+        // Tổ chức của token: header chỉ là một cách chọn tổ chức, đường dẫn /v1/orgs/{orgId} và `?org=` là cách khác,
+        // nên nơi chọn tổ chức phải so với giá trị này (spec 034 FR-094, tokenOrgMismatch).
+        tokenOrgId: principal.orgId,
         token: "",
         userId: user.id,
         expiresAt: now,

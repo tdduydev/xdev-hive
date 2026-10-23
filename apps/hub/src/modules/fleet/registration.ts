@@ -3,7 +3,7 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { type Tx, withTenant } from "../platform/index.ts";
-import { allowWith, requireTeamRole } from "../tenancy/index.ts";
+import { allowWith, orgs, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { FleetError, invalidRegistration } from "./errors.ts";
 import { machines, machineTokens, registrationTokens } from "./schema.ts";
 import { hashToken, MACHINE_PREFIX, newToken, REGISTRATION_PREFIX, withTokenLookup } from "./tokens.ts";
@@ -114,6 +114,16 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
     if (existing && (existing.teamId !== claimed.teamId || existing.kind !== claimed.kind)) {
       throw new FleetError("conflict", "MACHINE_NAME_TAKEN", `Tên máy "${input.machineId}" đã được đội khác dùng.`);
     }
+    // Cài lại giữ id, lịch sử và quyền chạy run riêng của chủ máy (ADR 0017), nên người chỉ có quyền tạo mã không được
+    // dùng tên máy của người khác để chiếm máy cá nhân của họ (spec 034 FR-093). Admin đội vẫn cài lại hộ được.
+    const previousOwner = existing?.registeredBy ?? null;
+    if (existing && previousOwner && previousOwner !== claimed.createdBy) {
+      const creatorRole = await teamRoleOf(tx, claimed.createdBy, claimed.teamId);
+      if (creatorRole !== "admin")
+        throw new FleetError("conflict", "MACHINE_NAME_TAKEN", `Tên máy "${input.machineId}" đã được dùng.`);
+    }
+    // Đổi chủ máy thì thu hồi rồi đăng ký mới; cài lại không lặng lẽ chuyển máy sang người tạo mã.
+    if (previousOwner) info.registeredBy = previousOwner;
     // Cài lại máy cùng tên trong cùng đội (máy cài lại hệ điều hành, mất file cấu hình): giữ id để còn lịch sử run,
     // bỏ token cũ và gỡ trạng thái thu hồi vì admin đội vừa cấp mã mới.
     const [machine] = existing
@@ -150,11 +160,20 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
         name: machine.name,
         teamId: machine.teamId,
         reinstalled: Boolean(existing),
+        ...(existing ? { previousOwner, reinstalledBy: claimed.createdBy } : {}),
         os: input.os,
         keyStorage: info.keyStorage,
       },
     });
-    return { id: machine.id, orgId: found.orgId, teamId: machine.teamId, machineId: machine.name, machineToken };
+    const [org] = await tx.select({ name: orgs.name }).from(orgs).where(eq(orgs.id, found.orgId));
+    return {
+      id: machine.id,
+      orgId: found.orgId,
+      ...(org ? { orgName: org.name } : {}),
+      teamId: machine.teamId,
+      machineId: machine.name,
+      machineToken,
+    };
   });
 }
 

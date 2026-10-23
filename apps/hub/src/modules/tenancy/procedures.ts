@@ -26,6 +26,18 @@ export interface SessionUser {
 }
 
 export const ORG_HEADER = "x-hive-org";
+
+/**
+ * Phiên đến từ token cá nhân mà tổ chức đang chọn khác tổ chức của token (spec 034 FR-094). Bridge token cá nhân chỉ
+ * thấy header, không thấy đường dẫn hay `?org=`, nên mọi chỗ chọn tổ chức phải hỏi lại ở đây. Phiên cookie luôn hợp lệ.
+ */
+export function tokenOrgMismatch(session: { session?: unknown } | null | undefined, orgId: string): boolean {
+  const tokenOrgId = (session?.session as { tokenOrgId?: unknown } | undefined)?.tokenOrgId;
+  return typeof tokenOrgId === "string" && tokenOrgId !== orgId;
+}
+
+const tokenOrgError = () =>
+  new ORPCError("UNAUTHORIZED", { message: "Token cá nhân không dùng được cho tổ chức này." });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Phần TenancyDeps mà middleware chọn tổ chức cần; module khác (scm, catalog) chỉ cần truyền chừng này. */
@@ -43,13 +55,14 @@ export function orgMiddlewares(deps: OrgDeps) {
     if (!session) throw new ORPCError("UNAUTHORIZED", { message: "Chưa đăng nhập." });
     if (!deps.pool) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Hub chưa cấu hình HIVE_DATABASE_URL." });
     const { id, name, email } = session.user;
-    return next({ context: { user: { id, name, email } satisfies SessionUser, pool: deps.pool } });
+    return next({ context: { user: { id, name, email } satisfies SessionUser, pool: deps.pool, session } });
   });
 
-  const authedContext = os.$context<RequestContext & { user: SessionUser; pool: pg.Pool }>();
+  const authedContext = os.$context<RequestContext & { user: SessionUser; pool: pg.Pool; session: unknown }>();
 
   const inOrg = authedContext.middleware(async ({ context, next }, input: unknown) => {
     const orgId = selectedOrg(context.headers, input);
+    if (tokenOrgMismatch(context.session as { session?: unknown }, orgId)) throw tokenOrgError();
     const { user, pool } = context;
     return withTenant(pool, { userId: user.id, orgId }, async (tx) => {
       // RLS chỉ giới hạn theo tổ chức trong context, không theo tư cách thành viên: ai cũng đặt được header. Vì vậy
@@ -61,6 +74,7 @@ export function orgMiddlewares(deps: OrgDeps) {
 
   const orgMember = authedContext.middleware(async ({ context, next }, input: unknown) => {
     const orgId = selectedOrg(context.headers, input);
+    if (tokenOrgMismatch(context.session as { session?: unknown }, orgId)) throw tokenOrgError();
     const { user, pool } = context;
     const orgRole = await withTenant(pool, { userId: user.id, orgId }, (tx) => requireOrgRole(tx, user.id, "member"));
     return next({ context: { orgId, orgRole } });

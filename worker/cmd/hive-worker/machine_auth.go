@@ -33,6 +33,7 @@ func machineAuth(ctx context.Context, cfg *config.Config) (*hubclient.TokenSourc
 		return nil, errors.New("không biết worker.json ở đâu để tìm khoá máy")
 	}
 	store := newKeyStore(cfg.Path)
+	store.Scope = cfg.KeyScope
 	if cfg.KeyStorage == "" {
 		if err := migrateMachineKey(ctx, cfg, store); err != nil {
 			slog.Warn("chưa gửi được khoá máy lên hub, dùng tạm machine token", "err", err)
