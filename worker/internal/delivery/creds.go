@@ -43,6 +43,11 @@ func readCredential(r CredentialReader, name string) ([]byte, error) {
 		if errors.Is(err, ErrCredentialNotFound) {
 			return nil, newError(CodeMissingCredential, 0, "Máy này chưa có credential %q. Thêm ở màn Bí mật.", name)
 		}
+		// KeyringCredentials đã chọn mã (kho khoá, kho hỏng); giữ mã đó và thêm tên để người đọc biết credential nào.
+		var e *Error
+		if errors.As(err, &e) {
+			return nil, newError(e.Code, 0, "Không đọc được credential %q: %s", name, e.Message)
+		}
 		return nil, newError(CodeUnavailable, 0, "Không đọc được credential %q từ kho bí mật.", name)
 	}
 	if len(v) == 0 {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delivery-cred-delete"
+description = "Enables the delivery_cred_delete command without any pre-configured scope."
+commands.allow = ["delivery_cred_delete"]
+
+[[permission]]
+identifier = "deny-delivery-cred-delete"
+description = "Denies the delivery_cred_delete command without any pre-configured scope."
+commands.deny = ["delivery_cred_delete"]

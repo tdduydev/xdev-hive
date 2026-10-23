@@ -223,7 +223,12 @@ func (e *Executor) runJenkins(ctx context.Context, spec JobSpec, cred []byte, jl
 		return newError(CodeUnavailable, 0, "Jenkins huỷ hoặc chưa nhận build.")
 	}
 	e.step(spec.JobID, "Bấm build", "succeeded")
-	e.emit(spec.JobID, "external", Event{"ref": fmt.Sprintf("%s#%d", job, tr.Number), "url": tr.URL})
+	ext := Event{"ref": truncate(fmt.Sprintf("%s#%d", job, tr.Number), 500)}
+	// Hợp đồng đòi url là URL hợp lệ hoặc vắng hẳn; Jenkins chưa cấu hình root URL thì trả chuỗi rỗng, zod ở hub từ chối.
+	if tr.URL != "" {
+		ext["url"] = tr.URL
+	}
+	e.emit(spec.JobID, "external", ext)
 	jl.Printf("Jenkins build %s #%d", job, tr.Number)
 
 	e.step(spec.JobID, "Chờ build", "running")

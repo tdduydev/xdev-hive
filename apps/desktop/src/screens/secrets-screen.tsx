@@ -14,6 +14,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { ListIcon, LockIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
+import { DeliveryCredentials } from "@/components/delivery-credentials.tsx";
 import { SecretFormDialog } from "@/components/secret-form-dialog.tsx";
 import { SecretValueActions } from "@/components/secret-value-actions.tsx";
 import { SecretsLog } from "@/components/secrets-log.tsx";
@@ -41,6 +42,8 @@ const text: Dict<{
   tabs: string;
   tabList: string;
   tabLog: string;
+  tabDelivery: string;
+  deliveryLead: string;
   add: string;
   reserved: string;
   refresh: string;
@@ -84,6 +87,9 @@ const text: Dict<{
     tabs: "Mục của màn Bí mật",
     tabList: "Danh sách",
     tabLog: "Nhật ký",
+    tabDelivery: "Credential triển khai",
+    deliveryLead:
+      "Credential để worker gọi Jenkins hay Argo CD khi triển khai. Khác bí mật của dự án: không gán cho dự án, không vào biến môi trường của agent hay terminal, và đã lưu thì không xem lại được.",
     lead: "Bí mật của máy này (khoá API, chuỗi kết nối…). Giá trị nằm trong kho của hệ điều hành, không lên hub; agent nhận qua biến môi trường của dự án được gán.",
     add: "Thêm bí mật",
     reserved: "Tên dành riêng",
@@ -135,6 +141,9 @@ const text: Dict<{
     tabs: "Secrets sections",
     tabList: "List",
     tabLog: "Log",
+    tabDelivery: "Delivery credentials",
+    deliveryLead:
+      "Credentials the worker uses to call Jenkins or Argo CD during delivery. Unlike project secrets they are never assigned to projects, never put in agent or terminal environments, and cannot be viewed once saved.",
     lead: "Secrets of this machine (API keys, connection strings…). Values live in the OS store, never on the hub; agents get them as environment variables of the assigned projects.",
     add: "Add secret",
     reserved: "Reserved names",
@@ -191,6 +200,9 @@ const subscribe = (listener: () => void) => {
   return () => window.removeEventListener("hashchange", listener);
 };
 
+type Tab = "list" | "log" | "delivery";
+const TABS: readonly Tab[] = ["list", "log", "delivery"];
+
 /** localId của dự án đang lọc (theo `#/secrets/<localId>`); rỗng là mọi dự án. */
 const useProjectFilter = () =>
   useSyncExternalStore(
@@ -212,7 +224,7 @@ export function SecretsScreen() {
   const [form, setForm] = useState<{ secret: SecretItem | null } | null>(null);
   const [deleting, setDeleting] = useState<SecretItem | null>(null);
   const [showReserved, setShowReserved] = useState(false);
-  const [tab, setTab] = useState<"list" | "log">("list");
+  const [tab, setTab] = useState<Tab>("list");
   const tabsId = useId();
 
   const load = useCallback(async () => {
@@ -247,24 +259,32 @@ export function SecretsScreen() {
   return (
     <div className="flex flex-col gap-3.5">
       <header className="flex flex-wrap items-center gap-3">
-        <p className="min-w-60 flex-1 text-sm text-muted-foreground">{t.lead}</p>
-        <Button variant="outline" onClick={() => setShowReserved(true)}>
-          <ListIcon aria-hidden="true" />
-          {t.reserved}
-        </Button>
-        <Button disabled={!storeUsable(status)} onClick={() => setForm({ secret: null })}>
-          <PlusIcon aria-hidden="true" />
-          {t.add}
-        </Button>
+        <p className="min-w-60 flex-1 text-sm text-muted-foreground">{tab === "delivery" ? t.deliveryLead : t.lead}</p>
+        {/* Tab credential triển khai có nút thêm và báo kho riêng: hai loại không lẫn nhau. */}
+        {tab !== "delivery" && (
+          <>
+            <Button variant="outline" onClick={() => setShowReserved(true)}>
+              <ListIcon aria-hidden="true" />
+              {t.reserved}
+            </Button>
+            <Button disabled={!storeUsable(status)} onClick={() => setForm({ secret: null })}>
+              <PlusIcon aria-hidden="true" />
+              {t.add}
+            </Button>
+          </>
+        )}
       </header>
 
-      {!storeUsable(status) && status && <StoreBanner status={status} onRecheck={() => void load()} />}
+      {tab !== "delivery" && !storeUsable(status) && status && (
+        <StoreBanner status={status} onRecheck={() => void load()} />
+      )}
 
       <div role="tablist" aria-label={t.tabs} className="inline-flex w-fit rounded-lg bg-muted p-0.5">
         {(
           [
             ["list", t.tabList],
             ["log", t.tabLog],
+            ["delivery", t.tabDelivery],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -279,8 +299,10 @@ export function SecretsScreen() {
             onKeyDown={(e) => {
               if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
               e.preventDefault();
-              setTab(id === "list" ? "log" : "list");
-              document.getElementById(`${tabsId}-${id === "list" ? "log" : "list"}`)?.focus();
+              const step = e.key === "ArrowRight" ? 1 : TABS.length - 1;
+              const next = TABS[(TABS.indexOf(id) + step) % TABS.length] ?? "list";
+              setTab(next);
+              document.getElementById(`${tabsId}-${next}`)?.focus();
             }}
             className={cn(
               "h-7 cursor-pointer rounded-md px-3 text-sm",
@@ -300,6 +322,7 @@ export function SecretsScreen() {
         aria-labelledby={`${tabsId}-${tab}`}
         className="flex flex-col gap-3.5"
       >
+        {tab === "delivery" && <DeliveryCredentials />}
         {tab === "log" && (
           <SecretsLog
             secretNames={(data?.secrets ?? []).map((s) => s.name)}

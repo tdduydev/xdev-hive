@@ -30,9 +30,19 @@ func TestScopedCredentialsRejectBadNames(t *testing.T) {
 	if _, err := c.Read("../reg-b/jenkins"); CodeOf(err) != CodeBadRequest {
 		t.Fatalf("got %v", err)
 	}
-	bad := ScopedCredentials{Scope: Scope{RegistrationID: "../x"}, Store: MapCredentials{}}
-	if _, err := bad.Read("jenkins"); CodeOf(err) != CodeBadRequest {
-		t.Fatalf("got %v", err)
+	for _, id := range []string{"../x", "a/b", "", `a\b`} {
+		bad := ScopedCredentials{Scope: Scope{RegistrationID: id}, Store: MapCredentials{}}
+		if _, err := bad.Read("jenkins"); CodeOf(err) != CodeBadRequest {
+			t.Fatalf("%q: got %v", id, err)
+		}
+	}
+}
+
+func TestScopeAcceptsRegistryIDs(t *testing.T) {
+	for _, id := range []string{"reg_legacy", "reg_abcd2345"} {
+		if !(Scope{RegistrationID: id}).Valid() {
+			t.Fatalf("%q phải hợp lệ", id)
+		}
 	}
 }
 

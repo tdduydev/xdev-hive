@@ -40,7 +40,7 @@ func (s *Store) Status() Status {
 	}
 	no := false
 	st.Locked = &no
-	if _, err := s.kr.Get(Service, probeAccount); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	if _, err := s.kr.Get(s.svc(), probeAccount); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		e := classify(err)
 		st.Available = e.Code != CodeStoreUnavailable
 		if e.Code == CodeStoreLocked {
