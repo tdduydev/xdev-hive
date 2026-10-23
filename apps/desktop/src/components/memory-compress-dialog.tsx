@@ -87,7 +87,7 @@ const applyEdit = (path: string, content: string) =>
   invoke<{ entry: string }>("memory_apply", { operation: { action: "edit", path, content } });
 
 /** Gắn cờ "mới" vào dòng thêm theo số dòng của bản mới; số dòng đếm trên toàn bộ diff, trước khi cắt bớt đoạn giống. */
-function annotate(p: CompressProposal): (Line | null)[] {
+function annotate(p: Pick<CompressProposal, "before" | "content" | "newLines">): (Line | null)[] {
   const fresh = new Set(p.newLines);
   let n = 0;
   const lines = lineDiff(p.before, p.content).map((l): Line => {
@@ -95,6 +95,39 @@ function annotate(p: CompressProposal): (Line | null)[] {
     return { ...l, unsourced: l.kind === "add" && fresh.has(n) };
   });
   return diffHunks(lines) as (Line | null)[];
+}
+
+/** Diff trước/sau của một đề xuất AI, dòng thêm không có nguồn được viền cam. Dùng chung cho nén và gộp. */
+export function ProposalDiff({ proposal }: { proposal: Pick<CompressProposal, "before" | "content" | "newLines"> }) {
+  const t = useT(text);
+  return (
+    <div className="max-h-64 overflow-auto rounded-md border font-mono text-xs leading-5">
+      {annotate(proposal).map((line, i) =>
+        line === null ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: diff chỉ đọc, thứ tự cố định
+          <div key={i} className="px-2.5 text-muted-foreground">
+            …
+          </div>
+        ) : (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: diff chỉ đọc, thứ tự cố định
+            key={i}
+            className={cn(
+              "px-2.5 whitespace-pre-wrap",
+              line.kind === "add" && "bg-success-soft text-success",
+              line.kind === "del" && "bg-destructive-soft text-destructive",
+              line.unsourced && "border-l-2 border-warning",
+            )}
+            data-unsourced={line.unsourced || undefined}
+          >
+            {line.kind === "add" ? "+ " : line.kind === "del" ? "- " : ""}
+            {line.text}
+            {line.unsourced && <span className="ml-2 text-warning">({t.unsourced})</span>}
+          </div>
+        ),
+      )}
+    </div>
+  );
 }
 
 /**
@@ -214,32 +247,7 @@ export function MemoryCompressDialog({
                 <span className="text-xs text-muted-foreground">{t.saved(f.tokensBefore, f.tokensAfter)}</span>
               </span>
             </label>
-            <div className="max-h-64 overflow-auto rounded-md border font-mono text-xs leading-5">
-              {annotate(f).map((line, i) =>
-                line === null ? (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: diff chỉ đọc, thứ tự cố định
-                  <div key={i} className="px-2.5 text-muted-foreground">
-                    …
-                  </div>
-                ) : (
-                  <div
-                    // biome-ignore lint/suspicious/noArrayIndexKey: diff chỉ đọc, thứ tự cố định
-                    key={i}
-                    className={cn(
-                      "px-2.5 whitespace-pre-wrap",
-                      line.kind === "add" && "bg-success-soft text-success",
-                      line.kind === "del" && "bg-destructive-soft text-destructive",
-                      line.unsourced && "border-l-2 border-warning",
-                    )}
-                    data-unsourced={line.unsourced || undefined}
-                  >
-                    {line.kind === "add" ? "+ " : line.kind === "del" ? "- " : ""}
-                    {line.text}
-                    {line.unsourced && <span className="ml-2 text-warning">({t.unsourced})</span>}
-                  </div>
-                ),
-              )}
-            </div>
+            <ProposalDiff proposal={f} />
           </section>
         ))}
         {result?.files.some((f) => f.newLines.length > 0) && (

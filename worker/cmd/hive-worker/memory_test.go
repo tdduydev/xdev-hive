@@ -349,3 +349,39 @@ func TestMemoryCompressRejectsFilesOutsideTheChosenProfile(t *testing.T) {
 		t.Errorf("unknown profile: code = %d, stderr = %q", code, errOut)
 	}
 }
+
+func TestMemoryConsolidateProposesMergesForOneProfileAndWritesNothing(t *testing.T) {
+	env := fakeMemoryEnv(t)
+	only := filepath.Join(env.memDir("claude-2"), "only-claude-2.md")
+	shared := filepath.Join(env.memDir("claude-2"), "shared.md")
+	answer := `{"merges":[{"sources":[` + string(mustJSON(shared)) + `,` + string(mustJSON(only)) + `],"target":` +
+		string(mustJSON(shared)) + `,"reason":"cùng chủ đề","content":"bản 2\nriêng claude-2\n"}]}`
+	envFile := fakeClaudeCommand(t, answer)
+	before := scanView(t, env)
+
+	code, out, errOut := runMemory(t, env, "", "consolidate", "--profile", "claude-2", "--project", env.key)
+	if code != 0 {
+		t.Fatalf("consolidate: %d %s", code, errOut)
+	}
+	var res memstore.Consolidation
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("JSON: %v\n%s", err, out)
+	}
+	if len(res.Merges) != 1 || res.TokensUsed != 50 || res.Merges[0].Target != shared || len(res.Merges[0].Sources) != 2 ||
+		len(res.Merges[0].NewLines) != 0 {
+		t.Fatalf("result = %+v", res)
+	}
+	want := filepath.Join(env.home, ".xdev-hive", "accounts", "claude-2")
+	if got, _ := os.ReadFile(envFile); strings.TrimSpace(string(got)) != want {
+		t.Fatalf("CLAUDE_CONFIG_DIR = %q, want %q", got, want)
+	}
+	if got, _ := os.ReadFile(only); string(got) != "riêng claude-2\n" {
+		t.Fatalf("file changed: %q", got)
+	}
+	if after := scanView(t, env); len(after.Entries) != len(before.Entries) {
+		t.Fatal("consolidate left a backup entry")
+	}
+	if code, _, _ := runMemory(t, env, "", "consolidate", "--project", env.key); code != 2 {
+		t.Errorf("missing --profile: code = %d", code)
+	}
+}

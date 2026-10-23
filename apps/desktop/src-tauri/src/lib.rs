@@ -1182,6 +1182,7 @@ pub fn run() {
             memory_store::memory_scan,
             memory_store::memory_apply,
             memory_store::memory_compress,
+            memory_store::memory_consolidate,
             context_sync::context_status,
             context_sync::context_enable,
             context_sync::context_disable,

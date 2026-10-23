@@ -54,100 +54,27 @@ func Compress(ctx context.Context, opts CompressOptions) (Compression, error) {
 	if len(opts.Files) == 0 {
 		return Compression{}, errors.New("chưa chọn file memory nào để nén")
 	}
-	if opts.Command == "" {
-		return Compression{}, errors.New("không tìm thấy lệnh claude")
-	}
-	work, err := os.MkdirTemp("", "hive-compress-")
+	work, sources, err := stageFiles(opts.Files)
 	if err != nil {
 		return Compression{}, err
 	}
 	defer os.RemoveAll(work)
-
-	type source struct{ path, name, content string }
-	var sources []source
-	total := 0
-	for i, p := range opts.Files {
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			return Compression{}, fmt.Errorf("không đọc được %s: %w", p, err)
-		}
-		total += len(raw)
-		if total > maxCompressChars {
-			return Compression{}, fmt.Errorf("các file chọn dài quá %d ký tự, hãy chọn ít file hơn", maxCompressChars)
-		}
-		// Số thứ tự đứng đầu để hai file cùng tên ở hai thư mục không đè nhau.
-		name := fmt.Sprintf("%02d-%s", i+1, filepath.Base(p))
-		if err := os.WriteFile(filepath.Join(work, name), raw, 0o600); err != nil {
-			return Compression{}, err
-		}
-		sources = append(sources, source{p, name, string(raw)})
+	result, used, err := askClaude(ctx, opts, work, compressPrompt(sourceNames(sources)))
+	if err != nil {
+		return Compression{}, err
 	}
-
-	var names []string
-	for _, s := range sources {
-		names = append(names, s.name)
-	}
-	timeout := opts.Timeout
-	if timeout <= 0 {
-		timeout = CompressTimeout
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	args := append(append([]string{}, opts.Args...), "-p", "--output-format", "json", "--restricted", "--strict-mcp-config",
-		"--tools", "Read,Glob,Grep", "--permission-prompts", "none")
-	cmd := procattr.CommandContext(ctx, opts.Command, args...)
-	cmd.Dir = work
-	cmd.Env = append(os.Environ(), opts.Env...)
-	cmd.Stdin = strings.NewReader(compressPrompt(names))
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return Compression{}, fmt.Errorf("claude không trả lời trong %s", timeout)
-		}
-		detail := strings.TrimSpace(stderr.String())
-		if len(detail) > 300 {
-			detail = detail[:300]
-		}
-		return Compression{}, fmt.Errorf("claude lỗi: %v %s", err, detail)
-	}
-
-	var reply struct {
-		Result  string `json:"result"`
-		IsError bool   `json:"is_error"`
-		Usage   struct {
-			Input         int `json:"input_tokens"`
-			Output        int `json:"output_tokens"`
-			CacheCreation int `json:"cache_creation_input_tokens"`
-			CacheRead     int `json:"cache_read_input_tokens"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &reply); err != nil {
-		return Compression{}, fmt.Errorf("không đọc được kết quả của claude: %w", err)
-	}
-	if reply.IsError {
-		return Compression{}, fmt.Errorf("claude báo lỗi: %s", reply.Result)
-	}
-	out := Compression{Files: []Proposal{}, Warnings: []string{},
-		TokensUsed: reply.Usage.Input + reply.Usage.Output + reply.Usage.CacheCreation + reply.Usage.CacheRead}
+	out := Compression{Files: []Proposal{}, Warnings: []string{}, TokensUsed: used}
 	var answer struct {
 		Files []struct {
 			Path    string `json:"path"`
 			Content string `json:"content"`
 		} `json:"files"`
 	}
-	if err := json.Unmarshal([]byte(extractJSON(reply.Result)), &answer); err != nil {
+	if err := json.Unmarshal([]byte(extractJSON(result)), &answer); err != nil {
 		return out, errors.New("claude không trả về JSON đề xuất hợp lệ")
 	}
 
-	known := map[string]bool{}
-	for _, s := range sources {
-		for _, line := range strings.Split(s.content, "\n") {
-			if k := lineKey(line); k != "" {
-				known[k] = true
-			}
-		}
-	}
+	known := knownLines(sources)
 	seen := map[string]bool{}
 	for _, f := range answer.Files {
 		var src *source
@@ -171,16 +98,122 @@ func Compress(ctx context.Context, opts CompressOptions) (Compression, error) {
 			continue
 		}
 		seen[src.path] = true
-		p := Proposal{Path: src.path, Before: src.content, Content: f.Content, NewLines: []int{},
+		p := Proposal{Path: src.path, Before: src.content, Content: f.Content, NewLines: unsourcedLines(f.Content, known),
 			TokensBefore: EstimateTokens(src.content), TokensAfter: EstimateTokens(f.Content)}
-		for i, line := range strings.Split(f.Content, "\n") {
-			if k := lineKey(line); k != "" && !known[k] {
-				p.NewLines = append(p.NewLines, i+1)
-			}
-		}
 		out.Files = append(out.Files, p)
 	}
 	return out, nil
+}
+
+type source struct{ path, name, content string }
+
+// stageFiles chép các file vào một thư mục tạm cho Claude đọc; bên gọi xoá thư mục khi xong.
+func stageFiles(files []string) (string, []source, error) {
+	work, err := os.MkdirTemp("", "hive-compress-")
+	if err != nil {
+		return "", nil, err
+	}
+	var sources []source
+	total := 0
+	for i, p := range files {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			os.RemoveAll(work)
+			return "", nil, fmt.Errorf("không đọc được %s: %w", p, err)
+		}
+		total += len(raw)
+		if total > maxCompressChars {
+			os.RemoveAll(work)
+			return "", nil, fmt.Errorf("các file chọn dài quá %d ký tự, hãy chọn ít file hơn", maxCompressChars)
+		}
+		// Số thứ tự đứng đầu để hai file cùng tên ở hai thư mục không đè nhau.
+		name := fmt.Sprintf("%02d-%s", i+1, filepath.Base(p))
+		if err := os.WriteFile(filepath.Join(work, name), raw, 0o600); err != nil {
+			os.RemoveAll(work)
+			return "", nil, err
+		}
+		sources = append(sources, source{p, name, string(raw)})
+	}
+	return work, sources, nil
+}
+
+func sourceNames(sources []source) []string {
+	var names []string
+	for _, s := range sources {
+		names = append(names, s.name)
+	}
+	return names
+}
+
+// askClaude chạy `claude -p` chỉ đọc trong work và trả câu trả lời cùng số token đã dùng.
+func askClaude(ctx context.Context, opts CompressOptions, work, prompt string) (string, int, error) {
+	if opts.Command == "" {
+		return "", 0, errors.New("không tìm thấy lệnh claude")
+	}
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = CompressTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	args := append(append([]string{}, opts.Args...), "-p", "--output-format", "json", "--restricted", "--strict-mcp-config",
+		"--tools", "Read,Glob,Grep", "--permission-prompts", "none")
+	cmd := procattr.CommandContext(ctx, opts.Command, args...)
+	cmd.Dir = work
+	cmd.Env = append(os.Environ(), opts.Env...)
+	cmd.Stdin = strings.NewReader(prompt)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return "", 0, fmt.Errorf("claude không trả lời trong %s", timeout)
+		}
+		detail := strings.TrimSpace(stderr.String())
+		if len(detail) > 300 {
+			detail = detail[:300]
+		}
+		return "", 0, fmt.Errorf("claude lỗi: %v %s", err, detail)
+	}
+	var reply struct {
+		Result  string `json:"result"`
+		IsError bool   `json:"is_error"`
+		Usage   struct {
+			Input         int `json:"input_tokens"`
+			Output        int `json:"output_tokens"`
+			CacheCreation int `json:"cache_creation_input_tokens"`
+			CacheRead     int `json:"cache_read_input_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &reply); err != nil {
+		return "", 0, fmt.Errorf("không đọc được kết quả của claude: %w", err)
+	}
+	if reply.IsError {
+		return "", 0, fmt.Errorf("claude báo lỗi: %s", reply.Result)
+	}
+	return reply.Result, reply.Usage.Input + reply.Usage.Output + reply.Usage.CacheCreation + reply.Usage.CacheRead, nil
+}
+
+func knownLines(sources []source) map[string]bool {
+	known := map[string]bool{}
+	for _, s := range sources {
+		for _, line := range strings.Split(s.content, "\n") {
+			if k := lineKey(line); k != "" {
+				known[k] = true
+			}
+		}
+	}
+	return known
+}
+
+// unsourcedLines là số dòng (từ 1) của content không có trong file nguồn nào.
+func unsourcedLines(content string, known map[string]bool) []int {
+	lines := []int{}
+	for i, line := range strings.Split(content, "\n") {
+		if k := lineKey(line); k != "" && !known[k] {
+			lines = append(lines, i+1)
+		}
+	}
+	return lines
 }
 
 func compressPrompt(names []string) string {

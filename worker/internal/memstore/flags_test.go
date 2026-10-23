@@ -42,6 +42,27 @@ func TestDuplicateNamesAndJaccardThreshold(t *testing.T) {
 	}
 }
 
+func TestDuplicateInsideOneMemoryDir(t *testing.T) {
+	now := time.Now()
+	dir := filepath.Join("one", "memory")
+	same := "deploy with pnpm then run the smoke test before merging"
+	files := []scannedFile{
+		{File: File{CLI: "claude", Profile: "one", ProjectKey: "repo", Path: filepath.Join(dir, "a.md"), Name: "a.md", ModifiedAt: now}, content: same, memoryDir: dir},
+		{File: File{CLI: "claude", Profile: "one", ProjectKey: "repo", Path: filepath.Join(dir, "b.md"), Name: "b.md", ModifiedAt: now}, content: same + " always", memoryDir: dir},
+		{File: File{CLI: "claude", Profile: "one", ProjectKey: "repo", Path: filepath.Join(dir, "MEMORY.md"), Name: "MEMORY.md", ModifiedAt: now}, content: same + " a.md b.md c.md", memoryDir: dir},
+		{File: File{CLI: "claude", Profile: "one", ProjectKey: "repo", Path: filepath.Join(dir, "c.md"), Name: "c.md", ModifiedAt: now}, content: "something else entirely about the release branch flow", memoryDir: dir},
+	}
+	applyFlags(files, now)
+	for i, want := range [][]string{{Duplicate}, {Duplicate}, {}, {}} {
+		if got := flagCodes(files[i].File); !reflect.DeepEqual(got, want) {
+			t.Errorf("file %d: flags %v, want %v", i, got, want)
+		}
+	}
+	if !reflect.DeepEqual(files[0].Flags[0].Related, []string{files[1].Path}) {
+		t.Fatalf("related = %v", files[0].Flags[0].Related)
+	}
+}
+
 func TestMarkdownLinksAndOrphans(t *testing.T) {
 	home := fakeHome(t)
 	root := Root{CLI: "claude", Profile: "one", Path: filepath.Join(home, "claude")}

@@ -121,6 +121,14 @@ func applyFlags(files []scannedFile, now time.Time) {
 	for i := range files {
 		for j := i + 1; j < len(files); j++ {
 			a, b := &files[i], &files[j]
+			// Hai file chủ đề trong cùng thư mục memory nói gần giống nhau là chỗ memory hay phình nhất.
+			if a.memoryDir != "" && a.memoryDir == b.memoryDir && a.Name != "MEMORY.md" && b.Name != "MEMORY.md" {
+				if jaccard(shingles[i], shingles[j]) >= 0.6 {
+					a.flag(Duplicate, "nội dung gần giống file khác trong cùng gói", b.Path)
+					b.flag(Duplicate, "nội dung gần giống file khác trong cùng gói", a.Path)
+				}
+				continue
+			}
 			// Instruction dùng chung trên đĩa không phải hai bản memory cần gộp.
 			if a.Kind == "database" || b.Kind == "database" || a.CLI != b.CLI || a.Profile == b.Profile ||
 				a.ProjectKey != b.ProjectKey || a.Path == b.Path || a.resolved != "" && a.resolved == b.resolved {
