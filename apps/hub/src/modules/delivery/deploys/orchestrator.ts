@@ -321,7 +321,7 @@ const FINISH_TEXT: Partial<Record<DeployState, [string, string]>> = {
 };
 
 /** started/succeeded/failed cho người bấm và người đã duyệt; `eventKey` ổn định nên job chạy lại không báo hai lần. */
-async function emitDeployEvent(tx: Tx, deps: DeliveryDeps, deployId: string, state: DeployState): Promise<void> {
+export async function emitDeployEvent(tx: Tx, deps: DeliveryDeps, deployId: string, state: DeployState): Promise<void> {
   const row = await locate(tx, deployId);
   const d = row.deploy;
   if (d.origin !== "hive") return;
