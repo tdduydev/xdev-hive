@@ -625,6 +625,9 @@ description: "Task list: nhập Word thành tài liệu hub"
       dự phòng `deploy/vendor/`. Biến vào `apps/hub/.env.example`, `deploy/.env.example`.
     - `AGENTS.md` mục Lệnh: cài pandoc ở máy dev, LibreOffice khi chạy test `.doc` (plan.md mục 12).
     - Số ADR và mục SRS: kiểm lại lúc làm (`ls docs/adr`, các mục `### 3.` ở `docs/srs.md`, mọi nhánh mở).
+  - **Ghi chú (DOCS018B)**: không làm ở nhánh này. [Unverified] Nhánh `ai/WORD019H` đã có commit `e6e5e553` cho các file của
+    task này (ADR 0029, SRS, architecture, self-hosting, hai `.env.example`), chưa gộp vào `main`; làm lại sẽ trùng. Nhánh
+    đó cũng sửa một dòng `AGENTS.md` (trái lệnh của giao việc DOCS018B nên nhánh này không đụng). Cần người xem lại khi gộp. Giữ `[ ]`.
   - **PHẠM VI**:
     - `docs/adr/0029-pandoc-for-word-import.md` (mới), `docs/adr/README.md` (một dòng mục lục)
     - `docs/srs.md` (chỉ thêm mục 3.24 và một dòng ở 3.23)
@@ -645,6 +648,9 @@ description: "Task list: nhập Word thành tài liệu hub"
   - **PHẠM VI**:
     - `specs/019-word-import/research.md` (thêm mục 7 "Kết quả kiểm tổng")
   - **Kiểm**: mọi dòng có kết quả. Lỗi tìm ra thành task mới, không sửa file khác.
+  - **Đã làm (DOCS018B, phần tự động)**: research.md mục 7 ghi lệnh đã chạy và kết quả (hub Word 205 đạt, contracts 31, web 80,
+    desktop đạt). **Chưa làm**: `pnpm check` đầy đủ và CI, `word:corpus` trên bộ thật (SC-001), đo SC-003, bàn giao
+    `FILTER_VERSION`, kiểm Rust (máy không có cargo), SC-002/SC-005 phần `.doc` (T014 ngoài phạm vi). Giữ `[ ]`.
 
 - [ ] **T025 [—] [người: chủ dự án] · 0,5 ngày người — Thử trên hub thật**
   - **Phụ thuộc**: T023, bản đã triển khai lên `hive.example.com`.
