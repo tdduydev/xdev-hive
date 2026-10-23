@@ -46,7 +46,7 @@ func startMCPSetup(t *testing.T, handler http.HandlerFunc, socket string, setup 
 	}
 	a.getwd = func() (string, error) { return t.TempDir(), nil }
 	if socket == "" {
-		socket = filepath.Join(t.TempDir(), "khong-co.sock")
+		socket = filepath.Join(shortDir(t), "khong-co.sock")
 	}
 	a.socket = func() (string, error) { return socket, nil }
 	r, w := io.Pipe()

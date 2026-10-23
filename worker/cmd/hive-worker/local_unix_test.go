@@ -61,7 +61,7 @@ func TestWorkerStatusOp(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	path := filepath.Join(dir, "run", "hive.sock")
 	t.Setenv(localipc.PathEnv, path)
-	status := newWorkerStatus(config.Config{MachineID: "may-1", MachineToken: "hwm_x"}, ownerDesktop, dir)
+	status := newWorkerStatus(config.Config{HubURL: "https://hub.example", MachineID: "may-1", MachineToken: "hwm_x"}, ownerDesktop, dir)
 	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, status, nil)
 	t.Cleanup(stop)
 	c, _, err := localipc.Dial(path, "desktop/test")

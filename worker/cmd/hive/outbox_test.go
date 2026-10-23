@@ -23,14 +23,21 @@ type fakeOutbox struct {
 	logout func(action string) (map[string]any, string)
 }
 
-func startOutbox(t *testing.T) (string, *fakeOutbox) {
+// shortDir là thư mục tạm có đường dẫn ngắn: socket Unix giới hạn khoảng 100 ký tự, t.TempDir() trên macOS dài hơn,
+// và dial vào đường dẫn quá dài báo EINVAL thay vì "worker không chạy".
+func shortDir(t *testing.T) string {
 	t.Helper()
-	// Đường dẫn ngắn: socket Unix giới hạn khoảng 100 ký tự, thư mục t.TempDir() trên macOS dài hơn.
 	dir, err := os.MkdirTemp("", "hvo")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+func startOutbox(t *testing.T) (string, *fakeOutbox) {
+	t.Helper()
+	dir := shortDir(t)
 	f := &fakeOutbox{}
 	path := filepath.Join(dir, "hive.sock")
 	ln, err := localipc.Listen(path)
@@ -248,7 +255,7 @@ func TestOutboxSubmitLargeBodyGoesThroughFile(t *testing.T) {
 }
 
 func TestOutboxWorkerMissing(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "khong-co.sock")
+	missing := filepath.Join(shortDir(t), "khong-co.sock")
 	a, code := runOutbox(t, missing, "")
 	if code != exitUsage || !strings.Contains(a.err.String(), "Chưa chạy hive-worker") {
 		t.Fatalf("mã %d, %q", code, a.err.String())

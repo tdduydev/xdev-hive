@@ -120,7 +120,7 @@ func TestLogoutOutboxEmptyOrWorkerMissing(t *testing.T) {
 	}
 
 	// Worker không chạy: vẫn đăng xuất, mục trên đĩa được worker giữ khi chạy lại.
-	a = logoutApp(t, filepath.Join(t.TempDir(), "khong-co.sock"), "", true)
+	a = logoutApp(t, filepath.Join(shortDir(t), "khong-co.sock"), "", true)
 	if code := a.run([]string{"logout"}); code != exitOK || !a.loggedOut(t) {
 		t.Fatalf("không có worker: mã %d, %q", code, a.err.String())
 	}
