@@ -1,47 +1,18 @@
-# Contract: `sdlc_report` loại `test-results`
+# sdlc_report: test-results
 
-Gọi từ agent trong bước `test-run`, bằng token của run. Gọi lại trong cùng run thì thay toàn bộ kết quả cũ.
+Chỉ run đang hoạt động của bước `test-run` được gửi. `data` theo `qaTestReport`:
 
 ```json
 {
-  "kind": "test-results",
-  "data": {
-    "runner": "playwright",
-    "suite": "regression",
-    "environment": "staging",
-    "commit": "a1b2c3d",
-    "totals": { "total": 120, "passed": 115, "failed": 3, "skipped": 1, "flaky": 1 },
-    "durationMs": 482000,
-    "truncated": false,
-    "cases": [
-      {
-        "key": "tests/e2e/login.spec.ts › TC-012 đăng nhập sai mật khẩu",
-        "name": "TC-012 đăng nhập sai mật khẩu",
-        "file": "tests/e2e/login.spec.ts",
-        "status": "failed",
-        "retries": 2,
-        "durationMs": 5120,
-        "message": "expect(locator).toHaveText(...) ..."
-      }
-    ]
-  }
+  "runner": "playwright",
+  "totals": { "total": 1, "passed": 1, "failed": 0, "skipped": 0, "flaky": 0 },
+  "durationMs": 100,
+  "cases": [{ "code": "TC-001", "status": "passed", "retries": 0, "durationMs": 100 }],
+  "truncated": false
 }
 ```
 
-Ràng buộc (zod `qaTestReport` trong `packages/contracts/src/qa.ts`):
-
-| Trường | Ràng buộc |
-|---|---|
-| `runner` | `playwright` `junit` `pytest` `other` |
-| `suite`, `environment` | ≤ 80, `[\w.-]+` cho `environment` (tên, không URL) |
-| `commit` | ≤ 64 |
-| `totals.*`, `durationMs` | số nguyên ≥ 0 |
-| `cases` | ≤ 5.000 |
-| `cases[].status` | `passed` `failed` `skipped` `flaky` |
-| `cases[].key`, `name` | 1–500 |
-| `cases[].message` | ≤ 2.000 (hub che rồi cắt còn 500) |
-
-Lỗi (tiếng Việt): bước không phải `test-run` → "Bước này không nhận kết quả test."; tổng không khớp khi
-`truncated = false` → "Tổng số không khớp danh sách test.".
-
-Kết quả gửi về agent: `{ ok: true, testRunId, matched, unmatched }` (số test khớp được TC).
+`commit` tuỳ chọn là SHA hex đầy đủ 40/64 ký tự. Mã TC duy nhất, tối đa 5.000, không vượt tổng runner.
+Tổng từng trạng thái phải khớp tổng số test. Dòng TC được gộp theo kết quả xấu nhất nên có thể ít hơn tổng runner.
+Trường lạ (log, code, tên test, lỗi, URL, attachment…) bị từ chối cả ở cấp con.
+Hub đối chiếu TC đã duyệt và fingerprint đã chụp lúc giao bước. Gửi lại ghi đè cùng bước.

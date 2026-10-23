@@ -156,6 +156,7 @@ export type AutoDecision =
 export interface RuleContextExtras {
   openQuestions?: number | undefined;
   breakdown?: BreakdownRuleInput | undefined;
+  qaChecks?: { code: string; passed: boolean; note: string }[] | undefined;
 }
 
 /** Điểm nối của module khác vào máy trạng thái duyệt; không đặt thì hành vi y như trước. */
@@ -422,7 +423,7 @@ export async function resolveWorkflow(
   return row ? { id: row.id, name: row.name, phases: row.phases } : null;
 }
 
-const NEEDS_EXTRAS = new Set(["no-open-questions", "breakdown", "coverage"]);
+const NEEDS_EXTRAS = new Set(["no-open-questions", "breakdown", "coverage", "qa-tests"]);
 
 /** Dữ liệu của hạng mục cho các luật cần nó; chỉ hỏi hook khi quy trình thật sự có luật đó. */
 async function ruleExtras(

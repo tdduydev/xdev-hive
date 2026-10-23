@@ -1,38 +1,14 @@
-# Specification Quality Checklist: AI SDLC cho tester (QA Automation)
+# Kiểm phạm vi và yêu cầu QA
 
-**Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-10-23
-**Feature**: [spec.md](../spec.md)
+Phạm vi chốt 23/10/2026, [đặc tả](../spec.md).
 
-## Content Quality
-
-- [x] No implementation details (languages, frameworks, APIs)
-- [x] Focused on user value and business needs
-- [x] Written for non-technical stakeholders
-- [x] All mandatory sections completed
-
-## Requirement Completeness
-
-- [x] No [NEEDS CLARIFICATION] markers remain
-- [x] Requirements are testable and unambiguous
-- [x] Success criteria are measurable
-- [x] Success criteria are technology-agnostic (no implementation details)
-- [x] All acceptance scenarios are defined
-- [x] Edge cases are identified
-- [x] Scope is clearly bounded
-- [x] Dependencies and assumptions identified
-
-## Feature Readiness
-
-- [x] All functional requirements have clear acceptance criteria
-- [x] User scenarios cover primary flows
-- [x] Feature meets measurable outcomes defined in Success Criteria
-- [x] No implementation details leak into specification
-
-## Notes
-
-- Playwright, JUnit XML, nhãn `browser`/`qa-env` và tên file ở phần Hiện trạng là ràng buộc chủ dự án đã nêu hoặc điểm
-  tái dùng; FR không phụ thuộc thư viện cụ thể.
-- Không còn [NEEDS CLARIFICATION]: điểm mở có mặc định ở Assumptions A1 đến A9 (đặc biệt A1, A2, A3, A4).
-- Phụ thuộc spec đang làm song song: 027 (kênh worker), 031 (kho bí mật), 032 (chọn máy nội bộ), 034 (vai trò, nhiều
-  tổ chức trên một máy).
+- [x] Chỉ còn TC có cấu trúc gắn FR/AC, chạy tại máy và metadata, cổng duyệt QA.
+- [x] Hub/web chỉ lưu metadata, cấu hình và duyệt; không thêm điều khiển thực thi test.
+- [x] Metadata strict không có log, code, tên test, thông điệp lỗi hay attachment.
+- [x] TC thiếu bằng chứng/failed/skipped/flaky đều chặn; không có TC bắt buộc cũng chặn.
+- [x] Miễn từng TC cần quyền đội hiện có và lý do; có người quyết định, thời gian và audit.
+- [x] Thay TC làm kết quả cũ mất hiệu lực và xoá miễn của TC đã đổi.
+- [x] Không tạo vai trò Tester; ghi ý tưởng vào việc làm sau.
+- [x] Cách ly test chập chờn: ngoài phạm vi.
+- [x] Lịch chạy hồi quy: ngoài phạm vi.
+- [x] Không sửa tenancy, governance, delivery, mcp, channel hoặc layers.

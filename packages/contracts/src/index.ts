@@ -66,6 +66,7 @@ export * from "./mcp-admin.ts";
 export * from "./notify.ts";
 export * from "./policies.ts";
 export * from "./projects.ts";
+export * from "./qa.ts";
 export * from "./redact.ts";
 export * from "./repo-url.ts";
 export * from "./roles.ts";

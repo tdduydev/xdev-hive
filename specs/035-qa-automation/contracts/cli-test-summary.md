@@ -1,16 +1,11 @@
-# Contract: `hive test-summary`
+# hive test-summary
 
-```text
-hive test-summary <file> [--format auto|playwright|junit] [--runner <tên>] [--suite <tên>] [--environment <tên>]
-                         [--max-cases 5000] [--max-message 500]
-```
+`hive test-summary <file> [--format playwright|junit] [--commit SHA] [--max-cases N]`
 
-- Đọc file báo cáo tại máy, không gửi gì lên hub.
-- `--format auto` (mặc định): `.xml` hoặc nội dung bắt đầu bằng `<` là JUnit, còn lại là Playwright JSON.
-- In ra stdout một JSON đúng `qaTestReport` (xem [mcp-report.md](mcp-report.md)); agent chuyển nguyên văn vào
-  `sdlc_report`.
-- Che thông điệp lỗi trước khi in: token dạng `Bearer …`, `password=…`, `token=…`, chuỗi `ghp_`/`glpat-`/`sk-`, URL có
-  user:pass. Cắt `--max-message` ký tự. Khi số test vượt `--max-cases`: giữ `failed`, `flaky` trước, `truncated: true`,
-  `totals` vẫn là số thật.
-- Mã thoát: 0 khi đọc được (kể cả khi có test fail), 2 khi sai tham số, 1 khi không đọc được file.
-- JUnit nhiều file: truyền nhiều đường dẫn, gộp lại (`hive test-summary a.xml b.xml`).
+Tự nhận dạng JSON/XML nếu không có `--format`; không gọi mạng, không cần token.
+File tối đa 32 MiB, `N` từ 1 đến 5.000. Mã TC lấy từ tên test/class/suite; một test nhiều mã TC khác nhau bị từ chối.
+Nhiều test cùng TC gộp theo failed > flaky > skipped > passed. Cắt ưu tiên giữ trạng thái xấu.
+Không có mã TC vẫn tính tổng runner nhưng không tạo bằng chứng cho TC bắt buộc.
+
+Mã thoát 0 khi đọc hợp lệ (kể cả test fail), 2 khi dữ liệu/tham số sai, 1 khi không ghi được metadata.
+Chỉ stdout JSON metadata theo [mcp-report.md](mcp-report.md); lỗi tiếng Việt ghi stderr, không chép nội dung reporter.
