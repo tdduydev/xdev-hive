@@ -179,6 +179,34 @@ test("môi trường: chọn máy chạy deploy theo thứ tự ưu tiên", asyn
   await noHorizontalScroll(page);
 });
 
+test("môi trường: khoá cần lý do, hiện người khoá và lý do, rồi mở khoá", async ({ page }) => {
+  const fixture = deliveryServersFixture();
+  await inOrg(page, "admin", fixture.rpc);
+  await page.goto(`/systems/${SERVERS_SYSTEM_ID}/environments`);
+
+  await page.getByRole("button", { name: "Khoá môi trường prod", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Khoá môi trường prod" });
+  await dialog.getByRole("button", { name: "Khoá", exact: true }).click();
+  await expect(dialog.getByText("Ghi lý do khoá môi trường.")).toBeVisible();
+  expect(fixture.state.calls.some((c) => c.path === "environments/lock")).toBe(false);
+
+  await dialog.getByLabel("Lý do").fill("Đóng băng cuối năm");
+  await dialog.getByRole("button", { name: "Khoá", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(fixture.state.calls.findLast((c) => c.path === "environments/lock")?.input).toEqual({
+    id: ENV_PROD_ID,
+    reason: "Đóng băng cuối năm",
+  });
+  await expect(row(page, "prod").first()).toContainText("Đã khoá");
+  await expect(row(page, "prod").first()).toContainText("Quản trị khoá: Đóng băng cuối năm");
+  await noHorizontalScroll(page);
+
+  await page.getByRole("button", { name: "Mở khoá môi trường prod", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Khoá môi trường prod", exact: true })).toBeVisible();
+  expect(fixture.state.calls.findLast((c) => c.path === "environments/unlock")?.input).toEqual({ id: ENV_PROD_ID });
+  await expect(row(page, "prod").first()).not.toContainText("Đã khoá");
+});
+
 test("đích Jenkins: ghi tên credential trên máy chạy", async ({ page }) => {
   const fixture = deliveryServersFixture();
   await inOrg(page, "admin", fixture.rpc);

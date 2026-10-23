@@ -41,7 +41,7 @@ type Env = {
   name: string;
   position: number;
   policy: unknown;
-  lock: null;
+  lock: { by: { userId: string; name: string } | null; at: string; reason: string } | null;
   runner: unknown;
   createdAt: string;
   updatedAt: string;
@@ -359,6 +359,21 @@ export function deliveryServersFixture() {
       const found = envs.find((e) => e.id === v.id);
       if (!found) return notFound();
       found.runner = v.runner;
+      return ok(found);
+    },
+    "environments/lock": (input) => {
+      record("environments/lock", input);
+      const v = input as { id: string; reason: string };
+      const found = envs.find((e) => e.id === v.id);
+      if (!found) return notFound();
+      found.lock = { by: { userId: "u-admin", name: "Quản trị" }, at: NOW, reason: v.reason };
+      return ok(found);
+    },
+    "environments/unlock": (input) => {
+      record("environments/unlock", input);
+      const found = envs.find((e) => e.id === (input as { id: string }).id);
+      if (!found) return notFound();
+      found.lock = null;
       return ok(found);
     },
 

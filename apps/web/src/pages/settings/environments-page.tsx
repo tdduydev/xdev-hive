@@ -38,6 +38,17 @@ const VI = {
   runnerOf: (name: string) => `Chọn máy chạy cho ${name}`,
   actions: "Thao tác",
   locked: "Đã khoá",
+  lockedBy: (who: string, reason: string) => `${who} khoá: ${reason}`,
+  lock: "Khoá",
+  lockOf: (name: string) => `Khoá môi trường ${name}`,
+  unlock: "Mở khoá",
+  unlockOf: (name: string) => `Mở khoá môi trường ${name}`,
+  dlgLock: (name: string) => `Khoá môi trường ${name}`,
+  dlgLockLead: "Khoá chặn mọi lần triển khai mới, kể cả lần đã duyệt chưa bắt đầu. Lần đang chạy vẫn chạy tiếp.",
+  lockReason: "Lý do",
+  lockReasonHint: "Người triển khai sẽ thấy lý do này, ví dụ: đóng băng cuối năm, đang xử lý sự cố.",
+  lockReasonMissing: "Ghi lý do khoá môi trường.",
+  locking: "Đang khoá…",
   approvals: (n: number, h: number) => (n === 0 ? "Không cần duyệt" : `Cần ${n} người duyệt, hết hạn sau ${h} giờ`),
   rolesDeploy: (roles: string) => `Triển khai: ${roles}`,
   rolesApprove: (roles: string) => `Duyệt: ${roles}`,
@@ -106,11 +117,17 @@ export function EnvironmentsPage() {
 
   const [envDlg, setEnvDlg] = useState<DeployEnvironment | "new" | null>(null);
   const [runnerDlg, setRunnerDlg] = useState<DeployEnvironment | null>(null);
+  const [lockDlg, setLockDlg] = useState<DeployEnvironment | null>(null);
   const [targetDlg, setTargetDlg] = useState<TargetDlg | null>(null);
   const [reorderFailure, setReorderFailure] = useState<string | null>(null);
 
   const reorder = useMutation({
     mutationFn: (ids: string[]) => api.environments.reorder.call({ systemId, ids }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: api.environments.key() }),
+    onError: (error) => setReorderFailure(apiErrorMessage(error)),
+  });
+  const unlock = useMutation({
+    mutationFn: (id: string) => api.environments.unlock.call({ id }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: api.environments.key() }),
     onError: (error) => setReorderFailure(apiErrorMessage(error)),
   });
@@ -228,6 +245,11 @@ export function EnvironmentsPage() {
                             </Pill>
                           )}
                         </span>
+                        {env.lock && (
+                          <span className="mt-0.5 block text-xs break-words text-muted-foreground">
+                            {VI.lockedBy(env.lock.by?.name ?? "—", env.lock.reason)}
+                          </span>
+                        )}
                       </Td>
                       <Td>
                         <span className="grid gap-0.5 text-xs text-muted-foreground">
@@ -288,6 +310,29 @@ export function EnvironmentsPage() {
                             >
                               {VI.runner}
                             </Button>
+                            {env.lock ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={VI.unlockOf(env.name)}
+                                disabled={unlock.isPending}
+                                onClick={() => {
+                                  setReorderFailure(null);
+                                  unlock.mutate(env.id);
+                                }}
+                              >
+                                {VI.unlock}
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={VI.lockOf(env.name)}
+                                onClick={() => setLockDlg(env)}
+                              >
+                                {VI.lock}
+                              </Button>
+                            )}
                           </span>
                         </Td>
                       )}
@@ -393,6 +438,9 @@ export function EnvironmentsPage() {
           {runnerDlg && <RunnerForm environment={runnerDlg} onDone={() => setRunnerDlg(null)} />}
         </DialogContent>
       </Dialog>
+      <Dialog open={lockDlg !== null} onOpenChange={(open) => !open && setLockDlg(null)}>
+        <DialogContent>{lockDlg && <LockForm environment={lockDlg} onDone={() => setLockDlg(null)} />}</DialogContent>
+      </Dialog>
       <Dialog open={targetDlg !== null} onOpenChange={(open) => !open && setTargetDlg(null)}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain sm:max-w-2xl">
           {targetDlg && (
@@ -412,6 +460,56 @@ export function EnvironmentsPage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function LockForm({ environment, onDone }: { environment: DeployEnvironment; onDone: () => void }) {
+  const { api } = useOrg();
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const lock = useMutation({
+    mutationFn: (reason: string) => api.environments.lock.call({ id: environment.id, reason }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: api.environments.key() });
+      onDone();
+    },
+    onError: (e) => {
+      const { field, message } = formError(e);
+      if (field === "reason") setError(message);
+      else setFailure(message);
+    },
+  });
+
+  function onSubmit(ev: FormEvent<HTMLFormElement>) {
+    ev.preventDefault();
+    const reason = String(new FormData(ev.currentTarget).get("reason") ?? "").trim();
+    setFailure(null);
+    setError(reason ? null : VI.lockReasonMissing);
+    if (reason) lock.mutate(reason);
+  }
+
+  const busy = lock.isPending;
+  return (
+    <form noValidate onSubmit={onSubmit} className="grid gap-3.5">
+      <DialogTitle>{VI.dlgLock(environment.name)}</DialogTitle>
+      <DialogDescription>{VI.dlgLockLead}</DialogDescription>
+      <Field invalid={error !== null}>
+        <FieldLabel>{VI.lockReason}</FieldLabel>
+        <Input name="reason" disabled={busy} autoComplete="off" autoFocus />
+        {error ? <FieldError>{error}</FieldError> : <FieldHint>{VI.lockReasonHint}</FieldHint>}
+      </Field>
+      {failure && <Alert variant="destructive">{failure}</Alert>}
+      <DialogActions>
+        <Button variant="outline" onClick={onDone}>
+          {VI.cancel}
+        </Button>
+        <Button type="submit" variant="default" disabled={busy}>
+          {busy ? VI.locking : VI.lock}
+        </Button>
+      </DialogActions>
+    </form>
   );
 }
 

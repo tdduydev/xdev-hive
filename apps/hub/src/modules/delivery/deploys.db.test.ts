@@ -18,7 +18,7 @@ import {
   UNREACHABLE_AFTER_MS,
   watchDeploy,
 } from "./deploys/orchestrator.ts";
-import { createEnvironment } from "./environments.ts";
+import { createEnvironment, lockEnvironment, unlockEnvironment } from "./environments.ts";
 import { DELIVERY_DEPLOY_QUEUE, DELIVERY_DEPLOY_WATCH_QUEUE } from "./queues.ts";
 import { upsertTarget } from "./targets.ts";
 
@@ -417,7 +417,7 @@ describe("tạo lần triển khai", () => {
     });
   });
 
-  it("môi trường khoá thì ENV_LOCKED kèm lý do", async () => {
+  it("môi trường khoá thì ENV_LOCKED kèm lý do; khoá, mở khoá cần servers.manage và ghi audit", async () => {
     const h = harness();
     const { projectId } = await newTarget(devId);
     const locked = await as("tadmin", (tx) =>
@@ -428,15 +428,31 @@ describe("tạo lần triển khai", () => {
       }),
     );
     const { targetId } = await newTarget(locked.id, { projectId });
-    await admin.query(
-      "update hive.deploy_environments set locked_at = now(), locked_by = $2, lock_reason = 'Đóng băng cuối năm' where id = $1",
-      [locked.id, uid("tadmin")],
+    expect(
+      await failure(() => as("tmember", (tx) => lockEnvironment(tx, uid("tmember"), { id: locked.id, reason: "x" }))),
+    ).toMatchObject({ name: "ForbiddenError", code: "SERVERS_MANAGE_REQUIRED" });
+
+    const view = await as("tadmin", (tx) =>
+      lockEnvironment(tx, uid("tadmin"), { id: locked.id, reason: "Đóng băng cuối năm" }),
     );
+    expect(view.lock).toMatchObject({ by: { userId: uid("tadmin") }, reason: "Đóng băng cuối năm" });
     expect(await failure(() => h.create("tmember", targetId))).toMatchObject({
       name: "ConflictError",
       code: "ENV_LOCKED",
       data: { reason: "Đóng băng cuối năm" },
     });
+
+    expect((await as("tadmin", (tx) => unlockEnvironment(tx, uid("tadmin"), { id: locked.id }))).lock).toBeNull();
+    // Mở khoá môi trường đã mở thì không ghi thêm audit.
+    await as("tadmin", (tx) => unlockEnvironment(tx, uid("tadmin"), { id: locked.id }));
+    expect(await audits("delivery.environment.lock", locked.id)).toEqual([
+      expect.objectContaining({
+        actor_user_id: uid("tadmin"),
+        data: expect.objectContaining({ reason: "Đóng băng cuối năm" }),
+      }),
+    ]);
+    expect(await audits("delivery.environment.unlock", locked.id)).toHaveLength(1);
+    await h.create("tmember", targetId);
   });
 
   it("môi trường cần duyệt: pending_approval, báo người duyệt được trừ người yêu cầu", async () => {
