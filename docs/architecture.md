@@ -161,8 +161,8 @@ rồi ghi Markdown xem trước vào bản ghi file của lượt nhập. Ngư�
 và lô đẩy repo cùng nằm trong một transaction; người chỉ có `propose` thì Markdown và ảnh được giữ tạm cho tới khi duyệt
 (job `docsync-word-staging`). "Cập nhật từ Word" hợp ba bên từ Markdown của lần nhập trước. `/api/v1/health` báo
 `wordImport` và `wordImportDoc`; thiếu pandoc thì tắt cả tính năng. Hub không nhận `.doc` (ngoài phạm vi,
-ADR 0029). Desktop dùng lệnh Rust `pick_word_files`, `hub_upload_word`, `hub_fetch_bytes`;
-màn hình nằm ở nhánh `ai/WORD019G`, chưa gộp.
+ADR 0029). Desktop dùng lệnh Rust `pick_word_files`, `hub_upload_word`, `hub_fetch_bytes`
+(`word-import-screen.tsx`).
 
 BlobStore chung ở `platform/blob-store.ts` cung cấp `put/get/stat` dạng stream; PostgreSQL lưu metadata trong
 `blobs` và bytea theo đoạn 512 KiB trong `blob_chunks`, khử trùng theo SHA-256 trong từng tổ chức. Mọi thao tác qua
