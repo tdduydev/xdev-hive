@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/outbox"
 )
 
 // memKeyring là keychain giả; broken giả máy không có keychain (Linux không có Secret Service).
@@ -171,6 +174,32 @@ func TestLoginBrowserFlow(t *testing.T) {
 	cfg, _, err := a.loadCLIConfig()
 	if err != nil || cfg.HubURL != hub.URL || cfg.Token != "" {
 		t.Fatalf("hive.json = %+v %v (token chỉ nằm trong keychain)", cfg, err)
+	}
+	if cfg.UserID != "u1" || cfg.OrgID != testOrg || cfg.Email != "lan@example.com" {
+		t.Fatalf("hive.json thiếu danh tính: %+v", cfg)
+	}
+	// Hộp thư đi của hive-worker đọc cùng file và keychain.
+	cfgPath, _ := a.cliConfig()
+	creds := &outbox.Credentials{Path: cfgPath, Keyring: a.keyring}
+	if id, err := creds.Current(context.Background()); err != nil || id.UserID != "u1" || id.OrgID != testOrg {
+		t.Fatalf("outbox đọc danh tính %+v %v", id, err)
+	}
+	// `hive auth store` cùng token giữ danh tính; token khác có thể là người khác nên bỏ.
+	if _, err := a.saveToken(hub.URL, testToken); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, _, _ := a.loadCLIConfig(); cfg.UserID != "u1" {
+		t.Fatalf("cùng token mất danh tính: %+v", cfg)
+	}
+	otherToken := "hive_pat_" + testOrg + "_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	if _, err := a.saveToken(hub.URL, otherToken); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, _, _ := a.loadCLIConfig(); cfg.UserID != "" {
+		t.Fatalf("token khác còn danh tính cũ: %+v", cfg)
+	}
+	if _, err := a.saveToken(hub.URL, testToken); err != nil {
+		t.Fatal(err)
 	}
 
 	who := loginApp(t)

@@ -69,6 +69,12 @@ func (u UserSender) Dispatch(ctx context.Context, it Item) (Delivery, error) {
 	if u.Client != "" {
 		req.Header.Set(headerClient, u.Client)
 	}
+	// Procedure trong tổ chức đọc tổ chức từ header, không từ token.
+	if org := it.Identity.OrgID; org != "" {
+		req.Header.Set("X-Hive-Org", org)
+	} else if m := patOrg.FindStringSubmatch(token); m != nil {
+		req.Header.Set("X-Hive-Org", m[1])
+	}
 	if it.Project != "" {
 		req.Header.Set("X-Hive-Project", it.Project)
 	}

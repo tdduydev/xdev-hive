@@ -112,7 +112,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
   `X-Hive-Machine`, `X-Hive-Created-At`, `X-Hive-Client`) và `POST /rpc/<path>`; đọc `_meta` và header
   `Hive-Client-Event`; 401 → `held` (`login_required`); lỗi tool không có kết quả sự kiện → thử lại ·
   `worker/internal/outbox/user_sender.go`, `worker/internal/outbox/user_sender_test.go`, `worker/internal/outbox/sender.go`
-- [ ] T017 [US2] Danh tính từ `hive.json` và keychain; `hive login` ghi `userId`; khác người thì `held`
+- [x] T017 [US2] Danh tính từ `hive.json` và keychain; `hive login` ghi `userId`; khác người thì `held`
   (`identity_mismatch`) · `worker/internal/outbox/credentials.go`, `worker/internal/outbox/credentials_test.go`,
   `worker/cmd/hive/login.go`
 - [ ] T018 [US2] Op socket `outbox.submit` (`waitMs`), `outbox.status`, `outbox.list`, `outbox.drop`, `outbox.retry`,
