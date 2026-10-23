@@ -14,7 +14,7 @@ ghi nguyên tử (file tạm + rename). Không file nào chứa giá trị, băm
 | Nội dung mục đầu | `v1:<n>:<base64 std của khối 0>`, `n` = số khối (1–5) |
 | Tài khoản khối sau | `<NAME>#1` … `<NAME>#<n-1>` |
 | Nội dung khối sau | base64 std của khối |
-| Cỡ khối | ≤1800 byte giá trị gốc **[Unverified]** (research D2, T001 kiểm) |
+| Cỡ khối | ≤1800 byte giá trị gốc. Windows đã kiểm (giới hạn 2560 byte mỗi mục); macOS **[Unverified]** (research "Kết quả kiểm") |
 
 Quy tắc:
 

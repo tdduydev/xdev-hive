@@ -64,6 +64,8 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Linux không có Secret Service thì `go-keyring` trả lỗi gì.
 
   Kết quả "không đạt" thì sửa plan và task liên quan trước Phase 2.
+
+  Tiến độ: cỡ khối trên Windows đã kiểm (2560 byte mỗi mục, khối 1800 byte đạt). macOS và các điểm còn lại chưa kiểm.
 - [ ] T002 [P] D·nhẹ — Tên dành riêng và kiểm tên dùng chung Go ↔ TS:
   - fixture mới `packages/contracts/fixtures/local-secrets.json` (reserved exact/prefixes, tên hợp lệ, không hợp lệ);
   - `packages/contracts/src/local-secrets.ts` (`RESERVED_SECRET_NAMES`, `isValidSecretName`, `isReservedSecretName`,

@@ -55,8 +55,9 @@ kiểm trên máy thật; task T001 (Setup) kiểm các điểm này trước kh
   - Ghi theo thứ tự: khối cuối trước, khối đầu sau cùng. Vì vậy mục đầu chỉ trỏ tới khối đã ghi xong.
   - Xoá khối thừa khi giá trị ngắn đi.
 - **Lý do**:
-  - **[Unverified]** Windows Credential Manager giới hạn blob khoảng 2560 byte.
-  - **[Unverified]** `go-keyring` trên macOS gọi `/usr/bin/security` qua tham số, bị giới hạn độ dài lệnh khoảng 4 KiB.
+  - Windows Credential Manager giới hạn blob đúng 2560 byte (đã kiểm, xem "Kết quả kiểm").
+  - **[Unverified]** `go-keyring` trên macOS gửi lệnh vào stdin của `/usr/bin/security -i` và chặn dòng dài hơn
+    4096 byte (đọc mã, chưa chạy thật).
   - Giá trị 8 KiB (FR-005) không vừa một mục. Base64 giữ được xuống dòng và mọi byte (FR-013).
 - **Kiểm**: T001 ghi và đọc giá trị 8 KiB nhiều dòng trên Windows và macOS. Linux kiểm khi có Secret Service.
   - Không vượt được → hạ giới hạn trong spec và ghi lại (A10 cho phép).
@@ -282,6 +283,40 @@ kiểm trên máy thật; task T001 (Setup) kiểm các điểm này trước kh
   - Ghi nguyên tử bằng `projects.WriteJSON`-tương đương.
   - Nhật ký cấp: JSONL, mỗi lần ghi bỏ dòng cũ hơn 90 ngày (A7), tối đa 10 000 dòng.
 - Chi tiết ở [data-model.md](data-model.md).
+
+## Kết quả kiểm (T001)
+
+### Windows 11 Pro 10.0.26300, Go 1.27.2, `go-keyring v0.2.8` — 2026-10-23
+
+Chương trình thử tạm ngoài repo, dịch vụ riêng `dev.xdev.hive.secrets.probe-sec031`, xoá hết mục sau khi thử
+(`cmdkey /list` không còn mục nào).
+
+| Kiểm | Kết quả |
+|---|---|
+| `keyring.Set` giá trị 1800, 2405, 2560 byte | đạt, đọc lại khớp |
+| `keyring.Set` 2561 byte | `ErrSetDataTooBig`. `go-keyring` tự chặn ở `len(password) > 2560` (`keyring_windows.go`) |
+| `wincred` ghi thẳng, bỏ qua `go-keyring`: 2560 / 2561 / 4096 / 5120 byte | 2560 đạt; từ 2561 trở lên Windows trả "The stub received bad data." Giới hạn thật của Credential Manager là **2560 byte** blob |
+| Giá trị có `\r\n`, `\n`, nháy đơn/kép, `$`, Unicode, byte `0x01` | đọc lại khớp từng byte |
+| Tên tài khoản 66 / 300 byte | đạt. 600 byte lỗi "The array bounds are invalid." Tên ≤64 cộng `#k` an toàn |
+| 50 lần `Set` mục 2405 byte | ~780 ms (~16 ms mỗi mục) |
+| 50 lần `Get` mục 2405 byte | ~41 ms (<1 ms mỗi mục). 10 bí mật × 5 khối đọc tuần tự ≈ 40 ms, xa dưới SC-008 (500 ms) |
+
+Kết luận cho D2:
+
+- Khối 1800 byte giá trị gốc → base64 2400 ký tự, cộng tiền tố `v1:5:` → mục đầu 2405 byte ≤ 2560. **Giữ thiết kế**:
+  khối 1800 byte, tối đa 5 khối cho 8 KiB.
+- Khối lớn nhất về lý thuyết là 1914 byte (2552 + 5 = 2557). 1800 chừa biên cho tiền tố.
+
+### macOS — chưa kiểm
+
+Người điều phối kiểm sau trên máy Mac. Đọc mã `go-keyring v0.2.8` (`keyring_darwin.go`), chưa chạy thật:
+
+- `Set` mã hoá giá trị lần nữa bằng base64 (tiền tố `go-keyring-base64:`), rồi gửi một dòng
+  `add-generic-password -U -s … -a … -w …` vào stdin của `security -i`. Dòng dài hơn 4096 byte → `ErrSetDataTooBig`.
+- Mục đầu 2405 byte → base64 3208 ký tự + 18 tiền tố + ~80 phần còn lại ≈ 3310 byte < 4096. **[Inference]** khối 1800
+  byte vừa trên macOS; còn chờ kiểm thật.
+- Các điểm khác của T001 (keychain khoá có bật hộp thoại không, clipboard, cờ của codex/gemini, Linux không có Secret
+  Service) chưa kiểm.
 
 ## D13. Kiểm trên ba hệ điều hành
 
