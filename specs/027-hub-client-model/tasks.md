@@ -115,7 +115,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 - [x] T017 [US2] Danh tính từ `hive.json` và keychain; `hive login` ghi `userId`; khác người thì `held`
   (`identity_mismatch`) · `worker/internal/outbox/credentials.go`, `worker/internal/outbox/credentials_test.go`,
   `worker/cmd/hive/login.go`
-- [ ] T018 [US2] Op socket `outbox.submit` (`waitMs`), `outbox.status`, `outbox.list`, `outbox.drop`, `outbox.retry`,
+- [x] T018 [US2] Op socket `outbox.submit` (`waitMs`), `outbox.status`, `outbox.list`, `outbox.drop`, `outbox.retry`,
   `outbox.export`; vòng gửi của `hive-worker run` gửi cả mục của người dùng; trạng thái hub `up`/`down`/`retrying` ·
   `worker/cmd/hive-worker/local.go`, `worker/cmd/hive-worker/outbox_ipc.go`, `worker/cmd/hive-worker/outbox_ipc_test.go`,
   `worker/cmd/hive-worker/outbox.go`

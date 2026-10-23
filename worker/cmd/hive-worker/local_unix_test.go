@@ -22,7 +22,7 @@ func TestStartLocalIPC(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	path := filepath.Join(dir, "run", "hive.sock")
 	t.Setenv(localipc.PathEnv, path)
-	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, nil)
+	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, nil, nil)
 	c, h, err := localipc.Dial(path, "hive/test")
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +62,7 @@ func TestWorkerStatusOp(t *testing.T) {
 	path := filepath.Join(dir, "run", "hive.sock")
 	t.Setenv(localipc.PathEnv, path)
 	status := newWorkerStatus(config.Config{MachineID: "may-1", MachineToken: "hwm_x"}, ownerVSCode, dir)
-	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, status)
+	stop, _ := startLocalIPC(nil, filepath.Join(dir, "terminal"), nil, status, nil)
 	t.Cleanup(stop)
 	c, _, err := localipc.Dial(path, "vscode/test")
 	if err != nil {

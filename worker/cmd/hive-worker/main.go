@@ -395,8 +395,14 @@ func run(args []string) int {
 			cancel()
 		}()
 	}
-	// Việc dồn trong hộp thư đi lúc máy ngoại tuyến (điểm máy, đề xuất ghi nhớ) được gửi dần khi hub nối lại.
-	go outboxLoop(ctx, cfg, outboxFlushEvery)
+	// Việc dồn trong hộp thư đi lúc hub vắng (điểm máy, đề xuất ghi nhớ, lần ghi của người dùng qua socket) được gửi
+	// dần khi hub nối lại.
+	ob, err := newOutboxService(ctx, cfg)
+	if err != nil {
+		slog.Warn("không mở được hộp thư đi", "err", err)
+	} else {
+		go ob.loop(outboxFlushEvery)
+	}
 	dataDir, err := repolock.DataDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -409,7 +415,7 @@ func run(args []string) int {
 	// Phiên `hive chat` dùng chung pool với run để bộ chọn gói đếm cả hai (specs/010 D2).
 	// newWorkerStatus còn nhận thư mục cache gốc, hai cấp trên DataDir.
 	status := newWorkerStatus(cfg, *owner, filepath.Dir(filepath.Dir(dataDir)))
-	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "terminal"), newRemote(cfg, path, detectCLIs()), status)
+	stopLocal, term := startLocalIPC(pool, filepath.Join(dataDir, "terminal"), newRemote(cfg, path, detectCLIs()), status, ob)
 	defer stopLocal()
 	slots := *capacity
 	if !flagSet(fs, "capacity") {

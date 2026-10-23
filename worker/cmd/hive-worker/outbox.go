@@ -297,22 +297,14 @@ func migrateScorePending(store outbox.Store, id outbox.Identity, reportDir strin
 }
 
 // outboxLoop gửi hộp thư đi trong lúc `hive-worker run` chạy: ngay khi bắt đầu (việc dồn lại lúc máy tắt) rồi theo nhịp.
+// Gửi cả mục của người dùng, nên vẫn chạy khi máy chưa đăng ký.
 func outboxLoop(ctx context.Context, cfg config.Config, every time.Duration) {
-	if cfg.HubURL == "" || cfg.MachineToken == "" {
+	svc, err := newOutboxService(ctx, cfg)
+	if err != nil {
+		slog.Warn("không mở được hộp thư đi", "err", err)
 		return
 	}
-	t := time.NewTicker(every)
-	defer t.Stop()
-	for {
-		if _, err := flushMachineOutbox(ctx, cfg); err != nil && ctx.Err() == nil {
-			slog.Warn("không gửi được hộp thư đi", "err", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-	}
+	svc.loop(every)
 }
 
 // pendingKind báo hộp thư đi còn việc chờ gửi của kind (dùng cho trạng thái gửi điểm).

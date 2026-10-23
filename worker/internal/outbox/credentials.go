@@ -151,6 +151,15 @@ func (c *Credentials) identity(ctx context.Context, l CLILogin, token string) (I
 	return id, nil
 }
 
+// HubURL là hub đang đăng nhập, không hỏi keychain hay hub; rỗng khi chưa đăng nhập hay hive.json hỏng.
+func (c *Credentials) HubURL() string {
+	l, err := c.load()
+	if err != nil {
+		return ""
+	}
+	return l.HubURL
+}
+
 // Current là danh tính ghi vào mục mới. Chưa đăng nhập thì trả lỗi NOT_SIGNED_IN như Submit.
 func (c *Credentials) Current(ctx context.Context) (Identity, error) {
 	l, err := c.load()

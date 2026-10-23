@@ -51,6 +51,7 @@ type Outcome struct {
 	Reason     string          `json:"reason,omitempty"`
 	HeldReason string          `json:"heldReason,omitempty"`
 	Error      string          `json:"error,omitempty"`
+	ReceivedAt string          `json:"receivedAt,omitempty"`
 	Response   json.RawMessage `json:"response,omitempty"`
 }
 
@@ -167,7 +168,7 @@ func (s Store) FlushWith(ctx context.Context, id Identity, send Dispatcher) (Flu
 		case sendErr == nil && (r.Outcome == hubclient.OutcomeAccepted || r.Outcome == hubclient.OutcomeDuplicate):
 			it.State, it.LastError = State(r.Outcome), ""
 			it.Result = &Result{Outcome: r.Outcome, ReceivedAt: r.ReceivedAt, Response: d.Response}
-			out.Response = d.Response
+			out.Response, out.ReceivedAt = d.Response, r.ReceivedAt
 			if err := s.write(id, it); err != nil {
 				return res, err
 			}
@@ -182,7 +183,7 @@ func (s Store) FlushWith(ctx context.Context, id Identity, send Dispatcher) (Flu
 		case sendErr == nil && r.Outcome == hubclient.OutcomeRejected:
 			it.State, it.LastError = StateRejected, ""
 			it.Result = &Result{Outcome: r.Outcome, Code: r.Code, Reason: r.Reason, ReceivedAt: r.ReceivedAt, Response: d.Response}
-			out.Code, out.Reason, out.Response = r.Code, r.Reason, d.Response
+			out.Code, out.Reason, out.Response, out.ReceivedAt = r.Code, r.Reason, d.Response, r.ReceivedAt
 			res.Rejected++
 		case errors.As(sendErr, &holdErr):
 			it.State, it.HeldReason, it.LastError = StateHeld, holdErr.Reason, holdErr.Message

@@ -171,71 +171,13 @@ type Submission struct {
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,64}$`)
 
 func (s Store) Submit(id Identity, sub Submission) (Item, error) {
-	transport := sub.Transport
-	if transport == "" {
-		transport = TransportWorker
-	}
-	group, ok := GroupOf(transport, sub.Kind)
-	if !ok {
-		return Item{}, &Error{Code: "UNKNOWN_KIND", Message: fmt.Sprintf("loại việc %q không gửi được qua hộp thư đi", sub.Kind)}
-	}
-	if !Queueable(group) {
-		return Item{}, &Error{Code: "NOT_QUEUEABLE", Message: fmt.Sprintf("%q cần hub trả lời ngay nên không xếp hàng được", sub.Kind)}
-	}
-	switch {
-	case transport == TransportWorker && (id.MachineID == "" || id.HubURL == ""):
-		return Item{}, errors.New("máy chưa đăng ký với hub; chạy `hive-worker register --hub URL --token MÃ` trước")
-	case transport != TransportWorker && (id.UserID == "" || id.HubURL == ""):
-		return Item{}, &Error{Code: "NOT_SIGNED_IN", Message: "Chưa đăng nhập hub; chạy `hive login` trước."}
-	}
-	if sub.Source != "" && !sources[sub.Source] {
-		return Item{}, fmt.Errorf("nguồn %q không hợp lệ", sub.Source)
-	}
-	if t := sub.Target; t != nil && (t.Type == "" || t.ID == "") {
-		return Item{}, errors.New("đích ghi cần cả loại và id")
-	}
-	payload := strings.TrimSpace(string(sub.Payload))
-	if !json.Valid([]byte(payload)) || !strings.HasPrefix(payload, "{") {
-		return Item{}, errors.New("nội dung gửi phải là một object JSON")
-	}
-	now := s.now()
-	it := Item{
-		Key: sub.Key, Source: sub.Source, Identity: id, Transport: transport, Kind: sub.Kind, Group: group,
-		Stream: sub.Stream, Target: sub.Target, Project: sub.Project, Body: json.RawMessage(payload), CreatedAt: sub.CreatedAt.UTC(),
-		State: StatePending,
-	}
-	it.Identity.HubURL = normalizeHub(id.HubURL)
-	if it.Key == "" {
-		it.Key = NewKey(now)
-	} else if !keyPattern.MatchString(it.Key) {
-		return Item{}, errors.New("khoá chống trùng gồm 16–64 ký tự chữ, số, `_` hoặc `-`")
-	}
-	if sub.CreatedAt.IsZero() {
-		it.CreatedAt = now.UTC()
-	}
-	if it.Source == "" {
-		it.Source = defaultSource[transport]
-	}
-	switch {
-	case it.Stream != "":
-	case it.Target != nil:
-		it.Stream = it.Target.Type + ":" + it.Target.ID
-	default:
-		it.Stream = it.Kind
-	}
-	b, err := json.Marshal(it)
+	it, b, err := s.prepare(id, sub, false)
 	if err != nil {
 		return Item{}, err
 	}
-	maxItem, maxTotal := s.MaxItemBytes, s.MaxTotalBytes
-	if maxItem <= 0 {
-		maxItem = DefaultMaxItemBytes
-	}
+	maxTotal := s.MaxTotalBytes
 	if maxTotal <= 0 {
 		maxTotal = DefaultMaxTotalBytes
-	}
-	if int64(len(b)) > maxItem {
-		return Item{}, &Error{Code: "ITEM_TOO_LARGE", Message: fmt.Sprintf("Việc chờ gửi quá lớn (tối đa %d MB).", maxItem>>20)}
 	}
 
 	unlock, err := s.lock(id)
@@ -268,6 +210,117 @@ func (s Store) Submit(id Identity, sub Submission) (Item, error) {
 		return Item{}, err
 	}
 	return it, nil
+}
+
+// Prepare kiểm và dựng mục như Submit nhưng không ghi đĩa, cho nhóm `immediate` gửi thẳng tới hub qua cùng Dispatcher.
+func (s Store) Prepare(id Identity, sub Submission) (Item, error) {
+	it, _, err := s.prepare(id, sub, true)
+	return it, err
+}
+
+func (s Store) prepare(id Identity, sub Submission, immediate bool) (Item, []byte, error) {
+	transport := sub.Transport
+	if transport == "" {
+		transport = TransportWorker
+	}
+	group, ok := GroupOf(transport, sub.Kind)
+	if !ok {
+		return Item{}, nil, &Error{Code: "UNKNOWN_KIND", Message: fmt.Sprintf("loại việc %q không gửi được qua hộp thư đi", sub.Kind)}
+	}
+	if !immediate && !Queueable(group) {
+		return Item{}, nil, &Error{Code: "NOT_QUEUEABLE", Message: fmt.Sprintf("%q cần hub trả lời ngay nên không xếp hàng được", sub.Kind)}
+	}
+	switch {
+	case transport == TransportWorker && (id.MachineID == "" || id.HubURL == ""):
+		return Item{}, nil, errors.New("máy chưa đăng ký với hub; chạy `hive-worker register --hub URL --token MÃ` trước")
+	case transport != TransportWorker && (id.UserID == "" || id.HubURL == ""):
+		return Item{}, nil, &Error{Code: "NOT_SIGNED_IN", Message: "Chưa đăng nhập hub; chạy `hive login` trước."}
+	}
+	if sub.Source != "" && !sources[sub.Source] {
+		return Item{}, nil, fmt.Errorf("nguồn %q không hợp lệ", sub.Source)
+	}
+	if t := sub.Target; t != nil && (t.Type == "" || t.ID == "") {
+		return Item{}, nil, errors.New("đích ghi cần cả loại và id")
+	}
+	payload := strings.TrimSpace(string(sub.Payload))
+	if !json.Valid([]byte(payload)) || !strings.HasPrefix(payload, "{") {
+		return Item{}, nil, errors.New("nội dung gửi phải là một object JSON")
+	}
+	now := s.now()
+	it := Item{
+		Key: sub.Key, Source: sub.Source, Identity: id, Transport: transport, Kind: sub.Kind, Group: group,
+		Stream: sub.Stream, Target: sub.Target, Project: sub.Project, Body: json.RawMessage(payload), CreatedAt: sub.CreatedAt.UTC(),
+		State: StatePending,
+	}
+	it.Identity.HubURL = normalizeHub(id.HubURL)
+	if it.Key == "" {
+		it.Key = NewKey(now)
+	} else if !keyPattern.MatchString(it.Key) {
+		return Item{}, nil, errors.New("khoá chống trùng gồm 16–64 ký tự chữ, số, `_` hoặc `-`")
+	}
+	if sub.CreatedAt.IsZero() {
+		it.CreatedAt = now.UTC()
+	}
+	if it.Source == "" {
+		it.Source = defaultSource[transport]
+	}
+	switch {
+	case it.Stream != "":
+	case it.Target != nil:
+		it.Stream = it.Target.Type + ":" + it.Target.ID
+	default:
+		it.Stream = it.Kind
+	}
+	b, err := json.Marshal(it)
+	if err != nil {
+		return Item{}, nil, err
+	}
+	maxItem := s.MaxItemBytes
+	if maxItem <= 0 {
+		maxItem = DefaultMaxItemBytes
+	}
+	if int64(len(b)) > maxItem {
+		return Item{}, nil, &Error{Code: "ITEM_TOO_LARGE", Message: fmt.Sprintf("Việc chờ gửi quá lớn (tối đa %d MB).", maxItem>>20)}
+	}
+	return it, b, nil
+}
+
+// IncomingDir là nơi client đặt file tạm của mục lớn hơn một dòng socket (`bodyFile`); không phải thư mục danh tính.
+const IncomingDir = "incoming"
+
+// Identities trả danh tính của các thư mục còn mục, đọc từ mục đầu tiên: tên thư mục là băm nên không suy ngược được.
+// Vòng gửi của `hive-worker run` dùng để gửi cả mục của người đã đăng xuất hay đổi tài khoản khi họ đăng nhập lại.
+func (s Store) Identities() ([]Identity, error) {
+	entries, err := os.ReadDir(s.Root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Identity
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == IncomingDir || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		files, err := os.ReadDir(filepath.Join(s.Root, e.Name()))
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			name := f.Name()
+			if f.IsDir() || strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".json") {
+				continue
+			}
+			it, err := s.read(filepath.Join(s.Root, e.Name(), name))
+			if err != nil || it.Identity.Key() != e.Name() {
+				continue
+			}
+			out = append(out, it.Identity)
+			break
+		}
+	}
+	return out, nil
 }
 
 type loaded struct {
