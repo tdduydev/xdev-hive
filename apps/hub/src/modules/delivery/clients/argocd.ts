@@ -1,3 +1,5 @@
+import { deliveryOutbound, OUTBOUND_DISABLED } from "./outbound.ts";
+
 // Client Argo CD thuần trên fetch (plan.md mục 6). Không đụng DB: bên gọi truyền địa chỉ và token của kết nối hạ tầng.
 // Đường dẫn và dạng JSON theo tài liệu công khai của Argo CD (API `/api/v1/applications`) [Suy luận]; T007 chưa kiểm
 // với Argo CD thật (cách xác thực, quyền `sync`, `rollback` của token).
@@ -206,6 +208,7 @@ export function createArgoCdClient(conn: ArgoCdConnection) {
   }
 
   async function request(path: string, opts: { method?: "GET" | "POST"; json?: unknown } = {}): Promise<Response> {
+    if (!deliveryOutbound()) throw new ArgoCdError("BAD_REQUEST", OUTBOUND_DISABLED);
     const method = opts.method ?? "GET";
     const headers: Record<string, string> = { authorization, accept: "application/json" };
     if (opts.json !== undefined) headers["content-type"] = "application/json";

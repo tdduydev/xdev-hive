@@ -4,6 +4,7 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import ssh2, { type ConnectConfig, type ServerHostKeyAlgorithm, type SFTPWrapper } from "ssh2";
 import type { HostKey } from "../schema.ts";
+import { deliveryOutbound, OUTBOUND_DISABLED } from "./outbound.ts";
 
 // Client SSH của hub (plan.md mục 5 "Kết nối"; spike T001, research.md mục 4). Khoá riêng chỉ nằm trong bộ nhớ của lần
 // kết nối: không ghi file, không log, không đưa vào thông báo lỗi.
@@ -153,6 +154,10 @@ interface OpenInput extends SshAddress {
 
 function openClient(input: OpenInput): Promise<SshConnection> {
   return new Promise((resolve, reject) => {
+    if (!deliveryOutbound()) {
+      reject(new SshError("network", OUTBOUND_DISABLED));
+      return;
+    }
     const client = new ssh2.Client();
     let denied: { verdict: Verdict; hostKey: HostKey } | undefined;
     let conn: SshConnection | undefined;

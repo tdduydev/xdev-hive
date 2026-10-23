@@ -159,6 +159,14 @@ describe("loadConfig: SMTP nội bộ", () => {
   });
 });
 
+describe("loadConfig: kết nối ra của CI/CD", () => {
+  it("mặc định tắt và chỉ bật khi HIVE_DELIVERY_OUTBOUND=1", () => {
+    expect(loadConfig({}).deliveryOutbound).toBe(false);
+    expect(loadConfig({ HIVE_DELIVERY_OUTBOUND: "true" }).deliveryOutbound).toBe(false);
+    expect(loadConfig({ HIVE_DELIVERY_OUTBOUND: "1" }).deliveryOutbound).toBe(true);
+  });
+});
+
 describe("loadConfig: Telegram long polling", () => {
   it("mặc định dùng webhook; chuẩn hoá UUID và bỏ ID trùng", () => {
     const id = "abcdef01-2345-6789-abcd-ef0123456789";

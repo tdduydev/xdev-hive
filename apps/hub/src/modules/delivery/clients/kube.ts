@@ -3,6 +3,7 @@
 // Đường dẫn và dạng JSON theo tài liệu công khai của Kubernetes [Suy luận]; T007 chưa kiểm quyền get/patch của
 // ServiceAccount trên cụm thật.
 import { request as httpsRequest } from "node:https";
+import { deliveryOutbound, OUTBOUND_DISABLED } from "./outbound.ts";
 
 export type KubeErrorCode =
   | "UNAUTHORIZED"
@@ -291,6 +292,7 @@ export function createKubeClient(conn: KubeConnection) {
   }
 
   async function call(method: "GET" | "PATCH", path: string, patch?: unknown): Promise<unknown> {
+    if (!deliveryOutbound()) throw new KubeError("BAD_REQUEST", OUTBOUND_DISABLED);
     let res: RawResponse;
     try {
       res = await send(method, path, patch);
