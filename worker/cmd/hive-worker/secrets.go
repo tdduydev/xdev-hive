@@ -82,6 +82,9 @@ var errSecretInput = &secretstore.Error{
 
 // secretsCommand: quản lý bí mật tại máy cho agent (specs/031). In một JSON ra stdout; lỗi in {"error":…} và thoát 1.
 func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "exec" {
+		return runSecretsExec(args[1:], stdin, stdout, stderr)
+	}
 	action := ""
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
 		action, args = args[0], args[1:]

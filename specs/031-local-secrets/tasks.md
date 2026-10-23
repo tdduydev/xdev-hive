@@ -285,7 +285,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 4.
 
-- [ ] T019 [US3] A2·nặng — Lệnh `secrets exec`.
+- [x] T019 [US3] A2·nặng — Lệnh `secrets exec`.
   - File mới `worker/cmd/hive-worker/secrets_exec.go`, `secrets_exec_unix.go` (`syscall.Exec`),
     `secrets_exec_windows.go` (tiến trình con cùng console, chờ, trả mã thoát).
   - Trình tự: `Grant` kind `terminal`; nếu `--cli claude` thì thêm `--append-system-prompt <khối>`.
