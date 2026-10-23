@@ -206,8 +206,9 @@ func TestTokenAndHeartbeat(t *testing.T) {
 			t.Errorf("hello có mảng null: %+v", hello)
 		}
 		// Hub chỉ giao run kiểm tài liệu, trợ lý tài liệu, brief và soạn tài liệu SDLC cho worker khai doccheck, docassist, brief, sdlc;
-		// repo tham gia của hạng mục nhiều dự án chỉ gửi cho worker khai sdlc-multirepo.
-		if len(hello.Capabilities) != 6 || hello.Capabilities[0] != "doccheck" || hello.Capabilities[1] != "docassist" || hello.Capabilities[2] != "brief" || hello.Capabilities[3] != "skill_proposal" || hello.Capabilities[4] != "sdlc" || hello.Capabilities[5] != "sdlc-multirepo" {
+		// repo tham gia của hạng mục nhiều dự án chỉ gửi cho worker khai sdlc-multirepo; token git theo run chỉ cấp cho worker
+		// khai run_git_token.
+		if len(hello.Capabilities) != 7 || hello.Capabilities[0] != "doccheck" || hello.Capabilities[1] != "docassist" || hello.Capabilities[2] != "brief" || hello.Capabilities[3] != "skill_proposal" || hello.Capabilities[4] != "sdlc" || hello.Capabilities[5] != "sdlc-multirepo" || hello.Capabilities[6] != "run_git_token" {
 			t.Errorf("hello.capabilities = %v", hello.Capabilities)
 		}
 		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30}`))

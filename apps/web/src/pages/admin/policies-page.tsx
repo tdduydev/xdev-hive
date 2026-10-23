@@ -81,6 +81,7 @@ const EVENTS: HookEvent[] = ["PreToolUse", "PostToolUse", "Stop"];
 const SECTIONS = {
   model: ["allowedModels", "neverAutoUpgrade"],
   perm: ["defaultPermissionMode", "allowFullPermission", "requireSandbox"],
+  git: ["git"],
   secrets: ["secretInjection"],
   memory: ["agentMemory"],
   learning: ["skillLearning"],
@@ -126,6 +127,10 @@ const text: Dict<{
   cf2: string;
   cfKeep: string;
   cfGo: string;
+  gitTitle: string;
+  gitHint: string;
+  gitRequire: string;
+  gitRequireHint: string;
   memTitle: string;
   memHint: string;
   memMode: string;
@@ -258,6 +263,12 @@ const text: Dict<{
     cf2: "Agent chạy được mọi lệnh, kể cả lệnh mạng.",
     cfKeep: "Giữ trong worktree",
     cfGo: "Chọn toàn quyền",
+    gitTitle: "Token Git theo run",
+    gitHint:
+      "Dự án kết nối bằng GitHub App hoặc GitLab: hub cấp cho mỗi run một token Git chỉ dùng cho repo của dự án. Máy nhận việc chỉ đưa token cho git, không cho agent.",
+    gitRequire: "Bắt buộc token Git theo run",
+    gitRequireHint:
+      "Run chỉ giao cho máy dùng được token theo run. Dự án kết nối bằng PAT sẽ chờ, không chạy bằng thông tin Git có sẵn trên máy.",
     memTitle: "Memory do agent ghi",
     memHint: "Agent chạy code và review ghi lại điều đã học cho các run sau qua memory_write.",
     memMode: "Chế độ ghi",
@@ -410,6 +421,12 @@ const text: Dict<{
     cf2: "The agent can run any command, network commands included.",
     cfKeep: "Keep in the worktree",
     cfGo: "Choose full access",
+    gitTitle: "Per-run Git tokens",
+    gitHint:
+      "For projects connected through a GitHub App or GitLab, the hub issues each run a Git token limited to the project's repository. The run machine hands it to git only, never to the agent.",
+    gitRequire: "Require per-run Git tokens",
+    gitRequireHint:
+      "Runs only go to machines that can use per-run tokens. Projects connected with a PAT wait instead of running with the machine's own Git credentials.",
     memTitle: "Agent-written memory",
     memHint: "Code and review agents save what they learned for later runs through memory_write.",
     memMode: "Write mode",
@@ -703,7 +720,7 @@ function FloorInput({
 }
 
 /**
- * /admin/policies: chính sách agent của tổ chức (admin-layout.md § Settings forms). Tám mục, mỗi mục lưu riêng; thanh
+ * /admin/policies: chính sách agent của tổ chức (admin-layout.md § Settings forms). Mỗi mục lưu riêng; thanh
  * mục dính trên form để nhảy nhanh; rời trang khi còn mục chưa lưu thì hỏi lại.
  */
 export function PoliciesPage() {
@@ -836,6 +853,7 @@ function PolicyEditor({
     () => [
       { id: "model", label: "Model" },
       { id: "perm", label: t.perm },
+      { id: "git", label: t.gitTitle },
       { id: "secrets", label: t.secretsTitle },
       { id: "memory", label: t.memTitle },
       { id: "learning", label: t.learnTitle },
@@ -977,6 +995,16 @@ function PolicyEditor({
             hint={t.sandboxReqHint}
             checked={form.requireSandbox}
             onChange={(v) => update("perm", { requireSandbox: v })}
+            disabled={disabled}
+          />
+        </SettingsSection>
+
+        <SettingsSection id="git" title={t.gitTitle} description={t.gitHint} save={sectionSave("git")}>
+          <SwitchRow
+            label={t.gitRequire}
+            hint={t.gitRequireHint}
+            checked={form.git.requireRunGitToken}
+            onChange={(requireRunGitToken) => update("git", { git: { ...form.git, requireRunGitToken } })}
             disabled={disabled}
           />
         </SettingsSection>

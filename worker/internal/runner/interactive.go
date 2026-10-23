@@ -144,7 +144,7 @@ func (r Runner) PrepareInteractive(ctx context.Context, spec InteractiveSpec) (_
 		if err := os.MkdirAll(filepath.Dir(src.dir), 0700); err != nil {
 			return nil, err
 		}
-		if err := cloneOnce(ctx, r.DataDir, spec.RepoURL, src.dir); err != nil {
+		if err := cloneOnce(ctx, gitAuth{}, r.DataDir, spec.RepoURL, src.dir); err != nil {
 			return nil, fmt.Errorf("không clone được repo của dự án: %w", err)
 		}
 	}
