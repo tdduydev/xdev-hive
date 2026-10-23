@@ -77,6 +77,8 @@ func main() {
 		os.Exit(optimizeCommand(os.Args[2:], os.Stdout, os.Stderr))
 	case "projects":
 		os.Exit(projectsCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "secrets":
+		os.Exit(secretsCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "gitgroups":
 		os.Exit(gitgroupsCommand(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	case "branches":
@@ -102,7 +104,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | branches <status | list | fetch | pull | switch | create | scan | clean | settings | settings-set | merge | rebase | continue | abort> [--timeout GIÂY] | ssh [list | check | scan | setup | remove] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | context [status | enable | disable | save-source | sync | resolve | migrate] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | outbox [status | submit | flush | drop] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | projects [bind | unbind | set | import-legacy] [--json] | secrets [status | list | set | rename | describe | assign | unassign | delete] [--json] | gitgroups [host-add | host-remove | suggest | group-add | group-update | group-refresh | group-remove | status | sync | due | auto-fetch] [--json] | branches <status | list | fetch | pull | switch | create | scan | clean | settings | settings-set | merge | rebase | continue | abort> [--timeout GIÂY] | ssh [list | check | scan | setup | remove] [--json] | memory [scan | edit | delete | restore | merge | share | unshare] [--json] | context [status | enable | disable | save-source | sync | resolve | migrate] [--json] | optimize [status | enable | disable | restore | link | report] [--json] | outbox [status | submit | flush | drop] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -353,13 +355,13 @@ func run(args []string) int {
 	hub := fs.String("hub", envOr("HIVE_HUB_URL", ""), "địa chỉ hub (mặc định lấy từ file cấu hình)")
 	capacity := fs.Int("capacity", 1, "số run chạy cùng lúc")
 	statusJSON := fs.Bool("status-json", false, "in trạng thái kết nối ra stdout, mỗi dòng một JSON (cho app desktop); log vẫn ra stderr")
-	owner := fs.String("owner", ownerCLI, "ai chạy worker này: desktop, vscode hoặc cli (hiện ở op worker.status của socket nội bộ)")
+	owner := fs.String("owner", ownerCLI, "ai chạy worker này: desktop hoặc cli (hiện ở op worker.status của socket nội bộ)")
 	stdinControl := fs.Bool("stdin-control", false, `dừng khi đọc dòng "stop" hoặc hết stdin (app desktop chạy worker làm sidecar)`)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if !validOwner(*owner) {
-		fmt.Fprintf(os.Stderr, "--owner phải là %s, %s hoặc %s.\n", ownerDesktop, ownerVSCode, ownerCLI)
+		fmt.Fprintf(os.Stderr, "--owner phải là %s hoặc %s.\n", ownerDesktop, ownerCLI)
 		return 2
 	}
 	lock, code := lockWorker()
