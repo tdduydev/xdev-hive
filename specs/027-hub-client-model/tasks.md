@@ -45,12 +45,12 @@ description: "Danh sách task: Hub giữ dữ liệu và tiến độ, client l�
 
 - [x] T003 `withClientEvent`: chèn trước, `duplicate` trả `response` cũ, `rejected` ghi ở transaction riêng; dọn 30 ngày
   (đã có, spec 025) · `apps/hub/src/modules/platform/client-events.ts`, `client-events.db.test.ts`
-- [ ] T004 Bảng nhóm tool có ghi: `clientWriteGroup`, `CLIENT_WRITE_TOOLS`, `CLIENT_WRITE_PROCEDURES`,
+- [x] T004 Bảng nhóm tool có ghi: `clientWriteGroup`, `CLIENT_WRITE_TOOLS`, `CLIENT_WRITE_PROCEDURES`,
   `clientWriteGroupOf()`, `clientEventHeaders` (tên header), `taskHistoryItem`; fixture
   `fixtures/client-write-tools.json` sinh trong `pnpm openapi`; test fixture khớp bảng ·
   `packages/contracts/src/client-events.ts`, `packages/contracts/src/client-events.test.ts`,
   `packages/contracts/scripts/openapi.ts`, `packages/contracts/fixtures/client-write-tools.json`
-- [ ] T005 [P] Đọc header sự kiện client từ request: `Idempotency-Key`, `X-Hive-Source`, `X-Hive-Machine`,
+- [x] T005 [P] Đọc header sự kiện client từ request: `Idempotency-Key`, `X-Hive-Source`, `X-Hive-Machine`,
   `X-Hive-Created-At`, `X-Hive-Client`; khoá sai dạng thì báo lỗi 400 tiếng Việt; nguồn lạ thành `unknown`; bộ đếm
   `client_event.missing_key` theo phiên bản client · `apps/hub/src/modules/platform/client-request.ts`,
   `client-request.test.ts`, `platform/index.ts`

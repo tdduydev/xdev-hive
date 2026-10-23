@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "task_update": "progress",
+    "sdlc_report": "progress",
+    "sdlc_ask": "progress",
+    "doc_propose": "proposal",
+    "doc_suggest": "proposal",
+    "doc_comment": "proposal",
+    "skill_propose": "proposal",
+    "memory_write": "proposal",
+    "plan_submit": "proposal",
+    "review_submit": "proposal",
+    "skill_proposal_submit": "proposal",
+    "brief_submit": "proposal",
+    "doc_check_submit": "proposal",
+    "doc_assist_submit": "proposal",
+    "leader_reply": "immediate",
+    "leader_propose": "immediate",
+    "leader_action": "immediate",
+    "artifact_create": "immediate",
+    "artifact_update": "immediate"
+  },
+  "procedures": {
+    "memory.write": "proposal"
+  },
+  "machineEvents": {
+    "machine.token_score": "progress",
+    "memory.propose": "proposal",
+    "project.token_usage": "progress"
+  }
+}
