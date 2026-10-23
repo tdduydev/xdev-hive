@@ -252,7 +252,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `worker/internal/tokenreport/**`, `worker/cmd/hive-worker/optimize_score_report.go`, test.
   - **Kiểm**: `TestProjectUsagePayloadHasNoText` (SC-007); gán dự án theo `cwd` (thư mục con, khác ổ đĩa Windows).
 
-- [ ] **T024 [US5] [US6] [vừa] · 1 ngày — Desktop: outbox, gửi memory qua hàng đợi, bật gửi số liệu** (sau T017, T019)
+- [x] **T024 [US5] [US6] [vừa] · 1 ngày — Desktop: outbox, gửi memory qua hàng đợi, bật gửi số liệu** (sau T017, T019)
   - **Goal**: Rust `outbox.rs` (`outbox_submit`, `outbox_flush`, `outbox_status`); `lib/outbox.ts`; "Gửi lên hub" trong
     `memory-hub-sync.tsx` đi qua `outbox_submit`, báo "Đã xếp hàng, sẽ gửi khi có mạng"; thẻ "Đang chờ gửi" và việc bị từ
     chối trên màn Memory; flush khi mở app và sau mỗi lần submit; công tắc "Gửi số liệu token của dự án" (mặc định tắt) và
@@ -260,6 +260,11 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **PHẠM VI**: `apps/desktop/src-tauri/src/{outbox.rs,lib.rs}`, `capabilities/app.json`, `apps/desktop/src/lib/outbox.ts`,
     `apps/desktop/src/components/memory-hub-sync.tsx`, `apps/desktop/src/screens/memory-screen.tsx`, test.
   - **Kiểm**: Vitest: xếp hàng khi lỗi mạng, hiện số chờ, từ chối có lý do.
+  - **Chưa làm (không phải quyết định phạm vi, mà thiếu đường từ worker)**: công tắc "Gửi số liệu token của dự án" và nút
+    "Xoá số liệu đã gửi". `optimizeProjectUsage` (T023) chưa nối vào lệnh `optimize`, và id máy cho
+    `fleet.deleteMyProjectUsage` chưa lấy được từ `this_machine`; `worker/**` ngoài phạm vi task này. Cần một việc nhỏ ở
+    worker rồi thêm phần desktop. Chi tiết ở plan.md mục 5. Phần còn lại của T024 (outbox, memory qua hàng đợi, thẻ chờ
+    gửi và bị từ chối, flush khi mở app) đã xong.
 
 - [x] **T025 [P] [US6] [vừa] · 1 ngày — Web: bảng token của dự án** (sau T022)
   - **Goal**: tab/mục "Token" ở trang dự án: bảng theo người và máy (token quy đổi 7 ngày, số phiên, điểm, lệch chính

@@ -65,7 +65,7 @@ apps/desktop
         │ invoke
 src-tauri/context_sync.rs   context_status | context_save_source | context_sync(hubFile?) | context_enable | context_disable | context_resolve
 src-tauri/optimize_all.rs   optimize_all_preview(policyFile?) | optimize_all_apply(plan) | optimize_all_undo(runId) | optimize_all_last
-src-tauri/outbox.rs         outbox_submit(kind, payload) | outbox_status
+src-tauri/outbox.rs         outbox_submit(kind, payload) | outbox_flush | outbox_status | outbox_drop(key)
         │ spawn sidecar (JSON qua stdout, dữ liệu lớn qua file tạm)
 hive-worker context …       → worker/internal/ctxsync      (nguồn, khối, file đích, gương Codex, hub.json)
 hive-worker optimize all …  → worker/internal/optimizeall  (lập kế hoạch, chạy, nhật ký runs/<id>.json, hoàn tác)
@@ -174,6 +174,21 @@ accepted|duplicate|rejected|expired`, backoff 5 s → 5 phút, hết hạn 14 ng
 Kiểu việc ở spec này: `memory.propose`, `project.token_usage`, `machine.token_score` (chuyển `PendingReport` của 025 sang
 outbox). `memory-hub-sync.tsx` đổi "Gửi lên hub" sang `outbox_submit`.
 
+**Desktop dùng hàng đợi của worker, không dựng hàng đợi thứ hai (T024).** Spec 027 để hàng đợi ở worker (kho trên đĩa,
+bộ gửi, khoá chống trùng), nên `outbox.rs` của desktop chỉ bọc `hive-worker outbox status|submit|flush|drop --json`.
+Việc đã xếp còn nguyên khi app tắt hay hub vắng. `outbox_submit` chỉ nhận `memory.propose` (danh sách đóng; số liệu token
+và điểm máy do worker tự xếp) và truyền nội dung bằng `--payload=` để giá trị bắt đầu bằng `-` không thành cờ. Gửi ngay
+sau mỗi `submit` do `lib/outbox.ts` (`submitMemory`) làm: lỗi lúc gửi không báo, vì mục đã nằm trong hàng đợi. Khi mở
+app, `outbox::start_flush` gửi phần còn đọng sau 5 giây và màn Memory gọi thêm một lượt khi mở. Thẻ "Đang chờ gửi" và
+danh sách việc bị từ chối (kèm lý do của hub, có nút bỏ) nằm trong `memory-hub-sync.tsx`, đọc từ `outbox_status` mỗi 15
+giây.
+
+**Chưa làm trong T024: công tắc "Gửi số liệu token của dự án" và nút "Xoá số liệu đã gửi".** Hàm `optimizeProjectUsage`
+(T023) có trong `worker/cmd/hive-worker/optimize_score_report.go` nhưng chưa được nối vào bộ phân tích lệnh `optimize`,
+nên desktop không có lệnh nào để bật, tắt hay xem cờ theo dự án; `worker/**` ngoài phạm vi của việc này. Nút xoá cần id
+máy trên hub (`fleet.deleteMyProjectUsage` nhận `id`), trong khi `this_machine` trả "tên hay id". Việc còn lại ở worker:
+nối lệnh bật/tắt/xem cờ theo dự án (`--json`) và trả id máy; sau đó phần desktop chỉ là một công tắc và một nút.
+
 ### 6. Hub
 
 - Migration `0084_dev_context_sync.sql`: `alter table hive.memories add column pinned boolean not null default false`;
@@ -217,6 +232,7 @@ outbox). `memory-hub-sync.tsx` đổi "Gửi lên hub" sang `outbox_submit`.
 | W3 | Codex dùng bản gương `AGENTS.override.md` | Codex không có file cục bộ cộng thêm (research mục 1) |
 | W4 | Không thêm `updated_at`/con trỏ cho memory | Số mục nhỏ, thay cả mục mỗi lần |
 | W5 | Tách gói `gitexclude` nhưng không đổi `runner.go`, `token_score.rs` | Giữ phạm vi; gộp sau |
+| W6 | Desktop bọc `hive-worker outbox`, không có hàng đợi riêng; `outbox_submit` chỉ nhận `memory.propose` | Spec 027 để hàng đợi ở worker; hai hàng đợi sẽ gửi trùng và lệch trạng thái. Loại việc khác do worker tự xếp |
 
 ## Rủi ro
 
@@ -227,6 +243,7 @@ outbox). `memory-hub-sync.tsx` đổi "Gửi lên hub" sang `outbox_submit`.
 | Người dùng lỡ commit file cục bộ | Không ghi file bị theo dõi, báo cách gỡ (FR-002a) |
 | Ngữ cảnh "Từ hub" làm tăng token mỗi phiên | Ngân sách mặc định 2.000 token; điểm 025 A3 vẫn đo cỡ file chỉ dẫn |
 | Bí mật lọt vào memory hub | Lọc trước khi ghi khối; memory máy gửi luôn `pending`, người duyệt |
+| Công tắc số liệu token và nút xoá chưa có đường từ desktop (lệnh worker theo dự án chưa nối) | Ghi ở T024; số liệu dự án mặc định tắt nên không gửi gì cho đến khi nối; việc worker nhỏ, làm trước khi mở tính năng |
 
 ## Phương án đã cân nhắc
 
