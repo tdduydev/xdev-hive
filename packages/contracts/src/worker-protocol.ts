@@ -340,6 +340,14 @@ export const runResult = z.object({
 
 // ---- Hub → worker ----
 
+/**
+ * Đưa bí mật tại máy vào agent (specs/031 FR-050): `allow` đưa bí mật đã gán, `approve` hỏi người dùng tại máy mỗi lần,
+ * `deny` không đưa gì. Hub chỉ giữ lựa chọn này và gửi cho worker; tên và giá trị bí mật chỉ có ở máy. Khai ở đây vì
+ * `policies.ts` phụ thuộc vòng vào file này qua `projects.ts`.
+ */
+export const secretInjection = z.enum(["allow", "approve", "deny"]);
+export type SecretInjection = z.output<typeof secretInjection>;
+
 export const welcome = z.object({
   ...envelope("welcome"),
   sessionId: z.string(),
@@ -357,7 +365,7 @@ export const welcome = z.object({
    */
   owner: z.object({ userId: z.string().min(1).max(64), shared: z.boolean() }).optional(),
   /** Chính sách tổ chức liên quan tới điều khiển từ xa. Hub chỉ dùng để tắt: thiếu trường thì worker theo cài đặt tại máy. */
-  policy: z.object({ totpFallback: z.boolean() }).optional(),
+  policy: z.object({ totpFallback: z.boolean(), secretInjection: secretInjection.optional() }).optional(),
 });
 
 export const upgradeRequired = z.object({

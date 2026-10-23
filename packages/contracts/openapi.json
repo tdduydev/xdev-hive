@@ -134229,6 +134229,15 @@
                         "totpFallback": true
                       }
                     },
+                    "secretInjection": {
+                      "enum": [
+                        "allow",
+                        "approve",
+                        "deny"
+                      ],
+                      "type": "string",
+                      "default": "allow"
+                    },
                     "updatedAt": {
                       "anyOf": [
                         {
@@ -135133,6 +135142,15 @@
                     "default": {
                       "totpFallback": true
                     }
+                  },
+                  "secretInjection": {
+                    "enum": [
+                      "allow",
+                      "approve",
+                      "deny"
+                    ],
+                    "type": "string",
+                    "default": "allow"
                   }
                 },
                 "required": [
@@ -135606,6 +135624,15 @@
                       "default": {
                         "totpFallback": true
                       }
+                    },
+                    "secretInjection": {
+                      "enum": [
+                        "allow",
+                        "approve",
+                        "deny"
+                      ],
+                      "type": "string",
+                      "default": "allow"
                     },
                     "updatedAt": {
                       "anyOf": [

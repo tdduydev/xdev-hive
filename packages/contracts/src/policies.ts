@@ -9,6 +9,10 @@ import {
 } from "./artifacts.ts";
 import { orgRoute } from "./common.ts";
 import { runPermissionMode } from "./projects.ts";
+import { secretInjection } from "./worker-protocol.ts";
+
+export type { SecretInjection } from "./worker-protocol.ts";
+export { secretInjection };
 
 /**
  * Chính sách agent của tổ chức (specs/002-agent-policies, Policies.dc.html): model được dùng, quyền CLI, hook bắt
@@ -245,6 +249,8 @@ export const agentPolicyInput = z.object({
   skillLearning: agentSkillLearningPolicy.default(() => ({ ...DEFAULT_AGENT_SKILL_LEARNING_POLICY })),
   /** Có mặc định vì chính sách đã lưu trước specs/010 không có mục này. */
   remote: agentRemotePolicy.default(() => ({ ...DEFAULT_AGENT_REMOTE_POLICY })),
+  /** Có mặc định vì chính sách đã lưu trước specs/031 không có mục này; `allow` giữ nguyên hành vi cũ. */
+  secretInjection: secretInjection.default("allow"),
 });
 export type AgentPolicyInput = z.input<typeof agentPolicyInput>;
 
@@ -284,12 +290,17 @@ export const DEFAULT_AGENT_POLICY: z.output<typeof agentPolicyInput> = {
   agentMemory: { ...DEFAULT_AGENT_MEMORY_POLICY },
   skillLearning: { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
   remote: { ...DEFAULT_AGENT_REMOTE_POLICY },
+  secretInjection: "allow",
 };
 
-/** Phần chính sách worker cần để chạy run: hook và việc bỏ cấu hình của repo. Ghi trong spec của job_offer. */
+/**
+ * Phần chính sách worker cần để chạy run: hook, việc bỏ cấu hình của repo và việc đưa bí mật tại máy. Ghi trong spec của
+ * job_offer. Thiếu `secretInjection` là hub cũ hoặc `allow`.
+ */
 export const jobPolicy = z.object({
   hooks: z.array(policyHook),
   managedHooksOnly: z.boolean(),
+  secretInjection: secretInjection.optional(),
 });
 export type JobPolicy = z.output<typeof jobPolicy>;
 
