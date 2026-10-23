@@ -65,6 +65,14 @@ type Heartbeat struct {
 	Accounts *[]accounts.Summary `json:"accounts,omitempty"`
 }
 
+// Reauth đưa access token mới cho hub trước khi token đã mở kết nối hết hạn (ADR 0033).
+type Reauth struct {
+	Type        string `json:"type"`
+	V           int    `json:"v"`
+	ID          string `json:"id"`
+	AccessToken string `json:"accessToken"`
+}
+
 type JobAccept struct {
 	Type    string `json:"type"`
 	V       int    `json:"v"`
@@ -587,6 +595,8 @@ func newMessage(msgType string) any {
 		return &Hello{}
 	case "heartbeat":
 		return &Heartbeat{}
+	case "reauth":
+		return &Reauth{}
 	case "job_accept":
 		return &JobAccept{}
 	case "job_reject":

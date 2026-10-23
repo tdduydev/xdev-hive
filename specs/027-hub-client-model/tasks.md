@@ -145,7 +145,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 
 **Goal**: máy có khoá Ed25519, đổi chữ ký lấy access token 15 phút; token git chỉ cho repo của run.
 
-- [ ] T026 [US3] Hợp đồng `worker/challenge`, `worker/token`, `worker/key`, gói `reauth` · `packages/contracts/src/fleet.ts`,
+- [x] T026 [US3] Hợp đồng `worker/challenge`, `worker/token`, `worker/key`, gói `reauth` · `packages/contracts/src/fleet.ts`,
   `packages/contracts/src/worker-protocol.ts`, `fixtures/worker-protocol.json`, `openapi.json`
 - [ ] T027 [US3] Cột `public_key_at`, `key_storage`, `machine_tokens.superseded_at` · `apps/hub/src/modules/fleet/schema.ts`
 - [ ] T028 [US3] Challenge → token, xác thực trước khi nâng WSS, đóng `4401` theo `exp`, `reauth` ·

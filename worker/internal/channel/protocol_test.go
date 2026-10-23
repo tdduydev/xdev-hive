@@ -49,7 +49,7 @@ func TestProtocolRoundTrip(t *testing.T) {
 		seen[want["type"].(string)] = true
 	}
 	// Mọi loại Go biết phải có mẫu, để thêm gói mới mà quên cập nhật một bên thì test hỏng.
-	for _, typ := range []string{"hello", "heartbeat", "job_accept", "job_reject", "run_event", "log_chunk", "run_result", "welcome", "upgrade_required", "heartbeat_ack", "job_offer", "lease", "ack", "steer", "approval_result", "cancel", "drain", "update", "account_set", "account_login_start", "account_login_input", "account_login_cancel", "account_login_event", "term_opened", "term_output", "term_exit", "term_open", "term_input", "term_resize", "term_close", "term_start", "term_control", "term_detach", "term_ack", "term_disable", "term_pair", "term_device_revoke", "term_state", "term_denied", "term_event", "term_granted", "term_revoked", "term_pair_result"} {
+	for _, typ := range []string{"hello", "heartbeat", "reauth", "job_accept", "job_reject", "run_event", "log_chunk", "run_result", "welcome", "upgrade_required", "heartbeat_ack", "job_offer", "lease", "ack", "steer", "approval_result", "cancel", "drain", "update", "account_set", "account_login_start", "account_login_input", "account_login_cancel", "account_login_event", "term_opened", "term_output", "term_exit", "term_open", "term_input", "term_resize", "term_close", "term_start", "term_control", "term_detach", "term_ack", "term_disable", "term_pair", "term_device_revoke", "term_state", "term_denied", "term_event", "term_granted", "term_revoked", "term_pair_result"} {
 		if newMessage(typ) == nil {
 			t.Errorf("newMessage thiếu %s", typ)
 		}
@@ -57,8 +57,8 @@ func TestProtocolRoundTrip(t *testing.T) {
 			t.Errorf("file mẫu thiếu %s", typ)
 		}
 	}
-	if len(seen) != 43 {
-		t.Errorf("file mẫu có %d loại, Go biết 43", len(seen))
+	if len(seen) != 44 {
+		t.Errorf("file mẫu có %d loại, Go biết 44", len(seen))
 	}
 }
 

@@ -40,7 +40,7 @@ export type TerminalMessage = Extract<
 type RemoteTerminalMessage = Extract<WorkerToHub, { type: "term_denied" | "term_granted" | "term_revoked" }>;
 export type RunMessage = Exclude<
   WorkerToHub,
-  { type: "hello" | "heartbeat" | "account_login_event" } | TerminalMessage | RemoteTerminalMessage
+  { type: "hello" | "heartbeat" | "reauth" | "account_login_event" } | TerminalMessage | RemoteTerminalMessage
 >;
 
 /** Gói terminal Leader (specs/010). Module terminal đăng ký qua registerTerminalHandlers; fleet không import terminal. */
@@ -202,6 +202,9 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
       switch (msg.type) {
         case "hello":
           return ws.close(CLOSE.badMessage, "Đã gửi hello rồi");
+        case "reauth":
+          // Hub chưa gửi accessTokenExp nên worker đúng hợp đồng không gửi gói này.
+          return ws.close(CLOSE.badMessage, "Hub chưa nhận access token máy");
         case "account_login_event":
           return onAccountLoginEvent(machine, msg);
         case "term_opened":

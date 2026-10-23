@@ -1,6 +1,12 @@
 {
   "workerToHub": [
     {
+      "type": "reauth",
+      "v": 1,
+      "id": "m-reauth",
+      "accessToken": "eyJhbGciOiJIUzI1NiJ9.e30.sig"
+    },
+    {
       "type": "hello",
       "v": 1,
       "id": "m-hello",

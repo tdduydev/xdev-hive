@@ -98,6 +98,12 @@ export const heartbeat = z.object({
   accounts: z.array(workerAccountSummary).max(32).optional(),
 });
 
+/**
+ * Access token máy mới, gửi trước khi token đang dùng hết hạn (ADR 0033). Hub kiểm cùng máy, sai thì đóng `4401`. Worker
+ * chỉ gửi khi `welcome.accessTokenExp` có giá trị, vì hub cũ đóng kết nối khi gặp loại gói lạ.
+ */
+export const reauth = z.object({ ...envelope("reauth"), accessToken: z.string().min(1).max(2048) });
+
 /** Cách đăng nhập gói từ web (T063): Claude theo gói, SSO, Console hoặc dán token `claude setup-token`; Codex mã thiết bị. */
 export const accountLoginHow = z.enum(["plan", "sso", "console", "token", "device"]);
 export type AccountLoginHow = z.output<typeof accountLoginHow>;
@@ -344,7 +350,7 @@ export const welcome = z.object({
   ...envelope("welcome"),
   sessionId: z.string(),
   heartbeatSec: z.number().int().min(5).max(300),
-  // Chưa có access token ngắn hạn (mục 6): máy đang xác thực bằng machine token tới khi bị thu hồi.
+  // `exp` của access token đã mở kết nối. Thiếu khi máy còn mở bằng machine token (máy chưa có khoá, hub cũ).
   accessTokenExp: z.iso.datetime().optional(),
   /**
    * Điều hub cho máy này (vd. `shared`: máy dùng chung, nên được nhận `account_set`). Worker không tự khai cờ này vì
@@ -845,6 +851,7 @@ export const termPairResult = z.object({
 export const workerToHub = z.discriminatedUnion("type", [
   hello,
   heartbeat,
+  reauth,
   jobAccept,
   jobReject,
   runEvent,
