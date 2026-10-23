@@ -11,6 +11,7 @@ import {
   DELIVERY_CI_POLL_QUEUE,
   DELIVERY_DEPLOY_QUEUE,
   DELIVERY_DEPLOY_WATCH_QUEUE,
+  DELIVERY_JOB_CHECK_QUEUE,
   DELIVERY_LOG_RETENTION_QUEUE,
   DELIVERY_WEBHOOK_REFRESH_QUEUE,
   DEPLOY_WATCH_HEARTBEAT_SECONDS,
@@ -34,18 +35,24 @@ const KEYS = [
 ] as const;
 
 describe("hàng đợi delivery", () => {
-  it("đủ sáu queue, tên riêng; chạy CI, triển khai và theo dõi là stately", () => {
+  it("đủ bảy queue, tên riêng; chạy CI, triển khai và theo dõi là stately", () => {
     expect(deliveryQueues.map((q) => q.name).sort()).toEqual(
       [
         DELIVERY_CI_POLL_QUEUE,
         DELIVERY_DEPLOY_QUEUE,
         DELIVERY_DEPLOY_WATCH_QUEUE,
         DELIVERY_APPROVAL_EXPIRE_QUEUE,
+        DELIVERY_JOB_CHECK_QUEUE,
         DELIVERY_LOG_RETENTION_QUEUE,
         DELIVERY_WEBHOOK_REFRESH_QUEUE,
       ].sort(),
     );
-    for (const name of [DELIVERY_CI_POLL_QUEUE, DELIVERY_DEPLOY_QUEUE, DELIVERY_DEPLOY_WATCH_QUEUE])
+    for (const name of [
+      DELIVERY_CI_POLL_QUEUE,
+      DELIVERY_DEPLOY_QUEUE,
+      DELIVERY_DEPLOY_WATCH_QUEUE,
+      DELIVERY_JOB_CHECK_QUEUE,
+    ])
       expect(deliveryQueues.find((q) => q.name === name)?.policy).toBe("stately");
   });
 

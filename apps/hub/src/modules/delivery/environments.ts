@@ -8,10 +8,10 @@ import { pgCode } from "./connections/jenkins.ts";
 import { deployEnvironments } from "./schema.ts";
 
 // Môi trường của hệ thống (FR-012, FR-026). Tạo, sửa, sắp thứ tự cần `servers.manage` của đội sở hữu hệ thống
-// (spec không nói ai tạo môi trường nên theo FR-030: cùng quyền với khai báo đích). Khoá/mở khoá thuộc T027.
+// (spec không nói ai tạo môi trường nên theo FR-030: cùng quyền với khai báo đích). Khoá, mở khoá cũng vậy.
 
 const systemNotFound = () => new NotFoundError("NOT_FOUND", "Không tìm thấy hệ thống.");
-const environmentNotFound = () => new NotFoundError("NOT_FOUND", "Không tìm thấy môi trường.");
+export const environmentNotFound = () => new NotFoundError("NOT_FOUND", "Không tìm thấy môi trường.");
 
 /**
  * Quyền của người dùng trên đội. Thiếu `ci.view` thì báo như đối tượng không tồn tại (không lộ việc có hay không);
@@ -60,12 +60,17 @@ function view(r: Row, people: Map<string, DeliveryPerson>): DeployEnvironment {
             reason: r.lockReason,
           }
         : null,
+    runner: {
+      mode: r.runner as DeployEnvironment["runner"]["mode"],
+      machines: r.runnerMachines,
+      requireLabel: r.runnerLabelRequired,
+    },
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
 }
 
-async function views(tx: Tx, rows: Row[]): Promise<DeployEnvironment[]> {
+export async function environmentViews(tx: Tx, rows: Row[]): Promise<DeployEnvironment[]> {
   const people = await peopleOf(
     tx,
     rows.map((r) => r.lockedBy),
@@ -89,7 +94,7 @@ export async function listEnvironments(tx: Tx, userId: string, systemId: string)
   const system = await findSystem(tx, systemId);
   if (!system) throw systemNotFound();
   await requireTeamPermission(tx, userId, system.teamId, "ci.view", systemNotFound);
-  return views(tx, await inSystem(tx, systemId));
+  return environmentViews(tx, await inSystem(tx, systemId));
 }
 
 const nameTaken = (name: string) =>
@@ -133,7 +138,7 @@ export async function createEnvironment(
     targetId: row.id,
     data: { systemId: system.id, name: row.name, position: row.position, policy: row.policy },
   });
-  return (await views(tx, [row]))[0] as DeployEnvironment;
+  return (await environmentViews(tx, [row]))[0] as DeployEnvironment;
 }
 
 export async function updateEnvironment(
@@ -172,7 +177,7 @@ export async function updateEnvironment(
         : {}),
     },
   });
-  return (await views(tx, [row]))[0] as DeployEnvironment;
+  return (await environmentViews(tx, [row]))[0] as DeployEnvironment;
 }
 
 /** Danh sách mới phải đủ mọi môi trường của hệ thống: thiếu hay thừa thì một môi trường lạc vị trí mà không ai hay. */
@@ -205,5 +210,52 @@ export async function reorderEnvironments(
       to: input.ids.map((id) => current.find((r) => r.id === id)?.name),
     },
   });
-  return views(tx, await inSystem(tx, system.id));
+  return environmentViews(tx, await inSystem(tx, system.id));
+}
+
+/**
+ * Khoá chặn mọi lần triển khai mới, kể cả lần đã duyệt đang chờ bắt đầu (`orchestrator.ts` kiểm lại lúc chạy). Khoá
+ * lại môi trường đang khoá thì thay lý do, để người sau ghi rõ vì sao vẫn giữ khoá.
+ */
+export async function lockEnvironment(
+  tx: Tx,
+  userId: string,
+  input: { id: string; reason: string },
+): Promise<DeployEnvironment> {
+  const current = await loadEnvironment(tx, input.id);
+  if (!current) throw environmentNotFound();
+  await requireTeamPermission(tx, userId, current.teamId, "servers.manage", environmentNotFound);
+  const [row] = await tx
+    .update(deployEnvironments)
+    .set({ lockedAt: new Date(), lockedBy: userId, lockReason: input.reason, updatedAt: new Date() })
+    .where(eq(deployEnvironments.id, current.id))
+    .returning();
+  if (!row) throw environmentNotFound();
+  await recordAudit(tx, {
+    action: "delivery.environment.lock",
+    targetType: "deploy_environment",
+    targetId: row.id,
+    data: { systemId: row.systemId, name: row.name, reason: input.reason, previousReason: current.lockReason },
+  });
+  return (await environmentViews(tx, [row]))[0] as DeployEnvironment;
+}
+
+export async function unlockEnvironment(tx: Tx, userId: string, input: { id: string }): Promise<DeployEnvironment> {
+  const current = await loadEnvironment(tx, input.id);
+  if (!current) throw environmentNotFound();
+  await requireTeamPermission(tx, userId, current.teamId, "servers.manage", environmentNotFound);
+  if (!current.lockedAt) return (await environmentViews(tx, [current]))[0] as DeployEnvironment;
+  const [row] = await tx
+    .update(deployEnvironments)
+    .set({ lockedAt: null, lockedBy: null, lockReason: null, updatedAt: new Date() })
+    .where(eq(deployEnvironments.id, current.id))
+    .returning();
+  if (!row) throw environmentNotFound();
+  await recordAudit(tx, {
+    action: "delivery.environment.unlock",
+    targetType: "deploy_environment",
+    targetId: row.id,
+    data: { systemId: row.systemId, name: row.name, reason: current.lockReason },
+  });
+  return (await environmentViews(tx, [row]))[0] as DeployEnvironment;
 }

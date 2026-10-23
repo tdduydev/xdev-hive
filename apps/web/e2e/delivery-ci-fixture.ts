@@ -33,6 +33,7 @@ export const GITLAB_FAILED = "gitlab:100";
 export const JENKINS_OK = `jenkins:${CI_JOB_ID}:42`;
 export const JENKINS_WAITING = `jenkins:${CI_JOB_ID}:43`;
 export const JENKINS_BUILT = `jenkins:${CI_JOB_ID}:44`;
+export const GITHUB_WAITING = "github:301";
 export const JENKINS_JOB_PATH = "his-portal/build-dev";
 
 const run = (r: Partial<CiRun> & Pick<CiRun, "id" | "source" | "title" | "status">): CiRun =>
@@ -96,6 +97,16 @@ const RUNS: CiRun[] = [
     sha: null,
     triggeredBy: null,
     url: null,
+  }),
+  run({
+    id: GITHUB_WAITING,
+    source: "github",
+    title: "Deploy #301",
+    status: "waiting",
+    rawStatus: "waiting",
+    branch: "main",
+    sha: "eeeeeeee55555555",
+    triggeredBy: "lan",
   }),
 ];
 
@@ -247,7 +258,12 @@ export function deliveryCiFixture(options: DeliveryCiOptions = {}) {
       const detail: CiRunDetail = ciRunDetail.parse({
         run: found,
         steps: STEPS[runId] ?? [],
-        pendingInputs: runId === JENKINS_WAITING ? [{ id: "in1", message: "Duyệt đẩy lên stage?" }] : [],
+        pendingInputs:
+          runId === JENKINS_WAITING
+            ? [{ id: "in1", message: "Duyệt đẩy lên stage?" }]
+            : runId === GITHUB_WAITING
+              ? [{ id: "production", message: "Chờ duyệt deployment vào environment production." }]
+              : [],
       });
       return ok(detail);
     },
@@ -287,6 +303,10 @@ export function deliveryCiFixture(options: DeliveryCiOptions = {}) {
     },
     "ci/input": (input) => {
       record("ci/input", input);
+      return ok({ ok: true, runId: null, stepId: null });
+    },
+    "ci/approveDeployment": (input) => {
+      record("ci/approveDeployment", input);
       return ok({ ok: true, runId: null, stepId: null });
     },
     "ci/build": (input) => {

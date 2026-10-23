@@ -165,7 +165,7 @@ async function runIdByPrefix(tx: Tx, raw: string): Promise<string> {
 }
 
 const pending: Handler = async (c, tx) => {
-  const list = (await listApprovals(tx, "pending")).slice(0, 5);
+  const list = (await listApprovals(tx, c.link.userId, "pending")).slice(0, 5);
   if (list.length === 0) return one("Không có đề xuất nào đang chờ duyệt.");
   return {
     replies: list.map((a) => ({
@@ -192,7 +192,7 @@ async function decide(
     return one(
       `Cách dùng: ${prefixOf(c)}${kind === "approval.approve" ? "approve" : "reject"} ID (xem ${prefixOf(c)}pending).`,
     );
-  const open = (await listApprovals(tx, "pending")).map((a) => a.id);
+  const open = (await listApprovals(tx, c.link.userId, "pending")).map((a) => a.id);
   const approvalId = pickByPrefix(open, prefix, "đề xuất đang chờ");
   if (kind === "approval.reject" && rest.length > 0) {
     await rejectApproval(tx, c.link.userId, approvalId, rest.join(" ").slice(0, 2000));

@@ -8,7 +8,7 @@ import (
 // CredentialReader đọc giá trị credential theo tên tham chiếu. Bản thật bọc kho bí mật của hệ điều hành, không gian tên
 // riêng cho delivery (FR-062); bản thử là MapCredentials. Giá trị chỉ nằm trong bộ nhớ (FR-063).
 //
-// Quy ước giá trị: Jenkins "user:token"; Argo CD và Kubernetes là token trần.
+// Quy ước giá trị: Jenkins "user:token"; Argo CD là token trần.
 type CredentialReader interface {
 	// Read trả ErrCredentialNotFound khi không có tên đó.
 	Read(name string) ([]byte, error)

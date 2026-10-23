@@ -5,6 +5,7 @@ import {
   CI_NEW_JOB_ID,
   CI_PROJECT_ID,
   deliveryCiFixture,
+  GITHUB_WAITING,
   GITLAB_FAILED,
   GITLAB_RUNNING,
   JENKINS_BUILT,
@@ -244,6 +245,20 @@ test("trả lời bước input của Jenkins", async ({ page }) => {
   await expect
     .poll(() => callsOf(fixture, "ci/input"))
     .toEqual([{ projectId: CI_PROJECT_ID, runId: JENKINS_WAITING, inputId: "in1", action: "proceed" }]);
+});
+
+test("duyệt deployment chờ duyệt của GitHub Actions, không gọi bước input của Jenkins", async ({ page }) => {
+  const fixture = deliveryCiFixture();
+  await open(page, fixture, OPERATE);
+
+  await page.getByRole("button", { name: "Xem chi tiết Deploy #301" }).click();
+  await expect(page.getByText("Chờ duyệt deployment vào environment production.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tiếp tục" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Duyệt deployment" }).click();
+  await expect
+    .poll(() => callsOf(fixture, "ci/approveDeployment"))
+    .toEqual([{ projectId: CI_PROJECT_ID, runId: GITHUB_WAITING, environments: ["production"], decision: "approve" }]);
+  expect(callsOf(fixture, "ci/input")).toHaveLength(0);
 });
 
 test("người có servers.manage gắn và gỡ job Jenkins", async ({ page }) => {

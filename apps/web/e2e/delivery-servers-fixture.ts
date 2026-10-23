@@ -24,6 +24,9 @@ export const PROJECT_WEB_ID = "73737373-0000-4000-8000-000000000001";
 export const PROJECT_API_ID = "73737373-0000-4000-8000-000000000002";
 export const TARGET_WEB_DEV_ID = "74747474-0000-4000-8000-000000000001";
 export const JENKINS_ID = "30303030-0000-4000-8000-000000000001";
+/** Máy chạy deploy của đội (specs/032). */
+export const RUNNER_A_ID = "75757575-0000-4000-8000-000000000001";
+export const RUNNER_B_ID = "75757575-0000-4000-8000-000000000002";
 export const FINGERPRINT = "SHA256:fakeFingerprintForTestsOnly0123456789abcdefghi";
 /** Chuỗi giả để test chắc giá trị biến bí mật không hiện lại. */
 export const FAKE_SECRET = "fake-secret-value-never-real-0123";
@@ -38,7 +41,8 @@ type Env = {
   name: string;
   position: number;
   policy: unknown;
-  lock: null;
+  lock: { by: { userId: string; name: string } | null; at: string; reason: string } | null;
+  runner: unknown;
   createdAt: string;
   updatedAt: string;
 };
@@ -102,6 +106,7 @@ export function deliveryServersFixture() {
       position: 0,
       policy: { deployRoles: [], approveRoles: [], approvals: 0, approvalTtlHours: 24 },
       lock: null,
+      runner: { mode: "worker", machines: [], requireLabel: false },
       createdAt: NOW,
       updatedAt: NOW,
     },
@@ -112,6 +117,7 @@ export function deliveryServersFixture() {
       position: 1,
       policy: { deployRoles: ["admin"], approveRoles: ["admin"], approvals: 1, approvalTtlHours: 48 },
       lock: null,
+      runner: { mode: "worker", machines: [], requireLabel: false },
       createdAt: NOW,
       updatedAt: NOW,
     },
@@ -127,6 +133,26 @@ export function deliveryServersFixture() {
       updatedBy: null,
       createdAt: NOW,
       updatedAt: NOW,
+    },
+  ];
+  const runnerCandidates = [
+    {
+      machineId: RUNNER_A_ID,
+      name: "runner-hn-01",
+      online: true,
+      labeled: true,
+      methods: ["jenkins-job", "argocd"],
+      credentials: ["jenkins-ci", "argocd-prod"],
+      reportedAt: NOW,
+    },
+    {
+      machineId: RUNNER_B_ID,
+      name: "runner-hcm-02",
+      online: false,
+      labeled: false,
+      methods: ["jenkins-job"],
+      credentials: [],
+      reportedAt: NOW,
     },
   ];
   const state = {
@@ -301,6 +327,7 @@ export function deliveryServersFixture() {
         position: envs.length,
         policy: v.policy,
         lock: null,
+        runner: { mode: "worker", machines: [], requireLabel: false },
         createdAt: NOW,
         updatedAt: NOW,
       };
@@ -324,6 +351,30 @@ export function deliveryServersFixture() {
         if (found) found.position = position;
       });
       return ok([...envs].sort((a, b) => a.position - b.position));
+    },
+    "environments/runnerCandidates": () => ok(runnerCandidates),
+    "environments/setRunner": (input) => {
+      record("environments/setRunner", input);
+      const v = input as { id: string; runner: unknown };
+      const found = envs.find((e) => e.id === v.id);
+      if (!found) return notFound();
+      found.runner = v.runner;
+      return ok(found);
+    },
+    "environments/lock": (input) => {
+      record("environments/lock", input);
+      const v = input as { id: string; reason: string };
+      const found = envs.find((e) => e.id === v.id);
+      if (!found) return notFound();
+      found.lock = { by: { userId: "u-admin", name: "Quản trị" }, at: NOW, reason: v.reason };
+      return ok(found);
+    },
+    "environments/unlock": (input) => {
+      record("environments/unlock", input);
+      const found = envs.find((e) => e.id === (input as { id: string }).id);
+      if (!found) return notFound();
+      found.lock = null;
+      return ok(found);
     },
 
     "deployTargets/list": () => ok(targets),

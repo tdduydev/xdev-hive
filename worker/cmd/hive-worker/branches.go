@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/branches"
-	"github.com/tdduydev/xdev-hive/worker/internal/config"
 	"github.com/tdduydev/xdev-hive/worker/internal/gitexec"
 	"github.com/tdduydev/xdev-hive/worker/internal/repolock"
 )
@@ -67,7 +66,7 @@ var branchesMultiFolder = map[string]bool{"status": true, "scan": true}
 var (
 	branchesDataDir   = repolock.DataDir
 	branchesConfigDir = func() (string, error) {
-		p, err := config.DefaultPath()
+		p, err := pathOr("")
 		if err != nil {
 			return "", err
 		}

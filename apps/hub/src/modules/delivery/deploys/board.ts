@@ -7,10 +7,11 @@ import {
 } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { findProject, listProjects } from "../../catalog/index.ts";
+import { machineNames } from "../../fleet/index.ts";
 import { BadRequestError, NotFoundError, type Tx } from "../../platform/index.ts";
 import { effectivePermissions } from "../../tenancy/index.ts";
 import { listEnvironments, peopleOf, requireTeamPermission } from "../environments.ts";
-import { deployApprovals, deployEnvironments, deploys, deployTargets } from "../schema.ts";
+import { deliveryJobs, deployApprovals, deployEnvironments, deploys, deployTargets } from "../schema.ts";
 
 // Đọc lần triển khai: một lần, lịch sử có lọc, bảng "đang chạy" của hệ thống (FR-020). Quyền theo `ci.view` của đội sở
 // hữu môi trường; lần của đội không xem được thì như không có.
@@ -36,7 +37,7 @@ const locatedColumns = {
   teamId: deployEnvironments.teamId,
 };
 
-const located = (tx: Tx, where: SQL | undefined) =>
+export const locatedDeploys = (tx: Tx, where: SQL | undefined) =>
   tx
     .select(locatedColumns)
     .from(deploys)
@@ -45,7 +46,7 @@ const located = (tx: Tx, where: SQL | undefined) =>
     .where(where);
 
 export async function loadLocatedDeploy(tx: Tx, id: string): Promise<LocatedDeploy | null> {
-  const [row] = await located(tx, eq(deploys.id, id));
+  const [row] = await locatedDeploys(tx, eq(deploys.id, id));
   return row ?? null;
 }
 
@@ -70,8 +71,39 @@ function viewHealth(health: Record<string, unknown> | null): Deploy["health"] {
 }
 
 type ApprovalRow = typeof deployApprovals.$inferSelect;
+type JobRow = typeof deliveryJobs.$inferSelect;
 
-function view(r: LocatedDeploy, people: Map<string, DeliveryPerson>, approvals: ApprovalRow[]): Deploy {
+/** Việc mới nhất của mỗi lần triển khai, cho phần "Máy chạy". */
+async function latestJobs(tx: Tx, deployIds: string[]): Promise<Map<string, JobRow>> {
+  if (deployIds.length === 0) return new Map();
+  const rows = await tx
+    .select()
+    .from(deliveryJobs)
+    .where(inArray(deliveryJobs.deployId, deployIds))
+    .orderBy(desc(deliveryJobs.createdAt));
+  const out = new Map<string, JobRow>();
+  for (const r of rows) if (r.deployId && !out.has(r.deployId)) out.set(r.deployId, r);
+  return out;
+}
+
+/** Ai chạy lần này: máy đã báo bắt đầu, hoặc máy đang giữ việc; việc đang chờ máy thì kèm lý do. */
+function viewRunner(d: DeployRow, job: JobRow | undefined, names: Map<string, string>): Deploy["runner"] {
+  if (d.origin !== "hive") return null;
+  if (d.ranLegacy) return { mode: "legacy", machine: null, waiting: null };
+  const machineId = d.ranOnWorkerId ?? job?.workerId ?? null;
+  return {
+    mode: "worker",
+    machine: machineId ? { id: machineId, name: names.get(machineId) ?? machineId } : null,
+    waiting: job?.state === "waiting" ? job.waitReason : null,
+  };
+}
+
+function view(
+  r: LocatedDeploy,
+  people: Map<string, DeliveryPerson>,
+  approvals: ApprovalRow[],
+  runner: Deploy["runner"],
+): Deploy {
   const d = r.deploy;
   const person = (id: string | null) => (id ? (people.get(id) ?? { userId: id, name: id }) : null);
   return {
@@ -105,6 +137,7 @@ function view(r: LocatedDeploy, people: Map<string, DeliveryPerson>, approvals: 
             })),
           }
         : null,
+    runner,
     createdAt: d.createdAt.toISOString(),
     startedAt: d.startedAt?.toISOString() ?? null,
     finishedAt: d.finishedAt?.toISOString() ?? null,
@@ -121,11 +154,22 @@ export async function deployViews(tx: Tx, rows: LocatedDeploy[]): Promise<Deploy
         .orderBy(asc(deployApprovals.createdAt))
     : [];
   const people = await peopleOf(tx, [...rows.map((r) => r.deploy.requestedBy), ...approvals.map((a) => a.userId)]);
+  const onWorker = rows.filter((r) => r.deploy.origin === "hive" && !r.deploy.ranLegacy).map((r) => r.deploy);
+  const jobs = await latestJobs(
+    tx,
+    onWorker.map((d) => d.id),
+  );
+  const machineIds = onWorker.flatMap((d) => {
+    const id = d.ranOnWorkerId ?? jobs.get(d.id)?.workerId;
+    return id ? [id] : [];
+  });
+  const names = await machineNames(tx, [...new Set(machineIds)]);
   return rows.map((r) =>
     view(
       r,
       people,
       approvals.filter((a) => a.deployId === r.deploy.id),
+      viewRunner(r.deploy, jobs.get(r.deploy.id), names),
     ),
   );
 }
@@ -160,7 +204,7 @@ export async function listDeploys(
     if ((await effectivePermissions(tx, userId, teamId)).has("ci.view")) visible.push(teamId);
   if (visible.length === 0) return { items: [], nextCursor: null };
 
-  const rows = await located(
+  const rows = await locatedDeploys(
     tx,
     and(
       inArray(deployEnvironments.teamId, visible),
@@ -216,7 +260,7 @@ export async function deployBoard(tx: Tx, userId: string, systemId: string): Pro
         )
     : [];
   const active = targetIds.length
-    ? await located(
+    ? await locatedDeploys(
         tx,
         and(
           inArray(deploys.targetId, targetIds),

@@ -19,7 +19,7 @@ const (
 	maxBodyBytes       = 8 << 20
 )
 
-// apiClient là phần HTTP dùng chung của client Jenkins, Argo CD và Kubernetes. Header xác thực nằm trong struct này và
+// apiClient là phần HTTP dùng chung của client Jenkins và Argo CD. Header xác thực nằm trong struct này và
 // không bao giờ đi vào lỗi hay log; thông điệp từ máy chủ ngoài không được đưa nguyên văn vào lỗi.
 type apiClient struct {
 	system string

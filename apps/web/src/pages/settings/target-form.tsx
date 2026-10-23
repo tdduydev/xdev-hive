@@ -79,6 +79,9 @@ const VI = {
   rollbackJob: "Đường dẫn job quay lại",
   jobName: "Tên job GitLab",
   application: "Tên application Argo CD",
+  credential: "Credential trên máy chạy",
+  credentialHint:
+    "Tên credential trong kho bí mật của máy chạy deploy, ví dụ jenkins-ci. Hub chỉ giữ tên, không giữ giá trị.",
   syncToRevision: "Đồng bộ tới đúng commit đã chọn",
   namespace: "Namespace",
   kind: "Loại workload",
@@ -612,6 +615,18 @@ export function TargetForm(props: TargetFormProps) {
           options={connectionOptions}
           error={e("connectionId")}
           hint={connectionOptions.length === 0 ? VI.noConnections : undefined}
+        />
+      )}
+
+      {(draft.method === "jenkins-job" || draft.method === "argocd") && (
+        <TextField
+          label={VI.credential}
+          value={draft.credential}
+          mono
+          placeholder="jenkins-ci"
+          error={e("credential")}
+          hint={VI.credentialHint}
+          onChange={(v) => set("credential", v)}
         />
       )}
 
