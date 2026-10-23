@@ -87,19 +87,31 @@ export async function setMachineLabels(
 }
 
 /**
+ * Chủ máy cá nhân tự dừng, tiếp tục và thu hồi máy của mình mà không phải nhờ admin đội (ADR 0017, spec 034 FR-098).
+ * Máy dùng chung là máy của đội nên vẫn cần admin; chủ máy đã rời đội thì mất quyền này.
+ */
+async function requireMachineControl(
+  tx: Tx,
+  userId: string,
+  found: typeof machines.$inferSelect,
+  permission?: string,
+): Promise<void> {
+  if (!found.shared && found.registeredBy === userId) {
+    await requireTeamRole(tx, userId, found.teamId, "viewer");
+    return;
+  }
+  const asAdmin = () => requireTeamRole(tx, userId, found.teamId, "admin");
+  await (permission ? allowWith(tx, userId, permission, asAdmin, found.teamId) : asAdmin());
+}
+
+/**
  * Thu hồi máy: xoá mọi machine token để lần nối sau bị từ chối, giữ dòng máy để còn lịch sử run. Kết nối WSS đang mở
  * do người gọi đóng (gateway có thể ở tiến trình khác; heartbeat kế tiếp cũng tự đóng khi thấy máy đã bị thu hồi).
  */
 export async function revokeMachine(tx: Tx, userId: string, machineId: string): Promise<Machine> {
   const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
   if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
-  await allowWith(
-    tx,
-    userId,
-    "machines.remove",
-    () => requireTeamRole(tx, userId, found.teamId, "admin"),
-    found.teamId,
-  );
+  await requireMachineControl(tx, userId, found, "machines.remove");
   await tx.delete(machineTokens).where(eq(machineTokens.machineId, machineId));
   const [row] = await tx
     .update(machines)
@@ -148,7 +160,7 @@ export async function requestMachineUpdate(
 async function setMachinePaused(tx: Tx, userId: string, machineId: string, paused: boolean): Promise<Machine> {
   const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
   if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
-  await requireTeamRole(tx, userId, found.teamId, "admin");
+  await requireMachineControl(tx, userId, found);
   if (found.status === "revoked") throw new FleetError("conflict", "MACHINE_REVOKED", "Máy đã bị thu hồi.");
   const [row] = await tx
     .update(machines)

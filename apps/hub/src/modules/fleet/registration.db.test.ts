@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { createPool, ForbiddenError, withTenant } from "../platform/index.ts";
+import { createPool, ForbiddenError, type Tx, withTenant } from "../platform/index.ts";
 import { FleetError } from "./errors.ts";
 import {
   authenticateMachine,
@@ -295,6 +295,29 @@ describe("tạm dừng máy", () => {
       [orgA, machine.id],
     );
     expect(rows.map((row) => row.action)).toEqual(["machine.pause", "machine.resume"]);
+  });
+
+  it("chủ máy cá nhân tự dừng, chạy lại và thu hồi; người khác và máy dùng chung thì không", async () => {
+    const as = <T>(name: string, fn: (tx: Tx) => Promise<T>) =>
+      withTenant(app, { userId: user(name), orgId: orgA }, fn);
+    const machine = await register((await newRegistration()).token, `chu-may-${tag}`);
+    await admin.query("update hive.machines set status = 'online', registered_by = $2 where id = $1", [
+      machine.id,
+      user("member"),
+    ]);
+    await expect(as("member2", (tx) => pauseMachine(tx, user("member2"), machine.id))).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    expect((await as("member", (tx) => pauseMachine(tx, user("member"), machine.id))).status).toBe("paused");
+    expect((await as("member", (tx) => resumeMachine(tx, user("member"), machine.id))).status).toBe("online");
+
+    await admin.query("update hive.machines set shared = true where id = $1", [machine.id]);
+    await expect(as("member", (tx) => revokeMachine(tx, user("member"), machine.id))).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    await admin.query("update hive.machines set shared = false where id = $1", [machine.id]);
+    expect((await as("member", (tx) => revokeMachine(tx, user("member"), machine.id))).status).toBe("revoked");
+    expect(await authenticateMachine(app, machine.machineToken)).toBeNull();
   });
 });
 
