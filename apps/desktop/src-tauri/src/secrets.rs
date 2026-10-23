@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::AppHandle;
 
+use crate::profiles::{Launch, home_dir};
 use crate::secret_clipboard::{self, System};
 use crate::sidecar_command;
 
@@ -286,6 +287,103 @@ impl Drop for TempDescription {
     }
 }
 
+/// So thư mục để tìm dự án của một terminal: bỏ dấu phân cách cuối, đổi `\` thành `/`, không phân biệt hoa thường trên
+/// Windows và macOS (ổ đĩa mặc định của chúng không phân biệt).
+fn norm_folder(folder: &str) -> String {
+    let f = folder.trim().replace('\\', "/");
+    let f = f.trim_end_matches('/');
+    if cfg!(any(windows, target_os = "macos")) {
+        f.to_lowercase()
+    } else {
+        f.to_string()
+    }
+}
+
+fn is_within(folder: &str, project: &str) -> bool {
+    let (f, p) = (norm_folder(folder), norm_folder(project));
+    !p.is_empty() && (f == p || f.starts_with(&format!("{p}/")))
+}
+
+/// `localId` của dự án có bí mật gán, từ kết quả `secrets list`. Giao diện gửi `local_id` thì chỉ tin khi dự án đó có
+/// trong danh sách; không thì tìm theo thư mục (thư mục con của dự án cũng tính, dự án sâu nhất thắng). Dự án không có
+/// bí mật nào gán thì không xuất hiện trong danh sách, nên không cần bọc.
+fn assigned_project(list: &Value, local_id: Option<&str>, folder: Option<&str>) -> Option<String> {
+    let projects = list["secrets"]
+        .as_array()?
+        .iter()
+        .filter_map(|s| s["projects"].as_array())
+        .flatten();
+    if let Some(id) = local_id.map(str::trim).filter(|i| !i.is_empty()) {
+        return projects
+            .into_iter()
+            .any(|p| p["localId"].as_str() == Some(id))
+            .then(|| id.to_string());
+    }
+    let folder = folder?;
+    projects
+        .filter_map(|p| Some((p["localId"].as_str()?, p["folder"].as_str()?)))
+        .filter(|(_, dir)| is_within(folder, dir))
+        .max_by_key(|(_, dir)| norm_folder(dir).len())
+        .map(|(id, _)| id.to_string())
+}
+
+/// `hive-worker` nằm cạnh binary của app (cùng chỗ với `hive`). Không canonicalize: trên Windows nó thêm `\\?\` mà cmd
+/// không chạy được.
+fn sidecar_exe() -> Result<String, String> {
+    let name = if cfg!(windows) { "hive-worker.exe" } else { "hive-worker" };
+    let path = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(name)))
+        .filter(|p| p.is_file())
+        .ok_or("Không tìm thấy worker của app để nạp bí mật vào terminal.")?;
+    path.to_str()
+        .map(str::to_string)
+        .ok_or_else(|| "Đường dẫn worker không đọc được để nạp bí mật vào terminal.".into())
+}
+
+/// Dự án của terminal sắp mở, nếu nó có bí mật gán. Worker cũ chưa có `secrets` hay danh mục không đọc được thì coi như
+/// không có: terminal vẫn mở như trước thay vì kẹt vì một tính năng phụ.
+async fn project_with_secrets(
+    app: &AppHandle,
+    folder: Option<&str>,
+    local_id: Option<&str>,
+) -> Option<String> {
+    let list = call_json(app, list_args(None).ok()?, None, RUN_TIMEOUT)
+        .await
+        .ok()?;
+    assigned_project(&list, local_id, folder)
+}
+
+/// Bọc lệnh CLI bằng `secrets exec` khi dự án của nó có bí mật gán (T020). `cli` là loại CLI của lệnh.
+pub(crate) async fn wrap_launch(
+    app: &AppHandle,
+    job: Launch,
+    cli: &str,
+    local_id: Option<&str>,
+) -> Result<Launch, String> {
+    let Some(id) = project_with_secrets(app, job.cwd(), local_id).await else {
+        return Ok(job);
+    };
+    job.with_secrets(&sidecar_exe()?, &id, cli)
+}
+
+/// Terminal trơn của một thư mục (nút Terminal): `Some` nếu dự án có bí mật gán, để mở shell đã bọc.
+pub(crate) async fn shell_launch(
+    app: &AppHandle,
+    dir: &std::path::Path,
+    local_id: Option<&str>,
+) -> Result<Option<Launch>, String> {
+    let dir = dir
+        .to_str()
+        .ok_or("Đường dẫn thư mục không đọc được.")?;
+    let Some(id) = project_with_secrets(app, Some(dir), local_id).await else {
+        return Ok(None);
+    };
+    Launch::shell_in(dir, home_dir().as_deref())?
+        .with_secrets(&sidecar_exe()?, &id, "shell")
+        .map(Some)
+}
+
 #[tauri::command]
 pub async fn secrets_status(app: AppHandle) -> Result<Value, String> {
     call_json(&app, base(&["status"]), None, RUN_TIMEOUT).await
@@ -555,6 +653,62 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "mô tả\nnhiều dòng");
         drop(guard);
         assert!(!path.exists());
+    }
+
+    fn listing() -> Value {
+        serde_json::json!({
+            "secrets": [
+                { "name": "A", "projects": [
+                    { "localId": "p-app", "name": "app", "folder": "/home/dev/app" },
+                    { "localId": "p-api", "name": "api", "folder": "/home/dev/app/services/api" }
+                ] },
+                { "name": "B", "projects": [] },
+            ],
+            "reserved": { "exact": [], "prefixes": [] }
+        })
+    }
+
+    #[test]
+    fn project_found_by_folder_deepest_wins() {
+        let list = listing();
+        assert_eq!(
+            assigned_project(&list, None, Some("/home/dev/app")).as_deref(),
+            Some("p-app")
+        );
+        assert_eq!(
+            assigned_project(&list, None, Some("/home/dev/app/src/")).as_deref(),
+            Some("p-app")
+        );
+        assert_eq!(
+            assigned_project(&list, None, Some("/home/dev/app/services/api/x")).as_deref(),
+            Some("p-api")
+        );
+    }
+
+    #[test]
+    fn folder_match_needs_a_path_boundary() {
+        let list = listing();
+        assert_eq!(assigned_project(&list, None, Some("/home/dev/app2")), None);
+        assert_eq!(assigned_project(&list, None, Some("/home/dev")), None);
+        assert_eq!(assigned_project(&list, None, None), None);
+    }
+
+    #[test]
+    fn explicit_project_id_must_have_assignments() {
+        let list = listing();
+        assert_eq!(
+            assigned_project(&list, Some("p-api"), Some("/nơi/khác")).as_deref(),
+            Some("p-api")
+        );
+        // Mã của dự án không có bí mật nào: không bọc, dù thư mục có khớp một dự án khác.
+        assert_eq!(assigned_project(&list, Some("p-none"), Some("/home/dev/app")), None);
+        assert_eq!(assigned_project(&Value::Null, None, Some("/home/dev/app")), None);
+    }
+
+    #[test]
+    fn windows_style_folders_compare_with_forward_slashes() {
+        assert!(norm_folder("C:\\Code\\App\\").eq_ignore_ascii_case("c:/code/app"));
+        assert!(is_within("C:\\Code\\App\\src", "C:\\Code\\App"));
     }
 
     #[test]

@@ -297,7 +297,7 @@ không chứa giá trị.
   - Test: tiến trình con in env khớp byte (giá trị có xuống dòng, nháy, `$`, Unicode); argv con không chứa giá trị.
 
   Sau T012, T017.
-- [ ] T020 [P] [US3] B·vừa — Bọc argv ở desktop.
+- [x] T020 [P] [US3] B·vừa — Bọc argv ở desktop.
   - `apps/desktop/src-tauri/src/profiles.rs`: `cli_launch`, `agent_launch` bọc `Launch.argv` bằng
     `[<sidecar>, "secrets", "exec", "--project=<localId>", "--kind=terminal", "--cli=<cli>", "--", …]` khi dự án có gán.
     `localId` tìm theo `folder` qua `secrets list`/`projects --json`.
