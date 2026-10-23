@@ -44,6 +44,7 @@ func modify(path string, change func(*file) error) error {
 		if f.Projects == nil {
 			f.Projects = []Project{}
 		}
+		fillLocalIDs(f.Projects)
 		return writeJSON(path, f)
 	})
 }

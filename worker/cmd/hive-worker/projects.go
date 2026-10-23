@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
+	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 )
 
 // projectsView là kết quả của `hive-worker projects --json` cho app desktop. Exists cho app biết đã nhập danh sách của
@@ -68,16 +69,21 @@ func projectsCommand(args []string, stdout, stderr io.Writer) int {
 			return fail(err)
 		}
 	case "unbind":
+		var localID string
 		switch {
 		case *id != "":
-			err = projects.Unbind(file, *id)
+			localID, err = projects.Unbind(file, *id)
 		case *folder != "":
-			err = projects.UnbindFolder(file, *folder)
+			localID, err = projects.UnbindFolder(file, *folder)
 		default:
 			fmt.Fprintln(stderr, projectsUsage)
 			return 2
 		}
 		if err != nil {
+			return fail(err)
+		}
+		// Gỡ gán bí mật của mục vừa gỡ (FR-063): mục thêm lại sau có localId mới, không được nhận lại bí mật cũ.
+		if err := secretstore.DropProject(secretstore.CatalogPath(path), localID); err != nil {
 			return fail(err)
 		}
 	case "set":
