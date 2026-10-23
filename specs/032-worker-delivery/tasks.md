@@ -63,8 +63,8 @@ description: "Task list: chạy CI/CD và triển khai trên worker trong mạng
 
 ## Phase 5: Còn lại (ngoài MVP của lượt này)
 
-- [ ] T010 [US2] W — `ssh-script` bằng `x/crypto/ssh`: host key ghim, chạy script, đọc log, huỷ (`worker/internal/delivery/ssh.go`)
-- [ ] T011 [US1] H — Bảng `delivery_jobs`, cột `runner` ở môi trường, cột `ran_on_worker_id`; thêm vào `rls.db.test.ts`
+- [x] T010 [US2] W — `ssh-script` bằng `x/crypto/ssh`: host key ghim, chạy script, đọc log, huỷ (`worker/internal/delivery/ssh.go`)
+- [x] T011 [US1] H — Bảng `delivery_jobs`, cột `runner` ở môi trường, cột `ran_on_worker_id`; thêm vào `rls.db.test.ts`
   (`schema.ts`, `delivery-jobs.db.test.ts`)
 - [ ] T012 [US8] H — Nhận `deliveryEvent` (bỏ trùng `(jobId, seq)`), cập nhật lần triển khai, ngừng ghi `deploy_log_chunks`
 - [ ] T013 [US5] H — Chỉ tạo việc khi đủ duyệt và môi trường không khoá; chuyển Proceed/Abort cho máy đã chạy

@@ -24,6 +24,7 @@ const tableNames = [
   "deploys",
   "deploy_log_chunks",
   "deploy_approvals",
+  "delivery_jobs",
 ] as const;
 type Table = (typeof tableNames)[number];
 type Row = Record<string, string | number | boolean | Buffer | null>;
@@ -152,6 +153,7 @@ async function seed(name: string): Promise<Seed> {
     }),
     deploy_log_chunks: { org_id: orgId, deploy_id: deploy, seq: 0, data: Buffer.from("bước 1\n") },
     deploy_approvals: row({ deploy_id: deploy, user_id: userId, decision: "approve" }),
+    delivery_jobs: row({ deploy_id: deploy, kind: "ssh-script", state: "waiting" }),
   };
   await withTenant(app, { orgId, userId }, async (tx) => {
     for (const table of tableNames) await insert(tx, table, rows[table]);
@@ -267,6 +269,7 @@ describe("RLS các bảng CI/CD và triển khai", () => {
       // seq khác để không đụng unique (deploy_id, seq) của B trước khi tới khoá ngoại.
       ["deploy_log_chunks", { deploy_id: String(b.deploys.id), seq: 99 }],
       ["deploy_approvals", { deploy_id: String(b.deploys.id), user_id: "khac" }],
+      ["delivery_jobs", { deploy_id: String(b.deploys.id) }],
     ];
     for (const [table, changes] of cases) {
       const row = { ...seeds.a.rows[table], ...changes };
@@ -347,6 +350,11 @@ describe("RLS các bảng CI/CD và triển khai", () => {
       ["deploys", { method: "ftp", state: "succeeded" }],
       ["deploys", { approvals_required: 6, state: "succeeded" }],
       ["deploy_approvals", { decision: "maybe", user_id: "khac" }],
+      ["deploy_environments", { runner: "cloud", name: "x" }],
+      ["delivery_jobs", { state: "done" }],
+      ["delivery_jobs", { kind: "ftp" }],
+      ["delivery_jobs", { attempt: 0 }],
+      ["delivery_jobs", { error_message: "x".repeat(201) }],
     ];
     for (const [table, changes] of cases) {
       const row = { ...a[table], ...changes };
