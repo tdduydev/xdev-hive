@@ -40,4 +40,6 @@ the project settings).
 
 ## Snapshot
 
-`projectId`, `schemaVersion`, `generatedAt`, `configVersion`, `settings[]` (effective settings without chain).
+`orgId`, `projectId`, `schemaVersion`, `generatedAt`, `configVersion`, `settings[]` (effective settings without chain).
+
+The snapshot is always for exactly one org. Clients key their cache by hub + org + project and never merge two orgs (FR-069, spec 034).

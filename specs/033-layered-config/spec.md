@@ -279,6 +279,7 @@ Admin chuyển dự án từ đội A sang B. Trang xem trước cho biết cài
 - **Giá trị lưu không khớp schema**: dùng mặc định, ghi cảnh báo; không làm hub dừng giao run (như `loadPolicy`).
 - **Client cũ không biết cài đặt mới**: bỏ qua; cài đặt mới mở rộng quyền mặc định tắt.
 - **Đồng hồ máy lệch**: tuổi ảnh chụp tính theo đồng hồ đơn điệu từ lúc nhận; lệch quá 5 phút so với hub thì coi là cũ theo mốc 24 giờ.
+- **Máy phục vụ hai công ty**: mỗi công ty có ảnh chụp và tuổi riêng. Công ty A vắng hub chỉ làm ảnh chụp của A cũ đi, không ảnh hưởng B. Dự án trùng khoá giữa hai công ty vẫn là hai ảnh chụp khác nhau.
 - **Hub khôi phục về thời điểm cũ** (spec 027 FR-042): client thấy mã đời database đổi thì lấy lại ngay.
 
 ## Requirements *(mandatory)*
@@ -347,6 +348,7 @@ Admin chuyển dự án từ đội A sang B. Trang xem trước cho biết cài
 - **FR-066**: Client không tự gộp tầng; hub là nơi duy nhất quyết định hiệu lực.
 - **FR-067**: Client cũ bỏ qua cài đặt không biết; cài đặt mới mở rộng quyền mặc định tắt.
 - **FR-068**: Ảnh chụp KHÔNG chứa secret.
+- **FR-069**: Một máy có thể phục vụ hai công ty cùng lúc, trên cùng hub hoặc trên hai hub khác nhau (spec 034). Hiệu lực luôn tính theo **một công ty**. Ảnh chụp mang mã công ty và địa chỉ hub, client lưu và tra cứu theo từng đăng ký công ty (khoá: hub + công ty + dự án). Client không bao giờ gộp, thay thế hay dùng chung cấu hình giữa hai công ty; ảnh chụp thiếu hoặc sai công ty bị bỏ và coi như chưa có ảnh chụp (FR-064). Spec này không đổi cấu hình một-đăng-ký của worker (`worker/internal/config`); cách worker giữ nhiều đăng ký thuộc spec 034.
 
 **Chuyển đổi**
 
@@ -377,7 +379,7 @@ Admin chuyển dự án từ đội A sang B. Trang xem trước cho biết cài
 - **Cài đặt** (đăng ký): khoá, nhóm, kiểu gộp, tầng được đặt, miền hợp lệ, mặc định, giá trị an toàn, mức nguy hiểm.
 - **Giá trị theo tầng**: cài đặt, tầng, đối tượng, giá trị, cờ khoá, người sửa, thời điểm, phiên bản.
 - **Giá trị hiệu lực**: cài đặt, đối tượng xem, giá trị cuối, nguồn, khoá, nhãn vượt trần, chuỗi tầng.
-- **Ảnh chụp cấu hình**: dự án, `configVersion`, phiên bản schema, thời điểm tạo, mã đời database, bộ giá trị hiệu lực.
+- **Ảnh chụp cấu hình**: công ty, địa chỉ hub, dự án, `configVersion`, phiên bản schema, thời điểm tạo, mã đời database, bộ giá trị hiệu lực.
 - **Sự kiện đổi cấu hình** (audit): người, tầng, đối tượng, cài đặt, trước, sau, loại.
 - **Danh sách quản trị hệ thống**: email từ cấu hình triển khai.
 

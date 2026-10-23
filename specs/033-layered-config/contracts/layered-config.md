@@ -16,3 +16,5 @@ Errors (Vietnamese messages, stable codes): `CONFIG_UNKNOWN_KEY`, `CONFIG_LAYER_
 Worker and desktop integration (not in the MVP): the worker already receives `policy` in the job offer. The next step is
 to add an optional `configVersion` and the safe subset to that offer, which needs an edit in `worker-protocol.ts`
 and `worker/internal/channel`, both owned by another agent right now.
+
+Per-org rule (FR-069): every call is scoped by the `x-hive-org` header. The response carries `orgId` so a client that serves two orgs can verify the snapshot belongs to the registration it asked for and cache it per org.
