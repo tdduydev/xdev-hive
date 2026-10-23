@@ -258,7 +258,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1 (agent không hỏi giá trị, SC-005).
 
-- [ ] T017 [P] [US4] A2·vừa — File mới `worker/internal/secretstore/context.go`, hàm `ContextBlock(policy, items)` theo
+- [x] T017 [P] [US4] A2·vừa — File mới `worker/internal/secretstore/context.go`, hàm `ContextBlock(policy, items)` theo
   [contracts/agent-context.md](contracts/agent-context.md).
   - Mô tả được quét lại; mô tả không đạt thì bỏ, giữ tên.
   - Tối đa 64 mục; mô tả cắt ở 200 ký tự.
