@@ -417,6 +417,7 @@ export function createApp({
       c.req.param("os"),
       c.req.param("arch"),
       c.req.param("currentVersion"),
+      c.req.query("installer"),
     );
     if (result.kind === "bad-request") return c.json({ message: "Tham số phiên bản hoặc nền tảng không hợp lệ." }, 400);
     if (result.kind === "none") return c.body(null, 204);

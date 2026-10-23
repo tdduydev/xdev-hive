@@ -77,13 +77,34 @@ fn http(url: &url::Url) -> bool {
 }
 
 /// Địa chỉ hub trả bản cập nhật cho app (route /api/v1/desktop/updates của hub, DESK-10).
-fn hub_endpoint(hub: &str, os: &str, arch: &str, version: &str) -> Option<url::Url> {
-    url::Url::parse(&format!(
+fn hub_endpoint(
+    hub: &str,
+    os: &str,
+    arch: &str,
+    version: &str,
+    installer: Option<&str>,
+) -> Option<url::Url> {
+    let mut url = url::Url::parse(&format!(
         "{}/api/v1/desktop/updates/{os}/{arch}/{version}",
         hub.trim_end_matches('/')
     ))
     .ok()
-    .filter(http)
+    .filter(http)?;
+    if let Some(installer) = installer {
+        url.query_pairs_mut().append_pair("installer", installer);
+    }
+    Some(url)
+}
+
+/// Cài từ .deb hay .rpm thì updater chỉ nhận đúng loại gói đó (AppImage sẽ báo "invalid updater binary format"). Hub
+/// trả một file cho mỗi nền tảng nên cần biết loại này; GitHub thì updater tự tìm khoá `linux-x86_64-deb` trong manifest.
+fn installer() -> Option<&'static str> {
+    use tauri::utils::{config::BundleType, platform::bundle_type};
+    match bundle_type()? {
+        BundleType::Deb => Some("deb"),
+        BundleType::Rpm => Some("rpm"),
+        _ => None,
+    }
 }
 
 /// Biến lúc chạy thắng biến lúc build, rồi tới hằng số của repo gốc.
@@ -113,7 +134,7 @@ fn endpoints(
     version: &str,
 ) -> Vec<url::Url> {
     let mut out: Vec<url::Url> = hub
-        .and_then(|h| hub_endpoint(h, os, arch, version))
+        .and_then(|h| hub_endpoint(h, os, arch, version, installer()))
         .into_iter()
         .collect();
     if let Some(url) = url::Url::parse(github).ok().filter(http)
@@ -383,17 +404,31 @@ mod tests {
     #[test]
     fn hub_endpoint_matches_hub_route() {
         assert_eq!(
-            hub_endpoint("https://hive.acme.vn/", "macos", "aarch64", "0.2.4")
+            hub_endpoint("https://hive.acme.vn/", "macos", "aarch64", "0.2.4", None)
                 .map(|u| u.to_string()),
             Some("https://hive.acme.vn/api/v1/desktop/updates/macos/aarch64/0.2.4".into())
         );
         assert_eq!(
-            hub_endpoint("http://192.0.2.10:3000", "windows", "x86_64", "0.2.5")
+            hub_endpoint("http://192.0.2.10:3000", "windows", "x86_64", "0.2.5", None)
                 .map(|u| u.path().to_string()),
             Some("/api/v1/desktop/updates/windows/x86_64/0.2.5".into())
         );
-        assert!(hub_endpoint("khong phai url", "macos", "aarch64", "1.0.0").is_none());
-        assert!(hub_endpoint("file:///etc", "macos", "aarch64", "1.0.0").is_none());
+        assert_eq!(
+            hub_endpoint(
+                "https://hive.acme.vn",
+                "linux",
+                "x86_64",
+                "0.2.5",
+                Some("deb")
+            )
+            .map(|u| u.to_string()),
+            Some(
+                "https://hive.acme.vn/api/v1/desktop/updates/linux/x86_64/0.2.5?installer=deb"
+                    .into()
+            )
+        );
+        assert!(hub_endpoint("khong phai url", "macos", "aarch64", "1.0.0", None).is_none());
+        assert!(hub_endpoint("file:///etc", "macos", "aarch64", "1.0.0", None).is_none());
     }
 
     #[test]

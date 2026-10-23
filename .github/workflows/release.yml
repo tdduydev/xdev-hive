@@ -231,6 +231,9 @@ jobs:
           files = {
               "darwin-aarch64": "xdev-hive-desktop_macos_arm64.app.tar.gz",
               "linux-x86_64": "xdev-hive-desktop_linux_amd64.AppImage",
+              # Updater tìm `{os}-{arch}-{installer}` trước, nên app cài từ .deb/.rpm nhận đúng loại gói.
+              "linux-x86_64-deb": "xdev-hive-desktop_linux_amd64.deb",
+              "linux-x86_64-rpm": "xdev-hive-desktop_linux_amd64.rpm",
               "windows-x86_64": "xdev-hive-desktop_windows_x64-setup.exe",
           }
           platforms = {}
