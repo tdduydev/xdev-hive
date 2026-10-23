@@ -80,4 +80,4 @@ constitution VII (no new always-on service, state in Postgres or on disk).
 
 - Spec 027 FR-001 … FR-006, FR-011 … FR-018; research R1 … R6, R16; tasks T001 … T025.
 - ADR [0019](0019-hive-cli-and-remote-sessions.md) (local socket), [0036](0036-machine-sends-token-score.md)
-  (first client event kind), [0033](0033-machine-keys-and-run-git-tokens.md) (planned, machine keys).
+  (first client event kind), [0033](0033-machine-keys-and-run-git-tokens.md) (machine keys).

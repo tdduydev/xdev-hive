@@ -157,7 +157,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
   `scm/schema.ts`, `runs/engine.ts`, `packages/contracts/src/policies.ts`
 - [x] T032 [US3] PAT không rơi ra `hive.json`; máy không có keychain thì hướng dẫn `HIVE_TOKEN` ·
   `worker/cmd/hive/login.go`
-- [ ] T033 [P] [US3] ADR 0033 · `docs/adr/0033-machine-keys-and-run-git-tokens.md`
+- [x] T033 [P] [US3] ADR 0033 · `docs/adr/0033-machine-keys-and-run-git-tokens.md`
 
 ## Phase 6: User Story 5 - Ranh giới dữ liệu (P2)
 
