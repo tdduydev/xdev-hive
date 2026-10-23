@@ -355,13 +355,13 @@ func run(args []string) int {
 	hub := fs.String("hub", envOr("HIVE_HUB_URL", ""), "địa chỉ hub (mặc định lấy từ file cấu hình)")
 	capacity := fs.Int("capacity", 1, "số run chạy cùng lúc")
 	statusJSON := fs.Bool("status-json", false, "in trạng thái kết nối ra stdout, mỗi dòng một JSON (cho app desktop); log vẫn ra stderr")
-	owner := fs.String("owner", ownerCLI, "ai chạy worker này: desktop, vscode hoặc cli (hiện ở op worker.status của socket nội bộ)")
+	owner := fs.String("owner", ownerCLI, "ai chạy worker này: desktop hoặc cli (hiện ở op worker.status của socket nội bộ)")
 	stdinControl := fs.Bool("stdin-control", false, `dừng khi đọc dòng "stop" hoặc hết stdin (app desktop chạy worker làm sidecar)`)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if !validOwner(*owner) {
-		fmt.Fprintf(os.Stderr, "--owner phải là %s, %s hoặc %s.\n", ownerDesktop, ownerVSCode, ownerCLI)
+		fmt.Fprintf(os.Stderr, "--owner phải là %s hoặc %s.\n", ownerDesktop, ownerCLI)
 		return 2
 	}
 	lock, code := lockWorker()

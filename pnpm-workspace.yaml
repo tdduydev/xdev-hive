@@ -5,17 +5,14 @@ packages:
 # Không chạy script cài đặt: swc và esbuild dùng gói binary dựng sẵn theo nền tảng (script chỉ để kiểm tra);
 # @prisma/client, better-sqlite3 là peer tuỳ chọn của Better Auth, hub không dùng;
 # ssh2/cpu-features là phần tuỳ chọn của Testcontainers khi nối Docker qua SSH; protobufjs chỉ in thông báo;
-# vsce (apps/vscode) chỉ cần keytar cho `vsce login` và vsce-sign để kiểm chữ ký, CI phát hành dùng VSCE_PAT; @parcel/watcher
-# là phụ thuộc của Tailwind CLI, tuỳ chọn khi `--watch`.
+# @parcel/watcher là phụ thuộc của Tailwind CLI, tuỳ chọn khi `--watch`.
 allowBuilds:
   "@parcel/watcher": false
   "@prisma/client": false
   "@swc/core": false
-  "@vscode/vsce-sign": false
   better-sqlite3: false
   cpu-features: false
   esbuild: false
-  keytar: false
   protobufjs: false
   ssh2: false
 
