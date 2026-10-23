@@ -405,3 +405,75 @@ describe("màn Bí mật: nhật ký", () => {
     expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Nhật ký" }));
   });
 });
+
+describe("màn Bí mật: trạng thái kho", () => {
+  it("kho không có: banner nêu lý do của worker, khoá nút Thêm, không có giá trị nào lưu chỗ khác", async () => {
+    fakeApp({
+      secrets: [STRIPE],
+      status: {
+        available: false,
+        locked: null,
+        backend: "secret-service",
+        reason: "Máy không có kho bí mật (Secret Service). Cài gnome-keyring hoặc KWallet rồi thử lại.",
+      },
+    });
+    render(<SecretsScreen />);
+    const banner = await screen.findByText("Máy này không có kho bí mật dùng được");
+    const alert = banner.closest("[role=alert]") as HTMLElement;
+    expect(within(alert).getByText(/Cài gnome-keyring/)).toBeTruthy();
+    expect(within(alert).getByText(/app không lưu ở chỗ khác/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Thêm bí mật" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("kho đang khoá: banner hướng dẫn mở khoá; Kiểm tra lại đọc lại trạng thái và banner mất khi mở khoá", async () => {
+    let locked = true;
+    const { calls } = fakeApp({
+      secrets: [STRIPE],
+      override: {
+        secrets_status: () => ({ available: true, locked, backend: "keychain", reason: "" }),
+      },
+    });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    expect(await screen.findByText("Kho bí mật của hệ điều hành đang khoá")).toBeTruthy();
+    locked = false;
+    await user.click(screen.getByRole("button", { name: "Kiểm tra lại" }));
+    await waitFor(() => expect(screen.queryByText("Kho bí mật của hệ điều hành đang khoá")).toBeNull());
+    expect(calls.filter((c) => c.command === "secrets_status")).toHaveLength(2);
+    expect((screen.getByRole("button", { name: "Thêm bí mật" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("kho dùng được hay worker cũ chưa có lệnh trạng thái: không có banner", async () => {
+    fakeApp({
+      secrets: [STRIPE],
+      override: {
+        secrets_status: () => {
+          throw "không có lệnh";
+        },
+      },
+    });
+    render(<SecretsScreen />);
+    await screen.findByText("STRIPE_TEST_KEY");
+    expect(screen.queryByText(/kho bí mật/i)).toBeNull();
+    expect((screen.getByRole("button", { name: "Thêm bí mật" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("dòng thiếu giá trị trong kho báo đặt lại; sửa thì bắt buộc nhập lại giá trị", async () => {
+    const { calls } = fakeApp({ secrets: [secret("LOST_KEY", { missingInStore: true }), STRIPE] });
+    const user = userEvent.setup();
+    render(<SecretsScreen />);
+    await screen.findByText("LOST_KEY");
+    expect(within(row("LOST_KEY")).getByText("Kho thiếu giá trị, hãy đặt lại")).toBeTruthy();
+    expect(within(row("STRIPE_TEST_KEY")).queryByText(/Kho thiếu giá trị/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Sửa LOST_KEY" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    expect(await within(dialog).findByText("Nhập giá trị.")).toBeTruthy();
+    expect(calls.some((c) => c.command === "secret_save")).toBe(false);
+
+    await user.type(within(dialog).getByLabelText("Giá trị"), "gia-tri-moi-12345678");
+    await user.click(within(dialog).getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(calls.some((c) => c.command === "secret_save")).toBe(true));
+  });
+});

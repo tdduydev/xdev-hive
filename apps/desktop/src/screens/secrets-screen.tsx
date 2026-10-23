@@ -12,7 +12,7 @@ import { Label } from "@xdev-hive/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
-import { ListIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { ListIcon, LockIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { SecretFormDialog } from "@/components/secret-form-dialog.tsx";
 import { SecretsLog } from "@/components/secrets-log.tsx";
@@ -20,13 +20,17 @@ import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { type LocalProject, localProjects } from "@/lib/local-projects.ts";
 import {
   formatWhen,
+  isMissingValue,
   type ReservedNames,
   type SecretItem,
   type SecretsList,
+  type StoreStatus,
   secretDelete,
   secretsFilterFromHash,
   secretsHash,
   secretsList,
+  secretsStatus,
+  storeUsable,
 } from "@/lib/secrets.ts";
 import { errorText } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
@@ -68,6 +72,12 @@ const text: Dict<{
   reservedExact: string;
   reservedPrefixes: string;
   close: string;
+  storeLockedTitle: string;
+  storeLockedHint: string;
+  storeDownTitle: string;
+  storeHint: Record<string, string>;
+  recheck: string;
+  missing: string;
 }> = {
   vi: {
     tabs: "Mục của màn Bí mật",
@@ -107,6 +117,18 @@ const text: Dict<{
     reservedExact: "Tên đầy đủ",
     reservedPrefixes: "Bắt đầu bằng",
     close: "Đóng",
+    storeLockedTitle: "Kho bí mật của hệ điều hành đang khoá",
+    storeLockedHint: "Mở khoá kho (đăng nhập lại hay nhập mật khẩu khi hệ điều hành hỏi) rồi bấm Kiểm tra lại.",
+    storeDownTitle: "Máy này không có kho bí mật dùng được",
+    storeHint: {
+      wincred:
+        "Giá trị chỉ lưu trong Credential Manager của Windows; app không lưu ở chỗ khác. Đăng nhập lại Windows rồi kiểm tra lại.",
+      keychain:
+        "Giá trị chỉ lưu trong Keychain của macOS; app không lưu ở chỗ khác. Mở khoá chuỗi khoá đăng nhập rồi kiểm tra lại.",
+      "secret-service": "Giá trị chỉ lưu trong Secret Service (gnome-keyring hay KWallet); app không lưu ở chỗ khác.",
+    },
+    recheck: "Kiểm tra lại",
+    missing: "Kho thiếu giá trị, hãy đặt lại",
   },
   en: {
     tabs: "Secrets sections",
@@ -147,6 +169,19 @@ const text: Dict<{
     reservedExact: "Exact names",
     reservedPrefixes: "Starting with",
     close: "Close",
+    storeLockedTitle: "The OS secret store is locked",
+    storeLockedHint: "Unlock it (sign in again or enter the password when the OS asks), then choose Check again.",
+    storeDownTitle: "No usable secret store on this machine",
+    storeHint: {
+      wincred:
+        "Values are kept only in Windows Credential Manager; the app stores them nowhere else. Sign in to Windows again, then check again.",
+      keychain:
+        "Values are kept only in the macOS Keychain; the app stores them nowhere else. Unlock the login keychain, then check again.",
+      "secret-service":
+        "Values are kept only in the Secret Service (gnome-keyring or KWallet); the app stores them nowhere else.",
+    },
+    recheck: "Check again",
+    missing: "The store has lost the value, set it again",
   },
 };
 
@@ -170,6 +205,7 @@ export function SecretsScreen() {
   const filterId = useId();
   const filter = useProjectFilter();
   const [data, setData] = useState<SecretsList | null>(null);
+  const [status, setStatus] = useState<StoreStatus | undefined>(undefined);
   const [projects, setProjects] = useState<LocalProject[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<{ secret: SecretItem | null } | null>(null);
@@ -182,8 +218,14 @@ export function SecretsScreen() {
     setError(null);
     try {
       // Danh sách dự án chỉ để gán và lọc; không đọc được thì màn vẫn dùng được với các bí mật đã có.
-      const [list, local] = await Promise.all([secretsList(), localProjects().catch(() => null)]);
+      // Trạng thái kho chỉ để báo; worker cũ chưa có lệnh thì coi như dùng được.
+      const [list, local, store] = await Promise.all([
+        secretsList(),
+        localProjects().catch(() => null),
+        secretsStatus().catch(() => undefined),
+      ]);
       setData(list);
+      setStatus(store);
       setProjects(local?.projects ?? []);
     } catch (e) {
       setError(errorText(e));
@@ -209,11 +251,13 @@ export function SecretsScreen() {
           <ListIcon aria-hidden="true" />
           {t.reserved}
         </Button>
-        <Button onClick={() => setForm({ secret: null })}>
+        <Button disabled={!storeUsable(status)} onClick={() => setForm({ secret: null })}>
           <PlusIcon aria-hidden="true" />
           {t.add}
         </Button>
       </header>
+
+      {!storeUsable(status) && status && <StoreBanner status={status} onRecheck={() => void load()} />}
 
       <div role="tablist" aria-label={t.tabs} className="inline-flex w-fit rounded-lg bg-muted p-0.5">
         {(
@@ -329,6 +373,12 @@ export function SecretsScreen() {
                           {s.description && (
                             <div className="text-xs break-words text-muted-foreground">{s.description}</div>
                           )}
+                          {isMissingValue(s) && (
+                            <div className="mt-0.5 flex items-center gap-1 text-xs text-destructive">
+                              <TriangleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
+                              {t.missing}
+                            </div>
+                          )}
                         </Td>
                         <Td className="min-w-36">
                           <div className="flex flex-wrap gap-1">
@@ -401,6 +451,28 @@ export function SecretsScreen() {
       />
       <ReservedDialog open={showReserved} reserved={data?.reserved ?? null} onClose={() => setShowReserved(false)} />
     </div>
+  );
+}
+
+/** Kho của hệ điều hành khoá hay không có: báo rõ cách sửa, và app không lưu giá trị chỗ nào khác (FR-062). */
+function StoreBanner({ status, onRecheck }: { status: StoreStatus; onRecheck: () => void }) {
+  const t = useT(text);
+  const locked = status.available && status.locked === true;
+  return (
+    <Alert variant="destructive">
+      {locked ? <LockIcon aria-hidden="true" /> : <TriangleAlertIcon aria-hidden="true" />}
+      <AlertTitle>{locked ? t.storeLockedTitle : t.storeDownTitle}</AlertTitle>
+      <AlertDescription className="flex flex-col gap-2">
+        {!locked && status.reason && <p className="break-words">{status.reason}</p>}
+        <p>{locked ? t.storeLockedHint : (t.storeHint[status.backend] ?? "")}</p>
+        <div>
+          <Button variant="outline" size="sm" onClick={onRecheck}>
+            <RefreshCwIcon aria-hidden="true" />
+            {t.recheck}
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
   );
 }
 

@@ -423,7 +423,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 6.
 
-- [ ] T034 [US9] C·nhẹ — `apps/desktop/src/screens/secrets-screen.tsx`:
+- [x] T034 [US9] C·nhẹ — `apps/desktop/src/screens/secrets-screen.tsx`:
   - banner khi `StoreStatus.available=false` hoặc `locked=true`, có cách sửa (FR-062);
   - dòng có `missingInStore` hiện "Kho thiếu giá trị, hãy đặt lại".
 

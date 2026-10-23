@@ -16,6 +16,7 @@ import { type Dict, useT } from "@/lib/i18n.ts";
 import type { LocalProject } from "@/lib/local-projects.ts";
 import {
   checkSecretName,
+  isMissingValue,
   type NameProblem,
   SECRET_NAME_MAX_LENGTH,
   type SecretItem,
@@ -37,6 +38,7 @@ const text: Dict<{
   value: string;
   valueNote: string;
   valueEditNote: string;
+  valueMissingNote: string;
   valueRequired: string;
   projects: string;
   noProjects: string;
@@ -62,6 +64,7 @@ const text: Dict<{
     value: "Giá trị",
     valueNote: "Sau khi lưu, ô này được xoá; chỉ xem lại được khi bấm Hiện.",
     valueEditNote: "Để trống nếu giữ nguyên giá trị hiện tại.",
+    valueMissingNote: "Kho không còn giá trị của bí mật này. Nhập lại giá trị để dùng tiếp.",
     valueRequired: "Nhập giá trị.",
     projects: "Dự án được dùng bí mật này",
     noProjects: "Chưa có dự án nào trên máy. Thêm dự án ở mục Dự án trên máy rồi gán sau.",
@@ -87,6 +90,7 @@ const text: Dict<{
     value: "Value",
     valueNote: "This field is cleared after saving; the value can only be viewed again with Show.",
     valueEditNote: "Leave empty to keep the current value.",
+    valueMissingNote: "The store no longer has this secret's value. Enter it again to keep using it.",
     valueRequired: "Enter a value.",
     projects: "Projects that may use this secret",
     noProjects: "No projects on this machine yet. Add one under Projects on this machine, then assign.",
@@ -141,7 +145,9 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
   const checked = checkSecretName(name);
   const duplicate = checked.problem === null && checked.name !== secret?.name && taken.includes(checked.name);
   const nameError = checked.problem ? t.nameProblem[checked.problem] : duplicate ? t.duplicate(checked.name) : null;
-  const valueError = !editing && value === "" ? t.valueRequired : null;
+  // Kho mất giá trị thì sửa cũng phải nhập lại: để trống sẽ chỉ "giữ" một giá trị không còn.
+  const needsValue = !editing || (secret !== null && isMissingValue(secret));
+  const valueError = needsValue && value === "" ? t.valueRequired : null;
   const shownNameError = touched ? nameError : null;
   const shownValueError = touched ? valueError : null;
   const selectable = projects.filter((p): p is LocalProject & { localId: string } => !!p.localId);
@@ -241,7 +247,7 @@ function FormBody({ secret, projects, taken, onClose, onSaved }: Omit<Props, "op
               id={`${id}-value-note`}
               className={shownValueError ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
             >
-              {shownValueError ?? (editing ? t.valueEditNote : t.valueNote)}
+              {shownValueError ?? (!editing ? t.valueNote : needsValue ? t.valueMissingNote : t.valueEditNote)}
             </span>
           </div>
           <fieldset className="flex min-w-0 flex-col gap-1.5 border-0 p-0">
