@@ -64,6 +64,8 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Linux không có Secret Service thì `go-keyring` trả lỗi gì.
 
   Kết quả "không đạt" thì sửa plan và task liên quan trước Phase 2.
+
+  Tiến độ: cỡ khối trên Windows đã kiểm (2560 byte mỗi mục, khối 1800 byte đạt). macOS và các điểm còn lại chưa kiểm.
 - [ ] T002 [P] D·nhẹ — Tên dành riêng và kiểm tên dùng chung Go ↔ TS:
   - fixture mới `packages/contracts/fixtures/local-secrets.json` (reserved exact/prefixes, tên hợp lệ, không hợp lệ);
   - `packages/contracts/src/local-secrets.ts` (`RESERVED_SECRET_NAMES`, `isValidSecretName`, `isReservedSecretName`,
@@ -79,7 +81,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 ## Phase 2: Foundational (chặn mọi user story)
 
-- [ ] T003 A·nặng — Gói `worker/internal/secretstore`, phần tên và kho:
+- [x] T003 A·nặng — Gói `worker/internal/secretstore`, phần tên và kho:
   - `names.go`: `ValidName`, `Reserved`, `ValidValue`, theo FR-003 và FR-005 ("dài 8 ký tự đến 8 KiB, không chứa byte
     NUL, và có thể chứa xuống dòng"). Test đọc `packages/contracts/fixtures/local-secrets.json`.
   - `keyring.go`: interface `backend{Get,Set,Delete}` bọc `go-keyring`; dịch vụ `dev.xdev.hive.secrets`; chia khối
@@ -89,7 +91,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     rút ngắn giá trị xoá khối thừa; khối thiếu trả `ErrCorrupt`.
 
   Sau T002.
-- [ ] T004 A·vừa — `worker/internal/secretstore/{catalog.go,grants.go}`:
+- [x] T004 A·vừa — `worker/internal/secretstore/{catalog.go,grants.go}`:
   - danh mục `secrets.json` (version 1, khoá file, ghi nguyên tử 0600; FR-002: "KHÔNG ĐƯỢC chứa giá trị, băm của giá trị
     hay độ dài giá trị");
   - tối đa 64 gán mỗi `localId`;
@@ -99,7 +101,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     `deleted`, cắt tỉa 90 ngày hoặc 10 000 dòng, `Clear` (data-model §4).
 
   Sau T003.
-- [ ] T005 [P] A2·nặng — Gói mới `worker/internal/secretmask/{mask.go,stream.go}`:
+- [x] T005 [P] A2·nặng — Gói mới `worker/internal/secretmask/{mask.go,stream.go}`:
   - `New(values)` với các dạng: gốc, base64 std/raw/url/rawurl, `url.QueryEscape`/`PathEscape`, JSON escape, shell-quote
     đơn và kép, khối nhiều dòng `\n`/`\r\n`, từng dòng ≥8 byte (FR-031, FR-033);
   - mặt nạ mặc định `[đã che]`, tuỳ chọn `***`;
@@ -108,7 +110,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test bảng gồm giá trị bị cắt đôi qua hai khối, và giá trị ngắn hơn 8 không bị che. Có benchmark 16 KiB/khối.
 
   Không phụ thuộc task khác.
-- [ ] T006 [P] A2·vừa — `worker/internal/projects/projects.go`:
+- [x] T006 [P] A2·vừa — `worker/internal/projects/projects.go`:
   - thêm `LocalID string \`json:"localId"\``, 16 hex ngẫu nhiên, sinh trong `AddFolder`, `Bind`;
   - `Load` gặp dòng thiếu thì sinh trong `WithLock` và ghi lại;
   - `Unbind` và `UnbindFolder` trả `LocalID` đã gỡ;
@@ -127,7 +129,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 2.
 
-- [ ] T007 [US1] A·vừa — Lệnh sidecar quản lý trong file mới `worker/cmd/hive-worker/secrets.go`, gồm `status`, `list`,
+- [x] T007 [US1] A·vừa — Lệnh sidecar quản lý trong file mới `worker/cmd/hive-worker/secrets.go`, gồm `status`, `list`,
   `set`, `rename`, `describe`, `assign`, `unassign`, `delete`, theo [contracts/sidecar-cli.md](contracts/sidecar-cli.md).
   - Giá trị đọc từ stdin `{"value"}` (FR-009).
   - Mã lỗi theo bảng của contract.
@@ -179,7 +181,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 3 bước 1 và 4.
 
-- [ ] T012 [US2] A·nặng — File mới `worker/internal/secretstore/grant.go`, hàm `Grant(ctx, GrantRequest)`. Bản này chỉ
+- [x] T012 [US2] A·nặng — File mới `worker/internal/secretstore/grant.go`, hàm `Grant(ctx, GrantRequest)`. Bản này chỉ
   có nhánh `allow`; `approve` và `deny` thêm ở T028.
   - Đọc danh mục theo `localId`, đọc mọi giá trị trong một lần (tối đa 4 song song, 5 giây mỗi mục).
   - Lọc tên dành riêng; kiểm ≤24 KiB trên Windows (`ErrEnvTooLarge`).

@@ -148,10 +148,10 @@ func TestBindSetUnbind(t *testing.T) {
 	if err := Bind(file, idB, t.TempDir(), "", ""); err == nil || !strings.Contains(err.Error(), "không phải repo git") {
 		t.Fatalf("thư mục không phải repo: %v", err)
 	}
-	if err := Unbind(file, idA); err != nil {
+	if _, err := Unbind(file, idA); err != nil {
 		t.Fatal(err)
 	}
-	if err := Unbind(file, idA); err == nil {
+	if _, err := Unbind(file, idA); err == nil {
 		t.Fatal("bỏ gắn lần hai không báo lỗi")
 	}
 	if list, _ := Load(file); len(list) != 0 {
@@ -207,7 +207,7 @@ func TestImportLegacyThenBindReplacesUnlinked(t *testing.T) {
 	if len(list) != 2 || Find(list, idA) == nil {
 		t.Fatalf("gắn không thay mục chưa gắn: %+v", list)
 	}
-	if err := UnbindFolder(file, filepath.Join(home, "cu")); err != nil {
+	if _, err := UnbindFolder(file, filepath.Join(home, "cu")); err != nil {
 		t.Fatal(err)
 	}
 	if list, _ := Load(file); len(list) != 1 {
