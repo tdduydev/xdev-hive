@@ -99,10 +99,11 @@ test("lọc theo nguồn, trạng thái và nhánh gửi đúng điều kiện l
   await expect(rowOf(page, "Pipeline #101")).toBeVisible();
   await expect(rowOf(page, "Pipeline #100")).toHaveCount(0);
 
-  const inputs = callsOf(fixture, "ci/feed") as { source?: string; status?: string; branch?: string }[];
-  expect(inputs.some((i) => i.source === "jenkins")).toBe(true);
-  expect(inputs.some((i) => i.status === "failed")).toBe(true);
-  expect(inputs.some((i) => i.branch === "feature/login")).toBe(true);
+  // Ô nhánh chờ người gõ xong mới hỏi hub, nên dòng có thể hiện trước khi request cuối được gửi.
+  const inputs = () => callsOf(fixture, "ci/feed") as { source?: string; status?: string; branch?: string }[];
+  expect(inputs().some((i) => i.source === "jenkins")).toBe(true);
+  expect(inputs().some((i) => i.status === "failed")).toBe(true);
+  await expect.poll(() => inputs().some((i) => i.branch === "feature/login")).toBe(true);
 });
 
 test("nguồn lỗi: báo dữ liệu cũ kèm giờ, và thiếu token Jenkins kèm nút thêm token", async ({ page }) => {

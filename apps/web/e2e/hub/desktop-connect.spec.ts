@@ -11,9 +11,8 @@ const hub = `http://127.0.0.1:${HUB_PORT}`;
 async function signIn(page: Page) {
   await page.goto("/");
   await expect(page).toHaveURL("/login");
-  // Trang đăng nhập có hai ô Email (link đăng nhập và mật khẩu): chỉ làm trong khối mật khẩu.
-  const form = page.locator("details", { hasText: "Đăng nhập bằng email và mật khẩu" });
-  await form.locator("summary").click();
+  // Trang đăng nhập có thể có hai ô Email (SSO và mật khẩu): chỉ làm trong form mật khẩu.
+  const form = page.getByRole("form", { name: "Đăng nhập bằng email và mật khẩu" });
   await form.getByLabel("Email", { exact: true }).fill(OWNER.email);
   await form.getByLabel("Mật khẩu").fill(OWNER.password);
   await form.getByRole("button", { name: "Đăng nhập", exact: true }).click();

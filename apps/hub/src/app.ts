@@ -260,7 +260,14 @@ export function createApp({
     audit,
     system: systemRouter(config, desktopReleases, wordImportHealth),
     me: meRouter(auth),
-    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl, resolveTxt }),
+    ...tenancyRouter({
+      auth,
+      pool,
+      orgCreators: config.orgCreators,
+      publicUrl: config.publicUrl,
+      resolveTxt,
+      socialProviders: { github: Boolean(config.github), gitlab: Boolean(config.gitlab) },
+    }),
     ...fleetRouter({
       auth,
       pool,

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
+import { anySsoProvider } from "../identity/index.ts";
 import { ForbiddenError, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
 import { requireOrgRole } from "./permissions.ts";
 import { iso, onUnique, type Procedures, type SessionUser, slugTaken, type TenancyDeps } from "./procedures.ts";
@@ -31,16 +32,24 @@ async function currentOrg(tx: Tx, orgId: string) {
   return row;
 }
 
-/** Trang đăng nhập hỏi trước khi có phiên; chỉ lộ một bit: hub đã có tổ chức nào chưa. */
+/**
+ * Trang đăng nhập hỏi trước khi có phiên. Chỉ lộ: hub đã có tổ chức nào chưa, và cách đăng nhập nào đã bật (ai bấm thử
+ * nút cũng biết được điều này).
+ */
 export function hubSetupRouter({ base }: Procedures, deps: TenancyDeps) {
   return {
     get: base.hubSetup.get.handler(async () => {
+      const loginMethods = {
+        sso: deps.auth ? await anySsoProvider(deps.auth) : false,
+        github: deps.socialProviders?.github ?? false,
+        gitlab: deps.socialProviders?.gitlab ?? false,
+      };
       // Không có database (test đơn vị) thì coi như hub đã dựng xong: không mời ai đăng ký.
-      if (!deps.pool) return { firstAdminSignUp: false };
-      return withTenant(deps.pool, {}, async (tx) => {
-        const { rows } = await tx.execute<{ any: boolean }>(sql`select hive.any_org() as any`);
-        return { firstAdminSignUp: rows[0]?.any === false };
-      });
+      if (!deps.pool) return { firstAdminSignUp: false, loginMethods };
+      const { rows } = await withTenant(deps.pool, {}, (tx) =>
+        tx.execute<{ any: boolean }>(sql`select hive.any_org() as any`),
+      );
+      return { firstAdminSignUp: rows[0]?.any === false, loginMethods };
     }),
   };
 }
