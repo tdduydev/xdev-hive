@@ -226,6 +226,8 @@ export async function listArtifacts(tx: Tx, reader: Reader, raw: ArtifactListQue
   if (input.terminalSessionId) where.push(linkedTo("terminal_session", input.terminalSessionId));
   if (input.runId) where.push(linkedTo("run", input.runId));
   if (input.taskId) where.push(linkedTo("task", input.taskId));
+  if (input.sdlcItemId) where.push(linkedTo("sdlc_item", input.sdlcItemId));
+  if (input.docId) where.push(linkedTo("doc", input.docId));
   if (input.query) {
     const pattern = `%${input.query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     where.push(

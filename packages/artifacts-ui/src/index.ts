@@ -17,6 +17,7 @@ export {
 export { artifactFileName, downloadText, sourceLanguage } from "./files.ts";
 export { FixRequestDialog, type FixRequestDialogProps } from "./fix-request-dialog.tsx";
 export { ArtifactLibrary, type ArtifactLibraryProps } from "./library.tsx";
+export { LinkedArtifacts, type LinkedArtifactsProps, type LinkedTarget } from "./linked.tsx";
 export { ArtifactPanel, type ArtifactPanelProps, type ArtifactSelection, panelTabs } from "./panel.tsx";
 export { PublicLinkDialog, type PublicLinkDialogProps } from "./public-link-dialog.tsx";
 export { PublicLinksTable, type PublicLinksTableProps } from "./public-links-table.tsx";

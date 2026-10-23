@@ -1,6 +1,7 @@
 // Tri thức dùng chung cho agent: memory, tài liệu, skill, đề xuất sửa. Module khác chỉ import file này.
 // Các hàm nhận (tx, principal, input) là API public để cổng MCP gắn tool vào: tx là transaction withTenant của tổ
 // chức, principal là người dùng hoặc run đã được xác thực.
+
 export {
   type Action as DocAction,
   authorize,
@@ -12,6 +13,7 @@ export {
   readerFor,
   type Scope,
 } from "./access.ts";
+export { createDocLinkTarget } from "./artifact-link.ts";
 export {
   type BriefStaleness,
   briefStaleness,

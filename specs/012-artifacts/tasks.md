@@ -341,13 +341,22 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `ArtifactPanel`.
   - **Scope**: file của LEADTERM (theo nhánh LEADTERM khi đã merge), `apps/hub/src/main.ts` (đăng ký hook)
   - **Phụ thuộc**: LEADTERM, MVP · **Mức**: vừa
+  - ngoài phạm vi (quyết định 2026-10-23: web chỉ giữ bốn nhóm Kho, Cấu hình, Duyệt, Quản trị; Terminal Leader và khung
+    bên cạnh thuộc desktop/worker, không làm trên hub và web)
 
-- [ ] T065 [US10] Liên kết task, run, hạng mục AI SDLC, tài liệu
+- [x] T065 [US10] Liên kết task, run, hạng mục AI SDLC, tài liệu
   - `LinkTarget` của `tasks`, `runs`, `sdlc`, `knowledge`; mục Artifact ở trang task, run, dự án, hạng mục (`sdlc-ui`), tài
     liệu; prompt run có task liệt kê artifact liên kết (`runs/engine.ts` dựng prompt).
   - **Scope**: `apps/hub/src/modules/{tasks,runs,sdlc,knowledge}/index.ts` (đăng ký), `apps/hub/src/modules/runs/engine.ts`
     (prompt), `apps/web/src/pages/{tasks-page,run-page,project-settings-page}.tsx`, `packages/sdlc-ui/src/item-detail.tsx`
   - **Phụ thuộc**: MVP; spec 011 T051 (màn hạng mục) cho phần `sdlc` · **Mức**: vừa
+  - Đã làm: `createTaskLinkTarget`, `createRunLinkTarget`, `createSdlcItemLinkTarget`, `createDocLinkTarget` (mỗi module một
+    `artifact-link.ts`, đăng ký ở `app.ts`); bộ lọc `sdlcItemId` và `docId` cho `artifacts.list`; `LinkedArtifacts` trong
+    `packages/artifacts-ui/src/linked.tsx`; mục Artifact ở trang kế hoạch của task, run, dự án, tài liệu và hạng mục.
+    Trang hạng mục đặt ở `apps/web/src/pages/sdlc/sdlc-pages.tsx` (không sửa `sdlc-ui`) để không thêm phụ thuộc gói và
+    không đụng phần SPEC035; `sdlc` chỉ đăng ký `LinkTarget`.
+  - ngoài phạm vi (quyết định 2026-10-23: prompt run liệt kê artifact liên kết ở `runs/engine.ts` thuộc thực thi, nằm ở
+    desktop/worker; liên kết chỉ là siêu dữ liệu và hiển thị)
 
 - [ ] T066 [US11] Chuyển thành tài liệu, Lưu vào repo
   - Route `toDoc` (hook `createProposal` từ `knowledge`), `toRepo` (`GitProvider.commitFiles` + `openPR`, nhánh
@@ -368,6 +377,8 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
   - **Scope**: `packages/artifacts-ui/src/editor.tsx`, `packages/doc-editor/src/**` (chỉ cờ chế độ artifact, phối hợp làn
     doc-editor)
   - **Phụ thuộc**: Tiptap #204, MVP · **Mức**: vừa
+  - ngoài phạm vi (quyết định 2026-10-23: soạn tay đầy đủ là thao tác thực thi/soạn thảo, không nằm trong bốn nhóm của
+    web; web chỉ xem, chia sẻ và quản trị artifact)
 
 - T069 ("Nhờ Leader sửa") **đã chuyển vào MVP** theo quyết định PO 2026-10-14: hub ở T016, giao diện ở T020/T023, web ở
   T030/T031, app ở T041.

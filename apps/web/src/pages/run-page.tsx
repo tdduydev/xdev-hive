@@ -37,6 +37,7 @@ import {
 } from "@/lib/run-view.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { useRunStream } from "@/lib/use-run-stream.ts";
+import { LinkedArtifactsSection, useCanWriteTeam } from "@/pages/artifacts/linked-section.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -51,6 +52,7 @@ export function RunPage() {
   const project = useQuery(
     api.projects.get.queryOptions({ input: { id: run.data?.projectId ?? "" }, enabled: !!run.data }),
   );
+  const canLinkArtifacts = useCanWriteTeam(run.data?.teamId);
   // Sự kiện `state` qua SSE nghĩa là trạng thái, kết quả hay chi phí trong runs.get đã đổi.
   const stream = useRunStream(org.id, id, () => {
     void queryClient.invalidateQueries({ queryKey: api.runs.get.key({ input: { id } }) });
@@ -124,6 +126,7 @@ export function RunPage() {
             <CostCard run={r} capUsd={project.data?.settings.budget?.perRunUsd} />
             {r.explore && <ExploreCard explore={r.explore} />}
             <PolicyCard run={r} />
+            <LinkedArtifactsSection target={{ kind: "run", id: r.id }} canLink={canLinkArtifacts} />
           </aside>
         </div>
       </PageBody>

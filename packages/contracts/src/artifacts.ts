@@ -404,6 +404,8 @@ const artifactListShape = {
   terminalSessionId: id.optional(),
   runId: id.optional(),
   taskId: id.optional(),
+  sdlcItemId: id.optional(),
+  docId: id.optional(),
   /** Chỉ artifact tôi là chủ ("Của tôi"). */
   mine: queryFlag.default(false),
   /** Tìm theo tiêu đề và nội dung bản mới nhất. */

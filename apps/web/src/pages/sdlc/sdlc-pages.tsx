@@ -2,6 +2,7 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ItemBoard, ItemDetail, NewItem, Questions, SdlcProvider } from "@xdev-hive/sdlc-ui";
 import type { ReactNode } from "react";
 import { sdlcTabOf, useWebSdlcEnv } from "@/lib/sdlc-env.tsx";
+import { SdlcItemArtifacts } from "@/pages/artifacts/linked-section.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody } from "@/shell/page-header.tsx";
 
@@ -74,6 +75,7 @@ export function SdlcItemPage() {
           )
         }
       />
+      <SdlcItemArtifacts projectKey={project} number={number} />
     </SdlcPage>
   );
 }

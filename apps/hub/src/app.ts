@@ -54,6 +54,7 @@ import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
+  createDocLinkTarget,
   type Embedder,
   handleRunSkills,
   handleSkillWebhook,
@@ -76,6 +77,7 @@ import {
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
 import { type HubConfig, type Jobs, NotFoundError, type RequestContext, type Tx } from "./modules/platform/index.ts";
 import {
+  createRunLinkTarget,
   RunNotifier,
   type RunsEngine,
   runForUser,
@@ -85,10 +87,16 @@ import {
 } from "./modules/runs/index.ts";
 import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
-import { reviewSpecFor, type SdlcDeps, registerMcpTools as sdlcMcpTools, sdlcRouter } from "./modules/sdlc/index.ts";
+import {
+  createSdlcItemLinkTarget,
+  reviewSpecFor,
+  type SdlcDeps,
+  registerMcpTools as sdlcMcpTools,
+  sdlcRouter,
+} from "./modules/sdlc/index.ts";
 import { skillLearningRouter } from "./modules/skilllearn/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
-import { tasksRouter } from "./modules/tasks/index.ts";
+import { createTaskLinkTarget, tasksRouter } from "./modules/tasks/index.ts";
 import {
   allowWith,
   orgMiddlewares,
@@ -165,6 +173,10 @@ export function createApp({
   leaderMcpTools(registry, { runs });
   provideThreadHost(createThreadHost(runs));
   provideLinkTarget("chat_thread", createThreadLinkTarget());
+  provideLinkTarget("task", createTaskLinkTarget());
+  provideLinkTarget("run", createRunLinkTarget());
+  provideLinkTarget("sdlc_item", createSdlcItemLinkTarget());
+  provideLinkTarget("doc", createDocLinkTarget());
   artifactsMcpTools(registry, { pool, jobs, publicUrl });
   sdlcMcpTools(registry);
   docsyncMcpTools(registry);

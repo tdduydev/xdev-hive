@@ -9,6 +9,7 @@ export {
   type Principal,
   type Reader,
   readerFor,
+  readerUserId,
   visibleArtifactsWhere,
 } from "./access.ts";
 export { isBlobType } from "./blob-types.ts";
