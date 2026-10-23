@@ -641,7 +641,15 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
   - **Scope**: `scripts/e2e-remote.ts`, `apps/hub/src/terminal-perf.db.test.ts`, `.github/workflows/ci.yml` (job tuỳ chọn)
   - **Phụ thuộc**: T041, T032, T040 · **Mức**: nặng
 
-- [ ] T091 Bộ test tấn công (SC-001) và review bảo mật
+- [x] T091 Bộ test tấn công (SC-001) và review bảo mật
+  - Đã làm (CLI010B): `attack_test.go` (Unix: passkey giả/phát lại/lệch giờ/sai origin, rpId, UV/khoá lạ/counter lùi,
+    `connId` bị đổi; hub không khoá phiên gõ thay, dùng `resumeToken`; TOTP sai/dùng lại/khoá gấp đôi/khởi động lại/HTTPS/
+    chính sách tắt/thiếu `auth`; `term_start` khi tắt, `subdir` thoát qua symlink; hub tự nhận chủ mới). Tag ghép sai,
+    `seq` lùi, gói bật từ hub đã có ở `pairing_test.go`, `control_test.go`, `remote_test.go`.
+    `terminal-attack.db.test.ts` (11 ca: tổ chức khác, người cùng đội, quản trị đội không phải chủ máy, máy dùng chung,
+    vé dùng lại/hết hạn/đoán, vé Leader, Origin lạ/thiếu/`null` đốt vé, gõ khi chưa có quyền, gói giả của máy khác,
+    TOTP khi chính sách tắt, mã không vào DB/log). Không thấy lỗ hổng cần sửa; rủi ro còn lại và việc tiếp ở
+    `security-review.md`. Không mở PR nên kết quả ghi trong file đó.
   - Worker: assertion giả/phát lại/lệch giờ/sai origin/thiếu UV/khoá lạ, tag ghép sai, gói nhập không HMAC hoặc `seq`
     lùi, `term_start` khi tắt, `subdir` thoát, gói bật/ghép giả từ hub; TOTP: mã sai, dùng lại, khoá và gấp đôi, khởi động
     lại không đặt lại, hub HTTPS, chính sách tắt, `term_start`/`term_control` không mã (SC-011, SC-012). Hub: người khác, máy
