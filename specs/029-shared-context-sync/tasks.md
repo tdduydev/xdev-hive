@@ -24,7 +24,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - `apps/desktop/src/screens/memory-screen.tsx`: T008, rồi T017, rồi T024.
   - `apps/desktop/src/components/token-score-card.tsx`, `screens/tokens-screen.tsx`: T010, rồi T018.
   - `packages/contracts/**` và `openapi.json`: T012 (P2), rồi T020 (P3).
-  - `apps/hub/db/migrations/`: T013 (0084), rồi T022 (0085). Lấy số kế tiếp mới nhất ngay trước commit (common.md).
+  - `apps/hub/db/migrations/`: T013 (cuối cùng là `0084_memory_pinned`), rồi T022 (cuối cùng là `0086_project_token_usage`, vì `0085` đã có việc khác). Lấy số kế tiếp mới nhất ngay trước commit (common.md).
 - Mỗi task kèm test trong cùng commit. Viết test trước, thấy test hỏng, rồi mới viết code.
 - **Kiểm tra theo loại task**:
   - Go: trong `worker/` chạy `gofmt -l .`, `go vet ./...`, `GOOS=windows go vet ./...`, `go test ./internal/<gói>/...`.
@@ -237,11 +237,11 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **Kiểm**: db test các mã từ chối, chống trùng `idempotencyKey`.
 
 - [x] **T022 [P] [US6] [nặng] · 1,5 ngày — Hub: bảng `project_token_usage`, nhận, đọc, xoá** (sau T020; song song T021)
-  - **Goal**: migration `0085_*` theo [data-model.md](data-model.md) (khoá duy nhất `(machine_id, project_id, period_end)`,
+  - **Goal**: migration `0085_*` (thực tế `0086_*`) theo [data-model.md](data-model.md) (khoá duy nhất `(machine_id, project_id, period_end)`,
     chỉ mục `(org_id, project_id, period_end desc)`, bật + ép RLS); `recordProjectUsage` upsert, giới hạn 1 lần/10 phút mỗi
     `(machine_id, project_id)`, kiểm chủ máy là thành viên dự án; dọn 90 ngày cùng `machine_token_scores`;
     `projects.tokenUsage` (thành viên dự án); `fleet.deleteMyProjectUsage` (chủ máy).
-  - **PHẠM VI**: `apps/hub/db/migrations/0085_*.sql` (+ meta), `apps/hub/src/modules/fleet/{schema.ts,project-usage.ts,router.ts,rls.db.test.ts}`,
+  - **PHẠM VI**: `apps/hub/db/migrations/0086_*.sql` (+ meta), `apps/hub/src/modules/fleet/{schema.ts,project-usage.ts,router.ts,rls.db.test.ts}`,
     `apps/hub/src/modules/fleet/token-scores.ts` (nhánh mới, sau T021), `apps/hub/src/modules/catalog/router.ts` (route đọc), `*.db.test.ts`.
   - **Kiểm**: RLS tổ chức khác không đọc được; người ngoài dự án không đọc được; giới hạn; xoá.
 
@@ -253,7 +253,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
   - **Kiểm**: `TestProjectUsagePayloadHasNoText` (SC-007); gán dự án theo `cwd` (thư mục con, khác ổ đĩa Windows).
 
 - [x] **T024 [US5] [US6] [vừa] · 1 ngày — Desktop: outbox, gửi memory qua hàng đợi, bật gửi số liệu** (sau T017, T019)
-  - **Goal**: Rust `outbox.rs` (`outbox_submit`, `outbox_flush`, `outbox_status`); `lib/outbox.ts`; "Gửi lên hub" trong
+  - **Goal**: Rust `outbox.rs` (`outbox_submit`, `outbox_flush`, `outbox_status`, thêm `outbox_drop` để đóng việc bị từ chối); `lib/outbox.ts`; "Gửi lên hub" trong
     `memory-hub-sync.tsx` đi qua `outbox_submit`, báo "Đã xếp hàng, sẽ gửi khi có mạng"; thẻ "Đang chờ gửi" và việc bị từ
     chối trên màn Memory; flush khi mở app và sau mỗi lần submit; công tắc "Gửi số liệu token của dự án" (mặc định tắt) và
     nút "Xoá số liệu đã gửi".
@@ -276,7 +276,7 @@ description: "Task list: ngữ cảnh dùng chung, đồng bộ dự án và nú
 
 ## Đợt cuối
 
-- [ ] **T026 [—] [nhẹ] · 0,5 ngày — SRS, tài liệu, `/speckit-analyze`** (sau mọi task agent)
+- [x] **T026 [—] [nhẹ] · 0,5 ngày — SRS, tài liệu, `/speckit-analyze`** (sau mọi task agent)
   - **Goal**: `docs/srs.md` thêm FR-001…FR-062; `docs/token-optimizer.md`, `docs/architecture.md` cập nhật P2–P3; chạy
     `/speckit-analyze` trên spec, plan, tasks và xử lý mâu thuẫn.
   - **PHẠM VI**: `docs/srs.md`, `docs/token-optimizer.md`, `docs/architecture.md`, `specs/029-shared-context-sync/*.md`.

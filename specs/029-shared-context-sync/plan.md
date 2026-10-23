@@ -34,7 +34,7 @@ Phần không đổi: preset `balanced`/`aggressive` của 015; thang điểm 02
 |---|---|
 | Ngôn ngữ | Go (sidecar `hive-worker`), Rust (Tauri), TypeScript strict (desktop, hub, web, contracts) |
 | Phụ thuộc mới | Không |
-| Lưu trữ | Máy: `~/.xdev-hive/context/<khoá>/{source.md,hub.json,state.json}`, `~/.xdev-hive/optimizer/runs/<id>.json`, `~/.xdev-hive/outbox/…` (theo 027). Hub: `projects.settings.devOptimizer` (jsonb sẵn có), cột `memories.pinned`, bảng `project_token_usage` (migration 0084) |
+| Lưu trữ | Máy: `~/.xdev-hive/context/<khoá>/{source.md,hub.json,state.json}`, `~/.xdev-hive/optimizer/runs/<id>.json`, `~/.xdev-hive/outbox/…` (theo 027). Hub: `projects.settings.devOptimizer` (jsonb sẵn có), cột `memories.pinned`, bảng `project_token_usage` (migration 0086) |
 | Test | `go test` có `HOME`/`USERPROFILE` giả, repo git tạm, fixture file đích; `GOOS=windows go vet`; Vitest desktop/web; Rust test cho lệnh mới; `*.db.test.ts` + `rls.db.test.ts`; Playwright web |
 | Hiệu năng | SC-001: ghi lại mọi file đích ≤ 5 giây sau khi lưu nguồn. SC-003: "Tối ưu" ≤ 2 phút kể cả xem trước |
 | Nền tảng | macOS, Linux, Windows. Máy dev Windows không có Rust: phần Rust kiểm bằng CI |
@@ -50,7 +50,7 @@ Phần không đổi: preset `balanced`/`aggressive` của 015; thang điểm 02
 | IV. Tested | Test bảng cho ghi khối (giữ byte ngoài khối, xung đột, gương Codex, frontmatter Antigravity, file bị theo dõi), hoàn tác so byte (SC-004), outbox đúng một lần (SC-006), payload không có chuỗi (SC-007), RLS bảng mới |
 | V. Secure by default | Không ghi file bị git theo dõi; lọc bí mật trước khi ghi "Từ hub" (FR-024, dùng bộ nhận dạng bí mật sẵn có của hub/worker); nút chỉ chạy id trong bảng cho phép; số liệu token mặc định tắt |
 | VI. Ngôn ngữ | Chữ giao diện, lỗi tiếng Việt; code, commit tiếng Anh. Spec viết tiếng Việt theo yêu cầu chủ dự án: **lệch** VI như 025, ghi ở Complexity Tracking |
-| VII. Simple to self-host | Không thêm dịch vụ. Một migration (một cột, một bảng) |
+| VII. Simple to self-host | Không thêm dịch vụ. Hai migration (`0084` một cột, `0086` một bảng) |
 | Giao diện | `@xdev-hive/ui`, token màu, sáng/tối, 360 px, bàn phím, Playwright theo vai trò và tên |
 
 Kết quả: **đạt**, một lệch đã biết (VI). Kiểm lại sau thiết kế: không đổi.
@@ -96,7 +96,7 @@ apps/desktop/src/lib/              context-sync.ts, optimize-all.ts, hub-context
 apps/desktop/src/components/       shared-context-section.tsx, optimize-all-button.tsx, optimize-preview-dialog.tsx
 apps/desktop/src/screens/          memory-screen.tsx, tokens-screen.tsx (gắn vào)
 packages/contracts/src/            projects.ts, knowledge.ts, client-events.ts, fleet.ts
-apps/hub/db/migrations/            0084_dev_context_sync.sql
+apps/hub/db/migrations/            0084_memory_pinned.sql, 0086_project_token_usage.sql
 apps/hub/src/modules/catalog/      settings.ts (devOptimizer)
 apps/hub/src/modules/knowledge/    schema.ts (pinned), memory.ts (sắp theo ghim, pin, proposeFromMachine), index.ts
 apps/hub/src/modules/fleet/        schema.ts (project_token_usage), project-usage.ts, token-scores.ts (nhánh kiểu mới), router.ts, rls.db.test.ts
@@ -191,13 +191,14 @@ nối lệnh bật/tắt/xem cờ theo dự án (`--json`) và trả id máy; sa
 
 ### 6. Hub
 
-- Migration `0084_dev_context_sync.sql`: `alter table hive.memories add column pinned boolean not null default false`;
+- Hai migration (số do lúc commit quyết định; `0085` đã bị việc khác lấy): `0084_memory_pinned.sql`:
+  `alter table hive.memories add column pinned boolean not null default false`; `0086_project_token_usage.sql`:
   `create table hive.project_token_usage (…)` theo [data-model.md](data-model.md), bật + ép RLS, chỉ mục
   `(org_id, project_id, period_end desc)`.
 - `knowledge`: `listMemories` sắp `pinned desc, created_at desc`; `pinMemory` (quyền như duyệt memory, audit
   `memory.pin`); `proposeFromMachine(tx, machine, payload)` gọi lại đường `writeMemory` với `source:"machine"`.
 - `fleet`: nhánh `memory.propose` và `project.token_usage` trong `receiveMachineEvent`; `recordProjectUsage` upsert theo
-  `(machine_id, project_id, period_end)`, giới hạn 10 phút; kiểm máy thuộc người là thành viên dự án; `deleteMyUsage`.
+  `(machine_id, project_id, period_end)`, giới hạn 10 phút; kiểm máy thuộc người là thành viên dự án; `fleet.deleteMyProjectUsage`.
 - `projects.tokenUsage({key, days})`: thành viên dự án đọc bảng theo người/máy; tên máy và tên người lấy từ bảng sẵn có.
 - Web: mục "Tối ưu máy dev" trong cài đặt dự án (sau mục `tokens`, chỉ admin sửa); nút ghim ở danh sách memory; bảng token
   theo người/máy ở trang dự án.

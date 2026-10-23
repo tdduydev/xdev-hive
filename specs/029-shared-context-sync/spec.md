@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-22
 
-**Status**: Draft. Chủ dự án chốt D1–D6 ngày 2026-10-22 (bảng Quyết định). Có [plan.md](plan.md).
+**Status**: Đã cài phần lớn. Chủ dự án chốt D1–D6 ngày 2026-10-22 (bảng Quyết định). Có [plan.md](plan.md). Còn lại: T001 và T027 (người làm), công tắc gửi số liệu và nút xoá trên desktop (T024), kind "đề xuất skill" của hàng đợi; xem [tasks.md](tasks.md).
 
 **Input**: Chủ dự án (2026-10-22): nghiên cứu cách tối ưu token, bộ nhớ và ngữ cảnh dùng chung trên một máy; đồng bộ
 nhiều máy cho nhiều người trong dự án; có nút tối ưu các phần này.
@@ -144,7 +144,7 @@ danh sách xem trước dùng đúng chính sách, ghi rõ nguồn "theo chính 
 
 ### User Story 5 - Gửi lên hub không mất khi mất mạng (Priority: P3)
 
-Gửi memory lên hub, đề xuất skill, gửi điểm token đi qua một hàng đợi trên máy. Mất mạng thì việc nằm trong hàng, gửi lại
+Gửi memory lên hub, đề xuất skill, gửi điểm token đi qua một hàng đợi trên máy (đề xuất skill chưa có kind trong hàng đợi; xem FR-040). Mất mạng thì việc nằm trong hàng, gửi lại
 khi có mạng, không gửi trùng.
 
 **Why this priority**: Không chặn giá trị chính, nhưng thiếu nó thì US3, US6 hỏng lặng lẽ khi máy ngoại tuyến. Làm theo
@@ -252,7 +252,8 @@ không có chuỗi nội dung.
 **Hàng đợi ngoại tuyến (US5)**
 
 - **FR-040**: Gửi memory, đề xuất skill, gửi số liệu token đi qua hàng đợi bền trên máy; mỗi việc có khoá để hub nhận
-  đúng một lần.
+  đúng một lần. Hàng đợi hiện có ba kind: `memory.propose`, `project.token_usage`, `machine.token_score`. Kind cho đề xuất
+  skill chưa có, và không task nào của spec này dựng nó; thêm khi có luồng đề xuất skill lên hub.
 - **FR-041**: Việc chờ được gửi lại khi có mạng, kể cả sau khi app khởi động lại. Hub từ chối hẳn thì việc rời hàng và
   hiện lý do.
 - **FR-042**: Màn Memory hiện số việc đang chờ và việc bị từ chối.
