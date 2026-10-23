@@ -16,6 +16,7 @@ import {
 } from "@/lib/agent.ts";
 import { saveFolder } from "@/lib/folder.ts";
 import type { HubProject } from "@/lib/hub.ts";
+import { queryClient } from "@/lib/hub-query.tsx";
 import { setLang } from "@/lib/i18n.ts";
 import { DocsScreen, slugify } from "@/screens/docs-screen.tsx";
 
@@ -52,7 +53,10 @@ type Call = { command: string; args?: Record<string, unknown> | undefined };
 
 const GUIDE = "# Hướng dẫn\n\nBản cũ.";
 
-function fakeTauri() {
+/** Câu trả lời của một thủ tục hub theo đầu vào (GET đọc `?data=`, POST đọc thân request). */
+type Rpc = Record<string, (input: unknown) => unknown>;
+
+function fakeTauri(rpc?: Rpc) {
   const calls: Call[] = [];
   const listeners: Record<string, (e: { payload: unknown }) => void> = {};
   const files: Record<string, string> = {
@@ -153,6 +157,25 @@ function fakeTauri() {
         return { key: KEY, title: "Kiến trúc payment-api", version: 3, content: HUB_DOC, nextOffset: null };
       throw new Error(`tool chưa giả: ${String(name)}`);
     },
+    ...(rpc && {
+      hub_rpc: (args) => {
+        const path = String(args?.path);
+        const [pathname = "", query = ""] = path.split("?");
+        const procedure = pathname.replace(/^\/rpc\//, "");
+        const wire = args?.body ? String(args.body) : new URLSearchParams(query).get("data");
+        const input = wire ? JSON.parse(wire).json : undefined;
+        const reply = rpc[procedure];
+        return {
+          status: reply ? 200 : 404,
+          contentType: "application/json",
+          body: JSON.stringify(
+            reply
+              ? { json: reply(input) }
+              : { json: { defined: false, code: "NOT_FOUND", status: 404, message: "chưa giả" } },
+          ),
+        };
+      },
+    }),
     run_cli_stream: () => "run-1",
     cancel_cli_stream: () => null,
     propose_doc: (args) => ({ proposalId: "4f1c2d3e-aaaa", status: "pending", key: args?.key, baseVersion: 3 }),
@@ -689,5 +712,128 @@ describe("DocsScreen", () => {
         folder: FOLDER,
       }),
     );
+  });
+});
+
+describe("DocsScreen: đồng bộ với repo", () => {
+  const treeItem = (state: string | null, prNumber: number | null = null) => ({
+    homeId: "h1",
+    path: "docs/architecture.md",
+    key: KEY,
+    title: "Kiến trúc payment-api",
+    kind: "doc",
+    state,
+    prNumber,
+    prUrl: null,
+    repoUrl: null,
+    repoCommit: null,
+    docId: "d1",
+    assetId: null,
+    version: 3,
+    error: null,
+    scope: { level: "project", teamId: null, projectId: "p1" },
+  });
+  const conflict = {
+    id: "c1",
+    homeId: "h1",
+    docId: "d1",
+    key: KEY,
+    title: "Kiến trúc payment-api",
+    repoPath: "docs/architecture.md",
+    baseVersion: 2,
+    hubVersion: 3,
+    repoCommit: "a".repeat(40),
+    origin: "repo",
+    state: "open",
+    resolution: null,
+    resolvedVersion: null,
+    createdAt: "2026-10-12T00:00:00Z",
+    updatedAt: "2026-10-12T00:00:00Z",
+  };
+  const detail = {
+    ...conflict,
+    baseContent: "# Kiến trúc\n\nBản gốc.",
+    hubContent: HUB_DOC,
+    repoContent: "# Kiến trúc\n\nBản repo.",
+    merge: { content: "# Kiến trúc\n\n<<<<<<< hub\nA\n=======\nB\n>>>>>>> repo", conflicts: 1 },
+  };
+
+  beforeEach(() => {
+    setLang("vi");
+    resetAgentStore();
+    saveFolder(FOLDER);
+    queryClient.clear();
+  });
+
+  it("hiện nhãn trạng thái đồng bộ của tài liệu, kèm số PR đang mở", async () => {
+    fakeTauri({ "docTree/list": () => ({ items: [treeItem("pending", 12)], nextCursor: null }) });
+    renderDocs();
+    const header = await screen.findByRole("heading", { name: "Kiến trúc payment-api" });
+    expect(header).toBeTruthy();
+    expect((await screen.findAllByText("PR #12 đang mở")).length).toBeGreaterThan(0);
+  });
+
+  it("hub không trả cây tài liệu: màn vẫn mở tài liệu, không có nhãn đồng bộ", async () => {
+    fakeTauri({});
+    renderDocs();
+    await screen.findByRole("heading", { name: "Kiến trúc payment-api" });
+    expect(screen.queryByRole("button", { name: "Xem xung đột" })).toBeNull();
+    expect(document.querySelector("[data-sync-state]")).toBeNull();
+  });
+
+  it("xung đột: mở hộp thoại, giữ bản hub gọi docConflicts.resolve với đúng phiên bản rồi tải lại tài liệu", async () => {
+    const resolved: unknown[] = [];
+    let state = "conflict";
+    const { calls } = fakeTauri({
+      "docTree/list": () => ({ items: [treeItem(state)], nextCursor: null }),
+      "docConflicts/list": () => ({ items: [conflict], nextCursor: null }),
+      "docConflicts/get": () => detail,
+      "docConflicts/resolve": (input) => {
+        resolved.push(input);
+        state = "synced";
+        return { key: KEY, version: 4 };
+      },
+    });
+    const user = userEvent.setup();
+    renderDocs();
+    await user.click(await screen.findByRole("button", { name: "Xem xung đột" }));
+    const dialog = await screen.findByRole("dialog", { name: "Giải quyết xung đột" });
+    const docReads = () => calls.filter((c) => c.command === "hub_tool" && c.args?.name === "doc_get").length;
+    const before = docReads();
+    await user.click(await within(dialog).findByRole("button", { name: "Giữ bản hub" }));
+    await waitFor(() => expect(resolved).toEqual([{ id: "c1", choice: "hub", baseVersion: 3 }]));
+    await waitFor(() => expect(docReads()).toBeGreaterThan(before));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Xem xung đột" })).toBeNull());
+  });
+
+  it("tìm tài liệu: hiện kết quả, báo khi hub chỉ tìm theo từ, bấm kết quả mở tài liệu", async () => {
+    const asked: unknown[] = [];
+    fakeTauri({
+      "docs/search": (input) => {
+        asked.push(input);
+        return {
+          mode: "keyword",
+          hits: [
+            {
+              key: KEY,
+              title: "Kiến trúc payment-api",
+              headingPath: ["2. Kênh tới hub"],
+              snippet: "Worker giữ một WebSocket tới hub",
+              repoPath: null,
+              extractId: null,
+            },
+          ],
+        };
+      },
+    });
+    const user = userEvent.setup();
+    renderDocs();
+    await screen.findByRole("heading", { name: "Kiến trúc payment-api" });
+    await user.type(screen.getByRole("textbox", { name: "Tìm tài liệu" }), "websocket{Enter}");
+    expect(await screen.findByText("Đang tìm theo từ: hub chưa bật tìm theo nghĩa.")).toBeTruthy();
+    expect(asked).toEqual([{ query: "websocket", limit: 10, project: "payment-api" }]);
+    const hit = await screen.findByRole("button", { name: /2\. Kênh tới hub/ });
+    await user.click(hit);
+    expect(screen.getByRole("heading", { name: "Kiến trúc payment-api" })).toBeTruthy();
   });
 });
