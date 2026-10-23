@@ -328,7 +328,7 @@ công khai và "Nhờ Leader sửa" chạy qua API (chưa có UI).
     `packages/artifacts-runtime/**`, `packages/artifacts-ui/src/viewer/{image,pdf}.tsx`, `apps/desktop/src-tauri/src/artifacts.rs`
   - **Phụ thuộc**: MVP · **Mức**: nặng
 
-- [ ] T063 [US4] Phạm vi `team` và `org`
+- [x] T063 [US4] Phạm vi `team` và `org`
   - **Scope**: `apps/hub/src/modules/artifacts/access.ts` + test, `packages/artifacts-ui/src/share-dialog.tsx`
   - **Phụ thuộc**: MVP · **Mức**: vừa
 
