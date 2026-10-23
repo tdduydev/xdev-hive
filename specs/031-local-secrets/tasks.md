@@ -101,7 +101,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
     `deleted`, cắt tỉa 90 ngày hoặc 10 000 dòng, `Clear` (data-model §4).
 
   Sau T003.
-- [ ] T005 [P] A2·nặng — Gói mới `worker/internal/secretmask/{mask.go,stream.go}`:
+- [x] T005 [P] A2·nặng — Gói mới `worker/internal/secretmask/{mask.go,stream.go}`:
   - `New(values)` với các dạng: gốc, base64 std/raw/url/rawurl, `url.QueryEscape`/`PathEscape`, JSON escape, shell-quote
     đơn và kép, khối nhiều dòng `\n`/`\r\n`, từng dòng ≥8 byte (FR-031, FR-033);
   - mặt nạ mặc định `[đã che]`, tuỳ chọn `***`;
