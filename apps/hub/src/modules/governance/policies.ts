@@ -67,12 +67,13 @@ export async function saveAgentPolicy(
   // Cùng khoá với layers, lấy trước khi đọc để kiểm quyền và tăng phiên bản trên chính sách mới nhất.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(hive.ctx_org()::text, 33))`);
   const before = await loadPolicy(tx);
-  // Client chưa biết mục `remote` hay `git` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ chức đã tắt, hay
-  // bỏ yêu cầu token git theo run.
+  // Client chưa biết mục `remote`, `git` hay `secretInjection` không gửi nó; điền mặc định lúc đó sẽ bật lại TOTP mà tổ
+  // chức đã tắt, bỏ yêu cầu token git theo run, hay lặng lẽ gỡ lệnh cấm bí mật tại máy.
   const next = agentPolicyInput.parse({
     ...input,
     remote: input.remote ?? before.remote,
     git: input.git ?? before.git,
+    secretInjection: input.secretInjection ?? before.secretInjection,
   });
   if (
     (allowsFull(next) && !allowsFull(before)) ||
@@ -117,7 +118,8 @@ export async function saveAgentPolicy(
       defaultTemplates: DEFAULT_TEMPLATES,
     },
     templatesChanged: changed.includes("templates"),
-    remoteChanged: changed.includes("remote"),
+    // Máy cá nhân nhận cả hai mục này trong `welcome.policy`, nên đổi mục nào cũng phải cho máy nối lại.
+    remoteChanged: changed.includes("remote") || changed.includes("secretInjection"),
   };
 }
 
@@ -175,4 +177,5 @@ export function machineSlots(policy: Policy, capacity: number): number {
 export const jobPolicyOf = (policy: Policy): JobPolicy => ({
   hooks: policy.hooks,
   managedHooksOnly: policy.managedHooksOnly,
+  secretInjection: policy.secretInjection,
 });

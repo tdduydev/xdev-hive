@@ -462,6 +462,32 @@ test("run đã xong: không có nút gửi chỉ dẫn và huỷ; có PR và k�
   await expect(page.getByRole("button", { name: "Huỷ run" })).toHaveCount(0);
 });
 
+test("run dùng bí mật tại máy: hiện số lượng; không dùng hay worker cũ thì không hiện", async ({ page }) => {
+  const result = {
+    exit: 0,
+    commitCount: 1,
+    changedFiles: ["a.ts"],
+    reasons: [],
+    checks: [{ check: "changes", required: true, passed: true, message: "1 commit, 1 file." }],
+  };
+  const withSecrets = (secretsInjected?: number) => ({
+    ...RUNS[1],
+    policySnapshot: [{ check: "changes", required: true }],
+    result: { ...result, ...(secretsInjected === undefined ? {} : { secretsInjected }) },
+  });
+  let current = withSecrets(2);
+  await open(page, { "runs/get": () => ok(current) });
+  await fakeStream(page, [{ event: "end", data: { state: "succeeded" } }]);
+  await page.goto(`/runs/${current.id}`);
+  await expect(page.getByText("Dùng 2 bí mật tại máy")).toBeVisible();
+  for (const n of [0, undefined]) {
+    current = withSecrets(n);
+    await page.reload();
+    await expect(page.getByText("Đạt · 1 commit, 1 file.")).toBeVisible();
+    await expect(page.getByText("bí mật tại máy")).toHaveCount(0);
+  }
+});
+
 test("run không thấy được: báo lỗi tiếng Việt", async ({ page }) => {
   await open(page);
   await fakeStream(page, []);

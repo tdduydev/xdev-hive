@@ -236,6 +236,32 @@ test("xem file sinh ra theo dự án và mở PR ngay", async ({ page }) => {
   await expect(page.getByText("Đã xếp việc mở PR cho các dự án.")).toBeVisible();
 });
 
+test("bí mật tại máy: chọn Hỏi trước rồi lưu riêng mục, hub chỉ nhận lựa chọn", async ({ page }) => {
+  const hub = await setup(page, "admin", policyOf());
+  await page.goto("/admin/policies");
+  const secrets = section(page, "Bí mật tại máy");
+  await expect(secrets.getByRole("radio", { name: /Cho phép/ })).toBeChecked();
+  await expect(secrets.getByRole("button", { name: "Lưu" })).toBeDisabled();
+  await secrets.getByRole("radio", { name: /Hỏi trước/ }).check();
+  await secrets.getByRole("button", { name: "Lưu" }).click();
+  await expect(secrets.getByText("Đã lưu.", { exact: false })).toBeVisible();
+  const saved = hub.rpcCalls.filter((c) => c.path === "policies/update").map((c) => c.input as AgentPolicyInput);
+  expect(saved).toHaveLength(1);
+  expect(saved[0]?.secretInjection).toBe("approve");
+  // Chỉ có giá trị chọn, không có tên hay giá trị bí mật nào trong lời gọi.
+  expect(JSON.stringify(saved[0])).not.toMatch(/secrets?(Names?|Values?)/i);
+});
+
+test("bí mật tại máy: thành viên không có quyền ghi chỉ xem", async ({ page }) => {
+  await setup(page, "member", policyOf({ secretInjection: "deny" }), []);
+  await page.goto("/admin/policies");
+  const secrets = section(page, "Bí mật tại máy");
+  await expect(secrets.getByRole("radio", { name: /Không cho/ })).toBeChecked();
+  await expect(secrets.getByRole("radio", { name: /Cho phép/ })).toBeDisabled();
+  await expect(secrets.getByRole("radio", { name: /Hỏi trước/ })).toBeDisabled();
+  await expect(secrets.getByRole("button", { name: "Lưu" })).toHaveCount(0);
+});
+
 test("quản trị không có quyền toàn quyền CLI không mở lại được công tắc đã tắt", async ({ page }) => {
   await setup(page, "admin", policyOf({ allowFullPermission: false }));
   await page.goto("/admin/policies");
