@@ -28,7 +28,7 @@ Chính sách tổ chức vẫn là nguồn duy nhất cho các khoá đã ánh x
 5. Ghi qua `projects.updateSettings` phải kiểm khoá như API cấu hình mới. Bản vá không đổi khoá bị khoá vẫn được chấp nhận. Đường ghi chính sách tổ chức cập nhật giá trị chung và phiên bản, giữ cờ khoá; khoá chỉ hạn chế dự án, không cấm tổ chức đổi giá trị chung.
 6. Giá trị, nguồn, chuỗi hai lớp và cờ khoá được trả từ hub. Người không xem được dự án nhận `PROJECT_NOT_FOUND`. Không trả secret. `configVersion` ổn định nếu dữ liệu không đổi và phân biệt tổ chức.
 7. Form tổ chức gửi `expectedVersion`: sai phiên bản trả `CONFIG_VERSION_CONFLICT`. Khoá và ghi settings dùng cùng khoá transaction theo tổ chức. Mọi ghi thành công có audit trong cùng transaction.
-8. Migration 0087 được sinh lại tại chỗ, CHECK chỉ nhận `org`/`project`, RLS bật và ép, policy có cả USING và WITH CHECK.
+8. Migration 0088 được sinh lại tại chỗ, CHECK chỉ nhận `org`/`project`, RLS bật và ép, policy có cả USING và WITH CHECK.
 9. Những nơi đang đọc quyền CLI, ngân sách và cấu hình merge nhận giá trị hai lớp; không có phép lấy min theo tầng. Không thêm luồng thực thi mới.
 
 ## Ngoài phạm vi

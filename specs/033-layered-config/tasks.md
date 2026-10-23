@@ -9,7 +9,7 @@
 - [x] T007 Trang cấu hình tổ chức với công tắc khoá, menu và liên kết.
 - [x] T008 Tab cấu hình dự án hiển thị kế thừa, ghi đè, khoá, giá trị riêng tạm ngưng; thao tác trở về kế thừa.
 - [x] T009 Viết DB test quyền, phiên bản, khoá cũ/mới, audit và RLS; viết unit/contract/Playwright liên quan.
-- [x] T010 Sinh lại migration 0087 và snapshot, thêm FORCE RLS; sinh OpenAPI.
+- [x] T010 Sinh lại migration 0088 và snapshot, thêm FORCE RLS; sinh OpenAPI.
 - [x] T011 Biome, typecheck, deps, vitest và Playwright liên quan; ghi kết quả trong tóm tắt.
 - [x] T012 Commit tại máy và ghi tóm tắt điều phối; không push, PR hoặc deploy.
 

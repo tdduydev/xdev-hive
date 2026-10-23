@@ -8,7 +8,7 @@ Nhánh `ai/SPEC033`, cập nhật 23/10/2026 theo [spec.md](spec.md).
 4. Service ghi tổ chức tái dùng `saveAgentPolicy` cho khoá ánh xạ; móc đường ghi chính sách cũ cập nhật phiên bản và giữ khoá. Đường ghi dự án mới tái dùng `updateProjectSettings`, kiểm khoá cho cả API cũ và mới. Khoá transaction theo tổ chức tránh ghi vượt thao tác khoá.
 5. Quyền và audit dùng module hiện có qua `index.ts`. Tiêm guard qua `app.ts` để tránh vòng phụ thuộc. Những nơi đang đọc quyền, ngân sách và merge lấy giá trị hiệu lực; không thêm nghiệp vụ thực thi.
 6. Web có `/admin/config`, liên kết menu cấu hình; `/projects/$key/config` và phần cấu hình hai lớp ngay trong tab cài đặt dự án. Form chỉ đọc khi thiếu quyền hoặc bị khoá, hiển thị nguồn và giá trị riêng bị tạm ngưng.
-7. Sửa toàn bộ tài liệu spec theo hai lớp. Sinh lại migration 0087 và snapshot ở bước cuối, giữ số theo điều phối, thêm FORCE RLS. Sinh OpenAPI và chạy kiểm tra liên quan trước commit tại máy.
+7. Sửa toàn bộ tài liệu spec theo hai lớp. Sinh lại migration 0088 và snapshot ở bước cuối, giữ số theo điều phối, thêm FORCE RLS. Sinh OpenAPI và chạy kiểm tra liên quan trước commit tại máy.
 
 ## Ngoài phạm vi
 

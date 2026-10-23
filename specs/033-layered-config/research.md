@@ -1,6 +1,6 @@
 # Quyết định triển khai
 
-- Chốt 23/10/2026: tổ chức và dự án, ghi đè và khoá. Bản bốn lớp chưa merge nên sửa migration 0087 tại chỗ.
+- Chốt 23/10/2026: tổ chức và dự án, ghi đè và khoá. Bản bốn lớp chưa merge nên sửa migration 0088 tại chỗ.
 - Giữ chính sách và settings cũ làm nguồn để mọi đường ghi cùng có hiệu lực; không sao chép giá trị chính sách.
 - Bốn khoá thực tế: quyền CLI, ngân sách mỗi run, chế độ merge, yêu cầu CI. Chưa có allowlist cần gộp nên không giữ additive.
 - Khoá chỉ ngăn dự án sửa; quản trị tổ chức có thể đổi giá trị chung mà vẫn giữ khoá.
