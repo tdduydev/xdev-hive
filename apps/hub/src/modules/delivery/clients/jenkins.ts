@@ -1,3 +1,5 @@
+import { deliveryOutbound, OUTBOUND_DISABLED } from "./outbound.ts";
+
 // Client Jenkins thuần trên fetch (plan.md mục 2). Không đụng DB, không biết người dùng Hive: bên gọi truyền user và API
 // token của người bấm (thao tác ghi) hoặc của người theo dõi (đọc theo lịch).
 // Mọi dạng JSON ở đây theo tài liệu công khai của Jenkins [Suy luận]; T007 đối chiếu với Jenkins ACME.
@@ -286,6 +288,7 @@ export function createJenkinsClient(conn: JenkinsConnection) {
   }
 
   async function request(path: string, opts: RequestOptions = {}): Promise<Response> {
+    if (!deliveryOutbound()) throw new JenkinsError("BAD_REQUEST", OUTBOUND_DISABLED);
     const method = opts.method ?? "GET";
     const qs = opts.query ? `?${new URLSearchParams(opts.query).toString()}` : "";
     const headers: Record<string, string> = { authorization, accept: "application/json, text/plain, */*" };

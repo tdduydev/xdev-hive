@@ -5,6 +5,7 @@ import { loadProject, type ProjectRow } from "../../catalog/index.ts";
 import { type Jobs, SecretDecryptError, type Tx, withTenant } from "../../platform/index.ts";
 import type { CiPipeline, CiJob as ScmCiJob } from "../../scm/index.ts";
 import { type FetchLike, type JenkinsBuild, JenkinsError } from "../clients/jenkins.ts";
+import { deliveryOutbound } from "../clients/outbound.ts";
 import { type JenkinsAuth, jenkinsAuth } from "../connections/credentials.ts";
 import { jenkinsClient, requireMasterKey } from "../connections/jenkins.ts";
 import type { DeliveryDeps } from "../deps.ts";
@@ -409,6 +410,8 @@ export async function deliveryActiveOrgs(pool: pg.Pool): Promise<string[]> {
 // ---- Chạy job -----------------------------------------------------------------------------------------------------
 
 export async function runCiPollJob(deps: CiPollDeps, jobs: Jobs, data: CiPollJob): Promise<void> {
+  // Bỏ cả chuỗi hỏi: bật lại công tắc thì lượt quét cron kế tiếp nối lại.
+  if (!deliveryOutbound()) return;
   switch (data.kind) {
     case "scan":
       return scanCiPolls(deps, jobs);

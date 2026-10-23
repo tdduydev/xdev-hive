@@ -43,6 +43,7 @@ services:
       HIVE_PUBLIC_URL: ${HIVE_PUBLIC_URL:?Set HIVE_PUBLIC_URL}
       # 1: hub chạy http trong mạng tin cậy vẫn mở /mcp cho agent trong run (chỉ nhận run token, không có OAuth).
       HIVE_MCP_ALLOW_HTTP: ${HIVE_MCP_ALLOW_HTTP:-0}
+      HIVE_DELIVERY_OUTBOUND: ${HIVE_DELIVERY_OUTBOUND:-0}
       HIVE_ALLOW_EMAIL_SIGNUP: ${HIVE_ALLOW_EMAIL_SIGNUP:-0}
       HIVE_ORG_CREATORS: ${HIVE_ORG_CREATORS:-}
       HIVE_ROLES: ${HIVE_ROLES:-api,jobs}

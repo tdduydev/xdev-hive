@@ -32,6 +32,8 @@ export interface HubConfig {
   allowEmailSignUp?: boolean | undefined;
   /** SMTP nội bộ chỉ được phép khi người vận hành chủ động bật cờ. */
   notifyAllowPrivate?: boolean | undefined;
+  /** Cho CI/CD mở kết nối tới máy khác; tắt thì mọi client của delivery dừng trước khi mở socket. */
+  deliveryOutbound?: boolean | undefined;
   telegramPollingBotIds?: string[] | undefined;
   /** Mở /mcp cho agent trong run khi HIVE_PUBLIC_URL là http (mạng tin cậy). OAuth của người dùng vẫn chỉ chạy qua https. */
   mcpAllowHttp?: boolean | undefined;
@@ -203,6 +205,8 @@ export function loadConfig(env: Env = process.env): HubConfig {
     authSecret,
     allowEmailSignUp: env.HIVE_ALLOW_EMAIL_SIGNUP === "1",
     notifyAllowPrivate: env.HIVE_NOTIFY_ALLOW_PRIVATE === "1",
+    // Mặc định tắt: SSH, kubectl, Jenkins, Argo CD, health của CI/CD chỉ chạy khi quản trị hub chủ động bật.
+    deliveryOutbound: env.HIVE_DELIVERY_OUTBOUND === "1",
     telegramPollingBotIds: telegramPollingBotIds(env),
     mcpAllowHttp: env.HIVE_MCP_ALLOW_HTTP === "1",
     remoteTerminal: env.HIVE_REMOTE_TERMINAL === "1",

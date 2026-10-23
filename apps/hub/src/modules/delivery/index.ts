@@ -1,4 +1,6 @@
 // CI/CD và triển khai (specs/020): theo dõi pipeline/build, máy chủ SSH, môi trường, đích và lần triển khai.
+
+export { deliveryOutbound, setDeliveryOutbound } from "./clients/outbound.ts";
 export {
   auditSecretUse,
   type InfraAuth,

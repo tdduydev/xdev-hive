@@ -25,7 +25,7 @@ import {
   registerReviewStatusWorker,
   reviewGate,
 } from "./modules/codereview/index.ts";
-import { deliveryQueues, registerDelivery } from "./modules/delivery/index.ts";
+import { deliveryQueues, registerDelivery, setDeliveryOutbound } from "./modules/delivery/index.ts";
 import {
   detectWordTools,
   docSyncQueues,
@@ -110,6 +110,8 @@ import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./module
 import { attachTerminalGateway, createTerminalHandlers, withRemoteLive } from "./modules/terminal/index.ts";
 
 const config = loadConfig();
+setDeliveryOutbound(config.deliveryOutbound === true);
+if (!config.deliveryOutbound) console.warn("HIVE_DELIVERY_OUTBOUND chưa bật: CI/CD không kết nối tới máy chủ nào.");
 const roles = config.roles ?? ["api", "jobs"];
 const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
 if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");

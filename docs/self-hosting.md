@@ -61,6 +61,9 @@ Health check: `GET /api/v1/health` returns the running commit.
   (off by default). `/mcp` then accepts **only run tokens**: OAuth tokens and requests without a run token get 401, and
   OAuth discovery and user login stay HTTPS-only. Run tokens travel in clear text, so only enable this when the network
   between the server and the worker machines is trusted. The hub logs a warning at start-up.
+- CI/CD (Jenkins, Argo CD, Kubernetes, SSH deploys, health checks, CI polling) opens no connection to other
+  machines until you set `HIVE_DELIVERY_OUTBOUND=1` (off by default). Keep it off on a network watched by a SOC until
+  the security team has approved the hub's outbound traffic; actions then fail with a clear message instead.
 
 ### Internal domain with a Let's Encrypt certificate
 

@@ -1,5 +1,6 @@
 import type { Deploy, HealthCheck } from "@xdev-hive/contracts";
 import type { FetchLike } from "../clients/jenkins.ts";
+import { deliveryOutbound, OUTBOUND_DISABLED } from "../clients/outbound.ts";
 
 // Kiểm health từ hub (FR-018, plan.md mục 7): gọi URL, so mã HTTP, so một giá trị trong JSON theo đường dẫn đơn giản,
 // thử lại theo chu kỳ tới hết thời gian chờ. Không chạy mã nào từ cấu hình: biểu thức chỉ là chuỗi khoá và chỉ số.
@@ -200,6 +201,7 @@ export async function runHealthCheck(check: HealthCheck, opts: HealthOptions): P
     message: r.message,
   });
 
+  if (!deliveryOutbound()) return result({ ok: false, status: null, message: OUTBOUND_DISABLED });
   let want: string | null = null;
   if (check.match) {
     const resolved = expected(check.match.equals, opts.version);
