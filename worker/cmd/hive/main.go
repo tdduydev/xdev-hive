@@ -78,7 +78,8 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
   kill <id>               ngắt phiên
   remote <lệnh>           điều khiển từ xa máy này: status, on, off, roots, devices, pair, set, watch
                           (hive remote help để xem đủ)
-  version                 phiên bản hive và hive-worker
+  outbox [--json]         hộp thư đi: các lần ghi chưa tới hub; drop, retry, export (hive outbox help để xem đủ)
+  version                phiên bản hive và hive-worker
 
 Trong phiên: Ctrl-] d để tách (phiên chạy tiếp), Ctrl-] t để giành quyền điều khiển, Ctrl-] Ctrl-] gửi Ctrl-].
 Đổi phím tiền tố bằng --escape ctrl-<phím> (vd. ctrl-a); --escape none gửi mọi phím cho agent.
@@ -122,6 +123,8 @@ func (a *app) run(args []string) int {
 		return a.whoami(rest)
 	case "remote":
 		return a.remote(rest)
+	case "outbox":
+		return a.outbox(rest)
 	case "__hook":
 		// Cần hook của CLI (T072); chưa làm thì báo rõ thay vì im lặng.
 		return a.errorf(exitUsage, "Lệnh hive %s chưa hỗ trợ trong bản này.", cmd)
