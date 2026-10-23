@@ -1,4 +1,5 @@
-import { MarkdownEditor } from "@xdev-hive/doc-editor";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { DocEditorProvider, MarkdownEditor } from "@xdev-hive/doc-editor";
 import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
@@ -32,6 +33,14 @@ import {
 } from "react";
 import { AiAccountsDialog } from "@/components/ai-accounts-dialog.tsx";
 import { ConnectHiveButton } from "@/components/connect-hive.tsx";
+import {
+  DocConflictDialog,
+  DocSearch,
+  DocSyncBadge,
+  syncStateOf,
+  useDocEditorEnv,
+  useDocSync,
+} from "@/components/doc-sync.tsx";
 import { Markdown, SuggestionView } from "@/components/doc-view.tsx";
 import { FolderForm } from "@/components/folder-form.tsx";
 import { LocalFileView } from "@/components/local-file.tsx";
@@ -64,6 +73,7 @@ import {
 import { diffHunks, diffStats, lineDiff } from "@/lib/diff.ts";
 import { folderName, pickFolder, shortPath, useFolder } from "@/lib/folder.ts";
 import { type HubDoc, type HubProject, hubTool, matchProject } from "@/lib/hub.ts";
+import { queryClient } from "@/lib/hub-query.tsx";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { can } from "@/lib/nav.ts";
 import { errorText, type WorkspaceMeta, workspaceMeta } from "@/lib/tauri.ts";
@@ -103,6 +113,7 @@ const text: Dict<{
   newBadge: string;
   pickDoc: string;
   pending: string;
+  conflictOpen: string;
   unsent: string;
   synced: (v: number) => string;
   newOnHub: string;
@@ -212,6 +223,7 @@ const text: Dict<{
     newBadge: "mới",
     pickDoc: "Chọn một tài liệu ở cột trái, hoặc tạo tài liệu mới.",
     pending: "Có đề xuất chưa nhận",
+    conflictOpen: "Xem xung đột",
     unsent: "Bản nháp chưa gửi",
     synced: (v) => `Khớp bản v${v} trên hub`,
     newOnHub: "Tài liệu mới, chưa có trên hub",
@@ -364,6 +376,7 @@ const text: Dict<{
     newBadge: "new",
     pickDoc: "Pick a doc on the left, or create a new one.",
     pending: "Pending suggestions",
+    conflictOpen: "View conflict",
     unsent: "Unsent draft",
     synced: (v) => `Matches v${v} on the hub`,
     newOnHub: "New doc, not on the hub yet",
@@ -767,6 +780,15 @@ interface HubDocFull {
  * bằng đề xuất (`propose_doc`), người duyệt quyết.
  */
 export function DocsScreen() {
+  // Nhãn đồng bộ, tìm kiếm và xung đột dùng react-query như các màn gọi hub khác (oRPC qua Rust).
+  return (
+    <QueryClientProvider client={queryClient}>
+      <DocsView />
+    </QueryClientProvider>
+  );
+}
+
+function DocsView() {
   const t = useT(text);
   const lang = useLang();
   const account = useLinkedAccount();
@@ -801,6 +823,9 @@ export function DocsScreen() {
   const [busy, setBusy] = useState(false);
   const [naming, setNaming] = useState<string | null>(null);
   const [proposing, setProposing] = useState(false);
+  const [conflicting, setConflicting] = useState(false);
+  // Tăng khi hub đổi nội dung tài liệu ngoài luồng soạn (giải xung đột): đọc lại tài liệu đang mở.
+  const [docRev, setDocRev] = useState(0);
   const transcript = useRef<HTMLDivElement>(null);
   // File trong thư mục mở ở khung giữa (thay cho tài liệu hub); cây mở thư mục con theo yêu cầu.
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -820,6 +845,10 @@ export function DocsScreen() {
   const wasRunning = useRef(false);
   const folderRef = useRef(folder);
   folderRef.current = folder;
+
+  const sync = useDocSync(!!account);
+  const syncItem = hubDoc ? sync.byKey.get(hubDoc.key) : undefined;
+  const editorEnv = useDocEditorEnv(lang, openDoc);
 
   const engine = chat.engine;
   const running = busy || chat.runId !== null;
@@ -985,7 +1014,7 @@ export function DocsScreen() {
     return () => {
       alive = false;
     };
-  }, [selected, docs]);
+  }, [selected, docs, docRev]);
 
   // Phiên mới của CLI: nhớ để hỏi tiếp sau, tên theo câu hỏi đầu.
   useEffect(() => {
@@ -1333,6 +1362,7 @@ export function DocsScreen() {
               </button>
             )}
           </div>
+          {account && <DocSearch project={project?.key} onOpen={openDoc} />}
           {naming !== null && (
             <form onSubmit={createDoc} className="px-1.5 pb-1">
               <Input
@@ -1378,6 +1408,7 @@ export function DocsScreen() {
                     >
                       <span aria-hidden="true" className="w-3" />▤
                       <span className="min-w-0 flex-1 truncate">{docName(d.key)}</span>
+                      <DocSyncBadge item={sync.byKey.get(d.key)} compact />
                       {(hasSuggestion || isDraft || d.version === 0) && (
                         <span
                           className={cn(
@@ -1444,6 +1475,12 @@ export function DocsScreen() {
                 ) : (
                   <StatePill tone="warn">{t.newOnHub}</StatePill>
                 )}
+                {sync.ready && hubDoc.version > 0 && <DocSyncBadge item={syncItem} />}
+                {syncStateOf(syncItem) === "conflict" && (
+                  <Button size="xs" variant="outline" onClick={() => setConflicting(true)}>
+                    {t.conflictOpen}
+                  </Button>
+                )}
                 <div role="tablist" aria-label={t.editorLabel} className="inline-flex rounded-lg bg-muted p-0.5">
                   {(
                     [
@@ -1509,13 +1546,16 @@ export function DocsScreen() {
               )}
             </div>
           ) : mode === "edit" ? (
-            <MarkdownEditor
-              key={hubDoc.key}
-              value={draftText}
-              onChange={(md) => saveDraft(hubDoc.key, { base, text: md, title: hubDoc.title })}
-              lang={lang}
-              label={t.editorLabel}
-            />
+            <DocEditorProvider env={editorEnv}>
+              <MarkdownEditor
+                key={hubDoc.key}
+                docKey={hubDoc.key}
+                value={draftText}
+                onChange={(md) => saveDraft(hubDoc.key, { base, text: md, title: hubDoc.title })}
+                lang={lang}
+                label={t.editorLabel}
+              />
+            </DocEditorProvider>
           ) : mode === "diff" ? (
             <div className="flex-1 overflow-y-auto px-9 py-6 font-mono text-sm leading-relaxed">
               {changed ? (
@@ -1888,6 +1928,17 @@ export function DocsScreen() {
           content={draftText}
           hubContent={hubDoc.content}
           linked={!!account}
+        />
+      )}
+      {hubDoc && (
+        <DocConflictDialog
+          docKey={hubDoc.key}
+          open={conflicting}
+          onOpenChange={setConflicting}
+          onResolved={() => {
+            void sync.refresh();
+            setDocRev((n) => n + 1);
+          }}
         />
       )}
     </div>
