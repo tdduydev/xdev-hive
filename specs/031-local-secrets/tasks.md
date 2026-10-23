@@ -148,7 +148,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test dựng tham số; test giá trị không có trong argv.
 
   Viết theo contract, chạy song song với T007.
-- [ ] T009 [P] [US1] C·vừa — File mới `apps/desktop/src/lib/secrets.ts`:
+- [x] T009 [P] [US1] C·vừa — File mới `apps/desktop/src/lib/secrets.ts`:
   - kiểu `StoreStatus`, `SecretItem`, `ReservedNames`, `GrantEntry`, `ApprovalRequest`;
   - hàm gọi lệnh Tauri;
   - kiểm tên phía UI bằng `@xdev-hive/contracts/local-secrets`.
