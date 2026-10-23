@@ -3,6 +3,7 @@ import { contract, type PlanApproveInput, type PlanDecision, type PlanRejectInpu
 import { ConflictError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import { setTaskDependencies, withDependencies } from "./dependencies.ts";
+import { taskHistory } from "./history.ts";
 import { getPlan, listPlans } from "./plans.ts";
 import { cancelTask, createTask, getTask, listTasks, toTask, updateTask } from "./tasks.ts";
 
@@ -49,6 +50,7 @@ export function tasksRouter(deps: TasksDeps) {
       const { task } = await setTaskDependencies(tx, user.id, input);
       return withDependencies(tx, toTask(task));
     }),
+    history: os.history.use(inOrg).handler(({ context: { tx, user }, input }) => taskHistory(tx, user.id, input.id)),
     plans: {
       get: os.plans.get.use(inOrg).handler(({ context: { tx, user }, input }) => getPlan(tx, user.id, input.id)),
       list: os.plans.list.use(inOrg).handler(({ context: { tx, user }, input }) => listPlans(tx, user.id, input.id)),

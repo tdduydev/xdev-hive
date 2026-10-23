@@ -11,9 +11,9 @@ import (
 )
 
 // watch là luồng sự kiện cho app desktop và `hive remote watch --json` (specs/010 T020): trả trạng thái hiện tại, rồi mỗi
-// dòng một sự kiện (`state`, `pair_request`, `pair_done`, `start_request`, `start_done`). Cùng kết nối nhận tiếp yêu cầu
-// (vd. remote.pair.decide) để app trả lời hộp xác nhận mà không cần mở kết nối thứ hai; dòng trả lời có "ok", dòng sự
-// kiện có "event".
+// dòng một sự kiện (`state`, `pair_request`, `pair_done`, `start_request`, `start_done`, `outbox`, `outbox.item`). Cùng
+// kết nối nhận tiếp yêu cầu (vd. remote.pair.decide) để app trả lời hộp xác nhận mà không cần mở kết nối thứ hai; dòng
+// trả lời có "ok", dòng sự kiện có "event".
 
 // Yêu cầu chờ chủ máy bấm Cho phép; trả lời bằng remote.pair.decide {pairId} hay remote.start.decide {requestId}.
 const (
@@ -41,11 +41,15 @@ type watchEvent struct {
 const watchQueue = 64
 
 type watcher struct {
-	ch   chan watchEvent
+	ch   chan any
 	done chan struct{}
 }
 
-func (r *Remote) broadcast(e watchEvent) {
+// Notify đưa sự kiện của phần khác trong worker (hộp thư đi: `outbox`, `outbox.item`) vào cùng luồng watch, để app chỉ
+// giữ một kết nối nghe. e là object JSON có trường "event".
+func (r *Remote) Notify(e any) { r.broadcast(e) }
+
+func (r *Remote) broadcast(e any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for w := range r.watchers {
@@ -63,7 +67,7 @@ func (r *Remote) watch(ctx context.Context, c *localipc.Conn) error {
 	if err != nil {
 		return c.Fail(localipc.CodeFailed, err.Error())
 	}
-	w := &watcher{ch: make(chan watchEvent, watchQueue), done: make(chan struct{})}
+	w := &watcher{ch: make(chan any, watchQueue), done: make(chan struct{})}
 	r.mu.Lock()
 	if r.watchers == nil {
 		r.watchers = map[*watcher]struct{}{}

@@ -3,6 +3,7 @@ import type { Tx } from "../platform/index.ts";
 import { traceSettledRun } from "./trace.ts";
 
 export { canReadItem, docAccessFor, requireProjectWrite, visibleItemsWhere } from "./access.ts";
+export { createSdlcItemLinkTarget } from "./artifact-link.ts";
 export { fleetRuns as sdlcFleetRuns } from "./fleet-runs.ts";
 export { type CodeRunGate, codeRunGate } from "./gate.ts";
 export { IMPORT_MAX_FILES, importItem, importRoute, importTitle, parseItemFolder } from "./import.ts";

@@ -236,7 +236,8 @@ export async function authenticateMachine(pool: pg.Pool, token: string): Promise
     tx
       .select({ machineId: machineTokens.machineId, orgId: machineTokens.orgId })
       .from(machineTokens)
-      .where(eq(machineTokens.tokenHash, hash)),
+      // Máy đã đăng ký khoá thì chỉ còn access token ngắn hạn mở được kết nối (ADR 0033).
+      .where(and(eq(machineTokens.tokenHash, hash), isNull(machineTokens.supersededAt))),
   );
   if (!found) return null;
   const [row] = await withTenant(pool, { orgId: found.orgId }, (tx) =>
@@ -469,6 +470,18 @@ export async function machinesOfUser(tx: Tx, userId: string) {
 }
 
 /**
+ * Máy mà lần ghi của người dùng khai trong `X-Hive-Machine` (specs/027): chỉ nhận máy chính họ đăng ký và chưa thu hồi,
+ * để không ai gắn lần ghi của mình vào máy người khác trong lịch sử task.
+ */
+export async function clientMachineOf(tx: Tx, userId: string, machineId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: machines.id })
+    .from(machines)
+    .where(and(eq(machines.id, machineId), eq(machines.registeredBy, userId), isNull(machines.revokedAt)));
+  return row?.id ?? null;
+}
+
+/**
  * Quota tài khoản CLI trên máy của chính người dùng (ADR 0017: máy cá nhân chỉ chủ thấy tài khoản), cho lệnh /quota của
  * chat. Chỉ tóm tắt worker báo, không chứa token.
  */
@@ -526,6 +539,7 @@ export async function findMachine(
       revoked: boolean;
       shared: boolean;
       registeredBy: string | null;
+      capabilities: string[];
     } & MachineProjects)
   | null
 > {
@@ -537,6 +551,7 @@ export async function findMachine(
       revokedAt: machines.revokedAt,
       shared: machines.shared,
       registeredBy: machines.registeredBy,
+      capabilities: machines.capabilities,
       boundProjects: machines.boundProjects,
       fullProjects: machines.fullProjects,
     })
@@ -550,6 +565,7 @@ export async function findMachine(
         revoked: row.revokedAt !== null,
         shared: row.shared,
         registeredBy: row.registeredBy,
+        capabilities: row.capabilities,
         boundProjects: row.boundProjects,
         fullProjects: row.fullProjects,
       }

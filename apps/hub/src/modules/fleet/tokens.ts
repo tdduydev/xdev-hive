@@ -27,3 +27,14 @@ export function withTokenLookup<T>(pool: pg.Pool, tokenHash: string, fn: (tx: Tx
     return fn(tx);
   });
 }
+
+/**
+ * Như withTokenLookup cho bước đổi chữ ký lấy access token: chỉ biết id máy, chưa biết tổ chức. Policy machines_by_id
+ * cho thấy đúng dòng máy đó (hive.ctx_fleet_machine()).
+ */
+export function withMachineLookup<T>(pool: pg.Pool, machineId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return withTenant(pool, {}, async (tx) => {
+    await tx.execute(sql`select set_config('app.fleet_machine_id', ${machineId}, true)`);
+    return fn(tx);
+  });
+}

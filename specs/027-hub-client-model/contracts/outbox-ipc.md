@@ -61,6 +61,21 @@ bước `hello`. Mục lớn hơn 64 KiB gửi bằng `outbox.submit` kèm `body
 { "op": "outbox.retry", "keys": ["..."] }                   // held → pending sau khi đăng nhập lại; expired → pending
 ```
 
+## `outbox.logout`
+
+Gọi trước khi xoá token, chỉ cho mục của người đang đăng nhập `hubUrl`.
+
+```jsonc
+{ "op": "outbox.logout", "hubUrl": "https://...", "action": "count" | "send" | "keep" | "drop", "waitMs": 30000 }
+// → { "ok": true, "pending": 0, "held": 2, "rejected": 0, "expired": 0, "dropped": 3 }
+```
+
+- `send`: thử lại mục `held` vì đăng nhập, gửi một lượt (chờ tối đa `waitMs`), mục còn lại như `keep`.
+- `keep`: mục chờ gửi sang `held` (`login_required`); lần đăng nhập sau của đúng người đưa về hàng đợi.
+- `drop`: bỏ mọi mục của người đó (giữ khoá danh tính nên không bỏ mục đang trên đường tới hub).
+- Không xác định được người đang đăng nhập: `count`, `keep` tính mọi người dùng của hub; `send`, `drop` lỗi
+  `UNKNOWN_IDENTITY`.
+
 ## Sự kiện qua `watch`
 
 Thêm loại sự kiện vào luồng `watch` hiện có:
@@ -78,6 +93,7 @@ Thêm loại sự kiện vào luồng `watch` hiện có:
 | `hive outbox --json` | như trên, JSON cho desktop |
 | `hive outbox drop <key>…`, `retry <key>…`, `export <key>… -o file` | |
 | `hive outbox submit --json -` | đọc yêu cầu `outbox.submit` từ stdin (desktop, VS Code) |
+| `hive logout [--outbox send\|keep\|drop]` | `outbox.logout`; không có terminal và không có cờ thì `keep` |
 | `hive runs log <runId> [--attempt N] [--offset B] [--limit B] [--json]` | `runs.log.read` (US5) |
 | `hive runs ls --json` | `runs.list` (US5) |
 

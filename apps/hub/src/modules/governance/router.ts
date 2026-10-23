@@ -3,7 +3,7 @@ import { type InstructionTemplates, policiesContract, type TemplatePreview } fro
 import { recordAudit } from "../audit/index.ts";
 import { BadRequestError, type RequestContext, type Tx } from "../platform/index.ts";
 import { allowWith, type OrgDeps, orgMiddlewares, requireOrgRole } from "../tenancy/index.ts";
-import { getAgentPolicy, loadPolicy, saveAgentPolicy } from "./policies.ts";
+import { getAgentPolicy, loadPolicy, type PolicyGuard, saveAgentPolicy } from "./policies.ts";
 import { mcpTemplateError } from "./templates.ts";
 
 /**
@@ -35,7 +35,9 @@ const afterCommit = base.$context<RequestContext>().middleware(async ({ next }) 
   return result;
 });
 
-export function policiesRouter(deps: OrgDeps & { templates: TemplateService; remote?: RemotePolicyHook }) {
+export function policiesRouter(
+  deps: OrgDeps & { templates: TemplateService; remote?: RemotePolicyHook; policyGuard?: PolicyGuard },
+) {
   const m = orgMiddlewares(deps);
   const os = implement(policiesContract).$context<RequestContext>().use(m.authed).use(afterCommit).use(m.inOrg);
   // Sửa và xem mẫu cần quyền sửa chính sách; xem chính sách thì mọi thành viên (trang cấu hình dự án cần biết giới hạn).
@@ -47,7 +49,7 @@ export function policiesRouter(deps: OrgDeps & { templates: TemplateService; rem
     update: os.update.handler(async ({ context: { tx, user, orgId, afterCommit }, input }) => {
       const invalid = mcpTemplateError(input.templates.mcp);
       if (invalid) throw new BadRequestError("POLICY_TEMPLATE_INVALID", invalid);
-      const { policy, templatesChanged, remoteChanged } = await saveAgentPolicy(tx, user.id, input);
+      const { policy, templatesChanged, remoteChanged } = await saveAgentPolicy(tx, user.id, input, deps.policyGuard);
       if (templatesChanged && policy.autoSyncTemplates) await deps.templates.requestSync(tx, orgId);
       const remote = deps.remote;
       if (remoteChanged && remote) {

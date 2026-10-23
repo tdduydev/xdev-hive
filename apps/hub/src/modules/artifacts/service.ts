@@ -20,7 +20,7 @@ import {
 } from "@xdev-hive/contracts";
 import { and, count, desc, eq, inArray, isNotNull, isNull, or, type SQL, sql } from "drizzle-orm";
 import { findProject } from "../catalog/index.ts";
-import { ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
+import { BadRequestError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
 import { orgRoleOf, requireOrgRole } from "../tenancy/index.ts";
 import {
   type ArtifactAction,
@@ -34,6 +34,7 @@ import {
   readerUserId,
   visibleArtifactsWhere,
 } from "./access.ts";
+import { isBlobType } from "./blob-types.ts";
 import { allowedReactImports, compileReact, reactLibManifest } from "./compile.ts";
 import { linkTargetOf } from "./hooks.ts";
 import { artifactPolicyOf, settingsView } from "./limits.ts";
@@ -44,6 +45,7 @@ import {
   afterWrite,
   appendVersion,
   assertWritable,
+  type BlobInput,
   type Compiled,
   checkContent,
   insertVersion,
@@ -224,6 +226,8 @@ export async function listArtifacts(tx: Tx, reader: Reader, raw: ArtifactListQue
   if (input.terminalSessionId) where.push(linkedTo("terminal_session", input.terminalSessionId));
   if (input.runId) where.push(linkedTo("run", input.runId));
   if (input.taskId) where.push(linkedTo("task", input.taskId));
+  if (input.sdlcItemId) where.push(linkedTo("sdlc_item", input.sdlcItemId));
+  if (input.docId) where.push(linkedTo("doc", input.docId));
   if (input.query) {
     const pattern = `%${input.query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     where.push(
@@ -310,6 +314,8 @@ export interface CreateOptions extends ArtifactDeps {
   originProjectId?: string | null | undefined;
   /** Chủ của artifact khi run tạo `private` cho người mở cuộc trò chuyện (khác người run làm thay). */
   ownerUserId?: string | undefined;
+  /** Ảnh/PDF đã lưu vào `BlobStore` (T062); `content` của đầu vào bỏ qua. */
+  blob?: BlobInput | undefined;
 }
 
 const defaultOrigin = (reader: Reader): ArtifactOrigin =>
@@ -320,7 +326,7 @@ async function sourceVersion(tx: Tx, reader: Reader, ref: { id: string; version?
   const source = await liveArtifact(tx, reader, ref.id);
   const v = await versionRow(tx, source.id, ref.version ?? source.latestVersion);
   if (!v) throw artifactError("ARTIFACT_NOT_FOUND", "Không tìm thấy phiên bản này.");
-  if (v.content === null)
+  if (v.content === null && !v.blobId)
     throw artifactError("ARTIFACT_NOT_FOUND", "Phiên bản này đã bị xoá nội dung, không nhân bản được.");
   return { source, v };
 }
@@ -338,8 +344,12 @@ export async function createArtifact(
   if (!owner) throw new ForbiddenError("RUN_NOT_ALLOWED", "Run không có người dùng để làm chủ artifact.");
   const scope = await resolveScope(tx, reader, policy, input);
   const duplicated = input.duplicateOf ? await sourceVersion(tx, reader, input.duplicateOf) : null;
+  if (isBlobType(input.type) !== !!opts.blob)
+    throw artifactError("ARTIFACT_TYPE_DISABLED", "Ảnh và PDF chỉ tạo bằng cách tải tệp lên.");
   const compiled = await compileFor(input.type, input.content);
-  const bytes = checkContent(policy, input.type, { content: input.content, compiled }, null);
+  const bytes = opts.blob
+    ? opts.blob.size
+    : checkContent(policy, input.type, { content: input.content, compiled }, null);
   const used = await reserve(tx, reader, policy, bytes, { newArtifact: true });
   const origin = opts.origin ?? defaultOrigin(reader);
   const [artifact] = await tx
@@ -357,7 +367,7 @@ export async function createArtifact(
       duplicatedFromId: duplicated?.source.id ?? null,
       duplicatedFromVersion: duplicated?.v.version ?? null,
       sizeBytes: bytes,
-      search: searchVector(input.title, input.content),
+      search: searchVector(input.title, opts.blob ? null : input.content),
     })
     .returning();
   if (!artifact) throw new Error("Không tạo được artifact.");
@@ -370,6 +380,7 @@ export async function createArtifact(
   });
   const version = await insertVersion(tx, reader, artifact, 1, {
     content: input.content,
+    blob: opts.blob,
     compiled,
     origin,
     message: input.message,
@@ -389,6 +400,8 @@ export async function updateArtifact(
   const input = artifactUpdate.parse(raw);
   const policy = await artifactPolicyOf(tx);
   const current = await liveArtifact(tx, reader, input.id, { action: "write" });
+  if (isBlobType(current.type))
+    throw artifactError("ARTIFACT_TYPE_DISABLED", "Ảnh và PDF chỉ thay bằng cách tải tệp mới lên.");
   const compiled = await compileFor(current.type, input.content);
   checkContent(policy, current.type, { content: input.content, compiled }, current.id);
   const { artifact, version } = await appendVersion(
@@ -409,6 +422,49 @@ export async function updateArtifact(
   return writeResult(tx, artifact, version);
 }
 
+/** Thay ảnh/PDF bằng tệp mới: phiên bản mới trỏ vào blob khác, bản cũ vẫn còn trong lịch sử. */
+export async function replaceBlob(
+  tx: Tx,
+  reader: Reader,
+  input: {
+    id: string;
+    type: ArtifactType;
+    blob: BlobInput;
+    baseVersion?: number | undefined;
+    title?: string | undefined;
+    message?: string | undefined;
+  },
+  opts: ArtifactDeps = {},
+): Promise<ArtifactWriteResult> {
+  const policy = await artifactPolicyOf(tx);
+  const current = await liveArtifact(tx, reader, input.id, { action: "write" });
+  if (!isBlobType(current.type))
+    throw artifactError("ARTIFACT_TYPE_DISABLED", "Chỉ ảnh và PDF mới thay bằng tệp tải lên.");
+  if (current.type !== input.type)
+    throw new BadRequestError(
+      "ARTIFACT_BLOB_TYPE",
+      "Tệp mới phải cùng loại với artifact (ảnh thay ảnh, PDF thay PDF).",
+    );
+  assertWritable(policy, current.type);
+  const { artifact, version } = await appendVersion(
+    tx,
+    reader,
+    policy,
+    current.id,
+    {
+      content: "",
+      blob: input.blob,
+      compiled: { compiled: null, compileError: null },
+      origin: defaultOrigin(reader),
+      message: input.message,
+      baseVersion: input.baseVersion,
+      title: input.title,
+    },
+    opts,
+  );
+  return writeResult(tx, artifact, version);
+}
+
 /** Khôi phục = phiên bản mới mang nội dung bản cũ và `restoredFrom` (FR-006); bản ở giữa vẫn còn. */
 export async function restoreVersion(
   tx: Tx,
@@ -420,17 +476,21 @@ export async function restoreVersion(
   const current = await liveArtifact(tx, reader, input.id, { action: "write" });
   const old = await versionRow(tx, current.id, input.version);
   if (!old) throw artifactError("ARTIFACT_NOT_FOUND", "Không tìm thấy phiên bản này.");
-  if (old.content === null)
+  if (old.content === null && !old.blobId)
     throw artifactError("ARTIFACT_NOT_FOUND", "Phiên bản này đã bị xoá nội dung, không khôi phục được.");
-  const compiled = await compileFor(current.type, old.content);
-  checkContent(policy, current.type, { content: old.content, compiled }, current.id);
+  // Ảnh/PDF khôi phục bằng cách trỏ phiên bản mới vào cùng tệp; không có chữ để biên dịch hay quét bí mật.
+  const blob = old.blobId ? { id: old.blobId, sha256: old.sha256, size: old.sizeBytes } : undefined;
+  const content = old.content ?? "";
+  const compiled = blob ? { compiled: null, compileError: null } : await compileFor(current.type, content);
+  if (!blob) checkContent(policy, current.type, { content, compiled }, current.id);
   const { artifact, version } = await appendVersion(
     tx,
     reader,
     policy,
     current.id,
     {
-      content: old.content,
+      content,
+      blob,
       compiled,
       origin: defaultOrigin(reader),
       message: `Khôi phục từ phiên bản ${old.version}`,
@@ -463,6 +523,7 @@ export async function duplicateArtifact(
     },
     {
       ...opts,
+      blob: v.blobId ? { id: v.blobId, sha256: v.sha256, size: v.sizeBytes } : undefined,
       origin: opts.origin ?? defaultOrigin(reader),
       originProjectId: opts.originProjectId ?? source.originProjectId,
     },

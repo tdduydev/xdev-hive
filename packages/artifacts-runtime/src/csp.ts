@@ -20,16 +20,18 @@ export function libSource(libBase: string): string {
 
 /**
  * CSP của tài liệu khung (US3-3, ADR 0023 mục 5). Chỉ host của hub, `connect-src 'none'` cố định: không có tham số CDN hay
- * chính sách tổ chức nào nới được. Chỉ thị `sandbox` có mặt để mở URL khung trực tiếp trên tab mới vẫn bị cách ly.
+ * chính sách tổ chức nào nới được. Ngoại lệ duy nhất là `blobBase` của ảnh và PDF (T062): khung đọc đúng một thư mục của
+ * hub, nơi mọi tệp cần vé đã ký. Chỉ thị `sandbox` có mặt để mở URL khung trực tiếp trên tab mới vẫn bị cách ly.
  */
-export function buildCsp({ libBase }: { libBase: string }): string {
+export function buildCsp({ libBase, blobBase }: { libBase: string; blobBase?: string | undefined }): string {
   const lib = libSource(libBase);
+  const blob = blobBase ? libSource(blobBase) : null;
   return [
     "default-src 'none'",
     `script-src 'unsafe-inline' ${lib}`,
     `style-src 'unsafe-inline' ${lib}`,
-    "img-src data: blob:",
-    "connect-src 'none'",
+    `img-src data: blob:${blob ? ` ${blob}` : ""}`,
+    `connect-src ${blob ?? "'none'"}`,
     "form-action 'none'",
     "frame-src 'none'",
     "base-uri 'none'",

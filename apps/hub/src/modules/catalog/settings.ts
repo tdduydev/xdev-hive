@@ -13,6 +13,15 @@ import { allowWith, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { findProject } from "./projects.ts";
 import { projects } from "./schema.ts";
 
+/**
+ * Móc do tầng cấu hình (layers) cấp để chặn sửa khoá của tầng trên. Catalog không import layers (layers đã import
+ * catalog), nên app.ts truyền vào.
+ */
+export type SettingsGuard = (
+  tx: Tx,
+  ctx: { teamId: string; current: ProjectSettings; next: ProjectSettings },
+) => Promise<void>;
+
 /** Gán từng khoá của bản vá; `null` là bỏ khoá để trường không bắt buộc về mặc định. */
 function assign<T extends object>(base: T | undefined, patch: object): T {
   const out: Record<string, unknown> = { ...base };
@@ -27,6 +36,23 @@ function assign<T extends object>(base: T | undefined, patch: object): T {
 /** Áp bản vá lên settings hiện tại. Chưa kiểm kết quả; người gọi kiểm bằng projectSettings. */
 export function applySettingsPatch(current: ProjectSettings, patch: ProjectSettingsPatch): Record<string, unknown> {
   const next: Record<string, unknown> = { ...current };
+  // Đường ghi cũ đặt một giá trị rõ ràng thì phải kết thúc việc kế thừa cho đúng khoá đó.
+  const touched = [
+    ...(patch.runPermissions !== undefined && patch.runPermissions?.mode !== current.runPermissions?.mode
+      ? ["agent.permissionMode"]
+      : []),
+    ...((patch.budget === null || patch.budget?.perRunUsd !== undefined) &&
+    patch.budget?.perRunUsd !== current.budget?.perRunUsd
+      ? ["limits.perRunUsd"]
+      : []),
+    ...(patch.merge?.mode !== undefined && patch.merge.mode !== current.merge?.mode ? ["merge.mode"] : []),
+    ...(patch.merge?.requireCi !== undefined && patch.merge.requireCi !== current.merge?.requireCi
+      ? ["merge.requireCi"]
+      : []),
+  ];
+  if (current.inheritedConfigKeys)
+    next.inheritedConfigKeys = current.inheritedConfigKeys.filter((k) => !touched.includes(k));
+  if (patch.inheritedConfigKeys !== undefined) next.inheritedConfigKeys = patch.inheritedConfigKeys;
   if (patch.merge) next.merge = assign(current.merge, patch.merge);
   if (patch.outcome) {
     next.outcome = {
@@ -97,6 +123,7 @@ export async function updateProjectSettings(
   userId: string,
   key: string,
   patch: ProjectSettingsPatch,
+  guard?: SettingsGuard,
 ): Promise<ProjectSettings> {
   const ref = await findProject(tx, key);
   // Không thấy dự án thì báo như không tồn tại, để không lộ key của đội khác.
@@ -130,6 +157,7 @@ export async function updateProjectSettings(
     );
   }
   const next = checked.data;
+  await guard?.(tx, { teamId: ref.teamId, current: current as ProjectSettings, next });
   await tx.update(projects).set({ settings: next, updatedAt: sql`now()` }).where(eq(projects.id, ref.id));
   // Chỉ ghi các mục được vá. Settings không chứa secret (secret của dự án nằm trong bảng secrets, mã hoá riêng), nên
   // ghi nguyên giá trị trước và sau.

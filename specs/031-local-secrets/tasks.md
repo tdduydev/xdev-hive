@@ -66,7 +66,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   Kết quả "không đạt" thì sửa plan và task liên quan trước Phase 2.
 
   Tiến độ: cỡ khối trên Windows đã kiểm (2560 byte mỗi mục, khối 1800 byte đạt). macOS và các điểm còn lại chưa kiểm.
-- [ ] T002 [P] D·nhẹ — Tên dành riêng và kiểm tên dùng chung Go ↔ TS:
+- [x] T002 [P] D·nhẹ — Tên dành riêng và kiểm tên dùng chung Go ↔ TS:
   - fixture mới `packages/contracts/fixtures/local-secrets.json` (reserved exact/prefixes, tên hợp lệ, không hợp lệ);
   - `packages/contracts/src/local-secrets.ts` (`RESERVED_SECRET_NAMES`, `isValidSecretName`, `isReservedSecretName`,
     `normalizeSecretName`);
@@ -336,7 +336,7 @@ không chứa giá trị.
   - nút xoá toàn bộ, có xác nhận.
 
   Thêm chữ vào `i18n.ts`. Kèm test. Sau T010.
-- [ ] T025 [P] [US6] D·vừa — Hub nhận số lượng.
+- [x] T025 [P] [US6] D·vừa — Hub nhận số lượng.
   - `packages/contracts/src/runs.ts`: `secretsInjected?: number` trong kiểu xem kết quả run.
     **[Inference]** Tên kiểu chính xác xem lại khi làm.
   - `apps/hub/src/modules/runs/engine.ts` hoặc `queries.ts`: đọc `report.secretsInjected` (int 0–64).
@@ -355,7 +355,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 5.
 
-- [ ] T026 [US7] D·vừa — Contracts.
+- [x] T026 [US7] D·vừa — Contracts.
   - `packages/contracts/src/policies.ts`:
     - `secretInjection = z.enum(["allow","approve","deny"])`;
     - `agentPolicyInput.secretInjection.default("allow")`;
@@ -367,7 +367,7 @@ không chứa giá trị.
   - Chạy `pnpm openapi`. Thêm test contracts.
 
   Không phụ thuộc task khác, nên làm ngay từ Phase 2.
-- [ ] T027 [US7] D·vừa — Hub.
+- [x] T027 [US7] D·vừa — Hub.
   - `apps/hub/src/modules/governance/policies.ts`: `jobPolicyOf` thêm trường.
   - `apps/hub/src/modules/runs/engine.ts`: gửi `policy` khi
     `hooks.length || managedHooksOnly || secretInjection !== "allow"`.
@@ -409,7 +409,7 @@ không chứa giá trị.
   - Chữ vi/en ở `i18n.ts`.
 
   Sau T009.
-- [ ] T033 [P] [US7] D·vừa — `apps/web/src/pages/admin/policies-page.tsx`: mục "Bí mật tại máy" với nhóm radio "Cho
+- [x] T033 [P] [US7] D·vừa — `apps/web/src/pages/admin/policies-page.tsx`: mục "Bí mật tại máy" với nhóm radio "Cho
   phép" / "Hỏi trước" / "Không cho"; chỉ xem khi thiếu quyền `policies.write`. Kèm test Playwright web theo vai trò và
   tên.
 
@@ -485,7 +485,7 @@ không chứa giá trị.
 
 ## Phase 12: Polish và việc chung
 
-- [ ] T040 [P] D·nhẹ — Tài liệu:
+- [x] T040 [P] D·nhẹ — Tài liệu:
   - ADR mới `docs/adr/0038-local-secrets-keyring.md` (kho hệ điều hành, worker là chủ, chia khối, `secrets exec`, chỉ
     gửi số lượng);
   - `docs/architecture.md`: gói `secretstore`, `secretmask`;

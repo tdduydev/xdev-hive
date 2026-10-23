@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { DEFAULT_AGENT_POLICY } from "@xdev-hive/contracts";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { seedProject } from "../test/project-fixture.ts";
@@ -121,5 +122,30 @@ describe("API projects.updateSettings", () => {
       settings: { features: { sandbox: true } },
     });
     expect([res.status, res.json.data?.code]).toEqual([403, "TEAM_ROLE_REQUIRED"]);
+  });
+  it("API cấu hình ép khoá đường ghi settings và giữ khoá khi trang chính sách cũ cập nhật", async () => {
+    const locked = await api("owner", "POST", "/config/org", { key: "limits.perRunUsd", value: 20, locked: true });
+    expect(locked.status).toBe(200);
+    const forbidden = await api("tmember", "POST", "/config/org", { key: "limits.perRunUsd", locked: false });
+    expect(forbidden.status).toBe(403);
+    const changed = await api("owner", "PATCH", `/projects/${key}/settings`, {
+      settings: { budget: { perRunUsd: 50 } },
+    });
+    expect([changed.status, changed.json.data?.code]).toEqual([409, "CONFIG_LOCKED"]);
+    const policy = await api("owner", "POST", "/policies", {
+      ...DEFAULT_AGENT_POLICY,
+      limits: { ...DEFAULT_AGENT_POLICY.limits, perRunUsd: 7 },
+    });
+    expect(policy.status).toBe(200);
+    const current = await api("owner", "GET", "/config/org");
+    expect(current.json.entries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "limits.perRunUsd", value: 7, locked: true })]),
+    );
+    const stale = await api("owner", "POST", "/config/org", {
+      key: "limits.perRunUsd",
+      value: 8,
+      expectedVersion: locked.json.version,
+    });
+    expect([stale.status, stale.json.data?.code]).toEqual([409, "CONFIG_VERSION_CONFLICT"]);
   });
 });

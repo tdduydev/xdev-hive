@@ -60,6 +60,8 @@ import {
   type PromptProject,
   SEED_DIR,
 } from "./prompt.ts";
+import { qaCases } from "./qa.ts";
+import { qaFingerprint } from "./qa-gate.ts";
 import { RELEASE_ACTIONS, releaseBrief } from "./release.ts";
 import { repoDigest } from "./repo-digest.ts";
 import { sdlcArtifacts, sdlcItemPhases, sdlcQuestions, sdlcSteps } from "./schema.ts";
@@ -73,7 +75,7 @@ type ArtifactRow = typeof sdlcArtifacts.$inferSelect;
 type StepRow = typeof sdlcSteps.$inferSelect;
 
 /** Bước ghi file theo `collect`; các bước khác chỉ đọc tài liệu và báo bằng `sdlc_report`. */
-const WRITING_ACTIONS: readonly SdlcStepAction[] = ["draft", "release-notes", "retro", "archive"];
+const WRITING_ACTIONS: readonly SdlcStepAction[] = ["draft", "release-notes", "retro", "archive", "test-run"];
 export const writesFiles = (action: string) => (WRITING_ACTIONS as readonly string[]).includes(action);
 
 /** Tác nhân của bước agent sửa theo góp ý (đếm lượt sửa theo `maxAgentRevisions`). */
@@ -307,6 +309,13 @@ async function startProjectRun(
 ): Promise<{ runId: string } | null> {
   if (!deps.createSdlcRun) return null;
   const { item, phase, step } = input;
+  if (step.action === "test-run") {
+    const [row] = await tx.select().from(sdlcSteps).where(eq(sdlcSteps.id, input.stepRowId));
+    await tx
+      .update(sdlcSteps)
+      .set({ result: { ...(row?.result ?? {}), qaBaseline: qaFingerprint(await qaCases(tx, item.id)) } })
+      .where(eq(sdlcSteps.id, input.stepRowId));
+  }
   const plan = await planStep(tx, { ...input, projectId }, deps);
   const [member] = (await activeItemProjects(tx, item.id)).filter((m) => m.projectId === projectId);
   const settings = member?.settings ?? item.settings;
@@ -321,7 +330,7 @@ async function startProjectRun(
     cli: step.cli ?? null,
     model: step.model ?? null,
     ownerUserId: settings.runner === "requester" ? (input.requestedBy ?? item.ownerUserId) : null,
-    requiredLabels: settings.labels ?? [],
+    requiredLabels: [...new Set([...(settings.labels ?? []), ...(step.labels ?? [])])],
     createdBy: input.requestedBy ?? SDLC_SYSTEM_ACTOR,
   });
   if (started)
@@ -548,6 +557,8 @@ export async function onSdlcRunFinished(
   if (!phase || !step) return fail("Chế độ của hạng mục không còn bước này.");
   if (step.action === "converge" && !findingsOf(row.result))
     return fail("Agent không báo kết quả converge (sdlc_report loại findings); xem log của run rồi chạy vòng mới.");
+  if (step.action === "test-run" && !row.result?.["test-results"])
+    return fail("Chưa nhận metadata kết quả QA; hãy chạy lại và gửi sdlc_report loại test-results.");
 
   const rows = await tx.select().from(sdlcArtifacts).where(eq(sdlcArtifacts.itemId, item.id));
   const saved: { artifactId: string; docKey: string; revision: number; sha256: string }[] = [];

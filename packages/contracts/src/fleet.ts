@@ -180,6 +180,11 @@ export const workerRelease = z.object({
 });
 export type WorkerRelease = z.output<typeof workerRelease>;
 
+/** Ed25519 32 byte, base64url không padding. */
+export const machinePublicKey = z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Khoá công khai không hợp lệ.");
+/** `file`: máy không có keychain, khoá nằm trong file 0600; trang Máy hiện để quản trị biết máy giữ khoá yếu hơn. */
+export const machineKeyStorage = z.enum(["keychain", "file"]);
+
 export const registerInput = z.object({
   registrationToken: z.string().min(1).max(200),
   machineId,
@@ -187,8 +192,9 @@ export const registerInput = z.object({
   version: z.string().max(40),
   clis: z.array(cli).max(10).default([]),
   capacity: z.number().int().min(0).max(64).default(1),
-  /** Khoá công khai của máy (mục 6), để sau đổi sang access token ngắn hạn. Chưa bắt buộc. */
-  publicKey: z.string().max(2000).optional(),
+  /** Khoá công khai Ed25519 của máy (ADR 0033). Worker cũ không gửi thì máy dùng machine token tới khi đăng ký khoá. */
+  publicKey: machinePublicKey.optional(),
+  keyStorage: machineKeyStorage.optional(),
 });
 
 export const registerOutput = z.object({
@@ -203,6 +209,43 @@ export const registerOutput = z.object({
 
 export type RegisterInput = z.output<typeof registerInput>;
 export type RegisterOutput = z.output<typeof registerOutput>;
+
+/** Máy đăng ký trước khi có khoá: gửi bằng machine token, xong thì token đó hết dùng được. */
+export const workerKeyInput = z.object({ publicKey: machinePublicKey, keyStorage: machineKeyStorage });
+export const workerKeyOutput = z.object({ machineId: id, registeredAt: z.iso.datetime() });
+
+export const workerChallengeInput = z.object({ machine: id });
+export const workerChallengeOutput = z.object({
+  nonce: z.string().max(200),
+  expiresAt: z.iso.datetime(),
+  /**
+   * URL hub dùng trong `machineTokenMessage`. Máy ký đúng chuỗi này thay vì URL trong worker.json: máy gọi hub bằng IP
+   * hay tên khác HIVE_PUBLIC_URL vẫn đổi được token. Khoá máy riêng theo từng hub nên không ký hộ được hub khác.
+   */
+  hub: z.string().max(2048),
+});
+
+/** Chuỗi máy ký để đổi lấy access token. Có hubUrl để chữ ký cho hub này không dùng được ở hub khác. */
+export const machineTokenMessage = (hubUrl: string, machineId: string, nonce: string) =>
+  `xdev-hive-machine-token\n${hubUrl}\n${machineId}\n${nonce}`;
+
+export const workerTokenInput = z.object({
+  machineId: id,
+  nonce: z.string().max(200),
+  /** Ed25519 trên `machineTokenMessage`, base64url không padding. */
+  signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/),
+});
+export const workerTokenOutput = z.object({ accessToken: z.string(), expiresAt: z.iso.datetime() });
+
+export type WorkerKeyInput = z.output<typeof workerKeyInput>;
+export type WorkerTokenInput = z.output<typeof workerTokenInput>;
+
+// Một lỗi cho mọi lý do (nonce, chữ ký, máy không có khoá, máy bị thu hồi) để không ai dò được máy nào tồn tại.
+const machineAuthErrors = {
+  BAD_REQUEST: { message: "Dữ liệu gửi lên không hợp lệ." },
+  MACHINE_AUTH_FAILED: { status: 401, message: "Máy không xác thực được với hub." },
+  TOO_MANY_REQUESTS: { message: "Máy xin token quá nhiều lần; thử lại sau." },
+};
 
 const userErrors = {
   UNAUTHORIZED: { message: "Chưa đăng nhập." },
@@ -406,6 +449,43 @@ export const fleetContract = {
       })
       .input(registerInput)
       .output(registerOutput),
+    registerKey: oc
+      .route({
+        method: "POST",
+        path: "/v1/worker/key",
+        summary: "Máy đăng ký trước bản có khoá: gửi khoá công khai bằng machine token",
+        tags: ["worker"],
+      })
+      .errors({
+        BAD_REQUEST: { message: "Dữ liệu gửi lên không hợp lệ." },
+        UNAUTHORIZED: { message: "Machine token không hợp lệ hoặc máy đã bị thu hồi." },
+        MACHINE_KEY_EXISTS: {
+          status: 409,
+          message: "Máy đã có khoá. Muốn đổi khoá thì đăng ký lại máy bằng mã đăng ký mới.",
+        },
+      })
+      .input(workerKeyInput)
+      .output(workerKeyOutput),
+    challenge: oc
+      .route({
+        method: "GET",
+        path: "/v1/worker/challenge",
+        summary: "Nonce để máy ký đổi lấy access token (hết hạn sau 60 giây)",
+        tags: ["worker"],
+      })
+      .errors(machineAuthErrors)
+      .input(workerChallengeInput)
+      .output(workerChallengeOutput),
+    token: oc
+      .route({
+        method: "POST",
+        path: "/v1/worker/token",
+        summary: "Máy đổi chữ ký trên nonce lấy access token 15 phút",
+        tags: ["worker"],
+      })
+      .errors(machineAuthErrors)
+      .input(workerTokenInput)
+      .output(workerTokenOutput),
     clientEvent: oc
       .route({
         method: "POST",

@@ -155,6 +155,9 @@ jobs:
           else
             ../../scripts/ci/retry.sh 3 pnpm exec playwright install --with-deps chromium
           fi
+      # artifact-blob.spec.ts phục vụ thư viện khung (pdf.js) từ dist/lib như hub; chưa build thì không có lib-manifest.json.
+      - name: Thư viện khung artifact
+        run: pnpm --filter @xdev-hive/artifacts-runtime build
       - name: Playwright
         working-directory: apps/web
         run: pnpm exec playwright test --shard=${{ matrix.shard }}/4

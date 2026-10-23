@@ -424,6 +424,9 @@ export const devOptimizerPolicy = z.object({
 export type DevOptimizerPolicy = z.output<typeof devOptimizerPolicy>;
 
 export const projectSettings = z.object({
+  inheritedConfigKeys: z
+    .array(z.enum(["agent.permissionMode", "limits.perRunUsd", "merge.mode", "merge.requireCi"]))
+    .optional(),
   /** `full` bỏ kiểm soát của CLI; chỉ nên dùng trong container của M6. */
   runPermissions: z.object({ mode: runPermissionMode }).optional(),
   /** Model được dùng theo CLI và loại run; bỏ trống thì CLI chọn mặc định. */
@@ -538,6 +541,7 @@ const cliModelsPatch = z.strictObject({
  */
 export const projectSettingsPatch = z
   .strictObject({
+    inheritedConfigKeys: projectSettings.shape.inheritedConfigKeys,
     merge: z
       .strictObject({
         mode: merge.shape.mode.optional(),

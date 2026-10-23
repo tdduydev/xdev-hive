@@ -155,4 +155,43 @@ describe("ArtifactLibrary", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
     expect(client.artifacts.list).not.toHaveBeenCalled();
   });
+
+  describe("tải ảnh/PDF lên", () => {
+    const picture = () => new File([new Uint8Array([1, 2, 3])], "so-do.png", { type: "image/png" });
+
+    it("không có uploadFile hay đang offline thì không hiện nút tải lên", async () => {
+      const client = libraryDetailClient();
+      const none = renderWithEnv(<ArtifactLibrary />, testEnv(client));
+      await screen.findAllByText("Luồng hoàn tiền");
+      expect(screen.queryByLabelText("Tải ảnh/PDF lên")).toBeNull();
+      none.unmount();
+      renderWithEnv(<ArtifactLibrary />, testEnv(client, { uploadFile: vi.fn(), offline: true }));
+      expect(screen.queryByLabelText("Tải ảnh/PDF lên")).toBeNull();
+    });
+
+    it("chọn tệp thì gửi lên, báo đã tải và tải lại danh sách", async () => {
+      const client = libraryDetailClient();
+      const uploadFile = vi.fn(async () => ({ id: ID_B }));
+      renderWithEnv(<ArtifactLibrary />, testEnv(client, { uploadFile }));
+      await screen.findAllByText("Luồng hoàn tiền");
+      const before = client.artifacts.list.mock.calls.length;
+      const file = picture();
+      fireEvent.change(screen.getByLabelText("Tải ảnh/PDF lên"), { target: { files: [file] } });
+      await screen.findByText("Đã tải tệp lên.");
+      expect(uploadFile).toHaveBeenCalledWith(file);
+      await waitFor(() => expect(client.artifacts.list.mock.calls.length).toBeGreaterThan(before));
+    });
+
+    it("lỗi từ hub hiện nguyên văn, không báo đã tải", async () => {
+      const client = libraryDetailClient();
+      const uploadFile = vi.fn(async () => {
+        throw new Error("Tệp quá lớn (giới hạn 10,0 MiB).");
+      });
+      renderWithEnv(<ArtifactLibrary />, testEnv(client, { uploadFile }));
+      await screen.findAllByText("Luồng hoàn tiền");
+      fireEvent.change(screen.getByLabelText("Tải ảnh/PDF lên"), { target: { files: [picture()] } });
+      expect((await screen.findByRole("alert")).textContent).toContain("Tệp quá lớn");
+      expect(screen.queryByText("Đã tải tệp lên.")).toBeNull();
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import type { MergeQueueCiState, MergeQueueEntry, MergeQueueState } from "@xdev-hive/contracts";
+import type { MergeQueueCiState, MergeQueueEntry, MergeQueueState, ProjectSettings } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
@@ -256,6 +256,7 @@ export async function removeMergeAs(
 // Xử lý hàng
 
 export interface MergeDeps {
+  resolveSettings?: (tx: Tx, project: ProjectRow) => Promise<ProjectSettings>;
   /** Pool của hive_app. Job chạy với tenant là tổ chức trong payload, không có người dùng. */
   pool: pg.Pool;
   masterKey: MasterKey;
@@ -294,6 +295,7 @@ export async function processMergeQueue(deps: MergeDeps, job: MergeJob): Promise
     const project = await loadProject(tx, job.projectId);
     // Tắt tính năng thì hàng dừng, mục giữ nguyên để bật lại là chạy tiếp.
     if (!project?.settings.features.mergeQueue) return null;
+    if (deps.resolveSettings) project.settings = await deps.resolveSettings(tx, project);
     const [entry] = await tx
       .select()
       .from(mergeQueueEntries)

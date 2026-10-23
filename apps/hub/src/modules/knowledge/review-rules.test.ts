@@ -17,6 +17,18 @@ const gate = (over: Record<string, unknown>) =>
   reviewGate.parse({ id: "g", name: "Gate", kind: "rule", rules: ["requirements"], ...over });
 
 describe("quy tắc của quy trình duyệt", () => {
+  it("luật QA chặn khi không có ngữ cảnh và giữ checklist TC", () => {
+    const g = gate({ rules: ["qa-tests"] });
+    const ctx = { docType: "test-report", content: "# Báo cáo", base: "" };
+    expect(ruleChecklist(g, ctx)[0]?.passed).toBe(false);
+    expect(
+      ruleChecklist(g, { ...ctx, qaChecks: [{ code: "TC-001", passed: false, note: "Chưa đạt" }] })[0],
+    ).toMatchObject({ passed: false, label: "TC-001 đạt hoặc được miễn" });
+    expect(ruleChecklist(g, { ...ctx, qaChecks: [{ code: "TC-001", passed: true, note: "Đã miễn" }] })[0]?.passed).toBe(
+      true,
+    );
+    expect(ruleChecklist(gate({ rules: ["qa-cases"] }), ctx)[0]?.passed).toBe(false);
+  });
   it("loại tài liệu theo đoạn cuối của key", () => {
     expect(docTypeOf("project/pay/prd-refund.md")).toBe("prd-refund");
     expect(typeMatches("prd-refund", ["prd"])).toBe(true);

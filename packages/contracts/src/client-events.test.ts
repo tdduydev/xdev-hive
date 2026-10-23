@@ -1,5 +1,13 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { MACHINE_EVENT_KINDS, machineEventInput } from "./client-events.ts";
+import {
+  CLIENT_WRITE_PROCEDURES,
+  CLIENT_WRITE_TOOLS,
+  clientWriteGroupOf,
+  clientWriteToolsFixture,
+  MACHINE_EVENT_KINDS,
+  machineEventInput,
+} from "./client-events.ts";
 
 const key = "01HZXKQ3N5V8W9Y2A4B6C8D0EF";
 const projectId = "6f1c2a40-8f3b-4c1e-9d55-0a1b2c3d4e5f";
@@ -62,5 +70,28 @@ describe("project.token_usage", () => {
     expect(parseUsage({ ...usage, periodEnd: "hôm qua" }).success).toBe(false);
     const bad = { claude: { ...usage.tokens.claude, input: -1 } };
     expect(parseUsage({ ...usage, tokens: bad }).success).toBe(false);
+  });
+});
+
+describe("bảng nhóm lần ghi", () => {
+  it("fixture client-write-tools.json khớp bảng (chạy pnpm openapi để sinh lại)", async () => {
+    const fixture = JSON.parse(await readFile(new URL("../fixtures/client-write-tools.json", import.meta.url), "utf8"));
+    expect(fixture).toEqual(clientWriteToolsFixture());
+  });
+
+  it("tra nhóm theo tool, thủ tục và sự kiện máy", () => {
+    expect(clientWriteGroupOf("task_update")).toBe("progress");
+    expect(clientWriteGroupOf("leader_reply")).toBe("immediate");
+    expect(clientWriteGroupOf("memory.write")).toBe("proposal");
+    expect(clientWriteGroupOf("machine.token_score")).toBe("progress");
+    expect(clientWriteGroupOf("task_get")).toBeUndefined();
+    expect(clientWriteGroupOf("toString")).toBeUndefined();
+  });
+
+  it("tên tool và thủ tục không trùng nhau", () => {
+    const tools = Object.keys(CLIENT_WRITE_TOOLS);
+    for (const name of [...Object.keys(CLIENT_WRITE_PROCEDURES), ...Object.keys(MACHINE_EVENT_KINDS)]) {
+      expect(tools).not.toContain(name);
+    }
   });
 });

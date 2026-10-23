@@ -41,6 +41,24 @@ describe("withClientEvent", () => {
     expect(runs).toBe(1);
   });
 
+  it("khoá đã dùng cho người, máy hay loại ghi khác thì báo xung đột, không trả kết quả của lần kia", async () => {
+    const k = key();
+    let runs = 0;
+    const fn = async () => ({ n: ++runs });
+    await withClientEvent(app, { orgId: orgA }, meta(k), fn);
+    for (const other of [
+      { ...meta(k), userId: "v" },
+      { ...meta(k), kind: "test.other" },
+      { ...meta(k), machineId: randomUUID() },
+    ]) {
+      await expect(withClientEvent(app, { orgId: orgA }, other, fn)).rejects.toMatchObject({
+        name: "ConflictError",
+        code: "IDEMPOTENCY_KEY_REUSED",
+      });
+    }
+    expect(runs).toBe(1);
+  });
+
   it("bị từ chối thì rollback phần fn đã ghi và lưu lần từ chối", async () => {
     const k = key();
     const out = await withClientEvent(app, { orgId: orgA }, meta(k), async (tx) => {

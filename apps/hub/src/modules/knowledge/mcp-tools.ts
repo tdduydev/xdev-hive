@@ -170,6 +170,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
 
   registry.register({
     name: "memory_write",
+    writes: true,
     title: "Ghi memory",
     description: "Ghi một quyết định, quy ước, cái bẫy hoặc ghi chú cho dự án.",
     input: z.object({
@@ -272,6 +273,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
 
   registry.register({
     name: "doc_propose",
+    writes: true,
     title: "Đề xuất sửa tài liệu",
     description: "Đề xuất toàn bộ nội dung mới của tài liệu để quản trị duyệt.",
     input: z.object({
@@ -337,6 +339,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
 
   registry.register({
     name: "doc_suggest",
+    writes: true,
     title: "Đề xuất sửa một đoạn",
     description:
       "Đề xuất thay một đoạn của bản nháp tài liệu; người viết nhận hoặc bỏ. `before` chép nguyên văn đoạn gốc (phải " +
@@ -357,6 +360,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
 
   registry.register({
     name: "doc_comment",
+    writes: true,
     title: "Bình luận tài liệu",
     description:
       "Bình luận trên bản nháp tài liệu: mở luồng mới neo vào đoạn trích `quote`, hoặc trả lời luồng `threadId`.",
@@ -376,6 +380,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
 
   registry.register({
     name: "skill_propose",
+    writes: true,
     title: "Đề xuất sửa skill",
     description: "Đề xuất toàn bộ SKILL.md mới của một skill đang áp cho dự án để quản trị duyệt.",
     input: z.object({
