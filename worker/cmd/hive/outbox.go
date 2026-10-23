@@ -376,9 +376,9 @@ func (a *app) outboxSubmit(args []string) int {
 		return a.errorf(exitFailed, "%v", err)
 	}
 	if len(line) > submitLineBudget && len(req["body"]) > 0 {
-		file, code := a.writeIncoming(req["body"])
-		if code != exitOK {
-			return code
+		file, err := writeIncoming(req["body"])
+		if err != nil {
+			return a.errorf(exitFailed, "%v", err)
 		}
 		// Worker xoá file sau khi đọc; xoá lại ở đây cho trường hợp worker không đọc tới (không chạy, từ chối sớm).
 		defer os.Remove(file)
@@ -414,20 +414,20 @@ func (a *app) submitReply(reply map[string]any) int {
 
 // writeIncoming đặt thân lớn vào thư mục incoming của hộp thư đi (0600): worker chỉ nhận bodyFile trong thư mục đó để
 // client không chỉ được worker đọc file bất kỳ.
-func (a *app) writeIncoming(body json.RawMessage) (string, int) {
+func writeIncoming(body json.RawMessage) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", a.errorf(exitFailed, "Không xác định được thư mục người dùng: %v", err)
+		return "", fmt.Errorf("Không xác định được thư mục người dùng: %w", err)
 	}
 	dir := filepath.Join(home, ".xdev-hive", "outbox", outbox.IncomingDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", a.errorf(exitFailed, "Không tạo được %s: %v", dir, err)
+		return "", fmt.Errorf("Không tạo được %s: %w", dir, err)
 	}
 	var b [12]byte
 	_, _ = rand.Read(b[:])
 	file := filepath.Join(dir, hex.EncodeToString(b[:])+".json")
 	if err := os.WriteFile(file, body, 0o600); err != nil {
-		return "", a.errorf(exitFailed, "Không ghi được %s: %v", file, err)
+		return "", fmt.Errorf("Không ghi được %s: %w", file, err)
 	}
-	return file, exitOK
+	return file, nil
 }

@@ -23,6 +23,12 @@ type mcpHarness struct {
 
 func startMCP(t *testing.T, handler http.HandlerFunc, args ...string) *mcpHarness {
 	t.Helper()
+	return startMCPWith(t, handler, "", args...)
+}
+
+// startMCPWith như startMCP, kèm socket worker (rỗng là socket không tồn tại).
+func startMCPWith(t *testing.T, handler http.HandlerFunc, socket string, args ...string) *mcpHarness {
+	t.Helper()
 	a := authApp(t)
 	hub := httptest.NewServer(handler)
 	t.Cleanup(hub.Close)
@@ -30,6 +36,10 @@ func startMCP(t *testing.T, handler http.HandlerFunc, args ...string) *mcpHarnes
 		t.Fatal(err)
 	}
 	a.getwd = func() (string, error) { return t.TempDir(), nil }
+	if socket == "" {
+		socket = filepath.Join(t.TempDir(), "khong-co.sock")
+	}
+	a.socket = func() (string, error) { return socket, nil }
 	r, w := io.Pipe()
 	a.stdin = r
 	h := &mcpHarness{a: a, in: w, done: make(chan int, 1)}
@@ -224,5 +234,92 @@ func TestMCPMissingTokenAndInvalidInput(t *testing.T) {
 	a.err.Reset()
 	if code := a.run([]string{"mcp", "--unknown", testToken}); code != exitUsage || strings.Contains(a.err.String(), testToken) {
 		t.Fatal("đối số sai làm lộ token")
+	}
+}
+
+func TestMCPWriteToolsGoThroughOutbox(t *testing.T) {
+	path, f := startOutbox(t)
+	f.submit = func(req map[string]any) (map[string]any, string) {
+		switch req["kind"] {
+		case "doc_propose":
+			return map[string]any{"state": "queued", "key": req["key"], "pending": 1, "hub": "down"}, ""
+		case "doc_comment":
+			return map[string]any{"error": "Máy chưa đăng nhập hub. Chạy hive login."}, "NOT_SIGNED_IN"
+		}
+		return map[string]any{"state": "accepted", "key": req["key"], "result": map[string]any{
+			"outcome":  "accepted",
+			"response": map[string]any{"content": []any{map[string]any{"type": "text", "text": "đã cập nhật"}}},
+		}}, ""
+	}
+	hubCalls := make(chan string, 4)
+	h := startMCPWith(t, func(w http.ResponseWriter, r *http.Request) {
+		hubCalls <- r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"jsonrpc":"2.0","id":0,"result":{}}`)
+	}, path, "--project", "HIVE")
+
+	h.send(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"doc_propose","arguments":{"key":"kien-truc","content":"x"}}}`)
+	line := h.lines(t, 1)[0]
+	if !strings.Contains(line, "Đã xếp hàng, chờ hub (khoá ") || !strings.Contains(line, "không cần gọi lại") || strings.Contains(line, "isError") {
+		t.Fatalf("queued: %s", line)
+	}
+	req := f.last()
+	target, _ := req["target"].(map[string]any)
+	body, _ := req["body"].(map[string]any)
+	if req["source"] != "mcp-local" || req["transport"] != "mcp" || req["project"] != "HIVE" || req["waitMs"] != float64(mcpSubmitWaitMs) ||
+		target["id"] != "kien-truc" || body["name"] != "doc_propose" || len(req["key"].(string)) != 26 {
+		t.Fatalf("worker nhận %v", req)
+	}
+
+	h.send(t, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"task_update","arguments":{"note":"xong"}}}`)
+	if line := h.lines(t, 2)[1]; !strings.Contains(line, `"id":2`) || !strings.Contains(line, "đã cập nhật") {
+		t.Fatalf("accepted phải trả nguyên kết quả của hub: %s", line)
+	}
+	h.send(t, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"doc_comment","arguments":{"key":"kien-truc"}}}`)
+	if line := h.lines(t, 3)[2]; !strings.Contains(line, `"isError":true`) || !strings.Contains(line, "chưa đăng nhập") {
+		t.Fatalf("lỗi worker: %s", line)
+	}
+	select {
+	case p := <-hubCalls:
+		t.Fatalf("tool ghi không được gọi thẳng hub (%s)", p)
+	default:
+	}
+}
+
+func TestMCPWorkerMissingAndHubDown(t *testing.T) {
+	h := startMCP(t, func(w http.ResponseWriter, r *http.Request) {
+		// Hub chết giữa chừng: đóng kết nối không trả lời.
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	})
+	h.send(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"task_update","arguments":{"note":"x"}}}`)
+	if line := h.lines(t, 1)[0]; !strings.Contains(line, "Sidecar hive-worker không chạy") || !strings.Contains(line, `"isError":true`) {
+		t.Fatalf("worker vắng: %s", line)
+	}
+	h.send(t, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"leader_reply","arguments":{}}}`)
+	if line := h.lines(t, 2)[1]; !strings.Contains(line, "Hub đang vắng (http://127.0.0.1") || !strings.Contains(line, `"isError":true`) {
+		t.Fatalf("tool immediate khi hub vắng: %s", line)
+	}
+	h.send(t, `{"jsonrpc":"2.0","id":3,"method":"tools/list"}`)
+	if line := h.lines(t, 3)[2]; !strings.Contains(line, "Hub đang vắng") || !strings.Contains(line, "-32603") {
+		t.Fatalf("tools/list khi hub vắng: %s", line)
+	}
+}
+
+func TestMCPLargeWriteGoesThroughFile(t *testing.T) {
+	path, f := startOutbox(t)
+	f.submit = func(req map[string]any) (map[string]any, string) {
+		return map[string]any{"state": "queued", "key": req["key"], "pending": 1, "hub": "down"}, ""
+	}
+	h := startMCPWith(t, func(w http.ResponseWriter, r *http.Request) { t.Error("không được gọi hub") }, path)
+	content := strings.Repeat("nội dung dài ", 8000)
+	h.send(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_write","arguments":{"content":"`+content+`"}}}`)
+	if line := h.lines(t, 1)[0]; !strings.Contains(line, "Đã xếp hàng") {
+		t.Fatal(line)
+	}
+	if f.last()["body"] != nil || !strings.Contains(string(f.bodyFile), content) {
+		t.Fatalf("thân lớn phải đi qua file: %v", f.last()["bodyFile"])
 	}
 }

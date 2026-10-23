@@ -121,7 +121,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
   `worker/cmd/hive-worker/outbox.go`
 - [x] T019 [US2] Lệnh `hive outbox [--json]`, `drop`, `retry`, `export -o`, `submit --json -` qua socket ·
   `worker/cmd/hive/outbox.go`, `worker/cmd/hive/outbox_test.go`, `worker/cmd/hive/main.go`
-- [ ] T020 [US2] `hive mcp`: `tools/call` của tool có ghi đi qua `outbox.submit`; `queued` trả kết quả tool "Đã xếp hàng,
+- [x] T020 [US2] `hive mcp`: `tools/call` của tool có ghi đi qua `outbox.submit`; `queued` trả kết quả tool "Đã xếp hàng,
   chờ hub (khoá …)"; tool `immediate` và tool đọc lỗi mạng trả "Hub đang vắng (<hub>)…"; worker không chạy thì tool
   ghi trả "Sidecar hive-worker không chạy…" · `worker/cmd/hive/mcp.go`, `worker/cmd/hive/mcp_outbox.go`,
   `worker/cmd/hive/mcp_test.go`

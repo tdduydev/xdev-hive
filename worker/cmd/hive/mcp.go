@@ -26,6 +26,7 @@ type mcpProxy struct {
 	out                 io.Writer
 	mu                  sync.Mutex
 	session, protocol   string
+	socket              func() (string, error)
 }
 
 func (a *app) mcp(args []string) int {
@@ -53,7 +54,7 @@ func (a *app) mcp(args []string) int {
 	client.Timeout = 0
 	// Không chuyển PAT sang URL chuyển hướng, kể cả URL cùng tên miền.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	p := &mcpProxy{client: &client, hub: hub, token: token, project: *project, out: a.stdout}
+	p := &mcpProxy{client: &client, hub: hub, token: token, project: *project, out: a.stdout, socket: a.socket}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var pending sync.WaitGroup
@@ -69,7 +70,9 @@ func (a *app) mcp(args []string) int {
 			ID      json.RawMessage `json:"id"`
 			Method  string          `json:"method"`
 			Params  struct {
-				ProtocolVersion string `json:"protocolVersion"`
+				ProtocolVersion string          `json:"protocolVersion"`
+				Name            string          `json:"name"`
+				Arguments       json.RawMessage `json:"arguments"`
 			} `json:"params"`
 		}
 		if !json.Valid(line) {
@@ -93,12 +96,26 @@ func (a *app) mcp(args []string) int {
 		}
 		data := bytes.Clone(line)
 		pending.Add(1)
+		toolCall := message.Method == "tools/call" && len(message.ID) != 0
+		if toolCall && queueable(message.Params.Name) {
+			go func() {
+				defer pending.Done()
+				p.viaOutbox(ctx, message.ID, message.Params.Name, message.Params.Arguments)
+			}()
+			continue
+		}
 		go func() {
 			defer pending.Done()
+			var down *errHubDown
 			if err := p.post(ctx, data); err != nil && ctx.Err() == nil && len(message.ID) != 0 {
-				if errors.Is(err, errUnauthorized) {
+				switch {
+				case errors.Is(err, errUnauthorized):
 					p.rpcError(message.ID, -32001, "Token hết hạn hoặc đã bị thu hồi. Chạy hive login.")
-				} else {
+				case errors.As(err, &down) && toolCall:
+					p.toolResult(message.ID, p.hubDownMessage(), true)
+				case errors.As(err, &down):
+					p.rpcError(message.ID, -32603, p.hubDownMessage())
+				default:
 					p.rpcError(message.ID, -32603, "Không chuyển tiếp được phản hồi MCP từ hub.")
 				}
 			}
@@ -166,7 +183,7 @@ func (p *mcpProxy) post(ctx context.Context, data []byte) error {
 	p.mu.Unlock()
 	res, err := p.client.Do(req)
 	if err != nil {
-		return err
+		return &errHubDown{err}
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusUnauthorized {
