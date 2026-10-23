@@ -26,6 +26,8 @@ mod optimizer;
 mod profiles;
 mod register;
 mod remote;
+mod secret_clipboard;
+mod secrets;
 mod settings;
 mod setup_extra;
 mod skills;
@@ -1235,6 +1237,19 @@ pub fn run() {
             ssh_keys::ssh_setup,
             ssh_keys::ssh_remove,
             ssh_keys::ssh_open_terminal,
+            secrets::secrets_status,
+            secrets::secrets_list,
+            secrets::secret_save,
+            secrets::secret_rename,
+            secrets::secret_assign,
+            secrets::secret_delete,
+            secrets::secret_reveal,
+            secrets::secret_copy,
+            secrets::secrets_log,
+            secrets::secrets_log_clear,
+            secrets::secrets_purge,
+            secrets::secret_approvals,
+            secrets::secret_approve,
             cli::folder_tree,
             cli::folder_docs,
             cli::propose_doc,

@@ -140,7 +140,7 @@ description: "Task list: kho bí mật tại máy cho agent AI"
   - Test: tham số không bao giờ nhận giá trị; stdout lỗi không chứa giá trị.
 
   Sau T004, T006.
-- [ ] T008 [P] [US1] B·vừa — File mới `apps/desktop/src-tauri/src/secrets.rs` với `secrets_status`, `secrets_list`,
+- [x] T008 [P] [US1] B·vừa — File mới `apps/desktop/src-tauri/src/secrets.rs` với `secrets_status`, `secrets_list`,
   `secret_save`, `secret_rename`, `secret_assign`, `secret_delete`.
   - Theo mẫu `ssh_keys.rs`: `spawn`, `child.write` giá trị, đóng stdin, `wipe`.
   - Mô tả đi qua file tạm, xoá sau khi chạy.
@@ -326,7 +326,7 @@ không chứa giá trị.
   `secrets log clear` (FR-042). Fixture `testdata/cli/log.json`.
 
   Sau T007, T004.
-- [ ] T023 [P] [US6] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secrets_log`, `secrets_log_clear`. Đăng ký ở
+- [x] T023 [P] [US6] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secrets_log`, `secrets_log_clear`. Đăng ký ở
   `lib.rs`.
 
   Sau T008.
@@ -398,7 +398,7 @@ không chứa giá trị.
   Phần hỏi `[c/K]` trong terminal thuộc T019 (file của A2), không sửa ở đây.
 
   Sau T028, T022.
-- [ ] T031 [P] [US7] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secret_approvals`, `secret_approve`. Đăng ký ở
+- [x] T031 [P] [US7] B·nhẹ — `apps/desktop/src-tauri/src/secrets.rs`: `secret_approvals`, `secret_approve`. Đăng ký ở
   `lib.rs`.
 
   Sau T023.
@@ -455,7 +455,7 @@ không chứa giá trị.
   - `secrets purge --project|--all`: trả `removed` và `left` (FR-064).
 
   Test: chỉ `reveal` in giá trị ra stdout. Sau T030.
-- [ ] T037 [US8] B·vừa — `apps/desktop/src-tauri/src/secrets.rs`:
+- [x] T037 [US8] B·vừa — `apps/desktop/src-tauri/src/secrets.rs`:
   - `secret_reveal`;
   - `secret_copy`: Rust đặt clipboard, giữ bản so sánh, sau 30 giây xoá nếu chưa đổi, rồi `wipe`;
   - `secrets_purge`.
@@ -478,6 +478,7 @@ không chứa giá trị.
   - Không có thì dùng hộp xác nhận.
   - File mới `apps/desktop/src-tauri/src/os_auth.rs`.
   - Thêm phụ thuộc mới vào `Cargo.toml`: cần chủ dự án duyệt trước.
+  - để sau (quyết định 2026-10-23: tuỳ chọn, chưa làm)
 
   Sau T037.
 
