@@ -519,6 +519,44 @@ pub async fn secret_approve(app: AppHandle, id: String, allow: bool) -> Result<(
         .map(|_| ())
 }
 
+/// Credential triển khai (specs/032 FR-060…FR-066) qua `hive-worker secrets delivery …`: kho và danh mục riêng, không
+/// gán được cho dự án. Không có lệnh hiện hay chép giá trị: đã lưu thì UI không bao giờ thấy lại.
+fn delivery_args(action: &str, name: Option<&str>) -> Result<Vec<String>, String> {
+    let mut args = base(&["delivery", action]);
+    if let Some(n) = name {
+        args.push(text_arg("name", n, "Tên credential")?);
+    }
+    Ok(args)
+}
+
+#[tauri::command]
+pub async fn delivery_creds_status(app: AppHandle) -> Result<Value, String> {
+    call_json(&app, delivery_args("status", None)?, None, RUN_TIMEOUT).await
+}
+
+#[tauri::command]
+pub async fn delivery_creds_list(app: AppHandle) -> Result<Value, String> {
+    call_json(&app, delivery_args("list", None)?, None, RUN_TIMEOUT).await
+}
+
+/// Thêm hoặc thay giá trị. Giá trị bắt buộc và chỉ đi qua stdin như `secret_save`.
+#[tauri::command]
+pub async fn delivery_cred_save(
+    app: AppHandle,
+    name: String,
+    value: String,
+) -> Result<Value, String> {
+    let args = delivery_args("set", Some(&name));
+    let input = value_input(&value);
+    wipe(value);
+    call_json(&app, args?, Some(input?), RUN_TIMEOUT).await
+}
+
+#[tauri::command]
+pub async fn delivery_cred_delete(app: AppHandle, name: String) -> Result<Value, String> {
+    call_json(&app, delivery_args("delete", Some(&name))?, None, RUN_TIMEOUT).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -716,5 +754,25 @@ mod tests {
         let mut secret = FAKE.as_bytes().to_vec();
         wipe_bytes(&mut secret);
         assert!(secret.iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn delivery_commands_use_their_own_namespace() {
+        assert_eq!(
+            delivery_args("list", None).unwrap(),
+            ["secrets", "delivery", "list", "--json"]
+        );
+        assert_eq!(
+            delivery_args("set", Some(" jenkins-prod ")).unwrap(),
+            ["secrets", "delivery", "set", "--json", "--name=jenkins-prod"]
+        );
+        assert_eq!(
+            delivery_args("delete", Some("-x")).unwrap(),
+            ["secrets", "delivery", "delete", "--json", "--name=-x"]
+        );
+        assert!(delivery_args("set", Some("a\nb")).is_err());
+        assert!(delivery_args("set", Some("")).is_err());
+        let args = delivery_args("set", Some("argocd")).unwrap();
+        assert!(args.iter().all(|a| !a.contains(FAKE)));
     }
 }
