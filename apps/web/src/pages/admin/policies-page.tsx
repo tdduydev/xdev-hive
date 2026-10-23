@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type AgentPolicy,
   type AgentPolicyInput,
+  DEFAULT_AGENT_GIT_POLICY,
   DEFAULT_AGENT_MEMORY_POLICY,
   DEFAULT_AGENT_REMOTE_POLICY,
   DEFAULT_AGENT_SKILL_LEARNING_POLICY,
@@ -510,6 +511,7 @@ const formOf = (p: AgentPolicy): Form => ({
   agentMemory: p.agentMemory ?? { ...DEFAULT_AGENT_MEMORY_POLICY },
   skillLearning: p.skillLearning ?? { ...DEFAULT_AGENT_SKILL_LEARNING_POLICY },
   remote: p.remote ?? { ...DEFAULT_AGENT_REMOTE_POLICY },
+  git: p.git ?? { ...DEFAULT_AGENT_GIT_POLICY },
   sdlc: p.sdlc ?? DEFAULT_ORG_SDLC_POLICY,
 });
 

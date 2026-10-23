@@ -1,20 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/outbox"
 )
 
 // memKeyring là keychain giả; broken giả máy không có keychain (Linux không có Secret Service).
@@ -172,6 +173,41 @@ func TestLoginBrowserFlow(t *testing.T) {
 	if err != nil || cfg.HubURL != hub.URL || cfg.Token != "" {
 		t.Fatalf("hive.json = %+v %v (token chỉ nằm trong keychain)", cfg, err)
 	}
+	if cfg.UserID != "u1" || cfg.OrgID != testOrg || cfg.Email != "lan@example.com" {
+		t.Fatalf("hive.json thiếu danh tính: %+v", cfg)
+	}
+	// Hộp thư đi của hive-worker đọc cùng file và keychain.
+	cfgPath, _ := a.cliConfig()
+	creds := &outbox.Credentials{Path: cfgPath, Keyring: a.keyring}
+	if id, err := creds.Current(context.Background()); err != nil || id.UserID != "u1" || id.OrgID != testOrg {
+		t.Fatalf("outbox đọc danh tính %+v %v", id, err)
+	}
+	// `hive auth store` cùng token giữ danh tính; token khác có thể là người khác nên bỏ.
+	if _, err := a.saveToken(hub.URL, testToken); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, _, _ := a.loadCLIConfig(); cfg.UserID != "u1" || cfg.TokenSHA256 != outbox.TokenFingerprint(testToken) {
+		t.Fatalf("cùng token mất danh tính hay dấu vân tay: %+v", cfg)
+	}
+	otherToken := "hive_pat_" + testOrg + "_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+	// Keychain bị ghi thẳng token khác (không qua hive): outbox không tin danh tính cũ, và auth store đúng token đang nằm
+	// trong keychain cũng không được giữ danh tính đó.
+	if err := a.keyring.Set(keyringService, hub.URL, otherToken); err != nil {
+		t.Fatal(err)
+	}
+	var oe *outbox.Error
+	if _, err := creds.Current(context.Background()); !errors.As(err, &oe) || oe.Code != "NOT_SIGNED_IN" {
+		t.Fatalf("token đổi ngoài hive mà outbox vẫn tin danh tính cũ: %v", err)
+	}
+	if _, err := a.saveToken(hub.URL, otherToken); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, _, _ := a.loadCLIConfig(); cfg.UserID != "" {
+		t.Fatalf("token khác còn danh tính cũ: %+v", cfg)
+	}
+	if _, err := a.saveToken(hub.URL, testToken); err != nil {
+		t.Fatal(err)
+	}
 
 	who := loginApp(t)
 	who.keyring, who.cliConfig = a.keyring, a.cliConfig
@@ -219,27 +255,32 @@ func TestLoginDeniedAndTimeout(t *testing.T) {
 	}
 }
 
-func TestLoginWithTokenFallsBackToFile(t *testing.T) {
+func TestLoginWithoutKeychainPointsToHiveToken(t *testing.T) {
 	hub := newFakeHub(t)
 	a := newTestApp(filepath.Join(t.TempDir(), "hive.sock"), strings.NewReader(testToken+"\n"))
 	a.keyring = &memKeyring{broken: true}
-	if code := a.run([]string{"login", "--with-token", "--hub", hub.URL}); code != exitOK {
+	if code := a.run([]string{"login", "--with-token", "--hub", hub.URL}); code != exitFailed {
 		t.Fatalf("login: %d %s", code, a.err.String())
 	}
-	if !strings.Contains(a.err.String(), "Không dùng được keychain") {
-		t.Fatalf("phải cảnh báo khi lưu token vào file: %q", a.err.String())
+	if !strings.Contains(a.err.String(), "HIVE_TOKEN") || strings.Contains(a.err.String(), testToken) {
+		t.Fatalf("phải hướng dẫn HIVE_TOKEN, không lộ token: %q", a.err.String())
 	}
-	cfg, path, err := a.loadCLIConfig()
-	if err != nil || cfg.Token != testToken {
-		t.Fatalf("hive.json = %+v %v", cfg, err)
+	if cfg, _, err := a.loadCLIConfig(); err != nil || cfg.Token != "" {
+		t.Fatalf("hive.json = %+v %v (token không được ghi ra file)", cfg, err)
 	}
-	if runtime.GOOS != "windows" {
-		if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o600 {
-			t.Fatalf("quyền hive.json = %v %v", st.Mode().Perm(), err)
-		}
+	// Keychain không đọc được: báo trước khi mở trình duyệt, để hub khỏi cấp token cá nhân bỏ phí.
+	b := loginApp(t)
+	b.keyring = failingAuthKeyring{}
+	b.openURL = func(string) error {
+		t.Error("không được mở trình duyệt khi không lưu được token")
+		return nil
 	}
+	if code := b.run([]string{"login", "--hub", hub.URL}); code != exitFailed || !strings.Contains(b.err.String(), "HIVE_TOKEN") {
+		t.Fatalf("keychain hỏng: %d %q", code, b.err.String())
+	}
+	a.getenv = func(k string) string { return map[string]string{"HIVE_TOKEN": testToken, "HIVE_HUB_URL": hub.URL}[k] }
 	if code := a.run([]string{"whoami"}); code != exitOK {
-		t.Fatalf("whoami đọc token trong file: %d %s", code, a.err.String())
+		t.Fatalf("whoami bằng HIVE_TOKEN: %d %s", code, a.err.String())
 	}
 
 	for _, in := range []string{"", "khong-phai-token\n"} {

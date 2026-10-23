@@ -4,6 +4,7 @@ import { index, integer, pgPolicy, pgRole, pgSchema, text, timestamp, unique, uu
 // Khai báo lại schema và role thay vì lấy từ tenancy: module chỉ được import module khác qua index.ts.
 const hive = pgSchema("hive");
 const hiveApp = pgRole("hive_app").existing();
+const hiveOwner = pgRole("hive_owner").existing();
 
 const inOrg = sql`org_id = hive.ctx_org()`;
 
@@ -45,6 +46,40 @@ export const scmConnections = hive
       unique("scm_connections_id_org").on(t.id, t.orgId),
       index("scm_connections_org").on(t.orgId),
       pgPolicy("scm_connections_rw", { for: "all", to: hiveApp, using: inOrg, withCheck: inOrg }),
+    ],
+  )
+  .enableRLS();
+
+/**
+ * Token git đã cấp cho run (specs/027 R9), để thu hồi token GitLab khi run xong và để kiểm toán. Không lưu giá trị token.
+ * Khoá ngoại tới orgs và khoá kép (kết nối, tổ chức) nằm trong migration viết tay, như webhook_deliveries. Không trỏ tới
+ * runs: dòng của run đã xoá vẫn phải được job quét thu hồi.
+ */
+export const runGitTokens = hive
+  .table(
+    "run_git_tokens",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      runId: uuid("run_id").notNull(),
+      attempt: integer("attempt").notNull(),
+      connectionId: uuid("connection_id").notNull(),
+      provider: scmKind("provider").notNull(),
+      /** GitLab: id của project access token. GitHub: null, token cài đặt tự hết hạn. */
+      externalId: text("external_id"),
+      /** `owner/name` của repo token được ghi. */
+      repo: text("repo").notNull(),
+      expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+      revokedAt: timestamp("revoked_at", { withTimezone: true }),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      index("run_git_tokens_run").on(t.runId, t.attempt),
+      // Job thu hồi chỉ quét token GitLab chưa thu hồi.
+      index("run_git_tokens_open").on(t.createdAt).where(sql`revoked_at is null and external_id is not null`),
+      pgPolicy("run_git_tokens_rw", { for: "all", to: hiveApp, using: inOrg, withCheck: inOrg }),
+      // hive.run_git_token_orgs (SECURITY DEFINER, chạy bằng hive_owner) tìm tổ chức còn token chưa thu hồi.
+      pgPolicy("run_git_tokens_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();

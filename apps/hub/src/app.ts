@@ -5,6 +5,7 @@ import { brotliCompress, gzip, constants as zlibConstants } from "node:zlib";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { implement } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
+import { ResponseHeadersPlugin } from "@orpc/server/plugins";
 import { contract, WORD_IMPORT_UPLOAD_PATH } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
@@ -48,7 +49,7 @@ import {
   handleWordUpload,
   wordImportHealth,
 } from "./modules/docsync/index.ts";
-import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
+import { clientMachineOf, fleetRouter, type MachineAuth, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
@@ -73,7 +74,14 @@ import {
   type RunTokenVerifier,
 } from "./modules/mcp/index.ts";
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
-import { type HubConfig, type Jobs, NotFoundError, type RequestContext, type Tx } from "./modules/platform/index.ts";
+import {
+  type HubConfig,
+  type Jobs,
+  NotFoundError,
+  type RequestContext,
+  socketAddress,
+  type Tx,
+} from "./modules/platform/index.ts";
 import {
   RunNotifier,
   type RunsEngine,
@@ -130,6 +138,8 @@ export interface AppDeps {
   resolveTxt?: TxtResolver | undefined;
   /** Thay API Telegram/Slack thật bằng máy chủ giả khi test. */
   chatApis?: ChatApiDeps | undefined;
+  /** Đổi chữ ký khoá máy lấy access token; dùng chung với cổng WSS. Không có thì máy chỉ dùng được machine token. */
+  machineAuth?: MachineAuth | undefined;
 }
 
 export function createApp({
@@ -144,6 +154,7 @@ export function createApp({
   runNotifier,
   resolveTxt,
   chatApis,
+  machineAuth,
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
@@ -158,6 +169,7 @@ export function createApp({
       : requireOrgRole(tx, userId, min),
   );
   registry.provideProjects(findProject);
+  registry.provideClientMachine(clientMachineOf);
   runsMcpTools(registry);
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
@@ -273,6 +285,7 @@ export function createApp({
       auth,
       pool,
       publicUrl,
+      machineAuth,
       workerReleases: new WorkerReleaseCache(config.workerReleases),
       issuePersonalToken: (tx, userId, purpose) => issueDesktopToken(tx, userId, registry, purpose),
     }),
@@ -337,8 +350,15 @@ export function createApp({
     artifacts: artifactsRouter({ auth, pool, jobs, publicUrl, frameKey }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
-  const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
-  const openapi = new OpenAPIHandler(router, { clientInterceptors: [mapDomainErrors] });
+  // ResponseHeadersPlugin để thủ tục có ghi trả `Hive-Client-Event` (specs/027), kể cả khi trả lỗi.
+  const rpc = new RPCHandler(router, {
+    clientInterceptors: [mapDomainErrors],
+    plugins: [new ResponseHeadersPlugin()],
+  });
+  const openapi = new OpenAPIHandler(router, {
+    clientInterceptors: [mapDomainErrors],
+    plugins: [new ResponseHeadersPlugin()],
+  });
   const app = new Hono();
   // Danh sách của trang chủ và bảng việc cỡ MB với vài nghìn task (JSON nén còn chừng một phần mười, ~6 ms mỗi MB).
   // Luồng SSE (text/event-stream) không bị nén vì phải tới từng sự kiện.
@@ -464,7 +484,7 @@ export function createApp({
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
-      context: { headers: c.req.raw.headers },
+      context: { headers: c.req.raw.headers, remoteAddress: socketAddress(c.env) },
     });
     if (matched) return c.newResponse(response.body, response);
     await next();
@@ -472,7 +492,7 @@ export function createApp({
   app.use("/api/*", async (c, next) => {
     const { matched, response } = await openapi.handle(c.req.raw, {
       prefix: "/api",
-      context: { headers: c.req.raw.headers },
+      context: { headers: c.req.raw.headers, remoteAddress: socketAddress(c.env) },
     });
     if (matched) return c.newResponse(response.body, response);
     await next();

@@ -16,7 +16,7 @@ export {
   type BlobStore,
   createPostgresBlobStore,
 } from "./blob-store.ts";
-// Sự kiện client (specs/027 US1): fleet dùng cho điểm token máy (ADR 0036), mcp và router oRPC dùng sau.
+// Sự kiện client (specs/027 US1): fleet dùng cho điểm token máy (ADR 0036), mcp và router oRPC bọc lần ghi.
 export {
   CLIENT_EVENT_RETENTION_QUEUE,
   type ClientEventMeta,
@@ -27,6 +27,16 @@ export {
   registerClientEventRetentionWorker,
   withClientEvent,
 } from "./client-events.ts";
+export { clientIp, normalizeIp, parseTrustedProxies, socketAddress, type TrustedProxies } from "./client-ip.ts";
+export {
+  type ClientRequest,
+  INVALID_KEY_MESSAGE,
+  missingKeyCounts,
+  noteMissingKey,
+  readClientRequest,
+  withMetaKey,
+} from "./client-request.ts";
+export { type ClientWriteRequest, rejectionOf, runClientWrite } from "./client-write.ts";
 export {
   type DocStorageLimits,
   type EmbeddingsConfig,

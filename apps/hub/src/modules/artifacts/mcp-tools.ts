@@ -152,6 +152,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: ArtifactMcpDep
 
   registry.register({
     name: "artifact_create",
+    writes: true,
     title: "Tạo artifact",
     description:
       "Tạo artifact (markdown, mã, html, mermaid, react) cho người dùng xem. Mặc định riêng tư; run có thể `scope: project`. Run leader truyền `threadId` để hiện thẻ trong chat; `duplicateOf` để sửa bản chỉ đọc. Không đưa bí mật vào nội dung.",
@@ -215,6 +216,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: ArtifactMcpDep
 
   registry.register({
     name: "artifact_update",
+    writes: true,
     title: "Sửa artifact",
     description:
       "Lưu phiên bản mới (nội dung đầy đủ). Truyền `baseVersion` đã đọc; có bản mới hơn thì lỗi kèm bản mới nhất để gộp rồi lưu lại. Run leader truyền `threadId`.",

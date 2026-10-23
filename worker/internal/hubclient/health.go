@@ -27,6 +27,7 @@ type Health struct {
 type HealthClient struct {
 	client *ClientWithResponses
 	base   string
+	hc     *http.Client
 }
 
 func New(baseURL string) *HealthClient {
@@ -37,7 +38,7 @@ func New(baseURL string) *HealthClient {
 func NewWithHTTP(baseURL string, hc *http.Client) *HealthClient {
 	baseURL = strings.TrimRight(baseURL, "/")
 	client, _ := NewClientWithResponses(baseURL+"/api", WithHTTPClient(hc))
-	return &HealthClient{client: client, base: baseURL}
+	return &HealthClient{client: client, base: baseURL, hc: hc}
 }
 
 func (c *HealthClient) Health(ctx context.Context) (Health, error) {

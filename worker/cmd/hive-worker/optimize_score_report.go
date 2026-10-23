@@ -37,7 +37,7 @@ type scoreReportView struct {
 
 func registeredHub(cfgPath string) (config.Config, bool) {
 	cfg, err := config.Load(cfgPath)
-	if err != nil || cfg.HubURL == "" || cfg.MachineToken == "" {
+	if err != nil || !cfg.Registered() {
 		return cfg, false
 	}
 	return cfg, true

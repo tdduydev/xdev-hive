@@ -1,6 +1,12 @@
 {
   "workerToHub": [
     {
+      "type": "reauth",
+      "v": 1,
+      "id": "m-reauth",
+      "accessToken": "eyJhbGciOiJIUzI1NiJ9.e30.sig"
+    },
+    {
       "type": "hello",
       "v": 1,
       "id": "m-hello",
@@ -140,6 +146,13 @@
         "deletedLines": 5,
         "changedFiles": ["src/a.ts", "assets/icon.bin"]
       }
+    },
+    {
+      "type": "git_token_request",
+      "v": 1,
+      "id": "m-git-token",
+      "runId": "run-1",
+      "attempt": 1
     },
     {
       "type": "account_login_event",
@@ -340,7 +353,28 @@
       "attempt": 1,
       "leaseId": "lease-1",
       "expiresAt": "2026-10-11T00:05:00.000Z",
-      "runToken": "jwt"
+      "runToken": "jwt",
+      "git": {
+        "host": "github.com",
+        "username": "x-access-token",
+        "token": "ghs_example",
+        "expiresAt": "2026-10-11T01:00:00.000Z",
+        "repo": "acme/web"
+      }
+    },
+    {
+      "type": "git_token",
+      "v": 1,
+      "id": "h-git-token",
+      "runId": "run-1",
+      "attempt": 1,
+      "git": {
+        "host": "github.com",
+        "username": "x-access-token",
+        "token": "ghs_example",
+        "expiresAt": "2026-10-11T01:00:00.000Z",
+        "repo": "acme/web"
+      }
     },
     {
       "type": "ack",

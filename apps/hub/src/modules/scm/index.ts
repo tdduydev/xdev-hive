@@ -62,6 +62,18 @@ export {
   type MemoryRepo,
 } from "./memory.ts";
 export { checkConnection, type ScmDeps, scmRouter } from "./router.ts";
+export {
+  canIssueRunGitToken,
+  issueRunGitToken,
+  RUN_GIT_TOKEN_QUEUE,
+  type RunGitTokenDeps,
+  type RunGitTokenSweepDeps,
+  type RunGitTokenTarget,
+  registerRunGitTokenSweep,
+  revokeRunGitTokens,
+  runGitTokenQueue,
+  sweepRunGitTokens,
+} from "./run-token.ts";
 export type {
   AccessCheck,
   BranchRules,
@@ -94,6 +106,7 @@ export type {
   RepoVisibility,
   ReviewComment,
   ReviewCommentInput,
+  RunGitTokenGrant,
   ScmUser,
   WebhookEvent,
   WebhookInput,

@@ -47,6 +47,11 @@ export interface McpTool<Input extends z.ZodObject = z.ZodObject, Prepared = und
    */
   forLeader?: boolean | undefined;
   /**
+   * Tool có ghi: lời gọi mang khoá chống trùng thì chạy đúng một lần và để lại sự kiện client (specs/027 FR-001). Phải
+   * khớp `CLIENT_WRITE_TOOLS` của contracts, vì hộp thư đi trên máy dựa vào bảng đó để biết giữ lại hay không.
+   */
+  writes?: boolean | undefined;
+  /**
    * Chạy trước handler, ngoài transaction, sau khi đã chọn tổ chức. Dành cho việc chờ mạng (vd. gọi API embeddings)
    * để không giữ kết nối database trong lúc chờ; kết quả truyền vào handler.
    */
@@ -63,6 +68,7 @@ export class McpToolRegistry {
   #memberships: ((tx: Tx, userId: string) => Promise<McpOrgMembership[]>) | undefined;
   #authorize: Authorize | undefined;
   #projects: ((tx: Tx, ref: string) => Promise<McpProjectRef | null>) | undefined;
+  #clientMachine: ((tx: Tx, userId: string, machineId: string) => Promise<string | null>) | undefined;
 
   // Ghép tại app để tenancy vẫn chỉ phụ thuộc registry, không tạo vòng import giữa hai module.
   provideAuthorization(fn: Authorize): void {
@@ -91,6 +97,16 @@ export class McpToolRegistry {
   project(tx: Tx, ref: string): Promise<McpProjectRef | null> {
     if (!this.#projects) throw new Error("Chưa cấu hình tra cứu dự án cho MCP.");
     return this.#projects(tx, ref);
+  }
+
+  // Cùng lý do: fleet đăng ký sau mcp, mcp không import fleet để kiểm máy client tự khai.
+  provideClientMachine(fn: (tx: Tx, userId: string, machineId: string) => Promise<string | null>): void {
+    this.#clientMachine = fn;
+  }
+
+  /** Máy `machineId` nếu là máy của người dùng (hay máy dùng chung của nhóm họ); máy lạ thì `null`, không lỗi. */
+  clientMachine(tx: Tx, userId: string, machineId: string): Promise<string | null> {
+    return this.#clientMachine ? this.#clientMachine(tx, userId, machineId) : Promise.resolve(null);
   }
 
   register<Input extends z.ZodObject, Prepared = undefined>(tool: McpTool<Input, Prepared>): void {
