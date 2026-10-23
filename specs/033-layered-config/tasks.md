@@ -12,10 +12,10 @@ The MVP is Phases 1 to 4. Later phases are listed so nothing is lost; they are n
 
 ## Phase 1: Contract and engine (MVP)
 
-- [ ] T001 [US1] Define layers, merge kinds, effective setting, snapshot and the `layeredConfig` router contract; register it in the root contract (`packages/contracts/src/layered-config.ts`, `packages/contracts/src/index.ts`)
-- [ ] T002 [US1] Registry of the MVP settings with kind, layers, default, safe value, dangerous flag (`apps/hub/src/modules/layers/registry.ts`)
-- [ ] T003 [US2] Pure merge engine: ceiling, override, additive, lock, over-ceiling, `configVersion` hash (`apps/hub/src/modules/layers/engine.ts`)
-- [ ] T004 [US2] Engine unit tests: every kind, lock above and below, over-ceiling, null versus unset, additive deny wins, 100 randomised layer combinations never widen a ceiling (`apps/hub/src/modules/layers/engine.test.ts`)
+- [x] T001 [US1] Define layers, merge kinds, effective setting, snapshot and the `layeredConfig` router contract; register it in the root contract (`packages/contracts/src/layered-config.ts`, `packages/contracts/src/index.ts`)
+- [x] T002 [US1] Registry of the MVP settings with kind, layers, default, safe value, dangerous flag (`apps/hub/src/modules/layers/registry.ts`)
+- [x] T003 [US2] Pure merge engine: ceiling, override, additive, lock, over-ceiling, `configVersion` hash (`apps/hub/src/modules/layers/engine.ts`)
+- [x] T004 [US2] Engine unit tests: every kind, lock above and below, over-ceiling, null versus unset, additive deny wins, 100 randomised layer combinations never widen a ceiling (`apps/hub/src/modules/layers/engine.test.ts`)
 
 ## Phase 2: Sources and storage (MVP)
 
@@ -48,3 +48,4 @@ The MVP is Phases 1 to 4. Later phases are listed so nothing is lost; they are n
 - [ ] T027 [US9] Move a project between teams with preview (FR-031)
 - [ ] T028 [US8] Fold `sandbox_org_settings.locked`, skill-pack and MCP rules into the registry (FR-020, FR-071)
 - [ ] T029 [US8] Make `resolveModel`, `resolvePermission`, `clampBudget`, `machineSlots` call the engine (FR-016)
+- [ ] T030 [US8] SDLC modes (auto-approve floor, deny paths) as layered settings. Deferred: `apps/hub/src/modules/sdlc/**` and `packages/contracts/src/sdlc.ts` belong to spec 035 work right now; start after it merges
