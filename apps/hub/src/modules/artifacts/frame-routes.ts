@@ -17,8 +17,9 @@ import type { ArtifactType } from "@xdev-hive/contracts";
 import { and, eq, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import type pg from "pg";
-import { ConflictError, ForbiddenError, type Tx, withTenant } from "../platform/index.ts";
+import { ConflictError, createPostgresBlobStore, ForbiddenError, type Tx, withTenant } from "../platform/index.ts";
 import { artifactError, type Reader } from "./access.ts";
+import { blobTypeOf, isBlobType } from "./blob-types.ts";
 import { artifactPolicyOf } from "./limits.ts";
 import { countView, PublicViewLog, publicTarget, resolvePublicLink } from "./public-links.ts";
 import {
@@ -32,7 +33,7 @@ import {
 import { artifactPreviews, artifacts } from "./schema.ts";
 import { artifactFor, compileFor } from "./service.ts";
 import { FRAME_TICKET_TTL_SEC, type FrameTicket, signFrameTicket, verifyFrameTicket } from "./ticket.ts";
-import { checkContent, type VersionRow, versionRow } from "./versions.ts";
+import { checkContent, versionRow } from "./versions.ts";
 
 /*
  * Khung cách ly trên host của hub (plan.md D4–D7, FR-070…FR-073). `/_artifact/*` không có phiên người dùng: không đọc
@@ -55,6 +56,7 @@ export interface FrameDeps {
 }
 
 const frameUrlOf = (publicUrl: string, ticket: string) => new URL(`/_artifact/frame/${ticket}`, publicUrl).href;
+const blobBaseOf = (publicUrl: string) => new URL("/_artifact/blob/", publicUrl).href;
 export const hubLibBase = (publicUrl: string) => new URL("/_artifact/lib/", publicUrl).href;
 
 const isFrameType = (type: ArtifactType): type is FrameType => (FRAME_TYPES as readonly string[]).includes(type);
@@ -86,16 +88,16 @@ export function libManifestLoader(libDir: string = LIB_DIST_DIR): () => LibManif
   };
 }
 
-/** Phiên bản xem được trong khung: còn nội dung (chưa xoá vì bí mật) và artifact không nằm trong thùng rác. */
+/** Phiên bản xem được trong khung: còn nội dung hoặc tệp (chưa xoá vì bí mật) và artifact không nằm trong thùng rác. */
 async function framedVersion(tx: Tx, reader: Reader, input: { id: string; version: number }) {
   const row = await artifactFor(tx, reader, input.id);
   if (row.deletedAt) throw artifactError("ARTIFACT_NOT_FOUND", "Artifact đang ở thùng rác. Khôi phục trước khi xem.");
   assertFrameType(row.type);
   const v = await versionRow(tx, row.id, input.version);
   if (!v) throw artifactError("ARTIFACT_NOT_FOUND", "Không tìm thấy phiên bản này.");
-  if (v.tombstonedAt || v.content === null)
+  if (v.tombstonedAt || (v.content === null && !v.blobId))
     throw artifactError("ARTIFACT_NOT_FOUND", "Phiên bản này đã bị xoá vì chứa bí mật.");
-  return { row: { ...row, type: row.type }, v: v as VersionRow & { content: string } };
+  return { row: { ...row, type: row.type }, v };
 }
 
 /** `artifacts.frameUrl`: vé ≤ 5 phút cho đúng một phiên bản người gọi đọc được. */
@@ -126,6 +128,9 @@ export async function frameDocument(
   manifest: () => LibManifest | null,
 ): Promise<{ html: string; csp: string }> {
   const { row, v } = await framedVersion(tx, reader, input);
+  // App đệm tài liệu khung để mở offline; tệp ảnh/PDF cần vé còn hạn từ hub nên không đệm được theo cách này.
+  if (isBlobType(row.type) || v.content === null)
+    throw new ConflictError("ARTIFACT_FRAME_UNAVAILABLE", "Ảnh và PDF chỉ xem được khi có kết nối tới hub.");
   const libs = manifest();
   if (!libs) throw new ConflictError("ARTIFACT_FRAME_UNAVAILABLE", "Hub chưa có bộ thư viện của khung artifact.");
   return {
@@ -157,6 +162,7 @@ export async function createPreview(
   const key = requireKey(deps);
   const policy = await artifactPolicyOf(tx);
   assertFrameType(input.type);
+  if (isBlobType(input.type)) throw artifactError("ARTIFACT_TYPE_DISABLED", "Ảnh và PDF không có bản xem trước.");
   checkContent(policy, input.type, { content: input.content, compiled: { compiled: null, compileError: null } }, null);
   const compiled = await compileFor(input.type, input.content);
   await tx.execute(sql`
@@ -207,6 +213,12 @@ const FRAME_HEADERS = {
   "Referrer-Policy": "no-referrer",
 } as const;
 
+/** Khung là origin mờ nên `<img>` và `fetch` của nó là yêu cầu chéo origin; `same-site` của FRAME_HEADERS sẽ chặn chúng. */
+const CROSS_ORIGIN = {
+  "Cross-Origin-Resource-Policy": "cross-origin",
+  "Access-Control-Allow-Origin": "*",
+} as const;
+
 const LIB_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -220,6 +232,8 @@ const COMPRESSIBLE = new Set([".css", ".js", ".mjs", ".json", ".map"]);
 type Loaded = {
   type: FrameType;
   content: string;
+  /** Ảnh và PDF: tệp trong kho file; khung đọc qua `/_artifact/blob/<vé>`. */
+  blobId: string | null;
   compiled: string | null;
   compileError: string | null;
   preview: boolean;
@@ -234,7 +248,7 @@ async function loadFramed(tx: Tx, t: FrameTicket): Promise<Loaded | "gone" | nul
       .select()
       .from(artifactPreviews)
       .where(and(eq(artifactPreviews.id, t.p), sql`${artifactPreviews.expiresAt} > now()`));
-    if (!p || !isFrameType(p.type)) return null;
+    if (!p || !isFrameType(p.type) || isBlobType(p.type)) return null;
     let compileError: string | null = null;
     // Bảng xem trước không có cột lỗi biên dịch: `react` không có bản biên dịch nghĩa là biên dịch lỗi, dựng lại để có chữ lỗi.
     if (p.type === "react" && !p.compiled) {
@@ -244,7 +258,15 @@ async function loadFramed(tx: Tx, t: FrameTicket): Promise<Loaded | "gone" | nul
         compileError = error instanceof Error ? error.message : String(error);
       }
     }
-    return { type: p.type, content: p.content, compiled: p.compiled, compileError, preview: true, publicLink: false };
+    return {
+      type: p.type,
+      content: p.content,
+      blobId: null,
+      compiled: p.compiled,
+      compileError,
+      preview: true,
+      publicLink: false,
+    };
   }
   // Vé của link công khai được kiểm lại link mỗi lần nạp (còn hạn, chưa thu hồi, chính sách bật…): vé sống 5 phút, link
   // có thể bị thu hồi trong khoảng đó. Mọi lý do đều là "không có" để không dò được link đã từng tồn tại.
@@ -254,7 +276,8 @@ async function loadFramed(tx: Tx, t: FrameTicket): Promise<Loaded | "gone" | nul
     await countView(tx, target.linkId);
     return {
       type: target.type,
-      content: target.content,
+      content: target.content ?? "",
+      blobId: target.blobId,
       compiled: target.compiled,
       compileError: target.compileError,
       preview: false,
@@ -269,15 +292,53 @@ async function loadFramed(tx: Tx, t: FrameTicket): Promise<Loaded | "gone" | nul
   if (a.deletedAt) return "gone";
   const v = await versionRow(tx, t.a, t.v);
   if (!v) return null;
-  if (v.tombstonedAt || v.content === null) return "gone";
+  if (v.tombstonedAt || (v.content === null && !v.blobId)) return "gone";
   return {
     type: a.type,
-    content: v.content,
+    content: v.content ?? "",
+    blobId: v.blobId,
     compiled: v.compiled,
     compileError: v.compileError,
     preview: false,
     publicLink: false,
   };
+}
+
+type BlobBody = { bytes: Uint8Array<ArrayBuffer>; mediaType: string };
+
+/**
+ * Tệp của một vé: cùng kiểm với `loadFramed` (link còn mở, artifact chưa vào thùng rác, phiên bản còn tệp) để vé của link
+ * vừa thu hồi không đọc được tệp. Đọc hết trong transaction vì luồng của `BlobStore` chỉ sống trong đó; trần cỡ đã chặn
+ * lúc tải lên (`maxBlobBytes`) nên gom vào bộ nhớ có giới hạn.
+ */
+async function loadBlob(tx: Tx, t: FrameTicket): Promise<BlobBody | "gone" | null> {
+  if (!("a" in t)) return null;
+  let blobId: string | null;
+  if (t.s) {
+    const target = await publicTarget(tx, t.s);
+    if (!target || target.artifactId !== t.a || target.version !== t.v) return null;
+    blobId = target.blobId;
+  } else {
+    const [a] = await tx.select({ deletedAt: artifacts.deletedAt }).from(artifacts).where(eq(artifacts.id, t.a));
+    if (!a) return null;
+    if (a.deletedAt) return "gone";
+    const v = await versionRow(tx, t.a, t.v);
+    if (!v) return null;
+    if (v.tombstonedAt) return "gone";
+    blobId = v.blobId;
+  }
+  if (!blobId) return null;
+  const store = createPostgresBlobStore();
+  const ref = await store.stat(tx, t.o, blobId);
+  // Chỉ phục vụ loại đã qua kiểm magic bytes lúc tải lên; loại khác (SVG, zip…) không bao giờ ra khỏi route này.
+  if (!ref || !blobTypeOf(ref.mediaType)) return null;
+  const bytes = new Uint8Array(ref.size);
+  let at = 0;
+  for await (const chunk of await store.get(tx, t.o, blobId)) {
+    bytes.set(chunk, at);
+    at += chunk.length;
+  }
+  return { bytes, mediaType: ref.mediaType };
 }
 
 function plain(status: 403 | 404 | 410 | 429 | 503, text: string, extra: Record<string, string> = {}): Response {
@@ -346,6 +407,8 @@ export function frameRoutes(deps: FrameRoutesDeps): Hono {
   const pool = deps.pool;
   if (pool) setInterval(() => void viewLog.flush(pool), VIEW_FLUSH_MS).unref();
 
+  const blobBase = blobBaseOf(deps.publicUrl);
+
   app.get("/_artifact/frame/:ticket", async (c) => {
     const ticket = deps.frameKey ? verifyFrameTicket(deps.frameKey, c.req.param("ticket")) : null;
     if (!ticket) return plain(403, "Vé khung không hợp lệ hoặc đã hết hạn. Tải lại khung để nhận vé mới.");
@@ -375,17 +438,52 @@ export function frameRoutes(deps: FrameRoutesDeps): Hono {
       theme: ticket.t,
       manifest: libs,
       libBase,
+      // Cùng vé với khung: tệp sống đúng bằng đời khung và chịu cùng kiểm thu hồi.
+      blobUrl: found.blobId ? `${blobBase}${c.req.param("ticket")}` : undefined,
     });
     return new Response(html, {
       status: 200,
       headers: {
         ...FRAME_HEADERS,
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Security-Policy": buildCsp({ libBase }),
+        "Content-Security-Policy": buildCsp({ libBase, blobBase: found.blobId ? blobBase : undefined }),
         // Bản xem trước đổi theo từng lần gõ và có thể chứa thứ người dùng chưa định lưu; phiên bản thì bất biến nên
         // giữ trong cache riêng đúng bằng đời của vé.
         "Cache-Control":
           found.preview || found.publicLink ? "private, no-store" : `private, max-age=${FRAME_TICKET_TTL_SEC}`,
+      },
+    });
+  });
+
+  /*
+   * Tệp của ảnh và PDF. Cùng vé với khung nên không có phiên người dùng; khung là origin mờ nên đọc bằng CORS `*`, an
+   * toàn vì quyền nằm ở vé chứ không ở origin. Link công khai chung hạn mức IP/link với khung, không đếm thêm lượt xem
+   * (khung đã đếm).
+   */
+  app.get("/_artifact/blob/:ticket", async (c) => {
+    const ticket = deps.frameKey ? verifyFrameTicket(deps.frameKey, c.req.param("ticket")) : null;
+    if (!ticket) return plain(403, "Vé không hợp lệ hoặc đã hết hạn. Tải lại khung để nhận vé mới.", CROSS_ORIGIN);
+    const publicLink = "s" in ticket && ticket.s ? ticket.s : null;
+    if (publicLink) {
+      const verdict = limiter.ip(ipOf(c));
+      if (!verdict.ok) return tooMany(verdict);
+      const perLink = limiter.link(publicLink);
+      if (!perLink.ok) return tooMany(perLink);
+    }
+    if (!deps.pool) return plain(503, "Hub chưa nối database nên chưa mở được artifact.", CROSS_ORIGIN);
+    const found = await withTenant(deps.pool, { orgId: ticket.o }, (tx) => loadBlob(tx, ticket));
+    if (found === null) return plain(404, publicLink ? PUBLIC_NOT_FOUND_TEXT : "Không tìm thấy tệp.", CROSS_ORIGIN);
+    if (found === "gone") return plain(410, "Artifact hoặc phiên bản này đã bị xoá.", CROSS_ORIGIN);
+    return new Response(found.bytes, {
+      status: 200,
+      headers: {
+        ...FRAME_HEADERS,
+        ...CROSS_ORIGIN,
+        "Content-Type": found.mediaType,
+        "Content-Length": String(found.bytes.length),
+        // Mở thẳng URL này không có lý do chạy gì: tệp chỉ là dữ liệu cho khung.
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Cache-Control": publicLink ? "private, no-store" : `private, max-age=${FRAME_TICKET_TTL_SEC}`,
       },
     });
   });

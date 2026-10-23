@@ -65,7 +65,8 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
 
   login [--hub URL] [--with-token] [--no-browser]
                           đăng nhập hub (chỉ cần cho --task, --project, ls --all, attach run)
-  logout                  xoá token trên máy
+  logout [--outbox send|keep|drop]
+                          xoá token trên máy (hỏi trước nếu hộp thư đi còn mục)
   whoami                  đang đăng nhập bằng ai, hub nào
   chat [--cli claude|codex|gemini] [--account ID] [--model M] [--task KEY | --project KEY] [--no-record] [--force]
        [--escape KEY] [-- đối số thêm cho CLI]
@@ -79,6 +80,7 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
   kill <id>               ngắt phiên
   remote <lệnh>           điều khiển từ xa máy này: status, on, off, roots, devices, pair, set, watch
                           (hive remote help để xem đủ)
+  outbox [--json]         hộp thư đi: các lần ghi chưa tới hub; drop, retry, export (hive outbox help để xem đủ)
   version                 phiên bản hive và hive-worker
   test-summary <file>     tóm tắt Playwright JSON/JUnit XML thành metadata QA (log và code ở lại máy)
 
@@ -126,6 +128,8 @@ func (a *app) run(args []string) int {
 		return a.whoami(rest)
 	case "remote":
 		return a.remote(rest)
+	case "outbox":
+		return a.outbox(rest)
 	case "__hook":
 		// Cần hook của CLI (T072); chưa làm thì báo rõ thay vì im lặng.
 		return a.errorf(exitUsage, "Lệnh hive %s chưa hỗ trợ trong bản này.", cmd)

@@ -352,7 +352,7 @@ with the desktop app ignores `update`; the app updates as a whole.
 
 ### 6.8 Remote viewing and control of a session
 
-Specs/010 and ADR 0019; packets in [architecture.md §5.3](architecture.md#53-phiên-terminal-và-điều-khiển-từ-xa-spec-010),
+Specs/010 and ADR 0019; packets in [architecture.md §5.4](architecture.md#54-phiên-terminal-và-điều-khiển-từ-xa-spec-010),
 user guide in [hive-cli.md](hive-cli.md). The threat model treats the hub as untrusted.
 
 ```mermaid

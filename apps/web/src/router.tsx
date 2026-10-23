@@ -59,6 +59,10 @@ const RemotePage = lazyRouteComponent(() => import("@/pages/remote/remote-page.t
 const RemoteSessionPage = lazyRouteComponent(() => import("@/pages/remote/session-page.tsx"), "RemoteSessionPage");
 const RemotePairPage = lazyRouteComponent(() => import("@/pages/remote/pair-page.tsx"), "RemotePairPage");
 const RemoteDevicesPage = lazyRouteComponent(() => import("@/pages/remote/devices-page.tsx"), "RemoteDevicesPage");
+const ArtifactUsagePage = lazyRouteComponent(
+  () => import("@/pages/admin/artifact-usage-page.tsx"),
+  "ArtifactUsagePage",
+);
 const PublicLinksPage = lazyRouteComponent(() => import("@/pages/admin/public-links-page.tsx"), "PublicLinksPage");
 const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
 const RoleDetailPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RoleDetailPage");
@@ -543,6 +547,7 @@ const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/policies", component: PoliciesPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/config", component: OrgConfigPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/public-links", component: PublicLinksPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/artifact-usage", component: ArtifactUsagePage }),
   createRoute({
     getParentRoute: () => inOrgRoute,
     path: "/admin/audit",

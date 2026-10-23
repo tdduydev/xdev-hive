@@ -675,7 +675,7 @@ trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.
     **Mức**: nặng
 
 - [x] T092 [P] Tài liệu
-  - Đã làm (CLI010B): `architecture.md` dòng module `terminal`, mục 5.3 mới (gói `term_*`, khung WS trình duyệt, vé,
+  - Đã làm (CLI010B): `architecture.md` dòng module `terminal`, mục 5.4 mới (gói `term_*`, khung WS trình duyệt, vé,
     ghi phiên, xem trực tiếp, xác thực ở máy, tắt khẩn cấp, SC-008), token và rủi ro; `add.md` 5.1–5.3, 6.8, 8.2, 10, 11;
     `sdd.md` 3.2, 4.1, 4.2, 4.4, 7, 8; `srs.md` RMT-01…13, IF-07, NFR-17; `hive-cli.md` mới (gồm rủi ro B của
     `security-review.md`). Các mục ngoài phạm vi (T070–T072, T080–T081) ghi là chưa có.

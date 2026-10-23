@@ -12,6 +12,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import type { Jobs } from "../platform/index.ts";
 import { onAccountLoginEvent, onMachineDisconnected } from "./accounts.ts";
 import { registerConnection, sendToMachine, unregisterConnection } from "./connections.ts";
+import type { MachineAuth, MachineSession } from "./machine-auth.ts";
 import { type AuthedMachine, authenticateMachine, markOffline, markOnline } from "./machines.ts";
 
 export const WORKER_WS_PATH = "/ws/worker";
@@ -40,7 +41,7 @@ export type TerminalMessage = Extract<
 type RemoteTerminalMessage = Extract<WorkerToHub, { type: "term_denied" | "term_granted" | "term_revoked" }>;
 export type RunMessage = Exclude<
   WorkerToHub,
-  { type: "hello" | "heartbeat" | "account_login_event" } | TerminalMessage | RemoteTerminalMessage
+  { type: "hello" | "heartbeat" | "reauth" | "account_login_event" } | TerminalMessage | RemoteTerminalMessage
 >;
 
 /** Gói terminal Leader (specs/010). Module terminal đăng ký qua registerTerminalHandlers; fleet không import terminal. */
@@ -110,12 +111,15 @@ export interface GatewayOptions {
   /** Gói của run (job_accept, run_event, log_chunk…). Không có handler thì bỏ qua. */
   onMessage?: RunHandlers["onMessage"];
   onHello?: RunHandlers["onHello"];
+  /** Nhận access token máy và gói reauth (ADR 0033). Không có thì chỉ nhận machine token như trước. */
+  machineAuth?: MachineAuth | undefined;
   logger?: Pick<Console, "info" | "warn" | "error">;
 }
 
 /**
- * Gắn WSS /ws/worker vào server HTTP của @hono/node-server. Xác thực bằng machine token trong header Authorization
- * trước khi nâng cấp, để kết nối không hợp lệ bị từ chối bằng 401 thay vì mở rồi mới đóng.
+ * Gắn WSS /ws/worker vào server HTTP của @hono/node-server. Xác thực bằng access token máy (hoặc machine token khi máy
+ * chưa có khoá) trong header Authorization trước khi nâng cấp, để kết nối không hợp lệ bị từ chối bằng 401 thay vì mở
+ * rồi mới đóng.
  */
 export function attachWorkerGateway(server: Server, opts: GatewayOptions): { close: () => Promise<void> } {
   const log = opts.logger ?? console;
@@ -132,10 +136,10 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
     socket.on("error", () => socket.destroy());
     const token = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
     if (!token) return reject(socket, 401, "Thiếu machine token.");
-    authenticateMachine(opts.pool, token).then(
-      (machine) => {
-        if (!machine) return reject(socket, 401, "Machine token không hợp lệ hoặc đã bị thu hồi.");
-        wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, machine));
+    authenticate(token).then(
+      (auth) => {
+        if (!auth) return reject(socket, 401, "Machine token không hợp lệ hoặc đã bị thu hồi.");
+        wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, auth));
       },
       (error: unknown) => {
         log.error("Lỗi xác thực worker", error);
@@ -144,9 +148,27 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
     );
   };
 
-  const onConnection = (ws: WebSocket, machine: AuthedMachine) => {
+  const authenticate = async (token: string): Promise<MachineSession | null> => {
+    if (opts.machineAuth) return opts.machineAuth.authenticate(token);
+    const machine = await authenticateMachine(opts.pool, token);
+    return machine ? { machine } : null;
+  };
+
+  const onConnection = (ws: WebSocket, auth: MachineSession) => {
+    const { machine } = auth;
     let session: string | undefined;
     let idle: NodeJS.Timeout | undefined;
+    // Kết nối mở bằng access token chỉ sống tới exp; worker gửi reauth trước hạn để giữ kết nối (ADR 0033).
+    let expiry: NodeJS.Timeout | undefined;
+    const expireAt = (exp: Date | undefined) => {
+      clearTimeout(expiry);
+      if (!exp) return;
+      expiry = setTimeout(
+        () => ws.close(CLOSE.revoked, "Access token máy đã hết hạn"),
+        Math.max(0, exp.getTime() - Date.now()),
+      );
+    };
+    expireAt(auth.exp);
     const helloTimer = setTimeout(() => ws.close(CLOSE.timeout, "Không nhận được hello"), helloTimeoutMs);
     const touch = () => {
       clearTimeout(idle);
@@ -190,6 +212,7 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
           type: "welcome",
           sessionId: session,
           heartbeatSec,
+          ...(auth.exp ? { accessTokenExp: auth.exp.toISOString() } : {}),
           ...extra,
           features: [...features, ...(extra.features ?? [])],
         });
@@ -202,6 +225,16 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
       switch (msg.type) {
         case "hello":
           return ws.close(CLOSE.badMessage, "Đã gửi hello rồi");
+        case "reauth": {
+          // Machine token không có hạn nên không có gì để gia hạn; worker đúng hợp đồng không gửi.
+          if (!auth.exp || !opts.machineAuth) return ws.close(CLOSE.badMessage, "Kết nối không mở bằng access token");
+          const next = await opts.machineAuth.authenticate(msg.accessToken);
+          if (!next?.exp || next.machine.id !== machine.id)
+            return ws.close(CLOSE.revoked, "Access token máy không hợp lệ");
+          auth.exp = next.exp;
+          expireAt(next.exp);
+          return;
+        }
         case "account_login_event":
           return onAccountLoginEvent(machine, msg);
         case "term_opened":
@@ -248,6 +281,7 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
     ws.on("close", () => {
       clearTimeout(helloTimer);
       clearTimeout(idle);
+      clearTimeout(expiry);
       if (!session || !unregisterConnection(machine.id, ws)) return;
       onMachineDisconnected(machine.id).catch((error: unknown) =>
         log.error("Không kết thúc được phiên đăng nhập gói của máy", error),

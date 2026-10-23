@@ -409,7 +409,26 @@ Phần này cũng không đi qua hub ở đợt P1. Quyết định: [ADR 0037](
 Mọi lần `ctxsync` ghi đi qua kho sao lưu của `memstore`, nên hoàn tác đưa file về đúng byte. Lệnh con `context` của
 `hive-worker` đã có; `optimize all` và các lệnh Tauri tương ứng chưa có.
 
-### 5.3 Phiên terminal và điều khiển từ xa (spec 010)
+### 5.3 Kho bí mật tại máy (spec 031)
+
+Giá trị bí mật không đi qua hub. Hub chỉ gửi chính sách xuống và nhận một con số. Quyết định:
+[ADR 0038](adr/0038-local-secrets-keyring.md). Thiết kế: [plan.md](../specs/031-local-secrets/plan.md).
+
+| Gói / nơi | Việc | Trạng thái |
+|---|---|---|
+| `worker/internal/secretstore` | Chủ duy nhất của kho: giá trị trong kho hệ điều hành qua `go-keyring` (service `dev.xdev.hive.secrets`), chia khối tối đa 1800 byte thô vì Windows chỉ nhận 2560 byte mỗi mục; danh mục `secrets.json` (tên, mô tả, ngày, dự án gán; không giá trị); nhật ký cấp `secret-grants.jsonl`; hàm `Grant` áp chính sách, đọc kho một lần, ghi nhật ký, trả môi trường và bộ che | Do luồng worker làm |
+| `worker/internal/secretmask` | Che giá trị chính xác và các dạng base64, base64url, URL-encoding, nháy shell, JSON thành `[đã che]`, theo luồng; thay bộ che riêng của `terminal/redact.go` | Do luồng worker làm |
+| `hive-worker secrets …` | Lệnh con cho desktop (nhận giá trị qua stdin) và `secrets exec` để terminal desktop lấy bí mật trong tiến trình con, không ghi giá trị vào script tạm | Do luồng worker làm |
+| `packages/contracts` | Điều khoản `secretInjection` (`allow`, `approve`, `deny`) trong chính sách; trường `welcome.policy.secretInjection` và `job_offer.spec.policy.secretInjection`; `report.secretsInjected` (số nguyên 0–64) | Có code |
+| `apps/hub/src/modules/runs` | Gửi chính sách xuống worker; `sanitizeSecretsReport` giữ `secretsInjected` và bỏ mọi khoá báo cáo có chữ "secret" trước khi ghi `run_events` và `runs.result`; `secretsInjectedOf` đọc con số cho màn run | Có code |
+| `apps/web` | Mục "Bí mật tại máy" ở `/admin/policies` (Cho phép, Hỏi trước, Không cho; chỉ xem khi thiếu quyền ghi) và dòng "Dùng N bí mật tại máy" ở trang run | Có code |
+
+Hub không có bảng mới cho tính năng này, nên không có migration và không có mục mới trong `rls.db.test.ts`. Hub không nhận,
+không lưu và không trả tên hay giá trị bí mật; test `runs.db.test.ts` (nhóm "bí mật tại máy") khẳng định điều đó cho dòng
+`runs`, `run_events`, màn run và route sự kiện. Worker cũ không gửi `secretsInjected` thì màn run không hiện dòng nào; hub cũ
+bỏ qua `secretInjection` vì báo cáo là bản ghi tự do và chính sách có mặc định.
+
+### 5.4 Phiên terminal và điều khiển từ xa (spec 010)
 
 Thiết kế: [plan.md](../specs/010-hive-cli-remote/plan.md), [ADR 0019](adr/0019-hive-cli-and-remote-sessions.md).
 Hướng dẫn dùng: [hive-cli.md](hive-cli.md). Mô hình đe doạ coi hub là không đáng tin: người giữ hub hay đứng giữa đường

@@ -75,6 +75,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "task_update",
+    writes: true,
     title: "Báo cáo task",
     // Mô tả ngắn: tools/list của run code có ngân sách byte (mcp-run.db.test.ts).
     description:
@@ -113,6 +114,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "review_submit",
+    writes: true,
     title: "Nộp kết quả review chéo",
     description:
       "Chỉ dành cho run review chéo: nộp điểm (0–10), tóm tắt và các phát hiện cho PR của run cha, kèm checklist " +
@@ -138,6 +140,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "plan_submit",
+    writes: true,
     title: "Nộp kế hoạch",
     description:
       "Chỉ dành cho run lập kế hoạch (plan mode): nộp tóm tắt, các bước, file dự kiến đụng, rủi ro và câu hỏi cho " +
@@ -164,6 +167,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "skill_proposal_submit",
+    writes: true,
     title: "Nộp đề xuất skill",
     description:
       "Chỉ dành cho run đề xuất skill: nộp tối đa 3 SKILL.md mới hoặc bản sửa skill đã có, mỗi cái kèm lý do. Nộp " +
@@ -190,6 +194,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "brief_submit",
+    writes: true,
     title: "Nộp brief của dự án",
     description:
       "Chỉ dành cho run viết brief: nộp bản tóm tắt repo (Markdown) và commit của nhánh chính đã đọc. Hub lưu brief " +
@@ -213,6 +218,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "doc_check_submit",
+    writes: true,
     title: "Nộp kết quả kiểm tài liệu",
     description:
       "Chỉ dành cho run kiểm tài liệu của quy trình duyệt: nộp điểm 0–10, kết quả từng mục kiểm (đạt hay không, ghi " +
@@ -253,6 +259,7 @@ export function registerMcpTools(registry: McpToolRegistry): void {
 
   registry.register({
     name: "doc_assist_submit",
+    writes: true,
     title: "Nộp kết quả trợ lý tài liệu",
     description:
       "Chỉ dành cho run trợ lý của trình soạn tài liệu: gọi một lần khi đã góp ý xong (doc_suggest, doc_comment), " +

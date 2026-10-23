@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -102,31 +101,56 @@ func TestAuthReadsExistingKeychainWithoutCLIConfig(t *testing.T) {
 	}
 }
 
-func TestAuthFileFallbackAndHubIsolation(t *testing.T) {
+func TestAuthStoreWithoutKeychainKeepsTokenOutOfFiles(t *testing.T) {
 	a := authApp(t)
 	a.keyring = &memKeyring{broken: true}
 	a.stdin = strings.NewReader(testToken)
-	result := authRun(t, a, exitOK, "store", "--hub", authHub, "--json")
-	if result.Source != "file" {
-		t.Fatal("phải dùng file khi keychain không dùng được")
+	a.err.Reset()
+	if code := a.run([]string{"auth", "store", "--hub", authHub, "--json"}); code != exitFailed {
+		t.Fatalf("không có keychain phải báo lỗi, nhận %d", code)
+	}
+	if !strings.Contains(a.err.String(), "HIVE_TOKEN") || strings.Contains(a.err.String(), testToken) {
+		t.Fatalf("phải hướng dẫn HIVE_TOKEN, không lộ token: %q", a.err.String())
 	}
 	_, path, _ := a.loadCLIConfig()
-	if runtime.GOOS != "windows" {
-		st, err := os.Stat(path)
-		if err != nil || st.Mode().Perm() != 0o600 {
-			t.Fatal("file token phải có quyền 0600")
-		}
+	if data, err := os.ReadFile(path); err == nil && strings.Contains(string(data), testToken) {
+		t.Fatal("token không được ghi ra hive.json")
 	}
+	a.getenv = func(k string) string { return map[string]string{"HIVE_TOKEN": testToken}[k] }
+	if r := authRun(t, a, exitOK, "token", "--hub", authHub, "--json"); r.Token != testToken || r.Source != "env" {
+		t.Fatalf("token của phiên = %+v", r)
+	}
+	a.getenv = func(k string) string { return map[string]string{"HIVE_TOKEN": "hwm_khong-phai-pat"}[k] }
+	if code := a.run([]string{"auth", "token", "--hub", authHub, "--json"}); code != exitFailed {
+		t.Fatalf("HIVE_TOKEN sai dạng phải báo lỗi, nhận %d", code)
+	}
+}
+
+func TestAuthMovesLegacyFileTokenIntoKeychain(t *testing.T) {
+	a := authApp(t)
+	_, path, _ := a.loadCLIConfig()
+	if err := saveCLIConfig(path, cliConfig{HubURL: authHub, Token: testToken, UserID: "u1"}); err != nil {
+		t.Fatal(err)
+	}
+	// Vẫn không có keychain: dùng token cũ để khỏi đăng xuất ngang, nhưng nhắc bỏ nó.
+	a.keyring = &memKeyring{broken: true}
 	if r := authRun(t, a, exitOK, "token", "--json"); r.Token != testToken || r.Source != "file" {
-		t.Fatal("không đọc được token dự phòng")
+		t.Fatalf("token bản cũ = %+v", r)
+	}
+	if !strings.Contains(a.err.String(), "hive logout") {
+		t.Fatalf("phải nhắc bỏ token trong file: %q", a.err.String())
 	}
 	authRun(t, a, exitDenied, "token", "--hub", "https://other.example.test", "--json")
-	authRun(t, a, exitOK, "logout", "--hub", "https://other.example.test", "--json")
-	if r := authRun(t, a, exitOK, "token", "--json"); r.Token != testToken {
-		t.Fatal("logout hub khác đã xoá token đang dùng")
+	a.keyring = osKeyring{}
+	if r := authRun(t, a, exitOK, "token", "--json"); r.Token != testToken || r.Source != "keychain" {
+		t.Fatalf("token sau khi chuyển = %+v", r)
 	}
-	authRun(t, a, exitOK, "logout", "--json")
-	authRun(t, a, exitDenied, "token", "--json")
+	if got, _ := keyring.Get(keyringService, authHub); got != testToken {
+		t.Fatal("chưa chuyển token vào keychain")
+	}
+	if cfg, _, _ := a.loadCLIConfig(); cfg.Token != "" || cfg.UserID != "u1" || cfg.HubURL != authHub {
+		t.Fatalf("hive.json phải bỏ token, giữ hub và danh tính: %+v", cfg)
+	}
 }
 
 func TestAuthHubPrecedence(t *testing.T) {
@@ -216,7 +240,11 @@ func TestAuthErrorsDoNotLeakSecrets(t *testing.T) {
 		}
 	}
 	a.stdin = strings.NewReader(testToken)
-	authRun(t, a, exitOK, "store", "--hub", authHub, "--json")
+	a.err.Reset()
+	if code := a.run([]string{"auth", "store", "--hub", authHub, "--json"}); code != exitFailed || strings.Contains(a.err.String(), testToken) {
+		t.Fatal("keychain lỗi thì store phải báo lỗi và không làm lộ token")
+	}
+	a.getenv = func(k string) string { return map[string]string{"HIVE_TOKEN": testToken}[k] }
 	authRun(t, a, exitOK, "token", "--hub", authHub, "--json")
 	a.stdout = failingAuthWriter{}
 	a.err.Reset()
@@ -224,6 +252,7 @@ func TestAuthErrorsDoNotLeakSecrets(t *testing.T) {
 		t.Fatal("lỗi stdout phải trả mã 1 và không làm lộ token")
 	}
 	a.stdout = io.Discard
+	a.getenv = func(string) string { return "" }
 	_, path, _ := a.loadCLIConfig()
 	if err := os.WriteFile(path, []byte(`{"token":"`+testToken), 0o600); err != nil {
 		t.Fatal(err)
@@ -237,14 +266,16 @@ func TestAuthErrorsDoNotLeakSecrets(t *testing.T) {
 func TestAuthLogoutClearsFallbackWhenKeychainUnavailable(t *testing.T) {
 	a := authApp(t)
 	a.keyring = failingAuthKeyring{}
-	a.stdin = strings.NewReader(testToken)
-	authRun(t, a, exitOK, "store", "--hub", authHub, "--json")
+	_, path, _ := a.loadCLIConfig()
+	if err := saveCLIConfig(path, cliConfig{HubURL: authHub, Token: testToken}); err != nil {
+		t.Fatal(err)
+	}
 	a.err.Reset()
 	if code := a.run([]string{"auth", "logout", "--json"}); code != exitFailed {
 		t.Fatal("phải báo lỗi khi không xác nhận được việc xoá keychain")
 	}
 	if cfg, _, err := a.loadCLIConfig(); err != nil || cfg.Token != "" || cfg.HubURL != authHub {
-		t.Fatal("vẫn phải xoá token dự phòng, giữ địa chỉ hub")
+		t.Fatal("vẫn phải xoá token bản cũ trong file, giữ địa chỉ hub")
 	}
 	if strings.Contains(a.err.String(), testToken) {
 		t.Fatal("lỗi xoá keychain làm lộ token")

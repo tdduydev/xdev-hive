@@ -1,7 +1,7 @@
 # Lệnh `hive` và điều khiển từ xa
 
 Hướng dẫn dùng lệnh `hive` trên máy cá nhân và điều khiển phiên agent từ điện thoại (specs/010). Thiết kế:
-[architecture.md §5.3](architecture.md#53-phiên-terminal-và-điều-khiển-từ-xa-spec-010),
+[architecture.md §5.4](architecture.md#54-phiên-terminal-và-điều-khiển-từ-xa-spec-010),
 [ADR 0019](adr/0019-hive-cli-and-remote-sessions.md).
 
 `hive` mở phiên agent CLI (Claude Code, Codex, Gemini) qua `hive-worker` đang chạy trên máy. Phiên được ghi lên hub

@@ -10,6 +10,7 @@ import {
   DownloadIcon,
   ExpandIcon,
   FileCodeIcon,
+  FileTextIcon,
   GlobeIcon,
   PencilIcon,
   Share2Icon,
@@ -18,6 +19,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ARTIFACT_TYPE_ICON } from "./card.tsx";
+import { ConvertDialog } from "./convert-dialog.tsx";
+import { useConvertText } from "./convert-text.ts";
 import { ArtifactEditor } from "./editor.tsx";
 import { type ArtifactRef, type CachedArtifact, useArtifactsEnv, useText } from "./env.tsx";
 import { artifactFileName, downloadText, sourceLanguage } from "./files.ts";
@@ -284,12 +287,14 @@ function ArtifactView({
 }) {
   const env = useArtifactsEnv();
   const t = useText();
+  const convertText = useConvertText();
   const queryClient = useQueryClient();
   const { artifact, version, access } = detail;
   const content = version.content;
   const [pageErrors, setPageErrors] = useState<ArtifactPageError[]>([]);
   const [showSource, setShowSource] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [converting, setConverting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [status, setStatus] = useState("");
   const versionId = useId();
@@ -395,6 +400,12 @@ function ArtifactView({
           <Button variant="outline" size="sm" disabled={offline} onClick={() => setSharing(true)}>
             <Share2Icon aria-hidden />
             {t.share}
+          </Button>
+        )}
+        {artifact.type === "markdown" && content !== null && (
+          <Button variant="outline" size="sm" disabled={offline} onClick={() => setConverting(true)}>
+            <FileTextIcon aria-hidden />
+            {convertText.convert}
           </Button>
         )}
         {access.owner && env.onPublicLinks && (
@@ -515,6 +526,7 @@ function ArtifactView({
       )}
 
       <ShareDialog artifact={artifact} version={version.version} open={sharing} onOpenChange={setSharing} />
+      <ConvertDialog artifact={artifact} version={version.version} open={converting} onOpenChange={setConverting} />
     </div>
   );
 }

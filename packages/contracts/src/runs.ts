@@ -2,7 +2,7 @@ import { z } from "zod";
 import { id, orgRoute, queryFlag } from "./common.ts";
 import { outcomeCheck, routingEffort, taskTier } from "./projects.ts";
 import { RUN_STATES, RUN_STATUS_GROUP_NAMES } from "./run-states.ts";
-import { cli, exploreUsage, guardUsage, rtkUsage } from "./worker-protocol.ts";
+import { cli, exploreUsage, guardUsage, reportSecretsInjected, rtkUsage } from "./worker-protocol.ts";
 
 export { RUN_STATUS_GROUPS, TERMINAL_RUN_STATES } from "./run-states.ts";
 
@@ -45,6 +45,8 @@ export const runResultView = z.object({
   checks: z.array(checkOutcome),
   /** Lý do run không thành công, viết cho người xem. */
   reasons: z.array(z.string()),
+  /** Số bí mật tại máy đã đưa vào agent; không có khi worker cũ không báo. Hub không giữ tên hay giá trị. */
+  secretsInjected: reportSecretsInjected.optional(),
 });
 export type RunResultView = z.output<typeof runResultView>;
 

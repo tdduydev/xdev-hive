@@ -73,6 +73,19 @@ const LIBS: Lib[] = [
     file: "index.js",
     source: { kind: "esm", module: "markdown-it", defaultExport: true },
   },
+  // pdf.js chạy worker trên luồng chính (khung là origin mờ, `new Worker(url)` khác origin bị chặn) nên cần cả hai file.
+  {
+    name: "pdfjs-dist",
+    pkg: "pdfjs-dist",
+    file: "index.js",
+    source: { kind: "esm", module: "pdfjs-dist/build/pdf.mjs" },
+  },
+  {
+    name: "pdfjs-dist/worker",
+    pkg: "pdfjs-dist",
+    file: "worker.js",
+    source: { kind: "esm", module: "pdfjs-dist/build/pdf.worker.mjs" },
+  },
 ];
 
 // React luôn dùng chung một bản: mọi gói khác giữ các tên này làm import ngoài, import map trỏ về cùng một file.

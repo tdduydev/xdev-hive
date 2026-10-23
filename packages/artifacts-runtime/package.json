@@ -13,8 +13,8 @@
     "test": "node scripts/build-lib.ts && vitest run"
   },
   "dependencies": {
-    "zod": "^4.6.5",
-    "es-module-lexer": "3.0.3"
+    "es-module-lexer": "3.0.3",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/browser": "4.3.3",
@@ -24,6 +24,7 @@
     "lucide-react": "1.55.0",
     "markdown-it": "15.0.2",
     "mermaid": "12.0.0",
+    "pdfjs-dist": "6.4.299",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "recharts": "3.10.1"

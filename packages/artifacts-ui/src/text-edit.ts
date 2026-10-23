@@ -46,6 +46,15 @@ export interface EditText {
   scopePrivateHelp: string;
   scopeProject: string;
   scopeProjectHelp: string;
+  scopeTeam: string;
+  scopeTeamHelp: string;
+  scopeOrg: string;
+  scopeOrgHelp: string;
+  teamLabel: string;
+  teamChoose: string;
+  teamsLoading: string;
+  historyWarningTeam: (team: string) => string;
+  historyWarningOrg: string;
   projectLabel: string;
   projectChoose: string;
   projectsLoading: string;
@@ -134,6 +143,16 @@ export const editText: Record<"vi" | "en", EditText> = {
     scopePrivateHelp: "Chỉ bạn. Quản trị tổ chức không đọc được.",
     scopeProject: "Dự án",
     scopeProjectHelp: "Thành viên đội của dự án đọc được; member trở lên sửa được.",
+    scopeTeam: "Đội",
+    scopeTeamHelp:
+      "Mọi thành viên của một đội đọc được, kể cả khi artifact không thuộc dự án nào; member trở lên sửa được.",
+    scopeOrg: "Tổ chức",
+    scopeOrgHelp: "Mọi thành viên tổ chức đọc và sửa được; quản trị tổ chức quản lý.",
+    teamLabel: "Đội",
+    teamChoose: "Chọn đội…",
+    teamsLoading: "Đang tải đội…",
+    historyWarningTeam: (team) => `Mọi thành viên đội ${team} sẽ thấy cả các phiên bản cũ.`,
+    historyWarningOrg: "Mọi thành viên tổ chức sẽ thấy cả các phiên bản cũ.",
     projectLabel: "Dự án",
     projectChoose: "Chọn dự án…",
     projectsLoading: "Đang tải dự án…",
@@ -221,6 +240,16 @@ export const editText: Record<"vi" | "en", EditText> = {
     scopePrivateHelp: "Only you. Organization admins cannot read it.",
     scopeProject: "Project",
     scopeProjectHelp: "The project team can read; members and above can edit.",
+    scopeTeam: "Team",
+    scopeTeamHelp:
+      "Every member of one team can read, even when the artifact belongs to no project; members and above can edit.",
+    scopeOrg: "Organization",
+    scopeOrgHelp: "Every organization member can read and edit; organization admins manage it.",
+    teamLabel: "Team",
+    teamChoose: "Choose a team…",
+    teamsLoading: "Loading teams…",
+    historyWarningTeam: (team) => `Every member of team ${team} will see the older versions too.`,
+    historyWarningOrg: "Every organization member will see the older versions too.",
     projectLabel: "Project",
     projectChoose: "Choose a project…",
     projectsLoading: "Loading projects…",

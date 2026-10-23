@@ -238,6 +238,8 @@ interface GitHubAuth {
   checkAccess(owner: string): Promise<AccessCheck>;
   /** Chỉ token người dùng mới tạo được repo dưới tài khoản cá nhân; null với GitHub App. */
   viewer: (() => Promise<GhUser>) | null;
+  /** Token cài đặt chỉ cho một repo; null với PAT vì PAT không thu hẹp được. */
+  runToken: ((ref: RepoRef) => Promise<{ token: string; expiresAt: Date }>) | null;
 }
 
 function appAuth(opts: GitHubAppOptions, BaseOctokit: typeof Octokit): GitHubAuth {
@@ -281,7 +283,23 @@ function appAuth(opts: GitHubAppOptions, BaseOctokit: typeof Octokit): GitHubAut
     return { canCreate: isOrg && missingScopes.length === 0, missingScopes };
   }
 
-  return { octokit, checkAccess, viewer: null };
+  // Token riêng thay vì token của `octokit()`: token đó ghi được mọi repo của cài đặt với mọi quyền của App.
+  async function runToken(ref: RepoRef): Promise<{ token: string; expiresAt: Date }> {
+    let res: { data: unknown };
+    try {
+      res = await app.octokit.request("POST /app/installations/{installation_id}/access_tokens", {
+        installation_id: opts.installationId,
+        repositories: [ref.name],
+        permissions: { contents: "write", pull_requests: "read" },
+      });
+    } catch (e) {
+      throw installationError(e);
+    }
+    const data = res.data as { token: string; expires_at: string };
+    return { token: data.token, expiresAt: new Date(data.expires_at) };
+  }
+
+  return { octokit, checkAccess, viewer: null, runToken };
 }
 
 function tokenAuth(opts: GitHubTokenOptions, BaseOctokit: typeof Octokit): GitHubAuth {
@@ -326,7 +344,7 @@ function tokenAuth(opts: GitHubTokenOptions, BaseOctokit: typeof Octokit): GitHu
     };
   }
 
-  return { octokit, checkAccess, viewer };
+  return { octokit, checkAccess, viewer, runToken: null };
 }
 
 export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
@@ -424,8 +442,21 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  const runToken = auth.runToken;
+  // GitHub Enterprise Server: API ở `https://ghe.example.com/api/v3`, git cùng host.
+  const gitHost = opts.baseUrl ? new URL(opts.baseUrl).host : "github.com";
+
   return {
     kind: "github",
+
+    ...(runToken
+      ? {
+          async issueRunToken(ref: RepoRef) {
+            const { token, expiresAt } = await runToken(ref);
+            return { host: gitHost, username: "x-access-token", token, expiresAt, externalId: null };
+          },
+        }
+      : {}),
 
     checkAccess: auth.checkAccess,
 

@@ -196,7 +196,7 @@ shallow with its own Git credentials, removes `.git`, makes them read-only and w
 `term_*` messages are exchanged only when `hello.capabilities` contains `terminal` and `welcome.features` contains
 `terminal`. `welcome` also carries `owner` (the user who registered the machine) and `policy.totpFallback`. Details of
 each field, the browser frames on `/ws/terminal` (close codes 4401, 4403, 4404, 4429) and the checks on the machine are
-in [architecture.md §5.3](architecture.md#53-phiên-terminal-và-điều-khiển-từ-xa-spec-010).
+in [architecture.md §5.4](architecture.md#54-phiên-terminal-và-điều-khiển-từ-xa-spec-010).
 
 Close codes: 4400 bad message, 4401 revoked, 4403 machine mismatch, 4408 hello timeout, 4426 protocol unsupported.
 Workers stop instead of reconnecting on 4401, 4403 and 4426. Compatibility rule: new fields are optional and new

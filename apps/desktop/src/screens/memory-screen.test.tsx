@@ -165,7 +165,10 @@ describe("MemoryScreen", () => {
     const ancestors = screen.getByText(A.path).closest("li")?.parentElement?.closest("details");
     expect(ancestors?.querySelector("summary")?.textContent).toContain("claude-1");
     expect(ancestors?.parentElement?.querySelector("summary")?.textContent).toContain("/repo/app");
-    expect(calls.map((c) => c.command).sort()).toEqual(["context_status", "local_projects", "memory_scan"]);
+    // context_status do mục Ngữ cảnh dùng chung gọi trong effect riêng, có thể chạy sau khi cây đã hiện.
+    await waitFor(() =>
+      expect(calls.map((c) => c.command).sort()).toEqual(["context_status", "local_projects", "memory_scan"]),
+    );
   });
 
   it("hiện mục Ngữ cảnh dùng chung với dự án đã gắn và dự án có memory Claude trên máy", async () => {

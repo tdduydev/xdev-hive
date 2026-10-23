@@ -12,7 +12,7 @@ import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ARTIFACT_TYPE_ICON } from "./card.tsx";
 import { type ArtifactRef, useArtifactsEnv, useText } from "./env.tsx";
 
@@ -44,6 +44,10 @@ const libraryText = {
     noResults: "Không có kết quả phù hợp",
     emptyTrash: "Thùng rác trống",
     reset: "Bỏ bộ lọc",
+    upload: "Tải ảnh/PDF lên",
+    uploading: "Đang tải lên…",
+    uploaded: "Đã tải tệp lên.",
+    uploadHelp: "PNG, JPEG, GIF, WebP hoặc PDF.",
     projectsError: "Không tải được danh sách dự án.",
     count: (n: number) => `Đã tải ${n} artifact`,
     origins: { leader: "Leader", terminal: "Terminal", run: "Run", mcp: "MCP", manual: "Tạo tay" },
@@ -68,6 +72,10 @@ const libraryText = {
     noResults: "No matching artifacts",
     emptyTrash: "Trash is empty",
     reset: "Clear filters",
+    upload: "Upload image/PDF",
+    uploading: "Uploading…",
+    uploaded: "File uploaded.",
+    uploadHelp: "PNG, JPEG, GIF, WebP or PDF.",
     projectsError: "Could not load projects.",
     count: (n: number) => `${n} artifacts loaded`,
     origins: { leader: "Leader", terminal: "Terminal", run: "Run", mcp: "MCP", manual: "Manual" },
@@ -75,6 +83,8 @@ const libraryText = {
 };
 
 const origins: ArtifactOrigin[] = ["leader", "terminal", "run", "mcp", "manual"];
+// Ảnh và PDF bật theo chính sách tổ chức nên không nằm trong loại mặc định, nhưng đã có thì phải lọc được.
+const FILTER_TYPES: ArtifactType[] = [...ARTIFACT_MVP_TYPES, "image", "pdf"];
 
 /** Lọc ở hub để kết quả tìm nội dung, quyền đọc và thứ tự con trỏ không lệch giữa các trang. */
 export function ArtifactLibrary({ onOpen }: ArtifactLibraryProps) {
@@ -83,6 +93,7 @@ export function ArtifactLibrary({ onOpen }: ArtifactLibraryProps) {
   const l = libraryText[env.lang];
   const queryClient = useQueryClient();
   const fieldId = useId();
+  const picker = useRef<HTMLInputElement>(null);
   const [trash, setTrash] = useState(false);
   const [mine, setMine] = useState(false);
   const [scope, setScope] = useState<ArtifactScope | "">("");
@@ -119,6 +130,16 @@ export function ArtifactLibrary({ onOpen }: ArtifactLibraryProps) {
   const projects = useQuery({
     ...env.api.projects.list.queryOptions({ input: {} }),
     enabled: !env.offline,
+  });
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      if (!env.uploadFile) throw new Error("Chưa nối chức năng tải tệp.");
+      return env.uploadFile(file);
+    },
+    onSuccess: async () => {
+      setMessage(l.uploaded);
+      await queryClient.invalidateQueries({ queryKey: env.api.artifacts.list.key() });
+    },
   });
   const restore = useMutation({
     ...env.api.artifacts.restore.mutationOptions(),
@@ -189,6 +210,39 @@ export function ArtifactLibrary({ onOpen }: ArtifactLibraryProps) {
         <h1 className="font-heading text-xl font-semibold">Artifact</h1>
         <p className="text-sm text-muted-foreground">{l.help}</p>
       </header>
+      {env.uploadFile && !env.offline && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            className="min-h-11"
+            disabled={upload.isPending}
+            onClick={() => picker.current?.click()}
+          >
+            {upload.isPending ? l.uploading : l.upload}
+          </Button>
+          <input
+            ref={picker}
+            type="file"
+            className="sr-only"
+            tabIndex={-1}
+            aria-label={l.upload}
+            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file) return;
+              setMessage("");
+              upload.mutate(file);
+            }}
+          />
+          <span className="text-xs text-muted-foreground">{l.uploadHelp}</span>
+        </div>
+      )}
+      {upload.isError && (
+        <div role="alert" className="text-sm text-destructive">
+          {env.errorMessage(upload.error)}
+        </div>
+      )}
       <nav aria-label="Artifact" className="flex gap-2">
         {[false, true].map((value) => (
           <Button
@@ -243,7 +297,7 @@ export function ArtifactLibrary({ onOpen }: ArtifactLibraryProps) {
             onChange={(event) => setType(event.target.value as ArtifactType | "")}
           >
             <NativeSelectOption value="">{l.all}</NativeSelectOption>
-            {ARTIFACT_MVP_TYPES.map((value) => (
+            {FILTER_TYPES.map((value) => (
               <NativeSelectOption key={value} value={value}>
                 {value}
               </NativeSelectOption>

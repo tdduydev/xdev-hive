@@ -1625,6 +1625,7 @@ export function artifactsFixture() {
     message: v.message,
     name: v.name,
     restoredFrom: v.restoredFrom,
+    hasBlob: false,
     hasCompileError: v.compileError !== null,
     tombstonedAt: null,
     createdAt: v.createdAt,
