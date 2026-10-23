@@ -7,9 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -248,27 +246,32 @@ func TestLoginDeniedAndTimeout(t *testing.T) {
 	}
 }
 
-func TestLoginWithTokenFallsBackToFile(t *testing.T) {
+func TestLoginWithoutKeychainPointsToHiveToken(t *testing.T) {
 	hub := newFakeHub(t)
 	a := newTestApp(filepath.Join(t.TempDir(), "hive.sock"), strings.NewReader(testToken+"\n"))
 	a.keyring = &memKeyring{broken: true}
-	if code := a.run([]string{"login", "--with-token", "--hub", hub.URL}); code != exitOK {
+	if code := a.run([]string{"login", "--with-token", "--hub", hub.URL}); code != exitFailed {
 		t.Fatalf("login: %d %s", code, a.err.String())
 	}
-	if !strings.Contains(a.err.String(), "Không dùng được keychain") {
-		t.Fatalf("phải cảnh báo khi lưu token vào file: %q", a.err.String())
+	if !strings.Contains(a.err.String(), "HIVE_TOKEN") || strings.Contains(a.err.String(), testToken) {
+		t.Fatalf("phải hướng dẫn HIVE_TOKEN, không lộ token: %q", a.err.String())
 	}
-	cfg, path, err := a.loadCLIConfig()
-	if err != nil || cfg.Token != testToken {
-		t.Fatalf("hive.json = %+v %v", cfg, err)
+	if cfg, _, err := a.loadCLIConfig(); err != nil || cfg.Token != "" {
+		t.Fatalf("hive.json = %+v %v (token không được ghi ra file)", cfg, err)
 	}
-	if runtime.GOOS != "windows" {
-		if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o600 {
-			t.Fatalf("quyền hive.json = %v %v", st.Mode().Perm(), err)
-		}
+	// Keychain không đọc được: báo trước khi mở trình duyệt, để hub khỏi cấp token cá nhân bỏ phí.
+	b := loginApp(t)
+	b.keyring = failingAuthKeyring{}
+	b.openURL = func(string) error {
+		t.Error("không được mở trình duyệt khi không lưu được token")
+		return nil
 	}
+	if code := b.run([]string{"login", "--hub", hub.URL}); code != exitFailed || !strings.Contains(b.err.String(), "HIVE_TOKEN") {
+		t.Fatalf("keychain hỏng: %d %q", code, b.err.String())
+	}
+	a.getenv = func(k string) string { return map[string]string{"HIVE_TOKEN": testToken, "HIVE_HUB_URL": hub.URL}[k] }
 	if code := a.run([]string{"whoami"}); code != exitOK {
-		t.Fatalf("whoami đọc token trong file: %d %s", code, a.err.String())
+		t.Fatalf("whoami bằng HIVE_TOKEN: %d %s", code, a.err.String())
 	}
 
 	for _, in := range []string{"", "khong-phai-token\n"} {

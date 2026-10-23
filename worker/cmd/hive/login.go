@@ -28,14 +28,21 @@ import (
 
 // Đăng nhập hub cho `hive` (specs/010 D12): luồng loopback PKCE của app desktop với `purpose: cli` (hub chỉ cấp token
 // cá nhân), hoặc dán token bằng --with-token. Token nằm trong keychain cùng mục với app desktop (dev.xdev.hive, địa chỉ
-// hub) để đăng nhập ở đâu thì nơi kia dùng được; máy không có keychain thì vào file 0600.
+// hub) để đăng nhập ở đâu thì nơi kia dùng được. Token không bao giờ ghi ra file (spec 027 FR-025): máy không có
+// keychain thì đặt HIVE_TOKEN cho phiên.
 
 const (
 	keyringService = "dev.xdev.hive"
 	loginWait      = 5 * time.Minute
 	// CLIConfigEnv ghi đè đường dẫn hive.json (test, nhiều hub trên một máy).
 	cliConfigEnv = "HIVE_CLI_CONFIG"
+	// tokenEnv là token cá nhân của phiên hiện tại, đọc trước keychain.
+	tokenEnv = "HIVE_TOKEN"
 )
+
+var errNoKeychain = errors.New("máy này không có keychain dùng được nên không lưu được token cá nhân (token chỉ nằm trong keychain, không ghi ra file). " +
+	"Tạo token cá nhân trong Cài đặt → Token trên web rồi đặt cho phiên hiện tại: export HIVE_TOKEN=hive_pat_… " +
+	"(PowerShell: $env:HIVE_TOKEN = \"hive_pat_…\"), kèm HIVE_HUB_URL nếu chưa có hive-worker")
 
 // secretStore là keychain; test thay bằng bản giả.
 type secretStore interface {
@@ -50,7 +57,7 @@ func (osKeyring) Get(s, u string) (string, error) { return keyring.Get(s, u) }
 func (osKeyring) Set(s, u, p string) error        { return keyring.Set(s, u, p) }
 func (osKeyring) Delete(s, u string) error        { return keyring.Delete(s, u) }
 
-// cliConfig là hive.json cạnh worker.json. Token chỉ có ở đây khi keychain không dùng được. Danh tính (`userId`, `orgId`,
+// cliConfig là hive.json cạnh worker.json. Token chỉ còn ở đây do bản cũ ghi khi máy không có keychain. Danh tính (`userId`, `orgId`,
 // `email`) để hộp thư đi của hive-worker biết mục là của ai mà không cần hỏi hub (spec 027 FR-018); đọc ở
 // `outbox.CLILogin`.
 type cliConfig struct {
@@ -91,7 +98,7 @@ func (a *app) loadCLIConfig() (cliConfig, string, error) {
 	return c, path, nil
 }
 
-// saveCLIConfig ghi file tạm 0600 rồi đổi tên, vì file có thể chứa token.
+// saveCLIConfig ghi file tạm 0600 rồi đổi tên: file có danh tính người dùng, và lệnh khác đang đọc không thấy file ghi dở.
 func saveCLIConfig(path string, c cliConfig) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -118,10 +125,18 @@ func saveCLIConfig(path string, c cliConfig) error {
 // credentials trả hub và token đang dùng; token rỗng là chưa đăng nhập.
 func (a *app) credentials() (hub, token string, err error) {
 	c, _, err := a.loadCLIConfig()
-	if err != nil || c.HubURL == "" {
+	if err != nil {
 		return "", "", err
 	}
-	hub, err = normalizeHub(c.HubURL)
+	raw := c.HubURL
+	if raw == "" && a.getenv(tokenEnv) != "" {
+		// Máy không có keychain chưa bao giờ lưu được lần đăng nhập nào, nên hive.json không có hub.
+		raw = a.defaultHub()
+	}
+	if raw == "" {
+		return "", "", nil
+	}
+	hub, err = normalizeHub(raw)
 	if err != nil {
 		return "", "", errors.New("địa chỉ hub trong cấu hình không hợp lệ")
 	}
@@ -130,20 +145,33 @@ func (a *app) credentials() (hub, token string, err error) {
 }
 
 func (a *app) readToken(hub string) (token, source string, err error) {
+	if t := strings.TrimSpace(a.getenv(tokenEnv)); t != "" {
+		if !validPAT(t) {
+			return "", "", errors.New("HIVE_TOKEN không đúng dạng hive_pat_…")
+		}
+		return t, "env", nil
+	}
 	if t, kerr := a.keyring.Get(keyringService, hub); kerr == nil && t != "" {
 		return t, "keychain", nil
 	} else if kerr != nil && !errors.Is(kerr, keyring.ErrNotFound) {
 		err = errors.New("không đọc được keychain")
 	}
-	c, _, cerr := a.loadCLIConfig()
+	c, path, cerr := a.loadCLIConfig()
 	if cerr != nil {
 		return "", "", errors.New("không đọc được cấu hình đăng nhập")
 	}
-	if c.HubURL != "" {
-		storedHub, nerr := normalizeHub(c.HubURL)
-		if nerr == nil && storedHub == hub && c.Token != "" {
-			return c.Token, "file", nil
+	if storedHub, nerr := normalizeHub(c.HubURL); nerr == nil && storedHub == hub && c.Token != "" {
+		// Token bản cũ ghi vào file: chuyển vào keychain. Không chuyển được thì vẫn dùng để người dùng không bị đăng xuất
+		// ngang, nhưng nhắc bỏ nó đi.
+		legacy := c.Token
+		if a.keyring.Set(keyringService, hub, legacy) == nil {
+			c.Token = ""
+			if saveCLIConfig(path, c) == nil {
+				return legacy, "keychain", nil
+			}
 		}
+		fmt.Fprintln(a.stderr, "hive: Token cá nhân còn nằm trong file cấu hình (bản cũ ghi khi máy không có keychain). Chạy hive logout rồi đặt HIVE_TOKEN cho phiên.")
+		return legacy, "file", nil
 	}
 	return "", "", err
 }
@@ -218,6 +246,10 @@ func (a *app) login(args []string) int {
 	if err != nil {
 		return a.errorf(exitUsage, "%v", err)
 	}
+	// Hỏi keychain trước khi mở trình duyệt: biết sớm là không lưu được thì hub khỏi cấp token cá nhân bỏ phí.
+	if _, err := a.keyring.Get(keyringService, hub); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return a.errorf(exitFailed, "%v.", errNoKeychain)
+	}
 	var token string
 	if *withToken {
 		line, err := bufio.NewReader(a.stdin).ReadString('\n')
@@ -247,12 +279,8 @@ func (a *app) login(args []string) int {
 }
 
 func (a *app) storeToken(hub, token string, who *me) int {
-	source, err := a.saveLogin(hub, token, who)
-	if err != nil {
-		return a.errorf(exitFailed, "%v", err)
-	}
-	if source == "file" {
-		fmt.Fprintln(a.stderr, "hive: Không dùng được keychain; token lưu trong file cấu hình, chỉ tài khoản của bạn đọc được.")
+	if _, err := a.saveLogin(hub, token, who); err != nil {
+		return a.errorf(exitFailed, "%v.", err)
 	}
 	return exitOK
 }
@@ -277,22 +305,20 @@ func (a *app) saveLogin(hub, token string, who *me) (string, error) {
 			cfg.UserID, cfg.OrgID, cfg.Email = prev.UserID, prev.OrgID, prev.Email
 		}
 	}
-	source := "keychain"
 	if kerr := a.keyring.Set(keyringService, hub, token); kerr != nil {
-		// Token cũ còn đọc được sẽ che token mới trong file vì thứ tự ưu tiên keychain.
-		if previous, err := a.keyring.Get(keyringService, hub); err == nil && previous != "" {
-			if previous != token {
-				return "", errors.New("không cập nhật được token trong keychain")
-			}
-		} else {
-			cfg.Token = token
-			source = "file"
+		previous, err := a.keyring.Get(keyringService, hub)
+		switch {
+		case err != nil || previous == "":
+			return "", errNoKeychain
+		case previous != token:
+			return "", errors.New("không cập nhật được token trong keychain")
 		}
 	}
+	// cfg không mang token: ghi lại file cũng là bỏ token bản cũ đã ghi vào đó.
 	if err := saveCLIConfig(path, cfg); err != nil {
 		return "", errors.New("không ghi được cấu hình đăng nhập")
 	}
-	return source, nil
+	return "keychain", nil
 }
 
 func (a *app) deleteToken(hub string) error {
