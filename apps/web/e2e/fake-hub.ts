@@ -102,6 +102,8 @@ export async function fakeHub(
   const hub: FakeHub = { signedIn: opts.signedIn ?? false, authCalls: [], meMethods: [], rpcCalls: [] };
   const rpc: Record<string, RpcHandler> = {
     "orgs/mine": () => ok({ orgs: [], canCreateOrg: false }),
+    // Hub giả bật đủ mọi cách đăng nhập; test cách mặc định (chưa cấu hình gì) tự ghi đè.
+    "hubSetup/get": () => ok({ firstAdminSignUp: false, loginMethods: { sso: true, github: true, gitlab: true } }),
     ...docsyncSettingsDefaults(),
     ...docsyncImportFixture(),
     ...docsyncDocsFixture(),

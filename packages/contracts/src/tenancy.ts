@@ -150,6 +150,11 @@ export const hubSetup = z.object({
    * tạo (HIVE_ORG_CREATORS); hub tự từ chối email ngoài danh sách bằng cùng mã lỗi như mọi trường hợp khác.
    */
   firstAdminSignUp: z.boolean(),
+  /**
+   * Cách đăng nhập ngoài email + mật khẩu mà hub đã cấu hình. Trang đăng nhập chỉ hiện nút của cách đã bật; `sso` là
+   * có ít nhất một tổ chức đã khai nhà cung cấp SSO, không nói tên miền nào.
+   */
+  loginMethods: z.object({ sso: z.boolean(), github: z.boolean(), gitlab: z.boolean() }),
 });
 export type Org = z.output<typeof org>;
 export type MyOrg = z.output<typeof myOrg>;

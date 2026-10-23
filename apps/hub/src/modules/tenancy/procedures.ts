@@ -15,6 +15,8 @@ export interface TenancyDeps {
   publicUrl?: string | undefined;
   /** Tra bản ghi TXT khi xác minh tên miền SSO; bỏ trống thì dùng DNS của máy. Test thay bằng DNS giả. */
   resolveTxt?: TxtResolver | undefined;
+  /** Nhà cung cấp OAuth đã khai ở biến môi trường; trang đăng nhập chỉ hiện nút của nhà cung cấp đã khai. */
+  socialProviders?: { github: boolean; gitlab: boolean } | undefined;
 }
 
 export interface SessionUser {

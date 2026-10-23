@@ -23,7 +23,10 @@ const methodOf = (p: Pending): AuthMethod => (p === "github" || p === "gitlab" ?
 
 const MIN_PASSWORD = 10;
 
-/** Màn 1 của mockup: SSO trên cùng, rồi GitHub/GitLab, email + mật khẩu nằm trong phần mở thêm. */
+/**
+ * Email + mật khẩu luôn có. SSO, GitHub, GitLab chỉ hiện khi hub đã cấu hình (hubSetup.loginMethods), để người dùng
+ * không bấm vào một cách đăng nhập chưa bật.
+ */
 export function LoginPage() {
   const search = useSearch({ from: "/login" });
   const navigate = useNavigate();
@@ -36,6 +39,9 @@ export function LoginPage() {
   // Hub chưa có tổ chức nào: người quản trị hub tạo tài khoản ngay tại đây thay cho lệnh curl trong tài liệu.
   const setup = useQuery({ ...orpc.hubSetup.get.queryOptions(), staleTime: 60_000, retry: false });
   const firstAdmin = setup.data?.firstAdminSignUp === true;
+  const methods = setup.data?.loginMethods;
+  const social = (["github", "gitlab"] as const).filter((p) => methods?.[p]);
+  const others = [methods?.sso && "SSO", ...social.map((p) => (p === "github" ? "GitHub" : "GitLab"))].filter(Boolean);
 
   // Bấm Back từ trang GitHub/IdP, trình duyệt có thể khôi phục trang từ bfcache với nút còn khoá; mở khoá lại.
   useEffect(() => {
@@ -136,7 +142,9 @@ export function LoginPage() {
         <Card className="grid w-full max-w-105 gap-4 p-7">
           <Brand />
           <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight text-foreground">Đăng nhập</h1>
-          <p className="-mt-2 text-muted-foreground">Dùng tài khoản công ty, GitHub, GitLab hoặc email.</p>
+          <p className="-mt-2 text-muted-foreground">
+            {others.length > 0 ? `Dùng email và mật khẩu, hoặc ${others.join(", ")}.` : "Dùng email và mật khẩu."}
+          </p>
           {errorAt("redirect") && <Alert variant="destructive">{errorAt("redirect")}</Alert>}
 
           {firstAdmin && (
@@ -174,62 +182,60 @@ export function LoginPage() {
             </section>
           )}
 
-          <Field render={<form noValidate onSubmit={onSso} />} invalid={errorAt("sso") !== null}>
-            <FieldLabel>Email công ty</FieldLabel>
-            <Input name="email" type="email" autoComplete="email" placeholder="ten@congty.vn" />
-            {errorAt("sso") ? (
-              <FieldError>{errorAt("sso")}</FieldError>
-            ) : (
-              <FieldHint>Hub tìm SSO của tổ chức theo tên miền email.</FieldHint>
-            )}
+          <form noValidate onSubmit={onEmail} className="grid gap-2.5" aria-label="Đăng nhập bằng email và mật khẩu">
+            <Field>
+              <FieldLabel>Email</FieldLabel>
+              <Input name="email" type="email" autoComplete="username" />
+            </Field>
+            <Field>
+              <FieldLabel>Mật khẩu</FieldLabel>
+              <Input name="password" type="password" autoComplete="current-password" />
+            </Field>
+            {errorAt("email") && <Alert variant="destructive">{errorAt("email")}</Alert>}
             <Button type="submit" variant="default" className="w-full" disabled={busy}>
-              <Icon name="key" />
-              {pending === "sso" ? "Đang chuyển sang SSO…" : "Tiếp tục với SSO"}
+              <Icon name="mail" />
+              {pending === "email" ? "Đang đăng nhập…" : "Đăng nhập"}
             </Button>
-          </Field>
+          </form>
 
-          <div className="flex items-center gap-2.5 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-            hoặc
-          </div>
+          {others.length > 0 && (
+            <div className="flex items-center gap-2.5 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+              hoặc
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => attempt("github", () => authClient.signIn.social({ provider: "github", ...callbacks }))}
-            >
-              <Icon name="github" />
-              {pending === "github" ? "Đang chuyển…" : "GitHub"}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => attempt("gitlab", () => authClient.signIn.social({ provider: "gitlab", ...callbacks }))}
-            >
-              <Icon name="gitlab" />
-              {pending === "gitlab" ? "Đang chuyển…" : "GitLab"}
-            </Button>
-          </div>
-          {errorAt("social") && <Alert variant="destructive">{errorAt("social")}</Alert>}
-
-          <details>
-            <summary className="cursor-pointer text-sm text-muted-foreground">Đăng nhập bằng email và mật khẩu</summary>
-            <form noValidate onSubmit={onEmail} className="mt-3 grid gap-2.5">
-              <Field>
-                <FieldLabel>Email</FieldLabel>
-                <Input name="email" type="email" autoComplete="username" />
-              </Field>
-              <Field>
-                <FieldLabel>Mật khẩu</FieldLabel>
-                <Input name="password" type="password" autoComplete="current-password" />
-              </Field>
-              {errorAt("email") && <Alert variant="destructive">{errorAt("email")}</Alert>}
-              <Button variant="outline" type="submit" className="w-full" disabled={busy}>
-                <Icon name="mail" />
-                {pending === "email" ? "Đang đăng nhập…" : "Đăng nhập"}
+          {methods?.sso && (
+            <Field render={<form noValidate onSubmit={onSso} />} invalid={errorAt("sso") !== null}>
+              <FieldLabel>Email công ty</FieldLabel>
+              <Input name="email" type="email" autoComplete="email" placeholder="ten@congty.vn" />
+              {errorAt("sso") ? (
+                <FieldError>{errorAt("sso")}</FieldError>
+              ) : (
+                <FieldHint>Hub tìm SSO của tổ chức theo tên miền email.</FieldHint>
+              )}
+              <Button type="submit" variant="outline" className="w-full" disabled={busy}>
+                <Icon name="key" />
+                {pending === "sso" ? "Đang chuyển sang SSO…" : "Tiếp tục với SSO"}
               </Button>
-            </form>
-          </details>
+            </Field>
+          )}
+
+          {social.length > 0 && (
+            <div className={social.length > 1 ? "grid grid-cols-2 gap-2" : "grid gap-2"}>
+              {social.map((provider) => (
+                <Button
+                  key={provider}
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => attempt(provider, () => authClient.signIn.social({ provider, ...callbacks }))}
+                >
+                  <Icon name={provider} />
+                  {pending === provider ? "Đang chuyển…" : provider === "github" ? "GitHub" : "GitLab"}
+                </Button>
+              ))}
+            </div>
+          )}
+          {errorAt("social") && <Alert variant="destructive">{errorAt("social")}</Alert>}
 
           {/* Mockup giữ lề mặc định của <p> (1em) quanh dòng này. */}
           <p className="my-3 text-center text-xs text-muted-foreground">
