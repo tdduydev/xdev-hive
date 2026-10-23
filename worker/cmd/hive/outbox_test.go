@@ -19,6 +19,8 @@ type fakeOutbox struct {
 	reqs     []map[string]any
 	bodyFile []byte
 	submit   func(req map[string]any) (map[string]any, string)
+	// logout trả lời op outbox.logout theo action; nil là hộp thư trống. Đổi bằng setLogout khi worker giả đang chạy.
+	logout func(action string) (map[string]any, string)
 }
 
 func startOutbox(t *testing.T) (string, *fakeOutbox) {
@@ -55,6 +57,7 @@ func (f *fakeOutbox) handle(_ context.Context, c *localipc.Conn, req localipc.Re
 	}
 	f.mu.Lock()
 	f.reqs = append(f.reqs, m)
+	logout := f.logout
 	f.mu.Unlock()
 	switch req.Op {
 	case "outbox.status":
@@ -92,8 +95,23 @@ func (f *fakeOutbox) handle(_ context.Context, c *localipc.Conn, req localipc.Re
 			return c.Fail(code, reply["error"].(string))
 		}
 		return c.OK(reply)
+	case "outbox.logout":
+		if logout == nil {
+			return c.OK(map[string]any{"pending": 0, "held": 0})
+		}
+		reply, code := logout(m["action"].(string))
+		if code != "" {
+			return c.Fail(code, reply["error"].(string))
+		}
+		return c.OK(reply)
 	}
 	return c.Fail(localipc.CodeUnsupported, "op lạ")
+}
+
+func (f *fakeOutbox) setLogout(h func(action string) (map[string]any, string)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logout = h
 }
 
 func (f *fakeOutbox) last() map[string]any {

@@ -135,7 +135,7 @@ ba mục tới hub đúng thứ tự, không trùng; `hive outbox` hiện 0 mụ
 - [x] T024 [US2] Sự kiện `watch`: `outbox`, `outbox.item` · `worker/cmd/hive-worker/outbox_ipc.go`,
   `worker/internal/terminal/local.go`
 - [ ] T025 [US2] Đăng xuất khi còn mục: hỏi "Gửi trước", "Giữ lại", "Bỏ" · `apps/desktop/src/components/outbox-panel.tsx`,
-  `worker/cmd/hive/login.go`
+  `worker/cmd/hive/login.go` (phần worker và `hive logout --outbox` xong: op `outbox.logout`; còn phần desktop)
 
 **Checkpoint**: US1 + US2 là MVP.
 

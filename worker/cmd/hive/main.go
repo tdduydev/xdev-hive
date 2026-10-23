@@ -65,7 +65,8 @@ const usageText = `Cách dùng: hive <lệnh> [cờ]
 
   login [--hub URL] [--with-token] [--no-browser]
                           đăng nhập hub (chỉ cần cho --task, --project, ls --all)
-  logout                  xoá token trên máy
+  logout [--outbox send|keep|drop]
+                          xoá token trên máy (hỏi trước nếu hộp thư đi còn mục)
   whoami                  đang đăng nhập bằng ai, hub nào
   chat [--cli claude|codex|gemini] [--account ID] [--model M] [--task KEY | --project KEY] [--no-record] [--force]
        [--escape KEY] [-- đối số thêm cho CLI]

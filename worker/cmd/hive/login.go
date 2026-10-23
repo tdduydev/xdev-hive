@@ -316,8 +316,11 @@ func (a *app) deleteToken(hub string) error {
 }
 
 func (a *app) logout(args []string) int {
-	if len(args) > 0 {
-		return a.errorf(exitUsage, "Cách dùng: hive logout.")
+	fs := newFlagSet("logout", a.stderr)
+	choice := fs.String("outbox", "", "mục chưa tới hub: send (gửi trước), keep (giữ lại), drop (bỏ)")
+	pos, err := parseInterspersed(fs, args)
+	if err != nil || len(pos) > 0 || !validLogoutChoice(*choice) {
+		return a.errorf(exitUsage, "%s", logoutUsage)
 	}
 	c, _, err := a.loadCLIConfig()
 	if err != nil {
@@ -326,6 +329,9 @@ func (a *app) logout(args []string) int {
 	if c.HubURL == "" {
 		fmt.Fprintln(a.stdout, "Chưa đăng nhập hub nào.")
 		return exitOK
+	}
+	if code := a.logoutOutbox(c.HubURL, *choice); code != exitOK {
+		return code
 	}
 	if err := a.deleteToken(c.HubURL); err != nil {
 		return a.errorf(exitFailed, "%v", err)

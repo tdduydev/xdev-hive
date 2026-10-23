@@ -111,6 +111,8 @@ func (s *outboxService) handle(ctx context.Context, c *localipc.Conn, req locali
 		return s.retry(c, req)
 	case "outbox.export":
 		return s.export(c, req)
+	case "outbox.logout":
+		return s.logout(ctx, c, req)
 	}
 	return c.Fail(localipc.CodeUnsupported, fmt.Sprintf("hive-worker này chưa có op %s", req.Op))
 }
