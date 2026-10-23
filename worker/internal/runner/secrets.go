@@ -27,7 +27,18 @@ func (r Runner) grantSecrets(ctx context.Context, job Job) (secretstore.Granted,
 	return secretstore.Grant(ctx, secretstore.GrantRequest{
 		WorkerConfig: r.WorkerConfig, LocalID: job.LocalID, Kind: "run",
 		SessionID: fmt.Sprintf("%s#%d", job.RunID, job.Attempt), Policy: job.Policy.SecretInjection,
+		Approve: func(ctx context.Context, req secretstore.ApprovalRequest) (bool, error) {
+			return secretstore.AwaitApproval(ctx, r.WorkerConfig, req)
+		},
 	})
+}
+
+func secretContext(g secretstore.Granted) string {
+	policy := secretstore.PolicyAllow
+	if len(g.Items) > 0 && g.Outcome != secretstore.OutcomeGranted {
+		policy = secretstore.PolicyDeny
+	}
+	return secretstore.ContextBlock(policy, g.Items)
 }
 
 type secretStream struct {

@@ -390,7 +390,7 @@ không chứa giá trị.
   - Test Go đọc fixture `worker-protocol.json` của T026; test mọi nhánh.
 
   Sau T012, T026.
-- [ ] T029 [US7] A·vừa — `worker/internal/runner/runner.go`: `approve` cho run nền chờ file trả lời. Run ghi sự kiện
+- [x] T029 [US7] A·vừa — `worker/internal/runner/runner.go`: `approve` cho run nền chờ file trả lời. Run ghi sự kiện
   chính sách, và khối ngữ cảnh "không có bí mật" khi `deny`, `declined` hoặc `timeout`. Test.
 
   Sau T028, T018.

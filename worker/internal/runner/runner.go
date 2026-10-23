@@ -20,7 +20,6 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/procattr"
 	"github.com/tdduydev/xdev-hive/worker/internal/secretmask"
-	"github.com/tdduydev/xdev-hive/worker/internal/secretstore"
 )
 
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
@@ -515,6 +514,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	// mục CodeGraph lần đầu mất vài chục giây) hiện ngay trong log của run.
 	stdoutLog := &logWriter{sink: sink, job: job, name: "stdout"}
 	stderrLog := &logWriter{sink: sink, job: job, name: "stderr"}
+	if len(granted.Items) > 0 {
+		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Chính sách bí mật tại máy: %s; kết quả: %s; đã cấp %d biến.\n", granted.Policy, granted.Outcome, len(granted.Names))
+	}
 	job.codegraph = r.prepareCodeGraph(runCtx, job, work, stderrLog)
 	if job.rtk = r.prepareRTK(runCtx, job, stderrLog); job.rtk != nil {
 		defer job.rtk.cleanup()
@@ -544,7 +546,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			}
 		}
 	}
-	contextCleanup, err := r.attachSecretContext(&job, secretstore.ContextBlock(secretstore.PolicyAllow, granted.Items))
+	contextCleanup, err := r.attachSecretContext(&job, secretContext(granted))
 	if err != nil {
 		return err
 	}
