@@ -97,7 +97,7 @@ Một dòng mỗi mã TC đã từng có trong dự án. Không xoá dòng, nên
 | `name` | text | tối đa 300 ký tự |
 | `priority` | text | `P1`, `P2`, `P3` (`qaPriority` của 035) |
 | `kind` | text | `automated`, `manual`, `planned` (`testCaseKind`) |
-| `requirements` | text[] | ít nhất 1 mã, mỗi mã khớp regex của D10 |
+| `requirements` | text[] | ít nhất 1 mã, mỗi mã khớp regex mã spec hoặc mã SRS của D10 |
 | `labels` | text[] | không dấu cách, tối đa 20 nhãn |
 | `preconditions` | text null | |
 | `steps` | jsonb | `[{ n, action, expected }]`, ít nhất 1 bước (FR-002) |

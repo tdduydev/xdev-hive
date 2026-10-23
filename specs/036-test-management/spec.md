@@ -107,7 +107,7 @@ Ví dụ một TC trong file (định dạng chốt ở plan):
 
 - Ưu tiên: P1
 - Loại: tự động
-- Yêu cầu: FR-001, FR-004
+- Yêu cầu: FR-001, FR-004, MPI01
 - Nhãn: smoke, regression
 - Script: tests/mpi/search.spec.ts
 - Dữ liệu test: TD-MPI01-01
@@ -477,8 +477,8 @@ thêm luật cách ly riêng.
 - **A4**: Webhook Pipeline của GitLab vào hub vẫn hoạt động (032 A6).
 - **A5**: Chuyển file Excel cũ sang Markdown làm bằng script ngoài hive, ví dụ map `TC_MPI01.01` thành `TC-MPI01-001`.
   Hive không nhập Excel trong bản này.
-- **A6**: Mã yêu cầu theo dạng dự án đang dùng, mặc định `FR-…`, `AC-…`, `NFR-…`. Dự án có nhiều spec CÓ THỂ thêm tiền tố
-  số spec, ví dụ `001/FR-003`. Plan chốt regex.
+- **A6**: Mã yêu cầu theo dạng dự án đang dùng: mã spec `FR-…`, `AC-…`, `NFR-…`, hoặc mã SRS của BA, ví dụ `OPD02`. Dự án
+  có nhiều spec CÓ THỂ thêm tiền tố số spec vào mã spec, ví dụ `001/FR-003`. Plan chốt regex (research D10).
 - **A7**: Các ngưỡng 24 giờ chờ, 7 ngày lấy lại, 20 pipeline ban đầu, 365 ngày giữ, 3 lần đổi trong 10 lần chạy là mặc định
   chưa đo. Plan có thể đổi.
 - **A8**: Quy mô ước tính cho một dự án: tối đa 20.000 TC, 200 khu, 50 tester, 50 lần chạy CI mỗi ngày.

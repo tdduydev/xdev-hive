@@ -62,9 +62,10 @@ Chặn mọi story. Không có nhãn story.
   (`passed`, `flaky`, `failed`, `skipped`), trạng thái tay (`passed`, `failed`, `untested`, `not-applicable`,
   `deferred`, `other`), trạng thái TC (`active`, `retired`), trạng thái đọc (`waiting`, `reading`, `done`,
   `no-report`, `error`, `expired`); `testCaseKind` (`automated`, `manual`, `planned`); regex mã khu
-  `^[A-Z][A-Z0-9]{1,15}$`, mã TC `^TC-[A-Z][A-Z0-9]{1,15}-[0-9]{3,5}$`, mã yêu cầu D10
-  `^(\d{3}/)?(FR|AC|NFR|US)-\d{3,4}(\.\d+)?$`; `QA_ERRORS` đủ 12 mã và thông báo ở contracts/hub-api.md; nhãn tiếng Việt
-  của trạng thái ở data-model.md. Dùng lại `qaPriority` của `qa.ts`, không sửa `qa.ts`. Thêm `export *` ở `index.ts`
+  `^[A-Z][A-Z0-9]{1,15}$`, mã TC `^TC-[A-Z][A-Z0-9]{1,15}-[0-9]{3,5}$`, mã yêu cầu D10: mã spec
+  `^(\d{3}/)?(FR|AC|NFR|US)-\d{3,4}(\.\d+)?$` hoặc mã SRS `^(?!(FR|AC|NFR|US)(\d|$))[A-Z][A-Z0-9]{2,15}$`;
+  `QA_ERRORS` đủ 12 mã và thông báo ở contracts/hub-api.md; nhãn tiếng Việt của trạng thái ở data-model.md. Dùng lại
+  `qaPriority` của `qa.ts`, không sửa `qa.ts`. Thêm `export *` ở `index.ts`
   (`packages/contracts/src/testing.ts`, `testing.test.ts`, `index.ts`)
 - [ ] T004 C — `testingContract` đủ route của contracts/hub-api.md: `settings`, `projectSettings`, `areas`, `cases`,
   `sources`, `rounds` (gồm `export`), `myWork`, `dashboard`. Mọi route là `orgRoute` dưới `/v1/testing/...`. Phân trang
@@ -182,9 +183,11 @@ Thư viện có nội dung mới và lịch sử phiên bản của TC."
 
 - [ ] T020 [P] [US1] C — Bộ đọc file khu theo contracts/tc-markdown.md: `# <KHU> <tên>`, `### TC-<KHU>-<SỐ> <tên>`,
   trường `- <Trường>: <giá trị>`, bảng `| # | Thao tác | Kết quả mong đợi |`. Trả `ParsedArea`
-  (`area`, `cases`, `errors` có `line`, `message`), tối đa 100 lỗi. Kiểm trường bắt buộc (FR-002) và mã TC (FR-003). Hàm chuẩn hoá TC bỏ `line` để hub băm. Hàm
+  (`area`, `cases`, `errors` có `line`, `message`), tối đa 100 lỗi. Kiểm trường bắt buộc (FR-002), mã TC (FR-003) và mã
+  yêu cầu theo thứ tự ở contracts/tc-markdown.md. Hàm chuẩn hoá TC bỏ `line` để hub băm. Hàm
   `areaTemplate(code, name)` sinh mẫu tiếng Việt có một TC ví dụ (FR-008). Test: file đúng, thiếu trường, mã khác khu,
-  không có bước, quá 100 lỗi, `automated` thiếu `script`
+  không có bước, quá 100 lỗi, `automated` thiếu `script`, mã yêu cầu `FR-001`, `036/AC-012.2`, `OPD02`, `OPD02P00108`,
+  `USR01` được nhận, `FR001` và `NFR` báo lỗi mã spec sai dạng, `opd02` và `OPD-02` báo lỗi sai mẫu
   (`packages/contracts/src/test-library.ts`, `test-library.test.ts`, `index.ts`)
 - [ ] T021 [US1] H — Áp dụng file khu trong tx lưu tài liệu. `content_hash` là SHA-256 của JSON đã chuẩn hoá. Sáu quy
   tắc của data-model.md (quy tắc 3–5 là FR-006):

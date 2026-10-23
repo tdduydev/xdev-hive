@@ -331,11 +331,31 @@ Trạng thái GitLab sang trạng thái CI của hive: `success` → Đạt; `fa
 
 ## D10. A6: mã yêu cầu
 
-**Quyết định**: trường "Yêu cầu" nhận danh sách cách nhau bằng dấu phẩy. Mỗi mã khớp
-`^(\d{3}/)?(FR|AC|NFR|US)-\d{3,4}(\.\d+)?$`. Ví dụ `FR-001`, `036/FR-010`, `AC-012.2`.
+**Quyết định**: trường "Yêu cầu" nhận danh sách cách nhau bằng dấu phẩy. Mỗi mã khớp một trong hai mẫu:
 
-**Lý do**: spec của hive và mẫu spec-kit dùng `FR-xxx`, `SC-xxx`, `US`. Tiền tố `NNN/` cho phép trỏ spec khác.
-[Unverified] Tài liệu yêu cầu của dự án mẫu dùng mã nào; nếu khác thì thêm mẫu trong cấu hình dự án ở bản sau.
+| Loại | Regex | Ví dụ |
+|---|---|---|
+| Mã spec | `^(\d{3}/)?(FR\|AC\|NFR\|US)-\d{3,4}(\.\d+)?$` | `FR-001`, `036/FR-010`, `AC-012.2` |
+| Mã SRS | `^(?!(FR\|AC\|NFR\|US)(\d\|$))[A-Z][A-Z0-9]{2,15}$` | `OPD02`, `BIL101`, `OPD02P00108`, `COMMON` |
+
+- Mã SRS gồm 3–16 chữ hoa hoặc số, bắt đầu bằng chữ, không có dấu gạch. Hai mẫu không giao nhau, vì mã spec luôn có `-`.
+- Mẫu SRS không nhận mã bắt đầu bằng `FR`, `AC`, `NFR`, `US` mà theo sau là chữ số hoặc hết mã. Mã gõ thiếu như `FR001`,
+  `US01`, `NFR` vẫn báo lỗi, kèm gợi ý dạng mã spec (contracts/tc-markdown.md). `ACC01`, `USR01` vẫn là mã SRS.
+- Hive giữ nguyên mã, không đổi hoa thường. `opd02` báo lỗi.
+- Cột `requirements` lưu chung hai loại. Góc nhìn theo yêu cầu (FR-054) liệt kê cả hai, mỗi mã một dòng.
+
+**Lý do**:
+
+- Spec của hive và mẫu spec-kit dùng `FR-xxx`, `SC-xxx`, `US`. Tiền tố `NNN/` cho phép trỏ spec khác.
+- SRS của BA ở dự án mẫu dùng mã module và chức năng không theo một khuôn: `OPD02`, `BIL101`, `BILA1`, `IPDP10`,
+  `ORM04P00201`, `EMEDT`. Ngày 2026-10-23 đã kiểm tên 261 file SRS (tên file là mã): cả 261 mã khớp mẫu SRS, dài 5–11 ký
+  tự. Mã module (`APT`, `BILL`, `COMMON`) cũng khớp.
+- Một mẫu chung nhận được mã SRS mà dự án không phải cấu hình regex.
+
+**Phương án đã loại**:
+
+- Ghi mã SRS vào Nhãn dạng `srs-<mã>`: góc nhìn theo yêu cầu không thấy mã SRS, tester phải nhớ hai chỗ ghi mã.
+- Regex riêng trong cấu hình dự án: thêm màn cài đặt và lỗi cấu hình. Chưa cần khi mẫu chung nhận hết mã đã đọc.
 
 ## D11. A7: các ngưỡng
 

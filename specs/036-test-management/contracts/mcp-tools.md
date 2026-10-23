@@ -82,7 +82,7 @@ z.object({
   label: z.string().max(40).optional(),
   priority: z.enum(["P1", "P2", "P3"]).optional(),
   kind: z.enum(["automated", "manual", "planned"]).optional(),
-  requirement: z.string().max(40).optional().describe("Mã yêu cầu, ví dụ FR-001."),
+  requirement: z.string().max(40).optional().describe("Mã yêu cầu, ví dụ FR-001 hoặc OPD02."),
   limit: z.number().int().min(1).max(MCP_LIMITS.listMax).optional().describe("Số mục; mặc định 10."),
   offset: z.number().int().min(0).optional().describe("Vị trí bắt đầu danh sách."),
 })

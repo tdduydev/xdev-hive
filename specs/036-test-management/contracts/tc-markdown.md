@@ -30,7 +30,7 @@ Khu này phủ màn đăng nhập và đổi mật khẩu. Chữ ở đây đư�
 
 - Ưu tiên: P2
 - Loại: tay
-- Yêu cầu: FR-002
+- Yêu cầu: FR-002, AUTH01
 
 | # | Thao tác | Kết quả mong đợi |
 |---|---|---|
@@ -57,12 +57,25 @@ Khu này phủ màn đăng nhập và đổi mật khẩu. Chữ ở đây đư�
 |---|---|---|---|
 | Ưu tiên | có | `P1`, `P2`, `P3` | `priority` |
 | Loại | có | `tự động`, `tay`, `dự kiến tự động` | `kind`: `automated`, `manual`, `planned` |
-| Yêu cầu | có | mã cách nhau bằng dấu phẩy, mỗi mã khớp `^(\d{3}/)?(FR\|AC\|NFR\|US)-\d{3,4}(\.\d+)?$` | `requirements` |
+| Yêu cầu | có | mã cách nhau bằng dấu phẩy, mỗi mã là mã spec hoặc mã SRS (research D10) | `requirements` |
 | Nhãn | không | cách nhau bằng dấu phẩy, không dấu cách, mỗi nhãn ≤ 40 ký tự, tối đa 20 nhãn | `labels` |
 | Script | khi `Loại: tự động` | đường dẫn tương đối trong repo test, không `..`, ≤ 255 ký tự | `script` |
 | Dữ liệu test | không | mã tham chiếu, ≤ 200 ký tự | `test_data` |
 | Điều kiện trước | không | ≤ 1.000 ký tự | `preconditions` |
 | Ghi chú | không | ≤ 1.000 ký tự | `note` |
+
+Mã yêu cầu (research D10):
+
+| Loại | Regex | Ví dụ |
+|---|---|---|
+| Mã spec | `^(\d{3}/)?(FR\|AC\|NFR\|US)-\d{3,4}(\.\d+)?$` | `FR-001`, `036/AC-012.2` |
+| Mã SRS | `^(?!(FR\|AC\|NFR\|US)(\d\|$))[A-Z][A-Z0-9]{2,15}$` | `OPD02`, `OPD02P00108` |
+
+Bộ đọc kiểm từng mã theo thứ tự:
+
+1. Khớp mã spec hoặc mã SRS: nhận.
+2. Bắt đầu bằng `FR`, `AC`, `NFR`, `US` (có thể kèm `NNN/`): lỗi "mã spec sai dạng", ví dụ `FR001`, `NFR`, `FR-01`.
+3. Còn lại: lỗi "mã yêu cầu sai mẫu", ví dụ `opd02`, `OPD-02`, `SC-001`.
 
 Bảng bước: cột `#` là số nguyên tăng dần từ 1. "Thao tác" và "Kết quả mong đợi" mỗi ô 1–1.000 ký tự, không rỗng. Tối đa
 50 bước. Lưu vào `steps` dạng `[{ n, action, expected }]`.
@@ -104,7 +117,8 @@ type ParsedArea = {
 | Mã lặp trong file | "Dòng {n}: mã `{mã}` đã có ở dòng {m}." |
 | Thiếu trường bắt buộc | "Dòng {n}: TC `{mã}` thiếu trường `{trường}`." |
 | Giá trị không hợp lệ | "Dòng {n}: `{trường}` không nhận `{giá trị}`. Giá trị hợp lệ: {danh sách}." |
-| Mã yêu cầu sai mẫu | "Dòng {n}: mã yêu cầu `{mã}` không đúng mẫu, ví dụ `FR-001` hoặc `036/AC-012.2`." |
+| Mã spec sai dạng | "Dòng {n}: mã yêu cầu `{mã}` bắt đầu bằng `{tiền tố}` nên phải có dạng mã spec, ví dụ `{tiền tố}-001` hoặc `036/{tiền tố}-001`." |
+| Mã yêu cầu sai mẫu | "Dòng {n}: mã yêu cầu `{mã}` không đúng mẫu. Mã spec có dạng `FR-001` hoặc `036/AC-012.2`. Mã SRS gồm 3–16 chữ hoa hoặc số, bắt đầu bằng chữ, ví dụ `OPD02`." |
 | Tự động mà thiếu Script | "Dòng {n}: TC `{mã}` loại tự động phải có `Script`." |
 | Trường lặp | "Dòng {n}: trường `{trường}` đã khai ở dòng {m}." |
 | Trường lạ | "Dòng {n}: không có trường `{trường}`. Trường hợp lệ: Ưu tiên, Loại, Yêu cầu, Nhãn, Script, Dữ liệu test, Điều kiện trước, Ghi chú." |
