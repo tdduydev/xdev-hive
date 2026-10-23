@@ -8,6 +8,7 @@ import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { LogCard } from "@/components/log-card.tsx";
+import { TaskHistory } from "@/components/task-history.tsx";
 import { TreeLinks } from "@/components/tree-links.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
@@ -117,6 +118,8 @@ export function RunPage() {
           <div className="grid min-w-0 gap-5">
             <LogCard log={stream.log} status={stream.status} onRetry={stream.retry} />
             <EventsCard events={stream.events} />
+            {/* Chưa có trang task riêng: trang run là nơi người xem mở từ bảng việc. */}
+            {task.data && <TaskHistory taskId={task.data.id} />}
           </div>
           <aside aria-label="Thông tin run" className="grid min-w-0 gap-4">
             <DetailsCard run={r} now={now} />

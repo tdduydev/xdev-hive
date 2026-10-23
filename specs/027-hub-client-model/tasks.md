@@ -85,7 +85,7 @@ description: "Danh sách task: Hub giữ dữ liệu và tiến độ, client l�
 - [x] T011 [US1] `tasks.history({taskId})`: gộp `client_events` (task, run của task) và `run_events` loại `state`, sắp
   theo giờ nhận · `packages/contracts/src/tasks.ts`, `apps/hub/src/modules/tasks/history.ts`,
   `apps/hub/src/modules/tasks/router.ts`, `apps/hub/src/modules/tasks/history.db.test.ts`, `openapi.json`
-- [ ] T012 [P] [US1] Khung "Lịch sử" trong trang task: nguồn, máy, người, giờ tạo, giờ nhận, lý do từ chối ·
+- [x] T012 [P] [US1] Khung "Lịch sử" trong trang task: nguồn, máy, người, giờ tạo, giờ nhận, lý do từ chối ·
   `apps/web/src/pages/tasks-page.tsx`, `apps/web/src/components/task-history.tsx`, `apps/web/e2e/task-history.spec.ts`
 - [ ] T013 [P] [US1] ADR 0032 sự kiện client và hộp thư đi; sửa ADR 0019 (op socket mới) ·
   `docs/adr/0032-client-events-and-outbox.md`, `docs/adr/0019-*.md`, `docs/adr/README.md`
