@@ -11,6 +11,32 @@ một người làm thuê cho công ty A và công ty B. Hai đơn vị có th�
 cũng yêu cầu "xem lại bộ phân quyền" (kết quả ở [rbac-review.md](rbac-review.md), các sửa cần thiết nằm trong FR-090
 đến FR-098 của spec này).
 
+## Phạm vi bản này (thu hẹp 2026-10-23)
+
+Bản này làm hai phần:
+
+1. Một máy đăng ký riêng với từng tổ chức. Mỗi tổ chức có token, khoá máy, `worker.json` và thư mục dữ liệu riêng. Dữ
+   liệu giữa các tổ chức không lẫn vào nhau. Mỗi tiến trình worker chạy **một** đăng ký; chủ máy chọn bằng
+   `--registration`, `HIVE_REGISTRATION` hoặc `hive-worker registrations use`.
+2. Sửa các lỗ phân quyền trong rbac-review.md (FR-090–FR-098), trừ phần cần vai trò hay khái niệm quyền mới.
+
+Phần còn lại của spec giữ làm thiết kế đích. Phần bị cắt (mỗi dòng một phần):
+
+- Ngoài phạm vi: nhiều đăng ký chạy cùng lúc trong một tiến trình (FR-007 phần WSS, A1, US2). Socket cục bộ và hộp thư
+  đi dùng chung sẽ đưa lệnh của tổ chức này tới hub của tổ chức kia.
+- Ngoài phạm vi: lập lịch theo tổ chức, `machine_busy` (US6, FR-055, FR-095).
+- Ngoài phạm vi: mức cách ly `tách-người-dùng` và sandbox đọc (US3).
+- Ngoài phạm vi: tài khoản AI dùng chung hay riêng theo tổ chức (US5, FR-040–FR-044).
+- Ngoài phạm vi: chính sách tổ chức `aiAccountSharing`, `machineIsolation`, `coTenancyNote` và trang web tương ứng.
+- Ngoài phạm vi: màn "Tổ chức trên máy" và nhãn màu tổ chức trên desktop (US7).
+- Ngoài phạm vi: `projects.json` theo đăng ký và chặn một thư mục gắn hai đăng ký (FR-032); gói `projects` khoá trong
+  nhánh này.
+- Ngoài phạm vi: cờ `--registration` riêng cho từng lệnh (FR-009); thay bằng cờ chung đứng trước lệnh.
+- Ngoài phạm vi: memory, context, optimizer và CA của hub theo đăng ký; các phần này là công cụ CLI trên máy, không phải
+  dữ liệu tổ chức. `hive` (`login`, `mcp`) vẫn đọc đăng ký cũ.
+- Ngoài phạm vi: gỡ đăng ký báo hub thu hồi máy; quản trị thu hồi trên web.
+- Ngoài phạm vi: vai trò và khái niệm quyền mới (rbac-review R8, R9, R13); ghi là việc làm sau.
+
 ## Vì sao làm
 
 Hiện một máy thuộc đúng một tổ chức trên một hub. Người làm cho hai đơn vị phải chọn một trong hai cách:
@@ -360,24 +386,28 @@ Máy của Hà đang chạy bản cũ với một đăng ký. Hà cập nhật a
 **Đăng ký và lưu trữ trên máy**
 
 - **FR-001**: Worker PHẢI đọc chỉ mục `registrations.json` trong thư mục cấu hình (`UserConfigDir/xdev-hive`). Mỗi mục có
-  `id` cục bộ, `hubUrl`, `orgId`, `orgName`, `label`, `machineId`, `configDir`, `dataDir`, `isolation`, `limit`, `enabled`.
-  Machine token KHÔNG nằm trong chỉ mục.
-- **FR-002**: Mỗi đăng ký mới PHẢI có thư mục cấu hình `…/xdev-hive/orgs/<id>/` (chứa `worker.json`, `projects.json`,
-  `remote.json`, chính sách đã biết, phạm vi bí mật) và thư mục dữ liệu `UserCacheDir/xdev-hive/worker/orgs/<id>/` (repo
-  cache, worktree, `pending`, `active`, `terminal`, `guard`, codegraph, log run). Quyền 0700/0600, DACL tương đương trên
-  Windows.
+  `id` cục bộ, `hubUrl`, `orgId`, `orgName`, `label`, `createdAt`; chỉ mục có thêm `active` là đăng ký đang chọn.
+  Machine token KHÔNG nằm trong chỉ mục. (Bản này: đường dẫn suy từ `id`; `isolation`, `limit`, `enabled` ngoài phạm vi.)
+- **FR-002**: Mỗi đăng ký mới PHẢI có thư mục cấu hình `…/xdev-hive/orgs/<id>/` (chứa `worker.json`, khoá máy khi không có
+  keychain, `accounts.json`, `remote.json`, `gitgroups.json`) và thư mục dữ liệu `UserCacheDir/xdev-hive/orgs/<id>/worker/`
+  (repo cache, worktree, `pending`, `active`, `terminal`, `guard`, log run). Thư mục dữ liệu mới không nằm trong thư mục
+  dữ liệu của đăng ký cũ. Quyền 0700/0600, DACL tương đương trên Windows.
 - **FR-003**: Đăng ký cũ PHẢI dùng đúng đường dẫn hiện có (FR-080).
-- **FR-004**: Mỗi (hub, tổ chức) có tối đa một đăng ký trên máy. Thêm trùng PHẢI bị từ chối kèm đề nghị đăng ký lại.
+- **FR-004**: Mỗi (hub, tổ chức) có tối đa một đăng ký trên máy. Thêm trùng thì đăng ký mới thay đăng ký cũ tại chỗ: giữ
+  `id` và thư mục, ghi token và khoá máy mới, xoá khoá cũ.
 - **FR-005**: Lệnh đăng ký PHẢI nhận `--label` và `--machine` (tên gửi hub) riêng cho từng đăng ký. Lần đăng ký mới PHẢI
   tạo khoá máy mới (spec 027 FR-020), không dùng lại khoá của đăng ký khác.
 - **FR-006**: Hub PHẢI trả `orgId` và tên tổ chức trong kết quả đăng ký để máy ghi vào chỉ mục. Kết quả hiện đã có
   `orgId` (`registration.ts`); thêm tên tổ chức.
 - **FR-007**: Worker PHẢI giữ một tiến trình mỗi người dùng hệ điều hành (giữ `instancelock`) và mở một kết nối WSS cho mỗi
-  đăng ký đang bật. Kết nối, backoff, hộp thư đi, `pending`, ack của mỗi đăng ký độc lập.
+  đăng ký đang bật. Kết nối, backoff, hộp thư đi, `pending`, ack của mỗi đăng ký độc lập. (Bản này: mỗi tiến trình một
+  đăng ký; nhiều kết nối ngoài phạm vi.)
 - **FR-008**: Token cá nhân trên desktop PHẢI lưu trong keychain theo khoá (hub, tổ chức). Khoá cũ theo hub được đọc như
   token của đăng ký cũ rồi chép sang khoá mới.
 - **FR-009**: Lệnh `hive-worker` hiện có (`projects`, `accounts`, `outbox`, `memory`, `context`, `ssh`, `config`) PHẢI nhận
   `--registration ID`; không đặt thì dùng đăng ký duy nhất, hoặc báo lỗi khi có từ hai đăng ký và lệnh cần đăng ký.
+  (Bản này: cờ chung `hive-worker --registration ID <lệnh>` đặt `HIVE_REGISTRATION` cho lệnh và tiến trình con; không
+  đặt thì dùng đăng ký đang chọn. Id không có trong sổ là lỗi, không rơi về đăng ký khác.)
 
 **Cách ly giữa các tổ chức**
 
@@ -531,7 +561,8 @@ Chi tiết từng FR-09x và các mục còn lại xem rbac-review.md mục "S�
 ## Assumptions
 
 - **A1**: Một tiến trình worker cho mọi đăng ký (giữ `instancelock`), không phải một tiến trình mỗi đăng ký. Lý do: chia
-  chỗ chạy và quota tài khoản cần một bộ đếm chung. Mức `tách-người-dùng` thêm tiến trình con theo người dùng.
+  chỗ chạy và quota tài khoản cần một bộ đếm chung. Mức `tách-người-dùng` thêm tiến trình con theo người dùng. (Bản này:
+  một tiến trình chạy một đăng ký; `instancelock` vẫn chung cho cả máy nên mỗi lúc chỉ một đăng ký chạy.)
 - **A2**: Hub không cần biết khái niệm "nhiều đăng ký". Phần hub chỉ gồm: tên tổ chức trong kết quả đăng ký, `machine_busy`,
   hai điều khoản chính sách, cờ `coTenancyNote`, và các sửa phân quyền.
 - **A3 (mặc định)**: Tối đa 8 đăng ký mỗi máy.

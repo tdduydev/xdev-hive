@@ -2,6 +2,19 @@
 
 Mọi lệnh in JSON khi có `--json`. Lỗi in tiếng Việt ra stderr, mã thoát khác 0.
 
+**Bản này (thu hẹp 2026-10-23)** làm:
+
+- `list [--json]`: in mảng đăng ký `{id, hubUrl, orgId, orgName, label, machineId, active, registered, configPath}`.
+- `add --hub URL --token MÃ [--machine TÊN] [--capacity N] [--label NHÃN] [--json]`. Trùng (hub, tổ chức) thì thay
+  đăng ký cũ tại chỗ.
+- `use ID`.
+- `set ID --label NHÃN`.
+- `remove ID`. Từ chối khi worker đang chạy hoặc với `reg_legacy`.
+- Cờ chung `hive-worker --registration ID <lệnh>`.
+
+Ngoài phạm vi: `machineLimit`, `reregister`, `set-limit`, `--color`, `--isolation`, cờ `--registration` riêng của từng
+lệnh, hỏi hộp thư đi khi gỡ. Phần dưới giữ làm thiết kế đích.
+
 ## `hive-worker registrations list`
 
 ```json

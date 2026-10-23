@@ -12,6 +12,22 @@
 
 Nhãn **[Unverified]** đánh dấu điều chưa kiểm trên máy thật. T001 đến T003 kiểm các điểm đó trước khi code phụ thuộc.
 
+## Phạm vi bản này (thu hẹp 2026-10-23)
+
+Chỉ làm hai phần: đăng ký riêng theo tổ chức trên máy và sửa lỗ phân quyền. Danh sách phần cắt nằm ở spec.md mục "Phạm
+vi bản này". Cách làm:
+
+- Sổ `UserConfigDir/xdev-hive/registrations.json` (`active`, `registrations[]`), gói `worker/internal/registry`. Đăng ký
+  mới: cấu hình `…/xdev-hive/orgs/<id>/worker.json`, dữ liệu `UserCacheDir/xdev-hive/orgs/<id>/worker`. Máy cũ là
+  `reg_legacy`, giữ đường dẫn cũ và không cần ghi sổ.
+- Chọn đăng ký: `--config` > `HIVE_WORKER_CONFIG` (bỏ qua sổ, FR-082) > `--registration`/`HIVE_REGISTRATION` > `active` >
+  `reg_legacy`. `run` và `host` ghim id đã chọn vào `HIVE_REGISTRATION` để hook và askpass con dùng cùng đăng ký.
+- Khoá máy: tài khoản keychain thêm id đăng ký (`machinekey.Store.Scope`, lưu ở `worker.json` `keyScope`). Đăng ký cũ
+  giữ tài khoản cũ.
+- Mỗi tiến trình một đăng ký; `instancelock` vẫn chung cả máy. Nhiều kênh trong một tiến trình (phần "Kiến trúc" dưới)
+  ngoài phạm vi.
+- Ngoài phạm vi: sổ chưa có khoá giữa các tiến trình; hai lệnh `registrations add` chạy cùng lúc có thể mất một dòng.
+
 ## Tóm tắt
 
 **Worker** (phần lớn việc):

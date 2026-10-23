@@ -117,19 +117,21 @@ xuất). Việc rà toàn bộ là T090 trong tasks.md.
 
 | Ưu tiên | Sửa | Rủi ro | FR | Module | Trạng thái |
 |---|---|---|---|---|---|
-| 1 | Lọc hội thoại Leader và đề xuất theo đội của dự án; hội thoại không gắn dự án chỉ người tạo và admin tổ chức thấy; từ chối đề xuất cần vai trò `member` của đội | R1 | FR-090, FR-091 | leader | Làm trong nhánh này |
-| 2 | Đăng ký lại cùng tên: chỉ khi người tạo mã là chủ máy cũ hoặc admin đội; giữ chủ máy cũ; audit ghi chủ cũ | R2 | FR-093 | fleet | Làm trong nhánh này |
-| 3 | Token cá nhân: tổ chức được chọn (đường dẫn hay header) phải trùng tổ chức của token | R3 | FR-094 | tenancy | Làm trong nhánh này |
-| 4 | Router fleet kiểm `requireOrgRole(member)` như `inOrg` chung | R4 | FR-091 | fleet | Làm trong nhánh này |
-| 5 | `machine_busy` không loại máy khỏi run | (lập lịch) | FR-055 | runs | Làm trong nhánh này |
-| 6 | `account_set` chỉ áp tài khoản gán riêng; heartbeat lọc tài khoản; socket mang mã phiên run | R5, R11, R12 | FR-021, FR-044, FR-045 | worker | Chờ 027 (`channel`, `localipc`) |
-| 7 | Chủ máy cá nhân tự tạm dừng, tiếp tục, thu hồi máy mình | R6 | FR-098 | fleet | Làm trong nhánh này |
-| 8 | `roles.unassign` gọi `requireCanGrant`; gán cho đội từ chối vai trò phạm vi tổ chức | R10 | FR-092 | tenancy | Làm trong nhánh này |
-| 9 | Bỏ `machines.read` khỏi vai trò hệ thống `member`/`team-member`, hoặc cho `listMachines` xét quyền hệ thống | R8 | FR-092 | contracts, fleet | Hỏi chủ dự án (Q-R2) |
-| 10 | Đánh dấu quyền chưa có điểm kiểm là "chưa áp dụng" trên màn vai trò, hoặc thêm điểm kiểm | R13 | FR-092 | contracts, web | Sau |
-| 11 | Token run kiểm lại tư cách thành viên người tạo mỗi lần gọi công cụ ghi | R7 | FR-094 | mcp | Bị chặn (module mcp không được sửa trong nhánh này) |
-| 12 | Scope cho token cá nhân (chỉ đọc, chỉ MCP) | R9 | FR-094 | mcp, contracts | Sau |
-| 13 | Kiểm thân hàm SECURITY DEFINER 0039, 0077; hạn vé khung artifact; bí mật Telegram | — | — | — | Sau, rà riêng |
+| 1 | Lọc hội thoại Leader và đề xuất theo đội của dự án; hội thoại không gắn dự án chỉ người tạo và admin tổ chức thấy; từ chối đề xuất cần vai trò `member` của đội | R1 | FR-090, FR-091 | leader | Xong (T010, T011) |
+| 2 | Đăng ký lại cùng tên: chỉ khi người tạo mã là chủ máy cũ hoặc admin đội; giữ chủ máy cũ; audit ghi chủ cũ | R2 | FR-093 | fleet | Xong (T014) |
+| 3 | Token cá nhân: tổ chức được chọn (đường dẫn hay header) phải trùng tổ chức của token | R3 | FR-094 | tenancy | Xong (T013); còn lỗ ở dòng 14 |
+| 4 | Router fleet kiểm `requireOrgRole(member)` như `inOrg` chung | R4 | FR-091 | fleet | Xong (T012) |
+| 5 | `machine_busy` không loại máy khỏi run | (lập lịch) | FR-055 | runs | Ngoài phạm vi: cần nhiều đăng ký chạy cùng lúc |
+| 6 | `account_set` chỉ áp tài khoản gán riêng; heartbeat lọc tài khoản; socket mang mã phiên run | R5, R11, R12 | FR-021, FR-044, FR-045 | worker | Ngoài phạm vi: bản này mỗi tiến trình worker chạy một đăng ký nên R5, R11, R12 chưa xảy ra; làm khi có nhiều kênh |
+| 7 | Chủ máy cá nhân tự tạm dừng, tiếp tục, thu hồi máy mình | R6 | FR-098 | fleet | Xong (T016) |
+| 8 | `roles.unassign` gọi `requireCanGrant`; gán cho đội từ chối vai trò phạm vi tổ chức | R10 | FR-092 | tenancy | Xong (T017) |
+| 9 | Bỏ `machines.read` khỏi vai trò hệ thống `member`/`team-member`, hoặc cho `listMachines` xét quyền hệ thống | R8 | FR-092 | contracts, fleet | Việc làm sau: đổi quyền của vai trò hệ thống; hỏi chủ dự án (Q-R2) |
+| 10 | Đánh dấu quyền chưa có điểm kiểm là "chưa áp dụng" trên màn vai trò, hoặc thêm điểm kiểm | R13 | FR-092 | contracts, web | Việc làm sau: thêm điểm kiểm là khái niệm quyền mới |
+| 11 | Token run kiểm lại tư cách thành viên người tạo mỗi lần gọi công cụ ghi | R7 | FR-094 | mcp | Việc làm sau: module mcp khoá trong nhánh này |
+| 12 | Scope cho token cá nhân (chỉ đọc, chỉ MCP) | R9 | FR-094 | mcp, contracts | Việc làm sau: scope token là khái niệm quyền mới |
+| 13 | Kiểm thân hàm SECURITY DEFINER 0039, 0077; hạn vé khung artifact; bí mật Telegram | — | — | — | Việc làm sau, rà riêng |
+| 14 | Luồng SSE triển khai (`delivery/stream-route.ts:138`) chọn tổ chức từ header hoặc `?org=`; chặn token cá nhân của T013 chỉ so header và đường dẫn, nên token tổ chức A gọi với `?org=B` vẫn qua (chỉ trong quyền của chính người dùng ở B). Sửa: so `?org=` với tổ chức của token | R3 | FR-094 | delivery | Việc làm sau: module delivery khoá trong nhánh này |
+| 15 | Khoá máy trong keychain đặt theo (hub, tên máy): hai tổ chức cùng hub, cùng tên máy ghi đè khoá của nhau. Sửa: tài khoản keychain thêm phạm vi đăng ký | (mới, khi có 034) | FR-005 | worker | Xong (T030, `machinekey.Store.Scope`) |
 
 ## 5. Câu hỏi về phân quyền cho chủ dự án
 
