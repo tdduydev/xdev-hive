@@ -8,6 +8,7 @@ import (
 )
 
 func launchSecretProcess(argv, env []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	// Lệnh tương tác dùng chung console của `hive secrets exec`; CREATE_NO_WINDOW sẽ tách nó khỏi console. procattr:allow
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
 	cmd.Stdin = stdin
