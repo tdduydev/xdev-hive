@@ -448,7 +448,7 @@ không chứa giá trị.
 
 **Independent Test**: [quickstart.md](quickstart.md) mục 7.
 
-- [ ] T036 [US8] A·nhẹ — `worker/cmd/hive-worker/secrets.go`:
+- [x] T036 [US8] A·nhẹ — `worker/cmd/hive-worker/secrets.go`:
   - `secrets reveal [--copy]`: ghi dòng `reveal`, `copy` (FR-041);
   - `secrets purge --project|--all`: trả `removed` và `left` (FR-064).
 

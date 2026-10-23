@@ -29,6 +29,8 @@ const secretsUsage = `Cách dùng: hive-worker secrets <lệnh> [--config FILE] 
   log clear                                 xoá nhật ký cấp tại máy
   approvals                                 yêu cầu đang chờ duyệt
   approve   --id MÃ --allow|--deny
+  reveal    --name TÊN [--copy]
+  purge     --project LOCAL_ID|--all
 Giá trị chỉ đọc từ stdin, không bao giờ từ tham số hay biến môi trường.`
 
 // Kiểu ra của lệnh, khớp contracts/sidecar-cli.md và fixture testdata/cli của secretstore.
@@ -113,6 +115,8 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	approvalID := fs.String("id", "", "mã yêu cầu duyệt")
 	allow := fs.Bool("allow", false, "cho phép")
 	deny := fs.Bool("deny", false, "từ chối")
+	copyValue := fs.Bool("copy", false, "ghi thao tác sao chép")
+	all := fs.Bool("all", false, "xoá mọi bí mật")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
 		fmt.Fprintln(stderr, "Tham số không hợp lệ.")
 		return usage()
@@ -128,6 +132,16 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	}
 	var view any
 	switch action {
+	case "reveal":
+		if *name == "" {
+			return usage()
+		}
+		view, err = cmd.reveal(path, *name, *copyValue)
+	case "purge":
+		if *all == (*project != "") {
+			return usage()
+		}
+		view, err = cmd.purge(*project, *all)
 	case "approvals":
 		var pending []secretstore.ApprovalRequest
 		pending, err = secretstore.PendingApprovals(path)
@@ -202,6 +216,60 @@ func secretsCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 type secretsCmd struct {
 	catalog, projects string
 	store             *secretstore.Store
+}
+
+func (c secretsCmd) reveal(config, raw string, copyValue bool) (any, error) {
+	name, err := lookupName(raw)
+	if err != nil {
+		return nil, err
+	}
+	cat, err := secretstore.LoadCatalog(c.catalog)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = cat.Get(name); err != nil {
+		return nil, err
+	}
+	value, err := c.store.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = secretstore.Append(secretstore.GrantsPath(config), secretstore.GrantRecord{Kind: secretstore.KindReveal, Names: []string{name}, Copy: copyValue, Policy: secretstore.PolicyAllow, Outcome: secretstore.OutcomeGranted}); err != nil {
+		return nil, err
+	}
+	return struct {
+		Value string `json:"value"`
+	}{value}, nil
+}
+
+type secretPurgeView struct {
+	Removed []string `json:"removed"`
+	Left    []string `json:"left"`
+}
+
+func (c secretsCmd) purge(project string, all bool) (secretPurgeView, error) {
+	view := secretPurgeView{Removed: []string{}, Left: []string{}}
+	if !all {
+		if err := secretstore.DropProject(c.catalog, project); err != nil {
+			return view, err
+		}
+	}
+	cat, err := secretstore.LoadCatalog(c.catalog)
+	if err != nil {
+		return view, err
+	}
+	for _, item := range cat.Secrets {
+		if !all {
+			view.Left = append(view.Left, item.Name)
+			continue
+		}
+		if _, err := c.delete(item.Name); err != nil {
+			view.Left = append(view.Left, item.Name)
+		} else {
+			view.Removed = append(view.Removed, item.Name)
+		}
+	}
+	return view, nil
 }
 
 func (c secretsCmd) list(project string) (secretsListView, error) {
