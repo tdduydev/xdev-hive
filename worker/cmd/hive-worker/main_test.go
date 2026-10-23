@@ -65,7 +65,7 @@ func TestRegisterSavesToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Hub cũ không có route đổi token: máy giữ machine token, lần chạy sau gửi khoá lại.
-	want := config.Config{HubURL: srv.URL, MachineID: "may-test", ID: "00000000-0000-4000-8000-000000000001", MachineToken: "hwm_secret", TeamID: "00000000-0000-4000-8000-000000000003", Path: path}
+	want := config.Config{HubURL: srv.URL, MachineID: "may-test", ID: "00000000-0000-4000-8000-000000000001", MachineToken: "hwm_secret", TeamID: "00000000-0000-4000-8000-000000000003", OrgID: "00000000-0000-4000-8000-000000000002", Path: path}
 	if cfg != want {
 		t.Fatalf("cấu hình = %+v", cfg)
 	}
